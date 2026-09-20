@@ -19,7 +19,7 @@ import {
   chartPreviewStopScript,
   parseChartPreviewBridgeMessage,
 } from './chart-preview-bridge';
-import { chartPreviewNativeScreenOptions } from './chart-preview-native-screen-options';
+import { chartPreviewNativeScreenOptions, type ChartPreviewFullscreenOrientation } from './chart-preview-native-screen-options';
 import {
   CHART_PREVIEW_PLAYER_LABEL,
   chartPreviewPrepareProgress,
@@ -64,6 +64,7 @@ export type ChartPreviewScreenShellProps<TPayload> = {
   prepareErrorFallback: string;
   externalError?: string | null;
   allowFileAccess: boolean;
+  fullscreenOrientation?: ChartPreviewFullscreenOrientation;
   buildInjectedJavaScript?: (payload: TPayload) => string;
   reInjectOnLoadEnd?: boolean;
   blockOnHttpError?: boolean;
@@ -147,6 +148,7 @@ export function ChartPreviewScreenShell<TPayload>({
   prepareErrorFallback,
   externalError,
   allowFileAccess,
+  fullscreenOrientation = 'landscape',
   buildInjectedJavaScript,
   reInjectOnLoadEnd,
   blockOnHttpError = true,
@@ -464,7 +466,7 @@ export function ChartPreviewScreenShell<TPayload>({
 
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
-      <Stack.Screen options={chartPreviewNativeScreenOptions(isFullscreen, Platform.OS)} />
+      <Stack.Screen options={chartPreviewNativeScreenOptions(isFullscreen, Platform.OS, '谱面确认', fullscreenOrientation)} />
       {/* 入口详情页因深色沉浸头声明了白字状态栏且 push 后仍挂载；壳必须显式接管，否则浅色下白字叠白 header。 */}
       <StatusBar style={theme.statusBar} />
       {blockingError ? (

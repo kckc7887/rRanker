@@ -135,11 +135,14 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
   `cacheFirstLoad` 可选 `onFallback` 只发布失败状态；不会把兜底缓存送给 `onFresh`。
   Rizline 通过它显示明确认证失效，网络失败保留旧会话与成绩。手动同步等待完整结果，
   公开曲库失败不阻止官方成绩尝试，部分成功明确通知且不返回同步成功。
-- `RizlineResourceService` 使用 `VerifiedReleaseSession<RizlineCatalogData>`，专属 Zod Schema
-  解释版本指针、清单和完整曲库。公共发布会话只在 prepare 完成后切换候选，clear 使旧请求
+- `RizlineResourceService` 使用 `VerifiedReleaseSession<RizlineRelease>`，专属 Zod Schema
+  解释版本指针、清单和完整曲库。内存发布对象额外保留清单 `files`，SQLite `rizline:catalog`
+  仍只存 `{ snapshot, source }`。`withRelease` 供谱面确认读取带 files 的当前发布。
+  公共发布会话只在 prepare 完成后切换候选，clear 使旧请求
   失效；单个消费者取消不影响其余消费者，最后一个取消才停止底层请求。
   `withRelease` 同时捕获整个操作的代次，清理不能触发旧操作的恢复重试并重新填回内存。
-  Rizline 严格验证 manifest/catalog 摘要、大小、路径、唯一 ID 和引用；Phigros 保持其
+  Rizline 严格验证 manifest/catalog 摘要、大小、路径、唯一 ID 和引用，包括歌曲 `audioPath`
+  与谱面 `chartPath` 必须出现在清单中；Phigros 保持其
   原发布格式、`verifyPhigrosResource` 与预览/下载校验行为。
 - 独立发布器 `D:/Projects/rizline-resource-publisher/rizline_publisher/core.py` 的
   `publish(..., workers=4)` 统一预览与实际上传；`verify_remote_object` 校验 GET 实际字节，
@@ -379,7 +382,7 @@ URL、请求头和 cacheKey 的稳定身份，等价 source 对象不会重置�
 
 | 功能族 | 公共入口 | 游戏侧职责 | 主要验证 |
 |---|---|---|---|
-| 谱面确认 | `src/features/chart-preview-shared/`：`ChartPreviewScreenShell`、`ChartPreviewLoadProgress`、资源暂存、URI 解析、桥接（含 `progress`）、注入工厂、计划执行器、播放时钟与全屏锁。壳用一条进度条覆盖 native `prepare` 与播放器就绪，`ready` 后撤遮罩。`prepare(signal, settings, onProgress?)` 与 `prepareChartPreviewWebviewFromPlan(plan, signal?, onProgress?)` 按字节权重报告下载，writer/HTML 占落盘末段；`fileName` 支持相对路径，远程 `url+bytes` 有限并发，`bytes` 只作进度权重，可选 `remoteCacheDirectory` 已有非空文件则跳过下载 | 提供图表解析、资源清单、HTML/脚本配置和场景文案。舞萌/Majdata 谱面与预览曲在 RN prepare 经 `downloadChartResource` 完成，预览曲写入 `music-data.js`；皮肤 PNG 缓存到 `rranker-chart-preview-remote` 后由 writer 写成 `skin-data.js` data URL。Phigros 皮肤仍用 `./skin/` 相对路径；Phigros 三类资源与 Phira zip 同样走 `downloadChartResource` 进度 | `chart-preview-screen-shell-contract.test.tsx`、`chart-preview-progress.test.ts` 及各游戏预览测试 |
+| 谱面确认 | `src/features/chart-preview-shared/`：`ChartPreviewScreenShell`（可选 `fullscreenOrientation`，默认 `landscape`）、`chartPreviewNativeScreenOptions`、`ChartPreviewLoadProgress`、资源暂存、URI 解析、桥接（含 `progress`）、注入工厂、计划执行器、播放时钟与全屏锁。壳用一条进度条覆盖 native `prepare` 与播放器就绪，`ready` 后撤遮罩。`prepare(signal, settings, onProgress?)` 与 `prepareChartPreviewWebviewFromPlan(plan, signal?, onProgress?)` 按字节权重报告下载，writer/HTML 占落盘末段；`fileName` 支持相对路径，远程 `url+bytes` 有限并发，`bytes` 只作进度权重，可选 `remoteCacheDirectory` 已有非空文件则跳过下载 | 提供图表解析、资源清单、HTML/脚本配置和场景文案。舞萌/Majdata 谱面与预览曲在 RN prepare 经 `downloadChartResource` 完成，预览曲写入 `music-data.js`；皮肤 PNG 缓存到 `rranker-chart-preview-remote` 后由 writer 写成 `skin-data.js` data URL。Phigros 皮肤仍用 `./skin/` 相对路径；Phigros 三类资源与 Phira zip 同样走 `downloadChartResource` 进度。Rizline 谱面 JSON 与 m4a 同样走 `downloadChartResource`，校验后写成会话文件，配置只带相对 URL | `chart-preview-screen-shell-contract.test.tsx`、`chart-preview-progress.test.ts` 及各游戏预览测试 |
 | 谱面下载 | `src/features/chart-download-shared/`：下载会话目录、取消错误、命名、保存与 `useChartPackageDownload` | 组装具体资源、压缩包结构和成功文案 | `chart-package-download-lifecycle.test.tsx` 及各游戏下载测试 |
 | 成绩图 | `src/features/best-image/`：桥接、状态机、偏好、资源加载、HTML 运行时、选择器、控制器、屏幕壳和导出 | 构建游戏卡片/HTML、素材清单、样式选项和分区语义 | `best-image-screen-contract.test.tsx`、HTML 金样和游戏成绩图测试 |
 | 存储管理 | `src/features/storage-management/`：缓存策略、文件边界、游戏适配器、统计、清理、维护和图标字体恢复 | 在注册适配器中声明本游戏查询键、资源和清理动作 | `storage-management.test.ts`、`storage-cache-policy.test.ts` |
@@ -461,13 +464,29 @@ osu 初始化仅准备并绘制首帧，播放和重播才恢复音频、启动�
 `node scripts/check-osu-player.mjs [Playwright 模块入口]` 在内存打包并验证四模式手动启动、
 catch 实心透明度、同色描边和降级模糊像素；不代替 iOS/Android WebView 真机验证。
 
+Rizline 的 `domain/rizline-chart-preview.ts` 提供
+`resolveRizlineChartPreviewBundle` 与 `loadRizlineChartPreviewResources(target, signal, read?)`，
+通过 `rizlineResources.withRelease` 按 `songId` 与 `rizlineDifficultyIndex` 对应难度定位唯一
+`.json` 谱面和 `.m4a` 音频，并用清单 `files` 的 size/sha256 走 `verifyResourceBytes`。
+`features/rizline-chart-preview/` 提供配置、打开、注入、原生准备与 WebView 播放器；
+`prepareRizlineChartPreviewWebViewSource` 复用 `downloadChartResource` 与
+`prepareChartPreviewWebviewFromPlan`，把谱面/音频写成会话文件 `preview-chart.json` /
+`preview-music.m4a`，配置只带相对 URL。路由 `/songs/rizline-chart-preview` 装配
+`ChartPreviewScreenShell`，全屏方向传 `portrait_up`。官方 JSON 解析与 9:16 Canvas
+绘制留在游戏播放器内。相关合同包括 `rizline-chart-preview-resources.test.ts`、
+`rizline-chart-preview-prepare.test.tsx`、`rizline-chart-preview-screen.test.tsx`、
+`rizline-chart-preview-controls.test.ts`、`rizline-chart-preview-chart.test.ts`、
+`rizline-chart-preview-playfield.test.ts`、`rizline-chart-preview-build.test.ts` 与
+`rizline-ui.test.tsx`。真机 WebView 音画同步无法用单测代替。
+
 `chart-preview-shared/webview-player/wheel.ts` 的 `setupWheelPopup` 接受元素、即时预览与提交
-回调、范围、初始值、可选文本标签及数值格式，供舞萌与 osu! 使用；返回
+回调、范围、初始值、可选文本标签及数值格式，供舞萌、osu! 与 Rizline 使用；返回
 `getValue`、`setValue` 与 `dispose`，`closeActiveWheelPopup` 统一关闭当前浮层。
 `frame-scheduler.ts` 按帧合并最新预览，拨轮停止 120 ms 后提交；领域设置解释留在各播放器。
 共享交互模块不解释音符、模式或游戏 ID，新增设置不得另建持久化入口。
 `chart-preview-wheel.test.ts` 验证预览、提交、格式与销毁，
-`osu-chart-preview-controls.test.ts` 将公共控制器样式和结构与现有播放器直接比较。
+`osu-chart-preview-controls.test.ts` 与 `rizline-chart-preview-controls.test.ts`
+将公共控制器样式和结构与现有播放器直接比较。
 
 ## 跨层硬约束
 
@@ -524,7 +543,7 @@ catch 实心透明度、同色描边和降级模糊像素；不代替 iOS/Androi
   剩余谱面继续计时和变速；主动暂停、跳转与退出仍清除时钟。
   `maimai-chart-preview-audio.test.ts` 覆盖歌曲尾奏、长条谱尾、偏移、变 BPM 与 Buddy 范围。
   `npm run typecheck` 包含 `typecheck:maimai-player`、`typecheck:phigros-player` 和
-  `typecheck:osu-player`，完整检查三类播放器入口和引擎。
+  `typecheck:osu-player`、`typecheck:rizline-player`，完整检查四类播放器入口和引擎。
   修改播放器后必须执行 `npm run build:chart-preview`，验证 `player.js` 与应用加载的
   `player.bundle` 一致，并完成运行时验收。相关合同包括 `chart-preview-screen-shell-contract.test.tsx`、
   `maimai-chart-preview-webview.test.ts`、`maimai-chart-preview-remote-assets.test.ts`、

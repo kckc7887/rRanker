@@ -1,0 +1,144 @@
+{
+  "fileVersion": 0,
+  "songsName": "Test",
+  "themes": [
+    {
+      "colorsList": [
+        {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        },
+        {
+          "r": 255,
+          "g": 255,
+          "b": 255,
+          "a": 255
+        }
+      ]
+    }
+  ],
+  "challengeTimes": [],
+  "bPM": 120,
+  "bpmShifts": [],
+  "offset": 0,
+  "chartDelayMs": 0,
+  "lines": [
+    {
+      "linePoints": [
+        {
+          "time": 0,
+          "xPosition": 0,
+          "color": {
+            "r": 255,
+            "g": 255,
+            "b": 255,
+            "a": 255
+          },
+          "easeType": 0,
+          "canvasIndex": 0,
+          "floorPosition": 0
+        },
+        {
+          "time": 4,
+          "xPosition": 0,
+          "color": {
+            "r": 255,
+            "g": 255,
+            "b": 255,
+            "a": 255
+          },
+          "easeType": 0,
+          "canvasIndex": 0,
+          "floorPosition": 4
+        }
+      ],
+      "notes": [
+        {
+          "type": 0,
+          "time": 1,
+          "floorPosition": 1,
+          "otherInformations": []
+        },
+        {
+          "type": 2,
+          "time": 2,
+          "floorPosition": 2,
+          "otherInformations": [
+            3,
+            0,
+            3
+          ]
+        }
+      ],
+      "judgeRingColor": [
+        {
+          "time": 0,
+          "color": {
+            "r": 255,
+            "g": 255,
+            "b": 255,
+            "a": 255
+          }
+        }
+      ],
+      "lineColor": [
+        {
+          "time": 0,
+          "color": {
+            "r": 0,
+            "g": 0,
+            "b": 0,
+            "a": 0
+          }
+        }
+      ]
+    }
+  ],
+  "canvasMoves": [
+    {
+      "index": 0,
+      "xPositionKeyPoints": [
+        {
+          "time": 0,
+          "value": 0,
+          "easeType": 0,
+          "floorPosition": 0
+        }
+      ],
+      "speedKeyPoints": [
+        {
+          "time": 0,
+          "value": 1,
+          "easeType": 0,
+          "floorPosition": 0
+        }
+      ]
+    }
+  ],
+  "cameraMove": {
+    "scaleKeyPoints": [
+      {
+        "time": 0,
+        "value": 1,
+        "easeType": 0,
+        "floorPosition": 0
+      }
+    ],
+    "xPositionKeyPoints": [
+      {
+        "time": 0,
+        "value": 0,
+        "easeType": 0,
+        "floorPosition": 0
+      }
+    ]
+  }
+}

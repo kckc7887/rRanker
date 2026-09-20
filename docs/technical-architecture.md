@@ -180,12 +180,9 @@ SP→AT→IN→HD→EZ；默认 IN，成绩入口定位原难度。歌曲与谱�
 已选难度取消筛选，选中框与舞萌共用默认胶囊形状。工具箱注册随机歌曲与机厅查找，
 总览保留公共个人曲库卡片。
 总览 RKS 卡使用柔和的灰绿色渐变。难度标签统一使用白字胶囊；曲库行只显示等级、不显示难度名，
-筛选条、成绩卡与详情仍显示难度名。详情练习按钮采用相同难度配色。`rizlineRecordStatus` 统一评价展示：原始达成率达到 120% 优先 AP，其余推定 AH 显示 AH；
-AP 使用流金达成率和金色胶囊，AH 使用流动蓝绿达成率和蓝绿渐变胶囊。
-列表与详情复用 `RizlineAccuracyValue`、`RizlineStatusBadge`，通过公共动效组件消费
-`domain/metric-gradient-theme.ts`，与 Phigros 共用色组和时长。成绩卡右侧显示 RKS 小标题。
-详情不展示歌曲信息区，曲库中的成就和更新时间字段仍可维护，歌曲及谱面本地标签分别保留。
-未接入谱面预览、下载或成绩图。
+筛选条、成绩卡与详情仍显示难度名。详情练习按钮采用相同难度配色，谱面确认按钮位于练习清单下方，空心描边与文字使用当前难度色。
+曲库中的成就和更新时间字段仍可维护，歌曲及谱面本地标签分别保留。
+谱面确认经 `/songs/rizline-chart-preview` 接入公共播放壳，不提供谱面下载或成绩图。
 
 公开资源唯一基址为 `https://rranker-rizline-data.cn-nb1.rains3.com`。独立发布项目位于
 `D:/Projects/rizline-resource-publisher`，其维护说明管理官方导入、人工补充、校验、构建及发布。
@@ -205,7 +202,9 @@ Actions 完整发布归档与报告保留 90 天，S3 不保留回滚版本；�
 
 客户端 `services/rizline-resources.ts` 验证 `/rizline/current.json` 指定的 manifest SHA-256、
 资源路径与修订，再验证完整 catalog 的大小、SHA-256、身份与引用一致性，全部通过后替换。
-`rizline:catalog` 单独持久化最后有效曲库；失败与离线保留旧数据。封面使用版本化地址走公共
+歌曲 `audioPath`（`.m4a`）和谱面 `chartPath`（`.json`）必须出现在清单 `files` 中。
+内存发布对象额外保留 `files`，SQLite `rizline:catalog` 仍只存曲库快照与来源；
+失败与离线保留旧数据。封面使用版本化地址走公共
 图片缓存。`useRizlineCatalog`、`ensureRizlineCatalog` 和 `refreshRizlineCatalog` 共用查询；
 新的元数据只重建账号载荷的派生字段，不重取或改写官方成绩。根部 `useGameResourceSync`
 按注册表在恢复完成及进入相应游戏时检查 Phigros/Rizline 资源，不因普通标签或前后台切换重复检查。
@@ -354,7 +353,7 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 
 ## WebView 与文件型功能
 
-- 谱面确认由 `features/chart-preview-shared/` 提供 React Native 壳、资源暂存、桥接、注入工厂和播放时钟；游戏目录只提供解析、资源计划和配置。壳把 native `prepare` 映射到进度条 0～0.9，WebView 解码占 0.9～1，桥接 `ready` 后撤遮罩。每次预览仍使用独占 session 目录；远程 `url+bytes` 资产可先写入 `Paths.cache` 下 `rranker-` 前缀目录（已有非空文件则跳过下载，`bytes` 只作进度权重），再写入 session。舞萌/Majdata 谱面与预览曲在 RN prepare 经 `downloadChartResource` 完成；预览曲写入 `music-data.js`，皮肤编码为 `skin-data.js` data URL，播放器不通过 `file://` 直接读本地 PNG 或音频。这些文件随共享缓存一并统计和清理。
+- 谱面确认由 `features/chart-preview-shared/` 提供 React Native 壳、资源暂存、桥接、注入工厂和播放时钟；游戏目录只提供解析、资源计划和配置。壳把 native `prepare` 映射到进度条 0～0.9，WebView 解码占 0.9～1，桥接 `ready` 后撤遮罩。全屏方向由可选 `fullscreenOrientation` 控制，默认横屏。每次预览仍使用独占 session 目录；远程 `url+bytes` 资产可先写入 `Paths.cache` 下 `rranker-` 前缀目录（已有非空文件则跳过下载，`bytes` 只作进度权重），再写入 session。舞萌/Majdata 谱面与预览曲在 RN prepare 经 `downloadChartResource` 完成；预览曲写入 `music-data.js`，皮肤编码为 `skin-data.js` data URL，播放器不通过 `file://` 直接读本地 PNG 或音频。这些文件随共享缓存一并统计和清理。
 - 谱面下载由 `features/chart-download-shared/` 统一处理临时目录、取消、进度、文件名和保存位置，游戏功能负责组装具体资源。`useChartPackageDownload.start` 可接收 `optionalVideoUrl`，将视频可用性检查、选择与下载放在同一重复点击锁、超时与取消生命周期中；后台、卸载和取消后的迟到结果不能再弹窗或启动下载。
 - Phigros 谱面确认先通过 `loadPhigrosChartPreviewResources` 下载并验证谱面、音乐和曲绘，自定义 `read` 走 `downloadChartResource` 字节进度，再将文本和 Base64 交给既有预览暂存计划；准备阶段超时为 120 秒。Phira zip 同样经 `downloadChartResource` 计入进度后再解包。Phira 兼容下载对 Phigros 资源使用同一校验与重试入口，下载本身仍委托 `downloadChartResource`，校验通过后才组包。发布端缺音乐时客户端不能补出音频，必须修复发布内容后完成真机播放和导入验收。
 - 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；控制器组合独立偏好、预览与导出会话，预览轮播同一时刻只挂载当前 WebView 页面。导出会话独占操作锁、画布等待和临时文件，在权限、捕获与保存前后复核取消；取消后不开始下一步或报告成功，已经开始的原生保存完成后清理临时文件，不删除已保存到相册的图片。
@@ -411,6 +410,20 @@ catch 的六类音符本体使用约 50% 不透明度的实心圆与不透明同
 `webview-player/engine/source-manifest.json` 固定公开上游提交及逐文件摘要，第三方来源与
 许可见根 `THIRD_PARTY_NOTICES.md` 和 `LICENSES/`。构建审计实际依赖清单，并将完整许可
 写入相同的 `player.js`、`player.bundle`；皮肤由代码生成，音效缺失时使用合成后备音。
+
+### Rizline 谱面确认
+
+详情难度卡在练习清单下方提供「查看谱面确认」，不提供谱面下载。
+`/songs/rizline-chart-preview` 使用 `songId`、`levelIndex` 定位当前难度，标题仅用于显示。
+`domain/rizline-chart-preview.ts` 通过 `rizlineResources.withRelease` 按发布曲库与清单
+`files` 解析唯一 `.json` 谱面和 `.m4a` 音频；`features/rizline-chart-preview/` 提供配置、
+原生准备与 WebView 播放器，复用 `ChartPreviewScreenShell`、`downloadChartResource`、
+`verifyResourceBytes`、注入工厂、`PlaybackClock` 与公共拨轮。准备超时为 120 秒。
+谱面与音频写入会话文件 `preview-chart.json` / `preview-music.m4a`，配置只带相对 URL，
+不把谱面正文注入 HTML。会话目录 `rranker-rizline-chart-preview` 走现有临时缓存回收。
+舞台按剩余空间铺满，渲染把 1080×1920（9:16）完整放下并留边；全屏保持竖屏，
+隐藏设置行、保留时间轴、走带和锁定。设置键为 `rranker.rizline-chart-preview.settings.v1`。
+官方 JSON 解析与 Canvas 绘制留在游戏播放器内。真机 WebView 音画同步无法用单测代替。
 
 ### Simai 谱面确认内核
 
@@ -483,10 +496,12 @@ npm test
 
 应用类型检查与独立播放器检查共同组成 `npm run typecheck`：
 `tsconfig.maimai-player.json` 覆盖 Simai 引擎/入口，`tsconfig.phigros-player.json` 覆盖
-Phigros/Phira 及 RPE 入口，`tsconfig.osu-player.json` 覆盖 osu! 播放入口及引擎。
+Phigros/Phira 及 RPE 入口，`tsconfig.osu-player.json` 覆盖 osu! 播放入口及引擎，
+`tsconfig.rizline-player.json` 覆盖 Rizline 播放入口。
 播放器源码改动后按所属功能运行 `npm run build:chart-preview`、
-`npm run build:phigros-chart-preview` 或 `npm run build:osu-chart-preview`；
-三者共用 `scripts/lib/build-preview.mjs`，公共拨轮修改需重建舞萌与 osu!。
+`npm run build:phigros-chart-preview`、`npm run build:osu-chart-preview`
+或 `npm run build:rizline-chart-preview`；
+四者共用 `scripts/lib/build-preview.mjs`，公共拨轮修改需重建舞萌、osu! 与 Rizline。
 构建器的可选 `licenseBanner` 保留分发许可，`auditModules` 在写出前审计实际依赖。
 `npm run check:generated` 不写文件，从源码重新构建并验证 HTML、player.js、player.bundle
 与交付产物一致。打包成功不代表手机 WebView 播放验收通过。

@@ -8,21 +8,29 @@ import { cacheFirstLoad, staleCached } from './cache-first';
 import { VerifiedReleaseSession, verifyResourceBytes } from './verified-release';
 
 export const RIZLINE_CATALOG_KEY = 'rizline:catalog';
+export type RizlineReleaseFile = { path: string; size: number; sha256: string };
+export type RizlineRelease = RizlineCatalogData & { files: readonly RizlineReleaseFile[] };
 type Repository = Pick<SqliteSnapshotRepository, 'getResource' | 'saveResource'>;
+function catalogData(release: RizlineRelease): RizlineCatalogData {
+  return { snapshot: release.snapshot, source: release.source };
+}
 export class RizlineResourceService {
-  private readonly releases = new VerifiedReleaseSession<RizlineCatalogData>((signal, force) => this.prepare(signal, force));
+  private readonly releases = new VerifiedReleaseSession<RizlineRelease>((signal, force) => this.prepare(signal, force));
   private readonly loads = createInflightGuard<string>();
   private revision: string | undefined;
   constructor(private readonly repository: Repository = new SqliteSnapshotRepository(), private readonly fetcher: typeof fetch = fetch,
     private readonly base = RIZLINE_RESOURCE_BASE) {}
 
   clear(): void { this.loads.clear(); this.releases.clear(); this.revision = undefined; }
+  withRelease<T>(action: (release: RizlineRelease) => Promise<T>, signal?: AbortSignal, check = false): Promise<T> {
+    return this.releases.withRelease(action, signal, check);
+  }
   private url(path: string): string { return `${this.base}/${path.split('/').map(encodeURIComponent).join('/')}`; }
   private requestOptions(signal?: AbortSignal) {
     return { baseUrl: this.base, fetcher: this.fetcher, signal, retries: 1, label: 'Rizline 曲库',
       error: (status: number) => new ProviderError('network', `Rizline 曲库请求失败：${status}`, true) };
   }
-  private async prepare(signal: AbortSignal, force: boolean): Promise<RizlineCatalogData> {
+  private async prepare(signal: AbortSignal, force: boolean): Promise<RizlineRelease> {
     const current = await requestJson({ ...this.requestOptions(signal), path: `/rizline/current.json?_check=${Date.now()}`,
       schema: RizlineCurrentSchema, diagnosticScenario: 'release' });
     const identity = JSON.stringify(current);
@@ -44,13 +52,22 @@ export class RizlineResourceService {
     const catalogBytes = await bytes(catalogFile.path);
     await verifyResourceBytes(catalogBytes, catalogFile, 'Rizline 曲库校验失败');
     const snapshot = RizlineCatalogSchema.parse(JSON.parse(new TextDecoder().decode(catalogBytes)));
+    const referenced = snapshot.songs.flatMap(song => [
+      ...(song.coverPath != null ? [song.coverPath] : []),
+      song.audioPath,
+      ...song.charts.map(chart => chart.chartPath),
+    ]);
     if (snapshot.resourceVersion !== current.resourceVersion || snapshot.gameVersion !== manifest.gameVersion
-      || snapshot.songs.some(song => song.coverPath != null && !paths.has(song.coverPath))) {
+      || referenced.some(path => !paths.has(path))) {
       throw new ProviderError('upstream_schema', 'Rizline 曲库内容不一致', true);
     }
     if (signal.aborted) throw signal.reason;
     this.revision = identity;
-    return { snapshot, source: snapshotSource({ kind: 'rizline', label: 'Rizline 曲库' }) };
+    return {
+      snapshot,
+      source: snapshotSource({ kind: 'rizline', label: 'Rizline 曲库' }),
+      files: manifest.files.map(file => ({ path: file.path, size: file.size, sha256: file.sha256 })),
+    };
   }
   async loadCached(): Promise<RizlineCatalogData | null> {
     const cached = await this.repository.getResource<RizlineCatalogData>(RIZLINE_CATALOG_KEY, 1);
@@ -61,8 +78,9 @@ export class RizlineResourceService {
     const generation = resourceWriteGeneration('rizline');
     return this.loads.share(String(generation), async requestSignal => {
       const assertCurrent = captureResourceWrites('rizline', requestSignal);
-      const data = await this.releases.load(requestSignal, true);
+      const release = await this.releases.load(requestSignal, true);
       assertCurrent();
+      const data = catalogData(release);
       await this.repository.saveResource(RIZLINE_CATALOG_KEY, 1, data.source.updatedAt, data, assertCurrent);
       assertCurrent();
       return data;

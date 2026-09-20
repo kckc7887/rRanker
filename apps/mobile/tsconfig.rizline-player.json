@@ -1,0 +1,9 @@
+{
+  "extends": "./tsconfig.maimai-player.json",
+  "include": [
+    "src/features/rizline-chart-preview/webview-player/**/*.ts",
+    "src/features/rizline-chart-preview/configuration.ts",
+    "src/features/chart-preview-shared/webview-player/**/*.ts",
+    "src/types/asset-modules.d.ts"
+  ]
+}
