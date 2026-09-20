@@ -117,9 +117,9 @@ describe('Rizline UI', () => {
     expect(inActions.indexOf('查看谱面确认：测试歌曲 IN'))
       .toBe(inActions.indexOf('加入练习清单') + 1);
     expect(preview).toHaveStyle({
-      backgroundColor: 'transparent', borderColor: rizlineDifficultyColors('IN').bg,
+      backgroundColor: rizlineDifficultyColors('IN').bg, borderColor: rizlineDifficultyColors('IN').bg,
     });
-    expect(chart.getByText('查看谱面确认')).toHaveStyle({ color: rizlineDifficultyColors('IN').bg });
+    expect(chart.getByText('查看谱面确认')).toHaveStyle({ color: '#FFFFFF' });
     await fireEvent.press(preview);
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/rizline-chart-preview',

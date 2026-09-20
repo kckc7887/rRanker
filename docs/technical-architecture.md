@@ -180,7 +180,7 @@ SP→AT→IN→HD→EZ；默认 IN，成绩入口定位原难度。歌曲与谱�
 已选难度取消筛选，选中框与舞萌共用默认胶囊形状。工具箱注册随机歌曲与机厅查找，
 总览保留公共个人曲库卡片。
 总览 RKS 卡使用柔和的灰绿色渐变。难度标签统一使用白字胶囊；曲库行只显示等级、不显示难度名，
-筛选条、成绩卡与详情仍显示难度名。详情练习按钮采用相同难度配色，谱面确认按钮位于练习清单下方，空心描边与文字使用当前难度色。
+筛选条、成绩卡与详情仍显示难度名。详情练习按钮与谱面确认按钮均采用当前难度实心底色与白色文字，谱面确认位于练习清单下方。
 曲库中的成就和更新时间字段仍可维护，歌曲及谱面本地标签分别保留。
 谱面确认经 `/songs/rizline-chart-preview` 接入公共播放壳，不提供谱面下载或成绩图。
 
@@ -419,8 +419,11 @@ catch 的六类音符本体使用约 50% 不透明度的实心圆与不透明同
 `files` 解析唯一 `.json` 谱面和 `.m4a` 音频；`features/rizline-chart-preview/` 提供配置、
 原生准备与 WebView 播放器，复用 `ChartPreviewScreenShell`、`downloadChartResource`、
 `verifyResourceBytes`、注入工厂、`PlaybackClock` 与公共拨轮。准备超时为 120 秒。
-谱面与音频写入会话文件 `preview-chart.json` / `preview-music.m4a`，配置只带相对 URL，
-不把谱面正文注入 HTML。会话目录 `rranker-rizline-chart-preview` 走现有临时缓存回收。
+谱面与音频经 `downloadChartResource` 落盘后，由 writer 写成会话脚本 `chart-data.js` /
+`music-data.js`（`window.__RIZLINE_CHART_PREVIEW_CHART__` /
+`window.__RIZLINE_CHART_PREVIEW_MUSIC__`），供 file:// WebView 以 `<script src>` 加载；
+配置不带资源 URL，也不把谱面正文注入 HTML。会话目录 `rranker-rizline-chart-preview`
+走现有临时缓存回收。
 舞台按剩余空间铺满，渲染把 1080×1920（9:16）完整放下并留边；全屏保持竖屏，
 隐藏设置行、保留时间轴、走带和锁定。设置键为 `rranker.rizline-chart-preview.settings.v1`。
 官方 JSON 解析与 Canvas 绘制留在游戏播放器内。真机 WebView 音画同步无法用单测代替。

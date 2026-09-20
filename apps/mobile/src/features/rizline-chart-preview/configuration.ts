@@ -27,8 +27,6 @@ export type RizlineChartPreviewSettings = {
 export type RizlineChartPreviewConfig = {
   theme: 'light' | 'dark';
   title?: string;
-  chartUrl: string;
-  musicUrl: string;
   settings: RizlineChartPreviewSettings;
 };
 

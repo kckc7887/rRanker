@@ -138,8 +138,8 @@ function RizlineChartCard({ chart, record, library, cardWidth, songTitle }: {
             variant: 'error',
           }),
         });
-      }} style={[styles.action, styles.chartSearchAction, { borderColor: colors.bg, backgroundColor: 'transparent' }]}>
-      <Text style={[styles.actionText, { color: colors.bg }]}>查看谱面确认</Text>
+      }} style={[styles.action, styles.chartSearchAction, { borderColor: colors.bg, backgroundColor: colors.bg }]}>
+      <Text style={[styles.actionText, { color: colors.fg }]}>查看谱面确认</Text>
     </DetailPressable></DetailGestureRoot>
     <TagEditor testID={`rizline-chart-tags-${chart.difficulty}`} tags={item?.kind === 'chart' ? item.tags : []} presets={library.tagPresets}
       historyTags={buildTagHistory(library.data ?? [], key, library.tagPresets)} disabled={library.isUpdating || library.isLoading}
