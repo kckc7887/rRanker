@@ -420,8 +420,9 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
 读完仍走 `verifyPhigrosResource`。Phira 预览 zip 经注入的 `downloadChart`（同一下载入口）再解包；
 未注入时回退 `phiraProvider.downloadChart`，供 live 演示。共享预览/下载核心不识别 Phigros 修订或音符。
 相关合同包括 `phigros-chart-preview-resources.test.ts`、`phigros-chart-preview-input.test.ts`、
-`phigros-chart-preview-screen.test.tsx`、`phira-compatible-chart-download.test.ts` 和
-`chart-preview-screen-shell-contract.test.tsx`。
+`phigros-chart-preview-pgr-core.test.ts`、`phigros-chart-preview-screen.test.tsx`、
+`phira-compatible-chart-download.test.ts` 和 `chart-preview-screen-shell-contract.test.tsx`。
+PGR 解析与 prpr 一致：时间倒序或字段无效的判定线事件忽略，缺失的事件/音符数组视为空，不中断整谱。
 
 osu! 的 `features/osu-chart-preview/configuration.ts` 统一路由参数与设置归一化。
 `prepareOsuChartPreviewWebViewSource(target, theme, settings, signal, onProgress?)` 组合

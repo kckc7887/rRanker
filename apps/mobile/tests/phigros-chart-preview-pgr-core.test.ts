@@ -110,6 +110,79 @@ describe('phigros chart preview pgr core', () => {
       judgeLineList: [line({ notesAbove: [{ type: 9, time: 0, positionX: 0, speed: 1, holdTime: 0 }] })],
     })).toThrow(/未知音符类型/);
   });
+
+  it('时间倒序事件按 prpr 忽略，不中断整谱', () => {
+    const chart = parsePgrChart({
+      formatVersion: 3,
+      offset: 0,
+      judgeLineList: [line({
+        speedEvents: [
+          { startTime: 0, endTime: 64, value: 1 },
+          { startTime: 80, endTime: 16, value: 9 },
+          { startTime: 64, endTime: 128, value: 2 },
+        ],
+        judgeLineDisappearEvents: [
+          { startTime: 0, endTime: 64, start: 1, end: 1 },
+          { startTime: 912, endTime: 896, start: 0, end: 0 },
+          { startTime: 64, endTime: 128, start: 1, end: 0 },
+        ],
+        judgeLineRotateEvents: [
+          { startTime: 0, endTime: 64, start: 0, end: 90 },
+          { startTime: 128, endTime: 32, start: 90, end: 0 },
+        ],
+        judgeLineMoveEvents: [
+          { startTime: 0, endTime: 64, start: 0.25, start2: 0.5, end: 0.75, end2: 1 },
+          { startTime: 80, endTime: 16, start: 0, start2: 0, end: 1, end2: 1 },
+        ],
+        notesAbove: [{ type: 1, time: 64, positionX: 0, holdTime: 0, speed: 1 }],
+      })],
+    });
+    const parsed = chart.lines[0]!;
+    expect(parsed.disappearEvents).toHaveLength(2);
+    expect(parsed.rotateEvents).toHaveLength(1);
+    expect(parsed.moveEvents).toHaveLength(1);
+    expect(parsed.speedEvents[0]![2]).toBe(1);
+    expect(parsed.notes).toHaveLength(1);
+  });
+
+  it('速度事件全部时间倒序时仍报缺失', () => {
+    expect(() => parsePgrChart({
+      formatVersion: 3,
+      offset: 0,
+      judgeLineList: [line({ speedEvents: [{ startTime: 64, endTime: 0, value: 1 }] })],
+    })).toThrow(/速度事件缺失/);
+  });
+
+  it('字段无效的单条事件和缺失数组不中断整谱', () => {
+    const chart = parsePgrChart({
+      formatVersion: 3,
+      offset: 0,
+      judgeLineList: [{
+        bpm: 120,
+        speedEvents: [
+          { startTime: 0, endTime: 64, value: 1 },
+          { startTime: 64, endTime: 128, value: Number.NaN },
+          { startTime: 64, endTime: 128, value: 2 },
+        ],
+        judgeLineDisappearEvents: [
+          { startTime: 0, endTime: 64, start: 1, end: 1 },
+          { startTime: 64, endTime: 128, start: Number.NaN, end: 0 },
+        ],
+        judgeLineRotateEvents: null,
+        judgeLineMoveEvents: [
+          { startTime: 0, endTime: 64, start: 0.25, start2: Number.NaN, end: 0.75, end2: 'x' },
+          { startTime: 'bad', endTime: 128, start: 0, end: 1 },
+        ],
+        notesAbove: [{ type: 1, time: 64, positionX: 0, holdTime: 0, speed: 1 }],
+      }],
+    });
+    const parsed = chart.lines[0]!;
+    expect(parsed.disappearEvents).toHaveLength(1);
+    expect(parsed.rotateEvents).toHaveLength(0);
+    expect(parsed.moveEvents).toHaveLength(1);
+    expect(parsed.moveEvents[0]!.slice(2)).toEqual([-0.5, -1, 0.5, -1]);
+    expect(parsed.notes).toHaveLength(1);
+  });
 });
 
 describe('phigros chart preview hit sounds', () => {
