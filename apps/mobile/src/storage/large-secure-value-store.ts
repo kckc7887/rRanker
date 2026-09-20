@@ -105,6 +105,10 @@ export class LargeSecureValueStore {
     return `rranker.secure.${safeNamespace}.${Crypto.randomUUID()}`;
   }
 
+  async has(reference: string): Promise<boolean> {
+    return parseManifest(await this.store.getItemAsync(manifestKey(reference))) !== null;
+  }
+
   async read(reference: string): Promise<string | null> {
     const manifest = parseManifest(await this.store.getItemAsync(manifestKey(reference)));
     if (!manifest) return null;

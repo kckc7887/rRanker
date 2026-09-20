@@ -303,7 +303,7 @@ export const GAME_OPTIONS: GameOption[] = [
     providers: [{
       id: 'rizline-official',
       title: '官方账号',
-      detail: '手机号与验证码登录',
+      detail: '手机号验证码或账密登录',
       icon: rizlineIcon,
       available: true,
       bindingKind: 'sms-code',

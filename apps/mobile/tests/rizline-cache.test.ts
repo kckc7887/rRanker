@@ -4,20 +4,58 @@ import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { ProviderError } from '@/providers/errors';
 import type { RizlineSession } from '@/providers/contracts';
 import { rizlineSave } from './fixtures/rizline';
-const mocks = vi.hoisted(() => ({ values: new Map<string, unknown>(), getSave: vi.fn(), rotate: vi.fn(), options: [] as { onSessionChanged: (next: RizlineSession) => Promise<void> }[] }));
+const mocks = vi.hoisted(() => ({
+  values: new Map<string, unknown>(),
+  getSave: vi.fn(),
+  loginWithPassword: vi.fn(),
+  rotate: vi.fn(),
+  isExpired: vi.fn((_token?: string) => false),
+  hasPassword: vi.fn(async (_id?: string) => false),
+  readPassword: vi.fn(async (_id?: string) => null as string | null),
+  deletePassword: vi.fn(async (_id?: string) => undefined),
+  sessionsByAccountId: {} as Record<string, RizlineSession>,
+  options: [] as { session?: RizlineSession; onSessionChanged?: (next: RizlineSession) => Promise<void>; allowExpiredToken?: boolean }[],
+}));
 vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {
   async getResource(key: string) { return mocks.values.get(key) ?? null; }
   async saveResource(key: string, _version: number, _time: string, value: unknown, assertCurrent?: () => void) { assertCurrent?.(); mocks.values.set(key, value); }
   async clearResources(keys: string[]) { keys.forEach(key => mocks.values.delete(key)); }
 } }));
 vi.mock('@/providers/rizline-provider', () => ({ RizlineProvider: class {
-  constructor(options: { onSessionChanged: (next: RizlineSession) => Promise<void> }) { mocks.options.push(options); }
+  constructor(options: { session?: RizlineSession; onSessionChanged?: (next: RizlineSession) => Promise<void>; allowExpiredToken?: boolean } = {}) { mocks.options.push(options); }
   getSave = mocks.getSave;
-} }));
-vi.mock('@/state/session-store', () => ({ applyRizlineSessionRotation: mocks.rotate }));
+  loginWithPassword = mocks.loginWithPassword;
+}, isRizlineTokenExpired: (token: string) => mocks.isExpired(token) }));
+vi.mock('@/state/session-store', () => ({
+  applyRizlineSessionRotation: mocks.rotate,
+  useSession: { getState: () => ({ sessionsByAccountId: mocks.sessionsByAccountId }) },
+}));
+vi.mock('@/storage/rizline-password-store', () => ({
+  hasRizlinePassword: (id: string) => mocks.hasPassword(id),
+  readRizlinePassword: (id: string) => mocks.readPassword(id),
+  deleteRizlinePassword: (id: string) => mocks.deletePassword(id),
+}));
 const session: RizlineSession = { mode: 'rizline', token: 'token', phone: '13800138000', deviceId: 'device', channelId: '1', persistable: true };
 const accountA = 'rizline:official:user-a', accountB = 'rizline:official:user-b';
-beforeEach(() => { invalidateResourceWrites('rizline'); mocks.values.clear(); mocks.options.length = 0; vi.clearAllMocks(); mocks.getSave.mockResolvedValue(rizlineSave()); });
+beforeEach(() => {
+  invalidateResourceWrites('rizline');
+  mocks.values.clear();
+  mocks.options.length = 0;
+  mocks.sessionsByAccountId = {};
+  mocks.getSave.mockReset();
+  mocks.loginWithPassword.mockReset();
+  mocks.rotate.mockReset();
+  mocks.isExpired.mockReset();
+  mocks.hasPassword.mockReset();
+  mocks.readPassword.mockReset();
+  mocks.deletePassword.mockReset();
+  mocks.getSave.mockResolvedValue(rizlineSave());
+  mocks.isExpired.mockReturnValue(false);
+  mocks.hasPassword.mockResolvedValue(false);
+  mocks.readPassword.mockResolvedValue(null);
+  mocks.deletePassword.mockResolvedValue(undefined);
+  mocks.rotate.mockResolvedValue(undefined);
+});
 
 describe('Rizline account snapshots', () => {
   it('persists the verified login save before a later offline score refresh', async () => {
@@ -34,6 +72,7 @@ describe('Rizline account snapshots', () => {
     mocks.getSave.mockResolvedValueOnce(rizlineSave({ userId: 'user-b' }));
     await loadRizlineFresh(accountB, session);
     await clearRizlineAccount(accountA); expect(await loadRizlineCached(accountA)).toBeNull(); expect(await loadRizlineCached(accountB)).not.toBeNull();
+    expect(mocks.deletePassword).toHaveBeenCalledWith(accountA);
   });
   it('keeps offline data and distinguishes expired login from a network failure', async () => {
     await loadRizlineFresh(accountA, session);
@@ -96,10 +135,51 @@ describe('Rizline account snapshots', () => {
   it('keeps a credential persistence failure from committing fresh scores', async () => {
     mocks.rotate.mockRejectedValueOnce(new Error('secure write failed'));
     mocks.getSave.mockImplementationOnce(async () => {
-      await mocks.options[0].onSessionChanged({ ...session, token: 'rotated' });
+      await mocks.options[0]!.onSessionChanged?.({ ...session, token: 'rotated' });
       return rizlineSave();
     });
     await expect(loadRizlineFresh(accountA, session)).rejects.toThrow('secure write failed');
     expect(await loadRizlineCached(accountA)).toBeNull();
+  });
+  it('retries with a store token after an authentication failure and does not require login', async () => {
+    await cacheRizlineSave(accountA, rizlineSave());
+    mocks.sessionsByAccountId[accountA] = session;
+    mocks.getSave.mockImplementationOnce(async () => {
+      mocks.sessionsByAccountId[accountA] = { ...session, token: 'updated' };
+      throw new ProviderError('authentication', 'expired', false);
+    }).mockResolvedValueOnce(rizlineSave());
+    const snapshot = await loadRizlineWithFallback(accountA, session);
+    expect(snapshot).toMatchObject({ save: { userId: 'user-a' } });
+    expect(snapshot.requiresLogin).toBeFalsy();
+    expect(mocks.getSave).toHaveBeenCalledTimes(2);
+    expect(mocks.options[1]?.session?.token).toBe('updated');
+    expect(mocks.loginWithPassword).not.toHaveBeenCalled();
+  });
+  it('reauthenticates with a stored password after 401 and keeps the password', async () => {
+    const next = { ...session, token: 'fresh-token' };
+    mocks.readPassword.mockResolvedValue('stored-password');
+    mocks.loginWithPassword.mockResolvedValue({
+      session: next, save: rizlineSave(), player: { userId: 'user-a', username: 'x', totalRks: 99.1234 },
+    });
+    mocks.getSave.mockRejectedValueOnce(new ProviderError('authentication', 'expired', false));
+    await expect(loadRizlineFresh(accountA, session)).resolves.toMatchObject({ save: { userId: 'user-a' } });
+    expect(mocks.loginWithPassword).toHaveBeenCalledWith(session.phone, 'stored-password', expect.any(AbortSignal));
+    expect(mocks.rotate).toHaveBeenCalledWith(accountA, next, session, expect.any(AbortSignal));
+    expect(mocks.deletePassword).not.toHaveBeenCalled();
+  });
+  it('deletes the stored password when password reauthentication fails', async () => {
+    await cacheRizlineSave(accountA, rizlineSave());
+    mocks.readPassword.mockResolvedValue('stored-password');
+    mocks.loginWithPassword.mockRejectedValue(new ProviderError('authentication', 'bad password', false));
+    mocks.getSave.mockRejectedValue(new ProviderError('authentication', 'expired', false));
+    await expect(loadRizlineWithFallback(accountA, session)).resolves.toMatchObject({ requiresLogin: true });
+    expect(mocks.deletePassword).toHaveBeenCalledWith(accountA);
+  });
+  it('still requests rn_login when a stored password exists for an expired JWT', async () => {
+    mocks.isExpired.mockReturnValue(true);
+    mocks.hasPassword.mockResolvedValue(true);
+    await loadRizlineFresh(accountA, session);
+    expect(mocks.getSave).toHaveBeenCalledTimes(1);
+    expect(mocks.options[0]?.allowExpiredToken).toBe(true);
   });
 });

@@ -88,6 +88,10 @@ export async function applyOsuTokenRotation(accountId: string, next: OsuOAuthSes
   await new SecureSessionStore().updateAccountSession(accountId, next);
 }
 
+function sameRizlineToken(current: ProviderSession | undefined, expected: RizlineSession): boolean {
+  return current?.mode === 'rizline' && current.token === expected.token;
+}
+
 export async function applyRizlineSessionRotation(
   accountId: string,
   next: RizlineSession,
@@ -96,13 +100,13 @@ export async function applyRizlineSessionRotation(
 ): Promise<void> {
   const assertCurrent = captureResourceWrites('rizline', signal, accountId);
   assertCurrent();
-  if (useSession.getState().sessionsByAccountId[accountId] !== expected) return;
+  if (!sameRizlineToken(useSession.getState().sessionsByAccountId[accountId], expected)) return;
   const { SecureSessionStore } = await import('@/storage/secure-session-store');
   assertCurrent();
   await new SecureSessionStore().updateAccountSession(accountId, next, { expected, signal });
   assertCurrent();
   const state = useSession.getState();
-  if (state.sessionsByAccountId[accountId] !== expected || !state.boundAccounts.some(account => account.id === accountId)) return;
+  if (!sameRizlineToken(state.sessionsByAccountId[accountId], expected) || !state.boundAccounts.some(account => account.id === accountId)) return;
   const credentialId = state.credentialIdsByAccountId[accountId];
   const sessionsByAccountId = credentialId
     ? sessionsWithSharedCredential(state.sessionsByAccountId, state.credentialIdsByAccountId, accountId, credentialId, next)
