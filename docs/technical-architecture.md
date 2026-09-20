@@ -353,6 +353,14 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 - 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；控制器组合独立偏好、预览与导出会话，预览轮播同一时刻只挂载当前 WebView 页面。导出会话独占操作锁、画布等待和临时文件，在权限、捕获与保存前后复核取消；取消后不开始下一步或报告成功，已经开始的原生保存完成后清理临时文件，不删除已保存到相册的图片。
 - 上述功能涉及 WebView 内容进程、文件选择、相册权限、原生手势和大图内存，自动化测试不能替代真机验收。
 
+公共谱面壳将准备会话与已挂载内容绑定，资源准备默认限时 120 秒，等待播放器 `ready`
+默认限时 60 秒，分别可通过请求的 `timeoutMs`、`readyTimeoutMs` 调整；等待用户选择资源
+时不启动计时。超时直接显示可重试状态，不依赖底层任务响应取消；旧会话的准备结果、
+进度、桥接、设置和内容进程回调不能修改新会话，迟到资源只回收自身。收到 `ready` 前
+进度最多显示 99%。内存警告或内容进程退出后释放资源，显示提示与“重新加载”；重载
+创建新的准备会话并重置进度。短暂 inactive 只暂停，普通后台释放后可在前台重建，
+内存或进程异常的手动重载状态不会因前后台切换而自动解除。
+
 ### osu! 谱面确认
 
 四模式详情的难度操作统一为练习清单、谱面确认、谱包下载。`/songs/osu-chart-preview`
@@ -363,19 +371,35 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 舞萌与 osu! 的拨轮共用 `chart-preview-shared/webview-player/wheel.ts`，即时预览按帧合并，
 滚动停止后提交设置；全屏、滚动页面和退出时关闭浮层。
 
-`prepareOsuChartPreviewWebViewSource` 在下载前捕获 shared 资源写入代次，通过
-`osuBeatmapsetDownloadUrl` 与 `downloadChartResource` 下载含视频的完整谱包。
-JSZip 解包后按 BeatmapID 精确匹配，拒绝缺失、匹配歧义、越界路径和可观察的规范化重名。
+`prepareOsuChartPreviewWebViewSource` 在下载前捕获 shared 资源写入代次，与谱包保存入口
+共用 `downloadOsuBeatmapsetArchive`。完整包按 Sayobot、osu.direct、Catboy、Nerinyan
+串行尝试，无视频包跳过 Catboy。源切换只发生在下载编排内，页面显示统一加载进度。
+每源连续 15 秒没有新增字节则取消并尝试下一源，外部取消或资源写入代次失效终止整链；
+通过 `subscribeResourceWrites` 同步接收清理失效，静默下载无需等到下一次进度才取消。
+每次尝试使用独立文件，失败及迟到结果只清理自己的文件。公共 `downloadChartResource`
+验证 HTTP 2xx 与非空文件，通过公共错误类型保留失败分类，取消无需等待原生下载结算。
+谱包下载验证 ZIP 结构、CRC 及谱面条目；预览在候选阶段通过 `readOsuChartPreviewArchive`
+完成整包 CRC 校验，再按 BeatmapID 精确匹配，拒绝缺失、匹配歧义、越界路径和可观察的规范化重名，并完成资源提取。
+每候选独占媒体子目录，提取损坏同样触发换源；失败和取消清理目录，成功资源才注入播放器。
+全部候选失败才显示场景错误，不改变 OAuth 授权，也不跳转下载网页。
 原生准备与播放器共用 `resource-plan.ts` 的引用选择：仅读取当前 `.osu`、同目录 `.osb`
 和被引用的媒体，保留目录语义并兼容大小写。UTF-16 文本采用平台无关字节解码。
 图片、视频写入独占 session；音频单独通过 `audio-data.js` 注入并按实际引用去重解码。
 完整谱包不持久缓存，取消、失败、退出与启动维护共用临时目录回收规则；异步恢复与发布前复核代次。
 
-播放器按文件原生模式自动演奏，转谱入口明确提示实际模式；不提供包内难度选择。
+播放器就绪后停在起点，点击播放或重播才恢复音频并按文件原生模式自动演奏；重载后
+保持暂停。转谱入口明确提示实际模式，不提供包内难度选择。
 歌曲、打击音、故事板 Sample、视频和谱尾反馈共同决定时间轴，负时间与 AudioLeadIn
 计入前导；关闭故事板或视频不改变总时长。视频静音并交由系统解码。
 设置从 `configuration.ts` 归一化，经公共壳持久化到 `rranker.osu-chart-preview.settings.v1`。
+catch 的六类音符本体使用约 50% 不透明度的实心圆，颜色、尺寸、hyperdash 提示和接盘
+分别保持既有语义。背景图片、视频与底层故事板先合成，再模糊并应用亮度遮罩；音符、
+界面及上层故事板不参与模糊。`PreviewBackgroundBlur` 用微型自绘画布检测实际滤镜能力，
+不支持时采用复用双缓冲的降采样与分离高斯卷积，生产绘制不读取媒体像素。模糊缓存按
+合成修订、半径与输出尺寸失效，暂停调节与跳转会重绘，退出释放辅助画布。
 退出释放音源、视频和位图；本地媒体读取、音画同步及大故事板内存仍需双端真机验收。
+`node scripts/check-osu-player.mjs [Playwright 模块入口]` 提供独立浏览器检查，使用小型样本
+验证四模式静默就绪和显式播放，以及不支持滤镜时的实际模糊像素、图层边界和透明度。
 
 `webview-player/engine/source-manifest.json` 固定公开上游提交及逐文件摘要，第三方来源与
 许可见根 `THIRD_PARTY_NOTICES.md` 和 `LICENSES/`。构建审计实际依赖清单，并将完整许可

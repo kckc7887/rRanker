@@ -3,8 +3,14 @@ import {
   createDownloadResumable,
   type DownloadProgressData,
 } from 'expo-file-system/legacy';
+import { ProviderError, providerErrorFromStatus, type ProviderErrorCode } from '@/providers/errors';
+import { nextRuntimeOperationId, recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
 
-export class ChartPackageDownloadError extends Error {}
+export class ChartPackageDownloadError extends ProviderError {
+  constructor(message: string, options?: ErrorOptions, code: ProviderErrorCode = 'unknown', retryable = false) {
+    super(code, message, retryable, options);
+  }
+}
 export class ChartPackageDownloadCancelledError extends Error {}
 
 export type ChartPackageDownloadProgress = {
@@ -65,26 +71,72 @@ export async function downloadChartResource(
 ): Promise<File> {
   const file = new File(directory, fileName);
   throwIfChartDownloadCancelled(signal);
-  const task = createDownloadResumable(url, file.uri, {}, onProgress);
+  const diagnostic = { source: 'chart-resource-download', scenario: 'resource', operationId: nextRuntimeOperationId() };
+  const started = Date.now();
+  let status: number | undefined;
+  let resultState = 'error';
+  let diagnosticError: unknown;
+  void recordRuntimeDiagnostic('request-start', diagnostic);
+  let discarded = false;
+  const cleanup = () => {
+    try { if (file.exists) file.delete(); } catch { /* Session cleanup also owns failed downloads. */ }
+  };
+  const task = createDownloadResumable(url, file.uri, {}, (progress) => {
+    if (!discarded && !signal?.aborted) onProgress?.(progress);
+  });
+  let rejectCancelled: (error: ChartPackageDownloadCancelledError) => void = () => {};
+  const cancelled = new Promise<never>((_resolve, reject) => { rejectCancelled = reject; });
   const cancelDownload = () => {
-    void task.cancelAsync().catch(() => undefined);
+    discarded = true;
+    rejectCancelled(new ChartPackageDownloadCancelledError('谱面下载已取消', { cause: signal?.reason }));
+    void Promise.resolve().then(() => task.cancelAsync()).catch(() => undefined);
+    cleanup();
   };
   signal?.addEventListener('abort', cancelDownload, { once: true });
   try {
-    const result = await task.downloadAsync();
+    if (signal?.aborted) cancelDownload();
+    const pending = Promise.resolve().then(() => {
+      throwIfChartDownloadCancelled(signal);
+      return task.downloadAsync();
+    });
+    // Native cancellation can settle after the caller has already left. Reap only
+    // this task's file again when its final callback eventually arrives.
+    void pending.then(() => { if (discarded) cleanup(); }, () => { if (discarded) cleanup(); });
+    const result = await Promise.race([pending, cancelled]);
     throwIfChartDownloadCancelled(signal);
     if (!result) throw new ChartPackageDownloadCancelledError('谱面下载已取消');
-    if (!file.exists || file.size <= 0) {
-      throw new ChartPackageDownloadError(`下载内容为空：${fileName}`);
+    status = result.status;
+    if (!Number.isInteger(status) || status < 200 || status >= 300) {
+      throw providerErrorFromStatus(result.status, {
+        permission: '下载服务暂时无法提供该资源', noData: '下载服务未找到该资源',
+        rateLimit: '下载请求过于频繁，请稍后重试', server: '下载服务暂时不可用',
+        fallback: { message: (status) => `资源下载返回 HTTP ${status}`, code: 'network' },
+      });
     }
+    if (!file.exists || file.size <= 0) {
+      throw new ProviderError('upstream_schema', '下载内容为空', true);
+    }
+    resultState = 'success';
     return file;
   } catch (error) {
+    discarded = true;
+    cleanup();
     if (signal?.aborted || error instanceof ChartPackageDownloadCancelledError) {
+      resultState = 'cancelled';
       throw new ChartPackageDownloadCancelledError('谱面下载已取消', { cause: error });
     }
-    throw new ChartPackageDownloadError(`无法下载谱面资源：${fileName}`, { cause: error });
+    diagnosticError = error instanceof ChartPackageDownloadError ? error
+      : error instanceof ProviderError
+        ? new ChartPackageDownloadError(error.message, { cause: error }, error.code, error.retryable)
+        : new ChartPackageDownloadError('无法下载谱面资源', { cause: error }, 'network', true);
+    throw diagnosticError;
   } finally {
     signal?.removeEventListener('abort', cancelDownload);
+    void recordRuntimeDiagnostic('request', {
+      ...diagnostic, result: resultState, status, durationMs: Date.now() - started,
+      errorCode: resultState === 'cancelled' ? 'cancelled' : diagnosticError instanceof ProviderError ? diagnosticError.code : undefined,
+      error: diagnosticError,
+    });
   }
 }
 

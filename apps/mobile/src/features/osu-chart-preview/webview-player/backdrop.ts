@@ -7,6 +7,7 @@ import {
 } from './events';
 import { compileStoryboardTriggers, type StoryboardHitSoundEvent } from './storyboard-triggers';
 import { drawCover, drawStoryboardLayer, releaseStoryboardRenderResources } from './storyboard';
+import { PreviewBackgroundBlur } from './background-blur';
 
 export type MediaPresentationOptions = {
   backgroundBrightness: number;
@@ -115,6 +116,8 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
   let compositeSurface: HTMLCanvasElement | null = null;
   let compositeContext: CanvasRenderingContext2D | null = null;
   let compositeTime = NaN;
+  let compositeRevision = 0;
+  const blur = new PreviewBackgroundBlur();
   let range = storyboardTimeRange(objects, visuals.samples);
   const key = (file: string): string => file.replace(/\\/g, '/').toLowerCase();
   const invalidate = (): void => { compositeTime = NaN; if (!disposed && !signal.aborted) onInvalidate(); };
@@ -143,6 +146,7 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
     images.clear();
     if (backgroundSurface) backgroundSurface.width = backgroundSurface.height = 0;
     if (compositeSurface) compositeSurface.width = compositeSurface.height = 0;
+    blur.dispose();
     releaseStoryboardRenderResources();
   };
   signal.addEventListener('abort', dispose, { once: true });
@@ -262,10 +266,9 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
             compositeContext!.clearRect(0, 0, 1280, 720);
             drawBackground(compositeContext!, timeMs);
             compositeTime = timeMs;
+            compositeRevision++;
           }
-          ctx.filter = `blur(${presentation.backgroundBlur}px)`;
-          ctx.drawImage(compositeSurface, 0, 0);
-          ctx.filter = 'none';
+          blur.draw(ctx, compositeSurface, presentation.backgroundBlur, compositeRevision);
         } else {
           drawBackground(ctx, timeMs);
         }

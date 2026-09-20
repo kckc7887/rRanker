@@ -4,6 +4,7 @@ import { createPreviewMedia, type MediaPresentationOptions } from '../../src/fea
 
 type Draw = { type: string; image?: unknown; filter: string; fill?: string };
 class TestContext {
+  constructor(readonly canvas = { width: 1280, height: 720 }, private readonly filtersWork = true) {}
   filter = 'none'; fillStyle = ''; globalAlpha = 1;
   calls: Draw[] = [];
   stack: { filter: string; fillStyle: string }[] = [];
@@ -13,10 +14,12 @@ class TestContext {
   clearRect() { this.calls.push({ type: 'clear', filter: this.filter }); }
   fillRect() { this.calls.push({ type: 'fill', filter: this.filter, fill: this.fillStyle }); }
   drawImage(image: unknown) { this.calls.push({ type: 'draw', image, filter: this.filter }); }
+  getImageData(x: number) { return { data: new Uint8ClampedArray([0, 0, 0, this.filtersWork && this.filter.startsWith('blur(') ? x === 6 ? 20 : 40 : 0]) }; }
   asContext() { return this as unknown as CanvasRenderingContext2D; }
 }
 class TestCanvas {
-  width = 0; height = 0; context = new TestContext();
+  width = 0; height = 0; context: TestContext;
+  constructor(filtersWork = true) { this.context = new TestContext(this, filtersWork); }
   getContext() { return this.context; }
 }
 class TestVideo extends EventTarget {
@@ -29,12 +32,12 @@ class TestVideo extends EventTarget {
 }
 const defaults: MediaPresentationOptions = { backgroundBrightness: 20, backgroundBlur: 0, storyboardEnabled: true, videoEnabled: true };
 
-async function environment(run: (env: { canvases: TestCanvas[]; video: TestVideo; decoded: number[] }) => Promise<void>) {
+async function environment(run: (env: { canvases: TestCanvas[]; video: TestVideo; decoded: number[] }) => Promise<void>, filtersWork = true) {
   const oldDocument = globalThis.document, oldBitmap = globalThis.createImageBitmap;
   const canvases: TestCanvas[] = [], video = new TestVideo(), decoded: number[] = [];
   globalThis.document = { createElement(name: string) {
     if (name === 'video') return video;
-    const canvas = new TestCanvas(); canvases.push(canvas); return canvas;
+    const canvas = new TestCanvas(filtersWork); canvases.push(canvas); return canvas;
   } } as unknown as Document;
   globalThis.createImageBitmap = (async (blob: Blob) => {
     const id = new Uint8Array(await blob.arrayBuffer())[0]!;
@@ -131,7 +134,8 @@ describe('preview media presentation', () => {
       assert.equal(canvases.length, 0);
       media.configure({ ...defaults, backgroundBlur: 12, backgroundBrightness: 100 });
       media.drawUnder(ctx.asContext(), 1000); media.drawUnder(ctx.asContext(), 1000);
-      assert.equal(canvases.length, 1);
+      assert.equal(canvases.length, 2);
+      assert.equal(canvases[1]!.width, 0, 'the origin-clean capability probe releases its buffer');
       assert.equal(canvases[0]!.context.calls.filter(call => call.type === 'draw').length, 1);
       assert.equal(ctx.calls.at(-1)!.filter, 'blur(12px)');
       media.drawOver(ctx.asContext(), 1000);
@@ -141,6 +145,35 @@ describe('preview media presentation', () => {
       media.dispose();
       assert.equal(canvases[0]!.width, 0);
     });
+  });
+
+  it('uses reusable convolution surfaces when filter assignment succeeds without changing pixels', async () => {
+    await environment(async ({ canvases }) => {
+      const media = await createPreviewMedia(request('Sprite,Foreground,Centre,"sprite.png",320,240\n F,0,0,5000,1', new Map([['sprite.png', new Uint8Array([3])]])));
+      const ctx = new TestContext();
+      media.configure({ ...defaults, backgroundBlur: 12, backgroundBrightness: 100 });
+      media.drawUnder(ctx.asContext(), 1000);
+      assert.equal(canvases.length, 4);
+      const [composite, probe, horizontal, result] = canvases;
+      assert.equal(probe!.width, 0);
+      assert.equal(horizontal!.width, 214);
+      assert.equal(result!.height, 120);
+      assert.equal(ctx.calls.at(-1)!.image, result);
+      assert.equal(ctx.calls.at(-1)!.filter, 'none');
+      const renders = result!.context.calls.length;
+      media.drawUnder(ctx.asContext(), 1000);
+      assert.equal(result!.context.calls.length, renders);
+      media.configure({ ...defaults, backgroundBlur: 6, backgroundBrightness: 100 });
+      media.drawUnder(ctx.asContext(), 1000);
+      assert.equal(horizontal!.width, 427);
+      assert.ok(result!.context.calls.length > renders);
+      assert.equal(composite!.context.calls.filter(call => call.type === 'draw').length, 2);
+      media.sync(1000, false, true);
+      media.drawUnder(ctx.asContext(), 1000);
+      assert.equal(composite!.context.calls.filter(call => call.type === 'draw').length, 3);
+      media.dispose();
+      assert.ok(canvases.every(canvas => canvas.width === 0 && canvas.height === 0));
+    }, false);
   });
 
   it('pauses disabled video and restores the latest map position without loading resources again', async () => {

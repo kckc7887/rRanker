@@ -2,12 +2,33 @@ import type { DataSource } from '@/domain/models';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 const resourceWriteGenerations = new Map<string, number>();
+const resourceWriteListeners = new Map<string, Set<() => void>>();
 export function resourceWriteGeneration(scope: string): number {
   return resourceWriteGenerations.get(scope) ?? 0;
 }
 /** Invalidates detached cache-first refreshes as well as active queries. */
 export function invalidateResourceWrites(scope: string): void {
   resourceWriteGenerations.set(scope, (resourceWriteGenerations.get(scope) ?? 0) + 1);
+  for (const notify of [...(resourceWriteListeners.get(scope) ?? [])]) {
+    // A failed cancellation must not prevent other tasks or the cache clear itself.
+    try { notify(); } catch { /* Write guards still reject invalidated publication. */ }
+  }
+}
+/** Cancels idle work synchronously when its scope is cleared. Always unsubscribe on completion. */
+export function subscribeResourceWrites(scope: string, onInvalidate: () => void): () => void {
+  let listeners = resourceWriteListeners.get(scope);
+  if (!listeners) {
+    listeners = new Set();
+    resourceWriteListeners.set(scope, listeners);
+  }
+  const subscription = () => onInvalidate();
+  listeners.add(subscription);
+  return () => {
+    listeners.delete(subscription);
+    if (listeners.size === 0 && resourceWriteListeners.get(scope) === listeners) {
+      resourceWriteListeners.delete(scope);
+    }
+  };
 }
 export function captureResourceWrites(scope: string, signal?: AbortSignal, accountId?: string): () => void {
   const generation = resourceWriteGeneration(scope);

@@ -1,6 +1,6 @@
 import { Directory, File } from 'expo-file-system';
-import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
-import { osuBeatmapsetDownloadUrl } from '@/features/osu-beatmapset-download/osu-beatmapset-download';
+import { throwIfChartDownloadCancelled } from '@/features/chart-download-shared/chart-download-shared';
+import { downloadOsuBeatmapsetArchive } from '@/features/osu-beatmapset-download/osu-beatmapset-download';
 import {
   createChartPreviewSessionDirectory,
   disposeChartPreviewSessionDirectory,
@@ -15,7 +15,7 @@ import {
 } from '@/features/chart-preview-shared/chart-preview-progress';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { OSU_MODE_INT_BY_GAME_ID } from '@/domain/osu';
-import { readOsuChartPreviewArchive } from './chart-preview-resources';
+import { readOsuChartPreviewArchive, type OsuChartPreviewResources } from './chart-preview-resources';
 import {
   normalizeOsuChartPreviewSettings,
   type OsuChartPreviewConfig,
@@ -36,41 +36,56 @@ export async function prepareOsuChartPreviewWebViewSource(
   assertCurrent();
   const directory = createChartPreviewSessionDirectory(DIRECTORY_NAME);
   try {
-    const archive = await downloadChartResource(
-      directory, 'beatmapset.osz', osuBeatmapsetDownloadUrl(target.beatmapsetId, true), signal,
-      ({ totalBytesWritten, totalBytesExpectedToWrite }) => onProgress?.({
+    let resources: OsuChartPreviewResources | undefined;
+    let candidateSequence = 0;
+    const archive = await downloadOsuBeatmapsetArchive(directory, { beatmapsetId: target.beatmapsetId, includeVideo: true }, {
+      signal,
+      onProgress: ({ totalBytesWritten, totalBytesExpectedToWrite }) => onProgress?.({
         label: CHART_PREVIEW_RESOURCE_LABEL,
         value: chartPreviewDownloadFraction(totalBytesWritten, totalBytesExpectedToWrite) * 0.7,
       }),
-    );
-    assertCurrent();
-    const bytes = await archive.bytes();
-    assertCurrent();
-    let mediaIndex = 0;
-    const resources = await readOsuChartPreviewArchive(bytes, target, {
-      assertCurrent,
-      onProgress: (value) => onProgress?.({
-        label: CHART_PREVIEW_PLAYER_LABEL, value: mapChartPreviewProgress(value, 0.7, 0.9),
-      }),
-      stageMedia: async (path, content) => {
-        assertCurrent();
-        const media = new Directory(directory, 'media');
-        media.create({ intermediates: true, idempotent: true });
-        const extension = path.match(/\.([a-z0-9]+)$/iu)?.[1]?.toLowerCase() ?? 'bin';
-        const file = new File(media, `${mediaIndex++}.${extension}`);
-        file.create({ overwrite: true });
-        file.write(content);
-        return file.uri;
+      validate: async (file, attemptSignal) => {
+        const assertAttempt = () => { assertCurrent(); throwIfChartDownloadCancelled(attemptSignal); };
+        const candidateDirectory = new Directory(directory, `candidate-${++candidateSequence}`);
+        try {
+          assertAttempt();
+          candidateDirectory.create({ intermediates: true, idempotent: true });
+          const bytes = await file.bytes();
+          let mediaIndex = 0;
+          const candidateResources = await readOsuChartPreviewArchive(bytes, target, {
+            assertCurrent: assertAttempt,
+            onProgress: (value) => onProgress?.({
+              label: CHART_PREVIEW_PLAYER_LABEL, value: mapChartPreviewProgress(value, 0.7, 0.9),
+            }),
+            stageMedia: async (path, content) => {
+              assertAttempt();
+              const media = new Directory(candidateDirectory, 'media');
+              media.create({ intermediates: true, idempotent: true });
+              const extension = path.match(/\.([a-z0-9]+)$/iu)?.[1]?.toLowerCase() ?? 'bin';
+              const staged = new File(media, `${mediaIndex++}.${extension}`);
+              staged.create({ overwrite: true });
+              staged.write(content);
+              return staged.uri;
+            },
+          });
+          assertAttempt();
+          resources = candidateResources;
+        } catch (error) {
+          disposeChartPreviewSessionDirectory(candidateDirectory);
+          throw error;
+        }
       },
     });
     assertCurrent();
+    if (!resources) throw new Error('谱面包中没有所选难度');
+    const preparedResources = resources;
     archive.delete();
     const config: OsuChartPreviewConfig = {
       theme,
       title: target.title,
       requestedMode: OSU_MODE_INT_BY_GAME_ID[target.gameId] as 0 | 1 | 2 | 3,
-      chartPath: resources.chartPath,
-      files: resources.files,
+      chartPath: preparedResources.chartPath,
+      files: preparedResources.files,
       settings: normalizeOsuChartPreviewSettings(settings),
     };
     const prepared = await prepareChartPreviewWebviewFromPlan({
@@ -85,7 +100,7 @@ export async function prepareOsuChartPreviewWebViewSource(
         assertCurrent();
         const file = new File(session, 'audio-data.js');
         file.create({ overwrite: true });
-        file.write(buildOsuChartPreviewAudioScript(resources.audio));
+        file.write(buildOsuChartPreviewAudioScript(preparedResources.audio));
       }],
       buildHtml: (template) => {
         assertCurrent();

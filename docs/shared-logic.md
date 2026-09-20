@@ -219,6 +219,9 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
   `account:<id>` 代次共同限制持久化与后台回调。`cacheFirstLoad` 的可选
   `assertCurrent` 覆盖读取、刷新及 onFresh/onFallback；Repository 的可选断言在初始化和写入
   队列等待完成之后、实际 SQL 提交之前执行。
+- `subscribeResourceWrites(scope, onInvalidate)` 返回退订函数，在该 scope 提升代次后同步
+  通知取消静默任务；任务完成必须退订，写入前仍通过 `captureResourceWrites` 复核。
+  订阅异常不会阻碍其它任务取消或缓存清理；合同由 `async-resource-lifetime.test.ts` 覆盖。
 - `clearStorageByCategories` 先提升所属游戏代次，再取消并移除查询，然后执行适配器清理。
   `cancelBoundAccountQueries(account, client)` 在解绑删除前使单个账号失效，取消并移除
   其查询，保留其他账号和公共曲库。解绑与全游戏清缓存不得混用失效范围。
@@ -403,16 +406,44 @@ Phigros 的 `domain/phigros-chart-preview.ts` 提供
 
 osu! 的 `features/osu-chart-preview/configuration.ts` 统一路由参数与设置归一化。
 `prepareOsuChartPreviewWebViewSource(target, theme, settings, signal, onProgress?)` 组合
-`osuBeatmapsetDownloadUrl`、`downloadChartResource`、`captureResourceWrites('shared', signal)`、
+`downloadOsuBeatmapsetArchive`、`captureResourceWrites('shared', signal)`、
 公共 session 目录和 `prepareChartPreviewWebviewFromPlan`，每个异步阶段及返回前复核取消和代次。
 只在临时 session 暂存资源，不新增缓存注册、清理分支或共享壳游戏分派。
+`features/osu-beatmapset-download/osu-beatmapset-download.ts` 的
+`downloadOsuBeatmapsetArchive(directory, { beatmapsetId, includeVideo }, options?): Promise<File>`
+供预览和谱包保存共用；选项包含 `signal`、字节 `onProgress` 与 `validate(file, signal)`。
+按 Sayobot、osu.direct、Catboy、Nerinyan 自动接续，无视频请求跳过 Catboy；每源 15 秒
+无新增字节即取消，外部取消和 shared 写入代次失效终止全部尝试。候选文件独占，迟到
+下载只能清理自身；ZIP 结构、目标谱面或资源提取校验失败继续下一源，不向页面暴露来源。
+谱包保存和预览均通过 JSZip 的 CRC 校验检查整包，预览校验复用资源读取器。校验回调负责隔离与
+清理自己的临时输出，成功前不发布资源；下载通过公共代次订阅立即取消静默失效任务。
+`downloadChartResource(directory, fileName, url, signal?, onProgress?): Promise<File>` 继续承担
+原生落盘及字节进度，统一验证 HTTP 2xx 与非空结果，保留 `ProviderError` 分类，失败清理
+文件，取消立即结束等待并回收迟到结果；公共层不包含游戏或镜像名单。
+`ChartPackageDownloadError` 继承 `ProviderError` 并保留既有错误类型识别；资源场景单独
+映射拒绝访问文案，避免将公共文件服务的 401/403 显示为账号问题。
+`readOsuChartPreviewArchive(archive, target, reader)` 继续统一 ZIP、路径、精确难度选择与
+媒体读取；CRC 校验先逐块检查完整归档，再解压所选资源。预览在候选校验内完整执行，
+将媒体暂存到该候选独占子目录，校验或解压失败也能
+自动接续。失败或取消清理候选目录，成功才将已读取资源交给 HTML 和音频注入准备。
 原生提取与播放器共用 `selectPreviewOsbPaths`、`selectPreviewResources` 和路径解析；
 按 BeatmapID 精确选择文件，目录相对引用不通过同名文件猜测替代。
 `createChartPreviewInjectors<OsuChartPreviewConfig>` 负责安全注入，音频独立脚本与
 本地图片／视频 URI 避免经桥传输谱包；媒体缺失由播放器给出明确提示并播放可用内容。
-`ChartPreviewScreenShell` 提供 120 秒加载、进度、持久设置、后台释放与原生横屏返回。
-对应合同为 `osu-chart-preview-resources.test.ts`、`osu-chart-preview-prepare.test.tsx`、`osu-chart-preview-screen.test.tsx`、
+`ChartPreviewScreenShell` 的请求保留 `prepare(signal, settings, onProgress?)`，`timeoutMs`
+默认 120 秒，新增可选 `readyTimeoutMs` 默认 60 秒；waiting 不计时，ready 前最多显示 99%。
+超时独立切换到可重新加载状态，内存警告与内容进程退出显示手动重载提示；重载创建新
+准备会话，普通后台恢复与短暂 inactive 保持各自行为。会话守卫覆盖准备、桥接、设置、
+延迟回传与内容进程事件，旧会话只释放自己的资源。壳使用公共错误文案转换，不展示底层异常。
+osu 初始化仅准备并绘制首帧，播放和重播才恢复音频、启动时间轴，保持公共设置与播放时钟入口。
+`PreviewBackgroundBlur` 在 osu 媒体合成入口检测实际 Canvas 滤镜能力，并提供双缓冲降采样
+分离高斯绘制；缓存、暂停重绘和释放经既有 `PreviewMedia` 生命周期管理。六类 catch 音符
+在内建皮肤生成入口统一为半透明实心，不修改音符运动、判定或共享设置协议。
+下载与生命周期合同为 `chart-resource-download.test.ts`、`osu-beatmapset-download.test.ts`、
+`chart-preview-screen-shell-contract.test.tsx`；其余合同为 `osu-chart-preview-resources.test.ts`、`osu-chart-preview-prepare.test.tsx`、`osu-chart-preview-screen.test.tsx`、
 `osu-song-detail.test.tsx`、`osu-chart-preview-build.test.ts` 和 `tests/osu-preview/`。
+`node scripts/check-osu-player.mjs [Playwright 模块入口]` 在内存打包并验证四模式手动启动、
+catch 实心透明度和降级模糊像素；不代替 iOS/Android WebView 真机验证。
 
 `chart-preview-shared/webview-player/wheel.ts` 的 `setupWheelPopup` 接受元素、即时预览与提交
 回调、范围、初始值、可选文本标签及数值格式，供舞萌与 osu! 使用；返回
