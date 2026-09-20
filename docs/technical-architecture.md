@@ -25,7 +25,7 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 
 `apps/mobile/app/_layout.tsx` 是运行时装配中心：
 
-1. 最外层安装 `AppLifecycleProvider`，将 `active`、短暂 `inactive`、后台和内存警告转成统一生命周期状态。
+1. 最外层安装 `AppLifecycleProvider`，将 `active`、短暂 `inactive`、后台和内存警告转成统一生命周期状态。后台中止前台 AbortSignal；从后台经 inactive 回到 `foreground-ready` 时重建可取消信号，短暂 inactive 本身不中止、不换代。
 2. `useAppStartup` 并行恢复主题、图标字体和账号；准备完成前只渲染加载态。`services/account-restoration.ts` 统一安全会话、可选账号档案和旧默认本地玩家快照迁移，真实本地 Rating 延后读取。调试偏好同时恢复，但不阻塞主界面；恢复前示例添加入口关闭。
 3. 准备完成后安装 React Query、应用主题、全局通知和根导航栈。
 4. 根部唯一 `useSyncAccountMetadata` 订阅当前账号结果；页面只读取。`useAppRuntime` 在首帧交互结束后通过 `hydrateAccountDisplayData` 与账号列表共享缩略信息和本地 Rating 恢复，存储维护每次挂载执行一次。

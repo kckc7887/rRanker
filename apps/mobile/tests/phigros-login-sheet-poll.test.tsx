@@ -14,6 +14,7 @@ let mockLifecycle: AppLifecycleSnapshot = {
 jest.mock('@/state/app-lifecycle', () => ({
   useAppLifecycle: () => mockLifecycle,
   getForegroundAbortSignal: () => new AbortController().signal,
+  getAppLifecycleSnapshot: () => mockLifecycle,
 }));
 
 const phiProvider = findGame('phigros')?.providers.find((p) => p.id === 'phi-taptap') ?? null;
@@ -106,32 +107,68 @@ describe('ProviderLoginSheet Phigros polling', () => {
   });
 
   const startLogin = async (screen: Screen) => {
-    const button = screen.getByText('前往 TapTap 授权');
+    const button = screen.getByText('开始绑定');
     await act(async () => {
       fireEvent.press(button);
     });
     await waitFor(() => expect(screen.getByText('取消授权')).toBeTruthy());
     expect(beginLoginMock).toHaveBeenCalledTimes(1);
+    expect(screen.getByLabelText('TapTap 授权二维码')).toBeTruthy();
+    await waitFor(() => expect(pollLoginMock).toHaveBeenCalled());
   };
+
+  it('requests a device code without opening TapTap until the authorize button is pressed', async () => {
+    const screen = await render(<LoginSheet />);
+    await startLogin(screen);
+
+    expect(Linking.openURL).not.toHaveBeenCalled();
+
+    await act(async () => {
+      fireEvent.press(screen.getByText('前往 TapTap 授权'));
+    });
+    expect(Linking.openURL).toHaveBeenCalledWith(
+      `taptap://taptap.com/to?url=${encodeURIComponent(mockDevice.qrcodeUrl)}`,
+    );
+
+    await screen.unmount();
+  });
 
   it('stops polling while backgrounded and polls immediately on return', async () => {
     const screen = await render(<LoginSheet />);
     await startLogin(screen);
+    expect(pollLoginMock).toHaveBeenCalledTimes(1);
 
     await act(async () => { jest.advanceTimersByTime(5_000); });
-    expect(pollLoginMock).toHaveBeenCalledTimes(1);
+    expect(pollLoginMock).toHaveBeenCalledTimes(2);
 
     mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
     await screen.rerender(<LoginSheet />);
     await act(async () => { jest.advanceTimersByTime(20_000); });
-    expect(pollLoginMock).toHaveBeenCalledTimes(1);
+    expect(pollLoginMock).toHaveBeenCalledTimes(2);
 
     mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
     await screen.rerender(<LoginSheet />);
-    expect(pollLoginMock).toHaveBeenCalledTimes(2);
+    expect(pollLoginMock).toHaveBeenCalledTimes(3);
 
     await act(async () => { jest.advanceTimersByTime(5_000); });
-    expect(pollLoginMock).toHaveBeenCalledTimes(3);
+    expect(pollLoginMock).toHaveBeenCalledTimes(4);
+
+    await screen.unmount();
+  });
+
+  it('stops polling while inactive and resumes without a generation bump', async () => {
+    const screen = await render(<LoginSheet />);
+    await startLogin(screen);
+    expect(pollLoginMock).toHaveBeenCalledTimes(1);
+
+    mockLifecycle = { ...mockLifecycle, appState: 'inactive', phase: 'inactive', foregroundReady: false };
+    await screen.rerender(<LoginSheet />);
+    await act(async () => { jest.advanceTimersByTime(20_000); });
+    expect(pollLoginMock).toHaveBeenCalledTimes(1);
+
+    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true };
+    await screen.rerender(<LoginSheet />);
+    expect(pollLoginMock).toHaveBeenCalledTimes(2);
 
     await screen.unmount();
   });
@@ -144,12 +181,7 @@ describe('ProviderLoginSheet Phigros polling', () => {
     const onSuccess = jest.fn();
     const screen = await render(<LoginSheet onSuccess={onSuccess} />);
     await startLogin(screen);
-
-    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
-    await screen.rerender(<LoginSheet onSuccess={onSuccess} />);
-    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
-    await screen.rerender(<LoginSheet onSuccess={onSuccess} />);
-    expect(screen.getAllByText('网络波动，自动重试中…').length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getByText('网络波动，自动重试中…')).toBeTruthy());
 
     await act(async () => { jest.advanceTimersByTime(5_000); });
     await waitFor(() => expect(onSuccess).toHaveBeenCalledTimes(1));
@@ -158,21 +190,36 @@ describe('ProviderLoginSheet Phigros polling', () => {
     await screen.unmount();
   });
 
-  it('stops polling on fatal protocol errors', async () => {
+  it('stops polling on fatal protocol errors while in the foreground', async () => {
     pollLoginMock.mockRejectedValueOnce(new Error('access_denied'));
 
     const screen = await render(<LoginSheet />);
     await startLogin(screen);
-
-    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
-    await screen.rerender(<LoginSheet />);
-    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
-    await screen.rerender(<LoginSheet />);
-    expect(screen.getAllByText('授权失败，请重新尝试。').length).toBeGreaterThan(0);
+    await waitFor(() => expect(screen.getByText('授权失败，请重新尝试。')).toBeTruthy());
     expect(screen.queryByText(/access_denied/)).toBeNull();
 
     await act(async () => { jest.advanceTimersByTime(20_000); });
     expect(pollLoginMock).toHaveBeenCalledTimes(1);
+
+    await screen.unmount();
+  });
+
+  it('does not treat a poll error after leaving the foreground as login failure', async () => {
+    let rejectPoll: ((error: Error) => void) | undefined;
+    pollLoginMock.mockImplementationOnce(() => new Promise((_resolve, reject) => {
+      rejectPoll = reject;
+    }));
+
+    const screen = await render(<LoginSheet />);
+    await startLogin(screen);
+    await waitFor(() => expect(rejectPoll).toBeDefined());
+
+    mockLifecycle = { ...mockLifecycle, appState: 'inactive', phase: 'inactive', foregroundReady: false };
+    await screen.rerender(<LoginSheet />);
+    await act(async () => { rejectPoll?.(new Error('access_denied')); });
+
+    expect(screen.queryByText('授权失败，请重新尝试。')).toBeNull();
+    expect(screen.queryByText(/access_denied/)).toBeNull();
 
     await screen.unmount();
   });

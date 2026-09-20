@@ -194,7 +194,7 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 |---|---|---|---|
 | Session | `src/state/session-store.ts`：`useSession`、`restoreSession`、令牌轮换函数 | 当前账号、游戏、Provider 与会话集中管理；页面不得维护第二份账号真相 | Session、账号切换、OAuth 测试 |
 | QueryClient | `src/state/query-client.ts`：`queryClient`、`releaseInactiveQueries` | 全应用唯一实例；只有内存警告清理非活动 Query | 生命周期与缓存测试 |
-| 生命周期 | `src/state/app-lifecycle-core.ts`、`app-lifecycle.tsx`：`AppLifecycleProvider`、`useAppLifecycle`、`getForegroundAbortSignal`、`waitForForeground` | 短暂 inactive、后台、前台代次和 memory warning 分开处理；异步任务传递 AbortSignal | `app-lifecycle.test.tsx`、下载生命周期测试 |
+| 生命周期 | `src/state/app-lifecycle-core.ts`、`app-lifecycle.tsx`：`AppLifecycleProvider`、`useAppLifecycle`、`getForegroundAbortSignal`、`waitForForeground`、`ensureForegroundWork` | 短暂 inactive 不 abort、不换代；后台 abort 前台工作。进入 `foreground-ready` 时，来自后台则换代并 `beginForegroundWork`；若经 inactive 回来且 controller 已空则 `ensureForegroundWork` 重建可取消信号。异步任务传递 AbortSignal | `app-lifecycle.test.tsx`、下载生命周期测试 |
 | 普通筛选 Store | `src/state/create-filter-store.ts` 的 `createFilterStore` | defaults 生成 setter；`clearKeys` 决定清空范围，游戏保留筛选字段语义 | 各游戏 filter 测试 |
 | 持久化随机筛选 | `src/state/create-random-charts-filter-store.ts` 的 `createPersistedRandomChartsFilterStore` | 统一水合、脏写保护和串行保存；游戏提供偏好 Store 与默认值 | 随机歌曲测试 |
 | 多账号列表 | `src/storage/create-account-list-store.ts` 的 `createAccountListStore` | 统一解析失败清理、normalize、upsert 和空列表删键 | 各账号 Store 测试 |
