@@ -41,6 +41,12 @@ export function beginForegroundWork(): void {
   foregroundController = new AbortController();
 }
 
+export function ensureForegroundWork(): void {
+  if (!foregroundController) {
+    foregroundController = new AbortController();
+  }
+}
+
 export function publishAppLifecycleSnapshot(snapshot: AppLifecycleSnapshot): void {
   currentSnapshot = snapshot;
   if (!snapshot.foregroundReady) return;

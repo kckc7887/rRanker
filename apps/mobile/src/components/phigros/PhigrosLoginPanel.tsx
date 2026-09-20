@@ -1,16 +1,22 @@
 import { useEffect, useRef, useState } from 'react';
 import { ActivityIndicator, Linking, Pressable, Text, View } from 'react-native';
+import QRCode from 'react-native-qrcode-svg';
 import { createPhigrosBoundAccount } from '@/domain/bound-account';
 import { ProviderError, providerErrorToUserMessage } from '@/providers/errors';
 import { PhigrosScoreProvider, type DeviceCodeResult } from '@/providers/phigros-score-provider';
 import { SecureSessionStore } from '@/storage/secure-session-store';
-import { getForegroundAbortSignal, useAppLifecycle } from '@/state/app-lifecycle';
+import {
+  getAppLifecycleSnapshot,
+  getForegroundAbortSignal,
+  useAppLifecycle,
+} from '@/state/app-lifecycle';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { providerLoginSheetStyles as styles } from '@/components/provider-login-sheet-styles';
 
 const sessions = new SecureSessionStore();
+const QR_SIZE = 180;
 
 function isTransientNetworkError(error: unknown): boolean {
   if (error instanceof TypeError) return true;
@@ -21,6 +27,16 @@ function isTransientNetworkError(error: unknown): boolean {
     return error.name === 'AbortError' || /network request failed/i.test(error.message);
   }
   return false;
+}
+
+async function openTapTapAuthorize(qrcodeUrl: string): Promise<void> {
+  try {
+    await Linking.openURL(
+      `taptap://taptap.com/to?url=${encodeURIComponent(qrcodeUrl)}`,
+    );
+  } catch {
+    await Linking.openURL(qrcodeUrl);
+  }
 }
 
 export function PhigrosLoginPanel({
@@ -40,7 +56,6 @@ export function PhigrosLoginPanel({
   const [phiDevice, setPhiDevice] = useState<DeviceCodeResult | null>(null);
   const [phiExpiresAt, setPhiExpiresAt] = useState(0);
   const phiTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const phiPollingGenerationRef = useRef<number | null>(null);
   const phiPollingRef = useRef(false);
   const phiNextAllowedAtRef = useRef(0);
 
@@ -83,15 +98,7 @@ export function PhigrosLoginPanel({
       if (signal.aborted) return;
       setPhiDevice(device);
       setPhiExpiresAt(Date.now() + device.expiresIn * 1000);
-      setMessage('请在 TapTap 完成授权。');
-
-      try {
-        await Linking.openURL(
-          `taptap://taptap.com/to?url=${encodeURIComponent(device.qrcodeUrl)}`,
-        );
-      } catch {
-        await Linking.openURL(device.qrcodeUrl);
-      }
+      setMessage('请使用二维码或前往 TapTap 完成授权。');
     } catch (error) {
       if (signal.aborted) return;
       setMessage(messageFor(error));
@@ -103,6 +110,7 @@ export function PhigrosLoginPanel({
   const pollPhigros = async () => {
     if (!phiDevice) return;
     if (phiPollingRef.current) return;
+    if (!getAppLifecycleSnapshot().foregroundReady) return;
     const now = Date.now();
     if (now < phiNextAllowedAtRef.current) {
       setMessage('操作太频繁，请稍后再试。');
@@ -114,9 +122,9 @@ export function PhigrosLoginPanel({
     const signal = getForegroundAbortSignal();
     try {
       const result = await PhigrosScoreProvider.pollLogin(phiDevice, signal);
-      if (signal.aborted) return;
       if (result === 'pending' || result === 'waiting') return;
       if (result === 'slowdown') {
+        if (!getAppLifecycleSnapshot().foregroundReady) return;
         phiNextAllowedAtRef.current = Date.now() + 5_000;
         setMessage('操作太频繁，请稍后再试。');
         return;
@@ -125,6 +133,7 @@ export function PhigrosLoginPanel({
       setMessage('正在保存并验证…');
       const newSession = result;
       if (newSession.mode !== 'phi-session') {
+        if (!getAppLifecycleSnapshot().foregroundReady) return;
         setMessage('授权返回异常，请重试');
         return;
       }
@@ -137,13 +146,12 @@ export function PhigrosLoginPanel({
         scoreDisplay: account.scoreDisplay,
         session: newSession,
       });
-      if (signal.aborted) return;
       setSession(newSession);
       invalidateAll();
       reset();
       onSuccess();
     } catch (error) {
-      if (signal.aborted) return;
+      if (signal.aborted || !getAppLifecycleSnapshot().foregroundReady) return;
       const expired = Date.now() >= phiExpiresAt;
       if (!expired && isTransientNetworkError(error)) {
         setMessage('网络波动，自动重试中…');
@@ -162,18 +170,13 @@ export function PhigrosLoginPanel({
     const stopPolling = () => {
       if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
     };
-    const startTimer = (pollImmediately: boolean) => {
-      stopPolling();
-      if (pollImmediately) void pollPhigros();
-      phiTimer.current = setInterval(() => { void pollPhigros(); }, interval);
-    };
     if (!lifecycle.foregroundReady) {
       stopPolling();
       return stopPolling;
     }
-    const previousGeneration = phiPollingGenerationRef.current;
-    phiPollingGenerationRef.current = lifecycle.foregroundGeneration;
-    startTimer(previousGeneration !== null && previousGeneration !== lifecycle.foregroundGeneration);
+    stopPolling();
+    void pollPhigros();
+    phiTimer.current = setInterval(() => { void pollPhigros(); }, interval);
     return () => {
       stopPolling();
     };
@@ -192,7 +195,7 @@ export function PhigrosLoginPanel({
 
   return (
     <>
-      {message ? <Text style={styles.message}>{message}</Text> : null}
+      {!phiDevice && message ? <Text style={styles.message}>{message}</Text> : null}
       {!phiDevice ? (
         <>
           <Pressable
@@ -200,24 +203,44 @@ export function PhigrosLoginPanel({
             onPress={() => void beginPhigrosLogin()}
             style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
           >
-            <Text style={styles.primaryText}>前往 TapTap 授权</Text>
+            <Text style={styles.primaryText}>开始绑定</Text>
           </Pressable>
           <Text style={styles.hint}>
-            点击后将跳转 TapTap 完成授权，授权成功后自动绑定。
+            点击后生成授权二维码，也可前往 TapTap 完成授权，授权成功后自动绑定。
           </Text>
         </>
       ) : (
         <>
+          <View
+            accessibilityLabel="TapTap 授权二维码"
+            style={styles.phiQrWrap}
+          >
+            <QRCode
+              value={phiDevice.qrcodeUrl}
+              size={QR_SIZE}
+              backgroundColor="#FFFFFF"
+              color="#111111"
+            />
+          </View>
           <View style={styles.phiStatus}>
             <ActivityIndicator color={theme.accent} />
             <Text style={[styles.message, { color: theme.text }]}>{message}</Text>
           </View>
+          <Pressable
+            onPress={() => void openTapTapAuthorize(phiDevice.qrcodeUrl)}
+            style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && styles.primaryPressed]}
+          >
+            <Text style={styles.primaryText}>前往 TapTap 授权</Text>
+          </Pressable>
           <Pressable
             onPress={cancelPhigrosLogin}
             style={({ pressed }) => [styles.secondary, { borderColor: theme.accent }, pressed && styles.secondaryPressed]}
           >
             <Text style={[styles.secondaryText, { color: theme.accent }]}>取消授权</Text>
           </Pressable>
+          <Text style={styles.hint}>
+            可使用其他设备扫描二维码，或前往 TapTap 完成授权。
+          </Text>
         </>
       )}
     </>

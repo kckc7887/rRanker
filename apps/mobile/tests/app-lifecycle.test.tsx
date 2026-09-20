@@ -76,4 +76,38 @@ describe('AppLifecycleProvider', () => {
     expect(removers[0]).toHaveBeenCalledTimes(1);
     expect(removers[1]).toHaveBeenCalledTimes(1);
   });
+
+  it('restores a live abort signal after background via inactive', async () => {
+    let changeListener: ((state: 'active' | 'inactive' | 'background') => void) | null = null;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((type: string, listener: unknown) => {
+      if (type === 'change') changeListener = listener as typeof changeListener;
+      return { remove: jest.fn() };
+    }) as typeof AppState.addEventListener);
+
+    const tasks: { callback: () => void; cancel: jest.Mock }[] = [];
+    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+      const task = { callback: callback as () => void, cancel: jest.fn() };
+      tasks.push(task);
+      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
+    });
+
+    const view = await render(<AppLifecycleProvider><LifecycleProbe /></AppLifecycleProvider>);
+    await act(() => { tasks[0]?.callback(); });
+    expect(screen.getByText('foreground-ready|1|0')).toBeTruthy();
+    const firstSignal = getForegroundAbortSignal();
+
+    await act(() => { changeListener?.('background'); });
+    expect(firstSignal.aborted).toBe(true);
+    await act(() => { changeListener?.('inactive'); });
+    expect(screen.getByText('inactive|1|0')).toBeTruthy();
+
+    await act(() => { changeListener?.('active'); });
+    await act(() => { tasks.at(-1)?.callback(); });
+    expect(screen.getByText('foreground-ready|1|0')).toBeTruthy();
+    const restored = getForegroundAbortSignal();
+    expect(restored.aborted).toBe(false);
+    expect(restored).not.toBe(firstSignal);
+
+    await view.unmount();
+  });
 });

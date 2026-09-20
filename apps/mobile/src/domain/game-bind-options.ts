@@ -210,7 +210,7 @@ export const GAME_OPTIONS: GameOption[] = [
         id: 'phi-taptap',
         bindingKind: 'device-code',
         title: 'TapTap 云存档',
-        detail: '跳转 TapTap 授权登录',
+        detail: '扫码或前往 TapTap 授权',
         icon: taptapIcon,
         available: true,
       },
