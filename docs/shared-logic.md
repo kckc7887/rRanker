@@ -438,12 +438,12 @@ osu! 的 `features/osu-chart-preview/configuration.ts` 统一路由参数与设�
 osu 初始化仅准备并绘制首帧，播放和重播才恢复音频、启动时间轴，保持公共设置与播放时钟入口。
 `PreviewBackgroundBlur` 在 osu 媒体合成入口检测实际 Canvas 滤镜能力，并提供双缓冲降采样
 分离高斯绘制；缓存、暂停重绘和释放经既有 `PreviewMedia` 生命周期管理。六类 catch 音符
-在内建皮肤生成入口统一为半透明实心，不修改音符运动、判定或共享设置协议。
+在内建皮肤生成入口统一为半透明实心加不透明同色描边，不修改音符运动、判定或共享设置协议。
 下载与生命周期合同为 `chart-resource-download.test.ts`、`osu-beatmapset-download.test.ts`、
 `chart-preview-screen-shell-contract.test.tsx`；其余合同为 `osu-chart-preview-resources.test.ts`、`osu-chart-preview-prepare.test.tsx`、`osu-chart-preview-screen.test.tsx`、
 `osu-song-detail.test.tsx`、`osu-chart-preview-build.test.ts` 和 `tests/osu-preview/`。
 `node scripts/check-osu-player.mjs [Playwright 模块入口]` 在内存打包并验证四模式手动启动、
-catch 实心透明度和降级模糊像素；不代替 iOS/Android WebView 真机验证。
+catch 实心透明度、同色描边和降级模糊像素；不代替 iOS/Android WebView 真机验证。
 
 `chart-preview-shared/webview-player/wheel.ts` 的 `setupWheelPopup` 接受元素、即时预览与提交
 回调、范围、初始值、可选文本标签及数值格式，供舞萌与 osu! 使用；返回

@@ -154,14 +154,15 @@ describe('built-in preview skin', () => {
     assert.deepEqual(bitmap(skin, 'taikobigcircle').fills, ['#ffffff']);
   });
 
-  it('fills every catch object with the same translucent disc while keeping catcher geometry opaque', async () => {
+  it('fills every catch object with the same translucent disc and opaque same-colour stroke while keeping catcher geometry opaque', async () => {
     const skin = await createBuiltinSkin('brick', 4);
     for (const fruit of ['pear', 'grapes', 'apple', 'orange', 'drop', 'bananas']) {
       const body = bitmap(skin, `fruit-${fruit}`);
       assert.deepEqual(body.fills, ['#ffffff80']);
-      assert.equal(body.strokes.length, 0);
+      assert.deepEqual(body.strokes, ['#ffffff']);
       assert.deepEqual(body.circles, [{ x: 128, y: 128, rx: 112, ry: 112 }]);
       assert.equal(bitmap(skin, `fruit-${fruit}-overlay`).fills.length, 0);
+      assert.equal(bitmap(skin, `fruit-${fruit}-overlay`).strokes.length, 0);
     }
     assert.deepEqual(bitmap(skin, 'fruit-catcher-idle').fills, ['#eef3f6']);
   });
