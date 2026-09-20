@@ -160,16 +160,20 @@ try {
     const alphas = [];
     for (const stem of ['fruit-pear', 'fruit-grapes', 'fruit-apple', 'fruit-orange', 'fruit-drop', 'fruit-bananas']) {
       spriteContext.clearRect(0, 0, 256, 256); spriteContext.drawImage(skin.images.get(`${stem}@2x.png`), 0, 0);
-      const centre = spriteContext.getImageData(128, 128, 1, 1).data[3], outside = spriteContext.getImageData(0, 0, 1, 1).data[3];
-      check(centre === 128 && outside === 0, `${stem} must be a translucent filled disc`);
-      alphas.push({ stem, centre, outside });
+      const centre = spriteContext.getImageData(128, 128, 1, 1).data[3];
+      const rim = spriteContext.getImageData(240, 128, 1, 1).data[3];
+      const outside = spriteContext.getImageData(0, 0, 1, 1).data[3];
+      check(centre === 128 && rim === 255 && outside === 0, `${stem} must be a translucent disc with an opaque rim`);
+      alphas.push({ stem, centre, rim, outside });
     }
     const beatmap = parseBeatmap(catchChart), replay = buildAutoReplay(new TextEncoder().encode(catchChart), '');
     const session = catchRuleset.build(beatmap, replay, computeModDifficulty(beatmap, replay), skin, 1);
     context.clearRect(0, 0, 1280, 720);
     catchRuleset.draw(context, session, 2400, { modHidden: false, modFlashlight: false });
     const tinted = context.getImageData(640, 320, 1, 1).data;
+    const tintedRim = context.getImageData(679, 320, 1, 1).data;
     check(tinted[3] === 128, `engine tinting must preserve half alpha: ${tinted[3]}`);
+    check(tintedRim[3] === 255, `engine tinting must keep the catch rim opaque: ${tintedRim[3]}`);
     check(context.getImageData(640, 630, 1, 1).data[3] === 255, 'catcher must remain opaque');
     await disposeBuiltinSkins();
     for (const item of [source, overlay, target, sprite]) item.width = item.height = 0;

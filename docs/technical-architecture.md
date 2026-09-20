@@ -392,7 +392,7 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 歌曲、打击音、故事板 Sample、视频和谱尾反馈共同决定时间轴，负时间与 AudioLeadIn
 计入前导；关闭故事板或视频不改变总时长。视频静音并交由系统解码。
 设置从 `configuration.ts` 归一化，经公共壳持久化到 `rranker.osu-chart-preview.settings.v1`。
-catch 的六类音符本体使用约 50% 不透明度的实心圆，颜色、尺寸、hyperdash 提示和接盘
+catch 的六类音符本体使用约 50% 不透明度的实心圆与不透明同色描边，颜色、尺寸、hyperdash 提示和接盘
 分别保持既有语义。背景图片、视频与底层故事板先合成，再模糊并应用亮度遮罩；音符、
 界面及上层故事板不参与模糊。`PreviewBackgroundBlur` 用微型自绘画布检测实际滤镜能力，
 不支持时采用复用双缓冲的降采样与分离高斯卷积，生产绘制不读取媒体像素。模糊缓存按
