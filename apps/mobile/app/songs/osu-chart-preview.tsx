@@ -36,7 +36,7 @@ export default function OsuChartPreviewScreen() {
       settingsKey="rranker.osu-chart-preview.settings.v1"
       testID="osu-chart-preview-webview"
       accessibilityLabel="osu! 谱面确认播放器"
-      errorHint="请返回歌曲详情重试，并确认网络连接正常。"
+      errorHint="可以重新加载，或稍后再试。"
       prepareErrorFallback="谱面暂时无法加载，请稍后重试。"
       allowFileAccess
     />

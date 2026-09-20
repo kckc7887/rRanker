@@ -242,7 +242,6 @@ export async function startPlayback(
   let session: PreviewSession | null = null;
   try {
     const ctx = getAudioContext();
-    if (ctx.state === 'suspended') await ctx.resume();
     signal.throwIfAborted();
     const beatmap = parseOsuBytes(entry.bytes);
     beatmap.rawOsu = entry.bytes;

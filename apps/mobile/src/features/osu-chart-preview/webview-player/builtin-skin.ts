@@ -126,7 +126,7 @@ function commonSpecs(): Sprite[] {
 
   // Fruit identity is encoded by the original tint and size; all silhouettes stay round.
   for (const stem of ['fruit-pear', 'fruit-grapes', 'fruit-apple', 'fruit-orange', 'fruit-drop', 'fruit-bananas']) {
-    add(stem, 128, 128, ctx => disc(ctx, 64, 64, 56, '#ffffff'));
+    add(stem, 128, 128, ctx => disc(ctx, 64, 64, 56, '#ffffff80'));
     blank(stem + '-overlay');
   }
   for (const state of ['idle', 'fail', 'kiai']) add('fruit-catcher-' + state, 160, 40, ctx => {

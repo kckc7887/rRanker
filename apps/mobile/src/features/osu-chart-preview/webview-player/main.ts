@@ -32,7 +32,6 @@ let speedWheel: ReturnType<typeof setupWheelPopup> | undefined;
 let settings = normalizeOsuChartPreviewSettings({});
 let handle: PlaybackHandle | null = null;
 let disposed = false;
-let suspended = false;
 let dragging = false;
 let wasPlayingBeforeDrag = false;
 let fullscreen = false;
@@ -230,11 +229,9 @@ async function runTransport(action: (session: PlaybackHandle['session']) => void
   showControls();
 }
 function togglePlay(): void {
-  suspended = false;
   void runTransport(session => session.playing ? pausePlayback(session) : playFrom(session, presentationTime(session)));
 }
 function pauseForLifecycle(): void {
-  suspended = true;
   dragging = false;
   closeActiveWheelPopup();
   if (handle) { pausePlayback(handle.session); status('已暂停'); syncTransport(); }
@@ -255,7 +252,7 @@ function dispose(): void {
   void disposeBuiltinSkins();
 }
 playButton.addEventListener('click', togglePlay);
-element('btn-restart').addEventListener('click', () => { suspended = false; void runTransport(session => playFrom(session, 0)); });
+element('btn-restart').addEventListener('click', () => { void runTransport(session => playFrom(session, 0)); });
 for (const [id, delta] of [['btn-step-back', -5000], ['btn-step-forward', 5000]] as const) {
   element(id).addEventListener('click', () => void runTransport(session => seekPlayback(session, presentationTime(session) + delta, session.playing)));
 }
@@ -383,8 +380,6 @@ async function initialize(): Promise<void> {
   status('已就绪');
   syncTransport();
   post('ready');
-
-  if (!suspended && !document.hidden) await runTransport(session => playFrom(session, 0));
 }
 
 void initialize().catch((error: unknown) => {

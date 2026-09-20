@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
 import { AbortController as NativeAbortController } from 'abort-controller';
-import { captureResourceWrites, createInflightGuard, invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+import { captureResourceWrites, createInflightGuard, invalidateResourceWrites, subscribeResourceWrites } from '@/services/snapshot-cache-utils';
 import { loadItemsBounded } from '@/services/offset-pagination';
 import { cacheFirstLoad } from '@/services/cache-first';
 
@@ -12,6 +12,37 @@ function deferred<T>() {
 }
 
 describe('shared resource lifetimes', () => {
+  it('cancels idle work synchronously after invalidation and detaches completed subscriptions', () => {
+    const controller = new NativeAbortController();
+    const assertCurrent = captureResourceWrites('idle-resource');
+    const onInvalidate = vi.fn(() => {
+      expect(assertCurrent).toThrow('缓存请求已失效');
+      controller.abort();
+    });
+    const otherScope = vi.fn();
+    const unsubscribe = subscribeResourceWrites('idle-resource', onInvalidate);
+    const unsubscribeOther = subscribeResourceWrites('other-resource', otherScope);
+    try {
+      invalidateResourceWrites('idle-resource');
+      expect(controller.signal.aborted).toBe(true);
+      expect(onInvalidate).toHaveBeenCalledTimes(1);
+      expect(otherScope).not.toHaveBeenCalled();
+      unsubscribe();
+      invalidateResourceWrites('idle-resource');
+      expect(onInvalidate).toHaveBeenCalledTimes(1);
+    } finally { unsubscribe(); unsubscribeOther(); }
+  });
+
+  it('continues invalidation if one cancellation fails', () => {
+    const unsubscribeFailed = subscribeResourceWrites('failed-cancellation', () => { throw new Error('cancel failed'); });
+    const cancelled = vi.fn();
+    const unsubscribe = subscribeResourceWrites('failed-cancellation', cancelled);
+    try {
+      expect(() => invalidateResourceWrites('failed-cancellation')).not.toThrow();
+      expect(cancelled).toHaveBeenCalledTimes(1);
+    } finally { unsubscribeFailed(); unsubscribe(); }
+  });
+
   it('lets one consumer cancel while the other finishes one underlying request', async () => {
     const guard = createInflightGuard<string>();
     const first = new AbortController(), second = new AbortController();

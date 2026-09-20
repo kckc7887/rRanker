@@ -9,11 +9,13 @@ import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-
 import { jest } from '@jest/globals';
 import {
   ChartPreviewScreenShell,
+  type ChartPreviewScreenShellProps,
   type ChartPreviewShellRequest,
   type ChartPreviewShellSource,
 } from '@/features/chart-preview-shared/chart-preview-screen-shell';
 import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
 import { installRuntimeLogRecorder } from '@/services/runtime-diagnostics-recorder';
+import { ProviderError } from '@/providers/errors';
 
 let mockLifecycle: AppLifecycleSnapshot = {
   appState: 'active', phase: 'foreground-ready', foregroundReady: true,
@@ -25,12 +27,17 @@ jest.mock('@/state/app-lifecycle', () => ({
 }));
 
 const mockInjectJavaScript = jest.fn();
+const mockLoadSettings = jest.fn<() => Promise<string | null>>(async () => null);
 const mockSaveSettings = jest.fn(async (_key: string, _value: string) => undefined);
 let latestWebViewProps: Record<string, unknown> = {};
+let mockScreenOptions: Record<string, unknown> = {};
 
 jest.mock('expo-router', () => ({
   Stack: {
-    Screen: () => null,
+    Screen: ({ options }: { options: Record<string, unknown> }) => {
+      mockScreenOptions = options;
+      return null;
+    },
   },
 }));
 
@@ -49,7 +56,7 @@ jest.mock('react-native-webview', () => {
 jest.mock('expo-sqlite/kv-store', () => ({
   __esModule: true,
   default: {
-    getItem: jest.fn(async () => null),
+    getItem: () => mockLoadSettings(),
     setItem: (key: string, value: string) => mockSaveSettings(key, value),
   },
 }));
@@ -89,11 +96,13 @@ const fictionalSource: ChartPreviewShellSource = {
 };
 
 /** 虚构游戏的接入方式：仅提供配置项与注入构建器，不触碰共享层。 */
-async function renderFictionalShell(request: ChartPreviewShellRequest<FictionalPayload>) {
-  return render(<FictionalShell request={request} />);
+type FictionalShellOptions = Pick<ChartPreviewScreenShellProps<FictionalPayload>, 'onBridgeMessage' | 'reInjectOnLoadEnd' | 'externalError'>;
+
+async function renderFictionalShell(request: ChartPreviewShellRequest<FictionalPayload>, options: FictionalShellOptions = {}) {
+  return render(<FictionalShell request={request} options={options} />);
 }
 
-function FictionalShell({ request }: { request: ChartPreviewShellRequest<FictionalPayload> }) {
+function FictionalShell({ request, options }: { request: ChartPreviewShellRequest<FictionalPayload>; options?: FictionalShellOptions }) {
   return (
     <ChartPreviewScreenShell<FictionalPayload>
       request={request}
@@ -105,6 +114,7 @@ function FictionalShell({ request }: { request: ChartPreviewShellRequest<Fiction
       allowFileAccess
       buildInjectedJavaScript={(payload) =>
         `window.__FICTIONAL__=${JSON.stringify(payload.chartName)};true;`}
+      {...options}
     />
   );
 }
@@ -127,8 +137,10 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
   beforeEach(() => {
     log.mockClear(); installRuntimeLogRecorder(log);
     mockInjectJavaScript.mockClear();
+    mockLoadSettings.mockReset().mockResolvedValue(null);
     mockSaveSettings.mockClear();
     latestWebViewProps = {};
+    mockScreenOptions = {};
     mockLifecycle = {
       appState: 'active', phase: 'foreground-ready', foregroundReady: true,
       foregroundGeneration: 1, memoryWarningGeneration: 0,
@@ -173,6 +185,8 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     jest.useFakeTimers();
     const view = await renderFictionalShell({ kind: 'ready', payload: { chartName: 'secret' }, timeoutMs: 50, prepare: () => new Promise(() => {}) });
     await act(async () => { jest.advanceTimersByTime(50); });
+    expect(screen.getByText('准备谱面确认资源超时，请重新加载。')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重新加载' })).toBeTruthy();
     await view.unmount();
     const phases = log.mock.calls.filter(([type]) => type === 'operation').map(([, fields]) => fields.result);
     expect(phases).toEqual(['start', 'timeout']);
@@ -320,11 +334,12 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     expect(dispose).toHaveBeenCalledTimes(1);
   });
 
-  it('后台卸载播放器，回前台只重建当前资源并恢复内容进程', async () => {
+  it('后台卸载播放器，回前台重新准备资源', async () => {
+    const prepare = jest.fn(async () => fictionalSource);
     const request: ChartPreviewShellRequest<FictionalPayload> = {
       kind: 'ready',
       payload: { chartName: '虚构谱面' },
-      prepare: async () => fictionalSource,
+      prepare,
     };
     const view = await renderFictionalShell(request);
     await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
@@ -350,11 +365,8 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     };
     await view.rerender(<FictionalShell request={request} />);
     await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
-    await act(() => {
-      (latestWebViewProps.onContentProcessDidTerminate as (() => void) | undefined)?.();
-      (latestWebViewProps.onRenderProcessGone as (() => void) | undefined)?.();
-    });
-    expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
+    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(screen.getByText('0%')).toBeTruthy();
   });
 
   it('短暂 inactive 只暂停播放器，不卸载或重新准备资源', async () => {
@@ -380,5 +392,289 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     await view.rerender(<FictionalShell request={request} />);
     expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
     expect(prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it('ready 后内存警告显示手动重载，前后台切换不绕过用户操作', async () => {
+    const dispose = jest.fn();
+    const prepare = jest.fn(async () => ({
+      ...fictionalSource,
+      uri: `file://fictional/session-${prepare.mock.calls.length}/index.html`,
+      dispose,
+    }));
+    const request: ChartPreviewShellRequest<FictionalPayload> = {
+      kind: 'ready', payload: { chartName: '虚构谱面' }, prepare,
+    };
+    const view = await renderFictionalShell(request);
+    await act(() => {
+      (latestWebViewProps.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"ready"}' } });
+      (latestWebViewProps.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"fullscreen","active":true}' } });
+    });
+    expect(mockScreenOptions.headerShown).toBe(false);
+    const oldSource = latestWebViewProps.source;
+
+    mockLifecycle = { ...mockLifecycle, memoryWarningGeneration: 1 };
+    await view.rerender(<FictionalShell request={request} />);
+    expect(screen.getByText('设备内存紧张，播放器已暂停。')).toBeTruthy();
+    expect(screen.queryByTestId('chart-preview-load-progress')).toBeNull();
+    expect(screen.queryByTestId(fictionalTestID)).toBeNull();
+    expect(mockScreenOptions.headerShown).toBe(true);
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(prepare).toHaveBeenCalledTimes(1);
+
+    mockLifecycle = { ...mockLifecycle, memoryWarningGeneration: 2 };
+    await view.rerender(<FictionalShell request={request} />);
+    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
+    await view.rerender(<FictionalShell request={request} />);
+    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
+    await view.rerender(<FictionalShell request={request} />);
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(screen.queryByTestId(fictionalTestID)).toBeNull();
+
+    await act(() => { fireEvent.press(screen.getByRole('button', { name: '重新加载' })); });
+    expect(prepare).toHaveBeenCalledTimes(2);
+    expect(latestWebViewProps.source).not.toEqual(oldSource);
+    expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
+    expect(screen.getByText('0%')).toBeTruthy();
+    expect(mockInjectJavaScript.mock.calls.every(([script]) => !String(script).includes("type:'play'"))).toBe(true);
+  });
+
+  it.each(['onContentProcessDidTerminate', 'onRenderProcessGone'])(
+    '%s 后只手动重载，旧实例重复终止事件不重新准备', async (eventName) => {
+      const dispose = jest.fn();
+      const prepare = jest.fn(async () => ({ ...fictionalSource, dispose }));
+      await renderFictionalShell({ kind: 'ready', payload: { chartName: '虚构谱面' }, prepare });
+      const old = latestWebViewProps;
+      await act(() => { (old[eventName] as () => void)(); });
+      expect(screen.getByText('播放器意外停止，请重新加载。')).toBeTruthy();
+      expect(screen.queryByTestId(fictionalTestID)).toBeNull();
+      expect(dispose).toHaveBeenCalledTimes(1);
+      await act(() => { (old[eventName] as () => void)(); });
+      expect(prepare).toHaveBeenCalledTimes(1);
+      await act(() => { fireEvent.press(screen.getByRole('button', { name: '重新加载' })); });
+      expect(prepare).toHaveBeenCalledTimes(2);
+      expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
+    },
+  );
+
+  it('旧实例所有事件和延迟确认回调不能改动重载后的界面、设置、桥接或诊断', async () => {
+    jest.useFakeTimers();
+    const onBridgeMessage = jest.fn<NonNullable<FictionalShellOptions['onBridgeMessage']>>();
+    await renderFictionalShell({
+      kind: 'ready', payload: { chartName: '虚构谱面' }, prepare: async () => fictionalSource,
+    }, { onBridgeMessage, reInjectOnLoadEnd: true });
+    const old = latestWebViewProps;
+    await act(() => {
+      (old.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"confirmation"}' } });
+    });
+    const oldBridge = onBridgeMessage.mock.calls[0]![1];
+    await act(() => { (old.onContentProcessDidTerminate as () => void)(); });
+    await act(() => { fireEvent.press(screen.getByRole('button', { name: '重新加载' })); });
+    const logCount = log.mock.calls.length;
+    const injectCount = mockInjectJavaScript.mock.calls.length;
+    const bridgeCount = onBridgeMessage.mock.calls.length;
+    await act(() => {
+      for (const message of [
+        { type: 'progress', label: '旧实例', value: 1 },
+        { type: 'ready' }, { type: 'fullscreen', active: true },
+        { type: 'settings', speed: 3 }, { type: 'error', diagnostic: 'stale' },
+        { type: 'confirmation' },
+      ]) {
+        (old.onMessage as (event: unknown) => void)({ nativeEvent: { data: JSON.stringify(message) } });
+      }
+      for (const name of ['onLoadEnd', 'onError', 'onHttpError', 'onContentProcessDidTerminate', 'onRenderProcessGone']) {
+        (old[name] as (event?: unknown) => void)({ nativeEvent: { statusCode: 500 } });
+      }
+      oldBridge.postMessage({ type: 'confirmation-result', accepted: true });
+      jest.advanceTimersByTime(50);
+    });
+    expect((old.onShouldStartLoadWithRequest as (navigation: unknown) => boolean)({ url: fictionalSource.uri })).toBe(false);
+    expect(log).toHaveBeenCalledTimes(logCount);
+    expect(mockInjectJavaScript).toHaveBeenCalledTimes(injectCount);
+    expect(onBridgeMessage).toHaveBeenCalledTimes(bridgeCount);
+    expect(mockSaveSettings).not.toHaveBeenCalled();
+    expect(mockScreenOptions.headerShown).toBe(true);
+    expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
+    expect(screen.getByText('0%')).toBeTruthy();
+    expect(screen.queryByText('旧实例')).toBeNull();
+    await act(() => {
+      (latestWebViewProps.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"ready"}' } });
+    });
+    expect(screen.queryByTestId('chart-preview-load-progress')).toBeNull();
+  });
+
+  it('prepare 不响应 abort 时仍在默认 120 秒结束等待，迟到结果只释放且不影响重试', async () => {
+    jest.useFakeTimers();
+    const attempts: {
+      signal: AbortSignal;
+      resolve: (source: ChartPreviewShellSource) => void;
+      progress?: (progress: { label: string; value: number }) => void;
+    }[] = [];
+    const prepare: Extract<ChartPreviewShellRequest<FictionalPayload>, { kind: 'ready' }>['prepare'] =
+      (signal, _settings, progress) => new Promise((resolve) => { attempts.push({ signal, resolve, progress }); });
+    await renderFictionalShell({ kind: 'ready', payload: { chartName: '虚构谱面' }, prepare });
+    await act(() => { jest.advanceTimersByTime(119_999); });
+    expect(screen.getByText('0%')).toBeTruthy();
+    await act(() => { jest.advanceTimersByTime(1); });
+    expect(attempts[0]!.signal.aborted).toBe(true);
+    expect(screen.getByText('准备谱面确认资源超时，请重新加载。')).toBeTruthy();
+    await act(() => { fireEvent.press(screen.getByRole('button', { name: '重新加载' })); });
+    expect(attempts).toHaveLength(2);
+    const dispose = jest.fn();
+    const logCount = log.mock.calls.length;
+    await act(() => {
+      attempts[0]!.progress?.({ label: '超时旧结果', value: 1 });
+      attempts[0]!.resolve({ ...fictionalSource, dispose });
+    });
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(log).toHaveBeenCalledTimes(logCount);
+    expect(screen.queryByTestId(fictionalTestID)).toBeNull();
+    expect(screen.getByText('0%')).toBeTruthy();
+    await act(() => { attempts[1]!.resolve({ ...fictionalSource, uri: 'file://fictional/new/index.html' }); });
+    expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
+    expect(latestWebViewProps.source).toEqual({ uri: 'file://fictional/new/index.html' });
+  });
+
+  it('准备期间内存警告取消在途操作，迟到拒绝不会覆盖暂停提示', async () => {
+    let reject!: (error: Error) => void;
+    let signal!: AbortSignal;
+    const request: ChartPreviewShellRequest<FictionalPayload> = {
+      kind: 'ready', payload: { chartName: '虚构谱面' },
+      prepare: (currentSignal) => {
+        signal = currentSignal;
+        return new Promise((_resolve, fail) => { reject = fail; });
+      },
+    };
+    const view = await renderFictionalShell(request);
+    mockLifecycle = { ...mockLifecycle, memoryWarningGeneration: 1 };
+    await view.rerender(<FictionalShell request={request} />);
+    expect(signal.aborted).toBe(true);
+    const logCount = log.mock.calls.length;
+    await act(() => { reject(new Error('late rejected preparation')); });
+    expect(log).toHaveBeenCalledTimes(logCount);
+    expect(screen.getByText('设备内存紧张，播放器已暂停。')).toBeTruthy();
+    expect(screen.queryByText(fictionalPrepareErrorFallback)).toBeNull();
+  });
+
+  it('等待选谱不启动超时，参数就绪后才开始计时', async () => {
+    jest.useFakeTimers();
+    const view = await renderFictionalShell({ kind: 'waiting' });
+    await act(() => { jest.advanceTimersByTime(240_000); });
+    expect(screen.getByText('0%')).toBeTruthy();
+    expect(log.mock.calls.filter(([type]) => type === 'operation')).toHaveLength(0);
+    const request: ChartPreviewShellRequest<FictionalPayload> = {
+      kind: 'ready', payload: { chartName: '虚构谱面' }, timeoutMs: 50,
+      prepare: () => new Promise(() => {}),
+    };
+    await view.rerender(<FictionalShell request={request} />);
+    await act(() => { jest.advanceTimersByTime(50); });
+    expect(screen.getByText('准备谱面确认资源超时，请重新加载。')).toBeTruthy();
+  });
+
+  it('外部错误移除播放器时释放会话并屏蔽旧事件', async () => {
+    const dispose = jest.fn();
+    const request: ChartPreviewShellRequest<FictionalPayload> = {
+      kind: 'ready', payload: { chartName: '虚构谱面' }, prepare: async () => ({ ...fictionalSource, dispose }),
+    };
+    const view = await renderFictionalShell(request);
+    const old = latestWebViewProps;
+    await view.rerender(<FictionalShell request={request} options={{ externalError: '谱面请求已失效' }} />);
+    const logCount = log.mock.calls.length;
+    await act(() => {
+      (old.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"settings","speed":5}' } });
+      (old.onError as () => void)();
+    });
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(mockSaveSettings).not.toHaveBeenCalled();
+    expect(log).toHaveBeenCalledTimes(logCount);
+    expect(screen.getByText('谱面请求已失效')).toBeTruthy();
+    expect(screen.queryByRole('button', { name: '重新加载' })).toBeNull();
+  });
+
+  it.each([undefined, 75])('播放器始终不发 ready 时按 %s 毫秒配置结束等待并允许重载', async (readyTimeoutMs) => {
+    jest.useFakeTimers();
+    const dispose = jest.fn();
+    await renderFictionalShell({
+      kind: 'ready', payload: { chartName: '虚构谱面' }, readyTimeoutMs,
+      prepare: async () => ({ ...fictionalSource, dispose }),
+    });
+    const old = latestWebViewProps;
+    await act(() => { jest.advanceTimersByTime((readyTimeoutMs ?? 60_000) - 1); });
+    expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
+    await act(() => { jest.advanceTimersByTime(1); });
+    expect(screen.getByText('播放器准备超时，请重新加载。')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重新加载' })).toBeTruthy();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    await act(() => { (old.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"ready"}' } }); });
+    expect(screen.getByText('播放器准备超时，请重新加载。')).toBeTruthy();
+    expect(screen.queryByTestId(fictionalTestID)).toBeNull();
+  });
+
+  it('收到 ready 前即使 progress 为 1 也只显示 99%，ready 清除就绪定时器', async () => {
+    jest.useFakeTimers();
+    const view = await renderFictionalShell({
+      kind: 'ready', payload: { chartName: '虚构谱面' }, prepare: async () => fictionalSource,
+    });
+    await act(() => {
+      (latestWebViewProps.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"progress","value":1}' } });
+      jest.advanceTimersByTime(50);
+    });
+    expect(screen.getByText('99%')).toBeTruthy();
+    expect(screen.queryByText('100%')).toBeNull();
+    await act(() => {
+      (latestWebViewProps.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"ready"}' } });
+      jest.advanceTimersByTime(180_000);
+    });
+    expect(screen.queryByTestId('chart-preview-load-progress')).toBeNull();
+    expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
+    await view.unmount();
+    const logCount = log.mock.calls.length;
+    await act(() => { jest.advanceTimersByTime(180_000); });
+    expect(log).toHaveBeenCalledTimes(logCount);
+  });
+
+  it('读取设置挂起也受准备超时约束，迟到设置不会传入新会话', async () => {
+    jest.useFakeTimers();
+    let resolveOldSettings!: (value: string) => void;
+    mockLoadSettings.mockImplementationOnce(() => new Promise((resolve) => { resolveOldSettings = resolve; }));
+    mockLoadSettings.mockResolvedValue('{"speed":2}');
+    const prepare = jest.fn(async () => fictionalSource);
+    await renderFictionalShell({
+      kind: 'ready', payload: { chartName: '虚构谱面' }, timeoutMs: 50, prepare,
+    });
+    await act(() => { jest.advanceTimersByTime(50); });
+    expect(prepare).not.toHaveBeenCalled();
+    expect(screen.getByText('准备谱面确认资源超时，请重新加载。')).toBeTruthy();
+    await act(() => { fireEvent.press(screen.getByRole('button', { name: '重新加载' })); });
+    expect(prepare).toHaveBeenCalledTimes(1);
+    expect(prepare).toHaveBeenCalledWith(expect.any(AbortSignal), { speed: 2 }, expect.any(Function));
+    await act(() => { resolveOldSettings('{"speed":5}'); });
+    expect(prepare).toHaveBeenCalledTimes(1);
+    await act(() => {
+      (latestWebViewProps.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"settings","volume":3}' } });
+    });
+    expect(mockSaveSettings).toHaveBeenLastCalledWith(fictionalSettingsKey, '{"speed":2,"volume":3}');
+  });
+
+  it('准备错误沿 ProviderError 映射显示，未知和无数据错误保留调用方安全文案', async () => {
+    const request = (error: Error): ChartPreviewShellRequest<FictionalPayload> => ({
+      kind: 'ready', payload: { chartName: '虚构谱面' }, prepare: async () => { throw error; },
+    });
+    const view = await renderFictionalShell(request(new ProviderError('network', 'private upstream host', true)));
+    expect(screen.getByText('网络连接失败，请检查网络后重试。')).toBeTruthy();
+    expect(screen.queryByText('private upstream host')).toBeNull();
+    await view.rerender(<FictionalShell request={request(new ProviderError('no_data', 'private mirror list', false))} />);
+    expect(screen.getByText(fictionalPrepareErrorFallback)).toBeTruthy();
+    expect(screen.queryByText('private mirror list')).toBeNull();
+  });
+
+  it('公共资源访问被拒绝时显示资源不可用并允许重载，不提示账号问题', async () => {
+    await renderFictionalShell({
+      kind: 'ready', payload: { chartName: '虚构谱面' },
+      prepare: async () => { throw new ProviderError('permission', 'private resource response', false); },
+    });
+    expect(screen.getByText('谱面资源暂时不可用，请稍后重试。')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '重新加载' })).toBeTruthy();
+    expect(screen.queryByText('当前账号无法完成此操作。')).toBeNull();
+    expect(screen.queryByText('private resource response')).toBeNull();
   });
 });

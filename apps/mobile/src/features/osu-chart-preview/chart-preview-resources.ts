@@ -47,7 +47,7 @@ export async function readOsuChartPreviewArchive(
   reader: OsuChartPreviewResourceReader,
 ): Promise<OsuChartPreviewResources> {
   reader.assertCurrent();
-  const zip = await JSZip.loadAsync(archive);
+  const zip = await JSZip.loadAsync(archive, { checkCRC32: true });
   reader.assertCurrent();
   const entries = new Map<string, JSZip.JSZipObject>();
   const foldedPaths = new Set<string>();
