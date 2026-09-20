@@ -96,5 +96,11 @@ describe('Rizline identities and score semantics', () => {
     catalog.songs[0].updatedAt = null;
     catalog.songs[0].charts[0].maxScore = 1;
     expect(RizlineCatalogSchema.safeParse(catalog).success).toBe(false);
+    catalog.songs[0].charts[0].maxScore = 1_002_000;
+    catalog.songs[0].audioPath = 'rizline/releases/r1/audio/Song.A.0.ogg';
+    expect(RizlineCatalogSchema.safeParse(catalog).success).toBe(false);
+    catalog.songs[0].audioPath = 'rizline/releases/r1/audio/Song.A.0.m4a';
+    catalog.songs[0].charts[0].chartPath = 'rizline/releases/r1/charts/Song.A.0.IN.txt';
+    expect(RizlineCatalogSchema.safeParse(catalog).success).toBe(false);
   });
 });

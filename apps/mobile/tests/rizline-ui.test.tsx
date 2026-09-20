@@ -112,6 +112,19 @@ describe('Rizline UI', () => {
     }
     await fireEvent.press(chart.getByLabelText('加入练习清单'));
     expect(mockSetPractice).toHaveBeenCalledWith('song.a', 'SD', 2, true);
+    const preview = chart.getByLabelText('查看谱面确认：测试歌曲 IN');
+    const inActions = chart.getAllByRole('button').map((button) => button.props.accessibilityLabel);
+    expect(inActions.indexOf('查看谱面确认：测试歌曲 IN'))
+      .toBe(inActions.indexOf('加入练习清单') + 1);
+    expect(preview).toHaveStyle({
+      backgroundColor: 'transparent', borderColor: rizlineDifficultyColors('IN').bg,
+    });
+    expect(chart.getByText('查看谱面确认')).toHaveStyle({ color: rizlineDifficultyColors('IN').bg });
+    await fireEvent.press(preview);
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/songs/rizline-chart-preview',
+      params: { songId: 'song.a', levelIndex: '2', title: '测试歌曲 IN' },
+    });
     await fireEvent.changeText(within(screen.getByTestId('rizline-chart-tags-IN')).getByLabelText('新标签'), '交互');
     await fireEvent.press(within(screen.getByTestId('rizline-chart-tags-IN')).getByLabelText('添加标签'));
     expect(mockSetTags).toHaveBeenCalledWith({ kind: 'chart', songId: 'song.a', type: 'SD', levelIndex: 2 }, ['交互']);
