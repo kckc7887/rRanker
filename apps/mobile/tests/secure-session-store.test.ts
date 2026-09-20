@@ -22,6 +22,8 @@ vi.mock('expo-secure-store', () => ({
 // The store must be imported after the in-memory SecureStore mock.
 // eslint-disable-next-line import/first
 import { SecureSessionStore } from '@/storage/secure-session-store';
+// eslint-disable-next-line import/first
+import { hasRizlinePassword, writeRizlinePassword } from '@/storage/rizline-password-store';
 
 const kvStore = {
   getItem: async (key: string) => sqlite.values.get(key) ?? null,
@@ -423,6 +425,7 @@ describe('Rizline SMS secure accounts', () => {
   it('round trips credentials separately from public account metadata and removes them on unlink', async () => {
     const store = createStore();
     await store.upsertAccount(input);
+    await writeRizlinePassword(input.id, 'secret-password');
     await store.updateAccountMetadata(input.id, { displayName: '新名称', scoreDisplay: '140.0000' });
     const vault = await store.loadVault();
     expect(vault.accounts[0]).toMatchObject({ id: input.id, gameId: 'rizline', providerId: 'rizline-official', displayName: '新名称', scoreDisplay: '140.0000' });
@@ -430,8 +433,19 @@ describe('Rizline SMS secure accounts', () => {
     const ordinaryStorage = [...sqlite.values.values()].join('');
     expect(ordinaryStorage).not.toContain(session.phone);
     expect(ordinaryStorage).not.toContain(session.token);
+    expect(ordinaryStorage).not.toContain('secret-password');
+    expect(await hasRizlinePassword(input.id)).toBe(true);
     await store.removeAccount(input.id);
     expect((await store.loadVault()).credentials).toEqual([]);
+    expect(await hasRizlinePassword(input.id)).toBe(false);
+    expect([...secure.values.keys()].some(key => key.includes('rizline-password'))).toBe(false);
+  });
+  it('rotates a Rizline session when expected matches by token rather than JSON field order', async () => {
+    const store = createStore();
+    await store.upsertAccount(input);
+    const reordered = { persistable: true, channelId: '1', deviceId: session.deviceId, phone: session.phone, token: session.token, mode: 'rizline' } as const;
+    await store.updateAccountSession(input.id, { ...session, token: 'rotated' }, { expected: reordered });
+    expect((await store.loadVault()).credentials[0].session).toEqual({ ...session, token: 'rotated' });
   });
   it('does not overwrite credentials saved by a newer login', async () => {
     const store = createStore();

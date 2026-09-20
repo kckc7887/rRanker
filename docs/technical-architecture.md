@@ -135,20 +135,27 @@ Easy 与 Phigros HD 复用公共蓝色主题。歌曲信息只含简介、线上
 `assets/images/rizline.png`，由用户提供的 240×240 WebP 保留 RGBA 像素转换为 PNG。
 接入代码的来源、固定提交、修改说明和完整许可索引见根目录 `THIRD_PARTY_NOTICES.md`；
 `LICENSES/` 保留 RizlineGameSaveData、rizline_b40_tool、RizlineSavingTest 与 noble-ciphers 的许可全文。
-`RizlineLoginPanel` 通过公共 `SmsLoginPanel` 接收手机号与验证码，
-复用 `ProviderLoginSheet` 的忙碌状态、关闭和通知出口。验证码只保留在表单状态，关闭或进入
-后台时清空；发送验证码只尝试一次。公共面板按来源保留会话内冷却时间，默认 60 秒，遵守
-服务端更长的 Retry-After，关闭弹层不会重置冷却。验证码按钮位于手机号输入框右侧，
-发送后只保留按钮倒计时，到期显示“重新获取”；实际错误继续通过公共文案出口显示。
+`RizlineLoginPanel` 默认通过公共 `SmsLoginPanel` 接收手机号与验证码，也可切换到公共
+`PasswordLoginPanel` 做账密登录；复用 `ProviderLoginSheet` 的忙碌状态、关闭和通知出口。
+验证码与表单态密码只留在面板状态，关闭或进入后台时清空；发送验证码只尝试一次。
+公共短信面板按来源保留会话内冷却时间，默认 60 秒，遵守服务端更长的 Retry-After，关闭弹层
+不会重置冷却。验证码按钮位于手机号输入框右侧，发送后只保留按钮倒计时，到期显示“重新获取”；
+实际错误继续通过公共文案出口显示。账密登录成功后把密码写入 `LargeSecureValueStore`
+（`rranker.secure.rizline-password.<accountId>`），不进入 `RizlineSession` 或 zustand。
 设备 UUID 通过公共偏好工厂保存在
 `rranker.rizline.device.v1`；账号会话另在 SecureStore 保存手机号、令牌、设备 UUID 和渠道。
 
 `providers/rizline-provider.ts` 的 `RizlineProvider` 通过公共 HTTP 入口和 `expo/fetch`
-请求 `https://rizserver.pigeongames.net` 的发送验证码、登录与 `/game/rn_login`。
-响应存档使用 `@noble/ciphers` AES-256-GCM 校验认证标签后解密，再由 Zod 验证。
-令牌与存档的用户 ID 必须匹配；轮换先通过 `applyRizlineSessionRotation` 持久化，再更新
-内存会话。账号、取消信号、期望旧会话和写入代次共同阻止解绑或重新登录后的迟到写入。
-恢复、删除和账号展示继续走现有安全仓库、`createRizlineBoundAccount` 与中央元数据订阅。
+请求 `https://rizserver.pigeongames.net` 的 `check_phone`、发送验证码、登录与 `/game/rn_login`。
+游戏请求带 Unity `User-Agent` / `X-Unity-Version`、`Accept: */*` 和 `phone`（可从 JWT 补全）。
+新票读取 `set_token`、`set-token` 与 `token`。`rn_login` 仅把 HTTP 401 标为认证失败；
+无存档密码时按 JWT `exp` 预留 60 秒偏斜，过期则不再请求上游。响应存档使用
+`@noble/ciphers` AES-256-GCM 校验认证标签后解密，再由 Zod 验证。
+令牌与存档的用户 ID 必须匹配；轮换按 `mode + token` 比较后通过 `applyRizlineSessionRotation`
+持久化，再更新内存会话。账号、取消信号、期望旧令牌和写入代次共同阻止解绑或重新登录后的迟到写入。
+`loadRizlineFresh` 每次从 Session 读取最新令牌；`rn_login` 被打回后若店里已有新票则重试，
+否则才解密本地密码换票一次，失败则删除密码并要求重新登录。恢复、删除和账号展示继续走
+现有安全仓库、`createRizlineBoundAccount` 与中央元数据订阅；解绑会同时删除加密密码。
 
 `services/rizline-service.ts` 独立保存 `rizline:account:<accountId>` 原始有效成绩快照；
 登录读到的有效存档与后续同步共用 `cacheRizlineSave` 校验账号身份并落盘，首次登录后立即可离线恢复。

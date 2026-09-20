@@ -4,15 +4,17 @@ export type ProviderErrorCode =
 
 export class ProviderError extends Error {
   readonly retryAfterSeconds?: number;
+  readonly needsCode?: boolean;
   constructor(
     public readonly code: ProviderErrorCode,
     message: string,
     public readonly retryable: boolean,
-    options?: ErrorOptions & { retryAfterSeconds?: number },
+    options?: ErrorOptions & { retryAfterSeconds?: number; needsCode?: boolean },
   ) {
     super(message, options);
     this.name = 'ProviderError';
     this.retryAfterSeconds = options?.retryAfterSeconds;
+    this.needsCode = options?.needsCode;
   }
 }
 

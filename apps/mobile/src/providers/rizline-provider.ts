@@ -17,6 +17,9 @@ import { requestProviderResponse, retryAfterMs } from './http-json';
 
 const BASE_URL = 'https://rizserver.pigeongames.net';
 const GAME_ID = 'pigeongames.rizline';
+const UNITY_USER_AGENT = 'UnityPlayer/2022.3.62f2 (UnityWebRequest/1.0, libcurl/8.10.1-DEV)';
+const UNITY_VERSION = '2022.3.62f2';
+const TOKEN_EXPIRY_SKEW_SECONDS = 60;
 const PhoneSchema = z.string().regex(/^1\d{10}$/u);
 const CodeSchema = z.string().regex(/^\d{4,8}$/u);
 const DifficultySchema = z.enum(RIZLINE_DIFFICULTIES);
@@ -35,7 +38,14 @@ const AccountResponseSchema = z.object({ code: z.number().int() });
 const TokenClaimsSchema = z.object({
   userId: z.string().min(1), phone: PhoneSchema, gameId: z.literal(GAME_ID),
   channelId: z.union([z.string(), z.number().int()]).transform(String).pipe(z.enum(['1', '2', '3', '4', '5', '6', '7', '8', '9', '10', '11'])),
+  exp: z.number().finite().optional(),
 });
+
+export const RIZLINE_NEEDS_SMS_MESSAGE = '请改用验证码登录';
+
+export function isRizlineNeedsSmsError(error: unknown): boolean {
+  return error instanceof ProviderError && error.needsCode === true;
+}
 
 // https://github.com/CHCAT1320/RizlineGameSaveData/blob/ba89227baa2927655ea884a849d6a27ea1cdfb2d/gameDataAes2Json.py
 function saveKey(): Uint8Array {
@@ -74,10 +84,33 @@ function tokenClaims(token: string) {
   }
 }
 
+export function isRizlineTokenExpired(token: string, skewSeconds = TOKEN_EXPIRY_SKEW_SECONDS): boolean {
+  const claims = tokenClaims(token);
+  return claims.exp !== undefined && claims.exp * 1000 <= Date.now() + skewSeconds * 1000;
+}
+
 function requirePhone(phone: string): string {
   const parsed = PhoneSchema.safeParse(phone.trim());
   if (!parsed.success) throw new ProviderError('authentication', '请输入正确的手机号', false);
   return parsed.data;
+}
+
+function readSetToken(headers: Headers): string | null {
+  const value = headers.get('set_token') ?? headers.get('set-token') ?? headers.get('token');
+  return value?.trim() ? value : null;
+}
+
+function parseAccountCode(bytes: Uint8Array, schemaMessage: string): number {
+  let value: unknown;
+  try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(bytes)); }
+  catch { throw new ProviderError('upstream_schema', schemaMessage, false); }
+  const parsed = AccountResponseSchema.safeParse(value);
+  if (!parsed.success) throw new ProviderError('upstream_schema', schemaMessage, false);
+  return parsed.data.code;
+}
+
+function needsSmsError(): ProviderError {
+  return new ProviderError('authentication', RIZLINE_NEEDS_SMS_MESSAGE, false, { needsCode: true });
 }
 
 export class RizlineProvider {
@@ -87,6 +120,7 @@ export class RizlineProvider {
     session?: RizlineSession;
     onSessionChanged?: (session: RizlineSession) => Promise<void>;
     fetcher?: typeof fetch;
+    allowExpiredToken?: boolean;
   } = {}) {
     this.session = options.session;
     this.fetcher = options.fetcher ?? expoFetch as unknown as typeof fetch;
@@ -95,8 +129,13 @@ export class RizlineProvider {
   private async post(path: string, body: Record<string, string>, phone: string, signal?: AbortSignal) {
     const deviceId = this.session?.deviceId ?? await getRizlineDeviceId();
     const headers: Record<string, string> = {
-      'Content-Type': 'application/json', game_id: GAME_ID, device_id: deviceId,
-      channel_id: path === '/game/rn_login' ? this.session?.channelId ?? '1' : '1', i18n: 'zh-CN', phone,
+      Accept: '*/*',
+      'Content-Type': 'application/json',
+      'User-Agent': UNITY_USER_AGENT,
+      'X-Unity-Version': UNITY_VERSION,
+      game_id: GAME_ID, device_id: deviceId,
+      channel_id: path === '/game/rn_login' ? this.session?.channelId ?? '1' : '1',
+      i18n: 'zh-CN', phone,
     };
     if (this.session && path === '/game/rn_login') headers.token = this.session.token;
     let token: string | null = null;
@@ -106,15 +145,21 @@ export class RizlineProvider {
       label: 'Rizline', signal, retries: 1, timeoutMs: 20_000,
       init: { method: 'POST', headers, body: JSON.stringify(body), credentials: 'omit', redirect: 'error' },
       error: status => {
-        const error = providerErrorFromStatus(status, {
-        authentication: '登录已失效或验证码不正确', permission: '当前账号无法读取成绩',
-        rateLimit: '操作太频繁，请稍后再试', server: 'Rizline 暂时无法连接',
-        fallback: { message: () => 'Rizline 请求失败' },
-        });
+        const texts = {
+          permission: '当前账号无法读取成绩',
+          rateLimit: '操作太频繁，请稍后再试',
+          server: 'Rizline 暂时无法连接',
+          fallback: { message: () => 'Rizline 请求失败' },
+        } as const;
+        const error = path === '/game/rn_login'
+          ? status === 401
+            ? new ProviderError('authentication', '登录已失效或验证码不正确', false)
+            : providerErrorFromStatus(status, texts)
+          : providerErrorFromStatus(status, { authentication: '登录已失效或验证码不正确', ...texts });
         return new ProviderError(error.code, error.message, false, { retryAfterSeconds });
       },
       onResponse: response => {
-        token = response.headers.get('set_token') ?? response.headers.get('set-token');
+        token = readSetToken(response.headers);
         if (response.headers.has('Retry-After')) retryAfterSeconds = Math.ceil(retryAfterMs(response, Infinity) / 1000);
       },
     }, async response => {
@@ -143,17 +188,32 @@ export class RizlineProvider {
     const normalized = requirePhone(phone);
     if (!CodeSchema.safeParse(code.trim()).success) throw new ProviderError('authentication', '请输入正确的验证码', false);
     const result = await this.post('/account/login', { phone: normalized, code: code.trim() }, normalized, signal);
-    let value: unknown;
-    try { value = JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(result.bytes)); }
-    catch { throw new ProviderError('upstream_schema', '登录结果暂时无法读取', false); }
-    const parsed = AccountResponseSchema.safeParse(value);
-    if (!parsed.success) throw new ProviderError('upstream_schema', '登录结果暂时无法读取', false);
-    if (parsed.data.code !== 0 || !result.token) throw new ProviderError('authentication', '验证码不正确或已过期', false);
-    const claims = tokenClaims(result.token);
-    if (claims.phone !== normalized) throw new ProviderError('authentication', '登录账号不一致，请重新登录', false);
+    const loginCode = parseAccountCode(result.bytes, '登录结果暂时无法读取');
+    if (loginCode !== 0 || !result.token) throw new ProviderError('authentication', '验证码不正确或已过期', false);
+    return this.completeLogin(result.token, normalized, result.deviceId, signal);
+  }
+
+  async loginWithPassword(phone: string, password: string, signal?: AbortSignal) {
+    const normalized = requirePhone(phone);
+    if (typeof password !== 'string' || password.length < 1 || password.length > 256) {
+      throw new ProviderError('authentication', '请输入账号和密码', false);
+    }
+    const check = await this.post('/account/check_phone', { phone: normalized }, normalized, signal);
+    const checkCode = parseAccountCode(check.bytes, '无法确认该手机号的登录方式');
+    if (checkCode === 1) throw needsSmsError();
+    if (checkCode !== 0) throw new ProviderError('authentication', '无法确认该手机号的登录方式', false);
+    const result = await this.post('/account/login', { phone: normalized, password }, normalized, signal);
+    const loginCode = parseAccountCode(result.bytes, '登录结果暂时无法读取');
+    if (loginCode === 3) throw needsSmsError();
+    if (loginCode !== 0 || !result.token) throw new ProviderError('authentication', '账号或密码不正确', false);
+    return this.completeLogin(result.token, normalized, result.deviceId, signal);
+  }
+
+  private async completeLogin(token: string, phone: string, deviceId: string, signal?: AbortSignal) {
+    const claims = tokenClaims(token);
+    if (claims.phone !== phone) throw new ProviderError('authentication', '登录账号不一致，请重新登录', false);
     const previous = this.session;
-    this.session = { mode: 'rizline', token: result.token, phone: normalized, deviceId: result.deviceId,
-      channelId: claims.channelId, persistable: true };
+    this.session = { mode: 'rizline', token, phone, deviceId, channelId: claims.channelId, persistable: true };
     try {
       const save = await this.getSave(signal);
       if (signal?.aborted) throw signal.reason;
@@ -165,17 +225,21 @@ export class RizlineProvider {
     const current = this.session;
     if (!current) throw new ProviderError('authentication', '请先登录 Rizline 账号', false);
     const claims = tokenClaims(current.token);
-    if (claims.phone !== current.phone) throw new ProviderError('authentication', '登录账号不一致，请重新登录', false);
-    const { bytes, token } = await this.post('/game/rn_login', {}, current.phone, signal);
+    const phone = current.phone || claims.phone;
+    if (current.phone && claims.phone !== current.phone) throw new ProviderError('authentication', '登录账号不一致，请重新登录', false);
+    if (!this.options.allowExpiredToken && isRizlineTokenExpired(current.token)) {
+      throw new ProviderError('authentication', '登录已失效，请重新登录', false);
+    }
+    const { bytes, token } = await this.post('/game/rn_login', {}, phone, signal);
     const save = decryptRizlineSave(bytes);
     if (signal?.aborted) throw signal.reason;
     if (save.userId !== claims.userId) throw new ProviderError('authentication', '读取到的账号不一致，请重新登录', false);
     if (token && token !== current.token) {
       const rotated = tokenClaims(token);
-      if (rotated.userId !== save.userId || rotated.phone !== current.phone) {
+      if (rotated.userId !== save.userId || rotated.phone !== phone) {
         throw new ProviderError('authentication', '登录账号不一致，请重新登录', false);
       }
-      const next: RizlineSession = { ...current, token, channelId: rotated.channelId };
+      const next: RizlineSession = { ...current, token, phone, channelId: rotated.channelId };
       await this.options.onSessionChanged?.(next);
       if (signal?.aborted) throw signal.reason;
       this.session = next;

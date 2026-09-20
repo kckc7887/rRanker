@@ -60,7 +60,7 @@ Jest 的图片模拟不用于区分图标身份，图标身份差异由 Vitest �
 | 内容摘要 | `src/utils/resource-integrity.ts`：`sha256(bytes)`、`bytesToHex(buffer)`；`src/utils/crypto-subset.ts`：`uint8ArrayToWordArray(bytes)`、`bytesToBase64(bytes)`、`base64ToBytes(text)` | 通过现有 Expo Crypto 和 CryptoJS 能力计算摘要、编码；字体缓存保留摘要兼容导出，游戏不得反向依赖字体功能 | 字体缓存、Phigros 资源与存档测试 |
 | 校验发布会话 | `src/services/verified-release.ts`：`VerifiedReleaseSession<T>`、`verifyResourceBytes(bytes, asset, message)` | 调用方提供格式专属 prepare；共用消费者取消、代次、失败重读和完整候选切换；校验字节后才发布结果 | `phigros-resources.test.ts`、`rizline-resources.test.ts` |
 | Phigros 发布事务 | `src/services/phigros-resources.ts`：`phigrosResources`、`load(signal?, check?)`、`withRelease(action, signal?, check?)`、`verifyPhigrosResource(bytes, asset)`、`directory(current)`；`src/domain/account-avatar.ts`：`phigrosReleaseDirectory`、`buildPhigrosAvatarUrl(releaseDirectory, avatarName, resourceVersion?)` | Phigros 各调用方共用唯一会话发布；校验所有必需元数据后原子替换；谱面、曲绘和头像路径取 `current.manifest` 所在目录，查询参数带 `resourceVersion`；实际资源校验大小/SHA-256；失败强制绕过缓存重读一次，取消以消费者计数管理 | `phigros-resources.test.ts`、`phigros-catalog-notes.test.ts`、`phigros-score-revision.test.ts`、`account-avatar.test.ts`、`phigros-avatar-resolver.test.ts` |
-| 错误边界 | `src/providers/errors.ts`：`ProviderError`、`providerErrorFromStatus`、`providerErrorToUserMessage` | 底层 code/cause 用于诊断；所有用户可见出口必须转换为可行动文案 | `consumer-copy-policy.test.ts`、各 Provider 测试 |
+| 错误边界 | `src/providers/errors.ts`：`ProviderError`、`providerErrorFromStatus`、`providerErrorToUserMessage` | 底层 code/cause 用于诊断；可选 `needsCode` 表示应改用验证码；所有用户可见出口必须转换为可行动文案 | `consumer-copy-policy.test.ts`、各 Provider 测试 |
 | LXNS OAuth 请求 | `src/providers/lxns-oauth-request.ts` 与 `lxns-oauth.ts` | 舞萌和中二共享 OAuth 请求与令牌轮换骨架；游戏差异通过参数和账号映射表达 | LXNS OAuth、登录和 Session 测试 |
 | 示例满成绩 | `src/providers/maxed-records.ts` 的 `buildMaxedScoreRecords` | 由游戏测试 Provider 提供真实目录和映射函数，不复制通用生成循环 | `maxed-*-test-provider.test.ts` |
 | Repository | `src/repositories/{catalog,resource,snapshot,user-library}-repository.ts` | Service 依赖接口；SQLite 实现留在 `storage/`，页面不直接写数据库 | Repository、存储迁移和用户曲库测试 |
@@ -97,7 +97,7 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 相关入口合同由 `phigros-resource-sync.test.tsx`、`use-phigros-catalog.test.tsx`、
 `phigros-chapters.test.ts`、`phigros-catalog-notes.test.ts` 和 `phigros-score-revision.test.ts` 覆盖。
 
-### Rizline 接入与短信登录
+### Rizline 接入与登录
 
 - `components/game-content/SmsLoginPanel` 接受 `sendCode(phone, signal)`、
   `login(phone, code, signal)`、`validatePhone`、`cooldownKey` 及弹层状态回调。
@@ -107,17 +107,31 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
   验证码不持久化；同来源冷却在弹层卸载后保留，发送不自动重试。
   `ProviderError.retryAfterSeconds` 承载服务端限流时间；`retryAfterMs(response, maxMs = 5000)`
   保持原 HTTP 默认上限，短信 Provider 显式读取完整冷却时间。
-- `RizlineLoginPanel` 提供专属 Provider 操作，经 `cancelBoundAccountQueries` 失效旧请求后
+- `PasswordLoginPanel` 复用登录表单、取消和前后台流程；默认用户名标签与「账密登录并验证」。
+  可选 `usernameLabel`、`usernameKeyboardType`、`validateUsername` 等仅改变身份输入展示与校验，
+  游戏仍只提供登录动作。Rizline 账密使用手机号展示，Majdata 保持用户名默认。
+- `RizlineLoginPanel` 提供专属 Provider 操作，默认验证码，经登录卡「或」/次要按钮切换账密。
+  `login` / `loginWithPassword` 经 `cancelBoundAccountQueries` 失效旧请求后
   调用 `SecureSessionStore.upsertAccount(account, signal?)` 和现有 Session 动作。
   `bindingKind: 'sms-code'` 属于凭据能力，账号管理按 `isCredentialProvider` 查询该能力。
-  `applyRizlineSessionRotation(accountId, next, expected, signal?)` 复用安全仓库的期望值比较、
+  账密成功后把密码写入 `storage/rizline-password-store.ts` 的 `LargeSecureValueStore` 引用，
+  不进入 `RizlineSession` 或内存会话；短信登录不写也不清已有密码。
+  `check_phone === 1` 或登录 `code === 3` 时 `ProviderError.needsCode` 切回验证码表单，
+  不自动 `send_verify_code`。
+  `applyRizlineSessionRotation(accountId, next, expected, signal?)` 按 `mode + token` 比较、
   串行持久化与共享凭据广播；不新增平行账号恢复仓库。
-- `RizlineProvider.sendVerificationCode`、`login`、`getSave` 共用 `requestProviderResponse`。
-  AES-GCM 解密及官方 DTO 是游戏专属边界，不套用 Phigros 存档结构；二进制编码复用
-  `utils/crypto-subset.ts`，解密交给 `@noble/ciphers` 并验证认证标签。
+- `RizlineProvider.sendVerificationCode`、`login`、`loginWithPassword`、`getSave` 共用
+  `requestProviderResponse`。游戏请求带 Unity 头、`Accept: */*` 和 `phone`；新票读取
+  `set_token` / `set-token` / `token`。`rn_login` 仅 HTTP 401 为 `authentication`。
+  `isRizlineTokenExpired(token, 60)` 在无存档密码时预判过期。AES-GCM 解密及官方 DTO 是
+  游戏专属边界，不套用 Phigros 存档结构；二进制编码复用 `utils/crypto-subset.ts`，
+  解密交给 `@noble/ciphers` 并验证认证标签。
 - `loadRizlineCached`、`loadRizlineFresh`、`loadRizlineWithFallback` 和 `awaitRizlineFresh`
   复用 SQLite 资源仓库、`snapshotSource`、`createInflightGuard.share`、账号/游戏写入代次及
-  `cacheFirstLoad`。登录及同步都通过 `cacheRizlineSave(id, save, signal?)` 校验账号并保存有效存档。
+  `cacheFirstLoad`。`loadRizlineFresh` 从 `useSession` 取最新会话；认证失败时若店里 token
+  已变更则重试，否则解密本地密码换票一次，同一 inflight 内只换一次。换票失败删除密码。
+  `clearRizlineAccount` 与 `SecureSessionStore.removeAccount` 都删除密码引用。
+  登录及同步都通过 `cacheRizlineSave(id, save, signal?)` 校验账号并保存有效存档。
   `cacheFirstLoad` 可选 `onFallback` 只发布失败状态；不会把兜底缓存送给 `onFresh`。
   Rizline 通过它显示明确认证失效，网络失败保留旧会话与成绩。手动同步等待完整结果，
   公开曲库失败不阻止官方成绩尝试，部分成功明确通知且不返回同步成功。
@@ -164,7 +178,8 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
 验证入口为 `rizline-provider.test.ts`、`rizline-cache.test.ts`、`rizline-domain.test.ts`、
 `rizline-catalog-query.test.ts`、`rizline-resources.test.ts`、`rizline-content.test.ts`、
 `verified-release.test.ts`、`rizline-algorithm-audit.test.ts`、`rizline-sms-login.test.tsx`、
-`rizline-account-flow.test.tsx`、`rizline-ui.test.tsx`、`rizline-filter-bar.test.tsx`、`rizline-overview.test.tsx`、
+`rizline-account-flow.test.tsx`、`password-login-panel.test.tsx`、`rizline-ui.test.tsx`、
+`rizline-filter-bar.test.tsx`、`rizline-overview.test.tsx`、
 `use-game-data-rizline.test.tsx`、`overview-rizline-sync.test.tsx`，以及 Session、
 SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同。真实短信、云存档、原生轮播和
 前后台验收单独进行，测试 fixture 不能作为真实登录成功的证据。
@@ -523,7 +538,8 @@ catch 实心透明度、同色描边和降级模糊像素；不代替 iOS/Androi
 - `http-json.ts` 的 `JsonRequestOptions<T>` 支持 `init` 与 `onResponse`；JSON、字节和
   `requestProviderResponse(options, read)` 共用取消、超时、重试、Schema 和错误归一化。
   `http-cookies.ts` 提供 `responseCookies`、`cookieHeader` 和会话校验；Cookie 仅发送到
-  明确的来源与路径。`PasswordLoginPanel` 复用登录表单、取消和前后台流程，游戏只提供登录动作。
+  明确的来源与路径。`PasswordLoginPanel` 复用登录表单、取消和前后台流程；默认用户名身份，
+  可选手机号展示配置不改变提交动作，游戏只提供登录动作。
 - `GAME_OPTIONS` 是添加游戏和已绑定账号分组的同一注册来源；可选 `accountOrder`
   保持已有账号顺序，新游戏按注册顺序追加，`familyId` 保留 osu! 家族分组。
   `isCredentialProvider(id)` 根据 `bindingKind` 决定账密账号操作，不另列 Provider 白名单。
