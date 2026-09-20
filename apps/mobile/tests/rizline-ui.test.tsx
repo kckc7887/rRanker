@@ -151,15 +151,26 @@ describe('Rizline UI', () => {
     expect(screen.getByText(`${difficulty} 12`)).toHaveStyle({ color: '#FFFFFF' });
   });
 
-  it('hides difficulty names on catalog song-row badges', async () => {
+  it('shows catalog song-row badges as constants without difficulty names', async () => {
     const screen = await render(<RizlineSongRow song={rizlineSong()} />);
     expect(screen.getByText('测试歌曲')).toBeTruthy();
+    const constants = { EZ: '3.0', HD: '8.0', IN: '12.0', AT: '15.0' } as const;
     for (const difficulty of ['EZ', 'HD', 'IN', 'AT'] as const) {
       expect(screen.queryByText(difficulty)).toBeNull();
       expect(screen.queryByText(`${difficulty} 12`)).toBeNull();
-      expect(screen.getByTestId(`rizline-difficulty-${difficulty}`).props.accessibilityLabel).toBe(`${difficulty} 12`);
+      expect(screen.getByTestId(`rizline-difficulty-${difficulty}`).props.accessibilityLabel)
+        .toBe(`${difficulty} ${constants[difficulty]}`);
+      expect(screen.getByText(constants[difficulty])).toBeTruthy();
     }
-    expect(screen.getAllByText('12')).toHaveLength(4);
+    expect(screen.queryByText('12')).toBeNull();
+  });
+
+  it('shows a dash on SP catalog badges that have no constant', async () => {
+    const screen = await render(<RizlineSongRow song={rizlineSong({ charts: [rizlineChart('SP', null)] })} />);
+    expect(screen.queryByText('?')).toBeNull();
+    expect(screen.queryByText('SP')).toBeNull();
+    expect(screen.getByTestId('rizline-difficulty-SP').props.accessibilityLabel).toBe('SP —');
+    expect(screen.getByText('—')).toBeTruthy();
   });
 
   it.each<{ achievements: number; ahStatus: RizlineRecord['ahStatus']; status: 'ap' | 'ah' | 'normal' }>([

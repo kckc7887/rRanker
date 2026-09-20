@@ -1,5 +1,5 @@
 import type { GameContentAdapter } from '@/domain/game-content';
-import { formatRizlineAccuracy, formatRizlineRks, rizlineDifficultyIndex, rizlineRecordStatus, sortedRizlineCharts, type RizlineChart, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
+import { formatRizlineAccuracy, formatRizlineConstant, formatRizlineRks, rizlineDifficultyIndex, rizlineRecordStatus, sortedRizlineCharts, type RizlineChart, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
 import type { ChartCardPresentation, ScoreCardPresentation, SongRowPresentation } from '../presentation';
 
 export function presentRizlineNotes(chart: RizlineChart) {
@@ -35,7 +35,7 @@ export function presentRizlineScore(record: RizlineRecord, title = record.title,
 export function presentRizlineSong(song: RizlineSong): SongRowPresentation<'rizline'> {
   return { key: song.id, gameId: 'rizline', route: { songId: song.id }, title: song.title, subtitle: song.artist ?? '—',
     accessibilityLabel: `查看歌曲 ${song.title}`, chartBadges: sortedRizlineCharts(song.charts).map((chart) => ({
-      key: chart.id, label: chart.difficulty, value: chart.level, tone: chart.difficulty,
+      key: chart.id, label: chart.difficulty, value: formatRizlineConstant(chart.constant), tone: chart.difficulty,
     })) };
 }
 
