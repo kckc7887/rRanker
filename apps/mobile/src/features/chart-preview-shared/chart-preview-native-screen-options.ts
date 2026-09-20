@@ -1,13 +1,21 @@
 /**
  * 谱面确认屏幕的原生导航/系统栏选项（公共路径）：
- * 全屏时切换横屏并隐藏系统 Chrome，iOS 走 home 指示条、Android 走
+ * 全屏时切换方向并隐藏系统 Chrome，默认横屏；游戏可通过
+ * fullscreenOrientation 保持竖屏。iOS 走 home 指示条、Android 走
  * 状态栏/导航栏，标题默认「谱面确认」，可由各游戏屏幕覆写。
  */
-export function chartPreviewNativeScreenOptions(isFullscreen: boolean, platform: string, title = '谱面确认') {
+export type ChartPreviewFullscreenOrientation = 'landscape' | 'portrait_up';
+
+export function chartPreviewNativeScreenOptions(
+  isFullscreen: boolean,
+  platform: string,
+  title = '谱面确认',
+  fullscreenOrientation: ChartPreviewFullscreenOrientation = 'landscape',
+) {
   const baseOptions = {
     title,
     headerShown: !isFullscreen,
-    orientation: isFullscreen ? 'landscape' as const : 'portrait_up' as const,
+    orientation: isFullscreen ? fullscreenOrientation : 'portrait_up' as const,
   };
 
   if (platform === 'ios') {

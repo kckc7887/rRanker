@@ -95,6 +95,15 @@ describe('Rizline account sessions', () => {
     expect(updateAccountSession).not.toHaveBeenCalled();
     expect(useSession.getState().session).toBe(latest);
   });
+  it('rotates when the in-memory session is an equivalent token copy', async () => {
+    useSession.getState().setSession(session, metadata);
+    const copy = { ...session };
+    useSession.setState({ sessionsByAccountId: { [account.id]: copy }, session: copy });
+    const next = { ...session, token: 'rotated' };
+    await applyRizlineSessionRotation(account.id, next, session);
+    expect(updateAccountSession).toHaveBeenCalledWith(account.id, next, { expected: session, signal: undefined });
+    expect(useSession.getState().session).toBe(next);
+  });
 });
 const lxnsSession: ProviderSession = {
   mode: 'lxns-oauth',

@@ -3,6 +3,7 @@ import { jest } from '@jest/globals';
 import { Animated, InteractionManager, processColor } from 'react-native';
 import { RizlineScoreCard } from '@/components/rizline/RizlineScoreCard';
 import { RizlineSongDetail } from '@/components/rizline/RizlineSongDetail';
+import { RizlineSongRow } from '@/components/rizline/RizlineSongRow';
 import { RizlineDifficultyBadge } from '@/components/rizline/RizlineScoreVisuals';
 import { BADGE_GOLD_BORDER_COLORS } from '@/domain/badge-theme';
 import { RIZLINE_DIFFICULTIES, rizlineDifficultyColors, type RizlineRecord } from '@/domain/rizline';
@@ -111,6 +112,19 @@ describe('Rizline UI', () => {
     }
     await fireEvent.press(chart.getByLabelText('加入练习清单'));
     expect(mockSetPractice).toHaveBeenCalledWith('song.a', 'SD', 2, true);
+    const preview = chart.getByLabelText('查看谱面确认：测试歌曲 IN');
+    const inActions = chart.getAllByRole('button').map((button) => button.props.accessibilityLabel);
+    expect(inActions.indexOf('查看谱面确认：测试歌曲 IN'))
+      .toBe(inActions.indexOf('加入练习清单') + 1);
+    expect(preview).toHaveStyle({
+      backgroundColor: rizlineDifficultyColors('IN').bg, borderColor: rizlineDifficultyColors('IN').bg,
+    });
+    expect(chart.getByText('查看谱面确认')).toHaveStyle({ color: '#FFFFFF' });
+    await fireEvent.press(preview);
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/songs/rizline-chart-preview',
+      params: { songId: 'song.a', levelIndex: '2', title: '测试歌曲 IN' },
+    });
     await fireEvent.changeText(within(screen.getByTestId('rizline-chart-tags-IN')).getByLabelText('新标签'), '交互');
     await fireEvent.press(within(screen.getByTestId('rizline-chart-tags-IN')).getByLabelText('添加标签'));
     expect(mockSetTags).toHaveBeenCalledWith({ kind: 'chart', songId: 'song.a', type: 'SD', levelIndex: 2 }, ['交互']);
@@ -135,6 +149,28 @@ describe('Rizline UI', () => {
     const screen = await render(<RizlineDifficultyBadge difficulty={difficulty} level="12" />);
     expect(screen.getByTestId(`rizline-difficulty-${difficulty}`)).toHaveStyle({ borderRadius: 999, height: 24 });
     expect(screen.getByText(`${difficulty} 12`)).toHaveStyle({ color: '#FFFFFF' });
+  });
+
+  it('shows catalog song-row badges as constants without difficulty names', async () => {
+    const screen = await render(<RizlineSongRow song={rizlineSong()} />);
+    expect(screen.getByText('测试歌曲')).toBeTruthy();
+    const constants = { EZ: '3.0', HD: '8.0', IN: '12.0', AT: '15.0' } as const;
+    for (const difficulty of ['EZ', 'HD', 'IN', 'AT'] as const) {
+      expect(screen.queryByText(difficulty)).toBeNull();
+      expect(screen.queryByText(`${difficulty} 12`)).toBeNull();
+      expect(screen.getByTestId(`rizline-difficulty-${difficulty}`).props.accessibilityLabel)
+        .toBe(`${difficulty} ${constants[difficulty]}`);
+      expect(screen.getByText(constants[difficulty])).toBeTruthy();
+    }
+    expect(screen.queryByText('12')).toBeNull();
+  });
+
+  it('shows a dash on SP catalog badges that have no constant', async () => {
+    const screen = await render(<RizlineSongRow song={rizlineSong({ charts: [rizlineChart('SP', null)] })} />);
+    expect(screen.queryByText('?')).toBeNull();
+    expect(screen.queryByText('SP')).toBeNull();
+    expect(screen.getByTestId('rizline-difficulty-SP').props.accessibilityLabel).toBe('SP —');
+    expect(screen.getByText('—')).toBeTruthy();
   });
 
   it.each<{ achievements: number; ahStatus: RizlineRecord['ahStatus']; status: 'ap' | 'ah' | 'normal' }>([

@@ -20,11 +20,12 @@ export type RizlineChart = {
   id: string; songId: string; difficulty: RizlineDifficulty; level: string;
   constant: number | null; designer: string | null; hit: number | null;
   combo: number | null; maxScore: number | null; riztimeHit: number | null;
+  chartPath: string;
 };
 export type RizlineSong = {
   id: string; title: string; artist: string | null; illustrator: string | null;
   packId: string; packName: string; bpm: string | null; durationSeconds: number | null;
-  updatedAt: string | null; coverPath: string | null; charts: RizlineChart[];
+  updatedAt: string | null; coverPath: string | null; audioPath: string; charts: RizlineChart[];
   achievements: { id: string; title: string; condition: string }[];
 };
 export type RizlineCatalog = {
@@ -69,6 +70,9 @@ export function sortedRizlineCharts(charts: readonly RizlineChart[]): RizlineCha
 }
 export function formatRizlineRks(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? '—' : value.toFixed(4);
+}
+export function formatRizlineConstant(value: number | null | undefined): string {
+  return value == null || !Number.isFinite(value) ? '—' : value.toFixed(1);
 }
 export function formatRizlineAccuracy(value: number | null | undefined): string {
   return value == null || !Number.isFinite(value) ? '—' : `${value.toFixed(4)}%`;

@@ -16,7 +16,7 @@ export const RizlineSongRow = memo(function RizlineSongRow({ song, favorite = fa
     coverImage={{ source: rizlineCoverUrl(song), accessibilityLabel: '曲绘', imageStyle: styles.cover, wrapStyle: styles.coverWrap,
       placeholderStyle: [styles.placeholder, { backgroundColor: theme.input }], noteStyle: styles.placeholderNote }}
     badges={<View style={styles.badges}>{sortedRizlineCharts(song.charts).map((chart) =>
-      <RizlineDifficultyBadge key={chart.id} difficulty={chart.difficulty} level={chart.level} />)}</View>}
+      <RizlineDifficultyBadge key={chart.id} difficulty={chart.difficulty} constant={chart.constant} showLabel={false} />)}</View>}
     accessory={onFavoriteChange ? <Pressable accessibilityRole="button" accessibilityLabel={`${favorite ? '取消收藏' : '收藏'} ${song.title}`}
       disabled={favoritePending} onPress={() => onFavoriteChange(song.id, !favorite)} style={localStyles.favorite}>
       <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={theme.accent} size={24} />

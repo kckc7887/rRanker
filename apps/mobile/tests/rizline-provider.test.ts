@@ -1,7 +1,7 @@
 import { createCipheriv } from 'node:crypto';
 import { gcm } from '@noble/ciphers/aes.js';
 import { describe, expect, it, vi } from 'vitest';
-import { decryptRizlineSave, RizlineProvider, RizlineSaveSchema } from '@/providers/rizline-provider';
+import { decryptRizlineSave, isRizlineNeedsSmsError, isRizlineTokenExpired, RizlineProvider, RizlineSaveSchema } from '@/providers/rizline-provider';
 import { ProviderError } from '@/providers/errors';
 import type { RizlineSession } from '@/providers/contracts';
 import { base64ToBytes, bytesToBase64 } from '@/utils/crypto-subset';
@@ -97,6 +97,77 @@ describe('Rizline official SMS and account requests', () => {
     expect(headers.get('token')).toBe(token());
     expect(headers.get('game_id')).toBe('pigeongames.rizline');
     expect(headers.get('phone')).toBe(phone);
+    expect(headers.get('Accept')).toBe('*/*');
+    expect(headers.get('User-Agent')).toBe('UnityPlayer/2022.3.62f2 (UnityWebRequest/1.0, libcurl/8.10.1-DEV)');
+    expect(headers.get('X-Unity-Version')).toBe('2022.3.62f2');
+  });
+  it('logs in with a password after check_phone allows it and omits the password from the session', async () => {
+    const password = 'secret-password';
+    const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(jsonResponse({ code: 0 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 0 }, { token: token() }))
+      .mockResolvedValueOnce(binaryResponse(encrypt(save)));
+    const result = await new RizlineProvider({ fetcher }).loginWithPassword(phone, password);
+    expect(result.player.userId).toBe(save.userId);
+    expect(JSON.stringify(result.session)).not.toContain(password);
+    expect(fetcher.mock.calls.map(call => String(call[0]))).toEqual([
+      'https://rizserver.pigeongames.net/account/check_phone',
+      'https://rizserver.pigeongames.net/account/login',
+      'https://rizserver.pigeongames.net/game/rn_login',
+    ]);
+    expect(JSON.parse(String(fetcher.mock.calls[1][1]?.body))).toEqual({ phone, password });
+  });
+  it('requires SMS when check_phone forbids password login and does not send a code', async () => {
+    const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>().mockResolvedValueOnce(jsonResponse({ code: 1 }));
+    const error = await new RizlineProvider({ fetcher }).loginWithPassword(phone, 'secret').catch(value => value);
+    expect(isRizlineNeedsSmsError(error)).toBe(true);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(String(fetcher.mock.calls[0][0])).toContain('/account/check_phone');
+  });
+  it('requires SMS when password login returns code 3', async () => {
+    const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValueOnce(jsonResponse({ code: 0 }))
+      .mockResolvedValueOnce(jsonResponse({ code: 3 }));
+    const error = await new RizlineProvider({ fetcher }).loginWithPassword(phone, 'secret').catch(value => value);
+    expect(isRizlineNeedsSmsError(error)).toBe(true);
+    expect(fetcher.mock.calls.map(call => String(call[0]))).toEqual([
+      'https://rizserver.pigeongames.net/account/check_phone',
+      'https://rizserver.pigeongames.net/account/login',
+    ]);
+  });
+  it('rotates credentials from set_token, set-token or token response headers', async () => {
+    const nextToken = token({ exp: 9999999999 });
+    for (const header of ['set_token', 'set-token', 'token'] as const) {
+      const onSessionChanged = vi.fn(async () => undefined);
+      const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+        .mockResolvedValue(binaryResponse(encrypt(save), { [header]: nextToken }));
+      await expect(new RizlineProvider({ fetcher, session, onSessionChanged }).getSave()).resolves.toEqual(save);
+      expect(onSessionChanged).toHaveBeenCalledWith({ ...session, token: nextToken });
+    }
+  });
+  it('does not treat rn_login HTTP 400 as an expired login', async () => {
+    const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValue(new Response('bad request', { status: 400 }));
+    await expect(new RizlineProvider({ fetcher, session }).getSave()).rejects.toMatchObject({ code: 'unknown' });
+  });
+  it('preempts rn_login when the JWT is expired or within the 60s skew', async () => {
+    const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();
+    const expired = { ...session, token: token({ exp: Math.floor(Date.now() / 1000) - 1 }) };
+    await expect(new RizlineProvider({ fetcher, session: expired }).getSave()).rejects.toMatchObject({ code: 'authentication' });
+    expect(fetcher).not.toHaveBeenCalled();
+    expect(isRizlineTokenExpired(expired.token)).toBe(true);
+    const skewed = { ...session, token: token({ exp: Math.floor(Date.now() / 1000) + 30 }) };
+    await expect(new RizlineProvider({ fetcher, session: skewed }).getSave()).rejects.toMatchObject({ code: 'authentication' });
+    expect(fetcher).not.toHaveBeenCalled();
+    fetcher.mockResolvedValue(binaryResponse(encrypt(save)));
+    await expect(new RizlineProvider({ fetcher, session: expired, allowExpiredToken: true }).getSave()).resolves.toEqual(save);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it('fills a missing phone header from the JWT claims', async () => {
+    const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>()
+      .mockResolvedValue(binaryResponse(encrypt(save)));
+    await new RizlineProvider({ fetcher, session: { ...session, phone: '' } }).getSave();
+    expect(new Headers(fetcher.mock.calls[0][1]?.headers).get('phone')).toBe(phone);
   });
   it('rejects invalid input, failed login, missing credential and another account save', async () => {
     const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>();

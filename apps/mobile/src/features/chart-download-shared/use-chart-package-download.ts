@@ -178,7 +178,9 @@ export function useChartPackageDownload({
       if (!controller.signal.aborted && mountedRef.current) {
         showNotification({
           title: '下载失败',
-          message: providerErrorToUserMessage(error, failureMessage),
+          message: providerErrorToUserMessage(error, failureMessage, {
+            permission: '下载服务暂时不可用，请稍后重试。',
+          }),
           variant: 'error',
         });
       }

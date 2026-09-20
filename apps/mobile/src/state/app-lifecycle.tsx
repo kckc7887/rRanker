@@ -15,6 +15,7 @@ import {
 import {
   abortForegroundWork,
   beginForegroundWork,
+  ensureForegroundWork,
   getAppLifecycleSnapshot,
   getForegroundAbortSignal,
   publishAppLifecycleSnapshot,
@@ -96,6 +97,7 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
         readyTaskRef.current = null;
         if (snapshotRef.current.appState === 'background' || snapshotRef.current.appState === 'inactive') return;
         if (startsForegroundGeneration) beginForegroundWork();
+        else ensureForegroundWork();
         update({
           ...snapshotRef.current,
           appState,

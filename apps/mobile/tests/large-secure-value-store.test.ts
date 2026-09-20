@@ -79,8 +79,11 @@ describe('LargeSecureValueStore', () => {
     expect(await store.read(corruptRef)).toBeNull();
 
     const deleteRef = 'rranker.secure.test.delete';
+    expect(await store.has(deleteRef)).toBe(false);
     await store.write(deleteRef, 'delete-me'.repeat(500));
+    expect(await store.has(deleteRef)).toBe(true);
     await store.delete(deleteRef);
+    expect(await store.has(deleteRef)).toBe(false);
     expect([...backend.values.keys()].some((key) => key.startsWith(deleteRef))).toBe(false);
   });
 });

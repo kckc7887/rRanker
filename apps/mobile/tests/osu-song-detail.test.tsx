@@ -129,6 +129,7 @@ let mockDetailState: {
   error: unknown;
 } = { data: detail, isLoading: false, isError: false, error: null };
 let mockGameData: { data?: ReturnType<typeof osuGameData> } = { data: osuGameData(5000) };
+let mockActiveGameId = 'osu-standard';
 let mockLibraryItems: UserLibraryItem[] = [];
 
 jest.mock('expo-router', () => ({
@@ -194,8 +195,8 @@ jest.mock('@/theme/app-theme', () => ({
 }));
 jest.mock('@/state/session-store', () => ({
   useSession: (selector: (state: Record<string, unknown>) => unknown) => selector({
-    activeGameId: 'osu-standard',
-    activeAccountId: 'osu-standard:osu:2',
+    activeGameId: mockActiveGameId,
+    activeAccountId: `${mockActiveGameId}:osu:2`,
   }),
 }));
 jest.mock('@/hooks/use-osu-beatmapset-detail', () => ({
@@ -257,6 +258,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
     mockRecentScores = [];
     mockDetailState = { data: detail, isLoading: false, isError: false, error: null };
     mockGameData = { data: osuGameData(5000) };
+    mockActiveGameId = 'osu-standard';
     mockLibraryItems = [];
   });
 
@@ -514,26 +516,35 @@ describe('OsuSongDetail 歌曲详情页', () => {
       .toBeGreaterThanOrEqual(addButtons.length);
   });
 
-  it('下载按钮位于练习与标签之间，并提供带视频、仅游玩内容和取消三项选择', async () => {
+  it('谱面确认位于练习与下载之间，下载保留原有三项选择', async () => {
     const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
     const card = within(screen.getByTestId('osu-detail-difficulty-22423'));
     const judgement = card.getByLabelText('osu 判定统计');
     const achievedAt = card.getByText('达成时间：2026-01-01');
     const practice = card.getByTestId('osu-detail-practice-22423');
+    const preview = card.getByTestId('osu-detail-preview-22423');
     const download = card.getByTestId('osu-detail-download-22423');
     const tagEditor = card.getByTestId('osu-detail-chart-tags-22423');
     const children = screen.getByTestId('osu-detail-difficulty-22423').children;
 
     expect(children.indexOf(judgement)).toBeLessThan(children.indexOf(achievedAt));
     expect(children.indexOf(achievedAt)).toBeLessThan(children.indexOf(practice));
-    expect(children.indexOf(practice)).toBeLessThan(children.indexOf(download));
+    expect(children.indexOf(practice)).toBeLessThan(children.indexOf(preview));
+    expect(children.indexOf(preview)).toBeLessThan(children.indexOf(download));
     expect(children.indexOf(download)).toBeLessThan(children.indexOf(tagEditor));
     expect(practice.props.testID).toBe('osu-detail-practice-22423');
     expect(practice.props.accessibilityHint).toBe('gesture-handler');
+    expect(preview.props.accessibilityHint).toBe('gesture-handler');
     expect(download.props.accessibilityHint).toBe('gesture-handler');
     expect(download.props.accessibilityLabel).toBe('下载谱面文件：鳥の詩');
 
-    fireEvent.press(download);
+    await fireEvent.press(preview);
+    expect(mockPush).toHaveBeenCalledWith({
+      pathname: '/songs/osu-chart-preview',
+      params: { gameId: 'osu-standard', beatmapsetId: '3720', beatmapId: '22423', title: '鳥の詩' },
+    });
+
+    await fireEvent.press(download);
     expect(mockShowActionNotification).toHaveBeenCalledWith({
       title: '下载谱面文件',
       message: '谱面文件由 Sayobot 提供。背景视频会增加文件大小和流量消耗，请选择下载内容。',
@@ -560,9 +571,21 @@ describe('OsuSongDetail 歌曲详情页', () => {
       includeVideo: false,
     }, {}));
 
-    fireEvent.press(practice);
+    await fireEvent.press(practice);
     expect(mockSetChartPractice).toHaveBeenCalledWith('3720', 'SD', 22423, true);
   });
+
+  it.each(['osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko'])(
+    '%s 谱面确认保留当前模式及当前难度 ID', async (gameId) => {
+      mockActiveGameId = gameId;
+      const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
+      await fireEvent.press(screen.getByTestId('osu-detail-preview-22427'));
+      expect(mockPush).toHaveBeenCalledWith({
+        pathname: '/songs/osu-chart-preview',
+        params: { gameId, beatmapsetId: '3720', beatmapId: '22427', title: '鳥の詩' },
+      });
+    },
+  );
 
   it('四模式指标数组遵循各自字段集合，缺失值统一为破折号', () => {
     const beatmap = detail.beatmaps[1];
@@ -633,6 +656,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
         expect(button.props.testID).not.toBe('gesture-handler-pressable');
       }
       expect(screen.getByTestId('osu-detail-practice-22423').props.accessibilityHint).toBeUndefined();
+      expect(screen.getByTestId('osu-detail-preview-22423').props.accessibilityHint).toBeUndefined();
       expect(screen.getByTestId('osu-detail-download-22423').props.accessibilityHint).toBeUndefined();
     } finally {
       Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });

@@ -3,18 +3,21 @@ import { RIZLINE_DIFFICULTIES, type RizlineCatalog } from '@/domain/rizline';
 
 export const RizlineResourcePathSchema = z.string().min(1).refine(path => !path.startsWith('/')
   && !path.includes('\\') && !path.includes(':') && path.split('/').every(part => part !== '' && part !== '.' && part !== '..'));
+const M4aPathSchema = RizlineResourcePathSchema.refine(path => path.toLowerCase().endsWith('.m4a'));
+const JsonPathSchema = RizlineResourcePathSchema.refine(path => path.toLowerCase().endsWith('.json'));
 const nullableCount = z.number().int().nonnegative().nullable();
 const ChartSchema = z.object({
   id: z.string().min(1), songId: z.string().min(1), difficulty: z.enum(RIZLINE_DIFFICULTIES), level: z.string().min(1),
   constant: z.number().nonnegative().nullable(), designer: z.string().nullable(), hit: nullableCount,
-  combo: nullableCount, maxScore: nullableCount, riztimeHit: nullableCount,
+  combo: nullableCount, maxScore: nullableCount, riztimeHit: nullableCount, chartPath: JsonPathSchema,
 });
 export const RizlineCatalogSchema: z.ZodType<RizlineCatalog> = z.object({
   schemaVersion: z.literal(1), resourceVersion: z.string().min(1), gameVersion: z.string().min(1),
   songs: z.array(z.object({
     id: z.string().min(1), title: z.string().min(1), artist: z.string().nullable(), illustrator: z.string().nullable(),
     packId: z.string().min(1), packName: z.string().min(1), bpm: z.string().nullable(), durationSeconds: z.number().positive().nullable(),
-    updatedAt: z.iso.date().nullable(), coverPath: RizlineResourcePathSchema.nullable(), charts: z.array(ChartSchema).min(1),
+    updatedAt: z.iso.date().nullable(), coverPath: RizlineResourcePathSchema.nullable(), audioPath: M4aPathSchema,
+    charts: z.array(ChartSchema).min(1),
     achievements: z.array(z.object({ id: z.string().min(1), title: z.string(), condition: z.string() })),
   })).min(1),
 }).superRefine((catalog, context) => {

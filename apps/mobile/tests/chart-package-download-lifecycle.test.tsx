@@ -4,6 +4,7 @@ import { Platform } from 'react-native';
 import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
 import type { ActionNotificationInput } from '@/components/AppNotification';
 import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
+import { ProviderError } from '@/providers/errors';
 
 const originalPlatform = Platform.OS;
 const originalFetch = globalThis.fetch;
@@ -181,5 +182,18 @@ describe('chart package download lifecycle', () => {
     expect(runner).not.toHaveBeenCalled();
     expect(mockDismissNotification).toHaveBeenCalledWith(7);
     expect(mockShowNotification).not.toHaveBeenCalled();
+  });
+
+  it('reports public resource permission failures as download unavailability and releases the task', async () => {
+    const { result } = await renderHook(() => useChartPackageDownload({ successMessage: '已保存' }));
+    await act(async () => {
+      await result.current.start(async () => { throw new ProviderError('permission', 'private resource response', false); });
+    });
+    expect(mockShowNotification).toHaveBeenCalledTimes(1);
+    expect(mockShowNotification).toHaveBeenCalledWith({
+      title: '下载失败', message: '下载服务暂时不可用，请稍后重试。', variant: 'error',
+    });
+    expect(mockDismissNotification).toHaveBeenCalledWith(7);
+    expect(result.current.isRunning).toBe(false);
   });
 });
