@@ -1,3 +1,8 @@
+import {
+  assertChartPreviewGifFramePixels,
+  assertChartPreviewTexturePixels,
+  ChartPreviewBudgetError,
+} from '../../chart-preview-shared/chart-preview-resource-budget';
 import { loadItemsBounded } from './engine';
 import { toArrayBuffer } from './bytes';
 import { decodeOsuText, findArchiveResource, listOsbSources, type PreviewResource, type PreviewResourceMap } from './osu-text';
@@ -43,10 +48,21 @@ function mimeFor(name: string): string {
   return ({ png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', mp4: 'video/mp4', m4v: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', avi: 'video/x-msvideo', flv: 'video/x-flv' } as Record<string, string>)[ext ?? ''] ?? 'application/octet-stream';
 }
 
-async function loadImage(resource: PreviewResource, mime: string, signal: AbortSignal): Promise<{ image: CanvasImageSource; dispose(): void }> {
+function assertImagePixels(image: CanvasImageSource, file: string): void {
+  const source = image as { width?: number; height?: number; naturalWidth?: number; naturalHeight?: number };
+  const width = Number(source.naturalWidth ?? source.width ?? 0);
+  const height = Number(source.naturalHeight ?? source.height ?? 0);
+  const pixels = width * height;
+  if (file.toLowerCase().endsWith('.gif')) assertChartPreviewGifFramePixels(pixels);
+  else assertChartPreviewTexturePixels(pixels);
+}
+
+async function loadImage(resource: PreviewResource, mime: string, file: string, signal: AbortSignal): Promise<{ image: CanvasImageSource; dispose(): void }> {
   if (resource instanceof Uint8Array && typeof createImageBitmap === 'function') {
     const bitmap = await createImageBitmap(new Blob([toArrayBuffer(resource)], { type: mime }));
     if (signal.aborted) { bitmap.close(); signal.throwIfAborted(); }
+    try { assertImagePixels(bitmap, file); }
+    catch (error) { bitmap.close(); throw error; }
     return { image: bitmap, dispose: () => bitmap.close() };
   }
   const ownedUrl = resource instanceof Uint8Array ? URL.createObjectURL(new Blob([toArrayBuffer(resource)], { type: mime })) : null;
@@ -65,6 +81,7 @@ async function loadImage(resource: PreviewResource, mime: string, signal: AbortS
       else image.src = ownedUrl ?? (resource as { uri: string }).uri;
     });
     signal.throwIfAborted();
+    assertImagePixels(image, file);
     return { image, dispose };
   } catch (error) { dispose(); throw error; }
 }
@@ -95,7 +112,9 @@ function waitForVideo(video: HTMLVideoElement, signal: AbortSignal): Promise<boo
 export async function createPreviewMedia(options: MediaOptions): Promise<PreviewMedia> {
   const { files, osuBytes, osuPath, signal, onWarning, onInvalidate } = options;
   const sources = listOsbSources(files, osuPath);
-  const visuals = parseBeatmapVisuals(decodeOsuText(osuBytes), sources.map(s => s.text), { osuPath, osbPaths: sources.map(s => s.path) });
+  const visuals = parseBeatmapVisuals(decodeOsuText(osuBytes), sources.map(s => s.text), {
+    osuPath, osbPaths: sources.map(s => s.path), cancellation: { signal },
+  });
   let objects: StoryboardObject[] = visuals.objects;
   const images = new Map<string, CanvasImageSource>();
   const imageDisposers = new Set<() => void>();
@@ -159,8 +178,12 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
         const entry = findArchiveResource(files, file);
         if (!entry) { onWarning('部分图片缺失，已保留其它谱面内容'); return; }
         let loaded: Awaited<ReturnType<typeof loadImage>>;
-        try { loaded = await loadImage(entry.resource, mimeFor(file), signal); }
-        catch { if (!signal.aborted) onWarning('部分图片无法读取，已保留其它谱面内容'); return; }
+        try { loaded = await loadImage(entry.resource, mimeFor(file), file, signal); }
+        catch (error) {
+          if (error instanceof ChartPreviewBudgetError) throw error;
+          if (!signal.aborted) onWarning('部分图片无法读取，已保留其它谱面内容');
+          return;
+        }
         if (disposed || signal.aborted) loaded.dispose();
         else { images.set(key(file), loaded.image); imageDisposers.add(loaded.dispose); }
       },

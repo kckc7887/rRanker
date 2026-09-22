@@ -43,6 +43,12 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Architecture
+        run: npm run check:architecture
+
+      - name: Generated players
+        run: npm run check:generated
+
   build-ios:
     needs: quality
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository

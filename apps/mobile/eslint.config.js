@@ -12,6 +12,8 @@ module.exports = defineConfig([
       'src/features/simai-chart-preview/webview-player/**',
     ],
     rules: {
+      // 当前已检查源码的最高圈复杂度。只拒绝比它更高的新函数。
+      complexity: ['error', 107],
       'no-restricted-imports': ['error', {
         paths: [{
           name: 'react-native',

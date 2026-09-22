@@ -13,7 +13,7 @@ import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { cancelBoundAccountQueries } from '@/screens/game-accounts-actions';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
-import { writeRizlinePassword } from '@/storage/rizline-password-store';
+import { deleteRizlinePassword, writeRizlinePassword } from '@/storage/rizline-password-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -78,9 +78,20 @@ export function RizlineLoginPanel(props: { visible: boolean; onSuccess: () => vo
         validatePhone={validatePhone} cooldownKey="rizline-official"
         sendCode={(phone, signal) => provider.sendVerificationCode(phone, signal)} login={login} />
     ) : (
+      <>
       <PasswordLoginPanel visible={props.visible} onSuccess={props.onSuccess} onBusyChange={setBusyState}
         login={loginWithPassword} usernameLabel="手机号" usernameKeyboardType="phone-pad"
         validateUsername={validatePhone} emptyMessage="请输入手机号和密码" invalidUsernameMessage="请输入正确的手机号" />
+      <Text style={[styles.message, { color: theme.textMuted }]}>密码只保存在本机，用于下次续期。可以随时清除。</Text>
+      <Pressable accessibilityRole="button" disabled={busy} onPress={() => {
+        const state = useSession.getState();
+        const account = state.boundAccounts.find((item) => item.gameId === 'rizline' && item.id === state.activeAccountId);
+        if (!account) { setNotice('当前没有可清除密码的 Rizline 账号'); return; }
+        void deleteRizlinePassword(account.id).then(() => setNotice('已清除本机保存的密码'));
+      }} style={[styles.secondary, { borderColor: theme.border, opacity: busy ? 0.5 : 1 }]}>
+        <Text style={[styles.secondaryText, { color: theme.text }]}>清除本机密码</Text>
+      </Pressable>
+      </>
     )}
     <Text style={[styles.or, { color: theme.textMuted }]}>或</Text>
     <Pressable accessibilityRole="button" disabled={busy}

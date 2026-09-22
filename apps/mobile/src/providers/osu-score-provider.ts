@@ -34,7 +34,10 @@ const OSU_STATUS_TEXTS: ProviderStatusTexts = {
 };
 
 /** token 轮换成功后的回调：由调用方把新会话持久化到账号存储。 */
-export type OsuTokenRotationHandler = (session: OsuOAuthSession) => void | Promise<void>;
+export type OsuTokenRotationHandler = (
+  session: OsuOAuthSession,
+  expected: OsuOAuthSession,
+) => void | Promise<void>;
 
 /**
  * osu! 官方 API Provider。所有端点要求 Bearer token；
@@ -63,9 +66,10 @@ export class OsuScoreProvider {
     if (!osuAccessTokenExpired(this.session)) return this.session.accessToken;
     if (!this.refreshPromise) {
       this.refreshPromise = (async () => {
-        const next = await rotateOsuTokens(this.session.refreshToken);
+        const expected = this.session;
+        const next = await rotateOsuTokens(expected.refreshToken);
         this.session = next;
-        await this.onTokensRotated?.(next);
+        await this.onTokensRotated?.(next, expected);
       })().finally(() => {
         this.refreshPromise = null;
       });

@@ -64,15 +64,9 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       'SELECT schema_version, payload FROM account_score_snapshots WHERE account_id = ?', accountId,
     );
     if (!row) return null;
-    if (row.schema_version !== SNAPSHOT_SCHEMA_VERSION) {
-      await runDatabaseWrite(() => db.runAsync('DELETE FROM account_score_snapshots WHERE account_id = ? AND payload = ? AND schema_version = ?', accountId, row.payload, row.schema_version));
-      return null;
-    }
+    if (row.schema_version !== SNAPSHOT_SCHEMA_VERSION) return null;
     try { return JSON.parse(row.payload) as ScoreSnapshot; }
-    catch {
-      await runDatabaseWrite(() => db.runAsync('DELETE FROM account_score_snapshots WHERE account_id = ? AND payload = ? AND schema_version = ?', accountId, row.payload, row.schema_version));
-      return null;
-    }
+    catch { return null; }
   }
   async save(accountId: string, snapshot: ScoreSnapshot, assertCurrent?: () => void): Promise<void> {
     await this.initialize();
@@ -97,12 +91,9 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       'SELECT schema_version, payload FROM catalog_snapshots WHERE id = ?', 1,
     );
     if (!row) return null;
-    if (row.schema_version !== CATALOG_SCHEMA_VERSION) {
-      await runDatabaseWrite(() => db.runAsync('DELETE FROM catalog_snapshots WHERE id = ? AND payload = ? AND schema_version = ?', 1, row.payload, row.schema_version));
-      return null;
-    }
+    if (row.schema_version !== CATALOG_SCHEMA_VERSION) return null;
     try { return JSON.parse(row.payload) as CatalogSnapshot; }
-    catch { await runDatabaseWrite(() => db.runAsync('DELETE FROM catalog_snapshots WHERE id = ? AND payload = ? AND schema_version = ?', 1, row.payload, row.schema_version)); return null; }
+    catch { return null; }
   }
   async saveCatalog(catalog: CatalogSnapshot, assertCurrent?: () => void): Promise<void> {
     await this.initialize();
@@ -124,15 +115,9 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       'SELECT schema_version, payload FROM resource_snapshots WHERE resource_key = ?', key,
     );
     if (!row) return null;
-    if (row.schema_version !== schemaVersion) {
-      await runDatabaseWrite(() => db.runAsync('DELETE FROM resource_snapshots WHERE resource_key = ? AND payload = ? AND schema_version = ?', key, row.payload, row.schema_version));
-      return null;
-    }
+    if (row.schema_version !== schemaVersion) return null;
     try { return JSON.parse(row.payload) as T; }
-    catch {
-      await runDatabaseWrite(() => db.runAsync('DELETE FROM resource_snapshots WHERE resource_key = ? AND payload = ? AND schema_version = ?', key, row.payload, row.schema_version));
-      return null;
-    }
+    catch { return null; }
   }
   async saveResource<T>(key: string, schemaVersion: number, updatedAt: string, value: T, assertCurrent?: () => void): Promise<void> {
     await this.initialize();

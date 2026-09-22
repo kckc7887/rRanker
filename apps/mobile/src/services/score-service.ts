@@ -1,6 +1,6 @@
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { enrichRecordsWithCatalog, isUtageSongId } from '@/domain/catalog';
-import { buildBest50 } from '@/domain/rating';
+import { buildBest50, calculateChartRating } from '@/domain/rating';
 import type { CatalogSnapshot, Player, ScoreRecord, ScoreSnapshot } from '@/domain/models';
 import {
   isCatalogDrivenScoreProvider,
@@ -19,10 +19,17 @@ export function buildScoreSnapshot(
   rawRecords: readonly ScoreRecord[],
   catalog: CatalogSnapshot,
 ): ScoreSnapshot {
-  const records = enrichRecordsWithCatalog(
+  const enriched = enrichRecordsWithCatalog(
     rawRecords.filter((record) => !isUtageSongId(record.songId) || record.type === 'UTAGE'),
     catalog,
   );
+  const derivesChartRating = player.source.kind === 'local' || player.source.kind === 'generated';
+  const records = derivesChartRating
+    ? enriched.map((record) => ({
+      ...record,
+      rating: calculateChartRating(record.difficultyConstant, record.achievements),
+    }))
+    : enriched;
   let best50 = buildBest50(player, records, catalog, player.source);
   const derivesRatingFromBest50 = player.source.kind === 'local' || player.source.kind === 'generated';
   const effectivePlayer = derivesRatingFromBest50

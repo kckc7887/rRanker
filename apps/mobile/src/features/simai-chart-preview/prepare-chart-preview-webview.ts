@@ -45,7 +45,7 @@ export {
 
 // Metro 在运行时解析这些静态资源模块。
 const HTML_MODULE = require('../../../assets/maimai-chart-preview/index.html') as number;
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- Metro 静态资源编号只能在运行时 require
 const PLAYER_MODULE = require('../../../assets/maimai-chart-preview/player.bundle') as number;
 const SENSOR_MODULE = require('../../../assets/maimai-chart-preview/sensor.webp') as number;
 

@@ -9,6 +9,7 @@ import {
 } from '@/hooks/use-aliased-catalog';
 import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { queryClient } from '@/state/query-client';
+import { invalidateMaimaiCatalog } from '@/services/infinite-query-refresh';
 import { aliasesForCatalogSong } from '@/domain/catalog';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import type { DetailedCatalogProvider } from '@/providers/contracts';
@@ -43,6 +44,17 @@ function maimaiCatalogOptions(
       queryClient.setQueryData(MAIMAI_CATALOG_QUERY_KEY, fresh);
     },
   };
+}
+
+export async function refreshMaimaiCatalog(
+  provider: DetailedCatalogProvider = useSession.getState().catalogProvider,
+): Promise<CatalogSnapshot> {
+  await invalidateMaimaiCatalog();
+  return queryClient.fetchQuery({
+    queryKey: MAIMAI_CATALOG_QUERY_KEY,
+    queryFn: ({ signal }) => loadAliasedCatalog(maimaiCatalogOptions(provider), signal),
+    staleTime: Infinity,
+  });
 }
 
 export function ensureMaimaiCatalog(provider: DetailedCatalogProvider): Promise<CatalogSnapshot> {

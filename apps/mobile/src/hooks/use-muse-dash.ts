@@ -1,5 +1,5 @@
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
-import { useMemo } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import type { DataSource } from '@/domain/models';
 import type {
@@ -17,6 +17,7 @@ import {
 } from '@/providers/maxed-musedash-test-provider';
 import { cacheFirstLoad } from '@/services/cache-first';
 import { queryClient } from '@/state/query-client';
+import { invalidateMuseDashSessionResources } from '@/services/infinite-query-refresh';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import {
   loadMuseDashAlbumsCacheFirst,
@@ -51,6 +52,10 @@ function museDashSessionResourceQueryOptions<T>(
     ),
     ...MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS,
   } as const;
+}
+
+export async function refreshMuseDashSessionResources(): Promise<void> {
+  await invalidateMuseDashSessionResources();
 }
 
 export function ensureMuseDashAlbums() {
@@ -170,16 +175,22 @@ export function useMuseDashPlayDetail(
   }, enabled);
 }
 
+const MUSE_DASH_DETAIL_CONCURRENCY = 6;
+
 /** 批量单曲明细 miss 表（成就筛选用）：key = `${uid}:${difficulty}` → miss。
+ * null 表示尚未返回，不能当成不符合筛选。
  * 与 useMuseDashPlayDetail 共用同一 queryKey 且 queryFn 返回结构一致（完整快照），
  * 同 Key 查询无论由哪个 observer 执行，缓存 data 均为 `{ data, source }`，读取处解包 `data.data.play?.miss`。 */
 export function useMuseDashPlayDetails(
   items: readonly { uid: string; difficulty: number; platform: string }[],
   userId: string | null,
   enabled: boolean,
-): ReadonlyMap<string, number | undefined> {
+): ReadonlyMap<string, number | null | undefined> {
   const tabActive = useCachedTabActive();
-  const queryDefs = useMemo(() => items.map((item) => ({
+  const [windowSize, setWindowSize] = useState(MUSE_DASH_DETAIL_CONCURRENCY);
+  const itemsKey = items.map((item) => `${item.uid}:${item.difficulty}:${item.platform}`).join('|');
+  useEffect(() => { setWindowSize(MUSE_DASH_DETAIL_CONCURRENCY); }, [itemsKey, userId, enabled]);
+  const queryDefs = useMemo(() => items.map((item, index) => ({
     queryKey: ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const,
     queryFn: async ({ signal }: { signal: AbortSignal }): Promise<MuseDashSnapshot<MuseDashPlayDetail>> => {
       if (userId !== null && isMuseDashTestUserId(userId)) {
@@ -188,17 +199,26 @@ export function useMuseDashPlayDetails(
       const detail = await loadMuseDashPlayDetailFresh(item.uid, item.difficulty, item.platform, userId!, signal);
       return makeMuseDashSnapshot(detail);
     },
-    enabled: enabled && tabActive && userId !== null,
+    enabled: enabled && tabActive && userId !== null && index < windowSize,
     ...MUSE_DASH_QUERY_OPTIONS,
-  })), [items, userId, enabled, tabActive]);
+  })), [items, userId, enabled, tabActive, windowSize]);
   const queries = useQueries({ queries: queryDefs });
+  useEffect(() => {
+    if (!enabled) return;
+    const settled = queries.slice(0, windowSize).filter((query) => query.isSuccess || query.isError).length;
+    const next = Math.min(items.length, settled + MUSE_DASH_DETAIL_CONCURRENCY);
+    if (next !== windowSize) setWindowSize(next);
+  }, [enabled, items.length, queries, windowSize]);
   return useMemo(() => {
-    const map = new Map<string, number | undefined>();
+    const map = new Map<string, number | null | undefined>();
     const count = Math.min(items.length, queries.length);
     for (let index = 0; index < count; index += 1) {
       const item = items[index];
       const query = queries[index];
-      if (item && query) map.set(`${item.uid}:${item.difficulty}`, query.data?.data?.play?.miss);
+      if (!item || !query) continue;
+      const key = `${item.uid}:${item.difficulty}`;
+      if (!query.isFetched || query.isLoading) map.set(key, null);
+      else map.set(key, query.data?.data?.play?.miss);
     }
     return map;
   }, [items, queries]);

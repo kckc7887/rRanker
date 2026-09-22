@@ -19,6 +19,6 @@ export { warmSkinCaches } from './engine/renderer/HitObjectRenderer';
 export { warmSliderPaths } from './engine/renderer/SliderGeometry';
 export { Player } from './engine/player/Player';
 export { TimeMapper } from './engine/player/TimeMapper';
-export { PlaybackClock } from '../../chart-preview-shared/webview-player/playbackClock';
+export { PlaybackClock, audioContextTime, musicPosition, outputTime } from '../../chart-preview-shared/webview-player/playbackClock';
 export { getAudioContextOutputTime } from '../../chart-preview-shared/webview-player/audioClock';
 export { loadItemsBounded } from '../../../services/offset-pagination';

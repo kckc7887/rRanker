@@ -9,7 +9,10 @@ export const USER_DATA_BACKUP_VERSION = 3 as const;
 export const DEFAULT_TAG_PRESETS = ['爆发', '交互', '星星', '鬼歌', '大歌'] as const;
 export const MAX_TAG_LENGTH = 24;
 export const MAX_TAGS_PER_ITEM = 30;
+export const MAX_TAG_PRESETS = 30;
 export const MAX_BACKUP_ITEMS = 5000;
+/** 与 schema 允许的最大备份体积对齐，导出和导入使用同一上限。 */
+export const MAX_BACKUP_FILE_BYTES = 12 * 1024 * 1024;
 
 const KNOWN_GAME_IDS = new Set<GameId>(['rizline', 'majdata-net', 'maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test', 'osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko']);
 const GameIdSchema = z.enum(['rizline', 'majdata-net', 'maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test', 'osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko']);
@@ -174,14 +177,33 @@ export function normalizeTagName(value: string): { displayName: string; key: str
   return { displayName, key: displayName.toLowerCase() };
 }
 
-export function normalizeTags(values: readonly string[]): string[] {
+function normalizeTagList(values: readonly string[], limit: number, message: string): string[] {
   const byKey = new Map<string, string>();
   for (const value of values) {
     const normalized = normalizeTagName(value);
     if (!byKey.has(normalized.key)) byKey.set(normalized.key, normalized.displayName);
   }
-  if (byKey.size > MAX_TAGS_PER_ITEM) throw new Error(`每个项目最多添加 ${MAX_TAGS_PER_ITEM} 个标签`);
+  if (byKey.size > limit) throw new Error(message);
   return [...byKey.values()];
+}
+
+export function normalizeTags(values: readonly string[]): string[] {
+  return normalizeTagList(values, MAX_TAGS_PER_ITEM, `每个项目最多添加 ${MAX_TAGS_PER_ITEM} 个标签`);
+}
+
+export function normalizeTagPresets(values: readonly string[]): string[] {
+  return normalizeTagList(values, MAX_TAG_PRESETS, `标签预设最多 ${MAX_TAG_PRESETS} 个`);
+}
+
+export function userDataBackupBytes(backup: UserDataBackup): number {
+  return new TextEncoder().encode(`${JSON.stringify(backup, null, 2)}\n`).byteLength;
+}
+
+export function assertUserDataBackupExportable(backup: UserDataBackup): void {
+  parseUserDataBackup(backup);
+  if (userDataBackupBytes(backup) > MAX_BACKUP_FILE_BYTES) {
+    throw new Error('备份超过可导入的大小上限');
+  }
 }
 
 export function buildTagHistory(
@@ -234,7 +256,7 @@ export function createUserDataBackup(
     version: USER_DATA_BACKUP_VERSION,
     exportedAt,
     items: items.map(normalizeLibraryItem).filter(shouldKeepLibraryItem).sort((a, b) => a.key.localeCompare(b.key)),
-    tagPresets: normalizeTags(tagPresets),
+    tagPresets: normalizeTagPresets(tagPresets),
   };
 }
 
@@ -246,7 +268,7 @@ export function parseUserDataBackup(value: unknown): UserDataBackup {
   })).filter(shouldKeepLibraryItem).sort((a, b) => a.key.localeCompare(b.key));
   return parsed.version === 1
     ? { ...parsed, items }
-    : { ...parsed, items, tagPresets: normalizeTags(parsed.tagPresets) };
+    : { ...parsed, items, tagPresets: normalizeTagPresets(parsed.tagPresets) };
 }
 
 export function mergeLibraryItems(localItems: readonly UserLibraryItem[], importedItems: readonly UserLibraryItem[]): UserLibraryItem[] {

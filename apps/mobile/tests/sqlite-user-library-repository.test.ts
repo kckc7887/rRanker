@@ -47,7 +47,7 @@ describe('SqliteUserLibraryRepository', () => {
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('user_library_meta'));
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('PRAGMA foreign_keys = ON'));
     expect(sqlite.db.runAsync).toHaveBeenCalledWith('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', 4);
-    expect(sqlite.db.runAsync).toHaveBeenCalledWith('DELETE FROM user_library_items');
+    expect(sqlite.db.runAsync).not.toHaveBeenCalledWith('DELETE FROM user_library_items');
   });
 
   it('expands the chart type constraint in place while preserving items and tags', async () => {

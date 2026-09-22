@@ -112,7 +112,7 @@ const adofaiAdapter = createGameStorageAdapter({
   title: findGame('adofai')?.title ?? '冰与火之舞',
   color: '#F15B55',
   note: '玩家资料与核心成绩快照；公开结果仅保留在会话内，SQLite 为估算值',
-  queryKeys: [['tuf']],
+  queryKeys: [['tuf'], ['game-data']],
   fileResources: [],
   ownership: { ownsAccount: accountOwnership('adofai'), resourcePrefixes: ['tuf:'] },
 });
@@ -122,7 +122,7 @@ const musedashAdapter = createGameStorageAdapter({
   title: findGame('musedash')?.title ?? '喵斯快跑',
   color: '#EC4899',
   note: '玩家与核心成绩快照；曲库及单曲明细仅保留在会话内，SQLite 为估算值',
-  queryKeys: [['musedash']],
+  queryKeys: [['musedash'], ['game-data']],
   fileResources: [],
   ownership: { ownsAccount: accountOwnership('musedash'), resourcePrefixes: ['musedash:'] },
 });
@@ -138,7 +138,7 @@ const phiraAdapter = createGameStorageAdapter({
   title: findGame('phira')?.title ?? 'Phira',
   color: '#8D5BD6',
   note: '玩家与核心成绩快照；曲库、谱面及物量仅保留在会话内，SQLite 为估算值',
-  queryKeys: [['phira']],
+  queryKeys: [['phira'], ['game-data']],
   fileResources: [],
   ownership: { ownsAccount: accountOwnership('phira'), resourcePrefixes: ['phira:'] },
 });

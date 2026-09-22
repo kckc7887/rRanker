@@ -229,8 +229,9 @@ export class PhigrosScoreProvider implements ScoreProvider {
     delta: number,
     songCost: number,
     includePhi = true,
+    signal?: AbortSignal,
   ): Promise<PushRecommendationsResult> {
-    const { gameRecord, diffTable } = await this.loadSave();
+    const { gameRecord, diffTable } = await this.loadSave(signal);
     return findPushRecommendations(gameRecord, diffTable, { delta, songCost, includePhi });
   }
 

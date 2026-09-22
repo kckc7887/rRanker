@@ -8,6 +8,8 @@ export interface QueryStateViewProps<T> {
   isEmpty: boolean;
   error?: unknown;
   emptyText?: string;
+  emptyActionLabel?: string;
+  onEmptyAction?: () => void;
   onRetry?: () => void;
   data: T | undefined;
   renderData: (data: T) => ReactElement;
@@ -19,6 +21,8 @@ export function QueryStateView<T,>({
   isEmpty,
   data,
   emptyText,
+  emptyActionLabel,
+  onEmptyAction,
   onRetry,
   renderData,
 }: QueryStateViewProps<T>) {
@@ -48,6 +52,16 @@ export function QueryStateView<T,>({
     return (
       <View style={styles.center}>
         <Text style={[styles.statusText, { color: theme.textMuted }]}>{emptyText ?? '暂无数据'}</Text>
+        {onEmptyAction && emptyActionLabel ? (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={emptyActionLabel}
+            onPress={onEmptyAction}
+            style={[styles.retryButton, { backgroundColor: theme.accent }]}
+          >
+            <Text style={[styles.retryText, { color: theme.onAccent }]}>{emptyActionLabel}</Text>
+          </Pressable>
+        ) : null}
       </View>
     );
   }

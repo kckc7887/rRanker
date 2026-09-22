@@ -78,8 +78,8 @@ export const taikoRuleset: Ruleset<TaikoSession> = {
     const barLines = computeBarLineTimes(beatmap);
 
     // OverlappingScrollAlgorithm: per-object velocities locked at each item's own start time.
-    // TODO: surface TaikoModConstantSpeed via modDiff.
-    const isConstantSpeed = false;
+    // Constant Speed 只认 lazer acronym CS，stable 位图里没有这一位。
+    const isConstantSpeed = modDiff.isConstantSpeed;
     const smFactor = taikoScrollMultiplier(modDiff);
     const objectVel: number[] = new Array(objects.length);
     let minVel = Infinity;

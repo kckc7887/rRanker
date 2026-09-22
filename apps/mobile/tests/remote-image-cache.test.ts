@@ -97,7 +97,7 @@ vi.mock('expo-image-manipulator', () => ({
 }));
 
 // 原生模块 mock 完成后导入缓存服务。
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import {
   REMOTE_IMAGE_CACHE_BUDGET_BYTES,
   REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES,

@@ -1,127 +1,61 @@
-import { fetch as expoFetch } from 'expo/fetch';
+import {
+  requestScoreHubJson as requestJson,
+  requestScoreHubRaw as requestRaw,
+  ScoreHubError,
+  type ScoreHubAbortSignal,
+} from '@/services/score-hub-http';
+import { pollQrLoginUntilToken } from '@/services/score-hub-poll';
+import {
+  friendCodeFromUser,
+  QR_LOGIN_STATUS_LABEL,
+  SCORE_HUB_ALL_DIFFICULTIES,
+  type QrLoginCredential,
+  type QrLoginTokenResult,
+  type ScoreHubDxnetJobStats,
+  type ScoreHubLatestSync,
+  type ScoreHubStatistics,
+} from '@/services/score-hub-types';
 
-export const SCORE_HUB_API_BASE = 'https://api.maiscorehub.bakapiano.com/api/v1';
+export {
+  isRetryableScoreHubError,
+  SCORE_HUB_API_BASE,
+  ScoreHubError,
+  type ScoreHubAbortSignal,
+} from '@/services/score-hub-http';
+export {
+  pollCabinetScoreJobUntilDone,
+  pollLoginUntilToken,
+  pollQrLoginUntilToken,
+  pollUpdateScoreUntilDone,
+  verifyLoginJob,
+} from '@/services/score-hub-poll';
+export {
+  createCabinetScoreJob,
+  fetchActiveCabinetScoreJob,
+  fetchCabinetScoreJob,
+} from '@/services/score-hub-cabinet';
+export {
+  friendCodeFromUser,
+  QR_LOGIN_STATUS_LABEL,
+  SCORE_HUB_ALL_DIFFICULTIES,
+} from '@/services/score-hub-types';
+export type {
+  QrLoginCredential,
+  QrLoginTokenResult,
+  ScoreHubCabinetScoreJob,
+  ScoreHubCabinetScoreJobCleanupStatus,
+  ScoreHubCabinetScoreJobError,
+  ScoreHubCabinetScoreJobStage,
+  ScoreHubCabinetScoreJobStatus,
+  ScoreHubDxnetJobStats,
+  ScoreHubLatestSync,
+  ScoreHubScoreProgress,
+  ScoreHubStatistics,
+  ScoreHubSyncScore,
+} from '@/services/score-hub-types';
 
-const LOGIN_POLL_MS = 3_000;
-const SCORE_POLL_MS = 5_000;
-const LOGIN_TIMEOUT_MS = 8 * 60_000;
-const SCORE_TIMEOUT_MS = 20 * 60_000;
-const VERIFY_EVERY_MS = 20_000;
-const REQUEST_TIMEOUT_MS = 60_000;
 const QR_LOGIN_POST_TIMEOUT_MS = 150_000;
-const QR_POLL_MS = 1_000;
-const QR_LOGIN_TIMEOUT_MS = 5 * 60_000;
-const CABINET_SCORE_POLL_MS = 1_000;
-const CABINET_SCORE_TIMEOUT_MS = 30 * 60_000;
-const CABINET_SCORE_FAILURE_LIMIT = 5;
 
-export const SCORE_HUB_ALL_DIFFICULTIES = [0, 1, 2, 3, 4, 10] as const;
-
-export const QR_LOGIN_STATUS_LABEL: Record<string, string> = {
-  pending: '正在准备读取…',
-  adding_rival: '正在确认玩家信息…',
-  waiting_snapshot: '正在确认玩家账号…',
-};
-
-export type QrLoginCredential =
-  | { kind: 'text'; qrCode: string }
-  | { kind: 'image'; imageUri: string; mimeType?: string; fileName?: string };
-
-export type QrLoginTokenResult = {
-  token: string;
-  friendCode: string | null;
-};
-
-export type ScoreHubSyncScore = {
-  musicId: string;
-  cid?: string;
-  chartIndex: number;
-  type: string;
-  dxScore?: string | number | null;
-  score?: string | number | null;
-  fs?: string | null;
-  fc?: string | null;
-  rating?: number;
-  isNew?: boolean;
-};
-
-export type ScoreHubLatestSync = {
-  id: string;
-  createdAt?: string;
-  updatedAt?: string;
-  scores?: ScoreHubSyncScore[];
-  autoExportResult?: unknown;
-} | null;
-
-export type ScoreHubScoreProgress = {
-  completedDiffs: number[];
-  totalDiffs: number;
-};
-
-export type ScoreHubDxnetJobStats = {
-  totalCount: number;
-  completedCount: number;
-  failedCount: number;
-  successRate: number;
-  avgDuration: number | null;
-};
-
-export type ScoreHubStatistics = {
-  dxnetJobs: ScoreHubDxnetJobStats;
-};
-
-export type ScoreHubCabinetScoreJobStatus = 'queued' | 'processing' | 'completed' | 'failed';
-export type ScoreHubCabinetScoreJobCleanupStatus =
-  | 'not_required'
-  | 'pending'
-  | 'succeeded'
-  | 'unconfirmed';
-export type ScoreHubCabinetScoreJobStage =
-  | 'queued'
-  | 'qr_auth'
-  | 'preview'
-  | 'login'
-  | 'get_music'
-  | 'logout'
-  | 'cleanup'
-  | 'persist';
-export type ScoreHubCabinetScoreJobError = {
-  code: string;
-  retryAfter: string | null;
-};
-export type ScoreHubCabinetScoreJob = {
-  id: string;
-  status: ScoreHubCabinetScoreJobStatus;
-  stage: ScoreHubCabinetScoreJobStage;
-  cleanupStatus: ScoreHubCabinetScoreJobCleanupStatus;
-  progress: { detailsFetched: number } | null;
-  syncId: string | null;
-  scoreCount: number | null;
-  error: ScoreHubCabinetScoreJobError | null;
-  createdAt: string;
-  updatedAt: string;
-};
-
-export class ScoreHubError extends Error {
-  readonly status?: number;
-  readonly retryable: boolean;
-  readonly code?: string;
-  readonly retryAfter?: string;
-
-  constructor(
-    message: string,
-    status?: number,
-    retryable = false,
-    details?: { code?: string; retryAfter?: string },
-  ) {
-    super(message);
-    this.name = 'ScoreHubError';
-    this.status = status;
-    this.retryable = retryable;
-    this.code = details?.code;
-    this.retryAfter = details?.retryAfter;
-  }
-}
 
 export function scoreHubErrorToUserMessage(
   error: unknown,
@@ -165,146 +99,6 @@ export function scoreHubErrorToUserMessage(
   }
 }
 
-export type ScoreHubAbortSignal = {
-  aborted: boolean;
-  paused?: boolean;
-  waitUntilResumed?: () => Promise<void>;
-  onCancel?: (listener: () => void) => () => void;
-};
-
-function normalizeNetworkErrorMessage(raw: string): string {
-  const lower = raw.toLowerCase();
-  if (lower.includes('terminated') || lower.includes('connection') || lower.includes('network')) {
-    return '网络连接中断，正在重试…';
-  }
-  if (lower.includes('timeout') || lower.includes('timed out') || lower.includes('aborted')) {
-    return 'score-hub 请求超时，正在重试…';
-  }
-  return raw;
-}
-
-/** 轮询期间可恢复的瞬时错误（单次请求失败不应直接终止整次拉成绩）。 */
-export function isRetryableScoreHubError(error: unknown): boolean {
-  if (error instanceof ScoreHubError) {
-    if (error.message === '已取消') return false;
-    if (error.retryable) return true;
-    const lower = error.message.toLowerCase();
-    return lower.includes('超时')
-      || lower.includes('中断')
-      || lower.includes('无法连接')
-      || lower.includes('terminated')
-      || lower.includes('fetch failed')
-      || lower.includes('network');
-  }
-  if (error instanceof Error) {
-    const lower = error.message.toLowerCase();
-    return lower.includes('terminated')
-      || lower.includes('fetch failed')
-      || lower.includes('network')
-      || lower.includes('timeout')
-      || lower.includes('aborted')
-      || error.name === 'AbortError'
-      || error.name === 'FetchError';
-  }
-  return false;
-}
-
-async function requestRaw(
-  method: string,
-  path: string,
-  options?: {
-    jsonBody?: unknown;
-    formData?: FormData;
-    token?: string;
-    signal?: ScoreHubAbortSignal;
-    timeoutMs?: number;
-  },
-): Promise<{ status: number; body: unknown }> {
-  await options?.signal?.waitUntilResumed?.();
-  if (options?.signal?.aborted) {
-    throw new ScoreHubError('已取消');
-  }
-  const headers: Record<string, string> = {
-    Accept: 'application/json',
-    'User-Agent': 'rRanker-mobile/1.0',
-  };
-  if (options?.jsonBody !== undefined) {
-    headers['Content-Type'] = 'application/json';
-  }
-  if (options?.token) {
-    headers.Authorization = `Bearer ${options.token}`;
-  }
-  const controller = new AbortController();
-  let timedOut = false;
-  const timeoutMs = options?.timeoutMs ?? REQUEST_TIMEOUT_MS;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
-  const abortWatch = options?.signal ? setInterval(() => {
-    if (options.signal?.aborted) controller.abort();
-  }, 100) : null;
-  try {
-    const response = await expoFetch(`${SCORE_HUB_API_BASE}${path}`, {
-      method,
-      headers,
-      body: options?.formData !== undefined
-        ? options.formData
-        : options?.jsonBody === undefined
-          ? undefined
-          : JSON.stringify(options.jsonBody),
-      signal: controller.signal,
-    });
-    const text = await response.text();
-    let body: unknown = null;
-    if (text) {
-      try {
-        body = JSON.parse(text) as unknown;
-      } catch {
-        body = { error: text };
-      }
-    }
-    return { status: response.status, body };
-  } catch (error) {
-    if (options?.signal?.aborted && !timedOut) throw new ScoreHubError('已取消');
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new ScoreHubError(
-        timedOut ? 'score-hub 请求超时，正在重试…' : '已取消',
-        undefined,
-        timedOut,
-      );
-    }
-    const raw = error instanceof Error ? error.message : '无法连接 score-hub';
-    throw new ScoreHubError(normalizeNetworkErrorMessage(raw), undefined, true);
-  } finally {
-    clearTimeout(timeout);
-    if (abortWatch !== null) clearInterval(abortWatch);
-  }
-}
-
-async function requestJson(
-  method: string,
-  path: string,
-  options?: {
-    body?: unknown;
-    token?: string;
-    signal?: ScoreHubAbortSignal;
-    timeoutMs?: number;
-  },
-): Promise<{ status: number; body: unknown }> {
-  return requestRaw(method, path, {
-    jsonBody: options?.body,
-    token: options?.token,
-    signal: options?.signal,
-    timeoutMs: options?.timeoutMs,
-  });
-}
-
-function friendCodeFromUser(user: unknown): string | null {
-  if (!user || typeof user !== 'object') return null;
-  const friendCode = (user as { friendCode?: unknown }).friendCode;
-  return typeof friendCode === 'string' && friendCode.trim() ? friendCode.trim() : null;
-}
 
 function qrLoginErrorMessage(body: unknown, status: number): string {
   if (body && typeof body === 'object') {
@@ -361,29 +155,6 @@ export function parseQrLoginInitBody(status: number, body: unknown): QrLoginInit
   throw new ScoreHubError(qrLoginErrorMessage(body, status), status);
 }
 
-function sleep(ms: number, signal?: ScoreHubAbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new ScoreHubError('已取消'));
-      return;
-    }
-    const timer = setTimeout(() => {
-      if (signal?.aborted) reject(new ScoreHubError('已取消'));
-      else if (signal?.waitUntilResumed) void signal.waitUntilResumed().then(resolve, reject);
-      else resolve();
-    }, ms);
-    if (signal) {
-      const watch = setInterval(() => {
-        if (signal.aborted) {
-          clearTimeout(timer);
-          clearInterval(watch);
-          reject(new ScoreHubError('已取消'));
-        }
-      }, 250);
-      setTimeout(() => clearInterval(watch), ms + 10);
-    }
-  });
-}
 
 export async function createFriendLoginJob(
   friendCode: string,
@@ -408,10 +179,6 @@ export async function createFriendLoginJob(
     }
   }
   throw new ScoreHubError(`创建登录失败（HTTP ${status}）`, status);
-}
-
-export async function verifyLoginJob(jobId: string, signal?: ScoreHubAbortSignal): Promise<void> {
-  await requestJson('POST', `/auth/login-requests/${encodeURIComponent(jobId)}/verify`, { signal });
 }
 
 /** 公众号玩家二维码登录：提交文本或图片，返回快路径 token 或慢路径 attemptId。 */
@@ -449,66 +216,6 @@ export async function loginByQr(
   return parseQrLoginInitBody(status, body);
 }
 
-export async function pollQrLoginUntilToken(input: {
-  attemptId: string;
-  signal?: ScoreHubAbortSignal;
-  onProgress?: (info: { status: string; message: string }) => void;
-}): Promise<QrLoginTokenResult> {
-  const deadline = Date.now() + QR_LOGIN_TIMEOUT_MS;
-  let consecutiveFailures = 0;
-
-  while (Date.now() < deadline) {
-    if (input.signal?.aborted) throw new ScoreHubError('已取消');
-    let status: number;
-    let body: unknown;
-    try {
-      ({ status, body } = await requestJson(
-        'GET',
-        `/auth/qr-login/${encodeURIComponent(input.attemptId)}`,
-        { signal: input.signal },
-      ));
-      consecutiveFailures = 0;
-    } catch (error) {
-      if (!isRetryableScoreHubError(error)) throw error;
-      consecutiveFailures += 1;
-      if (consecutiveFailures >= 5) {
-        throw error instanceof ScoreHubError
-          ? error
-          : new ScoreHubError('神秘二维码登录网络异常，请稍后重试');
-      }
-      await sleep(QR_POLL_MS * consecutiveFailures, input.signal);
-      continue;
-    }
-
-    if (status !== 200 || !body || typeof body !== 'object') {
-      await sleep(QR_POLL_MS, input.signal);
-      continue;
-    }
-
-    const record = body as Record<string, unknown>;
-    const attemptStatus = String(record.status ?? 'pending');
-    const label = QR_LOGIN_STATUS_LABEL[attemptStatus] ?? attemptStatus;
-    input.onProgress?.({ status: attemptStatus, message: label });
-
-    if (attemptStatus === 'matched' && typeof record.token === 'string' && record.token) {
-      return {
-        token: record.token,
-        friendCode: friendCodeFromUser(record.user)
-          ?? (typeof record.resolvedFriendCode === 'string' ? record.resolvedFriendCode : null),
-      };
-    }
-    if (attemptStatus === 'failed') {
-      throw new ScoreHubError(
-        typeof record.error === 'string' && record.error
-          ? record.error
-          : '神秘二维码登录失败，请改用好友码上传',
-      );
-    }
-
-    await sleep(QR_POLL_MS, input.signal);
-  }
-  throw new ScoreHubError('神秘二维码登录超时，请刷新二维码后重试或改用好友码');
-}
 
 /** 完整二维码登录：提交凭证并在需要时轮询慢路径，最终返回 token。 */
 export async function loginByQrUntilToken(input: {
@@ -529,69 +236,6 @@ export async function loginByQrUntilToken(input: {
   });
 }
 
-export async function pollLoginUntilToken(input: {
-  jobId: string;
-  signal?: ScoreHubAbortSignal;
-  onSendingFriend?: (info: { botFriendCode: string | null; stage: string | null }) => void;
-  onWaitingFriend?: (info: { botFriendCode: string | null; stage: string | null }) => void;
-}): Promise<string> {
-  const deadline = Date.now() + LOGIN_TIMEOUT_MS;
-  let lastVerifyAt = 0;
-
-  while (Date.now() < deadline) {
-    if (input.signal?.aborted) throw new ScoreHubError('已取消');
-    let status: number;
-    let body: unknown;
-    try {
-      ({ status, body } = await requestJson(
-        'GET',
-        `/auth/login-requests/${encodeURIComponent(input.jobId)}`,
-        { signal: input.signal },
-      ));
-    } catch (error) {
-      if (!isRetryableScoreHubError(error)) throw error;
-      await sleep(LOGIN_POLL_MS, input.signal);
-      continue;
-    }
-    if (status !== 200 || !body || typeof body !== 'object') {
-      await sleep(LOGIN_POLL_MS, input.signal);
-      continue;
-    }
-    const record = body as Record<string, unknown>;
-    if (typeof record.token === 'string' && record.token) {
-      return record.token;
-    }
-    const job = record.job && typeof record.job === 'object' ? (record.job as Record<string, unknown>) : {};
-    const jobStatus = String(record.status ?? job.status ?? '');
-    const stage = typeof job.stage === 'string' ? job.stage : null;
-    const bot =
-      (typeof job.botUserFriendCode === 'string' && job.botUserFriendCode) || null;
-
-    if (jobStatus === 'failed' || record.status === 'failed') {
-      throw new ScoreHubError(String(job.error ?? '登录失败'));
-    }
-
-    if (stage === 'wait_acceptance' || stage === 'wait_user_request') {
-      input.onWaitingFriend?.({ botFriendCode: bot, stage });
-    } else {
-      // send_request 等发送阶段：尚未发出申请，不要提示「等待同意」
-      input.onSendingFriend?.({ botFriendCode: bot, stage });
-    }
-
-    const now = Date.now();
-    if (now - lastVerifyAt >= VERIFY_EVERY_MS) {
-      lastVerifyAt = now;
-      try {
-        await verifyLoginJob(input.jobId, input.signal);
-      } catch {
-        // verify 失败不中断轮询
-      }
-    }
-
-    await sleep(LOGIN_POLL_MS, input.signal);
-  }
-  throw new ScoreHubError('登录超时：请确认已在“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 好友申请');
-}
 
 export async function createUpdateScoreJob(
   token: string,
@@ -625,309 +269,8 @@ export async function createUpdateScoreJob(
   throw new ScoreHubError(`创建成绩任务失败（HTTP ${status}）`, status);
 }
 
-export async function pollUpdateScoreUntilDone(input: {
-  token: string;
-  jobId: string;
-  signal?: ScoreHubAbortSignal;
-  onProgress?: (info: {
-    status: string;
-    stage: string | null;
-    progress: ScoreHubScoreProgress | null;
-  }) => void;
-}): Promise<void> {
-  const deadline = Date.now() + SCORE_TIMEOUT_MS;
-  while (Date.now() < deadline) {
-    if (input.signal?.aborted) throw new ScoreHubError('已取消');
-    let status: number;
-    let body: unknown;
-    try {
-      ({ status, body } = await requestJson(
-        'GET',
-        `/me/dxnet-jobs/${encodeURIComponent(input.jobId)}`,
-        { token: input.token, signal: input.signal },
-      ));
-    } catch (error) {
-      if (!isRetryableScoreHubError(error)) throw error;
-      // 服务端任务可能仍在抓取；单次 poll 断连（如 terminated）不应整段放弃。
-      const message = error instanceof Error
-        ? error.message
-        : '网络连接中断，正在重试…';
-      input.onProgress?.({
-        status: 'processing',
-        stage: message.includes('重试') ? message : '网络连接中断，正在重试…',
-        progress: null,
-      });
-      await sleep(SCORE_POLL_MS, input.signal);
-      continue;
-    }
-    if (status !== 200 || !body || typeof body !== 'object') {
-      await sleep(SCORE_POLL_MS, input.signal);
-      continue;
-    }
-    const job = body as Record<string, unknown>;
-    const st = String(job.status ?? '');
-    const stage = typeof job.stage === 'string' ? job.stage : null;
-    const rawProgress = job.scoreProgress;
-    const progress = rawProgress && typeof rawProgress === 'object'
-      && Array.isArray((rawProgress as Record<string, unknown>).completedDiffs)
-      && typeof (rawProgress as Record<string, unknown>).totalDiffs === 'number'
-      ? {
-          completedDiffs: (rawProgress as { completedDiffs: unknown[] }).completedDiffs
-            .filter((value): value is number => typeof value === 'number' && Number.isInteger(value)),
-          totalDiffs: (rawProgress as { totalDiffs: number }).totalDiffs,
-        }
-      : null;
-    input.onProgress?.({ status: st, stage, progress });
-    if (st === 'completed') return;
-    if (st === 'failed' || st === 'canceled') {
-      throw new ScoreHubError(String(job.error ?? '获取成绩失败'));
-    }
-    await sleep(SCORE_POLL_MS, input.signal);
-  }
-  throw new ScoreHubError('获取成绩超时');
-}
 
-const CABINET_JOB_STATUSES = new Set<ScoreHubCabinetScoreJobStatus>([
-  'queued',
-  'processing',
-  'completed',
-  'failed',
-]);
-const CABINET_JOB_STAGES = new Set<ScoreHubCabinetScoreJobStage>([
-  'queued',
-  'qr_auth',
-  'preview',
-  'login',
-  'get_music',
-  'logout',
-  'cleanup',
-  'persist',
-]);
-const CABINET_JOB_CLEANUP_STATUSES = new Set<ScoreHubCabinetScoreJobCleanupStatus>([
-  'not_required',
-  'pending',
-  'succeeded',
-  'unconfirmed',
-]);
 
-function cabinetScoreErrorDetails(body: unknown): { code?: string; retryAfter?: string } {
-  if (!body || typeof body !== 'object') return {};
-  const record = body as Record<string, unknown>;
-  const nested = record.error && typeof record.error === 'object'
-    ? record.error as Record<string, unknown>
-    : null;
-  const code = typeof record.code === 'string'
-    ? record.code
-    : typeof nested?.code === 'string'
-      ? nested.code
-      : undefined;
-  const retryAfter = typeof record.retryAfter === 'string'
-    ? record.retryAfter
-    : typeof nested?.retryAfter === 'string'
-      ? nested.retryAfter
-      : undefined;
-  return { code, retryAfter };
-}
-
-function cabinetScoreRequestError(body: unknown, status: number): ScoreHubError {
-  const details = cabinetScoreErrorDetails(body);
-  return new ScoreHubError(
-    details.code ?? 'cabinet score request failed',
-    status,
-    status >= 500 || status === 429,
-    details,
-  );
-}
-
-function parseCabinetScoreJob(raw: unknown): ScoreHubCabinetScoreJob | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const record = raw as Record<string, unknown>;
-  const status = record.status;
-  const stage = record.stage;
-  const cleanupStatus = record.cleanupStatus;
-  if (typeof record.id !== 'string'
-    || !CABINET_JOB_STATUSES.has(status as ScoreHubCabinetScoreJobStatus)
-    || !CABINET_JOB_STAGES.has(stage as ScoreHubCabinetScoreJobStage)
-    || !CABINET_JOB_CLEANUP_STATUSES.has(cleanupStatus as ScoreHubCabinetScoreJobCleanupStatus)
-    || typeof record.createdAt !== 'string'
-    || typeof record.updatedAt !== 'string') {
-    return null;
-  }
-  const rawProgress = record.progress;
-  const progress = rawProgress && typeof rawProgress === 'object'
-    && typeof (rawProgress as Record<string, unknown>).detailsFetched === 'number'
-    ? { detailsFetched: (rawProgress as { detailsFetched: number }).detailsFetched }
-    : null;
-  const details = cabinetScoreErrorDetails(record);
-  return {
-    id: record.id,
-    status: status as ScoreHubCabinetScoreJobStatus,
-    stage: stage as ScoreHubCabinetScoreJobStage,
-    cleanupStatus: cleanupStatus as ScoreHubCabinetScoreJobCleanupStatus,
-    progress,
-    syncId: typeof record.syncId === 'string' ? record.syncId : null,
-    scoreCount: typeof record.scoreCount === 'number' ? record.scoreCount : null,
-    error: details.code
-      ? { code: details.code, retryAfter: details.retryAfter ?? null }
-      : null,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
-  };
-}
-
-export async function createCabinetScoreJob(
-  token: string,
-  credential: QrLoginCredential,
-  signal?: ScoreHubAbortSignal,
-): Promise<ScoreHubCabinetScoreJob> {
-  let response: { status: number; body: unknown };
-  if (credential.kind === 'text') {
-    const qrCode = credential.qrCode.trim();
-    if (!qrCode) {
-      throw new ScoreHubError(
-        'qr code required',
-        400,
-        false,
-        { code: 'QR_INPUT_REQUIRED' },
-      );
-    }
-    response = await requestJson('POST', '/me/cabinet-score-jobs', {
-      body: { qrCode },
-      token,
-      signal,
-      timeoutMs: QR_LOGIN_POST_TIMEOUT_MS,
-    });
-  } else {
-    const formData = new FormData();
-    formData.append('image', {
-      uri: credential.imageUri,
-      name: credential.fileName?.trim() || 'qr.jpg',
-      type: credential.mimeType?.trim() || 'image/jpeg',
-    } as unknown as Blob);
-    response = await requestRaw('POST', '/me/cabinet-score-jobs', {
-      formData,
-      token,
-      signal,
-      timeoutMs: QR_LOGIN_POST_TIMEOUT_MS,
-    });
-  }
-  if (response.status !== 202 || !response.body || typeof response.body !== 'object') {
-    throw cabinetScoreRequestError(response.body, response.status);
-  }
-  const job = parseCabinetScoreJob((response.body as Record<string, unknown>).job);
-  if (!job) {
-    throw new ScoreHubError(
-      'invalid cabinet score job response',
-      response.status,
-      false,
-      { code: 'CABINET_SCORE_JOB_FAILED' },
-    );
-  }
-  return job;
-}
-
-export async function fetchActiveCabinetScoreJob(
-  token: string,
-  signal?: ScoreHubAbortSignal,
-): Promise<ScoreHubCabinetScoreJob | null> {
-  const { status, body } = await requestJson('GET', '/me/cabinet-score-jobs/active', {
-    token,
-    signal,
-  });
-  if (status !== 200 || !body || typeof body !== 'object') {
-    throw cabinetScoreRequestError(body, status);
-  }
-  const rawJob = (body as Record<string, unknown>).job;
-  if (rawJob === null) return null;
-  const job = parseCabinetScoreJob(rawJob);
-  if (!job) {
-    throw new ScoreHubError(
-      'invalid active cabinet score job response',
-      status,
-      false,
-      { code: 'CABINET_SCORE_JOB_FAILED' },
-    );
-  }
-  return job;
-}
-
-export async function fetchCabinetScoreJob(
-  token: string,
-  jobId: string,
-  signal?: ScoreHubAbortSignal,
-): Promise<ScoreHubCabinetScoreJob> {
-  const { status, body } = await requestJson(
-    'GET',
-    `/me/cabinet-score-jobs/${encodeURIComponent(jobId)}`,
-    { token, signal },
-  );
-  if (status !== 200) {
-    throw cabinetScoreRequestError(body, status);
-  }
-  const job = parseCabinetScoreJob(body);
-  if (!job) {
-    throw new ScoreHubError(
-      'invalid cabinet score job response',
-      status,
-      false,
-      { code: 'CABINET_SCORE_JOB_FAILED' },
-    );
-  }
-  return job;
-}
-
-function cabinetCleanupBlocked(job: ScoreHubCabinetScoreJob): boolean {
-  if (job.cleanupStatus === 'pending') return true;
-  if (job.cleanupStatus !== 'unconfirmed' || !job.error?.retryAfter) return false;
-  const retryAt = Date.parse(job.error.retryAfter);
-  return Number.isFinite(retryAt) && retryAt > Date.now();
-}
-
-export async function pollCabinetScoreJobUntilDone(input: {
-  token: string;
-  job: ScoreHubCabinetScoreJob;
-  signal?: ScoreHubAbortSignal;
-  onProgress?: (job: ScoreHubCabinetScoreJob) => void;
-}): Promise<ScoreHubCabinetScoreJob> {
-  const createdAt = Date.parse(input.job.createdAt);
-  const deadline = Number.isFinite(createdAt)
-    ? createdAt + CABINET_SCORE_TIMEOUT_MS
-    : Date.now() + CABINET_SCORE_TIMEOUT_MS;
-  let current = input.job;
-  let consecutiveFailures = 0;
-
-  while (Date.now() < deadline) {
-    if (input.signal?.aborted) throw new ScoreHubError('已取消');
-    input.onProgress?.(current);
-    if (current.status === 'completed') return current;
-    if (current.status === 'failed' && !cabinetCleanupBlocked(current)) {
-      throw new ScoreHubError(
-        current.error?.code ?? 'cabinet score job failed',
-        undefined,
-        false,
-        {
-          code: current.error?.code ?? 'CABINET_SCORE_JOB_FAILED',
-          retryAfter: current.error?.retryAfter ?? undefined,
-        },
-      );
-    }
-    await sleep(CABINET_SCORE_POLL_MS, input.signal);
-    try {
-      current = await fetchCabinetScoreJob(input.token, current.id, input.signal);
-      consecutiveFailures = 0;
-    } catch (error) {
-      if (!isRetryableScoreHubError(error)) throw error;
-      consecutiveFailures += 1;
-      if (consecutiveFailures >= CABINET_SCORE_FAILURE_LIMIT) throw error;
-    }
-  }
-  throw new ScoreHubError(
-    'cabinet score job timeout',
-    undefined,
-    true,
-    { code: 'CABINET_SCORE_JOB_FAILED' },
-  );
-}
 
 export async function fetchLatestSync(
   token: string,

@@ -5,8 +5,13 @@ import { loadMajdataChart, loadMajdataSong, loadMajdataParsedChart } from '@/ser
 import type { MajdataSong } from '@/domain/majdata';
 import { useSession } from '@/state/session-store';
 import { queryClient } from '@/state/query-client';
+import { invalidateMajdataCatalog } from '@/services/infinite-query-refresh';
 
 const options = { staleTime: Infinity, gcTime: Infinity, retry: false, refetchOnMount: false } as const;
+
+export async function refreshMajdataCatalog(): Promise<void> {
+  await invalidateMajdataCatalog();
+}
 export function useMajdataSongs(sort: string, search: string) {
   const active = useCachedTabActive();
   return useInfiniteQuery({ queryKey: ['majdata-net', 'catalog', sort, search], initialPageParam: 0,

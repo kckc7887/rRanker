@@ -20,9 +20,9 @@ vi.mock('expo-secure-store', () => ({
 }));
 
 // The store must be imported after the in-memory SecureStore mock.
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { SecureSessionStore } from '@/storage/secure-session-store';
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { hasRizlinePassword, writeRizlinePassword } from '@/storage/rizline-password-store';
 
 const kvStore = {

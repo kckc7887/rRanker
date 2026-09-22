@@ -642,7 +642,9 @@ export class SecureSessionStore {
 
   /** 按账号解析共享凭据并轮换 token，不改变 activeAccountId。 */
   async updateAccountSession(accountId: string, session: ProviderSession, options?: {
-    signal?: AbortSignal; expected?: ProviderSession;
+    signal?: AbortSignal;
+    expected?: ProviderSession;
+    acceptedOsuRefreshTokens?: readonly string[];
   }): Promise<void> {
     if (!isPersistableSession(session)) return;
     await this.enqueueMutation(async () => {
@@ -651,7 +653,10 @@ export class SecureSessionStore {
       const existing = vault.accounts.find((account) => account.id === accountId);
       if (!existing) return;
       const credential = vault.credentials.find(item => item.id === existing.credentialId);
-      if (options?.expected && !sessionMatchesExpected(credential?.session, options.expected)) return;
+      if (options?.acceptedOsuRefreshTokens) {
+        const current = credential?.session;
+        if (current?.mode !== 'osu-oauth' || !options.acceptedOsuRefreshTokens.includes(current.refreshToken)) return;
+      } else if (options?.expected && !sessionMatchesExpected(credential?.session, options.expected)) return;
       await this.saveVaultUnlocked({
         ...vault,
         credentials: vault.credentials.map((credential) => (

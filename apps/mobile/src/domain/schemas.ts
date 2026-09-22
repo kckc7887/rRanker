@@ -118,16 +118,21 @@ export function mapLxnsScore(input: unknown): ScoreRecord {
     ? 'utage'
     : LEVEL_INDEX_DIFFICULTY[raw.level_index] ?? 'unknown';
   const level = raw.level ?? String(raw.level_index);
+  const title = raw.song_name?.trim();
+  const ratingKnown = raw.type === 'utage' || raw.dx_rating !== undefined;
+  const rateKnown = raw.rate !== undefined;
+  const incomplete = !title || !ratingKnown || !rateKnown;
   const rating = raw.type === 'utage'
     ? 0
     : raw.dx_rating !== undefined
     ? Math.floor(raw.dx_rating)
-    : calculateChartRating(0, raw.achievements);
+    : 0;
   const fc = mapKnownFc(raw.fc);
   const fs = mapKnownFs(raw.fs);
   return {
     songId: String(raw.id),
-    title: raw.song_name ?? `#${raw.id}`,
+    title: title || '曲名缺失',
+    incomplete: incomplete || undefined,
     type: mapLxnsSongType(raw.type),
     levelIndex: raw.level_index,
     level,

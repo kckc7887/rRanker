@@ -133,6 +133,14 @@ export function useOverviewSync({ boundAccounts, activeAccountId, activeGameId, 
           return false;
         }
       }
+      if (refreshed.isError) {
+        showNotification({
+          title: '刷新失败',
+          message: '当前仍显示缓存，请稍后重试。',
+          variant: 'warning',
+        });
+        return false;
+      }
       return true;
     } catch (syncError) {
       if (!isCurrent()) return false;

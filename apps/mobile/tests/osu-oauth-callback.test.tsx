@@ -7,6 +7,11 @@ let mockParams: Record<string, string | undefined> = {};
 const mockDismissTo = jest.fn((..._args: unknown[]) => undefined);
 const mockExchange = jest.fn(async (..._args: unknown[]): Promise<unknown> => undefined);
 const mockNotify = jest.fn((..._args: unknown[]) => undefined);
+const mockClearPending = jest.fn(async (..._args: unknown[]) => undefined);
+const mockRequireState = jest.fn((state: unknown) => {
+  if (typeof state !== 'string' || state.length === 0) throw new Error('missing oauth state');
+  return state;
+});
 
 jest.mock('expo-router', () => ({
   router: { dismissTo: (...args: unknown[]) => mockDismissTo(...args) },
@@ -18,6 +23,8 @@ jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('@/providers/osu-oauth', () => ({
   exchangeOsuAuthorizationCode: (...args: unknown[]) => mockExchange(...args),
   notifyOsuOAuthOutcome: (...args: unknown[]) => mockNotify(...args),
+  clearPendingOsuOAuth: (...args: unknown[]) => mockClearPending(...args),
+  requireOsuOAuthState: (state: unknown) => mockRequireState(state),
 }));
 
 const mockBindOsuModes = jest.fn(async (..._args: unknown[]): Promise<unknown> => undefined);
@@ -74,6 +81,8 @@ beforeEach(() => {
   mockDismissTo.mockClear();
   mockExchange.mockReset();
   mockNotify.mockClear();
+  mockClearPending.mockClear();
+  mockRequireState.mockClear();
   mockBindOsuModes.mockReset();
   mockSetOsuBinding.mockClear();
 });
@@ -119,6 +128,7 @@ describe('osu! OAuth 回调页', () => {
 
     await render(<OsuOAuthCallbackScreen />);
 
+    expect(mockClearPending).toHaveBeenCalled();
     expect(screen.getByText('授权失败')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('返回首页'));
     expect(mockDismissTo).toHaveBeenCalledWith('/');

@@ -6,6 +6,9 @@
  */
 
 import { infoValue } from '@/services/phira-chart-notes';
+import { rpeBundleRelativePath } from '@/domain/phira-rpe-resource-path';
+
+export { rpeBundleRelativePath as sanitizeRpeBundleFileName, rpeResourceUrl } from '@/domain/phira-rpe-resource-path';
 
 export type PhiraChartZipFileEntry = {
   name: string;
@@ -21,7 +24,7 @@ export type PhiraChartZipMediaPlan = {
 };
 
 export type PhiraRpeBundleFile = {
-  /** 清洗后的扁平文件名（basename，防路径穿越）。 */
+  /** 合法相对路径；路径穿越的条目不会进入计划。 */
   name: string;
   entryName: string;
   /** 是否文本资源（extra.json/info.yml/.glsl），由 RN 侧读文本注入。 */
@@ -73,18 +76,11 @@ export const PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE = '暂不支持预览该谱
 
 const TEXT_BUNDLE_EXTENSION_PATTERN = /\.(glsl|json|ya?ml|txt)$/i;
 
-/** 文件名清洗：取 basename 并剔除危险字符，防路径穿越；重名时先到先得（调用方保证顺序稳定）。 */
-export function sanitizeRpeBundleFileName(entryName: string): string {
-  const segments = entryName.split('/').filter((segment) => segment.length > 0);
-  const basename = segments[segments.length - 1] ?? entryName;
-  const cleaned = basename.replace(/[^A-Za-z0-9._-]/g, '_');
-  return cleaned && cleaned.length > 0 ? cleaned : 'file.bin';
-}
-
 /**
- * RPE 谱面包资源计划：ZIP 内全部非目录条目扁平化为 basename 落盘。
+ * RPE 谱面包资源计划：ZIP 内非目录条目按合法相对路径落盘。
  * extra.json/info.yml/文本条目标 text（RN 侧读文本注入，不经文件 fetch）；
- * 其余（背景/贴图/gif/视频/音乐）落盘为本地文件。
+ * 其余（背景/贴图/gif/视频/音乐）落盘为本地文件。路径穿越的条目拒绝。
+ * 同一相对路径先到先得（调用方保证顺序稳定）。
  */
 export function buildPhiraRpeBundlePlan(
   entries: readonly PhiraChartZipFileEntry[],
@@ -93,8 +89,8 @@ export function buildPhiraRpeBundlePlan(
   const files: PhiraRpeBundleFile[] = [];
   for (const entry of entries) {
     if (entry.dir || typeof entry.name !== 'string') continue;
-    const name = sanitizeRpeBundleFileName(entry.name);
-    if (seen.has(name)) continue; // 重名先到先得
+    const name = rpeBundleRelativePath(entry.name);
+    if (!name || seen.has(name)) continue;
     seen.add(name);
     files.push({ name, entryName: entry.name, text: TEXT_BUNDLE_EXTENSION_PATTERN.test(name) });
   }

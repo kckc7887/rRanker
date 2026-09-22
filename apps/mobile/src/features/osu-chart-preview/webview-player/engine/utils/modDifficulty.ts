@@ -132,6 +132,8 @@ export interface ModDifficulty {
   readonly isPF: boolean;
   // Lazer AccuracyChallenge; no stable equivalent.
   readonly isAC: boolean;
+  /** Lazer Constant Speed（acronym CS）。没有对应的 stable 位。 */
+  readonly isConstantSpeed: boolean;
 
   /** True for lazer replays (has a `scoreInfo` block, or gameVersion >= 30000000). */
   readonly isLazer: boolean;
@@ -200,7 +202,7 @@ export function computeModDifficulty(beatmap: BeatmapData, replay: ReplayData): 
   let maniaBaseOd = beatmap.overallDifficulty;
 
   let isHR = false, isEZ = false, isDT = false, isHT = false, isNC = false, isHD = false, isFL = false;
-  let isNF = false, isSD = false, isPF = false, isAC = false;
+  let isNF = false, isSD = false, isPF = false, isAC = false, isConstantSpeed = false;
   let isMirror = false, isFadeIn = false, isCover = false;
   let coverCoverage = 0.5, coverAlong = true;
   // Mania flat window multiplier (ManiaModHardRock/Easy set HitWindows.DifficultyMultiplier;
@@ -274,6 +276,7 @@ export function computeModDifficulty(beatmap: BeatmapData, replay: ReplayData): 
         }
         case 'HD': isHD = true; break;
         case 'FL': isFL = true; break;
+        case 'CS': isConstantSpeed = true; break;
         case 'MR': isMirror = true; break;
         case 'FI': isFadeIn = true; break;
         case 'CO': {
@@ -427,7 +430,7 @@ export function computeModDifficulty(beatmap: BeatmapData, replay: ReplayData): 
     isHR, isEZ, isDT, isHT, isNC, isHD, isFL,
     isNF, isSD, isPF, isAC,
     isMirror, isFadeIn, isCover, coverCoverage, coverAlong,
-    isLazer, isCL,
+    isLazer, isCL, isConstantSpeed,
     lzNoSliderAcc, lzLegacyNotelock, lzLegacySound, lzLegacyHP,
   };
 }

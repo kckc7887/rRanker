@@ -17,6 +17,7 @@ import type {
   UploadTarget,
   UploadTargetResult,
 } from '@/services/upload-maimai-from-friend-code';
+import { captureAccountWrites } from '@/services/snapshot-cache-utils';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 export type LxnsTransferPhase =
@@ -86,6 +87,10 @@ export async function transferMaimaiFromLxns(input: {
     throw new ProviderError('permission', '数据来源不能同时作为上传目标', false);
   }
 
+  const assertAccount = captureAccountWrites([
+    input.sourceAccount,
+    ...input.selected.map((target) => target.account),
+  ]);
   assertNotCanceled(input.signal);
   input.onPhase?.({ kind: 'reading', account: input.sourceAccount });
   const sourceProvider = new LxnsScoreProvider(
@@ -106,13 +111,15 @@ export async function transferMaimaiFromLxns(input: {
 
   const repository = new SqliteSnapshotRepository();
   const sourceSnapshot = buildScoreSnapshot(sourcePlayer, sourceRecords, input.catalog);
-  await repository.save(input.sourceAccount.id, sourceSnapshot);
+  const assertSource = () => assertAccount(input.sourceAccount.id);
+  assertSource();
+  await repository.save(input.sourceAccount.id, sourceSnapshot, assertSource);
 
   const divingFishMapped = convertScoreRecordsToDivingFishRecords(sourceSnapshot.records);
   const lxnsMapped = convertScoreRecordsToLxnsRecords(sourceSnapshot.records);
   const targetResults: UploadTargetResult[] = [];
-  const refreshedAccounts: { account: BoundAccount; snapshot: ScoreSnapshot }[] = [
-    { account: input.sourceAccount, snapshot: sourceSnapshot },
+  const refreshedAccounts: { account: BoundAccount; snapshot: ScoreSnapshot; assertCurrent: () => void }[] = [
+    { account: input.sourceAccount, snapshot: sourceSnapshot, assertCurrent: assertSource },
   ];
   const failedAccountNames: string[] = [];
   const refreshFailedAccountIds = new Set<string>();
@@ -132,8 +139,10 @@ export async function transferMaimaiFromLxns(input: {
           sourceSnapshot.records,
           input.catalog,
         );
-        await repository.save(target.account.id, snapshot);
-        refreshedAccounts.push({ account: target.account, snapshot });
+        const assertTarget = () => assertAccount(target.account.id);
+        assertTarget();
+        await repository.save(target.account.id, snapshot, assertTarget);
+        refreshedAccounts.push({ account: target.account, snapshot, assertCurrent: assertTarget });
         written = snapshot.records.length;
       } else if (target.account.providerId === 'diving-fish') {
         targetSkipped = skippedCount(divingFishMapped);
@@ -172,8 +181,10 @@ export async function transferMaimaiFromLxns(input: {
             provider.getRecords(),
           ]);
           const snapshot = buildScoreSnapshot(player, records, input.catalog);
-          await repository.save(target.account.id, snapshot);
-          refreshedAccounts.push({ account: target.account, snapshot });
+          const assertTarget = () => assertAccount(target.account.id);
+          assertTarget();
+          await repository.save(target.account.id, snapshot, assertTarget);
+          refreshedAccounts.push({ account: target.account, snapshot, assertCurrent: assertTarget });
         } catch {
           failedAccountNames.push(target.account.displayName);
           refreshFailedAccountIds.add(target.account.id);
@@ -211,9 +222,13 @@ export async function transferMaimaiFromLxns(input: {
       catalog: input.catalog,
       expectedRecords: divingFishMapped.records,
       signal: input.signal,
+      assertAccount,
       onRefreshing: (account) => input.onPhase?.({ kind: 'refreshing', account }),
     });
-    refreshedAccounts.push(...refreshResult.refreshed);
+    refreshedAccounts.push(...refreshResult.refreshed.map((item) => ({
+      ...item,
+      assertCurrent: () => assertAccount(item.account.id),
+    })));
     for (const failed of refreshResult.failed) {
       failedAccountNames.push(failed.account.displayName);
       const outcome = targetResults.find((item) => item.account.id === failed.account.id);

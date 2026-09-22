@@ -77,6 +77,7 @@ export function filterChunithmRandomCharts(
   const picks: ChunithmRandomChartPick[] = [];
 
   for (const song of catalog.songs) {
+    if (song.disabled) continue;
     for (const chart of song.difficulties) {
       if (!matchesChunithmChartFilter(chart, filters)) continue;
       const record = recordByChart.get(chartKey(String(song.id), chart.difficulty));

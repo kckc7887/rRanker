@@ -48,6 +48,22 @@ describe('startup account restoration', () => {
     expect(LocalAccountStore.prototype.upsert).toHaveBeenCalledOnce();
   });
 
+  it('keeps other account sources when one directory cannot be read', async () => {
+    vi.mocked(TufAccountStore.prototype.load).mockRejectedValue(new Error('tuf io'));
+    vi.mocked(LocalAccountStore.prototype.load).mockResolvedValue([{ id: LOCAL_MAIMAI_ACCOUNT_ID, displayName: '本地' }]);
+    const accounts = await loadOptionalBoundAccounts();
+    expect(accounts.map((account) => account.id)).toEqual([LOCAL_MAIMAI_ACCOUNT_ID]);
+    expect(LocalAccountStore.prototype.upsert).not.toHaveBeenCalled();
+  });
+
+  it('does not rebuild the default local account when its directory cannot be read', async () => {
+    vi.mocked(LocalAccountStore.prototype.load).mockRejectedValue(new Error('local io'));
+    vi.mocked(SqliteSnapshotRepository.prototype.getLatest).mockResolvedValue({ player: { displayName: '旧玩家', rating: 15000 } } as ScoreSnapshot);
+    await expect(loadOptionalBoundAccounts()).resolves.toEqual([]);
+    expect(LocalAccountStore.prototype.upsert).not.toHaveBeenCalled();
+    expect(SqliteSnapshotRepository.prototype.getLatest).not.toHaveBeenCalled();
+  });
+
   it('does not invent a deleted local or demo account on an empty installation', async () => {
     await expect(loadOptionalBoundAccounts()).resolves.toEqual([]);
     expect(LocalAccountStore.prototype.upsert).not.toHaveBeenCalled();

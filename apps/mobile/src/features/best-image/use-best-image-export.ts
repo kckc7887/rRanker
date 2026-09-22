@@ -4,7 +4,7 @@ import { captureRef } from 'react-native-view-shot';
 import { useNotification } from '@/components/AppNotification';
 import { createRuntimeOperation } from '@/services/runtime-diagnostics-recorder';
 import { parseBestImageHeightMessage, parseBestImageReadyMessage } from './best-image-messages';
-import { bestImageCaptureDimensions, deleteBestImageCapture, isDrawViewHierarchyError, requestBestImageExportPermission, saveBestImageCapture, shouldUseBestImageRenderInContext } from './best-image-export';
+import { bestImageCaptureDimensions, BestImageExportError, deleteBestImageCapture, isDrawViewHierarchyError, requestBestImageExportPermission, saveBestImageCapture, shouldUseBestImageRenderInContext } from './best-image-export';
 import type { BestImageScreenControllerRuntime } from './best-image-controller-types';
 
 type CanvasWait = {
@@ -29,6 +29,18 @@ type ExportSession = {
 function clearWait(session: ExportSession) {
   if (session.wait?.timer) clearTimeout(session.wait.timer);
   session.wait = null;
+}
+
+function exportFailureMessage(error: unknown, savedCount: number): string {
+  const actionable = typeof BestImageExportError === 'function' && error instanceof BestImageExportError
+    ? error.message
+    : '';
+  if (savedCount > 0) {
+    return actionable
+      ? `已保存 ${savedCount} 张，其余页面没有保存。${actionable}`
+      : `已保存 ${savedCount} 张，其余页面没有保存。`;
+  }
+  return actionable || '无法导出成绩图片，请重试。';
 }
 
 export function useBestImageExport(config: {
@@ -131,6 +143,7 @@ export function useBestImageExport(config: {
       assertCurrent(session);
       capture.filename = runtime.buildExportFilename(index, pageCount);
     };
+    let savedCount = 0;
     try {
       await requestBestImageExportPermission();
       assertCurrent(session);
@@ -155,6 +168,7 @@ export function useBestImageExport(config: {
           if (config.wrapExportPageError) throw new Error(`第 ${index + 1}/${session.captures.length} 页保存失败`, { cause: error });
           throw error;
         }
+        savedCount += 1;
         assertCurrent(session);
         session.operation.record('save', { result: 'success', pageIndex: index + 1 });
       }
@@ -167,7 +181,13 @@ export function useBestImageExport(config: {
         errorCode: session.cancelled ? 'cancelled' : session.timedOut ? 'timeout' : undefined, error: session.cancelled ? undefined : error,
       });
       session.operation.record('export', { result: session.cancelled ? 'cancelled' : 'error' });
-      if (!session.cancelled && mounted.current) showNotification({ title: '导出失败', message: '无法导出成绩图片，请重试。', variant: 'error' });
+      if (!session.cancelled && mounted.current) {
+        showNotification({
+          title: '导出失败',
+          message: exportFailureMessage(error, savedCount),
+          variant: 'error',
+        });
+      }
     } finally {
       clearWait(session);
       session.captures.forEach((capture) => deleteBestImageCapture(capture.uri));

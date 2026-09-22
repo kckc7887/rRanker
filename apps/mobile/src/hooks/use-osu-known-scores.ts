@@ -96,7 +96,7 @@ export function useOsuBeatmapsetUserScores(
       const currentSong = song as OsuBeatmapsetDetail;
       const provider = new OsuScoreProvider(
         session as OsuOAuthSession,
-        (next) => applyOsuTokenRotation(activeAccountId, next),
+        (next, expected) => applyOsuTokenRotation(activeAccountId, next, expected),
       );
       const settled = await Promise.allSettled(currentSong.beatmaps.map(
         async (beatmap): Promise<OsuBestScore | null> => {
