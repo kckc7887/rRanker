@@ -1,5 +1,10 @@
+import { crc32 } from 'node:zlib';
 import JSZip from 'jszip';
 import { describe, expect, it, vi } from 'vitest';
+import {
+  CHART_PREVIEW_MAX_ARCHIVE_ENTRIES,
+  CHART_PREVIEW_MAX_ENTRY_UNCOMPRESSED_BYTES,
+} from '@/features/chart-preview-shared/chart-preview-resource-budget';
 import { readOsuChartPreviewArchive } from '@/features/osu-chart-preview/chart-preview-resources';
 import {
   normalizeOsuChartPreviewSettings,
@@ -45,6 +50,47 @@ async function archive(extra?: (zip: JSZip) => void) {
   zip.file('other/ignored.osb', '[Events]\nSprite,Background,Centre,"unrelated.png",0,0');
   extra?.(zip);
   return zip.generateAsync({ type: 'uint8array' });
+}
+
+function storedZip(files: readonly { name: string; data: Buffer; uncompressedSize?: number }[]): Uint8Array {
+  const locals: Buffer[] = [];
+  const centrals: Buffer[] = [];
+  let offset = 0;
+  for (const file of files) {
+    const name = Buffer.from(file.name);
+    const uncompressedSize = file.uncompressedSize ?? file.data.length;
+    const checksum = file.data.length === 0 ? 0 : crc32(file.data);
+    const local = Buffer.alloc(30 + name.length + file.data.length);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt32LE(checksum, 14);
+    local.writeUInt32LE(file.data.length, 18);
+    local.writeUInt32LE(uncompressedSize, 22);
+    local.writeUInt16LE(name.length, 26);
+    name.copy(local, 30);
+    file.data.copy(local, 30 + name.length);
+    locals.push(local);
+    const central = Buffer.alloc(46 + name.length);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt32LE(checksum, 16);
+    central.writeUInt32LE(file.data.length, 20);
+    central.writeUInt32LE(uncompressedSize, 24);
+    central.writeUInt16LE(name.length, 28);
+    central.writeUInt32LE(offset, 42);
+    name.copy(central, 46);
+    centrals.push(central);
+    offset += local.length;
+  }
+  const centralDirectory = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(files.length, 8);
+  eocd.writeUInt16LE(files.length, 10);
+  eocd.writeUInt32LE(centralDirectory.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Uint8Array.from(Buffer.concat([...locals, centralDirectory, eocd]));
 }
 
 const reader = () => ({
@@ -152,6 +198,29 @@ describe('osu 谱面确认资源选择', () => {
     await expect(readOsuChartPreviewArchive(bytes, target, { assertCurrent, stageMedia }))
       .rejects.toThrow('缓存请求已失效');
     expect(stageMedia).toHaveBeenCalledTimes(1);
+  });
+
+  it('拒绝超多条目和声明解压量过大的谱包，且不落盘', async () => {
+    const crowded = new JSZip();
+    crowded.file('set/selected.osu', osu());
+    for (let index = 0; index < CHART_PREVIEW_MAX_ARCHIVE_ENTRIES; index += 1) crowded.file(`extra-${index}.bin`, 'x');
+    const crowdedReader = reader();
+    await expect(readOsuChartPreviewArchive(await crowded.generateAsync({ type: 'uint8array' }), target, crowdedReader))
+      .rejects.toThrow('谱面包条目数量超出预算');
+    expect(crowdedReader.stageMedia).not.toHaveBeenCalled();
+
+    const oversized = storedZip([{
+      name: 'set/selected.osu',
+      data: Buffer.from(osu()),
+    }, {
+      name: 'set/huge.bin',
+      data: Buffer.alloc(0),
+      uncompressedSize: CHART_PREVIEW_MAX_ENTRY_UNCOMPRESSED_BYTES + 1,
+    }]);
+    const oversizedReader = reader();
+    await expect(readOsuChartPreviewArchive(oversized, target, oversizedReader))
+      .rejects.toThrow('谱面资源解压大小超出预算');
+    expect(oversizedReader.stageMedia).not.toHaveBeenCalled();
   });
 
   it('已取消的准备不会读取或写入媒体', async () => {

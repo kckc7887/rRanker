@@ -33,11 +33,11 @@ import {
 
 export type ChartPreviewStagedAsset =
   | { fileName: string; moduleId: number }
-  | { fileName: string; url: string; bytes: number };
+  | { fileName: string; url: string; bytes: number; cacheRevision?: string };
 
 export type ChartPreviewDataUrlAsset =
   | { key: string; moduleId: number; fileName: string }
-  | { key: string; fileName: string; url: string; bytes: number };
+  | { key: string; fileName: string; url: string; bytes: number; cacheRevision?: string };
 
 export type ChartPreviewWebviewPlan = {
   /** stage 目录名（舞萌默认 'rranker-chart-preview'，其它游戏自定义）。 */
@@ -74,8 +74,16 @@ function isRemoteAsset(asset: ChartPreviewStagedAsset | ChartPreviewDataUrlAsset
   return 'url' in asset && 'bytes' in asset;
 }
 
-function remoteKey(asset: { fileName: string; url: string }): string {
-  return `${asset.url}\0${asset.fileName}`;
+function remoteKey(asset: { fileName: string; url: string; cacheRevision?: string }): string {
+  return `${asset.cacheRevision ?? ''}\0${asset.url}\0${asset.fileName}`;
+}
+
+function cacheStorageName(fileName: string, cacheRevision?: string): string {
+  if (!cacheRevision) return fileName;
+  const slash = fileName.lastIndexOf('/');
+  const directory = slash >= 0 ? fileName.slice(0, slash + 1) : '';
+  const base = slash >= 0 ? fileName.slice(slash + 1) : fileName;
+  return `${directory}${cacheRevision}_${base}`;
 }
 
 function remoteWeight(asset: { bytes: number }): number {
@@ -122,14 +130,16 @@ async function stageRemoteAsset(
   cacheDirectory?: Directory,
   signal?: AbortSignal,
   onFraction?: (fraction: number) => void,
+  cacheRevision?: string,
 ): Promise<File> {
   const assertGeneration = captureResourceWrites('shared');
   const sourceDirectory = cacheDirectory ?? sessionDirectory;
-  ensureParentDirectory(sourceDirectory, fileName);
+  const storedName = cacheDirectory ? cacheStorageName(fileName, cacheRevision) : fileName;
+  ensureParentDirectory(sourceDirectory, storedName);
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   const source = cacheDirectory
-    ? await remoteLoads.share(JSON.stringify([sourceDirectory.uri, fileName, url, resourceWriteGeneration('shared')]),
-      sharedSignal => { assertGeneration(); return downloadRemoteAsset(url, bytes, sourceDirectory, fileName, sharedSignal, onFraction); }, signal)
+    ? await remoteLoads.share(JSON.stringify([sourceDirectory.uri, storedName, url, cacheRevision ?? '', resourceWriteGeneration('shared')]),
+      sharedSignal => { assertGeneration(); return downloadRemoteAsset(url, bytes, sourceDirectory, storedName, sharedSignal, onFraction); }, signal)
     : await downloadRemoteAsset(url, bytes, sourceDirectory, fileName, signal, onFraction);
   onFraction?.(1);
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
@@ -200,6 +210,7 @@ export async function prepareChartPreviewWebviewFromPlan(
           plan.remoteCacheDirectory,
           signal,
           (fraction) => markRemote(asset, fraction),
+          asset.cacheRevision,
         );
       }
       assertCurrent();
@@ -220,6 +231,7 @@ export async function prepareChartPreviewWebviewFromPlan(
           plan.remoteCacheDirectory,
           signal,
           (fraction) => markRemote(asset, fraction),
+          asset.cacheRevision,
         );
         dataUrls[asset.key] = `data:audio/wav;base64,${await staged.base64()}`;
       }

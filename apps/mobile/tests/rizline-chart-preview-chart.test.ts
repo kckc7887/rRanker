@@ -87,20 +87,20 @@ type GoldenChart = {
   challengeCount: number;
   lineCount: number;
   noteCount: number;
-  hits: Array<{ seconds: number; type: number }>;
-  themes: Array<{ bgColor: string; bgColor0: string; bgColor1: string; noteColor: string; fxColor: string; fx: { r: number; g: number; b: number; a: number } }>;
-  challenges: Array<{ themeIndex: number; startSeconds: number; endSeconds: number; transStartSeconds: number; transEndSeconds: number }>;
-  frames: Array<{
+  hits: { seconds: number; type: number }[];
+  themes: { bgColor: string; bgColor0: string; bgColor1: string; noteColor: string; fxColor: string; fx: { r: number; g: number; b: number; a: number } }[];
+  challenges: { themeIndex: number; startSeconds: number; endSeconds: number; transStartSeconds: number; transEndSeconds: number }[];
+  frames: {
     nowSeconds: number;
     camera: { scale: number; x: number };
-    canvases: Array<{ x: number; y: number }>;
+    canvases: { x: number; y: number }[];
     judgeXs: number[];
-    judgeRings: Array<{ r: number; g: number; b: number; a: number } | null>;
+    judgeRings: ({ r: number; g: number; b: number; a: number } | null)[];
     noteDigest: string;
     spanDigest: string;
-    notes: Array<ReturnType<typeof noteRecord>>;
-    spans: Array<ReturnType<typeof spanRecord>>;
-  }>;
+    notes: ReturnType<typeof noteRecord>[];
+    spans: ReturnType<typeof spanRecord>[];
+  }[];
 };
 
 function assertMatchesGolden(raw: unknown, golden: GoldenChart, detailed: boolean): void {

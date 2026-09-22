@@ -172,6 +172,8 @@ export interface ScoreRecord extends Chart {
   rawFc?: string;
   rawFs?: string;
   rawRate?: string;
+  /** 落雪成绩缺曲名、Rating 或评级时为 true，不能把占位值当成真实成绩。 */
+  incomplete?: boolean;
 }
 
 export interface Best50Snapshot {

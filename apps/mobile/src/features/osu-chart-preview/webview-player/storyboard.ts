@@ -1,8 +1,11 @@
 import {
   STORYBOARD_LAYERS,
   animationFrameFile,
+  resolveStoryboardCommands,
+  storyboardLoopBounds,
   type StoryboardCommand,
   type StoryboardLayer,
+  type StoryboardLoop,
   type StoryboardObject,
   type StoryboardOrigin,
   type StoryboardTriggerRun,
@@ -158,20 +161,48 @@ function parameterAt(commands: PreparedCommands['parameters'], timeMs: number, p
 
 const combinedRuns = new WeakMap<StoryboardObject, { runs: StoryboardTriggerRun[]; commands: PreparedCommands }>();
 
+function loopSpan(loops: readonly StoryboardLoop[] | undefined): { start: number; end: number } | null {
+  if (!loops?.length) return null;
+  let start = Infinity;
+  let end = -Infinity;
+  for (const loop of loops) {
+    const bounds = storyboardLoopBounds(loop);
+    start = Math.min(start, bounds.start);
+    end = Math.max(end, bounds.end);
+  }
+  return { start, end };
+}
+
 function commandsAt(object: StoryboardObject, timeMs: number): { commands: PreparedCommands; start: number } | null {
-  const base = prepare(object.commands);
-  const baseActive = timeMs >= base.start && timeMs <= base.end;
-  if (!object.triggerRuns?.length) return baseActive ? { commands: base, start: base.start } : null;
+  const objectLoops = loopSpan(object.loops);
+  const direct = objectLoops ? resolveStoryboardCommands(object.commands, object.loops, timeMs) : object.commands;
+  const base = prepare(direct);
+  let baseStart = base.start;
+  let baseEnd = base.end;
+  if (objectLoops) {
+    baseStart = Math.min(baseStart, objectLoops.start);
+    baseEnd = Math.max(baseEnd, objectLoops.end);
+  }
+  const baseActive = timeMs >= baseStart && timeMs <= baseEnd;
+  if (!object.triggerRuns?.length) return baseActive ? { commands: base, start: baseStart } : null;
   const runs = object.triggerRuns.filter((run) => timeMs >= run.start && timeMs <= run.end && (run.stopMs === undefined || timeMs < run.stopMs));
   if (!baseActive && runs.length === 0) return null;
-  if (runs.length === 0) return { commands: base, start: base.start };
-  const cached = combinedRuns.get(object);
-  if (cached && cached.runs.length === runs.length && cached.runs.every((run, index) => run === runs[index])) {
-    return { commands: cached.commands, start: baseActive ? base.start : runs[runs.length - 1]!.start };
+  if (runs.length === 0) return { commands: base, start: baseStart };
+  const runsNeedTime = objectLoops !== null || runs.some((run) => (run.loops?.length ?? 0) > 0);
+  if (!runsNeedTime) {
+    const cached = combinedRuns.get(object);
+    if (cached && cached.runs.length === runs.length && cached.runs.every((run, index) => run === runs[index])) {
+      return { commands: cached.commands, start: baseActive ? baseStart : runs[runs.length - 1]!.start };
+    }
+    const commands = prepare([...direct, ...runs.flatMap((run) => run.commands)]);
+    combinedRuns.set(object, { runs, commands });
+    return { commands, start: baseActive ? baseStart : runs[runs.length - 1]!.start };
   }
-  const commands = prepare([...object.commands, ...runs.flatMap((run) => run.commands)]);
-  combinedRuns.set(object, { runs, commands });
-  return { commands, start: baseActive ? base.start : runs[runs.length - 1]!.start };
+  const commands = prepare([
+    ...direct,
+    ...runs.flatMap((run) => resolveStoryboardCommands(run.commands, run.loops, timeMs)),
+  ]);
+  return { commands, start: baseActive ? baseStart : runs[runs.length - 1]!.start };
 }
 
 export function evaluateSprite(object: StoryboardObject, timeMs: number): SpriteState | null {
@@ -338,7 +369,10 @@ function indexesFor(objects: readonly StoryboardObject[]): Map<StoryboardLayer, 
   objects.forEach((object, order) => {
     const layer = entries.get(object.layer) ?? [];
     const base = prepare(object.commands);
-    if (base.start <= base.end) layer.push({ start: base.start, end: base.end, object, order });
+    const loops = loopSpan(object.loops);
+    const start = loops ? Math.min(base.start, loops.start) : base.start;
+    const end = loops ? Math.max(base.end, loops.end) : base.end;
+    if (start <= end) layer.push({ start, end, object, order });
     for (const run of object.triggerRuns ?? []) {
       const end = Math.min(run.end, run.stopMs ?? Infinity);
       if (run.start <= end) layer.push({ start: run.start, end, object, order });

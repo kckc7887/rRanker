@@ -40,6 +40,7 @@ import { MuseDashAccountStore } from '@/storage/musedash-account-store';
 import { PhiraAccountStore } from '@/storage/phira-account-store';
 
 import { restoreSession } from '@/state/session-store';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 const sessions = new SecureSessionStore();
 const localAccounts = new LocalAccountStore();
@@ -110,17 +111,26 @@ async function loadMuseDashDemoBoundAccount() {
     : null;
 }
 
+async function readAccountSource<T>(source: string, load: () => Promise<T>, fallback: T): Promise<T> {
+  try {
+    return await load();
+  } catch (error) {
+    recordRuntimeError('account-restoration', error, false, { phase: source });
+    return fallback;
+  }
+}
+
 export async function loadOptionalBoundAccounts() {
   const [locals, demos, chunithmDemo, phigrosDemo, museDashDemo, hasChunithmTemp, storedTufAccounts, storedMuseDashAccounts, storedPhiraAccounts] = await Promise.all([
-    loadLocalBoundAccounts(),
-    loadDemoBoundAccounts(),
-    loadChunithmDemoBoundAccount(),
-    loadPhigrosDemoBoundAccount(),
-    loadMuseDashDemoBoundAccount(),
-    chunithmTempAccount.load(),
-    tufAccounts.load(),
-    museDashAccounts.load(),
-    phiraAccounts.load(),
+    readAccountSource('local', loadLocalBoundAccounts, []),
+    readAccountSource('demo', loadDemoBoundAccounts, []),
+    readAccountSource('chunithm-demo', loadChunithmDemoBoundAccount, null),
+    readAccountSource('phigros-demo', loadPhigrosDemoBoundAccount, null),
+    readAccountSource('musedash-demo', loadMuseDashDemoBoundAccount, null),
+    readAccountSource('chunithm-temp', () => chunithmTempAccount.load(), false),
+    readAccountSource('tuf', () => tufAccounts.load(), []),
+    readAccountSource('musedash', () => museDashAccounts.load(), []),
+    readAccountSource('phira', () => phiraAccounts.load(), []),
   ]);
   return [
     ...locals,

@@ -1,11 +1,12 @@
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import {
   BestListPage,
   CatalogListPage,
   RecordsListPage,
 } from '@/components/game-content/GameListPages';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
+import { InfinitePageFooter } from '@/components/game-content/InfinitePageFooter';
 import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { OsuCatalogFilterBar } from '@/components/osu/OsuCatalogFilterBar';
@@ -280,7 +281,14 @@ export function OsuCatalogScreen() {
           onEndReached: () => {
             if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage();
           },
-          ListFooterComponent: query.isFetchingNextPage ? <ActivityIndicator style={styles.footer} /> : null,
+          ListFooterComponent: (
+            <InfinitePageFooter
+              loading={query.isFetchingNextPage}
+              failed={query.isFetchNextPageError}
+              hasNextPage={query.hasNextPage === true}
+              onRetry={() => void query.fetchNextPage()}
+            />
+          ),
         }}
       />
     </View>

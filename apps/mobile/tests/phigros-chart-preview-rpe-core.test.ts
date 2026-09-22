@@ -184,6 +184,30 @@ describe('rpe core', () => {
     expect(chart.lines[1]!.notes[0]!.multipleHint).toBe(true);
   });
 
+  it('贴图、背景、视频和 shader 按相对路径引用，穿越路径不进入谱面', () => {
+    const chart = parseRpeChart({
+      META: { RPEVersion: 160, offset: 0, background: '图/封面 1.png' },
+      BPMList: [{ bpm: 120, startTime: [0, 0, 1] }],
+      judgeLineList: [
+        line({ Texture: '线/判定 线.png' }),
+        line({ Texture: '../secret.png' }),
+      ],
+    }, {
+      extraJson: JSON.stringify({
+        videos: [{ path: '视频/演示 1.mp4' }, { path: '../clip.mp4' }],
+        effects: [
+          { shader: '/特效/镜头 .glsl', vars: { tex: '贴图/采样 .png' } },
+          { shader: '../evil.glsl' },
+        ],
+      }),
+    });
+    expect(chart.background).toBe('图/封面 1.png');
+    expect(chart.lines.map((entry) => entry.texture)).toEqual(['线/判定 线.png', 'line.png']);
+    expect(chart.extras.videos.map((video) => video.path)).toEqual(['视频/演示 1.mp4']);
+    expect(chart.extras.effects.map((effect) => effect.shader)).toEqual(['特效/镜头 .glsl']);
+    expect(chart.extras.effects[0]!.vars.tex).toBe('贴图/采样 .png');
+  });
+
   it('extras 解析：视频/特效/事件值数组插值/文本事件/extra.bpm 覆盖', () => {
     const chart = parseRpeChart({
       META: { RPEVersion: 160, offset: 0, background: 'bg.jpg' },

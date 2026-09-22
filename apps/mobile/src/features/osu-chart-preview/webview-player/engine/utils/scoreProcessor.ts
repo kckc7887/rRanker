@@ -576,7 +576,7 @@ function computeScoreV3Timeline(
   let accPart   = 0;
   let bonus     = 0;       // running spinner Small/LargeBonus portion
   let hits      = 0;
-  let c300 = 0, c100 = 0, c50 = 0, miss = 0;
+  let miss = 0;
 
   for (const e of events) {
     bonus += e.bonus ?? 0;
@@ -608,10 +608,7 @@ function computeScoreV3Timeline(
       hits    += 1;
     }
 
-    if      (e.counts === 300) c300++;
-    else if (e.counts === 100) c100++;
-    else if (e.counts === 50)  c50++;
-    else if (e.counts === 0)   miss++;
+    if (e.counts === 0) miss++;
 
     const acc           = accPartMax   > 0 ? accPart   / accPartMax   : 0;
     const comboProgress = comboPartMax > 0 ? comboPart / comboPartMax : 0;

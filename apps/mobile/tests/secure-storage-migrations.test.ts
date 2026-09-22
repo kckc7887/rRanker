@@ -9,9 +9,9 @@ vi.mock('expo-secure-store', () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
 }));
 
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { ScoreHubAccountStore } from '@/storage/score-hub-account-store';
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { UploadPrefsStore } from '@/storage/upload-prefs-store';
 
 function createKvStore() {

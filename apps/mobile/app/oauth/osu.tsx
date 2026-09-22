@@ -6,8 +6,10 @@ import { OsuModeSelectContent } from '@/components/osu/OsuModeSelectContent';
 import { bindOsuModes } from '@/services/osu-account-binding';
 import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import {
+  clearPendingOsuOAuth,
   exchangeOsuAuthorizationCode,
   notifyOsuOAuthOutcome,
+  requireOsuOAuthState,
 } from '@/providers/osu-oauth';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
@@ -51,6 +53,7 @@ export default function OsuOAuthCallbackScreen() {
 
     const run = async () => {
       if (params.error) {
+        await clearPendingOsuOAuth();
         fail(`osu! 授权被拒绝：${params.error}`);
         return;
       }
@@ -59,11 +62,15 @@ export default function OsuOAuthCallbackScreen() {
         fail('回调缺少授权码，请在 App 内重新发起授权');
         return;
       }
+      let state = '';
       try {
-        const session = await exchangeOsuAuthorizationCode(
-          code,
-          typeof params.state === 'string' ? params.state : undefined,
-        );
+        state = requireOsuOAuthState(Array.isArray(params.state) ? undefined : params.state);
+      } catch (error) {
+        fail(messageFor(error));
+        return;
+      }
+      try {
+        const session = await exchangeOsuAuthorizationCode(code, state);
         if (cancelled) return;
         setStatus({ kind: 'selecting', session });
         // 深链把本页压在登录 Sheet（Modal）之下：先通知 Sheet 关闭，
@@ -76,7 +83,7 @@ export default function OsuOAuthCallbackScreen() {
 
     void run();
     return () => { cancelled = true; };
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 回调只在挂载时消费一次，或依赖已在上方说明
   }, []);
 
   const bindWith = async (modeGameIds: Parameters<typeof bindOsuModes>[0]['modeGameIds'], session: OsuOAuthSession) => {

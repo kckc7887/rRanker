@@ -49,12 +49,12 @@ describe('best image style preferences', () => {
     });
   });
 
-  it('clears malformed JSON', async () => {
+  it('keeps malformed JSON and returns defaults', async () => {
     const storage = new MemoryStore();
     storage.values.set('rranker.best-image.styles.v1:a', '{');
     const store = new BestImageStylePreferencesStore(storage);
     await expect(store.load('a')).resolves.toEqual({ version: 3, selections: {}, ratingStyle: 'game' });
-    expect(storage.values.size).toBe(0);
+    expect(storage.values.get('rranker.best-image.styles.v1:a')).toBe('{');
   });
 
   it('falls back without blocking the preview when storage is unavailable', async () => {

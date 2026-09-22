@@ -27,7 +27,8 @@ import {
   type HitSoundEvent,
   type HitSoundKind,
 } from './hit-sound';
-import { PlaybackClock } from '../../chart-preview-shared/webview-player/playbackClock';
+import { PlaybackClock, audioContextTime, musicPosition, outputTime, type MusicPosition } from '../../chart-preview-shared/webview-player/playbackClock';
+import { rpeResourceUrl } from '../../../domain/phira-rpe-resource-path';
 import { getAudioContextOutputTime } from '../../chart-preview-shared/webview-player/audioClock';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
 
@@ -415,7 +416,9 @@ function start(): void {
       }
     }
     for (const name of textureNames) {
-      jobs.push(loadImage(`${basePath}${name}`, signal)
+      const url = rpeResourceUrl(basePath, name);
+      if (!url) continue;
+      jobs.push(loadImage(url, signal)
         .then((image) => textures.set(name, image))
         .catch((error) => console.warn(`判定线贴图加载失败 ${name}:`, error)));
     }
@@ -426,7 +429,9 @@ function start(): void {
         try {
           const imageDecoderCtor = globalThis.ImageDecoder;
           if (!imageDecoderCtor) throw new Error('浏览器不支持 ImageDecoder');
-          const response = await fetch(`${basePath}${line.texture}`, { signal });
+          const textureUrl = rpeResourceUrl(basePath, line.texture);
+          if (!textureUrl) throw new Error('gif 路径无效');
+          const response = await fetch(textureUrl, { signal });
           if (!response.ok) throw new Error(`gif 请求失败：HTTP ${response.status}`);
           const bytes = await response.arrayBuffer();
           const lower = line.texture.toLowerCase();
@@ -462,7 +467,9 @@ function start(): void {
         } catch (error) {
           console.warn(`gif 判定线解码失败 ${line.texture}（降级为静态贴图）:`, error);
           try {
-            const image = await loadImage(`${basePath}${line.texture}`, signal);
+            const fallbackUrl = rpeResourceUrl(basePath, line.texture);
+            if (!fallbackUrl) throw new Error('gif 路径无效');
+            const image = await loadImage(fallbackUrl, signal);
             textures.set(line.texture, image);
           } catch {
             /* 忽略 */
@@ -472,11 +479,13 @@ function start(): void {
     }
     for (const video of chart.extras.videos) {
       jobs.push(new Promise<void>((resolve) => {
+        const videoUrl = rpeResourceUrl(basePath, video.path);
+        if (!videoUrl) { resolve(); return; }
         const element = document.createElement('video');
         element.muted = true;
         element.preload = 'auto';
         element.playsInline = true;
-        element.src = `${basePath}${video.path}`;
+        element.src = videoUrl;
         const done = () => {
           element.removeEventListener('loadedmetadata', done);
           element.removeEventListener('error', done);
@@ -489,15 +498,12 @@ function start(): void {
       }));
     }
     await Promise.all(jobs);
-    // RN 侧落盘的 shader 以清洗后的扁平文件名为键（domain/phira-chart-preview 的 sanitizeRpeBundleFileName），
-    // extra.json 的 effect.shader 引用原始文件名（如 '/camera_pr.glsl'），按同一规则清洗后兜底查找。
+    // shader 文本按谱面里的相对路径引用注入，与落盘身份相同。
     const shaders = new Map<string, string>();
     const injectedShaders = config.rpeAssets?.shaders ?? {};
     for (const effect of chart.extras.effects) {
       if (shaders.has(effect.shader)) continue;
-      const basename = effect.shader.split('/').filter((segment) => segment.length > 0).pop() ?? effect.shader;
-      const cleaned = basename.replace(/[^A-Za-z0-9._-]/g, '_');
-      const source = injectedShaders[effect.shader] ?? injectedShaders[cleaned];
+      const source = injectedShaders[effect.shader];
       if (typeof source === 'string') shaders.set(effect.shader, source);
     }
     // prpr 内置特效预设兜底（内嵌随包分发）：谱面包未提供同名 shader 时使用。
@@ -613,11 +619,11 @@ function start(): void {
     }
   }
 
-  function getMusicTime(): number {
+  function getMusicTime(): MusicPosition {
     if (!audioContext || !isSourcePlaying) return playbackClock.offset;
-    const outputTime = getAudioContextOutputTime(audioContext);
-    playbackClock.prune(outputTime);
-    return playbackClock.positionAt(outputTime);
+    const heardAt = outputTime(getAudioContextOutputTime(audioContext));
+    playbackClock.prune(heardAt);
+    return playbackClock.positionAt(heardAt);
   }
 
   function stopSource(fade: boolean): void {
@@ -672,8 +678,8 @@ function start(): void {
     sourceNode = source;
     sourceGain = gain;
     isSourcePlaying = true;
-    const audibleAt = getAudioContextOutputTime(context) + SOURCE_START_LEAD_TIME_S;
-    playbackClock.set(audibleAt, clamped, settings.playbackSpeed);
+    const audibleAt = outputTime(getAudioContextOutputTime(context) + SOURCE_START_LEAD_TIME_S);
+    playbackClock.set(audibleAt, musicPosition(clamped), settings.playbackSpeed);
   }
 
   function applySettings(): void {
@@ -923,7 +929,8 @@ function start(): void {
       if (rpeChart?.background) {
         const basePath = config.rpeAssets?.basePath ?? '';
         try {
-          illustration = await loadImage(`${basePath}${rpeChart.background}`, signal);
+          const backgroundUrl = rpeResourceUrl(basePath, rpeChart.background);
+          illustration = backgroundUrl ? await loadImage(backgroundUrl, signal) : null;
         } catch {
           /* 回退远程曲绘 */
         }
@@ -1023,7 +1030,7 @@ function start(): void {
         lastRafTs = performance.now();
       }
     } else {
-      playbackClock.setOffset(clamped + chartOffset);
+      playbackClock.setOffset(musicPosition(clamped + chartOffset));
     }
     renderer.resetTimeline(clamped);
     renderer.render(clamped);
@@ -1192,10 +1199,9 @@ function start(): void {
       settings.playbackSpeed = value;
       // 播放中改变倍速：采样级同步（与舞萌一致），不打断当前声源。
       if (isPlaying && isSourcePlaying && audioContext && sourceNode) {
-        const now = audioContext.currentTime;
-        const musicTime = getMusicTime();
+        const now = audioContextTime(audioContext.currentTime);
         sourceNode.playbackRate.setValueAtTime(value, now);
-        playbackClock.appendSegment(now, value, musicTime);
+        playbackClock.appendSegment(now, value);
       }
       applySettings();
       persistSettings();

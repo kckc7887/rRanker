@@ -14,6 +14,7 @@ const ACCOUNT_SCOPED_QUERY_KEYS = [
   ['songs'],
   ['osu-known-scores'],
   ['osu-beatmapset-user-scores'],
+  ['phigros-push-rks'],
 ] as const;
 
 /** 全局资源查询：与账号无关（如中二曲库）。 */

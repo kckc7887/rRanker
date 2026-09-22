@@ -16,6 +16,7 @@ import {
 } from '@/hooks/use-aliased-catalog';
 import { useSession } from '@/state/session-store';
 import { queryClient } from '@/state/query-client';
+import { invalidateChunithmCatalog } from '@/services/infinite-query-refresh';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 
 function mergeChunithmAliases(
@@ -50,6 +51,16 @@ function chunithmCatalogOptions(
       queryClient.setQueryData(CHUNITHM_CATALOG_QUERY_KEY, fresh);
     },
   };
+}
+
+export async function refreshChunithmCatalog(): Promise<ChunithmCatalogSnapshot> {
+  const options = chunithmCatalogOptions();
+  await invalidateChunithmCatalog();
+  return queryClient.fetchQuery({
+    queryKey: CHUNITHM_CATALOG_QUERY_KEY,
+    queryFn: ({ signal }) => loadAliasedCatalog(options, signal),
+    staleTime: Infinity,
+  });
 }
 
 export function ensureChunithmCatalog(): Promise<ChunithmCatalogSnapshot> {

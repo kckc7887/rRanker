@@ -9,6 +9,7 @@ import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import type { PushRecommendationsResult } from '@/domain/phigros-push';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
+import { phigrosResources } from '@/services/phigros-resources';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { parseNumericInput } from '@/utils/numeric-input';
@@ -30,6 +31,7 @@ function parseSongCost(value: string): number | null {
 export default function PushRksToolScreen() {
   const theme = useAppTheme();
   const session = useSession((s) => s.session);
+  const activeAccountId = useSession((s) => s.activeAccountId);
   const scoreProvider = useSession((s) => s.scoreProvider);
   const catalogQuery = usePhigrosCatalog();
   const [deltaText, setDeltaText] = useState('0.01');
@@ -52,14 +54,17 @@ export default function PushRksToolScreen() {
     return map;
   }, [catalogQuery.data?.snapshot.songs]);
 
+  const playerId = session?.mode === 'phi-session' ? session.playerId : null;
+  const saveUpdatedAt = scoreProvider instanceof PhigrosScoreProvider ? scoreProvider.getSaveUpdatedAt() : null;
+  const resourceRevision = phigrosResources.peek()?.revision ?? null;
   const pushQuery = useQuery({
-    queryKey: ['phigros-push-rks', delta, songCost, includePhi, session?.mode],
+    queryKey: ['phigros-push-rks', activeAccountId, playerId, resourceRevision, saveUpdatedAt, delta, songCost, includePhi],
     enabled: hasPhiSession && inputsValid,
-    queryFn: async (): Promise<PushRecommendationsResult> => {
+    queryFn: async ({ signal }): Promise<PushRecommendationsResult> => {
       if (!(scoreProvider instanceof PhigrosScoreProvider) || delta == null || songCost == null) {
         throw new Error('Phigros 存档未就绪');
       }
-      return scoreProvider.getPushRecommendations(delta, songCost, includePhi);
+      return scoreProvider.getPushRecommendations(delta, songCost, includePhi, signal);
     },
   });
 
@@ -142,9 +147,9 @@ export default function PushRksToolScreen() {
                   <Text style={[styles.meta, { color: theme.textSecondary }]}>
                     精确加值 {result.gainNeeded.toFixed(4)}
                     {' · '}
-                    分摊 {result.songCost} 首
-                    {' · '}
-                    每首承担 {result.perSongShare.toFixed(4)}
+                    {result.combinationReachesTarget
+                      ? `同一 Best27/Phi3 里按 Acc 差值优先的 ${Math.min(result.songCost, result.recommendations.length)} 首一起可以达到`
+                      : `分摊到 ${result.songCost} 首后，放进同一 Best27/Phi3 仍达不到`}
                   </Text>
                 </>
               ) : null}
@@ -175,17 +180,13 @@ export default function PushRksToolScreen() {
                 </Text>
                 {result.recommendations.length === 0 ? (
                   <Text style={[styles.emptyHint, { color: theme.textMuted }]}>
-                    没有谱面能承担每首 {result.perSongShare.toFixed(4)} 的份额
+                    {result.songCost > 1
+                      ? `没有 ${result.songCost} 首能在同一 Best27/Phi3 里达到目标`
+                      : `没有谱面能承担 ${result.perSongShare.toFixed(4)} 的加值`}
                     {result.includePhi ? '' : '（已排除 φ）'}
                     ，可增加成本歌数、降低加值
                     {result.includePhi ? '' : '或开启包含 φ'}
                     。
-                  </Text>
-                ) : null}
-                {result.recommendations.length > 0
-                  && result.recommendations.length < result.songCost ? (
-                  <Text style={[styles.warnHint, { color: theme.warning }]}>
-                    仅有 {result.recommendations.length} 张谱面可达每首份额，少于期望成本 {result.songCost} 首；均摊可能无法凑满期望 RKS，可增加成本歌数或降低加值。
                   </Text>
                 ) : null}
               </>
@@ -234,7 +235,6 @@ const styles = StyleSheet.create({
   error: { marginTop: 8, fontSize: 13 },
   sectionTitle: { fontSize: 15, fontWeight: '700', marginTop: 4 },
   emptyHint: { fontSize: 13, lineHeight: 19 },
-  warnHint: { fontSize: 13, lineHeight: 19, fontWeight: '600' },
   statusBlock: { alignItems: 'center', paddingVertical: 20, gap: 10 },
   statusText: { fontSize: 14 },
   retryButton: {

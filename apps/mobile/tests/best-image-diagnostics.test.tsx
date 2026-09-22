@@ -9,6 +9,12 @@ const mockSave = jest.fn(async () => undefined);
 jest.mock('react-native-view-shot', () => ({ captureRef: () => mockCapture() }));
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn() }) }));
 jest.mock('@/features/best-image/best-image-export', () => ({
+  BestImageExportError: class BestImageExportError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'BestImageExportError';
+    }
+  },
   bestImageCaptureDimensions: () => ({ width: 1080, height: 1440 }),
   deleteBestImageCapture: jest.fn(),
   isDrawViewHierarchyError: () => false,

@@ -443,6 +443,9 @@ export default function PhigrosStrengthAnalysisScreen() {
           <Card style={styles.radarCard}>
             <View style={styles.radarHeading}>
               <Text numberOfLines={1} style={[styles.radarAnalysisTitle, { color: theme.text }]}>分析：{analysis.mainTagProfileLabel}</Text>
+              <Text style={[styles.scaleText, { color: theme.textMuted }]}>
+                标签反映已覆盖谱面的结构，平均样本覆盖 {analysis.mainTags.length === 0 ? '0' : Math.round(analysis.mainTags.reduce((sum, tag) => sum + tag.sampleCoverage, 0) / analysis.mainTags.length * 100)}%。不能单独当成技能强弱。
+              </Text>
               <Text style={[styles.scaleText, { color: theme.textMuted }]}>范围 {analysis.radarDomain.min.toFixed(4)}–{analysis.radarDomain.max.toFixed(4)}</Text>
             </View>
             <PhigrosStrengthRadar

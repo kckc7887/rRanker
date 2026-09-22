@@ -1,6 +1,6 @@
 import type { ReactElement } from 'react';
 import { Text } from 'react-native';
-import { render } from '@testing-library/react-native';
+import { fireEvent, render } from '@testing-library/react-native';
 import { QueryStateView } from '@/components/QueryStateView';
 
 describe('QueryStateView five states', () => {
@@ -43,6 +43,24 @@ describe('QueryStateView five states', () => {
       />,
     );
     expect(getByText('暂无数据')).toBeTruthy();
+  });
+
+  it('shows a clear action on an empty filtered result', async () => {
+    let calls = 0;
+    const { getByLabelText } = await render(
+      <QueryStateView
+        isLoading={false}
+        isError={false}
+        isEmpty
+        data={undefined}
+        emptyText="没有符合条件的成绩"
+        emptyActionLabel="清除筛选"
+        onEmptyAction={() => { calls += 1; }}
+        renderData={renderData}
+      />,
+    );
+    await fireEvent.press(getByLabelText('清除筛选'));
+    expect(calls).toBe(1);
   });
 
   it('renders data when present', async () => {

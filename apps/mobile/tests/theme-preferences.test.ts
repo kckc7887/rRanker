@@ -45,6 +45,8 @@ describe('theme preferences', () => {
     expect(resolveAppearance('light', 'dark')).toBe('light');
     expect(createAppTheme('dark', '#0E7490').background).not.toBe(createAppTheme('light', '#0E7490').background);
     expect(createAppTheme('dark', '#0E7490').accent).toBe('#0E7490');
+    expect(createAppTheme('light', '#FFFFFF').onAccent).toBe('#111827');
+    expect(createAppTheme('dark', '#111827').onAccent).toBe('#FFFFFF');
     expect(resolveAccentHex({ accent: 'custom', customHex: '#e11d48' })).toBe('#E11D48');
     expect(normalizeAccentHex('#f0a')).toBe('#FF00AA');
     expect(hslToHex(0, 100, 50)).toBe('#FF0000');

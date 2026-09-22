@@ -320,14 +320,12 @@ export function computeTaikoScoreV2Timeline(
 
   // Pre-pass: compute the denominators assuming every result is MaxResult.
   let maxComboPortion = 0;
-  let maxAccBase = 0;
   let maxAccCount = 0;
   let simCombo = 0;
   for (const o of objects) {
     if (o.kind === 'hit') {
       simCombo += 1;
       maxComboPortion += 300 * taikoComboFactor(simCombo);
-      maxAccBase += 300;
       maxAccCount += 1;
     }
   }

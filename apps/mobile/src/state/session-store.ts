@@ -18,6 +18,7 @@ import {
 } from '@/storage/secure-session-store';
 import { startTimer } from '@/utils/startup-timing';
 import { createSessionProviders } from '@/services/session-providers';
+import { osuRotationAncestors, osuRotationMayReplace } from '@/providers/osu-oauth';
 
 /** 无已绑定账号时的占位 ID；页面按空数据处理。 */
 export const UNBOUND_ACCOUNT_ID = 'maimai:unbound';
@@ -70,22 +71,33 @@ export async function applyLxnsTokenRotation(accountId: string, next: LxnsOAuthS
 }
 
 /** osu! 令牌轮换：新会话广播到共享 credential 的所有模式账号并持久化。 */
-export async function applyOsuTokenRotation(accountId: string, next: OsuOAuthSession): Promise<void> {
+export async function applyOsuTokenRotation(
+  accountId: string,
+  next: OsuOAuthSession,
+  expected?: OsuOAuthSession,
+): Promise<void> {
   const state = useSession.getState();
-  const credentialId = state.credentialIdsByAccountId[accountId] ?? '';
+  const current = state.sessionsByAccountId[accountId];
+  if (expected && current?.mode === 'osu-oauth' && !osuRotationMayReplace(current.refreshToken, next.refreshToken)) return;
+  const { SecureSessionStore } = await import('@/storage/secure-session-store');
+  await new SecureSessionStore().updateAccountSession(accountId, next, expected ? {
+    acceptedOsuRefreshTokens: [expected.refreshToken, ...osuRotationAncestors(next.refreshToken)],
+  } : undefined);
+  const latest = useSession.getState();
+  const latestSession = latest.sessionsByAccountId[accountId];
+  if (expected && latestSession?.mode === 'osu-oauth' && !osuRotationMayReplace(latestSession.refreshToken, next.refreshToken)) return;
+  const credentialId = latest.credentialIdsByAccountId[accountId] ?? '';
   const sessionsByAccountId = sessionsWithSharedCredential(
-    state.sessionsByAccountId,
-    state.credentialIdsByAccountId,
+    latest.sessionsByAccountId,
+    latest.credentialIdsByAccountId,
     accountId,
     credentialId,
     next,
   );
   useSession.setState({
     sessionsByAccountId,
-    session: sessionsByAccountId[state.activeAccountId] === next ? next : state.session,
+    session: sessionsByAccountId[latest.activeAccountId] === next ? next : latest.session,
   });
-  const { SecureSessionStore } = await import('@/storage/secure-session-store');
-  await new SecureSessionStore().updateAccountSession(accountId, next);
 }
 
 function sameRizlineToken(current: ProviderSession | undefined, expected: RizlineSession): boolean {

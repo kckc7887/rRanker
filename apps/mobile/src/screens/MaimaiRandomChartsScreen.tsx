@@ -75,7 +75,7 @@ export function MaimaiRandomChartsScreen() {
       const next = selectedDxRatingTagIds.filter((tagId) => validIds.has(tagId));
       if (next.length !== selectedDxRatingTagIds.length) setSelectedDxRatingTagIds(next);
     } else if (dxRatingChartTags.isError) {
-      setSelectedDxRatingTagIds([]);
+      return;
     }
   }, [dxRatingChartTags.data, dxRatingChartTags.isError, selectedDxRatingTagIds, setSelectedDxRatingTagIds]);
 

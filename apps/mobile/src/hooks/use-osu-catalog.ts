@@ -60,7 +60,7 @@ export function useOsuCatalogSearch(gameId: OsuGameId | null, input: OsuCatalogS
     queryFn: async ({ pageParam, signal }): Promise<OsuCatalogPage> => {
       const provider = new OsuScoreProvider(
         session as OsuOAuthSession,
-        (next) => applyOsuTokenRotation(activeAccountId, next),
+        (next, expected) => applyOsuTokenRotation(activeAccountId, next, expected),
       );
       const raw = await provider.searchBeatmapsets({
         ...(params as OsuBeatmapsetSearchParams),

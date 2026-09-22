@@ -13,7 +13,7 @@ vi.mock('@/services/remote-image-cache', () => ({
 }));
 
 // expo-image mock 完成后导入，验证公共组件对真实能力组件设置内存默认值。
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { resolveRemoteImageCacheMode } from '@/components/RemoteImage';
 
 describe('RemoteImage cache policy', () => {

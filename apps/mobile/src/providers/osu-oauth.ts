@@ -13,13 +13,13 @@ import {
   OSU_OAUTH_TOKEN_URL,
   OSU_TOKEN_REFRESH_SKEW_SECONDS,
 } from './osu-config';
-import { createInflightGuard } from '@/services/snapshot-cache-utils';
-
 const PENDING_OAUTH_KEY = 'rranker.osu.oauth.pending.v1';
+const OSU_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
 
 /** 进行中的 osu! 授权：state（osu! 无 PKCE，凭 state 防 CSRF）。 */
 export type PendingOsuOAuth = {
   state: string;
+  expiresAt: number;
 };
 
 const TokenResponseSchema = z.object({
@@ -51,20 +51,20 @@ async function createStateValue(): Promise<string> {
   return base64UrlFromBytes(await Crypto.getRandomBytesAsync(16));
 }
 
-export function buildAuthorizeUrl(state?: string): string {
+export function buildAuthorizeUrl(state: string): string {
   const query = new URLSearchParams({
     response_type: 'code',
     client_id: OSU_OAUTH_CLIENT_ID,
     redirect_uri: OSU_OAUTH_REDIRECT_URI,
     scope: OSU_OAUTH_SCOPE,
+    state,
   });
-  if (state) query.set('state', state);
   return `${OSU_OAUTH_AUTHORIZE_URL}?${query.toString()}`;
 }
 
 export async function beginOsuAuthorize(): Promise<string> {
   const state = await createStateValue();
-  const pending: PendingOsuOAuth = { state };
+  const pending: PendingOsuOAuth = { state, expiresAt: Date.now() + OSU_OAUTH_STATE_TTL_MS };
   await SecureStore.setItemAsync(PENDING_OAUTH_KEY, JSON.stringify(pending), {
     keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
   });
@@ -81,8 +81,9 @@ export async function readPendingOsuOAuth(): Promise<PendingOsuOAuth | null> {
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<PendingOsuOAuth>;
-    if (typeof parsed.state !== 'string' || !parsed.state) return null;
-    return parsed as PendingOsuOAuth;
+    if (typeof parsed.state !== 'string' || !parsed.state.trim()) return null;
+    if (typeof parsed.expiresAt !== 'number' || !Number.isFinite(parsed.expiresAt)) return null;
+    return { state: parsed.state, expiresAt: parsed.expiresAt };
   } catch {
     return null;
   }
@@ -143,19 +144,32 @@ async function postToken(body: Record<string, string>): Promise<OsuOAuthSession>
   }
 }
 
+export function requireOsuOAuthState(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim() || value.includes('\0')) {
+    throw new ProviderError('authentication', '授权状态校验失败，请重新发起授权', false);
+  }
+  return value;
+}
+
 export async function exchangeOsuAuthorizationCode(
   code: string,
-  expectState?: string,
+  expectState: string,
 ): Promise<OsuOAuthSession> {
   const trimmed = code.trim();
+  const state = requireOsuOAuthState(expectState);
   if (!trimmed) throw new ProviderError('authentication', '缺少 osu! 授权码', false);
   const pending = await readPendingOsuOAuth();
   if (!pending) {
     throw new ProviderError('authentication', '找不到本机授权信息，请重新打开授权页', false);
   }
-  if (expectState !== undefined && pending.state !== expectState) {
+  if (pending.expiresAt <= Date.now()) {
+    await clearPendingOsuOAuth();
+    throw new ProviderError('authentication', '授权已过期，请重新发起授权', false);
+  }
+  if (pending.state !== state) {
     throw new ProviderError('authentication', '授权状态校验失败，请重新发起授权', false);
   }
+  await clearPendingOsuOAuth();
   const session = await postToken({
     grant_type: 'authorization_code',
     code: trimmed,
@@ -163,7 +177,6 @@ export async function exchangeOsuAuthorizationCode(
     client_secret: OSU_OAUTH_CLIENT_SECRET,
     redirect_uri: OSU_OAUTH_REDIRECT_URI,
   });
-  await clearPendingOsuOAuth();
   return session;
 }
 
@@ -181,22 +194,88 @@ async function refreshOsuAccessToken(refreshToken: string): Promise<OsuOAuthSess
  * createInflightGuard），并缓存最近的轮换结果。osu! refresh_token 单次使用：
  * 持有旧 token 的实例可从缓存直接拿到本进程内最新会话，避免 invalid_grant。
  */
-const refreshInflight = createInflightGuard<string>();
+const inFlightRefreshes = new Map<string, Promise<OsuOAuthSession>>();
 const recentRotations = new Map<string, OsuOAuthSession>();
+const rotationAncestors = new Map<string, Set<string>>();
 const RECENT_ROTATIONS_LIMIT = 64;
 
-export async function rotateOsuTokens(refreshToken: string): Promise<OsuOAuthSession> {
-  const recent = recentRotations.get(refreshToken);
-  if (recent) return recent;
-  return refreshInflight.dedupe(refreshToken, async () => {
-    const next = await refreshOsuAccessToken(refreshToken);
-    recentRotations.set(refreshToken, next);
-    if (recentRotations.size > RECENT_ROTATIONS_LIMIT) {
-      const oldest = recentRotations.keys().next().value;
-      if (typeof oldest === 'string') recentRotations.delete(oldest);
+function rememberOsuRotation(refreshToken: string, next: OsuOAuthSession): void {
+  recentRotations.set(refreshToken, next);
+  const ancestors = new Set(rotationAncestors.get(refreshToken) ?? []);
+  ancestors.add(refreshToken);
+  const nextAncestors = rotationAncestors.get(next.refreshToken) ?? new Set<string>();
+  for (const token of ancestors) nextAncestors.add(token);
+  rotationAncestors.set(next.refreshToken, nextAncestors);
+  for (const [previousToken, previousNext] of recentRotations) {
+    if (previousNext.refreshToken === refreshToken) {
+      recentRotations.set(previousToken, next);
+      nextAncestors.add(previousToken);
     }
+  }
+  while (recentRotations.size > RECENT_ROTATIONS_LIMIT) {
+    const oldest = recentRotations.keys().next().value;
+    if (typeof oldest !== 'string') break;
+    recentRotations.delete(oldest);
+  }
+}
+
+/** 当前凭据是这次轮换结果的前代时才允许覆盖。重新登录产生的新凭据不在前代集合里。 */
+export function osuRotationMayReplace(currentRefreshToken: string, nextRefreshToken: string): boolean {
+  if (currentRefreshToken === nextRefreshToken) return true;
+  return rotationAncestors.get(nextRefreshToken)?.has(currentRefreshToken) ?? false;
+}
+
+export function osuRotationAncestors(nextRefreshToken: string): readonly string[] {
+  return [...(rotationAncestors.get(nextRefreshToken) ?? [])];
+}
+
+export async function rotateOsuTokens(refreshToken: string): Promise<OsuOAuthSession> {
+  const aliases: string[] = [];
+  const visited = new Set<string>();
+  let currentToken = refreshToken;
+  let cycleDetected = false;
+
+  while (true) {
+    if (visited.has(currentToken)) {
+      cycleDetected = true;
+      break;
+    }
+    visited.add(currentToken);
+    const rotated = recentRotations.get(currentToken);
+    if (!rotated) break;
+    aliases.push(currentToken);
+    if (!osuAccessTokenExpired(rotated)) {
+      for (const alias of aliases) rememberOsuRotation(alias, rotated);
+      return rotated;
+    }
+    if (rotated.refreshToken === currentToken) {
+      recentRotations.delete(currentToken);
+      break;
+    }
+    currentToken = rotated.refreshToken;
+  }
+
+  if (cycleDetected) {
+    for (const alias of aliases) recentRotations.delete(alias);
+  }
+
+  const existing = inFlightRefreshes.get(currentToken);
+  if (existing) {
+    const next = await existing;
+    for (const alias of aliases) rememberOsuRotation(alias, next);
     return next;
-  });
+  }
+  const promise = refreshOsuAccessToken(currentToken)
+    .then((next) => {
+      rememberOsuRotation(currentToken, next);
+      for (const alias of aliases) rememberOsuRotation(alias, next);
+      return next;
+    })
+    .finally(() => {
+      inFlightRefreshes.delete(currentToken);
+    });
+  inFlightRefreshes.set(currentToken, promise);
+  return promise;
 }
 
 /** osu! 授权结果事件：回调页与登录 Sheet 之间的轻量通知。 */

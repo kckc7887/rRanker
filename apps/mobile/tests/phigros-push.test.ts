@@ -140,6 +140,39 @@ describe('findPushRecommendations', () => {
     expect(splitSame.targetAcc).toBeLessThan(comparable!.targetAcc);
   });
 
+  it('hides per-song targets when two charts compete for one Best27 slot', () => {
+    const gameRecord: Record<string, (PhigrosScoreEntry | null)[]> = {};
+    const difficultyTable: Record<string, number[]> = {};
+    for (let i = 0; i < 26; i += 1) {
+      const id = `kept.${i}`;
+      difficultyTable[id] = [0, 0, 16, 0];
+      gameRecord[id] = [null, null, entry(id, 2, 16, 1_000_000, 100), null];
+    }
+    difficultyTable.weak = [0, 0, 10, 0];
+    gameRecord.weak = [null, null, entry('weak', 2, 10, 1_000_000, 100), null];
+    for (const id of ['rival.a', 'rival.b']) {
+      difficultyTable[id] = [0, 0, 15, 0];
+      gameRecord[id] = [null, null, entry(id, 2, 15, 800_000, 80), null];
+    }
+
+    const split = findPushRecommendations(gameRecord, difficultyTable, {
+      delta: 0.2,
+      songCost: 2,
+      includePhi: false,
+    });
+    expect(split.perSongShare).toBeCloseTo(split.gainNeeded / 2, 3);
+    expect(split.combinationReachesTarget).toBe(false);
+    expect(split.recommendations).toEqual([]);
+
+    const solo = findPushRecommendations(gameRecord, difficultyTable, {
+      delta: 0.1,
+      songCost: 1,
+      includePhi: false,
+    });
+    expect(solo.combinationReachesTarget).toBe(true);
+    expect(solo.recommendations.length).toBeGreaterThan(0);
+  });
+
   it('can exclude recommendations that require φ (target Acc 100%)', () => {
     const { gameRecord, difficultyTable } = buildPool();
     const withPhi = findPushRecommendations(gameRecord, difficultyTable, {

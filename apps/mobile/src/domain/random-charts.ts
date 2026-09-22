@@ -144,11 +144,13 @@ export function filterMaimaiRandomCharts(
     filters.achievementMax,
   ) || filters.soloAchievement !== null || filters.multiAchievement !== null;
   const hasConstantFilter = !!(filters.constantMin || filters.constantMax);
+  if (filters.selectedDxRatingTagIds.length > 0 && tags === undefined) return [];
   const tagFilterActive = tags !== undefined && filters.selectedDxRatingTagIds.length > 0;
   const tagIndex = tagFilterActive ? buildDxRatingChartTagIndex(tags, catalog.songs) : new Map();
   const picks: RandomChartPick[] = [];
 
   for (const song of catalog.songs) {
+    if (song.disabled) continue;
     const songId = normalizeSongId(song.id);
     for (const chart of song.charts) {
       if (filters.difficulty !== 'all' && chart.difficulty !== filters.difficulty) continue;

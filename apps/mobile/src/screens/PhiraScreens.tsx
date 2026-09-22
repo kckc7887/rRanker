@@ -3,10 +3,11 @@ import { RemoteImage as Image } from '@/components/RemoteImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { ActivityIndicator, InteractionManager, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { InteractionManager, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { QueryStateView } from '@/components/QueryStateView';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
+import { InfinitePageFooter } from '@/components/game-content/InfinitePageFooter';
 import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
@@ -116,6 +117,12 @@ export function PhiraCatalogScreen() {
   const debounced = useDebouncedValue(keyword, 350); const query = usePhiraCharts(status, debounced);
   // Phira /chart 的 page=1 与 page=0 重复且 updated 排序在请求间漂移，跨页需按 id 去重，避免 FlatList 重复 key。
   const charts = useMemo(() => filterPhiraCharts(dedupePhiraCharts(query.data?.pages.flatMap((page) => page.results) ?? []), constantMin, constantMax, sort), [constantMax, constantMin, query.data?.pages, sort]);
+  const pagesLoaded = query.data?.pages.length ?? 0;
+  const keepScanning = charts.length === 0 && query.hasNextPage === true && pagesLoaded < 8;
+  useEffect(() => {
+    if (!keepScanning || query.isFetchingNextPage || query.isFetchNextPageError) return;
+    void query.fetchNextPage();
+  }, [keepScanning, query]);
   const controls = <><GameSearchHeader value={keyword} onChangeText={setKeyword} placeholder="搜索 Phira 谱面"
     wrapStyle={styles.searchWrap} inputStyle={styles.search} />
     <PhiraFilterBar collapsed={collapsed}
@@ -130,12 +137,20 @@ export function PhiraCatalogScreen() {
           onChange: (value) => setSort(value as PhiraCatalogSort) },
       ]}
       onReset={() => { setStatus('ranked'); setSort('updated'); setConstantMin(''); setConstantMax(''); }} /></>;
-  return <View style={[styles.page, { backgroundColor: theme.background }]}><CatalogListPage beforeList={controls} isLoading={query.isLoading} isError={query.isError} error={query.error}
-    onRetry={() => void query.refetch()} isEmpty={!query.isLoading && charts.length === 0} emptyText="没有找到 Phira 谱面" data={charts.length ? charts : undefined}
+  const footer = (
+    <InfinitePageFooter
+      loading={query.isFetchingNextPage || keepScanning}
+      failed={query.isFetchNextPageError}
+      hasNextPage={query.hasNextPage === true}
+      onRetry={() => void query.fetchNextPage()}
+    />
+  );
+  return <View style={[styles.page, { backgroundColor: theme.background }]}><CatalogListPage beforeList={controls} isLoading={query.isLoading} isError={query.isError && charts.length === 0} error={query.error}
+    onRetry={() => void query.refetch()} isEmpty={!query.isLoading && charts.length === 0 && !keepScanning && !query.hasNextPage} emptyText="没有找到 Phira 谱面" data={charts.length || keepScanning ? charts : undefined}
     flatListProps={{ testID: 'phira-catalog-results-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
       contentContainerStyle: [styles.listContent, { paddingBottom: inset + 20 }], scrollIndicatorInsets: { bottom: inset },
       keyExtractor: (item) => String(item.id), renderItem: ({ item }) => <PhiraSongRow chart={item} />,
-      onEndReached: () => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); }, ListFooterComponent: query.isFetchingNextPage ? <ActivityIndicator /> : null }} /></View>;
+      onEndReached: () => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); }, ListFooterComponent: footer }} /></View>;
 }
 
 export function PhiraSongDetailScreen({ chartId }: { chartId: string }) {

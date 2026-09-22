@@ -32,13 +32,15 @@ export async function prepareOsuChartPreviewWebViewSource(
   signal: AbortSignal,
   onProgress?: (progress: ChartPreviewLoadProgress) => void,
 ) {
+  const previewSettings = normalizeOsuChartPreviewSettings(settings);
+  const includeVideo = previewSettings.videoEnabled;
   const assertCurrent = captureResourceWrites('shared', signal);
   assertCurrent();
   const directory = createChartPreviewSessionDirectory(DIRECTORY_NAME);
   try {
     let resources: OsuChartPreviewResources | undefined;
     let candidateSequence = 0;
-    const archive = await downloadOsuBeatmapsetArchive(directory, { beatmapsetId: target.beatmapsetId, includeVideo: true }, {
+    const archive = await downloadOsuBeatmapsetArchive(directory, { beatmapsetId: target.beatmapsetId, includeVideo }, {
       signal,
       onProgress: ({ totalBytesWritten, totalBytesExpectedToWrite }) => onProgress?.({
         label: CHART_PREVIEW_RESOURCE_LABEL,
@@ -67,7 +69,7 @@ export async function prepareOsuChartPreviewWebViewSource(
               staged.write(content);
               return staged.uri;
             },
-          });
+          }, { includeVideo });
           assertAttempt();
           resources = candidateResources;
         } catch (error) {
@@ -92,7 +94,7 @@ export async function prepareOsuChartPreviewWebViewSource(
       directoryName: DIRECTORY_NAME,
       directory,
       stagedAssets: [
-        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        // eslint-disable-next-line @typescript-eslint/no-require-imports -- Metro 静态资源编号只能在运行时 require
         { fileName: 'player.js', moduleId: require('../../../assets/osu-chart-preview/player.bundle') as number },
       ],
       htmlModuleId: require('../../../assets/osu-chart-preview/index.html') as number,

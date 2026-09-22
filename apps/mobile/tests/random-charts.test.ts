@@ -211,12 +211,12 @@ describe('filterMaimaiRandomCharts', () => {
     expect(utage.map(chartPickKey)).toEqual(['100123:UTAGE:0']);
   });
 
-  it('skips the tag filter when tag data is unavailable, like the records page', () => {
+  it('does not widen the pool when selected tags cannot be loaded', () => {
     const pool = filterMaimaiRandomCharts(catalog, records, {
       ...maimaiFilters,
       selectedDxRatingTagIds: [1, 2, 3],
     });
-    expect(pool).toHaveLength(7);
+    expect(pool).toEqual([]);
   });
 });
 

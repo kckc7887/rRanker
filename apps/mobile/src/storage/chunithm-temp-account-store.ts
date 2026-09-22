@@ -1,5 +1,5 @@
 import Storage from 'expo-sqlite/kv-store';
-import type { KeyValueStore } from '@/storage/create-demo-account-store';
+import { loadAccountDirectory, type KeyValueStore } from '@/storage/create-demo-account-store';
 
 type StoredChunithmTempAccountV1 = {
   version: 1;
@@ -18,14 +18,8 @@ export function parseChunithmTempAccount(value: unknown): boolean {
 export class ChunithmTempAccountStore {
   constructor(private readonly storage: KeyValueStore = Storage) {}
 
-  async load(): Promise<boolean> {
-    try {
-      const raw = await this.storage.getItem(STORE_KEY);
-      return raw ? parseChunithmTempAccount(JSON.parse(raw)) : false;
-    } catch {
-      await this.storage.removeItem(STORE_KEY).catch(() => undefined);
-      return false;
-    }
+  load(): Promise<boolean> {
+    return loadAccountDirectory(this.storage, STORE_KEY, parseChunithmTempAccount, false);
   }
 
   async enable(): Promise<void> {

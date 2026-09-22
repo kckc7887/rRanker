@@ -137,9 +137,10 @@ export function minimumScoreForChunithmOverPower(
   if (!Number.isFinite(levelValue) || !Number.isFinite(targetOverPower) || targetOverPower <= 0) {
     return null;
   }
-  if (maxChunithmOverPower(levelValue) < targetOverPower) return null;
+  const maxScore = 1_010_000;
+  if (calculateChunithmOverPower(levelValue, maxScore, clear) < targetOverPower) return null;
   let low = 0;
-  let high = 1_010_000;
+  let high = maxScore;
   while (low < high) {
     const middle = Math.floor((low + high) / 2);
     if (calculateChunithmOverPower(levelValue, middle, clear) >= targetOverPower) {
@@ -148,6 +149,8 @@ export function minimumScoreForChunithmOverPower(
       low = middle + 1;
     }
   }
+  if (calculateChunithmOverPower(levelValue, low, clear) < targetOverPower) return null;
+  if (low > 0 && calculateChunithmOverPower(levelValue, low - 1, clear) >= targetOverPower) return null;
   return low;
 }
 
