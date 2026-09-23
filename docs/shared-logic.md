@@ -406,6 +406,7 @@ HTML、尺寸、字体、署名和导出结构由各自模板保留，金样不�
 `useBestImagePreview` 与 `useBestImageExport`；类型由 `best-image-controller-types.ts` 提供兼容导出。
 导出会话独占同步操作锁、等待画布及稳定计时器、临时捕获文件和操作代次。
 权限/捕获/保存异步边界复核取消，迟到桥接回调不能完成其他页面；取消后不继续保存或提示成功。
+iOS 截图前若 App 处于 inactive 或 background，先等到 `foreground-ready`。第一次截图失败后再等 250ms 重试一次；层级截图失败时改用 `useRenderInContext`。
 不可取消的原生捕获返回后回收文件；已经开始的相册保存完成后收尾，不回删相册。
 原生 I/O 继续使用 `best-image-export.ts`，`best-image-export-lifecycle.test.tsx` 覆盖取消阶段和重复启动。
 

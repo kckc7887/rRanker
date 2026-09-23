@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { PixelRatio, Platform, type View } from 'react-native';
+import { AppState, PixelRatio, Platform, type View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import { useNotification } from '@/components/AppNotification';
 import { createRuntimeOperation } from '@/services/runtime-diagnostics-recorder';
+import { waitForForeground } from '@/state/app-lifecycle-core';
 import { parseBestImageHeightMessage, parseBestImageReadyMessage } from './best-image-messages';
-import { bestImageCaptureDimensions, BestImageExportError, deleteBestImageCapture, isDrawViewHierarchyError, requestBestImageExportPermission, saveBestImageCapture, shouldUseBestImageRenderInContext } from './best-image-export';
+import { bestImageCaptureDimensions, BestImageExportError, deleteBestImageCapture, requestBestImageExportPermission, saveBestImageCapture, shouldUseBestImageRenderInContext } from './best-image-export';
 import type { BestImageScreenControllerRuntime } from './best-image-controller-types';
 
 type CanvasWait = {
@@ -29,6 +30,25 @@ type ExportSession = {
 function clearWait(session: ExportSession) {
   if (session.wait?.timer) clearTimeout(session.wait.timer);
   session.wait = null;
+}
+
+function captureFailureText(error: unknown): string {
+  if (typeof error === 'string') return error;
+  if (error instanceof Error) return error.message;
+  return '';
+}
+
+function iosSnapshotNeedsAnotherAttempt(attempt: number): boolean {
+  return Platform.OS === 'ios' && attempt < 1;
+}
+
+function prefersRenderInContext(error: unknown, usedRenderInContext: boolean): boolean {
+  return !usedRenderInContext && /drawViewHierarchyInRect|view cannot be captured|unable to snapshot|snapshot failed|not attached/iu.test(captureFailureText(error));
+}
+
+async function waitForCaptureSurface(): Promise<void> {
+  if (AppState.currentState !== 'inactive' && AppState.currentState !== 'background') return;
+  await waitForForeground();
 }
 
 function exportFailureMessage(error: unknown, savedCount: number): string {
@@ -128,14 +148,26 @@ export function useBestImageExport(config: {
       stage(session, 'capture', index + 1);
       const useRenderInContext = shouldUseBestImageRenderInContext(Platform.OS, session.width, height);
       const options = { format: 'png', quality: 1, result: 'tmpfile',
-        ...bestImageCaptureDimensions(session.width, height, PixelRatio.get(), Platform.OS),
-        ...(useRenderInContext ? { useRenderInContext: true } : {}) } as const;
-      let uri: string;
-      try { uri = await captureRef(exportCaptureRef, options); }
-      catch (error) {
+        ...bestImageCaptureDimensions(session.width, height, PixelRatio.get(), Platform.OS) } as const;
+      let renderInContext = useRenderInContext;
+      let uri: string | undefined;
+      let attempt = 0;
+      while (uri === undefined) {
+        await waitForCaptureSurface();
         assertCurrent(session);
-        if (Platform.OS !== 'ios' || useRenderInContext || !isDrawViewHierarchyError(error)) throw error;
-        uri = await captureRef(exportCaptureRef, { ...options, useRenderInContext: true });
+        try {
+          uri = await captureRef(exportCaptureRef, {
+            ...options,
+            ...(renderInContext ? { useRenderInContext: true } : {}),
+          });
+        } catch (error) {
+          assertCurrent(session);
+          if (!iosSnapshotNeedsAnotherAttempt(attempt)) throw error;
+          attempt += 1;
+          if (prefersRenderInContext(error, renderInContext)) renderInContext = true;
+          await new Promise((resolve) => setTimeout(resolve, 250));
+          assertCurrent(session);
+        }
       }
       // A cancelled native capture still owns its returned file until this session cleans it up.
       const capture = { uri, filename: '' };
