@@ -59,6 +59,20 @@ function postStatus(type: string, payload: Record<string, unknown> = {}): void {
   window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...payload }));
 }
 
+function reportBackgroundVideo(result: 'success' | 'error', video?: HTMLVideoElement): void {
+  const code = video?.error?.code ?? 0;
+  const errorCode = result !== 'error' ? undefined
+    : code === 2 ? 'network'
+    : code === 4 ? 'no_data'
+    : code === 1 ? 'cancelled'
+    : 'unknown';
+  postStatus('background-video', {
+    result,
+    status: code,
+    ...(errorCode ? { errorCode } : {}),
+  });
+}
+
 function decodeBase64Payload(value: string): ArrayBuffer {
   const separator = value.indexOf(',');
   const base64 = separator >= 0 ? value.slice(separator + 1) : value;
@@ -568,6 +582,7 @@ async function main(): Promise<void> {
             backgroundVideoPlayPending = false;
             backgroundVideoReady = false;
             backgroundVideoFailed = true;
+            reportBackgroundVideo('error', backgroundVideo);
             attachBackgroundVideo(false);
             setBackgroundStatus(backgroundImageReady
               ? '视频背景不可用，已显示图片背景。'
@@ -606,6 +621,7 @@ async function main(): Promise<void> {
     if (backgroundVideoReady || backgroundVideoLoading) return;
     if (!config.backgroundVideoUrl) {
       backgroundVideoFailed = true;
+      reportBackgroundVideo('error');
       setBackgroundStatus(backgroundImageReady
         ? '视频背景不可用，已显示图片背景。'
         : '背景暂时不可用。');
@@ -642,6 +658,7 @@ async function main(): Promise<void> {
     backgroundVideoLoading = false;
     backgroundVideoReady = true;
     backgroundVideoFailed = false;
+    reportBackgroundVideo('success', backgroundVideo);
     clearBackgroundStatus();
     renderFrameAll();
   });
@@ -653,6 +670,7 @@ async function main(): Promise<void> {
     backgroundVideoLoading = false;
     backgroundVideoReady = false;
     backgroundVideoFailed = true;
+    reportBackgroundVideo('error', backgroundVideo);
     attachBackgroundVideo(false);
     ensureBackgroundImage();
     setBackgroundStatus(backgroundImageReady

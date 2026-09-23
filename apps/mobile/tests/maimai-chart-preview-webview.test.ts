@@ -321,6 +321,7 @@ describe('chart preview webview helpers', () => {
     expect(player).toContain("const BACKGROUND_LABELS = ['无背景', '图片背景', '视频背景']");
     expect(player).toContain("saveSettings({ backgroundMode: nextMode })");
     expect(player).toContain("postStatus('background-video-confirmation')");
+    expect(player).toContain("postStatus('background-video'");
     expect(player).not.toContain('window.confirm');
     expect(resolveInitialBackgroundState({})).toEqual({ mode: 'image', prompted: false });
     expect(resolveInitialBackgroundState({ backgroundMode: 'none' })).toEqual({
