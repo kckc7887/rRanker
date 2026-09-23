@@ -553,6 +553,7 @@ export function ChartPreviewScreenShell<TPayload>({
                   ...(errorCode ? { errorCode } : {}),
                 });
               }
+              if (data.type === 'error') {
                 recordView('player-error', { result: 'error', error: data });
                 // 诊断日志：底层原因只进日志，不进用户界面。
                 console.log('[chart-preview] player error', {
