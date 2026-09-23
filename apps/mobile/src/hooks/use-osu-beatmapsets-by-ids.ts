@@ -33,7 +33,7 @@ export function useOsuBeatmapsetsByIds(
       queryFn: async ({ signal }: { signal: AbortSignal }): Promise<OsuBeatmapsetDetail> => {
         const provider = new OsuScoreProvider(
           session as OsuOAuthSession,
-          (next) => applyOsuTokenRotation(activeAccountId, next),
+          (next, expected) => applyOsuTokenRotation(activeAccountId, next, expected),
         );
         const raw = await provider.getBeatmapset(beatmapsetId, signal);
         return normalizeOsuBeatmapsetDetail(raw, gameId);

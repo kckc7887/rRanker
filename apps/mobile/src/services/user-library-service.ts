@@ -1,4 +1,4 @@
-import { createUserDataBackup, DEFAULT_TAG_PRESETS, libraryTargetKey, normalizeTags, shouldKeepLibraryItem } from '@/domain/user-library';
+import { assertUserDataBackupExportable, createUserDataBackup, DEFAULT_TAG_PRESETS, libraryTargetKey, MAX_BACKUP_ITEMS, mergeLibraryItems, normalizeLibraryItem, normalizeTagPresets, normalizeTags, shouldKeepLibraryItem } from '@/domain/user-library';
 import type { LibraryTarget, RestoreMode, UserDataBackup, UserDataBackupV3, UserLibraryItem } from '@/domain/user-library';
 import type { GameId } from '@/domain/game-bind-options';
 import type { ChartType } from '@/domain/models';
@@ -12,7 +12,7 @@ export class UserLibraryService {
     return this.repository.listTagPresets?.() ?? Promise.resolve([...DEFAULT_TAG_PRESETS]);
   }
   setTagPresets(values: readonly string[]): Promise<string[]> {
-    const normalized = normalizeTags(values);
+    const normalized = normalizeTagPresets(values);
     return this.repository.setTagPresets?.(normalized) ?? Promise.resolve(normalized);
   }
 
@@ -45,18 +45,22 @@ export class UserLibraryService {
 
   async createBackup(): Promise<UserDataBackupV3> {
     const [items, tagPresets] = await Promise.all([this.repository.list(), this.listTagPresets()]);
-    return createUserDataBackup(items, this.now(), tagPresets);
+    const backup = createUserDataBackup(items, this.now(), tagPresets);
+    assertUserDataBackupExportable(backup);
+    return backup;
   }
 
   async restore(backup: UserDataBackup, mode: RestoreMode): Promise<UserLibraryItem[]> {
-    const items = await this.repository.restore(backup.items, mode);
-    const current = await this.listTagPresets();
-    const imported = backup.version === 1 ? [...DEFAULT_TAG_PRESETS] : backup.tagPresets;
+    const [currentItems, currentPresets] = await Promise.all([this.repository.list(), this.listTagPresets()]);
+    const importedPresets = backup.version === 1 ? [...DEFAULT_TAG_PRESETS] : backup.tagPresets;
     const nextPresets = backup.version === 1 && mode === 'merge'
-      ? current
-      : mode === 'merge' ? [...current, ...imported] : imported;
-    await this.setTagPresets(nextPresets);
-    return items;
+      ? currentPresets
+      : normalizeTagPresets(mode === 'merge' ? [...currentPresets, ...importedPresets] : importedPresets);
+    const imported = backup.items.map((item) => normalizeLibraryItem(item)).filter(shouldKeepLibraryItem);
+    const nextItems = mode === 'merge' ? mergeLibraryItems(currentItems, imported) : mergeLibraryItems([], imported);
+    if (nextItems.length > MAX_BACKUP_ITEMS) throw new Error('备份条目超过上限');
+    if (!this.repository.replaceContents) throw new Error('个人曲库恢复缺少原子写入');
+    return this.repository.replaceContents(nextItems, nextPresets);
   }
 
   clear(): Promise<void> { return this.repository.clear(); }

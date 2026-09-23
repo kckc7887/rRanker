@@ -19,11 +19,13 @@ import { chartPreviewStageDirectory } from '@/features/chart-preview-shared/char
 // 改写为 import 需补齐 .html/.bundle 的模块声明且无行为收益。
  
 const HTML_MODULE = require('../../../assets/phigros-chart-preview/index.html') as number;
-// eslint-disable-next-line @typescript-eslint/no-require-imports
+// eslint-disable-next-line @typescript-eslint/no-require-imports -- Metro 静态资源编号只能在运行时 require
 const PLAYER_MODULE = require('../../../assets/phigros-chart-preview/player.bundle') as number;
 
 /** 内置皮肤与命中音源：对象存储 rranker-phigros-data/chart-preview（与本地 assets/phigros-chart-preview 同名同路径）。 */
 const PHIGROS_CHART_PREVIEW_ASSET_BASE = 'https://rranker-phigros-data.cn-nb1.rains3.com/chart-preview';
+/** 持久缓存文件名带这一修订；会话里仍落成 skin/原文件名，播放器路径不变。 */
+const PHIGROS_SKIN_CACHE_REVISION = '20260922';
 
 const SKIN_ASSETS: readonly { fileName: string; url: string; bytes: number }[] = [
   { fileName: 'Tap2.png', url: `${PHIGROS_CHART_PREVIEW_ASSET_BASE}/skin/Tap2.png`, bytes: 4_062 },
@@ -135,9 +137,15 @@ export async function preparePhigrosChartPreviewWebViewSource(
   return prepareChartPreviewWebviewFromPlan({
     directoryName: STAGE_DIRECTORY_NAME,
     directory,
+    remoteCacheDirectory: chartPreviewStageDirectory('rranker-phigros-chart-preview-remote'),
     stagedAssets: [
       { fileName: 'player.js', moduleId: PLAYER_MODULE },
-      ...SKIN_ASSETS.map(({ fileName, url, bytes }) => ({ fileName: `skin/${fileName}`, url, bytes })),
+      ...SKIN_ASSETS.map(({ fileName, url, bytes }) => ({
+        fileName: `skin/${fileName}`,
+        url,
+        bytes,
+        cacheRevision: PHIGROS_SKIN_CACHE_REVISION,
+      })),
     ],
     dataUrlAssets: HIT_SOUND_ASSETS.map(({ kind, fileName, url, bytes }) => ({
       key: kind,
@@ -192,6 +200,10 @@ export async function stagePhiraRpeBundle(
   const directory = new Directory(root, `rpe/${chartId}`);
   directory.create({ intermediates: true, idempotent: true });
   for (const file of files) {
+    const separatorIndex = file.name.lastIndexOf('/');
+    if (separatorIndex > 0) {
+      new Directory(directory, file.name.slice(0, separatorIndex)).create({ intermediates: true, idempotent: true });
+    }
     const target = new File(directory, file.name);
     if (target.exists) target.delete();
     target.create();

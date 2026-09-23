@@ -88,6 +88,7 @@ const RANK_ORDER = [
 ];
 const FULL_COMBO_ORDER = ['fullcombo', 'alljustice', 'alljusticecritical'];
 const FULL_CHAIN_ORDER = ['fullchain', 'fullchain2'];
+const CLEAR_ORDER = ['failed', 'clear', 'hard', 'brave', 'absolute', 'catastrophy'];
 
 /** chunithmRankFromScore 的显示标签 → lxns 原始枚举值。 */
 const RANK_DISPLAY_TO_RAW: Record<string, string> = {
@@ -112,7 +113,8 @@ export function chunithmScoreMeetsRequirement(
   const rawRank = score.rank ?? RANK_DISPLAY_TO_RAW[chunithmRankFromScore(score.score)];
   return meets(rawRank, required.rank, RANK_ORDER)
     && meets(score.full_combo, required.fullCombo, FULL_COMBO_ORDER)
-    && meets(score.full_chain, required.fullChain, FULL_CHAIN_ORDER);
+    && meets(score.full_chain, required.fullChain, FULL_CHAIN_ORDER)
+    && meets(score.clear, required.clear, CLEAR_ORDER);
 }
 
 export interface ChunithmMissingSongProgress {

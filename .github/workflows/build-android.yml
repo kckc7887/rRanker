@@ -44,6 +44,12 @@ jobs:
       - name: Test
         run: npm test
 
+      - name: Architecture
+        run: npm run check:architecture
+
+      - name: Generated players
+        run: npm run check:generated
+
   build-android:
     needs: quality
     runs-on: ubuntu-latest

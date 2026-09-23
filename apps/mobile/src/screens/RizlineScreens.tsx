@@ -53,6 +53,7 @@ export function RizlineRecordsScreen() {
     beforeList={<GameSearchHeader value={keyword} onChangeText={setKeyword} placeholder="搜索 Rizline 成绩" wrapStyle={styles.searchWrap} inputStyle={styles.search} />}
     data={records.length ? records : undefined} isLoading={query.isLoading} isError={query.isError} error={query.error}
     isEmpty={!query.isLoading && records.length === 0} emptyText={keyword ? '没有符合条件的成绩' : '同步数据后，成绩会显示在这里'}
+    emptyActionLabel={keyword ? '清除筛选' : undefined} onEmptyAction={keyword ? () => setKeyword('') : undefined}
     onRetry={() => void query.refetch()} flatListProps={{ testID: 'rizline-records-list', style: styles.list, contentInsetAdjustmentBehavior: 'automatic',
       contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], scrollIndicatorInsets: { bottom: inset },
       refreshing: query.isFetching, onRefresh: () => void query.refetch(), keyExtractor: (record) => record.chartId,
@@ -75,6 +76,8 @@ export function RizlineCatalogScreen() {
       <RizlineFilterBar filter={filter} packs={packs} constantBounds={bounds} /></>}
     data={filtered.length ? filtered : undefined} isLoading={query.isLoading} isError={query.isError} error={query.error}
     isEmpty={!query.isLoading && filtered.length === 0} emptyText="没有符合条件的歌曲" onRetry={() => void query.refetch()}
+    emptyActionLabel={filter.keyword || filter.difficulty !== 'all' || filter.packId !== 'all' || filter.constantMin || filter.constantMax ? '清除筛选' : undefined}
+    onEmptyAction={filter.keyword || filter.difficulty !== 'all' || filter.packId !== 'all' || filter.constantMin || filter.constantMax ? () => filter.clearFilters() : undefined}
     flatListProps={{ testID: 'rizline-catalog-list', style: styles.list, contentInsetAdjustmentBehavior: 'automatic',
       contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], scrollIndicatorInsets: { bottom: inset },
       keyExtractor: (song) => song.id, renderItem: ({ item }) => <RizlineSongRow song={item} favorite={favorites.has(item.id)}

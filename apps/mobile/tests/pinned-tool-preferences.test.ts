@@ -150,11 +150,12 @@ describe('pinned tool preferences', () => {
     });
   });
 
-  it('clears malformed storage without blocking the toolbox', async () => {
+  it('keeps malformed preferences and still returns defaults', async () => {
     const storage = new MemoryStore();
     storage.values.set('rranker.toolbox.pinned-tools.v1', '{');
     const store = new PinnedToolPreferencesStore(storage);
     await expect(store.load()).resolves.toEqual(emptyHomePinPreferences());
-    expect(storage.values.size).toBe(0);
+    expect(storage.values.get('rranker.toolbox.pinned-tools.v1')).toBe('{');
+    expect(storage.values.get('rranker.toolbox.pinned-tools.v1.corrupt')).toBe('{');
   });
 });

@@ -1,4 +1,4 @@
-import type { StoryboardObject, StoryboardTrigger, StoryboardTriggerRun } from './events';
+import { storyboardLoopBounds, type StoryboardLoop, type StoryboardObject, type StoryboardTrigger, type StoryboardTriggerRun } from './events';
 
 export type StoryboardHitSoundEvent = {
   beatmapMs: number;
@@ -39,12 +39,21 @@ function matches(filter: TriggerFilter, event: StoryboardHitSoundEvent): boolean
     && (filter.sampleIndex === null || filter.sampleIndex === event.sampleIndex);
 }
 
+function shiftLoop(loop: StoryboardLoop, shift: number): StoryboardLoop {
+  return { ...loop, start: loop.start + shift };
+}
+
 function commandRange(trigger: StoryboardTrigger): { start: number; end: number } {
   let start = Infinity;
   let end = -Infinity;
   for (const command of trigger.commands) {
     start = Math.min(start, command.start);
     end = Math.max(end, command.end);
+  }
+  for (const loop of trigger.loops ?? []) {
+    const bounds = storyboardLoopBounds(loop);
+    start = Math.min(start, bounds.start);
+    end = Math.max(end, bounds.end);
   }
   return { start, end };
 }
@@ -60,7 +69,8 @@ export function compileStoryboardTriggers(
     const definitions = triggers.map((trigger, index) => ({
       trigger, index, filter: parseFilter(trigger.name), range: commandRange(trigger),
     })).filter((definition) => definition.filter !== null && Number.isFinite(definition.range.end));
-    const ordinaryEnd = object.commands.reduce((end, command) => Math.max(end, command.end), -Infinity);
+    let ordinaryEnd = object.commands.reduce((end, command) => Math.max(end, command.end), -Infinity);
+    for (const loop of object.loops ?? []) ordinaryEnd = Math.max(ordinaryEnd, storyboardLoopBounds(loop).end);
     const runs: StoryboardTriggerRun[] = [];
     const activeGroup = new Map<string, StoryboardTriggerRun>();
     const lastActivation = new Map<number, Set<string>>();
@@ -87,6 +97,7 @@ export function compileStoryboardTriggers(
           commands: trigger.commands.map((command) => ({
             ...command, start: event.beatmapMs + command.start, end: event.beatmapMs + command.end,
           })),
+          ...(trigger.loops?.length ? { loops: trigger.loops.map((loop) => shiftLoop(loop, event.beatmapMs)) } : {}),
         };
         runs.push(run);
         activeGroup.set(key, run);

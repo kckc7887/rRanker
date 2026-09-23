@@ -1,4 +1,11 @@
 import JSZip from 'jszip';
+import {
+  assertChartPreviewDownloadBytes,
+  chartPreviewDeclaredUncompressedSize,
+  readBudgetedZipEntry,
+  scanChartPreviewArchiveEntries,
+  type ChartPreviewCancellation,
+} from '@/features/chart-preview-shared/chart-preview-resource-budget';
 import { bytesToBase64 } from '@/utils/crypto-subset';
 import type { OsuChartPreviewFile, OsuChartPreviewTarget } from './configuration';
 import { parseBeatmap } from './webview-player/engine/parsers/BeatmapParser';
@@ -45,27 +52,32 @@ export async function readOsuChartPreviewArchive(
   archive: Uint8Array,
   target: OsuChartPreviewTarget,
   reader: OsuChartPreviewResourceReader,
+  options?: { includeVideo?: boolean },
 ): Promise<OsuChartPreviewResources> {
+  const cancellation: ChartPreviewCancellation = { assertCurrent: reader.assertCurrent };
+  assertChartPreviewDownloadBytes(archive.byteLength);
   reader.assertCurrent();
-  const zip = await JSZip.loadAsync(archive, { checkCRC32: true });
+  const zip = await JSZip.loadAsync(archive);
   reader.assertCurrent();
   const entries = new Map<string, JSZip.JSZipObject>();
   const foldedPaths = new Set<string>();
-  for (const entry of Object.values(zip.files)) {
-    if (entry.dir) continue;
-    archivePath(entry.unsafeOriginalName ?? entry.name);
-    const path = archivePath(entry.name);
-    const folded = path.toLowerCase();
-    if (foldedPaths.has(folded)) throw new Error('谱面包包含重复的资源路径');
-    foldedPaths.add(folded);
-    entries.set(path, entry);
-  }
+  await scanChartPreviewArchiveEntries(Object.values(zip.files), archive.byteLength, {
+    cancellation,
+    uncompressedSize: (entry) => chartPreviewDeclaredUncompressedSize(entry),
+    visit: (entry) => {
+      archivePath(entry.unsafeOriginalName ?? entry.name);
+      const path = archivePath(entry.name);
+      const folded = path.toLowerCase();
+      if (foldedPaths.has(folded)) throw new Error('谱面包包含重复的资源路径');
+      foldedPaths.add(folded);
+      entries.set(path, entry);
+    },
+  });
 
   let selected: { path: string; text: string } | undefined;
   for (const [path, entry] of entries) {
     if (!/\.osu$/iu.test(path)) continue;
-    const bytes = await entry.async('uint8array');
-    reader.assertCurrent();
+    const bytes = await readBudgetedZipEntry(entry, cancellation);
     const text = decodeOsuText(bytes);
     const beatmap = parseBeatmap(text);
     if (beatmap.beatmapId !== target.beatmapId) continue;
@@ -80,8 +92,7 @@ export async function readOsuChartPreviewArchive(
 
   const osbSources: { path: string; text: string }[] = [];
   for (const path of selectPreviewOsbPaths(selected.path, [...entries.keys()])) {
-    const bytes = await entries.get(path)!.async('uint8array');
-    reader.assertCurrent();
+    const bytes = await readBudgetedZipEntry(entries.get(path)!, cancellation);
     osbSources.push({ path, text: decodeOsuText(bytes) });
   }
   const plan = selectPreviewResources({
@@ -89,6 +100,8 @@ export async function readOsuChartPreviewArchive(
     osuPath: selected.path,
     osbSources,
     availablePaths: [...entries.keys()],
+    includeVideo: options?.includeVideo,
+    cancellation,
   });
   const files: OsuChartPreviewFile[] = [selected, ...osbSources].map(({ path, text }) => ({
     path, text, mime: 'text/plain',
@@ -98,22 +111,23 @@ export async function readOsuChartPreviewArchive(
   const audioPaths = [...new Set(plan.audioPaths)];
   const total = mediaPaths.length + audioPaths.length;
   let completed = 0;
+  const stagedMedia: { path: string; bytes: Uint8Array }[] = [];
   for (const path of audioPaths) {
     const entry = entries.get(path);
     if (!entry) throw new Error('谱面音频资源不存在');
-    const bytes = await entry.async('uint8array');
-    reader.assertCurrent();
+    const bytes = await readBudgetedZipEntry(entry, cancellation);
     audio[path] = bytesToBase64(bytes);
     reader.onProgress?.(++completed / Math.max(1, total));
   }
   for (const path of mediaPaths) {
     const entry = entries.get(path);
     if (!entry) throw new Error('谱面媒体资源不存在');
-    const bytes = await entry.async('uint8array');
+    stagedMedia.push({ path, bytes: await readBudgetedZipEntry(entry, cancellation) });
+  }
+  for (const item of stagedMedia) {
+    const uri = await reader.stageMedia(item.path, item.bytes);
     reader.assertCurrent();
-    const uri = await reader.stageMedia(path, bytes);
-    reader.assertCurrent();
-    files.push({ path, uri, mime: osuPreviewResourceMime(path) });
+    files.push({ path: item.path, uri, mime: osuPreviewResourceMime(item.path) });
     reader.onProgress?.(++completed / Math.max(1, total));
   }
   reader.assertCurrent();

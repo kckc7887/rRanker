@@ -174,6 +174,8 @@ type QueryPageProps<TData> = {
   error?: unknown;
   onRetry?: () => void;
   emptyText: string;
+  emptyActionLabel?: string;
+  onEmptyAction?: () => void;
   data?: TData;
 };
 
@@ -194,6 +196,8 @@ export function BestListPage<
   error,
   onRetry,
   emptyText,
+  emptyActionLabel,
+  onEmptyAction,
   data,
   sectionListProps,
 }: BestListPageProps<TItem, TSection>) {
@@ -206,6 +210,8 @@ export function BestListPage<
       error={error}
       onRetry={onRetry}
       emptyText={emptyText}
+      emptyActionLabel={emptyActionLabel}
+      onEmptyAction={onEmptyAction}
       data={data}
       renderData={(sections) => (
         <RemoteImageSectionList<TItem, TSection>
@@ -230,6 +236,8 @@ function FlatListPage<TItem>({
   error,
   onRetry,
   emptyText,
+  emptyActionLabel,
+  onEmptyAction,
   data,
   flatListProps,
   beforeList,
@@ -244,6 +252,8 @@ function FlatListPage<TItem>({
         error={error}
         onRetry={onRetry}
         emptyText={emptyText}
+        emptyActionLabel={emptyActionLabel}
+        onEmptyAction={onEmptyAction}
         data={data}
         renderData={(items) => (
           <RemoteImageFlatList<TItem>

@@ -52,6 +52,7 @@ export function useOverviewUpload({ boundAccounts, activeAccountId, activeGameId
   const currentUploadSelection = useMemo(() => [activeAccountId], [activeAccountId]);
   const finishUpload = useCallback((result: UploadResult) => {
     for (const refreshed of result.refreshedAccounts) {
+      try { refreshed.assertCurrent?.(); } catch { continue; }
       updateBoundAccountScore(
         refreshed.account.id,
         formatPlayerScore(refreshed.snapshot.best50.rating, ratingDigits),

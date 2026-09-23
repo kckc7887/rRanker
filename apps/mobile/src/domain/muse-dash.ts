@@ -436,7 +436,7 @@ export function buildMuseDashRandomCharts(
 export function filterMuseDashRandomCharts(
   charts: readonly MuseDashRandomChart[],
   filters: MuseDashRandomChartFilters,
-  missByChart: ReadonlyMap<string, number | undefined>,
+  missByChart: ReadonlyMap<string, number | null | undefined>,
 ): MuseDashRandomChart[] {
   const scoreFilterActive = filters.accMin.trim() !== ''
     || filters.accMax.trim() !== ''
@@ -450,12 +450,11 @@ export function filterMuseDashRandomCharts(
     }
     if (scoreFilterActive && !chart.score) return false;
     if (chart.score && !matchesMuseDashAccRange(chart.score.play.acc, filters.accMin, filters.accMax)) return false;
-    if (filters.achievement !== 'all' && chart.score
-      && !matchesMuseDashAchievementFilter(
-        chart.score.play.acc,
-        missByChart.get(chart.key),
-        filters.achievement,
-      )) return false;
+    if (filters.achievement !== 'all' && chart.score) {
+      const miss = missByChart.get(chart.key);
+      if (miss === null) return true;
+      if (!matchesMuseDashAchievementFilter(chart.score.play.acc, miss, filters.achievement)) return false;
+    }
     return true;
   });
 }

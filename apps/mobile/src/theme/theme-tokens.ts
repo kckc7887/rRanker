@@ -28,7 +28,7 @@ export const APP_ACCENTS = (Object.keys(ACCENT_COLORS) as Exclude<AppAccent, 'cu
 }));
 
 export interface AppThemeTokens {
-  dark: boolean; accent: string; accentSoft: string; background: string; surface: string;
+  dark: boolean; accent: string; onAccent: string; accentSoft: string; background: string; surface: string;
   surfaceMuted: string; text: string; textSecondary: string; textMuted: string; border: string;
   input: string; overlay: string; danger: string; dangerSoft: string; success: string;
   warning: string; statusBar: 'light' | 'dark';
@@ -45,16 +45,26 @@ export function resolveAccentHex(preferences: Pick<ThemePreferences, 'accent' | 
   return ACCENT_COLORS[preferences.accent];
 }
 
+export function foregroundOnAccent(hex: string): string {
+  const raw = hex.replace('#', '');
+  const red = Number.parseInt(raw.slice(0, 2), 16);
+  const green = Number.parseInt(raw.slice(2, 4), 16);
+  const blue = Number.parseInt(raw.slice(4, 6), 16);
+  const luminance = (0.2126 * red + 0.7152 * green + 0.0722 * blue) / 255;
+  return luminance > 0.62 ? '#111827' : '#FFFFFF';
+}
+
 export function createAppTheme(mode: 'light' | 'dark', accentHex: string): AppThemeTokens {
   const accent = normalizeAccentHex(accentHex) ?? ACCENT_COLORS.blue;
+  const onAccent = foregroundOnAccent(accent);
   if (mode === 'dark') return {
-    dark: true, accent, accentSoft: `${accent}33`, background: '#0D1117', surface: '#161B22',
+    dark: true, accent, onAccent, accentSoft: `${accent}33`, background: '#0D1117', surface: '#161B22',
     surfaceMuted: '#21262D', text: '#F0F3F6', textSecondary: '#C9D1D9', textMuted: '#8B949E',
     border: '#30363D', input: '#0D1117', overlay: 'rgba(0,0,0,0.72)', danger: '#FF7B72',
     dangerSoft: '#3D1F24', success: '#56D364', warning: '#E3B341', statusBar: 'light',
   };
   return {
-    dark: false, accent, accentSoft: `${accent}18`, background: '#F7F8FA', surface: '#FFFFFF',
+    dark: false, accent, onAccent, accentSoft: `${accent}18`, background: '#F7F8FA', surface: '#FFFFFF',
     surfaceMuted: '#EEF2F7', text: '#111827', textSecondary: '#4B5563', textMuted: '#6B7280',
     border: '#D1D5DB', input: '#FFFFFF', overlay: 'rgba(17,24,39,0.58)', danger: '#B42318',
     dangerSoft: '#FEECEB', success: '#15803D', warning: '#B45309', statusBar: 'dark',

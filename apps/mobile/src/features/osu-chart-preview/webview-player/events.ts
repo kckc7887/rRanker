@@ -1,3 +1,12 @@
+import {
+  assertChartPreviewEventCount,
+  assertChartPreviewLoopExpansion,
+  assertChartPreviewNestingDepth,
+  CHART_PREVIEW_MAX_LOOP_EXPANSION,
+  type ChartPreviewCancellation,
+  interruptChartPreviewParse,
+  throwIfChartPreviewCancelled,
+} from '../../chart-preview-shared/chart-preview-resource-budget';
 import { resolveArchivePath } from './osu-text';
 
 export type StoryboardLayer = 'Background' | 'Fail' | 'Pass' | 'Foreground' | 'Overlay';
@@ -18,12 +27,22 @@ export type ColourCommand = CommandTiming & {
 export type ParameterCommand = CommandTiming & { type: 'P'; parameter: 'H' | 'V' | 'A' };
 export type StoryboardCommand = ScalarCommand | VectorCommand | ColourCommand | ParameterCommand;
 
+/** 未展开的故事板循环。求值时按时间映射到单次迭代，不复制 count 份指令。 */
+export type StoryboardLoop = {
+  start: number;
+  count: number;
+  duration: number;
+  commands: StoryboardCommand[];
+  loops?: StoryboardLoop[];
+};
+
 export type StoryboardTrigger = {
   name: string;
   start: number;
   end: number;
   group: number;
   commands: StoryboardCommand[];
+  loops?: StoryboardLoop[];
 };
 
 export type StoryboardTriggerRun = {
@@ -32,6 +51,7 @@ export type StoryboardTriggerRun = {
   activationMs: number;
   stopMs?: number;
   commands: StoryboardCommand[];
+  loops?: StoryboardLoop[];
 };
 
 export type StoryboardObject = {
@@ -45,6 +65,7 @@ export type StoryboardObject = {
   frameDelay: number;
   loopForever: boolean;
   commands: StoryboardCommand[];
+  loops?: StoryboardLoop[];
   triggers?: StoryboardTrigger[];
   triggerRuns?: StoryboardTriggerRun[];
 };
@@ -176,14 +197,38 @@ function parseCommands(parts: readonly string[]): StoryboardCommand[] {
 }
 
 type EventLine = { indent: number; parts: string[] };
+type ParsedGroup = { commands: StoryboardCommand[]; triggers: StoryboardTrigger[]; loops: StoryboardLoop[] };
+type ParseState = { events: number; cancellation?: ChartPreviewCancellation };
 
-function parseGroup(lines: readonly EventLine[], offset = 0): {
-  commands: StoryboardCommand[]; triggers: StoryboardTrigger[];
-} {
+function accountEvent(state: ParseState): void {
+  state.events += 1;
+  assertChartPreviewEventCount(state.events);
+  interruptChartPreviewParse(state.events, state.cancellation);
+}
+
+function groupExtent(group: Pick<ParsedGroup, 'commands' | 'loops'>): { first: number; end: number } {
+  let first = Infinity;
+  let end = -Infinity;
+  for (const command of group.commands) {
+    first = Math.min(first, command.start);
+    end = Math.max(end, command.end);
+  }
+  for (const loop of group.loops) {
+    const bounds = storyboardLoopBounds(loop);
+    first = Math.min(first, bounds.start);
+    end = Math.max(end, bounds.end);
+  }
+  return { first, end };
+}
+
+function parseGroup(lines: readonly EventLine[], offset: number, depth: number, state: ParseState): ParsedGroup {
+  assertChartPreviewNestingDepth(depth);
   const commands: StoryboardCommand[] = [];
   const triggers: StoryboardTrigger[] = [];
+  const loops: StoryboardLoop[] = [];
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]!;
+    accountEvent(state);
     const type = line.parts[0]?.toUpperCase();
     if (type !== 'L' && type !== 'T') {
       commands.push(...parseCommands(line.parts).map((command) => ({ ...command, start: command.start + offset, end: command.end + offset })));
@@ -191,30 +236,47 @@ function parseGroup(lines: readonly EventLine[], offset = 0): {
     }
     let last = index + 1;
     while (last < lines.length && lines[last]!.indent > line.indent) last += 1;
-    const child = parseGroup(lines.slice(index + 1, last));
+    const child = parseGroup(lines.slice(index + 1, last), 0, depth + 1, state);
     index = last - 1;
     if (type === 'T') {
       triggers.push({
         name: line.parts[1] ?? '', start: number(line.parts[2], -Infinity), end: number(line.parts[3], Infinity),
         group: number(line.parts[4]), commands: child.commands,
+        ...(child.loops.length > 0 ? { loops: child.loops } : {}),
       });
       continue;
     }
     const loopStart = number(line.parts[1]) + offset;
     const count = Math.max(1, Math.floor(number(line.parts[2], 1)));
-    if (child.commands.length === 0) continue;
-    const first = child.commands.reduce((value, command) => Math.min(value, command.start), Infinity);
-    const end = child.commands.reduce((value, command) => Math.max(value, command.end), -Infinity);
-    const duration = end - first;
-    for (let iteration = 0; iteration < (duration === 0 ? 1 : count); iteration += 1) {
-      const shift = loopStart + duration * iteration;
-      for (const command of child.commands) commands.push({ ...command, start: command.start + shift, end: command.end + shift });
+    if (child.commands.length === 0 && child.loops.length === 0) continue;
+    const extent = groupExtent(child);
+    const duration = extent.end - extent.first;
+    const iterations = duration === 0 ? 1 : count;
+    const expansion = iterations * Math.max(1, child.commands.length + child.loops.length);
+    const span = duration > 0 ? duration * (iterations - 1) : 0;
+    if (!Number.isFinite(loopStart) || !Number.isFinite(span) || !Number.isFinite(expansion)) {
+      assertChartPreviewLoopExpansion(Number.NaN);
     }
+    if (child.loops.length === 0 && expansion <= CHART_PREVIEW_MAX_LOOP_EXPANSION) {
+      for (let iteration = 0; iteration < iterations; iteration += 1) {
+        interruptChartPreviewParse(iteration, state.cancellation);
+        const shift = loopStart + duration * iteration;
+        for (const command of child.commands) commands.push({ ...command, start: command.start + shift, end: command.end + shift });
+      }
+      continue;
+    }
+    loops.push({
+      start: loopStart,
+      count: iterations,
+      duration: duration === 0 ? 0 : duration,
+      commands: child.commands,
+      ...(child.loops.length > 0 ? { loops: child.loops } : {}),
+    });
   }
-  return { commands, triggers };
+  return { commands, triggers, loops };
 }
 
-function parseEventsBlock(text: string, sourcePath: string, formatVersion: number): Omit<BeatmapVisuals, 'widescreen'> {
+function parseEventsBlock(text: string, sourcePath: string, formatVersion: number, state: ParseState): Omit<BeatmapVisuals, 'widescreen'> {
   const variables = variablesIn(text);
   const lines: EventLine[] = sectionLines(text, 'Events')
     .filter((line) => line.trim() && !line.trimStart().startsWith('//'))
@@ -229,6 +291,7 @@ function parseEventsBlock(text: string, sourcePath: string, formatVersion: numbe
   for (let index = 0; index < lines.length; index += 1) {
     const line = lines[index]!;
     if (line.indent > 0) continue;
+    accountEvent(state);
     const parts = line.parts;
     const rawType = parts[0]?.toUpperCase() ?? '';
     const type = /^\d+$/.test(rawType) ? EVENT_NAMES[Number(rawType)] : rawType;
@@ -244,7 +307,7 @@ function parseEventsBlock(text: string, sourcePath: string, formatVersion: numbe
     } else if (type === 'SPRITE' || type === 'ANIMATION') {
       let last = index + 1;
       while (last < lines.length && lines[last]!.indent > 0) last += 1;
-      const group = parseGroup(lines.slice(index + 1, last));
+      const group = parseGroup(lines.slice(index + 1, last), 0, 1, state);
       index = last - 1;
       const file = resolveArchivePath(parts[3] ?? '', sourcePath);
       if (!file) continue;
@@ -252,9 +315,10 @@ function parseEventsBlock(text: string, sourcePath: string, formatVersion: numbe
       const delay = formatVersion < 6 ? Math.round(0.015 * rawDelay) * 1.186 * 1000 / 60 : rawDelay;
       result.objects.push({
         kind: type === 'ANIMATION' ? 'Animation' : 'Sprite', layer: layer(parts[1]), origin: origin(parts[2]), file,
-        x: number(parts[4]), y: number(parts[5]), frameCount: type === 'ANIMATION' ? Math.max(1, Math.floor(number(parts[6], 1))) : 1,
+        x: number(parts[4]), y: number(parts[5]),         frameCount: type === 'ANIMATION' ? Math.max(1, Math.floor(number(parts[6], 1))) : 1,
         frameDelay: Math.max(1, delay), loopForever: !['looponce', '1'].includes((parts[8] ?? '').toLowerCase()),
         commands: group.commands, triggers: group.triggers,
+        ...(group.loops.length > 0 ? { loops: group.loops } : {}),
       });
     }
   }
@@ -264,12 +328,15 @@ function parseEventsBlock(text: string, sourcePath: string, formatVersion: numbe
 export function parseBeatmapVisuals(
   osuText: string,
   osbTexts: readonly string[] = [],
-  sources: { osuPath?: string; osbPaths?: readonly string[] } = {},
+  sources: { osuPath?: string; osbPaths?: readonly string[]; cancellation?: ChartPreviewCancellation } = {},
 ): BeatmapVisuals {
+  const state: ParseState = { events: 0, cancellation: sources.cancellation };
+  throwIfChartPreviewCancelled(state.cancellation);
   const formatVersion = number(/^\s*osu file format v(\d+)/im.exec(osuText)?.[1], 14);
-  const parsed = parseEventsBlock(osuText, sources.osuPath ?? '', formatVersion);
+  const parsed = parseEventsBlock(osuText, sources.osuPath ?? '', formatVersion, state);
   for (let index = 0; index < osbTexts.length; index += 1) {
-    const shared = parseEventsBlock(osbTexts[index]!, sources.osbPaths?.[index] ?? '', formatVersion);
+    interruptChartPreviewParse(index, state.cancellation);
+    const shared = parseEventsBlock(osbTexts[index]!, sources.osbPaths?.[index] ?? '', formatVersion, state);
     parsed.objects.push(...shared.objects);
     parsed.samples.push(...shared.samples);
     parsed.video ??= shared.video;
@@ -294,6 +361,64 @@ export function referencedImageFiles(objects: readonly StoryboardObject[]): stri
   return [...files.values()];
 }
 
+export function storyboardLoopBounds(loop: StoryboardLoop): { start: number; end: number } {
+  let first = Infinity;
+  let end = -Infinity;
+  for (const command of loop.commands) {
+    first = Math.min(first, command.start);
+    end = Math.max(end, command.end);
+  }
+  for (const nested of loop.loops ?? []) {
+    const bounds = storyboardLoopBounds(nested);
+    first = Math.min(first, bounds.start);
+    end = Math.max(end, bounds.end);
+  }
+  const iterations = loop.duration === 0 ? 1 : loop.count;
+  const lastShift = loop.start + (loop.duration > 0 ? loop.duration * (iterations - 1) : 0);
+  return { start: first + loop.start, end: end + lastShift };
+}
+
+function iterationIndex(baseStart: number, duration: number, count: number, timeMs: number): number | null {
+  if (!(baseStart <= timeMs)) return null;
+  if (!(duration > 0) || count <= 1) return 0;
+  const index = Math.floor((timeMs - baseStart) / duration);
+  if (!Number.isFinite(index) || index < 0) return null;
+  return Math.min(count - 1, index);
+}
+
+function shiftCommand(command: StoryboardCommand, shift: number): StoryboardCommand {
+  return { ...command, start: command.start + shift, end: command.end + shift };
+}
+
+function activeLoopCommands(loop: StoryboardLoop, timeMs: number, parentShift = 0): StoryboardCommand[] {
+  const commands: StoryboardCommand[] = [];
+  for (const command of loop.commands) {
+    const base = parentShift + loop.start + command.start;
+    const index = iterationIndex(base, loop.duration, loop.count, timeMs);
+    if (index === null) continue;
+    const shift = parentShift + loop.start + (loop.duration > 0 ? loop.duration * index : 0);
+    commands.push(shiftCommand(command, shift));
+  }
+  for (const nested of loop.loops ?? []) {
+    const bounds = storyboardLoopBounds(nested);
+    const index = iterationIndex(parentShift + loop.start + bounds.start, loop.duration, loop.count, timeMs);
+    if (index === null) continue;
+    const shift = parentShift + loop.start + (loop.duration > 0 ? loop.duration * index : 0);
+    commands.push(...activeLoopCommands(nested, timeMs, shift));
+  }
+  return commands;
+}
+
+/** 在给定时间展开当前迭代。没有循环时返回原数组，避免每帧复制。 */
+export function resolveStoryboardCommands(
+  commands: readonly StoryboardCommand[],
+  loops: readonly StoryboardLoop[] | undefined,
+  timeMs: number,
+): readonly StoryboardCommand[] {
+  if (!loops?.length) return commands;
+  return [...commands, ...loops.flatMap((loop) => activeLoopCommands(loop, timeMs))];
+}
+
 export function storyboardTimeRange(
   objects: readonly StoryboardObject[], samples: readonly StoryboardSample[] = [],
 ): { startMs: number; endMs: number } {
@@ -301,6 +426,11 @@ export function storyboardTimeRange(
   let endMs = 0;
   for (const object of objects) {
     for (const command of object.commands) { startMs = Math.min(startMs, command.start); endMs = Math.max(endMs, command.end); }
+    for (const loop of object.loops ?? []) {
+      const bounds = storyboardLoopBounds(loop);
+      startMs = Math.min(startMs, bounds.start);
+      endMs = Math.max(endMs, bounds.end);
+    }
     for (const run of object.triggerRuns ?? []) { startMs = Math.min(startMs, run.start); endMs = Math.max(endMs, run.end); }
   }
   for (const sample of samples) { startMs = Math.min(startMs, sample.timeMs); endMs = Math.max(endMs, sample.timeMs); }

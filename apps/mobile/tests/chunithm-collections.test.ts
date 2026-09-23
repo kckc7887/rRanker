@@ -71,6 +71,14 @@ describe('chunithm collections domain', () => {
       score({ id: 100, level_index: 0, score: 900_000 }),
       requirement,
     )).toBe(false);
+    expect(chunithmScoreMeetsRequirement(
+      score({ id: 100, level_index: 0, rank: 'sssp', clear: 'failed' }),
+      { ...requirement, clear: 'hard' },
+    )).toBe(false);
+    expect(chunithmScoreMeetsRequirement(
+      score({ id: 100, level_index: 0, rank: 'sssp', clear: 'absolute' }),
+      { ...requirement, clear: 'hard' },
+    )).toBe(true);
   });
 
   it('computes progress from the local score snapshot', () => {

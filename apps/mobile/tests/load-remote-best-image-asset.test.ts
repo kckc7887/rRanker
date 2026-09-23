@@ -27,7 +27,7 @@ vi.mock('expo-file-system', () => {
 });
 
 // Mocked native modules must be registered before the module under test is imported.
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { loadRemoteBestImageAssetDataUri } from '@/features/best-image/load-remote-best-image-asset';
 
 describe('remote best image asset localization', () => {

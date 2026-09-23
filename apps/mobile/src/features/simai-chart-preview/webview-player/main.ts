@@ -15,7 +15,7 @@ import {
   type Chart,
   type PreparedAudioEvent,
 } from '../engine';
-import { PlaybackClock } from '../../chart-preview-shared/webview-player/playbackClock';
+import { PlaybackClock, audioContextTime, musicPosition, outputTime, type MusicPosition } from '../../chart-preview-shared/webview-player/playbackClock';
 import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
 import { DEFAULT_JUDGE_HINT, parseJudgeHint } from '../engine/utils/judgeHint';
 import { ChartPreviewSkin } from '../engine/renderers/skinAtlas';
@@ -57,6 +57,20 @@ function clamp(value: number, min: number, max: number): number {
 
 function postStatus(type: string, payload: Record<string, unknown> = {}): void {
   window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...payload }));
+}
+
+function reportBackgroundVideo(result: 'success' | 'error', video?: HTMLVideoElement): void {
+  const code = video?.error?.code ?? 0;
+  const errorCode = result !== 'error' ? undefined
+    : code === 2 ? 'network'
+    : code === 4 ? 'no_data'
+    : code === 1 ? 'cancelled'
+    : 'unknown';
+  postStatus('background-video', {
+    result,
+    status: code,
+    ...(errorCode ? { errorCode } : {}),
+  });
 }
 
 function decodeBase64Payload(value: string): ArrayBuffer {
@@ -410,11 +424,11 @@ async function main(): Promise<void> {
     }
   };
 
-  const getMusicTime = (): number => {
+  const getMusicTime = (): MusicPosition => {
     if (!audioContext || !isAudioClockRunning) return playbackClock.offset;
-    const outputTime = getAudioContextOutputTime(audioContext);
-    playbackClock.prune(outputTime);
-    return playbackClock.positionAt(outputTime);
+    const heardAt = outputTime(getAudioContextOutputTime(audioContext));
+    playbackClock.prune(heardAt);
+    return playbackClock.positionAt(heardAt);
   };
 
   const playFromMusicPosition = async (positionSec: number, epoch: number) => {
@@ -447,8 +461,8 @@ async function main(): Promise<void> {
     sourceNode = source;
     sourceGain = gain;
     isAudioClockRunning = true;
-    const audibleAt = getAudioContextOutputTime(ctx) + SOURCE_START_LEAD_TIME_S;
-    playbackClock.set(audibleAt, Math.min(positionSec, clamped), playbackSpeed);
+    const audibleAt = outputTime(getAudioContextOutputTime(ctx) + SOURCE_START_LEAD_TIME_S);
+    playbackClock.set(audibleAt, musicPosition(Math.min(positionSec, clamped)), playbackSpeed);
   };
 
   try {
@@ -568,6 +582,7 @@ async function main(): Promise<void> {
             backgroundVideoPlayPending = false;
             backgroundVideoReady = false;
             backgroundVideoFailed = true;
+            reportBackgroundVideo('error', backgroundVideo);
             attachBackgroundVideo(false);
             setBackgroundStatus(backgroundImageReady
               ? '视频背景不可用，已显示图片背景。'
@@ -606,6 +621,7 @@ async function main(): Promise<void> {
     if (backgroundVideoReady || backgroundVideoLoading) return;
     if (!config.backgroundVideoUrl) {
       backgroundVideoFailed = true;
+      reportBackgroundVideo('error');
       setBackgroundStatus(backgroundImageReady
         ? '视频背景不可用，已显示图片背景。'
         : '背景暂时不可用。');
@@ -642,6 +658,7 @@ async function main(): Promise<void> {
     backgroundVideoLoading = false;
     backgroundVideoReady = true;
     backgroundVideoFailed = false;
+    reportBackgroundVideo('success', backgroundVideo);
     clearBackgroundStatus();
     renderFrameAll();
   });
@@ -653,6 +670,7 @@ async function main(): Promise<void> {
     backgroundVideoLoading = false;
     backgroundVideoReady = false;
     backgroundVideoFailed = true;
+    reportBackgroundVideo('error', backgroundVideo);
     attachBackgroundVideo(false);
     ensureBackgroundImage();
     setBackgroundStatus(backgroundImageReady
@@ -944,13 +962,13 @@ async function main(): Promise<void> {
       answerManager?.reset(beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm), true);
       if (isAudioClockRunning && audioContext) {
         if (getMusicTime() < 0) { void startPlayback(); return; }
-        const outputTime = getAudioContextOutputTime(audioContext);
         if (sourceNode) {
-          const startTime = audioContext.currentTime;
+          const startTime = audioContextTime(audioContext.currentTime);
           sourceNode.playbackRate.setValueAtTime(playbackSpeed, startTime);
-          playbackClock.appendSegment(startTime, playbackSpeed, outputTime);
+          playbackClock.appendSegment(startTime, playbackSpeed);
         } else {
-          playbackClock.set(outputTime, playbackClock.positionAt(outputTime), playbackSpeed);
+          const heardAt = outputTime(getAudioContextOutputTime(audioContext));
+          playbackClock.set(heardAt, playbackClock.positionAt(heardAt), playbackSpeed);
         }
       }
     },

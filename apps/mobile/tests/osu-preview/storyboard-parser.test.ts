@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { parseBeatmapVisuals, referencedImageFiles, storyboardTimeRange } from '../../src/features/osu-chart-preview/webview-player/events';
+import { CHART_PREVIEW_PARSE_YIELD_INTERVAL } from '@/features/chart-preview-shared/chart-preview-resource-budget';
+import { parseBeatmapVisuals, referencedImageFiles, storyboardTimeRange, type StoryboardLoop, type StoryboardObject } from '../../src/features/osu-chart-preview/webview-player/events';
 import { evaluateSprite } from '../../src/features/osu-chart-preview/webview-player/storyboard';
 
 describe('storyboard source parsing', () => {
@@ -96,6 +97,45 @@ Sprite,Foreground,Centre,"sprite.png",0,0
     assert.equal(sprite!.triggers![0]!.group, 7);
     assert.equal(sprite!.triggers![1]!.start, -Infinity);
     assert.equal(sprite!.triggers![1]!.end, Infinity);
+  });
+
+  it('evaluates a large storyboard loop by time instead of allocating one command per iteration', () => {
+    let checks = 0;
+    const [sprite] = parseBeatmapVisuals(`[Events]
+Sprite,Background,Centre,"sprite.png",0,0
+ L,0,100000
+  F,0,0,10,0,1
+`, [], { cancellation: { assertCurrent: () => { checks += 1; } } }).objects;
+    const count = (object: StoryboardObject | undefined): number => {
+      const walk = (loops: readonly StoryboardLoop[] | undefined): number => (loops ?? []).reduce(
+        (sum, loop) => sum + loop.commands.length + walk(loop.loops),
+        0,
+      );
+      return (object?.commands.length ?? 0) + walk(object?.loops);
+    };
+    assert.equal(count(sprite), 1);
+    assert.equal(sprite!.loops?.[0]?.count, 100000);
+    assert.equal(checks < 20, true);
+    assert.equal(evaluateSprite(sprite!, 5)?.fade, 0.5);
+    assert.equal(evaluateSprite(sprite!, 500005)?.fade, 0.5);
+  });
+
+  it('stops an in-budget loop expansion when the caller generation is cancelled', () => {
+    let checks = 0;
+    const iterations = CHART_PREVIEW_PARSE_YIELD_INTERVAL * 2;
+    assert.throws(() => parseBeatmapVisuals(`[Events]
+Sprite,Background,Centre,"sprite.png",0,0
+ L,0,${iterations}
+  F,0,0,10,0,1
+`, [], {
+      cancellation: {
+        assertCurrent: () => {
+          checks += 1;
+          if (checks > 1) throw new Error('缓存请求已失效');
+        },
+      },
+    }), /缓存请求已失效/);
+    assert.equal(checks > 1, true);
   });
 
   it('rejects references outside the archive without replacing valid assets', () => {

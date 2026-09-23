@@ -61,7 +61,8 @@ describe('osu! OAuth 授权与轮换', () => {
       }),
     }));
     vi.stubGlobal('fetch', fetchMock);
-    const session = await exchangeOsuAuthorizationCode('code-1', state ?? undefined);
+    if (!state) throw new Error('authorize url is missing state');
+    const session = await exchangeOsuAuthorizationCode('code-1', state);
     expect(session.mode).toBe('osu-oauth');
     expect(session.accessToken).toBe('access-1');
     expect(session.refreshToken).toBe('refresh-1');
@@ -73,16 +74,41 @@ describe('osu! OAuth 授权与轮换', () => {
     expect(body.get('redirect_uri')).toBe('rranker://oauth/osu');
   });
 
-  it('exchangeOsuAuthorizationCode 校验 state 失败报鉴权错误', async () => {
-    stubTokenFetch({ access_token: 'a', expires_in: 86400, refresh_token: 'r' });
-    await expect(exchangeOsuAuthorizationCode('code-1', 'other-state')).rejects.toMatchObject({
-      code: 'authentication',
-    } as Partial<ProviderError>);
+  it('exchangeOsuAuthorizationCode 在请求令牌前拒绝缺省、空、错误、过期和重复的 state', async () => {
+    const fetchMock = vi.fn(async () => ({
+      ok: true, status: 200, json: async () => ({ access_token: 'a', expires_in: 86400, refresh_token: 'r' }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    const authorizeUrl = await beginOsuAuthorize();
+    const state = new URLSearchParams(authorizeUrl.split('?')[1]).get('state') ?? '';
+    await expect(exchangeOsuAuthorizationCode('code-1', '')).rejects.toMatchObject({ code: 'authentication' });
+    await expect(exchangeOsuAuthorizationCode('code-1', 'other-state')).rejects.toMatchObject({ code: 'authentication' });
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 11 * 60 * 1000);
+    await expect(exchangeOsuAuthorizationCode('code-1', state)).rejects.toMatchObject({ code: 'authentication' });
+    expect(fetchMock).not.toHaveBeenCalled();
+    vi.mocked(Date.now).mockRestore();
+  });
+
+  it('exchangeOsuAuthorizationCode 成功后不能再次使用同一 state', async () => {
+    const authorizeUrl = await beginOsuAuthorize();
+    const state = new URLSearchParams(authorizeUrl.split('?')[1]).get('state') ?? '';
+    const fetchMock = vi.fn(async () => ({
+      ok: true, status: 200, json: async () => ({
+        access_token: 'access-1', expires_in: 86400, refresh_token: 'refresh-1',
+      }),
+    }));
+    vi.stubGlobal('fetch', fetchMock);
+    await exchangeOsuAuthorizationCode('code-1', state);
+    await expect(exchangeOsuAuthorizationCode('code-1', state)).rejects.toMatchObject({ code: 'authentication' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('exchangeOsuAuthorizationCode 401 报鉴权错误', async () => {
+    const authorizeUrl = await beginOsuAuthorize();
+    const state = new URLSearchParams(authorizeUrl.split('?')[1]).get('state') ?? '';
     stubTokenFetch({ error: 'invalid_grant', error_description: '授权码无效' }, 401);
-    await expect(exchangeOsuAuthorizationCode('code-1', 'state-1')).rejects.toMatchObject({
+    await expect(exchangeOsuAuthorizationCode('code-1', state)).rejects.toMatchObject({
       code: 'authentication',
     } as Partial<ProviderError>);
   });
@@ -113,5 +139,21 @@ describe('osu! OAuth 授权与轮换', () => {
     expect(calls).toBe(1);
     expect(left.refreshToken).toBe('refresh-2');
     expect(right).toBe(left);
+  });
+
+  it('rotateOsuTokens 把旧刷新令牌解析到最新一代', async () => {
+    const payloads = [
+      { access_token: 'access-b', expires_in: 86400, refresh_token: 'refresh-b' },
+      { access_token: 'access-c', expires_in: 86400, refresh_token: 'refresh-c' },
+    ];
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => payloads.shift(),
+    })));
+    const second = await rotateOsuTokens('refresh-a');
+    const third = await rotateOsuTokens(second.refreshToken);
+    await expect(rotateOsuTokens('refresh-a')).resolves.toMatchObject({ refreshToken: third.refreshToken });
+    await expect(rotateOsuTokens('refresh-b')).resolves.toMatchObject({ refreshToken: 'refresh-c' });
   });
 });

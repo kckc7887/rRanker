@@ -62,12 +62,15 @@ export function useUserLibrary(enabled = true) {
       }
     },
     onSuccess: (items, operation) => {
-      if (operation.type === 'restore' || operation.type === 'clear' || operation.type === 'clear-game') {
-        void queryClient.invalidateQueries({ queryKey: USER_LIBRARY_QUERY_KEY });
-        if (operation.type === 'clear') queryClient.setQueryData(TAG_PRESETS_QUERY_KEY, [...DEFAULT_TAG_PRESETS]);
+      if (operation.type === 'favorite' || operation.type === 'practice' || operation.type === 'tags') {
+        syncLibraryCache(operation.type === 'tags' ? operation.target.gameId : operation.gameId, items);
         return;
       }
-      syncLibraryCache(activeGameId, items);
+      if (operation.type === 'restore' || operation.type === 'clear' || operation.type === 'clear-game') {
+        void queryClient.invalidateQueries({ queryKey: USER_LIBRARY_QUERY_KEY });
+        void queryClient.invalidateQueries({ queryKey: TAG_PRESETS_QUERY_KEY });
+        if (operation.type === 'clear') queryClient.setQueryData(TAG_PRESETS_QUERY_KEY, [...DEFAULT_TAG_PRESETS]);
+      }
     },
   });
   const presetMutation = useMutation<string[], Error, string[]>({

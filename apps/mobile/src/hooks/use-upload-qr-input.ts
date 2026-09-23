@@ -43,12 +43,6 @@ export function useUploadQrInput(visible: boolean, running: boolean, uploadMetho
     decodeRef.current = controller;
     const forwardAbort = () => controller.abort(foreground?.reason);
     try {
-      const permission = await ImagePicker.requestMediaLibraryPermissionsAsync();
-      if (generation !== generationRef.current) return;
-      if (!permission.granted) {
-        showNotification({ title: '需要相册权限', message: '请允许访问相册后再选择二维码图片。', variant: 'warning' });
-        return;
-      }
       const result = await ImagePicker.launchImageLibraryAsync({ mediaTypes: ['images'], allowsMultipleSelection: false, quality: 1 });
       if (result.canceled) return;
       assetUri = result.assets[0]?.uri;

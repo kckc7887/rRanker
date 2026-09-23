@@ -48,7 +48,7 @@ export function TufRandomChartsScreen() {
     });
     return () => controller.abort();
     // retryVersion is the explicit trigger for retrying only the failed offsets.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 回调只在挂载时消费一次，或依赖已在上方说明
   }, [firstPage?.limit, firstPage?.total, playerId, queryOptions, retryVersion]);
 
   const loaded = useMemo(() => uniqueTufPassesByLevel(

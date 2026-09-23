@@ -19,7 +19,7 @@ rRanker 是一个多音游数据管理应用。你可以在一个应用中查看
 - **账号管理**：按游戏支持的数据来源绑定多个账号，在不同游戏、账号和 osu! 模式之间快速切换。
 - **个人曲库**：收藏歌曲、标记练习谱面，并为歌曲和谱面添加本地标签。
 - **成绩图片**：为舞萌 DX、中二节奏和 Phigros 生成并导出预设或自定义成绩图片。
-- **谱面功能**：查看舞萌 DX、Majdata Net、Phigros 和 Phira 的谱面确认；下载舞萌 DX、Majdata Net、Phigros、Phira 和 osu! 的谱面文件。
+- **谱面功能**：查看舞萌 DX、Majdata Net、Phigros、Phira、osu! 和 Rizline 的谱面确认；下载舞萌 DX、Majdata Net、Phigros、Phira 和 osu! 的谱面文件。
 - **游戏工具**：提供随机歌曲、附近机厅查找，以及 Rating 计算、推分计算、实力分析、牌子与收藏品进度、版本对照、模组百科等游戏专属工具。
 - **个性化与存储**：切换深浅色模式和主题色，调整成绩卡片曲绘效果，并查看或清理应用内存储。
 
@@ -31,13 +31,15 @@ rRanker 是一个多音游数据管理应用。你可以在一个应用中查看
 | [中二节奏](https://wc.wahlap.net/chunithm/play/) | 玩家数据、曲库、成绩图片、Rating / OVER POWER 计算与收藏品进度 | 落雪查分器、示例账号 |
 | [Phigros](https://www.taptap.cn/app/165287) | 玩家数据、曲库、谱面确认与下载、成绩图片、推分计算与实力分析 | TapTap 云存档、示例账号 |
 | [Phira](https://phira.moe/) | 玩家数据、曲库、谱面确认与下载 | 公开玩家 ID 或用户名 |
-| [osu!](https://osu.ppy.sh/) | osu!standard、osu!mania、osu!catch、osu!taiko；玩家数据、曲库、谱面下载与模组百科 | osu! 账号授权 |
+| [osu!](https://osu.ppy.sh/) | osu!standard、osu!mania、osu!catch、osu!taiko；玩家数据、曲库、谱面确认与下载、模组百科 | osu! 账号授权 |
 | [喵斯快跑](https://musedash.peropero.net/) | 玩家数据、曲库与随机歌曲 | MuseDash.moe、示例账号 |
 | [冰与火之舞](https://store.steampowered.com/app/977950/_A_Dance_of_Fire_and_Ice/) | 玩家数据、曲库与随机关卡 | TUF 社区公开玩家 |
 | [Majdata Net](https://majdata.net/) | 玩家数据、曲库、谱面确认与下载及达成率与容错 | Majdata Net 账密登录 |
-| [Rizline](https://www.taptap.cn/app/201173) | 玩家数据、曲库与随机歌曲 | 官方账号 |
+| [Rizline](https://www.taptap.cn/app/201173) | 玩家数据、曲库、随机歌曲与谱面确认 | 官方账号 |
 
 ## 🚀 快速开始
+
+需要 Node.js 22.13 或更高版本。
 
 ```bash
 cd apps/mobile

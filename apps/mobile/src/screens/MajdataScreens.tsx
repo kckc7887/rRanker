@@ -118,6 +118,8 @@ export function MajdataRecordsScreen() {
     <RecordsListPage data={cards.length ? cards : undefined} isLoading={query.isLoading}
       isError={query.isError && !snapshot} error={query.error} isEmpty={!cards.length}
       emptyText="当前筛选条件下没有成绩" onRetry={() => void query.refetch()}
+      emptyActionLabel={filter.keyword || filter.difficulties.length || filter.tags.length || filter.min || filter.max ? '清除筛选' : undefined}
+      onEmptyAction={filter.keyword || filter.difficulties.length || filter.tags.length || filter.min || filter.max ? () => filter.clearFilters() : undefined}
       flatListProps={{ testID: 'majdata-records-results-list', contentInsetAdjustmentBehavior: 'automatic',
         style: recordsStyles.list, contentContainerStyle: [recordsStyles.listContent, { paddingBottom: bottom + 16 }],
         scrollIndicatorInsets: { bottom }, keyExtractor: item => item.key,
@@ -156,6 +158,8 @@ export function MajdataCatalogScreen() {
     <CatalogListPage data={songs.length || query.hasNextPage ? songs : undefined} isLoading={query.isLoading}
       isError={query.isError && !all.length} error={query.error} isEmpty={!songs.length && !query.hasNextPage}
       emptyText="当前筛选条件下没有歌曲" onRetry={() => void query.refetch()}
+      emptyActionLabel={filter.keyword || filter.difficulties.length || filter.tags.length || filter.min || filter.max ? '清除筛选' : undefined}
+      onEmptyAction={filter.keyword || filter.difficulties.length || filter.tags.length || filter.min || filter.max ? () => filter.clearFilters() : undefined}
       flatListProps={{ testID: 'majdata-catalog-results-list', contentInsetAdjustmentBehavior: 'automatic',
         contentContainerStyle: [catalogStyles.listContent, { paddingBottom: bottom + 20 }],
         scrollIndicatorInsets: { bottom }, keyExtractor: item => item.id,

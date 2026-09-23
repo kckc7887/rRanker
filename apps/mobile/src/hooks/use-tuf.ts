@@ -16,6 +16,7 @@ import {
 import { tufProvider } from '@/providers/tuf-provider';
 import { cacheFirstLoad } from '@/services/cache-first';
 import { queryClient } from '@/state/query-client';
+import { invalidateTufDifficulties } from '@/services/infinite-query-refresh';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import {
   loadTufPlayerFresh,
@@ -148,6 +149,10 @@ export function useTufLevelSearch(
     enabled: enabled && tabActive,
     ...TUF_QUERY_OPTIONS,
   });
+}
+
+export async function refreshTufDifficulties(): Promise<void> {
+  await invalidateTufDifficulties();
 }
 
 export function useTufDifficulties(enabled = true) {

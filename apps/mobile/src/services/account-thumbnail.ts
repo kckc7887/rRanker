@@ -1,4 +1,5 @@
 import { captureResourceWrites, resourceWriteGeneration } from '@/services/snapshot-cache-utils';
+import { loadItemsBounded } from '@/services/offset-pagination';
 import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 import { hydrateLocalAccountRatings } from '@/services/hydrate-local-account-ratings';
 import {
@@ -95,27 +96,32 @@ export async function hydrateBoundAccountThumbnails(
   signal?: AbortSignal,
 ): Promise<void> {
   const { boundAccounts, updateBoundAccountScore } = useSession.getState();
-  await Promise.all(boundAccounts.map(async (account) => {
-    const assertCurrent = captureResourceWrites(account.gameId, signal, account.id);
-    try {
-      const thumbnail = await repo.getResource<AccountThumbnailSnapshot>(
-        accountThumbnailResourceKey(account.id),
-        ACCOUNT_THUMBNAIL_SCHEMA_VERSION,
-      );
-      if (!thumbnail || signal?.aborted) return;
-      assertCurrent();
-      updateBoundAccountScore(
-        account.id,
-        thumbnail.scoreDisplay ?? account.scoreDisplay,
-        undefined,
-        thumbnail.avatarUrl ?? undefined,
-        thumbnail.challengeModeRank ?? undefined,
-        thumbnail.ratingPossession ?? undefined,
-      );
-    } catch {
-      // 单个账号缓存读取失败不阻断列表
-    }
-  }));
+  await loadItemsBounded({
+    items: boundAccounts,
+    concurrency: 4,
+    signal,
+    load: async (account) => {
+      const assertCurrent = captureResourceWrites(account.gameId, signal, account.id);
+      try {
+        const thumbnail = await repo.getResource<AccountThumbnailSnapshot>(
+          accountThumbnailResourceKey(account.id),
+          ACCOUNT_THUMBNAIL_SCHEMA_VERSION,
+        );
+        if (!thumbnail || signal?.aborted) return;
+        assertCurrent();
+        updateBoundAccountScore(
+          account.id,
+          thumbnail.scoreDisplay ?? account.scoreDisplay,
+          undefined,
+          thumbnail.avatarUrl ?? undefined,
+          thumbnail.challengeModeRank ?? undefined,
+          thumbnail.ratingPossession ?? undefined,
+        );
+      } catch {
+        // 单个账号缓存读取失败不阻断列表
+      }
+    },
+  });
 }
 
 const displayHydrations = new WeakMap<AbortSignal, { key: string; promise: Promise<void> }>();

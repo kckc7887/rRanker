@@ -26,7 +26,7 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
 `apps/mobile/app/_layout.tsx` 是运行时装配中心：
 
 1. 最外层安装 `AppLifecycleProvider`，将 `active`、短暂 `inactive`、后台和内存警告转成统一生命周期状态。后台中止前台 AbortSignal；从后台经 inactive 回到 `foreground-ready` 时重建可取消信号，短暂 inactive 本身不中止、不换代。
-2. `useAppStartup` 并行恢复主题、图标字体和账号；准备完成前只渲染加载态。`services/account-restoration.ts` 统一安全会话、可选账号档案和旧默认本地玩家快照迁移，真实本地 Rating 延后读取。调试偏好同时恢复，但不阻塞主界面；恢复前示例添加入口关闭。
+2. `useAppStartup` 并行恢复主题、图标字体和账号；准备完成前只渲染加载态。`services/account-restoration.ts` 统一安全会话、可选账号档案和旧默认本地玩家快照迁移，真实本地 Rating 延后读取。单个可选来源读取失败时保留该来源原数据并继续恢复其他来源；本地目录读失败时不从旧快照重建档案。调试偏好同时恢复，但不阻塞主界面；恢复前示例添加入口关闭。
 3. 准备完成后安装 React Query、应用主题、全局通知和根导航栈。
 4. 根部唯一 `useSyncAccountMetadata` 订阅当前账号结果；页面只读取。`useAppRuntime` 在首帧交互结束后通过 `hydrateAccountDisplayData` 与账号列表共享缩略信息和本地 Rating 恢复，存储维护每次挂载执行一次。
 5. `useAppRuntime` 统一路由记录、前后台与内存联动：后台暂停上传任务并取消查询；每个前台代次恢复一次展示数据，任务被短暂 inactive 取消后可以重新排队；只有内存警告释放非活动 Query 和 Expo Image 内存缓存。
@@ -482,6 +482,19 @@ MajSimai 输出作为 TypeScript 测试的外部基准。语法范围、素材�
 
 完整单元测试使用 Node.js 22.13 或更新版本；日志事务测试通过内置 `node:sqlite`
 运行真实内存数据库，CI 的 Node.js 22 满足该要求。
+
+`master` 的 GitHub 分支保护由仓库管理员在网页设置，本次不代为调用 API：
+合并必须经过 Pull Request；Android 与 iOS workflow 里的 quality 检查失败时不能合并；
+禁止 force-push。
+
+2026-09-23 对生产依赖树执行 `npm audit --omit=dev`。未执行 `npm audit fix --force`，
+也未把 Expo 升出 SDK 54。`expo`、`@expo/metro`、`metro`、`expo-router` 的修复版本离开
+当前 SDK，这些包在预构建和打包链路，不作为业务运行时单独升级。
+`@xmldom/xmldom`（GHSA-6gmq-8vp8-gcm6）、`nanoid`（GHSA-28wg-ghj8-5hjv）、
+`js-yaml`（GHSA-5p4m-2wfm-xmqj）、`postcss`（GHSA-qx2v-qp2m-jg93）、
+`brace-expansion`（GHSA-mh99-v99m-4gvg）和 `image-size`（GHSA-w3rx-r6r6-pgpr）
+是传递依赖；其中 XML、ID 和 YAML 解析可能进入打包结果，PostCSS 与图片尺寸读取主要在构建期。
+它们的修复不能在不牵动 Expo 54 锁文件的前提下单独验证，因此保持现状。
 
 ```powershell
 npm ci

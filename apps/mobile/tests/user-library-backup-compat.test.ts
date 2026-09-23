@@ -10,6 +10,10 @@ function repository(initialPresets: string[]): UserLibraryRepository & { presets
     setTagPresets: async (values: readonly string[]) => (state.presets = [...values]),
     update: async () => [],
     restore: async () => [],
+    replaceContents: async (_items: readonly unknown[], presets: readonly string[]) => {
+      state.presets = [...presets];
+      return [];
+    },
     clear: async () => undefined,
   };
   return state;

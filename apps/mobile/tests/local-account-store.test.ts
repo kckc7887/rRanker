@@ -1,4 +1,9 @@
 import {
+  AccountDirectoryCorruptError,
+  AccountDirectoryReadError,
+  accountDirectoryCorruptKey,
+} from '@/storage/create-demo-account-store';
+import {
   LocalAccountStore,
   normalizeLocalPlayerName,
   parseLocalAccountProfiles,
@@ -32,6 +37,35 @@ describe('LocalAccountStore', () => {
       { id: 'maimai:local', displayName: '默认玩家' },
       { id: 'maimai:local:alice', displayName: 'Alice 新名称' },
     ]);
+  });
+
+  it('暂时读失败时保留原账号目录', async () => {
+    const storage = new MemoryKeyValueStore();
+    const store = new LocalAccountStore(storage);
+    await store.upsert({ id: 'maimai:local', displayName: '甲' });
+    await store.upsert({ id: 'maimai:local:alice', displayName: '乙' });
+    const preserved = storage.values.get('rranker.local-maimai-accounts.v1');
+    storage.getItem = async () => { throw new Error('temporary io'); };
+
+    await expect(store.load()).rejects.toBeInstanceOf(AccountDirectoryReadError);
+    expect(storage.values.get('rranker.local-maimai-accounts.v1')).toBe(preserved);
+
+    storage.getItem = MemoryKeyValueStore.prototype.getItem;
+    expect(await store.load()).toEqual([
+      { id: 'maimai:local', displayName: '甲' },
+      { id: 'maimai:local:alice', displayName: '乙' },
+    ]);
+  });
+
+  it('内容损坏时保留原键和副本，不把目录当成空列表', async () => {
+    const storage = new MemoryKeyValueStore();
+    const raw = '{not-json';
+    storage.values.set('rranker.local-maimai-accounts.v1', raw);
+    const store = new LocalAccountStore(storage);
+
+    await expect(store.load()).rejects.toBeInstanceOf(AccountDirectoryCorruptError);
+    expect(storage.values.get('rranker.local-maimai-accounts.v1')).toBe(raw);
+    expect(storage.values.get(accountDirectoryCorruptKey('rranker.local-maimai-accounts.v1'))).toBe(raw);
   });
 
   it('过滤损坏、重复或非本地账号数据', () => {

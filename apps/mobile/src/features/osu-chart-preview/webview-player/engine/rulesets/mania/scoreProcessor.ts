@@ -352,17 +352,15 @@ function computeManiaScoreV2Timeline(
 ): ScoreFrame[] {
   const modMult = maniaV2ModMultiplier(modDiff.mods);
 
-  // Perfect-play prepass: max comboPortion and max accPortion.
+  // Perfect-play prepass: max comboPortion. Accuracy progress is an event count.
   // Note: 1 acc event; HoldNote: head + tail = 2 acc events. Body excluded (IgnoreHit).
   let maxComboPortion = 0;
-  let maxAccPortion   = 0;
   let maxAccCount     = 0;
   let cMaxScratch     = 0;
 
   const pushMax = () => {
     cMaxScratch += 1;
     maxComboPortion += 300 * comboScale(cMaxScratch);   // Perfect's combo-base = 300
-    maxAccPortion   += 305;
     maxAccCount     += 1;
   };
   for (const o of objects) {
@@ -375,7 +373,7 @@ function computeManiaScoreV2Timeline(
   let comboPortion = 0;
   let accSum       = 0;
   let accCount     = 0;
-  let cPerfect = 0, cGreat = 0, cGood = 0, cOk = 0, cMeh = 0, cMiss = 0;
+  let cGood = 0, cOk = 0, cMeh = 0, cMiss = 0;
 
   for (const r of results) {
     // Body (lazer V2): ComboBreak (j=0) resets combo and falls through to emit a frame;
@@ -395,8 +393,7 @@ function computeManiaScoreV2Timeline(
       accSum   += j;
       accCount += 1;
 
-      if      (j === 305) cPerfect++;
-      else if (j === 300) cGreat++;
+      if      (j === 305 || j === 300) { /* perfect and great stay off the non-great grade flag */ }
       else if (j === 200) cGood++;
       else if (j === 100) cOk++;
       else if (j === 50)  cMeh++;

@@ -186,14 +186,14 @@ export function MuseDashRecordsScreen() {
   const records = useMemo(() => {
     const filtered = achievement === 'all'
       ? baseFiltered
-      : baseFiltered.filter((item) =>
-        matchesMuseDashAchievementFilter(
-          item.play.acc,
-          missMap.get(`${item.play.uid}:${item.play.difficulty}`),
-          achievement,
-        ));
+      : baseFiltered.filter((item) => {
+        const miss = missMap.get(`${item.play.uid}:${item.play.difficulty}`);
+        if (miss === null || miss === undefined && missMap.size < baseFiltered.length) return true;
+        return matchesMuseDashAchievementFilter(item.play.acc, miss ?? undefined, achievement);
+      });
     return sortRawScores(filtered);
   }, [baseFiltered, achievement, missMap]);
+  const detailsPending = achievement !== 'all' && [...missMap.values()].some((miss) => miss === null);
   const loading = gameData.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading;
   const error = gameData.error ?? albums.error ?? ce.error ?? diffdiff.error;
   const controls = <>
@@ -210,8 +210,8 @@ export function MuseDashRecordsScreen() {
   </>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <RecordsListPage beforeList={controls} isLoading={loading} isError={!!error}
-      isEmpty={!loading && records.length === 0} error={error} onRetry={() => { void gameData.refetch(); void albums.refetch(); void ce.refetch(); void diffdiff.refetch(); }}
-      emptyText={userId === null ? '请先绑定喵斯快跑玩家' : '没有公开成绩'} data={records.length ? records : undefined} flatListProps={{
+      isEmpty={!loading && !detailsPending && records.length === 0} error={error} onRetry={() => { void gameData.refetch(); void albums.refetch(); void ce.refetch(); void diffdiff.refetch(); }}
+      emptyText={userId === null ? '请先绑定喵斯快跑玩家' : detailsPending ? '正在核对成就…' : '没有公开成绩'} data={records.length ? records : undefined} flatListProps={{
         testID: 'musedash-records-results-list', style: styles.list,
         contentInsetAdjustmentBehavior: 'automatic', contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
         scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,

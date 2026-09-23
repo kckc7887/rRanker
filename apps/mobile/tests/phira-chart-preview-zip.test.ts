@@ -6,6 +6,7 @@ import {
   resolvePhiraChartZipMediaPlan,
   sanitizeRpeBundleFileName,
 } from '@/domain/phira-chart-preview';
+import { rpeResourceUrl } from '@/domain/phira-rpe-resource-path';
 
 const files = (names: string[]) => names.map((name) => ({ name, dir: false }));
 
@@ -57,16 +58,42 @@ describe('phira chart format classification', () => {
 });
 
 describe('phira RPE bundle plan', () => {
-  it('文件名清洗：取 basename 并剔除危险字符', () => {
-    expect(sanitizeRpeBundleFileName('a/b/c.png')).toBe('c.png');
-    expect(sanitizeRpeBundleFileName('../etc/passwd')).toBe('passwd');
-    expect(sanitizeRpeBundleFileName('my shader.glsl')).toBe('my_shader.glsl');
+  it('保留合法相对路径，拒绝路径穿越', () => {
+    expect(sanitizeRpeBundleFileName('a/b/c.png')).toBe('a/b/c.png');
+    expect(sanitizeRpeBundleFileName('../etc/passwd')).toBeNull();
+    expect(sanitizeRpeBundleFileName('foo/../../etc/passwd')).toBeNull();
+    expect(sanitizeRpeBundleFileName('my shader.glsl')).toBe('my shader.glsl');
     expect(sanitizeRpeBundleFileName('/camera_pr.glsl')).toBe('camera_pr.glsl');
     expect(sanitizeRpeBundleFileName('dir/')).toBe('dir');
-    expect(sanitizeRpeBundleFileName('')).toBe('file.bin');
+    expect(sanitizeRpeBundleFileName('')).toBeNull();
   });
 
-  it('RPE 谱面包计划：全部条目扁平化、文本条目标记、重名先到先得', () => {
+  it('中文、空格、嵌套目录和相同 basename 各自命中，穿越不进入计划', () => {
+    const plan = buildPhiraRpeBundlePlan([
+      { name: '谱面/背景 图.png', dir: false },
+      { name: 'a/note.png', dir: false },
+      { name: 'b/note.png', dir: false },
+      { name: '特效/镜头 .glsl', dir: false },
+      { name: '../secret.png', dir: false },
+      { name: 'ok/../../no.png', dir: false },
+      { name: './a/note.png', dir: false },
+    ]);
+    expect(plan.map((file) => file.name)).toEqual([
+      '谱面/背景 图.png',
+      'a/note.png',
+      'b/note.png',
+      '特效/镜头 .glsl',
+    ]);
+    expect(plan.find((file) => file.name === '特效/镜头 .glsl')?.text).toBe(true);
+    const shaders = Object.fromEntries(plan.filter((file) => file.text && file.name.endsWith('.glsl')).map((file) => [file.name, 'source']));
+    expect(shaders[sanitizeRpeBundleFileName('/特效/镜头 .glsl')!]).toBe('source');
+    expect(shaders['镜头 .glsl']).toBeUndefined();
+    expect(rpeResourceUrl('./rpe/1/', '谱面/背景 图.png')).toBe(
+      `./rpe/1/${encodeURIComponent('谱面')}/${encodeURIComponent('背景 图.png')}`,
+    );
+  });
+
+  it('RPE 谱面包计划：按相对路径保留条目、文本条目标记、相同路径先到先得', () => {
     const plan = buildPhiraRpeBundlePlan([
       { name: 'extra.json', dir: false },
       { name: 'info.yml', dir: false },
@@ -81,9 +108,10 @@ describe('phira RPE bundle plan', () => {
     expect(plan).toEqual([
       { name: 'extra.json', entryName: 'extra.json', text: true },
       { name: 'info.yml', entryName: 'info.yml', text: true },
-      { name: 'camera_pr.glsl', entryName: 'sub/camera_pr.glsl', text: true },
-      { name: 'Tap.png', entryName: 'sub/Tap.png', text: false },
-      { name: 'demo.mp4', entryName: 'videos/demo.mp4', text: false },
+      { name: 'sub/camera_pr.glsl', entryName: 'sub/camera_pr.glsl', text: true },
+      { name: 'sub/Tap.png', entryName: 'sub/Tap.png', text: false },
+      { name: 'bg/Tap.png', entryName: 'bg/Tap.png', text: false },
+      { name: 'videos/demo.mp4', entryName: 'videos/demo.mp4', text: false },
       { name: 'song.mp3', entryName: 'song.mp3', text: false },
       { name: 'chart.json', entryName: 'chart.json', text: true },
     ]);
