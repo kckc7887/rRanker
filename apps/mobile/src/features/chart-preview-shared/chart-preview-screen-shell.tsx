@@ -540,7 +540,19 @@ export function ChartPreviewScreenShell<TPayload>({
               if (data.type === 'fullscreen' && typeof data.active === 'boolean') {
                 setIsFullscreen(data.active);
               }
-              if (data.type === 'error') {
+              if (data.type === 'background-video') {
+                const result = data.result === 'error' || data.result === 'success' ? data.result : undefined;
+                const status = typeof data.status === 'number' && Number.isInteger(data.status) && data.status >= 0 && data.status <= 4
+                  ? data.status : undefined;
+                const errorCode = data.errorCode === 'network' || data.errorCode === 'no_data'
+                  || data.errorCode === 'cancelled' || data.errorCode === 'unknown'
+                  ? data.errorCode : undefined;
+                recordView('background-video', {
+                  ...(result ? { result } : {}),
+                  ...(status !== undefined ? { status } : {}),
+                  ...(errorCode ? { errorCode } : {}),
+                });
+              }
                 recordView('player-error', { result: 'error', error: data });
                 // 诊断日志：底层原因只进日志，不进用户界面。
                 console.log('[chart-preview] player error', {

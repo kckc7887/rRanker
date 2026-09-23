@@ -410,6 +410,7 @@ iOS 截图前若 App 处于 inactive 或 background，先等到 `foreground-read
 不可取消的原生捕获返回后回收文件；已经开始的相册保存完成后收尾，不回删相册。
 原生 I/O 继续使用 `best-image-export.ts`，`best-image-export-lifecycle.test.tsx` 覆盖取消阶段和重复启动。
 
+舞萌播放器在视频背景加载成功或失败时发送 `background-video`（`result`、`status`、`errorCode`）。壳把它记入运行日志，不中断谱面。
 Phigros 的 `domain/phigros-chart-preview.ts` 提供
 `loadPhigrosChartPreviewResources(target, signal, read?)`，预览和兼容包下载共用发布恢复与字节校验。
 其共同定位器 `resolvePhigrosChartPreviewAssetBundle(...)` 按 `.0`、无编号、唯一编号目录选择默认谱面；
