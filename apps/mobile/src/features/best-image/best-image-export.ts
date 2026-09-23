@@ -1,7 +1,12 @@
 import * as MediaLibrary from 'expo-media-library';
 import { File, Paths } from 'expo-file-system';
 
-export class BestImageExportError extends Error {}
+export class BestImageExportError extends Error {
+  constructor(message: string) {
+    super(message);
+    this.name = 'BestImageExportError';
+  }
+}
 
 export function bestImageCaptureDimensions(
   outputWidth: number,

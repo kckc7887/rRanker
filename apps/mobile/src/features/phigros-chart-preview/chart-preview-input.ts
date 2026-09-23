@@ -9,6 +9,15 @@
  */
 
 import JSZip from 'jszip';
+import {
+  assertChartPreviewDownloadBytes,
+  chartPreviewDeclaredUncompressedSize,
+  pauseChartPreviewParse,
+  readBudgetedZipEntry,
+  readBudgetedZipText,
+  scanChartPreviewArchiveEntries,
+  type ChartPreviewCancellation,
+} from '@/features/chart-preview-shared/chart-preview-resource-budget';
 import { bytesToBase64 } from '@/utils/crypto-subset';
 import type { PhiraChart } from '@/domain/phira';
 import {
@@ -92,6 +101,12 @@ function zipBasename(entryName: string, fallback: string): string {
   return name && name.length > 0 ? name : fallback;
 }
 
+function chartTextByteLimit(entryName: string, formatHint: string | null): number {
+  const hint = formatHint?.toLowerCase() ?? '';
+  if (hint === 'rpe' || (hint !== 'pgr' && hint !== 'pec' && /\.json$/i.test(entryName))) return RPE_CHART_TEXT_LIMIT;
+  return CHART_TEXT_LIMIT;
+}
+
 export async function buildPhiraChartPreviewInput(
   input: PhiraChartPreviewInput,
   settings: PhigrosChartPreviewSettings,
@@ -103,41 +118,46 @@ export async function buildPhiraChartPreviewInput(
   const zipData = await (staging.downloadChart
     ? staging.downloadChart(chart.file, signal)
     : phiraProvider.downloadChart(chart.file, signal));
+  const cancellation: ChartPreviewCancellation = { signal };
+  assertChartPreviewDownloadBytes(zipData.byteLength);
+  throwIfAborted(signal);
   const zip = await JSZip.loadAsync(zipData);
   throwIfAborted(signal);
+  await scanChartPreviewArchiveEntries(Object.values(zip.files), zipData.byteLength, {
+    cancellation,
+    uncompressedSize: (entry) => chartPreviewDeclaredUncompressedSize(entry),
+  });
   const entries = Object.values(zip.files).map((entry) => ({ name: entry.name, dir: entry.dir }));
   const infoEntry = entries.find((entry) => !entry.dir && /(^|\/)info\.ya?ml$/i.test(entry.name));
-  const infoText = infoEntry ? await zip.file(infoEntry.name)!.async('text') : '';
+  const infoText = infoEntry
+    ? await readBudgetedZipText(zip.file(infoEntry.name)!, CHART_TEXT_LIMIT, cancellation)
+    : '';
   throwIfAborted(signal);
 
   const plan = resolvePhiraChartZipMediaPlan(entries, infoText || null);
   if (!plan.chartEntryName) throw new Error('谱面包中没有可读取的谱面文件');
   const chartEntry = zip.file(plan.chartEntryName)!;
-  // 取消检查只走顶层 throwIfAborted：JSZip 进度回调中 throw 会穿透 Promise 成为全局未捕获异常。
-  const chartBytes = await chartEntry.async('uint8array');
-  throwIfAborted(signal);
   const formatHint = infoText ? infoValue(infoText, 'format') : null;
-  if (formatHint?.toLowerCase() === 'pbc' || /\.pbc$/i.test(plan.chartEntryName)) {
+  if (formatHint?.toLowerCase() === 'pbc' || /\.pbc$/i.test(plan.chartEntryName)
+    || formatHint?.toLowerCase() === 'pec' || /\.pec$/i.test(plan.chartEntryName)) {
     throw new Error(PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE);
   }
-  const chartText = new TextDecoder('utf-8', { fatal: true }).decode(chartBytes);
+  // 用声明的解压长度预检，避免先解压再解码才发现谱面文本超限。
+  const chartText = await readBudgetedZipText(chartEntry, chartTextByteLimit(plan.chartEntryName, formatHint), cancellation);
   const format = classifyPhiraChartFormat(plan.chartEntryName, formatHint, chartText);
   if (format !== 'pgr' && format !== 'rpe') throw new Error(PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE);
-  // RPE 社区谱面可超过 24 MB，因此使用独立上限。
   const chartTextLimit = format === 'rpe' ? RPE_CHART_TEXT_LIMIT : CHART_TEXT_LIMIT;
   if (chartText.length > chartTextLimit) throw new Error('谱面过大，暂不支持预览');
 
   if (!plan.musicEntryName) throw new Error('谱面包缺少音乐文件');
-  const musicBytes = await zip.file(plan.musicEntryName)!.async('uint8array');
-  throwIfAborted(signal);
+  const musicBytes = await readBudgetedZipEntry(zip.file(plan.musicEntryName)!, cancellation);
   const musicFile = await staging.stageMusic(musicBytes, zipBasename(plan.musicEntryName, 'music.bin'));
 
   let illustrationUrl = typeof chart.illustration === 'string' && chart.illustration.trim() !== ''
     ? chart.illustration
     : undefined;
   if (!illustrationUrl && plan.illustrationEntryName) {
-    const imageBytes = await zip.file(plan.illustrationEntryName)!.async('uint8array');
-    throwIfAborted(signal);
+    const imageBytes = await readBudgetedZipEntry(zip.file(plan.illustrationEntryName)!, cancellation);
     illustrationUrl = (await staging.stageMusic(imageBytes, zipBasename(plan.illustrationEntryName, 'illustration.png'))).uri;
   }
 
@@ -147,21 +167,21 @@ export async function buildPhiraChartPreviewInput(
     let extraJson: string | null = null;
     const shaders: Record<string, string> = {};
     const stagedFiles: { name: string; bytes: Uint8Array }[] = [];
-    for (const file of bundlePlan) {
+    for (let index = 0; index < bundlePlan.length; index += 1) {
+      const file = bundlePlan[index]!;
+      await pauseChartPreviewParse(index, cancellation);
       const entry = zip.file(file.entryName);
       if (!entry) continue;
       if (file.text) {
         if (file.name === 'extra.json') {
-          extraJson = await entry.async('text');
+          extraJson = await readBudgetedZipText(entry, RPE_CHART_TEXT_LIMIT, cancellation);
         } else if (/\.glsl$/i.test(file.name)) {
-          shaders[file.name] = await entry.async('text');
+          shaders[file.name] = await readBudgetedZipText(entry, RPE_CHART_TEXT_LIMIT, cancellation);
         }
         // info.yml 已随 infoText 读取注入；info.txt 等其余文本条目播放器不引用，不落盘。
-        throwIfAborted(signal);
         continue;
       }
-      stagedFiles.push({ name: file.name, bytes: await entry.async('uint8array') });
-      throwIfAborted(signal);
+      stagedFiles.push({ name: file.name, bytes: await readBudgetedZipEntry(entry, cancellation) });
     }
     const { basePath } = await staging.stageRpeBundle(input.chartId, stagedFiles);
     return {

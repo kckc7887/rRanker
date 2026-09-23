@@ -9,6 +9,12 @@ const mockSave = jest.fn(async () => undefined);
 jest.mock('react-native-view-shot', () => ({ captureRef: () => mockCapture() }));
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn() }) }));
 jest.mock('@/features/best-image/best-image-export', () => ({
+  BestImageExportError: class BestImageExportError extends Error {
+    constructor(message: string) {
+      super(message);
+      this.name = 'BestImageExportError';
+    }
+  },
   bestImageCaptureDimensions: () => ({ width: 1080, height: 1440 }),
   deleteBestImageCapture: jest.fn(),
   isDrawViewHierarchyError: () => false,
@@ -30,14 +36,18 @@ const runtime = {
 describe('best image shared export diagnostics', () => {
   const log = jest.fn<(type: string, fields: Readonly<Record<string, unknown>>) => void>();
   beforeEach(() => {
-    jest.useFakeTimers(); log.mockClear(); mockCapture.mockClear(); mockSave.mockClear();
+    jest.useFakeTimers(); log.mockClear();
+    mockCapture.mockReset();
+    mockCapture.mockResolvedValue('file:///private/capture.png');
+    mockSave.mockReset();
+    mockSave.mockResolvedValue(undefined);
     installRuntimeLogRecorder(log);
   });
   afterEach(() => { installRuntimeLogRecorder(undefined); jest.useRealTimers(); });
   const events = () => log.mock.calls.filter(([type]) => type === 'operation').map(([type, fields]) => sanitizeRuntimeLogEntry(type, fields, '2026-09-06'));
 
   it.each(['success', 'capture', 'save'] as const)('records %s at the actual stage', async (outcome) => {
-    if (outcome === 'capture') mockCapture.mockRejectedValueOnce(new Error('private capture error'));
+    if (outcome === 'capture') mockCapture.mockRejectedValue(new Error('private capture error'));
     if (outcome === 'save') mockSave.mockRejectedValueOnce(new Error('private save error'));
     const { result } = await renderHook(() => useBestImageScreenController(config));
     let pending!: Promise<void>;
@@ -46,6 +56,7 @@ describe('best image shared export diagnostics', () => {
     await act(async () => {
       result.current.handleExportMessage('{"type":"best-image-ready","width":1080,"height":1440}');
       await jest.advanceTimersByTimeAsync(320);
+      await jest.advanceTimersByTimeAsync(300);
       await pending;
     });
     const entries = events();

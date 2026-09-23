@@ -30,6 +30,23 @@ export function subscribeResourceWrites(scope: string, onInvalidate: () => void)
     }
   };
 }
+/** 在任何 await 之前捕获账号写入资格。删除或重建同一 ID 后，旧任务不能再提交。 */
+export function captureAccountWrites(
+  accounts: readonly { id: string; gameId: string }[],
+): (accountId: string) => void {
+  const guards = new Map<string, () => void>();
+  for (const account of accounts) {
+    if (!guards.has(account.id)) {
+      guards.set(account.id, captureResourceWrites(account.gameId, undefined, account.id));
+    }
+  }
+  return (accountId: string) => {
+    const assertCurrent = guards.get(accountId);
+    if (!assertCurrent) throw new Error('缓存请求已失效');
+    assertCurrent();
+  };
+}
+
 export function captureResourceWrites(scope: string, signal?: AbortSignal, accountId?: string): () => void {
   const generation = resourceWriteGeneration(scope);
   const accountScope = accountId === undefined ? undefined : 'account:' + accountId;

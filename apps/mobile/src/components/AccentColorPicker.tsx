@@ -9,6 +9,7 @@ import {
 import { AppModal } from '@/components/AppModal';
 import { ValueSlider } from '@/components/ValueSlider';
 import { useAppTheme } from '@/theme/app-theme';
+import { foregroundOnAccent } from '@/theme/theme-tokens';
 import {
   HUE_SPECTRUM,
   hexToHsl,
@@ -140,7 +141,7 @@ export function AccentColorPicker({ visible, initialHex, onClose, onApply }: Acc
             onPress={() => onApply(preview)}
             style={[styles.action, { backgroundColor: preview, borderColor: preview }]}
           >
-            <Text style={{ color: '#FFF', fontWeight: '700' }}>应用</Text>
+            <Text style={{ color: foregroundOnAccent(preview), fontWeight: '700' }}>应用</Text>
           </Pressable>
         </View>
       </View>

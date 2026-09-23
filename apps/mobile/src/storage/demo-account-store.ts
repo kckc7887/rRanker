@@ -1,6 +1,6 @@
 import Storage from 'expo-sqlite/kv-store';
 import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
-import type { KeyValueStore } from '@/storage/create-demo-account-store';
+import { loadAccountDirectory, type KeyValueStore } from '@/storage/create-demo-account-store';
 
 export type DemoAccountProfile = {
   id: string;
@@ -41,14 +41,8 @@ export function parseDemoAccountProfiles(value: unknown): DemoAccountProfile[] {
 export class DemoAccountStore {
   constructor(private readonly storage: KeyValueStore = Storage) {}
 
-  async load(): Promise<DemoAccountProfile[]> {
-    try {
-      const raw = await this.storage.getItem(STORE_KEY);
-      return raw ? parseDemoAccountProfiles(JSON.parse(raw)) : [];
-    } catch {
-      await this.storage.removeItem(STORE_KEY).catch(() => undefined);
-      return [];
-    }
+  load(): Promise<DemoAccountProfile[]> {
+    return loadAccountDirectory(this.storage, STORE_KEY, parseDemoAccountProfiles, []);
   }
 
   async upsert(profile: DemoAccountProfile): Promise<void> {

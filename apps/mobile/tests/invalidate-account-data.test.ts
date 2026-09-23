@@ -84,6 +84,34 @@ describe('invalidateAccountDataQueries', () => {
   });
 });
 
+describe('phigros push query identity', () => {
+  it('keeps two accounts apart and refetches after account invalidation', async () => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    let calls = 0;
+    const keyFor = (accountId: string) => ['phigros-push-rks', accountId, 'player', 'rev', null, 0.01, 1, true] as const;
+    await client.fetchQuery({
+      queryKey: keyFor('account-a'),
+      queryFn: async () => { calls += 1; return 'a'; },
+    });
+    await expect(client.fetchQuery({
+      queryKey: keyFor('account-b'),
+      queryFn: async () => { calls += 1; return 'b'; },
+    })).resolves.toBe('b');
+    expect(calls).toBe(2);
+    await client.fetchQuery({
+      queryKey: keyFor('account-a'),
+      queryFn: async () => { calls += 1; return 'a-again'; },
+    });
+    expect(calls).toBe(2);
+    await invalidateAccountDataQueries(client, 'none');
+    await expect(client.fetchQuery({
+      queryKey: keyFor('account-a'),
+      queryFn: async () => { calls += 1; return 'a-fresh'; },
+    })).resolves.toBe('a-fresh');
+    expect(calls).toBe(3);
+  });
+});
+
 describe('patchMaimaiPlayerDisplayName', () => {
   it('updates only the matching account game-data cache', () => {
     const client = new QueryClient();

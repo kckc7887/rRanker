@@ -11,6 +11,8 @@
  * （与本项目 AGPL-3.0 兼容）；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
 
+import { rpeBundleRelativePath } from '../../../domain/phira-rpe-resource-path';
+
 export const RPE_WIDTH = 1350;
 export const RPE_HEIGHT = 900;
 
@@ -629,7 +631,7 @@ export function parseRpeChart(source: string | object, extrasInput: RpeExtrasInp
       posControl: parseControl(rawLine.posControl, 'pos'),
       sizeControl: parseControl(rawLine.sizeControl, 'size'),
       yControl: parseControl(rawLine.yControl, 'y'),
-      texture: rawLine.Texture ?? 'line.png',
+      texture: rpeBundleRelativePath(rawLine.Texture ?? 'line.png') ?? 'line.png',
       scaleOnNotes: Number(rawLine.scaleOnNotes ?? 0),
       anchor: Array.isArray(rawLine.anchor) && rawLine.anchor.length === 2
         ? [finite(rawLine.anchor[0], 'anchor x'), finite(rawLine.anchor[1], 'anchor y')]
@@ -694,7 +696,7 @@ export function parseRpeChart(source: string | object, extrasInput: RpeExtrasInp
     offset: finite(meta.offset ?? 0, 'offset') / 1000,
     bpmList,
     lines,
-    background: typeof meta.background === 'string' && meta.background ? meta.background : null,
+    background: typeof meta.background === 'string' ? rpeBundleRelativePath(meta.background) : null,
     extras,
     info: parseInfoYml(extrasInput.infoYml),
     stats: { lineCount: lines.length, noteCount, eventCount, maxTime, kindCounts },
@@ -809,9 +811,10 @@ function parseExtras(extraSource: string | null | undefined): ParsedExtrasRaw {
     out.bpmItems = raw.bpm.map((item) => [toBeats(item.time ?? [0, 0, 1]), finite(item.bpm, 'extra BPM')]);
   }
   for (const video of raw.videos ?? []) {
-    if (!video.path) continue;
+    const path = video.path ? rpeBundleRelativePath(video.path) : null;
+    if (!path) continue;
     out.videos.push({
-      path: video.path,
+      path,
       time: toBeats(video.time ?? [0, 0, 1]),
       scale: video.scale ?? 'cropCenter',
       alpha: normalizeAnimated(video.alpha ?? 1),
@@ -821,13 +824,20 @@ function parseExtras(extraSource: string | null | undefined): ParsedExtrasRaw {
     });
   }
   for (const effect of raw.effects ?? []) {
-    if (!effect.shader) continue;
+    const shader = effect.shader ? rpeBundleRelativePath(effect.shader) : null;
+    if (!shader) continue;
     const vars: RpeEffect['vars'] = {};
     for (const [name, value] of Object.entries(effect.vars ?? {})) {
-      vars[name] = normalizeAnimated(value);
+      const animated = normalizeAnimated(value);
+      if (typeof animated === 'string') {
+        const relative = rpeBundleRelativePath(animated);
+        if (relative) vars[name] = relative;
+      } else {
+        vars[name] = animated;
+      }
     }
     out.effects.push({
-      shader: effect.shader.replace(/^\//, ''),
+      shader,
       startBeat: toBeats(effect.start ?? [0, 0, 1]),
       endBeat: toBeats(effect.end ?? [9999, 0, 1]),
       global: effect.global === true,

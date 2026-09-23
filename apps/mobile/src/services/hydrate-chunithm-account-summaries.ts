@@ -7,6 +7,7 @@ import {
 import { useSession } from '@/state/session-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { loadItemsBounded } from '@/services/offset-pagination';
 
 const repository = new SqliteSnapshotRepository();
 
@@ -17,33 +18,38 @@ export async function hydrateChunithmAccountSummaries(signal?: AbortSignal): Pro
   );
   const secureStore = new SecureSessionStore();
 
-  await Promise.all(accounts.map(async (account) => {
-    try {
-      const snapshot = await repository.getResource<ChunithmPersonalSnapshot>(
-        chunithmPersonalResourceKey(account.id),
-        CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
-      );
-      const player = snapshot?.player;
-      if (!player || signal?.aborted) return;
+  await loadItemsBounded({
+    items: accounts,
+    concurrency: 4,
+    signal,
+    load: async (account) => {
+      try {
+        const snapshot = await repository.getResource<ChunithmPersonalSnapshot>(
+          chunithmPersonalResourceKey(account.id),
+          CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+        );
+        const player = snapshot?.player;
+        if (!player || signal?.aborted) return;
 
-      const scoreDisplay = player.rating.toFixed(2);
-      const avatarUrl = buildChunithmMapIconUrl(player.map_icon?.id);
-      useSession.getState().updateBoundAccountScore(
-        account.id,
-        scoreDisplay,
-        player.name,
-        avatarUrl ?? undefined,
-        undefined,
-        player.rating_possession ?? null,
-      );
-      if (signal?.aborted) return;
-      await secureStore.updateAccountMetadata(account.id, {
-        displayName: player.name,
-        scoreDisplay,
-        ratingPossession: player.rating_possession ?? null,
-      });
-    } catch {
-      // 单个账号缓存读取失败不阻断列表；保留上次持久化的元数据。
-    }
-  }));
+        const scoreDisplay = player.rating.toFixed(2);
+        const avatarUrl = buildChunithmMapIconUrl(player.map_icon?.id);
+        useSession.getState().updateBoundAccountScore(
+          account.id,
+          scoreDisplay,
+          player.name,
+          avatarUrl ?? undefined,
+          undefined,
+          player.rating_possession ?? null,
+        );
+        if (signal?.aborted) return;
+        await secureStore.updateAccountMetadata(account.id, {
+          displayName: player.name,
+          scoreDisplay,
+          ratingPossession: player.rating_possession ?? null,
+        });
+      } catch {
+        // 单个账号缓存读取失败不阻断列表；保留上次持久化的元数据。
+      }
+    },
+  });
 }

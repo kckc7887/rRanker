@@ -1,39 +1,29 @@
+import { uploadLatestScoreHubSyncToTargets } from '@/services/upload-maimai-target-write';
+import { loginScoreHubWithFriendCode } from '@/services/upload-maimai-login';
+import { uploadMaimaiAfterScoreHubToken } from '@/services/upload-maimai-score-fetch';
 import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
 import type { BoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
-import { ProviderError } from '@/providers/errors';
 import {
   bindCabinetByQr,
   createCabinetScoreJob,
-  createFriendLoginJob,
-  createUpdateScoreJob,
   fetchActiveCabinetScoreJob,
-  fetchLatestSync,
   fetchMe,
   loginByQrUntilToken,
   pollCabinetScoreJobUntilDone,
-  pollLoginUntilToken,
-  pollUpdateScoreUntilDone,
   ScoreHubError,
   type QrLoginCredential,
   type ScoreHubAbortSignal,
   type ScoreHubCabinetScoreJob,
-  type ScoreHubScoreProgress,
 } from '@/services/score-hub-client';
-import { uploadRecordsToDivingFish } from '@/services/diving-fish-upload';
-import {
-  buildMusicTitleMap,
-  convertHubScoresToDivingFishRecords,
-  convertHubScoresToLocalRecords,
-  convertHubScoresToLxnsRecords,
-} from '@/services/score-hub-sync-map';
 import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
-import { uploadRecordsToLxns } from '@/services/lxns-upload';
-import { buildScoreSnapshot } from '@/services/score-service';
 import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
 import { scoreHubAccountStore } from '@/storage/score-hub-account-store';
 import { waitForForeground } from '@/state/app-lifecycle-core';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
+import { captureAccountWrites } from '@/services/snapshot-cache-utils';
+
+export { scoreProgressMessage } from '@/services/upload-maimai-score-fetch';
 
 export type UploadPhase =
   | { kind: 'idle' }
@@ -53,7 +43,7 @@ export type UploadPhase =
 export type UploadResult = {
   uploaded: number;
   skipped: number;
-  refreshedAccounts: { account: BoundAccount; snapshot: ScoreSnapshot }[];
+  refreshedAccounts: { account: BoundAccount; snapshot: ScoreSnapshot; assertCurrent?: () => void }[];
   failedAccountNames: string[];
   targetResults: UploadTargetResult[];
 };
@@ -314,31 +304,6 @@ export type UploadTarget = {
 export const QR_REQUIRES_BIND_MESSAGE =
   '首次使用前请在此绑定玩家二维码。请先到「好友码」上传一次成绩完成登录，再粘贴玩家二维码绑定。';
 
-const DIFFICULTY_LABELS: Record<number, string> = {
-  0: 'BASIC',
-  1: 'ADVANCED',
-  2: 'EXPERT',
-  3: 'MASTER',
-  4: 'Re:MASTER',
-  10: '宴会场',
-};
-
-export function scoreProgressMessage(progress: ScoreHubScoreProgress | null): string {
-  if (!progress || progress.totalDiffs <= 0) return '获取成绩中…';
-  const completed = [...new Set(progress.completedDiffs)].sort((left, right) => left - right);
-  if (completed.length === 0) {
-    return `获取各难度成绩中…（0/${progress.totalDiffs}）`;
-  }
-  const completedLabels = completed
-    .map((difficulty) => DIFFICULTY_LABELS[difficulty] ?? `难度 ${difficulty}`)
-    .join('、');
-  const count = Math.min(completed.length, progress.totalDiffs);
-  if (count >= progress.totalDiffs) {
-    return `各难度成绩已获取，正在整理…（${count}/${progress.totalDiffs}）`;
-  }
-  return `获取成绩中：已完成 ${completedLabels}（${count}/${progress.totalDiffs}）`;
-}
-
 export function compactUploadPhaseLabel(phase: UploadPhase): string {
   switch (phase.kind) {
     case 'logging_in':
@@ -455,7 +420,7 @@ export function resolveUploadTargets(
     });
 }
 
-type UploadCommonInput = {
+export type UploadCommonInput = {
   selectedAccountIds: string[];
   targets: UploadTarget[];
   sessionsByAccountId: Record<string, ProviderSession | undefined>;
@@ -475,260 +440,10 @@ function resolveSelectedTargets(input: UploadCommonInput): UploadTarget[] {
   return selected;
 }
 
-async function loginScoreHubWithFriendCode(input: {
-  friendCode: string;
-  signal: ScoreHubAbortSignal;
-  onPhase: (phase: UploadPhase) => void;
-  onNeedFriendAccept: (botFriendCode: string | null) => void;
-}): Promise<{ token: string; friendshipJobId: string | null }> {
-  const friendCode = input.friendCode.trim();
-  if (!/^\d{15}$/.test(friendCode)) {
-    throw new ScoreHubError('请输入 15 位好友码');
-  }
-
-  input.onPhase({
-    kind: 'logging_in',
-    message: '正在创建好友申请任务…',
-    authMode: 'friend_code',
-  });
-  const login = await createFriendLoginJob(friendCode, input.signal);
-
-  let token: string;
-  let friendshipJobId: string | null = null;
-
-  if (typeof login.body.__skipAuthToken === 'string') {
-    token = login.body.__skipAuthToken;
-  } else {
-    friendshipJobId = login.jobId;
-    input.onPhase({
-      kind: 'sending_friend',
-      message: '正在发送好友申请…',
-      botFriendCode: login.botFriendCode,
-    });
-    let alerted = false;
-    token = await pollLoginUntilToken({
-      jobId: login.jobId,
-      signal: input.signal,
-      onSendingFriend: ({ botFriendCode }) => {
-        input.onPhase({
-          kind: 'sending_friend',
-          message: '正在发送好友申请…',
-          botFriendCode: botFriendCode ?? login.botFriendCode,
-        });
-      },
-      onWaitingFriend: ({ botFriendCode }) => {
-        input.onPhase({
-          kind: 'awaiting_friend',
-          message: '等待同意好友中…请到“舞萌-中二公众号-我的记录-舞萌DX”接受 Bot 好友申请',
-          botFriendCode,
-        });
-        if (!alerted) {
-          alerted = true;
-          input.onNeedFriendAccept(botFriendCode ?? login.botFriendCode);
-        }
-      },
-    });
-  }
-
-  await scoreHubAccountStore.upsert({
-    friendCode,
-    token,
-  });
-
-  return { token, friendshipJobId };
-}
-
 /** ScoreHub JWT 失效（需回退好友码登录）。 */
 export function isScoreHubAuthExpired(error: unknown): boolean {
   return error instanceof ScoreHubError
     && (error.status === 401 || error.status === 403);
-}
-
-async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
-  token: string;
-  playerIdForLocal: string;
-  selected: UploadTarget[];
-  persistFriendCode?: string | null;
-}): Promise<UploadResult> {
-  const sync = await fetchLatestSync(input.token, input.signal);
-  const scores = sync?.scores ?? [];
-  if (scores.length === 0) {
-    throw new ScoreHubError('未获取到成绩数据');
-  }
-  const needsDivingFish = input.selected.some((target) => target.account.providerId === 'diving-fish');
-  const needsLocal = input.selected.some((target) => target.account.providerId === 'local');
-  const catalog = needsDivingFish || needsLocal
-    ? await input.resolveCatalog()
-    : null;
-  if (input.signal.aborted) throw new ScoreHubError('已取消');
-
-  const divingFishMapped = needsDivingFish && catalog
-    ? convertHubScoresToDivingFishRecords(scores, buildMusicTitleMap(catalog))
-    : null;
-  const localMapped = needsLocal && catalog
-    ? convertHubScoresToLocalRecords(scores, catalog)
-    : null;
-  const lxnsMapped = input.selected.some((target) => target.account.providerId === 'lxns')
-    ? convertHubScoresToLxnsRecords(scores)
-    : null;
-  let uploadedTotal = 0;
-  let skipped = 0;
-  const targetResults: UploadTargetResult[] = [];
-  const refreshedAccounts: { account: BoundAccount; snapshot: ScoreSnapshot }[] = [];
-  const failedAccountNames: string[] = [];
-
-  for (const target of input.selected) {
-    if (input.signal.aborted) throw new ScoreHubError('已取消');
-    let written = 0;
-    let targetSkipped = 0;
-    try {
-      input.onPhase({
-        kind: 'uploading',
-        message: `写入${target.account.displayName}（${target.account.providerTitle}）中…`,
-        providerTitle: target.account.providerTitle,
-      });
-      if (target.account.providerId === 'local') {
-        if (!localMapped || !catalog) {
-          throw new ProviderError('no_data', '未能准备本地成绩', false);
-        }
-        targetSkipped = localMapped.skippedNoSong
-          + localMapped.skippedBadScore
-          + localMapped.skippedUnsupportedChart;
-        if (localMapped.records.length === 0) {
-          throw new ProviderError('no_data', '没有可保存到本地的成绩', false);
-        }
-        const source = {
-          kind: 'local' as const,
-          label: '本地查分器',
-          updatedAt: new Date().toISOString(),
-          isStale: false,
-        };
-        const snapshot = buildScoreSnapshot({
-          id: input.playerIdForLocal,
-          displayName: target.account.displayName,
-          rating: 0,
-          additionalRating: 0,
-          source,
-        }, localMapped.records, catalog);
-        const { SqliteSnapshotRepository } = await import('@/storage/sqlite-snapshot-repository');
-        await new SqliteSnapshotRepository().save(target.account.id, snapshot);
-        refreshedAccounts.push({ account: target.account, snapshot });
-        written = localMapped.records.length;
-      } else if (target.account.providerId === 'diving-fish') {
-        if (!divingFishMapped) {
-          throw new ProviderError('no_data', '未能准备水鱼成绩', false);
-        }
-        targetSkipped = divingFishMapped.skippedNoTitle
-          + divingFishMapped.skippedBadScore
-          + divingFishMapped.skippedUnsupportedChart;
-        const session = input.sessionsByAccountId[target.account.id];
-        if (!session || session.mode !== 'import-token') {
-          throw new ProviderError('authentication', '水鱼上传需要 Import-Token', false);
-        }
-        const result = await uploadRecordsToDivingFish(
-          session.value,
-          divingFishMapped.records,
-          input.signal,
-        );
-        written = result.uploaded;
-      } else if (target.account.providerId === 'lxns') {
-        if (!lxnsMapped) {
-          throw new ProviderError('no_data', '未能准备落雪成绩', false);
-        }
-        targetSkipped = lxnsMapped.skippedNoSong
-          + lxnsMapped.skippedBadScore
-          + lxnsMapped.skippedUnsupportedChart;
-        const session = input.sessionsByAccountId[target.account.id];
-        if (!session || session.mode !== 'lxns-oauth') {
-          throw new ProviderError('authentication', '落雪上传需要 OAuth 授权', false);
-        }
-        const result = await uploadRecordsToLxns({
-          session,
-          records: lxnsMapped.records,
-          signal: input.signal,
-          onTokensRotated: (next) => input.onLxnsTokensRotated?.(target.account.id, next),
-        });
-        written = result.uploaded;
-      }
-      uploadedTotal += written;
-      skipped += targetSkipped;
-      targetResults.push({
-        account: target.account,
-        status: 'success',
-        written,
-        skipped: targetSkipped,
-      });
-    } catch (error) {
-      if (input.signal.aborted) throw new ScoreHubError('已取消');
-      const message = error instanceof Error ? error.message : '写入失败';
-      skipped += targetSkipped;
-      targetResults.push({
-        account: target.account,
-        status: 'failed',
-        written: 0,
-        skipped: targetSkipped,
-        errorMessage: message,
-      });
-    }
-  }
-  if (input.signal.aborted) throw new ScoreHubError('已取消');
-
-  const failedTargets = targetResults.filter((item) => item.status === 'failed');
-  if (targetResults.every((item) => item.status === 'failed')) {
-    input.onPhase({
-      kind: 'error',
-      message: `写入失败：${failedTargets.map((item) => item.account.displayName).join('、')}，请重试。`,
-    });
-    return {
-      uploaded: uploadedTotal,
-      skipped,
-      refreshedAccounts,
-      failedAccountNames,
-      targetResults,
-    };
-  }
-
-  input.onPhase({
-    kind: 'done',
-    message: failedTargets.length > 0
-      ? `部分完成：写入 ${uploadedTotal} 条；失败 ${failedTargets.map((item) => item.account.displayName).join('、')}`
-      : skipped > 0
-        ? `完成：写入 ${uploadedTotal} 条，跳过 ${skipped} 条`
-        : `完成：写入 ${uploadedTotal} 条`,
-    uploaded: uploadedTotal,
-    skipped,
-  });
-  return {
-    uploaded: uploadedTotal,
-    skipped,
-    refreshedAccounts,
-    failedAccountNames,
-    targetResults,
-  };
-}
-
-async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & {
-  token: string;
-  friendshipJobId: string | null;
-  playerIdForLocal: string;
-  selected: UploadTarget[];
-  persistFriendCode?: string | null;
-}): Promise<UploadResult> {
-  input.onPhase({ kind: 'fetching_scores', message: '获取各难度成绩中…' });
-  const scoreJobId = await createUpdateScoreJob(input.token, input.friendshipJobId, input.signal);
-  await pollUpdateScoreUntilDone({
-    token: input.token,
-    jobId: scoreJobId,
-    signal: input.signal,
-    onProgress: ({ progress, stage }) => {
-      if (typeof stage === 'string' && stage.includes('重试')) {
-        input.onPhase({ kind: 'fetching_scores', message: stage });
-        return;
-      }
-      input.onPhase({ kind: 'fetching_scores', message: scoreProgressMessage(progress) });
-    },
-  });
-  return uploadLatestScoreHubSyncToTargets(input);
 }
 
 export async function uploadMaimaiFromFriendCode(input: UploadCommonInput & {
@@ -737,6 +452,7 @@ export async function uploadMaimaiFromFriendCode(input: UploadCommonInput & {
 }): Promise<UploadResult> {
   const friendCode = input.friendCode.trim();
   const selected = resolveSelectedTargets(input);
+  const assertAccount = captureAccountWrites(selected.map((target) => target.account));
   const { token, friendshipJobId } = await loginScoreHubWithFriendCode({
     friendCode,
     signal: input.signal,
@@ -751,6 +467,7 @@ export async function uploadMaimaiFromFriendCode(input: UploadCommonInput & {
     friendshipJobId,
     playerIdForLocal: friendCode,
     persistFriendCode: friendCode,
+    assertAccount,
   });
 }
 
@@ -762,6 +479,7 @@ export async function uploadMaimaiWithScoreHubSession(input: UploadCommonInput &
   expectedFriendCode?: string | null;
 }): Promise<UploadResult> {
   const selected = resolveSelectedTargets(input);
+  const assertAccount = captureAccountWrites(selected.map((target) => target.account));
   input.onPhase({
     kind: 'logging_in',
     message: '正在使用已登录的 ScoreHub 会话…',
@@ -827,6 +545,7 @@ export async function uploadMaimaiWithScoreHubSession(input: UploadCommonInput &
       friendshipJobId: null,
       playerIdForLocal: friendCode,
       persistFriendCode: friendCode,
+      assertAccount,
     });
   } catch (error) {
     if (isScoreHubAuthExpired(error)) {
@@ -947,6 +666,7 @@ export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
   onQrAccepted?: () => void;
 }): Promise<UploadResult> {
   const selected = resolveSelectedTargets(input);
+  const assertAccount = captureAccountWrites(selected.map((target) => target.account));
   input.onPhase({
     kind: 'logging_in',
     message: '正在确认玩家二维码…',
@@ -1030,6 +750,7 @@ export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
     token: login.token,
     playerIdForLocal: friendCode ?? fallbackPlayerId,
     persistFriendCode: friendCode,
+    assertAccount,
   });
 }
 

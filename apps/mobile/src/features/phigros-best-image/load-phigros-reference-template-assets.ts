@@ -14,11 +14,11 @@ export type PhigrosReferenceTemplateAssets = {
 
 const CSS_SOURCES = {
   // Metro exposes copied reference stylesheets as bundled asset module IDs.
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Metro 静态资源编号只能在运行时 require
   b19: require('../../../assets/phigros-b30-reference/b19/b19.css') as number,
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Metro 静态资源编号只能在运行时 require
   common: require('../../../assets/phigros-b30-reference/common/common.css') as number,
-  // eslint-disable-next-line @typescript-eslint/no-require-imports
+  // eslint-disable-next-line @typescript-eslint/no-require-imports -- Metro 静态资源编号只能在运行时 require
   snow: require('../../../assets/phigros-b30-reference/common/theme/snow/snow.css') as number,
 };
 

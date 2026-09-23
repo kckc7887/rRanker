@@ -1,5 +1,6 @@
 import {
   applyStacking, computeModDifficulty, Renderer, Player, TimeMapper, PlaybackClock,
+  audioContextTime, musicPosition, outputTime,
   getAudioContextOutputTime, warmSkinCaches, warmSliderPaths, drawCursor,
   type BeatmapData, type ReplayData, type ModDifficulty, type SkinAssets,
 } from './engine';
@@ -77,7 +78,7 @@ export class PreviewSession {
     this.renderedSkinVariant = this.skinVariant;
     this.configureRenderer();
     this.renderer.options.maniaScrollSpeed = clampManiaScrollSpeed(initial.maniaScrollSpeed ?? MANIA_SCROLL_DEFAULT);
-    this.clock.setOffset(range.startMs / 1000);
+    this.clock.setOffset(musicPosition(range.startMs / 1000));
     this.draw(true);
   }
 
@@ -115,7 +116,7 @@ export class PreviewSession {
 
   get currentTimeMs(): number {
     if (!this.playing) return this.positionMs;
-    const mapMs = this.clock.positionAt(getAudioContextOutputTime(getAudioContext())) * 1000;
+    const mapMs = this.clock.positionAt(outputTime(getAudioContextOutputTime(getAudioContext()))) * 1000;
     return Math.max(0, Math.min(this.range.durationMs, mapMs - this.range.startMs));
   }
 
@@ -133,7 +134,7 @@ export class PreviewSession {
       this.pause();
       this.positionMs = this.range.durationMs;
       this.ended = true;
-      this.clock.setOffset(this.range.endMs / 1000);
+      this.clock.setOffset(musicPosition(this.range.endMs / 1000));
       this.draw(true);
       return;
     }
@@ -150,7 +151,7 @@ export class PreviewSession {
     await this.audioSync.playFrom(this.positionMs);
     if (this.disposed || generation !== this.command) return;
     const ctx = getAudioContext();
-    this.clock.set(ctx.currentTime, (this.range.startMs + this.audioSync.currentTimeMs) / 1000, 1);
+    this.clock.set(audioContextTime(ctx.currentTime), musicPosition((this.range.startMs + this.audioSync.currentTimeMs) / 1000), 1);
     this.playing = true;
     this.ended = false;
     this.draw(true);
@@ -162,7 +163,7 @@ export class PreviewSession {
     this.positionMs = this.currentTimeMs;
     this.playing = false;
     this.audioSync.pause();
-    this.clock.setOffset((this.range.startMs + this.positionMs) / 1000);
+    this.clock.setOffset(musicPosition((this.range.startMs + this.positionMs) / 1000));
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.frame = null;
     this.media.sync(this.range.startMs + this.positionMs, false, true);
@@ -173,7 +174,7 @@ export class PreviewSession {
     this.pause();
     this.positionMs = Math.max(0, Math.min(presentationMs, this.range.durationMs));
     this.ended = this.positionMs >= this.range.durationMs;
-    this.clock.setOffset((this.range.startMs + this.positionMs) / 1000);
+    this.clock.setOffset(musicPosition((this.range.startMs + this.positionMs) / 1000));
     this.draw(true);
     if (playing && !this.ended) await this.playFrom(this.positionMs);
   }

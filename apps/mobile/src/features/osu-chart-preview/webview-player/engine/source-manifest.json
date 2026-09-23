@@ -241,7 +241,7 @@
       "upstreamPath": "src/rulesets/mania/scoreProcessor.ts",
       "upstreamGitBlob": "0c963e398878cc7840b610716d07d91925892d71",
       "upstreamSha256": "842a2205d277b6551ea4057cbec1d57b8d53c9df97fe60eb1b5e0f1470ef0b52",
-      "integratedSha256": "a4bc51ae3640fd4033f4a9e271a0bde83697762de73d02a6fc3f7752838680a4"
+      "integratedSha256": "fe38031694cd0a46e59c3f956b16530e721d6a794e4ddda46f08fd5b5a75b356"
     },
     {
       "path": "rulesets/mania/scroll.ts",
@@ -311,7 +311,7 @@
       "upstreamPath": "src/rulesets/taiko/index.ts",
       "upstreamGitBlob": "02509408d4cec9d2fb698dcd5cf4d57957ac9097",
       "upstreamSha256": "1723a43276dacd36b18bcc57023ab63ac8dbfd82a088738aab9934deae4cce3d",
-      "integratedSha256": "6bb1c517aeae01c73670450868b9dc60d5bf4f07225c67db6e380f73f4b60477"
+      "integratedSha256": "05a4632a0c72586d254f9b6e0d5ae1fbac6d7c0046cd8f8cb64d69705e3e072f"
     },
     {
       "path": "rulesets/taiko/input.ts",
@@ -332,7 +332,7 @@
       "upstreamPath": "src/rulesets/taiko/scoreProcessor.ts",
       "upstreamGitBlob": "27b99090e8c3d522fa4925aa8fd3868e4144c719",
       "upstreamSha256": "735e01b848168287d240cc11b236615929b0fec2df313356e17ab21458f5ee36",
-      "integratedSha256": "38bd4db9c342b6b7c8844cb2bd13f60ef9a0ecd978121086da956f52cde53c8e"
+      "integratedSha256": "64402ccebf3af085dfda81c1e22c17e2cc52f7212209ed2dd58df705db1c33e8"
     },
     {
       "path": "rulesets/taiko/types.ts",
@@ -374,14 +374,14 @@
       "upstreamPath": "src/utils/modDifficulty.ts",
       "upstreamGitBlob": "d07dc51cf48b267f0a9736f0882b6fe9ccf2a5fc",
       "upstreamSha256": "9c75ae0757c8366b7873eba4c82c2d7f752893e889df04456e67e22780754290",
-      "integratedSha256": "89de5cb1420b4b85ed4f0aed8d631a7ee0a31add9ca89086295caffdb96c721c"
+      "integratedSha256": "55786cf3977d78b4dc33c3f3f1531f6f7f9c24a45026c1fb41add22d303cb9ac"
     },
     {
       "path": "utils/scoreProcessor.ts",
       "upstreamPath": "src/utils/scoreProcessor.ts",
       "upstreamGitBlob": "dbdabc0872117edaf6b6936110ac9cca61d9ac04",
       "upstreamSha256": "c8dc18088cc9a458ccdc79d516386d1bb7d6e9d213deb52532eafdec9298fdd9",
-      "integratedSha256": "651234135e5dcc22dfe306fbf26cfcfc24ad99de506e8db4ba37f8ab5f615229"
+      "integratedSha256": "66b690a05dc2dfafd88ca038a729fe7a0e510a6cf767e1246c9009118a83987b"
     },
     {
       "path": "utils/sliderDuration.ts",

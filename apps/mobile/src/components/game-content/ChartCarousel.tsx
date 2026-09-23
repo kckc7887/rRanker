@@ -1,5 +1,5 @@
-import { Fragment, type ComponentRef, type ReactNode, useEffect, useRef } from 'react';
-import type { StyleProp, ViewStyle } from 'react-native';
+import { Fragment, type ComponentRef, type ReactNode, useEffect, useState, useRef } from 'react';
+import { View, type StyleProp, type ViewStyle } from 'react-native';
 import {
   GestureHandlerRootView,
   ScrollView as GestureScrollView,
@@ -40,6 +40,9 @@ export function ChartCarousel<TItem>({
 }: ChartCarouselProps<TItem>) {
   const interval = cardWidth + gap;
   const scrollRef = useRef<ComponentRef<typeof GestureScrollView>>(null);
+  const [index, setIndex] = useState(initialIndex);
+  const virtualize = items.length > 24;
+  const windowRadius = 2;
   useEffect(() => {
     const timer = setTimeout(() => {
       scrollRef.current?.scrollTo({ x: initialIndex * interval, animated: false });
@@ -66,6 +69,7 @@ export function ChartCarousel<TItem>({
             Math.min(items.length - 1, Math.round(event.nativeEvent.contentOffset.x / interval)),
           );
           onIndexChange?.(nextIndex);
+          setIndex(nextIndex);
         }}
         ref={scrollRef}
         removeClippedSubviews={false}
@@ -75,9 +79,14 @@ export function ChartCarousel<TItem>({
         style={scrollStyle}
         testID={testID}
       >
-        {items.map((item) => (
-          <Fragment key={keyExtractor(item)}>{renderItem(item)}</Fragment>
-        ))}
+        {items.map((item, itemIndex) => {
+          const visible = !virtualize || Math.abs(itemIndex - index) <= windowRadius;
+          return (
+            <Fragment key={keyExtractor(item)}>
+              {visible ? renderItem(item) : <View style={{ width: cardWidth }} />}
+            </Fragment>
+          );
+        })}
       </GestureScrollView>
     </GestureHandlerRootView>
   );

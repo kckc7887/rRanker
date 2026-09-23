@@ -1,4 +1,4 @@
-import { PlaybackClock } from '../../chart-preview-shared/webview-player/playbackClock';
+import { PlaybackClock, audioContextTime, musicPosition, outputTime } from '../../chart-preview-shared/webview-player/playbackClock';
 import { getAudioContextOutputTime } from '../../chart-preview-shared/webview-player/audioClock';
 import { hitEvents, type PreparedChart } from './chart-prepare';
 import { RizlineRenderer } from './renderer';
@@ -49,14 +49,14 @@ export class PreviewSession {
       this.hitGain,
     );
     this.renderer.setUserSpeed(this.settings.userSpeed);
-    this.clock.setOffset(0);
+    this.clock.setOffset(musicPosition(0));
     this.draw();
   }
 
   get currentTime(): number {
     if (!this.playing) return this.position;
     const context = getAudioContext();
-    return Math.max(0, Math.min(this.duration, this.clock.positionAt(getAudioContextOutputTime(context))));
+    return Math.max(0, Math.min(this.duration, this.clock.positionAt(outputTime(getAudioContextOutputTime(context)))));
   }
 
   get chartTime(): number {
@@ -73,11 +73,7 @@ export class PreviewSession {
     if (this.playing && this.source && this.settings.playbackSpeed !== previousSpeed) {
       const context = getAudioContext();
       this.source.playbackRate.value = this.settings.playbackSpeed;
-      this.clock.appendSegment(
-        context.currentTime,
-        this.settings.playbackSpeed,
-        getAudioContextOutputTime(context),
-      );
+      this.clock.appendSegment(audioContextTime(context.currentTime), this.settings.playbackSpeed);
       this.hits.reset(this.chartTime);
     }
     if (!this.playing) this.draw();
@@ -95,7 +91,7 @@ export class PreviewSession {
       this.pause();
       this.position = this.duration;
       this.ended = true;
-      this.clock.setOffset(this.duration);
+      this.clock.setOffset(musicPosition(this.duration));
       this.draw();
       return;
     }
@@ -120,6 +116,7 @@ export class PreviewSession {
   async playFrom(seconds: number): Promise<void> {
     if (this.disposed) return;
     this.pause();
+    if (this.disposed) return;
     const generation = ++this.command;
     this.position = Math.max(0, Math.min(seconds, this.duration));
     if (this.position >= this.duration) this.position = 0;
@@ -136,7 +133,7 @@ export class PreviewSession {
       source.start(0, startOffset);
       this.source = source;
     }
-    this.clock.set(context.currentTime, this.position, this.settings.playbackSpeed);
+    this.clock.set(audioContextTime(context.currentTime), musicPosition(this.position), this.settings.playbackSpeed);
     this.hits.reset(this.position - this.chart.delaySeconds);
     this.playing = true;
     this.ended = false;
@@ -145,14 +142,17 @@ export class PreviewSession {
   }
 
   pause(): void {
+    this.command += 1;
     if (!this.playing) {
       this.stopSource();
       this.hits.stop();
+      if (this.frame != null) cancelAnimationFrame(this.frame);
+      this.frame = null;
       return;
     }
     this.position = this.currentTime;
     this.playing = false;
-    this.clock.setOffset(this.position);
+    this.clock.setOffset(musicPosition(this.position));
     this.stopSource();
     this.hits.stop();
     if (this.frame != null) cancelAnimationFrame(this.frame);
@@ -161,15 +161,20 @@ export class PreviewSession {
   }
 
   async seek(seconds: number): Promise<void> {
+    if (this.disposed) return;
     const wasPlaying = this.playing;
-    if (wasPlaying) await this.playFrom(seconds);
-    else {
-      this.position = Math.max(0, Math.min(seconds, this.duration));
-      this.ended = this.position >= this.duration;
-      this.clock.setOffset(this.position);
-      this.hits.reset(this.position - this.chart.delaySeconds);
-      this.draw();
+    const generation = ++this.command;
+    if (wasPlaying) {
+      await this.playFrom(seconds);
+      if (this.disposed || generation !== this.command) return;
+      return;
     }
+    if (this.disposed || generation !== this.command) return;
+    this.position = Math.max(0, Math.min(seconds, this.duration));
+    this.ended = this.position >= this.duration;
+    this.clock.setOffset(musicPosition(this.position));
+    this.hits.reset(this.position - this.chart.delaySeconds);
+    this.draw();
   }
 
   dispose(): void {

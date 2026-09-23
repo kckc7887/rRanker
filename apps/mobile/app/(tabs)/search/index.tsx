@@ -163,7 +163,7 @@ export function SearchScreen() {
   ]);
 
   if (activeAccountId === UNBOUND_ACCOUNT_ID) {
-    return <EmptyDataView title="暂无绑定账号" detail="请先在设置 → 游戏管理中绑定账号" />;
+    return <EmptyDataView title="暂无绑定账号" detail="请先在设置 → 游戏管理中绑定账号" showBindAction />;
   }
 
   if (activeGameId === 'phigros') {

@@ -78,6 +78,8 @@ export type BestImageScreenShellStyles = {
   exportRoot: ViewStyle;
   exportOverlay: ViewStyle;
   exportOverlayText: TextStyle;
+  exportCancel: ViewStyle;
+  exportCancelText: TextStyle;
 };
 
 /** 共享样式全集：骨架用键 + 各屏自定义面板/样式行共用的键（fieldRow、chip 等）。 */
@@ -144,6 +146,8 @@ export const bestImageScreenSharedStyles: BestImageScreenSharedStyles = StyleShe
   exportButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#111111' },
   exportOverlay: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  exportCancel: { borderWidth: 1, borderRadius: 10, marginTop: 8, paddingHorizontal: 18, paddingVertical: 10 },
+  exportCancelText: { fontSize: 15, fontWeight: '700' },
   exportOverlayText: { fontSize: 14, fontWeight: '700' },
 });
 
@@ -282,7 +286,20 @@ export function BestImageScreenShell<TType extends string>({
   const theme = useAppTheme();
   const lifecycle = useAppLifecycle();
   const [heavyContentBlocked, setHeavyContentBlocked] = useState(!lifecycle.foregroundReady);
-  const heavyContentMounted = !heavyContentBlocked;
+  const [seenMemoryWarning, setSeenMemoryWarning] = useState(lifecycle.memoryWarningGeneration);
+  const [memoryRecoveryPending, setMemoryRecoveryPending] = useState(false);
+  const memoryRecoveryPendingRef = useRef(false);
+  if (lifecycle.memoryWarningGeneration > seenMemoryWarning) {
+    memoryRecoveryPendingRef.current = true;
+    setSeenMemoryWarning(lifecycle.memoryWarningGeneration);
+    setMemoryRecoveryPending(true);
+    setHeavyContentBlocked(true);
+  }
+  const memoryRecoveryPendingNow = memoryRecoveryPending || lifecycle.memoryWarningGeneration > seenMemoryWarning;
+  const heavyContentMounted = !heavyContentBlocked && !memoryRecoveryPendingNow;
+  const memoryRecoveryWidth = widths.reduce<number | null>((selected, width) => (
+    width < activeWidth && (selected === null || width > selected) ? width : selected
+  ), null);
   const [webViewRetryGeneration, setWebViewGeneration] = useState(0);
   const webViewGeneration = `${lifecycle.foregroundGeneration}-${webViewRetryGeneration}`;
   // 新页面源、轮播页或内容进程代表一次新的预览；重新渲染不轮换编号。
@@ -304,12 +321,24 @@ export function BestImageScreenShell<TType extends string>({
   const previewWidth = Math.min(720, Math.max(280, screenWidth - 32));
   const previewHeight = previewWidth * 4 / 3;
 
+  const recoverFromMemoryPressure = () => {
+    if (memoryRecoveryWidth !== null) onChooseWidth(memoryRecoveryWidth);
+    memoryRecoveryPendingRef.current = false;
+    setMemoryRecoveryPending(false);
+    setHeavyContentBlocked(false);
+    setWebViewGeneration((value) => value + 1);
+  };
+
   useEffect(() => {
     const memoryWarning = lifecycle.memoryWarningGeneration > memoryWarningRef.current;
     memoryWarningRef.current = lifecycle.memoryWarningGeneration;
     const marker = `${lifecycle.phase}:${lifecycle.memoryWarningGeneration}`;
     if ((lifecycle.phase !== 'background' && !memoryWarning) || releasedMarkerRef.current === marker) return;
     releasedMarkerRef.current = marker;
+    if (memoryWarning) {
+      memoryRecoveryPendingRef.current = true;
+      setMemoryRecoveryPending(true);
+    }
     setHeavyContentBlocked(true);
     onRequestCloseExport();
     onReleaseHeavySources?.();
@@ -321,7 +350,7 @@ export function BestImageScreenShell<TType extends string>({
   }, [lifecycle.memoryWarningGeneration, lifecycle.phase, onReleaseHeavySources, onRequestCloseExport]);
 
   useEffect(() => {
-    if (!lifecycle.foregroundReady) return;
+    if (!lifecycle.foregroundReady || memoryRecoveryPendingRef.current) return;
     setHeavyContentBlocked(false);
   }, [lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
 
@@ -414,7 +443,12 @@ export function BestImageScreenShell<TType extends string>({
                   updateBestImageWebViewState(onPreviewStatesChange, pageId, event.nativeEvent.didCrash ? 'crashed' : 'terminated');
                   setWebViewGeneration((value) => value + 1);
                 }}
-              /> : <View accessibilityLabel={`HTML图片预览 第${index + 1}页`} style={styles.loadingPreview}>
+              /> : memoryRecoveryPendingNow && lifecycle.foregroundReady && index === pageIndex ? <View accessibilityLabel={`HTML图片预览 第${index + 1}页`} style={styles.loadingPreview}>
+                <Text style={[styles.dimensionMeta, { color: theme.text, textAlign: 'center' }]}>内存不足，预览已暂停</Text>
+                <Pressable accessibilityLabel={memoryRecoveryWidth === null ? '重新加载预览' : '降低分辨率并重新加载'} accessibilityRole="button" onPress={recoverFromMemoryPressure} style={[styles.exportButton, { backgroundColor: theme.accent }]}>
+                  <Text style={styles.exportButtonText}>{memoryRecoveryWidth === null ? '重新加载预览' : `以 ${memoryRecoveryWidth} 像素重新加载`}</Text>
+                </Pressable>
+              </View> : <View accessibilityLabel={`HTML图片预览 第${index + 1}页`} style={styles.loadingPreview}>
                 <ActivityIndicator color={theme.accent} size="small" />
               </View>}
             </View>;
@@ -479,7 +513,13 @@ export function BestImageScreenShell<TType extends string>({
             {...(allowingReadAccessToUrl ? { allowingReadAccessToURL: allowingReadAccessToUrl } : {})}
           />
         </View>
-        <View style={[styles.exportOverlay, { backgroundColor: theme.background }]}><ActivityIndicator color={theme.accent} size="large" /><Text style={[styles.exportOverlayText, { color: theme.textSecondary }]}>{exportStatus ?? '正在准备导出'}</Text></View>
+        <View style={[styles.exportOverlay, { backgroundColor: theme.background }]}>
+          <ActivityIndicator color={theme.accent} size="large" />
+          <Text style={[styles.exportOverlayText, { color: theme.textSecondary }]}>{exportStatus ?? '正在准备导出'}</Text>
+          <Pressable accessibilityLabel="取消导出" accessibilityRole="button" onPress={onRequestCloseExport} style={[styles.exportCancel, { borderColor: theme.border }]}>
+            <Text style={[styles.exportCancelText, { color: theme.text }]}>取消</Text>
+          </Pressable>
+        </View>
       </View> : null}
     </Modal>
   </>;

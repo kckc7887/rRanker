@@ -23,7 +23,7 @@ export function rizlineCatalog(resourceVersion = 'r1'): RizlineCatalog {
     })],
   };
 }
-export function rizlineCatalogAssetFiles(catalog: RizlineCatalog): Array<{ path: string; size: number; sha256: string }> {
+export function rizlineCatalogAssetFiles(catalog: RizlineCatalog): { path: string; size: number; sha256: string }[] {
   const paths = new Set<string>();
   for (const song of catalog.songs) {
     if (song.coverPath) paths.add(song.coverPath);

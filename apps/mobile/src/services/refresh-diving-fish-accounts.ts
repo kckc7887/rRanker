@@ -37,10 +37,12 @@ async function refreshOne(input: {
   catalog: CatalogSnapshot;
   expectedRecords?: readonly DivingFishUploadRecord[];
   signal?: { aborted: boolean };
+  assertAccount?: (accountId: string) => void;
 }): Promise<ScoreSnapshot> {
   const guardGeneration = captureResourceWrites(input.account.gameId, undefined, input.account.id);
   const assertCurrent = () => {
     if (input.signal?.aborted) throw new Error('已取消');
+    input.assertAccount?.(input.account.id);
     guardGeneration();
   };
   let lastError: unknown;
@@ -94,6 +96,7 @@ export async function refreshDivingFishAccounts(input: {
   catalog: CatalogSnapshot;
   expectedRecords?: readonly DivingFishUploadRecord[];
   signal?: { aborted: boolean };
+  assertAccount?: (accountId: string) => void;
   onRefreshing?: (account: BoundAccount) => void;
 }): Promise<RefreshDivingFishAccountsResult> {
   const refreshed: RefreshedDivingFishAccount[] = [];
@@ -114,6 +117,7 @@ export async function refreshDivingFishAccounts(input: {
         catalog: input.catalog,
         expectedRecords: input.expectedRecords,
         signal: input.signal,
+        assertAccount: input.assertAccount,
       });
       refreshed.push({ account, snapshot });
     } catch (error) {

@@ -7,6 +7,7 @@ import {
   mergeLibraryItems,
   normalizeLibraryItem,
   normalizeTagName,
+  normalizeTagPresets,
   normalizeTags,
   shouldKeepLibraryItem,
 } from '@/domain/user-library';
@@ -40,7 +41,7 @@ let utageMigrationSequence = 0;
 async function writeTagPresets(db: DatabaseAccess, values: readonly string[]): Promise<void> {
   await db.runAsync('DELETE FROM user_library_tag_presets');
   const timestamp = new Date().toISOString();
-  for (const [index, value] of normalizeTags(values).entries()) {
+  for (const [index, value] of normalizeTagPresets(values).entries()) {
     const normalized = normalizeTagName(value);
     await db.runAsync(
       'INSERT INTO user_library_tag_presets (normalized_name, display_name, sort_order, created_at) VALUES (?, ?, ?, ?)',
@@ -371,15 +372,8 @@ async function initializeUserLibrarySchema(): Promise<void> {
     await db.runAsync('INSERT INTO user_library_meta (id, schema_version) VALUES (1, ?)', USER_LIBRARY_SCHEMA_VERSION);
     await writeTagPresets(db, DEFAULT_TAG_PRESETS);
   } else if (row.schema_version < USER_LIBRARY_SCHEMA_VERSION) {
-    // 升级时清空跨游戏收藏，避免错误归属。
     await ensureGameIdColumn(db);
     if (row.schema_version === 1) await writeTagPresets(db, DEFAULT_TAG_PRESETS);
-    // 使用同连接事务，避免 withExclusiveTransactionAsync 另开连接锁死单例连接。
-    await db.withTransactionAsync(async () => {
-      await db.runAsync('DELETE FROM user_library_item_tags');
-      await db.runAsync('DELETE FROM user_library_items');
-      await db.runAsync('DELETE FROM user_library_tags');
-    });
     await db.runAsync('UPDATE user_library_meta SET schema_version = ? WHERE id = 1', USER_LIBRARY_SCHEMA_VERSION);
   } else if (row.schema_version === 5) {
     await restoreExperimentalV5Schema(db);
@@ -435,6 +429,20 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
       await db.withTransactionAsync(async () => {
         result = transform(await this.readFrom(db)).map(normalizeLibraryItem).filter(shouldKeepLibraryItem);
         await this.writeAll(db, result);
+      });
+      return result;
+    });
+  }
+
+  async replaceContents(items: UserLibraryItem[], presets: readonly string[]): Promise<UserLibraryItem[]> {
+    await this.initialize();
+    const normalizedPresets = normalizeTagPresets(presets);
+    return runDatabaseWrite(async () => {
+      const db = await getRrankerDatabase();
+      const result = items.map(normalizeLibraryItem).filter(shouldKeepLibraryItem);
+      await db.withTransactionAsync(async () => {
+        await this.writeAll(db, result);
+        await writeTagPresets(db, normalizedPresets);
       });
       return result;
     });

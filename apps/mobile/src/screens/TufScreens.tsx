@@ -7,6 +7,7 @@ import {
   useWindowDimensions, View,
 } from 'react-native';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
+import { InfinitePageFooter } from '@/components/game-content/InfinitePageFooter';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
@@ -65,9 +66,6 @@ function useActiveTufPlayerId() {
   return tufPlayerIdFromAccountId(accountId);
 }
 
-function LoadingFooter({ loading }: { loading: boolean }) {
-  return loading ? <ActivityIndicator style={styles.footer} /> : null;
-}
 
 function uniqueById<T extends { id: number }>(items: T[]): T[] {
   return [...new Map(items.map((item) => [item.id, item])).values()];
@@ -186,7 +184,7 @@ export function TufRecordsScreen() {
         scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
         keyExtractor: (item) => String(item.id), renderItem: ({ item }) => <TufScoreCard pass={item} />,
         onEndReachedThreshold: 0.35, onEndReached: () => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); },
-        ListFooterComponent: <LoadingFooter loading={query.isFetchingNextPage} />,
+        ListFooterComponent: <InfinitePageFooter loading={query.isFetchingNextPage} failed={query.isFetchNextPageError} hasNextPage={query.hasNextPage === true} onRetry={() => void query.fetchNextPage()} />,
       }} />
   </View>;
 }
@@ -251,7 +249,7 @@ export function TufSearchScreen() {
         scrollIndicatorInsets: { bottom: inset },
         keyExtractor: (item) => String(item.id), renderItem: ({ item }) => <TufSongRow level={item} />,
         onEndReachedThreshold: 0.35, onEndReached: () => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); },
-        ListFooterComponent: <LoadingFooter loading={query.isFetchingNextPage} />,
+        ListFooterComponent: <InfinitePageFooter loading={query.isFetchingNextPage} failed={query.isFetchNextPageError} hasNextPage={query.hasNextPage === true} onRetry={() => void query.fetchNextPage()} />,
       }} />
   </View>;
 }

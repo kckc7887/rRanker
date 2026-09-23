@@ -277,6 +277,8 @@ describe('mapLxnsScore', () => {
     });
     expect(dx.type).toBe('DX');
     expect(dx.rating).toBe(12);
+    expect(dx.title).toBe('曲名缺失');
+    expect(dx.incomplete).toBe(true);
     expect(mapLxnsScore({
       id: 100123,
       level_index: 0,

@@ -103,6 +103,6 @@
   },
   "private": true,
   "engines": {
-    "node": ">=20.19"
+    "node": ">=22.13"
   }
 }

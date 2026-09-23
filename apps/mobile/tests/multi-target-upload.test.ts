@@ -3,6 +3,7 @@ import { createLocalMaimaiAccount, createMaimaiBoundAccount } from '@/domain/bou
 import type { ProviderSession } from '@/providers/contracts';
 import { ProviderError } from '@/providers/errors';
 import { ScoreHubError } from '@/services/score-hub-client';
+import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 
 const mocks = vi.hoisted(() => ({
   createFriendLoginJob: vi.fn(),
@@ -76,7 +77,7 @@ vi.mock('@/storage/score-hub-account-store', () => ({
 }));
 
 // Must be imported after the hoisted workflow mocks.
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import {
   bindScoreHubCabinetByQr,
   resolveUploadTargets,
@@ -143,6 +144,51 @@ describe('好友码多目标写入', () => {
     mocks.accountPatch.mockResolvedValue({ friendCode: '', hasCabinetBound: true });
     mocks.bindCabinetByQr.mockResolvedValue({ ok: true, alreadyBound: false });
     mocks.fetchMe.mockResolvedValue({ friendCode: '123456789012345', hasCabinetUserId: true });
+  });
+
+  it('好友码上传在登录挂起期间删除目标后不再落盘', async () => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    let releaseLogin: (value: { jobId: string; botFriendCode: null; body: { __skipAuthToken: string } }) => void = () => undefined;
+    mocks.createFriendLoginJob.mockReturnValue(new Promise((resolve) => { releaseLogin = resolve; }));
+    const pending = uploadMaimaiFromFriendCode({
+      friendCode: '123456789012345',
+      selectedAccountIds: [local.id],
+      targets: resolveUploadTargets([local], {}),
+      sessionsByAccountId: {},
+      resolveCatalog: async () => catalog,
+      signal: { aborted: false },
+      onPhase: vi.fn(),
+      onNeedFriendAccept: vi.fn(),
+    });
+    invalidateResourceWrites(`account:${local.id}`);
+    releaseLogin({ jobId: 'login-job', botFriendCode: null, body: { __skipAuthToken: 'hub-token' } });
+    const result = await pending;
+    expect(mocks.saveSnapshot).not.toHaveBeenCalled();
+    expect(result.targetResults).toEqual([
+      expect.objectContaining({ status: 'failed', written: 0 }),
+    ]);
+    expect(result.refreshedAccounts).toEqual([]);
+  });
+
+  it('二维码上传在登录挂起期间删除目标后不再落盘', async () => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    let releaseLogin: (value: { token: string; friendCode: string }) => void = () => undefined;
+    mocks.loginByQrUntilToken.mockReturnValue(new Promise((resolve) => { releaseLogin = resolve; }));
+    const pending = uploadMaimaiFromQrLogin({
+      credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
+      selectedAccountIds: [local.id],
+      targets: resolveUploadTargets([local], {}),
+      sessionsByAccountId: {},
+      resolveCatalog: async () => catalog,
+      signal: { aborted: false },
+      onPhase: vi.fn(),
+    });
+    invalidateResourceWrites(`account:${local.id}`);
+    releaseLogin({ token: 'hub-token', friendCode: '123456789012345' });
+    const result = await pending;
+    expect(mocks.saveSnapshot).not.toHaveBeenCalled();
+    expect(result.refreshedAccounts).toEqual([]);
+    expect(result.targetResults[0]?.status).toBe('failed');
   });
 
   it('单个目标失败不回滚已经成功的本地写入', async () => {

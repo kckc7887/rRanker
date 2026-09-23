@@ -342,7 +342,7 @@ export function PhigrosBestImageScreen() {
     return () => { cancelled = true; controller.abort(); };
     // selectedSongKey 是 selectedSongIds.join('|') 的派生签名：ids 内容任何变化必然
     // ids 与 key 来自同一次渲染，避免写入错误的素材会话。
-    // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 回调只在挂载时消费一次，或依赖已在上方说明
   }, [illustrationStage, lifecycle.foregroundGeneration, lifecycle.foregroundReady, provider, selectedSongKey]);
 
   useEffect(() => {

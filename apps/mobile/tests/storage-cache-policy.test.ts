@@ -44,7 +44,7 @@ vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepositor
 vi.mock('@/services/remote-image-cache', () => ({ pruneRemoteImageCache: vi.fn(async () => undefined) }));
 
 // 原生依赖 mock 完成后再导入迁移入口。
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import {
   cleanupOrphanedTemporaryStorage,
   migrateLegacyStorageCaches,

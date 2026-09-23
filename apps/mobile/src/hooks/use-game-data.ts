@@ -333,7 +333,7 @@ export function useGameData(enabled = true) {
         if (activeProviderId === 'osu' && session?.mode === 'osu-oauth' && userId !== null) {
           const provider = new OsuScoreProvider(
             session,
-            (next) => applyOsuTokenRotation(activeAccountId, next),
+            (next, expected) => applyOsuTokenRotation(activeAccountId, next, expected),
           );
           const toBundle = (snapshot: OsuSnapshot): GameDataBundle => ({
             gameId: activeGameId,
@@ -445,7 +445,13 @@ export function useGameData(enabled = true) {
       if (persistScores && !hasSessionData) {
         const cached = await repository.getLatest(activeAccountId);
         if (cached) {
-          return toBundle(activeProviderId === 'local' ? cached : staleCachedSnapshot(cached));
+          if (activeProviderId !== 'local') return toBundle(staleCachedSnapshot(cached));
+          const displayName = activeAccount?.displayName ?? cached.player.displayName;
+          return toBundle({
+            ...cached,
+            player: { ...cached.player, displayName },
+            best50: { ...cached.best50, player: { ...cached.best50.player, displayName } },
+          });
         }
       }
       const snapshot = await service.load(signal);

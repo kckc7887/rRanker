@@ -20,9 +20,9 @@ vi.mock('expo-file-system', () => ({
 }));
 
 // Native Expo modules must be mocked before importing the service.
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { createUserDataBackup } from '@/domain/user-library';
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { MAX_BACKUP_FILE_BYTES, pickUserDataBackup, shareUserDataBackup } from '@/services/user-data-file-service';
 
 describe('user data backup file service', () => {
@@ -40,7 +40,7 @@ describe('user data backup file service', () => {
 
   it('rejects oversized and invalid backup files', async () => {
     native.picker.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///large.json', size: MAX_BACKUP_FILE_BYTES + 1 }] });
-    await expect(pickUserDataBackup()).rejects.toThrow('1 MiB');
+    await expect(pickUserDataBackup()).rejects.toThrow('大小上限');
     expect(native.remove).toHaveBeenCalled();
     native.picker.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///bad.json', size: 5 }] });
     native.read.mockResolvedValueOnce('not-json');

@@ -71,13 +71,13 @@ vi.mock('@/domain/phigros-chart-preview', () => ({
 }));
 
 // Native Expo modules must be mocked before importing the download module.
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import JSZip from 'jszip';
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import type { PhiraChart } from '@/domain/phira';
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { ChartPackageDownloadError } from '@/features/chart-download-shared/chart-download-shared';
-// eslint-disable-next-line import/first
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import {
   downloadPhigrosChartAsPhiraPackage,
   downloadPhiraChartPackage,

@@ -1,4 +1,5 @@
 import Storage from 'expo-sqlite/kv-store';
+import { accountDirectoryCorruptKey } from '@/storage/create-demo-account-store';
 import type { KeyValueStore } from './create-demo-account-store';
 
 export type { KeyValueStore };
@@ -23,7 +24,7 @@ export type CreatePreferencesStoreOptions<P, S> = {
   parse: (value: unknown, scope: S) => P;
   /** 写入前构造序列化值；缺省直接存储。 */
   toStored?: (value: P, scope: S) => unknown;
-  /** 读到坏 JSON 时是否清理对应 key；缺省清理。 */
+  /** 已废弃。读取失败不再删除原键。 */
   clearOnError?: boolean;
   /** 主 key 无数据时执行一次迁移；返回 null 表示无迁移。 */
   onMissing?: (context: {
@@ -35,8 +36,6 @@ export type CreatePreferencesStoreOptions<P, S> = {
 
 /** 创建带解析、回退和序列化能力的偏好存储。 */
 export function createPreferencesStore<P, S = void>(options: CreatePreferencesStoreOptions<P, S>) {
-  const clearOnError = options.clearOnError ?? true;
-
   const keyOf = (scope: S): string => (
     typeof options.storeKey === 'string' ? options.storeKey : options.storeKey(scope)
   );
@@ -47,9 +46,13 @@ export function createPreferencesStore<P, S = void>(options: CreatePreferencesSt
 
   const loadPreferences = async (storage: KeyValueStore, scope: S): Promise<P> => {
     const key = keyOf(scope);
+    let raw: string | null;
     try {
-      const raw = await storage.getItem(key);
-      if (raw) return options.parse(JSON.parse(raw), scope);
+      raw = await storage.getItem(key);
+    } catch {
+      return options.defaults(scope);
+    }
+    if (!raw) {
       if (options.onMissing) {
         const migrated = await options.onMissing({
           storage,
@@ -59,8 +62,15 @@ export function createPreferencesStore<P, S = void>(options: CreatePreferencesSt
         if (migrated !== null) return migrated;
       }
       return options.defaults(scope);
+    }
+    try {
+      return options.parse(JSON.parse(raw), scope);
     } catch {
-      if (clearOnError) await storage.removeItem(key).catch(() => undefined);
+      try {
+        await storage.setItem(accountDirectoryCorruptKey(key), raw);
+      } catch {
+        // 副本写失败时原键仍然保留。
+      }
       return options.defaults(scope);
     }
   };
