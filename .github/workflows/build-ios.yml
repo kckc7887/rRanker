@@ -8,17 +8,58 @@ on:
 
 permissions:
   contents: read
+  actions: read
 
 concurrency:
   group: rranker-ios-testflight
   cancel-in-progress: false
 
 jobs:
+  changed-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    outputs:
+      functional: ${{ steps.read.outputs.functional }}
+
+    steps:
+      - name: Download scope verdict
+        if: github.event_name == 'workflow_run'
+        continue-on-error: true
+        uses: actions/download-artifact@v4
+        with:
+          name: changed-scope
+          run-id: ${{ github.event.workflow_run.id }}
+          github-token: ${{ github.token }}
+          path: ${{ runner.temp }}/changed-scope
+
+      - name: Read scope verdict
+        id: read
+        shell: bash
+        env:
+          VERDICT: ${{ runner.temp }}/changed-scope/verdict.env
+        run: |
+          functional=true
+          if [ -f "$VERDICT" ]; then
+            recorded="$(sed -n 's/^functional=//p' "$VERDICT" | tail -n 1)"
+            reason="$(sed -n 's/^reason=//p' "$VERDICT" | tail -n 1)"
+            if [ "$recorded" = "false" ]; then
+              functional=false
+            fi
+            echo "轻检查判定：functional=${recorded:-未知}，reason=${reason:-未知}"
+          else
+            echo "取不到轻检查判定，按有功能改动处理"
+          fi
+          echo "functional=$functional" >> "$GITHUB_OUTPUT"
+
   build-ios:
+    needs: changed-scope
     if: >-
-      github.event_name == 'workflow_dispatch' ||
+      always() &&
+      (github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_repository.full_name == github.repository)
+      github.event.workflow_run.head_repository.full_name == github.repository &&
+      needs.changed-scope.outputs.functional != 'false'))
     runs-on: macos-26
 
     defaults:

@@ -13,7 +13,47 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  changed-scope:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    outputs:
+      functional: ${{ steps.classify.outputs.functional }}
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Classify changed paths
+        id: classify
+        uses: ./.github/actions/changed-scope
+
+      - name: Write scope verdict
+        env:
+          FUNCTIONAL: ${{ steps.classify.outputs.functional }}
+          REASON: ${{ steps.classify.outputs.reason }}
+          CHANGED_COUNT: ${{ steps.classify.outputs.changed-count }}
+        run: |
+          mkdir -p changed-scope
+          {
+            echo "functional=$FUNCTIONAL"
+            echo "reason=$REASON"
+            echo "changed-count=$CHANGED_COUNT"
+          } > changed-scope/verdict.env
+
+      - name: Upload scope verdict
+        continue-on-error: true
+        uses: actions/upload-artifact@v4
+        with:
+          name: changed-scope
+          path: changed-scope/verdict.env
+          if-no-files-found: warn
+          retention-days: 1
+          overwrite: true
+
   quality:
+    needs: changed-scope
+    if: always() && needs.changed-scope.outputs.functional != 'false'
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
