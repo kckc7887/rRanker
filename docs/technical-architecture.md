@@ -522,7 +522,10 @@ Phigros/Phira 及 RPE 入口，`tsconfig.osu-player.json` 覆盖 osu! 播放入�
 播放器源码改动后按所属功能运行 `npm run build:chart-preview`、
 `npm run build:phigros-chart-preview`、`npm run build:osu-chart-preview`
 或 `npm run build:rizline-chart-preview`；
-四者共用 `scripts/lib/build-preview.mjs`，公共拨轮修改需重建舞萌、osu! 与 Rizline。
+四者共用 `scripts/lib/build-preview.mjs`，公共拨轮修改需重建舞萌、osu! 与 Rizline；
+`chart-preview-shared/chart-preview-resource-budget.ts` 由 osu! 播放器
+`webview-player/backdrop.ts`、`resource-plan.ts` 与 `events.ts` 引入，进入 osu! 闭包，
+修改后同样需重建 osu!。
 构建器的可选 `licenseBanner` 保留分发许可，`auditModules` 在写出前审计实际依赖。
 `npm run check:generated` 不写文件，从源码重新构建并验证 HTML、player.js、player.bundle
 与交付产物一致。打包成功不代表手机 WebView 播放验收通过。
