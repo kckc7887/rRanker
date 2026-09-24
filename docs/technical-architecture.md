@@ -488,8 +488,8 @@ MajSimai 输出作为 TypeScript 测试的外部基准。语法范围、素材�
 运行真实内存数据库，CI 的 Node.js 22 满足该要求。
 
 `master` 的 GitHub 分支保护由仓库管理员在网页设置，本次不代为调用 API：
-合并必须经过 Pull Request；Android 与 iOS workflow 里的 quality 检查失败时不能合并；
-禁止 force-push。
+合并必须经过 Pull Request；`.github/workflows/quality.yml` 的 quality 检查失败时不能合并；
+禁止 force-push。质量检查从两个构建工作流抽离后，需在网页重新确认必填状态检查仍然指向该工作流的 `quality` 任务。
 
 2026-09-24 对生产依赖树执行 `npm audit --omit=dev`：0 critical，26 high 公告分属
 6 个传递包，2 moderate 公告。`@xmldom/xmldom`、`brace-expansion`、`image-size`、
@@ -566,11 +566,28 @@ Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 ma
 `addedFiles` 中列出，不计作基线无损比较或压缩收益。仓库素材减少不直接等于导出收益，
 导出中未引用素材不计入收益。
 
-`.github/workflows/build-ios.yml` 在每次 push、PR 创建/更新/重新打开及手动触发时运行：Ubuntu 质量任务运行 lint、typecheck、全部测试和生产依赖审计；macOS 任务读取版本、向 App Store Connect 查询下一构建号、执行 Expo prebuild、安装 Pods 与签名材料、Archive、导出 IPA，先上传保留 14 天的 Actions artifact，再提交 TestFlight。来自外部 fork 的 PR 只运行质量任务，跳过需要仓库签名密钥的 macOS 任务。同仓库 PR、push 和手动触发均执行完整构建与上传流程；这些流程共用串行并发组。Windows 本地无法证明 Xcode Archive、签名、上传或 TestFlight 处理成功。
+`.github/workflows/quality.yml` 是唯一的质量检查工作流，在每次 push、PR 创建/更新/重新打开及手动触发时运行：
+Ubuntu 任务在 `apps/mobile` 执行 `npm ci`、lint、typecheck、全部测试、架构检查、生成物检查和生产依赖审计，
+不构建任何平台产物。两个构建工作流用 `workflow_run` 订阅该工作流的完成事件
+（`workflows: ["Quality"]`、`types: [completed]`），`if` 要求
+`github.event.workflow_run.conclusion` 为 `success`，且
+`github.event.workflow_run.head_repository.full_name` 等于 `github.repository`；
+所以质量检查未通过、以及来自外部 fork 的 PR 都不会构建。
+这三个工作流不使用 reusable workflow，构建任务也不依赖 `needs`，彼此不是父子层级：
+质量检查结束后两个构建并行启动。构建任务以 `github.event.workflow_run.head_sha`
+检出通过质量检查的提交；`workflow_run` 触发的工作流定义取自默认分支，
+因此这套关系要在 `master` 上生效后才会运行，其运行记录挂在默认分支、
+不出现在 PR 的检查列表里，不适合作为必填状态检查。
+两个构建工作流各自保留 `workflow_dispatch`，该入口构建所选 ref、不经过质量检查。
 
-`.github/workflows/build-android.yml` 在每次 push、PR 创建/更新/重新打开及手动触发时运行：Ubuntu 质量任务运行
-lint、typecheck、全部测试和生产依赖审计；构建任务使用 Node.js 22、Temurin JDK 17 与 Android SDK，
-执行 `npm ci`、`npm run prebuild:android` 和 Gradle `:app:assembleRelease`。
+`.github/workflows/build-ios.yml` 在上述质量检查通过后运行：macOS 任务读取版本、
+向 App Store Connect 查询下一构建号、执行 Expo prebuild、安装 Pods 与签名材料、Archive、导出 IPA，
+先上传保留 14 天的 Actions artifact，再提交 TestFlight。同仓库 PR、push 和手动触发均执行完整构建与上传流程；
+这些流程共用串行并发组。Windows 本地无法证明 Xcode Archive、签名、上传或 TestFlight 处理成功。
+
+`.github/workflows/build-android.yml` 在上述质量检查通过后运行：构建任务使用 Node.js 22、Temurin JDK 17
+与 Android SDK，执行 `npm ci`、`npm run prebuild:android` 和 Gradle `:app:assembleRelease`。
+Android 的并发组按 `github.event.workflow_run.head_branch` 串行，手动触发时退回 `github.ref`。
 prebuild 复用 `plugins/with-android-abi-splits.js`，一次生成 `armeabi-v7a`、`arm64-v8a`、
 `x86`、`x86_64` 四份 APK。版本与构建号分别读取 `app.json` 的 `expo.version` 和
 `expo.android.versionCode`，不自动递增。配置了正式 keystore 四项 Secret 时经注入式
