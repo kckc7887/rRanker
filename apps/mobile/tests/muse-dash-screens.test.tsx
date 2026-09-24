@@ -25,7 +25,7 @@ const mockDiffdiff = [
 ] as [string, number, string, number, number][];
 const mockSetChartPractice = jest.fn();
 const mockSetTags = jest.fn();
-let mockMissMap: ReadonlyMap<string, number | undefined> = new Map();
+let mockMissMap: ReadonlyMap<string, number | null | undefined> = new Map();
 
 jest.mock('expo-router', () => ({
   router: { push: () => undefined },
@@ -265,6 +265,30 @@ describe('Muse Dash screens', () => {
     expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
     await fireEvent.press(screen.getByLabelText('筛选成就 全部'));
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3);
+  });
+
+  it('does not count records whose miss detail is still pending as FC/AP', async () => {
+    mockPlayer = {
+      ...player,
+      plays: player.plays.map((play) =>
+        play.uid === '1-1' ? { ...play, acc: 100 } : play),
+    };
+    mockMissMap = new Map([['0-47:3', 0], ['0-47:1', null], ['1-1:2', 0]]);
+    const screen = await render(<MuseDashRecordsScreen />);
+    await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('筛选成就 FC'));
+    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(2);
+    expect(screen.queryAllByTestId('musedash-score-0-47-1')).toHaveLength(0);
+    expect(screen.getAllByTestId('musedash-score-1-1-2').length).toBe(1);
+  });
+
+  it('shows the achievement check hint instead of an endless spinner while every detail is pending', async () => {
+    mockMissMap = new Map([['0-47:3', null], ['0-47:1', null], ['1-1:2', null]]);
+    const screen = await render(<MuseDashRecordsScreen />);
+    await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('筛选成就 FC'));
+    expect(screen.queryAllByTestId(/^musedash-score-/)).toHaveLength(0);
+    expect(screen.getByText('正在核对成就…')).toBeTruthy();
   });
 
   it('searches records by song title and uid', async () => {

@@ -20,11 +20,11 @@ import { queryClient } from '@/state/query-client';
 import { invalidateMuseDashSessionResources } from '@/services/infinite-query-refresh';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import {
-  loadMuseDashAlbumsCacheFirst,
   loadMuseDashAlbumsFresh,
+  loadMuseDashAlbumsFreshSnapshot,
   loadMuseDashCeFresh,
-  loadMuseDashDiffdiffCacheFirst,
   loadMuseDashDiffdiffFresh,
+  loadMuseDashDiffdiffFreshSnapshot,
   loadMuseDashPlayDetailFresh,
   loadMuseDashPlayerFresh,
   makeMuseDashSnapshot,
@@ -132,8 +132,8 @@ export function useMuseDashPlayer(userId: string | null, enabled = true) {
     // 示例账号：不请求网络玩家资料，由曲库与定数表缓存优先生成全满成绩。
     if (userId !== null && isMuseDashTestUserId(userId)) {
       const [albums, diffdiff] = await Promise.all([
-        loadMuseDashAlbumsCacheFirst(cache, signal),
-        loadMuseDashDiffdiffCacheFirst(cache, signal),
+        loadMuseDashAlbumsFreshSnapshot(signal),
+        loadMuseDashDiffdiffFreshSnapshot(signal),
       ]);
       return maxedMuseDashPlayerSnapshot(albums.data, diffdiff.data);
     }
@@ -178,7 +178,8 @@ export function useMuseDashPlayDetail(
 const MUSE_DASH_DETAIL_CONCURRENCY = 6;
 
 /** 批量单曲明细 miss 表（成就筛选用）：key = `${uid}:${difficulty}` → miss。
- * null 表示尚未返回，不能当成不符合筛选。
+ * null 表示请求尚未返回（pending，抽取前会等待明细到达），undefined 表示上游没有该字段（unknown，不会再变化）；
+ * 只有已知数值才用于判定 AP/FC，pending 与 unknown 都不算已满足。
  * 与 useMuseDashPlayDetail 共用同一 queryKey 且 queryFn 返回结构一致（完整快照），
  * 同 Key 查询无论由哪个 observer 执行，缓存 data 均为 `{ data, source }`，读取处解包 `data.data.play?.miss`。 */
 export function useMuseDashPlayDetails(

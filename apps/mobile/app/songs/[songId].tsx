@@ -112,7 +112,7 @@ export default function SongDetailScreen() {
     return <TufLevelDetailScreen levelId={songId} />;
   }
   if (activeGameId === 'musedash') {
-    return <MuseDashSongDetailScreen songId={songId} />;
+    return <MuseDashSongDetailScreen songId={songId} levelIndex={initialLevelIndex} />;
   }
   // osu! 四模式共用歌曲详情页，songId = beatmapset id；levelIndex = 成绩卡带入的 beatmap id（优先定位该难度）。
   if (activeGameId && isOsuGameId(activeGameId)) {
