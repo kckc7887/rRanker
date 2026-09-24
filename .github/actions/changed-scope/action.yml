@@ -1,0 +1,132 @@
+name: Changed scope
+
+description: 判定本次改动是否只落在自述文件、CI 流程等与应用功能无关的位置
+
+inputs:
+  base-sha:
+    description: 比较基准提交，留空时按当前事件推导
+    required: false
+    default: ""
+  head-sha:
+    description: 比较目标提交，留空时使用已检出的 HEAD
+    required: false
+    default: ""
+
+outputs:
+  functional:
+    description: 存在影响应用功能的改动为 true；无法判定时同样为 true
+    value: ${{ steps.classify.outputs.functional }}
+  reason:
+    description: 判定依据
+    value: ${{ steps.classify.outputs.reason }}
+  changed-count:
+    description: 本次比较的变更文件数量
+    value: ${{ steps.classify.outputs.changed-count }}
+
+runs:
+  using: composite
+
+  steps:
+    - name: Classify changed paths
+      id: classify
+      shell: bash
+      env:
+        SCOPE_EVENT_NAME: ${{ github.event_name }}
+        SCOPE_PUSH_BEFORE: ${{ github.event.before }}
+        SCOPE_PR_BASE: ${{ github.event.pull_request.base.sha }}
+        SCOPE_INPUT_BASE: ${{ inputs.base-sha }}
+        SCOPE_INPUT_HEAD: ${{ inputs.head-sha }}
+      run: |
+        set -uo pipefail
+        cd "${GITHUB_WORKSPACE:-.}"
+        null_sha=0000000000000000000000000000000000000000
+
+        # 只有自述文件、文档、许可声明、README 截图与 CI 流程算与应用功能无关
+        non_functional() {
+          case "$1" in
+            README.md | */README.md | AGENTS.md | */AGENTS.md | CLAUDE.md | */CLAUDE.md) return 0 ;;
+            LICENSE | LICENSES/* | THIRD_PARTY_NOTICES.md) return 0 ;;
+            docs/* | .github/* | assets/images/*) return 0 ;;
+          esac
+          return 1
+        }
+
+        paths_file="$(mktemp)"
+        trap 'rm -f "$paths_file"' EXIT
+
+        functional=true
+        reason=no-base
+        count=0
+
+        head="${SCOPE_INPUT_HEAD:-}"
+        if [ -z "$head" ]; then
+          head="$(git rev-parse --verify HEAD 2>/dev/null || true)"
+        fi
+
+        base="${SCOPE_INPUT_BASE:-}"
+        if [ -z "$base" ]; then
+          case "${SCOPE_EVENT_NAME:-}" in
+            push) base="${SCOPE_PUSH_BEFORE:-}" ;;
+            pull_request | pull_request_target) base="${SCOPE_PR_BASE:-}" ;;
+          esac
+        fi
+
+        if [ -z "$head" ] || [ -z "$base" ] || [ "$base" = "$null_sha" ]; then
+          echo "轻检查：本次事件拿不到比较基准，按有功能改动处理"
+        else
+          # 基准提交不在本地时只取它自己，避免为一次轻检查拉取完整历史
+          if ! git cat-file -e "${base}^{commit}" 2> /dev/null; then
+            git fetch --depth=1 --no-tags origin "$base" > /dev/null 2>&1 || true
+          fi
+          if ! git cat-file -e "${base}^{commit}" 2> /dev/null; then
+            reason=base-unavailable
+            echo "::warning::轻检查取不到基准提交 $base，按有功能改动处理"
+          # --no-renames：改名同时列出新旧路径，避免功能文件被改名藏进文档路径
+          elif ! git diff --name-only --no-renames -z "$base" "$head" > "$paths_file" 2> /dev/null; then
+            reason=diff-failed
+            echo "::warning::轻检查无法比较 $base 与 $head，按有功能改动处理"
+          else
+            functional=false
+            reason=docs-only
+            while IFS= read -r -d '' path; do
+              count=$((count + 1))
+              if [ "$functional" = false ] && ! non_functional "$path"; then
+                functional=true
+                reason="functional:$path"
+              fi
+            done < "$paths_file"
+            if [ "$count" -eq 0 ]; then
+              reason=no-changes
+            fi
+          fi
+        fi
+
+        {
+          echo "functional=$functional"
+          echo "reason=$reason"
+          echo "changed-count=$count"
+        } >> "${GITHUB_OUTPUT:-/dev/null}"
+
+        if [ "$functional" = false ]; then
+          echo "轻检查：$count 个改动都落在自述文件、文档、许可声明、README 截图与 CI 流程"
+          while IFS= read -r -d '' path; do
+            echo "  改动：$path"
+          done < "$paths_file"
+        else
+          echo "轻检查：需要完整检查（$reason）"
+        fi
+
+        if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
+          {
+            echo "### 轻检查"
+            echo
+            if [ "$functional" = false ]; then
+              echo "改动只落在自述文件、文档、许可声明、README 截图与 CI 流程，跳过质量检查与构建。"
+            else
+              echo "存在影响应用功能的改动，继续完整检查。"
+            fi
+            echo
+            echo "- 判定依据：\`$reason\`"
+            echo "- 变更文件数：$count"
+          } >> "$GITHUB_STEP_SUMMARY"
+        fi

@@ -566,26 +566,43 @@ Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 ma
 `addedFiles` 中列出，不计作基线无损比较或压缩收益。仓库素材减少不直接等于导出收益，
 导出中未引用素材不计入收益。
 
-`.github/workflows/quality.yml` 是唯一的质量检查工作流，在每次 push、PR 创建/更新/重新打开及手动触发时运行：
-Ubuntu 任务在 `apps/mobile` 执行 `npm ci`、lint、typecheck、全部测试、架构检查、生成物检查和生产依赖审计，
+`.github/workflows/quality.yml` 是唯一的质量检查工作流，在每次 push、PR 创建/更新/重新打开及手动触发时运行。
+`changed-scope` 任务先做一轮轻检查：检出提交后按事件推导比较基准
+（push 用 `github.event.before`，PR 用 `github.event.pull_request.base.sha`），
+基准提交不在本地时用 `git fetch --depth=1 --no-tags origin <基准>` 只取该提交，
+再用 `git diff --name-only --no-renames -z` 列出改动，不安装依赖也不拉取完整历史；
+判定逻辑集中在复合动作 `.github/actions/changed-scope/action.yml`。
+改动全部落在 `README.md`、`AGENTS.md`、`CLAUDE.md`（含各层目录）、`docs/`、`.github/`、
+`LICENSE`、`LICENSES/`、`THIRD_PARTY_NOTICES.md` 与 README 截图 `assets/images/` 时判定为无功能改动，
+`quality` 任务被跳过，该轮不安装依赖、不跑测试、不产出平台包；
+GitHub 把跳过的必填检查报告为成功，合并仍由 PR 检查放行。
+判定结果同时写入 `changed-scope/verdict.env`，并作为保留 1 天的 `changed-scope` artifact 上传。
+拿不到比较基准、基准提交取不到或比较失败时按有功能改动处理；
+判定 artifact 上传失败不影响该判定，轻检查任务自身出错时 `quality` 任务仍然执行完整检查。
+`--no-renames` 让改名同时列出新旧路径，避免功能文件被改名藏进文档路径。
+`quality` 任务在 `apps/mobile` 执行 `npm ci`、lint、typecheck、全部测试、架构检查、生成物检查和生产依赖审计，
 不构建任何平台产物。两个构建工作流用 `workflow_run` 订阅该工作流的完成事件
-（`workflows: ["Quality"]`、`types: [completed]`），`if` 要求
-`github.event.workflow_run.conclusion` 为 `success`，且
-`github.event.workflow_run.head_repository.full_name` 等于 `github.repository`；
-所以质量检查未通过、以及来自外部 fork 的 PR 都不会构建。
-这三个工作流不使用 reusable workflow，构建任务也不依赖 `needs`，彼此不是父子层级：
-质量检查结束后两个构建并行启动。构建任务以 `github.event.workflow_run.head_sha`
+（`workflows: ["Quality"]`、`types: [completed]`）。各自的 `changed-scope` 任务在 `workflow_run`
+事件下用 `github.token` 与 `actions: read` 权限，从触发它的那次质量检查运行下载 `changed-scope` artifact，
+只有读到 `functional=false` 才判定为无功能改动，取不到判定时按有功能改动处理。
+两个构建任务的 `if` 都以 `always()` 起头，要求
+`github.event.workflow_run.conclusion` 为 `success`、
+`github.event.workflow_run.head_repository.full_name` 等于 `github.repository`，
+且 `needs.changed-scope.outputs.functional` 不为 `false`；
+所以质量检查未通过、来自外部 fork 的 PR，以及只改文档与 CI 的提交都不会构建。
+这三个工作流不使用 reusable workflow，构建任务只依赖各自的 `changed-scope` 任务、不依赖 `quality` 任务，
+彼此不是父子层级：质量检查结束后两个构建并行启动。构建任务以 `github.event.workflow_run.head_sha`
 检出通过质量检查的提交；`workflow_run` 触发的工作流定义取自默认分支，
 因此这套关系要在 `master` 上生效后才会运行，其运行记录挂在默认分支、
 不出现在 PR 的检查列表里，不适合作为必填状态检查。
-两个构建工作流各自保留 `workflow_dispatch`，该入口构建所选 ref、不经过质量检查。
+两个构建工作流各自保留 `workflow_dispatch`，该入口构建所选 ref、不经过质量检查，也不读取 artifact。
 
-`.github/workflows/build-ios.yml` 在上述质量检查通过后运行：macOS 任务读取版本、
+`.github/workflows/build-ios.yml` 在上述质量检查通过、且轻检查判定为有功能改动后运行：macOS 任务读取版本、
 向 App Store Connect 查询下一构建号、执行 Expo prebuild、安装 Pods 与签名材料、Archive、导出 IPA，
-先上传保留 14 天的 Actions artifact，再提交 TestFlight。同仓库 PR、push 和手动触发均执行完整构建与上传流程；
+先上传保留 14 天的 Actions artifact，再提交 TestFlight。同仓库 PR 和 push 在判定为有功能改动时执行完整构建与上传流程；
 这些流程共用串行并发组。Windows 本地无法证明 Xcode Archive、签名、上传或 TestFlight 处理成功。
 
-`.github/workflows/build-android.yml` 在上述质量检查通过后运行：构建任务使用 Node.js 22、Temurin JDK 17
+`.github/workflows/build-android.yml` 在上述质量检查通过、且轻检查判定为有功能改动后运行：构建任务使用 Node.js 22、Temurin JDK 17
 与 Android SDK，执行 `npm ci`、`npm run prebuild:android` 和 Gradle `:app:assembleRelease`。
 Android 的并发组按 `github.event.workflow_run.head_branch` 串行，手动触发时退回 `github.ref`。
 prebuild 复用 `plugins/with-android-abi-splits.js`，一次生成 `armeabi-v7a`、`arm64-v8a`、
