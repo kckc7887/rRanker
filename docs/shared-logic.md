@@ -453,7 +453,7 @@ osu! 的 `features/osu-chart-preview/configuration.ts` 统一路由参数与设�
 `ChartPackageDownloadError` 继承 `ProviderError` 并保留既有错误类型识别；资源场景单独
 映射拒绝访问文案，避免将公共文件服务的 401/403 显示为账号问题。
 `readOsuChartPreviewArchive(archive, target, reader)` 继续统一 ZIP、路径、精确难度选择与
-媒体读取；CRC 按块让出并检查取消。每个媒体解压后立即 `stageMedia`，不把全部媒体字节留在数组里。
+媒体读取；CRC 按块让出并检查取消。媒体先逐项校验且不把解压字节留在数组里，全部通过后才逐项 `stageMedia`。任一校验失败不会落盘。
 写入中途失败或取消时函数抛出，不返回半份清单。预览在候选校验内完整执行，
 媒体写入该候选独占子目录，校验或解压失败也能
 自动接续。失败或取消清理候选目录，成功才将已读取资源交给 HTML 和音频注入准备。

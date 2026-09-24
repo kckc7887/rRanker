@@ -135,7 +135,7 @@ describe('osu 谱面确认资源选择', () => {
       .rejects.toThrow('没有所选难度');
   });
 
-  it('逐个落盘媒体，下一项解压前上一项已经写入', async () => {
+  it('全部媒体校验通过后才落盘，后一项损坏时不写任何媒体', async () => {
     const loaded = await JSZip.loadAsync(await archive());
     const sample = loaded.file('set/BG.png');
     const proto = Object.getPrototypeOf(sample) as { async: (type: string) => Promise<Uint8Array> };
@@ -152,14 +152,26 @@ describe('osu 谱面确认资源选择', () => {
         return `file:///session/${encodeURIComponent(path)}`;
       });
       await readOsuChartPreviewArchive(await archive(), target, io);
-      const bgRead = order.findIndex((item) => item.startsWith('read:') && /\.png$/iu.test(item));
-      const bgStage = order.findIndex((item) => item.startsWith('stage:') && /\.png$/iu.test(item));
+      const firstStage = order.findIndex((item) => item.startsWith('stage:'));
       const movieRead = order.findIndex((item) => item.startsWith('read:') && /\.mp4$/iu.test(item));
-      const movieStage = order.findIndex((item) => item.startsWith('stage:') && /\.mp4$/iu.test(item));
-      expect(bgRead).toBeGreaterThanOrEqual(0);
-      expect(bgStage).toBeGreaterThan(bgRead);
-      expect(movieRead).toBeGreaterThan(bgStage);
-      expect(movieStage).toBeGreaterThan(movieRead);
+      expect(movieRead).toBeGreaterThanOrEqual(0);
+      expect(firstStage).toBeGreaterThan(movieRead);
+      expect(order.filter((item) => item.startsWith('stage:'))).toEqual([
+        'stage:set/BG.png',
+        'stage:set/movie.mp4',
+      ]);
+    } finally {
+      proto.async = original;
+    }
+
+    proto.async = function async(this: { name: string }, type: string) {
+      if (/\.mp4$/iu.test(this.name)) throw new Error('视频损坏');
+      return original.call(this, type);
+    };
+    try {
+      const io = reader();
+      await expect(readOsuChartPreviewArchive(await archive(), target, io)).rejects.toThrow('视频损坏');
+      expect(io.stageMedia).not.toHaveBeenCalled();
     } finally {
       proto.async = original;
     }

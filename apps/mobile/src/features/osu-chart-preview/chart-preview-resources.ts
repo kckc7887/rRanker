@@ -122,6 +122,12 @@ export async function readOsuChartPreviewArchive(
     audio[path] = bytesToBase64(bytes);
     reader.onProgress?.(++completed / Math.max(1, total));
   }
+  const validation: ChartPreviewCancellation = { ...cancellation, actualBytes: undefined };
+  for (const path of mediaPaths) {
+    const entry = entries.get(path);
+    if (!entry) throw new Error('谱面媒体资源不存在');
+    await readBudgetedZipEntry(entry, validation);
+  }
   for (const path of mediaPaths) {
     const entry = entries.get(path);
     if (!entry) throw new Error('谱面媒体资源不存在');
