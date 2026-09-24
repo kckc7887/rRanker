@@ -34,42 +34,48 @@ const chosenWidths: number[] = [];
 function Harness() {
   const [width, setWidth] = useState<number>(2160);
   return <BestImageScreenShell
-    imageTypes={[{ id: 'best', label: 'Best50' }]}
-    activeType="best"
-    onSelectType={() => undefined}
-    customPanelBody={null}
-    styleListHeader={null}
-    styleRows={null}
-    widths={widths}
-    activeWidth={width}
-    onChooseWidth={(next) => { chosenWidths.push(next); setWidth(next); }}
-    dimensionMeta="2160 × 2880"
-    previewTestIdPrefix="best-image"
-    sources={[{ html: '<p>preview</p>', baseUrl: 'https://assets.example/' }]}
-    pages={[{ id: 'page-1' }]}
-    pageIndex={0}
-    onPageIndexChange={() => undefined}
-    onPreviewStatesChange={() => undefined}
-    onPreviewMessage={() => undefined}
-    fileAccessFromFileURLs={false}
-    allowingReadAccessToUrl={null}
-    loadingPreview={null}
-    fontStatus={null}
-    fontStatusAboveDots={false}
-    exportDisabled={false}
-    exportSpinner={false}
-    exportIdleLabel="导出"
-    exportStatus={null}
-    onExport={() => undefined}
-    exportIndex={null}
-    exportHeight={2880}
-    exportSource={null}
-    exportWebViewKeyPrefix="export"
-    captureRef={{ current: null }}
-    onExportMessage={() => undefined}
-    onRequestCloseExport={() => undefined}
-    pickers={null}
-    styles={bestImageScreenSharedStyles}
+    appearance={{
+      imageTypes: [{ id: 'best', label: 'Best50' }],
+      activeType: 'best',
+      onSelectType: () => undefined,
+      customPanelBody: null,
+      styleListHeader: null,
+      styleRows: null,
+      widths,
+      activeWidth: width,
+      onChooseWidth: (next) => { chosenWidths.push(next); setWidth(next); },
+      dimensionMeta: '2160 × 2880',
+      loadingPreview: null,
+      fontStatus: null,
+      fontStatusAboveDots: false,
+      pickers: null,
+      styles: bestImageScreenSharedStyles,
+    }}
+    preview={{
+      previewTestIdPrefix: 'best-image',
+      sources: [{ html: '<p>preview</p>', baseUrl: 'https://assets.example/' }],
+      pages: [{ id: 'page-1' }],
+      pageIndex: 0,
+      onPageIndexChange: () => undefined,
+      onPreviewStatesChange: () => undefined,
+      onPreviewMessage: () => undefined,
+      fileAccessFromFileURLs: false,
+      allowingReadAccessToUrl: null,
+    }}
+    exportSession={{
+      exportDisabled: false,
+      exportSpinner: false,
+      exportIdleLabel: '导出',
+      exportStatus: null,
+      onExport: () => undefined,
+      exportIndex: null,
+      exportHeight: 2880,
+      exportSource: null,
+      exportWebViewKeyPrefix: 'export',
+      captureRef: { current: null },
+      onExportMessage: () => undefined,
+      onRequestCloseExport: () => undefined,
+    }}
   />;
 }
 

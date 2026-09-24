@@ -18,7 +18,7 @@ import {
 } from '@/storage/secure-session-store';
 import { startTimer } from '@/utils/startup-timing';
 import { createSessionProviders } from '@/services/session-providers';
-import { osuRotationAncestors, osuRotationMayReplace } from '@/providers/osu-oauth';
+import { clearOsuRotationCache, osuRotationAncestors, osuRotationMayReplace } from '@/providers/osu-oauth';
 
 /** 无已绑定账号时的占位 ID；页面按空数据处理。 */
 export const UNBOUND_ACCOUNT_ID = 'maimai:unbound';
@@ -390,9 +390,14 @@ export const useSession = create<SessionState>((set, get) => ({
       boundAccounts,
       activeAccountId,
     } = get();
+    const removed = sessionsByAccountId[accountId];
     const { [accountId]: _removed, ...restSessions } = sessionsByAccountId;
     const { [accountId]: _removedCredential, ...restCredentialIds } = credentialIdsByAccountId;
     const nextAccounts = dedupeAccounts(boundAccounts.filter((account) => account.id !== accountId));
+    if (removed?.mode === 'osu-oauth'
+      && !Object.values(restSessions).some((session) => session?.mode === 'osu-oauth')) {
+      clearOsuRotationCache();
+    }
     set(activateAccount(
       nextAccounts,
       restSessions,
@@ -442,6 +447,7 @@ export const useSession = create<SessionState>((set, get) => ({
     if (match) get().selectBoundAccount(match.id);
   },
   clearSession: () => {
+    clearOsuRotationCache();
     const kept = get().boundAccounts.filter(
       (account) => account.providerId === 'local'
         || account.providerId === 'maimai-test'

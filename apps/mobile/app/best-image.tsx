@@ -545,10 +545,11 @@ export function MaimaiBestImageScreen() {
   });
 
   return <BestImageScreenShell
-    imageTypes={IMAGE_TYPES}
-    activeType={imageType}
-    onSelectType={(id) => controller.setType(id)}
-    customPanelBody={imageType === 'custom' ? <>
+    appearance={{
+      imageTypes: IMAGE_TYPES,
+      activeType: imageType,
+      onSelectType: (id) => controller.setType(id),
+      customPanelBody: imageType === 'custom' ? <>
       <MaimaiFilterBar
         collapsed={false}
         collapsible={false}
@@ -600,8 +601,8 @@ export function MaimaiBestImageScreen() {
         <BestImageChoiceChip accessibilityLabel="寸筛选" label="寸" reportDisabledState selected={nearMiss} onPress={() => setNearMiss((value) => !value)} styles={{ chip: styles.chip, chipText: styles.chipText, chipDisabled: styles.chipDisabled, chipTextDisabled: styles.chipTextDisabled }} />
         <BestImageChoiceChip accessibilityLabel="严格筛选" label="严格筛选" disabled={!hasAchievementFilter} reportDisabledState selected={strictAchievement} onPress={() => setStrictAchievement((value) => !value)} styles={{ chip: styles.chip, chipText: styles.chipText, chipDisabled: styles.chipDisabled, chipTextDisabled: styles.chipTextDisabled }} />
       </View>
-    </> : null}
-    styleListHeader={<View style={[styles.ratingStyleRow, { borderBottomColor: theme.border }]}>
+    </> : null,
+      styleListHeader: <View style={[styles.ratingStyleRow, { borderBottomColor: theme.border }]}>
       <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
         {RATING_STYLES.map(({ id, label }) => {
           const selected = ratingStyle === id;
@@ -610,8 +611,8 @@ export function MaimaiBestImageScreen() {
           </Pressable>;
         })}
       </View>
-    </View>}
-    styleRows={STYLE_ITEMS.map(({ kind, label }) => {
+    </View>,
+      styleRows: STYLE_ITEMS.map(({ kind, label }) => {
       const selection = styleSelections[kind];
       const selectedItem = selection?.mode === 'item' || selection?.mode === 'random' ? selection.item : undefined;
       const fallbackName = kind === 'trophy' ? basePlayer.presentation?.trophyName : `玩家当前${label}`;
@@ -621,24 +622,15 @@ export function MaimaiBestImageScreen() {
         <View style={styles.styleCopy}><Text style={[styles.styleName, { color: theme.text }]}>{label}</Text><Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{selectionName}</Text></View>
         <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
       </Pressable>;
-    })}
-    widths={OUTPUT_WIDTHS}
-    activeWidth={outputWidth}
-    onChooseWidth={(nextWidth) => {
+    }),
+      widths: OUTPUT_WIDTHS,
+      activeWidth: outputWidth,
+      onChooseWidth: (nextWidth) => {
       controller.setWidth(nextWidth);
       setPageHeights({});
-    }}
-    dimensionMeta={`${outputWidth} × ${outputHeight} px · 每页最多 ${maximumRowsPerPage} 行 · 第 ${currentPageIndex + 1}/${pages.length} 页`}
-    previewTestIdPrefix="best-image"
-    sources={webViewSources}
-    pages={pages}
-    pageIndex={currentPageIndex}
-    onPageIndexChange={setCurrentPageIndex}
-    onPreviewStatesChange={setWebViewStates}
-    onPreviewMessage={handlePreviewMessage}
-    fileAccessFromFileURLs
-    allowingReadAccessToUrl={assetsDirectory?.uri}
-    loadingPreview={exportAssetError || assetError || webViewSourceError || detailedCatalog.error ? <View style={styles.loadingContent}>
+    },
+      dimensionMeta: `${outputWidth} × ${outputHeight} px · 每页最多 ${maximumRowsPerPage} 行 · 第 ${currentPageIndex + 1}/${pages.length} 页`,
+      loadingPreview: exportAssetError || assetError || webViewSourceError || detailedCatalog.error ? <View style={styles.loadingContent}>
       <Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{exportAssetError ?? assetError ?? webViewSourceError ?? '暂时无法读取谱面物量，请重试。'}</Text>
       {exportAssetError ? <Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}>
         <Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text>
@@ -649,8 +641,8 @@ export function MaimaiBestImageScreen() {
     </View> : <View style={styles.loadingContent}>
       <ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" />
       <Text style={[styles.loadingText, { color: theme.textMuted }]}>{detailedCatalog.isLoading ? '正在准备谱面物量' : !assetsDirectory ? assetStatusText : coverProgress.total > 0 && coverUrls === null ? `正在准备歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在准备预览'}</Text>
-    </View>}
-    fontStatus={webViewSources && !assetsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: exportAssetError ? theme.danger : theme.border }]}>
+    </View>,
+      fontStatus: webViewSources && !assetsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: exportAssetError ? theme.danger : theme.border }]}>
       {exportAssetError ? <>
         <Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{exportAssetError}</Text>
         <Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}>
@@ -660,28 +652,42 @@ export function MaimaiBestImageScreen() {
         <ActivityIndicator color={theme.accent} size="small" />
         <Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{assetStatusText}；所需素材准备完成后可导出</Text>
       </>}
-    </View> : null}
-    fontStatusAboveDots={false}
-    exportDisabled={!webViewSources || !assetsReady || !formValid || exportBusy}
-    exportSpinner={exportBusy}
-    exportIdleLabel={assetsReady ? '导出到相册' : '所需素材准备完成后可导出'}
-    exportStatus={exportStatus}
-    onExport={() => void exportImages()}
-    exportIndex={exportPageIndex}
-    exportHeight={exportHeight}
-    exportSource={exportPageIndex !== null && htmlPages?.[exportPageIndex] && webViewSources?.[exportPageIndex] ? webViewSources[exportPageIndex]! : null}
-    exportWebViewKeyPrefix="export"
-    captureRef={exportCaptureRef}
-    captureBackgroundColor="#E7EDF5"
-    onExportMessage={handleExportMessage}
-    onRequestCloseExport={cancelExportRequest}
-    onReleaseHeavySources={() => {
+    </View> : null,
+      fontStatusAboveDots: false,
+      pickers: <BestImageCollectionPicker visible={activePicker !== null} kind={activePicker} items={collections.data?.items ?? []} selectedId={activePicker && (styleSelections[activePicker]?.mode === 'item' || styleSelections[activePicker]?.mode === 'random') ? styleSelections[activePicker].item.id : null} selectedMode={activePicker ? styleSelections[activePicker]?.mode ?? 'current' : 'current'} isLoading={collections.isLoading} isError={collections.isError} onRetry={() => { void collections.refetch(); }} onClose={() => setActivePicker(null)} onSelect={selectCollection} />,
+      styles: styles,
+    }}
+    preview={{
+      previewTestIdPrefix: "best-image",
+      sources: webViewSources,
+      pages: pages,
+      pageIndex: currentPageIndex,
+      onPageIndexChange: setCurrentPageIndex,
+      onPreviewStatesChange: setWebViewStates,
+      onPreviewMessage: handlePreviewMessage,
+      fileAccessFromFileURLs: true,
+      allowingReadAccessToUrl: assetsDirectory?.uri,
+    }}
+    exportSession={{
+      exportDisabled: !webViewSources || !assetsReady || !formValid || exportBusy,
+      exportSpinner: exportBusy,
+      exportIdleLabel: assetsReady ? '导出到相册' : '所需素材准备完成后可导出',
+      exportStatus: exportStatus,
+      onExport: () => void exportImages(),
+      exportIndex: exportPageIndex,
+      exportHeight: exportHeight,
+      exportSource: exportPageIndex !== null && htmlPages?.[exportPageIndex] && webViewSources?.[exportPageIndex] ? webViewSources[exportPageIndex]! : null,
+      exportWebViewKeyPrefix: "export",
+      captureRef: exportCaptureRef,
+      captureBackgroundColor: "#E7EDF5",
+      onExportMessage: handleExportMessage,
+      onRequestCloseExport: cancelExportRequest,
+      onReleaseHeavySources: () => {
       setWebViewSources(null);
       setEmbeddedAssets(null);
       setCoverUrls(null);
+    },
     }}
-    pickers={<BestImageCollectionPicker visible={activePicker !== null} kind={activePicker} items={collections.data?.items ?? []} selectedId={activePicker && (styleSelections[activePicker]?.mode === 'item' || styleSelections[activePicker]?.mode === 'random') ? styleSelections[activePicker].item.id : null} selectedMode={activePicker ? styleSelections[activePicker]?.mode ?? 'current' : 'current'} isLoading={collections.isLoading} isError={collections.isError} onRetry={() => { void collections.refetch(); }} onClose={() => setActivePicker(null)} onSelect={selectCollection} />}
-    styles={styles}
   />;
 }
 

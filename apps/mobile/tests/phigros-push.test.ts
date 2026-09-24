@@ -1,7 +1,10 @@
 import { describe, expect, it } from 'vitest';
 import {
+  evaluateDisplayedPushPlan,
   findPushRecommendations,
+  formatPushSearchSummary,
   resolvePushExactTarget,
+  type PushRecommendationsResult,
 } from '@/domain/phigros-push';
 import type { PhigrosScoreEntry } from '@/domain/phigros';
 
@@ -82,15 +85,23 @@ describe('findPushRecommendations', () => {
     expect(result.exactTarget).toBe(
       resolvePushExactTarget(result.currentRks, 0.01).exactTarget,
     );
-    expect(result.recommendations.length).toBeGreaterThan(0);
+    const shown = [...result.plan, ...result.alternatives];
+    expect(shown.length).toBeGreaterThan(0);
+    expect(result.plan).toEqual([shown[0]]);
+    expect(result.recommendations).toEqual(result.plan);
+    expect(result.searchStatus).toBe('verified');
+    expect(evaluateDisplayedPushPlan(gameRecord, difficultyTable, result.plan))
+      .toBeGreaterThanOrEqual(result.exactTarget - 1e-9);
 
-    const first = result.recommendations[0]!;
+    const first = result.plan[0]!;
     expect(first.targetAcc).toBeGreaterThan(first.currentAcc);
     expect(first.rksGain).toBeGreaterThanOrEqual(result.perSongShare - 1e-6);
 
-    for (let i = 1; i < result.recommendations.length; i++) {
-      expect(result.recommendations[i]!.accDiff)
-        .toBeGreaterThanOrEqual(result.recommendations[i - 1]!.accDiff);
+    for (let i = 1; i < shown.length; i++) {
+      const previous = shown[i - 1]!;
+      const current = shown[i]!;
+      expect(current.accDiff > previous.accDiff
+        || (current.accDiff === previous.accDiff && current.difficulty >= previous.difficulty)).toBe(true);
     }
 
     // 提高第一首到目标 ACC 后总 RKS 应至少达到「当前 + 单首份额」
@@ -125,19 +136,12 @@ describe('findPushRecommendations', () => {
     });
 
     expect(split.perSongShare).toBeCloseTo(solo.perSongShare / 4, 3);
-
-    // 取两边都有、且未顶满 100% 的同一谱面比较
-    const comparable = solo.recommendations.find((s) => {
-      const other = split.recommendations.find(
-        (r) => r.songId === s.songId && r.level === s.level,
-      );
-      return other != null && s.targetAcc < 100 && other.targetAcc < 100;
-    });
-    expect(comparable).toBeDefined();
-    const splitSame = split.recommendations.find(
-      (r) => r.songId === comparable!.songId && r.level === comparable!.level,
-    )!;
-    expect(splitSame.targetAcc).toBeLessThan(comparable!.targetAcc);
+    expect(split.searchStatus).toBe('verified');
+    expect(split.plan.length).toBeGreaterThan(1);
+    expect(split.plan.length).toBeLessThanOrEqual(4);
+    expect(Math.max(...split.plan.map((item) => item.targetAcc))).toBeLessThan(solo.plan[0]!.targetAcc);
+    expect(evaluateDisplayedPushPlan(gameRecord, difficultyTable, split.plan))
+      .toBeGreaterThanOrEqual(split.exactTarget - 1e-9);
   });
 
   it('hides per-song targets when two charts compete for one Best27 slot', () => {
@@ -161,16 +165,23 @@ describe('findPushRecommendations', () => {
       includePhi: false,
     });
     expect(split.perSongShare).toBeCloseTo(split.gainNeeded / 2, 3);
+    expect(split.searchStatus).toBe('unreachable');
     expect(split.combinationReachesTarget).toBe(false);
+    expect(split.plan).toEqual([]);
     expect(split.recommendations).toEqual([]);
+    expect(formatPushSearchSummary(split)).toContain('无法用 2 首');
+    expect(formatPushSearchSummary(split)).not.toContain('没有 2 首');
 
     const solo = findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.1,
       songCost: 1,
       includePhi: false,
     });
+    expect(solo.searchStatus).toBe('verified');
     expect(solo.combinationReachesTarget).toBe(true);
-    expect(solo.recommendations.length).toBeGreaterThan(0);
+    expect(solo.plan.length).toBeGreaterThan(0);
+    expect(evaluateDisplayedPushPlan(gameRecord, difficultyTable, solo.plan))
+      .toBeGreaterThanOrEqual(solo.exactTarget - 1e-9);
   });
 
   it('can exclude recommendations that require φ (target Acc 100%)', () => {
@@ -186,14 +197,148 @@ describe('findPushRecommendations', () => {
       includePhi: false,
     });
 
+    const withAll = [...withPhi.plan, ...withPhi.alternatives];
+    const withoutAll = [...withoutPhi.plan, ...withoutPhi.alternatives];
     expect(withPhi.includePhi).toBe(true);
     expect(withoutPhi.includePhi).toBe(false);
-    expect(withoutPhi.recommendations.every((r) => r.targetAcc < 100)).toBe(true);
-    expect(withoutPhi.recommendations.length).toBeLessThanOrEqual(withPhi.recommendations.length);
+    expect(withoutAll.every((item) => item.targetAcc < 100)).toBe(true);
+    expect(withoutAll.length).toBeLessThanOrEqual(withAll.length);
 
-    const phiOnlyCount = withPhi.recommendations.filter((r) => r.targetAcc >= 100).length;
+    const phiOnlyCount = withAll.filter((item) => item.targetAcc >= 100).length;
     if (phiOnlyCount > 0) {
-      expect(withoutPhi.recommendations.length).toBe(withPhi.recommendations.length - phiOnlyCount);
+      expect(withoutAll.length).toBe(withAll.length - phiOnlyCount);
+    }
+  });
+});
+
+function inCharts(rows: readonly { id: string; difficulty: number; rawAcc: number }[]) {
+  const gameRecord: Record<string, (PhigrosScoreEntry | null)[]> = {};
+  const difficultyTable: Record<string, number[]> = {};
+  for (const row of rows) {
+    difficultyTable[row.id] = [0, 0, row.difficulty, 0];
+    const score = row.rawAcc <= 0 ? 0 : Math.round(row.rawAcc * 10000);
+    gameRecord[row.id] = row.rawAcc <= 0
+      ? [null, null, null, null]
+      : [null, null, entry(row.id, 2, row.difficulty, score, row.rawAcc), null];
+  }
+  return { gameRecord, difficultyTable };
+}
+
+function expectVerifiedPlan(
+  gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
+  difficultyTable: Record<string, number[]>,
+  result: PushRecommendationsResult,
+) {
+  expect(result.searchStatus).toBe('verified');
+  expect(result.combinationReachesTarget).toBe(true);
+  expect(result.recommendations).toEqual(result.plan);
+  expect(result.plan.length).toBeGreaterThan(0);
+  expect(result.plan.length).toBeLessThanOrEqual(result.songCost);
+  const planKeys = new Set(result.plan.map((item) => `${item.songId}_${item.level}`));
+  expect(result.alternatives.every((item) => !planKeys.has(`${item.songId}_${item.level}`))).toBe(true);
+  expect(evaluateDisplayedPushPlan(gameRecord, difficultyTable, result.plan))
+    .toBeGreaterThanOrEqual(result.exactTarget - 1e-9);
+  const hardest = [...result.plan].sort((a, b) => b.accDiff - a.accDiff || b.difficulty - a.difficulty)[0];
+  for (const alternative of result.alternatives) {
+    const swapped = result.plan.map((item) => (
+      item.songId === hardest?.songId && item.level === hardest.level ? alternative : item
+    ));
+    expect(evaluateDisplayedPushPlan(gameRecord, difficultyTable, swapped))
+      .toBeGreaterThanOrEqual(result.exactTarget - 1e-9);
+  }
+  const mixed = [...result.plan, ...result.alternatives]
+    .sort((a, b) => a.accDiff - b.accDiff || a.difficulty - b.difficulty)
+    .slice(0, result.songCost);
+  const mixedRks = evaluateDisplayedPushPlan(gameRecord, difficultyTable, mixed);
+  if (mixedRks + 1e-9 < result.exactTarget) {
+    expect(result.plan.map((item) => `${item.songId}:${item.targetAcc}`))
+      .not.toEqual(mixed.map((item) => `${item.songId}:${item.targetAcc}`));
+  }
+}
+
+describe('push plan invariants', () => {
+  it('does not treat a sorted mix of the verified pair and substitutes as the plan', () => {
+    const { gameRecord, difficultyTable } = inCharts([
+      { id: 'song.0', difficulty: 11.9, rawAcc: 96.28 },
+      { id: 'song.1', difficulty: 15.1, rawAcc: 94.15 },
+      { id: 'song.2', difficulty: 13.8, rawAcc: 95.63 },
+      { id: 'song.3', difficulty: 16.6, rawAcc: 81.82 },
+      { id: 'song.4', difficulty: 8.7, rawAcc: 87.95 },
+      { id: 'song.5', difficulty: 8.9, rawAcc: 81.38 },
+      { id: 'song.6', difficulty: 16.4, rawAcc: 81.95 },
+      { id: 'song.7', difficulty: 12.7, rawAcc: 85.51 },
+    ]);
+    const result = findPushRecommendations(gameRecord, difficultyTable, {
+      delta: 0.01,
+      songCost: 2,
+      includePhi: false,
+    });
+    expectVerifiedPlan(gameRecord, difficultyTable, result);
+  });
+
+  it('finds a joint plan when no single chart can cover the average share', () => {
+    const { gameRecord, difficultyTable } = inCharts([
+      { id: 'song.hi', difficulty: 16, rawAcc: 99.5 },
+      { id: 'song.lo.a', difficulty: 4, rawAcc: 99.5 },
+      { id: 'song.lo.b', difficulty: 4, rawAcc: 99.5 },
+    ]);
+    const result = findPushRecommendations(gameRecord, difficultyTable, {
+      delta: 0.02,
+      songCost: 3,
+      includePhi: false,
+    });
+    expectVerifiedPlan(gameRecord, difficultyTable, result);
+    expect(result.exactTarget).toBeCloseTo(0.795, 6);
+  });
+
+  it('reports not_found instead of impossibility when the candidate pool is too small', () => {
+    const { gameRecord, difficultyTable } = inCharts([
+      { id: 'song.hi', difficulty: 16, rawAcc: 99.5 },
+      { id: 'song.lo.a', difficulty: 4, rawAcc: 99.5 },
+      { id: 'song.lo.b', difficulty: 4, rawAcc: 99.5 },
+    ]);
+    const result = findPushRecommendations(gameRecord, difficultyTable, {
+      delta: 0.02,
+      songCost: 3,
+      includePhi: false,
+      searchPoolLimit: 1,
+    });
+    expect(result.searchStatus).toBe('not_found');
+    expect(result.combinationReachesTarget).toBe(false);
+    expect(result.plan).toEqual([]);
+    expect(formatPushSearchSummary(result)).toContain('在当前搜索范围内没有找到方案');
+    expect(formatPushSearchSummary(result)).not.toContain('没有 3 首');
+    expect(formatPushSearchSummary(result)).not.toContain('无解');
+  });
+
+  it('can recommend an unplayed chart', () => {
+    const { gameRecord, difficultyTable } = inCharts([
+      { id: 'song.new', difficulty: 15, rawAcc: 0 },
+    ]);
+    const result = findPushRecommendations(gameRecord, difficultyTable, {
+      delta: 0.01,
+      songCost: 1,
+      includePhi: false,
+    });
+    expectVerifiedPlan(gameRecord, difficultyTable, result);
+    expect(result.plan[0]).toMatchObject({ songId: 'song.new', currentAcc: 0 });
+  });
+
+  it('sorts equal Acc gaps by difficulty', () => {
+    const { gameRecord, difficultyTable } = inCharts([
+      { id: 'song.low', difficulty: 10, rawAcc: 90 },
+      { id: 'song.high', difficulty: 12, rawAcc: 90 },
+    ]);
+    const result = findPushRecommendations(gameRecord, difficultyTable, {
+      delta: 0.01,
+      songCost: 1,
+    });
+    expectVerifiedPlan(gameRecord, difficultyTable, result);
+    const shown = [...result.plan, ...result.alternatives];
+    for (let i = 1; i < shown.length; i += 1) {
+      const previous = shown[i - 1]!;
+      const current = shown[i]!;
+      if (previous.accDiff === current.accDiff) expect(current.difficulty).toBeGreaterThanOrEqual(previous.difficulty);
     }
   });
 });

@@ -5,6 +5,17 @@ import {
   ScrollView as GestureScrollView,
 } from 'react-native-gesture-handler';
 
+function clampCarouselIndex(index: number, length: number): number {
+  if (length <= 0) return 0;
+  const rounded = Number.isFinite(index) ? Math.round(index) : 0;
+  return Math.min(length - 1, Math.max(0, rounded));
+}
+
+function indexFromOffset(offset: number, interval: number, length: number): number {
+  if (!(interval > 0) || !Number.isFinite(offset)) return 0;
+  return clampCarouselIndex(offset / interval, length);
+}
+
 type ChartCarouselProps<TItem> = {
   items: readonly TItem[];
   cardWidth: number;
@@ -40,15 +51,32 @@ export function ChartCarousel<TItem>({
 }: ChartCarouselProps<TItem>) {
   const interval = cardWidth + gap;
   const scrollRef = useRef<ComponentRef<typeof GestureScrollView>>(null);
-  const [index, setIndex] = useState(initialIndex);
+  const [index, setIndex] = useState(() => clampCarouselIndex(initialIndex, items.length));
   const virtualize = items.length > 24;
   const windowRadius = 2;
+  const syncKey = `${resetKey ?? ''}|${initialIndex}|${interval}`;
+  const syncRef = useRef(syncKey);
+  let windowIndex = clampCarouselIndex(index, items.length);
+  if (syncRef.current !== syncKey) {
+    syncRef.current = syncKey;
+    windowIndex = clampCarouselIndex(initialIndex, items.length);
+  }
+  if (windowIndex !== index) setIndex(windowIndex);
   useEffect(() => {
+    const next = clampCarouselIndex(initialIndex, items.length);
     const timer = setTimeout(() => {
-      scrollRef.current?.scrollTo({ x: initialIndex * interval, animated: false });
+      scrollRef.current?.scrollTo({ x: next * interval, animated: false });
     }, 50);
     return () => clearTimeout(timer);
   }, [initialIndex, interval, resetKey]);
+  useEffect(() => {
+    const next = clampCarouselIndex(index, items.length);
+    if (next === index) return;
+    const timer = setTimeout(() => {
+      scrollRef.current?.scrollTo({ x: next * interval, animated: false });
+    }, 50);
+    return () => clearTimeout(timer);
+  }, [index, items.length, interval]);
 
   if (items.length === 0) return empty;
 
@@ -57,19 +85,25 @@ export function ChartCarousel<TItem>({
       <GestureScrollView
         accessibilityLabel={accessibilityLabel}
         contentContainerStyle={contentContainerStyle}
-        contentOffset={{ x: initialIndex * interval, y: 0 }}
+        contentOffset={{ x: clampCarouselIndex(initialIndex, items.length) * interval, y: 0 }}
         decelerationRate="fast"
         disableIntervalMomentum
         directionalLockEnabled
         horizontal
         nestedScrollEnabled
         onMomentumScrollEnd={(event) => {
-          const nextIndex = Math.max(
-            0,
-            Math.min(items.length - 1, Math.round(event.nativeEvent.contentOffset.x / interval)),
-          );
+          const nextIndex = indexFromOffset(event.nativeEvent.contentOffset.x, interval, items.length);
           onIndexChange?.(nextIndex);
-          setIndex(nextIndex);
+          setIndex((current) => (current === nextIndex ? current : nextIndex));
+        }}
+        onScroll={(event) => {
+          const nextIndex = indexFromOffset(event.nativeEvent.contentOffset.x, interval, items.length);
+          setIndex((current) => (current === nextIndex ? current : nextIndex));
+        }}
+        onScrollEndDrag={(event) => {
+          const nextIndex = indexFromOffset(event.nativeEvent.contentOffset.x, interval, items.length);
+          onIndexChange?.(nextIndex);
+          setIndex((current) => (current === nextIndex ? current : nextIndex));
         }}
         ref={scrollRef}
         removeClippedSubviews={false}
@@ -80,7 +114,7 @@ export function ChartCarousel<TItem>({
         testID={testID}
       >
         {items.map((item, itemIndex) => {
-          const visible = !virtualize || Math.abs(itemIndex - index) <= windowRadius;
+          const visible = !virtualize || Math.abs(itemIndex - windowIndex) <= windowRadius;
           return (
             <Fragment key={keyExtractor(item)}>
               {visible ? renderItem(item) : <View style={{ width: cardWidth }} />}

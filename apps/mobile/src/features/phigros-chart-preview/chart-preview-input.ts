@@ -13,6 +13,7 @@ import {
   assertChartPreviewDownloadBytes,
   chartPreviewDeclaredUncompressedSize,
   pauseChartPreviewParse,
+  createChartPreviewActualBytes,
   readBudgetedZipEntry,
   readBudgetedZipText,
   scanChartPreviewArchiveEntries,
@@ -118,7 +119,7 @@ export async function buildPhiraChartPreviewInput(
   const zipData = await (staging.downloadChart
     ? staging.downloadChart(chart.file, signal)
     : phiraProvider.downloadChart(chart.file, signal));
-  const cancellation: ChartPreviewCancellation = { signal };
+  const cancellation: ChartPreviewCancellation = { signal, actualBytes: createChartPreviewActualBytes() };
   assertChartPreviewDownloadBytes(zipData.byteLength);
   throwIfAborted(signal);
   const zip = await JSZip.loadAsync(zipData);

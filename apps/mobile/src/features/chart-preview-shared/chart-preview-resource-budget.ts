@@ -1,6 +1,8 @@
 /**
  * 谱面确认资源预算。下载、解压、事件、音符、循环、纹理与解析让出都使用有限上限。
- * 调用方在解压或展开之前检查声明量；超出时抛出 ChartPreviewBudgetError。
+ * 声明大小、实际读出字节、解码像素和进程内存是四套口径。
+ * 本模块约束声明大小和实际读出字节；单张纹理像素由播放器在解码时检查。
+ * JSZip 会先分配完整解压输出，随后的 CRC 按块让出并检查取消。这些常量不是进程内存上限。
  */
 
 export const CHART_PREVIEW_MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024;
@@ -16,6 +18,8 @@ export const CHART_PREVIEW_MAX_TEXTURE_PIXELS = 4_096 * 4_096;
 export const CHART_PREVIEW_MAX_GIF_FRAME_PIXELS = 2_048 * 2_048;
 /** 长循环每隔这么多步检查取消，并在异步解析中让出主线程。 */
 export const CHART_PREVIEW_PARSE_YIELD_INTERVAL = 128;
+/** CRC 每处理这么多字节检查一次取消，并让出主线程。 */
+export const CHART_PREVIEW_CRC_CHUNK_BYTES = 64 * 1024;
 
 export class ChartPreviewBudgetError extends Error {
   constructor(message: string) {
@@ -24,9 +28,17 @@ export class ChartPreviewBudgetError extends Error {
   }
 }
 
+export type ChartPreviewActualBytes = { actualBytes: number };
+
+export function createChartPreviewActualBytes(): ChartPreviewActualBytes {
+  return { actualBytes: 0 };
+}
+
 export type ChartPreviewCancellation = {
   signal?: AbortSignal;
   assertCurrent?: () => void;
+  /** 同一次准备里实际读出的解压字节。超出总声明上限时停止后续条目。 */
+  actualBytes?: ChartPreviewActualBytes;
 };
 
 type ZipEntryData = { uncompressedSize?: number; crc32?: number };
@@ -151,8 +163,7 @@ export async function scanChartPreviewArchiveEntries<T extends { dir: boolean }>
 
 let crc32Table: Uint32Array | undefined;
 
-function crc32(bytes: Uint8Array): number {
-  if (bytes.length === 0) return 0;
+function crc32TableBytes(): Uint32Array {
   if (!crc32Table) {
     crc32Table = new Uint32Array(256);
     for (let index = 0; index < crc32Table.length; index += 1) {
@@ -161,19 +172,42 @@ function crc32(bytes: Uint8Array): number {
       crc32Table[index] = value;
     }
   }
-  let crc = -1;
-  for (let index = 0; index < bytes.length; index += 1) {
-    crc = (crc >>> 8) ^ crc32Table[(crc ^ bytes[index]!) & 0xff]!;
-  }
-  return crc ^ -1;
+  return crc32Table;
 }
 
-export function assertChartPreviewZipPayload(bytes: Uint8Array, declaredSize: number, expectedCrc32?: number): void {
+async function crc32(bytes: Uint8Array, cancellation?: ChartPreviewCancellation): Promise<number> {
+  if (bytes.length === 0) return 0;
+  const table = crc32TableBytes();
+  let crc = -1;
+  for (let index = 0; index < bytes.length; index += 1) {
+    if (index > 0 && index % CHART_PREVIEW_CRC_CHUNK_BYTES === 0) {
+      throwIfChartPreviewCancelled(cancellation);
+      await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
+      throwIfChartPreviewCancelled(cancellation);
+    }
+    crc = (crc >>> 8) ^ table[(crc ^ bytes[index]!) & 0xff]!;
+  }
+  return (crc ^ -1) >>> 0;
+}
+
+export async function assertChartPreviewZipPayload(
+  bytes: Uint8Array,
+  declaredSize: number,
+  expectedCrc32?: number,
+  cancellation?: ChartPreviewCancellation,
+): Promise<void> {
   if (bytes.byteLength !== declaredSize) throw new Error('谱面资源解压大小与声明不一致');
   assertChartPreviewEntryUncompressed(bytes.byteLength);
-  if (typeof expectedCrc32 === 'number' && (crc32(bytes) >>> 0) !== (expectedCrc32 >>> 0)) {
+  if (typeof expectedCrc32 === 'number' && await crc32(bytes, cancellation) !== (expectedCrc32 >>> 0)) {
     throw new Error('谱面资源校验失败');
   }
+}
+
+function noteActualUncompressed(cancellation: ChartPreviewCancellation | undefined, byteLength: number): void {
+  const ledger = cancellation?.actualBytes;
+  if (!ledger) return;
+  ledger.actualBytes += byteLength;
+  assertChartPreviewTotalUncompressed(ledger.actualBytes);
 }
 
 export async function readBudgetedZipEntry(
@@ -182,10 +216,14 @@ export async function readBudgetedZipEntry(
 ): Promise<Uint8Array> {
   const declared = chartPreviewDeclaredUncompressedSize(entry);
   assertChartPreviewEntryUncompressed(declared);
+  if (cancellation?.actualBytes) {
+    assertChartPreviewTotalUncompressed(cancellation.actualBytes.actualBytes + declared);
+  }
   throwIfChartPreviewCancelled(cancellation);
   const bytes = await entry.async('uint8array');
   throwIfChartPreviewCancelled(cancellation);
-  assertChartPreviewZipPayload(bytes, declared, entry._data?.crc32);
+  await assertChartPreviewZipPayload(bytes, declared, entry._data?.crc32, cancellation);
+  noteActualUncompressed(cancellation, bytes.byteLength);
   return bytes;
 }
 

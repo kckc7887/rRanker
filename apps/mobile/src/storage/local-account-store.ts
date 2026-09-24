@@ -1,5 +1,6 @@
 import Storage from 'expo-sqlite/kv-store';
 import { isLocalMaimaiAccountId } from '@/domain/bound-account';
+import { assertAccountListEnvelope } from '@/storage/create-demo-account-store';
 import { createAccountListStore, type KeyValueStore } from '@/storage/create-account-list-store';
 
 export type LocalAccountProfile = {
@@ -17,12 +18,10 @@ export function normalizeLocalPlayerName(value: string): string | null {
 }
 
 export function parseLocalAccountProfiles(value: unknown): LocalAccountProfile[] {
-  if (!value || typeof value !== 'object') return [];
-  const raw = value as { version?: unknown; accounts?: unknown };
-  if (raw.version !== 1 || !Array.isArray(raw.accounts)) return [];
+  const { accounts } = assertAccountListEnvelope(value);
   const seen = new Set<string>();
   const profiles: LocalAccountProfile[] = [];
-  for (const candidate of raw.accounts) {
+  for (const candidate of accounts) {
     if (!candidate || typeof candidate !== 'object') continue;
     const account = candidate as { id?: unknown; displayName?: unknown };
     if (typeof account.id !== 'string' || !isLocalMaimaiAccountId(account.id) || seen.has(account.id)) continue;

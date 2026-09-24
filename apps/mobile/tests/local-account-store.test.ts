@@ -1,7 +1,11 @@
 import {
   AccountDirectoryCorruptError,
   AccountDirectoryReadError,
+  AccountDirectoryUnrecognizedError,
   accountDirectoryCorruptKey,
+  accountDirectoryUnrecognizedKey,
+  readPreservedAccountDirectory,
+  restoreAccountDirectory,
 } from '@/storage/create-demo-account-store';
 import {
   LocalAccountStore,
@@ -66,6 +70,45 @@ describe('LocalAccountStore', () => {
     await expect(store.load()).rejects.toBeInstanceOf(AccountDirectoryCorruptError);
     expect(storage.values.get('rranker.local-maimai-accounts.v1')).toBe(raw);
     expect(storage.values.get(accountDirectoryCorruptKey('rranker.local-maimai-accounts.v1'))).toBe(raw);
+  });
+
+  it('未知版本或错误结构时拒绝覆盖，并保留原文', async () => {
+    const storage = new MemoryKeyValueStore();
+    const store = new LocalAccountStore(storage);
+    const key = 'rranker.local-maimai-accounts.v1';
+    const unknownVersion = JSON.stringify({ version: 2, accounts: [{ id: 'maimai:local', displayName: '未来玩家' }] });
+    storage.values.set(key, unknownVersion);
+    await expect(store.load()).rejects.toBeInstanceOf(AccountDirectoryUnrecognizedError);
+    await expect(store.upsert({ id: 'maimai:local', displayName: '新玩家' })).rejects.toBeInstanceOf(AccountDirectoryUnrecognizedError);
+    expect(storage.values.get(key)).toBe(unknownVersion);
+    expect(storage.values.get(accountDirectoryUnrecognizedKey(key))).toBe(unknownVersion);
+    expect(await readPreservedAccountDirectory(storage, key)).toBe(unknownVersion);
+    await expect(restoreAccountDirectory(storage, key, '{', parseLocalAccountProfiles))
+      .rejects.toBeInstanceOf(AccountDirectoryUnrecognizedError);
+    expect(storage.values.get(key)).toBe(unknownVersion);
+
+    const invalidShape = JSON.stringify({ version: 1, accounts: 'nope' });
+    storage.values.set(key, invalidShape);
+    await expect(store.load()).rejects.toMatchObject({ reason: 'invalid-structure' });
+    await expect(store.remove('maimai:local')).rejects.toBeInstanceOf(AccountDirectoryUnrecognizedError);
+    expect(storage.values.get(key)).toBe(invalidShape);
+
+    const restored = JSON.stringify({ version: 1, accounts: [{ id: 'maimai:local', displayName: '恢复玩家' }] });
+    await expect(restoreAccountDirectory(storage, key, restored, parseLocalAccountProfiles)).resolves.toEqual([
+      { id: 'maimai:local', displayName: '恢复玩家' },
+    ]);
+    expect(storage.values.get(key)).toBe(restored);
+  });
+
+  it('读取失败时 upsert 不写入', async () => {
+    const storage = new MemoryKeyValueStore();
+    const original = storage.getItem.bind(storage);
+    storage.getItem = async () => { throw new Error('io'); };
+    const store = new LocalAccountStore(storage);
+    await expect(store.load()).rejects.toBeInstanceOf(AccountDirectoryReadError);
+    await expect(store.upsert({ id: 'maimai:local', displayName: '新玩家' })).rejects.toBeInstanceOf(AccountDirectoryReadError);
+    storage.getItem = original;
+    expect(storage.values.size).toBe(0);
   });
 
   it('过滤损坏、重复或非本地账号数据', () => {

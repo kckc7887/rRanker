@@ -224,7 +224,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
     });
   }
 
-  /** 推分推荐：按加值与成本歌数均摊份额，返回可达谱面列表 */
+  /** 推分推荐：返回已验证计划、替补和搜索状态。 */
   async getPushRecommendations(
     delta: number,
     songCost: number,
