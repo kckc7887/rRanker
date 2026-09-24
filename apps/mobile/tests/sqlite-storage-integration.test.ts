@@ -1,12 +1,27 @@
 import { DatabaseSync } from 'node:sqlite';
+import type { PhiraQueriedBest } from '@/domain/phira';
 import { SqliteSnapshotRepository, resetSnapshotSchemaForTests } from '@/storage/sqlite-snapshot-repository';
 import { resetRrankerDatabaseForTests, runDatabaseWrite } from '@/storage/rranker-database';
 import { captureResourceWrites, invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+import { PhiraCache } from '@/services/phira-cache';
 
 import { SqliteUserLibraryRepository, resetUserLibrarySchemaForTests } from '@/storage/sqlite-user-library-repository';
 
 const bridge = vi.hoisted(() => ({ open: vi.fn() }));
 vi.mock('expo-sqlite', () => ({ openDatabaseAsync: bridge.open }));
+
+const queriedBest = (chartId: number, score = 900_000): PhiraQueriedBest => ({
+  chart: {
+    id: chartId, name: `Chart ${chartId}`, level: 'IN', difficulty: 15, charter: '', composer: '',
+    illustrator: null, ranked: true, stable: true, uploader: 1, tags: [], ratingCount: 0,
+  },
+  record: {
+    id: chartId, chart: chartId, score, accuracy: .98, perfect: 0, good: 0, bad: 0, miss: 0,
+    fullCombo: false, best: true, created: null,
+  },
+  poolRks: null,
+  queriedAt: '2026-01-01T00:00:00.000Z',
+});
 
 describe('SQLite storage with real SQL and a measured async bridge', () => {
   let database: DatabaseSync;
@@ -183,6 +198,63 @@ describe('SQLite storage with real SQL and a measured async bridge', () => {
     expect(result[0]).toMatchObject({ createdAt: at, tags: ['共有'] });
     expect(database.prepare('SELECT normalized_name AS name FROM user_library_tags ORDER BY name').all())
       .toEqual([{ name: '共有' }]);
+  });
+
+  it('keeps both charts when two best merges of one account overlap', async () => {
+    const cache = new PhiraCache(repository);
+    await Promise.all([cache.mergeBests(1, [queriedBest(101)]), cache.mergeBests(1, [queriedBest(102)])]);
+    expect(Object.keys((await cache.loadBests(1))?.items ?? {}).sort()).toEqual(['101', '102']);
+  });
+
+  it('lets the later best merge win on the same chart and keeps the other chart of the same batch', async () => {
+    const cache = new PhiraCache(repository);
+    const reached = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const blocking = runDatabaseWrite(async () => { reached.resolve(); await release.promise; });
+    await reached.promise;
+    const first = cache.mergeBests(1, [queriedBest(201, 900_000), queriedBest(202, 900_000)]);
+    const second = cache.mergeBests(1, [queriedBest(201, 950_000)]);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    release.resolve();
+    await blocking;
+    await Promise.all([first, second]);
+    const items = (await cache.loadBests(1))?.items ?? {};
+    expect(items['201'].record?.score).toBe(950_000);
+    expect(items['202']).toBeDefined();
+  });
+
+  it('reads the previous best merge on the next serial merge', async () => {
+    const cache = new PhiraCache(repository);
+    await cache.mergeBests(1, [queriedBest(301)]);
+    await cache.mergeBests(1, [queriedBest(302)]);
+    expect(Object.keys((await cache.loadBests(1))?.items ?? {}).sort()).toEqual(['301', '302']);
+  });
+
+  it('refuses to publish a best merge invalidated while it waits for the write queue', async () => {
+    const cache = new PhiraCache(repository);
+    const reached = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    const blocking = runDatabaseWrite(async () => { reached.resolve(); await release.promise; });
+    await reached.promise;
+    const guard = captureResourceWrites('phira', undefined, 'phira:community:1');
+    const pending = cache.mergeBests(1, [queriedBest(401)], guard);
+    const failure = expect(pending).rejects.toThrow('缓存请求已失效');
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    // 解绑账号走同一个清理入口。
+    invalidateResourceWrites('account:phira:community:1');
+    release.resolve();
+    await blocking;
+    await failure;
+    expect(await cache.loadBests(1)).toBeNull();
+  });
+
+  it('keeps later best merges running after one failed write', async () => {
+    const cache = new PhiraCache(repository);
+    run.mockRejectedValueOnce(new Error('disk failure'));
+    await expect(cache.mergeBests(1, [queriedBest(501)])).rejects.toThrow('disk failure');
+    expect(await cache.loadBests(1)).toBeNull();
+    await cache.mergeBests(1, [queriedBest(502)]);
+    expect(Object.keys((await cache.loadBests(1))?.items ?? {})).toEqual(['502']);
   });
 
   it('clears one game without touching other games or presets', async () => {

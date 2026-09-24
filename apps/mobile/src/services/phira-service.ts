@@ -1,8 +1,34 @@
 import { captureResourceWrites } from './snapshot-cache-utils';
-import type { PhiraChart, PhiraPlayerSnapshot, PhiraQueriedBest } from '@/domain/phira';
+import type { PhiraBestSnapshot, PhiraChart, PhiraPlayerSnapshot, PhiraQueriedBest } from '@/domain/phira';
 import { loadItemsBounded } from './offset-pagination';
 import { phiraCache, phiraSource } from './phira-cache';
 import { phiraProvider } from '@/providers/phira-provider';
+
+/**
+ * 本次刷新的真实结果，不读错误文案即可判断：
+ * - `success`：请求的谱面全部提交成功；
+ * - `partial`：只提交了部分谱面，未提交项保留各自旧的 `queriedAt`；
+ * - `failed`：本次没有任何谱面提交成功（全部失败，或没有需要刷新的谱面），
+ *   此时不写入缓存，`source.updatedAt` 保持既有值；缓存回退不等于刷新成功。
+ */
+export type PhiraBestRefreshStatus = 'success' | 'partial' | 'failed';
+export type PhiraBestRefreshFailure = { chartId: number; error: unknown };
+/**
+ * 刷新结果同时是提交后的 bests 快照：`source.updatedAt` 只表示最近一次成功提交的时间
+ * （部分成功时按成功覆盖的范围推进），每个谱面的新鲜度由 `items[id].queriedAt` 表示。
+ * `refresh` 只是本次调用的摘要，不写入缓存。
+ */
+export type PhiraBestRefreshResult = PhiraBestSnapshot & {
+  refresh: {
+    status: PhiraBestRefreshStatus;
+    /** 本次提交成功的谱面 id，按谱面 id 升序。 */
+    updatedChartIds: number[];
+    /** 本次失败的谱面与原因，按谱面 id 升序。 */
+    failures: PhiraBestRefreshFailure[];
+    /** 本次请求覆盖的谱面 id，按请求顺序；用于区分“全部失败”和“没有需要刷新的谱面”。 */
+    requestedChartIds: number[];
+  };
+};
 
 export async function loadPhiraPlayerFresh(playerId: number, signal?: AbortSignal): Promise<PhiraPlayerSnapshot> {
   const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
@@ -65,19 +91,31 @@ export async function refreshPhiraSeedBests(snapshot: PhiraPlayerSnapshot, signa
 
 async function refreshPhiraBestItems(
   playerId: number, items: readonly Pick<PhiraQueriedBest, 'chart' | 'poolRks'>[], signal?: AbortSignal,
-) {
+): Promise<PhiraBestRefreshResult | null> {
   const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
   const values: PhiraQueriedBest[] = [];
-  await loadItemsBounded({
+  const failures = await loadItemsBounded({
     items, concurrency: 4, signal,
     load: (item) => readPhiraChartBest(playerId, item.chart, item.poolRks, signal),
     onItem: (value) => values.push(value),
   });
   if (signal?.aborted) throw signal.reason ?? new Error('phira refresh aborted');
-  return phiraCache.mergeBests(playerId, values, assertCurrent);
+  // 只提交成功项；全失败（或没有请求项）时 mergeBests 不写入，既有 updatedAt 与旧成绩保留。
+  const snapshot = await phiraCache.mergeBests(playerId, values, assertCurrent);
+  if (!snapshot) return null;
+  const sortedFailures = [...failures].sort((left, right) => left.item.chart.id - right.item.chart.id);
+  return {
+    ...snapshot,
+    refresh: {
+      status: values.length === 0 ? 'failed' : failures.length === 0 ? 'success' : 'partial',
+      updatedChartIds: values.map((value) => value.chart.id).sort((left, right) => left - right),
+      failures: sortedFailures.map(({ item, error }) => ({ chartId: item.chart.id, error })),
+      requestedChartIds: items.map((item) => item.chart.id),
+    },
+  };
 }
 
-export async function refreshAllPhiraBests(playerId: number, signal?: AbortSignal) {
+export async function refreshAllPhiraBests(playerId: number, signal?: AbortSignal): Promise<PhiraBestRefreshResult | null> {
   const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
   const [snapshot, player] = await Promise.all([phiraCache.loadBests(playerId), phiraCache.loadPlayer(playerId)]);
   assertCurrent();
