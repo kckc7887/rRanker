@@ -198,6 +198,35 @@ const inFlightRefreshes = new Map<string, Promise<OsuOAuthSession>>();
 const recentRotations = new Map<string, OsuOAuthSession>();
 const rotationAncestors = new Map<string, Set<string>>();
 const RECENT_ROTATIONS_LIMIT = 64;
+let rotationEpoch = 0;
+
+function liveRotationTokens(): Set<string> {
+  const live = new Set<string>();
+  for (const [previousToken, next] of recentRotations) {
+    live.add(previousToken);
+    live.add(next.refreshToken);
+  }
+  for (const token of inFlightRefreshes.keys()) live.add(token);
+  return live;
+}
+
+function pruneRotationState(): void {
+  while (recentRotations.size > RECENT_ROTATIONS_LIMIT) {
+    const oldest = recentRotations.keys().next().value;
+    if (typeof oldest !== 'string') break;
+    recentRotations.delete(oldest);
+  }
+  const live = liveRotationTokens();
+  for (const token of rotationAncestors.keys()) {
+    if (!live.has(token)) rotationAncestors.delete(token);
+  }
+  for (const [token, ancestors] of rotationAncestors) {
+    for (const ancestor of ancestors) {
+      if (!live.has(ancestor)) ancestors.delete(ancestor);
+    }
+    if (ancestors.size === 0) rotationAncestors.delete(token);
+  }
+}
 
 function rememberOsuRotation(refreshToken: string, next: OsuOAuthSession): void {
   recentRotations.set(refreshToken, next);
@@ -212,11 +241,31 @@ function rememberOsuRotation(refreshToken: string, next: OsuOAuthSession): void 
       nextAncestors.add(previousToken);
     }
   }
-  while (recentRotations.size > RECENT_ROTATIONS_LIMIT) {
-    const oldest = recentRotations.keys().next().value;
-    if (typeof oldest !== 'string') break;
-    recentRotations.delete(oldest);
-  }
+  pruneRotationState();
+}
+
+/** 解除绑定或清空会话时丢掉轮换关系。进行中的刷新完成后不再写回。 */
+export function clearOsuRotationCache(): void {
+  rotationEpoch += 1;
+  recentRotations.clear();
+  rotationAncestors.clear();
+  inFlightRefreshes.clear();
+}
+
+export function osuRotationCacheStats(): {
+  rotations: number;
+  ancestors: number;
+  ancestorMembers: number;
+  inFlight: number;
+} {
+  let ancestorMembers = 0;
+  for (const ancestors of rotationAncestors.values()) ancestorMembers += ancestors.size;
+  return {
+    rotations: recentRotations.size,
+    ancestors: rotationAncestors.size,
+    ancestorMembers,
+    inFlight: inFlightRefreshes.size,
+  };
 }
 
 /** 当前凭据是这次轮换结果的前代时才允许覆盖。重新登录产生的新凭据不在前代集合里。 */
@@ -230,6 +279,7 @@ export function osuRotationAncestors(nextRefreshToken: string): readonly string[
 }
 
 export async function rotateOsuTokens(refreshToken: string): Promise<OsuOAuthSession> {
+  const epoch = rotationEpoch;
   const aliases: string[] = [];
   const visited = new Set<string>();
   let currentToken = refreshToken;
@@ -262,11 +312,14 @@ export async function rotateOsuTokens(refreshToken: string): Promise<OsuOAuthSes
   const existing = inFlightRefreshes.get(currentToken);
   if (existing) {
     const next = await existing;
-    for (const alias of aliases) rememberOsuRotation(alias, next);
+    if (epoch === rotationEpoch) {
+      for (const alias of aliases) rememberOsuRotation(alias, next);
+    }
     return next;
   }
   const promise = refreshOsuAccessToken(currentToken)
     .then((next) => {
+      if (epoch !== rotationEpoch) return next;
       rememberOsuRotation(currentToken, next);
       for (const alias of aliases) rememberOsuRotation(alias, next);
       return next;

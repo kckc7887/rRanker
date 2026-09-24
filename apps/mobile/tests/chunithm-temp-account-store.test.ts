@@ -1,3 +1,4 @@
+import { AccountDirectoryEnvelopeError } from '@/storage/create-demo-account-store';
 import {
   ChunithmTempAccountStore,
   parseChunithmTempAccount,
@@ -22,7 +23,7 @@ describe('ChunithmTempAccountStore', () => {
   it('accepts only the versioned enabled payload', () => {
     expect(parseChunithmTempAccount({ version: 1, enabled: true })).toBe(true);
     expect(parseChunithmTempAccount({ version: 1, enabled: false })).toBe(false);
-    expect(parseChunithmTempAccount({ version: 2, enabled: true })).toBe(false);
-    expect(parseChunithmTempAccount(null)).toBe(false);
+    expect(() => parseChunithmTempAccount({ version: 2, enabled: true })).toThrow(AccountDirectoryEnvelopeError);
+    expect(() => parseChunithmTempAccount(null)).toThrow(AccountDirectoryEnvelopeError);
   });
 });

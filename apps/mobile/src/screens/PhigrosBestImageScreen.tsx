@@ -428,12 +428,13 @@ export function PhigrosBestImageScreen() {
 
   if (!payload && !gameData.isLoading) return <View style={[styles.center, { backgroundColor: theme.background }]}><Text style={{ color: theme.textMuted }}>当前账号没有可生成的 Phigros 成绩</Text></View>;
   return <BestImageScreenShell
-    imageTypes={[{ id: 'best30', label: 'Best30' }, { id: 'custom', label: '自定义' }] as const}
-    activeType={type}
-    onSelectType={(id) => {
+    appearance={{
+      imageTypes: [{ id: 'best30', label: 'Best30' }, { id: 'custom', label: '自定义' }] as const,
+      activeType: type,
+      onSelectType: (id) => {
       startTransition(() => setType(id));
-    }}
-    customPanelBody={type === 'custom' ? <>
+    },
+      customPanelBody: type === 'custom' ? <>
       <View style={styles.textFieldWrap}>
         <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>数量</Text>
         <TextInput accessibilityLabel="自定义数量" autoCorrect={false} keyboardType="number-pad" value={quantityText} onChangeText={(value) => {
@@ -511,8 +512,8 @@ export function PhigrosBestImageScreen() {
           />
         ))}
       </View>
-    </> : null}
-    styleListHeader={<>
+    </> : null,
+      styleListHeader: <>
       <View style={[styles.ratingStyleRow, { borderBottomColor: theme.border }]}>
         <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
           {([{ id: 'game', label: '游戏风格' }, { id: 'app', label: '应用风格' }] as const).map(({ id, label }) => {
@@ -527,42 +528,48 @@ export function PhigrosBestImageScreen() {
         <View style={styles.overflowCopy}><Text style={[styles.styleName, { color: theme.text }]}>OVER FLOW</Text><Text style={[styles.styleValue, { color: theme.textMuted }]}>追加成绩数量</Text></View>
         <View style={styles.overflowChoices}>{OVERFLOW_COUNTS.map((count) => <BestImageChoiceChip key={count} label={`${count} 个`} selected={stylePrefs.overflowCount === count} onPress={() => setStylePrefs((current) => ({ ...current, overflowCount: count }))} styles={{ chip: styles.chip, chipText: styles.chipText }} />)}</View>
       </View> : null}
-    </>}
-    styleRows={(['avatar', 'background'] as const).map((kind) => <Pressable key={kind} accessibilityRole="button" accessibilityLabel={`选择${kind === 'avatar' ? '头像' : '背景'}`} onPress={() => setPicker(kind)} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
+    </>,
+      styleRows: (['avatar', 'background'] as const).map((kind) => <Pressable key={kind} accessibilityRole="button" accessibilityLabel={`选择${kind === 'avatar' ? '头像' : '背景'}`} onPress={() => setPicker(kind)} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
       <View style={styles.stylePreview}>{kind === 'avatar' ? (avatarData ? <Image source={{ uri: avatarData }} style={styles.avatarPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>) : (backgroundData ? <Image source={{ uri: backgroundData }} style={styles.backgroundPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>)}</View>
       <View style={styles.styleCopy}><Text style={[styles.styleName, { color: theme.text }]}>{kind === 'avatar' ? '头像' : '背景'}</Text><Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{styleValue(kind)}</Text></View>
       <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-    </Pressable>)}
-    widths={WIDTHS}
-    activeWidth={width}
-    onChooseWidth={setWidth}
-    dimensionMeta={`${width} × ${outputHeight} px · 每页最多 ${type === 'best30' ? 30 + stylePrefs.overflowCount : 30} 张 · 第 ${pageIndex + 1}/${pages.length} 页`}
-    previewTestIdPrefix="phigros-best-image"
-    sources={sources}
-    pages={pages}
-    pageIndex={pageIndex}
-    onPageIndexChange={setPageIndex}
-    onPreviewStatesChange={setPreviewStates}
-    onPreviewMessage={handlePreviewMessage}
-    fileAccessFromFileURLs
-    allowingReadAccessToUrl={templateAssets?.allowingReadAccessToUrl}
-    loadingPreview={templateAssetError ? <View style={styles.loadingContent}><Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></View> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在准备预览" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? fontProgressLabel(fontProgress) : assetProgress.total > 0 ? `正在准备歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在准备预览'}</Text></View>}
-    fontStatus={sources && !fontsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: templateAssetError ? theme.danger : theme.border }]}>{templateAssetError ? <><Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></> : <><ActivityIndicator color={theme.accent} size="small" /><Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{fontProgressLabel(fontProgress)}；所需字体完成后可导出</Text></>}</View> : null}
-    fontStatusAboveDots
-    exportDisabled={!sources || !fontsReady || !formValid || !!exportStatus}
-    exportSpinner={exportStatus !== null}
-    exportIdleLabel={fontsReady ? '导出到相册' : '所需字体准备完成后可导出'}
-    exportStatus={exportStatus}
-    onExport={() => void exportImages()}
-    exportIndex={exportIndex}
-    exportHeight={exportHeight}
-    exportSource={exportIndex !== null && sources?.[exportIndex] ? sources[exportIndex]! : null}
-    exportWebViewKeyPrefix="phi-export"
-    captureRef={exportCaptureRef}
-    captureAccessibilityLabel={exportIndex !== null ? `导出画布 第${exportIndex + 1}页` : undefined}
-    onExportMessage={handleExportMessage}
-    onRequestCloseExport={cancelExportRequest}
-    onReleaseHeavySources={() => {
+    </Pressable>),
+      widths: WIDTHS,
+      activeWidth: width,
+      onChooseWidth: setWidth,
+      dimensionMeta: `${width} × ${outputHeight} px · 每页最多 ${type === 'best30' ? 30 + stylePrefs.overflowCount : 30} 张 · 第 ${pageIndex + 1}/${pages.length} 页`,
+      loadingPreview: templateAssetError ? <View style={styles.loadingContent}><Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></View> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在准备预览" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? fontProgressLabel(fontProgress) : assetProgress.total > 0 ? `正在准备歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在准备预览'}</Text></View>,
+      fontStatus: sources && !fontsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: templateAssetError ? theme.danger : theme.border }]}>{templateAssetError ? <><Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></> : <><ActivityIndicator color={theme.accent} size="small" /><Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{fontProgressLabel(fontProgress)}；所需字体完成后可导出</Text></>}</View> : null,
+      fontStatusAboveDots: true,
+      pickers: <PhigrosBestImageStylePicker visible={picker !== null} kind={picker} items={pickerItems} selection={picker ? stylePrefs[picker] : null} onClose={() => setPicker(null)} onSelect={chooseStyle} />,
+      styles: styles,
+    }}
+    preview={{
+      previewTestIdPrefix: "phigros-best-image",
+      sources: sources,
+      pages: pages,
+      pageIndex: pageIndex,
+      onPageIndexChange: setPageIndex,
+      onPreviewStatesChange: setPreviewStates,
+      onPreviewMessage: handlePreviewMessage,
+      fileAccessFromFileURLs: true,
+      allowingReadAccessToUrl: templateAssets?.allowingReadAccessToUrl,
+    }}
+    exportSession={{
+      exportDisabled: !sources || !fontsReady || !formValid || !!exportStatus,
+      exportSpinner: exportStatus !== null,
+      exportIdleLabel: fontsReady ? '导出到相册' : '所需字体准备完成后可导出',
+      exportStatus: exportStatus,
+      onExport: () => void exportImages(),
+      exportIndex: exportIndex,
+      exportHeight: exportHeight,
+      exportSource: exportIndex !== null && sources?.[exportIndex] ? sources[exportIndex]! : null,
+      exportWebViewKeyPrefix: "phi-export",
+      captureRef: exportCaptureRef,
+      captureAccessibilityLabel: exportIndex !== null ? `导出画布 第${exportIndex + 1}页` : undefined,
+      onExportMessage: handleExportMessage,
+      onRequestCloseExport: cancelExportRequest,
+      onReleaseHeavySources: () => {
       setSources(null);
       setIllustrations(null);
       setAccAverages(null);
@@ -571,9 +578,8 @@ export function PhigrosBestImageScreen() {
       setTemplateAssets(null);
       illustrationCacheRef.current = {};
       styleAssetKeyRef.current = null;
+    },
     }}
-    pickers={<PhigrosBestImageStylePicker visible={picker !== null} kind={picker} items={pickerItems} selection={picker ? stylePrefs[picker] : null} onClose={() => setPicker(null)} onSelect={chooseStyle} />}
-    styles={styles}
   />;
 }
 

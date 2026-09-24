@@ -6,7 +6,7 @@ import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { FormField } from '@/components/FormField';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
-import type { PushRecommendationsResult } from '@/domain/phigros-push';
+import { formatPushSearchSummary, type PushRecommendationsResult } from '@/domain/phigros-push';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { phigrosResources } from '@/services/phigros-resources';
@@ -91,7 +91,30 @@ export default function PushRksToolScreen() {
         style={styles.list}
         contentContainerStyle={styles.content}
         keyboardShouldPersistTaps="handled"
-        data={result?.recommendations ?? []}
+        data={result?.plan ?? []}
+        ListFooterComponent={result && result.alternatives.length > 0 ? (
+          <View style={styles.header}>
+            <Text style={[styles.sectionTitle, { color: theme.text }]}>
+              替补（{result.alternatives.length}）
+            </Text>
+            <Text style={[styles.emptyHint, { color: theme.textMuted }]}>
+              替换达标方案中 Acc 差值最大的一首后，仍可以达到精确目标。
+            </Text>
+            {result.alternatives.map((item, index) => (
+              <PhigrosScoreCard
+                key={`${item.songId}-${item.level}`}
+                record={item.record}
+                catalogTitle={titleMap.get(item.songId) ?? item.songId}
+                rank={index + 1}
+                pushHint={{
+                  currentAcc: item.currentAcc,
+                  targetAcc: item.targetAcc,
+                  accDiff: item.accDiff,
+                }}
+              />
+            ))}
+          </View>
+        ) : null}
         keyExtractor={(item) => `${item.songId}-${item.level}`}
         ListHeaderComponent={(
           <View style={styles.header}>
@@ -147,9 +170,7 @@ export default function PushRksToolScreen() {
                   <Text style={[styles.meta, { color: theme.textSecondary }]}>
                     精确加值 {result.gainNeeded.toFixed(4)}
                     {' · '}
-                    {result.combinationReachesTarget
-                      ? `同一 Best27/Phi3 里按 Acc 差值优先的 ${Math.min(result.songCost, result.recommendations.length)} 首一起可以达到`
-                      : `分摊到 ${result.songCost} 首后，放进同一 Best27/Phi3 仍达不到`}
+                    {formatPushSearchSummary(result)}
                   </Text>
                 </>
               ) : null}
@@ -173,23 +194,10 @@ export default function PushRksToolScreen() {
               </View>
             ) : null}
 
-            {result ? (
-              <>
-                <Text style={[styles.sectionTitle, { color: theme.text }]}>
-                  按 Acc 差值推荐（{result.recommendations.length}）
-                </Text>
-                {result.recommendations.length === 0 ? (
-                  <Text style={[styles.emptyHint, { color: theme.textMuted }]}>
-                    {result.songCost > 1
-                      ? `没有 ${result.songCost} 首能在同一 Best27/Phi3 里达到目标`
-                      : `没有谱面能承担 ${result.perSongShare.toFixed(4)} 的加值`}
-                    {result.includePhi ? '' : '（已排除 φ）'}
-                    ，可增加成本歌数、降低加值
-                    {result.includePhi ? '' : '或开启包含 φ'}
-                    。
-                  </Text>
-                ) : null}
-              </>
+            {result && result.plan.length > 0 ? (
+              <Text style={[styles.sectionTitle, { color: theme.text }]}>
+                达标方案（{result.plan.length}）
+              </Text>
             ) : null}
           </View>
         )}

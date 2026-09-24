@@ -1,13 +1,12 @@
+import { assertAccountListEnvelope } from '@/storage/create-demo-account-store';
 import { createAccountListStore } from '@/storage/create-account-list-store';
 
 export type MuseDashAccountProfile = { userId: string; displayName: string };
 
 export function parseMuseDashAccounts(value: unknown): MuseDashAccountProfile[] {
-  if (!value || typeof value !== 'object') return [];
-  const raw = value as { version?: unknown; accounts?: unknown };
-  if (raw.version !== 1 || !Array.isArray(raw.accounts)) return [];
+  const { accounts } = assertAccountListEnvelope(value);
   const seen = new Set<string>();
-  return raw.accounts.flatMap((entry): MuseDashAccountProfile[] => {
+  return accounts.flatMap((entry): MuseDashAccountProfile[] => {
     if (!entry || typeof entry !== 'object') return [];
     const item = entry as { userId?: unknown; displayName?: unknown };
     const displayName = typeof item.displayName === 'string' ? item.displayName.trim() : '';

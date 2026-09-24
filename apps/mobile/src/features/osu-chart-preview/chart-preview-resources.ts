@@ -2,6 +2,7 @@ import JSZip from 'jszip';
 import {
   assertChartPreviewDownloadBytes,
   chartPreviewDeclaredUncompressedSize,
+  createChartPreviewActualBytes,
   readBudgetedZipEntry,
   scanChartPreviewArchiveEntries,
   type ChartPreviewCancellation,
@@ -54,7 +55,10 @@ export async function readOsuChartPreviewArchive(
   reader: OsuChartPreviewResourceReader,
   options?: { includeVideo?: boolean },
 ): Promise<OsuChartPreviewResources> {
-  const cancellation: ChartPreviewCancellation = { assertCurrent: reader.assertCurrent };
+  const cancellation: ChartPreviewCancellation = {
+    assertCurrent: reader.assertCurrent,
+    actualBytes: createChartPreviewActualBytes(),
+  };
   assertChartPreviewDownloadBytes(archive.byteLength);
   reader.assertCurrent();
   const zip = await JSZip.loadAsync(archive);
@@ -111,7 +115,6 @@ export async function readOsuChartPreviewArchive(
   const audioPaths = [...new Set(plan.audioPaths)];
   const total = mediaPaths.length + audioPaths.length;
   let completed = 0;
-  const stagedMedia: { path: string; bytes: Uint8Array }[] = [];
   for (const path of audioPaths) {
     const entry = entries.get(path);
     if (!entry) throw new Error('谱面音频资源不存在');
@@ -122,12 +125,10 @@ export async function readOsuChartPreviewArchive(
   for (const path of mediaPaths) {
     const entry = entries.get(path);
     if (!entry) throw new Error('谱面媒体资源不存在');
-    stagedMedia.push({ path, bytes: await readBudgetedZipEntry(entry, cancellation) });
-  }
-  for (const item of stagedMedia) {
-    const uri = await reader.stageMedia(item.path, item.bytes);
+    const bytes = await readBudgetedZipEntry(entry, cancellation);
+    const uri = await reader.stageMedia(path, bytes);
     reader.assertCurrent();
-    files.push({ path: item.path, uri, mime: osuPreviewResourceMime(item.path) });
+    files.push({ path, uri, mime: osuPreviewResourceMime(path) });
     reader.onProgress?.(++completed / Math.max(1, total));
   }
   reader.assertCurrent();

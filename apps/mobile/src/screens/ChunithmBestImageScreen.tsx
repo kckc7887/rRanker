@@ -420,10 +420,11 @@ export function ChunithmBestImageScreen() {
 
   return (
     <BestImageScreenShell
-      imageTypes={IMAGE_TYPES}
-      activeType={type}
-      onSelectType={setType}
-      customPanelBody={type === 'custom' ? <>
+      appearance={{
+        imageTypes: IMAGE_TYPES,
+        activeType: type,
+        onSelectType: setType,
+        customPanelBody: type === 'custom' ? <>
         <ChunithmFilterBar
           collapsed={false}
           constantMax={customFilters.constantMax}
@@ -468,8 +469,8 @@ export function ChunithmBestImageScreen() {
             {quantityError ? <Text style={[styles.errorText, { color: theme.danger }]}>{quantityError}</Text> : null}
           </View>
         </View>
-      </> : null}
-      styleListHeader={type === 'best50' ? <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
+      </> : null,
+        styleListHeader: type === 'best50' ? <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
         <View style={styles.overflowCopy}>
           <Text style={[styles.styleName, { color: theme.text }]}>Selection</Text>
           <Text style={[styles.styleValue, { color: theme.textMuted }]}>追加成绩数量</Text>
@@ -485,8 +486,8 @@ export function ChunithmBestImageScreen() {
             />
           ))}
         </View>
-      </View> : null}
-      styleRows={<>
+      </View> : null,
+        styleRows: <>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="选择角色"
@@ -531,21 +532,12 @@ export function ChunithmBestImageScreen() {
           </View>
           <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
         </Pressable>
-      </>}
-      widths={WIDTHS}
-      activeWidth={width}
-      onChooseWidth={setWidth}
-      dimensionMeta={`${width} × ${outputHeight} px · 每页最多 ${type === 'custom' ? `${CUSTOM_MAX_ROWS_PER_PAGE} 行` : `${50 + stylePrefs.selectionCount} 张`} · 第 ${pageIndex + 1}/${pages.length} 页`}
-      previewTestIdPrefix="chunithm-best-image"
-      sources={sources}
-      pages={pages}
-      pageIndex={pageIndex}
-      onPageIndexChange={setPageIndex}
-      onPreviewStatesChange={setPreviewStates}
-      onPreviewMessage={handlePreviewMessage}
-      fileAccessFromFileURLs={false}
-      allowingReadAccessToUrl={undefined}
-      loadingPreview={(
+      </>,
+        widths: WIDTHS,
+        activeWidth: width,
+        onChooseWidth: setWidth,
+        dimensionMeta: `${width} × ${outputHeight} px · 每页最多 ${type === 'custom' ? `${CUSTOM_MAX_ROWS_PER_PAGE} 行` : `${50 + stylePrefs.selectionCount} 张`} · 第 ${pageIndex + 1}/${pages.length} 页`,
+        loadingPreview: (
         <View style={styles.loadingContent}>
           <ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" />
           <Text style={[styles.loadingText, { color: theme.textMuted }]}>
@@ -554,29 +546,10 @@ export function ChunithmBestImageScreen() {
               : '正在准备预览'}
           </Text>
         </View>
-      )}
-      fontStatus={null}
-      fontStatusAboveDots={false}
-      exportDisabled={!sources || !!exportStatus || !formValid}
-      exportSpinner={exportStatus !== null}
-      exportIdleLabel="导出到相册"
-      exportStatus={exportStatus}
-      onExport={() => void exportImages()}
-      exportIndex={exportIndex}
-      exportHeight={exportHeight}
-      exportSource={exportIndex !== null && webViewSources?.[exportIndex] ? webViewSources[exportIndex]! : null}
-      exportWebViewKeyPrefix="chunithm-export"
-      captureRef={exportCaptureRef}
-      captureAccessibilityLabel={exportIndex !== null ? `导出画布 第${exportIndex + 1}页` : undefined}
-      onExportMessage={handleExportMessage}
-      onRequestCloseExport={cancelExportRequest}
-      onReleaseHeavySources={() => {
-        setSources(null);
-        setCoverUrls(null);
-        setCharacterDataUri(null);
-        styleAssetKeyRef.current = null;
-      }}
-      pickers={<>
+      ),
+        fontStatus: null,
+        fontStatusAboveDots: false,
+        pickers: <>
         <ChunithmBestImageStylePicker
           visible={picker === 'character'}
           items={characters ?? []}
@@ -594,8 +567,41 @@ export function ChunithmBestImageScreen() {
             setPicker(null);
           }}
         />
-      </>}
-      styles={styles}
+      </>,
+        styles: styles,
+      }}
+      preview={{
+        previewTestIdPrefix: "chunithm-best-image",
+        sources: sources,
+        pages: pages,
+        pageIndex: pageIndex,
+        onPageIndexChange: setPageIndex,
+        onPreviewStatesChange: setPreviewStates,
+        onPreviewMessage: handlePreviewMessage,
+        fileAccessFromFileURLs: false,
+        allowingReadAccessToUrl: undefined,
+      }}
+      exportSession={{
+        exportDisabled: !sources || !!exportStatus || !formValid,
+        exportSpinner: exportStatus !== null,
+        exportIdleLabel: "导出到相册",
+        exportStatus: exportStatus,
+        onExport: () => void exportImages(),
+        exportIndex: exportIndex,
+        exportHeight: exportHeight,
+        exportSource: exportIndex !== null && webViewSources?.[exportIndex] ? webViewSources[exportIndex]! : null,
+        exportWebViewKeyPrefix: "chunithm-export",
+        captureRef: exportCaptureRef,
+        captureAccessibilityLabel: exportIndex !== null ? `导出画布 第${exportIndex + 1}页` : undefined,
+        onExportMessage: handleExportMessage,
+        onRequestCloseExport: cancelExportRequest,
+        onReleaseHeavySources: () => {
+        setSources(null);
+        setCoverUrls(null);
+        setCharacterDataUri(null);
+        styleAssetKeyRef.current = null;
+      },
+      }}
     />
   );
 }

@@ -188,47 +188,7 @@ export function BestImageChoiceChip({
   </Pressable>;
 }
 
-export function BestImageScreenShell<TType extends string>({
-  imageTypes,
-  activeType,
-  onSelectType,
-  customPanelBody,
-  styleListHeader,
-  styleRows,
-  widths,
-  activeWidth,
-  onChooseWidth,
-  dimensionMeta,
-  previewTestIdPrefix,
-  sources,
-  pages,
-  pageIndex,
-  onPageIndexChange,
-  onPreviewStatesChange,
-  onPreviewMessage,
-  fileAccessFromFileURLs,
-  allowingReadAccessToUrl,
-  loadingPreview,
-  fontStatus,
-  fontStatusAboveDots,
-  exportDisabled,
-  exportSpinner,
-  exportIdleLabel,
-  exportStatus,
-  onExport,
-  exportIndex,
-  exportHeight,
-  exportSource,
-  exportWebViewKeyPrefix,
-  captureRef,
-  captureAccessibilityLabel,
-  captureBackgroundColor,
-  onExportMessage,
-  onRequestCloseExport,
-  onReleaseHeavySources,
-  pickers,
-  styles,
-}: {
+export type BestImageScreenAppearance<TType extends string> = {
   /** 类型分段选项（舞萌 Best50 / 中二 Best50 / Phigros Best30 + 各自「自定义」）。 */
   imageTypes: readonly { id: TType; label: string }[];
   activeType: TType;
@@ -243,6 +203,18 @@ export function BestImageScreenShell<TType extends string>({
   activeWidth: number;
   onChooseWidth: (width: number) => void;
   dimensionMeta: ReactNode;
+  /** 预览等待时的占位内容（外层 loadingPreview View 由骨架提供）。 */
+  loadingPreview: ReactNode;
+  /** 素材准备状态条（舞萌/Phigros 各自渲染，中二为 null）。 */
+  fontStatus: ReactNode;
+  /** 状态条位置：Phigros 在 pageDots 之前，舞萌在之后。 */
+  fontStatusAboveDots: boolean;
+  /** 各游戏的 picker Modal（骨架内置于 ScrollView 之后）。 */
+  pickers: ReactNode;
+  styles: BestImageScreenShellStyles;
+};
+
+export type BestImageScreenPreview = {
   /** 预览 WebView testID 前缀（best-image / chunithm-best-image / phigros-best-image）。 */
   previewTestIdPrefix: string;
   sources: readonly BestImageWebViewSource[] | null;
@@ -255,12 +227,9 @@ export function BestImageScreenShell<TType extends string>({
   fileAccessFromFileURLs: boolean;
   /** 预览/导出 WebView 的 allowingReadAccessToURL（素材目录 URI）。 */
   allowingReadAccessToUrl: string | null | undefined;
-  /** 预览等待时的占位内容（外层 loadingPreview View 由骨架提供）。 */
-  loadingPreview: ReactNode;
-  /** 素材准备状态条（舞萌/Phigros 各自渲染，中二为 null）。 */
-  fontStatus: ReactNode;
-  /** 状态条位置：Phigros 在 pageDots 之前，舞萌在之后。 */
-  fontStatusAboveDots: boolean;
+};
+
+export type BestImageScreenExportSession = {
   exportDisabled: boolean;
   exportSpinner: boolean;
   exportIdleLabel: string;
@@ -279,10 +248,62 @@ export function BestImageScreenShell<TType extends string>({
   onExportMessage: (data: string) => void;
   onRequestCloseExport: () => void;
   onReleaseHeavySources?: () => void;
-  /** 各游戏的 picker Modal（骨架内置于 ScrollView 之后）。 */
-  pickers: ReactNode;
-  styles: BestImageScreenShellStyles;
+};
+
+export function BestImageScreenShell<TType extends string>({
+  appearance,
+  preview,
+  exportSession,
+}: {
+  appearance: BestImageScreenAppearance<TType>;
+  preview: BestImageScreenPreview;
+  exportSession: BestImageScreenExportSession;
 }) {
+  const {
+    imageTypes,
+    activeType,
+    onSelectType,
+    customPanelBody,
+    styleListHeader,
+    styleRows,
+    widths,
+    activeWidth,
+    onChooseWidth,
+    dimensionMeta,
+    loadingPreview,
+    fontStatus,
+    fontStatusAboveDots,
+    pickers,
+    styles,
+  } = appearance;
+  const {
+    previewTestIdPrefix,
+    sources,
+    pages,
+    pageIndex,
+    onPageIndexChange,
+    onPreviewStatesChange,
+    onPreviewMessage,
+    fileAccessFromFileURLs,
+    allowingReadAccessToUrl,
+  } = preview;
+  const {
+    exportDisabled,
+    exportSpinner,
+    exportIdleLabel,
+    exportStatus,
+    onExport,
+    exportIndex,
+    exportHeight,
+    exportSource,
+    exportWebViewKeyPrefix,
+    captureRef,
+    captureAccessibilityLabel,
+    captureBackgroundColor,
+    onExportMessage,
+    onRequestCloseExport,
+    onReleaseHeavySources,
+  } = exportSession;
   const theme = useAppTheme();
   const lifecycle = useAppLifecycle();
   const [heavyContentBlocked, setHeavyContentBlocked] = useState(!lifecycle.foregroundReady);

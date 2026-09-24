@@ -198,7 +198,7 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 | 生命周期 | `src/state/app-lifecycle-core.ts`、`app-lifecycle.tsx`：`AppLifecycleProvider`、`useAppLifecycle`、`getForegroundAbortSignal`、`waitForForeground`、`ensureForegroundWork` | 短暂 inactive 不 abort、不换代；后台 abort 前台工作。进入 `foreground-ready` 时，来自后台则换代并 `beginForegroundWork`；若经 inactive 回来且 controller 已空则 `ensureForegroundWork` 重建可取消信号。异步任务传递 AbortSignal | `app-lifecycle.test.tsx`、下载生命周期测试 |
 | 普通筛选 Store | `src/state/create-filter-store.ts` 的 `createFilterStore` | defaults 生成 setter；`clearKeys` 决定清空范围，游戏保留筛选字段语义 | 各游戏 filter 测试 |
 | 持久化随机筛选 | `src/state/create-random-charts-filter-store.ts` 的 `createPersistedRandomChartsFilterStore` | 统一水合、脏写保护和串行保存；游戏提供偏好 Store 与默认值 | 随机歌曲测试 |
-| 多账号列表 | `src/storage/create-account-list-store.ts` 的 `createAccountListStore`；读取合同在 `src/storage/create-demo-account-store.ts` 的 `loadAccountDirectory` | 读取失败或 JSON 损坏保留原键并抛错，损坏内容另存 `.corrupt` 副本；normalize、upsert 和空列表删键不变。可选账号恢复按来源收集，单个来源失败不丢弃其他来源，也不在读失败时迁移默认本地玩家 | 各账号 Store 测试、`account-restoration.test.ts` |
+| 多账号列表 | `src/storage/create-account-list-store.ts` 的 `createAccountListStore`；读取合同在 `src/storage/create-demo-account-store.ts` 的 `loadAccountDirectory` | 键不存在返回空目录。读取失败或 JSON 损坏保留原键并抛错，损坏内容另存 `.corrupt`。未知版本或顶层结构错误另存 `.unrecognized` 并抛 `AccountDirectoryUnrecognizedError`，upsert、remove 和示例账号改写都不会覆盖原键。`restoreAccountDirectory` 只有重新解析通过才写回。v1 数组里的坏条目仍跳过。可选账号恢复按来源收集，单个来源失败不丢弃其他来源，也不在读失败时迁移默认本地玩家 | 各账号 Store 测试、`account-restoration.test.ts` |
 | 偏好设置 | `src/storage/create-preferences-store.ts` 的 `createPreferencesStore` | 支持全局单键和按账号/游戏 scope；迁移通过 `onMissing` 完成 | 偏好及迁移测试 |
 | 示例账号 | `src/storage/create-demo-account-store.ts` 的 `createDemoAccountStore` | 单个可删除示例档案的公共持久化工厂 | 示例账号 Store 测试 |
 | SQLite 与存储统计 | `src/storage/rranker-database.ts`、SQLite Repository、`src/features/storage-management/game-storage-adapters.ts` | 唯一连接；Schema、快照及个人曲库写入共用 `runDatabaseWrite` 队列。成绩、曲库和资源快照版本不一致或 JSON 损坏时保留原行并返回空，不删除用户数据。个人曲库旧 schema 升级不再清空条目。统计和清理均经同一游戏适配器 | `storage-management.test.ts`、`sqlite-snapshot-repository.test.ts`、`sqlite-user-library-repository.test.ts` |
@@ -213,6 +213,7 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 
 `services/session-providers.ts` 的 `createSessionProviders(account, session, onLxnsTokenRotation)`
 只装配运行时 Provider，不读取 Store；`useSession` 保持唯一会话状态、动作与令牌轮换入口。
+`rotateOsuTokens` 的近期轮换和祖先关系共用 64 项上限；解除最后一个 osu! 账号或 `clearSession` 时清空。窗口外的旧刷新令牌不能覆盖当前会话。
 `services/account-restoration.ts` 的 `restoreAppAccounts()` / `loadOptionalBoundAccounts()`
 统一安全会话、可选档案及默认本地玩家迁移；`useAppStartup` 处理启动准备，`useAppRuntime`
 处理路由、前后台、内存警告和延后维护。界面 Provider/导航仍在根布局装配。
@@ -237,7 +238,7 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
   和缓存代次的缩略信息及本地 Rating 读取；读取完成后检查账号是否仍有效。
 - Phigros 推分查询 key 为 `phigros-push-rks`、账号 ID、玩家 ID、资源修订和存档更新时间。
   它属于账号数据失效集合；切换账号不会复用另一账号的新鲜结果。
-  `findPushRecommendations` 在单曲时按整段加值给每张谱面目标；多首时在同一套 Best27/Phi3 上联合分摊，达不到精确目标时不返回单曲份额列表。
+  `findPushRecommendations` 返回 `searchStatus`、已取整并重新核算的 `plan`，以及可替换 plan 中 Acc 差值最大一首的 `alternatives`。`recommendations` 与 `plan` 相同。`combinationReachesTarget` 只在 `verified` 时为真。多首不再要求每一首单独达到平均份额；排除 φ 时最高 Acc 为 99.99。搜索预算内未找到方案是 `not_found`，只有全部谱面或成本歌数内的独立增益上界不够时才是 `unreachable`。页面只对 `plan` 作达标保证。
 - `captureResourceWrites(scope, signal?, accountId?)` 返回写入断言，游戏代次和
   `account:<id>` 代次共同限制持久化与后台回调。`captureAccountWrites(accounts)` 必须在
   上传或传输的第一个 await 之前调用，并把返回的断言传入 Repository `save` 与后续展示名、
@@ -346,7 +347,7 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 | 成绩卡与歌曲行 | `GameScoreCard.tsx`、`GameSongRow.tsx` | 游戏传入 presentation、主题样式和插槽；详情路由、封面失败回退和可访问名称由公共组件处理 | `future-game-render-contract.test.tsx`、P3 card contracts |
 | 筛选与范围 | `FilterShell.tsx`、`FilterCheckboxList.tsx`、`RangeSelector.tsx` | 公共层提供壳、摘要、控件与手势；游戏只定义字段、上下界和匹配纯函数 | `filter-shell-host-contract.test.tsx`、各游戏 filter-bar 测试 |
 | 搜索与徽章 | `GameSearchHeader.tsx`、`GameDifficultyBadge.tsx`、`FlowingGradientValue.tsx`、`TintedRatingTag.tsx` | 复用结构和动画机制，颜色、等级和正式术语由游戏 presentation 或 domain 主题提供 | P3 visuals/cards contracts |
-| 歌曲详情 | `SongDetailHero.tsx`、`SongDetailChrome.tsx`、`SongDetailChromeStyles.ts`、`SongMetadataTable.tsx`、`GameNoteTable.tsx`、`ChartCarousel.tsx`、`GameChartResultCard.tsx`、`AutoScrollText.tsx` | 页面保留游戏数据与动作，公共层负责布局、动态物量分组、导航和可复用卡片 | `song-detail-chrome-contract.test.tsx`、P3 song-details contract |
+| 歌曲详情 | `SongDetailHero.tsx`、`SongDetailChrome.tsx`、`SongDetailChromeStyles.ts`、`SongMetadataTable.tsx`、`GameNoteTable.tsx`、`ChartCarousel.tsx`、`GameChartResultCard.tsx`、`AutoScrollText.tsx` | 页面保留游戏数据与动作，公共层负责布局、动态物量分组、导航和可复用卡片。超过 24 项时轮播只渲染当前索引前后两项；`initialIndex`、`resetKey`、卡片宽度和滚动位置都会把窗口钳到真实索引 | `song-detail-chrome-contract.test.tsx`、`chart-carousel.test.tsx`、P3 song-details contract |
 | 滚动区按压 | `DetailPressable.tsx`：`DetailPressable`、`DetailGestureRoot` | iOS 滚动区交互使用 gesture-handler Pressable 并局部放入手势根；Android 使用 RN Pressable；悬浮按钮不扩大手势根 | 详情 UI 测试 |
 | 查询状态与通知 | `QueryStateView.tsx`、`AppNotification.tsx` | 页面统一加载、空态、重试和顶部通知；禁止直接显示底层错误文本，禁止页面使用 RN Alert | `consumer-copy-policy.test.ts` 及页面测试 |
 | 标签页驻留 | `CachedTabScreen.tsx`、`tab-list-cache.ts` | 短暂 inactive、普通后台和失焦保留已挂载画面；通过 active context 暂停查询、动画和图片落盘，不用 Freeze 卸可见树；只有内存警告才释放失焦页 | `cached-tab-screen.test.tsx`、`tab-animation-lifecycle.test.tsx` |
@@ -404,6 +405,7 @@ HTML、尺寸、字体、署名和导出结构由各自模板保留，金样不�
 
 `useBestImageScreenController(config)` 保持公共返回形状，内部组合 `useBestImagePreferences`、
 `useBestImagePreview` 与 `useBestImageExport`；类型由 `best-image-controller-types.ts` 提供兼容导出。
+`BestImageScreenShell` 接收 `appearance`、`preview` 和 `exportSession`。
 导出会话独占同步操作锁、等待画布及稳定计时器、临时捕获文件和操作代次。
 权限/捕获/保存异步边界复核取消，迟到桥接回调不能完成其他页面；取消后不继续保存或提示成功。
 iOS 截图前若 App 处于 inactive 或 background，先等到 `foreground-ready`。第一次截图失败后再等 250ms 重试一次；层级截图失败时改用 `useRenderInContext`。
@@ -451,8 +453,9 @@ osu! 的 `features/osu-chart-preview/configuration.ts` 统一路由参数与设�
 `ChartPackageDownloadError` 继承 `ProviderError` 并保留既有错误类型识别；资源场景单独
 映射拒绝访问文案，避免将公共文件服务的 401/403 显示为账号问题。
 `readOsuChartPreviewArchive(archive, target, reader)` 继续统一 ZIP、路径、精确难度选择与
-媒体读取；CRC 校验先逐块检查完整归档，再解压所选资源。预览在候选校验内完整执行，
-将媒体暂存到该候选独占子目录，校验或解压失败也能
+媒体读取；CRC 按块让出并检查取消。每个媒体解压后立即 `stageMedia`，不把全部媒体字节留在数组里。
+写入中途失败或取消时函数抛出，不返回半份清单。预览在候选校验内完整执行，
+媒体写入该候选独占子目录，校验或解压失败也能
 自动接续。失败或取消清理候选目录，成功才将已读取资源交给 HTML 和音频注入准备。
 原生提取与播放器共用 `selectPreviewOsbPaths`、`selectPreviewResources` 和路径解析；
 按 BeatmapID 精确选择文件，目录相对引用不通过同名文件猜测替代。
@@ -560,7 +563,7 @@ Rizline 的 `domain/rizline-chart-preview.ts` 提供
 
 - osu! 谱面确认在设置关闭背景视频时，下载 `novideo` 包并且不把视频条目放进资源计划。
 - Phira、TUF 和 osu! 的无限列表使用 `components/game-content/InfinitePageFooter.tsx`，页脚表示加载中、后页失败重试或已经结束，已载列表保留。
-- 谱面下载、解压、事件、循环、纹理和 GIF 使用 `chart-preview-shared/chart-preview-resource-budget.ts` 的有限预算。超出抛出 `ChartPreviewBudgetError`。循环超过 4,096 次后按时间求值，不展开成无界指令。ZIP 先核对声明大小，选出媒体后再解压并校验该条目。长解析按 `AbortSignal` 与写入代次在固定步数让出。
+- 谱面下载、解压、事件、循环、纹理和 GIF 使用 `chart-preview-shared/chart-preview-resource-budget.ts` 的有限预算。超出抛出 `ChartPreviewBudgetError`。循环超过 4,096 次后按时间求值，不展开成无界指令。ZIP 先核对声明大小，选出媒体后再解压并校验该条目。同一次准备用 `actualBytes` 累计实际读出字节，达到总上限后不再读取下一条。CRC 每 64 KiB 检查取消并让出。声明大小、实际读出字节、解码像素和进程内存分开计算；这些常量不是进程内存上限。长解析按 `AbortSignal` 与写入代次在固定步数让出。
 - 成绩图前台收到内存警告后卸掉预览，页内提供降低分辨率并重新加载。警告到达时不按当前分辨率自动重建，重复警告也不重新挂上 WebView。`best-image-memory-recovery.test.tsx` 覆盖这个恢复。
 - 成绩图预览只挂载当前页 WebView，其余页使用轻量占位；不得让多份大 HTML 常驻。
 - 谱面确认和下载任务必须响应卸载、后台与 AbortSignal，不得在取消后继续写缓存或显示成功。
@@ -632,11 +635,11 @@ MajdataPlay 原始计分方法，普通测试无需 .NET；原生账号、保存
 
 ## 项目不变量
 
-- 读失败不毁数据。账号目录、偏好、成绩、曲库和资源快照在 I/O 失败或 JSON 损坏时保留原值；损坏文本另存 `.corrupt` 副本，调用方得到空结果或明确错误。
+- 读失败不毁数据。账号目录、偏好、成绩、曲库和资源快照在 I/O 失败或 JSON 损坏时保留原值；损坏文本另存 `.corrupt` 副本。账号目录的未知版本或顶层结构错误另存 `.unrecognized`，后续写入不能静默覆盖。调用方得到明确错误，不把不可识别数据当成空目录。
 - 代次过期不能提交。`captureResourceWrites` 在等待之前记下范围和账号代次，`invalidateResourceWrites` 之后再提交会抛出「缓存请求已失效」。
 - 查询 key 含稳定身份。`gameDataQueryKey` 包含查询版本、账号、游戏、查分器和会话模式；换账号不会命中另一账号的缓存。
 - 备份可往返且原子。`createUserDataBackup` 与 `parseUserDataBackup` 往返后条目和预设一致，导出前经过 `assertUserDataBackupExportable`，上限 `MAX_BACKUP_FILE_BYTES`（12 MiB）。恢复写入走 `replaceContents` 的单个数据库事务。
-- 不可信输入有资源预算。谱面下载、解压、事件、音符、循环和纹理在展开前调用 `chart-preview-resource-budget`，超出抛出 `ChartPreviewBudgetError`。
+- 不可信输入有资源预算。谱面下载、解压、事件、音符、循环和纹理在展开前调用 `chart-preview-resource-budget`，超出抛出 `ChartPreviewBudgetError`。声明大小、实际读出字节和纹理像素分别检查，不把同一个常量当成进程内存上限。
 
 账号列表补齐（本地 Rating、缩略图、Phigros summary、中二个人资料）按最多 4 路在飞读取，取消后不再开始尚未发出的账号。Phigros 谱面皮肤的持久缓存文件名带 `PHIGROS_SKIN_CACHE_REVISION`，会话目录仍写入 `skin/` 下的原文件名。Score Hub 的 HTTP、类型、机台任务和任务轮询分别在 `score-hub-http.ts`、`score-hub-types.ts`、`score-hub-cabinet.ts`、`score-hub-poll.ts`，调用方仍从 `score-hub-client.ts` 导入。舞萌上传的好友码登录、成绩轮询和落盘分别在 `upload-maimai-login.ts`、`upload-maimai-score-fetch.ts`、`upload-maimai-target-write.ts`，入口仍是 `upload-maimai-from-friend-code.ts`。
 

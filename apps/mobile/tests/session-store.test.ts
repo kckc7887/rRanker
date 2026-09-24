@@ -1,3 +1,4 @@
+import { createOsuBoundAccount } from '@/domain/bound-account';
 import {
   CHUNITHM_TEST_ACCOUNT_ID,
   CHUNITHM_TEMP_ACCOUNT_ID,
@@ -19,6 +20,12 @@ import {
   TEST_ACCOUNT_ID,
 } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
+import {
+  clearOsuRotationCache,
+  osuRotationCacheStats,
+  osuRotationMayReplace,
+  rotateOsuTokens,
+} from '@/providers/osu-oauth';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { EmptyCatalogProvider, EmptyScoreProvider } from '@/providers/empty-provider';
 import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
@@ -678,5 +685,40 @@ describe('useSession store', () => {
     });
     expect(useSession.getState().restoreError).toContain('无法读取');
     expect(useSession.getState().scoreProvider).toBeInstanceOf(EmptyScoreProvider);
+  });
+
+  it('clears osu rotation state when the last osu account is unbound or the session is cleared', async () => {
+    clearOsuRotationCache();
+    vi.stubGlobal('fetch', vi.fn(async () => ({
+      ok: true,
+      status: 200,
+      json: async () => ({ access_token: 'access', expires_in: 86400, refresh_token: 'refresh-next' }),
+    })));
+    await rotateOsuTokens('refresh-old');
+    const account = createOsuBoundAccount({
+      gameId: 'osu-standard', userId: 7, displayName: 'osu 玩家', pp: 1,
+    });
+    useSession.getState().finishRestore(null);
+    useSession.getState().setOsuBinding({
+      accounts: [account],
+      credentialId: 'osu-credential',
+      activeAccountId: account.id,
+      session: {
+        mode: 'osu-oauth',
+        accessToken: 'access',
+        refreshToken: 'refresh-next',
+        expiresAt: Date.now() + 60_000,
+        persistable: true,
+      },
+    });
+    useSession.getState().removeBoundAccount(account.id);
+    expect(osuRotationCacheStats().rotations).toBe(0);
+    expect(osuRotationMayReplace('refresh-old', 'refresh-next')).toBe(false);
+
+    await rotateOsuTokens('refresh-old');
+    expect(osuRotationCacheStats().rotations).toBeGreaterThan(0);
+    useSession.getState().clearSession();
+    expect(osuRotationCacheStats()).toEqual({ rotations: 0, ancestors: 0, ancestorMembers: 0, inFlight: 0 });
+    vi.unstubAllGlobals();
   });
 });

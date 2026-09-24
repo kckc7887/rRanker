@@ -1,6 +1,6 @@
 import Storage from 'expo-sqlite/kv-store';
 import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
-import { loadAccountDirectory, type KeyValueStore } from '@/storage/create-demo-account-store';
+import { assertAccountListEnvelope, loadAccountDirectory, type KeyValueStore } from '@/storage/create-demo-account-store';
 
 export type DemoAccountProfile = {
   id: string;
@@ -21,12 +21,10 @@ export function isMaimaiDemoAccountId(accountId: string): boolean {
 }
 
 export function parseDemoAccountProfiles(value: unknown): DemoAccountProfile[] {
-  if (!value || typeof value !== 'object') return [];
-  const raw = value as { version?: unknown; accounts?: unknown };
-  if (raw.version !== 1 || !Array.isArray(raw.accounts)) return [];
+  const { accounts } = assertAccountListEnvelope(value);
   const seen = new Set<string>();
   const profiles: DemoAccountProfile[] = [];
-  for (const candidate of raw.accounts) {
+  for (const candidate of accounts) {
     if (!candidate || typeof candidate !== 'object') continue;
     const account = candidate as { id?: unknown; displayName?: unknown };
     if (typeof account.id !== 'string' || !isMaimaiDemoAccountId(account.id) || seen.has(account.id)) continue;

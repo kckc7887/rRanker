@@ -1,13 +1,12 @@
+import { assertAccountListEnvelope } from '@/storage/create-demo-account-store';
 import { createAccountListStore } from '@/storage/create-account-list-store';
 
 export type TufAccountProfile = { playerId: number; displayName: string; avatarUrl?: string | null };
 
 export function parseTufAccounts(value: unknown): TufAccountProfile[] {
-  if (!value || typeof value !== 'object') return [];
-  const raw = value as { version?: unknown; accounts?: unknown };
-  if (raw.version !== 1 || !Array.isArray(raw.accounts)) return [];
+  const { accounts } = assertAccountListEnvelope(value);
   const seen = new Set<number>();
-  return raw.accounts.flatMap((entry): TufAccountProfile[] => {
+  return accounts.flatMap((entry): TufAccountProfile[] => {
     if (!entry || typeof entry !== 'object') return [];
     const item = entry as { playerId?: unknown; displayName?: unknown; avatarUrl?: unknown };
     const displayName = typeof item.displayName === 'string' ? item.displayName.trim() : '';

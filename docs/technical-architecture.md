@@ -247,7 +247,7 @@ Phigros 预览页在资源准备前读取所选难度的编号谱面清单；多
 
 ## 状态、持久化与资源生命周期
 
-- `state/session-store.ts` 保存当前游戏、账号、Provider、会话映射和运行时 Provider 实例；激活字段由同一转换路径生成。`services/session-providers.ts` 的 `createSessionProviders` 接收账号、会话和令牌轮换回调，不反向读取 Store；持久凭据由 `storage/secure-session-store.ts` 管理，轮换继续广播到共享凭据账号。
+- `state/session-store.ts` 保存当前游戏、账号、Provider、会话映射和运行时 Provider 实例；激活字段由同一转换路径生成。`services/session-providers.ts` 的 `createSessionProviders` 接收账号、会话和令牌轮换回调，不反向读取 Store；持久凭据由 `storage/secure-session-store.ts` 管理，轮换继续广播到共享凭据账号。osu! 进程内轮换记录和祖先关系共用 64 项上限，进行中的刷新保留在同一集合里；解除最后一个 osu! 账号或清空会话时调用 `clearOsuRotationCache`。窗口外的旧刷新令牌不能覆盖当前会话。
 - `state/query-client.ts` 提供进程内唯一 QueryClient；账号最终数据使用 `services/game-data-query.ts` 的版本化键。
 - SQLite 的进程内连接由 `storage/rranker-database.ts` 集中管理；`runDatabaseWrite` 串行化 schema 初始化、快照和用户曲库写入。批量清理以 500 个绑定参数分批，在同连接事务内执行；文本统计使用 UTF-8 字节，数据库分配页单列。表结构和个人数据键不变。
 - 缓存读取优先走本地首屏、后台刷新和 AbortSignal 取消链路。共享任务按消费者计数取消；清缓存先提升游戏写入代次并取消/移除 Query，解绑只失效所属账号。后台刷新及实际 SQL 提交前复核游戏/账号代次，旧结果不能重新填回缓存。短暂 `inactive` 与普通后台不会被当作内存压力；只有内存警告触发非活动 Query 和图片内存释放。`CachedTabScreen` 在这些状态下保持已挂载画面，只通过 active context 暂停重工作。
@@ -356,7 +356,7 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 - 谱面确认由 `features/chart-preview-shared/` 提供 React Native 壳、资源暂存、桥接、注入工厂和播放时钟；游戏目录只提供解析、资源计划和配置。壳把 native `prepare` 映射到进度条 0～0.9，WebView 解码占 0.9～1，桥接 `ready` 后撤遮罩。全屏方向由可选 `fullscreenOrientation` 控制，默认横屏。每次预览仍使用独占 session 目录；远程 `url+bytes` 资产可先写入 `Paths.cache` 下 `rranker-` 前缀目录（已有非空文件则跳过下载，`bytes` 只作进度权重），再写入 session。舞萌/Majdata 谱面与预览曲在 RN prepare 经 `downloadChartResource` 完成；预览曲写入 `music-data.js`，皮肤编码为 `skin-data.js` data URL，播放器不通过 `file://` 直接读本地 PNG 或音频。这些文件随共享缓存一并统计和清理。
 - 谱面下载由 `features/chart-download-shared/` 统一处理临时目录、取消、进度、文件名和保存位置，游戏功能负责组装具体资源。`useChartPackageDownload.start` 可接收 `optionalVideoUrl`，将视频可用性检查、选择与下载放在同一重复点击锁、超时与取消生命周期中；后台、卸载和取消后的迟到结果不能再弹窗或启动下载。
 - Phigros 谱面确认先通过 `loadPhigrosChartPreviewResources` 下载并验证谱面、音乐和曲绘，自定义 `read` 走 `downloadChartResource` 字节进度，再将文本和 Base64 交给既有预览暂存计划；准备阶段超时为 120 秒。Phira zip 同样经 `downloadChartResource` 计入进度后再解包。Phira 兼容下载对 Phigros 资源使用同一校验与重试入口，下载本身仍委托 `downloadChartResource`，校验通过后才组包。发布端缺音乐时客户端不能补出音频，必须修复发布内容后完成真机播放和导入验收。
-- 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；控制器组合独立偏好、预览与导出会话，预览轮播同一时刻只挂载当前 WebView 页面。导出会话独占操作锁、画布等待和临时文件，在权限、捕获与保存前后复核取消；取消后不开始下一步或报告成功，已经开始的原生保存完成后清理临时文件，不删除已保存到相册的图片。
+- 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；控制器组合独立偏好、预览与导出会话，预览轮播同一时刻只挂载当前 WebView 页面。`BestImageScreenShell` 接收外观插槽、预览状态和导出会话三组参数。导出会话独占操作锁、画布等待和临时文件，在权限、捕获与保存前后复核取消；取消后不开始下一步或报告成功，已经开始的原生保存完成后清理临时文件，不删除已保存到相册的图片。
 - 上述功能涉及 WebView 内容进程、文件选择、相册权限、原生手势和大图内存，自动化测试不能替代真机验收。
 
 公共谱面壳将准备会话与已挂载内容绑定，资源准备默认限时 120 秒，等待播放器 `ready`
@@ -386,6 +386,7 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 验证 HTTP 2xx 与非空文件，通过公共错误类型保留失败分类，取消无需等待原生下载结算。
 谱包下载验证 ZIP 结构、CRC 及谱面条目；预览在候选阶段通过 `readOsuChartPreviewArchive`
 完成整包 CRC 校验，再按 BeatmapID 精确匹配，拒绝缺失、匹配歧义、越界路径和可观察的规范化重名，并完成资源提取。
+每个媒体解压后立即写入候选目录，不在内存里保留全部媒体字节；中途失败不返回半份清单。
 每候选独占媒体子目录，提取损坏同样触发换源；失败和取消清理目录，成功资源才注入播放器。
 全部候选失败才显示场景错误，不改变 OAuth 授权，也不跳转下载网页。
 原生准备与播放器共用 `resource-plan.ts` 的引用选择：仅读取当前 `.osu`、同目录 `.osb`

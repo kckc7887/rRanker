@@ -135,6 +135,46 @@ describe('osu 谱面确认资源选择', () => {
       .rejects.toThrow('没有所选难度');
   });
 
+  it('逐个落盘媒体，下一项解压前上一项已经写入', async () => {
+    const loaded = await JSZip.loadAsync(await archive());
+    const sample = loaded.file('set/BG.png');
+    const proto = Object.getPrototypeOf(sample) as { async: (type: string) => Promise<Uint8Array> };
+    const original = proto.async;
+    const order: string[] = [];
+    proto.async = function async(this: { name: string }, type: string) {
+      if (/\.(png|mp4)$/iu.test(this.name)) order.push(`read:${this.name}`);
+      return original.call(this, type);
+    };
+    try {
+      const io = reader();
+      io.stageMedia.mockImplementation(async (path: string) => {
+        order.push(`stage:${path}`);
+        return `file:///session/${encodeURIComponent(path)}`;
+      });
+      await readOsuChartPreviewArchive(await archive(), target, io);
+      const bgRead = order.findIndex((item) => item.startsWith('read:') && /\.png$/iu.test(item));
+      const bgStage = order.findIndex((item) => item.startsWith('stage:') && /\.png$/iu.test(item));
+      const movieRead = order.findIndex((item) => item.startsWith('read:') && /\.mp4$/iu.test(item));
+      const movieStage = order.findIndex((item) => item.startsWith('stage:') && /\.mp4$/iu.test(item));
+      expect(bgRead).toBeGreaterThanOrEqual(0);
+      expect(bgStage).toBeGreaterThan(bgRead);
+      expect(movieRead).toBeGreaterThan(bgStage);
+      expect(movieStage).toBeGreaterThan(movieRead);
+    } finally {
+      proto.async = original;
+    }
+  });
+
+  it('媒体写入中途失败时不返回半份清单', async () => {
+    const io = reader();
+    io.stageMedia.mockImplementation(async (path: string) => {
+      if (/\.mp4$/iu.test(path)) throw new Error('写入失败');
+      return 'file:///session/image.png';
+    });
+    await expect(readOsuChartPreviewArchive(await archive(), target, io)).rejects.toThrow('写入失败');
+    expect(io.stageMedia).toHaveBeenCalledTimes(2);
+  });
+
   it('损坏的谱包不会开始落盘', async () => {
     const io = reader();
     await expect(readOsuChartPreviewArchive(Uint8Array.from([1, 2, 3]), target, io)).rejects.toThrow();
