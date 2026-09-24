@@ -116,8 +116,39 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     );
     if (!row) return null;
     if (row.schema_version !== schemaVersion) return null;
-    try { return JSON.parse(row.payload) as T; }
-    catch { return null; }
+    return parseResourcePayload<T>(row.payload);
+  }
+
+  /**
+   * 资源级原子读改写：读取、转换和写入在同一次写入队列任务内完成，调用者不必先读后写。
+   * 并发调用（例如总览批量刷新与详情页按谱面查询同时合并 bests）不会读到彼此的旧快照，
+   * 因此不会出现整包覆盖丢更新。复用必须包含读取的写入队列，而不是另建一把锁：
+   * 队列按调用顺序串行，同一资源的合并顺序即提交顺序，最后提交的值获胜。
+   * 队列内只使用直接数据库调用，不重新进入 runDatabaseWrite（同一队列不可重入）。
+   * transform 只做纯计算；可选代次断言在读取与转换之后、实际提交之前执行。
+   */
+  async updateResource<T>(
+    key: string, schemaVersion: number,
+    transform: (previous: T | null) => { value: T; updatedAt: string },
+    assertCurrent?: () => void,
+  ): Promise<T> {
+    await this.initialize();
+    return runDatabaseWrite(async () => {
+      const db = await getRrankerDatabase();
+      const row = await db.getFirstAsync<{ schema_version: number; payload: string }>(
+        'SELECT schema_version, payload FROM resource_snapshots WHERE resource_key = ?', key,
+      );
+      const previous = row && row.schema_version === schemaVersion ? parseResourcePayload<T>(row.payload) : null;
+      const { value, updatedAt } = transform(previous);
+      assertCurrent?.();
+      await db.runAsync(
+        `INSERT INTO resource_snapshots (resource_key, schema_version, updated_at, payload) VALUES (?, ?, ?, ?)
+         ON CONFLICT(resource_key) DO UPDATE SET schema_version=excluded.schema_version,
+         updated_at=excluded.updated_at, payload=excluded.payload`,
+        key, schemaVersion, updatedAt, JSON.stringify(value),
+      );
+      return value;
+    });
   }
   async saveResource<T>(key: string, schemaVersion: number, updatedAt: string, value: T, assertCurrent?: () => void): Promise<void> {
     await this.initialize();
@@ -226,6 +257,12 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       await db.runAsync('DELETE FROM resource_snapshots');
     });
   }
+}
+
+/** 损坏或不可解析的资源正文按缺失处理，保留原行等待后续覆盖。 */
+function parseResourcePayload<T>(payload: string): T | null {
+  try { return JSON.parse(payload) as T; }
+  catch { return null; }
 }
 
 /** Stay below SQLite's conservative bind limit; table/column names are closed internal values. */
