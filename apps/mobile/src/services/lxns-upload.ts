@@ -6,6 +6,7 @@ import {
   rotateLxnsTokens,
   type LxnsOAuthSession,
 } from '@/providers/lxns-oauth';
+import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { LXNS_API_ROOT } from '@/providers/lxns-config';
 import type { LxnsUploadScore } from '@/services/score-hub-sync-map';
 
@@ -14,6 +15,20 @@ const RETRY_DELAYS_MS = [0, 15_000, 60_000];
 
 function canceledError(): ProviderError {
   return new ProviderError('unknown', '已取消', false);
+}
+
+/**
+ * 每次尝试前的共同入口：先看取消，再复核调用方给的账号资格。
+ * 资格断言缺省是空操作，写入方不必自己判断是否传了断言。
+ */
+function createAttemptGuard(
+  signal?: UploadAbortSignal,
+  assertEligible?: () => void,
+): () => void {
+  return () => {
+    if (signal?.aborted) throw canceledError();
+    assertEligible?.();
+  };
 }
 
 async function waitForRetry(ms: number, signal?: UploadAbortSignal): Promise<void> {
@@ -37,7 +52,9 @@ export async function uploadRecordsToLxns(input: {
   session: ProviderSession;
   records: LxnsUploadScore[];
   signal?: UploadAbortSignal;
-  onTokensRotated?: (session: LxnsOAuthSession) => void | Promise<void>;
+  /** 每次尝试前的资格复核：账号已失效时立即停止，不再向上游写入。 */
+  assertEligible?: () => void;
+  onTokensRotated?: (update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
 }): Promise<{ uploaded: number; session: LxnsOAuthSession }> {
   if (input.session.mode !== 'lxns-oauth') {
     throw new ProviderError('authentication', '落雪上传需要 OAuth 授权', false);
@@ -48,14 +65,17 @@ export async function uploadRecordsToLxns(input: {
 
   let session = input.session;
   if (lxnsAccessTokenExpired(session)) {
-    session = await rotateLxnsTokens(session.refreshToken);
-    await input.onTokensRotated?.(session);
+    const previous = session;
+    session = await rotateLxnsTokens(previous.refreshToken);
+    await input.onTokensRotated?.({ previous, next: session });
   }
 
   let lastError: ProviderError | null = null;
+  const assertUsable = createAttemptGuard(input.signal, input.assertEligible);
   for (const delay of RETRY_DELAYS_MS) {
-    if (input.signal?.aborted) throw canceledError();
+    assertUsable();
     if (delay > 0) await waitForRetry(delay, input.signal);
+    assertUsable();
 
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 120_000);

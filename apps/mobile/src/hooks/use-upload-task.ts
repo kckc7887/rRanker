@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { CatalogSnapshot } from '@/domain/models';
 import type { ProviderSession } from '@/providers/contracts';
-import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
+import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { useNotification } from '@/components/AppNotification';
 import { scoreHubErrorToUserMessage, type ScoreHubAbortSignal } from '@/services/score-hub-client';
@@ -59,7 +59,7 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
   qr: ReturnType<typeof useUploadQrInput>;
   sessionsByAccountId: Record<string, ProviderSession | undefined>;
   uploadMethod: 'friend_code' | 'qr';
-  onLxnsTokensRotated?: (accountId: string, session: LxnsOAuthSession) => void | Promise<void>;
+  onLxnsTokensRotated?: (accountId: string, update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
   onFinished?: (result: UploadResult) => void | Promise<void>;
 }) {
   const { showNotification, showActionNotification } = useNotification();

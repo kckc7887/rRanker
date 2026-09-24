@@ -191,6 +191,39 @@ describe('好友码多目标写入', () => {
     expect(result.targetResults[0]?.status).toBe('failed');
   });
 
+  it('失效的落雪目标不再写远端，其他目标独立完成', async () => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    const lxns = createMaimaiBoundAccount({
+      providerId: 'lxns', displayName: '落雪玩家', rating: 0, playerId: 'lxns',
+    });
+    const lxnsSession: ProviderSession = {
+      mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh',
+      expiresAt: Date.now() + 60_000, persistable: true,
+    };
+    mocks.uploadLxns.mockResolvedValue({ uploaded: 1, session: lxnsSession });
+    let releaseLogin: (value: { jobId: string; botFriendCode: null; body: { __skipAuthToken: string } }) => void = () => undefined;
+    mocks.createFriendLoginJob.mockReturnValue(new Promise((resolve) => { releaseLogin = resolve; }));
+    const pending = uploadMaimaiFromFriendCode({
+      friendCode: '123456789012345',
+      selectedAccountIds: [local.id, lxns.id],
+      targets: resolveUploadTargets([local, lxns], { [lxns.id]: lxnsSession }),
+      sessionsByAccountId: { [lxns.id]: lxnsSession },
+      resolveCatalog: async () => catalog,
+      signal: { aborted: false },
+      onPhase: vi.fn(),
+      onNeedFriendAccept: vi.fn(),
+    });
+    invalidateResourceWrites(`account:${lxns.id}`);
+    releaseLogin({ jobId: 'login-job', botFriendCode: null, body: { __skipAuthToken: 'hub-token' } });
+    const result = await pending;
+
+    expect(mocks.uploadLxns).not.toHaveBeenCalled();
+    expect(result.targetResults).toEqual([
+      expect.objectContaining({ account: local, status: 'success', written: 1 }),
+      expect.objectContaining({ account: lxns, status: 'failed', written: 0 }),
+    ]);
+  });
+
   it('单个目标失败不回滚已经成功的本地写入', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
     const water = createMaimaiBoundAccount({

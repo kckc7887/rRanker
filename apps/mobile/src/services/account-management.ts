@@ -111,52 +111,64 @@ export async function saveLocalAccountName(account: BoundAccount, displayName: s
 
 export type AccountCleanupAttempt = (label: string, action: () => Promise<unknown>) => Promise<void>;
 
-export async function clearBoundAccountData(account: BoundAccount, attempt: AccountCleanupAttempt): Promise<void> {
+/**
+ * 解绑执行计划：关键解绑提交与分项清理分开。
+ * submit 失败必须让整个解绑停止（账号与凭据保持原样，可重试）；
+ * cleanup 失败只记录，不影响解绑结果。
+ */
+export type AccountRemovalPlan = {
+  submit: AccountCleanupAttempt;
+  cleanup: AccountCleanupAttempt;
+};
+
+export async function clearBoundAccountData(account: BoundAccount, plan: AccountRemovalPlan): Promise<void> {
+  const { submit, cleanup } = plan;
   if (account.providerId === 'local') {
-    await attempt('账号', () => localAccounts.remove(account.id));
-    await attempt('成绩', () => snapshots.clear(account.id));
+    await submit('账号', () => localAccounts.remove(account.id));
+    await cleanup('成绩', () => snapshots.clear(account.id));
   } else if (demoAccountBinding(account.providerId)) {
-    await attempt('账号', async () => {
+    await submit('账号', async () => {
       if (account.providerId === 'chunithm-test') await chunithmDemoAccount.remove();
       else if (account.providerId === 'phigros-test') await phigrosDemoAccount.remove();
-      else if (account.providerId === 'musedash-test') {
-        await museDashDemoAccount.remove();
-        await museDashCache.clearPlayer(MUSEDASH_TEST_USER_ID);
-      } else await demoAccounts.remove(account.id);
+      else if (account.providerId === 'musedash-test') await museDashDemoAccount.remove();
+      else await demoAccounts.remove(account.id);
     });
+    if (account.providerId === 'musedash-test') {
+      await cleanup('缓存', () => museDashCache.clearPlayer(MUSEDASH_TEST_USER_ID));
+    }
   } else if (account.providerId === 'chunithm-temp') {
-    await attempt('账号', () => chunithmTempAccount.remove());
+    await submit('账号', () => chunithmTempAccount.remove());
   } else if (account.providerId === 'tuf') {
     const playerId = tufPlayerIdFromAccountId(account.id);
     if (playerId !== null) {
-      await attempt('账号', () => tufAccounts.remove(playerId));
-      await attempt('缓存', () => tufCache.clearPlayer(playerId));
+      await submit('账号', () => tufAccounts.remove(playerId));
+      await cleanup('缓存', () => tufCache.clearPlayer(playerId));
     }
   } else if (account.providerId === 'phira-community') {
     const playerId = phiraPlayerIdFromAccountId(account.id);
     if (playerId !== null) {
-      await attempt('账号', () => phiraAccounts.remove(playerId));
-      await attempt('缓存', () => phiraCache.clearPlayer(playerId));
+      await submit('账号', () => phiraAccounts.remove(playerId));
+      await cleanup('缓存', () => phiraCache.clearPlayer(playerId));
     }
   } else if (account.providerId === 'musedash-moe') {
     const userId = museDashUserIdFromAccountId(account.id);
     if (userId !== null) {
-      await attempt('账号', () => museDashAccounts.remove(userId));
-      await attempt('缓存', () => museDashCache.clearPlayer(userId));
+      await submit('账号', () => museDashAccounts.remove(userId));
+      await cleanup('缓存', () => museDashCache.clearPlayer(userId));
     }
   } else {
     if (account.gameId === 'majdata-net') {
-      await attempt('成绩缓存', () => clearMajdataAccount(account.id));
+      await cleanup('成绩缓存', () => clearMajdataAccount(account.id));
     }
     if (account.gameId === 'rizline') {
-      await attempt('成绩缓存', () => clearRizlineAccount(account.id));
+      await cleanup('成绩缓存', () => clearRizlineAccount(account.id));
     }
-    await attempt('凭据', () => sessions.removeAccount(account.id));
-    await attempt('缓存', () => snapshots.clear(account.id));
+    await submit('凭据', () => sessions.removeAccount(account.id));
+    await cleanup('缓存', () => snapshots.clear(account.id));
     if (account.providerId === 'osu' && isOsuGameId(account.gameId)) {
       const userId = osuUserIdFromAccountId(account.id);
       const gameId = account.gameId;
-      if (userId !== null) await attempt('模式缓存', () => osuCache.clear(gameId, userId));
+      if (userId !== null) await cleanup('模式缓存', () => osuCache.clear(gameId, userId));
     }
   }
 }

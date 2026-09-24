@@ -65,10 +65,35 @@ describe('落雪成绩上传', () => {
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
       headers: expect.objectContaining({ Authorization: 'Bearer new-access' }),
     });
-    expect(rotated).toHaveBeenCalledWith(expect.objectContaining({
-      accessToken: 'new-access', refreshToken: 'new-refresh',
-    }));
+    expect(rotated).toHaveBeenCalledWith({
+      previous: expect.objectContaining({ accessToken: 'old-access', refreshToken: 'old-refresh' }),
+      next: expect.objectContaining({ accessToken: 'new-access', refreshToken: 'new-refresh' }),
+    });
     expect(result.session.refreshToken).toBe('new-refresh');
+  });
+
+  it('重试前复核资格，账号失效后不再向上游写入', async () => {
+    const blocked = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', blocked);
+    await expect(uploadRecordsToLxns({
+      session: session(), records: [score], assertEligible: () => { throw new Error('缓存请求已失效'); },
+    })).rejects.toThrow('缓存请求已失效');
+    expect(blocked).not.toHaveBeenCalled();
+
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+    let eligible = true;
+    const assertion = expect(uploadRecordsToLxns({
+      session: session(),
+      records: [score],
+      assertEligible: () => { if (!eligible) throw new Error('缓存请求已失效'); },
+    })).rejects.toThrow('缓存请求已失效');
+    await vi.advanceTimersByTimeAsync(0);
+    eligible = false;
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('将权限错误标记为不可重试，并在开始前响应取消', async () => {

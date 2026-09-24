@@ -2,7 +2,7 @@ import type { BoundAccount } from '@/domain/bound-account';
 import type { CatalogSnapshot, Player, ScoreSnapshot } from '@/domain/models';
 import type { ProviderSession } from '@/providers/contracts';
 import { ProviderError } from '@/providers/errors';
-import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
+import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { uploadRecordsToDivingFish } from '@/services/diving-fish-upload';
 import { uploadRecordsToLxns } from '@/services/lxns-upload';
@@ -71,8 +71,8 @@ export async function transferMaimaiFromLxns(input: {
   onPhase?: (phase: LxnsTransferPhase) => void;
   onLxnsTokensRotated?: (
     accountId: string,
-    session: LxnsOAuthSession,
-  ) => void | Promise<void>;
+    update: LxnsTokenRotationUpdate,
+  ) => void | Promise<unknown>;
 }): Promise<UploadResult> {
   if (input.sourceAccount.providerId !== 'lxns' || input.sourceSession.mode !== 'lxns-oauth') {
     throw new ProviderError('authentication', '数据来源必须是已授权的舞萌落雪账号', false);
@@ -95,7 +95,7 @@ export async function transferMaimaiFromLxns(input: {
   input.onPhase?.({ kind: 'reading', account: input.sourceAccount });
   const sourceProvider = new LxnsScoreProvider(
     input.sourceSession,
-    (next) => input.onLxnsTokensRotated?.(input.sourceAccount.id, next),
+    (update) => input.onLxnsTokensRotated?.(input.sourceAccount.id, update),
   );
   const [sourcePlayer, sourceRecords] = await Promise.all([
     sourceProvider.getPlayer(),
@@ -133,6 +133,8 @@ export async function transferMaimaiFromLxns(input: {
     let written = 0;
     let targetSkipped = 0;
     try {
+      // 每个目标写入前复核账号是否仍有效：失效目标不再写入，其他目标继续。
+      assertAccount(target.account.id);
       if (target.account.providerId === 'local') {
         const snapshot = buildScoreSnapshot(
           localPlayer(target.account, sourcePlayer),
@@ -154,6 +156,7 @@ export async function transferMaimaiFromLxns(input: {
           session.value,
           divingFishMapped.records,
           input.signal,
+          { assertEligible: () => assertAccount(target.account.id) },
         )).uploaded;
         uploadedDivingFishAccounts.push(target.account);
       } else if (target.account.providerId === 'lxns') {
@@ -166,7 +169,8 @@ export async function transferMaimaiFromLxns(input: {
           session,
           records: lxnsMapped.records,
           signal: input.signal,
-          onTokensRotated: (next) => input.onLxnsTokensRotated?.(target.account.id, next),
+          assertEligible: () => assertAccount(target.account.id),
+          onTokensRotated: (update) => input.onLxnsTokensRotated?.(target.account.id, update),
         });
         written = uploadResult.uploaded;
 
@@ -174,7 +178,7 @@ export async function transferMaimaiFromLxns(input: {
           input.onPhase?.({ kind: 'refreshing', account: target.account });
           const provider = new LxnsScoreProvider(
             uploadResult.session,
-            (next) => input.onLxnsTokensRotated?.(target.account.id, next),
+            (update) => input.onLxnsTokensRotated?.(target.account.id, update),
           );
           const [player, records] = await Promise.all([
             provider.getPlayer(),

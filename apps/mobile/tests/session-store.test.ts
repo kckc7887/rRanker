@@ -38,6 +38,7 @@ import {
   applyLxnsTokenRotation,
   applyRizlineSessionRotation,
   restoreSession,
+  retryPendingLxnsRotationWrites,
   UNBOUND_ACCOUNT_ID,
   useSession,
 } from '@/state/session-store';
@@ -45,6 +46,7 @@ import {
 process.env.OSU_OAUTH_CLIENT_SECRET ??= 'test-client-secret';
 
 const updateAccountSession = vi.hoisted(() => vi.fn(async () => undefined));
+const updateCredentialSession = vi.hoisted(() => vi.fn(async () => 'applied' as const));
 
 vi.mock('@/storage/secure-session-store', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/storage/secure-session-store')>();
@@ -52,6 +54,7 @@ vi.mock('@/storage/secure-session-store', async (importOriginal) => {
     ...actual,
     SecureSessionStore: class {
       updateAccountSession = updateAccountSession;
+      updateCredentialSession = updateCredentialSession;
     },
   };
 });
@@ -126,6 +129,8 @@ describe('useSession store', () => {
   beforeEach(() => {
     updateAccountSession.mockReset();
     updateAccountSession.mockResolvedValue(undefined);
+    updateCredentialSession.mockReset();
+    updateCredentialSession.mockResolvedValue('applied');
     useSession.setState({
       sessionsByAccountId: {},
       boundAccounts: [
@@ -489,7 +494,7 @@ describe('useSession store', () => {
       refreshToken: 'refresh-b',
     };
 
-    await applyLxnsTokenRotation('chunithm:lxns:2', rotated);
+    await applyLxnsTokenRotation('chunithm:lxns:2', { previous: lxnsSession, next: rotated });
 
     expect(useSession.getState().sessionsByAccountId).toMatchObject({
       'maimai:lxns:1': rotated,
@@ -531,7 +536,7 @@ describe('useSession store', () => {
       refreshToken: 'refresh-b',
     };
 
-    await applyLxnsTokenRotation('chunithm:lxns:2', rotated);
+    await applyLxnsTokenRotation('chunithm:lxns:2', { previous: initial, next: rotated });
 
     const state = useSession.getState();
     expect(state.scoreProvider).toBeInstanceOf(LxnsScoreProvider);
@@ -543,7 +548,7 @@ describe('useSession store', () => {
     });
   });
 
-  it('keeps the latest in-memory LXNS session when persistence fails', async () => {
+  it('keeps the latest in-memory LXNS session and marks it pending when persistence fails', async () => {
     useSession.getState().setSession(lxnsSession, {
       displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns',
     });
@@ -553,14 +558,112 @@ describe('useSession store', () => {
       accessToken: 'access-b',
       refreshToken: 'refresh-b',
     };
-    updateAccountSession.mockRejectedValueOnce(new Error('write failed'));
+    updateCredentialSession.mockRejectedValueOnce(new Error('write failed'));
 
-    await expect(applyLxnsTokenRotation(accountId, rotated)).rejects.toThrow('write failed');
+    await expect(applyLxnsTokenRotation(accountId, { previous: lxnsSession, next: rotated }))
+      .resolves.toBe('pending-persist');
 
     const state = useSession.getState();
     expect(state.session).toEqual(rotated);
     expect(state.sessionsByAccountId[accountId]).toEqual(rotated);
     expect((state.scoreProvider as LxnsScoreProvider).getSession()).toEqual(rotated);
+
+    // 本机落盘恢复后补交这次轮换，挂起项不再残留在后续提交里。
+    updateCredentialSession.mockResolvedValue('applied');
+    await expect(retryPendingLxnsRotationWrites()).resolves.toBe(1);
+  });
+
+  it('rejects a late LXNS rotation after the account was re-authorized', async () => {
+    const staleSession = {
+      mode: 'lxns-oauth',
+      accessToken: 'access-a',
+      refreshToken: 'refresh-a',
+      expiresAt: Date.now() + 60_000,
+      persistable: true,
+    } as const;
+    const reAuthorized = {
+      ...staleSession,
+      accessToken: 'access-new',
+      refreshToken: 'refresh-new',
+    };
+    useSession.getState().finishRestore({
+      version: 3,
+      activeAccountId: 'maimai:lxns:1',
+      credentials: [{ id: 'lxns:new', providerId: 'lxns', session: reAuthorized }],
+      accounts: [{
+        id: 'maimai:lxns:1', gameId: 'maimai', providerId: 'lxns',
+        credentialId: 'lxns:new', displayName: '舞萌玩家', scoreDisplay: '15000',
+      }],
+    });
+
+    await expect(applyLxnsTokenRotation('maimai:lxns:1', {
+      previous: staleSession,
+      next: { ...staleSession, accessToken: 'access-b', refreshToken: 'refresh-b' },
+    })).resolves.toBe('stale');
+
+    const state = useSession.getState();
+    expect(state.sessionsByAccountId['maimai:lxns:1']).toEqual(reAuthorized);
+    expect(updateCredentialSession).not.toHaveBeenCalled();
+  });
+
+  it('keeps the shared credential rotating after the initiating account was removed', async () => {
+    const shared = {
+      mode: 'lxns-oauth',
+      accessToken: 'access-a',
+      refreshToken: 'refresh-a',
+      expiresAt: Date.now() + 60_000,
+      persistable: true,
+    } as const;
+    useSession.getState().finishRestore({
+      version: 3,
+      activeAccountId: 'chunithm:lxns:2',
+      credentials: [{ id: 'lxns:shared', providerId: 'lxns', session: shared }],
+      accounts: [
+        {
+          id: 'maimai:lxns:1', gameId: 'maimai', providerId: 'lxns',
+          credentialId: 'lxns:shared', displayName: '舞萌玩家', scoreDisplay: '15000',
+        },
+        {
+          id: 'chunithm:lxns:2', gameId: 'chunithm', providerId: 'lxns',
+          credentialId: 'lxns:shared', displayName: '中二玩家', scoreDisplay: '17.25',
+        },
+      ],
+    });
+    useSession.getState().removeBoundAccount('maimai:lxns:1');
+    const rotated = { ...shared, accessToken: 'access-b', refreshToken: 'refresh-b' };
+
+    await expect(applyLxnsTokenRotation('maimai:lxns:1', { previous: shared, next: rotated }))
+      .resolves.toBe('applied');
+
+    const state = useSession.getState();
+    expect(state.sessionsByAccountId['chunithm:lxns:2']).toEqual(rotated);
+    expect(state.sessionsByAccountId['maimai:lxns:1']).toBeUndefined();
+    expect(state.boundAccounts.map((account) => account.id)).toEqual(['chunithm:lxns:2']);
+    expect(updateCredentialSession).toHaveBeenCalledWith('lxns:shared', rotated, {
+      acceptedRefreshTokens: ['refresh-a'],
+    });
+  });
+
+  it('reports removed and writes nothing when the account and its credential are gone', async () => {
+    useSession.getState().finishRestore({
+      version: 3,
+      activeAccountId: 'maimai:lxns:1',
+      credentials: [{ id: 'lxns:shared', providerId: 'lxns', session: lxnsSession }],
+      accounts: [{
+        id: 'maimai:lxns:1', gameId: 'maimai', providerId: 'lxns',
+        credentialId: 'lxns:shared', displayName: '舞萌玩家', scoreDisplay: '15000',
+      }],
+    });
+    useSession.getState().removeBoundAccount('maimai:lxns:1');
+    updateCredentialSession.mockClear();
+
+    await expect(applyLxnsTokenRotation('maimai:lxns:1', {
+      previous: lxnsSession,
+      next: { ...lxnsSession, accessToken: 'access-b', refreshToken: 'refresh-b' },
+    })).resolves.toBe('removed');
+
+    expect(updateCredentialSession).not.toHaveBeenCalled();
+    expect(useSession.getState().sessionsByAccountId).toEqual({});
   });
 
   it('propagates the final session when reusing one credential for another game', () => {

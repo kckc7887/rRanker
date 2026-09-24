@@ -100,14 +100,14 @@ async function resolveLxnsAvatarUrl(
     if (account.gameId === 'chunithm') {
       const provider = new ChunithmScoreProvider(
         session,
-        (next) => applyLxnsTokenRotation(account.id, next),
+        (update) => applyLxnsTokenRotation(account.id, update),
       );
       const player = await provider.getPlayer(signal);
       return buildChunithmMapIconUrl(player?.map_icon?.id);
     }
     const provider = new LxnsScoreProvider(
       session,
-      (next) => applyLxnsTokenRotation(account.id, next),
+      (update) => applyLxnsTokenRotation(account.id, update),
     );
     const player = await provider.getPlayer(signal);
     return buildLxnsIconUrl(player.presentation?.iconId);

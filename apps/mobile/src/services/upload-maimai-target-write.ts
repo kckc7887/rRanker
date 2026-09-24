@@ -50,6 +50,8 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
     let written = 0;
     let targetSkipped = 0;
     try {
+      // 每个目标写入前复核账号是否仍有效：失效目标不发起后续写入，其他目标继续。
+      input.assertAccount(target.account.id);
       input.onPhase({
         kind: 'uploading',
         message: `写入${target.account.displayName}（${target.account.providerTitle}）中…`,
@@ -99,6 +101,7 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
           session.value,
           divingFishMapped.records,
           input.signal,
+          { assertEligible: () => input.assertAccount(target.account.id) },
         );
         written = result.uploaded;
       } else if (target.account.providerId === 'lxns') {
@@ -116,7 +119,8 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
           session,
           records: lxnsMapped.records,
           signal: input.signal,
-          onTokensRotated: (next) => input.onLxnsTokensRotated?.(target.account.id, next),
+          assertEligible: () => input.assertAccount(target.account.id),
+          onTokensRotated: (update) => input.onLxnsTokensRotated?.(target.account.id, update),
         });
         written = result.uploaded;
       }
