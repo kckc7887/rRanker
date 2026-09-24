@@ -347,37 +347,13 @@ export function MaimaiFilterBar({
       </View>
 
       {onDxRatingTagIdsChange ? (
-        <View style={filterShellStyles.filterRow}>
-          <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>标签</Text>
-          <View style={styles.tagFilterRow}>
-            <Pressable accessibilityRole="button"
-              accessibilityLabel={`谱面标签筛选，${dxRatingTagState === 'ready' ? `当前 ${tagFilterValue}` : tagFilterValue}`}
-              accessibilityState={{ disabled: dxRatingTagState !== 'ready', expanded: tagSheetVisible }}
-              disabled={dxRatingTagState !== 'ready'}
-              onPress={() => { setOpenDropdown(null); setTagSheetVisible(true); }}
-              style={({ pressed }) => [
-                styles.tagFilterTrigger,
-                { backgroundColor: theme.input, borderColor: theme.border },
-                dxRatingTagState !== 'ready' && styles.disabled,
-                pressed && styles.tagFilterTriggerPressed,
-              ]}>
-              <Text numberOfLines={1} style={[styles.tagFilterValue, { color: theme.text }]}>{tagFilterValue}</Text>
-              <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
-            </Pressable>
-            {dxRatingTagState === 'unavailable' && onDxRatingTagRetry ? (
-              <Pressable accessibilityRole="button" accessibilityLabel="重试谱面标签"
-                onPress={onDxRatingTagRetry} hitSlop={8}
-                style={({ pressed }) => [
-                  styles.tagRetryButton,
-                  { backgroundColor: theme.accentSoft, borderColor: theme.accent },
-                  pressed && styles.tagFilterTriggerPressed,
-                ]}>
-                <Ionicons name="refresh" size={16} color={theme.accent} />
-                <Text style={[styles.tagRetryText, { color: theme.accent }]}>重试</Text>
-              </Pressable>
-            ) : null}
-          </View>
-        </View>
+        <DxRatingTagFilterRow
+          state={dxRatingTagState}
+          value={tagFilterValue}
+          sheetVisible={tagSheetVisible}
+          onOpen={() => { setOpenDropdown(null); setTagSheetVisible(true); }}
+          onRetry={onDxRatingTagRetry}
+        />
       ) : null}
 
       <View style={filterShellStyles.filterRow}>
@@ -435,6 +411,55 @@ export function MaimaiFilterBar({
         onClose={() => setTagSheetVisible(false)}
       /> : null}
     </FilterShell>
+  );
+}
+
+function DxRatingTagFilterRow({
+  state,
+  value,
+  sheetVisible,
+  onOpen,
+  onRetry,
+}: {
+  state: DxRatingTagFilterState;
+  value: string;
+  sheetVisible: boolean;
+  onOpen: () => void;
+  onRetry?: () => void;
+}) {
+  const theme = useAppTheme();
+  return (
+    <View style={filterShellStyles.filterRow}>
+      <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>标签</Text>
+      <View style={styles.tagFilterRow}>
+        <Pressable accessibilityRole="button"
+          accessibilityLabel={`谱面标签筛选，${state === 'ready' ? `当前 ${value}` : value}`}
+          accessibilityState={{ disabled: state !== 'ready', expanded: sheetVisible }}
+          disabled={state !== 'ready'}
+          onPress={onOpen}
+          style={({ pressed }) => [
+            styles.tagFilterTrigger,
+            { backgroundColor: theme.input, borderColor: theme.border },
+            state !== 'ready' && styles.disabled,
+            pressed && styles.tagFilterTriggerPressed,
+          ]}>
+          <Text numberOfLines={1} style={[styles.tagFilterValue, { color: theme.text }]}>{value}</Text>
+          <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+        </Pressable>
+        {state === 'unavailable' && onRetry ? (
+          <Pressable accessibilityRole="button" accessibilityLabel="重试谱面标签"
+            onPress={onRetry} hitSlop={8}
+            style={({ pressed }) => [
+              styles.tagRetryButton,
+              { backgroundColor: theme.accentSoft, borderColor: theme.accent },
+              pressed && styles.tagFilterTriggerPressed,
+            ]}>
+            <Ionicons name="refresh" size={16} color={theme.accent} />
+            <Text style={[styles.tagRetryText, { color: theme.accent }]}>重试</Text>
+          </Pressable>
+        ) : null}
+      </View>
+    </View>
   );
 }
 

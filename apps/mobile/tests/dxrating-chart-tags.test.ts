@@ -193,4 +193,14 @@ describe('DXRating chart tags', () => {
     await expect(provider.getChartTags()).rejects.toMatchObject({ code: 'network' });
     await expect(provider.getChartTags()).rejects.toMatchObject({ code: 'upstream_schema' });
   });
+
+  it('retries once on transient upstream failures', async () => {
+    vi.stubGlobal('fetch', vi.fn()
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify(responsePayload), { status: 200 })));
+    const provider = new DxRatingChartTagsProvider();
+
+    const snapshot = await provider.getChartTags();
+    expect(snapshot.tags.map((tag) => tag.name)).toEqual(['转圈', 'Umiyuri', '高难', '易鸟加']);
+  });
 });
