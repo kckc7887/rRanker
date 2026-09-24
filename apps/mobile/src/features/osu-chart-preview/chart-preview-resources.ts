@@ -38,6 +38,38 @@ export function osuPreviewResourceMime(path: string): string {
   return types[extension] ?? 'application/octet-stream';
 }
 
+function osuPreviewZipEntry(
+  entries: ReadonlyMap<string, JSZip.JSZipObject>,
+  path: string,
+): JSZip.JSZipObject {
+  const entry = entries.get(path);
+  if (!entry) throw new Error('谱面媒体资源不存在');
+  return entry;
+}
+
+async function stageValidatedOsuPreviewMedia(
+  entries: ReadonlyMap<string, JSZip.JSZipObject>,
+  mediaPaths: readonly string[],
+  files: OsuChartPreviewFile[],
+  reader: OsuChartPreviewResourceReader,
+  cancellation: ChartPreviewCancellation,
+  completed: number,
+  total: number,
+): Promise<void> {
+  const validation: ChartPreviewCancellation = { ...cancellation, actualBytes: undefined };
+  for (const path of mediaPaths) {
+    await readBudgetedZipEntry(osuPreviewZipEntry(entries, path), validation);
+  }
+  let written = completed;
+  for (const path of mediaPaths) {
+    const bytes = await readBudgetedZipEntry(osuPreviewZipEntry(entries, path), cancellation);
+    const uri = await reader.stageMedia(path, bytes);
+    reader.assertCurrent();
+    files.push({ path, uri, mime: osuPreviewResourceMime(path) });
+    reader.onProgress?.(++written / Math.max(1, total));
+  }
+}
+
 function archivePath(path: string): string {
   const normalized = path.replace(/\\/gu, '/');
   if (/^[a-z]+:|^\/|\u0000/iu.test(normalized)
@@ -122,21 +154,9 @@ export async function readOsuChartPreviewArchive(
     audio[path] = bytesToBase64(bytes);
     reader.onProgress?.(++completed / Math.max(1, total));
   }
-  const validation: ChartPreviewCancellation = { ...cancellation, actualBytes: undefined };
-  for (const path of mediaPaths) {
-    const entry = entries.get(path);
-    if (!entry) throw new Error('谱面媒体资源不存在');
-    await readBudgetedZipEntry(entry, validation);
-  }
-  for (const path of mediaPaths) {
-    const entry = entries.get(path);
-    if (!entry) throw new Error('谱面媒体资源不存在');
-    const bytes = await readBudgetedZipEntry(entry, cancellation);
-    const uri = await reader.stageMedia(path, bytes);
-    reader.assertCurrent();
-    files.push({ path, uri, mime: osuPreviewResourceMime(path) });
-    reader.onProgress?.(++completed / Math.max(1, total));
-  }
+  await stageValidatedOsuPreviewMedia(
+    entries, mediaPaths, files, reader, cancellation, completed, total,
+  );
   reader.assertCurrent();
   reader.onProgress?.(1);
   return { chartPath: selected.path, files, audio };

@@ -1,4 +1,3 @@
-import { createOsuBoundAccount } from '@/domain/bound-account';
 import {
   CHUNITHM_TEST_ACCOUNT_ID,
   CHUNITHM_TEMP_ACCOUNT_ID,
@@ -11,6 +10,7 @@ import {
   createMaxedMuseDashTestAccount,
   createMaxedPhigrosTestAccount,
   createMuseDashBoundAccount,
+  createOsuBoundAccount,
   createPhiraBoundAccount,
   createRizlineBoundAccount,
   createTestBoundAccount,

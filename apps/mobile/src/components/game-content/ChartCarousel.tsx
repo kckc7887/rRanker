@@ -68,7 +68,7 @@ export function ChartCarousel<TItem>({
       scrollRef.current?.scrollTo({ x: next * interval, animated: false });
     }, 50);
     return () => clearTimeout(timer);
-  }, [initialIndex, interval, resetKey]);
+  }, [initialIndex, interval, items.length, resetKey]);
   useEffect(() => {
     const next = clampCarouselIndex(index, items.length);
     if (next === index) return;
