@@ -224,15 +224,15 @@ export class PhigrosScoreProvider implements ScoreProvider {
     });
   }
 
-  /** 推分推荐：返回已验证计划、替补和搜索状态。 */
+  /** 推分推荐：返回已验证计划、替补和搜索状态。chartCost 按谱面计。 */
   async getPushRecommendations(
     delta: number,
-    songCost: number,
+    chartCost: number,
     includePhi = true,
     signal?: AbortSignal,
   ): Promise<PushRecommendationsResult> {
     const { gameRecord, diffTable } = await this.loadSave(signal);
-    return findPushRecommendations(gameRecord, diffTable, { delta, songCost, includePhi, signal });
+    return findPushRecommendations(gameRecord, diffTable, { delta, chartCost, includePhi, signal });
   }
 
   /** 丢弃内存缓存，下次拉取会重新请求云存档 */

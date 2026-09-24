@@ -6,7 +6,9 @@ import type {
   PhigrosKyouTag,
 } from '@/domain/phigros-kyou';
 import {
+  PHIGROS_STRENGTH_POLICY,
   analyzePhigrosStrength,
+  describePhigrosStrengthPoolPolicy,
   resolvePhigrosStrengthAdjustedRks,
   resolvePhigrosStrengthAvailabilityCoefficient,
   resolvePhigrosStrengthCoveredDifficultyCoefficient,
@@ -78,6 +80,46 @@ function catalog(charts: readonly [songId: string, levelIndex: number, constant:
     },
   };
 }
+
+describe('Phigros strength policy', () => {
+  it('keeps every tunable in one readonly policy object', () => {
+    expect(PHIGROS_STRENGTH_POLICY).toEqual({
+      thresholdOffset: 0.2,
+      thresholdCap: 16,
+      includedRates: ['a', 's', 'v', 'phi'],
+      smallSampleCount: 3,
+      maxSupplementsPerTag: 5,
+      secondaryTagMinVotes: 3,
+      maxAvailabilityBonus: 0.02,
+      recommendationCount: 3,
+      recommendationMinGain: 0.0001,
+      recommendationMinAcc: 70,
+      recommendationMaxAcc: 100,
+    });
+    expect(Object.isFrozen(PHIGROS_STRENGTH_POLICY)).toBe(true);
+  });
+
+  it('generates the pool explanation from the policy instead of a second copy', () => {
+    const policy = PHIGROS_STRENGTH_POLICY;
+    const text = describePhigrosStrengthPoolPolicy();
+    expect(text).toContain(`RKS 减 ${policy.thresholdOffset}`);
+    expect(text).toContain(`最高为 ${policy.thresholdCap.toFixed(1)}`);
+    expect(text).toContain(`评级 A 以上`);
+    expect(text).toContain(`样本为 1–${policy.smallSampleCount - 1} 张`);
+    expect(text).toContain(`最多 ${policy.maxSupplementsPerTag} 张`);
+    // 说明文本沿用既有措辞，页面与测试都按这句话排查
+    expect(text).toContain('未达到同类满分基准');
+  });
+
+  it('applies the policy values to the analysis behaviour', () => {
+    // 阈值偏移取政策常量：16.1691 - 0.2 = 15.9691 → 15.9
+    expect(resolvePhigrosStrengthThreshold(16.1691))
+      .toBe(Math.floor((16.1691 - PHIGROS_STRENGTH_POLICY.thresholdOffset) * 10) / 10);
+    expect(resolvePhigrosStrengthThreshold(99)).toBe(PHIGROS_STRENGTH_POLICY.thresholdCap);
+    expect(resolvePhigrosStrengthAvailabilityCoefficient(0, 10))
+      .toBe(1 + PHIGROS_STRENGTH_POLICY.maxAvailabilityBonus);
+  });
+});
 
 describe('Phigros strength analysis', () => {
   it('floors player RKS minus 0.2 to one decimal without boundary drift', () => {
@@ -455,7 +497,8 @@ describe('Phigros strength analysis', () => {
       expect(item.targetAcc * 100).toBe(Math.round(item.targetAcc * 100));
       expect(item.targetAcc).toBeLessThanOrEqual(100);
       expect(item.targetRks).toBeCloseTo(calculateRks(item.difficultyConstant, item.targetAcc), 10);
-      expect(item.projectedGain).toBeGreaterThanOrEqual(0.0001 - 1e-9);
+      expect(item.projectedGain)
+        .toBeGreaterThanOrEqual(PHIGROS_STRENGTH_POLICY.recommendationMinGain - 1e-9);
       expect(item.currentAcc).toBeNull();
     });
   });

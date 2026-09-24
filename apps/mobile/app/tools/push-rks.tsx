@@ -22,7 +22,7 @@ function parseDelta(value: string): number | null {
   return rounded;
 }
 
-function parseSongCost(value: string): number | null {
+function parseChartCost(value: string): number | null {
   const n = parseNumericInput(value);
   if (!Number.isInteger(n) || n < 1 || n > 30) return null;
   return n;
@@ -35,16 +35,16 @@ export default function PushRksToolScreen() {
   const scoreProvider = useSession((s) => s.scoreProvider);
   const catalogQuery = usePhigrosCatalog();
   const [deltaText, setDeltaText] = useState('0.01');
-  const [songCostText, setSongCostText] = useState('1');
+  const [chartCostText, setChartCostText] = useState('1');
   const [includePhi, setIncludePhi] = useState(true);
 
   const delta = parseDelta(deltaText);
-  const songCost = parseSongCost(songCostText);
+  const chartCost = parseChartCost(chartCostText);
   const deltaError = delta == null ? '加值至少为 0.01，且最多两位小数。' : null;
-  const songCostError = songCost == null ? '成本须为 1–30 的整数（愿意打几首歌）。' : null;
+  const chartCostError = chartCost == null ? '成本须为 1–30 的整数（愿意打几张谱面）。' : null;
   const hasPhiSession = session?.mode === 'phi-session'
     && scoreProvider instanceof PhigrosScoreProvider;
-  const inputsValid = delta != null && songCost != null;
+  const inputsValid = delta != null && chartCost != null;
 
   const titleMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -58,13 +58,13 @@ export default function PushRksToolScreen() {
   const saveUpdatedAt = scoreProvider instanceof PhigrosScoreProvider ? scoreProvider.getSaveUpdatedAt() : null;
   const resourceRevision = phigrosResources.peek()?.revision ?? null;
   const pushQuery = useQuery({
-    queryKey: ['phigros-push-rks', activeAccountId, playerId, resourceRevision, saveUpdatedAt, delta, songCost, includePhi],
+    queryKey: ['phigros-push-rks', activeAccountId, playerId, resourceRevision, saveUpdatedAt, delta, chartCost, includePhi],
     enabled: hasPhiSession && inputsValid,
     queryFn: async ({ signal }): Promise<PushRecommendationsResult> => {
-      if (!(scoreProvider instanceof PhigrosScoreProvider) || delta == null || songCost == null) {
+      if (!(scoreProvider instanceof PhigrosScoreProvider) || delta == null || chartCost == null) {
         throw new Error('Phigros 存档未就绪');
       }
-      return scoreProvider.getPushRecommendations(delta, songCost, includePhi, signal);
+      return scoreProvider.getPushRecommendations(delta, chartCost, includePhi, signal);
     },
   });
 
@@ -122,14 +122,14 @@ export default function PushRksToolScreen() {
               <View style={styles.row}>
                 <FormField label="期望加值" value={deltaText} onChangeText={setDeltaText} placeholder="0.01" />
                 <FormField
-                  label="期望成本（首歌）"
-                  value={songCostText}
-                  onChangeText={setSongCostText}
+                  label="期望成本（张谱面）"
+                  value={chartCostText}
+                  onChangeText={setChartCostText}
                   placeholder="1"
                 />
               </View>
               {deltaError ? <Text style={[styles.error, { color: theme.danger }]}>{deltaError}</Text> : null}
-              {songCostError ? <Text style={[styles.error, { color: theme.danger }]}>{songCostError}</Text> : null}
+              {chartCostError ? <Text style={[styles.error, { color: theme.danger }]}>{chartCostError}</Text> : null}
 
               <Pressable
                 accessibilityRole="button"
