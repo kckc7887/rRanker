@@ -210,4 +210,30 @@ describe('DXRating chart tags', () => {
     await expect(provider.getChartTags()).rejects.toMatchObject({ code: 'network' });
     await expect(provider.getChartTags()).rejects.toMatchObject({ code: 'upstream_schema' });
   });
+
+  it('requests the legacy id scheme that the title matcher depends on', async () => {
+    const fetcher = vi.fn(async (_url: string) => new Response(JSON.stringify(responsePayload), { status: 200 }));
+    vi.stubGlobal('fetch', fetcher);
+
+    const snapshot = await new DxRatingChartTagsProvider().getChartTags();
+
+    expect(fetcher).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[0]).toBe('https://miruku.dxrating.net/api/v1/tags?idScheme=legacy');
+    expect(snapshot.relations[0]?.songTitle).toBe('测试曲');
+  });
+
+  it('keeps one relation index per snapshot and never answers from another snapshot', () => {
+    const first = mapDxRatingChartTags(responsePayload);
+    const second = mapDxRatingChartTags({
+      ...responsePayload,
+      tagSongs: [{ song_id: '测试曲', sheet_type: 'dx', sheet_difficulty: 'master', tag_id: 100 }],
+    });
+
+    expect(dxRatingTagsForChart(first, song(), chart()).map((tag) => tag.name))
+      .toEqual(['转圈', 'Umiyuri', '高难', '易鸟加']);
+    expect(dxRatingTagsForChart(second, song(), chart()).map((tag) => tag.name)).toEqual(['易鸟加']);
+    expect(dxRatingTagsForChart(first, song(), chart()).map((tag) => tag.name))
+      .toEqual(['转圈', 'Umiyuri', '高难', '易鸟加']);
+    expect(buildDxRatingChartTagIndex(second, [song()]).get('1:DX:3')).toEqual(new Set([100]));
+  });
 });

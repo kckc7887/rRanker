@@ -103,6 +103,20 @@ function buildRelationIndex(snapshot: DxRatingChartTagsSnapshot): DxRatingRelati
   return { normal, utageExact, utageFallback };
 }
 
+/**
+ * 快照对象即数据身份：同一份快照的关系索引只构建一次。
+ * 逐卡片查询时重建索引会把单次查询放大到全部关系数（约 4ms/次），歌曲详情轮播每次渲染都命中该路径。
+ */
+const relationIndexes = new WeakMap<DxRatingChartTagsSnapshot, DxRatingRelationIndex>();
+
+function relationIndexFor(snapshot: DxRatingChartTagsSnapshot): DxRatingRelationIndex {
+  const cached = relationIndexes.get(snapshot);
+  if (cached) return cached;
+  const built = buildRelationIndex(snapshot);
+  relationIndexes.set(snapshot, built);
+  return built;
+}
+
 function indexedRelationsForChart(
   index: DxRatingRelationIndex,
   song: Song,
@@ -133,7 +147,7 @@ export function dxRatingTagsForChart(
   chart: Chart,
 ): DxRatingChartTag[] {
   if (!snapshot) return [];
-  return relationTags(snapshot, indexedRelationsForChart(buildRelationIndex(snapshot), song, chart));
+  return relationTags(snapshot, indexedRelationsForChart(relationIndexFor(snapshot), song, chart));
 }
 
 export function buildDxRatingChartTagIndex(
@@ -141,7 +155,7 @@ export function buildDxRatingChartTagIndex(
   songs: readonly Song[],
 ): DxRatingChartTagIndex {
   if (!snapshot) return new Map();
-  const relations = buildRelationIndex(snapshot);
+  const relations = relationIndexFor(snapshot);
   const validTagIds = new Set(snapshot.tags.map((tag) => tag.id));
   const result = new Map<string, ReadonlySet<number>>();
   for (const song of songs) {

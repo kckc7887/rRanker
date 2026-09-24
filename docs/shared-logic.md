@@ -89,9 +89,12 @@ Jest 的图片模拟不用于区分图标身份，图标身份差异由 Vitest �
 读取，不落盘、不复用旧快照，只共享在途请求；失败仅自动重试（指数退避，最多 3 次，
 终态失败后 30 秒轮询），不设手动重试入口。`dxRatingTagFilterState` 把无数据且未终态
 失败映射为加载中，不把未启用误报为不可用；错误时内存中的已选标签保留，收到新快照
-后才裁剪失效 ID。提供方经公共 `requestJson` 单次执行；标题按去首尾空白、压缩连续
-空白归一化后匹配，难度忽略大小写。合同由 `dxrating-chart-tags.test.ts`、
-`m2-query.test.tsx`、`m4-score-lists.test.tsx` 覆盖。
+后才裁剪失效 ID。提供方经公共 `requestJson` 单次执行，并显式携带 `idScheme=legacy`：
+领域层按「`song_id` 即曲名」匹配，而接口未把默认方案写进契约，`public` 方案返回不透明 ID
+与新增 `sheet_id`。标题按去首尾空白、压缩连续空白归一化后匹配，难度忽略大小写；
+关系索引以快照对象为身份构建一次，供 `dxRatingTagsForChart` 与 `buildDxRatingChartTagIndex`
+共用，不按卡片重建。合同由 `dxrating-chart-tags.test.ts`、`m2-query.test.tsx`、
+`m4-score-lists.test.tsx` 覆盖。
 
 Phigros 曲库复用 `loadAliasedCatalog` / `useAliasedCatalog` 的来源与别名合并，
 `use-phigros-catalog.ts` 的 `refreshPhigrosCatalog()` 统一主动更新入口，
