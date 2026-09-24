@@ -11,6 +11,8 @@ import {
 } from '@/providers/osu-oauth';
 import { ProviderError } from '@/providers/errors';
 
+process.env.OSU_OAUTH_CLIENT_SECRET ??= 'test-client-secret';
+
 vi.mock('expo-secure-store', () => {
   let pending: string | null = JSON.stringify({ state: 'state-1' });
   return {
@@ -109,8 +111,25 @@ describe('osu! OAuth 授权与轮换', () => {
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('exchangeOsuAuthorizationCode 401 报鉴权错误', async () => {
+  it('exchangeOsuAuthorizationCode 在构建缺失凭据时明确报错且不请求网络', async () => {
     const authorizeUrl = await beginOsuAuthorize();
+    const state = new URLSearchParams(authorizeUrl.split('?')[1]).get('state') ?? '';
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    const previous = process.env.OSU_OAUTH_CLIENT_SECRET;
+    delete process.env.OSU_OAUTH_CLIENT_SECRET;
+    try {
+      await expect(exchangeOsuAuthorizationCode('code-1', state)).rejects.toMatchObject({
+        code: 'authentication',
+        message: expect.stringContaining('凭据缺失') as string,
+      });
+    } finally {
+      if (previous !== undefined) process.env.OSU_OAUTH_CLIENT_SECRET = previous;
+    }
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('exchangeOsuAuthorizationCode 401 报鉴权错误', async () => {    const authorizeUrl = await beginOsuAuthorize();
     const state = new URLSearchParams(authorizeUrl.split('?')[1]).get('state') ?? '';
     stubTokenFetch({ error: 'invalid_grant', error_description: '授权码无效' }, 401);
     await expect(exchangeOsuAuthorizationCode('code-1', state)).rejects.toMatchObject({

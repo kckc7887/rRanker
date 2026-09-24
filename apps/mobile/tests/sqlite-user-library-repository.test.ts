@@ -203,8 +203,73 @@ describe('SqliteUserLibraryRepository', () => {
       key: 'song:1', gameId: 'maimai', kind: 'song', songId: '1', favorite: true, tags: [],
       createdAt: '2026-07-13T00:00:00.000Z', updatedAt: '2026-07-13T00:00:00.000Z',
     }]);
-    expect(sqlite.db.runAsync).toHaveBeenCalledWith(expect.stringContaining('INSERT INTO user_library_items'),
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(expect.stringContaining('INSERT OR REPLACE INTO user_library_items'),
       'song:maimai:1', 'maimai', 'song', '1', null, null, 1, 0, '2026-07-13T00:00:00.000Z', '2026-07-13T00:00:00.000Z');
+  });
+
+  it('filters catalog reads by game inside SQL', async () => {
+    const repository = new SqliteUserLibraryRepository();
+    await repository.list('phigros');
+    expect(sqlite.db.getAllAsync).toHaveBeenCalledWith(
+      'SELECT * FROM user_library_items WHERE game_id = ? ORDER BY item_key', 'phigros',
+    );
+    expect(sqlite.db.getAllAsync).toHaveBeenCalledWith(
+      expect.stringContaining('WHERE i.game_id = ?'), 'phigros',
+    );
+  });
+
+  it('upserts a single target without rewriting unrelated rows', async () => {
+    sqlite.db.getFirstAsync.mockImplementation(async (sql: string) => {
+      if (sql.includes('FROM user_library_meta')) return { schema_version: 4 };
+      if (sql.includes('FROM user_library_items WHERE item_key')) return null;
+      if (sql.includes('FROM user_library_tags WHERE normalized_name')) return { id: 9 };
+      return null;
+    });
+    const repository = new SqliteUserLibraryRepository();
+    await repository.updateTarget(
+      { kind: 'song', gameId: 'maimai', songId: '1' },
+      () => ({
+        key: 'song:maimai:1', gameId: 'maimai', kind: 'song', songId: '1', favorite: true, tags: ['喜欢'],
+        createdAt: '2026-07-13T00:00:00.000Z', updatedAt: '2026-07-13T00:00:00.000Z',
+      }),
+    );
+    expect(sqlite.db.runAsync).not.toHaveBeenCalledWith('DELETE FROM user_library_items');
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      expect.stringContaining('INSERT OR REPLACE INTO user_library_items'),
+      'song:maimai:1', 'maimai', 'song', '1', null, null, 1, 0,
+      '2026-07-13T00:00:00.000Z', '2026-07-13T00:00:00.000Z',
+    );
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      'DELETE FROM user_library_item_tags WHERE item_key = ?', 'song:maimai:1',
+    );
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      'INSERT INTO user_library_item_tags (item_key, tag_id) VALUES (?, ?)', 'song:maimai:1', 9,
+    );
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      'DELETE FROM user_library_tags WHERE id NOT IN (SELECT tag_id FROM user_library_item_tags)',
+    );
+  });
+
+  it('deletes only the requested game rows when clearing a game', async () => {
+    const repository = new SqliteUserLibraryRepository();
+    await repository.clearGame('phigros');
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      'DELETE FROM user_library_item_tags WHERE item_key IN (SELECT item_key FROM user_library_items WHERE game_id = ?)',
+      'phigros',
+    );
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith('DELETE FROM user_library_items WHERE game_id = ?', 'phigros');
+    expect(sqlite.db.runAsync).not.toHaveBeenCalledWith('DELETE FROM user_library_items');
+  });
+
+  it('merges a backup inside one transaction after reading current contents', async () => {
+    const repository = new SqliteUserLibraryRepository();
+    await repository.mergeBackup({ items: [], presets: ['备份'] }, 'merge');
+    expect(sqlite.db.withTransactionAsync).toHaveBeenCalled();
+    expect(sqlite.db.getAllAsync).toHaveBeenCalledWith('SELECT * FROM user_library_items ORDER BY item_key');
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      'INSERT INTO user_library_tag_presets (normalized_name, display_name, sort_order, created_at) VALUES (?, ?, ?, ?)',
+      '备份', '备份', 0, expect.any(String),
+    );
   });
 
   it('propagates transaction failure without reporting success', async () => {

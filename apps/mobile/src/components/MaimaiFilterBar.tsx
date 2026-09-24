@@ -36,6 +36,17 @@ export { FilterChipFrame, NeutralChip };
 
 export type DxRatingTagFilterState = 'ready' | 'loading' | 'unavailable';
 
+/** 查询无数据且未终态失败时一律视为加载中：未启用、自动重试中都不误报为不可用。 */
+export function dxRatingTagFilterState(query: {
+  data?: unknown;
+  isLoading: boolean;
+  isError: boolean;
+}): DxRatingTagFilterState {
+  if (query.data !== undefined) return 'ready';
+  if (!query.isError) return 'loading';
+  return 'unavailable';
+}
+
 export interface VersionFilterOption {
   value: string;
   name: string;
@@ -151,7 +162,7 @@ export function MaimaiFilterBar({
   versions,
   dxRatingTags = [],
   selectedDxRatingTagIds = [],
-  dxRatingTagState = 'unavailable',
+  dxRatingTagState = 'loading',
   versionMulti = false,
   selectedVersions = [],
   currentVersionTitle,

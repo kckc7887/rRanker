@@ -7,6 +7,9 @@ import {
 } from '@/features/chart-preview-shared/chart-preview-assets';
 import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
 import {
+  CHART_PREVIEW_MAX_DOWNLOAD_BYTES,
+} from '@/features/chart-preview-shared/chart-preview-resource-budget';
+import {
   CHART_PREVIEW_PLAYER_LABEL,
   CHART_PREVIEW_RESOURCE_LABEL,
   chartPreviewDownloadFraction,
@@ -42,6 +45,7 @@ export async function prepareOsuChartPreviewWebViewSource(
     let candidateSequence = 0;
     const archive = await downloadOsuBeatmapsetArchive(directory, { beatmapsetId: target.beatmapsetId, includeVideo }, {
       signal,
+      maxArchiveBytes: CHART_PREVIEW_MAX_DOWNLOAD_BYTES,
       onProgress: ({ totalBytesWritten, totalBytesExpectedToWrite }) => onProgress?.({
         label: CHART_PREVIEW_RESOURCE_LABEL,
         value: chartPreviewDownloadFraction(totalBytesWritten, totalBytesExpectedToWrite) * 0.7,

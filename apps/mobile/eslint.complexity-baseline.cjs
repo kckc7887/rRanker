@@ -19,12 +19,6 @@ module.exports = [
   },
   {
     files: [
-      'src/hooks/use-game-data.ts',
-    ],
-    rules: { complexity: ['error', 76] },
-  },
-  {
-    files: [
       'app/best-image.tsx',
     ],
     rules: { complexity: ['error', 73] },
@@ -32,7 +26,6 @@ module.exports = [
   {
     files: [
       'src/features/osu-chart-preview/webview-player/engine/utils/modDifficulty.ts',
-      'src/hooks/use-overview-sync.ts',
     ],
     rules: { complexity: ['error', 67] },
   },
@@ -144,6 +137,7 @@ module.exports = [
   {
     files: [
       'src/features/osu-chart-preview/webview-player/engine/rulesets/mania/hitJudge.ts',
+      'src/hooks/use-overview-sync.ts',
     ],
     rules: { complexity: ['error', 29] },
   },

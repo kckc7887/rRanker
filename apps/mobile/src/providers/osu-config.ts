@@ -1,9 +1,26 @@
+import Constants from 'expo-constants';
+
 /**
- * osu! OAuth 配置（闭源随包内置，经用户确认）。
+ * osu! OAuth 配置。
  * osu! API 换 token 必须携带 client_secret（无 PKCE 模式）。
+ * 该凭据只在构建时经 app.config.js 注入 extra，随包内置是已知取舍；
+ * 公开源码、日志与文档里不得出现真实凭据值。
  */
 export const OSU_OAUTH_CLIENT_ID = '65933';
-export const OSU_OAUTH_CLIENT_SECRET = 'sReah02QEDvoCeQxzObA7HLw968zbsZWDPYk38RS';
+
+function readExtraSecret(): string {
+  try {
+    const extra = Constants.expoConfig?.extra as { osuOAuthClientSecret?: unknown } | undefined;
+    return typeof extra?.osuOAuthClientSecret === 'string' ? extra.osuOAuthClientSecret : '';
+  } catch {
+    return '';
+  }
+}
+
+/** 构建注入的 osu! 应用凭据；调用时读取。测试经 OSU_OAUTH_CLIENT_SECRET 环境变量提供。 */
+export function osuOAuthClientSecret(): string {
+  return readExtraSecret() || process.env.OSU_OAUTH_CLIENT_SECRET || '';
+}
 export const OSU_OAUTH_REDIRECT_URI = 'rranker://oauth/osu';
 export const OSU_OAUTH_SCOPE = 'identify public';
 export const OSU_OAUTH_AUTHORIZE_URL = 'https://osu.ppy.sh/oauth/authorize';

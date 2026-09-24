@@ -21,7 +21,12 @@ vi.mock('expo-secure-store', () => ({
 
 // The store must be imported after the in-memory SecureStore mock.
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import { SecureSessionStore } from '@/storage/secure-session-store';
+import {
+  restorePreservedSessionIndex,
+  SecureSessionStore,
+  SessionIndexCorruptError,
+  SessionIndexUnrecognizedError,
+} from '@/storage/secure-session-store';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { hasRizlinePassword, writeRizlinePassword } from '@/storage/rizline-password-store';
 
@@ -398,8 +403,117 @@ describe('SecureSessionStore 内置账号兼容', () => {
 });
 
 
-describe('Majdata Cookie secure accounts', () => {
-  const input = (id: string): StoredProviderAccountInput => ({ id, gameId: 'majdata-net', providerId: 'majdata-net', displayName: id, scoreDisplay: '-', session: { mode: 'http-cookies', persistable: true, origin: 'https://majdata.net', cookies: [{ name: 'auth', value: `secret-${id}`, path: '/', secure: true }] } });
+describe('SecureSessionStore corrupted index preservation', () => {
+  const INDEX = 'rranker.provider.sessions.index.v4';
+  beforeEach(() => {
+    secure.values.clear();
+    sqlite.values.clear();
+    vi.clearAllMocks();
+  });
+
+  it('preserves malformed JSON and throws without deleting the original', async () => {
+    sqlite.values.set(INDEX, '{broken');
+    const store = createStore();
+    await expect(store.loadVault()).rejects.toBeInstanceOf(SessionIndexCorruptError);
+    expect(sqlite.values.get(INDEX)).toBe('{broken');
+    expect(sqlite.values.get(`${INDEX}.corrupt`)).toBe('{broken');
+    expect(sqlite.values.has(`${INDEX}.unrecognized`)).toBe(false);
+    await expect(store.loadVault()).rejects.toBeInstanceOf(SessionIndexCorruptError);
+    expect(sqlite.values.get(INDEX)).toBe('{broken');
+  });
+
+  it('preserves unsupported versions separately from malformed JSON', async () => {
+    const raw = JSON.stringify({ version: 5, credentials: [], accounts: [] });
+    sqlite.values.set(INDEX, raw);
+    const failure = createStore().loadVault();
+    await expect(failure).rejects.toBeInstanceOf(SessionIndexUnrecognizedError);
+    await expect(createStore().loadVault()).rejects.toMatchObject({
+      reason: 'unsupported-version',
+      preservedRaw: raw,
+    });
+    expect(sqlite.values.get(INDEX)).toBe(raw);
+    expect(sqlite.values.get(`${INDEX}.unrecognized`)).toBe(raw);
+    expect(sqlite.values.has(`${INDEX}.corrupt`)).toBe(false);
+  });
+
+  it('treats a structurally invalid index as unrecognized rather than empty', async () => {
+    const raw = JSON.stringify({ version: 4, credentials: {} });
+    sqlite.values.set(INDEX, raw);
+    await expect(createStore().loadVault()).rejects.toMatchObject({
+      name: 'SessionIndexUnrecognizedError',
+      reason: 'invalid-structure',
+    });
+    expect(sqlite.values.get(INDEX)).toBe(raw);
+  });
+
+  it('loads a valid empty v4 index without deleting anything', async () => {
+    const removeItem = vi.fn(kvStore.removeItem);
+    const store = new SecureSessionStore({ ...kvStore, removeItem });
+    sqlite.values.set(INDEX, JSON.stringify({ version: 4, activeAccountId: null, credentials: [], accounts: [] }));
+    const vault = await store.loadVault();
+    expect(vault.accounts).toEqual([]);
+    expect(removeItem).not.toHaveBeenCalled();
+    expect(sqlite.values.get(INDEX)).toContain('"version":4');
+  });
+
+  it('propagates storage read failures without deleting or preserving', async () => {
+    sqlite.values.set(INDEX, '{broken');
+    const failing = { ...kvStore, getItem: vi.fn(async () => { throw new Error('kv unavailable'); }) };
+    await expect(new SecureSessionStore(failing).loadVault()).rejects.toThrow('kv unavailable');
+    expect(sqlite.values.get(INDEX)).toBe('{broken');
+    expect(sqlite.values.has(`${INDEX}.corrupt`)).toBe(false);
+  });
+
+  it('refuses to overwrite an unparseable index on later writes', async () => {
+    sqlite.values.set(INDEX, '{broken');
+    const store = createStore();
+    await expect(store.upsertAccount(account('maimai:diving-fish:new'))).rejects.toBeInstanceOf(SessionIndexCorruptError);
+    expect(sqlite.values.get(INDEX)).toBe('{broken');
+    await expect(store.setActiveAccountId('maimai:local:x')).rejects.toBeInstanceOf(SessionIndexCorruptError);
+    expect(sqlite.values.get(INDEX)).toBe('{broken');
+  });
+
+  it('skips corrupt legacy vaults without deleting them', async () => {
+    secure.values.set('rranker.provider.sessions.v3', '{broken');
+    secure.values.set('rranker.provider.sessions.v2', '{broken');
+    secure.values.set('rranker.diving-fish.session.v1', '{broken');
+    const vault = await createStore().loadVault();
+    expect(vault.accounts).toEqual([]);
+    expect(secure.values.get('rranker.provider.sessions.v3')).toBe('{broken');
+    expect(secure.values.get('rranker.provider.sessions.v2')).toBe('{broken');
+    expect(secure.values.get('rranker.diving-fish.session.v1')).toBe('{broken');
+  });
+
+  it('restores a preserved index only when the copy parses and the live key is unusable', async () => {
+    const valid = JSON.stringify({ version: 4, activeAccountId: null, credentials: [], accounts: [] });
+    sqlite.values.set(INDEX, valid);
+    sqlite.values.set(`${INDEX}.corrupt`, '{stale');
+    expect(await restorePreservedSessionIndex(kvStore)).toBe(false);
+    expect(sqlite.values.get(INDEX)).toBe(valid);
+    sqlite.values.set(INDEX, '{broken');
+    sqlite.values.set(`${INDEX}.corrupt`, valid);
+    expect(await restorePreservedSessionIndex(kvStore)).toBe(true);
+    expect(sqlite.values.get(INDEX)).toBe(valid);
+    sqlite.values.delete(INDEX);
+    sqlite.values.set(`${INDEX}.corrupt`, '{broken');
+    await expect(restorePreservedSessionIndex(kvStore)).rejects.toBeInstanceOf(SessionIndexCorruptError);
+    expect(sqlite.values.has(INDEX)).toBe(false);
+    sqlite.values.delete(`${INDEX}.corrupt`);
+    expect(await restorePreservedSessionIndex(kvStore)).toBe(false);
+  });
+
+  it('clears preserved copies together with the live index', async () => {
+    sqlite.values.set(INDEX, '{broken');
+    sqlite.values.set(`${INDEX}.corrupt`, '{broken}');
+    sqlite.values.set(`${INDEX}.unrecognized`, '{"version":5}');
+    await createStore().clear();
+    expect(sqlite.values.has(INDEX)).toBe(false);
+    expect(sqlite.values.has(`${INDEX}.corrupt`)).toBe(false);
+    expect(sqlite.values.has(`${INDEX}.unrecognized`)).toBe(false);
+  });
+});
+
+describe('Majdata Cookie secure accounts', () => {  const input = (id: string): StoredProviderAccountInput => ({ id, gameId: 'majdata-net', providerId: 'majdata-net', displayName: id, scoreDisplay: '-', session: { mode: 'http-cookies', persistable: true, origin: 'https://majdata.net', cookies: [{ name: 'auth', value: `secret-${id}`, path: '/', secure: true }] } });
   beforeEach(() => { secure.values.clear(); sqlite.values.clear(); });
   it('restores and removes each isolated credential without exposing it in SQLite', async () => {
     const store = createStore(); await store.upsertAccount(input('a')); await store.upsertAccount(input('b'));

@@ -349,7 +349,7 @@ describe('M4 score list cards', () => {
     expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
   });
 
-  it('disables unavailable DXRating filtering and removes stale selections', async () => {
+  it('disables unavailable DXRating filtering and keeps stale selections', async () => {
     mockRecordsDxRatingState = 'error';
     useRecordsFilter.getState().setSelectedDxRatingTagIds([1]);
     const screen = await render(<RecordsScreen />);
@@ -357,7 +357,7 @@ describe('M4 score list cards', () => {
     expect(screen.getByLabelText('谱面标签筛选，不可用').props.accessibilityState)
       .toEqual(expect.objectContaining({ disabled: true }));
     expect(screen.queryByText('DXRating 标签不可用')).toBeNull();
-    await waitFor(() => expect(useRecordsFilter.getState().selectedDxRatingTagIds).toEqual([]));
+    await waitFor(() => expect(useRecordsFilter.getState().selectedDxRatingTagIds).toEqual([1]));
     expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
   });
 

@@ -42,6 +42,8 @@ import {
   useSession,
 } from '@/state/session-store';
 
+process.env.OSU_OAUTH_CLIENT_SECRET ??= 'test-client-secret';
+
 const updateAccountSession = vi.hoisted(() => vi.fn(async () => undefined));
 
 vi.mock('@/storage/secure-session-store', async (importOriginal) => {

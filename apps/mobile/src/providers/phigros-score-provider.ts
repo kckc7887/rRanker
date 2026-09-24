@@ -232,7 +232,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
     signal?: AbortSignal,
   ): Promise<PushRecommendationsResult> {
     const { gameRecord, diffTable } = await this.loadSave(signal);
-    return findPushRecommendations(gameRecord, diffTable, { delta, songCost, includePhi });
+    return findPushRecommendations(gameRecord, diffTable, { delta, songCost, includePhi, signal });
   }
 
   /** 丢弃内存缓存，下次拉取会重新请求云存档 */

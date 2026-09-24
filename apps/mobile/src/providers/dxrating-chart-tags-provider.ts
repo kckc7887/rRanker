@@ -1,4 +1,3 @@
-import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
 import type {
   DxRatingChartTagsSnapshot,
@@ -6,8 +5,10 @@ import type {
   DxRatingSheetType,
 } from '@/domain/dxrating-chart-tags';
 import { ProviderError, providerErrorFromStatus, type ProviderStatusTexts } from '@/providers/errors';
+import { requestJson } from '@/providers/http-json';
 
-const TAGS_URL = 'https://miruku.dxrating.net/api/v1/tags';
+const DXRATING_BASE_URL = 'https://miruku.dxrating.net';
+const DXRATING_TAGS_PATH = '/api/v1/tags';
 
 const LocalizedStringSchema = z.record(z.string(), z.string());
 const TagSchema = z.object({
@@ -70,14 +71,20 @@ export function mapDxRatingChartTags(input: unknown): DxRatingChartTagsSnapshot 
   if (!parsed.success) {
     throw new ProviderError('upstream_schema', 'DXRating 标签响应结构与已验证契约不一致', true);
   }
-  if (parsed.data.tagGroups.length === 0) {
+  return buildDxRatingChartTagsSnapshot(parsed.data);
+}
+
+type DxRatingTagsResponse = z.output<typeof TagsResponseSchema>;
+
+function buildDxRatingChartTagsSnapshot(parsed: DxRatingTagsResponse): DxRatingChartTagsSnapshot {
+  if (parsed.tagGroups.length === 0) {
     throw new ProviderError('upstream_schema', 'DXRating 标签响应缺少标签分组', true);
   }
 
-  const groupsById = new Map(parsed.data.tagGroups.map((group) => [group.id, group]));
+  const groupsById = new Map(parsed.tagGroups.map((group) => [group.id, group]));
   const tagIds = new Set<number>();
   const tags: DxRatingChartTag[] = [];
-  for (const tag of parsed.data.tags) {
+  for (const tag of parsed.tags) {
     if (tag.group_id === null || tagIds.has(tag.id)) continue;
     const group = groupsById.get(tag.group_id);
     if (!group) continue;
@@ -95,7 +102,7 @@ export function mapDxRatingChartTags(input: unknown): DxRatingChartTagsSnapshot 
   }
   return {
     tags,
-    relations: parsed.data.tagSongs
+    relations: parsed.tagSongs
       .filter((relation) => tagIds.has(relation.tag_id))
       .map((relation) => ({
         songTitle: relation.song_id,
@@ -113,27 +120,24 @@ export function mapDxRatingChartTags(input: unknown): DxRatingChartTagsSnapshot 
 }
 
 export class DxRatingChartTagsProvider {
-  async getChartTags(): Promise<DxRatingChartTagsSnapshot> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12_000);
-    try {
-      const response = await expoFetch(TAGS_URL, {
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      });
-      if (!response.ok) throw providerErrorFromStatus(response.status, DXRATING_STATUS_TEXTS);
-      return mapDxRatingChartTags(await response.json());
-    } catch (error) {
-      if (error instanceof ProviderError) throw error;
-      if (error instanceof SyntaxError) {
-        throw new ProviderError('upstream_schema', 'DXRating 返回了无效 JSON', true, { cause: error });
-      }
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new ProviderError('timeout', 'DXRating 谱面标签读取超时', true, { cause: error });
-      }
-      throw new ProviderError('network', '无法连接 DXRating 谱面标签服务', true, { cause: error });
-    } finally {
-      clearTimeout(timeout);
-    }
+  async getChartTags(signal?: AbortSignal): Promise<DxRatingChartTagsSnapshot> {
+    const parsed = await requestJson({
+      baseUrl: DXRATING_BASE_URL,
+      path: DXRATING_TAGS_PATH,
+      schema: TagsResponseSchema,
+      fetcher: fetch,
+      signal,
+      label: 'DXRating',
+      timeoutMs: 12_000,
+      retries: 1,
+      diagnosticScenario: 'metadata',
+      error: (status) => providerErrorFromStatus(status, DXRATING_STATUS_TEXTS),
+      messages: {
+        schema: 'DXRating 标签响应结构与已验证契约不一致',
+        timeout: 'DXRating 谱面标签读取超时',
+        network: '无法连接 DXRating 谱面标签服务',
+      },
+    });
+    return buildDxRatingChartTagsSnapshot(parsed);
   }
 }

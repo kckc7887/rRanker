@@ -60,7 +60,7 @@ let mockDxRatingTagCount = 0;
 let mockDxRatingTagSongTitle = '正常曲目 A';
 let mockDxRatingTagSheetType: 'dx' | 'std' | 'utage' | 'utage2p' = 'dx';
 let mockDxRatingTagDifficulty = 'master';
-let mockDxRatingTagState: 'live' | 'cache' | 'error' | 'loading' = 'live';
+let mockDxRatingTagState: 'live' | 'cache' | 'error' | 'loading' | 'idle' = 'live';
 let mockUserLibraryData: unknown[] = [];
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
@@ -228,6 +228,9 @@ jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () =
   }
   if (mockDxRatingTagState === 'loading') {
     return { data: undefined, isLoading: true, isError: false, error: null };
+  }
+  if (mockDxRatingTagState === 'idle') {
+    return { data: undefined, isLoading: false, isError: false, error: null };
   }
   const tags = mockDxRatingTags.slice(0, mockDxRatingTagCount);
   return {
@@ -597,6 +600,16 @@ describe('M2 song query screens', () => {
     expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]);
   });
 
+  it('reports a disabled tag query as loading instead of unavailable', async () => {
+    mockDxRatingTagState = 'idle';
+    useCatalogFilter.getState().setSelectedDxRatingTagIds([1]);
+    const idle = await render(<SearchScreen />);
+    await fireEvent.press(idle.getByLabelText(/展开筛选/));
+    expect(idle.getByLabelText('谱面标签筛选，加载中').props.accessibilityState)
+      .toEqual(expect.objectContaining({ disabled: true }));
+    expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]);
+  });
+
   it('keeps the tag entry disabled without rendering an unavailable source bar', async () => {
     mockDxRatingTagState = 'error';
     useCatalogFilter.getState().setSelectedDxRatingTagIds([1]);
@@ -605,7 +618,7 @@ describe('M2 song query screens', () => {
     expect(unavailable.getByLabelText('谱面标签筛选，不可用').props.accessibilityState)
       .toEqual(expect.objectContaining({ disabled: true }));
     expect(unavailable.queryByText('DXRating 标签不可用')).toBeNull();
-    await waitFor(() => expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([]));
+    await waitFor(() => expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]));
   });
 
   it('removes tag selections that disappeared from a newer DXRating snapshot', async () => {

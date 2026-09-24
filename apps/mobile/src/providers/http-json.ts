@@ -65,7 +65,7 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
       throw options.signal.reason;
     }
     const controller = new AbortController();
-    const onExternalAbort = () => controller.abort();
+    const onExternalAbort = () => controller.abort(options.signal?.reason);
     options.signal?.addEventListener('abort', onExternalAbort, { once: true });
     const timeout = setTimeout(() => controller.abort(), timeoutMs);
     const started = Date.now();
@@ -162,7 +162,7 @@ export async function fetchProviderJson(options: ProviderJsonOptions): Promise<u
   let result = 'error';
   let diagnosticError: unknown;
   const controller = new AbortController();
-  const onExternalAbort = () => controller.abort();
+  const onExternalAbort = () => controller.abort(options.signal?.reason);
   if (options.signal?.aborted) controller.abort(options.signal.reason);
   else options.signal?.addEventListener('abort', onExternalAbort, { once: true });
   const timeout = setTimeout(() => controller.abort(), 12_000);

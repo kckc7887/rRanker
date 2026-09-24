@@ -2,8 +2,12 @@ import { crc32 } from 'node:zlib';
 import { describe, expect, it } from 'vitest';
 import {
   CHART_PREVIEW_CRC_CHUNK_BYTES,
+  CHART_PREVIEW_MAX_DOWNLOAD_BYTES,
   CHART_PREVIEW_MAX_TOTAL_UNCOMPRESSED_BYTES,
+  assertChartPreviewDownloadBytes,
+  chartPreviewDeclaredUncompressedSize,
   ChartPreviewBudgetError,
+  ChartPreviewBudgetExceededError,
   createChartPreviewActualBytes,
   readBudgetedZipEntry,
 } from '@/features/chart-preview-shared/chart-preview-resource-budget';
@@ -37,5 +41,16 @@ describe('chart preview actual bytes and cancellation', () => {
       },
     })).rejects.toThrow('操作已取消');
     expect(checks).toBeGreaterThanOrEqual(3);
+  });
+
+  it('separates budget overflow from undeterminable declared sizes', () => {
+    expect(() => assertChartPreviewDownloadBytes(CHART_PREVIEW_MAX_DOWNLOAD_BYTES + 1))
+      .toThrow(ChartPreviewBudgetExceededError);
+    expect(() => assertChartPreviewDownloadBytes(CHART_PREVIEW_MAX_DOWNLOAD_BYTES + 1))
+      .toThrow(ChartPreviewBudgetError);
+    expect(() => chartPreviewDeclaredUncompressedSize({ dir: false }))
+      .toThrow(ChartPreviewBudgetError);
+    expect(() => chartPreviewDeclaredUncompressedSize({ dir: false }))
+      .not.toThrow(ChartPreviewBudgetExceededError);
   });
 });

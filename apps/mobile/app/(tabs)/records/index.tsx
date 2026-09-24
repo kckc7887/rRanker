@@ -8,7 +8,7 @@ import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { RecordsListPage } from '@/components/game-content/GameListPages';
 import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
-import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
+import { MaimaiFilterBar, dxRatingTagFilterState, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
@@ -90,14 +90,11 @@ export function RecordsScreen() {
 
   useEffect(() => {
     if (activeGameId !== 'maimai' || selectedDxRatingTagIds.length === 0) return;
-    if (dxRatingChartTags.data) {
-      const validIds = new Set(dxRatingChartTags.data.tags.map((tag) => tag.id));
-      const next = selectedDxRatingTagIds.filter((tagId) => validIds.has(tagId));
-      if (next.length !== selectedDxRatingTagIds.length) setSelectedDxRatingTagIds(next);
-    } else if (dxRatingChartTags.isError) {
-      setSelectedDxRatingTagIds([]);
-    }
-  }, [activeGameId, dxRatingChartTags.data, dxRatingChartTags.isError, selectedDxRatingTagIds, setSelectedDxRatingTagIds]);
+    if (!dxRatingChartTags.data) return;
+    const validIds = new Set(dxRatingChartTags.data.tags.map((tag) => tag.id));
+    const next = selectedDxRatingTagIds.filter((tagId) => validIds.has(tagId));
+    if (next.length !== selectedDxRatingTagIds.length) setSelectedDxRatingTagIds(next);
+  }, [activeGameId, dxRatingChartTags.data, selectedDxRatingTagIds, setSelectedDxRatingTagIds]);
 
   const versions = useMemo<VersionFilterOption[]>(() => {
     if (!data) return [];
@@ -196,7 +193,7 @@ export function RecordsScreen() {
         versionLocale={versionLocale} versions={versions}
         dxRatingTags={dxRatingChartTags.data?.tags ?? []}
         selectedDxRatingTagIds={selectedDxRatingTagIds}
-        dxRatingTagState={dxRatingChartTags.data ? 'ready' : dxRatingChartTags.isLoading ? 'loading' : 'unavailable'}
+        dxRatingTagState={dxRatingTagFilterState(dxRatingChartTags)}
         onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
         onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
         onAchievementMinChange={setAchievementMin} onAchievementMaxChange={setAchievementMax}

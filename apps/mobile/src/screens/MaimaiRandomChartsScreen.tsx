@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
+import { MaimaiFilterBar, dxRatingTagFilterState, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { RandomChartsPage } from '@/components/RandomChartsPage';
 import { ScoreRecordCard, type ScoreRecordCardData } from '@/components/ScoreRecordCard';
@@ -70,14 +70,11 @@ export function MaimaiRandomChartsScreen() {
 
   useEffect(() => {
     if (selectedDxRatingTagIds.length === 0) return;
-    if (dxRatingChartTags.data) {
-      const validIds = new Set(dxRatingChartTags.data.tags.map((tag) => tag.id));
-      const next = selectedDxRatingTagIds.filter((tagId) => validIds.has(tagId));
-      if (next.length !== selectedDxRatingTagIds.length) setSelectedDxRatingTagIds(next);
-    } else if (dxRatingChartTags.isError) {
-      return;
-    }
-  }, [dxRatingChartTags.data, dxRatingChartTags.isError, selectedDxRatingTagIds, setSelectedDxRatingTagIds]);
+    if (!dxRatingChartTags.data) return;
+    const validIds = new Set(dxRatingChartTags.data.tags.map((tag) => tag.id));
+    const next = selectedDxRatingTagIds.filter((tagId) => validIds.has(tagId));
+    if (next.length !== selectedDxRatingTagIds.length) setSelectedDxRatingTagIds(next);
+  }, [dxRatingChartTags.data, selectedDxRatingTagIds, setSelectedDxRatingTagIds]);
 
   const records = useMemo(() => scores.data?.records ?? [], [scores.data?.records]);
   const bestByChart = useMemo(() => buildBestRecordMap(records), [records]);
@@ -147,7 +144,7 @@ export function MaimaiRandomChartsScreen() {
               constantMax={constantMax}
               constantMin={constantMin}
               difficulty={difficulty}
-              dxRatingTagState={dxRatingChartTags.data ? 'ready' : dxRatingChartTags.isLoading ? 'loading' : 'unavailable'}
+              dxRatingTagState={dxRatingTagFilterState(dxRatingChartTags)}
               dxRatingTags={dxRatingChartTags.data?.tags ?? []}
               multiAchievement={multiAchievement}
               onAchievementMaxChange={setAchievementMax}

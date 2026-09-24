@@ -60,9 +60,9 @@ function buildPool(lowAccIndex = 29) {
 }
 
 describe('findPushRecommendations', () => {
-  it('splits exact gain across songCost songs as perSongShare', () => {
+  it('splits exact gain across songCost songs as perSongShare', async () => {
     const { gameRecord, difficultyTable } = buildPool();
-    const result = findPushRecommendations(gameRecord, difficultyTable, {
+    const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.1,
       songCost: 4,
     });
@@ -74,9 +74,9 @@ describe('findPushRecommendations', () => {
     expect(result.perSongShare).toBeLessThan(0.03);
   });
 
-  it('finds charts that can cover one song share and sorts by ACC diff', () => {
+  it('finds charts that can cover one song share and sorts by ACC diff', async () => {
     const { gameRecord, difficultyTable } = buildPool();
-    const result = findPushRecommendations(gameRecord, difficultyTable, {
+    const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
       songCost: 1,
     });
@@ -117,20 +117,20 @@ describe('findPushRecommendations', () => {
     };
     pushed[pushSong] = levels;
 
-    const after = findPushRecommendations(pushed, difficultyTable, {
+    const after = await findPushRecommendations(pushed, difficultyTable, {
       delta: 0.01,
       songCost: 1,
     });
     expect(after.currentRks).toBeGreaterThanOrEqual(result.currentRks + result.perSongShare);
   });
 
-  it('higher songCost lowers per-song ACC requirement', () => {
+  it('higher songCost lowers per-song ACC requirement', async () => {
     const { gameRecord, difficultyTable } = buildPool();
-    const solo = findPushRecommendations(gameRecord, difficultyTable, {
+    const solo = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
       songCost: 1,
     });
-    const split = findPushRecommendations(gameRecord, difficultyTable, {
+    const split = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
       songCost: 4,
     });
@@ -144,7 +144,7 @@ describe('findPushRecommendations', () => {
       .toBeGreaterThanOrEqual(split.exactTarget - 1e-9);
   });
 
-  it('hides per-song targets when two charts compete for one Best27 slot', () => {
+  it('hides per-song targets when two charts compete for one Best27 slot', async () => {
     const gameRecord: Record<string, (PhigrosScoreEntry | null)[]> = {};
     const difficultyTable: Record<string, number[]> = {};
     for (let i = 0; i < 26; i += 1) {
@@ -159,7 +159,7 @@ describe('findPushRecommendations', () => {
       gameRecord[id] = [null, null, entry(id, 2, 15, 800_000, 80), null];
     }
 
-    const split = findPushRecommendations(gameRecord, difficultyTable, {
+    const split = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.2,
       songCost: 2,
       includePhi: false,
@@ -172,7 +172,7 @@ describe('findPushRecommendations', () => {
     expect(formatPushSearchSummary(split)).toContain('无法用 2 首');
     expect(formatPushSearchSummary(split)).not.toContain('没有 2 首');
 
-    const solo = findPushRecommendations(gameRecord, difficultyTable, {
+    const solo = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.1,
       songCost: 1,
       includePhi: false,
@@ -184,14 +184,14 @@ describe('findPushRecommendations', () => {
       .toBeGreaterThanOrEqual(solo.exactTarget - 1e-9);
   });
 
-  it('can exclude recommendations that require φ (target Acc 100%)', () => {
+  it('can exclude recommendations that require φ (target Acc 100%)', async () => {
     const { gameRecord, difficultyTable } = buildPool();
-    const withPhi = findPushRecommendations(gameRecord, difficultyTable, {
+    const withPhi = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.1,
       songCost: 1,
       includePhi: true,
     });
-    const withoutPhi = findPushRecommendations(gameRecord, difficultyTable, {
+    const withoutPhi = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.1,
       songCost: 1,
       includePhi: false,
@@ -257,7 +257,7 @@ function expectVerifiedPlan(
 }
 
 describe('push plan invariants', () => {
-  it('does not treat a sorted mix of the verified pair and substitutes as the plan', () => {
+  it('does not treat a sorted mix of the verified pair and substitutes as the plan', async () => {
     const { gameRecord, difficultyTable } = inCharts([
       { id: 'song.0', difficulty: 11.9, rawAcc: 96.28 },
       { id: 'song.1', difficulty: 15.1, rawAcc: 94.15 },
@@ -268,7 +268,7 @@ describe('push plan invariants', () => {
       { id: 'song.6', difficulty: 16.4, rawAcc: 81.95 },
       { id: 'song.7', difficulty: 12.7, rawAcc: 85.51 },
     ]);
-    const result = findPushRecommendations(gameRecord, difficultyTable, {
+    const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
       songCost: 2,
       includePhi: false,
@@ -276,13 +276,13 @@ describe('push plan invariants', () => {
     expectVerifiedPlan(gameRecord, difficultyTable, result);
   });
 
-  it('finds a joint plan when no single chart can cover the average share', () => {
+  it('finds a joint plan when no single chart can cover the average share', async () => {
     const { gameRecord, difficultyTable } = inCharts([
       { id: 'song.hi', difficulty: 16, rawAcc: 99.5 },
       { id: 'song.lo.a', difficulty: 4, rawAcc: 99.5 },
       { id: 'song.lo.b', difficulty: 4, rawAcc: 99.5 },
     ]);
-    const result = findPushRecommendations(gameRecord, difficultyTable, {
+    const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.02,
       songCost: 3,
       includePhi: false,
@@ -291,13 +291,13 @@ describe('push plan invariants', () => {
     expect(result.exactTarget).toBeCloseTo(0.795, 6);
   });
 
-  it('reports not_found instead of impossibility when the candidate pool is too small', () => {
+  it('reports not_found instead of impossibility when the candidate pool is too small', async () => {
     const { gameRecord, difficultyTable } = inCharts([
       { id: 'song.hi', difficulty: 16, rawAcc: 99.5 },
       { id: 'song.lo.a', difficulty: 4, rawAcc: 99.5 },
       { id: 'song.lo.b', difficulty: 4, rawAcc: 99.5 },
     ]);
-    const result = findPushRecommendations(gameRecord, difficultyTable, {
+    const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.02,
       songCost: 3,
       includePhi: false,
@@ -311,11 +311,11 @@ describe('push plan invariants', () => {
     expect(formatPushSearchSummary(result)).not.toContain('无解');
   });
 
-  it('can recommend an unplayed chart', () => {
+  it('can recommend an unplayed chart', async () => {
     const { gameRecord, difficultyTable } = inCharts([
       { id: 'song.new', difficulty: 15, rawAcc: 0 },
     ]);
-    const result = findPushRecommendations(gameRecord, difficultyTable, {
+    const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
       songCost: 1,
       includePhi: false,
@@ -324,12 +324,12 @@ describe('push plan invariants', () => {
     expect(result.plan[0]).toMatchObject({ songId: 'song.new', currentAcc: 0 });
   });
 
-  it('sorts equal Acc gaps by difficulty', () => {
+  it('sorts equal Acc gaps by difficulty', async () => {
     const { gameRecord, difficultyTable } = inCharts([
       { id: 'song.low', difficulty: 10, rawAcc: 90 },
       { id: 'song.high', difficulty: 12, rawAcc: 90 },
     ]);
-    const result = findPushRecommendations(gameRecord, difficultyTable, {
+    const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
       songCost: 1,
     });
@@ -340,5 +340,48 @@ describe('push plan invariants', () => {
       const current = shown[i]!;
       if (previous.accDiff === current.accDiff) expect(current.difficulty).toBeGreaterThanOrEqual(previous.difficulty);
     }
+  });
+});
+
+describe('findPushRecommendations cancellation', () => {
+  it('throws the abort reason without searching when already cancelled', async () => {
+    const { gameRecord, difficultyTable } = buildPool();
+    const controller = new AbortController();
+    controller.abort(new Error('user left'));
+    await expect(findPushRecommendations(gameRecord, difficultyTable, {
+      delta: 0.1,
+      songCost: 2,
+      signal: controller.signal,
+    })).rejects.toThrow('user left');
+  });
+
+  it('aborts mid-search instead of returning a partial plan', async () => {
+    const { gameRecord, difficultyTable } = buildPool();
+    let reads = 0;
+    const flipping = {
+      get aborted() { reads += 1; return reads > 4; },
+      reason: new Error('stop-search'),
+    };
+    await expect(findPushRecommendations(gameRecord, difficultyTable, {
+      delta: 0.1,
+      songCost: 2,
+      signal: flipping as AbortSignal,
+    })).rejects.toThrow('stop-search');
+    expect(reads).toBeGreaterThan(4);
+  });
+
+  it('yields to the event loop between search slices', async () => {
+    const { gameRecord, difficultyTable } = buildPool();
+    let clock = 1_000_000;
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 30));
+    let ticks = 0;
+    const ticker = setInterval(() => { ticks += 1; }, 0);
+    try {
+      await findPushRecommendations(gameRecord, difficultyTable, { delta: 0.1, songCost: 2 });
+    } finally {
+      clearInterval(ticker);
+      now.mockRestore();
+    }
+    expect(ticks).toBeGreaterThan(0);
   });
 });

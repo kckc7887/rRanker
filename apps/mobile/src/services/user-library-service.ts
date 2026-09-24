@@ -1,4 +1,4 @@
-import { assertUserDataBackupExportable, createUserDataBackup, DEFAULT_TAG_PRESETS, libraryTargetKey, MAX_BACKUP_ITEMS, mergeLibraryItems, normalizeLibraryItem, normalizeTagPresets, normalizeTags, shouldKeepLibraryItem } from '@/domain/user-library';
+import { assertUserDataBackupExportable, createUserDataBackup, DEFAULT_TAG_PRESETS, libraryTargetKey, normalizeLibraryItem, normalizeTagPresets, normalizeTags, shouldKeepLibraryItem } from '@/domain/user-library';
 import type { LibraryTarget, RestoreMode, UserDataBackup, UserDataBackupV3, UserLibraryItem } from '@/domain/user-library';
 import type { GameId } from '@/domain/game-bind-options';
 import type { ChartType } from '@/domain/models';
@@ -51,34 +51,25 @@ export class UserLibraryService {
   }
 
   async restore(backup: UserDataBackup, mode: RestoreMode): Promise<UserLibraryItem[]> {
-    const [currentItems, currentPresets] = await Promise.all([this.repository.list(), this.listTagPresets()]);
-    const importedPresets = backup.version === 1 ? [...DEFAULT_TAG_PRESETS] : backup.tagPresets;
-    const nextPresets = backup.version === 1 && mode === 'merge'
-      ? currentPresets
-      : normalizeTagPresets(mode === 'merge' ? [...currentPresets, ...importedPresets] : importedPresets);
     const imported = backup.items.map((item) => normalizeLibraryItem(item)).filter(shouldKeepLibraryItem);
-    const nextItems = mode === 'merge' ? mergeLibraryItems(currentItems, imported) : mergeLibraryItems([], imported);
-    if (nextItems.length > MAX_BACKUP_ITEMS) throw new Error('备份条目超过上限');
-    if (!this.repository.replaceContents) throw new Error('个人曲库恢复缺少原子写入');
-    return this.repository.replaceContents(nextItems, nextPresets);
+    const importedPresets = backup.version === 1 ? [...DEFAULT_TAG_PRESETS] : backup.tagPresets;
+    // v1 备份不带预设：合并模式传空数组以保留当前预设，替换模式回退默认预设。
+    const presets = backup.version === 1 && mode === 'merge' ? [] : importedPresets;
+    return this.repository.mergeBackup({ items: imported, presets }, mode);
   }
 
   clear(): Promise<void> { return this.repository.clear(); }
 
   /** 仅清除指定游戏的收藏、练习谱面和条目标签；保留其他游戏及全局标签预设。 */
   clearGame(gameId: GameId): Promise<UserLibraryItem[]> {
-    return this.repository.update((items) => items.filter((item) => item.gameId !== gameId));
+    return this.repository.clearGame(gameId);
   }
 
   private updateTarget(
     target: LibraryTarget,
     create: (current: UserLibraryItem | undefined, timestamp: string) => UserLibraryItem,
   ): Promise<UserLibraryItem[]> {
-    const key = libraryTargetKey(target);
-    return this.repository.update((items) => {
-      const current = items.find((item) => item.key === key);
-      const next = create(current, this.now());
-      return [...items.filter((item) => item.key !== key), next].filter(shouldKeepLibraryItem);
-    });
+    const timestamp = this.now();
+    return this.repository.updateTarget(target, (current) => create(current, timestamp));
   }
 }

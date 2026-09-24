@@ -42,9 +42,18 @@ interface DxRatingRelationIndex {
   utageFallback: ReadonlyMap<string, ReadonlyMap<string, readonly DxRatingChartTagRelation[]>>;
 }
 
+function normalizeDxRatingTitle(title: string): string {
+  return title.trim().replace(/\s+/gu, ' ');
+}
+
+function normalizeDxRatingDifficulty(difficulty: string): string {
+  return difficulty.trim().toLowerCase();
+}
+
 function canonicalUtageTitle(title: string): string {
-  const match = title.match(/^\s*[\[［【]([^\]］】]+)[\]］】]\s*(.*)$/u);
-  if (!match) return title.trim();
+  const normalized = normalizeDxRatingTitle(title);
+  const match = normalized.match(/^\s*[\[［【]([^\]］】]+)[\]］】]\s*(.*)$/u);
+  if (!match) return normalized;
   return `[${match[1].trim()}]${match[2].trim()}`;
 }
 
@@ -81,12 +90,12 @@ function buildRelationIndex(snapshot: DxRatingChartTagsSnapshot): DxRatingRelati
   const utageFallback = new Map<string, Map<string, DxRatingChartTagRelation[]>>();
   for (const relation of snapshot.relations) {
     if (relation.sheetType === 'std' || relation.sheetType === 'dx') {
-      appendRelation(normal, `${relation.songTitle}\u0000${relation.sheetType}\u0000${relation.sheetDifficulty}`, relation);
+      appendRelation(normal, `${normalizeDxRatingTitle(relation.songTitle)}\u0000${relation.sheetType}\u0000${normalizeDxRatingDifficulty(relation.sheetDifficulty)}`, relation);
       continue;
     }
     const canonicalTitle = canonicalUtageTitle(relation.songTitle);
     appendRelation(utageExact, `${relation.sheetType}\u0000${canonicalTitle}`, relation);
-    const fallbackKey = `${relation.sheetType}\u0000${stripUtageTitlePrefix(relation.songTitle)}`;
+    const fallbackKey = `${relation.sheetType}\u0000${normalizeDxRatingTitle(stripUtageTitlePrefix(relation.songTitle))}`;
     const identities = utageFallback.get(fallbackKey) ?? new Map<string, DxRatingChartTagRelation[]>();
     appendRelation(identities, canonicalTitle, relation);
     utageFallback.set(fallbackKey, identities);
@@ -101,7 +110,7 @@ function indexedRelationsForChart(
 ): readonly DxRatingChartTagRelation[] {
   if (chart.type !== 'UTAGE') {
     const sheetType: DxRatingSheetType = chart.type === 'DX' ? 'dx' : 'std';
-    return index.normal.get(`${song.title}\u0000${sheetType}\u0000${chart.difficulty}`) ?? [];
+    return index.normal.get(`${normalizeDxRatingTitle(song.title)}\u0000${sheetType}\u0000${normalizeDxRatingDifficulty(chart.difficulty)}`) ?? [];
   }
 
   const sheetType: DxRatingSheetType = chart.utage?.isBuddy ? 'utage2p' : 'utage';
@@ -113,7 +122,7 @@ function indexedRelationsForChart(
     : [];
   if (exact.length > 0) return exact;
 
-  const identities = index.utageFallback.get(`${sheetType}\u0000${song.title}`);
+  const identities = index.utageFallback.get(`${sheetType}\u0000${normalizeDxRatingTitle(song.title)}`);
   if (!identities || identities.size !== 1) return [];
   return identities.values().next().value ?? [];
 }

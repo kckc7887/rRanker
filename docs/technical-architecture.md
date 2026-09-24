@@ -74,7 +74,7 @@ Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS 
   -> 共享页面和共享卡片
 ```
 
-`useGameData` 是当前账号总览数据的中央编排点，会根据游戏、Provider、账号和会话模式分派到对应加载器。注册表和中央编排允许显式枚举游戏；可复用渲染核心不承担游戏查询，也不应通过 `gameId` 分支解释游戏语义。
+`useGameData` 是当前账号总览数据的中央编排点，会根据游戏、Provider、账号和会话模式分派到对应加载器。分派经 `src/hooks/game-data-loaders.ts` 的 `GAME_DATA_LOADERS` 注册表执行，各游戏加载器保留自己的缓存读取、快照装配与展示转换；Hook 只保留查询键、查询选项与结果发布。注册表和中央编排允许显式枚举游戏；可复用渲染核心不承担游戏查询，也不应通过 `gameId` 分支解释游戏语义。
 
 Phigros 云存档加载由 `services/phigros-game-data-service.ts` 的 `loadPhigrosGameData` 执行：
 首次查询检查快照与发布修订是否兼容，离线可返回旧快照；显式同步重新读取云存档。
@@ -247,7 +247,7 @@ Phigros 预览页在资源准备前读取所选难度的编号谱面清单；多
 
 ## 状态、持久化与资源生命周期
 
-- `state/session-store.ts` 保存当前游戏、账号、Provider、会话映射和运行时 Provider 实例；激活字段由同一转换路径生成。`services/session-providers.ts` 的 `createSessionProviders` 接收账号、会话和令牌轮换回调，不反向读取 Store；持久凭据由 `storage/secure-session-store.ts` 管理，轮换继续广播到共享凭据账号。osu! 进程内轮换记录和祖先关系共用 64 项上限，进行中的刷新保留在同一集合里；解除最后一个 osu! 账号或清空会话时调用 `clearOsuRotationCache`。窗口外的旧刷新令牌不能覆盖当前会话。
+- `state/session-store.ts` 保存当前游戏、账号、Provider、会话映射和运行时 Provider 实例；激活字段由同一转换路径生成。`services/session-providers.ts` 的 `createSessionProviders` 接收账号、会话和令牌轮换回调，不反向读取 Store；持久凭据由 `storage/secure-session-store.ts` 管理，轮换继续广播到共享凭据账号。会话索引损坏或无法识别时保留原文与副本并抛类型化错误，不自动删除或覆盖；旧版迁移源解析失败时跳过。osu! 进程内轮换记录和祖先关系共用 64 项上限，进行中的刷新保留在同一集合里；解除最后一个 osu! 账号或清空会话时调用 `clearOsuRotationCache`。窗口外的旧刷新令牌不能覆盖当前会话。
 - `state/query-client.ts` 提供进程内唯一 QueryClient；账号最终数据使用 `services/game-data-query.ts` 的版本化键。
 - SQLite 的进程内连接由 `storage/rranker-database.ts` 集中管理；`runDatabaseWrite` 串行化 schema 初始化、快照和用户曲库写入。批量清理以 500 个绑定参数分批，在同连接事务内执行；文本统计使用 UTF-8 字节，数据库分配页单列。表结构和个人数据键不变。
 - 缓存读取优先走本地首屏、后台刷新和 AbortSignal 取消链路。共享任务按消费者计数取消；清缓存先提升游戏写入代次并取消/移除 Query，解绑只失效所属账号。后台刷新及实际 SQL 提交前复核游戏/账号代次，旧结果不能重新填回缓存。短暂 `inactive` 与普通后台不会被当作内存压力；只有内存警告触发非活动 Query 和图片内存释放。`CachedTabScreen` 在这些状态下保持已挂载画面，只通过 active context 暂停重工作。
@@ -257,6 +257,7 @@ Phigros 预览页在资源准备前读取所选难度的编号谱面清单；多
 账号管理由 `GameAccountsScreen` 装配列表和弹层，`useAccountBindingFlow` 维护互斥弹层及转场任务，
 `useManagedAccountOperations` 复用公共绑定/删除执行器；`services/account-management.ts` 提供档案、缓存和账号创建策略。
 删除前先失效并取消账号查询，准备失败中止后续删除，所有退出路径均解除忙碌状态；分项清理失败仍使用原有汇总提示。
+恢复失败时同一页面提供重试恢复与清除登录数据（二次确认）入口，清除后重新执行恢复流程。
 
 总览的 `useOverviewSync` 处理当前账号刷新与最终新鲜度判断，`useOverviewUpload` 处理上传选项、
 舞萌落雪传输及完成刷新，两者通过 `useOverviewOperation` 共享互斥。`UploadDataSheet` 的账号偏好、
@@ -384,9 +385,11 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 通过 `subscribeResourceWrites` 同步接收清理失效，静默下载无需等到下一次进度才取消。
 每次尝试使用独立文件，失败及迟到结果只清理自己的文件。公共 `downloadChartResource`
 验证 HTTP 2xx 与非空文件，通过公共错误类型保留失败分类，取消无需等待原生下载结算。
-谱包下载验证 ZIP 结构、CRC 及谱面条目；预览在候选阶段通过 `readOsuChartPreviewArchive`
-完成整包 CRC 校验，再按 BeatmapID 精确匹配，拒绝缺失、匹配歧义、越界路径和可观察的规范化重名，并完成资源提取。
-媒体先逐项校验且不把解压字节留在数组里，全部通过后才写入候选目录；校验失败不会落盘，写入中途失败不返回半份清单。
+传输字节与落盘文件长度均受预算约束（含未知总长度），读内存前先按文件长度拒绝；
+预算超限不再换源。谱包保存用独立预算与专属文案，经条目扫描与逐项受限 CRC 完整
+校验后落盘；预览在候选阶段通过 `readOsuChartPreviewArchive`
+完成预算校验，再按 BeatmapID 精确匹配，拒绝缺失、匹配歧义、越界路径和可观察的规范化重名，并完成资源提取。
+媒体逐项校验后即写入候选目录，每项只读一次；失败时不返回半份清单。
 每候选独占媒体子目录，提取损坏同样触发换源；失败和取消清理目录，成功资源才注入播放器。
 全部候选失败才显示场景错误，不改变 OAuth 授权，也不跳转下载网页。
 原生准备与播放器共用 `resource-plan.ts` 的引用选择：仅读取当前 `.osu`、同目录 `.osb`
@@ -488,14 +491,14 @@ MajSimai 输出作为 TypeScript 测试的外部基准。语法范围、素材�
 合并必须经过 Pull Request；Android 与 iOS workflow 里的 quality 检查失败时不能合并；
 禁止 force-push。
 
-2026-09-23 对生产依赖树执行 `npm audit --omit=dev`。未执行 `npm audit fix --force`，
-也未把 Expo 升出 SDK 54。`expo`、`@expo/metro`、`metro`、`expo-router` 的修复版本离开
-当前 SDK，这些包在预构建和打包链路，不作为业务运行时单独升级。
-`@xmldom/xmldom`（GHSA-6gmq-8vp8-gcm6）、`nanoid`（GHSA-28wg-ghj8-5hjv）、
-`js-yaml`（GHSA-5p4m-2wfm-xmqj）、`postcss`（GHSA-qx2v-qp2m-jg93）、
-`brace-expansion`（GHSA-mh99-v99m-4gvg）和 `image-size`（GHSA-w3rx-r6r6-pgpr）
-是传递依赖；其中 XML、ID 和 YAML 解析可能进入打包结果，PostCSS 与图片尺寸读取主要在构建期。
-它们的修复不能在不牵动 Expo 54 锁文件的前提下单独验证，因此保持现状。
+2026-09-24 对生产依赖树执行 `npm audit --omit=dev`：0 critical，26 high 公告分属
+6 个传递包，2 moderate 公告。`@xmldom/xmldom`、`brace-expansion`、`image-size`、
+`js-yaml`、`postcss` 的引用链只经过预构建、打包器与 CLI（含 `expo-constants` 的
+构建脚本引用），不进入应用包；`nanoid` 随导航发布但只用默认长度 ID，不满足公告
+的利用前置；`decode-uri-component` 经路由解析可达，最坏情况是打开恶意链接时的
+本地 CPU 占用。未执行 `npm audit fix --force`，也未把 Expo 升出 SDK 54。
+`npm run audit:prod` 在每次质量检查中复核：critical 直接失败，基线外 high 公告
+必须先定性再决定接受或修复；基线与定性见 `scripts/check-production-audit.mjs`。
 
 ```powershell
 npm ci
@@ -504,6 +507,7 @@ npm run typecheck
 npm run check:architecture
 npm run check:generated
 npm run check:lossless-assets
+npm run audit:prod
 npm run test:unit
 npm run test:ui
 npm test
@@ -527,6 +531,8 @@ Phigros/Phira 及 RPE 入口，`tsconfig.osu-player.json` 覆盖 osu! 播放入�
 命令，覆盖跳转、暂停、变速、镜像、长 Hold、连接 Slide、Each、Mine、Break 和非单调 SV；
 另测 6000 音符场景的 CPU 分布与 5000 首/20000 成绩搜索。Phigros 搜索通过
 `indexSongsById` 一次建立曲库索引，保留首次匹配、别名、排序和筛选合同。
+`npm run benchmark:phigros-push` 用确定性存档测量推分搜索在 30/300/1000 条成绩下的
+总耗时与事件循环最大阻塞，结果写入 `build/phigros-push-performance.json`，不设 CI 耗时门槛。
 测试中的请求数、数据库调用数和条目重绘次数是受控测量，不代表真机帧率。
 
 本地原生命令包括 `npm run android`、`npm run ios`、Android prebuild 与 APK 脚本。Release、APK、EAS 或原生构建成本较高，只有用户明确要求时才执行；修改原生/Fabric/WebView 行为时，JS 测试通过也不能代替对应平台构建和真机验证。
@@ -557,15 +563,23 @@ Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 ma
 `addedFiles` 中列出，不计作基线无损比较或压缩收益。仓库素材减少不直接等于导出收益，
 导出中未引用素材不计入收益。
 
-`.github/workflows/build-ios.yml` 在每次 push、PR 创建/更新/重新打开及手动触发时运行：Ubuntu 质量任务运行 lint、typecheck 和全部测试；macOS 任务读取版本、向 App Store Connect 查询下一构建号、执行 Expo prebuild、安装 Pods 与签名材料、Archive、导出 IPA，先上传保留 14 天的 Actions artifact，再提交 TestFlight。来自外部 fork 的 PR 只运行质量任务，跳过需要仓库签名密钥的 macOS 任务。同仓库 PR、push 和手动触发均执行完整构建与上传流程；这些流程共用串行并发组。Windows 本地无法证明 Xcode Archive、签名、上传或 TestFlight 处理成功。
+`.github/workflows/build-ios.yml` 在每次 push、PR 创建/更新/重新打开及手动触发时运行：Ubuntu 质量任务运行 lint、typecheck、全部测试和生产依赖审计；macOS 任务读取版本、向 App Store Connect 查询下一构建号、执行 Expo prebuild、安装 Pods 与签名材料、Archive、导出 IPA，先上传保留 14 天的 Actions artifact，再提交 TestFlight。来自外部 fork 的 PR 只运行质量任务，跳过需要仓库签名密钥的 macOS 任务。同仓库 PR、push 和手动触发均执行完整构建与上传流程；这些流程共用串行并发组。Windows 本地无法证明 Xcode Archive、签名、上传或 TestFlight 处理成功。
 
 `.github/workflows/build-android.yml` 在每次 push、PR 创建/更新/重新打开及手动触发时运行：Ubuntu 质量任务运行
-lint、typecheck 和全部测试；构建任务使用 Node.js 22、Temurin JDK 17 与 Android SDK，
+lint、typecheck、全部测试和生产依赖审计；构建任务使用 Node.js 22、Temurin JDK 17 与 Android SDK，
 执行 `npm ci`、`npm run prebuild:android` 和 Gradle `:app:assembleRelease`。
 prebuild 复用 `plugins/with-android-abi-splits.js`，一次生成 `armeabi-v7a`、`arm64-v8a`、
 `x86`、`x86_64` 四份 APK。版本与构建号分别读取 `app.json` 的 `expo.version` 和
-`expo.android.versionCode`，不自动递增。工作流检查 Gradle 输出清单、APK 内部 ABI、
+`expo.android.versionCode`，不自动递增。配置了正式 keystore 四项 Secret 时经注入式
+签名参数使用正式证书，否则沿用 Expo 默认调试密钥；验证阶段核对四份 APK 证书一致，
+正式包拒绝调试证书，并在摘要中报告签名身份与证书指纹。工作流检查 Gradle 输出清单、APK 内部 ABI、
 Manifest 包名与版本及 APK 签名，全部通过后按 `rRanker-版本(构建号)-ABI.apk` 命名，
 上传为保留 14 天的 Actions artifact。
-当前沿用 Expo 生成工程的默认调试密钥签名，属于 Release 模式测试安装包；流程不发布
+调试签名产物属于 Release 模式测试安装包，不可直接作为正式发行；流程不发布
 GitHub Release 或上传应用商店。实际云端构建与真机安装需运行工作流后验证。
+
+osu! OAuth 应用凭据不在源码中保存。`app.config.js` 在 `app.json` 静态配置之上，
+从 `OSU_OAUTH_CLIENT_SECRET` 构建环境变量向 `extra.osuOAuthClientSecret` 注入；
+`osu-config.ts` 在调用时读取注入值，测试经同名进程环境变量提供。双端工作流从仓库
+Secret 传入该变量；缺失时构建仍可完成，但 osu! 授权与令牌轮换会明确报错。
+更换签名后的升级兼容与数据保留须在正式发布前实测确认。

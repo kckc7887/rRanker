@@ -4,6 +4,8 @@ import type { ChartType } from '@/domain/models';
 import {
   DEFAULT_TAG_PRESETS,
   inferGameIdFromKey,
+  libraryTargetKey,
+  MAX_BACKUP_ITEMS,
   mergeLibraryItems,
   normalizeLibraryItem,
   normalizeTagName,
@@ -11,7 +13,7 @@ import {
   normalizeTags,
   shouldKeepLibraryItem,
 } from '@/domain/user-library';
-import type { RestoreMode, UserLibraryItem } from '@/domain/user-library';
+import type { LibraryTarget, RestoreMode, UserLibraryItem } from '@/domain/user-library';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
 import { getRrankerDatabase, runDatabaseWrite, runSerializedSchemaInit } from '@/storage/rranker-database';
 
@@ -37,6 +39,13 @@ interface ExperimentalV5TagLinkRow { item_key: string; tag_id: number }
 
 let schemaReady: Promise<void> | null = null;
 let utageMigrationSequence = 0;
+
+async function readTagPresets(db: DatabaseAccess): Promise<string[]> {
+  const rows = await db.getAllAsync<{ display_name: string }>(
+    'SELECT display_name FROM user_library_tag_presets ORDER BY sort_order, normalized_name',
+  );
+  return rows.map((row) => row.display_name);
+}
 
 async function writeTagPresets(db: DatabaseAccess, values: readonly string[]): Promise<void> {
   await db.runAsync('DELETE FROM user_library_tag_presets');
@@ -366,7 +375,8 @@ async function initializeUserLibrarySchema(): Promise<void> {
       CREATE TABLE IF NOT EXISTS user_library_tag_presets (
         normalized_name TEXT PRIMARY KEY, display_name TEXT NOT NULL,
         sort_order INTEGER NOT NULL, created_at TEXT NOT NULL
-      );`);
+      );
+      CREATE INDEX IF NOT EXISTS user_library_items_game_id ON user_library_items(game_id);`);
   const row = await db.getFirstAsync<{ schema_version: number }>('SELECT schema_version FROM user_library_meta WHERE id = 1');
   if (!row) {
     await db.runAsync('INSERT INTO user_library_meta (id, schema_version) VALUES (1, ?)', USER_LIBRARY_SCHEMA_VERSION);
@@ -398,17 +408,12 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
 
   async list(gameId?: GameId): Promise<UserLibraryItem[]> {
     await this.initialize();
-    const items = await this.readFrom(await getRrankerDatabase());
-    return gameId ? items.filter((item) => item.gameId === gameId) : items;
+    return this.readFrom(await getRrankerDatabase(), gameId);
   }
 
   async listTagPresets(): Promise<string[]> {
     await this.initialize();
-    const db = await getRrankerDatabase();
-    const rows = await db.getAllAsync<{ display_name: string }>(
-      'SELECT display_name FROM user_library_tag_presets ORDER BY sort_order, normalized_name',
-    );
-    return rows.map((row) => row.display_name);
+    return readTagPresets(await getRrankerDatabase());
   }
 
   async setTagPresets(values: readonly string[]): Promise<string[]> {
@@ -462,6 +467,73 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
     });
   }
 
+  async mergeBackup(
+    imported: { items: readonly UserLibraryItem[]; presets: readonly string[] },
+    mode: RestoreMode,
+  ): Promise<UserLibraryItem[]> {
+    await this.initialize();
+    return runDatabaseWrite(async () => {
+      const db = await getRrankerDatabase();
+      let result: UserLibraryItem[] = [];
+      await db.withTransactionAsync(async () => {
+        const [currentItems, currentPresets] = await Promise.all([this.readFrom(db), readTagPresets(db)]);
+        const normalizedImported = imported.items.map(normalizeLibraryItem).filter(shouldKeepLibraryItem);
+        result = mode === 'merge'
+          ? mergeLibraryItems(currentItems, normalizedImported)
+          : mergeLibraryItems([], normalizedImported);
+        if (result.length > MAX_BACKUP_ITEMS) throw new Error('备份条目超过上限');
+        const nextPresets = normalizeTagPresets(
+          mode === 'merge' ? [...currentPresets, ...imported.presets] : [...imported.presets],
+        );
+        await this.writeAll(db, result);
+        await writeTagPresets(db, nextPresets);
+      });
+      return result;
+    });
+  }
+
+  async updateTarget(
+    target: LibraryTarget,
+    update: (current: UserLibraryItem | undefined) => UserLibraryItem,
+  ): Promise<UserLibraryItem[]> {
+    await this.initialize();
+    const key = libraryTargetKey(target);
+    return runDatabaseWrite(async () => {
+      const db = await getRrankerDatabase();
+      let result: UserLibraryItem[] = [];
+      await db.withTransactionAsync(async () => {
+        const next = normalizeLibraryItem(update(await this.readOne(db, key)));
+        if (next.key !== key) throw new Error('个人曲库单项更新不得更换条目键');
+        if (shouldKeepLibraryItem(next)) {
+          await this.upsertOne(db, next);
+        } else {
+          await this.deleteOne(db, key);
+        }
+        await this.pruneOrphanTags(db);
+        result = await this.readFrom(db);
+      });
+      return result;
+    });
+  }
+
+  async clearGame(gameId: GameId): Promise<UserLibraryItem[]> {
+    await this.initialize();
+    return runDatabaseWrite(async () => {
+      const db = await getRrankerDatabase();
+      let result: UserLibraryItem[] = [];
+      await db.withTransactionAsync(async () => {
+        await db.runAsync(
+          'DELETE FROM user_library_item_tags WHERE item_key IN (SELECT item_key FROM user_library_items WHERE game_id = ?)',
+          gameId,
+        );
+        await db.runAsync('DELETE FROM user_library_items WHERE game_id = ?', gameId);
+        await this.pruneOrphanTags(db);
+        result = await this.readFrom(db);
+      });
+      return result;
+    });
+  }
+
   async clear(): Promise<void> {
     await this.initialize();
     await runDatabaseWrite(async () => {
@@ -502,28 +574,74 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
     return (items?.bytes ?? 0) + (tags?.bytes ?? 0) + (presets?.bytes ?? 0) + (itemTags?.bytes ?? 0);
   }
 
-  private async readFrom(db: DatabaseAccess): Promise<UserLibraryItem[]> {
-    const [items, tags] = await Promise.all([
-      db.getAllAsync<ItemRow>('SELECT * FROM user_library_items ORDER BY item_key'),
-      db.getAllAsync<TagRow>(`SELECT it.item_key, t.display_name FROM user_library_item_tags it
+  private async readFrom(db: DatabaseAccess, gameId?: GameId): Promise<UserLibraryItem[]> {
+    const [items, tags] = gameId
+      ? await Promise.all([
+        db.getAllAsync<ItemRow>('SELECT * FROM user_library_items WHERE game_id = ? ORDER BY item_key', gameId),
+        db.getAllAsync<TagRow>(
+          `SELECT it.item_key, t.display_name FROM user_library_item_tags it
+           JOIN user_library_tags t ON t.id = it.tag_id
+           JOIN user_library_items i ON i.item_key = it.item_key
+           WHERE i.game_id = ? ORDER BY it.item_key, t.normalized_name`,
+          gameId,
+        ),
+      ])
+      : await Promise.all([
+        db.getAllAsync<ItemRow>('SELECT * FROM user_library_items ORDER BY item_key'),
+        db.getAllAsync<TagRow>(`SELECT it.item_key, t.display_name FROM user_library_item_tags it
         JOIN user_library_tags t ON t.id = it.tag_id ORDER BY it.item_key, t.normalized_name`),
-    ]);
+      ]);
     const tagsByItem = new Map<string, string[]>();
     for (const row of tags) tagsByItem.set(row.item_key, [...(tagsByItem.get(row.item_key) ?? []), row.display_name]);
-    return items.map((row): UserLibraryItem => {
-      const gameId = (row.game_id as GameId | null) ?? inferGameIdFromKey(row.item_key);
-      const base = {
-        key: row.item_key,
-        gameId,
-        tags: tagsByItem.get(row.item_key) ?? [],
-        createdAt: row.created_at,
-        updatedAt: row.updated_at,
-      };
-      return row.kind === 'song'
-        ? { ...base, kind: 'song', songId: row.song_id, favorite: row.is_favorite === 1 }
-        : { ...base, kind: 'chart', songId: row.song_id, type: row.chart_type!, levelIndex: row.level_index!,
-          practice: row.is_practice === 1 };
-    }).map(normalizeLibraryItem);
+    return items.map((row) => mapItemRow(row, tagsByItem.get(row.item_key) ?? []));
+  }
+
+  private async readOne(db: DatabaseAccess, key: string): Promise<UserLibraryItem | undefined> {
+    const row = await db.getFirstAsync<ItemRow>('SELECT * FROM user_library_items WHERE item_key = ?', key);
+    if (!row) return undefined;
+    const tags = await db.getAllAsync<TagRow>(
+      `SELECT it.item_key, t.display_name FROM user_library_item_tags it
+       JOIN user_library_tags t ON t.id = it.tag_id WHERE it.item_key = ? ORDER BY t.normalized_name`,
+      key,
+    );
+    return mapItemRow(row, tags.map((tag) => tag.display_name));
+  }
+
+  private async upsertOne(db: DatabaseAccess, item: UserLibraryItem): Promise<void> {
+    await this.insertItemRow(db, item);
+    await db.runAsync('DELETE FROM user_library_item_tags WHERE item_key = ?', item.key);
+    for (const tag of item.tags) await this.linkItemTag(db, item.key, tag, item.createdAt);
+  }
+
+  private async deleteOne(db: DatabaseAccess, key: string): Promise<void> {
+    await db.runAsync('DELETE FROM user_library_item_tags WHERE item_key = ?', key);
+    await db.runAsync('DELETE FROM user_library_items WHERE item_key = ?', key);
+  }
+
+  private async pruneOrphanTags(db: DatabaseAccess): Promise<void> {
+    await db.runAsync('DELETE FROM user_library_tags WHERE id NOT IN (SELECT tag_id FROM user_library_item_tags)');
+  }
+
+  private async insertItemRow(db: DatabaseAccess, item: UserLibraryItem): Promise<void> {
+    await db.runAsync(
+      `INSERT OR REPLACE INTO user_library_items
+        (item_key, game_id, kind, song_id, chart_type, level_index, is_favorite, is_practice, created_at, updated_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      item.key, item.gameId, item.kind, item.songId, item.kind === 'chart' ? item.type : null,
+      item.kind === 'chart' ? item.levelIndex : null, item.kind === 'song' && item.favorite ? 1 : 0,
+      item.kind === 'chart' && item.practice ? 1 : 0, item.createdAt, item.updatedAt,
+    );
+  }
+
+  private async linkItemTag(db: DatabaseAccess, itemKey: string, tag: string, createdAt: string): Promise<void> {
+    const normalized = normalizeTagName(tag);
+    await db.runAsync(
+      'INSERT OR IGNORE INTO user_library_tags (normalized_name, display_name, created_at) VALUES (?, ?, ?)',
+      normalized.key, normalized.displayName, createdAt,
+    );
+    const tagRow = await db.getFirstAsync<{ id: number }>('SELECT id FROM user_library_tags WHERE normalized_name = ?', normalized.key);
+    if (!tagRow) throw new Error('无法保存标签');
+    await db.runAsync('INSERT INTO user_library_item_tags (item_key, tag_id) VALUES (?, ?)', itemKey, tagRow.id);
   }
 
   private async writeAll(db: DatabaseAccess, items: readonly UserLibraryItem[]): Promise<void> {
@@ -532,24 +650,24 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
     await db.runAsync('DELETE FROM user_library_tags');
     for (const rawItem of [...items].sort((a, b) => a.key.localeCompare(b.key))) {
       const item = normalizeLibraryItem(rawItem);
-      await db.runAsync(
-        `INSERT INTO user_library_items
-          (item_key, game_id, kind, song_id, chart_type, level_index, is_favorite, is_practice, created_at, updated_at)
-         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
-        item.key, item.gameId, item.kind, item.songId, item.kind === 'chart' ? item.type : null,
-        item.kind === 'chart' ? item.levelIndex : null, item.kind === 'song' && item.favorite ? 1 : 0,
-        item.kind === 'chart' && item.practice ? 1 : 0, item.createdAt, item.updatedAt,
-      );
-      for (const tag of item.tags) {
-        const normalized = normalizeTagName(tag);
-        await db.runAsync(
-          'INSERT OR IGNORE INTO user_library_tags (normalized_name, display_name, created_at) VALUES (?, ?, ?)',
-          normalized.key, normalized.displayName, item.createdAt,
-        );
-        const tagRow = await db.getFirstAsync<{ id: number }>('SELECT id FROM user_library_tags WHERE normalized_name = ?', normalized.key);
-        if (!tagRow) throw new Error('无法保存标签');
-        await db.runAsync('INSERT INTO user_library_item_tags (item_key, tag_id) VALUES (?, ?)', item.key, tagRow.id);
-      }
+      await this.insertItemRow(db, item);
+      for (const tag of item.tags) await this.linkItemTag(db, item.key, tag, item.createdAt);
     }
   }
+}
+
+function mapItemRow(row: ItemRow, tags: readonly string[]): UserLibraryItem {
+  const gameId = (row.game_id as GameId | null) ?? inferGameIdFromKey(row.item_key);
+  const base = {
+    key: row.item_key,
+    gameId,
+    tags: [...tags],
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+  };
+  const item = row.kind === 'song'
+    ? { ...base, kind: 'song' as const, songId: row.song_id, favorite: row.is_favorite === 1 }
+    : { ...base, kind: 'chart' as const, songId: row.song_id, type: row.chart_type!, levelIndex: row.level_index!,
+      practice: row.is_practice === 1 };
+  return normalizeLibraryItem(item);
 }

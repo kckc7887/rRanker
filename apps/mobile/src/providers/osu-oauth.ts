@@ -7,11 +7,11 @@ import { ProviderError } from './errors';
 import {
   OSU_OAUTH_AUTHORIZE_URL,
   OSU_OAUTH_CLIENT_ID,
-  OSU_OAUTH_CLIENT_SECRET,
   OSU_OAUTH_REDIRECT_URI,
   OSU_OAUTH_SCOPE,
   OSU_OAUTH_TOKEN_URL,
   OSU_TOKEN_REFRESH_SKEW_SECONDS,
+  osuOAuthClientSecret,
 } from './osu-config';
 const PENDING_OAUTH_KEY = 'rranker.osu.oauth.pending.v1';
 const OSU_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
@@ -108,6 +108,9 @@ function toSession(token: z.infer<typeof TokenResponseSchema>): OsuOAuthSession 
 }
 
 async function postToken(body: Record<string, string>): Promise<OsuOAuthSession> {
+  if (!body.client_secret) {
+    throw new ProviderError('authentication', 'osu! 应用凭据缺失，当前构建无法完成授权', false);
+  }
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 12_000);
   try {
@@ -174,7 +177,7 @@ export async function exchangeOsuAuthorizationCode(
     grant_type: 'authorization_code',
     code: trimmed,
     client_id: OSU_OAUTH_CLIENT_ID,
-    client_secret: OSU_OAUTH_CLIENT_SECRET,
+    client_secret: osuOAuthClientSecret(),
     redirect_uri: OSU_OAUTH_REDIRECT_URI,
   });
   return session;
@@ -184,7 +187,7 @@ async function refreshOsuAccessToken(refreshToken: string): Promise<OsuOAuthSess
   return postToken({
     grant_type: 'refresh_token',
     client_id: OSU_OAUTH_CLIENT_ID,
-    client_secret: OSU_OAUTH_CLIENT_SECRET,
+    client_secret: osuOAuthClientSecret(),
     refresh_token: refreshToken,
   });
 }

@@ -28,6 +28,19 @@ export class ChartPreviewBudgetError extends Error {
   }
 }
 
+/**
+ * 明确的预算超限（字节/数量超出上限）。与“无法确定声明量”等格式问题区分：
+ * 超限说明同一份资源在任何来源都过大，不再换源重试。
+ */
+export class ChartPreviewBudgetExceededError extends ChartPreviewBudgetError {
+  constructor(message: string) {
+    super(message);
+    this.name = 'ChartPreviewBudgetExceededError';
+  }
+}
+
+export const CHART_PREVIEW_DOWNLOAD_BUDGET_MESSAGE = '谱面下载超出预算';
+
 export type ChartPreviewActualBytes = { actualBytes: number };
 
 export function createChartPreviewActualBytes(): ChartPreviewActualBytes {
@@ -71,61 +84,61 @@ export async function pauseChartPreviewParse(iteration: number, cancellation?: C
 
 export function assertChartPreviewDownloadBytes(bytes: number): void {
   if (!Number.isFinite(bytes) || bytes < 0 || bytes > CHART_PREVIEW_MAX_DOWNLOAD_BYTES) {
-    throw new ChartPreviewBudgetError('谱面下载超出预算');
+    throw new ChartPreviewBudgetExceededError(CHART_PREVIEW_DOWNLOAD_BUDGET_MESSAGE);
   }
 }
 
 export function assertChartPreviewEntryCount(count: number): void {
   if (!Number.isFinite(count) || count < 0 || count > CHART_PREVIEW_MAX_ARCHIVE_ENTRIES) {
-    throw new ChartPreviewBudgetError('谱面包条目数量超出预算');
+    throw new ChartPreviewBudgetExceededError('谱面包条目数量超出预算');
   }
 }
 
 export function assertChartPreviewEntryUncompressed(bytes: number): void {
   if (!Number.isFinite(bytes) || bytes < 0 || bytes > CHART_PREVIEW_MAX_ENTRY_UNCOMPRESSED_BYTES) {
-    throw new ChartPreviewBudgetError('谱面资源解压大小超出预算');
+    throw new ChartPreviewBudgetExceededError('谱面资源解压大小超出预算');
   }
 }
 
 export function assertChartPreviewTotalUncompressed(bytes: number): void {
   if (!Number.isFinite(bytes) || bytes < 0 || bytes > CHART_PREVIEW_MAX_TOTAL_UNCOMPRESSED_BYTES) {
-    throw new ChartPreviewBudgetError('谱面解压总量超出预算');
+    throw new ChartPreviewBudgetExceededError('谱面解压总量超出预算');
   }
 }
 
 export function assertChartPreviewEventCount(count: number): void {
   if (!Number.isFinite(count) || count < 0 || count > CHART_PREVIEW_MAX_EVENTS) {
-    throw new ChartPreviewBudgetError('故事板事件数量超出预算');
+    throw new ChartPreviewBudgetExceededError('故事板事件数量超出预算');
   }
 }
 
 export function assertChartPreviewNoteCount(count: number): void {
   if (!Number.isFinite(count) || count < 0 || count > CHART_PREVIEW_MAX_NOTES) {
-    throw new ChartPreviewBudgetError('谱面音符数量超出预算');
+    throw new ChartPreviewBudgetExceededError('谱面音符数量超出预算');
   }
 }
 
 export function assertChartPreviewNestingDepth(depth: number): void {
   if (!Number.isInteger(depth) || depth < 0 || depth > CHART_PREVIEW_MAX_NESTING_DEPTH) {
-    throw new ChartPreviewBudgetError('谱面嵌套深度超出预算');
+    throw new ChartPreviewBudgetExceededError('谱面嵌套深度超出预算');
   }
 }
 
 export function assertChartPreviewLoopExpansion(count: number): void {
   if (!Number.isFinite(count) || count < 0 || count > CHART_PREVIEW_MAX_LOOP_EXPANSION) {
-    throw new ChartPreviewBudgetError('故事板循环超出预算');
+    throw new ChartPreviewBudgetExceededError('故事板循环超出预算');
   }
 }
 
 export function assertChartPreviewTexturePixels(pixels: number): void {
   if (!Number.isFinite(pixels) || pixels < 0 || pixels > CHART_PREVIEW_MAX_TEXTURE_PIXELS) {
-    throw new ChartPreviewBudgetError('纹理像素超出预算');
+    throw new ChartPreviewBudgetExceededError('纹理像素超出预算');
   }
 }
 
 export function assertChartPreviewGifFramePixels(pixels: number): void {
   if (!Number.isFinite(pixels) || pixels < 0 || pixels > CHART_PREVIEW_MAX_GIF_FRAME_PIXELS) {
-    throw new ChartPreviewBudgetError('GIF 帧像素超出预算');
+    throw new ChartPreviewBudgetExceededError('GIF 帧像素超出预算');
   }
 }
 
@@ -233,8 +246,8 @@ export async function readBudgetedZipText(
   cancellation?: ChartPreviewCancellation,
 ): Promise<string> {
   const declared = chartPreviewDeclaredUncompressedSize(entry);
-  if (!Number.isFinite(byteLimit) || declared > byteLimit) throw new ChartPreviewBudgetError('谱面过大，暂不支持预览');
+  if (!Number.isFinite(byteLimit) || declared > byteLimit) throw new ChartPreviewBudgetExceededError('谱面过大，暂不支持预览');
   const bytes = await readBudgetedZipEntry(entry, cancellation);
-  if (bytes.byteLength > byteLimit) throw new ChartPreviewBudgetError('谱面过大，暂不支持预览');
+  if (bytes.byteLength > byteLimit) throw new ChartPreviewBudgetExceededError('谱面过大，暂不支持预览');
   return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
 }

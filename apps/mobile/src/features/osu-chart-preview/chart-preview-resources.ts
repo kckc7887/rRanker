@@ -56,10 +56,6 @@ async function stageValidatedOsuPreviewMedia(
   completed: number,
   total: number,
 ): Promise<void> {
-  const validation: ChartPreviewCancellation = { ...cancellation, actualBytes: undefined };
-  for (const path of mediaPaths) {
-    await readBudgetedZipEntry(osuPreviewZipEntry(entries, path), validation);
-  }
   let written = completed;
   for (const path of mediaPaths) {
     const bytes = await readBudgetedZipEntry(osuPreviewZipEntry(entries, path), cancellation);

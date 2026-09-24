@@ -79,6 +79,25 @@ type SimRecord = {
   isPhi: boolean;
 };
 
+/** 搜索过程中让出主线程的时间片。单次计算超过该值才让出，避免小规模搜索被拆散。 */
+const PUSH_YIELD_INTERVAL_MS = 16;
+
+type PushSearchControl = {
+  signal?: AbortSignal;
+  lastYield: number;
+};
+
+async function yieldPushSearch(control: PushSearchControl): Promise<void> {
+  if (control.signal?.aborted) throw control.signal.reason ?? new Error('推分搜索已取消');
+  const now = Date.now();
+  if (now - control.lastYield < PUSH_YIELD_INTERVAL_MS) return;
+  control.lastYield = now;
+  await new Promise<void>((resolve) => {
+    setImmediate(resolve);
+  });
+  if (control.signal?.aborted) throw control.signal.reason ?? new Error('推分搜索已取消');
+}
+
 /** 游戏内两位小数四舍五入 → 精确推分目标 */
 export function resolvePushExactTarget(currentRks: number, delta: number): PushExactTarget {
   const displayRks = Math.round(currentRks * 100) / 100;
@@ -147,7 +166,7 @@ function replacedSims(
 }
 
 /** 在当前模拟上，把一张谱面抬到刚好达到 goalRks 的最小两位 Acc。已达标或必须 φ 且不允许时返回 null。 */
-function minimumPushAcc(
+async function minimumPushAcc(
   sims: SimRecord[],
   songId: string,
   level: PhigrosLevel,
@@ -155,7 +174,9 @@ function minimumPushAcc(
   currentAcc: number,
   goalRks: number,
   allowPhi: boolean,
-): number | null {
+  control: PushSearchControl,
+): Promise<number | null> {
+  await yieldPushSearch(control);
   const at = (acc: number) => calculateFinalRks(replacedSims(sims, songId, level, difficulty, acc));
   if (at(currentAcc) + 1e-9 >= goalRks) return null;
   if (at(100) + 1e-9 < goalRks) return null;
@@ -266,7 +287,14 @@ function estimateEase(chart: PushChart, perSongShare: number, maxAcc: number): n
   return Math.max(0, 55 + 45 * Math.sqrt(ratio) - chart.currentAcc);
 }
 
-function selectPool(charts: readonly PushChart[], limit: number, perSongShare: number, allowPhi: boolean): PushChart[] {
+async function selectPool(
+  charts: readonly PushChart[],
+  limit: number,
+  perSongShare: number,
+  allowPhi: boolean,
+  control: PushSearchControl,
+): Promise<PushChart[]> {
+  await yieldPushSearch(control);
   if (charts.length <= limit) return [...charts];
   const maxAcc = maxAllowedAcc(allowPhi);
   const byEase = [...charts].sort((a, b) => estimateEase(a, perSongShare, maxAcc) - estimateEase(b, perSongShare, maxAcc)
@@ -285,12 +313,14 @@ function selectPool(charts: readonly PushChart[], limit: number, perSongShare: n
   return [...chosen.values()];
 }
 
-function collectCharts(
+async function collectCharts(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
   baseSims: SimRecord[],
   allowPhi: boolean,
-): PushChart[] {
+  control: PushSearchControl,
+): Promise<PushChart[]> {
+  await yieldPushSearch(control);
   const maxAcc = maxAllowedAcc(allowPhi);
   const rawCurrent = calculateFinalRks(baseSims);
   const best27Keys = new Set(
@@ -298,6 +328,7 @@ function collectCharts(
   );
   const charts: PushChart[] = [];
   for (const songId of new Set([...Object.keys(gameRecord), ...Object.keys(difficultyTable)])) {
+    await yieldPushSearch(control);
     const levels = gameRecord[songId] ?? [];
     const diffs = difficultyTable[songId];
     if (!diffs) continue;
@@ -331,13 +362,15 @@ function collectCharts(
   return charts;
 }
 
-function proveUnreachable(
+async function proveUnreachable(
   base: SimRecord[],
   charts: readonly PushChart[],
   songCost: number,
   exactTarget: number,
   allowPhi: boolean,
-): boolean {
+  control: PushSearchControl,
+): Promise<boolean> {
+  await yieldPushSearch(control);
   const rawCurrent = calculateFinalRks(base);
   if (rawCurrent + 1e-9 >= exactTarget) return false;
   if (!reachesAtMax(base, charts, allowPhi, exactTarget)) return true;
@@ -363,10 +396,17 @@ function canRaise(targetAcc: number, allowPhi: boolean): boolean {
   return allowPhi || !isAcc100Percent(next);
 }
 
-function bumpTargets(base: SimRecord[], members: PushTarget[], exactTarget: number, allowPhi: boolean): boolean {
+async function bumpTargets(
+  base: SimRecord[],
+  members: PushTarget[],
+  exactTarget: number,
+  allowPhi: boolean,
+  control: PushSearchControl,
+): Promise<boolean> {
   let guard = 0;
   let progressed = true;
   while (!verifyDisplayed(base, members.map(asDisplayed), exactTarget) && progressed && guard < 2_000) {
+    await yieldPushSearch(control);
     progressed = false;
     for (const member of members) {
       if (!canRaise(member.targetAcc, allowPhi)) continue;
@@ -379,13 +419,15 @@ function bumpTargets(base: SimRecord[], members: PushTarget[], exactTarget: numb
   return verifyDisplayed(base, members.map(asDisplayed), exactTarget);
 }
 
-function commitSelection(
+async function commitSelection(
   base: SimRecord[],
   charts: readonly PushChart[],
   exactTarget: number,
   allowPhi: boolean,
-  initial?: readonly PushTarget[],
-): PushTarget[] | null {
+  initial: readonly PushTarget[] | undefined,
+  control: PushSearchControl,
+): Promise<PushTarget[] | null> {
+  await yieldPushSearch(control);
   if (charts.length === 0 || !reachesAtMax(base, charts, allowPhi, exactTarget)) return null;
   const seeded = new Map((initial ?? []).map((member) => [member.chart.key, member.targetAcc]));
   const members: PushTarget[] = charts.map((chart) => ({
@@ -393,6 +435,7 @@ function commitSelection(
     targetAcc: seeded.get(chart.key) ?? maxAllowedAcc(allowPhi),
   }));
   for (let pass = 0; pass < members.length; pass += 1) {
+    await yieldPushSearch(control);
     for (const member of members) {
       const context = contextWithout(base, members, member);
       const unchanged = calculateFinalRks(replacedSims(
@@ -402,7 +445,7 @@ function commitSelection(
         member.targetAcc = member.chart.currentAcc;
         continue;
       }
-      const lowered = minimumPushAcc(
+      const lowered = await minimumPushAcc(
         context,
         member.chart.songId,
         member.chart.level,
@@ -410,6 +453,7 @@ function commitSelection(
         member.chart.currentAcc,
         exactTarget,
         allowPhi,
+        control,
       );
       if (lowered != null) member.targetAcc = lowered;
     }
@@ -417,29 +461,31 @@ function commitSelection(
   for (const member of members) member.targetAcc = roundAcc(member.targetAcc);
   const active = members.filter((member) => member.targetAcc > member.chart.currentAcc + 1e-9);
   const chosen = active.length > 0 && verifyDisplayed(base, active.map(asDisplayed), exactTarget) ? active : members;
-  if (!bumpTargets(base, chosen, exactTarget, allowPhi)) return null;
+  if (!await bumpTargets(base, chosen, exactTarget, allowPhi, control)) return null;
   return chosen.length > 0 ? chosen : null;
 }
 
-function greedySpread(
+async function greedySpread(
   base: SimRecord[],
   pool: readonly PushChart[],
   songCost: number,
   exactTarget: number,
   allowPhi: boolean,
-): PushTarget[] {
+  control: PushSearchControl,
+): Promise<PushTarget[]> {
   let sims = base;
   const selected: PushTarget[] = [];
   const maxAcc = maxAllowedAcc(allowPhi);
   while (selected.length < songCost && calculateFinalRks(sims) + 1e-9 < exactTarget) {
+    await yieldPushSearch(control);
     const now = calculateFinalRks(sims);
     const stepGoal = now + (exactTarget - now) / (songCost - selected.length);
     let bestShare: { chart: PushChart; accDiff: number } | null = null;
     let bestMarginal: { chart: PushChart; gain: number } | null = null;
     for (const chart of pool) {
       if (selected.some((item) => item.chart.key === chart.key)) continue;
-      const shareAcc = minimumPushAcc(
-        sims, chart.songId, chart.level, chart.difficulty, chart.currentAcc, stepGoal, allowPhi,
+      const shareAcc = await minimumPushAcc(
+        sims, chart.songId, chart.level, chart.difficulty, chart.currentAcc, stepGoal, allowPhi, control,
       );
       if (shareAcc != null) {
         const accDiff = shareAcc - chart.currentAcc;
@@ -454,7 +500,7 @@ function greedySpread(
     const next = bestShare?.chart ?? bestMarginal?.chart;
     if (!next) break;
     const appliedAcc = bestShare?.chart === next
-      ? minimumPushAcc(sims, next.songId, next.level, next.difficulty, next.currentAcc, stepGoal, allowPhi) ?? maxAcc
+      ? await minimumPushAcc(sims, next.songId, next.level, next.difficulty, next.currentAcc, stepGoal, allowPhi, control) ?? maxAcc
       : maxAcc;
     selected.push({ chart: next, targetAcc: appliedAcc });
     sims = replacedSims(sims, next.songId, next.level, next.difficulty, appliedAcc);
@@ -462,57 +508,64 @@ function greedySpread(
   return selected;
 }
 
-function forEachCombination(
+async function forEachCombination(
   items: readonly PushChart[],
   size: number,
-  visit: (combo: readonly PushChart[]) => boolean,
-): void {
+  visit: (combo: readonly PushChart[]) => Promise<boolean>,
+  control: PushSearchControl,
+): Promise<void> {
   const chosen: PushChart[] = [];
-  const walk = (start: number): boolean => {
+  const walk = async (start: number): Promise<boolean> => {
+    await yieldPushSearch(control);
     if (chosen.length === size) return visit(chosen);
     const need = size - chosen.length;
     for (let index = start; index <= items.length - need; index += 1) {
       chosen.push(items[index]!);
-      if (walk(index + 1)) return true;
+      if (await walk(index + 1)) return true;
       chosen.pop();
     }
     return false;
   };
-  walk(0);
+  await walk(0);
 }
 
-function firstEnumerated(
+async function firstEnumerated(
   base: SimRecord[],
   pool: readonly PushChart[],
   songCost: number,
   exactTarget: number,
   allowPhi: boolean,
-): PushTarget[] | null {
+  control: PushSearchControl,
+): Promise<PushTarget[] | null> {
   for (let size = Math.min(songCost, pool.length); size >= 1; size -= 1) {
+    await yieldPushSearch(control);
     if (combinationCount(pool.length, size) > PUSH_ENUM_LIMIT) continue;
     let found: PushTarget[] | null = null;
-    forEachCombination(pool, size, (combo) => {
+    await forEachCombination(pool, size, async (combo) => {
       if (!reachesAtMax(base, combo, allowPhi, exactTarget)) return false;
-      found = commitSelection(base, [...combo], exactTarget, allowPhi);
+      found = await commitSelection(base, [...combo], exactTarget, allowPhi, undefined, control);
       return found != null;
-    });
+    }, control);
     if (found) return found;
   }
   return null;
 }
 
-function beamSearch(
+async function beamSearch(
   base: SimRecord[],
   pool: readonly PushChart[],
   songCost: number,
   exactTarget: number,
   allowPhi: boolean,
-): PushChart[] | null {
+  control: PushSearchControl,
+): Promise<PushChart[] | null> {
+  await yieldPushSearch(control);
   const maxAcc = maxAllowedAcc(allowPhi);
   type BeamState = { keys: string[]; charts: PushChart[]; sims: SimRecord[]; rks: number };
   let beam: BeamState[] = [{ keys: [], charts: [], sims: base, rks: calculateFinalRks(base) }];
   let used = 0;
   for (let depth = 0; depth < songCost; depth += 1) {
+    await yieldPushSearch(control);
     const next: BeamState[] = [];
     for (const state of beam) {
       if (state.charts.length > 0 && state.rks + 1e-9 >= exactTarget) return state.charts;
@@ -520,6 +573,7 @@ function beamSearch(
       for (const chart of pool) {
         if (owned.has(chart.key)) continue;
         used += 1;
+        await yieldPushSearch(control);
         const sims = replacedSims(state.sims, chart.songId, chart.level, chart.difficulty, maxAcc);
         const rks = calculateFinalRks(sims);
         const charts = [...state.charts, chart];
@@ -580,26 +634,29 @@ function hardestRecommendation(plan: readonly PushRecommendation[]): PushRecomme
   return [...plan].sort((a, b) => b.accDiff - a.accDiff || b.difficulty - a.difficulty)[0]!;
 }
 
-function findAlternatives(
+async function findAlternatives(
   base: SimRecord[],
   plan: readonly PushRecommendation[],
   charts: readonly PushChart[],
   perSongShare: number,
   exactTarget: number,
   allowPhi: boolean,
-): PushRecommendation[] {
+  control: PushSearchControl,
+): Promise<PushRecommendation[]> {
+  await yieldPushSearch(control);
   if (plan.length === 0) return [];
   const hardest = hardestRecommendation(plan);
   const alternatives: PushRecommendation[] = [];
-  for (const chart of selectPool(charts, PUSH_ALTERNATIVE_LIMIT, perSongShare, allowPhi)) {
+  for (const chart of await selectPool(charts, PUSH_ALTERNATIVE_LIMIT, perSongShare, allowPhi, control)) {
+    await yieldPushSearch(control);
     if (plan.some((item) => item.songId === chart.songId && item.level === chart.level)) continue;
     let context = base;
     for (const member of plan) {
       if (member.songId === hardest.songId && member.level === hardest.level) continue;
       context = replacedSims(context, member.songId, member.level, member.difficulty, member.targetAcc);
     }
-    const minimum = minimumPushAcc(
-      context, chart.songId, chart.level, chart.difficulty, chart.currentAcc, exactTarget, allowPhi,
+    const minimum = await minimumPushAcc(
+      context, chart.songId, chart.level, chart.difficulty, chart.currentAcc, exactTarget, allowPhi, control,
     );
     if (minimum == null) continue;
     let targetAcc = roundAcc(minimum);
@@ -622,36 +679,42 @@ function findAlternatives(
   return alternatives.sort((a, b) => a.accDiff - b.accDiff || a.difficulty - b.difficulty);
 }
 
-function realizePlan(
+async function realizePlan(
   base: SimRecord[],
   members: PushTarget[] | null,
   exactTarget: number,
-): PushRecommendation[] | null {
+  control: PushSearchControl,
+): Promise<PushRecommendation[] | null> {
+  await yieldPushSearch(control);
   if (!members || members.length === 0) return null;
   const shown = presentPlan(base, members);
   return verifyDisplayed(base, shown, exactTarget) ? shown : null;
 }
 
-function searchJointPlan(
+async function searchJointPlan(
   base: SimRecord[],
   pool: readonly PushChart[],
   songCost: number,
   exactTarget: number,
   allowPhi: boolean,
-): PushRecommendation[] | null {
-  const greedy = greedySpread(base, pool, songCost, exactTarget, allowPhi);
+  control: PushSearchControl,
+): Promise<PushRecommendation[] | null> {
+  await yieldPushSearch(control);
+  const greedy = await greedySpread(base, pool, songCost, exactTarget, allowPhi, control);
   const greedyCharts = greedy.map((member) => member.chart);
   const fromGreedy = reachesAtMax(base, greedyCharts, allowPhi, exactTarget)
-    ? realizePlan(base, commitSelection(base, greedyCharts, exactTarget, allowPhi, greedy), exactTarget)
+    ? await realizePlan(base, await commitSelection(base, greedyCharts, exactTarget, allowPhi, greedy, control), exactTarget, control)
     : null;
   if (fromGreedy) return fromGreedy;
-  const enumerated = realizePlan(
-    base, firstEnumerated(base, pool, songCost, exactTarget, allowPhi), exactTarget,
+  await yieldPushSearch(control);
+  const enumerated = await realizePlan(
+    base, await firstEnumerated(base, pool, songCost, exactTarget, allowPhi, control), exactTarget, control,
   );
   if (enumerated) return enumerated;
-  const beamed = beamSearch(base, pool, songCost, exactTarget, allowPhi);
+  await yieldPushSearch(control);
+  const beamed = await beamSearch(base, pool, songCost, exactTarget, allowPhi, control);
   if (!beamed) return null;
-  return realizePlan(base, commitSelection(base, beamed, exactTarget, allowPhi), exactTarget);
+  return realizePlan(base, await commitSelection(base, beamed, exactTarget, allowPhi, undefined, control), exactTarget, control);
 }
 
 function makePlaceholderEntry(
@@ -694,12 +757,24 @@ function finishPushResult(
  * 多首不再要求每一首单独达到平均份额；搜索预算内找不到方案时状态为 not_found。
  * includePhi=false 时最高目标 Acc 为 99.99，不把 φ 计入可达上界。
  * searchPoolLimit 只限制联合搜索候选池，不改变不可达上界所使用的全部谱面。
+ * 长搜索按时间片让出主线程；signal 取消时在让出点抛出来源 reason，不返回半份方案。
  */
 export function findPushRecommendations(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
+  options: { delta: number; songCost: number; includePhi?: boolean; searchPoolLimit?: number; signal?: AbortSignal },
+): Promise<PushRecommendationsResult> {
+  const control: PushSearchControl = { signal: options.signal, lastYield: Date.now() };
+  return findPushRecommendationsWithControl(gameRecord, difficultyTable, options, control);
+}
+
+async function findPushRecommendationsWithControl(
+  gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
+  difficultyTable: PhigrosDifficultyTable,
   options: { delta: number; songCost: number; includePhi?: boolean; searchPoolLimit?: number },
-): PushRecommendationsResult {
+  control: PushSearchControl,
+): Promise<PushRecommendationsResult> {
+  await yieldPushSearch(control);
   const songCost = Math.max(1, Math.floor(options.songCost));
   const includePhi = options.includePhi !== false;
   const poolLimit = Math.max(1, Math.floor(options.searchPoolLimit ?? PUSH_POOL_LIMIT));
@@ -720,18 +795,21 @@ export function findPushRecommendations(
     includePhi,
   };
   if (rawCurrent + 1e-9 >= exactTarget) return finishPushResult(shell, 'verified', [], []);
-  const charts = collectCharts(gameRecord, difficultyTable, baseSims, includePhi);
-  if (proveUnreachable(baseSims, charts, songCost, exactTarget, includePhi)) {
+  await yieldPushSearch(control);
+  const charts = await collectCharts(gameRecord, difficultyTable, baseSims, includePhi, control);
+  if (await proveUnreachable(baseSims, charts, songCost, exactTarget, includePhi, control)) {
     return finishPushResult(shell, 'unreachable', [], []);
   }
-  const pool = selectPool(charts, poolLimit, perSongShare, includePhi);
-  const plan = searchJointPlan(baseSims, pool, songCost, exactTarget, includePhi);
+  await yieldPushSearch(control);
+  const pool = await selectPool(charts, poolLimit, perSongShare, includePhi, control);
+  const plan = await searchJointPlan(baseSims, pool, songCost, exactTarget, includePhi, control);
   if (!plan) return finishPushResult(shell, 'not_found', [], []);
+  await yieldPushSearch(control);
   return finishPushResult(
     shell,
     'verified',
     plan,
-    findAlternatives(baseSims, plan, charts, perSongShare, exactTarget, includePhi),
+    await findAlternatives(baseSims, plan, charts, perSongShare, exactTarget, includePhi, control),
   );
 }
 
