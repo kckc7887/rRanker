@@ -36,6 +36,19 @@ export { FilterChipFrame, NeutralChip };
 
 export type DxRatingTagFilterState = 'ready' | 'loading' | 'unavailable';
 
+export function dxRatingTagFilterStateFromQuery(query: {
+  data?: unknown;
+  isFetching?: boolean;
+  isPending?: boolean;
+  isLoading?: boolean;
+}): DxRatingTagFilterState {
+  if (query.data) return 'ready';
+  const fetching = query.isFetching ?? query.isLoading ?? false;
+  const pending = query.isPending ?? query.isLoading ?? false;
+  if (fetching || pending) return 'loading';
+  return 'unavailable';
+}
+
 export interface VersionFilterOption {
   value: string;
   name: string;
@@ -78,6 +91,7 @@ export interface MaimaiFilterBarProps {
   onMultiAchievementChange?: (value: MaimaiFsAchievement | null) => void;
   onVersionLocaleChange: (locale: VersionNameLocale) => void;
   onDxRatingTagIdsChange?: (tagIds: number[]) => void;
+  onDxRatingTagRetry?: () => void;
   onVersionsChange?: (versions: string[]) => void;
   onReset: () => void;
 }
@@ -167,6 +181,7 @@ export function MaimaiFilterBar({
   onMultiAchievementChange,
   onVersionLocaleChange,
   onDxRatingTagIdsChange,
+  onDxRatingTagRetry,
   onVersionsChange,
   onReset,
 }: MaimaiFilterBarProps) {
@@ -334,20 +349,34 @@ export function MaimaiFilterBar({
       {onDxRatingTagIdsChange ? (
         <View style={filterShellStyles.filterRow}>
           <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>标签</Text>
-          <Pressable accessibilityRole="button"
-            accessibilityLabel={`谱面标签筛选，${dxRatingTagState === 'ready' ? `当前 ${tagFilterValue}` : tagFilterValue}`}
-            accessibilityState={{ disabled: dxRatingTagState !== 'ready', expanded: tagSheetVisible }}
-            disabled={dxRatingTagState !== 'ready'}
-            onPress={() => { setOpenDropdown(null); setTagSheetVisible(true); }}
-            style={({ pressed }) => [
-              styles.tagFilterTrigger,
-              { backgroundColor: theme.input, borderColor: theme.border },
-              dxRatingTagState !== 'ready' && styles.disabled,
-              pressed && styles.tagFilterTriggerPressed,
-            ]}>
-            <Text numberOfLines={1} style={[styles.tagFilterValue, { color: theme.text }]}>{tagFilterValue}</Text>
-            <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
-          </Pressable>
+          <View style={styles.tagFilterRow}>
+            <Pressable accessibilityRole="button"
+              accessibilityLabel={`谱面标签筛选，${dxRatingTagState === 'ready' ? `当前 ${tagFilterValue}` : tagFilterValue}`}
+              accessibilityState={{ disabled: dxRatingTagState !== 'ready', expanded: tagSheetVisible }}
+              disabled={dxRatingTagState !== 'ready'}
+              onPress={() => { setOpenDropdown(null); setTagSheetVisible(true); }}
+              style={({ pressed }) => [
+                styles.tagFilterTrigger,
+                { backgroundColor: theme.input, borderColor: theme.border },
+                dxRatingTagState !== 'ready' && styles.disabled,
+                pressed && styles.tagFilterTriggerPressed,
+              ]}>
+              <Text numberOfLines={1} style={[styles.tagFilterValue, { color: theme.text }]}>{tagFilterValue}</Text>
+              <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+            </Pressable>
+            {dxRatingTagState === 'unavailable' && onDxRatingTagRetry ? (
+              <Pressable accessibilityRole="button" accessibilityLabel="重试谱面标签"
+                onPress={onDxRatingTagRetry} hitSlop={8}
+                style={({ pressed }) => [
+                  styles.tagRetryButton,
+                  { backgroundColor: theme.accentSoft, borderColor: theme.accent },
+                  pressed && styles.tagFilterTriggerPressed,
+                ]}>
+                <Ionicons name="refresh" size={16} color={theme.accent} />
+                <Text style={[styles.tagRetryText, { color: theme.accent }]}>重试</Text>
+              </Pressable>
+            ) : null}
+          </View>
         </View>
       ) : null}
 
@@ -430,6 +459,9 @@ const styles = StyleSheet.create({
   tagFilterTrigger: { flex: 1, minWidth: 0, minHeight: 44, borderWidth: 1, borderRadius: 9, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
   tagFilterValue: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 20 },
   tagFilterTriggerPressed: { opacity: 0.7 },
+  tagFilterRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  tagRetryButton: { minHeight: 44, paddingHorizontal: 12, borderWidth: 1, borderRadius: 9, flexDirection: 'row', alignItems: 'center', gap: 4 },
+  tagRetryText: { fontSize: 13, fontWeight: '700' },
   disabled: { opacity: 0.5 },
   achievementDropdownRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'stretch', gap: 8 },
   localeSwitch: { flexDirection: 'row', overflow: 'hidden', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10 },

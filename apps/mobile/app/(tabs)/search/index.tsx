@@ -7,7 +7,7 @@ import { Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { CatalogListPage } from '@/components/game-content/GameListPages';
-import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
+import { MaimaiFilterBar, dxRatingTagFilterStateFromQuery, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
@@ -201,10 +201,11 @@ export function SearchScreen() {
         constantMin={constantMin} constantMax={constantMax} versionLocale={versionLocale} versions={versions}
         dxRatingTags={dxRatingChartTags.data?.tags ?? []}
         selectedDxRatingTagIds={selectedDxRatingTagIds}
-        dxRatingTagState={dxRatingChartTags.data ? 'ready' : dxRatingChartTags.isLoading ? 'loading' : 'unavailable'}
+        dxRatingTagState={dxRatingTagFilterStateFromQuery(dxRatingChartTags)}
         onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
         onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
         onVersionLocaleChange={setVersionLocale} onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
+        onDxRatingTagRetry={dxRatingChartTags.isError ? () => void dxRatingChartTags.refetch?.() : undefined}
         onReset={clearFilters} />
       <CatalogListPage<Song> isLoading={query.isLoading} isError={query.isError}
         isEmpty={!!query.data && filtered.length === 0}

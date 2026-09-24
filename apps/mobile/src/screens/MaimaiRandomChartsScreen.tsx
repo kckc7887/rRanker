@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
+import { MaimaiFilterBar, dxRatingTagFilterStateFromQuery, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { RandomChartsPage } from '@/components/RandomChartsPage';
 import { ScoreRecordCard, type ScoreRecordCardData } from '@/components/ScoreRecordCard';
@@ -147,7 +147,7 @@ export function MaimaiRandomChartsScreen() {
               constantMax={constantMax}
               constantMin={constantMin}
               difficulty={difficulty}
-              dxRatingTagState={dxRatingChartTags.data ? 'ready' : dxRatingChartTags.isLoading ? 'loading' : 'unavailable'}
+              dxRatingTagState={dxRatingTagFilterStateFromQuery(dxRatingChartTags)}
               dxRatingTags={dxRatingChartTags.data?.tags ?? []}
               multiAchievement={multiAchievement}
               onAchievementMaxChange={setAchievementMax}
@@ -157,6 +157,7 @@ export function MaimaiRandomChartsScreen() {
               onConstantMinChange={setConstantMin}
               onDifficultyChange={setDifficulty}
               onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
+              onDxRatingTagRetry={dxRatingChartTags.isError ? () => void dxRatingChartTags.refetch?.() : undefined}
               onMultiAchievementChange={setMultiAchievement}
               onReset={clearFilters}
               onSoloAchievementChange={setSoloAchievement}

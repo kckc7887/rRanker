@@ -6,8 +6,10 @@ import type {
   DxRatingSheetType,
 } from '@/domain/dxrating-chart-tags';
 import { ProviderError, providerErrorFromStatus, type ProviderStatusTexts } from '@/providers/errors';
+import { requestJson } from '@/providers/http-json';
 
-const TAGS_URL = 'https://miruku.dxrating.net/api/v1/tags';
+const DXRATING_BASE_URL = 'https://miruku.dxrating.net';
+const DXRATING_TAGS_PATH = '/api/v1/tags';
 
 const LocalizedStringSchema = z.record(z.string(), z.string());
 const TagSchema = z.object({
@@ -113,27 +115,29 @@ export function mapDxRatingChartTags(input: unknown): DxRatingChartTagsSnapshot 
 }
 
 export class DxRatingChartTagsProvider {
-  async getChartTags(): Promise<DxRatingChartTagsSnapshot> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 12_000);
+  async getChartTags(signal?: AbortSignal): Promise<DxRatingChartTagsSnapshot> {
+    const payload = await requestJson({
+      baseUrl: DXRATING_BASE_URL,
+      path: DXRATING_TAGS_PATH,
+      schema: z.unknown(),
+      fetcher: expoFetch as unknown as typeof fetch,
+      signal,
+      label: 'DXRating',
+      timeoutMs: 20_000,
+      retries: 2,
+      diagnosticScenario: 'metadata',
+      error: (status) => providerErrorFromStatus(status, DXRATING_STATUS_TEXTS),
+      messages: {
+        schema: 'DXRating 标签响应结构与已验证契约不一致',
+        timeout: 'DXRating 谱面标签读取超时',
+        network: '无法连接 DXRating 谱面标签服务',
+      },
+    });
     try {
-      const response = await expoFetch(TAGS_URL, {
-        headers: { Accept: 'application/json' },
-        signal: controller.signal,
-      });
-      if (!response.ok) throw providerErrorFromStatus(response.status, DXRATING_STATUS_TEXTS);
-      return mapDxRatingChartTags(await response.json());
+      return mapDxRatingChartTags(payload);
     } catch (error) {
       if (error instanceof ProviderError) throw error;
-      if (error instanceof SyntaxError) {
-        throw new ProviderError('upstream_schema', 'DXRating 返回了无效 JSON', true, { cause: error });
-      }
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new ProviderError('timeout', 'DXRating 谱面标签读取超时', true, { cause: error });
-      }
-      throw new ProviderError('network', '无法连接 DXRating 谱面标签服务', true, { cause: error });
-    } finally {
-      clearTimeout(timeout);
+      throw new ProviderError('upstream_schema', 'DXRating 标签响应结构与已验证契约不一致', true, { cause: error });
     }
   }
 }

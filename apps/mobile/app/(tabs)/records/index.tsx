@@ -8,7 +8,7 @@ import { EmptyDataView } from '@/components/EmptyDataView';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { RecordsListPage } from '@/components/game-content/GameListPages';
 import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
-import { MaimaiFilterBar, type VersionFilterOption } from '@/components/MaimaiFilterBar';
+import { MaimaiFilterBar, dxRatingTagFilterStateFromQuery, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
@@ -196,12 +196,13 @@ export function RecordsScreen() {
         versionLocale={versionLocale} versions={versions}
         dxRatingTags={dxRatingChartTags.data?.tags ?? []}
         selectedDxRatingTagIds={selectedDxRatingTagIds}
-        dxRatingTagState={dxRatingChartTags.data ? 'ready' : dxRatingChartTags.isLoading ? 'loading' : 'unavailable'}
+        dxRatingTagState={dxRatingTagFilterStateFromQuery(dxRatingChartTags)}
         onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
         onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
         onAchievementMinChange={setAchievementMin} onAchievementMaxChange={setAchievementMax}
         onSoloAchievementChange={setSoloAchievement} onMultiAchievementChange={setMultiAchievement}
         onVersionLocaleChange={setVersionLocale} onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
+        onDxRatingTagRetry={dxRatingChartTags.isError ? () => void dxRatingChartTags.refetch?.() : undefined}
         onReset={clearFilters} />
       <RecordsListPage<ScoreRecord>
         isLoading={isLoading}

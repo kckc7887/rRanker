@@ -186,6 +186,7 @@ describe('DXRating chart tags', () => {
   it('maps upstream HTTP and invalid JSON failures without returning partial data', async () => {
     vi.stubGlobal('fetch', vi.fn()
       .mockResolvedValueOnce(new Response('', { status: 503 }))
+      .mockResolvedValueOnce(new Response('', { status: 503 }))
       .mockResolvedValueOnce(new Response('{', { status: 200 })));
     const provider = new DxRatingChartTagsProvider();
 
