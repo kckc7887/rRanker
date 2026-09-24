@@ -135,7 +135,7 @@ describe('osu 谱面确认资源选择', () => {
       .rejects.toThrow('没有所选难度');
   });
 
-  it('全部媒体校验通过后才落盘，后一项损坏时不写任何媒体', async () => {
+  it('媒体逐项校验后即落盘，每项只读一次，失败时不返回半份清单', async () => {
     const loaded = await JSZip.loadAsync(await archive());
     const sample = loaded.file('set/BG.png');
     const proto = Object.getPrototypeOf(sample) as { async: (type: string) => Promise<Uint8Array> };
@@ -152,12 +152,10 @@ describe('osu 谱面确认资源选择', () => {
         return `file:///session/${encodeURIComponent(path)}`;
       });
       await readOsuChartPreviewArchive(await archive(), target, io);
-      const firstStage = order.findIndex((item) => item.startsWith('stage:'));
-      const movieRead = order.findIndex((item) => item.startsWith('read:') && /\.mp4$/iu.test(item));
-      expect(movieRead).toBeGreaterThanOrEqual(0);
-      expect(firstStage).toBeGreaterThan(movieRead);
-      expect(order.filter((item) => item.startsWith('stage:'))).toEqual([
+      expect(order).toEqual([
+        'read:set/BG.png',
         'stage:set/BG.png',
+        'read:set/movie.mp4',
         'stage:set/movie.mp4',
       ]);
     } finally {
@@ -171,7 +169,8 @@ describe('osu 谱面确认资源选择', () => {
     try {
       const io = reader();
       await expect(readOsuChartPreviewArchive(await archive(), target, io)).rejects.toThrow('视频损坏');
-      expect(io.stageMedia).not.toHaveBeenCalled();
+      expect(io.stageMedia).toHaveBeenCalledTimes(1);
+      expect(io.stageMedia).toHaveBeenCalledWith('set/BG.png', expect.any(Uint8Array));
     } finally {
       proto.async = original;
     }

@@ -49,6 +49,9 @@ jobs:
       - name: Generated players
         run: npm run check:generated
 
+      - name: Production audit
+        run: npm run audit:prod
+
   build-ios:
     needs: quality
     if: github.event_name != 'pull_request' || github.event.pull_request.head.repo.full_name == github.repository
@@ -328,6 +331,8 @@ jobs:
           Write-Host "Set expo.ios.buildNumber = $env:BUILD_NUMBER"
 
       - name: Expo prebuild
+        env:
+          OSU_OAUTH_CLIENT_SECRET: ${{ secrets.OSU_OAUTH_CLIENT_SECRET }}
         run: npx expo prebuild --platform ios --no-install
 
       - name: Install CocoaPods
@@ -483,6 +488,8 @@ jobs:
 
       - name: Archive
         shell: pwsh
+        env:
+          OSU_OAUTH_CLIENT_SECRET: ${{ secrets.OSU_OAUTH_CLIENT_SECRET }}
         run: |
           New-Item `
             -ItemType Directory `

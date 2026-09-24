@@ -11,7 +11,61 @@ const LEGACY_SESSION_KEY = 'rranker.diving-fish.session.v1';
 const V2_VAULT_KEY = 'rranker.provider.sessions.v2';
 const VAULT_KEY = 'rranker.provider.sessions.v3';
 const INDEX_KEY = 'rranker.provider.sessions.index.v4';
+const INDEX_CORRUPT_KEY = `${INDEX_KEY}.corrupt`;
+const INDEX_UNRECOGNIZED_KEY = `${INDEX_KEY}.unrecognized`;
 const LEGACY_VAULT_KEYS = [VAULT_KEY, V2_VAULT_KEY, LEGACY_SESSION_KEY] as const;
+
+/** 会话索引不是合法 JSON。原键保留，副本写在 corrupt 键上，调用方可重试读取。 */
+export class SessionIndexCorruptError extends Error {
+  readonly name = 'SessionIndexCorruptError';
+
+  constructor(readonly preservedRaw: string, options?: { cause?: unknown }) {
+    super('本机会话索引内容损坏');
+    this.cause = options?.cause;
+  }
+}
+
+/** 会话索引版本或顶层结构无法识别。原键保留，副本写在 unrecognized 键上，后续写入不得覆盖原键。 */
+export class SessionIndexUnrecognizedError extends Error {
+  readonly name = 'SessionIndexUnrecognizedError';
+
+  constructor(
+    readonly preservedRaw: string,
+    readonly reason: 'unsupported-version' | 'invalid-structure',
+  ) {
+    super(reason === 'unsupported-version' ? '本机会话索引版本无法识别' : '本机会话索引结构无法识别');
+  }
+}
+
+/** 读取损坏或无法识别时保留的索引原文。没有副本时返回 null。 */
+export async function readPreservedSessionIndex(
+  storage: KeyValueStore = Storage,
+): Promise<string | null> {
+  return (await storage.getItem(INDEX_UNRECOGNIZED_KEY)) ?? (await storage.getItem(INDEX_CORRUPT_KEY));
+}
+
+/**
+ * 只有保留副本重新解析通过才写回原键。当前索引可用时直接返回 false，不做任何写入。
+ * 没有副本时返回 false；副本仍无法解析时抛出类型化错误，原键保持不动。
+ */
+export async function restorePreservedSessionIndex(
+  storage: KeyValueStore = Storage,
+): Promise<boolean> {
+  const currentRaw = await storage.getItem(INDEX_KEY);
+  if (currentRaw) {
+    try {
+      parseSessionIndexOrThrow(currentRaw);
+      return false;
+    } catch {
+      // 当前索引不可用，继续尝试用保留副本恢复。
+    }
+  }
+  const preserved = await readPreservedSessionIndex(storage);
+  if (!preserved) return false;
+  parseSessionIndexOrThrow(preserved);
+  await storage.setItem(INDEX_KEY, preserved);
+  return true;
+}
 
 export type StoredProviderCredential = {
   id: string;
@@ -313,44 +367,56 @@ function sanitizeVault(vault: SessionVault): SessionVault {
   };
 }
 
+function parseSessionIndexOrThrow(raw: string): SessionIndex {
+  let parsed: Partial<SessionIndex>;
+  try {
+    parsed = JSON.parse(raw) as Partial<SessionIndex>;
+  } catch (cause) {
+    throw new SessionIndexCorruptError(raw, { cause });
+  }
+  if (typeof parsed.version === 'number' && parsed.version !== 4) {
+    throw new SessionIndexUnrecognizedError(raw, 'unsupported-version');
+  }
+  if (parsed.version !== 4
+    || !Array.isArray(parsed.credentials)
+    || !Array.isArray(parsed.accounts)) {
+    throw new SessionIndexUnrecognizedError(raw, 'invalid-structure');
+  }
+  const credentials = parsed.credentials.flatMap((value) => {
+    if (!value || typeof value !== 'object') return [];
+    const credential = value as Partial<StoredCredentialIndex>;
+    if (typeof credential.id !== 'string'
+      || !isRemoteProviderId(credential.providerId)
+      || typeof credential.secretRef !== 'string'
+      || !credential.secretRef) {
+      return [];
+    }
+    return [{
+      id: credential.id,
+      providerId: credential.providerId,
+      secretRef: credential.secretRef,
+    }];
+  });
+  const credentialProviders = new Map(
+    credentials.map((credential) => [credential.id, credential.providerId] as const),
+  );
+  const accounts = parsed.accounts.flatMap((value) => {
+    const account = parseAccountMetadata(value, credentialProviders);
+    return account ? [account] : [];
+  });
+  return {
+    version: 4,
+    activeAccountId: typeof parsed.activeAccountId === 'string'
+      ? parsed.activeAccountId
+      : accounts[0]?.id ?? null,
+    credentials,
+    accounts,
+  };
+}
+
 function parseSessionIndex(raw: string): SessionIndex | null {
   try {
-    const parsed = JSON.parse(raw) as Partial<SessionIndex>;
-    if (parsed.version !== 4
-      || !Array.isArray(parsed.credentials)
-      || !Array.isArray(parsed.accounts)) {
-      return null;
-    }
-    const credentials = parsed.credentials.flatMap((value) => {
-      if (!value || typeof value !== 'object') return [];
-      const credential = value as Partial<StoredCredentialIndex>;
-      if (typeof credential.id !== 'string'
-        || !isRemoteProviderId(credential.providerId)
-        || typeof credential.secretRef !== 'string'
-        || !credential.secretRef) {
-        return [];
-      }
-      return [{
-        id: credential.id,
-        providerId: credential.providerId,
-        secretRef: credential.secretRef,
-      }];
-    });
-    const credentialProviders = new Map(
-      credentials.map((credential) => [credential.id, credential.providerId] as const),
-    );
-    const accounts = parsed.accounts.flatMap((value) => {
-      const account = parseAccountMetadata(value, credentialProviders);
-      return account ? [account] : [];
-    });
-    return {
-      version: 4,
-      activeAccountId: typeof parsed.activeAccountId === 'string'
-        ? parsed.activeAccountId
-        : accounts[0]?.id ?? null,
-      credentials,
-      accounts,
-    };
+    return parseSessionIndexOrThrow(raw);
   } catch {
     return null;
   }
@@ -407,9 +473,22 @@ export class SecureSessionStore {
     return enqueueStorageMutation(this.storage, mutation);
   }
 
+  private async parseStoredIndex(raw: string): Promise<SessionIndex> {
+    try {
+      return parseSessionIndexOrThrow(raw);
+    } catch (error) {
+      if (error instanceof SessionIndexCorruptError) {
+        await this.storage.setItem(INDEX_CORRUPT_KEY, raw).catch(() => undefined);
+      } else if (error instanceof SessionIndexUnrecognizedError) {
+        await this.storage.setItem(INDEX_UNRECOGNIZED_KEY, raw).catch(() => undefined);
+      }
+      throw error;
+    }
+  }
+
   private async loadOrCreateIndexUnlocked(): Promise<SessionIndex> {
     const currentRaw = await this.storage.getItem(INDEX_KEY);
-    const current = currentRaw ? parseSessionIndex(currentRaw) : null;
+    const current = currentRaw ? await this.parseStoredIndex(currentRaw) : null;
     if (current) return current;
 
     const vault = await this.loadVault();
@@ -463,14 +542,16 @@ export class SecureSessionStore {
     }
   }
 
+  /**
+   * 索引存在但无法解析时保留原文并抛类型化错误，不回退旧键；
+   * 旧版迁移源解析失败时跳过但不删除（凭据只有这一份，不得销毁）。
+   */
   async loadVault(): Promise<SessionVault> {
     const stopIndex = startTimer('vault.index.read');
     const indexRaw = await this.storage.getItem(INDEX_KEY);
     stopIndex();
     if (indexRaw) {
-      const index = parseSessionIndex(indexRaw);
-      if (index) return this.loadIndexedVault(index);
-      await this.storage.removeItem(INDEX_KEY);
+      return this.loadIndexedVault(await this.parseStoredIndex(indexRaw));
     }
 
     const vaultRaw = await SecureStore.getItemAsync(VAULT_KEY);
@@ -484,7 +565,6 @@ export class SecureSessionStore {
         }
         return vault;
       }
-      await SecureStore.deleteItemAsync(VAULT_KEY);
     }
 
     const v2Raw = await SecureStore.getItemAsync(V2_VAULT_KEY);
@@ -499,7 +579,6 @@ export class SecureSessionStore {
         }
         return legacyVault;
       }
-      await SecureStore.deleteItemAsync(V2_VAULT_KEY);
     }
 
     const legacy = await SecureStore.getItemAsync(LEGACY_SESSION_KEY);
@@ -507,7 +586,6 @@ export class SecureSessionStore {
 
     const session = parseStoredSession(legacy);
     if (!session) {
-      await SecureStore.deleteItemAsync(LEGACY_SESSION_KEY);
       return { ...EMPTY_VAULT, credentials: [], accounts: [] };
     }
     const accountId = 'maimai:diving-fish:migrated';
@@ -540,7 +618,7 @@ export class SecureSessionStore {
   private async saveVaultUnlocked(vault: SessionVault, signal?: AbortSignal): Promise<void> {
     const sanitized = sanitizeVault(vault);
     const currentRaw = await this.storage.getItem(INDEX_KEY);
-    const current = currentRaw ? parseSessionIndex(currentRaw) : null;
+    const current = currentRaw ? await this.parseStoredIndex(currentRaw) : null;
     const nextCredentials: StoredCredentialIndex[] = [];
     const newSecretRefs: string[] = [];
 
@@ -751,6 +829,8 @@ export class SecureSessionStore {
   async clear(): Promise<void> {
     await this.enqueueMutation(async () => {
       await this.clearIndexedVault();
+      await this.storage.removeItem(INDEX_CORRUPT_KEY).catch(() => undefined);
+      await this.storage.removeItem(INDEX_UNRECOGNIZED_KEY).catch(() => undefined);
       await SecureStore.deleteItemAsync(VAULT_KEY);
       await SecureStore.deleteItemAsync(V2_VAULT_KEY);
       await SecureStore.deleteItemAsync(LEGACY_SESSION_KEY);

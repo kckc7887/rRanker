@@ -1,4 +1,4 @@
-import { createUserDataBackup, MAX_BACKUP_FILE_BYTES, userDataBackupBytes, type RestoreMode, type UserDataBackup, type UserLibraryItem } from '@/domain/user-library';
+import { createUserDataBackup, libraryTargetKey, MAX_BACKUP_FILE_BYTES, MAX_BACKUP_ITEMS, mergeLibraryItems, normalizeLibraryItem, normalizeTagPresets, shouldKeepLibraryItem, userDataBackupBytes, type LibraryTarget, type RestoreMode, type UserDataBackup, type UserLibraryItem } from '@/domain/user-library';
 import type { GameId } from '@/domain/game-bind-options';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
 import { UserLibraryService } from '@/services/user-library-service';
@@ -7,7 +7,10 @@ class MemoryRepository implements UserLibraryRepository {
   items: UserLibraryItem[] = [];
   presets: string[] = [];
   failReplace = false;
+  listCalls = 0;
+  mergeBackupCalls = 0;
   async list(gameId?: GameId) {
+    this.listCalls += 1;
     return gameId ? this.items.filter((item) => item.gameId === gameId) : this.items;
   }
   async listTagPresets() { return [...this.presets]; }
@@ -17,6 +20,27 @@ class MemoryRepository implements UserLibraryRepository {
     if (this.failReplace) throw new Error('预设写入失败');
     this.items = items;
     this.presets = [...presets];
+    return this.items;
+  }
+  async mergeBackup(imported: { items: readonly UserLibraryItem[]; presets: readonly string[] }, mode: RestoreMode) {
+    this.mergeBackupCalls += 1;
+    const normalized = imported.items.map(normalizeLibraryItem).filter(shouldKeepLibraryItem);
+    const next = mode === 'merge' ? mergeLibraryItems(this.items, normalized) : mergeLibraryItems([], normalized);
+    if (next.length > MAX_BACKUP_ITEMS) throw new Error('备份条目超过上限');
+    const nextPresets = normalizeTagPresets(mode === 'merge' ? [...this.presets, ...imported.presets] : [...imported.presets]);
+    this.items = next;
+    this.presets = nextPresets;
+    return this.items;
+  }
+  async updateTarget(target: LibraryTarget, update: (current: UserLibraryItem | undefined) => UserLibraryItem) {
+    const key = libraryTargetKey(target);
+    const next = normalizeLibraryItem(update(this.items.find((item) => item.key === key)));
+    const rest = this.items.filter((item) => item.key !== key);
+    this.items = shouldKeepLibraryItem(next) ? [...rest, next] : rest;
+    return this.items;
+  }
+  async clearGame(gameId: GameId) {
+    this.items = this.items.filter((item) => item.gameId !== gameId);
     return this.items;
   }
   async clear() { this.items = []; }
@@ -82,6 +106,25 @@ describe('UserLibraryService', () => {
     await expect(service.restore(backup, 'merge')).rejects.toThrow('标签预设');
     expect(repository.items).toEqual([kept]);
     expect(repository.presets).toHaveLength(20);
+  });
+
+  it('restores through a single atomic merge without pre-reading stored items', async () => {
+    const repository = new MemoryRepository();
+    repository.items = [{
+      key: 'song:maimai:1', gameId: 'maimai', kind: 'song', songId: '1', favorite: true, tags: [],
+      createdAt: now, updatedAt: now,
+    }];
+    repository.presets = ['自定义'];
+    const service = new UserLibraryService(repository, () => now);
+    const backup = createUserDataBackup([{
+      key: 'song:maimai:2', gameId: 'maimai', kind: 'song', songId: '2', favorite: true, tags: [],
+      createdAt: now, updatedAt: now,
+    }], now, ['备份']);
+    await service.restore(backup, 'merge');
+    expect(repository.mergeBackupCalls).toBe(1);
+    expect(repository.listCalls).toBe(0);
+    expect(repository.items.map((item) => item.key).sort()).toEqual(['song:maimai:1', 'song:maimai:2']);
+    expect(repository.presets).toEqual(['自定义', '备份']);
   });
 
   it('keeps a 4000-item backup inside the shared import limit', () => {

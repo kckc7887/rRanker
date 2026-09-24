@@ -5,13 +5,16 @@ import { AbortController as NativeAbortController } from 'abort-controller';
 import {
   downloadOsuBeatmapsetArchive, downloadOsuBeatmapsetPackage,
   osuBeatmapsetDownloadUrl, osuBeatmapsetPackageName,
+  OSU_BEATMAPSET_PACKAGE_MAX_BYTES,
 } from '@/features/osu-beatmapset-download/osu-beatmapset-download';
+import { ChartPreviewBudgetExceededError } from '@/features/chart-preview-shared/chart-preview-resource-budget';
 import { readOsuChartPreviewArchive } from '@/features/osu-chart-preview/chart-preview-resources';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 
 const mocks = vi.hoisted(() => ({
   cleanup: vi.fn(), download: vi.fn(), save: vi.fn(async (_name?: unknown, _output?: unknown) => true),
   files: new Map<string, Uint8Array>(),
+  sizes: new Map<string, number>(),
 }));
 vi.mock('expo-file-system', () => {
   class Directory { constructor(readonly uri: string) {} }
@@ -19,8 +22,9 @@ vi.mock('expo-file-system', () => {
     readonly uri: string;
     constructor(directory: Directory, name: string) { this.uri = `${directory.uri}/${name}`; }
     get exists() { return mocks.files.has(this.uri); }
+    get size() { return mocks.sizes.get(this.uri) ?? mocks.files.get(this.uri)?.byteLength ?? 0; }
     async bytes() { return mocks.files.get(this.uri)!; }
-    delete() { mocks.files.delete(this.uri); }
+    delete() { mocks.files.delete(this.uri); mocks.sizes.delete(this.uri); }
   }
   return { Directory, File };
 });
@@ -48,7 +52,7 @@ function downloaded(args: unknown[], bytes = validArchive): File {
 }
 
 beforeEach(async () => {
-  vi.clearAllMocks(); mocks.files.clear();
+  vi.clearAllMocks(); mocks.files.clear(); mocks.sizes.clear();
   validArchive = await archive();
   mocks.download.mockImplementation(async (...args: unknown[]) => {
     const progress = args[4] as ((value: { totalBytesWritten: number; totalBytesExpectedToWrite: number }) => void) | undefined;
@@ -227,5 +231,52 @@ describe('osu! beatmapset 下载编排', () => {
     const controller = new AbortController(); controller.abort();
     await expect(downloadOsuBeatmapsetArchive(directory, request, { signal: controller.signal })).rejects.toBeDefined();
     expect(mocks.download).toHaveBeenCalledOnce();
+  });
+
+  it('传输字节超过上限即中止且不再切源，未知总长度同样受限', async () => {
+    mocks.download.mockImplementation(async (...args: unknown[]) => {
+      const progress = args[4] as (value: { totalBytesWritten: number; totalBytesExpectedToWrite: number }) => void;
+      progress({ totalBytesWritten: 101, totalBytesExpectedToWrite: 0 });
+      return downloaded(args);
+    });
+    await expect(downloadOsuBeatmapsetArchive(directory, request, { maxArchiveBytes: 100 }))
+      .rejects.toBeInstanceOf(ChartPreviewBudgetExceededError);
+    expect(mocks.download).toHaveBeenCalledTimes(1);
+    expect(mocks.files.size).toBe(0);
+  });
+
+  it('落盘文件超过上限在读内存前拒绝且不再切源', async () => {
+    const bytesSpy = vi.fn();
+    mocks.download.mockImplementation(async (...args: unknown[]) => {
+      const file = downloaded(args);
+      const originalBytes = file.bytes.bind(file);
+      file.bytes = async () => { bytesSpy(); return originalBytes(); };
+      return file;
+    });
+    await expect(downloadOsuBeatmapsetArchive(directory, request, { maxArchiveBytes: 50 }))
+      .rejects.toThrow('谱面下载超出预算');
+    expect(mocks.download).toHaveBeenCalledTimes(1);
+    expect(bytesSpy).not.toHaveBeenCalled();
+    expect(mocks.files.size).toBe(0);
+  });
+
+  it('校验阶段的预算超限不再切源', async () => {
+    await expect(downloadOsuBeatmapsetArchive(directory, request, {
+      validate: async () => { throw new ChartPreviewBudgetExceededError('谱面解压总量超出预算'); },
+    })).rejects.toThrow('谱面解压总量超出预算');
+    expect(mocks.download).toHaveBeenCalledTimes(1);
+    expect(mocks.files.size).toBe(0);
+  });
+
+  it('正式谱包使用独立预算与文案', async () => {
+    mocks.download.mockImplementation(async (...args: unknown[]) => {
+      const file = downloaded(args);
+      mocks.sizes.set(file.uri, OSU_BEATMAPSET_PACKAGE_MAX_BYTES + 1);
+      return file;
+    });
+    await expect(downloadOsuBeatmapsetPackage({ ...request, title: 'x' }))
+      .rejects.toThrow('谱包过大，暂不支持下载');
+    expect(mocks.download).toHaveBeenCalledTimes(1);
+    expect(mocks.save).not.toHaveBeenCalled();
   });
 });

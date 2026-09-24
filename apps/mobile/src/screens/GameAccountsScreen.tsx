@@ -17,13 +17,15 @@ import { isOsuGameId } from '@/domain/game-mode-family';
 import { useSession } from '@/state/session-store';
 import { useDebugStore } from '@/state/debug-store';
 import { useNotification } from '@/components/AppNotification';
+import { restoreAppAccounts } from '@/services/account-restoration';
+import { SecureSessionStore } from '@/storage/secure-session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { useAccountBindingFlow } from '@/hooks/use-account-binding-flow';
 import { useManagedAccountOperations } from '@/hooks/use-managed-account-operations';
 
 export function GameAccountsScreen() {
   const theme = useAppTheme();
-  const { showNotification } = useNotification();
+  const { showNotification, showActionNotification } = useNotification();
   const boundAccounts = useSession(s => s.boundAccounts);
   const activeAccountId = useSession(s => s.activeAccountId);
   const restoreError = useSession(s => s.restoreError);
@@ -36,6 +38,39 @@ export function GameAccountsScreen() {
   const { busy, message, onSelectAccount, addLocalAccount, addDemoAccount, bindTufPlayer,
     bindPhiraPlayer, bindMuseDashPlayer, promptRemoveAccount, saveLocalAccountName } = useManagedAccountOperations(flow);
   const [collapsedManagedGameIds, setCollapsedManagedGameIds] = useState<Set<GameId>>(() => new Set());
+  const [recovering, setRecovering] = useState(false);
+
+  const retryRestore = () => {
+    if (recovering) return;
+    setRecovering(true);
+    void restoreAppAccounts().finally(() => setRecovering(false));
+  };
+
+  const clearSessionsAndReload = () => {
+    if (recovering) return;
+    setRecovering(true);
+    void (async () => {
+      try {
+        await new SecureSessionStore().clear();
+        await restoreAppAccounts();
+        showNotification({ title: '已清除登录数据', message: '请重新绑定需要使用的账号。', variant: 'info' });
+      } finally {
+        setRecovering(false);
+      }
+    })();
+  };
+
+  const confirmClearSessions = () => {
+    showActionNotification({
+      title: '清除登录数据',
+      message: '将删除本机全部登录会话，之后需重新绑定账号。',
+      variant: 'warning',
+      actions: [
+        { label: '清除', tone: 'destructive', onPress: clearSessionsAndReload },
+        { label: '取消', tone: 'cancel' },
+      ],
+    });
+  };
 
   const openLogin = (gameId: GameId, provider: ProviderOption) => {
     if (!provider.available) {
@@ -127,7 +162,21 @@ export function GameAccountsScreen() {
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(safeAreaInsets.bottom, 24) + 72 }]}
         scrollIndicatorInsets={{ bottom: safeAreaInsets.bottom }}>
-        {restoreError ? <Text style={styles.error}>{restoreError}</Text> : null}
+        {restoreError ? (
+          <View>
+            <Text style={styles.error}>{restoreError}</Text>
+            <View style={styles.restoreActions}>
+              <Pressable accessibilityRole="button" accessibilityLabel="重试恢复登录状态"
+                disabled={busy || recovering} onPress={retryRestore}>
+                <Text style={styles.retryRestore}>重试恢复</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" accessibilityLabel="清除登录数据并重新绑定"
+                disabled={busy || recovering} onPress={confirmClearSessions}>
+                <Text style={styles.clearSessions}>清除登录数据</Text>
+              </Pressable>
+            </View>
+          </View>
+        ) : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
         <BoundAccountGroupedList accounts={boundAccounts} expandedGameId={null}
           isGameExpanded={(gameId) => !collapsedManagedGameIds.has(gameId)}
@@ -177,6 +226,9 @@ const styles = StyleSheet.create({
   unbind: { color: '#B42318', textAlign: 'center', paddingTop: 8 },
   message: { color: '#4B5563', fontSize: 13 },
   error: { color: '#B42318', fontSize: 13 },
+  restoreActions: { flexDirection: 'row', gap: 16, paddingTop: 6 },
+  retryRestore: { color: '#246BFD', fontWeight: '600' },
+  clearSessions: { color: '#B42318' },
   fab: {
     position: 'absolute',
     right: 20,

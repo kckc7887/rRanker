@@ -1,4 +1,5 @@
-import { DEFAULT_TAG_PRESETS, type UserDataBackupV1 } from '@/domain/user-library';
+import { DEFAULT_TAG_PRESETS, mergeLibraryItems, normalizeLibraryItem, normalizeTagPresets, shouldKeepLibraryItem, MAX_BACKUP_ITEMS, type LibraryTarget, type RestoreMode, type UserDataBackupV1, type UserLibraryItem } from '@/domain/user-library';
+import type { GameId } from '@/domain/game-bind-options';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
 import { UserLibraryService } from '@/services/user-library-service';
 
@@ -14,6 +15,15 @@ function repository(initialPresets: string[]): UserLibraryRepository & { presets
       state.presets = [...presets];
       return [];
     },
+    mergeBackup: async (imported: { items: readonly UserLibraryItem[]; presets: readonly string[] }, mode: RestoreMode) => {
+      const normalized = imported.items.map(normalizeLibraryItem).filter(shouldKeepLibraryItem);
+      const next = mode === 'merge' ? mergeLibraryItems([], normalized) : mergeLibraryItems([], normalized);
+      if (next.length > MAX_BACKUP_ITEMS) throw new Error('备份条目超过上限');
+      state.presets = normalizeTagPresets(mode === 'merge' ? [...state.presets, ...imported.presets] : [...imported.presets]);
+      return next;
+    },
+    updateTarget: async (_target: LibraryTarget) => [],
+    clearGame: async (_gameId: GameId) => [],
     clear: async () => undefined,
   };
   return state;

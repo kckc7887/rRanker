@@ -101,7 +101,7 @@ describe('DXRating chart tags', () => {
     expect(snapshot.source).toMatchObject({ kind: 'dxrating', label: 'DXRating 谱面标签', isStale: false });
   });
 
-  it('matches normal charts by exact title, type and difficulty and deduplicates in relation order', () => {
+  it('matches normal charts by normalized title, type and difficulty and deduplicates in relation order', () => {
     const snapshot = mapDxRatingChartTags(responsePayload);
 
     expect(dxRatingTagsForChart(snapshot, song(), chart()).map((tag) => tag.name))
@@ -110,7 +110,25 @@ describe('DXRating chart tags', () => {
       .toEqual(['Umiyuri']);
     expect(dxRatingTagsForChart(snapshot, song(), chart({ difficulty: 'expert', levelIndex: 2 })).map((tag) => tag.name))
       .toEqual(['Umiyuri']);
-    expect(dxRatingTagsForChart(snapshot, song('测试曲 '), chart())).toEqual([]);
+    expect(dxRatingTagsForChart(snapshot, song('  测试曲  '), chart()).map((tag) => tag.name))
+      .toEqual(['转圈', 'Umiyuri', '高难', '易鸟加']);
+  });
+
+  it('normalizes relation-side titles and difficulties before matching', () => {
+    const snapshot = mapDxRatingChartTags({
+      ...responsePayload,
+      tagSongs: [
+        { song_id: '  测试曲  ', sheet_type: 'dx', sheet_difficulty: ' Master ', tag_id: 3 },
+        { song_id: '测试曲', sheet_type: 'dx', sheet_difficulty: 'EXPERT', tag_id: 1 },
+      ],
+    });
+
+    expect(dxRatingTagsForChart(snapshot, song(), chart()).map((tag) => tag.name)).toEqual(['转圈']);
+    expect(dxRatingTagsForChart(
+      snapshot,
+      song(),
+      chart({ difficulty: 'expert', levelIndex: 2 }),
+    ).map((tag) => tag.name)).toEqual(['Umiyuri']);
   });
 
   it('builds an exact chart index, normalizes maimai song ids, and requires every selected tag', () => {

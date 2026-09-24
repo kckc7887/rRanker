@@ -148,7 +148,7 @@ describe('osu 原生资源准备生命周期', () => {
     result.dispose();
   });
 
-  it('目标谱面有效但视频压缩数据损坏时在媒体落盘前清理候选并继续下一源', async () => {
+  it('目标谱面有效但视频压缩数据损坏时清理整个候选并继续下一源', async () => {
     const zip = await JSZip.loadAsync(mockArchive);
     const damaged = Buffer.from(await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }));
     for (let offset = 0; offset < damaged.length - 30; offset++) {
@@ -161,7 +161,9 @@ describe('osu 原生资源准备生命周期', () => {
     mockArchivesByUrl.set('https://dl.sayobot.cn/beatmaps/download/full/10', new Uint8Array(damaged));
     const result = await prepareOsuChartPreviewWebViewSource(target, 'dark', {}, new AbortController().signal);
     expect(mockDownloadedUrls).toHaveLength(2);
-    expect(mockWrites.filter(path => path.includes('/candidate-1/media/'))).toHaveLength(0);
+    // 单遍落盘：已校验的图片先写入隔离候选，视频失败后整个候选被清理，不可见半份资源。
+    expect(mockWrites.filter(path => path.includes('/candidate-1/media/'))).toHaveLength(1);
+    expect(mockWrites.filter(path => path.includes('/candidate-1/media/'))[0]).toMatch(/0\.png$/u);
     expect([...mockFiles.keys()].some(path => path.includes('/candidate-1/'))).toBe(false);
     expect([...mockFiles.keys()].filter(path => path.includes('/candidate-2/media/'))).toHaveLength(2);
     expect(mockCleaned.some(path => path.endsWith('/candidate-1'))).toBe(true);

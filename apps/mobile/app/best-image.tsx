@@ -14,7 +14,7 @@ import { useAppLifecycle } from '@/state/app-lifecycle';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { CollectionImage } from '@/components/CollectionImage';
 import type { ChartType, Difficulty, Player } from '@/domain/models';
-import { MaimaiFilterBar, formatDxRatingTagFilterValue, type VersionFilterOption } from '@/components/MaimaiFilterBar';
+import { MaimaiFilterBar, dxRatingTagFilterState, formatDxRatingTagFilterValue, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { buildDxRatingChartTagIndex } from '@/domain/dxrating-chart-tags';
 import {
   useDetailedCatalog,
@@ -567,7 +567,7 @@ export function MaimaiBestImageScreen() {
         versions={versionOptions}
         dxRatingTags={dxRatingChartTags.data?.tags ?? []}
         selectedDxRatingTagIds={selectedDxRatingTagIds}
-        dxRatingTagState={dxRatingChartTags.data ? 'ready' : dxRatingChartTags.isLoading ? 'loading' : 'unavailable'}
+        dxRatingTagState={dxRatingTagFilterState(dxRatingChartTags)}
         versionMulti
         selectedVersions={versions}
         currentVersionTitle={maimai?.currentVersionTitle}

@@ -50,6 +50,9 @@ jobs:
       - name: Generated players
         run: npm run check:generated
 
+      - name: Production audit
+        run: npm run audit:prod
+
   build-android:
     needs: quality
     runs-on: ubuntu-latest
@@ -92,19 +95,51 @@ jobs:
       - name: Expo prebuild
         env:
           NODE_ENV: production
+          OSU_OAUTH_CLIENT_SECRET: ${{ secrets.OSU_OAUTH_CLIENT_SECRET }}
         run: npm run prebuild:android
+
+      - name: Prepare release keystore
+        id: signing
+        run: |
+          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
+            if [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+              echo "Release keystore secrets are incomplete (need BASE64, PASSWORD, ALIAS, KEY_PASSWORD)" >&2
+              exit 1
+            fi
+            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/rranker-release.keystore
+            echo "mode=release" >> "$GITHUB_OUTPUT"
+          else
+            echo "mode=test-debug" >> "$GITHUB_OUTPUT"
+          fi
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
 
       - name: Build four ABI APKs
         working-directory: apps/mobile/android
         env:
           NODE_ENV: production
+          OSU_OAUTH_CLIENT_SECRET: ${{ secrets.OSU_OAUTH_CLIENT_SECRET }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
         run: |
           chmod +x gradlew
+          SIGNING_ARGS=""
+          if [ "${{ steps.signing.outputs.mode }}" = "release" ]; then
+            SIGNING_ARGS="-Pandroid.injected.signing.store.file=$PWD/app/rranker-release.keystore -Pandroid.injected.signing.store.password=$ANDROID_KEYSTORE_PASSWORD -Pandroid.injected.signing.key.alias=$ANDROID_KEY_ALIAS -Pandroid.injected.signing.key.password=$ANDROID_KEY_PASSWORD"
+          fi
+          # shellcheck disable=SC2086
           ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=2 \
-            -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64
+            -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64 \
+            $SIGNING_ARGS
 
       - name: Verify and name APKs
         id: apks
+        env:
+          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
         run: |
           python3 - <<'PY'
           import json
@@ -155,24 +190,41 @@ jobs:
               attributes = dict(re.findall(r"(\w+)='([^']*)'", package_line))
               if (attributes.get("name"), attributes.get("versionName"), attributes.get("versionCode")) != (config["android"]["package"], version, str(build)):
                   raise ValueError(f"APK manifest mismatch for {abi}")
-              subprocess.run([str(build_tools / "apksigner"), "verify", "--verbose", str(apk)], check=True)
-              verified[abi] = apk
+              verify_output = subprocess.check_output(
+                  [str(build_tools / "apksigner"), "verify", "--print-certs", str(apk)], text=True)
+              sha256 = next((line.split("SHA-256 digest:")[1].strip()
+                             for line in verify_output.splitlines() if "SHA-256 digest:" in line), "")
+              subject = next((line.split("certificate DN:")[1].strip()
+                              for line in verify_output.splitlines() if "certificate DN:" in line), "")
+              if not sha256 or not subject:
+                  raise ValueError(f"Could not read signing certificate for {abi}")
+              if os.environ.get("SIGNING_MODE") == "release" and "Android Debug" in subject:
+                  raise ValueError(f"Expected formal signing for {abi}, got debug certificate")
+              verified[abi] = (apk, sha256, subject)
 
-          if set(verified.values()) != set(release.glob("*.apk")):
+          if {apk for apk, _sha256, _subject in verified.values()} != set(release.glob("*.apk")):
               raise ValueError("APK files do not match output metadata")
+          fingerprints = {sha256 for _apk, sha256, _subject in verified.values()}
+          if len(fingerprints) != 1:
+              raise ValueError(f"APK signing certificates differ: {fingerprints}")
+          fingerprint = fingerprints.pop()
           output = Path("build/android-apks")
           output.mkdir(parents=True, exist_ok=True)
           names = []
-          for abi, apk in sorted(verified.items()):
+          for abi, (apk, _sha256, _subject) in sorted(verified.items()):
               name = f"rRanker-{version}({build})-{abi}.apk"
               shutil.copy2(apk, output / name)
               names.append(name)
               print(name)
           with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
               stream.write(f"artifact_name=rRanker-{version}({build})-android\n")
+          if os.environ.get("SIGNING_MODE") == "release":
+              signing = f"Formal release keystore (SHA-256 `{fingerprint}`)."
+          else:
+              signing = "Expo's default debug keystore (test build, not for store release)."
           with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as stream:
               stream.write("## Android APKs\n\n" + "\n".join(f"- `{name}`" for name in names))
-              stream.write("\n\nSigning: Expo's default debug keystore (Release build).\n")
+              stream.write(f"\n\nSigning: {signing}\n")
           PY
 
       - name: Upload APK artifacts

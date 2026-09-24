@@ -12,14 +12,16 @@ describe('SQLite storage with real SQL and a measured async bridge', () => {
   let database: DatabaseSync;
   let repository: SqliteSnapshotRepository;
   let run: ReturnType<typeof vi.fn>;
+  let reads: ReturnType<typeof vi.fn>;
   beforeEach(async () => {
     database = new DatabaseSync(':memory:');
     run = vi.fn(async (sql: string, ...parameters: (string | number)[]) => database.prepare(sql).run(...parameters));
+    reads = vi.fn(async (sql: string, ...parameters: (string | number)[]) => database.prepare(sql).all(...parameters));
     bridge.open.mockResolvedValue({
       execAsync: async (sql: string) => database.exec(sql),
       runAsync: run,
       getFirstAsync: async (sql: string, ...parameters: (string | number)[]) => database.prepare(sql).get(...parameters) ?? null,
-      getAllAsync: async (sql: string, ...parameters: (string | number)[]) => database.prepare(sql).all(...parameters),
+      getAllAsync: reads,
       withTransactionAsync: async (task: () => Promise<void>) => {
         database.exec('BEGIN');
         try { await task(); database.exec('COMMIT'); }
@@ -107,6 +109,101 @@ describe('SQLite storage with real SQL and a measured async bridge', () => {
     invalidateResourceWrites('queued-test'); release.resolve();
     await blocking; await failure;
     expect(await repository.getResource('stale', 1)).toBeNull();
+  });
+
+  it('keeps concurrent backup merges and single-item writes without losing updates', async () => {
+    const library = new SqliteUserLibraryRepository();
+    const at = '2026-09-24T00:00:00.000Z';
+    const song = (songId: string) => ({
+      key: `song:maimai:${songId}`, gameId: 'maimai' as const, kind: 'song' as const,
+      songId, favorite: true, tags: [], createdAt: at, updatedAt: at,
+    });
+    await library.mergeBackup({ items: [song('A')], presets: ['旧预设'] }, 'replace');
+    await Promise.all([
+      library.mergeBackup({ items: [song('C')], presets: ['新预设'] }, 'merge'),
+      library.updateTarget({ kind: 'song', gameId: 'maimai', songId: 'B' }, () => song('B')),
+    ]);
+    expect((await library.list()).map((item) => item.key).sort())
+      .toEqual(['song:maimai:A', 'song:maimai:B', 'song:maimai:C']);
+    expect(await library.listTagPresets()).toEqual(['旧预设', '新预设']);
+  });
+
+  it('writes one favorite with constant bridge calls regardless of library size', async () => {
+    const library = new SqliteUserLibraryRepository();
+    const at = '2026-09-24T00:00:00.000Z';
+    const seed = (prefix: string, count: number) => Array.from({ length: count }, (_, index) => ({
+      key: `song:maimai:${prefix}${index}`, gameId: 'maimai' as const, kind: 'song' as const,
+      songId: `${prefix}${index}`, favorite: true, tags: ['甲', '乙'], createdAt: at, updatedAt: at,
+    }));
+    await library.mergeBackup({ items: seed('K', 200), presets: [] }, 'replace');
+    const toggle = () => library.updateTarget(
+      { kind: 'song', gameId: 'maimai', songId: 'K0' },
+      (current) => {
+        if (!current || current.kind !== 'song') throw new Error('missing seeded song');
+        return { ...current, favorite: !current.favorite, updatedAt: '2026-09-24T00:00:01.000Z' };
+      },
+    );
+    run.mockClear(); reads.mockClear();
+    await toggle();
+    // 1 行 upsert + 1 组关联删除 + 2 标签×(标签 upsert + 关联插入) + 1 次孤儿清理。
+    expect(run).toHaveBeenCalledTimes(7);
+    expect(reads.mock.calls.length).toBeLessThanOrEqual(4);
+    await library.mergeBackup({ items: seed('J', 800), presets: [] }, 'merge');
+    expect(await library.list()).toHaveLength(1000);
+    run.mockClear(); reads.mockClear();
+    await toggle();
+    expect(run).toHaveBeenCalledTimes(7);
+    expect(reads.mock.calls.length).toBeLessThanOrEqual(4);
+  });
+
+  it('removes the emptied row and prunes orphan tags on a single-target write', async () => {
+    const library = new SqliteUserLibraryRepository();
+    const at = '2026-09-24T00:00:00.000Z';
+    await library.mergeBackup({
+      items: [{
+        key: 'song:maimai:A', gameId: 'maimai', kind: 'song', songId: 'A',
+        favorite: true, tags: ['独有', '共有'], createdAt: '2026-09-20T00:00:00.000Z', updatedAt: at,
+      }, {
+        key: 'song:maimai:B', gameId: 'maimai', kind: 'song', songId: 'B',
+        favorite: true, tags: ['共有'], createdAt: at, updatedAt: at,
+      }],
+      presets: [],
+    }, 'replace');
+    run.mockClear();
+    const result = await library.updateTarget(
+      { kind: 'song', gameId: 'maimai', songId: 'A' },
+      (current) => {
+        if (!current || current.kind !== 'song') throw new Error('missing seeded song');
+        return { ...current, favorite: false, tags: [], updatedAt: '2026-09-24T00:00:01.000Z' };
+      },
+    );
+    // 关联删除 + 行删除 + 孤儿清理，不触碰其它行。
+    expect(run).toHaveBeenCalledTimes(3);
+    expect(result.map((item) => item.key)).toEqual(['song:maimai:B']);
+    expect(result[0]).toMatchObject({ createdAt: at, tags: ['共有'] });
+    expect(database.prepare('SELECT normalized_name AS name FROM user_library_tags ORDER BY name').all())
+      .toEqual([{ name: '共有' }]);
+  });
+
+  it('clears one game without touching other games or presets', async () => {
+    const library = new SqliteUserLibraryRepository();
+    const at = '2026-09-24T00:00:00.000Z';
+    await library.mergeBackup({
+      items: [{
+        key: 'song:maimai:A', gameId: 'maimai', kind: 'song', songId: 'A',
+        favorite: true, tags: ['舞萌标签'], createdAt: at, updatedAt: at,
+      }, {
+        key: 'song:phigros:A', gameId: 'phigros', kind: 'song', songId: 'A',
+        favorite: true, tags: ['Phigros 标签'], createdAt: at, updatedAt: at,
+      }],
+      presets: ['预设'],
+    }, 'replace');
+    expect((await library.list('maimai')).map((item) => item.key)).toEqual(['song:maimai:A']);
+    const remaining = await library.clearGame('maimai');
+    expect(remaining.map((item) => item.key)).toEqual(['song:phigros:A']);
+    expect(await library.listTagPresets()).toEqual(['预设']);
+    expect(database.prepare('SELECT normalized_name AS name FROM user_library_tags ORDER BY name').all())
+      .toEqual([{ name: 'phigros 标签' }]);
   });
 
 });

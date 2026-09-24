@@ -31,3 +31,14 @@ it('recalculates cached records and Best30 against a new resource revision witho
   expect(after.rks).toBeGreaterThan(before.rks);
   expect(download).toHaveBeenCalledTimes(1);
 });
+
+it('passes the abort signal into the push search', async () => {
+  const provider = new PhigrosScoreProvider({ mode: 'phi-session', sessionToken: 'token', playerId: 'player', persistable: true });
+  await provider.getB30();
+  let reads = 0;
+  const flipping = {
+    get aborted() { reads += 1; return reads > 2; },
+    reason: new Error('stop-search'),
+  };
+  await expect(provider.getPushRecommendations(0.5, 2, true, flipping as AbortSignal)).rejects.toThrow('stop-search');
+});
