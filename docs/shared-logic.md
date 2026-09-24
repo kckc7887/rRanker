@@ -51,6 +51,35 @@ Muse Dash 与 MuseDash.moe 共用同一份图片，示例账号共用示例图�
 `remote-image-cache.test.ts` 和 `remote-image.test.tsx` 覆盖包内源的缓存边界。
 Jest 的图片模拟不用于区分图标身份，图标身份差异由 Vitest 的真实静态资源导入验证。
 
+中二单曲数值分两层：`domain/chunithm-rating.ts` 的 `rawChunithmChartRating` 是全精度值，
+`chunithmChartRatingDisplay` 是两位小数向下取整的展示值。OVER POWER 与反推最低分数只读 raw，
+展示与档位表只读 display；定数 13.7、分数 1,000,099 的 raw Rating 为 14.7099，展示值为 14.70。
+`parseChunithmChartInput({ levelValue, score, clear })` 是唯一输入边界，返回
+`violations`（`level_out_of_range` / `score_out_of_range` / `lamp_score_conflict`）与规范化后的输入；
+调用方在 `violations` 非空时不得把值送进公式。定数上限、分数上限与各灯最低分数分别读
+`CHUNITHM_LEVEL_VALUE_MAX`、`CHUNITHM_SCORE_MAX`、`CHUNITHM_CLEAR_TIER_MIN_SCORE`，
+灯文案读 `CHUNITHM_CLEAR_TIER_LABELS`。合同见 `chunithm-rating.test.ts` 与 `chunithm-tools-screens.test.tsx`。
+
+Phira 批量刷新返回 `PhiraBestRefreshResult`：`refresh.status` 为 `success` / `partial` / `failed`，
+并给出 `updatedChartIds`、`requestedChartIds` 与 `failures`。只提交成功项，
+全失败或本次没有请求项时不写入、不推进 `source.updatedAt`，缓存回退不等于刷新成功。
+合同见 `phira-service.test.ts`、`phira-cache.test.ts` 与 `sqlite-storage-integration.test.ts`。
+
+Phigros 实力分析的政策数值只有一个来源：`domain/phigros-strength-analysis.ts` 的只读
+`PHIGROS_STRENGTH_POLICY`（阈值偏移与上限、计入池的最低评级、小样本与补充上限、细分标签票数、
+推荐条数与最小增益、推荐 Acc 搜索区间）。页面说明由 `describePhigrosStrengthPoolPolicy()`
+生成，不再在 UI 里维护第二份数字；改变政策只改这一处。
+
+Phira 曲库分页用判别状态表达搜索进度：`domain/phira.ts` 的 `phiraCatalogPageState` 返回
+loading / error / ready，ready 恒带 `items`（可为空）并独立描述 `hasNextPage`、`scanning`、
+`paused`（扫描预算耗尽）、`nextPageFailed` 与 `exhausted`；`phiraCatalogListView` 把它映射成
+列表与空态，预算耗尽保留“继续扫描”、后页失败保留已有项，不把“尚未搜完”写成“全库无结果”。
+Muse Dash 的成就筛选依赖单曲 miss 明细：`museDashMissDetail` 把 `null`（pending）、
+`undefined`（unknown）与数值（known）分开，`filterMuseDashRandomCharts` 只接受 known，
+`museDashAchievementDetailsPending` 让抽取入口在 pending 期间等待。合同见
+`phira-catalog-pagination.test.ts`、`phira-ui.test.tsx`、`muse-dash-content-adapter.test.ts`、
+`musedash-random-charts-achievement.test.tsx` 与 `musedash-song-detail-route.test.tsx`。
+
 ## Provider、仓库与数据服务
 
 | 能力 | 权威入口与主要导出 | 使用边界 | 主要验证 |
@@ -61,7 +90,7 @@ Jest 的图片模拟不用于区分图标身份，图标身份差异由 Vitest �
 | 校验发布会话 | `src/services/verified-release.ts`：`VerifiedReleaseSession<T>`、`verifyResourceBytes(bytes, asset, message)` | 调用方提供格式专属 prepare；共用消费者取消、代次、失败重读和完整候选切换；校验字节后才发布结果 | `phigros-resources.test.ts`、`rizline-resources.test.ts` |
 | Phigros 发布事务 | `src/services/phigros-resources.ts`：`phigrosResources`、`load(signal?, check?)`、`withRelease(action, signal?, check?)`、`verifyPhigrosResource(bytes, asset)`、`directory(current)`；`src/domain/account-avatar.ts`：`phigrosReleaseDirectory`、`buildPhigrosAvatarUrl(releaseDirectory, avatarName, resourceVersion?)` | Phigros 各调用方共用唯一会话发布；校验所有必需元数据后原子替换；谱面、曲绘和头像路径取 `current.manifest` 所在目录，查询参数带 `resourceVersion`；实际资源校验大小/SHA-256；失败强制绕过缓存重读一次，取消以消费者计数管理 | `phigros-resources.test.ts`、`phigros-catalog-notes.test.ts`、`phigros-score-revision.test.ts`、`account-avatar.test.ts`、`phigros-avatar-resolver.test.ts` |
 | 错误边界 | `src/providers/errors.ts`：`ProviderError`、`providerErrorFromStatus`、`providerErrorToUserMessage` | 底层 code/cause 用于诊断；可选 `needsCode` 表示应改用验证码；所有用户可见出口必须转换为可行动文案 | `consumer-copy-policy.test.ts`、各 Provider 测试 |
-| LXNS OAuth 请求 | `src/providers/lxns-oauth-request.ts` 与 `lxns-oauth.ts` | 舞萌和中二共享 OAuth 请求与令牌轮换骨架；游戏差异通过参数和账号映射表达 | LXNS OAuth、登录和 Session 测试 |
+| LXNS OAuth 请求 | `src/providers/lxns-oauth.ts`：`rotateLxnsTokens`、`lxnsRotationMayReplace`、`lxnsRotationAncestors`；`src/providers/lxns-oauth-request.ts`：`LxnsOAuthRequestCore`、`LxnsTokenRotationUpdate` | 舞萌和中二共享 OAuth 请求与令牌轮换骨架；轮换回调必须携带被本次轮换消费掉的旧会话（`previous`）与结果（`next`），提交方据此判断凭据世代；游戏差异通过参数和账号映射表达 | LXNS OAuth、上传、Session 与中二 Provider 测试 |
 | 示例满成绩 | `src/providers/maxed-records.ts` 的 `buildMaxedScoreRecords` | 由游戏测试 Provider 提供真实目录和映射函数，不复制通用生成循环 | `maxed-*-test-provider.test.ts` |
 | Repository | `src/repositories/{catalog,resource,snapshot,user-library}-repository.ts` | Service 依赖接口；SQLite 实现留在 `storage/`，页面不直接写数据库 | Repository、存储迁移和用户曲库测试 |
 | 缓存优先 | `src/services/cache-first.ts`：`cacheFirstLoad`、`staleCached`、`isCacheFallback` | 统一“本地首屏、后台刷新、失败保留旧数据”；调用方提供读写和游戏语义 | `cache-first.test.ts` |
@@ -206,7 +235,7 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 
 | 能力 | 权威入口与主要导出 | 使用边界 | 主要验证 |
 |---|---|---|---|
-| Session | `src/state/session-store.ts`：`useSession`、`restoreSession`、令牌轮换函数 | 当前账号、游戏、Provider 与会话集中管理；页面不得维护第二份账号真相 | Session、账号切换、OAuth 测试 |
+| Session | `src/state/session-store.ts`：`useSession`、`restoreSession`、`applyLxnsTokenRotation(accountId, update)`、`retryPendingLxnsRotationWrites` | 当前账号、游戏、Provider 与会话集中管理；页面不得维护第二份账号真相。落雪轮换提交返回 `applied` / `pending-persist` / `stale` / `removed`：按凭据世代判定归属，发起账号被解绑但共享凭据仍被引用时继续提交，新授权不会被迟到结果覆盖 | Session、账号切换、OAuth 测试 |
 | QueryClient | `src/state/query-client.ts`：`queryClient`、`releaseInactiveQueries` | 全应用唯一实例；只有内存警告清理非活动 Query | 生命周期与缓存测试 |
 | 生命周期 | `src/state/app-lifecycle-core.ts`、`app-lifecycle.tsx`：`AppLifecycleProvider`、`useAppLifecycle`、`getForegroundAbortSignal`、`waitForForeground`、`ensureForegroundWork` | 短暂 inactive 不 abort、不换代；后台 abort 前台工作。进入 `foreground-ready` 时，来自后台则换代并 `beginForegroundWork`；若经 inactive 回来且 controller 已空则 `ensureForegroundWork` 重建可取消信号。异步任务传递 AbortSignal | `app-lifecycle.test.tsx`、下载生命周期测试 |
 | 普通筛选 Store | `src/state/create-filter-store.ts` 的 `createFilterStore` | defaults 生成 setter；`clearKeys` 决定清空范围，游戏保留筛选字段语义 | 各游戏 filter 测试 |
@@ -259,7 +288,7 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
   和缓存代次的缩略信息及本地 Rating 读取；读取完成后检查账号是否仍有效。
 - Phigros 推分查询 key 为 `phigros-push-rks`、账号 ID、玩家 ID、资源修订和存档更新时间。
   它属于账号数据失效集合；切换账号不会复用另一账号的新鲜结果。
-  `findPushRecommendations` 是异步搜索：返回 `searchStatus`、已取整并重新核算的 `plan`，以及可替换 plan 中 Acc 差值最大一首的 `alternatives`。`recommendations` 与 `plan` 相同。`combinationReachesTarget` 只在 `verified` 时为真。多首不再要求每一首单独达到平均份额；排除 φ 时最高 Acc 为 99.99。搜索预算内未找到方案是 `not_found`，只有全部谱面或成本歌数内的独立增益上界不够时才是 `unreachable`。长搜索按 16 毫秒时间片让出主线程；`signal` 取消时在让出点抛出来源 reason，不返回半份方案。页面只对 `plan` 作达标保证。
+  `findPushRecommendations` 是异步搜索：返回 `searchStatus`、已取整并重新核算的 `plan`，以及可替换 plan 中 Acc 差值最大一首的 `alternatives`。`recommendations` 与 `plan` 相同。`combinationReachesTarget` 只在 `verified` 时为真。预算按谱面计：`options.chartCost` 与结果里的 `chartCost` / `perChartShare` 表示愿意投入的谱面数，同一首歌的不同难度各占一张；多张不再要求每一张单独达到平均份额。排除 φ 时最高 Acc 为 99.99。搜索预算内未找到方案是 `not_found`，只有全部谱面或 `chartCost` 谱面数内的独立增益上界不够时才是 `unreachable`。长搜索按 16 毫秒时间片让出主线程；`signal` 取消时在让出点抛出来源 reason，不返回半份方案。页面只对 `plan` 作达标保证。
 - `captureResourceWrites(scope, signal?, accountId?)` 返回写入断言，游戏代次和
   `account:<id>` 代次共同限制持久化与后台回调。`captureAccountWrites(accounts)` 必须在
   上传或传输的第一个 await 之前调用，并把返回的断言传入 Repository `save` 与后续展示名、
@@ -269,6 +298,15 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 - `subscribeResourceWrites(scope, onInvalidate)` 返回退订函数，在该 scope 提升代次后同步
   通知取消静默任务；任务完成必须退订，写入前仍通过 `captureResourceWrites` 复核。
   订阅异常不会阻碍其它任务取消或缓存清理；合同由 `async-resource-lifetime.test.ts` 覆盖。
+- 落雪轮换提交必须携带请求开始时消费掉的旧会话：`SecureSessionStore.updateCredentialSession(credentialId, session, { acceptedRefreshTokens })`
+  只在凭据仍被账号引用、且当前凭据会话属于该轮换世代（旧 token 或其后代）时写入，返回
+  `applied` / `stale` / `missing`；内存发布只覆盖仍关联该凭据的账号，不把已解绑账号的会话写回。
+  落盘失败保留内存中的新会话并标记待持久化，由 `retryPendingLxnsRotationWrites()` 在下次提交时补交；
+  上游已消费旧 refresh token 时不得重新刷新，进程退出前仍未保存成功则需要重新授权。
+- 上传目标在共同写入入口逐个复核资格：`uploadLatestScoreHubSyncToTargets` 与
+  `transferMaimaiFromLxns` 在每个目标写入前调用 `captureAccountWrites` 断言，
+  `uploadRecordsToLxns` / `uploadRecordsToDivingFish` 的 `assertEligible` 在每次重试前再复核；
+  失效目标不再向上游写入，其他目标独立完成，已写入的远端结果不回滚。
 - `clearStorageByCategories` 先提升所属游戏代次，再取消并移除查询，然后执行适配器清理。
   `cancelBoundAccountQueries(account, client)` 在解绑删除前使单个账号失效，取消并移除
   其查询，保留其他账号和公共曲库。解绑与全游戏清缓存不得混用失效范围。
@@ -283,6 +321,11 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
   完成 Repository 初始化，task 内不得嵌套进入队列。批量资源/账号删除按 500 个参数分批，
   一次清理使用同连接事务；失败不阻塞后续任务，也不回滚其他仓库的写入。
   文本体积用 `LENGTH(CAST(field AS BLOB))` 统计 UTF-8 字节；数据库实际分配页仍独立报告。
+- `SqliteSnapshotRepository.updateResource(key, schemaVersion, transform, assertCurrent?)` 把读取、
+  转换、代次断言与写入放进同一个写入队列任务，队列内只用直接数据库调用（不重入队列）；
+  同一资源的并发合并按提交顺序串行，最后提交的值获胜。`PhiraCache.mergeBests` 用它提交成绩合并，
+  空集合只读回既有快照、不写入、不推进 `updatedAt`；合同由 `sqlite-storage-integration.test.ts`
+  与 `sqlite-snapshot-repository.test.ts` 覆盖。
 
 验证入口包括 `account-metadata-observers.test.tsx`、`account-thumbnail.test.ts`、
 `secure-session-store.test.ts`、`async-resource-lifetime.test.ts`、
@@ -355,7 +398,11 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 账号管理的 `useManagedAccountOperations` 继续使用 `screens/game-accounts-actions.ts` 的公共执行器，
 档案/缓存策略由 `services/account-management.ts` 提供，互斥弹层与转场归 `useAccountBindingFlow`。
 `removeBoundPlayerAccount` 的可选 `prepareRemoval` 在删除前取消账号查询；失败中止删除并通知，
-`finally` 始终释放 busy，既有分项失败继续汇总。屏幕不自行实现第二套绑定或删除流程。
+`finally` 始终释放 busy。关键解绑提交（`clearPlayer` 收到的 `submit`）失败时抛出并返回
+`{ status: 'blocked' }`，账号与凭据保持原样、界面保留该账号作为重试入口；分项清理（`cleanup`）失败
+只汇总为 `cleanupFailures` 并仍按原提示展示。`clearBoundAccountData(account, { submit, cleanup })`
+按账号类别划分：账号或凭据删除属于 `submit`，成绩缓存、派生缓存与个人数据清理属于 `cleanup`。
+屏幕不自行实现第二套绑定或删除流程。
 
 总览的 `useOverviewSync`、`useOverviewUpload` 共享 `useOverviewOperation` 操作锁，
 同步仍等待缓存后台读取落定后判断成功。`useOverviewSync` 的水鱼预刷新、后台落定等待
@@ -687,5 +734,11 @@ MajdataPlay 原始计分方法，普通测试无需 .NET；原生账号、保存
 源码重新打包，同时验证 HTML、player.js 与 player.bundle；基准比较保留固定提交的绘制
 命令及搜索结果，报告桌面 CPU 分布，不推断手机帧率。推分基准用确定性存档测量
 30/300/1000 条成绩的总耗时与事件循环最大阻塞，不设 CI 耗时门槛。生产审计门槛拦截
-critical 与基线外 high 公告，基线内公告的定性见脚本注释。无损 PNG 检查验证 CRC、解压扫描线、
-RGBA、透明度及所有非 IDAT 块。完整命令和双端云端比较流程见技术架构文档。
+critical 与基线外 high 公告，并把执行失败、报告缺字段或不自洽、未知严重级别与无法识别的
+公告同样判为失败；基线记录的分类值、包名与版本必须与锁文件一致，基线内公告的定性见脚本注释。
+无损 PNG 检查验证 CRC、解压扫描线、RGBA、透明度及所有非 IDAT 块。完整命令和双端云端比较流程见技术架构文档。
+
+仓库轻检查在仓库根目录执行 `node .github/scripts/check-light.mjs`（`--self-test` 额外用故意
+破坏的样例证明每类检查都会失败）：校验 workflow 与 action 的 YAML 结构、shell 与内联 bash 的
+`bash -n` 语法、`.mjs`/`.cjs` 的 `node --check` 语法，并运行分类器自检
+`node .github/actions/changed-scope/self-test.mjs`。它只读仓库文件，不安装 npm 依赖。
