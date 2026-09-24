@@ -42,27 +42,27 @@ export type PushRecommendationsResult = {
   displayRks: number;
   exactTarget: number;
   displayTarget: number;
-  /** 愿意打的歌数 */
-  songCost: number;
+  /** 愿意投入的谱面数；预算按谱面计，同一首歌的不同难度各算一张。 */
+  chartCost: number;
   /** 精确总加值（exactTarget - currentRks） */
   gainNeeded: number;
-  /** 每首歌需承担的总 RKS 份额（gainNeeded / songCost） */
-  perSongShare: number;
+  /** 每张谱面需承担的总 RKS 份额（gainNeeded / chartCost） */
+  perChartShare: number;
   /** 是否包含目标 Acc 为 100%（φ）的谱面 */
   includePhi: boolean;
   /**
    * verified：plan 已取整并重新核算，精确 RKS 达到目标。
    * not_found：搜索预算内没有找到方案，不能据此断定无解。
-   * unreachable：上界证明在 φ 约束和成本歌数内无法达到。
+   * unreachable：上界证明在 φ 约束和成本谱面数内无法达到。
    */
   searchStatus: PushSearchStatus;
   /** 与 searchStatus === 'verified' 相同。 */
   combinationReachesTarget: boolean;
-  /** 已验证方案，长度不超过 songCost。页面只能对这组作达标保证。 */
+  /** 已验证方案，长度不超过 chartCost。页面只能对这组作达标保证。 */
   plan: PushRecommendation[];
   /**
-   * 可替换 plan 中 Acc 差值最大的一首（Acc 差值相同则取定数更高者）。
-   * 替换后重新核算仍达标。不进入 plan，也不能与 plan 混排后宣称前 N 首达标。
+   * 可替换 plan 中 Acc 差值最大的一张（Acc 差值相同则取定数更高者）。
+   * 替换后重新核算仍达标。不进入 plan，也不能与 plan 混排后宣称前 N 张达标。
    */
   alternatives: PushRecommendation[];
   /** 与 plan 相同。 */
@@ -279,8 +279,8 @@ function combinationCount(n: number, k: number): number {
   return result;
 }
 
-function estimateEase(chart: PushChart, perSongShare: number, maxAcc: number): number {
-  const needed = chart.currentChartRks + perSongShare * 30;
+function estimateEase(chart: PushChart, perChartShare: number, maxAcc: number): number {
+  const needed = chart.currentChartRks + perChartShare * 30;
   const maxRks = calculateRks(chart.difficulty, maxAcc);
   if (needed > maxRks + 1e-9) return (maxAcc - chart.currentAcc) + 100;
   const ratio = Math.min(1, Math.max(0, needed / chart.difficulty));
@@ -290,14 +290,14 @@ function estimateEase(chart: PushChart, perSongShare: number, maxAcc: number): n
 async function selectPool(
   charts: readonly PushChart[],
   limit: number,
-  perSongShare: number,
+  perChartShare: number,
   allowPhi: boolean,
   control: PushSearchControl,
 ): Promise<PushChart[]> {
   await yieldPushSearch(control);
   if (charts.length <= limit) return [...charts];
   const maxAcc = maxAllowedAcc(allowPhi);
-  const byEase = [...charts].sort((a, b) => estimateEase(a, perSongShare, maxAcc) - estimateEase(b, perSongShare, maxAcc)
+  const byEase = [...charts].sort((a, b) => estimateEase(a, perChartShare, maxAcc) - estimateEase(b, perChartShare, maxAcc)
     || b.maxGainRaw - a.maxGainRaw);
   const byGain = [...charts].sort((a, b) => b.maxGainRaw - a.maxGainRaw);
   const chosen = new Map<string, PushChart>();
@@ -365,7 +365,7 @@ async function collectCharts(
 async function proveUnreachable(
   base: SimRecord[],
   charts: readonly PushChart[],
-  songCost: number,
+  chartCost: number,
   exactTarget: number,
   allowPhi: boolean,
   control: PushSearchControl,
@@ -376,7 +376,7 @@ async function proveUnreachable(
   if (!reachesAtMax(base, charts, allowPhi, exactTarget)) return true;
   const topSum = [...charts]
     .sort((a, b) => b.maxGainRaw - a.maxGainRaw)
-    .slice(0, songCost)
+    .slice(0, chartCost)
     .reduce((sum, chart) => sum + chart.maxGainRaw, 0);
   return rawCurrent + topSum + 1e-9 < exactTarget;
 }
@@ -468,7 +468,7 @@ async function commitSelection(
 async function greedySpread(
   base: SimRecord[],
   pool: readonly PushChart[],
-  songCost: number,
+  chartCost: number,
   exactTarget: number,
   allowPhi: boolean,
   control: PushSearchControl,
@@ -476,10 +476,10 @@ async function greedySpread(
   let sims = base;
   const selected: PushTarget[] = [];
   const maxAcc = maxAllowedAcc(allowPhi);
-  while (selected.length < songCost && calculateFinalRks(sims) + 1e-9 < exactTarget) {
+  while (selected.length < chartCost && calculateFinalRks(sims) + 1e-9 < exactTarget) {
     await yieldPushSearch(control);
     const now = calculateFinalRks(sims);
-    const stepGoal = now + (exactTarget - now) / (songCost - selected.length);
+    const stepGoal = now + (exactTarget - now) / (chartCost - selected.length);
     let bestShare: { chart: PushChart; accDiff: number } | null = null;
     let bestMarginal: { chart: PushChart; gain: number } | null = null;
     for (const chart of pool) {
@@ -532,12 +532,12 @@ async function forEachCombination(
 async function firstEnumerated(
   base: SimRecord[],
   pool: readonly PushChart[],
-  songCost: number,
+  chartCost: number,
   exactTarget: number,
   allowPhi: boolean,
   control: PushSearchControl,
 ): Promise<PushTarget[] | null> {
-  for (let size = Math.min(songCost, pool.length); size >= 1; size -= 1) {
+  for (let size = Math.min(chartCost, pool.length); size >= 1; size -= 1) {
     await yieldPushSearch(control);
     if (combinationCount(pool.length, size) > PUSH_ENUM_LIMIT) continue;
     let found: PushTarget[] | null = null;
@@ -554,7 +554,7 @@ async function firstEnumerated(
 async function beamSearch(
   base: SimRecord[],
   pool: readonly PushChart[],
-  songCost: number,
+  chartCost: number,
   exactTarget: number,
   allowPhi: boolean,
   control: PushSearchControl,
@@ -564,7 +564,7 @@ async function beamSearch(
   type BeamState = { keys: string[]; charts: PushChart[]; sims: SimRecord[]; rks: number };
   let beam: BeamState[] = [{ keys: [], charts: [], sims: base, rks: calculateFinalRks(base) }];
   let used = 0;
-  for (let depth = 0; depth < songCost; depth += 1) {
+  for (let depth = 0; depth < chartCost; depth += 1) {
     await yieldPushSearch(control);
     const next: BeamState[] = [];
     for (const state of beam) {
@@ -638,7 +638,7 @@ async function findAlternatives(
   base: SimRecord[],
   plan: readonly PushRecommendation[],
   charts: readonly PushChart[],
-  perSongShare: number,
+  perChartShare: number,
   exactTarget: number,
   allowPhi: boolean,
   control: PushSearchControl,
@@ -647,7 +647,7 @@ async function findAlternatives(
   if (plan.length === 0) return [];
   const hardest = hardestRecommendation(plan);
   const alternatives: PushRecommendation[] = [];
-  for (const chart of await selectPool(charts, PUSH_ALTERNATIVE_LIMIT, perSongShare, allowPhi, control)) {
+  for (const chart of await selectPool(charts, PUSH_ALTERNATIVE_LIMIT, perChartShare, allowPhi, control)) {
     await yieldPushSearch(control);
     if (plan.some((item) => item.songId === chart.songId && item.level === chart.level)) continue;
     let context = base;
@@ -694,13 +694,13 @@ async function realizePlan(
 async function searchJointPlan(
   base: SimRecord[],
   pool: readonly PushChart[],
-  songCost: number,
+  chartCost: number,
   exactTarget: number,
   allowPhi: boolean,
   control: PushSearchControl,
 ): Promise<PushRecommendation[] | null> {
   await yieldPushSearch(control);
-  const greedy = await greedySpread(base, pool, songCost, exactTarget, allowPhi, control);
+  const greedy = await greedySpread(base, pool, chartCost, exactTarget, allowPhi, control);
   const greedyCharts = greedy.map((member) => member.chart);
   const fromGreedy = reachesAtMax(base, greedyCharts, allowPhi, exactTarget)
     ? await realizePlan(base, await commitSelection(base, greedyCharts, exactTarget, allowPhi, greedy, control), exactTarget, control)
@@ -708,11 +708,11 @@ async function searchJointPlan(
   if (fromGreedy) return fromGreedy;
   await yieldPushSearch(control);
   const enumerated = await realizePlan(
-    base, await firstEnumerated(base, pool, songCost, exactTarget, allowPhi, control), exactTarget, control,
+    base, await firstEnumerated(base, pool, chartCost, exactTarget, allowPhi, control), exactTarget, control,
   );
   if (enumerated) return enumerated;
   await yieldPushSearch(control);
-  const beamed = await beamSearch(base, pool, songCost, exactTarget, allowPhi, control);
+  const beamed = await beamSearch(base, pool, chartCost, exactTarget, allowPhi, control);
   if (!beamed) return null;
   return realizePlan(base, await commitSelection(base, beamed, exactTarget, allowPhi, undefined, control), exactTarget, control);
 }
@@ -753,8 +753,9 @@ function finishPushResult(
 }
 
 /**
- * 推分推荐。单曲和多首都返回已取整并重新核算的 plan。
- * 多首不再要求每一首单独达到平均份额；搜索预算内找不到方案时状态为 not_found。
+ * 推分推荐。单谱面和多谱面都返回已取整并重新核算的 plan。
+ * chartCost 的单位是谱面：同一首歌的不同难度各占一张预算。
+ * 多张不再要求每一张单独达到平均份额；搜索预算内找不到方案时状态为 not_found。
  * includePhi=false 时最高目标 Acc 为 99.99，不把 φ 计入可达上界。
  * searchPoolLimit 只限制联合搜索候选池，不改变不可达上界所使用的全部谱面。
  * 长搜索按时间片让出主线程；signal 取消时在让出点抛出来源 reason，不返回半份方案。
@@ -762,7 +763,7 @@ function finishPushResult(
 export function findPushRecommendations(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
-  options: { delta: number; songCost: number; includePhi?: boolean; searchPoolLimit?: number; signal?: AbortSignal },
+  options: { delta: number; chartCost: number; includePhi?: boolean; searchPoolLimit?: number; signal?: AbortSignal },
 ): Promise<PushRecommendationsResult> {
   const control: PushSearchControl = { signal: options.signal, lastYield: Date.now() };
   return findPushRecommendationsWithControl(gameRecord, difficultyTable, options, control);
@@ -771,11 +772,11 @@ export function findPushRecommendations(
 async function findPushRecommendationsWithControl(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
-  options: { delta: number; songCost: number; includePhi?: boolean; searchPoolLimit?: number },
+  options: { delta: number; chartCost: number; includePhi?: boolean; searchPoolLimit?: number },
   control: PushSearchControl,
 ): Promise<PushRecommendationsResult> {
   await yieldPushSearch(control);
-  const songCost = Math.max(1, Math.floor(options.songCost));
+  const chartCost = Math.max(1, Math.floor(options.chartCost));
   const includePhi = options.includePhi !== false;
   const poolLimit = Math.max(1, Math.floor(options.searchPoolLimit ?? PUSH_POOL_LIMIT));
   const baseSims = toSimRecords(collectScoredEntries(gameRecord, difficultyTable));
@@ -783,33 +784,33 @@ async function findPushRecommendationsWithControl(
   const currentRks = roundRks(rawCurrent);
   const { displayRks, exactTarget, displayTarget } = resolvePushExactTarget(currentRks, options.delta);
   const gainNeeded = Math.max(0, exactTarget - currentRks);
-  const perSongShare = gainNeeded / songCost;
+  const perChartShare = gainNeeded / chartCost;
   const shell = {
     currentRks,
     displayRks,
     exactTarget,
     displayTarget,
-    songCost,
+    chartCost,
     gainNeeded: roundRks(gainNeeded),
-    perSongShare: roundRks(perSongShare),
+    perChartShare: roundRks(perChartShare),
     includePhi,
   };
   if (rawCurrent + 1e-9 >= exactTarget) return finishPushResult(shell, 'verified', [], []);
   await yieldPushSearch(control);
   const charts = await collectCharts(gameRecord, difficultyTable, baseSims, includePhi, control);
-  if (await proveUnreachable(baseSims, charts, songCost, exactTarget, includePhi, control)) {
+  if (await proveUnreachable(baseSims, charts, chartCost, exactTarget, includePhi, control)) {
     return finishPushResult(shell, 'unreachable', [], []);
   }
   await yieldPushSearch(control);
-  const pool = await selectPool(charts, poolLimit, perSongShare, includePhi, control);
-  const plan = await searchJointPlan(baseSims, pool, songCost, exactTarget, includePhi, control);
+  const pool = await selectPool(charts, poolLimit, perChartShare, includePhi, control);
+  const plan = await searchJointPlan(baseSims, pool, chartCost, exactTarget, includePhi, control);
   if (!plan) return finishPushResult(shell, 'not_found', [], []);
   await yieldPushSearch(control);
   return finishPushResult(
     shell,
     'verified',
     plan,
-    await findAlternatives(baseSims, plan, charts, perSongShare, exactTarget, includePhi, control),
+    await findAlternatives(baseSims, plan, charts, perChartShare, exactTarget, includePhi, control),
   );
 }
 
@@ -830,18 +831,18 @@ export function evaluateDisplayedPushPlan(
 /** 搜索状态对应的页面说明。未找到方案时不写成数学意义上的无解。 */
 export function formatPushSearchSummary(result: PushRecommendationsResult): string {
   const phi = result.includePhi ? '' : '（已排除 φ）';
-  const adjust = `可增加成本歌数、降低加值${result.includePhi ? '' : '或开启包含 φ'}。`;
+  const adjust = `可增加成本谱面数、降低加值${result.includePhi ? '' : '或开启包含 φ'}。`;
   if (result.searchStatus === 'verified') {
     if (result.plan.length === 0) return '当前成绩已经达到精确目标';
-    return `以下 ${result.plan.length} 首一起可以达到精确目标`;
+    return `以下 ${result.plan.length} 张谱面一起可以达到精确目标`;
   }
   if (result.searchStatus === 'not_found') {
     return `在当前搜索范围内没有找到方案${phi}，${adjust}`;
   }
-  if (result.songCost <= 1) {
-    return `没有谱面能承担 ${result.perSongShare.toFixed(4)} 的加值${phi}，${adjust}`;
+  if (result.chartCost <= 1) {
+    return `没有谱面能承担 ${result.perChartShare.toFixed(4)} 的加值${phi}，${adjust}`;
   }
-  return `现有谱面无法用 ${result.songCost} 首达到该目标${phi}，${adjust}`;
+  return `现有谱面无法用 ${result.chartCost} 张谱面达到该目标${phi}，${adjust}`;
 }
 
 export function formatPushAcc(acc: number): string {

@@ -83,7 +83,7 @@ function distribution(samples) {
   };
 }
 
-const options = { delta: 0.05, songCost: 3, includePhi: true };
+const options = { delta: 0.05, chartCost: 3, includePhi: true };
 
 async function measureBlocking(run) {
   const gaps = [];

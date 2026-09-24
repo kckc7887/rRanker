@@ -131,6 +131,32 @@ describe('chunithm tool screens', () => {
     expect(getByText('分数档位')).toBeTruthy();
   });
 
+  it('starts from a legal lamp and score combination', async () => {
+    const { getByText, queryByText, getByLabelText } = await render(<ChunithmRatingToolScreen />);
+    // 定数 14.0 + 1,010,000 的 AJC：
+    // Rating = 14 + 2.15 = 16.15；OP = 5×(14+2) + 2500×0.0015 + 1.25 = 85.00
+    expect(getByText(/Rating：16\.15/)).toBeTruthy();
+    expect(getByText(/OVER POWER：85\.00/)).toBeTruthy();
+    expect(queryByText(/至少需要/)).toBeNull();
+    // 灯的提示文案由领域侧的最低分数生成
+    expect(getByLabelText('AJC（ALL JUSTICE CRITICAL · 至少 1,010,000 分）')).toBeTruthy();
+    expect(getByLabelText('无（无连击奖励）')).toBeTruthy();
+  });
+
+  it('reports an impossible lamp and score combination instead of feeding it to the formula', async () => {
+    const { getByText, queryByText, getByLabelText } = await render(<ChunithmRatingToolScreen />);
+    await fireEvent.changeText(getByLabelText('分数'), '1009000');
+    expect(getByText('AJC 至少需要 1,010,000 分。')).toBeTruthy();
+    // Rating 与灯无关，仍然照常给出；OP 不再计算非法组合
+    expect(getByText(/Rating：16\.15/)).toBeTruthy();
+    expect(getByText(/OVER POWER：输入无效/)).toBeTruthy();
+
+    // 换成与该分数相容的灯后恢复计算：5×(14+2) + 1500×0.0015 = 82.25
+    await fireEvent.press(getByLabelText('无（无连击奖励）'));
+    expect(queryByText('AJC 至少需要 1,010,000 分。')).toBeNull();
+    expect(getByText(/OVER POWER：82\.25/)).toBeTruthy();
+  });
+
   it('switches CLEAR tier and recomputes the over power', async () => {
     const { getByText, getByLabelText } = await render(<ChunithmRatingToolScreen />);
     const ajText = getByText(/OVER POWER：/).props.children as string;

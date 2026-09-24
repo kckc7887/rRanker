@@ -10,6 +10,7 @@ import { buildPhigrosKyouChartTagIndex } from '@/domain/phigros-kyou';
 import { phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import {
   analyzePhigrosStrength,
+  describePhigrosStrengthPoolPolicy,
   type PhigrosStrengthChartSample,
   type PhigrosStrengthRecommendation,
   type PhigrosTagRksStat,
@@ -19,7 +20,8 @@ import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { useAppTheme } from '@/theme/app-theme';
 
-const POOL_DESCRIPTION = '阈值取玩家 RKS 减 0.2 后向下保留一位小数，最高为 16.0。候选池包含定数达到阈值的全部谱面，稀缺系数只由候选数量决定；基础分析池仅包含 RKS 达标且评级 A 以上的成绩。标签基础样本为 1–2 张时，从候选池内已有成绩但未入分析池的同标签谱面按 RKS 向下补入最多 5 张，参与标签平均、覆盖率和歌曲列表。再对未达到同类满分基准的结果应用校准并封顶。';
+/** 分析池说明由领域侧政策常量生成，页面不再维护第二份数字。 */
+const POOL_DESCRIPTION = describePhigrosStrengthPoolPolicy();
 
 function Metric({ label, value }: { label: string; value: string }) {
   const theme = useAppTheme();
