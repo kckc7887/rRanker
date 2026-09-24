@@ -17,7 +17,7 @@ import {
   type ScoreHubCabinetScoreJob,
 } from '@/services/score-hub-client';
 import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
-import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
+import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { scoreHubAccountStore } from '@/storage/score-hub-account-store';
 import { waitForForeground } from '@/state/app-lifecycle-core';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
@@ -427,7 +427,7 @@ export type UploadCommonInput = {
   resolveCatalog: () => Promise<CatalogSnapshot>;
   signal: ScoreHubAbortSignal;
   onPhase: (phase: UploadPhase) => void;
-  onLxnsTokensRotated?: (accountId: string, session: LxnsOAuthSession) => void | Promise<void>;
+  onLxnsTokensRotated?: (accountId: string, update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
 };
 
 function resolveSelectedTargets(input: UploadCommonInput): UploadTarget[] {

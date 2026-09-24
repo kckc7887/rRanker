@@ -285,7 +285,7 @@ async function loadChunithmGameDataBundle(context: GameDataLoaderContext): Promi
   if (activeProviderId === 'lxns' && session?.mode === 'lxns-oauth') {
     const provider = new ChunithmScoreProvider(
       session,
-      (next) => applyLxnsTokenRotation(activeAccountId, next),
+      (update) => applyLxnsTokenRotation(activeAccountId, update),
     );
     const service = new ChunithmPersonalService(
       provider,

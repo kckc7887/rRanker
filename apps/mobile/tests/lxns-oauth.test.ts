@@ -203,6 +203,23 @@ describe('rotateLxnsTokens', () => {
     await expect(rotateLxnsTokens('r1')).rejects.toMatchObject({ code: 'authentication' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+  it('remembers the consumed generations so a late commit can be attributed', async () => {
+    const fetchMock = tokenResponse({
+      access_token: 'a1',
+      token_type: 'Bearer',
+      expires_in: 900,
+      refresh_token: 'r2',
+    });
+    const { lxnsRotationAncestors, lxnsRotationMayReplace, rotateLxnsTokens } =
+      await loadLxnsOAuthModule({ fetchImpl: fetchMock });
+
+    await rotateLxnsTokens('r1');
+
+    expect(lxnsRotationMayReplace('r1', 'r2')).toBe(true);
+    expect(lxnsRotationAncestors('r2')).toEqual(['r1']);
+    // 重新授权拿到的新 refresh token 不属于旧世代，迟到结果不能覆盖它。
+    expect(lxnsRotationMayReplace('r-fresh', 'r2')).toBe(false);
+  });
 });
 
 describe('exchangeLxnsAuthorizationCode state check', () => {

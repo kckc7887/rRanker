@@ -482,6 +482,22 @@ describe('M3A game account management', () => {
     expect(mockClearOrder).toEqual(['credentials', 'cache', 'personal']);
   });
 
+  it('keeps the account and its credentials when the key unbind submission fails', async () => {
+    mockRemoveAccount.mockRejectedValueOnce(new Error('vault write failed'));
+    mockBoundAccounts = [mockAccount, createMaimaiBoundAccount({ providerId: 'lxns', displayName: '落雪玩家', rating: 0, playerId: 'u2' })];
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByLabelText('解除绑定 测试水鱼'));
+    await fireEvent.press(screen.getByText('确认解绑'));
+    await waitFor(() => expect(screen.getByText('移除失败')).toBeTruthy());
+    expect(mockRemoveBoundAccount).not.toHaveBeenCalled();
+    expect(mockSetActiveAccountId).not.toHaveBeenCalled();
+    expect(mockClearSnapshots).not.toHaveBeenCalled();
+
+    await waitFor(() => expect(screen.getByLabelText('添加游戏账号').props.accessibilityState.disabled).toBe(false));
+    // 关键解绑失败后账号仍在列表里，用户可再次发起解绑。
+    expect(screen.getByLabelText('解除绑定 测试水鱼')).toBeTruthy();
+  });
+
   it('stops removal before touching persisted data when query cancellation fails and releases busy', async () => {
     jest.spyOn(queryClient, 'cancelQueries').mockRejectedValueOnce(new Error('cancel failed'));
     mockBoundAccounts = [mockAccount];

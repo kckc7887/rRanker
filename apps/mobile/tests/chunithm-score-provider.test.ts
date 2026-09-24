@@ -167,10 +167,10 @@ describe('ChunithmScoreProvider', () => {
     await new ChunithmScoreProvider(expiredSession, rotated).getSnapshot();
 
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/oauth/token'))).toHaveLength(1);
-    expect(rotated).toHaveBeenCalledWith(expect.objectContaining({
-      accessToken: 'fresh-access',
-      refreshToken: 'fresh-refresh',
-    }));
+    expect(rotated).toHaveBeenCalledWith({
+      previous: expect.objectContaining({ accessToken: 'access-token', refreshToken: 'refresh-token' }),
+      next: expect.objectContaining({ accessToken: 'fresh-access', refreshToken: 'fresh-refresh' }),
+    });
   });
 
   it('reports malformed upstream data as a retryable schema error', async () => {

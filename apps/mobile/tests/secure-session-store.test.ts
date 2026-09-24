@@ -577,3 +577,53 @@ describe('Rizline SMS secure accounts', () => {
     expect(await store.upsertAccount({ ...input, session: { ...session, phone: 'invalid' } })).toBe('');
   });
 });
+
+describe('落雪共享凭据提交', () => {
+  const EXPIRES_AT = 1_800_000_000_000;
+  const shared = (refreshToken: string) => ({
+    mode: 'lxns-oauth' as const, accessToken: `access-${refreshToken}`, refreshToken,
+    expiresAt: EXPIRES_AT, persistable: true as const,
+  });
+  const credentialId = 'lxns:shared';
+  const lxnsAccount = (id: string, gameId: 'maimai' | 'chunithm'): StoredProviderAccountInput => ({
+    id, gameId, providerId: 'lxns', credentialId,
+    displayName: id, scoreDisplay: '-', session: shared('refresh-a'),
+  });
+  beforeEach(() => { secure.values.clear(); sqlite.values.clear(); });
+
+  it('applies the rotation to the shared credential while another account still references it', async () => {
+    const store = createStore();
+    await store.upsertAccount(lxnsAccount('maimai:lxns:1', 'maimai'));
+    await store.upsertAccount(lxnsAccount('chunithm:lxns:2', 'chunithm'));
+    await store.removeAccount('maimai:lxns:1');
+
+    await expect(store.updateCredentialSession(credentialId, shared('refresh-b'), {
+      acceptedRefreshTokens: ['refresh-a'],
+    })).resolves.toBe('applied');
+
+    const vault = await store.loadVault();
+    expect(vault.accounts.map(item => item.id)).toEqual(['chunithm:lxns:2']);
+    expect(vault.credentials[0]?.session).toEqual(shared('refresh-b'));
+  });
+
+  it('refuses a rotation whose generation no longer matches the stored credential', async () => {
+    const store = createStore();
+    await store.upsertAccount({ ...lxnsAccount('maimai:lxns:1', 'maimai'), session: shared('refresh-new') });
+
+    await expect(store.updateCredentialSession(credentialId, shared('refresh-late'), {
+      acceptedRefreshTokens: ['refresh-a'],
+    })).resolves.toBe('stale');
+    expect((await store.loadVault()).credentials[0]?.session).toEqual(shared('refresh-new'));
+  });
+
+  it('reports a missing credential instead of writing an unreferenced secret', async () => {
+    const store = createStore();
+    await store.upsertAccount(lxnsAccount('maimai:lxns:1', 'maimai'));
+    await store.removeAccount('maimai:lxns:1');
+
+    await expect(store.updateCredentialSession(credentialId, shared('refresh-b'), {
+      acceptedRefreshTokens: ['refresh-a'],
+    })).resolves.toBe('missing');
+    expect((await store.loadVault()).credentials).toEqual([]);
+  });
+});

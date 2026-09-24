@@ -19,6 +19,8 @@ import {
 import { startTimer } from '@/utils/startup-timing';
 import { createSessionProviders } from '@/services/session-providers';
 import { clearOsuRotationCache, osuRotationAncestors, osuRotationMayReplace } from '@/providers/osu-oauth';
+import { lxnsRotationAncestors, lxnsRotationMayReplace } from '@/providers/lxns-oauth';
+import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 
 /** 无已绑定账号时的占位 ID；页面按空数据处理。 */
 export const UNBOUND_ACCOUNT_ID = 'maimai:unbound';
@@ -45,13 +47,92 @@ function sessionsWithSharedCredential(
   return next;
 }
 
-export async function applyLxnsTokenRotation(accountId: string, next: LxnsOAuthSession): Promise<void> {
+/** 仍关联某个凭据的账号，按凭据去重后取当前内存会话。 */
+function sessionsByCredential(
+  sessionsByAccountId: SessionsByAccountId,
+  credentialIdsByAccountId: Record<string, string>,
+): Map<string, ProviderSession> {
+  const byCredential = new Map<string, ProviderSession>();
+  for (const [accountId, credentialId] of Object.entries(credentialIdsByAccountId)) {
+    const session = sessionsByAccountId[accountId];
+    if (session && !byCredential.has(credentialId)) byCredential.set(credentialId, session);
+  }
+  return byCredential;
+}
+
+function lxnsSessionMatchesRotation(
+  session: ProviderSession | undefined,
+  previous: LxnsOAuthSession,
+  next: LxnsOAuthSession,
+): boolean {
+  if (session?.mode !== 'lxns-oauth') return false;
+  return session.refreshToken === previous.refreshToken
+    || lxnsRotationMayReplace(session.refreshToken, next.refreshToken);
+}
+
+/**
+ * 解析本次轮换应提交到哪个凭据：以请求开始时消费掉的会话世代为准，
+ * 而不是发起账号当前指向的凭据，因此同 ID 重绑、重新授权、发起账号被解绑
+ * （共享凭据仍被其它账号引用）都不会写到错误的凭据上。
+ */
+function resolveLxnsRotationCredential(
+  sessionsByAccountId: SessionsByAccountId,
+  credentialIdsByAccountId: Record<string, string>,
+  previous: LxnsOAuthSession,
+  next: LxnsOAuthSession,
+): string | null {
+  for (const [credentialId, session] of sessionsByCredential(sessionsByAccountId, credentialIdsByAccountId)) {
+    if (lxnsSessionMatchesRotation(session, previous, next)) return credentialId;
+  }
+  return null;
+}
+
+/** 只更新仍关联该凭据的账号；发起账号已被解绑时不会把它的会话写回来。 */
+function sessionsForCredentialUpdate(
+  sessionsByAccountId: SessionsByAccountId,
+  credentialIdsByAccountId: Record<string, string>,
+  credentialId: string,
+  session: ProviderSession,
+): SessionsByAccountId {
+  const next = { ...sessionsByAccountId };
+  for (const [linkedAccountId, linkedCredentialId] of Object.entries(credentialIdsByAccountId)) {
+    if (linkedCredentialId === credentialId) next[linkedAccountId] = session;
+  }
+  return next;
+}
+
+/** 落雪轮换提交结果：pending-persist 表示内存已更新、本机落盘失败待重试。 */
+export type LxnsRotationCommitResult = 'applied' | 'pending-persist' | 'stale' | 'removed';
+
+/** 落盘失败仍待提交的轮换：上游已消费旧 refresh_token，不能再重新刷新一次。 */
+const pendingLxnsRotationWrites = new Map<string, { accountId: string; update: LxnsTokenRotationUpdate }>();
+
+/**
+ * 落雪令牌轮换提交：必须携带请求开始时使用的会话（凭据世代）。
+ * 只有当前仍关联该凭据、且会话属于本次轮换世代的账号接受新令牌；
+ * 发起账号被解绑不会丢弃其它账号仍需的新令牌，新授权也不会被旧轮换覆盖。
+ */
+export async function applyLxnsTokenRotation(
+  accountId: string,
+  update: LxnsTokenRotationUpdate,
+): Promise<LxnsRotationCommitResult> {
+  const { previous, next } = update;
+  // 先补交上次落盘失败的轮换，再提交本次结果。
+  await retryPendingLxnsRotationWrites();
   const state = useSession.getState();
-  const credentialId = state.credentialIdsByAccountId[accountId] ?? '';
-  const sessionsByAccountId = sessionsWithSharedCredential(
+  const credentialId = resolveLxnsRotationCredential(
     state.sessionsByAccountId,
     state.credentialIdsByAccountId,
-    accountId,
+    previous,
+    next,
+  );
+  if (!credentialId) {
+    // 发起账号已不在绑定列表且没有账号仍引用该凭据时按已移除处理，否则视为过期结果。
+    return state.credentialIdsByAccountId[accountId] ? 'stale' : 'removed';
+  }
+  const sessionsByAccountId = sessionsForCredentialUpdate(
+    state.sessionsByAccountId,
+    state.credentialIdsByAccountId,
     credentialId,
     next,
   );
@@ -63,11 +144,50 @@ export async function applyLxnsTokenRotation(accountId: string, next: LxnsOAuthS
     : state.scoreProvider;
   useSession.setState({
     sessionsByAccountId,
-    session: sessionsByAccountId[state.activeAccountId] === next ? next : state.session,
+    session: sessionsByAccountId[state.activeAccountId] ?? state.session,
     scoreProvider: activeScoreProvider,
   });
   const { SecureSessionStore } = await import('@/storage/secure-session-store');
-  await new SecureSessionStore().updateAccountSession(accountId, next);
+  try {
+    const result = await new SecureSessionStore().updateCredentialSession(credentialId, next, {
+      acceptedRefreshTokens: [previous.refreshToken, ...lxnsRotationAncestors(next.refreshToken)],
+    });
+    if (result === 'applied') pendingLxnsRotationWrites.delete(credentialId);
+    return result === 'applied' ? 'applied' : result === 'stale' ? 'stale' : 'removed';
+  } catch {
+    // 本机落盘失败时保留内存中的新会话并标记待持久化：上游已消费旧 refresh_token，
+    // 再次刷新只会失败。进程退出前仍未保存成功时用户可能需要重新授权。
+    pendingLxnsRotationWrites.set(credentialId, { accountId, update });
+    return 'pending-persist';
+  }
+}
+
+/** 重试因落盘失败挂起的轮换提交；返回本次成功提交的数量，单项失败不影响其它项。 */
+export async function retryPendingLxnsRotationWrites(): Promise<number> {
+  if (pendingLxnsRotationWrites.size === 0) return 0;
+  const { SecureSessionStore } = await import('@/storage/secure-session-store');
+  const store = new SecureSessionStore();
+  let applied = 0;
+  for (const [credentialId, entry] of [...pendingLxnsRotationWrites]) {
+    try {
+      const result = await store.updateCredentialSession(credentialId, entry.update.next, {
+        acceptedRefreshTokens: [
+          entry.update.previous.refreshToken,
+          ...lxnsRotationAncestors(entry.update.next.refreshToken),
+        ],
+      });
+      if (result === 'applied') {
+        applied += 1;
+        pendingLxnsRotationWrites.delete(credentialId);
+      } else {
+        // 已不属于该世代、或凭据与关联账号都已消失：不再重试。
+        pendingLxnsRotationWrites.delete(credentialId);
+      }
+    } catch {
+      // 落盘仍失败：保持挂起，等待下次重试。
+    }
+  }
+  return applied;
 }
 
 /** osu! 令牌轮换：新会话广播到共享 credential 的所有模式账号并持久化。 */

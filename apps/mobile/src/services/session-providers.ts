@@ -1,5 +1,6 @@
 import type { BoundAccount } from '@/domain/bound-account';
 import type { AnyScoreProvider, DetailedCatalogProvider, ProviderSession } from '@/providers/contracts';
+import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { EmptyCatalogProvider, EmptyScoreProvider } from '@/providers/empty-provider';
 import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
@@ -12,7 +13,8 @@ import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 type SessionProviders = { scoreProvider: AnyScoreProvider; catalogProvider: DetailedCatalogProvider };
-type LxnsTokenRotation = (accountId: string, session: Extract<ProviderSession, { mode: 'lxns-oauth' }>) => Promise<void>;
+/** 落雪轮换提交入口：账号 + 本次轮换消费的旧会话与结果，由会话层校验凭据世代后落盘。 */
+type LxnsTokenRotation = (accountId: string, update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
 
 const localRepository = new SqliteSnapshotRepository();
 
@@ -31,7 +33,7 @@ export function createSessionProviders(
         return { scoreProvider: new MaxedMaimaiTestProvider(account.id, account.displayName), catalogProvider };
       case 'lxns':
         if (session?.mode === 'lxns-oauth') {
-          return { scoreProvider: new LxnsScoreProvider(session, (next) => onLxnsTokenRotation(account.id, next)), catalogProvider };
+          return { scoreProvider: new LxnsScoreProvider(session, (update) => onLxnsTokenRotation(account.id, update)), catalogProvider };
         }
         break;
       case 'diving-fish':

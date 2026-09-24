@@ -8,8 +8,15 @@ import {
   type LxnsOAuthSession,
 } from './lxns-oauth';
 
-/** token 轮换成功后的回调：由调用方把新会话持久化到账号存储。 */
-export type LxnsTokenRotationHandler = (session: LxnsOAuthSession) => void | Promise<void>;
+/** token 轮换提交：被本次轮换消费掉的旧会话与轮换结果一起上报，提交方据此校验凭据世代。 */
+export type LxnsTokenRotationUpdate = {
+  /** 请求开始时的会话；其 refresh_token 已在上游被消费。 */
+  previous: LxnsOAuthSession;
+  next: LxnsOAuthSession;
+};
+
+/** token 轮换成功后的回调：由调用方按凭据世代校验后把新会话提交到账号存储。 */
+export type LxnsTokenRotationHandler = (update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
 
 /** 把通用 provider 状态码错误文案从「水鱼」改写为「落雪」品牌语义。 */
 export function lxnsErrorFromStatus(status: number): ProviderError {
@@ -53,9 +60,10 @@ export class LxnsOAuthRequestCore {
     if (!lxnsAccessTokenExpired(this.session)) return this.session.accessToken;
     if (!this.refreshPromise) {
       this.refreshPromise = (async () => {
-        const next = await rotateLxnsTokens(this.session.refreshToken);
+        const previous = this.session;
+        const next = await rotateLxnsTokens(previous.refreshToken);
         this.session = next;
-        await this.onTokensRotated?.(next);
+        await this.onTokensRotated?.({ previous, next });
       })().finally(() => {
         this.refreshPromise = null;
       });

@@ -183,35 +183,48 @@ export async function addOrSwitchDemoAccount(input: {
 
 export type LabeledAttempt = (label: string, action: () => Promise<unknown>) => Promise<void>;
 
+export type AccountRemovalOutcome =
+  | { status: 'unbound'; cleanupFailures: readonly string[] }
+  /** 关键解绑提交失败：账号与凭据保持原样，界面保留该账号作为重试入口。 */
+  | { status: 'blocked'; reason: string };
+
 export async function removeBoundPlayerAccount(input: {
   includePersonalData: boolean;
   displayName: string;
   prepareRemoval?: () => Promise<void>;
-  clearPlayer: (attempt: LabeledAttempt) => Promise<void>;
+  /** 关键解绑提交（submit 失败即中断）与分项清理（cleanup 失败只记录）。 */
+  clearPlayer: (attempts: { submit: LabeledAttempt; cleanup: LabeledAttempt }) => Promise<void>;
   clearPersonalData: () => Promise<unknown>;
   removeBoundAccount: () => void;
   persistActive: () => Promise<unknown>;
   afterRemove?: () => void;
-  formatMessage: (failures: string[]) => string;
+  formatMessage: (cleanupFailures: readonly string[]) => string;
+  /** 关键解绑失败时的文案；缺省按通用错误处理。 */
+  formatBlockedMessage?: (error: unknown) => string;
   setBusy: (busy: boolean) => void;
   setMessage: (message: string) => void;
   showNotification?: (notification: NotificationInput) => unknown;
-}): Promise<void> {
+}): Promise<AccountRemovalOutcome> {
   input.setBusy(true);
-  const failures: string[] = [];
-  const attempt = (label: string, action: () => Promise<unknown>) => attemptLabeled(failures, label, action);
+  const cleanupFailures: string[] = [];
+  const cleanup: LabeledAttempt = (label, action) => attemptLabeled(cleanupFailures, label, action);
+  // 关键提交不吞错误：落盘失败必须让账号留在界面上，由用户重试。
+  const submit: LabeledAttempt = async (_label, action) => { await action(); };
   try {
     await input.prepareRemoval?.();
-    await input.clearPlayer(attempt);
-    if (input.includePersonalData) await attempt('个人数据', input.clearPersonalData);
+    await input.clearPlayer({ submit, cleanup });
+    if (input.includePersonalData) await cleanup('个人数据', input.clearPersonalData);
     input.removeBoundAccount();
-    await attempt('当前账号', input.persistActive);
+    await cleanup('当前账号', input.persistActive);
     input.afterRemove?.();
-    input.setMessage(input.formatMessage(failures));
+    input.setMessage(input.formatMessage(cleanupFailures));
+    return { status: 'unbound', cleanupFailures: [...cleanupFailures] };
   } catch (error) {
-    const message = providerErrorToUserMessage(error, '暂时无法移除账号，请稍后重试。');
+    const message = input.formatBlockedMessage?.(error)
+      ?? providerErrorToUserMessage(error, '暂时无法移除账号，请稍后重试。');
     input.setMessage(message);
     input.showNotification?.({ title: '移除失败', message, variant: 'error' });
+    return { status: 'blocked', reason: message };
   } finally {
     input.setBusy(false);
   }

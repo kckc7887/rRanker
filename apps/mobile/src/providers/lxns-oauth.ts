@@ -211,20 +211,64 @@ export async function refreshLxnsAccessToken(refreshToken: string): Promise<Lxns
  */
 const inFlightRefreshes = new Map<string, Promise<LxnsOAuthSession>>();
 const recentRotations = new Map<string, LxnsOAuthSession>();
+const rotationAncestors = new Map<string, Set<string>>();
 const RECENT_ROTATIONS_LIMIT = 64;
 
-function rememberLxnsRotation(refreshToken: string, next: LxnsOAuthSession): void {
-  recentRotations.set(refreshToken, next);
-  for (const [previousToken, previousNext] of recentRotations) {
-    if (previousNext.refreshToken === refreshToken) {
-      recentRotations.set(previousToken, next);
-    }
+function liveRotationTokens(): Set<string> {
+  const live = new Set<string>();
+  for (const [previousToken, next] of recentRotations) {
+    live.add(previousToken);
+    live.add(next.refreshToken);
   }
+  for (const token of inFlightRefreshes.keys()) live.add(token);
+  return live;
+}
+
+function pruneLxnsRotationState(): void {
   while (recentRotations.size > RECENT_ROTATIONS_LIMIT) {
     const oldest = recentRotations.keys().next().value;
     if (typeof oldest !== 'string') break;
     recentRotations.delete(oldest);
   }
+  const live = liveRotationTokens();
+  for (const token of rotationAncestors.keys()) {
+    if (!live.has(token)) rotationAncestors.delete(token);
+  }
+  for (const [token, ancestors] of rotationAncestors) {
+    for (const ancestor of ancestors) {
+      if (!live.has(ancestor)) ancestors.delete(ancestor);
+    }
+    if (ancestors.size === 0) rotationAncestors.delete(token);
+  }
+}
+
+function rememberLxnsRotation(refreshToken: string, next: LxnsOAuthSession): void {
+  recentRotations.set(refreshToken, next);
+  const ancestors = new Set(rotationAncestors.get(refreshToken) ?? []);
+  ancestors.add(refreshToken);
+  const nextAncestors = rotationAncestors.get(next.refreshToken) ?? new Set<string>();
+  for (const token of ancestors) nextAncestors.add(token);
+  rotationAncestors.set(next.refreshToken, nextAncestors);
+  for (const [previousToken, previousNext] of recentRotations) {
+    if (previousNext.refreshToken === refreshToken) {
+      recentRotations.set(previousToken, next);
+      nextAncestors.add(previousToken);
+    }
+  }
+  pruneLxnsRotationState();
+}
+
+/**
+ * 当前凭据是这次轮换结果的前代时才允许提交。重新授权产生的新凭据
+ * 不在前代集合里，因此迟到的轮换结果无法覆盖它。
+ */
+export function lxnsRotationMayReplace(currentRefreshToken: string, nextRefreshToken: string): boolean {
+  if (currentRefreshToken === nextRefreshToken) return true;
+  return rotationAncestors.get(nextRefreshToken)?.has(currentRefreshToken) ?? false;
+}
+
+export function lxnsRotationAncestors(nextRefreshToken: string): readonly string[] {
+  return [...(rotationAncestors.get(nextRefreshToken) ?? [])];
 }
 
 export async function rotateLxnsTokens(refreshToken: string): Promise<LxnsOAuthSession> {

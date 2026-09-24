@@ -98,6 +98,12 @@ export type SessionVault = {
   accounts: StoredProviderAccount[];
 };
 
+/**
+ * 凭据会话提交结果：'stale' 表示当前凭据不属于本次提交的轮换世代，
+ * 'missing' 表示凭据已不存在或已没有账号引用。
+ */
+export type CredentialSessionWriteResult = 'applied' | 'stale' | 'missing';
+
 export function sessionsMapFromVault(vault: SessionVault): Record<string, ProviderSession> {
   const credentials = new Map(
     vault.credentials.map((credential) => [credential.id, credential.session] as const),
@@ -743,6 +749,38 @@ export class SecureSessionStore {
             : credential
         )),
       }, options?.signal);
+    });
+  }
+
+  /**
+   * 按凭据提交轮换后的会话：只要该凭据仍被账号引用就更新共享凭据，
+   * 发起账号已被解绑也不影响其它仍引用同一凭据的账号。
+   * 给定 acceptedRefreshTokens 时，当前凭据会话必须属于该轮换世代，否则拒绝写入。
+   */
+  async updateCredentialSession(
+    credentialId: string,
+    session: ProviderSession,
+    options?: { acceptedRefreshTokens?: readonly string[] },
+  ): Promise<CredentialSessionWriteResult> {
+    if (!isPersistableSession(session)) return 'missing';
+    return this.enqueueMutation(async () => {
+      const vault = await this.loadVault();
+      const credential = vault.credentials.find(item => item.id === credentialId);
+      if (!credential) return 'missing';
+      // 没有账号引用的凭据会被 sanitize 丢弃，写入不可能生效。
+      if (!vault.accounts.some(account => account.credentialId === credentialId)) return 'missing';
+      if (options?.acceptedRefreshTokens) {
+        const current = credential.session;
+        if (current.mode !== 'lxns-oauth'
+          || !options.acceptedRefreshTokens.includes(current.refreshToken)) return 'stale';
+      }
+      await this.saveVaultUnlocked({
+        ...vault,
+        credentials: vault.credentials.map((item) => (
+          item.id === credentialId ? { ...item, session } : item
+        )),
+      });
+      return 'applied';
     });
   }
 
