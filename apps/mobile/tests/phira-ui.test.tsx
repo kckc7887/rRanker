@@ -32,6 +32,11 @@ const mockBest = {
 };
 let mockBests: Record<string, typeof mockBest> = {};
 let mockCatalogCharts: typeof mockChart[] = [];
+let mockCatalogPages: { results: typeof mockChart[] }[] | null = null;
+let mockCatalogHasNextPage = false;
+let mockCatalogFetchingNextPage = false;
+let mockCatalogFetchNextPageError = false;
+const mockFetchCatalogNextPage = jest.fn();
 let mockNotesEnabled: boolean[] = [];
 let mockChromeProps: {
   topInset: number;
@@ -75,7 +80,14 @@ jest.mock('@/hooks/use-phira', () => ({
   usePhiraPlayer: () => ({ data: { pool: { bestPool: mockBests['38294'] ? [{ chart: mockChart, record: mockBest.record, rks: 12 }] : [], recentPool: [] } }, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
   usePhiraBests: () => ({ data: { items: mockBests, source: { kind: 'phira', label: 'Phira', updatedAt: 'now', isStale: false } }, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
   useRefreshAllPhiraBests: () => mockRefreshAll,
-  usePhiraCharts: () => ({ data: { pages: [{ results: mockCatalogCharts }] }, isLoading: false, isError: false, error: null, refetch: mockRefetch, hasNextPage: false, isFetchingNextPage: false, fetchNextPage: jest.fn() }),
+  usePhiraCharts: () => ({
+    data: { pages: mockCatalogPages ?? [{ results: mockCatalogCharts }] },
+    isLoading: false, isError: false, error: null, refetch: mockRefetch,
+    hasNextPage: mockCatalogHasNextPage,
+    isFetchingNextPage: mockCatalogFetchingNextPage,
+    isFetchNextPageError: mockCatalogFetchNextPageError,
+    fetchNextPage: mockFetchCatalogNextPage,
+  }),
   usePhiraChart: () => ({ data: mockChart, isLoading: false, isError: false, error: null }),
   usePhiraChartBest: () => ({ data: mockBest, isLoading: false, isError: false, error: null }),
   usePhiraNotes: (_chart: unknown, enabled = true) => { mockNotesEnabled.push(enabled); return { data: { counts: { click: 40, hold: 20, flick: 20, drag: 20 } }, isLoading: false, isError: false }; },
@@ -129,7 +141,17 @@ jest.mock('@/components/phira/PhiraScoreVisuals', () => ({
 }));
 
 describe('Phira page contracts', () => {
-  beforeEach(() => { mockBests = {}; mockCatalogCharts = []; mockNotesEnabled = []; mockChromeProps = null; jest.clearAllMocks(); });
+  beforeEach(() => {
+    mockBests = {};
+    mockCatalogCharts = [];
+    mockCatalogPages = null;
+    mockCatalogHasNextPage = false;
+    mockCatalogFetchingNextPage = false;
+    mockCatalogFetchNextPageError = false;
+    mockNotesEnabled = [];
+    mockChromeProps = null;
+    jest.clearAllMocks();
+  });
 
   it('shows Best20 and uses the upstream full difficulty name', async () => {
     mockBests = { '38294': mockBest };
@@ -260,5 +282,71 @@ describe('Phira page contracts', () => {
     expect(cancel).toHaveBeenCalledTimes(1);
     expect(mockNotesEnabled).not.toContain(true);
     interaction.mockRestore();
+  });
+});
+
+describe('Phira catalog pagination states', () => {
+  beforeEach(() => {
+    mockBests = {};
+    mockCatalogCharts = [];
+    mockCatalogPages = null;
+    mockCatalogHasNextPage = false;
+    mockCatalogFetchingNextPage = false;
+    mockCatalogFetchNextPageError = false;
+    jest.clearAllMocks();
+  });
+
+  const catalogPage = (page: number) => ({
+    results: Array.from({ length: 30 }, (_, index) => ({ ...mockChart, id: page * 30 + index + 1 })),
+  });
+  // 通过定数上限把 16.2 的曲目全部筛掉，得到「翻页有数据但筛选结果为空」的真实场景。
+  const filterOutEveryChart = async (screen: Awaited<ReturnType<typeof render>>) => {
+    await fireEvent.press(screen.getByLabelText(/展开筛选/));
+    const track = screen.getByTestId('phigros-filter-constant-track');
+    await fireEvent(track, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 100, height: 36 } } });
+    await fireEvent.press(track, { nativeEvent: { locationX: 80 } });
+  };
+
+  it('扫描预算耗尽仍然后页时保留继续扫描入口，而不是永久加载态', async () => {
+    mockCatalogPages = Array.from({ length: 8 }, (_, page) => catalogPage(page));
+    mockCatalogHasNextPage = true;
+    const screen = await render(<PhiraCatalogScreen />);
+    await filterOutEveryChart(screen);
+    expect(screen.queryByText('没有找到 Phira 谱面')).toBeNull();
+    expect(screen.getByLabelText('继续扫描')).toBeTruthy();
+    expect(mockFetchCatalogNextPage).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByLabelText('继续扫描'));
+    expect(mockFetchCatalogNextPage).toHaveBeenCalledTimes(1);
+    await screen.unmount();
+  });
+
+  it('预算内的空结果继续自动扫描，达到预算后不再自动请求', async () => {
+    mockCatalogPages = Array.from({ length: 3 }, (_, page) => catalogPage(page));
+    mockCatalogHasNextPage = true;
+    const screen = await render(<PhiraCatalogScreen />);
+    await filterOutEveryChart(screen);
+    expect(mockFetchCatalogNextPage).toHaveBeenCalledTimes(1);
+    expect(screen.queryByLabelText('继续扫描')).toBeNull();
+    await screen.unmount();
+  });
+
+  it('后页失败时保留已加载结果并给出重试入口', async () => {
+    mockCatalogCharts = [mockChart, { ...mockChart, id: 38295 }];
+    mockCatalogHasNextPage = true;
+    mockCatalogFetchNextPageError = true;
+    const screen = await render(<PhiraCatalogScreen />);
+    expect(screen.getAllByLabelText(/^查看歌曲/)).toHaveLength(2);
+    expect(screen.getByText('后页加载失败，点此重试')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('重试加载后页'));
+    expect(mockFetchCatalogNextPage).toHaveBeenCalledTimes(1);
+    await screen.unmount();
+  });
+
+  it('后页确实耗尽且无结果时才显示未找到', async () => {
+    const screen = await render(<PhiraCatalogScreen />);
+    expect(screen.getByText('没有找到 Phira 谱面')).toBeTruthy();
+    expect(screen.queryByLabelText('继续扫描')).toBeNull();
+    expect(screen.queryByText('后页加载失败，点此重试')).toBeNull();
+    await screen.unmount();
   });
 });

@@ -43,6 +43,7 @@ import {
   buildMuseDashRawScores,
   museDashCoverUrl,
   museDashDiffdiffMap,
+  museDashMissDetail,
   museDashSongAuthor,
   museDashSongsFromAlbums,
   museDashSongsByUid,
@@ -187,9 +188,10 @@ export function MuseDashRecordsScreen() {
     const filtered = achievement === 'all'
       ? baseFiltered
       : baseFiltered.filter((item) => {
-        const miss = missMap.get(`${item.play.uid}:${item.play.difficulty}`);
-        if (miss === null || miss === undefined && missMap.size < baseFiltered.length) return true;
-        return matchesMuseDashAchievementFilter(item.play.acc, miss ?? undefined, achievement);
+        // 只有已确认的 miss 明细才能判定 AP/FC；pending 与 unknown 都不算已满足。
+        const detail = museDashMissDetail(missMap.get(`${item.play.uid}:${item.play.difficulty}`));
+        return detail.status === 'known'
+          && matchesMuseDashAchievementFilter(item.play.acc, detail.miss, achievement);
       });
     return sortRawScores(filtered);
   }, [baseFiltered, achievement, missMap]);
@@ -210,7 +212,7 @@ export function MuseDashRecordsScreen() {
   </>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <RecordsListPage beforeList={controls} isLoading={loading} isError={!!error}
-      isEmpty={!loading && !detailsPending && records.length === 0} error={error} onRetry={() => { void gameData.refetch(); void albums.refetch(); void ce.refetch(); void diffdiff.refetch(); }}
+      isEmpty={!loading && records.length === 0} error={error} onRetry={() => { void gameData.refetch(); void albums.refetch(); void ce.refetch(); void diffdiff.refetch(); }}
       emptyText={userId === null ? '请先绑定喵斯快跑玩家' : detailsPending ? '正在核对成就…' : '没有公开成绩'} data={records.length ? records : undefined} flatListProps={{
         testID: 'musedash-records-results-list', style: styles.list,
         contentInsetAdjustmentBehavior: 'automatic', contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],

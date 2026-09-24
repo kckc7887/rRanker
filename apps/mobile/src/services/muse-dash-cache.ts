@@ -61,18 +61,16 @@ export function loadMuseDashDiffdiffFresh(signal?: AbortSignal): Promise<MuseDas
 }
 
 /**
- * 全局公开资源（曲库/定数表）的缓存优先读取：供示例账号生成与页面 hook 复用，
- * 网络请求由 inflightLoads 去重，多路并发只发一次。
+ * 全局公开资源（曲库/定数表）的请求入口：只请求新数据并包装为快照，
+ * 不读本地持久化缓存；网络请求由 inflightLoads 去重，多路并发只发一次。
  */
-export function loadMuseDashAlbumsCacheFirst(
-  _cache: Pick<MuseDashCache, 'loadAlbums' | 'saveAlbums'>,
+export function loadMuseDashAlbumsFreshSnapshot(
   signal?: AbortSignal,
 ): Promise<MuseDashAlbumsSnapshot> {
   return loadMuseDashAlbumsFresh(signal).then((albums) => makeMuseDashSnapshot(albums));
 }
 
-export function loadMuseDashDiffdiffCacheFirst(
-  _cache: Pick<MuseDashCache, 'loadDiffdiff' | 'saveDiffdiff'>,
+export function loadMuseDashDiffdiffFreshSnapshot(
   signal?: AbortSignal,
 ): Promise<MuseDashDiffdiffSnapshot> {
   return loadMuseDashDiffdiffFresh(signal).then((entries) => makeMuseDashSnapshot(entries));

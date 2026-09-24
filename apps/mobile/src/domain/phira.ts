@@ -175,3 +175,79 @@ export function phiraGrade(record: Pick<PhiraRecord, 'score' | 'fullCombo'>): st
   if (record.score >= 700_000) return 'C';
   return 'F';
 }
+
+/** 筛选结果为空时自动翻页的扫描预算：耗尽后暂停自动翻页，避免空结果无限扫描。 */
+export const PHIRA_CATALOG_PAGE_SCAN_BUDGET = 8;
+
+/**
+ * Phira 曲库分页判别状态：初次加载/初次失败是与 ready 互不混淆的终态；
+ * ready 恒带 items（可以为空数组），并独立描述后页情况，
+ * 因此「预算暂停 / 后页失败 / 尚未搜完」不会再被压成同一个布尔组合。
+ */
+export type PhiraCatalogPageState<T> =
+  | { status: 'loading' }
+  | { status: 'error' }
+  | {
+    status: 'ready';
+    /** 已加载并筛选后的条目；可以为空数组。 */
+    items: readonly T[];
+    /** 上游还有后页。 */
+    hasNextPage: boolean;
+    /** 结果为空且仍在扫描后页（预算内自动翻页，或正在请求后页）。 */
+    scanning: boolean;
+    /** 结果为空且有后页，但扫描预算已耗尽：需要用户显式继续。 */
+    paused: boolean;
+    /** 上一次后页请求失败；已加载结果保持不变。 */
+    nextPageFailed: boolean;
+    /** 后页已耗尽：当前 items 就是全部结果，空数组表示确认没有匹配。 */
+    exhausted: boolean;
+  };
+
+export function phiraCatalogPageState<T>(input: {
+  items: readonly T[];
+  pageCount: number;
+  hasNextPage: boolean;
+  isLoading: boolean;
+  isError: boolean;
+  isFetchingNextPage: boolean;
+  isFetchNextPageError: boolean;
+  scanBudget?: number;
+}): PhiraCatalogPageState<T> {
+  const { items, pageCount, hasNextPage, isFetchingNextPage, isFetchNextPageError } = input;
+  const scanBudget = input.scanBudget ?? PHIRA_CATALOG_PAGE_SCAN_BUDGET;
+  if (input.isLoading && pageCount === 0) return { status: 'loading' };
+  if (input.isError && pageCount === 0) return { status: 'error' };
+  const empty = items.length === 0;
+  const nextPageFailed = hasNextPage && isFetchNextPageError;
+  return {
+    status: 'ready',
+    items,
+    hasNextPage,
+    scanning: empty && hasNextPage && !nextPageFailed && (isFetchingNextPage || pageCount < scanBudget),
+    paused: empty && hasNextPage && !nextPageFailed && !isFetchingNextPage && pageCount >= scanBudget,
+    nextPageFailed,
+    exhausted: !hasNextPage,
+  };
+}
+
+/** 共享列表壳（CatalogListPage）渲染输入：由判别状态派生，保证不存在「无加载、无错误、无空态、无 data」的组合。 */
+export type PhiraCatalogListView<T> = {
+  isLoading: boolean;
+  isError: boolean;
+  isEmpty: boolean;
+  data: readonly T[] | undefined;
+  /** 空态原因：exhausted=后页耗尽确认无结果；scanBudget=预算耗尽但仍有后页，不等于全库无结果。 */
+  emptyReason?: 'exhausted' | 'scanBudget';
+};
+
+export function phiraCatalogListView<T>(state: PhiraCatalogPageState<T>): PhiraCatalogListView<T> {
+  if (state.status === 'loading') return { isLoading: true, isError: false, isEmpty: false, data: undefined };
+  if (state.status === 'error') return { isLoading: false, isError: true, isEmpty: false, data: undefined };
+  if (state.paused) {
+    return { isLoading: false, isError: false, isEmpty: true, data: undefined, emptyReason: 'scanBudget' };
+  }
+  if (state.exhausted && state.items.length === 0) {
+    return { isLoading: false, isError: false, isEmpty: true, data: undefined, emptyReason: 'exhausted' };
+  }
+  return { isLoading: false, isError: false, isEmpty: false, data: state.items };
+}

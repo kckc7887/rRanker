@@ -10,6 +10,7 @@ import {
   buildMuseDashRandomCharts,
   buildMuseDashRawScores,
   filterMuseDashRandomCharts,
+  museDashAchievementDetailsPending,
   museDashSongTitle,
   museDashSongsFromAlbums,
   type MuseDashAlbumsResponse,
@@ -62,9 +63,18 @@ export function MuseDashRandomChartsScreen() {
     [baseFilters, charts],
   );
   const missMap = useMuseDashPlayDetails(detailCandidates, userId, achievement !== 'all');
-  const pool = useMemo(() => filterMuseDashRandomCharts(charts, {
+  const activeFilters = useMemo(() => ({
     difficultySlot, dlc, constantMin, constantMax, accMin, accMax, achievement,
-  }, missMap), [accMax, accMin, achievement, charts, constantMax, constantMin, difficultySlot, dlc, missMap]);
+  }), [accMax, accMin, achievement, constantMax, constantMin, difficultySlot, dlc]);
+  const pool = useMemo(
+    () => filterMuseDashRandomCharts(charts, activeFilters, missMap),
+    [activeFilters, charts, missMap],
+  );
+  // 成就筛选依赖 miss 明细：明细仍在请求时等待到达，抽取只使用已确认的候选。
+  const achievementDetailsPending = useMemo(
+    () => museDashAchievementDetailsPending(charts, activeFilters, missMap),
+    [activeFilters, charts, missMap],
+  );
   const dlcOptions = useMemo(() => albums.data
     ? [...new Set(museDashSongsFromAlbums(albums.data).map((item) => item.albumTitle))]
     : [], [albums.data]);
@@ -103,7 +113,9 @@ export function MuseDashRandomChartsScreen() {
       hasDrawn={results !== null}
       onCountChange={setCount}
       onDraw={draw}
+      drawDisabled={achievementDetailsPending}
       poolSize={pool.length}
+      poolStatus={achievementDetailsPending ? '正在核对成就明细…' : undefined}
       resultCount={results?.length ?? 0}
       results={results?.map((chart) => chart.score
         ? <MuseDashScoreCard key={`${lastSeed}-${chart.key}`} score={chart.score} />

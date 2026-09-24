@@ -12,11 +12,13 @@ import {
   buildMuseDashRawScores,
   filterMuseDashRandomCharts,
   museDashAccTone,
+  museDashAchievementDetailsPending,
   museDashCharacterName,
   museDashCoverUrl,
   museDashDiffdiffMap,
   museDashElfinName,
   museDashGrade,
+  museDashMissDetail,
   museDashRankBadge,
   matchesMuseDashAccRange,
   matchesMuseDashAchievementFilter,
@@ -28,6 +30,7 @@ import {
   museDashSongTitle,
   museDashSongsByUid,
   resolveMuseDashAchievement,
+  type MuseDashRandomChartFilters,
   type MuseDashRawScore,
   type MuseDashSong,
 } from '@/domain/muse-dash';
@@ -311,6 +314,36 @@ describe('Muse Dash content adapter', () => {
     expect(presented.grade?.label).toBe('S');
     expect(presented.achievementRows.flat().find((badge) => badge.key === 'achievement')?.label).toBe('AP');
     expect(fullSongType.difficulty[4]).toBe('12');
+  });
+
+  it('未确认的 miss 明细不得当作已满足 AP/FC', () => {
+    expect(museDashMissDetail(null)).toEqual({ status: 'pending' });
+    expect(museDashMissDetail(undefined)).toEqual({ status: 'unknown' });
+    expect(museDashMissDetail(0)).toEqual({ status: 'known', miss: 0 });
+    expect(museDashMissDetail(3)).toEqual({ status: 'known', miss: 3 });
+    expect(matchesMuseDashAchievementFilter(100, undefined, 'ap')).toBe(false);
+    expect(resolveMuseDashAchievement(100, undefined)).toBeNull();
+  });
+
+  it('成就筛选只保留已确认 miss 的候选，且只有 pending 才需要等待', () => {
+    const rawScores = buildMuseDashRawScores(parsedPlayer, parsedAlbums, parsedCe, parsedDiffdiff);
+    const played = buildMuseDashRandomCharts(parsedAlbums, parsedDiffdiff, rawScores)
+      .find((chart) => chart.score)!;
+    const pool = [{ ...played, score: { ...played.score!, play: { ...played.score!.play, acc: 100 } } }];
+    const filters = {
+      difficultySlot: 'all', dlc: 'all', constantMin: '', constantMax: '',
+      accMin: '', accMax: '', achievement: 'ap',
+    } satisfies MuseDashRandomChartFilters;
+    const keysFor = (miss: number | null | undefined) =>
+      filterMuseDashRandomCharts(pool, filters, new Map([[played.key, miss]])).map((chart) => chart.key);
+
+    expect(keysFor(0)).toEqual([played.key]);
+    expect(keysFor(null)).toEqual([]);
+    expect(keysFor(undefined)).toEqual([]);
+    expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, null]]))).toBe(true);
+    expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, undefined]]))).toBe(false);
+    expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, 0]]))).toBe(false);
+    expect(museDashAchievementDetailsPending(pool, { ...filters, achievement: 'all' }, new Map())).toBe(false);
   });
 
   function buildRawScore(play: (typeof parsedPlayer.plays)[number]): MuseDashRawScore {

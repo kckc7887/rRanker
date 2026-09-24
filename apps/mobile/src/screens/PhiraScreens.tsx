@@ -29,7 +29,7 @@ import { PhiraScoreCard } from '@/components/phira/PhiraScoreCard';
 import { PhiraSongRow } from '@/components/phira/PhiraSongRow';
 import { phiraPlayerIdFromAccountId } from '@/domain/bound-account';
 import { dedupePhiraCharts, filterPhiraBests, filterPhiraCharts, type PhiraCatalogSort, type PhiraScoreSort } from '@/domain/phira-filters';
-import { formatPhiraAccuracy, formatPhiraRating, PHIRA_STATUS_LABELS, phiraChartStatus, type PhiraChart, type PhiraChartStatus, type PhiraQueriedBest } from '@/domain/phira';
+import { formatPhiraAccuracy, formatPhiraRating, PHIRA_CATALOG_PAGE_SCAN_BUDGET, phiraCatalogListView, phiraCatalogPageState, PHIRA_STATUS_LABELS, phiraChartStatus, type PhiraChart, type PhiraChartStatus, type PhiraQueriedBest } from '@/domain/phira';
 import { buildTagHistory } from '@/domain/user-library';
 import { presentPhiraBestSection, presentPhiraChart } from '@/features/game-content/adapters';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
@@ -117,12 +117,22 @@ export function PhiraCatalogScreen() {
   const debounced = useDebouncedValue(keyword, 350); const query = usePhiraCharts(status, debounced);
   // Phira /chart 的 page=1 与 page=0 重复且 updated 排序在请求间漂移，跨页需按 id 去重，避免 FlatList 重复 key。
   const charts = useMemo(() => filterPhiraCharts(dedupePhiraCharts(query.data?.pages.flatMap((page) => page.results) ?? []), constantMin, constantMax, sort), [constantMax, constantMin, query.data?.pages, sort]);
-  const pagesLoaded = query.data?.pages.length ?? 0;
-  const keepScanning = charts.length === 0 && query.hasNextPage === true && pagesLoaded < 8;
+  const pageState = phiraCatalogPageState<PhiraChart>({
+    items: charts,
+    pageCount: query.data?.pages.length ?? 0,
+    hasNextPage: query.hasNextPage === true,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    isFetchingNextPage: query.isFetchingNextPage,
+    isFetchNextPageError: query.isFetchNextPageError,
+  });
+  const view = phiraCatalogListView(pageState);
+  const scanning = pageState.status === 'ready' && pageState.scanning;
+  const fetchNextPage = query.fetchNextPage;
   useEffect(() => {
-    if (!keepScanning || query.isFetchingNextPage || query.isFetchNextPageError) return;
-    void query.fetchNextPage();
-  }, [keepScanning, query]);
+    if (!scanning || query.isFetchingNextPage) return;
+    void fetchNextPage();
+  }, [fetchNextPage, query.isFetchingNextPage, scanning]);
   const controls = <><GameSearchHeader value={keyword} onChangeText={setKeyword} placeholder="搜索 Phira 谱面"
     wrapStyle={styles.searchWrap} inputStyle={styles.search} />
     <PhiraFilterBar collapsed={collapsed}
@@ -139,14 +149,20 @@ export function PhiraCatalogScreen() {
       onReset={() => { setStatus('ranked'); setSort('updated'); setConstantMin(''); setConstantMax(''); }} /></>;
   const footer = (
     <InfinitePageFooter
-      loading={query.isFetchingNextPage || keepScanning}
-      failed={query.isFetchNextPageError}
-      hasNextPage={query.hasNextPage === true}
-      onRetry={() => void query.fetchNextPage()}
+      loading={query.isFetchingNextPage || scanning}
+      failed={pageState.status === 'ready' && pageState.nextPageFailed}
+      hasNextPage={pageState.status === 'ready' && pageState.hasNextPage}
+      onRetry={() => void fetchNextPage()}
     />
   );
-  return <View style={[styles.page, { backgroundColor: theme.background }]}><CatalogListPage beforeList={controls} isLoading={query.isLoading} isError={query.isError && charts.length === 0} error={query.error}
-    onRetry={() => void query.refetch()} isEmpty={!query.isLoading && charts.length === 0 && !keepScanning && !query.hasNextPage} emptyText="没有找到 Phira 谱面" data={charts.length || keepScanning ? charts : undefined}
+  const pausedByScanBudget = view.emptyReason === 'scanBudget';
+  return <View style={[styles.page, { backgroundColor: theme.background }]}><CatalogListPage<PhiraChart> beforeList={controls}
+    isLoading={view.isLoading} isError={view.isError} error={query.error}
+    onRetry={() => void query.refetch()} isEmpty={view.isEmpty}
+    emptyText={pausedByScanBudget ? `已扫描 ${PHIRA_CATALOG_PAGE_SCAN_BUDGET} 页仍无匹配谱面` : '没有找到 Phira 谱面'}
+    emptyActionLabel={pausedByScanBudget ? '继续扫描' : undefined}
+    onEmptyAction={pausedByScanBudget ? () => void fetchNextPage() : undefined}
+    data={view.data}
     flatListProps={{ testID: 'phira-catalog-results-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
       contentContainerStyle: [styles.listContent, { paddingBottom: inset + 20 }], scrollIndicatorInsets: { bottom: inset },
       keyExtractor: (item) => String(item.id), renderItem: ({ item }) => <PhiraSongRow chart={item} />,
