@@ -19,7 +19,7 @@
 | 持久化 | Expo SQLite、`expo-sqlite/kv-store`、Expo SecureStore、受控文件目录 |
 | 校验 | Zod 4、Vitest 单元测试、Jest Expo UI/合同测试、ESLint、TypeScript |
 
-Node.js 最低版本由 `apps/mobile/package.json` 约束为 20.19；当前 iOS CI 使用 Node.js 22 和 `npm ci`。应用同时包含 iOS、Android 配置，Web 配置存在，但项目执行规范禁止启动 Expo Web。
+Node.js 最低版本由 `apps/mobile/package.json` 的 `engines` 约束为 22.13；CI 的 Node.js 22 与 `npm ci` 满足该要求。应用同时包含 iOS、Android 配置，Web 配置存在，但项目执行规范禁止启动 Expo Web。
 
 ## 路由与运行时装配
 
@@ -248,15 +248,18 @@ Phigros 预览页在资源准备前读取所选难度的编号谱面清单；多
 ## 状态、持久化与资源生命周期
 
 - `state/session-store.ts` 保存当前游戏、账号、Provider、会话映射和运行时 Provider 实例；激活字段由同一转换路径生成。`services/session-providers.ts` 的 `createSessionProviders` 接收账号、会话和令牌轮换回调，不反向读取 Store；持久凭据由 `storage/secure-session-store.ts` 管理，轮换继续广播到共享凭据账号。会话索引损坏或无法识别时保留原文与副本并抛类型化错误，不自动删除或覆盖；旧版迁移源解析失败时跳过。osu! 进程内轮换记录和祖先关系共用 64 项上限，进行中的刷新保留在同一集合里；解除最后一个 osu! 账号或清空会话时调用 `clearOsuRotationCache`。窗口外的旧刷新令牌不能覆盖当前会话。
+- 落雪轮换按凭据世代提交：`applyLxnsTokenRotation(accountId, { previous, next })` 以请求开始时消费掉的会话解析应更新的凭据（`lxnsRotationMayReplace` / `lxnsRotationAncestors`），只更新仍关联该凭据的账号，并调用 `SecureSessionStore.updateCredentialSession` 写盘；返回 `applied` / `pending-persist` / `stale` / `removed`。发起账号被解绑但共享凭据仍被其它账号引用时继续提交，同 ID 重绑或重新授权后的迟到结果被拒绝。落盘失败保留内存会话并标记待持久化，`retryPendingLxnsRotationWrites()` 在下次提交时补交，不重新消费旧 refresh token。
 - `state/query-client.ts` 提供进程内唯一 QueryClient；账号最终数据使用 `services/game-data-query.ts` 的版本化键。
-- SQLite 的进程内连接由 `storage/rranker-database.ts` 集中管理；`runDatabaseWrite` 串行化 schema 初始化、快照和用户曲库写入。批量清理以 500 个绑定参数分批，在同连接事务内执行；文本统计使用 UTF-8 字节，数据库分配页单列。表结构和个人数据键不变。
+- SQLite 的进程内连接由 `storage/rranker-database.ts` 集中管理；`runDatabaseWrite` 串行化 schema 初始化、快照和用户曲库写入。`SqliteSnapshotRepository.updateResource` 把读取、转换与写入放进同一队列任务（队列内只用直接数据库调用），同一资源的并发合并按提交顺序串行。批量清理以 500 个绑定参数分批，在同连接事务内执行；文本统计使用 UTF-8 字节，数据库分配页单列。表结构和个人数据键不变。
 - 缓存读取优先走本地首屏、后台刷新和 AbortSignal 取消链路。共享任务按消费者计数取消；清缓存先提升游戏写入代次并取消/移除 Query，解绑只失效所属账号。后台刷新及实际 SQL 提交前复核游戏/账号代次，旧结果不能重新填回缓存。短暂 `inactive` 与普通后台不会被当作内存压力；只有内存警告触发非活动 Query 和图片内存释放。`CachedTabScreen` 在这些状态下保持已挂载画面，只通过 active context 暂停重工作。
 - `RemoteImage` 统一远程图片加载。受控压缩缓存是 v3，总预算 10 MiB、单项上限 10 KiB；列表项达到 50% 可见并持续 250 ms 后才允许持久化。在线原图仍作为主加载源，缓存文件只作本地回退。失活只暂停落盘，不把已显示 source 置空。可见性通过条目级订阅通知，保持列表 renderItem、extraData 和窗口参数稳定；等价 URL/请求头/cacheKey 不触发图片缓存重查。
 - 存储管理通过 `GAME_STORAGE_ADAPTERS` 声明账号归属、资源键/前缀、查询键及文件资源。`storage-adapter-core.ts` 的同一库存选择器用于统计与删除，涵盖没有成绩行的账号资源；SQL 写入仍走既有队列。共享缓存文件操作位于 `shared-storage-cache.ts`，不直接清空整个 Expo `Paths.cache`。
 
 账号管理由 `GameAccountsScreen` 装配列表和弹层，`useAccountBindingFlow` 维护互斥弹层及转场任务，
 `useManagedAccountOperations` 复用公共绑定/删除执行器；`services/account-management.ts` 提供档案、缓存和账号创建策略。
-删除前先失效并取消账号查询，准备失败中止后续删除，所有退出路径均解除忙碌状态；分项清理失败仍使用原有汇总提示。
+删除前先失效并取消账号查询，准备失败中止后续删除，所有退出路径均解除忙碌状态。
+`removeBoundPlayerAccount` 把关键解绑提交（账号或凭据删除）与分项清理分开：关键提交失败返回
+`blocked` 并保留账号与凭据，界面仍是重试入口；成绩缓存、派生缓存与个人数据清理失败继续使用原有汇总提示。
 恢复失败时同一页面提供重试恢复与清除登录数据（二次确认）入口，清除后重新执行恢复流程。
 
 总览的 `useOverviewSync` 处理当前账号刷新与最终新鲜度判断，`useOverviewUpload` 处理上传选项、
@@ -571,17 +574,30 @@ Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 ma
 （push 用 `github.event.before`，PR 用 `github.event.pull_request.base.sha`），
 基准提交不在本地时用 `git fetch --depth=1 --no-tags origin <基准>` 只取该提交，
 再用 `git diff --name-only --no-renames -z` 列出改动，不安装依赖也不拉取完整历史；
-判定逻辑集中在复合动作 `.github/actions/changed-scope/action.yml`。
+判定逻辑集中在可单独运行的 `.github/actions/changed-scope/classify.sh`（复合动作只注入事件环境变量）。
 改动全部落在 `README.md`、`AGENTS.md`、`CLAUDE.md`（含各层目录）、`docs/`、`.github/`、
 `LICENSE`、`LICENSES/`、`THIRD_PARTY_NOTICES.md` 与 README 截图 `assets/images/` 时判定为无功能改动，
 `quality` 任务被跳过，该轮不安装依赖、不跑测试、不产出平台包；
 GitHub 把跳过的必填检查报告为成功，合并仍由 PR 检查放行。
+`GITHUB_OUTPUT` 只写固定枚举与计数：`functional`、`reason`（`no-base` / `base-unavailable` /
+`diff-failed` / `no-changes` / `docs-only` / `functional`）与 `changed-count`；
+路径原文先转义控制字符再写入日志、HTML 转义后写入 job summary，不进入输出键，
+避免含换行或控制字符的文件名伪造工作流注解行或注入输出。
 判定结果同时写入 `changed-scope/verdict.env`，并作为保留 1 天的 `changed-scope` artifact 上传。
 拿不到比较基准、基准提交取不到或比较失败时按有功能改动处理；
 判定 artifact 上传失败不影响该判定，轻检查任务自身出错时 `quality` 任务仍然执行完整检查。
 `--no-renames` 让改名同时列出新旧路径，避免功能文件被改名藏进文档路径。
+与功能判定无关的 `light-check` 任务并行运行且不依赖它的结论：只读仓库文件，不安装 npm 依赖、
+不跑构建，因此改动被归类为 CI-only 或纯文档时仍然执行。入口为 `.github/scripts/check-light.mjs`，
+检查 workflow 与 action 的 YAML 结构、`.sh` 与 workflow 内联 bash 的 `bash -n` 语法、
+`.github` 与 `apps/mobile/scripts` 下 `.mjs`/`.cjs` 的 `node --check` 语法，
+并运行分类器独立自检 `.github/actions/changed-scope/self-test.mjs`；`--self-test` 用故意破坏的样例
+证明每类检查都会失败。
 `quality` 任务在 `apps/mobile` 执行 `npm ci`、lint、typecheck、全部测试、架构检查、生成物检查和生产依赖审计，
-不构建任何平台产物。两个构建工作流用 `workflow_run` 订阅该工作流的完成事件
+不构建任何平台产物。`npm run audit:prod` 分执行、解析校验与政策三层：命令异常退出、输出为空、
+报告缺字段或与条目数不自洽、出现未知严重级别、基线记录的分类值/包名/版本与锁文件不符都显式失败，
+无法识别为 GHSA 的公告单独列出；接受记录带包名、版本、引入路径、理由与复核条件。
+两个构建工作流用 `workflow_run` 订阅该工作流的完成事件
 （`workflows: ["Quality"]`、`types: [completed]`）。各自的 `changed-scope` 任务在 `workflow_run`
 事件下用 `github.token` 与 `actions: read` 权限，从触发它的那次质量检查运行下载 `changed-scope` artifact，
 只有读到 `functional=false` 才判定为无功能改动，取不到判定时按有功能改动处理。
