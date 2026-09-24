@@ -101,7 +101,8 @@
     "sharp": "^0.35.3",
     "subset-font": "^2.5.0",
     "typescript": "~5.9.2",
-    "vitest": "^4.1.10"
+    "vitest": "^4.1.10",
+    "yaml": "2.9.0"
   },
   "private": true,
   "engines": {

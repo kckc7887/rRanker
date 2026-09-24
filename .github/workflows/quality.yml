@@ -51,6 +51,24 @@ jobs:
           retention-days: 1
           overwrite: true
 
+  # 独立于功能判定的轻检查：不依赖 changed-scope 的结论，也不装 npm 依赖、不跑构建，
+  # 因此改动被归类为 CI-only 或纯文档时质量作业会被跳过，这一步仍然会跑。
+  light-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v6
+
+      - name: Setup Node
+        uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+
+      - name: Repository light check
+        run: node .github/scripts/check-light.mjs --self-test
+
   quality:
     needs: changed-scope
     if: always() && needs.changed-scope.outputs.functional != 'false'
