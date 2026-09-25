@@ -29,12 +29,13 @@ import { PhiraScoreCard } from '@/components/phira/PhiraScoreCard';
 import { PhiraSongRow } from '@/components/phira/PhiraSongRow';
 import { phiraPlayerIdFromAccountId } from '@/domain/bound-account';
 import { dedupePhiraCharts, filterPhiraBests, filterPhiraCharts, type PhiraCatalogSort, type PhiraScoreSort } from '@/domain/phira-filters';
-import { formatPhiraAccuracy, formatPhiraRating, PHIRA_CATALOG_PAGE_SCAN_BUDGET, phiraCatalogListView, phiraCatalogPageState, PHIRA_STATUS_LABELS, phiraChartStatus, type PhiraChart, type PhiraChartStatus, type PhiraQueriedBest } from '@/domain/phira';
+import { formatPhiraAccuracy, formatPhiraRating, phiraCatalogListView, phiraCatalogPageState, phiraCatalogQueryIdentity, phiraCatalogScanNext, phiraCatalogScanObservation, PHIRA_STATUS_LABELS, phiraChartStatus, type PhiraCatalogScanRequest, type PhiraChart, type PhiraChartStatus, type PhiraQueriedBest } from '@/domain/phira';
 import { buildTagHistory } from '@/domain/user-library';
 import { presentPhiraBestSection, presentPhiraChart } from '@/features/game-content/adapters';
+import { providerErrorToUserMessage } from '@/providers/errors';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
-import { usePhiraBests, usePhiraChart, usePhiraChartBest, usePhiraCharts, usePhiraNotes, usePhiraUploader, useRefreshAllPhiraBests } from '@/hooks/use-phira';
+import { usePhiraBests, usePhiraChart, usePhiraChartBest, usePhiraCharts, usePhiraNotes, usePhiraUploader, useRefreshAllPhiraBests, type PhiraBestRefreshOutcome } from '@/hooks/use-phira';
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhiraRecordsFilter } from '@/state/phira-records-filter';
 import { useUserLibrary } from '@/hooks/use-user-library';
@@ -75,7 +76,8 @@ export function PhiraBestScreen() {
 
 export function PhiraRecordsScreen() {
   const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const id = usePlayerId(); const query = usePhiraBests(id);
-  const refreshAll = useRefreshAllPhiraBests(id);
+  const refresh = useRefreshAllPhiraBests(id);
+  const { showNotification, showActionNotification } = useNotification();
   const filter = usePhiraRecordsFilter();
   const unfilteredItems = useMemo(() => actualBests(query.data?.items), [query.data?.items]);
   const constantValues = useMemo(() => unfilteredItems.map((item) => item.chart.difficulty), [unfilteredItems]);
@@ -87,7 +89,27 @@ export function PhiraRecordsScreen() {
     `${id ?? 'none'}:${query.data?.source.updatedAt ?? 'loading'}`,
   );
   const items = useMemo(() => filterPhiraBests(unfilteredItems, filter), [filter, unfilteredItems]);
-  const retry = async () => { await refreshAll(); await query.refetch(); };
+  const runRefresh = async (task: () => Promise<PhiraBestRefreshOutcome>) => {
+    let outcome: PhiraBestRefreshOutcome;
+    try {
+      outcome = await task();
+    } catch (error) {
+      showNotification({
+        title: '刷新失败',
+        message: providerErrorToUserMessage(error, '暂时无法刷新成绩，请稍后重试。'),
+        variant: 'error',
+      });
+      return;
+    }
+    if (outcome.status !== 'partial' && outcome.status !== 'failed') return;
+    showActionNotification({
+      title: outcome.status === 'partial' ? '部分谱面成绩未更新' : '谱面成绩未更新',
+      message: `${outcome.failedChartIds.length} 首谱面刷新失败，可点此重试。`,
+      variant: 'warning',
+      actions: [{ label: '重试失败项', onPress: () => void runRefresh(refresh.retryFailed) }],
+    });
+  };
+  const retry = async () => { await runRefresh(refresh.refreshAll); await query.refetch(); };
   const controls = <><GameSearchHeader value={filter.keyword} onChangeText={filter.setKeyword} placeholder="搜索已查询歌曲"
     wrapStyle={styles.searchWrap} inputStyle={styles.search} />
     <PhiraFilterBar
@@ -117,9 +139,10 @@ export function PhiraCatalogScreen() {
   const debounced = useDebouncedValue(keyword, 350); const query = usePhiraCharts(status, debounced);
   // Phira /chart 的 page=1 与 page=0 重复且 updated 排序在请求间漂移，跨页需按 id 去重，避免 FlatList 重复 key。
   const charts = useMemo(() => filterPhiraCharts(dedupePhiraCharts(query.data?.pages.flatMap((page) => page.results) ?? []), constantMin, constantMax, sort), [constantMax, constantMin, query.data?.pages, sort]);
+  const pageCount = query.data?.pages.length ?? 0;
   const pageState = phiraCatalogPageState<PhiraChart>({
     items: charts,
-    pageCount: query.data?.pages.length ?? 0,
+    pageCount,
     hasNextPage: query.hasNextPage === true,
     isLoading: query.isLoading,
     isError: query.isError,
@@ -129,10 +152,22 @@ export function PhiraCatalogScreen() {
   const view = phiraCatalogListView(pageState);
   const scanning = pageState.status === 'ready' && pageState.scanning;
   const fetchNextPage = query.fetchNextPage;
+  const scanPageParams = query.data?.pageParams;
+  const scanLastCursor = scanPageParams?.[scanPageParams.length - 1] ?? null;
+  const scanObservation = useMemo(() => phiraCatalogScanObservation({
+    identity: phiraCatalogQueryIdentity(status, debounced),
+    pageCount,
+    lastCursor: scanLastCursor,
+    scanning,
+    isFetchingNextPage: query.isFetchingNextPage,
+  }), [debounced, pageCount, query.isFetchingNextPage, scanLastCursor, scanning, status]);
+  const scanRequested = useRef<PhiraCatalogScanRequest | null>(null);
   useEffect(() => {
-    if (!scanning || query.isFetchingNextPage) return;
+    const step = phiraCatalogScanNext({ observation: scanObservation, requested: scanRequested.current });
+    if (step.action !== 'fetch') return;
+    scanRequested.current = step.requested;
     void fetchNextPage();
-  }, [fetchNextPage, query.isFetchingNextPage, scanning]);
+  }, [fetchNextPage, scanObservation]);
   const controls = <><GameSearchHeader value={keyword} onChangeText={setKeyword} placeholder="搜索 Phira 谱面"
     wrapStyle={styles.searchWrap} inputStyle={styles.search} />
     <PhiraFilterBar collapsed={collapsed}
@@ -159,7 +194,7 @@ export function PhiraCatalogScreen() {
   return <View style={[styles.page, { backgroundColor: theme.background }]}><CatalogListPage<PhiraChart> beforeList={controls}
     isLoading={view.isLoading} isError={view.isError} error={query.error}
     onRetry={() => void query.refetch()} isEmpty={view.isEmpty}
-    emptyText={pausedByScanBudget ? `已扫描 ${PHIRA_CATALOG_PAGE_SCAN_BUDGET} 页仍无匹配谱面` : '没有找到 Phira 谱面'}
+    emptyText={pausedByScanBudget ? `已扫描 ${pageCount} 页仍无匹配谱面` : '没有找到 Phira 谱面'}
     emptyActionLabel={pausedByScanBudget ? '继续扫描' : undefined}
     onEmptyAction={pausedByScanBudget ? () => void fetchNextPage() : undefined}
     data={view.data}

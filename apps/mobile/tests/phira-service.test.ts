@@ -3,7 +3,7 @@ import type { PhiraBestSnapshot, PhiraPlayerSnapshot, PhiraQueriedBest } from '@
 import { PhiraChartSchema, PhiraRecordSchema, PhiraUserSchema, PhiraUserStatsSchema } from '@/domain/phira';
 import { phiraProvider } from '@/providers/phira-provider';
 import { phiraCache } from '@/services/phira-cache';
-import { loadPhiraPlayerFresh, queryPhiraChartBest, refreshAllPhiraBests, refreshPhiraSeedBests } from '@/services/phira-service';
+import { loadPhiraPlayerFresh, queryPhiraChartBest, refreshAllPhiraBests, refreshPhiraBestTargets, refreshPhiraSeedBests } from '@/services/phira-service';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
 
@@ -80,15 +80,67 @@ describe('Phira player seed and best service', () => {
 
     const result = await refreshPhiraSeedBests(playerSnapshot([7, 8]));
 
-    expect(result?.refresh.status).toBe('failed');
-    expect(result?.refresh.updatedChartIds).toEqual([]);
-    expect(result?.refresh.requestedChartIds).toEqual([7, 8]);
-    expect(result?.refresh.failures.map((failure) => failure.chartId).sort()).toEqual([7, 8]);
+    expect(result.refresh.status).toBe('failed');
+    expect(result.refresh.updatedChartIds).toEqual([]);
+    expect(result.refresh.requestedChartIds).toEqual([7, 8]);
+    expect(result.refresh.failures.map((failure) => failure.chartId).sort()).toEqual([7, 8]);
+    // 失败明细带上重试所需的谱面，页面只重试失败项时不必重建候选集合。
+    expect(result.refresh.failures.map((failure) => failure.target.chart.id).sort()).toEqual([7, 8]);
     // 缓存回退返回旧数据，不代表本次刷新成功。
-    expect(result?.source.updatedAt).toBe(cached.source.updatedAt);
-    expect(result?.items).toEqual(cached.items);
+    expect(result.snapshot?.source.updatedAt).toBe(cached.source.updatedAt);
+    expect(result.snapshot?.items).toEqual(cached.items);
     // 全失败只提交成功项集合（此处为空）；空集合不写入，见 PhiraCache 的空合并合同。
     expect(merge).toHaveBeenCalledWith(323528, [], expect.any(Function));
+  });
+
+  it('keeps the failure summary when nothing is cached yet', async () => {
+    vi.spyOn(phiraCache, 'loadBests').mockResolvedValue(null);
+    vi.spyOn(phiraCache, 'mergeBests').mockResolvedValue(null);
+    vi.spyOn(phiraProvider, 'getChartBest').mockRejectedValue(new Error('network down'));
+
+    const result = await refreshPhiraSeedBests(playerSnapshot([7, 8]));
+
+    expect(result.refresh).toMatchObject({ status: 'failed', requestedChartIds: [7, 8], updatedChartIds: [] });
+    expect(result.refresh.failures.map((failure) => failure.chartId)).toEqual([7, 8]);
+    // 没有可用成绩可保留时 snapshot 为 null，但本次操作的结果仍然存在。
+    expect(result.snapshot).toBeNull();
+  });
+
+  it('reports no-op for a refresh without candidates and does not touch the cache', async () => {
+    vi.spyOn(phiraCache, 'loadBests').mockResolvedValue(null);
+    vi.spyOn(phiraCache, 'loadPlayer').mockResolvedValue(null);
+    const requests = vi.spyOn(phiraProvider, 'getChartBest');
+    const merge = vi.spyOn(phiraCache, 'mergeBests');
+
+    const result = await refreshAllPhiraBests(323528);
+
+    expect(result.refresh).toMatchObject({
+      status: 'noop', requestedChartIds: [], updatedChartIds: [], failures: [],
+    });
+    expect(result.snapshot).toBeNull();
+    expect(requests).not.toHaveBeenCalled();
+    expect(merge).not.toHaveBeenCalled();
+  });
+
+  it('retries only the targets reported by a failed refresh', async () => {
+    vi.spyOn(phiraCache, 'loadBests').mockResolvedValue(null);
+    let failOnce = true;
+    vi.spyOn(phiraProvider, 'getChartBest').mockImplementation(async (_playerId, chartId) => {
+      if (chartId === 11 && failOnce) { failOnce = false; throw new Error('boom'); }
+      return [record(chartId * 10, chartId, true)];
+    });
+    vi.spyOn(phiraCache, 'mergeBests')
+      .mockImplementation(async (_id, values) => mergedBests(values, '2026-05-05T00:00:00.000Z'));
+
+    const first = await refreshPhiraSeedBests(playerSnapshot([11, 12]));
+    expect(first.refresh.failures.map((failure) => failure.chartId)).toEqual([11]);
+
+    const requests = vi.spyOn(phiraProvider, 'getChartBest').mockClear();
+    const retried = await refreshPhiraBestTargets(323528, first.refresh.failures.map((failure) => failure.target));
+
+    expect(requests.mock.calls.map((call) => call[1])).toEqual([11]);
+    expect(retried.refresh.status).toBe('success');
+    expect(retried.refresh.updatedChartIds).toEqual([11]);
   });
 
   it('submits only the successful charts and reports a partial refresh', async () => {
@@ -104,12 +156,12 @@ describe('Phira player seed and best service', () => {
 
     expect(merge).toHaveBeenCalledTimes(1);
     expect(merge.mock.calls[0][1].map((value) => value.chart.id)).toEqual([11]);
-    expect(result?.refresh).toMatchObject({
+    expect(result.refresh).toMatchObject({
       status: 'partial', updatedChartIds: [11], requestedChartIds: [11, 12],
     });
-    expect(result?.refresh.failures.map((failure) => failure.chartId)).toEqual([12]);
+    expect(result.refresh.failures.map((failure) => failure.chartId)).toEqual([12]);
     // 部分成功按成功覆盖范围推进时间戳；未覆盖谱面的新鲜度仍看各自 queriedAt。
-    expect(result?.source.updatedAt).toBe('2026-03-03T00:00:00.000Z');
+    expect(result.snapshot?.source.updatedAt).toBe('2026-03-03T00:00:00.000Z');
   });
 
   it('reports a fully successful account refresh as success', async () => {
@@ -121,9 +173,9 @@ describe('Phira player seed and best service', () => {
 
     const result = await refreshAllPhiraBests(323528);
 
-    expect(result?.refresh).toMatchObject({
+    expect(result.refresh).toMatchObject({
       status: 'success', updatedChartIds: [3], requestedChartIds: [3], failures: [],
     });
-    expect(result?.source.updatedAt).toBe('2026-04-04T00:00:00.000Z');
+    expect(result.snapshot?.source.updatedAt).toBe('2026-04-04T00:00:00.000Z');
   });
 });

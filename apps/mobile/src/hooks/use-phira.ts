@@ -9,7 +9,8 @@ import { countPhiraChartZip } from '@/services/phira-chart-notes';
 import { phiraCache, phiraSource } from '@/services/phira-cache';
 import { phiraCatalogNextPage } from '@/domain/phira-filters';
 import {
-  loadPhiraPlayerFresh, queryPhiraChartBest, refreshAllPhiraBests, refreshPhiraSeedBests,
+  loadPhiraPlayerFresh, queryPhiraChartBest, refreshAllPhiraBests, refreshPhiraBestTargets,
+  refreshPhiraSeedBests, type PhiraBestRefreshResult, type PhiraBestRefreshStatus, type PhiraBestRefreshTarget,
 } from '@/services/phira-service';
 import { queryClient } from '@/state/query-client';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
@@ -39,9 +40,12 @@ export function usePhiraPlayer(playerId: number | null, enabled = true) {
         const fresh = await loadPhiraPlayerFresh(playerId!, signal);
         assertCurrent();
         void refreshPhiraSeedBests(fresh, signal)
-          .then((bests) => {
+          .then((result) => {
             assertCurrent();
-            if (!signal.aborted) queryClient.setQueryData(['phira', 'bests', playerId], bests);
+            // 只把缓存快照写进 bests 查询；后台补全不消费本次操作摘要。
+            if (!signal.aborted && result.snapshot) {
+              queryClient.setQueryData(['phira', 'bests', playerId], result.snapshot);
+            }
           })
           .catch(() => undefined);
         return fresh;
@@ -61,15 +65,46 @@ export function usePhiraBests(playerId: number | null, enabled = true) {
   });
 }
 
+/**
+ * 页面可见的一次刷新结果：service 摘要加上 Hook 自己管理的取消语义。
+ * `success` / `partial` / `failed` / `noop` 由 service 判定，`cancelled` 表示本次操作在完成前被取消。
+ */
+export type PhiraBestRefreshOutcome = {
+  status: PhiraBestRefreshStatus | 'cancelled';
+  /** 本次请求覆盖的谱面数；取消除外。 */
+  requestedCount: number;
+  updatedCount: number;
+  /** 失败项谱面 id；页面据此显示失败数量并提供重试。 */
+  failedChartIds: number[];
+};
+
+const refreshOutcome = (status: PhiraBestRefreshOutcome['status']): PhiraBestRefreshOutcome =>
+  ({ status, requestedCount: 0, updatedCount: 0, failedChartIds: [] });
+
+const outcomeFrom = (result: PhiraBestRefreshResult): PhiraBestRefreshOutcome => ({
+  status: result.refresh.status,
+  requestedCount: result.refresh.requestedChartIds.length,
+  updatedCount: result.refresh.updatedChartIds.length,
+  failedChartIds: result.refresh.failures.map((failure) => failure.chartId),
+});
+
+/**
+ * 主动刷新当前玩家已查询谱面的最佳成绩。
+ * 操作摘要由每次调用的返回值交给页面（页面自有通知入口），bests 查询只承载缓存快照，
+ * 普通缓存重新加载不承担保存操作结果的职责。
+ */
 export function useRefreshAllPhiraBests(playerId: number | null) {
   const lifetime = useRef(new AbortController());
+  const failedTargets = useRef<readonly PhiraBestRefreshTarget[]>([]);
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
     return () => controller.abort();
   }, [playerId]);
-  return async () => {
-    if (playerId === null) return null;
+  const runRefresh = async (
+    run: (signal: AbortSignal, assertCurrent: () => void) => Promise<PhiraBestRefreshResult>,
+  ): Promise<PhiraBestRefreshOutcome> => {
+    if (playerId === null) return refreshOutcome('noop');
     const controller = new AbortController();
     const foreground = getForegroundAbortSignal();
     const cancel = () => controller.abort();
@@ -79,16 +114,29 @@ export function useRefreshAllPhiraBests(playerId: number | null) {
     const assertCurrent = captureResourceWrites('phira', controller.signal, `phira:community:${playerId}`);
     try {
       assertCurrent();
-      await loadPhiraPlayerFresh(playerId, controller.signal);
+      const result = await run(controller.signal, assertCurrent);
       assertCurrent();
-      const value = await refreshAllPhiraBests(playerId, controller.signal);
-      assertCurrent();
-      queryClient.setQueryData(['phira', 'bests', playerId], value);
-      return value;
+      if (result.snapshot) queryClient.setQueryData(['phira', 'bests', playerId], result.snapshot);
+      failedTargets.current = result.refresh.failures.map((failure) => failure.target);
+      return outcomeFrom(result);
+    } catch (error) {
+      if (controller.signal.aborted) return refreshOutcome('cancelled');
+      throw error;
     } finally {
       signals.forEach((signal) => signal.removeEventListener('abort', cancel));
     }
   };
+  const refreshAll = () => runRefresh(async (signal, assertCurrent) => {
+    await loadPhiraPlayerFresh(playerId!, signal);
+    assertCurrent();
+    return refreshAllPhiraBests(playerId!, signal);
+  });
+  const retryFailed = () => {
+    const targets = failedTargets.current;
+    if (playerId === null || targets.length === 0) return Promise.resolve(refreshOutcome('noop'));
+    return runRefresh((signal) => refreshPhiraBestTargets(playerId, targets, signal));
+  };
+  return { refreshAll, retryFailed };
 }
 
 export function usePhiraCharts(status: PhiraChartStatus, search: string, enabled = true) {
