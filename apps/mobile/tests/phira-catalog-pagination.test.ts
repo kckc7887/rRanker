@@ -4,7 +4,12 @@ import {
   PHIRA_CATALOG_PAGE_SCAN_BUDGET,
   phiraCatalogListView,
   phiraCatalogPageState,
+  phiraCatalogQueryIdentity,
+  phiraCatalogScanNext,
+  phiraCatalogScanObservation,
   type PhiraCatalogPageState,
+  type PhiraCatalogScanObservation,
+  type PhiraCatalogScanRequest,
   type PhiraChart,
   type PhiraChartPage,
 } from '@/domain/phira';
@@ -140,5 +145,71 @@ describe('phira catalog 列表渲染映射', () => {
     expect(phiraCatalogListView(phiraCatalogPageState(pageInput({ isFetchNextPageError: true }))))
       .toEqual({ isLoading: false, isError: false, isEmpty: false, data: [] });
     expect(phiraCatalogListView(phiraCatalogPageState(pageInput({ items: [1, 2] }))).data).toEqual([1, 2]);
+  });
+});
+
+type ObservationInput = Parameters<typeof phiraCatalogScanObservation>[0];
+const scanObservation = (patch: Partial<ObservationInput> = {}): PhiraCatalogScanObservation =>
+  phiraCatalogScanObservation({
+    identity: 'ranked:', pageCount: 1, lastCursor: 0, scanning: true, isFetchingNextPage: false, ...patch,
+  });
+const requestAt = (identity: string, pageCount: number, lastCursor: number | null): PhiraCatalogScanRequest =>
+  ({ identity, pageCount, lastCursor });
+const step = (
+  observation: PhiraCatalogScanObservation,
+  requested: PhiraCatalogScanRequest | null = null,
+) => phiraCatalogScanNext({ observation, requested });
+
+describe('phira catalog 续扫驱动', () => {
+  it('查询身份由类别与归一化搜索词决定', () => {
+    expect(phiraCatalogQueryIdentity('ranked', '  初音 ')).toBe(phiraCatalogQueryIdentity('ranked', '初音'));
+    expect(phiraCatalogQueryIdentity('ranked', '初音')).not.toBe(phiraCatalogQueryIdentity('special', '初音'));
+  });
+
+  it('观察值只由查询身份和成功接收的页数/末游标决定，不读请求中状态推进', () => {
+    expect(scanObservation()).toEqual({
+      identity: 'ranked:', pageCount: 1, lastCursor: 0, scanning: true, isFetchingNextPage: false,
+    });
+    expect(scanObservation({ pageCount: 3, lastCursor: 3 })).toMatchObject({ pageCount: 3, lastCursor: 3 });
+    expect(scanObservation({ pageCount: 0, lastCursor: undefined })).toMatchObject({ pageCount: 0, lastCursor: null });
+  });
+
+  it('每成功收到一页就重新判断：同一位置请求一次后，页数增长再请求', () => {
+    const first = step(scanObservation());
+    expect(first.action).toBe('fetch');
+    expect(first.requested).toEqual(requestAt('ranked:', 1, 0));
+    // 已经请求过同一位置：不再重复请求，即使查询层从未报告过请求中。
+    expect(step(scanObservation(), first.requested).action).toBe('idle');
+    const next = step(scanObservation({ pageCount: 2, lastCursor: 2 }), first.requested);
+    expect(next.action).toBe('fetch');
+    expect(next.requested).toEqual(requestAt('ranked:', 2, 2));
+  });
+
+  it('末游标变化而页数不变也重新判断', () => {
+    const first = step(scanObservation({ pageCount: 2, lastCursor: 2 }));
+    const next = step(scanObservation({ pageCount: 2, lastCursor: 5 }), first.requested);
+    expect(next).toMatchObject({ action: 'fetch', requested: { pageCount: 2, lastCursor: 5 } });
+  });
+
+  it('换到页数相同的另一个缓存查询时重新判断', () => {
+    const first = step(scanObservation({ pageCount: 2, lastCursor: 2 }));
+    expect(step(
+      scanObservation({ pageCount: 2, lastCursor: 2, identity: 'special:' }),
+      first.requested,
+    )).toMatchObject({ action: 'fetch', requested: { identity: 'special:', pageCount: 2, lastCursor: 2 } });
+  });
+
+  it('预算暂停、后页失败、后页耗尽、请求中与空数据都不自动续扫', () => {
+    for (const patch of [
+      { scanning: false }, { isFetchingNextPage: true }, { pageCount: 0, lastCursor: undefined },
+    ]) {
+      expect(step(scanObservation(patch)).action).toBe('idle');
+    }
+  });
+
+  it('idle 时不记录未请求的位置，避免挡住之后的续扫', () => {
+    const paused = step(scanObservation({ pageCount: 2, lastCursor: 2, scanning: false }));
+    expect(paused).toEqual({ action: 'idle', requested: null });
+    expect(step(scanObservation({ pageCount: 2, lastCursor: 2 }), paused.requested).action).toBe('fetch');
   });
 });

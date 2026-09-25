@@ -251,3 +251,69 @@ export function phiraCatalogListView<T>(state: PhiraCatalogPageState<T>): PhiraC
   }
   return { isLoading: false, isError: false, isEmpty: false, data: state.items };
 }
+
+/** 一次曲库查询的身份：类别与归一化搜索词相同就是同一个查询。 */
+export function phiraCatalogQueryIdentity(status: PhiraChartStatus, search = ''): string {
+  return `${status}|${search.trim()}`;
+}
+
+/**
+ * 自动续扫的观察值：查询身份 + 已成功接收的页数与末页游标。
+ * 查询层可能把「请求中」与「请求结束」合并成一次通知，因此推进只读这两个成功接收的标记。
+ */
+export type PhiraCatalogScanObservation = {
+  identity: string;
+  /** 已成功接收的页数；没有页时不会续扫。 */
+  pageCount: number;
+  /** 已接收末页的游标；查询层没有提供游标时为 null。 */
+  lastCursor: number | null;
+  /** 当前仍需自动续扫：结果为空、预算内、后页未失败且未耗尽。 */
+  scanning: boolean;
+  /** 查询层报告后页请求在途；只用于防重，不作为推进依据。 */
+  isFetchingNextPage: boolean;
+};
+
+/** 已经发出过续扫请求的位置。 */
+export type PhiraCatalogScanRequest = Pick<PhiraCatalogScanObservation, 'identity' | 'pageCount' | 'lastCursor'>;
+
+export type PhiraCatalogScanStep = {
+  action: 'fetch' | 'idle';
+  /** action 为 fetch 时是要记录的新位置，否则保持传入的已请求位置。 */
+  requested: PhiraCatalogScanRequest | null;
+};
+
+export function phiraCatalogScanObservation(input: {
+  identity: string;
+  pageCount: number;
+  /** 游标来自查询层，不是有限数字时视为没有游标。 */
+  lastCursor?: unknown;
+  scanning: boolean;
+  isFetchingNextPage: boolean;
+}): PhiraCatalogScanObservation {
+  return {
+    identity: input.identity,
+    pageCount: input.pageCount,
+    lastCursor: typeof input.lastCursor === 'number' && Number.isFinite(input.lastCursor) ? input.lastCursor : null,
+    scanning: input.scanning,
+    isFetchingNextPage: input.isFetchingNextPage,
+  };
+}
+
+/**
+ * 续扫驱动：每成功收到一页（页数或末游标变化）、或换到另一个查询身份后都重新判断，
+ * 同一位置只请求一次，因此不会并发重复请求同一页。
+ */
+export function phiraCatalogScanNext(input: {
+  observation: PhiraCatalogScanObservation;
+  requested: PhiraCatalogScanRequest | null;
+}): PhiraCatalogScanStep {
+  const { observation, requested } = input;
+  const position: PhiraCatalogScanRequest = {
+    identity: observation.identity, pageCount: observation.pageCount, lastCursor: observation.lastCursor,
+  };
+  const alreadyRequested = requested !== null && requested.identity === position.identity
+    && requested.pageCount === position.pageCount && requested.lastCursor === position.lastCursor;
+  const shouldFetch = observation.scanning && observation.pageCount > 0
+    && !observation.isFetchingNextPage && !alreadyRequested;
+  return { action: shouldFetch ? 'fetch' : 'idle', requested: shouldFetch ? position : requested };
+}

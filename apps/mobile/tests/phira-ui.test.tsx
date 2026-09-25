@@ -4,10 +4,12 @@ import { InteractionManager, Platform, StyleSheet } from 'react-native';
 import { router as mockRouter } from 'expo-router';
 import { PhiraRandomChartsScreen } from '@/screens/PhiraRandomChartsScreen';
 import { PhiraBestScreen, PhiraCatalogScreen, PhiraRecordsScreen, PhiraSongDetailScreen } from '@/screens/PhiraScreens';
+import { PHIRA_CATALOG_PAGE_SCAN_BUDGET } from '@/domain/phira';
 import { resolveChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
 
 const mockRefetch = jest.fn(async () => ({ data: undefined }));
-const mockRefreshAll = jest.fn(async () => null);
+const mockRefreshAll = jest.fn(async () => ({ status: 'noop', requestedCount: 0, updatedCount: 0, failedChartIds: [] }));
+const mockRetryFailedBests = jest.fn(async () => ({ status: 'noop', requestedCount: 0, updatedCount: 0, failedChartIds: [] }));
 const mockDismissNotification = jest.fn();
 const mockShowActionNotification = jest.fn(() => 42);
 const mockShowNotification = jest.fn();
@@ -79,7 +81,7 @@ jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
 jest.mock('@/hooks/use-phira', () => ({
   usePhiraPlayer: () => ({ data: { pool: { bestPool: mockBests['38294'] ? [{ chart: mockChart, record: mockBest.record, rks: 12 }] : [], recentPool: [] } }, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
   usePhiraBests: () => ({ data: { items: mockBests, source: { kind: 'phira', label: 'Phira', updatedAt: 'now', isStale: false } }, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
-  useRefreshAllPhiraBests: () => mockRefreshAll,
+  useRefreshAllPhiraBests: () => ({ refreshAll: mockRefreshAll, retryFailed: mockRetryFailedBests }),
   usePhiraCharts: () => ({
     data: { pages: mockCatalogPages ?? [{ results: mockCatalogCharts }] },
     isLoading: false, isError: false, error: null, refetch: mockRefetch,
@@ -327,6 +329,16 @@ describe('Phira catalog pagination states', () => {
     await filterOutEveryChart(screen);
     expect(mockFetchCatalogNextPage).toHaveBeenCalledTimes(1);
     expect(screen.queryByLabelText('继续扫描')).toBeNull();
+    await screen.unmount();
+  });
+
+  it('预算耗尽后的空态按实际页数说明上限', async () => {
+    mockCatalogPages = Array.from({ length: PHIRA_CATALOG_PAGE_SCAN_BUDGET + 1 }, (_, page) => catalogPage(page));
+    mockCatalogHasNextPage = true;
+    const screen = await render(<PhiraCatalogScreen />);
+    await filterOutEveryChart(screen);
+    expect(screen.getByText(`已扫描 ${PHIRA_CATALOG_PAGE_SCAN_BUDGET + 1} 页仍无匹配谱面`)).toBeTruthy();
+    expect(screen.getByLabelText('继续扫描')).toBeTruthy();
     await screen.unmount();
   });
 
