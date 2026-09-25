@@ -20,6 +20,8 @@ vi.mock('expo-secure-store', () => ({
 }));
 
 // The store must be imported after the in-memory SecureStore mock.
+// eslint-disable-next-line import/first -- 原生模块 mock 必须先被测模块注册
+import * as SecureStore from 'expo-secure-store';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import {
   restorePreservedSessionIndex,
@@ -575,6 +577,53 @@ describe('Rizline SMS secure accounts', () => {
     await expect(store.updateAccountSession(input.id, { ...session, token: 'late' }, { expected: session, signal: controller.signal })).rejects.toThrow('cancelled');
     expect((await store.loadVault()).credentials[0].session).toEqual(session);
     expect(await store.upsertAccount({ ...input, session: { ...session, phone: 'invalid' } })).toBe('');
+  });
+
+  it('reports the unbind as committed even when the password cleanup fails', async () => {
+    const store = createStore();
+    await store.upsertAccount(input);
+    await writeRizlinePassword(input.id, 'secret-password');
+    const deleteItemAsync = vi.mocked(SecureStore.deleteItemAsync);
+    const originalDelete = deleteItemAsync.getMockImplementation();
+    // 只让附属密码引用删除失败；凭据索引与其它清理仍然成功。
+    deleteItemAsync.mockImplementation(async (key: string) => {
+      if (String(key).includes('rizline-password')) throw new Error('keychain busy');
+      secure.values.delete(key);
+    });
+    try {
+      await expect(store.removeAccount(input.id)).resolves.toEqual({
+        committed: true,
+        cleanupFailures: ['密码'],
+      });
+    } finally {
+      if (originalDelete) deleteItemAsync.mockImplementation(originalDelete);
+      else deleteItemAsync.mockReset();
+    }
+
+    // 提交点已经过去：账号与凭据确实已删除，附属清理失败不能反推账号还在。
+    const vault = await store.loadVault();
+    expect(vault.accounts).toEqual([]);
+    expect(vault.credentials).toEqual([]);
+  });
+
+  it('keeps the account on disk when the unbind submission itself fails', async () => {
+    let failWrites = false;
+    const store = new SecureSessionStore({
+      ...kvStore,
+      setItem: async (key, value) => {
+        if (failWrites) throw new Error('disk full');
+        await kvStore.setItem(key, value);
+      },
+    });
+    await store.upsertAccount(input);
+    failWrites = true;
+
+    await expect(store.removeAccount(input.id)).rejects.toThrow('disk full');
+
+    failWrites = false;
+    const vault = await store.loadVault();
+    expect(vault.accounts.map(item => item.id)).toEqual([input.id]);
+    expect(vault.credentials).toHaveLength(1);
   });
 });
 

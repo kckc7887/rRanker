@@ -28,7 +28,7 @@ const mockSavePhigrosDemoAccount = jest.fn(async (_profile?: unknown) => undefin
 const mockRemovePhigrosDemoAccount = jest.fn(async () => undefined);
 const mockSaveMuseDashDemoAccount = jest.fn(async (_profile?: unknown) => undefined);
 const mockRemoveMuseDashDemoAccount = jest.fn(async () => undefined);
-const mockRemoveAccount = jest.fn(async (_accountId?: string) => undefined);
+const mockRemoveAccount = jest.fn(async (_accountId?: string): Promise<unknown> => undefined);
 const mockSetActiveAccountId = jest.fn(async (_accountId?: string | null) => undefined);
 const mockClearSnapshots = jest.fn(async () => undefined);
 const mockClearUserData = jest.fn(async () => []);
@@ -496,6 +496,30 @@ describe('M3A game account management', () => {
     await waitFor(() => expect(screen.getByLabelText('添加游戏账号').props.accessibilityState.disabled).toBe(false));
     // 关键解绑失败后账号仍在列表里，用户可再次发起解绑。
     expect(screen.getByLabelText('解除绑定 测试水鱼')).toBeTruthy();
+  });
+
+  it('still unbinds when only the post-commit password cleanup failed', async () => {
+    mockRemoveAccount.mockResolvedValueOnce({ committed: true, cleanupFailures: ['密码'] });
+    mockBoundAccounts = [mockAccount, createMaimaiBoundAccount({ providerId: 'lxns', displayName: '落雪玩家', rating: 0, playerId: 'u2' })];
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByLabelText('解除绑定 测试水鱼'));
+    await fireEvent.press(screen.getByText('确认解绑'));
+
+    // 提交已经完成：磁盘账号已删除，界面必须一起移除，只把附属清理失败报出来。
+    await waitFor(() => expect(mockRemoveBoundAccount).toHaveBeenCalledWith(mockAccount.id));
+    await waitFor(() => expect(screen.getByText('部分清除失败（密码），其余项目已清除，请重试')).toBeTruthy());
+  });
+
+  it('still unbinds when persisting the active account fails, and reports it', async () => {
+    mockSetActiveAccountId.mockRejectedValueOnce(new Error('storage busy'));
+    mockBoundAccounts = [mockAccount, createMaimaiBoundAccount({ providerId: 'lxns', displayName: '落雪玩家', rating: 0, playerId: 'u2' })];
+    const screen = await renderScreen();
+    await fireEvent.press(screen.getByLabelText('解除绑定 测试水鱼'));
+    await fireEvent.press(screen.getByText('确认解绑'));
+
+    // 提交已经完成：界面必须移除账号，把「活动账号没写成功」当成可重试的清理失败报告。
+    await waitFor(() => expect(mockRemoveBoundAccount).toHaveBeenCalledWith(mockAccount.id));
+    await waitFor(() => expect(screen.getByText('部分清除失败（当前账号），其余项目已清除，请重试')).toBeTruthy());
   });
 
   it('stops removal before touching persisted data when query cancellation fails and releases busy', async () => {

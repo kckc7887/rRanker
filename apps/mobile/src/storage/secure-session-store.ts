@@ -104,6 +104,15 @@ export type SessionVault = {
  */
 export type CredentialSessionWriteResult = 'applied' | 'stale' | 'missing';
 
+/**
+ * 解绑结果：committed 表示凭据索引已提交（磁盘上账号与凭据已删除，或本来就已不存在）；
+ * cleanupFailures 是提交之后的附属清理失败项，不能用它反推账号仍在。
+ */
+export type RemoveAccountResult = {
+  committed: boolean;
+  cleanupFailures: readonly string[];
+};
+
 export function sessionsMapFromVault(vault: SessionVault): Record<string, ProviderSession> {
   const credentials = new Map(
     vault.credentials.map((credential) => [credential.id, credential.session] as const),
@@ -217,6 +226,13 @@ function sessionMatchesExpected(current: ProviderSession | undefined, expected?:
     return current?.mode === 'rizline' && expected.mode === 'rizline' && current.token === expected.token;
   }
   return JSON.stringify(current) === JSON.stringify(expected);
+}
+
+/** 可轮换的 OAuth 会话：落雪与 osu! 都按 refresh token 判定凭据世代。 */
+function isOAuthRefreshSession(
+  session: ProviderSession | undefined,
+): session is ProviderSession & { mode: 'lxns-oauth' | 'osu-oauth'; refreshToken: string } {
+  return session?.mode === 'lxns-oauth' || session?.mode === 'osu-oauth';
 }
 
 function credentialIdForLegacyAccount(accountId: string): string {
@@ -728,7 +744,6 @@ export class SecureSessionStore {
   async updateAccountSession(accountId: string, session: ProviderSession, options?: {
     signal?: AbortSignal;
     expected?: ProviderSession;
-    acceptedOsuRefreshTokens?: readonly string[];
   }): Promise<void> {
     if (!isPersistableSession(session)) return;
     await this.enqueueMutation(async () => {
@@ -737,10 +752,7 @@ export class SecureSessionStore {
       const existing = vault.accounts.find((account) => account.id === accountId);
       if (!existing) return;
       const credential = vault.credentials.find(item => item.id === existing.credentialId);
-      if (options?.acceptedOsuRefreshTokens) {
-        const current = credential?.session;
-        if (current?.mode !== 'osu-oauth' || !options.acceptedOsuRefreshTokens.includes(current.refreshToken)) return;
-      } else if (options?.expected && !sessionMatchesExpected(credential?.session, options.expected)) return;
+      if (options?.expected && !sessionMatchesExpected(credential?.session, options.expected)) return;
       await this.saveVaultUnlocked({
         ...vault,
         credentials: vault.credentials.map((credential) => (
@@ -771,7 +783,7 @@ export class SecureSessionStore {
       if (!vault.accounts.some(account => account.credentialId === credentialId)) return 'missing';
       if (options?.acceptedRefreshTokens) {
         const current = credential.session;
-        if (current.mode !== 'lxns-oauth'
+        if (!isOAuthRefreshSession(current)
           || !options.acceptedRefreshTokens.includes(current.refreshToken)) return 'stale';
       }
       await this.saveVaultUnlocked({
@@ -803,19 +815,35 @@ export class SecureSessionStore {
     });
   }
 
-  async removeAccount(accountId: string): Promise<void> {
-    await this.enqueueMutation(async () => {
+  /**
+   * 解绑账号。提交点是凭据索引写盘：写盘成功即已解绑，之后才返回；
+   * Rizline 密码引用等附属清理失败只记入 cleanupFailures，不影响已提交的事实，
+   * 因此调用方不能把「附属清理失败」当成「账号还在」。
+   * 账号本来就不在索引里时按幂等处理，同样视为已提交。
+   */
+  async removeAccount(accountId: string): Promise<RemoveAccountResult> {
+    return this.enqueueMutation(async () => {
       const vault = await this.loadVault();
       const accounts = vault.accounts.filter((item) => item.id !== accountId);
+      if (accounts.length === vault.accounts.length) {
+        return { committed: true, cleanupFailures: [] };
+      }
       const activeAccountId = vault.activeAccountId === accountId
         ? (accounts[0]?.id ?? null)
         : vault.activeAccountId;
+      // 提交点：这里抛出表示账号与凭据仍然完整，调用方可以保留界面账号并重试。
       await this.saveVaultUnlocked({
         ...vault,
         activeAccountId,
         accounts,
       });
-      await deleteRizlinePassword(accountId);
+      const cleanupFailures: string[] = [];
+      try {
+        await deleteRizlinePassword(accountId);
+      } catch {
+        cleanupFailures.push('密码');
+      }
+      return { committed: true, cleanupFailures };
     });
   }
 

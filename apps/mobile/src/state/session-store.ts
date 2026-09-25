@@ -21,13 +21,13 @@ import { createSessionProviders } from '@/services/session-providers';
 import { clearOsuRotationCache, osuRotationAncestors, osuRotationMayReplace } from '@/providers/osu-oauth';
 import { lxnsRotationAncestors, lxnsRotationMayReplace } from '@/providers/lxns-oauth';
 import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
+import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
 
 /** 无已绑定账号时的占位 ID；页面按空数据处理。 */
 export const UNBOUND_ACCOUNT_ID = 'maimai:unbound';
 
 export type SessionsByAccountId = Record<string, ProviderSession>;
 
-type LxnsOAuthSession = Extract<ProviderSession, { mode: 'lxns-oauth' }>;
 type OsuOAuthSession = Extract<ProviderSession, { mode: 'osu-oauth' }>;
 
 function sessionsWithSharedCredential(
@@ -60,29 +60,43 @@ function sessionsByCredential(
   return byCredential;
 }
 
-function lxnsSessionMatchesRotation(
-  session: ProviderSession | undefined,
-  previous: LxnsOAuthSession,
-  next: LxnsOAuthSession,
-): boolean {
-  if (session?.mode !== 'lxns-oauth') return false;
-  return session.refreshToken === previous.refreshToken
-    || lxnsRotationMayReplace(session.refreshToken, next.refreshToken);
-}
+/** 可轮换的 OAuth 会话：落雪与 osu! 共用同一套凭据世代判定。 */
+type RotatableOAuthSession = Extract<ProviderSession, { mode: 'lxns-oauth' | 'osu-oauth' }>;
+
+/** 一个协议的轮换世代规则：协议差异只体现在 refresh token 的前代关系里。 */
+type OAuthRotationLineage = {
+  mode: RotatableOAuthSession['mode'];
+  mayReplace: (currentRefreshToken: string, nextRefreshToken: string) => boolean;
+  ancestors: (nextRefreshToken: string) => readonly string[];
+};
+
+const LXNS_ROTATION_LINEAGE: OAuthRotationLineage = {
+  mode: 'lxns-oauth',
+  mayReplace: lxnsRotationMayReplace,
+  ancestors: lxnsRotationAncestors,
+};
+
+const OSU_ROTATION_LINEAGE: OAuthRotationLineage = {
+  mode: 'osu-oauth',
+  mayReplace: osuRotationMayReplace,
+  ancestors: osuRotationAncestors,
+};
 
 /**
  * 解析本次轮换应提交到哪个凭据：以请求开始时消费掉的会话世代为准，
  * 而不是发起账号当前指向的凭据，因此同 ID 重绑、重新授权、发起账号被解绑
  * （共享凭据仍被其它账号引用）都不会写到错误的凭据上。
  */
-function resolveLxnsRotationCredential(
+function resolveRotationCredential(
   sessionsByAccountId: SessionsByAccountId,
   credentialIdsByAccountId: Record<string, string>,
-  previous: LxnsOAuthSession,
-  next: LxnsOAuthSession,
+  lineage: OAuthRotationLineage,
+  next: RotatableOAuthSession,
+  acceptedRefreshTokens: readonly string[],
 ): string | null {
   for (const [credentialId, session] of sessionsByCredential(sessionsByAccountId, credentialIdsByAccountId)) {
-    if (lxnsSessionMatchesRotation(session, previous, next)) return credentialId;
+    if (session.mode !== lineage.mode) continue;
+    if (acceptedRefreshTokens.includes(session.refreshToken)) return credentialId;
   }
   return null;
 }
@@ -101,11 +115,164 @@ function sessionsForCredentialUpdate(
   return next;
 }
 
-/** 落雪轮换提交结果：pending-persist 表示内存已更新、本机落盘失败待重试。 */
-export type LxnsRotationCommitResult = 'applied' | 'pending-persist' | 'stale' | 'removed';
+/** OAuth 轮换提交结果：pending-persist 表示内存已更新、本机落盘失败待补写。 */
+export type OAuthRotationCommitResult = 'applied' | 'pending-persist' | 'stale' | 'removed';
 
-/** 落盘失败仍待提交的轮换：上游已消费旧 refresh_token，不能再重新刷新一次。 */
-const pendingLxnsRotationWrites = new Map<string, { accountId: string; update: LxnsTokenRotationUpdate }>();
+/** 落盘失败仍待提交的轮换：上游已消费旧 refresh token，不能再重新刷新一次。 */
+type PendingRotationWrite = {
+  accountId: string;
+  session: RotatableOAuthSession;
+  acceptedRefreshTokens: readonly string[];
+  attempts: number;
+};
+
+const pendingRotationWrites = new Map<string, PendingRotationWrite>();
+/** 有界退避：3 次自动补写后停止，保留可观察摘要等待下次显式触发。 */
+const PENDING_ROTATION_RETRY_DELAYS_MS = [5_000, 30_000, 120_000] as const;
+let pendingRotationRetryTimer: ReturnType<typeof setTimeout> | null = null;
+let pendingRotationRetryInFlight: Promise<number> | null = null;
+
+/** 仍未落盘的轮换摘要（凭据 id、发起账号、已尝试次数）；不包含 token 本身。 */
+export function pendingRotationWritesSnapshot(): readonly {
+  credentialId: string;
+  accountId: string;
+  attempts: number;
+}[] {
+  return [...pendingRotationWrites].map(([credentialId, entry]) => ({
+    credentialId,
+    accountId: entry.accountId,
+    attempts: entry.attempts,
+  }));
+}
+
+function schedulePendingRotationRetry(): void {
+  if (pendingRotationWrites.size === 0 || pendingRotationRetryTimer !== null) return;
+  const pendingAttempts = [...pendingRotationWrites.values()].map((entry) => entry.attempts);
+  const delay = PENDING_ROTATION_RETRY_DELAYS_MS[
+    Math.min(Math.min(...pendingAttempts), PENDING_ROTATION_RETRY_DELAYS_MS.length - 1)
+  ]!;
+  pendingRotationRetryTimer = setTimeout(() => {
+    pendingRotationRetryTimer = null;
+    void retryPendingRotationWrites();
+  }, delay);
+  // 定时器不应阻止进程或测试退出。
+  (pendingRotationRetryTimer as unknown as { unref?: () => void }).unref?.();
+}
+
+/**
+ * 补写仍挂起的轮换。幂等：同一时刻只跑一次；单项成功或已过期就丢弃，
+ * 落盘继续失败按有界退避重试，超过上限后留下可观察摘要不再自动重试。
+ */
+export async function retryPendingRotationWrites(): Promise<number> {
+  if (pendingRotationRetryInFlight) return pendingRotationRetryInFlight;
+  if (pendingRotationWrites.size === 0) return 0;
+  const attempt = (async () => {
+    const { SecureSessionStore } = await import('@/storage/secure-session-store');
+    const store = new SecureSessionStore();
+    let applied = 0;
+    for (const [credentialId, entry] of [...pendingRotationWrites]) {
+      try {
+        const result = await store.updateCredentialSession(credentialId, entry.session, {
+          acceptedRefreshTokens: entry.acceptedRefreshTokens,
+        });
+        if (result === 'applied') {
+          applied += 1;
+          pendingRotationWrites.delete(credentialId);
+          void recordRuntimeDiagnostic('session', { credentialWrite: 'applied' });
+          continue;
+        }
+        // 已不属于该世代、或凭据与关联账号都已消失：过期任务不再补写。
+        pendingRotationWrites.delete(credentialId);
+        void recordRuntimeDiagnostic('session', { credentialWrite: 'dropped', reason: result });
+      } catch {
+        const attempts = entry.attempts + 1;
+        if (attempts > PENDING_ROTATION_RETRY_DELAYS_MS.length) {
+          pendingRotationWrites.delete(credentialId);
+          void recordRuntimeDiagnostic('session', { credentialWrite: 'abandoned', attempts });
+        } else {
+          pendingRotationWrites.set(credentialId, { ...entry, attempts });
+          void recordRuntimeDiagnostic('session', { credentialWrite: 'retry-scheduled', attempts });
+        }
+      }
+    }
+    if (pendingRotationWrites.size > 0) schedulePendingRotationRetry();
+    return applied;
+  })().finally(() => {
+    pendingRotationRetryInFlight = null;
+  });
+  pendingRotationRetryInFlight = attempt;
+  return attempt;
+}
+
+/** 测试用：清空挂起轮换与定时器。 */
+export function resetPendingRotationWritesForTests(): void {
+  pendingRotationWrites.clear();
+  if (pendingRotationRetryTimer !== null) {
+    clearTimeout(pendingRotationRetryTimer);
+    pendingRotationRetryTimer = null;
+  }
+}
+
+/** 提交一次 OAuth 轮换：只更新仍关联该凭据的账号，落盘失败转入有界补写。 */
+async function commitOAuthRotation(input: {
+  accountId: string;
+  lineage: OAuthRotationLineage;
+  next: RotatableOAuthSession;
+  acceptedRefreshTokens: readonly string[];
+  /** 落雪舞萌账号的 Provider 持有会话实例，提交后需要重建；osu! 的 Provider 另行创建。 */
+  refreshActiveMaimaiProvider?: boolean;
+}): Promise<OAuthRotationCommitResult> {
+  const state = useSession.getState();
+  const credentialId = resolveRotationCredential(
+    state.sessionsByAccountId,
+    state.credentialIdsByAccountId,
+    input.lineage,
+    input.next,
+    input.acceptedRefreshTokens,
+  );
+  if (!credentialId) {
+    // 发起账号已不在绑定列表且没有账号仍引用该凭据时按已移除处理，否则视为过期结果。
+    return state.credentialIdsByAccountId[input.accountId] ? 'stale' : 'removed';
+  }
+  const sessionsByAccountId = sessionsForCredentialUpdate(
+    state.sessionsByAccountId,
+    state.credentialIdsByAccountId,
+    credentialId,
+    input.next,
+  );
+  const activeAccount = state.boundAccounts.find((account) => account.id === state.activeAccountId);
+  const activeScoreProvider = input.refreshActiveMaimaiProvider
+    && sessionsByAccountId[state.activeAccountId] === input.next
+    && activeAccount?.gameId === 'maimai'
+    && activeAccount.providerId === 'lxns'
+    ? createSessionProviders(activeAccount, input.next, applyLxnsTokenRotation).scoreProvider
+    : state.scoreProvider;
+  useSession.setState({
+    sessionsByAccountId,
+    session: sessionsByAccountId[state.activeAccountId] ?? state.session,
+    scoreProvider: activeScoreProvider,
+  });
+  const { SecureSessionStore } = await import('@/storage/secure-session-store');
+  try {
+    const result = await new SecureSessionStore().updateCredentialSession(credentialId, input.next, {
+      acceptedRefreshTokens: input.acceptedRefreshTokens,
+    });
+    if (result === 'applied') pendingRotationWrites.delete(credentialId);
+    return result === 'applied' ? 'applied' : result === 'stale' ? 'stale' : 'removed';
+  } catch {
+    // 本机落盘失败时保留内存中的新会话并登记补写：上游已消费旧 refresh token，
+    // 再次刷新只会失败。进程退出前仍未保存成功时用户可能需要重新授权。
+    pendingRotationWrites.set(credentialId, {
+      accountId: input.accountId,
+      session: input.next,
+      acceptedRefreshTokens: input.acceptedRefreshTokens,
+      attempts: 0,
+    });
+    schedulePendingRotationRetry();
+    void recordRuntimeDiagnostic('session', { credentialWrite: 'pending' });
+    return 'pending-persist';
+  }
+}
 
 /**
  * 落雪令牌轮换提交：必须携带请求开始时使用的会话（凭据世代）。
@@ -115,108 +282,41 @@ const pendingLxnsRotationWrites = new Map<string, { accountId: string; update: L
 export async function applyLxnsTokenRotation(
   accountId: string,
   update: LxnsTokenRotationUpdate,
-): Promise<LxnsRotationCommitResult> {
-  const { previous, next } = update;
+): Promise<OAuthRotationCommitResult> {
   // 先补交上次落盘失败的轮换，再提交本次结果。
-  await retryPendingLxnsRotationWrites();
-  const state = useSession.getState();
-  const credentialId = resolveLxnsRotationCredential(
-    state.sessionsByAccountId,
-    state.credentialIdsByAccountId,
-    previous,
-    next,
-  );
-  if (!credentialId) {
-    // 发起账号已不在绑定列表且没有账号仍引用该凭据时按已移除处理，否则视为过期结果。
-    return state.credentialIdsByAccountId[accountId] ? 'stale' : 'removed';
-  }
-  const sessionsByAccountId = sessionsForCredentialUpdate(
-    state.sessionsByAccountId,
-    state.credentialIdsByAccountId,
-    credentialId,
-    next,
-  );
-  const activeAccount = state.boundAccounts.find((account) => account.id === state.activeAccountId);
-  const activeScoreProvider = sessionsByAccountId[state.activeAccountId] === next
-    && activeAccount?.gameId === 'maimai'
-    && activeAccount.providerId === 'lxns'
-    ? createSessionProviders(activeAccount, next, applyLxnsTokenRotation).scoreProvider
-    : state.scoreProvider;
-  useSession.setState({
-    sessionsByAccountId,
-    session: sessionsByAccountId[state.activeAccountId] ?? state.session,
-    scoreProvider: activeScoreProvider,
+  await retryPendingRotationWrites();
+  return commitOAuthRotation({
+    accountId,
+    lineage: LXNS_ROTATION_LINEAGE,
+    next: update.next,
+    acceptedRefreshTokens: [
+      update.previous.refreshToken,
+      ...lxnsRotationAncestors(update.next.refreshToken),
+    ],
+    refreshActiveMaimaiProvider: true,
   });
-  const { SecureSessionStore } = await import('@/storage/secure-session-store');
-  try {
-    const result = await new SecureSessionStore().updateCredentialSession(credentialId, next, {
-      acceptedRefreshTokens: [previous.refreshToken, ...lxnsRotationAncestors(next.refreshToken)],
-    });
-    if (result === 'applied') pendingLxnsRotationWrites.delete(credentialId);
-    return result === 'applied' ? 'applied' : result === 'stale' ? 'stale' : 'removed';
-  } catch {
-    // 本机落盘失败时保留内存中的新会话并标记待持久化：上游已消费旧 refresh_token，
-    // 再次刷新只会失败。进程退出前仍未保存成功时用户可能需要重新授权。
-    pendingLxnsRotationWrites.set(credentialId, { accountId, update });
-    return 'pending-persist';
-  }
 }
 
-/** 重试因落盘失败挂起的轮换提交；返回本次成功提交的数量，单项失败不影响其它项。 */
-export async function retryPendingLxnsRotationWrites(): Promise<number> {
-  if (pendingLxnsRotationWrites.size === 0) return 0;
-  const { SecureSessionStore } = await import('@/storage/secure-session-store');
-  const store = new SecureSessionStore();
-  let applied = 0;
-  for (const [credentialId, entry] of [...pendingLxnsRotationWrites]) {
-    try {
-      const result = await store.updateCredentialSession(credentialId, entry.update.next, {
-        acceptedRefreshTokens: [
-          entry.update.previous.refreshToken,
-          ...lxnsRotationAncestors(entry.update.next.refreshToken),
-        ],
-      });
-      if (result === 'applied') {
-        applied += 1;
-        pendingLxnsRotationWrites.delete(credentialId);
-      } else {
-        // 已不属于该世代、或凭据与关联账号都已消失：不再重试。
-        pendingLxnsRotationWrites.delete(credentialId);
-      }
-    } catch {
-      // 落盘仍失败：保持挂起，等待下次重试。
-    }
-  }
-  return applied;
-}
-
-/** osu! 令牌轮换：新会话广播到共享 credential 的所有模式账号并持久化。 */
+/**
+ * osu! 令牌轮换：与落雪共用凭据世代提交规则，只更新仍关联该凭据的模式账号。
+ * osu! 的 refresh token 单次使用，因此提交必须携带发起时持有的会话（expected）；
+ * 拿不到 expected 时只允许幂等重写当前已存在的同一个会话。
+ */
 export async function applyOsuTokenRotation(
   accountId: string,
   next: OsuOAuthSession,
   expected?: OsuOAuthSession,
-): Promise<void> {
-  const state = useSession.getState();
-  const current = state.sessionsByAccountId[accountId];
-  if (expected && current?.mode === 'osu-oauth' && !osuRotationMayReplace(current.refreshToken, next.refreshToken)) return;
-  const { SecureSessionStore } = await import('@/storage/secure-session-store');
-  await new SecureSessionStore().updateAccountSession(accountId, next, expected ? {
-    acceptedOsuRefreshTokens: [expected.refreshToken, ...osuRotationAncestors(next.refreshToken)],
-  } : undefined);
-  const latest = useSession.getState();
-  const latestSession = latest.sessionsByAccountId[accountId];
-  if (expected && latestSession?.mode === 'osu-oauth' && !osuRotationMayReplace(latestSession.refreshToken, next.refreshToken)) return;
-  const credentialId = latest.credentialIdsByAccountId[accountId] ?? '';
-  const sessionsByAccountId = sessionsWithSharedCredential(
-    latest.sessionsByAccountId,
-    latest.credentialIdsByAccountId,
+): Promise<OAuthRotationCommitResult> {
+  // 先补交上次落盘失败的轮换，再提交本次结果。
+  await retryPendingRotationWrites();
+  return commitOAuthRotation({
     accountId,
-    credentialId,
+    lineage: OSU_ROTATION_LINEAGE,
     next,
-  );
-  useSession.setState({
-    sessionsByAccountId,
-    session: sessionsByAccountId[latest.activeAccountId] === next ? next : latest.session,
+    acceptedRefreshTokens: [
+      expected?.refreshToken ?? next.refreshToken,
+      ...osuRotationAncestors(next.refreshToken),
+    ],
   });
 }
 
