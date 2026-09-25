@@ -3,12 +3,15 @@ import {
   calculateChunithmOverPower,
   chunithmChartRatingDisplay,
   chunithmRatingTable,
+  formulaMinimumScoreForChunithmOverPower,
+  formulaMinimumScoreForChunithmRating,
   maxChunithmChartRating,
   maxChunithmOverPower,
   minimumScoreForChunithmOverPower,
   minimumScoreForChunithmRating,
   parseChunithmChartInput,
   rawChunithmChartRating,
+  type ChunithmClearTier,
 } from '@/domain/chunithm-rating';
 
 /**
@@ -81,6 +84,23 @@ describe('chunithm rating formula', () => {
     // 整数档位上两层相等
     expect(rawChunithmChartRating(13.7, 1_007_500)).toBe(15.7);
     expect(chunithmChartRatingDisplay(13.7, 1_007_500)).toBe(15.7);
+  });
+
+  it('keeps raw a mathematical intermediate and the display value floored at zero', () => {
+    // 定数 1.0（fixed = 10000）、分数 850,000，800,000~900,000 段：
+    // (10000-50000)/2 × (1 + 50000/100000) = -20000 × 1.5 = -30000（×10000 口径）→ raw -3
+    expect(rawChunithmChartRating(1.0, 850_000)).toBeCloseTo(-3, 9);
+    expect(chunithmChartRatingDisplay(1.0, 850_000)).toBe(0);
+    // 500,000~800,000 段同样可能为负：(-40000/2) × 100000/300000 = -0.6666…
+    expect(rawChunithmChartRating(1.0, 600_000)).toBeCloseTo(-0.6666666667, 9);
+    expect(chunithmChartRatingDisplay(1.0, 600_000)).toBe(0);
+    // 900,000 以上分段自带 0 下界（公式边界的一部分），两层都是 0
+    expect(rawChunithmChartRating(1.0, 900_000)).toBe(0);
+    expect(chunithmChartRatingDisplay(1.0, 900_000)).toBe(0);
+    // 定数足够大时两层都是正数，差异只来自展示口径的下取整
+    // 定数 13.7、分数 850,000 → (137000-50000)/2 × 1.5 = 65250（×10000 口径）→ 6.525 / 6.52
+    expect(rawChunithmChartRating(13.7, 850_000)).toBeCloseTo(6.525, 9);
+    expect(chunithmChartRatingDisplay(13.7, 850_000)).toBeCloseTo(6.52, 9);
   });
 
   it('computes over power from the full-precision rating inside 975000~1007500', () => {
@@ -189,42 +209,47 @@ describe('chunithm rating formula', () => {
   });
 
   it('reverses a target rating into the minimum score of the displayed rating', () => {
-    // 定数 13.7 满分为 15.85；15.00 = 14.7 + 0.3 → 1,003,000
-    const score = minimumScoreForChunithmRating(13.7, 15.0);
-    expect(score).toBe(1_003_000);
-    expect(chunithmChartRatingDisplay(13.7, score!)).toBeGreaterThanOrEqual(15.0);
-    expect(chunithmChartRatingDisplay(13.7, score! - 1)).toBeLessThan(15.0);
+    // 定数 13.7 满分为 15.85；15.00 = 14.7 + 0.3 → 1,003,000（无灯 / FC 的最低分是 0）
+    const result = minimumScoreForChunithmRating(13.7, 15.0, 'none');
+    expect(result).toEqual({ status: 'reachable', score: 1_003_000, lampMinScore: 0 });
+    expect(chunithmChartRatingDisplay(13.7, result.score!)).toBeGreaterThanOrEqual(15.0);
+    expect(chunithmChartRatingDisplay(13.7, result.score! - 1)).toBeLessThan(15.0);
     // 目标不是两位小数时按展示格点向上量化：14.999 与 15.00 同解
-    expect(minimumScoreForChunithmRating(13.7, 14.999)).toBe(1_003_000);
-    expect(minimumScoreForChunithmRating(13.7, 14.99)).toBe(1_002_900);
+    expect(minimumScoreForChunithmRating(13.7, 14.999, 'none').score).toBe(1_003_000);
+    expect(minimumScoreForChunithmRating(13.7, 14.99, 'none').score).toBe(1_002_900);
     expect(chunithmChartRatingDisplay(13.7, 1_002_899)).toBe(14.98);
   });
 
-  it('returns null when the target rating is unreachable', () => {
-    expect(minimumScoreForChunithmRating(13.7, 999)).toBeNull();
-    expect(minimumScoreForChunithmRating(13.7, 0)).toBeNull();
-    expect(minimumScoreForChunithmRating(13.7, 15.86)).toBeNull();
-    expect(minimumScoreForChunithmRating(13.7, Number.NaN)).toBeNull();
+  it('reports unreachable targets instead of a score', () => {
+    expect(minimumScoreForChunithmRating(13.7, 999, 'none'))
+      .toEqual({ status: 'unreachable', score: null, lampMinScore: 0 });
+    expect(minimumScoreForChunithmRating(13.7, 0, 'none').status).toBe('unreachable');
+    expect(minimumScoreForChunithmRating(13.7, 15.86, 'none').status).toBe('unreachable');
+    expect(minimumScoreForChunithmRating(13.7, Number.NaN, 'none').status).toBe('unreachable');
+    expect(formulaMinimumScoreForChunithmRating(13.7, 999)).toBeNull();
+    expect(formulaMinimumScoreForChunithmRating(13.7, 15.86)).toBeNull();
+    expect(minimumScoreForChunithmOverPower(13.7, 9999, 'aj'))
+      .toEqual({ status: 'unreachable', score: null, lampMinScore: 1_000_000 });
+    expect(minimumScoreForChunithmOverPower(13.7, Number.NaN, 'none').status).toBe('unreachable');
+    expect(formulaMinimumScoreForChunithmOverPower(13.7, 9999, 'aj')).toBeNull();
+    expect(formulaMinimumScoreForChunithmOverPower(13.7, 0, 'aj')).toBeNull();
+    expect(calculateChunithmOverPower(13.7, 0, 'aj')).toBe(0);
   });
 
   it('reverses a target over power into the minimum score', () => {
     // 1,007,500 以上改用 5×(定数+2) + (分数-1,007,500)×0.0015 + 灯奖励：
-    // 78.5 + (分数-1,007,500)×0.0015 + 1.0 ≥ 80 → 需要 334 分 → 1,007,834
-    const score = minimumScoreForChunithmOverPower(13.7, 80, 'aj');
-    expect(score).toBe(1_007_834);
-    expect(calculateChunithmOverPower(13.7, score!, 'aj')).toBeGreaterThanOrEqual(80);
-    expect(calculateChunithmOverPower(13.7, score! - 1, 'aj')).toBeLessThan(80);
+    // 78.5 + (分数-1,007,500)×0.0015 + 1.0 ≥ 80 → 需要 334 分 → 1,007,834（AJ 的最低分是 1,000,000）
+    const result = minimumScoreForChunithmOverPower(13.7, 80, 'aj');
+    expect(result).toEqual({ status: 'reachable', score: 1_007_834, lampMinScore: 1_000_000 });
+    expect(calculateChunithmOverPower(13.7, result.score!, 'aj')).toBeGreaterThanOrEqual(80);
+    expect(calculateChunithmOverPower(13.7, result.score! - 1, 'aj')).toBeLessThan(80);
     // 1,007,500 以下按 5×Rating(raw)：非 0.05 倍数的目标也取到最小分数
     // 5×(14.7 + 40/10000) = 73.52 → 1,000,040
-    expect(minimumScoreForChunithmOverPower(13.7, 73.52, 'none')).toBe(1_000_040);
+    expect(formulaMinimumScoreForChunithmOverPower(13.7, 73.52, 'none')).toBe(1_000_040);
     expect(calculateChunithmOverPower(13.7, 1_000_039, 'none')).toBeLessThan(73.52);
-    expect(calculateChunithmOverPower(13.7, 0, 'aj')).toBe(0);
-    // 目标超过单谱面理论最高时不可达
-    expect(minimumScoreForChunithmOverPower(13.7, 9999, 'aj')).toBeNull();
-    expect(minimumScoreForChunithmOverPower(13.7, 83.51, 'ajc')).toBeNull();
     // 低于 975,000 无 OP，目标大于 0 时最低分数必在 975,000 及以上
-    const lowTarget = minimumScoreForChunithmOverPower(13.7, 1, 'none');
-    expect(lowTarget).toBe(975_000);
+    expect(minimumScoreForChunithmOverPower(13.7, 1, 'none'))
+      .toEqual({ status: 'reachable', score: 975_000, lampMinScore: 0 });
   });
 
   it('builds a descending score tier table', () => {
@@ -235,6 +260,180 @@ describe('chunithm rating formula', () => {
       expect(rows[index]!.score).toBeGreaterThan(rows[index + 1]!.score);
       expect(rows[index]!.rating).toBeGreaterThanOrEqual(rows[index + 1]!.rating);
     }
+  });
+});
+
+/**
+ * 反推的独立整数 oracle：不复用被测实现，按文件头写明的分段公式直接用整数解析反解最低分数
+ * （OP × 30000 定点，灯奖励也换算到该定点）。
+ * 被测实现走的是「定点函数 + 二分」，这里是「分段解析式 + 向上取整」，两条路径互相独立。
+ */
+const ORACLE_BONUS_UNITS: Readonly<Record<ChunithmClearTier, number>> = {
+  ajc: 37_500, aj: 30_000, fc: 15_000, none: 0,
+};
+
+/** [段起点, 段内基准, 每 1 分的增量]，单位都是 OP×30000。 */
+const ORACLE_SEGMENTS: readonly (readonly [origin: number, base: number, step: number])[] = [
+  [975_000, 0, 6],
+  [990_000, 90_000, 6],
+  [1_000_000, 150_000, 15],
+  [1_005_000, 225_000, 30],
+  [1_007_500, 300_000, 45],
+];
+
+/** OP×30000 = 15×定数定点 + 段内基准 + 增量×分数差 + 灯奖励。 */
+function oracleOverPowerUnits(
+  levelValue: number,
+  score: number,
+  clear: ChunithmClearTier,
+): number {
+  if (score < 975_000) return 0;
+  // 枚举用的定数（13.7、15.5 等）乘 10000 后正好是整数，取整方式不影响期望值。
+  const fixed = Math.round(levelValue * 10_000);
+  let units = 0;
+  for (const [origin, base, step] of ORACLE_SEGMENTS) {
+    if (score >= origin) units = 15 * fixed + base + step * (score - origin);
+  }
+  return units + ORACLE_BONUS_UNITS[clear];
+}
+
+function oracleMinimumScoreForOverPower(
+  levelValue: number,
+  targetOverPower: number,
+  clear: ChunithmClearTier,
+  lampMinScore: number,
+): number | null {
+  const fixed = Math.round(levelValue * 10_000);
+  const bonus = ORACLE_BONUS_UNITS[clear];
+  // 目标取三位小数时，目标×30000 是整数，舍入不会引入偏差。
+  const targetUnits = Math.round(targetOverPower * 30_000);
+  if (oracleOverPowerUnits(levelValue, 1_010_000, clear) < targetUnits) return null;
+  for (let index = 0; index < ORACLE_SEGMENTS.length; index += 1) {
+    const [origin, base, step] = ORACLE_SEGMENTS[index]!;
+    const end = ORACLE_SEGMENTS[index + 1]?.[0] ?? 1_010_000;
+    if (oracleOverPowerUnits(levelValue, end, clear) < targetUnits) continue;
+    const delta = Math.ceil((targetUnits - 15 * fixed - base - bonus) / step);
+    return Math.max(lampMinScore, origin + Math.max(0, delta));
+  }
+  return null;
+}
+
+describe('chunithm reverse minimum score contract', () => {
+  it('returns the exact minimum score when the target sits on a floating point boundary', () => {
+    // 独立推算：定数 13.7 → 5×(13.7+2) = 78.5；80.558 - 78.5 = 2.058；
+    // 2.058 / 0.0015 = 1,372 分（整数）→ 1,007,500 + 1,372 = 1,008,872（灯 none 无奖励）
+    const result = minimumScoreForChunithmOverPower(13.7, 80.558, 'none');
+    expect(result).toEqual({ status: 'reachable', score: 1_008_872, lampMinScore: 0 });
+    // 浮点比较会把 1,008,872 的 OP 算成 80.557999…，据此二分就会多报 1 分（1,008,873）
+    expect(calculateChunithmOverPower(13.7, 1_008_872, 'none')).toBeGreaterThanOrEqual(80.558);
+    expect(calculateChunithmOverPower(13.7, 1_008_871, 'none')).toBeLessThan(80.558);
+    expect(oracleMinimumScoreForOverPower(13.7, 80.558, 'none', 0)).toBe(1_008_872);
+  });
+
+  it('agrees with the independent integer oracle and keeps the result minimal', () => {
+    const levels = [12, 13, 13.7, 14, 15.5, 16];
+    const clears: readonly ChunithmClearTier[] = ['ajc', 'aj', 'fc', 'none'];
+    const targets = [69.751, 73.52, 75, 78.501, 79.751, 80, 80.558, 81.808, 82.183, 83.5, 83.501];
+    let checked = 0;
+    for (const level of levels) {
+      for (const clear of clears) {
+        const lampMinScore = CHUNITHM_CLEAR_TIER_MIN_SCORE[clear];
+        for (const target of targets) {
+          const expected = oracleMinimumScoreForOverPower(level, target, clear, lampMinScore);
+          const result = minimumScoreForChunithmOverPower(level, target, clear);
+          checked += 1;
+          if (expected == null) {
+            expect(result).toEqual({ status: 'unreachable', score: null, lampMinScore });
+            continue;
+          }
+          expect(result).toEqual({ status: 'reachable', score: expected, lampMinScore });
+          // 最小性：返回分数满足目标，减一不满足（判定用独立 oracle 的定点值）。
+          // 返回分数等于灯的最低分时，减一已经不是该灯态的合法输入，不再要求公式不满足。
+          const targetUnits = Math.round(target * 30_000);
+          expect(oracleOverPowerUnits(level, expected, clear)).toBeGreaterThanOrEqual(targetUnits);
+          if (expected > lampMinScore) {
+            expect(oracleOverPowerUnits(level, expected - 1, clear)).toBeLessThan(targetUnits);
+          }
+        }
+      }
+    }
+    expect(checked).toBe(levels.length * clears.length * targets.length);
+  });
+
+  it('matches the independent oracle across every three-decimal target of a lamp range', () => {
+    // 密集枚举：按 0.001 的步长扫过每个灯态可达的整个 OP 区间，期望值全部来自独立 oracle。
+    // 目标正好落在公式值上时最容易暴露浮点相等边界，这个枚举会大量命中这种目标。
+    const levels = [13.7, 15.5];
+    const clears: readonly ChunithmClearTier[] = ['ajc', 'aj', 'fc', 'none'];
+    let checked = 0;
+    for (const level of levels) {
+      for (const clear of clears) {
+        const lampMinScore = CHUNITHM_CLEAR_TIER_MIN_SCORE[clear];
+        // oracle 的定点是 OP×30000，除以 30 得到 OP×1000（三位小数的目标格点）
+        const lowest = Math.ceil(
+          oracleOverPowerUnits(level, Math.max(lampMinScore, 975_000), clear) / 30,
+        );
+        const highest = Math.floor(oracleOverPowerUnits(level, 1_010_000, clear) / 30);
+        for (let thousandth = lowest; thousandth <= highest; thousandth += 1) {
+          const target = thousandth / 1000;
+          const expected = oracleMinimumScoreForOverPower(level, target, clear, lampMinScore);
+          expect(minimumScoreForChunithmOverPower(level, target, clear)).toEqual(
+            expected == null
+              ? { status: 'unreachable', score: null, lampMinScore }
+              : { status: 'reachable', score: expected, lampMinScore },
+          );
+          checked += 1;
+        }
+      }
+    }
+    // 2 个定数 × 4 种灯态的整个可达区间共 72,508 个三位小数目标
+    expect(checked).toBe(72_508);
+  });
+
+  it('never returns a score that the positive direction validation rejects', () => {
+    // 13.7 + AJC + 目标 OP 80：公式解 1,007,667 低于 AJC 的合法下限 1,010,000
+    expect(formulaMinimumScoreForChunithmOverPower(13.7, 80, 'ajc')).toBe(1_007_667);
+    expect(parseChunithmChartInput({ levelValue: 13.7, score: 1_007_667, clear: 'ajc' }).violations)
+      .toEqual([{ code: 'lamp_score_conflict', message: 'AJC 至少需要 1,010,000 分。' }]);
+    // 合法输入集里只有 1,010,000 一个分数，它满足目标（83.50 ≥ 80），因此可达最低分就是它
+    const overPower = minimumScoreForChunithmOverPower(13.7, 80, 'ajc');
+    expect(overPower).toEqual({ status: 'reachable', score: 1_010_000, lampMinScore: 1_010_000 });
+    // Rating 反推走同一条规则：公式解 1,003,000 同样低于 AJC 的下限
+    expect(formulaMinimumScoreForChunithmRating(13.7, 15.0)).toBe(1_003_000);
+    const rating = minimumScoreForChunithmRating(13.7, 15.0, 'ajc');
+    expect(rating).toEqual({ status: 'reachable', score: 1_010_000, lampMinScore: 1_010_000 });
+  });
+
+  it('keeps every reachable reverse result acceptable for the positive direction', () => {
+    // 「输入解析 → 反推」的组合验证：反推结果必须过正算用的同一个输入边界
+    const levels = [0.5, 8.25, 13.7, 16];
+    const clears: readonly ChunithmClearTier[] = ['ajc', 'aj', 'fc', 'none'];
+    const targets = [1, 5.5, 13.7, 15.0, 15.85, 16.15, 68.5, 73.52, 80, 83.5, 83.51, 99, 9999];
+    let reachable = 0;
+    for (const level of levels) {
+      for (const clear of clears) {
+        for (const target of targets) {
+          const results = [
+            minimumScoreForChunithmRating(level, target, clear),
+            minimumScoreForChunithmOverPower(level, target, clear),
+          ];
+          for (const result of results) {
+            if (result.status !== 'reachable') {
+              expect(result.score).toBeNull();
+              continue;
+            }
+            reachable += 1;
+            expect(parseChunithmChartInput({
+              levelValue: level,
+              score: result.score!,
+              clear,
+            }).violations).toEqual([]);
+            expect(result.score).toBeGreaterThanOrEqual(CHUNITHM_CLEAR_TIER_MIN_SCORE[clear]);
+          }
+        }
+      }
+    }
+    expect(reachable).toBeGreaterThan(0);
   });
 });
 
