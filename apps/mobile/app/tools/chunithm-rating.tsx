@@ -9,8 +9,11 @@ import {
   calculateChunithmOverPower,
   chunithmChartRatingDisplay,
   chunithmRatingTable,
+  formulaMinimumScoreForChunithmOverPower,
+  formulaMinimumScoreForChunithmRating,
   type ChunithmChartInputViolation,
   type ChunithmClearTier,
+  type ChunithmMinimumScore,
   maxChunithmOverPower,
   minimumScoreForChunithmOverPower,
   minimumScoreForChunithmRating,
@@ -38,6 +41,84 @@ const CLEAR_TIERS: readonly { id: ChunithmClearTier; label: string; hint: string
         : tier.description,
     };
   });
+
+type ReverseMinimumRow = {
+  id: 'rating' | 'over-power';
+  title: string;
+  note: string | null;
+};
+
+/**
+ * 反推结果行。
+ *
+ * - 定数或目标不合法时给「输入无效」，不进入公式。
+ * - 可达时给出该灯态合法输入集内的最低分；领域侧已用与正算相同的输入校验复核过。
+ * - 公式解更低（说明它在当前灯态不可能出现）时补一行说明，避免把公式值当成能打出的分数。
+ * - 不可达时给明确状态，绝不用公式值冒充最低分。
+ */
+function reverseMinimumRow(options: {
+  id: ReverseMinimumRow['id'];
+  name: 'Rating' | 'OP';
+  targetText: string;
+  targetValue: number;
+  levelValid: boolean;
+  clearLabel: string;
+  result: ChunithmMinimumScore;
+  formulaMinimum: number | null;
+}): ReverseMinimumRow {
+  const targetValid = Number.isFinite(options.targetValue) && options.targetValue >= 0;
+  const heading = `${options.name} ${targetValid ? options.targetText : '—'}`;
+  if (!options.levelValid || !targetValid) {
+    return { id: options.id, title: `${heading}：输入无效`, note: null };
+  }
+  const { result, formulaMinimum } = options;
+  if (result.status !== 'reachable' || result.score == null) {
+    return { id: options.id, title: `${heading}：不可达`, note: null };
+  }
+  const note = formulaMinimum != null && formulaMinimum < result.score
+    ? `公式最低分 ${formulaMinimum.toLocaleString('en-US')} 分低于 ${options.clearLabel} 的合法最低分 ${result.lampMinScore.toLocaleString('en-US')} 分，不能作为该灯态的输入。`
+    : null;
+  return { id: options.id, title: `${heading}：${result.score.toLocaleString('en-US')} 分`, note };
+}
+
+/** 反推卡片的两行数据：输入解析后的定数与灯态在这里进入领域反推入口。 */
+function reverseMinimumRows(input: {
+  levelValue: number;
+  levelValid: boolean;
+  clear: ChunithmClearTier;
+  ratingText: string;
+  ratingValue: number;
+  overPowerText: string;
+  overPowerValue: number;
+}): ReverseMinimumRow[] {
+  const clearLabel = CHUNITHM_CLEAR_TIER_LABELS[input.clear];
+  return [
+    reverseMinimumRow({
+      id: 'rating',
+      name: 'Rating',
+      targetText: input.ratingText,
+      targetValue: input.ratingValue,
+      levelValid: input.levelValid,
+      clearLabel,
+      result: minimumScoreForChunithmRating(input.levelValue, input.ratingValue, input.clear),
+      formulaMinimum: formulaMinimumScoreForChunithmRating(input.levelValue, input.ratingValue),
+    }),
+    reverseMinimumRow({
+      id: 'over-power',
+      name: 'OP',
+      targetText: input.overPowerText,
+      targetValue: input.overPowerValue,
+      levelValid: input.levelValid,
+      clearLabel,
+      result: minimumScoreForChunithmOverPower(input.levelValue, input.overPowerValue, input.clear),
+      formulaMinimum: formulaMinimumScoreForChunithmOverPower(
+        input.levelValue,
+        input.overPowerValue,
+        input.clear,
+      ),
+    }),
+  ];
+}
 
 export default function ChunithmRatingToolScreen() {
   const theme = useAppTheme();
@@ -76,12 +157,15 @@ export default function ChunithmRatingToolScreen() {
     ? null
     : calculateChunithmOverPower(parsedInput.levelValue, parsedInput.score, clear);
 
-  const reverseRating = !constantError && Number.isFinite(targetRatingValue)
-    ? minimumScoreForChunithmRating(parsedInput.levelValue, targetRatingValue)
-    : null;
-  const reverseOverPower = !constantError && Number.isFinite(targetOverPowerValue)
-    ? minimumScoreForChunithmOverPower(parsedInput.levelValue, targetOverPowerValue, clear)
-    : null;
+  const reverseRows = reverseMinimumRows({
+    levelValue: parsedInput.levelValue,
+    levelValid: constantError == null,
+    clear,
+    ratingText: targetRating,
+    ratingValue: targetRatingValue,
+    overPowerText: targetOverPower,
+    overPowerValue: targetOverPowerValue,
+  });
 
   const rows = useMemo(
     () => (!constantError ? chunithmRatingTable(parsedInput.levelValue, clear) : []),
@@ -145,12 +229,15 @@ export default function ChunithmRatingToolScreen() {
           <FormField label="目标 Rating" value={targetRating} onChangeText={setTargetRating} placeholder="例如 15.00" />
           <FormField label="目标 OVER POWER" value={targetOverPower} onChangeText={setTargetOverPower} placeholder="例如 85" />
         </View>
-        <Text style={[styles.result, { color: theme.text }]}>
-          Rating {targetRatingValue >= 0 ? targetRating : '—'}：{reverseRating === null ? '不可达或输入无效' : `${reverseRating.toLocaleString('en-US')} 分`}
+        <Text style={[styles.note, { color: theme.textMuted }]}>
+          反推在所选灯态的合法分数范围内求解，结果一定能通过上方的输入校验。
         </Text>
-        <Text style={[styles.result, { color: theme.text }]}>
-          OP {targetOverPowerValue >= 0 ? targetOverPower : '—'}：{reverseOverPower === null ? '不可达或输入无效' : `${reverseOverPower.toLocaleString('en-US')} 分`}
-        </Text>
+        {reverseRows.map((row) => (
+          <View key={row.id}>
+            <Text style={[styles.result, { color: theme.text }]}>{row.title}</Text>
+            {row.note ? <Text style={[styles.note, { color: theme.textMuted }]}>{row.note}</Text> : null}
+          </View>
+        ))}
       </Card>
 
       <Card>
