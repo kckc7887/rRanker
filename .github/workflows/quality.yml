@@ -51,7 +51,8 @@ jobs:
           retention-days: 1
           overwrite: true
 
-  # 独立于功能判定的轻检查：不依赖 changed-scope 的结论，也不装 npm 依赖、不跑构建，
+  # 独立于功能判定的轻检查：不依赖 changed-scope 的结论，也不跑构建，只装 .github/scripts 里
+  # 固定的 YAML 解析器（零传递依赖），不安装 apps/mobile 的依赖树，
   # 因此改动被归类为 CI-only 或纯文档时质量作业会被跳过，这一步仍然会跑。
   light-check:
     runs-on: ubuntu-latest
@@ -65,6 +66,11 @@ jobs:
         uses: actions/setup-node@v6
         with:
           node-version: "22"
+
+      # 只装轻检查自己那一个包，不安装 apps/mobile 依赖树
+      - name: Install light check dependencies
+        working-directory: .github/scripts
+        run: npm ci
 
       - name: Repository light check
         run: node .github/scripts/check-light.mjs --self-test

@@ -7,12 +7,16 @@ import { fileURLToPath } from 'node:url';
 /**
  * 生产依赖审计门槛：critical 一律失败，high 只允许基线内已定性的公告。
  *
- * 门禁分三层，任何一层不通过都必须显式报告并以非零退出码结束，不允许静默通过：
+ * 门禁分四层，任何一层不通过都必须显式报告并以非零退出码结束，不允许静默通过：
  *   1. 执行层 runAuditCommand / describeExecutionFailure：确认 `npm audit --omit=dev --json` 真的跑完；
  *   2. 校验层 parseAuditReport：确认拿到可解析且结构自洽的审计报告（缺字段、被截断、错误 JSON 都算失败）；
- *   3. 政策层 evaluatePolicy：按严重级别与基线判定阻断，无法定性的 high/critical 公告同样阻断。
+ *   3. 完整性层 assertPolicyReadiness：确认报告足以执行风险政策，每条漏洞都能追溯到公告根因；
+ *   4. 政策层 evaluatePolicy：按严重级别与基线判定阻断，无法定性的 high/critical 公告同样阻断。
  *
- * 退出码：0 通过；1 政策失败（含基线需要复核）；2 执行失败；3 报告或锁文件不合法。
+ * 退出码：0 通过；1 政策失败（含基线需要复核）；2 执行失败；3 报告不合法或锁文件不可用；
+ *         4 报告能解析、metadata 也自洽，但条目不足以判断风险（空 via、悬空引用、成环且无根因）。
+ * `npm run audit:prod` 的调用方只关心非零；分开退出码是为了区分「报告坏了 / 报告不够用 / 政策不通过」，
+ * 便于照着日志判断该修报告、改基线还是修依赖。
  *
  * 基线记录字段（见 ACCEPTED_HIGH）：
  *   id       公告编号（GHSA）
@@ -245,12 +249,22 @@ export const ACCEPTED_HIGH = [
   },
 ];
 
-export const EXIT_CODES = Object.freeze({ passed: 0, policy: 1, execution: 2, report: 3 });
+export const EXIT_CODES = Object.freeze({
+  passed: 0,
+  policy: 1,
+  execution: 2,
+  report: 3,
+  /** 报告能解析、metadata 也自洽，但条目无法支撑风险判定：空 via、悬空引用、成环且没有可解析根因。 */
+  integrity: 4,
+});
 
 export const AUDIT_COMMAND = process.platform === 'win32' ? 'npm.cmd' : 'npm';
 export const AUDIT_ARGS = Object.freeze(['audit', '--omit=dev', '--json']);
 
 export class AuditReportError extends Error {}
+
+/** 报告结构合法但不足以执行风险政策；与 AuditReportError 分开，让调用方能区分退出码 3 与 4。 */
+export class AuditIntegrityError extends Error {}
 
 function toText(value) {
   if (value === undefined || value === null) return '';
@@ -316,6 +330,8 @@ function advisoryId(url) {
 
 /**
  * 校验层：把 stdout 变成规范化模型，任何结构问题都抛 AuditReportError。
+ * 这一层只回答「报告能不能解析、结构自不自洽」，不回答「报告够不够判断风险」——
+ * 后者是完整性层 assertPolicyReadiness 的职责，退出码也不同。
  * 明确的失败形态：非 JSON、缺少 auditReportVersion（npm 报错时输出的错误 JSON）、
  * 缺少 vulnerabilities/metadata、条目缺 severity/via/nodes、metadata 与条目数不自洽。
  */
@@ -369,7 +385,7 @@ function readVulnerabilityEntry(name, info, collected) {
     throw new AuditReportError(`vulnerabilities.${name}.nodes 不是非空字符串数组，无法核对锁文件里的实际版本`);
   }
   collected.counts[info.severity] += 1;
-  collected.packages.set(name, { severity: info.severity, nodes: [...info.nodes] });
+  collected.packages.set(name, { severity: info.severity, nodes: [...info.nodes], via: [...info.via] });
   for (const via of info.via) {
     readAdvisoryReference(name, via, collected);
   }
@@ -413,6 +429,59 @@ function assertMetadataConsistency(metadata, counts, total) {
       throw new AuditReportError(`审计报告不自洽：metadata.vulnerabilities.${severity}=${metadata[severity]}，漏洞条目数=${counts[severity]}（报告可能被截断或被伪造）`);
     }
   }
+}
+
+/** 从某个条目出发顺着 via 里的包名引用走一遍：返回走过的包名，以及链上有没有公告对象（根因）。 */
+function traceVia(report, start) {
+  const visited = new Set([start]);
+  const queue = [start];
+  let hasRoot = false;
+  while (queue.length) {
+    const name = queue.pop();
+    for (const via of report.packages.get(name)?.via ?? []) {
+      if (typeof via !== 'string') {
+        hasRoot = true;
+        continue;
+      }
+      if (!visited.has(via)) {
+        visited.add(via);
+        queue.push(via);
+      }
+    }
+  }
+  return { names: [...visited], hasRoot };
+}
+
+/**
+ * 完整性层：报告能解析、metadata 也自洽，但条目不足以支撑风险判定。
+ *
+ * npm audit 的 via 有两种形态：公告对象（风险根因），或「因为依赖了包 X 才受影响」的包名引用。
+ * 空 via、引用报告里不存在的包、以及引用成环却没有任何公告对象，都无法回答「到底中了什么公告」，
+ * 属于报告不足以判断，按结构/完整性失败处理（退出码 4），不当作零漏洞，也不进政策层。
+ */
+export function assertPolicyReadiness(report) {
+  const problems = [];
+  for (const [name, info] of report.packages) {
+    if (!Array.isArray(info.via) || info.via.length === 0) {
+      problems.push(`${name} 的 via 是空数组，报告没有给出任何风险来源`);
+      continue;
+    }
+    const dangling = sortedUnique(info.via.filter((via) => typeof via === 'string' && !report.packages.has(via)));
+    if (dangling.length) {
+      problems.push(`${name} 的 via 引用了报告里不存在的包 ${dangling.join('、')}`);
+      continue;
+    }
+    const trace = traceVia(report, name);
+    if (!trace.hasRoot) {
+      problems.push(`${name} 的 via 只在包之间成环（${trace.names.join(' → ')}），没有任何可解析的公告根因`);
+    }
+  }
+  if (problems.length) {
+    const detail = problems.slice(0, 10).join('；');
+    const rest = problems.length > 10 ? `；另有 ${problems.length - 10} 个条目同类问题` : '';
+    throw new AuditIntegrityError(`审计报告不足以判断风险：${detail}${rest}`);
+  }
+  return report;
 }
 
 /** 锁文件读取：解析失败同样按报告不合法处理，不静默降级。 */
@@ -519,8 +588,8 @@ function checkAcceptedRecord(record, report, packageNames, lockfile) {
 }
 
 /**
- * 政策层：critical 一律失败；high 只允许基线内的记录，且记录必须与当前报告和锁文件一致；
- * 无法定性的 high/critical 公告同样失败；有效空报告通过（只提示基线里已消失的条目）。
+ * 政策层：critical 一律失败（公告级与包级都算）；high 只允许基线内的记录，且记录必须与当前报告
+ * 和锁文件一致；无法定性的 high/critical 公告同样失败；有效空报告通过（只提示基线里已消失的条目）。
  */
 export function evaluatePolicy({ report, lockfile, accepted = ACCEPTED_HIGH }) {
   const failures = [];
@@ -528,6 +597,9 @@ export function evaluatePolicy({ report, lockfile, accepted = ACCEPTED_HIGH }) {
   const baseline = buildBaseline(accepted, failures);
   const advisories = [...report.advisories.values()].sort((a, b) => a.id.localeCompare(b.id));
   const rows = advisories.map((advisory) => evaluateAdvisory({ advisory, report, lockfile, baseline, failures, notices }));
+  // 公告级 critical 已经点名过的包不再重复报一次包级 critical
+  const criticalPackages = new Set(rows.filter((row) => row.severity === 'critical').flatMap((row) => row.packages));
+  evaluateCriticalPackages({ report, lockfile, coveredPackages: criticalPackages, failures });
   evaluateUnidentifiedAdvisories(report, failures, notices);
 
   const stale = [...baseline.keys()].filter((id) => !report.advisories.has(id)).sort();
@@ -536,6 +608,20 @@ export function evaluatePolicy({ report, lockfile, accepted = ACCEPTED_HIGH }) {
   }
 
   return { failures, notices, rows, stale };
+}
+
+/**
+ * 包级 critical 无条件阻断：只看 vulnerabilities.<name>.severity，
+ * 不依赖 via 里能否解析出 GHSA 编号，也不依赖公告对象是否可定性。
+ */
+function evaluateCriticalPackages({ report, lockfile, coveredPackages, failures }) {
+  for (const [name, info] of report.packages) {
+    if (info.severity !== 'critical' || coveredPackages.has(name)) continue;
+    failures.push({
+      code: 'critical',
+      message: `未预期的 critical 漏洞包：${name} —— ${describePackages(lockfile, report, [name])}（包级 severity 已经是 critical，不因公告编号无法解析而放过）`,
+    });
+  }
 }
 
 function buildBaseline(accepted, failures) {
@@ -641,6 +727,17 @@ function main() {
     console.error(`[校验层] ${error.message}`);
     console.error('报告不合法不能当作零漏洞，门禁按失败处理。');
     process.exitCode = EXIT_CODES.report;
+    return;
+  }
+
+  try {
+    assertPolicyReadiness(report);
+    console.log('[完整性层] 每个漏洞条目都能追溯到公告根因');
+  } catch (error) {
+    if (!(error instanceof AuditIntegrityError)) throw error;
+    console.error(`[完整性层] ${error.message}`);
+    console.error('报告不足以判断风险，不能当作零漏洞，门禁按失败处理。');
+    process.exitCode = EXIT_CODES.integrity;
     return;
   }
 

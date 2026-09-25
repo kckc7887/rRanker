@@ -1,0 +1,8 @@
+{
+  "name": "rranker-github-scripts",
+  "private": true,
+  "description": "轻检查脚本的解析依赖：只含真实 YAML 解析器，与 apps/mobile 的依赖树无关",
+  "dependencies": {
+    "yaml": "2.9.0"
+  }
+}
