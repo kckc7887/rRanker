@@ -1,6 +1,6 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import { LxnsEnvelopeSchema } from '@/domain/schemas';
-import { ProviderError, providerErrorFromStatus } from './errors';
+import { ProviderError, providerErrorFromStatus, type ProviderStatusTexts } from './errors';
 import { LXNS_API_ROOT } from './lxns-config';
 import {
   lxnsAccessTokenExpired,
@@ -18,14 +18,18 @@ export type LxnsTokenRotationUpdate = {
 /** token 轮换成功后的回调：由调用方按凭据世代校验后把新会话提交到账号存储。 */
 export type LxnsTokenRotationHandler = (update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
 
-/** 把通用 provider 状态码错误文案从「水鱼」改写为「落雪」品牌语义。 */
+/** 落雪品牌的状态码文案：在协议层显式声明，不复用其它数据源的文案做字符串改写。 */
+const LXNS_STATUS_TEXTS: ProviderStatusTexts = {
+  authentication: '登录信息或 Token 无效',
+  permission: '当前账号无权读取该数据',
+  noData: '未找到玩家数据',
+  rateLimit: '请求过于频繁，请稍后重试',
+  server: '落雪服务暂时不可用',
+  fallback: { message: (status) => `落雪返回 HTTP ${status}`, code: 'unknown' },
+};
+
 export function lxnsErrorFromStatus(status: number): ProviderError {
-  const base = providerErrorFromStatus(status);
-  return new ProviderError(
-    base.code,
-    base.message.replace('水鱼', '落雪'),
-    base.retryable,
-  );
+  return providerErrorFromStatus(status, LXNS_STATUS_TEXTS);
 }
 
 /** 各游戏 provider 注入的差异化文案：envelope 校验失败、鉴权拒绝兜底、超时。 */

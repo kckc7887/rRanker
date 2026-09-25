@@ -25,8 +25,14 @@ jest.mock('@/theme/app-theme', () => ({
 jest.mock('@/components/BoundAccountGroupedList', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return {
-    BoundAccountGroupedList: ({ hydrationEnabled }: { hydrationEnabled: boolean }) => (
-      <RN.Text testID="account-list-hydration">{String(hydrationEnabled)}</RN.Text>
+    BoundAccountGroupedList: ({ hydrationEnabled, renderRatingTag }: {
+      hydrationEnabled: boolean;
+      renderRatingTag?: (account: unknown) => unknown;
+    }) => (
+      <RN.View>
+        <RN.Text testID="account-list-hydration">{String(hydrationEnabled)}</RN.Text>
+        <RN.Text testID="account-list-rating-tag-slot">{renderRatingTag ? 'provided' : 'missing'}</RN.Text>
+      </RN.View>
     ),
   };
 });
@@ -72,5 +78,14 @@ describe('AccountSwitchSheet', () => {
   it('原生弹窗背景使用当前主题色', async () => {
     const screen = await render(<AccountSwitchSheet {...baseProps} visible />);
     expect(screen.getByTestId('account-switch-modal').props.backdropColor).toBe('#101216');
+  });
+
+  it('游戏评分标签由调用方注入并转发给账号列表', async () => {
+    const renderRatingTag = jest.fn(() => null);
+    const screen = await render(<AccountSwitchSheet {...baseProps} renderRatingTag={renderRatingTag} visible />);
+    expect(screen.getByTestId('account-list-rating-tag-slot').props.children).toBe('provided');
+
+    const plain = await render(<AccountSwitchSheet {...baseProps} visible />);
+    expect(plain.getByTestId('account-list-rating-tag-slot').props.children).toBe('missing');
   });
 });

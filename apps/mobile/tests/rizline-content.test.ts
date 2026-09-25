@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { defaultRizlineFilters, filterRizlineSongs, matchesRizlineChart, rizlinePackOptions } from '@/domain/rizline-filters';
-import { presentRizlineChart, presentRizlineScore, presentRizlineSong, rizlineContentAdapter } from '@/features/game-content/adapters/rizline';
+import { presentRizlineChart, presentRizlineScore, presentRizlineSong } from '@/features/game-content/adapters/rizline';
 import { defaultRizlineRandomChartsPreferences, parseRizlineRandomChartsPreferences, RizlineRandomChartsPreferencesStore } from '@/features/toolbox/rizline-random-charts-preferences';
 import { rizlineChart, rizlineRecord, rizlineSong } from './rizline-ui-fixtures';
 
@@ -23,13 +23,8 @@ describe('Rizline catalog and presentation', () => {
     expect(rizlinePackOptions([original, original, sp]).map((pack) => pack.value)).toEqual(['all', 'main', 'extra']);
   });
 
-  it('preserves stable library indices independently of reversed display order', () => {
+  it('keeps the reversed song-row badge order independent of library indices', () => {
     const song = rizlineSong({ charts: [rizlineChart('EZ'), rizlineChart('IN'), rizlineChart('SP', null)] });
-    const normalized = rizlineContentAdapter.normalizeSong(song);
-    expect(normalized.charts.map((chart) => chart.label)).toEqual(['SP', 'IN', 'EZ']);
-    expect(normalized.charts.map((chart) => chart.libraryRef)).toEqual([
-      { type: 'SD', levelIndex: 4 }, { type: 'SD', levelIndex: 2 }, { type: 'SD', levelIndex: 0 },
-    ]);
     expect(presentRizlineSong(song).chartBadges.map((badge) => badge.label)).toEqual(['SP', 'IN', 'EZ']);
     expect(presentRizlineSong(song).chartBadges.map((badge) => badge.value)).toEqual(['—', '12.0', '12.0']);
   });

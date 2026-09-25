@@ -1,12 +1,13 @@
 /**
- * 宿主树回归基线，禁止更新哈希接受差异。
+ * 宿主树回归基线，哈希是唯一门禁；结构变化时失败信息按路径给出与基线的差异。
+ * 基线只用于诊断（`tests/host-contract-baselines/p3-host-contract-song-details/*.json`），
+ * 不一致不会改变通过/失败结论，且只在 `HOST_CONTRACT_UPDATE_BASELINE=1` 时显式刷新。
  * 覆盖：PhigrosSongDetail / ChunithmSongDetail 全页 Host Tree（Chrome + Hero + 轮播 + 信息卡）。
  * mock 使用 phigros-song-detail.test.tsx / chunithm-song-detail.test.tsx 的固定数据：
  * 固定 catalog/detail/scores/library 数据、固定 insets 与窗口尺寸、
  * InteractionManager 同步执行、Animated.loop 静态 mock、
  * useFlowingProgress 固定静态首帧（progress=0 → outputRange[0]）。
  */
-import { createHash } from 'node:crypto';
 import { Animated, Dimensions, InteractionManager } from 'react-native';
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
@@ -16,6 +17,7 @@ import type {
   ChunithmCatalogSnapshot,
   ChunithmSongDetailSnapshot,
 } from '@/domain/chunithm';
+import { expectHostContract } from './host-contract-hash';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(),
@@ -337,16 +339,6 @@ jest.mock('@/components/TagEditor', () => ({
   },
 }));
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => [key, canonicalize(item)]),
-  );
-}
-
 beforeEach(() => {
   Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
   mockChunithmCatalogData = chunithmCatalog;
@@ -365,10 +357,11 @@ test('phigros song detail full page host tree contract', async () => {
     source: { kind: 'generated', label: 'TapTap云存档', updatedAt: '2026-07-20T01:00:00.000Z', isStale: false },
   };
   const screen = await render(<PhigrosSongDetail songId="Song.A" />);
-  const tree = screen.toJSON();
-  const canonical = canonicalize(tree);
-  const hash = createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
-  expect(hash).toBe('6eea38ec8ab6be157d242d93e44a7436146088c7a7311a050b7f2f49fe0ec3af');
+  expectHostContract({
+    name: 'p3-host-contract-song-details/phigros-song-detail-page',
+    tree: screen.toJSON(),
+    expectedHash: '6eea38ec8ab6be157d242d93e44a7436146088c7a7311a050b7f2f49fe0ec3af',
+  });
 });
 
 test('chunithm song detail full page host tree contract', async () => {
@@ -390,8 +383,9 @@ test('chunithm song detail full page host tree contract', async () => {
     hasSyncedData: true,
   };
   const screen = await render(<ChunithmSongDetail songId="3" />);
-  const tree = screen.toJSON();
-  const canonical = canonicalize(tree);
-  const hash = createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
-  expect(hash).toBe('dd629c75286968d575c0ca41ff88b56a81252415db4c77041799f8f23e6af967');
+  expectHostContract({
+    name: 'p3-host-contract-song-details/chunithm-song-detail-page',
+    tree: screen.toJSON(),
+    expectedHash: 'dd629c75286968d575c0ca41ff88b56a81252415db4c77041799f8f23e6af967',
+  });
 });

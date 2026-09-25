@@ -1,9 +1,7 @@
 import JSZip from 'jszip';
 import type { PhiraChart } from '@/domain/phira';
-import {
-  loadPhigrosChartPreviewResources,
-  phigrosChartPreviewLevelLabel,
-} from '@/domain/phigros-chart-preview';
+import { phigrosChartPreviewLevelLabel } from '@/domain/phigros-chart-preview';
+import { loadPhigrosChartPreviewResources } from '@/services/phigros-chart-preview-resources';
 import {
   ChartPackageDownloadError,
   chartPackageNameWithSuffix,

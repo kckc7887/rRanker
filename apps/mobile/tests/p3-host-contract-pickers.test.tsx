@@ -1,12 +1,13 @@
 /**
- * 宿主树回归基线，禁止更新哈希接受差异。
+ * 宿主树回归基线，哈希是唯一门禁；结构变化时失败信息按路径给出与基线的差异。
+ * 基线只用于诊断（`tests/host-contract-baselines/p3-host-contract-pickers/*.json`），
+ * 不一致不会改变通过/失败结论，且只在 `HOST_CONTRACT_UPDATE_BASELINE=1` 时显式刷新。
  * 覆盖：4 个 best-image picker（maimai 收藏品 / 中二角色 / 中二背景歌曲 / Phigros 素材）
  * 全弹层 Host Tree（Modal + grabber + header + 搜索 + 模式区 + 列表项）。
  * mock 使用 chunithm-best-image-background-picker / p3-host-contract-* 测试配置：
  * 固定 insets 与主题、expo-image 回落 RN.Image、expo-linear-gradient 回落 RN.View、
  * CachedTabActive 恒真、Animated.loop 静态 mock；不触发随机选择（渲染期无 Math.random）。
  */
-import { createHash } from 'node:crypto';
 import { Animated } from 'react-native';
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
@@ -16,6 +17,7 @@ import { ChunithmBestImageBackgroundPicker } from '@/features/chunithm-best-imag
 import { PhigrosBestImageStylePicker } from '@/features/phigros-best-image/phigros-best-image-style-picker';
 import type { CollectionItem } from '@/domain/models';
 import type { ChunithmSong } from '@/domain/chunithm';
+import { expectHostContract } from './host-contract-hash';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(),
@@ -51,24 +53,11 @@ jest.mock('expo-linear-gradient', () => {
   };
 });
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      // FlatList 的 ListHeaderComponent 会在 toJSON 里泄漏原始 React element，
-      // 其 _owner（Fiber 环）与 _source（文件行号，重构会移动）必须剥离；
-      // Host 视图自身 props 不含下划线前缀键，剥离不影响真实渲染合同。
-      .filter(([key]) => !key.startsWith('_'))
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => [key, canonicalize(item)]),
-  );
-}
-
-async function treeHash(trees: unknown[]): Promise<string> {
-  const canonical = canonicalize(trees) as unknown[];
-  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
-}
+// FlatList 的 ListHeaderComponent 会在 toJSON 里泄漏原始 React element，
+// 其 `_owner`（Fiber 环）与 `_source`（文件行号，重构会移动）必须剥离；
+// Host 视图自身 props 不含下划线前缀键，剥离不影响真实渲染合同。
+// 该剥离规则属于哈希口径，因此每条断言都通过 `serialize` 显式传入。
+const serialize = { stripInternalKeys: true } as const;
 
 const collectionItems: CollectionItem[] = [
   { id: 9001, kind: 'icon', name: '示例头像', requirements: [] },
@@ -176,13 +165,18 @@ test('maimai collection picker host tree contract', async () => {
       />,
     ),
   ];
-  expect(await treeHash([
-    screens[0]!.getByLabelText('金牌称号，#9003').toJSON(),
-    screens[1]!.getByLabelText('示例头像，#9001').toJSON(),
-    screens[2]!.getByLabelText('示例姓名框，#9002').toJSON(),
-    screens[3]!.getByText('正在从落雪读取完整列表').toJSON(),
-    screens[4]!.getByText('落雪收藏品加载失败').toJSON(),
-  ])).toBe('63d6fc62e71559ce8a5ab2642d24967bad1315aa4bb1f49547c5be5657d053bc');
+  expectHostContract({
+    name: 'p3-host-contract-pickers/maimai-collection-picker',
+    tree: [
+      screens[0]!.getByLabelText('金牌称号，#9003').toJSON(),
+      screens[1]!.getByLabelText('示例头像，#9001').toJSON(),
+      screens[2]!.getByLabelText('示例姓名框，#9002').toJSON(),
+      screens[3]!.getByText('正在从落雪读取完整列表').toJSON(),
+      screens[4]!.getByText('落雪收藏品加载失败').toJSON(),
+    ],
+    expectedHash: '63d6fc62e71559ce8a5ab2642d24967bad1315aa4bb1f49547c5be5657d053bc',
+    serialize,
+  });
   screens.forEach((screen) => expect(screen.queryByText('恢复账号同步的素材')).toBeNull());
 });
 
@@ -209,8 +203,12 @@ test('chunithm character picker host tree contract', async () => {
       />,
     ),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON())))
-    .toBe('1d2ab8eecff4f6f84ab0392f2cfbe99bb1ab7d31a417d0f818462bcda20f5a04');
+  expectHostContract({
+    name: 'p3-host-contract-pickers/chunithm-character-picker',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: '1d2ab8eecff4f6f84ab0392f2cfbe99bb1ab7d31a417d0f818462bcda20f5a04',
+    serialize,
+  });
 });
 
 test('chunithm background picker host tree contract', async () => {
@@ -236,8 +234,12 @@ test('chunithm background picker host tree contract', async () => {
       />,
     ),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON())))
-    .toBe('4e8a920b3ac08a601d5f5b03390631eefbc499a74bd8486c0947380a5517db59');
+  expectHostContract({
+    name: 'p3-host-contract-pickers/chunithm-background-picker',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: '4e8a920b3ac08a601d5f5b03390631eefbc499a74bd8486c0947380a5517db59',
+    serialize,
+  });
 });
 
 test('phigros style picker host tree contract', async () => {
@@ -265,9 +267,14 @@ test('phigros style picker host tree contract', async () => {
       />,
     ),
   ];
-  expect(await treeHash([
-    screens[0]!.getByLabelText('初始头像，Illustrator A').toJSON(),
-    screens[1]!.getByLabelText('初始背景，Illustrator B').toJSON(),
-  ])).toBe('4e7791c0b5d9eb57f8cb238d1ad09ef35620df5cc57db066ca2c0e4538ec0784');
+  expectHostContract({
+    name: 'p3-host-contract-pickers/phigros-style-picker',
+    tree: [
+      screens[0]!.getByLabelText('初始头像，Illustrator A').toJSON(),
+      screens[1]!.getByLabelText('初始背景，Illustrator B').toJSON(),
+    ],
+    expectedHash: '4e7791c0b5d9eb57f8cb238d1ad09ef35620df5cc57db066ca2c0e4538ec0784',
+    serialize,
+  });
   screens.forEach((screen) => expect(screen.queryByText('恢复账号同步的素材')).toBeNull());
 });

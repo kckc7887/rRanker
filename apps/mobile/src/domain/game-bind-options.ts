@@ -20,26 +20,62 @@ import osuManiaIcon from '../../assets/images/osu-mania.webp';
 import osuCatchIcon from '../../assets/images/osu-catch.webp';
 import osuTaikoIcon from '../../assets/images/osu-taiko.webp';
 
-export type ProviderId =
-  | 'rizline-official'
-  | 'majdata-net'
-  | 'diving-fish'
-  | 'lxns'
-  | 'local'
-  | 'maimai-test'
-  | 'chunithm-test'
-  | 'phigros-test'
-  | 'phi-taptap'
-  | 'chunithm-temp'
-  | 'tuf'
-  | 'musedash-moe'
-  | 'phira-community'
-  | 'musedash-test'
-  | 'osu';
+/** 已登记查分器 id 的唯一来源：`ProviderId` 与运行时校验共用这份列表。 */
+export const PROVIDER_IDS = [
+  'rizline-official',
+  'majdata-net',
+  'diving-fish',
+  'lxns',
+  'local',
+  'maimai-test',
+  'chunithm-test',
+  'phigros-test',
+  'phi-taptap',
+  'chunithm-temp',
+  'tuf',
+  'musedash-moe',
+  'phira-community',
+  'musedash-test',
+  'osu',
+] as const;
+export type ProviderId = (typeof PROVIDER_IDS)[number];
 export type RemoteProviderId = Extract<ProviderId, 'rizline-official' | 'majdata-net' | 'diving-fish' | 'lxns' | 'phi-taptap' | 'osu'>;
-export type GameId =
-  | 'rizline' | 'majdata-net' | 'maimai' | 'chunithm' | 'phigros' | 'phira' | 'adofai' | 'musedash' | 'test'
-  | 'osu-standard' | 'osu-mania' | 'osu-catch' | 'osu-taiko';
+/**
+ * 不出现在添加入口、由会话流程直接创建的内部查分器 id。
+ * 登记校验据此区分「有意不绑定」与「遗留的未登记 id」。
+ */
+export const INTERNAL_PROVIDER_IDS = ['chunithm-temp'] as const;
+
+/** 正式支持的游戏 id：每个都需要独立的添加入口、展示资料、工具箱与数据加载器。 */
+export const SUPPORTED_GAME_IDS = [
+  'maimai',
+  'chunithm',
+  'phigros',
+  'phira',
+  'adofai',
+  'musedash',
+  'majdata-net',
+  'rizline',
+] as const;
+/** osu! 家族四模式：后台各自注册为独立游戏 id，前台聚合为一个板块。 */
+export const OSU_MODE_GAME_IDS = ['osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko'] as const;
+/** 类型层保留的空壳游戏 id：只用于切换链路验证，不是选择器条目。 */
+export const RESERVED_GAME_IDS = ['test'] as const;
+
+export type SupportedGameId = (typeof SUPPORTED_GAME_IDS)[number];
+export type OsuModeGameId = (typeof OSU_MODE_GAME_IDS)[number];
+export type ReservedGameId = (typeof RESERVED_GAME_IDS)[number];
+export type GameId = SupportedGameId | OsuModeGameId | ReservedGameId;
+
+/**
+ * 游戏 id 的唯一来源：类型、注册表穷尽映射与登记校验都从这三份列表派生，
+ * 新增正式游戏只要加进 `SUPPORTED_GAME_IDS`，各注册表缺项即编译失败。
+ */
+export const GAME_IDS: readonly GameId[] = [
+  ...SUPPORTED_GAME_IDS,
+  ...OSU_MODE_GAME_IDS,
+  ...RESERVED_GAME_IDS,
+];
 export type ProviderBindingKind = 'credentials' | 'sms-code' | 'oauth-code' | 'local' | 'fixture' | 'device-code' | 'public-player';
 
 export type ProviderOption = {

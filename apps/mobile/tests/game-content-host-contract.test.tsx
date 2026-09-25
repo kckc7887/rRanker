@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { readFileSync } from 'node:fs';
 import { Animated, Platform, Text } from 'react-native';
 import { render } from '@testing-library/react-native';
@@ -15,6 +14,7 @@ import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
 import type { ChunithmScoreCardData } from '@/domain/chunithm-score-presentation';
 import { fixtureCatalog, fixtureRecords } from '@/fixtures/sanitized';
+import { expectHostContract } from './host-contract-hash';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(),
@@ -68,16 +68,6 @@ const chunithmSong = {
   }],
 };
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => [key, canonicalize(item)]),
-  );
-}
-
 test('exports the stable score-card and song-row host tree contract', async () => {
   const maimaiRecord = {
     ...fixtureRecords[0],
@@ -113,10 +103,12 @@ test('exports the stable score-card and song-row host tree contract', async () =
   const trees = [
     ...screens.map((screen) => screen.toJSON()),
   ];
-  const canonicalTrees = canonicalize(trees) as unknown[];
-  const hash = createHash('sha256').update(JSON.stringify(canonicalTrees)).digest('hex');
   expect(trees).toHaveLength(5);
-  expect(hash).toBe('e45be0e9a3441afcbe9301bb76ec164a1f80d0c40d103603a3329dbb32f51033');
+  expectHostContract({
+    name: 'game-content-host-contract/score-card-and-song-row',
+    tree: trees,
+    expectedHash: 'e45be0e9a3441afcbe9301bb76ec164a1f80d0c40d103603a3329dbb32f51033',
+  });
 });
 
 test('shared score, record and catalog lists use one visible-window policy', async () => {
@@ -175,8 +167,10 @@ test('shared score, record and catalog lists use one visible-window policy', asy
 });
 
 test('every game catalog host routes its list through CatalogListPage', () => {
+  // 舞萌的曲库/记录页已拆到 src/screens/maimai/，共同路由只保留游戏分派与其它游戏容器。
   const hosts = [
-    ['app/(tabs)/search/index.tsx', 3],
+    ['app/(tabs)/search/index.tsx', 2],
+    ['src/screens/maimai/MaimaiCatalogScreen.tsx', 1],
     ['src/screens/TufScreens.tsx', 1],
     ['src/screens/MuseDashScreens.tsx', 1],
     ['src/screens/PhiraScreens.tsx', 1],

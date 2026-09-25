@@ -1,8 +1,7 @@
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import type { DataSource } from '@/domain/models';
-import type {
+import type { DataSource } from '@/domain/models';import type {
   MuseDashAlbumsResponse,
   MuseDashCeResponse,
   MuseDashDiffdiffEntry,
@@ -18,6 +17,7 @@ import {
   maxedMuseDashPlayerSnapshot,
 } from '@/providers/maxed-musedash-test-provider';
 import { cacheFirstLoad } from '@/services/cache-first';
+import { publishEntityValue } from '@/services/game-data-query';
 import { queryClient } from '@/state/query-client';
 import { invalidateMuseDashSessionResources } from '@/services/infinite-query-refresh';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
@@ -129,33 +129,60 @@ export function useMuseDashSearch(query: string) {
 }
 
 export function useMuseDashPlayer(userId: string | null, enabled = true) {
-  const queryKey = ['musedash', 'player', userId] as const;
-  return useMuseDashCacheFirst<MuseDashPlayer>(queryKey, async (signal) => {
-    // 示例账号：不请求网络玩家资料，由曲库与定数表缓存优先生成全满成绩。
-    if (userId !== null && isMuseDashTestUserId(userId)) {
-      const [albums, diffdiff] = await Promise.all([
-        loadMuseDashAlbumsFreshSnapshot(signal),
-        loadMuseDashDiffdiffFreshSnapshot(signal),
-      ]);
-      return maxedMuseDashPlayerSnapshot(albums.data, diffdiff.data);
-    }
-    const assertCurrent = captureResourceWrites('musedash', signal, `musedash:musedash-moe:${userId}`);
-    const snapshot = await cacheFirstLoad({
-      assertCurrent,
-      loadCached: () => cache.loadPlayer(userId!),
-      loadFresh: async () => {
-        const player = await loadMuseDashPlayerFresh(userId!, signal);
-        const fresh = makeMuseDashSnapshot(player);
-        if (!signal.aborted) void cache.savePlayer(userId!, fresh, assertCurrent).catch(() => undefined);
-        return fresh;
-      },
-      onFresh: (fresh) => {
-        queryClient.setQueryData(queryKey, fresh);
-      },
-      signal,
-    });
-    return snapshot;
-  }, enabled && userId !== null);
+  const tabActive = useCachedTabActive();
+  const query = useQuery({
+    ...museDashPlayerQueryOptions(userId ?? ''),
+    enabled: enabled && tabActive && userId !== null,
+  });
+  const snapshot = query.data as MuseDashSnapshot<MuseDashPlayer> | undefined;
+  return {
+    data: snapshot?.data,
+    source: snapshot?.source,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error as Error | null,
+    isFetching: query.isFetching,
+    refetch: query.refetch,
+  };
+}
+
+/** Muse Dash 玩家实体的规范键：总览数据包与页面读到同一份版本。 */
+export function museDashPlayerEntityKey(userId: string) {
+  return ['musedash', 'player', userId] as const;
+}
+
+/** 该玩家实体的规范查询选项：随机歌曲页与总览派生视图共用。 */
+export function museDashPlayerQueryOptions(userId: string) {
+  const queryKey = museDashPlayerEntityKey(userId);
+  return {
+    queryKey,
+    queryFn: async ({ signal }: { signal: AbortSignal }): Promise<MuseDashSnapshot<MuseDashPlayer>> => {
+      // 示例账号：不请求网络玩家资料，由曲库与定数表缓存优先生成全满成绩。
+      if (isMuseDashTestUserId(userId)) {
+        const [albums, diffdiff] = await Promise.all([
+          loadMuseDashAlbumsFreshSnapshot(signal),
+          loadMuseDashDiffdiffFreshSnapshot(signal),
+        ]);
+        return maxedMuseDashPlayerSnapshot(albums.data, diffdiff.data);
+      }
+      const assertCurrent = captureResourceWrites('musedash', signal, `musedash:musedash-moe:${userId}`);
+      return cacheFirstLoad({
+        assertCurrent,
+        loadCached: () => cache.loadPlayer(userId),
+        loadFresh: async () => {
+          const player = await loadMuseDashPlayerFresh(userId, signal);
+          const fresh = makeMuseDashSnapshot(player);
+          if (!signal.aborted) void cache.savePlayer(userId, fresh, assertCurrent).catch(() => undefined);
+          return fresh;
+        },
+        onFresh: (fresh) => {
+          publishEntityValue(queryClient, queryKey, fresh);
+        },
+        signal,
+      });
+    },
+    ...MUSE_DASH_QUERY_OPTIONS,
+  };
 }
 
 /** 单曲原始成绩明细（成就判定需要 miss 数）；按玩家+歌曲+难度+平台缓存优先，列表卡片懒加载。 */

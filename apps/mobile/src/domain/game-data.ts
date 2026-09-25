@@ -117,21 +117,78 @@ export type GamePayload =
       gameId: GameId;
       displayName: string;
       source: DataSource;
-    }
-  | {
-      kind: 'unsupported';
-      gameId: GameId;
-      displayName: string;
-      message: string;
     };
 
-/** 当前选中游戏的一份独立数据包（与其他游戏互不共用）。 */
-export type GameDataBundle = {
-  gameId: GameId;
+/** 载荷 kind 的并集。 */
+export type GamePayloadKind = GamePayload['kind'];
+
+/**
+ * 各游戏的主载荷 kind；`null` 表示该 id 只有空载荷（类型层保留的测试游戏）。
+ *
+ * `satisfies Record<GameId, …>` 让新增游戏 id 漏登记载荷 kind 时直接编译失败。
+ */
+export const GAME_PAYLOAD_KIND_BY_GAME_ID = {
+  maimai: 'maimai',
+  chunithm: 'chunithm',
+  phigros: 'phigros',
+  phira: 'phira',
+  adofai: 'adofai',
+  musedash: 'musedash',
+  'majdata-net': 'majdata-net',
+  rizline: 'rizline',
+  'osu-standard': 'osu',
+  'osu-mania': 'osu',
+  'osu-catch': 'osu',
+  'osu-taiko': 'osu',
+  test: null,
+} as const satisfies Record<GameId, GamePayloadKind | null>;
+
+export type GamePayloadKindByGameId = typeof GAME_PAYLOAD_KIND_BY_GAME_ID;
+export type GamePrimaryPayloadKind<G extends GameId> = Exclude<GamePayloadKindByGameId[G], null>;
+/** 带指定身份的空载荷：`gameId` 与 `payload.gameId` 必须一致。 */
+export type EmptyGamePayloadOf<G extends GameId> = Extract<GamePayload, { kind: 'empty' }> & { gameId: G };
+/** 该游戏允许的载荷：自己的主载荷，或带同一身份的空载荷。 */
+export type GamePayloadOf<G extends GameId> =
+  | Extract<GamePayload, { kind: GamePrimaryPayloadKind<G> }>
+  | EmptyGamePayloadOf<G>;
+
+/**
+ * 按游戏校验身份与载荷对应关系的数据包形状。
+ *
+ * 构造时用具体游戏参数（`gameDataBundle({ gameId: 'phigros', … })` 只接受 Phigros 载荷或
+ * Phigros 身份的空载荷），读取缓存等不确定具体游戏的场合使用 `GameDataBundle`。
+ * 条件类型使多游戏 id（osu! 四模式）展开成各自身份与载荷配对的联合，而不是配错也能通过的单对象。
+ */
+export type GameDataBundleFor<G extends GameId> = G extends GameId ? {
+  gameId: G;
   providerId: ProviderId | null;
   profile: GameProfile;
-  payload: GamePayload;
+  payload: GamePayloadOf<G>;
+} : never;
+
+/**
+ * 构造入参：`gameId` 是 `G` 的唯一推断来源（`payload` 用 `NoInfer` 排除），
+ * 因此「身份 A + 载荷 B」不会因为载荷自身携带另一个游戏身份而被推断成联合游戏。
+ */
+export type GameDataBundleInput<G extends GameId> = {
+  gameId: G;
+  providerId: ProviderId | null;
+  profile: GameProfile;
+  payload: NoInfer<GamePayloadOf<G>>;
 };
+
+/**
+ * 当前选中游戏的一份独立数据包（与其他游戏互不共用）。
+ * 身份与载荷按游戏配对：`bundle.gameId === 'rizline'` 同时收窄载荷，不会把别家游戏的载荷写回。
+ */
+export type GameDataBundle = { [G in GameId]: GameDataBundleFor<G> }[GameId];
+
+/** 按游戏构造数据包：身份与载荷错配在调用点即编译失败。 */
+export function gameDataBundle<G extends GameId>(bundle: GameDataBundleInput<G>): GameDataBundleFor<G> {
+  // `GameDataBundleFor` 是分发到各游戏的条件类型，泛型处无法静态求值；
+  // 入参已由 `GameDataBundleInput`（`gameId` 唯一推断 + `NoInfer` 载荷）保证配对。
+  return bundle as GameDataBundleFor<G>;
+}
 
 export type PhigrosGameDataPayload = Extract<GamePayload, { kind: 'phigros' }>;
 
@@ -195,7 +252,7 @@ export function maimaiPayloadFromSnapshot(snapshot: ScoreSnapshot, profile: Game
   };
 }
 
-export function emptyGamePayload(gameId: GameId, displayName: string): Extract<GamePayload, { kind: 'empty' }> {
+export function emptyGamePayload<G extends GameId>(gameId: G, displayName: string): EmptyGamePayloadOf<G> {
   return {
     kind: 'empty',
     gameId,
@@ -228,12 +285,14 @@ export function osuPayloadFromSnapshot(
 }
 
 /** Build account display metadata without network or persistence side effects. */
-export function gameAccountMetadata(bundle: GameDataBundle): ({
+export function gameAccountMetadata<G extends GameId>(bundle: GameDataBundleInput<G>): ({
   scoreDisplay: string; displayName?: string; avatarUrl?: string | null;
   challengeModeRank?: number | null; ratingPossession?: string | null;
   storedDisplayName?: string;
 } | null) {
-  const { payload: p, providerId, profile } = bundle;
+  const { providerId, profile } = bundle;
+  // 身份与载荷的对应关系已在参数类型上校验；这里按载荷 kind 读取展示字段。
+  const p: GamePayload = bundle.payload;
   switch (p.kind) {
     case 'rizline': return { scoreDisplay: p.playerScore.display, displayName: p.player.username, storedDisplayName: p.player.username };
     case 'maimai': return { scoreDisplay: formatPlayerScore(p.playerScore.value, profile.ratingDigits),

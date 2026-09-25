@@ -14,6 +14,7 @@ import {
   type PushRecommendationsResult,
 } from '@/domain/phigros-push';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { phigrosSharedScoreRecord } from '@/domain/phigros';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { phigrosResources } from '@/services/phigros-resources';
 import { useSession } from '@/state/session-store';
@@ -99,7 +100,7 @@ export default function PushRksToolScreen() {
             {result.alternatives.map((item, index) => (
               <PhigrosScoreCard
                 key={`${item.songId}-${item.level}`}
-                record={item.record}
+                record={phigrosSharedScoreRecord(item.record)}
                 catalogTitle={titleMap.get(item.songId) ?? item.songId}
                 rank={index + 1}
                 pushHint={{
@@ -199,7 +200,7 @@ export default function PushRksToolScreen() {
         )}
         renderItem={({ item, index }) => (
           <PhigrosScoreCard
-            record={item.record}
+            record={phigrosSharedScoreRecord(item.record)}
             catalogTitle={titleMap.get(item.songId) ?? item.songId}
             rank={index + 1}
             pushHint={{

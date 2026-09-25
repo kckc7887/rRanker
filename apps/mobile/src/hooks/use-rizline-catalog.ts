@@ -10,8 +10,11 @@ const options = { staleTime: Infinity, gcTime: Infinity, retry: false, refetchOn
 function applyCatalog(data: RizlineCatalogData): void {
   queryClient.setQueryData(RIZLINE_CATALOG_QUERY_KEY, data);
   // Metadata can arrive after the account cache. Recompute only derived fields, preserving official scores.
+  // 身份与载荷一起收窄：数据包是「按游戏配对」的联合，只看 payload.kind 无法把它写回同一份数据包。
   queryClient.setQueriesData<GameDataBundle>({ predicate: query => query.queryKey[0] === 'game-data' && query.queryKey[3] === 'rizline' }, old =>
-    old?.payload.kind === 'rizline' ? { ...old, payload: rizlinePayloadFromSnapshot(old.payload.snapshot, data) } : old);
+    old?.gameId === 'rizline' && old.payload.kind === 'rizline'
+      ? { ...old, payload: rizlinePayloadFromSnapshot(old.payload.snapshot, data) }
+      : old);
 }
 export function useRizlineCatalog(enabled = true) {
   const active = useCachedTabActive();

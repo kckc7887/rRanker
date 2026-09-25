@@ -126,11 +126,16 @@ function pass(id: number, title: string): TufPass {
   } as TufPass;
 }
 
-function infinite<T>(items: T[], field: 'passes' | 'results') {
+function infinite<T>(
+  items: T[],
+  field: 'passes' | 'results',
+  overrides: Record<string, unknown> = {},
+) {
   return {
     data: { pages: [{ [field]: items, total: items.length, offset: 0, limit: 30, hasMore: false }] },
     isLoading: false, isError: false, error: null, refetch: mockRefetch,
     hasNextPage: true, isFetchingNextPage: false, fetchNextPage: mockFetchNextPage,
+    ...overrides,
   };
 }
 
@@ -484,5 +489,48 @@ describe('TUF screens', () => {
     const screen2 = await render(<TufLevelDetailScreen levelId="11372" />);
     await fireEvent.press(screen2.getByLabelText('返回'));
     expect(mockReplace).toHaveBeenCalledWith('/(tabs)/search');
+  });
+
+  /**
+   * 后页终态合同（公共 InfinitePageFooter 在 TUF 两个真实入口上的接线）：
+   * 页脚由查询的 `isFetchNextPageError` / `hasNextPage` / `isFetchingNextPage` 驱动，
+   * 后页失败必须保留已载列表并给出重试入口，耗尽才显示「没有更多了」。
+   * Phira 的同一页脚已由 phira-catalog-scan / phira-ui 覆盖，TUF 成绩页与曲库页此前没有用例。
+   */
+  it('keeps loaded records and offers a retry when the records next page fails', async () => {
+    mockUseTufPasses.mockReturnValue(infinite([pass(1, '已载成绩')], 'passes', {
+      isFetchNextPageError: true,
+    }));
+    const screen = await render(<TufRecordsScreen />);
+
+    expect(screen.getByText('已载成绩')).toBeTruthy();
+    expect(screen.getByText('后页加载失败，点此重试')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('重试加载后页'));
+    expect(mockFetchNextPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('keeps loaded levels and offers a retry when the catalog next page fails', async () => {
+    mockUseTufLevelSearch.mockReturnValue(infinite([level], 'results', {
+      isFetchNextPageError: true,
+    }));
+    const screen = await render(<TufSearchScreen />);
+
+    expect(screen.getByLabelText('关卡封面 关卡 A')).toBeTruthy();
+    expect(screen.getByText('后页加载失败，点此重试')).toBeTruthy();
+    fireEvent.press(screen.getByLabelText('重试加载后页'));
+    expect(mockFetchNextPage).toHaveBeenCalledTimes(1);
+  });
+
+  it('marks the end of both lists only when no next page remains', async () => {
+    mockUseTufPasses.mockReturnValue(infinite([pass(1, '唯一成绩')], 'passes', { hasNextPage: false }));
+    mockUseTufLevelSearch.mockReturnValue(infinite([level], 'results', { hasNextPage: false }));
+
+    const records = await render(<TufRecordsScreen />);
+    expect(records.getByText('没有更多了')).toBeTruthy();
+    expect(records.queryByText('后页加载失败，点此重试')).toBeNull();
+
+    const catalog = await render(<TufSearchScreen />);
+    expect(catalog.getByText('没有更多了')).toBeTruthy();
+    expect(catalog.queryByText('后页加载失败，点此重试')).toBeNull();
   });
 });

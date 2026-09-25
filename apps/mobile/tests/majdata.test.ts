@@ -3,7 +3,7 @@ import majdataCases from './fixtures/majdata-simai-cases.json';
 import majdataReference from './fixtures/majdata-simai-reference.json';
 import scoreReference from './fixtures/majdata-score-reference.json';
 import { describe, expect, it, vi } from 'vitest';
-import { MAJDATA_FILTER_DEFAULTS, MAJDATA_ORDER, MajdataSongSchema, filterMajdataRecords, majdataDefaultDifficulty, majdataRank, majdataTags, majdataTime, majdataTotals, majdataTotal, majdataTotalText, majdataAvatarUrl, matchesMajdataSong, type MajdataScore } from '@/domain/majdata';
+import { MAJDATA_FILTER_DEFAULTS, MAJDATA_ORDER, MajdataSongSchema, filterMajdataRecords, majdataDefaultDifficulty, majdataNoteGroup, majdataRank, majdataTags, majdataTime, majdataTotals, majdataTotal, majdataTotalText, majdataAvatarUrl, matchesMajdataSong, type MajdataScore } from '@/domain/majdata';
 import { MajdataProvider } from '@/providers/majdata-provider';
 import { cookieHeader, responseCookies, isHttpCookieSession, type HttpCookieSession } from '@/providers/http-cookies';
 import { chartLibraryKey, songLibraryKey } from '@/domain/user-library';
@@ -82,6 +82,22 @@ describe('Majdata integration contracts', () => {
     expect(Object.keys(getAvailableDifficulties(text))).toHaveLength(7);
     for (let i = 0; i < 7; i++) expect(parseSimaiChart(text, i + 1).notes[0].position).toBe(i + 1);
     expect(() => parseSimaiChart('&inote_5=(120)1,', 7)).toThrow();
+  });
+  it('groups Simai note counts for the detail table and reports missing statistics as none', () => {
+    const counts = simaiStatistics(parseSimaiBody('(120)1,2m,3h[4:1],')).counts;
+    expect(counts).toEqual({ tap: 1, hold: 1, slide: 0, touch: 0, break: 0, mine: 1 });
+    expect(majdataNoteGroup(counts)).toEqual({
+      key: 'notes',
+      values: [
+        { key: 'tap', label: 'TAP', value: 1 },
+        { key: 'hold', label: 'HOLD', value: 1 },
+        { key: 'slide', label: 'SLIDE', value: 0 },
+        { key: 'touch', label: 'TOUCH', value: 0 },
+        { key: 'break', label: 'BREAK', value: 0 },
+        { key: 'mine', label: 'MINE', value: 1 },
+      ],
+    });
+    expect(majdataNoteGroup(undefined)).toBeUndefined();
   });
 });
 

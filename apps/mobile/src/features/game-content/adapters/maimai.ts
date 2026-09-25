@@ -1,28 +1,9 @@
-import type {
-  GameContentAdapter,
-} from '@/domain/game-content';
-import type { Chart, ScoreRecord, Song } from '@/domain/models';
+import type { ScoreRecord } from '@/domain/models';
 import { formatAchievement, scoreRateEffect, scoreRateLabel } from '@/domain/score-presentation';
 import type {
   BadgePresentation,
   ScoreCardPresentation,
 } from '../presentation';
-import { standardChart, standardScore, standardSong } from './standard';
-
-export const maimaiContentAdapter: GameContentAdapter<
-  'maimai',
-  Song,
-  Chart,
-  ScoreRecord,
-  Song,
-  Chart,
-  ScoreRecord
-> = {
-  gameId: 'maimai',
-  normalizeSong: (song) => standardSong('maimai', song),
-  normalizeChart: (chart) => standardChart('maimai', chart),
-  normalizeScore: (score) => standardScore('maimai', score),
-};
 
 function scoreEffectToPresentation(effect: ReturnType<typeof scoreRateEffect>) {
   return effect === 'flowing-gold' || effect === 'flowing-rainbow'

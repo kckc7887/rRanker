@@ -12,10 +12,51 @@ import {
   loadPhiraPlayerFresh, queryPhiraChartBest, refreshAllPhiraBests, refreshPhiraBestTargets,
   refreshPhiraSeedBests, type PhiraBestRefreshResult, type PhiraBestRefreshStatus, type PhiraBestRefreshTarget,
 } from '@/services/phira-service';
+import { publishEntityValue } from '@/services/game-data-query';
 import { queryClient } from '@/state/query-client';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 
 const OPTIONS = { staleTime: 60_000, gcTime: 10 * 60_000 } as const;
+
+/** Phira 玩家实体的规范键：总览数据包与页面读到同一份版本。 */
+export function phiraPlayerEntityKey(playerId: number) {
+  return ['phira', 'player', playerId] as const;
+}
+
+/** 已查询谱面最佳成绩的规范键（与玩家实体不同粒度，因此保留独立 key）。 */
+export function phiraBestsEntityKey(playerId: number) {
+  return ['phira', 'bests', playerId] as const;
+}
+
+/** 该玩家实体的规范查询选项：页面与总览派生视图共用。 */
+export function phiraPlayerQueryOptions(playerId: number) {
+  const queryKey = phiraPlayerEntityKey(playerId);
+  return {
+    queryKey,
+    queryFn: async ({ signal }: { signal: AbortSignal }): Promise<PhiraPlayerSnapshot> => cacheFirstLoad({
+      assertCurrent: captureResourceWrites('phira', signal, `phira:community:${playerId}`),
+      loadCached: () => phiraCache.loadPlayer(playerId),
+      loadFresh: async () => {
+        const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
+        const fresh = await loadPhiraPlayerFresh(playerId, signal);
+        assertCurrent();
+        void refreshPhiraSeedBests(fresh, signal)
+          .then((result) => {
+            assertCurrent();
+            // 只把缓存快照写进 bests 查询；后台补全不消费本次操作摘要。
+            if (!signal.aborted && result.snapshot) {
+              publishEntityValue(queryClient, phiraBestsEntityKey(playerId), result.snapshot);
+            }
+          })
+          .catch(() => undefined);
+        return fresh;
+      },
+      onFresh: (fresh) => publishEntityValue(queryClient, queryKey, fresh),
+      signal,
+    }),
+    ...OPTIONS,
+  };
+}
 
 export function usePhiraPlayerSearch(value: string) {
   const query = value.trim();
@@ -29,38 +70,17 @@ export function usePhiraPlayerSearch(value: string) {
 
 export function usePhiraPlayer(playerId: number | null, enabled = true) {
   const tabActive = useCachedTabActive();
-  const key = ['phira', 'player', playerId] as const;
+  const fallbackId = playerId ?? 0;
   return useQuery({
-    queryKey: key, enabled: enabled && tabActive && playerId !== null,
-    queryFn: async ({ signal }): Promise<PhiraPlayerSnapshot> => cacheFirstLoad({
-      assertCurrent: captureResourceWrites('phira', signal, `phira:community:${playerId}`),
-      loadCached: () => phiraCache.loadPlayer(playerId!),
-      loadFresh: async () => {
-        const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
-        const fresh = await loadPhiraPlayerFresh(playerId!, signal);
-        assertCurrent();
-        void refreshPhiraSeedBests(fresh, signal)
-          .then((result) => {
-            assertCurrent();
-            // 只把缓存快照写进 bests 查询；后台补全不消费本次操作摘要。
-            if (!signal.aborted && result.snapshot) {
-              queryClient.setQueryData(['phira', 'bests', playerId], result.snapshot);
-            }
-          })
-          .catch(() => undefined);
-        return fresh;
-      },
-      onFresh: (fresh) => queryClient.setQueryData(key, fresh),
-      signal,
-    }),
-    ...OPTIONS,
+    ...phiraPlayerQueryOptions(fallbackId),
+    enabled: enabled && tabActive && playerId !== null,
   });
 }
 
 export function usePhiraBests(playerId: number | null, enabled = true) {
   const tabActive = useCachedTabActive();
   return useQuery({
-    queryKey: ['phira', 'bests', playerId], enabled: enabled && tabActive && playerId !== null,
+    queryKey: phiraBestsEntityKey(playerId ?? 0), enabled: enabled && tabActive && playerId !== null,
     queryFn: () => phiraCache.loadBests(playerId!), ...OPTIONS,
   });
 }
@@ -116,7 +136,7 @@ export function useRefreshAllPhiraBests(playerId: number | null) {
       assertCurrent();
       const result = await run(controller.signal, assertCurrent);
       assertCurrent();
-      if (result.snapshot) queryClient.setQueryData(['phira', 'bests', playerId], result.snapshot);
+      if (result.snapshot) publishEntityValue(queryClient, phiraBestsEntityKey(playerId), result.snapshot);
       failedTargets.current = result.refresh.failures.map((failure) => failure.target);
       return outcomeFrom(result);
     } catch (error) {

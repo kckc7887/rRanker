@@ -160,7 +160,7 @@ jest.mock('@/features/chunithm-best-image/chunithm-best-image-preferences', () =
     return currentId ?? null;
   },
 }));
-jest.mock('@/domain/phigros-avatar-resolver', () => ({
+jest.mock('@/services/phigros-avatar-resolver', () => ({
   loadPhigrosAvatarCatalog: jest.fn(async () => ['avatar.test']),
 }));
 jest.mock('@/features/phigros-best-image/load-phigros-image-assets', () => ({

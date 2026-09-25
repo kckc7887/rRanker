@@ -1,21 +1,15 @@
 /**
- * Rizline 谱面确认资源定位：
- * 按当前发布曲库与清单 files 解析唯一谱面 JSON 和 m4a。
+ * Rizline 谱面确认资源定位（纯领域）：
+ * 按当前发布曲库与清单 files 解析唯一谱面 JSON 和 m4a 的路径、URL 与完整性字段。
+ * 资源下载、字节校验、超时、重试与取消编排在 services/rizline-chart-preview-resources。
  */
 
 import {
   RIZLINE_DIFFICULTIES,
   RIZLINE_RESOURCE_BASE,
+  type RizlineCatalog,
   type RizlineDifficulty,
 } from '@/domain/rizline';
-import { ProviderError } from '@/providers/errors';
-import { requestBytes } from '@/providers/http-json';
-import {
-  rizlineResources,
-  type RizlineRelease,
-  type RizlineReleaseFile,
-} from '@/services/rizline-resources';
-import { verifyResourceBytes } from '@/services/verified-release';
 
 export type RizlineChartPreviewTarget = {
   songId: string;
@@ -39,7 +33,24 @@ export type RizlineChartPreviewBundle = {
   music: RizlineChartPreviewAsset;
 };
 
-function requiredFile(files: ReadonlyMap<string, RizlineReleaseFile>, path: string, label: string): RizlineReleaseFile {
+/** 纯解析所需的最小发布清单形状；服务层的 RizlineRelease 结构上满足它。 */
+export type RizlineChartPreviewReleaseFile = { path: string; size: number; sha256: string };
+export type RizlineChartPreviewRelease = {
+  snapshot: RizlineCatalog;
+  files: readonly RizlineChartPreviewReleaseFile[];
+};
+
+/** 资源字节读取端口形状；默认实现由服务层的资源端口提供。 */
+export type RizlineChartPreviewResourceRead = (
+  asset: RizlineChartPreviewAsset,
+  index: number,
+) => Promise<Uint8Array>;
+
+function requiredFile(
+  files: ReadonlyMap<string, RizlineChartPreviewReleaseFile>,
+  path: string,
+  label: string,
+): RizlineChartPreviewReleaseFile {
   const file = files.get(path);
   if (!file) throw new Error(`${label}不在发布清单中`);
   return file;
@@ -50,7 +61,7 @@ export function rizlineChartPreviewResourceUrl(path: string, base = RIZLINE_RESO
 }
 
 export function resolveRizlineChartPreviewBundle(
-  release: RizlineRelease,
+  release: RizlineChartPreviewRelease,
   target: RizlineChartPreviewTarget,
   base = RIZLINE_RESOURCE_BASE,
 ): RizlineChartPreviewBundle {
@@ -63,7 +74,7 @@ export function resolveRizlineChartPreviewBundle(
   if (charts.length !== 1) throw new Error(`${song.title} 不存在 ${difficulty} 难度`);
   const chart = charts[0]!;
   const files = new Map(release.files.map((file) => [file.path, file]));
-  const toAsset = (file: RizlineReleaseFile): RizlineChartPreviewAsset => ({
+  const toAsset = (file: RizlineChartPreviewReleaseFile): RizlineChartPreviewAsset => ({
     path: file.path,
     url: rizlineChartPreviewResourceUrl(file.path, base),
     size: file.size,
@@ -77,43 +88,4 @@ export function resolveRizlineChartPreviewBundle(
     chart: { ...toAsset(requiredFile(files, chart.chartPath, '谱面文件')), difficulty, level: chart.level },
     music: toAsset(requiredFile(files, song.audioPath, '音频文件')),
   };
-}
-
-async function defaultRead(
-  asset: RizlineChartPreviewAsset,
-  index: number,
-  signal?: AbortSignal,
-): Promise<Uint8Array> {
-  return requestBytes({
-    baseUrl: '',
-    path: asset.url,
-    fetcher: fetch,
-    signal,
-    retries: 1,
-    timeoutMs: 120_000,
-    label: 'Rizline 谱面确认',
-    diagnosticScenario: index === 0 ? 'chart' : 'music',
-    error: (status) => new ProviderError('network', `Rizline 资源请求失败：${status}`, true),
-  });
-}
-
-export async function loadRizlineChartPreviewResources(
-  target: RizlineChartPreviewTarget,
-  signal: AbortSignal,
-  read: (asset: RizlineChartPreviewAsset, index: number) => Promise<Uint8Array> =
-    (asset, index) => defaultRead(asset, index, signal),
-): Promise<RizlineChartPreviewBundle> {
-  return rizlineResources.withRelease(async (release) => {
-    const bundle = resolveRizlineChartPreviewBundle(release, target);
-    for (const [index, asset] of [bundle.chart, bundle.music].entries()) {
-      const bytes = await read(asset, index);
-      await verifyResourceBytes(
-        bytes,
-        asset,
-        index === 0 ? 'Rizline 谱面校验失败' : 'Rizline 音频校验失败',
-      );
-      if (signal.aborted) throw signal.reason;
-    }
-    return bundle;
-  }, signal);
 }

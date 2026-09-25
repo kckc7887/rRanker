@@ -8,7 +8,7 @@ const release = vi.hoisted(() => ({ current: { revision: 'r1' } }));
 const loadRelease = vi.hoisted(() => vi.fn(async (_signal?: AbortSignal) => release.current));
 const avatar = vi.hoisted(() => vi.fn(async () => 'avatar'));
 vi.mock('@/services/phigros-resources', () => ({ phigrosResources: { load: loadRelease, peek: () => release.current } }));
-vi.mock('@/domain/phigros-avatar-resolver', () => ({ resolvePhigrosAvatarUrl: avatar }));
+vi.mock('@/services/phigros-avatar-resolver', () => ({ resolvePhigrosAvatarUrl: avatar }));
 vi.mock('expo-sqlite', () => ({ openDatabaseAsync: vi.fn() }));
 
 const source = { kind: 'generated' as const, label: 'TapTap云存档', updatedAt: '2026-09-13T00:00:00Z', isStale: false };

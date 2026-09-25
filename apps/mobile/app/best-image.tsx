@@ -30,13 +30,13 @@ import {
   type MaimaiFcAchievement,
   type MaimaiFsAchievement,
 } from '@/domain/maimai-filters';
+import { minimumBestImageHeight } from '@/features/best-image/build-best-image-html';
 import {
   buildBestImageHtml,
-  minimumBestImageHeight,
   ratingFrameIndex,
   type BestImageScoreSection,
   type BestImageType,
-} from '@/features/best-image/build-best-image-html';
+} from '@/features/maimai-best-image/build-maimai-best-image-html';
 import { useBestImageWebViewTimeout } from '@/features/best-image/best-image-webview-state';
 import {
   buildCustomBestImageSections,

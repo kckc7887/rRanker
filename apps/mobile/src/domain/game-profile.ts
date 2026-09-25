@@ -9,9 +9,7 @@ export type BestSectionSpec = {
 };
 
 export type GameCapabilities = {
-  hasCatalog: boolean;
-  hasRecords: boolean;
-  hasBestList: boolean;
+  /** 是否有已注册的游戏工具箱；总览据此决定是否展示工具箱入口。 */
   hasTools: boolean;
 };
 
@@ -27,18 +25,16 @@ export type GameProfile = {
   capabilities: GameCapabilities;
 };
 
-const commonNav = {
-  hasCatalog: true,
-  hasRecords: true,
-  hasBestList: true,
-};
+const capabilitiesFor = (id: GameId): GameCapabilities => ({
+  hasTools: getGameToolbox(id).tools.length > 0,
+});
 
 export const GAME_PROFILES: Record<GameId, GameProfile> = {
   rizline: { id: 'rizline', title: 'Rizline', ratingLabel: 'Ranking Score', ratingDigits: 4,
     bestSections: [{ id: 'ah5', title: 'AH5（推定）', size: 5 }, { id: 'b35', title: 'Best35（推定）', size: 35 }],
-    capabilities: { ...commonNav, hasTools: true } },
+    capabilities: capabilitiesFor('rizline') },
   'majdata-net': { id: 'majdata-net', title: 'Majdata Net', ratingLabel: 'DX · Classic', ratingDigits: 4,
-    bestSections: [{ id: 'recent', title: 'Recent', size: 0 }], capabilities: { ...commonNav, hasTools: true } },
+    bestSections: [{ id: 'recent', title: 'Recent', size: 0 }], capabilities: capabilitiesFor('majdata-net') },
   maimai: {
     id: 'maimai',
     title: '舞萌 DX',
@@ -48,7 +44,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
       { id: 'b35', title: '过往版本 Best35', size: 35 },
       { id: 'b15', title: '当前版本 Best15', size: 15 },
     ],
-    capabilities: { ...commonNav, hasTools: getGameToolbox('maimai').tools.length > 0 },
+    capabilities: capabilitiesFor('maimai'),
   },
   chunithm: {
     id: 'chunithm',
@@ -56,7 +52,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'RATING',
     ratingDigits: 0,
     bestSections: [],
-    capabilities: { ...commonNav, hasTools: getGameToolbox('chunithm').tools.length > 0 },
+    capabilities: capabilitiesFor('chunithm'),
   },
   test: {
     id: 'test',
@@ -64,7 +60,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'Rating',
     ratingDigits: 0,
     bestSections: [{ id: 'best', title: 'Best', size: 0 }],
-    capabilities: { ...commonNav, hasTools: getGameToolbox('test').tools.length > 0 },
+    capabilities: capabilitiesFor('test'),
   },
   phigros: {
     id: 'phigros',
@@ -75,7 +71,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
       { id: 'phi3', title: 'Phi3', size: 3 },
       { id: 'b27', title: 'Best27', size: 27 },
     ],
-    capabilities: { ...commonNav, hasTools: getGameToolbox('phigros').tools.length > 0 },
+    capabilities: capabilitiesFor('phigros'),
   },
   phira: {
     id: 'phira',
@@ -83,7 +79,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'Ranking Score',
     ratingDigits: 2,
     bestSections: [{ id: 'best20', title: 'Best20', size: 20 }],
-    capabilities: { ...commonNav, hasTools: getGameToolbox('phira').tools.length > 0 },
+    capabilities: capabilitiesFor('phira'),
   },
   adofai: {
     id: 'adofai',
@@ -91,7 +87,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'RANKED SCORE',
     ratingDigits: 0,
     bestSections: [{ id: 'top20', title: 'Top 20 Impact', size: 20 }],
-    capabilities: { ...commonNav, hasTools: getGameToolbox('adofai').tools.length > 0 },
+    capabilities: capabilitiesFor('adofai'),
   },
   musedash: {
     id: 'musedash',
@@ -99,7 +95,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'Rating',
     ratingDigits: 0,
     bestSections: [{ id: 'best30', title: 'Best 30', size: 30 }],
-    capabilities: { ...commonNav, hasTools: getGameToolbox('musedash').tools.length > 0 },
+    capabilities: capabilitiesFor('musedash'),
   },
   'osu-standard': {
     id: 'osu-standard',
@@ -107,7 +103,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'PP',
     ratingDigits: 0,
     bestSections: [{ id: 'top100', title: 'Top 100', size: 100 }],
-    capabilities: { ...commonNav, hasTools: getGameToolbox('osu-standard').tools.length > 0 },
+    capabilities: capabilitiesFor('osu-standard'),
   },
   'osu-mania': {
     id: 'osu-mania',
@@ -115,7 +111,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'PP',
     ratingDigits: 0,
     bestSections: [{ id: 'top100', title: 'Top 100', size: 100 }],
-    capabilities: { ...commonNav, hasTools: getGameToolbox('osu-mania').tools.length > 0 },
+    capabilities: capabilitiesFor('osu-mania'),
   },
   'osu-catch': {
     id: 'osu-catch',
@@ -123,7 +119,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'PP',
     ratingDigits: 0,
     bestSections: [{ id: 'top100', title: 'Top 100', size: 100 }],
-    capabilities: { ...commonNav, hasTools: getGameToolbox('osu-catch').tools.length > 0 },
+    capabilities: capabilitiesFor('osu-catch'),
   },
   'osu-taiko': {
     id: 'osu-taiko',
@@ -131,7 +127,7 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
     ratingLabel: 'PP',
     ratingDigits: 0,
     bestSections: [{ id: 'top100', title: 'Top 100', size: 100 }],
-    capabilities: { ...commonNav, hasTools: getGameToolbox('osu-taiko').tools.length > 0 },
+    capabilities: capabilitiesFor('osu-taiko'),
   },
 };
 

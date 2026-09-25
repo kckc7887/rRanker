@@ -1,0 +1,6 @@
+{
+  "name": "song-detail-chrome-contract/maimai",
+  "formatVersion": 1,
+  "hash": "434176f516894c70ea08870a3a486071c801f0188eda67c99d0bc902b7a0b064",
+  "tree": [{"children":[],"props":{"accessibilityLabel":"返回","accessibilityRole":"button","accessibilityState":{},"accessibilityValue":{},"accessible":true,"collapsable":false,"focusable":true,"hitSlop":12,"style":[{"alignItems":"center","borderRadius":20,"height":40,"justifyContent":"center","width":40},{"elevation":30,"position":"absolute","zIndex":30},{"left":8,"top":47},false]},"type":"View"},{"children":[],"props":{"accessibilityLabel":"收藏 正常曲目 A","accessibilityRole":"button","accessibilityState":{"disabled":false},"accessibilityValue":{},"accessible":true,"collapsable":false,"focusable":true,"hitSlop":12,"style":[{"alignItems":"center","borderRadius":20,"height":40,"justifyContent":"center","width":40},{"elevation":30,"position":"absolute","zIndex":30},{"right":8,"top":47},false,false]},"type":"View"}]
+}

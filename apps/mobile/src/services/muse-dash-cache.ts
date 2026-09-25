@@ -25,6 +25,7 @@ import {
 import { museDashProvider } from '@/providers/muse-dash-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { clearResourcesByPrefix, createInflightGuard, resourceWriteGeneration, makeSnapshot } from '@/services/snapshot-cache-utils';
+import { assertFreshSnapshotSource, cachedSnapshotSource } from '@/domain/refresh-result';
 
 /** 构造 Muse Dash 缓存快照；source 的 updatedAt 记录本次拉取时间，供缓存命中时展示来源与过期标。 */
 export function makeMuseDashSnapshot<T>(data: T, updatedAt = new Date().toISOString()): { data: T; source: DataSource } {
@@ -79,23 +80,31 @@ export function loadMuseDashDiffdiffFreshSnapshot(
 /**
  * Muse Dash 公开数据的本地持久化快照（缓存优先渲染）。
  * 曲库、定数表与名称表是账号无关的全局资源；玩家资料与成绩明细按 userId 归属。
+ * 读取一律是缓存读取：保留原提供方与抓取时间并标记过期；写入只接受抓取结果，缓存回退不得落盘。
  */
 export class MuseDashCache {
   constructor(private readonly repository = new SqliteSnapshotRepository()) {}
 
+  private async readSnapshot<S extends { source: DataSource }>(key: string, version: number): Promise<S | null> {
+    const stored = await this.repository.getResource<S>(key, version);
+    return stored ? { ...stored, source: cachedSnapshotSource(stored.source) } : null;
+  }
+
   async loadPlayer(userId: string): Promise<MuseDashPlayerSnapshot | null> {
-    return this.repository.getResource<MuseDashPlayerSnapshot>(museDashPlayerCacheKey(userId), MUSE_DASH_PLAYER_SCHEMA_VERSION);
+    return this.readSnapshot<MuseDashPlayerSnapshot>(museDashPlayerCacheKey(userId), MUSE_DASH_PLAYER_SCHEMA_VERSION);
   }
   async savePlayer(userId: string, snapshot: MuseDashPlayerSnapshot, assertCurrent?: () => void): Promise<void> {
+    assertFreshSnapshotSource(snapshot.source);
     await this.repository.saveResource(museDashPlayerCacheKey(userId), MUSE_DASH_PLAYER_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot, assertCurrent);
   }
 
   async loadPlayDetail(userId: string, uid: string, difficulty: number, platform: string): Promise<MuseDashPlayDetailSnapshot | null> {
-    return this.repository.getResource<MuseDashPlayDetailSnapshot>(
+    return this.readSnapshot<MuseDashPlayDetailSnapshot>(
       museDashPlayDetailCacheKey(userId, uid, difficulty, platform), MUSE_DASH_PLAY_DETAIL_SCHEMA_VERSION,
     );
   }
   async savePlayDetail(userId: string, uid: string, difficulty: number, platform: string, snapshot: MuseDashPlayDetailSnapshot, assertCurrent?: () => void): Promise<void> {
+    assertFreshSnapshotSource(snapshot.source);
     await this.repository.saveResource(
       museDashPlayDetailCacheKey(userId, uid, difficulty, platform),
       MUSE_DASH_PLAY_DETAIL_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot, assertCurrent,
@@ -103,23 +112,26 @@ export class MuseDashCache {
   }
 
   async loadAlbums(): Promise<MuseDashAlbumsSnapshot | null> {
-    return this.repository.getResource<MuseDashAlbumsSnapshot>(MUSE_DASH_ALBUMS_CACHE_KEY, MUSE_DASH_ALBUMS_SCHEMA_VERSION);
+    return this.readSnapshot<MuseDashAlbumsSnapshot>(MUSE_DASH_ALBUMS_CACHE_KEY, MUSE_DASH_ALBUMS_SCHEMA_VERSION);
   }
   async saveAlbums(snapshot: MuseDashAlbumsSnapshot, assertCurrent?: () => void): Promise<void> {
+    assertFreshSnapshotSource(snapshot.source);
     await this.repository.saveResource(MUSE_DASH_ALBUMS_CACHE_KEY, MUSE_DASH_ALBUMS_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot, assertCurrent);
   }
 
   async loadCe(): Promise<MuseDashCeSnapshot | null> {
-    return this.repository.getResource<MuseDashCeSnapshot>(MUSE_DASH_CE_CACHE_KEY, MUSE_DASH_CE_SCHEMA_VERSION);
+    return this.readSnapshot<MuseDashCeSnapshot>(MUSE_DASH_CE_CACHE_KEY, MUSE_DASH_CE_SCHEMA_VERSION);
   }
   async saveCe(snapshot: MuseDashCeSnapshot, assertCurrent?: () => void): Promise<void> {
+    assertFreshSnapshotSource(snapshot.source);
     await this.repository.saveResource(MUSE_DASH_CE_CACHE_KEY, MUSE_DASH_CE_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot, assertCurrent);
   }
 
   async loadDiffdiff(): Promise<MuseDashDiffdiffSnapshot | null> {
-    return this.repository.getResource<MuseDashDiffdiffSnapshot>(MUSE_DASH_DIFFDIFF_CACHE_KEY, MUSE_DASH_DIFFDIFF_SCHEMA_VERSION);
+    return this.readSnapshot<MuseDashDiffdiffSnapshot>(MUSE_DASH_DIFFDIFF_CACHE_KEY, MUSE_DASH_DIFFDIFF_SCHEMA_VERSION);
   }
   async saveDiffdiff(snapshot: MuseDashDiffdiffSnapshot, assertCurrent?: () => void): Promise<void> {
+    assertFreshSnapshotSource(snapshot.source);
     await this.repository.saveResource(MUSE_DASH_DIFFDIFF_CACHE_KEY, MUSE_DASH_DIFFDIFF_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot, assertCurrent);
   }
 

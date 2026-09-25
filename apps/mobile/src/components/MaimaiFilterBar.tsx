@@ -1,7 +1,5 @@
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { DxRatingTagFilterSheet } from '@/components/maimai/DxRatingTagFilterSheet';
 import { ChartTypeBadge, DifficultyBadge, DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
 import {
@@ -12,6 +10,7 @@ import {
   joinFilterSummary,
 } from '@/components/game-content/FilterShell';
 import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
+import { FILTER_BAR_EXTENSIONS } from '@/features/game-content/filter-bar-extensions';
 import type { DxRatingChartTag } from '@/domain/dxrating-chart-tags';
 import {
   MAIMAI_FC_ACHIEVEMENTS,
@@ -343,23 +342,16 @@ export function MaimaiFilterBar({
       </View>
 
       {onDxRatingTagIdsChange ? (
-        <View style={filterShellStyles.filterRow}>
-          <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>标签</Text>
-          <Pressable accessibilityRole="button"
-            accessibilityLabel={`谱面标签筛选，${dxRatingTagState === 'ready' ? `当前 ${tagFilterValue}` : tagFilterValue}`}
-            accessibilityState={{ disabled: dxRatingTagState !== 'ready', expanded: tagSheetVisible }}
-            disabled={dxRatingTagState !== 'ready'}
-            onPress={() => { setOpenDropdown(null); setTagSheetVisible(true); }}
-            style={({ pressed }) => [
-              styles.tagFilterTrigger,
-              { backgroundColor: theme.input, borderColor: theme.border },
-              dxRatingTagState !== 'ready' && styles.disabled,
-              pressed && styles.tagFilterTriggerPressed,
-            ]}>
-            <Text numberOfLines={1} style={[styles.tagFilterValue, { color: theme.text }]}>{tagFilterValue}</Text>
-            <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
-          </Pressable>
-        </View>
+        <FILTER_BAR_EXTENSIONS.tagFilterRow
+          visible={tagSheetVisible}
+          tags={dxRatingTags}
+          selectedTagIds={selectedDxRatingTagIds}
+          state={dxRatingTagState}
+          value={tagFilterValue}
+          onApply={onDxRatingTagIdsChange}
+          onOpen={() => { setOpenDropdown(null); setTagSheetVisible(true); }}
+          onClose={() => setTagSheetVisible(false)}
+        />
       ) : null}
 
       <View style={filterShellStyles.filterRow}>
@@ -409,13 +401,6 @@ export function MaimaiFilterBar({
           </View>
         </View>
       ) : null}
-      {onDxRatingTagIdsChange && tagSheetVisible ? <DxRatingTagFilterSheet
-        visible={tagSheetVisible}
-        tags={dxRatingTags}
-        selectedTagIds={selectedDxRatingTagIds}
-        onApply={onDxRatingTagIdsChange}
-        onClose={() => setTagSheetVisible(false)}
-      /> : null}
     </FilterShell>
   );
 }
@@ -430,7 +415,7 @@ function QuickChip({ label, active, onPress }: { label: string; active: boolean;
   );
 }
 
-// Maimai 专属样式：版本切换、标签触发器、快捷芯片等；公共样式见 game-content/FilterShell 的 filterShellStyles。
+// Maimai 专属样式：版本切换、快捷芯片等；标签筛选入口样式归 components/maimai，公共样式见 game-content/FilterShell 的 filterShellStyles。
 const styles = StyleSheet.create({
   dropdownControls: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
   versionQuickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
@@ -438,10 +423,6 @@ const styles = StyleSheet.create({
   quickChipText: { fontSize: 12, fontWeight: '700' },
   versionDoneButton: { minHeight: 36, minWidth: 96, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   versionDoneText: { fontSize: 13, fontWeight: '800' },
-  tagFilterTrigger: { flex: 1, minWidth: 0, minHeight: 44, borderWidth: 1, borderRadius: 9, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tagFilterValue: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 20 },
-  tagFilterTriggerPressed: { opacity: 0.7 },
-  disabled: { opacity: 0.5 },
   achievementDropdownRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'stretch', gap: 8 },
   localeSwitch: { flexDirection: 'row', overflow: 'hidden', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10 },
   localeButton: { width: 34, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },

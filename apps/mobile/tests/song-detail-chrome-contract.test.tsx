@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { Animated, InteractionManager } from 'react-native';
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
@@ -8,6 +7,7 @@ import { TufLevelDetailScreen } from '@/screens/TufScreens';
 import { MuseDashSongDetailScreen } from '@/screens/MuseDashScreens';
 import type { TufLevel } from '@/domain/tuf';
 import type { MuseDashAlbumsResponse, MuseDashCeResponse, MuseDashPlayer } from '@/domain/muse-dash';
+import { expectHostContract } from './host-contract-hash';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(),
@@ -204,21 +204,19 @@ jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
 jest.mock('@/components/CollectionImage', () => ({ CollectionImage: () => null }));
 jest.mock('@/components/CachedTabScreen', () => ({ useCachedTabActive: () => true }));
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => [key, canonicalize(item)]),
-  );
-}
-
-async function chromeHash(screen: Awaited<ReturnType<typeof render>>): Promise<string> {
+/**
+ * 详情页 chrome（返回 + 收藏）宿主树合同：哈希是唯一门禁，结构变化时失败信息按路径给出差异。
+ * 基线只用于诊断（`tests/host-contract-baselines/song-detail-chrome-contract/*.json`），
+ * 不一致不会改变通过/失败结论，且只在 `HOST_CONTRACT_UPDATE_BASELINE=1` 时显式刷新。
+ */
+async function expectChromeContract(
+  screen: Awaited<ReturnType<typeof render>>,
+  name: string,
+  expectedHash: string,
+): Promise<void> {
   const back = screen.getByLabelText('返回').toJSON();
   const favorites = screen.queryAllByLabelText(/^(收藏|取消收藏)/).map((node) => node.toJSON());
-  const canonical = canonicalize([back, ...favorites]) as unknown[];
-  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
+  expectHostContract({ name: `song-detail-chrome-contract/${name}`, tree: [back, ...favorites], expectedHash });
 }
 
 beforeEach(() => {
@@ -235,7 +233,7 @@ beforeEach(() => {
 
 test('maimai song detail chrome contract', async () => {
   const screen = await render(<SongDetailScreen />);
-  expect(await chromeHash(screen)).toBe('434176f516894c70ea08870a3a486071c801f0188eda67c99d0bc902b7a0b064');
+  await expectChromeContract(screen, 'maimai', '434176f516894c70ea08870a3a486071c801f0188eda67c99d0bc902b7a0b064');
 });
 
 test('chunithm song detail chrome contract', async () => {
@@ -273,7 +271,7 @@ test('chunithm song detail chrome contract', async () => {
     hasSyncedData: true,
   };
   const screen = await render(<ChunithmSongDetail songId="3" />);
-  expect(await chromeHash(screen)).toBe('fee58b7eff2d7e713afe81b213dc0b282b88bd15c285e2180aff75abdc9a16b2');
+  await expectChromeContract(screen, 'chunithm', 'fee58b7eff2d7e713afe81b213dc0b282b88bd15c285e2180aff75abdc9a16b2');
 });
 
 test('phigros song detail chrome contract', async () => {
@@ -296,7 +294,7 @@ test('phigros song detail chrome contract', async () => {
     source: { kind: 'generated', label: 'TapTap云存档', updatedAt: '2026-07-20T01:00:00.000Z', isStale: false },
   };
   const screen = await render(<SongDetailScreen />);
-  expect(await chromeHash(screen)).toBe('1d91f783b0490b0b0d40a4c931fa6937c27bad9e7b8a5cb7b4d163c3b939d2d0');
+  await expectChromeContract(screen, 'phigros', '1d91f783b0490b0b0d40a4c931fa6937c27bad9e7b8a5cb7b4d163c3b939d2d0');
 });
 
 test('tuf level detail chrome contract', async () => {
@@ -307,7 +305,7 @@ test('tuf level detail chrome contract', async () => {
     levelCredits: [], tags: [], curations: [],
   } as TufLevel;
   const screen = await render(<TufLevelDetailScreen levelId="11372" />);
-  expect(await chromeHash(screen)).toBe('189c66e5be95e2aed8c7b81023c57fc5df909f5110eb7bacdb0427d52d74b1b4');
+  await expectChromeContract(screen, 'adofai-level-detail', '189c66e5be95e2aed8c7b81023c57fc5df909f5110eb7bacdb0427d52d74b1b4');
 });
 
 test('musedash song detail chrome contract', async () => {
@@ -332,5 +330,5 @@ test('musedash song detail chrome contract', async () => {
     user: { user_id: '6ea4f986ffd211e8aa980242ac110011', nickname: 'SiMOOOOOON' },
   };
   const screen = await render(<MuseDashSongDetailScreen songId="0-47" />);
-  expect(await chromeHash(screen)).toBe('d8cd026363a326bef2c1caf2ba8fd6cfc0930723dd8cb68b8fdf7a97889f969c');
+  await expectChromeContract(screen, 'musedash', 'd8cd026363a326bef2c1caf2ba8fd6cfc0930723dd8cb68b8fdf7a97889f969c');
 });

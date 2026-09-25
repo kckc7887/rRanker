@@ -41,17 +41,30 @@ export type JsonRequestOptions<T> = {
   /** 游戏名（用于超时/网络/结构错误的文案，如「MuseDash.moe」）。 */
   label: string;
   timeoutMs?: number;
+  /** 总尝试次数：含首次请求，1 表示不自动重试。只读、登录与写请求用 1 明确表达。 */
+  totalAttempts?: number;
+  /** 额外重试次数：总尝试次数 = 额外重试次数 + 1。与 totalAttempts 同时给出时以 totalAttempts 为准。 */
+  extraRetries?: number;
+  /** 旧字段：语义等同 totalAttempts（总尝试次数），新调用方请改用 totalAttempts / extraRetries。 */
   retries?: number;
   /** 覆盖结构、超时和网络错误文案。 */
   messages?: { schema?: string; timeout?: string; network?: string };
   signal?: AbortSignal;
 };
 
+/** 总尝试次数解析：totalAttempts 优先，其次旧字段 retries，再其次 extraRetries + 1。 */
+export function resolveTotalAttempts(options: Pick<JsonRequestOptions<unknown>, 'totalAttempts' | 'extraRetries' | 'retries'>): number {
+  if (options.totalAttempts !== undefined) return options.totalAttempts;
+  if (options.retries !== undefined) return options.retries;
+  if (options.extraRetries !== undefined) return options.extraRetries + 1;
+  return 2;
+}
+
 /** 通用 JSON GET 请求：重试、429 退避、超时与错误归一化（各公开查分 Provider 共用）。 */
 async function requestData<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>, source: string): Promise<T> {
   const { path, schema, fetcher, baseUrl, error, label } = options;
   const timeoutMs = options.timeoutMs ?? 12_000;
-  const retries = options.retries ?? 2;
+  const totalAttempts = resolveTotalAttempts(options);
   const schemaMessage = options.messages?.schema ?? `${label}数据结构与已验证契约不一致`;
   const timeoutMessage = options.messages?.timeout ?? `${label}数据读取超时`;
   const networkMessage = options.messages?.network ?? `无法连接${label}服务`;
@@ -59,7 +72,7 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
   const operationId = nextRuntimeOperationId();
   const diagnostic = { source, scenario: options.diagnosticScenario, operationId };
   void recordRuntimeDiagnostic('request-start', diagnostic);
-  for (let attempt = 0; attempt < retries; attempt += 1) {
+  for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
     if (options.signal?.aborted) {
       void recordRuntimeDiagnostic('request', { ...diagnostic, result: 'cancelled', errorCode: 'cancelled', attempt: attempt + 1, durationMs: 0 });
       throw options.signal.reason;
@@ -87,7 +100,8 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
       if (!response.ok) {
         const mapped = error(response.status);
         diagnosticError = mapped;
-        if (attempt === 0 && mapped.retryable) {
+        const willRetry = attempt + 1 < totalAttempts;
+        if (mapped.retryable && willRetry) {
           previousError = mapped;
           if (response.status === 429) await pause(retryAfterMs(response), options.signal);
           continue;
@@ -111,7 +125,7 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
         ? new ProviderError('timeout', timeoutMessage, true, { cause: caught })
         : new ProviderError('network', networkMessage, true, { cause: caught });
       diagnosticError = normalized;
-      if (attempt === 0) { previousError = normalized; continue; }
+      if (attempt + 1 < totalAttempts) { previousError = normalized; continue; }
       throw normalized;
     } finally {
       void recordRuntimeDiagnostic('request', {
@@ -151,52 +165,24 @@ export type ProviderJsonOptions = {
 };
 
 /**
- * 公共曲库类 JSON GET：expoFetch + 12s 超时 + 状态码（providerErrorFromStatus）
- * 与解析/超时/网络错误归一化，无重试（LXNS 公共曲库语义）。
+ * 公共曲库类 JSON GET：走同一执行器（超时、取消、状态码映射与解析/超时/网络错误归一化），
+ * 只读曲库语义下总尝试次数固定为 1；错误文案由调用方逐字提供。
  */
-export async function fetchProviderJson(options: ProviderJsonOptions): Promise<unknown> {
-  const diagnostic = { source: 'provider-json', scenario: options.diagnosticScenario, operationId: nextRuntimeOperationId() };
-  void recordRuntimeDiagnostic('request-start', diagnostic);
-  const started = Date.now();
-  let status: number | undefined;
-  let result = 'error';
-  let diagnosticError: unknown;
-  const controller = new AbortController();
-  const onExternalAbort = () => controller.abort(options.signal?.reason);
-  if (options.signal?.aborted) controller.abort(options.signal.reason);
-  else options.signal?.addEventListener('abort', onExternalAbort, { once: true });
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const response = await expoFetch(`${options.baseUrl}${options.path}`, {
-      headers: { Accept: 'application/json' }, signal: controller.signal,
-    });
-    status = response.status;
-    if (!response.ok) throw providerErrorFromStatus(response.status);
-    const data = await response.json();
-    result = 'success';
-    return data;
-  } catch (error) {
-    diagnosticError = error;
-    if (options.signal?.aborted) result = 'cancelled';
-    if (options.signal?.aborted) throw error;
-    if (error instanceof ProviderError) throw error;
-    if (error instanceof SyntaxError) {
-      diagnosticError = new ProviderError('upstream_schema', options.invalidJsonMessage, true, { cause: error });
-      throw diagnosticError;
-    }
-    if (error instanceof Error && error.name === 'AbortError') {
-      diagnosticError = new ProviderError('timeout', options.timeoutMessage, true, { cause: error });
-      throw diagnosticError;
-    }
-    diagnosticError = new ProviderError('network', options.networkMessage, true, { cause: error });
-    throw diagnosticError;
-  } finally {
-    void recordRuntimeDiagnostic('request', {
-      ...diagnostic, result, status, attempt: 1, durationMs: Date.now() - started,
-      errorCode: result === 'cancelled' ? 'cancelled' : diagnosticError instanceof ProviderError ? diagnosticError.code : undefined,
-      error: result === 'cancelled' ? undefined : diagnosticError,
-    });
-    clearTimeout(timeout);
-    options.signal?.removeEventListener('abort', onExternalAbort);
-  }
+export function fetchProviderJson(options: ProviderJsonOptions): Promise<unknown> {
+  return requestData({
+    baseUrl: options.baseUrl,
+    path: options.path,
+    schema: z.unknown(),
+    fetcher: expoFetch as unknown as FetchLike,
+    signal: options.signal,
+    diagnosticScenario: options.diagnosticScenario,
+    label: '公共曲库',
+    totalAttempts: 1,
+    error: (status) => providerErrorFromStatus(status),
+    messages: {
+      schema: options.invalidJsonMessage,
+      timeout: options.timeoutMessage,
+      network: options.networkMessage,
+    },
+  }, (response) => response.json(), 'provider-json');
 }

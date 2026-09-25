@@ -1,13 +1,12 @@
+import { type ReactNode } from 'react';
 import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GameId } from '@/domain/game-bind-options';
 import type { BoundAccount } from '@/domain/bound-account';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
-import { OsuRatingTag } from '@/components/osu/OsuRatingTag';
-import { isOsuGameId } from '@/domain/game-mode-family';
 import { useAppTheme } from '@/theme/app-theme';
 
-/** 总览切换：仅列出已绑定游戏，展开为账号行。 */
+/** 总览切换：仅列出已绑定游戏，展开为账号行；游戏评分标签由调用方注入。 */
 export function AccountSwitchSheet({
   visible,
   accounts,
@@ -16,6 +15,7 @@ export function AccountSwitchSheet({
   onClose,
   onToggleGame,
   onSelectAccount,
+  renderRatingTag,
 }: {
   visible: boolean;
   accounts: BoundAccount[];
@@ -24,6 +24,8 @@ export function AccountSwitchSheet({
   onClose: () => void;
   onToggleGame: (id: GameId) => void;
   onSelectAccount: (account: BoundAccount) => void;
+  /** 游戏评分标签槽位（如 osu! PP 标签）：共享弹层只转发，不引用游戏组件。 */
+  renderRatingTag?: (account: BoundAccount) => ReactNode;
 }) {
   const insets = useSafeAreaInsets();
   const theme = useAppTheme();
@@ -56,11 +58,7 @@ export function AccountSwitchSheet({
           <BoundAccountGroupedList accounts={accounts} expandedGameId={expandedGameId} activeAccountId={activeAccountId}
             hydrationEnabled={visible}
             onToggleGame={onToggleGame} onSelectAccount={onSelectAccount}
-            renderRatingTag={(account) => (
-              account.providerId === 'osu' && isOsuGameId(account.gameId)
-                ? <OsuRatingTag display={account.scoreDisplay} />
-                : null
-            )}
+            renderRatingTag={renderRatingTag}
             emptyText="暂无已绑定账号，请先在设置 → 游戏管理中绑定。" />
         </ScrollView>
       </View>

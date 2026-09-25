@@ -12,7 +12,7 @@ import {
 import type { PhigrosLevel } from '@/domain/phigros';
 import type { PhigrosXingKind } from '@/domain/phigros-xing';
 import { phigrosLevelColors } from '@/domain/phigros-level-theme';
-import { loadPhigrosAvatarCatalog } from '@/domain/phigros-avatar-resolver';
+import { loadPhigrosAvatarCatalog } from '@/services/phigros-avatar-resolver';
 import { bestImageExportFilename } from '@/features/best-image/best-image-export';
 import {
   BestImageChoiceChip,

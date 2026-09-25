@@ -1,13 +1,15 @@
 /**
- * 宿主树回归基线，禁止更新哈希接受差异。
+ * 宿主树回归基线，哈希是唯一门禁；结构变化时失败信息按路径给出与基线的差异。
+ * 基线只用于诊断（`tests/host-contract-baselines/p3-host-contract-cards/*.json`），
+ * 不一致不会改变通过/失败结论，且只在 `HOST_CONTRACT_UPDATE_BASELINE=1` 时显式刷新。
  * 覆盖：5 个 ScoreCard（Tuf/MuseDash/Phigros/Phira/Chunithm）与
- * 6 个 SongRow（adofai/musedash/chunithm/phigros/phira + cover 成功与失败回退两态）。
+ * 5 个 SongRow（adofai/musedash/chunithm/phigros/phira + cover 成功与失败回退两态）。
  * 数据使用 jest 测试 fixture（tuf-screens / muse-dash-screens /
  * game-content-host-contract / phira-ui / chunithm-song-detail），不造新数据语义。
  * 哈希确定性：Animated.loop 静态 mock；useFlowingProgress 固定静态首帧；
- * cover 失败态通过 fireEvent 触发 onError（♪ 占位），expo-image mock 为 RN.Image。
+ * cover 失败态由 `triggerCoverError` 在 act 内直接调用封面 Image 的 onError（♪ 占位），
+ * expo-image mock 为 RN.Image。
  */
-import { createHash } from 'node:crypto';
 import { Animated } from 'react-native';
 import { act, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
@@ -24,6 +26,7 @@ import { PhiraSongRow } from '@/components/phira/PhiraSongRow';
 import type { TufLevel, TufPass } from '@/domain/tuf';
 import type { MuseDashAlbumsResponse, MuseDashPlayer } from '@/domain/muse-dash';
 import { fixtureCatalog, fixtureRecords } from '@/fixtures/sanitized';
+import { expectHostContract } from './host-contract-hash';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(),
@@ -164,21 +167,6 @@ const phigrosRecord = {
   difficultyConstant: 15.6,
 };
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => [key, canonicalize(item)]),
-  );
-}
-
-async function treeHash(trees: unknown[]): Promise<string> {
-  const canonical = canonicalize(trees) as unknown[];
-  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
-}
-
 type JsonNode = { type?: string; props?: Record<string, unknown>; children?: unknown };
 
 /** 在 Host Tree 中按 source.uri 定位 RN.Image 节点（expo-image mock 后 uri 即源字符串）。 */
@@ -212,7 +200,11 @@ test('tuf score card host tree contract', async () => {
     // 世界首通/首杀徽章分支
     await render(<TufScoreCard pass={tufWorldsFirstPass} />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('6261238a374ce075ae24f3ef9c4828f98fc8137c1e47812ea11a8769929b5382');
+  expectHostContract({
+    name: 'p3-host-contract-cards/tuf-score-card',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: '6261238a374ce075ae24f3ef9c4828f98fc8137c1e47812ea11a8769929b5382',
+  });
 });
 
 test('musedash score card host tree contract', async () => {
@@ -228,7 +220,11 @@ test('musedash score card host tree contract', async () => {
       elfinName: null,
     }} />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('858f490c2df89e33492da83838af89367478d1f38a89532493c159d17bd543f7');
+  expectHostContract({
+    name: 'p3-host-contract-cards/musedash-score-card',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: '858f490c2df89e33492da83838af89367478d1f38a89532493c159d17bd543f7',
+  });
 });
 
 test('phigros score card host tree contract', async () => {
@@ -240,7 +236,11 @@ test('phigros score card host tree contract', async () => {
       totalNotes={460}
     />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('c102782dbb2e00c7739b85e6568dcb24849598270e0deb17d18569ae18ff7ae7');
+  expectHostContract({
+    name: 'p3-host-contract-cards/phigros-score-card',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: 'c102782dbb2e00c7739b85e6568dcb24849598270e0deb17d18569ae18ff7ae7',
+  });
 });
 
 test('phira score card host tree contract', async () => {
@@ -249,7 +249,11 @@ test('phira score card host tree contract', async () => {
     // 未游玩（record 为 null）+ poolRks 展示
     await render(<PhiraScoreCard item={{ ...phiraBest, record: null, poolRks: 12.34 }} />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('142ed7b92554b94f63cc6ba9e598e9a6f1ea03730312ffb427b5a55f6ced0fa2');
+  expectHostContract({
+    name: 'p3-host-contract-cards/phira-score-card',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: '142ed7b92554b94f63cc6ba9e598e9a6f1ea03730312ffb427b5a55f6ced0fa2',
+  });
 });
 
 test('chunithm score card host tree contract', async () => {
@@ -296,12 +300,20 @@ test('chunithm score card host tree contract', async () => {
       worldsEndLabel: '止☆1',
     }} />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('fc6143da761bf51b85580506fc4707379398aae9f3109309d4c82e6d8b8740d1');
+  expectHostContract({
+    name: 'p3-host-contract-cards/chunithm-score-card',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: 'fc6143da761bf51b85580506fc4707379398aae9f3109309d4c82e6d8b8740d1',
+  });
 });
 
 test('tuf song row host tree contract', async () => {
   const screen = await render(<TufSongRow level={tufLevel} />);
-  expect(await treeHash([screen.toJSON()])).toBe('4176a9abce8b89face9caaf31e510c1d96ca3cb973fd8c67ffda8c9ee4add5b9');
+  expectHostContract({
+    name: 'p3-host-contract-cards/tuf-song-row',
+    tree: [screen.toJSON()],
+    expectedHash: '4176a9abce8b89face9caaf31e510c1d96ca3cb973fd8c67ffda8c9ee4add5b9',
+  });
 });
 
 test('musedash song row host tree contract (cover ok and fallback)', async () => {
@@ -315,7 +327,11 @@ test('musedash song row host tree contract (cover ok and fallback)', async () =>
   // 触发封面 onError → ♪ 占位回退
   await triggerCoverError(okTree, 'musedash.moe/covers/sample_cover');
   const fallbackTree = ok.toJSON();
-  expect(await treeHash([okTree, fallbackTree])).toBe('fb2d1882ff940198a99de1e9a39745ce35295e4a63d729be337cbd07d5afcf5c');
+  expectHostContract({
+    name: 'p3-host-contract-cards/musedash-song-row',
+    tree: [okTree, fallbackTree],
+    expectedHash: 'fb2d1882ff940198a99de1e9a39745ce35295e4a63d729be337cbd07d5afcf5c',
+  });
 });
 
 test('chunithm song row host tree contract (cover ok and fallback)', async () => {
@@ -324,7 +340,11 @@ test('chunithm song row host tree contract (cover ok and fallback)', async () =>
   // 曲目含 WORLD'S END（originId 163），封面 URL 优先 WE originId
   await triggerCoverError(okTree, 'assets2.lxns.net/chunithm/jacket/163.png');
   const fallbackTree = ok.toJSON();
-  expect(await treeHash([okTree, fallbackTree])).toBe('c020dba5eccdbd9ba0788cc523406830b8aa7ab0da67bbb0c724dc83a2c2b4e5');
+  expectHostContract({
+    name: 'p3-host-contract-cards/chunithm-song-row',
+    tree: [okTree, fallbackTree],
+    expectedHash: 'c020dba5eccdbd9ba0788cc523406830b8aa7ab0da67bbb0c724dc83a2c2b4e5',
+  });
 });
 
 test('phigros song row host tree contract (cover ok and fallback)', async () => {
@@ -344,7 +364,11 @@ test('phigros song row host tree contract (cover ok and fallback)', async () => 
   const nullBlur = await render(
     <PhigrosSongRow blurUrl={null} song={standardSong} />,
   );
-  expect(await treeHash([okTree, fallbackTree, nullBlur.toJSON()])).toBe('a22b5132682956b077e8040c3471f8b36373fa1601f599f01773f124b92a104c');
+  expectHostContract({
+    name: 'p3-host-contract-cards/phigros-song-row',
+    tree: [okTree, fallbackTree, nullBlur.toJSON()],
+    expectedHash: 'a22b5132682956b077e8040c3471f8b36373fa1601f599f01773f124b92a104c',
+  });
 });
 
 test('phira song row host tree contract (cover ok and fallback)', async () => {
@@ -354,5 +378,9 @@ test('phira song row host tree contract (cover ok and fallback)', async () => {
   const fallbackTree = ok.toJSON();
   // illustration 为空：直接 ♪ 占位
   const empty = await render(<PhiraSongRow chart={phiraChart} />);
-  expect(await treeHash([okTree, fallbackTree, empty.toJSON()])).toBe('1899b6d8ca6c407771bb21498a3787708bc0a7758cec3f26e1f7a94d6395bc3e');
+  expectHostContract({
+    name: 'p3-host-contract-cards/phira-song-row',
+    tree: [okTree, fallbackTree, empty.toJSON()],
+    expectedHash: '1899b6d8ca6c407771bb21498a3787708bc0a7758cec3f26e1f7a94d6395bc3e',
+  });
 });

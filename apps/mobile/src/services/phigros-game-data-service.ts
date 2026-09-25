@@ -1,5 +1,5 @@
 import { phigrosPayloadFromSnapshot, type PhigrosGameDataPayload } from '@/domain/game-data';
-import { resolvePhigrosAvatarUrl } from '@/domain/phigros-avatar-resolver';
+import { resolvePhigrosAvatarUrl } from '@/services/phigros-avatar-resolver';
 import { formatPhigrosDataMoney } from '@/domain/phigros';
 import type { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import type { PhigrosScoreProvider } from '@/providers/phigros-score-provider';

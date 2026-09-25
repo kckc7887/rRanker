@@ -1,11 +1,11 @@
 /**
- * Phigros 谱面确认资源定位：
- * 按 current.json → catalog/manifest → immutable asset URL 动态定位任意歌曲的
- * 谱面、OGG 音乐与曲绘，与发布台对象存储的资产约定保持一致。
+ * Phigros 谱面确认资源定位（纯领域）：
+ * 按 current.json → catalog/manifest → immutable asset URL 解析任意歌曲的
+ * 谱面、OGG 音乐与曲绘的路径、URL 与完整性字段，与发布台对象存储的资产约定保持一致。
+ * 发布读取、字节下载、校验与取消编排在 services/phigros-chart-preview-resources。
  */
 
 import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
-import { phigrosResources, PhigrosResourceService, verifyPhigrosResource } from '@/services/phigros-resources';
 
 export const PHIGROS_CHART_PREVIEW_DIFFICULTIES = Object.freeze(['EZ', 'HD', 'IN', 'AT'] as const);
 
@@ -60,6 +60,12 @@ type CurrentPointer = {
 type CatalogDocument = { songs?: unknown };
 type ManifestDocument = { assets?: unknown };
 
+/** 资源字节读取端口形状；默认实现由服务层的资源端口提供。 */
+export type PhigrosChartPreviewResourceRead = (
+  asset: PhigrosChartPreviewAsset,
+  index: number,
+) => Promise<Uint8Array>;
+
 function assertObject(value: unknown, label: string): Record<string, unknown> {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error(`${label} 不是有效对象`);
@@ -72,7 +78,7 @@ function requiredString(value: unknown, label: string): string {
   return value;
 }
 
-function escapeRegExp(value: string): string {
+export function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
@@ -80,6 +86,22 @@ export function phigrosChartPreviewLevelLabel(levelIndex: number): string {
   const label = PHIGROS_CHART_PREVIEW_DIFFICULTIES[levelIndex];
   if (label === undefined) throw new Error(`不支持的难度下标 ${levelIndex}`);
   return label;
+}
+
+/** 清单上的纯计算：列出目标歌曲与难度的全部编号变体，重复或无效编号直接拒绝。 */
+export function resolvePhigrosChartPreviewVariants(
+  assets: readonly { path: string }[],
+  target: Pick<PhigrosChartPreviewTarget, 'songId' | 'difficulty'>,
+): number[] {
+  const pattern = new RegExp(`^charts/${escapeRegExp(target.songId)}\\.(\\d+)/${escapeRegExp(target.difficulty)}\\.json$`);
+  const variants = assets.flatMap((asset) => {
+    const match = pattern.exec(asset.path);
+    return match ? [Number(match[1])] : [];
+  });
+  if (variants.some((value) => !Number.isSafeInteger(value)) || new Set(variants).size !== variants.length) {
+    throw new Error('谱面编号重复或无效');
+  }
+  return variants.sort((a, b) => a - b);
 }
 
 export function resolvePhigrosChartPreviewAssetBundle({
@@ -178,51 +200,3 @@ export function resolvePhigrosChartPreviewAssetBundle({
   };
 }
 
-/** 读取对象存储当前发布版本，定位目标歌曲的谱面、音乐与曲绘资源。 */
-export async function loadPhigrosChartPreviewBundle(
-  target: PhigrosChartPreviewTarget,
-  signal: AbortSignal,
-  ossBase = PHIGROS_OSS_BASE,
-): Promise<PhigrosChartPreviewBundle> {
-  const resources = ossBase === PHIGROS_OSS_BASE ? phigrosResources : new PhigrosResourceService(ossBase);
-  return resources.withRelease(async (release) => resolvePhigrosChartPreviewAssetBundle({
-    ...release, target, ossBase,
-  }), signal);
-}
-
-export async function loadPhigrosChartPreviewVariants(
-  target: PhigrosChartPreviewTarget,
-  signal: AbortSignal,
-): Promise<number[]> {
-  return phigrosResources.withRelease(async (release) => {
-    const pattern = new RegExp(`^charts/${escapeRegExp(target.songId)}\\.(\\d+)/${escapeRegExp(target.difficulty)}\\.json$`);
-    const variants = release.manifest.assets.flatMap((asset) => {
-      const match = pattern.exec(asset.path);
-      return match ? [Number(match[1])] : [];
-    });
-    if (variants.some((value) => !Number.isSafeInteger(value)) || new Set(variants).size !== variants.length) {
-      throw new Error('谱面编号重复或无效');
-    }
-    return variants.sort((a, b) => a - b);
-  }, signal);
-}
-
-export async function loadPhigrosChartPreviewResources(
-  target: PhigrosChartPreviewTarget,
-  signal: AbortSignal,
-  read: (asset: PhigrosChartPreviewAsset, index: number) => Promise<Uint8Array> =
-    (asset, index) => phigrosResources.bytes(asset.url, signal, 60_000, (['chart', 'music', 'illustration'] as const)[index] ?? 'resource'),
-) {
-  return phigrosResources.withRelease(async (release) => {
-    const bundle = resolvePhigrosChartPreviewAssetBundle({ ...release, target });
-    const bytes: Uint8Array[] = [];
-    for (const [index, asset] of [bundle.chart, bundle.music, bundle.illustration].entries()) {
-      asset.url = phigrosResources.assetUrl(release, phigrosResources.asset(release, asset.path));
-      const data = await read(asset, index);
-      await verifyPhigrosResource(data, asset);
-      if (signal.aborted) throw signal.reason;
-      bytes.push(data);
-    }
-    return { bundle, chart: bytes[0]!, music: bytes[1]!, illustration: bytes[2]! };
-  }, signal);
-}

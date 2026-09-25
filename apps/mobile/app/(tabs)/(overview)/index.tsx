@@ -9,7 +9,7 @@ import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { DxRatingCard } from '@/components/DxRatingCard';
-import { OSU_PP_RATING_THEME } from '@/components/osu/OsuRatingTag';
+import { OSU_PP_RATING_THEME, OsuRatingTag } from '@/components/osu/OsuRatingTag';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { PlateProgressCard } from '@/components/PlateProgressCard';
 import { QueryStateView } from '@/components/QueryStateView';
@@ -55,6 +55,7 @@ import { useAppTheme } from '@/theme/app-theme';
 import { formatTufOverviewRatingMeta, formatTufRankBadge, TUF_RATING_THEME } from '@/components/adofai/TufOverviewDetails';
 import { formatMuseDashOverviewRatingMeta, MUSE_DASH_RATING_THEME } from '@/components/musedash/MuseDashOverviewDetails';
 import { formatOsuPlayTime } from '@/domain/osu';
+import { isOsuGameId } from '@/domain/game-mode-family';
 
 export default function OverviewTabScreen() {
   return <CachedTabScreen><OverviewScreen /></CachedTabScreen>;
@@ -401,6 +402,11 @@ function PublicOverviewScreen() {
         onClose={() => setPickerVisible(false)}
         onToggleGame={toggleExpandedGameId}
         onSelectAccount={onSelectAccount}
+        renderRatingTag={(account) => (
+          account.providerId === 'osu' && isOsuGameId(account.gameId)
+            ? <OsuRatingTag display={account.scoreDisplay} />
+            : null
+        )}
       />
 
       <UploadDataSheet

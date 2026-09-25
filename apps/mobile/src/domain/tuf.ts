@@ -399,14 +399,6 @@ export function tufMediaImageCandidates(
   return candidates;
 }
 
-export type TufSongExtension = { level: TufLevel; upstreamSongId: number | null };
-export type TufChartExtension = { level: TufLevel; upstreamSongId: number | null };
-export type TufScoreExtension = {
-  pass: TufPass; scoreV2: number; accuracy: number; speed: number;
-  judgements: TufJudgements | null; isWorldsFirst: boolean | null;
-  isWorldsFirstPP: boolean | null; isDuplicate: boolean; impact: number | null;
-};
-
 /**
  * TUF 缓存快照：resource_snapshots 表内独立命名空间 `tuf:`，
  * 每个游戏保留自己的缓存结构与 schema 版本，不复用其他游戏快照。

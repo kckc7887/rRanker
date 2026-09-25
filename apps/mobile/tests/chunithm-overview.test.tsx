@@ -34,9 +34,6 @@ const mockBundle = {
     ratingLabel: 'RATING',
     ratingDigits: 2,
     capabilities: {
-      hasCatalog: true,
-      hasRecords: true,
-      hasBestList: true,
       hasTools: true,
     },
   },

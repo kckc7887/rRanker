@@ -9,6 +9,7 @@ import {
   normalizeRizlineChartPreviewSettings,
 } from '../configuration';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
+import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-preview-bridge';
 import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
 import { prepareOfficialChart } from './chart-prepare';
 import { PreviewSession, decodeAudio } from './playback';
@@ -174,7 +175,7 @@ function setFullscreen(active: boolean): void {
   session?.draw();
   post('fullscreen', { active });
 }
-function persistSettings(): void { post('settings', { ...settings }); }
+function persistSettings(): void { post('settings', { settings: { ...settings } }); }
 function changeSettings(partial: Partial<RizlineChartPreviewSettings>): void {
   settings = normalizeRizlineChartPreviewSettings({ ...settings, ...partial });
   session?.setSettings(settings);
@@ -242,11 +243,11 @@ async function runTransport(action: (current: PreviewSession) => void | Promise<
 function togglePlay(): void {
   void runTransport((current) => current.playing ? current.pause() : current.playFrom(current.ended ? 0 : current.currentTime));
 }
+/** 暂停（手动按钮或宿主生命周期）：只停播与收起浮层，不改变全屏状态。 */
 function pauseForLifecycle(): void {
   dragging = false;
   closeActiveWheelPopup();
   if (session) { session.pause(); status('已暂停'); syncTransport(); }
-  if (fullscreen) setFullscreen(false);
 }
 function dispose(): void {
   if (disposed) return;
@@ -335,12 +336,12 @@ window.addEventListener('keydown', (event) => {
   }
 });
 function receiveMessage(event: MessageEvent): void {
-  let data: unknown = event.data;
-  if (typeof data === 'string') { try { data = JSON.parse(data); } catch { return; } }
-  if (!data || typeof data !== 'object') return;
-  const type = (data as { type?: unknown }).type;
-  if (type === 'stop') pauseForLifecycle();
-  if (type === 'exit-fullscreen') setFullscreen(false);
+  // 生命周期合同由公共层派生：暂停停播保全屏，退出全屏与释放是显式命令。
+  applyChartPreviewHostCommand(event.data, {
+    pause: pauseForLifecycle,
+    exitFullscreen: () => setFullscreen(false),
+    dispose,
+  });
 }
 window.addEventListener('message', receiveMessage);
 document.addEventListener('message', (event) => receiveMessage(event as MessageEvent));

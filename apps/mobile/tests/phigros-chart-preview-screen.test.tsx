@@ -101,12 +101,15 @@ jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
   disposeChartPreviewSessionDirectory: jest.fn(),
 }));
 
-jest.mock('@/domain/phigros-chart-preview', () => ({
+jest.mock('@/services/phigros-chart-preview-resources', () => ({
   loadPhigrosChartPreviewVariants: async () => [0],
   loadPhigrosChartPreviewResources: async (...args: unknown[]) => ({
     bundle: await mockLoadPhigrosBundle(args[0], args[1]),
     chart: new Uint8Array([123, 125]), music: new Uint8Array([1]), illustration: new Uint8Array([2]),
   }),
+}));
+
+jest.mock('@/domain/phigros-chart-preview', () => ({
   phigrosChartPreviewLevelLabel: () => 'AT',
 }));
 

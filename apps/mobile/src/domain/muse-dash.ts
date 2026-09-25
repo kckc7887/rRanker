@@ -7,7 +7,7 @@ export type MuseDashAchievementFilter = 'all' | 'fc' | 'ap';
 
 /**
  * Muse Dash 社区查分（https://api.musedash.moe）上游契约。
- * 每个字段保持上游原始语义，不与其他游戏合并；转换统一由 GameContentAdapter 完成。
+ * 每个字段保持上游原始语义，不与其他游戏合并；展示转换由本游戏适配器完成。
  */
 
 /** /albums 中单曲的多语言名称/作者；部分旧曲可能缺失。 */
@@ -116,35 +116,7 @@ export type MuseDashPlay = z.infer<typeof MuseDashPlaySchema>;
 export type MuseDashPlayer = z.infer<typeof MuseDashPlayerSchema>;
 export type MuseDashPlayDetail = z.infer<typeof MuseDashPlayDetailSchema>;
 
-/** 适配器扩展：保留上游原始字段，供展示层与详情页按需读取。 */
-export type MuseDashSongExtension = {
-  song: MuseDashSong;
-  albumTitle: string;
-  albumTag?: string;
-  bpm?: string;
-  cover?: string;
-};
-export type MuseDashChartExtension = {
-  song: MuseDashSong;
-  albumTitle: string;
-  difficultyIndex: number;
-  /** 官方等级字符串；"0" 视为不存在该难度。 */
-  officialLevel: string;
-  /** 社区定数（/diffdiff relative），无定数时为 undefined。 */
-  constant?: number;
-};
-export type MuseDashScoreExtension = {
-  play: MuseDashPlay;
-  acc: number;
-  currentRank: number;
-  lastRank: number;
-  sum: number;
-  platform: string;
-  characterName: string | null;
-  elfinName: string | null;
-};
-
-/** normalizeScore 的原始输入：成绩 + 曲库 join 结果 + 角色/精灵名称（可能缺失）+ 社区定数。 */
+/** 成绩展示输入：成绩 + 曲库 join 结果 + 角色/精灵名称（可能缺失）+ 社区定数。 */
 export type MuseDashRawScore = {
   play: MuseDashPlay;
   song: MuseDashSong | null;

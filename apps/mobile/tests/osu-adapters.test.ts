@@ -288,6 +288,9 @@ describe('osu! 数据规范化', () => {
 });
 
 describe('osu! 推荐星级 recommendedOsuStar', () => {
+  // 公式口径取自本仓库 `src/domain/osu.ts` 的 `recommendedOsuStar` 既有实现
+  // （实现注释同样只给出分段公式）。仓库内没有该公式的上游文档链接或版本号可引用，
+  // 因此这里只锁定仓库内实现口径，不标注外部版本。
   it('standard/catch/mania 同公式 pp^0.4×0.195', () => {
     expect(recommendedOsuStar('osu-standard', 5000)).toBeCloseTo(5000 ** 0.4 * 0.195, 10);
     expect(recommendedOsuStar('osu-standard', 5000)).toBeCloseTo(5.8833, 3);

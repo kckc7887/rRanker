@@ -127,4 +127,43 @@ describe('ChunithmPersonalService', () => {
     await new Promise((resolve) => setTimeout(resolve, 10));
     expect(onFreshCalled).toBe(false);
   });
+
+  it('reads the local snapshot as a marked cache read that keeps its provider', async () => {
+    const store = new Map<string, unknown>([
+      ['chunithm-score:acct-read', makeSnapshot({ player: { name: '本地快照' } as never })],
+    ]);
+    const service = new ChunithmPersonalService(
+      makeProvider(async () => makeSnapshot()),
+      makeRepository(store),
+      'acct-read',
+    );
+
+    const cached = await service.loadCached();
+
+    expect(cached?.source).toEqual({ ...fixtureSource, isStale: true });
+    expect(cached?.player).toMatchObject({ name: '本地快照' });
+  });
+
+  it('keeps a cached fallback out of onFresh and reports it as a fallback', async () => {
+    const store = new Map<string, unknown>([
+      ['chunithm-score:acct-fallback', makeSnapshot({ player: { name: '缓存' } as never })],
+    ]);
+    const service = new ChunithmPersonalService(
+      makeProvider(async () => { throw new Error('network'); }),
+      makeRepository(store),
+      'acct-fallback',
+    );
+    const onFresh = vi.fn();
+    const onFallback = vi.fn();
+
+    const result = await service.loadCacheFirst(onFresh, new AbortController().signal, onFallback);
+
+    expect(result.source.isStale).toBe(true);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(onFresh).not.toHaveBeenCalled();
+    expect(onFallback).toHaveBeenCalledWith(
+      expect.objectContaining({ source: expect.objectContaining({ isStale: true }) }),
+      { code: 'unknown', target: null, diagnostic: 'network', retryable: true },
+    );
+  });
 });

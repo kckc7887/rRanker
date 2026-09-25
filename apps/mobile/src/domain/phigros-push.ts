@@ -3,13 +3,13 @@ import {
   collectScoredEntries,
   isAcc100Percent,
   PHIGROS_MAX_SCORE,
-  phigrosEntryToScoreRecord,
   roundRks,
+  toPhigrosScoreRecord,
   type PhigrosDifficultyTable,
   type PhigrosLevel,
   type PhigrosScoreEntry,
+  type PhigrosScoreRecord,
 } from '@/domain/phigros';
-import type { ScoreRecord } from '@/domain/models';
 
 export type PushExactTarget = {
   /** 游戏内两位四舍五入显示分 */
@@ -33,8 +33,8 @@ export type PushRecommendation = {
   /** 在同一组 Best27/Phi3 里，该曲达到目标 Acc 后的边际 RKS 增益。 */
   rksGain: number;
   maxPossibleGain: number;
-  /** 用于卡片展示的成绩记录（当前成绩；未打谱面 score=0） */
-  record: ScoreRecord;
+  /** 用于卡片展示的成绩记录（当前成绩；未打谱面 score=0），保持 Phigros 真实语义。 */
+  record: PhigrosScoreRecord;
 };
 
 export type PushRecommendationsResult = {
@@ -710,7 +710,7 @@ function presentMember(member: PushTarget, context: SimRecord[]): PushRecommenda
       context, member.chart.songId, member.chart.level, member.chart.difficulty, targetAcc,
     ),
     maxPossibleGain: roundRks(member.chart.maxGainRaw),
-    record: phigrosEntryToScoreRecord(member.chart.scoredEntry),
+    record: toPhigrosScoreRecord(member.chart.scoredEntry),
   };
 }
 

@@ -1,5 +1,11 @@
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 
+/** 公共请求执行器会合并默认头（Accept / Cache-Control），这里按 HTTP 语义大小写无关地断言。 */
+function requestInit(request: ReturnType<typeof vi.fn>, index = -1) {
+  const call = request.mock.calls.at(index)!;
+  return { url: String(call[0]), init: call[1] as RequestInit, headers: new Headers((call[1] as RequestInit)?.headers) };
+}
+
 describe('DivingFishProvider native cookie session', () => {
   afterEach(() => vi.unstubAllGlobals());
 
@@ -13,10 +19,12 @@ describe('DivingFishProvider native cookie session', () => {
     const result = await new DivingFishProvider({ mode: 'cookie-jar', persistable: false }).getChartStats();
 
     expect(result).toEqual({ ok: true });
-    expect(request).toHaveBeenCalledWith(expect.stringContaining('/chart_stats'), expect.objectContaining({
-      credentials: 'include',
-      headers: { Accept: 'application/json' },
-    }));
+    expect(request).toHaveBeenCalledTimes(1);
+    const sent = requestInit(request);
+    expect(sent.url).toContain('/chart_stats');
+    expect(sent.init.credentials).toBe('include');
+    expect(sent.headers.get('Accept')).toBe('application/json');
+    expect(sent.headers.get('Cookie')).toBeNull();
   });
 
   it('isolates an extracted JWT from stale native cookies', async () => {
@@ -28,10 +36,11 @@ describe('DivingFishProvider native cookie session', () => {
 
     await new DivingFishProvider({ mode: 'jwt', value: 'fresh-jwt', persistable: true }).getChartStats();
 
-    expect(request).toHaveBeenCalledWith(expect.stringContaining('/chart_stats'), expect.objectContaining({
-      credentials: 'omit',
-      headers: { Accept: 'application/json', Cookie: 'jwt_token=fresh-jwt' },
-    }));
+    const sent = requestInit(request);
+    expect(sent.url).toContain('/chart_stats');
+    expect(sent.init.credentials).toBe('omit');
+    expect(sent.headers.get('Accept')).toBe('application/json');
+    expect(sent.headers.get('Cookie')).toBe('jwt_token=fresh-jwt');
   });
 
   it('includes the failing endpoint in provider errors', async () => {
@@ -63,9 +72,10 @@ describe('DivingFishProvider native cookie session', () => {
     });
     expect(records).toEqual([]);
     expect(request).toHaveBeenCalledTimes(1);
-    expect(request).toHaveBeenCalledWith(expect.stringContaining('/player/records'), expect.objectContaining({
-      headers: { Accept: 'application/json', 'Import-Token': 'fake-token' },
-    }));
+    const sent = requestInit(request);
+    expect(sent.url).toContain('/player/records');
+    expect(sent.headers.get('Accept')).toBe('application/json');
+    expect(sent.headers.get('Import-Token')).toBe('fake-token');
   });
 
   it('reads the player actual DXScore from the verified records field', async () => {

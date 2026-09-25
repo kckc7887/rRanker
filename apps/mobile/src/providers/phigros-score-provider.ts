@@ -16,10 +16,11 @@ import {
   parseSummary,
   decodeSaveZip,
   computeB30,
-  gameRecordToScoreRecords,
+  gameRecordToPhigrosScoreRecords,
   loadDifficultyTable,
-  phigrosEntryToScoreRecord,
+  phigrosSharedScoreRecord,
   roundRks,
+  toPhigrosScoreRecord,
   type PhigrosB30,
   type PhigrosDifficultyTable,
   type PhigrosScoreEntry,
@@ -201,9 +202,10 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return loaded;
   }
 
+  /** Phigros 真实成绩记录 → 共享成绩卡视图（共享 `ScoreRecord` 的字段在领域边界借用）。 */
   async getRecords(signal?: AbortSignal): Promise<ScoreRecord[]> {
     const { gameRecord, diffTable } = await this.loadSave(signal);
-    return gameRecordToScoreRecords(gameRecord, diffTable);
+    return gameRecordToPhigrosScoreRecords(gameRecord, diffTable).map(phigrosSharedScoreRecord);
   }
 
   async getUserProfile(signal?: AbortSignal): Promise<PhigrosUserProfile | null> {
@@ -251,9 +253,12 @@ export class PhigrosScoreProvider implements ScoreProvider {
   /** Best30 分区：Phi3 + Best27，与 RKS 计算口径一致 */
   async getBestSections(signal?: AbortSignal): Promise<{ id: string; title: string; records: ScoreRecord[] }[]> {
     const b30 = await this.getB30(signal);
+    const toShared = (entries: PhigrosScoreEntry[]) => entries
+      .map(toPhigrosScoreRecord)
+      .map(phigrosSharedScoreRecord);
     return [
-      { id: 'phi3', title: 'Phi3', records: b30.phi3.map(phigrosEntryToScoreRecord) },
-      { id: 'b27', title: 'Best27', records: b30.best27.map(phigrosEntryToScoreRecord) },
+      { id: 'phi3', title: 'Phi3', records: toShared(b30.phi3) },
+      { id: 'b27', title: 'Best27', records: toShared(b30.best27) },
     ];
   }
 

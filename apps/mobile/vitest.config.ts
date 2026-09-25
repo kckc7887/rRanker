@@ -8,6 +8,7 @@ export default defineConfig({
       'expo/fetch': resolve(process.cwd(), 'tests/expo-fetch-shim.ts'),
       'expo-secure-store': resolve(process.cwd(), 'tests/expo-secure-store-shim.ts'),
       'expo-sqlite/kv-store': resolve(process.cwd(), 'tests/expo-sqlite-kv-store-shim.ts'),
+      'expo-sqlite': resolve(process.cwd(), 'tests/expo-sqlite-shim.ts'),
       'expo-crypto': resolve(process.cwd(), 'tests/expo-crypto-shim.ts'),
       'expo-constants': resolve(process.cwd(), 'tests/expo-constants-shim.ts'),
     },

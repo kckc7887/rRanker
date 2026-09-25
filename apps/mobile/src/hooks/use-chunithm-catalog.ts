@@ -16,6 +16,7 @@ import {
 } from '@/hooks/use-aliased-catalog';
 import { useSession } from '@/state/session-store';
 import { queryClient } from '@/state/query-client';
+import { publishEntityValue } from '@/services/game-data-query';
 import { invalidateChunithmCatalog } from '@/services/infinite-query-refresh';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 
@@ -48,7 +49,7 @@ function chunithmCatalogOptions(
       aliasMissing: '（别名暂不可用）',
     }),
     onFresh: (fresh) => {
-      queryClient.setQueryData(CHUNITHM_CATALOG_QUERY_KEY, fresh);
+      publishEntityValue(queryClient, CHUNITHM_CATALOG_QUERY_KEY, fresh);
     },
   };
 }
