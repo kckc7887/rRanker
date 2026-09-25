@@ -248,7 +248,7 @@ Phigros 预览页在资源准备前读取所选难度的编号谱面清单；多
 ## 状态、持久化与资源生命周期
 
 - `state/session-store.ts` 保存当前游戏、账号、Provider、会话映射和运行时 Provider 实例；激活字段由同一转换路径生成。`services/session-providers.ts` 的 `createSessionProviders` 接收账号、会话和令牌轮换回调，不反向读取 Store；持久凭据由 `storage/secure-session-store.ts` 管理，轮换继续广播到共享凭据账号。会话索引损坏或无法识别时保留原文与副本并抛类型化错误，不自动删除或覆盖；旧版迁移源解析失败时跳过。osu! 进程内轮换记录和祖先关系共用 64 项上限，进行中的刷新保留在同一集合里；解除最后一个 osu! 账号或清空会话时调用 `clearOsuRotationCache`。窗口外的旧刷新令牌不能覆盖当前会话。
-- 落雪轮换按凭据世代提交：`applyLxnsTokenRotation(accountId, { previous, next })` 以请求开始时消费掉的会话解析应更新的凭据（`lxnsRotationMayReplace` / `lxnsRotationAncestors`），只更新仍关联该凭据的账号，并调用 `SecureSessionStore.updateCredentialSession` 写盘；返回 `applied` / `pending-persist` / `stale` / `removed`。发起账号被解绑但共享凭据仍被其它账号引用时继续提交，同 ID 重绑或重新授权后的迟到结果被拒绝。落盘失败保留内存会话并标记待持久化，`retryPendingLxnsRotationWrites()` 在下次提交时补交，不重新消费旧 refresh token。
+- OAuth 轮换按凭据世代提交：落雪用 `applyLxnsTokenRotation(accountId, { previous, next })`、osu! 用 `applyOsuTokenRotation(accountId, next, expected)`，两者都先按请求开始时消费掉的会话解析应更新的凭据（`lxnsRotationMayReplace` / `osuRotationMayReplace` 与其前代集合），只更新仍关联该凭据的账号，再调用 `SecureSessionStore.updateCredentialSession` 写盘，返回 `applied` / `pending-persist` / `stale` / `removed`。发起账号被解绑但共享凭据仍被其它账号引用时继续提交（osu! 多模式共享凭据同样受益），同 ID 重绑或重新授权后的迟到结果被拒绝，已解绑账号的孤立会话项不再写回。落盘失败保留内存会话并登记补写：按 5/30/120 秒有界退避最多自动补写 3 次，前台恢复时与下一次轮换提交时也会触发；同一时刻只跑一次补写，凭据已失效或账号已解绑的挂起项直接丢弃，剩余情况用 `pendingRotationWritesSnapshot()` 与运行时诊断（`credentialWrite`）保持可观察。
 - `state/query-client.ts` 提供进程内唯一 QueryClient；账号最终数据使用 `services/game-data-query.ts` 的版本化键。
 - SQLite 的进程内连接由 `storage/rranker-database.ts` 集中管理；`runDatabaseWrite` 串行化 schema 初始化、快照和用户曲库写入。`SqliteSnapshotRepository.updateResource` 把读取、转换与写入放进同一队列任务（队列内只用直接数据库调用），同一资源的并发合并按提交顺序串行。批量清理以 500 个绑定参数分批，在同连接事务内执行；文本统计使用 UTF-8 字节，数据库分配页单列。表结构和个人数据键不变。
 - 缓存读取优先走本地首屏、后台刷新和 AbortSignal 取消链路。共享任务按消费者计数取消；清缓存先提升游戏写入代次并取消/移除 Query，解绑只失效所属账号。后台刷新及实际 SQL 提交前复核游戏/账号代次，旧结果不能重新填回缓存。短暂 `inactive` 与普通后台不会被当作内存压力；只有内存警告触发非活动 Query 和图片内存释放。`CachedTabScreen` 在这些状态下保持已挂载画面，只通过 active context 暂停重工作。
@@ -259,7 +259,10 @@ Phigros 预览页在资源准备前读取所选难度的编号谱面清单；多
 `useManagedAccountOperations` 复用公共绑定/删除执行器；`services/account-management.ts` 提供档案、缓存和账号创建策略。
 删除前先失效并取消账号查询，准备失败中止后续删除，所有退出路径均解除忙碌状态。
 `removeBoundPlayerAccount` 把关键解绑提交（账号或凭据删除）与分项清理分开：关键提交失败返回
-`blocked` 并保留账号与凭据，界面仍是重试入口；成绩缓存、派生缓存与个人数据清理失败继续使用原有汇总提示。
+`blocked` 并保留账号与凭据，界面仍是重试入口。提交点是 `SecureSessionStore.removeAccount` 的凭据索引写盘：
+写盘成功即返回 `{ committed: true, cleanupFailures }`，Rizline 密码引用删除归入提交后的附属清理，
+失败只记入 `cleanupFailures` 并按已解绑处理；成绩缓存、派生缓存、个人数据与活动账号持久化失败同样只汇总提示。
+因此磁盘与界面在“账号是否解绑”上始终一致：只有提交前失败才会保留界面账号。
 恢复失败时同一页面提供重试恢复与清除登录数据（二次确认）入口，清除后重新执行恢复流程。
 
 总览的 `useOverviewSync` 处理当前账号刷新与最终新鲜度判断，`useOverviewUpload` 处理上传选项、
@@ -587,15 +590,21 @@ GitHub 把跳过的必填检查报告为成功，合并仍由 PR 检查放行。
 拿不到比较基准、基准提交取不到或比较失败时按有功能改动处理；
 判定 artifact 上传失败不影响该判定，轻检查任务自身出错时 `quality` 任务仍然执行完整检查。
 `--no-renames` 让改名同时列出新旧路径，避免功能文件被改名藏进文档路径。
-与功能判定无关的 `light-check` 任务并行运行且不依赖它的结论：只读仓库文件，不安装 npm 依赖、
-不跑构建，因此改动被归类为 CI-only 或纯文档时仍然执行。入口为 `.github/scripts/check-light.mjs`，
-检查 workflow 与 action 的 YAML 结构、`.sh` 与 workflow 内联 bash 的 `bash -n` 语法、
+与功能判定无关的 `light-check` 任务并行运行且不依赖它的结论：只读仓库文件，不跑构建，
+因此改动被归类为 CI-only 或纯文档时仍然执行。入口为 `.github/scripts/check-light.mjs`，
+用 `.github/scripts/package.json` 固定的真实 YAML 解析器（`yaml` 2.9.0，零传递依赖，
+该任务只在这一棵子目录执行 `npm ci`，不安装 `apps/mobile` 依赖树）解析 workflow 与 action：
+未闭合 flow sequence、未闭合引号、重复键都会失败，`run:` 按 YAML 语义解码后的标量送 `bash -n`
+（双引号与 `>` 折叠块不再被按原始换行放过）；随后检查 `.sh` 与内联 bash 的 `bash -n` 语法、
 `.github` 与 `apps/mobile/scripts` 下 `.mjs`/`.cjs` 的 `node --check` 语法，
 并运行分类器独立自检 `.github/actions/changed-scope/self-test.mjs`；`--self-test` 用故意破坏的样例
 证明每类检查都会失败。
 `quality` 任务在 `apps/mobile` 执行 `npm ci`、lint、typecheck、全部测试、架构检查、生成物检查和生产依赖审计，
-不构建任何平台产物。`npm run audit:prod` 分执行、解析校验与政策三层：命令异常退出、输出为空、
-报告缺字段或与条目数不自洽、出现未知严重级别、基线记录的分类值/包名/版本与锁文件不符都显式失败，
+不构建任何平台产物。`npm run audit:prod` 分执行、解析校验、完整性与政策四层
+（退出码 0 通过 / 1 政策失败 / 2 执行失败 / 3 报告不合法 / 4 报告不足以判断）：
+命令异常退出、输出为空、报告缺字段或与条目数不自洽、出现未知严重级别都显式失败；
+包级 critical 无论能否解析出公告编号都失败；`via` 为空、引用不存在的依赖、成环而无可解析根因
+按“报告不足以判断”失败；基线记录的分类值/包名/版本与锁文件不符同样失败，
 无法识别为 GHSA 的公告单独列出；接受记录带包名、版本、引入路径、理由与复核条件。
 两个构建工作流用 `workflow_run` 订阅该工作流的完成事件
 （`workflows: ["Quality"]`、`types: [completed]`）。各自的 `changed-scope` 任务在 `workflow_run`
