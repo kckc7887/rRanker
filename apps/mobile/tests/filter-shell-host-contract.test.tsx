@@ -1,4 +1,3 @@
-import { createHash } from 'node:crypto';
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { MaimaiFilterBar } from '@/components/MaimaiFilterBar';
@@ -7,6 +6,7 @@ import { ChunithmFilterBar } from '@/components/chunithm/ChunithmFilterBar';
 import { MuseDashCatalogFilterBar, MuseDashRecordsFilterBar } from '@/components/musedash/MuseDashFilterBar';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { TufCatalogFilterBar, TufRandomFilterBar, TufRecordsFilterBar } from '@/components/adofai/TufFilterBar';
+import { expectHostContract } from './host-contract-hash';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
@@ -179,16 +179,6 @@ const arcadeProps = {
   onReset: noop,
 };
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => [key, canonicalize(item)]),
-  );
-}
-
 test('exports the stable filter bar host tree contract', async () => {
   const screens = [
     await render(<MaimaiFilterBar {...maimaiProps} collapsed={false} />),
@@ -211,10 +201,12 @@ test('exports the stable filter bar host tree contract', async () => {
     await render(<ArcadeFilterBar {...arcadeProps} collapsed />),
   ];
   const trees = screens.map((screen) => screen.toJSON());
-  const canonicalTrees = canonicalize(trees) as unknown[];
-  const hash = createHash('sha256').update(JSON.stringify(canonicalTrees)).digest('hex');
   expect(trees).toHaveLength(18);
   // 基线包含公共双端 Range Selector：
   // 其余 FilterShell 结构继续受同一合同保护。
-  expect(hash).toBe('f69d9201cf74d143e0045b9dcd978814630b745aa05b8bd53616c42f91177ebc');
+  expectHostContract({
+    name: 'filter-shell-host-contract/filter-bars',
+    tree: trees,
+    expectedHash: 'f69d9201cf74d143e0045b9dcd978814630b745aa05b8bd53616c42f91177ebc',
+  });
 });

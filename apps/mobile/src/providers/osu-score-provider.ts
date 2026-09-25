@@ -16,6 +16,7 @@ import {
   type OsuUserResponseRaw,
 } from '@/domain/osu';
 import { ProviderError, providerErrorFromStatus, type ProviderStatusTexts } from './errors';
+import { requestJson } from './http-json';
 import { OSU_API_ROOT } from './osu-config';
 import {
   osuAccessTokenExpired,
@@ -40,12 +41,12 @@ export type OsuTokenRotationHandler = (
 ) => void | Promise<unknown>;
 
 /**
- * osu! 官方 API Provider。所有端点要求 Bearer token；
- * http-json 公共请求器无 Authorization 头注入能力、lxns-oauth-request 为落雪
- * envelope 专用（结构性差异保留），此处自建最小 Bearer 骨架：
+ * osu! 官方 API Provider。所有端点要求 Bearer token，请求统一走 http-json 公共执行器：
+ * 鉴权头经 init.headers 注入，超时、取消、结构错误与网络错误归一化都由公共执行器负责。
+ * 协议差异保留在协议层：
+ * - x-api-version 与 osu! 状态码文案（OSU_STATUS_TEXTS）；
  * - 互斥刷新：同构 LxnsOAuthRequestCore.ensureFreshAccessToken，轮换走公共 rotateOsuTokens；
- * - 状态码 → ProviderError：走 errors.ts 的 providerErrorFromStatus 公共分支；
- * - 超时 12s、Zod 校验失败归一化为 upstream_schema。
+ * - 只读端点固定总尝试次数 1，不自动重试。
  */
 export class OsuScoreProvider {
   private session: OsuOAuthSession;
@@ -78,58 +79,34 @@ export class OsuScoreProvider {
     return this.session.accessToken;
   }
 
-  private async withAuthorizedResponse<T>(
-    path: string,
-    accept: string,
-    signal: AbortSignal | undefined,
-    consume: (response: Response) => Promise<T>,
-    timeoutMs: number | null,
-  ): Promise<T> {
+  private async request<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
     const accessToken = await this.ensureFreshAccessToken();
     if (signal?.aborted) throw signal.reason;
-    const controller = new AbortController();
-    const onExternalAbort = () => controller.abort(signal?.reason);
-    signal?.addEventListener('abort', onExternalAbort, { once: true });
-    const timeout = timeoutMs === null ? null : setTimeout(() => controller.abort(), timeoutMs);
-    try {
-      const response = await expoFetch(`${OSU_API_ROOT}${path}`, {
+    return requestJson({
+      baseUrl: OSU_API_ROOT,
+      path,
+      schema,
+      fetcher: expoFetch as unknown as typeof fetch,
+      signal,
+      totalAttempts: 1,
+      timeoutMs: 12_000,
+      label: 'osu!',
+      messages: {
+        schema: 'osu! 数据结构与已验证契约不一致',
+        timeout: 'osu! 数据读取超时',
+        network: '无法连接 osu! 服务',
+      },
+      init: {
         headers: {
-          Accept: accept,
           Authorization: `Bearer ${accessToken}`,
           'x-api-version': '20220705',
         },
-        signal: controller.signal,
-      });
-      if (!response.ok) {
-        const mapped = providerErrorFromStatus(response.status, OSU_STATUS_TEXTS);
-        throw new ProviderError(mapped.code, `${mapped.message}（${path}）`, mapped.retryable, { cause: mapped });
-      }
-      return await consume(response);
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      if (error instanceof ProviderError) throw error;
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new ProviderError('timeout', 'osu! 数据读取超时', true, { cause: error });
-      }
-      throw new ProviderError('network', '无法连接 osu! 服务', true, { cause: error });
-    } finally {
-      if (timeout !== null) clearTimeout(timeout);
-      signal?.removeEventListener('abort', onExternalAbort);
-    }
-  }
-
-  private async request<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
-    return this.withAuthorizedResponse(path, 'application/json', signal, async (response) => {
-      try {
-        const payload: unknown = await response.json();
-        return schema.parse(payload);
-      } catch (error) {
-        if (error instanceof z.ZodError || error instanceof SyntaxError) {
-          throw new ProviderError('upstream_schema', 'osu! 数据结构与已验证契约不一致', true, { cause: error });
-        }
-        throw error;
-      }
-    }, 12_000);
+      },
+      error: (status) => {
+        const mapped = providerErrorFromStatus(status, OSU_STATUS_TEXTS);
+        return new ProviderError(mapped.code, `${mapped.message}（${path}）`, mapped.retryable, { cause: mapped });
+      },
+    });
   }
 
   /** 当前授权用户（identify scope）；绑定阶段用于取 userId/username。 */

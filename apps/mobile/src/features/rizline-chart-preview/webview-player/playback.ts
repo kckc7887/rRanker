@@ -11,6 +11,19 @@ export function getAudioContext(): AudioContext {
   return audioContext ??= new AudioContext();
 }
 
+/** 外部环境边界：默认走全局 Web Audio 与帧循环，可注入以便验证会话。 */
+export interface PreviewSessionEnvironment {
+  getAudioContext(): AudioContext;
+  requestFrame(callback: FrameRequestCallback): number;
+  cancelFrame(handle: number): void;
+}
+
+export const defaultPreviewSessionEnvironment: PreviewSessionEnvironment = {
+  getAudioContext,
+  requestFrame: (callback) => requestAnimationFrame(callback),
+  cancelFrame: (handle) => cancelAnimationFrame(handle),
+};
+
 export class PreviewSession {
   readonly clock = new PlaybackClock();
   playing = false;
@@ -24,6 +37,7 @@ export class PreviewSession {
   private readonly musicGain: GainNode;
   private readonly hitGain: GainNode;
   private readonly hits: HitSoundScheduler;
+  private readonly environment: PreviewSessionEnvironment;
   settings: RizlineChartPreviewSettings;
 
   constructor(
@@ -31,8 +45,10 @@ export class PreviewSession {
     readonly renderer: RizlineRenderer,
     readonly music: AudioBuffer,
     settings: RizlineChartPreviewSettings,
+    environment: PreviewSessionEnvironment = defaultPreviewSessionEnvironment,
   ) {
-    const context = getAudioContext();
+    this.environment = environment;
+    const context = this.environment.getAudioContext();
     this.musicGain = context.createGain();
     this.hitGain = context.createGain();
     this.musicGain.connect(context.destination);
@@ -55,7 +71,7 @@ export class PreviewSession {
 
   get currentTime(): number {
     if (!this.playing) return this.position;
-    const context = getAudioContext();
+    const context = this.environment.getAudioContext();
     return Math.max(0, Math.min(this.duration, this.clock.positionAt(outputTime(getAudioContextOutputTime(context)))));
   }
 
@@ -71,7 +87,7 @@ export class PreviewSession {
     this.renderer.setUserSpeed(this.settings.userSpeed);
     if (!this.settings.hitSound) this.hits.stop();
     if (this.playing && this.source && this.settings.playbackSpeed !== previousSpeed) {
-      const context = getAudioContext();
+      const context = this.environment.getAudioContext();
       this.source.playbackRate.value = this.settings.playbackSpeed;
       this.clock.appendSegment(audioContextTime(context.currentTime), this.settings.playbackSpeed);
       this.hits.reset(this.chartTime);
@@ -95,7 +111,7 @@ export class PreviewSession {
       this.draw();
       return;
     }
-    const context = getAudioContext();
+    const context = this.environment.getAudioContext();
     this.hits.schedule(
       this.chartTime,
       getAudioContextOutputTime(context),
@@ -103,7 +119,7 @@ export class PreviewSession {
       this.settings.playbackSpeed,
     );
     this.draw();
-    this.frame = requestAnimationFrame(this.tick);
+    this.frame = this.environment.requestFrame(this.tick);
   };
 
   private stopSource(): void {
@@ -120,7 +136,7 @@ export class PreviewSession {
     const generation = ++this.command;
     this.position = Math.max(0, Math.min(seconds, this.duration));
     if (this.position >= this.duration) this.position = 0;
-    const context = getAudioContext();
+    const context = this.environment.getAudioContext();
     if (context.state !== 'running') await context.resume();
     if (this.disposed || generation !== this.command) return;
     this.stopSource();
@@ -138,7 +154,7 @@ export class PreviewSession {
     this.playing = true;
     this.ended = false;
     this.draw();
-    this.frame = requestAnimationFrame(this.tick);
+    this.frame = this.environment.requestFrame(this.tick);
   }
 
   pause(): void {
@@ -146,7 +162,7 @@ export class PreviewSession {
     if (!this.playing) {
       this.stopSource();
       this.hits.stop();
-      if (this.frame != null) cancelAnimationFrame(this.frame);
+      if (this.frame != null) this.environment.cancelFrame(this.frame);
       this.frame = null;
       return;
     }
@@ -155,7 +171,7 @@ export class PreviewSession {
     this.clock.setOffset(musicPosition(this.position));
     this.stopSource();
     this.hits.stop();
-    if (this.frame != null) cancelAnimationFrame(this.frame);
+    if (this.frame != null) this.environment.cancelFrame(this.frame);
     this.frame = null;
     this.draw();
   }

@@ -22,10 +22,10 @@ import {
 import { bytesToBase64 } from '@/utils/crypto-subset';
 import type { PhiraChart } from '@/domain/phira';
 import {
-  loadPhigrosChartPreviewResources,
   phigrosChartPreviewLevelLabel,
   type PhigrosChartPreviewAsset,
 } from '@/domain/phigros-chart-preview';
+import { loadPhigrosChartPreviewResources } from '@/services/phigros-chart-preview-resources';
 import {
   buildPhiraRpeBundlePlan,
   classifyPhiraChartFormat,

@@ -82,6 +82,13 @@ describe('Rizline account snapshots', () => {
     expect(await loadRizlineWithFallback(accountA, session)).toMatchObject({ requiresLogin: true });
     expect((await loadRizlineCached(accountA))?.source.isStale).toBe(false);
   });
+  it('keeps the original provider and fetch time when it falls back to the local snapshot', async () => {
+    await loadRizlineFresh(accountA, session);
+    const cached = await loadRizlineCached(accountA);
+    mocks.getSave.mockRejectedValue(new Error('offline'));
+    const fallback = await loadRizlineWithFallback(accountA, session);
+    expect(fallback.source).toEqual({ ...cached!.source, isStale: true });
+  });
   it('does not resurrect a removed account from a late save response', async () => {
     let complete!: (value: ReturnType<typeof rizlineSave>) => void;
     mocks.getSave.mockReturnValue(new Promise(resolve => { complete = resolve; }));

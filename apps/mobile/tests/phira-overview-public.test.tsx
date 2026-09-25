@@ -9,7 +9,7 @@ const mockRefetch = jest.fn(async () => ({ data: mockBundle }));
 const mockBundle = {
   gameId: 'phira', providerId: 'phira-community',
   profile: { id: 'phira', title: 'Phira', ratingLabel: 'Ranking Score', ratingDigits: 2,
-    bestSections: [{ id: 'best20', title: 'Best20', size: 20 }], capabilities: { hasCatalog: true, hasRecords: true, hasBestList: true, hasTools: true } },
+    bestSections: [{ id: 'best20', title: 'Best20', size: 20 }], capabilities: { hasTools: true } },
   payload: {
     kind: 'phira', snapshot: {
       player: { id: 323528, name: '尘言', avatar: null, rks: 5.3326573, bio: null },

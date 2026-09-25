@@ -1,7 +1,3 @@
-import type {
-  GameChart,
-  GameContentAdapter,
-} from '@/domain/game-content';
 import {
   MUSE_DASH_DIFFICULTY_LABELS,
   museDashAccTone,
@@ -9,12 +5,9 @@ import {
   museDashSongAuthor,
   museDashSongTitle,
   resolveMuseDashAchievement,
-  type MuseDashChartExtension,
   type MuseDashPlayDetail,
   type MuseDashRawScore,
-  type MuseDashScoreExtension,
   type MuseDashSong,
-  type MuseDashSongExtension,
 } from '@/domain/muse-dash';
 import type {
   ChartCardPresentation,
@@ -48,82 +41,6 @@ function museDashCharter(levelDesigner: readonly (string | null)[], difficultyIn
   }
   return levelDesigner.filter(nonNull).join('、');
 }
-
-function museDashChart(raw: MuseDashRawChart): GameChart<'musedash', MuseDashChartExtension> {
-  const officialLevel = raw.song.difficulty[raw.difficultyIndex] ?? '0';
-  return {
-    gameId: 'musedash',
-    songId: raw.song.uid,
-    chartId: `${raw.song.uid}:${raw.difficultyIndex}`,
-    order: raw.difficultyIndex,
-    label: MUSE_DASH_DIFFICULTY_LABELS[raw.difficultyIndex],
-    level: officialLevel === '0' ? '—' : officialLevel,
-    constant: raw.constant,
-    charter: museDashCharter(raw.song.levelDesigner, raw.difficultyIndex) || undefined,
-    notes: [],
-    libraryRef: { type: 'SD', levelIndex: raw.difficultyIndex },
-    extension: {
-      song: raw.song,
-      albumTitle: raw.albumTitle,
-      difficultyIndex: raw.difficultyIndex,
-      officialLevel,
-      constant: raw.constant,
-    },
-  };
-}
-
-export const museDashContentAdapter: GameContentAdapter<
-  'musedash',
-  MuseDashRawSong,
-  MuseDashRawChart,
-  MuseDashRawScore,
-  MuseDashSongExtension,
-  MuseDashChartExtension,
-  MuseDashScoreExtension
-> = {
-  gameId: 'musedash',
-  normalizeSong: (raw) => ({
-    gameId: 'musedash',
-    songId: raw.song.uid,
-    title: museDashSongTitle(raw.song),
-    artist: museDashSongAuthor(raw.song),
-    metadata: {
-      album: raw.albumTitle,
-      bpm: raw.song.bpm ? Number(raw.song.bpm) : undefined,
-      cover: raw.song.cover,
-      levelDesigner: museDashCharter(raw.song.levelDesigner),
-    },
-    charts: raw.song.difficulty.flatMap((level, difficultyIndex) =>
-      level === '0' ? [] : [museDashChart({ song: raw.song, albumTitle: raw.albumTitle, difficultyIndex })]),
-    extension: { song: raw.song, albumTitle: raw.albumTitle, bpm: raw.song.bpm, cover: raw.song.cover },
-  }),
-  normalizeChart: museDashChart,
-  normalizeScore: (raw) => {
-    const play = raw.play;
-    const currentRank = play.i ?? play.history?.lastRank ?? 0;
-    const lastRank = play.history?.lastRank ?? play.i ?? 0;
-    return {
-      gameId: 'musedash',
-      songId: play.uid,
-      chartId: `${play.uid}:${play.difficulty}`,
-      order: play.difficulty,
-      key: `${play.uid}:${play.difficulty}`,
-      title: raw.song ? museDashSongTitle(raw.song) : play.uid,
-      rating: play.sum,
-      libraryRef: { type: 'SD', levelIndex: play.difficulty },
-      extension: {
-        play,
-        acc: play.acc,
-        currentRank,
-        lastRank,
-        sum: play.sum ?? 0,
-        platform: play.platform ?? 'mobile',
-        characterName: raw.characterName,
-        elfinName: raw.elfinName,
-      },
-    };
-  },
-};
 
 export function formatMuseDashAcc(value: number): string {
   return `${value.toFixed(2)}%`;

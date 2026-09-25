@@ -14,10 +14,8 @@ import {
   weightedChartPreviewProgress,
   type ChartPreviewLoadProgress,
 } from '@/features/chart-preview-shared/chart-preview-progress';
-import {
-  loadRizlineChartPreviewResources,
-  type RizlineChartPreviewAsset,
-} from '@/domain/rizline-chart-preview';
+import type { RizlineChartPreviewAsset } from '@/domain/rizline-chart-preview';
+import { loadRizlineChartPreviewResources } from '@/services/rizline-chart-preview-resources';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import {
   normalizeRizlineChartPreviewSettings,

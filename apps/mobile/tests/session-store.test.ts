@@ -330,7 +330,9 @@ describe('useSession store', () => {
     expect(state.activeGameId).toBe('phigros');
     expect(state.activeProviderId).toBe('phigros-test');
     expect(state.scoreProvider).toBeInstanceOf(MaxedPhigrosTestProvider);
-    expect(state.catalogProvider).toBeInstanceOf(PhigrosCatalogProvider);
+    // Phigros 曲库经 use-phigros-catalog 与游戏数据加载器读取，会话不登记舞萌曲库详细能力。
+    expect(state.catalogProvider).not.toBeInstanceOf(PhigrosCatalogProvider);
+    expect(state.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
     expect(state.session).toBeNull();
   });
 

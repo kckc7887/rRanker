@@ -149,9 +149,6 @@ jest.mock('@/hooks/use-game-data', () => ({
       profile: {
         title: '舞萌 DX', ratingLabel: 'DX RATING', ratingDigits: 5,
         capabilities: {
-          hasCatalog: true,
-          hasRecords: true,
-          hasBestList: true,
           hasTools: true,
         },
         bestSections: [{ id: 'b35', title: 'B35' }, { id: 'b15', title: 'B15' }],

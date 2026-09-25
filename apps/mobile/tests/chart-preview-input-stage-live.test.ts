@@ -17,7 +17,10 @@ import {
   buildPhigrosChartPreviewInput,
   buildPhiraChartPreviewInput,
 } from '@/features/phigros-chart-preview/chart-preview-input';
-import { loadPhigrosChartPreviewBundle, loadPhigrosChartPreviewVariants } from '@/domain/phigros-chart-preview';
+import {
+  loadPhigrosChartPreviewBundle,
+  loadPhigrosChartPreviewVariants,
+} from '@/services/phigros-chart-preview-resources';
 import {
   applyPhigrosChartPreviewConfigToHtml,
   buildPhigrosChartPreviewConfigJson,

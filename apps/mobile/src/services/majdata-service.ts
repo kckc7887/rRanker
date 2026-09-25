@@ -1,4 +1,5 @@
 import type { MajdataSnapshot, MajdataSong } from '@/domain/majdata';
+import type { DataSource } from '@/domain/models';
 import type { HttpCookieSession } from '@/providers/http-cookies';
 import { MajdataProvider, majdataProvider } from '@/providers/majdata-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
@@ -8,6 +9,12 @@ import { snapshotSource, captureResourceWrites, createInflightGuard, resourceWri
 import { parseSimaiChart } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import { simaiStatistics } from '@/features/simai-chart-preview/statistics';
 import { cacheFirstLoad } from './cache-first';
+import {
+  assertFreshSnapshotSource,
+  cachedSnapshotSource,
+  snapshotMetadataOf,
+  type SnapshotMetadata,
+} from '@/domain/refresh-result';
 
 const resourceLoads = createInflightGuard<string>();
 const requestKey = (key: string) => `${resourceWriteGeneration('majdata-net')}:${key}`;
@@ -17,6 +24,10 @@ const accountRequests = new Map<string, number>();
 export const majdataSource = () => snapshotSource({ kind: 'majdata-net', label: 'Majdata Net' });
 export const majdataAccountKey = (id: string) => `majdata-net:account:${id}`;
 export const majdataSongKey = (id: string) => `majdata-net:song:${id}`;
+
+/** 歌曲快照的本地载荷：谱面本体加它被抓取时的来源元数据（旧版本行没有来源）。 */
+type MajdataSongSnapshot = { song: MajdataSong; source?: DataSource };
+
 export function loadMajdataCached(id: string) { return repository.getResource<MajdataSnapshot>(majdataAccountKey(id), 1); }
 export function clearMajdataAccount(id: string) {
   accountRequests.set(id, (accountRequests.get(id) ?? 0) + 1);
@@ -55,19 +66,45 @@ export async function loadMajdataFresh(id: string, session: HttpCookieSession, s
   return snapshot;
 }
 
-export function loadMajdataCachedSong(id: string) { return repository.getResource<{ song: MajdataSong }>(majdataSongKey(id), 1); }
+export function loadMajdataCachedSong(id: string) { return repository.getResource<MajdataSongSnapshot>(majdataSongKey(id), 1); }
 
-export async function loadMajdataSong(id: string, signal?: AbortSignal, onFresh?: (song: MajdataSong) => void): Promise<MajdataSong> {
+/**
+ * 本地歌曲快照：歌曲本体、展示来源与快照元数据。
+ * 缓存读取保留原提供方与抓取时间，可用修订就是谱面 hash；
+ * 旧版本行没有来源信息时不编造元数据（metadata 为 null），展示来源退回本次读取的来源。
+ */
+export async function loadMajdataSongSnapshot(id: string): Promise<{
+  song: MajdataSong;
+  source: DataSource;
+  metadata: SnapshotMetadata | null;
+} | null> {
+  const cached = await loadMajdataCachedSong(id);
+  if (!cached) return null;
+  const stored = cached.source && cached.source.kind !== 'cache' ? cached.source : null;
+  return {
+    song: cached.song,
+    source: stored ?? majdataSource(),
+    metadata: stored ? snapshotMetadataOf(stored, cached.song.hash) : null,
+  };
+}
+
+/** 一次歌曲读取：数据本身加上它是否来自本地快照。 */
+type MajdataSongLoad = { song: MajdataSong; fromCache: boolean; source: DataSource };
+
+function cachedSongLoad(snapshot: MajdataSongSnapshot): MajdataSongLoad {
+  return {
+    song: snapshot.song,
+    fromCache: true,
+    source: cachedSnapshotSource(snapshot.source ?? majdataSource()),
+  };
+}
+
+/**
+ * 歌曲详情与谱面文本的共享请求入口。
+ * 网络失败时回退本地快照，回退结果带 `fromCache` 与过期来源，调用端不得把它当成刷新成功。
+ */
+async function loadMajdataSongCurrent(id: string, signal?: AbortSignal): Promise<MajdataSongLoad> {
   const assertCurrent = captureResourceWrites('majdata-net');
-  if (onFresh) {
-    const result = await cacheFirstLoad({
-      loadCached: async () => { const cached = await loadMajdataCachedSong(id); return cached ? { ...cached, source: majdataSource() } : null; },
-      loadFresh: async requestSignal => ({ song: await loadMajdataSong(id, requestSignal), source: majdataSource() }),
-      onFresh: value => { assertCurrent(); onFresh(value.song); }, signal,
-    });
-    assertCurrent();
-    return result.song;
-  }
   return resourceLoads.share(requestKey(majdataSongKey(id)), async requestSignal => {
     const generation = (songRequests.get(id) ?? 0) + 1;
     songRequests.set(id, generation);
@@ -76,17 +113,51 @@ export async function loadMajdataSong(id: string, signal?: AbortSignal, onFresh?
       assertCurrent();
       if (songRequests.get(id) !== generation) throw new Error('请求已失效');
     };
-    const cached = await repository.getResource<{ song: MajdataSong }>(majdataSongKey(id), 1);
+    const cached = await repository.getResource<MajdataSongSnapshot>(majdataSongKey(id), 1);
     try {
       const song = await majdataProvider.getSong(id, requestSignal);
       assertSongCurrent();
-      await repository.saveResource(majdataSongKey(id), 1, new Date().toISOString(), { song }, assertSongCurrent);
+      const source = majdataSource();
+      assertFreshSnapshotSource(source);
+      const snapshot = { song, source };
+      await repository.saveResource(majdataSongKey(id), 1, source.updatedAt, snapshot, assertSongCurrent);
       assertSongCurrent();
-      await repository.saveResource(`${majdataSongKey(id)}:${song.hash}`, 1, new Date().toISOString(), { song }, assertSongCurrent);
+      await repository.saveResource(`${majdataSongKey(id)}:${song.hash}`, 1, source.updatedAt, snapshot, assertSongCurrent);
       assertSongCurrent();
-      return song;
-    } catch (error) { assertCurrent(); if (cached && !requestSignal?.aborted && songRequests.get(id) === generation) return cached.song; throw error; }
+      return { song, fromCache: false, source };
+    } catch (error) {
+      assertCurrent();
+      if (cached && !requestSignal?.aborted && songRequests.get(id) === generation) return cachedSongLoad(cached);
+      throw error;
+    }
   }, signal);
+}
+
+export async function loadMajdataSong(
+  id: string,
+  signal?: AbortSignal,
+  onFresh?: (song: MajdataSong) => void,
+  onFallback?: (song: MajdataSong) => void,
+): Promise<MajdataSong> {
+  if (onFresh || onFallback) {
+    const assertCurrent = captureResourceWrites('majdata-net');
+    const result = await cacheFirstLoad<MajdataSongLoad>({
+      loadCached: async () => {
+        const cached = await loadMajdataSongSnapshot(id);
+        return cached ? { song: cached.song, fromCache: true, source: cachedSnapshotSource(cached.source) } : null;
+      },
+      loadFresh: requestSignal => loadMajdataSongCurrent(id, requestSignal),
+      // 服务自己声明哪份数据来自本地快照，兜底不会被包装成刷新成功。
+      isFallback: value => value.fromCache,
+      onFresh: value => { assertCurrent(); onFresh?.(value.song); },
+      onFallback: value => { assertCurrent(); onFallback?.(value.song); },
+      markStale: value => ({ ...value, source: cachedSnapshotSource(value.source) }),
+      signal,
+    });
+    assertCurrent();
+    return result.song;
+  }
+  return (await loadMajdataSongCurrent(id, signal)).song;
 }
 
 export async function loadMajdataChart(song: MajdataSong, signal?: AbortSignal): Promise<string> {

@@ -29,6 +29,11 @@ import {
  * Rating = 上式 / 10000；展示口径再向下取整到两位小数。
  * OP：975,000 以下为 0；975,000~1,007,500 为 5×Rating(raw) + 灯奖励；
  *     1,007,500 以上为 5×(定数+2) + (分数-1,007,500)×0.0015 + 灯奖励。
+ *
+ * 来源：分段公式、定点口径与 raw/display 分层取自本仓库 `src/domain/chunithm-rating.ts`
+ * （该文件头部记录公式、「展示精度不得进入内部公式」的约定与待核项），展示口径对齐落雪前端的
+ * `Math.floor(rating×100)/100`。仓库内没有可引用的官方手册或实测金样版本，
+ * 因此本表只锁定仓库内实现口径，不标注上游版本号。
  */
 describe('chunithm rating formula', () => {
   it('keeps the max rating anchors consistent with the maxed test provider', () => {

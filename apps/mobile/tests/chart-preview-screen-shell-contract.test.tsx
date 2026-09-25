@@ -6,6 +6,7 @@
  * 共享层不得枚举游戏 ID，也不得出现任何游戏专属分支。
  */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { BackHandler } from 'react-native';
 import { jest } from '@jest/globals';
 import {
   ChartPreviewScreenShell,
@@ -392,6 +393,119 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     await view.rerender(<FictionalShell request={request} />);
     expect(screen.getByTestId(fictionalTestID)).toBeTruthy();
     expect(prepare).toHaveBeenCalledTimes(1);
+  });
+
+  it('全屏经 inactive 回前台仍保持全屏，只下发生命周期暂停命令', async () => {
+    const prepare = jest.fn(async () => fictionalSource);
+    const request: ChartPreviewShellRequest<FictionalPayload> = {
+      kind: 'ready',
+      payload: { chartName: '虚构谱面' },
+      prepare,
+    };
+    const view = await renderFictionalShell(request);
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+    await act(() => {
+      (latestWebViewProps.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"ready"}' } });
+      (latestWebViewProps.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"fullscreen","active":true}' } });
+    });
+    expect(mockScreenOptions.headerShown).toBe(false);
+    mockInjectJavaScript.mockClear();
+
+    mockLifecycle = {
+      ...mockLifecycle, appState: 'inactive', phase: 'inactive', foregroundReady: false,
+    };
+    await view.rerender(<FictionalShell request={request} />);
+    expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining('"cause":"lifecycle"'));
+    expect(mockInjectJavaScript.mock.calls.every(([script]) => !String(script).includes('fullscreen'))).toBe(true);
+    // 生命周期暂停不得静默清除全屏：原生与页面的全屏状态在 inactive 前后一致。
+    expect(mockScreenOptions.headerShown).toBe(false);
+
+    mockLifecycle = {
+      ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true,
+    };
+    await view.rerender(<FictionalShell request={request} />);
+    expect(mockScreenOptions.headerShown).toBe(false);
+    expect(mockInjectJavaScript.mock.calls.every(([script]) => !String(script).includes('"type":"dispose"'))).toBe(true);
+  });
+
+  it('内容进程终止与后台释放下发释放命令，而不是生命周期暂停', async () => {
+    const dispose = jest.fn();
+    const request: ChartPreviewShellRequest<FictionalPayload> = {
+      kind: 'ready', payload: { chartName: '虚构谱面' }, prepare: async () => ({ ...fictionalSource, dispose }),
+    };
+    const view = await renderFictionalShell(request);
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+    mockInjectJavaScript.mockClear();
+
+    await act(() => { (latestWebViewProps.onContentProcessDidTerminate as () => void)(); });
+    expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining('"type":"dispose"'));
+    expect(mockInjectJavaScript.mock.calls.every(([script]) => !String(script).includes('"type":"pause"'))).toBe(true);
+    expect(dispose).toHaveBeenCalledTimes(1);
+
+    await act(() => { fireEvent.press(screen.getByRole('button', { name: '重新加载' })); });
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+    mockInjectJavaScript.mockClear();
+    const mounted = latestWebViewProps;
+    mockLifecycle = {
+      ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false,
+    };
+    await view.rerender(<FictionalShell request={request} />);
+    expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining('"type":"dispose"'));
+    // 释放后旧实例的迟到设置不再写入存储。
+    await act(() => {
+      (mounted.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"settings","settings":{"speed":9}}' } });
+    });
+    expect(mockSaveSettings).not.toHaveBeenCalled();
+  });
+
+  it('只读取声明的设置载荷，旧扁平设置归一化后仍可持久化', async () => {
+    await renderFictionalShell({
+      kind: 'ready', payload: { chartName: '虚构谱面' }, prepare: async () => fictionalSource,
+    });
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+
+    await act(() => {
+      (latestWebViewProps.onMessage as (event: unknown) => void)({
+        nativeEvent: { data: '{"type":"settings","settings":{"speed":2},"ignored":true}' },
+      });
+    });
+    await waitFor(() => expect(mockSaveSettings).toHaveBeenCalledWith(fictionalSettingsKey, '{"speed":2}'));
+
+    await act(() => {
+      (latestWebViewProps.onMessage as (event: unknown) => void)({
+        nativeEvent: { data: '{"type":"settings","speed":3,"active":false,"message":"ignored"}' },
+      });
+    });
+    await waitFor(() => expect(mockSaveSettings).toHaveBeenLastCalledWith(fictionalSettingsKey, '{"speed":3}'));
+
+    const calls = mockSaveSettings.mock.calls.length;
+    await act(() => {
+      for (const payload of ['{"type":"settings","settings":"broken"}', '{"type":"settings","settings":null}', '{"result":"ok"}']) {
+        (latestWebViewProps.onMessage as (event: unknown) => void)({ nativeEvent: { data: payload } });
+      }
+    });
+    expect(mockSaveSettings).toHaveBeenCalledTimes(calls);
+  });
+
+  it('宿主命令脚本经判别联合序列化，返回键仍退出全屏', async () => {
+    let hardwareBackHandler: (() => boolean | null | undefined) | undefined;
+    const addEventListener = jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
+      hardwareBackHandler = handler as () => boolean;
+      return { remove: jest.fn() };
+    });
+    const request: ChartPreviewShellRequest<FictionalPayload> = {
+      kind: 'ready', payload: { chartName: '虚构谱面' }, prepare: async () => fictionalSource,
+    };
+    await renderFictionalShell(request);
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+    await act(() => {
+      (latestWebViewProps.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"fullscreen","active":true}' } });
+    });
+    mockInjectJavaScript.mockClear();
+
+    expect(hardwareBackHandler?.()).toBe(true);
+    expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining("type:'exit-fullscreen'"));
+    addEventListener.mockRestore();
   });
 
   it('ready 后内存警告显示手动重载，前后台切换不绕过用户操作', async () => {

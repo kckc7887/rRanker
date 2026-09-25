@@ -21,6 +21,7 @@ import { DetailGestureRoot, DetailPressable } from '@/components/game-content/De
 import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
+import { EmptyDataView } from '@/components/EmptyDataView';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { ChunithmSongDetail } from '@/components/chunithm/ChunithmSongDetail';
 import {
@@ -36,7 +37,11 @@ import { TagEditor } from '@/components/TagEditor';
 import { useNotification } from '@/components/AppNotification';
 import { normalizeSongId } from '@/domain/catalog';
 import { COLLECTION_KIND_LABEL, collectionsForSong } from '@/domain/collections';
-import { isOsuGameId } from '@/domain/game-mode-family';
+import {
+  decodeDetailTarget,
+  type DetailTarget,
+  type DetailTargetParams,
+} from '@/domain/detail-target';
 import {
   dxRatingTagsForChart,
   type DxRatingChartTagsSnapshot,
@@ -91,40 +96,57 @@ type LibraryHook = ReturnType<typeof useUserLibrary>;
 export default function SongDetailScreen() {
   const theme = useAppTheme();
   const activeGameId = useSession((s) => s.activeGameId);
-  const { songId, chartType, levelIndex, scoreId } = useLocalSearchParams<{
-    songId: string; chartType?: string; levelIndex?: string; scoreId?: string;
-  }>();
-  const parsedLevelIndex = levelIndex === undefined ? undefined : Number(levelIndex);
-  const initialLevelIndex = Number.isInteger(parsedLevelIndex) && parsedLevelIndex! >= 0 ? parsedLevelIndex : undefined;
-  const parsedScoreId = scoreId === undefined ? undefined : Number(scoreId);
-  const initialScoreId = Number.isInteger(parsedScoreId) && parsedScoreId! >= 0 ? parsedScoreId : undefined;
+  const params = useLocalSearchParams<DetailTargetParams>();
+  const resolution = decodeDetailTarget(activeGameId, params);
 
-  if (activeGameId === 'phigros') {
-    return <PhigrosSongDetail songId={songId} levelIndex={initialLevelIndex} />;
-  }
-  if (activeGameId === 'majdata-net') return <MajdataSongDetail songId={songId} initialLevelIndex={initialLevelIndex} />;
-  if (activeGameId === 'phira') return <PhiraSongDetailScreen chartId={songId} />;
-  if (activeGameId === 'rizline') return <RizlineSongDetail songId={songId} initialLevelIndex={initialLevelIndex} />;
-  if (activeGameId === 'chunithm') {
-    return <ChunithmSongDetail songId={songId} initialLevelIndex={initialLevelIndex} />;
-  }
-  if (activeGameId === 'adofai') {
-    return <TufLevelDetailScreen levelId={songId} />;
-  }
-  if (activeGameId === 'musedash') {
-    return <MuseDashSongDetailScreen songId={songId} levelIndex={initialLevelIndex} />;
-  }
-  // osu! 四模式共用歌曲详情页，songId = beatmapset id；levelIndex = 成绩卡带入的 beatmap id（优先定位该难度）。
-  if (activeGameId && isOsuGameId(activeGameId)) {
-    return <OsuSongDetail beatmapsetId={songId} initialBeatmapId={initialLevelIndex} initialScoreId={initialScoreId} />;
+  if (!resolution.ok) {
+    return <EmptyDataView
+      title="无法打开谱面"
+      detail="这一条谱面定位信息无法识别，请返回列表重新进入。"
+    />;
   }
 
-  return <MaimaiSongDetailScreen
-    songId={songId}
-    chartType={chartType}
-    initialLevelIndex={initialLevelIndex}
-    themeBackground={theme.background}
-  />;
+  return <SongDetailTargetScreen target={resolution.target} themeBackground={theme.background} />;
+}
+
+/** 先解析出已校验的 DetailTarget，再按游戏挂载对应详情页。 */
+function SongDetailTargetScreen({ target, themeBackground }: {
+  target: DetailTarget;
+  themeBackground: string;
+}) {
+  switch (target.game) {
+    case 'phigros':
+      return <PhigrosSongDetail songId={target.songId} levelIndex={target.levelIndex} />;
+    case 'chunithm':
+      return <ChunithmSongDetail songId={target.songId} initialLevelIndex={target.levelIndex} />;
+    case 'majdata-net':
+      return <MajdataSongDetail songId={target.songId} initialLevelIndex={target.levelIndex} />;
+    case 'rizline':
+      return <RizlineSongDetail songId={target.songId} initialLevelIndex={target.levelIndex} />;
+    case 'musedash':
+      return <MuseDashSongDetailScreen songId={target.songId} levelIndex={target.levelIndex} />;
+    case 'phira':
+      return <PhiraSongDetailScreen chartId={target.chartId} />;
+    case 'adofai':
+      return <TufLevelDetailScreen levelId={target.levelId} />;
+    // osu! 四模式共用歌曲详情页：beatmapsetId 定位谱面集，beatmapId 定位成绩卡带入的难度。
+    case 'osu-standard':
+    case 'osu-mania':
+    case 'osu-catch':
+    case 'osu-taiko':
+      return <OsuSongDetail
+        beatmapsetId={target.beatmapsetId}
+        initialBeatmapId={target.beatmapId}
+        initialScoreId={target.scoreId}
+      />;
+    case 'maimai':
+      return <MaimaiSongDetailScreen
+        songId={target.songId}
+        chartType={target.chartType}
+        initialLevelIndex={target.levelIndex}
+        themeBackground={themeBackground}
+      />;
+  }
 }
 
 function MaimaiSongDetailScreen({

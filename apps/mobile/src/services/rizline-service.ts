@@ -7,7 +7,16 @@ import { applyRizlineSessionRotation, useSession } from '@/state/session-store';
 import { deleteRizlinePassword, hasRizlinePassword, readRizlinePassword } from '@/storage/rizline-password-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { captureResourceWrites, createInflightGuard, invalidateResourceWrites, resourceWriteGeneration, snapshotSource } from './snapshot-cache-utils';
-import { staleCached } from './cache-first';
+import {
+  cachedSnapshotSource,
+  cancelledRefresh,
+  failedRefresh,
+  refreshFailureFromError,
+  refreshNeedsLogin,
+  snapshotMetadataOf,
+  successfulRefresh,
+  type RefreshResult,
+} from '@/domain/refresh-result';
 
 const repository = new SqliteSnapshotRepository();
 const loads = createInflightGuard<string>();
@@ -101,17 +110,65 @@ export function awaitRizlineFresh(id: string): Promise<void> {
   return fresh ? fresh.then(() => undefined, () => undefined) : Promise.resolve();
 }
 
+type RizlineRefreshAttempt = { result: RefreshResult<RizlineSnapshot, string>; error: unknown };
+
+/**
+ * 一次云存档刷新的结果：缓存回退不等于刷新成功。
+ * 成功只带本次抓取时间；失败时仍可发布本地快照，但它保留原提供方与抓取时间并标记过期，
+ * 失败原因只由机器错误码表达。
+ */
+async function refreshRizline(
+  id: string,
+  session: RizlineSession,
+  signal?: AbortSignal,
+): Promise<RizlineRefreshAttempt> {
+  const assertCurrent = captureResourceWrites('rizline', signal, id);
+  try {
+    const snapshot = await loadRizlineFresh(id, session, signal);
+    assertCurrent();
+    return {
+      error: null,
+      result: successfulRefresh<RizlineSnapshot, string>({
+        value: snapshot, metadata: snapshotMetadataOf(snapshot.source), requested: [id],
+      }),
+    };
+  } catch (error) {
+    if (signal?.aborted) return { error, result: cancelledRefresh<RizlineSnapshot, string>([id]) };
+    assertCurrent();
+    const failure = refreshFailureFromError(error, id);
+    const cached = await loadRizlineCached(id);
+    assertCurrent();
+    if (!cached) {
+      return { error, result: failedRefresh<RizlineSnapshot, string>({ requested: [id], failures: [failure] }) };
+    }
+    const metadata = cached.source.kind === 'cache' ? null : snapshotMetadataOf(cached.source);
+    return {
+      error,
+      result: failedRefresh<RizlineSnapshot, string>({
+        value: { ...cached, source: cachedSnapshotSource(cached.source) },
+        metadata,
+        requested: [id],
+        failures: [failure],
+      }),
+    };
+  }
+}
+
+/** 机器可判定的刷新结果；只重试失败项时复用同一入口与 target。 */
+export async function refreshRizlineSnapshot(
+  id: string,
+  session: RizlineSession,
+  signal?: AbortSignal,
+): Promise<RefreshResult<RizlineSnapshot, string>> {
+  return (await refreshRizline(id, session, signal)).result;
+}
+
 export function loadRizlineWithFallback(id: string, session: RizlineSession, signal?: AbortSignal): Promise<RizlineSnapshot> {
   const pending = (async () => {
-    const assertCurrent = captureResourceWrites('rizline', signal, id);
-    try { return await loadRizlineFresh(id, session, signal); }
-    catch (error) {
-      assertCurrent();
-      const cached = await loadRizlineCached(id);
-      assertCurrent();
-      if (cached) return { ...staleCached(cached), requiresLogin: error instanceof ProviderError && error.code === 'authentication' };
-      throw error;
-    }
+    const { result, error } = await refreshRizline(id, session, signal);
+    if (result.status === 'cancelled') throw signal?.reason ?? error ?? new Error('操作已取消');
+    if (!result.value) throw error ?? new Error('Rizline 存档读取失败');
+    return { ...result.value, requiresLogin: refreshNeedsLogin(result) };
   })();
   freshByAccount.set(id, pending);
   const forget = () => { if (freshByAccount.get(id) === pending) freshByAccount.delete(id); };

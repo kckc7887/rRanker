@@ -106,6 +106,9 @@ describe('rpe core', () => {
     const bpm = bpm120();
     const ev = event({ start: 0, end: 18, easingType: 4 });
     // 参考公式（!integrateEasings）：k=(end-start)/(f'(1)-f'(0))，b=start-k·f'(0)，× lengthSec/Δbeats
+    // 来源与实现一致：PhiZone/player（MPL-2.0，https://github.com/PhiZone/player）的 RPE 速度积分语义，
+    // 许可证全文见 LICENSES/player-MPL-2.0.txt，来源清单见仓库根 THIRD_PARTY_NOTICES.md。
+    // 仓库只做语义对照，没有固定上游版本或提交，因此这里不写版本号。
     const f = (x: number) => 1 - (1 - x) * (1 - x);
     const df0 = (f(1e-12) - f(0)) / 1e-12;
     const df1 = (f(1) - f(1 - 1e-12)) / 1e-12;

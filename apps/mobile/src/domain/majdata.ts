@@ -1,5 +1,7 @@
 import { z } from 'zod';
+import type { GameNoteGroup } from './game-content';
 import type { DataSource } from './models';
+import type { NoteCounts } from './tolerance';
 
 export const MAJDATA_BASE = 'https://majdata.net/api3/api';
 export const MAJDATA_ORDER = [5, 4, 3, 2, 1, 0, 6] as const;
@@ -55,6 +57,14 @@ export function majdataTotal(records: readonly MajdataScore[]): number {
 }
 export function majdataTotalText(snapshot: MajdataSnapshot): string {
   return `${majdataTotal(snapshot.records).toFixed(4)}%`;
+}
+/** 详情物量表的展示分组：直接沿用 Simai 统计的键与顺序，未解析谱面时没有分组。 */
+export function majdataNoteGroup(counts: (NoteCounts & { mine: number }) | undefined): GameNoteGroup | undefined {
+  if (!counts) return undefined;
+  return {
+    key: 'notes',
+    values: Object.entries(counts).map(([key, value]) => ({ key, label: key.toUpperCase(), value })),
+  };
 }
 export function majdataAvatarUrl(username: string): string {
   return `${MAJDATA_BASE}/account/Icon?username=${encodeURIComponent(username)}`;

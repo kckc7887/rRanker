@@ -5,6 +5,7 @@ import { normalizeDivingFishCourseRank } from '@/domain/maimai-course-rank';
 import { DivingFishRecordsResponseSchema, mapDivingFishRecord } from '@/domain/schemas';
 import type { ProviderSession, ScoreProvider } from './contracts';
 import { ProviderError, providerErrorFromStatus } from './errors';
+import { requestJson } from './http-json';
 
 const BASE_URL = 'https://www.diving-fish.com/api/maimaidxprober';
 const ProfileSchema = z.object({
@@ -20,44 +21,37 @@ function parseContract<T>(schema: z.ZodType<T>, value: unknown): T {
   return result.data;
 }
 
+/**
+ * 水鱼查分 Provider。请求统一走 http-json 公共执行器：
+ * 鉴权头（Cookie / Import-Token）与 credentials 经 init 注入，超时、取消、
+ * 状态码映射与解析、网络错误归一化由公共执行器负责；只读端点固定总尝试次数 1。
+ */
 export class DivingFishProvider implements ScoreProvider {
   private recordsRequest: Promise<z.infer<typeof DivingFishRecordsResponseSchema>> | null = null;
 
   constructor(private readonly session: ProviderSession) {}
 
-  private async request(path: string, signal?: AbortSignal): Promise<unknown> {
+  private request(path: string, signal?: AbortSignal): Promise<unknown> {
     const headers: Record<string, string> = { Accept: 'application/json' };
     if (this.session.mode === 'jwt') headers.Cookie = `jwt_token=${this.session.value}`;
     if (this.session.mode === 'import-token') headers['Import-Token'] = this.session.value;
     const credentials = this.session.mode === 'cookie-jar' ? 'include' : 'omit';
-    const controller = new AbortController();
-    const onExternalAbort = () => controller.abort(signal?.reason);
-    if (signal?.aborted) controller.abort(signal.reason);
-    else signal?.addEventListener('abort', onExternalAbort, { once: true });
-    const timeout = setTimeout(() => controller.abort(), 12_000);
-    try {
-      const response = await expoFetch(`${BASE_URL}${path}`, {
-        headers, credentials, signal: controller.signal,
-      });
-      if (!response.ok) {
-        const error = providerErrorFromStatus(response.status);
-        throw new ProviderError(error.code, `${error.message}（${path}）`, error.retryable, { cause: error });
-      }
-      return await response.json();
-    } catch (error) {
-      if (signal?.aborted) throw error;
-      if (error instanceof ProviderError) throw error;
-      if (error instanceof SyntaxError) {
-        throw new ProviderError('upstream_schema', '水鱼返回了无效 JSON', true, { cause: error });
-      }
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new ProviderError('timeout', '水鱼读取超时', true, { cause: error });
-      }
-      throw new ProviderError('network', '无法连接水鱼服务', true, { cause: error });
-    } finally {
-      clearTimeout(timeout);
-      signal?.removeEventListener('abort', onExternalAbort);
-    }
+    return requestJson({
+      baseUrl: BASE_URL,
+      path,
+      schema: z.unknown(),
+      fetcher: expoFetch as unknown as typeof fetch,
+      signal,
+      totalAttempts: 1,
+      timeoutMs: 12_000,
+      label: '水鱼',
+      messages: { schema: '水鱼返回了无效 JSON', timeout: '水鱼读取超时', network: '无法连接水鱼服务' },
+      init: { headers, credentials },
+      error: (status) => {
+        const mapped = providerErrorFromStatus(status);
+        return new ProviderError(mapped.code, `${mapped.message}（${path}）`, mapped.retryable, { cause: mapped });
+      },
+    });
   }
 
   private source(): DataSource {

@@ -4,7 +4,12 @@ import { useOverviewSync } from '@/hooks/use-overview-sync';
 import { createRizlineBoundAccount } from '@/domain/bound-account';
 import { rizlinePayloadFromSnapshot, type GameDataBundle } from '@/domain/game-data';
 import { getGameProfile } from '@/domain/game-profile';
-import { gameDataQueryKey } from '@/services/game-data-query';
+import { failedRefresh, successfulRefresh, type RefreshResult } from '@/domain/refresh-result';
+import {
+  gameDataQueryKey,
+  registerGameDataBackground,
+  resetGameDataBackground,
+} from '@/services/game-data-query';
 import { queryClient } from '@/state/query-client';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { abortForegroundWork, beginForegroundWork } from '@/state/app-lifecycle-core';
@@ -15,10 +20,8 @@ import { rizlineCatalog, rizlineSave } from './fixtures/rizline';
 
 const mockNotification = jest.fn();
 const mockCatalog = jest.fn<() => Promise<void>>();
-const mockAwaitFresh = jest.fn<(id: string) => Promise<void>>();
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotification }) }));
 jest.mock('@/hooks/use-rizline-catalog', () => ({ refreshRizlineCatalog: () => mockCatalog() }));
-jest.mock('@/services/rizline-service', () => ({ awaitRizlineFresh: (id: string) => mockAwaitFresh(id) }));
 
 type Params = Parameters<typeof useOverviewSync>[0];
 const account = createRizlineBoundAccount(rizlineSave());
@@ -29,6 +32,13 @@ function bundle({ stale = false, requiresLogin = false } = {}): GameDataBundle {
     payload: rizlinePayloadFromSnapshot({ save: rizlineSave(), source: { ...fixtureSource, isStale: stale }, requiresLogin },
       { snapshot: rizlineCatalog(), source: fixtureSource }) };
 }
+function settledBundle(): RefreshResult<GameDataBundle, 'data' | 'catalog'> {
+  return successfulRefresh({
+    value: bundle(),
+    metadata: { provider: 'rizline-official', label: '官方账号', fetchedAt: fixtureSource.updatedAt, revision: null },
+    requested: ['data'],
+  });
+}
 function options(refetch: () => Promise<unknown>, overrides: Partial<Params> = {}): Params {
   return { boundAccounts: [account], activeAccountId: account.id, activeGameId: 'rizline', activeSession: session,
     catalogQuery: { refetch: jest.fn() } as unknown as Params['catalogQuery'],
@@ -38,10 +48,10 @@ function options(refetch: () => Promise<unknown>, overrides: Partial<Params> = {
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 
 beforeEach(() => {
-  jest.clearAllMocks(); queryClient.clear(); beginForegroundWork();
-  mockCatalog.mockResolvedValue(undefined); mockAwaitFresh.mockResolvedValue(undefined);
+  jest.clearAllMocks(); queryClient.clear(); beginForegroundWork(); resetGameDataBackground();
+  mockCatalog.mockResolvedValue(undefined);
 });
-afterEach(async () => { await cleanup(); queryClient.clear(); beginForegroundWork(); });
+afterEach(async () => { await cleanup(); queryClient.clear(); beginForegroundWork(); resetGameDataBackground(); });
 
 it('still synchronizes scores when catalog refresh fails and reports partial failure', async () => {
   mockCatalog.mockRejectedValue(new Error('catalog offline'));
@@ -53,15 +63,37 @@ it('still synchronizes scores when catalog refresh fails and reports partial fai
   expect(mockNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '成绩已同步，曲库暂未更新', variant: 'warning' }));
 });
 
-it('waits for the detached cache-first refresh before deciding whether sync succeeded', async () => {
-  const pending = deferred<void>(); mockAwaitFresh.mockReturnValue(pending.promise);
+it('waits for the entity background refresh handle and decides from its terminal result', async () => {
+  const pending = deferred<ReturnType<typeof settledBundle>>();
+  registerGameDataBackground(key, pending.promise);
   const refetch = jest.fn(async () => ({ data: bundle({ stale: true }), isError: false }));
   const hook = await renderHook(() => useOverviewSync(options(refetch)));
   let result: boolean | undefined, syncing!: Promise<void>;
   await act(() => { syncing = hook.result.current.syncData().then(value => { result = value; }); });
-  await waitFor(() => expect(mockAwaitFresh).toHaveBeenCalledWith(account.id)); expect(result).toBeUndefined();
-  await act(async () => { queryClient.setQueryData(key, bundle()); pending.resolve(); await syncing; });
+  await waitFor(() => expect(refetch).toHaveBeenCalledTimes(1));
+  await act(async () => { await Promise.resolve(); await Promise.resolve(); });
+  expect(result).toBeUndefined();
+  await act(async () => { pending.resolve(settledBundle()); await syncing; });
   expect(result).toBe(true); expect(mockNotification).not.toHaveBeenCalled();
+});
+
+it('treats a terminal background result that only kept the cache as a failure', async () => {
+  const pending = deferred<ReturnType<typeof settledBundle>>();
+  registerGameDataBackground(key, pending.promise);
+  const refetch = jest.fn(async () => ({ data: bundle(), isError: false }));
+  const hook = await renderHook(() => useOverviewSync(options(refetch)));
+  let result: boolean | undefined, syncing!: Promise<void>;
+  await act(() => { syncing = hook.result.current.syncData().then(value => { result = value; }); });
+  await waitFor(() => expect(refetch).toHaveBeenCalledTimes(1));
+  await act(async () => {
+    pending.resolve(failedRefresh({
+      value: bundle({ stale: true }), metadata: null, requested: ['data'],
+      failures: [{ code: 'no_data', target: 'data', diagnostic: '仅读取到缓存', retryable: true }],
+    }));
+    await syncing;
+  });
+  expect(result).toBe(false);
+  expect(mockNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '同步失败', variant: 'error' }));
 });
 
 it.each([

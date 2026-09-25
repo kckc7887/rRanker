@@ -4,7 +4,16 @@ import type { GameDataBundle } from '@/domain/game-data';
 import { getGameProfile } from '@/domain/game-profile';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
-import { gameDataQueryKey } from '@/services/game-data-query';
+import {
+  GAME_DATA_QUERY_OPTIONS,
+  gameDataBundleStale,
+  gameDataQueryKey,
+  invalidateEntityValue,
+  publishEntityValue,
+  publishGameDataBundle,
+  readGameDataBundle,
+  registerGameDataBackground,
+} from '@/services/game-data-query';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import { loadGameDataBundle } from '@/hooks/game-data-loaders';
 
@@ -31,14 +40,12 @@ export function useGameData(enabled = true) {
   const query = useQuery({
     queryKey,
     enabled: enabled && tabActive,
-    staleTime: Infinity,
-    gcTime: Infinity,
-    refetchOnMount: false,
-    refetchOnReconnect: false,
+    // 规范查询选项集中在 services/game-data-query.ts：一个实体只有一份新鲜度策略。
+    ...GAME_DATA_QUERY_OPTIONS,
     queryFn: async ({ signal }): Promise<GameDataBundle> => {
       const assertCurrent = captureResourceWrites(activeGameId, signal, activeAccountId);
       const hasSessionData = queryClient.getQueryData<GameDataBundle>(queryKey) !== undefined;
-      return loadGameDataBundle({
+      const result = await loadGameDataBundle({
         activeGameId,
         activeProviderId,
         activeAccountId,
@@ -51,7 +58,15 @@ export function useGameData(enabled = true) {
         hasSessionData,
         signal,
         assertCurrent,
+        // 加载器不持有查询客户端：发布、读取与失效都经适配层端口。
+        publish: (bundle) => publishGameDataBundle(queryClient, queryKey, bundle),
+        readEntityValue: (entityKey) => readGameDataBundle(queryClient, entityKey),
+        publishEntityValue: (entityKey, value) => publishEntityValue(queryClient, entityKey, value),
+        invalidateEntityValue: (entityKey) => invalidateEntityValue(queryClient, entityKey),
       });
+      // 后台分离刷新的终态句柄交给适配层登记：主动刷新据此等待「网络与提交全部落定」。
+      registerGameDataBackground(queryKey, result.background);
+      return result.bundle;
     },
   });
 
@@ -61,23 +76,6 @@ export function useGameData(enabled = true) {
     activeGameId,
     activeProviderId,
     activeAccountId,
-    isDataStale: !!query.data?.payload && (
-      query.data.payload.kind === 'rizline'
-        ? query.data.payload.source.isStale || query.data.payload.catalogSource?.isStale === true
-        : query.data.payload.kind === 'chunithm'
-        ? query.data.payload.source.isStale
-        : query.data.payload.kind === 'adofai'
-          ? query.data.payload.source.isStale
-          : query.data.payload.kind === 'musedash'
-            ? query.data.payload.source.isStale
-          : query.data.payload.kind === 'majdata-net'
-            ? query.data.payload.source.isStale
-          : query.data.payload.kind === 'phira'
-            ? query.data.payload.source.isStale
-          : query.data.payload.kind === 'osu'
-            ? query.data.payload.source.isStale
-        : (query.data.payload.kind === 'maimai' || query.data.payload.kind === 'phigros')
-          && (query.data.payload.source.isStale || query.data.payload.catalogSource.isStale)
-    ),
+    isDataStale: !!query.data?.payload && gameDataBundleStale(query.data),
   };
 }

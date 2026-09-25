@@ -1,0 +1,6 @@
+{
+  "name": "song-detail-chrome-contract/chunithm",
+  "formatVersion": 1,
+  "hash": "fee58b7eff2d7e713afe81b213dc0b282b88bd15c285e2180aff75abdc9a16b2",
+  "tree": [{"children":[],"props":{"accessibilityLabel":"返回","accessibilityRole":"button","accessibilityState":{},"accessibilityValue":{},"accessible":true,"collapsable":false,"focusable":true,"hitSlop":12,"style":[{"alignItems":"center","borderRadius":20,"height":40,"justifyContent":"center","width":40},{"elevation":30,"position":"absolute","zIndex":30},{"left":8,"top":47},false]},"type":"View"},{"children":[],"props":{"accessibilityLabel":"收藏 B.B.K.K.B.K.K.","accessibilityRole":"button","accessibilityState":{"disabled":false},"accessibilityValue":{},"accessible":true,"collapsable":false,"focusable":true,"hitSlop":12,"style":[{"alignItems":"center","borderRadius":20,"height":40,"justifyContent":"center","width":40},{"elevation":30,"position":"absolute","zIndex":30},{"right":8,"top":47},false,false,false]},"type":"View"}]
+}

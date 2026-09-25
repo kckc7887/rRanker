@@ -6,15 +6,11 @@ import {
   buildPhiraChartPreviewInput,
   CHART_TEXT_LIMIT,
 } from '@/features/phigros-chart-preview/chart-preview-input';
-import { loadPhigrosChartPreviewResources } from '@/domain/phigros-chart-preview';
+import { loadPhigrosChartPreviewResources } from '@/services/phigros-chart-preview-resources';
 
-vi.mock('@/domain/phigros-chart-preview', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/domain/phigros-chart-preview')>();
-  return {
-    ...actual,
-    loadPhigrosChartPreviewResources: vi.fn(),
-  };
-});
+vi.mock('@/services/phigros-chart-preview-resources', () => ({
+  loadPhigrosChartPreviewResources: vi.fn(),
+}));
 
 vi.mock('@/providers/phira-provider', () => ({
   phiraProvider: {

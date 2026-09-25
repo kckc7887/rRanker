@@ -1,6 +1,9 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { normalizeRizlineChartPreviewSettings } from '@/features/rizline-chart-preview/configuration';
-import { PreviewSession } from '@/features/rizline-chart-preview/webview-player/playback';
+import {
+  PreviewSession,
+  type PreviewSessionEnvironment,
+} from '@/features/rizline-chart-preview/webview-player/playback';
 import type { PreparedChart } from '@/features/rizline-chart-preview/webview-player/chart-prepare';
 import type { RizlineRenderer } from '@/features/rizline-chart-preview/webview-player/renderer';
 
@@ -50,9 +53,6 @@ class FakeContext {
 }
 
 const context = new FakeContext();
-globalThis.AudioContext = class {
-  constructor() { return context; }
-} as unknown as typeof AudioContext;
 
 const chart = {
   bpm: 120,
@@ -68,9 +68,18 @@ const renderer = { setUserSpeed() {}, render() {} } as unknown as RizlineRendere
 const music = { duration: 30 } as AudioBuffer;
 
 let animationFrames = 0;
+/** 环境边界由构造参数注入：测试不改写任何全局对象。 */
+const environment: PreviewSessionEnvironment = {
+  getAudioContext: () => context as unknown as AudioContext,
+  requestFrame: () => {
+    animationFrames += 1;
+    return animationFrames;
+  },
+  cancelFrame: () => {},
+};
 
 function session(): PreviewSession {
-  return new PreviewSession(chart, renderer, music, normalizeRizlineChartPreviewSettings({}));
+  return new PreviewSession(chart, renderer, music, normalizeRizlineChartPreviewSettings({}), environment);
 }
 
 async function settle(pending: Promise<void>): Promise<void> {
@@ -83,11 +92,6 @@ beforeEach(() => {
   context.sources = [];
   context.release = null;
   animationFrames = 0;
-  globalThis.requestAnimationFrame = (() => {
-    animationFrames += 1;
-    return 1;
-  }) as typeof requestAnimationFrame;
-  globalThis.cancelAnimationFrame = () => {};
 });
 
 describe('Rizline playFrom 等待 resume 时的命令代次', () => {
