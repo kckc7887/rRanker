@@ -29,6 +29,7 @@ import {
 } from '@/domain/phigros';
 import {
   findPushRecommendations,
+  resolvePhigrosPushRequest,
   type PushRecommendationsResult,
 } from '@/domain/phigros-push';
 
@@ -224,15 +225,17 @@ export class PhigrosScoreProvider implements ScoreProvider {
     });
   }
 
-  /** 推分推荐：返回已验证计划、替补和搜索状态。chartCost 按谱面计。 */
+  /** 推分推荐：返回已验证计划、替补和搜索状态。chartCost 按谱面计。
+   *  参数先经领域侧唯一入口校验，非法时在读取存档前抛出 PhigrosPushInputError。 */
   async getPushRecommendations(
     delta: number,
     chartCost: number,
     includePhi = true,
     signal?: AbortSignal,
   ): Promise<PushRecommendationsResult> {
+    const request = resolvePhigrosPushRequest({ delta, chartCost, includePhi, signal });
     const { gameRecord, diffTable } = await this.loadSave(signal);
-    return findPushRecommendations(gameRecord, diffTable, { delta, chartCost, includePhi, signal });
+    return findPushRecommendations(gameRecord, diffTable, request);
   }
 
   /** 丢弃内存缓存，下次拉取会重新请求云存档 */

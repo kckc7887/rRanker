@@ -10,6 +10,7 @@ import { buildPhigrosKyouChartTagIndex } from '@/domain/phigros-kyou';
 import { phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import {
   analyzePhigrosStrength,
+  describePhigrosStrengthPolicyTexts,
   describePhigrosStrengthPoolPolicy,
   type PhigrosStrengthChartSample,
   type PhigrosStrengthRecommendation,
@@ -20,8 +21,9 @@ import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { useAppTheme } from '@/theme/app-theme';
 
-/** 分析池说明由领域侧政策常量生成，页面不再维护第二份数字。 */
+/** 分析池与空态说明由领域侧政策常量生成，页面不再维护第二份数字。 */
 const POOL_DESCRIPTION = describePhigrosStrengthPoolPolicy();
+const POLICY_TEXTS = describePhigrosStrengthPolicyTexts();
 
 function Metric({ label, value }: { label: string; value: string }) {
   const theme = useAppTheme();
@@ -371,7 +373,7 @@ export default function PhigrosStrengthAnalysisScreen() {
     return (
       <View style={[styles.page, { backgroundColor: theme.background }]}>
         <Stack.Screen options={{ title: '实力分析' }} />
-        <EmptyDataView title="标签结构暂不可用" detail="Kyou 主标签不是预期的五项，已停止生成雷达以避免错误结论。" />
+        <EmptyDataView title="标签结构暂不可用" detail={POLICY_TEXTS.unexpectedPrimaryAxes} />
       </View>
     );
   }
@@ -400,7 +402,9 @@ export default function PhigrosStrengthAnalysisScreen() {
       <Card style={styles.poolCard}>
         <View style={styles.poolHeading}>
           <View style={styles.poolTitleBlock}>
-            <Text style={[styles.eyebrow, { color: theme.accent }]}>基础池 RKS ≥ {analysis.pool.threshold.toFixed(1)} · A 及以上</Text>
+            <Text style={[styles.eyebrow, { color: theme.accent }]}>
+              {`基础池 RKS ≥ ${analysis.pool.threshold.toFixed(1)} · ${POLICY_TEXTS.poolRateLabel} 及以上`}
+            </Text>
             <Text style={[styles.poolTitle, { color: theme.text }]}>本次分析池</Text>
           </View>
           <View style={styles.playerRksBlock}>
@@ -438,7 +442,7 @@ export default function PhigrosStrengthAnalysisScreen() {
       {analysis.pool.totalCount === 0 ? (
         <Card>
           <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无达标谱面</Text>
-          <Text style={[styles.emptyDetail, { color: theme.textMuted }]}>当前没有同时满足 RKS 阈值与 A 以上评级的成绩。</Text>
+          <Text style={[styles.emptyDetail, { color: theme.textMuted }]}>{POLICY_TEXTS.emptyPool}</Text>
         </Card>
       ) : (
         <>
@@ -512,7 +516,7 @@ export default function PhigrosStrengthAnalysisScreen() {
             )) : (
               <Card>
                 <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无细分标签样本</Text>
-                <Text style={[styles.emptyDetail, { color: theme.textMuted }]}>入池谱面没有票数大于 3 的细分标签。</Text>
+                <Text style={[styles.emptyDetail, { color: theme.textMuted }]}>{POLICY_TEXTS.noSecondaryTags}</Text>
               </Card>
             )}
           </View>

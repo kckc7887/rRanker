@@ -67,14 +67,16 @@ export function MuseDashRandomChartsScreen() {
     difficultySlot, dlc, constantMin, constantMax, accMin, accMax, achievement,
   }), [accMax, accMin, achievement, constantMax, constantMin, difficultySlot, dlc]);
   const pool = useMemo(
-    () => filterMuseDashRandomCharts(charts, activeFilters, missMap),
-    [activeFilters, charts, missMap],
+    () => filterMuseDashRandomCharts(charts, activeFilters, missMap.missByChart),
+    [activeFilters, charts, missMap.missByChart],
   );
   // 成就筛选依赖 miss 明细：明细仍在请求时等待到达，抽取只使用已确认的候选。
   const achievementDetailsPending = useMemo(
-    () => museDashAchievementDetailsPending(charts, activeFilters, missMap),
-    [activeFilters, charts, missMap],
+    () => museDashAchievementDetailsPending(charts, activeFilters, missMap.missByChart),
+    [activeFilters, charts, missMap.missByChart],
   );
+  // 请求最终失败与 unknown 分开：失败时候选不完整，给出可重试的可见状态而不是静默缩小候选池。
+  const achievementDetailsFailed = achievement === 'all' ? 0 : missMap.failedCount;
   const dlcOptions = useMemo(() => albums.data
     ? [...new Set(museDashSongsFromAlbums(albums.data).map((item) => item.albumTitle))]
     : [], [albums.data]);
@@ -113,9 +115,15 @@ export function MuseDashRandomChartsScreen() {
       hasDrawn={results !== null}
       onCountChange={setCount}
       onDraw={draw}
-      drawDisabled={achievementDetailsPending}
+      drawDisabled={achievementDetailsPending || achievementDetailsFailed > 0}
       poolSize={pool.length}
-      poolStatus={achievementDetailsPending ? '正在核对成就明细…' : undefined}
+      poolStatus={achievementDetailsPending
+        ? '正在核对成就明细…'
+        : achievementDetailsFailed > 0 ? '成就明细读取失败，候选不完整。' : undefined}
+      poolError={achievementDetailsFailed > 0
+        ? `${achievementDetailsFailed} 条成就明细读取失败，抽取只使用已确认的结果。`
+        : null}
+      onRetryPool={missMap.retryFailed}
       resultCount={results?.length ?? 0}
       results={results?.map((chart) => chart.score
         ? <MuseDashScoreCard key={`${lastSeed}-${chart.key}`} score={chart.score} />

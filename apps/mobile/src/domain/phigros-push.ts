@@ -71,6 +71,95 @@ export type PushRecommendationsResult = {
 
 export type PushSearchStatus = 'verified' | 'not_found' | 'unreachable';
 
+/** 推分参数的合法范围：页面与领域入口共用的唯一来源。 */
+export const PHIGROS_PUSH_LIMITS = Object.freeze({
+  /** 期望加值下限；更小的加值不会改变游戏内两位显示分 */
+  minDelta: 0.01,
+  /** 期望加值保留的小数位（超出部分四舍五入） */
+  deltaDecimals: 2,
+  /** 愿意投入的谱面数下限 */
+  minChartCost: 1,
+  /** 愿意投入的谱面数上限 */
+  maxChartCost: 30,
+});
+
+const PUSH_DELTA_SCALE = 10 ** PHIGROS_PUSH_LIMITS.deltaDecimals;
+
+/** 推分参数非法时抛出；code 稳定，供调用方与测试判定，不依赖文案。 */
+export type PhigrosPushInputErrorCode = 'delta_out_of_range' | 'chart_cost_out_of_range';
+
+export class PhigrosPushInputError extends Error {
+  readonly code: PhigrosPushInputErrorCode;
+
+  constructor(code: PhigrosPushInputErrorCode, message: string) {
+    super(message);
+    this.name = 'PhigrosPushInputError';
+    this.code = code;
+  }
+}
+
+/**
+ * 期望加值解析：NaN、Infinity、小于下限都返回 null；其余四舍五入到两位小数。
+ * 页面输入框与领域入口都经这里，避免两处各维护一份范围。
+ */
+export function parsePhigrosPushDelta(value: number): number | null {
+  if (!Number.isFinite(value) || value < PHIGROS_PUSH_LIMITS.minDelta) return null;
+  const rounded = Math.round(value * PUSH_DELTA_SCALE) / PUSH_DELTA_SCALE;
+  return rounded < PHIGROS_PUSH_LIMITS.minDelta ? null : rounded;
+}
+
+/** 成本谱面数解析：非整数、NaN、Infinity 与超出 1–30 都返回 null。 */
+export function parsePhigrosPushChartCost(value: number): number | null {
+  return Number.isInteger(value)
+    && value >= PHIGROS_PUSH_LIMITS.minChartCost
+    && value <= PHIGROS_PUSH_LIMITS.maxChartCost
+    ? value
+    : null;
+}
+
+export type PhigrosPushRequest = {
+  delta: number;
+  chartCost: number;
+  includePhi: boolean;
+  searchPoolLimit?: number;
+  signal?: AbortSignal;
+};
+
+/**
+ * 推分请求参数解析与校验的唯一入口：页面与领域入口都从这里取值。
+ * 非法输入抛出带 code 的 PhigrosPushInputError，不进入搜索，也不会被编码成
+ * unreachable / verified 之类的业务结论。
+ */
+export function resolvePhigrosPushRequest(request: {
+  delta: number;
+  chartCost: number;
+  includePhi?: boolean;
+  searchPoolLimit?: number;
+  signal?: AbortSignal;
+}): PhigrosPushRequest {
+  const delta = parsePhigrosPushDelta(request.delta);
+  if (delta == null) {
+    throw new PhigrosPushInputError(
+      'delta_out_of_range',
+      `加值至少为 ${PHIGROS_PUSH_LIMITS.minDelta}，且最多两位小数。`,
+    );
+  }
+  const chartCost = parsePhigrosPushChartCost(request.chartCost);
+  if (chartCost == null) {
+    throw new PhigrosPushInputError(
+      'chart_cost_out_of_range',
+      `成本须为 ${PHIGROS_PUSH_LIMITS.minChartCost}–${PHIGROS_PUSH_LIMITS.maxChartCost} 的整数（愿意打几张谱面）。`,
+    );
+  }
+  return {
+    delta,
+    chartCost,
+    includePhi: request.includePhi !== false,
+    searchPoolLimit: request.searchPoolLimit,
+    signal: request.signal,
+  };
+}
+
 type SimRecord = {
   songId: string;
   level: PhigrosLevel;
@@ -755,34 +844,37 @@ function finishPushResult(
 /**
  * 推分推荐。单谱面和多谱面都返回已取整并重新核算的 plan。
  * chartCost 的单位是谱面：同一首歌的不同难度各占一张预算。
+ * 参数先经 resolvePhigrosPushRequest 校验：delta 与 chartCost 非法时抛出
+ * PhigrosPushInputError（异步拒绝），不会返回搜索状态。
  * 多张不再要求每一张单独达到平均份额；搜索预算内找不到方案时状态为 not_found。
  * includePhi=false 时最高目标 Acc 为 99.99，不把 φ 计入可达上界。
  * searchPoolLimit 只限制联合搜索候选池，不改变不可达上界所使用的全部谱面。
  * 长搜索按时间片让出主线程；signal 取消时在让出点抛出来源 reason，不返回半份方案。
  */
-export function findPushRecommendations(
+export async function findPushRecommendations(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
   options: { delta: number; chartCost: number; includePhi?: boolean; searchPoolLimit?: number; signal?: AbortSignal },
 ): Promise<PushRecommendationsResult> {
-  const control: PushSearchControl = { signal: options.signal, lastYield: Date.now() };
-  return findPushRecommendationsWithControl(gameRecord, difficultyTable, options, control);
+  const request = resolvePhigrosPushRequest(options);
+  const control: PushSearchControl = { signal: request.signal, lastYield: Date.now() };
+  return findPushRecommendationsWithControl(gameRecord, difficultyTable, request, control);
 }
 
 async function findPushRecommendationsWithControl(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
-  options: { delta: number; chartCost: number; includePhi?: boolean; searchPoolLimit?: number },
+  request: PhigrosPushRequest,
   control: PushSearchControl,
 ): Promise<PushRecommendationsResult> {
   await yieldPushSearch(control);
-  const chartCost = Math.max(1, Math.floor(options.chartCost));
-  const includePhi = options.includePhi !== false;
-  const poolLimit = Math.max(1, Math.floor(options.searchPoolLimit ?? PUSH_POOL_LIMIT));
+  const chartCost = request.chartCost;
+  const includePhi = request.includePhi;
+  const poolLimit = Math.max(1, Math.floor(request.searchPoolLimit ?? PUSH_POOL_LIMIT));
   const baseSims = toSimRecords(collectScoredEntries(gameRecord, difficultyTable));
   const rawCurrent = calculateFinalRks(baseSims);
   const currentRks = roundRks(rawCurrent);
-  const { displayRks, exactTarget, displayTarget } = resolvePushExactTarget(currentRks, options.delta);
+  const { displayRks, exactTarget, displayTarget } = resolvePushExactTarget(currentRks, request.delta);
   const gainNeeded = Math.max(0, exactTarget - currentRks);
   const perChartShare = gainNeeded / chartCost;
   const shell = {

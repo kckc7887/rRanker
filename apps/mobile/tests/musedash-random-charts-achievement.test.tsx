@@ -5,13 +5,17 @@ import type {
   MuseDashAlbumsResponse,
   MuseDashAchievementFilter,
   MuseDashCeResponse,
+  MuseDashMissDetailValue,
   MuseDashPlayer,
 } from '@/domain/muse-dash';
+import type { RandomChartsCount } from '@/domain/random-charts';
 
 const mockRefetch = jest.fn(async () => ({ data: undefined }));
-let mockMissMap: ReadonlyMap<string, number | null | undefined> = new Map();
+const mockRetryFailedDetails = jest.fn();
+let mockMissMap: ReadonlyMap<string, MuseDashMissDetailValue> = new Map();
+let mockFailedDetailCount = 0;
 let mockFilters = {
-  count: 1 as const, collapsed: true, difficultySlot: 'all' as const, dlc: 'all' as const,
+  count: 1 as RandomChartsCount, collapsed: true, difficultySlot: 'all' as const, dlc: 'all' as const,
   constantMin: '', constantMax: '', accMin: '', accMax: '',
   achievement: 'ap' as MuseDashAchievementFilter,
 };
@@ -92,7 +96,11 @@ jest.mock('@/hooks/use-muse-dash', () => {
     useMuseDashCe: () => query(ce),
     useMuseDashDiffdiff: () => query(diffdiff),
     useMuseDashPlayDetail: () => query(undefined),
-    useMuseDashPlayDetails: () => mockMissMap,
+    useMuseDashPlayDetails: () => ({
+      missByChart: mockMissMap,
+      failedCount: mockFailedDetailCount,
+      retryFailed: mockRetryFailedDetails,
+    }),
   };
 });
 
@@ -100,6 +108,7 @@ describe('Muse Dash random charts achievement gating', () => {
   beforeEach(() => {
     jest.clearAllMocks();
     mockMissMap = new Map();
+    mockFailedDetailCount = 0;
     mockFilters = { ...mockFilters, achievement: 'ap' };
   });
 
@@ -135,6 +144,40 @@ describe('Muse Dash random charts achievement gating', () => {
     await fireEvent.press(screen.getByTestId('random-charts-draw'));
     expect(screen.getByTestId('musedash-score-0-48-0')).toBeTruthy();
     expect(screen.queryByTestId('musedash-score-0-47-4')).toBeNull();
+    await screen.unmount();
+  });
+
+  it('明细请求最终失败时给出可见失败状态与针对性重试，并暂停抽取', async () => {
+    mockMissMap = new Map<string, MuseDashMissDetailValue>([['0-47:4', 'failed'], ['0-48:0', 0]]);
+    mockFailedDetailCount = 1;
+    const screen = await render(<MuseDashRandomChartsScreen />);
+    expect(screen.getByText('1 条成就明细读取失败，抽取只使用已确认的结果。')).toBeTruthy();
+    expect(screen.getByText('成就明细读取失败，候选不完整。')).toBeTruthy();
+    expect(screen.queryByText('正在核对成就明细…')).toBeNull();
+    expect(screen.getByTestId('random-charts-draw').props.accessibilityState).toMatchObject({ disabled: true });
+
+    await fireEvent.press(screen.getByLabelText('重试加载随机池'));
+    expect(mockRetryFailedDetails).toHaveBeenCalledTimes(1);
+    await screen.unmount();
+  });
+
+  it('重试成功后恢复抽取，并且只使用已确认满足 AP 的候选', async () => {
+    mockFilters = { ...mockFilters, count: 2 };
+    mockMissMap = new Map<string, MuseDashMissDetailValue>([['0-47:4', 'failed'], ['0-48:0', 0]]);
+    mockFailedDetailCount = 1;
+    const screen = await render(<MuseDashRandomChartsScreen />);
+    expect(screen.getByTestId('random-charts-draw').props.accessibilityState).toMatchObject({ disabled: true });
+
+    mockMissMap = new Map<string, MuseDashMissDetailValue>([['0-47:4', 0], ['0-48:0', 0]]);
+    mockFailedDetailCount = 0;
+    await act(async () => { screen.rerender(<MuseDashRandomChartsScreen />); });
+    expect(screen.queryByText(/成就明细读取失败/)).toBeNull();
+    expect(screen.getByText('候选谱面 2 条')).toBeTruthy();
+    expect(screen.getByTestId('random-charts-draw').props.accessibilityState).toMatchObject({ disabled: false });
+
+    await fireEvent.press(screen.getByTestId('random-charts-draw'));
+    expect(screen.getByTestId('musedash-score-0-47-4')).toBeTruthy();
+    expect(screen.getByTestId('musedash-score-0-48-0')).toBeTruthy();
     await screen.unmount();
   });
 });

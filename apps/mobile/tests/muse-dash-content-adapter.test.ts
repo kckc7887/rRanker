@@ -4,6 +4,7 @@ import ce from './fixtures/musedash/ce.sanitized.json';
 import diffdiff from './fixtures/musedash/diffdiff.sanitized.json';
 import player from './fixtures/musedash/player.sanitized.json';
 import {
+  MUSE_DASH_MISS_DETAIL_FAILED,
   MuseDashAlbumsResponseSchema,
   MuseDashCeResponseSchema,
   MuseDashDiffdiffResponseSchema,
@@ -30,6 +31,7 @@ import {
   museDashSongTitle,
   museDashSongsByUid,
   resolveMuseDashAchievement,
+  type MuseDashMissDetailValue,
   type MuseDashRandomChartFilters,
   type MuseDashRawScore,
   type MuseDashSong,
@@ -325,6 +327,11 @@ describe('Muse Dash content adapter', () => {
     expect(resolveMuseDashAchievement(100, undefined)).toBeNull();
   });
 
+  it('把请求最终失败与「上游没有 miss 字段」分开', () => {
+    expect(museDashMissDetail(MUSE_DASH_MISS_DETAIL_FAILED)).toEqual({ status: 'failed' });
+    expect(museDashMissDetail(MUSE_DASH_MISS_DETAIL_FAILED)).not.toEqual(museDashMissDetail(undefined));
+  });
+
   it('成就筛选只保留已确认 miss 的候选，且只有 pending 才需要等待', () => {
     const rawScores = buildMuseDashRawScores(parsedPlayer, parsedAlbums, parsedCe, parsedDiffdiff);
     const played = buildMuseDashRandomCharts(parsedAlbums, parsedDiffdiff, rawScores)
@@ -334,15 +341,20 @@ describe('Muse Dash content adapter', () => {
       difficultySlot: 'all', dlc: 'all', constantMin: '', constantMax: '',
       accMin: '', accMax: '', achievement: 'ap',
     } satisfies MuseDashRandomChartFilters;
-    const keysFor = (miss: number | null | undefined) =>
+    const keysFor = (miss: MuseDashMissDetailValue) =>
       filterMuseDashRandomCharts(pool, filters, new Map([[played.key, miss]])).map((chart) => chart.key);
 
     expect(keysFor(0)).toEqual([played.key]);
     expect(keysFor(null)).toEqual([]);
     expect(keysFor(undefined)).toEqual([]);
+    expect(keysFor(MUSE_DASH_MISS_DETAIL_FAILED)).toEqual([]);
     expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, null]]))).toBe(true);
     expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, undefined]]))).toBe(false);
     expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, 0]]))).toBe(false);
+    // 失败不会自行变成结果，等待它没有意义；重试成功后同一候选才回到已确认集合。
+    expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, MUSE_DASH_MISS_DETAIL_FAILED]])))
+      .toBe(false);
+    expect(keysFor(0)).toEqual([played.key]);
     expect(museDashAchievementDetailsPending(pool, { ...filters, achievement: 'all' }, new Map())).toBe(false);
   });
 
