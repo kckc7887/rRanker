@@ -1,13 +1,18 @@
 #!/usr/bin/env node
 /**
- * 仓库轻检查：只读仓库文件，不安装 npm 依赖、不跑构建，因此可以在 quality 作业被跳过时照常运行。
+ * 仓库轻检查：只读仓库文件，不跑构建，也不安装 apps/mobile 的依赖树，
+ * 因此可以在 quality 作业被跳过时（CI-only 改动、纯文档改动）照常运行。
+ *
+ * 唯一的外部依赖是 .github/scripts/package.json 固定的 YAML 解析器 yaml（零传递依赖）：
+ *   cd .github/scripts && npm ci
+ * 它只在 light-check 作业里安装，不涉及移动端依赖树；缺少它时轻检查直接失败，不降级、不跳过。
  *
  *   node .github/scripts/check-light.mjs                 检查当前仓库
  *   node .github/scripts/check-light.mjs --root <目录>    检查指定目录（自检用）
  *   node .github/scripts/check-light.mjs --self-test     先检查当前仓库，再用故意破坏的样例证明检查会失败
  *
  * 检查内容：
- *   1. .github/workflows 下的 workflow 文件与 .github/actions 下各 action.yml 的结构自检；
+ *   1. .github/workflows 下的 workflow 文件与 .github/actions 下各 action.yml 的 YAML 语法与结构自检；
  *   2. 仓库内 .sh 脚本与 workflow/action 里内联 bash 片段的 bash -n 语法检查；
  *   3. .github 与 apps/mobile/scripts 下 .mjs / .cjs 文件的 node --check 语法检查；
  *   4. 分类器独立自检 .github/actions/changed-scope/self-test.mjs。
@@ -20,7 +25,7 @@
 import { spawnSync } from 'node:child_process';
 import { cpSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
-import { dirname, join, resolve } from 'node:path';
+import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findBash } from './lib/bash.mjs';
 import { WorkflowYamlError, collectBashRuns, validateAction, validateWorkflow } from './lib/workflow-yaml.mjs';
@@ -152,7 +157,7 @@ function report(label, ok, detail) {
 }
 
 function runRepositoryCheck(root) {
-  console.log(`仓库轻检查（只读仓库文件，不装 npm 依赖、不跑构建）：${root}`);
+  console.log(`仓库轻检查（只读仓库文件，不装 apps/mobile 依赖树、不跑构建）：${root}`);
   const results = runChecks(root);
   const problems = [];
   for (const result of results) {
@@ -172,7 +177,11 @@ function runRepositoryCheck(root) {
 function copyFixture(temporaryRoot, name, mutate) {
   const directory = join(temporaryRoot, name);
   mkdirSync(directory, { recursive: true });
-  cpSync(join(repositoryRoot, '.github'), join(directory, '.github'), { recursive: true });
+  cpSync(join(repositoryRoot, '.github'), join(directory, '.github'), {
+    recursive: true,
+    // 轻检查自己的依赖不是被检查内容，不复制进 fixture
+    filter: (source) => basename(source) !== 'node_modules',
+  });
   mutate(join(directory, '.github'));
   return directory;
 }
@@ -194,6 +203,82 @@ jobs:
         run: |
           if [ 1 = 2 ]; then
             echo oops
+`;
+
+const BROKEN_UNCLOSED_FLOW = `name: Unclosed flow sequence
+
+on:
+  push:
+
+jobs:
+  demo:
+    runs-on: [ubuntu-latest
+    steps:
+      - run: echo ok
+`;
+
+const BROKEN_UNCLOSED_QUOTE = `name: "unterminated quote
+
+on:
+  push:
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+`;
+
+const BROKEN_SAME_KEY_TWICE = `name: first definition
+"name": second definition
+
+on:
+  push:
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+`;
+
+const QUOTED_ON_WORKFLOW = `name: Quoted on key
+
+"on": push
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: echo ok
+`;
+
+const BROKEN_QUOTED_RUN = `name: Quoted run
+
+on:
+  push:
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - run: "if true; then echo missing-fi"
+`;
+
+const BROKEN_FOLDED_RUN = `name: Folded run
+
+on:
+  push:
+
+jobs:
+  demo:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Folded conditional
+        run: >
+          if [ 1 = 2 ]; then
+          echo folded
+          fi
 `;
 
 function runSelfTest() {
@@ -219,6 +304,42 @@ function runSelfTest() {
       mutate: (github) => writeFileSync(join(github, 'workflows/zz-broken-duplicate.yml'), 'name: Broken duplicate\nname: Broken duplicate again\n\non:\n  push:\n\njobs:\n  demo:\n    runs-on: ubuntu-latest\n'),
       expectFailure: true,
       fragment: '重复键',
+    },
+    {
+      name: '未闭合的 flow sequence 必须失败',
+      mutate: (github) => writeFileSync(join(github, 'workflows/zz-broken-flow.yml'), BROKEN_UNCLOSED_FLOW),
+      expectFailure: true,
+      fragment: 'zz-broken-flow.yml',
+    },
+    {
+      name: '未闭合的引号必须失败',
+      mutate: (github) => writeFileSync(join(github, 'workflows/zz-broken-quote.yml'), BROKEN_UNCLOSED_QUOTE),
+      expectFailure: true,
+      fragment: 'zz-broken-quote.yml',
+    },
+    {
+      name: '同名键（引号形式与裸形式）重复出现必须失败',
+      mutate: (github) => writeFileSync(join(github, 'workflows/zz-broken-same-key.yml'), BROKEN_SAME_KEY_TWICE),
+      expectFailure: true,
+      fragment: '重复键',
+    },
+    {
+      name: '带引号的 on 键是合法写法，必须通过',
+      mutate: (github) => writeFileSync(join(github, 'workflows/zz-quoted-on.yml'), QUOTED_ON_WORKFLOW),
+      expectFailure: false,
+      fragment: '',
+    },
+    {
+      name: '双引号 run 标量必须按解码后文本检查',
+      mutate: (github) => writeFileSync(join(github, 'workflows/zz-broken-quoted-run.yml'), BROKEN_QUOTED_RUN),
+      expectFailure: true,
+      fragment: 'bash -n',
+    },
+    {
+      name: '折叠块标量 run 必须按解码后文本检查',
+      mutate: (github) => writeFileSync(join(github, 'workflows/zz-broken-folded-run.yml'), BROKEN_FOLDED_RUN),
+      expectFailure: true,
+      fragment: 'bash -n',
     },
     {
       name: '没有 jobs 的 workflow 必须失败',
