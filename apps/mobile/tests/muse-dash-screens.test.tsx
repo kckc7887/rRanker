@@ -5,7 +5,12 @@ import { MuseDashAccValue } from '@/components/musedash/MuseDashAccValue';
 import { buildMuseDashFilterSummary } from '@/components/musedash/MuseDashFilterBar';
 import { useMuseDashCatalogFilter } from '@/state/musedash-catalog-filter';
 import { useMuseDashRecordsFilter } from '@/state/musedash-records-filter';
-import type { MuseDashAlbumsResponse, MuseDashCeResponse, MuseDashPlayer } from '@/domain/muse-dash';
+import type {
+  MuseDashAlbumsResponse,
+  MuseDashCeResponse,
+  MuseDashMissDetailValue,
+  MuseDashPlayer,
+} from '@/domain/muse-dash';
 import {
   MuseDashBestScreen,
   MuseDashCatalogScreen,
@@ -25,7 +30,9 @@ const mockDiffdiff = [
 ] as [string, number, string, number, number][];
 const mockSetChartPractice = jest.fn();
 const mockSetTags = jest.fn();
-let mockMissMap: ReadonlyMap<string, number | null | undefined> = new Map();
+const mockRetryFailedDetails = jest.fn();
+let mockMissMap: ReadonlyMap<string, MuseDashMissDetailValue> = new Map();
+let mockFailedDetailCount = 0;
 
 jest.mock('expo-router', () => ({
   router: { push: () => undefined },
@@ -66,7 +73,11 @@ jest.mock('@/hooks/use-muse-dash', () => {
     useMuseDashCe: () => query(mockCe),
     useMuseDashDiffdiff: () => query(mockDiffdiff),
     useMuseDashPlayDetail: () => query(undefined),
-    useMuseDashPlayDetails: () => mockMissMap,
+    useMuseDashPlayDetails: () => ({
+      missByChart: mockMissMap,
+      failedCount: mockFailedDetailCount,
+      retryFailed: mockRetryFailedDetails,
+    }),
   };
 });
 jest.mock('@/hooks/use-game-data', () => ({
@@ -186,6 +197,7 @@ describe('Muse Dash screens', () => {
     mockAlbums = albums;
     mockCe = ce;
     mockMissMap = new Map();
+    mockFailedDetailCount = 0;
     useMuseDashRecordsFilter.getState().reset();
     useMuseDashCatalogFilter.getState().reset();
   });  it('orders the Best list by community rating (sum) descending with ACC-led cards', async () => {
@@ -289,6 +301,35 @@ describe('Muse Dash screens', () => {
     await fireEvent.press(screen.getByLabelText('筛选成就 FC'));
     expect(screen.queryAllByTestId(/^musedash-score-/)).toHaveLength(0);
     expect(screen.getByText('正在核对成就…')).toBeTruthy();
+  });
+
+  it('把最终失败的成就明细与 unknown 分开：失败可见，可针对性重试，且不计入 AP/FC', async () => {
+    mockPlayer = {
+      ...player,
+      plays: player.plays.map((play) =>
+        play.uid === '0-47' && play.difficulty === 3 ? { ...play, acc: 100 } : play),
+    };
+    mockMissMap = new Map<string, MuseDashMissDetailValue>([['0-47:3', 'failed'], ['0-47:1', 0], ['1-1:2', 0]]);
+    mockFailedDetailCount = 1;
+    const screen = await render(<MuseDashRecordsScreen />);
+    await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
+    await fireEvent.press(screen.getByLabelText('筛选成就 FC'));
+
+    // 失败项即使是 ACC 100 也不算已确认 AP/FC
+    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(2);
+    expect(screen.queryAllByTestId('musedash-score-0-47-3')).toHaveLength(0);
+    expect(screen.getByText('1 条成绩的成就明细读取失败，筛选只使用已确认的结果。')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('重试失败的成就明细'));
+    expect(mockRetryFailedDetails).toHaveBeenCalledTimes(1);
+
+    // 重试成功后失败提示消失，当前筛选结果恢复为 3 条
+    mockMissMap = new Map([['0-47:3', 0], ['0-47:1', 0], ['1-1:2', 0]]);
+    mockFailedDetailCount = 0;
+    await act(async () => { screen.rerender(<MuseDashRecordsScreen />); });
+    expect(screen.queryByText(/成就明细读取失败/)).toBeNull();
+    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3);
+    expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
   });
 
   it('searches records by song title and uid', async () => {

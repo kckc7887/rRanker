@@ -1,14 +1,16 @@
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
-import { useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
 import type { DataSource } from '@/domain/models';
 import type {
   MuseDashAlbumsResponse,
   MuseDashCeResponse,
   MuseDashDiffdiffEntry,
+  MuseDashMissDetailValue,
   MuseDashPlayDetail,
   MuseDashPlayer,
 } from '@/domain/muse-dash';
+import { MUSE_DASH_MISS_DETAIL_FAILED } from '@/domain/muse-dash';
 import { isMuseDashTestUserId } from '@/domain/bound-account';
 import { museDashProvider } from '@/providers/muse-dash-provider';
 import {
@@ -177,16 +179,27 @@ export function useMuseDashPlayDetail(
 
 const MUSE_DASH_DETAIL_CONCURRENCY = 6;
 
-/** 批量单曲明细 miss 表（成就筛选用）：key = `${uid}:${difficulty}` → miss。
- * null 表示请求尚未返回（pending，抽取前会等待明细到达），undefined 表示上游没有该字段（unknown，不会再变化）；
- * 只有已知数值才用于判定 AP/FC，pending 与 unknown 都不算已满足。
+/** 批量 miss 明细的结果：明细表 + 失败计数 + 只重试失败项的入口。 */
+export type MuseDashPlayDetailsResult = {
+  /** key = `${uid}:${difficulty}` → 明细取值（pending / failed / unknown / known）。 */
+  missByChart: ReadonlyMap<string, MuseDashMissDetailValue>;
+  /** 最终失败的明细请求数；重试前不会自行恢复。 */
+  failedCount: number;
+  /** 只重试失败项，未失败与未请求的明细不受影响。 */
+  retryFailed: () => void;
+};
+
+/** 批量单曲明细 miss 表（成就筛选用）：key = `${uid}:${difficulty}` → 明细取值。
+ * null 表示请求尚未返回（pending，抽取前会等待明细到达），undefined 表示上游没有该字段（unknown，不会再变化），
+ * MUSE_DASH_MISS_DETAIL_FAILED 表示请求最终失败（failed，页面据此提示并可单独重试）；
+ * 只有已知数值才用于判定 AP/FC，pending、failed 与 unknown 都不算已满足。
  * 与 useMuseDashPlayDetail 共用同一 queryKey 且 queryFn 返回结构一致（完整快照），
  * 同 Key 查询无论由哪个 observer 执行，缓存 data 均为 `{ data, source }`，读取处解包 `data.data.play?.miss`。 */
 export function useMuseDashPlayDetails(
   items: readonly { uid: string; difficulty: number; platform: string }[],
   userId: string | null,
   enabled: boolean,
-): ReadonlyMap<string, number | null | undefined> {
+): MuseDashPlayDetailsResult {
   const tabActive = useCachedTabActive();
   const [windowSize, setWindowSize] = useState(MUSE_DASH_DETAIL_CONCURRENCY);
   const itemsKey = items.map((item) => `${item.uid}:${item.difficulty}:${item.platform}`).join('|');
@@ -210,19 +223,31 @@ export function useMuseDashPlayDetails(
     const next = Math.min(items.length, settled + MUSE_DASH_DETAIL_CONCURRENCY);
     if (next !== windowSize) setWindowSize(next);
   }, [enabled, items.length, queries, windowSize]);
-  return useMemo(() => {
-    const map = new Map<string, number | null | undefined>();
+  const missByChart = useMemo(() => {
+    const map = new Map<string, MuseDashMissDetailValue>();
     const count = Math.min(items.length, queries.length);
     for (let index = 0; index < count; index += 1) {
       const item = items[index];
       const query = queries[index];
       if (!item || !query) continue;
       const key = `${item.uid}:${item.difficulty}`;
-      if (!query.isFetched || query.isLoading) map.set(key, null);
+      // 最终失败先于其他状态：失败请求不会再有数据，必须与「已取到但没有 miss 字段」分开。
+      if (query.isError) map.set(key, MUSE_DASH_MISS_DETAIL_FAILED);
+      else if (!query.isFetched || query.isLoading) map.set(key, null);
       else map.set(key, query.data?.data?.play?.miss);
     }
     return map;
   }, [items, queries]);
+  const failedCount = useMemo(
+    () => [...missByChart.values()].filter((value) => value === MUSE_DASH_MISS_DETAIL_FAILED).length,
+    [missByChart],
+  );
+  const retryFailed = useCallback(() => {
+    for (const query of queries) {
+      if (query.isError) void query.refetch();
+    }
+  }, [queries]);
+  return { missByChart, failedCount, retryFailed };
 }
 
 export function useMuseDashAlbums(enabled = true) {

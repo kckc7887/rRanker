@@ -6,7 +6,13 @@ import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { FormField } from '@/components/FormField';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
-import { formatPushSearchSummary, type PushRecommendationsResult } from '@/domain/phigros-push';
+import {
+  PHIGROS_PUSH_LIMITS,
+  formatPushSearchSummary,
+  parsePhigrosPushChartCost,
+  parsePhigrosPushDelta,
+  type PushRecommendationsResult,
+} from '@/domain/phigros-push';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { phigrosResources } from '@/services/phigros-resources';
@@ -14,19 +20,9 @@ import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { parseNumericInput } from '@/utils/numeric-input';
 
-function parseDelta(value: string): number | null {
-  const n = parseNumericInput(value);
-  if (!Number.isFinite(n) || n < 0.01) return null;
-  const rounded = Math.round(n * 100) / 100;
-  if (rounded < 0.01) return null;
-  return rounded;
-}
-
-function parseChartCost(value: string): number | null {
-  const n = parseNumericInput(value);
-  if (!Number.isInteger(n) || n < 1 || n > 30) return null;
-  return n;
-}
+/** 输入框文案与领域入口共用同一份范围常量，页面不再另写阈值。 */
+const DELTA_ERROR = `加值至少为 ${PHIGROS_PUSH_LIMITS.minDelta}，且最多两位小数。`;
+const CHART_COST_ERROR = `成本须为 ${PHIGROS_PUSH_LIMITS.minChartCost}–${PHIGROS_PUSH_LIMITS.maxChartCost} 的整数（愿意打几张谱面）。`;
 
 export default function PushRksToolScreen() {
   const theme = useAppTheme();
@@ -38,10 +34,10 @@ export default function PushRksToolScreen() {
   const [chartCostText, setChartCostText] = useState('1');
   const [includePhi, setIncludePhi] = useState(true);
 
-  const delta = parseDelta(deltaText);
-  const chartCost = parseChartCost(chartCostText);
-  const deltaError = delta == null ? '加值至少为 0.01，且最多两位小数。' : null;
-  const chartCostError = chartCost == null ? '成本须为 1–30 的整数（愿意打几张谱面）。' : null;
+  const delta = parsePhigrosPushDelta(parseNumericInput(deltaText));
+  const chartCost = parsePhigrosPushChartCost(parseNumericInput(chartCostText));
+  const deltaError = delta == null ? DELTA_ERROR : null;
+  const chartCostError = chartCost == null ? CHART_COST_ERROR : null;
   const hasPhiSession = session?.mode === 'phi-session'
     && scoreProvider instanceof PhigrosScoreProvider;
   const inputsValid = delta != null && chartCost != null;

@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PHIGROS_PUSH_LIMITS,
+  PhigrosPushInputError,
   evaluateDisplayedPushPlan,
   findPushRecommendations,
   formatPushSearchSummary,
+  parsePhigrosPushChartCost,
+  parsePhigrosPushDelta,
+  resolvePhigrosPushRequest,
   resolvePushExactTarget,
   type PushRecommendationsResult,
 } from '@/domain/phigros-push';
@@ -21,6 +26,96 @@ describe('resolvePushExactTarget', () => {
     expect(result.displayRks).toBe(16.17);
     expect(result.exactTarget).toBeCloseTo(16.265, 6);
     expect(result.displayTarget).toBeCloseTo(16.27, 6);
+  });
+});
+
+function pushInputErrorCode(run: () => unknown): string {
+  try {
+    run();
+  } catch (error) {
+    return error instanceof PhigrosPushInputError ? error.code : `未预期错误：${String(error)}`;
+  }
+  return '未抛出错误';
+}
+
+describe('push request parameters', () => {
+  it('accepts the legal boundaries and normalizes delta to two decimals', () => {
+    expect(parsePhigrosPushDelta(PHIGROS_PUSH_LIMITS.minDelta)).toBe(0.01);
+    expect(parsePhigrosPushDelta(0.1)).toBe(0.1);
+    expect(parsePhigrosPushDelta(0.015)).toBe(0.02);
+    expect(parsePhigrosPushChartCost(PHIGROS_PUSH_LIMITS.minChartCost)).toBe(1);
+    expect(parsePhigrosPushChartCost(PHIGROS_PUSH_LIMITS.maxChartCost)).toBe(30);
+    expect(parsePhigrosPushChartCost(7)).toBe(7);
+  });
+
+  it('rejects non-finite, out-of-range and fractional inputs', () => {
+    for (const delta of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      0,
+      -1,
+      PHIGROS_PUSH_LIMITS.minDelta - 0.001,
+    ]) {
+      expect(parsePhigrosPushDelta(delta)).toBeNull();
+    }
+    for (const chartCost of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      0,
+      -1,
+      PHIGROS_PUSH_LIMITS.maxChartCost + 1,
+      1.5,
+    ]) {
+      expect(parsePhigrosPushChartCost(chartCost)).toBeNull();
+    }
+  });
+
+  it('resolves one normalized request or refuses it with a stable code', () => {
+    expect(resolvePhigrosPushRequest({ delta: 0.015, chartCost: 30, includePhi: false })).toEqual({
+      delta: 0.02,
+      chartCost: 30,
+      includePhi: false,
+      searchPoolLimit: undefined,
+      signal: undefined,
+    });
+    for (const delta of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1]) {
+      expect(pushInputErrorCode(() => resolvePhigrosPushRequest({ delta, chartCost: 1 })))
+        .toBe('delta_out_of_range');
+    }
+    for (const chartCost of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 31, 1.5]) {
+      expect(pushInputErrorCode(() => resolvePhigrosPushRequest({ delta: 0.01, chartCost })))
+        .toBe('chart_cost_out_of_range');
+    }
+  });
+
+  it('refuses illegal requests instead of encoding them as a search conclusion', async () => {
+    const { gameRecord, difficultyTable } = buildPool();
+    for (const delta of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1]) {
+      await expect(findPushRecommendations(gameRecord, difficultyTable, { delta, chartCost: 1 }))
+        .rejects.toMatchObject({ code: 'delta_out_of_range' });
+    }
+    for (const chartCost of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 31, 1.5]) {
+      await expect(findPushRecommendations(gameRecord, difficultyTable, { delta: 0.01, chartCost }))
+        .rejects.toMatchObject({ code: 'chart_cost_out_of_range' });
+    }
+  });
+
+  it('keeps the legal boundaries searchable with the normalized delta', async () => {
+    const { gameRecord, difficultyTable } = inCharts([{ id: 'song.new', difficulty: 15, rawAcc: 0 }]);
+    const single = await findPushRecommendations(gameRecord, difficultyTable, { delta: 0.01, chartCost: 1 });
+    expect(single.chartCost).toBe(1);
+    expect(single.searchStatus).toBe('verified');
+    expectVerifiedPlan(gameRecord, difficultyTable, single);
+
+    const maximum = await findPushRecommendations(gameRecord, difficultyTable, { delta: 0.01, chartCost: 30 });
+    expect(maximum.chartCost).toBe(30);
+    expect(maximum.perChartShare).toBeCloseTo(maximum.gainNeeded / 30, 3);
+
+    const rounded = await findPushRecommendations(gameRecord, difficultyTable, { delta: 0.014, chartCost: 1 });
+    expect(rounded.exactTarget)
+      .toBe(resolvePushExactTarget(rounded.currentRks, 0.01).exactTarget);
   });
 });
 

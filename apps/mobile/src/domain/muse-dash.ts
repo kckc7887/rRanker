@@ -253,17 +253,30 @@ export function resolveMuseDashAchievement(acc: number, miss: number | undefined
 
 /**
  * 成就筛选依赖的单曲 miss 明细状态：
- * pending=请求尚未返回（可以等待），unknown=已取到但上游没有 miss 字段（无法判定，不会再变化），known=已确认。
+ * pending=请求尚未返回（可以等待），failed=请求最终失败（重试前不会再变化），
+ * unknown=已取到但上游没有 miss 字段（无法判定，不会再变化），known=已确认。
+ * 只有 known 才可用于判定 AP/FC。
  */
 export type MuseDashMissDetail =
   | { status: 'pending' }
+  | { status: 'failed' }
   | { status: 'unknown' }
   | { status: 'known'; miss: number };
 
-/** miss 明细表取值 → 三态：null 为请求未返回，undefined 为已取到但无 miss 字段，数字为已确认。 */
-export function museDashMissDetail(miss: number | null | undefined): MuseDashMissDetail {
-  if (miss === null) return { status: 'pending' };
-  return miss === undefined ? { status: 'unknown' } : { status: 'known', miss };
+/**
+ * 明细表取值里的失败哨兵：查询最终失败，与 unknown（已取到但上游没有 miss 字段）分开，
+ * 让页面能提示并可针对失败项单独重试。只由查询层写入，判定一律经 museDashMissDetail。
+ */
+export const MUSE_DASH_MISS_DETAIL_FAILED = 'failed';
+
+/** 明细表取值：数字为已确认 miss，null 为请求未返回，undefined 为上游无该字段，失败见失败哨兵。 */
+export type MuseDashMissDetailValue = number | null | undefined | typeof MUSE_DASH_MISS_DETAIL_FAILED;
+
+/** 明细表取值 → 四态；pending 与 failed 都不会自行变成结果，重试才可能改变 failed。 */
+export function museDashMissDetail(value: MuseDashMissDetailValue): MuseDashMissDetail {
+  if (value === MUSE_DASH_MISS_DETAIL_FAILED) return { status: 'failed' };
+  if (value === null) return { status: 'pending' };
+  return value === undefined ? { status: 'unknown' } : { status: 'known', miss: value };
 }
 
 /** 成就筛选选项与文案（仿 maimai-filters 的 MAIMAI_FC_ACHIEVEMENTS 模式）。 */
@@ -451,7 +464,7 @@ export function buildMuseDashRandomCharts(
 export function filterMuseDashRandomCharts(
   charts: readonly MuseDashRandomChart[],
   filters: MuseDashRandomChartFilters,
-  missByChart: ReadonlyMap<string, number | null | undefined>,
+  missByChart: ReadonlyMap<string, MuseDashMissDetailValue>,
 ): MuseDashRandomChart[] {
   const scoreFilterActive = filters.accMin.trim() !== ''
     || filters.accMax.trim() !== ''
@@ -466,7 +479,7 @@ export function filterMuseDashRandomCharts(
     if (scoreFilterActive && !chart.score) return false;
     if (chart.score && !matchesMuseDashAccRange(chart.score.play.acc, filters.accMin, filters.accMax)) return false;
     if (filters.achievement !== 'all' && chart.score) {
-      // 只有已确认的 miss 明细才能判定 AP/FC；pending 与 unknown 一律不算已满足。
+      // 只有已确认的 miss 明细才能判定 AP/FC；pending、failed 与 unknown 一律不算已满足。
       const detail = museDashMissDetail(missByChart.get(chart.key));
       if (detail.status !== 'known') return false;
       if (!matchesMuseDashAchievementFilter(chart.score.play.acc, detail.miss, filters.achievement)) return false;
@@ -477,12 +490,13 @@ export function filterMuseDashRandomCharts(
 
 /**
  * 成就筛选所需的 miss 明细是否仍在请求中：抽取流程据此等待，避免用未确认明细的候选。
- * unknown（已取到但无 miss 字段）不会再变化，不构成等待理由。
+ * unknown（已取到但无 miss 字段）与 failed（请求最终失败）都不会再自行变化，
+ * 不构成等待理由；失败项要靠页面上的重试恢复。
  */
 export function museDashAchievementDetailsPending(
   charts: readonly MuseDashRandomChart[],
   filters: MuseDashRandomChartFilters,
-  missByChart: ReadonlyMap<string, number | null | undefined>,
+  missByChart: ReadonlyMap<string, MuseDashMissDetailValue>,
 ): boolean {
   if (filters.achievement === 'all') return false;
   return filterMuseDashRandomCharts(charts, { ...filters, achievement: 'all' }, missByChart)

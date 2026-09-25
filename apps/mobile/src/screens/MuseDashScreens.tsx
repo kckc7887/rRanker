@@ -183,19 +183,25 @@ export function MuseDashRecordsScreen() {
   const missItems = useMemo(() => baseFiltered.map((item) => ({
     uid: item.play.uid, difficulty: item.play.difficulty, platform: item.play.platform ?? 'mobile',
   })), [baseFiltered]);
-  const missMap = useMuseDashPlayDetails(missItems, userId, achievement !== 'all');
+  const achievementDetailsEnabled = achievement !== 'all';
+  const {
+    missByChart: missMap,
+    failedCount: failureCount,
+    retryFailed: retryFailedDetails,
+  } = useMuseDashPlayDetails(missItems, userId, achievementDetailsEnabled);
   const records = useMemo(() => {
     const filtered = achievement === 'all'
       ? baseFiltered
       : baseFiltered.filter((item) => {
-        // 只有已确认的 miss 明细才能判定 AP/FC；pending 与 unknown 都不算已满足。
+        // 只有已确认的 miss 明细才能判定 AP/FC；pending、failed 与 unknown 都不算已满足。
         const detail = museDashMissDetail(missMap.get(`${item.play.uid}:${item.play.difficulty}`));
         return detail.status === 'known'
           && matchesMuseDashAchievementFilter(item.play.acc, detail.miss, achievement);
       });
     return sortRawScores(filtered);
   }, [baseFiltered, achievement, missMap]);
-  const detailsPending = achievement !== 'all' && [...missMap.values()].some((miss) => miss === null);
+  const detailsPending = achievementDetailsEnabled && [...missMap.values()].some((miss) => miss === null);
+  const detailsFailed = achievementDetailsEnabled ? failureCount : 0;
   const loading = gameData.isLoading || albums.isLoading || ce.isLoading || diffdiff.isLoading;
   const error = gameData.error ?? albums.error ?? ce.error ?? diffdiff.error;
   const controls = <>
@@ -209,11 +215,20 @@ export function MuseDashRecordsScreen() {
       onDlcChange={setDlc} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
       onAccMinChange={setAccMin} onAccMaxChange={setAccMax} onAchievementChange={setAchievement}
       onReset={clearFilters} />
+    {detailsFailed > 0 ? <View style={[styles.detailNotice, { borderColor: theme.danger }]}>
+      <Text accessibilityRole="alert" style={[styles.detailNoticeText, { color: theme.danger }]}>
+        {`${detailsFailed} 条成绩的成就明细读取失败，筛选只使用已确认的结果。`}
+      </Text>
+      <Pressable accessibilityRole="button" accessibilityLabel="重试失败的成就明细" onPress={retryFailedDetails}
+        style={[styles.detailNoticeButton, { borderColor: theme.accent }]}>
+        <Text style={[styles.detailNoticeButtonText, { color: theme.accent }]}>重试</Text>
+      </Pressable>
+    </View> : null}
   </>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <RecordsListPage beforeList={controls} isLoading={loading} isError={!!error}
       isEmpty={!loading && records.length === 0} error={error} onRetry={() => { void gameData.refetch(); void albums.refetch(); void ce.refetch(); void diffdiff.refetch(); }}
-      emptyText={userId === null ? '请先绑定喵斯快跑玩家' : detailsPending ? '正在核对成就…' : '没有公开成绩'} data={records.length ? records : undefined} flatListProps={{
+      emptyText={userId === null ? '请先绑定喵斯快跑玩家' : detailsFailed > 0 ? '成就明细读取失败，可重试' : detailsPending ? '正在核对成就…' : '没有公开成绩'} data={records.length ? records : undefined} flatListProps={{
         testID: 'musedash-records-results-list', style: styles.list,
         contentInsetAdjustmentBehavior: 'automatic', contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
         scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
@@ -548,6 +563,16 @@ const styles = StyleSheet.create({
   headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
   headerFavoriteActive: {},
   sectionHeader: { marginTop: 8, marginBottom: 3, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
+  detailNotice: {
+    marginHorizontal: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10,
+    borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10,
+  },
+  detailNoticeText: { flex: 1, fontSize: 12, lineHeight: 17, fontWeight: '600' },
+  detailNoticeButton: {
+    minHeight: 30, minWidth: 60, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999,
+    alignItems: 'center', justifyContent: 'center',
+  },
+  detailNoticeButtonText: { fontSize: 12, fontWeight: '800' },
   sectionTitle: { fontSize: 18, fontWeight: '900' }, sectionCount: { fontSize: 11 },
   detail: { paddingBottom: 32 },
   hero: { position: 'relative', backgroundColor: '#D1D5DB', overflow: 'hidden' },
