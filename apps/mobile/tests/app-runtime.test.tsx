@@ -18,12 +18,16 @@ const mockMaintenance = jest.fn(async () => undefined);
 const mockActiveGame = jest.fn(async (_gameId: string) => undefined);
 const mockRecord = jest.fn(async () => undefined);
 const mockRoute = jest.fn();
+const mockRetryPendingRotationWrites = jest.fn(async () => 0);
 
 jest.mock('@tanstack/react-query', () => ({ focusManager: { setFocused: (value: unknown) => mockFocus(value) } }));
 jest.mock('expo-image', () => ({ Image: { clearMemoryCache: () => mockClearMemory() } }));
 jest.mock('expo-router', () => ({ useSegments: () => ['(tabs)', '(overview)'] }));
 jest.mock('@/hooks/use-game-resource-sync', () => ({ useGameResourceSync: () => undefined }));
-jest.mock('@/state/session-store', () => ({ useSession: Object.assign((select: (state: unknown) => unknown) => select(mockState), { getState: () => mockState }) }));
+jest.mock('@/state/session-store', () => ({
+  useSession: Object.assign((select: (state: unknown) => unknown) => select(mockState), { getState: () => mockState }),
+  retryPendingRotationWrites: () => mockRetryPendingRotationWrites(),
+}));
 jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle, getForegroundAbortSignal: () => mockController.signal }));
 jest.mock('@/state/query-client', () => ({ queryClient: { cancelQueries: () => mockCancelQueries(), getQueryCache: () => ({ getAll: () => [] }) }, releaseInactiveQueries: () => mockReleaseQueries() }));
 jest.mock('@/features/storage-management/storage-cache-maintenance', () => ({ runStorageCacheMaintenance: () => mockMaintenance() }));
@@ -79,6 +83,22 @@ describe('app runtime lifecycle', () => {
     expect(mockMaintenance).toHaveBeenCalledTimes(1);
     await hook.unmount();
     expect(mockFocus).toHaveBeenLastCalledWith(undefined);
+  });
+
+  it('resumes pending credential writes only while the app is in the foreground', async () => {
+    const hook = await renderHook(() => useAppRuntime(true));
+    await flushInteractions();
+    expect(mockRetryPendingRotationWrites).toHaveBeenCalledTimes(1);
+
+    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
+    await hook.rerender(undefined);
+    expect(mockRetryPendingRotationWrites).toHaveBeenCalledTimes(1);
+
+    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
+    await hook.rerender(undefined);
+    await flushInteractions();
+    expect(mockRetryPendingRotationWrites).toHaveBeenCalledTimes(2);
+    await hook.unmount();
   });
 
   it('reschedules hydration interrupted by inactive within the same foreground generation', async () => {

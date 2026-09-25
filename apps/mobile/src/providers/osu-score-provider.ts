@@ -33,11 +33,11 @@ const OSU_STATUS_TEXTS: ProviderStatusTexts = {
   fallback: { message: (status) => `osu! 返回 HTTP ${status}` },
 };
 
-/** token 轮换成功后的回调：由调用方把新会话持久化到账号存储。 */
+/** token 轮换成功后的回调：由调用方按凭据世代校验后把新会话提交到账号存储。 */
 export type OsuTokenRotationHandler = (
   session: OsuOAuthSession,
   expected: OsuOAuthSession,
-) => void | Promise<void>;
+) => void | Promise<unknown>;
 
 /**
  * osu! 官方 API Provider。所有端点要求 Bearer token；

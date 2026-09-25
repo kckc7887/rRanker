@@ -35,6 +35,11 @@ export type LxnsOAuthRequestTexts = {
   timeoutMessage: string;
 };
 
+/** 取消检查统一走这里：轮换与请求之间要复查多次，避免在方法里重复展开分支。 */
+function assertNotAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw signal.reason;
+}
+
 /**
  * LXNS OAuth 请求核心：持有会话并负责 token 互斥轮换（refreshPromise 去重，
  * 轮换走公共 rotateLxnsTokens），为落雪系 provider 提供同构的 Bearer 请求骨架。
@@ -78,8 +83,10 @@ export class LxnsOAuthRequestCore {
     texts: LxnsOAuthRequestTexts,
     signal?: AbortSignal,
   ): Promise<unknown> {
-    if (signal?.aborted) throw signal.reason;
+    assertNotAborted(signal);
     const accessToken = await this.ensureFreshAccessToken();
+    // 刷新可能耗时：轮换结果仍会为其它共享账号提交，但这次业务读取必须先重新确认取消。
+    assertNotAborted(signal);
     const controller = new AbortController();
     const onExternalAbort = () => controller.abort();
     signal?.addEventListener('abort', onExternalAbort, { once: true });

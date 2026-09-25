@@ -20,6 +20,7 @@ import {
   TEST_ACCOUNT_ID,
 } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
+import type { CredentialSessionWriteResult } from '@/storage/secure-session-store';
 import {
   clearOsuRotationCache,
   osuRotationCacheStats,
@@ -36,9 +37,12 @@ import { MaxedPhigrosTestProvider } from '@/providers/maxed-phigros-test-provide
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import {
   applyLxnsTokenRotation,
+  applyOsuTokenRotation,
   applyRizlineSessionRotation,
+  pendingRotationWritesSnapshot,
+  resetPendingRotationWritesForTests,
   restoreSession,
-  retryPendingLxnsRotationWrites,
+  retryPendingRotationWrites,
   UNBOUND_ACCOUNT_ID,
   useSession,
 } from '@/state/session-store';
@@ -46,7 +50,9 @@ import {
 process.env.OSU_OAUTH_CLIENT_SECRET ??= 'test-client-secret';
 
 const updateAccountSession = vi.hoisted(() => vi.fn(async () => undefined));
-const updateCredentialSession = vi.hoisted(() => vi.fn(async () => 'applied' as const));
+const updateCredentialSession = vi.hoisted(() => (
+  vi.fn(async (): Promise<CredentialSessionWriteResult> => 'applied')
+));
 
 vi.mock('@/storage/secure-session-store', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/storage/secure-session-store')>();
@@ -549,6 +555,7 @@ describe('useSession store', () => {
   });
 
   it('keeps the latest in-memory LXNS session and marks it pending when persistence fails', async () => {
+    resetPendingRotationWritesForTests();
     useSession.getState().setSession(lxnsSession, {
       displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns',
     });
@@ -567,10 +574,133 @@ describe('useSession store', () => {
     expect(state.session).toEqual(rotated);
     expect(state.sessionsByAccountId[accountId]).toEqual(rotated);
     expect((state.scoreProvider as LxnsScoreProvider).getSession()).toEqual(rotated);
+    expect(pendingRotationWritesSnapshot()).toEqual([
+      expect.objectContaining({ accountId, attempts: 0 }),
+    ]);
 
     // 本机落盘恢复后补交这次轮换，挂起项不再残留在后续提交里。
     updateCredentialSession.mockResolvedValue('applied');
-    await expect(retryPendingLxnsRotationWrites()).resolves.toBe(1);
+    await expect(retryPendingRotationWrites()).resolves.toBe(1);
+    expect(pendingRotationWritesSnapshot()).toEqual([]);
+  });
+
+  it('bounds the pending write retries and drops tasks whose account was removed', async () => {
+    resetPendingRotationWritesForTests();
+    useSession.getState().setSession(lxnsSession, {
+      displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns',
+    });
+    const accountId = useSession.getState().activeAccountId;
+    const rotated = { ...lxnsSession, accessToken: 'access-b', refreshToken: 'refresh-b' };
+    updateCredentialSession.mockRejectedValue(new Error('disk offline'));
+    await expect(applyLxnsTokenRotation(accountId, { previous: lxnsSession, next: rotated }))
+      .resolves.toBe('pending-persist');
+
+    // 有界重试：首次失败后最多再自动补写 3 次，超过上限就放弃并保留可观察摘要为空。
+    for (let attempt = 1; attempt <= 3; attempt += 1) {
+      await retryPendingRotationWrites();
+      expect(pendingRotationWritesSnapshot()[0]?.attempts).toBe(attempt);
+    }
+    await retryPendingRotationWrites();
+    expect(pendingRotationWritesSnapshot()).toEqual([]);
+
+    // 账号已解绑的挂起项在补写时被丢弃，不会把旧凭据写回来。
+    updateCredentialSession.mockResolvedValue('missing');
+    updateCredentialSession.mockRejectedValueOnce(new Error('disk offline'));
+    await applyLxnsTokenRotation(accountId, { previous: rotated, next: { ...rotated, refreshToken: 'refresh-c' } });
+    expect(pendingRotationWritesSnapshot()).toHaveLength(1);
+    await expect(retryPendingRotationWrites()).resolves.toBe(0);
+    expect(pendingRotationWritesSnapshot()).toEqual([]);
+    updateCredentialSession.mockReset();
+    updateCredentialSession.mockResolvedValue('applied');
+  });
+
+  it('runs pending write retries one at a time and is idempotent', async () => {
+    resetPendingRotationWritesForTests();
+    useSession.getState().setSession(lxnsSession, {
+      displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns',
+    });
+    const accountId = useSession.getState().activeAccountId;
+    const rotated = { ...lxnsSession, accessToken: 'access-b', refreshToken: 'refresh-b' };
+    updateCredentialSession.mockRejectedValueOnce(new Error('disk offline'));
+    await applyLxnsTokenRotation(accountId, { previous: lxnsSession, next: rotated });
+    expect(pendingRotationWritesSnapshot()).toHaveLength(1);
+    updateCredentialSession.mockClear();
+
+    let release: (value: 'applied') => void = () => undefined;
+    updateCredentialSession.mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    const first = retryPendingRotationWrites();
+    const second = retryPendingRotationWrites();
+    try {
+      // 并发触发只写一次：第二次复用同一次在途补写。
+      await vi.waitFor(() => expect(updateCredentialSession).toHaveBeenCalledTimes(1));
+      release('applied');
+      await expect(Promise.all([first, second])).resolves.toEqual([1, 1]);
+    } finally {
+      release('applied');
+      await Promise.allSettled([first, second]);
+      updateCredentialSession.mockReset();
+      updateCredentialSession.mockResolvedValue('applied');
+      resetPendingRotationWritesForTests();
+    }
+    expect(pendingRotationWritesSnapshot()).toEqual([]);
+  });
+
+  it('writes the shared osu credential even after the initiating mode account was removed', async () => {
+    resetPendingRotationWritesForTests();
+    const expected = {
+      mode: 'osu-oauth' as const,
+      accessToken: 'access-a',
+      refreshToken: 'refresh-a',
+      expiresAt: Date.now() + 60_000,
+      persistable: true as const,
+    };
+    const rotated = { ...expected, accessToken: 'access-b', refreshToken: 'refresh-b' };
+    const mania = createOsuBoundAccount({ gameId: 'osu-mania', userId: 7, displayName: 'mania', pp: 1 });
+    const standard = createOsuBoundAccount({ gameId: 'osu-standard', userId: 7, displayName: 'standard', pp: 1 });
+    useSession.getState().finishRestore(null);
+    useSession.getState().setOsuBinding({
+      accounts: [mania, standard],
+      credentialId: 'osu-shared',
+      activeAccountId: standard.id,
+      session: expected,
+    });
+    useSession.getState().removeBoundAccount(mania.id);
+    updateCredentialSession.mockClear();
+
+    await expect(applyOsuTokenRotation(mania.id, rotated, expected)).resolves.toBe('applied');
+
+    const state = useSession.getState();
+    expect(state.sessionsByAccountId[standard.id]).toEqual(rotated);
+    expect(state.sessionsByAccountId[mania.id]).toBeUndefined();
+    expect(updateCredentialSession).toHaveBeenCalledWith('osu-shared', rotated, {
+      acceptedRefreshTokens: ['refresh-a'],
+    });
+  });
+
+  it('rejects a late osu rotation after the mode account re-authorized', async () => {
+    const stale = {
+      mode: 'osu-oauth' as const,
+      accessToken: 'access-a',
+      refreshToken: 'refresh-a',
+      expiresAt: Date.now() + 60_000,
+      persistable: true as const,
+    };
+    const reAuthorized = { ...stale, accessToken: 'access-new', refreshToken: 'refresh-new' };
+    const account = createOsuBoundAccount({ gameId: 'osu-standard', userId: 7, displayName: 'osu 玩家', pp: 1 });
+    useSession.getState().finishRestore(null);
+    useSession.getState().setOsuBinding({
+      accounts: [account],
+      credentialId: 'osu-credential',
+      activeAccountId: account.id,
+      session: reAuthorized,
+    });
+    updateCredentialSession.mockClear();
+
+    await expect(applyOsuTokenRotation(account.id, { ...stale, refreshToken: 'refresh-b' }, stale))
+      .resolves.toBe('stale');
+
+    expect(useSession.getState().sessionsByAccountId[account.id]).toEqual(reAuthorized);
+    expect(updateCredentialSession).not.toHaveBeenCalled();
   });
 
   it('rejects a late LXNS rotation after the account was re-authorized', async () => {

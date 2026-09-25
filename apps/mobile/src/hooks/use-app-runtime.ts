@@ -5,7 +5,7 @@ import { useSegments } from 'expo-router';
 import { InteractionManager } from 'react-native';
 import { useGameResourceSync } from './use-game-resource-sync';
 import { queryClient, releaseInactiveQueries } from '@/state/query-client';
-import { useSession } from '@/state/session-store';
+import { retryPendingRotationWrites, useSession } from '@/state/session-store';
 import { getForegroundAbortSignal, useAppLifecycle } from '@/state/app-lifecycle';
 import { runStorageCacheMaintenance } from '@/features/storage-management/storage-cache-maintenance';
 import { markRemoteImageCacheGameActive } from '@/services/remote-image-cache';
@@ -57,8 +57,11 @@ export function useAppRuntime(ready: boolean) {
 
   useEffect(() => {
     focusManager.setFocused(lifecycle.foregroundReady);
-    if (lifecycle.foregroundReady) uploadTaskController.resume();
-    else if (lifecycle.phase === 'background') uploadTaskController.pause();
+    if (lifecycle.foregroundReady) {
+      uploadTaskController.resume();
+      // 前台恢复是补交落盘失败的凭据轮换的安全入口：不重新刷新，只重试本机写入。
+      void retryPendingRotationWrites();
+    } else if (lifecycle.phase === 'background') uploadTaskController.pause();
     if (lifecycle.phase === 'background') {
       void queryClient.cancelQueries();
     }
