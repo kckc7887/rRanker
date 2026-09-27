@@ -1,3 +1,4 @@
+import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
 import type { RizlineChartPreviewConfig, RizlineChartPreviewSettings } from '../configuration';
 import {
   PLAYBACK_SPEED_MAX,
@@ -9,6 +10,7 @@ import {
   normalizeRizlineChartPreviewSettings,
 } from '../configuration';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
+import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-preview-bridge';
 import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
 import { prepareOfficialChart } from './chart-prepare';
 import { PreviewSession, decodeAudio } from './playback';
@@ -42,6 +44,7 @@ let settings = normalizeRizlineChartPreviewSettings({});
 let session: PreviewSession | null = null;
 let renderer: RizlineRenderer | null = null;
 let disposed = false;
+const events = new PlayerEventScope(() => disposed);
 let dragging = false;
 let wasPlayingBeforeDrag = false;
 let fullscreen = false;
@@ -159,6 +162,7 @@ function hideControls(): void {
   syncControlsVisibility();
 }
 function setFullscreen(active: boolean): void {
+  if (disposed) return;
   closeActiveWheelPopup();
   fullscreen = active;
   document.body.classList.toggle('fullscreen', active);
@@ -174,7 +178,7 @@ function setFullscreen(active: boolean): void {
   session?.draw();
   post('fullscreen', { active });
 }
-function persistSettings(): void { post('settings', { ...settings }); }
+function persistSettings(): void { post('settings', { settings: { ...settings } }); }
 function changeSettings(partial: Partial<RizlineChartPreviewSettings>): void {
   settings = normalizeRizlineChartPreviewSettings({ ...settings, ...partial });
   session?.setSettings(settings);
@@ -215,7 +219,7 @@ function setupSettings(): void {
   field('hit-sound-volume', 'hitSoundVolume', 0, 1, 0.01, percent);
   const hitSound = element<HTMLButtonElement>('hit-sound');
   hitSound.setAttribute('aria-pressed', String(settings.hitSound));
-  hitSound.addEventListener('click', () => {
+  events.listen(hitSound, 'click', () => {
     changeSettings({ hitSound: !settings.hitSound });
     hitSound.setAttribute('aria-pressed', String(settings.hitSound));
     persistSettings();
@@ -242,16 +246,18 @@ async function runTransport(action: (current: PreviewSession) => void | Promise<
 function togglePlay(): void {
   void runTransport((current) => current.playing ? current.pause() : current.playFrom(current.ended ? 0 : current.currentTime));
 }
+/** 暂停（手动按钮或宿主生命周期）：只停播与收起浮层，不改变全屏状态。 */
 function pauseForLifecycle(): void {
+  if (disposed) return;
   dragging = false;
   closeActiveWheelPopup();
   if (session) { session.pause(); status('已暂停'); syncTransport(); }
-  if (fullscreen) setFullscreen(false);
 }
 function dispose(): void {
   if (disposed) return;
   if (fullscreen) setFullscreen(false);
   disposed = true;
+  events.dispose();
   session?.dispose();
   session = null;
   timelineObserver.disconnect();
@@ -261,13 +267,13 @@ function dispose(): void {
   delete window.__RIZLINE_CHART_PREVIEW_CONFIG__;
 }
 
-playButton.addEventListener('click', togglePlay);
-element('btn-restart').addEventListener('click', () => { void runTransport((current) => current.playFrom(0)); });
+events.listen(playButton, 'click', togglePlay);
+events.listen(element('btn-restart'), 'click', () => { void runTransport((current) => current.playFrom(0)); });
 for (const [id, delta] of [['btn-step-back', -STEP_SECONDS], ['btn-step-forward', STEP_SECONDS]] as const) {
-  element(id).addEventListener('click', () => void runTransport((current) => current.seek(current.currentTime + delta)));
+  events.listen(element(id), 'click', () => void runTransport((current) => current.seek(current.currentTime + delta)));
 }
-fullscreenButton.addEventListener('click', () => setFullscreen(!fullscreen));
-lockButton.addEventListener('click', (event) => {
+events.listen(fullscreenButton, 'click', () => setFullscreen(!fullscreen));
+events.listen(lockButton, 'click', (event) => {
   event.stopPropagation();
   const next = toggleFullscreenLockUiState(locked);
   locked = next.locked;
@@ -276,18 +282,18 @@ lockButton.addEventListener('click', (event) => {
   lockButton.setAttribute('aria-pressed', String(locked));
   if (next.overlayHidden) hideControls(); else showControls();
 });
-canvas.addEventListener('pointerdown', () => {
+events.listen(canvas, 'pointerdown', () => {
   if (!fullscreen) return;
   if (controlsVisible) hideControls(); else showControls();
 });
-controls.addEventListener('pointerdown', () => window.clearTimeout(controlsTimer));
+events.listen(controls, 'pointerdown', () => window.clearTimeout(controlsTimer));
 function seekFromPointer(event: PointerEvent): void {
   if (!session) return;
   const rect = timeline.getBoundingClientRect();
   const percent = Math.min(1, Math.max(0, (event.clientX - rect.left) / Math.max(1, rect.width)));
   void runTransport((current) => current.seek(percent * current.duration));
 }
-timeline.addEventListener('pointerdown', (event) => {
+events.listen(timeline, 'pointerdown', (event) => {
   if (!session || locked) return;
   event.preventDefault();
   event.stopPropagation();
@@ -296,25 +302,28 @@ timeline.addEventListener('pointerdown', (event) => {
   session.pause();
   seekFromPointer(event);
 });
-document.addEventListener('pointermove', (event) => { if (dragging) seekFromPointer(event); });
-document.addEventListener('pointerup', () => {
+events.listen(document, 'pointermove', (event) => { if (dragging) seekFromPointer(event); });
+events.listen(document, 'pointerup', () => {
   if (!dragging) return;
   dragging = false;
   if (wasPlayingBeforeDrag) void runTransport((current) => current.playFrom(current.currentTime));
   else showControls();
 });
-document.addEventListener('pointercancel', () => { dragging = false; syncTransport(); showControls(); });
-window.addEventListener('resize', () => {
+events.listen(document, 'pointercancel', () => { dragging = false; syncTransport(); showControls(); });
+events.listen(window, 'resize', () => {
   closeActiveWheelPopup();
   renderer?.resize();
   session?.draw();
   buildTimeline();
 });
-new ResizeObserver(() => {
+const stageObserver = new ResizeObserver(() => {
+  if (disposed) return;
   renderer?.resize();
   session?.draw();
-}).observe(stage);
-window.addEventListener('keydown', (event) => {
+});
+stageObserver.observe(stage);
+events.own(() => stageObserver.disconnect());
+events.listen(window, 'keydown', (event) => {
   if (event.code === 'Escape' && fullscreen) { event.preventDefault(); setFullscreen(false); return; }
   if (locked) return;
   if (event.code === 'F3' || event.code === 'F4') {
@@ -335,17 +344,17 @@ window.addEventListener('keydown', (event) => {
   }
 });
 function receiveMessage(event: MessageEvent): void {
-  let data: unknown = event.data;
-  if (typeof data === 'string') { try { data = JSON.parse(data); } catch { return; } }
-  if (!data || typeof data !== 'object') return;
-  const type = (data as { type?: unknown }).type;
-  if (type === 'stop') pauseForLifecycle();
-  if (type === 'exit-fullscreen') setFullscreen(false);
+  // 生命周期合同由公共层派生：暂停停播保全屏，退出全屏与释放是显式命令。
+  applyChartPreviewHostCommand(event.data, {
+    pause: pauseForLifecycle,
+    exitFullscreen: () => setFullscreen(false),
+    dispose,
+  });
 }
-window.addEventListener('message', receiveMessage);
-document.addEventListener('message', (event) => receiveMessage(event as MessageEvent));
-window.addEventListener('pagehide', dispose);
-document.addEventListener('visibilitychange', () => { if (document.hidden) pauseForLifecycle(); });
+events.listen(window, 'message', receiveMessage);
+events.listen(document, 'message', (event) => receiveMessage(event as MessageEvent));
+events.listen(window, 'pagehide', dispose);
+events.listen(document, 'visibilitychange', () => { if (document.hidden) pauseForLifecycle(); });
 
 function decodeBase64Payload(value: string): ArrayBuffer {
   const separator = value.indexOf(',');

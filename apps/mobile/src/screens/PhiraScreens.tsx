@@ -22,19 +22,20 @@ import { PhiraRateBadge, resolvePhiraRate, PhiraScoreValue, PhiraXingBadge } fro
 import { FloatingSongDetailChrome } from '@/components/game-content/FloatingSongDetailChrome';
 import { VERTICAL_SONG_DETAIL_STYLES as detailStyles } from '@/components/game-content/SongDetailChromeStyles';
 import { useNotification } from '@/components/AppNotification';
-import { openChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-open';
+import { openChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-open';
 import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
-import { downloadPhiraChartPackage } from '@/features/phira-compatible-chart-download/phira-compatible-chart-download';
+import { downloadPhiraChartPackage } from '@/features/phira-chart-download/chart-package-download';
 import { PhiraScoreCard } from '@/components/phira/PhiraScoreCard';
 import { PhiraSongRow } from '@/components/phira/PhiraSongRow';
 import { phiraPlayerIdFromAccountId } from '@/domain/bound-account';
 import { dedupePhiraCharts, filterPhiraBests, filterPhiraCharts, type PhiraCatalogSort, type PhiraScoreSort } from '@/domain/phira-filters';
-import { formatPhiraAccuracy, formatPhiraRating, PHIRA_STATUS_LABELS, phiraChartStatus, type PhiraChart, type PhiraChartStatus, type PhiraQueriedBest } from '@/domain/phira';
+import { formatPhiraAccuracy, formatPhiraRating, phiraCatalogListView, phiraCatalogPageState, phiraCatalogQueryIdentity, phiraCatalogScanNext, phiraCatalogScanObservation, PHIRA_STATUS_LABELS, phiraChartStatus, type PhiraCatalogScanRequest, type PhiraChart, type PhiraChartStatus, type PhiraQueriedBest } from '@/domain/phira';
 import { buildTagHistory } from '@/domain/user-library';
 import { presentPhiraBestSection, presentPhiraChart } from '@/features/game-content/adapters';
+import { providerErrorToUserMessage } from '@/providers/errors';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
-import { usePhiraBests, usePhiraChart, usePhiraChartBest, usePhiraCharts, usePhiraNotes, usePhiraUploader, useRefreshAllPhiraBests } from '@/hooks/use-phira';
+import { usePhiraBests, usePhiraChart, usePhiraChartBest, usePhiraCharts, usePhiraNotes, usePhiraUploader, useRefreshAllPhiraBests, type PhiraBestRefreshOutcome } from '@/hooks/use-phira';
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhiraRecordsFilter } from '@/state/phira-records-filter';
 import { useUserLibrary } from '@/hooks/use-user-library';
@@ -75,7 +76,8 @@ export function PhiraBestScreen() {
 
 export function PhiraRecordsScreen() {
   const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const id = usePlayerId(); const query = usePhiraBests(id);
-  const refreshAll = useRefreshAllPhiraBests(id);
+  const refresh = useRefreshAllPhiraBests(id);
+  const { showNotification, showActionNotification } = useNotification();
   const filter = usePhiraRecordsFilter();
   const unfilteredItems = useMemo(() => actualBests(query.data?.items), [query.data?.items]);
   const constantValues = useMemo(() => unfilteredItems.map((item) => item.chart.difficulty), [unfilteredItems]);
@@ -87,7 +89,27 @@ export function PhiraRecordsScreen() {
     `${id ?? 'none'}:${query.data?.source.updatedAt ?? 'loading'}`,
   );
   const items = useMemo(() => filterPhiraBests(unfilteredItems, filter), [filter, unfilteredItems]);
-  const retry = async () => { await refreshAll(); await query.refetch(); };
+  const runRefresh = async (task: () => Promise<PhiraBestRefreshOutcome>) => {
+    let outcome: PhiraBestRefreshOutcome;
+    try {
+      outcome = await task();
+    } catch (error) {
+      showNotification({
+        title: '刷新失败',
+        message: providerErrorToUserMessage(error, '暂时无法刷新成绩，请稍后重试。'),
+        variant: 'error',
+      });
+      return;
+    }
+    if (outcome.status !== 'partial' && outcome.status !== 'failed') return;
+    showActionNotification({
+      title: outcome.status === 'partial' ? '部分谱面成绩未更新' : '谱面成绩未更新',
+      message: `${outcome.failedChartIds.length} 首谱面刷新失败，可点此重试。`,
+      variant: 'warning',
+      actions: [{ label: '重试失败项', onPress: () => void runRefresh(refresh.retryFailed) }],
+    });
+  };
+  const retry = async () => { await runRefresh(refresh.refreshAll); await query.refetch(); };
   const controls = <><GameSearchHeader value={filter.keyword} onChangeText={filter.setKeyword} placeholder="搜索已查询歌曲"
     wrapStyle={styles.searchWrap} inputStyle={styles.search} />
     <PhiraFilterBar
@@ -117,12 +139,38 @@ export function PhiraCatalogScreen() {
   const debounced = useDebouncedValue(keyword, 350); const query = usePhiraCharts(status, debounced);
   // Phira /chart 的 page=1 与 page=0 重复且 updated 排序在请求间漂移，跨页需按 id 去重，避免 FlatList 重复 key。
   const charts = useMemo(() => filterPhiraCharts(dedupePhiraCharts(query.data?.pages.flatMap((page) => page.results) ?? []), constantMin, constantMax, sort), [constantMax, constantMin, query.data?.pages, sort]);
-  const pagesLoaded = query.data?.pages.length ?? 0;
-  const keepScanning = charts.length === 0 && query.hasNextPage === true && pagesLoaded < 8;
+  const pageCount = query.data?.pages.length ?? 0;
+  const pageState = phiraCatalogPageState<PhiraChart>({
+    items: charts,
+    pageCount,
+    hasNextPage: query.hasNextPage === true,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    isFetchingNextPage: query.isFetchingNextPage,
+    isFetchNextPageError: query.isFetchNextPageError,
+  });
+  const view = phiraCatalogListView(pageState);
+  const scanning = pageState.status === 'ready' && pageState.scanning;
+  const fetchNextPage = query.fetchNextPage;
+  const scanPageParams = query.data?.pageParams;
+  const scanLastCursor = scanPageParams?.[scanPageParams.length - 1] ?? null;
+  const scanObservation = useMemo(() => phiraCatalogScanObservation({
+    identity: phiraCatalogQueryIdentity(status, debounced),
+    pageCount,
+    lastCursor: scanLastCursor,
+    scanning,
+    isFetchingNextPage: query.isFetchingNextPage,
+  }), [debounced, pageCount, query.isFetchingNextPage, scanLastCursor, scanning, status]);
+  const scanRequested = useRef<PhiraCatalogScanRequest | null>(null);
   useEffect(() => {
-    if (!keepScanning || query.isFetchingNextPage || query.isFetchNextPageError) return;
-    void query.fetchNextPage();
-  }, [keepScanning, query]);
+    const step = phiraCatalogScanNext({ observation: scanObservation, requested: scanRequested.current });
+    scanRequested.current = step.requested;
+    if (step.action !== 'fetch') return;
+    const requested = step.requested;
+    void fetchNextPage().catch(() => {
+      if (scanRequested.current === requested) scanRequested.current = null;
+    });
+  }, [fetchNextPage, scanObservation]);
   const controls = <><GameSearchHeader value={keyword} onChangeText={setKeyword} placeholder="搜索 Phira 谱面"
     wrapStyle={styles.searchWrap} inputStyle={styles.search} />
     <PhiraFilterBar collapsed={collapsed}
@@ -139,14 +187,20 @@ export function PhiraCatalogScreen() {
       onReset={() => { setStatus('ranked'); setSort('updated'); setConstantMin(''); setConstantMax(''); }} /></>;
   const footer = (
     <InfinitePageFooter
-      loading={query.isFetchingNextPage || keepScanning}
-      failed={query.isFetchNextPageError}
-      hasNextPage={query.hasNextPage === true}
-      onRetry={() => void query.fetchNextPage()}
+      loading={query.isFetchingNextPage || scanning}
+      failed={pageState.status === 'ready' && pageState.nextPageFailed}
+      hasNextPage={pageState.status === 'ready' && pageState.hasNextPage}
+      onRetry={() => void fetchNextPage()}
     />
   );
-  return <View style={[styles.page, { backgroundColor: theme.background }]}><CatalogListPage beforeList={controls} isLoading={query.isLoading} isError={query.isError && charts.length === 0} error={query.error}
-    onRetry={() => void query.refetch()} isEmpty={!query.isLoading && charts.length === 0 && !keepScanning && !query.hasNextPage} emptyText="没有找到 Phira 谱面" data={charts.length || keepScanning ? charts : undefined}
+  const pausedByScanBudget = view.emptyReason === 'scanBudget';
+  return <View style={[styles.page, { backgroundColor: theme.background }]}><CatalogListPage<PhiraChart> beforeList={controls}
+    isLoading={view.isLoading} isError={view.isError} error={query.error}
+    onRetry={() => void query.refetch()} isEmpty={view.isEmpty}
+    emptyText={pausedByScanBudget ? `已扫描 ${pageCount} 页仍无匹配谱面` : '没有找到 Phira 谱面'}
+    emptyActionLabel={pausedByScanBudget ? '继续扫描' : undefined}
+    onEmptyAction={pausedByScanBudget ? () => void fetchNextPage() : undefined}
+    data={view.data}
     flatListProps={{ testID: 'phira-catalog-results-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
       contentContainerStyle: [styles.listContent, { paddingBottom: inset + 20 }], scrollIndicatorInsets: { bottom: inset },
       keyExtractor: (item) => String(item.id), renderItem: ({ item }) => <PhiraSongRow chart={item} />,
@@ -238,7 +292,7 @@ function PhiraSongDetailContent({
       {deferredReady ? <><View style={detailStyles.carousel}><GameChartResultCard testID="phira-chart-card" accessibilityLabel={`${chart.level} 难度卡片`} style={[detailStyles.chartCard, { width: Math.max(280, width - 40), backgroundColor: colors.bg, borderColor: colors.fg }]}>
         <View style={detailStyles.chartHeader}><View style={[detailStyles.diffPill, { backgroundColor: colors.fg }]}><Text style={detailStyles.diffPillText}>{chart.level}</Text></View><Text style={[detailStyles.level, { color: colors.fg }]}>{chart.difficulty.toFixed(1)}</Text></View>
         <View style={detailStyles.resultBlock}><Text style={[detailStyles.resultLabel, { color: theme.textMuted }]}>Score</Text>{score.data?.record ? <PhiraScoreValue score={score.data.record.score} variant={score.data.record.score >= 1_000_000 ? 'phi' : score.data.record.fullCombo ? 'fc' : 'normal'} textColor={theme.text} fontSize={38} lineHeight={43} /> : <Text style={[detailStyles.scoreValue, { color: theme.text }]}>—</Text>}
-          {score.data?.record ? <View style={detailStyles.badgeRow}><PhiraRateBadge rate={resolvePhiraRate({ dxScore: score.data.record.score, fc: score.data.record.fullCombo ? 'ap' : null })} fc={score.data.record.fullCombo} />{xing ? <PhiraXingBadge kind={xing} /> : null}</View> : null}</View>
+          {score.data?.record ? <View style={detailStyles.badgeRow}><PhiraRateBadge rate={resolvePhiraRate(score.data.record)} fc={score.data.record.fullCombo} />{xing ? <PhiraXingBadge kind={xing} /> : null}</View> : null}</View>
         <View style={detailStyles.statRow}><View style={detailStyles.statCell}><Text style={[detailStyles.resultLabel, { color: theme.textMuted }]}>ACC</Text><Text style={[detailStyles.statValue, { color: theme.text }]}>{score.data?.record ? formatPhiraAccuracy(score.data.record.accuracy) : '—'}</Text></View><View style={detailStyles.statCell}><Text style={[detailStyles.resultLabel, { color: theme.textMuted }]}>RKS</Text><Text style={[detailStyles.statValue, { color: theme.text }]}>{score.data?.poolRks == null ? '—' : score.data.poolRks.toFixed(4)}</Text></View></View>
         <View style={[detailStyles.chartDivider, { backgroundColor: theme.border }]} /><Text style={[detailStyles.chartMeta, { color: theme.textSecondary }]}>谱师：{chart.charter || '未提供'}</Text>
         {noteGroup ? <GameNoteTable mode="grid" group={noteGroup} accessibilityLabel="谱面物量" containerStyle={[detailStyles.notesTable, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]} rowStyle={detailStyles.notesRow} headerRowStyle={detailStyles.notesHeaderRow} headerTextStyle={[detailStyles.notesCell, detailStyles.notesHeader, { color: theme.textMuted }]} valueTextStyle={[detailStyles.notesCell, detailStyles.notesValue, { color: theme.text }]} /> : <Text style={[detailStyles.chartMeta, { color: theme.textSecondary }]}>{notes.isLoading ? '加载物量中…' : `物量不可用${notes.data?.unavailableReason ? `：${notes.data.unavailableReason}` : ''}`}</Text>}

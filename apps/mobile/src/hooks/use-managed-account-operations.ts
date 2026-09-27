@@ -77,7 +77,7 @@ export function useManagedAccountOperations(flow: ReturnType<typeof useAccountBi
       onExistingBound: flow.close, onCreated: flow.close, upsertBoundAccount, setMessage,
     });
   };
-  const removalMessage = (account: BoundAccount, includePersonalData: boolean, failures: string[]) => {
+  const removalMessage = (account: BoundAccount, includePersonalData: boolean, failures: readonly string[]) => {
     if (account.providerId === 'local') return failures.length
       ? `本地玩家已从列表移除，但${failures.join('、')}数据清理失败` : `已删除本地玩家「${account.displayName}」`;
     if (demoAccountBinding(account.providerId)) return failures.length
@@ -94,7 +94,7 @@ export function useManagedAccountOperations(flow: ReturnType<typeof useAccountBi
   const removeAccount = (account: BoundAccount, includePersonalData: boolean) => removeBoundPlayerAccount({
     includePersonalData, displayName: account.displayName,
     prepareRemoval: () => cancelBoundAccountQueries(account, queryClient),
-    clearPlayer: attempt => clearBoundAccountData(account, attempt),
+    clearPlayer: attempts => clearBoundAccountData(account, attempts),
     clearPersonalData: () => library.clearGameUserData(account.gameId),
     removeBoundAccount: () => useSession.getState().removeBoundAccount(account.id),
     persistActive: persistActiveAccountId,
@@ -104,7 +104,7 @@ export function useManagedAccountOperations(flow: ReturnType<typeof useAccountBi
   const promptRemoveAccount = (account: BoundAccount) => {
     if (account.providerId === 'chunithm-temp') {
       showActionNotification({ title: '删除临时账号', message: '将移除中二节奏临时账号，之后可重新添加。', variant: 'warning',
-        actions: [{ label: '取消', tone: 'cancel' }, { label: '确认删除', tone: 'destructive', onPress: () => removeAccount(account, false) }] });
+        actions: [{ label: '取消', tone: 'cancel' }, { label: '确认删除', tone: 'destructive', onPress: () => void removeAccount(account, false) }] });
       return;
     }
     promptAccountRemoval({

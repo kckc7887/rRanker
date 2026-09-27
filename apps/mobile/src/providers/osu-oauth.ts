@@ -3,7 +3,8 @@ import * as SecureStore from 'expo-secure-store';
 import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
 import type { ProviderSession } from './contracts';
-import { ProviderError } from './errors';
+import { ProviderError, runProviderOperation } from './errors';
+import { requestProviderResponse } from './http-json';
 import {
   OSU_OAUTH_AUTHORIZE_URL,
   OSU_OAUTH_CLIENT_ID,
@@ -15,6 +16,12 @@ import {
 } from './osu-config';
 const PENDING_OAUTH_KEY = 'rranker.osu.oauth.pending.v1';
 const OSU_OAUTH_STATE_TTL_MS = 10 * 60 * 1000;
+let pendingMutation: Promise<unknown> = Promise.resolve();
+function withPendingMutation<T>(action: () => Promise<T>): Promise<T> {
+  const result = pendingMutation.then(action, action);
+  pendingMutation = result.catch(() => undefined);
+  return result;
+}
 
 /** 进行中的 osu! 授权：state（osu! 无 PKCE，凭 state 防 CSRF）。 */
 export type PendingOsuOAuth = {
@@ -65,19 +72,22 @@ export function buildAuthorizeUrl(state: string): string {
 export async function beginOsuAuthorize(): Promise<string> {
   const state = await createStateValue();
   const pending: PendingOsuOAuth = { state, expiresAt: Date.now() + OSU_OAUTH_STATE_TTL_MS };
-  await SecureStore.setItemAsync(PENDING_OAUTH_KEY, JSON.stringify(pending), {
+  await withPendingMutation(() => SecureStore.setItemAsync(PENDING_OAUTH_KEY, JSON.stringify(pending), {
     keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  });
+  }));
   return buildAuthorizeUrl(state);
 }
 
 export async function clearPendingOsuOAuth(): Promise<void> {
-  await SecureStore.deleteItemAsync(PENDING_OAUTH_KEY);
+  await withPendingMutation(() => SecureStore.deleteItemAsync(PENDING_OAUTH_KEY));
 }
 
 /** 读取进行中的授权信息（回调页据此校验 state）。 */
 export async function readPendingOsuOAuth(): Promise<PendingOsuOAuth | null> {
-  const raw = await SecureStore.getItemAsync(PENDING_OAUTH_KEY);
+  return withPendingMutation(loadPendingOsuOAuth);
+}
+async function loadPendingOsuOAuth(): Promise<PendingOsuOAuth | null> {
+  const raw = await runProviderOperation('credential_storage', () => SecureStore.getItemAsync(PENDING_OAUTH_KEY));
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<PendingOsuOAuth>;
@@ -107,49 +117,37 @@ function toSession(token: z.infer<typeof TokenResponseSchema>): OsuOAuthSession 
   };
 }
 
-async function postToken(body: Record<string, string>): Promise<OsuOAuthSession> {
+async function postToken(body: Record<string, string>, signal?: AbortSignal): Promise<OsuOAuthSession> {
   if (!body.client_secret) {
-    throw new ProviderError('authentication', 'osu! 应用凭据缺失，当前构建无法完成授权', false);
+    throw new ProviderError('configuration', 'osu! 应用凭据缺失，当前构建无法完成授权', false);
   }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const response = await expoFetch(OSU_OAUTH_TOKEN_URL, {
+  return requestProviderResponse({
+    baseUrl: OSU_OAUTH_TOKEN_URL, path: '', schema: TokenResponseSchema,
+    fetcher: expoFetch as unknown as typeof fetch, label: 'osu! OAuth',
+    totalAttempts: 1, signal, authenticated: true, maxResponseBytes: 256 * 1024,
+    error: status => new ProviderError(status === 400 || status === 401 ? 'authentication' : 'network', 'osu! 授权失败，请重新发起授权', status >= 500),
+    onHttpError: async response => {
+      let payload: unknown = null;
+      try { payload = await response.json(); } catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+      const parsed = OAuthErrorSchema.safeParse(payload);
+      const authentication = response.status === 400 || response.status === 401 || (parsed.success && parsed.data.error === 'invalid_grant');
+      return new ProviderError(authentication ? 'authentication' : 'network', 'osu! 授权失败，请重新发起授权', response.status >= 500);
+    },
+    messages: { schema: 'osu! OAuth token 响应与已验证契约不一致', timeout: 'osu! OAuth 超时', network: '无法连接 osu! OAuth' },
+    init: {
       method: 'POST',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/x-www-form-urlencoded',
       },
       body: new URLSearchParams(body).toString(),
-      signal: controller.signal,
-    });
-    const payload: unknown = await response.json().catch(() => null);
-    if (!response.ok) {
-      const err = OAuthErrorSchema.safeParse(payload);
-      const description = err.success
-        ? (err.data.error_description ?? err.data.error)
-        : `HTTP ${response.status}`;
-      throw new ProviderError(
-        response.status === 400 || response.status === 401 ? 'authentication' : 'network',
-        `osu! 授权失败：${description}`,
-        response.status >= 500,
-      );
-    }
-    return toSession(parseTokenPayload(payload));
-  } catch (error) {
-    if (error instanceof ProviderError) throw error;
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new ProviderError('timeout', 'osu! OAuth 超时', true, { cause: error });
-    }
-    throw new ProviderError('network', '无法连接 osu! OAuth', true, { cause: error });
-  } finally {
-    clearTimeout(timeout);
-  }
+    },
+  }, async response => parseTokenPayload(await response.json())).then(toSession);
 }
 
 export function requireOsuOAuthState(value: unknown): string {
   if (typeof value !== 'string' || !value.trim() || value.includes('\0')) {
-    throw new ProviderError('authentication', '授权状态校验失败，请重新发起授权', false);
+    throw new ProviderError('authorization_callback', '授权状态校验失败，请重新发起授权', false);
   }
   return value;
 }
@@ -157,29 +155,29 @@ export function requireOsuOAuthState(value: unknown): string {
 export async function exchangeOsuAuthorizationCode(
   code: string,
   expectState: string,
+  signal?: AbortSignal,
 ): Promise<OsuOAuthSession> {
   const trimmed = code.trim();
   const state = requireOsuOAuthState(expectState);
   if (!trimmed) throw new ProviderError('authentication', '缺少 osu! 授权码', false);
-  const pending = await readPendingOsuOAuth();
-  if (!pending) {
-    throw new ProviderError('authentication', '找不到本机授权信息，请重新打开授权页', false);
-  }
-  if (pending.expiresAt <= Date.now()) {
-    await clearPendingOsuOAuth();
-    throw new ProviderError('authentication', '授权已过期，请重新发起授权', false);
-  }
-  if (pending.state !== state) {
-    throw new ProviderError('authentication', '授权状态校验失败，请重新发起授权', false);
-  }
-  await clearPendingOsuOAuth();
+  await withPendingMutation(async () => {
+    if (signal?.aborted) throw signal.reason;
+    const pending = await loadPendingOsuOAuth();
+    if (!pending) throw new ProviderError('authorization_callback', '找不到本机授权信息，请重新打开授权页', false);
+    if (pending.expiresAt <= Date.now()) {
+      await runProviderOperation('credential_storage', () => SecureStore.deleteItemAsync(PENDING_OAUTH_KEY));
+      throw new ProviderError('authorization_callback', '授权已过期，请重新发起授权', false);
+    }
+    if (pending.state !== state) throw new ProviderError('authorization_callback', '授权状态校验失败，请重新发起授权', false);
+    await runProviderOperation('credential_storage', () => SecureStore.deleteItemAsync(PENDING_OAUTH_KEY));
+  });
   const session = await postToken({
     grant_type: 'authorization_code',
     code: trimmed,
     client_id: OSU_OAUTH_CLIENT_ID,
     client_secret: osuOAuthClientSecret(),
     redirect_uri: OSU_OAUTH_REDIRECT_URI,
-  });
+  }, signal);
   return session;
 }
 

@@ -1,6 +1,7 @@
 import { useQuery } from '@tanstack/react-query';
 import { useSession } from '@/state/session-store';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
+import { requireDetailedCatalogProvider } from '@/providers/contracts';
 
 /** 仅舞萌姓名框（账号无关的全局公开资源，示例账号也命中缓存优先）。 */
 export function usePlates(enabled = true) {
@@ -10,8 +11,8 @@ export function usePlates(enabled = true) {
   const provider = useSession((state) => state.catalogProvider);
   const queryKey = ['plates', activeAccountId, activeGameId];
   return useQuery({
-    enabled: enabled && tabActive && activeGameId === 'maimai',
+    enabled: enabled && tabActive && activeGameId === 'maimai' && provider !== null,
     queryKey,
-    queryFn: () => provider.getPlates(),
+    queryFn: () => requireDetailedCatalogProvider(provider).getPlates(),
   });
 }

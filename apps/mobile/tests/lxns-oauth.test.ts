@@ -68,15 +68,20 @@ async function loadLxnsOAuthModule(options: {
   pending?: PendingLxnsOAuth | null;
 } = {}) {
   vi.resetModules();
+  let pending = options.pending ?? null;
   if (options.fetchImpl) vi.doMock('expo/fetch', () => ({ fetch: options.fetchImpl }));
   vi.doMock('expo-secure-store', () => ({
     getItemAsync: vi.fn(async (key: string) => (
-      key === 'rranker.lxns.oauth.pending.v2' && options.pending
-        ? JSON.stringify(options.pending)
+      key === 'rranker.lxns.oauth.pending.v2' && pending
+        ? JSON.stringify(pending)
         : null
     )),
-    setItemAsync: vi.fn(async () => undefined),
-    deleteItemAsync: vi.fn(async () => undefined),
+    setItemAsync: vi.fn(async (key: string, value: string) => {
+      if (key === 'rranker.lxns.oauth.pending.v2') pending = JSON.parse(value);
+    }),
+    deleteItemAsync: vi.fn(async (key: string) => {
+      if (key === 'rranker.lxns.oauth.pending.v2') pending = null;
+    }),
     WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
   }));
   return import('@/providers/lxns-oauth');
@@ -203,6 +208,23 @@ describe('rotateLxnsTokens', () => {
     await expect(rotateLxnsTokens('r1')).rejects.toMatchObject({ code: 'authentication' });
     expect(fetchMock).toHaveBeenCalledTimes(2);
   });
+  it('remembers the consumed generations so a late commit can be attributed', async () => {
+    const fetchMock = tokenResponse({
+      access_token: 'a1',
+      token_type: 'Bearer',
+      expires_in: 900,
+      refresh_token: 'r2',
+    });
+    const { lxnsRotationAncestors, lxnsRotationMayReplace, rotateLxnsTokens } =
+      await loadLxnsOAuthModule({ fetchImpl: fetchMock });
+
+    await rotateLxnsTokens('r1');
+
+    expect(lxnsRotationMayReplace('r1', 'r2')).toBe(true);
+    expect(lxnsRotationAncestors('r2')).toEqual(['r1']);
+    // 重新授权拿到的新 refresh token 不属于旧世代，迟到结果不能覆盖它。
+    expect(lxnsRotationMayReplace('r-fresh', 'r2')).toBe(false);
+  });
 });
 
 describe('exchangeLxnsAuthorizationCode state check', () => {
@@ -210,6 +232,7 @@ describe('exchangeLxnsAuthorizationCode state check', () => {
     verifier: 'verifier',
     state: 'expected-state',
     gameId: 'maimai',
+    expiresAt: Date.now() + 600_000,
   };
 
   it('rejects a mismatched state before any network request', async () => {
@@ -225,7 +248,7 @@ describe('exchangeLxnsAuthorizationCode state check', () => {
     });
     await expect(
       exchangeLxnsAuthorizationCode('auth-code', 'wrong-state'),
-    ).rejects.toMatchObject({ code: 'authentication' });
+    ).rejects.toMatchObject({ code: 'authorization_callback' });
     expect(fetchMock).not.toHaveBeenCalled();
   });
 
@@ -243,6 +266,60 @@ describe('exchangeLxnsAuthorizationCode state check', () => {
     const session = await exchangeLxnsAuthorizationCode('auth-code', 'expected-state');
     expect(session.accessToken).toBe('a1');
     expect(fetchMock).toHaveBeenCalledTimes(1);
+    await expect(exchangeLxnsAuthorizationCode('auth-code', 'expected-state')).rejects.toMatchObject({ code: 'authorization_callback' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it.each([undefined, '', ' ', ['expected-state'], ['expected-state', 'other']])('requires one nonempty state: %j', async state => {
+    const fetchMock = tokenResponse({});
+    const { exchangeLxnsAuthorizationCode } = await loadLxnsOAuthModule({ fetchImpl: fetchMock, pending });
+    await expect(exchangeLxnsAuthorizationCode('auth-code', state)).rejects.toMatchObject({ code: 'authorization_callback' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('rejects an expired verifier without sending the code', async () => {
+    const fetchMock = tokenResponse({});
+    const { exchangeLxnsAuthorizationCode } = await loadLxnsOAuthModule({ fetchImpl: fetchMock, pending: { ...pending, expiresAt: Date.now() - 1 } });
+    await expect(exchangeLxnsAuthorizationCode('auth-code', pending.state)).rejects.toMatchObject({ code: 'authorization_callback' });
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
+
+  it('atomically consumes the verifier before concurrent callbacks can reuse it', async () => {
+    const fetchMock = tokenResponse({ access_token: 'a1', token_type: 'Bearer', expires_in: 900, refresh_token: 'r2' });
+    const { exchangeLxnsAuthorizationCode } = await loadLxnsOAuthModule({ fetchImpl: fetchMock, pending });
+    const results = await Promise.allSettled([exchangeLxnsAuthorizationCode('code', pending.state), exchangeLxnsAuthorizationCode('code', pending.state)]);
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'POST', credentials: 'omit', redirect: 'error' });
+  });
+
+  it('a failed token POST is not retried and the consumed verifier cannot be reused', async () => {
+    const fetchMock = vi.fn(async () => new Response('{"error":"temporary_failure"}', { status: 503 }));
+    const { exchangeLxnsAuthorizationCode } = await loadLxnsOAuthModule({ fetchImpl: fetchMock, pending });
+    await expect(exchangeLxnsAuthorizationCode('code', pending.state)).rejects.toMatchObject({ code: 'network' });
+    await expect(exchangeLxnsAuthorizationCode('code', pending.state)).rejects.toMatchObject({ code: 'authorization_callback' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('an old completed POST never clears a newer authorization', async () => {
+    let complete!: (response: Response) => void;
+    const fetchMock = vi.fn(() => new Promise<Response>(resolve => { complete = resolve; }));
+    const oauth = await loadLxnsOAuthModule({ fetchImpl: fetchMock, pending });
+    const old = oauth.exchangeLxnsAuthorizationCode('code', pending.state);
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(1));
+    await oauth.beginLxnsAuthorize({ gameId: 'chunithm' });
+    complete(new Response(JSON.stringify({ access_token: 'a', refresh_token: 'r', expires_in: 900 })));
+    await old;
+    expect(await oauth.readPendingLxnsOAuth()).toMatchObject({ gameId: 'chunithm' });
+  });
+
+  it('pre-cancelled authorization never consumes the pending verifier or calls the transport', async () => {
+    const fetchMock = tokenResponse({});
+    const oauth = await loadLxnsOAuthModule({ fetchImpl: fetchMock, pending });
+    const controller = new AbortController(); const reason = new Error('用户已离开'); controller.abort(reason);
+    await expect(oauth.exchangeLxnsAuthorizationCode('code', pending.state, controller.signal)).rejects.toBe(reason);
+    expect(await oauth.readPendingLxnsOAuth()).toEqual(pending);
+    expect(fetchMock).not.toHaveBeenCalled();
   });
 });
 

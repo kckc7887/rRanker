@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import Storage from '@/storage/key-value-storage';
 
 /** 各 storage 模块共用的键值存储接口（expo-sqlite/kv-store 及测试替身同构）。 */
 export type KeyValueStore = {

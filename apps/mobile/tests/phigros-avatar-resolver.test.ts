@@ -4,7 +4,7 @@ import {
   resetPhigrosAvatarAliasCacheForTests,
   resolvePhigrosAvatarFileName,
   resolvePhigrosAvatarUrl,
-} from '@/domain/phigros-avatar-resolver';
+} from '@/services/phigros-avatar-resolver';
 import { phigrosResources } from '@/services/phigros-resources';
 
 describe('phigros avatar resolver', () => {

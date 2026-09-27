@@ -6,27 +6,24 @@ import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { FormField } from '@/components/FormField';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
-import { formatPushSearchSummary, type PushRecommendationsResult } from '@/domain/phigros-push';
+import {
+  PHIGROS_PUSH_LIMITS,
+  formatPushSearchSummary,
+  parsePhigrosPushChartCost,
+  parsePhigrosPushDelta,
+  type PushRecommendationsResult,
+} from '@/domain/phigros-push';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
+import { phigrosSharedScoreRecord } from '@/domain/phigros';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { phigrosResources } from '@/services/phigros-resources';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { parseNumericInput } from '@/utils/numeric-input';
 
-function parseDelta(value: string): number | null {
-  const n = parseNumericInput(value);
-  if (!Number.isFinite(n) || n < 0.01) return null;
-  const rounded = Math.round(n * 100) / 100;
-  if (rounded < 0.01) return null;
-  return rounded;
-}
-
-function parseSongCost(value: string): number | null {
-  const n = parseNumericInput(value);
-  if (!Number.isInteger(n) || n < 1 || n > 30) return null;
-  return n;
-}
+/** 输入框文案与领域入口共用同一份范围常量，页面不再另写阈值。 */
+const DELTA_ERROR = `加值至少为 ${PHIGROS_PUSH_LIMITS.minDelta}，且最多两位小数。`;
+const CHART_COST_ERROR = `成本须为 ${PHIGROS_PUSH_LIMITS.minChartCost}–${PHIGROS_PUSH_LIMITS.maxChartCost} 的整数（愿意打几张谱面）。`;
 
 export default function PushRksToolScreen() {
   const theme = useAppTheme();
@@ -35,16 +32,16 @@ export default function PushRksToolScreen() {
   const scoreProvider = useSession((s) => s.scoreProvider);
   const catalogQuery = usePhigrosCatalog();
   const [deltaText, setDeltaText] = useState('0.01');
-  const [songCostText, setSongCostText] = useState('1');
+  const [chartCostText, setChartCostText] = useState('1');
   const [includePhi, setIncludePhi] = useState(true);
 
-  const delta = parseDelta(deltaText);
-  const songCost = parseSongCost(songCostText);
-  const deltaError = delta == null ? '加值至少为 0.01，且最多两位小数。' : null;
-  const songCostError = songCost == null ? '成本须为 1–30 的整数（愿意打几首歌）。' : null;
+  const delta = parsePhigrosPushDelta(parseNumericInput(deltaText));
+  const chartCost = parsePhigrosPushChartCost(parseNumericInput(chartCostText));
+  const deltaError = delta == null ? DELTA_ERROR : null;
+  const chartCostError = chartCost == null ? CHART_COST_ERROR : null;
   const hasPhiSession = session?.mode === 'phi-session'
     && scoreProvider instanceof PhigrosScoreProvider;
-  const inputsValid = delta != null && songCost != null;
+  const inputsValid = delta != null && chartCost != null;
 
   const titleMap = useMemo(() => {
     const map = new Map<string, string>();
@@ -58,13 +55,13 @@ export default function PushRksToolScreen() {
   const saveUpdatedAt = scoreProvider instanceof PhigrosScoreProvider ? scoreProvider.getSaveUpdatedAt() : null;
   const resourceRevision = phigrosResources.peek()?.revision ?? null;
   const pushQuery = useQuery({
-    queryKey: ['phigros-push-rks', activeAccountId, playerId, resourceRevision, saveUpdatedAt, delta, songCost, includePhi],
+    queryKey: ['phigros-push-rks', activeAccountId, playerId, resourceRevision, saveUpdatedAt, delta, chartCost, includePhi],
     enabled: hasPhiSession && inputsValid,
     queryFn: async ({ signal }): Promise<PushRecommendationsResult> => {
-      if (!(scoreProvider instanceof PhigrosScoreProvider) || delta == null || songCost == null) {
+      if (!(scoreProvider instanceof PhigrosScoreProvider) || delta == null || chartCost == null) {
         throw new Error('Phigros 存档未就绪');
       }
-      return scoreProvider.getPushRecommendations(delta, songCost, includePhi, signal);
+      return scoreProvider.getPushRecommendations(delta, chartCost, includePhi, signal);
     },
   });
 
@@ -103,7 +100,7 @@ export default function PushRksToolScreen() {
             {result.alternatives.map((item, index) => (
               <PhigrosScoreCard
                 key={`${item.songId}-${item.level}`}
-                record={item.record}
+                record={phigrosSharedScoreRecord(item.record)}
                 catalogTitle={titleMap.get(item.songId) ?? item.songId}
                 rank={index + 1}
                 pushHint={{
@@ -122,14 +119,14 @@ export default function PushRksToolScreen() {
               <View style={styles.row}>
                 <FormField label="期望加值" value={deltaText} onChangeText={setDeltaText} placeholder="0.01" />
                 <FormField
-                  label="期望成本（首歌）"
-                  value={songCostText}
-                  onChangeText={setSongCostText}
+                  label="期望成本（张谱面）"
+                  value={chartCostText}
+                  onChangeText={setChartCostText}
                   placeholder="1"
                 />
               </View>
               {deltaError ? <Text style={[styles.error, { color: theme.danger }]}>{deltaError}</Text> : null}
-              {songCostError ? <Text style={[styles.error, { color: theme.danger }]}>{songCostError}</Text> : null}
+              {chartCostError ? <Text style={[styles.error, { color: theme.danger }]}>{chartCostError}</Text> : null}
 
               <Pressable
                 accessibilityRole="button"
@@ -203,7 +200,7 @@ export default function PushRksToolScreen() {
         )}
         renderItem={({ item, index }) => (
           <PhigrosScoreCard
-            record={item.record}
+            record={phigrosSharedScoreRecord(item.record)}
             catalogTitle={titleMap.get(item.songId) ?? item.songId}
             rank={index + 1}
             pushHint={{

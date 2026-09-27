@@ -1,76 +1,20 @@
-import { captureResourceWrites } from '@/services/snapshot-cache-utils';
-import { useEffect, useMemo, useState } from 'react';
+import { MUSE_DASH_QUERY_OPTIONS, MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS, museDashPlayerQueryOptions, type MuseDashSnapshot } from '@/services/muse-dash-query';
+
+import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import type { DataSource } from '@/domain/models';
-import type {
-  MuseDashAlbumsResponse,
-  MuseDashCeResponse,
-  MuseDashDiffdiffEntry,
-  MuseDashPlayDetail,
-  MuseDashPlayer,
-} from '@/domain/muse-dash';
+import type { DataSource } from '@/domain/models';import type { MuseDashAlbumsResponse, MuseDashCeResponse, MuseDashDiffdiffEntry, MuseDashMissDetailValue, MuseDashPlayDetail, MuseDashPlayer } from '@/domain/muse-dash';
+import { MUSE_DASH_MISS_DETAIL_FAILED } from '@/domain/muse-dash';
 import { isMuseDashTestUserId } from '@/domain/bound-account';
 import { museDashProvider } from '@/providers/muse-dash-provider';
-import {
-  maxedMuseDashPlayDetailSnapshot,
-  maxedMuseDashPlayerSnapshot,
-} from '@/providers/maxed-musedash-test-provider';
-import { cacheFirstLoad } from '@/services/cache-first';
+import { maxedMuseDashPlayDetailSnapshot } from '@/providers/maxed-musedash-test-provider';
+
+
 import { queryClient } from '@/state/query-client';
-import { invalidateMuseDashSessionResources } from '@/services/infinite-query-refresh';
+
 import { useCachedTabActive } from '@/components/CachedTabScreen';
-import {
-  loadMuseDashAlbumsCacheFirst,
-  loadMuseDashAlbumsFresh,
-  loadMuseDashCeFresh,
-  loadMuseDashDiffdiffCacheFirst,
-  loadMuseDashDiffdiffFresh,
-  loadMuseDashPlayDetailFresh,
-  loadMuseDashPlayerFresh,
-  makeMuseDashSnapshot,
-  MuseDashCache,
-} from '@/services/muse-dash-cache';
+import { loadMuseDashAlbumsFresh, loadMuseDashCeFresh, loadMuseDashDiffdiffFresh, loadMuseDashPlayDetailFresh, makeMuseDashSnapshot } from '@/services/muse-dash-cache';
 
-const MUSE_DASH_QUERY_OPTIONS = { staleTime: 60_000, gcTime: 10 * 60_000 } as const;
-const MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS = {
-  staleTime: Infinity,
-  gcTime: Infinity,
-  refetchOnMount: false,
-  refetchOnReconnect: false,
-} as const;
 
-const cache = new MuseDashCache();
-
-function museDashSessionResourceQueryOptions<T>(
-  queryKey: readonly unknown[],
-  load: (signal: AbortSignal) => Promise<T>,
-) {
-  return {
-    queryKey,
-    queryFn: async ({ signal }: { signal: AbortSignal }): Promise<MuseDashSnapshot<T>> => (
-      makeMuseDashSnapshot(await load(signal))
-    ),
-    ...MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS,
-  } as const;
-}
-
-export async function refreshMuseDashSessionResources(): Promise<void> {
-  await invalidateMuseDashSessionResources();
-}
-
-export function ensureMuseDashAlbums() {
-  return queryClient.ensureQueryData(museDashSessionResourceQueryOptions(
-    ['musedash', 'albums'],
-    loadMuseDashAlbumsFresh,
-  ));
-}
-
-export function ensureMuseDashDiffdiff() {
-  return queryClient.ensureQueryData(museDashSessionResourceQueryOptions(
-    ['musedash', 'diffdiff'],
-    loadMuseDashDiffdiffFresh,
-  ));
-}
 
 /** Muse Dash 查询统一返回：data 为原始数据，source 为缓存快照来源（数据状态展示用）。 */
 export type MuseDashQuery<T> = {
@@ -83,9 +27,7 @@ export type MuseDashQuery<T> = {
   refetch: () => Promise<unknown>;
 };
 
-type MuseDashSnapshot<T> = { data: T; source: DataSource };
-
-function useMuseDashCacheFirst<T>(
+function useMuseDashSnapshot<T>(
   queryKey: readonly unknown[],
   load: (signal: AbortSignal) => Promise<MuseDashSnapshot<T>>,
   enabled = true,
@@ -127,33 +69,21 @@ export function useMuseDashSearch(query: string) {
 }
 
 export function useMuseDashPlayer(userId: string | null, enabled = true) {
-  const queryKey = ['musedash', 'player', userId] as const;
-  return useMuseDashCacheFirst<MuseDashPlayer>(queryKey, async (signal) => {
-    // 示例账号：不请求网络玩家资料，由曲库与定数表缓存优先生成全满成绩。
-    if (userId !== null && isMuseDashTestUserId(userId)) {
-      const [albums, diffdiff] = await Promise.all([
-        loadMuseDashAlbumsCacheFirst(cache, signal),
-        loadMuseDashDiffdiffCacheFirst(cache, signal),
-      ]);
-      return maxedMuseDashPlayerSnapshot(albums.data, diffdiff.data);
-    }
-    const assertCurrent = captureResourceWrites('musedash', signal, `musedash:musedash-moe:${userId}`);
-    const snapshot = await cacheFirstLoad({
-      assertCurrent,
-      loadCached: () => cache.loadPlayer(userId!),
-      loadFresh: async () => {
-        const player = await loadMuseDashPlayerFresh(userId!, signal);
-        const fresh = makeMuseDashSnapshot(player);
-        if (!signal.aborted) void cache.savePlayer(userId!, fresh, assertCurrent).catch(() => undefined);
-        return fresh;
-      },
-      onFresh: (fresh) => {
-        queryClient.setQueryData(queryKey, fresh);
-      },
-      signal,
-    });
-    return snapshot;
-  }, enabled && userId !== null);
+  const tabActive = useCachedTabActive();
+  const query = useQuery({
+    ...museDashPlayerQueryOptions(queryClient, userId ?? ''),
+    enabled: enabled && tabActive && userId !== null,
+  });
+  const snapshot = query.data as MuseDashSnapshot<MuseDashPlayer> | undefined;
+  return {
+    data: snapshot?.data,
+    source: snapshot?.source,
+    isLoading: query.isLoading,
+    isError: query.isError,
+    error: query.error as Error | null,
+    isFetching: query.isFetching,
+    refetch: query.refetch,
+  };
 }
 
 /** 单曲原始成绩明细（成就判定需要 miss 数）；按玩家+歌曲+难度+平台缓存优先，列表卡片懒加载。 */
@@ -165,7 +95,7 @@ export function useMuseDashPlayDetail(
 ) {
   const enabled = uid !== null && difficulty !== null && platform !== null && userId !== null;
   const queryKey = ['musedash', 'play-detail', userId, uid, difficulty, platform] as const;
-  return useMuseDashCacheFirst<MuseDashPlayDetail>(queryKey, async (signal) => {
+  return useMuseDashSnapshot<MuseDashPlayDetail>(queryKey, async (signal) => {
     // 示例账号：全 AP（miss 0）直接生成，不请求 /rank 明细。
     if (userId !== null && isMuseDashTestUserId(userId)) {
       return maxedMuseDashPlayDetailSnapshot();
@@ -177,15 +107,27 @@ export function useMuseDashPlayDetail(
 
 const MUSE_DASH_DETAIL_CONCURRENCY = 6;
 
-/** 批量单曲明细 miss 表（成就筛选用）：key = `${uid}:${difficulty}` → miss。
- * null 表示尚未返回，不能当成不符合筛选。
+/** 批量 miss 明细的结果：明细表 + 失败计数 + 只重试失败项的入口。 */
+export type MuseDashPlayDetailsResult = {
+  /** key = `${uid}:${difficulty}` → 明细取值（pending / failed / unknown / known）。 */
+  missByChart: ReadonlyMap<string, MuseDashMissDetailValue>;
+  /** 最终失败的明细请求数；重试前不会自行恢复。 */
+  failedCount: number;
+  /** 只重试失败项，未失败与未请求的明细不受影响。 */
+  retryFailed: () => void;
+};
+
+/** 批量单曲明细 miss 表（成就筛选用）：key = `${uid}:${difficulty}` → 明细取值。
+ * null 表示请求尚未返回（pending，抽取前会等待明细到达），undefined 表示上游没有该字段（unknown，不会再变化），
+ * MUSE_DASH_MISS_DETAIL_FAILED 表示请求最终失败（failed，页面据此提示并可单独重试）；
+ * 只有已知数值才用于判定 AP/FC，pending、failed 与 unknown 都不算已满足。
  * 与 useMuseDashPlayDetail 共用同一 queryKey 且 queryFn 返回结构一致（完整快照），
  * 同 Key 查询无论由哪个 observer 执行，缓存 data 均为 `{ data, source }`，读取处解包 `data.data.play?.miss`。 */
 export function useMuseDashPlayDetails(
   items: readonly { uid: string; difficulty: number; platform: string }[],
   userId: string | null,
   enabled: boolean,
-): ReadonlyMap<string, number | null | undefined> {
+): MuseDashPlayDetailsResult {
   const tabActive = useCachedTabActive();
   const [windowSize, setWindowSize] = useState(MUSE_DASH_DETAIL_CONCURRENCY);
   const itemsKey = items.map((item) => `${item.uid}:${item.difficulty}:${item.platform}`).join('|');
@@ -209,38 +151,50 @@ export function useMuseDashPlayDetails(
     const next = Math.min(items.length, settled + MUSE_DASH_DETAIL_CONCURRENCY);
     if (next !== windowSize) setWindowSize(next);
   }, [enabled, items.length, queries, windowSize]);
-  return useMemo(() => {
-    const map = new Map<string, number | null | undefined>();
+  const missByChart = useMemo(() => {
+    const map = new Map<string, MuseDashMissDetailValue>();
     const count = Math.min(items.length, queries.length);
     for (let index = 0; index < count; index += 1) {
       const item = items[index];
       const query = queries[index];
       if (!item || !query) continue;
       const key = `${item.uid}:${item.difficulty}`;
-      if (!query.isFetched || query.isLoading) map.set(key, null);
+      // 最终失败先于其他状态：失败请求不会再有数据，必须与「已取到但没有 miss 字段」分开。
+      if (query.isError) map.set(key, MUSE_DASH_MISS_DETAIL_FAILED);
+      else if (!query.isFetched || query.isLoading) map.set(key, null);
       else map.set(key, query.data?.data?.play?.miss);
     }
     return map;
   }, [items, queries]);
+  const failedCount = useMemo(
+    () => [...missByChart.values()].filter((value) => value === MUSE_DASH_MISS_DETAIL_FAILED).length,
+    [missByChart],
+  );
+  const retryFailed = useCallback(() => {
+    for (const query of queries) {
+      if (query.isError) void query.refetch();
+    }
+  }, [queries]);
+  return { missByChart, failedCount, retryFailed };
 }
 
 export function useMuseDashAlbums(enabled = true) {
   const queryKey = ['musedash', 'albums'] as const;
-  return useMuseDashCacheFirst<MuseDashAlbumsResponse>(queryKey, async (signal) => {
+  return useMuseDashSnapshot<MuseDashAlbumsResponse>(queryKey, async (signal) => {
     return makeMuseDashSnapshot(await loadMuseDashAlbumsFresh(signal));
   }, enabled, MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS);
 }
 
 export function useMuseDashCe(enabled = true) {
   const queryKey = ['musedash', 'ce'] as const;
-  return useMuseDashCacheFirst<MuseDashCeResponse>(queryKey, async (signal) => {
+  return useMuseDashSnapshot<MuseDashCeResponse>(queryKey, async (signal) => {
     return makeMuseDashSnapshot(await loadMuseDashCeFresh(signal));
   }, enabled, MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS);
 }
 
 export function useMuseDashDiffdiff(enabled = true) {
   const queryKey = ['musedash', 'diffdiff'] as const;
-  return useMuseDashCacheFirst<MuseDashDiffdiffEntry[]>(queryKey, async (signal) => {
+  return useMuseDashSnapshot<MuseDashDiffdiffEntry[]>(queryKey, async (signal) => {
     return makeMuseDashSnapshot(await loadMuseDashDiffdiffFresh(signal));
   }, enabled, MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS);
 }

@@ -4,6 +4,7 @@ import { processColor } from 'react-native';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
 import { TUF_RATING_THEME } from '@/components/adofai/TufOverviewDetails';
 import { MUSE_DASH_RATING_THEME } from '@/components/musedash/MuseDashOverviewDetails';
+import { boundAccountRatingTag } from '@/features/game-content/account-rating-tags';
 import {
   createChunithmBoundAccount,
   createMuseDashBoundAccount,
@@ -138,5 +139,24 @@ describe('BoundAccountGroupedList TUF and Muse Dash metadata', () => {
     expect(museScreen.getByText('—')).toBeTruthy();
     expect(museScreen.getByTestId('musedash-rating-tag-fill').props.colors)
       .toEqual(MUSE_DASH_RATING_THEME.fillColors.map((color) => processColor(color)));
+  });
+});
+
+describe('账号行游戏 Rating 标签补充区', () => {
+  it('TUF 与 Muse Dash 的标签由游戏注册表提供，其它游戏不补充', async () => {
+    const tuf = createTufBoundAccount({ playerId: 1, displayName: 'TUF玩家', rankedScore: 15.4321 });
+    const tufTag = await render(<>{boundAccountRatingTag(tuf)}</>);
+    expect(tufTag.getByLabelText('RANKED SCORE 15.43')).toBeTruthy();
+    expect(tufTag.getByTestId('tuf-rating-tag').props.colors)
+      .toEqual(TUF_RATING_THEME.borderColors.map((color) => processColor(color)));
+
+    const muse = createMuseDashBoundAccount({ userId: 'md-1', displayName: '喵斯玩家', rl: 15.4321 });
+    const museTag = await render(<>{boundAccountRatingTag(muse)}</>);
+    expect(museTag.getByLabelText('Rating 15.43')).toBeTruthy();
+    expect(museTag.getByTestId('musedash-rating-tag-fill').props.colors)
+      .toEqual(MUSE_DASH_RATING_THEME.fillColors.map((color) => processColor(color)));
+
+    const phigros = createPhigrosBoundAccount({ playerId: 'PhiPlayer', rating: 15.4321 });
+    expect(boundAccountRatingTag(phigros)).toBeNull();
   });
 });

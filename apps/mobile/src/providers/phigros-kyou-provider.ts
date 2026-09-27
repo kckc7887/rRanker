@@ -1,3 +1,4 @@
+import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
 import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
 import type {
@@ -92,7 +93,7 @@ function assertCount(actual: number, expected: number, label: string): void {
 export class PhigrosKyouProvider {
   private fetchJson<T>(name: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
     return requestJson({
-      baseUrl: BASE, path: `/${name}`, schema, fetcher: fetch, signal,
+      baseUrl: BASE, path: `/${name}`, schema, fetcher: expoFetch as unknown as typeof fetch, signal,
       label: 'Kyou', timeoutMs: 12_000, retries: 1, diagnosticScenario: 'metadata',
       error: (status) => new ProviderError('network', `Kyou 请求失败 HTTP ${status}`, true),
       messages: {

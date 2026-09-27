@@ -1,6 +1,10 @@
 import { beforeEach, describe, expect, it } from 'vitest';
 import { normalizeRizlineChartPreviewSettings } from '@/features/rizline-chart-preview/configuration';
-import { PreviewSession } from '@/features/rizline-chart-preview/webview-player/playback';
+import {
+  decodeAudio,
+  PreviewSession,
+  type PreviewSessionEnvironment,
+} from '@/features/rizline-chart-preview/webview-player/playback';
 import type { PreparedChart } from '@/features/rizline-chart-preview/webview-player/chart-prepare';
 import type { RizlineRenderer } from '@/features/rizline-chart-preview/webview-player/renderer';
 
@@ -20,7 +24,13 @@ class FakeContext {
   sampleRate = 8000;
   destination = {};
   sources: FakeSource[] = [];
+  decodedBuffers: ArrayBuffer[] = [];
   release: (() => void) | null = null;
+
+  decodeAudioData(bytes: ArrayBuffer): Promise<AudioBuffer> {
+    this.decodedBuffers.push(bytes);
+    return Promise.resolve(music);
+  }
 
   resume(): Promise<void> {
     return new Promise((resolve) => {
@@ -50,9 +60,6 @@ class FakeContext {
 }
 
 const context = new FakeContext();
-globalThis.AudioContext = class {
-  constructor() { return context; }
-} as unknown as typeof AudioContext;
 
 const chart = {
   bpm: 120,
@@ -68,9 +75,18 @@ const renderer = { setUserSpeed() {}, render() {} } as unknown as RizlineRendere
 const music = { duration: 30 } as AudioBuffer;
 
 let animationFrames = 0;
+/** 环境边界由构造参数注入：测试不改写任何全局对象。 */
+const environment: PreviewSessionEnvironment = {
+  getAudioContext: () => context as unknown as AudioContext,
+  requestFrame: () => {
+    animationFrames += 1;
+    return animationFrames;
+  },
+  cancelFrame: () => {},
+};
 
 function session(): PreviewSession {
-  return new PreviewSession(chart, renderer, music, normalizeRizlineChartPreviewSettings({}));
+  return new PreviewSession(chart, renderer, music, normalizeRizlineChartPreviewSettings({}), environment);
 }
 
 async function settle(pending: Promise<void>): Promise<void> {
@@ -81,16 +97,31 @@ async function settle(pending: Promise<void>): Promise<void> {
 beforeEach(() => {
   context.state = 'suspended';
   context.sources = [];
+  context.decodedBuffers = [];
   context.release = null;
   animationFrames = 0;
-  globalThis.requestAnimationFrame = (() => {
-    animationFrames += 1;
-    return 1;
-  }) as typeof requestAnimationFrame;
-  globalThis.cancelAnimationFrame = () => {};
 });
 
 describe('Rizline playFrom 等待 resume 时的命令代次', () => {
+  it('suspended 上下文完成解码和暂停准备，首次播放才请求音频授权', async () => {
+    const decoded = decodeAudio(new Uint8Array([1, 2, 3]).buffer, environment);
+    expect(context.release).toBeNull();
+    await expect(decoded).resolves.toBe(music);
+    expect(context.decodedBuffers).toHaveLength(1);
+    expect(context.state).toBe('suspended');
+    const preview = session();
+    expect(preview.playing).toBe(false);
+    expect(context.sources).toHaveLength(0);
+    const pending = preview.playFrom(0);
+    expect(context.release).not.toBeNull();
+    expect(context.sources).toHaveLength(0);
+    await settle(pending);
+    expect(context.state).toBe('running');
+    expect(preview.playing).toBe(true);
+    expect(context.sources[0]!.startCount).toBe(1);
+    preview.dispose();
+  });
+
   it('resume 完成且命令仍有效时才创建音源', async () => {
     const preview = session();
     const pending = preview.playFrom(4);

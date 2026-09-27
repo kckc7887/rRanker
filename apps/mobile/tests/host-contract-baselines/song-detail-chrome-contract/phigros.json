@@ -1,0 +1,6 @@
+{
+  "name": "song-detail-chrome-contract/phigros",
+  "formatVersion": 1,
+  "hash": "1d91f783b0490b0b0d40a4c931fa6937c27bad9e7b8a5cb7b4d163c3b939d2d0",
+  "tree": [{"children":[],"props":{"accessibilityLabel":"返回","accessibilityRole":"button","accessibilityState":{},"accessibilityValue":{},"accessible":true,"collapsable":false,"focusable":true,"hitSlop":12,"style":[{"alignItems":"center","borderRadius":20,"height":40,"justifyContent":"center","width":40},{"elevation":30,"position":"absolute","zIndex":30},{"left":8,"top":47},false]},"type":"View"},{"children":[],"props":{"accessibilityLabel":"收藏 测试曲","accessibilityRole":"button","accessibilityState":{"disabled":false},"accessibilityValue":{},"accessible":true,"collapsable":false,"focusable":true,"hitSlop":12,"style":[{"alignItems":"center","borderRadius":20,"height":40,"justifyContent":"center","width":40},{"elevation":30,"position":"absolute","zIndex":30},{"right":8,"top":47},false,false]},"type":"View"}]
+}

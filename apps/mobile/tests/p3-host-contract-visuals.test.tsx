@@ -1,5 +1,7 @@
 /**
- * 宿主树回归基线，禁止更新哈希接受差异。
+ * 宿主树回归基线，哈希是唯一门禁；结构变化时失败信息按路径给出与基线的差异。
+ * 基线只用于诊断（`tests/host-contract-baselines/p3-host-contract-visuals/*.json`），
+ * 不一致不会改变通过/失败结论，且只在 `HOST_CONTRACT_UPDATE_BASELINE=1` 时显式刷新。
  * 覆盖：5 个 DifficultyBadge（adofai/musedash/chunithm/phigros/ScoreVisuals）、
  * 流光渐变文本 4 入口（ChunithmGradientScore、AchievementValue→GradientAchievement、
  * PhigrosScoreValue→FlowingGradientText、MuseDashAccValue）与 DxRatingCard 整卡。
@@ -8,7 +10,6 @@
  * 数据使用 jest 测试 fixture（tuf-screens / muse-dash-screens /
  * game-content-host-contract / dx-rating-components），不造新数据语义。
  */
-import { createHash } from 'node:crypto';
 import { Animated } from 'react-native';
 import { act, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
@@ -26,6 +27,7 @@ import {
   resolveChunithmPossessionTheme,
   resolveChunithmRatingTier,
 } from '@/domain/chunithm-rating-theme';
+import { expectHostContract } from './host-contract-hash';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(),
@@ -53,21 +55,6 @@ jest.mock('expo-image', () => {
   };
 });
 
-function canonicalize(value: unknown): unknown {
-  if (Array.isArray(value)) return value.map(canonicalize);
-  if (!value || typeof value !== 'object') return value;
-  return Object.fromEntries(
-    Object.entries(value as Record<string, unknown>)
-      .sort(([left], [right]) => left.localeCompare(right))
-      .map(([key, item]) => [key, canonicalize(item)]),
-  );
-}
-
-async function treeHash(trees: unknown[]): Promise<string> {
-  const canonical = canonicalize(trees) as unknown[];
-  return createHash('sha256').update(JSON.stringify(canonical)).digest('hex');
-}
-
 test('tuf difficulty badge host tree contract', async () => {
   const screens = [
     // 普通 P/G/U 难度：各 display 取值
@@ -86,7 +73,11 @@ test('tuf difficulty badge host tree contract', async () => {
       source={{ name: 'U5', type: 'PGU', color: '#7B4FB2' }}
     />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('3eac77308724b585419f085c0814408b0bbe41b26f3079b82f06ca93d599624c');
+  expectHostContract({
+    name: 'p3-host-contract-visuals/tuf-difficulty-badge',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: '3eac77308724b585419f085c0814408b0bbe41b26f3079b82f06ca93d599624c',
+  });
 });
 
 test('musedash difficulty badge host tree contract', async () => {
@@ -99,7 +90,11 @@ test('musedash difficulty badge host tree contract', async () => {
     // 无定数且标级为数字
     await render(<MuseDashDifficultyBadge levelIndex={0} level="2" />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('b350473859f2098f2181118838784fe5f6c3291f1e43fc09938751c62ae25975');
+  expectHostContract({
+    name: 'p3-host-contract-visuals/musedash-difficulty-badge',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: 'b350473859f2098f2181118838784fe5f6c3291f1e43fc09938751c62ae25975',
+  });
 });
 
 test('chunithm difficulty badge host tree contract', async () => {
@@ -112,7 +107,11 @@ test('chunithm difficulty badge host tree contract', async () => {
     await render(<ChunithmDifficultyBadge levelIndex={5} worldsEndLabel="止☆1" />),
     await render(<ChunithmDifficultyBadge levelIndex={5} worldsEndLabel="止☆1" display="label-and-value" />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('a379e75e78994e5eba8ccc81cde7cbdc335433fbcb317ea02606e91b9e2e8e69');
+  expectHostContract({
+    name: 'p3-host-contract-visuals/chunithm-difficulty-badge',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: 'a379e75e78994e5eba8ccc81cde7cbdc335433fbcb317ea02606e91b9e2e8e69',
+  });
 });
 
 test('phigros difficulty badge host tree contract', async () => {
@@ -124,7 +123,11 @@ test('phigros difficulty badge host tree contract', async () => {
     await render(<PhigrosDifficultyBadge levelIndex={4} constant={16.2} labelOverride="AT Lv.16" />),
     await render(<PhigrosDifficultyBadge levelIndex={0} constant={5.5} showConstant={false} />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('557096831e60eb0d152cd0ee0e270561582f347e810bb80bb5f41e660d655421');
+  expectHostContract({
+    name: 'p3-host-contract-visuals/phigros-difficulty-badge',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: '557096831e60eb0d152cd0ee0e270561582f347e810bb80bb5f41e660d655421',
+  });
 });
 
 test('maimai (ScoreVisuals) difficulty badge host tree contract', async () => {
@@ -140,7 +143,11 @@ test('maimai (ScoreVisuals) difficulty badge host tree contract', async () => {
     await render(<DifficultyBadge difficulty="utage" specialLabel="宴会場" />),
     await render(<DifficultyBadge difficulty="utage" mini />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('ad7b1659d3b530d3d28f4139d4d63d407c9083204ac02ff3dfaa48b7a7569d6a');
+  expectHostContract({
+    name: 'p3-host-contract-visuals/maimai-difficulty-badge',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: 'ad7b1659d3b530d3d28f4139d4d63d407c9083204ac02ff3dfaa48b7a7569d6a',
+  });
 });
 
 test('chunithm gradient score host tree contract (static and flowing first frame)', async () => {
@@ -149,7 +156,11 @@ test('chunithm gradient score host tree contract (static and flowing first frame
     await render(<ChunithmGradientScore flowing text="1,009,000" />),
     await render(<ChunithmGradientScore flowing={false} text="900,000" height={36} />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('6687f88e715033600fc2d31623e8e48af9b9f56f55edd82f57f6aa92ed56b78f');
+  expectHostContract({
+    name: 'p3-host-contract-visuals/chunithm-gradient-score',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: '6687f88e715033600fc2d31623e8e48af9b9f56f55edd82f57f6aa92ed56b78f',
+  });
 });
 
 test('maimai achievement value host tree contract (gradient entries)', async () => {
@@ -164,7 +175,11 @@ test('maimai achievement value host tree contract (gradient entries)', async () 
     await render(<AchievementValue />),
     await render(<AchievementValue value={100.5} compact />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('6704825ee2ce392df19bb3e028cf28de17dcad73feeefe421e8a7544fb329f05');
+  expectHostContract({
+    name: 'p3-host-contract-visuals/maimai-achievement-value',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: '6704825ee2ce392df19bb3e028cf28de17dcad73feeefe421e8a7544fb329f05',
+  });
 });
 
 test('phigros score value host tree contract (flowing gradient entries)', async () => {
@@ -174,7 +189,11 @@ test('phigros score value host tree contract (flowing gradient entries)', async 
     await render(<PhigrosScoreValue score={950_000} variant="normal" textColor="#111827" />),
     await render(<PhigrosScoreValue score={1_000_000} variant="phi" textColor="#111827" fontSize={34} lineHeight={40} />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('5ca98e6bdb9c8c14b8395e0ed7235f29f683b1f39e3436635042e4cea48fb25d');
+  expectHostContract({
+    name: 'p3-host-contract-visuals/phigros-score-value',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: '5ca98e6bdb9c8c14b8395e0ed7235f29f683b1f39e3436635042e4cea48fb25d',
+  });
 });
 
 test('musedash acc value host tree contract', async () => {
@@ -185,7 +204,11 @@ test('musedash acc value host tree contract', async () => {
     await render(<MuseDashAccValue acc={88} />),
     await render(<MuseDashAccValue acc={undefined} />),
   ];
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('a331ba98052ddb7451069de0c1890730fe840d79617c8b3b60fac22405837208');
+  expectHostContract({
+    name: 'p3-host-contract-visuals/musedash-acc-value',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: 'a331ba98052ddb7451069de0c1890730fe840d79617c8b3b60fac22405837208',
+  });
 });
 
 test('dx rating card host tree contract', async () => {
@@ -223,5 +246,9 @@ test('dx rating card host tree contract', async () => {
       await new Promise((resolve) => { setTimeout(resolve, 0); });
     }
   });
-  expect(await treeHash(screens.map((screen) => screen.toJSON()))).toBe('000311caba6a626cdbb56ad86b4a1623f85ed5b274138a214af261627d77ca8f');
+  expectHostContract({
+    name: 'p3-host-contract-visuals/dx-rating-card',
+    tree: screens.map((screen) => screen.toJSON()),
+    expectedHash: '000311caba6a626cdbb56ad86b4a1623f85ed5b274138a214af261627d77ca8f',
+  });
 });

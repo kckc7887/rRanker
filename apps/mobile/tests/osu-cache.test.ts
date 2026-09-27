@@ -27,6 +27,18 @@ class FakeRepository {
     this.rows.set(key, { version: schemaVersion, payload: value });
   }
 
+  private pending = Promise.resolve();
+  updateResource<T>(key: string, schemaVersion: number, update: (value: T | null) => { value: T; updatedAt: string }): Promise<T> {
+    const task = this.pending.then(async () => {
+      const previous = await this.getResource<T>(key, schemaVersion);
+      const next = update(previous);
+      await this.saveResource(key, schemaVersion, next.updatedAt, next.value);
+      return next.value;
+    });
+    this.pending = task.then(() => undefined, () => undefined);
+    return task;
+  }
+
   async listResourceSizes(): Promise<{ key: string; bytes: number }[]> {
     return [...this.rows.keys()].map((key) => ({ key, bytes: 0 }));
   }
@@ -111,4 +123,14 @@ describe('osu! 分模式快照缓存', () => {
     await cache.clear('osu-standard', 2);
     expect(await cache.loadKnownScores('osu-standard', 2)).toBeNull();
   });
+});
+
+
+it('并发更新不同谱面的已知成绩不会相互覆盖', async () => {
+  const repository = new FakeRepository();
+  const cache = new OsuCache(repository as never);
+  const other = { ...knownScore, id: 11, beatmap: { ...knownScore.beatmap, id: 22424 } };
+  await Promise.all([cache.mergeKnownScores('osu-standard', 2, [knownScore]), cache.mergeKnownScores('osu-standard', 2, [other])]);
+  const saved = await cache.loadKnownScores('osu-standard', 2);
+  expect(Object.keys(saved!.items).sort()).toEqual(['22423', '22424']);
 });

@@ -75,4 +75,14 @@ describe('PhiraProvider', () => {
       message: '无法连接 Phira 社区服务',
     });
   });
+
+  it('chart download applies the actual streaming byte budget and cancels oversized output', async () => {
+    const cancel = vi.fn();
+    const fetcher = vi.fn(async () => new Response(new ReadableStream({
+      start(controller) { controller.enqueue(new Uint8Array(8)); }, cancel,
+    }), { headers: { 'Content-Length': '1' } }));
+    const provider = new PhiraProvider(fetcher as typeof fetch);
+    await expect(provider.downloadChart('https://test.invalid/chart.zip', undefined, 4)).rejects.toMatchObject({ code: 'upstream_schema', retryable: false });
+    expect(cancel).toHaveBeenCalledTimes(1); expect(fetcher).toHaveBeenCalledTimes(1);
+  });
 });

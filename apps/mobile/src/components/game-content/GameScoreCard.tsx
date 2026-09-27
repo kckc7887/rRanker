@@ -10,6 +10,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import type { ScoreCardPresentation } from '@/features/game-content/presentation';
+import { detailTargetHref } from '@/domain/detail-target';
 import { RemoteImage } from '@/components/RemoteImage';
 import { useThemeStore } from '@/state/theme-store';
 import { useAppTheme } from '@/theme/app-theme';
@@ -122,17 +123,7 @@ export function GameScoreCard({
   const resolvedCardStyle = showArtwork
     ? [cardStyle, cardBackground, styles.artworkClip]
     : [cardStyle, cardBackground];
-  const openDetail = () => router.push({
-    pathname: '/songs/[songId]',
-    params: {
-      songId: presentation.route.songId,
-      ...(presentation.route.chartType ? { chartType: presentation.route.chartType } : {}),
-      ...(presentation.route.levelIndex === undefined
-        ? {}
-        : { levelIndex: String(presentation.route.levelIndex) }),
-      ...presentation.route.params,
-    },
-  } as Href);
+  const openDetail = () => router.push(detailTargetHref(presentation.route) as Href);
   const sideNode = side !== undefined
     ? side
     : metricSide

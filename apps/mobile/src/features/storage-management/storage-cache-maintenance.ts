@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import Storage from '@/storage/key-value-storage';
 import { Image } from 'expo-image';
 import { MAIMAI_FONT_CACHE_VERSION } from '@/features/best-image/maimai-font-cache';
 import { MAIMAI_UI_CACHE_VERSION } from '@/features/best-image/maimai-ui-cache';

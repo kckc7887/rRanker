@@ -31,7 +31,7 @@ jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
     dispose: jest.fn(),
   }),
 }));
-jest.mock('@/domain/phigros-avatar-resolver', () => ({
+jest.mock('@/services/phigros-avatar-resolver', () => ({
   loadPhigrosAvatarCatalog: jest.fn(async () => ['avatar.test']),
 }));
 jest.mock('@/features/phigros-best-image/load-phigros-image-assets', () => {

@@ -94,12 +94,12 @@ describe('phigros chart preview config injection', () => {
     expect(script.endsWith(';true;')).toBe(true);
   });
 
-  it('设置消息可以经公共 bridge 解析往返', () => {
-    const payload = { type: 'settings', playbackSpeed: 2, noteScale: 0.8, lineColor: 'blue' };
-    const parsed = parseChartPreviewBridgeMessage(JSON.stringify(payload));
-    expect(parsed).toEqual(payload);
-    const { type, ...settings } = parsed!;
-    expect(type).toBe('settings');
-    expect(settings).toEqual({ playbackSpeed: 2, noteScale: 0.8, lineColor: 'blue' });
+  it('设置消息经公共 bridge 归一化为 settings 载荷', () => {
+    const settings = { playbackSpeed: 2, noteScale: 0.8, lineColor: 'blue' };
+    expect(parseChartPreviewBridgeMessage(JSON.stringify({ type: 'settings', settings })))
+      .toEqual({ type: 'settings', settings });
+    // 旧播放器的扁平设置消息归一化为同一载荷，宿主不再解释任意顶层字段。
+    expect(parseChartPreviewBridgeMessage(JSON.stringify({ type: 'settings', ...settings })))
+      .toEqual({ type: 'settings', settings });
   });
 });

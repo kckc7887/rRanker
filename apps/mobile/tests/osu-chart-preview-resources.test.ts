@@ -138,10 +138,10 @@ describe('osu 谱面确认资源选择', () => {
   it('媒体逐项校验后即落盘，每项只读一次，失败时不返回半份清单', async () => {
     const loaded = await JSZip.loadAsync(await archive());
     const sample = loaded.file('set/BG.png');
-    const proto = Object.getPrototypeOf(sample) as { async: (type: string) => Promise<Uint8Array> };
-    const original = proto.async;
+    const proto = Object.getPrototypeOf(sample) as { internalStream: (type: string) => unknown };
+    const original = proto.internalStream;
     const order: string[] = [];
-    proto.async = function async(this: { name: string }, type: string) {
+    proto.internalStream = function internalStream(this: { name: string }, type: string) {
       if (/\.(png|mp4)$/iu.test(this.name)) order.push(`read:${this.name}`);
       return original.call(this, type);
     };
@@ -159,10 +159,10 @@ describe('osu 谱面确认资源选择', () => {
         'stage:set/movie.mp4',
       ]);
     } finally {
-      proto.async = original;
+      proto.internalStream = original;
     }
 
-    proto.async = function async(this: { name: string }, type: string) {
+    proto.internalStream = function internalStream(this: { name: string }, type: string) {
       if (/\.mp4$/iu.test(this.name)) throw new Error('视频损坏');
       return original.call(this, type);
     };
@@ -172,7 +172,7 @@ describe('osu 谱面确认资源选择', () => {
       expect(io.stageMedia).toHaveBeenCalledTimes(1);
       expect(io.stageMedia).toHaveBeenCalledWith('set/BG.png', expect.any(Uint8Array));
     } finally {
-      proto.async = original;
+      proto.internalStream = original;
     }
   });
 

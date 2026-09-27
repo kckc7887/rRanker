@@ -1,5 +1,5 @@
 import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
-import { calculateRks } from '@/domain/phigros';
+import { calculateRks, isAcc100Percent, type PhigrosScoreRecord, type PhigrosLevel } from '@/domain/phigros';
 import {
   phigrosKyouTagsForChart,
   resolvePhigrosKyouPrimaryTags,
@@ -8,14 +8,120 @@ import {
   type PhigrosKyouTagType,
 } from '@/domain/phigros-kyou';
 
-const INCLUDED_RATES = new Set(['a', 's', 'v', 'phi']);
+type PhigrosStrengthRecord = Pick<PhigrosScoreRecord, 'songId' | 'level' | 'difficultyConstant' | 'acc' | 'rks'> & {
+  title: string;
+  grade: string;
+};
+
 const FLOATING_FLOOR_EPSILON = 1e-9;
 const STRENGTH_EQUALITY_EPSILON = 1e-9;
-export const PHIGROS_STRENGTH_THRESHOLD_CAP = 16;
-export const PHIGROS_STRENGTH_MAX_AVAILABILITY_BONUS = 0.02;
-export const PHIGROS_STRENGTH_MAX_ANALYSIS_SUPPLEMENTS_PER_TAG = 5;
-export const PHIGROS_STRENGTH_RECOMMENDATION_COUNT = 3;
-export const PHIGROS_STRENGTH_RECOMMENDATION_MIN_GAIN = 0.0001;
+/** Acc 的百分之一单位：政策里的 Acc 用百分数表示，内部按 ×100 的整数搜索。 */
+const ACC_UNITS_PER_PERCENT = 100;
+
+/**
+ * 实力分析政策对象的形状：describe* 与画像判定都按这个类型取政策，
+ * 因此可以传入变体政策做「改政策 → 说明与阈值同步」的锁定测试。
+ */
+export type PhigrosStrengthPolicy = {
+  /** 阈值 = 玩家 RKS − 该偏移，向下取到一位小数 */
+  thresholdOffset: number;
+  /** 阈值上限 */
+  thresholdCap: number;
+  /** 计入基础分析池的最低评级（按从低到高排列，至少一项） */
+  includedRates: readonly [string, ...string[]];
+  /** 标签样本数低于该值视为小样本并触发补充 */
+  smallSampleCount: number;
+  /** 每个标签最多向下补入的样本数 */
+  maxSupplementsPerTag: number;
+  /** 细分标签入选所需的最低票数（严格大于） */
+  secondaryTagMinVotes: number;
+  /** 主标签轴数；不匹配时停止生成雷达 */
+  primaryAxisCount: number;
+  /** 画像判定：五维均衡允许的覆盖率占比最大最小差 */
+  profileBalancedShareGap: number;
+  /** 画像判定：双核型要求的前两名占比和 */
+  profileDualCoreShareSum: number;
+  /** 画像判定：双核型要求的第二名占比下限 */
+  profileDualCoreSecondShare: number;
+  /** 画像判定：特化型要求的第一名占比下限 */
+  profileSpecializedShare: number;
+  /** 画像判定：特化型要求的第一名领先第二名占比差 */
+  profileSpecializedLead: number;
+  /** 候选池稀缺系数的最大加成 */
+  maxAvailabilityBonus: number;
+  /** 推荐条数 */
+  recommendationCount: number;
+  /** 推荐要求的最小标签 RKS 增益 */
+  recommendationMinGain: number;
+  /** 推荐搜索的最低目标 Acc（%） */
+  recommendationMinAcc: number;
+  /** 推荐搜索的最高目标 Acc（%） */
+  recommendationMaxAcc: number;
+};
+
+/**
+ * 实力分析的政策常量：阈值、候选池、补充样本、细分标签票数、主标签画像阈值、
+ * 雷达轴数与推荐预算的唯一来源。页面说明与空态文案由本对象的 describe* 函数生成，
+ * 不再在 UI 里维护第二份数字；改变政策只改这一处。
+ */
+export const PHIGROS_STRENGTH_POLICY: PhigrosStrengthPolicy = Object.freeze({
+  thresholdOffset: 0.2,
+  thresholdCap: 16,
+  includedRates: Object.freeze(['a', 's', 'v', 'phi'] as const),
+  smallSampleCount: 3,
+  maxSupplementsPerTag: 5,
+  secondaryTagMinVotes: 3,
+  primaryAxisCount: 5,
+  profileBalancedShareGap: 0.08,
+  profileDualCoreShareSum: 0.6,
+  profileDualCoreSecondShare: 0.24,
+  profileSpecializedShare: 0.4,
+  profileSpecializedLead: 0.15,
+  maxAvailabilityBonus: 0.02,
+  recommendationCount: 3,
+  recommendationMinGain: 0.0001,
+  recommendationMinAcc: 70,
+  recommendationMaxAcc: 100,
+});
+
+const INCLUDED_RATES = new Set<string>(PHIGROS_STRENGTH_POLICY.includedRates);
+
+/**
+ * 分析池说明文案。数字全部来自 PHIGROS_STRENGTH_POLICY，UI 直接引用这段文本，
+ * 改变政策后页面说明会随之更新，不需要在页面里同步第二份。
+ */
+export function describePhigrosStrengthPoolPolicy(
+  policy: PhigrosStrengthPolicy = PHIGROS_STRENGTH_POLICY,
+): string {
+  const lowestRate = policy.includedRates[0].toUpperCase();
+  return `阈值取玩家 RKS 减 ${policy.thresholdOffset} 后向下保留一位小数，最高为 ${policy.thresholdCap.toFixed(1)}。`
+    + `候选池包含定数达到阈值的全部谱面，稀缺系数只由候选数量决定；`
+    + `基础分析池仅包含 RKS 达标且评级 ${lowestRate} 以上的成绩。`
+    + `标签基础样本为 1–${policy.smallSampleCount - 1} 张时，`
+    + `从候选池内已有成绩但未入分析池的同标签谱面按 RKS 向下补入最多 ${policy.maxSupplementsPerTag} 张，`
+    + '参与标签平均、覆盖率和歌曲列表。再对未达到同类满分基准的结果应用校准并封顶。';
+}
+
+/**
+ * 页面空态与提示文案：与池说明同源，数字全部取自政策对象。
+ * 传入变体政策即可验证「改政策 → 说明同步」，页面不再内联第二份数字。
+ */
+export function describePhigrosStrengthPolicyTexts(
+  policy: PhigrosStrengthPolicy = PHIGROS_STRENGTH_POLICY,
+): {
+  poolRateLabel: string;
+  emptyPool: string;
+  noSecondaryTags: string;
+  unexpectedPrimaryAxes: string;
+} {
+  const poolRateLabel = policy.includedRates[0].toUpperCase();
+  return {
+    poolRateLabel,
+    emptyPool: `当前没有同时满足 RKS 阈值与 ${poolRateLabel} 以上评级的成绩。`,
+    noSecondaryTags: `入池谱面没有票数大于 ${policy.secondaryTagMinVotes} 的细分标签。`,
+    unexpectedPrimaryAxes: `Kyou 主标签不是预期的 ${policy.primaryAxisCount} 项，已停止生成雷达以避免错误结论。`,
+  };
+}
 
 export interface PhigrosStrengthPool {
   threshold: number;
@@ -104,14 +210,18 @@ function effectiveStrengthTags(
   chartTags: ReturnType<typeof phigrosKyouTagsForChart>,
 ): readonly PhigrosKyouTag[] {
   const primaryTags = resolvePhigrosKyouPrimaryTags(chartTags).tags;
-  const secondaryTags = chartTags.filter((tag) => tag.type === 'secondary' && tag.votes > 3);
+  const secondaryTags = chartTags.filter((tag) => (
+    tag.type === 'secondary' && tag.votes > PHIGROS_STRENGTH_POLICY.secondaryTagMinVotes
+  ));
   return [...primaryTags, ...secondaryTags];
 }
 
 export function resolvePhigrosStrengthThreshold(playerRks: number): number {
   const safeRks = Number.isFinite(playerRks) ? playerRks : 0;
-  const floored = Math.floor((safeRks - 0.2 + FLOATING_FLOOR_EPSILON) * 10) / 10;
-  return Math.min(floored, PHIGROS_STRENGTH_THRESHOLD_CAP);
+  const floored = Math.floor(
+    (safeRks - PHIGROS_STRENGTH_POLICY.thresholdOffset + FLOATING_FLOOR_EPSILON) * 10,
+  ) / 10;
+  return Math.min(floored, PHIGROS_STRENGTH_POLICY.thresholdCap);
 }
 
 export function resolvePhigrosStrengthAvailabilityCoefficient(
@@ -123,7 +233,7 @@ export function resolvePhigrosStrengthAvailabilityCoefficient(
     maxEligibleChartCount,
     Math.max(0, eligibleChartCount),
   ) / maxEligibleChartCount;
-  return 1 + PHIGROS_STRENGTH_MAX_AVAILABILITY_BONUS * (1 - normalizedCount);
+  return 1 + PHIGROS_STRENGTH_POLICY.maxAvailabilityBonus * (1 - normalizedCount);
 }
 
 export function resolvePhigrosStrengthDifficultyCoefficient(
@@ -172,7 +282,7 @@ function statFromAggregate(
   maxEligibleAverageDifficulty: number,
 ): PhigrosTagRksStat {
   const sampleCount = aggregate?.count ?? 0;
-  const isSmallSample = sampleCount > 0 && sampleCount < 3;
+  const isSmallSample = sampleCount > 0 && sampleCount < PHIGROS_STRENGTH_POLICY.smallSampleCount;
   const rawAverageRks = sampleCount > 0 ? aggregate!.sum / sampleCount : null;
   const countCoefficient = resolvePhigrosStrengthAvailabilityCoefficient(
     eligibleChartCount,
@@ -244,6 +354,7 @@ function weakestSort(left: PhigrosTagRksStat, right: PhigrosTagRksStat): number 
 
 export function resolvePhigrosStrengthProfileLabel(
   tags: readonly Pick<PhigrosTagRksStat, 'tagId' | 'name' | 'sampleCoverage'>[],
+  policy: PhigrosStrengthPolicy = PHIGROS_STRENGTH_POLICY,
 ): string {
   const coverages = tags.map((tag) => ({
     ...tag,
@@ -256,17 +367,20 @@ export function resolvePhigrosStrengthProfileLabel(
     .sort((left, right) => right.share - left.share || left.tagId - right.tagId);
   const highestShare = ranked[0]!.share;
   const lowestShare = ranked.at(-1)!.share;
-  if (tags.length === 5
+  if (tags.length === policy.primaryAxisCount
     && ranked.every((tag) => tag.coverage > 0)
-    && highestShare - lowestShare <= 0.08) {
-    return '五维均衡型';
+    && highestShare - lowestShare <= policy.profileBalancedShareGap) {
+    return policy.primaryAxisCount === 5 ? '五维均衡型' : `${policy.primaryAxisCount}维均衡型`;
   }
   const first = ranked[0]!;
   const second = ranked[1];
-  if (second && first.share + second.share >= 0.6 && second.share >= 0.24) {
+  if (second
+    && first.share + second.share >= policy.profileDualCoreShareSum
+    && second.share >= policy.profileDualCoreSecondShare) {
     return `${first.name}·${second.name}双核型`;
   }
-  if (first.share >= 0.4 || first.share - (second?.share ?? 0) >= 0.15) {
+  if (first.share >= policy.profileSpecializedShare
+    || first.share - (second?.share ?? 0) >= policy.profileSpecializedLead) {
     return `${first.name}特化型`;
   }
   return `${first.name}倾向型`;
@@ -279,25 +393,29 @@ function minimumAccForProjectedGain(
   currentTagRks: number,
 ): { targetAcc: number; targetRks: number; projectedTagRks: number } | null {
   const minimumAccUnits = currentAcc == null
-    ? 7_000
-    : Math.max(7_000, Math.floor((currentAcc + FLOATING_FLOOR_EPSILON) * 100) + 1);
-  if (minimumAccUnits > 10_000) return null;
-  const targetTagRks = currentTagRks + PHIGROS_STRENGTH_RECOMMENDATION_MIN_GAIN;
+    ? ACC_UNITS_PER_PERCENT * PHIGROS_STRENGTH_POLICY.recommendationMinAcc
+    : Math.max(
+      ACC_UNITS_PER_PERCENT * PHIGROS_STRENGTH_POLICY.recommendationMinAcc,
+      Math.floor((currentAcc + FLOATING_FLOOR_EPSILON) * ACC_UNITS_PER_PERCENT) + 1,
+    );
+  const maximumAccUnits = ACC_UNITS_PER_PERCENT * PHIGROS_STRENGTH_POLICY.recommendationMaxAcc;
+  if (minimumAccUnits > maximumAccUnits) return null;
+  const targetTagRks = currentTagRks + PHIGROS_STRENGTH_POLICY.recommendationMinGain;
   const projectsEnoughGain = (accUnits: number) => {
-    const targetAcc = accUnits / 100;
+    const targetAcc = accUnits / ACC_UNITS_PER_PERCENT;
     return projectTagRks(calculateRks(difficultyConstant, targetAcc), targetAcc)
       + STRENGTH_EQUALITY_EPSILON >= targetTagRks;
   };
-  if (!projectsEnoughGain(10_000)) return null;
+  if (!projectsEnoughGain(maximumAccUnits)) return null;
 
   let low = minimumAccUnits;
-  let high = 10_000;
+  let high = maximumAccUnits;
   while (low < high) {
     const middle = Math.floor((low + high) / 2);
     if (projectsEnoughGain(middle)) high = middle;
     else low = middle + 1;
   }
-  const targetAcc = low / 100;
+  const targetAcc = low / ACC_UNITS_PER_PERCENT;
   const targetRks = calculateRks(difficultyConstant, targetAcc);
   return { targetAcc, targetRks, projectedTagRks: projectTagRks(targetRks, targetAcc) };
 }
@@ -305,25 +423,26 @@ function minimumAccForProjectedGain(
 function resolvePhigrosStrengthRecommendations(
   weakestTag: PhigrosTagRksStat | null,
   playerRks: number,
-  records: readonly ScoreRecord[],
+  records: readonly PhigrosStrengthRecord[],
   tagIndex: PhigrosKyouChartTagIndex,
   tagCatalog: readonly PhigrosKyouTag[],
   catalog: CatalogSnapshot,
   threshold: number,
 ): readonly PhigrosStrengthRecommendation[] {
   if (!weakestTag || weakestTag.averageRks == null || weakestTag.rawAverageRks == null) return [];
-  const recordsByChart = new Map<string, ScoreRecord>();
+  const recordsByChart = new Map<string, PhigrosStrengthRecord>();
   for (const record of records) {
-    const key = strengthChartKey(record.songId, record.levelIndex);
+    const key = strengthChartKey(record.songId, record.level);
     const current = recordsByChart.get(key);
-    if (!current || record.rating > current.rating
-      || (record.rating === current.rating && record.achievements > current.achievements)) {
+    if (!current || record.rks > current.rks
+      || (record.rks === current.rks && record.acc > current.acc)) {
       recordsByChart.set(key, record);
     }
   }
   const candidates = catalog.songs.flatMap((song) => song.charts
     .filter((chart) => (
       Number.isFinite(chart.difficultyConstant)
+      && Number.isInteger(chart.levelIndex) && chart.levelIndex >= 0 && chart.levelIndex <= 3
       && chart.difficultyConstant >= threshold
       && effectiveStrengthTags(
         phigrosKyouTagsForChart(tagIndex, song.id, chart.levelIndex),
@@ -350,26 +469,17 @@ function resolvePhigrosStrengthRecommendations(
       const key = strengthChartKey(song.id, chart.levelIndex);
       const currentRecord = recordsByChart.get(key);
       const projectTagRks = (chartRks: number, targetAcc: number) => {
-        const hypotheticalRecord: ScoreRecord = currentRecord
-          ? { ...currentRecord, achievements: targetAcc, rating: chartRks, rate: targetAcc >= 100 ? 'phi' : 'a' }
-          : {
-            songId: song.id,
-            title: song.title,
-            type: chart.type,
-            levelIndex: chart.levelIndex,
-            level: chart.level,
-            difficulty: chart.difficulty,
-            difficultyConstant: chart.difficultyConstant,
-            achievements: targetAcc,
-            dxScore: null,
-            rating: chartRks,
-            fc: null,
-            fs: null,
-            rate: targetAcc >= 100 ? 'phi' : 'a',
-            version: song.version,
-          };
+        const hypotheticalRecord: PhigrosStrengthRecord = {
+          songId: song.id,
+          title: song.title,
+          level: chart.levelIndex as PhigrosLevel,
+          difficultyConstant: chart.difficultyConstant,
+          acc: targetAcc,
+          rks: chartRks,
+          grade: isAcc100Percent(targetAcc) ? 'phi' : 'a',
+        };
         const hypotheticalRecords = records
-          .filter((record) => strengthChartKey(record.songId, record.levelIndex) !== key)
+          .filter((record) => strengthChartKey(record.songId, record.level) !== key)
           .concat(hypotheticalRecord);
         return analyzePhigrosStrengthInternal(
           playerRks,
@@ -383,7 +493,7 @@ function resolvePhigrosStrengthRecommendations(
       };
       const target = minimumAccForProjectedGain(
         chart.difficultyConstant,
-        currentRecord?.achievements ?? null,
+        currentRecord?.acc ?? null,
         projectTagRks,
         weakestTag.averageRks,
       );
@@ -395,15 +505,15 @@ function resolvePhigrosStrengthRecommendations(
         title: song.title,
         levelIndex: chart.levelIndex,
         difficultyConstant: chart.difficultyConstant,
-        currentAcc: currentRecord?.achievements ?? null,
-        currentRks: currentRecord?.rating ?? null,
+        currentAcc: currentRecord?.acc ?? null,
+        currentRks: currentRecord?.rks ?? null,
         targetAcc: target.targetAcc,
         targetRks: target.targetRks,
         projectedTagRks: target.projectedTagRks,
         projectedGain: target.projectedTagRks - weakestTag.averageRks,
       });
     }
-    if (recommendations.length >= PHIGROS_STRENGTH_RECOMMENDATION_COUNT) break;
+    if (recommendations.length >= PHIGROS_STRENGTH_POLICY.recommendationCount) break;
   }
 
   return recommendations
@@ -413,7 +523,7 @@ function resolvePhigrosStrengthRecommendations(
       || left.songId.localeCompare(right.songId)
       || left.levelIndex - right.levelIndex
     ))
-    .slice(0, PHIGROS_STRENGTH_RECOMMENDATION_COUNT);
+    .slice(0, PHIGROS_STRENGTH_POLICY.recommendationCount);
 }
 
 function resolveRadarDomain(
@@ -433,7 +543,7 @@ function resolveRadarDomain(
 
 function analyzePhigrosStrengthInternal(
   playerRks: number,
-  records: readonly ScoreRecord[],
+  records: readonly PhigrosStrengthRecord[],
   tagIndex: PhigrosKyouChartTagIndex,
   tagCatalog: readonly PhigrosKyouTag[],
   catalog: CatalogSnapshot,
@@ -441,9 +551,9 @@ function analyzePhigrosStrengthInternal(
 ): PhigrosStrengthAnalysis {
   const threshold = resolvePhigrosStrengthThreshold(playerRks);
   const basePoolRecords = records.filter((record) => (
-    Number.isFinite(record.rating)
-    && record.rating >= threshold
-    && INCLUDED_RATES.has(record.rate.toLowerCase())
+    Number.isFinite(record.rks)
+    && record.rks >= threshold
+    && INCLUDED_RATES.has(record.grade.toLowerCase())
   ));
   const aggregateByTagId = new Map<number, MutableTagAggregate>();
   const eligibilityByTagId = new Map<number, MutableEligibilityAggregate>();
@@ -465,33 +575,33 @@ function analyzePhigrosStrengthInternal(
   }
 
   const addRecordToTag = (
-    record: ScoreRecord,
+    record: PhigrosStrengthRecord,
     tag: PhigrosKyouTag,
     isSupplemental: boolean,
   ) => {
     const aggregate = aggregateByTagId.get(tag.id) ?? { sum: 0, count: 0, charts: [] };
-    aggregate.sum += record.rating;
+    aggregate.sum += record.rks;
     aggregate.count += 1;
     aggregate.charts.push({
       songId: record.songId,
       title: record.title,
-      levelIndex: record.levelIndex,
+      levelIndex: record.level,
       difficultyConstant: record.difficultyConstant,
-      achievements: record.achievements,
-      rks: record.rating,
+      achievements: record.acc,
+      rks: record.rks,
       isSupplemental,
     });
     aggregateByTagId.set(tag.id, aggregate);
   };
 
-  const aggregateRecords = (poolRecords: readonly ScoreRecord[], supplementalKeys: ReadonlySet<string>) => {
+  const aggregateRecords = (poolRecords: readonly PhigrosStrengthRecord[], supplementalKeys: ReadonlySet<string>) => {
     aggregateByTagId.clear();
     supplementedSampleCountByTagId.clear();
     for (const record of poolRecords) {
-      const key = strengthChartKey(record.songId, record.levelIndex);
+      const key = strengthChartKey(record.songId, record.level);
       const isSupplemental = supplementalKeys.has(key);
       const effectiveTags = effectiveStrengthTags(
-        phigrosKyouTagsForChart(tagIndex, record.songId, record.levelIndex),
+        phigrosKyouTagsForChart(tagIndex, record.songId, record.level),
       );
       for (const tag of effectiveTags) {
         addRecordToTag(record, tag, isSupplemental);
@@ -508,37 +618,39 @@ function analyzePhigrosStrengthInternal(
   aggregateRecords(basePoolRecords, new Set());
   const smallSampleTagIds = new Set(
     [...aggregateByTagId.entries()]
-      .filter(([, aggregate]) => aggregate.count > 0 && aggregate.count < 3)
+      .filter(([, aggregate]) => (
+        aggregate.count > 0 && aggregate.count < PHIGROS_STRENGTH_POLICY.smallSampleCount
+      ))
       .map(([tagId]) => tagId),
   );
   const basePoolRecordKeys = new Set(
-    basePoolRecords.map((record) => strengthChartKey(record.songId, record.levelIndex)),
+    basePoolRecords.map((record) => strengthChartKey(record.songId, record.level)),
   );
   const selectedSupplementKeysByTagId = new Map<number, Set<string>>();
   const selectedSupplementTagIdsByKey = new Map<string, Set<number>>();
-  const supplementalPoolRecords = new Map<string, ScoreRecord>();
+  const supplementalPoolRecords = new Map<string, PhigrosStrengthRecord>();
   const supplementalCandidates = records
     .filter((record) => {
-      const key = strengthChartKey(record.songId, record.levelIndex);
-      return Number.isFinite(record.rating)
+      const key = strengthChartKey(record.songId, record.level);
+      return Number.isFinite(record.rks)
         && candidateChartKeys.has(key)
         && !basePoolRecordKeys.has(key);
     })
     .sort((left, right) => (
-      right.rating - left.rating
-      || right.achievements - left.achievements
+      right.rks - left.rks
+      || right.acc - left.acc
       || left.songId.localeCompare(right.songId)
-      || left.levelIndex - right.levelIndex
+      || left.level - right.level
     ));
 
   for (const record of supplementalCandidates) {
-    const key = strengthChartKey(record.songId, record.levelIndex);
-    const chartTags = phigrosKyouTagsForChart(tagIndex, record.songId, record.levelIndex);
+    const key = strengthChartKey(record.songId, record.level);
+    const chartTags = phigrosKyouTagsForChart(tagIndex, record.songId, record.level);
     const effectiveTags = effectiveStrengthTags(chartTags);
     for (const tag of effectiveTags) {
       if (!smallSampleTagIds.has(tag.id)) continue;
       const selectedKeys = selectedSupplementKeysByTagId.get(tag.id) ?? new Set<string>();
-      if (selectedKeys.size >= PHIGROS_STRENGTH_MAX_ANALYSIS_SUPPLEMENTS_PER_TAG) continue;
+      if (selectedKeys.size >= PHIGROS_STRENGTH_POLICY.maxSupplementsPerTag) continue;
       if (selectedKeys.has(key)) continue;
       selectedKeys.add(key);
       selectedSupplementKeysByTagId.set(tag.id, selectedKeys);
@@ -553,7 +665,7 @@ function analyzePhigrosStrengthInternal(
   for (const [key, record] of supplementalPoolRecords) {
     const selectedTagIds = selectedSupplementTagIdsByKey.get(key) ?? new Set<number>();
     const effectiveTags = effectiveStrengthTags(
-      phigrosKyouTagsForChart(tagIndex, record.songId, record.levelIndex),
+      phigrosKyouTagsForChart(tagIndex, record.songId, record.level),
     );
     for (const tag of effectiveTags) {
       if (!selectedTagIds.has(tag.id)) continue;
@@ -564,14 +676,14 @@ function analyzePhigrosStrengthInternal(
       );
     }
   }
-  const poolSum = poolRecords.reduce((sum, record) => sum + record.rating, 0);
+  const poolSum = poolRecords.reduce((sum, record) => sum + record.rks, 0);
   const poolAverage = poolRecords.length > 0 ? poolSum / poolRecords.length : null;
   const poolMax = poolRecords.length > 0
-    ? Math.max(...poolRecords.map((record) => record.rating))
+    ? Math.max(...poolRecords.map((record) => record.rks))
     : null;
   const taggedCount = poolRecords.reduce((count, record) => (
     effectiveStrengthTags(
-      phigrosKyouTagsForChart(tagIndex, record.songId, record.levelIndex),
+      phigrosKyouTagsForChart(tagIndex, record.songId, record.level),
     ).length > 0 ? count + 1 : count
   ), 0);
 
@@ -670,7 +782,7 @@ function analyzePhigrosStrengthInternal(
     weakestMainTag,
     recommendations,
     areMainTagsTied,
-    hasExpectedPrimaryAxes: primaryCatalog.length === 5,
+    hasExpectedPrimaryAxes: primaryCatalog.length === PHIGROS_STRENGTH_POLICY.primaryAxisCount,
     radarDomain: resolveRadarDomain(mainTags, threshold),
   };
 }
@@ -684,7 +796,15 @@ export function analyzePhigrosStrength(
 ): PhigrosStrengthAnalysis {
   return analyzePhigrosStrengthInternal(
     playerRks,
-    records,
+    records.flatMap(record => Number.isInteger(record.levelIndex) && record.levelIndex >= 0 && record.levelIndex <= 3 ? [{
+      songId: record.songId,
+      title: record.title,
+      level: record.levelIndex as PhigrosLevel,
+      difficultyConstant: record.difficultyConstant,
+      acc: record.achievements,
+      rks: record.rating,
+      grade: record.rate,
+    }] : []),
     tagIndex,
     tagCatalog,
     catalog,

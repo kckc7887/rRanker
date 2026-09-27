@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import Storage from '@/storage/key-value-storage';
 import { accountDirectoryCorruptKey } from '@/storage/create-demo-account-store';
 import type { KeyValueStore } from './create-demo-account-store';
 
@@ -22,6 +22,8 @@ export type CreatePreferencesStoreOptions<P, S> = {
   defaults: (scope: S) => P;
   /** 解析并校验存储 JSON（含 schemaVersion 迁移），坏结构返回默认值。 */
   parse: (value: unknown, scope: S) => P;
+  /** Strict consumers must not mistake an unreadable document for a missing one. */
+  readFailure?: 'fallback' | 'throw';
   /** 写入前构造序列化值；缺省直接存储。 */
   toStored?: (value: P, scope: S) => unknown;
   /** 已废弃。读取失败不再删除原键。 */
@@ -49,7 +51,8 @@ export function createPreferencesStore<P, S = void>(options: CreatePreferencesSt
     let raw: string | null;
     try {
       raw = await storage.getItem(key);
-    } catch {
+    } catch (error) {
+      if (options.readFailure === 'throw') throw error;
       return options.defaults(scope);
     }
     if (!raw) {
@@ -65,12 +68,14 @@ export function createPreferencesStore<P, S = void>(options: CreatePreferencesSt
     }
     try {
       return options.parse(JSON.parse(raw), scope);
-    } catch {
+    } catch (parseError) {
       try {
         await storage.setItem(accountDirectoryCorruptKey(key), raw);
-      } catch {
+      } catch (error) {
         // 副本写失败时原键仍然保留。
+        if (options.readFailure === 'throw') throw error;
       }
+      if (options.readFailure === 'throw') throw parseError;
       return options.defaults(scope);
     }
   };

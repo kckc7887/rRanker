@@ -16,10 +16,11 @@ import {
   parseSummary,
   decodeSaveZip,
   computeB30,
-  gameRecordToScoreRecords,
+  gameRecordToPhigrosScoreRecords,
   loadDifficultyTable,
-  phigrosEntryToScoreRecord,
+  phigrosSharedScoreRecord,
   roundRks,
+  toPhigrosScoreRecord,
   type PhigrosB30,
   type PhigrosDifficultyTable,
   type PhigrosScoreEntry,
@@ -29,6 +30,7 @@ import {
 } from '@/domain/phigros';
 import {
   findPushRecommendations,
+  resolvePhigrosPushRequest,
   type PushRecommendationsResult,
 } from '@/domain/phigros-push';
 
@@ -200,9 +202,10 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return loaded;
   }
 
+  /** Phigros 真实成绩记录 → 共享成绩卡视图（共享 `ScoreRecord` 的字段在领域边界借用）。 */
   async getRecords(signal?: AbortSignal): Promise<ScoreRecord[]> {
     const { gameRecord, diffTable } = await this.loadSave(signal);
-    return gameRecordToScoreRecords(gameRecord, diffTable);
+    return gameRecordToPhigrosScoreRecords(gameRecord, diffTable).map(phigrosSharedScoreRecord);
   }
 
   async getUserProfile(signal?: AbortSignal): Promise<PhigrosUserProfile | null> {
@@ -224,15 +227,17 @@ export class PhigrosScoreProvider implements ScoreProvider {
     });
   }
 
-  /** 推分推荐：返回已验证计划、替补和搜索状态。 */
+  /** 推分推荐：返回已验证计划、替补和搜索状态。chartCost 按谱面计。
+   *  参数先经领域侧唯一入口校验，非法时在读取存档前抛出 PhigrosPushInputError。 */
   async getPushRecommendations(
     delta: number,
-    songCost: number,
+    chartCost: number,
     includePhi = true,
     signal?: AbortSignal,
   ): Promise<PushRecommendationsResult> {
+    const request = resolvePhigrosPushRequest({ delta, chartCost, includePhi, signal });
     const { gameRecord, diffTable } = await this.loadSave(signal);
-    return findPushRecommendations(gameRecord, diffTable, { delta, songCost, includePhi, signal });
+    return findPushRecommendations(gameRecord, diffTable, request);
   }
 
   /** 丢弃内存缓存，下次拉取会重新请求云存档 */
@@ -248,9 +253,12 @@ export class PhigrosScoreProvider implements ScoreProvider {
   /** Best30 分区：Phi3 + Best27，与 RKS 计算口径一致 */
   async getBestSections(signal?: AbortSignal): Promise<{ id: string; title: string; records: ScoreRecord[] }[]> {
     const b30 = await this.getB30(signal);
+    const toShared = (entries: PhigrosScoreEntry[]) => entries
+      .map(toPhigrosScoreRecord)
+      .map(phigrosSharedScoreRecord);
     return [
-      { id: 'phi3', title: 'Phi3', records: b30.phi3.map(phigrosEntryToScoreRecord) },
-      { id: 'b27', title: 'Best27', records: b30.best27.map(phigrosEntryToScoreRecord) },
+      { id: 'phi3', title: 'Phi3', records: toShared(b30.phi3) },
+      { id: 'b27', title: 'Best27', records: toShared(b30.best27) },
     ];
   }
 

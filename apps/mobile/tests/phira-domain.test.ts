@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { formatPhiraRating, PhiraChartSchema, PhiraPoolResponseSchema, phiraChartStatus } from '@/domain/phira';
 import { filterPhiraBests, phiraRecordXing } from '@/domain/phira-filters';
-import { phiraContentAdapter, presentPhiraBestSection, presentPhiraScore } from '@/features/game-content/adapters';
+import { presentPhiraBestSection, presentPhiraChart, presentPhiraScore } from '@/features/game-content/adapters';
 
 const chart = PhiraChartSchema.parse({
   id: 38294, name: 'Test Song', level: 'Another Lv.?', difficulty: 15.6,
@@ -22,12 +22,10 @@ describe('Phira domain contracts', () => {
     expect(phiraChartStatus({ stable: false, ranked: true })).toBe('unstable');
   });
 
-  it('normalizes one chart to one song with the existing library reference', () => {
-    const song = phiraContentAdapter.normalizeSong({ chart, notes: { click: 1, hold: 2, flick: 3, drag: 4 } });
-    expect(song.songId).toBe('38294');
-    expect(song.charts).toHaveLength(1);
-    expect(song.charts[0]).toMatchObject({ chartId: '38294', order: 0, libraryRef: { type: 'SD', levelIndex: 0 } });
-    expect(song.charts[0].notes[0].values.map((item) => item.value)).toEqual([1, 2, 3, 4, 10]);
+  it('presents the chart note values the detail card shows for one chart', () => {
+    const presented = presentPhiraChart({ chart, notes: { click: 1, hold: 2, flick: 3, drag: 4 } });
+    expect(presented.key).toBe('38294');
+    expect(presented.notes[0].values.map((item) => item.value)).toEqual([1, 2, 3, 4, 10]);
   });
 
   it('keeps non-pool RKS unavailable instead of calculating it', () => {

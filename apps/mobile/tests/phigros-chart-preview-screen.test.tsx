@@ -1,9 +1,9 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { BackHandler } from 'react-native';
 import JSZip from 'jszip';
 import PhigrosChartPreviewScreen from '../app/songs/phigros-chart-preview';
-import { stageChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
+import { stageChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-navigation';
 
 const mockInjectJavaScript = jest.fn();
 const mockShowAction = jest.fn(() => 1);
@@ -101,28 +101,16 @@ jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
   disposeChartPreviewSessionDirectory: jest.fn(),
 }));
 
-jest.mock('@/domain/phigros-chart-preview', () => ({
+jest.mock('@/services/phigros-chart-preview-resources', () => ({
   loadPhigrosChartPreviewVariants: async () => [0],
   loadPhigrosChartPreviewResources: async (...args: unknown[]) => ({
     bundle: await mockLoadPhigrosBundle(args[0], args[1]),
     chart: new Uint8Array([123, 125]), music: new Uint8Array([1]), illustration: new Uint8Array([2]),
   }),
-  phigrosChartPreviewLevelLabel: () => 'AT',
 }));
 
-const mockPhiraChart = {
-  id: 38294,
-  name: '测试谱面',
-  illustration: null,
-  file: 'https://phira.example/chart.zip',
-};
-jest.mock('@/hooks/use-phira', () => ({
-  usePhiraChart: (chartId: number | null) => ({
-    // 与 react-query 的结构共享一致：data 身份在渲染间保持稳定。
-    data: chartId === null ? undefined : mockPhiraChart,
-    isError: false,
-    error: null,
-  }),
+jest.mock('@/domain/phigros-chart-preview', () => ({
+  phigrosChartPreviewLevelLabel: () => 'AT',
 }));
 
 const mockGetChart = jest.fn(async (...args: unknown[]) => ({
@@ -174,7 +162,11 @@ describe('PhigrosChartPreviewScreen', () => {
     mockStageMusic.mockClear();
     mockStageRpeBundle.mockClear();
     mockLoadPhigrosBundle.mockClear();
-    mockGetChart.mockClear();
+    mockGetChart.mockReset();
+    mockGetChart.mockImplementation(async (...args: unknown[]) => ({
+      id: Number(args[0]), name: '测试谱面', illustration: null,
+      file: 'https://phira.example/chart.zip',
+    }));
     jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
       hardwareBackHandler = handler;
       return { remove: jest.fn() };
@@ -183,11 +175,21 @@ describe('PhigrosChartPreviewScreen', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+    jest.useRealTimers();
   });
 
   it('phigros 参数经 OSS 解析后注入谱面确认配置并渲染 WebView', async () => {
     await render(<PhigrosChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
+    const webview = screen.getByTestId('phigros-chart-preview-webview');
+    expect(webview.props.allowFileAccessFromFileURLs).toBe(true);
+    expect(webview.props.allowUniversalAccessFromFileURLs).toBe(false);
+    expect(webview.props.sharedCookiesEnabled).toBe(false);
+    expect(webview.props.thirdPartyCookiesEnabled).toBe(false);
+    expect(webview.props.mixedContentMode).toBe('never');
+    expect(webview.props.onShouldStartLoadWithRequest({ url: 'file:///phigros-chart-preview/index.html', isTopFrame: true })).toBe(true);
+    expect(webview.props.onShouldStartLoadWithRequest({ url: 'https://other.test/', isTopFrame: false })).toBe(false);
+    expect(webview.props.onShouldStartLoadWithRequest({ url: 'file:///private/index.html', isTopFrame: false })).toBe(false);
 
     await waitFor(() => expect(mockPrepare).toHaveBeenCalledWith(expect.objectContaining({
       game: 'phigros',
@@ -227,6 +229,61 @@ describe('PhigrosChartPreviewScreen', () => {
     }), 'QUJDRA=='));
     expect(mockPrepare).toHaveBeenCalledTimes(1);
     expect(mockStageMusic).toHaveBeenCalled();
+    expect(mockGetChart).toHaveBeenCalledTimes(1);
+  });
+
+  it('Phira 元数据等待包含在共享准备期限内，超时取消后可以重新加载', async () => {
+    mockZipBuffer = await buildPhiraZip();
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
+    mockRouteParams = { game: 'phira', chartId: '38294' };
+    let metadataSignal: AbortSignal | undefined;
+    mockGetChart.mockImplementationOnce((...args: unknown[]) => {
+      metadataSignal = args[1] as AbortSignal;
+      return new Promise((_, reject) => {
+        metadataSignal!.addEventListener('abort', () => reject(metadataSignal!.reason), { once: true });
+      });
+    });
+    const view = await render(<PhigrosChartPreviewScreen />);
+    let retrySignal: AbortSignal | undefined;
+    try {
+      await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+      expect(mockGetChart).toHaveBeenCalledTimes(1);
+      expect(metadataSignal?.aborted).toBe(false);
+      expect(screen.queryByTestId('phigros-chart-preview-webview')).toBeNull();
+      await act(async () => { await jest.advanceTimersByTimeAsync(120_000); });
+      expect(metadataSignal?.aborted).toBe(true);
+      expect(screen.getByText('准备谱面确认资源超时，请重新加载。')).toBeTruthy();
+      expect(mockPrepare).not.toHaveBeenCalled();
+      await fireEvent.press(screen.getByLabelText('重新加载'));
+      await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
+      expect(mockGetChart).toHaveBeenCalledTimes(2);
+      expect(mockPrepare).toHaveBeenCalledTimes(1);
+      retrySignal = mockGetChart.mock.calls[1]?.[1] as AbortSignal;
+      expect(retrySignal?.aborted).toBe(false);
+    } finally {
+      await view.unmount();
+      jest.useRealTimers();
+    }
+    expect(retrySignal?.aborted).toBe(true);
+  });
+
+  it('离开 Phira 元数据等待页会取消请求，迟到结果不能开始准备播放器', async () => {
+    mockRouteParams = { game: 'phira', chartId: '38294' };
+    let metadataSignal: AbortSignal | undefined;
+    let finishMetadata: ((value: Awaited<ReturnType<typeof mockGetChart>>) => void) | undefined;
+    mockGetChart.mockImplementationOnce((...args: unknown[]) => {
+      metadataSignal = args[1] as AbortSignal;
+      return new Promise((resolve) => { finishMetadata = resolve; });
+    });
+    const view = await render(<PhigrosChartPreviewScreen />);
+    await waitFor(() => expect(mockGetChart).toHaveBeenCalledTimes(1));
+    await view.unmount();
+    expect(metadataSignal?.aborted).toBe(true);
+    await act(async () => {
+      finishMetadata?.({ id: 38294, name: '测试谱面', illustration: null, file: 'https://phira.example/chart.zip' });
+    });
+    expect(mockPrepare).not.toHaveBeenCalled();
+    expect(mockStageMusic).not.toHaveBeenCalled();
   });
 
   it('从短令牌直接接收 Phira 谱面元数据，不在目标页重复请求详情', async () => {

@@ -1,7 +1,4 @@
-import type {
-  GameContentAdapter,
-} from '@/domain/game-content';
-import type { Chart, ScoreRecord, Song } from '@/domain/models';
+import type { ScoreRecord } from '@/domain/models';
 import {
   formatPhigrosSongRks,
   PHIGROS_MAX_SCORE,
@@ -10,22 +7,6 @@ import {
 import { phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import { PHIGROS_RATE_LABELS, type PhigrosRateKind } from '@/domain/phigros-rate-theme';
 import type { ScoreCardPresentation } from '../presentation';
-import { standardChart, standardScore, standardSong } from './standard';
-
-export const phigrosContentAdapter: GameContentAdapter<
-  'phigros',
-  Song,
-  Chart,
-  ScoreRecord,
-  Song,
-  Chart,
-  ScoreRecord
-> = {
-  gameId: 'phigros',
-  normalizeSong: (song) => standardSong('phigros', song),
-  normalizeChart: (chart) => standardChart('phigros', chart),
-  normalizeScore: (score) => standardScore('phigros', score),
-};
 
 export function presentPhigrosScore(
   record: ScoreRecord,

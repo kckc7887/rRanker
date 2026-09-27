@@ -8,7 +8,7 @@ import type { ProviderId } from '@/domain/game-bind-options';
 let mockProviderId: ProviderId = 'local';
 let mockGameId = 'maimai';
 const mockRefreshPhigros = jest.fn(async () => undefined);
-jest.mock('@/hooks/use-phigros-catalog', () => ({ refreshPhigrosCatalog: () => mockRefreshPhigros() }));
+jest.mock('@/services/phigros-catalog-query', () => ({ refreshPhigrosCatalog: () => mockRefreshPhigros() }));
 let mockPinnedToolIds: string[] = [];
 let mockPinnedPlateIds: number[] = [];
 let mockSettledBundle: unknown = undefined;
@@ -149,9 +149,6 @@ jest.mock('@/hooks/use-game-data', () => ({
       profile: {
         title: '舞萌 DX', ratingLabel: 'DX RATING', ratingDigits: 5,
         capabilities: {
-          hasCatalog: true,
-          hasRecords: true,
-          hasBestList: true,
           hasTools: true,
         },
         bestSections: [{ id: 'b35', title: 'B35' }, { id: 'b15', title: 'B15' }],

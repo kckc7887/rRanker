@@ -259,7 +259,7 @@ describe('ChunithmCatalogProvider', () => {
     const result = await cacheFirstLoad<ChunithmSongDetailSnapshot>({ loadCached: () => repository.getResource<ChunithmSongDetailSnapshot>('chunithm-song-detail:3', 1), loadFresh: async () => {
         throw new Error('network');
       }, onFresh: () => undefined });
-    expect(result.source).toMatchObject({ kind: 'cache', isStale: true });
+    expect(result.source).toEqual({ ...cached.source, isStale: true });
     expect(result.song.difficulties[0]?.notes?.total).toBe(333);
   });
 
@@ -277,7 +277,7 @@ describe('ChunithmCatalogProvider', () => {
       }, onFresh: () => undefined });
 
     expect(getResource).toHaveBeenCalledTimes(1);
-    expect(result.source).toMatchObject({ kind: 'cache', isStale: true });
+    expect(result.source).toEqual({ ...cached.source, isStale: true });
     expect(result.songs).toHaveLength(2);
   });
 

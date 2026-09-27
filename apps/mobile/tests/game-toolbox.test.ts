@@ -1,4 +1,4 @@
-import type { GameId } from '@/domain/game-bind-options';
+import { GAME_IDS } from '@/domain/game-bind-options';
 import { getGameProfile } from '@/domain/game-profile';
 import { getGameToolbox, summarizeGameTools } from '@/domain/game-toolbox';
 
@@ -55,8 +55,7 @@ describe('per-game toolbox registry', () => {
   });
 
   it('keeps profile capabilities consistent with registered tools', () => {
-    const gameIds: GameId[] = ['rizline', 'majdata-net', 'maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test'];
-    for (const gameId of gameIds) {
+    for (const gameId of GAME_IDS) {
       expect(getGameProfile(gameId).capabilities.hasTools)
         .toBe(getGameToolbox(gameId).tools.length > 0);
     }

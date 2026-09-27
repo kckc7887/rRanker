@@ -78,10 +78,8 @@ describe('ChunithmScoreProvider', () => {
 
   it('reads all three personal endpoints with the same bearer token and keeps WORLD’S END', async () => {
     const fetchMock = vi.fn(async (url: string, init?: RequestInit) => {
-      expect(init?.headers).toMatchObject({
-        Accept: 'application/json',
-        Authorization: 'Bearer access-token',
-      });
+      expect(new Headers(init?.headers).get('accept')).toBe('application/json');
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer access-token');
       if (url.endsWith('/scores')) return response(scores);
       if (url.endsWith('/bests')) return response(bests);
       return response(player);
@@ -157,7 +155,7 @@ describe('ChunithmScoreProvider', () => {
           expires_in: 900,
         }), { status: 200, headers: { 'Content-Type': 'application/json' } });
       }
-      expect(init?.headers).toMatchObject({ Authorization: 'Bearer fresh-access' });
+      expect(new Headers(init?.headers).get('authorization')).toBe('Bearer fresh-access');
       if (url.endsWith('/scores')) return response([]);
       if (url.endsWith('/bests')) return response({ bests: [], selections: [], new_bests: [] });
       return response(player);
@@ -167,10 +165,10 @@ describe('ChunithmScoreProvider', () => {
     await new ChunithmScoreProvider(expiredSession, rotated).getSnapshot();
 
     expect(fetchMock.mock.calls.filter(([url]) => String(url).endsWith('/oauth/token'))).toHaveLength(1);
-    expect(rotated).toHaveBeenCalledWith(expect.objectContaining({
-      accessToken: 'fresh-access',
-      refreshToken: 'fresh-refresh',
-    }));
+    expect(rotated).toHaveBeenCalledWith({
+      previous: expect.objectContaining({ accessToken: 'access-token', refreshToken: 'refresh-token' }),
+      next: expect.objectContaining({ accessToken: 'fresh-access', refreshToken: 'fresh-refresh' }),
+    });
   });
 
   it('reports malformed upstream data as a retryable schema error', async () => {
@@ -220,17 +218,20 @@ describe('ChunithmScoreProvider', () => {
       deleteResource: async () => undefined,
     };
     const provider = {
-      getSnapshot: vi.fn().mockRejectedValue(new Error('network')),
+      getPlayer: vi.fn().mockRejectedValue(new Error('network')),
+      getScores: vi.fn().mockRejectedValue(new Error('network')),
+      getBests: vi.fn().mockRejectedValue(new Error('network')),
     } as unknown as ChunithmScoreProvider;
 
     const result = await new ChunithmPersonalService(
       provider,
       repository as never,
       'chunithm:lxns:1',
-    ).load();
+    ).refresh();
 
-    expect(result.bests).toEqual({ bests: [], selections: [], new_bests: [] });
-    expect(result.source).toMatchObject({ isStale: true, label: '落雪咖啡屋（缓存）' });
-    expect(result.player?.name).toBe('中二玩家');
+    expect(result.status).toBe('failed');
+    expect(result.value?.bests).toEqual({ bests: [], selections: [], new_bests: [] });
+    expect(result.value?.source).toMatchObject({ isStale: true, kind: 'lxns', label: '落雪咖啡屋' });
+    expect(result.value?.player?.name).toBe('中二玩家');
   });
 });

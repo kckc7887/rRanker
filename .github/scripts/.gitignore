@@ -1,0 +1,2 @@
+# 轻检查的 yaml 解析器由 .github/scripts/package.json 固定，装在本地不进版本库
+node_modules/

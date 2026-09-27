@@ -56,6 +56,29 @@ afterEach(() => {
 });
 
 describe('manual runtime logs', () => {
+  it('does not open storage while disabled and loads history only on request', async () => {
+    const { preferences, repository } = fixture();
+    const open = vi.fn(async () => repository);
+    const controller = createRuntimeLogController({ repository: open, preferences, context: () => ({}) });
+    await controller.initialize();
+    expect(open).not.toHaveBeenCalled();
+    expect(controller.getSnapshot()).toMatchObject({ ready: true, historyReady: false, enabled: false });
+    await controller.loadHistory();
+    expect(open).toHaveBeenCalledTimes(1);
+    expect(controller.getSnapshot()).toMatchObject({ historyReady: true, sessions: [], enabled: false });
+  });
+  it('keeps off-state controls usable after lazy history storage fails and retries history without recording', async () => {
+    const { preferences, repository } = fixture();
+    const open = vi.fn(async () => repository).mockRejectedValueOnce(new Error('locked'));
+    const controller = createRuntimeLogController({ repository: open, preferences, context: () => ({}) });
+    await controller.initialize();
+    await expect(controller.loadHistory()).rejects.toThrow('locked');
+    expect(controller.getSnapshot()).toMatchObject({ ready: true, enabled: false, failurePhase: 'history', activeId: null });
+    await controller.setCapacity(5000);
+    await controller.loadHistory();
+    expect(controller.getSnapshot()).toMatchObject({ enabled: false, historyReady: true, failed: false, capacity: 5000 });
+    expect(repository.list()).toEqual([]);
+  });
   it('stays off by default, serializes simultaneous starts and stops without recording later events', async () => {
     const { controller, repository } = fixture();
     await controller.initialize();

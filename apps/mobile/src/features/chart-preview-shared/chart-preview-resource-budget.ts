@@ -2,7 +2,7 @@
  * 谱面确认资源预算。下载、解压、事件、音符、循环、纹理与解析让出都使用有限上限。
  * 声明大小、实际读出字节、解码像素和进程内存是四套口径。
  * 本模块约束声明大小和实际读出字节；单张纹理像素由播放器在解码时检查。
- * JSZip 会先分配完整解压输出，随后的 CRC 按块让出并检查取消。这些常量不是进程内存上限。
+ * 解压输出按块检查限额、暂停并检查取消，完整输出仅在验证通过后拼接。这些常量不是进程内存上限。
  */
 
 export const CHART_PREVIEW_MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024;
@@ -16,6 +16,7 @@ export const CHART_PREVIEW_MAX_NESTING_DEPTH = 32;
 export const CHART_PREVIEW_MAX_LOOP_EXPANSION = 4_096;
 export const CHART_PREVIEW_MAX_TEXTURE_PIXELS = 4_096 * 4_096;
 export const CHART_PREVIEW_MAX_GIF_FRAME_PIXELS = 2_048 * 2_048;
+export const CHART_PREVIEW_MAX_GIF_FRAMES = 4_096;
 /** 长循环每隔这么多步检查取消，并在异步解析中让出主线程。 */
 export const CHART_PREVIEW_PARSE_YIELD_INTERVAL = 128;
 /** CRC 每处理这么多字节检查一次取消，并让出主线程。 */
@@ -59,7 +60,20 @@ type ZipEntryData = { uncompressedSize?: number; crc32?: number };
 export type BudgetedZipEntry = {
   dir: boolean;
   _data?: ZipEntryData;
-  async(type: 'uint8array'): Promise<Uint8Array>;
+};
+type ZipOutputStream = {
+  on(event: 'data', listener: (bytes: Uint8Array) => void): ZipOutputStream;
+  on(event: 'error', listener: (error: unknown) => void): ZipOutputStream;
+  on(event: 'end', listener: () => void): ZipOutputStream;
+  pause(): ZipOutputStream;
+  resume(): ZipOutputStream;
+  _worker?: ZipWorker;
+};
+type ZipWorker = {
+  previous?: ZipWorker | null;
+  isPaused: boolean;
+  error(error: Error): boolean;
+  push(chunk: unknown): unknown;
 };
 
 export function throwIfChartPreviewCancelled(cancellation?: ChartPreviewCancellation): void {
@@ -139,6 +153,12 @@ export function assertChartPreviewTexturePixels(pixels: number): void {
 export function assertChartPreviewGifFramePixels(pixels: number): void {
   if (!Number.isFinite(pixels) || pixels < 0 || pixels > CHART_PREVIEW_MAX_GIF_FRAME_PIXELS) {
     throw new ChartPreviewBudgetExceededError('GIF 帧像素超出预算');
+  }
+}
+
+export function assertChartPreviewGifFrameCount(count: number): void {
+  if (!Number.isSafeInteger(count) || count < 0 || count > CHART_PREVIEW_MAX_GIF_FRAMES) {
+    throw new ChartPreviewBudgetExceededError('GIF 帧数量超出预算');
   }
 }
 
@@ -233,7 +253,98 @@ export async function readBudgetedZipEntry(
     assertChartPreviewTotalUncompressed(cancellation.actualBytes.actualBytes + declared);
   }
   throwIfChartPreviewCancelled(cancellation);
-  const bytes = await entry.async('uint8array');
+  const bytes = await new Promise<Uint8Array>((resolve, reject) => {
+    const streamingEntry = entry as BudgetedZipEntry & { internalStream?: (type: 'uint8array') => ZipOutputStream };
+    if (typeof streamingEntry.internalStream !== 'function') { reject(new Error('谱面资源不支持受限解压流')); return; }
+    const stream = streamingEntry.internalStream('uint8array');
+    // JSZip 的公开 helper 只提供暂停，没有销毁；错误必须同时传播至上游 inflater。
+    const worker = stream._worker;
+    if (!worker) { stream.pause(); reject(new Error('无法中止谱面解压流')); return; }
+    const workers: ZipWorker[] = [];
+    for (let current: ZipWorker | null | undefined = worker; current; current = current.previous) {
+      if (workers.length >= 16 || typeof current.error !== 'function' || typeof current.push !== 'function') {
+        stream.pause(); reject(new Error('不支持的谱面解压流')); return;
+      }
+      workers.push(current);
+    }
+    const source = workers[workers.length - 1]!;
+    const push = source.push;
+    let insidePush = false;
+    const destroy = (error: Error) => {
+      // 错误必须在 data 回调栈退出后销毁 listener，否则 JSZip 的 emit 循环会触发未捕获异常。
+      for (const current of workers) current.isPaused = false;
+      worker.error(error);
+    };
+    let chunks: Uint8Array[] = [];
+    let length = 0;
+    let settled = false;
+    let pendingDestroy: Error | undefined;
+    let resumeTimer: ReturnType<typeof setTimeout> | undefined;
+    const cleanup = () => {
+      if (resumeTimer) clearTimeout(resumeTimer);
+      cancellation?.signal?.removeEventListener('abort', onAbort);
+    };
+    const fail = (error: unknown, unwind = true) => {
+      if (settled) return;
+      settled = true; chunks = []; cleanup();
+      const reason = error instanceof Error ? error : new Error('谱面解压已取消');
+      reject(reason);
+      stream.pause();
+      if (insidePush) {
+        pendingDestroy = reason;
+        if (unwind) throw reason;
+      } else destroy(reason);
+    };
+    // AbortSignal 的 listener 不能抛异常；data listener 在受控入口内负责中止 inflater。
+    const onAbort = () => fail(cancellation?.signal?.reason, false);
+    // 受控入口围住整个 inflater 调用：取消/超限只在这里被接住，不越过 JSZip 调度器。
+    source.push = function (chunk: unknown) {
+      insidePush = true;
+      try { return push.call(this, chunk); }
+      catch (error) {
+        if (!settled) fail(error, false);
+      } finally {
+        insidePush = false;
+        if (pendingDestroy) { const reason = pendingDestroy; pendingDestroy = undefined; destroy(reason); }
+      }
+    };
+    cancellation?.signal?.addEventListener('abort', onAbort, { once: true });
+    stream.on('data', (chunk: Uint8Array) => {
+      if (settled) { if (insidePush && pendingDestroy) throw pendingDestroy; return; }
+      // 所有失败只在受控 inflater 栈内展开，并在该栈退出后销毁流。
+      try {
+        throwIfChartPreviewCancelled(cancellation);
+        const next = length + chunk.byteLength;
+        assertChartPreviewEntryUncompressed(next);
+        if (cancellation?.actualBytes) assertChartPreviewTotalUncompressed(cancellation.actualBytes.actualBytes + next);
+        if (next > declared) throw new Error('谱面资源解压大小与声明不一致');
+        length = next; chunks.push(chunk);
+        stream.pause();
+        if (!resumeTimer) resumeTimer = setTimeout(() => {
+          resumeTimer = undefined;
+          try { throwIfChartPreviewCancelled(cancellation); if (!settled) stream.resume(); }
+          catch (error) { fail(error); }
+        }, 0);
+      } catch (error) {
+        if (settled) throw error;
+        fail(error);
+      }
+    });
+    stream.on('error', fail);
+    stream.on('end', () => {
+      if (settled) return;
+      try {
+        throwIfChartPreviewCancelled(cancellation);
+        if (length !== declared) throw new Error('谱面资源解压大小与声明不一致');
+        const output = new Uint8Array(length);
+        let offset = 0;
+        for (const chunk of chunks) { output.set(chunk, offset); offset += chunk.byteLength; }
+        settled = true; chunks = []; cleanup(); resolve(output);
+      } catch (error) { fail(error); }
+    });
+    if (cancellation?.signal?.aborted) onAbort();
+    else stream.resume();
+  });
   throwIfChartPreviewCancelled(cancellation);
   await assertChartPreviewZipPayload(bytes, declared, entry._data?.crc32, cancellation);
   noteActualUncompressed(cancellation, bytes.byteLength);

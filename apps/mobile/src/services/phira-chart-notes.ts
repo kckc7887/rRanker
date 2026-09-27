@@ -1,5 +1,14 @@
 import JSZip from 'jszip';
 import type { PhiraNoteCounts } from '@/domain/phira';
+import { infoValue } from '@/domain/phira-chart-info';
+import { resolvePhiraChartZipMediaPlan } from '@/domain/phira-chart-preview';
+import {
+  CHART_PREVIEW_MAX_EVENTS, CHART_PREVIEW_PARSE_YIELD_INTERVAL, assertChartPreviewNoteCount, assertChartPreviewEventCount,
+  assertChartPreviewDownloadBytes, chartPreviewDeclaredUncompressedSize,
+  createChartPreviewActualBytes, pauseChartPreviewParse, readBudgetedZipEntry,
+  readBudgetedZipText, scanChartPreviewArchiveEntries, type ChartPreviewCancellation,
+} from '@/features/chart-preview-shared/chart-preview-resource-budget';
+export { infoValue } from '@/domain/phira-chart-info';
 
 /**
  * Phira 谱面读取语义移植自 TeamFlos/phira（GPLv3）：
@@ -19,53 +28,68 @@ const addKind = (counts: PhiraNoteCounts, kind: number, mapping: readonly string
   if (key) counts[key] += 1;
 };
 
-export function countRpeNotes(input: unknown): PhiraNoteCounts {
+function* jsonNoteCounts(input: unknown, format: 'rpe' | 'pgr'): Generator<void, PhiraNoteCounts> {
   const counts = emptyCounts();
   const lines = (input as { judgeLineList?: unknown[] })?.judgeLineList;
-  if (!Array.isArray(lines)) throw new Error('RPE 谱面缺少 judgeLineList');
+  if (!Array.isArray(lines)) throw new Error(`${format.toUpperCase()} 谱面缺少 judgeLineList`);
+  assertChartPreviewEventCount(lines.length);
+  let visitedNotes = 0;
   for (const line of lines) {
-    const notes = (line as { notes?: unknown[] })?.notes;
-    if (!Array.isArray(notes)) continue;
-    for (const raw of notes) {
-      const note = raw as { type?: unknown; isFake?: unknown };
-      if (note.isFake === true || note.isFake === 1) continue;
-      if (typeof note.type === 'number') addKind(counts, note.type, ['', 'click', 'hold', 'flick', 'drag']);
+    yield;
+    const typed = line as { notes?: unknown[]; notesAbove?: unknown[]; notesBelow?: unknown[] };
+    const groups = format === 'rpe' ? [typed?.notes] : [typed?.notesAbove, typed?.notesBelow];
+    for (const notes of groups) {
+      if (notes === undefined) continue;
+      if (!Array.isArray(notes)) throw new Error('谱面音符列表无效');
+      assertChartPreviewNoteCount(visitedNotes + notes.length);
+      for (const raw of notes) {
+        visitedNotes += 1; yield;
+        const note = raw as { type?: unknown; isFake?: unknown };
+        if (format === 'rpe' && (note?.isFake === true || note?.isFake === 1)) continue;
+        if (typeof note?.type === 'number') addKind(counts, note.type, format === 'rpe' ? ['', 'click', 'hold', 'flick', 'drag'] : ['', 'click', 'drag', 'hold', 'flick']);
+      }
     }
   }
   return counts;
 }
 
-export function countPgrNotes(input: unknown): PhiraNoteCounts {
-  const counts = emptyCounts();
-  const lines = (input as { judgeLineList?: unknown[] })?.judgeLineList;
-  if (!Array.isArray(lines)) throw new Error('PGR 谱面缺少 judgeLineList');
-  for (const line of lines) {
-    const typed = line as { notesAbove?: unknown[]; notesBelow?: unknown[] };
-    for (const raw of [...(typed.notesAbove ?? []), ...(typed.notesBelow ?? [])]) {
-      const kind = (raw as { type?: unknown }).type;
-      if (typeof kind === 'number') addKind(counts, kind, ['', 'click', 'drag', 'hold', 'flick']);
-    }
-  }
-  return counts;
+function countSynchronously(parser: Generator<void, PhiraNoteCounts>): PhiraNoteCounts {
+  for (;;) { const next = parser.next(); if (next.done) return next.value; }
 }
 
-export function countPecNotes(text: string): PhiraNoteCounts {
+export function countRpeNotes(input: unknown): PhiraNoteCounts { return countSynchronously(jsonNoteCounts(input, 'rpe')); }
+export function countPgrNotes(input: unknown): PhiraNoteCounts { return countSynchronously(jsonNoteCounts(input, 'pgr')); }
+
+function* pecNoteCounts(text: string): Generator<void, PhiraNoteCounts> {
   const counts = emptyCounts();
-  for (const rawLine of text.split(/\r?\n/)) {
-    const tokens = rawLine.trim().split(/\s+/);
-    const command = /^n([1-4])$/.exec(tokens[0] ?? '');
+  let lineCount = 0; let noteCount = 0;
+  for (let position = 0; position <= text.length;) {
+    const newline = text.indexOf('\n', position);
+    const rawLine = text.slice(position, newline < 0 ? text.length : newline);
+    position = newline < 0 ? text.length + 1 : newline + 1;
+    assertChartPreviewEventCount(++lineCount); yield;
+    const line = rawLine.trim();
+    const command = /^n([1-4])(?:\s|$)/.exec(line);
     if (!command) continue;
+    assertChartPreviewNoteCount(++noteCount);
     // PEC n1/n3/n4: 最后一个参数为 fake；n2 比其它 Note 多一个结束时间参数。
-    const fake = Number(tokens[tokens.length - 1]) === 1;
+    const fake = Number(/\s(\S+)$/.exec(line)?.[1] ?? line) === 1;
     if (!fake) addKind(counts, Number(command[1]), ['', 'click', 'hold', 'flick', 'drag']);
   }
   return counts;
 }
+export function countPecNotes(text: string): PhiraNoteCounts { return countSynchronously(pecNoteCounts(text)); }
 
 class BinaryCursor {
   private offset = 0;
-  constructor(private readonly bytes: Uint8Array) {}
-  private ensure(size: number) { if (this.offset + size > this.bytes.length) throw new Error('PBC 数据截断'); }
+  private operations = 0;
+  constructor(private readonly bytes: Uint8Array) {
+    if (bytes.byteLength > 32_000_000) throw new Error('PBC 谱面超出读取预算');
+  }
+  private ensure(size: number) {
+    if (++this.operations > CHART_PREVIEW_MAX_EVENTS * 32) throw new Error('PBC 解析步骤超出预算');
+    if (!Number.isSafeInteger(size) || size < 0 || this.offset + size > this.bytes.length) throw new Error('PBC 数据截断');
+  }
   u8() { this.ensure(1); return this.bytes[this.offset++]; }
   bool() { return this.u8() === 1; }
   uleb() {
@@ -79,41 +103,46 @@ class BinaryCursor {
   f32() { this.ensure(4); const value = new DataView(this.bytes.buffer, this.bytes.byteOffset + this.offset, 4).getFloat32(0, true); this.offset += 4; return value; }
   i32() { this.ensure(4); const value = new DataView(this.bytes.buffer, this.bytes.byteOffset + this.offset, 4).getInt32(0, true); this.offset += 4; return value; }
   string() { const size = this.uleb(); this.ensure(size); const value = new TextDecoder().decode(this.bytes.subarray(this.offset, this.offset + size)); this.offset += size; return value; }
-  array(read: () => void) { const size = this.uleb(); for (let index = 0; index < size; index += 1) read(); }
+  arrayLength() { const size = this.uleb(); assertChartPreviewEventCount(size); return size; }
 }
 
-function skipAnim(cursor: BinaryCursor, value: () => void): void {
+function* skipAnim(cursor: BinaryCursor, value: () => void): Generator<void> {
   for (;;) {
-    const node = cursor.u8();
+    const node = cursor.u8(); yield;
     if (node === 0) return;
-    if (node !== 1) cursor.array(() => {
-      cursor.uleb(); value();
-      const tween = cursor.u8();
-      if ((tween & 0xc0) === 0x80) { cursor.f32(); cursor.f32(); }
-      else if ((tween & 0xc0) === 0xc0) { cursor.f32(); cursor.f32(); cursor.f32(); cursor.f32(); }
-    });
+    if (node !== 1) {
+      const length = cursor.arrayLength();
+      for (let index = 0; index < length; index += 1) {
+        cursor.uleb(); value();
+        const tween = cursor.u8();
+        if ((tween & 0xc0) === 0x80) { cursor.f32(); cursor.f32(); }
+        else if ((tween & 0xc0) === 0xc0) { cursor.f32(); cursor.f32(); cursor.f32(); cursor.f32(); }
+        yield;
+      }
+    }
   }
 }
 const skipFloatAnim = (cursor: BinaryCursor) => skipAnim(cursor, () => { cursor.f32(); });
 const skipColorAnim = (cursor: BinaryCursor) => skipAnim(cursor, () => { cursor.u8(); cursor.u8(); cursor.u8(); cursor.u8(); });
-function skipObject(cursor: BinaryCursor) {
-  skipFloatAnim(cursor); skipFloatAnim(cursor); skipFloatAnim(cursor);
-  skipFloatAnim(cursor); skipFloatAnim(cursor); skipFloatAnim(cursor);
+function* skipObject(cursor: BinaryCursor): Generator<void> {
+  for (let index = 0; index < 6; index += 1) yield* skipFloatAnim(cursor);
 }
 
-export function countPbcNotes(bytes: Uint8Array): PhiraNoteCounts {
+function* pbcNoteCounts(bytes: Uint8Array): Generator<void, PhiraNoteCounts> {
   const cursor = new BinaryCursor(bytes);
   const counts = emptyCounts();
   cursor.f32();
-  cursor.array(() => {
-    skipObject(cursor);
+  const lineCount = cursor.arrayLength(); let noteCount = 0;
+  for (let line = 0; line < lineCount; line += 1) {
+    yield* skipObject(cursor);
     const lineKind = cursor.u8();
     if (lineKind === 1 || lineKind === 2) cursor.string();
-    else if (lineKind === 3) skipFloatAnim(cursor);
+    else if (lineKind === 3) yield* skipFloatAnim(cursor);
     else if (lineKind !== 0) throw new Error('暂不支持该 PBC 判定线类型');
-    skipFloatAnim(cursor);
-    cursor.array(() => {
-      skipObject(cursor);
+    yield* skipFloatAnim(cursor);
+    const notes = cursor.arrayLength(); assertChartPreviewNoteCount(noteCount + notes); noteCount += notes;
+    for (let note = 0; note < notes; note += 1) {
+      yield* skipObject(cursor);
       const kind = cursor.u8();
       if (kind === 1) { cursor.f32(); cursor.f32(); }
       if (kind > 3) throw new Error('PBC Note 类型无效');
@@ -122,42 +151,51 @@ export function countPbcNotes(bytes: Uint8Array): PhiraNoteCounts {
       cursor.bool();
       const fake = cursor.bool();
       if (!fake) addKind(counts, kind, ['click', 'hold', 'flick', 'drag']);
-    });
-    skipColorAnim(cursor); cursor.uleb(); cursor.u8(); cursor.u8();
+      yield;
+    }
+    yield* skipColorAnim(cursor); cursor.uleb(); cursor.u8(); cursor.u8();
     if (cursor.u8() !== 8) throw new Error('PBC CtrlObject 无效');
-    skipFloatAnim(cursor); skipFloatAnim(cursor); skipFloatAnim(cursor); skipFloatAnim(cursor);
-    skipFloatAnim(cursor); cursor.i32();
-  });
+    for (let index = 0; index < 5; index += 1) yield* skipFloatAnim(cursor);
+    cursor.i32(); yield;
+  }
   cursor.u8(); cursor.u8();
   return counts;
 }
+export function countPbcNotes(bytes: Uint8Array): PhiraNoteCounts { return countSynchronously(pbcNoteCounts(bytes)); }
 
-export function infoValue(text: string, key: string): string | null {
-  const match = text.match(new RegExp(`^\\s*${key}\\s*:\\s*(.+?)\\s*$`, 'mi'));
-  return match?.[1]?.replace(/^['"]|['"]$/g, '') ?? null;
+async function countAsynchronously(parser: Generator<void, PhiraNoteCounts>, cancellation: ChartPreviewCancellation): Promise<PhiraNoteCounts> {
+  try {
+    for (let iteration = 0; iteration <= CHART_PREVIEW_MAX_EVENTS * 32; iteration += 1) {
+      if (iteration % CHART_PREVIEW_PARSE_YIELD_INTERVAL === 0) await pauseChartPreviewParse(iteration, cancellation);
+      const next = parser.next(); if (next.done) return next.value;
+    }
+    throw new Error('谱面解析步骤超出预算');
+  } finally { parser.return(emptyCounts()); }
 }
 
 export async function countPhiraChartZip(data: ArrayBuffer, signal?: AbortSignal): Promise<PhiraNoteCounts> {
   throwIfAborted(signal);
+  assertChartPreviewDownloadBytes(data.byteLength);
+  const cancellation: ChartPreviewCancellation = { signal, actualBytes: createChartPreviewActualBytes() };
   const zip = await JSZip.loadAsync(data);
   throwIfAborted(signal);
   const entries = Object.values(zip.files).filter((entry) => !entry.dir);
+  await scanChartPreviewArchiveEntries(Object.values(zip.files), data.byteLength, {
+    cancellation, uncompressedSize: chartPreviewDeclaredUncompressedSize,
+  });
   const info = entries.find((entry) => /(^|\/)info\.ya?ml$/i.test(entry.name));
-  const infoText = info ? await info.async('text') : '';
+  const infoText = info ? await readBudgetedZipText(info, 6_000_000, cancellation) : '';
   throwIfAborted(signal);
-  const chartName = infoValue(infoText, 'chart');
   const format = infoValue(infoText, 'format')?.toLowerCase() ?? null;
-  const chartEntry = (chartName ? zip.file(chartName) : null)
-    ?? entries.find((entry) => /\.(json|pec|pbc)$/i.test(entry.name));
+  const chartName = resolvePhiraChartZipMediaPlan(entries, infoText).chartEntryName;
+  const chartEntry = chartName ? zip.file(chartName) : null;
   if (!chartEntry) throw new Error('谱面包中没有可读取的谱面文件');
-  // 不把取消检查作为进度回调传入：JSZip 的 data 回调运行在自有流机件（setImmediate）里，
-  // 在回调中 throw 不会 reject 该 Promise，而是穿透为全局未捕获异常（RN 打 ERROR 日志）。
-  // 取消语义仅由每个 await 之后的顶层 throwIfAborted 承担。
-  const bytes = await chartEntry.async('uint8array');
+  if (chartPreviewDeclaredUncompressedSize(chartEntry) > 32_000_000) throw new Error('谱面过大，暂不支持读取');
+  const bytes = await readBudgetedZipEntry(chartEntry, cancellation);
   throwIfAborted(signal);
-  if (format === 'pbc' || /\.pbc$/i.test(chartEntry.name)) return countPbcNotes(bytes);
+  if (format === 'pbc' || /\.pbc$/i.test(chartEntry.name)) return countAsynchronously(pbcNoteCounts(bytes), cancellation);
   const text = new TextDecoder('utf-8', { fatal: true }).decode(bytes);
-  if (format === 'pec' || /\.pec$/i.test(chartEntry.name) || !text.trimStart().startsWith('{')) return countPecNotes(text);
+  if (format === 'pec' || /\.pec$/i.test(chartEntry.name) || !text.trimStart().startsWith('{')) return countAsynchronously(pecNoteCounts(text), cancellation);
   const json = JSON.parse(text) as unknown;
-  return format === 'rpe' || text.includes('"META"') ? countRpeNotes(json) : countPgrNotes(json);
+  return countAsynchronously(jsonNoteCounts(json, format === 'rpe' || text.includes('"META"') ? 'rpe' : 'pgr'), cancellation);
 }

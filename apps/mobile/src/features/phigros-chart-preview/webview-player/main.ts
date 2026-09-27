@@ -1,5 +1,9 @@
+import { assertChartPreviewGifFrameCount, assertChartPreviewGifFramePixels, assertChartPreviewTexturePixels, ChartPreviewBudgetExceededError, pauseChartPreviewParse } from '../../chart-preview-shared/chart-preview-resource-budget';
+import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
 /**
  * Phigros / Phira 谱面确认 WebView 播放器入口。
+ * 播放位置、命令代次、音乐音源、打击音调度与 rAF 归 PhigrosPlaybackSession；
+ * 这里只做 DOM、设置、时间轴视图与控制器的接线。
  * 对时、性能与控制面板全部对齐舞萌谱面确认播放器：
  * - 音乐解码为 AudioBuffer，经 AudioBufferSourceNode 在 AudioContext 时钟上播放，
  *   不使用 HTMLMediaElement 时钟（其 currentTime 有延迟抖动，seek/暂停恢复漂移大）；
@@ -19,18 +23,12 @@ import { parsePgrChart, type PgrChart } from './pgr-core';
 import { RpeRenderer, type RpeAttachUiTransform, type RpeChartAssets } from './rpe-renderer';
 import { buildGifAnim, parseRpeChart, type RpeChart, type RpeGifKeyframe } from './rpe-core';
 import { RPE_PRESET_SHADERS } from './rpe-preset-shaders';
-import {
-  buildHitSoundEvents,
-  findHitSoundCursor,
-  HIT_SOUND_LOOKAHEAD_SECONDS,
-  hitSoundScheduleDelay,
-  type HitSoundEvent,
-  type HitSoundKind,
-} from './hit-sound';
-import { PlaybackClock, audioContextTime, musicPosition, outputTime, type MusicPosition } from '../../chart-preview-shared/webview-player/playbackClock';
-import { rpeResourceUrl } from '../../../domain/phira-rpe-resource-path';
-import { getAudioContextOutputTime } from '../../chart-preview-shared/webview-player/audioClock';
+import { buildHitSoundEvents } from './hit-sound';
+import { PhigrosPlaybackSession, type PhigrosPlaybackSettings } from './playback';
+import { PhigrosTimelineView } from './timelineView';
+import { rpeResourceUrl } from '../../../domain/rpe-resource-path';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
+import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-preview-bridge';
 
 declare global {
   interface Window {
@@ -40,40 +38,8 @@ declare global {
   }
 }
 
-export interface PhigrosChartPreviewSettings {
-  playbackSpeed?: number;
-  noteScale?: number;
-  volume?: number;
-  backgroundDim?: number;
-  multiHint?: boolean;
-  lineColor?: string;
-  hitSoundVolume?: number;
-  /** RPE 专属：宽高比覆盖（null = 谱面默认）与翻转/特效开关。 */
-  aspectRatio?: number | null;
-  flipX?: boolean;
-  effects?: boolean;
-}
-
-export interface PhigrosChartPreviewConfig {
-  game?: 'phigros' | 'phira';
-  title?: string;
-  chartUrl?: string;
-  chartText?: string;
-  musicUrl?: string;
-  illustrationUrl?: string;
-  hitSounds?: Partial<Record<HitSoundKind, string>>;
-  settings?: PhigrosChartPreviewSettings | null;
-  /** 谱面格式：pgr（默认）或 rpe。RPE 时提供 rpeAssets。 */
-  format?: 'pgr' | 'rpe';
-  rpeAssets?: {
-    basePath: string;
-    extraJson: string | null;
-    infoYml: string | null;
-    shaders: Record<string, string>;
-  } | null;
-  /** 播放器界面主题：由 RN 侧按应用深浅色注入。 */
-  theme?: 'light' | 'dark';
-}
+export type PhigrosChartPreviewSettings = import('../../chart-preview-shared/pgr-preview-config').PgrPreviewSettings;
+export type PhigrosChartPreviewConfig = import('../../chart-preview-shared/pgr-preview-config').PgrPreviewConfig;
 
 const DEFAULT_SETTINGS: Required<PhigrosChartPreviewSettings> = Object.freeze({
   playbackSpeed: 1,
@@ -91,22 +57,12 @@ const DEFAULT_SETTINGS: Required<PhigrosChartPreviewSettings> = Object.freeze({
 const SKIN_BASE = './skin/';
 const LINE_COLORS: readonly string[] = ['white', 'gold', 'blue'];
 const LINE_COLOR_LABELS: readonly string[] = ['白色', '金色', '蓝色'];
-/** 与舞萌播放器一致的音频调度常量。 */
-const SOURCE_START_LEAD_TIME_S = 0.05;
-const SOURCE_FADE_TIME_S = 0.015;
-const MUSIC_END_EPSILON_S = 0.05;
-const CHART_END_EPSILON_S = 0.25;
 const STEP_SECONDS = 5;
 /** 拨轮（移植舞萌 setupWheelPopup/createWheel）。 */
 const WHEEL_ITEM_HEIGHT = 28;
-const NOTE_BAR_COLORS: Readonly<Record<string, string>> = Object.freeze({
-  tap: '#FFD700',
-  drag: '#00CED1',
-  hold: '#FF8C00',
-  flick: '#ff69b4',
-});
 
 function postStatus(type: string, payload: Record<string, unknown> = {}): void {
+  if (disposed) return;
   window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...payload }));
 }
 
@@ -169,11 +125,11 @@ function decodeBase64DataUrl(url: string): ArrayBuffer {
 
 function loadImage(url: string, signal: AbortSignal): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
+    if (signal.aborted || disposed) { reject(new DOMException('已取消', 'AbortError')); return; }
     const image = new Image();
-    // 不设置 crossOrigin：曲绘画布从不回读像素，污染画布不影响渲染；
-    // 远程曲绘无 CORS 头时（Phira 社区图床）也能正常显示。
-    const cleanup = () => signal.removeEventListener('abort', onAbort);
-    const onAbort = () => { image.src = ''; cleanup(); reject(new DOMException('已取消', 'AbortError')); };
+    // 曲绘画布不回读像素，无 CORS 的公共图床也能显示。
+    const cleanup = () => { signal.removeEventListener('abort', onAbort); image.onload = null; image.onerror = null; };
+    const onAbort = () => { cleanup(); image.src = ''; reject(new DOMException('已取消', 'AbortError')); };
     image.onload = () => { cleanup(); resolve(image); };
     image.onerror = () => { cleanup(); reject(new Error('曲绘加载失败')); };
     signal.addEventListener('abort', onAbort, { once: true });
@@ -203,6 +159,7 @@ function createWheel(
   const values = buildWheelValues(min, max, step);
   let current = values.includes(initial) ? initial : values[0] ?? min;
   let settleTimer = 0;
+  events.own(() => window.clearTimeout(settleTimer));
 
   const itemLabel = (v: number) => {
     if (labels) {
@@ -250,7 +207,7 @@ function createWheel(
     return values[index]!;
   };
 
-  viewport.addEventListener('scroll', () => {
+  events.listen(viewport, 'scroll', () => {
     const next = valueFromScroll();
     if (Math.abs(next - current) > 1e-9) applySelection(next, true);
     window.clearTimeout(settleTimer);
@@ -266,6 +223,9 @@ function createWheel(
 }
 
 let activePopupClose: (() => void) | null = null;
+/** 宿主释放后的播放器：不再改动界面、也不再回报状态。 */
+let disposed = false;
+const events = new PlayerEventScope(() => disposed);
 
 /** 拨轮字段，逐语义移植舞萌 setupWheelPopup，并支持自定义数值显示。 */
 function setupWheelPopup(
@@ -309,20 +269,20 @@ function setupWheelPopup(
     if (activePopupClose === closePopup) activePopupClose = null;
   };
 
-  trigger.addEventListener('click', (e) => {
+  events.listen(trigger, 'click', (e) => {
     e.stopPropagation();
     if (open) closePopup();
     else openPopup();
   });
 
-  document.addEventListener('click', () => {
+  events.listen(document, 'click', () => {
     if (open) closePopup();
   });
 
-  popup.addEventListener('click', (e) => {
+  events.listen(popup, 'click', (e) => {
     e.stopPropagation();
   });
-  popup.addEventListener('touchstart', (e) => {
+  events.listen(popup, 'touchstart', (e) => {
     e.stopPropagation();
   });
 
@@ -363,48 +323,34 @@ function start(): void {
     status: $('status'),
   };
 
-  const config = window.__PHIGROS_CHART_PREVIEW__ ?? {};
+  const config: Partial<PhigrosChartPreviewConfig> = window.__PHIGROS_CHART_PREVIEW__ ?? {};
   const isRpe = config.format === 'rpe';
   type PreviewRenderer = PgrRenderer | RpeRenderer;
   const renderer: PreviewRenderer = isRpe ? new RpeRenderer(elements.canvas) : new PgrRenderer(elements.canvas);
+  events.own(() => renderer.dispose());
   let settings = loadSettings(config.settings);
-  const playbackClock = new PlaybackClock();
-  let loadController: AbortController | null = null;  let ready = false;
-  let isPlaying = false;
+  const playbackSettings: PhigrosPlaybackSettings = settings;
+  const session = new PhigrosPlaybackSession({
+    settings: playbackSettings,
+    hitSounds: config.hitSounds,
+    host: {
+      render: (chartTime) => renderFrame(chartTime),
+      onPlayStateChange: () => { syncPlayButtons(); showControls(); },
+      onPlaybackError: () => setStatus('无法播放音乐，请重试。'),
+    },
+  });
+  let loadController: AbortController | null = null;
+  let ready = false;
   let isFullscreen = false;
   let timelineDragging = false;
   let wasPlayingBeforeDrag = false;
-  let rafId = 0;
-  let lastRafTs = 0;
-  let currentChartTime = 0;
-  let chartOffset = 0;
-  let chartDuration = 0;
   let completionTimes: number[] = [];
   let timelineNotes: { time: number; kind: string }[] = [];
   let controlsTimer = 0;
   let controlsVisible = true;
   let fsLocked = false;
-  let audioContext: AudioContext | null = null;
-  let musicGain: GainNode | null = null;
-  let musicBuffer: AudioBuffer | null = null;
-  let sourceNode: AudioBufferSourceNode | null = null;
-  let sourceGain: GainNode | null = null;
-  let isSourcePlaying = false;
-  let hitSoundBuffers: Partial<Record<HitSoundKind, AudioBuffer>> | null = null;
-  let hitSoundGain: GainNode | null = null;
-  const activeHitSounds = new Set<AudioBufferSourceNode>();
-  let hitSoundEvents: HitSoundEvent[] = [];
-  let hitSoundCursor = 0;
-  let lastHitSoundTime = -1e-6;
 
-  /** RPE：加载谱面包资源（贴图/gif/视频；shader 文本来自注入配置）。 */
-  async function loadRpeChartAssets(chart: RpeChart, signal: AbortSignal): Promise<RpeChartAssets> {
-    const basePath = config.rpeAssets?.basePath ?? '';
-    const textures = new Map<string, HTMLImageElement>();
-    const videos = new Map<string, HTMLVideoElement>();
-    const gifs = new Map<string, { frames: ImageBitmap[]; durationsMs: number[]; cumulativeMs: number[]; totalMs: number }>();
-    const gifAnims = new Map<number, RpeGifKeyframe[]>();
-    const jobs: Promise<unknown>[] = [];
+  function rpeTextureNames(chart: RpeChart): Set<string> {
     const textureNames = new Set<string>();
     for (const line of chart.lines) {
       if (line.texture !== 'line.png' && line.gifEvents.length === 0) textureNames.add(line.texture);
@@ -415,6 +361,24 @@ function start(): void {
         if (typeof value === 'string') textureNames.add(value);
       }
     }
+    return textureNames;
+  }
+
+  /** RPE：加载谱面包资源（贴图/gif/视频；shader 文本来自注入配置）。 */
+  async function loadRpeChartAssets(chart: RpeChart, signal: AbortSignal): Promise<RpeChartAssets> {
+    const basePath = config.rpeAssets?.basePath ?? '';
+    const textures = new Map<string, HTMLImageElement>();
+    const videos = new Map<string, HTMLVideoElement>();
+    const gifs = new Map<string, { frames: ImageBitmap[]; durationsMs: number[]; cumulativeMs: number[]; totalMs: number }>();
+    const gifAnims = new Map<number, RpeGifKeyframe[]>();
+    let gifPixels = 0;
+    events.own(() => {
+      for (const video of videos.values()) { video.pause(); video.removeAttribute('src'); video.load(); }
+      for (const gif of gifs.values()) for (const frame of gif.frames) frame.close();
+      videos.clear(); gifs.clear(); textures.clear(); gifAnims.clear();
+    });
+    const jobs: Promise<unknown>[] = [];
+    const textureNames = rpeTextureNames(chart);
     for (const name of textureNames) {
       const url = rpeResourceUrl(basePath, name);
       if (!url) continue;
@@ -422,49 +386,69 @@ function start(): void {
         .then((image) => textures.set(name, image))
         .catch((error) => console.warn(`判定线贴图加载失败 ${name}:`, error)));
     }
+    async function decodeGifFrames(textureName: string) {
+      const imageDecoderCtor = globalThis.ImageDecoder;
+      if (!imageDecoderCtor) throw new Error('浏览器不支持 ImageDecoder');
+      const textureUrl = rpeResourceUrl(basePath, textureName);
+      if (!textureUrl) throw new Error('gif 路径无效');
+      const response = await fetch(textureUrl, { signal });
+      if (!response.ok) throw new Error(`gif 请求失败：HTTP ${response.status}`);
+      const bytes = await response.arrayBuffer();
+      const lower = textureName.toLowerCase();
+      const mimeType = lower.endsWith('.apng') ? 'image/apng' : 'image/gif';
+      const decoder = new imageDecoderCtor({ data: bytes, type: mimeType });
+      const frames: ImageBitmap[] = [];
+      const durationsMs: number[] = [];
+      try {
+        await decoder.tracks.ready;
+        if (signal.aborted || disposed) throw new DOMException('预览已释放', 'AbortError');
+        const track = decoder.tracks.selectedTrack;
+        if (!track) throw new Error('GIF 没有可用图像轨道');
+        assertChartPreviewGifFrameCount(track.frameCount);
+        for (let index = 0; index < track.frameCount; index += 1) {
+          if (signal.aborted || disposed) throw new DOMException('预览已释放', 'AbortError');
+          await pauseChartPreviewParse(index, { signal });
+          const { image } = await decoder.decode({ frameIndex: index });
+          try {
+            assertChartPreviewGifFramePixels(image.displayWidth * image.displayHeight);
+            assertChartPreviewTexturePixels(gifPixels + image.displayWidth * image.displayHeight);
+            const bitmap = await createImageBitmap(image);
+            if (signal.aborted || disposed) { bitmap.close(); throw new DOMException('预览已释放', 'AbortError'); }
+            try { assertChartPreviewTexturePixels(gifPixels + bitmap.width * bitmap.height); }
+            catch (error) { bitmap.close(); throw error; }
+            gifPixels += bitmap.width * bitmap.height;
+            frames.push(bitmap);
+            durationsMs.push((image.duration ?? 100_000) / 1000);
+          } finally { image.close(); }
+        }
+      } catch (error) {
+        gifPixels -= frames.reduce((sum, frame) => sum + frame.width * frame.height, 0);
+        frames.forEach(frame => frame.close());
+        throw error;
+      } finally {
+        decoder.close();
+      }
+      const cumulativeMs: number[] = [];
+      let totalMs = 0;
+      for (const duration of durationsMs) {
+        totalMs += duration;
+        cumulativeMs.push(totalMs);
+      }
+      if (signal.aborted || disposed) { frames.forEach(frame => frame.close()); throw new DOMException('预览已释放', 'AbortError'); }
+      return { frames, durationsMs, cumulativeMs, totalMs };
+    }
+
+    const gifTextures = new Set<string>();
     // gif 判定线（prpr JudgeLineKind::TextureGif）：ImageDecoder 解码帧；iOS 无 ImageDecoder 时降级静态贴图
     for (const line of chart.lines) {
-      if (line.gifEvents.length === 0 || gifs.has(line.texture)) continue;
+      if (line.gifEvents.length === 0 || gifTextures.has(line.texture)) continue;
+      gifTextures.add(line.texture);
       jobs.push((async () => {
         try {
-          const imageDecoderCtor = globalThis.ImageDecoder;
-          if (!imageDecoderCtor) throw new Error('浏览器不支持 ImageDecoder');
-          const textureUrl = rpeResourceUrl(basePath, line.texture);
-          if (!textureUrl) throw new Error('gif 路径无效');
-          const response = await fetch(textureUrl, { signal });
-          if (!response.ok) throw new Error(`gif 请求失败：HTTP ${response.status}`);
-          const bytes = await response.arrayBuffer();
-          const lower = line.texture.toLowerCase();
-          const mimeType = lower.endsWith('.apng') ? 'image/apng' : 'image/gif';
-          const decoder = new imageDecoderCtor({ data: bytes, type: mimeType });
-          const frames: ImageBitmap[] = [];
-          const durationsMs: number[] = [];
-          try {
-            await decoder.tracks.ready;
-            const track = decoder.tracks.selectedTrack;
-            if (!track) throw new Error('GIF 没有可用图像轨道');
-            for (let index = 0; index < track.frameCount; index += 1) {
-              const { image } = await decoder.decode({ frameIndex: index });
-              try {
-                frames.push(await createImageBitmap(image));
-                durationsMs.push((image.duration ?? 100_000) / 1000);
-              } finally { image.close(); }
-            }
-          } catch (error) {
-            frames.forEach(frame => frame.close());
-            throw error;
-          } finally {
-            decoder.close();
-          }
-          const cumulativeMs: number[] = [];
-          let totalMs = 0;
-          for (const duration of durationsMs) {
-            totalMs += duration;
-            cumulativeMs.push(totalMs);
-          }
-          gifs.set(line.texture, { frames, durationsMs, cumulativeMs, totalMs });
-          gifAnims.set(line.lineIndex, buildGifAnim(line.gifEvents, totalMs, chart.bpmList));
+          const frames = await decodeGifFrames(line.texture);
+          gifs.set(line.texture, frames);
         } catch (error) {
+          if (signal.aborted || disposed || error instanceof ChartPreviewBudgetExceededError) throw error;
           console.warn(`gif 判定线解码失败 ${line.texture}（降级为静态贴图）:`, error);
           try {
             const fallbackUrl = rpeResourceUrl(basePath, line.texture);
@@ -478,7 +462,7 @@ function start(): void {
       })());
     }
     for (const video of chart.extras.videos) {
-      jobs.push(new Promise<void>((resolve) => {
+      jobs.push(new Promise<void>((resolve, reject) => {
         const videoUrl = rpeResourceUrl(basePath, video.path);
         if (!videoUrl) { resolve(); return; }
         const element = document.createElement('video');
@@ -489,15 +473,27 @@ function start(): void {
         const done = () => {
           element.removeEventListener('loadedmetadata', done);
           element.removeEventListener('error', done);
+          signal.removeEventListener('abort', cancel);
           resolve();
+        };
+        const cancel = () => {
+          element.removeEventListener('loadedmetadata', done); element.removeEventListener('error', done);
+          element.pause(); element.removeAttribute('src'); element.load();
+          signal.removeEventListener('abort', cancel); reject(new DOMException('预览已释放', 'AbortError'));
         };
         element.addEventListener('loadedmetadata', done, { once: true });
         element.addEventListener('error', done, { once: true });
+        signal.addEventListener('abort', cancel, { once: true });
+        events.own(cancel);
         element.load();
         videos.set(video.path, element);
       }));
     }
     await Promise.all(jobs);
+    for (const line of chart.lines) {
+      const gif = gifs.get(line.texture);
+      if (gif) gifAnims.set(line.lineIndex, buildGifAnim(line.gifEvents, gif.totalMs, chart.bpmList));
+    }
     // shader 文本按谱面里的相对路径引用注入，与落盘身份相同。
     const shaders = new Map<string, string>();
     const injectedShaders = config.rpeAssets?.shaders ?? {};
@@ -553,9 +549,10 @@ function start(): void {
   }
 
   if (config.title) elements.title.textContent = config.title;
-  elements.status.textContent = config.game === 'phira' ? 'Phira 谱面' : config.game === 'phigros' ? 'Phigros 谱面' : '';
+  elements.status.textContent = config.sourceLabel ?? '';
 
   function setStatus(text: string): void {
+    if (disposed) return;
     elements.status.textContent = text;
   }
 
@@ -565,6 +562,7 @@ function start(): void {
   }
 
   function setControlsEnabled(value: boolean): void {
+    if (disposed) return;
     elements.play.disabled = !value;
     elements.btnRestart.disabled = !value;
     elements.btnStepBack.disabled = !value;
@@ -576,32 +574,13 @@ function start(): void {
     }
   }
 
-  async function ensureAudio(): Promise<AudioContext> {
-    if (!audioContext) {
-      const AudioContextClass = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-      if (!AudioContextClass) throw new Error('浏览器不支持 Web Audio');
-      audioContext = new AudioContextClass({ latencyHint: 'interactive' });
-      musicGain = audioContext.createGain();
-      musicGain.gain.value = settings.volume;
-      musicGain.connect(audioContext.destination);
-      hitSoundGain = audioContext.createGain();
-      hitSoundGain.gain.value = settings.hitSoundVolume;
-      hitSoundGain.connect(audioContext.destination);
-    }
+  /**
+   * 音乐字节由宿主解析（iOS file:// 下优先注入的 base64），解码与音源归播放会话。
+   * 失败与取消保持既有行为：取消沿 AbortSignal 上抛，其余进入静音看谱。
+   */
+  async function loadPreviewMusic(signal: AbortSignal): Promise<void> {
     try {
-      await audioContext.resume();
-    } catch {
-      // 尚无用户手势授权时保持 suspended；点击开始播放会再次 resume。
-    }
-    return audioContext;
-  }
-
-  /** 解码音乐为 AudioBuffer；失败时进入静音看谱模式（与舞萌一致）。 */
-  async function decodeMusic(signal: AbortSignal): Promise<void> {
-    try {
-      const context = await ensureAudio();
       let bytes: ArrayBuffer;
-      // Phira 音乐为本地文件，iOS file:// 下无法 fetch，优先使用注入的 base64。
       if (typeof window.__PHIGROS_MUSIC_DATA__ === 'string' && window.__PHIGROS_MUSIC_DATA__.length > 0) {
         bytes = decodeBase64DataUrl(window.__PHIGROS_MUSIC_DATA__);
       } else if (typeof config.musicUrl === 'string' && config.musicUrl.trim() !== '') {
@@ -611,87 +590,21 @@ function start(): void {
       } else {
         throw new Error('未提供谱面音乐资源');
       }
-      musicBuffer = await context.decodeAudioData(bytes);
+      if (!(await session.loadMusic(bytes))) setStatus('谱面音乐不可用，仍可静音看谱。');
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') throw error;
       setStatus('谱面音乐不可用，仍可静音看谱。');
-      musicBuffer = null;
     }
-  }
-
-  function getMusicTime(): MusicPosition {
-    if (!audioContext || !isSourcePlaying) return playbackClock.offset;
-    const heardAt = outputTime(getAudioContextOutputTime(audioContext));
-    playbackClock.prune(heardAt);
-    return playbackClock.positionAt(heardAt);
-  }
-
-  function stopSource(fade: boolean): void {
-    const source = sourceNode;
-    const gain = sourceGain;
-    sourceNode = null;
-    sourceGain = null;
-    isSourcePlaying = false;
-    if (!source) return;
-    if (fade && audioContext) {
-      const now = audioContext.currentTime;
-      try {
-        gain!.gain.cancelScheduledValues(now);
-        gain!.gain.setValueAtTime(gain!.gain.value, now);
-        gain!.gain.linearRampToValueAtTime(0, now + SOURCE_FADE_TIME_S);
-        source.stop(now + SOURCE_FADE_TIME_S + 0.01);
-      } catch {
-        /* ignore */
-      }
-    } else {
-      try { source.stop(); } catch { /* already stopped */ }
-    }
-    try { source.disconnect(); } catch { /* ignore */ }
-    try { gain?.disconnect(); } catch { /* ignore */ }
-  }
-
-  async function playFromMusicPosition(positionSec: number): Promise<void> {
-    if (!musicBuffer) return;
-    const context = await ensureAudio();
-    if (!musicGain) return;
-    stopSource(true);
-    const duration = musicBuffer.duration;
-    const clamped = clamp(positionSec, 0, Math.max(0, duration - 0.01));
-    const source = context.createBufferSource();
-    const gain = context.createGain();
-    source.buffer = musicBuffer;
-    source.playbackRate.value = settings.playbackSpeed;
-    const startTime = context.currentTime + SOURCE_START_LEAD_TIME_S;
-    gain.gain.setValueAtTime(0, startTime);
-    gain.gain.linearRampToValueAtTime(1, startTime + SOURCE_FADE_TIME_S);
-    source.connect(gain);
-    gain.connect(musicGain);
-    source.onended = () => {
-      if (sourceNode === source) {
-        sourceNode = null;
-        sourceGain = null;
-        isSourcePlaying = false;
-        playbackClock.clear();
-      }
-    };
-    source.start(startTime, clamped);
-    sourceNode = source;
-    sourceGain = gain;
-    isSourcePlaying = true;
-    const audibleAt = outputTime(getAudioContextOutputTime(context) + SOURCE_START_LEAD_TIME_S);
-    playbackClock.set(audibleAt, musicPosition(clamped), settings.playbackSpeed);
   }
 
   function applySettings(): void {
     elements.multiHint.setAttribute('aria-pressed', String(settings.multiHint));
-    if (musicGain) musicGain.gain.value = settings.volume;
+    session.applyAudioSettings();
     renderer.setSettings({ ...settings, lineColor: settings.lineColor as LineColorKey });
-    if (hitSoundGain) hitSoundGain.gain.value = settings.hitSoundVolume;
-    if (settings.hitSoundVolume <= 0) stopActiveHitSounds();
   }
 
   function persistSettings(): void {
-    postStatus('settings', { ...settings });
+    postStatus('settings', { settings: { ...settings } });
   }
 
   async function loadNoteAssets(signal: AbortSignal): Promise<NoteAssets> {
@@ -721,168 +634,56 @@ function start(): void {
       });
   }
 
-  async function ensureHitSoundsReady(): Promise<void> {
-    if (!config.hitSounds) throw new Error('打击音资源尚未提供');
-    if (!hitSoundBuffers) {
-      const context = await ensureAudio();
-      const entries = await Promise.all((['click', 'drag', 'flick'] as HitSoundKind[]).map(async (kind) => {
-        const dataUrl = config.hitSounds?.[kind];
-        if (!dataUrl) throw new Error(`缺少打击音 ${kind}`);
-        const bytes = decodeBase64DataUrl(dataUrl);
-        try {
-          return [kind, await context.decodeAudioData(bytes)] as const;
-        } catch (error) {
-          throw new Error(`${kind}.wav Web Audio 解码失败（${bytes.byteLength} bytes）：${error instanceof Error ? error.message : String(error)}`);
-        }
-      }));
-      hitSoundBuffers = Object.fromEntries(entries);
-    }
-  }
-
-  function resetHitSoundTimeline(time: number): void {
-    hitSoundCursor = findHitSoundCursor(hitSoundEvents, time);
-    lastHitSoundTime = time;
-  }
-
-  function playHitSound(kind: HitSoundKind, delay: number, outputNow: number): void {
-    const buffer = hitSoundBuffers?.[kind];
-    if (!buffer || !audioContext || !hitSoundGain || settings.hitSoundVolume <= 0) return;
-    const source = audioContext.createBufferSource();
-    source.buffer = buffer;
-    source.connect(hitSoundGain);
-    // 与舞萌正解音调度一致：以输出端时间为参考，且不早于当前调度时刻。
-    const scheduledAt = Math.max(audioContext.currentTime, outputNow + delay);
-    source.addEventListener('ended', () => activeHitSounds.delete(source), { once: true });
-    activeHitSounds.add(source);
-    source.start(scheduledAt);
-  }
-
-  function stopActiveHitSounds(): void {
-    activeHitSounds.forEach((source) => {
-      try { source.stop(); } catch { /* source may already have ended */ }
-    });
-    activeHitSounds.clear();
-  }
-
-  function updateHitSounds(time: number): void {
-    if (!ready || !isPlaying || !hitSoundBuffers || !audioContext) return;
-    if (!Number.isFinite(lastHitSoundTime) || time < lastHitSoundTime || time - lastHitSoundTime > 0.25) {
-      stopActiveHitSounds();
-      resetHitSoundTimeline(time);
-      return;
-    }
-    const outputNow = getAudioContextOutputTime(audioContext);
-    const speed = playbackClock.schedulingSpeed(settings.playbackSpeed);
-    const horizon = time + HIT_SOUND_LOOKAHEAD_SECONDS * speed;
-    while (hitSoundCursor < hitSoundEvents.length && hitSoundEvents[hitSoundCursor]!.time <= horizon) {
-      const event = hitSoundEvents[hitSoundCursor]!;
-      const delay = hitSoundScheduleDelay(event.time, time, speed);
-      playHitSound(event.sound, delay, outputNow);
-      hitSoundCursor += 1;
-    }
-    lastHitSoundTime = time;
-  }
-
   // ---- 舞萌式时间轴 ----
+  const timelineView = new PhigrosTimelineView({
+    host: elements.timelineHost,
+    bars: elements.timelineBars,
+    ruler: elements.timelineRuler,
+    playhead: elements.timelinePlayhead,
+    badge: elements.timelineBadge,
+    formatTime,
+  });
+
   function buildTimeline(): void {
-    elements.timelineBars.replaceChildren();
-    if (chartDuration <= 0) return;
-    const rect = elements.timelineHost.getBoundingClientRect();
-    const w = Math.max(1, Math.ceil(rect.width));
-    const bucketCount = Math.min(200, w);
-    const step = chartDuration / bucketCount;
-    const buckets: Record<string, number>[] = Array.from({ length: bucketCount }, (_, i) => ({
-      startTime: i * step, tap: 0, drag: 0, hold: 0, flick: 0, total: 0,
-    }));
-    for (const note of timelineNotes) {
-      const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(note.time / step)));
-      const b = buckets[idx]!;
-      if (note.kind === 'drag') b.drag += 1;
-      else if (note.kind === 'hold') b.hold += 1;
-      else if (note.kind === 'flick') b.flick += 1;
-      else b.tap += 1;
-      b.total += 1;
-    }
-    let maxTotal = 1;
-    for (const b of buckets) { if (b.total > maxTotal) maxTotal = b.total; }
-    const barH = 22;
-    for (const b of buckets) {
-      if (b.total === 0) continue;
-      const h = Math.max(2, (b.total / maxTotal) * barH);
-      const left = ((b.startTime / chartDuration) * 100).toFixed(2);
-      const widthPct = ((step / chartDuration) * 100).toFixed(2);
-      const bar = document.createElement('div');
-      bar.className = 'timeline-bar';
-      bar.style.left = `${left}%`;
-      bar.style.width = `${widthPct}%`;
-      bar.style.height = `${h}px`;
-      for (const key of ['tap', 'drag', 'hold', 'flick'] as const) {
-        const ratio = b[key] / b.total;
-        if (ratio === 0) continue;
-        const seg = document.createElement('div');
-        seg.style.flex = String(ratio);
-        seg.style.width = '100%';
-        seg.style.backgroundColor = NOTE_BAR_COLORS[key]!;
-        bar.appendChild(seg);
-      }
-      elements.timelineBars.appendChild(bar);
-    }
-
-    elements.timelineRuler.replaceChildren();
-    const rulerRect = elements.timelineRuler.getBoundingClientRect();
-    const rw = Math.max(1, rulerRect.width);
-    const total = Math.max(1, chartDuration);
-    const tickStep = [1, 5, 10, 15, 30, 60, 120, 300].find((s) => (rw * s) / total >= 4) ?? 300;
-    const labelStep = [5, 10, 15, 30, 60, 120, 300, 600].find((s) => (rw * s) / total >= 24) ?? 600;
-    for (let t = 0; t <= chartDuration; t += tickStep) {
-      const pct = ((t / total) * 100).toFixed(2);
-      const isMajor = t % labelStep === 0;
-      const isMedium = Number.isInteger(t / (labelStep / 2));
-      const cls = isMajor ? 'major' : isMedium ? 'medium' : 'minor';
-      const tick = document.createElement('div');
-      tick.className = `timeline-tick ${cls}`;
-      tick.style.left = `${pct}%`;
-      elements.timelineRuler.appendChild(tick);
-      if (isMajor) {
-        const label = document.createElement('div');
-        label.className = 'timeline-label';
-        label.style.left = `${pct}%`;
-        label.textContent = formatTime(t);
-        elements.timelineRuler.appendChild(label);
-      }
-    }
-  }
-
-  function updatePlayhead(chartTime: number): void {
-    if (chartDuration <= 0) return;
-    const pct = Math.min(100, Math.max(0, (chartTime / chartDuration) * 100));
-    elements.timelinePlayhead.style.left = `${pct}%`;
-    elements.timelineBadge.style.left = `${pct}%`;
-    elements.timelineBadge.textContent = formatTime(chartTime);
+    if (disposed) return;
+    timelineView.build(session.chartDuration, timelineNotes);
   }
 
   function seekFromTimelineEvent(event: PointerEvent): void {
     const rect = elements.timelineHost.getBoundingClientRect();
     const pct = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
-    seekToChartTime((pct / 100) * chartDuration);
+    seekToChartTime((pct / 100) * session.chartDuration);
   }
 
   function renderHud(chartTime: number): void {
     const passed = upperBound(completionTimes, chartTime);
     const total = Math.max(1, completionTimes.length);
-    elements.gameProgress.style.width = `${Math.min(100, chartTime / Math.max(1, chartDuration) * 100)}%`;
+    elements.gameProgress.style.width = `${Math.min(100, chartTime / Math.max(1, session.chartDuration) * 100)}%`;
     elements.score.textContent = String(Math.floor(passed / total * 1_000_000)).padStart(7, '0');
     elements.combo.textContent = String(passed);
     elements.comboBlock.classList.toggle('is-visible', passed >= 3);
-    elements.timeLabel.textContent = `${formatTime(chartTime)} / ${formatTime(chartDuration)}`;
-    updatePlayhead(chartTime);
+    elements.timeLabel.textContent = `${formatTime(chartTime)} / ${formatTime(session.chartDuration)}`;
+    timelineView.updatePlayhead(chartTime, session.chartDuration);
   }
 
   function renderFrame(chartTime: number): void {
-    updateHitSounds(chartTime);
     renderer.render(chartTime);
     applyAttachUiFromRenderer();
     renderHud(chartTime);
+  }
+
+  async function loadOptionalIllustration(signal: AbortSignal): Promise<HTMLImageElement | null> {
+    if (typeof config.illustrationUrl !== 'string' || config.illustrationUrl.trim() === '') return null;
+    try { return await loadImage(config.illustrationUrl, signal); }
+    catch (error) { if (signal.aborted) throw error; return null; }
+  }
+
+  async function rpeBackground(chart: RpeChart | null, image: HTMLImageElement | null, signal: AbortSignal) {
+    if (!chart?.background) return image;
+    const url = rpeResourceUrl(config.rpeAssets?.basePath ?? '', chart.background);
+    if (!url) return image;
+    try { return await loadImage(url, signal); }
+    catch (error) { if (signal.aborted) throw error; return image; }
   }
 
   async function loadPreview(): Promise<void> {
@@ -890,30 +691,29 @@ function start(): void {
     loadController = new AbortController();
     const { signal } = loadController;
     ready = false;
-    isPlaying = false;
+    session.pause();
     setControlsEnabled(false);
     try {
       setLoadProgress('正在读取谱面资源…', 0.2);
       const [chartText, image] = await Promise.all([
         loadChartText(signal),
-        typeof config.illustrationUrl === 'string' && config.illustrationUrl.trim() !== ''
-          ? loadImage(config.illustrationUrl, signal).catch((error) => {
-            if (error?.name === 'AbortError') throw error;
-            return null;
-          })
-          : Promise.resolve(null),
+        loadOptionalIllustration(signal),
       ]);
       if (signal.aborted) return;
       setLoadProgress('正在解析谱面…', 0.45);
       const chart: PgrChart | RpeChart = await new Promise((resolve, reject) => {
         // 主线程解析：WebView file:// 下不使用 Worker，解析期间状态保持可见。
-        window.setTimeout(() => {
+        const parseTimer = window.setTimeout(() => {
+          signal.removeEventListener('abort', cancelParse);
+          if (signal.aborted || disposed) { reject(new DOMException('预览已释放', 'AbortError')); return; }
           try {
             resolve(isRpe
               ? parseRpeChart(chartText, { extraJson: config.rpeAssets?.extraJson ?? null, infoYml: config.rpeAssets?.infoYml ?? null })
               : parsePgrChart(chartText));
           } catch (error) { reject(error); }
         }, 0);
+        const cancelParse = () => { signal.removeEventListener('abort', cancelParse); window.clearTimeout(parseTimer); reject(new DOMException('预览已释放', 'AbortError')); };
+        signal.addEventListener('abort', cancelParse, { once: true });
       });
       if (signal.aborted) return;
       setLoadProgress('正在准备音乐与曲绘…', 0.7);
@@ -921,32 +721,26 @@ function start(): void {
       const [noteAssets, chartAssets] = await Promise.all([
         loadNoteAssets(signal),
         rpeChart ? loadRpeChartAssets(rpeChart, signal) : Promise.resolve(null),
-        decodeMusic(signal),
+        loadPreviewMusic(signal),
       ]);
       if (signal.aborted) return;
       // RPE：背景优先取谱面包内 META.background，缺失时回退远程曲绘
-      let illustration = image;
-      if (rpeChart?.background) {
-        const basePath = config.rpeAssets?.basePath ?? '';
-        try {
-          const backgroundUrl = rpeResourceUrl(basePath, rpeChart.background);
-          illustration = backgroundUrl ? await loadImage(backgroundUrl, signal) : null;
-        } catch {
-          /* 回退远程曲绘 */
-        }
-      }
+      const illustration = await rpeBackground(rpeChart, image, signal);
+      if (signal.aborted || disposed) return;
       if (isRpe) {
         (renderer as RpeRenderer).setChart(rpeChart!);
         (renderer as RpeRenderer).setChartAssets(chartAssets!);
-        chartOffset = rpeChart!.offset;
-        chartDuration = rpeChart!.stats.maxTime;
-        hitSoundEvents = buildHitSoundEvents({
+        session.setChartTimeline({
+          durationSeconds: rpeChart!.stats.maxTime,
+          offsetSeconds: rpeChart!.offset,
+        });
+        session.setHitSoundEvents(buildHitSoundEvents({
           lines: rpeChart!.lines.map((line) => ({
             notes: line.notes
               .filter((note) => !note.isFake)
               .map((note) => ({ kind: note.kind, time: note.hitTime })),
           })),
-        });
+        }));
         completionTimes = rpeChart!.lines
           .flatMap((line) => line.notes.map((note) => (note.isFake ? null : note.kind === 'hold' ? note.endHitTime : note.hitTime)))
           .filter((value): value is number => value !== null)
@@ -960,9 +754,11 @@ function start(): void {
       } else {
         const pgrChart = chart as PgrChart;
         (renderer as PgrRenderer).setChart(pgrChart);
-        chartOffset = pgrChart.offset;
-        chartDuration = pgrChart.stats.maxTime;
-        hitSoundEvents = buildHitSoundEvents(pgrChart);
+        session.setChartTimeline({
+          durationSeconds: pgrChart.stats.maxTime,
+          offsetSeconds: pgrChart.offset,
+        });
+        session.setHitSoundEvents(buildHitSoundEvents(pgrChart));
         completionTimes = pgrChart.lines
           .flatMap((line) => line.notes.map((note) => note.kind === 'hold' ? note.endTime : note.time))
           .sort((a, b) => a - b);
@@ -970,13 +766,11 @@ function start(): void {
           .flatMap((line) => line.notes.map((note) => ({ time: note.time, kind: note.kind })))
           .sort((a, b) => a.time - b.time);
       }
-      hitSoundCursor = 0;
-      lastHitSoundTime = -1e-6;
       renderer.setIllustration(illustration);
       renderer.setNoteAssets(noteAssets);
       renderer.setSettings({ ...settings, lineColor: settings.lineColor as LineColorKey });
       buildTimeline();
-      if (musicBuffer) setStatus('');
+      if (session.musicDurationSeconds !== null) setStatus('');
       ready = true;
       setControlsEnabled(true);
       renderFrame(0);
@@ -989,13 +783,14 @@ function start(): void {
   }
 
   function syncPlayButtons(): void {
-    elements.playIcon.innerHTML = isPlaying
+    elements.playIcon.innerHTML = session.playing
       ? '<path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>'
       : '<path d="M8 5v14l11-7z"/>';
-    elements.play.setAttribute('aria-label', isPlaying ? '暂停' : '播放');
+    elements.play.setAttribute('aria-label', session.playing ? '暂停' : '播放');
   }
 
   function syncControlsVisibility(): void {
+    if (disposed) return;
     elements.controls.classList.toggle('hidden', !controlsVisible || fsLocked);
     elements.fsLock.classList.toggle('hidden', !controlsVisible);
   }
@@ -1017,111 +812,15 @@ function start(): void {
     syncControlsVisibility();
   }
 
+  /** 跳转：位置、时钟与打击音时间轴在会话内更新，视图在此重绘。 */
   function seekToChartTime(target: number): void {
-    const clamped = clamp(target, 0, chartDuration);
-    currentChartTime = clamped;
-    stopActiveHitSounds();
-    resetHitSoundTimeline(clamped);
-    if (isPlaying) {
-      if (musicBuffer && clamped + chartOffset < musicBuffer.duration - MUSIC_END_EPSILON_S) {
-        void playFromMusicPosition(clamped + chartOffset);
-      } else {
-        stopSource(true);
-        lastRafTs = performance.now();
-      }
-    } else {
-      playbackClock.setOffset(musicPosition(clamped + chartOffset));
-    }
-    renderer.resetTimeline(clamped);
-    renderer.render(clamped);
-    applyAttachUiFromRenderer();
-    renderHud(clamped);
-  }
-
-  function finishPlayback(): void {
-    isPlaying = false;
-    stopSource(true);
-    stopActiveHitSounds();
-    currentChartTime = chartDuration;
-    syncPlayButtons();
-    lastRafTs = 0;
-    renderer.render(chartDuration);
-    applyAttachUiFromRenderer();
-    renderHud(chartDuration);
-    showControls();
-  }
-
-  function tick(timestamp: number): void {
-    if (!isPlaying) return;
-    let chartTime = currentChartTime;
-    if (musicBuffer && isSourcePlaying && audioContext) {
-      const musicTime = getMusicTime();
-      if (musicTime >= musicBuffer.duration - MUSIC_END_EPSILON_S) {
-        stopSource(true);
-      } else {
-        chartTime = Math.max(0, musicTime - chartOffset);
-      }
-    } else {
-      if (lastRafTs > 0) {
-        chartTime += ((timestamp - lastRafTs) / 1000) * settings.playbackSpeed;
-      }
-      lastRafTs = timestamp;
-    }
-    if (chartTime >= chartDuration + CHART_END_EPSILON_S) {
-      finishPlayback();
-      return;
-    }
-    currentChartTime = chartTime;
-    renderFrame(chartTime);
-    rafId = requestAnimationFrame(tick);
-  }
-
-  async function startPlayback(): Promise<void> {
-    try {
-      await ensureAudio();
-      try {
-        await ensureHitSoundsReady();
-      } catch {
-        /* 打击音解码失败不影响播放 */
-      }
-    } catch {
-      setStatus('无法播放音乐，请重试。');
-      return;
-    }
-    if (currentChartTime >= chartDuration - 0.05) currentChartTime = 0;
-    isPlaying = true;
-    syncPlayButtons();
-    showControls();
-    lastRafTs = 0;
-    resetHitSoundTimeline(currentChartTime);
-    if (musicBuffer && currentChartTime + chartOffset < musicBuffer.duration - MUSIC_END_EPSILON_S) {
-      await playFromMusicPosition(currentChartTime + chartOffset);
-    } else {
-      stopSource(true);
-      lastRafTs = performance.now();
-    }
-    cancelAnimationFrame(rafId);
-    rafId = requestAnimationFrame(tick);
-  }
-
-  function pausePlayback(): void {
-    isPlaying = false;
-    syncPlayButtons();
-    if (isSourcePlaying) {
-      playbackClock.setOffset(getMusicTime());
-      stopSource(false);
-    }
-    stopActiveHitSounds();
-    resetHitSoundTimeline(currentChartTime);
-    cancelAnimationFrame(rafId);
-    lastRafTs = 0;
-    renderer.render(currentChartTime);
-    applyAttachUiFromRenderer();
-    renderHud(currentChartTime);
-    showControls();
+    void session.seek(target);
+    renderer.resetTimeline(session.chartTime);
+    renderFrame(session.chartTime);
   }
 
   function setFullscreen(active: boolean): void {
+    if (disposed) return;
     isFullscreen = active;
     renderer.setFullscreen(active);
     document.body.classList.toggle('fullscreen', active);
@@ -1139,8 +838,28 @@ function start(): void {
     postStatus('fullscreen', { active });
   }
 
+  /** 暂停（手动按钮或宿主生命周期）：只停播，不改变全屏状态。 */
+  function pauseForLifecycle(): void {
+    if (disposed) return;
+    session.pause();
+  }
+
+  /** 释放：停播、退出全屏、回收资源，幂等；此后不再改动界面或回报状态。 */
+  function disposePlayer(): void {
+    if (disposed) return;
+    loadController?.abort();
+    loadController = null;
+    if (isFullscreen) setFullscreen(false);
+    session.dispose();
+    activePopupClose?.();
+    disposed = true;
+    events.dispose();
+    window.clearTimeout(controlsTimer);
+  }
+
   // HUD 随 16:9 播放窗宽度缩放，并限制极端尺寸下的比例。
   function applyStageMetrics(): void {
+    if (disposed) return;
     const width = elements.stage.getBoundingClientRect().width;
     if (width <= 0) return;
     elements.stage.style.setProperty('--score-font-size', `${Math.round(clamp(width * 0.033, 16, 60))}px`);
@@ -1148,47 +867,49 @@ function start(): void {
     elements.stage.style.setProperty('--combo-label-font-size', `${Math.round(clamp(width * 0.007, 8, 13))}px`);
     elements.stage.style.setProperty('--progress-height', `${Math.round(clamp(width * 0.0022, 2, 4))}px`);
   }
-  new ResizeObserver(applyStageMetrics).observe(elements.stage);
+  const stageObserver = new ResizeObserver(applyStageMetrics);
+  stageObserver.observe(elements.stage);
+  events.own(() => stageObserver.disconnect());
   applyStageMetrics();
 
   // ---- 事件绑定 ----
-  elements.play.addEventListener('click', () => {
+  events.listen(elements.play, 'click', () => {
     if (!ready) return;
-    if (isPlaying) pausePlayback();
-    else void startPlayback();
+    if (session.playing) session.pause();
+    else void session.play();
   });
-  elements.btnRestart.addEventListener('click', () => {
+  events.listen(elements.btnRestart, 'click', () => {
     if (!ready) return;
     seekToChartTime(0);
-    if (!isPlaying) renderFrame(0);
+    if (!session.playing) renderFrame(0);
   });
-  elements.btnStepBack.addEventListener('click', () => {
+  events.listen(elements.btnStepBack, 'click', () => {
     if (!ready) return;
-    seekToChartTime(currentChartTime - STEP_SECONDS);
+    seekToChartTime(session.chartTime - STEP_SECONDS);
   });
-  elements.btnStepForward.addEventListener('click', () => {
+  events.listen(elements.btnStepForward, 'click', () => {
     if (!ready) return;
-    seekToChartTime(currentChartTime + STEP_SECONDS);
+    seekToChartTime(session.chartTime + STEP_SECONDS);
   });
 
-  elements.timelineHost.addEventListener('pointerdown', (e) => {
+  events.listen(elements.timelineHost, 'pointerdown', (e) => {
     e.preventDefault();
     e.stopPropagation();
     timelineDragging = true;
-    wasPlayingBeforeDrag = isPlaying;
-    if (isPlaying) pausePlayback();
+    wasPlayingBeforeDrag = session.playing;
+    if (session.playing) session.pause();
     seekFromTimelineEvent(e);
   });
-  document.addEventListener('pointermove', (e) => {
+  events.listen(document, 'pointermove', (e) => {
     if (!timelineDragging) return;
     seekFromTimelineEvent(e);
   });
-  document.addEventListener('pointerup', () => {
+  events.listen(document, 'pointerup', () => {
     if (!timelineDragging) return;
     timelineDragging = false;
-    if (wasPlayingBeforeDrag) void startPlayback();
+    if (wasPlayingBeforeDrag) void session.play();
   });
-  document.addEventListener('pointercancel', () => {
+  events.listen(document, 'pointercancel', () => {
     timelineDragging = false;
   });
 
@@ -1198,14 +919,10 @@ function start(): void {
     (value) => {
       settings.playbackSpeed = value;
       // 播放中改变倍速：采样级同步（与舞萌一致），不打断当前声源。
-      if (isPlaying && isSourcePlaying && audioContext && sourceNode) {
-        const now = audioContextTime(audioContext.currentTime);
-        sourceNode.playbackRate.setValueAtTime(value, now);
-        playbackClock.appendSegment(now, value);
-      }
+      session.applySpeedChange();
       applySettings();
       persistSettings();
-      if (!isPlaying) renderFrame(currentChartTime);
+      if (!session.playing) renderFrame(session.chartTime);
     },
     0.5, 2, 0.05, settings.playbackSpeed, undefined, (value) => `${value.toFixed(2)}×`,
   );
@@ -1215,7 +932,7 @@ function start(): void {
       settings.noteScale = value;
       applySettings();
       persistSettings();
-      if (!isPlaying) renderFrame(currentChartTime);
+      if (!session.playing) renderFrame(session.chartTime);
     },
     0.6, 1.8, 0.05, settings.noteScale, undefined, (value) => `${value.toFixed(2)}×`,
   );
@@ -1234,7 +951,7 @@ function start(): void {
       settings.backgroundDim = value;
       applySettings();
       persistSettings();
-      if (!isPlaying) renderFrame(currentChartTime);
+      if (!session.playing) renderFrame(session.chartTime);
     },
     0.2, 0.85, 0.01, settings.backgroundDim, undefined, (value) => `${Math.round(value * 100)}%`,
   );
@@ -1253,26 +970,26 @@ function start(): void {
       settings.lineColor = LINE_COLORS[value] ?? 'white';
       applySettings();
       persistSettings();
-      if (!isPlaying) renderFrame(currentChartTime);
+      if (!session.playing) renderFrame(session.chartTime);
     },
     0, LINE_COLOR_LABELS.length - 1, 1, Math.max(0, LINE_COLORS.indexOf(settings.lineColor)), LINE_COLOR_LABELS,
   );
 
-  elements.multiHint.addEventListener('click', () => {
+  events.listen(elements.multiHint, 'click', () => {
     if (!ready) return;
     settings.multiHint = !settings.multiHint;
     applySettings();
     persistSettings();
-    if (!isPlaying) renderFrame(currentChartTime);
+    if (!session.playing) renderFrame(session.chartTime);
   });
 
-  elements.fullscreen.addEventListener('click', () => setFullscreen(!isFullscreen));
-  elements.stage.addEventListener('pointerdown', () => {
+  events.listen(elements.fullscreen, 'click', () => setFullscreen(!isFullscreen));
+  events.listen(elements.stage, 'pointerdown', () => {
     if (!isFullscreen) return;
     if (controlsVisible) hideControls();
     else showControls();
   });
-  elements.fsLock.addEventListener('click', (e) => {
+  events.listen(elements.fsLock, 'click', (e) => {
     e.stopPropagation();
     const nextState = toggleFullscreenLockUiState(fsLocked);
     fsLocked = nextState.locked;
@@ -1282,17 +999,25 @@ function start(): void {
     else showControls();
   });
 
-  window.addEventListener('resize', buildTimeline);
-  new ResizeObserver(buildTimeline).observe(elements.timelineHost);
+  events.listen(window, 'resize', buildTimeline);
+  const timelineObserver = new ResizeObserver(buildTimeline);
+  timelineObserver.observe(elements.timelineHost);
+  events.own(() => timelineObserver.disconnect());
 
-  window.addEventListener('message', (event) => {
-    const data = event.data as { type?: string } | undefined;
-    if (!data || typeof data !== 'object') return;
-    if (data.type === 'exit-fullscreen') setFullscreen(false);
-    if (data.type === 'stop') pausePlayback();
+  events.listen(window, 'message', (event) => {
+    // 生命周期合同由公共层派生：暂停停播保全屏，退出全屏与释放是显式命令。
+    applyChartPreviewHostCommand(event.data, {
+      pause: pauseForLifecycle,
+      exitFullscreen: () => setFullscreen(false),
+      dispose: disposePlayer,
+    });
   });
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && isPlaying) pausePlayback();
+  events.listen(window, 'pagehide', disposePlayer);
+  events.listen(document, 'message', (event) => {
+    applyChartPreviewHostCommand((event as MessageEvent).data, { pause: pauseForLifecycle, exitFullscreen: () => setFullscreen(false), dispose: disposePlayer });
+  });
+  events.listen(document, 'visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && session.playing) session.pause();
   });
 
   applySettings();

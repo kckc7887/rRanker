@@ -1,20 +1,13 @@
 import { crc32 } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
-import {
-  buildPhigrosChartPreviewInput,
-  buildPhiraChartPreviewInput,
-  CHART_TEXT_LIMIT,
-} from '@/features/phigros-chart-preview/chart-preview-input';
-import { loadPhigrosChartPreviewResources } from '@/domain/phigros-chart-preview';
+import { buildPhigrosChartPreviewInput } from '@/features/phigros-chart-preview/chart-preview-input';
+import { buildPhiraChartPreviewInput, CHART_TEXT_LIMIT } from '@/features/phira-chart-preview/chart-preview-input';
+import { loadPhigrosChartPreviewResources } from '@/services/phigros-chart-preview-resources';
 
-vi.mock('@/domain/phigros-chart-preview', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/domain/phigros-chart-preview')>();
-  return {
-    ...actual,
-    loadPhigrosChartPreviewResources: vi.fn(),
-  };
-});
+vi.mock('@/services/phigros-chart-preview-resources', () => ({
+  loadPhigrosChartPreviewResources: vi.fn(),
+}));
 
 vi.mock('@/providers/phira-provider', () => ({
   phiraProvider: {

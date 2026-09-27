@@ -16,6 +16,7 @@ import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { SecureSessionStore } from '@/storage/secure-session-store';
+import { runProviderOperation } from '@/providers/errors';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 const sessions = new SecureSessionStore();
@@ -46,7 +47,7 @@ export async function bindLxnsAccount(input: {
   credentialId?: string;
 }): Promise<LxnsBindingResult> {
   const initialSession = requireLxnsSession(input.session);
-  const credentialId = input.credentialId ?? await createCredentialId();
+  const credentialId = input.credentialId ?? await runProviderOperation('authorization_prepare', createCredentialId);
 
   if (input.gameId === 'maimai') {
     const provider = new LxnsScoreProvider(initialSession);
@@ -87,12 +88,12 @@ export async function bindLxnsAccount(input: {
     ratingPossession: player?.rating_possession ?? null,
   });
   const finalSession = provider.getSession();
-  await snapshots.saveResource(
+  await runProviderOperation('local_commit', () => snapshots.saveResource(
     chunithmPersonalResourceKey(account.id),
     CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
     snapshot.source.updatedAt,
     snapshot,
-  );
+  ));
   await sessions.upsertAccount({
     id: account.id,
     gameId: 'chunithm',

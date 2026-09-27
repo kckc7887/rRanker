@@ -6,7 +6,10 @@ import type {
   PhigrosKyouTag,
 } from '@/domain/phigros-kyou';
 import {
+  PHIGROS_STRENGTH_POLICY,
   analyzePhigrosStrength,
+  describePhigrosStrengthPolicyTexts,
+  describePhigrosStrengthPoolPolicy,
   resolvePhigrosStrengthAdjustedRks,
   resolvePhigrosStrengthAvailabilityCoefficient,
   resolvePhigrosStrengthCoveredDifficultyCoefficient,
@@ -78,6 +81,104 @@ function catalog(charts: readonly [songId: string, levelIndex: number, constant:
     },
   };
 }
+
+describe('Phigros strength policy', () => {
+  it('keeps every tunable in one readonly policy object', () => {
+    expect(PHIGROS_STRENGTH_POLICY).toEqual({
+      thresholdOffset: 0.2,
+      thresholdCap: 16,
+      includedRates: ['a', 's', 'v', 'phi'],
+      smallSampleCount: 3,
+      maxSupplementsPerTag: 5,
+      secondaryTagMinVotes: 3,
+      maxAvailabilityBonus: 0.02,
+      recommendationCount: 3,
+      recommendationMinGain: 0.0001,
+      recommendationMinAcc: 70,
+      recommendationMaxAcc: 100,
+      primaryAxisCount: 5,
+      profileBalancedShareGap: 0.08,
+      profileDualCoreShareSum: 0.6,
+      profileDualCoreSecondShare: 0.24,
+      profileSpecializedShare: 0.4,
+      profileSpecializedLead: 0.15,
+    });
+    expect(Object.isFrozen(PHIGROS_STRENGTH_POLICY)).toBe(true);
+  });
+
+  it('generates the pool explanation from the policy instead of a second copy', () => {
+    const policy = PHIGROS_STRENGTH_POLICY;
+    const text = describePhigrosStrengthPoolPolicy();
+    expect(text).toContain(`RKS 减 ${policy.thresholdOffset}`);
+    expect(text).toContain(`最高为 ${policy.thresholdCap.toFixed(1)}`);
+    expect(text).toContain(`评级 A 以上`);
+    expect(text).toContain(`样本为 1–${policy.smallSampleCount - 1} 张`);
+    expect(text).toContain(`最多 ${policy.maxSupplementsPerTag} 张`);
+    // 说明文本沿用既有措辞，页面与测试都按这句话排查
+    expect(text).toContain('未达到同类满分基准');
+    expect(describePhigrosStrengthPoolPolicy({ ...policy, smallSampleCount: 4 }))
+      .toContain('样本为 1–3 张');
+  });
+
+  it('generates the page empty states from the same policy object', () => {
+    const policy = PHIGROS_STRENGTH_POLICY;
+    const texts = describePhigrosStrengthPolicyTexts();
+    expect(texts.poolRateLabel).toBe(policy.includedRates[0].toUpperCase());
+    expect(texts.emptyPool)
+      .toBe(`当前没有同时满足 RKS 阈值与 ${texts.poolRateLabel} 以上评级的成绩。`);
+    expect(texts.noSecondaryTags)
+      .toBe(`入池谱面没有票数大于 ${policy.secondaryTagMinVotes} 的细分标签。`);
+    expect(texts.unexpectedPrimaryAxes)
+      .toBe(`Kyou 主标签不是预期的 ${policy.primaryAxisCount} 项，已停止生成雷达以避免错误结论。`);
+
+    const variant = describePhigrosStrengthPolicyTexts({
+      ...policy,
+      secondaryTagMinVotes: 6,
+      primaryAxisCount: 4,
+    });
+    expect(variant.noSecondaryTags).toBe('入池谱面没有票数大于 6 的细分标签。');
+    expect(variant.unexpectedPrimaryAxes).toBe('Kyou 主标签不是预期的 4 项，已停止生成雷达以避免错误结论。');
+    expect(variant.noSecondaryTags).not.toBe(texts.noSecondaryTags);
+  });
+
+  it('classifies main-tag profiles from the policy thresholds', () => {
+    const profileOf = (
+      coverages: readonly number[],
+      policy = PHIGROS_STRENGTH_POLICY,
+    ) => resolvePhigrosStrengthProfileLabel(
+      primaryTags.map((tag, index) => ({
+        tagId: tag.id,
+        name: tag.name,
+        sampleCoverage: coverages[index] ?? 0,
+      })),
+      policy,
+    );
+
+    expect(profileOf([1, 0.2, 0.1, 0.05, 0.05])).toBe('读谱特化型');
+    expect(profileOf([1, 0.2, 0.1, 0.05, 0.05], {
+      ...PHIGROS_STRENGTH_POLICY,
+      profileSpecializedShare: 0.9,
+      profileSpecializedLead: 0.9,
+      profileDualCoreShareSum: 0.99,
+      profileDualCoreSecondShare: 0.99,
+    })).toBe('读谱倾向型');
+    expect(profileOf([1, 1, 1, 1, 1])).toBe('五维均衡型');
+    expect(profileOf([1, 1, 1, 1, 1], { ...PHIGROS_STRENGTH_POLICY, primaryAxisCount: 4 }))
+      .toBe('读谱倾向型');
+    expect(resolvePhigrosStrengthProfileLabel(primaryTags.slice(0, 4).map(tag => ({
+      tagId: tag.id, name: tag.name, sampleCoverage: 1,
+    })), { ...PHIGROS_STRENGTH_POLICY, primaryAxisCount: 4 })).toBe('4维均衡型');
+  });
+
+  it('applies the policy values to the analysis behaviour', () => {
+    // 阈值偏移取政策常量：16.1691 - 0.2 = 15.9691 → 15.9
+    expect(resolvePhigrosStrengthThreshold(16.1691))
+      .toBe(Math.floor((16.1691 - PHIGROS_STRENGTH_POLICY.thresholdOffset) * 10) / 10);
+    expect(resolvePhigrosStrengthThreshold(99)).toBe(PHIGROS_STRENGTH_POLICY.thresholdCap);
+    expect(resolvePhigrosStrengthAvailabilityCoefficient(0, 10))
+      .toBe(1 + PHIGROS_STRENGTH_POLICY.maxAvailabilityBonus);
+  });
+});
 
 describe('Phigros strength analysis', () => {
   it('floors player RKS minus 0.2 to one decimal without boundary drift', () => {
@@ -455,7 +556,8 @@ describe('Phigros strength analysis', () => {
       expect(item.targetAcc * 100).toBe(Math.round(item.targetAcc * 100));
       expect(item.targetAcc).toBeLessThanOrEqual(100);
       expect(item.targetRks).toBeCloseTo(calculateRks(item.difficultyConstant, item.targetAcc), 10);
-      expect(item.projectedGain).toBeGreaterThanOrEqual(0.0001 - 1e-9);
+      expect(item.projectedGain)
+        .toBeGreaterThanOrEqual(PHIGROS_STRENGTH_POLICY.recommendationMinGain - 1e-9);
       expect(item.currentAcc).toBeNull();
     });
   });

@@ -129,6 +129,32 @@ export type PhigrosScoreEntry = {
   targetAccForPlusOne?: number | null;
 };
 
+/**
+ * Phigros 单谱真实成绩。
+ *
+ * Phigros 只有一套谱面类型与一套成绩口径，这里只保留真实语义：
+ * 分数是 `score`、准确率是 `rawAcc`（存档全精度）与 `acc`（展示两位）、
+ * 单谱定数是 `rks`、满连是 `fullCombo`。
+ * 舞萌语义字段（`type` 的 SD/DX、`dxScore`、`fc`/`fs`）不属于 Phigros，
+ * 只在共享成绩卡边界由 `phigrosSharedScoreRecord` 借用。
+ */
+export type PhigrosScoreRecord = {
+  songId: string;
+  level: PhigrosLevel;
+  /** 谱面定数（发布资源 difficulty 表） */
+  difficultyConstant: number;
+  /** 单次游玩分数（0–1,000,000） */
+  score: number;
+  /** 存档原始准确率（百分数 0–100，未四舍五入） */
+  rawAcc: number;
+  /** 展示用准确率（保留两位） */
+  acc: number;
+  /** 成绩定数（由谱面定数与原始准确率算出） */
+  rks: number;
+  /** 是否 Full Combo */
+  fullCombo: boolean;
+};
+
 export type PhigrosB30 = {
   rks: number;
   best27: PhigrosScoreEntry[];
@@ -429,33 +455,63 @@ export function collectScoredEntries(
   return allRecords;
 }
 
-export function phigrosEntryToScoreRecord(entry: PhigrosScoreEntry): ScoreRecord {
+/** 存档成绩的生产映射：只产出 Phigros 真实语义，不填舞萌占位字段。 */
+export function toPhigrosScoreRecord(entry: PhigrosScoreEntry): PhigrosScoreRecord {
   return {
     songId: entry.songId,
-    title: entry.songId,
-    type: 'SD',
-    levelIndex: entry.level,
-    level: LEVEL_NAMES[entry.level],
-    difficulty: LEVEL_DIFFICULTY[entry.level],
+    level: entry.level,
     difficultyConstant: entry.difficulty,
-    achievements: entry.acc,
-    dxScore: entry.score,
-    rating: entry.rks,
-    fc: entry.fc ? 'ap' : null,
+    score: entry.score,
+    rawAcc: entry.rawAcc,
+    acc: entry.acc,
+    rks: entry.rks,
+    fullCombo: entry.fc,
+  };
+}
+
+/**
+ * 共享成绩卡与列表（`ScoreRecord`）的 Phigros 视图。
+ *
+ * `ScoreRecord` 的 `type` / `dxScore` / `fc` / `fs` 是舞萌语义字段，这是 Phigros 借用它们的
+ * 唯一边界：与 Majdata 相同，`SD` 只作为共享结构的内部兼容值，不展示谱面类型，
+ * `dxScore` 承载 Phigros 分数、`fc === 'ap'` 表示满连、`fs` 恒为 null。
+ * 领域与 Provider 不再各自拼这些字段。
+ */
+export function phigrosSharedScoreRecord(record: PhigrosScoreRecord): ScoreRecord {
+  return {
+    songId: record.songId,
+    title: record.songId,
+    type: 'SD',
+    levelIndex: record.level,
+    level: LEVEL_NAMES[record.level],
+    difficulty: LEVEL_DIFFICULTY[record.level],
+    difficultyConstant: record.difficultyConstant,
+    achievements: record.acc,
+    dxScore: record.score,
+    rating: record.rks,
+    fc: record.fullCombo ? 'ap' : null,
     fs: null,
-    rate: phigrosScoreToRate(entry.score, entry.fc),
+    rate: phigrosScoreToRate(record.score, record.fullCombo),
     version: 'current',
   };
 }
 
-/** 完整存档成绩列表（全部已游玩谱面，按 RKS 降序） */
+/** 完整存档成绩列表（全部已游玩谱面，按成绩 RKS 降序） */
+export function gameRecordToPhigrosScoreRecords(
+  gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
+  difficultyTable: PhigrosDifficultyTable,
+): PhigrosScoreRecord[] {
+  return collectScoredEntries(gameRecord, difficultyTable)
+    .map(toPhigrosScoreRecord)
+    .sort((a, b) => b.rks - a.rks || b.acc - a.acc);
+}
+
+/** 完整存档成绩列表的共享成绩卡视图（按成绩 RKS 降序） */
 export function gameRecordToScoreRecords(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
 ): ScoreRecord[] {
-  return collectScoredEntries(gameRecord, difficultyTable)
-    .map(phigrosEntryToScoreRecord)
-    .sort((a, b) => b.rating - a.rating || b.achievements - a.achievements);
+  return gameRecordToPhigrosScoreRecords(gameRecord, difficultyTable).map(phigrosSharedScoreRecord);
 }
 
 export function computeB30(

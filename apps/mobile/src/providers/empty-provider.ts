@@ -1,8 +1,5 @@
-import type {
-  AliasSnapshot, CatalogSnapshot, CollectionSnapshot, DataSource, PlateSnapshot, Player, Song,
-} from '@/domain/models';
-import type { DetailedCatalogProvider, ScoreProvider } from './contracts';
-import { ProviderError } from './errors';
+import type { DataSource, Player } from '@/domain/models';
+import type { ScoreProvider } from './contracts';
 
 const emptySource = (): DataSource => ({
   kind: 'fixture',
@@ -11,7 +8,7 @@ const emptySource = (): DataSource => ({
   isStale: false,
 });
 
-/** 测试游戏：成绩与曲库均为空，用于验证切换链路。 */
+/** 测试游戏和未绑定会话共用的空成绩入口。 */
 export class EmptyScoreProvider implements ScoreProvider {
   async getPlayer(): Promise<Player> {
     return {
@@ -25,37 +22,5 @@ export class EmptyScoreProvider implements ScoreProvider {
 
   async getRecords() {
     return [];
-  }
-}
-
-export class EmptyCatalogProvider implements DetailedCatalogProvider {
-  async getCatalog(): Promise<CatalogSnapshot> {
-    return {
-      currentVersion: { id: 0, title: '—' },
-      versions: [],
-      songs: [],
-      chartVersionIndex: {},
-      source: emptySource(),
-    };
-  }
-
-  async getDetailedCatalog() {
-    return this.getCatalog();
-  }
-
-  async getSong(): Promise<Song> {
-    throw new ProviderError('no_data', '找不到这首歌曲', false);
-  }
-
-  async getAliases(): Promise<AliasSnapshot> {
-    return { aliases: [], source: emptySource() };
-  }
-
-  async getPlates(): Promise<PlateSnapshot> {
-    return { plates: [], source: emptySource() };
-  }
-
-  async getCollections(): Promise<CollectionSnapshot> {
-    return { items: [], source: emptySource() };
   }
 }

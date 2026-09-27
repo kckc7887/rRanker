@@ -86,3 +86,16 @@ export function matchesPhigrosRankFilter(
   if (filter === 'fc') return isFc && score !== PHIGROS_MAX_SCORE;
   return phigrosScoreToRate(score, isFc) === filter;
 }
+
+/** Acc 百分数区间；非法输入、越界与倒置区间均不匹配。 */
+export function matchesPhigrosAccuracyRange(value: number, minInput: string, maxInput: string): boolean {
+  const bounds = [minInput, maxInput].map(input => {
+    const normalized = normalizeNumericInput(input);
+    if (!normalized) return undefined;
+    const parsed = Number(normalized);
+    return Number.isFinite(parsed) && parsed >= 0 && parsed <= 100 ? parsed : Number.NaN;
+  });
+  const [min, max] = bounds;
+  if (!Number.isFinite(value) || bounds.some(Number.isNaN) || (min !== undefined && max !== undefined && min > max)) return false;
+  return (min === undefined || value >= min) && (max === undefined || value <= max);
+}

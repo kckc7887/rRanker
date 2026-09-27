@@ -6,7 +6,9 @@ const mockRestoreAppAccounts = jest.fn(async () => undefined);
 const mockClearSessions = jest.fn(async () => undefined);
 const mockShowNotification = jest.fn();
 const mockShowActionNotification = jest.fn();
-let mockRestoreError: string | null = '无法读取本机登录状态，当前未加载任何账号';
+let mockRestoreError: string | null = '无法读取本机登录状态，请重试恢复。';
+let mockSourceStatuses: { source: string; status: string }[] = [];
+const mockRetrySources = jest.fn(async () => undefined);
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -82,6 +84,9 @@ jest.mock('@/hooks/use-managed-account-operations', () => ({
 }));
 jest.mock('@/services/account-restoration', () => ({
   restoreAppAccounts: () => mockRestoreAppAccounts(),
+  getAccountSourceStatuses: () => mockSourceStatuses,
+  subscribeAccountSourceStatuses: () => () => undefined,
+  retryFailedAccountSources: () => mockRetrySources(),
 }));
 jest.mock('@/storage/secure-session-store', () => ({
   SecureSessionStore: jest.fn(() => ({ clear: mockClearSessions })),
@@ -90,7 +95,18 @@ jest.mock('@/storage/secure-session-store', () => ({
 describe('session restore recovery', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockRestoreError = '无法读取本机登录状态，当前未加载任何账号';
+    mockRestoreError = '无法读取本机登录状态，请重试恢复。';
+    mockSourceStatuses = [];
+  });
+  it('offers a separate failed-source retry without clearing the existing account list', async () => {
+    mockRestoreError = null;
+    mockSourceStatuses = [{ source: 'tuf', status: 'failed' }];
+    const screen = await render(<GameAccountsScreen />);
+    expect(screen.getByText('部分本机账号暂时无法读取，已加载的账号可以继续使用。')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('重试读取账号'));
+    expect(mockRetrySources).toHaveBeenCalledTimes(1);
+    expect(mockRestoreAppAccounts).not.toHaveBeenCalled();
+    expect(mockClearSessions).not.toHaveBeenCalled();
   });
 
   it('shows retry and clear actions only when restore failed', async () => {
@@ -132,5 +148,17 @@ describe('session restore recovery', () => {
       message: '请重新绑定需要使用的账号。',
       variant: 'info',
     });
+  });
+
+  it('keeps recovery available after a failed clear and does not report success', async () => {
+    mockClearSessions.mockRejectedValueOnce(new Error('native storage unavailable'));
+    const screen = await render(<GameAccountsScreen />);
+    await fireEvent.press(screen.getByLabelText('清除登录数据并重新绑定'));
+    const input = mockShowActionNotification.mock.calls[0][0] as { actions: { label: string; onPress?: () => void }[] };
+    await act(async () => { input.actions.find((action) => action.label === '清除')?.onPress?.(); });
+    await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith({ title: '清除失败', message: '无法清除登录数据，请稍后重试。', variant: 'error' }));
+    expect(mockRestoreAppAccounts).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByLabelText('重试恢复登录状态'));
+    await waitFor(() => expect(mockRestoreAppAccounts).toHaveBeenCalledTimes(1));
   });
 });

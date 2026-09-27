@@ -3,10 +3,8 @@ import { useLocalSearchParams } from 'expo-router';
 import {
   type PhigrosChartPreviewSettings,
 } from '@/features/phigros-chart-preview/phigros-chart-preview-inject';
-import {
-  buildPhigrosChartPreviewInput,
-  buildPhiraChartPreviewInput,
-} from '@/features/phigros-chart-preview/chart-preview-input';
+import { buildPhigrosChartPreviewInput } from '@/features/phigros-chart-preview/chart-preview-input';
+import { buildPhiraChartPreviewInput } from '@/features/phira-chart-preview/chart-preview-input';
 import {
   phigrosChartPreviewAllowsFileAccess,
   preparePhigrosChartPreviewWebViewSource,
@@ -15,9 +13,8 @@ import {
   createPhigrosPreviewResourceRead,
   downloadPhiraChartPreviewZip,
 } from '@/features/phigros-chart-preview/prepare-phigros-chart-preview-webview';
-import { usePhiraChart } from '@/hooks/use-phira';
 import type { PhiraChart } from '@/domain/phira';
-import { resolveChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
+import { resolveChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-navigation';
 import { ChartPreviewScreenShell } from '@/features/chart-preview-shared/chart-preview-screen-shell';
 import {
   CHART_PREVIEW_PLAYER_LABEL,
@@ -33,8 +30,8 @@ import { usePhigrosChartVariantSelection } from '@/features/phigros-chart-previe
 
 /** Phigros 在进入播放器前完成三类资源下载、校验与一次恢复重试。 */
 const PHIGROS_PREPARE_TIMEOUT_MS = 120_000;
-/** Phira 谱面包较大，使用较长等待时间。 */
-const PHIRA_PREPARE_TIMEOUT_MS = 60_000;
+/** 元数据、谱面包和暂存共享同一可取消的准备期限。 */
+const PHIRA_PREPARE_TIMEOUT_MS = 120_000;
 
 type MappedPreview =
   | { error: string }
@@ -97,17 +94,12 @@ export default function PhigrosChartPreviewScreen() {
     // 字段级依赖避免路由对象引用变化触发重复准备。
     [params.requestId, handedRequest, params.game, params.songId, params.levelIndex, params.chartId, params.title],
   );
-  const phiraChartId = !('error' in mapped) && mapped.game === 'phira' && !mapped.chart ? mapped.chartId : null;
-  const phiraChart = usePhiraChart(phiraChartId);
   const variantSelection = usePhigrosChartVariantSelection(!('error' in mapped) && mapped.game === 'phigros' ? mapped : null);
 
   const request = useMemo(() => {
     if ('error' in mapped) return { kind: 'error' as const, message: mapped.error };
     if (mapped.game === 'phigros' && !variantSelection) return { kind: 'waiting' as const };
     if (variantSelection?.error) return { kind: 'error' as const, message: variantSelection.error };
-    if (mapped.game === 'phira' && !mapped.chart && phiraChart.data === undefined && !phiraChart.isError) {
-      return { kind: 'waiting' as const };
-    }
     return {
       kind: 'ready' as const,
       payload: mapped,
@@ -162,11 +154,7 @@ export default function PhigrosChartPreviewScreen() {
         }
       },
     };
-  }, [mapped, phiraChart.data, phiraChart.isError, isDark, variantSelection]);
-
-  const externalError = phiraChartId !== null && phiraChart.isError
-    ? '无法读取 Phira 谱面，请重试。'
-    : null;
+  }, [mapped, isDark, variantSelection]);
 
   return (
     <ChartPreviewScreenShell
@@ -176,7 +164,6 @@ export default function PhigrosChartPreviewScreen() {
       accessibilityLabel="Phigros/Phira 谱面确认播放器"
       errorHint="可返回歌曲详情重试。"
       prepareErrorFallback="无法准备谱面确认资源"
-      externalError={externalError}
       allowFileAccess={phigrosChartPreviewAllowsFileAccess()}
     />
   );

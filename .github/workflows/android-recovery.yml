@@ -1,0 +1,83 @@
+name: Android Native Diagnostics
+on:
+  workflow_dispatch:
+    inputs:
+      optimization-mode:
+        description: Native optimization comparison mode
+        required: true
+        type: choice
+        default: A
+        options:
+          - A
+          - B
+          - C
+          - D
+permissions:
+  contents: read
+concurrency:
+  group: native-diagnostics-${{ github.ref }}
+  cancel-in-progress: false
+  queue: max
+jobs:
+  native-diagnostics:
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      NODE_ENV: production
+      BUILD_SOURCE_COMMIT: ${{ github.sha }}
+      ANDROID_OPTIMIZATION_MODE: ${{ inputs.optimization-mode }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: "12266719"
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v6
+      - name: Install dependencies
+        run: npm ci --include=dev
+      - name: Verify diagnostic build settings
+        run: npx vitest run tests/android-build-optimization.test.ts
+      - name: Select independent native entry
+        run: node -e "const fs=require('fs');const p=require('./package.json');p.main='native-diagnostics-entry.tsx';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+      - name: Generate native project
+        run: npm run prebuild:android
+      - name: Compile diagnostic APK
+        working-directory: apps/mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=2 -PreactNativeArchitectures=x86_64
+      - name: Preserve build identity and dependency evidence
+        run: |
+          git rev-parse HEAD > android/app/build/outputs/apk/release/source-commit.txt
+          printf '%s\n' "$ANDROID_OPTIMIZATION_MODE" > android/app/build/outputs/apk/release/optimization-mode.txt
+          cp android/gradle.properties android/app/build/outputs/apk/release/gradle-properties.txt
+          cp android/app/build.gradle android/app/build/outputs/apk/release/app-gradle.txt
+          cp android/app/proguard-rules.pro android/app/build/outputs/apk/release/proguard-rules.txt
+      - name: Upload diagnostic APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: native-diagnostics-${{ inputs.optimization-mode }}-${{ github.sha }}-${{ github.run_attempt }}
+          path: |
+            apps/mobile/android/app/build/outputs/apk/release/app-x86_64-release.apk
+            apps/mobile/android/app/build/outputs/apk/release/*.txt
+            apps/mobile/android/app/build/outputs/apk/release/output-metadata.json
+            apps/mobile/android/app/build/outputs/mapping/release/mapping.txt
+          if-no-files-found: error
+          compression-level: 6
+          retention-days: 7
+    if: github.repository == 'kckc7887/rRanker' && startsWith(github.ref, 'refs/heads/')

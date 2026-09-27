@@ -1,8 +1,10 @@
 /**
  * 谱面确认公共屏幕壳（公共路径）：
  * 承接各游戏谱面确认屏幕的全部共有逻辑——prepare 执行与超时中止、
- * 卸载停播、返回键退出全屏、ready/fullscreen/error/settings/progress 桥接、
+ * 生命周期暂停、返回键退出全屏、卸载释放、ready/fullscreen/error/settings/progress 桥接、
  * 播放器设置 KV 读写合并、错误/加载分支与 WebView 属性透传。
+ * 命令与事件都走 `chart-preview-bridge` 的判别联合：短暂 inactive 只下发生命周期暂停并保留全屏，
+ * 释放才退出全屏，未声明的消息不进入游戏钩子。
  * 游戏差异仅通过 props 表达（请求对象、文案、testID、注入策略），
  * 壳不感知具体游戏，不出现游戏 ID / Storage key 字面量分支。
  */
@@ -12,12 +14,13 @@ import { BackHandler, Platform, Pressable, StyleSheet, Text, View } from 'react-
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
-import Storage from 'expo-sqlite/kv-store';
+import Storage from '@/storage/key-value-storage';
 import {
-  chartPreviewExitFullscreenScript,
-  chartPreviewPlayerMessageScript,
-  chartPreviewStopScript,
+  chartPreviewHostCommandScript,
+  isChartPreviewPlayerEvent,
   parseChartPreviewBridgeMessage,
+  parseChartPreviewHostCommand,
+  type ChartPreviewBridgeMessage,
 } from './chart-preview-bridge';
 import { chartPreviewNativeScreenOptions, type ChartPreviewFullscreenOrientation } from './chart-preview-native-screen-options';
 import {
@@ -69,7 +72,7 @@ export type ChartPreviewScreenShellProps<TPayload> = {
   reInjectOnLoadEnd?: boolean;
   blockOnHttpError?: boolean;
   onBridgeMessage?: (
-    message: ReturnType<typeof parseChartPreviewBridgeMessage> & Record<string, unknown>,
+    message: ChartPreviewBridgeMessage & Record<string, unknown>,
     bridge: { postMessage: (message: Record<string, unknown>) => void },
   ) => void;
 };
@@ -92,6 +95,10 @@ type PreparedPreview = { source: ChartPreviewShellSource; session: PreviewSessio
 type ReleaseReason = 'memory' | 'process';
 const PREPARE_TIMEOUT_MS = 120_000;
 const READY_TIMEOUT_MS = 60_000;
+// 宿主命令拥有唯一序列化入口；生命周期暂停不得改变全屏，退出全屏与释放都是显式命令。
+const LIFECYCLE_PAUSE_SCRIPT = chartPreviewHostCommandScript({ type: 'pause', cause: 'lifecycle' });
+const EXIT_FULLSCREEN_SCRIPT = chartPreviewHostCommandScript({ type: 'exit-fullscreen' });
+const DISPOSE_SCRIPT = chartPreviewHostCommandScript({ type: 'dispose' });
 
 async function loadSettings(settingsKey: string): Promise<Record<string, unknown>> {
   try {
@@ -256,10 +263,10 @@ export function ChartPreviewScreenShell<TPayload>({
     });
   }, [backgrounded, lifecycle.memoryWarningGeneration, lifecycle.phase, releasePlayer]);
 
+  // 短暂 inactive 只下发生命周期暂停：全屏状态由原生与页面共同保留，回前台后仍然一致。
   useEffect(() => {
     if (lifecycle.phase !== 'inactive') return;
-    webRef.current?.injectJavaScript(chartPreviewStopScript());
-    setIsFullscreen(false);
+    webRef.current?.injectJavaScript(LIFECYCLE_PAUSE_SCRIPT);
   }, [lifecycle.phase]);
 
   useEffect(() => {
@@ -313,8 +320,8 @@ export function ChartPreviewScreenShell<TPayload>({
         if (readyTimeout !== undefined) clearTimeout(readyTimeout);
         if (sessionRef.current === session) {
           sessionRef.current = null;
-          // 卸载前停止最新实例；旧会话清理不得向新实例注入脚本。
-          webRef.current?.injectJavaScript(chartPreviewStopScript());
+          // 卸载前释放最新实例；旧会话清理不得向新实例注入脚本。
+          webRef.current?.injectJavaScript(DISPOSE_SCRIPT);
           if (progressFlushRef.current !== null) {
             clearTimeout(progressFlushRef.current);
             progressFlushRef.current = null;
@@ -376,8 +383,6 @@ export function ChartPreviewScreenShell<TPayload>({
       } catch (error) {
         if (!isCurrentSession(session)) return;
         finish('error', error);
-        // 诊断日志：底层原因只进日志，不进用户界面。
-        console.log('[chart-preview] prepare error', error);
         fail(error, prepareErrorFallback);
       }
     })();
@@ -399,7 +404,7 @@ export function ChartPreviewScreenShell<TPayload>({
   useEffect(() => {
     if (!isFullscreen) return;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
-      webRef.current?.injectJavaScript(chartPreviewExitFullscreenScript());
+      webRef.current?.injectJavaScript(EXIT_FULLSCREEN_SCRIPT);
       return true;
     });
     return () => subscription.remove();
@@ -417,7 +422,10 @@ export function ChartPreviewScreenShell<TPayload>({
   const bridge = useMemo(() => ({
     postMessage: (message: Record<string, unknown>) => {
       if (!viewSession || !isCurrentSession(viewSession)) return;
-      webRef.current?.injectJavaScript(chartPreviewPlayerMessageScript(message));
+      // 游戏屏幕回传的命令同样经合同解析，未声明的载荷不下发。
+      const command = parseChartPreviewHostCommand(message);
+      if (command === null) return;
+      webRef.current?.injectJavaScript(chartPreviewHostCommandScript(command));
     },
   }), [isCurrentSession, viewSession]);
 
@@ -501,17 +509,19 @@ export function ChartPreviewScreenShell<TPayload>({
             accessibilityLabel={accessibilityLabel}
             allowFileAccess={allowFileAccess}
             allowFileAccessFromFileURLs
+            allowUniversalAccessFromFileURLs={false}
+            sharedCookiesEnabled={false}
+            thirdPartyCookiesEnabled={false}
             allowingReadAccessToURL={source.allowingReadAccessToURL}
             allowsInlineMediaPlayback
             mediaPlaybackRequiresUserAction={false}
             javaScriptEnabled
             domStorageEnabled
             originWhitelist={['file://*']}
-            mixedContentMode="always"
+            mixedContentMode="never"
             setSupportMultipleWindows={false}
             source={{ uri: source.uri }}
-            onShouldStartLoadWithRequest={(navigation) => isCurrentView() && (navigation.isTopFrame === false
-              || navigation.url === source.uri)}
+            onShouldStartLoadWithRequest={(navigation) => isCurrentView() && navigation.url === source.uri}
             injectedJavaScriptBeforeContentLoaded={injected}
             style={[styles.webview, { backgroundColor: webviewBackground }]}
             onLoadEnd={() => {
@@ -525,54 +535,41 @@ export function ChartPreviewScreenShell<TPayload>({
               if (!isCurrentView()) return;
               const data = parseChartPreviewBridgeMessage(event.nativeEvent.data);
               if (!data) return;
-              if (data.type === 'progress') {
+              if (isChartPreviewPlayerEvent(data, 'progress')) {
                 applyLoadProgress(chartPreviewWebViewProgress({
-                  label: typeof data.label === 'string' && data.label ? data.label : CHART_PREVIEW_PLAYER_LABEL,
-                  value: typeof data.value === 'number' ? data.value : 0,
+                  label: data.label || CHART_PREVIEW_PLAYER_LABEL,
+                  value: data.value ?? 0,
                 }));
               }
-              if (data.type === 'ready') {
+              if (isChartPreviewPlayerEvent(data, 'ready')) {
                 recordView('ready');
                 viewSession?.markReady();
                 commitLoadProgress({ label: CHART_PREVIEW_PLAYER_LABEL, value: 1 });
                 setReady(true);
               }
-              if (data.type === 'fullscreen' && typeof data.active === 'boolean') {
+              if (isChartPreviewPlayerEvent(data, 'fullscreen')) {
                 setIsFullscreen(data.active);
               }
-              if (data.type === 'background-video') {
-                const result = data.result === 'error' || data.result === 'success' ? data.result : undefined;
-                const status = typeof data.status === 'number' && Number.isInteger(data.status) && data.status >= 0 && data.status <= 4
-                  ? data.status : undefined;
-                const errorCode = data.errorCode === 'network' || data.errorCode === 'no_data'
-                  || data.errorCode === 'cancelled' || data.errorCode === 'unknown'
-                  ? data.errorCode : undefined;
+              if (isChartPreviewPlayerEvent(data, 'background-video')) {
                 recordView('background-video', {
-                  ...(result ? { result } : {}),
-                  ...(status !== undefined ? { status } : {}),
-                  ...(errorCode ? { errorCode } : {}),
+                  result: data.result,
+                  ...(data.status === undefined ? {} : { status: data.status }),
+                  ...(data.errorCode === undefined ? {} : { errorCode: data.errorCode }),
                 });
               }
-              if (data.type === 'error') {
+              if (isChartPreviewPlayerEvent(data, 'error')) {
                 recordView('player-error', { result: 'error', error: data });
-                // 诊断日志：底层原因只进日志，不进用户界面。
-                console.log('[chart-preview] player error', {
-                  diagnostic: typeof data.diagnostic === 'string' ? data.diagnostic : undefined,
-                  message: typeof data.message === 'string' ? data.message : undefined,
-                });
                 failPlayer('谱面播放失败，请返回重试。');
                 return;
               }
-              if (data.type === 'settings') {
-                const { type: _type, message: _message, active: _active, ...settings } = data;
-                persistSettings(settings);
+              if (isChartPreviewPlayerEvent(data, 'settings')) {
+                persistSettings(data.settings);
               }
               onBridgeMessage?.(data, bridge);
             }}
             onError={(event) => {
               if (!isCurrentView()) return;
               recordView('load-error', { result: 'error', error: event?.nativeEvent });
-              console.log('[chart-preview] webview error', event?.nativeEvent);
               failPlayer('播放器加载失败，请返回重试。');
             }}
             onContentProcessDidTerminate={() => {
@@ -588,7 +585,6 @@ export function ChartPreviewScreenShell<TPayload>({
             onHttpError={(event) => {
               if (!isCurrentView()) return;
               void recordRuntimeDiagnostic('request', { source: 'chart-preview', result: 'error', status: event?.nativeEvent?.statusCode });
-              console.log('[chart-preview] webview http error', event?.nativeEvent);
               if (!blockOnHttpError) return;
               failPlayer('播放器加载失败，请返回重试。');
             }}
