@@ -329,6 +329,7 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 | 凭据提交 | `src/services/session-credential-coordinator.ts`：`SessionCredentialCoordinator`、`SessionCredentialState`、`SessionStoreApi`、`OAuthRotationCommitResult` | 轮换资格判定、SecureStore 落盘、内存发布与有界补写的唯一入口。按请求开始时消费掉的凭据世代解析应更新的凭据（落雪与 osu! 各有一条前代关系），只更新仍关联该凭据的账号；落盘经安全存储端口，内存发布只改会话并释放受影响账号的 Provider 缓存，已解绑账号的会话不写回。提交返回 `applied` / `pending-persist` / `stale` / `removed`：发起账号被解绑但共享凭据仍被引用时继续提交，新授权不会被迟到结果覆盖；落盘失败保留内存新会话并按 5/30/120 秒有界退避最多自动补写 3 次。协调器不 import Store 模块，由 Store 侧兼容入口按需装配并注入 `getState` / `setState` / `refreshActiveSessionView` | `session-store-ownership.test.ts`、`session-store.test.ts`、OAuth 与 Rizline 轮换测试 |
 | QueryClient | `src/state/query-client.ts`：`queryClient`、`releaseInactiveQueries` | 全应用唯一实例；只有内存警告清理非活动 Query | 生命周期与缓存测试 |
 | 生命周期 | `src/state/app-lifecycle-core.ts`、`app-lifecycle.tsx`：`AppLifecycleProvider`、`useAppLifecycle`、`getForegroundAbortSignal`、`waitForForeground`、`ensureForegroundWork` | 短暂 inactive 不 abort、不换代；后台 abort 前台工作。进入 `foreground-ready` 时，来自后台则换代并 `beginForegroundWork`；若经 inactive 回来且 controller 已空则 `ensureForegroundWork` 重建可取消信号。异步任务传递 AbortSignal | `app-lifecycle.test.tsx`、下载生命周期测试 |
+| 查询前台恢复 | `src/state/query-client.ts`：`resumeInterruptedActiveQueries(client): Promise<void>`；`hooks/use-app-runtime.ts` 装配 | 后台取消结算后，只恢复 active、enabled、pending/idle 且尚无数据的首查。已有缓存、错误、禁用、闲置和正在读取的查询不重新请求；`cancelRefetch: false` 不取消更晚的读取。旧前台回调在再次后台或卸载后失效 | `query-client.test.ts`、`app-runtime.test.tsx` |
 | 普通筛选 Store | `src/state/create-filter-store.ts` 的 `createFilterStore` | defaults 生成 setter；`clearKeys` 决定清空范围，游戏保留筛选字段语义 | 各游戏 filter 测试 |
 | 持久化随机筛选 | `src/state/create-random-charts-filter-store.ts` 的 `createPersistedRandomChartsFilterStore` | 统一水合、脏写保护和串行保存；游戏提供偏好 Store 与默认值 | 随机歌曲测试 |
 | KV 原生执行 | `src/storage/key-value-storage.ts`：默认存储、`KeyValueStorage`、`createSerializedKeyValueStorage(storage)` | 默认账号、偏好、安全索引、缓存与播放器设置共用该入口。按底层实例串行完整 `getItem` / `setItem` / `removeItem` / `getAllKeys`，等待原生语句释放后再开始下一项；一次失败不阻塞后续操作。相同实例返回相同包装，独立实例互不阻塞。保留原键和 schema；不把它当作跨操作业务事务。生产消费者禁止直接访问原始 KV；临时原生探针只直接构造实例，再经同一包装执行 | `key-value-storage.test.ts`、`native-storage-probe.test.ts`、账号和偏好合同测试 |
@@ -666,7 +667,10 @@ Phigros 的谱面资源在服务层：`services/phigros-chart-preview-resources.
 卸载与后台撤销弹窗及请求；交互由 `phigros-chart-variant-selection.test.tsx` 覆盖。
 预览将已验证的谱面文本、音乐 Base64 和曲绘 data URL 交给既有配置与暂存计划；
 预览自定义 `read(asset, index)` 与兼容包下载都接入 `downloadChartResource` 的原生文件、取消和进度，
-读完仍走 `verifyPhigrosResource`。Phira 预览 zip 经注入的 `downloadChart`（同一下载入口）再解包；
+读完仍走 `verifyPhigrosResource`。Phira 预览的元数据、zip 和暂存共用壳的 120 秒 prepare 期限与取消信号，
+不在壳外等待另一份元数据 Query；详情交接已有 `chart` 时不再请求，只有 chartId 时复用
+`buildPhiraChartPreviewInput` 内的公共 Provider 读取一次。超时显示可重新加载的错误，退出后迟到结果不挂载播放器。
+Phira 预览 zip 经注入的 `downloadChart`（同一下载入口）再解包；
 未注入时回退 `phiraProvider.downloadChart`，供 live 演示。共享预览/下载核心不识别 Phigros 修订或音符。
 相关合同包括 `phigros-chart-preview-resources.test.ts`、`phigros-chart-preview-input.test.ts`、
 `phigros-chart-preview-pgr-core.test.ts`、`phigros-chart-preview-screen.test.tsx`、

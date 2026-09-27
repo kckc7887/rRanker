@@ -10,7 +10,8 @@ let mockController: AbortController;
 const mockFocus = jest.fn();
 const mockPause = jest.fn();
 const mockResume = jest.fn();
-const mockCancelQueries = jest.fn(async () => undefined);
+const mockCancelQueries = jest.fn(async (): Promise<void> => undefined);
+const mockResumeQueries = jest.fn(async () => undefined);
 const mockReleaseQueries = jest.fn();
 const mockClearMemory = jest.fn(async () => true);
 const mockHydrate = jest.fn(async (_signal?: AbortSignal) => undefined);
@@ -33,7 +34,11 @@ jest.mock('@/state/session-store', () => ({
   retryPendingRotationWrites: () => mockRetryPendingRotationWrites(),
 }));
 jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle, getForegroundAbortSignal: () => mockController.signal }));
-jest.mock('@/state/query-client', () => ({ queryClient: { cancelQueries: () => mockCancelQueries(), getQueryCache: () => ({ getAll: () => [] }) }, releaseInactiveQueries: () => mockReleaseQueries() }));
+jest.mock('@/state/query-client', () => ({
+  queryClient: { cancelQueries: () => mockCancelQueries(), getQueryCache: () => ({ getAll: () => [] }) },
+  releaseInactiveQueries: () => mockReleaseQueries(),
+  resumeInterruptedActiveQueries: () => mockResumeQueries(),
+}));
 jest.mock('@/features/storage-management/storage-cache-maintenance', () => ({ runStorageCacheMaintenance: () => mockMaintenance() }));
 jest.mock('@/services/remote-image-cache', () => ({ markRemoteImageCacheGameActive: (gameId: string) => mockActiveGame(gameId) }));
 jest.mock('@/services/account-thumbnail', () => ({ hydrateAccountDisplayData: (signal: AbortSignal) => mockHydrate(signal) }));
@@ -51,6 +56,7 @@ async function flushInteractions() {
 describe('app runtime lifecycle', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockCancelQueries.mockImplementation(async () => undefined);
     tasks = [];
     mockState.restoreStatus = 'ready'; mockState.activeAccountId = 'maimai:local'; mockState.activeGameId = 'maimai';
     mockController = new AbortController();
@@ -151,6 +157,44 @@ describe('app runtime lifecycle', () => {
     await hook.rerender(undefined);
     expect(mockReleaseQueries).toHaveBeenCalledTimes(1);
     expect(mockClearMemory).toHaveBeenCalledTimes(1);
+    await hook.unmount();
+  });
+
+  it('waits for the preceding background cancellation before resuming first queries', async () => {
+    const hook = await renderHook(() => useAppRuntime(true));
+    await flushInteractions();
+    mockResumeQueries.mockClear();
+    let settleCancellation!: () => void;
+    mockCancelQueries.mockImplementationOnce(() => new Promise<void>(done => { settleCancellation = done; }));
+    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
+    await hook.rerender(undefined);
+    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
+    await hook.rerender(undefined);
+    await flushInteractions();
+    expect(mockResumeQueries).not.toHaveBeenCalled();
+    await act(() => { settleCancellation(); });
+    expect(mockResumeQueries).toHaveBeenCalledTimes(1);
+    await hook.unmount();
+  });
+
+  it('does not resume an obsolete foreground continuation after returning to background', async () => {
+    const hook = await renderHook(() => useAppRuntime(true));
+    await flushInteractions();
+    mockResumeQueries.mockClear();
+    let settleCancellation!: () => void;
+    mockCancelQueries.mockImplementationOnce(() => new Promise<void>(done => { settleCancellation = done; }));
+    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
+    await hook.rerender(undefined);
+    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
+    await hook.rerender(undefined);
+    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
+    await hook.rerender(undefined);
+    await act(() => { settleCancellation(); });
+    expect(mockResumeQueries).not.toHaveBeenCalled();
+    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 3 };
+    await hook.rerender(undefined);
+    await flushInteractions();
+    expect(mockResumeQueries).toHaveBeenCalledTimes(1);
     await hook.unmount();
   });
 
