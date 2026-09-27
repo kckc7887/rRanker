@@ -12,9 +12,9 @@ if (!Object.hasOwn(optimizationModes, optimizationMode)) {
 }
 
 /**
- * Expo 动态配置：app.json 仍是静态配置的唯一来源（含版本、包名、插件）。
- * 本文件只叠加构建时注入的 osu! OAuth 应用凭据（EAS Secret / CI Secret / 本地环境变量），
- * 经 Constants.expoConfig.extra 进入应用；缺失时 osu! 授权会明确报错，不会静默使用空凭据。
+ * app.json 提供版本、包名与插件列表；动态配置按优化模式设置 Android 插件参数。
+ * 构建提交身份、优化模式与 osu! OAuth 应用凭据经 extra 注入应用。
+ * osu! 凭据缺失时换码或令牌轮换明确报错；客户端构建注入不具备服务端保密性。
  */
 module.exports = {
   ...base,
