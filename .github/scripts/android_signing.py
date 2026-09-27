@@ -16,21 +16,36 @@ def verify_android_signing(apksigner_output, mode, expected_certificate_sha256=N
         raise ValueError("Invalid Android signing certificate summary")
 
     fields = {}
+    signer_count = None
     for line in apksigner_output.splitlines():
         line = line.strip()
-        if not line.startswith("Signer #") or not re.search(r" certificate (?:DN|SHA-256 digest):", line):
+        if line.startswith("Number of signers:"):
+            if signer_count is not None or line != "Number of signers: 1":
+                raise ValueError("Expected exactly one Android signing certificate")
+            signer_count = 1
             continue
-        match = re.fullmatch(r"Signer #([1-9][0-9]*) certificate (DN|SHA-256 digest): (.+)", line)
+        if line.startswith(("Source Stamp Signer ", "Source Stamp Signer: ")):
+            continue
+        if not re.search(r" certificate (?:DN|SHA-256 digest):", line):
+            continue
+        # Build Tools 37 labels a single signer by its strongest verified scheme.
+        match = re.fullmatch(
+            r"(Signer #1|V(?:1|2|3\.0) Signer:) certificate (DN|SHA-256 digest): (.+)", line
+        )
         if not match:
             raise ValueError("Invalid Android signing certificate summary")
-        key = (int(match[1]), match[2])
+        key = (match[1], match[2])
         if key in fields:
             raise ValueError("Ambiguous Android signing certificate summary")
         fields[key] = match[3]
-    if set(fields) != {(1, "DN"), (1, "SHA-256 digest")}:
+    signers = {signer for signer, _field in fields}
+    if len(signers) != 1:
         raise ValueError("Expected exactly one Android signing certificate")
-    subject = fields[(1, "DN")]
-    fingerprint = fields[(1, "SHA-256 digest")]
+    signer = signers.pop()
+    if set(fields) != {(signer, "DN"), (signer, "SHA-256 digest")}:
+        raise ValueError("Expected exactly one Android signing certificate")
+    subject = fields[(signer, "DN")]
+    fingerprint = fields[(signer, "SHA-256 digest")]
     if not subject.strip() or any(ord(character) < 32 or ord(character) == 127 for character in subject):
         raise ValueError("Invalid Android signing certificate subject")
     if not re.fullmatch(r"[A-Fa-f0-9]{64}", fingerprint):

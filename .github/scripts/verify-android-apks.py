@@ -30,6 +30,7 @@ if len(elements) != len(expected):
 sdk = Path(os.environ["ANDROID_HOME"])
 tool_dirs = [p for p in (sdk / "build-tools").iterdir() if re.fullmatch(r"\d+\.\d+\.\d+", p.name)]
 build_tools = max(tool_dirs, key=lambda p: tuple(map(int, p.name.split("."))))
+print(f"Android APK verification Build Tools: {build_tools.name}")
 verified = {}
 for element in elements:
     filters = element["filters"]
@@ -53,7 +54,7 @@ for element in elements:
     if (attributes.get("name"), attributes.get("versionName"), attributes.get("versionCode")) != (config["android"]["package"], version, str(build)):
         raise ValueError(f"APK manifest mismatch for {abi}")
     verify_output = subprocess.check_output(
-        [str(build_tools / "apksigner"), "verify", "--print-certs", str(apk)], text=True)
+        [str(build_tools / "apksigner"), "verify", "--verbose", "--print-certs", str(apk)], text=True)
     signing = verify_android_signing(verify_output, signing_mode, expected_certificate_sha256)
     verified[abi] = (apk, signing)
 
