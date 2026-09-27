@@ -520,7 +520,7 @@ export async function restoreSession(
     stopOptional();
     useSession.getState().finishRestore(input, optionalAccounts);
   } catch {
-    useSession.getState().failRestore('无法读取本机登录状态，当前未加载任何账号');
+    useSession.getState().failRestore('无法读取本机登录状态，请重试恢复。');
   }
 }
 

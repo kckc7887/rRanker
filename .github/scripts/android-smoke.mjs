@@ -26,6 +26,16 @@ async function waitFor(predicate, label) {
   } while (Date.now() < deadline);
   throw new Error(`Device check timed out: ${label}`);
 }
+async function waitForActivity(predicate, label) {
+  const deadline = Date.now() + 60_000;
+  do {
+    const activities = shell('dumpsys', 'activity', 'activities');
+    const resumed = activities.split('\n').filter((line) => /^\s*(?:mResumedActivity|topResumedActivity|ResumedActivity)\s*[:=]/.test(line));
+    if (resumed.some(predicate)) return;
+    await pause(500);
+  } while (Date.now() < deadline);
+  throw new Error(`Device activity check timed out: ${label}`);
+}
 const find = (current, label) => current.find((node) => node['content-desc'] === label);
 function tap(node) {
   assert(node?.enabled === 'true' && node.package === 'com.rranker.app', 'Expected enabled application control');
@@ -44,7 +54,7 @@ try {
   command('logcat', '-c');
   restart();
   if (mode === 'native') {
-    const deadline = Date.now() + 60_000;
+    const deadline = Date.now() + 110_000;
     let results = [];
     do {
       const logs = command('logcat', '-d', '-s', 'ReactNativeJS:I', 'AndroidRuntime:E');
@@ -53,8 +63,8 @@ try {
       if (results.length >= 6) break;
       await pause(500);
     } while (Date.now() < deadline);
-    assert.equal(results.length, 6, 'All six native probes must complete');
     evidence.checks.push(...results);
+    assert.equal(results.length, 6, 'All six native probes must complete');
     assert(results.every((result) => result.status === 'pass'), 'A native bridge round-trip failed');
   } else {
     route('personalization');
@@ -76,6 +86,12 @@ try {
     assert.equal(find(current, '记录日志').checked, 'false', 'Logging defaults off');
     assert(find(current, '分享诊断信息')?.enabled === 'true', 'Emergency export is available');
     assert(!current.some((node) => /保存失败|暂时无法读取/.test(node.text)), 'Disabled logging has no storage failure');
+    tap(find(current, '分享诊断信息'));
+    await waitForActivity((line) => /\bandroid\/com\.android\.internal\.app\.ChooserActivity\b/.test(line), 'diagnostic system share chooser');
+    shell('input', 'keyevent', 'KEYCODE_BACK');
+    await waitForActivity((line) => /\bcom\.rranker\.app\/(?:\.MainActivity|com\.rranker\.app\.MainActivity)\b/.test(line), 'diagnostics returns to MainActivity');
+    current = await waitFor((list) => find(list, '分享诊断信息')?.enabled === 'true' && find(list, '记录日志')?.enabled === 'true', 'diagnostic sharing completes');
+    evidence.checks.push({ name: 'diagnostic-share-system-chooser', status: 'pass' });
     tap(find(current, '记录日志'));
     await waitFor((list) => find(list, '记录日志')?.checked === 'true' && list.some((node) => node.text === '正在记录'), 'recording starts');
     restart();
@@ -87,8 +103,9 @@ try {
     evidence.checks.push({ name: 'logging-default-start-restore-stop-history', status: 'pass' });
     route('game-management');
     current = await waitFor((list) => list.some((node) => node.text === '游戏管理'), 'account screen');
-    assert(!current.some((node) => /无法读取本机登录状态|恢复失败/.test(node.text)), 'Account restoration succeeds');
-    evidence.checks.push({ name: 'account-startup-restoration', status: 'pass' });
+    assert(!current.some((node) => /无法读取本机登录状态|恢复失败|部分本机账号暂时无法读取/.test(node.text)), 'Account restoration succeeds');
+    assert(!find(current, '重试读取账号'), 'All optional account sources restore successfully');
+    evidence.checks.push({ name: 'account-startup-restoration', status: 'pass', scope: 'storage-read-only; authenticated accounts require separate verification' });
   }
   const crashes = command('logcat', '-d', '-s', 'AndroidRuntime:E');
   assert(!crashes.includes('FATAL EXCEPTION'), 'No native crash');

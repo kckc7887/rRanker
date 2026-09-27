@@ -6,7 +6,7 @@ const mockRestoreAppAccounts = jest.fn(async () => undefined);
 const mockClearSessions = jest.fn(async () => undefined);
 const mockShowNotification = jest.fn();
 const mockShowActionNotification = jest.fn();
-let mockRestoreError: string | null = '无法读取本机登录状态，当前未加载任何账号';
+let mockRestoreError: string | null = '无法读取本机登录状态，请重试恢复。';
 let mockSourceStatuses: { source: string; status: string }[] = [];
 const mockRetrySources = jest.fn(async () => undefined);
 
@@ -95,7 +95,7 @@ jest.mock('@/storage/secure-session-store', () => ({
 describe('session restore recovery', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockRestoreError = '无法读取本机登录状态，当前未加载任何账号';
+    mockRestoreError = '无法读取本机登录状态，请重试恢复。';
     mockSourceStatuses = [];
   });
   it('offers a separate failed-source retry without clearing the existing account list', async () => {
