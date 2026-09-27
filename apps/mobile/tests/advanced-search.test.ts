@@ -1,5 +1,12 @@
 import type { Song } from '@/domain/models';
-import { buildSongSearchIndex, EMPTY_SONG_FILTERS, findMatchedAlias, normalizeSearchText, searchSongs } from '@/utils/search';
+import { vi } from 'vitest';
+import * as wanakana from 'wanakana';
+import { buildSearchDocument, buildSongSearchIndex, EMPTY_SONG_FILTERS, findMatchedAlias, normalizeSearchText, searchDocumentMatches, searchSongs } from '@/utils/search';
+
+vi.mock('wanakana', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('wanakana')>();
+  return { ...actual, toRomaji: vi.fn(actual.toRomaji) };
+});
 
 const songs: Song[] = [{
   id: '1806', title: 'Ｆｒａｑ', artist: 'Team Grimoire', version: '2026', versionId: 25500,
@@ -12,6 +19,45 @@ const songs: Song[] = [{
   }],
 }];
 describe('advanced song search', () => {
+  it('skips transliteration when opening and filtering a catalog without a search keyword', () => {
+    const convert = vi.mocked(wanakana.toRomaji);
+    convert.mockClear();
+    const index = buildSongSearchIndex(songs);
+    expect(searchSongs(index, EMPTY_SONG_FILTERS)).toEqual(songs);
+    expect(searchSongs(index, { ...EMPTY_SONG_FILTERS, types: ['DX'] })).toEqual([songs[0]]);
+    expect(convert).not.toHaveBeenCalled();
+    expect(searchSongs(index, { ...EMPTY_SONG_FILTERS, keyword: 'あま猫' })).toEqual([songs[0]]);
+    expect(convert).toHaveBeenCalled();
+  });
+
+  it('captures document inputs at construction and expands them only on first access', () => {
+    const inputs = ['しゅうまつ'];
+    const document = buildSearchDocument(inputs);
+    inputs[0] = 'changed';
+    expect(document.text).toContain('しゅうまつ');
+    const convert = vi.mocked(wanakana.toRomaji);
+    convert.mockClear();
+    expect(document.text).toContain('しゅうまつ');
+    expect(document.compact).toContain('しゅうまつ');
+    expect(convert).not.toHaveBeenCalled();
+  });
+  it('converts a repeated keyword once across a large record scan and refreshes it when typing changes', () => {
+    const document = buildSearchDocument(['しゅうまつ']);
+    const convert = vi.spyOn(wanakana, 'toRomaji');
+    try {
+      expect(searchDocumentMatches(document, 'syuumatu')).toBe(true);
+      const calls = convert.mock.calls.length;
+      expect(calls).toBeGreaterThan(0);
+      for (let index = 0; index < 20_000; index++) {
+        expect(searchDocumentMatches(document, 'syuumatu')).toBe(true);
+      }
+      expect(convert).toHaveBeenCalledTimes(calls);
+      expect(searchDocumentMatches(document, 'no-matching-song')).toBe(false);
+      expect(convert.mock.calls.length).toBeGreaterThan(calls);
+      expect(searchDocumentMatches(document, '')).toBe(true);
+      expect(searchDocumentMatches(document, 'syuumatu')).toBe(true);
+    } finally { convert.mockRestore(); }
+  });
   it('normalizes NFKC and searches aliases and charter', () => {
     expect(normalizeSearchText(' ＦＲＡＱ ')).toBe('fraq');
     const index = buildSongSearchIndex(songs);

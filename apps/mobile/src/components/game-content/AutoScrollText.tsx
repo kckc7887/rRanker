@@ -1,5 +1,8 @@
 import { useEffect, useRef, useState } from 'react';
-import { AccessibilityInfo, ScrollView, Text } from 'react-native';
+import { ScrollView, Text } from 'react-native';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
+import { useAppLifecycle } from '@/state/app-lifecycle';
+import { useReducedMotion } from '@/hooks/use-reduced-motion';
 
 export function AutoScrollText({
   text,
@@ -14,6 +17,8 @@ export function AutoScrollText({
   contentContainerStyle?: object;
   testID?: string;
 }) {
+  const active = useCachedTabActive();
+  const { foregroundReady } = useAppLifecycle();
   const scrollRef = useRef<ScrollView>(null);
   const [contentWidth, setContentWidth] = useState(0);
   const [containerWidth, setContainerWidth] = useState(0);
@@ -23,19 +28,7 @@ export function AutoScrollText({
   const directionRef = useRef(1);
   const lastTimeRef = useRef<number | null>(null);
   const frameRef = useRef<number | null>(null);
-  const [reduceMotion, setReduceMotion] = useState(false);
-
-  useEffect(() => {
-    let mounted = true;
-    void AccessibilityInfo.isReduceMotionEnabled().then((enabled) => {
-      if (mounted) setReduceMotion(enabled);
-    });
-    const subscription = AccessibilityInfo.addEventListener('reduceMotionChanged', setReduceMotion);
-    return () => {
-      mounted = false;
-      subscription.remove();
-    };
-  }, []);
+  const reduceMotion = useReducedMotion();
 
   useEffect(() => {
     offsetRef.current = 0;
@@ -54,7 +47,7 @@ export function AutoScrollText({
   }, [contentWidth, containerWidth]);
 
   useEffect(() => {
-    if (!scrolling || dragging || reduceMotion) {
+    if (!scrolling || dragging || reduceMotion || !active || !foregroundReady) {
       if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
       return;
@@ -77,7 +70,7 @@ export function AutoScrollText({
       if (frameRef.current != null) cancelAnimationFrame(frameRef.current);
       frameRef.current = null;
     };
-  }, [scrolling, dragging, reduceMotion, contentWidth, containerWidth]);
+  }, [scrolling, dragging, reduceMotion, active, foregroundReady, contentWidth, containerWidth]);
 
   return (
     <ScrollView

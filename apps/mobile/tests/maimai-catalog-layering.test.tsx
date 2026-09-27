@@ -23,6 +23,7 @@ const mockCatalogProvider = {
 let mockActiveAccountId = 'maimai:lxns:first';
 
 jest.mock('@/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
   useCachedTabActive: () => true,
 }));
 jest.mock('@/hooks/use-game-data', () => ({

@@ -2,12 +2,30 @@ import { vi } from 'vitest';
 import { fixtureSource } from '@/fixtures/sanitized';
 import { ProviderError } from '@/providers/errors';
 import { cacheFirstLoad, isCacheFallback, staleCached } from '@/services/cache-first';
+import { loadAliasedCatalog } from '@/services/aliased-catalog-query';
 
 vi.mock('@/state/app-lifecycle-core', () => ({
   getForegroundAbortSignal: () => new AbortController().signal,
 }));
 
 type Sample = { value: number; source: typeof fixtureSource };
+
+it('starts independent catalog and alias reads together while keeping alias failure optional', async () => {
+  let finishCatalog!: (value: Sample) => void;
+  const catalog = new Promise<Sample>(resolve => { finishCatalog = resolve; });
+  const loadCatalog = vi.fn(() => catalog);
+  const loadAliases = vi.fn(async (): Promise<Sample> => { throw new Error('aliases unavailable'); });
+  const mergeAliases = vi.fn((value: Sample, aliases: Sample | undefined) => ({ ...value, value: value.value + (aliases?.value ?? 0) }));
+  const pending = loadAliasedCatalog({
+    queryKey: ['catalog-test'], loadCached: async () => null, loadCatalog, loadAliases, mergeAliases,
+    composeSource: value => value.source, onFresh: vi.fn(),
+  });
+  await vi.waitFor(() => expect(loadAliases).toHaveBeenCalledTimes(1));
+  expect(loadCatalog).toHaveBeenCalledTimes(1);
+  finishCatalog({ value: 42, source: fixtureSource });
+  expect((await pending).value).toBe(42);
+  expect(mergeAliases).toHaveBeenCalledWith({ value: 42, source: fixtureSource }, undefined);
+});
 
 function makeSample(value: number, source = fixtureSource): Sample {
   return { value, source };

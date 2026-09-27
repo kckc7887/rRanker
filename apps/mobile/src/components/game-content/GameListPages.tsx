@@ -10,6 +10,7 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { ScoreCardArtworkScope } from '@/components/game-content/GameScoreCard';
 import { RemoteImagePersistenceScope } from '@/components/RemoteImage';
+import { CachedContentActivityScope } from '@/components/CachedTabScreen';
 
 const REMOTE_IMAGE_VIEWABILITY_CONFIG = {
   itemVisiblePercentThreshold: 50,
@@ -47,7 +48,9 @@ function VisibleItemScope<TItem>({ store, item, children }: {
   const subscribe = useCallback((notify: () => void) => store.subscribe(item, notify), [store, item]);
   const snapshot = useCallback(() => store.has(item), [store, item]);
   const visible = useSyncExternalStore(subscribe, snapshot, snapshot);
-  return <RemoteImagePersistenceScope enabled={visible}>{children}</RemoteImagePersistenceScope>;
+  return <CachedContentActivityScope active={visible}>
+    <RemoteImagePersistenceScope enabled={visible}>{children}</RemoteImagePersistenceScope>
+  </CachedContentActivityScope>;
 }
 
 function useRemoteImageViewability<TItem>(onViewableItemsChanged: FlatListProps<TItem>['onViewableItemsChanged']) {

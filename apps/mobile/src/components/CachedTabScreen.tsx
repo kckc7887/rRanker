@@ -19,6 +19,11 @@ export function useCachedTabActive(): boolean {
   return useContext(CachedTabActiveContext);
 }
 
+export function CachedContentActivityScope({ active, children }: { active: boolean; children: ReactNode }) {
+  const parentActive = useCachedTabActive();
+  return <CachedTabActiveContext.Provider value={parentActive && active}>{children}</CachedTabActiveContext.Provider>;
+}
+
 export function CachedTabScreen({ children }: { children: ReactNode }) {
   const theme = useAppTheme();
   const lifecycle = useAppLifecycle();

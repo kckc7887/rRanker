@@ -4,6 +4,7 @@ import { describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({ image: Object.assign(() => null, { clearDiskCache: vi.fn() }) }));
 vi.mock('expo-image', () => ({ Image: mocks.image }));
+vi.mock('react-native', () => ({ InteractionManager: { runAfterInteractions: vi.fn() } }));
 vi.mock('@/services/remote-image-cache', () => ({
   cacheCompressedRemoteImage: vi.fn(),
   findCompressedRemoteImage: vi.fn(),

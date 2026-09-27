@@ -47,9 +47,11 @@ export function useUserLibrary(enabled = true) {
     queryKey,
     queryFn: () => service.list(activeGameId),
     enabled: enabled && tabActive,
+    notifyOnChangeProps: tabActive ? undefined : [],
     staleTime: Infinity,
   });
-  const presets = useQuery({ queryKey: TAG_PRESETS_QUERY_KEY, queryFn: () => service.listTagPresets(), enabled: enabled && tabActive, staleTime: Infinity });
+  const presets = useQuery({ queryKey: TAG_PRESETS_QUERY_KEY, queryFn: () => service.listTagPresets(), enabled: enabled && tabActive,
+    notifyOnChangeProps: tabActive ? undefined : [], staleTime: Infinity });
   const mutation = useMutation<UserLibraryItem[], Error, Operation>({
     mutationFn: async (operation) => {
       switch (operation.type) {

@@ -61,8 +61,10 @@ export async function loadAliasedCatalog<
   signal?: AbortSignal,
 ): Promise<TData> {
   const loadFresh = async (): Promise<TCatalog> => {
-    const catalog = await options.loadCatalog(signal);
-    const aliasResult = await Promise.allSettled([options.loadAliases(signal)]);
+    const [catalog, aliasResult] = await Promise.all([
+      options.loadCatalog(signal),
+      Promise.allSettled([options.loadAliases(signal)]),
+    ]);
     const aliasSnapshot = aliasResult[0].status === 'fulfilled' ? aliasResult[0].value : undefined;
     const merged = options.mergeAliases(catalog, aliasSnapshot);
     return { ...merged, source: options.composeSource(catalog, aliasSnapshot) };

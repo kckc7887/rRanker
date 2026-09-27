@@ -120,6 +120,7 @@ jest.mock('@/components/TagEditor', () => ({
   },
 }));
 jest.mock('@/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
   useCachedTabActive: () => true,
 }));
 

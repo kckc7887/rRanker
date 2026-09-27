@@ -9,6 +9,41 @@ import { createMaxedMaimaiTestAccount } from '@/domain/bound-account';
 import { getGameProfile } from '@/domain/game-profile';
 import { gameDataQueryKey } from '@/services/game-data-query';
 import { fixturePlayer, fixtureSource } from '@/fixtures/sanitized';
+import { CachedContentActivityScope } from '@/components/CachedTabScreen';
+
+it('keeps hidden data observers quiet and reads the latest committed value on activation', async () => {
+  const initial = useSession.getState();
+  const account = createMaxedMaimaiTestAccount();
+  useSession.setState({ boundAccounts: [account], activeAccountId: account.id, activeGameId: 'maimai', activeProviderId: 'maimai-test', session: null });
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+  const key = gameDataQueryKey(account.id, 'maimai', 'maimai-test', null);
+  let renders = 0;
+  function Page() {
+    renders++;
+    const { data } = useGameData(false);
+    return <Text>{data?.providerId ?? 'empty'}</Text>;
+  }
+  const tree = (active: boolean) => <QueryClientProvider client={client}>
+    <CachedContentActivityScope active={active}><Page /></CachedContentActivityScope>
+  </QueryClientProvider>;
+  const screen = await render(tree(false));
+  try {
+    const before = renders;
+    await act(async () => {
+      client.setQueryData(key, { gameId: 'maimai', providerId: 'maimai-test', profile: getGameProfile('maimai'),
+        payload: { kind: 'maimai', player: fixturePlayer, playerScore: { value: 15000, display: '15000' }, source: fixtureSource, catalogSource: fixtureSource } });
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+    expect(renders).toBe(before);
+    expect(screen.getByText('empty')).toBeTruthy();
+    await screen.rerender(tree(true));
+    expect(screen.getByText('maimai-test')).toBeTruthy();
+  } finally {
+    await screen.unmount();
+    client.clear();
+    useSession.setState(initial, true);
+  }
+});
 
 const mockThumbnail = jest.fn(async (..._args: unknown[]) => undefined);
 jest.mock('@/services/account-thumbnail', () => ({ persistBoundAccountThumbnail: (...args: unknown[]) => mockThumbnail(...args) }));

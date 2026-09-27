@@ -1,7 +1,7 @@
 import { act, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Animated, InteractionManager } from 'react-native';
-import { CachedTabScreen } from '@/components/CachedTabScreen';
+import { AccessibilityInfo, Animated, InteractionManager, View } from 'react-native';
+import { CachedContentActivityScope, CachedTabScreen } from '@/components/CachedTabScreen';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { fixtureRecords } from '@/fixtures/sanitized';
 
@@ -14,6 +14,41 @@ jest.mock('expo-router', () => ({
 
 describe('cached tab animation lifecycle', () => {
   afterEach(() => jest.restoreAllMocks());
+
+  it('shares one native motion preference read and subscription across all mounted cards', async () => {
+    const read = jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
+    const listen = jest.spyOn(AccessibilityInfo, 'addEventListener');
+    const record = { ...fixtureRecords[0], achievements: 100.5, rate: 'sssp', fc: 'app', fs: 'fsp' };
+    const screen = await render(<View>{Array.from({ length: 20 }, (_, index) => <ScoreRecordCard key={index} record={record} />)}</View>);
+    expect(read).toHaveBeenCalledTimes(1);
+    expect(listen.mock.calls.filter(([event]) => String(event) === 'reduceMotionChanged')).toHaveLength(1);
+    await screen.unmount();
+  });
+
+  it('runs card animations only while both the row and its parent are active', async () => {
+    const animations: { start: jest.Mock; stop: jest.Mock }[] = [];
+    jest.spyOn(Animated, 'loop').mockImplementation(() => {
+      const animation = { start: jest.fn(), stop: jest.fn(), reset: jest.fn() };
+      animations.push(animation);
+      return animation as unknown as ReturnType<typeof Animated.loop>;
+    });
+    const record = { ...fixtureRecords[0], achievements: 100.5, rate: 'sssp', fc: 'app', fs: 'fsp' };
+    const tree = (row: boolean, parent = true) => <CachedContentActivityScope active={parent}>
+      <CachedContentActivityScope active={row}><ScoreRecordCard record={record} /></CachedContentActivityScope>
+    </CachedContentActivityScope>;
+    const screen = await render(tree(false));
+    expect(animations).toHaveLength(0);
+    await screen.rerender(tree(true));
+    const active = [...animations];
+    expect(active.length).toBeGreaterThan(0);
+    await screen.rerender(tree(false));
+    expect(active.every(animation => animation.stop.mock.calls.length === 1)).toBe(true);
+    await screen.rerender(tree(true, false));
+    expect(animations).toHaveLength(active.length);
+    await screen.rerender(tree(true));
+    expect(animations).toHaveLength(active.length * 2);
+    await screen.unmount();
+  });
 
   it('stops native looping animations on blur and restarts them after refocus settles', async () => {
     const pendingTasks: { callback: () => void; cancel: jest.Mock }[] = [];

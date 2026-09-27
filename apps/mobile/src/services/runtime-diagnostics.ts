@@ -68,6 +68,7 @@ let writeQueue = Promise.resolve();
 let activeSessionStartedAt: string | null = null;
 let initialization: Promise<void> | null = null;
 let initialized = false;
+let eventBatch: { events: RuntimeDiagnosticEvent[]; promise: Promise<void> } | null = null;
 
 function safeString(value: unknown): string | undefined {
   return typeof value === 'string' && SAFE_VALUE.test(value) ? value : undefined;
@@ -202,16 +203,25 @@ function persistRuntimeDiagnostic(
   }
   if (!activeSessionStartedAt) void initializeRuntimeDiagnostics();
   const event = sanitizeRuntimeDiagnosticEvent(type, fields);
-  return enqueueWrite(async () => {
+  if (eventBatch) {
+    eventBatch.events.push(event);
+    if (eventBatch.events.length > MAX_EVENTS) eventBatch.events.shift();
+    return eventBatch.promise;
+  }
+  const events = [event];
+  const promise = enqueueWrite(async () => {
+    if (eventBatch?.events === events) eventBatch = null;
     const store = await readStore();
     let session = store.sessions.find((item) => item.startedAt === activeSessionStartedAt);
     if (!session) {
       session = { startedAt: activeSessionStartedAt ?? event.at, events: [] };
       store.sessions.push(session);
     }
-    session.events.push(event);
+    session.events.push(...events);
     await writeStore(store);
   });
+  eventBatch = { events, promise };
+  return promise;
 }
 
 installRuntimeDiagnosticRecorder((type, fields) => persistRuntimeDiagnostic(
@@ -220,6 +230,7 @@ installRuntimeDiagnosticRecorder((type, fields) => persistRuntimeDiagnostic(
 ));
 
 export function snapshotRuntimeDiagnostics(): Promise<RuntimeDiagnosticStore> {
+  eventBatch = null;
   // 读取也占据队列位置，后续事件不能抢在本次快照之前落盘。
   const pending = writeQueue.then(readStore);
   writeQueue = pending.then(() => undefined, () => undefined);
