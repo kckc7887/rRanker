@@ -539,12 +539,16 @@ MajSimai 输出作为 TypeScript 测试的外部基准。语法范围、素材�
 
 生产依赖审计由 `scripts/check-production-audit.mjs` 和 `npm run audit:prod` 复核；critical
 及未接受的 high 使门禁失败，当前接受基线为空。`package.json` / lock 对 XML、URI 解码、
-brace-expansion、js-yaml、nanoid、PostCSS 等传递依赖提供兼容修复，Metro 使用已核验的
-image-size 2 buffer API，xcode 使用保留 CommonJS v4 合同的 uuid 11。
+brace-expansion、js-yaml、nanoid、PostCSS 等传递依赖提供兼容修复，Metro 使用 image-size
+2.0.4 的字节与异步文件 API，xcode 使用保留 CommonJS v4 合同的 uuid 11。
 安装的 postinstall 先运行 `patch-decode-uri-component.cjs`：校验官方 0.5.0 源码 SHA 后
 生成仅改变导出形式的 CJS 适配，保留原 ESM 与类型，满足 query-string 7 和 Expo Router
-消费者；版本、摘要或格式不匹配直接使安装失败。随后执行既有 WebView 原生桥补丁。
-`dependency-compatibility.test.ts` 覆盖重复补丁、摘要拒绝、实际路由/Metro/xcode 消费者。
+消费者；版本、摘要或格式不匹配直接使安装失败。`patch-metro-image-size.cjs` 校验 Metro
+0.83.3 与 image-size 2.0.4 版本，以及原始/适配后 `Assets.js` 摘要，使 `getAssetData`
+的文件路径调用官方 `imageSizeFromFile`，ZIP 内字节保持 `imageSize`；适配幂等，未知源码
+直接使安装失败。随后执行既有 WebView 原生桥补丁。`dependency-compatibility.test.ts`
+覆盖重复补丁、版本/摘要拒绝、实际路由/Metro/xcode 消费者，使用真实 PNG、JPEG、WebP
+文件路径校验资产尺寸，并保留分辨率缩放与异步插件合同。
 
 ```powershell
 npm ci

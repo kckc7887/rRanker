@@ -759,6 +759,11 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
 
 ### 打包与生成数据
 
+- 安装的 `scripts/patch-metro-image-size.cjs` 是 Metro 0.83.3 与安全 image-size 2.0.4 的
+  资产尺寸适配入口：校验依赖版本和 `Assets.js` 原始/适配后摘要，普通文件路径使用官方
+  异步 `imageSizeFromFile`，ZIP 内字节继续使用 `imageSize`。重复执行不改变结果，未知版本
+  或源码使安装失败；`dependency-compatibility.test.ts` 直接调用真实 `getAssetData`，覆盖
+  Expo Router PNG、仓库 JPEG/WebP、分辨率缩放及异步资产插件。
 - `metro.config.js` 是依赖裁剪入口：保留 Ionicons 子集映射，移动端仅重定向当前 Zod
   包内部的语言集合入口到 `src/utils/zod-locales.ts`。业务继续从 `zod` 导入，不能
   另建 Schema 工厂或替换错误类；默认英文初始化由原库执行。若增加校验语言需求，
