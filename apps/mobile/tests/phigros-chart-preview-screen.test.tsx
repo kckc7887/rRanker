@@ -233,7 +233,8 @@ describe('PhigrosChartPreviewScreen', () => {
   });
 
   it('Phira 元数据等待包含在共享准备期限内，超时取消后可以重新加载', async () => {
-    jest.useFakeTimers();
+    mockZipBuffer = await buildPhiraZip();
+    jest.useFakeTimers({ doNotFake: ['nextTick', 'setImmediate', 'queueMicrotask'] });
     mockRouteParams = { game: 'phira', chartId: '38294' };
     let metadataSignal: AbortSignal | undefined;
     mockGetChart.mockImplementationOnce((...args: unknown[]) => {
@@ -243,21 +244,27 @@ describe('PhigrosChartPreviewScreen', () => {
       });
     });
     const view = await render(<PhigrosChartPreviewScreen />);
-    await act(async () => { await jest.advanceTimersByTimeAsync(0); });
-    expect(mockGetChart).toHaveBeenCalledTimes(1);
-    expect(metadataSignal?.aborted).toBe(false);
-    expect(screen.queryByTestId('phigros-chart-preview-webview')).toBeNull();
-    await act(async () => { await jest.advanceTimersByTimeAsync(120_000); });
-    expect(metadataSignal?.aborted).toBe(true);
-    expect(screen.getByText('准备谱面确认资源超时，请重新加载。')).toBeTruthy();
-    expect(mockPrepare).not.toHaveBeenCalled();
-    jest.useRealTimers();
-    mockZipBuffer = await buildPhiraZip();
-    await fireEvent.press(screen.getByLabelText('重新加载'));
-    await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
-    expect(mockGetChart).toHaveBeenCalledTimes(2);
-    expect(mockPrepare).toHaveBeenCalledTimes(1);
-    await view.unmount();
+    let retrySignal: AbortSignal | undefined;
+    try {
+      await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+      expect(mockGetChart).toHaveBeenCalledTimes(1);
+      expect(metadataSignal?.aborted).toBe(false);
+      expect(screen.queryByTestId('phigros-chart-preview-webview')).toBeNull();
+      await act(async () => { await jest.advanceTimersByTimeAsync(120_000); });
+      expect(metadataSignal?.aborted).toBe(true);
+      expect(screen.getByText('准备谱面确认资源超时，请重新加载。')).toBeTruthy();
+      expect(mockPrepare).not.toHaveBeenCalled();
+      await fireEvent.press(screen.getByLabelText('重新加载'));
+      await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
+      expect(mockGetChart).toHaveBeenCalledTimes(2);
+      expect(mockPrepare).toHaveBeenCalledTimes(1);
+      retrySignal = mockGetChart.mock.calls[1]?.[1] as AbortSignal;
+      expect(retrySignal?.aborted).toBe(false);
+    } finally {
+      await view.unmount();
+      jest.useRealTimers();
+    }
+    expect(retrySignal?.aborted).toBe(true);
   });
 
   it('离开 Phira 元数据等待页会取消请求，迟到结果不能开始准备播放器', async () => {
