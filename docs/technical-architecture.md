@@ -577,10 +577,20 @@ Phigros/Phira 及 RPE 入口，`tsconfig.osu-player.json` 覆盖 osu! 播放入�
 不启用实验性全局摇树，也不把未引用的参考素材或测试文件算作包体积收益。
 
 `plugins/with-android-abi-splits.js` 在顶层 `android {}` 插入 ABI 分包配置，并通过
-Gradle properties 启用 Release R8 与资源裁剪，将默认 ProGuard 文件设为
-`proguard-android-optimize.txt`。自定义保留规则、签名与 Hermes 配置继续由原生工程
-决定。插件可重复应用；已有本地原生目录须先运行 `npm run prebuild:android` 才能
-获得更新配置，直接执行 `apk:release:abi` 不会自动运行 prebuild。
+Gradle properties 默认启用 Release R8 与资源裁剪，将默认 ProGuard 文件设为
+`proguard-android-optimize.txt`。插件接受 `minify`、`shrink`、`optimize` 布尔选项，拒绝
+未开启 minify 却开启 shrink 的组合；重复应用也会更新已有 ProGuard 配置。
+`app.config.js` 的 `ANDROID_OPTIMIZATION_MODE` 选择 A（全部开启）、B（全部关闭）、
+C（仅 minify）或 D（minify + optimize），缺省为 A，未知值立即失败。
+自定义保留规则、签名与 Hermes 配置继续由原生工程决定。
+
+`.github/workflows/android-recovery.yml` 仅监听 `origin/android-recovery` 的 push，使用
+GitHub 托管 runner 对同一 SHA 生成 A/B 原生诊断 APK，不读取生产发布凭据。
+`native-diagnostics-entry.tsx` 是独立构建入口，不初始化账号、主题和日志；
+`services/native-storage-probe.ts` 只操作临时键、临时文件和临时数据库，检查真实
+SQLite、KV 冷启并发、默认 KV、SecureStore、Crypto 和 FileSystem 桥接往返。
+结果直接进入 Text/testID 和 logcat；诊断 APK 不代表生产入口已通过验收。
+`BUILD_SOURCE_COMMIT` 注入实际检出的提交身份，优化模式同时进入 Expo extra。
 
 双端体积检查使用 Expo 导出，指定 Android 和 iOS 平台、source map、资源映射及输出目录，
 不启动 Expo Web。

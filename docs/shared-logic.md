@@ -864,6 +864,10 @@ MajdataPlay 原始计分方法，普通测试无需 .NET；原生账号、保存
 
 ## 项目不变量
 
+独立原生诊断使用 `services/native-storage-probe.ts` 的 `runNativeStorageProbe(publish)`。
+该入口仅使用临时数据检查真实桥接能力，不读取账号或替代业务存储入口；结果由调用方
+直接显示，不依赖日志、数据库或文件写入成功。生产构建保持 `expo-router/entry`。
+
 - 读失败不毁数据。账号目录、偏好、成绩、曲库和资源快照在 I/O 失败或 JSON 损坏时保留原值；损坏文本另存 `.corrupt` 副本。账号目录的未知版本或顶层结构错误另存 `.unrecognized`，后续写入不能静默覆盖。会话索引损坏或无法识别时同样保留原文与副本并抛类型化错误，旧版迁移源解析失败时跳过但不删除。调用方得到明确错误，不把不可识别数据当成空目录。
 - 代次过期不能提交。`captureResourceWrites` 在等待之前记下范围和账号代次，`invalidateResourceWrites` 之后再提交会抛出「缓存请求已失效」。
 - 查询 key 含稳定身份。`gameDataQueryKey` 包含查询版本、账号、游戏、查分器和会话模式；换账号不会命中另一账号的缓存。
