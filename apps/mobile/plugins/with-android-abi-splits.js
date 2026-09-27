@@ -1,11 +1,14 @@
 const {
   createRunOncePlugin,
   withAppBuildGradle,
+  withDangerousMod,
   withGradleProperties,
 } = require('expo/config-plugins');
 const {
   mergeContents,
 } = require('@expo/config-plugins/build/utils/generateCode');
+const fs = require('node:fs/promises');
+const path = require('node:path');
 
 const TAG = 'rranker-android-abi-splits';
 
@@ -27,6 +30,14 @@ function withAndroidAbiSplits(config, options = {}) {
   if ([minify, shrink, optimize].some(value => typeof value !== 'boolean') || (shrink && !minify)) {
     throw new Error(`[${TAG}] Invalid release optimization settings`);
   }
+  config = withDangerousMod(config, ['android', async (config) => {
+    const file = path.join(config.modRequest.platformProjectRoot, 'app', 'proguard-rules.pro');
+    const contents = await fs.readFile(file, 'utf8');
+    // Expo Record annotations are instantiated by reflection; full-mode R8 must retain their instances.
+    const rule = '-keep @interface expo.modules.kotlin.records.** { *; }';
+    if (!contents.includes(rule)) await fs.writeFile(file, `${contents.trimEnd()}\n\n${rule}\n`);
+    return config;
+  }]);
   config = withGradleProperties(config, (config) => {
     for (const key of ['android.enableMinifyInReleaseBuilds', 'android.enableShrinkResourcesInReleaseBuilds']) {
       config.modResults = config.modResults.filter(entry => entry.type !== 'property' || entry.key !== key);

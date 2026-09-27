@@ -18,18 +18,27 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        mode: [A, B]
+        include:
+          - label: C
+            mode: C
+            source: 3cd34e032494422454cc9652685840af68029f12
+          - label: D
+            mode: D
+            source: 3cd34e032494422454cc9652685840af68029f12
+          - label: E
+            mode: A
+            source: ${{ github.sha }}
     defaults:
       run:
         working-directory: apps/mobile
     env:
       NODE_ENV: production
-      BUILD_SOURCE_COMMIT: ${{ github.sha }}
+      BUILD_SOURCE_COMMIT: ${{ matrix.source }}
       ANDROID_OPTIMIZATION_MODE: ${{ matrix.mode }}
     steps:
       - uses: actions/checkout@v6
         with:
-          ref: ${{ github.sha }}
+          ref: ${{ matrix.source }}
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
@@ -63,13 +72,16 @@ jobs:
           printf '%s\n' "$ANDROID_OPTIMIZATION_MODE" > android/app/build/outputs/apk/release/optimization-mode.txt
           cp android/gradle.properties android/app/build/outputs/apk/release/gradle-properties.txt
           cp android/app/build.gradle android/app/build/outputs/apk/release/app-gradle.txt
+          cp android/app/proguard-rules.pro android/app/build/outputs/apk/release/proguard-rules.txt
       - name: Upload diagnostic APK
         uses: actions/upload-artifact@v4
         with:
-          name: native-diagnostics-${{ matrix.mode }}-${{ github.sha }}
+          name: native-diagnostics-${{ matrix.label }}-${{ matrix.source }}
           path: |
-            apps/mobile/android/app/build/outputs/apk/release/*
+            apps/mobile/android/app/build/outputs/apk/release/app-x86_64-release.apk
+            apps/mobile/android/app/build/outputs/apk/release/*.txt
+            apps/mobile/android/app/build/outputs/apk/release/output-metadata.json
             apps/mobile/android/app/build/outputs/mapping/release/mapping.txt
           if-no-files-found: error
-          compression-level: 0
+          compression-level: 6
           retention-days: 7
