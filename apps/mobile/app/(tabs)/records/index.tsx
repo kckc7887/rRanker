@@ -1,157 +1,64 @@
-import { indexSongsById } from '@/domain/catalog';
-import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
-import { SIMAI_RECORDS_LIST_STYLES as styles } from '@/components/game-content/SimaiListStyles';
-import { MajdataRecordsScreen } from '@/screens/MajdataScreens';
 import { useDeferredValue, useEffect, useMemo } from 'react';
-import { Text, TextInput, View, type ListRenderItem } from 'react-native';
-import { EmptyDataView } from '@/components/EmptyDataView';
+import { Text, TextInput, View } from 'react-native';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
+import { EmptyDataView } from '@/components/EmptyDataView';
 import { RecordsListPage } from '@/components/game-content/GameListPages';
+import { SIMAI_RECORDS_LIST_STYLES as styles } from '@/components/game-content/SimaiListStyles';
 import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
-import { MaimaiFilterBar, dxRatingTagFilterState, type VersionFilterOption } from '@/components/MaimaiFilterBar';
-import { ScoreRecordCard } from '@/components/ScoreRecordCard';
-import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
+import { ChunithmFilterBar } from '@/components/chunithm/ChunithmFilterBar';
+import { ChunithmScoreCard } from '@/components/chunithm/ChunithmScoreCard';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
-import { ChunithmScoreCard } from '@/components/chunithm/ChunithmScoreCard';
-import { ChunithmFilterBar } from '@/components/chunithm/ChunithmFilterBar';
-import { matchesAchievementRange, matchesConstantRange, matchesMultiAchievementFilter, matchesSoloAchievementFilter } from '@/domain/maimai-filters';
-import { buildDxRatingChartTagIndex, dxRatingChartHasAllTags } from '@/domain/dxrating-chart-tags';
-import { matchesChunithmConstantRange, matchesChunithmRankRange } from '@/domain/chunithm-filters';
-import { matchesPhigrosLevel, matchesPhigrosRankFilter } from '@/domain/phigros-filters';
-import { buildPhigrosKyouChartTagIndex, phigrosKyouChartHasAllTags } from '@/domain/phigros-kyou';
-import { matchesPhigrosXingFilter, phigrosChartNoteKey } from '@/domain/phigros-xing';
+import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
+import { indexSongsById } from '@/domain/catalog';
 import {
   buildChunithmScoreCards,
   compareChunithmScores,
   type ChunithmScoreCardData,
 } from '@/domain/chunithm-score-presentation';
+import { matchesChunithmConstantRange, matchesChunithmRankRange } from '@/domain/chunithm-filters';
+import { isOsuGameId } from '@/domain/game-mode-family';
+import { matchesAchievementRange, matchesConstantRange } from '@/domain/maimai-filters';
 import type { ScoreRecord } from '@/domain/models';
+import { matchesPhigrosLevel, matchesPhigrosRankFilter } from '@/domain/phigros-filters';
+import { buildPhigrosKyouChartTagIndex, phigrosKyouChartHasAllTags } from '@/domain/phigros-kyou';
+import { matchesPhigrosXingFilter, phigrosChartNoteKey } from '@/domain/phigros-xing';
 import { canReadChunithmScores, canReadPhigrosScores } from '@/domain/provider-capabilities';
 import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
+import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
+import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
-import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
-import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
-import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
-import { useGameData } from '@/hooks/use-game-data';
-import { useDebouncedValue } from '@/hooks/use-debounced-value';
-import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
-import { usePhigrosRecordsFilter } from '@/state/phigros-records-filter';
-import { useChunithmRecordsFilter } from '@/state/chunithm-records-filter';
-import { useRecordsFilter } from '@/state/records-filter';
-import { useSession, UNBOUND_ACCOUNT_ID } from '@/state/session-store';
-import { buildSearchDocument, buildSongSearchIndex, searchDocumentMatches } from '@/utils/search';
-import { useAppTheme } from '@/theme/app-theme';
-import { TufRecordsScreen } from '@/screens/TufScreens';
+import { MajdataRecordsScreen } from '@/screens/MajdataScreens';
+import { MaimaiRecordsScreen } from '@/screens/maimai/MaimaiRecordsScreen';
 import { MuseDashRecordsScreen } from '@/screens/MuseDashScreens';
+import { OsuRecordsScreen } from '@/screens/OsuScreens';
 import { PhiraRecordsScreen } from '@/screens/PhiraScreens';
 import { RizlineRecordsScreen } from '@/screens/RizlineScreens';
-import { OsuRecordsScreen } from '@/screens/OsuScreens';
-import { isOsuGameId } from '@/domain/game-mode-family';
+import { TufRecordsScreen } from '@/screens/TufScreens';
+import { useChunithmRecordsFilter } from '@/state/chunithm-records-filter';
+import { usePhigrosRecordsFilter } from '@/state/phigros-records-filter';
+import { useSession, UNBOUND_ACCOUNT_ID } from '@/state/session-store';
+import { useAppTheme } from '@/theme/app-theme';
+import { buildSearchDocument, searchDocumentMatches } from '@/utils/search';
 
 export default function RecordsTabScreen() {
   return <CachedTabScreen><RecordsScreen /></CachedTabScreen>;
 }
 
+/** 成绩标签页只做「选游戏 → 挂载对应页面」；舞萌页面自带自己的查询、筛选与派生链。 */
 export function RecordsScreen() {
   const activeGameId = useSession((s) => s.activeGameId);
   const activeAccountId = useSession((s) => s.activeAccountId);
-  const { data, isLoading, isError, error, refetch } = useScoreSnapshot();
-  const catalog = useDetailedCatalog();
-  const dxRatingChartTags = useDxRatingChartTags();
-  const theme = useAppTheme();
-  const tabBottomInset = useNativeTabBottomInset();
-  const {
-    keyword, collapsed, difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
-    soloAchievement, multiAchievement, versionLocale, selectedDxRatingTagIds,
-    setKeyword, setCollapsed,
-    setDifficulty, setVersion, setType, setConstantMin, setConstantMax, setAchievementMin, setAchievementMax,
-    setSoloAchievement, setMultiAchievement, setVersionLocale, setSelectedDxRatingTagIds, clearFilters,
-  } = useRecordsFilter();
-  const debouncedKeyword = useDebouncedValue(keyword);
-  const searchBySongId = useMemo(() => new Map(buildSongSearchIndex(catalog.data?.songs ?? [])
-    .map(({ song, text, compact }) => [song.id, { text, compact }] as const)), [catalog.data?.songs]);
-  const dxRatingTagIndex = useMemo(() => buildDxRatingChartTagIndex(
-    dxRatingChartTags.data,
-    catalog.data?.songs ?? [],
-  ), [catalog.data?.songs, dxRatingChartTags.data]);
-  const maimaiConstantValues = useMemo(() => catalog.data?.songs.flatMap((song) =>
-    song.charts.filter((chart) => chart.type !== 'UTAGE').map((chart) => chart.difficultyConstant)) ?? [],
-  [catalog.data?.songs]);
-  const maimaiConstantBounds = useStableRangeBounds(
-    maimaiConstantValues,
-    { minimum: 1, maximum: 15.5 },
-    constantMin ?? '',
-    constantMax ?? '',
-    `${activeAccountId}:${catalog.data?.source.updatedAt ?? 'loading'}`,
-  );
-
-  useEffect(() => {
-    if (activeGameId !== 'maimai' || selectedDxRatingTagIds.length === 0) return;
-    if (!dxRatingChartTags.data) return;
-    const validIds = new Set(dxRatingChartTags.data.tags.map((tag) => tag.id));
-    const next = selectedDxRatingTagIds.filter((tagId) => validIds.has(tagId));
-    if (next.length !== selectedDxRatingTagIds.length) setSelectedDxRatingTagIds(next);
-  }, [activeGameId, dxRatingChartTags.data, selectedDxRatingTagIds, setSelectedDxRatingTagIds]);
-
-  const versions = useMemo<VersionFilterOption[]>(() => {
-    if (!data) return [];
-    return Array.from(new Set(data.records.map((record) => record.version))).sort()
-      .map((name) => ({ value: name, name }));
-  }, [data]);
-
-  const filterSpec = useMemo(() => ({
-    keyword: debouncedKeyword, difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
-    soloAchievement, multiAchievement, selectedDxRatingTagIds,
-  }), [achievementMax, achievementMin, soloAchievement, multiAchievement, constantMax, constantMin, debouncedKeyword, difficulty, selectedDxRatingTagIds, type, version]);
-  const deferredFilterSpec = useDeferredValue(filterSpec);
-  const filtered = useMemo<ScoreRecord[]>(() => {
-    if (!data) return [];
-    let list = data.records.slice();
-    if (deferredFilterSpec.keyword.trim()) list = list.filter((record) => searchDocumentMatches(
-      searchBySongId.get(record.songId) ?? buildSearchDocument([record.songId, record.title]),
-      deferredFilterSpec.keyword,
-    ));
-    if (deferredFilterSpec.difficulty !== 'all') {
-      list = list.filter((record) => record.difficulty === deferredFilterSpec.difficulty);
-    }
-    if (deferredFilterSpec.version !== 'all') {
-      list = list.filter((record) => record.version === deferredFilterSpec.version);
-    }
-    if (deferredFilterSpec.type !== 'all') {
-      list = list.filter((record) => record.type === deferredFilterSpec.type);
-    }
-    const hasConstantFilter = !!(deferredFilterSpec.constantMin || deferredFilterSpec.constantMax);
-    list = list.filter((record) => !(record.type === 'UTAGE' && hasConstantFilter) &&
-      matchesConstantRange(
-        record.difficultyConstant, deferredFilterSpec.constantMin, deferredFilterSpec.constantMax,
-      ));
-    list = list.filter((record) => matchesAchievementRange(
-      record.achievements, deferredFilterSpec.achievementMin, deferredFilterSpec.achievementMax,
-    ));
-    list = list.filter((record) => matchesSoloAchievementFilter(record, deferredFilterSpec.soloAchievement));
-    list = list.filter((record) => matchesMultiAchievementFilter(record, deferredFilterSpec.multiAchievement));
-    if (dxRatingChartTags.data && deferredFilterSpec.selectedDxRatingTagIds.length > 0) {
-      list = list.filter((record) => dxRatingChartHasAllTags(
-        dxRatingTagIndex,
-        record.songId,
-        record.type,
-        record.levelIndex,
-        deferredFilterSpec.selectedDxRatingTagIds,
-      ));
-    }
-    return list.sort((a, b) =>
-      Number(a.type === 'UTAGE') - Number(b.type === 'UTAGE') ||
-      b.rating - a.rating ||
-      b.achievements - a.achievements);
-  }, [data, deferredFilterSpec, dxRatingChartTags.data, dxRatingTagIndex, searchBySongId]);
-
-  const isEmpty = !!data && filtered.length === 0;
 
   if (activeAccountId === UNBOUND_ACCOUNT_ID) {
     return <EmptyDataView title="暂无绑定账号" detail="请先在设置 → 游戏管理中绑定账号" showBindAction />;
+  }
+
+  if (activeGameId === 'maimai') {
+    return <MaimaiRecordsScreen />;
   }
 
   if (activeGameId === 'phigros') {
@@ -176,57 +83,7 @@ export function RecordsScreen() {
     return <MuseDashRecordsScreen />;
   }
 
-  if (activeGameId !== 'maimai') {
-    return <EmptyDataView title="暂无成绩" detail="当前游戏暂未接入成绩数据" />;
-  }
-
-  return (
-    <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <GameSearchHeader layout="records" accessibilityLabel="成绩搜索"
-        placeholder="曲名 / 曲师 / 谱师 / 罗马音" value={keyword} onChangeText={setKeyword} />
-      <MaimaiFilterBar collapsed={collapsed} onCollapsedChange={setCollapsed}
-        difficulty={difficulty} version={version} type={type}
-        constantMin={constantMin} constantMax={constantMax}
-        constantBounds={maimaiConstantBounds}
-        achievementMin={achievementMin} achievementMax={achievementMax}
-        soloAchievement={soloAchievement} multiAchievement={multiAchievement}
-        versionLocale={versionLocale} versions={versions}
-        dxRatingTags={dxRatingChartTags.data?.tags ?? []}
-        selectedDxRatingTagIds={selectedDxRatingTagIds}
-        dxRatingTagState={dxRatingTagFilterState(dxRatingChartTags)}
-        onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
-        onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
-        onAchievementMinChange={setAchievementMin} onAchievementMaxChange={setAchievementMax}
-        onSoloAchievementChange={setSoloAchievement} onMultiAchievementChange={setMultiAchievement}
-        onVersionLocaleChange={setVersionLocale} onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
-        onReset={clearFilters} />
-      <RecordsListPage<ScoreRecord>
-        isLoading={isLoading}
-        isError={isError}
-        isEmpty={isEmpty}
-        error={error}
-        onRetry={refetch ? () => void refetch() : undefined}
-        emptyText="当前筛选条件下没有成绩"
-        data={data && filtered.length > 0 ? filtered : undefined}
-        flatListProps={{
-          testID: 'records-results-list',
-          contentInsetAdjustmentBehavior: 'automatic',
-          style: styles.list,
-          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 16 }],
-          scrollIndicatorInsets: { bottom: tabBottomInset },
-          keyExtractor: recordKey,
-          ...TAB_LIST_CACHE_PROPS,
-          ListHeaderComponent: data ? <View style={styles.header}><Text style={styles.note}>共 {filtered.length} 条成绩</Text></View> : null,
-          renderItem: renderRecord,
-        }}
-      />
-    </View>
-  );
-}
-
-const renderRecord: ListRenderItem<ScoreRecord> = ({ item }) => <ScoreRecordCard record={item} />;
-function recordKey(record: ScoreRecord): string {
-  return `${record.songId}-${record.type}-${record.levelIndex}`;
+  return <EmptyDataView title="暂无成绩" detail="当前游戏暂未接入成绩数据" />;
 }
 
 function ChunithmRecordsScreen() {
@@ -612,4 +469,8 @@ function PhigrosRecordsScreen() {
       />
     </View>
   );
+}
+
+function recordKey(record: ScoreRecord): string {
+  return `${record.songId}-${record.type}-${record.levelIndex}`;
 }

@@ -8,7 +8,7 @@ import { useAppTheme } from '@/theme/app-theme';
 
 export const PhiraScoreCard = memo(function PhiraScoreCard({ item, rank }: { item: PhiraQueriedBest; rank?: number }) {
   const theme = useAppTheme(); const record = item.record; const presentation = presentPhiraScore(item, rank);
-  const score = record?.score ?? 0; const rate = resolvePhiraRate({ dxScore: score, fc: record?.fullCombo ? 'ap' : null });
+  const score = record?.score ?? 0; const rate = resolvePhiraRate({ score, fullCombo: record?.fullCombo ?? false });
   const xingTone = presentation.achievementRows.flat().find((badge) => badge.key === 'xing')?.tone;
   const xing = xingTone === 'xing-good' ? 'good' : xingTone === 'xing-miss' ? 'miss' : null;
   return <GameScoreCard artwork={{ source: item.chart.illustration }} cardStyle={styles.card} mainStyle={styles.main} presentation={presentation} titleStyle={styles.title}

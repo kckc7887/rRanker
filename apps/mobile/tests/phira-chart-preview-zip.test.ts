@@ -6,7 +6,7 @@ import {
   resolvePhiraChartZipMediaPlan,
   sanitizeRpeBundleFileName,
 } from '@/domain/phira-chart-preview';
-import { rpeResourceUrl } from '@/domain/phira-rpe-resource-path';
+import { rpeResourceUrl } from '@/domain/rpe-resource-path';
 
 const files = (names: string[]) => names.map((name) => ({ name, dir: false }));
 

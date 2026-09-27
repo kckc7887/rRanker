@@ -76,7 +76,7 @@ jest.mock('@/features/chart-download-shared/chart-download-shared', () => ({
     return file;
   },
 }));
-jest.mock('@/domain/rizline-chart-preview', () => ({
+jest.mock('@/services/rizline-chart-preview-resources', () => ({
   loadRizlineChartPreviewResources: async (
     target: { songId: string; levelIndex: number; title?: string },
     _signal: AbortSignal,

@@ -1,34 +1,33 @@
+import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
 /**
  * 舞萌谱面确认 WebView 播放器入口。
- * 音乐通过共享 PlaybackClock 定时，AudioManager 调度实际时间的正解音。
+ * 播放位置、命令代次、音源与 RAF 归 SimaiPlaybackSession，背景媒体与时间线视图各自持有资源；
+ * 这里只做 DOM、设置与控制器的接线。
  */
 import {
-  AudioManager,
-  ANSWER_SOUND_BASE_OFFSET_MS,
-  MainRenderer,
-  getAudioContextOutputTime,
   getAvailableDifficulties,
-  parseSimaiChart,
+  MainRenderer,
   parseSimaiBuddyCharts,
+  parseSimaiChart,
   parseSimaiSideChart,
   prepareAudioEvents,
   type Chart,
-  type PreparedAudioEvent,
+  type Note,
 } from '../engine';
-import { PlaybackClock, audioContextTime, musicPosition, outputTime, type MusicPosition } from '../../chart-preview-shared/webview-player/playbackClock';
+import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-preview-bridge';
 import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
 import { DEFAULT_JUDGE_HINT, parseJudgeHint } from '../engine/utils/judgeHint';
 import { ChartPreviewSkin } from '../engine/renderers/skinAtlas';
 import { CHART_PREVIEW_DUAL_GAP, chartPreviewCanvasSize } from './fullscreenLayout';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
+import { SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS } from './timeConversion';
+import { SimaiPlaybackSession } from './playback';
 import {
-  beatsToMs,
-  calculateMusicTime,
-  msToBeats,
-  musicTimeToBeats,
-  resolveBackgroundVideoFrame,
-  resolvePlaybackRange,
-} from './timeConversion';
+  SimaiTimelineView,
+  type SimaiTimelineEntry,
+  type SimaiTimelineNoteKind,
+} from './timelineView';
+import { SimaiBackgroundMedia } from './backgroundMedia';
 import {
   createLatestFrameScheduler,
   resolveInitialBackgroundState,
@@ -47,15 +46,47 @@ declare global {
 export type { ChartPreviewSettings, ChartPreviewInjectConfig as ChartPreviewConfig } from '../configuration';
 type BackgroundMode = ChartPreviewBackgroundMode;
 
-const SOURCE_FADE_TIME_S = 0.015;
-const SOURCE_START_LEAD_TIME_S = 0.05;
-const SCHEDULE_LOOKAHEAD_MS = 1500;
+function ownedWheelPopup(...args: Parameters<typeof setupWheelPopup>): ReturnType<typeof setupWheelPopup> {
+  const wheel = setupWheelPopup(...args);
+  events.own(() => wheel.dispose());
+  return wheel;
+}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
+/** 宿主释放后的播放器：不再改动界面、也不再回报状态。 */
+let disposed = false;
+const events = new PlayerEventScope(() => disposed);
+const startupController = new AbortController();
+let pauseInitialized: (() => void) | undefined;
+let exitFullscreenInitialized: (() => void) | undefined;
+let confirmInitialized: ((accepted: boolean) => void) | undefined;
+function releasePlayer(): void {
+  if (disposed) return;
+  disposed = true;
+  startupController.abort();
+  closeActiveWheelPopup();
+  events.dispose();
+  pauseInitialized = undefined;
+  exitFullscreenInitialized = undefined;
+  confirmInitialized = undefined;
+}
+function receiveHostMessage(event: MessageEvent): void {
+  applyChartPreviewHostCommand(event.data, {
+    pause: () => pauseInitialized?.(),
+    exitFullscreen: () => exitFullscreenInitialized?.(),
+    dispose: releasePlayer,
+    confirm: value => confirmInitialized?.(value),
+  });
+}
+events.listen(window, 'message', receiveHostMessage);
+events.listen(document, 'message', event => receiveHostMessage(event as MessageEvent));
+events.listen(window, 'pagehide', releasePlayer);
+
 function postStatus(type: string, payload: Record<string, unknown> = {}): void {
+  if (disposed) return;
   window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...payload }));
 }
 
@@ -108,7 +139,18 @@ const SPEED_MIN = 0.1;
 const SPEED_MAX = 5;
 const SPEED_STEP = 0.1;
 const SPEED_DEFAULT = 1;
+
+const TIMELINE_KIND_BY_NOTE_TYPE: Readonly<Record<Note['type'], SimaiTimelineNoteKind>> = Object.freeze({
+  tap: 'tap',
+  break: 'break',
+  'hold-start': 'hold',
+  slide: 'slide',
+  touch: 'touch',
+  'touch-hold-start': 'touch',
+});
+
 async function main(): Promise<void> {
+  if (disposed) return;
   const app = $('app');
   const statusEl = $('status');
   const titleEl = $('title');
@@ -198,7 +240,17 @@ async function main(): Promise<void> {
   const infoBreakNoexWrap = $('info-break-noex-wrap');
   const infoFps = $('info-fps');
 
-  app.addEventListener('scroll', closeActiveWheelPopup, { passive: true });
+  events.listen(app, 'scroll', closeActiveWheelPopup, { passive: true });
+
+  // 视图状态：全屏、拖动与循环标记由界面持有，播放位置与音源归播放会话。
+  let isFullscreen = false;
+  let fsLocked = false;
+  let fsControlsVisible = false;
+  let fsHideTimer: number | undefined;
+  let isDragging = false;
+  let wasPlaying = false;
+  let loopA: number | null = null;
+  let loopB: number | null = null;
 
   const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   const PAUSE_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>';
@@ -206,6 +258,7 @@ async function main(): Promise<void> {
   let config: ChartPreviewConfig | undefined;
   statusEl.textContent = '正在等待参数…';
   for (let i = 0; i < 200; i++) {
+    if (disposed) return;
     const incoming = window.__CHART_PREVIEW__;
     if (incoming && (typeof incoming.chartId === 'string' || Number.isFinite(incoming.chartId))) {
       config = incoming;
@@ -213,6 +266,7 @@ async function main(): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 50));
   }
+  if (disposed) return;
   if (!config) {
     statusEl.textContent = '未收到谱面预览参数';
     postStatus('error', { message: '未收到谱面预览参数' });
@@ -225,7 +279,7 @@ async function main(): Promise<void> {
   const saved = config.settings ?? {};
   const initialBackground = resolveInitialBackgroundState(saved);
   let videoBackgroundPrompted = initialBackground.prompted;
-  let backgroundMode: BackgroundMode = initialBackground.mode;
+  const backgroundMode: BackgroundMode = initialBackground.mode;
 
   const chartUrl = config.chartUrl;
   const musicUrl = config.musicUrl;
@@ -236,11 +290,13 @@ async function main(): Promise<void> {
     else if (config.simaiText !== undefined) simaiText = config.simaiText;
     else {
     if (!chartUrl) throw new Error('缺少谱面资源');
-    const response = await fetch(chartUrl);
+    const response = await fetch(chartUrl, { signal: startupController.signal });
     if (!response.ok) throw new Error(`谱面文件不可用（${response.status}）`);
     simaiText = await response.text();
+    if (disposed) return;
     }
   } catch (error) {
+    if (disposed) return;
     const diagnostic = error instanceof Error ? error.message : String(error);
     statusEl.textContent = '谱面加载失败，请返回重试。';
     postStatus('error', { message: '谱面加载失败，请返回重试。', diagnostic: `fetch ${chartUrl}: ${diagnostic}` });
@@ -264,6 +320,7 @@ async function main(): Promise<void> {
       charts = [parseSimaiChart(simaiText, difficulty)];
     }
   } catch (error) {
+    if (disposed) return;
     const diagnostic = error instanceof Error ? error.message : String(error);
     const availableText = JSON.stringify(getAvailableDifficulties(simaiText));
     statusEl.textContent = '无法打开谱面，请返回重试。';
@@ -293,8 +350,10 @@ async function main(): Promise<void> {
   postLoadProgress('正在加载皮肤…', 0.4, statusEl);
   try {
     await skin.load();
+    if (disposed) return;
     postLoadProgress('正在加载皮肤…', 0.65, statusEl);
   } catch (error) {
+    if (disposed) return;
     const diagnostic = error instanceof Error ? error.message : String(error);
     statusEl.textContent = '皮肤加载失败，请返回重试。';
     postStatus('error', { message: '皮肤加载失败，请返回重试。', diagnostic });
@@ -320,46 +379,35 @@ async function main(): Promise<void> {
   try {
     for (let i = 0; i < renderers.length; i++) { applyRendererSettings(renderers[i]); renderers[i].prepare(charts[i]); }
   } catch (error) {
+    if (disposed) return;
     statusEl.textContent = '这份谱面暂时无法播放，请返回选择其他谱面。';
     postStatus('error', { message: statusEl.textContent, diagnostic: error instanceof Error ? error.message : String(error) });
     return;
   }
 
-  let audioContext: AudioContext | null = null;
-  let musicGain: GainNode | null = null;
-  let answerGain: GainNode | null = null;
-  let audioBuffer: AudioBuffer | null = null;
-  let sourceNode: AudioBufferSourceNode | null = null;
-  let sourceGain: GainNode | null = null;
-  let answerManager: AudioManager | null = null;
-  const answerEvents: PreparedAudioEvent[] = prepareAudioEvents(allNotes);
-  const playbackClock = new PlaybackClock();
-  let isAudioClockRunning = false;
-  let isPlaying = false;
-  let playbackEpoch = 0;
-  let preciseBeats = 0;
-  let playbackSpeed = saved.playbackSpeed ?? 1;
-  const musicOffset = 0;
-  let musicVolume = saved.musicVolume ?? 10;
-  let soundVolume = saved.soundVolume ?? 10;
-  let rafId = 0;
-  let lastRafTs = 0;
-  let isFullscreen = false;
-  let fsLocked = false;
-  let fsControlsVisible = false;
-  let fsHideTimer: number | undefined;
-  let backgroundImageReady = false;
-  let backgroundImageFailed = false;
-  let backgroundImageLoading = false;
-  let backgroundVideoReady = false;
-  let backgroundVideoFailed = false;
-  let backgroundVideoLoading = false;
-  let backgroundVideoPlayPending = false;
-  let backgroundStatusMessage = '';
+  const answerEvents = prepareAudioEvents(allNotes);
+  const session = new SimaiPlaybackSession({
+    charts,
+    answerEvents,
+    answerSoundUrl: config.answerSoundUrl ?? './answer.wav',
+    speed: saved.playbackSpeed ?? 1,
+    musicVolume: saved.musicVolume ?? 10,
+    soundVolume: saved.soundVolume ?? 10,
+    musicOffset: SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS,
+    host: {
+      render: (beats) => renderAt(beats),
+      onPlayStateChange: () => syncPlayButtons(),
+      loopTarget: (beats) => loopA !== null && loopB !== null && loopA !== loopB && beats >= loopB
+        ? loopA
+        : null,
+    },
+  });
+
+  events.own(() => session.dispose());
 
   const syncPlayButtons = () => {
-    const icon = isPlaying ? PAUSE_ICON : PLAY_ICON;
-    const label = isPlaying ? '暂停' : '播放';
+    const icon = session.playing ? PAUSE_ICON : PLAY_ICON;
+    const label = session.playing ? '暂停' : '播放';
     playBtn.innerHTML = icon;
     playBtn.setAttribute('aria-label', label);
     const fsPlayBtn = document.getElementById('fs-play');
@@ -370,491 +418,112 @@ async function main(): Promise<void> {
   };
 
   const saveSettings = (partial: Partial<ChartPreviewSettings>) => {
-    postStatus('settings', partial);
+    postStatus('settings', { settings: partial });
   };
 
-  const ensureAudio = async (resume = true): Promise<AudioContext> => {
-    if (!audioContext) {
-      audioContext = new AudioContext();
-      musicGain = audioContext.createGain();
-      musicGain.gain.value = musicVolume / 10;
-      musicGain.connect(audioContext.destination);
-      answerGain = audioContext.createGain();
-      answerGain.connect(audioContext.destination);
-      answerManager = new AudioManager({
-        audioContext,
-        outputNode: answerGain,
-        answerSoundPath: config.answerSoundUrl ?? './answer.wav',
-        initialVolume: soundVolume / 10,
-        initialTimingOffset: ANSWER_SOUND_BASE_OFFSET_MS,
-      });
-      answerManager.setEnabled(true);
-      await answerManager.init();
-    }
-    if (resume && audioContext.state === 'suspended') await audioContext.resume();
-    return audioContext;
-  };
-
-  const stopSource = (immediate = false) => {
-    const source = sourceNode;
-    const gain = sourceGain;
-    sourceNode = null;
-    sourceGain = null;
-    isAudioClockRunning = false;
-    playbackClock.clear();
-    if (!source) return;
-    try {
-      if (!immediate && audioContext && gain) {
-        const now = audioContext.currentTime;
-        gain.gain.cancelScheduledValues(now);
-        gain.gain.setValueAtTime(gain.gain.value, now);
-        gain.gain.linearRampToValueAtTime(0, now + SOURCE_FADE_TIME_S);
-        source.stop(now + SOURCE_FADE_TIME_S + 0.01);
-      } else {
-        source.stop();
-      }
-    } catch {
-      /* already stopped */
-    }
-    try {
-      source.disconnect();
-      gain?.disconnect();
-    } catch {
-      /* ignore */
-    }
-  };
-
-  const getMusicTime = (): MusicPosition => {
-    if (!audioContext || !isAudioClockRunning) return playbackClock.offset;
-    const heardAt = outputTime(getAudioContextOutputTime(audioContext));
-    playbackClock.prune(heardAt);
-    return playbackClock.positionAt(heardAt);
-  };
-
-  const playFromMusicPosition = async (positionSec: number, epoch: number) => {
-    if (!audioBuffer) return;
-    const ctx = await ensureAudio();
-    if (!musicGain || epoch !== playbackEpoch) return;
-    stopSource(true);
-    const duration = audioBuffer.duration;
-    const clamped = clamp(positionSec, 0, duration);
-    const source = ctx.createBufferSource();
-    const gain = ctx.createGain();
-    source.buffer = audioBuffer;
-    source.playbackRate.value = playbackSpeed;
-    const introDelay = Math.max(0, -positionSec) / playbackSpeed;
-    const startTime = ctx.currentTime + SOURCE_START_LEAD_TIME_S + introDelay;
-    gain.gain.setValueAtTime(0, startTime);
-    gain.gain.linearRampToValueAtTime(1, startTime + SOURCE_FADE_TIME_S);
-    source.connect(gain);
-    gain.connect(musicGain);
-    source.onended = () => {
-      if (sourceNode === source) {
-        sourceNode = null;
-        sourceGain = null;
-        source.disconnect();
-        gain.disconnect();
-        // 音频自然结束后保留公共时钟，剩余谱面继续沿同一时间轴播放。
-      }
-    };
-    source.start(startTime, clamped);
-    sourceNode = source;
-    sourceGain = gain;
-    isAudioClockRunning = true;
-    const audibleAt = outputTime(getAudioContextOutputTime(ctx) + SOURCE_START_LEAD_TIME_S);
-    playbackClock.set(audibleAt, musicPosition(Math.min(positionSec, clamped)), playbackSpeed);
-  };
-
+  let musicBytes: ArrayBuffer | null = null;
   try {
     postLoadProgress('正在加载预览曲…', 0.75, statusEl);
-    await ensureAudio(false);
     const embedded = window.__CHART_PREVIEW_MUSIC_DATA__;
-    let arrayBuffer: ArrayBuffer | null = null;
     if (typeof embedded === 'string' && embedded.length > 0) {
-      arrayBuffer = decodeBase64Payload(embedded);
+      musicBytes = decodeBase64Payload(embedded);
     } else if (embedded === null) {
-      arrayBuffer = null;
+      musicBytes = null;
     } else {
       if (!musicUrl) throw new Error('缺少音乐资源');
-      const musicResponse = await fetch(musicUrl);
+      const musicResponse = await fetch(musicUrl, { signal: startupController.signal });
       if (!musicResponse.ok) throw new Error(`预览曲不可用（${musicResponse.status}）`);
-      arrayBuffer = await musicResponse.arrayBuffer();
+      musicBytes = await musicResponse.arrayBuffer();
+      if (disposed) return;
     }
-    audioBuffer = arrayBuffer
-      ? await (await ensureAudio(false)).decodeAudioData(arrayBuffer)
-      : null;
   } catch {
     statusEl.textContent = '预览曲加载失败，仍可静音看谱。';
-    audioBuffer = null;
+    musicBytes = null;
   }
-
-  const { totalDurationMs, totalBeats } = resolvePlaybackRange(charts, audioBuffer?.duration ?? null, musicOffset);
+  const musicLoaded = await session.loadMusic(musicBytes);
+  if (disposed) return;
+  if (!musicLoaded) {
+    statusEl.textContent = '预览曲加载失败，仍可静音看谱。';
+  }
 
   statusEl.textContent = '';
 
-  const NOTE_COLORS: Record<string, string> = {
-    tap: '#FFD700', hold: '#FF8C00', slide: '#00CED1', touch: '#0080FF', break: '#ff69b4',
-  };
-
+  const totalBeats = session.totalBeats;
+  const totalDurationMs = session.totalDurationMs;
   const maxMeasure = Math.max(0, Math.ceil(totalBeats / 4) - 1);
   const measurePercents: number[] = [];
   for (let m = 0; m <= maxMeasure; m++) {
-    measurePercents.push(Math.min(100, (beatsToMs(m * 4, chart.bpmEvents, chart.bpm) / totalDurationMs) * 100));
+    measurePercents.push(Math.min(100, (session.beatsToMs(m * 4) / totalDurationMs) * 100));
   }
+  const timelineEntries: SimaiTimelineEntry[] = allNotes.map((note) => ({
+    timeMs: note.timingMs,
+    kind: TIMELINE_KIND_BY_NOTE_TYPE[note.type],
+  }));
 
-  const setBackgroundStatus = (message: string) => {
-    if (!statusEl.textContent || statusEl.textContent === backgroundStatusMessage) {
-      statusEl.textContent = message;
-    }
-    backgroundStatusMessage = message;
-  };
+  const timelineView = new SimaiTimelineView({
+    host: timelineHost,
+    bars: timelineBars,
+    ruler: timelineRuler,
+    playhead: timelinePlayhead,
+    badge: timelineBadge,
+    classPrefix: 'timeline',
+    durationMs: totalDurationMs,
+    maxMeasure,
+    measurePercents,
+    entries: timelineEntries,
+  });
+  const fullscreenTimelineView = new SimaiTimelineView({
+    host: fsTimelineHost,
+    bars: fsTimelineBars,
+    ruler: fsTimelineRuler,
+    playhead: fsTimelinePlayhead,
+    badge: fsTimelineBadge,
+    classPrefix: 'fs-timeline',
+    durationMs: totalDurationMs,
+    maxMeasure,
+    measurePercents,
+    entries: timelineEntries,
+  });
 
-  const clearBackgroundStatus = () => {
-    if (statusEl.textContent === backgroundStatusMessage) statusEl.textContent = '';
-    backgroundStatusMessage = '';
-  };
+  const background = new SimaiBackgroundMedia({
+    image: backgroundImage,
+    video: backgroundVideo,
+    mode: backgroundMode,
+    imageUrl: config.backgroundImageUrl,
+    videoUrl: config.backgroundVideoUrl,
+    host: {
+      render: () => renderFrameAll(session.positionBeats),
+      reportVideo: (result, video) => reportBackgroundVideo(result, video),
+      readStatus: () => statusEl.textContent ?? '',
+      writeStatus: (message) => { statusEl.textContent = message; },
+      setImage: (image) => { for (const renderer of renderers) renderer.setBackgroundImage(image); },
+      setVideo: (video) => { for (const renderer of renderers) renderer.setBackgroundVideo(video); },
+    },
+  });
 
-  let backgroundVideoAttached = false;
-  const attachBackgroundVideo = (attached: boolean) => {
-    if (backgroundVideoAttached === attached) return;
-    backgroundVideoAttached = attached;
-    for (const renderer of renderers) {
-      renderer.setBackgroundVideo(attached ? backgroundVideo : null);
-    }
-  };
-
-  const releaseBackgroundVideo = () => {
-    if (!backgroundVideo.paused) backgroundVideo.pause();
-    if (backgroundVideo.hasAttribute('src')) {
-      backgroundVideo.removeAttribute('src');
-      backgroundVideo.load();
-    }
-    backgroundVideoReady = false;
-    backgroundVideoFailed = false;
-    backgroundVideoLoading = false;
-    backgroundVideoPlayPending = false;
-    attachBackgroundVideo(false);
-  };
-
-  const syncBackgroundMedia = () => {
-    if (backgroundMode !== 'video' || !backgroundVideoReady || backgroundVideoFailed) {
-      return;
-    }
-
-    const frame = resolveBackgroundVideoFrame({
-      currentBeats: preciseBeats,
+  const renderFrameAll = (beats: number) => {
+    background.syncFrame({
+      currentBeats: beats,
       totalBeats,
-      isPlaying,
-      durationSeconds: backgroundVideo.duration,
+      playing: session.playing,
+      speed: session.speed,
       bpmEvents: chart.bpmEvents,
       bpm: chart.bpm,
-      musicOffset,
+      musicOffset: SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS,
       firstMs: chart.firstMs ?? 0,
     });
-    if (!frame.active) {
-      if (!backgroundVideo.paused) backgroundVideo.pause();
-      if (frame.targetSeconds <= 0 && backgroundVideo.currentTime > 0) {
-        backgroundVideo.currentTime = 0;
-      }
-      attachBackgroundVideo(false);
-      return;
-    }
-
-    attachBackgroundVideo(true);
-    if (isPlaying) {
-      const drift = backgroundVideo.currentTime - frame.targetSeconds;
-      if (Math.abs(drift) > 0.3) backgroundVideo.currentTime = frame.targetSeconds;
-      const nextRate = drift < -0.02
-        ? playbackSpeed + 0.1
-        : drift > 0.02
-          ? Math.max(0.1, playbackSpeed - 0.1)
-          : playbackSpeed;
-      if (Math.abs(backgroundVideo.playbackRate - nextRate) > 0.01) {
-        backgroundVideo.playbackRate = nextRate;
-      }
-      if (backgroundVideo.paused && !backgroundVideoPlayPending) {
-        backgroundVideoPlayPending = true;
-        void backgroundVideo.play()
-          .then(() => {
-            backgroundVideoPlayPending = false;
-          })
-          .catch(() => {
-            backgroundVideoPlayPending = false;
-            backgroundVideoReady = false;
-            backgroundVideoFailed = true;
-            reportBackgroundVideo('error', backgroundVideo);
-            attachBackgroundVideo(false);
-            setBackgroundStatus(backgroundImageReady
-              ? '视频背景不可用，已显示图片背景。'
-              : '背景暂时不可用。');
-          });
-      }
-      return;
-    }
-
-    if (!backgroundVideo.paused) backgroundVideo.pause();
-    if (Math.abs(backgroundVideo.currentTime - frame.targetSeconds) > 0.04) {
-      backgroundVideo.currentTime = frame.targetSeconds;
-    }
-  };
-
-  const renderFrameAll = () => {
-    syncBackgroundMedia();
     for (let i = 0; i < charts.length; i++) {
-      renderers[i]!.renderAtTime(charts[i]!, beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm) + 240000 / charts[i]!.bpm - 240000 / chart.bpm);
+      renderers[i]!.renderAtTime(charts[i]!, session.beatsToMs(beats) + 240000 / charts[i]!.bpm - 240000 / chart.bpm);
     }
   };
 
-  const ensureBackgroundImage = () => {
-    if (backgroundImageReady || backgroundImageLoading) return;
-    if (!config.backgroundImageUrl) {
-      backgroundImageFailed = true;
-      if (backgroundMode === 'image') setBackgroundStatus('图片背景暂时不可用。');
-      return;
-    }
-    backgroundImageFailed = false;
-    backgroundImageLoading = true;
-    backgroundImage.src = config.backgroundImageUrl;
-  };
-
-  const ensureBackgroundVideo = () => {
-    if (backgroundVideoReady || backgroundVideoLoading) return;
-    if (!config.backgroundVideoUrl) {
-      backgroundVideoFailed = true;
-      reportBackgroundVideo('error');
-      setBackgroundStatus(backgroundImageReady
-        ? '视频背景不可用，已显示图片背景。'
-        : '背景暂时不可用。');
-      return;
-    }
-    backgroundVideoFailed = false;
-    backgroundVideoLoading = true;
-    backgroundVideo.src = config.backgroundVideoUrl;
-    backgroundVideo.load();
-  };
-
-  backgroundImage.addEventListener('load', () => {
-    backgroundImageLoading = false;
-    backgroundImageReady = true;
-    backgroundImageFailed = false;
-    if (backgroundMode !== 'none') {
-      for (const renderer of renderers) renderer.setBackgroundImage(backgroundImage);
-    }
-    if (backgroundMode === 'image') clearBackgroundStatus();
-    renderFrameAll();
-  });
-  backgroundImage.addEventListener('error', () => {
-    backgroundImageLoading = false;
-    backgroundImageReady = false;
-    backgroundImageFailed = true;
-    for (const renderer of renderers) renderer.setBackgroundImage(null);
-    if (backgroundMode === 'image') setBackgroundStatus('图片背景暂时不可用。');
-    if (backgroundMode === 'video' && backgroundVideoFailed) {
-      setBackgroundStatus('背景暂时不可用。');
-    }
-    renderFrameAll();
-  });
-  backgroundVideo.addEventListener('loadeddata', () => {
-    backgroundVideoLoading = false;
-    backgroundVideoReady = true;
-    backgroundVideoFailed = false;
-    reportBackgroundVideo('success', backgroundVideo);
-    clearBackgroundStatus();
-    renderFrameAll();
-  });
-  backgroundVideo.addEventListener('seeked', () => {
-    if (!isPlaying && backgroundMode === 'video') renderFrameAll();
-  });
-  backgroundVideo.addEventListener('error', () => {
-    if (backgroundMode !== 'video') return;
-    backgroundVideoLoading = false;
-    backgroundVideoReady = false;
-    backgroundVideoFailed = true;
-    reportBackgroundVideo('error', backgroundVideo);
-    attachBackgroundVideo(false);
-    ensureBackgroundImage();
-    setBackgroundStatus(backgroundImageReady
-      ? '视频背景不可用，已显示图片背景。'
-      : backgroundImageFailed
-        ? '背景暂时不可用。'
-        : '视频背景不可用，正在加载图片背景…');
-    renderFrameAll();
-  });
-
-  const applyBackgroundMode = (mode: BackgroundMode) => {
-    backgroundMode = mode;
-    clearBackgroundStatus();
-    if (mode === 'none') {
-      releaseBackgroundVideo();
-      for (const renderer of renderers) renderer.setBackgroundImage(null);
-    } else if (mode === 'image') {
-      releaseBackgroundVideo();
-      for (const renderer of renderers) {
-        renderer.setBackgroundImage(backgroundImageReady ? backgroundImage : null);
-      }
-      ensureBackgroundImage();
-    } else {
-      for (const renderer of renderers) {
-        renderer.setBackgroundImage(backgroundImageReady ? backgroundImage : null);
-      }
-      ensureBackgroundImage();
-      ensureBackgroundVideo();
-    }
-    renderFrameAll();
-  };
-
-  const buildTimeline = () => {
-    timelineBars.replaceChildren();
-    if (totalDurationMs <= 0) return;
-    const rect = timelineHost.getBoundingClientRect();
-    const w = Math.max(1, Math.ceil(rect.width));
-    const bucketCount = Math.min(200, w);
-    const step = totalDurationMs / bucketCount;
-    const buckets: Record<string, number>[] = Array.from({ length: bucketCount }, (_, i) => ({ startMs: i * step, tap: 0, hold: 0, slide: 0, touch: 0, break: 0, total: 0 }));
-    for (const note of allNotes) {
-      const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(note.timingMs / step)));
-      const b = buckets[idx]!;
-      switch (note.type) {
-        case 'tap': b.tap++; break;
-        case 'hold-start': b.hold++; break;
-        case 'slide': b.slide++; break;
-        case 'touch': case 'touch-hold-start': b.touch++; break;
-        case 'break': b.break++; break;
-      }
-      b.total++;
-    }
-    let maxTotal = 1;
-    for (const b of buckets) { if (b.total > maxTotal) maxTotal = b.total; }
-    const barH = 22;
-    for (const b of buckets) {
-      if (b.total === 0) continue;
-      const h = Math.max(2, (b.total / maxTotal) * barH);
-      const left = ((b.startMs / totalDurationMs) * 100).toFixed(2);
-      const widthPct = ((step / totalDurationMs) * 100).toFixed(2);
-      const bar = document.createElement('div');
-      bar.className = 'timeline-bar';
-      bar.style.left = `${left}%`;
-      bar.style.width = `${widthPct}%`;
-      bar.style.height = `${h}px`;
-      for (const key of ['tap', 'hold', 'slide', 'touch', 'break'] as const) {
-        const ratio = b[key] / b.total;
-        if (ratio === 0) continue;
-        const seg = document.createElement('div');
-        seg.style.flex = String(ratio);
-        seg.style.width = '100%';
-        seg.style.backgroundColor = NOTE_COLORS[key]!;
-        bar.appendChild(seg);
-      }
-      timelineBars.appendChild(bar);
-    }
-
-    timelineRuler.replaceChildren();
-    const rulerRect = timelineRuler.getBoundingClientRect();
-    const rw = Math.max(1, rulerRect.width);
-    const tickStep = [1, 5, 10, 50, 100].find(s => maxMeasure > 0 && (rw * s) / maxMeasure >= 4) ?? 100;
-    const labelStep = [5, 10, 20, 50, 100, 200].find(s => maxMeasure > 0 && (rw * s) / maxMeasure >= 24) ?? 200;
-    for (let m = 0; m <= maxMeasure; m++) {
-      const pct = measurePercents[m] ?? 0;
-      if (m % tickStep === 0) {
-        const isMajor = m % 10 === 0;
-        const isMedium = m % 5 === 0;
-        const cls = isMajor ? 'major' : isMedium ? 'medium' : 'minor';
-        const tick = document.createElement('div');
-        tick.className = `timeline-tick ${cls}`;
-        tick.style.left = `${pct}%`;
-        timelineRuler.appendChild(tick);
-      }
-      if (m % labelStep === 0) {
-        const label = document.createElement('div');
-        label.className = 'timeline-label';
-        label.style.left = `${pct}%`;
-        label.textContent = String(m);
-        timelineRuler.appendChild(label);
-      }
-    }
-  };
-  buildTimeline();
-  const timelineLayoutScheduler = createLatestFrameScheduler(
-    requestAnimationFrame,
-    cancelAnimationFrame,
-    buildTimeline,
-  );
-  window.addEventListener('resize', () => timelineLayoutScheduler.schedule(undefined));
-  new ResizeObserver(() => timelineLayoutScheduler.schedule(undefined)).observe(timelineHost);
-
-  const updatePlayhead = (percent: number, measure: number) => {
-    timelinePlayhead.style.left = `${percent}%`;
-    timelineBadge.style.left = `${percent}%`;
-    timelineBadge.textContent = String(measure);
-  };
-
-  let isDragging = false;
-  let wasPlaying = false;
-
-  const seekToPosition = (percent: number) => {
-    const targetMs = (percent / 100) * totalDurationMs;
-    const targetBeats = msToBeats(targetMs, chart.bpmEvents, chart.bpm);
-    preciseBeats = clamp(targetBeats, 0, totalBeats);
-    const ms = beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm);
-    const measure = Math.floor(preciseBeats / 4);
-    const pct = (ms / totalDurationMs) * 100;
-    updatePlayhead(pct, measure);
-    if (isFullscreen) updateFsPlayhead(pct, measure);
-    timeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
-    if (isFullscreen) fsTimeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
-    // 拖动时实时渲染画面与信息栏，恢复"拖动即看到对应帧"的能力
-    renderFrameAll();
-    updateOverlayDom();
-  };
-  const seekScheduler = createLatestFrameScheduler(
-    requestAnimationFrame,
-    cancelAnimationFrame,
-    seekToPosition,
-  );
-
-  timelineHost.addEventListener('pointerdown', (e) => {
-    e.preventDefault();
-    isDragging = true;
-    wasPlaying = isPlaying;
-    if (isPlaying) pausePlayback();
-    const rect = timelineHost.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    seekToPosition(pct);
-  });
-
-  document.addEventListener('pointermove', (e) => {
-    if (!isDragging) return;
-    const host = isFullscreen ? fsTimelineHost : timelineHost;
-    const rect = host.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    seekScheduler.schedule(pct);
-  });
-
-  document.addEventListener('pointerup', () => {
-    if (!isDragging) return;
-    isDragging = false;
-    seekScheduler.flush();
-    renderAt(preciseBeats);
-    if (wasPlaying) void startPlayback();
-  });
-
-  // 移动设备拖动被系统中断（多指/来电/通知等）时，pointerup 不会触发；
-  // 若不重置 isDragging，后续 pointermove 会继续按拖动逻辑执行，干扰播放键等点击。
-  // 这里只重置状态并停留在当前帧，不自动恢复播放，避免中断后突然发声。
-  document.addEventListener('pointercancel', () => {
-    if (!isDragging) return;
-    isDragging = false;
-    seekScheduler.flush();
-    renderAt(preciseBeats);
-  });
-
-  const updateSeekUi = () => {
-    const ms = beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm);
+  const updateSeekUi = (beats: number) => {
+    const ms = session.beatsToMs(beats);
     if (!isDragging) {
       const pct = totalDurationMs > 0 ? (ms / totalDurationMs) * 100 : 0;
-      const measure = Math.floor(preciseBeats / 4);
-      updatePlayhead(pct, measure);
-      if (isFullscreen) updateFsPlayhead(pct, measure);
+      const measure = Math.floor(beats / 4);
+      timelineView.updatePlayhead(pct, measure);
+      if (isFullscreen) fullscreenTimelineView.updatePlayhead(pct, measure);
     }
     const nextTimeLabel = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
     if (timeLabel.textContent !== nextTimeLabel) timeLabel.textContent = nextTimeLabel;
@@ -926,13 +595,52 @@ async function main(): Promise<void> {
   };
 
   const renderAt = (beats: number) => {
-    preciseBeats = clamp(beats, 0, totalBeats);
-    renderFrameAll();
-    updateSeekUi();
+    if (disposed) return;
+    renderFrameAll(beats);
+    updateSeekUi(beats);
     updateOverlayDom();
   };
 
-  setupWheelPopup(
+  const togglePlayback = () => {
+    if (session.playing) session.pause();
+    else void session.play();
+  };
+
+  /** 暂停（手动按钮或宿主生命周期）：停播并释放临时媒体，不改变全屏状态。 */
+  const pauseForLifecycle = (): void => {
+    if (disposed) return;
+    session.pause();
+    background.releaseVideo();
+  };
+
+  /** 释放：停播、退出全屏、回收资源，幂等；此后不再改动界面或回报状态。 */
+  confirmInitialized = accepted => applyBackgroundVideoConfirmation(accepted);
+  pauseInitialized = pauseForLifecycle;
+  exitFullscreenInitialized = exitFullscreen;
+  events.own(() => background.dispose());
+  events.own(() => { if (isFullscreen) exitFullscreen(); });
+
+  const restartMeasure = () => {
+    session.moveTo(Math.floor(session.positionBeats / 4) * 4);
+    if (session.playing) void session.play();
+    else renderAt(session.positionBeats);
+  };
+
+  const skipBeats = (deltaBeats: number) => {
+    session.moveTo(session.positionBeats + deltaBeats);
+    if (session.playing) void session.play();
+    else renderAt(session.positionBeats);
+  };
+
+  const skipToMeasure = (direction: -1 | 1) => {
+    const currentMeasure = Math.floor(session.positionBeats / 4);
+    const targetMeasure = clamp(currentMeasure + direction, 0, maxMeasure);
+    session.moveTo(targetMeasure * 4);
+    if (session.playing) void session.play();
+    else renderAt(session.positionBeats);
+  };
+
+  ownedWheelPopup(
     hiSpeedTrigger,
     hiSpeedPopup,
     hiSpeedWheel,
@@ -940,7 +648,7 @@ async function main(): Promise<void> {
     hiSpeedVal,
     (hiSpeed) => {
       for (const r of renderers) r.setHiSpeed(hiSpeed);
-      renderAt(preciseBeats);
+      renderAt(session.positionBeats);
     },
     (hiSpeed) => saveSettings({ hiSpeed }),
     HI_SPEED_MIN,
@@ -949,46 +657,30 @@ async function main(): Promise<void> {
     saved.hiSpeed ?? HI_SPEED_DEFAULT,
   );
 
-  setupWheelPopup(
+  ownedWheelPopup(
     speedTrigger,
     speedPopup,
     speedWheel,
     speedList,
     speedVal,
     (speed) => {
-      if (isAudioClockRunning) preciseBeats = musicTimeToBeats(getMusicTime(), chart.bpmEvents, chart.bpm, musicOffset, chart.firstMs);
-      playbackSpeed = clamp(speed, 0.1, 5);
-      for (const r of renderers) r.setPlaybackSpeed(playbackSpeed);
-      answerManager?.reset(beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm), true);
-      if (isAudioClockRunning && audioContext) {
-        if (getMusicTime() < 0) { void startPlayback(); return; }
-        if (sourceNode) {
-          const startTime = audioContextTime(audioContext.currentTime);
-          sourceNode.playbackRate.setValueAtTime(playbackSpeed, startTime);
-          playbackClock.appendSegment(startTime, playbackSpeed);
-        } else {
-          const heardAt = outputTime(getAudioContextOutputTime(audioContext));
-          playbackClock.set(heardAt, playbackClock.positionAt(heardAt), playbackSpeed);
-        }
-      }
+      session.setSpeed(speed);
+      for (const r of renderers) r.setPlaybackSpeed(session.speed);
     },
-    (speed) => saveSettings({ playbackSpeed: clamp(speed, 0.1, 5) }),
+    (speed) => saveSettings({ playbackSpeed: clamp(speed, SPEED_MIN, SPEED_MAX) }),
     SPEED_MIN,
     SPEED_MAX,
     SPEED_STEP,
     saved.playbackSpeed ?? SPEED_DEFAULT,
   );
 
-  setupWheelPopup(
+  ownedWheelPopup(
     musicVolumeTrigger,
     musicVolumePopup,
     musicVolumeWheel,
     musicVolumeList,
     musicVolumeVal,
-    (vol) => {
-      musicVolume = clamp(vol, 0, 10);
-      if (musicGain) musicGain.gain.value = musicVolume / 10;
-    },
+    (vol) => session.setMusicVolume(vol),
     (vol) => saveSettings({ musicVolume: clamp(vol, 0, 10) }),
     0,
     10,
@@ -996,16 +688,13 @@ async function main(): Promise<void> {
     saved.musicVolume ?? 10,
   );
 
-  setupWheelPopup(
+  ownedWheelPopup(
     soundVolumeTrigger,
     soundVolumePopup,
     soundVolumeWheel,
     soundVolumeList,
     soundVolumeVal,
-    (vol) => {
-      soundVolume = clamp(vol, 0, 10);
-      answerManager?.setVolume(soundVolume / 10);
-    },
+    (vol) => session.setSoundVolume(vol),
     (vol) => saveSettings({ soundVolume: clamp(vol, 0, 10) }),
     0,
     10,
@@ -1016,12 +705,12 @@ async function main(): Promise<void> {
   const MIRROR_LABELS = ['无', '左右反', '上下反', '全反'] as const;
   const MIRROR_VALUES = ['none', 'horizontal', 'vertical', 'rotate180'] as const;
   const mirrorIdx = Math.max(0, MIRROR_VALUES.findIndex(value => value === saved.mirrorMode));
-  setupWheelPopup(
+  ownedWheelPopup(
     mirrorTrigger, mirrorPopup, mirrorWheel, mirrorList, mirrorVal,
     (idx) => {
       const mode = MIRROR_VALUES[idx] ?? 'none';
       for (const r of renderers) r.setMirrorMode(mode);
-      renderAt(preciseBeats);
+      renderAt(session.positionBeats);
     },
     (idx) => saveSettings({ mirrorMode: MIRROR_VALUES[idx] ?? 'none' }),
     0, 3, 1, mirrorIdx, MIRROR_LABELS,
@@ -1030,12 +719,12 @@ async function main(): Promise<void> {
   const STYLE_LABELS = ['无', '判定点', '判定线', '判定区'] as const;
   const STYLE_VALUES = ['blind', 'noLine', 'simple', 'sensor'] as const;
   const styleIdx = Math.max(0, STYLE_VALUES.findIndex(value => value === (saved.judgmentLineDesign ?? 'sensor')));
-  setupWheelPopup(
+  ownedWheelPopup(
     styleTrigger, stylePopup, styleWheel, styleList, styleVal,
     (idx) => {
       const design = STYLE_VALUES[idx] ?? 'sensor';
       for (const r of renderers) r.setJudgmentLineDesign(design);
-      renderAt(preciseBeats);
+      renderAt(session.positionBeats);
     },
     (idx) => saveSettings({ judgmentLineDesign: STYLE_VALUES[idx] ?? 'sensor' }),
     0, 3, 1, styleIdx, STYLE_LABELS,
@@ -1044,12 +733,12 @@ async function main(): Promise<void> {
   const JUDGE_HINT_LABELS = ['区分', '不区分', '不显示'] as const;
   const JUDGE_HINT_VALUES = ['distinguish', 'unified', 'hidden'] as const;
   const judgeHintIdx = Math.max(0, JUDGE_HINT_VALUES.indexOf(parseJudgeHint(saved.judgeHint)));
-  setupWheelPopup(
+  ownedWheelPopup(
     judgeHintTrigger, judgeHintPopup, judgeHintWheel, judgeHintList, judgeHintVal,
     (idx) => {
       const mode = JUDGE_HINT_VALUES[idx] ?? DEFAULT_JUDGE_HINT;
       for (const r of renderers) r.setJudgeHint(mode);
-      renderAt(preciseBeats);
+      renderAt(session.positionBeats);
     },
     (idx) => saveSettings({ judgeHint: JUDGE_HINT_VALUES[idx] ?? DEFAULT_JUDGE_HINT }),
     0, 2, 1, judgeHintIdx, JUDGE_HINT_LABELS,
@@ -1060,7 +749,7 @@ async function main(): Promise<void> {
   const backgroundIdx = Math.max(0, BACKGROUND_VALUES.indexOf(backgroundMode));
   let pendingBackgroundPreviousMode: BackgroundMode | null = null;
   let backgroundControl: ReturnType<typeof setupWheelPopup>;
-  backgroundControl = setupWheelPopup(
+  backgroundControl = ownedWheelPopup(
     backgroundTrigger,
     backgroundPopup,
     backgroundWheel,
@@ -1069,7 +758,7 @@ async function main(): Promise<void> {
     () => undefined,
     (idx) => {
       const nextMode = BACKGROUND_VALUES[idx] ?? 'none';
-      const previousMode = backgroundMode;
+      const previousMode = background.backgroundMode;
       if (nextMode === 'video' && !videoBackgroundPrompted) {
         videoBackgroundPrompted = true;
         pendingBackgroundPreviousMode = previousMode;
@@ -1079,7 +768,7 @@ async function main(): Promise<void> {
         return;
       }
       saveSettings({ backgroundMode: nextMode });
-      applyBackgroundMode(nextMode);
+      background.setMode(nextMode);
     },
     0,
     2,
@@ -1087,16 +776,30 @@ async function main(): Promise<void> {
     backgroundIdx,
     BACKGROUND_LABELS,
   );
-  applyBackgroundMode(backgroundMode);
+  background.setMode(backgroundMode);
+
+  /** 视频背景确认回执：只有发起过询问（pendingBackgroundPreviousMode）时才有意义。 */
+  const applyBackgroundVideoConfirmation = (accepted: boolean) => {
+    if (pendingBackgroundPreviousMode === null) return;
+    const previousMode = pendingBackgroundPreviousMode;
+    pendingBackgroundPreviousMode = null;
+    if (accepted) {
+      backgroundControl.setValue(BACKGROUND_VALUES.indexOf('video'));
+      saveSettings({ backgroundMode: 'video' });
+      background.setMode('video');
+    } else {
+      backgroundControl.setValue(BACKGROUND_VALUES.indexOf(previousMode));
+    }
+  };
 
   const setupToggle = (btn: HTMLButtonElement, initial: boolean, onChange: (v: boolean) => void) => {
     let active = initial;
     btn.setAttribute('aria-pressed', String(active));
-    btn.addEventListener('click', () => {
+    events.listen(btn, 'click', () => {
       active = !active;
       btn.setAttribute('aria-pressed', String(active));
       onChange(active);
-      renderAt(preciseBeats);
+      renderAt(session.positionBeats);
     });
   };
 
@@ -1109,6 +812,7 @@ async function main(): Promise<void> {
 
   let lastResizeKey = '';
   const resize = () => {
+    if (disposed) return;
     if (!isFullscreen) canvasWrap.style.width = '';
     const rect = canvasWrap.getBoundingClientRect();
     const viewport = window.visualViewport;
@@ -1133,7 +837,7 @@ async function main(): Promise<void> {
     }
     canvasWrap.style.height = `${size}px`;
     for (const r of renderers) r.resize(isFullscreen);
-    renderAt(preciseBeats);
+    renderAt(session.positionBeats);
   };
   const resizeScheduler = createLatestFrameScheduler(
     requestAnimationFrame,
@@ -1141,120 +845,85 @@ async function main(): Promise<void> {
     resize,
   );
   const scheduleResize = () => resizeScheduler.schedule(undefined);
-  window.addEventListener('resize', scheduleResize);
-  window.visualViewport?.addEventListener('resize', scheduleResize);
-  new ResizeObserver(scheduleResize).observe(canvasWrap);
+  events.own(() => resizeScheduler.cancel());
+  events.listen(window, 'resize', scheduleResize);
+  if (window.visualViewport) events.listen(window.visualViewport, 'resize', scheduleResize);
+  const canvasObserver = new ResizeObserver(scheduleResize);
+  canvasObserver.observe(canvasWrap);
+  events.own(() => canvasObserver.disconnect());
   resize();
 
-  const scheduleAnswers = (currentMs: number) => {
-    if (!answerManager || !isPlaying) return;
-    answerManager.schedule(
-      answerEvents,
-      currentMs,
-      playbackClock.schedulingSpeed(playbackSpeed),
-      SCHEDULE_LOOKAHEAD_MS,
-    );
-  };
+  timelineView.build();
+  const timelineLayoutScheduler = createLatestFrameScheduler(
+    requestAnimationFrame,
+    cancelAnimationFrame,
+    () => timelineView.build(),
+  );
+  events.own(() => timelineLayoutScheduler.cancel());
+  events.listen(window, 'resize', () => timelineLayoutScheduler.schedule(undefined));
+  const timelineObserver = new ResizeObserver(() => timelineLayoutScheduler.schedule(undefined));
+  timelineObserver.observe(timelineHost);
+  events.own(() => timelineObserver.disconnect());
 
-  const tick = (timestamp: number) => {
-    if (!isPlaying) return;
-    let currentBeats = preciseBeats;
-
-    if (audioBuffer && isAudioClockRunning && audioContext) {
-      const musicTime = getMusicTime();
-      currentBeats = musicTimeToBeats(
-        musicTime,
-        chart.bpmEvents,
-        chart.bpm,
-        musicOffset,
-        chart.firstMs ?? 0,
-      );
-    } else {
-      if (lastRafTs > 0) {
-        const deltaMs = timestamp - lastRafTs;
-        currentBeats = msToBeats(beatsToMs(currentBeats, chart.bpmEvents, chart.bpm) + deltaMs * playbackSpeed, chart.bpmEvents, chart.bpm);
-      }
-    }
-    lastRafTs = timestamp;
-
-    if (currentBeats >= totalBeats && !sourceNode) {
-      isPlaying = false;
-      stopSource(true);
-      answerManager?.reset(undefined, true);
-      syncPlayButtons();
-      renderAt(totalBeats);
-      return;
-    }
-
-    preciseBeats = Math.min(currentBeats, totalBeats);
-    checkLoop();
-    const currentMs = beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm);
-    renderFrameAll();
-    updateSeekUi();
+  const seekToPosition = (percent: number) => {
+    const targetMs = (percent / 100) * totalDurationMs;
+    session.moveTo(session.beatsAtMs(targetMs));
+    const beats = session.positionBeats;
+    const ms = session.beatsToMs(beats);
+    const measure = Math.floor(beats / 4);
+    const pct = (ms / totalDurationMs) * 100;
+    timelineView.updatePlayhead(pct, measure);
+    if (isFullscreen) fullscreenTimelineView.updatePlayhead(pct, measure);
+    timeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
+    if (isFullscreen) fsTimeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
+    // 拖动时实时渲染画面与信息栏，恢复"拖动即看到对应帧"的能力
+    renderFrameAll(beats);
     updateOverlayDom();
-    scheduleAnswers(currentMs);
-    rafId = requestAnimationFrame(tick);
   };
+  const seekScheduler = createLatestFrameScheduler(
+    requestAnimationFrame,
+    cancelAnimationFrame,
+    seekToPosition,
+  );
+  events.own(() => seekScheduler.cancel());
 
-  const startPlayback = async () => {
-    const epoch = ++playbackEpoch;
-    await ensureAudio();
-    if (epoch !== playbackEpoch) return;
-    isPlaying = true;
-    syncPlayButtons();
-    lastRafTs = 0;
-    const musicTime = calculateMusicTime(
-      preciseBeats,
-      chart.bpmEvents,
-      chart.bpm,
-      musicOffset,
-      chart.firstMs ?? 0,
-    );
-    answerManager?.reset(beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm), true);
-    if (audioBuffer && musicTime < audioBuffer.duration) {
-      await playFromMusicPosition(musicTime, epoch);
-    } else {
-      stopSource(true);
-      lastRafTs = performance.now();
-    }
-    if (epoch !== playbackEpoch) return;
-    cancelAnimationFrame(rafId);
-    rafId = requestAnimationFrame(tick);
-  };
-
-  const pausePlayback = () => {
-    playbackEpoch++;
-    isPlaying = false;
-    syncPlayButtons();
-    if (isAudioClockRunning) {
-      const musicTime = getMusicTime();
-      preciseBeats = musicTimeToBeats(musicTime, chart.bpmEvents, chart.bpm, musicOffset, chart.firstMs);
-      playbackClock.setOffset(musicTime);
-      stopSource();
-    }
-    answerManager?.reset(beatsToMs(preciseBeats, chart.bpmEvents, chart.bpm), true);
-    cancelAnimationFrame(rafId);
-    lastRafTs = 0;
-    renderAt(preciseBeats);
-  };
-
-  playBtn.addEventListener('click', () => {
-    void (isPlaying ? pausePlayback() : startPlayback());
+  events.listen(timelineHost, 'pointerdown', (e) => {
+    e.preventDefault();
+    isDragging = true;
+    wasPlaying = session.playing;
+    if (session.playing) session.pause();
+    const rect = timelineHost.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    seekToPosition(pct);
   });
 
-  const skipBeats = (deltaBeats: number) => {
-    preciseBeats = clamp(preciseBeats + deltaBeats, 0, totalBeats);
-    if (isPlaying) void startPlayback();
-    else renderAt(preciseBeats);
-  };
+  events.listen(document, 'pointermove', (e) => {
+    if (!isDragging) return;
+    const host = isFullscreen ? fsTimelineHost : timelineHost;
+    const rect = host.getBoundingClientRect();
+    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
+    seekScheduler.schedule(pct);
+  });
 
-  const skipToMeasure = (direction: -1 | 1) => {
-    const currentMeasure = Math.floor(preciseBeats / 4);
-    const targetMeasure = clamp(currentMeasure + direction, 0, maxMeasure);
-    preciseBeats = targetMeasure * 4;
-    if (isPlaying) void startPlayback();
-    else renderAt(preciseBeats);
-  };
+  events.listen(document, 'pointerup', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    seekScheduler.flush();
+    renderAt(session.positionBeats);
+    if (wasPlaying) void session.play();
+  });
+
+  // 移动设备拖动被系统中断（多指/来电/通知等）时，pointerup 不会触发；
+  // 若不重置 isDragging，后续 pointermove 会继续按拖动逻辑执行，干扰播放键等点击。
+  // 这里只重置状态并停留在当前帧，不自动恢复播放，避免中断后突然发声。
+  events.listen(document, 'pointercancel', () => {
+    if (!isDragging) return;
+    isDragging = false;
+    seekScheduler.flush();
+    renderAt(session.positionBeats);
+  });
+
+  events.listen(playBtn, 'click', togglePlayback);
 
   const setupRepeatButton = (btn: HTMLButtonElement, action: () => void) => {
     let timer: number | undefined;
@@ -1279,10 +948,11 @@ async function main(): Promise<void> {
       window.clearInterval(timer);
       timer = undefined;
     };
-    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); startRepeat(); });
-    btn.addEventListener('pointerup', stopRepeat);
-    btn.addEventListener('pointerleave', stopRepeat);
-    btn.addEventListener('pointercancel', stopRepeat);
+    events.own(stopRepeat);
+    events.listen(btn, 'pointerdown', (e) => { e.preventDefault(); startRepeat(); });
+    events.listen(btn, 'pointerup', stopRepeat);
+    events.listen(btn, 'pointerleave', stopRepeat);
+    events.listen(btn, 'pointercancel', stopRepeat);
   };
 
   setupRepeatButton(btnPrevMeasure, () => skipToMeasure(-1));
@@ -1290,93 +960,14 @@ async function main(): Promise<void> {
   setupRepeatButton(btnStepBack, () => skipBeats(-1));
   setupRepeatButton(btnStepForward, () => skipBeats(1));
 
-  btnRestart.addEventListener('click', () => {
-    const currentMeasure = Math.floor(preciseBeats / 4);
-    preciseBeats = currentMeasure * 4;
-    if (isPlaying) void startPlayback();
-    else renderAt(preciseBeats);
-  });
-
-  function buildFsTimeline() {
-    fsTimelineBars.replaceChildren();
-    if (totalDurationMs <= 0) return;
-    const rect = fsTimelineHost.getBoundingClientRect();
-    const w = Math.max(1, Math.ceil(rect.width));
-    const bucketCount = Math.min(200, w);
-    const step = totalDurationMs / bucketCount;
-    const buckets: Record<string, number>[] = Array.from({ length: bucketCount }, (_, i) => ({ startMs: i * step, tap: 0, hold: 0, slide: 0, touch: 0, break: 0, total: 0 }));
-    for (const note of allNotes) {
-      const idx = Math.min(bucketCount - 1, Math.max(0, Math.floor(note.timingMs / step)));
-      const b = buckets[idx]!;
-      switch (note.type) {
-        case 'tap': b.tap++; break;
-        case 'hold-start': b.hold++; break;
-        case 'slide': b.slide++; break;
-        case 'touch': case 'touch-hold-start': b.touch++; break;
-        case 'break': b.break++; break;
-      }
-      b.total++;
-    }
-    let maxTotal = 1;
-    for (const b of buckets) { if (b.total > maxTotal) maxTotal = b.total; }
-    const barH = 22;
-    for (const b of buckets) {
-      if (b.total === 0) continue;
-      const h = Math.max(2, (b.total / maxTotal) * barH);
-      const left = ((b.startMs / totalDurationMs) * 100).toFixed(2);
-      const widthPct = ((step / totalDurationMs) * 100).toFixed(2);
-      const bar = document.createElement('div');
-      bar.className = 'fs-timeline-bar';
-      bar.style.left = `${left}%`;
-      bar.style.width = `${widthPct}%`;
-      bar.style.height = `${h}px`;
-      for (const key of ['tap', 'hold', 'slide', 'touch', 'break'] as const) {
-        const ratio = b[key] / b.total;
-        if (ratio === 0) continue;
-        const seg = document.createElement('div');
-        seg.style.flex = String(ratio);
-        seg.style.width = '100%';
-        seg.style.backgroundColor = NOTE_COLORS[key]!;
-        bar.appendChild(seg);
-      }
-      fsTimelineBars.appendChild(bar);
-    }
-    fsTimelineRuler.replaceChildren();
-    const rulerRect = fsTimelineRuler.getBoundingClientRect();
-    const rw = Math.max(1, rulerRect.width);
-    const tickStep = [1, 5, 10, 50, 100].find(s => maxMeasure > 0 && (rw * s) / maxMeasure >= 4) ?? 100;
-    const labelStep = [5, 10, 20, 50, 100, 200].find(s => maxMeasure > 0 && (rw * s) / maxMeasure >= 24) ?? 200;
-    for (let m = 0; m <= maxMeasure; m++) {
-      const pct = measurePercents[m] ?? 0;
-      if (m % tickStep === 0) {
-        const isMajor = m % 10 === 0;
-        const isMedium = m % 5 === 0;
-        const cls = isMajor ? 'major' : isMedium ? 'medium' : 'minor';
-        const tick = document.createElement('div');
-        tick.className = `fs-timeline-tick ${cls}`;
-        tick.style.left = `${pct}%`;
-        fsTimelineRuler.appendChild(tick);
-      }
-      if (m % labelStep === 0) {
-        const label = document.createElement('div');
-        label.className = 'fs-timeline-label';
-        label.style.left = `${pct}%`;
-        label.textContent = String(m);
-        fsTimelineRuler.appendChild(label);
-      }
-    }
-  }
-
-  function updateFsPlayhead(pct: number, measure: number) {
-    fsTimelinePlayhead.style.left = `${pct}%`;
-    fsTimelineBadge.style.left = `${pct}%`;
-    fsTimelineBadge.textContent = String(measure);
-  }
+  events.listen(btnRestart, 'click', restartMeasure);
 
   function syncFsControlsVisibility() {
+    if (disposed) return;
     fsOverlay.classList.toggle('hidden', !fsControlsVisible || fsLocked);
     fsLock.classList.toggle('hidden', !fsControlsVisible);
   }
+  events.own(() => window.clearTimeout(fsHideTimer));
 
   function showFsControls() {
     window.clearTimeout(fsHideTimer);
@@ -1404,13 +995,13 @@ async function main(): Promise<void> {
     fsControlsVisible = false;
     syncFsControlsVisibility();
     postStatus('fullscreen', { active: false });
-    requestAnimationFrame(resize);
+    if (!disposed) requestAnimationFrame(resize);
   }
 
   function enterFullscreen() {
     isFullscreen = true;
     document.body.classList.add('fullscreen');
-    buildFsTimeline();
+    fullscreenTimelineView.build();
     fsTransport.replaceChildren();
     const makeBtn = (id: string, label: string, html: string) => {
       const btn = document.createElement('button');
@@ -1427,8 +1018,8 @@ async function main(): Promise<void> {
     right.className = 'transport-side right';
     const fsPlay = makeBtn(
       'fs-play',
-      isPlaying ? '暂停' : '播放',
-      isPlaying ? PAUSE_ICON : PLAY_ICON,
+      session.playing ? '暂停' : '播放',
+      session.playing ? PAUSE_ICON : PLAY_ICON,
     );
     fsPlay.classList.add('play-toggle');
     left.appendChild(makeBtn('fs-restart', '重播当前小节', btnRestart.innerHTML));
@@ -1440,33 +1031,31 @@ async function main(): Promise<void> {
     fsTransport.appendChild(left);
     fsTransport.appendChild(fsPlay);
     fsTransport.appendChild(right);
-    document.getElementById('fs-restart')!.addEventListener('click', () => { const m = Math.floor(preciseBeats / 4); preciseBeats = m * 4; if (isPlaying) void startPlayback(); else renderAt(preciseBeats); });
-    document.getElementById('fs-prev-measure')!.addEventListener('click', () => skipToMeasure(-1));
-    document.getElementById('fs-step-back')!.addEventListener('click', () => skipBeats(-1));
-    document.getElementById('fs-step-forward')!.addEventListener('click', () => skipBeats(1));
-    document.getElementById('fs-next-measure')!.addEventListener('click', () => skipToMeasure(1));
-    document.getElementById('fs-fullscreen')!.addEventListener('click', exitFullscreen);
-    fsPlay.addEventListener('click', () => {
-      void (isPlaying ? pausePlayback() : startPlayback());
-    });
+    events.listen(document.getElementById('fs-restart')!, 'click', restartMeasure);
+    events.listen(document.getElementById('fs-prev-measure')!, 'click', () => skipToMeasure(-1));
+    events.listen(document.getElementById('fs-step-back')!, 'click', () => skipBeats(-1));
+    events.listen(document.getElementById('fs-step-forward')!, 'click', () => skipBeats(1));
+    events.listen(document.getElementById('fs-next-measure')!, 'click', () => skipToMeasure(1));
+    events.listen(document.getElementById('fs-fullscreen')!, 'click', exitFullscreen);
+    events.listen(fsPlay, 'click', togglePlayback);
     syncLoopButtons();
     showFsControls();
     postStatus('fullscreen', { active: true });
   }
 
-  btnFullscreen.addEventListener('click', () => {
+  events.listen(btnFullscreen, 'click', () => {
     if (isFullscreen) exitFullscreen();
     else enterFullscreen();
   });
 
-  canvasWrap.addEventListener('click', (e) => {
+  events.listen(canvasWrap, 'click', (e) => {
     if (!isFullscreen) return;
     e.stopPropagation();
     if (fsControlsVisible) hideFsControls();
     else showFsControls();
   });
 
-  fsLock.addEventListener('click', (e) => {
+  events.listen(fsLock, 'click', (e) => {
     e.stopPropagation();
     const nextState = toggleFullscreenLockUiState(fsLocked);
     fsLocked = nextState.locked;
@@ -1476,10 +1065,7 @@ async function main(): Promise<void> {
     else showFsControls();
   });
 
-  fsOverlay.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
-
-  let loopA: number | null = null;
-  let loopB: number | null = null;
+  events.listen(fsOverlay, 'pointerdown', (e) => { e.stopPropagation(); });
 
   const updateLoopBtn = (btn: HTMLButtonElement, active: boolean) => {
     if (active) btn.classList.add('on');
@@ -1494,7 +1080,7 @@ async function main(): Promise<void> {
   };
 
   const toggleLoopA = () => {
-    loopA = loopA === null ? preciseBeats : null;
+    loopA = loopA === null ? session.positionBeats : null;
     if (loopA !== null && loopB !== null && loopA > loopB) {
       const previousLoopA = loopA;
       loopA = loopB;
@@ -1504,7 +1090,7 @@ async function main(): Promise<void> {
   };
 
   const toggleLoopB = () => {
-    loopB = loopB === null ? preciseBeats : null;
+    loopB = loopB === null ? session.positionBeats : null;
     if (loopA !== null && loopB !== null && loopA > loopB) {
       const previousLoopA = loopA;
       loopA = loopB;
@@ -1513,54 +1099,26 @@ async function main(): Promise<void> {
     syncLoopButtons();
   };
 
-  btnLoopA.addEventListener('click', toggleLoopA);
-  btnLoopB.addEventListener('click', toggleLoopB);
-  fsLoopA.addEventListener('click', toggleLoopA);
-  fsLoopB.addEventListener('click', toggleLoopB);
-  fsTimelineHost.addEventListener('pointerdown', (e) => {
+  events.listen(btnLoopA, 'click', toggleLoopA);
+  events.listen(btnLoopB, 'click', toggleLoopB);
+  events.listen(fsLoopA, 'click', toggleLoopA);
+  events.listen(fsLoopB, 'click', toggleLoopB);
+  events.listen(fsTimelineHost, 'pointerdown', (e) => {
     e.preventDefault();
     e.stopPropagation();
     isDragging = true;
-    wasPlaying = isPlaying;
-    if (isPlaying) pausePlayback();
+    wasPlaying = session.playing;
+    if (session.playing) session.pause();
     const rect = fsTimelineHost.getBoundingClientRect();
     const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
     seekToPosition(pct);
     showFsControls();
   });
 
-  const checkLoop = () => {
-    if (loopA === null || loopB === null || loopA === loopB) return;
-    if (preciseBeats >= loopB) {
-      preciseBeats = loopA;
-      if (isPlaying) void startPlayback();
-      else renderAt(preciseBeats);
-    }
-  };
 
-  window.addEventListener('message', (event) => {
-    const data = event.data;
-    if (data === 'stop' || (typeof data === 'object' && data?.type === 'stop')) {
-      pausePlayback();
-      releaseBackgroundVideo();
-    }
-    if (typeof data === 'object' && data?.type === 'exit-fullscreen') exitFullscreen();
-    if (typeof data === 'object' && data?.type === 'background-video-confirmation-result'
-      && pendingBackgroundPreviousMode !== null) {
-      const previousMode = pendingBackgroundPreviousMode;
-      pendingBackgroundPreviousMode = null;
-      if (data.accepted === true) {
-        backgroundControl.setValue(BACKGROUND_VALUES.indexOf('video'));
-        saveSettings({ backgroundMode: 'video' });
-        applyBackgroundMode('video');
-      } else {
-        backgroundControl.setValue(BACKGROUND_VALUES.indexOf(previousMode));
-      }
-    }
-  });
 
-  document.addEventListener('visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && isPlaying) pausePlayback();
+  events.listen(document, 'visibilitychange', () => {
+    if (document.visibilityState === 'hidden' && session.playing) session.pause();
   });
 
   renderAt(0);
@@ -1568,6 +1126,7 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error) => {
+  if (disposed) return;
   const diagnostic = error instanceof Error
     ? `${error.message}\n${error.stack ?? ''}`
     : String(error);

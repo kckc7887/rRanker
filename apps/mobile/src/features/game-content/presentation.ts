@@ -1,3 +1,4 @@
+import type { DetailTargetRoute } from '@/domain/detail-target';
 import type { GameNoteGroup } from '@/domain/game-content';
 
 export type TextEffect = 'plain' | 'gradient' | 'flowing-gradient';
@@ -18,13 +19,11 @@ export type BadgePresentation = {
   effect?: TextEffect;
 };
 
-export type SongDetailRoute = {
-  songId: string;
-  chartType?: string;
-  levelIndex?: number;
-  /** 游戏侧可选的详情定位参数；共享卡片只负责透传，不解释具体语义。 */
-  params?: Readonly<Record<string, string>>;
-};
+/**
+ * 详情跳转参数：`DetailTarget` 的编码形态，编解码集中在 `domain/detail-target.ts`。
+ * 共享卡片只透传，具体游戏的语义由该模块按游戏判别。
+ */
+export type SongDetailRoute = DetailTargetRoute;
 
 export type ScoreCardPresentation<TGameId extends string = string> = {
   key: string;

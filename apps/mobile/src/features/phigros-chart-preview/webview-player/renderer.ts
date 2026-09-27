@@ -212,6 +212,7 @@ export class PgrRenderer {
   private lastTime = Number.NaN;
   private settings: RendererSettings = { noteScale: 1, multiHint: true, backgroundDim: 0.55, lineColor: 'white' };
   private fullscreen = false;
+  private disposed = false;
   lastRenderedTime = 0;
   lastVisitedNotes = 0;
   maxVisitedNotes = 0;
@@ -254,7 +255,21 @@ export class PgrRenderer {
     this.resize();
   }
 
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.resizeObserver.disconnect();
+    this.chart = null;
+    this.illustration = null;
+    this.noteAssets = null;
+    this.hitFxTexture = null;
+    this.cursors = [];
+    this.renderCaches = [];
+    this.hitEvents = [];
+  }
+
   resize(): void {
+    if (this.disposed) return;
     const rect = this.canvas.getBoundingClientRect();
     const rawDpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
     let dpr = rawDpr;
@@ -309,6 +324,7 @@ export class PgrRenderer {
   }
 
   render(time: number): void {
+    if (this.disposed) return;
     const context = this.context;
     const pixelWidth = this.canvas.width;
     const pixelHeight = this.canvas.height;

@@ -2,6 +2,7 @@ import { fireEvent, render, screen, waitFor } from '@testing-library/react-nativ
 import { jest } from '@jest/globals';
 import OsuOAuthCallbackScreen from '../app/oauth/osu';
 import { createOsuBoundAccount } from '@/domain/bound-account';
+import { ProviderError } from '@/providers/errors';
 
 let mockParams: Record<string, string | undefined> = {};
 const mockDismissTo = jest.fn((..._args: unknown[]) => undefined);
@@ -88,6 +89,14 @@ beforeEach(() => {
 });
 
 describe('osu! OAuth 回调页', () => {
+  it('构建缺少应用凭据时直接显示配置阶段', async () => {
+    mockParams = { code: 'auth-code', state: 'expected-state' };
+    mockExchange.mockRejectedValue(new ProviderError('configuration', 'raw configuration details', false));
+    await render(<OsuOAuthCallbackScreen />);
+    expect(screen.getByText('当前构建缺少应用凭据，无法完成授权。')).toBeTruthy();
+    expect(mockBindOsuModes).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'success' }));
+  });
   it('换取授权码后通知登录 Sheet 关闭并进入模式选择，绑定选中模式', async () => {
     mockParams = { code: 'auth-code', state: 'expected-state' };
     mockExchange.mockResolvedValue(mockSession);
@@ -128,7 +137,7 @@ describe('osu! OAuth 回调页', () => {
 
     await render(<OsuOAuthCallbackScreen />);
 
-    expect(mockClearPending).toHaveBeenCalled();
+    expect(mockClearPending).not.toHaveBeenCalled();
     expect(screen.getByText('授权失败')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('返回首页'));
     expect(mockDismissTo).toHaveBeenCalledWith('/');

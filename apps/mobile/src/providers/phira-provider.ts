@@ -1,11 +1,12 @@
 import { z } from 'zod';
+import { fetch as expoFetch } from 'expo/fetch';
 import {
   PhiraChartPageSchema, PhiraChartSchema, PhiraPoolResponseSchema, PhiraRecordListSchema,
   PhiraUserPageSchema, PhiraUserSchema, PhiraUserStatsSchema, type PhiraChartStatus,
 } from '@/domain/phira';
 import type { RuntimeRequestScenario } from '@/domain/runtime-log';
 import { providerErrorFromStatus, type ProviderError, type ProviderStatusTexts } from './errors';
-import { requestJson } from './http-json';
+import { requestBytes, requestJson } from './http-json';
 
 export const PHIRA_API_BASE = 'https://phira.5wyxi.com';
 type FetchLike = typeof fetch;
@@ -22,7 +23,7 @@ function statusError(status: number): ProviderError {
 }
 
 export class PhiraProvider {
-  constructor(private readonly fetcher: FetchLike = fetch, private readonly baseUrl = PHIRA_API_BASE) {}
+  constructor(private readonly fetcher: FetchLike = expoFetch as unknown as FetchLike, private readonly baseUrl = PHIRA_API_BASE) {}
 
   private request<T>(
     path: string,
@@ -92,11 +93,13 @@ export class PhiraProvider {
     if (input.search?.trim()) params.set('search', input.search.trim());
     return this.request(`/chart?${params}`, PhiraChartPageSchema, signal, 'chart-search');
   }
-  async downloadChart(url: string, signal?: AbortSignal): Promise<ArrayBuffer> {
+  async downloadChart(url: string, signal?: AbortSignal, maxResponseBytes?: number): Promise<ArrayBuffer> {
     if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
-    const response = await this.fetcher(url, { signal });
-    if (!response.ok) throw statusError(response.status);
-    return response.arrayBuffer();
+    const bytes = await requestBytes({ baseUrl: url, path: '', fetcher: this.fetcher, signal,
+      maxResponseBytes, label: 'Phira 谱面', totalAttempts: 1, error: statusError,
+      timeoutMs: 120_000,
+    });
+    return bytes.buffer as ArrayBuffer;
   }
 }
 

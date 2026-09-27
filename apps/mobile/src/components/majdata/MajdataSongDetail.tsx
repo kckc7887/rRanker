@@ -15,7 +15,7 @@ import {
   simaiChartActionStyle, simaiChartActionTextStyle,
 } from '@/components/game-content/SimaiSongDetailLayout';
 import { SIMAI_CHART_GAP, simaiSongDetailStyles as styles } from '@/components/game-content/SimaiSongDetailStyles';
-import { MAJDATA_NAMES, MAJDATA_ORDER, majdataAsset, majdataDefaultDifficulty, majdataTags, type MajdataSong, type MajdataScore } from '@/domain/majdata';
+import { MAJDATA_NAMES, MAJDATA_ORDER, majdataAsset, majdataDefaultDifficulty, majdataNoteGroup, majdataTags, type MajdataSong, type MajdataScore } from '@/domain/majdata';
 import { buildTagHistory } from '@/domain/user-library';
 import { useMajdataSong, useMajdataParsedChart } from '@/hooks/use-majdata';
 import { useGameData } from '@/hooks/use-game-data';
@@ -24,7 +24,6 @@ import { useAppTheme } from '@/theme/app-theme';
 import { ProviderError } from '@/providers/errors';
 import { downloadSimaiPackage } from '@/features/chart-download-shared/simai-package';
 import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
-import { majdataContentAdapter } from '@/features/game-content/adapters/majdata';
 import { MajdataDifficultyBadge, majdataVisual } from './MajdataCards';
 
 type Library = ReturnType<typeof useUserLibrary>;
@@ -112,8 +111,8 @@ function MajdataChartCard({ song, level, width, library, best, active }: {
   const download = useChartPackageDownload({ successMessage: '谱面文件已保存。' });
   const item = library.data?.find(entry => entry.key === library.chartKey(song.id, 'SD', level));
   const practice = item?.kind === 'chart' && item.practice;
-  const statistics = parsed.data?.statistics;
-  const notes = useMemo(() => majdataContentAdapter.normalizeChart({ song, level, statistics }).notes[0], [song, level, statistics]);
+  const counts = parsed.data?.statistics?.counts;
+  const notes = useMemo(() => majdataNoteGroup(counts), [counts]);
   const title = `${song.title} ${MAJDATA_NAMES[level]}`;
   const actions = simaiChartActionStyle(theme.dark, visual, false, level === 5);
   const actionText = simaiChartActionTextStyle(theme.dark, visual, false, level === 5);

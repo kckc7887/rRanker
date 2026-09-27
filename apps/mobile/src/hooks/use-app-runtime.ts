@@ -4,8 +4,8 @@ import { Image as ExpoImage } from 'expo-image';
 import { useSegments } from 'expo-router';
 import { InteractionManager } from 'react-native';
 import { useGameResourceSync } from './use-game-resource-sync';
-import { queryClient, releaseInactiveQueries } from '@/state/query-client';
-import { useSession } from '@/state/session-store';
+import { queryClient, releaseInactiveQueries, resumeInterruptedActiveQueries } from '@/state/query-client';
+import { retryPendingRotationWrites, useSession } from '@/state/session-store';
 import { getForegroundAbortSignal, useAppLifecycle } from '@/state/app-lifecycle';
 import { runStorageCacheMaintenance } from '@/features/storage-management/storage-cache-maintenance';
 import { markRemoteImageCacheGameActive } from '@/services/remote-image-cache';
@@ -13,6 +13,8 @@ import { hydrateAccountDisplayData } from '@/services/account-thumbnail';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
 import { uploadTaskController } from '@/services/upload-maimai-from-friend-code';
 import { recordRuntimeRoute } from '@/services/runtime-logs';
+import { setThemePersistenceForeground } from '@/state/theme-store';
+import { retryFailedAccountSources } from '@/services/account-restoration';
 
 export function useAppRuntime(ready: boolean) {
   const routeTemplate = useSegments().join('/');
@@ -24,6 +26,7 @@ export function useAppRuntime(ready: boolean) {
   const localHydrationGenerationRef = useRef(-1);
   const releasedMemoryWarningRef = useRef(0);
   const storageMaintenanceStartedRef = useRef(false);
+  const queryCancellationRef = useRef<Promise<void>>(Promise.resolve());
 
   useEffect(() => { recordRuntimeRoute(routeTemplate.split('/')); }, [routeTemplate]);
 
@@ -56,20 +59,37 @@ export function useAppRuntime(ready: boolean) {
   }, [lifecycle.memoryWarningGeneration, lifecycle.phase]);
 
   useEffect(() => {
+    let cancelled = false;
     focusManager.setFocused(lifecycle.foregroundReady);
-    if (lifecycle.foregroundReady) uploadTaskController.resume();
-    else if (lifecycle.phase === 'background') uploadTaskController.pause();
+    if (lifecycle.foregroundReady) setThemePersistenceForeground(true);
+    else if (lifecycle.phase === 'background') setThemePersistenceForeground(false);
+    if (lifecycle.foregroundReady) {
+      void queryCancellationRef.current.then(() => {
+        if (cancelled) return;
+        return resumeInterruptedActiveQueries(queryClient);
+      }).catch(() => undefined);
+      uploadTaskController.resume();
+      // 前台恢复是补交落盘失败的凭据轮换的安全入口：不重新刷新，只重试本机写入。
+      void retryPendingRotationWrites();
+    } else if (lifecycle.phase === 'background') uploadTaskController.pause();
     if (lifecycle.phase === 'background') {
-      void queryClient.cancelQueries();
+      queryCancellationRef.current = queryClient.cancelQueries();
     }
     if (lifecycle.memoryWarningGeneration > releasedMemoryWarningRef.current) {
       releasedMemoryWarningRef.current = lifecycle.memoryWarningGeneration;
       releaseInactiveQueries(queryClient);
       void ExpoImage.clearMemoryCache();
     }
+    return () => { cancelled = true; };
   }, [lifecycle.foregroundReady, lifecycle.memoryWarningGeneration, lifecycle.phase]);
 
   useEffect(() => () => focusManager.setFocused(undefined), []);
+
+  useEffect(() => {
+    if (ready && restoreStatus === 'ready' && lifecycle.foregroundReady) {
+      void retryFailedAccountSources().catch(() => undefined);
+    }
+  }, [ready, restoreStatus, lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
 
   useEffect(() => {
     if (restoreStatus !== 'ready' || !lifecycle.foregroundReady) return;

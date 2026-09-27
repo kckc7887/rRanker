@@ -1,6 +1,11 @@
+import { SessionPersistenceError } from '@/domain/session-vault';
+import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
+
 export type ProviderErrorCode =
   | 'authentication' | 'permission' | 'rate_limit' | 'timeout'
-  | 'upstream_schema' | 'no_data' | 'cache_corrupt' | 'network' | 'unknown';
+  | 'upstream_schema' | 'no_data' | 'cache_corrupt' | 'network' | 'unknown'
+  | 'authorization_prepare' | 'authorization_open' | 'authorization_callback'
+  | 'verification' | 'configuration' | 'credential_storage' | 'local_commit';
 
 export class ProviderError extends Error {
   readonly retryAfterSeconds?: number;
@@ -26,14 +31,33 @@ const DEFAULT_PROVIDER_USER_MESSAGES: ProviderUserMessages = {
   rate_limit: '操作太频繁，请稍后再试。',
   timeout: '连接超时，请检查网络后重试。',
   network: '网络连接失败，请检查网络后重试。',
+  authorization_prepare: '无法准备授权，请重试；若仍失败，请查看诊断。',
+  authorization_open: '无法打开授权页面，请检查浏览器后重试。',
+  authorization_callback: '授权回调校验失败，请在 App 内重新发起授权。',
+  verification: '远端账号验证失败，请稍后重试。',
+  configuration: '当前构建缺少应用凭据，无法完成授权。',
+  credential_storage: '无法安全保存账号凭据，请重试；若仍失败，请查看诊断。',
+  local_commit: '无法保存本机账号信息，请重试；若仍失败，请查看诊断。',
 };
+
+/** 已分类的网络或存储错误保留原阶段；原生错误只展示当前操作的固定文案。 */
+export async function runProviderOperation<T>(code: ProviderErrorCode, action: () => T | Promise<T>): Promise<T> {
+  try { return await action(); }
+  catch (error) {
+    if (error instanceof Error && error.name === 'AbortError') throw error;
+    const classified = error instanceof ProviderError || error instanceof SessionPersistenceError ? error
+      : new ProviderError(code, DEFAULT_PROVIDER_USER_MESSAGES[code] ?? '账号操作失败，请重试。', false, { cause: error });
+    void recordRuntimeDiagnostic('binding', { source: 'account-binding', phase: code, result: 'error', errorCode: classified.code, error: classified });
+    throw classified;
+  }
+}
 
 export function providerErrorToUserMessage(
   error: unknown,
   fallback: string,
   overrides?: ProviderUserMessages,
 ): string {
-  if (!(error instanceof ProviderError)) return fallback;
+  if (!(error instanceof ProviderError) && !(error instanceof SessionPersistenceError)) return fallback;
   return overrides?.[error.code] ?? DEFAULT_PROVIDER_USER_MESSAGES[error.code] ?? fallback;
 }
 

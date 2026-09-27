@@ -1,0 +1,6 @@
+{
+  "name": "song-detail-chrome-contract/adofai-level-detail",
+  "formatVersion": 1,
+  "hash": "189c66e5be95e2aed8c7b81023c57fc5df909f5110eb7bacdb0427d52d74b1b4",
+  "tree": [{"children":[],"props":{"accessibilityLabel":"返回","accessibilityRole":"button","accessibilityState":{},"accessibilityValue":{},"accessible":true,"collapsable":false,"focusable":true,"hitSlop":12,"style":[{"alignItems":"center","borderRadius":20,"height":40,"justifyContent":"center","width":40},{"elevation":30,"position":"absolute","zIndex":30},{"left":8,"top":55},false]},"type":"View"},{"children":[],"props":{"accessibilityLabel":"收藏 关卡 A","accessibilityRole":"button","accessibilityState":{"disabled":false},"accessibilityValue":{},"accessible":true,"collapsable":false,"focusable":true,"hitSlop":12,"style":[{"alignItems":"center","borderRadius":20,"height":40,"justifyContent":"center","width":40},{"elevation":30,"position":"absolute","zIndex":30},{"right":8,"top":55},false,false]},"type":"View"}]
+}

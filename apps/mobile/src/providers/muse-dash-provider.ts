@@ -1,3 +1,4 @@
+import { fetch as expoFetch } from 'expo/fetch';
 import type { RuntimeRequestScenario } from '@/domain/runtime-log';
 import { z } from 'zod';
 import {
@@ -28,7 +29,7 @@ function statusError(status: number): ProviderError {
 }
 
 export class MuseDashProvider {
-  constructor(private readonly fetcher: FetchLike = fetch, private readonly baseUrl = MUSE_DASH_API_BASE) {}
+  constructor(private readonly fetcher: FetchLike = expoFetch as unknown as FetchLike, private readonly baseUrl = MUSE_DASH_API_BASE) {}
 
   private request<T>(path: string, schema: z.ZodType<T>, diagnosticScenario: RuntimeRequestScenario, signal?: AbortSignal): Promise<T> {
     return requestJson({

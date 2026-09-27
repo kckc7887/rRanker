@@ -13,11 +13,12 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
+import { buildPhigrosChartPreviewInput } from '@/features/phigros-chart-preview/chart-preview-input';
+import { buildPhiraChartPreviewInput } from '@/features/phira-chart-preview/chart-preview-input';
 import {
-  buildPhigrosChartPreviewInput,
-  buildPhiraChartPreviewInput,
-} from '@/features/phigros-chart-preview/chart-preview-input';
-import { loadPhigrosChartPreviewBundle, loadPhigrosChartPreviewVariants } from '@/domain/phigros-chart-preview';
+  loadPhigrosChartPreviewBundle,
+  loadPhigrosChartPreviewVariants,
+} from '@/services/phigros-chart-preview-resources';
 import {
   applyPhigrosChartPreviewConfigToHtml,
   buildPhigrosChartPreviewConfigJson,
@@ -186,7 +187,7 @@ live('谱面确认传入阶段 live 演示', () => {
       const html = applyPhigrosChartPreviewConfigToHtml(template, prepared.config);
 
       expect(html.includes('<!--PHIGROS_CHART_PREVIEW_CONFIG-->')).toBe(false);
-      const injected = /<script>window\.__PHIGROS_CHART_PREVIEW__=(.*);<\/script>/s.exec(html)?.[1];
+      const injected = /<script>window\.__PHIGROS_CHART_PREVIEW__=(.*?);<\/script>/s.exec(html)?.[1];
       expect(injected).toBeTruthy();
       const roundtrip = JSON.parse(injected!) as { chartText?: string; settings?: { playbackSpeed?: number } };
       expect(roundtrip.chartText).toBe(prepared.config.chartText);

@@ -1,8 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  PHIGROS_PUSH_LIMITS,
+  PhigrosPushInputError,
   evaluateDisplayedPushPlan,
   findPushRecommendations,
   formatPushSearchSummary,
+  parsePhigrosPushChartCost,
+  parsePhigrosPushDelta,
+  resolvePhigrosPushRequest,
   resolvePushExactTarget,
   type PushRecommendationsResult,
 } from '@/domain/phigros-push';
@@ -21,6 +26,104 @@ describe('resolvePushExactTarget', () => {
     expect(result.displayRks).toBe(16.17);
     expect(result.exactTarget).toBeCloseTo(16.265, 6);
     expect(result.displayTarget).toBeCloseTo(16.27, 6);
+  });
+});
+
+function pushInputErrorCode(run: () => unknown): string {
+  try {
+    run();
+  } catch (error) {
+    return error instanceof PhigrosPushInputError ? error.code : `未预期错误：${String(error)}`;
+  }
+  return '未抛出错误';
+}
+
+describe('push request parameters', () => {
+  it('rejects overflow after delta quantization and invalid search budgets', () => {
+    expect(parsePhigrosPushDelta(Number.MAX_VALUE)).toBeNull();
+    for (const searchPoolLimit of [NaN, Infinity, -1, 0, 1.5, Number.MAX_VALUE]) {
+      expect(pushInputErrorCode(() => resolvePhigrosPushRequest({ delta: 0.01, chartCost: 1, searchPoolLimit })))
+        .toBe('search_pool_out_of_range');
+    }
+    expect(resolvePhigrosPushRequest({ delta: 0.01, chartCost: 1, searchPoolLimit: 1 }).searchPoolLimit).toBe(1);
+  });
+  it('accepts the legal boundaries and normalizes delta to two decimals', () => {
+    expect(parsePhigrosPushDelta(PHIGROS_PUSH_LIMITS.minDelta)).toBe(0.01);
+    expect(parsePhigrosPushDelta(0.1)).toBe(0.1);
+    expect(parsePhigrosPushDelta(0.015)).toBe(0.02);
+    expect(parsePhigrosPushChartCost(PHIGROS_PUSH_LIMITS.minChartCost)).toBe(1);
+    expect(parsePhigrosPushChartCost(PHIGROS_PUSH_LIMITS.maxChartCost)).toBe(30);
+    expect(parsePhigrosPushChartCost(7)).toBe(7);
+  });
+
+  it('rejects non-finite, out-of-range and fractional inputs', () => {
+    for (const delta of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      0,
+      -1,
+      PHIGROS_PUSH_LIMITS.minDelta - 0.001,
+    ]) {
+      expect(parsePhigrosPushDelta(delta)).toBeNull();
+    }
+    for (const chartCost of [
+      Number.NaN,
+      Number.POSITIVE_INFINITY,
+      Number.NEGATIVE_INFINITY,
+      0,
+      -1,
+      PHIGROS_PUSH_LIMITS.maxChartCost + 1,
+      1.5,
+    ]) {
+      expect(parsePhigrosPushChartCost(chartCost)).toBeNull();
+    }
+  });
+
+  it('resolves one normalized request or refuses it with a stable code', () => {
+    expect(resolvePhigrosPushRequest({ delta: 0.015, chartCost: 30, includePhi: false })).toEqual({
+      delta: 0.02,
+      chartCost: 30,
+      includePhi: false,
+      searchPoolLimit: undefined,
+      signal: undefined,
+    });
+    for (const delta of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1]) {
+      expect(pushInputErrorCode(() => resolvePhigrosPushRequest({ delta, chartCost: 1 })))
+        .toBe('delta_out_of_range');
+    }
+    for (const chartCost of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 31, 1.5]) {
+      expect(pushInputErrorCode(() => resolvePhigrosPushRequest({ delta: 0.01, chartCost })))
+        .toBe('chart_cost_out_of_range');
+    }
+  });
+
+  it('refuses illegal requests instead of encoding them as a search conclusion', async () => {
+    const { gameRecord, difficultyTable } = buildPool();
+    for (const delta of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1]) {
+      await expect(findPushRecommendations(gameRecord, difficultyTable, { delta, chartCost: 1 }))
+        .rejects.toMatchObject({ code: 'delta_out_of_range' });
+    }
+    for (const chartCost of [Number.NaN, Number.POSITIVE_INFINITY, 0, -1, 31, 1.5]) {
+      await expect(findPushRecommendations(gameRecord, difficultyTable, { delta: 0.01, chartCost }))
+        .rejects.toMatchObject({ code: 'chart_cost_out_of_range' });
+    }
+  });
+
+  it('keeps the legal boundaries searchable with the normalized delta', async () => {
+    const { gameRecord, difficultyTable } = inCharts([{ id: 'song.new', difficulty: 15, rawAcc: 0 }]);
+    const single = await findPushRecommendations(gameRecord, difficultyTable, { delta: 0.01, chartCost: 1 });
+    expect(single.chartCost).toBe(1);
+    expect(single.searchStatus).toBe('verified');
+    expectVerifiedPlan(gameRecord, difficultyTable, single);
+
+    const maximum = await findPushRecommendations(gameRecord, difficultyTable, { delta: 0.01, chartCost: 30 });
+    expect(maximum.chartCost).toBe(30);
+    expect(maximum.perChartShare).toBeCloseTo(maximum.gainNeeded / 30, 3);
+
+    const rounded = await findPushRecommendations(gameRecord, difficultyTable, { delta: 0.014, chartCost: 1 });
+    expect(rounded.exactTarget)
+      .toBe(resolvePushExactTarget(rounded.currentRks, 0.01).exactTarget);
   });
 });
 
@@ -60,25 +163,25 @@ function buildPool(lowAccIndex = 29) {
 }
 
 describe('findPushRecommendations', () => {
-  it('splits exact gain across songCost songs as perSongShare', async () => {
+  it('splits exact gain across chartCost charts as perChartShare', async () => {
     const { gameRecord, difficultyTable } = buildPool();
     const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.1,
-      songCost: 4,
+      chartCost: 4,
     });
 
-    expect(result.songCost).toBe(4);
-    expect(result.perSongShare).toBeCloseTo(result.gainNeeded / 4, 3);
-    // 用户口径：涨约 0.1、成本 4 首 → 每首约 0.025（精确加值略小于显示加值）
-    expect(result.perSongShare).toBeGreaterThan(0.02);
-    expect(result.perSongShare).toBeLessThan(0.03);
+    expect(result.chartCost).toBe(4);
+    expect(result.perChartShare).toBeCloseTo(result.gainNeeded / 4, 3);
+    // 用户口径：涨约 0.1、成本 4 张谱面 → 每张约 0.025（精确加值略小于显示加值）
+    expect(result.perChartShare).toBeGreaterThan(0.02);
+    expect(result.perChartShare).toBeLessThan(0.03);
   });
 
   it('finds charts that can cover one song share and sorts by ACC diff', async () => {
     const { gameRecord, difficultyTable } = buildPool();
     const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
-      songCost: 1,
+      chartCost: 1,
     });
 
     expect(result.currentRks).toBeGreaterThan(0);
@@ -95,7 +198,7 @@ describe('findPushRecommendations', () => {
 
     const first = result.plan[0]!;
     expect(first.targetAcc).toBeGreaterThan(first.currentAcc);
-    expect(first.rksGain).toBeGreaterThanOrEqual(result.perSongShare - 1e-6);
+    expect(first.rksGain).toBeGreaterThanOrEqual(result.perChartShare - 1e-6);
 
     for (let i = 1; i < shown.length; i++) {
       const previous = shown[i - 1]!;
@@ -119,23 +222,23 @@ describe('findPushRecommendations', () => {
 
     const after = await findPushRecommendations(pushed, difficultyTable, {
       delta: 0.01,
-      songCost: 1,
+      chartCost: 1,
     });
-    expect(after.currentRks).toBeGreaterThanOrEqual(result.currentRks + result.perSongShare);
+    expect(after.currentRks).toBeGreaterThanOrEqual(result.currentRks + result.perChartShare);
   });
 
-  it('higher songCost lowers per-song ACC requirement', async () => {
+  it('higher chartCost lowers the per-chart ACC requirement', async () => {
     const { gameRecord, difficultyTable } = buildPool();
     const solo = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
-      songCost: 1,
+      chartCost: 1,
     });
     const split = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
-      songCost: 4,
+      chartCost: 4,
     });
 
-    expect(split.perSongShare).toBeCloseTo(solo.perSongShare / 4, 3);
+    expect(split.perChartShare).toBeCloseTo(solo.perChartShare / 4, 3);
     expect(split.searchStatus).toBe('verified');
     expect(split.plan.length).toBeGreaterThan(1);
     expect(split.plan.length).toBeLessThanOrEqual(4);
@@ -161,20 +264,20 @@ describe('findPushRecommendations', () => {
 
     const split = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.2,
-      songCost: 2,
+      chartCost: 2,
       includePhi: false,
     });
-    expect(split.perSongShare).toBeCloseTo(split.gainNeeded / 2, 3);
+    expect(split.perChartShare).toBeCloseTo(split.gainNeeded / 2, 3);
     expect(split.searchStatus).toBe('unreachable');
     expect(split.combinationReachesTarget).toBe(false);
     expect(split.plan).toEqual([]);
     expect(split.recommendations).toEqual([]);
-    expect(formatPushSearchSummary(split)).toContain('无法用 2 首');
-    expect(formatPushSearchSummary(split)).not.toContain('没有 2 首');
+    expect(formatPushSearchSummary(split)).toContain('无法用 2 张谱面');
+    expect(formatPushSearchSummary(split)).not.toContain('没有 2 张谱面');
 
     const solo = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.1,
-      songCost: 1,
+      chartCost: 1,
       includePhi: false,
     });
     expect(solo.searchStatus).toBe('verified');
@@ -188,12 +291,12 @@ describe('findPushRecommendations', () => {
     const { gameRecord, difficultyTable } = buildPool();
     const withPhi = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.1,
-      songCost: 1,
+      chartCost: 1,
       includePhi: true,
     });
     const withoutPhi = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.1,
-      songCost: 1,
+      chartCost: 1,
       includePhi: false,
     });
 
@@ -233,7 +336,7 @@ function expectVerifiedPlan(
   expect(result.combinationReachesTarget).toBe(true);
   expect(result.recommendations).toEqual(result.plan);
   expect(result.plan.length).toBeGreaterThan(0);
-  expect(result.plan.length).toBeLessThanOrEqual(result.songCost);
+  expect(result.plan.length).toBeLessThanOrEqual(result.chartCost);
   const planKeys = new Set(result.plan.map((item) => `${item.songId}_${item.level}`));
   expect(result.alternatives.every((item) => !planKeys.has(`${item.songId}_${item.level}`))).toBe(true);
   expect(evaluateDisplayedPushPlan(gameRecord, difficultyTable, result.plan))
@@ -248,7 +351,7 @@ function expectVerifiedPlan(
   }
   const mixed = [...result.plan, ...result.alternatives]
     .sort((a, b) => a.accDiff - b.accDiff || a.difficulty - b.difficulty)
-    .slice(0, result.songCost);
+    .slice(0, result.chartCost);
   const mixedRks = evaluateDisplayedPushPlan(gameRecord, difficultyTable, mixed);
   if (mixedRks + 1e-9 < result.exactTarget) {
     expect(result.plan.map((item) => `${item.songId}:${item.targetAcc}`))
@@ -270,7 +373,7 @@ describe('push plan invariants', () => {
     ]);
     const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
-      songCost: 2,
+      chartCost: 2,
       includePhi: false,
     });
     expectVerifiedPlan(gameRecord, difficultyTable, result);
@@ -284,7 +387,7 @@ describe('push plan invariants', () => {
     ]);
     const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.02,
-      songCost: 3,
+      chartCost: 3,
       includePhi: false,
     });
     expectVerifiedPlan(gameRecord, difficultyTable, result);
@@ -299,7 +402,7 @@ describe('push plan invariants', () => {
     ]);
     const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.02,
-      songCost: 3,
+      chartCost: 3,
       includePhi: false,
       searchPoolLimit: 1,
     });
@@ -307,7 +410,7 @@ describe('push plan invariants', () => {
     expect(result.combinationReachesTarget).toBe(false);
     expect(result.plan).toEqual([]);
     expect(formatPushSearchSummary(result)).toContain('在当前搜索范围内没有找到方案');
-    expect(formatPushSearchSummary(result)).not.toContain('没有 3 首');
+    expect(formatPushSearchSummary(result)).not.toContain('没有 3 张谱面');
     expect(formatPushSearchSummary(result)).not.toContain('无解');
   });
 
@@ -317,7 +420,7 @@ describe('push plan invariants', () => {
     ]);
     const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
-      songCost: 1,
+      chartCost: 1,
       includePhi: false,
     });
     expectVerifiedPlan(gameRecord, difficultyTable, result);
@@ -331,7 +434,7 @@ describe('push plan invariants', () => {
     ]);
     const result = await findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.01,
-      songCost: 1,
+      chartCost: 1,
     });
     expectVerifiedPlan(gameRecord, difficultyTable, result);
     const shown = [...result.plan, ...result.alternatives];
@@ -350,7 +453,7 @@ describe('findPushRecommendations cancellation', () => {
     controller.abort(new Error('user left'));
     await expect(findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.1,
-      songCost: 2,
+      chartCost: 2,
       signal: controller.signal,
     })).rejects.toThrow('user left');
   });
@@ -364,7 +467,7 @@ describe('findPushRecommendations cancellation', () => {
     };
     await expect(findPushRecommendations(gameRecord, difficultyTable, {
       delta: 0.1,
-      songCost: 2,
+      chartCost: 2,
       signal: flipping as AbortSignal,
     })).rejects.toThrow('stop-search');
     expect(reads).toBeGreaterThan(4);
@@ -377,7 +480,7 @@ describe('findPushRecommendations cancellation', () => {
     let ticks = 0;
     const ticker = setInterval(() => { ticks += 1; }, 0);
     try {
-      await findPushRecommendations(gameRecord, difficultyTable, { delta: 0.1, songCost: 2 });
+      await findPushRecommendations(gameRecord, difficultyTable, { delta: 0.1, chartCost: 2 });
     } finally {
       clearInterval(ticker);
       now.mockRestore();

@@ -2,9 +2,9 @@ import { createHash } from 'node:crypto';
 import { describe, expect, it, vi } from 'vitest';
 import { rizlineCatalog, rizlineCatalogAssetFiles, rizlineChart, rizlineSong } from './fixtures/rizline';
 import {
-  loadRizlineChartPreviewResources,
   resolveRizlineChartPreviewBundle,
 } from '@/domain/rizline-chart-preview';
+import { loadRizlineChartPreviewResources } from '@/services/rizline-chart-preview-resources';
 import { rizlineResources } from '@/services/rizline-resources';
 import { applyRizlineChartPreviewConfigToHtml } from '@/features/rizline-chart-preview/rizline-chart-preview-inject';
 import {

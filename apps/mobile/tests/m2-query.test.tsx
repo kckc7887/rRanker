@@ -83,7 +83,7 @@ jest.mock('@/features/maimai-chart-download/maimai-chart-download', () => ({
 jest.mock('expo/fetch', () => ({
   fetch: (url: string, init?: RequestInit) => mockVideoHead(url, init),
 }));
-jest.mock('@/features/phira-compatible-chart-download/phira-compatible-chart-download', () => ({
+jest.mock('@/features/phigros-chart-download/chart-package-download', () => ({
   downloadPhigrosChartAsPhiraPackage: jest.fn(),
   downloadPhiraChartPackage: jest.fn(),
 }));

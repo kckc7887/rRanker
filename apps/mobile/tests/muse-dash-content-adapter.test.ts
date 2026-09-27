@@ -4,19 +4,23 @@ import ce from './fixtures/musedash/ce.sanitized.json';
 import diffdiff from './fixtures/musedash/diffdiff.sanitized.json';
 import player from './fixtures/musedash/player.sanitized.json';
 import {
+  MUSE_DASH_MISS_DETAIL_FAILED,
   MuseDashAlbumsResponseSchema,
   MuseDashCeResponseSchema,
   MuseDashDiffdiffResponseSchema,
   MuseDashPlayerSchema,
   buildMuseDashRandomCharts,
   buildMuseDashRawScores,
+  sortMuseDashRawScores,
   filterMuseDashRandomCharts,
   museDashAccTone,
+  museDashAchievementDetailsPending,
   museDashCharacterName,
   museDashCoverUrl,
   museDashDiffdiffMap,
   museDashElfinName,
   museDashGrade,
+  museDashMissDetail,
   museDashRankBadge,
   matchesMuseDashAccRange,
   matchesMuseDashAchievementFilter,
@@ -28,6 +32,8 @@ import {
   museDashSongTitle,
   museDashSongsByUid,
   resolveMuseDashAchievement,
+  type MuseDashMissDetailValue,
+  type MuseDashRandomChartFilters,
   type MuseDashRawScore,
   type MuseDashSong,
 } from '@/domain/muse-dash';
@@ -35,7 +41,6 @@ import {
   formatMuseDashAcc,
   formatMuseDashScore,
   isNumericMuseDashLevel,
-  museDashContentAdapter,
   presentMuseDashChart,
   presentMuseDashScore,
   presentMuseDashSong,
@@ -50,19 +55,12 @@ describe('Muse Dash content adapter', () => {
   const fullSong = songsByUid.get('0-47')!;
   const constants = museDashDiffdiffMap(parsedDiffdiff);
 
-  it('maps every song with Chinese-first title and per-slot charts', () => {
-    const song = museDashContentAdapter.normalizeSong({ song: fullSong.song, albumTitle: fullSong.albumTitle });
-    expect(song).toMatchObject({
-      gameId: 'musedash', songId: '0-47', title: '示例歌曲', artist: '示例作者',
-    });
-    expect(song.metadata.album).toBe('Default Music');
-    expect(song.metadata.bpm).toBe(128);
-    expect(song.charts.map((chart) => chart.chartId)).toEqual([
-      '0-47:0', '0-47:1', '0-47:2', '0-47:3', '0-47:4',
-    ]);
-    expect(song.charts[0]).toMatchObject({ label: 'EASY', level: '2', order: 0, libraryRef: { type: 'SD', levelIndex: 0 } });
-    expect(song.charts[4]).toMatchObject({ label: 'EX', level: '12', libraryRef: { type: 'SD', levelIndex: 4 } });
-    expect(song.extension.song).toBe(fullSong.song);
+  it('orders known ratings before unknown values without substituting raw scores', () => {
+    const base = buildMuseDashRawScores(parsedPlayer, parsedAlbums, parsedCe, parsedDiffdiff)[0]!;
+    const known = { ...base, play: { ...base.play, sum: 1, score: 10 } };
+    const unknown = { ...base, play: { ...base.play, sum: undefined, score: 1_000_000 } };
+    const invalid = { ...base, play: { ...base.play, sum: NaN, score: 2_000_000 } };
+    expect(sortMuseDashRawScores([unknown, known, invalid])).toEqual([known, unknown, invalid]);
   });
 
   it('builds a full-catalog random pool and only requires scores for score conditions', () => {
@@ -91,66 +89,24 @@ describe('Muse Dash content adapter', () => {
     expect(fc.map((chart) => chart.key)).toContain(playedChart.key);
   });
 
-  it('skips missing difficulty slots and keeps SD library keys', () => {
-    const sparse = museDashContentAdapter.normalizeSong({
-      song: songsByUid.get('0-48')!.song, albumTitle: 'Default Music',
-    });
-    expect(sparse.charts).toHaveLength(2);
-    expect(sparse.charts.map((chart) => chart.extension.difficultyIndex)).toEqual([0, 1]);
-    expect(sparse.charts[0].libraryRef).toEqual({ type: 'SD', levelIndex: 0 });
-  });
-
   it('maps a chart with community constant and joined charter', () => {
-    const chart = museDashContentAdapter.normalizeChart({
+    const chart = presentMuseDashChart({
       song: fullSong.song, albumTitle: fullSong.albumTitle,
       difficultyIndex: 3, constant: constants.get('0-47:3')?.[4],
     });
-    expect(chart).toMatchObject({
-      chartId: '0-47:3', order: 3, label: 'HIDDEN', level: '11',
-      constant: 11.5, charter: 'Mapper A、Mapper B',
-      libraryRef: { type: 'SD', levelIndex: 3 },
-    });
+    expect(chart.difficulty).toMatchObject({ label: 'HIDDEN', value: '11.50' });
+    expect(chart.charter).toBe('Mapper A、Mapper B');
     expect(chart.notes).toEqual([]);
-    expect(chart.extension).toMatchObject({ difficultyIndex: 3, officialLevel: '11', constant: 11.5 });
   });
 
   it('resolves the charter per difficulty slot like the official site', () => {
-    const easy = museDashContentAdapter.normalizeChart({
-      song: fullSong.song, albumTitle: fullSong.albumTitle, difficultyIndex: 0,
-    });
-    expect(easy.charter).toBe('Mapper A');
-    const hard = museDashContentAdapter.normalizeChart({
-      song: fullSong.song, albumTitle: fullSong.albumTitle, difficultyIndex: 1,
-    });
-    expect(hard.charter).toBe('Mapper B');
-    const missing = museDashContentAdapter.normalizeChart({
-      song: fullSong.song, albumTitle: fullSong.albumTitle, difficultyIndex: 4,
-    });
-    expect(missing.charter).toBe('Mapper A、Mapper B');
-    const single = museDashContentAdapter.normalizeChart({
-      song: songsByUid.get('0-48')!.song, albumTitle: 'Default Music', difficultyIndex: 1,
-    });
-    expect(single.charter).toBe('Howard_Y');
-  });
-
-  it('maps scores with join result, character/elfin names and SD library reference', () => {
-    const raw: MuseDashRawScore = {
-      play: parsedPlayer.plays[0],
-      song: songsByUid.get('1-1')?.song ?? null,
-      albumTitle: songsByUid.get('1-1')?.albumTitle ?? '未知专辑',
-      characterName: museDashCharacterName(parsedCe, parsedPlayer.plays[0].character_uid),
-      elfinName: museDashElfinName(parsedCe, parsedPlayer.plays[0].elfin_uid),
-      constant: constants.get('1-1:2')?.[4],
-    };
-    const score = museDashContentAdapter.normalizeScore(raw);
-    expect(score).toMatchObject({
-      gameId: 'musedash', songId: '1-1', chartId: '1-1:2', order: 2, key: '1-1:2',
-      title: 'Another Track', rating: 3950, libraryRef: { type: 'SD', levelIndex: 2 },
-    });
-    expect(score.extension).toMatchObject({
-      acc: 94.16999816894531, currentRank: 1950, lastRank: 1949, sum: 3950,
-      platform: 'mobile', characterName: '布若', elfinName: '厄普西隆',
-    });
+    const charterAt = (difficultyIndex: number, song = fullSong.song) => presentMuseDashChart({
+      song, albumTitle: 'Default Music', difficultyIndex,
+    }).charter;
+    expect(charterAt(0)).toBe('Mapper A');
+    expect(charterAt(1)).toBe('Mapper B');
+    expect(charterAt(4)).toBe('Mapper A、Mapper B');
+    expect(charterAt(1, songsByUid.get('0-48')!.song)).toBe('Howard_Y');
   });
 
   it('falls back to uid titles when the catalog join is missing', () => {
@@ -158,9 +114,9 @@ describe('Muse Dash content adapter', () => {
       play: { ...parsedPlayer.plays[0], uid: '99-99' },
       song: null, albumTitle: '未知专辑', characterName: null, elfinName: null,
     };
-    const score = museDashContentAdapter.normalizeScore(raw);
-    expect(score.title).toBe('99-99');
-    expect(score.extension.characterName).toBeNull();
+    const presented = presentMuseDashScore(raw);
+    expect(presented.title).toBe('99-99');
+    expect(presented.achievementRows.flat().map((badge) => badge.key)).not.toContain('character');
   });
 
   it('presents ACC-led score cards with difficulty constant and grade tone', () => {
@@ -311,6 +267,46 @@ describe('Muse Dash content adapter', () => {
     expect(presented.grade?.label).toBe('S');
     expect(presented.achievementRows.flat().find((badge) => badge.key === 'achievement')?.label).toBe('AP');
     expect(fullSongType.difficulty[4]).toBe('12');
+  });
+
+  it('未确认的 miss 明细不得当作已满足 AP/FC', () => {
+    expect(museDashMissDetail(null)).toEqual({ status: 'pending' });
+    expect(museDashMissDetail(undefined)).toEqual({ status: 'unknown' });
+    expect(museDashMissDetail(0)).toEqual({ status: 'known', miss: 0 });
+    expect(museDashMissDetail(3)).toEqual({ status: 'known', miss: 3 });
+    expect(matchesMuseDashAchievementFilter(100, undefined, 'ap')).toBe(false);
+    expect(resolveMuseDashAchievement(100, undefined)).toBeNull();
+  });
+
+  it('把请求最终失败与「上游没有 miss 字段」分开', () => {
+    expect(museDashMissDetail(MUSE_DASH_MISS_DETAIL_FAILED)).toEqual({ status: 'failed' });
+    expect(museDashMissDetail(MUSE_DASH_MISS_DETAIL_FAILED)).not.toEqual(museDashMissDetail(undefined));
+  });
+
+  it('成就筛选只保留已确认 miss 的候选，且只有 pending 才需要等待', () => {
+    const rawScores = buildMuseDashRawScores(parsedPlayer, parsedAlbums, parsedCe, parsedDiffdiff);
+    const played = buildMuseDashRandomCharts(parsedAlbums, parsedDiffdiff, rawScores)
+      .find((chart) => chart.score)!;
+    const pool = [{ ...played, score: { ...played.score!, play: { ...played.score!.play, acc: 100 } } }];
+    const filters = {
+      difficultySlot: 'all', dlc: 'all', constantMin: '', constantMax: '',
+      accMin: '', accMax: '', achievement: 'ap',
+    } satisfies MuseDashRandomChartFilters;
+    const keysFor = (miss: MuseDashMissDetailValue) =>
+      filterMuseDashRandomCharts(pool, filters, new Map([[played.key, miss]])).map((chart) => chart.key);
+
+    expect(keysFor(0)).toEqual([played.key]);
+    expect(keysFor(null)).toEqual([]);
+    expect(keysFor(undefined)).toEqual([]);
+    expect(keysFor(MUSE_DASH_MISS_DETAIL_FAILED)).toEqual([]);
+    expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, null]]))).toBe(true);
+    expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, undefined]]))).toBe(false);
+    expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, 0]]))).toBe(false);
+    // 失败不会自行变成结果，等待它没有意义；重试成功后同一候选才回到已确认集合。
+    expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, MUSE_DASH_MISS_DETAIL_FAILED]])))
+      .toBe(false);
+    expect(keysFor(0)).toEqual([played.key]);
+    expect(museDashAchievementDetailsPending(pool, { ...filters, achievement: 'all' }, new Map())).toBe(false);
   });
 
   function buildRawScore(play: (typeof parsedPlayer.plays)[number]): MuseDashRawScore {

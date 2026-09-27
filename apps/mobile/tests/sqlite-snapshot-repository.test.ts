@@ -92,4 +92,23 @@ describe('SqliteSnapshotRepository schema migration', () => {
     expect(sqlite.db.execAsync).toHaveBeenCalledTimes(1);
     expect(sqlite.db.execAsync).toHaveBeenCalledWith(expect.stringContaining('account_score_snapshots'));
   });
+
+  it('reads and rewrites one resource through a single atomic update', async () => {
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 1, payload: '{"count":1}' });
+    const repository = new SqliteSnapshotRepository();
+    await expect(repository.updateResource<{ count: number }>('counter', 1, (previous) => ({
+      value: { count: (previous?.count ?? 0) + 1 }, updatedAt: 'later',
+    }))).resolves.toEqual({ count: 2 });
+    expect(sqlite.db.runAsync).toHaveBeenCalledWith(
+      expect.stringContaining('resource_snapshots'), 'counter', 1, 'later', '{"count":2}',
+    );
+  });
+
+  it('ignores a resource row stored under another schema version when updating', async () => {
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 9, payload: '{"count":5}' });
+    const repository = new SqliteSnapshotRepository();
+    await expect(repository.updateResource<{ count: number }>('counter', 1, (previous) => ({
+      value: { count: (previous?.count ?? 0) + 1 }, updatedAt: 'later',
+    }))).resolves.toEqual({ count: 1 });
+  });
 });

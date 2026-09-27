@@ -88,6 +88,30 @@ describe('muse dash cache snapshots', () => {
     expect((await cache.loadPlayer('6ea4f986ffd211e8aa980242ac110011'))?.data).toEqual(player);
   });
 
+  it('reads stored snapshots as marked cache reads that keep their provider', async () => {
+    await cache.savePlayer('a', makeMuseDashSnapshot(player, '2026-08-10T00:00:00.000Z'));
+    expect((await cache.loadPlayer('a'))?.source).toEqual({
+      kind: 'musedash', label: 'MuseDash.moe', updatedAt: '2026-08-10T00:00:00.000Z', isStale: true,
+    });
+    await cache.saveAlbums(makeMuseDashSnapshot({}, '2026-08-11T00:00:00.000Z'));
+    expect((await cache.loadAlbums())?.source).toEqual({
+      kind: 'musedash', label: 'MuseDash.moe', updatedAt: '2026-08-11T00:00:00.000Z', isStale: true,
+    });
+  });
+
+  it('refuses to persist a cache fallback as a fresh snapshot', async () => {
+    const fresh = makeMuseDashSnapshot(player);
+    await expect(cache.savePlayer('rejected', { ...fresh, source: { ...fresh.source, isStale: true } }))
+      .rejects.toThrow('缓存');
+    expect(await cache.loadPlayer('rejected')).toBeNull();
+
+    const savedAlbums = makeMuseDashSnapshot({}, '2026-08-12T00:00:00.000Z');
+    await cache.saveAlbums(savedAlbums);
+    await expect(cache.saveAlbums({ ...savedAlbums, source: { ...savedAlbums.source, kind: 'cache' } }))
+      .rejects.toThrow('缓存');
+    expect((await cache.loadAlbums())?.source.updatedAt).toBe('2026-08-12T00:00:00.000Z');
+  });
+
   it('round-trips play detail snapshots and clears them with the player on unbind', async () => {
     const detail = { play: { miss: 0, judge: 'ss' }, user: { nickname: '公开玩家' } };
     await cache.savePlayDetail('a', '13-5', 2, 'mobile', makeMuseDashSnapshot(detail));

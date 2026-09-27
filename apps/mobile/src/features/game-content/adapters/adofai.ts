@@ -1,13 +1,7 @@
+import type { GameNoteGroup } from '@/domain/game-content';
 import type {
-  GameChart,
-  GameContentAdapter,
-} from '@/domain/game-content';
-import type {
-  TufChartExtension,
   TufLevel,
   TufPass,
-  TufScoreExtension,
-  TufSongExtension,
 } from '@/domain/tuf';
 import type {
   BadgePresentation,
@@ -31,72 +25,13 @@ function tufLevelTone(level: TufLevel): string {
   return 'tuf-special';
 }
 
-function tufChart(level: TufLevel): GameChart<'adofai', TufChartExtension> {
+function tufNotes(level: TufLevel): GameNoteGroup[] {
   const tileCount = level.tilecount ?? level.autoTileCount;
-  return {
-    gameId: 'adofai',
-    songId: String(level.id),
-    chartId: String(level.id),
-    order: 0,
-    label: tufLevelLabel(level),
-    level: tufLevelLabel(level),
-    constant: level.baseScore ?? level.difficulty?.baseScore ?? undefined,
-    charter: level.levelCredits.map((credit) => `${credit.creator.name} (${credit.role})`).join('、') || undefined,
-    notes: tileCount == null ? [] : [{
-      key: 'tiles',
-      values: [{ key: 'tiles', label: '物量', value: tileCount }],
-    }],
-    extension: { level, upstreamSongId: level.songId ?? null },
-  };
+  return tileCount == null ? [] : [{
+    key: 'tiles',
+    values: [{ key: 'tiles', label: '物量', value: tileCount }],
+  }];
 }
-
-export const adofaiContentAdapter: GameContentAdapter<
-  'adofai',
-  TufLevel,
-  TufLevel,
-  TufPass,
-  TufSongExtension,
-  TufChartExtension,
-  TufScoreExtension
-> = {
-  gameId: 'adofai',
-  normalizeSong: (level) => ({
-    gameId: 'adofai',
-    songId: String(level.id),
-    title: level.song,
-    artist: level.artist || undefined,
-    metadata: {
-      bpm: level.bpm ?? undefined,
-      durationMs: level.levelLengthInMs ?? undefined,
-      tiles: level.tilecount ?? level.autoTileCount ?? undefined,
-      hidden: level.isHidden,
-      deleted: level.isDeleted,
-    },
-    charts: [tufChart(level)],
-    extension: { level, upstreamSongId: level.songId ?? null },
-  }),
-  normalizeChart: tufChart,
-  normalizeScore: (pass) => ({
-    gameId: 'adofai',
-    songId: String(pass.levelId),
-    chartId: String(pass.levelId),
-    order: 0,
-    key: String(pass.id),
-    title: pass.level.song,
-    rating: pass.impact ?? undefined,
-    extension: {
-      pass,
-      scoreV2: pass.scoreV2,
-      accuracy: pass.accuracy,
-      speed: pass.speed,
-      judgements: pass.judgements ?? null,
-      isWorldsFirst: pass.isWorldsFirst ?? null,
-      isWorldsFirstPP: pass.isWorldsFirstPP ?? null,
-      isDuplicate: pass.isDuplicate ?? false,
-      impact: pass.impact ?? null,
-    },
-  }),
-};
 
 function tufJudgementBadges(pass: TufPass): BadgePresentation[] {
   if (!pass.judgements) return [];
@@ -158,6 +93,6 @@ export function presentTufChart(level: TufLevel, pass?: TufPass): ChartCardPrese
     secondaryMetrics: score?.secondaryMetrics ?? [], grade: score?.grade,
     achievementRows: score?.achievementRows ?? [],
     charter: level.levelCredits.map((credit) => `${credit.creator.name} (${credit.role})`).join('、') || '未知',
-    notes: tufChart(level).notes,
+    notes: tufNotes(level),
   };
 }

@@ -56,6 +56,32 @@ describe('LXNS player presentation', () => {
     await expect(provider.getRecords()).resolves.toMatchObject([{ dxScore: 1836 }]);
   });
 
+  it('does not issue the read when the caller aborted during the token refresh', async () => {
+    const controller = new AbortController();
+    const requestedUrls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input: RequestInfo | URL) => {
+      const url = String(input);
+      requestedUrls.push(url);
+      if (url.includes('/oauth/token')) {
+        // 刷新在途时调用方取消：轮换结果仍可提交，但这次读取不应该再发出。
+        controller.abort(new Error('已取消'));
+        return new Response(JSON.stringify({
+          access_token: 'fresh-access', refresh_token: 'rotated-refresh', expires_in: 3600,
+        }), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(JSON.stringify({ success: true, code: 200, data: { name: '玩家', rating: 1, friend_code: 1 } }), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+    const provider = new LxnsScoreProvider({
+      mode: 'lxns-oauth', accessToken: 'expired-access', refreshToken: 'cancel-during-refresh',
+      expiresAt: Date.now() - 1_000, persistable: true,
+    });
+
+    await expect(provider.getPlayer(controller.signal)).rejects.toThrow('已取消');
+    expect(requestedUrls.filter((url) => !url.includes('/oauth/token'))).toEqual([]);
+  });
+
   it('maps utage records without exposing their fixed level_index 0 as BASIC', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       success: true,

@@ -391,6 +391,8 @@ export class RpeRenderer {
   private lastTime = Number.NaN;
   private settings: RpeRendererSettings = { noteScale: 1, multiHint: true, backgroundDim: 0.55, lineColor: 'white' };
   private fullscreen = false;
+  private disposed = false;
+  private readonly ownedShaderTextures = new Set<WebGLTexture>();
   private tintedTextures: WeakMap<object, Map<string, HTMLCanvasElement>> | null = null;
   private gl: WebGLRenderingContext | null = null;
   private glPrograms: Map<string, WebGLProgram> | null = null;
@@ -448,7 +450,33 @@ export class RpeRenderer {
     this.resize();
   }
 
+  dispose(): void {
+    if (this.disposed) return;
+    this.disposed = true;
+    this.resizeObserver.disconnect();
+    this.disposeGlTargets();
+    for (const texture of this.ownedShaderTextures) this.gl?.deleteTexture(texture);
+    this.ownedShaderTextures.clear();
+    for (const program of this.glPrograms?.values() ?? []) this.gl?.deleteProgram(program);
+    this.glPrograms?.clear();
+    this.gl?.getExtension('WEBGL_lose_context')?.loseContext();
+    this.gl = null;
+    this.glCanvas.remove();
+    this.chart = null;
+    this.chartAssets = null;
+    this.illustration = null;
+    this.noteAssets = null;
+    this.hitFxTexture = null;
+    this.tintedTextures = null;
+    this.cursors = [];
+    this.activeWindows = [];
+    this.hitEvents = [];
+    this.effectCursors = [];
+    this.videoCursors = [];
+  }
+
   resize(): void {
+    if (this.disposed) return;
     const rect = this.canvas.getBoundingClientRect();
     const rawDpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
     let dpr = rawDpr;
@@ -944,6 +972,10 @@ export class RpeRenderer {
   }
 
   render(time: number): void {
+    if (!this.disposed) this.renderFrame(time);
+  }
+
+  private renderFrame(time: number): void {
     const context = this.context;
     const pixelWidth = this.canvas.width;
     const pixelHeight = this.canvas.height;
@@ -1289,6 +1321,8 @@ export class RpeRenderer {
     const image = this.chartAssets?.textures.get(name);
     if (!image) return -1;
     const texture = gl.createTexture();
+    if (!texture) return -1;
+    this.ownedShaderTextures.add(texture);
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);

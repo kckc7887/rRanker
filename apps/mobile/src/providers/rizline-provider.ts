@@ -140,23 +140,30 @@ export class RizlineProvider {
     if (this.session && path === '/game/rn_login') headers.token = this.session.token;
     let token: string | null = null;
     let retryAfterSeconds: number | undefined;
+    const httpError = (status: number) => {
+      const texts = {
+        permission: '当前账号无法读取成绩',
+        rateLimit: '操作太频繁，请稍后再试',
+        server: 'Rizline 暂时无法连接',
+        fallback: { message: () => 'Rizline 请求失败' },
+      } as const;
+      const error = path === '/game/rn_login'
+        ? status === 401
+          ? new ProviderError('authentication', '登录已失效或验证码不正确', false)
+          : providerErrorFromStatus(status, texts)
+        : providerErrorFromStatus(status, { authentication: '登录已失效或验证码不正确', ...texts });
+      return new ProviderError(error.code, error.message, false, { retryAfterSeconds });
+    };
     const bytes = await requestProviderResponse({
       baseUrl: BASE_URL, path, schema: z.instanceof(Uint8Array), fetcher: this.fetcher,
-      label: 'Rizline', signal, retries: 1, timeoutMs: 20_000,
+      label: 'Rizline', signal, retries: 1, timeoutMs: 20_000, authenticated: true,
+      maxResponseBytes: 16 * 1024 * 1024,
       init: { method: 'POST', headers, body: JSON.stringify(body), credentials: 'omit', redirect: 'error' },
-      error: status => {
-        const texts = {
-          permission: '当前账号无法读取成绩',
-          rateLimit: '操作太频繁，请稍后再试',
-          server: 'Rizline 暂时无法连接',
-          fallback: { message: () => 'Rizline 请求失败' },
-        } as const;
-        const error = path === '/game/rn_login'
-          ? status === 401
-            ? new ProviderError('authentication', '登录已失效或验证码不正确', false)
-            : providerErrorFromStatus(status, texts)
-          : providerErrorFromStatus(status, { authentication: '登录已失效或验证码不正确', ...texts });
-        return new ProviderError(error.code, error.message, false, { retryAfterSeconds });
+      error: httpError,
+      onHttpError: async response => {
+        if (response.headers.has('Retry-After')) retryAfterSeconds = Math.ceil(retryAfterMs(response, Infinity) / 1000);
+        void response.body?.cancel().catch(() => undefined);
+        return httpError(response.status);
       },
       onResponse: response => {
         token = readSetToken(response.headers);

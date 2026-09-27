@@ -60,7 +60,8 @@ export function patchMaimaiPlayerDisplayName(
       },
     },
     (current) => {
-      if (!current || current.payload.kind !== 'maimai') return current;
+      // 身份与载荷一起判定：数据包是「按游戏配对」的联合，改名前也必须确认它就是舞萌数据。
+      if (!current || current.gameId !== 'maimai' || current.payload.kind !== 'maimai') return current;
       return {
         ...current,
         payload: {

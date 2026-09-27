@@ -1,19 +1,17 @@
 export type { PhiraRawChart } from './phira';
 export {
-  phiraContentAdapter,
   presentPhiraBestSection,
   presentPhiraChart,
   presentPhiraScore,
   presentPhiraSong,
 } from './phira';
-export { maimaiContentAdapter, presentMaimaiScore } from './maimai';
+export { presentMaimaiScore } from './maimai';
 export type { MaimaiScorePresentationInput } from './maimai';
-export { phigrosContentAdapter, presentPhigrosScore } from './phigros';
-export { rizlineContentAdapter, presentRizlineScore, presentRizlineSong, presentRizlineChart } from './rizline';
-export { chunithmContentAdapter, presentChunithmScore, presentChunithmSong } from './chunithm';
+export { presentPhigrosScore } from './phigros';
+export { presentRizlineScore, presentRizlineSong, presentRizlineChart } from './rizline';
+export { presentChunithmScore, presentChunithmSong } from './chunithm';
 export { presentStandardSong } from './standard';
 export {
-  adofaiContentAdapter,
   formatTufAccuracy,
   presentTufChart,
   presentTufLevel,
@@ -24,7 +22,6 @@ export {
   formatMuseDashAcc,
   formatMuseDashScore,
   isNumericMuseDashLevel,
-  museDashContentAdapter,
   presentMuseDashChart,
   presentMuseDashScore,
   presentMuseDashSong,

@@ -1,5 +1,6 @@
 import { vi } from 'vitest';
 import { fixtureSource } from '@/fixtures/sanitized';
+import { ProviderError } from '@/providers/errors';
 import { cacheFirstLoad, isCacheFallback, staleCached } from '@/services/cache-first';
 
 vi.mock('@/state/app-lifecycle-core', () => ({
@@ -26,7 +27,7 @@ describe('cacheFirstLoad', () => {
     });
 
     expect(result.value).toBe(1);
-    expect(result.source.kind).toBe('cache');
+    expect(result.source.kind).toBe(fixtureSource.kind);
     expect(result.source.isStale).toBe(true);
     expect(result.source.label).toBe(fixtureSource.label);
     const refreshed = await freshNotified;
@@ -130,8 +131,61 @@ describe('cacheFirstLoad', () => {
       await new Promise(resolve => setTimeout(resolve, 0));
       expect(onFresh).not.toHaveBeenCalled();
       if (cancel) expect(onFallback).not.toHaveBeenCalled();
-      else expect(onFallback).toHaveBeenCalledWith(fallback);
+      // 第二个参数是机器可判定的刷新结果：服务用缓存替代刷新时为 null，调用端不必读文案。
+      else expect(onFallback).toHaveBeenCalledWith(fallback, null);
     }
+  });
+
+  it('routes a refresh the service declares as a fallback away from onFresh', async () => {
+    const fallback = makeSample(1);
+    const onFresh = vi.fn(); const onFallback = vi.fn();
+    const result = await cacheFirstLoad({
+      loadCached: async () => makeSample(0),
+      loadFresh: async () => fallback,
+      onFresh,
+      onFallback,
+      // 服务声明这份数据取自本地快照；即使来源标记看起来新鲜也不能算刷新成功。
+      isFallback: (value) => value === fallback,
+    });
+
+    expect(result.value).toBe(0);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(onFresh).not.toHaveBeenCalled();
+    expect(onFallback).toHaveBeenCalledWith(fallback, null);
+  });
+
+  it('reports a failed refresh with its machine error code instead of its text', async () => {
+    const onFresh = vi.fn(); const onRefreshFailed = vi.fn();
+    const result = await cacheFirstLoad({
+      loadCached: async () => makeSample(1),
+      loadFresh: async () => { throw new ProviderError('authentication', '登录状态已变化', false); },
+      onFresh,
+      onRefreshFailed,
+    });
+
+    expect(result.value).toBe(1);
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(onFresh).not.toHaveBeenCalled();
+    expect(onRefreshFailed).toHaveBeenCalledWith({
+      code: 'authentication', target: null, diagnostic: '登录状态已变化', retryable: false,
+    });
+  });
+
+  it('does not report a failed refresh after the foreground signal is aborted', async () => {
+    const controller = new AbortController();
+    const onRefreshFailed = vi.fn();
+    let reject!: (error: unknown) => void;
+    await cacheFirstLoad({
+      loadCached: async () => makeSample(1),
+      loadFresh: () => new Promise<Sample>((_resolve, fail) => { reject = fail; }),
+      onFresh: () => undefined,
+      onRefreshFailed,
+      signal: controller.signal,
+    });
+    controller.abort();
+    reject(new ProviderError('network', 'offline', true));
+    await new Promise((resolve) => setTimeout(resolve, 10));
+    expect(onRefreshFailed).not.toHaveBeenCalled();
   });
 
   it('supports a custom stale marker for payloads with multiple sources', async () => {
@@ -149,15 +203,15 @@ describe('cacheFirstLoad', () => {
       markStale,
     });
 
-    expect(result.source.kind).toBe('cache');
-    expect(result.catalogSource.kind).toBe('cache');
+    expect(result.source.kind).toBe(fixtureSource.kind);
+    expect(result.catalogSource.kind).toBe(payload.catalogSource.kind);
     expect(result.catalogSource.isStale).toBe(true);
   });
 
   it('overrides the source label when requested', () => {
     const marked = staleCached(makeSample(1), { label: '落雪咖啡屋（缓存）' });
     expect(marked.source.label).toBe('落雪咖啡屋（缓存）');
-    expect(marked.source.kind).toBe('cache');
+    expect(marked.source.kind).toBe(fixtureSource.kind);
     expect(marked.source.isStale).toBe(true);
   });
 

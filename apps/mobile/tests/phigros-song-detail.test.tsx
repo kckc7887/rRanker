@@ -5,7 +5,7 @@ import SongDetailScreen from '../app/songs/[songId]';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
 import type { Song } from '@/domain/models';
-import { resolveChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
+import { resolveChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-navigation';
 
 jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
   (callback as () => void)();
@@ -105,7 +105,7 @@ jest.mock('@/components/AppNotification', () => ({
   }),
   useNotificationModalRequestClose: () => () => false,
 }));
-jest.mock('@/features/phira-compatible-chart-download/phira-compatible-chart-download', () => ({
+jest.mock('@/features/phigros-chart-download/chart-package-download', () => ({
   downloadPhigrosChartAsPhiraPackage: (request: unknown, options: unknown) =>
     mockDownloadPhigrosPackage(request, options),
 }));

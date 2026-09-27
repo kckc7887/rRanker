@@ -1,4 +1,6 @@
 import { jest } from '@jest/globals';
+import { Share } from 'react-native';
+import { recordRuntimeError, snapshotEmergencyRuntimeDiagnostics, resetEmergencyRuntimeDiagnosticsForTests } from '@/services/runtime-diagnostics-recorder';
 import { cleanupOrphanedTemporaryStorage } from '@/features/storage-management/storage-cache-maintenance';
 import {
   initializeRuntimeDiagnostics,
@@ -18,6 +20,7 @@ const mockDelete = jest.fn((_uri: string) => undefined);
 const mockMove = jest.fn((_source: string, _destination: string) => undefined);
 const mockAvailable = jest.fn(async () => true);
 const mockShare = jest.fn(async (_uri: string, _options: unknown) => undefined);
+const mockTextShare = jest.spyOn(Share, 'share').mockResolvedValue({ action: 'sharedAction' });
 
 jest.mock('expo-constants', () => ({
   __esModule: true,
@@ -112,6 +115,7 @@ describe('本地运行诊断', () => {
     mockFiles.clear();
     mockWriteState.active = 0;
     mockWriteState.maximum = 0;
+    resetEmergencyRuntimeDiagnosticsForTests();
   });
 
   it('只保留允许的字段并拒绝敏感值', () => {
@@ -203,13 +207,29 @@ describe('本地运行诊断', () => {
     await pending;
   });
 
-  it('分享不可用或失败后可以重试', async () => {
+  it('分享文件不可用或失败时退回原生文本分享并可重试', async () => {
     mockAvailable.mockResolvedValueOnce(false);
-    await expect(exportRuntimeDiagnostics()).rejects.toThrow();
+    await expect(exportRuntimeDiagnostics()).resolves.toBeUndefined();
+    expect(mockTextShare).toHaveBeenCalledTimes(1);
     mockShare.mockRejectedValueOnce(new Error('share failed'));
-    await expect(exportRuntimeDiagnostics()).rejects.toThrow('share failed');
+    await expect(exportRuntimeDiagnostics()).resolves.toBeUndefined();
+    expect(mockTextShare).toHaveBeenCalledTimes(2);
     await exportRuntimeDiagnostics();
     expect(mockShare).toHaveBeenCalledTimes(2);
+  });
+  it('存储不可用时保留有界脱敏错误且诊断导出仍可使用', async () => {
+    mockFiles.set('document/rranker-runtime-diagnostics.json', '{}');
+    mockRead.mockRejectedValue(new Error('locked'));
+    mockWrite.mockRejectedValue(new Error('locked'));
+    for (let index = 0; index < 100; index++) recordRuntimeError('theme-preferences', new Error('private-token player Alice'), false, { phase: 'write' });
+    const events = snapshotEmergencyRuntimeDiagnostics();
+    expect(events).toHaveLength(64);
+    expect(JSON.stringify(events)).not.toMatch(/private-token|Alice/u);
+    await exportRuntimeDiagnostics();
+    expect(mockTextShare).toHaveBeenCalled();
+    expect(JSON.parse(mockTextShare.mock.calls.at(-1)![0].message!).storageAvailable).toBe(false);
+    mockRead.mockReset().mockResolvedValue(undefined);
+    mockWrite.mockReset().mockResolvedValue(undefined);
   });
 });
 
@@ -243,6 +263,28 @@ describe('诊断正文迁移与跨启动保留', () => {
   });
 
   afterEach(() => { jest.restoreAllMocks(); });
+
+  it('bounds export reads and freezes emergency events before an unresolved storage operation', async () => {
+    jest.useFakeTimers();
+    let release!: () => void;
+    mockFiles.set(documentPath, JSON.stringify({ sessions: [] }));
+    mockRead.mockImplementationOnce(() => new Promise<undefined>((resolve) => { release = () => resolve(undefined); }));
+    void runtime.recordRuntimeDiagnostic('task', { taskPhase: 'before-export' });
+    const pending = runtime.snapshotRuntimeDiagnosticsForExport();
+    void runtime.recordRuntimeDiagnostic('task', { taskPhase: 'after-export' });
+    try {
+      await jest.advanceTimersByTimeAsync(1_500);
+      const exported = await pending;
+      expect(exported.storageAvailable).toBe(false);
+      expect(exported.emergency.map((entry) => entry.fields.taskPhase)).toContain('before-export');
+      expect(exported.emergency.map((entry) => entry.fields.taskPhase)).not.toContain('after-export');
+      expect(JSON.stringify(exported)).not.toContain('private');
+    } finally {
+      release();
+      await runtime.snapshotRuntimeDiagnostics();
+      jest.useRealTimers();
+    }
+  });
 
   it('迁移旧正文并只在新正文写入成功后删除旧文件', async () => {
     const previous = storedSession('2026-09-06T00:00:00.000Z');

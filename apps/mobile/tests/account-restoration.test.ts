@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadOptionalBoundAccounts, restoreAppAccounts } from '@/services/account-restoration';
+import { loadOptionalBoundAccounts, restoreAppAccounts, getAccountSourceStatuses, retryFailedAccountSources, subscribeAccountSourceStatuses } from '@/services/account-restoration';
 import { LocalAccountStore } from '@/storage/local-account-store';
 import { DemoAccountStore } from '@/storage/demo-account-store';
 import { ChunithmDemoAccountStore } from '@/storage/chunithm-demo-account-store';
@@ -54,6 +54,48 @@ describe('startup account restoration', () => {
     const accounts = await loadOptionalBoundAccounts();
     expect(accounts.map((account) => account.id)).toEqual([LOCAL_MAIMAI_ACCOUNT_ID]);
     expect(LocalAccountStore.prototype.upsert).not.toHaveBeenCalled();
+  });
+  it('preserves previously restored accounts on source failures and retries only failed sources', async () => {
+    vi.mocked(TufAccountStore.prototype.load).mockResolvedValue([{ playerId: 1, displayName: 'TUF' }]);
+    await restoreAppAccounts();
+    const account = useSession.getState().boundAccounts[0]!;
+    vi.mocked(TufAccountStore.prototype.load).mockRejectedValue(new Error('locked'));
+    await restoreAppAccounts();
+    expect(useSession.getState().boundAccounts).toContain(account);
+    expect(getAccountSourceStatuses()).toContainEqual({ source: 'tuf', status: 'failed', errorCode: 'storage_unavailable' });
+    vi.mocked(LocalAccountStore.prototype.load).mockClear();
+    vi.mocked(TufAccountStore.prototype.load).mockResolvedValue([{ playerId: 1, displayName: 'recovered' }]);
+    await retryFailedAccountSources();
+    expect(LocalAccountStore.prototype.load).not.toHaveBeenCalled();
+    expect(useSession.getState().boundAccounts[0]?.displayName).toBe('recovered');
+    expect(getAccountSourceStatuses().find((source) => source.source === 'tuf')?.status).toBe('ready');
+  });
+
+  it('does not let a late retry resurrect removed accounts or overwrite newer bindings', async () => {
+    vi.mocked(TufAccountStore.prototype.load).mockResolvedValue([{ playerId: 1, displayName: 'removed' }, { playerId: 2, displayName: 'original' }]);
+    await restoreAppAccounts();
+    vi.mocked(TufAccountStore.prototype.load).mockRejectedValue(new Error('locked'));
+    await restoreAppAccounts();
+    let release!: (accounts: Awaited<ReturnType<typeof TufAccountStore.prototype.load>>) => void;
+    vi.mocked(TufAccountStore.prototype.load).mockImplementation(() => new Promise((resolve) => { release = resolve; }));
+    const retrying = retryFailedAccountSources();
+    const original = useSession.getState().boundAccounts.find((account) => account.providerId === 'tuf' && account.displayName === 'original')!;
+    const changed = { ...original, displayName: 'changed while reading' };
+    const added = { ...original, id: 'adofai:tuf:3', displayName: 'new binding' };
+    useSession.setState({ boundAccounts: [changed, added] });
+    release([{ playerId: 1, displayName: 'old removed' }, { playerId: 2, displayName: 'old original' }, { playerId: 3, displayName: 'old new' }]);
+    await retrying;
+    expect(useSession.getState().boundAccounts).toEqual([changed, added]);
+  });
+
+  it('keeps restoring other sources when a status subscriber throws', async () => {
+    const unsubscribe = subscribeAccountSourceStatuses(() => { throw new Error('subscriber failed'); });
+    try {
+      vi.mocked(TufAccountStore.prototype.load).mockResolvedValue([{ playerId: 1, displayName: 'TUF' }]);
+      await expect(restoreAppAccounts()).resolves.toBeUndefined();
+      expect(useSession.getState().boundAccounts[0]?.displayName).toBe('TUF');
+      expect(getAccountSourceStatuses().find((source) => source.source === 'phira')?.status).toBe('ready');
+    } finally { unsubscribe(); }
   });
 
   it('does not rebuild the default local account when its directory cannot be read', async () => {

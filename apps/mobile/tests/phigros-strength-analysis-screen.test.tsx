@@ -2,6 +2,14 @@ import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { ReactNode } from 'react';
 import PhigrosStrengthAnalysisScreen from '../app/tools/strength-analysis';
+import {
+  describePhigrosStrengthPolicyTexts,
+  describePhigrosStrengthPoolPolicy,
+} from '@/domain/phigros-strength-analysis';
+
+/** 页面说明必须直接引用领域侧由政策常量生成的文本，不能在 UI 里再抄一份数字。 */
+const poolDescription = describePhigrosStrengthPoolPolicy();
+const policyTexts = describePhigrosStrengthPolicyTexts();
 
 const mockGameRefetch = jest.fn(async () => undefined);
 const mockCatalogRefetch = jest.fn(async () => undefined);
@@ -125,14 +133,14 @@ describe('Phigros strength analysis screen', () => {
     expect(screen.getByLabelText(/五维实力雷达/)).toBeTruthy();
     expect(screen.getByText('原始 16.0000 × 1.0062')).toBeTruthy();
     expect(screen.getByText('原始 16.1000 × 1.0062')).toBeTruthy();
-    expect(screen.getByText(/未达到同类满分基准/).props.numberOfLines).toBe(1);
+    expect(screen.getByText(poolDescription).props.numberOfLines).toBe(1);
     expect(screen.getByLabelText('展开分析池说明').props.accessibilityState).toEqual({ expanded: false });
     await fireEvent.press(screen.getByLabelText('展开分析池说明'));
     expect(screen.getByLabelText('收起分析池说明').props.accessibilityState).toEqual({ expanded: true });
-    expect(screen.getByText(/未达到同类满分基准/).props.numberOfLines).toBeUndefined();
+    expect(screen.getByText(poolDescription).props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByLabelText('收起分析池说明'));
     expect(screen.getByLabelText('展开分析池说明')).toBeTruthy();
-    expect(screen.getByText(/未达到同类满分基准/).props.numberOfLines).toBe(1);
+    expect(screen.getByText(poolDescription).props.numberOfLines).toBe(1);
     expect(screen.getByText('候选均定 16.1000')).toBeTruthy();
     expect(screen.getByText('薄弱项练习')).toBeTruthy();
     expect(screen.getByText('针对 读谱 · 由低定数起，目标按单张独立估算')).toBeTruthy();
@@ -188,5 +196,30 @@ describe('Phigros strength analysis screen', () => {
     expect(mockGameRefetch).toHaveBeenCalledTimes(1);
     expect(mockCatalogRefetch).toHaveBeenCalledTimes(1);
     expect(mockTagsRefetch).toHaveBeenCalledTimes(1);
+  });
+
+  it('renders the secondary-tag empty state from the policy text', async () => {
+    setSuccessfulQueries();
+    mockTagsQuery = {
+      isLoading: false, isError: false, refetch: mockTagsRefetch,
+      data: {
+        ...tagSnapshot,
+        votes: tagSnapshot.votes.filter((vote) => vote.tagType !== 'secondary'),
+      },
+    };
+    const screen = await render(<PhigrosStrengthAnalysisScreen />);
+    expect(screen.getByText('暂无细分标签样本')).toBeTruthy();
+    expect(screen.getByText(policyTexts.noSecondaryTags)).toBeTruthy();
+  });
+
+  it('renders the axis mismatch text from the policy instead of a hard-coded count', async () => {
+    setSuccessfulQueries();
+    mockTagsQuery = {
+      isLoading: false, isError: false, refetch: mockTagsRefetch,
+      data: { ...tagSnapshot, tags: tags.filter((tag) => tag.id !== 5) },
+    };
+    const screen = await render(<PhigrosStrengthAnalysisScreen />);
+    expect(screen.getByText('标签结构暂不可用')).toBeTruthy();
+    expect(screen.getByText(policyTexts.unexpectedPrimaryAxes)).toBeTruthy();
   });
 });

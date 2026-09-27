@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import { createPreferencesStore } from '@/storage/create-preferences-store';
 import { normalizeAccentHex } from '@/theme/accent-color';
 
 export type AppAppearance = 'system' | 'light' | 'dark';
@@ -84,19 +84,19 @@ function normalizeRange(value: unknown, min: number, max: number, fallback: numb
   return Math.round(Math.max(min, Math.min(max, value)));
 }
 
-export class ThemePreferencesStore {
-  async load(): Promise<ThemePreferences> {
-    try {
-      const raw = await Storage.getItem(STORAGE_KEY);
-      return raw ? parseThemePreferences(JSON.parse(raw)) : DEFAULT_THEME_PREFERENCES;
-    } catch {
-      return DEFAULT_THEME_PREFERENCES;
-    }
-  }
+const themeStore = createPreferencesStore<ThemePreferences>({
+  storeKey: STORAGE_KEY,
+  defaults: () => DEFAULT_THEME_PREFERENCES,
+  parse: (value) => {
+    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Unrecognized theme preference document');
+    const version = 'version' in value ? value.version : undefined;
+    if (version !== undefined && version !== 1 && version !== 2 && version !== 3) throw new Error('Unrecognized theme preference version');
+    return parseThemePreferences(value);
+  },
+  toStored: parseThemePreferences,
+  readFailure: 'throw',
+});
 
-  async save(preferences: ThemePreferences): Promise<void> {
-    await Storage.setItem(STORAGE_KEY, JSON.stringify(parseThemePreferences(preferences)));
-  }
-}
+export const ThemePreferencesStore = themeStore.Store;
 
 export const themePreferencesStore = new ThemePreferencesStore();

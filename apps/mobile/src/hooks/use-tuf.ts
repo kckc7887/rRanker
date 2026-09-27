@@ -1,38 +1,26 @@
+import { TUF_QUERY_OPTIONS, TUF_SESSION_RESOURCE_QUERY_OPTIONS, tufPlayerQueryOptions } from '@/services/tuf-query';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import type { InfiniteData } from '@tanstack/react-query';
-import {
-  TUF_PAGE_SIZE,
-  selectBestTufLevelPass,
-  tufHttpsUrl,
-  type TufLevelDetailResponse,
-  type TufLevelPass,
-  type TufLevelPage,
-  type TufLevelQuery,
-  type TufPassPage,
-  type TufPassQuery,
-  type TufPlayer,
-} from '@/domain/tuf';
+import { TUF_PAGE_SIZE, selectBestTufLevelPass, tufHttpsUrl, type TufLevelDetailResponse, type TufLevelPass, type TufLevelPage, type TufLevelQuery, type TufPassPage, type TufPassQuery, type TufPlayerSnapshot } from '@/domain/tuf';
 import { tufProvider } from '@/providers/tuf-provider';
-import { cacheFirstLoad } from '@/services/cache-first';
+
+
 import { queryClient } from '@/state/query-client';
 import { invalidateTufDifficulties } from '@/services/infinite-query-refresh';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
-import {
-  loadTufPlayerFresh,
-  makeTufSnapshot,
-  TufCache,
-} from '@/services/tuf-cache';
 
-const TUF_QUERY_OPTIONS = { staleTime: 60_000, gcTime: 10 * 60_000 } as const;
-const TUF_SESSION_RESOURCE_QUERY_OPTIONS = {
-  staleTime: Infinity,
-  gcTime: Infinity,
-  refetchOnMount: false,
-  refetchOnReconnect: false,
-} as const;
 
-const cache = new TufCache();
+
+
+export function useTufProfile(playerId: number | null, enabled = true) {
+  const tabActive = useCachedTabActive();
+  return useQuery({
+    ...tufPlayerQueryOptions(queryClient, playerId ?? 0),
+    select: (snapshot: TufPlayerSnapshot) => snapshot.data,
+    enabled: enabled && tabActive && playerId !== null,
+  });
+}
 
 export function useTufPlayerSearch(query: string) {
   const normalized = query.trim();
@@ -40,34 +28,6 @@ export function useTufPlayerSearch(query: string) {
     queryKey: ['tuf', 'players', 'search', normalized],
     queryFn: ({ signal }) => tufProvider.searchPlayers(normalized, TUF_PAGE_SIZE, 0, signal),
     enabled: normalized.length > 0,
-    ...TUF_QUERY_OPTIONS,
-  });
-}
-
-export function useTufProfile(playerId: number | null, enabled = true) {
-  const tabActive = useCachedTabActive();
-  const queryKey = ['tuf', 'player', playerId, 'profile'] as const;
-  return useQuery({
-    queryKey,
-    queryFn: async ({ signal }): Promise<TufPlayer> => {
-      const assertCurrent = captureResourceWrites('adofai', signal, `adofai:tuf:${playerId}`);
-      const snapshot = await cacheFirstLoad({
-      assertCurrent,
-        loadCached: () => cache.loadPlayer(playerId!),
-        loadFresh: async () => {
-          const player = await loadTufPlayerFresh(playerId!, signal);
-          const fresh = makeTufSnapshot(player);
-          if (!signal.aborted) void cache.savePlayer(playerId!, fresh, assertCurrent).catch(() => undefined);
-          return fresh;
-        },
-        onFresh: (fresh) => {
-          queryClient.setQueryData(queryKey, fresh.data);
-        },
-        signal,
-      });
-      return snapshot.data;
-    },
-    enabled: enabled && tabActive && playerId !== null,
     ...TUF_QUERY_OPTIONS,
   });
 }

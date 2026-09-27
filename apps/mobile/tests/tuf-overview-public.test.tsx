@@ -19,7 +19,7 @@ const mockBundle = {
   profile: {
     id: 'adofai', title: '冰与火之舞', ratingLabel: 'RANKED SCORE', ratingDigits: 0,
     bestSections: [{ id: 'top20', title: 'Top 20 Impact', size: 20 }],
-    capabilities: { hasCatalog: true, hasRecords: true, hasBestList: true, hasTools: false },
+    capabilities: { hasTools: false },
   },
   payload: {
     kind: 'adofai', player: mockPlayer,

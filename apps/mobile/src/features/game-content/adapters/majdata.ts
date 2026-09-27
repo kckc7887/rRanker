@@ -1,23 +1,7 @@
 import type { ScoreCardPresentation, SongRowPresentation } from '../presentation';
 import { MAJDATA_NAMES, MAJDATA_ORDER, type MajdataScore, type MajdataRecent, type MajdataSong } from '@/domain/majdata';
-import type { GameChart, GameContentAdapter } from '@/domain/game-content';
-import type { SimaiStatistics } from '@/features/simai-chart-preview/statistics';
 
 export type MajdataCard = { key: string; songId: string; title: string; level: number; difficulty: string; dx: number; classic?: number; combo: number; timestamp?: string | null; hash?: string };
-type MajdataRawChart = { song: MajdataSong; level: number; statistics?: SimaiStatistics };
-function normalizeChart(raw: MajdataRawChart): GameChart<'majdata-net', MajdataRawChart> {
-  return { gameId: 'majdata-net', songId: raw.song.id, chartId: `${raw.song.id}:${raw.level}`, order: raw.level,
-    libraryRef: { type: 'SD', levelIndex: raw.level }, label: MAJDATA_NAMES[raw.level], level: raw.song.levels[raw.level], charter: raw.song.designer,
-    notes: raw.statistics ? [{ key: 'notes', values: Object.entries(raw.statistics.counts).map(([key, value]) => ({ key, label: key.toUpperCase(), value })) }] : [], extension: raw };
-}
-export const majdataContentAdapter: GameContentAdapter<'majdata-net', MajdataSong, MajdataRawChart, MajdataCard, MajdataSong, MajdataRawChart, MajdataCard> = {
-  gameId: 'majdata-net', normalizeChart,
-  normalizeSong: song => ({ gameId: 'majdata-net', songId: song.id, title: song.title, artist: song.artist,
-    metadata: { hash: song.hash, designer: song.designer, uploader: song.uploader, timestamp: song.timestamp, description: song.description },
-    charts: MAJDATA_ORDER.filter(level => song.levels[level]?.trim()).map(level => normalizeChart({ song, level })), extension: song }),
-  normalizeScore: card => ({ gameId: 'majdata-net', songId: card.songId, chartId: `${card.songId}:${card.level}`, order: card.level,
-    libraryRef: { type: 'SD', levelIndex: card.level }, key: card.key, title: card.title, extension: card }),
-};
 export function majdataRecordCard(score: MajdataScore): MajdataCard {
   return { key: `${score.chartInfo.id}:${score.hash}:${score.chartLevel}`, songId: score.chartInfo.id, title: score.chartInfo.title,
     level: score.chartLevel, difficulty: score.chartInfo.levels[score.chartLevel] ?? '', dx: score.acc.dx, classic: score.acc.classic,

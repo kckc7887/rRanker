@@ -5,10 +5,10 @@
  * PGR 与 RPE 谱面支持观赏预览，PEC/PBC 由调用方给出明确提示。
  */
 
-import { infoValue } from '@/services/phira-chart-notes';
-import { rpeBundleRelativePath } from '@/domain/phira-rpe-resource-path';
+import { infoValue } from './phira-chart-info';
+import { rpeBundleRelativePath } from '@/domain/rpe-resource-path';
 
-export { rpeBundleRelativePath as sanitizeRpeBundleFileName, rpeResourceUrl } from '@/domain/phira-rpe-resource-path';
+export { rpeBundleRelativePath as sanitizeRpeBundleFileName, rpeResourceUrl } from '@/domain/rpe-resource-path';
 
 export type PhiraChartZipFileEntry = {
   name: string;

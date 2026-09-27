@@ -1,10 +1,10 @@
 import { releaseFixture } from './fixtures/phigros-release';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
-  loadPhigrosChartPreviewBundle,
   phigrosChartPreviewLevelLabel,
   resolvePhigrosChartPreviewAssetBundle,
 } from '@/domain/phigros-chart-preview';
+import { loadPhigrosChartPreviewBundle } from '@/services/phigros-chart-preview-resources';
 
 const current = {
   gameVersion: '9.9.9',

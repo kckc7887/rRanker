@@ -11,6 +11,20 @@ function canceledError(): ProviderError {
   return new ProviderError('unknown', '已取消', false);
 }
 
+/**
+ * 每次尝试前的共同入口：先看取消，再复核调用方给的账号资格。
+ * 资格断言缺省是空操作，写入方不必自己判断是否传了断言。
+ */
+function createAttemptGuard(
+  signal?: UploadAbortSignal,
+  assertEligible?: () => void,
+): () => void {
+  return () => {
+    if (signal?.aborted) throw canceledError();
+    assertEligible?.();
+  };
+}
+
 function waitForRetry(ms: number, signal?: UploadAbortSignal): Promise<void> {
   return new Promise((resolve, reject) => {
     if (signal?.aborted) {
@@ -38,6 +52,10 @@ export async function uploadRecordsToDivingFish(
   importToken: string,
   records: DivingFishUploadRecord[],
   signal?: UploadAbortSignal,
+  options: {
+    /** 每次尝试前的资格复核：账号已失效时立即停止，不再向上游写入。 */
+    assertEligible?: () => void;
+  } = {},
 ): Promise<{ uploaded: number }> {
   if (!importToken.trim()) {
     throw new ProviderError('authentication', '上传需要 Import-Token', false);
@@ -47,11 +65,13 @@ export async function uploadRecordsToDivingFish(
   }
 
   let lastError: unknown;
+  const assertUsable = createAttemptGuard(signal, options.assertEligible);
   for (const delay of RETRY_DELAYS_MS) {
-    if (signal?.aborted) throw canceledError();
+    assertUsable();
     if (delay > 0) {
       await waitForRetry(delay, signal);
     }
+    assertUsable();
     try {
       const controller = new AbortController();
       const timeout = setTimeout(() => controller.abort(), 120_000);

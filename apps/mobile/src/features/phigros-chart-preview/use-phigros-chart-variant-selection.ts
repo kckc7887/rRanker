@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react';
 import { useNotification } from '@/components/AppNotification';
 import { useAppLifecycle } from '@/state/app-lifecycle';
-import { loadPhigrosChartPreviewVariants, phigrosChartPreviewLevelLabel } from '@/domain/phigros-chart-preview';
+import { phigrosChartPreviewLevelLabel } from '@/domain/phigros-chart-preview';
+import { loadPhigrosChartPreviewVariants } from '@/services/phigros-chart-preview-resources';
 import type { PhigrosChartPreviewInput } from './chart-preview-input';
 
 type Selection = { target: PhigrosChartPreviewInput; variantIndex?: number; error?: string };

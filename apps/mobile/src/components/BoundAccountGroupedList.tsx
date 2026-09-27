@@ -15,8 +15,7 @@ import { ChunithmRatingTag } from '@/components/ChunithmRatingTag';
 import { DxRatingTag } from '@/components/DxRatingTag';
 import { PhigrosAccountTags } from '@/components/PhigrosAccountTags';
 import { TintedRatingTag } from '@/components/TintedRatingTag';
-import { TUF_RATING_THEME } from '@/components/adofai/TufOverviewDetails';
-import { MUSE_DASH_RATING_THEME } from '@/components/musedash/MuseDashOverviewDetails';
+import { boundAccountRatingTag } from '@/features/game-content/account-rating-tags';
 import { groupBoundAccountGameIds, type BoundAccount } from '@/domain/bound-account';
 import { findGame, type GameId } from '@/domain/game-bind-options';
 import { familyForGameId } from '@/domain/game-mode-family';
@@ -77,7 +76,7 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
   onToggleGame: (gameId: GameId) => void;
   onSelectAccount?: (account: BoundAccount) => void;
   renderActions?: (account: BoundAccount) => ReactNode;
-  /** 账号行 Rating 标签槽位：提供时替换内置各游戏标签（如 osu PP 标签）。 */
+  /** 账号行 Rating 标签槽位：提供时替换内置各游戏标签（如 osu PP 标签，由调用方注入）。 */
   renderRatingTag?: (account: BoundAccount) => ReactNode;
   emptyText?: string;
   hydrationEnabled?: boolean;
@@ -143,22 +142,7 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
         />
       ) : null)
       ?? (account.gameId === 'phigros' ? <PhigrosAccountTags rks={account.scoreDisplay} challengeModeRank={account.challengeModeRank} /> : null)
-      ?? (account.gameId === 'adofai' ? (
-        <TintedRatingTag
-          theme={TUF_RATING_THEME}
-          display={account.scoreDisplay}
-          accessibilityLabel={`RANKED SCORE ${account.scoreDisplay}`}
-          testID="tuf-rating-tag"
-        />
-      ) : null)
-      ?? (account.gameId === 'musedash' ? (
-        <TintedRatingTag
-          theme={MUSE_DASH_RATING_THEME}
-          display={account.scoreDisplay}
-          accessibilityLabel={`Rating ${account.scoreDisplay}`}
-          testID="musedash-rating-tag"
-        />
-      ) : null)
+      ?? boundAccountRatingTag(account)
       ?? (scoreTheme ? <TintedRatingTag theme={scoreTheme} display={account.scoreDisplay}
         accessibilityLabel={`${account.scoreLabel} ${account.scoreDisplay}`} /> : null);
     return <View key={account.id} testID={`account-card-${account.id}`}

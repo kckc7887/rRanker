@@ -22,23 +22,65 @@ app 路由 / 游戏容器
 
 ### 结构检查
 
-`npm run check:architecture` 解析生产 TypeScript 的静态导入、导出、require 和动态导入，
-检查游戏组件和游戏 `screens` 的跨游戏组件引用、公共核心反向引用游戏组件、领域层反向依赖 UI/功能层，以及公共核心
-对具体游戏 ID 的比较与 switch。注册表、中央编排和游戏适配器保留显式分派。
-Phigros 与 Phira 的共同徽章和分值结构由 `game-content` 提供；游戏包装层提供文本和主题。
-State 不得反向引用组件，存储与 `storage-management` 执行核心不得引用 Hook。
-规则入口 `scripts/lib/architecture-boundaries.mjs` 的 `inspectArchitectureSources(entries, games)`
-由命令行和允许/拒绝源码合同共同使用。结构检查与虚构游戏合同一起使用，不能替代对新间接依赖和业务分支的审查。
+`npm run check:architecture`（`scripts/check-architecture.mjs`）解析 `src` 与 `app` 下的全部生产 `.ts`/`.tsx`
+（import、export、`require` 与字符串字面量参数的动态 `import()`），按显式登记表判定模块归属并套用依赖矩阵，
+通过时打印扫描文件数、`src + app` 范围与规则摘要：
+
+- 归属登记在 `scripts/lib/architecture-modules.mjs` 的 `GAME_MODULES`：每个游戏模块声明自己拥有的组件目录
+  （`components/<dir>/`）、页面文件（`screens/<File>.tsx`）与别名前缀；别名只作用于 `MODULE_SCOPED_LAYERS`
+  的 `domain`/`features`/`hooks`/`providers`/`services`，比较时忽略大小写与短横线（`muse-dash` 与 `MuseDash` 等价）。
+  `SHARED_COMPONENT_DIRS`、`SHARED_SCREENS` 登记公共组件目录与公共页面文件。**未登记的组件目录或页面文件直接失败**，
+  因此新增游戏即使页面名与游戏 ID 不同（例如 `TufScreens`）也必须登记，不会因命名差异漏检。
+- 依赖矩阵在 `scripts/lib/architecture-boundaries.mjs`：未登记的模块归属、`src` 反向依赖路由层、
+  跨游戏模块依赖（任一侧属于游戏界面：组件目录、游戏页面与 `features/**` 游戏模块）、
+  公共核心反向依赖游戏模块、领域层反向依赖 UI（`components`/`features`/`hooks`/`screens`/`theme`）、
+  领域层非类型导入依赖 `state`/`storage`/`services`/`providers`（类型导入单独允许）、
+  状态层反向依赖 `components`/`screens`、存储执行核心（`storage/**` 与 `features/storage-management/**`）
+  反向依赖 `components`/`hooks`/`screens`、Provider 层反向依赖 `components`/`features`/`hooks`/`screens`/`state`，
+  服务层的运行时导入不得指向 `hooks`。
+- 共享渲染核心（`SHARED_RENDER_ROOTS`：`components/game-content/`、`features/best-image/`、
+  `features/chart-download-shared/`、`features/chart-preview-shared/`）不得按具体游戏 ID 分支：
+  比较或 `switch` 游戏身份选择器（`game` / `gameId` / `kind`）与游戏 id 字面量都会被拦；
+  `SHARED_DISPATCH_ALLOWED` 里的组合边界保留显式分派权限（`features/game-content/adapters/`、
+  `domain/game-bind-options`、`domain/game-profile`、`domain/game-mode-family`、`domain/game-data`、`domain/game-content`）。
+- 路由层 `app/**` 是组合边界：允许选择游戏页面与按游戏分派，但 `src` 不得反向依赖 `app`。
+- 生产边界没有默认过渡豁免；嵌套 `screens/maimai/` 等游戏页面按登记归属校验。混合 import 中的值与类型边分别判断，只有完整的类型导入可使用类型规则。
+- 允许/拒绝源码合同由 `tests/architecture-boundaries.test.ts` 覆盖（边界反例、共享渲染分派负例、
+  未登记组件目录与页面文件的负例、再导出/相对路径/动态导入/require 绕行负例、全具名 `type` 导入负例，
+  以及合法组合必须通过）。`tests/shared-entrypoint-boundaries.test.ts` 另外钉住公共入口清单
+  （`AccountSwitchSheet`、`BoundAccountGroupedList`、`ProviderLoginSheet`、`MaimaiFilterBar`、
+  `features/best-image/build-best-image-html.ts`）不得直接依赖游戏模块，且边界配置不得为它们保留豁免条目。
+  结构检查不能替代对新间接依赖和业务分支的审查。
 
 ## 领域与展示契约
 
 | 能力 | 权威入口与主要导出 | 使用边界 | 主要验证 |
 |---|---|---|---|
-| 跨游戏内容模型 | `src/domain/game-content.ts`：`GameContentId`、`GameChartIdentity`、`GameSong`、`GameChart`、`GameScore`、`GameNoteGroup`、`GameContentAdapter` | 只承载稳定身份、排序、曲库映射和可展示语义；游戏字段保留在有类型的 `extension` | `game-content-adapters.test.ts`、`future-game-render-contract.test.tsx` |
-| 展示模型 | `src/features/game-content/presentation.ts`：`MetricPresentation`、`BadgePresentation`、`ScoreCardPresentation`、`SongRowPresentation`、`BestSectionPresentation`、`ChartCardPresentation` | 页面容器生成 presentation；共享组件不读取游戏 Hook 或原始 Provider DTO | `game-content-adapters.test.ts`、`game-content-host-contract.test.tsx` |
-| 游戏适配器 | `src/features/game-content/adapters/index.ts` 及同目录游戏适配器 | 在此完成原始歌曲、谱面、成绩和展示模型转换；允许适配器解释本游戏字段 | `game-content-adapters.test.ts` |
-| 当前账号数据包 | `src/domain/game-data.ts` 的 `GamePayload`、`GameDataBundle`；`src/hooks/use-game-data.ts` 与 `src/hooks/game-data-loaders.ts` | 判别联合保留各游戏载荷；Hook 保留查询键、查询选项与结果发布，游戏分派经加载器注册表执行，不是无游戏分支的公共渲染组件 | 游戏 Provider、缓存和页面测试 |
-| 游戏与能力注册 | `src/domain/game-bind-options.ts`、`game-profile.ts`、`game-mode-family.ts`、`game-toolbox.ts` | 新游戏或模式在注册表组合；页面通过查询函数消费，不复制注册信息 | `game-bind-options.test.ts`、`game-mode-family.test.ts` 及工具箱测试 |
+| 物量分组展示形状 | `src/domain/game-content.ts`：`GameNoteValue`、`GameNoteGroup` | 只描述「键 + 标签 + 若干数值」的展示形状，各游戏自行构造；消费方是 `features/game-content/presentation.ts` 的 `NoteGroupPresentation`、`features/game-content/adapters/adofai.ts`、`features/game-content/adapters/phira.ts` 与 `domain/majdata.ts` 的 `majdataNoteGroup(counts)` | `majdata.test.ts` |
+| 展示模型 | `src/features/game-content/presentation.ts`：`TextEffect`、`MetricPresentation`、`BadgePresentation`、`ScoreCardPresentation`、`SongRowPresentation`、`BestSectionPresentation`、`ChartCardPresentation`、`NoteGroupPresentation`、`SongDetailRoute` | 页面容器生成 presentation；共享组件不读取游戏 Hook 或原始 Provider DTO；`SongDetailRoute` 是 `domain/detail-target.ts` 的 `DetailTargetRoute` 别名 | `game-content-adapters.test.ts`、`game-content-host-contract.test.tsx` |
+| 游戏适配器 | `src/features/game-content/adapters/index.ts` 及同目录各游戏适配器：`presentMaimaiScore`、`presentPhigrosScore`、`presentChunithmScore`/`presentChunithmSong`、`presentPhira*`、`presentRizline*`、`presentStandardSong`、`presentTuf*`/`formatTufAccuracy`、`presentMuseDash*`/`formatMuseDashScore`/`formatMuseDashAcc`/`isNumericMuseDashLevel` | 只做「游戏真实模型 → 展示模型」转换：原始 DTO、领域类型与字段解释留在各游戏领域层与 Provider；这里不承载归一化存储或缓存语义 | `game-content-adapters.test.ts` |
+| 详情定位 | `src/domain/detail-target.ts`：`DetailTarget`、`DetailTargetRoute`、`DetailTargetParams`、`decodeDetailTarget(gameId, params)`、`encodeDetailTarget(target)`、`detailTargetHref(route)`、`DetailTargetErrorCode`；`src/domain/user-library.ts`：`libraryDetailTarget(target)` | `/songs/[songId]` 的唯一语义来源；非法、缺失、重复或跨游戏槽位返回可判别错误。个人曲库先生成游戏专属 target，再编码路由，不把内部存储槽位直接复制到 URL；没有详情能力的条目禁用跳转 | `detail-target.test.ts`、`detail-target-navigation.test.tsx` |
+| 当前账号数据包 | `src/domain/game-data.ts`：`GamePayload`、`GamePayloadKind`、`GAME_PAYLOAD_KIND_BY_GAME_ID`、`GamePayloadOf<G>`、`GameDataBundleFor<G>`、`GameDataBundle`、`gameDataBundle()`、`gameAccountMetadata<G>()`；`src/services/game-data-loaders.ts`：`GAME_DATA_LOADERS`、`GameDataLoader`、`GameDataLoaderContext`、`GameDataLoadResult`、`selectGameDataLoader`、`loadGameDataBundle` | `GAME_PAYLOAD_KIND_BY_GAME_ID` 是 `satisfies Record<GameId, …>` 的穷尽映射（保留测试 id 为 `null`），`GameDataBundleFor<G>` 将游戏、Provider、`GameProfile<G>` 和载荷配对，`gameDataBundle` 同时校验运行时身份；`GAME_DATA_LOADERS` 也是 `Record<GameId, GameDataLoader>` 穷尽映射，`selectGameDataLoader` 对未登记游戏直接抛错，缺省没有舞萌回退分支。加载器只读取与装配，不持有查询客户端；曲库由 `services/game-data-loader-queries.ts` 的 `gameDataCatalogQueries(client)` 注入，真实中二与 osu! Provider 从会话的 `protocolScoreProvider` 复用，发布数据包、读写其它实体与失效都经 `GameDataLoaderContext` 的 `publish` / `readEntityValue` / `publishEntityValue` / `invalidateEntityValue` 端口，后台刷新句柄经 `GameDataLoadResult.background` 交回适配层登记 | `game-data.test.ts`、`game-data-loader-registry.test.tsx`、`game-registry.type-check.ts`、`game-data-refresh-contract.test.ts` |
+| 游戏与能力注册 | `src/domain/game-bind-options.ts`：`SUPPORTED_GAME_IDS`、`OSU_MODE_GAME_IDS`、`RESERVED_GAME_IDS`、`GAME_IDS`、`GameId`、`GAME_OPTIONS`、`PROVIDER_IDS`、`INTERNAL_PROVIDER_IDS`；`src/domain/game-registry.ts`：`gameRegistrationSnapshot`、`gameRegistrationIssues`、`assertGameRegistryComplete`；`src/domain/game-profile.ts`：`GameProfile`、`GameCapabilities`、`getGameProfile` | `GameId` 只有这三份列表一个来源，正式游戏、osu! 四模式与保留测试 id 分类登记；登记校验要求正式游戏都有添加入口、展示资料与工具箱，保留测试 id 不得进入添加入口，查分器在不同游戏不得登记不同绑定方式；`GameCapabilities` 当前只有真实被消费的 `hasTools`，由 `getGameToolbox(id).tools.length > 0` 派生 | `game-registry.test.ts`、`game-registry.type-check.ts`、`game-bind-options.test.ts`、`game-toolbox.test.ts`、`game-data.test.ts`、`overview-capability-contract.test.tsx` |
+
+刷新结果与缓存来源分开表达：`src/domain/refresh-result.ts` 的 `RefreshResult<T, Target>` 是
+`{ status, value, metadata, requested, completed, failures }`，`RefreshStatus` 为
+`success` / `partial` / `failed` / `cancelled` / `noop`；`SnapshotMetadata`（`provider` / `label` /
+`fetchedAt` / `revision`）只描述「谁在什么时候抓到的」，不表达新鲜度或刷新是否成功。
+构造入口按终态分开（`successfulRefresh`、`partialRefresh`、`failedRefresh`、`cancelledRefresh`、
+`noopRefresh`），并强制 `completed ⊆ requested`、`partial` 必须带失败项、无可用数据时不得带快照元数据。
+`RefreshFailure` 的 `code` 是机器判定字段（是否重新登录只看它）、`target` 供只重试失败项使用、
+`diagnostic` 只进诊断链路、`retryable` 决定是否属于可重试项；`refreshSucceeded`、`refreshRetryTargets`、
+`refreshNeedsLogin`、`refreshFailureFromError` 是消费入口，`refreshedFetchedAt(result, previousFetchedAt)`
+表达写回时间规则：只有 `success` / `noop` 推进抓取时间。缓存读取用 `cachedSnapshotSource(source)` 只补过期标记、
+保留原提供方与抓取时间；`snapshotMetadataOf` 拒绝把 `cache` 当作提供方；
+`assertFreshSnapshotSource(source)` 让缓存命中或网络兜底不能被当成刷新结果落盘。
+中二个人数据（`services/chunithm-personal-service.ts` 的 `refresh()`，返回
+`RefreshResult<ChunithmPersonalSnapshot, ChunithmPersonalPart>`）按 `player` / `scores` / `bests`
+三个分项汇总：全部分项成功才用新抓取时间走 `successfulRefresh`，部分成功走 `partialRefresh` 并保留旧元数据与过期标记；加载器和公共查询终态保留分项结果，认证失败不会改成 `no_data`。
+失败项带 `target` 供只重试失败项，取消返回 `cancelledRefresh`。
+合同见 `refresh-result.test.ts`、`cache-first.test.ts`、`chunithm-personal-service.test.ts`、
+`chunithm-personal-refresh.test.ts`、`rizline-refresh-result.test.ts`。
 
 `GameOption.icon` / `familyIcon` 与 `ProviderOption.icon` 保持 `ImageSourcePropType`。
 `GAME_OPTIONS` 通过静态图片导入提供包内模块 ID，`findGame(id)` / `findProvider(id)`
@@ -51,32 +93,108 @@ Muse Dash 与 MuseDash.moe 共用同一份图片，示例账号共用示例图�
 `remote-image-cache.test.ts` 和 `remote-image.test.tsx` 覆盖包内源的缓存边界。
 Jest 的图片模拟不用于区分图标身份，图标身份差异由 Vitest 的真实静态资源导入验证。
 
+中二单曲数值分两层：`domain/chunithm-rating.ts` 的 `rawChunithmChartRating` 是全精度值，
+`chunithmChartRatingDisplay` 是两位小数向下取整的展示值。OVER POWER 与反推最低分数只读 raw，
+展示与档位表只读 display；定数 13.7、分数 1,000,099 的 raw Rating 为 14.7099，展示值为 14.70。
+raw 是公式的数学中间值，不带「成绩不可能为负」的领域下限（低定数配 800,000~900,000 分时可以为负），
+施加 0 下限是 display 的职责。公式内部以定数 ×10000 定点、Rating ×6×10⁹、OP ×30000 的整数运算实现，
+反推因此用整数比较而不是浮点相等。
+反推入口必须给 `clear`，返回 `ChunithmMinimumScore`（`reachable` / `unreachable` + `lampMinScore`）：
+搜索从灯态最低分开始，候选分数还要通过正算所用的同一 `parseChunithmChartInput` 复核才算可达；
+纯公式解由 `formulaMinimumScoreForChunithm*` 单独保留，它不保证合法性，界面不得直接称其为最低分。
+`parseChunithmChartInput({ levelValue, score, clear })` 是唯一输入边界，返回
+`violations`（`level_out_of_range` / `score_out_of_range` / `lamp_score_conflict`）与规范化后的输入；
+调用方在 `violations` 非空时不得把值送进公式。定数上限、分数上限与各灯最低分数分别读
+`CHUNITHM_LEVEL_VALUE_MAX`、`CHUNITHM_SCORE_MAX`、`CHUNITHM_CLEAR_TIER_MIN_SCORE`，
+灯文案读 `CHUNITHM_CLEAR_TIER_LABELS`。合同见 `chunithm-rating.test.ts` 与 `chunithm-tools-screens.test.tsx`。
+档位表的最大值使用真实满分 1,009,000 的展示结果；定数 13.705 的上界为 15.85，
+不以未截断定数加 2.15 替代同一公式的结果。
+
+Phira 批量刷新把「一次操作的结果」与「缓存快照」分开：`PhiraBestRefreshResult` 是
+`{ refresh, snapshot }`，`refresh.status` 为 `success` / `partial` / `failed` / `noop`
+（`noop` 表示没有需要刷新的谱面），并给出 `updatedChartIds`、`requestedChartIds` 与
+`failures`（每项带可重试的 `target`）。只提交成功项，请求过但全部失败时不写入、不推进
+`source.updatedAt`，首次没有缓存且全失败时 `snapshot` 为 null 但摘要仍然存在；
+`refreshPhiraBestTargets` 供只重试失败项使用，缓存回退不等于刷新成功。
+合同见 `phira-service.test.ts`、`phira-cache.test.ts`、`phira-best-refresh.test.tsx` 与
+`sqlite-storage-integration.test.ts`。
+
+Phigros 实力分析的政策数值只有一个来源：`domain/phigros-strength-analysis.ts` 的只读
+`PHIGROS_STRENGTH_POLICY`（阈值偏移与上限、计入池的最低评级、小样本与补充上限、细分标签票数、
+画像阈值与主标签轴数、推荐条数与最小增益、推荐 Acc 搜索区间）。页面说明由
+`describePhigrosStrengthPoolPolicy()` 与 `describePhigrosStrengthPolicyTexts()` 生成，
+`resolvePhigrosStrengthProfileLabel` 可注入变体政策，UI 使用同一政策数值和生成文案。
+合同见 `phigros-strength-analysis.test.ts` 与 `phigros-strength-analysis-screen.test.tsx`。
+内部分析只使用 Phigros 的 `level`、`difficultyConstant`、`acc` 与 `rks` 投影，
+共享成绩只在输入边界转换，不伪造舞萌 DX 字段。是否已 Phi 按真实 100% 判定，
+不随推荐搜索上限变化；均衡标签按实际主轴数生成，五轴政策保留既有文案。
+
+Phigros 推分的合法参数集中解析：`PHIGROS_PUSH_LIMITS`、`parsePhigrosPushDelta`、
+`parsePhigrosPushChartCost`、`resolvePhigrosPushRequest` 与 `PhigrosPushInputError` 是唯一输入边界，
+非法 delta 或预算（`NaN`、`Infinity`、0、负数、超出上限、非整数）在领域侧明确拒绝，
+不会被编码成 `unreachable` / `verified` 之类的搜索结论；`app/tools/push-rks.tsx` 使用同一解析函数。
+合同见 `phigros-push.test.ts` 与 `phigros-push-screen.test.tsx`。
+搜索池上限必须为正安全整数；量化后的目标必须保持有限，非法输入在搜索前拒绝。
+Muse Dash 成绩排序只累计有限准确率，未知准确率稳定排在末尾，不能混入原始分数作为百分比。
+
+Phira 曲库分页用判别状态表达搜索进度：`domain/phira.ts` 的 `phiraCatalogPageState` 返回
+loading / error / ready，ready 恒带 `items`（可为空）并独立描述 `hasNextPage`、`scanning`、
+`paused`（扫描预算耗尽）、`nextPageFailed` 与 `exhausted`；`phiraCatalogListView` 把它映射成
+列表与空态，预算耗尽保留“继续扫描”、后页失败保留已有项，不把“尚未搜完”写成“全库无结果”。
+自动续扫由 `phiraCatalogQueryIdentity`、`phiraCatalogScanObservation` 与 `phiraCatalogScanNext`
+驱动：推进只读「查询身份 + 已成功接收的页数与末页游标」，不依赖 UI 观察过一次请求中状态，
+同一位置只请求一次，因此快速响应与慢响应都能逐页推进且不会并发重复请求同一页。查询身份改变或当前请求取消时撤销游标占位，切换回来可重新扫描同一页。
+Muse Dash 的成就筛选依赖单曲 miss 明细：`museDashMissDetail` 把 `null`（pending）、
+`undefined`（unknown）、`MUSE_DASH_MISS_DETAIL_FAILED`（failed）与数值（known）分开，
+`filterMuseDashRandomCharts` 只接受 known，`museDashAchievementDetailsPending` 让抽取入口在 pending 期间等待；
+`useMuseDashPlayDetails` 返回 `{ missByChart, failedCount, retryFailed }`，记录页据此显示失败提示并提供
+只重试失败项的重试入口，随机抽取页在失败期间暂停抽取，failed 与 unknown 保持独立状态。合同见
+`phira-catalog-pagination.test.ts`、`phira-catalog-scan.test.tsx`、`phira-ui.test.tsx`、
+`muse-dash-content-adapter.test.ts`、`muse-dash-play-details.test.tsx`、
+`musedash-random-charts-achievement.test.tsx` 与 `musedash-song-detail-route.test.tsx`。
+
 ## Provider、仓库与数据服务
 
 | 能力 | 权威入口与主要导出 | 使用边界 | 主要验证 |
 |---|---|---|---|
-| Provider 契约 | `src/providers/contracts.ts`：`ProviderSession`、`AuthProvider`、`ScoreProvider`、`CatalogDrivenScoreProvider`、`CatalogProvider`、`DetailedCatalogProvider` | 每个游戏保留自己的 DTO 与 Schema；示例账号的曲库驱动成绩实现 `CatalogDrivenScoreProvider` | 各 Provider 测试、`maxed-*-test-provider.test.ts` |
-| HTTP 请求 | `src/providers/http-json.ts`：`requestJson<T>(options)`、`requestBytes(options)`、`fetchProviderJson`、`retryAfterMs` | JSON 和原始字节复用同一超时、取消、重试、429 退避和错误归一化执行器；外部取消透传调用方 reason；游戏提供 base URL、Schema 与场景文案。Phira 查询经 `requestJson` 单次执行，预取消不发请求 | 各 Provider 测试、`phigros-resources.test.ts`、`phira-provider.test.ts` |
+| Provider 契约 | `src/providers/contracts.ts`：`ProviderSession`、`RizlineSession`、`LoginCredentials`、`AuthProvider`、`ScoreProvider`、`CatalogDrivenScoreProvider<TCatalog>`、`AnyScoreProvider`、`isCatalogDrivenScoreProvider`、`CatalogProvider`、`DetailedCatalogProvider`、`requireDetailedCatalogProvider` | 每个游戏保留自己的 DTO 与 Schema；示例账号的曲库驱动成绩实现 `CatalogDrivenScoreProvider`。`DetailedCatalogProvider`（歌曲详情、别名、姓名框、收藏品）是舞萌系列曲库独有的能力集合；会话曲库槽位用 `null` 明确表达无此能力，查询禁用或通过公共守卫拒绝读取，不用伪造空曲库混合能力缺失与成功空数据，也不通过断言伪造能力 | 各 Provider 测试、`maxed-*-test-provider.test.ts`、`session-providers.test.ts`、`game-registry.type-check.ts` |
+| HTTP 请求 | `src/providers/http-json.ts`：`requestJson<T>(options)`、`requestProviderResponse<T>(options, read)`、`requestBytes(options)`、`readProviderResponseBytes(response, options?)`、`fetchProviderJson(options)`、`retryAfterMs(response, maxMs = 5000)`、`resolveTotalAttempts(options)`、`JsonRequestOptions<T>`、`ProviderJsonOptions` | JSON、字节、自定义读取和曲库读取共用超时、取消、重试与错误归一化。正文按实际流字节计数，默认 64 MiB，调用方可通过 `maxResponseBytes` 提供明确预算；Content-Length 只用于预检，超限或取消立即取消 reader。`authenticated` 或凭据请求头启用 `redirect: error`，所有请求使用 `credentials: omit`；凭据请求及响应必须与配置的服务同源。`onHttpError` 只能读取同一受限错误正文；`onResponse` 在状态、正文与 Schema 均通过后执行并等待，本机提交失败不触发网络重试。外部取消透传 reason，预取消不发请求。尝试次数优先级为 `totalAttempts` > 旧 `retries` > `extraRetries + 1`，缺省 2 次；曲库读取固定 1 次，登录及写请求显式指定 1 次 | 各 Provider 测试、`http-json-contract.test.ts`、`osu-executor-contract.test.ts`、`phigros-resources.test.ts`、`phira-provider.test.ts` |
 | 内容摘要 | `src/utils/resource-integrity.ts`：`sha256(bytes)`、`bytesToHex(buffer)`；`src/utils/crypto-subset.ts`：`uint8ArrayToWordArray(bytes)`、`bytesToBase64(bytes)`、`base64ToBytes(text)` | 通过现有 Expo Crypto 和 CryptoJS 能力计算摘要、编码；字体缓存保留摘要兼容导出，游戏不得反向依赖字体功能 | 字体缓存、Phigros 资源与存档测试 |
 | 校验发布会话 | `src/services/verified-release.ts`：`VerifiedReleaseSession<T>`、`verifyResourceBytes(bytes, asset, message)` | 调用方提供格式专属 prepare；共用消费者取消、代次、失败重读和完整候选切换；校验字节后才发布结果 | `phigros-resources.test.ts`、`rizline-resources.test.ts` |
 | Phigros 发布事务 | `src/services/phigros-resources.ts`：`phigrosResources`、`load(signal?, check?)`、`withRelease(action, signal?, check?)`、`verifyPhigrosResource(bytes, asset)`、`directory(current)`；`src/domain/account-avatar.ts`：`phigrosReleaseDirectory`、`buildPhigrosAvatarUrl(releaseDirectory, avatarName, resourceVersion?)` | Phigros 各调用方共用唯一会话发布；校验所有必需元数据后原子替换；谱面、曲绘和头像路径取 `current.manifest` 所在目录，查询参数带 `resourceVersion`；实际资源校验大小/SHA-256；失败强制绕过缓存重读一次，取消以消费者计数管理 | `phigros-resources.test.ts`、`phigros-catalog-notes.test.ts`、`phigros-score-revision.test.ts`、`account-avatar.test.ts`、`phigros-avatar-resolver.test.ts` |
-| 错误边界 | `src/providers/errors.ts`：`ProviderError`、`providerErrorFromStatus`、`providerErrorToUserMessage` | 底层 code/cause 用于诊断；可选 `needsCode` 表示应改用验证码；所有用户可见出口必须转换为可行动文案 | `consumer-copy-policy.test.ts`、各 Provider 测试 |
-| LXNS OAuth 请求 | `src/providers/lxns-oauth-request.ts` 与 `lxns-oauth.ts` | 舞萌和中二共享 OAuth 请求与令牌轮换骨架；游戏差异通过参数和账号映射表达 | LXNS OAuth、登录和 Session 测试 |
+| 错误边界 | `src/providers/errors.ts`：`ProviderError`、`providerErrorFromStatus`、`providerErrorToUserMessage`、`runProviderOperation`；`src/domain/session-vault.ts`：`SessionPersistenceError` | 固定文案区分授权准备、浏览器打开、回调、远端验证、构建配置、安全凭据与本机账号提交；原生或上游 message 不直接显示。`runProviderOperation` 给未分类异常标记当前阶段，保留已有 Provider/持久化错误与取消。安全存储在真实 Secret/KV IO 边界分别抛 `credential_storage` / `local_commit`，页面不能从一个 generic catch 推断存储原因。`needsCode` 表示应改用验证码 | `consumer-copy-policy.test.ts`、`provider-binding-errors.test.ts`、`oauth-login-failure-stages.test.tsx`、安全存储与回调测试 |
+| LXNS OAuth 请求 | `src/providers/lxns-oauth.ts`：`PendingLxnsOAuth`、`beginLxnsAuthorize`、`requireLxnsOAuthState`、`exchangeLxnsAuthorizationCode(code, state, signal?)`、`rotateLxnsTokens`、`lxnsRotationMayReplace`、`lxnsRotationAncestors`；`src/providers/lxns-oauth-request.ts`：`LxnsOAuthRequestCore`、`LxnsTokenRotationUpdate`、`LxnsOAuthRequestTexts`、`lxnsErrorFromStatus(status)` | 舞萌和中二共享 PKCE、10 分钟 state 与串行单次消费；state 必须是非空单字符串，匹配后先删除 pending 再发送换码 POST，失败也需重新授权，迟到回调不删除新授权。换码和轮换走受限公共 HTTP，token 正文最多 256 KiB，POST 只尝试一次。账号读取同样走公共执行器。轮换回调携带 `previous` / `next` 判断凭据世代；游戏差异通过参数与映射表达，状态码文案由协议显式注入 | LXNS OAuth、上传、Session 与中二 Provider 测试 |
+| osu! OAuth 授权 | `src/providers/osu-oauth.ts`：`beginOsuAuthorize`、`requireOsuOAuthState`、`exchangeOsuAuthorizationCode(code, state, signal?)`、`rotateOsuTokens` | state 使用同一进程内串行消费规则与 10 分钟期限；换码先消费 pending，公共 HTTP 禁用环境 Cookie 与自动重定向，token 正文最多 256 KiB，POST 只尝试一次。应用凭据继续由构建环境注入；缺失时抛 `configuration`，不伪装为账号验证失败。回调只在绑定服务持久化与内存投影完成后通知成功 | `osu-oauth.test.ts`、`osu-oauth-callback.test.tsx`、`oauth-login-failure-stages.test.tsx` |
+| 头像解析 | `src/services/account-avatar-resolver.ts`：`AccountAvatarResolverPorts`、`AccountAvatarResolver`、`createAccountAvatarResolver(ports)`、`StoredAccountAvatar`、`PhigrosAccountHydration`；`src/services/resolve-account-avatar.ts`：`resolveAccountAvatarUrl`、`syncAllAccountAvatars`、`hydratePhigrosAccount`；`src/services/phigros-avatar-resolver.ts`：`PhigrosAvatarResourcePort`、`PhigrosAvatarResolver`、`createPhigrosAvatarResolver(port)`、`createPhigrosAvatarResourcePort()`、`normalizePhigrosAvatarKey`、`resolvePhigrosAvatarFileName`、`resolvePhigrosAvatarUrl`、`loadPhigrosAvatarCatalog` | 端口只声明解析真正需要的读取（快照、协议读取、TUF 缓存、落盘与前台信号；Phigros 侧是别名表与当前发布），组合入口注入真实实现；调用方使用 `resolve-account-avatar.ts` 的默认装配导出，游戏与页面不得各自访问发布单例。纯映射函数（`normalizePhigrosAvatarKey`、`resolvePhigrosAvatarFileName`）可直接单测 | `account-avatar.test.ts`、`account-avatar-ports.test.ts`、`resolve-account-avatar.test.ts`、`phigros-avatar-resolver.test.ts` |
 | 示例满成绩 | `src/providers/maxed-records.ts` 的 `buildMaxedScoreRecords` | 由游戏测试 Provider 提供真实目录和映射函数，不复制通用生成循环 | `maxed-*-test-provider.test.ts` |
 | Repository | `src/repositories/{catalog,resource,snapshot,user-library}-repository.ts` | Service 依赖接口；SQLite 实现留在 `storage/`，页面不直接写数据库 | Repository、存储迁移和用户曲库测试 |
-| 缓存优先 | `src/services/cache-first.ts`：`cacheFirstLoad`、`staleCached`、`isCacheFallback` | 统一“本地首屏、后台刷新、失败保留旧数据”；调用方提供读写和游戏语义 | `cache-first.test.ts` |
+| 缓存优先 | `src/services/cache-first.ts`：`cacheFirstLoad`、`cacheFirstLoadWithBackground`、`CacheFirstLoad`、`CacheFirstLoadOptions`、`CacheFirstRefreshResult`、`staleCached`、`isCacheFallback` | 统一“本地首屏、后台刷新、失败保留旧数据”；调用方提供读写和游戏语义。`cacheFirstLoadWithBackground` 返回 `{ value, background }`：`value` 供首屏渲染，`background` 是永不 reject 的后台刷新终态句柄（`RefreshResult<T, 'data'>`），调用方不必再猜一个 Promise 返回时完成了多少。命中本地缓存时后台刷新的结果分流：取回新数据进必填的 `onFresh`，服务声明为缓存/兜底（可选 `isFallback`，缺省用 `isCacheFallback`）的结果进 `onFallback(fallback, failure)`，缓存命中与兜底都不会被当成刷新成功；后台刷新抛错进 `onRefreshFailed(failure)`，取消后三者都不发布。没有本地缓存时直接返回刷新结果，不经过这两个回调；冷启动失败直接抛出。`markStale` 决定缓存命中返回值的过期标记。取消分两层：消费者自己的 `signal` 中止只取消本次调用（终态为 `cancelled`，其它共享消费者照常拿到数据），最后一个消费者离开或缓存清理提升代次才取消共享底层任务 | `cache-first.test.ts`、各游戏缓存测试 |
 | 快照公共工具 | `src/services/snapshot-cache-utils.ts`：`makeSnapshot`、`snapshotSource`、`createInflightGuard`、`clearResourcesByPrefix` | 统一快照来源、并发去重和资源前缀清理 | 各游戏缓存测试 |
-| 曲库与别名 | `src/hooks/use-aliased-catalog.ts`：`loadAliasedCatalog`、`useAliasedCatalog` | 游戏提供目录、别名查询和合并函数；Hook 统一查询时序和来源；可选 `retry` 允许已自行恢复的服务关闭外层重试 | 曲库与搜索测试 |
-| 最终数据 Query | `src/services/game-data-query.ts`：`GAME_DATA_QUERY_VERSION`、`gameDataQueryKey`、`readSettledGameDataBundle` | 账号、游戏、Provider、会话模式共同组成键；键结构变化时统一提升版本 | 游戏数据与同步测试 |
+| 曲库与别名 | `src/services/aliased-catalog-query.ts`：`AliasedCatalogOptions`、`loadAliasedCatalog`、`aliasedCatalogSource`；`src/hooks/use-aliased-catalog.ts`：`useAliasedCatalog` | 游戏提供目录、别名查询和合并函数；服务负责加载、合并与来源，Hook 订阅规范查询选项；可选 `retry` 允许已自行恢复的服务关闭外层重试 | 曲库与搜索测试 |
+| 游戏数据实体 | `src/services/game-data-query.ts`：`GAME_DATA_QUERY_VERSION`、`gameDataQueryKey`、`GameDataQueryParams`、`GAME_DATA_QUERY_OPTIONS`、`GameDataQueryPort`；`services/tuf-query.ts`、`muse-dash-query.ts`、`phira-query.ts` 的玩家实体键与查询选项 | 账号、游戏、Provider、会话模式组成规范键。实体保存完整 snapshot，原提供方、抓取时间和过期标记跟随同一版本；总览与页面读取同一已提交值。非 React 查询选项显式接收 QueryClient，Hook 只负责订阅 | `game-data-refresh-contract.test.ts`、`game-data-entity-version.test.tsx`、`game-data-loader-registry.test.tsx` |
+| 查询适配层 | `src/services/game-data-query.ts`：`readGameDataBundle`、`publishGameDataBundle`、`publishEntityValue`、`invalidateEntityValue`、`registerGameDataBackground`、`awaitGameDataBackground`、`resetGameDataBackground`、`gameDataBackground`、`gameDataBundleStale`、`refreshGameDataBundle`、`GameDataRefreshInput`、`GameDataRefreshResult`、`GameDataRefreshTarget` | `GameDataQueryPort` 声明读取、写入、失效和可选 QueryCache 观察能力。后台发布等待真实首屏查询结束，避免新值被旧首屏覆盖；移除查询时不再发布。后台终态保留到下一次查询替换或 QueryCache 移除。主动刷新等 refetch 与后台终态，再按「后台落定值 → 已提交版本 → refetch 返回值」取值；保留 `data` / `catalog` / `player` / `scores` / `bests` 的完成项和机器失败码。服务与加载器不导入应用单例，UI 只读返回结果 | `game-data-refresh-contract.test.ts`、`cache-first-background.test.ts`、`game-data-entity-version.test.tsx`、`overview-rizline-sync.test.tsx` |
+
+曲库查询的非 React 入口位于 `services/aliased-catalog-query.ts`（`AliasedCatalogOptions`、`loadAliasedCatalog`、`aliasedCatalogSource`）与 `services/maimai-catalog-query.ts`、`chunithm-catalog-query.ts`、`phigros-catalog-query.ts`、`rizline-catalog-query.ts`。`ensure*Catalog(client, …)` / `refresh*Catalog(client, …)` 显式接收 QueryClient；`useAliasedCatalog` 与游戏 Hook 只订阅规范选项。加载器由 `gameDataCatalogQueries(client)` 读取这些入口，不调用 Hook。
 
 `services/phigros-game-data-service.ts` 的 `loadPhigrosGameData` 接收账号、成绩/曲库 Provider、
 快照缓存、会话数据状态、AbortSignal 和写入断言，负责首次兼容快照与显式云存档读取。
-服务不调用 Hook；`useGameData(enabled = true)` 保留查询键、返回结构和游戏分派，
-分派经 `game-data-loaders.ts` 的 `GAME_DATA_LOADERS` 注册表进入各游戏加载器。
+服务不调用 Hook；`useGameData(enabled = true)` 负责查询键与查询选项、把发布/读取/失效端口
+注入加载器并登记后台刷新句柄，返回结构为查询结果加 `profile`、`activeGameId` /
+`activeProviderId` / `activeAccountId` 与 `isDataStale`。分派经 `game-data-loaders.ts` 的
+`GAME_DATA_LOADERS` 注册表进入各游戏加载器。
 `domain/game-data.ts` 的 `PhigrosGameDataPayload` 和 `phigrosPayloadFromSnapshot(snapshot, catalogSource, details?)`
 统一真实/示例账号的纯展示转换，缓存模块保留载荷类型兼容导出。
 读取与头像解析结束及排队写入时均复核发布修订、取消和写入代次；离线保留已有快照。
 合同包括 `phigros-game-data-service.test.ts`、`phigros-score-revision.test.ts` 与原缓存/页面测试。
+
+Phigros 成绩在自己的领域层建模：`domain/phigros.ts` 的 `PhigrosScoreEntry` 是存档原始成绩，
+`PhigrosScoreRecord` 是 Phigros 真实语义的成绩记录，`phigrosSharedScoreRecord(record)` 是投影到共享
+`ScoreRecord` 的唯一边界（`type` 固定 `SD`、舞萌语义的 `dxScore`/`fc`/`fs` 只在这里显式赋值）。
+单条转换入口为 `toPhigrosScoreRecord`，批量入口为 `gameRecordToPhigrosScoreRecords` /
+`gameRecordToScoreRecords`；`PhigrosScoreProvider.getRecords` 经
+`gameRecordToPhigrosScoreRecords(...).map(phigrosSharedScoreRecord)` 产出共享成绩，
+`getBestSections` 的 Phi3 / Best27 也经 `toPhigrosScoreRecord` → `phigrosSharedScoreRecord`，
+共享卡片不得把舞萌字段当成 Phigros 的领域事实。合同见 `phigros-score-records.test.ts`。
 
 `services/phigros-kyou-cache.ts` 的 `loadPhigrosKyouAliases(signal?)` / `resetPhigrosKyouAliasesCache()`
 供查询和存储清理共同使用。一小时缓存与共享在途请求分开管理，调用前捕获本地及游戏代次，
@@ -97,7 +215,7 @@ Jest 的图片模拟不用于区分图标身份，图标身份差异由 Vitest �
 `m4-score-lists.test.tsx` 覆盖。
 
 Phigros 曲库复用 `loadAliasedCatalog` / `useAliasedCatalog` 的来源与别名合并，
-`use-phigros-catalog.ts` 的 `refreshPhigrosCatalog()` 统一主动更新入口，
+`services/phigros-catalog-query.ts` 的 `refreshPhigrosCatalog(queryClient)` 统一主动更新入口，
 并经 `PhigrosCatalogProvider.getCatalog(signal?, checkChapters?)` 校对独立的 `chapters.csv`。
 曲绘三档和头像 URL 经 `phigrosReleaseDirectory` / `directory(current)` 使用 `current.manifest` 所在发布目录，不把 `gameVersion` 拼进对象路径。
 `useGameResourceSync()` 通过资源刷新注册表在启动恢复及游戏进入时调用 Phigros/Rizline 各自刷新入口；
@@ -138,10 +256,10 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
   `isRizlineTokenExpired(token, 60)` 在无存档密码时预判过期。AES-GCM 解密及官方 DTO 是
   游戏专属边界，不套用 Phigros 存档结构；二进制编码复用 `utils/crypto-subset.ts`，
   解密交给 `@noble/ciphers` 并验证认证标签。
-- `loadRizlineCached`、`loadRizlineFresh`、`loadRizlineWithFallback` 和 `awaitRizlineFresh`
+- `loadRizlineCached`、`loadRizlineFresh`、`loadRizlineWithFallback`
   复用 SQLite 资源仓库、`snapshotSource`、`createInflightGuard.share`、账号/游戏写入代次及
-  `cacheFirstLoad`。`loadRizlineFresh` 从 `useSession` 取最新会话；认证失败时若店里 token
-  已变更则重试，否则解密本地密码换票一次，同一 inflight 内只换一次。换票失败删除密码。
+  `cacheFirstLoad`。`loadRizlineFresh` 从 `useSession` 取最新会话；认证失败时若 Session 中 token
+  已变更则重试，否则解密本地密码换票一次，同一 inflight 内只换一次。仅明确认证失败删除密码；网络、取消或本地提交失败保留密码。
   `clearRizlineAccount` 与 `SecureSessionStore.removeAccount` 都删除密码引用。
   登录及同步都通过 `cacheRizlineSave(id, save, signal?)` 校验账号并保存有效存档。
   `cacheFirstLoad` 可选 `onFallback` 只发布失败状态；不会把兜底缓存送给 `onFresh`。
@@ -168,7 +286,7 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
   独立项目的 `tests/test_publisher.py` 覆盖重复发布、并发校验、指针顺序、精确清理与删除失败；
   调度、凭据及归档配置见技术架构文档的 Rizline 发布说明。
 - `rizlinePayloadFromSnapshot(snapshot, catalog?)` 保留原快照与官方指标，集中构造成绩和
-  推定分组。曲库 Hook 更新后通过当前 QueryClient 重建派生字段，不额外请求官方存档。
+  推定分组。`services/rizline-catalog-query.ts` 的 `applyRizlineCatalog(client, data, assertCurrent?)` 等待首屏提交后发布曲库并重建现有数据包派生字段，不额外请求官方存档。
   `useGameResourceSync` 是允许显式注册游戏的元数据编排边界，不把游戏差异放入共享渲染层。
 - `features/game-content/adapters/rizline.ts` 输出公共展示模型；页面使用 `GameScoreCard`、
   `GameSongRow`、`GameListPages`、`ChartCarousel`、`VERTICAL_SONG_DETAIL_STYLES`、
@@ -206,15 +324,19 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 
 | 能力 | 权威入口与主要导出 | 使用边界 | 主要验证 |
 |---|---|---|---|
-| Session | `src/state/session-store.ts`：`useSession`、`restoreSession`、令牌轮换函数 | 当前账号、游戏、Provider 与会话集中管理；页面不得维护第二份账号真相 | Session、账号切换、OAuth 测试 |
+| Session | `src/state/session-store.ts`：`useSession`、`SessionState`、`UNBOUND_ACCOUNT_ID`、`SessionsByAccountId`、`restoreSession`、`refreshActiveSessionView`、`applyLxnsTokenRotation(accountId, update)`、`applyOsuTokenRotation(accountId, next, expected)`、`applyRizlineSessionRotation(accountId, next, expected, signal?)`、`retryPendingRotationWrites`、`pendingRotationWritesSnapshot` | 只保存账号状态与纯变换：账号/会话映射、激活账号派生视图（账号、游戏、Provider 与内存会话在同一次状态提交里可见，不存在只看得到一半的中间态）。Store 不构造具体 Provider，也不调用安全存储 API：Provider 来自 `sessionRuntime()` 端口，凭据落盘与轮换来自凭据提交协调器；页面不得维护第二份账号真相。Store 对外只暴露 `applyLxnsTokenRotation` / `applyOsuTokenRotation` / `applyRizlineSessionRotation` 与补写入口，实现委托给同一协调器单例 | `session-store.test.ts`、`session-store-ownership.test.ts`、`session-store-surface.test.ts`、账号切换与 OAuth 测试 |
+| 会话 Provider 解析 | `src/state/session-provider-resolver.ts`：`SessionCredentialRef`、`SessionProfiles`、`ResolvedSessionProviders`、`providerResolverCacheKey(account, credentials)`、`resolveSessionProviders(account, credentials, onLxnsTokenRotation?, onOsuTokenRotation?)`、`releaseResolvedProviders(accountIds)`、`providerResolverStats()`；`src/state/session-runtime.ts`：`SessionRuntime`、`SessionRuntimeRequest`、`sessionRuntime()`、`setLxnsTokenRotation(rotation)`、`setOsuTokenRotation(rotation)` | Provider 实例按「账号 + 凭据版本」缓存，持有会话等运行态的实例不会在每次 render 重建。失效条件只有三种：`release`（解绑、清空会话）、凭据版本变化、账号身份或展示名变化（展示名进本地 Provider 的玩家名；分数展示、头像等元数据字段不进键）。缓存键由账号 id、游戏、Provider、展示名、凭据 id 与会话内容指纹组成，指纹与字段顺序无关。Store 只经 `sessionRuntime()` 声明「需要 Provider」并按账号 `release`；`services/session-providers.ts` 的 `createSessionProviders(account, session, onLxnsTokenRotation, onOsuTokenRotation?)` 只保留游戏差异（Provider 组合与构造参数），不反向读取 Store | `session-provider-resolver.test.ts`、`session-providers.test.ts`、`session-store-ownership.test.ts` |
+| 凭据提交 | `src/services/session-credential-coordinator.ts`：`SessionCredentialCoordinator`、`SessionCredentialState`、`SessionStoreApi`、`OAuthRotationCommitResult` | 轮换资格判定、SecureStore 落盘、内存发布与有界补写的唯一入口。按请求开始时消费掉的凭据世代解析应更新的凭据（落雪与 osu! 各有一条前代关系），只更新仍关联该凭据的账号；落盘经安全存储端口，内存发布只改会话并释放受影响账号的 Provider 缓存，已解绑账号的会话不写回。提交返回 `applied` / `pending-persist` / `stale` / `removed`：发起账号被解绑但共享凭据仍被引用时继续提交，新授权不会被迟到结果覆盖；落盘失败保留内存新会话并按 5/30/120 秒有界退避最多自动补写 3 次。协调器不 import Store 模块，由 Store 侧兼容入口按需装配并注入 `getState` / `setState` / `refreshActiveSessionView` | `session-store-ownership.test.ts`、`session-store.test.ts`、OAuth 与 Rizline 轮换测试 |
 | QueryClient | `src/state/query-client.ts`：`queryClient`、`releaseInactiveQueries` | 全应用唯一实例；只有内存警告清理非活动 Query | 生命周期与缓存测试 |
 | 生命周期 | `src/state/app-lifecycle-core.ts`、`app-lifecycle.tsx`：`AppLifecycleProvider`、`useAppLifecycle`、`getForegroundAbortSignal`、`waitForForeground`、`ensureForegroundWork` | 短暂 inactive 不 abort、不换代；后台 abort 前台工作。进入 `foreground-ready` 时，来自后台则换代并 `beginForegroundWork`；若经 inactive 回来且 controller 已空则 `ensureForegroundWork` 重建可取消信号。异步任务传递 AbortSignal | `app-lifecycle.test.tsx`、下载生命周期测试 |
+| 查询前台恢复 | `src/state/query-client.ts`：`resumeInterruptedActiveQueries(client): Promise<void>`；`hooks/use-app-runtime.ts` 装配 | 后台取消结算后，只恢复 active、enabled、pending/idle 且尚无数据的首查。已有缓存、错误、禁用、闲置和正在读取的查询不重新请求；`cancelRefetch: false` 不取消更晚的读取。旧前台回调在再次后台或卸载后失效 | `query-client.test.ts`、`app-runtime.test.tsx` |
 | 普通筛选 Store | `src/state/create-filter-store.ts` 的 `createFilterStore` | defaults 生成 setter；`clearKeys` 决定清空范围，游戏保留筛选字段语义 | 各游戏 filter 测试 |
 | 持久化随机筛选 | `src/state/create-random-charts-filter-store.ts` 的 `createPersistedRandomChartsFilterStore` | 统一水合、脏写保护和串行保存；游戏提供偏好 Store 与默认值 | 随机歌曲测试 |
-| 多账号列表 | `src/storage/create-account-list-store.ts` 的 `createAccountListStore`；读取合同在 `src/storage/create-demo-account-store.ts` 的 `loadAccountDirectory` | 键不存在返回空目录。读取失败或 JSON 损坏保留原键并抛错，损坏内容另存 `.corrupt`。未知版本或顶层结构错误另存 `.unrecognized` 并抛 `AccountDirectoryUnrecognizedError`，upsert、remove 和示例账号改写都不会覆盖原键。`restoreAccountDirectory` 只有重新解析通过才写回。v1 数组里的坏条目仍跳过。可选账号恢复按来源收集，单个来源失败不丢弃其他来源，也不在读失败时迁移默认本地玩家 | 各账号 Store 测试、`account-restoration.test.ts` |
-| 偏好设置 | `src/storage/create-preferences-store.ts` 的 `createPreferencesStore` | 支持全局单键和按账号/游戏 scope；迁移通过 `onMissing` 完成 | 偏好及迁移测试 |
+| KV 原生执行 | `src/storage/key-value-storage.ts`：默认存储、`KeyValueStorage`、`createSerializedKeyValueStorage(storage)` | 默认账号、偏好、安全索引、缓存与播放器设置共用该入口。按底层实例串行完整 `getItem` / `setItem` / `removeItem` / `getAllKeys`，等待原生语句释放后再开始下一项；一次失败不阻塞后续操作。相同实例返回相同包装，独立实例互不阻塞。保留原键和 schema；不把它当作跨操作业务事务。生产消费者禁止直接访问原始 KV；临时原生探针只直接构造实例，再经同一包装执行 | `key-value-storage.test.ts`、`native-storage-probe.test.ts`、账号和偏好合同测试 |
+| 多账号列表 | `src/storage/create-account-list-store.ts` 的 `createAccountListStore({ storeKey, parse, keyOf, normalize? })`；读取合同在 `src/storage/create-demo-account-store.ts` 的 `loadAccountDirectory` | 键不存在返回空目录。读取失败或 JSON 损坏保留原键并抛错，损坏内容另存 `.corrupt`。未知版本或顶层结构错误另存 `.unrecognized` 并抛 `AccountDirectoryUnrecognizedError`，upsert、remove 和示例账号改写都不会覆盖原键。`upsert` / `remove` 经按键 mutation gate（按 KV store 与键串行，前一个失败也继续排下一个）；`load()` 不进入该业务 gate，底层读取仍进入公共 KV 执行队列。`restoreAccountDirectory` 只有重新解析通过才写回。v1 数组里的坏条目仍跳过。可选账号恢复按来源收集，单个来源失败不丢弃其他来源，也不在读失败时迁移默认本地玩家 | 各账号 Store 测试、`account-list-store-mutations.test.ts`、`account-restoration.test.ts` |
+| 偏好设置 | `src/storage/create-preferences-store.ts` 的 `createPreferencesStore`；`src/services/preferences-write-coordinator.ts` 的 `createPreferencesWriteCoordinator` | 工厂支持全局单键、按账号/游戏 scope 与 `onMissing` 迁移；`readFailure: 'throw'` 让严格消费者区分读取失败和缺失。协调器独占完整基线、脏字段、代次和串行写入，失败保留选择并自动补写，不覆盖无法读取或识别的原数据 | 偏好及迁移测试、`preferences-write-coordinator.test.ts` |
 | 示例账号 | `src/storage/create-demo-account-store.ts` 的 `createDemoAccountStore` | 单个可删除示例档案的公共持久化工厂 | 示例账号 Store 测试 |
-| SQLite 与存储统计 | `src/storage/rranker-database.ts`、SQLite Repository、`src/features/storage-management/game-storage-adapters.ts` | 唯一连接；Schema、快照及个人曲库写入共用 `runDatabaseWrite` 队列。成绩、曲库和资源快照版本不一致或 JSON 损坏时保留原行并返回空，不删除用户数据。个人曲库旧 schema 升级不再清空条目。统计和清理均经同一游戏适配器 | `storage-management.test.ts`、`sqlite-snapshot-repository.test.ts`、`sqlite-user-library-repository.test.ts` |
+| SQLite 与存储统计 | `src/storage/rranker-database.ts`、SQLite Repository、`src/features/storage-management/game-storage-adapters.ts` | 每个数据库独立连接；业务 Schema、快照及个人曲库写入共用 `runDatabaseWrite`，日志 Schema 经 `runSerializedSchemaInit(task, 'runtime-log')` 独立串行。成绩、曲库和资源快照版本不一致或 JSON 损坏时保留原行并返回空，不删除用户数据。个人曲库旧 schema 升级不清空条目。统计和清理均经同一游戏适配器 | `database-queues.test.ts`、`storage-management.test.ts`、`sqlite-snapshot-repository.test.ts`、`sqlite-user-library-repository.test.ts` |
 
 `state/debug-store.ts` 的 `useDebugStore` 提供 `testAccountsEnabled`、`hydrated`、`saving`、
 `hydrate(): Promise<void>` 和 `setTestAccountsEnabled(enabled): Promise<void>`。
@@ -224,12 +346,28 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 `GamePickerSheet.testAccountsEnabled` 默认 false，仅作用于 bind 模式；数量提示与实际添加复用同一判断。
 已有账号恢复、Provider 查询和上传目标始终使用完整注册信息，不受该偏好影响。
 
-`services/session-providers.ts` 的 `createSessionProviders(account, session, onLxnsTokenRotation)`
-只装配运行时 Provider，不读取 Store；`useSession` 保持唯一会话状态、动作与令牌轮换入口。
+`services/session-providers.ts` 的 `createSessionProviders(account, session, onLxnsTokenRotation, onOsuTokenRotation?)`
+只装配运行时 Provider，不读取 Store；`useSession` 保持唯一会话状态、动作与令牌轮换入口，
+Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `sessionRuntime().release`。
+落雪和 osu! Provider 的轮换回调由 `SessionCredentialCoordinator` 装配并经
+`setLxnsTokenRotation` / `setOsuTokenRotation` 注入。`resolveSessionProviders` 接受同一组回调，
+解析器不自行判定世代。`SessionProviders.catalogProvider` 是可空的详细曲库能力，
+没有能力时查询禁用，主动读取经 `requireDetailedCatalogProvider` 拒绝，不返回伪造空曲库。
+`protocolScoreProvider` 保留真实中二/osu! 协议合同，加载器消费解析器缓存实例，避免另建刷新状态。
 `rotateOsuTokens` 的近期轮换和祖先关系共用 64 项上限；解除最后一个 osu! 账号或 `clearSession` 时清空。窗口外的旧刷新令牌不能覆盖当前会话。
 `services/account-restoration.ts` 的 `restoreAppAccounts()` / `loadOptionalBoundAccounts()`
-统一安全会话、可选档案及默认本地玩家迁移；`useAppStartup` 处理启动准备，`useAppRuntime`
-处理路由、前后台、内存警告和延后维护。界面 Provider/导航仍在根布局装配。
+统一安全会话、可选档案及默认本地玩家迁移。`getAccountSourceStatuses()` /
+`subscribeAccountSourceStatuses()` 发布来源级 loading、ready、failed；读取失败保留已加载数据。
+`retryFailedAccountSources()` 只重读失败来源，并复核等待前后的账号对象身份；被删除、
+改名或重绑的账号不接受旧读取结果。恢复页和前台生命周期复用该入口，订阅回调失败不影响其它来源。
+`useAppStartup` 处理启动准备，`useAppRuntime` 处理路由、前后台、内存警告和延后维护。
+界面 Provider/导航仍在根布局装配。
+
+`state/theme-store.ts` 的 setter 立即应用主题、曲绘和透明度选择，不回弹、不显示额外提示。
+主题存储复用严格偏好工厂，唯一写入协调器合并全部字段，读到的基线不能覆盖已选择字段。
+读取或保存失败按 0.5/2/10/30 秒退避，之后每 30 秒自动重试；后台暂停新任务，前台补写。
+水合最多等待 1.5 秒，不另起第二个读取；未知版本或坏结构保留原文，未取得基线不得写入默认值。
+失败只记录受限诊断，成功恢复记一次事件；`preferences-write-coordinator.test.ts` 覆盖竞争和重试。
 
 `storage/secure-session-store.ts` 的会话索引缺失时走旧版迁移；JSON 损坏抛
 `SessionIndexCorruptError` 并保留 `.corrupt` 副本，未知版本或顶层结构错误抛
@@ -237,6 +375,10 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 覆盖。旧版迁移源解析失败时跳过但不删除。`readPreservedSessionIndex` 读取保留副本，
 `restorePreservedSessionIndex` 只在副本可解析且当前索引不可用时写回；`clear()` 同时
 清理保留副本。账号管理页在恢复失败时提供重试恢复与清除登录数据（二次确认）入口。
+`domain/session-vault.ts` 保存纯会话类型、映射和 `SessionPersistenceError`，Store 不通过存储模块
+引入原生依赖。真实凭据 I/O 失败标记 `credential_storage`，索引 I/O 或内容失败标记
+`local_commit`；公共错误入口显示固定文案，取消原因不改写。`SecureSessionStore.updateAccountSession`
+明确返回 `applied` / `stale` / `missing`，协调器只发布仍有效且实际应用的 Rizline/Majdata 更新。
 合同由 `secure-session-store.test.ts`、`session-restore-recovery.test.tsx` 覆盖。
 
 `storage-adapter-core.ts` 的 `createGameStorageAdapter(definition)` 接收 `StorageOwnership`，
@@ -250,7 +392,7 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 - `domain/game-data.ts` 的 `gameAccountMetadata(bundle)` 只构造纯展示载荷；
   `useSyncAccountMetadata()` 在根布局的 QueryClientProvider 内挂载一次，订阅
   `useGameData(false)` 并调用现有账号、缩略信息、头像和安全仓库入口。页面使用
-  `useGameData` 的签名、返回值及 Query Key 不变，页面观察者不再各自持久化元数据。
+  `useGameData` 读取数据，元数据持久化只由根部订阅执行。
 - `updateBoundAccountScore` 与 `SecureSessionStore.updateAccountMetadata` 对现有字段
   等值时保持对象/存储不变；继续保留 undefined 和 null 的既有含义。
   `persistBoundAccountThumbnail(accountId, input, repo?)` 按仓库、账号和缓存代次合并
@@ -259,7 +401,7 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
   和缓存代次的缩略信息及本地 Rating 读取；读取完成后检查账号是否仍有效。
 - Phigros 推分查询 key 为 `phigros-push-rks`、账号 ID、玩家 ID、资源修订和存档更新时间。
   它属于账号数据失效集合；切换账号不会复用另一账号的新鲜结果。
-  `findPushRecommendations` 是异步搜索：返回 `searchStatus`、已取整并重新核算的 `plan`，以及可替换 plan 中 Acc 差值最大一首的 `alternatives`。`recommendations` 与 `plan` 相同。`combinationReachesTarget` 只在 `verified` 时为真。多首不再要求每一首单独达到平均份额；排除 φ 时最高 Acc 为 99.99。搜索预算内未找到方案是 `not_found`，只有全部谱面或成本歌数内的独立增益上界不够时才是 `unreachable`。长搜索按 16 毫秒时间片让出主线程；`signal` 取消时在让出点抛出来源 reason，不返回半份方案。页面只对 `plan` 作达标保证。
+  `findPushRecommendations` 是异步搜索：返回 `searchStatus`、已取整并重新核算的 `plan`，以及可替换 plan 中 Acc 差值最大一首的 `alternatives`。`recommendations` 与 `plan` 相同。`combinationReachesTarget` 只在 `verified` 时为真。预算按谱面计：`options.chartCost` 与结果里的 `chartCost` 表示愿意投入的谱面数，同一首歌的不同难度各占一张；`perChartShare` 是总 RKS 增益的平均份额。方案按组合总增益判定达标，不要求每张谱面单独达到平均份额。排除 φ 时最高 Acc 为 99.99。搜索预算内未找到方案是 `not_found`，只有全部谱面或 `chartCost` 谱面数内的独立增益上界不够时才是 `unreachable`。长搜索按 16 毫秒时间片让出主线程；`signal` 取消时在让出点抛出来源 reason，不返回半份方案。页面只对 `plan` 作达标保证。
 - `captureResourceWrites(scope, signal?, accountId?)` 返回写入断言，游戏代次和
   `account:<id>` 代次共同限制持久化与后台回调。`captureAccountWrites(accounts)` 必须在
   上传或传输的第一个 await 之前调用，并把返回的断言传入 Repository `save` 与后续展示名、
@@ -269,6 +411,22 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 - `subscribeResourceWrites(scope, onInvalidate)` 返回退订函数，在该 scope 提升代次后同步
   通知取消静默任务；任务完成必须退订，写入前仍通过 `captureResourceWrites` 复核。
   订阅异常不会阻碍其它任务取消或缓存清理；合同由 `async-resource-lifetime.test.ts` 覆盖。
+- OAuth 轮换提交必须携带请求开始时消费掉的旧会话：`SecureSessionStore.updateCredentialSession(credentialId, session, { acceptedRefreshTokens })`
+  只在凭据仍被账号引用、且当前凭据会话属于该轮换世代（旧 token 或其后代）时写入，返回
+  `applied` / `stale` / `missing`；内存发布只覆盖仍关联该凭据的账号，不把已解绑账号的会话写回。
+  落雪与 osu! 共用这条提交路径（`applyLxnsTokenRotation` / `applyOsuTokenRotation`），协议差异只保留在
+  各自的前代关系与刷新实现里。落盘失败保留内存中的新会话并登记补写，`retryPendingRotationWrites()`
+  按 5/30/120 秒有界退避最多自动补写 3 次、同一时刻只跑一次，并可由前台恢复触发；
+  上游已消费旧 refresh token 时不得重新刷新，凭据已失效或账号已解绑的挂起项直接丢弃，
+  自动重试耗尽后保留待写任务，前台和显式调用可继续补写；只有已应用、世代过期或无人引用才移除。
+  在途旧任务不能删除后来登记的新任务，成功更新与活动 Provider 在同一次状态提交中可见。
+  `pendingRotationWritesSnapshot()` 与运行时诊断保持可观察，进程退出前仍未保存成功则需要重新授权。
+  `LxnsOAuthRequestCore.request` 在 token 刷新返回后重新检查取消：轮换结果仍可为其它共享账号提交，
+  已取消的调用不发出后续业务读取。
+- 上传目标在共同写入入口逐个复核资格：`uploadLatestScoreHubSyncToTargets` 与
+  `transferMaimaiFromLxns` 在每个目标写入前调用 `captureAccountWrites` 断言，
+  `uploadRecordsToLxns` / `uploadRecordsToDivingFish` 的 `assertEligible` 在每次重试前再复核；
+  失效目标不再向上游写入，其他目标独立完成，已写入的远端结果不回滚。
 - `clearStorageByCategories` 先提升所属游戏代次，再取消并移除查询，然后执行适配器清理。
   `cancelBoundAccountQueries(account, client)` 在解绑删除前使单个账号失效，取消并移除
   其查询，保留其他账号和公共曲库。解绑与全游戏清缓存不得混用失效范围。
@@ -283,6 +441,11 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
   完成 Repository 初始化，task 内不得嵌套进入队列。批量资源/账号删除按 500 个参数分批，
   一次清理使用同连接事务；失败不阻塞后续任务，也不回滚其他仓库的写入。
   文本体积用 `LENGTH(CAST(field AS BLOB))` 统计 UTF-8 字节；数据库实际分配页仍独立报告。
+- `SqliteSnapshotRepository.updateResource(key, schemaVersion, transform, assertCurrent?)` 把读取、
+  转换、代次断言与写入放进同一个写入队列任务，队列内只用直接数据库调用（不重入队列）；
+  同一资源的并发合并按提交顺序串行。`PhiraCache.mergeBests` 与 `osuCache.mergeKnownScores` 用它从最新版本提交合并，后者按谱面保留更高分，
+  空集合只读回既有快照、不写入、不推进 `updatedAt`；合同由 `sqlite-storage-integration.test.ts`
+  与 `sqlite-snapshot-repository.test.ts` 覆盖。
 
 验证入口包括 `account-metadata-observers.test.tsx`、`account-thumbnail.test.ts`、
 `secure-session-store.test.ts`、`async-resource-lifetime.test.ts`、
@@ -291,7 +454,8 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 ### 诊断记录
 
 - `services/runtime-diagnostics-recorder.ts` 的 `recordRuntimeDiagnostic(type, fields?)`
-  返回 `Promise<void>`；同步分发到手动记录器，再调用简要诊断记录器，两者失败均不传播到业务。
+  返回 `Promise<void>`；先存入独立的 64 条脱敏应急环，再分发到手动和简要记录器，两者失败均不传播到业务。
+  `snapshotEmergencyRuntimeDiagnostics()` 返回独立副本，不等待任何持久存储。
   `recordRuntimeError(source, error, fatal?, context?)` 统一错误采集，兼容原三参数调用。
   可选 `RuntimeErrorContext` 包含 phase、operationId、pageIndex 和受限 errorCode。
   同一入口的 `nextRuntimeOperationId()` 分配进程内编号；`createRuntimeOperation(source)`
@@ -299,10 +463,12 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
   输出操作累计耗时。底层调用方只依赖该轻量入口，不引入日志存储或页面依赖。
 - `services/runtime-logs.ts` 提供 `initializeRuntimeLogs()`、`recordRuntimeRoute(segments)`、
   `shareRuntimeLog(id)` 和唯一 `runtimeLogs` 控制器。控制器公开 `start()`、`stop()`、
-  `setCapacity(1000 | 2000 | 5000)`、`subscribe()`、`getSnapshot()` 与 `snapshot(id)`。
+  `setCapacity(1000 | 2000 | 5000)`、`loadHistory()`、`subscribe()`、`getSnapshot()` 与 `snapshot(id)`。
   页面订阅状态，不直接写数据库；容量和 `enabled` 偏好复用 `createPreferencesStore`。
   `start()`、`stop()`、`setCapacity()` 均返回 `Promise<void>`，串行保存用户选择。
   状态中的 `enabled` 表示持久开关，`activeId` 表示当前记录，保存失败不自动关闭开关。
+  关闭开关时启动只读偏好，不初始化日志数据库；历史在进入诊断页或开启记录时惰性读取。
+  `failurePhase` 区分 preferences、history、recording，历史重试不改变开关或当前记录。
 - `domain/runtime-log.ts` 定义类型与脱敏：字段白名单、基于类别的错误摘要、最多 30 个
   堆栈位置和单条 8 KiB 上限；不读取任意异常的序列化结果。路由传入 `useSegments`
   返回的模板，HTTP 入口记录固定场景名，不传入地址、账号或请求载荷。
@@ -311,7 +477,7 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
   开始与各尝试结果共享 operationId，错误码使用公共归一化结果，主动取消不带错误堆栈。
   查询/变更终态错误补充 `phase: final`，只提取白名单错误码，不读取 Query Key 或任意 cause 链。
   `runtimeBuildContext(nativeBuild, configuredBuild)` 区分构建号的原生、配置和未知来源。
-- `storage/rranker-database.ts` 的 `getRuntimeLogDatabase()` 管理独立日志连接；
+- `storage/rranker-database.ts` 的 `getRuntimeLogDatabase()` 管理独立日志连接与 Schema 队列；
   `RuntimeLogRepository` 统一事务创建、增量追加、容量裁剪、结束和恢复。成功创建第三份
   才淘汰最旧记录；每份独立保留最后 N 条。每次启动恢复开启偏好后创建新记录，
   包含当前记录在内保留两份；进程内重复初始化、页面切换及前后台切换不另建记录。
@@ -330,15 +496,18 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
   `cache-policy.ts` 的 `isLegacyRuntimeDiagnosticCacheEntry(name: string): boolean`
   精确识别待迁移正文，启动清理与共享缓存统计、手动清理均保留它；TXT 分享副本仍可清理。
   `measureManagedStorageBytes()` 的清理前后物理口径也排除该正文，迁移不计为释放空间。
-  `shareRuntimeLog(id): Promise<void>` 先同步固定所选日志，再立即排入简要诊断读取；
+  `snapshotRuntimeDiagnosticsForExport()` 立即固定应急环，持久快照读取限时 1.5 秒，
+  读取失败或超时仍返回 `emergency` 和 `storageAvailable: false`。
+  `shareRuntimeLog(id): Promise<void>` 先同步固定所选日志，再调用该公共快照入口；
   完成的单个 JSON 文本增加 `diagnostics` 字段，不改变日志事件、统计、formatVersion 或存储。
-  `exportRuntimeDiagnostics(): Promise<void>` 复用同一快照入口，只供无日志空态分享诊断信息。
-  两种分享均在文件完成后打开系统面板，并防止各自操作期间的重复分享。
+  `exportRuntimeDiagnostics(): Promise<void>` 复用同一入口，任何存储状态均可分享诊断信息。
+  两种分享先写文件并使用 Expo Sharing，文件或分享失败回退 React Native 文本分享；
+  两条路径均失败才抛错，各自操作期间防止重复分享，所选日志不会被诊断读取失败丢弃。
 - 诊断页面继续通过 `useSyncExternalStore` 订阅唯一控制器，开关反映 enabled，
   运行状态结合 activeId、记录状态、ready、busy 与 failed，不从开启偏好推断正在记录。
   最新/上次标签沿 Repository 创建顺序；开关通过 `useAppTheme()` 复用个性化页的
   原生 Switch 轨道和滑块颜色，滚动区按压复用 `DetailGestureRoot` / `DetailPressable`。
-  每份日志提供分享，只有加载成功的无日志空态提供“分享诊断信息”；失败走公共通知与重试。
+  每份日志提供分享，“分享诊断信息”在加载、失败和空态始终可用；读取与保存失败使用不同状态文案，历史重试不启动记录。
 - `runtime-logs.test.ts` 使用真实内存 SQLite 检查事务、保留、恢复、失败和脱敏，
   并覆盖公共 HTTP/查询和异常监听合同；`runtime-log-sharing.test.tsx` 覆盖合并分享、
   旧记录、并发与失败重试，`runtime-diagnostics.test.tsx` 覆盖正文迁移、读写重试、跨启动保留、
@@ -355,17 +524,28 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 账号管理的 `useManagedAccountOperations` 继续使用 `screens/game-accounts-actions.ts` 的公共执行器，
 档案/缓存策略由 `services/account-management.ts` 提供，互斥弹层与转场归 `useAccountBindingFlow`。
 `removeBoundPlayerAccount` 的可选 `prepareRemoval` 在删除前取消账号查询；失败中止删除并通知，
-`finally` 始终释放 busy，既有分项失败继续汇总。屏幕不自行实现第二套绑定或删除流程。
+`finally` 始终释放 busy。关键解绑提交（`clearPlayer` 收到的 `submit`）抛出时返回
+`{ status: 'blocked' }`，账号与凭据保持原样、界面保留该账号作为重试入口。
+`submit` 返回的 `{ cleanupFailures }` 表示提交已经完成、只有附属清理失败，
+与 `cleanup` 失败一样汇总进 `cleanupFailures` 并按已解绑处理：
+`SecureSessionStore.removeAccount` 的提交点是凭据索引写盘，Rizline 密码引用删除属于提交后的附属清理。
+`clearBoundAccountData(account, { submit, cleanup })` 按账号类别划分：账号或凭据删除属于 `submit`，
+成绩缓存、派生缓存、个人数据与活动账号持久化属于 `cleanup`。屏幕不自行实现第二套绑定或删除流程。
 
-总览的 `useOverviewSync`、`useOverviewUpload` 共享 `useOverviewOperation` 操作锁，
-同步仍等待缓存后台读取落定后判断成功。`useOverviewSync` 的水鱼预刷新、后台落定等待
-（`SYNC_FRESH_WAITERS` 注册表）与各游戏新鲜度守卫是模块级函数，主流程只做编排。`UploadDataSheet` 的账号偏好、二维码输入和上传执行
+总览的 `useOverviewSync`、`useOverviewUpload` 共享 `useOverviewOperation` 操作锁。
+`useOverviewSync` 的水鱼账号预刷新（`refreshDivingFishForSync`）、Rizline 曲库尽力刷新
+（`refreshRizlineCatalogBestEffort`）、失效查询取消（`cancelStaleSyncQueries`）与终态上报
+（`reportRefreshResult`）是模块级函数，主流程只做编排。成功判定只读
+`refreshGameDataBundle` 返回的终态：`success` / `noop` 判成功，`partial` 表示
+部分请求已成功、部分分项未更新，按 `failures.target` 提示玩家资料、成绩、最佳成绩或曲库；
+认证失败提示重新登录，其余终态按公共失败文案提示。不维护逐游戏 waiter，也不二次读取查询缓存推断
+后台刷新是否落定。`UploadDataSheet` 的账号偏好、二维码输入和上传执行
 分别复用 `useUploadAccountPreferences`、`useUploadQrInput`、`useUploadTaskState` / `useUploadExecution`，
 任务真相仍在唯一 `uploadTaskController`，关闭/卸载弹层不取消任务。
 
 | 能力 | 权威入口 | 使用边界 | 主要验证 |
 |---|---|---|---|
-| 列表页面 | `src/components/game-content/GameListPages.tsx`：`BestListPage`、`RecordsListPage`、`CatalogListPage`、`RemoteImageFlatList` | 页面容器提供查询状态、presentation、筛选头和 renderItem；列表统一窗口参数与可见图片持久化 | `game-content-host-contract.test.tsx`、P3 host contracts |
+| 列表页面 | `src/components/game-content/GameListPages.tsx`：`BestListPage`、`RecordsListPage`、`CatalogListPage`、`RemoteImageFlatList` | 页面容器提供查询状态、presentation、筛选头和 renderItem；列表统一窗口参数与可见图片持久化。成绩与曲库标签页只按当前游戏挂载对应页面，舞萌专属页（`screens/maimai/MaimaiRecordsScreen.tsx`、`screens/maimai/MaimaiCatalogScreen.tsx`）自带本游戏查询与筛选链，切到别的游戏时不挂载它 | `game-content-host-contract.test.tsx`、`maimai-list-route-layering.test.tsx`、P3 host contracts |
 | 成绩卡与歌曲行 | `GameScoreCard.tsx`、`GameSongRow.tsx` | 游戏传入 presentation、主题样式和插槽；详情路由、封面失败回退和可访问名称由公共组件处理 | `future-game-render-contract.test.tsx`、P3 card contracts |
 | 筛选与范围 | `FilterShell.tsx`、`FilterCheckboxList.tsx`、`RangeSelector.tsx` | 公共层提供壳、摘要、控件与手势；游戏只定义字段、上下界和匹配纯函数 | `filter-shell-host-contract.test.tsx`、各游戏 filter-bar 测试 |
 | 搜索与徽章 | `GameSearchHeader.tsx`、`GameDifficultyBadge.tsx`、`FlowingGradientValue.tsx`、`TintedRatingTag.tsx` | 复用结构和动画机制，颜色、等级和正式术语由游戏 presentation 或 domain 主题提供 | P3 visuals/cards contracts |
@@ -374,6 +554,10 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 | 查询状态与通知 | `QueryStateView.tsx`、`AppNotification.tsx` | 页面统一加载、空态、重试和顶部通知；禁止直接显示底层错误文本，禁止页面使用 RN Alert | `consumer-copy-policy.test.ts` 及页面测试 |
 | 标签页驻留 | `CachedTabScreen.tsx`、`tab-list-cache.ts` | 短暂 inactive、普通后台和失焦保留已挂载画面；通过 active context 暂停查询、动画和图片落盘，不用 Freeze 卸可见树；只有内存警告才释放失焦页 | `cached-tab-screen.test.tsx`、`tab-animation-lifecycle.test.tsx` |
 | 远程图片 | `RemoteImage.tsx`、`services/remote-image-cache.ts` | 图片统一选择 native、none 或受控 profile；只有带 gameId 且进入持久化 scope 的可见图片写受控缓存；失活只暂停落盘，不拆已显示 source | `remote-image-cache.test.ts`、`remote-image.test.tsx`、列表合同测试 |
+| 登录面板槽位 | `src/features/game-content/provider-login-panels.tsx`：`PROVIDER_LOGIN_PANELS`、`resolveProviderLoginPanel(provider)`、`ProviderLoginPanelProps`、`ProviderLoginPanel` | 组合边界注册表：共享登录弹层 `components/ProviderLoginSheet.tsx` 只按 Provider 查表渲染外壳、状态与公共文案，游戏面板不注册在共享组件里；按顺序命中专属 Provider → 凭据能力 → 缺省账密面板（`DivingFishLoginPanel`），`gameId` 只随 props 传给需要游戏身份的面板 | `provider-login-panels.test.tsx` |
+| 账号行补充标签 | `src/features/game-content/account-rating-tags.tsx`：`boundAccountRatingTag(account)`；`components/AccountSwitchSheet.tsx` 与 `components/BoundAccountGroupedList.tsx` 的可选 `renderRatingTag?: (account: BoundAccount) => ReactNode` | 组合边界注册表：`BoundAccountGroupedList` 的账号行标签按「注入槽位 → 公共列表内置的舞萌/中二/Phigros 标签 → `boundAccountRatingTag`（当前登记 adofai / musedash）→ 注册表 `accountScoreTheme` 的 `TintedRatingTag`」依次取值，需要引用游戏主题模块的标签只登记在注册表里，共享列表不直接引用游戏组件；`AccountSwitchSheet` 只透传槽位，不设默认渲染 | `account-switch-sheet.test.tsx`、`bound-account-list.test.tsx`、`osu-account-management.test.tsx` |
+| 筛选条扩展槽位 | `src/features/game-content/filter-bar-extensions.tsx`：`FILTER_BAR_EXTENSIONS.tagFilterRow` → `src/components/maimai/DxRatingTagFilterRow.tsx` | 共享筛选条只渲染扩展槽，不直接引用游戏组件；舞萌的谱面标签筛选行（入口与弹层都在舞萌模块内）经 `components/MaimaiFilterBar.tsx` 消费注册表 | `maimai-tag-filter-row.test.tsx`、`filter-shell-host-contract.test.tsx` |
+| 成绩图导出构建器 | 各游戏自己的构建器：`features/maimai-best-image/build-maimai-best-image-html.ts` 的 `buildBestImageHtml`、`features/phigros-best-image/build-phigros-best-image-html.ts` 的 `buildPhigrosBestImageHtml` 与 `build-phigros-best-image-app-html.ts` 的 `buildPhigrosBestImageAppHtml`、`features/chunithm-best-image/build-chunithm-best-image-html.ts` 的 `buildChunithmBestImageHtml`；共享层 `features/best-image/build-best-image-html.ts`（只再导出消息协议）、`build-best-image-canvas-runtime.ts` 与 `best-image-bridge-script.ts`（`bestImageBridgeRuntimeScript`、`bestImageBridgeMeasureScript`、`bestImageBridgeReadyScript` 参数化脚本段） | 模板、素材清单、字体与样式经各构建器的 input 注入，由各游戏屏幕直接调用；共享入口不得承载游戏构建器，游戏也不能从共享入口取本游戏模板。桥接脚本段只由舞萌与中二拼进自己的 HTML（差异走 `layoutCall` / `exportViewportComment` / `assetReadyExpression` 参数），Phigros 的压缩风格脚本仍内联在自己模块里；共享屏幕壳与控制器接收的是已构建好的 sources/htmlPages，不接收构建器 | `best-image-html.test.ts`、`phigros-best-image.test.ts`、`chunithm-best-image.test.ts`、`best-image-screen-contract.test.tsx` |
 
 `MetricBadges.tsx` 提供 `DualTextMetricBadge` 和 `StatusMetricBadge`，保留难度的两个
 独立文本节点及状态徽章的原样式。`AnimatedMetricValue` 继续通过 `FlowingGradientValue`
@@ -387,8 +571,9 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 分组、标签样式及游戏操作。详情元数据样式复用 `SongDetailChromeStyles`；成绩图选择器
 在现有 `BestImagePickerShell` 中复用 `standardBestImagePickerStyles` / `compactBestImagePickerStyles`。
 
-Phigros 与 Phira 的定数、Acc、选择及评价筛选行复用 `MetricFilterRows`；游戏包装负责章节、
+Phigros 与 Phira 的定数、Acc、选择及评价筛选行复用 `MetricFilterRows`；Phigros Acc 范围解析位于 `domain/phigros-filters.ts`，不引用舞萌筛选。游戏包装负责章节、
 Kyou 标签、评级主题和具体字段。Phira 使用自身 `PhiraFilterBar` / `PhiraScoreVisuals`，
+评级与筛选由 `domain/phira-filters.ts` / `phira-score-presentation.ts` 按 Phira 原始成绩解释，颜色与标签复用中性的 `domain/score-grade-theme.ts`，不引用其它游戏主题或组件。
 详情复用 `FloatingSongDetailChrome`（内部调用 `SongDetailChrome`）与
 `SongDetailChromeStyles.ts` 的 `VERTICAL_SONG_DETAIL_STYLES`，不引用 Phigros 页面。
 Muse Dash 筛选字段类型位于 `domain/muse-dash.ts`，State 与 UI 均从领域层导入。
@@ -411,7 +596,7 @@ URL、请求头和 cacheKey 的稳定身份，等价 source 对象不会重置�
 
 | 功能族 | 公共入口 | 游戏侧职责 | 主要验证 |
 |---|---|---|---|
-| 谱面确认 | `src/features/chart-preview-shared/`：`ChartPreviewScreenShell`（可选 `fullscreenOrientation`，默认 `landscape`）、`chartPreviewNativeScreenOptions`、`ChartPreviewLoadProgress`、资源暂存、URI 解析、桥接（含 `progress`）、注入工厂、计划执行器、播放时钟与全屏锁。壳用一条进度条覆盖 native `prepare` 与播放器就绪，`ready` 后撤遮罩。`prepare(signal, settings, onProgress?)` 与 `prepareChartPreviewWebviewFromPlan(plan, signal?, onProgress?)` 按字节权重报告下载，writer/HTML 占落盘末段；`fileName` 支持相对路径，远程 `url+bytes` 有限并发，`bytes` 只作进度权重，可选 `remoteCacheDirectory` 已有非空文件则跳过下载 | 提供图表解析、资源清单、HTML/脚本配置和场景文案。舞萌/Majdata 谱面与预览曲在 RN prepare 经 `downloadChartResource` 完成，预览曲写入 `music-data.js`；皮肤 PNG 缓存到 `rranker-chart-preview-remote` 后由 writer 写成 `skin-data.js` data URL。Phigros 皮肤仍用 `./skin/` 相对路径；Phigros 三类资源与 Phira zip 同样走 `downloadChartResource` 进度。Rizline 谱面 JSON 与 m4a 同样走 `downloadChartResource`，校验后由 writer 写成 `chart-data.js` / `music-data.js`，避免 iOS file:// 下 fetch 本地文件 | `chart-preview-screen-shell-contract.test.tsx`、`chart-preview-progress.test.ts` 及各游戏预览测试 |
+| 谱面确认 | `src/features/chart-preview-shared/`：`ChartPreviewScreenShell`（可选 `fullscreenOrientation`，默认 `landscape`）、`chartPreviewNativeScreenOptions`、`ChartPreviewLoadProgress`、资源暂存、URI 解析、桥接（含 `progress`）、注入工厂、计划执行器、播放时钟与全屏锁。壳用一条进度条覆盖 native `prepare` 与播放器就绪，`ready` 后撤遮罩。`prepare(signal, settings, onProgress?)` 与 `prepareChartPreviewWebviewFromPlan(plan, signal?, onProgress?)` 按字节权重报告下载，writer/HTML 占落盘末段；`fileName` 支持相对路径，远程 `url+bytes` 有限并发，`bytes` 只作进度权重，可选 `remoteCacheDirectory` 已有非空文件则跳过下载。宿主命令与播放器事件的合同见 `chart-preview-bridge.ts`（`ChartPreviewHostCommand`、`ChartPreviewPlayerEvent`、`applyChartPreviewHostCommand`、`parseChartPreviewBridgeMessage`） | 提供图表解析、资源清单、HTML/脚本配置和场景文案。舞萌/Majdata 谱面与预览曲在 RN prepare 经 `downloadChartResource` 完成，预览曲写入 `music-data.js`；皮肤 PNG 缓存到 `rranker-chart-preview-remote` 后由 writer 写成 `skin-data.js` data URL。Phigros 皮肤仍用 `./skin/` 相对路径；Phigros 三类资源与 Phira zip 同样走 `downloadChartResource` 进度。Rizline 谱面 JSON 与 m4a 同样走 `downloadChartResource`，校验后由 writer 写成 `chart-data.js` / `music-data.js`，避免 iOS file:// 下 fetch 本地文件。资源定位与字节读取端口按游戏放在 `services/phigros-chart-preview-resources.ts` 与 `services/rizline-chart-preview-resources.ts`，Phigros 与 Rizline 的 `domain/*-chart-preview.ts` 只保留清单与发布的纯解析（`domain/phira-chart-preview.ts` 通过 `domain/phira-chart-info.ts` 的 `infoValue` 读取纯文本字段） | `chart-preview-screen-shell-contract.test.tsx`、`chart-preview-progress.test.ts`、`chart-preview-host-contract.test.ts` 及各游戏预览测试 |
 | 谱面下载 | `src/features/chart-download-shared/`：下载会话目录、取消错误、命名、保存与 `useChartPackageDownload` | 组装具体资源、压缩包结构和成功文案 | `chart-package-download-lifecycle.test.tsx` 及各游戏下载测试 |
 | 成绩图 | `src/features/best-image/`：桥接、状态机、偏好、资源加载、HTML 运行时、选择器、控制器、屏幕壳和导出 | 构建游戏卡片/HTML、素材清单、样式选项和分区语义 | `best-image-screen-contract.test.tsx`、HTML 金样和游戏成绩图测试 |
 | 存储管理 | `src/features/storage-management/`：缓存策略、文件边界、游戏适配器、统计、清理、维护和图标字体恢复 | 在注册适配器中声明本游戏查询键、资源和清理动作 | `storage-management.test.ts`、`storage-cache-policy.test.ts` |
@@ -435,22 +620,59 @@ iOS 截图前若 App 处于 inactive 或 background，先等到 `foreground-read
 原生 I/O 继续使用 `best-image-export.ts`，`best-image-export-lifecycle.test.tsx` 覆盖取消阶段和重复启动。
 
 舞萌播放器在视频背景加载成功或失败时发送 `background-video`（`result`、`status`、`errorCode`）。壳把它记入运行日志，不中断谱面。
-Phigros 的 `domain/phigros-chart-preview.ts` 提供
-`loadPhigrosChartPreviewResources(target, signal, read?)`，预览和兼容包下载共用发布恢复与字节校验。
-其共同定位器 `resolvePhigrosChartPreviewAssetBundle(...)` 按 `.0`、无编号、唯一编号目录选择默认谱面；
-已有默认目录缺少所选难度时仍报错，不从其它变体拼接，确保匹配默认音乐。
+
+谱面确认的宿主命令合同是四套播放器共用的唯一入口（`features/chart-preview-shared/chart-preview-bridge.ts`）：
+宿主命令判别联合 `ChartPreviewHostCommand` 为 `pause`（带 `cause: 'manual' | 'lifecycle'`）、
+`exit-fullscreen`、`dispose`、`background-video-confirmation-result`（带 `accepted`）；
+播放器事件判别联合 `ChartPreviewPlayerEvent` 为 `progress`、`ready`、`fullscreen`（带 `active`）、
+`settings`、`background-video`、`background-video-confirmation` 与 `error`；未声明的消息作为
+`ChartPreviewExtensionMessage` 原样透传给游戏钩子。`parseChartPreviewHostCommand` 只接受已声明的类型与载荷，
+`applyChartPreviewHostCommand(raw, player)` 用同一份分派器驱动四套播放器的 `pause` / `exitFullscreen` /
+`dispose` / 可选 `confirm`，`chartPreviewHostCommandScript(command)` 是宿主命令的唯一序列化入口，
+`parseChartPreviewBridgeMessage` / `isChartPreviewPlayerEvent` 是 RN 侧的解析与判别守卫。
+语义固定为：暂停（手动或宿主生命周期 inactive）只停播并释放临时媒体、不改变全屏；进入全屏只由播放器自己的按钮发起；
+`dispose` 停播、退出全屏并回收资源且幂等，之后播放器不再改动界面或回报状态。
+兼容行为不引入版本协商：旧 `ready` 无载荷直通；旧扁平 `settings` 去掉保留键 `type`/`message`/`active` 后归一化成
+`settings` 信封；旧 `stop` 命令（裸类型名或对象）等价于 `pause` + `cause: 'lifecycle'`，`chartPreviewStopScript()`
+仍输出旧格式供既有导出链与浏览器检查脚本使用。
+`dispose` 由壳注入：释放的会话仍是当前会话时才注入 `DISPOSE_SCRIPT`，触发点是 prepare effect 的清理函数（卸载或依赖变化）、
+后台与内存警告、手动重载、播放器失败以及内容进程退出/渲染进程终止；四个播放器把各自的释放实现挂到同一分派器上，
+四套播放器都有 `pagehide` 兜底释放。Simai、PGR/RPE、Rizline 用 `PlayerEventScope` 回收 DOM 监听、观察器、计时器和媒体；一个清理失败仍执行剩余释放。Simai 在初始化前接入宿主命令，晚到解析或解码不得更新终态；PGR/RPE 释放 GIF bitmap、视频等待与 WebGL 对象。
+四套播放器的生成物（`assets/maimai-chart-preview/`、`assets/phigros-chart-preview/`、`assets/osu-chart-preview/`、
+`assets/rizline-chart-preview/` 下的 `player.js`、`player.bundle`、`index.html`）由
+`npm run build:chart-preview`、`npm run build:phigros-chart-preview`、`npm run build:osu-chart-preview`、
+`npm run build:rizline-chart-preview` 重建，`npm run check:generated` 只校验不写盘。
+合同由 `chart-preview-host-contract.test.ts` 与 `chart-preview-screen-shell-contract.test.tsx` 覆盖。
+
+谱面导航请求在 `domain/chart-preview-request.ts`，暂存与交接位于 `features/chart-preview-shared/chart-preview-navigation.ts`。PGR 格式配置共用 `chart-preview-shared/pgr-preview-config.ts`；Phigros 与 Phira 各自的 `chart-preview-input.ts` 组装配置。RPE 路径规范与资源 URL 由 `domain/rpe-resource-path.ts` 统一解释。兼容包下载分别位于 `features/phigros-chart-download/chart-package-download.ts` 与 `features/phira-chart-download/chart-package-download.ts`，公共下载核心不构造游戏资源。
+
+Phigros 的谱面资源在服务层：`services/phigros-chart-preview-resources.ts` 提供端口
+`PhigrosChartPreviewResourcePort`、端口工厂 `createPhigrosChartPreviewResourcePort(ossBase?)`、
+加载器工厂 `createPhigrosChartPreviewResourceLoader(port)`，以及默认装配后的
+`loadPhigrosChartPreviewResources(target, signal, read?)`、`loadPhigrosChartPreviewVariants(target, signal)`、
+`loadPhigrosChartPreviewBundle(target, signal, ossBase?)`；预览与兼容包下载共用发布恢复、超时、字节校验与取消。
+`domain/phigros-chart-preview.ts` 只保留清单与发布的纯解析：`resolvePhigrosChartPreviewVariants`、
+`resolvePhigrosChartPreviewAssetBundle`（按 `.0`、无编号、唯一编号目录选择默认谱面；
+已有默认目录缺少所选难度时仍报错，不从其它变体拼接，确保匹配默认音乐）、
+`phigrosChartPreviewLevelLabel` 与 `PhigrosChartPreviewResourceRead` 端口形状。
+领域纯度由 `phigros-chart-preview-domain-purity.test.ts` 与 `rizline-chart-preview-domain-purity.test.ts` 钉住：
+这两个领域文件不得静态引入 `@/services/`、`@/providers/`、`@/storage/`、`@/state/`、`@/hooks/`、`@/features/`
+或 Expo/React 模块，纯解析只依赖结构化的发布快照与清单字段。
 `PhigrosChartPreviewTarget` 可选 `variantIndex` 指定编号谱面，优先匹配同编号音乐；清单中没有
 专属音乐条目时使用歌曲共用音乐。专属音乐重复、下载失败或校验失败不得触发共用音乐回退；
 未指定编号时保持默认规则。`phigros-resources.test.ts` 覆盖共用音乐、专属音乐与缺失资源。
-`loadPhigrosChartPreviewVariants(target, signal)` 复用发布服务，按所选难度枚举并数字排序编号。
+服务层的 `loadPhigrosChartPreviewVariants(target, signal)` 复用发布服务，按所选难度枚举并数字排序编号。
 预览路由通过 `usePhigrosChartVariantSelection(target)` 组合公共 `showActionNotification(input)`
 的队列和 `dismissNotification(id)`：先提示里谱，再展示非 `.0` 选项，单谱不弹窗。
 选择期间复用 `ChartPreviewScreenShell` 的 waiting 状态，公共渲染层不增加游戏分支。
 卸载与后台撤销弹窗及请求；交互由 `phigros-chart-variant-selection.test.tsx` 覆盖。
 预览将已验证的谱面文本、音乐 Base64 和曲绘 data URL 交给既有配置与暂存计划；
 预览自定义 `read(asset, index)` 与兼容包下载都接入 `downloadChartResource` 的原生文件、取消和进度，
-读完仍走 `verifyPhigrosResource`。Phira 预览 zip 经注入的 `downloadChart`（同一下载入口）再解包；
-未注入时回退 `phiraProvider.downloadChart`，供 live 演示。共享预览/下载核心不识别 Phigros 修订或音符。
+读完仍走 `verifyPhigrosResource`。Phira 预览的元数据、zip 和暂存共用壳的 120 秒 prepare 期限与取消信号，
+不在壳外等待另一份元数据 Query；详情交接已有 `chart` 时直接复用，只有 chartId 时复用
+`buildPhiraChartPreviewInput` 内的公共 Provider 读取一次。超时显示可重新加载的错误，退出后迟到结果不挂载播放器。
+Phira 预览 zip 经注入的 `downloadChart`（同一下载入口）再解包；
+未注入时使用 `phiraProvider.downloadChart`，同样传入取消信号和公共下载预算。共享预览/下载核心不识别 Phigros 修订或音符。
 相关合同包括 `phigros-chart-preview-resources.test.ts`、`phigros-chart-preview-input.test.ts`、
 `phigros-chart-preview-pgr-core.test.ts`、`phigros-chart-preview-screen.test.tsx`、
 `phira-compatible-chart-download.test.ts` 和 `chart-preview-screen-shell-contract.test.tsx`。
@@ -501,21 +723,33 @@ osu 初始化仅准备并绘制首帧，播放和重播才恢复音频、启动�
 `osu-song-detail.test.tsx`、`osu-chart-preview-build.test.ts` 和 `tests/osu-preview/`。
 `node scripts/check-osu-player.mjs [Playwright 模块入口]` 在内存打包并验证四模式手动启动、
 catch 实心透明度、同色描边和降级模糊像素；不代替 iOS/Android WebView 真机验证。
+添加 `--generated` 时，复用 `scripts/lib/build-preview.mjs` 的只读
+`readGeneratedPreview(assetName)`，核对已生成 player.bundle 与 player.js 的字节一致性，
+执行四模式就绪、静音跳转、播放/暂停/重播与宿主暂停；省略需要编译的像素辅助检查。
+`node scripts/check-maimai-player.mjs [Playwright 模块入口] --generated` 复用同一读取入口，
+执行普通、Buddy、缺失难度和音频/谱面尾段，不编译解析器；Majdata 已解析输入和源码解析器
+时长只由默认模式验证。报告同时列明实际覆盖与省略项，生成模式不调用 esbuild。
 
-Rizline 的 `domain/rizline-chart-preview.ts` 提供
-`resolveRizlineChartPreviewBundle` 与 `loadRizlineChartPreviewResources(target, signal, read?)`，
-通过 `rizlineResources.withRelease` 按 `songId` 与 `rizlineDifficultyIndex` 对应难度定位唯一
-`.json` 谱面和 `.m4a` 音频，并用清单 `files` 的 size/sha256 走 `verifyResourceBytes`。
+Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-resources.ts` 提供端口
+`RizlineChartPreviewResourcePort`、默认装配 `defaultRizlineChartPreviewResourcePort()`、
+加载器工厂 `createRizlineChartPreviewResourceLoader(port)` 与 `loadRizlineChartPreviewResources(target, signal, read?)`；
+`domain/rizline-chart-preview.ts` 只保留 `resolveRizlineChartPreviewBundle` 与
+`rizlineChartPreviewResourceUrl` 等纯解析。读取通过端口里的 `rizlineResources.withRelease` 按 `songId`
+与 `levelIndex` 对应难度定位唯一 `.json` 谱面和 `.m4a` 音频，并用清单 `files` 的 size/sha256 走 `verifyResourceBytes`。
 `features/rizline-chart-preview/` 提供配置、打开、注入、原生准备与 WebView 播放器；
 `prepareRizlineChartPreviewWebViewSource` 复用 `downloadChartResource` 与
 `prepareChartPreviewWebviewFromPlan`，把谱面/音频写成会话脚本 `chart-data.js` /
 `music-data.js`。路由 `/songs/rizline-chart-preview` 装配
 `ChartPreviewScreenShell`，全屏方向传 `portrait_up`。官方 JSON 解析与 9:16 Canvas
 绘制留在游戏播放器内。相关合同包括 `rizline-chart-preview-resources.test.ts`、
+`rizline-chart-preview-resource-ports.test.ts`、
 `rizline-chart-preview-prepare.test.tsx`、`rizline-chart-preview-screen.test.tsx`、
 `rizline-chart-preview-controls.test.ts`、`rizline-chart-preview-chart.test.ts`、
 `rizline-chart-preview-playfield.test.ts`、`rizline-chart-preview-build.test.ts` 与
 `rizline-ui.test.tsx`。真机 WebView 音画同步无法用单测代替。
+`decodeAudio(bytes, environment?)` 复用 `PreviewSessionEnvironment` 的音频上下文入口，默认调用方
+只传字节；准备只解码，暂停就绪不请求音频授权。显式播放由 `PreviewSession.playFrom` 等待
+`resume` 并复核命令代次与释放状态，合同由 `rizline-chart-preview-playback.test.ts` 覆盖。
 
 `chart-preview-shared/webview-player/wheel.ts` 的 `setupWheelPopup` 接受元素、即时预览与提交
 回调、范围、初始值、可选文本标签及数值格式，供舞萌、osu! 与 Rizline 使用；返回
@@ -530,6 +764,16 @@ Rizline 的 `domain/rizline-chart-preview.ts` 提供
 
 ### 打包与生成数据
 
+- `app.json` 提供版本、包名与插件列表；`app.config.js` 按 `ANDROID_OPTIMIZATION_MODE`
+  设置 Android 优化插件参数；`BUILD_SOURCE_COMMIT` 写入 `extra.buildCommit`，优化模式
+  写入 `extra.androidOptimizationMode`，`OSU_OAUTH_CLIENT_SECRET` 写入 `extra.osuOAuthClientSecret`。
+  osu! 换码与令牌轮换通过 `osu-config.ts` 读取应用凭据，缺失时
+  抛 `configuration`；客户端构建注入不具备服务端保密性。
+- 安装的 `scripts/patch-metro-image-size.cjs` 是 Metro 0.83.3 与安全 image-size 2.0.4 的
+  资产尺寸适配入口：校验依赖版本和 `Assets.js` 原始/适配后摘要，普通文件路径使用官方
+  异步 `imageSizeFromFile`，ZIP 内字节继续使用 `imageSize`。重复执行不改变结果，未知版本
+  或源码使安装失败；`dependency-compatibility.test.ts` 直接调用真实 `getAssetData`，覆盖
+  Expo Router PNG、仓库 JPEG/WebP、分辨率缩放及异步资产插件。
 - `metro.config.js` 是依赖裁剪入口：保留 Ionicons 子集映射，移动端仅重定向当前 Zod
   包内部的语言集合入口到 `src/utils/zod-locales.ts`。业务继续从 `zod` 导入，不能
   另建 Schema 工厂或替换错误类；默认英文初始化由原库执行。若增加校验语言需求，
@@ -557,6 +801,9 @@ Rizline 的 `domain/rizline-chart-preview.ts` 提供
 
 ### WebView 与内存
 
+- `ChartPreviewScreenShell` 只允许当前会话的精确页面 URI 导航，不放行任意子框架。关闭共享/第三方 Cookie、混合内容和文件页访问任意来源；保留实际暂存媒体、皮肤与相对资源需要的文件读取，iOS `allowingReadAccessToURL` 指向当前 session。错误只进入白名单诊断入口，不原样输出 WebView URL、原生事件或播放器消息。
+- GIF 使用 `assertChartPreviewGifFrameCount` 在解码前限制 4,096 帧，单帧像素和所有保留 bitmap 的累计像素分别走公共 GIF/纹理预算；晚到资源与取消必须关闭 bitmap、decoder 和视频并结算等待。
+
 - 舞萌与 Majdata 播放器复用 `chart-preview-shared/webview-player/playbackClock.ts` 的 `PlaybackClock`。
   `configuration.ts` 集中定义 `ChartPreviewInjectConfig` 和设置类型，注入模块保留兼容导出；
   `createChartPreviewInjectors<TConfig>(spec)` 负责序列化入口，转义脚本边界并原样保留 `$`，`prepareChartPreviewWebviewFromPlan(plan, signal?, onProgress?)`
@@ -577,19 +824,43 @@ Rizline 的 `domain/rizline-chart-preview.ts` 提供
   `resolvePlaybackRange(charts: readonly Chart[], musicDurationSeconds: number | null, musicOffset?: number)`
   接收已解析的非空谱面数组，返回同一主谱时间轴上的 `totalDurationMs` / `totalBeats`。
   复用 `TimingTimeline` 和音乐时间换算，以各侧实际谱尾与音频结尾的较晚者统一播放、拖动、
-  小节跳转和背景范围；音乐缺失时保留谱尾。音源自然结束不清除公共 `PlaybackClock`，
+  小节跳转和背景范围；步进与步退每次移动一拍，小节跳转按四拍定位。音乐缺失时保留谱尾。
+  音源自然结束不清除公共 `PlaybackClock`，
   剩余谱面继续计时和变速；主动暂停、跳转与退出仍清除时钟。
   `maimai-chart-preview-audio.test.ts` 覆盖歌曲尾奏、长条谱尾、偏移、变 BPM 与 Buddy 范围。
   `npm run typecheck` 包含 `typecheck:maimai-player`、`typecheck:phigros-player` 和
   `typecheck:osu-player`、`typecheck:rizline-player`，完整检查四类播放器入口和引擎。
-  修改播放器后必须执行 `npm run build:chart-preview`，验证 `player.js` 与应用加载的
-  `player.bundle` 一致，并完成运行时验收。相关合同包括 `chart-preview-screen-shell-contract.test.tsx`、
+  修改播放器后必须按所属功能执行 `npm run build:chart-preview`、`npm run build:phigros-chart-preview`、
+  `npm run build:osu-chart-preview` 或 `npm run build:rizline-chart-preview`（公共拨轮、公共资源预算或
+  `chart-preview-shared/webview-player/` 的改动会让多套生成物同时过期），并执行 `npm run check:generated` 确认
+  `index.html`、`player.js` 与 `player.bundle` 与当前源码一致，最后完成运行时验收。相关合同包括 `chart-preview-screen-shell-contract.test.tsx`、
   `maimai-chart-preview-webview.test.ts`、`maimai-chart-preview-remote-assets.test.ts`、
   `chart-preview-progress.test.ts` 和 `maimai-chart-preview-reference.test.ts`；浏览器检查不能代替 iOS/Android WebView 验收。
 
+- 四套播放器的 `main.ts` 只接线，播放状态归各自的会话类，宿主与视图只读。
+  Simai（舞萌与 Majdata 共用）在 `features/simai-chart-preview/webview-player/`：
+  `playback.ts` 的 `SimaiPlaybackSession` 独占播放位置（拍）、命令代次、音源与 rAF，
+  位置换算与播放范围沿用 `timeConversion.ts` 的同一时间轴；
+  `timelineView.ts` 的 `SimaiTimelineView` 由窗口与全屏控制器各持一个实例，
+  密度条、刻度与播放头节点归实例所有；`backgroundMedia.ts` 的 `SimaiBackgroundMedia`
+  独占背景图片/视频元素、就绪状态与视频回绕同步，播放状态只作为每帧输入读入。
+  三者的视图与桥回执都经 `SimaiPlaybackHost` / `SimaiBackgroundMediaHost` 回调接线。
+  Phigros 与 Phira 在 `features/phigros-chart-preview/webview-player/`：`playback.ts` 的
+  `PhigrosPlaybackSession` 独占播放位置（谱面秒）、命令代次、音乐音源、打击音调度与 rAF，
+  设置对象由宿主持有、会话只读取当前值；seek 固定目标时间并提升代次，撤旧帧、音源与打击音后恢复，旧帧不能改写目标；`timelineView.ts` 的 `PhigrosTimelineView`
+  持有密度条、刻度与播放头节点，时长与音符条目每次构建时传入。
+  Rizline 的 `PreviewSession` 同样独占播放位置、音源、帧循环与命令代次，并通过可选的
+  `PreviewSessionEnvironment`（`defaultPreviewSessionEnvironment`）注入音频上下文与帧循环，
+  生产调用点不传该参数。osu! 的 `PreviewSession` 与 `PlaybackHandle`
+  （`features/osu-chart-preview/webview-player/playback.ts`）同样持有会话，
+  `main.ts` 只保存句柄与界面状态。会话状态由会话类内部改写，`main.ts` 只接线、不声明位置、时钟、
+  代次或音源字段。公共 `PlaybackClock` 与 `chart-preview-shared/webview-player/` 的桥接、
+  拨轮壳仍是各自的公共入口，命令与事件语义由共享桥接合同决定。
+  合同见 `chart-preview-playback-ownership.test.ts`、`chart-preview-simai-playback-session.test.ts`、
+  `phigros-chart-preview-playback-session.test.ts`、`rizline-chart-preview-playback.test.ts`、`player-event-scope.test.ts`。
 - osu! 谱面确认在设置关闭背景视频时，下载 `novideo` 包并且不把视频条目放进资源计划。
 - Phira、TUF 和 osu! 的无限列表使用 `components/game-content/InfinitePageFooter.tsx`，页脚表示加载中、后页失败重试或已经结束，已载列表保留。
-- 谱面下载、解压、事件、循环、纹理和 GIF 使用 `chart-preview-shared/chart-preview-resource-budget.ts` 的有限预算。明确超限抛出 `ChartPreviewBudgetExceededError`（不再换源重试）；无法确定的声明量仍抛基类 `ChartPreviewBudgetError`，按格式问题处理。循环超过 4,096 次后按时间求值，不展开成无界指令。ZIP 先核对声明大小，选出媒体后再解压并校验该条目。同一次准备用 `actualBytes` 累计实际读出字节，达到总上限后不再读取下一条。CRC 每 64 KiB 检查取消并让出。声明大小、实际读出字节、解码像素和进程内存分开计算；这些常量不是进程内存上限。长解析按 `AbortSignal` 与写入代次在固定步数让出。
+- 谱面下载、解压、事件、循环、纹理和 GIF 使用 `chart-preview-shared/chart-preview-resource-budget.ts` 的有限预算。明确超限抛出 `ChartPreviewBudgetExceededError`，无法确定的声明量仍抛基类 `ChartPreviewBudgetError`。循环超过 4,096 次后按时间求值。ZIP 先核对声明大小和条目数，再由 `readBudgetedZipEntry` 读取实际解压块：每块在保留前校验条目/总量与声明，超限、伪造声明或取消会销毁上游 inflater；不使用完整 `entry.async()` 后补查大小。JSZip worker 适配先核验运行时能力，取消不越过受控调用栈形成未捕获异常。CRC 每 64 KiB 检查取消并让出；同一次准备用 `actualBytes` 累计。Phira notes 和预览下载显式使用 256 MiB 公共预算，notes 中 info/chart 另限 6/32 MB，JSON 解析受字节限额，RPE/PGR/PEC/PBC 遍历每 128 步让出，假音符同样计入 100,000 音符预算。声明量、实际字节、像素和进程内存分别计算，常量不等于进程内存上限。
 - 成绩图前台收到内存警告后卸掉预览，页内提供降低分辨率并重新加载。警告到达时不按当前分辨率自动重建，重复警告也不重新挂上 WebView。`best-image-memory-recovery.test.tsx` 覆盖这个恢复。
 - 成绩图预览只挂载当前页 WebView，其余页使用轻量占位；不得让多份大 HTML 常驻。
 - 谱面确认和下载任务必须响应卸载、后台与 AbortSignal，不得在取消后继续写缓存或显示成功。
@@ -597,8 +868,10 @@ Rizline 的 `domain/rizline-chart-preview.ts` 提供
 
 ## Majdata 与 Simai 公共路径
 
-- `http-json.ts` 的 `JsonRequestOptions<T>` 支持 `init` 与 `onResponse`；JSON、字节和
-  `requestProviderResponse(options, read)` 共用取消、超时、重试、Schema 和错误归一化。
+- `http-json.ts` 的 `JsonRequestOptions<T>` 支持 `init`、`authenticated`、`maxResponseBytes`、
+  `onHttpError` 与 `onResponse`；JSON、字节和 `requestProviderResponse(options, read)` 共用
+  实际字节预算、取消、超时、重试与 Schema。`onResponse` 只在有效成功响应后执行并等待；
+  Majdata Cookie 提交失败保留持久化错误，不误归网络错误或重新发请求。
   `http-cookies.ts` 提供 `responseCookies`、`cookieHeader` 和会话校验；Cookie 仅发送到
   明确的来源与路径。`PasswordLoginPanel` 复用登录表单、取消和前后台流程；默认用户名身份，
   可选手机号展示配置不改变提交动作，游戏只提供登录动作。
@@ -661,9 +934,16 @@ MajdataPlay 原始计分方法，普通测试无需 .NET；原生账号、保存
 
 ## 项目不变量
 
-- 读失败不毁数据。账号目录、偏好、成绩、曲库和资源快照在 I/O 失败或 JSON 损坏时保留原值；损坏文本另存 `.corrupt` 副本。账号目录的未知版本或顶层结构错误另存 `.unrecognized`，后续写入不能静默覆盖。会话索引损坏或无法识别时同样保留原文与副本并抛类型化错误，旧版迁移源解析失败时跳过但不删除。调用方得到明确错误，不把不可识别数据当成空目录。
+独立原生诊断使用 `services/native-storage-probe.ts` 的 `runNativeStorageProbe(publish)`。
+该入口仅使用临时数据检查真实桥接能力，不读取账号或替代业务存储入口；结果由调用方
+直接显示，不依赖日志、数据库或文件写入成功。生产构建保持 `expo-router/entry`。
+
+- 读取失败不删除原数据。账号目录和会话索引在 JSON 损坏时保留原文并尝试保存 `.corrupt` 副本，未知版本或顶层结构错误保存 `.unrecognized` 副本并抛出类型化错误，后续写入不能静默覆盖；旧版会话迁移源解析失败时跳过但不删除。偏好工厂的 `readFailure: 'throw'` 让严格消费者区分读取失败与缺失，默认模式在读取或解析抛错时返回默认值，解析失败尝试保存 `.corrupt` 副本并保留原键。SQLite 成绩、曲库和资源快照在 schema 版本不符或 JSON 损坏时保留原行并返回 `null`，不创建文本副本；数据库 I/O 错误向调用方传播。
 - 代次过期不能提交。`captureResourceWrites` 在等待之前记下范围和账号代次，`invalidateResourceWrites` 之后再提交会抛出「缓存请求已失效」。
 - 查询 key 含稳定身份。`gameDataQueryKey` 包含查询版本、账号、游戏、查分器和会话模式；换账号不会命中另一账号的缓存。
+- 一个实体一份已提交版本。账号最终数据只经 `publishGameDataBundle` / `publishEntityValue` 进入缓存，跨实体失效经 `invalidateEntityValue` 端口，页面与加载器不各自操作缓存客户端；主动刷新只按 `refreshGameDataBundle` 的返回值判定成功、部分失败或全部失败，总览与页面经同一组参数读到同一份已提交版本。
+- 会话只有一份真相。`useSession` 保存账号状态与派生视图，Provider 实例按「账号 + 凭据版本」缓存，只在 release、凭据版本变化、账号身份或展示名变化时重建；凭据落盘与轮换只经凭据提交协调器，Store 不构造 Provider、不调用安全存储 API。
+- 播放状态归会话。每套播放器的位置、命令代次、音源与帧循环由播放会话类独占，视图类独占自己的时间线节点，`main.ts` 只接线。
 - 备份可往返且原子。`createUserDataBackup` 与 `parseUserDataBackup` 往返后条目和预设一致，导出前经过 `assertUserDataBackupExportable`，上限 `MAX_BACKUP_FILE_BYTES`（12 MiB）。恢复经 `mergeBackup` 在单个数据库事务内读改写提交；单项收藏/练习/标签经 `updateTarget` 按键写回，按游戏清除经 `clearGame`，均不重写无关行；`list(gameId)` 在 SQL 层按 `game_id` 筛选。
 - 不可信输入有资源预算。谱面下载、解压、事件、音符、循环和纹理在展开前调用 `chart-preview-resource-budget`，超出抛出 `ChartPreviewBudgetError`。声明大小、实际读出字节和纹理像素分别检查，不把同一个常量当成进程内存上限。
 
@@ -676,8 +956,46 @@ MajdataPlay 原始计分方法，普通测试无需 .NET；原生账号、保存
 3. 能复用则通过适配器、配置、能力或插槽接入。需要扩展时优先增加可选语义并保持旧调用方缺省行为。
 4. 新游戏先验证上游数据，再实现原始 Schema/Provider 与注册，随后实现规范化和展示适配器，最后接共享页面。
 5. 至少覆盖歌曲、谱面、成绩映射，以及缺失数据、未游玩、满成绩和特殊难度等真实边界。
-6. 按改动范围运行相关单元/UI/合同测试，再运行 lint、typecheck 和完整测试。Host 哈希与字符串金样出现差异时修正实现，不通过更新基线掩盖差异。
+6. 按改动范围运行相关单元/UI/合同测试，再运行 lint、typecheck 和完整测试。Host 结构哈希与字符串金样出现差异时修正实现，不通过更新基线掩盖差异。
 7. WebView、导出、原生手势、动画流畅度、生命周期和内存行为仍需对应平台真机验收，自动化通过不能替代该链路。
+
+## 宿主结构合同的哈希与诊断基线
+
+公共 UI 的宿主结构由 `tests/host-contract-hash.ts` 的 `expectHostContract({ name, tree, expectedHash, serialize?, diffLimit? })` 把关：
+通过与否只由规范化序列化文本的 sha256 决定，测试里的哈希字面量是唯一门禁。
+`tests/host-contract-baselines/<name>.json`（`name` 的第一段是校验文件名、第二段起是用例域名，
+例如 `p3-host-contract-visuals/phigros-difficulty-badge`）只是诊断快照：哈希不一致时
+`readHostContractBaseline` 读出记录的结构，`diffHostContractTrees` 与 `formatHostContractDiff`
+给出按路径定位的 changed / added / removed 差异，避免只报两串十六进制；基线缺失或不可用时仍按哈希判定。
+基线只在显式设置 `HOST_CONTRACT_UPDATE_BASELINE=1`（`HOST_CONTRACT_UPDATE_ENV`）时改写，
+否则 `writeHostContractBaseline` 直接抛错，测试不会静默写仓库文件。
+消费者是 `p3-host-contract-{visuals,cards,pickers,song-details}.test.tsx`、`game-content-host-contract.test.tsx`、
+`filter-shell-host-contract.test.tsx` 与 `song-detail-chrome-contract.test.tsx`；
+`host-contract-hash.test.tsx` 自测门禁与差异报告的边界。谱面确认的宿主命令合同由
+`chart-preview-host-contract.test.ts` 直接校验，不走哈希门禁。
+
+## CI 公共合同
+
+常规检查与构建统一由 `.github/workflows/quality.yml` 编排；独立的 Android 原生诊断仅手动运行。
+完整检查同时依赖范围与轻检查成功，`quality-gate` 聚合三者，平台构建不能跳过它。
+纯文档只在范围、轻检查成功且完整检查明确跳过时通过。PR 使用 head.sha，分支使用
+github.sha；policy 输出、质量检查、门禁、checkout 与构建输入必须对应原始事件同一源码。
+
+| 公共入口 | 输入与输出 | 合同测试 |
+|---|---|---|
+| `.github/scripts/build-policy.mjs`：`buildPolicy({ eventName, event, repository, ref, sha })` | 返回 `{ build, production, sha }`；核验原始事件仓库、分支、删除状态、PR 来源与 40 位 SHA。本仓库分支 push/手动运行允许发布构建；同仓 PR 与 fork 自身运行只检查；fork PR 到 master 只允许无生产凭据构建。CLI 对无法验证的事件失败，不输出事件正文 | `build-policy.test.mjs`、`ci-contract.test.mjs` |
+| `.github/actions/changed-scope/action.yml` | `base-sha` / `head-sha`；返回固定枚举 `functional` / `reason` 与计数 `changed-count`。CI、依赖、构建配置走完整检查；仅文档、许可、自述与根级 README 截图可以跳过；无基准或比较失败按功能改动处理 | `changed-scope/self-test.mjs`、轻检查破坏样例 |
+| `.github/actions/android-build/action.yml` | `source-sha`、字符串布尔 `production`、`signing-mode`、`expected-certificate-sha256`、`optimization-mode`；返回 `artifact-name`。同一入口完成四 ABI Release 编译、签名校验、生产路由冒烟和上传；发布模式独立校验 GITHUB_SHA。现有发布选择 `legacy-debug` 并锁定旧证书，fork 只用 `test-debug`；`release` 私有签名模式仍要求完整 keystore 配置 | `ci-contract.test.mjs`；实际 Gradle 与托管设备另行执行 |
+| `.github/scripts/android_signing.py`：`verify_android_signing(apksigner_output, mode, expected_certificate_sha256=None)` | 仅接受单一签名者的证书 DN / SHA-256，区分证书与公钥摘要。`legacy-debug` 必须带合法 pin，任何给定 pin 均严格匹配；`release` 拒绝调试证书。返回同源签名证据与说明，四 ABI 校验器复用它，旧调试签名不标为正式签名 | `android_signing.test.py`，含四 ABI 验证入口 fixture |
+| `.github/actions/ios-build/action.yml` | `source-sha`、字符串布尔 `production`。正式模式校验 GITHUB_SHA，预留编号、签名 Archive/IPA，先保存制品再提交 TestFlight；测试模式不安装签名、不请求 ASC。私钥、profile 与 keychain 在部分失败时仍清理 | `ci-contract.test.mjs`；实际 Xcode、签名与 Apple 处理另行执行 |
+| `.github/scripts/ios-build-number.mjs`：`nextIosBuildNumber(latestBuild, reservedBuilds?)`、`queryReservedIosBuildNumbers(options)`、`reserveIosBuildNumber(env, options?)` | 在全局 iOS 发布锁内取 Apple 最大整数与可信预留最大值加一。查询当前/历史运行的官方仓库 ID、事件、workflow 路径与 SHA；不采信 PR/fork/其它工作流，不下载 artifact 正文。CLI 返回 `build_number` / `artifact_name` / `reservation_path`，预留上传成功后才允许提交 Apple | `ios-build-number.test.mjs`、`ci-contract.test.mjs` |
+| `.github/scripts/verify-ios-archive.py`：`verify_app`、`verify_ipa` | 校验实际 Archive 与最终 IPA 的 Expo buildCommit、Info.plist 包名、版本与构建号。IPA 只读取唯一且有界的配置与 manifest，脱敏身份 JSON 不包含 OAuth 或签名材料 | `verify-ios-archive.test.py` |
+| `.github/scripts/lib/workflow-yaml.mjs`：`validateWorkflow`、`validateAction`、`collectBashRuns`、`collectPowerShellRuns` | 使用固定真实 YAML 解析器，按解码后的 shell 文本检查；PowerShell 只解析 AST，不执行构建脚本。解析器或 shell 不可用时失败 | `check-light.mjs --self-test` |
+
+发布作业只进入 `production-release`，并有独立原始事件守卫；fork 构建作业无发布环境、无
+secrets 引用、checkout 不持久化 Git 凭据。正式 iOS 使用全局串行队列并保留最多 100 个
+等待项，预留 artifact 保留 90 天；失败/取消的预留仍占用。环境、密钥与分支保护是远端配置，
+不能从 YAML 修改推断已部署。自动化仅证明相应合同，不代表原生出包、真实账号或设备验收。
 
 ## 可复现检查
 
@@ -686,6 +1004,26 @@ MajdataPlay 原始计分方法，普通测试无需 .NET；原生账号、保存
 `npm run benchmark:phigros-push`、`npm run audit:prod`。播放器生成检查从当前
 源码重新打包，同时验证 HTML、player.js 与 player.bundle；基准比较保留固定提交的绘制
 命令及搜索结果，报告桌面 CPU 分布，不推断手机帧率。推分基准用确定性存档测量
-30/300/1000 条成绩的总耗时与事件循环最大阻塞，不设 CI 耗时门槛。生产审计门槛拦截
-critical 与基线外 high 公告，基线内公告的定性见脚本注释。无损 PNG 检查验证 CRC、解压扫描线、
-RGBA、透明度及所有非 IDAT 块。完整命令和双端云端比较流程见技术架构文档。
+30/300/1000 条成绩的总耗时与事件循环最大阻塞，不设 CI 耗时门槛。生产审计门槛分执行、校验、
+完整性、政策四层（退出码 0 通过 / 1 政策失败 / 2 执行失败 / 3 报告不合法 / 4 报告不足以判断）：
+critical 无论能否解析出公告编号都失败；报告缺字段、条目与 metadata 不自洽、未知严重级别、
+无法识别的公告，以及空 `via`、悬空引用、成环而无可解析根因都按失败处理；基线记录的分类值、
+包名与版本必须与锁文件一致；接受理由类型由脚本定义，当前接受基线为空。
+无损 PNG 检查验证 CRC、解压扫描线、RGBA、透明度及所有非 IDAT 块。完整命令和双端云端比较流程见技术架构文档。
+
+仓库轻检查在仓库根目录执行 `node .github/scripts/check-light.mjs`（`--self-test` 额外用故意
+破坏的样例证明每类检查都会失败）：用固定的真实 YAML 解析器（`yaml` 2.9.0，声明在
+`.github/scripts/package.json`，与 `apps/mobile` 依赖树无关）解析 workflow 与 action，
+按解码后的标量检查 `run:` 的 shell 文本、执行 `bash -n` 与 PowerShell AST、检查 `.mjs`/`.cjs` 的
+`node --check` 语法，并运行分类器自检 `node .github/actions/changed-scope/self-test.mjs`。
+它只读仓库文件，不安装移动端依赖树。
+
+CI 合同在仓库根目录执行：
+
+```powershell
+node --test .github/scripts/build-policy.test.mjs .github/scripts/ios-build-number.test.mjs .github/scripts/ci-contract.test.mjs
+python -B .github/scripts/verify-ios-archive.test.py
+python -B .github/scripts/android_signing.test.py
+```
+
+这些命令只运行事件、门禁、编号与脱敏制品 fixture，不执行播放器、Expo prebuild 或原生构建。

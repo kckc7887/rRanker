@@ -1,6 +1,9 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PhigrosResourceService, phigrosResources } from '@/services/phigros-resources';
-import { loadPhigrosChartPreviewResources, loadPhigrosChartPreviewVariants } from '@/domain/phigros-chart-preview';
+import {
+  loadPhigrosChartPreviewResources,
+  loadPhigrosChartPreviewVariants,
+} from '@/services/phigros-chart-preview-resources';
 import { releaseFixture } from './fixtures/phigros-release';
 
 afterEach(() => { phigrosResources.clear(); vi.unstubAllGlobals(); });

@@ -30,7 +30,7 @@ const mockBundle = {
   profile: {
     id: 'musedash', title: '喵斯快跑', ratingLabel: 'Rating', ratingDigits: 0,
     bestSections: [{ id: 'best30', title: 'Best 30', size: 30 }],
-    capabilities: { hasCatalog: true, hasRecords: true, hasBestList: true, hasTools: false },
+    capabilities: { hasTools: false },
   },
   payload: {
     kind: 'musedash', player: mockPlayer,

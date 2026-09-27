@@ -21,7 +21,7 @@ jest.mock('@/services/rizline-service', () => ({
   loadRizlineCached: (...args: [string]) => mockCached(...args),
   loadRizlineWithFallback: (...args: [string, RizlineSession, AbortSignal]) => mockFresh(...args),
 }));
-jest.mock('@/hooks/use-rizline-catalog', () => ({
+jest.mock('@/services/rizline-catalog-query', () => ({
   RIZLINE_CATALOG_QUERY_KEY: ['rizline-catalog'], ensureRizlineCatalog: () => mockCatalog(),
 }));
 

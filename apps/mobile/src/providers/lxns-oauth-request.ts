@@ -1,6 +1,7 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import { LxnsEnvelopeSchema } from '@/domain/schemas';
-import { ProviderError, providerErrorFromStatus } from './errors';
+import { ProviderError, providerErrorFromStatus, type ProviderStatusTexts } from './errors';
+import { requestJson } from './http-json';
 import { LXNS_API_ROOT } from './lxns-config';
 import {
   lxnsAccessTokenExpired,
@@ -8,17 +9,28 @@ import {
   type LxnsOAuthSession,
 } from './lxns-oauth';
 
-/** token 轮换成功后的回调：由调用方把新会话持久化到账号存储。 */
-export type LxnsTokenRotationHandler = (session: LxnsOAuthSession) => void | Promise<void>;
+/** token 轮换提交：被本次轮换消费掉的旧会话与轮换结果一起上报，提交方据此校验凭据世代。 */
+export type LxnsTokenRotationUpdate = {
+  /** 请求开始时的会话；其 refresh_token 已在上游被消费。 */
+  previous: LxnsOAuthSession;
+  next: LxnsOAuthSession;
+};
 
-/** 把通用 provider 状态码错误文案从「水鱼」改写为「落雪」品牌语义。 */
+/** token 轮换成功后的回调：由调用方按凭据世代校验后把新会话提交到账号存储。 */
+export type LxnsTokenRotationHandler = (update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
+
+/** 落雪品牌的状态码文案：在协议层显式声明，不复用其它数据源的文案做字符串改写。 */
+const LXNS_STATUS_TEXTS: ProviderStatusTexts = {
+  authentication: '登录信息或 Token 无效',
+  permission: '当前账号无权读取该数据',
+  noData: '未找到玩家数据',
+  rateLimit: '请求过于频繁，请稍后重试',
+  server: '落雪服务暂时不可用',
+  fallback: { message: (status) => `落雪返回 HTTP ${status}`, code: 'unknown' },
+};
+
 export function lxnsErrorFromStatus(status: number): ProviderError {
-  const base = providerErrorFromStatus(status);
-  return new ProviderError(
-    base.code,
-    base.message.replace('水鱼', '落雪'),
-    base.retryable,
-  );
+  return providerErrorFromStatus(status, LXNS_STATUS_TEXTS);
 }
 
 /** 各游戏 provider 注入的差异化文案：envelope 校验失败、鉴权拒绝兜底、超时。 */
@@ -27,6 +39,11 @@ export type LxnsOAuthRequestTexts = {
   authRejectedFallback: string;
   timeoutMessage: string;
 };
+
+/** 取消检查统一走这里：轮换与请求之间要复查多次，避免在方法里重复展开分支。 */
+function assertNotAborted(signal?: AbortSignal): void {
+  if (signal?.aborted) throw signal.reason;
+}
 
 /**
  * LXNS OAuth 请求核心：持有会话并负责 token 互斥轮换（refreshPromise 去重，
@@ -53,9 +70,10 @@ export class LxnsOAuthRequestCore {
     if (!lxnsAccessTokenExpired(this.session)) return this.session.accessToken;
     if (!this.refreshPromise) {
       this.refreshPromise = (async () => {
-        const next = await rotateLxnsTokens(this.session.refreshToken);
+        const previous = this.session;
+        const next = await rotateLxnsTokens(previous.refreshToken);
         this.session = next;
-        await this.onTokensRotated?.(next);
+        await this.onTokensRotated?.({ previous, next });
       })().finally(() => {
         this.refreshPromise = null;
       });
@@ -70,53 +88,36 @@ export class LxnsOAuthRequestCore {
     texts: LxnsOAuthRequestTexts,
     signal?: AbortSignal,
   ): Promise<unknown> {
-    if (signal?.aborted) throw signal.reason;
+    assertNotAborted(signal);
     const accessToken = await this.ensureFreshAccessToken();
-    const controller = new AbortController();
-    const onExternalAbort = () => controller.abort();
-    signal?.addEventListener('abort', onExternalAbort, { once: true });
-    const timeout = setTimeout(() => controller.abort(), 12_000);
+    // 刷新可能耗时：轮换结果仍会为其它共享账号提交，但这次业务读取必须先重新确认取消。
+    assertNotAborted(signal);
     try {
-      const response = await expoFetch(`${LXNS_API_ROOT}${path}`, {
-        headers: {
+      const envelope = await requestJson({
+        baseUrl: LXNS_API_ROOT, path, schema: LxnsEnvelopeSchema,
+        fetcher: expoFetch as unknown as typeof fetch, label: '落雪', signal,
+        authenticated: true, totalAttempts: 1, error: lxnsErrorFromStatus,
+        messages: { schema: texts.envelopeSchemaMessage, timeout: texts.timeoutMessage, network: '无法连接落雪服务' },
+        init: { headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${accessToken}`,
-        },
-        signal: controller.signal,
+        } },
       });
-      if (optional && response.status === 404) return null;
-      if (!response.ok) {
-        const error = lxnsErrorFromStatus(response.status);
-        throw new ProviderError(error.code, `${error.message}（${path}）`, error.retryable, { cause: error });
-      }
-      const payload: unknown = await response.json();
-      const envelope = LxnsEnvelopeSchema.safeParse(payload);
       if (!envelope.success) {
-        throw new ProviderError('upstream_schema', texts.envelopeSchemaMessage, true);
-      }
-      if (!envelope.data.success) {
-        if (optional && envelope.data.code === 404) return null;
+        if (optional && envelope.code === 404) return null;
         throw new ProviderError(
           'authentication',
-          envelope.data.message ?? texts.authRejectedFallback,
+          envelope.message ?? texts.authRejectedFallback,
           false,
         );
       }
-      if (optional && (envelope.data.data === null || envelope.data.data === undefined)) return null;
-      return envelope.data.data;
+      if (optional && (envelope.data === null || envelope.data === undefined)) return null;
+      return envelope.data;
     } catch (error) {
-      if (signal?.aborted) throw error;
+      if (signal?.aborted) throw signal.reason;
+      if (optional && error instanceof ProviderError && error.code === 'no_data') return null;
       if (error instanceof ProviderError) throw error;
-      if (error instanceof SyntaxError) {
-        throw new ProviderError('upstream_schema', '落雪返回了无效 JSON', true, { cause: error });
-      }
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new ProviderError('timeout', texts.timeoutMessage, true, { cause: error });
-      }
       throw new ProviderError('network', '无法连接落雪服务', true, { cause: error });
-    } finally {
-      clearTimeout(timeout);
-      signal?.removeEventListener('abort', onExternalAbort);
     }
   }
 }

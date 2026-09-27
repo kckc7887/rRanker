@@ -1,10 +1,6 @@
-import type {
-  GameChart,
-  GameContentAdapter,
-  GameNoteGroup,
-} from '@/domain/game-content';
+import type { GameNoteGroup } from '@/domain/game-content';
 import {
-  formatPhiraAccuracy, PHIRA_STATUS_LABELS, phiraChartStatus, phiraGrade,
+  formatPhiraAccuracy, phiraGrade,
   type PhiraChart, type PhiraNoteCounts, type PhiraQueriedBest,
 } from '@/domain/phira';
 import { phiraRecordXing } from '@/domain/phira-filters';
@@ -28,40 +24,6 @@ function phiraNotes(notes: PhiraNoteCounts | null | undefined): GameNoteGroup[] 
     { key: 'total', label: '总计', value: notes.click + notes.hold + notes.flick + notes.drag },
   ] }];
 }
-
-function normalizePhiraChart(raw: PhiraRawChart): GameChart<'phira', PhiraRawChart> {
-  const id = String(raw.chart.id);
-  return {
-    gameId: 'phira', songId: id, chartId: id, order: 0,
-    libraryRef: { type: 'SD', levelIndex: 0 }, label: raw.chart.level,
-    level: raw.chart.level, constant: raw.chart.difficulty,
-    charter: raw.chart.charter || undefined, notes: phiraNotes(raw.notes), extension: raw,
-  };
-}
-
-export const phiraContentAdapter: GameContentAdapter<
-  'phira', PhiraRawChart, PhiraRawChart, PhiraQueriedBest,
-  PhiraRawChart, PhiraRawChart, PhiraQueriedBest
-> = {
-  gameId: 'phira',
-  normalizeSong: (raw) => ({
-    gameId: 'phira', songId: String(raw.chart.id), title: raw.chart.name,
-    artist: raw.chart.composer || undefined,
-    metadata: {
-      illustrator: raw.chart.illustrator ?? undefined,
-      status: PHIRA_STATUS_LABELS[phiraChartStatus(raw.chart)], uploader: raw.chart.uploader,
-      rating: raw.chart.rating ?? undefined, ratingCount: raw.chart.ratingCount,
-      created: raw.chart.created ?? undefined, updated: raw.chart.updated ?? undefined,
-    },
-    charts: [normalizePhiraChart(raw)], extension: raw,
-  }),
-  normalizeChart: normalizePhiraChart,
-  normalizeScore: (raw) => ({
-    gameId: 'phira', songId: String(raw.chart.id), chartId: String(raw.chart.id), order: 0,
-    libraryRef: { type: 'SD', levelIndex: 0 }, key: String(raw.record?.id ?? `unplayed:${raw.chart.id}`),
-    title: raw.chart.name, rating: raw.poolRks ?? undefined, extension: raw,
-  }),
-};
 
 export function presentPhiraScore(raw: PhiraQueriedBest, position?: number): ScoreCardPresentation<'phira'> {
   const record = raw.record;
@@ -116,6 +78,6 @@ export function presentPhiraChart(raw: PhiraRawChart, score?: PhiraQueriedBest):
       { key: 'accuracy', label: 'ACC', text: '—' }, { key: 'rks', label: 'RKS', text: '—', tone: 'muted' },
     ],
     grade: presented?.grade, achievementRows: presented?.achievementRows ?? [],
-    charter: raw.chart.charter || '未提供', notes: normalizePhiraChart(raw).notes,
+    charter: raw.chart.charter || '未提供', notes: phiraNotes(raw.notes),
   };
 }

@@ -1,5 +1,3 @@
-import { MajdataLoginPanel } from '@/components/majdata/MajdataLoginPanel';
-import { RizlineLoginPanel } from '@/components/rizline/RizlineLoginPanel';
 import { useState } from 'react';
 import {
   Image,
@@ -12,10 +10,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { LOCAL_MAIMAI_ACCOUNT_ID } from '@/domain/bound-account';
 import type { GameId, ProviderOption } from '@/domain/game-bind-options';
-import { DivingFishLoginPanel } from '@/components/maimai/DivingFishLoginPanel';
-import { LxnsLoginPanel } from '@/components/LxnsLoginPanel';
-import { PhigrosLoginPanel } from '@/components/phigros/PhigrosLoginPanel';
-import { OsuLoginPanel } from '@/components/osu/OsuLoginPanel';
+import { resolveProviderLoginPanel } from '@/features/game-content/provider-login-panels';
 import { providerLoginSheetStyles as styles } from '@/components/provider-login-sheet-styles';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
@@ -48,8 +43,7 @@ export function ProviderLoginSheet({
     onClose();
   };
 
-  const bindingKind = provider.bindingKind;
-  const isOsu = provider.id === 'osu';
+  const LoginPanel = resolveProviderLoginPanel(provider);
 
   return (
     <Modal
@@ -84,7 +78,7 @@ export function ProviderLoginSheet({
             <Image source={provider.icon} style={styles.icon} />
             <Text style={[styles.providerName, { color: theme.text }]}>{provider.title}</Text>
             <Text style={[styles.gameLine, { color: theme.textMuted }]}>
-              用于绑定 {isOsu ? 'osu!（选择模式）' : gameTitle}
+              用于绑定 {provider.id === 'osu' ? 'osu!（选择模式）' : gameTitle}
             </Text>
           </View>
 
@@ -93,25 +87,13 @@ export function ProviderLoginSheet({
             {boundMaimaiCount > 0 ? (
               <Text style={styles.hint}>可同时保存多个查分器账号；同一玩家再次登录会更新该账号凭据。</Text>
             ) : null}
-            {provider.id === 'rizline-official' ? (
-              <RizlineLoginPanel visible={visible} onSuccess={onSuccess} onBusyChange={setBusy} />
-            ) : provider.id === 'majdata-net' ? (
-              <MajdataLoginPanel visible={visible} onSuccess={onSuccess} onBusyChange={setBusy} />
-            ) : bindingKind === 'device-code' ? (
-              <PhigrosLoginPanel visible={visible} onSuccess={onSuccess} onBusyChange={setBusy} />
-            ) : bindingKind === 'oauth-code' && isOsu ? (
-              <OsuLoginPanel visible={visible} onSuccess={onSuccess} onBusyChange={setBusy} />
-            ) : bindingKind === 'oauth-code' ? (
-              <LxnsLoginPanel
-                visible={visible}
-                gameId={gameId}
-                gameTitle={gameTitle}
-                onSuccess={onSuccess}
-                onBusyChange={setBusy}
-              />
-            ) : (
-              <DivingFishLoginPanel visible={visible} onSuccess={onSuccess} onBusyChange={setBusy} />
-            )}
+            <LoginPanel
+              visible={visible}
+              gameId={gameId}
+              gameTitle={gameTitle}
+              onSuccess={onSuccess}
+              onBusyChange={setBusy}
+            />
           </View>
         </ScrollView>
       </View>

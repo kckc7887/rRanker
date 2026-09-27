@@ -8,8 +8,7 @@ const mockLoad = jest.fn<(...args: unknown[]) => Promise<number[]>>();
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
 jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => ({ foregroundReady: true }) }));
-jest.mock('@/domain/phigros-chart-preview', () => ({
-  phigrosChartPreviewLevelLabel: () => 'IN',
+jest.mock('@/services/phigros-chart-preview-resources', () => ({
   loadPhigrosChartPreviewVariants: (...args: unknown[]) => mockLoad(...args),
 }));
 const target = { songId: 'Random.SobremSilentroom', levelIndex: 2 };

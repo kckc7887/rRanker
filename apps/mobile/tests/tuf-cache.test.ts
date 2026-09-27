@@ -99,7 +99,18 @@ describe('tuf cache snapshots', () => {
     await cache.savePlayer(25, makeTufSnapshot(player, '2026-08-10T00:00:00.000Z'));
     expect((await cache.loadPlayer(25))?.data).toEqual(player);
     const stale = await cache.loadPlayer(25);
-    expect(stale?.source.isStale).toBe(false);
+    expect(stale?.source).toEqual({
+      kind: 'tuf', label: 'TUF 社区公开数据', updatedAt: '2026-08-10T00:00:00.000Z', isStale: true,
+    });
+  });
+
+  it('refuses to persist a cache fallback as a fresh snapshot', async () => {
+    const fresh = makeTufSnapshot(player);
+    await expect(cache.savePlayer(77, { ...fresh, source: { ...fresh.source, isStale: true } }))
+      .rejects.toThrow('缓存');
+    await expect(cache.savePlayer(77, { ...fresh, source: { ...fresh.source, kind: 'cache' } }))
+      .rejects.toThrow('缓存');
+    expect(await cache.loadPlayer(77)).toBeNull();
   });
 
   it('round-trips pass pages per query and offset', async () => {

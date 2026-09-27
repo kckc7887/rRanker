@@ -296,11 +296,16 @@ describe('M3A personal library screens', () => {
     const screen = await render(<OverviewScreen />);
     await fireEvent.press(screen.getByLabelText('同步数据，当前 水鱼查分器'));
 
-    await waitFor(() => expect(mockCancelQueries).toHaveBeenCalledWith({ queryKey: ['game-data'] }));
+    await waitFor(() => expect(mockCancelQueries).toHaveBeenCalled());
+    const cancelled = mockCancelQueries.mock.calls[0]?.[0] as { predicate: (query: { queryKey: unknown[] }) => boolean };
+    expect(cancelled.predicate({ queryKey: ['game-data', 18, account.id] })).toBe(true);
+    expect(cancelled.predicate({ queryKey: ['game-data', 18, 'other-account'] })).toBe(false);
     await waitFor(() => expect(mockRefreshDivingFishAccounts).toHaveBeenCalledWith({
       accounts: [account],
       sessionsByAccountId: { [account.id]: session },
       catalog: fixtures.fixtureCatalog,
+      signal: expect.any(AbortSignal),
+      assertAccount: expect.any(Function),
     }));
     expect(mockUpdateBoundAccountScore).toHaveBeenCalledWith(
       account.id,

@@ -1,4 +1,3 @@
-import type { GameContentAdapter } from '@/domain/game-content';
 import { formatRizlineAccuracy, formatRizlineConstant, formatRizlineRks, rizlineDifficultyIndex, rizlineRecordStatus, sortedRizlineCharts, type RizlineChart, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
 import type { ChartCardPresentation, ScoreCardPresentation, SongRowPresentation } from '../presentation';
 
@@ -9,18 +8,6 @@ export function presentRizlineNotes(chart: RizlineChart) {
     { key: 'max-score', label: 'Max Score', value: chart.maxScore ?? '—' },
   ] };
 }
-
-export const rizlineContentAdapter: GameContentAdapter<'rizline', RizlineSong, RizlineChart, RizlineRecord, RizlineSong, RizlineChart, RizlineRecord> = {
-  gameId: 'rizline',
-  normalizeChart: (chart) => ({ gameId: 'rizline', songId: chart.songId, chartId: chart.id,
-    order: rizlineDifficultyIndex(chart.difficulty), libraryRef: { type: 'SD', levelIndex: rizlineDifficultyIndex(chart.difficulty) },
-    label: chart.difficulty, level: chart.level, constant: chart.constant ?? undefined, charter: chart.designer ?? undefined,
-    notes: [presentRizlineNotes(chart)], extension: chart }),
-  normalizeSong: (song) => ({ gameId: 'rizline', songId: song.id, title: song.title, artist: song.artist ?? undefined,
-    metadata: { pack: song.packName, bpm: song.bpm ?? undefined }, charts: sortedRizlineCharts(song.charts).map(rizlineContentAdapter.normalizeChart), extension: song }),
-  normalizeScore: (record) => ({ gameId: 'rizline', songId: record.songId, chartId: record.chartId, order: record.levelIndex,
-    libraryRef: { type: 'SD', levelIndex: record.levelIndex }, key: record.chartId, title: record.title, rating: record.rks ?? undefined, extension: record }),
-};
 
 export function presentRizlineScore(record: RizlineRecord, title = record.title, position?: number): ScoreCardPresentation<'rizline'> {
   return { key: record.chartId, gameId: 'rizline', route: { songId: record.songId, levelIndex: record.levelIndex }, title, position,

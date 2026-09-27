@@ -1,0 +1,6 @@
+{
+  "name": "song-detail-chrome-contract/musedash",
+  "formatVersion": 1,
+  "hash": "d8cd026363a326bef2c1caf2ba8fd6cfc0930723dd8cb68b8fdf7a97889f969c",
+  "tree": [{"children":[],"props":{"accessibilityLabel":"返回","accessibilityRole":"button","accessibilityState":{},"accessibilityValue":{},"accessible":true,"collapsable":false,"focusable":true,"hitSlop":12,"style":[{"alignItems":"center","borderRadius":20,"height":40,"justifyContent":"center","width":40},{"elevation":30,"position":"absolute","zIndex":30},{"left":8,"top":47},false]},"type":"View"},{"children":[],"props":{"accessibilityLabel":"收藏 示例歌曲","accessibilityRole":"button","accessibilityState":{"disabled":false},"accessibilityValue":{},"accessible":true,"collapsable":false,"focusable":true,"hitSlop":12,"style":[{"alignItems":"center","borderRadius":20,"height":40,"justifyContent":"center","width":40},{"elevation":30,"position":"absolute","zIndex":30},{"right":8,"top":47},false,false]},"type":"View"}]
+}

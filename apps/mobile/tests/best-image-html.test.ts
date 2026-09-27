@@ -1,11 +1,14 @@
 import {
   buildBestImageHtml,
+  ratingFrameIndex,
+} from '@/features/maimai-best-image/build-maimai-best-image-html';
+import * as sharedBestImageEntry from '@/features/best-image/build-best-image-html';
+import {
   bestImageWebViewVersion,
   minimumBestImageHeight,
   parseBestImageHeightMessage,
   parseBestImageReadyMessage,
   parseBestImageRuntimeMessage,
-  ratingFrameIndex,
 } from '@/features/best-image/build-best-image-html';
 import type { ScoreRecord } from '@/domain/models';
 import { JSDOM } from 'jsdom';
@@ -29,6 +32,18 @@ const score: ScoreRecord = {
 };
 
 describe('best image html', () => {
+  it('公共导出图入口只保留消息协议，不再转发舞萌构建器', () => {
+    expect('buildBestImageHtml' in sharedBestImageEntry).toBe(false);
+    expect('ratingFrameIndex' in sharedBestImageEntry).toBe(false);
+    expect(Object.keys(sharedBestImageEntry).sort()).toEqual([
+      'bestImageWebViewVersion',
+      'minimumBestImageHeight',
+      'parseBestImageHeightMessage',
+      'parseBestImageReadyMessage',
+      'parseBestImageRuntimeMessage',
+    ]);
+  });
+
   it('keeps 3:4 as the minimum ratio and accepts measured content height messages', () => {
     expect(minimumBestImageHeight(1080)).toBe(1440);
     expect(parseBestImageHeightMessage(JSON.stringify({

@@ -1,3 +1,4 @@
+import { fetch as expoFetch } from 'expo/fetch';
 import type { RuntimeRequestScenario } from '@/domain/runtime-log';
 import { z } from 'zod';
 import { PHIGROS_OSS_BASE, phigrosReleaseDirectory } from '@/domain/account-avatar';
@@ -85,7 +86,7 @@ export class PhigrosResourceService {
   async bytes(url: string, signal?: AbortSignal, timeoutMs = 12_000, diagnosticScenario: RuntimeRequestScenario = 'resource'): Promise<Uint8Array> {
     // The shared request runner owns timeout, cancellation and HTTP error handling.
     return requestBytes({
-      baseUrl: '', path: url, signal, timeoutMs, diagnosticScenario, retries: 1, label: 'Phigros', fetcher: fetch,
+      baseUrl: '', path: url, signal, timeoutMs, diagnosticScenario, retries: 1, label: 'Phigros', fetcher: expoFetch as unknown as typeof fetch,
       error: (status) => new ProviderError('network', `Phigros 资源请求失败：${status}`, true),
     });
   }
@@ -102,7 +103,7 @@ export class PhigrosResourceService {
     const current = await requestJson({
       diagnosticScenario: 'release',
       baseUrl: this.base, path: `/phigros/current.json?_check=${nonce}`, schema: CurrentSchema,
-      fetcher: fetch, signal, retries: 1, label: 'Phigros',
+      fetcher: expoFetch as unknown as typeof fetch, signal, retries: 1, label: 'Phigros',
       error: (status) => new ProviderError('network', `Phigros 发布信息请求失败：${status}`, true),
     });
     const revision = JSON.stringify(current);

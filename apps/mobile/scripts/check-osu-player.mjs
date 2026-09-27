@@ -3,13 +3,18 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
+import { readGeneratedPreview } from './lib/build-preview.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
-const imported = process.argv[2] ? await import(pathToFileURL(path.resolve(process.argv[2])).href) : await import('playwright');
+const args = process.argv.slice(2);
+const generated = args.includes('--generated');
+const positional = args.filter(arg => arg !== '--generated');
+const imported = positional[0] ? await import(pathToFileURL(path.resolve(positional[0])).href) : await import('playwright');
 const { chromium } = imported.default ?? imported;
-const [html, player, helpers] = await Promise.all([
+const packaged = generated ? readGeneratedPreview('osu-chart-preview') : null;
+const [html, player, helpers] = packaged ? [packaged.html, packaged.script.toString('utf8'), null] : await Promise.all([
   fs.readFile(path.join(root, 'src/features/osu-chart-preview/webview-player/index.html'), 'utf8'),
-  build({ entryPoints: [path.join(root, 'src/features/osu-chart-preview/webview-player/main.ts')], bundle: true, write: false, format: 'iife', platform: 'browser' }),
+  build({ entryPoints: [path.join(root, 'src/features/osu-chart-preview/webview-player/main.ts')], bundle: true, write: false, format: 'iife', platform: 'browser' }).then(result => result.outputFiles[0].text),
   build({ stdin: { contents: `
     export { PreviewBackgroundBlur } from './background-blur';
     export { createPreviewMedia } from './backdrop';
@@ -18,7 +23,7 @@ const [html, player, helpers] = await Promise.all([
     export { buildAutoReplay } from './autoplay';
     export { catchRuleset } from './engine/rulesets/catch/index';
   `, resolveDir: path.join(root, 'src/features/osu-chart-preview/webview-player'), loader: 'ts' },
-  bundle: true, write: false, format: 'iife', globalName: 'OsuVisualCheck', platform: 'browser' }),
+  bundle: true, write: false, format: 'iife', globalName: 'OsuVisualCheck', platform: 'browser' }).then(result => result.outputFiles[0].text),
 ]);
 
 function fixture(mode) {
@@ -58,9 +63,10 @@ function wav(seconds) {
 const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--autoplay-policy=document-user-activation-required'] });
 const results = [];
 try {
+  if (helpers) {
   const visualPage = await browser.newPage();
   await visualPage.setContent('<!doctype html><html><body></body></html>');
-  await visualPage.addScriptTag({ content: helpers.outputFiles[0].text });
+  await visualPage.addScriptTag({ content: helpers });
   const pixels = await visualPage.evaluate(async (catchChart) => {
     const { PreviewBackgroundBlur, createPreviewMedia, createBuiltinSkin, disposeBuiltinSkins, parseBeatmap, computeModDifficulty, buildAutoReplay, catchRuleset } = OsuVisualCheck;
     const check = (condition, message) => { if (!condition) throw new Error(message); };
@@ -181,6 +187,7 @@ try {
   }, fixture(2));
   results.push({ pixels });
   await visualPage.close();
+  }
 
   for (const mode of [0, 1, 2, 3]) {
     const page = await browser.newPage();
@@ -196,7 +203,8 @@ try {
     const config = { theme: 'dark', requestedMode: mode, chartPath: 'map.osu', files: [{ path: 'map.osu', mime: 'text/plain', text: fixture(mode) }], settings: {} };
     await page.route('**/*', route => {
       const url = route.request().url();
-      if (url.endsWith('/player.js')) return route.fulfill({ contentType: 'text/javascript', body: player.outputFiles[0].text });
+      if (url.endsWith('/player.js')) return route.fulfill({ contentType: 'text/javascript', body: player });
+      if (url.endsWith('/audio-data.js')) return route.fulfill({ contentType: 'text/javascript', body: '' });
       if (url.endsWith('/index.html')) return route.fulfill({ contentType: 'text/html', body: html
         .replace('<!--OSU_CHART_PREVIEW_CONFIG-->', `<script>window.__OSU_CHART_PREVIEW_CONFIG__=${JSON.stringify(config)};window.__OSU_PREVIEW_AUDIO__={"music.wav":"${wav(20)}"};</script>`)
         .replace('<!--PLAYER_SCRIPT-->', '<script src="./player.js"></script>') });
@@ -230,7 +238,7 @@ try {
     results.push({ mode, readyPaused: true, silentSeek: true, playPauseRestart: true, lifecyclePaused: true });
     await page.close();
   }
-  console.log(JSON.stringify({ passed: true, results }, null, 2));
+  console.log(JSON.stringify({ passed: true, mode: generated ? 'generated' : 'source', coverage: ['four-mode-playback', ...(generated ? [] : ['visual-helper-pixels'])], omitted: generated ? ['visual-helper-pixels'] : [], results }, null, 2));
 } finally {
   await browser.close();
 }

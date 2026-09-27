@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadMajdataCached, loadMajdataFresh, loadMajdataSong, loadMajdataChart, loadMajdataParsedChart, clearMajdataAccount, majdataAccountKey, majdataSongKey } from '@/services/majdata-service';
+import { loadMajdataCached, loadMajdataCachedSong, loadMajdataFresh, loadMajdataSong, loadMajdataSongSnapshot, loadMajdataChart, loadMajdataParsedChart, clearMajdataAccount, majdataAccountKey, majdataSongKey } from '@/services/majdata-service';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { MajdataSongSchema } from '@/domain/majdata';
 import type { HttpCookieSession } from '@/providers/http-cookies';
@@ -27,6 +27,39 @@ describe('Majdata revision and account cache', () => {
     mock.values.set(majdataSongKey(song.id), { song }); const fresh = deferred<typeof song>(); mock.getSong.mockReturnValue(fresh.promise);
     const onFresh = vi.fn(); expect(await loadMajdataSong(song.id, undefined, onFresh)).toEqual(song);
     expect(onFresh).not.toHaveBeenCalled(); fresh.resolve({ ...song, hash: 'hash2' }); await vi.waitFor(() => expect(onFresh).toHaveBeenCalledWith(expect.objectContaining({ hash: 'hash2' })));
+  });
+  it('records the original provider and fetch time on the cached song snapshot', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-01T00:00:00.000Z'));
+    try {
+      await loadMajdataSong(song.id);
+      const stored = await loadMajdataCachedSong(song.id);
+      expect(stored?.song).toEqual(song);
+      expect(stored?.source).toEqual({
+        kind: 'majdata-net', label: 'Majdata Net', updatedAt: '2026-09-01T00:00:00.000Z', isStale: false,
+      });
+    } finally { vi.useRealTimers(); }
+  });
+  it('does not publish a cached song fallback as a fresh refresh', async () => {
+    mock.values.set(majdataSongKey(song.id), { song });
+    mock.getSong.mockRejectedValue(new Error('offline'));
+    const onFresh = vi.fn();
+    expect(await loadMajdataSong(song.id, undefined, onFresh)).toEqual(song);
+    await vi.waitFor(() => expect(mock.getSong).toHaveBeenCalled());
+    // 等后台「网络失败 → 本地兜底」这条链走完，再确认兜底没有进 onFresh。
+    await new Promise((resolve) => setTimeout(resolve, 20));
+    expect(onFresh).not.toHaveBeenCalled();
+  });
+  it('reads cached song metadata without rewriting its provider or fetch time', async () => {
+    vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-01T00:00:00.000Z'));
+    try {
+      await loadMajdataSong(song.id);
+      vi.setSystemTime(new Date('2026-09-20T00:00:00.000Z'));
+      const snapshot = await loadMajdataSongSnapshot(song.id);
+      expect(snapshot?.song).toEqual(song);
+      expect(snapshot?.metadata).toEqual({
+        provider: 'majdata-net', label: 'Majdata Net', fetchedAt: '2026-09-01T00:00:00.000Z', revision: song.hash,
+      });
+    } finally { vi.useRealTimers(); }
   });
   it('keeps cached account data when a refresh fails', async () => {
     await loadMajdataFresh('a', session); const cached = await loadMajdataCached('a'); mock.getRecords.mockRejectedValue(new Error('offline'));
@@ -74,7 +107,7 @@ describe('Majdata revision and account cache', () => {
     firstController.abort(); await cancelled;
     expect(mock.getSong.mock.calls[0][1].aborted).toBe(false);
     remote.resolve(song); expect(await second).toEqual(song);
-    expect(mock.values.get(majdataSongKey(song.id))).toEqual({ song });
+    expect(mock.values.get(majdataSongKey(song.id))).toMatchObject({ song });
   });
   it('cancels only the departing chart consumer and aborts when all consumers leave', async () => {
     const remote = deferred<string>(); mock.getChart.mockReturnValue(remote.promise);

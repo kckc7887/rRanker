@@ -4,7 +4,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { BoundAccount } from '@/domain/bound-account';
 import type { CatalogSnapshot } from '@/domain/models';
 import type { ProviderSession } from '@/providers/contracts';
-import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
+import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { fetchScoreHubStatistics, type ScoreHubDxnetJobStats } from '@/services/score-hub-client';
 import { formatScoreHubStatsSummary, scoreHubSuccessHint, uploadTaskController, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
 import { AppModal } from '@/components/AppModal';
@@ -41,7 +41,7 @@ export function UploadDataSheet({
   onFinished?: (result: UploadResult) => void | Promise<void>;
   /** 仅本次打开使用；不覆盖用户平时保存的上传目标。 */
   temporarySelectedAccountIds?: readonly string[];
-  onLxnsTokensRotated?: (accountId: string, session: LxnsOAuthSession) => void | Promise<void>;
+  onLxnsTokensRotated?: (accountId: string, update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
   /** 可选的页内顶部导航，仅在特定账号提供其它上传页面时显示。 */
   headerAccessory?: ReactNode;
   /** 替换好友码页面内容，但保留同一个原生上传弹层与顶部导航。 */

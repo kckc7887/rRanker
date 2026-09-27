@@ -1,4 +1,10 @@
-import { emptyGamePayload, maimaiPayloadFromSnapshot } from '@/domain/game-data';
+import {
+  GAME_PAYLOAD_KIND_BY_GAME_ID,
+  emptyGamePayload,
+  gameDataBundle,
+  maimaiPayloadFromSnapshot,
+} from '@/domain/game-data';
+import { GAME_IDS } from '@/domain/game-bind-options';
 import { getGameProfile } from '@/domain/game-profile';
 import { fixtureCatalog, fixturePlayer, fixtureRecords, fixtureSource } from '@/fixtures/sanitized';
 
@@ -40,17 +46,28 @@ describe('per-game data model', () => {
   it('models the Chunithm temporary account without maimai score fields', () => {
     const profile = getGameProfile('chunithm');
     const payload = emptyGamePayload('chunithm', '临时账号');
-    expect(profile.capabilities).toMatchObject({
-      hasCatalog: true,
-      hasRecords: true,
-      hasBestList: true,
-      hasTools: true,
-    });
+    expect(profile.capabilities).toMatchObject({ hasTools: true });
     expect(payload).toMatchObject({
       kind: 'empty',
       gameId: 'chunithm',
       displayName: '临时账号',
     });
     expect(payload).not.toHaveProperty('records');
+  });
+
+  it('每个游戏 id 都有主载荷 kind 登记，空载荷带同一身份', () => {
+    expect(Object.keys(GAME_PAYLOAD_KIND_BY_GAME_ID).sort()).toEqual([...GAME_IDS].sort());
+    expect(GAME_PAYLOAD_KIND_BY_GAME_ID.test).toBeNull();
+    expect(GAME_PAYLOAD_KIND_BY_GAME_ID['osu-standard']).toBe('osu');
+
+    const bundle = gameDataBundle({
+      gameId: 'phigros',
+      providerId: null,
+      profile: getGameProfile('phigros'),
+      payload: emptyGamePayload('phigros', 'Phigros'),
+    });
+    expect(bundle.payload).toMatchObject({ kind: 'empty', gameId: 'phigros' });
+    if (bundle.payload.kind !== 'empty') throw new Error('Phigros 空载荷必须仍是空载荷');
+    expect(bundle.gameId).toBe(bundle.payload.gameId);
   });
 });

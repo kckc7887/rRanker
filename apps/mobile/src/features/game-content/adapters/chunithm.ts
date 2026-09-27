@@ -1,9 +1,4 @@
-import type {
-  GameChart,
-  GameContentAdapter,
-  GameNoteGroup,
-} from '@/domain/game-content';
-import type { ChunithmDifficulty, ChunithmSong } from '@/domain/chunithm';
+import type { ChunithmSong } from '@/domain/chunithm';
 import { CHUNITHM_DIFFICULTY_LABELS } from '@/domain/chunithm';
 import {
   chunithmAchievementBadges,
@@ -17,81 +12,6 @@ import type {
   ScoreCardPresentation,
   SongRowPresentation,
 } from '../presentation';
-
-function chunithmNotes(difficulty: ChunithmDifficulty): GameNoteGroup[] {
-  if (!difficulty.notes) return [];
-  const showFlick = difficulty.difficulty >= 3;
-  return [{
-    key: 'notes',
-    values: [
-      { key: 'tap', label: 'TAP', value: difficulty.notes.tap },
-      { key: 'hold', label: 'HOLD', value: difficulty.notes.hold },
-      { key: 'slide', label: 'SLIDE', value: difficulty.notes.slide },
-      { key: 'air', label: 'AIR', value: difficulty.notes.air },
-      ...(showFlick
-        ? [{ key: 'flick', label: 'FLICK', value: difficulty.notes.flick }]
-        : []),
-      { key: 'total', label: '总计', value: difficulty.notes.total },
-    ],
-  }];
-}
-
-function chunithmChart(songId: string, difficulty: ChunithmDifficulty): GameChart<'chunithm', ChunithmDifficulty> {
-  return {
-    gameId: 'chunithm',
-    songId,
-    chartId: `SD:${difficulty.difficulty}`,
-    order: difficulty.difficulty,
-    libraryRef: { type: 'SD', levelIndex: difficulty.difficulty },
-    label: CHUNITHM_DIFFICULTY_LABELS[difficulty.difficulty],
-    level: difficulty.level,
-    constant: difficulty.difficulty === 5 ? undefined : difficulty.levelValue,
-    charter: difficulty.noteDesigner,
-    version: difficulty.versionTitle,
-    notes: chunithmNotes(difficulty),
-    extension: difficulty,
-  };
-}
-
-export const chunithmContentAdapter: GameContentAdapter<
-  'chunithm',
-  ChunithmSong,
-  { songId: string; difficulty: ChunithmDifficulty },
-  ChunithmScoreCardData,
-  ChunithmSong,
-  ChunithmDifficulty,
-  ChunithmScoreCardData
-> = {
-  gameId: 'chunithm',
-  normalizeSong: (song) => ({
-    gameId: 'chunithm',
-    songId: String(song.id),
-    title: song.title,
-    artist: song.artist,
-    metadata: {
-      version: song.versionTitle,
-      bpm: song.bpm,
-      genre: song.genre,
-      rights: song.rights,
-      locked: song.locked,
-      disabled: song.disabled,
-    },
-    charts: song.difficulties.map((difficulty) => chunithmChart(String(song.id), difficulty)),
-    extension: song,
-  }),
-  normalizeChart: ({ songId, difficulty }) => chunithmChart(songId, difficulty),
-  normalizeScore: (score) => ({
-    gameId: 'chunithm',
-    songId: score.songId,
-    chartId: `SD:${score.levelIndex}`,
-    order: score.levelIndex,
-    libraryRef: { type: 'SD', levelIndex: score.levelIndex },
-    key: score.key,
-    title: score.title,
-    rating: score.rating,
-    extension: score,
-  }),
-};
 
 export function presentChunithmScore(
   record: ChunithmScoreCardData,
