@@ -23,7 +23,61 @@ def certificate_output(subject=DEBUG_SUBJECT, fingerprint=FINGERPRINT, signer=1)
             f"Signer #{signer} certificate SHA-256 digest: {fingerprint}\n")
 
 
+def scheme_certificate_output(scheme="V2", subject=DEBUG_SUBJECT, fingerprint=FINGERPRINT):
+    return ("Verifies\nNumber of signers: 1\n"
+            f"{scheme} Signer: certificate DN: {subject}\n"
+            f"{scheme} Signer: certificate SHA-256 digest: {fingerprint}\n"
+            f"{scheme} Signer: certificate SHA-1 digest: {'c' * 40}\n"
+            f"{scheme} Signer: public key SHA-256 digest: {OTHER_FINGERPRINT}\n")
+
+
 class SigningModeTests(unittest.TestCase):
+    def test_build_tools_37_single_signer_formats_keep_pin_and_mode_checks(self):
+        for scheme in ["V1", "V2", "V3.0"]:
+            for mode in ["release", "test-debug", "legacy-debug"]:
+                subject = RELEASE_SUBJECT if mode == "release" else DEBUG_SUBJECT
+                with self.subTest(scheme=scheme, mode=mode):
+                    summary = scheme_certificate_output(scheme, subject)
+                    result = verify_android_signing(summary, mode, FINGERPRINT)
+                    self.assertEqual(result["certificateSha256"], FINGERPRINT)
+                    self.assertEqual(result["certificateSubject"], subject)
+                    with self.assertRaisesRegex(ValueError, "match"):
+                        verify_android_signing(summary, mode, OTHER_FINGERPRINT)
+
+    def test_new_format_cannot_hide_extra_signers_or_unknown_certificate_labels(self):
+        summary = scheme_certificate_output()
+        invalid = [summary.replace("Number of signers: 1", "Number of signers: 2"),
+                   summary + "Number of signers: 1\n",
+                   summary + scheme_certificate_output("V1"),
+                   summary + certificate_output(),
+                   summary + summary,
+                   summary + f"V2 Signer #2: certificate DN: {DEBUG_SUBJECT}\n",
+                   summary + f"V3.1 Signer (minSdkVersion=33): certificate DN: {DEBUG_SUBJECT}\n",
+                   summary.replace("V2 Signer:", "V9 Signer:")]
+        for output in invalid:
+            with self.subTest(output=output), self.assertRaises(ValueError):
+                verify_android_signing(output, "legacy-debug", FINGERPRINT)
+
+    def test_new_format_still_requires_complete_unambiguous_certificate_fields(self):
+        summary = scheme_certificate_output()
+        invalid = [summary.replace(f"V2 Signer: certificate DN: {DEBUG_SUBJECT}\n", ""),
+                   summary.replace(f"V2 Signer: certificate SHA-256 digest: {FINGERPRINT}\n", ""),
+                   summary + f"V2 Signer: certificate SHA-256 digest: {FINGERPRINT}\n",
+                   summary.replace(FINGERPRINT, "g" * 64),
+                   summary.replace(DEBUG_SUBJECT, "CN=Android\tDebug")]
+        for output in invalid:
+            with self.subTest(output=output), self.assertRaises(ValueError):
+                verify_android_signing(output, "test-debug")
+
+    def test_source_stamp_is_not_the_apk_signer_in_either_tool_format(self):
+        for summary in [certificate_output(), scheme_certificate_output()]:
+            for label in ["Source Stamp Signer", "Source Stamp Signer:"]:
+                output = (summary + f"{label} certificate DN: CN=Stamp\n"
+                          f"{label} certificate SHA-256 digest: {OTHER_FINGERPRINT}\n")
+                with self.subTest(label=label, summary=summary):
+                    self.assertEqual(verify_android_signing(output, "legacy-debug", FINGERPRINT)[
+                        "certificateSha256"], FINGERPRINT)
+
     def test_supported_mode_matrix(self):
         for mode, subject, pin in [("release", RELEASE_SUBJECT, None),
                                    ("test-debug", DEBUG_SUBJECT, None),
@@ -145,6 +199,9 @@ class ApkVerifierIntegrationTests(unittest.TestCase):
         (self.release / "output-metadata.json").write_text(json.dumps({"elements": elements}))
         self.tools = self.root / "sdk/build-tools/36.0.0"
         self.tools.mkdir(parents=True)
+        self.latest_tools = self.root / "sdk/build-tools/37.0.0"
+        self.latest_tools.mkdir(parents=True)
+        self.signing_output = scheme_certificate_output()
         (self.root / "android/gradle.properties").write_text(
             "android.enableMinifyInReleaseBuilds=true\nandroid.enableShrinkResourcesInReleaseBuilds=true\n")
         (self.root / "android/app/build.gradle").write_text('getDefaultProguardFile("proguard-android-optimize.txt")')
@@ -162,7 +219,9 @@ class ApkVerifierIntegrationTests(unittest.TestCase):
             if Path(command[0]).name == "aapt":
                 return "package: name='com.rranker.app' versionCode='3' versionName='0.4.0'\n"
             if Path(command[0]).name == "apksigner":
-                return certificate_output()
+                self.assertEqual(Path(command[0]).parent, self.latest_tools)
+                self.assertEqual(command[1:4], ["verify", "--verbose", "--print-certs"])
+                return self.signing_output
             if command == ["git", "rev-parse", "HEAD"]:
                 return self.source + "\n"
             raise AssertionError("Unexpected verification subprocess")
@@ -196,6 +255,19 @@ class ApkVerifierIntegrationTests(unittest.TestCase):
         self.assertFalse((self.root / "build/android-apks/verification.json").exists())
         self.assertFalse((self.root / "output.txt").exists())
         self.assertFalse((self.root / "summary.md").exists())
+
+    def test_old_tool_format_remains_compatible_with_the_apk_entrypoint(self):
+        self.signing_output = "Verifies\nNumber of signers: 1\n" + certificate_output()
+        self.run_verifier()
+        evidence = json.loads((self.root / "build/android-apks/verification.json").read_text())
+        self.assertEqual({item["certificateSha256"] for item in evidence["apks"]}, {FINGERPRINT})
+
+    def test_multiple_signers_stop_before_publishing_even_when_the_pin_matches(self):
+        self.signing_output = scheme_certificate_output().replace("Number of signers: 1", "Number of signers: 2")
+        with self.assertRaisesRegex(ValueError, "exactly one"):
+            self.run_verifier()
+        self.assertFalse((self.root / "output.txt").exists())
+        self.assertFalse((self.root / "build/android-apks/verification.json").exists())
 
     def test_missing_legacy_pin_stops_before_publishing(self):
         self.environment.pop("EXPECTED_CERTIFICATE_SHA256")

@@ -729,7 +729,10 @@ Android 明确选择 `legacy-debug`，沿用原 Expo 签名，并要求证书 SH
 Android SDK、Expo prebuild 与 Gradle，使用 A 优化模式并复用 ABI splits 插件，一次产生
 armeabi-v7a、arm64-v8a、x86、x86_64 四份 APK。版本与版本代码来自 app.json，不自动修改。
 `verify-android-apks.py` 核验输出清单、每包 ABI、Manifest 包名/版本、统一证书、正式包
-所选签名模式、旧证书身份、优化配置和 Record 注解规则，并保存源码 SHA、文件及证书摘要。生产路由
+所选签名模式、旧证书身份、优化配置和 Record 注解规则，并保存源码 SHA、文件及证书摘要。
+校验选择已安装的最高稳定 Build Tools 并输出版本，使用 `apksigner verify --verbose --print-certs`；
+证书解析兼容编号签名者和 Build Tools 37 的 V1/V2/V3.0 单签名者标签，要求签名者数量为一，
+拒绝重复、混合或未知证书标签，来源戳证书与公钥摘要不参与 APK 签名身份判断。生产路由
 模拟器冒烟通过后上传 APK，保留 14 天；脱敏设备结果独立保留 7 天，临时 keystore 始终清理。
 fork 测试 APK 同样为 Release 优化构建，使用调试签名。现有 Android 发布路径与旧包保持
 证书一致；默认调试私钥属于公开模板材料，不能获得私有发行密钥的身份安全保证。
