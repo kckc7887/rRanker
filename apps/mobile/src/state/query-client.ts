@@ -6,6 +6,15 @@ export function releaseInactiveQueries(client: QueryClient): void {
   client.removeQueries({ predicate: (query) => !query.isActive() });
 }
 
+export function resumeInterruptedActiveQueries(client: QueryClient): Promise<void> {
+  return client.refetchQueries({
+    type: 'active',
+    predicate: query => query.state.status === 'pending'
+      && query.state.fetchStatus === 'idle'
+      && query.state.data === undefined,
+  }, { cancelRefetch: false });
+}
+
 export const queryClient = new QueryClient({
   queryCache: new QueryCache({ onError: (error) => recordRuntimeError('query', error, false, { phase: 'final' }) }),
   mutationCache: new MutationCache({ onError: (error) => recordRuntimeError('mutation', error, false, { phase: 'final' }) }),
