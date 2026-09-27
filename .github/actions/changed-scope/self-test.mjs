@@ -153,6 +153,26 @@ console.log('changed-scope 分类器自检');
 {
   const repo = createRepo({ 'README.md': '# base\n' });
   const base = git(repo, ['rev-parse', 'HEAD']).trim();
+  writeFiles(repo, { '.github/workflows/quality.yml': 'name: Quality\n' });
+  commitAll(repo, 'workflow');
+  expectVerdict('CI 配置改动', classify(repo, { base, headSha: git(repo, ['rev-parse', 'HEAD']).trim() }), {
+    functional: 'true', reason: 'functional', count: '1',
+  });
+}
+
+{
+  const repo = createRepo({ 'README.md': '# base\n' });
+  const base = git(repo, ['rev-parse', 'HEAD']).trim();
+  writeFiles(repo, { 'apps/mobile/package-lock.json': '{}\n', 'apps/mobile/app.config.js': 'module.exports = {};\n' });
+  commitAll(repo, 'build configuration');
+  expectVerdict('依赖与构建配置改动', classify(repo, { base, headSha: git(repo, ['rev-parse', 'HEAD']).trim() }), {
+    functional: 'true', reason: 'functional', count: '2',
+  });
+}
+
+{
+  const repo = createRepo({ 'README.md': '# base\n' });
+  const base = git(repo, ['rev-parse', 'HEAD']).trim();
   writeFiles(repo, { 'src/app.ts': 'export const app = 1;\n', '.github/workflows/extra.yml': 'name: Extra\n' });
   commitAll(repo, 'mixed');
   expectVerdict('代码与 CI 混合改动', classify(repo, { base, headSha: git(repo, ['rev-parse', 'HEAD']).trim() }), {

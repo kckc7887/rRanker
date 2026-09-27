@@ -157,7 +157,7 @@ function defaultShellFor(runsOn) {
 }
 
 /** 收集按 bash 执行的 run 片段，用于 bash -n。传入的是 YAML 解码后的文本，不是原始换行。 */
-export function collectBashRuns(document, file) {
+function collectShellRuns(document, file, acceptsShell) {
   const blocks = [];
   if (!isPlainObject(document)) return blocks;
 
@@ -169,7 +169,7 @@ export function collectBashRuns(document, file) {
       for (const [index, step] of job.steps.entries()) {
         if (!isPlainObject(step) || typeof step.run !== 'string') continue;
         const shell = typeof step.shell === 'string' ? step.shell : fallback;
-        if (!isBashShell(shell)) continue;
+        if (!acceptsShell(shell)) continue;
         blocks.push({ label: `${file} jobs.${jobId}.steps[${index}]`, script: `${step.run}\n` });
       }
     }
@@ -178,10 +178,18 @@ export function collectBashRuns(document, file) {
   if (isPlainObject(document.runs) && Array.isArray(document.runs.steps)) {
     for (const [index, step] of document.runs.steps.entries()) {
       if (!isPlainObject(step) || typeof step.run !== 'string') continue;
-      if (!isBashShell(typeof step.shell === 'string' ? step.shell : 'bash')) continue;
+      if (!acceptsShell(typeof step.shell === 'string' ? step.shell : 'bash')) continue;
       blocks.push({ label: `${file} runs.steps[${index}]`, script: `${step.run}\n` });
     }
   }
 
   return blocks;
+}
+
+export function collectBashRuns(document, file) {
+  return collectShellRuns(document, file, isBashShell);
+}
+
+export function collectPowerShellRuns(document, file) {
+  return collectShellRuns(document, file, (shell) => /^pwsh(?:\s|$)/.test(shell));
 }

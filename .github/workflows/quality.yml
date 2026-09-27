@@ -1,127 +1,224 @@
 name: Quality
-
 on:
   push:
+    branches:
+      - "**"
   pull_request:
-  workflow_dispatch:
-
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
+  workflow_dispatch: null
 permissions:
   contents: read
-
-concurrency:
-  group: rranker-quality-${{ github.ref }}
-  cancel-in-progress: false
-
 jobs:
   changed-scope:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     outputs:
       functional: ${{ steps.classify.outputs.functional }}
-
+      build: ${{ steps.policy.outputs.build }}
+      production: ${{ steps.policy.outputs.production }}
+      sha: ${{ steps.policy.outputs.sha }}
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
           ref: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: Classify changed paths
-        id: classify
-        uses: ./.github/actions/changed-scope
-
-      - name: Write scope verdict
-        env:
-          FUNCTIONAL: ${{ steps.classify.outputs.functional }}
-          REASON: ${{ steps.classify.outputs.reason }}
-          CHANGED_COUNT: ${{ steps.classify.outputs.changed-count }}
-        run: |
-          mkdir -p changed-scope
-          {
-            echo "functional=$FUNCTIONAL"
-            echo "reason=$REASON"
-            echo "changed-count=$CHANGED_COUNT"
-          } > changed-scope/verdict.env
-
-      - name: Upload scope verdict
-        continue-on-error: true
-        uses: actions/upload-artifact@v4
-        with:
-          name: changed-scope
-          path: changed-scope/verdict.env
-          if-no-files-found: warn
-          retention-days: 1
-          overwrite: true
-
-  # 独立于功能判定的轻检查：不依赖 changed-scope 的结论，也不跑构建，只装 .github/scripts 里
-  # 固定的 YAML 解析器（零传递依赖），不安装 apps/mobile 的依赖树，
-  # 因此改动被归类为 CI-only 或纯文档时质量作业会被跳过，这一步仍然会跑。
-  light-check:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: Setup Node
+          persist-credentials: false
+      - &a1
         uses: actions/setup-node@v6
         with:
           node-version: "22"
-
-      # 只装轻检查自己那一个包，不安装 apps/mobile 依赖树
+      - name: Determine source and build authorization
+        id: policy
+        run: node .github/scripts/build-policy.mjs
+      - name: Classify changed paths
+        id: classify
+        uses: ./.github/actions/changed-scope
+        with:
+          head-sha: ${{ steps.policy.outputs.sha }}
+  light-check:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha || github.sha }}
+          persist-credentials: false
+      - *a1
       - name: Install light check dependencies
         working-directory: .github/scripts
         run: npm ci
-
       - name: Repository light check
         run: node .github/scripts/check-light.mjs --self-test
-
-      - name: Build authorization contract
-        run: node --test .github/scripts/build-policy.test.mjs
-
+      - name: CI authorization and sequencing contracts
+        run: node --test .github/scripts/build-policy.test.mjs .github/scripts/ios-build-number.test.mjs .github/scripts/ci-contract.test.mjs
+      - name: Archived iOS source contract
+        run: python3 -B .github/scripts/verify-ios-archive.test.py
+      - name: Android signing identity contract
+        run: python3 -B .github/scripts/android_signing.test.py
   quality:
-    needs: changed-scope
-    if: always() && needs.changed-scope.outputs.functional != 'false'
+    needs:
+      - changed-scope
+      - light-check
+    if: needs.changed-scope.outputs.sha == (github.event.pull_request.head.sha || github.sha) && needs.changed-scope.outputs.functional == 'true'
     runs-on: ubuntu-latest
-    timeout-minutes: 30
-
+    timeout-minutes: 45
     defaults:
       run:
         working-directory: apps/mobile
-
     steps:
-      - name: Checkout
-        uses: actions/checkout@v6
+      - uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
+          ref: ${{ needs.changed-scope.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
         with:
           node-version: "22"
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-
+      - run: npm ci
       - name: Lint
         run: npm run lint
-
       - name: Typecheck
         run: npm run typecheck
-
-      - name: Test
+      - name: Unit and UI tests
         run: npm test
-
       - name: Architecture
         run: npm run check:architecture
-
-      - name: Generated players
+      - name: Generated player consistency
         run: npm run check:generated
-
-      - name: Production audit
+      - name: Dependency audit
+        run: npm audit
+      - name: Production audit policy
         run: npm run audit:prod
+      - name: Preserve verified player assets
+        run: node ../../.github/scripts/player-artifacts.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ format('generated-players-{0}-{1}', needs.changed-scope.outputs.sha, github.run_attempt) }}
+          path: apps/mobile/build/player-artifacts/
+          if-no-files-found: error
+          retention-days: 7
+  quality-gate:
+    needs:
+      - changed-scope
+      - light-check
+      - quality
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require complete successful validation
+        shell: bash
+        env:
+          SCOPE_RESULT: ${{ needs.changed-scope.result }}
+          LIGHT_RESULT: ${{ needs.light-check.result }}
+          QUALITY_RESULT: ${{ needs.quality.result }}
+          FUNCTIONAL: ${{ needs.changed-scope.outputs.functional }}
+          ACTUAL_SOURCE: ${{ needs.changed-scope.outputs.sha }}
+          EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          test -n "$ACTUAL_SOURCE"
+          test "$ACTUAL_SOURCE" = "$EXPECTED_SOURCE"
+          test "$SCOPE_RESULT" = success
+          test "$LIGHT_RESULT" = success
+          case "$FUNCTIONAL" in
+            true) test "$QUALITY_RESULT" = success ;;
+            false) test "$QUALITY_RESULT" = skipped ;;
+            *) exit 1 ;;
+          esac
+          printf 'Validation passed (functional=%s).\n' "$FUNCTIONAL" >> "$GITHUB_STEP_SUMMARY"
+  android-release:
+    needs: &a2
+      - changed-scope
+      - quality-gate
+    if: needs.changed-scope.outputs.sha == (github.event.pull_request.head.sha || github.sha) && needs.changed-scope.outputs.functional == 'true' && needs.changed-scope.outputs.build == 'true' && needs.changed-scope.outputs.production == 'true' && github.repository == 'kckc7887/rRanker' && startsWith(github.ref, 'refs/heads/') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !github.event.deleted
+    runs-on: ubuntu-latest
+    environment: production-release
+    timeout-minutes: 120
+    env:
+      NODE_ENV: production
+      BUILD_SOURCE_COMMIT: ${{ needs.changed-scope.outputs.sha }}
+      OSU_OAUTH_CLIENT_SECRET: ${{ secrets.OSU_OAUTH_CLIENT_SECRET }}
+      PRODUCTION_SIGNING_READY: ${{ secrets.PRODUCTION_SIGNING_READY }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changed-scope.outputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/android-build
+        with:
+          source-sha: ${{ needs.changed-scope.outputs.sha }}
+          production: "true"
+          signing-mode: legacy-debug
+          expected-certificate-sha256: fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c
+  ios-release:
+    needs: *a2
+    if: needs.changed-scope.outputs.sha == (github.event.pull_request.head.sha || github.sha) && needs.changed-scope.outputs.functional == 'true' && needs.changed-scope.outputs.build == 'true' && needs.changed-scope.outputs.production == 'true' && github.repository == 'kckc7887/rRanker' && startsWith(github.ref, 'refs/heads/') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !github.event.deleted
+    runs-on: macos-26
+    environment: production-release
+    timeout-minutes: 120
+    permissions:
+      contents: read
+      actions: read
+    concurrency:
+      group: rranker-ios-testflight
+      cancel-in-progress: false
+      queue: max
+    env:
+      NODE_ENV: production
+      BUILD_SOURCE_COMMIT: ${{ needs.changed-scope.outputs.sha }}
+      OSU_OAUTH_CLIENT_SECRET: ${{ secrets.OSU_OAUTH_CLIENT_SECRET }}
+      PRODUCTION_SIGNING_READY: ${{ secrets.PRODUCTION_SIGNING_READY }}
+      ASC_KEY_ID: ${{ secrets.ASC_KEY_ID }}
+      ASC_ISSUER_ID: ${{ secrets.ASC_ISSUER_ID }}
+      ASC_PRIVATE_KEY_BASE64: ${{ secrets.ASC_PRIVATE_KEY_BASE64 }}
+      BUILD_CERTIFICATE_BASE64: ${{ secrets.BUILD_CERTIFICATE_BASE64 }}
+      BUILD_PROVISION_PROFILE_BASE64: ${{ secrets.BUILD_PROVISION_PROFILE_BASE64 }}
+      P12_PASSWORD: ${{ secrets.P12_PASSWORD }}
+      KEYCHAIN_PASSWORD: ${{ secrets.KEYCHAIN_PASSWORD }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changed-scope.outputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/ios-build
+        with:
+          source-sha: ${{ needs.changed-scope.outputs.sha }}
+          production: "true"
+  android-fork-test:
+    needs: *a2
+    if: needs.changed-scope.outputs.sha == (github.event.pull_request.head.sha || github.sha) && needs.changed-scope.outputs.functional == 'true' && needs.changed-scope.outputs.build == 'true' && needs.changed-scope.outputs.production == 'false' && github.repository == 'kckc7887/rRanker' && github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'master' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    env:
+      NODE_ENV: production
+      BUILD_SOURCE_COMMIT: ${{ needs.changed-scope.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changed-scope.outputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/android-build
+        with:
+          source-sha: ${{ needs.changed-scope.outputs.sha }}
+          production: "false"
+  ios-fork-test:
+    needs: *a2
+    if: needs.changed-scope.outputs.sha == (github.event.pull_request.head.sha || github.sha) && needs.changed-scope.outputs.functional == 'true' && needs.changed-scope.outputs.build == 'true' && needs.changed-scope.outputs.production == 'false' && github.repository == 'kckc7887/rRanker' && github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'master' && github.event.pull_request.head.repo.full_name != github.repository
+    runs-on: macos-26
+    timeout-minutes: 120
+    env:
+      NODE_ENV: production
+      BUILD_SOURCE_COMMIT: ${{ needs.changed-scope.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changed-scope.outputs.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/ios-build
+        with:
+          source-sha: ${{ needs.changed-scope.outputs.sha }}
+          production: "false"

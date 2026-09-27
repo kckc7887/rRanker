@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 变更范围判定：把一次比较的改动分成“影响应用功能”与“只落在自述文件、文档、许可声明、README 截图与 CI 流程”。
+# 变更范围判定：自述文件、文档、许可声明与 README 截图可以跳过完整检查；CI 与构建配置必须完整检查。
 #
 # 输出（写进 GITHUB_OUTPUT，全部是固定枚举或数字）：
 #   functional    true/false，无法判定时一律为 true
@@ -58,12 +58,12 @@ escape_html() {
   printf '%s' "$value"
 }
 
-# 只有自述文件、文档、许可声明、README 截图与 CI 流程算与应用功能无关
+# 只有自述文件、文档、许可声明与 README 截图可以走快速路径
 non_functional() {
   case "$1" in
-    README.md | */README.md | AGENTS.md | */AGENTS.md | CLAUDE.md | */CLAUDE.md) return 0 ;;
+    README.md | */README.md | CLAUDE.md | */CLAUDE.md) return 0 ;;
     LICENSE | LICENSES/* | THIRD_PARTY_NOTICES.md) return 0 ;;
-    docs/* | .github/* | assets/images/*) return 0 ;;
+    docs/* | assets/images/*) return 0 ;;
   esac
   return 1
 }
@@ -122,7 +122,7 @@ fi
 } >> "${GITHUB_OUTPUT:-/dev/null}"
 
 if [ "$functional" = false ]; then
-  echo "轻检查：$count 个改动都落在自述文件、文档、许可声明、README 截图与 CI 流程"
+  echo "轻检查：$count 个改动都落在自述文件、文档、许可声明与 README 截图"
   while IFS= read -r -d '' path; do
     echo "  改动：$(escape_control "$path")"
   done < "$paths_file"
@@ -135,7 +135,7 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     echo "### 轻检查"
     echo
     if [ "$functional" = false ]; then
-      echo "改动只落在自述文件、文档、许可声明、README 截图与 CI 流程，跳过质量检查与构建。"
+      echo "改动只落在自述文件、文档、许可声明与 README 截图，跳过完整质量检查与构建。"
     else
       echo "存在影响应用功能的改动，继续完整检查。"
     fi
