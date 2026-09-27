@@ -187,7 +187,7 @@ live('谱面确认传入阶段 live 演示', () => {
       const html = applyPhigrosChartPreviewConfigToHtml(template, prepared.config);
 
       expect(html.includes('<!--PHIGROS_CHART_PREVIEW_CONFIG-->')).toBe(false);
-      const injected = /<script>window\.__PHIGROS_CHART_PREVIEW__=(.*);<\/script>/s.exec(html)?.[1];
+      const injected = /<script>window\.__PHIGROS_CHART_PREVIEW__=(.*?);<\/script>/s.exec(html)?.[1];
       expect(injected).toBeTruthy();
       const roundtrip = JSON.parse(injected!) as { chartText?: string; settings?: { playbackSpeed?: number } };
       expect(roundtrip.chartText).toBe(prepared.config.chartText);
