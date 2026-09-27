@@ -529,7 +529,7 @@ async function loadMaimaiGameDataBundle(context: GameDataLoaderContext): Promise
 
 /**
  * 每个游戏 id 的必需加载器：穷尽映射，遗漏任一游戏（含 osu! 四模式与保留测试 id）即编译失败，
- * 不再用 `Partial` 注册表加默认舞萌分支。
+ * 注册表不提供默认游戏回退，未登记的游戏由选择入口拒绝。
  */
 export const GAME_DATA_LOADERS: Record<GameId, GameDataLoader> = {
   maimai: loadMaimaiGameDataBundle,

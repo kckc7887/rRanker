@@ -19,7 +19,7 @@
 | 持久化 | Expo SQLite、`expo-sqlite/kv-store`、Expo SecureStore、受控文件目录 |
 | 校验 | Zod 4、Vitest 单元测试、Jest Expo UI/合同测试、ESLint、TypeScript |
 
-Node.js 最低版本由 `apps/mobile/package.json` 的 `engines` 约束为 22.13；CI 的 Node.js 22 与 `npm ci` 满足该要求。应用同时包含 iOS、Android 配置，Web 配置存在，但项目执行规范禁止启动 Expo Web。
+Node.js 最低版本由 `apps/mobile/package.json` 的 `engines` 约束为 22.13；CI 的 Node.js 22 与 `npm ci` 满足该要求。应用同时包含 iOS、Android 和 Web 配置，Web 行为不能代替移动端原生验收。
 
 ## 路由与运行时装配
 
@@ -33,7 +33,7 @@ Node.js 最低版本由 `apps/mobile/package.json` 的 `engines` 约束为 22.13
 
 根栈承载主标签页、个人曲库、游戏管理、存储管理、个性化、歌曲详情、成绩图、谱面确认和 OAuth 回调等文件路由。主标签页位于 `app/(tabs)/_layout.tsx`，固定为总览、最佳、成绩、曲库、设置五项；各标签内部通过 `MainTabStack` 和 `CachedTabScreen` 保持导航及页面状态。
 
-成绩与曲库两个标签页只做「按当前游戏挂载对应页面」：舞萌专属页（`src/screens/maimai/MaimaiRecordsScreen.tsx`、`src/screens/maimai/MaimaiCatalogScreen.tsx`）自带本游戏的查询、筛选 Store、搜索索引与派生链，其余游戏沿用各自 `screens/*Screens.tsx` 或页面组件；未接入的游戏落到空态。共同路由不再承载单个游戏的派生链。
+成绩与曲库两个标签页只做「按当前游戏挂载对应页面」：舞萌专属页（`src/screens/maimai/MaimaiRecordsScreen.tsx`、`src/screens/maimai/MaimaiCatalogScreen.tsx`）自带本游戏的查询、筛选 Store、搜索索引与派生链，其余游戏沿用各自 `screens/*Screens.tsx` 或页面组件；未接入的游戏落到空态。共同路由负责页面装配，各游戏页面负责自己的派生链。
 
 歌曲详情统一为 `/songs/[songId]`：`src/domain/detail-target.ts` 的 `decodeDetailTarget(activeGameId, params)` 把 URL 参数解析成已校验的 `DetailTarget`（舞萌带 `chartType` + `levelIndex`；Phigros/中二/Majdata/Rizline/Muse Dash 用难度索引；Phira 用谱面 ID、TUF 用关卡 ID、osu! 四模式用 `beatmapsetId` + 可选 `beatmapId`/`scoreId`，并按游戏拒绝越界或跨游戏的参数），`app/songs/[songId].tsx` 只按 `target.game` 挂载对应游戏详情页，解析失败显示统一空态。共享卡片的 presentation 携带 `DetailTargetRoute`，跳转经 `detailTargetHref(route)` 生成；`encodeDetailTarget(target)` 是目标到路由的编码入口。
 
@@ -169,7 +169,7 @@ Easy 与 Phigros HD 复用公共蓝色主题。歌曲信息只含简介、线上
 `@noble/ciphers` AES-256-GCM 校验认证标签后解密，再由 Zod 验证。
 令牌与存档的用户 ID 必须匹配；轮换按 `mode + token` 比较后通过 `applyRizlineSessionRotation`
 持久化，再更新内存会话。账号、取消信号、期望旧令牌和写入代次共同阻止解绑或重新登录后的迟到写入。
-`loadRizlineFresh` 每次从 Session 读取最新令牌；`rn_login` 被打回后若店里已有新票则重试，
+`loadRizlineFresh` 每次从 Session 读取最新令牌；`rn_login` 认证失败后若 Session 中令牌已更新则用新令牌重试，
 否则才解密本地密码换票一次；只有明确认证失败才删除密码并要求重新登录，网络、取消或本地提交失败保留密码。恢复、删除和账号展示继续走
 现有安全仓库、`createRizlineBoundAccount` 与中央元数据订阅；解绑会同时删除加密密码。
 
@@ -356,7 +356,7 @@ Kyou 别名的一小时会话缓存位于 `services/phigros-kyou-cache.ts`，查
 正文不进入可清理缓存目录；应用版本、构建号和平台保存在记录上下文中，不随事件裁剪丢失。
 上下文还包含系统版本、运行环境和开发模式。构建号优先取当前 Constants 原生平台
 字段，缺失时取 Expo 配置，并以 `buildVersionSource` 区分 `native`、`config` 和 `unknown`；
-当前 Android Constants 原生平台对象为空，通常使用配置来源，不能据此证明实际安装包构建号。
+原生字段不可用时使用配置来源；配置来源不能证明实际安装包构建号。
 追加事务成功后控制器增量更新条数和最后时间，避免逐条重查列表；创建、恢复和停止时
 从数据库刷新列表，失败事件不计入已保存数量。
 保存失败暂停当前记录，保留已提交内容与开启偏好；用户可重试，下次启动仍按开启偏好
@@ -495,6 +495,7 @@ Each 分组和分支/分段的音符模型；`prepareChart` 预计算路径与�
 `webview-player/timeConversion.ts` 的 `resolvePlaybackRange` 将各侧实际谱面时长按主谱引导拍
 对齐，再与解码音频结束位置取较晚值；音乐转换包含 `firstMs`、偏移和 BPM 事件。
 终点、进度条、拖动、小节跳转与背景共用这一范围，不能仅由 Simai 小节数决定结束。
+步进与步退每次移动一拍，小节跳转按四拍定位；拍位置经同一时间轴换算为音乐时间。
 音频自然结束后公共时钟继续驱动剩余谱面；达到播放终点且音源已自然结束才停止。
 音频不可用或从音乐结束后开始播放时使用帧时间推进；暂停、跳转与退出仍释放旧音源和时钟。
 Simai 预计算位置、Each/Slide 分组和开始、结束、烟花事件索引，保留相同时刻的原始顺序；
@@ -599,7 +600,7 @@ Phigros/Phira 及 RPE 入口，`tsconfig.osu-player.json` 覆盖 osu! 播放入�
 另测 6000 音符场景的 CPU 分布与 5000 首/20000 成绩搜索。Phigros 搜索通过
 `indexSongsById` 一次建立曲库索引，保留首次匹配、别名、排序和筛选合同。
 `npm run benchmark:phigros-push` 用确定性存档测量推分搜索在 30/300/1000 条成绩下的
-总耗时与事件循环最大阻塞，结果写入 `build/phigros-push-performance.json`，不设 CI 耗时门槛。
+总耗时与事件循环最大阻塞，不设 CI 耗时门槛。
 测试中的请求数、数据库调用数和条目重绘次数是受控测量，不代表真机帧率。
 
 本地原生命令包括 `npm run android`、`npm run ios`、Android prebuild 与 APK 脚本。Release、APK、EAS 或原生构建成本较高，只有用户明确要求时才执行；修改原生/Fabric/WebView 行为时，JS 测试通过也不能代替对应平台构建和真机验证。
@@ -636,7 +637,7 @@ MainActivity 并等分享控件恢复可用，不选择分享目标。日志关�
 正文或原始设备日志。账号恢复检查同时拒绝安全会话与部分账号来源的读取失败；默认
 空目录恢复正常与已有凭据恢复分别验收。文件写入失败后的文本分享兜底由故障注入测试验证，
 正常系统分享检查不证明该故障路径已通过设备验收；真实账号登录、授权回调与上传另行验收。
-优化对照使用相同源码、依赖、工具链、ABI 与测试签名，修复组保留自己的准确提交身份。
+原生诊断使用当前提交和 A 优化模式，生产入口使用同一提交、依赖、工具链与测试签名。
 `native-diagnostics-entry.tsx` 是独立构建入口，不初始化账号、主题和日志；
 `services/native-storage-probe.ts` 只操作临时键、临时文件和临时数据库，检查真实
 SQLite、KV 冷启并发、默认 KV、SecureStore、Crypto 和 FileSystem 桥接往返。
@@ -665,8 +666,7 @@ Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 ma
 基准提交不在本地时用 `git fetch --depth=1 --no-tags origin <基准>` 只取该提交，
 再用 `git diff --name-only --no-renames -z` 列出改动，不安装依赖也不拉取完整历史；
 判定逻辑集中在可单独运行的 `.github/actions/changed-scope/classify.sh`（复合动作只注入事件环境变量）。
-改动全部落在 `README.md`、`AGENTS.md`、`CLAUDE.md`（含各层目录）、`docs/`、`.github/`、
-`LICENSE`、`LICENSES/`、`THIRD_PARTY_NOTICES.md` 与 README 截图 `assets/images/` 时判定为无功能改动，
+改动全部满足 `classify.sh` 的非功能路径规则（自述文件、文档、CI、许可声明和 README 截图）时判定为无功能改动，
 `quality` 任务被跳过，该轮不安装依赖、不跑测试、不产出平台包；
 GitHub 把跳过的必填检查报告为成功，合并仍由 PR 检查放行。
 `GITHUB_OUTPUT` 只写固定枚举与计数：`functional`、`reason`（`no-base` / `base-unavailable` /
@@ -682,7 +682,7 @@ GitHub 把跳过的必填检查报告为成功，合并仍由 PR 检查放行。
 用 `.github/scripts/package.json` 固定的真实 YAML 解析器（`yaml` 2.9.0，零传递依赖，
 该任务只在这一棵子目录执行 `npm ci`，不安装 `apps/mobile` 依赖树）解析 workflow 与 action：
 未闭合 flow sequence、未闭合引号、重复键都会失败，`run:` 按 YAML 语义解码后的标量送 `bash -n`
-（双引号与 `>` 折叠块不再被按原始换行放过）；随后检查 `.sh` 与内联 bash 的 `bash -n` 语法、
+（覆盖双引号与 `>` 折叠块）；随后检查 `.sh` 与内联 bash 的 `bash -n` 语法、
 `.github` 与 `apps/mobile/scripts` 下 `.mjs`/`.cjs` 的 `node --check` 语法，
 并运行分类器独立自检 `.github/actions/changed-scope/self-test.mjs`；`--self-test` 用故意破坏的样例
 证明每类检查都会失败。
@@ -728,10 +728,12 @@ Manifest 包名与版本及 APK 签名，全部通过后按 `rRanker-版本(构�
 调试签名产物属于 Release 模式测试安装包，不可直接作为正式发行；流程不发布
 GitHub Release 或上传应用商店。实际云端构建与真机安装需运行工作流后验证。
 
-osu! OAuth 应用凭据不在源码中保存。`app.config.js` 在 `app.json` 静态配置之上，
-从 `OSU_OAUTH_CLIENT_SECRET` 构建环境变量向 `extra.osuOAuthClientSecret` 注入；
+`app.json` 提供版本、包名和插件列表，`app.config.js` 按 `ANDROID_OPTIMIZATION_MODE` 配置
+Android 插件参数，并向 `extra.buildCommit` 与 `extra.androidOptimizationMode` 注入实际检出提交和优化模式。
+osu! OAuth 应用凭据不在源码中保存；动态配置从 `OSU_OAUTH_CLIENT_SECRET` 构建环境变量
+向 `extra.osuOAuthClientSecret` 注入。
 `osu-config.ts` 在调用时读取注入值，测试经同名进程环境变量提供。生产工作流只在可信
 master 路径注入，恢复工作流可从隔离测试环境注入测试应用配置；缺失时构建仍可完成，
-但 osu! 授权与令牌轮换明确报告配置不足。客户端内置授权方式的配置可从安装包提取，
+但 osu! 换码与令牌轮换明确报告配置不足。客户端内置授权方式的配置可从安装包提取，
 不能把构建注入视为服务端保密；该接入模式不增加后端。
 更换签名后的升级兼容与数据保留须在正式发布前实测确认。
