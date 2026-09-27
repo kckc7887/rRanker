@@ -622,6 +622,9 @@ GitHub 托管 runner，不读取生产签名或发布凭据。诊断组、质量
 资源不一致的源码；生产入口依赖该任务和完整质量检查通过，复用 Android 构建 action，
 生成四 ABI 的 A 模式测试签名 Release APK。托管 Android 模拟器通过生产路由验收主题
 持久化、日志启停与历史、账号启动恢复，通过后才上传 APK；设备结果独立保留。
+诊断分享实际打开系统 ChooserActivity 后返回应用，不选择分享目标；账号恢复检查同时拒绝
+安全会话与部分账号来源的读取失败。文件写入失败后的文本分享兜底由故障注入测试验证，
+正常系统分享检查不证明该故障路径已通过设备验收；真实账号登录、授权回调与上传另行验收。
 优化对照使用相同源码、依赖、工具链、ABI 与测试签名，修复组保留自己的准确提交身份。
 `native-diagnostics-entry.tsx` 是独立构建入口，不初始化账号、主题和日志；
 `services/native-storage-probe.ts` 只操作临时键、临时文件和临时数据库，检查真实
@@ -705,7 +708,7 @@ prebuild 复用 `plugins/with-android-abi-splits.js`，一次生成 `armeabi-v7a
 `x86`、`x86_64` 四份 APK。版本与构建号分别读取 `app.json` 的 `expo.version` 和
 `expo.android.versionCode`，不自动递增。master 生产路径使用受分支限制的
 `production-release` 环境，要求就绪标记与完整 keystore，缺失时拒绝构建。
-普通分支和 PR 在 `test-builds` 环境中使用调试密钥，生产签名变量显式为空；
+普通分支和 PR 在 `test-artifacts` 环境中使用调试密钥，生产签名变量显式为空；
 验证阶段核对四份 APK 证书一致，
 正式包拒绝调试证书，并在摘要中报告签名身份与证书指纹。工作流检查 Gradle 输出清单、APK 内部 ABI、
 Manifest 包名与版本及 APK 签名，全部通过后按 `rRanker-版本(构建号)-ABI.apk` 命名，
