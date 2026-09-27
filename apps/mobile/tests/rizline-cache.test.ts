@@ -1,5 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { awaitRizlineFresh, cacheRizlineSave, clearRizlineAccount, loadRizlineCached, loadRizlineFresh, loadRizlineWithFallback } from '@/services/rizline-service';
+import { cacheRizlineSave, clearRizlineAccount, loadRizlineCached, loadRizlineFresh, loadRizlineWithFallback } from '@/services/rizline-service';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { ProviderError } from '@/providers/errors';
 import type { RizlineSession } from '@/providers/contracts';
@@ -127,18 +127,7 @@ describe('Rizline account snapshots', () => {
     await expect(old).rejects.toThrow('缓存请求已失效');
     expect((await loadRizlineCached(accountA))?.save.totalRks).toBe(150);
   });
-  it('waits for an expired-token fallback before a manual sync decides its result', async () => {
-    await loadRizlineFresh(accountA, session);
-    let reject!: (error: unknown) => void;
-    mocks.getSave.mockReturnValueOnce(new Promise((_resolve, fail) => { reject = fail; }));
-    const pending = loadRizlineWithFallback(accountA, session);
-    let settled = false;
-    const waiting = awaitRizlineFresh(accountA).then(() => { settled = true; });
-    await Promise.resolve(); expect(settled).toBe(false);
-    reject(new ProviderError('authentication', 'expired', false));
-    await expect(pending).resolves.toMatchObject({ requiresLogin: true, source: { isStale: true } });
-    await waiting; expect(settled).toBe(true);
-  });
+
   it('keeps a credential persistence failure from committing fresh scores', async () => {
     mocks.rotate.mockRejectedValueOnce(new Error('secure write failed'));
     mocks.getSave.mockImplementationOnce(async () => {
@@ -189,4 +178,16 @@ describe('Rizline account snapshots', () => {
     expect(mocks.getSave).toHaveBeenCalledTimes(1);
     expect(mocks.options[0]?.allowExpiredToken).toBe(true);
   });
+  it.each([
+    new ProviderError('network', 'offline', true),
+    new DOMException('cancelled', 'AbortError'),
+    new Error('local storage unavailable'),
+  ])('keeps stored password after a transient reauthentication error', async error => {
+    mocks.readPassword.mockResolvedValue('stored-password');
+    mocks.getSave.mockRejectedValueOnce(new ProviderError('authentication', 'expired', false));
+    mocks.loginWithPassword.mockRejectedValue(error);
+    await expect(loadRizlineFresh(accountA, session)).rejects.toBe(error);
+    expect(mocks.deletePassword).not.toHaveBeenCalled();
+  });
+
 });

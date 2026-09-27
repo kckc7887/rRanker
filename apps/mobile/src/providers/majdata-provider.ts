@@ -10,7 +10,7 @@ import type { LoginCredentials } from './contracts';
 export class MajdataProvider {
   constructor(private session?: HttpCookieSession, private readonly onSession?: (next: HttpCookieSession) => Promise<void>, private readonly fetcher: typeof fetch = expoFetch as unknown as typeof fetch) {}
   private options<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal) {
-    return { path, schema, baseUrl: MAJDATA_BASE, label: 'Majdata Net', fetcher: this.fetcher, signal,
+    return { path, schema, baseUrl: MAJDATA_BASE, label: 'Majdata Net', fetcher: this.fetcher, signal, authenticated: true,
       error: (status: number) => providerErrorFromStatus(status, { authentication: '用户名或密码错误，请重新登录', permission: '账号暂时无法访问', noData: '未找到数据', rateLimit: '请稍后再试', server: 'Majdata Net 暂时不可用', fallback: { message: () => 'Majdata Net 请求失败' } }), init: { credentials: 'omit' as const, headers: this.session ? { Cookie: cookieHeader(this.session, `${MAJDATA_BASE}${path}`) } : {} as Record<string, string> },
       onResponse: async (response: Response) => {
         if (!this.session || signal?.aborted) return;

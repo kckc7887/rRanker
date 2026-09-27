@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import Storage from '@/storage/key-value-storage';
 import { loadAccountDirectory, type KeyValueStore } from '@/storage/create-demo-account-store';
 
 export type { KeyValueStore };

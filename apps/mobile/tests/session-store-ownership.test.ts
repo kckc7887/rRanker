@@ -1,5 +1,6 @@
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
+import ts from 'typescript';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   LOCAL_MAIMAI_ACCOUNT_ID,
@@ -8,7 +9,7 @@ import {
   createMaxedMaimaiTestAccount,
 } from '@/domain/bound-account';
 import type { AnyScoreProvider, DetailedCatalogProvider, ProviderSession } from '@/providers/contracts';
-import { EmptyCatalogProvider, EmptyScoreProvider } from '@/providers/empty-provider';
+import { EmptyScoreProvider } from '@/providers/empty-provider';
 import type { CredentialSessionWriteResult } from '@/storage/secure-session-store';
 import * as sessionRuntime from '@/state/session-runtime';
 import type { SessionRuntime } from '@/state/session-runtime';
@@ -19,7 +20,6 @@ import {
   resetPendingRotationWritesForTests,
   restoreSession,
   retryPendingRotationWrites,
-  UNBOUND_ACCOUNT_ID,
   useSession,
 } from '@/state/session-store';
 
@@ -47,35 +47,45 @@ const SECURE_STORE_MODULES = [
   'large-secure-value-store',
 ];
 
-const staticImportSpecifiers = (source: string): string[] => {
+const importSpecifiers = (source: string): string[] => {
   const specifiers: string[] = [];
-  const pattern = /^\s*(?:import|export)\b[^'"\n]*?from\s*['"]([^'"]+)['"]/gmu;
-  for (const match of source.matchAll(pattern)) specifiers.push(match[1]!);
-  const bare = /^\s*import\s*['"]([^'"]+)['"]/gmu;
-  for (const match of source.matchAll(bare)) specifiers.push(match[1]!);
+  const file = ts.createSourceFile('session.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
+  const visit = (node: ts.Node): void => {
+    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteralLike(node.moduleSpecifier)) specifiers.push(node.moduleSpecifier.text);
+    if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) {
+      const value = node.arguments[0];
+      if (value && ts.isStringLiteralLike(value)) specifiers.push(value.text);
+    }
+    ts.forEachChild(node, visit);
+  };
+  visit(file);
   return specifiers;
 };
 
-const dynamicImportSpecifiers = (source: string): string[] => (
-  [...source.matchAll(/\bimport\(\s*['"]([^'"]+)['"]\s*\)/gu)].map((match) => match[1]!)
-);
-
 describe('会话 Store 的所有权边界', () => {
   it('不静态构造任何具体 Provider，也不引用装配模块', () => {
-    const imported = [...staticImportSpecifiers(storeSource()), ...dynamicImportSpecifiers(storeSource())];
+    const imported = importSpecifiers(storeSource());
     expect(imported.filter((specifier) => CONCRETE_PROVIDER_MODULES.some((name) => specifier.includes(name))))
       .toEqual([]);
   });
 
   it('不直接访问 SecureStore 或凭据索引存储', () => {
-    const touched = [...staticImportSpecifiers(storeSource()), ...dynamicImportSpecifiers(storeSource())];
+    const touched = importSpecifiers(storeSource());
     expect(touched.filter((specifier) => SECURE_STORE_MODULES.some((name) => specifier.includes(name)))).toEqual([]);
     expect(storeSource()).not.toMatch(/new\s+SecureSessionStore\b/u);
     expect(storeSource()).not.toMatch(/SecureStore\s*\./u);
   });
+  it('detects multiline imports, reexports, and literal lazy or CommonJS imports', () => {
+    expect(importSpecifiers(`import Default, {\n named,\n other\n} from '@/providers/lxns-score-provider';
+      export {\n Store\n} from '@/storage/secure-session-store';
+      const a = import(\n 'expo-secure-store'\n ); const b = require(\n 'expo-sqlite/kv-store'\n );
+      const fake = "import x from 'ignore'";`)).toEqual([
+      '@/providers/lxns-score-provider', '@/storage/secure-session-store', 'expo-secure-store', 'expo-sqlite/kv-store',
+    ]);
+  });
 });
 
-const updateAccountSession = vi.hoisted(() => vi.fn(async () => undefined));
+const updateAccountSession = vi.hoisted(() => vi.fn(async (): Promise<CredentialSessionWriteResult> => 'applied'));
 const updateCredentialSession = vi.hoisted(() => (
   vi.fn(async (): Promise<CredentialSessionWriteResult> => 'applied')
 ));
@@ -100,7 +110,15 @@ const scoreProvider: AnyScoreProvider = {
   })),
   getRecords: vi.fn(async () => []),
 };
-const catalogProvider: DetailedCatalogProvider = new EmptyCatalogProvider();
+const catalogSource = { kind: 'fixture' as const, label: '探针', updatedAt: '', isStale: false };
+const catalogProvider: DetailedCatalogProvider = {
+  getCatalog: vi.fn(async () => ({ currentVersion: { id: 0, title: '探针' }, versions: [], songs: [], chartVersionIndex: {}, source: catalogSource })),
+  getDetailedCatalog: vi.fn(async () => catalogProvider.getCatalog()),
+  getSong: vi.fn(async () => { throw new Error('fixture has no songs'); }),
+  getAliases: vi.fn(async () => ({ aliases: [], source: catalogSource })),
+  getPlates: vi.fn(async () => ({ plates: [], source: catalogSource })),
+  getCollections: vi.fn(async () => ({ items: [], source: catalogSource })),
+};
 
 type RuntimeProbe = { resolve: ReturnType<typeof vi.fn>; release: ReturnType<typeof vi.fn> };
 
@@ -109,11 +127,11 @@ let runtimeProbe: RuntimeProbe;
 beforeEach(() => {
   resetPendingRotationWritesForTests();
   updateAccountSession.mockClear();
-  updateAccountSession.mockResolvedValue(undefined);
+  updateAccountSession.mockResolvedValue('applied');
   updateCredentialSession.mockClear();
   updateCredentialSession.mockResolvedValue('applied');
   runtimeProbe = {
-    resolve: vi.fn(() => ({ providers: { scoreProvider, catalogProvider }, cacheKey: 'probe' })),
+    resolve: vi.fn(() => ({ providers: { scoreProvider, catalogProvider, protocolScoreProvider: null }, cacheKey: 'probe' })),
     release: vi.fn(),
   };
   sessionRuntime.setSessionRuntime(runtimeProbe as unknown as SessionRuntime);
@@ -136,7 +154,8 @@ function seedStore(): void {
     activeGameId: 'maimai',
     activeProviderId: 'local',
     scoreProvider: new EmptyScoreProvider(),
-    catalogProvider: new EmptyCatalogProvider(),
+    catalogProvider,
+    protocolScoreProvider: null,
     restoreStatus: 'ready',
     restoreError: null,
     session: null,
@@ -336,8 +355,8 @@ describe('凭据提交经注入端口落盘', () => {
     await applyLxnsTokenRotation('maimai:lxns:1', { previous: shared, next: rotated });
     unsubscribe();
 
-    // 第一次提交发布新会话，第二次提交把同一批会话交给派生视图；两次里激活账号与内存会话都一致。
-    expect(committed).toHaveLength(2);
+    // 会话与 Provider 派生视图在唯一一次通知里同时可见。
+    expect(committed).toHaveLength(1);
     for (const snapshot of committed) {
       expect(snapshot.activeAccountId).toBe('maimai:lxns:1');
       expect(snapshot.session).toEqual(rotated);
@@ -362,7 +381,7 @@ describe('凭据提交经注入端口落盘', () => {
     const accountId = useSession.getState().activeAccountId;
     const next = { ...session, token: 'rotated' };
     const order: string[] = [];
-    updateAccountSession.mockImplementationOnce(async () => { order.push('persist'); });
+    updateAccountSession.mockImplementationOnce(async () => { order.push('persist'); return 'applied'; });
     const unsubscribe = useSession.subscribe(() => order.push('publish'));
 
     await applyRizlineSessionRotation(accountId, next, session);
@@ -378,12 +397,13 @@ describe('凭据提交经注入端口落盘', () => {
     expect(useSession.getState().session).toBe(next);
   });
 
-  it('恢复失败时保留可重试错误并回到未绑定状态', async () => {
+  it('恢复失败时保留已加载账号和可重试错误', async () => {
+    const previous = useSession.getState();
     await restoreSession(async () => { throw new Error('secure store unavailable'); });
     expect(useSession.getState()).toMatchObject({
       session: null,
       restoreStatus: 'error',
-      activeAccountId: UNBOUND_ACCOUNT_ID,
+      activeAccountId: previous.activeAccountId,
     });
   });
 });

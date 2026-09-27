@@ -88,11 +88,11 @@ describe('osu! OAuth 授权与轮换', () => {
     vi.stubGlobal('fetch', fetchMock);
     const authorizeUrl = await beginOsuAuthorize();
     const state = new URLSearchParams(authorizeUrl.split('?')[1]).get('state') ?? '';
-    await expect(exchangeOsuAuthorizationCode('code-1', '')).rejects.toMatchObject({ code: 'authentication' });
-    await expect(exchangeOsuAuthorizationCode('code-1', 'other-state')).rejects.toMatchObject({ code: 'authentication' });
+    await expect(exchangeOsuAuthorizationCode('code-1', '')).rejects.toMatchObject({ code: 'authorization_callback' });
+    await expect(exchangeOsuAuthorizationCode('code-1', 'other-state')).rejects.toMatchObject({ code: 'authorization_callback' });
     expect(fetchMock).not.toHaveBeenCalled();
     vi.spyOn(Date, 'now').mockReturnValue(Date.now() + 11 * 60 * 1000);
-    await expect(exchangeOsuAuthorizationCode('code-1', state)).rejects.toMatchObject({ code: 'authentication' });
+    await expect(exchangeOsuAuthorizationCode('code-1', state)).rejects.toMatchObject({ code: 'authorization_callback' });
     expect(fetchMock).not.toHaveBeenCalled();
     vi.mocked(Date.now).mockRestore();
   });
@@ -107,7 +107,25 @@ describe('osu! OAuth 授权与轮换', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
     await exchangeOsuAuthorizationCode('code-1', state);
-    await expect(exchangeOsuAuthorizationCode('code-1', state)).rejects.toMatchObject({ code: 'authentication' });
+    await expect(exchangeOsuAuthorizationCode('code-1', state)).rejects.toMatchObject({ code: 'authorization_callback' });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('并发回调仅消费一次pending并发出一次凭据POST', async () => {
+    const state = new URLSearchParams((await beginOsuAuthorize()).split('?')[1]).get('state') ?? '';
+    const fetchMock = vi.fn(async (_url: string, _init?: RequestInit) => new Response(JSON.stringify({ access_token: 'a', expires_in: 86400, refresh_token: 'r' })));
+    vi.stubGlobal('fetch', fetchMock);
+    const results = await Promise.allSettled([exchangeOsuAuthorizationCode('code', state), exchangeOsuAuthorizationCode('code', state)]);
+    expect(results.filter(result => result.status === 'fulfilled')).toHaveLength(1);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock.mock.calls[0]?.[1]).toMatchObject({ method: 'POST', credentials: 'omit', redirect: 'error' });
+  });
+
+  it('失败的换码POST不会被自动重试', async () => {
+    const state = new URLSearchParams((await beginOsuAuthorize()).split('?')[1]).get('state') ?? '';
+    const fetchMock = vi.fn(async () => new Response('{"error":"server_error"}', { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(exchangeOsuAuthorizationCode('code', state)).rejects.toMatchObject({ code: 'network' });
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
@@ -120,7 +138,7 @@ describe('osu! OAuth 授权与轮换', () => {
     delete process.env.OSU_OAUTH_CLIENT_SECRET;
     try {
       await expect(exchangeOsuAuthorizationCode('code-1', state)).rejects.toMatchObject({
-        code: 'authentication',
+        code: 'configuration',
         message: expect.stringContaining('凭据缺失') as string,
       });
     } finally {

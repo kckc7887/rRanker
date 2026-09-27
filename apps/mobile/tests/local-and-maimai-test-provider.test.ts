@@ -143,7 +143,7 @@ describe('本地查分器', () => {
       LOCAL_MAIMAI_ACCOUNT_ID,
       repository,
     ).load();
-    expect(snapshot.source).toMatchObject({ kind: 'cache', isStale: true });
+    expect(snapshot.source).toMatchObject({ kind: 'local', isStale: true });
     expect(snapshot.records).toHaveLength(2);
   });
 });

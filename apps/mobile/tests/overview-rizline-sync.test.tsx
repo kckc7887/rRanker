@@ -21,7 +21,7 @@ import { rizlineCatalog, rizlineSave } from './fixtures/rizline';
 const mockNotification = jest.fn();
 const mockCatalog = jest.fn<() => Promise<void>>();
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotification }) }));
-jest.mock('@/hooks/use-rizline-catalog', () => ({ refreshRizlineCatalog: () => mockCatalog() }));
+jest.mock('@/services/rizline-catalog-query', () => ({ refreshRizlineCatalog: () => mockCatalog() }));
 
 type Params = Parameters<typeof useOverviewSync>[0];
 const account = createRizlineBoundAccount(rizlineSave());
@@ -60,7 +60,7 @@ it('still synchronizes scores when catalog refresh fails and reports partial fai
   let result: boolean | undefined;
   await act(async () => { result = await hook.result.current.syncData(); });
   expect(refetch).toHaveBeenCalledTimes(1); expect(result).toBe(false);
-  expect(mockNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '成绩已同步，曲库暂未更新', variant: 'warning' }));
+  expect(mockNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '部分数据未同步', message: '曲库未更新；已保留可用数据，请稍后重试。', variant: 'warning' }));
 });
 
 it('waits for the entity background refresh handle and decides from its terminal result', async () => {

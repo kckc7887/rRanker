@@ -4,6 +4,7 @@ import { isRuntimeLogCapacity, type RuntimeLogPreferences } from '@/domain/runti
 const { Store } = createPreferencesStore<RuntimeLogPreferences>({
   storeKey: 'runtime-log-preferences-v1',
   defaults: () => ({ capacity: 2000, enabled: false }),
+  readFailure: 'throw',
   parse: (value) => {
     const capacity = value && typeof value === 'object' && 'capacity' in value ? value.capacity : undefined;
     const enabled = value !== null && typeof value === 'object' && 'enabled' in value && value.enabled === true;

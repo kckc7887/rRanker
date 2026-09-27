@@ -20,6 +20,7 @@ import {
   createMuseDashBoundAccount,
   createPhiraBoundAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
+  type BoundAccount,
 } from '@/domain/bound-account';
 import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
 import {
@@ -39,7 +40,7 @@ import { TufAccountStore } from '@/storage/tuf-account-store';
 import { MuseDashAccountStore } from '@/storage/musedash-account-store';
 import { PhiraAccountStore } from '@/storage/phira-account-store';
 
-import { restoreSession } from '@/state/session-store';
+import { restoreSession, useSession, replaceRestoredOptionalAccounts } from '@/state/session-store';
 import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 const sessions = new SecureSessionStore();
@@ -111,38 +112,58 @@ async function loadMuseDashDemoBoundAccount() {
     : null;
 }
 
-async function readAccountSource<T>(source: string, load: () => Promise<T>, fallback: T): Promise<T> {
-  try {
-    return await load();
-  } catch (error) {
-    recordRuntimeError('account-restoration', error, false, { phase: source });
-    return fallback;
+const single = (account: BoundAccount | null): BoundAccount[] => account ? [account] : [];
+const sources = [
+  { id: 'local', provider: 'local', load: loadLocalBoundAccounts },
+  { id: 'demo', provider: 'maimai-test', load: loadDemoBoundAccounts },
+  { id: 'chunithm-demo', provider: 'chunithm-test', load: async () => single(await loadChunithmDemoBoundAccount()) },
+  { id: 'phigros-demo', provider: 'phigros-test', load: async () => single(await loadPhigrosDemoBoundAccount()) },
+  { id: 'musedash-demo', provider: 'musedash-test', load: async () => single(await loadMuseDashDemoBoundAccount()) },
+  { id: 'chunithm-temp', provider: 'chunithm-temp', load: async () => await chunithmTempAccount.load() ? [createChunithmTempAccount()] : [] },
+  { id: 'tuf', provider: 'tuf', load: async () => (await tufAccounts.load()).map(createTufBoundAccount) },
+  { id: 'musedash', provider: 'musedash-moe', load: async () => (await museDashAccounts.load()).map(createMuseDashBoundAccount) },
+  { id: 'phira', provider: 'phira-community', load: async () => (await phiraAccounts.load()).map(createPhiraBoundAccount) },
+] as const;
+export type AccountSourceStatus = { source: typeof sources[number]['id']; status: 'loading' | 'ready' | 'failed'; errorCode?: 'storage_unavailable' };
+let sourceStatuses: readonly AccountSourceStatus[] = [];
+const sourceListeners = new Set<() => void>();
+export const getAccountSourceStatuses = () => sourceStatuses;
+export function subscribeAccountSourceStatuses(listener: () => void): () => void {
+  sourceListeners.add(listener); return () => { sourceListeners.delete(listener); };
+}
+function publishSource(next: AccountSourceStatus): void {
+  sourceStatuses = [...sourceStatuses.filter((item) => item.source !== next.source), next];
+  for (const listener of sourceListeners) {
+    try { listener(); } catch { /* A subscriber must not prevent another source from restoring. */ }
   }
 }
-
-export async function loadOptionalBoundAccounts() {
-  const [locals, demos, chunithmDemo, phigrosDemo, museDashDemo, hasChunithmTemp, storedTufAccounts, storedMuseDashAccounts, storedPhiraAccounts] = await Promise.all([
-    readAccountSource('local', loadLocalBoundAccounts, []),
-    readAccountSource('demo', loadDemoBoundAccounts, []),
-    readAccountSource('chunithm-demo', loadChunithmDemoBoundAccount, null),
-    readAccountSource('phigros-demo', loadPhigrosDemoBoundAccount, null),
-    readAccountSource('musedash-demo', loadMuseDashDemoBoundAccount, null),
-    readAccountSource('chunithm-temp', () => chunithmTempAccount.load(), false),
-    readAccountSource('tuf', () => tufAccounts.load(), []),
-    readAccountSource('musedash', () => museDashAccounts.load(), []),
-    readAccountSource('phira', () => phiraAccounts.load(), []),
-  ]);
-  return [
-    ...locals,
-    ...demos,
-    ...(chunithmDemo ? [chunithmDemo] : []),
-    ...(phigrosDemo ? [phigrosDemo] : []),
-    ...(museDashDemo ? [museDashDemo] : []),
-    ...(hasChunithmTemp ? [createChunithmTempAccount()] : []),
-    ...storedTufAccounts.map((account) => createTufBoundAccount(account)),
-    ...storedMuseDashAccounts.map((account) => createMuseDashBoundAccount(account)),
-    ...storedPhiraAccounts.map((account) => createPhiraBoundAccount(account)),
-  ];
+async function readAccountSource(source: typeof sources[number]): Promise<BoundAccount[]> {
+  publishSource({ source: source.id, status: 'loading' });
+  try {
+    const accounts = await source.load();
+    publishSource({ source: source.id, status: 'ready' });
+    return accounts;
+  } catch (error) {
+    publishSource({ source: source.id, status: 'failed', errorCode: 'storage_unavailable' });
+    recordRuntimeError('account-restoration', error, false, { phase: source.id });
+    return useSession.getState().boundAccounts.filter((account) => account.providerId === source.provider);
+  }
+}
+export async function loadOptionalBoundAccounts(): Promise<BoundAccount[]> {
+  return (await Promise.all(sources.map(readAccountSource))).flat();
+}
+let retryingSources: Promise<void> | null = null;
+export function retryFailedAccountSources(): Promise<void> {
+  retryingSources ??= (async () => {
+    const failed = sources.filter((source) => sourceStatuses.some((status) => status.source === source.id && status.status === 'failed'));
+    const previous = new Map(useSession.getState().boundAccounts.map((account) => [account.id, account]));
+    const accounts = (await Promise.all(failed.map(readAccountSource))).flat();
+    const providers = new Set(failed.map((source) => source.provider));
+    const current = new Map(useSession.getState().boundAccounts.map((account) => [account.id, account]));
+    replaceRestoredOptionalAccounts((account) => providers.has(account.providerId as typeof sources[number]['provider']) && previous.get(account.id) === account,
+      accounts.filter((account) => previous.has(account.id) ? current.get(account.id) === previous.get(account.id) : !current.has(account.id)));
+  })().finally(() => { retryingSources = null; });
+  return retryingSources;
 }
 
 export function restoreAppAccounts(): Promise<void> {

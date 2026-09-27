@@ -223,7 +223,7 @@ describe('Rizline UI', () => {
     expect(screen.getByText('练习谱面 · SP ?')).toBeTruthy();
     expect(screen.queryByText(/曲库暂不可用/)).toBeNull();
     await fireEvent.press(screen.getByText('独立 SP 歌曲'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: 'song.a.sp', chartType: 'SD', levelIndex: '4' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: 'song.a.sp', levelIndex: '4' } });
   });
 
   it('waits for scores then preserves random draws with unknown metrics after a read failure', async () => {

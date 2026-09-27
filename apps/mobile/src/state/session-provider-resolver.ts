@@ -4,6 +4,7 @@ import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import {
   createSessionProviders,
   type LxnsTokenRotation,
+  type OsuTokenRotation,
   type SessionProviders,
 } from '@/services/session-providers';
 
@@ -23,7 +24,7 @@ export type ResolvedSessionProviders = {
   providers: SessionProfiles;
 };
 
-export type { LxnsTokenRotation, LxnsTokenRotationUpdate };
+export type { LxnsTokenRotation, LxnsTokenRotationUpdate, OsuTokenRotation };
 
 /** 会话内容指纹：字段顺序无关，只用于判断凭据版本是否变化。 */
 function sessionFingerprint(session: ProviderSession | null): string {
@@ -66,6 +67,7 @@ export function resolveSessionProviders(
   account: BoundAccount | null,
   credentials: SessionCredentialRef,
   onLxnsTokenRotation: LxnsTokenRotation = () => undefined,
+  onOsuTokenRotation: OsuTokenRotation = () => undefined,
 ): ResolvedSessionProviders {
   const cacheKey = providerResolverCacheKey(account, credentials);
   const cached = resolvedProviders.get(cacheKey);
@@ -74,7 +76,7 @@ export function resolveSessionProviders(
   const entry: ResolvedSessionProviders = {
     cacheKey,
     accountId: account?.id ?? '',
-    providers: createSessionProviders(account, credentials.session, onLxnsTokenRotation),
+    providers: createSessionProviders(account, credentials.session, onLxnsTokenRotation, onOsuTokenRotation),
   };
   // 同一账号只保留当前版本，解绑/换绑不会在内存里堆积历史实例。
   for (const [key, value] of resolvedProviders) {

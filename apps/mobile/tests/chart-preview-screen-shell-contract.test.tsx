@@ -759,14 +759,16 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     expect(prepare).not.toHaveBeenCalled();
     expect(screen.getByText('准备谱面确认资源超时，请重新加载。')).toBeTruthy();
     await act(() => { fireEvent.press(screen.getByRole('button', { name: '重新加载' })); });
-    expect(prepare).toHaveBeenCalledTimes(1);
-    expect(prepare).toHaveBeenCalledWith(expect.any(AbortSignal), { speed: 2 }, expect.any(Function));
+    expect(prepare).not.toHaveBeenCalled();
+    expect(mockLoadSettings).toHaveBeenCalledTimes(1);
     await act(() => { resolveOldSettings('{"speed":5}'); });
-    expect(prepare).toHaveBeenCalledTimes(1);
+    await waitFor(() => expect(prepare).toHaveBeenCalledTimes(1), { interval: 1 });
+    expect(prepare).toHaveBeenCalledWith(expect.any(AbortSignal), { speed: 2 }, expect.any(Function));
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy(), { interval: 1 });
     await act(() => {
       (latestWebViewProps.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"settings","volume":3}' } });
     });
-    expect(mockSaveSettings).toHaveBeenLastCalledWith(fictionalSettingsKey, '{"speed":2,"volume":3}');
+    await waitFor(() => expect(mockSaveSettings).toHaveBeenLastCalledWith(fictionalSettingsKey, '{"speed":2,"volume":3}'), { interval: 1 });
   });
 
   it('准备错误沿 ProviderError 映射显示，未知和无数据错误保留调用方安全文案', async () => {
@@ -774,10 +776,10 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
       kind: 'ready', payload: { chartName: '虚构谱面' }, prepare: async () => { throw error; },
     });
     const view = await renderFictionalShell(request(new ProviderError('network', 'private upstream host', true)));
-    expect(screen.getByText('网络连接失败，请检查网络后重试。')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('网络连接失败，请检查网络后重试。')).toBeTruthy());
     expect(screen.queryByText('private upstream host')).toBeNull();
     await view.rerender(<FictionalShell request={request(new ProviderError('no_data', 'private mirror list', false))} />);
-    expect(screen.getByText(fictionalPrepareErrorFallback)).toBeTruthy();
+    await waitFor(() => expect(screen.getByText(fictionalPrepareErrorFallback)).toBeTruthy());
     expect(screen.queryByText('private mirror list')).toBeNull();
   });
 
@@ -786,7 +788,7 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
       kind: 'ready', payload: { chartName: '虚构谱面' },
       prepare: async () => { throw new ProviderError('permission', 'private resource response', false); },
     });
-    expect(screen.getByText('谱面资源暂时不可用，请稍后重试。')).toBeTruthy();
+    await waitFor(() => expect(screen.getByText('谱面资源暂时不可用，请稍后重试。')).toBeTruthy());
     expect(screen.getByRole('button', { name: '重新加载' })).toBeTruthy();
     expect(screen.queryByText('当前账号无法完成此操作。')).toBeNull();
     expect(screen.queryByText('private resource response')).toBeNull();

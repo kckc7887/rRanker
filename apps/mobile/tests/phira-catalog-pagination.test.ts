@@ -15,6 +15,14 @@ import {
 } from '@/domain/phira';
 
 const chart = (id: number): PhiraChart => ({ id } as PhiraChart);
+it('切到无需续扫的查询后释放旧预约，返回原查询可继续同一游标', () => {
+  const a = phiraCatalogScanObservation({ identity: 'ranked|a', pageCount: 1, lastCursor: 0,
+    scanning: true, isFetchingNextPage: false });
+  const first = phiraCatalogScanNext({ observation: a, requested: null });
+  const b = phiraCatalogScanNext({ observation: { ...a, identity: 'ranked|b', scanning: false }, requested: first.requested });
+  expect(b.requested).toBeNull();
+  expect(phiraCatalogScanNext({ observation: a, requested: b.requested }).action).toBe('fetch');
+});
 const page = (ids: number[], total?: number): PhiraChartPage => (
   { results: ids.map(chart), total } as PhiraChartPage
 );

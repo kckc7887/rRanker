@@ -156,3 +156,19 @@ describe('ChunithmPersonalService.refresh', () => {
     expect(store.size).toBe(0);
   });
 });
+
+it('取消一个中二消费者仍允许另一个得到共享刷新终态', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const first = new AbortController(), second = new AbortController();
+  const getPlayer = vi.fn(async () => { await gate; return player('新玩家'); });
+  const service = new ChunithmPersonalService(makePartsProvider({ player: getPlayer,
+    scores: async () => [], bests: async () => emptyChunithmBests(),
+  }), makeRepository(new Map()), 'chunithm:cancel-consumer');
+  const a = service.refresh(first.signal), b = service.refresh(second.signal);
+  first.abort(new Error('first left'));
+  expect((await a).status).toBe('cancelled');
+  release();
+  expect((await b).status).toBe('success');
+  expect(getPlayer).toHaveBeenCalledTimes(1);
+});

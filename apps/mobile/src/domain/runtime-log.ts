@@ -29,6 +29,8 @@ export const RUNTIME_REQUEST_SCENARIOS = [
 export type RuntimeRequestScenario = typeof RUNTIME_REQUEST_SCENARIOS[number];
 export const RUNTIME_ERROR_CODES = [
   'authentication', 'permission', 'rate_limit', 'timeout', 'upstream_schema',
+  'authorization_prepare', 'authorization_open', 'authorization_callback', 'verification', 'configuration',
+  'credential_storage', 'local_commit',
   'no_data', 'cache_corrupt', 'network', 'unknown', 'cancelled',
 ] as const;
 export type RuntimeErrorContext = {
@@ -96,6 +98,13 @@ export function sanitizeRuntimeLogError(value: unknown): NonNullable<RuntimeLogE
   return { name, summary: summaries[name] ?? 'Application operation failed', stack };
 }
 
+function sanitizeCredentialWriteFields(input: Readonly<Record<string, unknown>>, fields: RuntimeLogEntry['fields']): void {
+  const credentialWrite = property(input, 'credentialWrite');
+  if (typeof credentialWrite === 'string' && ['applied', 'pending', 'dropped', 'retry-scheduled', 'waiting', 'recovered'].includes(credentialWrite)) fields.credentialWrite = credentialWrite;
+  const attempts = property(input, 'attempts');
+  if (typeof attempts === 'number' && Number.isSafeInteger(attempts) && attempts >= 0 && attempts <= 1_000_000) fields.attempts = attempts;
+}
+
 export function sanitizeRuntimeLogEntry(type: string, input: Readonly<Record<string, unknown>>, at: string): RuntimeLogEntry {
   const fields: RuntimeLogEntry['fields'] = {};
   for (const key of stringFields) {
@@ -113,6 +122,7 @@ export function sanitizeRuntimeLogEntry(type: string, input: Readonly<Record<str
   const route = property(input, 'route');
   if (typeof route === 'string' && route.length <= 256 && /^\/[a-zA-Z0-9/()[\]_.-]*$/u.test(route)) fields.route = route;
   const scenario = property(input, 'scenario');
+  sanitizeCredentialWriteFields(input, fields);
   if (RUNTIME_REQUEST_SCENARIOS.some((value) => value === scenario)) fields.scenario = scenario as string;
   const errorCode = property(input, 'errorCode') ?? property(property(input, 'error'), 'code');
   if (RUNTIME_ERROR_CODES.some((value) => value === errorCode)) fields.errorCode = errorCode as string;

@@ -2,6 +2,8 @@ import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import LxnsOAuthCallbackScreen from '../app/oauth/lxns';
 import { createMaimaiBoundAccount } from '@/domain/bound-account';
+import { SessionPersistenceError } from '@/domain/session-vault';
+import { ProviderError } from '@/providers/errors';
 
 let mockParams: Record<string, string | undefined> = {};
 const mockDismissTo = jest.fn((..._args: unknown[]) => undefined);
@@ -15,6 +17,10 @@ jest.mock('expo-router', () => ({
 
 jest.mock('@/providers/lxns-oauth', () => ({
   exchangeLxnsAuthorizationCode: (...args: unknown[]) => mockExchange(...args),
+  requireLxnsOAuthState: (state: unknown) => {
+    if (typeof state !== 'string' || !state.trim()) throw new Error('授权状态校验失败，请重新发起授权');
+    return state;
+  },
   readPendingLxnsOAuth: jest.fn(async () => ({
     verifier: 'verifier',
     state: 'expected-state',
@@ -82,6 +88,27 @@ beforeEach(() => {
 });
 
 describe('LXNS OAuth 回调页', () => {
+  it.each(['credential_storage', 'local_commit'] as const)('真实绑定入口持久化失败显示对应本机阶段：%s', async code => {
+    mockParams = { code: 'auth-code', state: 'expected-state' };
+    mockExchange.mockResolvedValue(mockSession);
+    mockBindLxnsAccount.mockRejectedValue(new SessionPersistenceError(code, { cause: new Error('private native detail') }));
+    await act(async () => { render(<LxnsOAuthCallbackScreen />); });
+    const copy = code === 'credential_storage'
+      ? '无法安全保存账号凭据，请重试；若仍失败，请查看诊断。'
+      : '无法保存本机账号信息，请重试；若仍失败，请查看诊断。';
+    expect(screen.getByText(copy)).toBeTruthy();
+    expect(screen.queryByText(/private native/u)).toBeNull();
+    expect(mockSetSession).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'success' }));
+  });
+
+  it('远端验证拒绝保持远端阶段，不显示本机保存错误', async () => {
+    mockParams = { code: 'auth-code', state: 'expected-state' };
+    mockExchange.mockRejectedValue(new ProviderError('authentication', 'raw upstream credential detail', false));
+    await act(async () => { render(<LxnsOAuthCallbackScreen />); });
+    expect(screen.getByText('远端授权验证未通过，请重新发起授权。')).toBeTruthy();
+    expect(mockBindLxnsAccount).not.toHaveBeenCalled();
+  });
   it('code 与 state 校验通过后自动绑定并通知成功', async () => {
     mockParams = { code: 'auth-code', state: 'expected-state' };
     mockExchange.mockResolvedValue(mockSession);
@@ -94,7 +121,7 @@ describe('LXNS OAuth 回调页', () => {
     await act(async () => { render(<LxnsOAuthCallbackScreen />); });
 
     expect(screen.getByText('授权成功')).toBeTruthy();
-    expect(mockExchange).toHaveBeenCalledWith('auth-code', 'expected-state');
+    expect(mockExchange).toHaveBeenCalledWith('auth-code', 'expected-state', expect.any(AbortSignal));
     expect(mockBindLxnsAccount).toHaveBeenCalledWith({ gameId: 'maimai', session: mockSession });
     expect(mockSetSession).toHaveBeenCalledTimes(1);
     expect(mockNotify).toHaveBeenCalledWith({
@@ -110,11 +137,11 @@ describe('LXNS OAuth 回调页', () => {
     await act(async () => { render(<LxnsOAuthCallbackScreen />); });
 
     expect(screen.getByText('授权失败')).toBeTruthy();
-    expect(screen.getByText('落雪授权被拒绝：access_denied')).toBeTruthy();
+    expect(screen.getByText('落雪授权被拒绝，请重新发起授权')).toBeTruthy();
     expect(mockExchange).not.toHaveBeenCalled();
     expect(mockNotify).toHaveBeenCalledWith({
       status: 'error',
-      message: '落雪授权被拒绝：access_denied',
+      message: '落雪授权被拒绝，请重新发起授权',
     });
   });
 

@@ -100,6 +100,7 @@ export class SimaiPlaybackSession {
   /** 播放状态与释放状态由会话内部改写，宿主只读。 */
   playing = false;
   disposed = false;
+  private resourceGeneration = 0;
 
   constructor(options: SimaiPlaybackOptions) {
     this.charts = options.charts;
@@ -154,11 +155,17 @@ export class SimaiPlaybackSession {
    * 解码失败进入静音看谱；范围仍按谱尾与音乐结尾的较晚者计算。
    */
   async loadMusic(bytes: ArrayBuffer | null): Promise<boolean> {
+    if (this.disposed) return false;
+    const generation = ++this.resourceGeneration;
     this.music = null;
     try {
       const context = await this.ensureAudio(false);
-      if (bytes) this.music = await context.decodeAudioData(bytes);
+      if (this.disposed || generation !== this.resourceGeneration) return false;
+      const music = bytes ? await context.decodeAudioData(bytes) : null;
+      if (this.disposed || generation !== this.resourceGeneration) return false;
+      this.music = music;
     } catch {
+      if (this.disposed || generation !== this.resourceGeneration) return false;
       this.music = null;
     }
     this.applyRange();
@@ -192,6 +199,7 @@ export class SimaiPlaybackSession {
   }
 
   pause(): void {
+    if (this.disposed) return;
     this.command += 1;
     this.playing = false;
     this.host.onPlayStateChange?.(false);
@@ -241,6 +249,7 @@ export class SimaiPlaybackSession {
   dispose(): void {
     if (this.disposed) return;
     this.pause();
+    this.resourceGeneration += 1;
     this.answers?.dispose();
     this.answers = null;
     for (const node of [this.source, this.musicGain, this.answerGain]) {

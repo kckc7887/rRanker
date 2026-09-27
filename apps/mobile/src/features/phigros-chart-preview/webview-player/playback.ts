@@ -119,6 +119,7 @@ export class PhigrosPlaybackSession {
   /** 播放状态与释放状态由会话内部改写，宿主只读。 */
   playing = false;
   disposed = false;
+  private resourceGeneration = 0;
 
   constructor(options: PhigrosPlaybackOptions) {
     this.settings = options.settings;
@@ -157,14 +158,19 @@ export class PhigrosPlaybackSession {
 
   /** 解码音乐；失败时进入静音看谱。 */
   async loadMusic(bytes: ArrayBuffer | null): Promise<boolean> {
+    if (this.disposed) return false;
+    const generation = ++this.resourceGeneration;
     this.music = null;
     if (!bytes) return false;
     try {
       const context = await this.ensureAudio(false);
-      this.music = await context.decodeAudioData(bytes);
+      if (this.disposed || generation !== this.resourceGeneration) return false;
+      const music = await context.decodeAudioData(bytes);
+      if (this.disposed || generation !== this.resourceGeneration) return false;
+      this.music = music;
       return true;
     } catch {
-      this.music = null;
+      if (!this.disposed && generation === this.resourceGeneration) this.music = null;
       return false;
     }
   }
@@ -176,22 +182,31 @@ export class PhigrosPlaybackSession {
   async play(): Promise<void> {
     if (this.disposed) return;
     const command = ++this.command;
+    const target = this.chartTimePosition >= this.chartTimeline.durationSeconds - RESTART_TAIL_S
+      ? 0 : this.chartTimePosition;
+    this.cancelFrame();
+    this.stopSource(true);
+    this.stopActiveHitSounds();
+    this.playing = false;
+    await this.resumeAt(target, command);
+  }
+
+  private async resumeAt(target: number, command: number): Promise<void> {
     try {
       await this.ensureAudio();
+      if (this.disposed || command !== this.command) return;
       try {
         await this.ensureHitSoundsReady();
       } catch {
         /* 打击音解码失败不影响播放 */
       }
     } catch {
-      this.host.onPlaybackError?.();
+      if (!this.disposed && command === this.command) this.host.onPlaybackError?.();
       return;
     }
     // 等待期间发生暂停、跳转或释放时，本次播放不再启动音源与帧循环。
     if (this.disposed || command !== this.command) return;
-    if (this.chartTimePosition >= this.chartTimeline.durationSeconds - RESTART_TAIL_S) {
-      this.chartTimePosition = 0;
-    }
+    this.moveTo(target);
     this.playing = true;
     this.host.onPlayStateChange?.(true);
     this.lastFrameTimestamp = 0;
@@ -205,10 +220,11 @@ export class PhigrosPlaybackSession {
     }
     if (this.disposed || command !== this.command) return;
     this.cancelFrame();
-    this.frame = this.environment.requestFrame(this.tick);
+    this.frame = this.scheduleFrame();
   }
 
   pause(): void {
+    if (this.disposed) return;
     this.command += 1;
     this.playing = false;
     this.host.onPlayStateChange?.(false);
@@ -226,17 +242,17 @@ export class PhigrosPlaybackSession {
   async seek(chartTime: number): Promise<void> {
     if (this.disposed) return;
     const generation = ++this.command;
-    if (this.playing) {
-      this.moveTo(chartTime);
-      await this.play();
-      return;
-    }
-    if (this.disposed || generation !== this.command) return;
-    this.moveTo(chartTime);
+    const resume = this.playing;
+    this.cancelFrame();
+    this.stopSource(true);
     this.stopActiveHitSounds();
+    this.playing = false;
+    this.moveTo(chartTime);
+    const target = this.chartTimePosition;
     this.resetHitSoundTimeline(this.chartTimePosition);
     this.clock.setOffset(musicPosition(this.chartTimePosition + this.chartTimeline.offsetSeconds));
     this.host.render(this.chartTimePosition);
+    if (resume) await this.resumeAt(target, generation);
   }
 
   /** 音量或打击音音量变化后同步增益，并在关闭打击音时停掉在途音源。 */
@@ -257,6 +273,7 @@ export class PhigrosPlaybackSession {
   dispose(): void {
     if (this.disposed) return;
     this.pause();
+    this.resourceGeneration += 1;
     this.stopActiveHitSounds();
     this.hitSoundBuffers = null;
     this.music = null;
@@ -362,8 +379,10 @@ export class PhigrosPlaybackSession {
 
   private async ensureHitSoundsReady(): Promise<void> {
     if (this.hitSoundBuffers) return;
+    const generation = this.resourceGeneration;
     if (!this.hitSoundDataUrls) throw new Error('打击音资源尚未提供');
     const context = await this.ensureAudio();
+    if (this.disposed || generation !== this.resourceGeneration) return;
     const entries = await Promise.all((['click', 'drag', 'flick'] as HitSoundKind[]).map(async (kind) => {
       const dataUrl = this.hitSoundDataUrls?.[kind];
       if (!dataUrl) throw new Error(`缺少打击音 ${kind}`);
@@ -374,7 +393,7 @@ export class PhigrosPlaybackSession {
         throw new Error(`${kind}.wav Web Audio 解码失败（${bytes.byteLength} bytes）：${error instanceof Error ? error.message : String(error)}`);
       }
     }));
-    this.hitSoundBuffers = Object.fromEntries(entries);
+    if (!this.disposed && generation === this.resourceGeneration) this.hitSoundBuffers = Object.fromEntries(entries);
   }
 
   private resetHitSoundTimeline(time: number): void {
@@ -433,6 +452,14 @@ export class PhigrosPlaybackSession {
     this.host.render(this.chartTimePosition);
   }
 
+  private scheduleFrame(): number {
+    const command = this.command;
+    return this.environment.requestFrame(timestamp => {
+      if (this.disposed || command !== this.command) return;
+      this.tick(timestamp);
+    });
+  }
+
   private readonly tick = (timestamp: number): void => {
     this.frame = null;
     if (this.disposed || !this.playing) return;
@@ -457,6 +484,6 @@ export class PhigrosPlaybackSession {
     this.chartTimePosition = chartTime;
     this.updateHitSounds(chartTime);
     this.host.render(chartTime);
-    this.frame = this.environment.requestFrame(this.tick);
+    this.frame = this.scheduleFrame();
   };
 }

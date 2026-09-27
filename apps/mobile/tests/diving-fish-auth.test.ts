@@ -24,10 +24,10 @@ describe('DivingFishAuthProvider.loginWithPassword', () => {
 
     expect(session).toEqual({ mode: 'import-token', value: 'imp-from-profile', persistable: true });
     expect(request).toHaveBeenNthCalledWith(1, expect.stringContaining('/login'), expect.objectContaining({
-      method: 'POST', credentials: 'include', body: JSON.stringify({ username: 'u', password: 'p' }),
+      method: 'POST', credentials: 'omit', redirect: 'error', body: JSON.stringify({ username: 'u', password: 'p' }),
     }));
     expect(request).toHaveBeenNthCalledWith(2, expect.stringContaining('/player/profile'), expect.objectContaining({
-      headers: expect.objectContaining({ Cookie: 'jwt_token=abc123' }),
+      headers: expect.objectContaining({ cookie: 'jwt_token=abc123' }), credentials: 'omit', redirect: 'error',
     }));
   });
 
@@ -50,18 +50,14 @@ describe('DivingFishAuthProvider.loginWithPassword', () => {
     }));
   });
 
-  it('uses cookie jar auth when Set-Cookie jwt is unavailable to JS', async () => {
+  it('does not reuse an ambient cookie jar when this login has no JWT', async () => {
     const request = vi.fn()
       .mockResolvedValueOnce(new Response('', { status: 200 }))
       .mockResolvedValueOnce(jsonResponse({ import_token: 'imp-cookie' }));
     vi.stubGlobal('fetch', request);
 
-    const session = await new DivingFishAuthProvider().loginWithPassword({ username: 'u', password: 'p' });
-
-    expect(session).toEqual({ mode: 'import-token', value: 'imp-cookie', persistable: true });
-    expect(request).toHaveBeenNthCalledWith(2, expect.stringContaining('/player/profile'), expect.objectContaining({
-      credentials: 'include',
-    }));
+    await expect(new DivingFishAuthProvider().loginWithPassword({ username: 'u', password: 'p' })).rejects.toMatchObject({ code: 'authentication' });
+    expect(request).toHaveBeenCalledTimes(1);
   });
 
   it('throws an authentication ProviderError on 401', async () => {

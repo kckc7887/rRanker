@@ -13,6 +13,8 @@ import { hydrateAccountDisplayData } from '@/services/account-thumbnail';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
 import { uploadTaskController } from '@/services/upload-maimai-from-friend-code';
 import { recordRuntimeRoute } from '@/services/runtime-logs';
+import { setThemePersistenceForeground } from '@/state/theme-store';
+import { retryFailedAccountSources } from '@/services/account-restoration';
 
 export function useAppRuntime(ready: boolean) {
   const routeTemplate = useSegments().join('/');
@@ -57,6 +59,8 @@ export function useAppRuntime(ready: boolean) {
 
   useEffect(() => {
     focusManager.setFocused(lifecycle.foregroundReady);
+    if (lifecycle.foregroundReady) setThemePersistenceForeground(true);
+    else if (lifecycle.phase === 'background') setThemePersistenceForeground(false);
     if (lifecycle.foregroundReady) {
       uploadTaskController.resume();
       // 前台恢复是补交落盘失败的凭据轮换的安全入口：不重新刷新，只重试本机写入。
@@ -73,6 +77,12 @@ export function useAppRuntime(ready: boolean) {
   }, [lifecycle.foregroundReady, lifecycle.memoryWarningGeneration, lifecycle.phase]);
 
   useEffect(() => () => focusManager.setFocused(undefined), []);
+
+  useEffect(() => {
+    if (ready && restoreStatus === 'ready' && lifecycle.foregroundReady) {
+      void retryFailedAccountSources().catch(() => undefined);
+    }
+  }, [ready, restoreStatus, lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
 
   useEffect(() => {
     if (restoreStatus !== 'ready' || !lifecycle.foregroundReady) return;

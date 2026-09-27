@@ -86,7 +86,7 @@ export const PHIGROS_PUSH_LIMITS = Object.freeze({
 const PUSH_DELTA_SCALE = 10 ** PHIGROS_PUSH_LIMITS.deltaDecimals;
 
 /** 推分参数非法时抛出；code 稳定，供调用方与测试判定，不依赖文案。 */
-export type PhigrosPushInputErrorCode = 'delta_out_of_range' | 'chart_cost_out_of_range';
+export type PhigrosPushInputErrorCode = 'delta_out_of_range' | 'chart_cost_out_of_range' | 'search_pool_out_of_range';
 
 export class PhigrosPushInputError extends Error {
   readonly code: PhigrosPushInputErrorCode;
@@ -105,7 +105,7 @@ export class PhigrosPushInputError extends Error {
 export function parsePhigrosPushDelta(value: number): number | null {
   if (!Number.isFinite(value) || value < PHIGROS_PUSH_LIMITS.minDelta) return null;
   const rounded = Math.round(value * PUSH_DELTA_SCALE) / PUSH_DELTA_SCALE;
-  return rounded < PHIGROS_PUSH_LIMITS.minDelta ? null : rounded;
+  return !Number.isFinite(rounded) || rounded < PHIGROS_PUSH_LIMITS.minDelta ? null : rounded;
 }
 
 /** 成本谱面数解析：非整数、NaN、Infinity 与超出 1–30 都返回 null。 */
@@ -150,6 +150,10 @@ export function resolvePhigrosPushRequest(request: {
       'chart_cost_out_of_range',
       `成本须为 ${PHIGROS_PUSH_LIMITS.minChartCost}–${PHIGROS_PUSH_LIMITS.maxChartCost} 的整数（愿意打几张谱面）。`,
     );
+  }
+  if (request.searchPoolLimit !== undefined
+    && (!Number.isSafeInteger(request.searchPoolLimit) || request.searchPoolLimit <= 0)) {
+    throw new PhigrosPushInputError('search_pool_out_of_range', '搜索候选数量须为有限正整数。');
   }
   return {
     delta,

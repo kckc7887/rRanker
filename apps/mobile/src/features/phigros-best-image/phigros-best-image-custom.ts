@@ -1,8 +1,8 @@
 import type { ScoreRecord, Song } from '@/domain/models';
-import { matchesAchievementRange } from '@/domain/maimai-filters';
 import {
   matchesPhigrosLevel,
   matchesPhigrosRankFilter,
+  matchesPhigrosAccuracyRange,
   matchesPhigrosScoreRange,
   phigrosLevelLabel,
   phigrosRankFilterLabel,
@@ -156,7 +156,7 @@ export function buildCustomPhigrosBestImageSections(
   const filtered = records.filter((record) => (
     matchesPhigrosLevel(record.levelIndex, filters.level)
     && matchesPhigrosScoreRange(record.dxScore, filters.scoreMin, filters.scoreMax)
-    && matchesAchievementRange(record.achievements, filters.accuracyMin, filters.accuracyMax)
+    && matchesPhigrosAccuracyRange(record.achievements, filters.accuracyMin, filters.accuracyMax)
     && matchesPhigrosRankFilter(record, filters.rank)
     && matchesPhigrosXingFilter(record, filters.xing, noteTotalByKey)
   ));

@@ -103,8 +103,10 @@ export class OsuCache {
     userId: number,
     scores: readonly OsuBestScore[], assertCurrent?: () => void,
   ): Promise<OsuKnownScoresSnapshot> {
-    const previous = await this.loadKnownScores(gameId, userId);
-    const items = { ...(previous?.items ?? {}) };
+    return this.repository.updateResource<OsuKnownScoresSnapshot>(
+      osuKnownScoresCacheKey(gameId, userId), OSU_KNOWN_SCORES_SCHEMA_VERSION, (previous) => {
+    const parsed = OsuKnownScoresSnapshotSchema.safeParse(previous);
+    const items = { ...(parsed.success ? (parsed.data as OsuKnownScoresSnapshot).items : {}) };
     for (const score of scores) {
       const key = String(score.beatmap.id);
       const existing = items[key];
@@ -114,8 +116,8 @@ export class OsuCache {
       items,
       source: snapshotSource({ kind: 'osu', label: 'osu.ppy.sh' }),
     };
-    await this.saveKnownScores(gameId, userId, snapshot, assertCurrent);
-    return snapshot;
+    return { value: snapshot, updatedAt: snapshot.source.updatedAt };
+    }, assertCurrent);
   }
 
   /** 解绑模式账号时清理该玩家该模式缓存。 */

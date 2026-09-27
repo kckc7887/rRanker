@@ -1,3 +1,4 @@
+import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
 import type {
   DxRatingChartTagsSnapshot,
@@ -129,7 +130,7 @@ export class DxRatingChartTagsProvider {
       baseUrl: DXRATING_BASE_URL,
       path: DXRATING_TAGS_PATH,
       schema: TagsResponseSchema,
-      fetcher: fetch,
+      fetcher: expoFetch as unknown as typeof fetch,
       signal,
       label: 'DXRating',
       timeoutMs: 12_000,

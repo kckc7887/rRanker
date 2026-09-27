@@ -11,7 +11,7 @@
  * （与本项目 AGPL-3.0 兼容）；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
 
-import { rpeBundleRelativePath } from '../../../domain/phira-rpe-resource-path';
+import { rpeBundleRelativePath } from '../../../domain/rpe-resource-path';
 
 export const RPE_WIDTH = 1350;
 export const RPE_HEIGHT = 900;

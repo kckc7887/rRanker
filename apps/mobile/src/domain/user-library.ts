@@ -3,6 +3,7 @@ import { normalizeSongId } from './catalog';
 import type { GameId } from './game-bind-options';
 import { isOsuGameId } from './game-mode-family';
 import type { ChartType } from './models';
+import type { DetailTarget } from './detail-target';
 
 export const USER_DATA_BACKUP_FORMAT = 'rranker-user-data' as const;
 export const USER_DATA_BACKUP_VERSION = 3 as const;
@@ -45,6 +46,24 @@ export interface ChartLibraryTarget {
 }
 
 export type LibraryTarget = SongLibraryTarget | ChartLibraryTarget;
+
+/** 个人条目的详情身份来自存储目标，不依赖曲库元数据是否已经加载。 */
+export function libraryDetailTarget(item: LibraryTarget): DetailTarget | null {
+  const levelIndex = item.kind === 'chart' ? item.levelIndex : undefined;
+  switch (item.gameId) {
+    case 'maimai': return { game: 'maimai', songId: item.songId,
+      ...(item.kind === 'chart' ? { chartType: item.type, levelIndex } : {}) };
+    case 'phira': return { game: 'phira', chartId: item.songId };
+    case 'adofai': return { game: 'adofai', levelId: item.songId };
+    case 'osu-standard': case 'osu-mania': case 'osu-catch': case 'osu-taiko':
+      return { game: item.gameId, beatmapsetId: item.songId,
+        ...(levelIndex === undefined ? {} : { beatmapId: levelIndex }) };
+    case 'phigros': case 'chunithm': case 'majdata-net': case 'rizline': case 'musedash':
+      return { game: item.gameId, songId: item.songId,
+        ...(levelIndex === undefined ? {} : { levelIndex }) };
+    default: return null;
+  }
+}
 
 interface LibraryItemBase {
   key: string;

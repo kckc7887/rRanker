@@ -3,8 +3,86 @@ import { z } from 'zod';
 import { ProviderError, providerErrorFromStatus } from './errors';
 import { nextRuntimeOperationId, recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
 import type { RuntimeRequestScenario } from '@/domain/runtime-log';
+import { SessionPersistenceError } from '@/domain/session-vault';
 
 type FetchLike = typeof fetch;
+export const PROVIDER_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
+
+/** 只限制实际读取量，不把 Content-Length 或完整 arrayBuffer 分配当作限额。 */
+export async function readProviderResponseBytes(response: Response, options: {
+  maxBytes?: number; signal?: AbortSignal; message?: string;
+} = {}): Promise<Uint8Array> {
+  const maximum = options.maxBytes ?? PROVIDER_MAX_RESPONSE_BYTES;
+  if (!Number.isSafeInteger(maximum) || maximum < 1) throw new TypeError('响应预算必须是有限正整数');
+  const exceeded = () => new ProviderError('upstream_schema', options.message ?? '响应大小超出读取预算', false);
+  const declared = response.headers?.get('content-length');
+  const stream = response.body;
+  if (declared && /^\d+$/.test(declared) && Number(declared) > maximum) {
+    void stream?.cancel().catch(() => undefined);
+    throw exceeded();
+  }
+  if (options.signal?.aborted) throw options.signal.reason;
+  if (!stream) {
+    // 空正文以及不提供流的调用方适配器仍校验实际字节；原生 transport 使用 Expo 的流。
+    const bytes = typeof response.arrayBuffer === 'function'
+      ? new Uint8Array(await abortable(response.arrayBuffer(), options.signal))
+      : new TextEncoder().encode(typeof response.text === 'function'
+        ? await abortable(response.text(), options.signal)
+        : JSON.stringify(await abortable(response.json(), options.signal)));
+    if (bytes.byteLength > maximum) throw exceeded();
+    return bytes;
+  }
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  const onAbort = () => { void reader.cancel(options.signal?.reason).catch(() => undefined); };
+  options.signal?.addEventListener('abort', onAbort, { once: true });
+  try {
+    for (;;) {
+      const item = await abortable(reader.read(), options.signal);
+      if (options.signal?.aborted) throw options.signal.reason;
+      if (item.done) break;
+      length += item.value.byteLength;
+      if (length > maximum) throw exceeded();
+      chunks.push(item.value);
+    }
+    const bytes = new Uint8Array(length);
+    let offset = 0;
+    for (const chunk of chunks) { bytes.set(chunk, offset); offset += chunk.byteLength; }
+    return bytes;
+  } catch (error) {
+    void reader.cancel(error).catch(() => undefined);
+    throw error;
+  } finally {
+    options.signal?.removeEventListener('abort', onAbort);
+    reader.releaseLock();
+  }
+}
+
+function abortable<T>(promise: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return promise;
+  if (signal.aborted) {
+    void promise.catch(() => undefined);
+    return Promise.reject(signal.reason);
+  }
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => { signal.removeEventListener('abort', onAbort); reject(signal.reason); };
+    signal.addEventListener('abort', onAbort, { once: true });
+    promise.then(resolve, reject).finally(() => signal.removeEventListener('abort', onAbort));
+  });
+}
+
+function boundedResponse(response: Response, options: { maxBytes?: number; signal?: AbortSignal }): Response {
+  let bytes: Promise<Uint8Array> | undefined;
+  const load = () => bytes ??= readProviderResponseBytes(response, options);
+  return new Proxy(response, { get(target, key) {
+    if (key === 'arrayBuffer') return async () => (await load()).buffer;
+    if (key === 'text') return async () => new TextDecoder('utf-8', { fatal: true }).decode(await load());
+    if (key === 'json') return async () => JSON.parse(new TextDecoder('utf-8', { fatal: true }).decode(await load()));
+    const value = Reflect.get(target, key, target);
+    return typeof value === 'function' ? value.bind(target) : value;
+  } });
+}
 const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, reject) => {
   if (signal?.aborted) { reject(signal.reason); return; }
   const timeout = setTimeout(() => {
@@ -30,6 +108,12 @@ export function retryAfterMs(response: Response, maxMs = 5_000): number {
 
 export type JsonRequestOptions<T> = {
   init?: RequestInit;
+  /** 凭据请求不使用系统 Cookie，也不自动跟随重定向。 */
+  authenticated?: boolean;
+  /** 实际流读取上限，默认 64 MiB；较大资源由公共下载入口显式提供预算。 */
+  maxResponseBytes?: number;
+  /** 协议可从受限错误正文读取错误 envelope，不能自行再发请求。 */
+  onHttpError?: (response: Response) => Promise<ProviderError>;
   onResponse?: (response: Response) => void | Promise<void>;
   diagnosticScenario?: RuntimeRequestScenario;
   path: string;
@@ -60,6 +144,34 @@ export function resolveTotalAttempts(options: Pick<JsonRequestOptions<unknown>, 
   return 2;
 }
 
+function providerRequestInit(init: RequestInit | undefined, authenticated: boolean | undefined, signal: AbortSignal) {
+  const headers: Record<string, string> = { Accept: 'application/json', 'Cache-Control': 'no-store' };
+  new Headers(init?.headers).forEach((value, key) => {
+    headers[Object.keys(headers).find(existing => existing.toLowerCase() === key) ?? key] = value;
+  });
+  const sensitive = authenticated || Object.keys(headers).some(key => /authorization|cookie|token|secret|phone/i.test(key));
+  return { sensitive, init: { ...init, credentials: 'omit' as const,
+    ...(sensitive ? { redirect: 'error' as const } : {}), headers, signal } };
+}
+
+function assertProviderResponseOrigin(response: Response, url: string, sensitive?: boolean): void {
+  if (!sensitive || !response.url || new URL(response.url).origin === new URL(url).origin) return;
+  void response.body?.cancel().catch(() => undefined);
+  throw new ProviderError('permission', '凭据响应地址不属于当前服务', false);
+}
+function assertRequestActive(signal?: AbortSignal): void {
+  if (signal?.aborted) throw signal.reason;
+}
+
+function normalizeExecutionError(error: unknown, timedOut: boolean, texts: { schema: string; timeout: string; network: string }): ProviderError {
+  if (error instanceof z.ZodError || error instanceof SyntaxError) {
+    return new ProviderError('upstream_schema', texts.schema, true, { cause: error });
+  }
+  return timedOut || (error instanceof Error && error.name === 'AbortError')
+    ? new ProviderError('timeout', texts.timeout, true, { cause: error })
+    : new ProviderError('network', texts.network, true, { cause: error });
+}
+
 /** 通用 JSON GET 请求：重试、429 退避、超时与错误归一化（各公开查分 Provider 共用）。 */
 async function requestData<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>, source: string): Promise<T> {
   const { path, schema, fetcher, baseUrl, error, label } = options;
@@ -86,19 +198,21 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
     let result = 'error';
     let diagnosticError: unknown;
     try {
-      const headers: Record<string, string> = { Accept: 'application/json', 'Cache-Control': 'no-store' };
-      new Headers(options.init?.headers).forEach((value, key) => {
-        headers[Object.keys(headers).find(existing => existing.toLowerCase() === key) ?? key] = value;
-      });
-      const response = await fetcher(`${baseUrl}${path}`, {
-        ...options.init,
-        headers, signal: controller.signal,
-      });
-      if (options.signal?.aborted) throw options.signal.reason;
-      await options.onResponse?.(response);
+      const url = `${baseUrl}${path}`;
+      const request = providerRequestInit(options.init, options.authenticated, controller.signal);
+      const sensitive = request.sensitive;
+      if (sensitive && new URL(url).origin !== new URL(baseUrl).origin) {
+        throw new ProviderError('permission', '凭据请求地址不属于当前服务', false);
+      }
+      const response = await abortable(fetcher(url, request.init), controller.signal);
+      assertRequestActive(options.signal);
+      assertProviderResponseOrigin(response, url, sensitive);
       status = response.status;
       if (!response.ok) {
-        const mapped = error(response.status);
+        const mapped = options.onHttpError
+          ? await options.onHttpError(boundedResponse(response, { maxBytes: options.maxResponseBytes, signal: controller.signal }))
+          : error(response.status);
+        if (!options.onHttpError) void response.body?.cancel().catch(() => undefined);
         diagnosticError = mapped;
         const willRetry = attempt + 1 < totalAttempts;
         if (mapped.retryable && willRetry) {
@@ -108,23 +222,24 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
         }
         throw mapped;
       }
-      const data = schema.parse(await read(response));
-      if (options.signal?.aborted) throw options.signal.reason;
+      const data = schema.parse(await abortable(read(boundedResponse(response, {
+        maxBytes: options.maxResponseBytes, signal: controller.signal,
+      })), controller.signal));
+      assertRequestActive(options.signal);
+      await options.onResponse?.(response);
+      assertRequestActive(options.signal);
       result = 'success';
       return data;
     } catch (caught) {
       diagnosticError = caught;
       if (options.signal?.aborted) result = 'cancelled';
-      if (options.signal?.aborted) throw caught;
-      if (caught instanceof z.ZodError || caught instanceof SyntaxError) {
-        diagnosticError = new ProviderError('upstream_schema', schemaMessage, true, { cause: caught });
-        throw diagnosticError;
-      }
-      if (caught instanceof ProviderError) throw caught;
-      const normalized = caught instanceof Error && caught.name === 'AbortError'
-        ? new ProviderError('timeout', timeoutMessage, true, { cause: caught })
-        : new ProviderError('network', networkMessage, true, { cause: caught });
+      if (options.signal?.aborted) throw options.signal.reason;
+      if (caught instanceof ProviderError || caught instanceof SessionPersistenceError) throw caught;
+      const normalized = normalizeExecutionError(caught, controller.signal.aborted, {
+        schema: schemaMessage, timeout: timeoutMessage, network: networkMessage,
+      });
       diagnosticError = normalized;
+      if (normalized.code === 'upstream_schema') throw normalized;
       if (attempt + 1 < totalAttempts) { previousError = normalized; continue; }
       throw normalized;
     } finally {

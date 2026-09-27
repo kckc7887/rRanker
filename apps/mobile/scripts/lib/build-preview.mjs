@@ -5,6 +5,15 @@ import { fileURLToPath } from 'node:url';
 
 const root = fileURLToPath(new URL('../../', import.meta.url));
 
+export function readGeneratedPreview(assetName) {
+  const output = path.join(root, 'assets', assetName);
+  const script = fs.readFileSync(path.join(output, 'player.bundle'));
+  if (!script.equals(fs.readFileSync(path.join(output, 'player.js')))) {
+    throw new Error(`Generated player files differ: ${assetName}`);
+  }
+  return { html: fs.readFileSync(path.join(output, 'index.html'), 'utf8'), script };
+}
+
 export async function buildPreview(sourceName, assetName, marker, scripts, options = {}) {
   const source = path.join(root, 'src/features', sourceName, 'webview-player');
   const output = path.join(root, 'assets', assetName);

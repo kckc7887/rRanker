@@ -10,13 +10,15 @@ import {
   type BoundAccount,
 } from '@/domain/bound-account';
 import type { GameId, ProviderId, RemoteProviderId } from '@/domain/game-bind-options';
-import type { AnyScoreProvider, DetailedCatalogProvider, ProviderSession, RizlineSession } from '@/providers/contracts';
+import type { ProviderSession, RizlineSession } from '@/providers/contracts';
+import type { SessionProfiles } from '@/state/session-provider-resolver';
 import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
+import type { HttpCookieSession } from '@/providers/http-cookies';
 import {
   credentialIdsMapFromVault,
   sessionsMapFromVault,
   type SessionVault,
-} from '@/storage/secure-session-store';
+} from '@/domain/session-vault';
 import { startTimer } from '@/utils/startup-timing';
 import { sessionRuntime } from '@/state/session-runtime';
 import { clearOsuRotationCache } from '@/providers/osu-oauth';
@@ -40,8 +42,9 @@ export type SessionState = {
   activeAccountId: string;
   activeGameId: GameId;
   activeProviderId: ProviderId | null;
-  scoreProvider: AnyScoreProvider;
-  catalogProvider: DetailedCatalogProvider;
+  scoreProvider: SessionProfiles['scoreProvider'];
+  catalogProvider: SessionProfiles['catalogProvider'];
+  protocolScoreProvider: SessionProfiles['protocolScoreProvider'];
   restoreStatus: SessionRestoreStatus;
   restoreError: string | null;
   /** 当前激活账号的会话；切换账号时随之更换。 */
@@ -99,8 +102,18 @@ export function refreshActiveSessionView(sessionsByAccountId?: SessionsByAccount
   const state = useSession.getState();
   const sessions = sessionsByAccountId ?? state.sessionsByAccountId;
   const account = state.boundAccounts.find((item) => item.id === state.activeAccountId);
-  if (!account) return;
-  useSession.setState(activeAccountFields(account, sessions, state.credentialIdsByAccountId));
+  useSession.setState({ sessionsByAccountId: sessions,
+    ...(account && (!sessionsByAccountId || (sessions[account.id] ?? null) !== state.session)
+      ? activeAccountFields(account, sessions, state.credentialIdsByAccountId) : {}) });
+}
+
+export function replaceRestoredOptionalAccounts(matches: (account: BoundAccount) => boolean, accounts: BoundAccount[]): void {
+  const state = useSession.getState();
+  const restored = [...state.boundAccounts.filter((account) => !matches(account)), ...accounts];
+  const next = restored.some((account) => account.gameId === 'chunithm' && account.providerId === 'lxns')
+    ? restored.filter((account) => account.providerId !== 'chunithm-temp') : restored;
+  useSession.setState({ ...activateAccount(next, state.sessionsByAccountId, state.credentialIdsByAccountId, state.activeAccountId),
+    restoreStatus: state.restoreStatus, restoreError: state.restoreError });
 }
 
 /**
@@ -486,7 +499,6 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   failRestore: (message) => {
     set({
-      ...unboundState(),
       restoreStatus: 'error',
       restoreError: message,
     });
@@ -503,7 +515,7 @@ export async function restoreSession(
     stopLoad();
     const stopOptional = startTimer('restore.loadOptionalAccounts');
     const optionalAccounts = loadOptionalAccounts
-      ? await loadOptionalAccounts().catch(() => [])
+      ? await loadOptionalAccounts()
       : [];
     stopOptional();
     useSession.getState().finishRestore(input, optionalAccounts);
@@ -555,6 +567,10 @@ export async function applyRizlineSessionRotation(
   signal?: AbortSignal,
 ): Promise<void> {
   await (await loadCredentialCoordinator()).applyRizlineSessionRotation(accountId, next, expected, signal);
+}
+
+export async function applyMajdataSessionRotation(accountId: string, next: HttpCookieSession, expected: HttpCookieSession, signal?: AbortSignal): Promise<void> {
+  await (await loadCredentialCoordinator()).applyMajdataSessionRotation(accountId, next, expected, signal);
 }
 
 /** 仍未落盘的轮换摘要：状态跟着同一协调器单例，兼容入口不维护第二份。 */

@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import Storage from 'expo-sqlite/kv-store';
+import Storage from '@/storage/key-value-storage';
 
 const PREFS_KEY_V1 = 'rranker.upload.prefs.v1';
 const PREFS_KEY_V2 = 'rranker.upload.prefs.v2';

@@ -19,12 +19,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - label: C
-            mode: C
-            source: 3cd34e032494422454cc9652685840af68029f12
-          - label: D
-            mode: D
-            source: 3cd34e032494422454cc9652685840af68029f12
           - label: E
             mode: A
             source: ${{ github.sha }}
@@ -85,3 +79,112 @@ jobs:
           if-no-files-found: error
           compression-level: 6
           retention-days: 7
+
+  players:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      - name: Rebuild players
+        run: |
+          npm run build:chart-preview
+          npm run build:phigros-chart-preview
+          npm run build:osu-chart-preview
+          npm run build:rizline-chart-preview
+          node ../../.github/scripts/player-artifacts.mjs
+      - uses: actions/upload-artifact@v4
+        with:
+          name: generated-players-${{ github.sha }}
+          path: |
+            apps/mobile/build/player-artifacts/
+          if-no-files-found: error
+          retention-days: 7
+      - name: Verify committed generated assets
+        run: |
+          npm run check:generated
+          git diff --exit-code -- assets
+
+  quality:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    defaults:
+      run:
+        working-directory: apps/mobile
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      - run: npm run lint
+      - run: npm run typecheck
+      - run: npm test
+      - run: npm run check:architecture
+      - run: npm audit
+      - run: npm run audit:prod
+      - run: node --test ../../.github/scripts/build-policy.test.mjs
+
+  production-entry:
+    needs: [players, quality]
+    runs-on: ubuntu-latest
+    environment: test-builds
+    timeout-minutes: 90
+    env:
+      NODE_ENV: production
+      BUILD_SOURCE_COMMIT: ${{ github.sha }}
+      ANDROID_OPTIMIZATION_MODE: A
+      OSU_OAUTH_CLIENT_SECRET: ${{ secrets.OSU_OAUTH_CLIENT_SECRET }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - name: Compile production entry with test signing
+        id: build
+        uses: ./.github/actions/android-build
+        with:
+          source-sha: ${{ github.sha }}
+          production: "false"
+          optimization-mode: A
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Release device smoke through production routes
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          arch: x86_64
+          target: default
+          disable-animations: true
+          script: node .github/scripts/android-smoke.mjs production apps/mobile/build/android-apks/*-x86_64.apk emulator-5554 apps/mobile/build/device-evidence
+      - name: Upload device verification
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: production-device-evidence-${{ github.sha }}
+          path: apps/mobile/build/device-evidence/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Upload verified APKs
+        uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.build.outputs.artifact-name }}-${{ github.sha }}
+          path: apps/mobile/build/android-apks/
+          if-no-files-found: error
+          retention-days: 14

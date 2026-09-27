@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import Storage from '@/storage/key-value-storage';
 import { createPreferencesStore, type KeyValueStore } from '@/storage/create-preferences-store';
 import type { CollectionItem } from '@/domain/models';
 

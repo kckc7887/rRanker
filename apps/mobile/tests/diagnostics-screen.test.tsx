@@ -12,6 +12,7 @@ const mockListeners = new Set<() => void>();
 const mockStart = jest.fn(async () => undefined);
 const mockStop = jest.fn(async () => undefined);
 const mockInitialize = jest.fn(async () => undefined);
+const mockHistory = jest.fn(async () => undefined);
 const mockCapacity = jest.fn(async (_capacity: number) => undefined);
 const mockShare = jest.fn(async (_id: number) => undefined);
 const mockExport = jest.fn(async () => undefined);
@@ -31,6 +32,7 @@ jest.mock('@/services/runtime-logs', () => ({
     getSnapshot: () => mockState,
     subscribe: (callback: () => void) => { mockListeners.add(callback); return () => mockListeners.delete(callback); },
     start: () => mockStart(), stop: () => mockStop(), setCapacity: (capacity: number) => mockCapacity(capacity),
+    loadHistory: () => mockHistory(),
   },
 }));
 
@@ -45,7 +47,7 @@ describe('diagnostics screen', () => {
     mockState = { ready: true, busy: false, capacity: 2000, enabled: false, activeId: null, sessions: [], failed: false };
   });
 
-  it('shows the off state and capacity choices, with diagnostic sharing only in the empty state', async () => {
+  it('shows the off state, capacity choices, and independent diagnostic sharing', async () => {
     const screen = await render(<DiagnosticsScreen />);
     expect(screen.getByLabelText('记录日志').props.value).toBe(false);
     expect(screen.getByText('未开启')).toBeTruthy();
@@ -104,7 +106,7 @@ describe('diagnostics screen', () => {
     expect(screen.getAllByText('2026/09/06 10:01:23')).toHaveLength(2);
     expect(screen.getByText('已保留 20 条 · 上限 2000 条')).toBeTruthy();
     expect(screen.getByText('已保留 1000 条 · 上限 1000 条')).toBeTruthy();
-    expect(screen.queryByLabelText('分享诊断信息')).toBeNull();
+    expect(screen.getByLabelText('分享诊断信息')).toBeTruthy();
     expect(screen.queryByText('导出诊断记录')).toBeNull();
     const shares = screen.getAllByLabelText(/^分享日志/u);
     expect(shares[0]!.props.accessibilityLabel).toContain('最新记录');
@@ -135,7 +137,9 @@ describe('diagnostics screen', () => {
     mockState = { ...mockState, ...state };
     const screen = await render(<DiagnosticsScreen />);
     expect(screen.queryByText('还没有日志')).toBeNull();
-    expect(screen.queryByLabelText('分享诊断信息')).toBeNull();
+    expect(screen.getByLabelText('分享诊断信息').props.accessibilityState.disabled).toBe(false);
+    await fireEvent.press(screen.getByLabelText('分享诊断信息'));
+    expect(mockExport).toHaveBeenCalledTimes(1);
     if (state.busy) expect(screen.getByText('准备中')).toBeTruthy();
     if (!state.ready && state.failed) {
       expect(screen.getByText('暂时无法读取日志，请重试。')).toBeTruthy();
@@ -154,6 +158,15 @@ describe('diagnostics screen', () => {
     expect(screen.getAllByText('保存失败')).toHaveLength(2);
     await fireEvent.press(screen.getByLabelText('重试'));
     expect(mockStart).toHaveBeenCalledTimes(1);
+  });
+  it('retries a history failure without enabling recording or claiming a save failed', async () => {
+    mockState = { ...mockState, failed: true, failurePhase: 'history', historyReady: false };
+    const screen = await render(<DiagnosticsScreen />);
+    expect(screen.getByText('未开启')).toBeTruthy();
+    expect(screen.queryByText('保存失败')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('重试'));
+    expect(mockHistory).toHaveBeenCalledTimes(2);
+    expect(mockStart).not.toHaveBeenCalled();
   });
 
   it('shows safe messages for diagnostic and log sharing failures', async () => {

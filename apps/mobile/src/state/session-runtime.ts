@@ -3,6 +3,7 @@ import {
   releaseResolvedProviders,
   resolveSessionProviders,
   type LxnsTokenRotation,
+  type OsuTokenRotation,
   type SessionCredentialRef,
   type SessionProfiles,
 } from '@/state/session-provider-resolver';
@@ -25,12 +26,14 @@ export interface SessionRuntime {
 
 /** 解析器持有的落雪轮换回调；Coordinator 装配前它不产生提交。 */
 let lxnsTokenRotation: LxnsTokenRotation = () => undefined;
+let osuTokenRotation: OsuTokenRotation = () => undefined;
 
 const DEFAULT_RUNTIME: SessionRuntime = {
   resolve: (request) => resolveSessionProviders(
     request.account,
     request.credentials,
     (accountId, update) => lxnsTokenRotation(accountId, update),
+    (accountId, next, expected) => osuTokenRotation(accountId, next, expected),
   ),
   release: (accountIds) => releaseResolvedProviders(accountIds),
 };
@@ -46,6 +49,10 @@ export function setLxnsTokenRotation(rotation: LxnsTokenRotation): void {
   lxnsTokenRotation = rotation;
 }
 
+export function setOsuTokenRotation(rotation: OsuTokenRotation): void {
+  osuTokenRotation = rotation;
+}
+
 /** 测试用：替换整个运行时端口。 */
 export function setSessionRuntime(runtime: SessionRuntime): void {
   currentRuntime = runtime;
@@ -55,4 +62,5 @@ export function setSessionRuntime(runtime: SessionRuntime): void {
 export function resetSessionRuntimeForTests(): void {
   currentRuntime = DEFAULT_RUNTIME;
   lxnsTokenRotation = () => undefined;
+  osuTokenRotation = () => undefined;
 }

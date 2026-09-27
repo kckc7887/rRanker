@@ -34,11 +34,13 @@ class FakeSourceNode {
   readonly playbackRate = new FakeAudioParam();
   onended: (() => void) | null = null;
   startCount = 0;
+  stopCount = 0;
+  startOffset = 0;
   disconnected = false;
 
   connect(): void {}
-  start(): void { this.startCount += 1; }
-  stop(): void {}
+  start(_when = 0, offset = 0): void { this.startCount += 1; this.startOffset = offset; }
+  stop(): void { this.stopCount += 1; }
   disconnect(): void { this.disconnected = true; }
   addEventListener(): void {}
 }
@@ -117,6 +119,8 @@ class FakeFrameLoop {
     return this.callbacks.size;
   }
 
+  snapshot() { return [...this.callbacks.values()]; }
+
   advance(deltaMs: number): void {
     this.now += deltaMs;
     const callbacks = [...this.callbacks.values()];
@@ -125,7 +129,7 @@ class FakeFrameLoop {
   }
 }
 
-function createPlayback() {
+function createPlayback(hitSounds?: Partial<Record<'click' | 'drag' | 'flick', string>>) {
   const context = new FakeAudioContext();
   const frames = new FakeFrameLoop();
   const rendered: number[] = [];
@@ -262,4 +266,41 @@ describe('Phigros 播放会话的播放状态所有权', () => {
     expect(context.heldSourceCount()).toBe(0);
     expect(frames.pending).toBe(0);
   });
+});
+
+
+it('seek 撤销旧打击音和帧，异步恢复固定目标且末尾不自动重开', async () => {
+  const { session, context, frames } = createPlayback({ click: 'data:audio/wav;base64,AA==' });
+  await session.loadMusic(new ArrayBuffer(8));
+  session.setHitSoundEvents([{ time: 0.08, sound: 'click', noteKind: 'tap', lineIndex: 0 }]);
+  const initial = session.play(); context.releaseResumeNow(); await initial;
+  frames.advance(1);
+  const oldSources = [...context.sources];
+  const oldFrame = frames.snapshot()[0]!;
+  context.state = 'suspended';
+  const pending = session.seek(10.1);
+  expect(oldSources.every(source => source.stopCount > 0)).toBe(true);
+  expect(frames.pending).toBe(0);
+  context.currentTime = 5.2; frames.advance(5000);
+  expect(session.chartTime).toBe(10.1);
+  context.releaseResumeNow(); await pending;
+  expect(context.sources.at(-1)?.startOffset).toBe(10.1);
+  oldFrame(6000);
+  expect(session.chartTime).toBe(10.1);
+  expect(frames.pending).toBe(1);
+  await session.seek(30);
+  expect(session.chartTime).toBe(30);
+  session.dispose();
+});
+
+it('dispose 后晚到的音乐解码不重建已释放资源', async () => {
+  const { session, context } = createPlayback();
+  const decode = Promise.withResolvers<AudioBuffer>();
+  context.decodeAudioData = () => decode.promise;
+  const loading = session.loadMusic(new ArrayBuffer(8));
+  await Promise.resolve();
+  session.dispose();
+  decode.resolve(context.music);
+  expect(await loading).toBe(false);
+  expect(session.musicDurationSeconds).toBeNull();
 });

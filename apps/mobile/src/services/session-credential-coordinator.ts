@@ -1,10 +1,11 @@
 import type { ProviderSession, RizlineSession } from '@/providers/contracts';
+import type { HttpCookieSession } from '@/providers/http-cookies';
 import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { lxnsRotationAncestors } from '@/providers/lxns-oauth';
 import { osuRotationAncestors } from '@/providers/osu-oauth';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
-import { sessionRuntime, setLxnsTokenRotation } from '@/state/session-runtime';
+import { sessionRuntime, setLxnsTokenRotation, setOsuTokenRotation } from '@/state/session-runtime';
 
 type OsuOAuthSession = Extract<ProviderSession, { mode: 'osu-oauth' }>;
 /** 可轮换的 OAuth 会话：落雪与 osu! 共用同一套凭据世代判定。 */
@@ -43,6 +44,7 @@ type PendingRotationWrite = {
   session: RotatableOAuthSession;
   acceptedRefreshTokens: readonly string[];
   attempts: number;
+  nextAttemptAt: number;
 };
 
 /** 一个协议的轮换世代规则：协议差异只体现在 refresh token 的前代关系里。 */
@@ -138,7 +140,7 @@ async function credentialPort(): Promise<{
     accountId: string,
     session: ProviderSession,
     options?: { expected?: ProviderSession; signal?: AbortSignal },
-  ) => Promise<void>;
+  ) => Promise<'applied' | 'stale' | 'missing'>;
 }> {
   const { SecureSessionStore } = await import('@/storage/secure-session-store');
   return new SecureSessionStore();
@@ -157,6 +159,7 @@ export class SessionCredentialCoordinator {
   constructor(private readonly store: SessionStoreApi) {
     // 落雪 Provider 持有一个把轮换结果交回协调器的回调：装配点在这里，解析器不自行判定世代。
     setLxnsTokenRotation((accountId, update) => this.applyLxnsTokenRotation(accountId, update));
+    setOsuTokenRotation((accountId, next, expected) => this.applyOsuTokenRotation(accountId, next, expected));
   }
 
   /** 仍未落盘的轮换摘要（凭据 id、发起账号、已尝试次数）；不包含 token 本身。 */
@@ -174,13 +177,12 @@ export class SessionCredentialCoordinator {
 
   private schedulePendingRotationRetry(): void {
     if (this.pendingRotationWrites.size === 0 || this.pendingRotationRetryTimer !== null) return;
-    const pendingAttempts = [...this.pendingRotationWrites.values()].map((entry) => entry.attempts);
-    const delay = PENDING_ROTATION_RETRY_DELAYS_MS[
-      Math.min(Math.min(...pendingAttempts), PENDING_ROTATION_RETRY_DELAYS_MS.length - 1)
-    ]!;
+    const eligible = [...this.pendingRotationWrites.values()].filter((entry) => entry.attempts < PENDING_ROTATION_RETRY_DELAYS_MS.length);
+    if (eligible.length === 0) return;
+    const delay = Math.max(0, Math.min(...eligible.map((entry) => entry.nextAttemptAt)) - Date.now());
     this.pendingRotationRetryTimer = setTimeout(() => {
       this.pendingRotationRetryTimer = null;
-      void this.retryPendingRotationWrites();
+      void this.retryPendingRotationWrites(true);
     }, delay);
     // 定时器不应阻止进程或测试退出。
     (this.pendingRotationRetryTimer as unknown as { unref?: () => void }).unref?.();
@@ -190,17 +192,21 @@ export class SessionCredentialCoordinator {
    * 补写仍挂起的轮换。幂等：同一时刻只跑一次；单项成功或已过期就丢弃，
    * 落盘继续失败按有界退避重试，超过上限后留下可观察摘要不再自动重试。
    */
-  async retryPendingRotationWrites(): Promise<number> {
+  async retryPendingRotationWrites(automatic = false): Promise<number> {
     if (this.pendingRotationRetryInFlight) return this.pendingRotationRetryInFlight;
     if (this.pendingRotationWrites.size === 0) return 0;
+    if (this.pendingRotationRetryTimer !== null) { clearTimeout(this.pendingRotationRetryTimer); this.pendingRotationRetryTimer = null; }
     const attempt = (async () => {
-      const port = await credentialPort();
       let applied = 0;
       for (const [credentialId, entry] of [...this.pendingRotationWrites]) {
+        if (automatic && entry.attempts >= PENDING_ROTATION_RETRY_DELAYS_MS.length) continue;
+        if (automatic && entry.nextAttemptAt > Date.now()) continue;
         try {
+          const port = await credentialPort();
           const result = await port.updateCredentialSession(credentialId, entry.session, {
             acceptedRefreshTokens: entry.acceptedRefreshTokens,
           });
+          if (this.pendingRotationWrites.get(credentialId) !== entry) continue;
           if (result === 'applied') {
             applied += 1;
             this.pendingRotationWrites.delete(credentialId);
@@ -211,14 +217,11 @@ export class SessionCredentialCoordinator {
           this.pendingRotationWrites.delete(credentialId);
           void recordRuntimeDiagnostic('session', { credentialWrite: 'dropped', reason: result });
         } catch {
-          const attempts = entry.attempts + 1;
-          if (attempts > PENDING_ROTATION_RETRY_DELAYS_MS.length) {
-            this.pendingRotationWrites.delete(credentialId);
-            void recordRuntimeDiagnostic('session', { credentialWrite: 'abandoned', attempts });
-          } else {
-            this.pendingRotationWrites.set(credentialId, { ...entry, attempts });
-            void recordRuntimeDiagnostic('session', { credentialWrite: 'retry-scheduled', attempts });
-          }
+          if (this.pendingRotationWrites.get(credentialId) !== entry) continue;
+          const attempts = Math.min(entry.attempts + 1, 1_000_000);
+          this.pendingRotationWrites.set(credentialId, { ...entry, attempts,
+            nextAttemptAt: Date.now() + PENDING_ROTATION_RETRY_DELAYS_MS[Math.min(attempts, PENDING_ROTATION_RETRY_DELAYS_MS.length - 1)]! });
+          void recordRuntimeDiagnostic('session', { credentialWrite: attempts >= PENDING_ROTATION_RETRY_DELAYS_MS.length ? 'waiting' : 'retry-scheduled', attempts });
         }
       }
       if (this.pendingRotationWrites.size > 0) this.schedulePendingRotationRetry();
@@ -257,20 +260,16 @@ export class SessionCredentialCoordinator {
     const linkedAccountIds = accountIdsForCredential(state.credentialIdsByAccountId, credentialId);
     // 凭据版本变了：仍引用该凭据的账号必须重建 Provider（含持有会话的落雪 Provider）。
     sessionRuntime().release(linkedAccountIds);
-    this.store.setState({
-      sessionsByAccountId,
-      session: sessionsByAccountId[state.activeAccountId] ?? state.session,
-    });
-    // 激活账号不在受影响集合里时，派生视图无需改动，也就没有第二次提交。
-    if (linkedAccountIds.includes(state.activeAccountId)) this.store.refreshActiveSessionView(sessionsByAccountId);
-    const port = await credentialPort();
+    this.store.refreshActiveSessionView(sessionsByAccountId);
     try {
+      const port = await credentialPort();
       const result = await port.updateCredentialSession(credentialId, input.next, {
         acceptedRefreshTokens: input.acceptedRefreshTokens,
       });
-      if (result === 'applied') this.pendingRotationWrites.delete(credentialId);
+      if (result === 'applied' && this.pendingRotationWrites.get(credentialId)?.session === input.next) this.pendingRotationWrites.delete(credentialId);
       return result === 'applied' ? 'applied' : result === 'stale' ? 'stale' : 'removed';
     } catch {
+      if (sessionsByCredential(this.store.getState().sessionsByAccountId, this.store.getState().credentialIdsByAccountId).get(credentialId) !== input.next) return 'stale';
       // 本机落盘失败时保留内存中的新会话并登记补写：上游已消费旧 refresh token，
       // 再次刷新只会失败。进程退出前仍未保存成功时用户可能需要重新授权。
       this.pendingRotationWrites.set(credentialId, {
@@ -278,6 +277,7 @@ export class SessionCredentialCoordinator {
         session: input.next,
         acceptedRefreshTokens: input.acceptedRefreshTokens,
         attempts: 0,
+        nextAttemptAt: Date.now() + PENDING_ROTATION_RETRY_DELAYS_MS[0],
       });
       this.schedulePendingRotationRetry();
       void recordRuntimeDiagnostic('session', { credentialWrite: 'pending' });
@@ -341,7 +341,8 @@ export class SessionCredentialCoordinator {
     if (!sameRizlineToken(this.store.getState().sessionsByAccountId[accountId], expected)) return;
     const port = await credentialPort();
     assertCurrent();
-    await port.updateAccountSession(accountId, next, { expected, signal });
+    const result = await port.updateAccountSession(accountId, next, { expected, signal });
+    if (result !== 'applied') return;
     assertCurrent();
     const state = this.store.getState();
     if (!sameRizlineToken(state.sessionsByAccountId[accountId], expected)
@@ -354,11 +355,27 @@ export class SessionCredentialCoordinator {
       ? sessionsForCredentialUpdate(state.sessionsByAccountId, state.credentialIdsByAccountId, credentialId, next)
       : { ...state.sessionsByAccountId, [accountId]: next };
     sessionRuntime().release(linkedAccountIds);
-    this.store.setState({
-      sessionsByAccountId,
-      session: sessionsByAccountId[state.activeAccountId] ?? state.session,
-    });
-    if (linkedAccountIds.includes(state.activeAccountId)) this.store.refreshActiveSessionView(sessionsByAccountId);
+    this.store.refreshActiveSessionView(sessionsByAccountId);
+  }
+
+  /** Cookie updates share the same checked persistence and projection boundary. */
+  async applyMajdataSessionRotation(accountId: string, next: HttpCookieSession, expected: HttpCookieSession, signal?: AbortSignal): Promise<void> {
+    const assertCurrent = captureResourceWrites('majdata-net', signal, accountId);
+    assertCurrent();
+    if (this.store.getState().sessionsByAccountId[accountId] !== expected) return;
+    const port = await credentialPort();
+    assertCurrent();
+    const result = await port.updateAccountSession(accountId, next, { expected, signal });
+    if (result !== 'applied') return;
+    assertCurrent();
+    const state = this.store.getState();
+    if (state.sessionsByAccountId[accountId] !== expected || !state.boundAccounts.some((account) => account.id === accountId)) return;
+    const credentialId = state.credentialIdsByAccountId[accountId];
+    const linkedAccountIds = credentialId ? accountIdsForCredential(state.credentialIdsByAccountId, credentialId) : [accountId];
+    const sessions = credentialId ? sessionsForCredentialUpdate(state.sessionsByAccountId, state.credentialIdsByAccountId, credentialId, next)
+      : { ...state.sessionsByAccountId, [accountId]: next };
+    sessionRuntime().release(linkedAccountIds);
+    this.store.refreshActiveSessionView(sessions);
   }
 
   /** 测试用：清空挂起轮换与定时器。 */

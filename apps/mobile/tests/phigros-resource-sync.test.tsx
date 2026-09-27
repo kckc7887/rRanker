@@ -8,12 +8,12 @@ let mockRestore = 'ready';
 const mockRizlineRefresh = jest.fn(async () => undefined);
 const mockRefresh = jest.fn(async () => undefined);
 jest.mock('@/state/session-store', () => ({
-  useSession: (select: (value: unknown) => unknown) => select({ activeGameId: mockGame, restoreStatus: mockRestore }),
+  useSession: Object.assign((select: (value: unknown) => unknown) => select({ activeGameId: mockGame, restoreStatus: mockRestore }), { getState: () => ({ catalogProvider: null }) }),
 }));
 jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => ({ foregroundReady: mockReady }) }));
-jest.mock('@/hooks/use-phigros-catalog', () => ({ refreshPhigrosCatalog: () => mockRefresh() }));
+jest.mock('@/services/phigros-catalog-query', () => ({ refreshPhigrosCatalog: () => mockRefresh() }));
 
-jest.mock('@/hooks/use-rizline-catalog', () => ({ refreshRizlineCatalog: () => mockRizlineRefresh() }));
+jest.mock('@/services/rizline-catalog-query', () => ({ refreshRizlineCatalog: () => mockRizlineRefresh() }));
 
 beforeEach(() => {
   mockGame = 'phigros'; mockReady = true; mockRestore = 'ready'; mockRefresh.mockClear(); mockRizlineRefresh.mockClear();

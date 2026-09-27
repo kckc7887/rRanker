@@ -278,7 +278,7 @@ export type PhiraCatalogScanRequest = Pick<PhiraCatalogScanObservation, 'identit
 
 export type PhiraCatalogScanStep = {
   action: 'fetch' | 'idle';
-  /** action 为 fetch 时是要记录的新位置，否则保持传入的已请求位置。 */
+  /** 查询身份改变时释放旧预约，即使新查询无需续扫。 */
   requested: PhiraCatalogScanRequest | null;
 };
 
@@ -315,5 +315,6 @@ export function phiraCatalogScanNext(input: {
     && requested.pageCount === position.pageCount && requested.lastCursor === position.lastCursor;
   const shouldFetch = observation.scanning && observation.pageCount > 0
     && !observation.isFetchingNextPage && !alreadyRequested;
-  return { action: shouldFetch ? 'fetch' : 'idle', requested: shouldFetch ? position : requested };
+  return { action: shouldFetch ? 'fetch' : 'idle', requested: shouldFetch ? position
+    : requested?.identity === observation.identity ? requested : null };
 }

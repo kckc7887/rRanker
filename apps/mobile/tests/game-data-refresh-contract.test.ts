@@ -155,12 +155,14 @@ describe('后台刷新的可等待句柄', () => {
     expect(result.value?.payload).toMatchObject({ kind: 'maimai', playerScore: { display: '20000' } });
   });
 
-  it('后台刷新落定后句柄不再保留，后续刷新只等自己这次', async () => {
+  it('后台刷新落定后保留终态，新操作显式清除旧句柄', async () => {
     const pending = deferred<GameDataRefreshResult>();
     registerGameDataBackground(queryKey, pending.promise);
     pending.resolve(failedRefresh({ requested: ['data'] }));
     await awaitGameDataBackground(queryKey);
-    expect(awaitGameDataBackground(queryKey)).toBeNull();
+    expect(await awaitGameDataBackground(queryKey)).toMatchObject({ status: 'failed' });
+    registerGameDataBackground(queryKey, undefined);
+    expect(await awaitGameDataBackground(queryKey)).toBeNull();
   });
 });
 

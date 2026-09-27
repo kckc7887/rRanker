@@ -20,7 +20,6 @@ import {
 
 const repository = new SqliteSnapshotRepository();
 const loads = createInflightGuard<string>();
-const freshByAccount = new Map<string, Promise<RizlineSnapshot>>();
 export const rizlineAccountKey = (id: string) => `rizline:account:${id}`;
 export function loadRizlineCached(id: string) { return repository.getResource<RizlineSnapshot>(rizlineAccountKey(id), 1); }
 export async function clearRizlineAccount(id: string): Promise<void> {
@@ -81,7 +80,7 @@ export async function loadRizlineFresh(id: string, session: RizlineSession, sign
         expected = result.session;
         return result.save;
       } catch (reauthError) {
-        await deleteRizlinePassword(id);
+        if (isAuthenticationError(reauthError)) await deleteRizlinePassword(id);
         throw reauthError;
       }
     };
@@ -104,10 +103,6 @@ export async function loadRizlineFresh(id: string, session: RizlineSession, sign
     assertCurrent();
     return cacheRizlineSave(id, save, requestSignal);
   }, signal);
-}
-export function awaitRizlineFresh(id: string): Promise<void> {
-  const fresh = freshByAccount.get(id);
-  return fresh ? fresh.then(() => undefined, () => undefined) : Promise.resolve();
 }
 
 type RizlineRefreshAttempt = { result: RefreshResult<RizlineSnapshot, string>; error: unknown };
@@ -170,8 +165,5 @@ export function loadRizlineWithFallback(id: string, session: RizlineSession, sig
     if (!result.value) throw error ?? new Error('Rizline 存档读取失败');
     return { ...result.value, requiresLogin: refreshNeedsLogin(result) };
   })();
-  freshByAccount.set(id, pending);
-  const forget = () => { if (freshByAccount.get(id) === pending) freshByAccount.delete(id); };
-  void pending.then(forget, forget);
   return pending;
 }

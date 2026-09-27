@@ -15,6 +15,86 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  build-ios-test:
+    needs: [changed-scope, build-context]
+    if: >-
+      always() && needs.build-context.result == 'success' &&
+      needs.build-context.outputs.build == 'true' &&
+      needs.build-context.outputs.production != 'true' &&
+      (github.event_name == 'workflow_dispatch' || needs.changed-scope.outputs.functional != 'false')
+    environment: test-artifacts
+    runs-on: macos-26
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      NODE_ENV: production
+      BUILD_SOURCE_COMMIT: ${{ needs.build-context.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.build-context.outputs.sha }}
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - run: npm ci
+      - run: npx expo prebuild --platform ios --no-install
+      - run: pod install --project-directory=ios
+      - name: Archive unsigned test application
+        shell: bash
+        run: |
+          workspace="$(find ios -maxdepth 1 -name '*.xcworkspace' -print -quit)"
+          test -n "$workspace"
+          scheme="$(basename "$workspace" .xcworkspace)"
+          xcodebuild -workspace "$workspace" -scheme "$scheme" -configuration Release \
+            -sdk iphoneos -archivePath "$PWD/build/rRanker-test.xcarchive" \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO archive
+          mkdir -p build/ios-test/Payload
+          cp -R build/rRanker-test.xcarchive/Products/Applications/*.app build/ios-test/Payload/
+          git rev-parse HEAD > build/ios-test/source-commit.txt
+          cd build/ios-test
+          zip -qry rRanker-unsigned-test.ipa Payload
+          rm -rf Payload
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ios-unsigned-test-${{ needs.build-context.outputs.sha }}
+          path: apps/mobile/build/ios-test/*
+          if-no-files-found: error
+          retention-days: 7
+
+  build-context:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      build: ${{ steps.policy.outputs.build }}
+      production: ${{ steps.policy.outputs.production }}
+      sha: ${{ steps.policy.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - name: Determine immutable source and publication policy
+        id: policy
+        run: node .github/scripts/build-policy.mjs
+      - uses: actions/setup-node@v6
+        if: github.event_name == 'workflow_dispatch' && steps.policy.outputs.build == 'true'
+        with:
+          node-version: '22'
+      - name: Validate manual build source
+        if: github.event_name == 'workflow_dispatch' && steps.policy.outputs.build == 'true'
+        working-directory: apps/mobile
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run check:architecture
+          npm run check:generated
+          npm run audit:prod
+
   changed-scope:
     runs-on: ubuntu-latest
     timeout-minutes: 10
@@ -53,14 +133,18 @@ jobs:
           echo "functional=$functional" >> "$GITHUB_OUTPUT"
 
   build-ios:
-    needs: changed-scope
+    needs: [changed-scope, build-context]
     if: >-
-      always() &&
-      (github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_repository.full_name == github.repository &&
-      needs.changed-scope.outputs.functional != 'false'))
+      always() && needs.build-context.result == 'success' &&
+      needs.build-context.outputs.build == 'true' &&
+      (github.event_name == 'workflow_dispatch' || needs.changed-scope.outputs.functional != 'false') &&
+      needs.build-context.outputs.production == 'true'
+    environment: production-release
     runs-on: macos-26
+
+    env:
+      NODE_ENV: production
+      BUILD_SOURCE_COMMIT: ${{ needs.build-context.outputs.sha }}
 
     defaults:
       run:
@@ -70,7 +154,7 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
+          ref: ${{ needs.build-context.outputs.sha }}
 
       - name: Setup Node
         uses: actions/setup-node@v6
@@ -78,6 +162,12 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
+
+      - name: Require provisioned production environment
+        shell: bash
+        env:
+          PRODUCTION_SIGNING_READY: ${{ secrets.PRODUCTION_SIGNING_READY }}
+        run: test "$PRODUCTION_SIGNING_READY" = true
 
       - name: Read app metadata
         id: app

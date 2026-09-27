@@ -4,6 +4,7 @@
  * 路径与目标的纯解析在 domain/rizline-chart-preview；本模块只负责 I/O 编排。
  */
 
+import { fetch as expoFetch } from 'expo/fetch';
 import {
   resolveRizlineChartPreviewBundle,
   type RizlineChartPreviewAsset,
@@ -37,7 +38,7 @@ export async function defaultRizlineChartPreviewResourcePort(): Promise<RizlineC
     readBytes: (asset, index, signal) => requestBytes({
       baseUrl: '',
       path: asset.url,
-      fetcher: fetch,
+      fetcher: expoFetch as unknown as typeof fetch,
       signal,
       totalAttempts: 1,
       timeoutMs: RIZLINE_CHART_PREVIEW_READ_TIMEOUT_MS,

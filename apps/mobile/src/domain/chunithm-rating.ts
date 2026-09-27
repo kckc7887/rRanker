@@ -181,7 +181,7 @@ export function chunithmChartRatingDisplay(levelValue: number, score: number): n
  * 单曲理论最高 Rating（1,009,000 分以上，AJC 或 SSS+ 满分档）。展示口径。
  */
 export function maxChunithmChartRating(levelValue: number): number {
-  return roundToTwo(normalizedLevelValue(levelValue) + 2.15);
+  return chunithmChartRatingDisplay(levelValue, 1_009_000);
 }
 
 /**

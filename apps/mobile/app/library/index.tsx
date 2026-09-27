@@ -4,7 +4,7 @@ import { useMajdataLibrarySongs } from '@/hooks/use-majdata';
 import { useMemo, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { RemoteImageFlatList } from '@/components/game-content/GameListPages';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { SongCover } from '@/components/SongCover';
 import { chunithmJacketUrl } from '@/components/chunithm/ChunithmSongRow';
@@ -22,7 +22,8 @@ import {
 import { isOsuGameId, type OsuGameId } from '@/domain/game-mode-family';
 import type { OsuBeatmapsetDetail } from '@/domain/osu';
 import type { TufLevel } from '@/domain/tuf';
-import type { UserLibraryItem } from '@/domain/user-library';
+import { libraryDetailTarget, type UserLibraryItem } from '@/domain/user-library';
+import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { RIZLINE_DIFFICULTIES, rizlineCoverUrl, rizlineDifficultyIndex, type RizlineSong } from '@/domain/rizline';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
@@ -280,16 +281,10 @@ function LibraryRow({
           ? `难度 ${item.levelIndex}`
           : `${item.type} 难度 ${item.levelIndex}`
     : '';
-  return <Pressable accessibilityRole="button" onPress={() => router.push({
-    pathname: '/songs/[songId]',
-    params: item.kind === 'chart'
-      ? {
-          songId: item.songId,
-          ...(chunithmSong || osuSong || item.gameId === 'majdata-net' ? {} : { chartType: item.type }),
-          levelIndex: String(item.levelIndex),
-        }
-      : { songId: item.songId },
-  } as Href)} style={[styles.row, { backgroundColor: theme.surface }]}>
+  const target = libraryDetailTarget(item);
+  return <Pressable accessibilityRole="button" disabled={!target} onPress={() => {
+    if (target) router.push(detailTargetHref(encodeDetailTarget(target)));
+  }} style={[styles.row, { backgroundColor: theme.surface }]}>
     <LibrarySongCover song={song} blurUrl={blurUrl} />
     <View style={styles.main}>
       <Text numberOfLines={2} style={[styles.title, { color: theme.text }]}>{songTitle}</Text>

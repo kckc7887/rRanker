@@ -1,11 +1,15 @@
 import { isHttpCookieSession } from '@/providers/http-cookies';
 import * as SecureStore from 'expo-secure-store';
-import Storage from 'expo-sqlite/kv-store';
+import Storage from '@/storage/key-value-storage';
 import type { GameId, RemoteProviderId } from '@/domain/game-bind-options';
 import type { ProviderSession } from '@/providers/contracts';
 import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
 import { deleteRizlinePassword } from '@/storage/rizline-password-store';
 import { startTimer } from '@/utils/startup-timing';
+import type { SessionVault, StoredProviderAccount, StoredProviderCredential } from '@/domain/session-vault';
+import { SessionPersistenceError } from '@/domain/session-vault';
+export { sessionsMapFromVault, credentialIdsMapFromVault } from '@/domain/session-vault';
+export type { SessionVault, StoredProviderAccount, StoredProviderCredential } from '@/domain/session-vault';
 
 const LEGACY_SESSION_KEY = 'rranker.diving-fish.session.v1';
 const V2_VAULT_KEY = 'rranker.provider.sessions.v2';
@@ -16,24 +20,23 @@ const INDEX_UNRECOGNIZED_KEY = `${INDEX_KEY}.unrecognized`;
 const LEGACY_VAULT_KEYS = [VAULT_KEY, V2_VAULT_KEY, LEGACY_SESSION_KEY] as const;
 
 /** 会话索引不是合法 JSON。原键保留，副本写在 corrupt 键上，调用方可重试读取。 */
-export class SessionIndexCorruptError extends Error {
+export class SessionIndexCorruptError extends SessionPersistenceError {
   readonly name = 'SessionIndexCorruptError';
 
   constructor(readonly preservedRaw: string, options?: { cause?: unknown }) {
-    super('本机会话索引内容损坏');
-    this.cause = options?.cause;
+    super('local_commit', options);
   }
 }
 
 /** 会话索引版本或顶层结构无法识别。原键保留，副本写在 unrecognized 键上，后续写入不得覆盖原键。 */
-export class SessionIndexUnrecognizedError extends Error {
+export class SessionIndexUnrecognizedError extends SessionPersistenceError {
   readonly name = 'SessionIndexUnrecognizedError';
 
   constructor(
     readonly preservedRaw: string,
     readonly reason: 'unsupported-version' | 'invalid-structure',
   ) {
-    super(reason === 'unsupported-version' ? '本机会话索引版本无法识别' : '本机会话索引结构无法识别');
+    super('local_commit');
   }
 }
 
@@ -67,35 +70,9 @@ export async function restorePreservedSessionIndex(
   return true;
 }
 
-export type StoredProviderCredential = {
-  id: string;
-  providerId: RemoteProviderId;
-  session: ProviderSession;
-};
-
-export type StoredProviderAccount = {
-  id: string;
-  gameId: GameId;
-  providerId: RemoteProviderId;
-  credentialId: string;
-  displayName: string;
-  scoreDisplay: string;
-  /** Phigros 课题模式分数；旧记录可缺省。 */
-  challengeModeRank?: number | null;
-  /** 中二节奏 Rating 领域；旧记录可缺省。 */
-  ratingPossession?: string | null;
-};
-
 export type StoredProviderAccountInput = Omit<StoredProviderAccount, 'credentialId'> & {
   credentialId?: string;
   session: ProviderSession;
-};
-
-export type SessionVault = {
-  version: 3;
-  activeAccountId: string | null;
-  credentials: StoredProviderCredential[];
-  accounts: StoredProviderAccount[];
 };
 
 /**
@@ -112,24 +89,6 @@ export type RemoveAccountResult = {
   committed: boolean;
   cleanupFailures: readonly string[];
 };
-
-export function sessionsMapFromVault(vault: SessionVault): Record<string, ProviderSession> {
-  const credentials = new Map(
-    vault.credentials.map((credential) => [credential.id, credential.session] as const),
-  );
-  const map: Record<string, ProviderSession> = {};
-  for (const account of vault.accounts) {
-    const session = credentials.get(account.credentialId);
-    if (session) map[account.id] = session;
-  }
-  return map;
-}
-
-export function credentialIdsMapFromVault(vault: SessionVault): Record<string, string> {
-  return Object.fromEntries(
-    vault.accounts.map((account) => [account.id, account.credentialId]),
-  );
-}
 
 type V2StoredProviderAccount = Omit<StoredProviderAccount, 'credentialId'> & {
   session: ProviderSession;
@@ -161,6 +120,15 @@ type KeyValueStore = {
 };
 
 const storageMutationTails = new WeakMap<KeyValueStore, Promise<void>>();
+
+function persistenceFailure(code: SessionPersistenceError['code'], cause: unknown): never {
+  if (cause instanceof SessionPersistenceError || (cause instanceof Error && cause.name === 'AbortError')) throw cause;
+  throw new SessionPersistenceError(code, { cause });
+}
+
+async function persistenceOperation<T>(code: SessionPersistenceError['code'], operation: () => Promise<T>): Promise<T> {
+  try { return await operation(); } catch (cause) { return persistenceFailure(code, cause); }
+}
 
 function enqueueStorageMutation<T>(
   storage: KeyValueStore,
@@ -396,6 +364,9 @@ function parseSessionIndexOrThrow(raw: string): SessionIndex {
   } catch (cause) {
     throw new SessionIndexCorruptError(raw, { cause });
   }
+  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
+    throw new SessionIndexUnrecognizedError(raw, 'invalid-structure');
+  }
   if (typeof parsed.version === 'number' && parsed.version !== 4) {
     throw new SessionIndexUnrecognizedError(raw, 'unsupported-version');
   }
@@ -486,10 +457,26 @@ async function deleteLegacyVaultKeys(): Promise<void> {
 
 /** 多账号凭据库：游戏账号只引用凭据，LXNS 跨游戏共享同一份 token。 */
 export class SecureSessionStore {
+  private readonly indexIo: KeyValueStore;
+  private readonly credentialIo: Pick<LargeSecureValueStore, 'read' | 'write' | 'delete' | 'createReference'>;
   constructor(
     private readonly storage: KeyValueStore = Storage,
-    private readonly secrets = new LargeSecureValueStore(),
-  ) {}
+    secrets = new LargeSecureValueStore(),
+  ) {
+    this.indexIo = {
+      getItem: (key) => persistenceOperation('local_commit', () => storage.getItem(key)),
+      setItem: (key, value) => persistenceOperation('local_commit', () => storage.setItem(key, value)),
+      removeItem: (key) => persistenceOperation('local_commit', () => storage.removeItem(key)),
+    };
+    this.credentialIo = {
+      read: (reference) => persistenceOperation('credential_storage', () => secrets.read(reference)),
+      write: (reference, value) => persistenceOperation('credential_storage', () => secrets.write(reference, value)),
+      delete: (reference) => persistenceOperation('credential_storage', () => secrets.delete(reference)),
+      createReference: (namespace) => {
+        try { return secrets.createReference(namespace); } catch (cause) { return persistenceFailure('credential_storage', cause); }
+      },
+    };
+  }
 
   private enqueueMutation<T>(mutation: () => Promise<T>): Promise<T> {
     return enqueueStorageMutation(this.storage, mutation);
@@ -500,26 +487,26 @@ export class SecureSessionStore {
       return parseSessionIndexOrThrow(raw);
     } catch (error) {
       if (error instanceof SessionIndexCorruptError) {
-        await this.storage.setItem(INDEX_CORRUPT_KEY, raw).catch(() => undefined);
+        await this.indexIo.setItem(INDEX_CORRUPT_KEY, raw).catch(() => undefined);
       } else if (error instanceof SessionIndexUnrecognizedError) {
-        await this.storage.setItem(INDEX_UNRECOGNIZED_KEY, raw).catch(() => undefined);
+        await this.indexIo.setItem(INDEX_UNRECOGNIZED_KEY, raw).catch(() => undefined);
       }
       throw error;
     }
   }
 
   private async loadOrCreateIndexUnlocked(): Promise<SessionIndex> {
-    const currentRaw = await this.storage.getItem(INDEX_KEY);
+    const currentRaw = await this.indexIo.getItem(INDEX_KEY);
     const current = currentRaw ? await this.parseStoredIndex(currentRaw) : null;
     if (current) return current;
 
     const vault = await this.loadVault();
-    const migratedRaw = await this.storage.getItem(INDEX_KEY);
+    const migratedRaw = await this.indexIo.getItem(INDEX_KEY);
     const migrated = migratedRaw ? parseSessionIndex(migratedRaw) : null;
     if (migrated) return migrated;
 
     await this.saveVaultUnlocked(vault);
-    const createdRaw = await this.storage.getItem(INDEX_KEY);
+    const createdRaw = await this.indexIo.getItem(INDEX_KEY);
     const created = createdRaw ? parseSessionIndex(createdRaw) : null;
     if (!created) throw new Error('无法建立本机会话索引');
     return created;
@@ -529,7 +516,7 @@ export class SecureSessionStore {
     const credentials: StoredProviderCredential[] = [];
     for (const item of index.credentials) {
       const stop = startTimer(`secure.read.${item.id}`);
-      const session = parseStoredSession(await this.secrets.read(item.secretRef));
+      const session = parseStoredSession(await this.credentialIo.read(item.secretRef));
       stop();
       if (!session) continue;
       credentials.push({
@@ -550,7 +537,7 @@ export class SecureSessionStore {
     const expected = sanitizeVault(vault);
     try {
       await this.saveVaultUnlocked(expected);
-      const raw = await this.storage.getItem(INDEX_KEY);
+      const raw = await this.indexIo.getItem(INDEX_KEY);
       const index = raw ? parseSessionIndex(raw) : null;
       const verified = index ? await this.loadIndexedVault(index) : null;
       if (!verified || vaultFingerprint(verified) !== vaultFingerprint(expected)) {
@@ -570,13 +557,13 @@ export class SecureSessionStore {
    */
   async loadVault(): Promise<SessionVault> {
     const stopIndex = startTimer('vault.index.read');
-    const indexRaw = await this.storage.getItem(INDEX_KEY);
+    const indexRaw = await this.indexIo.getItem(INDEX_KEY);
     stopIndex();
     if (indexRaw) {
       return this.loadIndexedVault(await this.parseStoredIndex(indexRaw));
     }
 
-    const vaultRaw = await SecureStore.getItemAsync(VAULT_KEY);
+    const vaultRaw = await persistenceOperation('credential_storage', () => SecureStore.getItemAsync(VAULT_KEY));
     if (vaultRaw) {
       const vault = parseSessionVault(vaultRaw);
       if (vault) {
@@ -589,7 +576,7 @@ export class SecureSessionStore {
       }
     }
 
-    const v2Raw = await SecureStore.getItemAsync(V2_VAULT_KEY);
+    const v2Raw = await persistenceOperation('credential_storage', () => SecureStore.getItemAsync(V2_VAULT_KEY));
     if (v2Raw) {
       const v2 = parseV2Vault(v2Raw);
       if (v2) {
@@ -603,7 +590,7 @@ export class SecureSessionStore {
       }
     }
 
-    const legacy = await SecureStore.getItemAsync(LEGACY_SESSION_KEY);
+    const legacy = await persistenceOperation('credential_storage', () => SecureStore.getItemAsync(LEGACY_SESSION_KEY));
     if (!legacy) return { ...EMPTY_VAULT, credentials: [], accounts: [] };
 
     const session = parseStoredSession(legacy);
@@ -639,7 +626,7 @@ export class SecureSessionStore {
 
   private async saveVaultUnlocked(vault: SessionVault, signal?: AbortSignal): Promise<void> {
     const sanitized = sanitizeVault(vault);
-    const currentRaw = await this.storage.getItem(INDEX_KEY);
+    const currentRaw = await this.indexIo.getItem(INDEX_KEY);
     const current = currentRaw ? await this.parseStoredIndex(currentRaw) : null;
     const nextCredentials: StoredCredentialIndex[] = [];
     const newSecretRefs: string[] = [];
@@ -650,7 +637,7 @@ export class SecureSessionStore {
           item.id === credential.id && item.providerId === credential.providerId
         ));
         const previousSession = previous
-          ? parseStoredSession(await this.secrets.read(previous.secretRef))
+          ? parseStoredSession(await this.credentialIo.read(previous.secretRef))
           : null;
         if (previous
           && previousSession
@@ -658,8 +645,8 @@ export class SecureSessionStore {
           nextCredentials.push(previous);
           continue;
         }
-        const secretRef = this.secrets.createReference('provider-session');
-        await this.secrets.write(secretRef, JSON.stringify(credential.session));
+        const secretRef = this.credentialIo.createReference('provider-session');
+        await this.credentialIo.write(secretRef, JSON.stringify(credential.session));
         newSecretRefs.push(secretRef);
         nextCredentials.push({
           id: credential.id,
@@ -675,15 +662,15 @@ export class SecureSessionStore {
         accounts: sanitized.accounts,
       };
       if (signal?.aborted) throw signal.reason;
-      await this.storage.setItem(INDEX_KEY, JSON.stringify(index));
+      await this.indexIo.setItem(INDEX_KEY, JSON.stringify(index));
       if (signal?.aborted) {
-        if (currentRaw === null) await this.storage.removeItem(INDEX_KEY);
-        else await this.storage.setItem(INDEX_KEY, currentRaw);
+        if (currentRaw === null) await this.indexIo.removeItem(INDEX_KEY);
+        else await this.indexIo.setItem(INDEX_KEY, currentRaw);
         throw signal.reason;
       }
     } catch (error) {
       for (const secretRef of newSecretRefs) {
-        await this.secrets.delete(secretRef).catch(() => undefined);
+        await this.credentialIo.delete(secretRef).catch(() => undefined);
       }
       throw error;
     }
@@ -691,7 +678,7 @@ export class SecureSessionStore {
     const retained = new Set(nextCredentials.map((item) => item.secretRef));
     for (const previous of current?.credentials ?? []) {
       if (!retained.has(previous.secretRef)) {
-        await this.secrets.delete(previous.secretRef).catch(() => undefined);
+        await this.credentialIo.delete(previous.secretRef).catch(() => undefined);
       }
     }
   }
@@ -744,15 +731,16 @@ export class SecureSessionStore {
   async updateAccountSession(accountId: string, session: ProviderSession, options?: {
     signal?: AbortSignal;
     expected?: ProviderSession;
-  }): Promise<void> {
-    if (!isPersistableSession(session)) return;
-    await this.enqueueMutation(async () => {
+  }): Promise<CredentialSessionWriteResult> {
+    if (!isPersistableSession(session)) return 'missing';
+    return this.enqueueMutation(async () => {
       if (options?.signal?.aborted) throw options.signal.reason;
       const vault = await this.loadVault();
       const existing = vault.accounts.find((account) => account.id === accountId);
-      if (!existing) return;
+      if (!existing) return 'missing';
       const credential = vault.credentials.find(item => item.id === existing.credentialId);
-      if (options?.expected && !sessionMatchesExpected(credential?.session, options.expected)) return;
+      if (!credential) return 'missing';
+      if (options?.expected && !sessionMatchesExpected(credential.session, options.expected)) return 'stale';
       await this.saveVaultUnlocked({
         ...vault,
         credentials: vault.credentials.map((credential) => (
@@ -761,6 +749,7 @@ export class SecureSessionStore {
             : credential
         )),
       }, options?.signal);
+      return 'applied';
     });
   }
 
@@ -806,7 +795,7 @@ export class SecureSessionStore {
       const index = await this.loadOrCreateIndexUnlocked();
       const current = index.accounts.find((account) => account.id === accountId);
       if (!current || Object.entries(metadata).every(([key, value]) => current[key as keyof StoredProviderAccount] === value)) return;
-      await this.storage.setItem(INDEX_KEY, JSON.stringify({
+      await this.indexIo.setItem(INDEX_KEY, JSON.stringify({
         ...index,
         accounts: index.accounts.map((account) => (
           account.id === accountId ? { ...account, ...metadata } : account
@@ -850,7 +839,7 @@ export class SecureSessionStore {
   async setActiveAccountId(accountId: string | null): Promise<void> {
     await this.enqueueMutation(async () => {
       const index = await this.loadOrCreateIndexUnlocked();
-      await this.storage.setItem(INDEX_KEY, JSON.stringify({
+      await this.indexIo.setItem(INDEX_KEY, JSON.stringify({
         ...index,
         activeAccountId: accountId,
       }));
@@ -895,20 +884,20 @@ export class SecureSessionStore {
   async clear(): Promise<void> {
     await this.enqueueMutation(async () => {
       await this.clearIndexedVault();
-      await this.storage.removeItem(INDEX_CORRUPT_KEY).catch(() => undefined);
-      await this.storage.removeItem(INDEX_UNRECOGNIZED_KEY).catch(() => undefined);
-      await SecureStore.deleteItemAsync(VAULT_KEY);
-      await SecureStore.deleteItemAsync(V2_VAULT_KEY);
-      await SecureStore.deleteItemAsync(LEGACY_SESSION_KEY);
+      await this.indexIo.removeItem(INDEX_CORRUPT_KEY).catch(() => undefined);
+      await this.indexIo.removeItem(INDEX_UNRECOGNIZED_KEY).catch(() => undefined);
+      await persistenceOperation('credential_storage', () => SecureStore.deleteItemAsync(VAULT_KEY));
+      await persistenceOperation('credential_storage', () => SecureStore.deleteItemAsync(V2_VAULT_KEY));
+      await persistenceOperation('credential_storage', () => SecureStore.deleteItemAsync(LEGACY_SESSION_KEY));
     });
   }
 
   private async clearIndexedVault(): Promise<void> {
-    const raw = await this.storage.getItem(INDEX_KEY);
+    const raw = await this.indexIo.getItem(INDEX_KEY);
     const index = raw ? parseSessionIndex(raw) : null;
     for (const credential of index?.credentials ?? []) {
-      await this.secrets.delete(credential.secretRef).catch(() => undefined);
+      await this.credentialIo.delete(credential.secretRef).catch(() => undefined);
     }
-    await this.storage.removeItem(INDEX_KEY);
+    await this.indexIo.removeItem(INDEX_KEY);
   }
 }

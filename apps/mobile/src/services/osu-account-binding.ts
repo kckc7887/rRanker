@@ -10,7 +10,7 @@ import {
   type OsuGameId,
 } from '@/domain/game-mode-family';
 import type { ProviderSession } from '@/providers/contracts';
-import { ProviderError } from '@/providers/errors';
+import { ProviderError, runProviderOperation } from '@/providers/errors';
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import { SecureSessionStore } from '@/storage/secure-session-store';
@@ -72,7 +72,7 @@ export async function bindOsuModes(input: {
       ? input.credentialIdsByAccountId[existing.id]
       : undefined;
   }
-  credentialId ??= await createCredentialId();
+  credentialId ??= await runProviderOperation('authorization_prepare', createCredentialId);
 
   const finalSession = provider.getSession();
   const accounts: BoundAccount[] = [];

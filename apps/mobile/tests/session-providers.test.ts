@@ -3,7 +3,7 @@ import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createLocalMaimaiAccount, createMaxedPhigrosTestAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
-import { EmptyCatalogProvider, EmptyScoreProvider } from '@/providers/empty-provider';
+import { EmptyScoreProvider } from '@/providers/empty-provider';
 import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
 import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
 import { MaxedPhigrosTestProvider } from '@/providers/maxed-phigros-test-provider';
@@ -29,7 +29,7 @@ describe('会话 Provider 装配的曲库能力', () => {
 
     expect(providers.scoreProvider).toBeInstanceOf(MaxedPhigrosTestProvider);
     expect(providers.catalogProvider).not.toBeInstanceOf(PhigrosCatalogProvider);
-    expect(providers.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
+    expect(providers.catalogProvider).toBeNull();
   });
 
   it('Phigros 云存档会话同样只登记普通曲库能力', () => {
@@ -41,7 +41,7 @@ describe('会话 Provider 装配的曲库能力', () => {
 
     expect(providers.scoreProvider).toBeInstanceOf(PhigrosScoreProvider);
     expect(providers.catalogProvider).not.toBeInstanceOf(PhigrosCatalogProvider);
-    expect(providers.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
+    expect(providers.catalogProvider).toBeNull();
   });
 
   it('舞萌与未绑定账号的装配保持不变', () => {
@@ -51,7 +51,7 @@ describe('会话 Provider 装配的曲库能力', () => {
 
     const unbound = createSessionProviders(null, null, noRotation);
     expect(unbound.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
-    expect(unbound.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
+    expect(unbound.catalogProvider).toBeNull();
   });
 
   it('装配源码不再用双重断言把曲库换成详细曲库', () => {

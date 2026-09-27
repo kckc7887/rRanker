@@ -1,20 +1,9 @@
-import { EmptyCatalogProvider, EmptyScoreProvider } from '@/providers/empty-provider';
-import { ScoreService } from '@/services/score-service';
+import { EmptyScoreProvider } from '@/providers/empty-provider';
 
 describe('empty test game providers', () => {
-  it('loads an all-empty score snapshot', async () => {
-    const snapshot = await new ScoreService(
-      new EmptyScoreProvider(),
-      new EmptyCatalogProvider(),
-      'test:empty',
-    ).load();
-    expect(snapshot.player.displayName).toBe('测试游戏');
-    expect(snapshot.player.rating).toBe(0);
-    expect(snapshot.records).toEqual([]);
-    expect(snapshot.best50.b35).toEqual([]);
-    expect(snapshot.best50.b15).toEqual([]);
-    expect(snapshot.best50.rating).toBe(0);
-    expect(snapshot.source.label).toBe('测试游戏');
-    expect(snapshot.catalogSource.label).toBe('测试游戏');
+  it('exposes the default empty player and records', async () => {
+    const provider = new EmptyScoreProvider();
+    expect(await provider.getPlayer()).toMatchObject({ displayName: '测试游戏', rating: 0 });
+    expect(await provider.getRecords()).toEqual([]);
   });
 });

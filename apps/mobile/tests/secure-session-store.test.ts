@@ -8,6 +8,7 @@ import {
 } from '@/domain/bound-account';
 import type { StoredProviderAccountInput } from '@/storage/secure-session-store';
 import { utf8ByteLength } from '@/storage/large-secure-value-store';
+import { SessionPersistenceError } from '@/domain/session-vault';
 
 const secure = vi.hoisted(() => ({ values: new Map<string, string>() }));
 const sqlite = vi.hoisted(() => ({ values: new Map<string, string>() }));
@@ -54,6 +55,40 @@ function account(id: string): StoredProviderAccountInput {
 }
 
 describe('SecureSessionStore 内置账号兼容', () => {
+  it('identifies encrypted credential writes separately from local index commits', async () => {
+    const nativeFailure = new Error('native options conversion failed');
+    vi.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(nativeFailure);
+    const store = createStore();
+    const input = account('maimai:diving-fish:secret-failure');
+    const failed = store.upsertAccount(input);
+    await expect(failed).rejects.toBeInstanceOf(SessionPersistenceError);
+    await expect(failed).rejects.toMatchObject({ code: 'credential_storage', cause: nativeFailure });
+    expect((await store.loadVault()).accounts).toEqual([]);
+
+    const commitFailure = new Error('index locked');
+    const storage = { ...kvStore, setItem: vi.fn(async (key: string, value: string) => {
+      if (JSON.parse(value).accounts?.length) throw commitFailure;
+      await kvStore.setItem(key, value);
+    }) };
+    await expect(new SecureSessionStore(storage).upsertAccount(input)).rejects.toMatchObject({ code: 'local_commit', cause: commitFailure });
+    expect((await store.loadVault()).accounts).toEqual([]);
+  });
+
+  it('classifies native credential reads and preserves cancellation during persistence', async () => {
+    const input = account('maimai:diving-fish:read-failure');
+    const store = createStore();
+    await store.upsertAccount(input);
+    const nativeFailure = new Error('secret unavailable');
+    vi.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(nativeFailure);
+    await expect(store.loadVault()).rejects.toMatchObject({ code: 'credential_storage', cause: nativeFailure });
+    const controller = new AbortController(), reason = new Error('user cancelled while writing');
+    vi.mocked(SecureStore.setItemAsync).mockImplementationOnce(async (key, value) => {
+      secure.values.set(key, value); controller.abort(reason);
+    });
+    await expect(store.upsertAccount({ ...input, session: { mode: 'import-token', value: 'changed', persistable: true } }, controller.signal)).rejects.toBe(reason);
+    expect((await store.loadVault()).credentials[0]?.session).toEqual(input.session);
+  });
+
   it('does not persist identical account metadata across store instances', async () => {
     const writes = vi.fn(kvStore.setItem);
     const storage = { ...kvStore, setItem: writes };
@@ -438,14 +473,16 @@ describe('SecureSessionStore corrupted index preservation', () => {
     expect(sqlite.values.has(`${INDEX}.corrupt`)).toBe(false);
   });
 
-  it('treats a structurally invalid index as unrecognized rather than empty', async () => {
-    const raw = JSON.stringify({ version: 4, credentials: {} });
+  it.each([null, [], 4, 'invalid', { version: 4, credentials: {} }])('preserves structurally invalid index %j instead of treating it as empty', async (value) => {
+    const raw = JSON.stringify(value);
     sqlite.values.set(INDEX, raw);
     await expect(createStore().loadVault()).rejects.toMatchObject({
       name: 'SessionIndexUnrecognizedError',
       reason: 'invalid-structure',
+      code: 'local_commit',
     });
     expect(sqlite.values.get(INDEX)).toBe(raw);
+    expect(sqlite.values.get(`${INDEX}.unrecognized`)).toBe(raw);
   });
 
   it('loads a valid empty v4 index without deleting anything', async () => {
@@ -461,7 +498,7 @@ describe('SecureSessionStore corrupted index preservation', () => {
   it('propagates storage read failures without deleting or preserving', async () => {
     sqlite.values.set(INDEX, '{broken');
     const failing = { ...kvStore, getItem: vi.fn(async () => { throw new Error('kv unavailable'); }) };
-    await expect(new SecureSessionStore(failing).loadVault()).rejects.toThrow('kv unavailable');
+    await expect(new SecureSessionStore(failing).loadVault()).rejects.toMatchObject({ code: 'local_commit', cause: new Error('kv unavailable') });
     expect(sqlite.values.get(INDEX)).toBe('{broken');
     expect(sqlite.values.has(`${INDEX}.corrupt`)).toBe(false);
   });
@@ -560,7 +597,7 @@ describe('Rizline SMS secure accounts', () => {
     const store = createStore();
     await store.upsertAccount(input);
     const reordered = { persistable: true, channelId: '1', deviceId: session.deviceId, phone: session.phone, token: session.token, mode: 'rizline' } as const;
-    await store.updateAccountSession(input.id, { ...session, token: 'rotated' }, { expected: reordered });
+    await expect(store.updateAccountSession(input.id, { ...session, token: 'rotated' }, { expected: reordered })).resolves.toBe('applied');
     expect((await store.loadVault()).credentials[0].session).toEqual({ ...session, token: 'rotated' });
   });
   it('does not overwrite credentials saved by a newer login', async () => {
@@ -568,8 +605,13 @@ describe('Rizline SMS secure accounts', () => {
     await store.upsertAccount(input);
     const newer = { ...session, token: 'new-login' };
     await store.upsertAccount({ ...input, session: newer });
-    await store.updateAccountSession(input.id, { ...session, token: 'old-request-rotation' }, { expected: session });
+    await expect(store.updateAccountSession(input.id, { ...session, token: 'old-request-rotation' }, { expected: session })).resolves.toBe('stale');
     expect((await store.loadVault()).credentials[0].session).toEqual(newer);
+  });
+  it('reports a missing account without saving a rotation', async () => {
+    const store = createStore();
+    await expect(store.updateAccountSession(input.id, { ...session, token: 'rotated' }, { expected: session })).resolves.toBe('missing');
+    expect((await store.loadVault()).credentials).toEqual([]);
   });
   it('rejects a cancelled rotation and malformed persisted session', async () => {
     const store = createStore(); await store.upsertAccount(input);
@@ -618,7 +660,7 @@ describe('Rizline SMS secure accounts', () => {
     await store.upsertAccount(input);
     failWrites = true;
 
-    await expect(store.removeAccount(input.id)).rejects.toThrow('disk full');
+    await expect(store.removeAccount(input.id)).rejects.toMatchObject({ code: 'local_commit', cause: new Error('disk full') });
 
     failWrites = false;
     const vault = await store.loadVault();

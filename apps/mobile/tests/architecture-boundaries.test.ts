@@ -28,10 +28,14 @@ describe('architecture boundary fixtures', () => {
       ['screens/TufScreens.tsx', "import { Card } from '@/components/phira/Card';"],
       // 公共渲染向游戏容器反向依赖。
       ['components/game-content/Card.tsx', "import { RizlineScreens } from '@/screens/RizlineScreens';"],
-      // 游戏界面借用另一款游戏的领域语义（真实仓库里这类引用按文件登记为过渡例外）。
+      // 游戏界面不得借用另一款游戏的领域语义。
       ['components/phira/Card.tsx', "import { rate } from '@/domain/phigros';"],
+      ['components/phira/Card.tsx', "import { Screen } from '@/screens/maimai/MaimaiRecordsScreen';"],
+      ['screens/maimai/MaimaiCatalogScreen.tsx', "import { Card } from '@/components/phira/Card';"],
+      ['domain/game-rules.ts', "import execute, { type Options } from '@/services/execute';"],
+      ['services/game-data-loaders.ts', "import { fetchCatalog } from '@/hooks/use-catalog';"],
     ])('拦截 %s', (path, source) => {
-      expect(inspect(path, source).join('\n')).toMatch(/跨游戏模块依赖|领域层|公共核心反向依赖/u);
+      expect(inspect(path, source).join('\n')).toMatch(/跨游戏模块依赖|领域层|公共核心反向依赖|服务层反向依赖 Hook/u);
     });
 
     it.each([
@@ -54,6 +58,8 @@ describe('architecture boundary fixtures', () => {
       expect(inspect('screens/FutureScreens.tsx', 'export const Screen = 1;', { modules: GAME_MODULES }).join('\n'))
         .toContain('未登记的页面文件');
       expect(inspect('screens/FutureScreens.tsx', 'export const Screen = 1;')).toEqual([]);
+      expect(inspect('screens/unknown/Nested.tsx', 'export const Screen = 1;').join('\n'))
+        .toContain('未登记的页面文件');
     });
 
     it.each([
@@ -68,6 +74,15 @@ describe('architecture boundary fixtures', () => {
     it('把所有具名说明符写成 type 也不会绕过结构性限制', () => {
       expect(inspect('domain/game-rules.ts', "import { type Card } from '@/components/Card';").join('\n'))
         .toContain('领域层反向依赖');
+    });
+
+    it('an exception permits only its exact dependency edge', () => {
+      const result = inspectArchitectureSources([{
+        path: 'domain/rules.ts',
+        source: "import { read } from '@/services/allowed';\nimport { other } from '@/services/other';",
+      }], { exceptions: [{ path: 'domain/rules.ts', target: 'services/allowed', rule: '领域层运行时依赖' }] });
+      expect(result.violations).toHaveLength(1);
+      expect(result.violations[0]).toContain('services/other');
     });
   });
 
@@ -85,6 +100,8 @@ describe('architecture boundary fixtures', () => {
       ['components/game-content/Card.tsx', "import { rate } from '@/domain/phigros'; if (variant === 'compact') render();"],
       ['domain/game-rules.ts', "import type { ProviderSession } from '@/providers/contracts';"],
       ['domain/game-rules.ts', "import type { SnapshotRepository } from '@/repositories/snapshot-repository';"],
+      ['domain/game-rules.ts', "export { type Options } from '@/services/execute';"],
+      ['screens/maimai/MaimaiRecordsScreen.tsx', "import { Card } from '@/components/maimai/Card';"],
       ['app/(tabs)/(overview)/index.tsx', "import { PhiraScreens } from '@/screens/PhiraScreens'; if (gameId === 'phira') render();"],
       ['app/songs/[songId].tsx', "import { TufScreens } from '@/screens/TufScreens'; switch (payload.kind) { case 'phira': break; default: break; }"],
     ])('允许 %s', (path, source) => {

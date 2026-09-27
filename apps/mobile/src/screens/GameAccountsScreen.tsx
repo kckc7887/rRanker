@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useSyncExternalStore } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SymbolView } from 'expo-symbols';
@@ -17,11 +17,12 @@ import { isOsuGameId } from '@/domain/game-mode-family';
 import { useSession } from '@/state/session-store';
 import { useDebugStore } from '@/state/debug-store';
 import { useNotification } from '@/components/AppNotification';
-import { restoreAppAccounts } from '@/services/account-restoration';
+import { restoreAppAccounts, getAccountSourceStatuses, subscribeAccountSourceStatuses, retryFailedAccountSources } from '@/services/account-restoration';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { useAccountBindingFlow } from '@/hooks/use-account-binding-flow';
 import { useManagedAccountOperations } from '@/hooks/use-managed-account-operations';
+import { providerErrorToUserMessage } from '@/providers/errors';
 
 export function GameAccountsScreen() {
   const theme = useAppTheme();
@@ -29,6 +30,8 @@ export function GameAccountsScreen() {
   const boundAccounts = useSession(s => s.boundAccounts);
   const activeAccountId = useSession(s => s.activeAccountId);
   const restoreError = useSession(s => s.restoreError);
+  const sourceStatuses = useSyncExternalStore(subscribeAccountSourceStatuses, getAccountSourceStatuses);
+  const sourceFailed = sourceStatuses.some((source) => source.status === 'failed');
   const safeAreaInsets = useSafeAreaInsets();
   const testAccountsEnabled = useDebugStore(s => s.hydrated && s.testAccountsEnabled);
   const flow = useAccountBindingFlow();
@@ -54,6 +57,8 @@ export function GameAccountsScreen() {
         await new SecureSessionStore().clear();
         await restoreAppAccounts();
         showNotification({ title: '已清除登录数据', message: '请重新绑定需要使用的账号。', variant: 'info' });
+      } catch (error) {
+        showNotification({ title: '清除失败', message: providerErrorToUserMessage(error, '无法清除登录数据，请稍后重试。'), variant: 'error' });
       } finally {
         setRecovering(false);
       }
@@ -177,6 +182,13 @@ export function GameAccountsScreen() {
             </View>
           </View>
         ) : null}
+        {sourceFailed ? <View>
+          <Text style={styles.error}>部分本机账号暂时无法读取，已加载的账号可以继续使用。</Text>
+          <Pressable accessibilityRole="button" accessibilityLabel="重试读取账号" disabled={busy || recovering}
+            onPress={() => { if (recovering) return; setRecovering(true); void retryFailedAccountSources().finally(() => setRecovering(false)); }}>
+            <Text style={styles.retryRestore}>重试读取账号</Text>
+          </Pressable>
+        </View> : null}
         {message ? <Text style={styles.message}>{message}</Text> : null}
         <BoundAccountGroupedList accounts={boundAccounts} expandedGameId={null}
           isGameExpanded={(gameId) => !collapsedManagedGameIds.has(gameId)}

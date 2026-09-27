@@ -77,3 +77,9 @@ export interface DetailedCatalogProvider extends CatalogProvider {
   getPlates(signal?: AbortSignal): Promise<PlateSnapshot>;
   getCollections(): Promise<CollectionSnapshot>;
 }
+
+/** 没有详细曲库能力时拒绝读取，不把缺少能力报告成成功的空曲库。 */
+export function requireDetailedCatalogProvider(provider: DetailedCatalogProvider | null): DetailedCatalogProvider {
+  if (!provider) throw new Error('当前会话不提供详细曲库能力');
+  return provider;
+}

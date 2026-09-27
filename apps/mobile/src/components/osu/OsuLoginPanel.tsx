@@ -9,7 +9,7 @@ import {
 } from '@/domain/game-mode-family';
 import { reusablePartiallyBoundAccounts } from '@/domain/shared-credential-account-reuse';
 import { OsuModeSelectSheet } from '@/components/osu/OsuModeSelectSheet';
-import { providerErrorToUserMessage } from '@/providers/errors';
+import { providerErrorToUserMessage, runProviderOperation } from '@/providers/errors';
 import {
   beginOsuAuthorize,
   subscribeOsuOAuthOutcome,
@@ -80,7 +80,9 @@ export function OsuLoginPanel({
     if (!visible) reset();
   }, [visible]);
 
-  const messageFor = (error: unknown) => providerErrorToUserMessage(error, '验证失败，请稍后重试。');
+  const messageFor = (error: unknown) => providerErrorToUserMessage(error, '绑定失败，请稍后重试。', {
+    authentication: '远端账号验证未通过，请重新授权。',
+  });
 
   const invalidateAll = () => {
     void queryClient.invalidateQueries({ queryKey: ['score-snapshot'] });
@@ -92,8 +94,8 @@ export function OsuLoginPanel({
     setBusy(true);
     setMessage('正在打开 osu! 授权页…');
     try {
-      const url = await beginOsuAuthorize();
-      await Linking.openURL(url);
+      const url = await runProviderOperation('authorization_prepare', beginOsuAuthorize);
+      await runProviderOperation('authorization_open', () => Linking.openURL(url));
       setMessage('请在浏览器完成授权，完成后将选择模式并绑定。');
     } catch (error) {
       setMessage(messageFor(error));
@@ -114,19 +116,19 @@ export function OsuLoginPanel({
     setBusy(true);
     setMessage(`正在使用「${account.displayName}」绑定选中模式…`);
     try {
-      const result = await bindOsuModes({
+      const result = await runProviderOperation('verification', () => bindOsuModes({
         modeGameIds: selected,
         session,
         credentialId,
         existingAccounts: boundAccounts,
         credentialIdsByAccountId,
-      });
-      setOsuBinding({
+      }));
+      await runProviderOperation('local_commit', () => setOsuBinding({
         accounts: result.accounts,
         credentialId: result.credentialId,
         session: result.session as OsuOAuthSession,
         activeAccountId: result.activeAccountId,
-      });
+      }));
       invalidateAll();
       reset();
       onSuccess();

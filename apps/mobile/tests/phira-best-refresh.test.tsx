@@ -70,7 +70,7 @@ jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({
   data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn(),
 }) }));
-jest.mock('@/features/phira-compatible-chart-download/phira-compatible-chart-download', () => ({
+jest.mock('@/features/phira-chart-download/chart-package-download', () => ({
   downloadPhiraChartPackage: jest.fn(),
 }));
 jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({

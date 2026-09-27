@@ -18,8 +18,9 @@ export function getRuntimeLogDatabase(): Promise<SQLiteDatabase> {
 }
 /** 同一连接的 schema、写入和事务共用队列，防止无关写入进入另一操作的事务。 */
 let writeChain: Promise<void> = Promise.resolve();
+let runtimeLogWriteChain: Promise<void> = Promise.resolve();
 
-/** 进程内唯一的 rranker.db 连接，避免 Android 多开触发 NativeDatabase NPE。 */
+/** 进程内唯一的业务数据库连接，保证事务与写入队列操作同一连接。 */
 export function getRrankerDatabase(): Promise<SQLiteDatabase> {
   if (!databasePromise) {
     databasePromise = SQLite.openDatabaseAsync(DATABASE_NAME).catch((error) => {
@@ -38,8 +39,11 @@ export function runDatabaseWrite<T>(task: () => Promise<T>): Promise<T> {
 }
 
 /** schema 初始化与业务写入串行，仍由各仓库维护可重试的初始化锁。 */
-export function runSerializedSchemaInit(task: () => Promise<void>): Promise<void> {
-  return runDatabaseWrite(task);
+export function runSerializedSchemaInit(task: () => Promise<void>, domain: 'business' | 'runtime-log' = 'business'): Promise<void> {
+  if (domain === 'business') return runDatabaseWrite(task);
+  const run = runtimeLogWriteChain.then(task, task);
+  runtimeLogWriteChain = run.then(() => undefined, () => undefined);
+  return run;
 }
 
 /**
@@ -85,5 +89,7 @@ export async function measureRrankerDatabaseAllocation(): Promise<RrankerDatabas
 /** 测试用：重置单例与 schema 串行链。 */
 export function resetRrankerDatabaseForTests(): void {
   databasePromise = null;
+  runtimeLogDatabasePromise = null;
+  runtimeLogWriteChain = Promise.resolve();
   writeChain = Promise.resolve();
 }

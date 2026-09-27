@@ -1,7 +1,8 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ProviderError, providerErrorFromStatus } from '@/providers/errors';
-import { requestJson, retryAfterMs } from '@/providers/http-json';
+import { readProviderResponseBytes, requestJson, retryAfterMs } from '@/providers/http-json';
+import { SessionPersistenceError } from '@/domain/session-vault';
 
 const schema = z.object({ ok: z.boolean() });
 
@@ -22,6 +23,12 @@ function failingFetcher(status: number, headers: Record<string, string> = {}) {
 }
 
 describe('公共请求执行器的尝试次数合同', () => {
+  it('成功响应的凭据提交失败保留本机阶段且不重新发网络请求', async () => {
+    const error = new SessionPersistenceError('credential_storage', { cause: new Error('native secure storage failure') });
+    const fetcher = vi.fn(async () => new Response(JSON.stringify({ ok: true })));
+    await expect(requestJson(options({ fetcher, totalAttempts: 3, onResponse: () => { throw error; } }))).rejects.toBe(error);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it('总尝试次数由 totalAttempts 明确表达', async () => {
     const fetcher = failingFetcher(503);
     await expect(requestJson(options({ fetcher: fetcher as typeof fetch, totalAttempts: 4 }))).rejects.toBeInstanceOf(ProviderError);
@@ -133,6 +140,7 @@ describe('公共请求执行器的请求头合同', () => {
     expect(headers.get('Cache-Control')).toBe('no-store');
     expect(headers.get('Authorization')).toBe('Bearer token');
     expect(headers.get('x-api-version')).toBe('20220705');
+    expect(fetcher.mock.calls[0]![1]).toMatchObject({ credentials: 'omit', redirect: 'error' });
   });
 
   it('Retry-After 支持秒与 HTTP 日期，并受上限约束', () => {
@@ -141,5 +149,59 @@ describe('公共请求执行器的请求头合同', () => {
     expect(retryAfterMs(new Response('', { headers: { 'Retry-After': '30' } }))).toBe(5_000);
     expect(retryAfterMs(new Response('', { headers: { 'Retry-After': '30' } }), 60_000)).toBe(30_000);
     expect(retryAfterMs(new Response(''))).toBe(1_000);
+  });
+});
+
+describe('公共请求执行器的实际响应预算与凭据边界', () => {
+  it.each([undefined, '1'])('按实际流字节中止缺少或伪造长度的响应：%s', async declared => {
+    const cancel = vi.fn();
+    const body = new ReadableStream<Uint8Array>({
+      start(controller) { controller.enqueue(new Uint8Array(4)); controller.enqueue(new Uint8Array(4)); }, cancel,
+    });
+    const response = new Response(body, { headers: declared ? { 'Content-Length': declared } : {} });
+    await expect(readProviderResponseBytes(response, { maxBytes: 5 })).rejects.toMatchObject({ code: 'upstream_schema', retryable: false });
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('超时覆盖收到headers之后仍未完成的正文，并中止流', async () => {
+    const cancel = vi.fn();
+    const fetcher = vi.fn(async () => new Response(new ReadableStream({ cancel })));
+    await expect(requestJson(options({ fetcher: fetcher as typeof fetch, totalAttempts: 1, timeoutMs: 10 }))).rejects.toMatchObject({ code: 'timeout' });
+    expect(cancel).toHaveBeenCalledTimes(1);
+  });
+
+  it('正文读取时透传用户取消，取消错误不会被解析或重试', async () => {
+    const controller = new AbortController();
+    const reason = new Error('取消读取');
+    const cancel = vi.fn();
+    const fetcher = vi.fn(async () => new Response(new ReadableStream({ cancel })));
+    const task = requestJson(options({ fetcher: fetcher as typeof fetch, signal: controller.signal, totalAttempts: 2 }));
+    setTimeout(() => controller.abort(reason), 0);
+    await expect(task).rejects.toBe(reason);
+    expect(cancel).toHaveBeenCalledTimes(1);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('拒绝凭据请求的跨origin响应且不执行会话提交', async () => {
+    const onResponse = vi.fn(); const cancel = vi.fn();
+    const response = new Response(new ReadableStream({ cancel }));
+    Object.defineProperty(response, 'url', { value: 'https://other.test/profile' });
+    const fetcher = vi.fn(async (_url: string, _init?: RequestInit) => response);
+    await expect(requestJson(options({ fetcher: fetcher as typeof fetch, authenticated: true, totalAttempts: 1, onResponse,
+      init: { credentials: 'include', redirect: 'follow', headers: { Cookie: 'session=test' } },
+    }))).rejects.toMatchObject({ code: 'permission' });
+    expect(onResponse).not.toHaveBeenCalled(); expect(cancel).toHaveBeenCalledTimes(1);
+    expect(fetcher.mock.calls[0]?.[1]).toMatchObject({ credentials: 'omit', redirect: 'error' });
+  });
+
+  it('只有成功状态、完整有效正文和schema通过后才能提交响应会话', async () => {
+    for (const response of [new Response('', { status: 401 }), new Response('{"ok":"wrong"}')]) {
+      const onResponse = vi.fn();
+      await expect(requestJson(options({ fetcher: vi.fn(async () => response) as typeof fetch, totalAttempts: 1, onResponse }))).rejects.toBeInstanceOf(ProviderError);
+      expect(onResponse).not.toHaveBeenCalled();
+    }
+    const onResponse = vi.fn();
+    await expect(requestJson(options({ onResponse }))).resolves.toEqual({ ok: true });
+    expect(onResponse).toHaveBeenCalledTimes(1);
   });
 });

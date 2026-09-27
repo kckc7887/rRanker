@@ -1,6 +1,7 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import { LxnsEnvelopeSchema } from '@/domain/schemas';
 import { ProviderError, providerErrorFromStatus, type ProviderStatusTexts } from './errors';
+import { requestJson } from './http-json';
 import { LXNS_API_ROOT } from './lxns-config';
 import {
   lxnsAccessTokenExpired,
@@ -91,51 +92,32 @@ export class LxnsOAuthRequestCore {
     const accessToken = await this.ensureFreshAccessToken();
     // 刷新可能耗时：轮换结果仍会为其它共享账号提交，但这次业务读取必须先重新确认取消。
     assertNotAborted(signal);
-    const controller = new AbortController();
-    const onExternalAbort = () => controller.abort();
-    signal?.addEventListener('abort', onExternalAbort, { once: true });
-    const timeout = setTimeout(() => controller.abort(), 12_000);
     try {
-      const response = await expoFetch(`${LXNS_API_ROOT}${path}`, {
-        headers: {
+      const envelope = await requestJson({
+        baseUrl: LXNS_API_ROOT, path, schema: LxnsEnvelopeSchema,
+        fetcher: expoFetch as unknown as typeof fetch, label: '落雪', signal,
+        authenticated: true, totalAttempts: 1, error: lxnsErrorFromStatus,
+        messages: { schema: texts.envelopeSchemaMessage, timeout: texts.timeoutMessage, network: '无法连接落雪服务' },
+        init: { headers: {
           Accept: 'application/json',
           Authorization: `Bearer ${accessToken}`,
-        },
-        signal: controller.signal,
+        } },
       });
-      if (optional && response.status === 404) return null;
-      if (!response.ok) {
-        const error = lxnsErrorFromStatus(response.status);
-        throw new ProviderError(error.code, `${error.message}（${path}）`, error.retryable, { cause: error });
-      }
-      const payload: unknown = await response.json();
-      const envelope = LxnsEnvelopeSchema.safeParse(payload);
       if (!envelope.success) {
-        throw new ProviderError('upstream_schema', texts.envelopeSchemaMessage, true);
-      }
-      if (!envelope.data.success) {
-        if (optional && envelope.data.code === 404) return null;
+        if (optional && envelope.code === 404) return null;
         throw new ProviderError(
           'authentication',
-          envelope.data.message ?? texts.authRejectedFallback,
+          envelope.message ?? texts.authRejectedFallback,
           false,
         );
       }
-      if (optional && (envelope.data.data === null || envelope.data.data === undefined)) return null;
-      return envelope.data.data;
+      if (optional && (envelope.data === null || envelope.data === undefined)) return null;
+      return envelope.data;
     } catch (error) {
-      if (signal?.aborted) throw error;
+      if (signal?.aborted) throw signal.reason;
+      if (optional && error instanceof ProviderError && error.code === 'no_data') return null;
       if (error instanceof ProviderError) throw error;
-      if (error instanceof SyntaxError) {
-        throw new ProviderError('upstream_schema', '落雪返回了无效 JSON', true, { cause: error });
-      }
-      if (error instanceof Error && error.name === 'AbortError') {
-        throw new ProviderError('timeout', texts.timeoutMessage, true, { cause: error });
-      }
       throw new ProviderError('network', '无法连接落雪服务', true, { cause: error });
-    } finally {
-      clearTimeout(timeout);
-      signal?.removeEventListener('abort', onExternalAbort);
     }
   }
 }

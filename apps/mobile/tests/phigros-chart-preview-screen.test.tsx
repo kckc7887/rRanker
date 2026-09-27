@@ -3,7 +3,7 @@ import { jest } from '@jest/globals';
 import { BackHandler } from 'react-native';
 import JSZip from 'jszip';
 import PhigrosChartPreviewScreen from '../app/songs/phigros-chart-preview';
-import { stageChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
+import { stageChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-navigation';
 
 const mockInjectJavaScript = jest.fn();
 const mockShowAction = jest.fn(() => 1);
@@ -191,6 +191,15 @@ describe('PhigrosChartPreviewScreen', () => {
   it('phigros 参数经 OSS 解析后注入谱面确认配置并渲染 WebView', async () => {
     await render(<PhigrosChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
+    const webview = screen.getByTestId('phigros-chart-preview-webview');
+    expect(webview.props.allowFileAccessFromFileURLs).toBe(true);
+    expect(webview.props.allowUniversalAccessFromFileURLs).toBe(false);
+    expect(webview.props.sharedCookiesEnabled).toBe(false);
+    expect(webview.props.thirdPartyCookiesEnabled).toBe(false);
+    expect(webview.props.mixedContentMode).toBe('never');
+    expect(webview.props.onShouldStartLoadWithRequest({ url: 'file:///phigros-chart-preview/index.html', isTopFrame: true })).toBe(true);
+    expect(webview.props.onShouldStartLoadWithRequest({ url: 'https://other.test/', isTopFrame: false })).toBe(false);
+    expect(webview.props.onShouldStartLoadWithRequest({ url: 'file:///private/index.html', isTopFrame: false })).toBe(false);
 
     await waitFor(() => expect(mockPrepare).toHaveBeenCalledWith(expect.objectContaining({
       game: 'phigros',

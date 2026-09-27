@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import Storage from '@/storage/key-value-storage';
 import type { GameId } from '@/domain/game-bind-options';
 
 /** 可勾选清除的类别：各游戏 id + 共享缓存。 */

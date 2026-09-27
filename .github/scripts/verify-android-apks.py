@@ -1,0 +1,112 @@
+import json
+import hashlib
+import os
+from pathlib import Path
+import re
+import shutil
+import subprocess
+import zipfile
+
+config = json.loads(Path("app.json").read_text())["expo"]
+version = config["version"]
+build = config["android"]["versionCode"]
+if not isinstance(version, str) or not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.+_-]*", version):
+    raise ValueError("Invalid expo.version for an APK filename")
+if type(build) is not int or not 1 <= build <= 2100000000:
+    raise ValueError("Invalid expo.android.versionCode")
+
+expected = {"armeabi-v7a", "arm64-v8a", "x86", "x86_64"}
+release = Path("android/app/build/outputs/apk/release")
+metadata = json.loads((release / "output-metadata.json").read_text())
+elements = metadata["elements"]
+if len(elements) != len(expected):
+    raise ValueError("Expected exactly four APK outputs")
+
+sdk = Path(os.environ["ANDROID_HOME"])
+tool_dirs = [p for p in (sdk / "build-tools").iterdir() if re.fullmatch(r"\d+\.\d+\.\d+", p.name)]
+build_tools = max(tool_dirs, key=lambda p: tuple(map(int, p.name.split("."))))
+verified = {}
+for element in elements:
+    filters = element["filters"]
+    if len(filters) != 1 or filters[0]["filterType"] != "ABI":
+        raise ValueError("Expected one ABI filter per APK")
+    abi = filters[0]["value"]
+    if abi not in expected or abi in verified:
+        raise ValueError(f"Unexpected or duplicate ABI: {abi}")
+    if element["versionName"] != version or element["versionCode"] != build:
+        raise ValueError(f"Version mismatch for {abi}")
+    apk = release / element["outputFile"]
+    if apk.parent != release or not apk.is_file() or apk.suffix != ".apk":
+        raise ValueError(f"Invalid APK output: {apk}")
+    with zipfile.ZipFile(apk) as archive:
+        native_abis = {name.split("/")[1] for name in archive.namelist() if name.startswith("lib/") and name.endswith(".so")}
+    if native_abis != {abi}:
+        raise ValueError(f"Native libraries do not match {abi}: {native_abis}")
+    badging = subprocess.check_output([str(build_tools / "aapt"), "dump", "badging", str(apk)], text=True)
+    package_line = next(line for line in badging.splitlines() if line.startswith("package:"))
+    attributes = dict(re.findall(r"(\w+)='([^']*)'", package_line))
+    if (attributes.get("name"), attributes.get("versionName"), attributes.get("versionCode")) != (config["android"]["package"], version, str(build)):
+        raise ValueError(f"APK manifest mismatch for {abi}")
+    verify_output = subprocess.check_output(
+        [str(build_tools / "apksigner"), "verify", "--print-certs", str(apk)], text=True)
+    sha256 = next((line.split("SHA-256 digest:")[1].strip()
+                   for line in verify_output.splitlines() if "SHA-256 digest:" in line), "")
+    subject = next((line.split("certificate DN:")[1].strip()
+                    for line in verify_output.splitlines() if "certificate DN:" in line), "")
+    if not sha256 or not subject:
+        raise ValueError(f"Could not read signing certificate for {abi}")
+    if os.environ.get("SIGNING_MODE") == "release" and "Android Debug" in subject:
+        raise ValueError(f"Expected formal signing for {abi}, got debug certificate")
+    verified[abi] = (apk, sha256, subject)
+
+if {apk for apk, _sha256, _subject in verified.values()} != set(release.glob("*.apk")):
+    raise ValueError("APK files do not match output metadata")
+fingerprints = {sha256 for _apk, sha256, _subject in verified.values()}
+if len(fingerprints) != 1:
+    raise ValueError(f"APK signing certificates differ: {fingerprints}")
+fingerprint = fingerprints.pop()
+output = Path("build/android-apks")
+output.mkdir(parents=True, exist_ok=True)
+names = []
+evidence = {"sourceSha": os.environ["BUILD_SOURCE_COMMIT"], "optimizationMode": os.environ.get("ANDROID_OPTIMIZATION_MODE", "A"), "signingMode": os.environ["SIGNING_MODE"], "apks": []}
+if not re.fullmatch(r"[a-f0-9]{40}", evidence["sourceSha"]):
+    raise ValueError("Missing immutable source identity")
+if subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() != evidence["sourceSha"]:
+    raise ValueError("Build source identity does not match checkout")
+properties = Path("android/gradle.properties").read_text()
+app_gradle = Path("android/app/build.gradle").read_text()
+rules = Path("android/app/proguard-rules.pro").read_text()
+evidence["optimization"] = {
+    "minify": bool(re.search(r"^android.enableMinifyInReleaseBuilds=true$", properties, re.M)),
+    "shrink": bool(re.search(r"^android.enableShrinkResourcesInReleaseBuilds=true$", properties, re.M)),
+    "optimize": 'getDefaultProguardFile("proguard-android-optimize.txt")' in app_gradle,
+}
+expected_modes = {"A": (True, True, True), "B": (False, False, False), "C": (True, False, False), "D": (True, False, True)}
+if tuple(evidence["optimization"].values()) != expected_modes.get(evidence["optimizationMode"]):
+    raise ValueError("Generated native optimization settings do not match build mode")
+evidence["recordAnnotationRule"] = "-keep @interface expo.modules.kotlin.records.** { *; }" in rules
+if not evidence["recordAnnotationRule"]:
+    raise ValueError("Expo Record runtime annotation rule missing from generated native project")
+for source, name in [("android/gradle.properties", "gradle-properties.txt"), ("android/app/build.gradle", "app-gradle.txt"), ("android/app/proguard-rules.pro", "proguard-rules.txt")]:
+    shutil.copy2(source, output / name)
+mapping = Path("android/app/build/outputs/mapping/release/mapping.txt")
+if evidence["optimization"]["minify"]:
+    if not mapping.is_file():
+        raise ValueError("R8 build mapping is missing")
+    shutil.copy2(mapping, output / "mapping.txt")
+for abi, (apk, _sha256, _subject) in sorted(verified.items()):
+    name = f"rRanker-{version}({build})-{abi}.apk"
+    shutil.copy2(apk, output / name)
+    names.append(name)
+    evidence["apks"].append({"file": name, "abi": abi, "sha256": hashlib.sha256(apk.read_bytes()).hexdigest(), "certificateSha256": fingerprint})
+    print(name)
+(output / "verification.json").write_text(json.dumps(evidence, indent=2) + "\n")
+with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
+    stream.write(f"artifact_name=rRanker-{version}({build})-android\n")
+if os.environ.get("SIGNING_MODE") == "release":
+    signing = f"Formal release keystore (SHA-256 `{fingerprint}`)."
+else:
+    signing = "Expo's default debug keystore (test build, not for store release)."
+with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as stream:
+    stream.write("## Android APKs\n\n" + "\n".join(f"- `{name}`" for name in names))
+    stream.write(f"\n\nSigning: {signing}\n")

@@ -3,8 +3,7 @@ import type { DataSource } from '@/domain/models';
 import type { HttpCookieSession } from '@/providers/http-cookies';
 import { MajdataProvider, majdataProvider } from '@/providers/majdata-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import { SecureSessionStore } from '@/storage/secure-session-store';
-import { useSession } from '@/state/session-store';
+import { applyMajdataSessionRotation, useSession } from '@/state/session-store';
 import { snapshotSource, captureResourceWrites, createInflightGuard, resourceWriteGeneration } from './snapshot-cache-utils';
 import { parseSimaiChart } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import { simaiStatistics } from '@/features/simai-chart-preview/statistics';
@@ -47,10 +46,10 @@ export async function loadMajdataFresh(id: string, session: HttpCookieSession, s
     assertCurrent();
     const state = useSession.getState();
     if (signal?.aborted || accountRequests.get(id) !== generation || state.sessionsByAccountId[id] !== expected) return;
-    useSession.setState({ sessionsByAccountId: { ...state.sessionsByAccountId, [id]: next },
-      ...(state.activeAccountId === id ? { session: next } : {}) });
-    expected = next;
-    await new SecureSessionStore().updateAccountSession(id, next);
+    await applyMajdataSessionRotation(id, next, expected, signal);
+    assertCurrent();
+    expected = useSession.getState().sessionsByAccountId[id]?.mode === 'http-cookies'
+      ? useSession.getState().sessionsByAccountId[id] as HttpCookieSession : expected;
   });
   const player = await provider.getPlayer(signal);
   const records = await provider.getRecords(signal);
