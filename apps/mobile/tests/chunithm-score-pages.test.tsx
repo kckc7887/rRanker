@@ -32,6 +32,7 @@ jest.spyOn(Animated, 'loop').mockReturnValue({
 } as unknown as ReturnType<typeof Animated.loop>);
 
 jest.mock('@/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
   CachedTabScreen: ({ children }: { children: unknown }) => children,
   useCachedTabActive: () => true,
 }));

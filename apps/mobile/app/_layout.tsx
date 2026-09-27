@@ -1,4 +1,4 @@
-import { useEffect } from 'react';
+import { memo, useEffect, useMemo } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
 import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
 import { Stack, type ErrorBoundaryProps } from 'expo-router';
@@ -41,23 +41,28 @@ function RootLayoutContent() {
   return (
     <RemoteImageActivityScope active={lifecycle.phase !== 'background'}>
       <QueryClientProvider client={queryClient}>
+        <AccountMetadataObserver />
         <AppThemeProvider><ThemedNavigation /></AppThemeProvider>
       </QueryClientProvider>
     </RemoteImageActivityScope>
   );
 }
 
-function ThemedNavigation() {
+function AccountMetadataObserver() {
   useSyncAccountMetadata();
+  return null;
+}
+
+const ThemedNavigation = memo(function ThemedNavigation() {
   const theme = useAppTheme();
-  const navigationTheme = {
+  const navigationTheme = useMemo(() => ({
     ...(theme.dark ? DarkTheme : DefaultTheme),
     colors: {
       ...(theme.dark ? DarkTheme.colors : DefaultTheme.colors),
       primary: theme.accent, background: theme.background, card: theme.surface,
       text: theme.text, border: theme.border, notification: theme.accent,
     },
-  };
+  }), [theme]);
   return <ThemeProvider value={navigationTheme}>
     <NotificationProvider>
       <Stack screenOptions={{
@@ -84,7 +89,7 @@ function ThemedNavigation() {
       <StatusBar style={theme.statusBar} />
     </NotificationProvider>
   </ThemeProvider>;
-}
+});
 
 const styles = StyleSheet.create({
   loading: { flex: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: '#F7F8FA' },

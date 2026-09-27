@@ -42,6 +42,7 @@ export function useGameData(enabled = true) {
   const query = useQuery({
     queryKey,
     enabled: enabled && tabActive,
+    notifyOnChangeProps: tabActive ? undefined : [],
     // 规范查询选项集中在 services/game-data-query.ts：一个实体只有一份新鲜度策略。
     ...GAME_DATA_QUERY_OPTIONS,
     queryFn: async ({ signal }): Promise<GameDataBundle> => {

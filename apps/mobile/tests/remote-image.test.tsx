@@ -1,5 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { InteractionManager } from 'react-native';
 import {
   RemoteImage,
   RemoteImageActivityScope,
@@ -40,6 +41,32 @@ const cachedResult = {
 };
 
 describe('RemoteImage 压缩垫图', () => {
+  it('等待交互结束再落盘，离开可见区域时取消排队任务', async () => {
+    const callbacks: (() => void)[] = [];
+    const cancel = jest.fn();
+    const schedule = jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
+      if (typeof callback === 'function') callbacks.push(callback);
+      return { cancel, then: jest.fn(), done: jest.fn() } as ReturnType<typeof InteractionManager.runAfterInteractions>;
+    });
+    mockFind.mockResolvedValue(null);
+    const tree = (enabled: boolean) => <RemoteImagePersistenceScope enabled={enabled}>
+      <RemoteImage cacheProfile="thumbnail" gameId="maimai" source={remoteSource} testID="cover" />
+    </RemoteImagePersistenceScope>;
+    try {
+      const screen = await render(tree(true));
+      await waitFor(() => expect(screen.getByTestId('cover').props.source).toBe(remoteSource));
+      await fireEvent(screen.getByTestId('cover'), 'display');
+      expect(callbacks).toHaveLength(1);
+      expect(mockCache).not.toHaveBeenCalled();
+      await screen.rerender(tree(false));
+      expect(cancel).toHaveBeenCalledTimes(1);
+      callbacks[0]();
+      expect(mockCache).not.toHaveBeenCalled();
+      await screen.unmount();
+    } finally {
+      schedule.mockRestore();
+    }
+  });
   it('keeps an equal source object stable and rechecks changed headers or cache identity', async () => {
     mockFind.mockResolvedValue(cachedResult);
     const tree = (token = 'first', cacheKey = 'cover') => <RemoteImage cacheProfile="thumbnail" gameId="maimai" testID="cover"

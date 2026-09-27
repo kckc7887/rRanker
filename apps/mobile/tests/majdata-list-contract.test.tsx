@@ -36,7 +36,10 @@ jest.mock('expo-router', () => ({ router: { push: (href: unknown) => mockPush(hr
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 34 }));
 jest.mock('@/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: string) => value }));
-jest.mock('@/components/CachedTabScreen', () => ({ useCachedTabActive: () => mockTabActive }));
+jest.mock('@/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+  useCachedTabActive: () => mockTabActive,
+}));
 jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({ activeAccountId: 'player', activeGameId: 'majdata-net' }) }));
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ isLoading: false, isError: false, isRefetching: false, refetch: jest.fn(), data: {
   payload: { kind: 'majdata-net', snapshot: { player: { username: 'player' }, records: mockRecords,

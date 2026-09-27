@@ -42,7 +42,7 @@ export function MaimaiRecordsScreen() {
   } = useRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const searchBySongId = useMemo(() => new Map(buildSongSearchIndex(catalog.data?.songs ?? [])
-    .map(({ song, text, compact }) => [song.id, { text, compact }] as const)), [catalog.data?.songs]);
+    .map((entry) => [entry.song.id, entry] as const)), [catalog.data?.songs]);
   const dxRatingTagIndex = useMemo(() => buildDxRatingChartTagIndex(
     dxRatingChartTags.data,
     catalog.data?.songs ?? [],

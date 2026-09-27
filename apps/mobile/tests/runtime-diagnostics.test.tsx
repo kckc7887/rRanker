@@ -157,11 +157,13 @@ describe('本地运行诊断', () => {
 
   it('并发记录时串行写入且不丢失事件', async () => {
     await initializeRuntimeDiagnostics();
+    mockWrite.mockClear();
     await Promise.all(Array.from({ length: 20 }, (_, index) => recordRuntimeDiagnostic('task', {
       taskPhase: `phase-${index}`,
     })));
 
     expect(mockWriteState.maximum).toBe(1);
+    expect(mockWrite).toHaveBeenCalledTimes(1);
     const saved = JSON.parse(mockFiles.get('document/rranker-runtime-diagnostics.json') ?? '{}') as {
       sessions?: { events: RuntimeDiagnosticEvent[] }[];
     };

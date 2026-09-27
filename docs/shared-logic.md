@@ -176,6 +176,10 @@ Muse Dash 的成就筛选依赖单曲 miss 明细：`museDashMissDetail` 把 `nu
 
 曲库查询的非 React 入口位于 `services/aliased-catalog-query.ts`（`AliasedCatalogOptions`、`loadAliasedCatalog`、`aliasedCatalogSource`）与 `services/maimai-catalog-query.ts`、`chunithm-catalog-query.ts`、`phigros-catalog-query.ts`、`rizline-catalog-query.ts`。`ensure*Catalog(client, …)` / `refresh*Catalog(client, …)` 显式接收 QueryClient；`useAliasedCatalog` 与游戏 Hook 只订阅规范选项。加载器由 `gameDataCatalogQueries(client)` 读取这些入口，不调用 Hook。
 
+`loadAliasedCatalog` 并行发起目录和别名读取，保留别名失败时目录可用的语义；`cache-first.test.ts` 覆盖并发和可选失败。`useGameData`、`useAliasedCatalog`、`useUserLibrary` 根据 `useCachedTabActive()` 暂停隐藏页的查询通知，回到活动状态直接读取最新 Query 缓存；`enabled=false` 的根部观察者仍正常订阅，见 `account-metadata-observers.test.tsx`。
+
+`utils/search.ts` 的 `buildSearchDocument(values: readonly string[]): SearchDocument` 捕获输入副本，首次读取 `text` / `compact` 时生成并缓存转写文本；`buildSongSearchIndex(songs)` 保留惰性属性，消费者不得通过展开或解构提前物化全文。`searchDocumentMatches(document, keyword)` 与 `searchSongs(index, filters, chartPredicate?)` 复用最近一个关键词的变体，空词不读取索引文本。`advanced-search.test.ts` 覆盖转写次数、输入隔离和搜索语义。
+
 `services/phigros-game-data-service.ts` 的 `loadPhigrosGameData` 接收账号、成绩/曲库 Provider、
 快照缓存、会话数据状态、AbortSignal 和写入断言，负责首次兼容快照与显式云存档读取。
 服务不调用 Hook；`useGameData(enabled = true)` 负责查询键与查询选项、把发布/读取/失效端口
@@ -390,7 +394,7 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
 ### 账号同步与缓存写入
 
 - `domain/game-data.ts` 的 `gameAccountMetadata(bundle)` 只构造纯展示载荷；
-  `useSyncAccountMetadata()` 在根布局的 QueryClientProvider 内挂载一次，订阅
+  `useSyncAccountMetadata()` 在根布局 QueryClientProvider 内的独立 `AccountMetadataObserver` 中挂载一次，与主题和导航树并列，订阅
   `useGameData(false)` 并调用现有账号、缩略信息、头像和安全仓库入口。页面使用
   `useGameData` 读取数据，元数据持久化只由根部订阅执行。
 - `updateBoundAccountScore` 与 `SecureSessionStore.updateAccountMetadata` 对现有字段
@@ -487,7 +491,7 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
   不修改已有 formatVersion、记录结构或数据库表，旧记录继续分享。
 - 日志正文不属于缓存；分享副本复用 `expo-sharing` 和现有 `rranker-` 临时缓存规则。
   `runtime-diagnostics.ts` 的 `snapshotRuntimeDiagnostics(): Promise<RuntimeDiagnosticStore>`
-  将读取排入既有串行队列，返回独立快照，保持最近三次启动/256 条事件的上限。
+  将读取排入既有串行队列，返回独立快照，保持最近三次启动/256 条事件的上限。尚未开始写入的连续事件合并为最多 256 条的有序批次，共用一次读写和完成 Promise；快照调用切断批次，后续事件在快照后写入。`runtime-diagnostics.test.tsx` 覆盖批量写入次数、快照顺序及失败恢复。
   简要诊断正文使用 `Paths.document/rranker-runtime-diagnostics.json`；有效正文优先，
   缺失或损坏时依次读取同目录 `.previous` 完整副本、缓存目录中的同名文件。
   写入先完成同目录 `.pending` 暂存，再保留有效正文并提升暂存文件；提升成功后回收
@@ -578,12 +582,14 @@ Kyou 标签、评级主题和具体字段。Phira 使用自身 `PhiraFilterBar` 
 `SongDetailChromeStyles.ts` 的 `VERTICAL_SONG_DETAIL_STYLES`，不引用 Phigros 页面。
 Muse Dash 筛选字段类型位于 `domain/muse-dash.ts`，State 与 UI 均从领域层导入。
 
-列表可见性通过条目级 `useSyncExternalStore` 订阅，仅通知发生变化的图片持久化 scope；
+列表可见性通过条目级 `useSyncExternalStore` 订阅，仅通知发生变化的图片持久化及内容活动 scope；
 不替换列表 renderItem、extraData、宿主或窗口参数。`RemoteImage` 的缓存查找依赖
 URL、请求头和 cacheKey 的稳定身份，等价 source 对象不会重置已显示状态。
 `remote-image-cache` 保留既有压缩参数和预算；并发消费者独立取消，临时文件隔离，
 读取 manifest 后再次检查代次才发布文件。`list-viewability-subscriptions.test.tsx` 与
 `remote-image-cache.test.ts` / `remote-image.test.tsx` 覆盖通知次数、等价身份和迟到写入。
+
+`CachedContentActivityScope({ active, children })` 在 `CachedTabScreen.tsx` 中复用活动 Context，取父级与本级的交集。共享列表行以可见性驱动该 scope，`useFlowingProgress` 和 `AutoScrollText` 在行离屏、标签失活或应用未就绪时停止动画。`hooks/use-reduced-motion.ts` 的 `useReducedMotion(): boolean` 通过 `useSyncExternalStore` 共享一个原生减少动态效果监听，最后一个消费者卸载时释放，迟到初始读取不能覆盖新事件。`tab-animation-lifecycle.test.tsx` 覆盖父子活动交集和多卡片订阅数量。`RemoteImage` 在在线图显示且具备持久化资格后，经 `InteractionManager.runAfterInteractions` 启动压缩落盘；资格撤销同时取消排队和消费者，不改变容量或图片回退策略。
 
 `BestListPage` 内部的 `RemoteImageSectionList` 按对象身份识别分组标题与尾部，
 保护列表级和分组级 `keyExtractor`，只将真实条目交给图片可见订阅与业务回调。

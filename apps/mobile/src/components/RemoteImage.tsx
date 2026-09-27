@@ -8,6 +8,7 @@ import {
   useState,
 } from 'react';
 import { Image, type ImageProps } from 'expo-image';
+import { InteractionManager } from 'react-native';
 import {
   cacheCompressedRemoteImage,
   findCompressedRemoteImage,
@@ -141,14 +142,18 @@ export function RemoteImage({
       || !remoteDisplayed
       || resolved) return undefined;
     const controller = new AbortController();
-    void cacheCompressedRemoteImage(requestSource, { gameId: gameId!, profile: mode }, controller.signal)
-      .then((result) => {
-        if (controller.signal.aborted || !result) return;
-        releaseRef.current = result.release;
-        setResolved(result);
-      })
-      .catch(() => undefined);
-    return () => controller.abort();
+    const task = InteractionManager.runAfterInteractions(() => {
+      if (controller.signal.aborted) return;
+      void cacheCompressedRemoteImage(requestSource, { gameId: gameId!, profile: mode }, controller.signal)
+        .then((result) => {
+          if (controller.signal.aborted) { result?.release?.(); return; }
+          if (!result) return;
+          releaseRef.current = result.release;
+          setResolved(result);
+        })
+        .catch(() => undefined);
+    });
+    return () => { task.cancel(); controller.abort(); };
   }, [active, gameId, mode, persistenceEnabled, remoteDisplayed, requestKey, resolved, requestSource]);
 
   if (!supportsNativeCachePolicy) {

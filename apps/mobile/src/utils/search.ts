@@ -103,7 +103,18 @@ function documentVariants(value: string): string[] {
   return uniqueSearchVariants([source, hiragana, romaji, romajiFromKana]);
 }
 
+let lastKeyword: string | undefined;
+let lastKeywordVariants: string[] = [];
+
 function keywordVariants(keyword: string): string[] {
+  if (keyword === lastKeyword) return lastKeywordVariants;
+  const variants = buildKeywordVariants(keyword);
+  lastKeyword = keyword;
+  lastKeywordVariants = variants;
+  return variants;
+}
+
+function buildKeywordVariants(keyword: string): string[] {
   const source = normalizeSearchText(keyword);
   if (!source) return [];
   const hiragana = canonicalizeSearchKana(normalizeSearchText(toHiragana(source)));
@@ -125,8 +136,16 @@ function keywordVariants(keyword: string): string[] {
 }
 
 export function buildSearchDocument(values: readonly string[]): SearchDocument {
-  const normalized = values.flatMap((value) => documentVariants(value));
-  return { text: normalized.join('\u0000'), compact: normalized.map(compactSearchText).join('\u0000') };
+  const inputs = [...values];
+  let document: SearchDocument | undefined;
+  const read = () => {
+    if (!document) {
+      const normalized = inputs.flatMap((value) => documentVariants(value));
+      document = { text: normalized.join('\u0000'), compact: normalized.map(compactSearchText).join('\u0000') };
+    }
+    return document;
+  };
+  return { get text() { return read().text; }, get compact() { return read().compact; } };
 }
 
 export function searchDocumentMatches(document: SearchDocument, keyword: string): boolean {
@@ -157,7 +176,7 @@ export function buildSongSearchIndex(songs: readonly Song[]): SongSearchEntry[] 
       song.id, song.title, song.artist ?? '', ...(song.aliases ?? []),
       ...song.charts.map((chart) => chart.charter ?? ''),
     ]);
-    return { song, ...document };
+    return { song, get text() { return document.text; }, get compact() { return document.compact; } };
   });
 }
 
@@ -171,11 +190,13 @@ export function searchSongs(
   chartPredicate?: SongChartPredicate,
 ): Song[] {
   const keyword = normalizeSearchText(filters.keyword);
+  const variants = keywordVariants(keyword);
   const min = filters.constantMin ?? Number.NEGATIVE_INFINITY;
   const max = filters.constantMax ?? Number.POSITIVE_INFINITY;
   const hasConstantFilter = filters.constantMin !== undefined || filters.constantMax !== undefined;
-  return index.filter(({ song, ...document }) => {
-    if (keyword && !searchDocumentMatches(document, keyword)) return false;
+  return index.filter((document) => {
+    const { song } = document;
+    if (variants.length && !variants.some((variant) => document.text.includes(variant) || document.compact.includes(variant))) return false;
     if (!includesNumber(filters.songVersionIds, song.versionId)) return false;
     const chartMatch = song.charts.some((chart) =>
       (filters.types.length === 0 || filters.types.includes(chart.type)) &&
