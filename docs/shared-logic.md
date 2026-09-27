@@ -742,6 +742,9 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
 `rizline-chart-preview-controls.test.ts`、`rizline-chart-preview-chart.test.ts`、
 `rizline-chart-preview-playfield.test.ts`、`rizline-chart-preview-build.test.ts` 与
 `rizline-ui.test.tsx`。真机 WebView 音画同步无法用单测代替。
+`decodeAudio(bytes, environment?)` 复用 `PreviewSessionEnvironment` 的音频上下文入口，默认调用方
+只传字节；准备只解码，暂停就绪不请求音频授权。显式播放由 `PreviewSession.playFrom` 等待
+`resume` 并复核命令代次与释放状态，合同由 `rizline-chart-preview-playback.test.ts` 覆盖。
 
 `chart-preview-shared/webview-player/wheel.ts` 的 `setupWheelPopup` 接受元素、即时预览与提交
 回调、范围、初始值、可选文本标签及数值格式，供舞萌、osu! 与 Rizline 使用；返回

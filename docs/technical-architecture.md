@@ -474,6 +474,8 @@ catch 的六类音符本体使用约 50% 不透明度的实心圆与不透明同
 舞台按剩余空间铺满，渲染把 1080×1920（9:16）完整放下并留边；全屏保持竖屏，
 隐藏设置行、保留时间轴、走带和锁定。设置键为 `rranker.rizline-chart-preview.settings.v1`。
 官方 JSON 解析与 Canvas 绘制留在游戏播放器内。真机 WebView 音画同步无法用单测代替。
+准备阶段的 `decodeAudio(bytes, environment?)` 只解码，不恢复音频上下文；suspended 状态也能
+完成暂停就绪。显式播放经 `PreviewSession.playFrom` 等待 `resume`，随后复核命令代次与释放状态。
 
 ### Simai 谱面确认内核
 
