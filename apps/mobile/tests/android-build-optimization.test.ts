@@ -27,11 +27,30 @@ async function runMod<T>(mod: Mod<T>, modResults: NoInfer<T>) {
   return result.modResults;
 }
 
-function mods() {
-  return (withAndroidAbiSplits({ ...app }, undefined) as ExportedConfig).mods!.android!;
+function mods(options?: { minify: boolean; shrink: boolean; optimize: boolean }) {
+  return (withAndroidAbiSplits({ ...app }, options) as ExportedConfig).mods!.android!;
 }
 
 describe('Android release size config plugin', () => {
+  it.each([
+    { minify: false, shrink: false, optimize: false },
+    { minify: true, shrink: false, optimize: false },
+    { minify: true, shrink: false, optimize: true },
+  ])('applies controlled diagnostic settings %j', async (options) => {
+    const configured = mods(options);
+    const properties = await runMod(configured.gradleProperties!, []);
+    expect(properties).toEqual([
+      { type: 'property', key: 'android.enableMinifyInReleaseBuilds', value: String(options.minify) },
+      { type: 'property', key: 'android.enableShrinkResourcesInReleaseBuilds', value: String(options.shrink) },
+    ]);
+    const result = await runMod(configured.appBuildGradle!, { path: 'app/build.gradle', language: 'groovy', contents: template });
+    expect(result.contents).toContain(`getDefaultProguardFile("proguard-android${options.optimize ? '-optimize' : ''}.txt")`);
+    expect(await runMod(configured.appBuildGradle!, result)).toEqual(result);
+  });
+
+  it('rejects resource shrinking without minification', () => {
+    expect(() => mods({ minify: false, shrink: true, optimize: false })).toThrow('optimization');
+  });
   it('enables both shrinkers idempotently and preserves unrelated properties', async () => {
     const mod = mods().gradleProperties!;
     const input: Parameters<typeof mod>[0]['modResults'] = [

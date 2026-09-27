@@ -22,11 +22,15 @@ const SPLITS_BLOCK = `    splits {
  * 一次 assembleRelease 按 ABI 各出一份 APK，避免四合一 fat 包。
  * prebuild 会重写原生文件；分包、R8 和资源裁剪必须由同一插件持久化。
  */
-function withAndroidAbiSplits(config) {
+function withAndroidAbiSplits(config, options = {}) {
+  const { minify = true, shrink = true, optimize = true } = options;
+  if ([minify, shrink, optimize].some(value => typeof value !== 'boolean') || (shrink && !minify)) {
+    throw new Error(`[${TAG}] Invalid release optimization settings`);
+  }
   config = withGradleProperties(config, (config) => {
     for (const key of ['android.enableMinifyInReleaseBuilds', 'android.enableShrinkResourcesInReleaseBuilds']) {
       config.modResults = config.modResults.filter(entry => entry.type !== 'property' || entry.key !== key);
-      config.modResults.push({ type: 'property', key, value: 'true' });
+      config.modResults.push({ type: 'property', key, value: String(key.includes('Minify') ? minify : shrink) });
     }
     return config;
   });
@@ -40,8 +44,8 @@ function withAndroidAbiSplits(config) {
       throw new Error(`[${TAG}] Default ProGuard configuration not found`);
     }
     config.modResults.contents = original.replace(
-      /getDefaultProguardFile\((["'])proguard-android\.txt\1\)/g,
-      'getDefaultProguardFile("proguard-android-optimize.txt")',
+      /getDefaultProguardFile\((["'])proguard-android(?:-optimize)?\.txt\1\)/g,
+      `getDefaultProguardFile("proguard-android${optimize ? '-optimize' : ''}.txt")`,
     );
     const src = config.modResults.contents;
     if (src.includes(`@generated begin ${TAG}`)) {
