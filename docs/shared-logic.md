@@ -974,6 +974,29 @@ MajdataPlay 原始计分方法，普通测试无需 .NET；原生账号、保存
 `host-contract-hash.test.tsx` 自测门禁与差异报告的边界。谱面确认的宿主命令合同由
 `chart-preview-host-contract.test.ts` 直接校验，不走哈希门禁。
 
+## CI 公共合同
+
+常规检查与构建统一由 `.github/workflows/quality.yml` 编排；独立的 Android 原生诊断仅手动运行。
+完整检查同时依赖范围与轻检查成功，`quality-gate` 聚合三者，平台构建不能跳过它。
+纯文档只在范围、轻检查成功且完整检查明确跳过时通过。PR 使用 head.sha，分支使用
+github.sha；policy 输出、质量检查、门禁、checkout 与构建输入必须对应原始事件同一源码。
+
+| 公共入口 | 输入与输出 | 合同测试 |
+|---|---|---|
+| `.github/scripts/build-policy.mjs`：`buildPolicy({ eventName, event, repository, ref, sha })` | 返回 `{ build, production, sha }`；核验原始事件仓库、分支、删除状态、PR 来源与 40 位 SHA。本仓库分支 push/手动运行允许发布构建；同仓 PR 与 fork 自身运行只检查；fork PR 到 master 只允许无生产凭据构建。CLI 对无法验证的事件失败，不输出事件正文 | `build-policy.test.mjs`、`ci-contract.test.mjs` |
+| `.github/actions/changed-scope/action.yml` | `base-sha` / `head-sha`；返回固定枚举 `functional` / `reason` 与计数 `changed-count`。CI、依赖、构建配置走完整检查；仅文档、许可、自述与根级 README 截图可以跳过；无基准或比较失败按功能改动处理 | `changed-scope/self-test.mjs`、轻检查破坏样例 |
+| `.github/actions/android-build/action.yml` | `source-sha`、字符串布尔 `production`、`signing-mode`、`expected-certificate-sha256`、`optimization-mode`；返回 `artifact-name`。同一入口完成四 ABI Release 编译、签名校验、生产路由冒烟和上传；发布模式独立校验 GITHUB_SHA。现有发布选择 `legacy-debug` 并锁定旧证书，fork 只用 `test-debug`；`release` 私有签名模式仍要求完整 keystore 配置 | `ci-contract.test.mjs`；实际 Gradle 与托管设备另行执行 |
+| `.github/scripts/android_signing.py`：`verify_android_signing(apksigner_output, mode, expected_certificate_sha256=None)` | 仅接受单一签名者的证书 DN / SHA-256，区分证书与公钥摘要。`legacy-debug` 必须带合法 pin，任何给定 pin 均严格匹配；`release` 拒绝调试证书。返回同源签名证据与说明，四 ABI 校验器复用它，旧调试签名不标为正式签名 | `android_signing.test.py`，含四 ABI 验证入口 fixture |
+| `.github/actions/ios-build/action.yml` | `source-sha`、字符串布尔 `production`。正式模式校验 GITHUB_SHA，预留编号、签名 Archive/IPA，先保存制品再提交 TestFlight；测试模式不安装签名、不请求 ASC。私钥、profile 与 keychain 在部分失败时仍清理 | `ci-contract.test.mjs`；实际 Xcode、签名与 Apple 处理另行执行 |
+| `.github/scripts/ios-build-number.mjs`：`nextIosBuildNumber(latestBuild, reservedBuilds?)`、`queryReservedIosBuildNumbers(options)`、`reserveIosBuildNumber(env, options?)` | 在全局 iOS 发布锁内取 Apple 最大整数与可信预留最大值加一。查询当前/历史运行的官方仓库 ID、事件、workflow 路径与 SHA；不采信 PR/fork/其它工作流，不下载 artifact 正文。CLI 返回 `build_number` / `artifact_name` / `reservation_path`，预留上传成功后才允许提交 Apple | `ios-build-number.test.mjs`、`ci-contract.test.mjs` |
+| `.github/scripts/verify-ios-archive.py`：`verify_app`、`verify_ipa` | 校验实际 Archive 与最终 IPA 的 Expo buildCommit、Info.plist 包名、版本与构建号。IPA 只读取唯一且有界的配置与 manifest，脱敏身份 JSON 不包含 OAuth 或签名材料 | `verify-ios-archive.test.py` |
+| `.github/scripts/lib/workflow-yaml.mjs`：`validateWorkflow`、`validateAction`、`collectBashRuns`、`collectPowerShellRuns` | 使用固定真实 YAML 解析器，按解码后的 shell 文本检查；PowerShell 只解析 AST，不执行构建脚本。解析器或 shell 不可用时失败 | `check-light.mjs --self-test` |
+
+发布作业只进入 `production-release`，并有独立原始事件守卫；fork 构建作业无发布环境、无
+secrets 引用、checkout 不持久化 Git 凭据。正式 iOS 使用全局串行队列并保留最多 100 个
+等待项，预留 artifact 保留 90 天；失败/取消的预留仍占用。环境、密钥与分支保护是远端配置，
+不能从 YAML 修改推断已部署。自动化仅证明相应合同，不代表原生出包、真实账号或设备验收。
+
 ## 可复现检查
 
 在 `apps/mobile` 执行 `npm run check:architecture`、`npm run check:generated`、
@@ -991,6 +1014,16 @@ critical 无论能否解析出公告编号都失败；报告缺字段、条目�
 仓库轻检查在仓库根目录执行 `node .github/scripts/check-light.mjs`（`--self-test` 额外用故意
 破坏的样例证明每类检查都会失败）：用固定的真实 YAML 解析器（`yaml` 2.9.0，声明在
 `.github/scripts/package.json`，与 `apps/mobile` 依赖树无关）解析 workflow 与 action，
-按解码后的标量检查 `run:` 的 shell 文本、执行 `bash -n`、检查 `.mjs`/`.cjs` 的
+按解码后的标量检查 `run:` 的 shell 文本、执行 `bash -n` 与 PowerShell AST、检查 `.mjs`/`.cjs` 的
 `node --check` 语法，并运行分类器自检 `node .github/actions/changed-scope/self-test.mjs`。
 它只读仓库文件，不安装移动端依赖树。
+
+CI 合同在仓库根目录执行：
+
+```powershell
+node --test .github/scripts/build-policy.test.mjs .github/scripts/ios-build-number.test.mjs .github/scripts/ci-contract.test.mjs
+python -B .github/scripts/verify-ios-archive.test.py
+python -B .github/scripts/android_signing.test.py
+```
+
+这些命令只运行事件、门禁、编号与脱敏制品 fixture，不执行播放器、Expo prebuild 或原生构建。

@@ -1,0 +1,729 @@
+name: Build iOS artifacts
+description: Archive and verify one immutable source, preserve its IPA, and upload trusted signed builds to TestFlight.
+inputs:
+  source-sha:
+    description: Checked-out immutable source SHA
+    required: true
+  production:
+    description: Use provisioned signing and upload to TestFlight
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - name: Verify source and signing authorization
+      shell: bash
+      env:
+        SOURCE_SHA: ${{ inputs.source-sha }}
+        PRODUCTION_BUILD: ${{ inputs.production }}
+      run: |
+        test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+        case "$PRODUCTION_BUILD" in true|false) ;; *) exit 1 ;; esac
+        if [ "$PRODUCTION_BUILD" = true ]; then
+          test "$SOURCE_SHA" = "$GITHUB_SHA"
+          test "$GITHUB_REPOSITORY" = kckc7887/rRanker
+          case "$GITHUB_EVENT_NAME" in push|workflow_dispatch) ;; *) exit 1 ;; esac
+          case "$GITHUB_REF" in refs/heads/*) ;; *) exit 1 ;; esac
+          test "$PRODUCTION_SIGNING_READY" = true
+          for signing_secret in ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_BASE64 BUILD_CERTIFICATE_BASE64 BUILD_PROVISION_PROFILE_BASE64 P12_PASSWORD KEYCHAIN_PASSWORD; do
+            test -n "${!signing_secret:-}"
+          done
+        fi
+    - name: Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: apps/mobile/package-lock.json
+    - name: Read app metadata
+      id: app
+      shell: pwsh
+      run: |
+        $config = Get-Content app.json -Raw | ConvertFrom-Json
+        $version = [string]$config.expo.version
+        $bundleId = [string]$config.expo.ios.bundleIdentifier
+        if ($version -notmatch '^[0-9]+\.[0-9]+\.[0-9]+$') {
+          throw "Invalid expo.version"
+        }
+        if ($bundleId -notmatch '^[A-Za-z0-9.-]+$') {
+          throw "Invalid expo.ios.bundleIdentifier"
+        }
+        "APP_VERSION=$version" >> $env:GITHUB_ENV
+        "BUNDLE_ID=$bundleId" >> $env:GITHUB_ENV
+        "version=$version" >> $env:GITHUB_OUTPUT
+        "bundle_id=$bundleId" >> $env:GITHUB_OUTPUT
+        Write-Host "Version: $version"
+        Write-Host "Bundle ID: $bundleId"
+      working-directory: apps/mobile
+    - name: Prepare App Store Connect API key
+      shell: pwsh
+      env:
+        ASC_KEY_ID: ${{ env.ASC_KEY_ID }}
+        ASC_ISSUER_ID: ${{ env.ASC_ISSUER_ID }}
+        ASC_PRIVATE_KEY_BASE64: ${{ env.ASC_PRIVATE_KEY_BASE64 }}
+      run: |
+        if ($env:ASC_KEY_ID -notmatch '^[A-Za-z0-9]+$') {
+          throw "ASC_KEY_ID is missing"
+        }
+
+        if ([string]::IsNullOrWhiteSpace($env:ASC_ISSUER_ID)) {
+          throw "ASC_ISSUER_ID is missing"
+        }
+
+        if ([string]::IsNullOrWhiteSpace($env:ASC_PRIVATE_KEY_BASE64)) {
+          throw "ASC_PRIVATE_KEY_BASE64 is missing"
+        }
+
+        $keyDirectory = Join-Path $HOME ".appstoreconnect/private_keys"
+
+        New-Item `
+          -ItemType Directory `
+          -Force `
+          -Path "$keyDirectory" |
+          Out-Null
+
+        $keyPath = Join-Path `
+          $keyDirectory `
+          "AuthKey_$($env:ASC_KEY_ID).p8"
+
+        "ASC_KEY_PATH=$keyPath" >> $env:GITHUB_ENV
+
+        [IO.File]::WriteAllBytes(
+          $keyPath,
+          [Convert]::FromBase64String($env:ASC_PRIVATE_KEY_BASE64)
+        )
+
+        chmod 600 "$keyPath"
+
+        "ASC_KEY_PATH=$keyPath" >> $env:GITHUB_ENV
+
+        Write-Host "App Store Connect API key installed"
+      if: inputs.production == 'true'
+      working-directory: apps/mobile
+    - name: Read latest TestFlight build number
+      id: latest
+      shell: pwsh
+      env:
+        ASC_KEY_ID: ${{ env.ASC_KEY_ID }}
+        ASC_ISSUER_ID: ${{ env.ASC_ISSUER_ID }}
+      run: |
+        $venv = Join-Path $env:RUNNER_TEMP "asc-python"
+
+        python3 -m venv "$venv"
+
+        & "$venv/bin/python" -m pip install --quiet "PyJWT[crypto]"
+
+        $scriptPath = Join-Path $env:RUNNER_TEMP "next_build.py"
+
+        @'
+        import json
+        import os
+        import time
+        import urllib.error
+        import urllib.parse
+        import urllib.request
+
+        import jwt
+
+        BASE_URL = "https://api.appstoreconnect.apple.com"
+
+        key_id = os.environ["ASC_KEY_ID"]
+        issuer_id = os.environ["ASC_ISSUER_ID"]
+        key_path = os.environ["ASC_KEY_PATH"]
+        bundle_id = os.environ["BUNDLE_ID"]
+        app_version = os.environ["APP_VERSION"]
+
+        with open(key_path, "r", encoding="utf-8") as f:
+            private_key = f.read()
+
+        now = int(time.time())
+
+        token = jwt.encode(
+            {
+                "iss": issuer_id,
+                "iat": now,
+                "exp": now + 600,
+                "aud": "appstoreconnect-v1",
+            },
+            private_key,
+            algorithm="ES256",
+            headers={
+                "kid": key_id,
+                "typ": "JWT",
+            },
+        )
+
+        class NoRedirect(urllib.request.HTTPRedirectHandler):
+            def redirect_request(self, req, fp, code, msg, headers, newurl):
+                return None
+
+        opener = urllib.request.build_opener(NoRedirect)
+
+        def request_json(path_or_url, params=None):
+            if path_or_url.startswith("http"):
+                url = path_or_url
+            else:
+                url = BASE_URL + path_or_url
+
+            if params:
+                url += "?" + urllib.parse.urlencode(params)
+
+            parsed_url = urllib.parse.urlsplit(url)
+            if parsed_url.scheme != "https" or parsed_url.netloc != "api.appstoreconnect.apple.com":
+                raise RuntimeError("Unexpected App Store Connect API origin")
+
+            request = urllib.request.Request(
+                url,
+                headers={
+                    "Authorization": f"Bearer {token}",
+                    "Content-Type": "application/json",
+                },
+            )
+
+            try:
+                with opener.open(request, timeout=30) as response:
+                    return json.load(response)
+            except urllib.error.HTTPError as error:
+                raise RuntimeError(
+                    f"App Store Connect API returned HTTP {error.code}"
+                )
+
+        apps = request_json(
+            "/v1/apps",
+            {
+                "filter[bundleId]": bundle_id,
+                "limit": "1",
+            },
+        ).get("data", [])
+
+        if not apps:
+            raise RuntimeError(
+                f"No App Store Connect app found for {bundle_id}"
+            )
+
+        app_id = apps[0]["id"]
+
+        prerelease_versions = request_json(
+            "/v1/preReleaseVersions",
+            {
+                "filter[app]": app_id,
+                "filter[platform]": "IOS",
+                "filter[version]": app_version,
+                "limit": "1",
+            },
+        ).get("data", [])
+
+        latest_build = 0
+
+        if prerelease_versions:
+            prerelease_id = prerelease_versions[0]["id"]
+
+            next_url = (
+                f"{BASE_URL}/v1/preReleaseVersions/"
+                f"{prerelease_id}/builds"
+                f"?fields%5Bbuilds%5D=version&limit=200"
+            )
+
+            while next_url:
+                page = request_json(next_url)
+
+                for build in page.get("data", []):
+                    raw_version = str(
+                        build.get("attributes", {}).get("version", "")
+                    )
+
+                    if not raw_version.isdigit():
+                        raise RuntimeError(
+                            f"Non-numeric TestFlight build number found: "
+                            f"{raw_version}"
+                        )
+
+                    latest_build = max(
+                        latest_build,
+                        int(raw_version),
+                    )
+
+                next_url = page.get("links", {}).get("next")
+
+        print(latest_build)
+        '@ | Set-Content -Path "$scriptPath" -Encoding utf8NoBOM
+
+        $buildNumber = (
+          & "$venv/bin/python" "$scriptPath"
+        ).Trim()
+
+        if ($LASTEXITCODE -ne 0) {
+          exit $LASTEXITCODE
+        }
+
+        if ($buildNumber -notmatch '^\d+$') {
+          throw "Invalid build number: $buildNumber"
+        }
+
+        "LATEST_IOS_BUILD=$buildNumber" >> $env:GITHUB_ENV
+      if: inputs.production == 'true'
+      working-directory: apps/mobile
+    - name: Reserve unique TestFlight build number
+      if: inputs.production == 'true'
+      id: build
+      shell: bash
+      working-directory: apps/mobile
+      env:
+        GITHUB_TOKEN: ${{ github.token }}
+      run: node ../../.github/scripts/ios-build-number.mjs
+    - name: Persist build number reservation before signing
+      if: inputs.production == 'true'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.build.outputs.artifact_name }}
+        path: ${{ steps.build.outputs.reservation_path }}
+        if-no-files-found: error
+        retention-days: 90
+    - name: Install dependencies
+      run: npm ci
+      shell: bash
+      working-directory: apps/mobile
+    - name: Set iOS build number
+      shell: pwsh
+      run: |
+        $config = Get-Content app.json -Raw | ConvertFrom-Json
+
+        if (-not $config.expo.ios) {
+          $config.expo | Add-Member `
+            -NotePropertyName ios `
+            -NotePropertyValue ([PSCustomObject]@{})
+        }
+
+        if ($config.expo.ios.PSObject.Properties.Name -contains "buildNumber") {
+          $config.expo.ios.buildNumber = [string]$env:BUILD_NUMBER
+        } else {
+          $config.expo.ios | Add-Member `
+            -NotePropertyName buildNumber `
+            -NotePropertyValue ([string]$env:BUILD_NUMBER)
+        }
+
+        $config |
+          ConvertTo-Json -Depth 100 |
+          Set-Content `
+            -Path app.json `
+            -Encoding utf8NoBOM
+
+        Write-Host "Set expo.ios.buildNumber = $env:BUILD_NUMBER"
+
+        "BUILD_NUMBER=$env:BUILD_NUMBER" >> $env:GITHUB_ENV
+        "IPA_NAME=rRanker-$env:APP_VERSION-build-$env:BUILD_NUMBER-$($env:BUILD_SOURCE_COMMIT.Substring(0,8)).ipa" >> $env:GITHUB_ENV
+      if: inputs.production == 'true'
+      working-directory: apps/mobile
+      env:
+        BUILD_NUMBER: ${{ steps.build.outputs.build_number }}
+    - name: Expo prebuild
+      env:
+        OSU_OAUTH_CLIENT_SECRET: ${{ env.OSU_OAUTH_CLIENT_SECRET }}
+      run: npx expo prebuild --platform ios --no-install
+      shell: bash
+      working-directory: apps/mobile
+    - name: Install CocoaPods
+      run: cd ios && pod install
+      shell: bash
+      working-directory: apps/mobile
+    - name: Install Apple signing credentials
+      shell: pwsh
+      env:
+        BUILD_CERTIFICATE_BASE64: ${{ env.BUILD_CERTIFICATE_BASE64 }}
+        BUILD_PROVISION_PROFILE_BASE64: ${{ env.BUILD_PROVISION_PROFILE_BASE64 }}
+        P12_PASSWORD: ${{ env.P12_PASSWORD }}
+        KEYCHAIN_PASSWORD: ${{ env.KEYCHAIN_PASSWORD }}
+      run: |
+        $certificatePath = Join-Path $env:RUNNER_TEMP "distribution.p12"
+        $profilePath = Join-Path $env:RUNNER_TEMP "profile.mobileprovision"
+        $profilePlist = Join-Path $env:RUNNER_TEMP "profile.plist"
+        $keychainPath = Join-Path $env:RUNNER_TEMP "app-signing.keychain-db"
+
+        [IO.File]::WriteAllBytes(
+          $certificatePath,
+          [Convert]::FromBase64String($env:BUILD_CERTIFICATE_BASE64)
+        )
+
+        [IO.File]::WriteAllBytes(
+          $profilePath,
+          [Convert]::FromBase64String($env:BUILD_PROVISION_PROFILE_BASE64)
+        )
+
+        security create-keychain `
+          -p "$env:KEYCHAIN_PASSWORD" `
+          "$keychainPath"
+
+        security set-keychain-settings `
+          -lut 21600 `
+          "$keychainPath"
+
+        security unlock-keychain `
+          -p "$env:KEYCHAIN_PASSWORD" `
+          "$keychainPath"
+
+        security import "$certificatePath" `
+          -P "$env:P12_PASSWORD" `
+          -A `
+          -t cert `
+          -f pkcs12 `
+          -k "$keychainPath"
+
+        security set-key-partition-list `
+          -S "apple-tool:,apple:" `
+          -k "$env:KEYCHAIN_PASSWORD" `
+          "$keychainPath"
+
+        $existingKeychains = @(
+          security list-keychains -d user |
+            ForEach-Object {
+              $_.Trim().Trim('"')
+            }
+        )
+
+        security list-keychains `
+          -d user `
+          -s "$keychainPath" $existingKeychains
+
+        security cms -D -i "$profilePath" |
+          Set-Content `
+            -Path "$profilePlist" `
+            -Encoding utf8NoBOM
+
+        $uuid = (
+          & /usr/libexec/PlistBuddy `
+            -c "Print :UUID" `
+            "$profilePlist"
+        ).Trim()
+
+        $profileName = (
+          & /usr/libexec/PlistBuddy `
+            -c "Print :Name" `
+            "$profilePlist"
+        ).Trim()
+
+        $teamId = (
+          & /usr/libexec/PlistBuddy `
+            -c "Print :TeamIdentifier:0" `
+            "$profilePlist"
+        ).Trim()
+
+        $applicationIdentifier = (
+          & /usr/libexec/PlistBuddy `
+            -c "Print :Entitlements:application-identifier" `
+            "$profilePlist"
+        ).Trim()
+
+        $profileBundleId = $applicationIdentifier.Substring(
+          $applicationIdentifier.IndexOf(".") + 1
+        )
+
+        if ($profileBundleId -ne $env:BUNDLE_ID) {
+          throw "Provisioning profile is for $profileBundleId, expected $env:BUNDLE_ID"
+        }
+
+        $profilesDirectory = Join-Path `
+          $HOME `
+          "Library/MobileDevice/Provisioning Profiles"
+
+        New-Item `
+          -ItemType Directory `
+          -Force `
+          -Path "$profilesDirectory" |
+          Out-Null
+
+        "INSTALLED_PROFILE_PATH=$(Join-Path $profilesDirectory "$uuid.mobileprovision")" >> $env:GITHUB_ENV
+
+        Copy-Item `
+          "$profilePath" `
+          (Join-Path $profilesDirectory "$uuid.mobileprovision")
+
+        "PROFILE_NAME=$profileName" >> $env:GITHUB_ENV
+        "TEAM_ID=$teamId" >> $env:GITHUB_ENV
+        "KEYCHAIN_PATH=$keychainPath" >> $env:GITHUB_ENV
+
+        Write-Host "Team ID: $teamId"
+        Write-Host "Profile: $profileName"
+      if: inputs.production == 'true'
+      working-directory: apps/mobile
+    - name: Detect Xcode workspace and scheme
+      shell: pwsh
+      run: |
+        $workspaces = @(Get-ChildItem -Path ios -Filter *.xcworkspace -Directory)
+        if ($workspaces.Count -ne 1) { throw "Expected exactly one Xcode workspace" }
+        $workspace = $workspaces[0]
+        $schemes = @(Get-ChildItem -Path ios -Recurse -Filter *.xcscheme | Where-Object {
+          $_.FullName -notmatch '/Pods/' -and $_.FullName -notmatch '\\Pods\\'
+        })
+        if ($schemes.Count -ne 1) { throw "Expected exactly one application scheme" }
+        "WORKSPACE=$($workspace.FullName)" >> $env:GITHUB_ENV
+        "SCHEME=$($schemes[0].BaseName)" >> $env:GITHUB_ENV
+      working-directory: apps/mobile
+    - name: Archive
+      shell: pwsh
+      env:
+        OSU_OAUTH_CLIENT_SECRET: ${{ env.OSU_OAUTH_CLIENT_SECRET }}
+      run: |
+        New-Item `
+          -ItemType Directory `
+          -Force `
+          -Path build |
+          Out-Null
+
+        $archivePath = "$PWD/build/rRanker.xcarchive"
+
+        xcodebuild `
+          -workspace "$env:WORKSPACE" `
+          -scheme "$env:SCHEME" `
+          -configuration Release `
+          -destination "generic/platform=iOS" `
+          -archivePath "$archivePath" `
+          DEVELOPMENT_TEAM="$env:TEAM_ID" `
+          CODE_SIGN_STYLE=Manual `
+          CODE_SIGN_IDENTITY="Apple Distribution" `
+          PROVISIONING_PROFILE_SPECIFIER="$env:PROFILE_NAME" `
+          CURRENT_PROJECT_VERSION="$env:BUILD_NUMBER" `
+          archive
+
+        if ($LASTEXITCODE -ne 0) {
+          exit $LASTEXITCODE
+        }
+
+        $app = Get-ChildItem `
+          "$archivePath/Products/Applications" `
+          -Filter *.app |
+          Select-Object -First 1
+
+        if (-not $app) {
+          throw "Archived .app was not found"
+        }
+
+        $infoPlist = Join-Path $app.FullName "Info.plist"
+
+        $actualBuild = (
+          & /usr/libexec/PlistBuddy `
+            -c "Print :CFBundleVersion" `
+            "$infoPlist"
+        ).Trim()
+
+        $actualVersion = (
+          & /usr/libexec/PlistBuddy `
+            -c "Print :CFBundleShortVersionString" `
+            "$infoPlist"
+        ).Trim()
+
+        if ($actualBuild -ne $env:BUILD_NUMBER) {
+          throw "Archive build number is $actualBuild, expected $env:BUILD_NUMBER"
+        }
+
+        if ($actualVersion -ne $env:APP_VERSION) {
+          throw "Archive version is $actualVersion, expected $env:APP_VERSION"
+        }
+
+        Write-Host "Archived $actualVersion ($actualBuild)"
+      if: inputs.production == 'true'
+      working-directory: apps/mobile
+    - name: Archive unsigned test application
+      if: inputs.production == 'false'
+      shell: bash
+      working-directory: apps/mobile
+      run: |
+        xcodebuild -workspace "$WORKSPACE" -scheme "$SCHEME" -configuration Release \
+          -destination 'generic/platform=iOS' -archivePath "$PWD/build/rRanker.xcarchive" \
+          CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO archive
+    - name: Verify archived source and metadata
+      shell: bash
+      working-directory: apps/mobile
+      env:
+        SOURCE_SHA: ${{ inputs.source-sha }}
+        PRODUCTION_BUILD: ${{ inputs.production }}
+      run: |
+        python3 ../../.github/scripts/verify-ios-archive.py build/rRanker.xcarchive/Products/Applications
+        if [ "$PRODUCTION_BUILD" = true ]; then
+          codesign --verify --deep --strict build/rRanker.xcarchive/Products/Applications/*.app
+        fi
+    - name: Create ExportOptions.plist
+      shell: pwsh
+      run: |
+        $options = @{
+          method = "app-store-connect"
+          destination = "export"
+          signingStyle = "manual"
+          signingCertificate = "Apple Distribution"
+          teamID = $env:TEAM_ID
+          manageAppVersionAndBuildNumber = $false
+          uploadSymbols = $true
+          provisioningProfiles = @{
+            $env:BUNDLE_ID = $env:PROFILE_NAME
+          }
+        }
+
+        $jsonPath = Join-Path `
+          $env:RUNNER_TEMP `
+          "ExportOptions.json"
+
+        $plistPath = Join-Path `
+          $env:RUNNER_TEMP `
+          "ExportOptions.plist"
+
+        $options |
+          ConvertTo-Json -Depth 10 |
+          Set-Content `
+            -Path "$jsonPath" `
+            -Encoding utf8NoBOM
+
+        python3 -c "import json,plistlib; d=json.load(open('$jsonPath')); plistlib.dump(d,open('$plistPath','wb'))"
+
+        if ($LASTEXITCODE -ne 0) {
+          exit $LASTEXITCODE
+        }
+
+        "EXPORT_OPTIONS_PLIST=$plistPath" >> $env:GITHUB_ENV
+      if: inputs.production == 'true'
+      working-directory: apps/mobile
+    - name: Export and rename IPA
+      shell: pwsh
+      run: |
+        $exportPath = "$PWD/build/export"
+
+        New-Item `
+          -ItemType Directory `
+          -Force `
+          -Path "$exportPath" |
+          Out-Null
+
+        xcodebuild `
+          -exportArchive `
+          -archivePath "$PWD/build/rRanker.xcarchive" `
+          -exportPath "$exportPath" `
+          -exportOptionsPlist "$env:EXPORT_OPTIONS_PLIST"
+
+        if ($LASTEXITCODE -ne 0) {
+          exit $LASTEXITCODE
+        }
+
+        $ipas = @(
+          Get-ChildItem `
+            "$exportPath" `
+            -Filter *.ipa
+        )
+
+        if ($ipas.Count -ne 1) {
+          throw "Expected exactly one IPA, found $($ipas.Count)"
+        }
+
+        $newPath = Join-Path `
+          "$exportPath" `
+          "$env:IPA_NAME"
+
+        Move-Item `
+          "$($ipas[0].FullName)" `
+          "$newPath"
+
+        $resolvedPath = (
+          Resolve-Path "$newPath"
+        ).Path
+
+        "IPA_PATH=$resolvedPath" >> $env:GITHUB_ENV
+
+        Write-Host "IPA: $resolvedPath"
+      if: inputs.production == 'true'
+      working-directory: apps/mobile
+    - name: Verify exported release IPA
+      if: inputs.production == 'true'
+      shell: bash
+      working-directory: apps/mobile
+      env:
+        SOURCE_SHA: ${{ inputs.source-sha }}
+        PRODUCTION_BUILD: "true"
+      run: python3 ../../.github/scripts/verify-ios-archive.py "$IPA_PATH"
+    - name: Upload IPA artifact
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-release-${{ env.APP_VERSION }}-${{ env.BUILD_NUMBER }}-${{ inputs.source-sha }}-${{ github.run_attempt }}
+        path: apps/mobile/build/export/*
+        if-no-files-found: error
+        retention-days: 14
+      if: inputs.production == 'true'
+    - name: Package unsigned test IPA
+      if: inputs.production == 'false'
+      shell: bash
+      working-directory: apps/mobile
+      run: |
+        mkdir -p build/export/Payload
+        cp -R build/rRanker.xcarchive/Products/Applications/*.app build/export/Payload/
+        cd build/export
+        zip -qry rRanker-unsigned-test.ipa Payload
+        rm -rf Payload
+    - name: Verify packaged unsigned IPA
+      if: inputs.production == 'false'
+      shell: bash
+      working-directory: apps/mobile
+      env:
+        SOURCE_SHA: ${{ inputs.source-sha }}
+        PRODUCTION_BUILD: "false"
+      run: python3 ../../.github/scripts/verify-ios-archive.py "build/export/rRanker-unsigned-test.ipa"
+    - name: Upload unsigned test IPA
+      if: inputs.production == 'false'
+      uses: actions/upload-artifact@v4
+      with:
+        name: ios-unsigned-test-${{ inputs.source-sha }}-${{ github.run_attempt }}
+        path: apps/mobile/build/export/*
+        if-no-files-found: error
+        retention-days: 14
+    - name: Upload to TestFlight
+      shell: pwsh
+      env:
+        ASC_KEY_ID: ${{ env.ASC_KEY_ID }}
+        ASC_ISSUER_ID: ${{ env.ASC_ISSUER_ID }}
+      run: |
+        Write-Host "Uploading $env:IPA_PATH"
+
+        xcrun altool `
+          --upload-app `
+          -f "$env:IPA_PATH" `
+          -t ios `
+          --apiKey "$env:ASC_KEY_ID" `
+          --apiIssuer "$env:ASC_ISSUER_ID"
+
+        if ($LASTEXITCODE -ne 0) {
+          exit $LASTEXITCODE
+        }
+
+        Write-Host "Upload accepted by App Store Connect"
+      if: inputs.production == 'true'
+      working-directory: apps/mobile
+    - name: Build summary
+      if: inputs.production == 'true'
+      shell: pwsh
+      run: |
+        @"
+        ## iOS build uploaded
+
+        **Version:** $env:APP_VERSION
+
+        **Build:** $env:BUILD_NUMBER
+
+        **IPA:** $env:IPA_NAME
+
+        App Store Connect accepted the upload. Apple will now process it for TestFlight.
+        "@ >> $env:GITHUB_STEP_SUMMARY
+      working-directory: apps/mobile
+    - name: Cleanup Apple signing files
+      if: always() && inputs.production == 'true'
+      shell: pwsh
+      run: |
+        $keychainPath = Join-Path $env:RUNNER_TEMP "app-signing.keychain-db"
+        if (Test-Path -LiteralPath $keychainPath) {
+          security delete-keychain "$keychainPath"
+        }
+        foreach ($name in @("distribution.p12", "profile.mobileprovision", "profile.plist")) {
+          Remove-Item -LiteralPath (Join-Path $env:RUNNER_TEMP $name) -Force -ErrorAction SilentlyContinue
+        }
+        if ($env:ASC_KEY_ID -match '^[A-Za-z0-9]+$') {
+          $apiKeyPath = Join-Path $HOME ".appstoreconnect/private_keys/AuthKey_$($env:ASC_KEY_ID).p8"
+          Remove-Item -LiteralPath $apiKeyPath -Force -ErrorAction SilentlyContinue
+        }
+        if ($env:INSTALLED_PROFILE_PATH) {
+          Remove-Item -LiteralPath $env:INSTALLED_PROFILE_PATH -Force -ErrorAction SilentlyContinue
+        }
+      working-directory: apps/mobile

@@ -1,13 +1,21 @@
 name: Build Android artifacts
-description: Compile and verify ABI-specific Release APKs for an immutable source using explicit test or production signing.
+description: Compile and verify ABI-specific Release APKs using an explicit signing identity and immutable source.
 inputs:
   source-sha:
     description: Checked-out immutable source SHA
     required: true
   production:
-    description: Require provisioned formal signing
+    description: Require trusted publication authorization
     required: false
     default: "false"
+  signing-mode:
+    description: Explicit release, legacy-debug, or test-debug signing policy
+    required: false
+    default: test-debug
+  expected-certificate-sha256:
+    description: Required certificate identity when reusing a legacy signature
+    required: false
+    default: ""
   optimization-mode:
     description: Release optimization comparison mode
     required: false
@@ -24,9 +32,28 @@ runs:
       env:
         SOURCE_SHA: ${{ inputs.source-sha }}
         PRODUCTION_BUILD: ${{ inputs.production }}
+        SIGNING_MODE: ${{ inputs.signing-mode }}
+        EXPECTED_CERTIFICATE_SHA256: ${{ inputs.expected-certificate-sha256 }}
       run: |
         test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
         case "$PRODUCTION_BUILD" in true|false) ;; *) exit 1 ;; esac
+        case "$PRODUCTION_BUILD:$SIGNING_MODE" in true:release|true:legacy-debug|false:test-debug) ;; *) exit 1 ;; esac
+        if [ "$SIGNING_MODE" = legacy-debug ]; then
+          [[ "$EXPECTED_CERTIFICATE_SHA256" =~ ^[a-f0-9]{64}$ ]]
+        fi
+        if [ "$PRODUCTION_BUILD" = true ]; then
+          test "$SOURCE_SHA" = "$GITHUB_SHA"
+          test "$GITHUB_REPOSITORY" = kckc7887/rRanker
+          case "$GITHUB_EVENT_NAME" in push|workflow_dispatch) ;; *) exit 1 ;; esac
+          case "$GITHUB_REF" in refs/heads/*) ;; *) exit 1 ;; esac
+          test "$PRODUCTION_SIGNING_READY" = true
+          if [ "$SIGNING_MODE" = release ]; then
+            test -n "${ANDROID_KEYSTORE_BASE64:-}"
+            test -n "${ANDROID_KEYSTORE_PASSWORD:-}"
+            test -n "${ANDROID_KEY_ALIAS:-}"
+            test -n "${ANDROID_KEY_PASSWORD:-}"
+          fi
+        fi
     - name: Setup Node
       uses: actions/setup-node@v6
       with:
@@ -60,7 +87,7 @@ runs:
     - name: Prepare release keystore
       id: signing
       run: |
-        if [ "$PRODUCTION_BUILD" = "true" ]; then
+        if [ "$SIGNING_MODE" = release ]; then
           if [ "$PRODUCTION_SIGNING_READY" != "true" ] || [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
             echo "Production signing environment is not provisioned" >&2
             exit 1
@@ -72,11 +99,12 @@ runs:
           echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/rranker-release.keystore
           echo "mode=release" >> "$GITHUB_OUTPUT"
         else
-          echo "mode=test-debug" >> "$GITHUB_OUTPUT"
+          echo "mode=$SIGNING_MODE" >> "$GITHUB_OUTPUT"
         fi
       env:
         PRODUCTION_BUILD: ${{ inputs.production }}
         PRODUCTION_SIGNING_READY: ${{ env.PRODUCTION_SIGNING_READY }}
+        SIGNING_MODE: ${{ inputs.signing-mode }}
       shell: bash
       working-directory: apps/mobile
     - name: Build four ABI APKs
@@ -85,22 +113,61 @@ runs:
         NODE_ENV: production
       run: |
         chmod +x gradlew
-        SIGNING_ARGS=""
+        SIGNING_ARGS=()
         if [ "${{ steps.signing.outputs.mode }}" = "release" ]; then
-          SIGNING_ARGS="-Pandroid.injected.signing.store.file=$PWD/app/rranker-release.keystore -Pandroid.injected.signing.store.password=$ANDROID_KEYSTORE_PASSWORD -Pandroid.injected.signing.key.alias=$ANDROID_KEY_ALIAS -Pandroid.injected.signing.key.password=$ANDROID_KEY_PASSWORD"
+          SIGNING_ARGS=(
+            "-Pandroid.injected.signing.store.file=$PWD/app/rranker-release.keystore"
+            "-Pandroid.injected.signing.store.password=$ANDROID_KEYSTORE_PASSWORD"
+            "-Pandroid.injected.signing.key.alias=$ANDROID_KEY_ALIAS"
+            "-Pandroid.injected.signing.key.password=$ANDROID_KEY_PASSWORD"
+          )
         fi
-        # shellcheck disable=SC2086
         ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=2 \
           -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64 \
-          $SIGNING_ARGS
+          "${SIGNING_ARGS[@]}"
       shell: bash
     - name: Verify and name APKs
       id: apks
       env:
         SIGNING_MODE: ${{ steps.signing.outputs.mode }}
+        EXPECTED_CERTIFICATE_SHA256: ${{ inputs.expected-certificate-sha256 }}
         BUILD_SOURCE_COMMIT: ${{ inputs.source-sha }}
         ANDROID_OPTIMIZATION_MODE: ${{ inputs.optimization-mode }}
       run: |
         python3 ../../.github/scripts/verify-android-apks.py
       shell: bash
       working-directory: apps/mobile
+    - name: Enable KVM
+      shell: bash
+      run: |
+        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+        sudo udevadm control --reload-rules
+        sudo udevadm trigger --name-match=kvm
+    - name: Release smoke through production routes
+      uses: reactivecircus/android-emulator-runner@v2
+      with:
+        api-level: 31
+        arch: x86_64
+        target: default
+        disable-animations: true
+        script: node .github/scripts/android-smoke.mjs production apps/mobile/build/android-apks/*-x86_64.apk emulator-5554 apps/mobile/build/device-evidence
+    - name: Upload device verification
+      if: always()
+      uses: actions/upload-artifact@v4
+      with:
+        name: android-device-evidence-${{ inputs.production == 'true' && 'release' || 'test' }}-${{ inputs.source-sha }}-${{ github.run_attempt }}
+        path: apps/mobile/build/device-evidence/
+        if-no-files-found: warn
+        retention-days: 7
+    - name: Upload verified APKs
+      uses: actions/upload-artifact@v4
+      with:
+        name: ${{ steps.apks.outputs.artifact_name }}-${{ inputs.source-sha }}-${{ github.run_attempt }}
+        path: apps/mobile/build/android-apks/*
+        if-no-files-found: error
+        compression-level: 0
+        retention-days: 14
+    - name: Remove temporary release keystore
+      if: always()
+      shell: bash
+      run: rm -f apps/mobile/android/app/rranker-release.keystore

@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * 仓库轻检查：只读仓库文件，不跑构建，也不安装 apps/mobile 的依赖树，
- * 因此可以在 quality 作业被跳过时（CI-only 改动、纯文档改动）照常运行。
+ * 因此可以在 quality 作业被跳过时（纯文档改动）照常运行。
  *
  * 唯一的外部依赖是 .github/scripts/package.json 固定的 YAML 解析器 yaml（零传递依赖）：
  *   cd .github/scripts && npm ci
@@ -13,7 +13,7 @@
  *
  * 检查内容：
  *   1. .github/workflows 下的 workflow 文件与 .github/actions 下各 action.yml 的 YAML 语法与结构自检；
- *   2. 仓库内 .sh 脚本与 workflow/action 里内联 bash 片段的 bash -n 语法检查；
+ *   2. .sh 与内联 bash 的 bash -n，以及内联 pwsh 的 PowerShell AST 语法检查；
  *   3. .github 与 apps/mobile/scripts 下 .mjs / .cjs 文件的 node --check 语法检查；
  *   4. 分类器独立自检 .github/actions/changed-scope/self-test.mjs。
  *
@@ -28,7 +28,7 @@ import { tmpdir } from 'node:os';
 import { basename, dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { findBash } from './lib/bash.mjs';
-import { WorkflowYamlError, collectBashRuns, validateAction, validateWorkflow } from './lib/workflow-yaml.mjs';
+import { WorkflowYamlError, collectBashRuns, collectPowerShellRuns, validateAction, validateWorkflow } from './lib/workflow-yaml.mjs';
 
 const scriptPath = fileURLToPath(import.meta.url);
 const repositoryRoot = resolve(dirname(scriptPath), '..', '..');
@@ -77,6 +77,29 @@ function nodeSyntaxProblem(label, file) {
   return `${label}: node --check 报错：${shortOutput(result.stderr) || `退出码 ${result.status}`}`;
 }
 
+function powerShellSyntaxProblems(blocks) {
+  if (blocks.length === 0) return [];
+  const script = String.raw`
+$blocks = [Console]::In.ReadToEnd() | ConvertFrom-Json
+$failed = $false
+foreach ($block in $blocks) {
+  $tokens = $null
+  $parseErrors = $null
+  [System.Management.Automation.Language.Parser]::ParseInput($block.script, [ref]$tokens, [ref]$parseErrors) | Out-Null
+  foreach ($parseError in $parseErrors) {
+    [Console]::Error.WriteLine("$($block.label): $($parseError.Message)")
+    $failed = $true
+  }
+}
+if ($failed) { exit 1 }
+`;
+  const result = spawnSync('pwsh', ['-NoLogo', '-NoProfile', '-NonInteractive', '-Command', script], {
+    input: JSON.stringify(blocks), encoding: 'utf8', timeout: 30000,
+  });
+  if (result.status === 0) return [];
+  return [`PowerShell AST 检查失败：${shortOutput(result.stderr) || result.error?.code || `退出码 ${result.status}`}`];
+}
+
 function runChecks(root) {
   const results = [];
   const bash = findBash();
@@ -90,6 +113,7 @@ function runChecks(root) {
 
   const yamlProblems = [];
   const inlineRuns = [];
+  const powerShellRuns = [];
   for (const file of [...workflowFiles, ...actionFiles]) {
     const source = readFileSync(join(root, file), 'utf8');
     const isWorkflow = workflowFiles.includes(file);
@@ -97,6 +121,7 @@ function runChecks(root) {
       const validated = isWorkflow ? validateWorkflow(source, file) : validateAction(source, file);
       yamlProblems.push(...validated.problems);
       inlineRuns.push(...collectBashRuns(validated.document, file));
+      powerShellRuns.push(...collectPowerShellRuns(validated.document, file));
     } catch (error) {
       if (!(error instanceof WorkflowYamlError)) throw error;
       yamlProblems.push(error.message);
@@ -125,6 +150,11 @@ function runChecks(root) {
     label: 'shell 语法（bash -n）',
     detail: `${shellFiles.length} 个脚本、${inlineRuns.length} 个内联片段`,
     problems: shellProblems,
+  });
+  results.push({
+    label: 'PowerShell AST 语法',
+    detail: `${powerShellRuns.length} 个内联片段`,
+    problems: powerShellSyntaxProblems(powerShellRuns),
   });
 
   const nodeProblems = [];
@@ -360,6 +390,12 @@ function runSelfTest() {
       fragment: 'zz-broken.sh',
     },
     {
+      name: 'PowerShell 内联语法错误必须失败',
+      mutate: (github) => writeFileSync(join(github, 'workflows/zz-broken-pwsh.yml'), 'name: Broken pwsh\non: push\njobs:\n  check:\n    runs-on: ubuntu-latest\n    steps:\n      - shell: pwsh\n        run: "if ($true) {"\n'),
+      expectFailure: true,
+      fragment: 'PowerShell AST',
+    },
+    {
       name: 'node 脚本语法错误必须失败',
       mutate: (github) => writeFileSync(join(github, 'scripts/zz-broken.mjs'), 'export const broken = (\n'),
       expectFailure: true,
@@ -370,7 +406,7 @@ function runSelfTest() {
       mutate: (github) => {
         const path = join(github, 'actions/changed-scope/classify.sh');
         const source = readFileSync(path, 'utf8');
-        const mutated = source.replace('    docs/* | .github/* | assets/images/*) return 0 ;;', '    src/*) return 0 ;;\n    docs/* | .github/* | assets/images/*) return 0 ;;');
+        const mutated = source.replace('    docs/* | assets/images/*) return 0 ;;', '    src/*) return 0 ;;\n    docs/* | assets/images/*) return 0 ;;');
         if (mutated === source) throw new Error('分类器的非功能路径分支没有找到，无法构造负例');
         writeFileSync(path, mutated);
       },

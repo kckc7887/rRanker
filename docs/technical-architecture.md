@@ -517,8 +517,9 @@ Each 金色。Slide 不区分判定时使用六种方向的 `just_*_p.png`，区
 按 S3 `outline.png` 的点径、线宽绘制，坐标复用音符的 `buttonPoint`，判定区叠加同一判定线。
 
 独立参考程序位于 `apps/mobile/scripts/maimai-reference/`；原始 C# 路径输出和
-MajSimai 输出作为 TypeScript 测试的外部基准。语法范围、素材映射、复现命令与验收限制见
-`docs/maimai-chart-preview.md`。八张 ViewX 内置特效贴图及其层级由
+MajSimai 输出作为 TypeScript 测试的外部基准。模型、素材与验收边界见
+`docs/shared-logic.md` 的谱面确认合同，独立复现命令见该程序目录的 README。
+八张 ViewX 内置特效贴图及其层级由
 `effectSprites.generated.ts` 随播放器加载，皮肤仍通过 S3/`skin-data.js` 加载。
 特效生成器经 `scripts/lib/recompress-png.mjs` 只重压缩 PNG 的 IDAT，保留其它块、
 像素与色彩信息，并重算 CRC；`sourceSha256` 对应原始 PNG，`sha256` 对应内嵌内容。
@@ -535,8 +536,8 @@ MajSimai 输出作为 TypeScript 测试的外部基准。语法范围、素材�
 运行真实内存数据库，CI 的 Node.js 22 满足该要求。
 
 `master` 的分支保护属于 GitHub 仓库配置，不能由工作流文件自动部署。
-发布策略依赖可信默认分支、该提交的质量检查及受分支限制的发布环境；
-必填状态检查应指向 `quality` 任务，而不是后续 `workflow_run` 构建记录。
+发布策略独立核验原始事件、仓库、分支和源码 SHA，并要求该提交的完整质量门禁通过。
+必填状态检查应指向 `quality-gate` 聚合任务；它同时覆盖范围判定、轻检查与完整检查。
 
 生产依赖审计由 `scripts/check-production-audit.mjs` 和 `npm run audit:prod` 复核；critical
 及未接受的 high 使门禁失败，当前接受基线为空。`package.json` / lock 对 XML、URI 解码、
@@ -623,12 +624,12 @@ C（仅 minify）或 D（minify + optimize），缺省为 A，未知值立即失
 防止全模式 R8 把反射产生的注解实例折叠为空；不关闭代码优化或扩大到整个 Expo/Kotlin 包。
 其余自定义保留规则、签名与 Hermes 配置继续由原生工程决定。
 
-`.github/workflows/android-recovery.yml` 仅监听 `origin/android-recovery` 的 push，使用
-GitHub 托管 runner，不读取生产签名或发布凭据。诊断组、质量检查、播放器重建与
-生产入口均固定该次提交。播放器任务先上传带逐文件摘要的生成物，再拒绝与已提交
-资源不一致的源码；生产入口依赖该任务和完整质量检查通过，复用 Android 构建 action，
-生成四 ABI 的 A 模式测试签名 Release APK。托管 Android 模拟器通过生产路由验收主题
-持久化、日志启停与历史、账号启动恢复，通过后才上传 APK；设备结果独立保留。
+`.github/workflows/android-recovery.yml` 是手动原生诊断入口，只允许本仓库分支，使用
+GitHub 托管 runner，不读取生产签名或发布凭据。每次固定当前源码 SHA，选择 A、B、C
+或 D 优化模式，执行配置单测并生成 x86_64 的独立诊断 APK；它不承担常规质量检查或正式发布。
+应用生产入口由 `.github/workflows/quality.yml` 编排，Android 构建统一复用
+`.github/actions/android-build/action.yml`。托管 Android 模拟器通过生产路由验收主题
+持久化、日志启停与历史、账号启动恢复，通过后才上传四 ABI APK；设备结果独立保留。
 诊断分享和停止后的最新历史日志分享都必须实际打开当前系统 ChooserActivity，再返回
 MainActivity 并等分享控件恢复可用，不选择分享目标。日志关闭后等待偏好保存、控制动作和
 历史读取结束；历史分享按钮在屏外时，只在应用自身可见滚动区域内最多滚动八次，不能
@@ -637,7 +638,7 @@ MainActivity 并等分享控件恢复可用，不选择分享目标。日志关�
 正文或原始设备日志。账号恢复检查同时拒绝安全会话与部分账号来源的读取失败；默认
 空目录恢复正常与已有凭据恢复分别验收。文件写入失败后的文本分享兜底由故障注入测试验证，
 正常系统分享检查不证明该故障路径已通过设备验收；真实账号登录、授权回调与上传另行验收。
-原生诊断使用当前提交和 A 优化模式，生产入口使用同一提交、依赖、工具链与测试签名。
+原生诊断使用当前提交和所选优化模式；优化对照需保持源码、依赖、工具链、ABI 与测试签名一致。
 `native-diagnostics-entry.tsx` 是独立构建入口，不初始化账号、主题和日志；
 `services/native-storage-probe.ts` 只操作临时键、临时文件和临时数据库，检查真实
 SQLite、KV 冷启并发、默认 KV、SecureStore、Crypto 和 FileSystem 桥接往返。
@@ -660,80 +661,99 @@ Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 ma
 `addedFiles` 中列出，不计作基线无损比较或压缩收益。仓库素材减少不直接等于导出收益，
 导出中未引用素材不计入收益。
 
-`.github/workflows/quality.yml` 是唯一的质量检查工作流，在每次 push、PR 创建/更新/重新打开及手动触发时运行。
-`changed-scope` 任务先做一轮轻检查：检出提交后按事件推导比较基准
-（push 用 `github.event.before`，PR 用 `github.event.pull_request.base.sha`），
-基准提交不在本地时用 `git fetch --depth=1 --no-tags origin <基准>` 只取该提交，
-再用 `git diff --name-only --no-renames -z` 列出改动，不安装依赖也不拉取完整历史；
-判定逻辑集中在可单独运行的 `.github/actions/changed-scope/classify.sh`（复合动作只注入事件环境变量）。
-改动全部满足 `classify.sh` 的非功能路径规则（自述文件、文档、CI、许可声明和 README 截图）时判定为无功能改动，
-`quality` 任务被跳过，该轮不安装依赖、不跑测试、不产出平台包；
-GitHub 把跳过的必填检查报告为成功，合并仍由 PR 检查放行。
-`GITHUB_OUTPUT` 只写固定枚举与计数：`functional`、`reason`（`no-base` / `base-unavailable` /
-`diff-failed` / `no-changes` / `docs-only` / `functional`）与 `changed-count`；
-路径原文先转义控制字符再写入日志、HTML 转义后写入 job summary，不进入输出键，
-避免含换行或控制字符的文件名伪造工作流注解行或注入输出。
-判定结果同时写入 `changed-scope/verdict.env`，并作为保留 1 天的 `changed-scope` artifact 上传。
-拿不到比较基准、基准提交取不到或比较失败时按有功能改动处理；
-判定 artifact 上传失败不影响该判定，轻检查任务自身出错时 `quality` 任务仍然执行完整检查。
-`--no-renames` 让改名同时列出新旧路径，避免功能文件被改名藏进文档路径。
-与功能判定无关的 `light-check` 任务并行运行且不依赖它的结论：只读仓库文件，不跑构建，
-因此改动被归类为 CI-only 或纯文档时仍然执行。入口为 `.github/scripts/check-light.mjs`，
-用 `.github/scripts/package.json` 固定的真实 YAML 解析器（`yaml` 2.9.0，零传递依赖，
-该任务只在这一棵子目录执行 `npm ci`，不安装 `apps/mobile` 依赖树）解析 workflow 与 action：
-未闭合 flow sequence、未闭合引号、重复键都会失败，`run:` 按 YAML 语义解码后的标量送 `bash -n`
-（覆盖双引号与 `>` 折叠块）；随后检查 `.sh` 与内联 bash 的 `bash -n` 语法、
-`.github` 与 `apps/mobile/scripts` 下 `.mjs`/`.cjs` 的 `node --check` 语法，
-并运行分类器独立自检 `.github/actions/changed-scope/self-test.mjs`；`--self-test` 用故意破坏的样例
-证明每类检查都会失败。
-`quality` 任务在 `apps/mobile` 执行 `npm ci`、lint、typecheck、全部测试、架构检查、生成物检查和生产依赖审计，
-不构建任何平台产物。`npm run audit:prod` 分执行、解析校验、完整性与政策四层
-（退出码 0 通过 / 1 政策失败 / 2 执行失败 / 3 报告不合法 / 4 报告不足以判断）：
-命令异常退出、输出为空、报告缺字段或与条目数不自洽、出现未知严重级别都显式失败；
-包级 critical 无论能否解析出公告编号都失败；`via` 为空、引用不存在的依赖、成环而无可解析根因
-按“报告不足以判断”失败；基线记录的分类值/包名/版本与锁文件不符同样失败，
-无法识别为 GHSA 的公告单独列出；接受记录带包名、版本、引入路径、理由与复核条件。
-两个构建工作流用 `workflow_run` 订阅该工作流的完成事件
-（`workflows: ["Quality"]`、`types: [completed]`）。各自的 `changed-scope` 任务在 `workflow_run`
-事件下用 `github.token` 与 `actions: read` 权限，从触发它的那次质量检查运行下载 `changed-scope` artifact，
-只有读到 `functional=false` 才判定为无功能改动，取不到判定时按有功能改动处理。
-`build-context` 调用 `.github/scripts/build-policy.mjs`：只接受同仓库成功的 push / PR
-质量运行，并固定 40 位 `head_sha`；外部 fork、失败运行及其它事件不构建。
-生产权限仅属于 master 的 push，普通分支与 PR 只生成测试制品。
-两个构建任务要求策略解析成功、有功能改动，并依赖该解析任务；质量运行完成后可并行构建。
-手动入口固定该次 `github.sha`，先执行完整质量检查，不接受标签发布。
-`workflow_run` 的定义取自默认分支，分支文件修改不会自动部署默认分支的发布策略；
-其运行记录也不适合作为 PR 必填状态检查。
+### CI 入口与事件矩阵
 
-`.github/workflows/build-ios.yml` 在上述质量检查通过、且轻检查判定为有功能改动后运行：macOS 任务读取版本、
-向 App Store Connect 查询下一构建号、执行 Expo prebuild、安装 Pods 与签名材料、Archive、导出 IPA，
-先上传保留 14 天的 Actions artifact，再提交 TestFlight。该任务仅允许可信 master
-生产路径并进入 `production-release` 环境；缺少 `PRODUCTION_SIGNING_READY=true` 则在
-读取签名材料前失败。普通分支和 PR 使用独立无签名 Archive/IPA 任务，不访问生产密钥
-或 App Store Connect，不上传 TestFlight。Windows 本地不能证明 iOS 签名与设备验收。
+`.github/workflows/quality.yml` 统一编排质量检查与双端构建。它监听所有分支 push、PR 的
+opened / synchronize / reopened / edited（包含修改目标分支）与手动触发；标签 push 不触发。
 
-`.github/workflows/build-android.yml` 在上述质量检查通过、且轻检查判定为有功能改动后运行：构建任务使用 Node.js 22、Temurin JDK 17
-与 Android SDK，复用 `.github/actions/android-build/action.yml` 执行依赖安装、prebuild 和 Gradle。
-Android 的并发组按 `github.event.workflow_run.head_branch` 串行，手动触发时退回 `github.ref`。
-prebuild 复用 `plugins/with-android-abi-splits.js`，一次生成 `armeabi-v7a`、`arm64-v8a`、
-`x86`、`x86_64` 四份 APK。版本与构建号分别读取 `app.json` 的 `expo.version` 和
-`expo.android.versionCode`，不自动递增。master 生产路径使用受分支限制的
-`production-release` 环境，要求就绪标记与完整 keystore，缺失时拒绝构建。
-普通分支和 PR 在 `test-artifacts` 环境中使用调试密钥，生产签名变量显式为空；
-验证阶段核对四份 APK 证书一致，
-正式包拒绝调试证书，并在摘要中报告签名身份与证书指纹。工作流检查 Gradle 输出清单、APK 内部 ABI、
-Manifest 包名与版本及 APK 签名，全部通过后按 `rRanker-版本(构建号)-ABI.apk` 命名，
-上传为保留 14 天的 Actions artifact。`verify-android-apks.py` 同时记录源码 SHA、
-优化模式、签名模式、每份 APK 和证书的 SHA-256；所有阶段检出同一不可变提交。
-调试签名产物属于 Release 模式测试安装包，不可直接作为正式发行；流程不发布
-GitHub Release 或上传应用商店。实际云端构建与真机安装需运行工作流后验证。
+| 事件 | 通过范围、轻检查与完整质量门禁后的行为 |
+|---|---|
+| 本仓库任意分支 push，含 master | 沿用旧签名的四 ABI Release APK、签名 IPA，并将 IPA 提交 TestFlight |
+| 本仓库分支的手动运行 | 与分支 push 相同，固定本次 github.sha |
+| fork 内 push 或手动运行 | 只做质量检查；fork 须自行启用 Actions |
+| 本仓库分支 PR | 只做质量检查 |
+| 外部 fork PR 到 master | 测试签名 Release APK、无签名 IPA；不读取生产凭据、不提交 TestFlight |
+| 外部 fork PR 到其它分支 | 只做质量检查 |
+
+`changed-scope` 与 `light-check` 并行；`quality` 同时依赖两者成功，有功能或 CI 改动时
+执行一次完整检查。`quality-gate` 始终聚合结果：范围或轻检查失败、源码身份不一致、
+完整检查失败/取消/意外跳过、判定缺失均失败；纯文档仅在前两项成功且完整检查明确跳过时通过。
+Android 与 iOS 构建作业均依赖此门禁，仅有功能改动才运行。
+
+### 范围、轻检查与完整质量检查
+
+范围分类复用 `.github/actions/changed-scope/action.yml` 与 `classify.sh`，push 使用
+`github.event.before`，PR 使用 `github.event.pull_request.base.sha`；基准不在本地时只获取
+该提交，再以 `git diff --name-only --no-renames -z` 比较。自述文件、文档、许可声明与根级
+README 截图全部满足非功能规则时跳过完整检查和构建；CI、依赖、构建配置及应用资源改动
+必须完整检查。无基准、基准不可取或 diff 失败按有功能改动处理；分类任务自身失败则阻断门禁。
+`GITHUB_OUTPUT` 仅包含固定枚举和计数 `functional`、`reason`、`changed-count`。
+路径写日志前转义控制字符，写 summary 前再转义 HTML；改名同时枚举旧、新路径，不能隐藏代码删除。
+
+轻检查只在 `.github/scripts` 安装固定的真实 YAML 解析器 `yaml` 2.9.0，不安装移动端依赖。
+`check-light.mjs --self-test` 检查 YAML、shell 解码后的 `bash -n`、PowerShell AST、
+`.mjs` / `.cjs` 的 `node --check` 与分类器自检；缺少 bash 或 pwsh 不静默跳过。
+故意破坏的样例证明语法与分类错误能阻断。此阶段同时执行 `build-policy.test.mjs`、
+`ios-build-number.test.mjs`、`ci-contract.test.mjs` 与 `verify-ios-archive.test.py`，
+覆盖事件矩阵、伪造来源、门禁失败、预留编号、部分签名文件清理与实际制品身份。
+
+完整检查在 `apps/mobile` 使用 Node.js 22 与 `npm ci`，依次执行 lint、typecheck、
+全部单元/UI 测试、架构检查、`check:generated`、`npm audit` 和 `audit:prod`。
+生成物检查从当前源码重新构建但不写文件；通过后 `player-artifacts.mjs` 保存逐文件摘要
+与同 SHA 的播放器制品，保留 7 天。完整检查不执行 Expo prebuild 或原生编译。
+生产审计分执行、解析校验、完整性与政策四层：异常退出、空报告、字段或计数不自洽、
+未知严重级别、无法解析根因的空 via/悬空引用/成环都失败；critical 无条件失败，
+未接受的 high 失败，接受记录的包名、版本与分类必须符合锁文件，当前接受基线为空。
+
+### 来源与发布凭据
+
+`.github/scripts/build-policy.mjs` 的 `buildPolicy({ eventName, event, repository, ref, sha })`
+只根据原始事件校验仓库身份、分支、PR 来源、删除状态与非全零的 40 位 SHA，返回
+`{ build, production, sha }`。PR 一律使用 head.sha，不把 merge SHA 当应用源码；
+其它事件使用 github.sha。质量检查、聚合门禁与四个构建作业独立比较 policy SHA 和原始
+事件 SHA；正式构建 action 还要求 source-sha 等于 GITHUB_SHA 与实际 checkout。
+外部 fork、PR 目标名称或 artifact 自报值都不能提升为正式签名权限。
+
+发布作业只接受 `kckc7887/rRanker` 的分支 push / workflow_dispatch，并进入
+`production-release`；该环境须允许本仓库所有分支，并配置 `PRODUCTION_SIGNING_READY=true`。
+Android 明确选择 `legacy-debug`，沿用原 Expo 签名，并要求证书 SHA-256 与工作流固定值一致；
+不依赖新增 keystore secret，不自动建立或替换签名。旧证书是调试证书，该 APK 为 Release
+编译，不能视为商店正式签名制品。iOS 复用现有 ASC、证书、profile、P12 和 keychain 凭据，
+缺失时在解码/安装材料前失败。secret 名称存在不证明证书、私钥或密码有效。
+测试构建作业不进入发布环境、不引用任何 secrets；checkout 不持久化 Git 凭据。
+仓库环境配置、密钥与分支保护独立于工作流文件，文件修改不代表远端配置已部署。
+
+### Android 与 iOS 制品
+
+`.github/actions/android-build/action.yml` 是 APK 的公共构建入口：Node.js 22、Temurin JDK 17、
+Android SDK、Expo prebuild 与 Gradle，使用 A 优化模式并复用 ABI splits 插件，一次产生
+armeabi-v7a、arm64-v8a、x86、x86_64 四份 APK。版本与版本代码来自 app.json，不自动修改。
+`verify-android-apks.py` 核验输出清单、每包 ABI、Manifest 包名/版本、统一证书、正式包
+所选签名模式、旧证书身份、优化配置和 Record 注解规则，并保存源码 SHA、文件及证书摘要。生产路由
+模拟器冒烟通过后上传 APK，保留 14 天；脱敏设备结果独立保留 7 天，临时 keystore 始终清理。
+fork 测试 APK 同样为 Release 优化构建，使用调试签名。现有 Android 发布路径与旧包保持
+证书一致；默认调试私钥属于公开模板材料，不能获得私有发行密钥的身份安全保证。
+
+`.github/actions/ios-build/action.yml` 是 IPA 的公共构建入口，在 macOS 26 执行 Expo
+prebuild、Pods、Archive 与导出。`verify-ios-archive.py` 检查实际 Archive 和最终 IPA
+中的 EXConstants/app.config 源码 SHA、Info.plist 包名、版本和构建号；正式 Archive 还验证 codesign。
+正式作业先保存 IPA 与脱敏身份 JSON（14 天），再提交 TestFlight；上传接受不等于 Apple
+处理成功或设备验收。测试作业以 CODE_SIGNING_ALLOWED=NO 归档并打包无签名 IPA，不请求 ASC。
+
+所有正式 iOS 作业共用 `rranker-ios-testflight` 串行锁，`cancel-in-progress:false` 与
+`queue:max` 保留最多 100 个等待项；不保证无限队列。`ios-build-number.mjs` 在锁内核验
+当前运行与历史 artifact 的官方仓库/运行身份，取 Apple 当前版本最大整数与可信预留编号
+的最大值加一。预留 artifact 必须先成功上传（90 天），才能签名、归档或提交 Apple；
+失败/取消运行的预留仍占用，避免 Apple 尚未可见或失败重跑重复编号。只读取 artifact
+元数据，不下载/执行正文，分页不完整、超时或 API 错误立即失败。预留依赖保留期限，
+不应提前删除尚可能在 Apple 处理中的记录。营销版本仍由用户决定。
 
 `app.json` 提供版本、包名和插件列表，`app.config.js` 按 `ANDROID_OPTIMIZATION_MODE` 配置
 Android 插件参数，并向 `extra.buildCommit` 与 `extra.androidOptimizationMode` 注入实际检出提交和优化模式。
 osu! OAuth 应用凭据不在源码中保存；动态配置从 `OSU_OAUTH_CLIENT_SECRET` 构建环境变量
 向 `extra.osuOAuthClientSecret` 注入。
-`osu-config.ts` 在调用时读取注入值，测试经同名进程环境变量提供。生产工作流只在可信
-master 路径注入，恢复工作流可从隔离测试环境注入测试应用配置；缺失时构建仍可完成，
+`osu-config.ts` 在调用时读取注入值，测试经同名进程环境变量提供。生产工作流只在本仓库可信
+分支 push 或手动构建中注入，fork 测试不注入；缺失时构建仍可完成，
 但 osu! 换码与令牌轮换明确报告配置不足。客户端内置授权方式的配置可从安装包提取，
 不能把构建注入视为服务端保密；该接入模式不增加后端。
 更换签名后的升级兼容与数据保留须在正式发布前实测确认。

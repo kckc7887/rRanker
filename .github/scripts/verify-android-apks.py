@@ -7,6 +7,11 @@ import shutil
 import subprocess
 import zipfile
 
+from android_signing import verify_android_signing
+
+signing_mode = os.environ.get("SIGNING_MODE")
+expected_certificate_sha256 = os.environ.get("EXPECTED_CERTIFICATE_SHA256") or None
+
 config = json.loads(Path("app.json").read_text())["expo"]
 version = config["version"]
 build = config["android"]["versionCode"]
@@ -49,26 +54,22 @@ for element in elements:
         raise ValueError(f"APK manifest mismatch for {abi}")
     verify_output = subprocess.check_output(
         [str(build_tools / "apksigner"), "verify", "--print-certs", str(apk)], text=True)
-    sha256 = next((line.split("SHA-256 digest:")[1].strip()
-                   for line in verify_output.splitlines() if "SHA-256 digest:" in line), "")
-    subject = next((line.split("certificate DN:")[1].strip()
-                    for line in verify_output.splitlines() if "certificate DN:" in line), "")
-    if not sha256 or not subject:
-        raise ValueError(f"Could not read signing certificate for {abi}")
-    if os.environ.get("SIGNING_MODE") == "release" and "Android Debug" in subject:
-        raise ValueError(f"Expected formal signing for {abi}, got debug certificate")
-    verified[abi] = (apk, sha256, subject)
+    signing = verify_android_signing(verify_output, signing_mode, expected_certificate_sha256)
+    verified[abi] = (apk, signing)
 
-if {apk for apk, _sha256, _subject in verified.values()} != set(release.glob("*.apk")):
+if {apk for apk, _signing in verified.values()} != set(release.glob("*.apk")):
     raise ValueError("APK files do not match output metadata")
-fingerprints = {sha256 for _apk, sha256, _subject in verified.values()}
+fingerprints = {signing["certificateSha256"] for _apk, signing in verified.values()}
 if len(fingerprints) != 1:
     raise ValueError(f"APK signing certificates differ: {fingerprints}")
 fingerprint = fingerprints.pop()
 output = Path("build/android-apks")
 output.mkdir(parents=True, exist_ok=True)
 names = []
-evidence = {"sourceSha": os.environ["BUILD_SOURCE_COMMIT"], "optimizationMode": os.environ.get("ANDROID_OPTIMIZATION_MODE", "A"), "signingMode": os.environ["SIGNING_MODE"], "apks": []}
+signing_evidence = next(iter(verified.values()))[1]
+evidence = {"sourceSha": os.environ["BUILD_SOURCE_COMMIT"], "optimizationMode": os.environ.get("ANDROID_OPTIMIZATION_MODE", "A"),
+            "signingMode": signing_evidence["signingMode"], "signingDescription": signing_evidence["description"],
+            "expectedCertificateSha256": signing_evidence["expectedCertificateSha256"], "apks": []}
 if not re.fullmatch(r"[a-f0-9]{40}", evidence["sourceSha"]):
     raise ValueError("Missing immutable source identity")
 if subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() != evidence["sourceSha"]:
@@ -94,7 +95,7 @@ if evidence["optimization"]["minify"]:
     if not mapping.is_file():
         raise ValueError("R8 build mapping is missing")
     shutil.copy2(mapping, output / "mapping.txt")
-for abi, (apk, _sha256, _subject) in sorted(verified.items()):
+for abi, (apk, _signing) in sorted(verified.items()):
     name = f"rRanker-{version}({build})-{abi}.apk"
     shutil.copy2(apk, output / name)
     names.append(name)
@@ -103,10 +104,6 @@ for abi, (apk, _sha256, _subject) in sorted(verified.items()):
 (output / "verification.json").write_text(json.dumps(evidence, indent=2) + "\n")
 with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
     stream.write(f"artifact_name=rRanker-{version}({build})-android\n")
-if os.environ.get("SIGNING_MODE") == "release":
-    signing = f"Formal release keystore (SHA-256 `{fingerprint}`)."
-else:
-    signing = "Expo's default debug keystore (test build, not for store release)."
 with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as stream:
     stream.write("## Android APKs\n\n" + "\n".join(f"- `{name}`" for name in names))
-    stream.write(f"\n\nSigning: {signing}\n")
+    stream.write(f"\n\nSigning: {signing_evidence['description']}\n")

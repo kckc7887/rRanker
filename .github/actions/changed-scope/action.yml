@@ -1,6 +1,6 @@
 name: Changed scope
 
-description: 判定本次改动是否只落在自述文件、CI 流程等与应用功能无关的位置
+description: 仅文档与展示资源走快速路径，CI、依赖与构建配置必须完整检查
 
 inputs:
   base-sha:
