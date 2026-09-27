@@ -201,8 +201,10 @@ export class PreviewSession {
   }
 }
 
-export async function decodeAudio(bytes: ArrayBuffer): Promise<AudioBuffer> {
-  const context = getAudioContext();
-  if (context.state !== 'running') await context.resume();
+export async function decodeAudio(
+  bytes: ArrayBuffer,
+  environment: Pick<PreviewSessionEnvironment, 'getAudioContext'> = defaultPreviewSessionEnvironment,
+): Promise<AudioBuffer> {
+  const context = environment.getAudioContext();
   return context.decodeAudioData(bytes.slice(0));
 }
