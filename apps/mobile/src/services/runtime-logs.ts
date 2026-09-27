@@ -1,5 +1,5 @@
 import Constants from 'expo-constants';
-import { Platform } from 'react-native';
+import { Platform, Share } from 'react-native';
 import { runtimeBuildContext } from '@/domain/runtime-log';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
@@ -9,13 +9,13 @@ import { runtimeLogPreferencesStore } from '@/storage/runtime-log-preferences-st
 import { createRuntimeLogController } from './runtime-log-controller';
 import { installRuntimeLogErrors, type RuntimeExceptionHost } from './runtime-log-errors';
 import { installRuntimeLogRecorder, recordRuntimeDiagnostic, recordRuntimeError } from './runtime-diagnostics-recorder';
-import { snapshotRuntimeDiagnostics } from './runtime-diagnostics';
+import { snapshotRuntimeDiagnosticsForExport } from './runtime-diagnostics';
 
 let route = '/';
 export const runtimeLogs = createRuntimeLogController({
   repository: async () => {
     const db = await getRuntimeLogDatabase();
-    await runSerializedSchemaInit(async () => { await db.execAsync(RUNTIME_LOG_SCHEMA); });
+    await runSerializedSchemaInit(async () => { await db.execAsync(RUNTIME_LOG_SCHEMA); }, 'runtime-log');
     return new RuntimeLogRepository(db);
   },
   preferences: runtimeLogPreferencesStore,
@@ -50,11 +50,13 @@ export async function shareRuntimeLog(id: number): Promise<void> {
   const contents = runtimeLogs.snapshot(id);
   sharing = true;
   try {
-    const diagnostics = await snapshotRuntimeDiagnostics();
-    const combined = JSON.stringify({ ...JSON.parse(contents), diagnostics }, null, 2);
-    if (!await Sharing.isAvailableAsync()) throw new Error('sharing unavailable');
-    const file = new File(Paths.cache, `rranker-runtime-log-${id}-${Date.now()}-${++exportSequence}.txt`);
-    file.write(combined);
-    await Sharing.shareAsync(file.uri, { dialogTitle: '分享日志', mimeType: 'text/plain', UTI: 'public.plain-text' });
+    const { emergency, storageAvailable, ...diagnostics } = await snapshotRuntimeDiagnosticsForExport();
+    const combined = JSON.stringify({ ...JSON.parse(contents), diagnostics, emergency, storageAvailable }, null, 2);
+    try {
+      if (!await Sharing.isAvailableAsync()) throw new Error('sharing unavailable');
+      const file = new File(Paths.cache, `rranker-runtime-log-${id}-${Date.now()}-${++exportSequence}.txt`);
+      await file.write(combined);
+      await Sharing.shareAsync(file.uri, { dialogTitle: '分享日志', mimeType: 'text/plain', UTI: 'public.plain-text' });
+    } catch { await Share.share({ title: '日志', message: combined }); }
   } finally { sharing = false; }
 }

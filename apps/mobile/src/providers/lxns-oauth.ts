@@ -3,7 +3,8 @@ import * as SecureStore from 'expo-secure-store';
 import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
 import type { ProviderSession } from './contracts';
-import { ProviderError } from './errors';
+import { ProviderError, runProviderOperation } from './errors';
+import { requestProviderResponse } from './http-json';
 import {
   LXNS_OAUTH_AUTHORIZE_URL,
   LXNS_OAUTH_CLIENT_ID,
@@ -15,12 +16,20 @@ import {
 
 const PENDING_VERIFIER_KEY = 'rranker.lxns.oauth.pending.v1';
 const PENDING_OAUTH_KEY = 'rranker.lxns.oauth.pending.v2';
+const PENDING_OAUTH_TTL_MS = 10 * 60 * 1000;
+let pendingMutation: Promise<unknown> = Promise.resolve();
+function withPendingMutation<T>(action: () => Promise<T>): Promise<T> {
+  const result = pendingMutation.then(action, action);
+  pendingMutation = result.catch(() => undefined);
+  return result;
+}
 
 /** 进行中的落雪授权：PKCE verifier + state + 发起绑定的游戏。 */
 export type PendingLxnsOAuth = {
   verifier: string;
   state: string;
   gameId: 'maimai' | 'chunithm';
+  expiresAt: number;
 };
 
 const TokenResponseSchema = z.object({
@@ -63,7 +72,7 @@ async function createStateValue(): Promise<string> {
   return base64UrlFromBytes(await Crypto.getRandomBytesAsync(16));
 }
 
-export function buildAuthorizeUrl(codeChallenge: string, state?: string): string {
+export function buildAuthorizeUrl(codeChallenge: string, state: string): string {
   const query = new URLSearchParams({
     response_type: 'code',
     client_id: LXNS_OAUTH_CLIENT_ID,
@@ -72,7 +81,7 @@ export function buildAuthorizeUrl(codeChallenge: string, state?: string): string
     code_challenge: codeChallenge,
     code_challenge_method: 'S256',
   });
-  if (state) query.set('state', state);
+  query.set('state', requireLxnsOAuthState(state));
   return `${LXNS_OAUTH_AUTHORIZE_URL}?${query.toString()}`;
 }
 
@@ -81,26 +90,33 @@ export async function beginLxnsAuthorize(input: {
 }): Promise<string> {
   const { verifier, challenge } = await createPkcePair();
   const state = await createStateValue();
-  const pending: PendingLxnsOAuth = { verifier, state, gameId: input.gameId };
-  await SecureStore.setItemAsync(PENDING_OAUTH_KEY, JSON.stringify(pending), {
+  const pending: PendingLxnsOAuth = { verifier, state, gameId: input.gameId, expiresAt: Date.now() + PENDING_OAUTH_TTL_MS };
+  await withPendingMutation(() => SecureStore.setItemAsync(PENDING_OAUTH_KEY, JSON.stringify(pending), {
     keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
-  });
+  }));
   return buildAuthorizeUrl(challenge, state);
 }
 
 export async function clearPendingLxnsVerifier(): Promise<void> {
-  await SecureStore.deleteItemAsync(PENDING_OAUTH_KEY);
-  await SecureStore.deleteItemAsync(PENDING_VERIFIER_KEY).catch(() => undefined);
+  await withPendingMutation(async () => {
+    await SecureStore.deleteItemAsync(PENDING_OAUTH_KEY);
+    await SecureStore.deleteItemAsync(PENDING_VERIFIER_KEY).catch(() => undefined);
+  });
 }
 
 /** 读取进行中的授权信息（回调页据此确定绑定目标游戏并校验 state）。 */
 export async function readPendingLxnsOAuth(): Promise<PendingLxnsOAuth | null> {
-  const raw = await SecureStore.getItemAsync(PENDING_OAUTH_KEY);
+  return withPendingMutation(loadPendingLxnsOAuth);
+}
+
+async function loadPendingLxnsOAuth(): Promise<PendingLxnsOAuth | null> {
+  const raw = await runProviderOperation('credential_storage', () => SecureStore.getItemAsync(PENDING_OAUTH_KEY));
   if (!raw) return null;
   try {
     const parsed = JSON.parse(raw) as Partial<PendingLxnsOAuth>;
-    if (typeof parsed.verifier !== 'string'
-      || typeof parsed.state !== 'string'
+    if (typeof parsed.verifier !== 'string' || !parsed.verifier.trim()
+      || typeof parsed.state !== 'string' || !parsed.state.trim()
+      || typeof parsed.expiresAt !== 'number' || !Number.isFinite(parsed.expiresAt)
       || (parsed.gameId !== 'maimai' && parsed.gameId !== 'chunithm')) {
       return null;
     }
@@ -132,77 +148,79 @@ function toSession(token: z.infer<typeof TokenResponseSchema>): LxnsOAuthSession
   };
 }
 
-async function postToken(body: Record<string, string>): Promise<LxnsOAuthSession> {
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const response = await expoFetch(LXNS_OAUTH_TOKEN_URL, {
+async function postToken(body: Record<string, string>, signal?: AbortSignal): Promise<LxnsOAuthSession> {
+  return requestProviderResponse({
+    baseUrl: LXNS_OAUTH_TOKEN_URL, path: '', schema: TokenResponseSchema,
+    fetcher: expoFetch as unknown as typeof fetch, label: '落雪 OAuth',
+    totalAttempts: 1, signal, authenticated: true, maxResponseBytes: 256 * 1024,
+    error: status => new ProviderError(status === 400 || status === 401 ? 'authentication' : 'network', '落雪授权失败，请重新发起授权', status >= 500),
+    onHttpError: async response => {
+      let payload: unknown = null;
+      try { payload = await response.json(); } catch (error) { if (!(error instanceof SyntaxError)) throw error; }
+      const parsed = OAuthErrorSchema.safeParse(payload);
+      const authentication = response.status === 400 || response.status === 401 || (parsed.success && parsed.data.error === 'invalid_grant');
+      return new ProviderError(authentication ? 'authentication' : 'network', '落雪授权失败，请重新发起授权', response.status >= 500);
+    },
+    messages: { schema: '落雪 OAuth token 响应与已验证契约不一致', timeout: '落雪 OAuth 超时', network: '无法连接落雪 OAuth' },
+    init: {
       method: 'POST',
       headers: {
         Accept: 'application/json',
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(body),
-      signal: controller.signal,
-    });
-    const payload: unknown = await response.json().catch(() => null);
-    if (!response.ok) {
-      const err = OAuthErrorSchema.safeParse(payload);
-      const description = err.success
-        ? (err.data.error_description ?? err.data.error)
-        : `HTTP ${response.status}`;
-      throw new ProviderError(
-        response.status === 400 || response.status === 401 ? 'authentication' : 'network',
-        `落雪授权失败：${description}`,
-        response.status >= 500,
-      );
-    }
-    return toSession(parseTokenPayload(payload));
-  } catch (error) {
-    if (error instanceof ProviderError) throw error;
-    if (error instanceof Error && error.name === 'AbortError') {
-      throw new ProviderError('timeout', '落雪 OAuth 超时', true, { cause: error });
-    }
-    throw new ProviderError('network', '无法连接落雪 OAuth', true, { cause: error });
-  } finally {
-    clearTimeout(timeout);
+    },
+  }, async response => parseTokenPayload(await response.json())).then(toSession);
+}
+
+export function requireLxnsOAuthState(value: unknown): string {
+  if (typeof value !== 'string' || !value.trim() || value.includes('\0')) {
+    throw new ProviderError('authorization_callback', '授权状态校验失败，请重新发起授权', false);
   }
+  return value;
 }
 
 export async function exchangeLxnsAuthorizationCode(
   code: string,
-  expectState?: string,
+  expectState: unknown,
+  signal?: AbortSignal,
 ): Promise<LxnsOAuthSession> {
   const trimmed = code.trim();
   if (!trimmed) throw new ProviderError('authentication', '缺少落雪授权码', false);
-  const pending = await readPendingLxnsOAuth();
-  if (!pending) {
-    throw new ProviderError('authentication', '找不到本机 PKCE 验证信息，请重新打开授权页', false);
-  }
-  if (expectState !== undefined && pending.state !== expectState) {
-    throw new ProviderError('authentication', '授权状态校验失败，请重新发起授权', false);
-  }
-  return exchangeWithVerifier(trimmed, pending.verifier);
+  const state = requireLxnsOAuthState(expectState);
+  const pending = await withPendingMutation(async () => {
+    if (signal?.aborted) throw signal.reason;
+    const pending = await loadPendingLxnsOAuth();
+    if (!pending) throw new ProviderError('authorization_callback', '找不到本机 PKCE 验证信息，请重新打开授权页', false);
+    if (pending.expiresAt <= Date.now()) {
+      await runProviderOperation('credential_storage', () => SecureStore.deleteItemAsync(PENDING_OAUTH_KEY));
+      throw new ProviderError('authorization_callback', '授权已过期，请重新发起授权', false);
+    }
+    if (pending.state !== state) throw new ProviderError('authorization_callback', '授权状态校验失败，请重新发起授权', false);
+    // 消费与删除在同一串行入口完成；失败换码也必须重新授权，迟到回调不会清掉新授权。
+    await runProviderOperation('credential_storage', () => SecureStore.deleteItemAsync(PENDING_OAUTH_KEY));
+    return pending;
+  });
+  return exchangeWithVerifier(trimmed, pending.verifier, signal);
 }
 
-async function exchangeWithVerifier(code: string, verifier: string): Promise<LxnsOAuthSession> {
+async function exchangeWithVerifier(code: string, verifier: string, signal?: AbortSignal): Promise<LxnsOAuthSession> {
   const session = await postToken({
     grant_type: 'authorization_code',
     code,
     client_id: LXNS_OAUTH_CLIENT_ID,
     redirect_uri: LXNS_OAUTH_REDIRECT_URI,
     code_verifier: verifier,
-  });
-  await clearPendingLxnsVerifier();
+  }, signal);
   return session;
 }
 
-export async function refreshLxnsAccessToken(refreshToken: string): Promise<LxnsOAuthSession> {
+export async function refreshLxnsAccessToken(refreshToken: string, signal?: AbortSignal): Promise<LxnsOAuthSession> {
   return postToken({
     grant_type: 'refresh_token',
     client_id: LXNS_OAUTH_CLIENT_ID,
     refresh_token: refreshToken,
-  });
+  }, signal);
 }
 
 /**

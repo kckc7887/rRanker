@@ -273,8 +273,12 @@ describe('谱面确认宿主命令合同', () => {
     const pause = functionBody(source, 'pauseForLifecycle');
     expect(pause).not.toMatch(/Fullscreen\s*\(/);
     expect(pause).not.toMatch(/disposePlayer\(\)|dispose\(\)/);
-    const dispose = functionBody(source, id === 'osu' || id === 'rizline' ? 'dispose' : 'disposePlayer');
-    expect(dispose).toMatch(/Fullscreen\s*\(/);
+    const dispose = functionBody(source, id === 'simai' ? 'releasePlayer' : id === 'osu' || id === 'rizline' ? 'dispose' : 'disposePlayer');
+    if (id === 'simai') {
+      expect(dispose).toContain('startupController.abort()');
+      expect(dispose).toContain('events.dispose()');
+      expect(source).toContain('events.own(() => { if (isFullscreen) exitFullscreen(); })');
+    } else expect(dispose).toMatch(/Fullscreen\s*\(/);
     expect(dispose).toMatch(/disposed = true/);
   });
 

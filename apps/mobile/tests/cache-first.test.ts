@@ -27,7 +27,7 @@ describe('cacheFirstLoad', () => {
     });
 
     expect(result.value).toBe(1);
-    expect(result.source.kind).toBe('cache');
+    expect(result.source.kind).toBe(fixtureSource.kind);
     expect(result.source.isStale).toBe(true);
     expect(result.source.label).toBe(fixtureSource.label);
     const refreshed = await freshNotified;
@@ -203,15 +203,15 @@ describe('cacheFirstLoad', () => {
       markStale,
     });
 
-    expect(result.source.kind).toBe('cache');
-    expect(result.catalogSource.kind).toBe('cache');
+    expect(result.source.kind).toBe(fixtureSource.kind);
+    expect(result.catalogSource.kind).toBe(payload.catalogSource.kind);
     expect(result.catalogSource.isStale).toBe(true);
   });
 
   it('overrides the source label when requested', () => {
     const marked = staleCached(makeSample(1), { label: '落雪咖啡屋（缓存）' });
     expect(marked.source.label).toBe('落雪咖啡屋（缓存）');
-    expect(marked.source.kind).toBe('cache');
+    expect(marked.source.kind).toBe(fixtureSource.kind);
     expect(marked.source.isStale).toBe(true);
   });
 

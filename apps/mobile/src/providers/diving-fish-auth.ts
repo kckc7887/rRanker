@@ -1,14 +1,14 @@
 import { fetch as expoFetch } from 'expo/fetch';
+import { z } from 'zod';
 import type { AuthProvider, LoginCredentials, ProviderSession } from './contracts';
 import { ProviderError, providerErrorFromStatus } from './errors';
+import { requestProviderResponse } from './http-json';
 
 const BASE_URL = 'https://www.diving-fish.com/api/maimaidxprober';
 
 type ExpoResponseWithRawHeaders = Response & { readonly _rawHeaders?: [string, string][] };
 
-type AuthMode =
-  | { kind: 'jwt'; jwt: string }
-  | { kind: 'cookie-jar' };
+type AuthMode = { kind: 'jwt'; jwt: string };
 
 function jwtFromResponse(response: ExpoResponseWithRawHeaders): string | null {
   const rawSetCookie = response._rawHeaders
@@ -19,42 +19,29 @@ function jwtFromResponse(response: ExpoResponseWithRawHeaders): string | null {
   return setCookie?.match(/jwt_token=([^;]+)/i)?.[1] ?? null;
 }
 
-async function divingFishRequest(
+function divingFishRequest<T>(
   path: string,
-  authMode: AuthMode,
-  init?: { method?: string },
-): Promise<Response> {
+  schema: z.ZodType<T>,
+  read: (response: Response) => Promise<unknown>,
+  authMode?: AuthMode,
+  init?: RequestInit,
+  onResponse?: (response: Response) => void,
+): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
-  const credentials = authMode.kind === 'cookie-jar' ? 'include' : 'omit';
-  if (authMode.kind === 'jwt') {
+  if (authMode) {
     headers.Cookie = `jwt_token=${authMode.jwt}`;
   }
-  const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const response = await expoFetch(`${BASE_URL}${path}`, {
-      method: init?.method ?? 'GET',
-      headers,
-      credentials,
-      signal: controller.signal,
-    });
-    return response;
-  } catch (error) {
-    if (error instanceof Error && (error.name === 'AbortError' || controller.signal.aborted)) {
-      throw new ProviderError('timeout', '水鱼请求超时', true, { cause: error });
-    }
-    throw new ProviderError('network', '无法连接水鱼服务', true, { cause: error });
-  } finally {
-    clearTimeout(timeout);
-  }
+  new Headers(init?.headers).forEach((value, key) => { headers[key] = value; });
+  return requestProviderResponse({ baseUrl: BASE_URL, path, schema,
+    fetcher: expoFetch as unknown as typeof fetch, label: '水鱼', authenticated: true,
+    totalAttempts: 1, maxResponseBytes: 256 * 1024, error: providerErrorFromStatus,
+    messages: { timeout: '水鱼请求超时', network: '无法连接水鱼服务', schema: '水鱼返回了无效数据' },
+    init: { ...init, headers }, onResponse,
+  }, read);
 }
 
 async function readImportToken(authMode: AuthMode): Promise<string | null> {
-  const response = await divingFishRequest('/player/profile', authMode);
-  if (!response.ok) {
-    throw providerErrorFromStatus(response.status);
-  }
-  const payload = await response.json() as { import_token?: unknown };
+  const payload = await divingFishRequest('/player/profile', z.object({ import_token: z.unknown().optional() }), response => response.json(), authMode);
   return typeof payload.import_token === 'string' && payload.import_token.trim()
     ? payload.import_token.trim()
     : null;
@@ -64,11 +51,7 @@ async function readImportToken(authMode: AuthMode): Promise<string | null> {
 async function obtainImportTokenSession(authMode: AuthMode): Promise<ProviderSession> {
   let token = await readImportToken(authMode);
   if (!token) {
-    const create = await divingFishRequest('/player/import_token', authMode, { method: 'PUT' });
-    if (!create.ok) {
-      throw providerErrorFromStatus(create.status);
-    }
-    await create.text().catch(() => undefined);
+    await divingFishRequest('/player/import_token', z.string(), response => response.text(), authMode, { method: 'PUT' });
     token = await readImportToken(authMode);
   }
   if (!token) {
@@ -79,35 +62,14 @@ async function obtainImportTokenSession(authMode: AuthMode): Promise<ProviderSes
 
 export class DivingFishAuthProvider implements AuthProvider {
   async loginWithPassword(credentials: LoginCredentials): Promise<ProviderSession> {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 10_000);
-    try {
-      const response = await expoFetch(`${BASE_URL}/login`, {
+    let jwt: string | null = null;
+    await divingFishRequest('/login', z.string(), response => response.text(), undefined, {
         method: 'POST',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
-        credentials: 'include',
-        signal: controller.signal,
-      });
-      if (!response.ok) throw providerErrorFromStatus(response.status);
-
-      // Wait for URLSession to finish processing the response and persist Set-Cookie.
-      await response.text();
-      const jwt = jwtFromResponse(response);
-      const authMode: AuthMode = jwt
-        ? { kind: 'jwt', jwt }
-        : { kind: 'cookie-jar' };
-
-      return await obtainImportTokenSession(authMode);
-    } catch (error) {
-      if (error instanceof ProviderError) throw error;
-      if (error instanceof Error && (error.name === 'AbortError' || controller.signal.aborted)) {
-        throw new ProviderError('timeout', '登录请求超时', true, { cause: error });
-      }
-      throw new ProviderError('network', '无法连接水鱼登录服务', true, { cause: error });
-    } finally {
-      clearTimeout(timeout);
-    }
+      }, response => { jwt = jwtFromResponse(response); });
+    if (!jwt) throw new ProviderError('authentication', '水鱼登录响应缺少本次会话凭证，请重试或使用 Import-Token', false);
+    return obtainImportTokenSession({ kind: 'jwt', jwt });
   }
 
   useImportToken(token: string): ProviderSession {

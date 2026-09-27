@@ -1,5 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import type { GameId } from '@/domain/game-bind-options';
+import { GAME_IDS } from '@/domain/game-bind-options';
+import { libraryDetailTarget } from '@/domain/user-library';
 import {
   decodeDetailTarget,
   detailTargetHref,
@@ -7,6 +9,19 @@ import {
   type DetailTarget,
   type DetailTargetErrorCode,
 } from '@/domain/detail-target';
+
+describe('个人曲库详情身份', () => {
+  it.each(GAME_IDS.filter(game => game !== 'test'))('%s 在缺少曲库元数据时仍可编码歌曲与谱面目标', gameId => {
+    for (const kind of ['song', 'chart'] as const) {
+      const target = libraryDetailTarget(kind === 'song'
+        ? { gameId, kind, songId: '42' }
+        : { gameId, kind, songId: '42', type: 'SD', levelIndex: 2 });
+      expect(target).not.toBeNull();
+      expect(decodeDetailTarget(gameId, detailTargetHref(encodeDetailTarget(target!)).params))
+        .toEqual({ ok: true, target });
+    }
+  });
+});
 
 function roundTrip(target: DetailTarget): DetailTarget {
   const resolution = decodeDetailTarget(target.game, detailTargetHref(encodeDetailTarget(target)).params);

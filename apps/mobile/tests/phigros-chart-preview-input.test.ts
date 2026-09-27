@@ -1,11 +1,8 @@
 import { crc32 } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
-import {
-  buildPhigrosChartPreviewInput,
-  buildPhiraChartPreviewInput,
-  CHART_TEXT_LIMIT,
-} from '@/features/phigros-chart-preview/chart-preview-input';
+import { buildPhigrosChartPreviewInput } from '@/features/phigros-chart-preview/chart-preview-input';
+import { buildPhiraChartPreviewInput, CHART_TEXT_LIMIT } from '@/features/phira-chart-preview/chart-preview-input';
 import { loadPhigrosChartPreviewResources } from '@/services/phigros-chart-preview-resources';
 
 vi.mock('@/services/phigros-chart-preview-resources', () => ({

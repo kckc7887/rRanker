@@ -4,11 +4,11 @@ import {
   discardChartPreviewNavigation,
   resolveChartPreviewNavigation,
   stageChartPreviewNavigation,
-} from '@/features/phigros-chart-preview/chart-preview-navigation';
+} from '@/features/chart-preview-shared/chart-preview-navigation';
 import {
   CHART_PREVIEW_NAVIGATION_CHECK_DELAY_MS,
   openChartPreviewNavigation,
-} from '@/features/phigros-chart-preview/chart-preview-open';
+} from '@/features/chart-preview-shared/chart-preview-open';
 
 const PHIGROS_CASES = [
   '祈-我ら神祖と共に歩む者なり-.光吉猛修VS穴山大輔VSKaiVS水野健治VS大国奏音',

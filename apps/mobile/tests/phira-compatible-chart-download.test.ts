@@ -1,3 +1,14 @@
+// Native Expo modules must be mocked before importing the download module.
+
+import JSZip from 'jszip';
+
+import type { PhiraChart } from '@/domain/phira';
+
+import { ChartPackageDownloadError } from '@/features/chart-download-shared/chart-download-shared';
+
+import { downloadPhigrosChartAsPhiraPackage, phiraCompatiblePackageName } from '@/features/phigros-chart-download/chart-package-download';
+import { downloadPhiraChartPackage } from '@/features/phira-chart-download/chart-package-download';
+
 const native = vi.hoisted(() => ({
   bytes: new Map<string, Uint8Array>(),
   cancelDownload: vi.fn(),
@@ -68,20 +79,6 @@ vi.mock('@/services/phigros-chart-preview-resources', () => ({
     return { bundle, chart: await read(bundle.chart, 0), music: await read(bundle.music, 1), illustration: await read(bundle.illustration, 2) };
   },
 }));
-
-// Native Expo modules must be mocked before importing the download module.
-// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import JSZip from 'jszip';
-// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import type { PhiraChart } from '@/domain/phira';
-// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import { ChartPackageDownloadError } from '@/features/chart-download-shared/chart-download-shared';
-// eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import {
-  downloadPhigrosChartAsPhiraPackage,
-  downloadPhiraChartPackage,
-  phiraCompatiblePackageName,
-} from '@/features/phira-compatible-chart-download/phira-compatible-chart-download';
 
 const phiraChart: PhiraChart = {
   id: 38294,

@@ -19,6 +19,10 @@ const mockActiveGame = jest.fn(async (_gameId: string) => undefined);
 const mockRecord = jest.fn(async () => undefined);
 const mockRoute = jest.fn();
 const mockRetryPendingRotationWrites = jest.fn(async () => 0);
+const mockThemeForeground = jest.fn();
+const mockRetryAccountSources = jest.fn(async () => undefined);
+jest.mock('@/services/account-restoration', () => ({ retryFailedAccountSources: () => mockRetryAccountSources() }));
+jest.mock('@/state/theme-store', () => ({ setThemePersistenceForeground: (value: boolean) => mockThemeForeground(value) }));
 
 jest.mock('@tanstack/react-query', () => ({ focusManager: { setFocused: (value: unknown) => mockFocus(value) } }));
 jest.mock('expo-image', () => ({ Image: { clearMemoryCache: () => mockClearMemory() } }));
@@ -89,15 +93,21 @@ describe('app runtime lifecycle', () => {
     const hook = await renderHook(() => useAppRuntime(true));
     await flushInteractions();
     expect(mockRetryPendingRotationWrites).toHaveBeenCalledTimes(1);
+    expect(mockRetryAccountSources).toHaveBeenCalledTimes(1);
+    expect(mockThemeForeground).toHaveBeenLastCalledWith(true);
 
     mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
     await hook.rerender(undefined);
     expect(mockRetryPendingRotationWrites).toHaveBeenCalledTimes(1);
+    expect(mockRetryAccountSources).toHaveBeenCalledTimes(1);
+    expect(mockThemeForeground).toHaveBeenLastCalledWith(false);
 
     mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
     await hook.rerender(undefined);
     await flushInteractions();
     expect(mockRetryPendingRotationWrites).toHaveBeenCalledTimes(2);
+    expect(mockRetryAccountSources).toHaveBeenCalledTimes(2);
+    expect(mockThemeForeground).toHaveBeenLastCalledWith(true);
     await hook.unmount();
   });
 

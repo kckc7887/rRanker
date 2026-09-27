@@ -10,6 +10,7 @@ import {
   successfulRefresh,
 } from '@/domain/refresh-result';
 import type { CacheFirstRefreshResult } from '@/services/cache-first';
+import type { QueryCache } from '@tanstack/react-query';
 
 /**
  * 缓存结构或字段语义变化时递增查询 key 版本号。
@@ -54,6 +55,7 @@ export type GameDataQueryPort = {
   getQueryData<T>(queryKey: readonly unknown[]): T | undefined;
   setQueryData(queryKey: readonly unknown[], value: unknown): unknown;
   invalidateQueries?(filters: { queryKey: readonly unknown[] }): unknown;
+  getQueryCache?(): Pick<QueryCache, 'find' | 'subscribe'>;
 };
 
 /** 页面上一次 refetch 的结果形状；只取终态判定需要的字段。 */
@@ -63,7 +65,7 @@ export type GameDataRefetchOutcome = {
   error?: unknown;
 };
 
-export type GameDataRefreshTarget = 'data' | 'catalog';
+export type GameDataRefreshTarget = 'data' | 'catalog' | 'player' | 'scores' | 'bests';
 export type GameDataRefreshResult = RefreshResult<GameDataBundle, GameDataRefreshTarget>;
 
 const dataRequested: readonly GameDataRefreshTarget[] = ['data'];
@@ -86,9 +88,9 @@ export function publishGameDataBundle(
   client: GameDataQueryPort,
   queryKey: readonly unknown[],
   bundle: GameDataBundle,
-): void {
-  if (typeof client.setQueryData !== 'function') return;
-  client.setQueryData(queryKey, bundle);
+  assertCurrent?: () => void,
+): Promise<void> {
+  return publishEntityValue(client, queryKey, bundle, assertCurrent);
 }
 
 /** 一个实体的已提交值写入入口；总览数据包与各游戏页面共用同一条发布路径。 */
@@ -96,9 +98,31 @@ export function publishEntityValue<T>(
   client: GameDataQueryPort,
   entityKey: readonly unknown[],
   value: T,
-): void {
-  if (typeof client.setQueryData !== 'function') return;
-  client.setQueryData(entityKey, value);
+  assertCurrent?: () => void,
+): Promise<void> {
+  const cache = client.getQueryCache?.();
+  const query = cache?.find({ queryKey: entityKey, exact: true });
+  const publish = () => {
+    try { assertCurrent?.(); } catch { return; }
+    client.setQueryData(entityKey, value);
+  };
+  if (!cache || !query || query.state.fetchStatus !== 'fetching') {
+    publish();
+    return Promise.resolve();
+  }
+  // 查询函数返回的首屏版本由 Query 自己提交；后台版本必须在该提交之后发布。
+  // 监听真实查询终态，避免快响应把新数据先写入再被首屏旧值覆盖。
+  return new Promise((resolve, reject) => {
+    const unsubscribe = cache.subscribe((event) => {
+      if (event.query !== query) return;
+      if (event.type !== 'removed' && query.state.fetchStatus === 'fetching') return;
+      unsubscribe();
+      try {
+        if (event.type !== 'removed') publish();
+        resolve();
+      } catch (error) { reject(error); }
+    });
+  });
 }
 
 /** 失效另一个粒度的实体（如曲库、排名）：查询适配层之外的模块不得直接操作查询客户端。 */
@@ -121,9 +145,8 @@ export function registerGameDataBackground(
     backgroundRefreshes.delete(id);
     return;
   }
-  backgroundRefreshes.set(id, background);
-  const cleanup = () => { if (backgroundRefreshes.get(id) === background) backgroundRefreshes.delete(id); };
-  void background.then(cleanup, cleanup);
+  backgroundRefreshes.set(id, background.catch(error => failedRefresh<GameDataBundle, GameDataRefreshTarget>({ requested: dataRequested, failures: [refreshFailureFromError(error, 'data')] })));
+  // 已结算句柄保留到下一次查询替换或清理，refetch 返回后仍可消费同一次终态。
 }
 
 /** 读取该实体当前登记的后台刷新句柄；没有分离刷新时为 null。 */
@@ -143,7 +166,7 @@ export function gameDataBackground<T extends { source: DataSource }>(
   settlement: Promise<CacheFirstRefreshResult<T>>,
   toBundle: (value: T) => GameDataBundle | Promise<GameDataBundle>,
 ): Promise<GameDataRefreshResult> {
-  return settlement.then(async (result) => {
+  return settlement.then(async (result): Promise<GameDataRefreshResult> => {
     const value = result.value === null ? null : await toBundle(result.value);
     const failures = result.failures.map((failure) => asDataFailure(failure));
     switch (result.status) {
@@ -166,7 +189,9 @@ export function gameDataBackground<T extends { source: DataSource }>(
       default:
         return cancelledRefresh<GameDataBundle, GameDataRefreshTarget>(dataRequested);
     }
-  });
+  }).catch((error: unknown) => failedRefresh<GameDataBundle, GameDataRefreshTarget>({
+    requested: dataRequested, failures: [refreshFailureFromError(error, 'data')],
+  }));
 }
 
 function asDataFailure(
@@ -240,6 +265,7 @@ type TerminalResolution = {
   readonly cancelled: boolean;
   readonly terminal: GameDataBundle | undefined;
   readonly transportFailure: RefreshFailure<GameDataRefreshTarget> | null;
+  readonly structured: GameDataRefreshResult | null;
 };
 
 /**
@@ -261,10 +287,12 @@ async function resolveTerminal(
   }
 
   let backgroundValue: GameDataBundle | null = null;
+  let structured: GameDataRefreshResult | null = null;
   const background = awaitGameDataBackground(queryKey);
   if (background) {
     const settled = await background;
-    if (settled.status === 'cancelled') return { cancelled: true, terminal: undefined, transportFailure };
+    structured = settled;
+    if (settled.status === 'cancelled') return { cancelled: true, terminal: undefined, transportFailure, structured };
     if (settled.value) backgroundValue = settled.value;
     if (!transportFailure && settled.failures.length > 0) transportFailure = asDataFailure(settled.failures[0]);
   }
@@ -273,6 +301,33 @@ async function resolveTerminal(
     cancelled: false,
     terminal: backgroundValue ?? committed ?? refetched,
     transportFailure,
+    structured,
+  };
+}
+
+function combineStructuredRefresh(
+  input: Parameters<typeof buildRefreshResult>[0],
+  result: GameDataRefreshResult,
+): GameDataRefreshResult {
+  const requested = new Set(result.requested);
+  const completed = new Set(result.completed);
+  const failures = [...result.failures];
+  if (input.transportFailure && !failures.some(failure => failure.code === input.transportFailure?.code)) {
+    failures.push(input.transportFailure);
+  }
+  if (input.catalogFailed !== undefined) {
+    requested.add('catalog');
+    if (input.catalogFailed) failures.push({ code: 'no_data', target: 'catalog', diagnostic: '曲库暂未更新', retryable: true });
+    else completed.add('catalog');
+  }
+  const hasDataCompleted = [...completed].some(target => target !== 'catalog');
+  return {
+    ...result,
+    value: input.terminal ?? result.value,
+    requested: [...requested],
+    completed: [...completed],
+    failures,
+    status: failures.length ? hasDataCompleted ? 'partial' : 'failed' : result.status,
   };
 }
 
@@ -282,12 +337,13 @@ function buildRefreshResult(input: {
   transportFailure: RefreshFailure<GameDataRefreshTarget> | null;
   requested: readonly GameDataRefreshTarget[];
   catalogFailed: boolean | undefined;
+  structured: GameDataRefreshResult | null;
 }): GameDataRefreshResult {
   const { terminal, requested } = input;
-  // 有载荷但只剩缓存（或认证失效）时，缓存提示比传输错误更能说明结果；
-  // 完全没有载荷时传输错误优先，最后才回落到「没有可用数据」。
-  const dataFailure = (terminal ? dataPartFailure(terminal) : null)
-    ?? input.transportFailure
+  if (input.structured) return combineStructuredRefresh(input, input.structured);
+  // 结构化传输错误优先，缓存来源只说明可用旧值，不能掩盖认证或网络失败。
+  const dataFailure = input.transportFailure
+    ?? (terminal ? dataPartFailure(terminal) : null)
     ?? dataPartFailure(terminal);
   const failures: RefreshFailure<GameDataRefreshTarget>[] = [];
   const completed: GameDataRefreshTarget[] = [];
@@ -349,5 +405,6 @@ export async function refreshGameDataBundle(input: GameDataRefreshInput): Promis
     transportFailure: resolution.transportFailure,
     requested,
     catalogFailed: input.catalogFailed,
+    structured: resolution.structured,
   });
 }

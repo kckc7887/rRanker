@@ -1,7 +1,9 @@
-import type { PhigrosRankFilter } from './phigros-filters';
-import type { PhigrosXingKind } from './phigros-xing';
+import { PHIRA_RATE_LABELS, type PhiraRateKind, type PhiraXingKind } from './phira-score-presentation';
 import { phiraGrade, type PhiraChart, type PhiraChartPage, type PhiraQueriedBest } from './phira';
 import { normalizeNumericInput } from '@/utils/numeric-input';
+export type PhiraRankFilter = PhiraRateKind | 'fc';
+export const PHIRA_RANK_FILTERS: readonly { value: PhiraRankFilter; label: string }[] = ['phi', 'fc', 'v', 's', 'a', 'b', 'c', 'f'].map(value => ({ value: value as PhiraRankFilter, label: value === 'fc' ? 'FC' : PHIRA_RATE_LABELS[value as PhiraRateKind] }));
+export function phiraRankFilterLabel(value: PhiraRankFilter | null): string { return value === null ? '全部' : PHIRA_RANK_FILTERS.find(item => item.value === value)?.label ?? '全部'; }
 
 export type PhiraScoreSort = 'score' | 'acc' | 'constant';
 export type PhiraCatalogSort = 'updated' | 'constant-asc' | 'constant-desc' | 'name';
@@ -12,8 +14,8 @@ export type PhiraScoreFilters = {
   constantMax: string;
   accuracyMin: string;
   accuracyMax: string;
-  rank: PhigrosRankFilter | null;
-  xing: PhigrosXingKind | null;
+  rank: PhiraRankFilter | null;
+  xing: PhiraXingKind | null;
   sort: PhiraScoreSort;
 };
 
@@ -31,7 +33,7 @@ export function matchesPhiraRange(value: number, minInput: string, maxInput: str
   return (min === undefined || value >= min) && (max === undefined || value <= max);
 }
 
-export function phiraRecordXing(item: PhiraQueriedBest): PhigrosXingKind | null {
+export function phiraRecordXing(item: PhiraQueriedBest): PhiraXingKind | null {
   const record = item.record;
   if (!record) return null;
   if (record.good === 1 && record.bad === 0 && record.miss === 0) return 'good';

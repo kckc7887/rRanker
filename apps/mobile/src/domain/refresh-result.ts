@@ -76,6 +76,13 @@ const PROVIDER_ERROR_CODES: Record<ProviderErrorCode, true> = {
   cache_corrupt: true,
   network: true,
   unknown: true,
+  authorization_prepare: true,
+  authorization_open: true,
+  authorization_callback: true,
+  verification: true,
+  configuration: true,
+  credential_storage: true,
+  local_commit: true,
 };
 
 function isProviderErrorCode(value: unknown): value is ProviderErrorCode {

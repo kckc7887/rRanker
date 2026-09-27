@@ -1,4 +1,4 @@
-import Storage from 'expo-sqlite/kv-store';
+import Storage from '@/storage/key-value-storage';
 import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
 import { assertAccountListEnvelope, loadAccountDirectory, type KeyValueStore } from '@/storage/create-demo-account-store';
 

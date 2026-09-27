@@ -1,6 +1,6 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient } from '@tanstack/react-query';
-import { ensureRizlineCatalog, refreshRizlineCatalog } from '@/hooks/use-rizline-catalog';
+import { ensureRizlineCatalog, refreshRizlineCatalog } from '@/services/rizline-catalog-query';
 import { rizlinePayloadFromSnapshot, type GameDataBundle } from '@/domain/game-data';
 import { getGameProfile } from '@/domain/game-profile';
 import { gameDataQueryKey } from '@/services/game-data-query';
@@ -26,8 +26,8 @@ describe('Rizline catalog and account query coordination', () => {
       onFresh = callback!;
       return { snapshot: { ...rizlineCatalog(), songs: [] }, source: { ...source, isStale: true } };
     });
-    await ensureRizlineCatalog();
-    onFresh({ snapshot: rizlineCatalog(), source });
+    await ensureRizlineCatalog(queryClient);
+    await onFresh({ snapshot: rizlineCatalog(), source });
     const payload = queryClient.getQueryData<GameDataBundle>(key)!.payload;
     expect(payload.kind).toBe('rizline');
     if (payload.kind !== 'rizline') throw new Error('Wrong payload');
@@ -41,7 +41,7 @@ describe('Rizline catalog and account query coordination', () => {
       payload: rizlinePayloadFromSnapshot({ save: rizlineSave(), source }, { snapshot: rizlineCatalog(), source }) };
     queryClient.setQueryData(key, bundle);
     vi.mocked(rizlineResources.loadFresh).mockRejectedValue(new Error('corrupt release'));
-    await expect(refreshRizlineCatalog()).rejects.toThrow('corrupt release');
+    await expect(refreshRizlineCatalog(queryClient)).rejects.toThrow('corrupt release');
     expect(queryClient.getQueryData(key)).toBe(bundle);
   });
 });

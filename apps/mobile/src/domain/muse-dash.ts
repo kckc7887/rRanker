@@ -402,8 +402,13 @@ export function buildMuseDashRawScores(
 }
 
 export function sortMuseDashRawScores(scores: readonly MuseDashRawScore[]): MuseDashRawScore[] {
-  return [...scores].sort((left, right) =>
-    (right.play.sum ?? right.play.score) - (left.play.sum ?? left.play.score));
+  const rating = (value: number | undefined | null) => typeof value === 'number' && Number.isFinite(value) ? value : null;
+  return [...scores].sort((left, right) => {
+    const a = rating(left.play.sum);
+    const b = rating(right.play.sum);
+    if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
+    return b - a;
+  });
 }
 
 /** 全曲库谱面池；成绩仅作为可选 join，不会在默认筛选下排除未游玩谱面。 */

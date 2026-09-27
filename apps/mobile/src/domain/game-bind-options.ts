@@ -44,7 +44,8 @@ export type RemoteProviderId = Extract<ProviderId, 'rizline-official' | 'majdata
  * 不出现在添加入口、由会话流程直接创建的内部查分器 id。
  * 登记校验据此区分「有意不绑定」与「遗留的未登记 id」。
  */
-export const INTERNAL_PROVIDER_IDS = ['chunithm-temp'] as const;
+export const INTERNAL_PROVIDER_GAMES = { 'chunithm-temp': 'chunithm' } as const satisfies Partial<Record<ProviderId, GameId>>;
+export const INTERNAL_PROVIDER_IDS = Object.keys(INTERNAL_PROVIDER_GAMES) as (keyof typeof INTERNAL_PROVIDER_GAMES)[];
 
 /** 正式支持的游戏 id：每个都需要独立的添加入口、展示资料、工具箱与数据加载器。 */
 export const SUPPORTED_GAME_IDS = [
@@ -107,7 +108,7 @@ export type GameOption = {
 };
 
 /** 游戏、家族与 Provider 共用的包内图标，不依赖网络或图片缓存。 */
-export const GAME_OPTIONS: GameOption[] = [
+const GAME_OPTION_DEFINITIONS = [
   {
     id: 'maimai',
     accountOrder: 0,
@@ -345,7 +346,25 @@ export const GAME_OPTIONS: GameOption[] = [
       bindingKind: 'sms-code',
     }],
   },
-];
+] satisfies GameOption[];
+
+export const GAME_OPTIONS: GameOption[] = GAME_OPTION_DEFINITIONS;
+type RegisteredGameOption = (typeof GAME_OPTION_DEFINITIONS)[number];
+type RegisteredProvider<G extends GameId> = Extract<RegisteredGameOption, { id: G }>['providers'][number]['id'];
+type InternalProvider<G extends GameId> = {
+  [P in keyof typeof INTERNAL_PROVIDER_GAMES]: typeof INTERNAL_PROVIDER_GAMES[P] extends G ? P : never;
+}[keyof typeof INTERNAL_PROVIDER_GAMES];
+export type GameProviderId<G extends GameId> = G extends GameId
+  ? RegisteredProvider<G> | InternalProvider<G> | (G extends OsuModeGameId ? RegisteredProvider<'osu-standard'> : never)
+  : never;
+
+export function isProviderForGame<G extends GameId>(gameId: G, providerId: ProviderId): providerId is GameProviderId<G> {
+  if (Object.hasOwn(INTERNAL_PROVIDER_GAMES, providerId)) {
+    return INTERNAL_PROVIDER_GAMES[providerId as keyof typeof INTERNAL_PROVIDER_GAMES] === gameId;
+  }
+  const bindingGame = (OSU_MODE_GAME_IDS as readonly GameId[]).includes(gameId) ? 'osu-standard' : gameId;
+  return findGame(bindingGame)?.providers.some(provider => provider.id === providerId) === true;
+}
 
 export function findGame(id: GameId): GameOption | undefined {
   return GAME_OPTIONS.find((game) => game.id === id);

@@ -149,6 +149,6 @@ describe('PhigrosKyouProvider', () => {
       deleteResource: async () => undefined,
     };
     const result = await cacheFirstLoad<PhigrosKyouChartTagsSnapshot>({ loadCached: () => repository.getResource<PhigrosKyouChartTagsSnapshot>(PHIGROS_KYOU_TAGS_RESOURCE_KEY, PHIGROS_KYOU_TAGS_SCHEMA_VERSION), loadFresh: async () => { throw new Error('offline'); }, onFresh: () => undefined });
-    expect(result.source).toMatchObject({ kind: 'cache', isStale: true, label: 'Kyou' });
+    expect(result.source).toEqual({ ...cached.source, isStale: true });
   });
 });

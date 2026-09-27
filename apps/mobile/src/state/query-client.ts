@@ -1,4 +1,5 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
+import { registerGameDataBackground } from '@/services/game-data-query';
 import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 export function releaseInactiveQueries(client: QueryClient): void {
@@ -15,4 +16,9 @@ export const queryClient = new QueryClient({
       refetchOnWindowFocus: false,
     },
   },
+});
+
+// 终态句柄与实际查询同寿命；解绑、释放闲置查询与clear都回收其后台结果。
+queryClient.getQueryCache().subscribe(event => {
+  if (event.type === 'removed') registerGameDataBackground(event.query.queryKey, undefined);
 });

@@ -2,48 +2,17 @@
 
 import { createChartPreviewInjectors } from '@/features/chart-preview-shared/chart-preview-inject-factory';
 
-export type PhigrosChartPreviewSettings = {
-  playbackSpeed?: number;
-  noteScale?: number;
-  volume?: number;
-  backgroundDim?: number;
-  multiHint?: boolean;
-  lineColor?: string;
-  hitSoundVolume?: number;
-  aspectRatio?: number | null;
-  flipX?: boolean;
-  effects?: boolean;
-};
-
-export type PhigrosChartPreviewRpeAssets = {
-  /** 相对播放器 HTML 的谱面包资源目录（判定线贴图/背景/gif/视频），以 / 结尾。 */
-  basePath: string;
-  extraJson: string | null;
-  infoYml: string | null;
-  shaders: Record<string, string>;
-};
-
-export type PhigrosChartPreviewConfig = {
-  game: 'phigros' | 'phira';
-  title?: string;
-  chartUrl?: string;
-  chartText?: string;
-  musicUrl?: string;
-  illustrationUrl?: string;
-  hitSounds?: { click?: string; drag?: string; flick?: string };
-  settings?: PhigrosChartPreviewSettings;
-  /** 谱面格式：pgr（默认）或 rpe；RPE 时提供 rpeAssets。 */
-  format?: 'pgr' | 'rpe';
-  rpeAssets?: PhigrosChartPreviewRpeAssets | null;
-  /** 播放器界面主题跟随应用，缺省为深色。 */
-  theme?: 'light' | 'dark';
-};
+import type { PgrPreviewConfig, PgrPreviewSettings, PgrPreviewRpeAssets } from '@/features/chart-preview-shared/pgr-preview-config';
+export type PhigrosChartPreviewSettings = PgrPreviewSettings;
+export type PhigrosChartPreviewRpeAssets = PgrPreviewRpeAssets;
+export type PhigrosChartPreviewConfig = PgrPreviewConfig;
 
 const phigrosChartPreviewInjectors = createChartPreviewInjectors<PhigrosChartPreviewConfig>({
   globalVar: '__PHIGROS_CHART_PREVIEW__',
   placeholder: '<!--PHIGROS_CHART_PREVIEW_CONFIG-->',
   serialize: (config) => JSON.stringify({
     game: config.game,
+    sourceLabel: config.sourceLabel,
     title: config.title ?? '',
     chartUrl: config.chartUrl ?? null,
     chartText: config.chartText ?? null,

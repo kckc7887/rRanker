@@ -62,7 +62,8 @@ describe('PhigrosSaveCache', () => {
 
   it('marks cache-first payloads as stale without rewriting the labels', () => {
     const marked = stalePhigrosPayload(makePayload());
-    expect(marked.source.kind).toBe('cache');
+    expect(marked.source.kind).toBe(fixtureSource.kind);
+    expect(marked.source.updatedAt).toBe(fixtureSource.updatedAt);
     expect(marked.source.isStale).toBe(true);
     expect(marked.source.label).toBe(fixtureSource.label);
     expect(marked.catalogSource.isStale).toBe(true);

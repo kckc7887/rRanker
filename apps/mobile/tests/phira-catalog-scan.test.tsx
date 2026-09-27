@@ -46,7 +46,7 @@ jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({
   data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn(),
 }) }));
-jest.mock('@/features/phira-compatible-chart-download/phira-compatible-chart-download', () => ({
+jest.mock('@/features/phira-chart-download/chart-package-download', () => ({
   downloadPhiraChartPackage: jest.fn(),
 }));
 jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({
@@ -83,7 +83,7 @@ function renderCatalog(client = createClient()) {
 /** 通过定数上限把曲目全部筛掉，触发空结果自动续扫。 */
 async function filterOutEveryChart(screen: Awaited<ReturnType<typeof renderCatalog>>) {
   await fireEvent.press(screen.getByLabelText(/展开筛选/));
-  const track = screen.getByTestId('phigros-filter-constant-track');
+  const track = screen.getByTestId('phira-filter-constant-track');
   await fireEvent(track, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 100, height: 36 } } });
   await fireEvent.press(track, { nativeEvent: { locationX: 80 } });
 }
@@ -223,4 +223,32 @@ describe('Phira 曲库自动续扫（真实组件 + 真实无限查询）', () =
     await act(async () => { stalled.resolve(page(3)); });
     await screen.unmount();
   });
+  it('A 到 B 再回到 A：取消的后页不留下永久请求占位', async () => {
+    const requested: string[] = [];
+    let rankCalls = 0;
+    jest.spyOn(phiraProvider, 'getCharts').mockImplementation(async (input, signal) => {
+      requested.push(input.status + ':' + input.page);
+      if (input.status === 'ranked' && ++rankCalls === 1) {
+        return new Promise<PhiraChartPage>((_resolve, reject) => {
+          signal?.addEventListener('abort', () => reject(new DOMException('cancelled', 'AbortError')), { once: true });
+        });
+      }
+      return page(input.page);
+    });
+    const client = createClient();
+    client.setQueryData(['phira', 'charts', 'ranked', ''], { pages: [page(0), page(2)], pageParams: [0, 2] });
+    client.setQueryData(['phira', 'charts', 'special', ''], { pages: [page(10), page(12)], pageParams: [0, 2] });
+    const screen = await renderCatalog(client);
+    await filterOutEveryChart(screen);
+    await waitFor(() => expect(requested).toEqual(['ranked:3']));
+    await fireEvent.press(screen.getByLabelText('选择谱面类别，当前 上架'));
+    await fireEvent.press(screen.getByLabelText('选择谱面类别 特殊'));
+    await waitFor(() => expect(requested).toContain('special:3'));
+    await fireEvent.press(screen.getByLabelText('选择谱面类别，当前 特殊'));
+    await fireEvent.press(screen.getByLabelText('选择谱面类别 上架'));
+    await waitFor(() => expect(requested.filter(value => value === 'ranked:3')).toHaveLength(2));
+    await waitFor(() => expect(requested).toContain('ranked:4'));
+    await screen.unmount();
+  });
+
 });

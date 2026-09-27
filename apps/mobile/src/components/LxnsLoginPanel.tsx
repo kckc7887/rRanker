@@ -6,7 +6,7 @@ import {
 } from '@/domain/bound-account';
 import type { GameId } from '@/domain/game-bind-options';
 import { reusableLxnsAccounts } from '@/domain/lxns-account-reuse';
-import { providerErrorToUserMessage } from '@/providers/errors';
+import { providerErrorToUserMessage, runProviderOperation } from '@/providers/errors';
 import {
   beginLxnsAuthorize,
   subscribeLxnsOAuthOutcome,
@@ -78,7 +78,9 @@ export function LxnsLoginPanel({
     if (!visible) reset();
   }, [visible]);
 
-  const messageFor = (error: unknown) => providerErrorToUserMessage(error, '验证失败，请稍后重试。');
+  const messageFor = (error: unknown) => providerErrorToUserMessage(error, '绑定失败，请稍后重试。', {
+    authentication: '远端账号验证未通过，请重新授权。',
+  });
 
   const invalidateAll = () => {
     void queryClient.invalidateQueries({ queryKey: ['score-snapshot'] });
@@ -88,7 +90,7 @@ export function LxnsLoginPanel({
 
   const activateLxnsBinding = async (result: LxnsBindingResult) => {
     const rating = Number(result.account.scoreDisplay);
-    setSession(result.session, {
+    await runProviderOperation('local_commit', () => setSession(result.session, {
       accountId: result.account.id,
       credentialId: result.credentialId,
       displayName: result.account.displayName,
@@ -97,9 +99,9 @@ export function LxnsLoginPanel({
       gameId: result.account.gameId,
       avatarUrl: result.account.avatarUrl,
       ratingPossession: result.account.ratingPossession,
-    });
+    }));
     if (result.account.gameId === 'chunithm') {
-      removeBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID);
+      await runProviderOperation('local_commit', () => removeBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID));
       await chunithmTempAccount.remove().catch(() => undefined);
     }
     invalidateAll();
@@ -109,10 +111,10 @@ export function LxnsLoginPanel({
     setBusy(true);
     setMessage('正在打开落雪授权页…');
     try {
-      const url = await beginLxnsAuthorize({
+      const url = await runProviderOperation('authorization_prepare', () => beginLxnsAuthorize({
         gameId: gameId === 'chunithm' ? 'chunithm' : 'maimai',
-      });
-      await Linking.openURL(url);
+      }));
+      await runProviderOperation('authorization_open', () => Linking.openURL(url));
       setMessage('请在浏览器完成授权，完成后将自动返回并绑定。');
     } catch (error) {
       setMessage(messageFor(error));
@@ -131,11 +133,11 @@ export function LxnsLoginPanel({
     setBusy(true);
     setMessage(`正在使用「${account.displayName}」绑定 ${gameTitle}…`);
     try {
-      const result = await bindLxnsAccount({
+      const result = await runProviderOperation('verification', () => bindLxnsAccount({
         gameId: gameId === 'chunithm' ? 'chunithm' : 'maimai',
         session,
         credentialId,
-      });
+      }));
       await activateLxnsBinding(result);
       reset();
       onSuccess();

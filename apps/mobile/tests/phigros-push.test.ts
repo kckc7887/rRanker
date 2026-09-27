@@ -39,6 +39,14 @@ function pushInputErrorCode(run: () => unknown): string {
 }
 
 describe('push request parameters', () => {
+  it('rejects overflow after delta quantization and invalid search budgets', () => {
+    expect(parsePhigrosPushDelta(Number.MAX_VALUE)).toBeNull();
+    for (const searchPoolLimit of [NaN, Infinity, -1, 0, 1.5, Number.MAX_VALUE]) {
+      expect(pushInputErrorCode(() => resolvePhigrosPushRequest({ delta: 0.01, chartCost: 1, searchPoolLimit })))
+        .toBe('search_pool_out_of_range');
+    }
+    expect(resolvePhigrosPushRequest({ delta: 0.01, chartCost: 1, searchPoolLimit: 1 }).searchPoolLimit).toBe(1);
+  });
   it('accepts the legal boundaries and normalizes delta to two decimals', () => {
     expect(parsePhigrosPushDelta(PHIGROS_PUSH_LIMITS.minDelta)).toBe(0.01);
     expect(parsePhigrosPushDelta(0.1)).toBe(0.1);

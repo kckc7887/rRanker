@@ -8,7 +8,7 @@ import type { ProviderId } from '@/domain/game-bind-options';
 let mockProviderId: ProviderId = 'local';
 let mockGameId = 'maimai';
 const mockRefreshPhigros = jest.fn(async () => undefined);
-jest.mock('@/hooks/use-phigros-catalog', () => ({ refreshPhigrosCatalog: () => mockRefreshPhigros() }));
+jest.mock('@/services/phigros-catalog-query', () => ({ refreshPhigrosCatalog: () => mockRefreshPhigros() }));
 let mockPinnedToolIds: string[] = [];
 let mockPinnedPlateIds: number[] = [];
 let mockSettledBundle: unknown = undefined;

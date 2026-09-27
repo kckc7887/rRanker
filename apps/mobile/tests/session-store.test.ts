@@ -28,7 +28,7 @@ import {
   rotateOsuTokens,
 } from '@/providers/osu-oauth';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
-import { EmptyCatalogProvider, EmptyScoreProvider } from '@/providers/empty-provider';
+import { EmptyScoreProvider } from '@/providers/empty-provider';
 import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
@@ -37,6 +37,7 @@ import { MaxedPhigrosTestProvider } from '@/providers/maxed-phigros-test-provide
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import {
   applyLxnsTokenRotation,
+  applyMajdataSessionRotation,
   applyOsuTokenRotation,
   applyRizlineSessionRotation,
   pendingRotationWritesSnapshot,
@@ -49,7 +50,7 @@ import {
 
 process.env.OSU_OAUTH_CLIENT_SECRET ??= 'test-client-secret';
 
-const updateAccountSession = vi.hoisted(() => vi.fn(async () => undefined));
+const updateAccountSession = vi.hoisted(() => vi.fn(async (): Promise<CredentialSessionWriteResult> => 'applied'));
 const updateCredentialSession = vi.hoisted(() => (
   vi.fn(async (): Promise<CredentialSessionWriteResult> => 'applied')
 ));
@@ -122,6 +123,12 @@ describe('Rizline account sessions', () => {
     expect(updateAccountSession).toHaveBeenCalledWith(account.id, next, { expected: session, signal: undefined });
     expect(useSession.getState().session).toBe(next);
   });
+  it('does not project a session when persistent eligibility rejects the update', async () => {
+    useSession.getState().setSession(session, metadata);
+    updateAccountSession.mockResolvedValueOnce('stale');
+    await applyRizlineSessionRotation(account.id, { ...session, token: 'rotated' }, session);
+    expect(useSession.getState().session).toBe(session);
+  });
 });
 const lxnsSession: ProviderSession = {
   mode: 'lxns-oauth',
@@ -134,7 +141,7 @@ const lxnsSession: ProviderSession = {
 describe('useSession store', () => {
   beforeEach(() => {
     updateAccountSession.mockReset();
-    updateAccountSession.mockResolvedValue(undefined);
+    updateAccountSession.mockResolvedValue('applied');
     updateCredentialSession.mockReset();
     updateCredentialSession.mockResolvedValue('applied');
     useSession.setState({
@@ -155,6 +162,7 @@ describe('useSession store', () => {
         clear: vi.fn(async () => undefined),
       }),
       catalogProvider: new LxnsCatalogProvider(),
+      protocolScoreProvider: null,
       restoreStatus: 'ready',
       restoreError: null,
     });
@@ -199,6 +207,24 @@ describe('useSession store', () => {
     expect(boundAccounts.map((account) => account.id)).not.toContain(MAIMAI_TEST_ACCOUNT_ID);
     expect(boundAccounts.map((account) => account.id)).toContain(TEST_ACCOUNT_ID);
   });
+  it('commits Majdata cookies once with the active projection and rejects stale persistent updates', async () => {
+    const session: Extract<ProviderSession, { mode: 'http-cookies' }> = { mode: 'http-cookies', origin: 'https://majdata.net', cookies: [{ name: 'auth', value: 'first', path: '/', secure: true }], persistable: true };
+    const metadata = { accountId: 'majdata-net:account:player', displayName: 'Player', gameId: 'majdata-net', providerId: 'majdata-net', rating: null, credentialId: 'majdata-credential' } as const;
+    useSession.getState().setSession(session, metadata);
+    const next = { ...session, cookies: [{ ...session.cookies[0], value: 'next' }] };
+    const notifications: ProviderSession[] = [];
+    const unsubscribe = useSession.subscribe((state) => { notifications.push(state.session!); expect(state.sessionsByAccountId[metadata.accountId]).toBe(state.session); });
+    await applyMajdataSessionRotation(metadata.accountId, next, session);
+    unsubscribe();
+    expect(notifications).toEqual([next]);
+    expect(updateAccountSession).toHaveBeenCalledWith(metadata.accountId, next, { expected: session, signal: undefined });
+    updateAccountSession.mockResolvedValueOnce('stale');
+    await applyMajdataSessionRotation(metadata.accountId, session, next);
+    expect(useSession.getState().session).toBe(next);
+    updateAccountSession.mockRejectedValueOnce(new Error('offline'));
+    await expect(applyMajdataSessionRotation(metadata.accountId, session, next)).rejects.toThrow('offline');
+    expect(useSession.getState().session).toBe(next);
+  });
 
   it('enters unbound empty state when all accounts are removed', () => {
     useSession.getState().removeBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
@@ -209,7 +235,7 @@ describe('useSession store', () => {
     expect(state.activeAccountId).toBe(UNBOUND_ACCOUNT_ID);
     expect(state.activeProviderId).toBeNull();
     expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
-    expect(state.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
+    expect(state.catalogProvider).toBeNull();
   });
 
   it('binds a maimai account with display name and DX rating meta', () => {
@@ -285,7 +311,7 @@ describe('useSession store', () => {
     expect(state.activeAccountId).toBe(TEST_ACCOUNT_ID);
     expect(state.activeGameId).toBe('test');
     expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
-    expect(state.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
+    expect(state.catalogProvider).toBeNull();
   });
 
   it('switches to the no-score Chunithm temporary account', () => {
@@ -296,7 +322,7 @@ describe('useSession store', () => {
     expect(state.activeGameId).toBe('chunithm');
     expect(state.activeProviderId).toBe('chunithm-temp');
     expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
-    expect(state.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
+    expect(state.catalogProvider).toBeNull();
     expect(state.session).toBeNull();
   });
 
@@ -318,7 +344,7 @@ describe('useSession store', () => {
     expect(state.activeGameId).toBe('chunithm');
     expect(state.activeProviderId).toBe('chunithm-test');
     expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
-    expect(state.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
+    expect(state.catalogProvider).toBeNull();
     expect(state.session).toBeNull();
   });
 
@@ -332,7 +358,7 @@ describe('useSession store', () => {
     expect(state.scoreProvider).toBeInstanceOf(MaxedPhigrosTestProvider);
     // Phigros 曲库经 use-phigros-catalog 与游戏数据加载器读取，会话不登记舞萌曲库详细能力。
     expect(state.catalogProvider).not.toBeInstanceOf(PhigrosCatalogProvider);
-    expect(state.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
+    expect(state.catalogProvider).toBeNull();
     expect(state.session).toBeNull();
   });
 
@@ -597,13 +623,13 @@ describe('useSession store', () => {
     await expect(applyLxnsTokenRotation(accountId, { previous: lxnsSession, next: rotated }))
       .resolves.toBe('pending-persist');
 
-    // 有界重试：首次失败后最多再自动补写 3 次，超过上限就放弃并保留可观察摘要为空。
+    // 自动预算耗尽后保留任务，手动恢复仍可重新补写。
     for (let attempt = 1; attempt <= 3; attempt += 1) {
       await retryPendingRotationWrites();
       expect(pendingRotationWritesSnapshot()[0]?.attempts).toBe(attempt);
     }
     await retryPendingRotationWrites();
-    expect(pendingRotationWritesSnapshot()).toEqual([]);
+    expect(pendingRotationWritesSnapshot()[0]?.attempts).toBe(4);
 
     // 账号已解绑的挂起项在补写时被丢弃，不会把旧凭据写回来。
     updateCredentialSession.mockResolvedValue('missing');
@@ -645,6 +671,28 @@ describe('useSession store', () => {
       resetPendingRotationWritesForTests();
     }
     expect(pendingRotationWritesSnapshot()).toEqual([]);
+  });
+  it('retains an exhausted automatic retry and resumes it when manually triggered', async () => {
+    vi.useFakeTimers();
+    resetPendingRotationWritesForTests();
+    try {
+      useSession.getState().setSession(lxnsSession, { displayName: 'Player', rating: 12000, playerId: '1', providerId: 'lxns' });
+      const accountId = useSession.getState().activeAccountId;
+      const next = { ...lxnsSession, accessToken: 'next', refreshToken: 'next' };
+      updateCredentialSession.mockRejectedValue(new Error('offline'));
+      await applyLxnsTokenRotation(accountId, { previous: lxnsSession, next });
+      await vi.advanceTimersByTimeAsync(5_000 + 30_000 + 120_000);
+      expect(updateCredentialSession).toHaveBeenCalledTimes(4);
+      expect(pendingRotationWritesSnapshot()).toEqual([expect.objectContaining({ attempts: 3 })]);
+      await vi.advanceTimersByTimeAsync(600_000);
+      expect(updateCredentialSession).toHaveBeenCalledTimes(4);
+      updateCredentialSession.mockResolvedValue('applied');
+      await expect(retryPendingRotationWrites()).resolves.toBe(1);
+      expect(pendingRotationWritesSnapshot()).toEqual([]);
+    } finally {
+      resetPendingRotationWritesForTests();
+      vi.useRealTimers();
+    }
   });
 
   it('writes the shared osu credential even after the initiating mode account was removed', async () => {
@@ -913,15 +961,17 @@ describe('useSession store', () => {
     expect(state.activeProviderId).toBe(optionalAccount.providerId);
   });
 
-  it('falls back to unbound empty data and exposes a restore error', async () => {
+  it('preserves loaded accounts and exposes a recoverable restore error', async () => {
+    const previous = useSession.getState();
     await restoreSession(async () => { throw new Error('secure store unavailable'); });
     expect(useSession.getState()).toMatchObject({
       session: null,
       restoreStatus: 'error',
-      activeAccountId: UNBOUND_ACCOUNT_ID,
+      activeAccountId: previous.activeAccountId,
     });
     expect(useSession.getState().restoreError).toContain('无法读取');
-    expect(useSession.getState().scoreProvider).toBeInstanceOf(EmptyScoreProvider);
+    expect(useSession.getState().scoreProvider).toBe(previous.scoreProvider);
+    expect(useSession.getState().boundAccounts).toBe(previous.boundAccounts);
   });
 
   it('clears osu rotation state when the last osu account is unbound or the session is cleared', async () => {

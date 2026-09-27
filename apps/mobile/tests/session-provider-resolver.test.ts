@@ -1,8 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
-import { createLocalMaimaiAccount, createMaxedMaimaiTestAccount } from '@/domain/bound-account';
+import { createChunithmBoundAccount, createOsuBoundAccount, createLocalMaimaiAccount, createMaxedMaimaiTestAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
-import { EmptyCatalogProvider, EmptyScoreProvider } from '@/providers/empty-provider';
+import { EmptyScoreProvider } from '@/providers/empty-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
+import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
+import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import {
   providerResolverCacheKey,
   providerResolverStats,
@@ -15,7 +17,7 @@ vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepositor
 
 process.env.OSU_OAUTH_CLIENT_SECRET ??= 'test-client-secret';
 
-const lxnsSession = (refreshToken: string): ProviderSession => ({
+const lxnsSession = (refreshToken: string): Extract<ProviderSession, { mode: 'lxns-oauth' }> => ({
   mode: 'lxns-oauth',
   accessToken: `access-${refreshToken}`,
   refreshToken,
@@ -99,6 +101,22 @@ describe('Provider resolver 缓存与失效条件', () => {
     resetProviderResolverForTests();
     const unbound = resolve(null, { id: null, session: null });
     expect(unbound.providers.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
-    expect(unbound.providers.catalogProvider).toBeInstanceOf(EmptyCatalogProvider);
+    expect(unbound.providers.catalogProvider).toBeNull();
+  });
+  it('中二与 osu 的领域 Provider 在同一凭据版本下共享实例并随轮换失效', () => {
+    const chunithm = createChunithmBoundAccount({ playerId: '2', displayName: '中二玩家', rating: 17 });
+    const osu = createOsuBoundAccount({ gameId: 'osu-mania', userId: 7, displayName: 'osu 玩家', pp: 100 });
+    const osuSession = { mode: 'osu-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000, persistable: true } as const;
+    for (const [bound, session, expectedClass] of [[chunithm, lxnsSession('first'), ChunithmScoreProvider], [osu, osuSession, OsuScoreProvider]] as const) {
+      resetProviderResolverForTests();
+      const first = resolve(bound, { id: 'shared', session });
+      const same = resolve({ ...bound }, { id: 'shared', session: { ...session } });
+      expect(first.providers.protocolScoreProvider).toBeInstanceOf(expectedClass);
+      expect(same.providers.protocolScoreProvider).toBe(first.providers.protocolScoreProvider);
+      expect(first.providers.catalogProvider).toBeNull();
+      const next = resolve(bound, { id: 'shared', session: { ...session, accessToken: 'next', refreshToken: 'next' } });
+      expect(next.providers.protocolScoreProvider).not.toBe(first.providers.protocolScoreProvider);
+      expect(providerResolverStats().entries).toBe(1);
+    }
   });
 });

@@ -15,7 +15,6 @@ function markSource(source: DataSource, label?: string): DataSource {
   if (source.kind === 'cache') return source;
   return {
     ...source,
-    kind: 'cache',
     isStale: true,
     ...(label ? { label } : {}),
   };
@@ -23,7 +22,7 @@ function markSource(source: DataSource, label?: string): DataSource {
 
 /**
  * 缓存优先渲染时的来源标记：label 原样保留（可覆盖，如中二「落雪咖啡屋（缓存）」），
- * 仅标记为缓存且过期（后台刷新中），UI 据此显示「数据可能过期」，刷新完成后自动恢复。
+ * 保留原提供方和抓取时间，仅标记过期（后台刷新中），UI 据此显示「数据可能过期」，刷新完成后自动恢复。
  * 可直接对 DataSource 打标，也可对含 source 字段的对象打标。
  */
 export function staleCached(source: DataSource, options?: { label?: string }): DataSource;
@@ -63,9 +62,9 @@ export type CacheFirstLoadOptions<T extends Sourced> = {
   loadCached: () => Promise<T | null>;
   loadFresh: (signal: AbortSignal) => Promise<T>;
   /** 只有刷新真正取回新数据时调用。 */
-  onFresh: (fresh: T) => void;
+  onFresh: (fresh: T) => unknown;
   /** 刷新没有提供新数据、但给出了可继续使用的缓存/兜底数据时调用。 */
-  onFallback?: (fallback: T, failure: RefreshFailure | null) => void;
+  onFallback?: (fallback: T, failure: RefreshFailure | null) => unknown;
   /** 后台刷新失败时调用；只在刷新抛错时触发，取消后不再触发。 */
   onRefreshFailed?: (failure: RefreshFailure) => void;
   /**
@@ -142,8 +141,8 @@ export async function cacheFirstLoadWithBackground<T extends Sourced>(
   assertCurrent();
   if (cached) {
     // 句柄永不 reject：终态一律用 RefreshResult 表达，调用方不需要额外 catch。
-    const background = options.loadFresh(signal).then(
-      (fresh): CacheFirstRefreshResult<T> => {
+    const background = Promise.resolve().then(() => options.loadFresh(signal)).then(
+      async (fresh): Promise<CacheFirstRefreshResult<T>> => {
         try {
           assertCurrent();
         } catch {
@@ -152,12 +151,15 @@ export async function cacheFirstLoadWithBackground<T extends Sourced>(
         if (signal.aborted) return cancelledRefresh<T, CacheFirstRefreshTarget>(dataRequested);
         if (isFallback(fresh)) {
           // 兜底发布失败不改变「本次没有取回新数据」这一事实。
-          try { options.onFallback?.(fresh, null); } catch { /* 终态仍按兜底表达 */ }
+          try { await options.onFallback?.(fresh, null); } catch { /* 终态仍按兜底表达 */ }
           return fallbackSettlement(fresh);
         }
         try {
-          options.onFresh(fresh);
+          await options.onFresh(fresh);
+          assertCurrent();
+          if (signal.aborted) return cancelledRefresh<T, CacheFirstRefreshTarget>(dataRequested);
         } catch (error) {
+          if (signal.aborted || isCancellation(error)) return cancelledRefresh<T, CacheFirstRefreshTarget>(dataRequested);
           // 数据已取回但提交失败：不能报告成本次刷新成功。
           return failedRefresh({
             value: fresh,
@@ -180,20 +182,24 @@ export async function cacheFirstLoadWithBackground<T extends Sourced>(
         }
         // 回调沿用既有形状（target 为 null）；终态句柄补上本次请求的唯一范围。
         const failure = refreshFailureFromError(error);
-        options.onRefreshFailed?.(failure);
+        try { options.onRefreshFailed?.(failure); } catch { /* 诊断订阅异常不改变请求终态。 */ }
         return failedRefresh<T, CacheFirstRefreshTarget>({
           requested: dataRequested,
           failures: [{ ...failure, target: 'data' }],
         });
       },
-    );
+    ).catch((error: unknown) => signal.aborted || isCancellation(error)
+      ? cancelledRefresh<T, CacheFirstRefreshTarget>(dataRequested)
+      : failedRefresh<T, CacheFirstRefreshTarget>({ requested: dataRequested,
+        failures: [refreshFailureFromError(error, 'data')] }));
     const mark = options.markStale ?? ((value: T) => staleCached(value));
     return { value: mark(cached), background };
   }
   const fresh = await options.loadFresh(signal);
   if (signal.aborted) throw new Error('cache first load aborted');
   assertCurrent();
-  return { value: fresh, background: Promise.resolve(successfulSettlement(fresh)) };
+  return { value: fresh, background: Promise.resolve(isFallback(fresh)
+    ? fallbackSettlement(fresh) : successfulSettlement(fresh)) };
 }
 
 /**

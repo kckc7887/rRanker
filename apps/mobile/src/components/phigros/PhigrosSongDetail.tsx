@@ -44,9 +44,9 @@ import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useAppTheme } from '@/theme/app-theme';
-import { openChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-open';
+import { openChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-open';
 import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
-import { downloadPhigrosChartAsPhiraPackage } from '@/features/phira-compatible-chart-download/phira-compatible-chart-download';
+import { downloadPhigrosChartAsPhiraPackage } from '@/features/phigros-chart-download/chart-package-download';
 
 const PHIGROS_CHART_TYPE = 'SD' as const;
 

@@ -1,4 +1,4 @@
-import { captureResourceWrites, snapshotSource } from '@/services/snapshot-cache-utils';
+import { captureResourceWrites, createInflightGuard, snapshotSource } from '@/services/snapshot-cache-utils';
 import {
   CHUNITHM_PERSONAL_LEGACY_SCHEMA_VERSION,
   CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
@@ -10,10 +10,8 @@ import {
   type ChunithmScore,
   type LegacyChunithmPersonalSnapshot,
 } from '@/domain/chunithm-personal';
-import { ProviderError } from '@/providers/errors';
 import type { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import { cacheFirstLoad, isCacheFallback, staleCached } from '@/services/cache-first';
 import { loadItemsBounded } from '@/services/offset-pagination';
 import {
   assertFreshSnapshotSource,
@@ -24,26 +22,13 @@ import {
   refreshFailureFromError,
   snapshotMetadataOf,
   successfulRefresh,
-  type RefreshFailure,
   type RefreshResult,
   type SnapshotMetadata,
 } from '@/domain/refresh-result';
 import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 
-/**
- * 同一账号并发 load 共享一次网络请求：缓存优先后台刷新与用户主动同步等待共用同一 promise，
- * 保证同步判定等到的是与 UI 回写同一次读取的真实结果。
- */
-const inflightChunithmLoads = new Map<string, { promise: Promise<ChunithmPersonalSnapshot>; signal: AbortSignal }>();
-
-/**
- * 同一账号在途的分项刷新。它与 `load` 分开登记：`load` 交出快照，`refresh` 交出刷新结果，
- * 但用户主动同步的等待必须覆盖两者，否则只能靠事后重读缓存猜测刷新是否已经落定。
- */
-const inflightChunithmRefreshes = new Map<string, {
-  promise: Promise<RefreshResult<ChunithmPersonalSnapshot, ChunithmPersonalPart>>;
-  signal: AbortSignal;
-}>();
+/** 一个消费者取消不会中止其它消费者需要的分项刷新。 */
+const inflightChunithmRefreshes = createInflightGuard<string>();
 
 /** 一次个人数据刷新的项：每一项独立请求、独立失败。 */
 export type ChunithmPersonalPart = 'player' | 'scores' | 'bests';
@@ -54,46 +39,12 @@ const CHUNITHM_PERSONAL_SOURCE = { kind: 'lxns', label: '落雪咖啡屋' } as c
 
 type ChunithmPartValue = ChunithmPlayer | null | ChunithmScore[] | ChunithmBests;
 
-/**
- * 用户主动同步判定用：等待该账号最近一次网络个人成绩读取（缓存优先后台刷新或分项刷新）落定，
- * 吞掉失败兜底。无进行中的读取（已落定或未开始）时立即返回。
- */
-export function awaitChunithmFresh(accountId: string): Promise<void> {
-  const pending: Promise<unknown>[] = [];
-  const load = inflightChunithmLoads.get(accountId);
-  const refresh = inflightChunithmRefreshes.get(accountId);
-  if (load) pending.push(load.promise);
-  if (refresh) pending.push(refresh.promise);
-  return Promise.all(pending.map((promise) => promise.then(() => undefined, () => undefined)))
-    .then(() => undefined);
-}
-
 export class ChunithmPersonalService {
   constructor(
     private readonly provider: ChunithmScoreProvider,
     private readonly repository: SqliteSnapshotRepository,
     private readonly accountId: string,
   ) {}
-
-  async load(
-    signal: AbortSignal = getForegroundAbortSignal(),
-    onFailure?: (failure: RefreshFailure) => void,
-  ): Promise<ChunithmPersonalSnapshot> {
-    const inflight = inflightChunithmLoads.get(this.accountId);
-    if (inflight && !inflight.signal.aborted) return inflight.promise;
-    const fresh = this.loadFresh(signal, onFailure);
-    inflightChunithmLoads.set(this.accountId, { promise: fresh, signal });
-    void fresh.then(() => {
-      if (inflightChunithmLoads.get(this.accountId)?.promise === fresh) {
-        inflightChunithmLoads.delete(this.accountId);
-      }
-    }, () => {
-      if (inflightChunithmLoads.get(this.accountId)?.promise === fresh) {
-        inflightChunithmLoads.delete(this.accountId);
-      }
-    });
-    return fresh;
-  }
 
   /**
    * 本地快照读取。它是缓存读取，不是新鲜结果：来源保留原提供方与抓取时间，只标记过期，
@@ -112,40 +63,6 @@ export class ChunithmPersonalService {
     );
     if (!legacy) return null;
     return { ...legacy, bests: emptyChunithmBests(), source: cachedSnapshotSource(legacy.source) };
-  }
-
-  private async loadFresh(
-    signal: AbortSignal,
-    onFailure?: (failure: RefreshFailure) => void,
-  ): Promise<ChunithmPersonalSnapshot> {
-    const assertCurrent = captureResourceWrites('chunithm', signal, this.accountId);
-    try {
-      const snapshot = await this.provider.getSnapshot(signal);
-      assertCurrent();
-      await this.repository.saveResource(
-        chunithmPersonalResourceKey(this.accountId),
-        CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
-        snapshot.source.updatedAt,
-        snapshot,
-        assertCurrent,
-      );
-      return snapshot;
-    } catch (error) {
-      assertCurrent();
-      if (error instanceof ProviderError && error.code === 'authentication') throw error;
-      const compatible = await this.loadCached();
-      if (!compatible) throw error;
-      // 缓存兜底不是刷新成功：只在这里交出机器错误码，调用端不必读错误文案。
-      onFailure?.(refreshFailureFromError(error));
-      return {
-        ...compatible,
-        source: {
-          ...compatible.source,
-          label: '落雪咖啡屋（缓存）',
-          isStale: true,
-        },
-      };
-    }
   }
 
   private loadPart(part: ChunithmPersonalPart, signal: AbortSignal): Promise<ChunithmPartValue> {
@@ -178,17 +95,12 @@ export class ChunithmPersonalService {
   async refresh(
     signal: AbortSignal = getForegroundAbortSignal(),
   ): Promise<RefreshResult<ChunithmPersonalSnapshot, ChunithmPersonalPart>> {
-    const inflight = inflightChunithmRefreshes.get(this.accountId);
-    if (inflight && !inflight.signal.aborted) return inflight.promise;
-    const pending = this.runRefresh(signal);
-    inflightChunithmRefreshes.set(this.accountId, { promise: pending, signal });
-    const forget = () => {
-      if (inflightChunithmRefreshes.get(this.accountId)?.promise === pending) {
-        inflightChunithmRefreshes.delete(this.accountId);
-      }
-    };
-    void pending.then(forget, forget);
-    return pending;
+    try {
+      return await inflightChunithmRefreshes.share(this.accountId, requestSignal => this.runRefresh(requestSignal), signal);
+    } catch (error) {
+      if (signal.aborted) return cancelledRefresh<ChunithmPersonalSnapshot, ChunithmPersonalPart>(CHUNITHM_PERSONAL_PARTS);
+      throw error;
+    }
   }
 
   private async runRefresh(
@@ -254,31 +166,6 @@ export class ChunithmPersonalService {
       requested: CHUNITHM_PERSONAL_PARTS,
       completed,
       failures: refreshFailures,
-    });
-  }
-
-  /**
-   * 缓存优先：先返回本地快照渲染首屏，同时后台发网络刷新；
-   * 只有真正取回新数据的刷新才进入 onFresh，缓存兜底进入 onFallback 并带上机器错误码。
-   * 无本地快照时直接走网络加载（含失败兜底）。
-   */
-  async loadCacheFirst(
-    onFresh: (fresh: ChunithmPersonalSnapshot) => void,
-    signal: AbortSignal = getForegroundAbortSignal(),
-    onFallback?: (fallback: ChunithmPersonalSnapshot, failure: RefreshFailure | null) => void,
-  ): Promise<ChunithmPersonalSnapshot> {
-    let lastFailure: RefreshFailure | null = null;
-    return cacheFirstLoad({
-      assertCurrent: captureResourceWrites('chunithm', signal, this.accountId),
-      loadCached: () => this.loadCached(),
-      loadFresh: (requestSignal) => this.load(requestSignal, (failure) => { lastFailure = failure; }),
-      onFresh,
-      // 缓存兜底不是刷新成功：服务显式声明结果来自本地快照，不依赖调用端推断来源标记。
-      isFallback: value => isCacheFallback(value),
-      onFallback: (value, failure) => onFallback?.(value, failure ?? lastFailure),
-      onRefreshFailed: (failure) => { lastFailure = failure; },
-      markStale: (snapshot) => staleCached(snapshot, { label: '落雪咖啡屋（缓存）' }),
-      signal,
     });
   }
 }

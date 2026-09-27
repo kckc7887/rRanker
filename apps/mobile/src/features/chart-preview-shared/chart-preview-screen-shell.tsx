@@ -14,7 +14,7 @@ import { BackHandler, Platform, Pressable, StyleSheet, Text, View } from 'react-
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
-import Storage from 'expo-sqlite/kv-store';
+import Storage from '@/storage/key-value-storage';
 import {
   chartPreviewHostCommandScript,
   isChartPreviewPlayerEvent,
@@ -383,8 +383,6 @@ export function ChartPreviewScreenShell<TPayload>({
       } catch (error) {
         if (!isCurrentSession(session)) return;
         finish('error', error);
-        // 诊断日志：底层原因只进日志，不进用户界面。
-        console.log('[chart-preview] prepare error', error);
         fail(error, prepareErrorFallback);
       }
     })();
@@ -511,17 +509,19 @@ export function ChartPreviewScreenShell<TPayload>({
             accessibilityLabel={accessibilityLabel}
             allowFileAccess={allowFileAccess}
             allowFileAccessFromFileURLs
+            allowUniversalAccessFromFileURLs={false}
+            sharedCookiesEnabled={false}
+            thirdPartyCookiesEnabled={false}
             allowingReadAccessToURL={source.allowingReadAccessToURL}
             allowsInlineMediaPlayback
             mediaPlaybackRequiresUserAction={false}
             javaScriptEnabled
             domStorageEnabled
             originWhitelist={['file://*']}
-            mixedContentMode="always"
+            mixedContentMode="never"
             setSupportMultipleWindows={false}
             source={{ uri: source.uri }}
-            onShouldStartLoadWithRequest={(navigation) => isCurrentView() && (navigation.isTopFrame === false
-              || navigation.url === source.uri)}
+            onShouldStartLoadWithRequest={(navigation) => isCurrentView() && navigation.url === source.uri}
             injectedJavaScriptBeforeContentLoaded={injected}
             style={[styles.webview, { backgroundColor: webviewBackground }]}
             onLoadEnd={() => {
@@ -559,11 +559,6 @@ export function ChartPreviewScreenShell<TPayload>({
               }
               if (isChartPreviewPlayerEvent(data, 'error')) {
                 recordView('player-error', { result: 'error', error: data });
-                // 诊断日志：底层原因只进日志，不进用户界面。
-                console.log('[chart-preview] player error', {
-                  diagnostic: data.diagnostic,
-                  message: data.message,
-                });
                 failPlayer('谱面播放失败，请返回重试。');
                 return;
               }
@@ -575,7 +570,6 @@ export function ChartPreviewScreenShell<TPayload>({
             onError={(event) => {
               if (!isCurrentView()) return;
               recordView('load-error', { result: 'error', error: event?.nativeEvent });
-              console.log('[chart-preview] webview error', event?.nativeEvent);
               failPlayer('播放器加载失败，请返回重试。');
             }}
             onContentProcessDidTerminate={() => {
@@ -591,7 +585,6 @@ export function ChartPreviewScreenShell<TPayload>({
             onHttpError={(event) => {
               if (!isCurrentView()) return;
               void recordRuntimeDiagnostic('request', { source: 'chart-preview', result: 'error', status: event?.nativeEvent?.statusCode });
-              console.log('[chart-preview] webview http error', event?.nativeEvent);
               if (!blockOnHttpError) return;
               failPlayer('播放器加载失败，请返回重试。');
             }}

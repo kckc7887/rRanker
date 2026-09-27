@@ -3,10 +3,8 @@ import { useLocalSearchParams } from 'expo-router';
 import {
   type PhigrosChartPreviewSettings,
 } from '@/features/phigros-chart-preview/phigros-chart-preview-inject';
-import {
-  buildPhigrosChartPreviewInput,
-  buildPhiraChartPreviewInput,
-} from '@/features/phigros-chart-preview/chart-preview-input';
+import { buildPhigrosChartPreviewInput } from '@/features/phigros-chart-preview/chart-preview-input';
+import { buildPhiraChartPreviewInput } from '@/features/phira-chart-preview/chart-preview-input';
 import {
   phigrosChartPreviewAllowsFileAccess,
   preparePhigrosChartPreviewWebViewSource,
@@ -17,7 +15,7 @@ import {
 } from '@/features/phigros-chart-preview/prepare-phigros-chart-preview-webview';
 import { usePhiraChart } from '@/hooks/use-phira';
 import type { PhiraChart } from '@/domain/phira';
-import { resolveChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
+import { resolveChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-navigation';
 import { ChartPreviewScreenShell } from '@/features/chart-preview-shared/chart-preview-screen-shell';
 import {
   CHART_PREVIEW_PLAYER_LABEL,

@@ -1,78 +1,20 @@
-import { captureResourceWrites } from '@/services/snapshot-cache-utils';
+import { MUSE_DASH_QUERY_OPTIONS, MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS, museDashPlayerQueryOptions, type MuseDashSnapshot } from '@/services/muse-dash-query';
+
 import { useCallback, useEffect, useMemo, useState } from 'react';
 import { useQueries, useQuery } from '@tanstack/react-query';
-import type { DataSource } from '@/domain/models';import type {
-  MuseDashAlbumsResponse,
-  MuseDashCeResponse,
-  MuseDashDiffdiffEntry,
-  MuseDashMissDetailValue,
-  MuseDashPlayDetail,
-  MuseDashPlayer,
-} from '@/domain/muse-dash';
+import type { DataSource } from '@/domain/models';import type { MuseDashAlbumsResponse, MuseDashCeResponse, MuseDashDiffdiffEntry, MuseDashMissDetailValue, MuseDashPlayDetail, MuseDashPlayer } from '@/domain/muse-dash';
 import { MUSE_DASH_MISS_DETAIL_FAILED } from '@/domain/muse-dash';
 import { isMuseDashTestUserId } from '@/domain/bound-account';
 import { museDashProvider } from '@/providers/muse-dash-provider';
-import {
-  maxedMuseDashPlayDetailSnapshot,
-  maxedMuseDashPlayerSnapshot,
-} from '@/providers/maxed-musedash-test-provider';
-import { cacheFirstLoad } from '@/services/cache-first';
-import { publishEntityValue } from '@/services/game-data-query';
+import { maxedMuseDashPlayDetailSnapshot } from '@/providers/maxed-musedash-test-provider';
+
+
 import { queryClient } from '@/state/query-client';
-import { invalidateMuseDashSessionResources } from '@/services/infinite-query-refresh';
+
 import { useCachedTabActive } from '@/components/CachedTabScreen';
-import {
-  loadMuseDashAlbumsFresh,
-  loadMuseDashAlbumsFreshSnapshot,
-  loadMuseDashCeFresh,
-  loadMuseDashDiffdiffFresh,
-  loadMuseDashDiffdiffFreshSnapshot,
-  loadMuseDashPlayDetailFresh,
-  loadMuseDashPlayerFresh,
-  makeMuseDashSnapshot,
-  MuseDashCache,
-} from '@/services/muse-dash-cache';
+import { loadMuseDashAlbumsFresh, loadMuseDashCeFresh, loadMuseDashDiffdiffFresh, loadMuseDashPlayDetailFresh, makeMuseDashSnapshot } from '@/services/muse-dash-cache';
 
-const MUSE_DASH_QUERY_OPTIONS = { staleTime: 60_000, gcTime: 10 * 60_000 } as const;
-const MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS = {
-  staleTime: Infinity,
-  gcTime: Infinity,
-  refetchOnMount: false,
-  refetchOnReconnect: false,
-} as const;
 
-const cache = new MuseDashCache();
-
-function museDashSessionResourceQueryOptions<T>(
-  queryKey: readonly unknown[],
-  load: (signal: AbortSignal) => Promise<T>,
-) {
-  return {
-    queryKey,
-    queryFn: async ({ signal }: { signal: AbortSignal }): Promise<MuseDashSnapshot<T>> => (
-      makeMuseDashSnapshot(await load(signal))
-    ),
-    ...MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS,
-  } as const;
-}
-
-export async function refreshMuseDashSessionResources(): Promise<void> {
-  await invalidateMuseDashSessionResources();
-}
-
-export function ensureMuseDashAlbums() {
-  return queryClient.ensureQueryData(museDashSessionResourceQueryOptions(
-    ['musedash', 'albums'],
-    loadMuseDashAlbumsFresh,
-  ));
-}
-
-export function ensureMuseDashDiffdiff() {
-  return queryClient.ensureQueryData(museDashSessionResourceQueryOptions(
-    ['musedash', 'diffdiff'],
-    loadMuseDashDiffdiffFresh,
-  ));
-}
 
 /** Muse Dash 查询统一返回：data 为原始数据，source 为缓存快照来源（数据状态展示用）。 */
 export type MuseDashQuery<T> = {
@@ -85,9 +27,7 @@ export type MuseDashQuery<T> = {
   refetch: () => Promise<unknown>;
 };
 
-type MuseDashSnapshot<T> = { data: T; source: DataSource };
-
-function useMuseDashCacheFirst<T>(
+function useMuseDashSnapshot<T>(
   queryKey: readonly unknown[],
   load: (signal: AbortSignal) => Promise<MuseDashSnapshot<T>>,
   enabled = true,
@@ -131,7 +71,7 @@ export function useMuseDashSearch(query: string) {
 export function useMuseDashPlayer(userId: string | null, enabled = true) {
   const tabActive = useCachedTabActive();
   const query = useQuery({
-    ...museDashPlayerQueryOptions(userId ?? ''),
+    ...museDashPlayerQueryOptions(queryClient, userId ?? ''),
     enabled: enabled && tabActive && userId !== null,
   });
   const snapshot = query.data as MuseDashSnapshot<MuseDashPlayer> | undefined;
@@ -146,45 +86,6 @@ export function useMuseDashPlayer(userId: string | null, enabled = true) {
   };
 }
 
-/** Muse Dash 玩家实体的规范键：总览数据包与页面读到同一份版本。 */
-export function museDashPlayerEntityKey(userId: string) {
-  return ['musedash', 'player', userId] as const;
-}
-
-/** 该玩家实体的规范查询选项：随机歌曲页与总览派生视图共用。 */
-export function museDashPlayerQueryOptions(userId: string) {
-  const queryKey = museDashPlayerEntityKey(userId);
-  return {
-    queryKey,
-    queryFn: async ({ signal }: { signal: AbortSignal }): Promise<MuseDashSnapshot<MuseDashPlayer>> => {
-      // 示例账号：不请求网络玩家资料，由曲库与定数表缓存优先生成全满成绩。
-      if (isMuseDashTestUserId(userId)) {
-        const [albums, diffdiff] = await Promise.all([
-          loadMuseDashAlbumsFreshSnapshot(signal),
-          loadMuseDashDiffdiffFreshSnapshot(signal),
-        ]);
-        return maxedMuseDashPlayerSnapshot(albums.data, diffdiff.data);
-      }
-      const assertCurrent = captureResourceWrites('musedash', signal, `musedash:musedash-moe:${userId}`);
-      return cacheFirstLoad({
-        assertCurrent,
-        loadCached: () => cache.loadPlayer(userId),
-        loadFresh: async () => {
-          const player = await loadMuseDashPlayerFresh(userId, signal);
-          const fresh = makeMuseDashSnapshot(player);
-          if (!signal.aborted) void cache.savePlayer(userId, fresh, assertCurrent).catch(() => undefined);
-          return fresh;
-        },
-        onFresh: (fresh) => {
-          publishEntityValue(queryClient, queryKey, fresh);
-        },
-        signal,
-      });
-    },
-    ...MUSE_DASH_QUERY_OPTIONS,
-  };
-}
-
 /** 单曲原始成绩明细（成就判定需要 miss 数）；按玩家+歌曲+难度+平台缓存优先，列表卡片懒加载。 */
 export function useMuseDashPlayDetail(
   uid: string | null,
@@ -194,7 +95,7 @@ export function useMuseDashPlayDetail(
 ) {
   const enabled = uid !== null && difficulty !== null && platform !== null && userId !== null;
   const queryKey = ['musedash', 'play-detail', userId, uid, difficulty, platform] as const;
-  return useMuseDashCacheFirst<MuseDashPlayDetail>(queryKey, async (signal) => {
+  return useMuseDashSnapshot<MuseDashPlayDetail>(queryKey, async (signal) => {
     // 示例账号：全 AP（miss 0）直接生成，不请求 /rank 明细。
     if (userId !== null && isMuseDashTestUserId(userId)) {
       return maxedMuseDashPlayDetailSnapshot();
@@ -279,21 +180,21 @@ export function useMuseDashPlayDetails(
 
 export function useMuseDashAlbums(enabled = true) {
   const queryKey = ['musedash', 'albums'] as const;
-  return useMuseDashCacheFirst<MuseDashAlbumsResponse>(queryKey, async (signal) => {
+  return useMuseDashSnapshot<MuseDashAlbumsResponse>(queryKey, async (signal) => {
     return makeMuseDashSnapshot(await loadMuseDashAlbumsFresh(signal));
   }, enabled, MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS);
 }
 
 export function useMuseDashCe(enabled = true) {
   const queryKey = ['musedash', 'ce'] as const;
-  return useMuseDashCacheFirst<MuseDashCeResponse>(queryKey, async (signal) => {
+  return useMuseDashSnapshot<MuseDashCeResponse>(queryKey, async (signal) => {
     return makeMuseDashSnapshot(await loadMuseDashCeFresh(signal));
   }, enabled, MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS);
 }
 
 export function useMuseDashDiffdiff(enabled = true) {
   const queryKey = ['musedash', 'diffdiff'] as const;
-  return useMuseDashCacheFirst<MuseDashDiffdiffEntry[]>(queryKey, async (signal) => {
+  return useMuseDashSnapshot<MuseDashDiffdiffEntry[]>(queryKey, async (signal) => {
     return makeMuseDashSnapshot(await loadMuseDashDiffdiffFresh(signal));
   }, enabled, MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS);
 }

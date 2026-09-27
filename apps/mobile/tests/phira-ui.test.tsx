@@ -5,7 +5,7 @@ import { router as mockRouter } from 'expo-router';
 import { PhiraRandomChartsScreen } from '@/screens/PhiraRandomChartsScreen';
 import { PhiraBestScreen, PhiraCatalogScreen, PhiraRecordsScreen, PhiraSongDetailScreen } from '@/screens/PhiraScreens';
 import { PHIRA_CATALOG_PAGE_SCAN_BUDGET } from '@/domain/phira';
-import { resolveChartPreviewNavigation } from '@/features/phigros-chart-preview/chart-preview-navigation';
+import { resolveChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-navigation';
 
 const mockRefetch = jest.fn(async () => ({ data: undefined }));
 const mockRefreshAll = jest.fn(async () => ({ status: 'noop', requestedCount: 0, updatedCount: 0, failedChartIds: [] }));
@@ -38,7 +38,7 @@ let mockCatalogPages: { results: typeof mockChart[] }[] | null = null;
 let mockCatalogHasNextPage = false;
 let mockCatalogFetchingNextPage = false;
 let mockCatalogFetchNextPageError = false;
-const mockFetchCatalogNextPage = jest.fn();
+const mockFetchCatalogNextPage = jest.fn(async () => undefined);
 let mockNotesEnabled: boolean[] = [];
 let mockChromeProps: {
   topInset: number;
@@ -125,7 +125,7 @@ jest.mock('@/hooks/use-game-data', () => ({
     refetch: mockRefetch,
   }),
 }));
-jest.mock('@/features/phira-compatible-chart-download/phira-compatible-chart-download', () => ({
+jest.mock('@/features/phira-chart-download/chart-package-download', () => ({
   downloadPhiraChartPackage: (chart: unknown, options: unknown) =>
     mockDownloadPhiraPackage(chart, options),
 }));
@@ -183,8 +183,8 @@ describe('Phira page contracts', () => {
     const records = await render(<PhiraRecordsScreen />);
     expect(records.getByLabelText('展开筛选，当前 全部')).toBeTruthy();
     await fireEvent.press(records.getByLabelText(/展开筛选/));
-    expect(records.getByLabelText('Phigros 定数范围下限 16.2')).toBeTruthy();
-    expect(records.getByLabelText('Phigros 定数范围上限 16.2')).toBeTruthy();
+    expect(records.getByLabelText('Phira 定数范围下限 16.2')).toBeTruthy();
+    expect(records.getByLabelText('Phira 定数范围上限 16.2')).toBeTruthy();
     await fireEvent.press(records.getByLabelText('选择成绩排序，当前 Score'));
     await fireEvent.press(records.getByLabelText('选择成绩排序 ACC'));
     expect(records.getByLabelText('选择成绩排序，当前 ACC')).toBeTruthy();
@@ -304,7 +304,7 @@ describe('Phira catalog pagination states', () => {
   // 通过定数上限把 16.2 的曲目全部筛掉，得到「翻页有数据但筛选结果为空」的真实场景。
   const filterOutEveryChart = async (screen: Awaited<ReturnType<typeof render>>) => {
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
-    const track = screen.getByTestId('phigros-filter-constant-track');
+    const track = screen.getByTestId('phira-filter-constant-track');
     await fireEvent(track, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 100, height: 36 } } });
     await fireEvent.press(track, { nativeEvent: { locationX: 80 } });
   };

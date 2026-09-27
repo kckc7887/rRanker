@@ -1,10 +1,13 @@
 import { crc32 } from 'node:zlib';
+import JSZip from 'jszip';
 import { describe, expect, it } from 'vitest';
 import {
   CHART_PREVIEW_CRC_CHUNK_BYTES,
   CHART_PREVIEW_MAX_DOWNLOAD_BYTES,
   CHART_PREVIEW_MAX_TOTAL_UNCOMPRESSED_BYTES,
+  CHART_PREVIEW_MAX_GIF_FRAMES,
   assertChartPreviewDownloadBytes,
+  assertChartPreviewGifFrameCount,
   chartPreviewDeclaredUncompressedSize,
   ChartPreviewBudgetError,
   ChartPreviewBudgetExceededError,
@@ -12,21 +15,27 @@ import {
   readBudgetedZipEntry,
 } from '@/features/chart-preview-shared/chart-preview-resource-budget';
 
-function zipEntry(bytes: Uint8Array, checksum = bytes.byteLength === 0 ? 0 : crc32(bytes)) {
-  return {
-    dir: false,
-    _data: { uncompressedSize: bytes.byteLength, crc32: checksum },
-    async: async () => bytes,
-  };
+async function zipEntry(bytes: Uint8Array, checksum = bytes.byteLength === 0 ? 0 : crc32(bytes)) {
+  const source = new JSZip(); source.file('chart', bytes);
+  const zip = await JSZip.loadAsync(await source.generateAsync({ type: 'uint8array', compression: 'DEFLATE' }));
+  const entry = zip.file('chart')!;
+  (entry as typeof entry & { _data: { crc32: number } })._data.crc32 = checksum;
+  return entry;
 }
 
 describe('chart preview actual bytes and cancellation', () => {
+  it('bounds GIF frame counts before allocating decoded frames', () => {
+    expect(() => assertChartPreviewGifFrameCount(CHART_PREVIEW_MAX_GIF_FRAMES)).not.toThrow();
+    for (const count of [CHART_PREVIEW_MAX_GIF_FRAMES + 1, Infinity, NaN, -1, 1.5]) {
+      expect(() => assertChartPreviewGifFrameCount(count)).toThrow(ChartPreviewBudgetExceededError);
+    }
+  });
   it('accumulates actual uncompressed bytes and stops the next entry at the total budget', async () => {
     const actualBytes = createChartPreviewActualBytes();
     actualBytes.actualBytes = CHART_PREVIEW_MAX_TOTAL_UNCOMPRESSED_BYTES - 4;
-    await readBudgetedZipEntry(zipEntry(Uint8Array.from([1, 2, 3, 4])), { actualBytes });
+    await readBudgetedZipEntry(await zipEntry(Uint8Array.from([1, 2, 3, 4])), { actualBytes });
     expect(actualBytes.actualBytes).toBe(CHART_PREVIEW_MAX_TOTAL_UNCOMPRESSED_BYTES);
-    await expect(readBudgetedZipEntry(zipEntry(Uint8Array.from([5])), { actualBytes }))
+    await expect(readBudgetedZipEntry(await zipEntry(Uint8Array.from([5])), { actualBytes }))
       .rejects.toBeInstanceOf(ChartPreviewBudgetError);
     expect(actualBytes.actualBytes).toBe(CHART_PREVIEW_MAX_TOTAL_UNCOMPRESSED_BYTES);
   });
@@ -34,13 +43,50 @@ describe('chart preview actual bytes and cancellation', () => {
   it('checks cancellation while checksumming a large entry', async () => {
     let checks = 0;
     const bytes = new Uint8Array(CHART_PREVIEW_CRC_CHUNK_BYTES + 1);
-    await expect(readBudgetedZipEntry(zipEntry(bytes, 0), {
+    await expect(readBudgetedZipEntry(await zipEntry(bytes, 0), {
       assertCurrent() {
         checks += 1;
         if (checks >= 3) throw new Error('操作已取消');
       },
     })).rejects.toThrow('操作已取消');
     expect(checks).toBeGreaterThanOrEqual(3);
+  });
+
+  it('stops inflation as soon as output exceeds a forged declaration', async () => {
+    const entry = await zipEntry(new Uint8Array(16 * 1024 * 1024));
+    (entry as typeof entry & { _data: { uncompressedSize: number } })._data.uncompressedSize = 1;
+    let outputBytes = 0;
+    const actual = entry as typeof entry & { internalStream(type: 'uint8array'): { on(event: 'data', fn: (bytes: Uint8Array) => void): unknown } };
+    const original = actual.internalStream.bind(entry);
+    actual.internalStream = type => {
+      const stream = original(type); stream.on('data', bytes => { outputBytes += bytes.length; }); return stream;
+    };
+    await expect(readBudgetedZipEntry(entry)).rejects.toThrow('大小与声明不一致');
+    expect(outputBytes).toBeLessThanOrEqual(64 * 1024);
+  });
+
+  it('rejects a wrong CRC and aborts an active inflater without uncaught callbacks', async () => {
+    await expect(readBudgetedZipEntry(await zipEntry(new Uint8Array([1, 2, 3]), 0))).rejects.toThrow('校验失败');
+    const controller = new AbortController();
+    const entry = await zipEntry(new Uint8Array(1024 * 1024));
+    const task = readBudgetedZipEntry(entry, { signal: controller.signal });
+    setTimeout(() => controller.abort(new Error('主动取消')), 0);
+    await expect(task).rejects.toThrow('主动取消');
+  });
+
+  it('handles abort inside a ZIP data observer without leaking an EventTarget exception', async () => {
+    const controller = new AbortController();
+    const entry = await zipEntry(new Uint8Array(16 * 1024 * 1024));
+    let outputBytes = 0;
+    const actual = entry as typeof entry & { internalStream(type: 'uint8array'): { on(event: 'data', fn: (bytes: Uint8Array) => void): unknown } };
+    const original = actual.internalStream.bind(entry);
+    actual.internalStream = type => {
+      const stream = original(type);
+      stream.on('data', bytes => { outputBytes += bytes.length; controller.abort(new Error('同步取消')); });
+      return stream;
+    };
+    await expect(readBudgetedZipEntry(entry, { signal: controller.signal })).rejects.toThrow('同步取消');
+    expect(outputBytes).toBeLessThanOrEqual(64 * 1024);
   });
 
   it('separates budget overflow from undeterminable declared sizes', () => {

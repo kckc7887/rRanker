@@ -10,13 +10,14 @@ import {
   gameDataBundle,
   maimaiPayloadFromSnapshot,
   type GamePayloadKind,
+  type GameDataBundleInput,
 } from '@/domain/game-data';
 import type { GameId } from '@/domain/game-bind-options';
 import { getGameProfile } from '@/domain/game-profile';
 import type { CatalogProvider, DetailedCatalogProvider } from '@/providers/contracts';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
-import { GAME_DATA_LOADERS } from '@/hooks/game-data-loaders';
-import type { GameDataLoader } from '@/hooks/game-data-loaders';
+import { GAME_DATA_LOADERS } from '@/services/game-data-loaders';
+import type { GameDataLoader } from '@/services/game-data-loaders';
 import { fixtureCatalog, fixturePlayer, fixtureRecords, fixtureSource } from '@/fixtures/sanitized';
 
 const maimaiPayload = maimaiPayloadFromSnapshot({
@@ -90,3 +91,11 @@ export const phigrosAsCatalog: CatalogProvider = new PhigrosCatalogProvider();
 export const loaderRegistryIsExhaustive: Record<GameId, GameDataLoader> = GAME_DATA_LOADERS;
 
 export const phigrosLoader: GameDataLoader = GAME_DATA_LOADERS.phigros;
+
+declare const unresolvedGame: 'maimai' | 'phigros';
+// @ts-expect-error An unresolved union identity cannot be paired with one game's payload.
+export const unionMismatch: GameDataBundleInput<'maimai' | 'phigros'> = { gameId: unresolvedGame, providerId: null, profile: getGameProfile(unresolvedGame), payload: maimaiPayload };
+// @ts-expect-error Profile identity must match the bundle identity.
+export const mismatchedProfile = gameDataBundle({ gameId: 'phigros', providerId: null, profile: getGameProfile('maimai'), payload: { kind: 'empty', gameId: 'phigros', displayName: '', source: fixtureSource } });
+// @ts-expect-error A provider belonging to another game cannot construct a bundle.
+export const mismatchedProvider = gameDataBundle({ gameId: 'maimai', providerId: 'phi-taptap', profile: getGameProfile('maimai'), payload: maimaiPayload });

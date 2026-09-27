@@ -7,13 +7,14 @@ import {
   exchangeLxnsAuthorizationCode,
   notifyLxnsOAuthOutcome,
   readPendingLxnsOAuth,
+  requireLxnsOAuthState,
 } from '@/providers/lxns-oauth';
 import { bindLxnsAccount } from '@/services/lxns-account-binding';
 import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
-import { providerErrorToUserMessage } from '@/providers/errors';
+import { providerErrorToUserMessage, runProviderOperation } from '@/providers/errors';
 
 const chunithmTempAccount = new ChunithmTempAccountStore();
 
@@ -23,7 +24,9 @@ type CallbackStatus =
   | { kind: 'error'; message: string };
 
 function messageFor(error: unknown): string {
-  return providerErrorToUserMessage(error, '授权失败，请重试。');
+  return providerErrorToUserMessage(error, '授权失败，请重试。', {
+    authentication: '远端授权验证未通过，请重新发起授权。',
+  });
 }
 
 /** 完成落雪授权并绑定对应游戏账号。 */
@@ -37,6 +40,7 @@ export default function LxnsOAuthCallbackScreen() {
     if (processedRef.current) return;
     processedRef.current = true;
     let cancelled = false;
+    const controller = new AbortController();
 
     const fail = (message: string) => {
       if (cancelled) return;
@@ -46,7 +50,7 @@ export default function LxnsOAuthCallbackScreen() {
 
     const run = async () => {
       if (params.error) {
-        fail(`落雪授权被拒绝：${params.error}`);
+        fail('落雪授权被拒绝，请重新发起授权');
         return;
       }
       const code = typeof params.code === 'string' ? params.code : '';
@@ -55,19 +59,26 @@ export default function LxnsOAuthCallbackScreen() {
         return;
       }
       try {
-        const pending = await readPendingLxnsOAuth();
+        const state = requireLxnsOAuthState(params.state);
+        const pending = await runProviderOperation('credential_storage', readPendingLxnsOAuth);
         if (!pending) {
           fail('找不到本机授权信息，请在 App 内重新发起授权');
           return;
         }
-        const session = await exchangeLxnsAuthorizationCode(
+        if (pending.state !== state) {
+          fail('授权状态校验失败，请重新发起授权');
+          return;
+        }
+        const session = await runProviderOperation('authorization_callback', () => exchangeLxnsAuthorizationCode(
           code,
-          typeof params.state === 'string' ? params.state : undefined,
-        );
-        const result = await bindLxnsAccount({ gameId: pending.gameId, session });
+          state,
+          controller.signal,
+        ));
+        if (cancelled) return;
+        const result = await runProviderOperation('verification', () => bindLxnsAccount({ gameId: pending.gameId, session }));
         const store = useSession.getState();
         const rating = Number(result.account.scoreDisplay);
-        store.setSession(result.session, {
+        await runProviderOperation('local_commit', () => store.setSession(result.session, {
           accountId: result.account.id,
           credentialId: result.credentialId,
           displayName: result.account.displayName,
@@ -76,9 +87,9 @@ export default function LxnsOAuthCallbackScreen() {
           gameId: result.account.gameId,
           avatarUrl: result.account.avatarUrl,
           ratingPossession: result.account.ratingPossession,
-        });
+        }));
         if (result.account.gameId === 'chunithm') {
-          store.removeBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID);
+          await runProviderOperation('local_commit', () => store.removeBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID));
           await chunithmTempAccount.remove().catch(() => undefined);
         }
         void queryClient.invalidateQueries({ queryKey: ['score-snapshot'] });
@@ -97,7 +108,7 @@ export default function LxnsOAuthCallbackScreen() {
     };
 
     void run();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 回调只在挂载时消费一次，或依赖已在上方说明
   }, []);
 

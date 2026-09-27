@@ -6,7 +6,6 @@ import { OsuModeSelectContent } from '@/components/osu/OsuModeSelectContent';
 import { bindOsuModes } from '@/services/osu-account-binding';
 import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import {
-  clearPendingOsuOAuth,
   exchangeOsuAuthorizationCode,
   notifyOsuOAuthOutcome,
   requireOsuOAuthState,
@@ -14,7 +13,7 @@ import {
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
-import { providerErrorToUserMessage } from '@/providers/errors';
+import { providerErrorToUserMessage, runProviderOperation } from '@/providers/errors';
 
 type CallbackStatus =
   | { kind: 'processing' }
@@ -24,7 +23,9 @@ type CallbackStatus =
   | { kind: 'error'; message: string };
 
 function messageFor(error: unknown): string {
-  return providerErrorToUserMessage(error, '授权失败，请重试。');
+  return providerErrorToUserMessage(error, '授权失败，请重试。', {
+    authentication: '远端授权验证未通过，请重新发起授权。',
+  });
 }
 
 function invalidateAll() {
@@ -44,6 +45,7 @@ export default function OsuOAuthCallbackScreen() {
     if (processedRef.current) return;
     processedRef.current = true;
     let cancelled = false;
+    const controller = new AbortController();
 
     const fail = (message: string) => {
       if (cancelled) return;
@@ -53,8 +55,7 @@ export default function OsuOAuthCallbackScreen() {
 
     const run = async () => {
       if (params.error) {
-        await clearPendingOsuOAuth();
-        fail(`osu! 授权被拒绝：${params.error}`);
+        fail('osu! 授权被拒绝，请重新发起授权');
         return;
       }
       const code = typeof params.code === 'string' ? params.code : '';
@@ -70,7 +71,7 @@ export default function OsuOAuthCallbackScreen() {
         return;
       }
       try {
-        const session = await exchangeOsuAuthorizationCode(code, state);
+        const session = await runProviderOperation('authorization_callback', () => exchangeOsuAuthorizationCode(code, state, controller.signal));
         if (cancelled) return;
         setStatus({ kind: 'selecting', session });
         // 深链把本页压在登录 Sheet（Modal）之下：先通知 Sheet 关闭，
@@ -82,7 +83,7 @@ export default function OsuOAuthCallbackScreen() {
     };
 
     void run();
-    return () => { cancelled = true; };
+    return () => { cancelled = true; controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 回调只在挂载时消费一次，或依赖已在上方说明
   }, []);
 
@@ -90,18 +91,18 @@ export default function OsuOAuthCallbackScreen() {
     setStatus({ kind: 'binding' });
     try {
       const state = useSession.getState();
-      const result = await bindOsuModes({
+      const result = await runProviderOperation('verification', () => bindOsuModes({
         modeGameIds,
         session,
         existingAccounts: state.boundAccounts,
         credentialIdsByAccountId: state.credentialIdsByAccountId,
-      });
-      state.setOsuBinding({
+      }));
+      await runProviderOperation('local_commit', () => state.setOsuBinding({
         accounts: result.accounts,
         credentialId: result.credentialId,
         session: result.session,
         activeAccountId: result.activeAccountId,
-      });
+      }));
       invalidateAll();
       const accountName = result.accounts[0]?.displayName ?? 'osu! 账号';
       setStatus({ kind: 'success', accountName });

@@ -1,10 +1,15 @@
 import { jest } from '@jest/globals';
 import { QueryClient } from '@tanstack/react-query';
-import { selectGameDataLoader, type GameDataLoaderContext } from '@/hooks/game-data-loaders';
-import { tufPlayerQueryOptions, tufPlayerEntityKey } from '@/hooks/use-tuf';
-import { museDashPlayerQueryOptions, museDashPlayerEntityKey } from '@/hooks/use-muse-dash';
-import { phiraPlayerQueryOptions, phiraPlayerEntityKey } from '@/hooks/use-phira';
-import { gameDataQueryKey } from '@/services/game-data-query';
+import { selectGameDataLoader, type GameDataLoaderContext } from '@/services/game-data-loaders';
+import { tufPlayerQueryOptions, tufPlayerEntityKey } from '@/services/tuf-query';
+import { museDashPlayerQueryOptions, museDashPlayerEntityKey } from '@/services/muse-dash-query';
+import { phiraPlayerQueryOptions, phiraPlayerEntityKey } from '@/services/phira-query';
+import { gameDataCatalogQueries } from '@/services/game-data-loader-queries';
+import { gameDataQueryKey, registerGameDataBackground, refreshGameDataBundle, resetGameDataBackground } from '@/services/game-data-query';
+import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
+import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
+import { emptyChunithmBests } from '@/domain/chunithm-personal';
+import { ProviderError } from '@/providers/errors';
 import { getGameProfile } from '@/domain/game-profile';
 import type { GameId, ProviderId } from '@/domain/game-bind-options';
 import type { TufPlayer } from '@/domain/tuf';
@@ -41,6 +46,8 @@ function context(input: { gameId: GameId; providerId: ProviderId; accountId: str
     activeProviderId: input.providerId,
     activeAccountId: input.accountId,
     session: null,
+    protocolScoreProvider: null,
+    catalogQueries: gameDataCatalogQueries(input.client),
     scoreProvider: {} as GameDataLoaderContext['scoreProvider'],
     catalogProvider: {} as GameDataLoaderContext['catalogProvider'],
     activeAccount: {
@@ -59,20 +66,23 @@ function context(input: { gameId: GameId; providerId: ProviderId; accountId: str
   };
 }
 
-beforeEach(() => { jest.restoreAllMocks(); });
+const clients = new Set<QueryClient>();
+function createClient() { const client = new QueryClient(); clients.add(client); return client; }
+beforeEach(() => { jest.restoreAllMocks(); resetGameDataBackground(); });
+afterEach(() => { for (const client of clients) client.clear(); clients.clear(); resetGameDataBackground(); });
 
 describe('总览与详情读取同一个实体', () => {
   it('TUF 玩家实体在总览加载后立即可被页面读到同一版本，且不重复请求网络', async () => {
     const profileSpy = jest.spyOn(tufProvider, 'getPlayerProfile').mockResolvedValue(tufPlayer);
-    const client = new QueryClient();
+    const client = createClient();
     const loader = selectGameDataLoader('adofai');
     const accountId = 'adofai:tuf:25';
 
     const result = await loader(context({ gameId: 'adofai', providerId: 'tuf', accountId, client }));
     expect(result.bundle.payload).toMatchObject({ kind: 'adofai', player: { rankedScore: 1824.52 } });
 
-    const entity = await client.ensureQueryData(tufPlayerQueryOptions(25));
-    expect(entity).toBe(tufPlayer);
+    const entity = await client.ensureQueryData(tufPlayerQueryOptions(client, 25));
+    expect(entity.data).toBe(tufPlayer);
     expect(client.getQueryData(tufPlayerEntityKey(25))).toBe(entity);
     expect(profileSpy).toHaveBeenCalledTimes(1);
     expect(result.bundle.payload).toMatchObject({ source: { kind: 'tuf', isStale: false } });
@@ -80,14 +90,14 @@ describe('总览与详情读取同一个实体', () => {
 
   it('Muse Dash 玩家实体在总览加载后立即可被随机歌曲页读到同一版本', async () => {
     const playerSpy = jest.spyOn(museDashProvider, 'getPlayer').mockResolvedValue(museDashPlayer);
-    const client = new QueryClient();
+    const client = createClient();
     const loader = selectGameDataLoader('musedash');
     const accountId = 'musedash:musedash-moe:u-1';
 
     const result = await loader(context({ gameId: 'musedash', providerId: 'musedash-moe', accountId, client }));
     expect(result.bundle.payload).toMatchObject({ kind: 'musedash', player: { rl: 3.45 }, source: { isStale: false } });
 
-    const entity = await client.ensureQueryData(museDashPlayerQueryOptions('u-1'));
+    const entity = await client.ensureQueryData(museDashPlayerQueryOptions(client, 'u-1'));
     expect(entity?.data).toBe(museDashPlayer);
     expect(client.getQueryData(museDashPlayerEntityKey('u-1'))).toBe(entity);
     expect(playerSpy).toHaveBeenCalledTimes(1);
@@ -103,16 +113,74 @@ describe('总览与详情读取同一个实体', () => {
     jest.spyOn(phiraProvider, 'getChartsByIds').mockImplementation(async (ids) => ids.map(chart));
     jest.spyOn(phiraProvider, 'getRecordsByIds').mockImplementation(async (ids) => ids.map((id) => record(id, Math.floor(id / 10))));
     jest.spyOn(phiraProvider, 'getChartBest').mockResolvedValue([]);
-    const client = new QueryClient();
+    const client = createClient();
     const loader = selectGameDataLoader('phira');
     const accountId = `phira:community:${PLAYER_ID}`;
 
     const result = await loader(context({ gameId: 'phira', providerId: 'phira-community', accountId, client }));
     expect(result.bundle.payload).toMatchObject({ kind: 'phira', source: { isStale: false } });
 
-    const entity = await client.ensureQueryData(phiraPlayerQueryOptions(PLAYER_ID));
+    const entity = await client.ensureQueryData(phiraPlayerQueryOptions(client, PLAYER_ID));
     expect(entity).toBe(client.getQueryData(phiraPlayerEntityKey(PLAYER_ID)));
     expect(entity.player.id).toBe(PLAYER_ID);
     expect(userSpy).toHaveBeenCalledTimes(1);
   });
+});
+
+
+it('TUF 已提交旧实体保持完整来源与原抓取时间', async () => {
+  const client = createClient();
+  const source = { kind: 'tuf' as const, label: 'The Universal Forums', updatedAt: '2025-01-01T00:00:00.000Z', isStale: true };
+  client.setQueryData(tufPlayerEntityKey(25), { data: tufPlayer, source });
+  const spy = jest.spyOn(tufProvider, 'getPlayerProfile');
+  const result = await selectGameDataLoader('adofai')(context({ gameId: 'adofai', providerId: 'tuf', accountId: 'adofai:tuf:25', client }));
+  expect(result.bundle.payload).toMatchObject({ source });
+  expect(spy).not.toHaveBeenCalled();
+});
+
+it('中二分项认证失败经过加载器和主动刷新仍保留具体项与部分结果', async () => {
+  const client = createClient();
+  const accountId = 'chunithm:lxns:partial';
+  const source = { kind: 'lxns' as const, label: '落雪咖啡屋', updatedAt: '2025-01-01T00:00:00.000Z', isStale: true };
+  jest.spyOn(ChunithmPersonalService.prototype, 'refresh').mockResolvedValue({
+    status: 'partial',
+    value: { player: null, scores: [], bests: emptyChunithmBests(), source },
+    metadata: { provider: 'lxns', label: source.label, fetchedAt: source.updatedAt, revision: null },
+    requested: ['player', 'scores', 'bests'], completed: ['player', 'bests'],
+    failures: [{ code: 'authentication', target: 'scores', diagnostic: 'token expired', retryable: false }],
+  });
+  const input = context({ gameId: 'chunithm', providerId: 'lxns', accountId, client });
+  input.session = { mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 1000, persistable: true };
+  input.protocolScoreProvider = new ChunithmScoreProvider(input.session);
+  input.hasSessionData = true;
+  const loaded = await selectGameDataLoader('chunithm')(input);
+  registerGameDataBackground(input.queryKey, loaded.background);
+  const result = await refreshGameDataBundle({ client,
+    params: { accountId, gameId: 'chunithm', providerId: 'lxns', mode: null },
+    refetch: () => ({ data: loaded.bundle }),
+  });
+  expect(result).toMatchObject({ status: 'partial', completed: ['player', 'bests'], failures: [{ code: 'authentication', target: 'scores' }] });
+  expect(result.metadata?.fetchedAt).toBe(source.updatedAt);
+});
+
+it('中二没有可用快照的认证失败保持authentication而不是no_data', async () => {
+  const client = createClient();
+  const accountId = 'chunithm:lxns:auth';
+  jest.spyOn(ChunithmPersonalService.prototype, 'refresh').mockResolvedValue({
+    status: 'failed', value: null, metadata: null,
+    requested: ['player', 'scores', 'bests'], completed: [],
+    failures: [{ code: 'authentication', target: 'player', diagnostic: 'token expired', retryable: false }],
+  });
+  const input = context({ gameId: 'chunithm', providerId: 'lxns', accountId, client });
+  input.session = { mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 1000, persistable: true };
+  input.protocolScoreProvider = new ChunithmScoreProvider(input.session);
+  input.hasSessionData = true;
+  const result = await refreshGameDataBundle({ client,
+    params: { accountId, gameId: 'chunithm', providerId: 'lxns', mode: null },
+    refetch: async () => {
+      try { return { data: (await selectGameDataLoader('chunithm')(input)).bundle }; }
+      catch (error) { expect(error).toBeInstanceOf(ProviderError); throw error; }
+    },
+  });
+  expect(result).toMatchObject({ status: 'failed', failures: [{ code: 'authentication' }] });
 });

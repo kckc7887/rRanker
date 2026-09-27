@@ -1,0 +1,106 @@
+name: Build Android artifacts
+description: Compile and verify ABI-specific Release APKs for an immutable source using explicit test or production signing.
+inputs:
+  source-sha:
+    description: Checked-out immutable source SHA
+    required: true
+  production:
+    description: Require provisioned formal signing
+    required: false
+    default: "false"
+  optimization-mode:
+    description: Release optimization comparison mode
+    required: false
+    default: A
+outputs:
+  artifact-name:
+    description: Verified artifact name
+    value: ${{ steps.apks.outputs.artifact_name }}
+runs:
+  using: composite
+  steps:
+    - name: Verify build source
+      shell: bash
+      env:
+        SOURCE_SHA: ${{ inputs.source-sha }}
+        PRODUCTION_BUILD: ${{ inputs.production }}
+      run: |
+        test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
+        case "$PRODUCTION_BUILD" in true|false) ;; *) exit 1 ;; esac
+    - name: Setup Node
+      uses: actions/setup-node@v6
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: apps/mobile/package-lock.json
+    - name: Setup Java
+      uses: actions/setup-java@v5
+      with:
+        distribution: temurin
+        java-version: "17"
+    - name: Setup Android SDK
+      uses: android-actions/setup-android@v4
+      with:
+        cmdline-tools-version: "12266719"
+        log-accepted-android-sdk-licenses: false
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@v6
+    - name: Install dependencies
+      run: npm ci --include=dev
+      shell: bash
+      working-directory: apps/mobile
+    - name: Expo prebuild
+      env:
+        NODE_ENV: production
+        BUILD_SOURCE_COMMIT: ${{ inputs.source-sha }}
+        ANDROID_OPTIMIZATION_MODE: ${{ inputs.optimization-mode }}
+      run: npm run prebuild:android
+      shell: bash
+      working-directory: apps/mobile
+    - name: Prepare release keystore
+      id: signing
+      run: |
+        if [ "$PRODUCTION_BUILD" = "true" ]; then
+          if [ "$PRODUCTION_SIGNING_READY" != "true" ] || [ -z "$ANDROID_KEYSTORE_BASE64" ]; then
+            echo "Production signing environment is not provisioned" >&2
+            exit 1
+          fi
+          if [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
+            echo "Release keystore secrets are incomplete (need BASE64, PASSWORD, ALIAS, KEY_PASSWORD)" >&2
+            exit 1
+          fi
+          echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/rranker-release.keystore
+          echo "mode=release" >> "$GITHUB_OUTPUT"
+        else
+          echo "mode=test-debug" >> "$GITHUB_OUTPUT"
+        fi
+      env:
+        PRODUCTION_BUILD: ${{ inputs.production }}
+        PRODUCTION_SIGNING_READY: ${{ env.PRODUCTION_SIGNING_READY }}
+      shell: bash
+      working-directory: apps/mobile
+    - name: Build four ABI APKs
+      working-directory: apps/mobile/android
+      env:
+        NODE_ENV: production
+      run: |
+        chmod +x gradlew
+        SIGNING_ARGS=""
+        if [ "${{ steps.signing.outputs.mode }}" = "release" ]; then
+          SIGNING_ARGS="-Pandroid.injected.signing.store.file=$PWD/app/rranker-release.keystore -Pandroid.injected.signing.store.password=$ANDROID_KEYSTORE_PASSWORD -Pandroid.injected.signing.key.alias=$ANDROID_KEY_ALIAS -Pandroid.injected.signing.key.password=$ANDROID_KEY_PASSWORD"
+        fi
+        # shellcheck disable=SC2086
+        ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=2 \
+          -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64 \
+          $SIGNING_ARGS
+      shell: bash
+    - name: Verify and name APKs
+      id: apks
+      env:
+        SIGNING_MODE: ${{ steps.signing.outputs.mode }}
+        BUILD_SOURCE_COMMIT: ${{ inputs.source-sha }}
+        ANDROID_OPTIMIZATION_MODE: ${{ inputs.optimization-mode }}
+      run: |
+        python3 ../../.github/scripts/verify-android-apks.py
+      shell: bash
+      working-directory: apps/mobile

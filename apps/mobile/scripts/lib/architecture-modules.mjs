@@ -16,7 +16,7 @@ export function normalizeModuleToken(value) {
  * `screens` 是 `src/screens` 下的页面文件名，`aliases` 用于 domain/services/features 的文件前缀。
  */
 export const GAME_MODULES = Object.freeze([
-  { module: 'maimai', components: ['maimai'], screens: ['MaimaiRandomChartsScreen.tsx', 'MaimaiScreens.tsx'], aliases: ['maimai'] },
+  { module: 'maimai', components: ['maimai'], screens: ['MaimaiRandomChartsScreen.tsx', 'MaimaiScreens.tsx', 'maimai/MaimaiRecordsScreen.tsx', 'maimai/MaimaiCatalogScreen.tsx'], aliases: ['maimai'] },
   { module: 'chunithm', components: ['chunithm'], screens: ['ChunithmBestImageScreen.tsx', 'ChunithmRandomChartsScreen.tsx'], aliases: ['chunithm'] },
   { module: 'phigros', components: ['phigros'], screens: ['PhigrosBestImageScreen.tsx', 'PhigrosRandomChartsScreen.tsx'], aliases: ['phigros'] },
   { module: 'phira', components: ['phira'], screens: ['PhiraScreens.tsx', 'PhiraRandomChartsScreen.tsx'], aliases: ['phira'] },
@@ -109,12 +109,10 @@ export function resolveModuleOwner(path, modules = GAME_MODULES) {
     if (segments.length === 2 && SHARED_SCREENS.some((file) => stripExtension(file) === stripExtension(second))) {
       return { kind: 'shared' };
     }
-    const screenModule = moduleForScreenFile(stripExtension(second), modules);
+    const screenPath = segments.slice(1).join('/');
+    const screenModule = moduleForScreenFile(stripExtension(screenPath), modules);
     if (screenModule) return { kind: 'game', module: screenModule.module, gameUi: true };
-    if (segments.length === 2) {
-      return { kind: 'unknown', reason: `未登记的页面文件 screens/${second}` };
-    }
-    return { kind: 'shared' };
+    return { kind: 'unknown', reason: `未登记的页面文件 screens/${screenPath}` };
   }
   const module = moduleForLayerFile(layer, second, modules);
   if (module) {

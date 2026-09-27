@@ -165,6 +165,9 @@ describe('Phigros strength policy', () => {
     expect(profileOf([1, 1, 1, 1, 1])).toBe('五维均衡型');
     expect(profileOf([1, 1, 1, 1, 1], { ...PHIGROS_STRENGTH_POLICY, primaryAxisCount: 4 }))
       .toBe('读谱倾向型');
+    expect(resolvePhigrosStrengthProfileLabel(primaryTags.slice(0, 4).map(tag => ({
+      tagId: tag.id, name: tag.name, sampleCoverage: 1,
+    })), { ...PHIGROS_STRENGTH_POLICY, primaryAxisCount: 4 })).toBe('4维均衡型');
   });
 
   it('applies the policy values to the analysis behaviour', () => {

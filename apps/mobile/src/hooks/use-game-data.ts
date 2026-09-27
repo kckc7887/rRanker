@@ -15,7 +15,8 @@ import {
   registerGameDataBackground,
 } from '@/services/game-data-query';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
-import { loadGameDataBundle } from '@/hooks/game-data-loaders';
+import { gameDataCatalogQueries } from '@/services/game-data-loader-queries';
+import { loadGameDataBundle } from '@/services/game-data-loaders';
 
 export function useGameData(enabled = true) {
   const tabActive = useCachedTabActive();
@@ -27,6 +28,7 @@ export function useGameData(enabled = true) {
     s.boundAccounts.find((account) => account.id === s.activeAccountId)
   ));
   const scoreProvider = useSession((s) => s.scoreProvider);
+  const protocolScoreProvider = useSession((s) => s.protocolScoreProvider);
   const catalogProvider = useSession((s) => s.catalogProvider);
   const profile = getGameProfile(activeGameId);
 
@@ -44,6 +46,7 @@ export function useGameData(enabled = true) {
     ...GAME_DATA_QUERY_OPTIONS,
     queryFn: async ({ signal }): Promise<GameDataBundle> => {
       const assertCurrent = captureResourceWrites(activeGameId, signal, activeAccountId);
+      registerGameDataBackground(queryKey, undefined);
       const hasSessionData = queryClient.getQueryData<GameDataBundle>(queryKey) !== undefined;
       const result = await loadGameDataBundle({
         activeGameId,
@@ -51,6 +54,8 @@ export function useGameData(enabled = true) {
         activeAccountId,
         session,
         scoreProvider,
+        protocolScoreProvider,
+        catalogQueries: gameDataCatalogQueries(queryClient),
         catalogProvider,
         activeAccount,
         profile,
@@ -59,9 +64,9 @@ export function useGameData(enabled = true) {
         signal,
         assertCurrent,
         // 加载器不持有查询客户端：发布、读取与失效都经适配层端口。
-        publish: (bundle) => publishGameDataBundle(queryClient, queryKey, bundle),
+        publish: (bundle) => publishGameDataBundle(queryClient, queryKey, bundle, assertCurrent),
         readEntityValue: (entityKey) => readGameDataBundle(queryClient, entityKey),
-        publishEntityValue: (entityKey, value) => publishEntityValue(queryClient, entityKey, value),
+        publishEntityValue: (entityKey, value) => { void publishEntityValue(queryClient, entityKey, value, assertCurrent); },
         invalidateEntityValue: (entityKey) => invalidateEntityValue(queryClient, entityKey),
       });
       // 后台分离刷新的终态句柄交给适配层登记：主动刷新据此等待「网络与提交全部落定」。

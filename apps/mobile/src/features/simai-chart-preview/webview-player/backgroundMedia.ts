@@ -61,6 +61,8 @@ export class SimaiBackgroundMedia {
   private videoPlayPending = false;
   private videoAttached = false;
   private statusMessage = '';
+  private disposed = false;
+  private generation = 0;
 
   constructor(options: SimaiBackgroundMediaOptions) {
     this.image = options.image;
@@ -81,6 +83,7 @@ export class SimaiBackgroundMedia {
   }
 
   setMode(mode: ChartPreviewBackgroundMode): void {
+    if (this.disposed) return;
     this.mode = mode;
     this.clearStatus();
     if (mode === 'none') {
@@ -100,6 +103,7 @@ export class SimaiBackgroundMedia {
 
   /** 每帧把视频背景对齐到当前拍位置；图片背景无需逐帧处理。 */
   syncFrame(input: SimaiBackgroundFrameInput): void {
+    if (this.disposed) return;
     if (this.mode !== 'video' || !this.videoReady || this.videoFailed) return;
     const frame = resolveBackgroundVideoFrame({
       currentBeats: input.currentBeats,
@@ -130,6 +134,7 @@ export class SimaiBackgroundMedia {
   }
 
   releaseVideo(): void {
+    this.generation += 1;
     if (!this.video.paused) this.video.pause();
     if (this.video.hasAttribute('src')) {
       this.video.removeAttribute('src');
@@ -143,7 +148,9 @@ export class SimaiBackgroundMedia {
   }
 
   dispose(): void {
+    if (this.disposed) return;
     this.releaseVideo();
+    this.disposed = true;
     this.image.removeEventListener('load', this.onImageLoad);
     this.image.removeEventListener('error', this.onImageError);
     this.video.removeEventListener('loadeddata', this.onVideoLoaded);
@@ -162,11 +169,14 @@ export class SimaiBackgroundMedia {
     if (Math.abs(this.video.playbackRate - nextRate) > 0.01) this.video.playbackRate = nextRate;
     if (this.video.paused && !this.videoPlayPending) {
       this.videoPlayPending = true;
+      const generation = this.generation;
       void this.video.play()
         .then(() => {
+          if (this.disposed || generation !== this.generation) return;
           this.videoPlayPending = false;
         })
         .catch(() => {
+          if (this.disposed || generation !== this.generation) return;
           this.videoPlayPending = false;
           this.videoReady = false;
           this.videoFailed = true;
@@ -225,6 +235,7 @@ export class SimaiBackgroundMedia {
   }
 
   private readonly onImageLoad = (): void => {
+    if (this.disposed) return;
     this.imageLoading = false;
     this.imageReady = true;
     this.imageFailed = false;
@@ -234,6 +245,7 @@ export class SimaiBackgroundMedia {
   };
 
   private readonly onImageError = (): void => {
+    if (this.disposed) return;
     this.imageLoading = false;
     this.imageReady = false;
     this.imageFailed = true;
@@ -244,6 +256,7 @@ export class SimaiBackgroundMedia {
   };
 
   private readonly onVideoLoaded = (): void => {
+    if (this.disposed) return;
     this.videoLoading = false;
     this.videoReady = true;
     this.videoFailed = false;
@@ -253,10 +266,12 @@ export class SimaiBackgroundMedia {
   };
 
   private readonly onVideoSeeked = (): void => {
+    if (this.disposed) return;
     if (this.mode === 'video') this.host.render();
   };
 
   private readonly onVideoError = (): void => {
+    if (this.disposed) return;
     if (this.mode !== 'video') return;
     this.videoLoading = false;
     this.videoReady = false;

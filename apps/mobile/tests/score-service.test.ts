@@ -1,9 +1,10 @@
+import { ProviderError } from '@/providers/errors';
 import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
 import { fixtureCatalog, fixturePlayer, fixtureRecords } from '@/fixtures/sanitized';
 import { FixtureCatalogProvider, FixtureProvider } from './fixture-provider';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
-import { buildScoreSnapshot, awaitScoreFresh, ScoreService } from '@/services/score-service';
+import { buildScoreSnapshot, ScoreService } from '@/services/score-service';
 
 class MemoryRepository implements SnapshotRepository, CatalogRepository {
   value: ScoreSnapshot | null = null;
@@ -71,7 +72,7 @@ describe('ScoreService', () => {
     const cached = await new ScoreService(
       failingProvider, new FixtureCatalogProvider(), 'acct-a', repository, repository,
     ).load();
-    expect(cached.source.kind).toBe('cache'); expect(cached.source.isStale).toBe(true);
+    expect(cached.source.kind).toBe(saved?.source.kind); expect(cached.source.isStale).toBe(true);
     expect(repository.value).toEqual(saved);
   });
 
@@ -183,108 +184,6 @@ describe('ScoreService', () => {
     expect(getPlayer).toHaveBeenCalledTimes(1);
   });
 
-  it('serves the cached snapshot first and refreshes in background', async () => {
-    const repository = new MemoryRepository();
-    const service = new ScoreService(
-      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-first', repository, repository,
-    );
-    await service.load();
-    let notifyFresh: ((fresh: ScoreSnapshot) => void) | null = null;
-    const freshNotified = new Promise<ScoreSnapshot>((resolve) => { notifyFresh = resolve; });
-
-    const result = await service.loadCacheFirst((fresh) => notifyFresh?.(fresh));
-
-    expect(result.source.kind).toBe('cache');
-    expect(result.source.isStale).toBe(true);
-    expect(result.source.label).not.toContain('最近有效');
-    const fresh = await freshNotified;
-    expect(fresh.source.kind).not.toBe('cache');
-  });
-
-  it('keeps the cached snapshot unmarked for local-source accounts', async () => {
-    const repository = new MemoryRepository();
-    const service = new ScoreService(
-      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-plain', repository, repository,
-    );
-    await service.load();
-
-    const result = await service.loadCacheFirst(() => undefined, false);
-
-    expect(result.source.kind).not.toBe('cache');
-    expect(result.source.isStale).toBe(false);
-  });
-
-  it('falls back to a network load when no snapshot is cached', async () => {
-    const repository = new MemoryRepository();
-    const service = new ScoreService(
-      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-no-cache', repository, repository,
-    );
-    const result = await service.loadCacheFirst(() => { throw new Error('不应命中后台刷新'); });
-    expect(result.source.kind).not.toBe('cache');
-    expect(repository.byAccount.has('acct-no-cache')).toBe(true);
-  });
-
-  it('awaits the in-flight network load until it settles', async () => {
-    const repository = new MemoryRepository();
-    await new ScoreService(
-      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-wait', repository, repository,
-    ).load();
-    let release: ((snapshot: ScoreSnapshot) => void) | null = null;
-    const gate = new Promise<ScoreSnapshot>((resolve) => { release = resolve; });
-    const slowProvider = {
-      getPlayer: async () => { await gate; return structuredClone(fixturePlayer); },
-      getRecords: async () => { await gate; return structuredClone(fixtureRecords); },
-    };
-    const service = new ScoreService(slowProvider, new FixtureCatalogProvider(), 'acct-wait', repository, repository);
-    const load = service.load();
-    let settled = false;
-    const waited = awaitScoreFresh('acct-wait').then(() => { settled = true; });
-
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(settled).toBe(false);
-
-    release!(buildScoreSnapshot(fixturePlayer, fixtureRecords, fixtureCatalog));
-    await waited;
-    expect(settled).toBe(true);
-    await load;
-  });
-
-  it('resolves awaitScoreFresh without rethrowing when the load rejects', async () => {
-    const repository = new MemoryRepository();
-    const fail = async (): Promise<never> => { throw new Error('network'); };
-    const service = new ScoreService(
-      { getPlayer: fail, getRecords: fail }, new FixtureCatalogProvider(), 'acct-wait-fail', repository, repository,
-    );
-    const load = service.load().catch(() => undefined);
-
-    await expect(awaitScoreFresh('acct-wait-fail')).resolves.toBeUndefined();
-    await load;
-  });
-
-  it('resolves awaitScoreFresh immediately when no load is in flight', async () => {
-    await expect(awaitScoreFresh('acct-idle')).resolves.toBeUndefined();
-  });
-
-  it('does not rewrite the query when the background refresh fails', async () => {
-    const repository = new MemoryRepository();
-    const service = new ScoreService(
-      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-fail-refresh', repository, repository,
-    );
-    await service.load();
-    const fail = async (): Promise<never> => { throw new Error('network'); };
-    let onFreshCalled = false;
-    const result = await new ScoreService(
-      { getPlayer: fail, getRecords: fail },
-      new FixtureCatalogProvider(),
-      'acct-fail-refresh',
-      repository,
-      repository,
-    ).loadCacheFirst(() => { onFreshCalled = true; });
-    expect(result.source.kind).toBe('cache');
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(onFreshCalled).toBe(false);
-  });
-
   it('combines provider actual DXScore with theoretical score notes from the detailed API', async () => {
     const record = { ...fixtureRecords[0]!, dxScore: 1836 };
     const catalog = structuredClone(fixtureCatalog);
@@ -314,4 +213,34 @@ describe('ScoreService', () => {
     const snapshot = await new ScoreService(scoreProvider, catalogProvider, 'acct-dx-score').load();
     expect(snapshot.records[0]).toMatchObject({ dxScore: 1836, notes: { total: 690 } });
   });
+});
+
+it.each(['authentication', 'permission'] as const)('已有缓存时保留%s失败供公共刷新要求重新登录', async code => {
+  const repository = new MemoryRepository();
+  await new ScoreService(new FixtureProvider(), new FixtureCatalogProvider(), 'acct-auth', repository, repository).load();
+  const saved = structuredClone(repository.value);
+  const failure = new ProviderError(code, 'session expired', false);
+  const fail = async (): Promise<never> => { throw failure; };
+  await expect(new ScoreService({ getPlayer: fail, getRecords: fail }, new FixtureCatalogProvider(), 'acct-auth', repository, repository).load()).rejects.toBe(failure);
+  expect(repository.value).toEqual(saved);
+});
+
+it('取消一个成绩消费者仍允许另一个完成同账号共享读取', async () => {
+  let release!: () => void;
+  const gate = new Promise<void>(resolve => { release = resolve; });
+  const first = new AbortController(), second = new AbortController();
+  const provider = {
+    getPlayer: vi.fn(async () => { await gate; return structuredClone(fixturePlayer); }),
+    getRecords: vi.fn(async () => { await gate; return structuredClone(fixtureRecords); }),
+  };
+  const repository = new MemoryRepository();
+  const service = new ScoreService(provider, new FixtureCatalogProvider(), 'acct-cancel-consumer', repository, repository);
+  const a = service.load(first.signal), b = service.load(second.signal);
+  first.abort(new Error('first left'));
+  await expect(a).rejects.toThrow('first left');
+  release();
+  const value = await b;
+  expect(value.source.isStale).toBe(false);
+  expect(provider.getPlayer).toHaveBeenCalledTimes(1);
+  expect(repository.value?.player).toEqual(value.player);
 });

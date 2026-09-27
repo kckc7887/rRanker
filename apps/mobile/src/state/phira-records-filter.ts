@@ -1,7 +1,6 @@
 import { createFilterStore } from '@/state/create-filter-store';
-import type { PhigrosRankFilter } from '@/domain/phigros-filters';
-import type { PhigrosXingKind } from '@/domain/phigros-xing';
-import type { PhiraScoreSort } from '@/domain/phira-filters';
+import type { PhiraRankFilter , PhiraScoreSort } from '@/domain/phira-filters';
+import type { PhiraXingKind } from '@/domain/phira-score-presentation';
 
 export const usePhiraRecordsFilter = createFilterStore({
   defaults: {
@@ -11,8 +10,8 @@ export const usePhiraRecordsFilter = createFilterStore({
     constantMax: '',
     accuracyMin: '',
     accuracyMax: '',
-    rank: null as PhigrosRankFilter | null,
-    xing: null as PhigrosXingKind | null,
+    rank: null as PhiraRankFilter | null,
+    xing: null as PhiraXingKind | null,
     sort: 'score' as PhiraScoreSort,
   },
   // 清除筛选时同时恢复折叠状态和排序。

@@ -101,7 +101,7 @@ jest.mock('@/components/AppNotification', () => ({
   }),
   useNotificationModalRequestClose: () => () => false,
 }));
-jest.mock('@/features/phira-compatible-chart-download/phira-compatible-chart-download', () => ({
+jest.mock('@/features/phigros-chart-download/chart-package-download', () => ({
   downloadPhigrosChartAsPhiraPackage: jest.fn(),
 }));
 jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({

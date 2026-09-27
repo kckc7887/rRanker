@@ -7,6 +7,8 @@ import {
   type ThemePreferences,
 } from '@/storage/theme-preferences-store';
 import { normalizeAccentHex } from '@/theme/accent-color';
+import { createPreferencesWriteCoordinator } from '@/services/preferences-write-coordinator';
+import { recordRuntimeDiagnostic, recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 interface ThemeState extends ThemePreferences {
   hydrated: boolean;
@@ -21,65 +23,58 @@ interface ThemeState extends ThemePreferences {
 
 let hydrationPromise: Promise<void> | undefined;
 
-function snapshot(state: ThemeState): ThemePreferences {
-  return {
-    version: 3,
-    appearance: state.appearance,
-    accent: state.accent,
-    customHex: state.customHex,
-    scoreCardArtworkEnabled: state.scoreCardArtworkEnabled,
-    scoreCardArtworkTransparency: state.scoreCardArtworkTransparency,
-    scoreCardArtworkBlur: state.scoreCardArtworkBlur,
-  };
-}
+const persistence = createPreferencesWriteCoordinator<ThemePreferences>({
+  load: () => themePreferencesStore.load(),
+  save: (value) => themePreferencesStore.save(value),
+  loaded: (value) => useThemeStore.setState(value),
+  failed: (phase, error, attempts) => {
+    if (attempts === 1 || (attempts & (attempts - 1)) === 0) {
+      recordRuntimeError('theme-preferences', error, false, { phase });
+    }
+  },
+  recovered: () => { void recordRuntimeDiagnostic('operation', { source: 'theme-preferences', phase: 'recovered' }); },
+});
 
-export const useThemeStore = create<ThemeState>((set, get) => ({
+export function setThemePersistenceForeground(foreground: boolean): void { persistence.setForeground(foreground); }
+
+export const useThemeStore = create<ThemeState>((set) => ({
   ...DEFAULT_THEME_PREFERENCES,
   hydrated: false,
   hydrate: () => {
-    hydrationPromise ??= themePreferencesStore.load().then((preferences) => {
-      set({ ...preferences, hydrated: true });
-    });
+    hydrationPromise ??= (async () => {
+      let timer: ReturnType<typeof setTimeout> | undefined;
+      try {
+        await Promise.race([persistence.flush(), new Promise<void>((resolve) => { timer = setTimeout(resolve, 1_500); })]);
+      } finally { if (timer) clearTimeout(timer); set({ hydrated: true }); }
+    })();
     return hydrationPromise;
   },
   setAppearance: async (appearance) => {
-    const previous = get().appearance;
     set({ appearance });
-    try { await themePreferencesStore.save(snapshot(get())); }
-    catch { set({ appearance: previous }); }
+    persistence.change({ appearance });
   },
   setAccent: async (accent) => {
-    const previous = { accent: get().accent, customHex: get().customHex };
     set({ accent });
-    try { await themePreferencesStore.save(snapshot(get())); }
-    catch { set(previous); }
+    persistence.change({ accent });
   },
   setCustomAccent: async (hex) => {
     const normalized = normalizeAccentHex(hex);
     if (!normalized) return;
-    const previous = { accent: get().accent, customHex: get().customHex };
     set({ accent: 'custom', customHex: normalized });
-    try { await themePreferencesStore.save(snapshot(get())); }
-    catch { set(previous); }
+    persistence.change({ accent: 'custom', customHex: normalized });
   },
   setScoreCardArtworkEnabled: async (enabled) => {
-    const previous = get().scoreCardArtworkEnabled;
     set({ scoreCardArtworkEnabled: enabled });
-    try { await themePreferencesStore.save(snapshot(get())); }
-    catch { set({ scoreCardArtworkEnabled: previous }); }
+    persistence.change({ scoreCardArtworkEnabled: enabled });
   },
   setScoreCardArtworkTransparency: async (transparency) => {
-    const previous = get().scoreCardArtworkTransparency;
     const next = Math.round(Math.max(0, Math.min(100, transparency)));
     set({ scoreCardArtworkTransparency: next });
-    try { await themePreferencesStore.save(snapshot(get())); }
-    catch { set({ scoreCardArtworkTransparency: previous }); }
+    persistence.change({ scoreCardArtworkTransparency: next });
   },
   setScoreCardArtworkBlur: async (blur) => {
-    const previous = get().scoreCardArtworkBlur;
     const next = Math.round(Math.max(0, Math.min(30, blur)));
     set({ scoreCardArtworkBlur: next });
-    try { await themePreferencesStore.save(snapshot(get())); }
-    catch { set({ scoreCardArtworkBlur: previous }); }
+    persistence.change({ scoreCardArtworkBlur: next });
   },
 }));

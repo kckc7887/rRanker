@@ -1,3 +1,5 @@
+import { assertChartPreviewGifFrameCount, assertChartPreviewGifFramePixels, assertChartPreviewTexturePixels, ChartPreviewBudgetExceededError, pauseChartPreviewParse } from '../../chart-preview-shared/chart-preview-resource-budget';
+import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
 /**
  * Phigros / Phira 谱面确认 WebView 播放器入口。
  * 播放位置、命令代次、音乐音源、打击音调度与 rAF 归 PhigrosPlaybackSession；
@@ -21,10 +23,10 @@ import { parsePgrChart, type PgrChart } from './pgr-core';
 import { RpeRenderer, type RpeAttachUiTransform, type RpeChartAssets } from './rpe-renderer';
 import { buildGifAnim, parseRpeChart, type RpeChart, type RpeGifKeyframe } from './rpe-core';
 import { RPE_PRESET_SHADERS } from './rpe-preset-shaders';
-import { buildHitSoundEvents, type HitSoundKind } from './hit-sound';
+import { buildHitSoundEvents } from './hit-sound';
 import { PhigrosPlaybackSession, type PhigrosPlaybackSettings } from './playback';
 import { PhigrosTimelineView } from './timelineView';
-import { rpeResourceUrl } from '../../../domain/phira-rpe-resource-path';
+import { rpeResourceUrl } from '../../../domain/rpe-resource-path';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
 import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-preview-bridge';
 
@@ -36,40 +38,8 @@ declare global {
   }
 }
 
-export interface PhigrosChartPreviewSettings {
-  playbackSpeed?: number;
-  noteScale?: number;
-  volume?: number;
-  backgroundDim?: number;
-  multiHint?: boolean;
-  lineColor?: string;
-  hitSoundVolume?: number;
-  /** RPE 专属：宽高比覆盖（null = 谱面默认）与翻转/特效开关。 */
-  aspectRatio?: number | null;
-  flipX?: boolean;
-  effects?: boolean;
-}
-
-export interface PhigrosChartPreviewConfig {
-  game?: 'phigros' | 'phira';
-  title?: string;
-  chartUrl?: string;
-  chartText?: string;
-  musicUrl?: string;
-  illustrationUrl?: string;
-  hitSounds?: Partial<Record<HitSoundKind, string>>;
-  settings?: PhigrosChartPreviewSettings | null;
-  /** 谱面格式：pgr（默认）或 rpe。RPE 时提供 rpeAssets。 */
-  format?: 'pgr' | 'rpe';
-  rpeAssets?: {
-    basePath: string;
-    extraJson: string | null;
-    infoYml: string | null;
-    shaders: Record<string, string>;
-  } | null;
-  /** 播放器界面主题：由 RN 侧按应用深浅色注入。 */
-  theme?: 'light' | 'dark';
-}
+export type PhigrosChartPreviewSettings = import('../../chart-preview-shared/pgr-preview-config').PgrPreviewSettings;
+export type PhigrosChartPreviewConfig = import('../../chart-preview-shared/pgr-preview-config').PgrPreviewConfig;
 
 const DEFAULT_SETTINGS: Required<PhigrosChartPreviewSettings> = Object.freeze({
   playbackSpeed: 1,
@@ -155,11 +125,11 @@ function decodeBase64DataUrl(url: string): ArrayBuffer {
 
 function loadImage(url: string, signal: AbortSignal): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
+    if (signal.aborted || disposed) { reject(new DOMException('已取消', 'AbortError')); return; }
     const image = new Image();
-    // 不设置 crossOrigin：曲绘画布从不回读像素，污染画布不影响渲染；
-    // 远程曲绘无 CORS 头时（Phira 社区图床）也能正常显示。
-    const cleanup = () => signal.removeEventListener('abort', onAbort);
-    const onAbort = () => { image.src = ''; cleanup(); reject(new DOMException('已取消', 'AbortError')); };
+    // 曲绘画布不回读像素，无 CORS 的公共图床也能显示。
+    const cleanup = () => { signal.removeEventListener('abort', onAbort); image.onload = null; image.onerror = null; };
+    const onAbort = () => { cleanup(); image.src = ''; reject(new DOMException('已取消', 'AbortError')); };
     image.onload = () => { cleanup(); resolve(image); };
     image.onerror = () => { cleanup(); reject(new Error('曲绘加载失败')); };
     signal.addEventListener('abort', onAbort, { once: true });
@@ -189,6 +159,7 @@ function createWheel(
   const values = buildWheelValues(min, max, step);
   let current = values.includes(initial) ? initial : values[0] ?? min;
   let settleTimer = 0;
+  events.own(() => window.clearTimeout(settleTimer));
 
   const itemLabel = (v: number) => {
     if (labels) {
@@ -236,7 +207,7 @@ function createWheel(
     return values[index]!;
   };
 
-  viewport.addEventListener('scroll', () => {
+  events.listen(viewport, 'scroll', () => {
     const next = valueFromScroll();
     if (Math.abs(next - current) > 1e-9) applySelection(next, true);
     window.clearTimeout(settleTimer);
@@ -254,6 +225,7 @@ function createWheel(
 let activePopupClose: (() => void) | null = null;
 /** 宿主释放后的播放器：不再改动界面、也不再回报状态。 */
 let disposed = false;
+const events = new PlayerEventScope(() => disposed);
 
 /** 拨轮字段，逐语义移植舞萌 setupWheelPopup，并支持自定义数值显示。 */
 function setupWheelPopup(
@@ -297,20 +269,20 @@ function setupWheelPopup(
     if (activePopupClose === closePopup) activePopupClose = null;
   };
 
-  trigger.addEventListener('click', (e) => {
+  events.listen(trigger, 'click', (e) => {
     e.stopPropagation();
     if (open) closePopup();
     else openPopup();
   });
 
-  document.addEventListener('click', () => {
+  events.listen(document, 'click', () => {
     if (open) closePopup();
   });
 
-  popup.addEventListener('click', (e) => {
+  events.listen(popup, 'click', (e) => {
     e.stopPropagation();
   });
-  popup.addEventListener('touchstart', (e) => {
+  events.listen(popup, 'touchstart', (e) => {
     e.stopPropagation();
   });
 
@@ -351,10 +323,11 @@ function start(): void {
     status: $('status'),
   };
 
-  const config = window.__PHIGROS_CHART_PREVIEW__ ?? {};
+  const config: Partial<PhigrosChartPreviewConfig> = window.__PHIGROS_CHART_PREVIEW__ ?? {};
   const isRpe = config.format === 'rpe';
   type PreviewRenderer = PgrRenderer | RpeRenderer;
   const renderer: PreviewRenderer = isRpe ? new RpeRenderer(elements.canvas) : new PgrRenderer(elements.canvas);
+  events.own(() => renderer.dispose());
   let settings = loadSettings(config.settings);
   const playbackSettings: PhigrosPlaybackSettings = settings;
   const session = new PhigrosPlaybackSession({
@@ -366,7 +339,8 @@ function start(): void {
       onPlaybackError: () => setStatus('无法播放音乐，请重试。'),
     },
   });
-  let loadController: AbortController | null = null;  let ready = false;
+  let loadController: AbortController | null = null;
+  let ready = false;
   let isFullscreen = false;
   let timelineDragging = false;
   let wasPlayingBeforeDrag = false;
@@ -376,14 +350,7 @@ function start(): void {
   let controlsVisible = true;
   let fsLocked = false;
 
-  /** RPE：加载谱面包资源（贴图/gif/视频；shader 文本来自注入配置）。 */
-  async function loadRpeChartAssets(chart: RpeChart, signal: AbortSignal): Promise<RpeChartAssets> {
-    const basePath = config.rpeAssets?.basePath ?? '';
-    const textures = new Map<string, HTMLImageElement>();
-    const videos = new Map<string, HTMLVideoElement>();
-    const gifs = new Map<string, { frames: ImageBitmap[]; durationsMs: number[]; cumulativeMs: number[]; totalMs: number }>();
-    const gifAnims = new Map<number, RpeGifKeyframe[]>();
-    const jobs: Promise<unknown>[] = [];
+  function rpeTextureNames(chart: RpeChart): Set<string> {
     const textureNames = new Set<string>();
     for (const line of chart.lines) {
       if (line.texture !== 'line.png' && line.gifEvents.length === 0) textureNames.add(line.texture);
@@ -394,6 +361,24 @@ function start(): void {
         if (typeof value === 'string') textureNames.add(value);
       }
     }
+    return textureNames;
+  }
+
+  /** RPE：加载谱面包资源（贴图/gif/视频；shader 文本来自注入配置）。 */
+  async function loadRpeChartAssets(chart: RpeChart, signal: AbortSignal): Promise<RpeChartAssets> {
+    const basePath = config.rpeAssets?.basePath ?? '';
+    const textures = new Map<string, HTMLImageElement>();
+    const videos = new Map<string, HTMLVideoElement>();
+    const gifs = new Map<string, { frames: ImageBitmap[]; durationsMs: number[]; cumulativeMs: number[]; totalMs: number }>();
+    const gifAnims = new Map<number, RpeGifKeyframe[]>();
+    let gifPixels = 0;
+    events.own(() => {
+      for (const video of videos.values()) { video.pause(); video.removeAttribute('src'); video.load(); }
+      for (const gif of gifs.values()) for (const frame of gif.frames) frame.close();
+      videos.clear(); gifs.clear(); textures.clear(); gifAnims.clear();
+    });
+    const jobs: Promise<unknown>[] = [];
+    const textureNames = rpeTextureNames(chart);
     for (const name of textureNames) {
       const url = rpeResourceUrl(basePath, name);
       if (!url) continue;
@@ -401,49 +386,69 @@ function start(): void {
         .then((image) => textures.set(name, image))
         .catch((error) => console.warn(`判定线贴图加载失败 ${name}:`, error)));
     }
+    async function decodeGifFrames(textureName: string) {
+      const imageDecoderCtor = globalThis.ImageDecoder;
+      if (!imageDecoderCtor) throw new Error('浏览器不支持 ImageDecoder');
+      const textureUrl = rpeResourceUrl(basePath, textureName);
+      if (!textureUrl) throw new Error('gif 路径无效');
+      const response = await fetch(textureUrl, { signal });
+      if (!response.ok) throw new Error(`gif 请求失败：HTTP ${response.status}`);
+      const bytes = await response.arrayBuffer();
+      const lower = textureName.toLowerCase();
+      const mimeType = lower.endsWith('.apng') ? 'image/apng' : 'image/gif';
+      const decoder = new imageDecoderCtor({ data: bytes, type: mimeType });
+      const frames: ImageBitmap[] = [];
+      const durationsMs: number[] = [];
+      try {
+        await decoder.tracks.ready;
+        if (signal.aborted || disposed) throw new DOMException('预览已释放', 'AbortError');
+        const track = decoder.tracks.selectedTrack;
+        if (!track) throw new Error('GIF 没有可用图像轨道');
+        assertChartPreviewGifFrameCount(track.frameCount);
+        for (let index = 0; index < track.frameCount; index += 1) {
+          if (signal.aborted || disposed) throw new DOMException('预览已释放', 'AbortError');
+          await pauseChartPreviewParse(index, { signal });
+          const { image } = await decoder.decode({ frameIndex: index });
+          try {
+            assertChartPreviewGifFramePixels(image.displayWidth * image.displayHeight);
+            assertChartPreviewTexturePixels(gifPixels + image.displayWidth * image.displayHeight);
+            const bitmap = await createImageBitmap(image);
+            if (signal.aborted || disposed) { bitmap.close(); throw new DOMException('预览已释放', 'AbortError'); }
+            try { assertChartPreviewTexturePixels(gifPixels + bitmap.width * bitmap.height); }
+            catch (error) { bitmap.close(); throw error; }
+            gifPixels += bitmap.width * bitmap.height;
+            frames.push(bitmap);
+            durationsMs.push((image.duration ?? 100_000) / 1000);
+          } finally { image.close(); }
+        }
+      } catch (error) {
+        gifPixels -= frames.reduce((sum, frame) => sum + frame.width * frame.height, 0);
+        frames.forEach(frame => frame.close());
+        throw error;
+      } finally {
+        decoder.close();
+      }
+      const cumulativeMs: number[] = [];
+      let totalMs = 0;
+      for (const duration of durationsMs) {
+        totalMs += duration;
+        cumulativeMs.push(totalMs);
+      }
+      if (signal.aborted || disposed) { frames.forEach(frame => frame.close()); throw new DOMException('预览已释放', 'AbortError'); }
+      return { frames, durationsMs, cumulativeMs, totalMs };
+    }
+
+    const gifTextures = new Set<string>();
     // gif 判定线（prpr JudgeLineKind::TextureGif）：ImageDecoder 解码帧；iOS 无 ImageDecoder 时降级静态贴图
     for (const line of chart.lines) {
-      if (line.gifEvents.length === 0 || gifs.has(line.texture)) continue;
+      if (line.gifEvents.length === 0 || gifTextures.has(line.texture)) continue;
+      gifTextures.add(line.texture);
       jobs.push((async () => {
         try {
-          const imageDecoderCtor = globalThis.ImageDecoder;
-          if (!imageDecoderCtor) throw new Error('浏览器不支持 ImageDecoder');
-          const textureUrl = rpeResourceUrl(basePath, line.texture);
-          if (!textureUrl) throw new Error('gif 路径无效');
-          const response = await fetch(textureUrl, { signal });
-          if (!response.ok) throw new Error(`gif 请求失败：HTTP ${response.status}`);
-          const bytes = await response.arrayBuffer();
-          const lower = line.texture.toLowerCase();
-          const mimeType = lower.endsWith('.apng') ? 'image/apng' : 'image/gif';
-          const decoder = new imageDecoderCtor({ data: bytes, type: mimeType });
-          const frames: ImageBitmap[] = [];
-          const durationsMs: number[] = [];
-          try {
-            await decoder.tracks.ready;
-            const track = decoder.tracks.selectedTrack;
-            if (!track) throw new Error('GIF 没有可用图像轨道');
-            for (let index = 0; index < track.frameCount; index += 1) {
-              const { image } = await decoder.decode({ frameIndex: index });
-              try {
-                frames.push(await createImageBitmap(image));
-                durationsMs.push((image.duration ?? 100_000) / 1000);
-              } finally { image.close(); }
-            }
-          } catch (error) {
-            frames.forEach(frame => frame.close());
-            throw error;
-          } finally {
-            decoder.close();
-          }
-          const cumulativeMs: number[] = [];
-          let totalMs = 0;
-          for (const duration of durationsMs) {
-            totalMs += duration;
-            cumulativeMs.push(totalMs);
-          }
-          gifs.set(line.texture, { frames, durationsMs, cumulativeMs, totalMs });
-          gifAnims.set(line.lineIndex, buildGifAnim(line.gifEvents, totalMs, chart.bpmList));
+          const frames = await decodeGifFrames(line.texture);
+          gifs.set(line.texture, frames);
         } catch (error) {
+          if (signal.aborted || disposed || error instanceof ChartPreviewBudgetExceededError) throw error;
           console.warn(`gif 判定线解码失败 ${line.texture}（降级为静态贴图）:`, error);
           try {
             const fallbackUrl = rpeResourceUrl(basePath, line.texture);
@@ -457,7 +462,7 @@ function start(): void {
       })());
     }
     for (const video of chart.extras.videos) {
-      jobs.push(new Promise<void>((resolve) => {
+      jobs.push(new Promise<void>((resolve, reject) => {
         const videoUrl = rpeResourceUrl(basePath, video.path);
         if (!videoUrl) { resolve(); return; }
         const element = document.createElement('video');
@@ -468,15 +473,27 @@ function start(): void {
         const done = () => {
           element.removeEventListener('loadedmetadata', done);
           element.removeEventListener('error', done);
+          signal.removeEventListener('abort', cancel);
           resolve();
+        };
+        const cancel = () => {
+          element.removeEventListener('loadedmetadata', done); element.removeEventListener('error', done);
+          element.pause(); element.removeAttribute('src'); element.load();
+          signal.removeEventListener('abort', cancel); reject(new DOMException('预览已释放', 'AbortError'));
         };
         element.addEventListener('loadedmetadata', done, { once: true });
         element.addEventListener('error', done, { once: true });
+        signal.addEventListener('abort', cancel, { once: true });
+        events.own(cancel);
         element.load();
         videos.set(video.path, element);
       }));
     }
     await Promise.all(jobs);
+    for (const line of chart.lines) {
+      const gif = gifs.get(line.texture);
+      if (gif) gifAnims.set(line.lineIndex, buildGifAnim(line.gifEvents, gif.totalMs, chart.bpmList));
+    }
     // shader 文本按谱面里的相对路径引用注入，与落盘身份相同。
     const shaders = new Map<string, string>();
     const injectedShaders = config.rpeAssets?.shaders ?? {};
@@ -532,9 +549,10 @@ function start(): void {
   }
 
   if (config.title) elements.title.textContent = config.title;
-  elements.status.textContent = config.game === 'phira' ? 'Phira 谱面' : config.game === 'phigros' ? 'Phigros 谱面' : '';
+  elements.status.textContent = config.sourceLabel ?? '';
 
   function setStatus(text: string): void {
+    if (disposed) return;
     elements.status.textContent = text;
   }
 
@@ -544,6 +562,7 @@ function start(): void {
   }
 
   function setControlsEnabled(value: boolean): void {
+    if (disposed) return;
     elements.play.disabled = !value;
     elements.btnRestart.disabled = !value;
     elements.btnStepBack.disabled = !value;
@@ -626,6 +645,7 @@ function start(): void {
   });
 
   function buildTimeline(): void {
+    if (disposed) return;
     timelineView.build(session.chartDuration, timelineNotes);
   }
 
@@ -652,6 +672,20 @@ function start(): void {
     renderHud(chartTime);
   }
 
+  async function loadOptionalIllustration(signal: AbortSignal): Promise<HTMLImageElement | null> {
+    if (typeof config.illustrationUrl !== 'string' || config.illustrationUrl.trim() === '') return null;
+    try { return await loadImage(config.illustrationUrl, signal); }
+    catch (error) { if (signal.aborted) throw error; return null; }
+  }
+
+  async function rpeBackground(chart: RpeChart | null, image: HTMLImageElement | null, signal: AbortSignal) {
+    if (!chart?.background) return image;
+    const url = rpeResourceUrl(config.rpeAssets?.basePath ?? '', chart.background);
+    if (!url) return image;
+    try { return await loadImage(url, signal); }
+    catch (error) { if (signal.aborted) throw error; return image; }
+  }
+
   async function loadPreview(): Promise<void> {
     loadController?.abort();
     loadController = new AbortController();
@@ -663,24 +697,23 @@ function start(): void {
       setLoadProgress('正在读取谱面资源…', 0.2);
       const [chartText, image] = await Promise.all([
         loadChartText(signal),
-        typeof config.illustrationUrl === 'string' && config.illustrationUrl.trim() !== ''
-          ? loadImage(config.illustrationUrl, signal).catch((error) => {
-            if (error?.name === 'AbortError') throw error;
-            return null;
-          })
-          : Promise.resolve(null),
+        loadOptionalIllustration(signal),
       ]);
       if (signal.aborted) return;
       setLoadProgress('正在解析谱面…', 0.45);
       const chart: PgrChart | RpeChart = await new Promise((resolve, reject) => {
         // 主线程解析：WebView file:// 下不使用 Worker，解析期间状态保持可见。
-        window.setTimeout(() => {
+        const parseTimer = window.setTimeout(() => {
+          signal.removeEventListener('abort', cancelParse);
+          if (signal.aborted || disposed) { reject(new DOMException('预览已释放', 'AbortError')); return; }
           try {
             resolve(isRpe
               ? parseRpeChart(chartText, { extraJson: config.rpeAssets?.extraJson ?? null, infoYml: config.rpeAssets?.infoYml ?? null })
               : parsePgrChart(chartText));
           } catch (error) { reject(error); }
         }, 0);
+        const cancelParse = () => { signal.removeEventListener('abort', cancelParse); window.clearTimeout(parseTimer); reject(new DOMException('预览已释放', 'AbortError')); };
+        signal.addEventListener('abort', cancelParse, { once: true });
       });
       if (signal.aborted) return;
       setLoadProgress('正在准备音乐与曲绘…', 0.7);
@@ -692,16 +725,8 @@ function start(): void {
       ]);
       if (signal.aborted) return;
       // RPE：背景优先取谱面包内 META.background，缺失时回退远程曲绘
-      let illustration = image;
-      if (rpeChart?.background) {
-        const basePath = config.rpeAssets?.basePath ?? '';
-        try {
-          const backgroundUrl = rpeResourceUrl(basePath, rpeChart.background);
-          illustration = backgroundUrl ? await loadImage(backgroundUrl, signal) : null;
-        } catch {
-          /* 回退远程曲绘 */
-        }
-      }
+      const illustration = await rpeBackground(rpeChart, image, signal);
+      if (signal.aborted || disposed) return;
       if (isRpe) {
         (renderer as RpeRenderer).setChart(rpeChart!);
         (renderer as RpeRenderer).setChartAssets(chartAssets!);
@@ -765,6 +790,7 @@ function start(): void {
   }
 
   function syncControlsVisibility(): void {
+    if (disposed) return;
     elements.controls.classList.toggle('hidden', !controlsVisible || fsLocked);
     elements.fsLock.classList.toggle('hidden', !controlsVisible);
   }
@@ -794,6 +820,7 @@ function start(): void {
   }
 
   function setFullscreen(active: boolean): void {
+    if (disposed) return;
     isFullscreen = active;
     renderer.setFullscreen(active);
     document.body.classList.toggle('fullscreen', active);
@@ -826,10 +853,13 @@ function start(): void {
     session.dispose();
     activePopupClose?.();
     disposed = true;
+    events.dispose();
+    window.clearTimeout(controlsTimer);
   }
 
   // HUD 随 16:9 播放窗宽度缩放，并限制极端尺寸下的比例。
   function applyStageMetrics(): void {
+    if (disposed) return;
     const width = elements.stage.getBoundingClientRect().width;
     if (width <= 0) return;
     elements.stage.style.setProperty('--score-font-size', `${Math.round(clamp(width * 0.033, 16, 60))}px`);
@@ -837,30 +867,32 @@ function start(): void {
     elements.stage.style.setProperty('--combo-label-font-size', `${Math.round(clamp(width * 0.007, 8, 13))}px`);
     elements.stage.style.setProperty('--progress-height', `${Math.round(clamp(width * 0.0022, 2, 4))}px`);
   }
-  new ResizeObserver(applyStageMetrics).observe(elements.stage);
+  const stageObserver = new ResizeObserver(applyStageMetrics);
+  stageObserver.observe(elements.stage);
+  events.own(() => stageObserver.disconnect());
   applyStageMetrics();
 
   // ---- 事件绑定 ----
-  elements.play.addEventListener('click', () => {
+  events.listen(elements.play, 'click', () => {
     if (!ready) return;
     if (session.playing) session.pause();
     else void session.play();
   });
-  elements.btnRestart.addEventListener('click', () => {
+  events.listen(elements.btnRestart, 'click', () => {
     if (!ready) return;
     seekToChartTime(0);
     if (!session.playing) renderFrame(0);
   });
-  elements.btnStepBack.addEventListener('click', () => {
+  events.listen(elements.btnStepBack, 'click', () => {
     if (!ready) return;
     seekToChartTime(session.chartTime - STEP_SECONDS);
   });
-  elements.btnStepForward.addEventListener('click', () => {
+  events.listen(elements.btnStepForward, 'click', () => {
     if (!ready) return;
     seekToChartTime(session.chartTime + STEP_SECONDS);
   });
 
-  elements.timelineHost.addEventListener('pointerdown', (e) => {
+  events.listen(elements.timelineHost, 'pointerdown', (e) => {
     e.preventDefault();
     e.stopPropagation();
     timelineDragging = true;
@@ -868,16 +900,16 @@ function start(): void {
     if (session.playing) session.pause();
     seekFromTimelineEvent(e);
   });
-  document.addEventListener('pointermove', (e) => {
+  events.listen(document, 'pointermove', (e) => {
     if (!timelineDragging) return;
     seekFromTimelineEvent(e);
   });
-  document.addEventListener('pointerup', () => {
+  events.listen(document, 'pointerup', () => {
     if (!timelineDragging) return;
     timelineDragging = false;
     if (wasPlayingBeforeDrag) void session.play();
   });
-  document.addEventListener('pointercancel', () => {
+  events.listen(document, 'pointercancel', () => {
     timelineDragging = false;
   });
 
@@ -943,7 +975,7 @@ function start(): void {
     0, LINE_COLOR_LABELS.length - 1, 1, Math.max(0, LINE_COLORS.indexOf(settings.lineColor)), LINE_COLOR_LABELS,
   );
 
-  elements.multiHint.addEventListener('click', () => {
+  events.listen(elements.multiHint, 'click', () => {
     if (!ready) return;
     settings.multiHint = !settings.multiHint;
     applySettings();
@@ -951,13 +983,13 @@ function start(): void {
     if (!session.playing) renderFrame(session.chartTime);
   });
 
-  elements.fullscreen.addEventListener('click', () => setFullscreen(!isFullscreen));
-  elements.stage.addEventListener('pointerdown', () => {
+  events.listen(elements.fullscreen, 'click', () => setFullscreen(!isFullscreen));
+  events.listen(elements.stage, 'pointerdown', () => {
     if (!isFullscreen) return;
     if (controlsVisible) hideControls();
     else showControls();
   });
-  elements.fsLock.addEventListener('click', (e) => {
+  events.listen(elements.fsLock, 'click', (e) => {
     e.stopPropagation();
     const nextState = toggleFullscreenLockUiState(fsLocked);
     fsLocked = nextState.locked;
@@ -967,10 +999,12 @@ function start(): void {
     else showControls();
   });
 
-  window.addEventListener('resize', buildTimeline);
-  new ResizeObserver(buildTimeline).observe(elements.timelineHost);
+  events.listen(window, 'resize', buildTimeline);
+  const timelineObserver = new ResizeObserver(buildTimeline);
+  timelineObserver.observe(elements.timelineHost);
+  events.own(() => timelineObserver.disconnect());
 
-  window.addEventListener('message', (event) => {
+  events.listen(window, 'message', (event) => {
     // 生命周期合同由公共层派生：暂停停播保全屏，退出全屏与释放是显式命令。
     applyChartPreviewHostCommand(event.data, {
       pause: pauseForLifecycle,
@@ -978,7 +1012,11 @@ function start(): void {
       dispose: disposePlayer,
     });
   });
-  document.addEventListener('visibilitychange', () => {
+  events.listen(window, 'pagehide', disposePlayer);
+  events.listen(document, 'message', (event) => {
+    applyChartPreviewHostCommand((event as MessageEvent).data, { pause: pauseForLifecycle, exitFullscreen: () => setFullscreen(false), dispose: disposePlayer });
+  });
+  events.listen(document, 'visibilitychange', () => {
     if (document.visibilityState === 'hidden' && session.playing) session.pause();
   });
 

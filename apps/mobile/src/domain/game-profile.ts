@@ -16,8 +16,8 @@ export type GameCapabilities = {
 /**
  * 游戏展示口径。导航上的最佳/成绩/查找是音游共性；差异在各游戏的 payload 与筛选维度。
  */
-export type GameProfile = {
-  id: GameId;
+export type GameProfile<G extends GameId = GameId> = {
+  id: G;
   title: string;
   ratingLabel: string;
   ratingDigits: number;
@@ -29,7 +29,7 @@ const capabilitiesFor = (id: GameId): GameCapabilities => ({
   hasTools: getGameToolbox(id).tools.length > 0,
 });
 
-export const GAME_PROFILES: Record<GameId, GameProfile> = {
+export const GAME_PROFILES: { [G in GameId]: GameProfile<G> } = {
   rizline: { id: 'rizline', title: 'Rizline', ratingLabel: 'Ranking Score', ratingDigits: 4,
     bestSections: [{ id: 'ah5', title: 'AH5（推定）', size: 5 }, { id: 'b35', title: 'Best35（推定）', size: 35 }],
     capabilities: capabilitiesFor('rizline') },
@@ -131,6 +131,6 @@ export const GAME_PROFILES: Record<GameId, GameProfile> = {
   },
 };
 
-export function getGameProfile(id: GameId): GameProfile {
+export function getGameProfile<G extends GameId>(id: G): GameProfile<G> {
   return GAME_PROFILES[id];
 }

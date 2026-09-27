@@ -3,10 +3,42 @@ import type { DataSource } from '@/domain/models';
 import { cacheFirstLoad, cacheFirstLoadWithBackground } from '@/services/cache-first';
 import { createInflightGuard } from '@/services/snapshot-cache-utils';
 import { fixtureSource } from '@/fixtures/sanitized';
+import { QueryClient } from '@tanstack/react-query';
+import { publishEntityValue } from '@/services/game-data-query';
 
 type Sourced = { source: DataSource };
 const freshSource: DataSource = { ...fixtureSource, isStale: false };
 const staleSource: DataSource = { ...fixtureSource, isStale: true, kind: 'cache' };
+
+it('真实 QueryClient 首屏提交后再发布快响应后台新值', async () => {
+  const client = new QueryClient();
+  const queryKey = ['publication-race'];
+  let background: Promise<unknown> | undefined;
+  try {
+    const first = await client.fetchQuery({ queryKey, queryFn: async ({ signal }) => {
+      const load = await cacheFirstLoadWithBackground({
+        loadCached: async () => ({ value: 1, source: freshSource }),
+        loadFresh: async () => ({ value: 2, source: freshSource }),
+        onFresh: fresh => publishEntityValue(client, queryKey, fresh), signal,
+      });
+      background = load.background;
+      return load.value;
+    } });
+    expect(first.value).toBe(1);
+    await background;
+    expect(client.getQueryData(queryKey)).toMatchObject({ value: 2, source: { isStale: false } });
+  } finally { client.clear(); }
+});
+
+it('失败订阅抛错也以RefreshResult结算，不产生拒绝', async () => {
+  const load = await cacheFirstLoadWithBackground({
+    loadCached: async () => ({ source: freshSource }),
+    loadFresh: async () => { throw new Error('offline'); },
+    onFresh: () => undefined,
+    onRefreshFailed: () => { throw new Error('observer'); },
+  });
+  await expect(load.background).resolves.toMatchObject({ status: 'failed', failures: [{ target: 'data' }] });
+});
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
@@ -146,4 +178,42 @@ describe('消费者取消与整个操作取消的区别', () => {
     expect((await second.background).status).not.toBe('success');
     expect(published).toEqual([]);
   });
+});
+
+it('查询已移除时等待发布结算，迟到新值不重建查询', async () => {
+  const client = new QueryClient();
+  const key = ['removed-publication'];
+  const pending = deferred<number>();
+  const query = client.fetchQuery({ queryKey: key, queryFn: async ({ signal }) => { void signal; return pending.promise; } }).catch(() => undefined);
+  const publishing = publishEntityValue(client, key, 2);
+  client.clear();
+  await publishing;
+  pending.resolve(1);
+  await query;
+  expect(client.getQueryData(key)).toBeUndefined();
+});
+
+it('后台提交抛错返回失败终态，终态仍保留已取回的新值', async () => {
+  const load = await cacheFirstLoadWithBackground({
+    loadCached: async () => ({ source: freshSource, value: 1 }),
+    loadFresh: async () => ({ source: freshSource, value: 2 }),
+    onFresh: async () => { throw new Error('commit failed'); },
+  });
+  await expect(load.background).resolves.toMatchObject({ status: 'failed', value: { value: 2 }, failures: [{ diagnostic: 'commit failed' }] });
+});
+
+it('异步发布期间取消也按取消终态结算', async () => {
+  const controller = new AbortController();
+  const publication = deferred<void>();
+  const started = deferred<void>();
+  const load = await cacheFirstLoadWithBackground({
+    loadCached: async () => ({ source: freshSource }),
+    loadFresh: async () => ({ source: freshSource }),
+    onFresh: () => { started.resolve(); return publication.promise; },
+    signal: controller.signal,
+  });
+  await started.promise;
+  controller.abort();
+  publication.reject(new DOMException('aborted', 'AbortError'));
+  await expect(load.background).resolves.toMatchObject({ status: 'cancelled' });
 });

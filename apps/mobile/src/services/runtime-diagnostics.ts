@@ -1,9 +1,13 @@
 import Constants from 'expo-constants';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
+import { Share } from 'react-native';
+import { sanitizeRuntimeLogEntry, type RuntimeLogEntry } from '@/domain/runtime-log';
 import { RUNTIME_DIAGNOSTIC_STORE_FILE_NAME } from '@/features/storage-management/cache-policy';
 import {
   installRuntimeDiagnosticRecorder,
+  captureEmergencyRuntimeDiagnostic,
+  snapshotEmergencyRuntimeDiagnostics,
 } from '@/services/runtime-diagnostics-recorder';
 export { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
 
@@ -14,6 +18,7 @@ export type RuntimeDiagnosticEventType =
   | 'query-memory'
   | 'task'
   | 'web-content';
+type EmergencyDiagnosticType = 'error' | 'operation' | 'session';
 
 export type RuntimeDiagnosticFields = {
   lifecyclePhase?: 'background' | 'foreground-waiting' | 'foreground-ready';
@@ -24,13 +29,22 @@ export type RuntimeDiagnosticFields = {
   taskPhase?: string;
   webContentState?: 'mounted' | 'released' | 'preparing';
   memoryWarning?: boolean;
+  source?: string;
+  phase?: string;
+  operationId?: number;
+  durationMs?: number;
+  credentialWrite?: string;
+  attempts?: number;
+  error?: unknown;
 };
 
 export type RuntimeDiagnosticEvent = RuntimeDiagnosticFields & {
   at: string;
-  type: RuntimeDiagnosticEventType;
+  type: RuntimeDiagnosticEventType | EmergencyDiagnosticType;
   platform: string;
   appVersion: string;
+  error?: RuntimeLogEntry['error'];
+  details?: RuntimeLogEntry['fields'];
 };
 
 export type RuntimeDiagnosticSession = {
@@ -66,7 +80,7 @@ function safeCount(value: unknown): number | undefined {
 }
 
 export function sanitizeRuntimeDiagnosticEvent(
-  type: RuntimeDiagnosticEventType,
+  type: RuntimeDiagnosticEventType | EmergencyDiagnosticType,
   fields: RuntimeDiagnosticFields,
   at = new Date().toISOString(),
 ): RuntimeDiagnosticEvent {
@@ -93,7 +107,14 @@ export function sanitizeRuntimeDiagnosticEvent(
     ...(safeString(fields.taskPhase) ? { taskPhase: safeString(fields.taskPhase) } : {}),
     ...(webContentState ? { webContentState } : {}),
     ...(fields.memoryWarning === true ? { memoryWarning: true } : {}),
+    ...sanitizeDiagnosticDetails(type, fields, at),
   };
+}
+
+function sanitizeDiagnosticDetails(type: RuntimeDiagnosticEventType | EmergencyDiagnosticType, fields: RuntimeDiagnosticFields, at: string): Partial<RuntimeDiagnosticEvent> {
+  if (!['error', 'operation', 'session'].includes(type)) return {};
+  const safeEntry = sanitizeRuntimeLogEntry(type, { ...fields }, at);
+  return { details: safeEntry.fields, ...(safeEntry.error ? { error: safeEntry.error } : {}) };
 }
 
 export function trimRuntimeDiagnosticStore(store: RuntimeDiagnosticStore): RuntimeDiagnosticStore {
@@ -153,7 +174,7 @@ async function writeStore(store: RuntimeDiagnosticStore): Promise<void> {
 
 function enqueueWrite(operation: () => Promise<void>): Promise<void> {
   const pending = writeQueue.catch(() => undefined).then(operation);
-  writeQueue = pending.catch(() => undefined);
+  writeQueue = pending.catch((error) => { captureEmergencyRuntimeDiagnostic('error', { source: 'runtime-diagnostics', phase: 'file', error }); });
   return writeQueue;
 }
 
@@ -173,10 +194,10 @@ export function initializeRuntimeDiagnostics(): Promise<void> {
 }
 
 function persistRuntimeDiagnostic(
-  type: RuntimeDiagnosticEventType,
+  type: RuntimeDiagnosticEventType | EmergencyDiagnosticType,
   fields: RuntimeDiagnosticFields = {},
 ): Promise<void> {
-  if (!['lifecycle', 'memory-warning', 'account-hydration', 'query-memory', 'task', 'web-content'].includes(type)) {
+  if (!['lifecycle', 'memory-warning', 'account-hydration', 'query-memory', 'task', 'web-content', 'error', 'operation', 'session'].includes(type)) {
     return Promise.resolve();
   }
   if (!activeSessionStartedAt) void initializeRuntimeDiagnostics();
@@ -194,7 +215,7 @@ function persistRuntimeDiagnostic(
 }
 
 installRuntimeDiagnosticRecorder((type, fields) => persistRuntimeDiagnostic(
-  type as RuntimeDiagnosticEventType,
+  type as RuntimeDiagnosticEventType | EmergencyDiagnosticType,
   fields as RuntimeDiagnosticFields,
 ));
 
@@ -205,19 +226,34 @@ export function snapshotRuntimeDiagnostics(): Promise<RuntimeDiagnosticStore> {
   return pending;
 }
 
+/** The in-memory snapshot is frozen immediately; disk reads have a bounded wait. */
+export async function snapshotRuntimeDiagnosticsForExport() {
+  const emergency = snapshotEmergencyRuntimeDiagnostics();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  let store: RuntimeDiagnosticStore = { sessions: [] };
+  let storageAvailable = true;
+  try {
+    store = await Promise.race([snapshotRuntimeDiagnostics(), new Promise<never>((_resolve, reject) => {
+      timer = setTimeout(() => reject(new Error('diagnostic snapshot timeout')), 1_500);
+    })]);
+  } catch { storageAvailable = false; }
+  finally { if (timer) clearTimeout(timer); }
+  return { ...store, storageAvailable, emergency };
+}
+
 let exporting = false;
 export async function exportRuntimeDiagnostics(): Promise<void> {
   if (exporting) return;
   exporting = true;
   try {
-    const store = await snapshotRuntimeDiagnostics();
-    const file = exportFile();
-    await file.write(JSON.stringify(store, null, 2));
-    if (!await Sharing.isAvailableAsync()) throw new Error('sharing unavailable');
-    await Sharing.shareAsync(file.uri, {
-      dialogTitle: '分享诊断信息',
-      mimeType: 'text/plain',
-      UTI: 'public.plain-text',
-    });
+    const contents = JSON.stringify(await snapshotRuntimeDiagnosticsForExport(), null, 2);
+    try {
+      const file = exportFile();
+      await file.write(contents);
+      if (!await Sharing.isAvailableAsync()) throw new Error('sharing unavailable');
+      await Sharing.shareAsync(file.uri, { dialogTitle: '分享诊断信息', mimeType: 'text/plain', UTI: 'public.plain-text' });
+    } catch {
+      await Share.share({ title: '诊断信息', message: contents });
+    }
   } finally { exporting = false; }
 }

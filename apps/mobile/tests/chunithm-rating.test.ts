@@ -41,6 +41,7 @@ describe('chunithm rating formula', () => {
     expect(maxChunithmChartRating(13.7)).toBeCloseTo(15.85, 2);
     expect(maxChunithmChartRating(14.0)).toBeCloseTo(16.15, 2);
     expect(maxChunithmChartRating(15.5)).toBeCloseTo(17.65, 2);
+    expect(maxChunithmChartRating(13.705)).toBe(chunithmChartRatingDisplay(13.705, 1_009_000));
   });
 
   it('keeps the max over power anchors consistent with the maxed test provider', () => {

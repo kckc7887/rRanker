@@ -5,12 +5,8 @@ import { act, cleanup, renderHook, waitFor } from '@testing-library/react-native
 import { fixtureCatalog } from '@/fixtures/sanitized';
 import type { AliasSnapshot, CatalogSnapshot, Song } from '@/domain/models';
 import { queryClient } from '@/state/query-client';
-import {
-  MAIMAI_CATALOG_QUERY_KEY,
-  useDetailedCatalog,
-  useMaimaiSongDetail,
-  useTransientDetailedMaimaiCatalog,
-} from '@/hooks/use-detailed-catalog';
+import { useDetailedCatalog, useMaimaiSongDetail, useTransientDetailedMaimaiCatalog } from '@/hooks/use-detailed-catalog';
+import { MAIMAI_CATALOG_QUERY_KEY } from '@/services/maimai-catalog-query';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 
 const mockGetCatalog = jest.fn<() => Promise<CatalogSnapshot>>();

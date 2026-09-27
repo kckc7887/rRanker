@@ -1,3 +1,4 @@
+import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
 /**
  * 舞萌谱面确认 WebView 播放器入口。
  * 播放位置、命令代次、音源与 RAF 归 SimaiPlaybackSession，背景媒体与时间线视图各自持有资源；
@@ -45,12 +46,44 @@ declare global {
 export type { ChartPreviewSettings, ChartPreviewInjectConfig as ChartPreviewConfig } from '../configuration';
 type BackgroundMode = ChartPreviewBackgroundMode;
 
+function ownedWheelPopup(...args: Parameters<typeof setupWheelPopup>): ReturnType<typeof setupWheelPopup> {
+  const wheel = setupWheelPopup(...args);
+  events.own(() => wheel.dispose());
+  return wheel;
+}
+
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
 /** 宿主释放后的播放器：不再改动界面、也不再回报状态。 */
 let disposed = false;
+const events = new PlayerEventScope(() => disposed);
+const startupController = new AbortController();
+let pauseInitialized: (() => void) | undefined;
+let exitFullscreenInitialized: (() => void) | undefined;
+let confirmInitialized: ((accepted: boolean) => void) | undefined;
+function releasePlayer(): void {
+  if (disposed) return;
+  disposed = true;
+  startupController.abort();
+  closeActiveWheelPopup();
+  events.dispose();
+  pauseInitialized = undefined;
+  exitFullscreenInitialized = undefined;
+  confirmInitialized = undefined;
+}
+function receiveHostMessage(event: MessageEvent): void {
+  applyChartPreviewHostCommand(event.data, {
+    pause: () => pauseInitialized?.(),
+    exitFullscreen: () => exitFullscreenInitialized?.(),
+    dispose: releasePlayer,
+    confirm: value => confirmInitialized?.(value),
+  });
+}
+events.listen(window, 'message', receiveHostMessage);
+events.listen(document, 'message', event => receiveHostMessage(event as MessageEvent));
+events.listen(window, 'pagehide', releasePlayer);
 
 function postStatus(type: string, payload: Record<string, unknown> = {}): void {
   if (disposed) return;
@@ -117,6 +150,7 @@ const TIMELINE_KIND_BY_NOTE_TYPE: Readonly<Record<Note['type'], SimaiTimelineNot
 });
 
 async function main(): Promise<void> {
+  if (disposed) return;
   const app = $('app');
   const statusEl = $('status');
   const titleEl = $('title');
@@ -206,7 +240,7 @@ async function main(): Promise<void> {
   const infoBreakNoexWrap = $('info-break-noex-wrap');
   const infoFps = $('info-fps');
 
-  app.addEventListener('scroll', closeActiveWheelPopup, { passive: true });
+  events.listen(app, 'scroll', closeActiveWheelPopup, { passive: true });
 
   // 视图状态：全屏、拖动与循环标记由界面持有，播放位置与音源归播放会话。
   let isFullscreen = false;
@@ -224,6 +258,7 @@ async function main(): Promise<void> {
   let config: ChartPreviewConfig | undefined;
   statusEl.textContent = '正在等待参数…';
   for (let i = 0; i < 200; i++) {
+    if (disposed) return;
     const incoming = window.__CHART_PREVIEW__;
     if (incoming && (typeof incoming.chartId === 'string' || Number.isFinite(incoming.chartId))) {
       config = incoming;
@@ -231,6 +266,7 @@ async function main(): Promise<void> {
     }
     await new Promise((r) => setTimeout(r, 50));
   }
+  if (disposed) return;
   if (!config) {
     statusEl.textContent = '未收到谱面预览参数';
     postStatus('error', { message: '未收到谱面预览参数' });
@@ -254,11 +290,13 @@ async function main(): Promise<void> {
     else if (config.simaiText !== undefined) simaiText = config.simaiText;
     else {
     if (!chartUrl) throw new Error('缺少谱面资源');
-    const response = await fetch(chartUrl);
+    const response = await fetch(chartUrl, { signal: startupController.signal });
     if (!response.ok) throw new Error(`谱面文件不可用（${response.status}）`);
     simaiText = await response.text();
+    if (disposed) return;
     }
   } catch (error) {
+    if (disposed) return;
     const diagnostic = error instanceof Error ? error.message : String(error);
     statusEl.textContent = '谱面加载失败，请返回重试。';
     postStatus('error', { message: '谱面加载失败，请返回重试。', diagnostic: `fetch ${chartUrl}: ${diagnostic}` });
@@ -282,6 +320,7 @@ async function main(): Promise<void> {
       charts = [parseSimaiChart(simaiText, difficulty)];
     }
   } catch (error) {
+    if (disposed) return;
     const diagnostic = error instanceof Error ? error.message : String(error);
     const availableText = JSON.stringify(getAvailableDifficulties(simaiText));
     statusEl.textContent = '无法打开谱面，请返回重试。';
@@ -311,8 +350,10 @@ async function main(): Promise<void> {
   postLoadProgress('正在加载皮肤…', 0.4, statusEl);
   try {
     await skin.load();
+    if (disposed) return;
     postLoadProgress('正在加载皮肤…', 0.65, statusEl);
   } catch (error) {
+    if (disposed) return;
     const diagnostic = error instanceof Error ? error.message : String(error);
     statusEl.textContent = '皮肤加载失败，请返回重试。';
     postStatus('error', { message: '皮肤加载失败，请返回重试。', diagnostic });
@@ -338,6 +379,7 @@ async function main(): Promise<void> {
   try {
     for (let i = 0; i < renderers.length; i++) { applyRendererSettings(renderers[i]); renderers[i].prepare(charts[i]); }
   } catch (error) {
+    if (disposed) return;
     statusEl.textContent = '这份谱面暂时无法播放，请返回选择其他谱面。';
     postStatus('error', { message: statusEl.textContent, diagnostic: error instanceof Error ? error.message : String(error) });
     return;
@@ -360,6 +402,8 @@ async function main(): Promise<void> {
         : null,
     },
   });
+
+  events.own(() => session.dispose());
 
   const syncPlayButtons = () => {
     const icon = session.playing ? PAUSE_ICON : PLAY_ICON;
@@ -387,15 +431,18 @@ async function main(): Promise<void> {
       musicBytes = null;
     } else {
       if (!musicUrl) throw new Error('缺少音乐资源');
-      const musicResponse = await fetch(musicUrl);
+      const musicResponse = await fetch(musicUrl, { signal: startupController.signal });
       if (!musicResponse.ok) throw new Error(`预览曲不可用（${musicResponse.status}）`);
       musicBytes = await musicResponse.arrayBuffer();
+      if (disposed) return;
     }
   } catch {
     statusEl.textContent = '预览曲加载失败，仍可静音看谱。';
     musicBytes = null;
   }
-  if (!(await session.loadMusic(musicBytes))) {
+  const musicLoaded = await session.loadMusic(musicBytes);
+  if (disposed) return;
+  if (!musicLoaded) {
     statusEl.textContent = '预览曲加载失败，仍可静音看谱。';
   }
 
@@ -548,6 +595,7 @@ async function main(): Promise<void> {
   };
 
   const renderAt = (beats: number) => {
+    if (disposed) return;
     renderFrameAll(beats);
     updateSeekUi(beats);
     updateOverlayDom();
@@ -560,20 +608,17 @@ async function main(): Promise<void> {
 
   /** 暂停（手动按钮或宿主生命周期）：停播并释放临时媒体，不改变全屏状态。 */
   const pauseForLifecycle = (): void => {
+    if (disposed) return;
     session.pause();
     background.releaseVideo();
   };
 
   /** 释放：停播、退出全屏、回收资源，幂等；此后不再改动界面或回报状态。 */
-  const disposePlayer = (): void => {
-    if (disposed) return;
-    pauseForLifecycle();
-    session.dispose();
-    background.dispose();
-    if (isFullscreen) exitFullscreen();
-    closeActiveWheelPopup();
-    disposed = true;
-  };
+  confirmInitialized = accepted => applyBackgroundVideoConfirmation(accepted);
+  pauseInitialized = pauseForLifecycle;
+  exitFullscreenInitialized = exitFullscreen;
+  events.own(() => background.dispose());
+  events.own(() => { if (isFullscreen) exitFullscreen(); });
 
   const restartMeasure = () => {
     session.moveTo(Math.floor(session.positionBeats / 4) * 4);
@@ -595,7 +640,7 @@ async function main(): Promise<void> {
     else renderAt(session.positionBeats);
   };
 
-  setupWheelPopup(
+  ownedWheelPopup(
     hiSpeedTrigger,
     hiSpeedPopup,
     hiSpeedWheel,
@@ -612,7 +657,7 @@ async function main(): Promise<void> {
     saved.hiSpeed ?? HI_SPEED_DEFAULT,
   );
 
-  setupWheelPopup(
+  ownedWheelPopup(
     speedTrigger,
     speedPopup,
     speedWheel,
@@ -629,7 +674,7 @@ async function main(): Promise<void> {
     saved.playbackSpeed ?? SPEED_DEFAULT,
   );
 
-  setupWheelPopup(
+  ownedWheelPopup(
     musicVolumeTrigger,
     musicVolumePopup,
     musicVolumeWheel,
@@ -643,7 +688,7 @@ async function main(): Promise<void> {
     saved.musicVolume ?? 10,
   );
 
-  setupWheelPopup(
+  ownedWheelPopup(
     soundVolumeTrigger,
     soundVolumePopup,
     soundVolumeWheel,
@@ -660,7 +705,7 @@ async function main(): Promise<void> {
   const MIRROR_LABELS = ['无', '左右反', '上下反', '全反'] as const;
   const MIRROR_VALUES = ['none', 'horizontal', 'vertical', 'rotate180'] as const;
   const mirrorIdx = Math.max(0, MIRROR_VALUES.findIndex(value => value === saved.mirrorMode));
-  setupWheelPopup(
+  ownedWheelPopup(
     mirrorTrigger, mirrorPopup, mirrorWheel, mirrorList, mirrorVal,
     (idx) => {
       const mode = MIRROR_VALUES[idx] ?? 'none';
@@ -674,7 +719,7 @@ async function main(): Promise<void> {
   const STYLE_LABELS = ['无', '判定点', '判定线', '判定区'] as const;
   const STYLE_VALUES = ['blind', 'noLine', 'simple', 'sensor'] as const;
   const styleIdx = Math.max(0, STYLE_VALUES.findIndex(value => value === (saved.judgmentLineDesign ?? 'sensor')));
-  setupWheelPopup(
+  ownedWheelPopup(
     styleTrigger, stylePopup, styleWheel, styleList, styleVal,
     (idx) => {
       const design = STYLE_VALUES[idx] ?? 'sensor';
@@ -688,7 +733,7 @@ async function main(): Promise<void> {
   const JUDGE_HINT_LABELS = ['区分', '不区分', '不显示'] as const;
   const JUDGE_HINT_VALUES = ['distinguish', 'unified', 'hidden'] as const;
   const judgeHintIdx = Math.max(0, JUDGE_HINT_VALUES.indexOf(parseJudgeHint(saved.judgeHint)));
-  setupWheelPopup(
+  ownedWheelPopup(
     judgeHintTrigger, judgeHintPopup, judgeHintWheel, judgeHintList, judgeHintVal,
     (idx) => {
       const mode = JUDGE_HINT_VALUES[idx] ?? DEFAULT_JUDGE_HINT;
@@ -704,7 +749,7 @@ async function main(): Promise<void> {
   const backgroundIdx = Math.max(0, BACKGROUND_VALUES.indexOf(backgroundMode));
   let pendingBackgroundPreviousMode: BackgroundMode | null = null;
   let backgroundControl: ReturnType<typeof setupWheelPopup>;
-  backgroundControl = setupWheelPopup(
+  backgroundControl = ownedWheelPopup(
     backgroundTrigger,
     backgroundPopup,
     backgroundWheel,
@@ -750,7 +795,7 @@ async function main(): Promise<void> {
   const setupToggle = (btn: HTMLButtonElement, initial: boolean, onChange: (v: boolean) => void) => {
     let active = initial;
     btn.setAttribute('aria-pressed', String(active));
-    btn.addEventListener('click', () => {
+    events.listen(btn, 'click', () => {
       active = !active;
       btn.setAttribute('aria-pressed', String(active));
       onChange(active);
@@ -767,6 +812,7 @@ async function main(): Promise<void> {
 
   let lastResizeKey = '';
   const resize = () => {
+    if (disposed) return;
     if (!isFullscreen) canvasWrap.style.width = '';
     const rect = canvasWrap.getBoundingClientRect();
     const viewport = window.visualViewport;
@@ -799,9 +845,12 @@ async function main(): Promise<void> {
     resize,
   );
   const scheduleResize = () => resizeScheduler.schedule(undefined);
-  window.addEventListener('resize', scheduleResize);
-  window.visualViewport?.addEventListener('resize', scheduleResize);
-  new ResizeObserver(scheduleResize).observe(canvasWrap);
+  events.own(() => resizeScheduler.cancel());
+  events.listen(window, 'resize', scheduleResize);
+  if (window.visualViewport) events.listen(window.visualViewport, 'resize', scheduleResize);
+  const canvasObserver = new ResizeObserver(scheduleResize);
+  canvasObserver.observe(canvasWrap);
+  events.own(() => canvasObserver.disconnect());
   resize();
 
   timelineView.build();
@@ -810,8 +859,11 @@ async function main(): Promise<void> {
     cancelAnimationFrame,
     () => timelineView.build(),
   );
-  window.addEventListener('resize', () => timelineLayoutScheduler.schedule(undefined));
-  new ResizeObserver(() => timelineLayoutScheduler.schedule(undefined)).observe(timelineHost);
+  events.own(() => timelineLayoutScheduler.cancel());
+  events.listen(window, 'resize', () => timelineLayoutScheduler.schedule(undefined));
+  const timelineObserver = new ResizeObserver(() => timelineLayoutScheduler.schedule(undefined));
+  timelineObserver.observe(timelineHost);
+  events.own(() => timelineObserver.disconnect());
 
   const seekToPosition = (percent: number) => {
     const targetMs = (percent / 100) * totalDurationMs;
@@ -833,8 +885,9 @@ async function main(): Promise<void> {
     cancelAnimationFrame,
     seekToPosition,
   );
+  events.own(() => seekScheduler.cancel());
 
-  timelineHost.addEventListener('pointerdown', (e) => {
+  events.listen(timelineHost, 'pointerdown', (e) => {
     e.preventDefault();
     isDragging = true;
     wasPlaying = session.playing;
@@ -844,7 +897,7 @@ async function main(): Promise<void> {
     seekToPosition(pct);
   });
 
-  document.addEventListener('pointermove', (e) => {
+  events.listen(document, 'pointermove', (e) => {
     if (!isDragging) return;
     const host = isFullscreen ? fsTimelineHost : timelineHost;
     const rect = host.getBoundingClientRect();
@@ -852,7 +905,7 @@ async function main(): Promise<void> {
     seekScheduler.schedule(pct);
   });
 
-  document.addEventListener('pointerup', () => {
+  events.listen(document, 'pointerup', () => {
     if (!isDragging) return;
     isDragging = false;
     seekScheduler.flush();
@@ -863,14 +916,14 @@ async function main(): Promise<void> {
   // 移动设备拖动被系统中断（多指/来电/通知等）时，pointerup 不会触发；
   // 若不重置 isDragging，后续 pointermove 会继续按拖动逻辑执行，干扰播放键等点击。
   // 这里只重置状态并停留在当前帧，不自动恢复播放，避免中断后突然发声。
-  document.addEventListener('pointercancel', () => {
+  events.listen(document, 'pointercancel', () => {
     if (!isDragging) return;
     isDragging = false;
     seekScheduler.flush();
     renderAt(session.positionBeats);
   });
 
-  playBtn.addEventListener('click', togglePlayback);
+  events.listen(playBtn, 'click', togglePlayback);
 
   const setupRepeatButton = (btn: HTMLButtonElement, action: () => void) => {
     let timer: number | undefined;
@@ -895,10 +948,11 @@ async function main(): Promise<void> {
       window.clearInterval(timer);
       timer = undefined;
     };
-    btn.addEventListener('pointerdown', (e) => { e.preventDefault(); startRepeat(); });
-    btn.addEventListener('pointerup', stopRepeat);
-    btn.addEventListener('pointerleave', stopRepeat);
-    btn.addEventListener('pointercancel', stopRepeat);
+    events.own(stopRepeat);
+    events.listen(btn, 'pointerdown', (e) => { e.preventDefault(); startRepeat(); });
+    events.listen(btn, 'pointerup', stopRepeat);
+    events.listen(btn, 'pointerleave', stopRepeat);
+    events.listen(btn, 'pointercancel', stopRepeat);
   };
 
   setupRepeatButton(btnPrevMeasure, () => skipToMeasure(-1));
@@ -906,12 +960,14 @@ async function main(): Promise<void> {
   setupRepeatButton(btnStepBack, () => skipBeats(-1));
   setupRepeatButton(btnStepForward, () => skipBeats(1));
 
-  btnRestart.addEventListener('click', restartMeasure);
+  events.listen(btnRestart, 'click', restartMeasure);
 
   function syncFsControlsVisibility() {
+    if (disposed) return;
     fsOverlay.classList.toggle('hidden', !fsControlsVisible || fsLocked);
     fsLock.classList.toggle('hidden', !fsControlsVisible);
   }
+  events.own(() => window.clearTimeout(fsHideTimer));
 
   function showFsControls() {
     window.clearTimeout(fsHideTimer);
@@ -939,7 +995,7 @@ async function main(): Promise<void> {
     fsControlsVisible = false;
     syncFsControlsVisibility();
     postStatus('fullscreen', { active: false });
-    requestAnimationFrame(resize);
+    if (!disposed) requestAnimationFrame(resize);
   }
 
   function enterFullscreen() {
@@ -975,31 +1031,31 @@ async function main(): Promise<void> {
     fsTransport.appendChild(left);
     fsTransport.appendChild(fsPlay);
     fsTransport.appendChild(right);
-    document.getElementById('fs-restart')!.addEventListener('click', restartMeasure);
-    document.getElementById('fs-prev-measure')!.addEventListener('click', () => skipToMeasure(-1));
-    document.getElementById('fs-step-back')!.addEventListener('click', () => skipBeats(-1));
-    document.getElementById('fs-step-forward')!.addEventListener('click', () => skipBeats(1));
-    document.getElementById('fs-next-measure')!.addEventListener('click', () => skipToMeasure(1));
-    document.getElementById('fs-fullscreen')!.addEventListener('click', exitFullscreen);
-    fsPlay.addEventListener('click', togglePlayback);
+    events.listen(document.getElementById('fs-restart')!, 'click', restartMeasure);
+    events.listen(document.getElementById('fs-prev-measure')!, 'click', () => skipToMeasure(-1));
+    events.listen(document.getElementById('fs-step-back')!, 'click', () => skipBeats(-1));
+    events.listen(document.getElementById('fs-step-forward')!, 'click', () => skipBeats(1));
+    events.listen(document.getElementById('fs-next-measure')!, 'click', () => skipToMeasure(1));
+    events.listen(document.getElementById('fs-fullscreen')!, 'click', exitFullscreen);
+    events.listen(fsPlay, 'click', togglePlayback);
     syncLoopButtons();
     showFsControls();
     postStatus('fullscreen', { active: true });
   }
 
-  btnFullscreen.addEventListener('click', () => {
+  events.listen(btnFullscreen, 'click', () => {
     if (isFullscreen) exitFullscreen();
     else enterFullscreen();
   });
 
-  canvasWrap.addEventListener('click', (e) => {
+  events.listen(canvasWrap, 'click', (e) => {
     if (!isFullscreen) return;
     e.stopPropagation();
     if (fsControlsVisible) hideFsControls();
     else showFsControls();
   });
 
-  fsLock.addEventListener('click', (e) => {
+  events.listen(fsLock, 'click', (e) => {
     e.stopPropagation();
     const nextState = toggleFullscreenLockUiState(fsLocked);
     fsLocked = nextState.locked;
@@ -1009,7 +1065,7 @@ async function main(): Promise<void> {
     else showFsControls();
   });
 
-  fsOverlay.addEventListener('pointerdown', (e) => { e.stopPropagation(); });
+  events.listen(fsOverlay, 'pointerdown', (e) => { e.stopPropagation(); });
 
   const updateLoopBtn = (btn: HTMLButtonElement, active: boolean) => {
     if (active) btn.classList.add('on');
@@ -1043,11 +1099,11 @@ async function main(): Promise<void> {
     syncLoopButtons();
   };
 
-  btnLoopA.addEventListener('click', toggleLoopA);
-  btnLoopB.addEventListener('click', toggleLoopB);
-  fsLoopA.addEventListener('click', toggleLoopA);
-  fsLoopB.addEventListener('click', toggleLoopB);
-  fsTimelineHost.addEventListener('pointerdown', (e) => {
+  events.listen(btnLoopA, 'click', toggleLoopA);
+  events.listen(btnLoopB, 'click', toggleLoopB);
+  events.listen(fsLoopA, 'click', toggleLoopA);
+  events.listen(fsLoopB, 'click', toggleLoopB);
+  events.listen(fsTimelineHost, 'pointerdown', (e) => {
     e.preventDefault();
     e.stopPropagation();
     isDragging = true;
@@ -1059,17 +1115,9 @@ async function main(): Promise<void> {
     showFsControls();
   });
 
-  window.addEventListener('message', (event) => {
-    // 生命周期合同由公共层派生：暂停停播保全屏，退出全屏与释放是显式命令。
-    applyChartPreviewHostCommand(event.data, {
-      pause: pauseForLifecycle,
-      exitFullscreen,
-      dispose: disposePlayer,
-      confirm: applyBackgroundVideoConfirmation,
-    });
-  });
 
-  document.addEventListener('visibilitychange', () => {
+
+  events.listen(document, 'visibilitychange', () => {
     if (document.visibilityState === 'hidden' && session.playing) session.pause();
   });
 
@@ -1078,6 +1126,7 @@ async function main(): Promise<void> {
 }
 
 void main().catch((error) => {
+  if (disposed) return;
   const diagnostic = error instanceof Error
     ? `${error.message}\n${error.stack ?? ''}`
     : String(error);

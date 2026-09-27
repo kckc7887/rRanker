@@ -134,7 +134,7 @@ export function encodeDetailTarget(target: DetailTarget): DetailTargetRoute {
 /** 共享详情路由 → `router.push` 的 href；所有游戏共用同一个 URL 文件。 */
 export function detailTargetHref(route: DetailTargetRoute): {
   pathname: '/songs/[songId]';
-  params: Record<string, string>;
+  params: Record<string, string> & { songId: string };
 } {
   return {
     pathname: '/songs/[songId]',

@@ -1,16 +1,5 @@
-import type { PhiraChart } from '@/domain/phira';
-
-export type ChartPreviewNavigationRequest =
-  | {
-      game: 'phigros';
-      songId: string;
-      levelIndex: number;
-      title: string;
-    }
-  | {
-      game: 'phira';
-      chart: PhiraChart;
-    };
+import type { ChartPreviewNavigationRequest } from '@/domain/chart-preview-request';
+export type { ChartPreviewNavigationRequest } from '@/domain/chart-preview-request';
 
 export type ChartPreviewNavigationHref = {
   pathname: '/songs/phigros-chart-preview';

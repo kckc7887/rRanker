@@ -1,27 +1,52 @@
 name: Build Android APKs
-
 on:
   workflow_run:
-    workflows: ["Quality"]
-    types: [completed]
-  workflow_dispatch:
-
+    workflows:
+      - Quality
+    types:
+      - completed
+  workflow_dispatch: null
 permissions:
   contents: read
   actions: read
-
 concurrency:
   group: rranker-android-${{ github.event.workflow_run.head_branch || github.ref }}
   cancel-in-progress: false
-
 jobs:
+  build-context:
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    outputs:
+      build: ${{ steps.policy.outputs.build }}
+      production: ${{ steps.policy.outputs.production }}
+      sha: ${{ steps.policy.outputs.sha }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.sha }}
+      - name: Determine immutable source and publication policy
+        id: policy
+        run: node .github/scripts/build-policy.mjs
+      - uses: actions/setup-node@v6
+        if: github.event_name == 'workflow_dispatch' && steps.policy.outputs.build == 'true'
+        with:
+          node-version: "22"
+      - name: Validate manual build source
+        if: github.event_name == 'workflow_dispatch' && steps.policy.outputs.build == 'true'
+        working-directory: apps/mobile
+        run: |
+          npm ci
+          npm run lint
+          npm run typecheck
+          npm test
+          npm run check:architecture
+          npm run check:generated
+          npm run audit:prod
   changed-scope:
     runs-on: ubuntu-latest
     timeout-minutes: 10
-
     outputs:
       functional: ${{ steps.read.outputs.functional }}
-
     steps:
       - name: Download scope verdict
         if: github.event_name == 'workflow_run'
@@ -32,7 +57,6 @@ jobs:
           run-id: ${{ github.event.workflow_run.id }}
           github-token: ${{ github.token }}
           path: ${{ runner.temp }}/changed-scope
-
       - name: Read scope verdict
         id: read
         shell: bash
@@ -51,194 +75,44 @@ jobs:
             echo "取不到轻检查判定，按有功能改动处理"
           fi
           echo "functional=$functional" >> "$GITHUB_OUTPUT"
-
   build-android:
-    needs: changed-scope
-    if: >-
-      always() &&
-      (github.event_name == 'workflow_dispatch' ||
-      (github.event.workflow_run.conclusion == 'success' &&
-      github.event.workflow_run.head_repository.full_name == github.repository &&
-      needs.changed-scope.outputs.functional != 'false'))
+    needs:
+      - changed-scope
+      - build-context
+    if: always() && needs.build-context.result == 'success' && needs.build-context.outputs.build == 'true' && (github.event_name == 'workflow_dispatch' || needs.changed-scope.outputs.functional != 'false')
+    environment: ${{ needs.build-context.outputs.production == 'true' && 'production-release' || 'test-artifacts' }}
     runs-on: ubuntu-latest
     timeout-minutes: 120
-
+    env:
+      NODE_ENV: production
+      BUILD_SOURCE_COMMIT: ${{ needs.build-context.outputs.sha }}
+      ANDROID_OPTIMIZATION_MODE: A
+      OSU_OAUTH_CLIENT_SECRET: ${{ needs.build-context.outputs.production == 'true' && secrets.OSU_OAUTH_CLIENT_SECRET || '' }}
+      ANDROID_KEYSTORE_BASE64: ${{ needs.build-context.outputs.production == 'true' && secrets.ANDROID_KEYSTORE_BASE64 || '' }}
+      ANDROID_KEYSTORE_PASSWORD: ${{ needs.build-context.outputs.production == 'true' && secrets.ANDROID_KEYSTORE_PASSWORD || '' }}
+      ANDROID_KEY_ALIAS: ${{ needs.build-context.outputs.production == 'true' && secrets.ANDROID_KEY_ALIAS || '' }}
+      ANDROID_KEY_PASSWORD: ${{ needs.build-context.outputs.production == 'true' && secrets.ANDROID_KEY_PASSWORD || '' }}
+      PRODUCTION_SIGNING_READY: ${{ needs.build-context.outputs.production == 'true' && secrets.PRODUCTION_SIGNING_READY || '' }}
     defaults:
       run:
         shell: bash
         working-directory: apps/mobile
-
     steps:
       - name: Checkout
         uses: actions/checkout@v6
         with:
-          ref: ${{ github.event.workflow_run.head_sha || github.ref }}
-
-      - name: Setup Node
-        uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: apps/mobile/package-lock.json
-
-      - name: Setup Java
-        uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "17"
-
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          cmdline-tools-version: "12266719"
-          log-accepted-android-sdk-licenses: false
-
-      - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v6
-
-      - name: Install dependencies
-        run: npm ci
-
-      - name: Expo prebuild
-        env:
-          NODE_ENV: production
-          OSU_OAUTH_CLIENT_SECRET: ${{ secrets.OSU_OAUTH_CLIENT_SECRET }}
-        run: npm run prebuild:android
-
-      - name: Prepare release keystore
-        id: signing
-        run: |
-          if [ -n "$ANDROID_KEYSTORE_BASE64" ]; then
-            if [ -z "$ANDROID_KEYSTORE_PASSWORD" ] || [ -z "$ANDROID_KEY_ALIAS" ] || [ -z "$ANDROID_KEY_PASSWORD" ]; then
-              echo "Release keystore secrets are incomplete (need BASE64, PASSWORD, ALIAS, KEY_PASSWORD)" >&2
-              exit 1
-            fi
-            echo "$ANDROID_KEYSTORE_BASE64" | base64 --decode > android/app/rranker-release.keystore
-            echo "mode=release" >> "$GITHUB_OUTPUT"
-          else
-            echo "mode=test-debug" >> "$GITHUB_OUTPUT"
-          fi
-        env:
-          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-
-      - name: Build four ABI APKs
-        working-directory: apps/mobile/android
-        env:
-          NODE_ENV: production
-          OSU_OAUTH_CLIENT_SECRET: ${{ secrets.OSU_OAUTH_CLIENT_SECRET }}
-          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
-          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
-          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
-        run: |
-          chmod +x gradlew
-          SIGNING_ARGS=""
-          if [ "${{ steps.signing.outputs.mode }}" = "release" ]; then
-            SIGNING_ARGS="-Pandroid.injected.signing.store.file=$PWD/app/rranker-release.keystore -Pandroid.injected.signing.store.password=$ANDROID_KEYSTORE_PASSWORD -Pandroid.injected.signing.key.alias=$ANDROID_KEY_ALIAS -Pandroid.injected.signing.key.password=$ANDROID_KEY_PASSWORD"
-          fi
-          # shellcheck disable=SC2086
-          ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=2 \
-            -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64 \
-            $SIGNING_ARGS
-
-      - name: Verify and name APKs
+          ref: ${{ needs.build-context.outputs.sha }}
+      - name: Build and verify APKs
         id: apks
-        env:
-          SIGNING_MODE: ${{ steps.signing.outputs.mode }}
-        run: |
-          python3 - <<'PY'
-          import json
-          import os
-          from pathlib import Path
-          import re
-          import shutil
-          import subprocess
-          import zipfile
-
-          config = json.loads(Path("app.json").read_text())["expo"]
-          version = config["version"]
-          build = config["android"]["versionCode"]
-          if not isinstance(version, str) or not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.+_-]*", version):
-              raise ValueError("Invalid expo.version for an APK filename")
-          if type(build) is not int or not 1 <= build <= 2100000000:
-              raise ValueError("Invalid expo.android.versionCode")
-
-          expected = {"armeabi-v7a", "arm64-v8a", "x86", "x86_64"}
-          release = Path("android/app/build/outputs/apk/release")
-          metadata = json.loads((release / "output-metadata.json").read_text())
-          elements = metadata["elements"]
-          if len(elements) != len(expected):
-              raise ValueError("Expected exactly four APK outputs")
-
-          sdk = Path(os.environ["ANDROID_HOME"])
-          tool_dirs = [p for p in (sdk / "build-tools").iterdir() if re.fullmatch(r"\d+\.\d+\.\d+", p.name)]
-          build_tools = max(tool_dirs, key=lambda p: tuple(map(int, p.name.split("."))))
-          verified = {}
-          for element in elements:
-              filters = element["filters"]
-              if len(filters) != 1 or filters[0]["filterType"] != "ABI":
-                  raise ValueError("Expected one ABI filter per APK")
-              abi = filters[0]["value"]
-              if abi not in expected or abi in verified:
-                  raise ValueError(f"Unexpected or duplicate ABI: {abi}")
-              if element["versionName"] != version or element["versionCode"] != build:
-                  raise ValueError(f"Version mismatch for {abi}")
-              apk = release / element["outputFile"]
-              if apk.parent != release or not apk.is_file() or apk.suffix != ".apk":
-                  raise ValueError(f"Invalid APK output: {apk}")
-              with zipfile.ZipFile(apk) as archive:
-                  native_abis = {name.split("/")[1] for name in archive.namelist() if name.startswith("lib/") and name.endswith(".so")}
-              if native_abis != {abi}:
-                  raise ValueError(f"Native libraries do not match {abi}: {native_abis}")
-              badging = subprocess.check_output([str(build_tools / "aapt"), "dump", "badging", str(apk)], text=True)
-              package_line = next(line for line in badging.splitlines() if line.startswith("package:"))
-              attributes = dict(re.findall(r"(\w+)='([^']*)'", package_line))
-              if (attributes.get("name"), attributes.get("versionName"), attributes.get("versionCode")) != (config["android"]["package"], version, str(build)):
-                  raise ValueError(f"APK manifest mismatch for {abi}")
-              verify_output = subprocess.check_output(
-                  [str(build_tools / "apksigner"), "verify", "--print-certs", str(apk)], text=True)
-              sha256 = next((line.split("SHA-256 digest:")[1].strip()
-                             for line in verify_output.splitlines() if "SHA-256 digest:" in line), "")
-              subject = next((line.split("certificate DN:")[1].strip()
-                              for line in verify_output.splitlines() if "certificate DN:" in line), "")
-              if not sha256 or not subject:
-                  raise ValueError(f"Could not read signing certificate for {abi}")
-              if os.environ.get("SIGNING_MODE") == "release" and "Android Debug" in subject:
-                  raise ValueError(f"Expected formal signing for {abi}, got debug certificate")
-              verified[abi] = (apk, sha256, subject)
-
-          if {apk for apk, _sha256, _subject in verified.values()} != set(release.glob("*.apk")):
-              raise ValueError("APK files do not match output metadata")
-          fingerprints = {sha256 for _apk, sha256, _subject in verified.values()}
-          if len(fingerprints) != 1:
-              raise ValueError(f"APK signing certificates differ: {fingerprints}")
-          fingerprint = fingerprints.pop()
-          output = Path("build/android-apks")
-          output.mkdir(parents=True, exist_ok=True)
-          names = []
-          for abi, (apk, _sha256, _subject) in sorted(verified.items()):
-              name = f"rRanker-{version}({build})-{abi}.apk"
-              shutil.copy2(apk, output / name)
-              names.append(name)
-              print(name)
-          with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
-              stream.write(f"artifact_name=rRanker-{version}({build})-android\n")
-          if os.environ.get("SIGNING_MODE") == "release":
-              signing = f"Formal release keystore (SHA-256 `{fingerprint}`)."
-          else:
-              signing = "Expo's default debug keystore (test build, not for store release)."
-          with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as stream:
-              stream.write("## Android APKs\n\n" + "\n".join(f"- `{name}`" for name in names))
-              stream.write(f"\n\nSigning: {signing}\n")
-          PY
-
+        uses: ./.github/actions/android-build
+        with:
+          source-sha: ${{ needs.build-context.outputs.sha }}
+          production: ${{ needs.build-context.outputs.production }}
       - name: Upload APK artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: ${{ steps.apks.outputs.artifact_name }}
-          path: apps/mobile/build/android-apks/*.apk
+          name: ${{ steps.apks.outputs.artifact-name }}
+          path: apps/mobile/build/android-apks/*
           if-no-files-found: error
           compression-level: 0
           retention-days: 14

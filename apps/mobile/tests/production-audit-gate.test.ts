@@ -58,7 +58,10 @@ function packageEntry(name: string, severity: string, advisories: AdvisorySpec[]
   };
 }
 
-const acceptedPostcss: AcceptedRecord = ACCEPTED_HIGH.find((entry: AcceptedRecord) => entry.id === 'GHSA-6g55-p6wh-862q')!;
+const acceptedPostcss: AcceptedRecord = {
+  id: 'GHSA-6g55-p6wh-862q', packages: ['postcss'], versions: ['8.4.49'],
+  importer: '测试构建工具 → postcss', reason: 'build', review: '版本或命中包变化时复核',
+};
 const postcssReport = report({ postcss: packageEntry('postcss', 'high', [{ id: 'GHSA-6g55-p6wh-862q' }]) });
 const postcssLockfile = parseLockfile(JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/postcss': { version: '8.4.49' } } }));
 
@@ -250,14 +253,14 @@ describe('production audit gate: 政策层', () => {
   });
 
   it('基线内的 high 在版本一致时通过', () => {
-    const verdict = evaluatePolicy({ report: parseAuditReport(postcssReport), lockfile: postcssLockfile });
+    const verdict = evaluatePolicy({ report: parseAuditReport(postcssReport), lockfile: postcssLockfile, accepted: [acceptedPostcss] });
     expect(verdict.failures).toEqual([]);
     expect(verdict.stale).not.toContain('GHSA-6g55-p6wh-862q');
   });
 
   it('锁文件版本变化时要求重新定性（锁文件变化触发复核）', () => {
     const drifted = parseLockfile(JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/postcss': { version: '8.4.50' } } }));
-    const verdict = evaluatePolicy({ report: parseAuditReport(postcssReport), lockfile: drifted });
+    const verdict = evaluatePolicy({ report: parseAuditReport(postcssReport), lockfile: drifted, accepted: [acceptedPostcss] });
     expect(verdict.failures).toHaveLength(1);
     expect(verdict.failures[0].message).toContain('需要重新定性');
     expect(verdict.failures[0].message).toContain('8.4.50');
@@ -266,12 +269,12 @@ describe('production audit gate: 政策层', () => {
 
   it('公告命中包变化时要求重新定性', () => {
     const renamed = parseAuditReport(report({ 'postcss-x': packageEntry('postcss-x', 'high', [{ id: 'GHSA-6g55-p6wh-862q' }]) }));
-    const verdict = evaluatePolicy({ report: renamed, lockfile: { packages: { 'node_modules/postcss-x': { version: '8.4.49' } } } });
+    const verdict = evaluatePolicy({ report: renamed, lockfile: { packages: { 'node_modules/postcss-x': { version: '8.4.49' } } }, accepted: [acceptedPostcss] });
     expect(verdict.failures[0].message).toContain('命中包');
   });
 
   it('报告里的安装路径不在锁文件时失败', () => {
-    const verdict = evaluatePolicy({ report: parseAuditReport(postcssReport), lockfile: { packages: {} } });
+    const verdict = evaluatePolicy({ report: parseAuditReport(postcssReport), lockfile: { packages: {} }, accepted: [acceptedPostcss] });
     expect(verdict.failures[0].message).toContain('找不到报告给出的安装路径');
   });
 
@@ -351,11 +354,11 @@ describe('production audit gate: 端到端退出码', () => {
     expect(result.stderr).toContain('exit=7');
   });
 
-  it('锁文件版本漂移时以政策失败退出并提示重新定性', () => {
+  it('默认无接受基线时高危公告以政策失败退出', () => {
     const lockfile = JSON.stringify({ lockfileVersion: 3, packages: { 'node_modules/postcss': { version: '8.4.50' } } });
     const result = runGate(postcssReport, 1, lockfile);
     expect(result.status).toBe(1);
-    expect(result.stderr).toContain('需要重新定性');
+    expect(result.stderr).toContain('未接受或未定性的 high');
   });
 
   it('critical 空 via 的报告以完整性失败退出（原脚本会判为通过）', () => {

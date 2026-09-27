@@ -1,5 +1,5 @@
 import * as SecureStore from 'expo-secure-store';
-import Storage from 'expo-sqlite/kv-store';
+import Storage from '@/storage/key-value-storage';
 import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
 
 const ACCOUNT_KEY_V1 = 'rranker.scorehub.account.v1';

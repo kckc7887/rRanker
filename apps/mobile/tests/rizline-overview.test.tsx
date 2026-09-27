@@ -42,8 +42,7 @@ jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInse
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({ data: [], isError: false }) }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({ data: undefined, error: null, refetch: jest.fn(async () => ({ data: undefined })) }) }));
 jest.mock('@/hooks/use-chunithm-catalog', () => ({ useChunithmCatalog: () => ({ data: undefined, isLoading: false, isError: false }) }));
-jest.mock('@/hooks/use-rizline-catalog', () => ({ refreshRizlineCatalog: () => mockRefreshCatalog() }));
-jest.mock('@/services/rizline-service', () => ({ awaitRizlineFresh: jest.fn(async () => undefined) }));
+jest.mock('@/services/rizline-catalog-query', () => ({ refreshRizlineCatalog: () => mockRefreshCatalog() }));
 jest.mock('@/state/session-store', () => ({ applyLxnsTokenRotation: jest.fn(), useSession: (selector: (state: object) => unknown) => selector({
   boundAccounts: [mockAccount], activeGameId: 'rizline', activeAccountId: mockAccount.id, session: null, sessionsByAccountId: {}, updateBoundAccountScore: jest.fn(),
 }) }));

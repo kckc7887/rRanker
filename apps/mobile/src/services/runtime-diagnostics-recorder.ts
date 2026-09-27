@@ -1,4 +1,14 @@
-import type { RuntimeErrorContext } from '@/domain/runtime-log';
+import { sanitizeRuntimeLogEntry, type RuntimeErrorContext, type RuntimeLogEntry } from '@/domain/runtime-log';
+
+const emergencyEvents: RuntimeLogEntry[] = [];
+export function captureEmergencyRuntimeDiagnostic(type: string, fields: Readonly<Record<string, unknown>> = {}): void {
+  emergencyEvents.push(sanitizeRuntimeLogEntry(type, fields, new Date().toISOString()));
+  if (emergencyEvents.length > 64) emergencyEvents.splice(0, emergencyEvents.length - 64);
+}
+export function snapshotEmergencyRuntimeDiagnostics(): RuntimeLogEntry[] {
+  return JSON.parse(JSON.stringify(emergencyEvents)) as RuntimeLogEntry[];
+}
+export function resetEmergencyRuntimeDiagnosticsForTests(): void { emergencyEvents.length = 0; }
 
 export type RuntimeDiagnosticRecorder = (
   type: string,
@@ -44,6 +54,7 @@ export function recordRuntimeDiagnostic(
   type: string,
   fields: Readonly<Record<string, unknown>> = {},
 ): Promise<void> {
+  captureEmergencyRuntimeDiagnostic(type, fields);
   // 手动日志在原错误处理器结束进程之前同步落盘；任一路径失败均不影响业务。
   try { logRecorder?.(type, fields); } catch { /* 日志不得递归报告自身错误。 */ }
   try { return recorder(type, fields).catch(() => undefined); } catch { return Promise.resolve(); }

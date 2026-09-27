@@ -108,7 +108,7 @@ describe('osu personal library', () => {
     await fireEvent.press(screen.getByText('练习谱面 · Hard · 5.50★'));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: '3720', levelIndex: '22423' },
+      params: { songId: '3720', beatmapId: '22423' },
     });
   });
 });

@@ -1,3 +1,4 @@
+import { fetch as expoFetch } from 'expo/fetch';
 import { type RizlineCatalogData, RIZLINE_RESOURCE_BASE } from '@/domain/rizline';
 import { RizlineCatalogSchema, RizlineCurrentSchema, RizlineManifestSchema } from '@/providers/rizline-catalog-schema';
 import { requestBytes, requestJson } from '@/providers/http-json';
@@ -18,7 +19,7 @@ export class RizlineResourceService {
   private readonly releases = new VerifiedReleaseSession<RizlineRelease>((signal, force) => this.prepare(signal, force));
   private readonly loads = createInflightGuard<string>();
   private revision: string | undefined;
-  constructor(private readonly repository: Repository = new SqliteSnapshotRepository(), private readonly fetcher: typeof fetch = fetch,
+  constructor(private readonly repository: Repository = new SqliteSnapshotRepository(), private readonly fetcher: typeof fetch = expoFetch as unknown as typeof fetch,
     private readonly base = RIZLINE_RESOURCE_BASE) {}
 
   clear(): void { this.loads.clear(); this.releases.clear(); this.revision = undefined; }

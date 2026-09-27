@@ -3,7 +3,7 @@ import { buildChunithmMapIconUrl } from './chunithm-personal';
 import { resolveTufAvatarUrl } from './tuf';
 import { majdataAvatarUrl } from './majdata';
 import { buildRizlineRecords, selectRizlineBest, formatRizlineRks, type RizlineCatalogData, type RizlineSnapshot } from './rizline';
-import type { GameId, ProviderId } from './game-bind-options';
+import { isProviderForGame, type GameId, type GameProviderId } from './game-bind-options';
 import type { GameProfile } from './game-profile';
 import type { DataSource, Player, ScoreRecord, ScoreSnapshot } from './models';
 import type { ChunithmPlayer, ChunithmScore } from './chunithm-personal';
@@ -161,21 +161,15 @@ export type GamePayloadOf<G extends GameId> =
  */
 export type GameDataBundleFor<G extends GameId> = G extends GameId ? {
   gameId: G;
-  providerId: ProviderId | null;
-  profile: GameProfile;
+  providerId: GameProviderId<G> | null;
+  profile: GameProfile<G>;
   payload: GamePayloadOf<G>;
 } : never;
 
 /**
- * 构造入参：`gameId` 是 `G` 的唯一推断来源（`payload` 用 `NoInfer` 排除），
- * 因此「身份 A + 载荷 B」不会因为载荷自身携带另一个游戏身份而被推断成联合游戏。
+ * 构造入参按每个具体游戏分发；联合身份也必须与载荷、Profile 和 Provider 同时配对。
  */
-export type GameDataBundleInput<G extends GameId> = {
-  gameId: G;
-  providerId: ProviderId | null;
-  profile: GameProfile;
-  payload: NoInfer<GamePayloadOf<G>>;
-};
+export type GameDataBundleInput<G extends GameId> = { [P in G]: GameDataBundleFor<P> }[G];
 
 /**
  * 当前选中游戏的一份独立数据包（与其他游戏互不共用）。
@@ -184,10 +178,14 @@ export type GameDataBundleInput<G extends GameId> = {
 export type GameDataBundle = { [G in GameId]: GameDataBundleFor<G> }[GameId];
 
 /** 按游戏构造数据包：身份与载荷错配在调用点即编译失败。 */
-export function gameDataBundle<G extends GameId>(bundle: GameDataBundleInput<G>): GameDataBundleFor<G> {
-  // `GameDataBundleFor` 是分发到各游戏的条件类型，泛型处无法静态求值；
-  // 入参已由 `GameDataBundleInput`（`gameId` 唯一推断 + `NoInfer` 载荷）保证配对。
-  return bundle as GameDataBundleFor<G>;
+export function gameDataBundle<T extends GameDataBundle>(bundle: T): T {
+  if (bundle.profile.id !== bundle.gameId
+    || (bundle.providerId !== null && !isProviderForGame(bundle.gameId, bundle.providerId))
+    || (bundle.payload.kind === 'empty' ? bundle.payload.gameId !== bundle.gameId
+      : GAME_PAYLOAD_KIND_BY_GAME_ID[bundle.gameId] !== bundle.payload.kind)) {
+    throw new Error('Game data identity mismatch');
+  }
+  return bundle;
 }
 
 export type PhigrosGameDataPayload = Extract<GamePayload, { kind: 'phigros' }>;
@@ -285,7 +283,7 @@ export function osuPayloadFromSnapshot(
 }
 
 /** Build account display metadata without network or persistence side effects. */
-export function gameAccountMetadata<G extends GameId>(bundle: GameDataBundleInput<G>): ({
+export function gameAccountMetadata(bundle: GameDataBundle): ({
   scoreDisplay: string; displayName?: string; avatarUrl?: string | null;
   challengeModeRank?: number | null; ratingPossession?: string | null;
   storedDisplayName?: string;

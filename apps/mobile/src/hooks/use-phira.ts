@@ -1,62 +1,19 @@
+import { PHIRA_QUERY_OPTIONS, phiraBestsEntityKey, phiraPlayerQueryOptions } from '@/services/phira-query';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { useEffect, useMemo, useRef } from 'react';
 import { getForegroundAbortSignal } from '@/state/app-lifecycle';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
-import type { PhiraChart, PhiraChartPage, PhiraChartStatus, PhiraPlayerSnapshot } from '@/domain/phira';
+import type { PhiraChart, PhiraChartPage, PhiraChartStatus } from '@/domain/phira';
 import { phiraProvider } from '@/providers/phira-provider';
-import { cacheFirstLoad } from '@/services/cache-first';
+
 import { countPhiraChartZip } from '@/services/phira-chart-notes';
+import { CHART_PREVIEW_MAX_DOWNLOAD_BYTES } from '@/features/chart-preview-shared/chart-preview-resource-budget';
 import { phiraCache, phiraSource } from '@/services/phira-cache';
 import { phiraCatalogNextPage } from '@/domain/phira-filters';
-import {
-  loadPhiraPlayerFresh, queryPhiraChartBest, refreshAllPhiraBests, refreshPhiraBestTargets,
-  refreshPhiraSeedBests, type PhiraBestRefreshResult, type PhiraBestRefreshStatus, type PhiraBestRefreshTarget,
-} from '@/services/phira-service';
+import { loadPhiraPlayerFresh, queryPhiraChartBest, refreshAllPhiraBests, refreshPhiraBestTargets, type PhiraBestRefreshResult, type PhiraBestRefreshStatus, type PhiraBestRefreshTarget } from '@/services/phira-service';
 import { publishEntityValue } from '@/services/game-data-query';
 import { queryClient } from '@/state/query-client';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
-
-const OPTIONS = { staleTime: 60_000, gcTime: 10 * 60_000 } as const;
-
-/** Phira 玩家实体的规范键：总览数据包与页面读到同一份版本。 */
-export function phiraPlayerEntityKey(playerId: number) {
-  return ['phira', 'player', playerId] as const;
-}
-
-/** 已查询谱面最佳成绩的规范键（与玩家实体不同粒度，因此保留独立 key）。 */
-export function phiraBestsEntityKey(playerId: number) {
-  return ['phira', 'bests', playerId] as const;
-}
-
-/** 该玩家实体的规范查询选项：页面与总览派生视图共用。 */
-export function phiraPlayerQueryOptions(playerId: number) {
-  const queryKey = phiraPlayerEntityKey(playerId);
-  return {
-    queryKey,
-    queryFn: async ({ signal }: { signal: AbortSignal }): Promise<PhiraPlayerSnapshot> => cacheFirstLoad({
-      assertCurrent: captureResourceWrites('phira', signal, `phira:community:${playerId}`),
-      loadCached: () => phiraCache.loadPlayer(playerId),
-      loadFresh: async () => {
-        const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
-        const fresh = await loadPhiraPlayerFresh(playerId, signal);
-        assertCurrent();
-        void refreshPhiraSeedBests(fresh, signal)
-          .then((result) => {
-            assertCurrent();
-            // 只把缓存快照写进 bests 查询；后台补全不消费本次操作摘要。
-            if (!signal.aborted && result.snapshot) {
-              publishEntityValue(queryClient, phiraBestsEntityKey(playerId), result.snapshot);
-            }
-          })
-          .catch(() => undefined);
-        return fresh;
-      },
-      onFresh: (fresh) => publishEntityValue(queryClient, queryKey, fresh),
-      signal,
-    }),
-    ...OPTIONS,
-  };
-}
 
 export function usePhiraPlayerSearch(value: string) {
   const query = value.trim();
@@ -64,7 +21,7 @@ export function usePhiraPlayerSearch(value: string) {
   return useQuery({
     queryKey: ['phira', 'players', query], enabled: query.length > 0,
     queryFn: async ({ signal }) => numericId ? [await phiraProvider.getUser(numericId, signal)] : phiraProvider.searchUsers(query, signal),
-    ...OPTIONS,
+    ...PHIRA_QUERY_OPTIONS,
   });
 }
 
@@ -72,7 +29,7 @@ export function usePhiraPlayer(playerId: number | null, enabled = true) {
   const tabActive = useCachedTabActive();
   const fallbackId = playerId ?? 0;
   return useQuery({
-    ...phiraPlayerQueryOptions(fallbackId),
+    ...phiraPlayerQueryOptions(queryClient, fallbackId),
     enabled: enabled && tabActive && playerId !== null,
   });
 }
@@ -81,7 +38,7 @@ export function usePhiraBests(playerId: number | null, enabled = true) {
   const tabActive = useCachedTabActive();
   return useQuery({
     queryKey: phiraBestsEntityKey(playerId ?? 0), enabled: enabled && tabActive && playerId !== null,
-    queryFn: () => phiraCache.loadBests(playerId!), ...OPTIONS,
+    queryFn: () => phiraCache.loadBests(playerId!), ...PHIRA_QUERY_OPTIONS,
   });
 }
 
@@ -171,7 +128,7 @@ export function usePhiraCharts(status: PhiraChartStatus, search: string, enabled
     // Phira /chart 的 page=1 返回与 page=0 相同的首页，翻页须跳过 1（0 → 2 → 3 → …）。
     getNextPageParam: (last, pages) => phiraCatalogNextPage(pages, last),
     enabled: enabled && tabActive,
-    ...OPTIONS,
+    ...PHIRA_QUERY_OPTIONS,
   });
 }
 
@@ -181,14 +138,14 @@ export function usePhiraChartsByIds(ids: readonly number[]) {
   return useQuery({
     queryKey: ['phira', 'charts-by-ids', sorted], enabled: sorted.length > 0,
     queryFn: ({ signal }) => phiraProvider.getChartsByIds(sorted, signal),
-    ...OPTIONS,
+    ...PHIRA_QUERY_OPTIONS,
   });
 }
 
 export function usePhiraChart(chartId: number | null) {
   return useQuery({
     queryKey: ['phira', 'chart', chartId], enabled: chartId !== null,
-    queryFn: ({ signal }): Promise<PhiraChart> => phiraProvider.getChart(chartId!, signal), ...OPTIONS,
+    queryFn: ({ signal }): Promise<PhiraChart> => phiraProvider.getChart(chartId!, signal), ...PHIRA_QUERY_OPTIONS,
   });
 }
 
@@ -206,13 +163,13 @@ export function usePhiraChartBest(playerId: number | null, chart: PhiraChart | u
       const pool = [...(player?.pool.bestPool ?? []), ...(player?.pool.recentPool ?? [])]
         .find((item) => item.chart.id === chart!.id);
       return queryPhiraChartBest(playerId!, chart!, pool?.rks ?? null, signal);
-    }, ...OPTIONS,
+    }, ...PHIRA_QUERY_OPTIONS,
   });
 }
 
 export function usePhiraUploader(userId: number | null) {
   return useQuery({ queryKey: ['phira', 'uploader', userId], enabled: userId !== null,
-    queryFn: ({ signal }) => phiraProvider.getUploader(userId!, signal), ...OPTIONS });
+    queryFn: ({ signal }) => phiraProvider.getUploader(userId!, signal), ...PHIRA_QUERY_OPTIONS });
 }
 
 export function usePhiraNotes(chart: PhiraChart | undefined, enabled = true) {
@@ -220,7 +177,7 @@ export function usePhiraNotes(chart: PhiraChart | undefined, enabled = true) {
     queryKey: ['phira', 'notes', chart?.id, chart?.chartUpdated], enabled: enabled && !!chart?.file,
     queryFn: async ({ signal }) => {
       try {
-        const data = await phiraProvider.downloadChart(chart!.file!, signal);
+        const data = await phiraProvider.downloadChart(chart!.file!, signal, CHART_PREVIEW_MAX_DOWNLOAD_BYTES);
         const value: import('@/domain/phira').PhiraNoteSnapshot = { chartUpdated: chart!.chartUpdated ?? null, counts: await countPhiraChartZip(data, signal), source: phiraSource() };
         if (signal.aborted) {
           const aborted = new Error('Phira 谱面读取已取消'); aborted.name = 'AbortError'; throw aborted;
@@ -232,6 +189,6 @@ export function usePhiraNotes(chart: PhiraChart | undefined, enabled = true) {
           unavailableReason: '请稍后重试', source: phiraSource() };
         return value;
       }
-    }, ...OPTIONS,
+    }, ...PHIRA_QUERY_OPTIONS,
   });
 }

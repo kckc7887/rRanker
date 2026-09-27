@@ -9,7 +9,7 @@ function requestInit(request: ReturnType<typeof vi.fn>, index = -1) {
 describe('DivingFishProvider native cookie session', () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it('uses expo/fetch credentials include so iOS reuses the login cookie jar', async () => {
+  it('omits ambient native cookies through the public request boundary', async () => {
     const request = vi.fn().mockResolvedValue(new Response('{"ok":true}', {
       status: 200,
       headers: { 'Content-Type': 'application/json' },
@@ -22,7 +22,7 @@ describe('DivingFishProvider native cookie session', () => {
     expect(request).toHaveBeenCalledTimes(1);
     const sent = requestInit(request);
     expect(sent.url).toContain('/chart_stats');
-    expect(sent.init.credentials).toBe('include');
+    expect(sent.init.credentials).toBe('omit');
     expect(sent.headers.get('Accept')).toBe('application/json');
     expect(sent.headers.get('Cookie')).toBeNull();
   });

@@ -19,22 +19,37 @@ function formatLogTime(value: string): string {
   return `${date.getFullYear()}/${pad(date.getMonth() + 1)}/${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}:${pad(date.getSeconds())}`;
 }
 
+function logControlPresentation(state: ReturnType<typeof runtimeLogs.getSnapshot>, theme: ReturnType<typeof useAppTheme>) {
+  const recording = state.activeId !== null && state.sessions.some((session) => session.id === state.activeId && session.status === 'recording');
+  const preparing = state.busy || (!state.ready && !state.failed);
+  const controlFailed = state.failed && state.failurePhase !== 'history';
+  const controlStatus = preparing ? '准备中' : controlFailed ? (!state.ready ? '读取失败' : '保存失败') : recording ? '正在记录' : state.enabled ? '等待记录' : '未开启';
+  const controlColor = preparing ? theme.textSecondary : controlFailed ? theme.danger : recording ? theme.accent : theme.textSecondary;
+  return { preparing, controlStatus, controlColor };
+}
+
 export default function DiagnosticsScreen() {
   const theme = useAppTheme();
   const { showNotification } = useNotification();
   const state = useSyncExternalStore(runtimeLogs.subscribe, runtimeLogs.getSnapshot);
   const [action, setAction] = useState<string | null>(null);
   const actionPending = useRef(false);
+  const exportPending = useRef(false);
+  const [exporting, setExporting] = useState(false);
   const disabled = state.busy || action !== null;
   const capacityDisabled = state.enabled || !state.ready || disabled;
-  const recording = state.activeId !== null && state.sessions.some((session) => session.id === state.activeId && session.status === 'recording');
-  const preparing = state.busy || (!state.ready && !state.failed);
-  const controlStatus = preparing ? '准备中' : state.failed ? '保存失败' : recording ? '正在记录' : state.enabled ? '等待记录' : '未开启';
-  const controlColor = preparing ? theme.textSecondary : state.failed ? theme.danger : recording ? theme.accent : theme.textSecondary;
+  const { preparing, controlStatus, controlColor } = logControlPresentation(state, theme);
   const statusColors: Record<RuntimeLogStatus, string> = {
     recording: theme.accent, stopped: theme.textSecondary, interrupted: theme.warning, failed: theme.danger,
   };
-  useEffect(() => { void initializeRuntimeLogs().catch(() => undefined); }, []);
+  useEffect(() => { void initializeRuntimeLogs().then(() => runtimeLogs.loadHistory()).catch(() => undefined); }, []);
+  const exportDiagnostics = async () => {
+    if (exportPending.current) return;
+    exportPending.current = true; setExporting(true);
+    try { await exportRuntimeDiagnostics(); }
+    catch { showNotification({ title: '操作失败', message: '暂时无法分享诊断信息，请稍后重试。', variant: 'error' }); }
+    finally { exportPending.current = false; setExporting(false); }
+  };
 
   const perform = async (key: string, task: () => void | Promise<void>, message: string) => {
     if (actionPending.current || runtimeLogs.getSnapshot().busy) return;
@@ -103,20 +118,26 @@ export default function DiagnosticsScreen() {
             <Text style={[styles.detail, { color: theme.textMuted }]}>每份保留最近的记录，最多保存两份日志。</Text>
           </View>
           {state.failed && !preparing ? <View style={[styles.failure, { backgroundColor: theme.dangerSoft }]}>
-            <Text style={[styles.body, { color: theme.danger }]}>{state.ready ? '日志保存遇到问题，请重试。' : '暂时无法读取日志，请重试。'}</Text>
-            {button('retry', '重试', () => state.ready ? runtimeLogs.start() : initializeRuntimeLogs(), '暂时无法开始记录，请稍后重试。')}
+            <Text style={[styles.body, { color: theme.danger }]}>{state.failurePhase === 'history' || !state.ready ? '暂时无法读取日志，请重试。' : '日志保存遇到问题，请重试。'}</Text>
+            {button('retry', '重试', () => state.failurePhase === 'history' ? runtimeLogs.loadHistory() : state.ready ? runtimeLogs.start() : initializeRuntimeLogs().then(() => runtimeLogs.loadHistory()), '暂时无法准备日志，请稍后重试。')}
           </View> : null}
+          <DetailPressable accessibilityRole="button" accessibilityLabel="分享诊断信息" disabled={exporting}
+            accessibilityState={{ disabled: exporting, busy: exporting }} onPress={() => void exportDiagnostics()}
+            style={[styles.button, { backgroundColor: theme.accentSoft }]}>
+            {exporting ? <ActivityIndicator color={theme.accent} /> : null}
+            <Text style={[styles.buttonText, { color: theme.accent }]}>分享诊断信息</Text>
+          </DetailPressable>
         </View>
 
         <View style={styles.listHeading}>
           <Text style={[styles.title, { color: theme.text }]}>最近日志</Text>
           {state.sessions.length > 0 ? <Text style={[styles.detail, { color: theme.textMuted }]}>分享时会附带诊断信息</Text> : null}
         </View>
-        {state.ready && !state.failed && !preparing && state.sessions.length === 0 ? <View style={[styles.section, styles.empty, { backgroundColor: theme.surface }]}>
+        {state.historyBusy ? <ActivityIndicator accessibilityLabel="读取历史日志" color={theme.accent} /> : null}
+        {state.ready && state.historyReady !== false && !state.failed && !preparing && state.sessions.length === 0 ? <View style={[styles.section, styles.empty, { backgroundColor: theme.surface }]}>
           <Text style={[styles.title, styles.centerText, { color: theme.text }]}>还没有日志</Text>
           <Text style={[styles.body, styles.centerText, { color: theme.textSecondary }]}>开启记录后重现问题，就可以在这里分享日志。</Text>
           <Text style={[styles.detail, styles.centerText, { color: theme.textMuted }]}>未提前开启记录，也可以分享诊断信息协助排查。</Text>
-          {button('export', '分享诊断信息', exportRuntimeDiagnostics, '暂时无法分享诊断信息，请稍后重试。')}
         </View> : null}
         {state.sessions.map((session, index) => {
           const name = index === 0 ? '最新记录' : '上次记录';

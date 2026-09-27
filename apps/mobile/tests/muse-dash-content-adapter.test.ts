@@ -11,6 +11,7 @@ import {
   MuseDashPlayerSchema,
   buildMuseDashRandomCharts,
   buildMuseDashRawScores,
+  sortMuseDashRawScores,
   filterMuseDashRandomCharts,
   museDashAccTone,
   museDashAchievementDetailsPending,
@@ -53,6 +54,14 @@ describe('Muse Dash content adapter', () => {
   const songsByUid = museDashSongsByUid(parsedAlbums);
   const fullSong = songsByUid.get('0-47')!;
   const constants = museDashDiffdiffMap(parsedDiffdiff);
+
+  it('orders known ratings before unknown values without substituting raw scores', () => {
+    const base = buildMuseDashRawScores(parsedPlayer, parsedAlbums, parsedCe, parsedDiffdiff)[0]!;
+    const known = { ...base, play: { ...base.play, sum: 1, score: 10 } };
+    const unknown = { ...base, play: { ...base.play, sum: undefined, score: 1_000_000 } };
+    const invalid = { ...base, play: { ...base.play, sum: NaN, score: 2_000_000 } };
+    expect(sortMuseDashRawScores([unknown, known, invalid])).toEqual([known, unknown, invalid]);
+  });
 
   it('builds a full-catalog random pool and only requires scores for score conditions', () => {
     const rawScores = buildMuseDashRawScores(parsedPlayer, parsedAlbums, parsedCe, parsedDiffdiff);

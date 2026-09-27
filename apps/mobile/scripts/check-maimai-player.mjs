@@ -3,17 +3,16 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import assert from 'node:assert/strict';
 import { pathToFileURL } from 'node:url';
+import { readGeneratedPreview } from './lib/build-preview.mjs';
 const root = path.resolve(import.meta.dirname, '..'), output = path.join(root, 'build/maimai-visual-check');
 await fs.mkdir(output, { recursive: true });
-const module = process.argv[2] ? await import(pathToFileURL(path.resolve(process.argv[2])).href) : await import('playwright');
+const args = process.argv.slice(2);
+const generated = args.includes('--generated');
+const positional = args.filter(arg => arg !== '--generated');
+const module = positional[0] ? await import(pathToFileURL(path.resolve(positional[0])).href) : await import('playwright');
 const { chromium } = module.default ?? module;
-const [html, bundle, js, manifest] = await Promise.all([
-  fs.readFile(path.join(root, 'assets/maimai-chart-preview/index.html'), 'utf8'),
-  fs.readFile(path.join(root, 'assets/maimai-chart-preview/player.bundle')),
-  fs.readFile(path.join(root, 'assets/maimai-chart-preview/player.js')),
-  fs.readFile(path.join(root, 'build/maimai-skin-audit/manifest.json'), 'utf8').then(JSON.parse),
-]);
-assert.deepEqual(bundle, js);
+const { html, script: bundle } = readGeneratedPreview('maimai-chart-preview');
+const manifest = await fs.readFile(path.join(root, 'build/maimai-skin-audit/manifest.json'), 'utf8').then(JSON.parse);
 const images = Object.fromEntries(await Promise.all(manifest.map(async a => [a.path, `data:image/png;base64,${(await fs.readFile(path.join(root, 'build/maimai-skin-audit', a.path))).toString('base64')}`])));
 images['sensor.webp'] = `data:image/webp;base64,${(await fs.readFile(path.join(root, 'assets/maimai-chart-preview/sensor.webp'))).toString('base64')}`;
 function wav(seconds) {
@@ -24,14 +23,19 @@ function wav(seconds) {
 const music=wav(30),answer=wav(0.2);
 const body='(120){4}1,2hx[4:2],3-7[4:2],Cf,5w1[4:2],6/8,(180)1,2,3,4,5,6,7,8,';
 const chart=`&title=Playback verification\n&inote_5=${body}\n&inote_2=${body}\n&inote_102=(150){4}8,7,6h[4:2],5,4-8[4:2],3,2,1,`;
-await build({ entryPoints: [path.join(root, 'src/features/simai-chart-preview/engine/core/parser/SimaiParser.ts')], outfile: path.join(output, 'simai-parser.mjs'), bundle: true, platform: 'node', format: 'esm' });
-const { parseSimaiChart } = await import(pathToFileURL(path.join(output, 'simai-parser.mjs')).href);
+let parseSimaiChart;
+if (!generated) {
+ await build({ entryPoints: [path.join(root, 'src/features/simai-chart-preview/engine/core/parser/SimaiParser.ts')], outfile: path.join(output, 'simai-parser.mjs'), bundle: true, platform: 'node', format: 'esm' });
+ ({ parseSimaiChart } = await import(pathToFileURL(path.join(output, 'simai-parser.mjs')).href));
+}
 const extended = '&title=Majdata preview\n&inote_7=(120){4}1m,2hbx[4:2],Chm[4:2],3?-5-7[4:2],4-8b[4:2]*-6m[4:1],<HS*2><SV*0.5>5CK1[4:2],';
 // Synthetic duration fixtures exercise the packaged player; they are not the actual raputa assets or device acceptance.
 const audioTailChart = `&title=Audio tail regression\n&inote_5=(120){4}1${','.repeat(308)}`;
 const chartTailChart = '&title=Chart tail regression\n&inote_5=(120){4}1h[#8],';
-assert.equal(parseSimaiChart(audioTailChart, 5).durationMs, 158000);
-assert.equal(parseSimaiChart(chartTailChart, 5).durationMs, 12000);
+if (parseSimaiChart) {
+ assert.equal(parseSimaiChart(audioTailChart, 5).durationMs, 158000);
+ assert.equal(parseSimaiChart(chartTailChart, 5).durationMs, 12000);
+}
 const tailFixtures = {
  'audio-tail': { chart: audioTailChart, musicSeconds: 161, totalMs: 163000, endLabel: '2:43 / 2:43' },
  'chart-tail': { chart: chartTailChart, musicSeconds: 1.5, totalMs: 12000, endLabel: '0:12 / 0:12' },
@@ -131,7 +135,9 @@ async function checkTailPlayback(page, mode, fixture) {
 const browser=await chromium.launch({channel:'chrome',headless:true});
 const results=[];
 try {
- for(const mode of (process.argv[3] ? [process.argv[3]] : ['normal','buddy','majdata','missing','audio-tail','chart-tail'])) {
+ const modes = positional[1] ? [positional[1]] : ['normal','buddy',...(!generated ? ['majdata'] : []),'missing','audio-tail','chart-tail'];
+ if (generated && modes.includes('majdata')) throw new Error('Majdata parsed-input verification requires the source parser mode');
+ for(const mode of modes) {
   const buddy = mode === 'buddy';
   const tailFixture = tailFixtures[mode];
   const modeMusic = tailFixture ? wav(tailFixture.musicSeconds) : music;
@@ -212,5 +218,6 @@ try {
   results.push({mode,buddy,errors,intro,paused,scheduledAnswersCanceled:oldIds.length,settings:messages.filter(m=>m.type==='settings'),stoppedAllSources:true});
   await page.close();
  }
- await fs.writeFile(path.join(output,'player-results.json'),JSON.stringify(results,null,2));console.log(JSON.stringify(results));
+ const report = { mode: generated ? 'generated' : 'generated-with-source-parser', coverage: [...modes, ...(!generated ? ['source-parser-duration'] : [])], omitted: generated ? ['majdata-parsed-input', 'source-parser-duration'] : [], results };
+ await fs.writeFile(path.join(output,'player-results.json'),JSON.stringify(report,null,2));console.log(JSON.stringify(report));
 }finally{await browser.close();}
