@@ -582,10 +582,13 @@ Gradle properties 默认启用 Release R8 与资源裁剪，将默认 ProGuard �
 未开启 minify 却开启 shrink 的组合；重复应用也会更新已有 ProGuard 配置。
 `app.config.js` 的 `ANDROID_OPTIMIZATION_MODE` 选择 A（全部开启）、B（全部关闭）、
 C（仅 minify）或 D（minify + optimize），缺省为 A，未知值立即失败。
-自定义保留规则、签名与 Hermes 配置继续由原生工程决定。
+插件在 `proguard-rules.pro` 中幂等保留 `expo.modules.kotlin.records.**` 的运行时注解，
+防止全模式 R8 把反射产生的注解实例折叠为空；不关闭代码优化或扩大到整个 Expo/Kotlin 包。
+其余自定义保留规则、签名与 Hermes 配置继续由原生工程决定。
 
 `.github/workflows/android-recovery.yml` 仅监听 `origin/android-recovery` 的 push，使用
-GitHub 托管 runner 对同一 SHA 生成 A/B 原生诊断 APK，不读取生产发布凭据。
+GitHub 托管 runner 生成原生诊断 APK，不读取生产发布凭据。矩阵通过 `source` 固定
+检出提交，优化对照必须使用相同源码与依赖；额外修复组使用自己的准确提交身份。
 `native-diagnostics-entry.tsx` 是独立构建入口，不初始化账号、主题和日志；
 `services/native-storage-probe.ts` 只操作临时键、临时文件和临时数据库，检查真实
 SQLite、KV 冷启并发、默认 KV、SecureStore、Crypto 和 FileSystem 桥接往返。

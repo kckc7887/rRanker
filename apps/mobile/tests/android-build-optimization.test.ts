@@ -1,4 +1,6 @@
 import { resolve } from 'node:path';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import type { ExportedConfig, Mod } from 'expo/config-plugins';
 import { describe, expect, it } from 'vitest';
 import withAndroidAbiSplits from '../plugins/with-android-abi-splits.js';
@@ -32,6 +34,25 @@ function mods(options?: { minify: boolean; shrink: boolean; optimize: boolean })
 }
 
 describe('Android release size config plugin', () => {
+  it('retains reflective Expo Record annotations without disabling optimization', async () => {
+    const directory = await mkdtemp(resolve(tmpdir(), 'rranker-proguard-test-'));
+    try {
+      await mkdir(resolve(directory, 'app'));
+      const file = resolve(directory, 'app/proguard-rules.pro');
+      await writeFile(file, '# existing custom rules\n');
+      const mod = mods().dangerous!;
+      const config = {
+        ...app, modResults: {}, modRawConfig: app,
+        modRequest: { projectRoot: process.cwd(), platformProjectRoot: directory, platform: 'android' as const, modName: 'dangerous', introspect: false },
+      };
+      await mod(config);
+      await mod(config);
+      const rules = await readFile(file, 'utf8');
+      expect(rules).toContain('# existing custom rules');
+      expect(rules.match(/-keep @interface expo\.modules\.kotlin\.records\.\*\* \{ \*; \}/g)).toHaveLength(1);
+      expect(rules).not.toContain('-dontoptimize');
+    } finally { await rm(directory, { recursive: true, force: true }); }
+  });
   it.each([
     { minify: false, shrink: false, optimize: false },
     { minify: true, shrink: false, optimize: false },
