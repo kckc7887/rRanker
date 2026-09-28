@@ -74,6 +74,18 @@ describe('SecureSessionStore 内置账号兼容', () => {
     expect((await store.loadVault()).accounts).toEqual([]);
   });
 
+  it('does not report a binding as saved when the secure write cannot be read back', async () => {
+    vi.mocked(SecureStore.setItemAsync)
+      .mockImplementationOnce(async (key, value) => { secure.values.set(key, value); })
+      .mockImplementationOnce(async () => undefined);
+    const store = createStore();
+    await expect(store.upsertAccount(account('maimai:diving-fish:unverified')))
+      .rejects.toMatchObject({ code: 'credential_storage' });
+    expect(sqlite.values.has('rranker.provider.sessions.index.v4')).toBe(false);
+    expect([...secure.values.keys()].some((key) => key.startsWith('rranker.secure.provider-session.'))).toBe(false);
+    expect((await store.loadVault()).accounts).toEqual([]);
+  });
+
   it('classifies native credential reads and preserves cancellation during persistence', async () => {
     const input = account('maimai:diving-fish:read-failure');
     const store = createStore();
@@ -403,7 +415,7 @@ describe('SecureSessionStore 内置账号兼容', () => {
     expect([...secure.values.keys()].some((key) => key.startsWith('rranker.secure.provider-session.'))).toBe(false);
   });
 
-  it('单份凭据分片损坏时只淘汰引用它的账号', async () => {
+  it('单份凭据分片暂时不可读时保留全部账号并允许重试', async () => {
     const store = createStore();
     await store.upsertAccount(account('maimai:diving-fish:a'));
     await store.upsertAccount(account('maimai:diving-fish:b'));
@@ -414,12 +426,31 @@ describe('SecureSessionStore 内置账号兼容', () => {
     const manifest = JSON.parse(secure.values.get(`${broken.secretRef}.manifest`)!) as {
       generation: string;
     };
-    secure.values.delete(`${broken.secretRef}.chunk.${manifest.generation}.0`);
+    const chunkKey = `${broken.secretRef}.chunk.${manifest.generation}.0`;
+    const chunk = secure.values.get(chunkKey)!;
+    secure.values.delete(chunkKey);
 
+    await expect(store.loadVault()).rejects.toMatchObject({ code: 'credential_storage' });
+    await expect(store.upsertAccount(account('maimai:diving-fish:c')))
+      .rejects.toMatchObject({ code: 'credential_storage' });
+    expect(JSON.parse(sqlite.values.get('rranker.provider.sessions.index.v4')!).accounts).toHaveLength(2);
+
+    secure.values.set(chunkKey, chunk);
     const vault = await store.loadVault();
+    expect(vault.accounts.map((item) => item.id)).toEqual(['maimai:diving-fish:a', 'maimai:diving-fish:b']);
+    expect(vault.credentials).toHaveLength(2);
+  });
 
-    expect(vault.accounts.map((item) => item.id)).toEqual(['maimai:diving-fish:b']);
-    expect(vault.credentials.map((item) => item.id)).toEqual(['credential:maimai:diving-fish:b']);
+  it('does not let an unreferenced secret block valid accounts', async () => {
+    const store = createStore();
+    await store.upsertAccount(account('maimai:diving-fish:a'));
+    const key = 'rranker.provider.sessions.index.v4';
+    const index = JSON.parse(sqlite.values.get(key)!) as {
+      credentials: { id: string; providerId: string; secretRef: string }[];
+    };
+    index.credentials.push({ id: 'orphan', providerId: 'diving-fish', secretRef: 'missing' });
+    sqlite.values.set(key, JSON.stringify(index));
+    expect((await store.loadVault()).accounts.map((item) => item.id)).toEqual(['maimai:diving-fish:a']);
   });
 
   it('清空时删除 v4 索引、凭据分片和所有旧键', async () => {
@@ -480,6 +511,17 @@ describe('SecureSessionStore corrupted index preservation', () => {
       name: 'SessionIndexUnrecognizedError',
       reason: 'invalid-structure',
       code: 'local_commit',
+    });
+    expect(sqlite.values.get(INDEX)).toBe(raw);
+    expect(sqlite.values.get(`${INDEX}.unrecognized`)).toBe(raw);
+  });
+
+  it('preserves an index with a malformed account row instead of silently dropping it', async () => {
+    const raw = JSON.stringify({ version: 4, activeAccountId: 'phigros:phi-taptap:player',
+      credentials: [], accounts: [{ id: 'phigros:phi-taptap:player' }] });
+    sqlite.values.set(INDEX, raw);
+    await expect(createStore().loadVault()).rejects.toMatchObject({
+      name: 'SessionIndexUnrecognizedError', reason: 'invalid-structure',
     });
     expect(sqlite.values.get(INDEX)).toBe(raw);
     expect(sqlite.values.get(`${INDEX}.unrecognized`)).toBe(raw);

@@ -167,5 +167,11 @@ export function retryFailedAccountSources(): Promise<void> {
 }
 
 export function restoreAppAccounts(): Promise<void> {
-  return restoreSession(() => sessions.loadVault(), loadOptionalBoundAccounts);
+  return restoreSession(async () => {
+    try { return await sessions.loadVault(); }
+    catch (error) {
+      recordRuntimeError('account-restoration', error, false, { phase: 'vault' });
+      throw error;
+    }
+  }, loadOptionalBoundAccounts);
 }

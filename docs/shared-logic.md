@@ -377,9 +377,9 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
 失败只记录受限诊断，成功恢复记一次事件；`preferences-write-coordinator.test.ts` 覆盖竞争和重试。
 
 `storage/secure-session-store.ts` 的会话索引缺失时走旧版迁移；JSON 损坏抛
-`SessionIndexCorruptError` 并保留 `.corrupt` 副本，未知版本或顶层结构错误抛
+`SessionIndexCorruptError` 并保留 `.corrupt` 副本，未知版本、顶层结构或账号/凭据行错误抛
 `SessionIndexUnrecognizedError` 并保留 `.unrecognized` 副本，原键不动，后续写入不得
-覆盖。旧版迁移源解析失败时跳过但不删除。`readPreservedSessionIndex` 读取保留副本，
+覆盖。账号引用的凭据不可读或不能解析时整个恢复失败，不静默丢弃关联账号；无账号引用的凭据不参与恢复。账号恢复入口记录脱敏的凭据读取错误。`LargeSecureValueStore.write` 校验新分片与清单读回，失败时恢复旧清单并清理新分片；账号仓库也在读回一致后才提交账号索引。旧版迁移源解析失败时跳过但不删除。`readPreservedSessionIndex` 读取保留副本，
 `restorePreservedSessionIndex` 只在副本可解析且当前索引不可用时写回；`clear()` 同时
 清理保留副本。账号管理页在恢复失败时提供重试恢复与清除登录数据（二次确认）入口。
 `domain/session-vault.ts` 保存纯会话类型、映射和 `SessionPersistenceError`，Store 不通过存储模块
