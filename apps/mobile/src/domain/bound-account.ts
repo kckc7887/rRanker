@@ -400,11 +400,16 @@ export function boundAccountFromStored(account: {
   if (account.gameId === 'phigros' && account.providerId === 'phi-taptap') {
     const rating = Number(account.scoreDisplay);
     const restored = createPhigrosBoundAccount({
-      playerId: account.displayName,
+      playerId: account.id.slice('phigros:phi-taptap:'.length),
       rating: Number.isFinite(rating) ? rating : 0,
       challengeModeRank: account.challengeModeRank,
     });
-    return Number.isFinite(rating) ? restored : { ...restored, scoreDisplay: '—' };
+    return {
+      ...restored,
+      id: account.id,
+      displayName: account.displayName,
+      ...(Number.isFinite(rating) ? {} : { scoreDisplay: '—' }),
+    };
   }
   if (account.gameId === 'chunithm' && account.providerId === 'lxns') {
     const rating = Number(account.scoreDisplay);

@@ -91,7 +91,7 @@ LXNS 使用 PKCE；LXNS 与 osu! 的 state 均为非空单字符串、有效 10 
 授权串行，消费 pending 后才发送 token POST；并发或迟到回调不能复用或删除新 pending。
 换码与轮换 POST 只尝试一次，token 正文最多 256 KiB。授权准备、浏览器打开、回调验证、
 远端拒绝、构建配置、安全凭据与本机索引失败通过公共类型和固定文案区分，不显示原始异常。
-账号持久化仍使用既有绑定服务和安全仓库，Session Store 只发布内存视图。
+账号持久化仍使用既有绑定服务和安全仓库，Session Store 只发布内存视图。Phigros 账号恢复以安全仓库中的账号 ID 关联凭据，玩家昵称只作展示名；昵称更新不会改变账号 ID 或断开会话。
 
 Phigros 云存档加载由 `services/phigros-game-data-service.ts` 的 `loadPhigrosGameData` 执行：
 首次查询检查快照与发布修订是否兼容，离线可返回旧快照；显式同步重新读取云存档。

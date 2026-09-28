@@ -362,6 +362,9 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
 `services/account-restoration.ts` 的 `restoreAppAccounts()` / `loadOptionalBoundAccounts()`
 统一安全会话、可选档案及默认本地玩家迁移。`getAccountSourceStatuses()` /
 `subscribeAccountSourceStatuses()` 发布来源级 loading、ready、failed；读取失败保留已加载数据。
+`domain/bound-account.ts` 的 `boundAccountFromStored(account)` 恢复 Phigros 账号时保留持久化的
+`account.id`，昵称只更新 `displayName`；会话映射继续按同一 ID 关联凭据。
+`session-store.test.ts` 覆盖昵称与玩家 ID 不同的恢复。
 `retryFailedAccountSources()` 只重读失败来源，并复核等待前后的账号对象身份；被删除、
 改名或重绑的账号不接受旧读取结果。恢复页和前台生命周期复用该入口，订阅回调失败不影响其它来源。
 `useAppStartup` 处理启动准备，`useAppRuntime` 处理路由、前后台、内存警告和延后维护。
