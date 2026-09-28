@@ -64,6 +64,24 @@ describe('LargeSecureValueStore', () => {
     expect(chunkKeys.every((key) => key.includes(manifest.generation))).toBe(true);
   });
 
+  it('写入返回成功但读回失败时保留旧值并清理新分片', async () => {
+    const backend = createBackend();
+    const store = new LargeSecureValueStore(backend);
+    const reference = 'rranker.secure.test.unverified';
+    await store.write(reference, 'stable-value');
+    const oldManifest = backend.values.get(`${reference}.manifest`)!;
+    backend.setItemAsync.mockImplementation(async (key: string, value: string) => {
+      if (!key.endsWith('.manifest')) backend.values.set(key, value);
+    });
+
+    await expect(store.write(reference, 'new-value')).rejects.toThrow('could not be verified');
+    expect(await store.read(reference)).toBe('stable-value');
+    expect(backend.values.get(`${reference}.manifest`)).toBe(oldManifest);
+    const oldGeneration = (JSON.parse(oldManifest) as { generation: string }).generation;
+    expect([...backend.values.keys()].filter((key) => key.includes('.chunk.'))
+      .every((key) => key.includes(oldGeneration))).toBe(true);
+  });
+
   it('分片缺失或清单损坏时返回 null，删除时清理完整记录', async () => {
     const backend = createBackend();
     const store = new LargeSecureValueStore(backend);

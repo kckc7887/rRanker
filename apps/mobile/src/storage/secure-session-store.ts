@@ -390,6 +390,9 @@ function parseSessionIndexOrThrow(raw: string): SessionIndex {
       secretRef: credential.secretRef,
     }];
   });
+  if (credentials.length !== parsed.credentials.length) {
+    throw new SessionIndexUnrecognizedError(raw, 'invalid-structure');
+  }
   const credentialProviders = new Map(
     credentials.map((credential) => [credential.id, credential.providerId] as const),
   );
@@ -397,6 +400,9 @@ function parseSessionIndexOrThrow(raw: string): SessionIndex {
     const account = parseAccountMetadata(value, credentialProviders);
     return account ? [account] : [];
   });
+  if (accounts.length !== parsed.accounts.length) {
+    throw new SessionIndexUnrecognizedError(raw, 'invalid-structure');
+  }
   return {
     version: 4,
     activeAccountId: typeof parsed.activeAccountId === 'string'
@@ -514,11 +520,13 @@ export class SecureSessionStore {
 
   private async loadIndexedVault(index: SessionIndex): Promise<SessionVault> {
     const credentials: StoredProviderCredential[] = [];
+    const referencedCredentialIds = new Set(index.accounts.map((account) => account.credentialId));
     for (const item of index.credentials) {
+      if (!referencedCredentialIds.has(item.id)) continue;
       const stop = startTimer(`secure.read.${item.id}`);
       const session = parseStoredSession(await this.credentialIo.read(item.secretRef));
       stop();
-      if (!session) continue;
+      if (!session) throw new SessionPersistenceError('credential_storage');
       credentials.push({
         id: item.id,
         providerId: item.providerId,
@@ -646,8 +654,12 @@ export class SecureSessionStore {
           continue;
         }
         const secretRef = this.credentialIo.createReference('provider-session');
-        await this.credentialIo.write(secretRef, JSON.stringify(credential.session));
         newSecretRefs.push(secretRef);
+        const serialized = JSON.stringify(credential.session);
+        await this.credentialIo.write(secretRef, serialized);
+        if (await this.credentialIo.read(secretRef) !== serialized) {
+          throw new SessionPersistenceError('credential_storage');
+        }
         nextCredentials.push({
           id: credential.id,
           providerId: credential.providerId,

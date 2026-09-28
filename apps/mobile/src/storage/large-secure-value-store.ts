@@ -125,7 +125,8 @@ export class LargeSecureValueStore {
   }
 
   async write(reference: string, value: string): Promise<void> {
-    const previous = parseManifest(await this.store.getItemAsync(manifestKey(reference)));
+    const previousRaw = await this.store.getItemAsync(manifestKey(reference));
+    const previous = parseManifest(previousRaw);
     const generation = Crypto.randomUUID().replace(/-/gu, '');
     const chunks = splitSecureValue(value);
     const next: SecureValueManifest = {
@@ -138,17 +139,29 @@ export class LargeSecureValueStore {
     try {
       for (let index = 0; index < chunks.length; index += 1) {
         const key = chunkKey(reference, generation, index);
-        await this.store.setItemAsync(key, chunks[index]!, STORE_OPTS);
         writtenKeys.push(key);
+        await this.store.setItemAsync(key, chunks[index]!, STORE_OPTS);
       }
       await this.store.setItemAsync(
         manifestKey(reference),
         JSON.stringify(next),
         STORE_OPTS,
       );
+      if (await this.read(reference) !== value) throw new Error('Secure value write could not be verified');
     } catch (error) {
-      for (const key of writtenKeys) {
-        await this.store.deleteItemAsync(key).catch(() => undefined);
+      const key = manifestKey(reference);
+      try {
+        if (previousRaw === null) await this.store.deleteItemAsync(key);
+        else await this.store.setItemAsync(key, previousRaw, STORE_OPTS);
+      } catch { /* 保留新分片，避免清单回滚失败时再破坏可恢复数据。 */ }
+      const rolledBack = await this.store.getItemAsync(key).then(
+        (current) => current === previousRaw,
+        () => false,
+      );
+      if (rolledBack) {
+        for (const writtenKey of writtenKeys) {
+          await this.store.deleteItemAsync(writtenKey).catch(() => undefined);
+        }
       }
       throw error;
     }
