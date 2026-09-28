@@ -34,6 +34,7 @@ import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
 import { MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
 import { MaxedPhigrosTestProvider } from '@/providers/maxed-phigros-test-provider';
+import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import {
   applyLxnsTokenRotation,
@@ -434,7 +435,7 @@ describe('useSession store', () => {
     expect(useSession.getState().scoreProvider).toBeInstanceOf(DivingFishProvider);
   });
 
-  it('restores Phigros RKS precision and challenge metadata from v3 vault', () => {
+  it('restores a Phigros session when the displayed nickname differs from the player ID', () => {
     const session = { mode: 'phi-session', sessionToken: 'phi-token', playerId: 'phi-player', persistable: true } as const;
     useSession.getState().finishRestore({
       version: 3,
@@ -447,12 +448,17 @@ describe('useSession store', () => {
       accounts: [{
         id: 'phigros:phi-taptap:phi-player', gameId: 'phigros', providerId: 'phi-taptap',
         credentialId: 'credential:phi',
-        displayName: 'phi-player', scoreDisplay: '15.4321', challengeModeRank: 523,
+        displayName: 'Phigros 玩家', scoreDisplay: '15.4321', challengeModeRank: 523,
       }],
     });
-    expect(useSession.getState().boundAccounts[0]).toMatchObject({
-      scoreDisplay: '15.4321', challengeModeRank: 523,
+    expect(useSession.getState()).toMatchObject({
+      activeAccountId: 'phigros:phi-taptap:phi-player', session,
+      boundAccounts: [{
+        id: 'phigros:phi-taptap:phi-player', displayName: 'Phigros 玩家',
+        scoreDisplay: '15.4321', challengeModeRank: 523,
+      }],
     });
+    expect(useSession.getState().scoreProvider).toBeInstanceOf(PhigrosScoreProvider);
   });
 
   it('restores a multi-account vault', async () => {
