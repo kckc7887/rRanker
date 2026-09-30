@@ -14,7 +14,7 @@ inputs:
 
 outputs:
   functional:
-    description: 存在影响应用功能的改动为 true；无法判定时同样为 true
+    description: 需要完整检查为 true；无法判定时同样为 true
     value: ${{ steps.classify.outputs.functional }}
   reason:
     description: 判定依据，固定枚举 no-base / base-unavailable / diff-failed / no-changes / docs-only / functional

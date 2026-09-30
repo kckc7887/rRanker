@@ -140,6 +140,49 @@ console.log('changed-scope 分类器自检');
   });
 }
 
+for (const path of ['AGENTS.remote.md', 'guide.md', 'src/guide.md']) {
+  const repo = createRepo({ 'README.md': '# base\n' });
+  const base = git(repo, ['rev-parse', 'HEAD']).trim();
+  writeFiles(repo, { [path]: '# Instructions\n' });
+  commitAll(repo, 'markdown');
+  expectVerdict(`Markdown 文档改动 ${path}`, classify(repo, { base, headSha: git(repo, ['rev-parse', 'HEAD']).trim() }), {
+    functional: 'false', reason: 'docs-only', count: '1',
+  });
+}
+
+for (const [label, otherPath] of [
+  ['约束文档与代码混合改动', 'src/app.ts'],
+  ['约束文档与 CI 混合改动', '.github/workflows/quality.yml'],
+]) {
+  const repo = createRepo({ 'README.md': '# base\n' });
+  const base = git(repo, ['rev-parse', 'HEAD']).trim();
+  writeFiles(repo, { 'AGENTS.remote.md': '# Repository instructions\n', [otherPath]: 'changed\n' });
+  commitAll(repo, 'mixed instructions');
+  expectVerdict(label, classify(repo, { base, headSha: git(repo, ['rev-parse', 'HEAD']).trim() }), {
+    functional: 'true', reason: 'functional', count: '2',
+  });
+}
+
+{
+  const repo = createRepo({ 'README.md': '# base\n' });
+  const base = git(repo, ['rev-parse', 'HEAD']).trim();
+  writeFiles(repo, { 'guide.md.js': 'runtime content\n' });
+  commitAll(repo, 'non-markdown extension');
+  expectVerdict('文件名含 .md 但扩展名不是 Markdown', classify(repo, { base, headSha: git(repo, ['rev-parse', 'HEAD']).trim() }), {
+    functional: 'true', reason: 'functional', count: '1',
+  });
+}
+
+{
+  const repo = createRepo({ 'src/app.ts': 'export const app = 1;\n' });
+  const base = git(repo, ['rev-parse', 'HEAD']).trim();
+  git(repo, ['mv', 'src/app.ts', 'AGENTS.remote.md']);
+  commitAll(repo, 'rename into instructions');
+  expectVerdict('功能文件改名为约束文档', classify(repo, { base, headSha: git(repo, ['rev-parse', 'HEAD']).trim() }), {
+    functional: 'true', reason: 'functional', count: '2',
+  });
+}
+
 {
   const repo = createRepo({ 'README.md': '# base\n' });
   const base = git(repo, ['rev-parse', 'HEAD']).trim();
