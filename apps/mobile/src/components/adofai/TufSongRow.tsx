@@ -7,13 +7,15 @@ import { tufMediaImageCandidates, type TufLevel } from '@/domain/tuf';
 import { findGame } from '@/domain/game-bind-options';
 import { presentTufLevel } from '@/features/game-content/adapters';
 import { useTufVideoDetails } from '@/hooks/use-tuf';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 
 const ADOFAI_ICON = findGame('adofai')!.icon;
 
 export const TufSongRow = memo(function TufSongRow({ level }: { level: TufLevel }) {
   const presentation = presentTufLevel(level);
   const badge = presentation.chartBadges[0];
-  const media = useTufVideoDetails(level.videoLink);
+  const active = useCachedTabActive();
+  const media = useTufVideoDetails(level.videoLink, active);
   const candidates = useMemo(
     () => tufMediaImageCandidates(media.data?.image, level.difficulty?.icon),
     [media.data?.image, level.difficulty?.icon],

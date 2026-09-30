@@ -4,7 +4,9 @@ import type { HttpCookieSession } from '@/providers/http-cookies';
 import { MajdataProvider, majdataProvider } from '@/providers/majdata-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { applyMajdataSessionRotation, useSession } from '@/state/session-store';
-import { snapshotSource, captureResourceWrites, createInflightGuard, resourceWriteGeneration } from './snapshot-cache-utils';
+import { snapshotSource, captureResourceWrites, createInflightGuard, resourceWriteGeneration, subscribeResourceWrites } from './snapshot-cache-utils';
+import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
+import { createBoundedLoadQueue } from './offset-pagination';
 import { parseSimaiChart } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import { simaiStatistics } from '@/features/simai-chart-preview/statistics';
 import { cacheFirstLoad } from './cache-first';
@@ -16,6 +18,7 @@ import {
 } from '@/domain/refresh-result';
 
 const resourceLoads = createInflightGuard<string>();
+const songLoads = createBoundedLoadQueue(4);
 const requestKey = (key: string) => `${resourceWriteGeneration('majdata-net')}:${key}`;
 const repository = new SqliteSnapshotRepository();
 const songRequests = new Map<string, number>();
@@ -23,6 +26,30 @@ const accountRequests = new Map<string, number>();
 export const majdataSource = () => snapshotSource({ kind: 'majdata-net', label: 'Majdata Net' });
 export const majdataAccountKey = (id: string) => `majdata-net:account:${id}`;
 export const majdataSongKey = (id: string) => `majdata-net:song:${id}`;
+
+/** 缓存首屏不占用网络槽位；所有实际歌曲请求共用四路上限。 */
+async function requestMajdataSong(id: string, signal: AbortSignal, foregroundSignal: AbortSignal, assertCurrent: () => void): Promise<MajdataSong> {
+  return songLoads(async () => {
+    assertCurrent();
+    const controller = new AbortController();
+    const cancel = () => controller.abort(signal.aborted ? signal.reason : foregroundSignal.reason);
+    signal.addEventListener('abort', cancel, { once: true });
+    foregroundSignal.addEventListener('abort', cancel, { once: true });
+    const unsubscribe = subscribeResourceWrites('majdata-net', () => controller.abort(new Error('缓存请求已失效')));
+    try {
+      if (signal.aborted || foregroundSignal.aborted) cancel();
+      if (controller.signal.aborted) throw controller.signal.reason;
+      const song = await majdataProvider.getSong(id, controller.signal);
+      assertCurrent();
+      if (controller.signal.aborted) throw controller.signal.reason;
+      return song;
+    } finally {
+      signal.removeEventListener('abort', cancel);
+      foregroundSignal.removeEventListener('abort', cancel);
+      unsubscribe();
+    }
+  });
+}
 
 /** 歌曲快照的本地载荷：谱面本体加它被抓取时的来源元数据（旧版本行没有来源）。 */
 type MajdataSongSnapshot = { song: MajdataSong; source?: DataSource };
@@ -105,16 +132,18 @@ function cachedSongLoad(snapshot: MajdataSongSnapshot): MajdataSongLoad {
 async function loadMajdataSongCurrent(id: string, signal?: AbortSignal): Promise<MajdataSongLoad> {
   const assertCurrent = captureResourceWrites('majdata-net');
   return resourceLoads.share(requestKey(majdataSongKey(id)), async requestSignal => {
+    const foregroundSignal = getForegroundAbortSignal();
     const generation = (songRequests.get(id) ?? 0) + 1;
     songRequests.set(id, generation);
     const assertSongCurrent = () => {
       if (requestSignal.aborted) throw requestSignal.reason;
+      if (foregroundSignal.aborted) throw foregroundSignal.reason;
       assertCurrent();
       if (songRequests.get(id) !== generation) throw new Error('请求已失效');
     };
     const cached = await repository.getResource<MajdataSongSnapshot>(majdataSongKey(id), 1);
     try {
-      const song = await majdataProvider.getSong(id, requestSignal);
+      const song = await requestMajdataSong(id, requestSignal, foregroundSignal, assertSongCurrent);
       assertSongCurrent();
       const source = majdataSource();
       assertFreshSnapshotSource(source);
@@ -125,7 +154,7 @@ async function loadMajdataSongCurrent(id: string, signal?: AbortSignal): Promise
       assertSongCurrent();
       return { song, fromCache: false, source };
     } catch (error) {
-      assertCurrent();
+      assertSongCurrent();
       if (cached && !requestSignal?.aborted && songRequests.get(id) === generation) return cachedSongLoad(cached);
       throw error;
     }
@@ -163,12 +192,18 @@ export async function loadMajdataChart(song: MajdataSong, signal?: AbortSignal):
   const key = `majdata-net:chart:${song.id}:${song.hash}`;
   const assertCurrent = captureResourceWrites('majdata-net');
   return resourceLoads.share(requestKey(key), async requestSignal => {
+    const foregroundSignal = getForegroundAbortSignal();
+    const assertChartCurrent = () => {
+      if (requestSignal.aborted) throw requestSignal.reason;
+      if (foregroundSignal.aborted) throw foregroundSignal.reason;
+      assertCurrent();
+    };
     const cached = await repository.getResource<string>(key, 1);
     if (requestSignal.aborted) throw requestSignal.reason;
     assertCurrent();
     if (cached) return cached;
     const text = await majdataProvider.getChart(song.id, requestSignal);
-    const current = await majdataProvider.getSong(song.id, requestSignal);
+    const current = await requestMajdataSong(song.id, requestSignal, foregroundSignal, assertChartCurrent);
     if (current.hash !== song.hash) throw new Error('谱面已更新，请刷新歌曲后重试');
     if (requestSignal.aborted) throw requestSignal.reason;
     assertCurrent();

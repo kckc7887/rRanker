@@ -19,6 +19,7 @@ export function useTufProfile(playerId: number | null, enabled = true) {
     ...tufPlayerQueryOptions(queryClient, playerId ?? 0),
     select: (snapshot: TufPlayerSnapshot) => snapshot.data,
     enabled: enabled && tabActive && playerId !== null,
+    notifyOnChangeProps: tabActive ? undefined : [],
   });
 }
 
@@ -87,6 +88,7 @@ export function useTufPasses(playerId: number | null, options: Omit<TufPassQuery
       ? last.offset + last.limit
       : undefined,
     enabled: enabled && tabActive && playerId !== null,
+    notifyOnChangeProps: tabActive ? undefined : [],
     ...TUF_QUERY_OPTIONS,
   });
 }
@@ -107,6 +109,7 @@ export function useTufLevelSearch(
     initialPageParam: 0,
     getNextPageParam: (last) => last.hasMore ? last.offset + last.limit : undefined,
     enabled: enabled && tabActive,
+    notifyOnChangeProps: tabActive ? undefined : [],
     ...TUF_QUERY_OPTIONS,
   });
 }
@@ -122,12 +125,16 @@ export function useTufDifficulties(enabled = true) {
     queryKey,
     queryFn: ({ signal }) => tufProvider.getDifficulties(signal),
     enabled: enabled && tabActive,
+    notifyOnChangeProps: tabActive ? undefined : [],
     ...TUF_SESSION_RESOURCE_QUERY_OPTIONS,
   });
 }
 
 export function useTufVideoDetails(videoLink: string | null | undefined, enabled = true) {
-  return useQuery(tufVideoDetailsQueryOptions(videoLink, enabled));
+  const active = useCachedTabActive();
+  return useQuery({ ...tufVideoDetailsQueryOptions(videoLink, enabled && active),
+    notifyOnChangeProps: active ? undefined : [],
+  });
 }
 
 /** TufSongRow 与成绩图批量封面共用同一 Provider、缓存键和缓存时长。 */
@@ -142,21 +149,25 @@ export function tufVideoDetailsQueryOptions(videoLink: string | null | undefined
 }
 
 export function useTufLevelBestPass(levelId: number | null, playerId: number | null) {
+  const active = useCachedTabActive();
   const query = useQuery({
     queryKey: ['tuf', 'level', levelId, 'passes'],
     queryFn: ({ signal }): Promise<TufLevelPass[]> => tufProvider.getLevelPasses(levelId!, signal),
-    enabled: levelId !== null && playerId !== null,
+    notifyOnChangeProps: active ? undefined : [],
+    enabled: active && levelId !== null && playerId !== null,
     ...TUF_QUERY_OPTIONS,
   });
   return { ...query, data: selectBestTufLevelPass(query.data ?? [], playerId) };
 }
 
 export function useTufLevel(levelId: number | null) {
+  const active = useCachedTabActive();
   const queryKey = ['tuf', 'level', levelId] as const;
   return useQuery({
     queryKey,
     queryFn: ({ signal }): Promise<TufLevelDetailResponse> => tufProvider.getLevel(levelId!, signal),
-    enabled: levelId !== null,
+    notifyOnChangeProps: active ? undefined : [],
+    enabled: active && levelId !== null,
     ...TUF_QUERY_OPTIONS,
   });
 }

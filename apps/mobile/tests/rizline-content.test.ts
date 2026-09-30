@@ -1,8 +1,14 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
+import { buildSearchDocument } from '@/utils/search';
 import { defaultRizlineFilters, filterRizlineSongs, matchesRizlineChart, rizlinePackOptions } from '@/domain/rizline-filters';
 import { presentRizlineChart, presentRizlineScore, presentRizlineSong } from '@/features/game-content/adapters/rizline';
 import { defaultRizlineRandomChartsPreferences, parseRizlineRandomChartsPreferences, RizlineRandomChartsPreferencesStore } from '@/features/toolbox/rizline-random-charts-preferences';
 import { rizlineChart, rizlineRecord, rizlineSong } from './rizline-ui-fixtures';
+
+vi.mock('@/utils/search', async () => {
+  const actual = await vi.importActual<typeof import('@/utils/search')>('@/utils/search');
+  return { ...actual, buildSearchDocument: vi.fn(actual.buildSearchDocument) };
+});
 
 describe('Rizline catalog and presentation', () => {
   it('applies difficulty and inclusive constant bounds to the same chart', () => {
@@ -60,4 +66,14 @@ describe('Rizline random chart preferences', () => {
     await store.save(preferences);
     await expect(store.load()).resolves.toEqual(preferences);
   });
+});
+
+
+it('曲库对象未变化时跨关键词复用同一惰性搜索文档', () => {
+  vi.mocked(buildSearchDocument).mockClear();
+  const song = rizlineSong({ title: 'しゅう', artist: 'Composer' });
+  expect(filterRizlineSongs([song], defaultRizlineFilters(), '')).toEqual([song]);
+  expect(filterRizlineSongs([song], defaultRizlineFilters(), 'shuu')).toEqual([song]);
+  expect(filterRizlineSongs([song], defaultRizlineFilters(), 'composer')).toEqual([song]);
+  expect(buildSearchDocument).toHaveBeenCalledOnce();
 });

@@ -1,7 +1,8 @@
 import { MUSE_DASH_QUERY_OPTIONS, MUSE_DASH_SESSION_RESOURCE_QUERY_OPTIONS, museDashPlayerQueryOptions, type MuseDashSnapshot } from '@/services/muse-dash-query';
 
-import { useCallback, useEffect, useMemo, useState } from 'react';
-import { useQueries, useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useQuery } from '@tanstack/react-query';
+import { useBoundedQueries } from '@/hooks/use-bounded-queries';
 import type { DataSource } from '@/domain/models';import type { MuseDashAlbumsResponse, MuseDashCeResponse, MuseDashDiffdiffEntry, MuseDashMissDetailValue, MuseDashPlayDetail, MuseDashPlayer } from '@/domain/muse-dash';
 import { MUSE_DASH_MISS_DETAIL_FAILED } from '@/domain/muse-dash';
 import { isMuseDashTestUserId } from '@/domain/bound-account';
@@ -43,6 +44,7 @@ function useMuseDashSnapshot<T>(
     queryKey,
     queryFn: ({ signal }) => load(signal),
     enabled: enabled && tabActive,
+    notifyOnChangeProps: tabActive ? undefined : [],
     ...queryOptions,
   });
   const snapshot = query.data as MuseDashSnapshot<T> | undefined;
@@ -73,6 +75,7 @@ export function useMuseDashPlayer(userId: string | null, enabled = true) {
   const query = useQuery({
     ...museDashPlayerQueryOptions(queryClient, userId ?? ''),
     enabled: enabled && tabActive && userId !== null,
+    notifyOnChangeProps: tabActive ? undefined : [],
   });
   const snapshot = query.data as MuseDashSnapshot<MuseDashPlayer> | undefined;
   return {
@@ -128,36 +131,24 @@ export function useMuseDashPlayDetails(
   userId: string | null,
   enabled: boolean,
 ): MuseDashPlayDetailsResult {
-  const tabActive = useCachedTabActive();
-  const [windowSize, setWindowSize] = useState(MUSE_DASH_DETAIL_CONCURRENCY);
-  const itemsKey = items.map((item) => `${item.uid}:${item.difficulty}:${item.platform}`).join('|');
-  useEffect(() => { setWindowSize(MUSE_DASH_DETAIL_CONCURRENCY); }, [itemsKey, userId, enabled]);
-  const queryDefs = useMemo(() => items.map((item, index) => ({
+  const queryDefs = useMemo(() => enabled && userId !== null ? items.map((item) => ({
     queryKey: ['musedash', 'play-detail', userId, item.uid, item.difficulty, item.platform] as const,
     queryFn: async ({ signal }: { signal: AbortSignal }): Promise<MuseDashSnapshot<MuseDashPlayDetail>> => {
-      if (userId !== null && isMuseDashTestUserId(userId)) {
-        return maxedMuseDashPlayDetailSnapshot();
-      }
-      const detail = await loadMuseDashPlayDetailFresh(item.uid, item.difficulty, item.platform, userId!, signal);
+      if (isMuseDashTestUserId(userId)) return maxedMuseDashPlayDetailSnapshot();
+      const detail = await loadMuseDashPlayDetailFresh(item.uid, item.difficulty, item.platform, userId, signal);
       return makeMuseDashSnapshot(detail);
     },
-    enabled: enabled && tabActive && userId !== null && index < windowSize,
     ...MUSE_DASH_QUERY_OPTIONS,
-  })), [items, userId, enabled, tabActive, windowSize]);
-  const queries = useQueries({ queries: queryDefs });
-  useEffect(() => {
-    if (!enabled) return;
-    const settled = queries.slice(0, windowSize).filter((query) => query.isSuccess || query.isError).length;
-    const next = Math.min(items.length, settled + MUSE_DASH_DETAIL_CONCURRENCY);
-    if (next !== windowSize) setWindowSize(next);
-  }, [enabled, items.length, queries, windowSize]);
+  })) : [], [items, userId, enabled]);
+  const { queries, retryFailed } = useBoundedQueries(queryDefs, MUSE_DASH_DETAIL_CONCURRENCY, enabled, false);
   const missByChart = useMemo(() => {
     const map = new Map<string, MuseDashMissDetailValue>();
-    const count = Math.min(items.length, queries.length);
+    const count = enabled ? items.length : 0;
     for (let index = 0; index < count; index += 1) {
       const item = items[index];
       const query = queries[index];
-      if (!item || !query) continue;
+      if (!item) continue;
+      if (!query) { map.set(`${item.uid}:${item.difficulty}`, null); continue; }
       const key = `${item.uid}:${item.difficulty}`;
       // 最终失败先于其他状态：失败请求不会再有数据，必须与「已取到但没有 miss 字段」分开。
       if (query.isError) map.set(key, MUSE_DASH_MISS_DETAIL_FAILED);
@@ -165,16 +156,11 @@ export function useMuseDashPlayDetails(
       else map.set(key, query.data?.data?.play?.miss);
     }
     return map;
-  }, [items, queries]);
+  }, [enabled, items, queries]);
   const failedCount = useMemo(
     () => [...missByChart.values()].filter((value) => value === MUSE_DASH_MISS_DETAIL_FAILED).length,
     [missByChart],
   );
-  const retryFailed = useCallback(() => {
-    for (const query of queries) {
-      if (query.isError) void query.refetch();
-    }
-  }, [queries]);
   return { missByChart, failedCount, retryFailed };
 }
 

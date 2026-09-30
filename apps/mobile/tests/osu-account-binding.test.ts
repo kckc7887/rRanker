@@ -46,6 +46,21 @@ function userResponse(pp = 1234.5) {
 }
 
 describe('osu! 模式绑定', () => {
+  it('rejects late cancelled validation without persisting a mode', async () => {
+    mocks.getOwnUser.mockReset(); mocks.getUser.mockReset(); mocks.upsertAccount.mockReset();
+    let release!: (value: ReturnType<typeof userResponse>) => void;
+    mocks.getOwnUser.mockImplementation(() => new Promise(resolve => { release = resolve; }));
+    const controller = new AbortController();
+    const reason = new Error('cancelled');
+    const result = bindOsuModes({ modeGameIds: ['osu-standard'], session, credentialId: 'osu:shared',
+      existingAccounts: [], credentialIdsByAccountId: {}, signal: controller.signal });
+    const rejection = expect(result).rejects.toBe(reason);
+    controller.abort(reason); release(userResponse());
+    await rejection;
+    expect(mocks.getOwnUser).toHaveBeenCalledWith('osu-standard', controller.signal);
+    expect(mocks.getUser).not.toHaveBeenCalled(); expect(mocks.upsertAccount).not.toHaveBeenCalled();
+  });
+
   it('只创建选中模式账号并共享同一 credentialId', async () => {
     mocks.getOwnUser.mockResolvedValue(userResponse());
     mocks.getUser.mockResolvedValue(userResponse());

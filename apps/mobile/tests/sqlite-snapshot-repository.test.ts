@@ -112,3 +112,28 @@ describe('SqliteSnapshotRepository schema migration', () => {
     }))).resolves.toEqual({ count: 1 });
   });
 });
+
+
+describe('SqliteSnapshotRepository explicit unchanged update', () => {
+  beforeEach(() => {
+    resetRrankerDatabaseForTests(); resetSnapshotSchemaForTests();
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 1, payload: '{"count":1}' });
+    sqlite.db.runAsync.mockClear();
+  });
+  it('返回等价的新对象仍可以显式跳过写入，并复核提交资格', async () => {
+    const assertCurrent = vi.fn();
+    const repository = new SqliteSnapshotRepository();
+    await expect(repository.updateResource<{ count: number }>('counter', 1, previous => ({
+      value: { ...previous! }, write: false,
+    }), assertCurrent)).resolves.toEqual({ count: 1 });
+    expect(assertCurrent).toHaveBeenCalledOnce();
+    expect(sqlite.db.runAsync).not.toHaveBeenCalled();
+  });
+  it('无写入结果不能绕过失效断言', async () => {
+    const repository = new SqliteSnapshotRepository();
+    await expect(repository.updateResource<{ count: number }>('counter', 1, previous => ({
+      value: previous!, write: false,
+    }), () => { throw new Error('stale'); })).rejects.toThrow('stale');
+    expect(sqlite.db.runAsync).not.toHaveBeenCalled();
+  });
+});

@@ -3,6 +3,8 @@ import { Share } from 'react-native';
 import { runtimeLogs, shareRuntimeLog } from '@/services/runtime-logs';
 
 const mockFiles = new Map<string, string>();
+const mockWrites = new Map<string, string>();
+const mockDelete = jest.fn((_uri: string) => undefined);
 const mockAvailable = jest.fn(async () => true);
 const mockShare = jest.fn(async (_uri: string, _options: unknown) => undefined);
 const diagnostics = { sessions: [{ startedAt: '2026-09-06T10:00:00Z', events: [] }] };
@@ -19,7 +21,9 @@ jest.mock('expo-file-system', () => ({
   File: class {
     uri: string;
     constructor(...parts: string[]) { this.uri = parts.join('/'); }
-    write(value: string) { mockFiles.set(this.uri, value); }
+    get exists() { return mockFiles.has(this.uri); }
+    write(value: string) { mockFiles.set(this.uri, value); mockWrites.set(this.uri, value); }
+    delete() { mockDelete(this.uri); mockFiles.delete(this.uri); }
   },
   Paths: { cache: 'cache' },
 }));
@@ -29,7 +33,7 @@ jest.mock('expo-sharing', () => ({
 }));
 
 describe('manual log sharing', () => {
-  beforeEach(() => { mockFiles.clear(); jest.clearAllMocks(); jest.spyOn(Share, 'share').mockResolvedValue({ action: Share.sharedAction }); });
+  beforeEach(() => { mockFiles.clear(); mockWrites.clear(); jest.clearAllMocks(); jest.spyOn(Share, 'share').mockResolvedValue({ action: Share.sharedAction }); });
   afterEach(() => jest.restoreAllMocks());
 
   it('freezes contents before awaiting the platform and ignores concurrent share requests', async () => {
@@ -45,7 +49,8 @@ describe('manual log sharing', () => {
     expect(snapshot).toHaveBeenCalledTimes(1);
     resolve(diagnostics);
     await pending;
-    expect(JSON.parse([...mockFiles.values()][0]!)).toEqual({ ...log, diagnostics, emergency: [], storageAvailable: true });
+    expect(JSON.parse([...mockWrites.values()][0]!)).toEqual({ ...log, diagnostics, emergency: [], storageAvailable: true });
+    expect(mockFiles.size).toBe(0);
     expect(mockDiagnostics).toHaveBeenCalledTimes(1);
     expect(mockShare).toHaveBeenCalledWith(expect.stringMatching(/^cache\/rranker-runtime-log-7-.*\.txt$/u), expect.objectContaining({ mimeType: 'text/plain' }));
   });
@@ -60,7 +65,8 @@ describe('manual log sharing', () => {
     await expect(shareRuntimeLog(1)).resolves.toBeUndefined();
     expect(Share.share).toHaveBeenCalledTimes(2);
     await shareRuntimeLog(1);
-    expect(mockFiles.size).toBe(2);
+    expect(mockWrites.size).toBe(2);
+    expect(mockFiles.size).toBe(0);
     expect(mockShare).toHaveBeenCalledTimes(2);
   });
 
@@ -68,14 +74,14 @@ describe('manual log sharing', () => {
     const older = { formatVersion: 1, session: { id: 1 }, context: { appVersion: 'old' }, entries: [{ type: 'task' }] };
     jest.spyOn(runtimeLogs, 'snapshot').mockReturnValue(JSON.stringify(older));
     await shareRuntimeLog(1);
-    expect(JSON.parse([...mockFiles.values()][0]!)).toEqual({ ...older, diagnostics, emergency: [], storageAvailable: true });
+    expect(JSON.parse([...mockWrites.values()][0]!)).toEqual({ ...older, diagnostics, emergency: [], storageAvailable: true });
   });
 
   it('retains the selected log when diagnostic storage fails and releases the guard', async () => {
     jest.spyOn(runtimeLogs, 'snapshot').mockReturnValue(JSON.stringify(log));
     mockDiagnostics.mockRejectedValueOnce(new Error('diagnostics unavailable'));
     await expect(shareRuntimeLog(7)).resolves.toBeUndefined();
-    expect(JSON.parse([...mockFiles.values()][0]!)).toEqual({ ...log, diagnostics: { sessions: [] }, emergency: [], storageAvailable: false });
+    expect(JSON.parse([...mockWrites.values()][0]!)).toEqual({ ...log, diagnostics: { sessions: [] }, emergency: [], storageAvailable: false });
     await shareRuntimeLog(7);
     expect(mockShare).toHaveBeenCalledTimes(2);
   });
@@ -86,5 +92,16 @@ describe('manual log sharing', () => {
     await expect(shareRuntimeLog(7)).rejects.toThrow('platform unavailable');
     await expect(shareRuntimeLog(7)).resolves.toBeUndefined();
     expect(mockShare).toHaveBeenCalledTimes(1);
+  });
+
+  it('isolates cleanup failure from successful sharing and the original share error', async () => {
+    jest.spyOn(runtimeLogs, 'snapshot').mockReturnValue(JSON.stringify(log));
+    mockDelete.mockImplementationOnce(() => { throw new Error('cleanup failed'); });
+    await expect(shareRuntimeLog(7)).resolves.toBeUndefined();
+    mockShare.mockRejectedValueOnce(new Error('file share failed'));
+    jest.mocked(Share.share).mockRejectedValueOnce(new Error('platform share failed'));
+    mockDelete.mockImplementationOnce(() => { throw new Error('cleanup failed'); });
+    await expect(shareRuntimeLog(7)).rejects.toThrow('platform share failed');
+    await expect(shareRuntimeLog(7)).resolves.toBeUndefined();
   });
 });

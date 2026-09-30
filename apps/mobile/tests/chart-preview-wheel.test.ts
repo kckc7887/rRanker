@@ -6,7 +6,7 @@ let frameId = 0;
 const frames = new Map<number, FrameRequestCallback>();
 const disposers: (() => void)[] = [];
 
-function makeWheel(labels?: readonly string[], format?: (value: number) => string) {
+function makeWheel(labels?: readonly string[], format?: (value: number) => string, range = [0, 3, 1, 1]) {
   const container = document.createElement('section');
   container.innerHTML = '<button></button><aside style="visibility:hidden"><div><div></div></div></aside><span></span>';
   document.body.append(container);
@@ -20,7 +20,7 @@ function makeWheel(labels?: readonly string[], format?: (value: number) => strin
   }) as typeof viewport.scrollTo;
   const preview = vi.fn();
   const commit = vi.fn();
-  const wheel = setupWheelPopup(trigger, popup, viewport, list, value, preview, commit, 0, 3, 1, 1, labels, format);
+  const wheel = setupWheelPopup(trigger, popup, viewport, list, value, preview, commit, range[0], range[1], range[2], range[3], labels, format);
   disposers.push(wheel.dispose);
   return { wheel, trigger, popup, viewport, list, value, preview, commit };
 }
@@ -106,5 +106,31 @@ describe('共享谱面确认拨轮', () => {
     item.viewport.dispatchEvent(new Event('scroll'));
     vi.runAllTimers();
     expect(item.commit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [[0.5, 2, 0.05, 1], 11, 1.05],
+    [[0, 1, 0.01, 0.5], 51, 0.51],
+  ])('保留小数步长且显式flush只提交最终值一次', (range, index, expected) => {
+    const item = makeWheel(undefined, value => value.toFixed(2), range);
+    item.viewport.scrollTop = index * 28;
+    item.viewport.dispatchEvent(new Event('scroll'));
+    item.wheel.flush();
+    item.wheel.flush();
+    vi.runAllTimers();
+    expect(item.preview).toHaveBeenCalledExactlyOnceWith(expected);
+    expect(item.commit).toHaveBeenCalledExactlyOnceWith(expected);
+    expect(item.value.textContent).toBe(expected.toFixed(2));
+  });
+
+  it('关闭弹层先提交当前值，后续计时器不重复提交', () => {
+    const item = makeWheel();
+    item.trigger.click();
+    item.viewport.scrollTop = 84;
+    item.viewport.dispatchEvent(new Event('scroll'));
+    closeActiveWheelPopup();
+    vi.runAllTimers();
+    expect(item.preview).toHaveBeenCalledExactlyOnceWith(3);
+    expect(item.commit).toHaveBeenCalledExactlyOnceWith(3);
   });
 });

@@ -31,6 +31,7 @@ export function usePhiraPlayer(playerId: number | null, enabled = true) {
   return useQuery({
     ...phiraPlayerQueryOptions(queryClient, fallbackId),
     enabled: enabled && tabActive && playerId !== null,
+    notifyOnChangeProps: tabActive ? undefined : [],
   });
 }
 
@@ -38,6 +39,7 @@ export function usePhiraBests(playerId: number | null, enabled = true) {
   const tabActive = useCachedTabActive();
   return useQuery({
     queryKey: phiraBestsEntityKey(playerId ?? 0), enabled: enabled && tabActive && playerId !== null,
+    notifyOnChangeProps: tabActive ? undefined : [],
     queryFn: () => phiraCache.loadBests(playerId!), ...PHIRA_QUERY_OPTIONS,
   });
 }
@@ -128,6 +130,7 @@ export function usePhiraCharts(status: PhiraChartStatus, search: string, enabled
     // Phira /chart 的 page=1 返回与 page=0 相同的首页，翻页须跳过 1（0 → 2 → 3 → …）。
     getNextPageParam: (last, pages) => phiraCatalogNextPage(pages, last),
     enabled: enabled && tabActive,
+    notifyOnChangeProps: tabActive ? undefined : [],
     ...PHIRA_QUERY_OPTIONS,
   });
 }

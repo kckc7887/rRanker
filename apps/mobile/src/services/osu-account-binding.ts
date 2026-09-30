@@ -49,7 +49,14 @@ export async function bindOsuModes(input: {
   credentialId?: string;
   existingAccounts: readonly BoundAccount[];
   credentialIdsByAccountId: Readonly<Record<string, string | undefined>>;
+  signal?: AbortSignal;
+  assertCurrent?: () => void;
 }): Promise<OsuBindingResult> {
+  const assertCurrent = () => {
+    if (input.signal?.aborted) throw input.signal.reason;
+    input.assertCurrent?.();
+  };
+  assertCurrent();
   const initialSession = requireOsuSession(input.session);
   const modes = [...new Set(input.modeGameIds)]
     .filter((gameId): gameId is OsuGameId => (
@@ -60,7 +67,8 @@ export async function bindOsuModes(input: {
   }
 
   const provider = new OsuScoreProvider(initialSession);
-  const own = await provider.getOwnUser(modes[0]);
+  const own = await provider.getOwnUser(modes[0], input.signal);
+  assertCurrent();
   const userId = own.id;
 
   let credentialId = input.credentialId;
@@ -73,11 +81,14 @@ export async function bindOsuModes(input: {
       : undefined;
   }
   credentialId ??= await runProviderOperation('authorization_prepare', createCredentialId);
+  assertCurrent();
 
   const finalSession = provider.getSession();
   const accounts: BoundAccount[] = [];
   for (const gameId of modes) {
-    const user = await provider.getUser(userId, gameId);
+    assertCurrent();
+    const user = await provider.getUser(userId, gameId, input.signal);
+    assertCurrent();
     const account = createOsuBoundAccount({
       gameId,
       userId,
@@ -96,7 +107,8 @@ export async function bindOsuModes(input: {
       displayName: account.displayName,
       scoreDisplay: account.scoreDisplay,
       session: finalSession,
-    });
+    }, input.signal);
+    assertCurrent();
   }
 
   return {

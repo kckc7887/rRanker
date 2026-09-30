@@ -7,6 +7,7 @@ import { PROVIDER_MAX_RESPONSE_BYTES } from '@/providers/http-json';
 import { PhigrosResourceService } from '@/services/phigros-resources';
 import { RizlineResourceService } from '@/services/rizline-resources';
 import { defaultRizlineChartPreviewResourcePort } from '@/services/rizline-chart-preview-resources';
+import { requestDeviceCode } from '@/providers/phigros-auth';
 
 const transport = vi.hoisted(() => ({ fetch: vi.fn<typeof fetch>() }));
 vi.mock('expo/fetch', () => ({ fetch: transport.fetch }));
@@ -16,6 +17,7 @@ afterEach(() => { vi.unstubAllGlobals(); });
 
 const defaultRequests: [string, () => Promise<unknown>, number][] = [
   ['MuseDash player search', () => new MuseDashProvider().searchPlayers('fixture'), 1],
+  ['Phigros device code', () => requestDeviceCode(), 1],
   ['TUF player search', () => new TufProvider().searchPlayers('fixture'), 1],
   ['DXRating tags', () => new DxRatingChartTagsProvider().getChartTags(), 1],
   ['Kyou metadata', () => new PhigrosKyouProvider().getAliases(), 3],

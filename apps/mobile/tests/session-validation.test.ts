@@ -48,4 +48,30 @@ describe('validateScoreProvider', () => {
     expect(save).not.toHaveBeenCalled();
     expect(activate).not.toHaveBeenCalled();
   });
+
+  it('forwards cancellation to both reads and prevents a late validation from committing', async () => {
+    const controller = new AbortController();
+    let release!: () => void;
+    const save = vi.fn(); const activate = vi.fn();
+    const provider = { getPlayer: vi.fn(() => new Promise(resolve => { release = () => resolve(player); })),
+      getRecords: vi.fn().mockResolvedValue([]) } as unknown as ScoreProvider;
+    const result = validateAndActivateSession(session, { createProvider: () => provider, save, activate, signal: controller.signal });
+    const reason = new Error('cancelled');
+    const rejection = expect(result).rejects.toBe(reason);
+    controller.abort(reason); release();
+    await rejection;
+    expect(provider.getPlayer).toHaveBeenCalledWith(controller.signal);
+    expect(provider.getRecords).toHaveBeenCalledWith(controller.signal);
+    expect(save).not.toHaveBeenCalled(); expect(activate).not.toHaveBeenCalled();
+  });
+
+  it('checks the generation after saving before activation', async () => {
+    const provider = { getPlayer: vi.fn().mockResolvedValue(player), getRecords: vi.fn().mockResolvedValue([]) } as unknown as ScoreProvider;
+    let current = true;
+    const activate = vi.fn();
+    await expect(validateAndActivateSession(session, { createProvider: () => provider,
+      save: async () => { current = false; }, activate,
+      assertCurrent: () => { if (!current) throw new Error('stale'); } })).rejects.toThrow('stale');
+    expect(activate).not.toHaveBeenCalled();
+  });
 });

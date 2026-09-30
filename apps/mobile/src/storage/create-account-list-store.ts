@@ -37,7 +37,7 @@ function enqueueKeyMutation<T>(storage: KeyValueStore, key: string, mutation: ()
 /**
  * 多账号列表 store 公共工厂（musedash/phira/tuf/local 同构）：
  * 持久化为 {version:1, accounts} 列表；读取失败、内容损坏或版本/结构无法识别时保留原键并抛错；
- * upsert 先经可选 normalize 清洗校验（无效可直接抛错），再按传入对象的主键去重追加；
+ * upsert 先经可选 normalize 清洗校验（无效可直接抛错），再按规范化对象的主键去重追加；
  * remove 后列表为空则直接删除存储键。
  *
  * 并发语义（接口承诺）：upsert 与 remove 是读改写，同一 store key 上按调用顺序串行执行，
@@ -70,7 +70,7 @@ export function createAccountListStore<TProfile>(input: {
     upsert(profile: TProfile): Promise<TProfile[]> {
       return this.mutate(async () => {
         const next = normalize ? normalize(profile) : profile;
-        const accounts = [...(await this.load()).filter((item) => keyOf(item) !== keyOf(profile)), next];
+        const accounts = [...(await this.load()).filter((item) => keyOf(item) !== keyOf(next)), next];
         await this.save(accounts);
         return accounts;
       });

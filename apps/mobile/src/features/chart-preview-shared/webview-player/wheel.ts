@@ -3,6 +3,7 @@ import { createLatestFrameScheduler } from './frame-scheduler';
 export type WheelControl = {
   getValue: () => number;
   setValue: (value: number, notify?: boolean) => void;
+  flush: () => void;
   dispose: () => void;
 };
 
@@ -18,8 +19,8 @@ const WHEEL_ITEM_HEIGHT = 28;
 
 function buildWheelValues(min: number, max: number, step: number): number[] {
   const values: number[] = [];
-  for (let value = min; value <= max + 1e-9; value += step) {
-    values.push(Math.round(value * 10) / 10);
+  for (let index = 0; min + index * step <= max + 1e-9; index += 1) {
+    values.push(Number((min + index * step).toFixed(8)));
   }
   return values;
 }
@@ -40,6 +41,8 @@ export function createWheel(
   let current = values.includes(initial) ? initial : values[0] ?? min;
   let settleTimer = 0;
   let selectedItem: HTMLElement | null = null;
+  let pendingCommit = false;
+  let disposed = false;
   const previewScheduler = createLatestFrameScheduler(
     requestAnimationFrame,
     cancelAnimationFrame,
@@ -78,7 +81,7 @@ export function createWheel(
     selectedItem?.setAttribute('aria-selected', 'false');
     selectedItem = list.children[indexOf(value)] as HTMLElement | null;
     selectedItem?.setAttribute('aria-selected', 'true');
-    if (notify) previewScheduler.schedule(value);
+    if (notify) { pendingCommit = true; previewScheduler.schedule(value); }
   };
 
   const scrollToValue = (value: number, behavior: ScrollBehavior = 'auto') => {
@@ -92,20 +95,27 @@ export function createWheel(
   };
 
   const setValue = (value: number, notify = false) => {
+    if (disposed) return;
     const next = values[indexOf(value)] ?? values[0] ?? min;
     applySelection(next, notify);
     scrollToValue(next);
   };
 
+  const flush = () => {
+    if (disposed) return;
+    window.clearTimeout(settleTimer);
+    previewScheduler.flush();
+    if (pendingCommit) { pendingCommit = false; onCommit(current); }
+  };
   const onScroll = () => {
+    if (disposed) return;
     const next = valueFromScroll();
     if (Math.abs(next - current) > 1e-9) applySelection(next, true);
     window.clearTimeout(settleTimer);
     settleTimer = window.setTimeout(() => {
       const settled = valueFromScroll();
-      previewScheduler.flush();
       scrollToValue(settled, 'smooth');
-      onCommit(settled);
+      flush();
     }, 120);
   };
   viewport.addEventListener('scroll', onScroll, { passive: true });
@@ -114,8 +124,9 @@ export function createWheel(
   applySelection(current, false);
 
   return {
-    getValue: () => current, setValue,
+    getValue: () => current, setValue, flush,
     dispose() {
+      disposed = true;
       previewScheduler.cancel();
       window.clearTimeout(settleTimer);
       viewport.removeEventListener('scroll', onScroll);
@@ -159,6 +170,7 @@ export function setupWheelPopup(
   };
 
   const closePopup = () => {
+    wheel.flush();
     open = false;
     popup.style.visibility = 'hidden';
     popup.style.pointerEvents = 'none';
@@ -181,13 +193,14 @@ export function setupWheelPopup(
 
   return {
     getValue: wheel.getValue,
+    flush: wheel.flush,
     setValue: (value, notify = false) => {
       valSpan.textContent = labels ? (labels[Math.round(value)] ?? String(value)) : format ? format(value) : value.toFixed(1);
       wheel.setValue(value, notify);
     },
     dispose() {
-      closePopup();
       wheel.dispose();
+      closePopup();
       trigger.removeEventListener('click', onTriggerClick);
       document.removeEventListener('click', onDocumentClick);
       popup.removeEventListener('click', stopPropagation);
@@ -195,4 +208,3 @@ export function setupWheelPopup(
     },
   };
 }
-

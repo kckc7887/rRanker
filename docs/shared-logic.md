@@ -249,7 +249,7 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
   调用 `SecureSessionStore.upsertAccount(account, signal?)` 和现有 Session 动作。
   `bindingKind: 'sms-code'` 属于凭据能力，账号管理按 `isCredentialProvider` 查询该能力。
   账密成功后把密码写入 `storage/rizline-password-store.ts` 的 `LargeSecureValueStore` 引用，
-  不进入 `RizlineSession` 或内存会话；短信登录不写也不清已有密码。
+  不进入 `RizlineSession` 或内存会话；短信登录不写也不清已有密码。writeRizlinePassword/deleteRizlinePassword 按稳定引用共用串行与删除代次，可选 { signal, assertCurrent } 在提交前后守卫，解绑后的迟到写入不能遗留密码。有效绑定之后缓存或密码保存失败保留账号并给出恢复提示。
   `check_phone === 1` 或登录 `code === 3` 时 `ProviderError.needsCode` 切回验证码表单，
   不自动 `send_verify_code`。
   `applyRizlineSessionRotation(accountId, next, expected, signal?)` 按 `mode + token` 比较、
@@ -380,8 +380,12 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
 `SessionIndexCorruptError` 并保留 `.corrupt` 副本，未知版本、顶层结构或账号/凭据行错误抛
 `SessionIndexUnrecognizedError` 并保留 `.unrecognized` 副本，原键不动，后续写入不得
 覆盖。账号引用的凭据不可读或不能解析时整个恢复失败，不静默丢弃关联账号；无账号引用的凭据不参与恢复。账号恢复入口记录脱敏的凭据读取错误。`LargeSecureValueStore.write` 校验新分片与清单读回，失败时恢复旧清单并清理新分片；账号仓库也在读回一致后才提交账号索引。旧版迁移源解析失败时跳过但不删除。`readPreservedSessionIndex` 读取保留副本，
-`restorePreservedSessionIndex` 只在副本可解析且当前索引不可用时写回；`clear()` 同时
-清理保留副本。账号管理页在恢复失败时提供重试恢复与清除登录数据（二次确认）入口。
+`restorePreservedSessionIndex` 只在副本可解析且当前索引不可用时写回。`loadVault()` 的读取和迁移与变更共用仓库串行队列。
+`clear(): Promise<RemoveAccountResult>` 先提交 v4 合法空索引，再分别清理凭据、密码、保留副本和旧来源；
+提交失败保留原账号，提交后的失败只汇总 `cleanupFailures`，空索引阻止旧来源再次迁移。
+迁移失败的内部清理仍保留旧来源重试能力。保存失败或取消回滚失败时先读回实际索引，
+仅删除可确认未被引用的新凭据；无法确认提交状态时保留凭据并记录失败阶段。
+账号管理页在恢复失败时提供重试恢复与清除登录数据（二次确认）入口。
 `domain/session-vault.ts` 保存纯会话类型、映射和 `SessionPersistenceError`，Store 不通过存储模块
 引入原生依赖。真实凭据 I/O 失败标记 `credential_storage`，索引 I/O 或内容失败标记
 `local_commit`；公共错误入口显示固定文案，取消原因不改写。`SecureSessionStore.updateAccountSession`
@@ -435,6 +439,7 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
   `uploadRecordsToLxns` / `uploadRecordsToDivingFish` 的 `assertEligible` 在每次重试前再复核；
   失效目标不再向上游写入，其他目标独立完成，已写入的远端结果不回滚。
 - `clearStorageByCategories` 先提升所属游戏代次，再取消并移除查询，然后执行适配器清理。
+  同类资源与图片清理通过 `Promise.allSettled` 等待全部终态后汇总失败并测量回收量；原生图片清理返回 false 或抛错均报告失败，部分成功仍保留实际结果。
   `cancelBoundAccountQueries(account, client)` 在解绑删除前使单个账号失效，取消并移除
   其查询，保留其他账号和公共曲库。解绑与全游戏清缓存不得混用失效范围。
 - `createInflightGuard.share(key, loader, signal?)` 为每个消费者单独管理取消；最后一个
@@ -444,6 +449,12 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
   隔离单项失败；`throw` 模式首错停止领取，等待所有在途任务结束后再抛错。
   公共暂存执行器使用后者，信号继续传入下载、读取及 writer；失败统一清理 session。
   同一远程文件共享下载，每次写入使用独立临时文件，检查长度和代次后替换目标。
+- `hooks/use-bounded-queries.ts` 的 `useBoundedQueries(options, concurrency, enabled?, retryFailedOnMount?)`
+  只为已领取项创建 Observer，保留逐项查询键和共享缓存；加载、失败重试与自动重取经过
+  `createBoundedLoadQueue(concurrency)` 的同一有界队列，取消后停止领取新项。Muse Dash 明细限制 6 路，
+  未启用相关筛选时不创建明细查询；Majdata 收藏详情与 osu! 详情成绩限制 4 路。
+  Majdata 的 `majdata-service` 在 `createInflightGuard.share` 内将实际歌曲请求及谱面修订核验统一限为 4 路，缓存首屏不占网络槽位，后台刷新仍受限。领取前复核消费者取消、前台信号和资源代次；清理、后台或最后一个消费者取消时停止新任务。
+  游戏页查询以 `notifyOnChangeProps: []` 暂停隐藏页通知，恢复可见后读取最新缓存；根部独立订阅继续工作。
 - `runDatabaseWrite(task)` 串行化同一业务连接的写入、事务与 schema 初始化。调用者先
   完成 Repository 初始化，task 内不得嵌套进入队列。批量资源/账号删除按 500 个参数分批，
   一次清理使用同连接事务；失败不阻塞后续任务，也不回滚其他仓库的写入。
@@ -451,7 +462,9 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
 - `SqliteSnapshotRepository.updateResource(key, schemaVersion, transform, assertCurrent?)` 把读取、
   转换、代次断言与写入放进同一个写入队列任务，队列内只用直接数据库调用（不重入队列）；
   同一资源的并发合并按提交顺序串行。`PhiraCache.mergeBests` 与 `osuCache.mergeKnownScores` 用它从最新版本提交合并，后者按谱面保留更高分，
-  空集合只读回既有快照、不写入、不推进 `updatedAt`；合同由 `sqlite-storage-integration.test.ts`
+  transform 可显式返回 `{ value, write: false }`，仍在队列内复核代次但不写入。
+  osu! 空集合、重复或更低的成绩种子保留已有快照及 `updatedAt`；同分但元数据变化仍提交。
+  合同由 `sqlite-storage-integration.test.ts`
   与 `sqlite-snapshot-repository.test.ts` 覆盖。
 
 验证入口包括 `account-metadata-observers.test.tsx`、`account-thumbnail.test.ts`、
@@ -470,7 +483,7 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
   输出操作累计耗时。底层调用方只依赖该轻量入口，不引入日志存储或页面依赖。
 - `services/runtime-logs.ts` 提供 `initializeRuntimeLogs()`、`recordRuntimeRoute(segments)`、
   `shareRuntimeLog(id)` 和唯一 `runtimeLogs` 控制器。控制器公开 `start()`、`stop()`、
-  `setCapacity(1000 | 2000 | 5000)`、`loadHistory()`、`subscribe()`、`getSnapshot()` 与 `snapshot(id)`。
+  `setCapacity(1000 | 2000 | 5000)`、`loadHistory()`、同步 `flush()`、`subscribe()`、`getSnapshot()` 与 `snapshot(id)`。
   页面订阅状态，不直接写数据库；容量和 `enabled` 偏好复用 `createPreferencesStore`。
   `start()`、`stop()`、`setCapacity()` 均返回 `Promise<void>`，串行保存用户选择。
   状态中的 `enabled` 表示持久开关，`activeId` 表示当前记录，保存失败不自动关闭开关。
@@ -484,15 +497,25 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
   开始与各尝试结果共享 operationId，错误码使用公共归一化结果，主动取消不带错误堆栈。
   查询/变更终态错误补充 `phase: final`，只提取白名单错误码，不读取 Query Key 或任意 cause 链。
   `runtimeBuildContext(nativeBuild, configuredBuild)` 区分构建号的原生、配置和未知来源。
+  条目可选 `severity` 为 debug/info/warn/error/fatal，旧记录仍可读取和分享；阶段为 debug，
+  成功和正常取消为 info，重试及回退为 warn，失败为 error，实际致命异常为 fatal。
+  `createRuntimeOperation(source, { parentOperationId? })` 记录累计与相邻阶段耗时；HTTP 可选
+  `diagnosticParentOperationId` 关联父操作。缓存优先组合器记录缓存命中、刷新、发布及终态；
+  凭据补写沿同一 operationId 记录原因、尝试次数和结果，不记录凭据内容。
 - `storage/rranker-database.ts` 的 `getRuntimeLogDatabase()` 管理独立日志连接与 Schema 队列；
   `RuntimeLogRepository` 统一事务创建、增量追加、容量裁剪、结束和恢复。成功创建第三份
   才淘汰最旧记录；每份独立保留最后 N 条。每次启动恢复开启偏好后创建新记录，
   包含当前记录在内保留两份；进程内重复初始化、页面切换及前后台切换不另建记录。
   控制器只在追加成功后更新内存条数和时间，不对每条事件调用 list；状态转换重新读取。
+  `appendBatch(id, entries)` 一次同步事务内分配有序序号、插入并裁剪；控制器普通事件按
+  32 条或 100 ms 合批，仅一次发布。致命异常、停止、快照分享和后台立即同步 flush。
+  批次失败整体回滚并隔离，不计入已保存数量。开关默认关闭，开启后直接记录详细事件。
+  `initializeRuntimeLogs` 单次订阅 `subscribeAppLifecycleSnapshot(listener)`，在原生 AppState handler 发布后台状态时记录边界并同步 flush，React effect 不重复记录；反复后台通知与内存警告只触发必要 flush。
   Repository 快照复用 sequence 输出 summary 的 totalCount、retainedCount、trimmedCount、
   firstAt、lastAt 和 byType；后两项时间及类型统计只覆盖保留事件。控制器补充 snapshotAt，
   不修改已有 formatVersion、记录结构或数据库表，旧记录继续分享。
-- 日志正文不属于缓存；分享副本复用 `expo-sharing` 和现有 `rranker-` 临时缓存规则。
+- 日志正文不属于缓存；分享副本复用 `expo-sharing` 和现有 `rranker-` 临时缓存规则，
+  手动日志分享结束后清理自身副本，清理失败独立记录且不覆盖分享结果。
   `runtime-diagnostics.ts` 的 `snapshotRuntimeDiagnostics(): Promise<RuntimeDiagnosticStore>`
   将读取排入既有串行队列，返回独立快照，保持最近三次启动/256 条事件的上限。尚未开始写入的连续事件合并为最多 256 条的有序批次，共用一次读写和完成 Promise；快照调用切断批次，后续事件在快照后写入。`runtime-diagnostics.test.tsx` 覆盖批量写入次数、快照顺序及失败恢复。
   简要诊断正文使用 `Paths.document/rranker-runtime-diagnostics.json`；有效正文优先，
@@ -530,6 +553,7 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
 
 账号管理的 `useManagedAccountOperations` 继续使用 `screens/game-accounts-actions.ts` 的公共执行器，
 档案/缓存策略由 `services/account-management.ts` 提供，互斥弹层与转场归 `useAccountBindingFlow`。
+同一模块的 `useAccountBindingRequest(visible, cancelOnBackground = true)` 为水鱼、osu! 和 Phigros 绑定提供 `begin(parentSignal?)` / `cancel()`，请求持有 `signal`、`isCurrent`、`assertCurrent` 和 `finish`；隐藏、取消或释放使旧请求永久失效。Phigros 使用 `cancelOnBackground = false` 保留授权轮询暂停与恢复，网络阶段另消费前台信号。`PasswordLoginPanel.disabled?` 可由父面板联动附属清理，提交仍在同步入口检查互斥状态。
 `removeBoundPlayerAccount` 的可选 `prepareRemoval` 在删除前取消账号查询；失败中止删除并通知，
 `finally` 始终释放 busy。关键解绑提交（`clearPlayer` 收到的 `submit`）抛出时返回
 `{ status: 'blocked' }`，账号与凭据保持原样、界面保留该账号作为重试入口。
@@ -583,6 +607,8 @@ Kyou 标签、评级主题和具体字段。Phira 使用自身 `PhiraFilterBar` 
 评级与筛选由 `domain/phira-filters.ts` / `phira-score-presentation.ts` 按 Phira 原始成绩解释，颜色与标签复用中性的 `domain/score-grade-theme.ts`，不引用其它游戏主题或组件。
 详情复用 `FloatingSongDetailChrome`（内部调用 `SongDetailChrome`）与
 `SongDetailChromeStyles.ts` 的 `VERTICAL_SONG_DETAIL_STYLES`，不引用 Phigros 页面。
+useUserLibrary 的收藏/练习动作复用公共 in-flight 入口合并重复操作，失败统一捕获并提示，隐藏、切游戏、后台或卸载后的迟到失败不更新提示；标签与预设仍将失败交回 TagEditor。预设选择超过 MAX_TAGS_PER_ITEM 时保留原选择并提示。歌曲行导航经 detailTargetHref 保留全部详情参数，游戏身份、osu! 模式与备份校验引用注册集合。
+
 Muse Dash 筛选字段类型位于 `domain/muse-dash.ts`，State 与 UI 均从领域层导入。
 
 列表可见性通过条目级 `useSyncExternalStore` 订阅，仅通知发生变化的图片持久化及内容活动 scope；
@@ -646,7 +672,7 @@ iOS 截图前若 App 处于 inactive 或 background，先等到 `foreground-read
 仍输出旧格式供既有导出链与浏览器检查脚本使用。
 `dispose` 由壳注入：释放的会话仍是当前会话时才注入 `DISPOSE_SCRIPT`，触发点是 prepare effect 的清理函数（卸载或依赖变化）、
 后台与内存警告、手动重载、播放器失败以及内容进程退出/渲染进程终止；四个播放器把各自的释放实现挂到同一分派器上，
-四套播放器都有 `pagehide` 兜底释放。Simai、PGR/RPE、Rizline 用 `PlayerEventScope` 回收 DOM 监听、观察器、计时器和媒体；一个清理失败仍执行剩余释放。Simai 在初始化前接入宿主命令，晚到解析或解码不得更新终态；PGR/RPE 释放 GIF bitmap、视频等待与 WebGL 对象。
+四套播放器都有 `pagehide` 兜底释放。Simai、PGR/RPE、Rizline 和 osu! 用 `PlayerEventScope` 回收 DOM 监听、观察器、计时器和媒体；一个清理失败仍执行剩余释放。Simai 在初始化前接入宿主命令，晚到解析或解码不得更新终态；PGR/RPE 释放 GIF bitmap、视频等待与 WebGL 对象。osu! 入口从播放会话读取谱面元数据，不再次解析。
 四套播放器的生成物（`assets/maimai-chart-preview/`、`assets/phigros-chart-preview/`、`assets/osu-chart-preview/`、
 `assets/rizline-chart-preview/` 下的 `player.js`、`player.bundle`、`index.html`）由
 `npm run build:chart-preview`、`npm run build:phigros-chart-preview`、`npm run build:osu-chart-preview`、
@@ -761,9 +787,11 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
 `resume` 并复核命令代次与释放状态，合同由 `rizline-chart-preview-playback.test.ts` 覆盖。
 
 `chart-preview-shared/webview-player/wheel.ts` 的 `setupWheelPopup` 接受元素、即时预览与提交
-回调、范围、初始值、可选文本标签及数值格式，供舞萌、osu! 与 Rizline 使用；返回
-`getValue`、`setValue` 与 `dispose`，`closeActiveWheelPopup` 统一关闭当前浮层。
+回调、范围、初始值、可选文本标签及数值格式，供舞萌、Phigros、osu! 与 Rizline 使用；支持 0.05/0.01 精度，返回
+`getValue`、`setValue`、`flush` 与 `dispose`，`closeActiveWheelPopup` 统一关闭当前浮层。
 `frame-scheduler.ts` 按帧合并最新预览，拨轮停止 120 ms 后提交；领域设置解释留在各播放器。
+桥接设置事件可选 `committed`，缺省按已提交处理；Phigros 的 `false` 预览只暂存在宿主当前会话，
+停滚、inactive、后台、卸载及换会话前保存最终值，迟到消息不得写入新会话。
 共享交互模块不解释音符、模式或游戏 ID，新增设置不得另建持久化入口。
 `chart-preview-wheel.test.ts` 验证预览、提交、格式与销毁，
 `osu-chart-preview-controls.test.ts` 与 `rizline-chart-preview-controls.test.ts`
@@ -922,6 +950,10 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
   执行资源下载、打包、取消、临时目录清理和保存。舞萌保留 `.adx.zip`，Majdata 使用 `.zip`，
   完整文本与音频、原格式封面、可选视频均走相同入口。封面按实际文件签名保存为
   `bg.png` / `bg.jpg`；无法识别时中止并清理临时目录，避免生成播放器无法读取的封面。
+  `stored-zip.ts` 的 `writeStoredZip` 使用原生文件句柄以 64 KiB 固定块写 STORE ZIP/ZIP64，
+  CRC 复用 `createChartPreviewCrc32()` 增量状态，读写按实际偏移验证进度。
+  不读取整文件或生成整包内存数组，不新增大小拒绝条件。保存使用 `saveChartPackage` 的文件入口，
+  等待保存完成后释放自身暂存；清理失败独立记录，不覆盖保存、取消或原始失败结果。
 - `useChartPackageDownload.start(runner, { optionalVideoUrl? })` 统一视频 HEAD 检查、
   是否包含视频的选择和正式下载；runner 接收 `(options, includeVideo)`。
   视频检查使用公共 HTTP 的 12 秒超时和单次尝试，与弹窗、下载共用重复点击锁与取消信号。

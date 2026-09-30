@@ -15,6 +15,7 @@ import {
 } from '@/services/account-avatar-resolver';
 import { persistBoundAccountAvatar } from '@/services/resolve-account-avatar-persist';
 import { loadTufPlayerFresh, makeTufSnapshot, TufCache } from '@/services/tuf-cache';
+import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
 
 export type { PhigrosAccountHydration };
 
@@ -57,7 +58,8 @@ function createDefaultPorts(): AccountAvatarResolverPorts {
       cachedPlayer: async (playerId) => (await tufCache.loadPlayer(playerId))?.data ?? null,
       refreshPlayer: async (playerId, signal) => {
         const player = await loadTufPlayerFresh(playerId, signal);
-        if (!signal.aborted) void tufCache.savePlayer(playerId, makeTufSnapshot(player)).catch(() => undefined);
+        if (!signal.aborted) void tufCache.savePlayer(playerId, makeTufSnapshot(player)).catch(error =>
+          recordRuntimeDiagnostic('operation', { source: 'account-avatar', gameType: 'adofai', phase: 'cache-persist', result: signal.aborted ? 'cancelled' : 'failed', error }));
         return player;
       },
     },

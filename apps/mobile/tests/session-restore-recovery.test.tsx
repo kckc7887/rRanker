@@ -3,7 +3,7 @@ import { jest } from '@jest/globals';
 import { GameAccountsScreen } from '@/screens/GameAccountsScreen';
 
 const mockRestoreAppAccounts = jest.fn(async () => undefined);
-const mockClearSessions = jest.fn(async () => undefined);
+const mockClearSessions = jest.fn(async () => ({ committed: true, cleanupFailures: [] as string[] }));
 const mockShowNotification = jest.fn();
 const mockShowActionNotification = jest.fn();
 let mockRestoreError: string | null = '无法读取本机登录状态，请重试恢复。';
@@ -160,5 +160,29 @@ describe('session restore recovery', () => {
     expect(mockRestoreAppAccounts).not.toHaveBeenCalled();
     await fireEvent.press(screen.getByLabelText('重试恢复登录状态'));
     await waitFor(() => expect(mockRestoreAppAccounts).toHaveBeenCalledTimes(1));
+  });
+
+  it('reloads the empty committed state and reports partial cleanup without retaining the old view', async () => {
+    mockClearSessions.mockResolvedValueOnce({ committed: true, cleanupFailures: ['密码', '旧登录数据'] });
+    const screen = await render(<GameAccountsScreen />);
+    await fireEvent.press(screen.getByLabelText('清除登录数据并重新绑定'));
+    const input = mockShowActionNotification.mock.calls[0][0] as { actions: { label: string; onPress?: () => void }[] };
+    await act(async () => { input.actions.find(action => action.label === '清除')?.onPress?.(); });
+    await waitFor(() => expect(mockRestoreAppAccounts).toHaveBeenCalledTimes(1));
+    expect(mockShowNotification).toHaveBeenCalledWith({ title: '已清除登录数据', message: '请重新绑定需要使用的账号。密码、旧登录数据清理失败。', variant: 'warning' });
+  });
+
+  it('does not notify after leaving while a clear is pending', async () => {
+    let complete!: () => void;
+    const pending = new Promise<void>(resolve => { complete = resolve; });
+    mockClearSessions.mockImplementationOnce(async () => { await pending; return { committed: true, cleanupFailures: [] }; });
+    const screen = await render(<GameAccountsScreen />);
+    await fireEvent.press(screen.getByLabelText('清除登录数据并重新绑定'));
+    const input = mockShowActionNotification.mock.calls[0][0] as { actions: { label: string; onPress?: () => void }[] };
+    await act(async () => { input.actions.find(action => action.label === '清除')?.onPress?.(); });
+    await screen.unmount();
+    await act(async () => { complete(); await pending; });
+    await waitFor(() => expect(mockRestoreAppAccounts).toHaveBeenCalledTimes(1));
+    expect(mockShowNotification).not.toHaveBeenCalled();
   });
 });

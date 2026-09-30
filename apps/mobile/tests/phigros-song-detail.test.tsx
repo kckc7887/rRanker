@@ -448,7 +448,7 @@ describe('Phigros song detail', () => {
       />,
     );
     await fireEvent.press(row.getByLabelText('查看歌曲 测试曲'));
-    expect(mockPush).toHaveBeenCalledWith('/songs/Song.A');
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: 'Song.A' } });
 
     await fireEvent.press(row.getByLabelText('收藏 测试曲'));
     expect(mockSetSongFavorite).toHaveBeenCalledWith('Song.A', true);

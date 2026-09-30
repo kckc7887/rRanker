@@ -10,6 +10,11 @@ import {
 } from '@/domain/osu-mods';
 
 describe('osu! 模组元数据映射', () => {
+  it('keeps applicable modes in the upstream ruleset display order', () => {
+    expect(OSU_MOD_METADATA.find(item => item.acronym === 'DT')?.applicableGameIds)
+      .toEqual(['osu-standard', 'osu-taiko', 'osu-catch', 'osu-mania']);
+  });
+
   it('覆盖 67 个模组（66 个 UserPlayable + SV2）', () => {
     expect(Object.keys(OSU_MOD_TYPE_BY_ACRONYM)).toHaveLength(67);
     expect(OSU_MOD_METADATA).toHaveLength(67);

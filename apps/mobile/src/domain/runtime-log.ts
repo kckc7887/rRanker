@@ -1,6 +1,7 @@
 export type RuntimeLogCapacity = 1000 | 2000 | 5000;
 export type RuntimeLogPreferences = { capacity: RuntimeLogCapacity; enabled: boolean };
 export type RuntimeLogStatus = 'recording' | 'stopped' | 'interrupted' | 'failed';
+export type RuntimeLogSeverity = 'debug' | 'info' | 'warn' | 'error' | 'fatal';
 export type RuntimeLogSession = {
   id: number;
   startedAt: string;
@@ -12,6 +13,7 @@ export type RuntimeLogSession = {
 export type RuntimeLogEntry = {
   at: string;
   type: string;
+  severity?: RuntimeLogSeverity;
   fields: Record<string, string | number | boolean>;
   error?: { name: string; summary: string; stack: string[] };
 };
@@ -36,6 +38,7 @@ export const RUNTIME_ERROR_CODES = [
 export type RuntimeErrorContext = {
   phase?: string;
   operationId?: number;
+  parentOperationId?: number;
   pageIndex?: number;
   errorCode?: typeof RUNTIME_ERROR_CODES[number];
 };
@@ -44,7 +47,7 @@ const stringFields = new Set([
   'source', 'result', 'platform', 'appVersion', 'buildVersion', 'phase',
   'buildVersionSource', 'systemVersion', 'executionEnvironment',
 ]);
-const numberFields = new Set(['accountCount', 'queryCount', 'durationMs', 'attempt', 'status', 'capacity', 'operationId', 'pageIndex']);
+const numberFields = new Set(['accountCount', 'queryCount', 'durationMs', 'phaseDurationMs', 'attempt', 'status', 'capacity', 'operationId', 'parentOperationId', 'pageIndex', 'itemCount', 'byteCount', 'cacheCount']);
 const errorNames = new Set(['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError', 'AbortError', 'ProviderError']);
 
 export function runtimeBuildContext(nativeBuild: unknown, configuredBuild: unknown) {
@@ -105,16 +108,33 @@ function sanitizeCredentialWriteFields(input: Readonly<Record<string, unknown>>,
   if (typeof attempts === 'number' && Number.isSafeInteger(attempts) && attempts >= 0 && attempts <= 1_000_000) fields.attempts = attempts;
 }
 
+function runtimeLogSeverity(type: string, fields: RuntimeLogEntry['fields'], input: Readonly<Record<string, unknown>>): RuntimeLogSeverity {
+  if (fields.fatal === true) return 'fatal';
+  if (fields.errorCode === 'cancelled' || fields.result === 'cancelled') return 'info';
+  const requested = property(input, 'severity');
+  if (requested === 'debug' || requested === 'info' || requested === 'warn' || requested === 'error') return requested;
+  if (['fallback', 'pending', 'retry', 'retry-scheduled', 'waiting'].includes(String(fields.result))
+    || ['pending', 'retry-scheduled', 'waiting'].includes(String(fields.credentialWrite))) return 'warn';
+  if (fields.result === 'failed' || fields.result === 'error' || type === 'error' || property(input, 'error') !== undefined) return 'error';
+  if (fields.result === 'success' || fields.result === 'ready' || fields.result === 'applied') return 'info';
+  return type === 'operation' ? 'debug' : 'info';
+}
+
+function sanitizeNumericFields(input: Readonly<Record<string, unknown>>, fields: RuntimeLogEntry['fields']): void {
+  for (const key of numberFields) {
+    const value = property(input, key);
+    const limit = key.endsWith('OperationId') || key === 'operationId' || key === 'byteCount' ? Number.MAX_SAFE_INTEGER : 1_000_000_000;
+    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= limit) fields[key] = value;
+  }
+}
+
 export function sanitizeRuntimeLogEntry(type: string, input: Readonly<Record<string, unknown>>, at: string): RuntimeLogEntry {
   const fields: RuntimeLogEntry['fields'] = {};
   for (const key of stringFields) {
     const value = property(input, key);
     if (typeof value === 'string' && words.test(value)) fields[key] = value;
   }
-  for (const key of numberFields) {
-    const value = property(input, key);
-    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= (key === 'operationId' ? Number.MAX_SAFE_INTEGER : 1_000_000_000)) fields[key] = value;
-  }
+  sanitizeNumericFields(input, fields);
   for (const key of ['memoryWarning', 'fatal', 'development']) {
     const value = property(input, key);
     if (typeof value === 'boolean') fields[key] = value;
@@ -128,8 +148,8 @@ export function sanitizeRuntimeLogEntry(type: string, input: Readonly<Record<str
   if (RUNTIME_ERROR_CODES.some((value) => value === errorCode)) fields.errorCode = errorCode as string;
   const error = property(input, 'error');
   const entry: RuntimeLogEntry = {
-    at, type: words.test(type) ? type : 'event', fields,
-    ...(error !== undefined ? { error: sanitizeRuntimeLogError(error) } : {}),
+    at, type: words.test(type) ? type : 'event', fields, severity: runtimeLogSeverity(type, fields, input),
+    ...(error !== undefined && fields.errorCode !== 'cancelled' && fields.result !== 'cancelled' ? { error: sanitizeRuntimeLogError(error) } : {}),
   };
   // 所有保留字段均为 ASCII；裁剪序列化长度同时限制 UTF-8 字节数。
   while (JSON.stringify(entry).length > 8192 && entry.error?.stack.length) entry.error.stack.pop();

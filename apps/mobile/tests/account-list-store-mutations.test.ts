@@ -52,6 +52,16 @@ class MemoryStore {
 const profile = (id: string): Profile => ({ id, displayName: id.toUpperCase() });
 
 describe('account list store mutations', () => {
+  it('deduplicates by the normalized primary key', async () => {
+    const { Store: NormalizedStore } = createAccountListStore<Profile>({
+      storeKey: 'normalized:accounts', parse: parseProfiles, keyOf: value => value.id,
+      normalize: value => ({ ...value, id: value.id.trim().toLowerCase() }),
+    });
+    const store = new NormalizedStore(new MemoryStore());
+    await store.upsert({ id: 'player', displayName: 'Before' });
+    await store.upsert({ id: ' PLAYER ', displayName: 'After' });
+    await expect(store.load()).resolves.toEqual([{ id: 'player', displayName: 'After' }]);
+  });
   it('keeps every entry when the same store upserts concurrently', async () => {
     const storage = new MemoryStore();
     storage.blockedReads = 2;

@@ -1,5 +1,6 @@
 import { assertChartPreviewGifFrameCount, assertChartPreviewGifFramePixels, assertChartPreviewTexturePixels, ChartPreviewBudgetExceededError, pauseChartPreviewParse } from '../../chart-preview-shared/chart-preview-resource-budget';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
+import { closeActiveWheelPopup, setupWheelPopup as setupSharedWheelPopup, type WheelControl } from '../../chart-preview-shared/webview-player/wheel';
 /**
  * Phigros / Phira 谱面确认 WebView 播放器入口。
  * 播放位置、命令代次、音乐音源、打击音调度与 rAF 归 PhigrosPlaybackSession；
@@ -58,8 +59,6 @@ const SKIN_BASE = './skin/';
 const LINE_COLORS: readonly string[] = ['white', 'gold', 'blue'];
 const LINE_COLOR_LABELS: readonly string[] = ['白色', '金色', '蓝色'];
 const STEP_SECONDS = 5;
-/** 拨轮（移植舞萌 setupWheelPopup/createWheel）。 */
-const WHEEL_ITEM_HEIGHT = 28;
 
 function postStatus(type: string, payload: Record<string, unknown> = {}): void {
   if (disposed) return;
@@ -137,159 +136,8 @@ function loadImage(url: string, signal: AbortSignal): Promise<HTMLImageElement> 
   });
 }
 
-/** 拨轮，逐语义移植舞萌 createWheel。 */
-function buildWheelValues(min: number, max: number, step: number): number[] {
-  const values: number[] = [];
-  for (let value = min; value <= max + 1e-9; value += step) {
-    values.push(Math.round(value * 100) / 100);
-  }
-  return values;
-}
-
-function createWheel(
-  viewport: HTMLElement,
-  list: HTMLElement,
-  onChange: (value: number) => void,
-  min: number,
-  max: number,
-  step: number,
-  initial: number,
-  labels?: readonly string[],
-): { getValue: () => number; scrollTo: (v: number) => void } {
-  const values = buildWheelValues(min, max, step);
-  let current = values.includes(initial) ? initial : values[0] ?? min;
-  let settleTimer = 0;
-  events.own(() => window.clearTimeout(settleTimer));
-
-  const itemLabel = (v: number) => {
-    if (labels) {
-      const i = values.indexOf(v);
-      return labels[i] ?? String(v);
-    }
-    return v.toFixed(2);
-  };
-
-  const refreshList = () => {
-    list.replaceChildren(
-      ...values.map((value) => {
-        const item = document.createElement('div');
-        item.className = 'wheel-item';
-        item.dataset.value = String(value);
-        item.textContent = itemLabel(value);
-        item.setAttribute('role', 'option');
-        item.setAttribute('aria-selected', value === current ? 'true' : 'false');
-        return item;
-      }),
-    );
-  };
-
-  refreshList();
-
-  const indexOf = (value: number) =>
-    Math.max(0, values.findIndex((item) => Math.abs(item - value) < 1e-9));
-
-  const applySelection = (value: number, notify: boolean) => {
-    current = value;
-    for (const child of list.children) {
-      const el = child as HTMLElement;
-      el.setAttribute('aria-selected', el.dataset.value === String(value) ? 'true' : 'false');
-    }
-    if (notify) onChange(value);
-  };
-
-  const scrollToValue = (value: number, behavior: ScrollBehavior = 'auto') => {
-    const index = indexOf(value);
-    viewport.scrollTo({ top: index * WHEEL_ITEM_HEIGHT, behavior });
-  };
-
-  const valueFromScroll = () => {
-    const index = clamp(Math.round(viewport.scrollTop / WHEEL_ITEM_HEIGHT), 0, values.length - 1);
-    return values[index]!;
-  };
-
-  events.listen(viewport, 'scroll', () => {
-    const next = valueFromScroll();
-    if (Math.abs(next - current) > 1e-9) applySelection(next, true);
-    window.clearTimeout(settleTimer);
-    settleTimer = window.setTimeout(() => {
-      scrollToValue(valueFromScroll(), 'smooth');
-    }, 80);
-  }, { passive: true });
-
-  scrollToValue(current);
-  applySelection(current, false);
-
-  return { getValue: () => current, scrollTo: scrollToValue };
-}
-
-let activePopupClose: (() => void) | null = null;
-/** 宿主释放后的播放器：不再改动界面、也不再回报状态。 */
 let disposed = false;
 const events = new PlayerEventScope(() => disposed);
-
-/** 拨轮字段，逐语义移植舞萌 setupWheelPopup，并支持自定义数值显示。 */
-function setupWheelPopup(
-  trigger: HTMLElement,
-  popup: HTMLElement,
-  viewport: HTMLElement,
-  list: HTMLElement,
-  valSpan: HTMLElement,
-  onChange: (value: number) => void,
-  min: number,
-  max: number,
-  step: number,
-  initial: number,
-  labels?: readonly string[],
-  format: (value: number) => string = (value) => value.toFixed(2),
-): { getValue: () => number } {
-  const wheel = createWheel(viewport, list, (value) => {
-    valSpan.textContent = labels ? (labels[value] ?? String(value)) : format(value);
-    onChange(value);
-  }, min, max, step, initial, labels);
-
-  let open = false;
-
-  const openPopup = () => {
-    activePopupClose?.();
-    open = true;
-    popup.style.visibility = '';
-    popup.style.pointerEvents = '';
-    const triggerRect = trigger.getBoundingClientRect();
-    popup.style.bottom = `${window.innerHeight - triggerRect.top + 4}px`;
-    popup.style.left = `${triggerRect.left + triggerRect.width / 2}px`;
-    popup.style.transform = 'translateX(-50%)';
-    wheel.scrollTo(wheel.getValue());
-    activePopupClose = closePopup;
-  };
-
-  const closePopup = () => {
-    open = false;
-    popup.style.visibility = 'hidden';
-    popup.style.pointerEvents = 'none';
-    if (activePopupClose === closePopup) activePopupClose = null;
-  };
-
-  events.listen(trigger, 'click', (e) => {
-    e.stopPropagation();
-    if (open) closePopup();
-    else openPopup();
-  });
-
-  events.listen(document, 'click', () => {
-    if (open) closePopup();
-  });
-
-  events.listen(popup, 'click', (e) => {
-    e.stopPropagation();
-  });
-  events.listen(popup, 'touchstart', (e) => {
-    e.stopPropagation();
-  });
-
-  valSpan.textContent = labels ? (labels[Math.round(initial)] ?? String(initial)) : format(initial);
-
-  return wheel;
-}
 
 function start(): void {
   const elements = {
@@ -349,6 +197,21 @@ function start(): void {
   let controlsTimer = 0;
   let controlsVisible = true;
   let fsLocked = false;
+  const wheels: WheelControl[] = [];
+
+  function setupWheelPopup(
+    trigger: HTMLElement, popup: HTMLElement, viewport: HTMLElement, list: HTMLElement,
+    valSpan: HTMLElement, onPreview: (value: number) => void, min: number, max: number,
+    step: number, initial: number, labels?: readonly string[],
+    format: (value: number) => string = value => value.toFixed(2),
+  ): void {
+    const wheel = setupSharedWheelPopup(trigger, popup, viewport, list, valSpan,
+      value => { onPreview(value); postStatus('settings', { settings: { ...settings }, committed: false }); },
+      persistSettings, min, max, step, initial, labels, format);
+    wheels.push(wheel);
+    events.own(wheel.dispose);
+  }
+  function flushSettings(): void { for (const wheel of wheels) wheel.flush(); }
 
   function rpeTextureNames(chart: RpeChart): Set<string> {
     const textureNames = new Set<string>();
@@ -821,6 +684,7 @@ function start(): void {
 
   function setFullscreen(active: boolean): void {
     if (disposed) return;
+    closeActiveWheelPopup();
     isFullscreen = active;
     renderer.setFullscreen(active);
     document.body.classList.toggle('fullscreen', active);
@@ -841,17 +705,20 @@ function start(): void {
   /** 暂停（手动按钮或宿主生命周期）：只停播，不改变全屏状态。 */
   function pauseForLifecycle(): void {
     if (disposed) return;
+    flushSettings();
+    closeActiveWheelPopup();
     session.pause();
   }
 
   /** 释放：停播、退出全屏、回收资源，幂等；此后不再改动界面或回报状态。 */
   function disposePlayer(): void {
     if (disposed) return;
+    flushSettings();
     loadController?.abort();
     loadController = null;
     if (isFullscreen) setFullscreen(false);
     session.dispose();
-    activePopupClose?.();
+    closeActiveWheelPopup();
     disposed = true;
     events.dispose();
     window.clearTimeout(controlsTimer);
@@ -921,7 +788,6 @@ function start(): void {
       // 播放中改变倍速：采样级同步（与舞萌一致），不打断当前声源。
       session.applySpeedChange();
       applySettings();
-      persistSettings();
       if (!session.playing) renderFrame(session.chartTime);
     },
     0.5, 2, 0.05, settings.playbackSpeed, undefined, (value) => `${value.toFixed(2)}×`,
@@ -931,7 +797,6 @@ function start(): void {
     (value) => {
       settings.noteScale = value;
       applySettings();
-      persistSettings();
       if (!session.playing) renderFrame(session.chartTime);
     },
     0.6, 1.8, 0.05, settings.noteScale, undefined, (value) => `${value.toFixed(2)}×`,
@@ -941,7 +806,6 @@ function start(): void {
     (value) => {
       settings.volume = value;
       applySettings();
-      persistSettings();
     },
     0, 1, 0.01, settings.volume, undefined, (value) => `${Math.round(value * 100)}%`,
   );
@@ -950,7 +814,6 @@ function start(): void {
     (value) => {
       settings.backgroundDim = value;
       applySettings();
-      persistSettings();
       if (!session.playing) renderFrame(session.chartTime);
     },
     0.2, 0.85, 0.01, settings.backgroundDim, undefined, (value) => `${Math.round(value * 100)}%`,
@@ -960,7 +823,6 @@ function start(): void {
     (value) => {
       settings.hitSoundVolume = value;
       applySettings();
-      persistSettings();
     },
     0, 1, 0.01, settings.hitSoundVolume, undefined, (value) => `${Math.round(value * 100)}%`,
   );
@@ -969,7 +831,6 @@ function start(): void {
     (value) => {
       settings.lineColor = LINE_COLORS[value] ?? 'white';
       applySettings();
-      persistSettings();
       if (!session.playing) renderFrame(session.chartTime);
     },
     0, LINE_COLOR_LABELS.length - 1, 1, Math.max(0, LINE_COLORS.indexOf(settings.lineColor)), LINE_COLOR_LABELS,
@@ -999,7 +860,8 @@ function start(): void {
     else showControls();
   });
 
-  events.listen(window, 'resize', buildTimeline);
+  events.listen(window, 'resize', () => { closeActiveWheelPopup(); buildTimeline(); });
+  events.listen(document, 'scroll', closeActiveWheelPopup, { capture: true, passive: true });
   const timelineObserver = new ResizeObserver(buildTimeline);
   timelineObserver.observe(elements.timelineHost);
   events.own(() => timelineObserver.disconnect());
@@ -1017,7 +879,7 @@ function start(): void {
     applyChartPreviewHostCommand((event as MessageEvent).data, { pause: pauseForLifecycle, exitFullscreen: () => setFullscreen(false), dispose: disposePlayer });
   });
   events.listen(document, 'visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && session.playing) session.pause();
+    if (document.visibilityState === 'hidden') pauseForLifecycle();
   });
 
   applySettings();

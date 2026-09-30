@@ -29,7 +29,7 @@ const resumedActivities = () => {
   return top.length > 0 ? top : current;
 };
 const isMainActivity = (line) => /\bcom\.rranker\.app\/(?:\.MainActivity|com\.rranker\.app\.MainActivity)\b/.test(line);
-const isChooserActivity = (line) => /\bandroid\/com\.android\.internal\.app\.ChooserActivity\b/.test(line);
+const isChooserActivity = (line) => /(?:^|[\s{])(?:android\/com\.android\.internal\.app\.ChooserActivity|com\.android\.intentresolver\/(?:\.|com\.android\.intentresolver\.)ChooserActivity(?:Launcher)?)(?=$|[\s}])/.test(line);
 function assertApplicationForeground() {
   if (!resumedActivities().some(isMainActivity)) throw new DeviceCheckError('foreground', 'Application must be foreground before device input');
 }
@@ -70,6 +70,17 @@ const controlBounds = (node) => {
   const match = node?.bounds?.match(/^\[(\d+),(\d+)\]\[(\d+),(\d+)\]$/);
   return match ? match.slice(1).map(Number) : null;
 };
+const hasInteractiveChooser = (current) => current.some((node) => {
+  if (!['android', 'com.android.intentresolver'].includes(node.package) || node.enabled !== 'true') return false;
+  const bounds = controlBounds(node);
+  return bounds && bounds[2] > bounds[0] && bounds[3] > bounds[1];
+});
+async function returnFromChooser(label) {
+  await waitForActivity(isChooserActivity, `${label} system share chooser`);
+  await waitFor(hasInteractiveChooser, `${label} chooser interactive`);
+  shell('input', 'keyevent', 'KEYCODE_BACK');
+  await waitForActivity(isMainActivity, `${label} returns to MainActivity`);
+}
 function tap(node) {
   assert(node?.enabled === 'true' && node.package === applicationPackage, 'Expected enabled application control');
   const bounds = controlBounds(node);
@@ -173,9 +184,7 @@ try {
     evidence.checks.push({ name: 'logging-default-off', status: 'pass' });
     phase = 'diagnostic-share-system-chooser';
     tap(find(current, '分享诊断信息'));
-    await waitForActivity(isChooserActivity, 'diagnostic system share chooser');
-    shell('input', 'keyevent', 'KEYCODE_BACK');
-    await waitForActivity(isMainActivity, 'diagnostics returns to MainActivity');
+    await returnFromChooser('diagnostics');
     current = await waitFor((list) => find(list, '分享诊断信息')?.enabled === 'true' && find(list, '记录日志')?.enabled === 'true', 'diagnostic sharing completes');
     evidence.checks.push({ name: 'diagnostic-share-system-chooser', status: 'pass' });
     phase = 'logging-start';
@@ -198,9 +207,7 @@ try {
     evidence.checks.push({ name: 'logging-stop-settled', status: 'pass' });
     phase = 'recorded-history-share';
     tap(await waitForLatestLogShare());
-    await waitForActivity(isChooserActivity, 'recorded log system share chooser');
-    shell('input', 'keyevent', 'KEYCODE_BACK');
-    await waitForActivity(isMainActivity, 'recorded log returns to MainActivity');
+    await returnFromChooser('recorded log');
     await waitFor((list) => latestLogShare(list)?.enabled === 'true' && !find(list, '读取历史日志'),
       'recorded log sharing completes', rejectLogFailures);
     evidence.checks.push({ name: 'recorded-history-share-system-chooser', status: 'pass' });

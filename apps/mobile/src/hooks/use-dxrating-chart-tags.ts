@@ -18,6 +18,7 @@ export function useDxRatingChartTags(enabled = true) {
   const active = enabled && tabActive && activeGameId === 'maimai';
   return useQuery({
     enabled: active,
+    notifyOnChangeProps: tabActive ? undefined : [],
     queryKey: [DXRATING_CHART_TAGS_RESOURCE_KEY],
     queryFn: ({ signal }) => provider.getChartTags(signal),
     staleTime: 0,

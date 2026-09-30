@@ -4,6 +4,10 @@ import { SqliteSnapshotRepository, resetSnapshotSchemaForTests } from '@/storage
 import { resetRrankerDatabaseForTests, runDatabaseWrite } from '@/storage/rranker-database';
 import { captureResourceWrites, invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { PhiraCache } from '@/services/phira-cache';
+import { loadMajdataSong, majdataSongKey } from '@/services/majdata-service';
+import { majdataProvider } from '@/providers/majdata-provider';
+import { abortForegroundWork, beginForegroundWork } from '@/state/app-lifecycle-core';
+import type { MajdataSong } from '@/domain/majdata';
 
 import { SqliteUserLibraryRepository, resetUserLibrarySchemaForTests } from '@/storage/sqlite-user-library-repository';
 
@@ -48,6 +52,85 @@ describe('SQLite storage with real SQL and a measured async bridge', () => {
     await repository.initialize();
   });
   afterEach(() => database.close());
+
+  const majdataSong = (id: string): MajdataSong => ({
+    id, title: id, artist: '', designer: '', hash: 'cached', timestamp: '2026-09-01',
+    levels: ['', '', '', '', '14', '', ''], uploader: '', description: '', tags: [], publicTags: [],
+  });
+
+  async function seedMajdataSongs() {
+    const songs = Array.from({ length: 12 }, (_, index) => majdataSong(`cached-${index}`));
+    for (const song of songs) await repository.saveResource(majdataSongKey(song.id), 1, '2026-09-01', {
+      song, source: { kind: 'majdata-net', label: 'Majdata Net', updatedAt: '2026-09-01', isStale: false },
+    });
+    return songs;
+  }
+
+  function pendingMajdataRequests() {
+    let active = 0;
+    let maximum = 0;
+    const responses = new Map<string, ReturnType<typeof Promise.withResolvers<MajdataSong>>>();
+    const getSong = vi.spyOn(majdataProvider, 'getSong').mockImplementation((id, signal) => {
+      const response = Promise.withResolvers<MajdataSong>();
+      responses.set(id, response); active++; maximum = Math.max(maximum, active);
+      const cancel = () => response.reject(signal?.reason ?? new Error('cancelled'));
+      signal?.addEventListener('abort', cancel, { once: true });
+      if (signal?.aborted) cancel();
+      return response.promise.finally(() => { active--; signal?.removeEventListener('abort', cancel); });
+    });
+    return { getSong, responses, active: () => active, maximum: () => maximum };
+  }
+
+  it('keeps twelve persisted Majdata first paints immediate while actual background HTTP stays at four', async () => {
+    const songs = await seedMajdataSongs();
+    const requests = pendingMajdataRequests();
+    const onFresh = vi.fn();
+    try {
+      expect(await Promise.all(songs.map(song => loadMajdataSong(song.id, undefined, onFresh)))).toEqual(songs);
+      await vi.waitFor(() => expect(requests.getSong).toHaveBeenCalledTimes(4));
+      expect(requests.active()).toBe(4);
+      expect(onFresh).not.toHaveBeenCalled();
+      for (let index = 0; index < songs.length; index++) {
+        const song = songs[index];
+        await vi.waitFor(() => expect(requests.responses.has(song.id)).toBe(true));
+        requests.responses.get(song.id)!.resolve({ ...song, hash: 'fresh' });
+        await vi.waitFor(() => expect(onFresh).toHaveBeenCalledTimes(index + 1));
+      }
+      expect(requests.maximum()).toBe(4);
+      expect(requests.active()).toBe(0);
+      expect((await repository.getResource<{ song: MajdataSong }>(majdataSongKey(songs[0].id), 1))?.song.hash).toBe('fresh');
+    } finally {
+      requests.responses.forEach((response, id) => response.resolve({ ...majdataSong(id), hash: 'fresh' }));
+      requests.getSong.mockRestore();
+    }
+  });
+
+  it.each(['consumer', 'foreground', 'cache-clear'] as const)('stops cached Majdata tasks before the next HTTP claim after %s cancellation', async (reason) => {
+    const songs = await seedMajdataSongs();
+    const requests = pendingMajdataRequests();
+    const controller = new AbortController();
+    const onFresh = vi.fn();
+    try {
+      expect(await Promise.all(songs.map(song => loadMajdataSong(song.id, controller.signal, onFresh)))).toEqual(songs);
+      await vi.waitFor(() => expect(requests.getSong).toHaveBeenCalledTimes(4));
+      requests.responses.get(songs[0].id)!.resolve({ ...songs[0], hash: 'fresh' });
+      await vi.waitFor(() => expect(onFresh).toHaveBeenCalledTimes(1));
+      await vi.waitFor(() => expect(requests.getSong).toHaveBeenCalledTimes(5));
+      if (reason === 'consumer') controller.abort();
+      else if (reason === 'foreground') { abortForegroundWork(); beginForegroundWork(); }
+      else { invalidateResourceWrites('majdata-net'); await repository.clearResources(songs.map(song => majdataSongKey(song.id))); }
+      await vi.waitFor(() => expect(requests.active()).toBe(0));
+      await new Promise(resolve => setTimeout(resolve, 0));
+      expect(requests.getSong).toHaveBeenCalledTimes(5);
+      expect(requests.maximum()).toBe(4);
+      expect(onFresh).toHaveBeenCalledTimes(1);
+      for (const song of songs) {
+        const stored = await repository.getResource<{ song: MajdataSong }>(majdataSongKey(song.id), 1);
+        if (reason === 'cache-clear') expect(stored).toBeNull();
+        else expect(stored?.song.hash).toBe(song === songs[0] ? 'fresh' : 'cached');
+      }
+    } finally { controller.abort(); beginForegroundWork(); requests.getSong.mockRestore(); }
+  });
 
   it('measures encoded payload bytes, including Chinese and supplementary characters', async () => {
     const value = { title: '舞萌 DX', emoji: '🎵', empty: '' };

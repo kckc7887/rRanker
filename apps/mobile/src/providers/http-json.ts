@@ -116,6 +116,7 @@ export type JsonRequestOptions<T> = {
   onHttpError?: (response: Response) => Promise<ProviderError>;
   onResponse?: (response: Response) => void | Promise<void>;
   diagnosticScenario?: RuntimeRequestScenario;
+  diagnosticParentOperationId?: number;
   path: string;
   schema: z.ZodType<T>;
   fetcher: FetchLike;
@@ -182,7 +183,7 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
   const networkMessage = options.messages?.network ?? `无法连接${label}服务`;
   let previousError: ProviderError | null = null;
   const operationId = nextRuntimeOperationId();
-  const diagnostic = { source, scenario: options.diagnosticScenario, operationId };
+  const diagnostic = { source, scenario: options.diagnosticScenario, operationId, parentOperationId: options.diagnosticParentOperationId };
   void recordRuntimeDiagnostic('request-start', diagnostic);
   for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
     if (options.signal?.aborted) {
@@ -218,6 +219,7 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
         if (mapped.retryable && willRetry) {
           previousError = mapped;
           if (response.status === 429) await pause(retryAfterMs(response), options.signal);
+          result = 'retry';
           continue;
         }
         throw mapped;
@@ -240,11 +242,12 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
       });
       diagnosticError = normalized;
       if (normalized.code === 'upstream_schema') throw normalized;
-      if (attempt + 1 < totalAttempts) { previousError = normalized; continue; }
+      if (attempt + 1 < totalAttempts) { previousError = normalized; result = 'retry'; continue; }
       throw normalized;
     } finally {
       void recordRuntimeDiagnostic('request', {
         ...diagnostic, result, status, attempt: attempt + 1, durationMs: Date.now() - started,
+        severity: result === 'retry' ? 'warn' : undefined,
         errorCode: result === 'cancelled' ? 'cancelled' : diagnosticError instanceof ProviderError ? diagnosticError.code : undefined,
         error: result === 'cancelled' ? undefined : diagnosticError,
       });
@@ -270,6 +273,7 @@ export function requestBytes(options: Omit<JsonRequestOptions<Uint8Array>, 'sche
 
 export type ProviderJsonOptions = {
   diagnosticScenario?: RuntimeRequestScenario;
+  diagnosticParentOperationId?: number;
   baseUrl: string;
   path: string;
   /** 三段错误文案（无效 JSON/读取超时/无法连接），由调用方按数据源逐字提供。 */
@@ -291,6 +295,7 @@ export function fetchProviderJson(options: ProviderJsonOptions): Promise<unknown
     fetcher: expoFetch as unknown as FetchLike,
     signal: options.signal,
     diagnosticScenario: options.diagnosticScenario,
+    diagnosticParentOperationId: options.diagnosticParentOperationId,
     label: '公共曲库',
     totalAttempts: 1,
     error: (status) => providerErrorFromStatus(status),
