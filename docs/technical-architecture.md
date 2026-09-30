@@ -93,6 +93,14 @@ LXNS 使用 PKCE；LXNS 与 osu! 的 state 均为非空单字符串、有效 10 
 远端拒绝、构建配置、安全凭据与本机索引失败通过公共类型和固定文案区分，不显示原始异常。
 账号持久化仍使用既有绑定服务和安全仓库，Session Store 只发布内存视图。Phigros 账号恢复以安全仓库中的账号 ID 关联凭据，玩家昵称只作展示名；昵称更新不会改变账号 ID 或断开会话。
 
+osu! 多模式绑定先完成全部模式验证，再取 Provider 最终会话，经
+`SecureSessionStore.upsertAccounts(accounts, { activeAccountId, signal?, assertCurrent? })` 单次合并提交；
+共享凭据只写一次，首个所选模式在磁盘与内存同时激活。重新授权由 `setOsuBinding`
+更新全部仍关联该凭据的会话、所选账号元数据与 Provider 缓存，再一次发布活动视图。
+落雪绑定的 `signal` / `assertCurrent` 贯穿请求、快照与同一批量保存入口；索引写入及其
+后置守卫通过定义为提交完成，此前取消回滚，此后退出保留绑定并停止激活、清理与通知等页面动作。
+落雪回调页的 `useFocusEffect` 在失焦和卸载时撤销请求，复用登录面板在隐藏或卸载时撤销。
+
 Phigros 授权、身份交换、存档列表和二进制存档读取通过 `providers/phigros-auth.ts` 消费公共 `requestJson` / `requestBytes`，统一超时、取消、错误分类与安全日志。授权等待与减速仍由既有轮询处理，公共 HTTP 不额外重试；认证请求禁止重定向并省略环境凭据，公开存档下载保留 CDN 重定向与既有大文件能力。
 Phigros 云存档加载由 `services/phigros-game-data-service.ts` 的 `loadPhigrosGameData` 执行：
 首次查询检查快照与发布修订是否兼容，离线可返回旧快照；显式同步重新读取云存档。
@@ -278,12 +286,16 @@ Phigros 预览页在资源准备前读取所选难度的编号谱面清单；多
 - 刷新的结果与快照时间分开：`domain/refresh-result.ts` 的 `RefreshResult<T, Target>` 用 `RefreshStatus`（`success` / `partial` / `failed` / `cancelled` / `noop`）表达终态，`SnapshotMetadata` 只记录原提供方、抓取时间与修订；只有 `success` / `noop` 才推进抓取时间（`refreshedFetchedAt`），`partial` 保留成功项与失败项并可只重试失败项，`assertFreshSnapshotSource` 让缓存回退不能被当成刷新结果落盘。`services/cache-first.ts` 的 `cacheFirstLoadWithBackground` 返回首屏数据与永不 reject 的后台刷新终态句柄，`CacheFirstLoadOptions` 的 `onFresh`、`onFallback`、`onRefreshFailed` 分别接「取回新数据」「服务声明的缓存/兜底」「刷新抛错」，取消后都不发布，`cacheFirstLoad` 是只要首屏的简化入口；舞萌、Rizline 与 Majdata 的首屏加载复用组合器，异步发布回调也包含在终态中；回调抛错按失败结算。中二个人数据经 `ChunithmPersonalService.refresh` 分项结算，加载器直接保留其结果。真实成绩与中二分项请求复用 `createInflightGuard.share`，单个消费者取消不停止其它消费者。
 - KV 的默认入口是 `storage/key-value-storage.ts`，账号目录、偏好、安全会话索引、缓存维护和播放器设置都使用同一实例。`createSerializedKeyValueStorage(storage)` 按底层实例串行执行完整的 `getItem` / `setItem` / `removeItem` / `getAllKeys` 原生操作，覆盖语句准备、执行与释放；失败保留原错误并让后续任务继续，独立实例使用独立队列，不改变现有键与结构。原生 KV 的打开锁不等于完整操作串行。`key-value-storage.test.ts` 通过 AST 约束生产消费者只走该入口，独立原生探针只可直接构造临时实例，再使用同一协调器。
 - 账号列表由 `storage/create-account-list-store.ts` 的 `createAccountListStore` 统一读写：`upsert` / `remove` 经按键 mutation gate 在同一 KV store 与键上串行（前一个失败仍继续排下一个）。`load()` 不进入账号 mutation gate，但其底层原生读取仍进入公共 KV 执行队列；清理后的旧业务任务不能把已删除条目写回。
+- 上传用的 `ScoreHubAccountStore` 复用导出的 `enqueueKeyMutation`，完整读取迁移与全部变更按存储实例和索引键串行；内部调用不重复加锁。v3 索引及 v1/v2 迁移保持兼容。被引用的令牌读空或异常使整个读取以 `credential_storage` 失败，索引不可解析以 `local_commit` 失败；不以部分结果覆盖索引或删除密钥。
 - `RemoteImage` 统一远程图片加载。受控压缩缓存是 v3，总预算 10 MiB、单项上限 10 KiB；列表项达到 50% 可见并持续 250 ms 后才允许持久化，任务经 `InteractionManager` 等待交互结束，失去资格取消排队和在途消费。在线原图仍作为主加载源，缓存文件只作本地回退。失活只暂停落盘，不把已显示 source 置空。可见性通过条目级订阅通知，并经 `CachedContentActivityScope` 暂停离屏行的流光与自动滚字；保持列表 renderItem、extraData 和窗口参数稳定。动画同样受前台生命周期控制，`useReducedMotion` 为所有消费者共享一个原生订阅；等价 URL/请求头/cacheKey 不触发图片缓存重查。
 - 存储管理通过 `GAME_STORAGE_ADAPTERS` 声明账号归属、资源键/前缀、查询键及文件资源。`storage-adapter-core.ts` 的同一库存选择器用于统计与删除，涵盖没有成绩行的账号资源；SQL 写入仍走既有队列。共享缓存文件操作位于 `shared-storage-cache.ts`，不直接清空整个 Expo `Paths.cache`。
 
 账号管理由 `GameAccountsScreen` 装配列表和弹层，`useAccountBindingFlow` 维护互斥弹层及转场任务，
 `useManagedAccountOperations` 复用公共绑定/删除执行器；`services/account-management.ts` 提供档案、缓存和账号创建策略。
 删除前先失效并取消账号查询，准备失败中止后续删除，所有退出路径均解除忙碌状态。
+`switchBoundAccount` 即时更新内存选择，每次有效选择都保存活动账号，包括同目标重试；
+调用方统一显示“当前已切换，账号选择未保存，请重新选择”，公共操作代次抑制迟到错误。
+已成功创建的公共玩家或示例账号保留绑定，活动选择保存失败独立提示。
 `removeBoundPlayerAccount` 把关键解绑提交（账号或凭据删除）与分项清理分开：关键提交失败返回
 `blocked` 并保留账号与凭据，界面仍是重试入口。提交点是 `SecureSessionStore.removeAccount` 的凭据索引写盘：
 写盘成功即返回 `{ committed: true, cleanupFailures }`，Rizline 密码引用删除归入提交后的附属清理，
@@ -296,6 +308,8 @@ Phigros 预览页在资源准备前读取所选难度的编号谱面清单；多
 完成水鱼预刷新与（Rizline 的）曲库尽力刷新，再调用 `refreshGameDataBundle` 并只按它返回的
 终态判定：`success` / `noop` 视为成功，`partial` 按实际失败项提示玩家资料、成绩、最佳成绩或曲库未更新，认证失败提示重新登录；其它终态按公共失败文案提示。每一步等待后与通知前复核前台信号、账号、游戏和操作代次，切换后的旧结果不写新状态；调用方不维护逐游戏 waiter，也不二次读取查询缓存推断后台刷新是否落定。
 `UploadDataSheet` 的账号偏好、二维码输入与任务执行分别由 `useUploadAccountPreferences`、`useUploadQrInput`、`useUploadTaskState` / `useUploadExecution` 管理。唯一后台任务仍是 `uploadTaskController`；关闭或卸载弹层不终止任务，显式取消才结束。
+上传账号读取失败保留最后一次完整历史列表并提供重试，首次读取失败保持未就绪；
+历史账号选择提交成功后才发布新的好友码与勾选偏好，上传的网络兜底不会吞掉持久化错误。
 
 Kyou 别名的一小时会话缓存位于 `services/phigros-kyou-cache.ts`，查询 Hook 和存储清理均依赖该服务。
 服务通过 `createInflightGuard.share` 共享请求并独立取消消费者，清理使旧请求失效；迟到失败不能清空新缓存。
@@ -652,6 +666,20 @@ SQLite、KV 冷启并发、默认 KV、SecureStore、Crypto 和 FileSystem 桥�
 结果直接进入 Text/testID 和 logcat；诊断 APK 不代表生产入口已通过验收。
 `BUILD_SOURCE_COMMIT` 注入实际检出的提交身份，优化模式同时进入 Expo extra。
 
+`quality.yml` 的 `android-account-recovery` 使用独立入口 `native-account-recovery-entry.tsx`、
+包名 `com.rranker.app.nativeprobe`、每次生成的测试签名和固定源码 SHA，不使用生产凭据。
+正式入口保持 `expo-router/entry`；只有选择诊断入口时 app/Metro 配置才启用测试插件和
+`tests/native/expo-fetch-adapter.ts`。适配器仅将指定 LXNS / ScoreHub 请求转发至 runner 回环服务，
+继续使用真实原生 Expo Fetch，保留认证头、取消和响应流；验证实际响应 URL 且无重定向后，
+才投影原请求 URL 以满足既有来源检查。HTTP 放行仅作用于诊断构建。
+首进程一次领取随机合成凭据，经 `bindLxnsAccount` 和两个公共存储入口保存并读回核验。
+runner 禁止重复领取，强杀并确认旧进程退出后开启恢复认证；第二进程使用同一次安装的同一 APK，
+不清数据、不重装、不重新注入，通过 `restoreAppAccounts()` 恢复账号、凭据关联和活动账号，
+再由真实 Provider 与 `fetchMe()` 请求。服务器只接受首进程对应的原令牌；双阶段同时校验构建 SHA。
+成功与失败均清理合成账号、测试 APK、端口转发、服务器和临时签名。
+证据只保存 SHA、APK 摘要、进程身份、阶段与认证接受结果，保留 7 天。
+该闭环验证受控原生恢复；正式 Android/iOS 的真实账号保存、强杀、重启与官方认证另行验收。
+
 双端体积检查使用 Expo 导出，指定 Android 和 iOS 平台、source map、资源映射及输出目录，
 不启动 Expo Web。
 统计主程序 Hermes、独立播放器和按实际内容 SHA-256 去重的导出资源，source map 不计入交付体积。
@@ -679,8 +707,9 @@ opened / synchronize / reopened / edited（包含修改目标分支）与手动�
 | 外部 fork PR 到其它分支 | 只做质量检查 |
 
 `changed-scope` 与 `light-check` 并行；`quality` 同时依赖两者成功，有功能或 CI 改动时
-执行一次完整检查。`quality-gate` 始终聚合结果：范围或轻检查失败、源码身份不一致、
-完整检查失败/取消/意外跳过、判定缺失均失败；纯文档仅在前两项成功且完整检查明确跳过时通过。
+执行一次完整检查，再运行同 SHA 的 `android-account-recovery`。`quality-gate` 始终聚合结果：
+范围或轻检查失败、源码身份不一致、完整检查或账号闭环失败/取消/意外跳过、判定缺失均失败；
+纯文档仅在前两项成功且完整检查和账号闭环明确跳过时通过。
 Android 与 iOS 构建作业均依赖此门禁，仅有功能改动才运行。
 
 ### 范围、轻检查与完整质量检查
@@ -698,8 +727,9 @@ CI、依赖、构建配置及应用资源改动
 `check-light.mjs --self-test` 检查 YAML、shell 解码后的 `bash -n`、PowerShell AST、
 `.mjs` / `.cjs` 的 `node --check` 与分类器自检；缺少 bash 或 pwsh 不静默跳过。
 故意破坏的样例证明语法与分类错误能阻断。此阶段同时执行 `build-policy.test.mjs`、
-`ios-build-number.test.mjs`、`ci-contract.test.mjs` 与 `verify-ios-archive.test.py`，
-覆盖事件矩阵、伪造来源、门禁失败、预留编号、部分签名文件清理与实际制品身份。
+`ios-build-number.test.mjs`、`ci-contract.test.mjs`、`account-recovery.test.mjs`、
+`verify-ios-archive.test.py` 与 `android_signing.test.py`，覆盖事件矩阵、伪造来源、门禁失败、
+预留编号、部分签名文件清理、制品身份，以及受控账号闭环的错误令牌与重复领取拒绝。
 
 完整检查在 `apps/mobile` 使用 Node.js 22 与 `npm ci`，依次执行 lint、typecheck、
 全部单元/UI 测试、架构检查、`check:generated`、`npm audit` 和 `audit:prod`。

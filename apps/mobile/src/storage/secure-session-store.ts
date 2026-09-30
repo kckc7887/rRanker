@@ -637,10 +637,16 @@ export class SecureSessionStore {
     return legacyVault;
   }
 
-  private async saveVaultUnlocked(vault: SessionVault, signal?: AbortSignal): Promise<readonly string[]> {
+  private async saveVaultUnlocked(vault: SessionVault, signal?: AbortSignal, assertCurrent?: () => void): Promise<readonly string[]> {
+    const assertCommitCurrent = () => {
+      if (signal?.aborted) throw signal.reason;
+      assertCurrent?.();
+    };
+    assertCommitCurrent();
     const sanitized = sanitizeVault(vault);
     const currentRaw = await this.indexIo.getItem(INDEX_KEY);
     const current = currentRaw ? await this.parseStoredIndex(currentRaw) : null;
+    assertCommitCurrent();
     const nextCredentials: StoredCredentialIndex[] = [];
     const newSecretRefs: string[] = [];
     let indexWriteStarted = false;
@@ -648,12 +654,14 @@ export class SecureSessionStore {
 
     try {
       for (const credential of sanitized.credentials) {
+        assertCommitCurrent();
         const previous = current?.credentials.find((item) => (
           item.id === credential.id && item.providerId === credential.providerId
         ));
         const previousSession = previous
           ? parseStoredSession(await this.credentialIo.read(previous.secretRef))
           : null;
+        assertCommitCurrent();
         if (previous
           && previousSession
           && JSON.stringify(previousSession) === JSON.stringify(credential.session)) {
@@ -664,7 +672,10 @@ export class SecureSessionStore {
         newSecretRefs.push(secretRef);
         const serialized = JSON.stringify(credential.session);
         await this.credentialIo.write(secretRef, serialized);
-        if (await this.credentialIo.read(secretRef) !== serialized) {
+        assertCommitCurrent();
+        const persisted = await this.credentialIo.read(secretRef);
+        assertCommitCurrent();
+        if (persisted !== serialized) {
           throw new SessionPersistenceError('credential_storage');
         }
         nextCredentials.push({
@@ -680,15 +691,17 @@ export class SecureSessionStore {
         credentials: nextCredentials,
         accounts: sanitized.accounts,
       };
-      if (signal?.aborted) throw signal.reason;
+      assertCommitCurrent();
       indexWriteStarted = true;
       phase = 'index-commit';
       await this.indexIo.setItem(INDEX_KEY, JSON.stringify(index));
-      if (signal?.aborted) {
+      try {
+        assertCommitCurrent();
+      } catch (error) {
         phase = 'index-rollback';
         if (currentRaw === null) await this.indexIo.removeItem(INDEX_KEY);
         else await this.indexIo.setItem(INDEX_KEY, currentRaw);
-        throw signal.reason;
+        throw error;
       }
     } catch (error) {
       await this.discardUncommittedCredentials(newSecretRefs, indexWriteStarted);
@@ -731,38 +744,59 @@ export class SecureSessionStore {
   }
 
   private async upsertAccountUnlocked(account: StoredProviderAccountInput, signal?: AbortSignal): Promise<string> {
-    if (signal?.aborted) throw signal.reason;
-    const vault = await this.loadVaultUnlocked();
     const credentialId = account.credentialId
       ?? credentialIdForLegacyAccount(account.id);
-    const nextCredential: StoredProviderCredential = {
-      id: credentialId,
-      providerId: account.providerId,
-      session: account.session,
+    await this.upsertAccountsUnlocked([account], { activeAccountId: account.id, signal });
+    return credentialId;
+  }
+
+  private async upsertAccountsUnlocked(accounts: readonly StoredProviderAccountInput[], options: {
+    activeAccountId: string;
+    signal?: AbortSignal;
+    assertCurrent?: () => void;
+  }): Promise<void> {
+    const assertCurrent = () => {
+      if (options.signal?.aborted) throw options.signal.reason;
+      options.assertCurrent?.();
     };
-    const nextAccount: StoredProviderAccount = {
-      id: account.id,
-      gameId: account.gameId,
-      providerId: account.providerId,
-      credentialId,
-      displayName: account.displayName,
-      scoreDisplay: account.scoreDisplay,
-      challengeModeRank: account.challengeModeRank,
-      ratingPossession: account.ratingPossession,
-    };
+    assertCurrent();
+    const vault = await this.loadVaultUnlocked();
+    assertCurrent();
+    const nextCredentials = new Map(vault.credentials.map(credential => [credential.id, credential]));
+    const nextAccounts = new Map(vault.accounts.map(account => [account.id, account]));
+    for (const account of accounts) {
+      const credentialId = account.credentialId ?? credentialIdForLegacyAccount(account.id);
+      nextCredentials.delete(credentialId);
+      nextCredentials.set(credentialId, { id: credentialId, providerId: account.providerId, session: account.session });
+      nextAccounts.delete(account.id);
+      nextAccounts.set(account.id, {
+        id: account.id,
+        gameId: account.gameId,
+        providerId: account.providerId,
+        credentialId,
+        displayName: account.displayName,
+        scoreDisplay: account.scoreDisplay,
+        challengeModeRank: account.challengeModeRank,
+        ratingPossession: account.ratingPossession,
+      });
+    }
     await this.saveVaultUnlocked({
       version: 3,
-      activeAccountId: account.id,
-      credentials: [
-        ...vault.credentials.filter((item) => item.id !== credentialId),
-        nextCredential,
-      ],
-      accounts: [
-        ...vault.accounts.filter((item) => item.id !== account.id),
-        nextAccount,
-      ],
-    }, signal);
-    return credentialId;
+      activeAccountId: options.activeAccountId,
+      credentials: [...nextCredentials.values()],
+      accounts: [...nextAccounts.values()],
+    }, options.signal, options.assertCurrent);
+  }
+
+  /** 验证完成后一次合并账号与共享凭据，索引和激活账号在同一次提交中保存。 */
+  async upsertAccounts(accounts: readonly StoredProviderAccountInput[], options: {
+    activeAccountId: string;
+    signal?: AbortSignal;
+    assertCurrent?: () => void;
+  }): Promise<void> {
+    if (!accounts.every(account => isPersistableSession(account.session))) throw new SessionPersistenceError('credential_storage');
+    if (!accounts.some(account => account.id === options.activeAccountId)) throw new SessionPersistenceError('local_commit');
+    await this.enqueueMutation(() => this.upsertAccountsUnlocked(accounts, options));
   }
 
   async upsertAccount(account: StoredProviderAccountInput, signal?: AbortSignal): Promise<string> {

@@ -45,16 +45,25 @@ export async function bindLxnsAccount(input: {
   gameId: Extract<GameId, 'maimai' | 'chunithm'>;
   session: ProviderSession;
   credentialId?: string;
+  signal?: AbortSignal;
+  assertCurrent?: () => void;
 }): Promise<LxnsBindingResult> {
+  const assertCurrent = () => {
+    if (input.signal?.aborted) throw input.signal.reason ?? Object.assign(new Error('绑定请求已取消'), { name: 'AbortError' });
+    input.assertCurrent?.();
+  };
+  assertCurrent();
   const initialSession = requireLxnsSession(input.session);
   const credentialId = input.credentialId ?? await runProviderOperation('authorization_prepare', createCredentialId);
+  assertCurrent();
 
   if (input.gameId === 'maimai') {
     const provider = new LxnsScoreProvider(initialSession);
     const [player] = await Promise.all([
-      provider.getOptionalPlayer(),
-      provider.getOptionalRecords(),
+      provider.getOptionalPlayer(input.signal),
+      provider.getOptionalRecords(input.signal),
     ]);
+    assertCurrent();
     const created = createMaimaiBoundAccount({
       accountId: player ? undefined : `maimai:lxns:${credentialId}`,
       providerId: 'lxns',
@@ -64,7 +73,7 @@ export async function bindLxnsAccount(input: {
     });
     const account = player ? created : { ...created, scoreDisplay: '—' };
     const finalSession = provider.getSession();
-    await sessions.upsertAccount({
+    await sessions.upsertAccounts([{
       id: account.id,
       gameId: 'maimai',
       providerId: 'lxns',
@@ -72,12 +81,14 @@ export async function bindLxnsAccount(input: {
       displayName: account.displayName,
       scoreDisplay: account.scoreDisplay,
       session: finalSession,
-    });
+    }], { activeAccountId: account.id, signal: input.signal, assertCurrent });
+    assertCurrent();
     return { account, credentialId, session: finalSession };
   }
 
   const provider = new ChunithmScoreProvider(initialSession);
-  const snapshot = await provider.getSnapshot();
+  const snapshot = await provider.getSnapshot(input.signal);
+  assertCurrent();
   const player = snapshot.player;
   const account = createChunithmBoundAccount({
     accountId: player ? undefined : `chunithm:lxns:${credentialId}`,
@@ -93,8 +104,10 @@ export async function bindLxnsAccount(input: {
     CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
     snapshot.source.updatedAt,
     snapshot,
+    assertCurrent,
   ));
-  await sessions.upsertAccount({
+  assertCurrent();
+  await sessions.upsertAccounts([{
     id: account.id,
     gameId: 'chunithm',
     providerId: 'lxns',
@@ -103,7 +116,8 @@ export async function bindLxnsAccount(input: {
     scoreDisplay: account.scoreDisplay,
     ratingPossession: account.ratingPossession,
     session: finalSession,
-  });
+  }], { activeAccountId: account.id, signal: input.signal, assertCurrent });
+  assertCurrent();
   return {
     account,
     credentialId,

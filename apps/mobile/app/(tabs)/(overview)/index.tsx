@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { InteractionManager, Pressable, RefreshControl, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, type Href } from 'expo-router';
 import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
+import { useNotification } from '@/components/AppNotification';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { DxRatingCard } from '@/components/DxRatingCard';
 import { OSU_PP_RATING_THEME, OsuRatingTag } from '@/components/osu/OsuRatingTag';
@@ -41,7 +42,7 @@ import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { usePlates } from '@/hooks/use-plates';
 
-import { switchBoundAccount } from '@/services/switch-bound-account';
+import { notifyAccountSwitchError, switchBoundAccount } from '@/services/switch-bound-account';
 
 import { compactUploadPhaseLabel } from '@/services/upload-maimai-from-friend-code';
 
@@ -67,6 +68,7 @@ export function OverviewScreen() {
 
 function PublicOverviewScreen() {
   const theme = useAppTheme();
+  const { showNotification } = useNotification();
   const gameQuery = useGameData();
   const { data, isLoading, isError, error, refetch, profile } = gameQuery;
   const library = useUserLibrary();
@@ -130,7 +132,7 @@ function PublicOverviewScreen() {
       accountSwitchTaskRef.current = null;
       // 已在总览账号页：弹层退场后复用目标账号缓存并切换。
       void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
-        .catch(() => undefined);
+        .catch(error => notifyAccountSwitchError(error, showNotification));
     });
   };
 

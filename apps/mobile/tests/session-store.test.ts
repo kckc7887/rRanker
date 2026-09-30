@@ -733,6 +733,44 @@ describe('useSession store', () => {
     });
   });
 
+  it('broadcasts a single-mode reauthorization before accepting its next shared rotation', async () => {
+    resetPendingRotationWritesForTests();
+    clearOsuRotationCache();
+    const previous = { mode: 'osu-oauth' as const, accessToken: 'old-access', refreshToken: 'old-refresh',
+      expiresAt: Date.now() + 60_000, persistable: true as const };
+    const authorized = { ...previous, accessToken: 'authorized-access', refreshToken: 'authorized-refresh' };
+    const rotated = { ...authorized, accessToken: 'next-access', refreshToken: 'next-refresh' };
+    const standard = createOsuBoundAccount({ gameId: 'osu-standard', userId: 7, displayName: 'old', pp: 1 });
+    const mania = createOsuBoundAccount({ gameId: 'osu-mania', userId: 7, displayName: 'old', pp: 1 });
+    const updatedMania = createOsuBoundAccount({ gameId: 'osu-mania', userId: 7, displayName: 'updated', pp: 42 });
+    useSession.getState().finishRestore(null);
+    useSession.getState().setOsuBinding({ accounts: [standard, mania], credentialId: 'osu-shared',
+      activeAccountId: standard.id, session: previous });
+    const oldStandardProvider = useSession.getState().protocolScoreProvider;
+    useSession.getState().selectBoundAccount(mania.id);
+    const oldManiaProvider = useSession.getState().protocolScoreProvider;
+    useSession.getState().setOsuBinding({ accounts: [updatedMania], credentialId: 'osu-shared',
+      activeAccountId: mania.id, session: authorized });
+    const state = useSession.getState();
+    expect(state.boundAccounts.find(account => account.id === mania.id)).toEqual(updatedMania);
+    expect(state.boundAccounts.find(account => account.id === standard.id)).toBe(standard);
+    expect(state.sessionsByAccountId[standard.id]).toBe(authorized);
+    expect(state.sessionsByAccountId[mania.id]).toBe(authorized);
+    expect(state.session).toBe(authorized);
+    expect(state.protocolScoreProvider).not.toBe(oldManiaProvider);
+    useSession.getState().selectBoundAccount(standard.id);
+    expect(useSession.getState().protocolScoreProvider).not.toBe(oldStandardProvider);
+    updateCredentialSession.mockClear();
+    await expect(applyOsuTokenRotation(mania.id, rotated, authorized)).resolves.toBe('applied');
+    expect(updateCredentialSession).toHaveBeenCalledWith('osu-shared', rotated, { acceptedRefreshTokens: ['authorized-refresh'] });
+    expect(useSession.getState().sessionsByAccountId[standard.id]).toBe(rotated);
+    expect(useSession.getState().sessionsByAccountId[mania.id]).toBe(rotated);
+    updateCredentialSession.mockClear();
+    await expect(applyOsuTokenRotation(standard.id, { ...previous, refreshToken: 'late-refresh' }, previous)).resolves.toBe('stale');
+    expect(updateCredentialSession).not.toHaveBeenCalled();
+    expect(useSession.getState().session).toBe(rotated);
+  });
+
   it('rejects a late osu rotation after the mode account re-authorized', async () => {
     const stale = {
       mode: 'osu-oauth' as const,

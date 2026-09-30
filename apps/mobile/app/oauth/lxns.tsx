@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useRef, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { CHUNITHM_TEMP_ACCOUNT_ID } from '@/domain/bound-account';
@@ -36,11 +36,14 @@ export default function LxnsOAuthCallbackScreen() {
   const [status, setStatus] = useState<CallbackStatus>({ kind: 'processing' });
   const processedRef = useRef(false);
 
-  useEffect(() => {
+  useFocusEffect(useCallback(() => {
     if (processedRef.current) return;
     processedRef.current = true;
     let cancelled = false;
     const controller = new AbortController();
+    const assertCurrent = () => {
+      if (controller.signal.aborted) throw controller.signal.reason ?? Object.assign(new Error('绑定请求已取消'), { name: 'AbortError' });
+    };
 
     const fail = (message: string) => {
       if (cancelled) return;
@@ -61,6 +64,7 @@ export default function LxnsOAuthCallbackScreen() {
       try {
         const state = requireLxnsOAuthState(params.state);
         const pending = await runProviderOperation('credential_storage', readPendingLxnsOAuth);
+        assertCurrent();
         if (!pending) {
           fail('找不到本机授权信息，请在 App 内重新发起授权');
           return;
@@ -74,8 +78,11 @@ export default function LxnsOAuthCallbackScreen() {
           state,
           controller.signal,
         ));
-        if (cancelled) return;
-        const result = await runProviderOperation('verification', () => bindLxnsAccount({ gameId: pending.gameId, session }));
+        assertCurrent();
+        const result = await runProviderOperation('verification', () => bindLxnsAccount({
+          gameId: pending.gameId, session, signal: controller.signal, assertCurrent,
+        }));
+        assertCurrent();
         const store = useSession.getState();
         const rating = Number(result.account.scoreDisplay);
         await runProviderOperation('local_commit', () => store.setSession(result.session, {
@@ -88,14 +95,18 @@ export default function LxnsOAuthCallbackScreen() {
           avatarUrl: result.account.avatarUrl,
           ratingPossession: result.account.ratingPossession,
         }));
+        assertCurrent();
         if (result.account.gameId === 'chunithm') {
           await runProviderOperation('local_commit', () => store.removeBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID));
+          assertCurrent();
           await chunithmTempAccount.remove().catch(() => undefined);
+          assertCurrent();
         }
+        assertCurrent();
         void queryClient.invalidateQueries({ queryKey: ['score-snapshot'] });
         void queryClient.invalidateQueries({ queryKey: ['game-data'] });
         void queryClient.invalidateQueries({ queryKey: ['songs'] });
-        if (cancelled) return;
+        assertCurrent();
         setStatus({ kind: 'success', accountName: result.account.displayName });
         notifyLxnsOAuthOutcome({
           status: 'success',
@@ -109,8 +120,8 @@ export default function LxnsOAuthCallbackScreen() {
 
     void run();
     return () => { cancelled = true; controller.abort(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 回调只在挂载时消费一次，或依赖已在上方说明
-  }, []);
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 每个回调只消费一次；离焦或卸载取消本次请求。
+  }, []));
 
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>

@@ -4,6 +4,7 @@ import { uploadMaimaiAfterScoreHubToken } from '@/services/upload-maimai-score-f
 import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
 import type { BoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
+import { SessionPersistenceError } from '@/domain/session-vault';
 import {
   bindCabinetByQr,
   createCabinetScoreJob,
@@ -521,6 +522,7 @@ export async function uploadMaimaiWithScoreHubSession(input: UploadCommonInput &
       token: cached.token,
     });
   } catch (error) {
+    if (error instanceof SessionPersistenceError) throw error;
     if (isScoreHubAuthExpired(error)) {
       throw new ScoreHubError(
         '登录已失效。将改用好友码重新登录。',

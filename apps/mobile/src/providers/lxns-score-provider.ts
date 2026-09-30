@@ -77,8 +77,8 @@ export class LxnsScoreProvider implements ScoreProvider {
     };
   }
 
-  async getOptionalPlayer(): Promise<Player | null> {
-    const data = await this.request('/user/maimai/player', true);
+  async getOptionalPlayer(signal?: AbortSignal): Promise<Player | null> {
+    const data = await this.request('/user/maimai/player', true, signal);
     if (data === null) return null;
     const player = LxnsPlayerSchema.safeParse(data);
     if (!player.success) {
@@ -119,8 +119,8 @@ export class LxnsScoreProvider implements ScoreProvider {
     return records;
   }
 
-  async getOptionalRecords(): Promise<ScoreRecord[]> {
-    const data = await this.request('/user/maimai/player/scores', true);
+  async getOptionalRecords(signal?: AbortSignal): Promise<ScoreRecord[]> {
+    const data = await this.request('/user/maimai/player/scores', true, signal);
     if (data === null) return [];
     if (!Array.isArray(data)) {
       throw new ProviderError('upstream_schema', '落雪成绩响应结构与已验证契约不一致', true);

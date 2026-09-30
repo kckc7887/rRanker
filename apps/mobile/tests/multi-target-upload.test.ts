@@ -2,6 +2,7 @@ import type { CatalogSnapshot } from '@/domain/models';
 import { createLocalMaimaiAccount, createMaimaiBoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
 import { ProviderError } from '@/providers/errors';
+import { SessionPersistenceError } from '@/domain/session-vault';
 import { ScoreHubError } from '@/services/score-hub-client';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 
@@ -83,6 +84,7 @@ import {
   resolveUploadTargets,
   uploadMaimaiFromFriendCode,
   uploadMaimaiFromQrLogin,
+  uploadMaimaiPreferringSession,
   uploadMaimaiWithScoreHubSession,
 } from '@/services/upload-maimai-from-friend-code';
 
@@ -510,6 +512,27 @@ describe('好友码多目标写入', () => {
     expect(result.uploaded).toBe(1);
     expect(phases).not.toContain('awaiting_friend');
     expect(phases.at(-1)).toBe('done');
+  });
+
+  it.each(['credential_storage', 'local_commit'] as const)('会话验证后的 %s 故障不被网络兜底吞掉或转好友码登录', async code => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    mocks.accountLoad.mockResolvedValue({ friendCode: '123456789012345', hasCabinetBound: true, token: 'session-token' });
+    const failure = new SessionPersistenceError(code);
+    mocks.accountPatch.mockRejectedValueOnce(failure);
+    await expect(uploadMaimaiPreferringSession({
+      friendCode: '123456789012345',
+      preferSession: true,
+      selectedAccountIds: [local.id],
+      targets: resolveUploadTargets([local], {}),
+      sessionsByAccountId: {},
+      resolveCatalog: async () => catalog,
+      signal: { aborted: false },
+      onPhase: vi.fn(),
+      onNeedFriendAccept: vi.fn(),
+    })).rejects.toBe(failure);
+    expect(mocks.createFriendLoginJob).not.toHaveBeenCalled();
+    expect(mocks.createUpdateScoreJob).not.toHaveBeenCalled();
+    expect(mocks.saveSnapshot).not.toHaveBeenCalled();
   });
 
   it('二维码登录后创建独立成绩任务并复用同一写出链路', async () => {

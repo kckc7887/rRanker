@@ -20,7 +20,8 @@ const testJobs = buildJobs.filter(name => name.endsWith('-fork-test'));
 function assertDependencies(workflow) {
   const needs = id => [workflow.jobs[id]?.needs ?? []].flat();
   assert.deepEqual(new Set(needs('quality')), new Set(['changed-scope', 'light-check']));
-  assert.deepEqual(new Set(needs('quality-gate')), new Set(['changed-scope', 'light-check', 'quality']));
+  assert.deepEqual(new Set(needs('android-account-recovery')), new Set(['changed-scope', 'quality']));
+  assert.deepEqual(new Set(needs('quality-gate')), new Set(['changed-scope', 'light-check', 'quality', 'android-account-recovery']));
   assert.equal(workflow.jobs['quality-gate'].if, 'always()');
   for (const id of buildJobs) {
     assert(needs(id).includes('quality-gate'), `${id} bypasses complete quality gate`);
@@ -136,7 +137,7 @@ test('complete gate fails on upstream failures, missing verdicts and false skip 
     ]) {
       const result = spawnSync(bash, ['-e', '-c', pipeline.jobs['quality-gate'].steps[0].run], {
         encoding: 'utf8', env: { ...process.env, SCOPE_RESULT: scope, LIGHT_RESULT: light,
-          QUALITY_RESULT: quality, FUNCTIONAL: functional,
+          QUALITY_RESULT: quality, ACCOUNT_RECOVERY_RESULT: functional === 'false' ? 'skipped' : 'success', FUNCTIONAL: functional,
           ACTUAL_SOURCE: 'a'.repeat(40), EXPECTED_SOURCE: 'a'.repeat(40),
           GITHUB_STEP_SUMMARY: join(directory, 'summary').replaceAll('\\', '/') },
       });
@@ -144,12 +145,47 @@ test('complete gate fails on upstream failures, missing verdicts and false skip 
     }
     const substituted = spawnSync(bash, ['-e', '-c', pipeline.jobs['quality-gate'].steps[0].run], {
       encoding: 'utf8', env: { ...process.env, ACTUAL_SOURCE: 'b'.repeat(40), EXPECTED_SOURCE: 'a'.repeat(40),
-        SCOPE_RESULT: 'success', LIGHT_RESULT: 'success', QUALITY_RESULT: 'success', FUNCTIONAL: 'true' },
+        SCOPE_RESULT: 'success', LIGHT_RESULT: 'success', QUALITY_RESULT: 'success', ACCOUNT_RECOVERY_RESULT: 'success', FUNCTIONAL: 'true' },
     });
     assert.notEqual(substituted.status, 0, 'another source must fail even when all checks claim success');
   } finally {
     rmSync(directory, { recursive: true, force: true });
   }
+});
+
+test('account recovery is required by the complete gate and cannot receive production secrets', () => {
+  const job = pipeline.jobs['android-account-recovery'];
+  assert.match(job.if, /functional == 'true'/);
+  assert.equal(job.env.BUILD_SOURCE_COMMIT, job.steps[0].with.ref);
+  assert.equal(job.steps[0].with['persist-credentials'], false);
+  assert.equal(job.environment, undefined);
+  assert(!JSON.stringify(job).includes('secrets.'));
+  assert(job.steps.some(step => step.with?.script?.includes('android-account-recovery.mjs')));
+  const key = job.steps.findIndex(step => step.name === 'Generate independent test signing key');
+  const compile = job.steps.findIndex(step => step.name === 'Compile account recovery APK');
+  const verify = job.steps.findIndex(step => step.name === 'Verify isolated package and test signature');
+  const recover = job.steps.findIndex(step => step.with?.script?.includes('android-account-recovery.mjs'));
+  assert(key >= 0 && key < compile && compile < verify && verify < recover);
+  assert.match(job.steps[key].run, /keytool -genkeypair/);
+  assert.match(job.steps[compile].run, /android\.injected\.signing\.store\.file=\$RUNNER_TEMP\/account-probe\.keystore/);
+  assert.match(job.steps[verify].run, /from android_signing import verify_android_signing/);
+  assert.match(job.steps[verify].run, /'test-debug', hashlib\.sha256\(certificate\)\.hexdigest\(\)/);
+  assert.match(job.steps[verify].run, /com\.rranker\.app\.nativeprobe/);
+  assert.equal(job.steps.at(-1).if, 'always()');
+  assert.match(job.steps.at(-1).run, /account-probe\.keystore/);
+  const bash = findBash();
+  const directory = mkdtempSync(join(tmpdir(), 'rranker-account-gate-'));
+  try {
+    for (const result of ['failure', 'cancelled', 'skipped', '']) {
+      const execution = spawnSync(bash, ['-e', '-c', pipeline.jobs['quality-gate'].steps[0].run], {
+        encoding: 'utf8', env: { ...process.env, SCOPE_RESULT: 'success', LIGHT_RESULT: 'success',
+          QUALITY_RESULT: 'success', FUNCTIONAL: 'true', ACCOUNT_RECOVERY_RESULT: result,
+          ACTUAL_SOURCE: 'a'.repeat(40), EXPECTED_SOURCE: 'a'.repeat(40),
+          GITHUB_STEP_SUMMARY: join(directory, 'summary').replaceAll('\\', '/') },
+      });
+      assert.notEqual(execution.status, 0, `account recovery ${result} must block publication`);
+    }
+  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
 test('Apple cleanup removes a partially written key before its path was published', () => {
