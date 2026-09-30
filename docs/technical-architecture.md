@@ -670,6 +670,8 @@ SQLite、KV 冷启并发、默认 KV、SecureStore、Crypto 和 FileSystem 桥�
 包名 `com.rranker.app.nativeprobe`、每次生成的测试签名和固定源码 SHA，不使用生产凭据。
 正式入口保持 `expo-router/entry`；只有选择诊断入口时 app/Metro 配置才启用测试插件和
 `tests/native/expo-fetch-adapter.ts`。适配器仅将指定 LXNS / ScoreHub 请求转发至 runner 回环服务，
+适配器通过同一公开入口的 `expo/fetch.js` 名称取得原生 Fetch；Metro 只映射 `expo/fetch`，
+同目录的解析保持一致，避免目录级缓存把适配器内部导入指回自身。
 继续使用真实原生 Expo Fetch，保留认证头、取消和响应流；验证实际响应 URL 且无重定向后，
 才投影原请求 URL 以满足既有来源检查。HTTP 放行仅作用于诊断构建。
 首进程一次领取随机合成凭据，经 `bindLxnsAccount` 和两个公共存储入口保存并读回核验。

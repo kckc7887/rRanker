@@ -1,4 +1,5 @@
-import { fetch as nativeFetch } from 'expo/fetch';
+// A distinct public entry name prevents Metro's directory cache from resolving this import back to the adapter.
+import { fetch as nativeFetch } from 'expo/fetch.js';
 
 export const ACCOUNT_PROBE_ORIGIN = 'http://127.0.0.1:8766';
 const routes = new Map([

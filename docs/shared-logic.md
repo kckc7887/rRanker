@@ -1050,6 +1050,9 @@ MajdataPlay 原始计分方法，普通测试无需 .NET；原生账号、保存
 
 常规检查与构建统一由 `.github/workflows/quality.yml` 编排；独立桥接诊断仍手动运行，
 `android-account-recovery` 在完整检查成功后执行受控原生账号闭环。
+诊断 Metro 只将 `expo/fetch` 映射到测试适配器；适配器通过公开的 `expo/fetch.js` 入口取得同一原生实现，
+避免按目录缓存的解析结果产生自引用。`native-account-config.test.ts` 使用真实 Metro 解析缓存验证两种导入顺序，
+Vitest 的两种模块名称共用现有 Fetch shim。
 `quality-gate` 聚合范围、轻检查、完整检查与账号闭环，平台构建不能跳过它。
 纯文档只在范围、轻检查成功且后两项明确跳过时通过。PR 使用 head.sha，分支使用
 github.sha；policy 输出、质量检查、门禁、checkout 与构建输入必须对应原始事件同一源码。
