@@ -3,8 +3,11 @@ import { execFileSync } from 'node:child_process';
 import { once } from 'node:events';
 import { test } from 'node:test';
 import {
+  AccountProbeStageError,
   accountProbeDeepLink,
   accountProbeStageResult,
+  accountRecoveryFailureEvidence,
+  accountRecoveryObservedEvidence,
   assertAccountRecoveryEvidence,
   createAccountRecoveryFixture,
 } from './lib/account-recovery-fixture.mjs';
@@ -35,10 +38,77 @@ test('the actual stage parser requires matching source identity and pass status 
     for (const candidate of [{ ...passed, sourceSha: 'c'.repeat(40) }, { ...passed, sourceSha: undefined }]) {
       assert.throws(() => accountProbeStageResult(stageLog(candidate), expected), /source identity mismatch/);
     }
-    for (const status of ['fail', undefined, 'running']) {
+    for (const status of ['fail', undefined, 'invalid']) {
       assert.throws(() => accountProbeStageResult(stageLog({ ...passed, status }), expected), /failed/);
     }
   }
+});
+
+test('running markers retain only the latest fixed substep and cannot satisfy the stage gate', () => {
+  const expected = { stage: 'seed', runId, sourceSha };
+  const progress = [];
+  const running = ['initial-main-store', 'fixture-fetch', 'lxns-bind'].map(step => stageLog({
+    ...expected, step, status: 'running', token: 'sensitive-token', message: 'native exception text',
+  })).join('\n');
+  assert.equal(accountProbeStageResult(running, expected, value => progress.push(value)), false);
+  assert.deepEqual(progress, [
+    { stage: 'seed', step: 'initial-main-store' }, { stage: 'seed', step: 'fixture-fetch' }, { stage: 'seed', step: 'lxns-bind' },
+  ]);
+  const last = {};
+  assert.equal(accountProbeStageResult(`${running}\n${stageLog({ ...expected, step: 'scorehub-readback', status: 'pass' })}`,
+    expected, value => { last[value.stage] = value.step; }), true);
+  assert.deepEqual(last, { seed: 'scorehub-readback' });
+});
+
+test('device failures preserve fixed substeps and public error codes without arbitrary log payloads', () => {
+  const expected = { stage: 'seed', runId, sourceSha };
+  const secret = 'sensitive-probe-token';
+  let failure;
+  assert.throws(() => accountProbeStageResult(stageLog({ ...expected, status: 'fail', step: 'lxns-bind',
+    failureCode: 'credential_storage', cleaned: false, token: secret, message: secret, cause: { accessToken: secret },
+  }), expected), error => { failure = error; return error instanceof AccountProbeStageError; });
+  const safe = accountRecoveryFailureEvidence('seed', failure);
+  assert.deepEqual(safe, { failurePhase: 'seed', failureCode: 'device-failure',
+    deviceResult: { step: 'lxns-bind', failureCode: 'credential_storage', cleaned: false } });
+  assert(!JSON.stringify(safe).includes(secret));
+  assert(!JSON.stringify(safe).includes('cause'));
+});
+
+test('unknown device fields and arbitrary runner errors are reduced to fixed classifications', () => {
+  const expected = { stage: 'recover', runId, sourceSha };
+  const secret = 'sensitive-native-exception';
+  let failure;
+  assert.throws(() => accountProbeStageResult(stageLog({ ...expected, status: 'fail', step: secret,
+    failureCode: secret, cleaned: { token: secret }, rawLogs: secret,
+  }), expected), error => { failure = error; return true; });
+  assert.deepEqual(accountRecoveryFailureEvidence('recover', failure), { failurePhase: 'recover', failureCode: 'device-failure',
+    deviceResult: { step: 'unknown', failureCode: 'unknown' } });
+  const arbitrary = Object.assign(new Error(secret), { code: 'credential_storage', stdout: secret, stderr: secret });
+  assert.deepEqual(accountRecoveryFailureEvidence('setup', arbitrary), { failurePhase: 'setup', failureCode: 'runner-operation' });
+  assert.deepEqual(accountRecoveryFailureEvidence(secret, arbitrary), { failurePhase: 'unknown', failureCode: 'runner-operation' });
+  assert.deepEqual(accountRecoveryFailureEvidence('seed', new AccountProbeStageError('timeout')),
+    { failurePhase: 'seed', failureCode: 'timeout' });
+});
+
+test('source identity mismatches fail even when running or failed results contain otherwise valid diagnostics', () => {
+  const expected = { stage: 'seed', runId, sourceSha };
+  for (const status of ['running', 'fail', 'pass']) {
+    const progress = [];
+    assert.throws(() => accountProbeStageResult(stageLog({ ...expected, sourceSha: 'c'.repeat(40), status,
+      step: 'fixture-fetch', failureCode: 'network', cleaned: true }), expected, value => progress.push(value)),
+    error => accountRecoveryFailureEvidence('seed', error).failureCode === 'source-identity');
+    assert.deepEqual(progress, []);
+  }
+});
+
+test('unknown progress steps stay pending without leaking arbitrary device values', () => {
+  const expected = { stage: 'recover', runId, sourceSha };
+  const progress = [];
+  assert.equal(accountProbeStageResult(stageLog({ ...expected, status: 'running', step: 'secret-token' }),
+    expected, value => progress.push(value)), false);
+  assert.deepEqual(progress, [{ stage: 'recover', step: 'unknown' }]);
+  const malformed = [stageLog(null), stageLog(4), stageLog([])].join('\n');
+  assert.equal(accountProbeStageResult(malformed, expected), false);
 });
 
 test('foreign run, wrong stage and malformed logs never satisfy the runner stage gate', () => {
@@ -101,4 +171,28 @@ test('missing, wrong and cross-family tokens cannot produce green authentication
     assert.deepEqual(fixture.evidence().authenticated, { lxns: true, scorehub: true });
     assert.throws(() => assertAccountRecoveryEvidence(fixture.evidence()), /No reseeding or invalid authenticated request/);
   });
+});
+
+test('failed runs preserve sanitized fixture observations before cleanup', async () => {
+  await withFixture(async (fixture, base) => {
+    const issued = await (await fetch(`${base}/fixture?run=${runId}`)).json();
+    assert.equal((await fetch(`${base}/lxns/player`, { headers: { Authorization: 'Bearer invalid' } })).status, 401);
+    const failure = accountRecoveryFailureEvidence('seed', new AccountProbeStageError('device-failure', {
+      step: 'lxns-bind', failureCode: 'authentication', cleaned: true, token: issued.lxns.accessToken,
+    }));
+    const artifact = { status: 'fail', ...failure, observed: accountRecoveryObservedEvidence(fixture.evidence()) };
+    assert.deepEqual(artifact.observed, { fixtureRequests: 1, rejectedRequests: 1, authenticated: { lxns: false, scorehub: false } });
+    assert.throws(() => assertAccountRecoveryEvidence(artifact.observed), /No reseeding or invalid authenticated request/);
+    const encoded = JSON.stringify(artifact);
+    assert(!encoded.includes(issued.lxns.accessToken));
+    assert(!encoded.includes(issued.hubToken));
+    assert(!encoded.includes(issued.lxns.refreshToken));
+  });
+});
+
+test('observation serialization retains only counters and boolean authentication decisions', () => {
+  const observed = accountRecoveryObservedEvidence({ fixtureRequests: 1, rejectedRequests: 2, token: 'secret',
+    authenticated: { lxns: true, scorehub: false, Authorization: 'Bearer secret' }, rawLogs: 'secret' });
+  assert.deepEqual(observed, { fixtureRequests: 1, rejectedRequests: 2, authenticated: { lxns: true, scorehub: false } });
+  assert(!JSON.stringify(observed).includes('secret'));
 });

@@ -5,7 +5,8 @@ import { mkdir, readFile, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
 import { promisify } from 'node:util';
 import { once } from 'node:events';
-import { accountProbeDeepLink, accountProbeStageResult, assertAccountRecoveryEvidence, createAccountRecoveryFixture } from './lib/account-recovery-fixture.mjs';
+import { AccountProbeStageError, accountProbeDeepLink, accountProbeStageResult, accountRecoveryFailureEvidence,
+  accountRecoveryObservedEvidence, assertAccountRecoveryEvidence, createAccountRecoveryFixture } from './lib/account-recovery-fixture.mjs';
 
 const [apk, serial, output] = process.argv.slice(2);
 assert(apk && serial && output && /^[a-f0-9]{40}$/.test(process.env.BUILD_SOURCE_COMMIT ?? ''), 'Expected APK, serial, output and source SHA');
@@ -15,15 +16,15 @@ const fixture = createAccountRecoveryFixture(runId);
 const execute = promisify(execFile);
 const adb = async (...args) => (await execute('adb', ['-s', serial, ...args], { encoding: 'utf8', timeout: 20_000 })).stdout;
 const pause = ms => new Promise(resolve => setTimeout(resolve, ms));
-const evidence = { sourceSha: process.env.BUILD_SOURCE_COMMIT, runId, status: 'fail', checks: [], cleanup: {} };
+const evidence = { sourceSha: process.env.BUILD_SOURCE_COMMIT, runId, status: 'fail', stages: {}, checks: [], cleanup: {} };
 let phase = 'setup';
 let serverStarted = false;
 let failure;
 
-async function waitFor(operation, label) {
+async function waitFor(operation) {
   const deadline = Date.now() + 60_000;
   do { const value = await operation(); if (value) return value; await pause(250); } while (Date.now() < deadline);
-  throw new Error(`Account recovery timed out: ${label}`);
+  throw new AccountProbeStageError('timeout');
 }
 async function launch(stage) {
   await adb('shell', 'am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d',
@@ -31,13 +32,15 @@ async function launch(stage) {
   return waitFor(async () => {
     try { return (await adb('shell', 'pidof', packageName)).trim() || false; }
     catch (error) { if (error.code === 1 && !String(error.stdout ?? '').trim()) return false; throw error; }
-  }, 'process start');
+  });
 }
 async function waitStage(stage, pid) {
   await waitFor(async () => {
     const logs = await adb('logcat', '-d', `--pid=${pid}`, '-s', 'ReactNativeJS:I');
-    return accountProbeStageResult(logs, { runId, stage, sourceSha: evidence.sourceSha });
-  }, stage);
+    return accountProbeStageResult(logs, { runId, stage, sourceSha: evidence.sourceSha }, progress => {
+      evidence.stages[stage] = progress.step;
+    });
+  });
 }
 
 try {
@@ -67,20 +70,27 @@ try {
   assertAccountRecoveryEvidence(observed);
   evidence.checks = [{ name: 'native-write-kill-restore-auth', status: 'pass', ...observed }];
   evidence.status = 'pass';
-} catch {
+} catch (error) {
   failure = `Account recovery failed during ${phase}`;
-  evidence.failurePhase = phase;
+  Object.assign(evidence, accountRecoveryFailureEvidence(phase, error));
 } finally {
+  evidence.observed = accountRecoveryObservedEvidence(fixture.evidence());
   for (const [name, operation] of [
     ['test-package', () => adb('uninstall', packageName).then(result => assert(result.includes('Success')))],
     ['port-forward', () => adb('reverse', '--remove', 'tcp:8766')],
     ['fixture-server', async () => { if (serverStarted) await new Promise((resolve, reject) => fixture.server.close(error => error ? reject(error) : resolve())); }],
   ]) {
     try { await operation(); evidence.cleanup[name] = 'pass'; }
-    catch { evidence.cleanup[name] = 'fail'; evidence.status = 'fail'; failure ??= `Account recovery cleanup failed: ${name}`; }
+    catch {
+      evidence.cleanup[name] = 'fail'; evidence.status = 'fail';
+      if (!failure) {
+        Object.assign(evidence, accountRecoveryFailureEvidence('cleanup'));
+        failure = `Account recovery cleanup failed: ${name}`;
+      }
+    }
   }
   await mkdir(output, { recursive: true });
   await writeFile(join(output, 'account-recovery-result.json'), JSON.stringify(evidence, null, 2) + '\n');
 }
-if (failure) throw new Error(failure);
 console.log(JSON.stringify(evidence));
+if (failure) throw new Error(failure);
