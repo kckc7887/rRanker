@@ -687,8 +687,9 @@ Android 与 iOS 构建作业均依赖此门禁，仅有功能改动才运行。
 
 范围分类复用 `.github/actions/changed-scope/action.yml` 与 `classify.sh`，push 使用
 `github.event.before`，PR 使用 `github.event.pull_request.base.sha`；基准不在本地时只获取
-该提交，再以 `git diff --name-only --no-renames -z` 比较。自述文件、文档、许可声明与根级
-README 截图全部满足非功能规则时跳过完整检查和构建；CI、依赖、构建配置及应用资源改动
+该提交，再以 `git diff --name-only --no-renames -z` 比较。任意目录下的 `*.md` 文件、
+文档目录、许可声明与根级 README 截图全部满足非功能规则时跳过完整检查和构建；
+CI、依赖、构建配置及应用资源改动
 必须完整检查。无基准、基准不可取或 diff 失败按有功能改动处理；分类任务自身失败则阻断门禁。
 `GITHUB_OUTPUT` 仅包含固定枚举和计数 `functional`、`reason`、`changed-count`。
 路径写日志前转义控制字符，写 summary 前再转义 HTML；改名同时枚举旧、新路径，不能隐藏代码删除。
