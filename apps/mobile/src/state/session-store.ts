@@ -398,19 +398,16 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   setOsuBinding: (input) => {
     const state = get();
-    const nextSessions = { ...state.sessionsByAccountId };
-    const nextCredentialIds = { ...state.credentialIdsByAccountId };
-    for (const account of input.accounts) {
-      nextSessions[account.id] = input.session;
-      nextCredentialIds[account.id] = input.credentialId;
-    }
-    const nextAccounts = dedupeAccounts([
-      ...state.boundAccounts,
-      ...input.accounts,
-    ]);
     const active = input.accounts.find((account) => account.id === input.activeAccountId)
       ?? input.accounts[0];
     if (!active) return;
+    const nextCredentialIds = { ...state.credentialIdsByAccountId };
+    for (const account of input.accounts) {
+      nextCredentialIds[account.id] = input.credentialId;
+    }
+    const nextSessions = sessionsForCredentialUpdate(state.sessionsByAccountId, nextCredentialIds, input.credentialId, input.session);
+    const nextAccounts = input.accounts.reduce(upsertAccountList, state.boundAccounts);
+    releaseAccountProviders(Object.keys(nextCredentialIds).filter(accountId => nextCredentialIds[accountId] === input.credentialId));
     set({
       sessionsByAccountId: nextSessions,
       credentialIdsByAccountId: nextCredentialIds,

@@ -392,6 +392,37 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
 明确返回 `applied` / `stale` / `missing`，协调器只发布仍有效且实际应用的 Rizline/Majdata 更新。
 合同由 `secure-session-store.test.ts`、`session-restore-recovery.test.tsx` 覆盖。
 
+`SecureSessionStore.upsertAccounts(accounts, { activeAccountId, signal?, assertCurrent? }): Promise<void>`
+在同一仓库队列内读取、合并全部账号与凭据，再提交一次索引；同一凭据只保存一份。
+`upsertAccount(account, signal?)` 复用同一合并核心。守卫覆盖排队后、凭据写入及读回、
+索引写入前后；索引写入及后置守卫通过即完成提交，此前取消回滚，此后清理期间取消保留提交。
+`services/osu-account-binding.ts` 的 `bindOsuModes(input)` 先验证全部模式，再取 Provider 最终会话
+统一保存，首个所选模式同时成为磁盘与内存的活动账号。`setOsuBinding` 用 `upsertAccountList`
+替换所选账号元数据，按 `sessionsForCredentialUpdate` 向仍引用同一凭据的全部账号广播，
+释放相关 Provider 后一次发布活动视图；旧世代轮换仍由现有协调器拒绝。
+
+`services/lxns-account-binding.ts` 的 `bindLxnsAccount({ gameId, session, credentialId?, signal?, assertCurrent? })`
+复用上述提交入口，守卫贯穿验证、快照和凭据保存；舞萌的 `getOptionalPlayer(signal?)` /
+`getOptionalRecords(signal?)` 继续通过同一 OAuth 请求核心传递取消。
+回调页复用 `useFocusEffect`，失焦或卸载取消同一请求；`LxnsLoginPanel` 隐藏或卸载时取消。
+两入口在激活、临时账号清理和通知前复核请求；提交后的退出保留绑定，
+停止后续页面动作。合同由 `lxns-account-binding.test.ts`、`lxns-oauth-callback.test.tsx`、
+`provider-login-reuse.test.tsx`、`osu-account-binding.test.ts`、`session-store.test.ts` 和安全仓库测试覆盖。
+
+`services/switch-bound-account.ts` 的 `switchBoundAccount(accountId, { navigateToOverview? }?): Promise<boolean>`
+立即发布有效选择，每次选择（含再次选择当前账号）都尝试保存活动账号；返回 true 仅表示保存成功且
+仍属于当前选择请求。调用方经 `notifyAccountSwitchError(error, showNotification)` 显示
+“当前已切换，账号选择未保存，请重新选择”，共享操作代次使迟到错误不再提示。
+公共玩家绑定与示例账号入口独立处理绑定成功后的选择保存失败，不把已完成绑定报告成失败。
+
+`storage/score-hub-account-store.ts` 是上传账号的独立 v3 凭据索引，保留 v1/v2 迁移与现有稳定身份。
+其读取迁移与全部变更经 `enqueueKeyMutation<T>(storage, key, operation): Promise<T>` 跨实例串行，
+队列内部仅调用未加锁方法，一次失败不阻塞后续任务。索引不可解析抛 `local_commit`；
+索引引用的令牌读空或异常抛 `credential_storage`，不发布部分列表，也不改写或删除原条目。
+`useUploadAccountPreferences` 保留最后一次完整列表，经现有通知显示公共错误文案与重试入口；
+上传服务原样传播持久化错误，网络兜底不能吞掉它。合同由 `secure-storage-migrations.test.ts`、
+`upload-data-sheet.test.tsx` 与 `multi-target-upload.test.ts` 覆盖。
+
 `storage-adapter-core.ts` 的 `createGameStorageAdapter(definition)` 接收 `StorageOwnership`，
 `selectStorageInventory(inventory, ownership)` 为统计和清理提供同一账号/资源选择结果。
 `GAME_STORAGE_ADAPTERS` 保留游戏组合；`shared-storage-cache.ts` 独立维护共享文件缓存边界。
@@ -1017,15 +1048,17 @@ MajdataPlay 原始计分方法，普通测试无需 .NET；原生账号、保存
 
 ## CI 公共合同
 
-常规检查与构建统一由 `.github/workflows/quality.yml` 编排；独立的 Android 原生诊断仅手动运行。
-完整检查同时依赖范围与轻检查成功，`quality-gate` 聚合三者，平台构建不能跳过它。
-纯文档只在范围、轻检查成功且完整检查明确跳过时通过。PR 使用 head.sha，分支使用
+常规检查与构建统一由 `.github/workflows/quality.yml` 编排；独立桥接诊断仍手动运行，
+`android-account-recovery` 在完整检查成功后执行受控原生账号闭环。
+`quality-gate` 聚合范围、轻检查、完整检查与账号闭环，平台构建不能跳过它。
+纯文档只在范围、轻检查成功且后两项明确跳过时通过。PR 使用 head.sha，分支使用
 github.sha；policy 输出、质量检查、门禁、checkout 与构建输入必须对应原始事件同一源码。
 
 | 公共入口 | 输入与输出 | 合同测试 |
 |---|---|---|
 | `.github/scripts/build-policy.mjs`：`buildPolicy({ eventName, event, repository, ref, sha })` | 返回 `{ build, production, sha }`；核验原始事件仓库、分支、删除状态、PR 来源与 40 位 SHA。本仓库分支 push/手动运行允许发布构建；同仓 PR 与 fork 自身运行只检查；fork PR 到 master 只允许无生产凭据构建。CLI 对无法验证的事件失败，不输出事件正文 | `build-policy.test.mjs`、`ci-contract.test.mjs` |
 | `.github/actions/changed-scope/action.yml` | `base-sha` / `head-sha`；返回固定枚举 `functional` / `reason` 与计数 `changed-count`。CI、依赖、构建配置走完整检查；任意目录下的 `*.md` 文件、文档目录、许可与根级 README 截图可以跳过；文档与代码或 CI 混合改动仍走完整检查；无基准或比较失败按功能改动处理 | `changed-scope/self-test.mjs`、轻检查破坏样例 |
+| `.github/scripts/android-account-recovery.mjs` 与 `apps/mobile/native-account-recovery-entry.tsx` | 独立包名、每次生成的测试签名及同源码 SHA。首进程一次领取随机合成凭据，经公共绑定/存储写入读回；强杀并确认退出后，第二进程在同次安装上通过 `restoreAppAccounts()`、真实 Provider 和 ScoreHub `fetchMe()` 认证，禁止再次注入。服务端核对原令牌，失败也清理测试包、端口和服务器；证据仅含身份、阶段与认证结果 | `account-recovery.test.mjs`、`ci-contract.test.mjs`、`native-account-{config,fetch,recovery}.test.ts`；真实原生作业另行运行 |
 | `.github/actions/android-build/action.yml` | `source-sha`、字符串布尔 `production`、`signing-mode`、`expected-certificate-sha256`、`optimization-mode`；返回 `artifact-name`。同一入口完成四 ABI Release 编译、签名校验、生产路由冒烟和上传；发布模式独立校验 GITHUB_SHA。现有发布选择 `legacy-debug` 并锁定旧证书，fork 只用 `test-debug`；`release` 私有签名模式仍要求完整 keystore 配置 | `ci-contract.test.mjs`；实际 Gradle 与托管设备另行执行 |
 | `.github/scripts/android_signing.py`：`verify_android_signing(apksigner_output, mode, expected_certificate_sha256=None)` | 仅接受单一签名者的证书 DN / SHA-256，兼容编号标签与 Build Tools 37 的 V1/V2/V3.0 标签；签名者数量若存在必须唯一且为一，重复、混合或未知证书标签失败。来源戳及公钥摘要不替代 APK 证书。`legacy-debug` 必须带合法 pin，任何给定 pin 均严格匹配；`release` 拒绝调试证书。四 ABI 校验器以 verbose 输出复用同一入口，返回同源签名证据与说明，旧调试签名不标为正式签名 | `android_signing.test.py`，含新旧工具格式、额外签名者与四 ABI 验证入口 fixture |
 | `.github/actions/ios-build/action.yml` | `source-sha`、字符串布尔 `production`。正式模式校验 GITHUB_SHA，预留编号、签名 Archive/IPA，先保存制品再提交 TestFlight；测试模式不安装签名、不请求 ASC。私钥、profile 与 keychain 在部分失败时仍清理 | `ci-contract.test.mjs`；实际 Xcode、签名与 Apple 处理另行执行 |
@@ -1062,7 +1095,7 @@ critical 无论能否解析出公告编号都失败；报告缺字段、条目�
 CI 合同在仓库根目录执行：
 
 ```powershell
-node --test .github/scripts/build-policy.test.mjs .github/scripts/ios-build-number.test.mjs .github/scripts/ci-contract.test.mjs
+node --test .github/scripts/build-policy.test.mjs .github/scripts/ios-build-number.test.mjs .github/scripts/ci-contract.test.mjs .github/scripts/account-recovery.test.mjs
 python -B .github/scripts/verify-ios-archive.test.py
 python -B .github/scripts/android_signing.test.py
 ```

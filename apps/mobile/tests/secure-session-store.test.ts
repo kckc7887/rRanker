@@ -685,6 +685,198 @@ describe('SecureSessionStore commit failure recovery', () => {
   });
 });
 
+describe('SecureSessionStore atomic account batches', () => {
+  const INDEX = 'rranker.provider.sessions.index.v4';
+  const originalSession = { mode: 'osu-oauth', accessToken: 'original-access', refreshToken: 'original-refresh',
+    expiresAt: 2_000_000_000_000, persistable: true } as const;
+  const refreshedSession = { ...originalSession, accessToken: 'new-access', refreshToken: 'new-refresh' };
+  const modes = (userId: number, session: StoredProviderAccountInput['session'] = originalSession): StoredProviderAccountInput[] => (
+    ['osu-standard', 'osu-mania'] as const
+  ).map(gameId => ({ id: `${gameId}:osu:${userId}`, gameId, providerId: 'osu', credentialId: `osu:shared:${userId}`,
+    displayName: `player-${userId}`, scoreDisplay: '1234', session }));
+
+  beforeEach(() => { secure.values.clear(); sqlite.values.clear(); vi.clearAllMocks(); });
+
+  it('writes a shared credential once and restores the first selected account as active', async () => {
+    const storage = { ...kvStore, setItem: vi.fn(kvStore.setItem) };
+    const inputs = modes(2);
+    await new SecureSessionStore(storage).upsertAccounts(inputs, { activeAccountId: inputs[0].id });
+    expect(storage.setItem).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(SecureStore.setItemAsync).mock.calls.filter(([key]) => key.endsWith('.manifest'))).toHaveLength(1);
+    const index = JSON.parse(sqlite.values.get(INDEX)!);
+    expect(index.accounts.map((item: { id: string }) => item.id)).toEqual(inputs.map(item => item.id));
+    expect(index.credentials).toHaveLength(1);
+    const restored = await new SecureSessionStore(storage).loadVault();
+    expect(restored.activeAccountId).toBe(inputs[0].id);
+    expect(restored.credentials).toEqual([{ id: inputs[0].credentialId, providerId: 'osu', session: originalSession }]);
+    expect(restored.accounts.map(item => item.id)).toEqual(inputs.map(item => item.id));
+  });
+
+  it('restores all shared modes with the new session after reauthorizing only mania', async () => {
+    const store = createStore(), inputs = modes(2);
+    await store.upsertAccounts(inputs, { activeAccountId: inputs[0].id });
+    await store.upsertAccounts([{ ...inputs[1], displayName: 'updated player', session: refreshedSession }],
+      { activeAccountId: inputs[1].id });
+    const restored = await createStore().loadVault();
+    expect(restored.activeAccountId).toBe(inputs[1].id);
+    expect(restored.accounts).toHaveLength(2);
+    expect(restored.accounts.every(item => item.credentialId === inputs[0].credentialId)).toBe(true);
+    expect(restored.accounts.find(item => item.id === inputs[1].id)?.displayName).toBe('updated player');
+    expect(restored.credentials).toEqual([{ id: inputs[0].credentialId, providerId: 'osu', session: refreshedSession }]);
+  });
+
+  it.each(['secure-write', 'secure-readback', 'index-write'] as const)('preserves every shared mode after a %s reauthorization failure', async failureStage => {
+    let armed = false;
+    const storage = { ...kvStore, setItem: async (key: string, value: string) => {
+      if (armed && failureStage === 'index-write') throw new Error('index commit failed');
+      await kvStore.setItem(key, value);
+    } };
+    const store = new SecureSessionStore(storage);
+    const inputs = modes(2);
+    await store.upsertAccounts(inputs, { activeAccountId: inputs[0].id });
+    const raw = sqlite.values.get(INDEX);
+    const originalSecrets = [...secure.values.entries()];
+    if (failureStage === 'secure-write') vi.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error('native write failed'));
+    if (failureStage === 'secure-readback') vi.mocked(SecureStore.setItemAsync)
+      .mockImplementationOnce(async (key, value) => { secure.values.set(key, value); })
+      .mockImplementationOnce(async () => undefined);
+    armed = true;
+    await expect(store.upsertAccounts([{ ...inputs[1], displayName: 'new name', session: refreshedSession }],
+      { activeAccountId: inputs[1].id })).rejects.toMatchObject({ code: failureStage === 'index-write' ? 'local_commit' : 'credential_storage' });
+    expect(sqlite.values.get(INDEX)).toBe(raw);
+    expect([...secure.values.entries()]).toEqual(originalSecrets);
+    const restored = await new SecureSessionStore(storage).loadVault();
+    expect(restored.activeAccountId).toBe(inputs[0].id);
+    expect(restored.accounts.map(item => item.id)).toEqual(inputs.map(item => item.id));
+    expect(restored.credentials[0].session).toEqual(originalSession);
+  });
+
+  it.each(['signal', 'generation'] as const)('rolls back the complete batch when %s becomes invalid during the index write', async guard => {
+    const controller = new AbortController();
+    const reason = new Error('binding is no longer current');
+    let armed = false, current = true;
+    const assertCurrent = () => { if (!current) throw reason; };
+    const storage = { ...kvStore, setItem: async (key: string, value: string) => {
+      await kvStore.setItem(key, value);
+      if (armed) {
+        armed = false;
+        if (guard === 'signal') controller.abort(reason);
+        else current = false;
+      }
+    } };
+    const store = new SecureSessionStore(storage);
+    const inputs = modes(2);
+    await store.upsertAccounts(inputs, { activeAccountId: inputs[0].id });
+    const raw = sqlite.values.get(INDEX), originalSecrets = [...secure.values.entries()];
+    armed = true;
+    await expect(store.upsertAccounts(modes(2, refreshedSession), { activeAccountId: inputs[1].id,
+      signal: controller.signal, assertCurrent })).rejects.toBe(reason);
+    expect(sqlite.values.get(INDEX)).toBe(raw);
+    expect([...secure.values.entries()]).toEqual(originalSecrets);
+    expect((await new SecureSessionStore(storage).loadVault()).credentials[0].session).toEqual(originalSession);
+  });
+
+  it('discards earlier new credentials when a later credential in the same batch cannot be saved', async () => {
+    const store = createStore();
+    await store.upsertAccount(account('existing'));
+    const raw = sqlite.values.get(INDEX), originalSecrets = [...secure.values.entries()];
+    const writing = vi.mocked(SecureStore.setItemAsync), previousWrite = writing.getMockImplementation();
+    let manifests = 0;
+    writing.mockImplementation(async (key, value) => {
+      if (key.endsWith('.manifest') && ++manifests === 2) throw new Error('second credential failed');
+      secure.values.set(key, value);
+    });
+    try {
+      const inputs = [...modes(2), ...modes(3)];
+      await expect(store.upsertAccounts(inputs, { activeAccountId: inputs[0].id })).rejects.toMatchObject({ code: 'credential_storage' });
+      expect(manifests).toBe(2);
+      expect(sqlite.values.get(INDEX)).toBe(raw);
+      expect([...secure.values.entries()]).toEqual(originalSecrets);
+      expect((await createStore().loadVault()).accounts.map(item => item.id)).toEqual(['existing']);
+    } finally { writing.mockImplementation(previousWrite!); }
+  });
+
+  it('removes a newly created index when the batch is cancelled during its first commit', async () => {
+    const controller = new AbortController(), reason = new Error('cancelled');
+    const storage = { ...kvStore, setItem: async (key: string, value: string) => {
+      await kvStore.setItem(key, value); controller.abort(reason);
+    } };
+    const inputs = modes(2);
+    await expect(new SecureSessionStore(storage).upsertAccounts(inputs, { activeAccountId: inputs[0].id,
+      signal: controller.signal })).rejects.toBe(reason);
+    expect(sqlite.values.has(INDEX)).toBe(false);
+    expect([...secure.values]).toEqual([]);
+    expect((await new SecureSessionStore(storage).loadVault()).accounts).toEqual([]);
+  });
+
+  it('checks the binding generation again after waiting behind another store instance', async () => {
+    let release!: () => void, started!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const ready = new Promise<void>(resolve => { started = resolve; });
+    let blocked = false, current = true;
+    const reason = new Error('source account removed');
+    const storage = { ...kvStore, setItem: async (key: string, value: string) => {
+      if (blocked) { blocked = false; started(); await gate; }
+      await kvStore.setItem(key, value);
+    } };
+    const first = new SecureSessionStore(storage), second = new SecureSessionStore(storage);
+    await first.upsertAccount(account('existing'));
+    const originalSecrets = [...secure.values.entries()];
+    vi.mocked(SecureStore.setItemAsync).mockClear();
+    blocked = true;
+    const preceding = first.setActiveAccountId('existing');
+    await ready;
+    const inputs = modes(2);
+    const pending = second.upsertAccounts(inputs, { activeAccountId: inputs[0].id, assertCurrent: () => { if (!current) throw reason; } });
+    const rejection = expect(pending).rejects.toBe(reason);
+    current = false; release();
+    await preceding; await rejection;
+    expect(vi.mocked(SecureStore.setItemAsync)).not.toHaveBeenCalled();
+    expect([...secure.values.entries()]).toEqual(originalSecrets);
+    expect((await first.loadVault()).accounts.map(item => item.id)).toEqual(['existing']);
+  });
+
+  it('serializes concurrent complete batches across store instances without losing accounts', async () => {
+    let release!: () => void, started!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const ready = new Promise<void>(resolve => { started = resolve; });
+    let blocked = false;
+    const storage = { ...kvStore, getItem: async (key: string) => {
+      const value = await kvStore.getItem(key);
+      if (blocked && key === INDEX) { blocked = false; started(); await gate; }
+      return value;
+    } };
+    const first = new SecureSessionStore(storage), second = new SecureSessionStore(storage);
+    await first.upsertAccount(account('existing'));
+    const batchB = modes(2), batchC = modes(3);
+    blocked = true;
+    const savingB = first.upsertAccounts(batchB, { activeAccountId: batchB[0].id });
+    await ready;
+    const savingC = second.upsertAccounts(batchC, { activeAccountId: batchC[0].id });
+    release(); await Promise.all([savingB, savingC]);
+    const restored = await new SecureSessionStore(storage).loadVault();
+    expect(restored.accounts.map(item => item.id)).toEqual(['existing', ...batchB.map(item => item.id), ...batchC.map(item => item.id)]);
+    expect(restored.credentials).toHaveLength(3);
+    expect(restored.activeAccountId).toBe(batchC[0].id);
+  });
+
+  it('preserves the committed batch when cancellation arrives during old credential cleanup', async () => {
+    const store = createStore(), inputs = modes(2);
+    await store.upsertAccounts(inputs, { activeAccountId: inputs[0].id });
+    const controller = new AbortController();
+    vi.mocked(SecureStore.deleteItemAsync).mockImplementationOnce(async key => {
+      secure.values.delete(key); controller.abort(new Error('left after commit'));
+    });
+    await expect(store.upsertAccounts(modes(2, refreshedSession), { activeAccountId: inputs[1].id,
+      signal: controller.signal })).resolves.toBeUndefined();
+    expect(controller.signal.aborted).toBe(true);
+    const restored = await createStore().loadVault();
+    expect(restored.activeAccountId).toBe(inputs[1].id);
+    expect(restored.accounts).toHaveLength(2);
+    expect(restored.credentials[0].session).toEqual(refreshedSession);
+  });
+});
+
 describe('Rizline password mutation lifetime', () => {
   beforeEach(() => { secure.values.clear(); vi.clearAllMocks(); });
 

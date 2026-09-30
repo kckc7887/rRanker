@@ -53,7 +53,7 @@ jobs:
       - name: Repository light check
         run: node .github/scripts/check-light.mjs --self-test
       - name: CI authorization and sequencing contracts
-        run: node --test .github/scripts/build-policy.test.mjs .github/scripts/ios-build-number.test.mjs .github/scripts/ci-contract.test.mjs
+        run: node --test .github/scripts/build-policy.test.mjs .github/scripts/ios-build-number.test.mjs .github/scripts/ci-contract.test.mjs .github/scripts/account-recovery.test.mjs
       - name: Archived iOS source contract
         run: python3 -B .github/scripts/verify-ios-archive.test.py
       - name: Android signing identity contract
@@ -101,11 +101,101 @@ jobs:
           path: apps/mobile/build/player-artifacts/
           if-no-files-found: error
           retention-days: 7
+  android-account-recovery:
+    needs:
+      - changed-scope
+      - quality
+    if: needs.changed-scope.outputs.sha == (github.event.pull_request.head.sha || github.sha) && needs.changed-scope.outputs.functional == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 90
+    defaults:
+      run:
+        working-directory: apps/mobile
+    env:
+      NODE_ENV: production
+      BUILD_SOURCE_COMMIT: ${{ needs.changed-scope.outputs.sha }}
+      ANDROID_OPTIMIZATION_MODE: A
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ needs.changed-scope.outputs.sha }}
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "22"
+          cache: npm
+          cache-dependency-path: apps/mobile/package-lock.json
+      - uses: actions/setup-java@v5
+        with:
+          distribution: temurin
+          java-version: "17"
+      - uses: android-actions/setup-android@v4
+        with:
+          cmdline-tools-version: "12266719"
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v6
+      - run: npm ci --include=dev
+      - name: Select isolated account recovery entry
+        run: |
+          test "$(git rev-parse HEAD)" = "$BUILD_SOURCE_COMMIT"
+          node -e "const fs=require('fs');const p=require('./package.json');p.main='native-account-recovery-entry.tsx';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
+      - run: npm run prebuild:android
+      - name: Generate independent test signing key
+        run: keytool -genkeypair -keystore "$RUNNER_TEMP/account-probe.keystore" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 2 -dname "CN=Android Debug Account Probe,O=rRanker,C=CN"
+      - name: Compile account recovery APK
+        working-directory: apps/mobile/android
+        run: |
+          chmod +x gradlew
+          ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=2 -PreactNativeArchitectures=x86_64 \
+            "-Pandroid.injected.signing.store.file=$RUNNER_TEMP/account-probe.keystore" \
+            -Pandroid.injected.signing.store.password=android \
+            -Pandroid.injected.signing.key.alias=androiddebugkey \
+            -Pandroid.injected.signing.key.password=android
+      - name: Verify isolated package and test signature
+        run: |
+          PYTHONPATH=../../.github/scripts python3 - <<'PY'
+          import hashlib, os, re, subprocess
+          from pathlib import Path
+          from android_signing import verify_android_signing
+          apk = 'android/app/build/outputs/apk/release/app-x86_64-release.apk'
+          tools = max((p for p in (Path(os.environ['ANDROID_HOME']) / 'build-tools').iterdir() if re.fullmatch(r'\d+\.\d+\.\d+', p.name)), key=lambda p: tuple(map(int, p.name.split('.'))))
+          certificate = subprocess.check_output(['keytool', '-exportcert', '-keystore', str(Path(os.environ['RUNNER_TEMP']) / 'account-probe.keystore'), '-storepass', 'android', '-alias', 'androiddebugkey'])
+          verify_android_signing(subprocess.check_output([str(tools / 'apksigner'), 'verify', '--verbose', '--print-certs', apk], text=True), 'test-debug', hashlib.sha256(certificate).hexdigest())
+          badging = subprocess.check_output([str(tools / 'aapt'), 'dump', 'badging', apk], text=True)
+          package = next(line for line in badging.splitlines() if line.startswith('package:'))
+          if dict(re.findall(r"(\w+)='([^']*)'", package)).get('name') != 'com.rranker.app.nativeprobe': raise ValueError('Account probe package mismatch')
+          if subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() != os.environ['BUILD_SOURCE_COMMIT']: raise ValueError('Account probe source mismatch')
+          PY
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Verify native account recovery and authentication
+        uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 31
+          arch: x86_64
+          target: default
+          disable-animations: true
+          script: node .github/scripts/android-account-recovery.mjs apps/mobile/android/app/build/outputs/apk/release/app-x86_64-release.apk emulator-5554 apps/mobile/build/account-recovery-evidence
+      - name: Preserve account recovery evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: account-recovery-${{ needs.changed-scope.outputs.sha }}-${{ github.run_attempt }}
+          path: apps/mobile/build/account-recovery-evidence/
+          if-no-files-found: warn
+          retention-days: 7
+      - name: Remove account probe signing key
+        if: always()
+        run: rm -f "$RUNNER_TEMP/account-probe.keystore"
   quality-gate:
     needs:
       - changed-scope
       - light-check
       - quality
+      - android-account-recovery
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
@@ -116,6 +206,7 @@ jobs:
           SCOPE_RESULT: ${{ needs.changed-scope.result }}
           LIGHT_RESULT: ${{ needs.light-check.result }}
           QUALITY_RESULT: ${{ needs.quality.result }}
+          ACCOUNT_RECOVERY_RESULT: ${{ needs.android-account-recovery.result }}
           FUNCTIONAL: ${{ needs.changed-scope.outputs.functional }}
           ACTUAL_SOURCE: ${{ needs.changed-scope.outputs.sha }}
           EXPECTED_SOURCE: ${{ github.event.pull_request.head.sha || github.sha }}
@@ -125,8 +216,8 @@ jobs:
           test "$SCOPE_RESULT" = success
           test "$LIGHT_RESULT" = success
           case "$FUNCTIONAL" in
-            true) test "$QUALITY_RESULT" = success ;;
-            false) test "$QUALITY_RESULT" = skipped ;;
+            true) test "$QUALITY_RESULT" = success; test "$ACCOUNT_RECOVERY_RESULT" = success ;;
+            false) test "$QUALITY_RESULT" = skipped; test "$ACCOUNT_RECOVERY_RESULT" = skipped ;;
             *) exit 1 ;;
           esac
           printf 'Validation passed (functional=%s).\n' "$FUNCTIONAL" >> "$GITHUB_STEP_SUMMARY"

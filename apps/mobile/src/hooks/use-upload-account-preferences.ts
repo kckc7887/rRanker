@@ -2,15 +2,20 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import type { BoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
 import { fetchMe } from '@/services/score-hub-client';
-import { isScoreHubAuthExpired, resolveUploadTargets, uploadTaskController } from '@/services/upload-maimai-from-friend-code';
+import { resolveUploadTargets, uploadTaskController } from '@/services/upload-maimai-from-friend-code';
 import { uploadPrefsStore } from '@/storage/upload-prefs-store';
 import { scoreHubAccountStore, type ScoreHubAccountEntry } from '@/storage/score-hub-account-store';
+import { useNotification } from '@/components/AppNotification';
+import { providerErrorToUserMessage } from '@/providers/errors';
 
 export function useUploadAccountPreferences({ visible, running, decodingQr, accounts, sessionsByAccountId, temporarySelectedAccountIds }: {
   visible: boolean; running: boolean; decodingQr: boolean; accounts: BoundAccount[];
   sessionsByAccountId: Record<string, ProviderSession | undefined>;
   temporarySelectedAccountIds?: readonly string[];
 }) {
+  const { showActionNotification } = useNotification();
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
   const [friendCode, setFriendCode] = useState('');
   const [hasCabinetBound, setHasCabinetBound] = useState(false);
   const [hasStoredToken, setHasStoredToken] = useState(false);
@@ -22,17 +27,34 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wasVisibleRef = useRef(false);
   const bindLookupSeqRef = useRef(0);
+  const storedAccountsRef = useRef(storedAccounts);
+  storedAccountsRef.current = storedAccounts;
+  const runAccountOperation = useCallback(async function run<T>(operation: () => Promise<T>): Promise<T | undefined> {
+    try { return await operation(); }
+    catch (error) {
+      if (visibleRef.current) showActionNotification({
+        title: '账号操作失败',
+        message: providerErrorToUserMessage(error, '暂时无法读取或保存账号信息，请重试。'),
+        variant: 'error',
+        actions: [
+          { label: '稍后', tone: 'cancel' },
+          { label: '重试', onPress: async () => { await run(operation); } },
+        ],
+      });
+      return undefined;
+    }
+  }, [showActionNotification]);
   const persist = useCallback((nextCode: string, nextIds: string[], writeSelection = true) => {
     if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
     saveTimerRef.current = setTimeout(() => {
-      void uploadPrefsStore.save({
+      void runAccountOperation(() => uploadPrefsStore.save({
         friendCode: nextCode,
         selectedAccountIds: nextIds,
         // 临时勾选仅改当前会话 UI，不写入该好友码的持久勾选
         writeSelection: temporarySelectedAccountIds ? false : writeSelection,
-      });
+      }));
     }, 300);
-  }, [temporarySelectedAccountIds]);
+  }, [temporarySelectedAccountIds, runAccountOperation]);
 
   const resolveSelectionForCode = useCallback((
     code: string,
@@ -48,10 +70,13 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
   }, []);
 
   const refreshStoredList = useCallback(async () => {
-    const list = await scoreHubAccountStore.listWithToken();
-    setStoredAccounts(list);
-    return list;
-  }, []);
+    const list = await runAccountOperation(async () => {
+      const next = await scoreHubAccountStore.listWithToken();
+      if (visibleRef.current) setStoredAccounts(next);
+      return next;
+    });
+    return list ?? storedAccountsRef.current;
+  }, [runAccountOperation]);
 
   const applyLocalAccountState = useCallback((code: string, entry: ScoreHubAccountEntry | null) => {
     setHasStoredToken(Boolean(entry?.token));
@@ -59,52 +84,47 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
   }, []);
 
   const refreshBindStatus = useCallback(async (code: string) => {
-    const trimmed = code.trim();
-    const seq = ++bindLookupSeqRef.current;
-    if (!/^\d{15}$/.test(trimmed)) {
-      const entry = trimmed ? await scoreHubAccountStore.getByFriendCode(trimmed) : null;
-      if (seq !== bindLookupSeqRef.current) return;
-      applyLocalAccountState(trimmed, entry);
-      setBindingLookup(false);
-      return;
-    }
-
-    setBindingLookup(true);
-    try {
-      await scoreHubAccountStore.select(trimmed);
-      const entry = await scoreHubAccountStore.getByFriendCode(trimmed);
-      if (seq !== bindLookupSeqRef.current) return;
-      applyLocalAccountState(trimmed, entry);
-
-      if (!entry?.token) {
+    await runAccountOperation(async () => {
+      const trimmed = code.trim();
+      const seq = ++bindLookupSeqRef.current;
+      if (!/^\d{15}$/.test(trimmed)) {
+        const entry = trimmed ? await scoreHubAccountStore.getByFriendCode(trimmed) : null;
+        if (seq !== bindLookupSeqRef.current) return;
+        applyLocalAccountState(trimmed, entry);
         setBindingLookup(false);
         return;
       }
 
+      setBindingLookup(true);
       try {
-        const me = await fetchMe(entry.token);
+        await scoreHubAccountStore.select(trimmed);
+        const entry = await scoreHubAccountStore.getByFriendCode(trimmed);
         if (seq !== bindLookupSeqRef.current) return;
-        const bound = me.hasCabinetUserId === true;
-        await scoreHubAccountStore.upsert({
-          friendCode: me.friendCode ?? trimmed,
-          token: entry.token,
-          hasCabinetBound: bound,
-        });
-        if (seq !== bindLookupSeqRef.current) return;
-        setHasCabinetBound(bound);
-        setHasStoredToken(true);
-        await refreshStoredList();
-      } catch (error) {
-        if (seq !== bindLookupSeqRef.current) return;
-        // JWT 过期：保留本地绑定缓存与 token，上传时会话失败再回退好友码
-        if (!isScoreHubAuthExpired(error)) {
-          // 网络不可用时保留本地数据。
+        applyLocalAccountState(trimmed, entry);
+
+        if (!entry?.token) return;
+
+        // 认证或网络失败继续使用本地缓存；存储故障由外层公共错误路径承接。
+        const me = await fetchMe(entry.token).catch(() => null);
+        if (me) {
+          if (seq !== bindLookupSeqRef.current) return;
+          const bound = me.hasCabinetUserId === true;
+          await scoreHubAccountStore.upsert({
+            friendCode: me.friendCode ?? trimmed,
+            token: entry.token,
+            hasCabinetBound: bound,
+          });
+          if (seq !== bindLookupSeqRef.current) return;
+          setHasCabinetBound(bound);
+          setHasStoredToken(true);
+          const list = await scoreHubAccountStore.listWithToken();
+          if (seq === bindLookupSeqRef.current) setStoredAccounts(list);
         }
+      } finally {
+        if (seq === bindLookupSeqRef.current) setBindingLookup(false);
       }
-    } finally {
-      if (seq === bindLookupSeqRef.current) setBindingLookup(false);
-    }
-  }, [applyLocalAccountState, refreshStoredList]);
+    });
+  }, [applyLocalAccountState, runAccountOperation]);
 
   useEffect(() => {
     if (!visible) {
@@ -121,11 +141,12 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
     const snapshot = uploadTaskController.getSnapshot();
     const inFlight = snapshot.status === 'running' || snapshot.status === 'paused';
     setPrefsReady(false);
-    void Promise.all([
-      uploadPrefsStore.load(),
-      scoreHubAccountStore.load(),
-      scoreHubAccountStore.listWithToken(),
-    ]).then(([prefs, hubAccount, list]) => {
+    void runAccountOperation(async () => {
+      const [prefs, hubAccount, list] = await Promise.all([
+        uploadPrefsStore.load(),
+        scoreHubAccountStore.load(),
+        scoreHubAccountStore.listWithToken(),
+      ]);
       if (!active) return;
       const code = prefs.friendCode || hubAccount.friendCode;
       setFriendCode(code);
@@ -146,6 +167,7 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
     });
     return () => {
       active = false;
+      bindLookupSeqRef.current += 1;
     };
   }, [
     visible,
@@ -154,6 +176,7 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
     temporarySelectedAccountIds,
     refreshBindStatus,
     resolveSelectionForCode,
+    runAccountOperation,
   ]);
 
   useEffect(() => {
@@ -166,7 +189,7 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
     setSelectedIds((prev) => prev.filter((id) => writableIds.has(id)));
   }, [visible, running, accounts, sessionsByAccountId]);
 
-  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); bindLookupSeqRef.current += 1; }, []);
+  useEffect(() => () => { visibleRef.current = false; if (saveTimerRef.current) clearTimeout(saveTimerRef.current); bindLookupSeqRef.current += 1; }, []);
   const toggleAccount = (accountId: string, writable: boolean) => {
     if (!writable || running) return;
     setSelectedIds((prev) => {
@@ -183,7 +206,7 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
     setFriendCode(digits);
     persist(digits, selectedIds, /^\d{15}$/.test(digits));
     if (digits.length === 15) {
-      void (async () => {
+      void runAccountOperation(async () => {
         if (!temporarySelectedAccountIds) {
           const prefs = await uploadPrefsStore.load();
           const writableIds = resolveUploadTargets(accounts, sessionsByAccountId)
@@ -193,9 +216,10 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
           setSelectedIds(nextIds);
         }
         await refreshBindStatus(digits);
-      })();
+      });
     } else {
-      void scoreHubAccountStore.getByFriendCode(digits).then((entry) => {
+      void runAccountOperation(async () => {
+        const entry = await scoreHubAccountStore.getByFriendCode(digits);
         applyLocalAccountState(digits, entry);
       });
     }
@@ -203,46 +227,56 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
 
   const selectStoredFriendCode = async (code: string) => {
     if (running || decodingQr) return;
-    setHistoryVisible(false);
-    setFriendCode(code);
-    if (!temporarySelectedAccountIds) {
-      const prefs = await uploadPrefsStore.load();
-      const writableIds = resolveUploadTargets(accounts, sessionsByAccountId)
-        .filter((target) => target.writable)
-        .map((target) => target.account.id);
-      const nextIds = resolveSelectionForCode(code, prefs, writableIds);
+    await runAccountOperation(async () => {
+      let nextIds = selectedIds;
+      if (!temporarySelectedAccountIds) {
+        const prefs = await uploadPrefsStore.load();
+        const writableIds = resolveUploadTargets(accounts, sessionsByAccountId)
+          .filter((target) => target.writable)
+          .map((target) => target.account.id);
+        nextIds = resolveSelectionForCode(code, prefs, writableIds);
+      }
+      const selected = await scoreHubAccountStore.select(code);
+      if (!visibleRef.current) return;
+      setHistoryVisible(false);
+      setFriendCode(code);
       setSelectedIds(nextIds);
+      setHasStoredToken(Boolean(selected.token));
+      setHasCabinetBound(selected.hasCabinetBound);
       persist(code, nextIds, false);
-    } else {
-      persist(code, selectedIds, false);
-    }
-    await scoreHubAccountStore.select(code);
-    await refreshBindStatus(code);
+      await refreshBindStatus(code);
+    });
   };
 
   const removeStoredFriendCode = async (code: string) => {
     if (running || decodingQr) return;
-    await scoreHubAccountStore.remove(code);
-    await uploadPrefsStore.removeSelection(code);
-    const list = await refreshStoredList();
-    if (list.length === 0) setHistoryVisible(false);
-    if (friendCode.trim() === code.trim()) {
-      setHasStoredToken(false);
-      setHasCabinetBound(false);
-    }
+    await runAccountOperation(async () => {
+      await scoreHubAccountStore.remove(code);
+      await uploadPrefsStore.removeSelection(code);
+      const list = await scoreHubAccountStore.listWithToken();
+      if (!visibleRef.current) return;
+      setStoredAccounts(list);
+      if (list.length === 0) setHistoryVisible(false);
+      if (friendCode.trim() === code.trim()) {
+        setHasStoredToken(false);
+        setHasCabinetBound(false);
+      }
+    });
   };
 
   const refreshAfterUpload = async (code?: string) => {
-    await refreshStoredList();
-    if (code !== undefined) await refreshBindStatus(code);
-    else {
-      const latest = await scoreHubAccountStore.load();
-      if (latest.friendCode) {
-        setFriendCode(latest.friendCode);
-        setHasStoredToken(Boolean(latest.token));
-        setHasCabinetBound(latest.hasCabinetBound);
+    await runAccountOperation(async () => {
+      await refreshStoredList();
+      if (code !== undefined) await refreshBindStatus(code);
+      else {
+        const latest = await scoreHubAccountStore.load();
+        if (latest.friendCode && visibleRef.current) {
+          setFriendCode(latest.friendCode);
+          setHasStoredToken(Boolean(latest.token));
+          setHasCabinetBound(latest.hasCabinetBound);
+        }
       }
-    }
+    });
   };
   return { friendCode, hasCabinetBound, hasStoredToken, storedAccounts, historyVisible, setHistoryVisible,
     bindingLookup, selectedIds, prefsReady, refreshStoredList, refreshAfterUpload,

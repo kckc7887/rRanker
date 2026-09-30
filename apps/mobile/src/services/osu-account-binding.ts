@@ -83,7 +83,6 @@ export async function bindOsuModes(input: {
   credentialId ??= await runProviderOperation('authorization_prepare', createCredentialId);
   assertCurrent();
 
-  const finalSession = provider.getSession();
   const accounts: BoundAccount[] = [];
   for (const gameId of modes) {
     assertCurrent();
@@ -99,22 +98,25 @@ export async function bindOsuModes(input: {
       avatarUrl: user.avatar_url ?? null,
     });
     accounts.push(account);
-    await sessions.upsertAccount({
-      id: account.id,
-      gameId,
-      providerId: 'osu',
-      credentialId,
-      displayName: account.displayName,
-      scoreDisplay: account.scoreDisplay,
-      session: finalSession,
-    }, input.signal);
-    assertCurrent();
   }
+
+  const finalSession = provider.getSession();
+  const activeAccountId = accounts[0].id;
+  await sessions.upsertAccounts(accounts.map(account => ({
+    id: account.id,
+    gameId: account.gameId,
+    providerId: 'osu' as const,
+    credentialId,
+    displayName: account.displayName,
+    scoreDisplay: account.scoreDisplay,
+    session: finalSession,
+  })), { activeAccountId, signal: input.signal, assertCurrent: input.assertCurrent });
+  assertCurrent();
 
   return {
     accounts,
     credentialId,
     session: finalSession,
-    activeAccountId: accounts[0]?.id ?? '',
+    activeAccountId,
   };
 }

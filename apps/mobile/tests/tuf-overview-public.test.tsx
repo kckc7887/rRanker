@@ -5,7 +5,11 @@ import { OverviewScreen } from '../app/(tabs)/(overview)/index';
 import { createTufBoundAccount } from '@/domain/bound-account';
 
 const mockRefetch = jest.fn<() => Promise<{ data: unknown }>>();
-const mockSwitchBoundAccount = jest.fn();
+const mockSwitchBoundAccount = jest.fn(async (..._args: unknown[]): Promise<boolean> => true);
+const mockShowNotification = jest.fn();
+const mockNotifySwitchError = jest.fn((error: unknown, notify: (value: unknown) => unknown) => {
+  notify({ title: '当前账号未保存', message: '当前已切换，账号选择未保存，请重新选择', variant: 'error' });
+});
 let mockNullPayload = false;
 const mockFirstAccount = createTufBoundAccount({ playerId: 25, displayName: '公开玩家', rankedScore: 1824.52 });
 const mockSecondAccount = createTufBoundAccount({ playerId: 26, displayName: '公开二号', rankedScore: 1600 });
@@ -30,7 +34,7 @@ const mockBundle = {
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@/components/AppNotification', () => ({
-  useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }),
+  useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
 }));
 jest.mock('@/components/AccountSwitchSheet', () => ({
   AccountSwitchSheet: ({
@@ -105,7 +109,10 @@ jest.mock('@/state/query-client', () => ({ queryClient: {
   cancelQueries: jest.fn(async () => undefined), invalidateQueries: jest.fn(async () => undefined), getQueryData: jest.fn(),
 } }));
 jest.mock('@/services/invalidate-account-data', () => ({ invalidateAccountDataQueries: jest.fn(async () => undefined) }));
-jest.mock('@/services/switch-bound-account', () => ({ switchBoundAccount: (...args: unknown[]) => mockSwitchBoundAccount(...args) }));
+jest.mock('@/services/switch-bound-account', () => ({
+  switchBoundAccount: (...args: unknown[]) => mockSwitchBoundAccount(...args),
+  notifyAccountSwitchError: (...args: Parameters<typeof mockNotifySwitchError>) => mockNotifySwitchError(...args),
+}));
 jest.mock('@/services/refresh-diving-fish-accounts', () => ({ refreshDivingFishAccounts: jest.fn() }));
 jest.mock('@/domain/maimai-maintenance', () => ({
   MAIMAI_MAINTENANCE_MESSAGE: '维护', isMaimaiMaintenanceWindow: () => false,
@@ -117,8 +124,19 @@ jest.mock('@/domain/chunithm-maintenance', () => ({
 describe('TUF public overview', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockSwitchBoundAccount.mockReset(); mockSwitchBoundAccount.mockResolvedValue(true);
     mockNullPayload = false;
     mockRefetch.mockResolvedValue({ data: mockBundle });
+  });
+
+  it('reports account selection persistence failure through the shared notification path', async () => {
+    const failure = new Error('write failed');
+    mockSwitchBoundAccount.mockRejectedValueOnce(failure);
+    const screen = await render(<OverviewScreen />);
+    await fireEvent.press(screen.getByLabelText('当前玩家 公开玩家，点击切换账号'));
+    await fireEvent.press(screen.getByLabelText('选择 TUF 二号'));
+    await waitFor(() => expect(mockNotifySwitchError).toHaveBeenCalledWith(failure, mockShowNotification));
+    expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '当前账号未保存', variant: 'error' }));
   });
 
   it('keeps the public overview shell, account switching, sync and TUF profile slot', async () => {

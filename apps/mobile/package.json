@@ -9,7 +9,7 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "eslint app src tests vitest.config.ts jest.config.js",
+    "lint": "eslint app src tests native-account-recovery-entry.tsx vitest.config.ts jest.config.js",
     "typecheck": "tsc --noEmit && npm run typecheck:maimai-player && npm run typecheck:phigros-player && npm run typecheck:osu-player && npm run typecheck:rizline-player",
     "typecheck:phigros-player": "tsc -p tsconfig.phigros-player.json",
     "check:generated": "node scripts/build-chart-preview.mjs --check && node scripts/build-phigros-chart-preview.mjs --check && node scripts/build-osu-chart-preview.mjs --check && node scripts/build-rizline-chart-preview.mjs --check",

@@ -1,4 +1,4 @@
-import { describe, expect, it, vi } from 'vitest';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { bindOsuModes } from '@/services/osu-account-binding';
 import { createOsuBoundAccount } from '@/domain/bound-account';
 import { ProviderError } from '@/providers/errors';
@@ -7,7 +7,7 @@ const mocks = vi.hoisted(() => ({
   getOwnUser: vi.fn(),
   getUser: vi.fn(),
   getSession: vi.fn(),
-  upsertAccount: vi.fn(),
+  upsertAccounts: vi.fn(),
 }));
 
 vi.mock('@/providers/osu-score-provider', () => ({
@@ -23,7 +23,7 @@ vi.mock('@/providers/osu-score-provider', () => ({
 vi.mock('@/storage/secure-session-store', () => ({
   SecureSessionStore: vi.fn(function SecureSessionStoreMock() {
     return {
-      upsertAccount: mocks.upsertAccount,
+      upsertAccounts: mocks.upsertAccounts,
     };
   }),
 }));
@@ -46,8 +46,15 @@ function userResponse(pp = 1234.5) {
 }
 
 describe('osu! 模式绑定', () => {
+  beforeEach(() => {
+    vi.resetAllMocks();
+    mocks.getOwnUser.mockResolvedValue(userResponse());
+    mocks.getUser.mockResolvedValue(userResponse());
+    mocks.getSession.mockReturnValue(session);
+    mocks.upsertAccounts.mockResolvedValue(undefined);
+  });
+
   it('rejects late cancelled validation without persisting a mode', async () => {
-    mocks.getOwnUser.mockReset(); mocks.getUser.mockReset(); mocks.upsertAccount.mockReset();
     let release!: (value: ReturnType<typeof userResponse>) => void;
     mocks.getOwnUser.mockImplementation(() => new Promise(resolve => { release = resolve; }));
     const controller = new AbortController();
@@ -58,14 +65,14 @@ describe('osu! 模式绑定', () => {
     controller.abort(reason); release(userResponse());
     await rejection;
     expect(mocks.getOwnUser).toHaveBeenCalledWith('osu-standard', controller.signal);
-    expect(mocks.getUser).not.toHaveBeenCalled(); expect(mocks.upsertAccount).not.toHaveBeenCalled();
+    expect(mocks.getUser).not.toHaveBeenCalled(); expect(mocks.upsertAccounts).not.toHaveBeenCalled();
   });
 
   it('只创建选中模式账号并共享同一 credentialId', async () => {
     mocks.getOwnUser.mockResolvedValue(userResponse());
     mocks.getUser.mockResolvedValue(userResponse());
     mocks.getSession.mockReturnValue(session);
-    mocks.upsertAccount.mockResolvedValue(undefined);
+    mocks.upsertAccounts.mockResolvedValue(undefined);
 
     const result = await bindOsuModes({
       modeGameIds: ['osu-standard', 'osu-mania'],
@@ -77,12 +84,39 @@ describe('osu! 模式绑定', () => {
     expect(result.accounts.map((account) => account.gameId)).toEqual(['osu-standard', 'osu-mania']);
     expect(result.activeAccountId).toBe('osu-standard:osu:2');
     expect(result.credentialId.startsWith('osu:')).toBe(true);
-    expect(mocks.upsertAccount).toHaveBeenCalledTimes(2);
-    for (const call of mocks.upsertAccount.mock.calls) {
-      expect(call[0].providerId).toBe('osu');
-      expect(call[0].credentialId).toBe(result.credentialId);
-      expect(call[0].scoreDisplay).toBe('1235');
+    expect(mocks.upsertAccounts).toHaveBeenCalledTimes(1);
+    const [storedAccounts, options] = mocks.upsertAccounts.mock.calls[0];
+    expect(options.activeAccountId).toBe(result.activeAccountId);
+    for (const stored of storedAccounts) {
+      expect(stored.providerId).toBe('osu');
+      expect(stored.credentialId).toBe(result.credentialId);
+      expect(stored.scoreDisplay).toBe('1235');
     }
+  });
+
+  it('does not save an earlier mode when the next mode fails validation', async () => {
+    const failure = new ProviderError('network', 'network failed', true);
+    mocks.getUser.mockResolvedValueOnce(userResponse()).mockRejectedValueOnce(failure);
+    await expect(bindOsuModes({ modeGameIds: ['osu-standard', 'osu-mania'], session,
+      existingAccounts: [], credentialIdsByAccountId: {} })).rejects.toBe(failure);
+    expect(mocks.getUser).toHaveBeenCalledTimes(2);
+    expect(mocks.upsertAccounts).not.toHaveBeenCalled();
+  });
+
+  it('commits the latest session after a later mode refreshes the credentials', async () => {
+    const next = { ...session, accessToken: 'access-next', refreshToken: 'refresh-next' };
+    mocks.getUser.mockImplementationOnce(async () => userResponse()).mockImplementationOnce(async () => {
+      mocks.getSession.mockReturnValue(next);
+      return userResponse();
+    });
+    const assertCurrent = vi.fn();
+    const controller = new AbortController();
+    const result = await bindOsuModes({ modeGameIds: ['osu-standard', 'osu-mania'], session,
+      existingAccounts: [], credentialIdsByAccountId: {}, signal: controller.signal, assertCurrent });
+    expect(result.session).toBe(next);
+    const [storedAccounts, options] = mocks.upsertAccounts.mock.calls[0];
+    expect(storedAccounts.every((account: { session: unknown }) => account.session === next)).toBe(true);
+    expect(options).toEqual({ activeAccountId: result.activeAccountId, signal: controller.signal, assertCurrent });
   });
 
   it('空选择报鉴权错误', async () => {

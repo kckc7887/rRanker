@@ -19,7 +19,7 @@ export {
  */
 const mutationTails = new WeakMap<KeyValueStore, Map<string, Promise<void>>>();
 
-function enqueueKeyMutation<T>(storage: KeyValueStore, key: string, mutation: () => Promise<T>): Promise<T> {
+export function enqueueKeyMutation<T>(storage: KeyValueStore, key: string, mutation: () => Promise<T>): Promise<T> {
   let tails = mutationTails.get(storage);
   if (!tails) {
     tails = new Map();

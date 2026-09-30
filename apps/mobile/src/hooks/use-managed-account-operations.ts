@@ -5,7 +5,7 @@ import type { ProviderId } from '@/domain/game-bind-options';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { useSession } from '@/state/session-store';
 import { queryClient } from '@/state/query-client';
-import { switchBoundAccount } from '@/services/switch-bound-account';
+import { notifyAccountSwitchError, switchBoundAccount } from '@/services/switch-bound-account';
 import {
   clearBoundAccountData, createLocalBoundAccount, demoAccountBinding,
   museDashPlayerBinding, persistActiveAccountId, phiraPlayerBinding,
@@ -27,8 +27,9 @@ export function useManagedAccountOperations(flow: ReturnType<typeof useAccountBi
   const library = useUserLibrary();
   const accounts = useSession(s => s.boundAccounts);
   const upsertBoundAccount = useSession(s => s.upsertBoundAccount);
-  const onSelectAccount = (account: BoundAccount) => {
-    void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false })).catch(() => undefined);
+  const onSelectAccount = async (account: BoundAccount) => {
+    try { return await switchBoundAccount(account.id, { navigateToOverview: false }); }
+    catch (error) { notifyAccountSwitchError(error, showNotification); return false; }
   };
   const addLocalAccount = async () => {
     setBusy(true);
@@ -59,14 +60,14 @@ export function useManagedAccountOperations(flow: ReturnType<typeof useAccountBi
       existing: accounts.find(account => account.id === binding.id),
       existingMessage: account => `TUF 玩家「${account.displayName}」已绑定，已切换到该玩家`,
       successMessage: () => `已绑定 TUF 玩家「${player.name}」`,
-      onExistingBound: flow.close, onCreated: flow.close, upsertBoundAccount, setMessage,
+      onExistingBound: flow.close, onCreated: flow.close, upsertBoundAccount, setMessage, showNotification,
     });
   };
   const bindPhiraPlayer = (player: import('@/domain/phira').PhiraUser) => bindOrSwitchPublicPlayer({
     ...phiraPlayerBinding(player), existing: undefined,
     existingMessage: account => `已绑定 Phira 玩家「${account.displayName}」`,
     successMessage: () => `已绑定 Phira 玩家「${player.name}」`,
-    onExistingBound: flow.close, onCreated: flow.close, upsertBoundAccount, setMessage,
+    onExistingBound: flow.close, onCreated: flow.close, upsertBoundAccount, setMessage, showNotification,
   });
   const bindMuseDashPlayer = (player: { userId: string; nickname: string }) => {
     const binding = museDashPlayerBinding(player);
@@ -74,7 +75,7 @@ export function useManagedAccountOperations(flow: ReturnType<typeof useAccountBi
       existing: accounts.find(account => account.id === binding.id),
       existingMessage: account => `喵斯快跑玩家「${account.displayName}」已绑定，已切换到该玩家`,
       successMessage: () => `已绑定喵斯快跑玩家「${player.nickname}」`,
-      onExistingBound: flow.close, onCreated: flow.close, upsertBoundAccount, setMessage,
+      onExistingBound: flow.close, onCreated: flow.close, upsertBoundAccount, setMessage, showNotification,
     });
   };
   const removalMessage = (account: BoundAccount, includePersonalData: boolean, failures: readonly string[]) => {

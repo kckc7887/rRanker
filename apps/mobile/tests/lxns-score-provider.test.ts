@@ -3,6 +3,15 @@ import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 describe('LXNS player presentation', () => {
   afterEach(() => vi.unstubAllGlobals());
 
+  it.each(['getOptionalPlayer', 'getOptionalRecords'] as const)('取消的 %s 不发网络请求', async method => {
+    const fetcher = vi.fn(); vi.stubGlobal('fetch', fetcher);
+    const controller = new AbortController(); const reason = new Error('cancelled'); controller.abort(reason);
+    const provider = new LxnsScoreProvider({ mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh',
+      expiresAt: Date.now() + 120_000, persistable: true });
+    await expect(provider[method](controller.signal)).rejects.toBe(reason);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+
   it('maps verified icon, name plate, frame and trophy fields into the player model', async () => {
     vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
       success: true,
