@@ -10,6 +10,7 @@ import { BLUE_DIFFICULTY_COLORS } from '@/domain/difficulty-theme';
 import { MAJDATA_DIFFICULTIES, majdataAsset, majdataRank, type MajdataSong } from '@/domain/majdata';
 import { presentMajdataScore, presentMajdataSong, type MajdataCard } from '@/features/game-content/adapters/majdata';
 import { useMajdataRanking } from '@/hooks/use-majdata';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 
 export function majdataVisual(level: number) {
   return level === 0
@@ -37,10 +38,11 @@ export function MajdataDifficultyBadge({ level, value, name = true, display, com
 export const MajdataScoreCard = memo(function MajdataScoreCard({ card, username, visible, position }: {
   card: MajdataCard;
   username: string;
-  visible: boolean;
+  visible?: boolean;
   position?: number;
 }) {
-  const ranking = useMajdataRanking(card.songId, visible);
+  const active = useCachedTabActive();
+  const ranking = useMajdataRanking(card.songId, active && visible !== false);
   const rank = majdataRank(ranking.data, username, card.level, card.hash);
   return <SimaiScoreCard presentation={{ ...presentMajdataScore(card, rank), position }}
     artwork={{ source: majdataAsset(card.songId, 'image') }} achievements={card.dx}

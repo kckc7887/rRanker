@@ -208,19 +208,29 @@ function crc32TableBytes(): Uint32Array {
   return crc32Table;
 }
 
-async function crc32(bytes: Uint8Array, cancellation?: ChartPreviewCancellation): Promise<number> {
-  if (bytes.length === 0) return 0;
+/** 增量 CRC32 供解包校验与文件式组包共用同一张表。 */
+export function createChartPreviewCrc32() {
   const table = crc32TableBytes();
   let crc = -1;
-  for (let index = 0; index < bytes.length; index += 1) {
-    if (index > 0 && index % CHART_PREVIEW_CRC_CHUNK_BYTES === 0) {
-      throwIfChartPreviewCancelled(cancellation);
+  return {
+    update(bytes: Uint8Array): void {
+      for (const byte of bytes) crc = (crc >>> 8) ^ table[(crc ^ byte) & 0xff]!;
+    },
+    value: () => (crc ^ -1) >>> 0,
+  };
+}
+
+async function crc32(bytes: Uint8Array, cancellation?: ChartPreviewCancellation): Promise<number> {
+  const crc = createChartPreviewCrc32();
+  for (let offset = 0; offset < bytes.length; offset += CHART_PREVIEW_CRC_CHUNK_BYTES) {
+    throwIfChartPreviewCancelled(cancellation);
+    crc.update(bytes.subarray(offset, offset + CHART_PREVIEW_CRC_CHUNK_BYTES));
+    if (offset + CHART_PREVIEW_CRC_CHUNK_BYTES < bytes.length) {
       await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
-      throwIfChartPreviewCancelled(cancellation);
     }
-    crc = (crc >>> 8) ^ table[(crc ^ bytes[index]!) & 0xff]!;
   }
-  return (crc ^ -1) >>> 0;
+  throwIfChartPreviewCancelled(cancellation);
+  return crc.value();
 }
 
 export async function assertChartPreviewZipPayload(

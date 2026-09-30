@@ -8,6 +8,7 @@ import {
   successfulRefresh,
 } from '@/domain/refresh-result';
 import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
+import { createRuntimeOperation } from './runtime-diagnostics-recorder';
 
 type Sourced = { source: DataSource };
 
@@ -75,6 +76,7 @@ export type CacheFirstLoadOptions<T extends Sourced> = {
   markStale?: (value: T) => T;
   signal?: AbortSignal;
   assertCurrent?: () => void;
+  diagnosticParentOperationId?: number;
 };
 
 function settlementMetadata(source: DataSource): SnapshotMetadata | null {
@@ -128,7 +130,7 @@ function fallbackSettlement<T extends Sourced>(value: T): CacheFirstRefreshResul
  * - 「取消整个操作」= 最后一个消费者离开、或缓存清理提升代次并中止共享任务：所有等待者一起停止，
  *   不会有任何迟到数据被提交。
  */
-export async function cacheFirstLoadWithBackground<T extends Sourced>(
+async function loadCacheFirst<T extends Sourced>(
   options: CacheFirstLoadOptions<T>,
 ): Promise<CacheFirstLoad<T>> {
   const assertCurrent = options.assertCurrent ?? (() => undefined);
@@ -200,6 +202,43 @@ export async function cacheFirstLoadWithBackground<T extends Sourced>(
   assertCurrent();
   return { value: fresh, background: Promise.resolve(isFallback(fresh)
     ? fallbackSettlement(fresh) : successfulSettlement(fresh)) };
+}
+
+export async function cacheFirstLoadWithBackground<T extends Sourced>(options: CacheFirstLoadOptions<T>): Promise<CacheFirstLoad<T>> {
+  const operation = createRuntimeOperation('cache-first', { parentOperationId: options.diagnosticParentOperationId });
+  const signal = options.signal ?? getForegroundAbortSignal();
+  operation.record('cache-read');
+  try {
+    const load = await loadCacheFirst({
+      ...options,
+      signal,
+      loadCached: async () => {
+        const cached = await options.loadCached();
+        operation.record('cache-read-complete', { cacheCount: cached ? 1 : 0, result: cached ? 'hit' : 'miss' });
+        return cached;
+      },
+      loadFresh: async signal => {
+        operation.record('refresh');
+        const fresh = await options.loadFresh(signal);
+        operation.record('refresh-complete');
+        return fresh;
+      },
+      onFresh: async fresh => {
+        operation.record('cache-publish');
+        await options.onFresh(fresh);
+        operation.record('cache-publish-complete');
+      },
+    });
+    return { value: load.value, background: load.background.then(result => {
+      operation.record('settled', { result: result.status,
+        errorCode: result.status === 'cancelled' ? 'cancelled' : result.failures[0]?.code,
+        severity: result.value?.source.isStale || result.value?.source.kind === 'cache' ? 'warn' : undefined });
+      return result;
+    }) };
+  } catch (error) {
+    operation.record('settled', { result: signal.aborted || isCancellation(error) ? 'cancelled' : 'failed', error });
+    throw error;
+  }
 }
 
 /**

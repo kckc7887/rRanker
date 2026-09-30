@@ -76,4 +76,21 @@ describe('DivingFishAuthProvider.loginWithPassword', () => {
 
     await expect(promise).rejects.toMatchObject({ name: 'ProviderError', code: 'network' });
   });
+
+  it('cancels an in-flight login and does not continue token exchange', async () => {
+    const controller = new AbortController();
+    let release!: (response: Response) => void;
+    const request = vi.fn((_input: RequestInfo | URL, _init?: RequestInit) => new Promise<Response>(resolve => { release = resolve; }));
+    vi.stubGlobal('fetch', request);
+    const result = new DivingFishAuthProvider().loginWithPassword({ username: 'u', password: 'p' }, controller.signal);
+    await vi.waitFor(() => expect(request).toHaveBeenCalledOnce());
+    const reason = new Error('cancelled');
+    const rejection = expect(result).rejects.toBe(reason);
+    controller.abort(reason);
+    await rejection;
+    release(jsonResponse({}, { cookies: 'jwt_token=old' }));
+    await Promise.resolve();
+    expect(request).toHaveBeenCalledOnce();
+    expect(request.mock.calls[0]![1]?.signal?.aborted).toBe(true);
+  });
 });

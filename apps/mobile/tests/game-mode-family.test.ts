@@ -12,6 +12,7 @@ import {
 import { createOsuBoundAccount } from '@/domain/bound-account';
 import { reusableLxnsAccounts } from '@/domain/lxns-account-reuse';
 import type { BoundAccount } from '@/domain/bound-account';
+import { GAME_IDS, OSU_MODE_GAME_IDS } from '@/domain/game-bind-options';
 
 const osuSession = {
   mode: 'osu-oauth',
@@ -26,6 +27,11 @@ function osuAccount(gameId: 'osu-standard' | 'osu-mania' | 'osu-catch' | 'osu-ta
 }
 
 describe('多模式游戏家族公共逻辑', () => {
+  it('uses the registered osu modes and keeps the family display order', () => {
+    expect(OSU_FAMILY.modeGameIds).toBe(OSU_MODE_GAME_IDS);
+    expect(GAME_IDS.filter(isOsuGameId)).toEqual(OSU_MODE_GAME_IDS);
+  });
+
   it('familyForGameId 只命中家族成员', () => {
     expect(familyForGameId('osu-standard')?.id).toBe('osu');
     expect(familyForGameId('osu-mania')?.id).toBe('osu');

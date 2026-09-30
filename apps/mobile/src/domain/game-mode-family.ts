@@ -1,13 +1,10 @@
-import type { GameId } from './game-bind-options';
+import { OSU_MODE_GAME_IDS, type GameId, type OsuModeGameId } from './game-bind-options';
 
 /** osu! 家族的四模式游戏 id（后台各注册为独立游戏，前台聚合为一个板块）。 */
-export type OsuGameId = 'osu-standard' | 'osu-mania' | 'osu-catch' | 'osu-taiko';
+export type OsuGameId = OsuModeGameId;
 
 export function isOsuGameId(gameId: GameId): gameId is OsuGameId {
-  return gameId === 'osu-standard'
-    || gameId === 'osu-mania'
-    || gameId === 'osu-catch'
-    || gameId === 'osu-taiko';
+  return (OSU_MODE_GAME_IDS as readonly GameId[]).includes(gameId);
 }
 
 /**
@@ -23,7 +20,7 @@ export type GameModeFamily = {
 export const OSU_FAMILY: GameModeFamily = {
   id: 'osu',
   title: 'osu!',
-  modeGameIds: ['osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko'],
+  modeGameIds: OSU_MODE_GAME_IDS,
 };
 
 export const GAME_MODE_FAMILIES: readonly GameModeFamily[] = [OSU_FAMILY];

@@ -203,6 +203,100 @@ test('Android artifacts require APK verification and production-route smoke', ()
   assert.equal(steps[index('Remove temporary release keystore')].if, 'always()');
 });
 
+test('Android share chooser accepts exact framework and IntentResolver activities', () => {
+  const source = readFileSync(join(root, '.github/scripts/android-smoke.mjs'), 'utf8');
+  const predicate = source.match(/^const isChooserActivity = \(line\) => (.+);$/m);
+  assert(predicate, 'production smoke chooser predicate must exist');
+  const isChooserActivity = new Function('line', `return (${predicate[1]});`);
+  for (const component of [
+    'android/com.android.internal.app.ChooserActivity',
+    'com.android.intentresolver/.ChooserActivity',
+    'com.android.intentresolver/.ChooserActivityLauncher',
+    'com.android.intentresolver/com.android.intentresolver.ChooserActivity',
+    'com.android.intentresolver/com.android.intentresolver.ChooserActivityLauncher',
+  ]) {
+    assert.equal(isChooserActivity(component), true, component);
+    assert.equal(isChooserActivity(`  topResumedActivity=ActivityRecord{a u0 ${component} t1}`), true, component);
+  }
+});
+
+test('Android share chooser rejects application aliases and arbitrary resolver activities', () => {
+  const source = readFileSync(join(root, '.github/scripts/android-smoke.mjs'), 'utf8');
+  const predicate = source.match(/^const isChooserActivity = \(line\) => (.+);$/m);
+  assert(predicate, 'production smoke chooser predicate must exist');
+  const isChooserActivity = new Function('line', `return (${predicate[1]});`);
+  for (const component of [
+    'com.rranker.app/.ChooserActivity',
+    'com.rranker.app/com.android.intentresolver.ChooserActivityLauncher',
+    'com.rranker.app/com.android.internal.app.ChooserActivity',
+    'fake.android/com.android.internal.app.ChooserActivity',
+    'fake.com.android.intentresolver/.ChooserActivityLauncher',
+    'com.android.intentresolver.fake/.ChooserActivityLauncher',
+    'com.android.intentresolver/.MainActivity',
+    'com.android.intentresolver/.ResolverActivity',
+    'com.android.intentresolver/com.example.ChooserActivity',
+    'com.android.intentresolver/.ChooserActivityOther',
+    'com.android.intentresolver/.ChooserActivityLauncherOther',
+    'com.android.intentresolver/.ChooserActivity$Nested',
+    'com.android.intentresolver/.ChooserActivity.Helper',
+    'android/com.android.internal.app.ChooserActivityOther',
+    'android/com.android.internal.app.ChooserActivity.Helper',
+  ]) {
+    assert.equal(isChooserActivity(component), false, component);
+    assert.equal(isChooserActivity(`  topResumedActivity=ActivityRecord{a u0 ${component} t1}`), false, component);
+  }
+});
+
+test('Android share chooser UI requires exact system package and enabled visible bounds', () => {
+  const source = readFileSync(join(root, '.github/scripts/android-smoke.mjs'), 'utf8');
+  const bounds = source.match(/const controlBounds = \(node\) => \{([\s\S]*?)^\};/m);
+  const predicate = source.match(/const hasInteractiveChooser = \(current\) => ([\s\S]*?);\nasync function returnFromChooser/m);
+  assert(bounds && predicate, 'production chooser UI predicates must exist');
+  const hasInteractiveChooser = new Function(`const controlBounds = (node) => {${bounds[1]}}; return (current) => ${predicate[1]};`)();
+  const enabled = { package: 'com.android.intentresolver', enabled: 'true', bounds: '[0,0][100,100]' };
+  assert.equal(hasInteractiveChooser([enabled]), true);
+  assert.equal(hasInteractiveChooser([{ ...enabled, package: 'android' }]), true);
+  for (const invalid of [
+    { ...enabled, package: 'com.rranker.app' },
+    { ...enabled, package: 'com.android.intentresolver.fake' },
+    { ...enabled, package: 'fake.android' },
+    { ...enabled, enabled: 'false' },
+    { ...enabled, enabled: true },
+    { ...enabled, bounds: '' },
+    { ...enabled, bounds: '[0,0][0,100]' },
+    { ...enabled, bounds: '[0,0][100,0]' },
+    { ...enabled, bounds: '[100,100][0,0]' },
+  ]) assert.equal(hasInteractiveChooser([invalid]), false, JSON.stringify(invalid));
+  assert.equal(hasInteractiveChooser([]), false);
+});
+
+test('Android share chooser waits for interactive UI before BACK and then requires MainActivity', async () => {
+  const source = readFileSync(join(root, '.github/scripts/android-smoke.mjs'), 'utf8');
+  const helper = source.match(/^async function returnFromChooser\(label\) \{([\s\S]*?)^\}/m);
+  assert(helper, 'both share entries must use the production chooser return helper');
+  assert(source.includes("await returnFromChooser('diagnostics');"));
+  assert(source.includes("await returnFromChooser('recorded log');"));
+  const ready = Promise.withResolvers();
+  const waiting = Promise.withResolvers();
+  const trace = [];
+  const chooser = () => undefined;
+  const main = () => undefined;
+  const interactive = () => undefined;
+  const returnFromChooser = new Function('waitForActivity', 'waitFor', 'shell', 'isChooserActivity', 'isMainActivity', 'hasInteractiveChooser',
+    `return async function returnFromChooser(label) {${helper[1]}};`)(
+    async (predicate) => { trace.push(predicate === chooser ? 'chooser' : predicate === main ? 'main' : 'unexpected'); },
+    async (predicate) => { assert.equal(predicate, interactive); trace.push('wait-ui'); waiting.resolve(); await ready.promise; },
+    (...args) => { assert.deepEqual(args, ['input', 'keyevent', 'KEYCODE_BACK']); trace.push('back'); },
+    chooser, main, interactive,
+  );
+  const pending = returnFromChooser('diagnostics');
+  await waiting.promise;
+  assert.deepEqual(trace, ['chooser', 'wait-ui']);
+  ready.resolve();
+  await pending;
+  assert.deepEqual(trace, ['chooser', 'wait-ui', 'back', 'main']);
+});
+
 test('Android publication reuses the pinned legacy identity without new keystore secrets', () => {
   const job = pipeline.jobs['android-release'];
   const inputs = job.steps.at(-1).with;

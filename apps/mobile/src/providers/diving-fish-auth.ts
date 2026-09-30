@@ -26,6 +26,7 @@ function divingFishRequest<T>(
   authMode?: AuthMode,
   init?: RequestInit,
   onResponse?: (response: Response) => void,
+  signal?: AbortSignal,
 ): Promise<T> {
   const headers: Record<string, string> = { Accept: 'application/json' };
   if (authMode) {
@@ -36,23 +37,23 @@ function divingFishRequest<T>(
     fetcher: expoFetch as unknown as typeof fetch, label: '水鱼', authenticated: true,
     totalAttempts: 1, maxResponseBytes: 256 * 1024, error: providerErrorFromStatus,
     messages: { timeout: '水鱼请求超时', network: '无法连接水鱼服务', schema: '水鱼返回了无效数据' },
-    init: { ...init, headers }, onResponse,
+    init: { ...init, headers }, onResponse, signal,
   }, read);
 }
 
-async function readImportToken(authMode: AuthMode): Promise<string | null> {
-  const payload = await divingFishRequest('/player/profile', z.object({ import_token: z.unknown().optional() }), response => response.json(), authMode);
+async function readImportToken(authMode: AuthMode, signal?: AbortSignal): Promise<string | null> {
+  const payload = await divingFishRequest('/player/profile', z.object({ import_token: z.unknown().optional() }), response => response.json(), authMode, undefined, undefined, signal);
   return typeof payload.import_token === 'string' && payload.import_token.trim()
     ? payload.import_token.trim()
     : null;
 }
 
 /** 登录后换取 Import-Token：已有则复用，没有则 PUT 生成。只把 Token 写入 SecureStore，不落明文其它介质。 */
-async function obtainImportTokenSession(authMode: AuthMode): Promise<ProviderSession> {
-  let token = await readImportToken(authMode);
+async function obtainImportTokenSession(authMode: AuthMode, signal?: AbortSignal): Promise<ProviderSession> {
+  let token = await readImportToken(authMode, signal);
   if (!token) {
-    await divingFishRequest('/player/import_token', z.string(), response => response.text(), authMode, { method: 'PUT' });
-    token = await readImportToken(authMode);
+    await divingFishRequest('/player/import_token', z.string(), response => response.text(), authMode, { method: 'PUT' }, undefined, signal);
+    token = await readImportToken(authMode, signal);
   }
   if (!token) {
     throw new ProviderError('authentication', '无法获取水鱼上传凭证', false);
@@ -61,15 +62,15 @@ async function obtainImportTokenSession(authMode: AuthMode): Promise<ProviderSes
 }
 
 export class DivingFishAuthProvider implements AuthProvider {
-  async loginWithPassword(credentials: LoginCredentials): Promise<ProviderSession> {
+  async loginWithPassword(credentials: LoginCredentials, signal?: AbortSignal): Promise<ProviderSession> {
     let jwt: string | null = null;
     await divingFishRequest('/login', z.string(), response => response.text(), undefined, {
         method: 'POST',
         headers: { Accept: 'application/json', 'Content-Type': 'application/json' },
         body: JSON.stringify(credentials),
-      }, response => { jwt = jwtFromResponse(response); });
+      }, response => { jwt = jwtFromResponse(response); }, signal);
     if (!jwt) throw new ProviderError('authentication', '水鱼登录响应缺少本次会话凭证，请重试或使用 Import-Token', false);
-    return obtainImportTokenSession({ kind: 'jwt', jwt });
+    return obtainImportTokenSession({ kind: 'jwt', jwt }, signal);
   }
 
   useImportToken(token: string): ProviderSession {

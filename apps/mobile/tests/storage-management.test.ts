@@ -30,7 +30,7 @@ const mocks = vi.hoisted(() => ({
   measureDirectoryBytes: vi.fn(async () => 0),
   clearMaimaiUiCache: vi.fn(),
   resetPhigrosKyouAliasesCache: vi.fn(),
-  clearGameRemoteImageCache: vi.fn(async () => undefined),
+  clearGameRemoteImageCache: vi.fn(async (): Promise<void> => undefined),
   listRemoteImageCacheUsage: vi.fn(async () => []),
   clearDirectoryContentsStrict: vi.fn(),
   clearDiskCache: vi.fn(async () => true),
@@ -51,7 +51,8 @@ vi.mock('expo-image', () => ({ Image: {
   clearMemoryCache: mocks.clearMemoryCache,
 } }));
 
-vi.mock('@/domain/game-bind-options', () => {
+vi.mock('@/domain/game-bind-options', async (importOriginal) => {
+  const actual = await importOriginal<typeof import('@/domain/game-bind-options')>();
   const titles: Record<string, string> = {
     maimai: '舞萌 DX',
     chunithm: '中二节奏',
@@ -66,6 +67,7 @@ vi.mock('@/domain/game-bind-options', () => {
     'osu-taiko': 'osu!taiko',
   };
   return {
+    ...actual,
     findGame: (id: string) => ({ id, title: titles[id] ?? '未知游戏' }),
   };
 });
@@ -261,6 +263,15 @@ describe('osu storage segment', () => {
   it('exposes a measure/clear adapter with the mode title', () => {
     expect(getGameStorageAdapter('osu-standard')?.title).toBe('osu!standard');
     expect(getGameStorageAdapter('osu-catch')?.title).toBe('osu!catch');
+  });
+
+  it('cancels and removes detail scores only for the selected osu mode', async () => {
+    const client = { cancelQueries: vi.fn(async (_filter: { predicate: (query: { queryKey: unknown[] }) => boolean }) => undefined), removeQueries: vi.fn() };
+    await clearStorageByCategories(['osu-standard'], client as never);
+    const predicate = client.cancelQueries.mock.calls[0]?.[0]?.predicate as (query: { queryKey: unknown[] }) => boolean;
+    expect(predicate({ queryKey: ['osu-beatmapset-user-scores', 'osu-standard:osu:2', 'osu-standard', 2, 123] })).toBe(true);
+    expect(predicate({ queryKey: ['osu-beatmapset-user-scores', 'osu-mania:osu:2', 'osu-mania', 2, 123] })).toBe(false);
+    expect(client.removeQueries).toHaveBeenCalledWith({ predicate });
   });
 
   it('measures and clears only the matching mode snapshot and account resources', async () => {
@@ -487,6 +498,30 @@ describe('maimai resource coverage', () => {
 });
 
 describe('clearing storage compacts the database and resets in-memory caches', () => {
+  it('waits for image cleanup after SQL cleanup fails before measuring reclaimed bytes', async () => {
+    const images = Promise.withResolvers<void>();
+    const adapter = getGameStorageAdapter('phira')!;
+    const clear = vi.spyOn(adapter, 'clear').mockRejectedValueOnce(new Error('SQL unavailable'));
+    mocks.clearGameRemoteImageCache.mockClear();
+    mocks.clearGameRemoteImageCache.mockReturnValueOnce(images.promise);
+    mocks.measureDirectoryBytes.mockClear();
+    for (let index = 0; index < 5; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(20);
+    for (let index = 0; index < 5; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(10);
+    let settled = false;
+    const pending = clearStorageByCategories(['phira'], {
+      cancelQueries: vi.fn(async () => undefined), removeQueries: vi.fn(),
+    } as never).then(result => { settled = true; return result; });
+    try {
+      await vi.waitFor(() => expect(mocks.clearGameRemoteImageCache).toHaveBeenCalledWith('phira'));
+      await Promise.resolve(); await Promise.resolve();
+      expect(settled).toBe(false);
+      expect(mocks.measureDirectoryBytes).toHaveBeenCalledTimes(5);
+      images.resolve();
+      await expect(pending).resolves.toEqual({ clearedIds: [], failures: ['phira'], reclaimedBytes: 50 });
+      expect(mocks.measureDirectoryBytes).toHaveBeenCalledTimes(10);
+    } finally { images.resolve(); await pending; clear.mockRestore(); }
+  });
+
   it('runs wal checkpoint and VACUUM after clearing', async () => {
     mocks.execAsync.mockClear();
     const client = {
@@ -541,7 +576,7 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     expect(options.skip('rranker-runtime-log-31-1.txt')).toBe(false);
   });
 
-  it('finishes clearing measured files when the native image cache reports no change', async () => {
+  it('keeps measured file cleanup but reports each unsuccessful native image cache clear', async () => {
     mocks.clearDiskCache.mockResolvedValueOnce(false);
     mocks.clearMemoryCache.mockResolvedValueOnce(false);
     const client = {
@@ -551,7 +586,17 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     };
     await expect(clearStorageByCategories(['shared'], client as never)).resolves.toMatchObject({
       clearedIds: ['shared'],
-      failures: [],
+      failures: ['图片磁盘缓存', '图片内存缓存'],
+      reclaimedBytes: 0,
+    });
+  });
+
+  it('preserves reclaimed bytes when disk clear fails but memory and files succeed', async () => {
+    mocks.clearDiskCache.mockRejectedValueOnce(new Error('disk unavailable'));
+    for (let index = 0; index < 5; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(20);
+    for (let index = 0; index < 5; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(10);
+    await expect(clearStorageByCategories(['shared'], { cancelQueries: vi.fn(), removeQueries: vi.fn() } as never)).resolves.toMatchObject({
+      clearedIds: ['shared'], failures: ['图片磁盘缓存'], reclaimedBytes: 50,
     });
   });
 });

@@ -19,6 +19,26 @@ jest.mock('react-native-gesture-handler', () => {
 });
 
 describe('标签预设编辑器', () => {
+  it('preserves all thirty selected tags on overflow and allows replacing one', async () => {
+    const tags = Array.from({ length: 30 }, (_, index) => `标签${index}`);
+    const onChange = jest.fn(async () => undefined);
+    const screen = await render(<TagEditor tags={tags} presets={[tags[0]!, '新增标签']} presetsEditable={false}
+      onChange={onChange} />);
+    await fireEvent.press(screen.getByLabelText('打开标签预设'));
+    await fireEvent.press(screen.getByLabelText('选择标签 新增标签'));
+    expect(screen.getByText('最多可选择 30 个标签')).toBeTruthy();
+    expect(screen.getByLabelText('选择标签 标签0').props.accessibilityState).toEqual({ checked: true });
+    expect(screen.getByLabelText('选择标签 新增标签').props.accessibilityState).toEqual({ checked: false });
+    await fireEvent.press(screen.getByLabelText('完成标签选择'));
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith(tags));
+
+    await fireEvent.press(screen.getByLabelText('打开标签预设'));
+    await fireEvent.press(screen.getByLabelText('选择标签 标签0'));
+    await fireEvent.press(screen.getByLabelText('选择标签 新增标签'));
+    await fireEvent.press(screen.getByLabelText('完成标签选择'));
+    await waitFor(() => expect(onChange).toHaveBeenLastCalledWith([...tags.slice(1), '新增标签']));
+  });
+
   it('supports multi-select and commits once on completion', async () => {
     const onChange = jest.fn(async () => undefined);
     const screen = await render(<TagEditor tags={['已有']} presets={['爆发', '交互']}

@@ -8,6 +8,7 @@ import { deleteRizlinePassword } from '@/storage/rizline-password-store';
 import { startTimer } from '@/utils/startup-timing';
 import type { SessionVault, StoredProviderAccount, StoredProviderCredential } from '@/domain/session-vault';
 import { SessionPersistenceError } from '@/domain/session-vault';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 export { sessionsMapFromVault, credentialIdsMapFromVault } from '@/domain/session-vault';
 export type { SessionVault, StoredProviderAccount, StoredProviderCredential } from '@/domain/session-vault';
 
@@ -506,7 +507,7 @@ export class SecureSessionStore {
     const current = currentRaw ? await this.parseStoredIndex(currentRaw) : null;
     if (current) return current;
 
-    const vault = await this.loadVault();
+    const vault = await this.loadVaultUnlocked();
     const migratedRaw = await this.indexIo.getItem(INDEX_KEY);
     const migrated = migratedRaw ? parseSessionIndex(migratedRaw) : null;
     if (migrated) return migrated;
@@ -564,6 +565,10 @@ export class SecureSessionStore {
    * 旧版迁移源解析失败时跳过但不删除（凭据只有这一份，不得销毁）。
    */
   async loadVault(): Promise<SessionVault> {
+    return this.enqueueMutation(() => this.loadVaultUnlocked());
+  }
+
+  private async loadVaultUnlocked(): Promise<SessionVault> {
     const stopIndex = startTimer('vault.index.read');
     const indexRaw = await this.indexIo.getItem(INDEX_KEY);
     stopIndex();
@@ -632,12 +637,14 @@ export class SecureSessionStore {
     return legacyVault;
   }
 
-  private async saveVaultUnlocked(vault: SessionVault, signal?: AbortSignal): Promise<void> {
+  private async saveVaultUnlocked(vault: SessionVault, signal?: AbortSignal): Promise<readonly string[]> {
     const sanitized = sanitizeVault(vault);
     const currentRaw = await this.indexIo.getItem(INDEX_KEY);
     const current = currentRaw ? await this.parseStoredIndex(currentRaw) : null;
     const nextCredentials: StoredCredentialIndex[] = [];
     const newSecretRefs: string[] = [];
+    let indexWriteStarted = false;
+    let phase = 'credential-write';
 
     try {
       for (const credential of sanitized.credentials) {
@@ -674,25 +681,49 @@ export class SecureSessionStore {
         accounts: sanitized.accounts,
       };
       if (signal?.aborted) throw signal.reason;
+      indexWriteStarted = true;
+      phase = 'index-commit';
       await this.indexIo.setItem(INDEX_KEY, JSON.stringify(index));
       if (signal?.aborted) {
+        phase = 'index-rollback';
         if (currentRaw === null) await this.indexIo.removeItem(INDEX_KEY);
         else await this.indexIo.setItem(INDEX_KEY, currentRaw);
         throw signal.reason;
       }
     } catch (error) {
-      for (const secretRef of newSecretRefs) {
-        await this.credentialIo.delete(secretRef).catch(() => undefined);
-      }
+      await this.discardUncommittedCredentials(newSecretRefs, indexWriteStarted);
+      recordRuntimeError('session-persistence', error, false, { phase });
       throw error;
     }
 
     const retained = new Set(nextCredentials.map((item) => item.secretRef));
-    for (const previous of current?.credentials ?? []) {
-      if (!retained.has(previous.secretRef)) {
-        await this.credentialIo.delete(previous.secretRef).catch(() => undefined);
+    return this.cleanupCredentialReferences((current?.credentials ?? []).filter(item => !retained.has(item.secretRef)).map(item => item.secretRef), 'credential-cleanup');
+  }
+
+  private async discardUncommittedCredentials(references: readonly string[], readBackIndex: boolean): Promise<void> {
+    let referenced = new Set<string>();
+    if (readBackIndex) {
+      try {
+        const actualRaw = await this.indexIo.getItem(INDEX_KEY);
+        const actual = actualRaw === null ? null : parseSessionIndexOrThrow(actualRaw);
+        referenced = new Set(actual?.credentials.map(item => item.secretRef));
+      } catch (readbackError) {
+        recordRuntimeError('session-persistence', readbackError, false, { phase: 'rollback-readback' });
+        return;
       }
     }
+    await this.cleanupCredentialReferences(references.filter(reference => !referenced.has(reference)), 'rollback-cleanup');
+  }
+
+  private async cleanupCredentialReferences(references: readonly string[], phase: string): Promise<readonly string[]> {
+    const cleanupFailures: string[] = [];
+    for (const reference of references) {
+      try { await this.credentialIo.delete(reference); } catch (error) {
+        cleanupFailures.push('登录凭据');
+        recordRuntimeError('session-persistence', error, false, { phase });
+      }
+    }
+    return [...new Set(cleanupFailures)];
   }
 
   async saveVault(vault: SessionVault): Promise<void> {
@@ -701,7 +732,7 @@ export class SecureSessionStore {
 
   private async upsertAccountUnlocked(account: StoredProviderAccountInput, signal?: AbortSignal): Promise<string> {
     if (signal?.aborted) throw signal.reason;
-    const vault = await this.loadVault();
+    const vault = await this.loadVaultUnlocked();
     const credentialId = account.credentialId
       ?? credentialIdForLegacyAccount(account.id);
     const nextCredential: StoredProviderCredential = {
@@ -747,7 +778,7 @@ export class SecureSessionStore {
     if (!isPersistableSession(session)) return 'missing';
     return this.enqueueMutation(async () => {
       if (options?.signal?.aborted) throw options.signal.reason;
-      const vault = await this.loadVault();
+      const vault = await this.loadVaultUnlocked();
       const existing = vault.accounts.find((account) => account.id === accountId);
       if (!existing) return 'missing';
       const credential = vault.credentials.find(item => item.id === existing.credentialId);
@@ -777,7 +808,7 @@ export class SecureSessionStore {
   ): Promise<CredentialSessionWriteResult> {
     if (!isPersistableSession(session)) return 'missing';
     return this.enqueueMutation(async () => {
-      const vault = await this.loadVault();
+      const vault = await this.loadVaultUnlocked();
       const credential = vault.credentials.find(item => item.id === credentialId);
       if (!credential) return 'missing';
       // 没有账号引用的凭据会被 sanitize 丢弃，写入不可能生效。
@@ -824,25 +855,22 @@ export class SecureSessionStore {
    */
   async removeAccount(accountId: string): Promise<RemoveAccountResult> {
     return this.enqueueMutation(async () => {
-      const vault = await this.loadVault();
+      const vault = await this.loadVaultUnlocked();
       const accounts = vault.accounts.filter((item) => item.id !== accountId);
-      if (accounts.length === vault.accounts.length) {
-        return { committed: true, cleanupFailures: [] };
-      }
       const activeAccountId = vault.activeAccountId === accountId
         ? (accounts[0]?.id ?? null)
         : vault.activeAccountId;
       // 提交点：这里抛出表示账号与凭据仍然完整，调用方可以保留界面账号并重试。
-      await this.saveVaultUnlocked({
+      const cleanupFailures = accounts.length === vault.accounts.length ? [] : [...await this.saveVaultUnlocked({
         ...vault,
         activeAccountId,
         accounts,
-      });
-      const cleanupFailures: string[] = [];
+      })];
       try {
         await deleteRizlinePassword(accountId);
-      } catch {
+      } catch (error) {
         cleanupFailures.push('密码');
+        recordRuntimeError('session-persistence', error, false, { phase: 'password-cleanup' });
       }
       return { committed: true, cleanupFailures };
     });
@@ -871,7 +899,7 @@ export class SecureSessionStore {
   async save(session: ProviderSession): Promise<void> {
     if (!isPersistableSession(session)) return;
     await this.enqueueMutation(async () => {
-      const vault = await this.loadVault();
+      const vault = await this.loadVaultUnlocked();
       if (vault.activeAccountId) {
         const existing = vault.accounts.find((account) => account.id === vault.activeAccountId);
         if (existing) {
@@ -893,23 +921,60 @@ export class SecureSessionStore {
     });
   }
 
-  async clear(): Promise<void> {
-    await this.enqueueMutation(async () => {
-      await this.clearIndexedVault();
-      await this.indexIo.removeItem(INDEX_CORRUPT_KEY).catch(() => undefined);
-      await this.indexIo.removeItem(INDEX_UNRECOGNIZED_KEY).catch(() => undefined);
-      await persistenceOperation('credential_storage', () => SecureStore.deleteItemAsync(VAULT_KEY));
-      await persistenceOperation('credential_storage', () => SecureStore.deleteItemAsync(V2_VAULT_KEY));
-      await persistenceOperation('credential_storage', () => SecureStore.deleteItemAsync(LEGACY_SESSION_KEY));
+  async clear(): Promise<RemoveAccountResult & { committed: true }> {
+    return this.enqueueMutation(async () => {
+      const secretRefs = new Set<string>();
+      const passwordAccountIds = new Set<string>();
+      const cleanupFailures: string[] = [];
+      const collectAccounts = (accounts: readonly StoredProviderAccount[]) => {
+        for (const account of accounts) {
+          if (account.providerId === 'rizline-official') passwordAccountIds.add(account.id);
+        }
+      };
+      const cleanup = async (label: string, operation: () => Promise<unknown>) => {
+        try { await operation(); } catch (error) {
+          cleanupFailures.push(label);
+          recordRuntimeError('session-persistence', error, false, { phase: 'clear-cleanup' });
+        }
+      };
+      for (const key of [INDEX_KEY, INDEX_CORRUPT_KEY, INDEX_UNRECOGNIZED_KEY]) {
+        await cleanup('登录数据读取', async () => {
+          const raw = await this.indexIo.getItem(key);
+          const index = raw ? parseSessionIndex(raw) : null;
+          for (const credential of index?.credentials ?? []) secretRefs.add(credential.secretRef);
+          collectAccounts(index?.accounts ?? []);
+        });
+      }
+      for (const key of LEGACY_VAULT_KEYS) {
+        await cleanup('旧登录数据读取', async () => {
+          const raw = await persistenceOperation('credential_storage', () => SecureStore.getItemAsync(key));
+          if (!raw) return;
+          const vault = key === VAULT_KEY ? parseSessionVault(raw)
+            : key === V2_VAULT_KEY ? parseV2Vault(raw) : null;
+          for (const account of vault?.accounts ?? []) {
+            if (account.providerId === 'rizline-official') passwordAccountIds.add(account.id);
+          }
+        });
+      }
+      // 合法空索引是清空的提交点；它必须保留，避免旧来源清理失败后再次迁移。
+      await this.indexIo.setItem(INDEX_KEY, JSON.stringify({ version: 4, activeAccountId: null, credentials: [], accounts: [] } satisfies SessionIndex));
+      for (const reference of secretRefs) await cleanup('登录凭据', () => this.credentialIo.delete(reference));
+      for (const accountId of passwordAccountIds) await cleanup('密码', () => deleteRizlinePassword(accountId));
+      for (const key of [INDEX_CORRUPT_KEY, INDEX_UNRECOGNIZED_KEY]) await cleanup('登录数据副本', () => this.indexIo.removeItem(key));
+      for (const key of LEGACY_VAULT_KEYS) {
+        await cleanup('旧登录数据', () => persistenceOperation('credential_storage', () => SecureStore.deleteItemAsync(key)));
+      }
+      return { committed: true, cleanupFailures: [...new Set(cleanupFailures)] };
     });
   }
 
   private async clearIndexedVault(): Promise<void> {
     const raw = await this.indexIo.getItem(INDEX_KEY);
     const index = raw ? parseSessionIndex(raw) : null;
+    // 迁移失败时移除候选索引，允许下次从保留的旧来源重新迁移；先断开引用再清理。
+    await this.indexIo.removeItem(INDEX_KEY);
     for (const credential of index?.credentials ?? []) {
       await this.credentialIo.delete(credential.secretRef).catch(() => undefined);
     }
-    await this.indexIo.removeItem(INDEX_KEY);
   }
 }

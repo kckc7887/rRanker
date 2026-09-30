@@ -10,8 +10,9 @@ import type { RizlineRecord } from '@/domain/rizline';
 import type { TufPass } from '@/domain/tuf';
 import type { OsuBestScore } from '@/domain/osu';
 import { fixtureRecords } from '@/fixtures/sanitized';
-import { decodeDetailTarget, type DetailTarget } from '@/domain/detail-target';
+import { decodeDetailTarget, encodeDetailTarget, type DetailTarget } from '@/domain/detail-target';
 import { GameScoreCard } from '@/components/game-content/GameScoreCard';
+import { GameSongRow } from '@/components/game-content/GameSongRow';
 import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
 import {
   presentChunithmScore,
@@ -301,6 +302,24 @@ beforeEach(() => {
 });
 
 describe('成绩卡 → 详情路由 → 详情定位 往返', () => {
+  it.each(CASES)('$name 公共歌曲行保留完整详情定位参数', async (testCase) => {
+    const row = await render(<GameSongRow presentation={{ key: 'song', gameId: testCase.game,
+      route: encodeDetailTarget(testCase.target), title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
+      cover={null} badges={null} rowStyle={null} mainStyle={null} titleStyle={null} subtitleStyle={null} />);
+    await fireEvent.press(row.getByLabelText('打开歌曲'));
+    expect(decodeDetailTarget(testCase.game, pushedHref().params)).toEqual({ ok: true, target: testCase.target });
+  });
+
+  it('公共歌曲行保留额外参数与未转义歌曲身份', async () => {
+    const row = await render(<GameSongRow presentation={{ key: 'song', gameId: 'majdata-net',
+      route: { songId: '歌曲/空 格', levelIndex: 5, params: { gameId: 'majdata-net', scoreId: '42' } },
+      title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
+      cover={null} badges={null} rowStyle={null} mainStyle={null} titleStyle={null} subtitleStyle={null} />);
+    await fireEvent.press(row.getByLabelText('打开歌曲'));
+    expect(pushedHref()).toEqual({ pathname: '/songs/[songId]',
+      params: { songId: '歌曲/空 格', levelIndex: '5', gameId: 'majdata-net', scoreId: '42' } });
+  });
+
   it.each(CASES)('$name 卡片点击后解出同一谱面的 DetailTarget', async (testCase) => {
     const card = await render(testCase.card);
     await fireEvent.press(card.getByTestId(testCase.cardTestID));

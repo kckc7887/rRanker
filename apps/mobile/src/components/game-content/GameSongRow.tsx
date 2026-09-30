@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import {
   Pressable,
   StyleSheet,
@@ -12,6 +12,7 @@ import {
   type ViewStyle,
 } from 'react-native';
 import type { SongRowPresentation } from '@/features/game-content/presentation';
+import { detailTargetHref } from '@/domain/detail-target';
 import { useAppTheme } from '@/theme/app-theme';
 
 /** 封面图两态渲染描述：source 为空或加载失败时回退 ♪ 占位；wrapStyle 提供时额外包一层固定外框。 */
@@ -87,9 +88,7 @@ export function GameSongRow({
   const theme = useAppTheme();
   // 封面失败回退状态机：失败后固定 ♪ 占位，直到组件卸载（与各游戏原有行为一致）
   const [coverFailed, setCoverFailed] = useState(false);
-  const openDetail = () => router.push(
-    `/songs/${encodeURIComponent(presentation.route.songId)}` as Href,
-  );
+  const openDetail = () => router.push(detailTargetHref(presentation.route));
   const title = (
     <Text numberOfLines={2} style={[titleStyle, { color: theme.text }]}>
       {presentation.title}

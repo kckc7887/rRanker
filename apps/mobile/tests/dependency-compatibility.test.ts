@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { createServer } from 'node:http';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
@@ -11,6 +12,8 @@ const mobileRoot = resolve(__dirname, '..');
 const requirePackage = createRequire(join(mobileRoot, 'package.json'));
 const metroPatch = join(mobileRoot, 'scripts/patch-metro-image-size.cjs');
 const metroAssetPath = join(dirname(requirePackage.resolve('metro/package.json')), 'src/Assets.js');
+const fileHandlePatch = join(mobileRoot, 'scripts/patch-expo-file-handle.cjs');
+const fileHandlePath = join(dirname(requirePackage.resolve('expo-file-system/package.json')), 'android/src/main/java/expo/modules/filesystem/FileSystemFileHandle.kt');
 
 function removeTemporaryDirectory(directory: string): void {
   const target = resolve(directory);
@@ -163,5 +166,57 @@ describe('安全补丁的实际消费者兼容合同', () => {
     const identifiers = Array.from({ length: 16 }, () => project.generateUuid());
     expect(identifiers.every(identifier => /^[A-F0-9]{24}$/.test(identifier))).toBe(true);
     expect(new Set(identifiers).size).toBe(identifiers.length);
+  });
+
+  it('Expo Android 文件句柄补丁可重复执行并核验已安装原生源码', () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = spawnSync(process.execPath, [fileHandlePatch], { cwd: mobileRoot, encoding: 'utf8' });
+      expect(result.status, result.stderr).toBe(0);
+    }
+    expect(createHash('sha256').update(readFileSync(fileHandlePath)).digest('hex')).toBe('0ff23e6c358721d9d1c8399960c7bb544a32759e8f0bc4ecc549bc714f9f2c1b');
+  });
+
+  it('Expo autolinking 实际配置编译已修正的文件系统源码', () => {
+    const metadataPath = requirePackage.resolve('expo-modules-autolinking/package.json');
+    const metadata = JSON.parse(readFileSync(metadataPath, 'utf8'));
+    const cli = join(dirname(metadataPath), metadata.bin['expo-modules-autolinking']);
+    const result = spawnSync(process.execPath, [cli, 'resolve', '--platform', 'android', '--json'], { cwd: mobileRoot, encoding: 'utf8' });
+    expect(result.status, result.stderr).toBe(0);
+    const config = JSON.parse(result.stdout);
+    expect(config.configuration.buildFromSource).toEqual(['expo-file-system']);
+    expect(config.modules.find((item: { packageName: string }) => item.packageName === 'expo-file-system').projects[0].sourceDir.replaceAll('\\', '/')).toContain('expo-file-system/android');
+  });
+
+  it.each(['version', 'source'] as const)('Expo 文件句柄补丁拒绝未核验的 %s 并保持原文件', drift => {
+    const directory = mkdtempSync(join(tmpdir(), 'rranker-file-handle-contract-'));
+    try {
+      const dependency = join(directory, 'node_modules/expo-file-system');
+      const target = join(dependency, 'android/src/main/java/expo/modules/filesystem/FileSystemFileHandle.kt');
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(join(dependency, 'package.json'), JSON.stringify({ name: 'expo-file-system', version: drift === 'version' ? '19.0.25' : '19.0.24' }));
+      const source = readFileSync(fileHandlePath, 'utf8') + (drift === 'source' ? '\n// changed\n' : '');
+      writeFileSync(target, source);
+      const script = join(directory, 'patch.cjs');
+      copyFileSync(fileHandlePatch, script);
+      const result = spawnSync(process.execPath, [script], { cwd: directory, encoding: 'utf8' });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('Expo 文件句柄补丁版本或源码不符合已验证契约');
+      expect(readFileSync(target, 'utf8')).toBe(source);
+    } finally { removeTemporaryDirectory(directory); }
+  });
+
+  it('Expo CLI 的实际 undici 消费者保持补丁版本和本地请求能力', async () => {
+    const expoRequire = createRequire(requirePackage.resolve('expo/package.json'));
+    const cliRequire = createRequire(expoRequire.resolve('@expo/cli/package.json'));
+    expect(cliRequire('undici/package.json').version).toBe('6.28.1');
+    const server = createServer((_request, response) => { response.setHeader('Content-Type', 'application/json'); response.end('{"ok":true}'); });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address();
+      if (address === null || typeof address === 'string') throw new Error('测试服务地址不可用');
+      const response = await cliRequire('undici').request(`http://127.0.0.1:${address.port}`);
+      expect(response.statusCode).toBe(200);
+      expect(await response.body.json()).toEqual({ ok: true });
+    } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
   });
 });

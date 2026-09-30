@@ -1,6 +1,8 @@
 import { z } from 'zod';
+import { fetch as expoFetch } from 'expo/fetch';
 import { Base64, HmacSHA1, MD5 } from '@/utils/crypto-subset';
 import { ProviderError } from './errors';
+import { requestBytes, requestJson } from './http-json';
 
 const TAPTAP_CLIENT_ID = 'rAK3FfdieFob2Nn8Am';
 const TAPTAP_SCOPE = 'public_profile';
@@ -110,33 +112,25 @@ function randStr(len: number): string {
   return s;
 }
 
-async function postForm(
-  url: string,
-  body: Record<string, string>,
-  signal?: AbortSignal,
-): Promise<unknown> {
-  const controller = new AbortController();
-  const onExternalAbort = () => controller.abort(signal?.reason);
-  if (signal?.aborted) controller.abort(signal.reason);
-  else signal?.addEventListener('abort', onExternalAbort, { once: true });
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const form = new URLSearchParams(body);
-    const res = await fetch(url, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
-      body: form.toString(),
-      signal: controller.signal,
-    });
-    if (!res.ok) {
-      const retryable = res.status === 429 || res.status >= 500;
-      throw new ProviderError('network', `TapTap 请求失败（HTTP ${res.status}）`, retryable);
-    }
-    return await res.json();
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener('abort', onExternalAbort);
-  }
+function phigrosJson<T>(url: string, schema: z.ZodType<T>, options: {
+  init?: RequestInit; signal?: AbortSignal; timeoutMs?: number;
+} = {}): Promise<T> {
+  const parsed = new URL(url);
+  const label = parsed.origin === LC_SERVER ? 'LeanCloud' : 'TapTap';
+  return requestJson({
+    baseUrl: parsed.origin, path: parsed.pathname + parsed.search, schema,
+    fetcher: expoFetch as unknown as typeof fetch,
+    authenticated: true, totalAttempts: 1, timeoutMs: options.timeoutMs ?? 15_000,
+    init: options.init, signal: options.signal, label, diagnosticScenario: 'metadata',
+    error: status => new ProviderError('network', `${label} 请求失败（HTTP ${status}）`, status === 429 || status >= 500),
+  });
+}
+
+function postForm(url: string, body: Record<string, string>, signal?: AbortSignal): Promise<unknown> {
+  return phigrosJson(url, z.unknown(), { signal, init: {
+    method: 'POST', headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+    body: new URLSearchParams(body).toString(),
+  } });
 }
 
 export async function requestDeviceCode(signal?: AbortSignal): Promise<DeviceCodeResult> {
@@ -200,22 +194,9 @@ async function getProfile(
     HmacSHA1(sigBase, token.mac_key),
   );
 
-  const controller = new AbortController();
-  const onExternalAbort = () => controller.abort(signal?.reason);
-  if (signal?.aborted) controller.abort(signal.reason);
-  else signal?.addEventListener('abort', onExternalAbort, { once: true });
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const res = await fetch(url, {
-      headers: { Authorization: `MAC id="${token.kid}", ts="${ts}", nonce="${nonce}", mac="${mac}"` },
-      signal: controller.signal,
-    });
-    const json = await res.json();
-    return ProfileResponseSchema.parse(json).data;
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener('abort', onExternalAbort);
-  }
+  return (await phigrosJson(url, ProfileResponseSchema, { signal, init: {
+    headers: { Authorization: `MAC id="${token.kid}", ts="${ts}", nonce="${nonce}", mac="${mac}"` },
+  } })).data;
 }
 
 export async function exchangeSessionToken(
@@ -228,13 +209,7 @@ export async function exchangeSessionToken(
   const lcHash = MD5(ts + LC_APP_KEY).toString();
   const lcSign = `${lcHash},${ts}`;
 
-  const controller = new AbortController();
-  const onExternalAbort = () => controller.abort(signal?.reason);
-  if (signal?.aborted) controller.abort(signal.reason);
-  else signal?.addEventListener('abort', onExternalAbort, { once: true });
-  const timeout = setTimeout(() => controller.abort(), 15_000);
-  try {
-    const res = await fetch(`${LC_SERVER}/1.1/users`, {
+  const { sessionToken } = await phigrosJson(`${LC_SERVER}/1.1/users`, SessionTokenResponseSchema, { signal, init: {
       method: 'POST',
       headers: {
         'X-LC-Id': TAPTAP_CLIENT_ID,
@@ -255,25 +230,12 @@ export async function exchangeSessionToken(
           },
         },
       }),
-      signal: controller.signal,
-    });
-    const json = await res.json();
-    const { sessionToken } = SessionTokenResponseSchema.parse(json);
-    return { sessionToken, playerId: profile.name };
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener('abort', onExternalAbort);
-  }
+  } });
+  return { sessionToken, playerId: profile.name };
 }
 
 export async function getPlayerId(sessionToken: string, signal?: AbortSignal): Promise<string> {
-  const controller = new AbortController();
-  const onExternalAbort = () => controller.abort();
-  if (signal?.aborted) controller.abort(signal.reason);
-  else signal?.addEventListener('abort', onExternalAbort, { once: true });
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const res = await fetch(`${LC_SERVER}/1.1/users/me`, {
+  return (await phigrosJson(`${LC_SERVER}/1.1/users/me`, PlayerIdResponseSchema, { signal, timeoutMs: 12_000, init: {
       headers: {
         'X-LC-Id': TAPTAP_CLIENT_ID,
         'X-LC-Key': LC_APP_KEY,
@@ -281,28 +243,14 @@ export async function getPlayerId(sessionToken: string, signal?: AbortSignal): P
         Accept: 'application/json',
         'X-LC-Session': sessionToken,
       },
-      signal: controller.signal,
-    });
-    const json = await res.json();
-    return PlayerIdResponseSchema.parse(json).nickname;
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener('abort', onExternalAbort);
-  }
+  } })).nickname;
 }
 
 export async function getGameSave(sessionToken: string, signal?: AbortSignal): Promise<GameSaveMeta> {
-  const controller = new AbortController();
-  const onExternalAbort = () => controller.abort();
-  if (signal?.aborted) controller.abort(signal.reason);
-  else signal?.addEventListener('abort', onExternalAbort, { once: true });
-  const timeout = setTimeout(() => controller.abort(), 12_000);
-  try {
-    const query = new URL(`${LC_SERVER}/1.1/classes/_GameSave`);
-    query.searchParams.set('order', '-updatedAt');
-    query.searchParams.set('limit', '20');
-
-    const res = await fetch(query.toString(), {
+  const query = new URL(`${LC_SERVER}/1.1/classes/_GameSave`);
+  query.searchParams.set('order', '-updatedAt');
+  query.searchParams.set('limit', '20');
+  const parsed = await phigrosJson(query.toString(), GameSaveResponseSchema, { signal, timeoutMs: 12_000, init: {
       headers: {
         'X-LC-Id': TAPTAP_CLIENT_ID,
         'X-LC-Key': LC_APP_KEY,
@@ -312,37 +260,20 @@ export async function getGameSave(sessionToken: string, signal?: AbortSignal): P
         'Cache-Control': 'no-cache',
       },
       cache: 'no-store',
-      signal: controller.signal,
-    });
-    const json = await res.json();
-    const parsed = GameSaveResponseSchema.parse(json);
-    return pickLatestGameSave(parsed.results);
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener('abort', onExternalAbort);
-  }
+  } });
+  return pickLatestGameSave(parsed.results);
 }
 
 export async function downloadSave(saveUrl: string, cacheBust?: string, signal?: AbortSignal): Promise<ArrayBuffer> {
-  const controller = new AbortController();
-  const onExternalAbort = () => controller.abort();
-  if (signal?.aborted) controller.abort(signal.reason);
-  else signal?.addEventListener('abort', onExternalAbort, { once: true });
-  const timeout = setTimeout(() => controller.abort(), 30_000);
-  try {
-    const url = new URL(saveUrl);
-    url.searchParams.set('_ts', cacheBust ?? String(Date.now()));
-    const res = await fetch(url.toString(), {
-      signal: controller.signal,
-      cache: 'no-store',
-      headers: { 'Cache-Control': 'no-cache' },
-    });
-    if (!res.ok) {
-      throw new Error(`下载云存档失败（HTTP ${res.status}）`);
-    }
-    return await res.arrayBuffer();
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener('abort', onExternalAbort);
-  }
+  const url = new URL(saveUrl);
+  url.searchParams.set('_ts', cacheBust ?? String(Date.now()));
+  const bytes = await requestBytes({
+    baseUrl: url.origin, path: url.pathname + url.search,
+    fetcher: expoFetch as unknown as typeof fetch, signal, timeoutMs: 30_000,
+    totalAttempts: 1, maxResponseBytes: Number.MAX_SAFE_INTEGER,
+    init: { cache: 'no-store', headers: { 'Cache-Control': 'no-cache' } },
+    label: '云存档', diagnosticScenario: 'scores',
+    error: status => new ProviderError('network', `下载云存档失败（HTTP ${status}）`, status === 429 || status >= 500),
+  });
+  return bytes.buffer as ArrayBuffer;
 }

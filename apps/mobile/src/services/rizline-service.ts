@@ -6,6 +6,7 @@ import { ProviderError } from '@/providers/errors';
 import { applyRizlineSessionRotation, useSession } from '@/state/session-store';
 import { deleteRizlinePassword, hasRizlinePassword, readRizlinePassword } from '@/storage/rizline-password-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import { captureResourceWrites, createInflightGuard, invalidateResourceWrites, resourceWriteGeneration, snapshotSource } from './snapshot-cache-utils';
 import {
   cachedSnapshotSource,
@@ -80,7 +81,10 @@ export async function loadRizlineFresh(id: string, session: RizlineSession, sign
         expected = result.session;
         return result.save;
       } catch (reauthError) {
-        if (isAuthenticationError(reauthError)) await deleteRizlinePassword(id);
+        if (isAuthenticationError(reauthError)) {
+          try { await deleteRizlinePassword(id, { signal: requestSignal, assertCurrent }); }
+          catch (cleanupError) { recordRuntimeError('rizline-password', cleanupError, false, { phase: 'authentication-cleanup' }); }
+        }
         throw reauthError;
       }
     };

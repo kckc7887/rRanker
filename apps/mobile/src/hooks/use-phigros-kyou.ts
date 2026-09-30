@@ -16,6 +16,7 @@ export function usePhigrosKyouChartTags(enabled = true) {
   const activeGameId = useSession((state) => state.activeGameId);
   return useQuery({
     enabled: enabled && tabActive && activeGameId === 'phigros',
+    notifyOnChangeProps: tabActive ? undefined : [],
     queryKey: [PHIGROS_KYOU_TAGS_RESOURCE_KEY],
     queryFn: ({ signal }) => provider.getChartTags(signal),
     staleTime: PHIGROS_KYOU_STALE_TIME_MS,

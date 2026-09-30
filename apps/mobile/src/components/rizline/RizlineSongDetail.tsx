@@ -30,7 +30,6 @@ type Library = ReturnType<typeof useUserLibrary>;
 
 export function RizlineSongDetail({ songId, initialLevelIndex }: { songId: string; initialLevelIndex?: number }) {
   const theme = useAppTheme(); const query = useRizlineCatalog(); const library = useUserLibrary();
-  const { showNotification } = useNotification();
   const song = query.data?.snapshot.songs.find((item) => item.id === songId);
   const item = library.data?.find((entry) => entry.key === library.songKey(songId));
   const favorite = item?.kind === 'song' && item.favorite;
@@ -40,7 +39,7 @@ export function RizlineSongDetail({ songId, initialLevelIndex }: { songId: strin
       renderData={(data) => <RizlineSongDetailContent key={data.id} song={data} library={library} initialLevelIndex={initialLevelIndex} />} />
     <FloatingSongDetailChrome songTitle={song?.title} favorite={favorite} favoriteDisabled={library.isLoading || library.isUpdating}
       onToggleFavorite={song ? () => {
-        void library.setSongFavorite(song.id, !favorite).catch(() => showNotification({ title: '收藏保存失败', message: '请重试。', variant: 'error' }));
+        void library.setSongFavorite(song.id, !favorite);
       } : undefined} />
   </View></>;
 }
@@ -115,7 +114,7 @@ function RizlineChartCard({ chart, record, library, cardWidth, songTitle }: {
       valueTextStyle={[styles.notesCell, styles.notesValue, { color: theme.text }]} />
     <DetailGestureRoot><DetailPressable accessibilityRole="button" accessibilityLabel={practice ? '移出练习清单' : '加入练习清单'}
       disabled={library.isLoading || library.isUpdating} onPress={() => {
-        void library.setChartPractice(chart.songId, 'SD', levelIndex, !practice).catch(() => showNotification({ title: '练习清单保存失败', message: '请重试。', variant: 'error' }));
+        void library.setChartPractice(chart.songId, 'SD', levelIndex, !practice);
       }} style={[styles.action, { borderColor: colors.bg, backgroundColor: colors.bg }]}>
       <Text style={[styles.actionText, { color: colors.fg }]}>{practice ? '移出练习清单' : '加入练习清单'}</Text>
     </DetailPressable></DetailGestureRoot>

@@ -52,18 +52,31 @@ export class RuntimeLogRepository {
   }
 
   private insert(id: number, entry: RuntimeLogEntry): void {
+    this.insertBatch(id, [entry]);
+  }
+
+  private insertBatch(id: number, entries: readonly RuntimeLogEntry[]): void {
     const updated = this.db.runSync(
-      "UPDATE log_sessions SET sequence = sequence + 1, lastAt = ? WHERE id = ? AND status = 'recording'",
-      entry.at, id,
+      "UPDATE log_sessions SET sequence = sequence + ?, lastAt = ? WHERE id = ? AND status = 'recording'",
+      entries.length, entries.at(-1)!.at, id,
     );
     if (updated.changes !== 1) throw new Error('inactive log session');
-    this.db.runSync('INSERT INTO log_entries SELECT id, sequence, ? FROM log_sessions WHERE id = ?', JSON.stringify(entry), id);
+    const row = this.db.getFirstSync<{ sequence: number }>('SELECT sequence FROM log_sessions WHERE id = ?', id)!;
+    const firstSequence = row.sequence - entries.length + 1;
+    for (const [index, entry] of entries.entries()) {
+      this.db.runSync('INSERT INTO log_entries (sessionId, sequence, payload) VALUES (?, ?, ?)', id, firstSequence + index, JSON.stringify(entry));
+    }
     this.db.runSync(`DELETE FROM log_entries WHERE sessionId = ? AND sequence <=
       (SELECT sequence - capacity FROM log_sessions WHERE id = ?)`, id, id);
   }
 
   append(id: number, entry: RuntimeLogEntry): void {
-    this.db.withTransactionSync(() => this.insert(id, entry));
+    this.appendBatch(id, [entry]);
+  }
+
+  appendBatch(id: number, entries: readonly RuntimeLogEntry[]): void {
+    if (!entries.length) return;
+    this.db.withTransactionSync(() => this.insertBatch(id, entries));
   }
 
   finish(id: number, status: RuntimeLogStatus, entry?: RuntimeLogEntry): void {
