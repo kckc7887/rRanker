@@ -120,11 +120,11 @@ async function waitForLatestLogShare() {
 }
 function failureSnapshot(current) {
   const fixedLabels = new Set(['记录日志', '分享诊断信息', '读取历史日志', '重试', '重试读取账号']);
-  const fixedText = new Set(['准备中', '正在记录', '等待记录', '未开启', '最近日志', '最新记录', '上次记录', '已结束', '已中断', '还没有日志', ...logFailureCopy]);
+  const fixedText = new Set(['个性化', '外观', '主题色', '诊断', '游戏管理', '页面暂时无法显示，请重试。', '准备中', '正在记录', '等待记录', '未开启', '最近日志', '最新记录', '上次记录', '已结束', '已中断', '还没有日志', ...logFailureCopy]);
   const controls = [];
   for (const node of ownNodes(current)) {
     const label = node['content-desc'];
-    const control = fixedLabels.has(label) ? label : label.startsWith('分享日志，最新记录，') ? '最新记录分享'
+    const control = fixedLabels.has(label) ? label : label.startsWith('主题色 ') ? '主题色' : label.startsWith('分享日志，最新记录，') ? '最新记录分享'
       : label.startsWith('分享日志，上次记录，') ? '上次记录分享' : /^保留 (?:1000|2000|5000) 条$/.test(label) ? '日志容量' : null;
     const text = fixedText.has(node.text) ? node.text : null;
     if (control || text || node.scrollable === 'true') controls.push({
@@ -136,16 +136,18 @@ function failureSnapshot(current) {
   return { phase, applicationNodeCount: ownNodes(current).length, controls: controls.slice(0, 80) };
 }
 const route = (path) => shell('am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', `rranker:///${path}`, '-p', 'com.rranker.app');
-const restart = () => {
+const restart = (path) => {
   shell('am', 'force-stop', 'com.rranker.app');
-  shell('am', 'start', '-W', '-n', 'com.rranker.app/.MainActivity');
+  // Keep the route in the launch intent until the JavaScript navigator is ready.
+  if (path) route(path);
+  else shell('am', 'start', '-W', '-n', 'com.rranker.app/.MainActivity');
 };
 
 try {
   assert(command('install', '-r', apk).includes('Success'), 'APK installation failed');
   command('logcat', '-c');
-  restart();
   if (mode === 'native') {
+    restart();
     phase = 'native-probes';
     const deadline = Date.now() + 110_000;
     let results = [];
@@ -161,7 +163,7 @@ try {
     assert(results.every((result) => result.status === 'pass'), 'A native bridge round-trip failed');
   } else {
     phase = 'theme-apply-persist';
-    route('personalization');
+    restart('personalization');
     let current = await waitFor((list) => list.some((node) => node['content-desc'].startsWith('主题色 ')), 'personalization');
     const labels = current.filter((node) => node['content-desc'].startsWith('主题色 ') && !node['content-desc'].includes('自定义')).map((node) => node['content-desc']).slice(0, 3);
     assert.equal(labels.length, 3, 'Expected theme presets');
@@ -171,8 +173,7 @@ try {
     }
     await pause(2_000);
     assert.equal(find(nodes(), labels.at(-1))?.selected, 'true', 'Theme must not rebound');
-    restart();
-    route('personalization');
+    restart('personalization');
     await waitFor((list) => find(list, labels.at(-1))?.selected === 'true', 'theme persists after restart');
     evidence.checks.push({ name: 'theme-apply-persist', status: 'pass' });
     phase = 'logging-default-off';
@@ -193,8 +194,7 @@ try {
       && ownNodes(list).some((node) => node.text === '正在记录'), 'recording starts', rejectLogFailures);
     evidence.checks.push({ name: 'logging-start', status: 'pass' });
     phase = 'logging-restore';
-    restart();
-    route('diagnostics');
+    restart('diagnostics');
     current = await waitFor((list) => find(list, '记录日志')?.checked === 'true' && find(list, '记录日志')?.enabled === 'true'
       && ownNodes(list).some((node) => node.text === '正在记录'), 'logging restores', rejectLogFailures);
     evidence.checks.push({ name: 'logging-restores-after-restart', status: 'pass' });

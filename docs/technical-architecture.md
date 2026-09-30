@@ -647,6 +647,8 @@ GitHub 托管 runner，不读取生产签名或发布凭据。每次固定当前
 应用生产入口由 `.github/workflows/quality.yml` 编排，Android 构建统一复用
 `.github/actions/android-build/action.yml`。托管 Android 模拟器通过生产路由验收主题
 持久化、日志启停与历史、账号启动恢复，通过后才上传四 ABI APK；设备结果独立保留。
+主题与日志恢复检查在强杀后直接用携带目标 URL 的 VIEW Intent 冷启动，待目标控件出现才继续；
+不在首页启动与导航就绪之间发送可能丢失的跳转事件。其余页面切换仍复用生产路由。
 诊断分享和停止后的最新历史日志分享都必须实际打开当前系统 ChooserActivity，再返回
 MainActivity 并等分享控件恢复可用，不选择分享目标。日志关闭后等待偏好保存、控制动作和
 历史读取结束；历史分享按钮在屏外时，只在应用自身可见滚动区域内最多滚动八次，不能
@@ -779,6 +781,11 @@ fork 测试 APK 同样为 Release 优化构建，使用调试签名。现有 And
 `.github/actions/ios-build/action.yml` 是 IPA 的公共构建入口，在 macOS 26 执行 Expo
 prebuild、Pods、Archive 与导出。`verify-ios-archive.py` 检查实际 Archive 和最终 IPA
 中的 EXConstants/app.config 源码 SHA、Info.plist 包名、版本和构建号；正式 Archive 还验证 codesign。
+Pods 安装通过 React Native 的 `ENTERPRISE_REPOSITORY` 指向 Maven Central 的
+`https://repo.maven.apache.org/maven2`，保留依赖声明的版本及 Debug/Release 选择。
+该步骤单独设置临时 `CURL_HOME`，让 CocoaPods 与 React Native 的 curl 下载均使用 HTTP/1.1、
+20 秒连接超时、300 秒单次超时、持续 60 秒低于 1 KiB/s 时失败，以及最多 3 次重试和 900 秒重试窗口。
+HTTP 错误与中断均明确失败或有限重试，临时配置无论安装成败都清理，不影响签名和发布请求。
 正式作业先保存 IPA 与脱敏身份 JSON（14 天），再提交 TestFlight；上传接受不等于 Apple
 处理成功或设备验收。测试作业以 CODE_SIGNING_ALLOWED=NO 归档并打包无签名 IPA，不请求 ASC。
 
