@@ -24,8 +24,7 @@ const ACCOUNT_PROBE = require('./package.json').main === 'native-account-recover
 const ACCOUNT_PROBE_FETCH = path.join(__dirname, 'tests', 'native', 'expo-fetch-adapter.ts');
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
-  if (ACCOUNT_PROBE && platform === 'android' && moduleName === 'expo/fetch'
-    && path.normalize(context.originModulePath) !== ACCOUNT_PROBE_FETCH) {
+  if (ACCOUNT_PROBE && platform === 'android' && moduleName === 'expo/fetch') {
     return { type: 'sourceFile', filePath: ACCOUNT_PROBE_FETCH };
   }
   if (
