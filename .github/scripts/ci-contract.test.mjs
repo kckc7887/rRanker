@@ -1,9 +1,11 @@
 import assert from 'node:assert/strict';
-import { execFileSync, spawnSync } from 'node:child_process';
+import { execFile, execFileSync, spawnSync } from 'node:child_process';
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, readdirSync, rmSync, writeFileSync } from 'node:fs';
+import { createServer } from 'node:http';
 import { tmpdir } from 'node:os';
 import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
 import { test } from 'node:test';
 import { findBash } from './lib/bash.mjs';
 import { parseWorkflowYaml } from './lib/workflow-yaml.mjs';
@@ -228,6 +230,134 @@ test('iOS reservations gate archive and IPA artifacts precede TestFlight', () =>
   const compiled = spawnSync('python', ['-c', 'import sys; compile(sys.stdin.read(), "ASC query", "exec")'],
     { input: python, encoding: 'utf8' });
   assert.equal(compiled.status, 0, compiled.stderr);
+});
+
+test('CocoaPods downloads retry interrupted transfers and clean their scoped curl policy on success and failure', async () => {
+  const bash = findBash();
+  assert(bash, 'bash is required');
+  const step = ios.runs.steps.find(step => step.name === 'Install CocoaPods');
+  assert.equal(step.env.ENTERPRISE_REPOSITORY, 'https://repo.maven.apache.org/maven2');
+  const directory = mkdtempSync(join(tmpdir(), 'rranker-pods-download-'));
+  let requests = 0;
+  let fail = false;
+  const server = createServer((request, response) => {
+    assert.equal(request.httpVersion, '1.1');
+    requests += 1;
+    if (fail) { response.writeHead(503).end(); return; }
+    if (requests === 1) {
+      response.writeHead(200, { 'Content-Length': 100, Connection: 'close' });
+      response.flushHeaders();
+      response.end('partial');
+      return;
+    }
+    response.end('complete artifact');
+  });
+  try {
+    mkdirSync(join(directory, 'ios'));
+    await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+    // Run the decoded action verbatim; only pod itself is replaced by a real curl download.
+    const pod = `pod() {
+      test "$1" = install
+      test "$(basename "$PWD")" = ios
+      test "$ENTERPRISE_REPOSITORY" = https://repo.maven.apache.org/maven2
+      cp "$CURL_HOME/.curlrc" "$CI_DOWNLOAD_REPORT"
+      curl --retry-max-time 8 --max-time 2 --speed-time 1 -o "$CI_DOWNLOAD_OUTPUT" "$CI_DOWNLOAD_URL"
+    }
+`;
+    const env = { ...process.env, ...step.env, RUNNER_TEMP: directory.replaceAll('\\', '/'),
+      CI_DOWNLOAD_REPORT: join(directory, 'policy').replaceAll('\\', '/'),
+      CI_DOWNLOAD_OUTPUT: join(directory, 'artifact').replaceAll('\\', '/'),
+      CI_DOWNLOAD_URL: `http://127.0.0.1:${server.address().port}/artifact`,
+    };
+    const run = () => promisify(execFile)(bash, ['-e', '-o', 'pipefail', '-c', pod + step.run],
+      { cwd: directory, env, timeout: 20_000 });
+    const recovered = await run();
+    assert.match(recovered.stderr, /curl: \(18\)/, 'fixture must exercise a truncated transfer, not just a timeout');
+    assert.equal(requests, 2, 'partial response must be retried');
+    assert.equal(readFileSync(join(directory, 'artifact'), 'utf8'), 'complete artifact', 'retry replaces partial bytes');
+    const policy = readFileSync(join(directory, 'policy'), 'utf8');
+    for (const setting of ['http1.1', 'fail', 'connect-timeout = 20', 'max-time = 300', 'speed-limit = 1024',
+      'speed-time = 60', 'retry = 3', 'retry-all-errors', 'retry-delay = 2', 'retry-max-time = 900']) assert(policy.includes(setting), setting);
+    assert(!readdirSync(directory).some(name => name.startsWith('rranker-pods-curl.')));
+    fail = true;
+    requests = 0;
+    await assert.rejects(run(), error => error.code === 22);
+    assert.equal(requests, 4, 'persistent failures must stop after the configured retries');
+    assert(!readdirSync(directory).some(name => name.startsWith('rranker-pods-curl.')), 'failed installation also removes curl policy');
+  } finally {
+    server.closeAllConnections();
+    await new Promise(resolve => server.close(resolve));
+    rmSync(directory, { recursive: true, force: true });
+  }
+});
+
+async function runThemeSmoke({ lostWarmLink = false, loseSavedTheme = false } = {}) {
+  const source = readFileSync(join(root, '.github/scripts/android-smoke.mjs'), 'utf8');
+  const start = source.indexOf('const [mode, apk, serial, output]');
+  const end = source.indexOf("    phase = 'logging-default-off';");
+  assert(start >= 0 && end > start);
+  let program = source.slice(start, end) + '\n  }\n} finally {}\nreturn evidence;';
+  if (lostWarmLink) program = program.replaceAll("restart('personalization');", "restart(); route('personalization');");
+  let running = false;
+  let ready = false;
+  let route = '';
+  let frames = 0;
+  let selected = 0;
+  let clock = 0;
+  const launches = [];
+  const execute = (binary, args) => {
+    assert.equal(binary, 'adb');
+    assert.deepEqual(args.slice(0, 2), ['-s', 'test-device']);
+    args = args.slice(2);
+    if (args[0] === 'install') return 'Success';
+    if (args[0] === 'logcat') return '';
+    assert.equal(args.shift(), 'shell');
+    if (args[0] === 'am' && args[1] === 'force-stop') {
+      running = false; ready = false; frames = 0;
+      if (loseSavedTheme) selected = 0;
+    } else if (args[0] === 'am' && args[1] === 'start') {
+      const url = args.includes('-d') ? args[args.indexOf('-d') + 1] : 'rranker:///';
+      if (!running || ready) route = url;
+      if (!running) launches.push(url);
+      running = true;
+    } else if (args[0] === 'uiautomator') {
+      // am start -W returns before JavaScript navigation is ready; early warm links are lost.
+      frames += 1;
+      ready = frames >= 2;
+    } else if (args[0] === 'cat') {
+      return ready && route === 'rranker:///personalization'
+        ? ['蓝', '紫', '绿'].map((label, index) => `<node package="com.rranker.app" content-desc="主题色 ${label}" text="" enabled="true" selected="${selected === index}" bounds="[${index * 100},0][${index * 100 + 80},80]" />`).join('')
+        : '<node package="com.rranker.app" content-desc="" text="首页" />';
+    } else if (args[0] === 'dumpsys') {
+      return 'topResumedActivity=ActivityRecord{a u0 com.rranker.app/.MainActivity t1}';
+    } else if (args[0] === 'input' && args[1] === 'tap') {
+      assert(ready && route === 'rranker:///personalization');
+      selected = Math.floor(Number(args[2]) / 100);
+    } else {
+      assert.fail(`Unexpected test device operation: ${args.join(' ')}`);
+    }
+    return '';
+  };
+  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
+  const result = await new AsyncFunction('assert', 'execFileSync', 'mkdirSync', 'process', 'Date', 'setTimeout', program)(
+    assert, execute, () => undefined,
+    { argv: ['node', 'smoke', 'production', 'test.apk', 'test-device', 'output'], env: { BUILD_SOURCE_COMMIT: 'a'.repeat(40) } },
+    { now: () => { clock += 10_000; return clock; } }, callback => callback(),
+  );
+  return { result, launches };
+}
+
+test('Android theme smoke carries its route through slow startup and persisted-theme restart', async () => {
+  const { result, launches } = await runThemeSmoke();
+  assert.deepEqual(launches, ['rranker:///personalization', 'rranker:///personalization']);
+  assert.deepEqual(result.checks, [{ name: 'theme-apply-persist', status: 'pass' }]);
+  const source = readFileSync(join(root, '.github/scripts/android-smoke.mjs'), 'utf8');
+  assert.match(source, /phase = 'logging-restore';\s*restart\('diagnostics'\);/);
+});
+
+test('Android theme smoke rejects lost early navigation and a theme that does not survive restart', async () => {
+  await assert.rejects(runThemeSmoke({ lostWarmLink: true }), /Device check timed out: personalization/);
+  await assert.rejects(runThemeSmoke({ loseSavedTheme: true }), /Device check timed out: theme persists after restart/);
 });
 
 test('Android artifacts require APK verification and production-route smoke', () => {
