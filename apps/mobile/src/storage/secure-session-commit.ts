@@ -64,6 +64,7 @@ export async function commitSessionVault(io: SessionCommitIo, vault: SessionVaul
       activeAccountId: sanitized.activeAccountId,
       credentials: nextCredentials,
       accounts: sanitized.accounts,
+      ...((sanitized.recovery ?? current?.recovery) ? { recovery: sanitized.recovery ?? current?.recovery } : {}),
     };
     assertCommitCurrent();
     indexWriteStarted = true;
@@ -112,4 +113,3 @@ async function cleanupCredentialReferences(io: SessionCommitIo, references: read
   }
   return [...new Set(cleanupFailures)];
 }
-

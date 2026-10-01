@@ -24,15 +24,14 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import type { BeatmapData, ReplayData, ReplayFrame, HitResult, Slider, Spinner } from '../types/index';
+import type { BeatmapData, ReplayData, ReplayFrame, HitResult, Spinner } from '../types/index';
 import type { ModDifficulty } from './modDifficulty';
 import { sampleSlider } from '../renderer/SliderGeometry';
 import {
   sampleSliderLazer,
-  sliderTickTimesLazer,
   sliderBallPosLazer,
 } from '../renderer/SliderGeometryLazer';
-import { slideDurationMs } from './sliderDuration';
+import { slideDurationMs, sliderNestedEvents } from './sliderDuration';
 
 const SPINNER_CENTER_X = 256;
 const SPINNER_CENTER_Y = 192;
@@ -405,32 +404,6 @@ function sliderBallPos(
   return pointAtFraction(path, frac);
 }
 
-/**
- * Stable-style slider tick times (beatmap ms), spaced `beatLength / sliderTickRate`
- * within each slide, excluding a 1 ms guard before each slide end. Lazer replays
- * use the distance-based `sliderTickTimesLazer` instead.
- */
-export function sliderTickTimes(beatmap: BeatmapData, slider: Slider, slideDur: number): number[] {
-  let baseBeatLength = 500;
-  for (const tp of beatmap.timingPoints) {
-    if (tp.time > slider.time) break;
-    if (!tp.inherited) baseBeatLength = tp.beatLength;
-  }
-
-  const tickInterval = baseBeatLength / beatmap.sliderTickRate;
-  if (!isFinite(tickInterval) || tickInterval <= 0) return [];
-
-  const ticks: number[] = [];
-  for (let slide = 0; slide < slider.slides; slide++) {
-    const slideStart = slider.time + slide * slideDur;
-    const slideEnd   = slideStart + slideDur;
-    for (let t = slideStart + tickInterval; t < slideEnd - 1; t += tickInterval) {
-      ticks.push(t);
-    }
-  }
-  return ticks;
-}
-
 // Sliders: notelock treats them resolved iff pressTime >= endTime (stable's slider.IsHit).
 // Spinners: headResolved=true from start; notelock blocks subsequent clicks until endTime.
 interface ObjState {
@@ -707,20 +680,9 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
     const tailLeniency = Math.min(36, totalDur / 2);
     const stackShift = slider.stackHeight * hitRadius / 10;
 
-    const tickTimes = modDiff.isLazer
-      ? sliderTickTimesLazer(beatmap, slider, slideDur)
-      : sliderTickTimes(beatmap, slider, slideDur);
-
-    type NTEvent = { t: number; kind: 'tick' | 'repeat' };
-    const nonTail: NTEvent[] = [];
-    for (const t of tickTimes) nonTail.push({ t, kind: 'tick' });
-    for (let edge = 1; edge < slider.slides; edge++) {
-      nonTail.push({ t: slider.time + slideDur * edge, kind: 'repeat' });
-    }
-    nonTail.sort((a, b) => a.t - b.t);
-
     const headHit = s.headHit;
-    const totalNested = 1 + tickTimes.length + slider.slides;
+    let totalNested = 2;
+    let lastNonTailTime = -Infinity;
     let   hitNested   = headHit ? 1 : 0;
 
     let tracking = false;
@@ -753,7 +715,10 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
     let frameIdx = 0;
     while (frameIdx < replay.frames.length && cumTimes[frameIdx]! < slider.time) frameIdx++;
 
-    for (const ev of nonTail) {
+    for (const ev of sliderNestedEvents(beatmap, slider, slideDur, modDiff.isLazer)) {
+      if (ev.kind === 'tail') break;
+      totalNested++;
+      lastNonTailTime = ev.t;
       while (frameIdx < replay.frames.length && cumTimes[frameIdx]! < ev.t) {
         const f = replay.frames[frameIdx]!;
         stepTracking(cumTimes[frameIdx]!, f.x, f.y, (f.keys & 0b1111) !== 0);
@@ -773,9 +738,7 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
       });
     }
 
-    const tailStart = nonTail.length > 0
-      ? Math.max(tailTime - tailLeniency, nonTail[nonTail.length - 1]!.t)
-      : tailTime - tailLeniency;
+    const tailStart = Math.max(tailTime - tailLeniency, lastNonTailTime);
 
     while (frameIdx < replay.frames.length && cumTimes[frameIdx]! < tailStart) {
       const f = replay.frames[frameIdx]!;

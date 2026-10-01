@@ -26,6 +26,7 @@
  */
 import type { BeatmapData, Slider, Spinner, HitCircle } from '../../types/index';
 import type { TaikoHit, TaikoDrumRoll, TaikoSwell, TaikoHitObject } from './types';
+import { sliderEdgeSample } from '../../utils/sliderDuration';
 
 /**
  * Port of osu.Game.Rulesets.Taiko.Beatmaps.TaikoBeatmapConverter: maps circles,
@@ -152,9 +153,9 @@ function convertSlider(
     const hits: TaikoHit[] = [];
     const endLimit = slider.time + taikoDuration + tickSpacing / 8;
     let i = 0;
-    const edgeSounds = slider.edgeSounds.length > 0 ? slider.edgeSounds : [slider.hitSound];
+    const edgeCount = Math.max(slider.slides + 1, slider.edgeSounds.length);
     for (let t = slider.time; t <= endLimit; t += tickSpacing) {
-      const hs = edgeSounds[i % edgeSounds.length] ?? slider.hitSound;
+      const hs = sliderEdgeSample(slider, i % edgeCount).hitSound;
       const { isRim, isStrong } = classifyTaikoHit(hs);
       hits.push({
         kind: 'hit',
@@ -186,13 +187,9 @@ function makeDrumRoll(
 
   const startTime = slider.time;
   const endTime = startTime + durationMs;
-  const tickTimes: number[] = [];
-  if (tickInterval > 0) {
-    // Mirrors DrumRoll.createTicks: inclusive of startTime; stop when next tick would overshoot endTime by >tickInterval/2.
-    for (let t = startTime; t < endTime + tickInterval / 2; t += tickInterval) {
-      tickTimes.push(t);
-    }
-  }
+  // Inclusive of startTime; the end + half-interval boundary is exclusive.
+  const tickCount = tickInterval > 0 ? Math.max(0, Math.ceil(durationMs / tickInterval + 0.5)) : 0;
+  if (!Number.isSafeInteger(tickCount) || !Number.isFinite(endTime)) throw new Error('滚奏时间无效');
 
   const { isStrong } = classifyTaikoHit(slider.hitSound);
   return {
@@ -201,7 +198,7 @@ function makeDrumRoll(
     endTime,
     isStrong,
     hitSound: slider.hitSound,
-    tickTimes,
+    tickCount,
     tickInterval,
     sourceIndex,
   };

@@ -44,7 +44,12 @@ const EMPTY_VAULT: SessionVault = {
 
 async function deleteLegacyVaultKeys(): Promise<void> {
   for (const key of LEGACY_VAULT_KEYS) {
-    await SecureStore.deleteItemAsync(key).catch(() => undefined);
+    try {
+      const raw = await SecureStore.getItemAsync(key);
+      if (raw === null) continue;
+      const parsed = key === VAULT_KEY ? parseSessionVault(raw) : key === V2_VAULT_KEY ? parseV2Vault(raw) : parseStoredSession(raw);
+      if (parsed && !('recovery' in parsed && parsed.recovery)) await SecureStore.deleteItemAsync(key);
+    } catch { /* 无法完整识别的来源继续留在安全存储中。 */ }
   }
 }
 
@@ -54,7 +59,7 @@ export class SecureSessionStore {
   private readonly credentialIo: Pick<LargeSecureValueStore, 'read' | 'write' | 'delete' | 'createReference'>;
   constructor(
     private readonly storage: KeyValueStore = Storage,
-    secrets = new LargeSecureValueStore(),
+    secrets: Pick<LargeSecureValueStore, 'read' | 'write' | 'delete' | 'createReference'> = new LargeSecureValueStore(),
   ) {
     this.indexIo = {
       getItem: (key) => persistenceOperation('local_commit', () => storage.getItem(key)),
@@ -90,7 +95,7 @@ export class SecureSessionStore {
 
   private async loadOrCreateIndexUnlocked(): Promise<SessionIndex> {
     const currentRaw = await this.indexIo.getItem(INDEX_KEY);
-    const current = currentRaw ? await this.parseStoredIndex(currentRaw) : null;
+    const current = currentRaw !== null ? await this.parseStoredIndex(currentRaw) : null;
     if (current) return current;
 
     const vault = await this.loadVaultUnlocked();
@@ -125,6 +130,7 @@ export class SecureSessionStore {
       activeAccountId: index.activeAccountId,
       credentials,
       accounts: index.accounts,
+      ...(index.recovery ? { recovery: index.recovery } : {}),
     });
   }
 
@@ -148,7 +154,7 @@ export class SecureSessionStore {
 
   /**
    * 索引存在但无法解析时保留原文并抛类型化错误，不回退旧键；
-   * 旧版迁移源解析失败时跳过但不删除（凭据只有这一份，不得销毁）。
+   * 旧版迁移源顶层损坏同样阻止写入，原文留在安全存储。
    */
   async loadVault(): Promise<SessionVault> {
     return this.enqueueMutation(() => this.loadVaultUnlocked());
@@ -158,17 +164,18 @@ export class SecureSessionStore {
     const stopIndex = startTimer('vault.index.read');
     const indexRaw = await this.indexIo.getItem(INDEX_KEY);
     stopIndex();
-    if (indexRaw) {
+    if (indexRaw !== null) {
       return this.loadIndexedVault(await this.parseStoredIndex(indexRaw));
     }
 
     const vaultRaw = await persistenceOperation('credential_storage', () => SecureStore.getItemAsync(VAULT_KEY));
-    if (vaultRaw) {
+    if (vaultRaw !== null) {
       const vault = parseSessionVault(vaultRaw);
+      if (!vault) throw new SessionPersistenceError('credential_storage');
       if (vault) {
         const migrated = await this.migrateLegacyVault(vault);
         if (migrated) {
-          await deleteLegacyVaultKeys();
+          if (!migrated.recovery) await deleteLegacyVaultKeys();
           return migrated;
         }
         return vault;
@@ -176,13 +183,14 @@ export class SecureSessionStore {
     }
 
     const v2Raw = await persistenceOperation('credential_storage', () => SecureStore.getItemAsync(V2_VAULT_KEY));
-    if (v2Raw) {
+    if (v2Raw !== null) {
       const v2 = parseV2Vault(v2Raw);
+      if (!v2) throw new SessionPersistenceError('credential_storage');
       if (v2) {
         const legacyVault = migrateV2Vault(v2);
         const migrated = await this.migrateLegacyVault(legacyVault);
         if (migrated) {
-          await deleteLegacyVaultKeys();
+          if (!migrated.recovery) await deleteLegacyVaultKeys();
           return migrated;
         }
         return legacyVault;
@@ -190,11 +198,11 @@ export class SecureSessionStore {
     }
 
     const legacy = await persistenceOperation('credential_storage', () => SecureStore.getItemAsync(LEGACY_SESSION_KEY));
-    if (!legacy) return { ...EMPTY_VAULT, credentials: [], accounts: [] };
+    if (legacy === null) return { ...EMPTY_VAULT, credentials: [], accounts: [] };
 
     const session = parseStoredSession(legacy);
     if (!session) {
-      return { ...EMPTY_VAULT, credentials: [], accounts: [] };
+      throw new SessionPersistenceError('credential_storage');
     }
     const accountId = 'maimai:diving-fish:migrated';
     const credentialId = credentialIdForLegacyAccount(accountId);

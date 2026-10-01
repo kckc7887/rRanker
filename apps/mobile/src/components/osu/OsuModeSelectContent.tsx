@@ -89,7 +89,7 @@ export function OsuModeSelectContent({ alreadyBound, busy, submitLabel, onSubmit
           !canSubmit && styles.submitDisabled,
         ]}
       >
-        <Text style={styles.submitText}>{busy ? '正在绑定…' : submitLabel}</Text>
+        <Text style={[styles.submitText, { color: theme.onAccent }]}>{busy ? '正在绑定…' : submitLabel}</Text>
       </Pressable>
     </View>
   );

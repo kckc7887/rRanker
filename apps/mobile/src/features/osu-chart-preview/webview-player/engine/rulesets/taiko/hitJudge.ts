@@ -88,7 +88,7 @@ export function computeTaikoHitResults(
 
   // Tick window = tickInterval/2 enforces the mash-speed cap (a press can only
   // consume the nearest unconsumed tick within half a tick interval).
-  const tickConsumed: boolean[][] = drumrolls.map(d => new Array(d.tickTimes.length).fill(false));
+  const tickConsumed = drumrolls.map(() => new Set<number>());
 
   // lastWasRim=null → no press yet; either colour can start.
   type SwellState = { lastWasRim: boolean | null; remaining: number; completed: boolean };
@@ -212,13 +212,15 @@ export function computeTaikoHitResults(
       const halfWin = dr.tickInterval / 2;
       let nearestIdx = -1;
       let nearestDist = Infinity;
-      for (let t = 0; t < dr.tickTimes.length; t++) {
-        if (consumed[t]) continue;
-        const dist = Math.abs(ev.time - dr.tickTimes[t]!);
+      const center = (ev.time - dr.time) / dr.tickInterval;
+      // Only neighbours can be within half an interval; include both on a tie.
+      for (let t = Math.max(0, Math.floor(center)); t <= Math.min(dr.tickCount - 1, Math.ceil(center)); t++) {
+        if (consumed.has(t)) continue;
+        const dist = Math.abs(ev.time - (dr.time + t * dr.tickInterval));
         if (dist < nearestDist) { nearestDist = dist; nearestIdx = t; }
       }
       if (nearestIdx >= 0 && nearestDist <= halfWin) {
-        consumed[nearestIdx] = true;
+        consumed.add(nearestIdx);
         results.push({
           objectIndex: dr.sourceIndex,
           judgement: 300,

@@ -363,7 +363,7 @@ export default function PhigrosStrengthAnalysisScreen() {
           onPress={retry}
           style={({ pressed }) => [styles.retryButton, { backgroundColor: theme.accent }, pressed && styles.pressed]}
         >
-          <Text style={styles.retryText}>重试</Text>
+          <Text style={[styles.retryText, { color: theme.onAccent }]}>重试</Text>
         </Pressable>
       </View>
     );

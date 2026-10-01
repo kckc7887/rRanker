@@ -1,11 +1,24 @@
 import * as SecureStore from 'expo-secure-store';
 import Storage from '@/storage/key-value-storage';
 import { enqueueKeyMutation } from '@/storage/create-account-list-store';
+import { z } from 'zod';
 
 const PREFS_KEY_V1 = 'rranker.upload.prefs.v1';
 const PREFS_KEY_V2 = 'rranker.upload.prefs.v2';
 const PREFS_KEY_V3 = 'rranker.upload.prefs.v3';
 const LEGACY_PREFS_KEYS = [PREFS_KEY_V2, PREFS_KEY_V1] as const;
+
+export class UploadPrefsCorruptError extends Error {
+  readonly name = 'UploadPrefsCorruptError';
+  constructor() { super('上传偏好数据损坏，已保留原数据'); }
+}
+
+const prefsSchema = z.object({
+  friendCode: z.string().optional(),
+  activeFriendCode: z.string().optional(),
+  selectedAccountIds: z.array(z.string()).optional(),
+  selectionsByFriendCode: z.record(z.string(), z.array(z.string())).optional(),
+}).refine(value => value.friendCode !== undefined || value.activeFriendCode !== undefined);
 
 export type UploadPrefs = {
   friendCode: string;
@@ -56,9 +69,7 @@ function viewFor(friendCode: string, map: Record<string, string[]>): UploadPrefs
 
 function parseV2(raw: string): UploadPrefs | null {
   try {
-    const parsed = JSON.parse(raw) as Partial<UploadPrefs> & {
-      activeFriendCode?: string;
-    };
+    const parsed = prefsSchema.parse(JSON.parse(raw));
     const map = sanitizeMap(parsed.selectionsByFriendCode);
     const friendCode = typeof parsed.friendCode === 'string'
       ? parsed.friendCode.trim()
@@ -76,7 +87,7 @@ function parseV2(raw: string): UploadPrefs | null {
 
 function parseV1(raw: string): UploadPrefs | null {
   try {
-    const parsed = JSON.parse(raw) as Partial<UploadPrefs>;
+    const parsed = prefsSchema.parse(JSON.parse(raw));
     const friendCode = typeof parsed.friendCode === 'string' ? parsed.friendCode.trim() : '';
     const selectedAccountIds = sanitizeIds(parsed.selectedAccountIds);
     const map: Record<string, string[]> = {};
@@ -91,7 +102,12 @@ function parseV1(raw: string): UploadPrefs | null {
 
 async function deleteLegacyPrefsKeys(): Promise<void> {
   for (const key of LEGACY_PREFS_KEYS) {
-    await SecureStore.deleteItemAsync(key).catch(() => undefined);
+    try {
+      const raw = await SecureStore.getItemAsync(key);
+      if (raw !== null && (key === PREFS_KEY_V1 ? parseV1(raw) : parseV2(raw))) {
+        await SecureStore.deleteItemAsync(key);
+      }
+    } catch { /* 清理失败或损坏来源保留在安全存储，已提交的偏好仍可使用。 */ }
   }
 }
 
@@ -100,14 +116,14 @@ export class UploadPrefsStore {
 
   private async read(): Promise<UploadPrefs> {
     const rawV3 = await this.storage.getItem(PREFS_KEY_V3);
-    if (rawV3) {
+    if (rawV3 !== null) {
       const parsed = parseV2(rawV3);
       if (parsed) return parsed;
-      await this.storage.removeItem(PREFS_KEY_V3);
+      throw new UploadPrefsCorruptError();
     }
 
     const rawV2 = await SecureStore.getItemAsync(PREFS_KEY_V2);
-    if (rawV2) {
+    if (rawV2 !== null) {
       const parsed = parseV2(rawV2);
       if (parsed) {
         try {
@@ -123,11 +139,11 @@ export class UploadPrefsStore {
         }
         return parsed;
       }
-      await SecureStore.deleteItemAsync(PREFS_KEY_V2);
+      throw new UploadPrefsCorruptError();
     }
 
     const rawV1 = await SecureStore.getItemAsync(PREFS_KEY_V1);
-    if (rawV1) {
+    if (rawV1 !== null) {
       const migrated = parseV1(rawV1);
       if (migrated) {
         try {
@@ -143,7 +159,7 @@ export class UploadPrefsStore {
         }
         return migrated;
       }
-      await SecureStore.deleteItemAsync(PREFS_KEY_V1);
+      throw new UploadPrefsCorruptError();
     }
     return { ...EMPTY, selectionsByFriendCode: {} };
   }

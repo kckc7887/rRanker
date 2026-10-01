@@ -7,8 +7,8 @@
   },
   "modifications": {
     "author": "rRanker",
-    "date": "2026-09-19",
-    "description": "Selected parser, ruleset, autoplay and rendering modules with retained source notices; exact beatmap identifiers; system fonts; host video/storyboard backdrop; flat feedback and slider tracks; indexed visibility and mode-specific scroll/opacity controls. Unused rendering helpers are omitted."
+    "date": "2026-10-01",
+    "description": "Selected parser, ruleset, autoplay and rendering modules with retained source notices; exact beatmap identifiers; system fonts; host video/storyboard backdrop; flat feedback and slider tracks; indexed visibility and mode-specific scroll/opacity controls. Unused rendering helpers are omitted. Slider edge defaults remain sparse; taiko drumroll ticks use a compact uniform timeline, neighbouring-tick judgement and indexed drawing/tint evaluation. Standard slider judgement and scoring stream nested events; reversal arrows use constant-time parity bounds."
   },
   "hashNormalization": "UTF-8 text with CRLF normalized to LF",
   "files": [
@@ -17,7 +17,7 @@
       "upstreamPath": "src/parsers/BeatmapParser.ts",
       "upstreamGitBlob": "926feaf716452bd00dc808651b0b4cdc1e686adf",
       "upstreamSha256": "54b4ea3d1b0ff33ccf2cefcebdbee835ab439d9067dbaf137a1b8b3892d9c40f",
-      "integratedSha256": "300bd21086e8699f89afd4ed958671a117ff585d8496417d26086a3921215423"
+      "integratedSha256": "33053d6c64c15a1359405d6af029178034fec6a3139f16000a10aab4325d53a1"
     },
     {
       "path": "player/Player.ts",
@@ -66,7 +66,7 @@
       "upstreamPath": "src/renderer/HitObjectRenderer.ts",
       "upstreamGitBlob": "8d1d8518ec2d367de1b75abb7b8cc848a20f0e25",
       "upstreamSha256": "38b79b7fb63feed132f4d5aacfdf51958b1f90be58803c16e89f0ffd9383555e",
-      "integratedSha256": "4a6a39407898e86a7d423eeb578d85984d31de492925e2a133ac65bbebf33747"
+      "integratedSha256": "26ec8512a5c898ab1554a1e45c99ca14b5a595140e05e64c1ecf11ff51626dd5"
     },
     {
       "path": "renderer/HUDRenderer.ts",
@@ -108,7 +108,7 @@
       "upstreamPath": "src/renderer/SliderGeometryLazer.ts",
       "upstreamGitBlob": "8d25c2a007acc698a6237632c194173f0d8c8670",
       "upstreamSha256": "fdc13f85008490a617b83173261ef2fa50f7b5a021d0b3752b9238554effe08a",
-      "integratedSha256": "f20aa6f12b1f8138138ededcde8295b0f21ed3ef2c62401be54493ea2b925957"
+      "integratedSha256": "3d95ac16b4203d824f0558174ff9f2f1be6afecdd76789134e653fca487f4d36"
     },
     {
       "path": "renderer/URBarRenderer.ts",
@@ -283,14 +283,14 @@
       "upstreamPath": "src/rulesets/taiko/autoGenerator.ts",
       "upstreamGitBlob": "7b49d9816711f895b18c413255fa2307d41eaf0b",
       "upstreamSha256": "44b43ae2f2c7c24fa78eb4603e7e8526d64c6db9bdb93c168ca640e9345edc1a",
-      "integratedSha256": "e8f8df864427c7cf6667ea2e5a01a1346f43116035c7c9dbe23652d500ce9946"
+      "integratedSha256": "94342bd66564f2e2f71422ba5d927b94b18d496012a6b9146fdfba0a5ed56be4"
     },
     {
       "path": "rulesets/taiko/converter.ts",
       "upstreamPath": "src/rulesets/taiko/converter.ts",
       "upstreamGitBlob": "d73d9bc30f10b2da70d0f8a5a3fa750b3e90ec59",
       "upstreamSha256": "37df7e0142e76dc08441a6216a5af7863e83fc348148c993bdfd9d4c94a47d05",
-      "integratedSha256": "1c13e5d4fd57ac181c9b18bc5a2efd6734782caada53edc4327c19e8f66917f2"
+      "integratedSha256": "6b98526d64a78a7a211b4453a0b5192e6a69da4cc566235faa55ee05d7d54dde"
     },
     {
       "path": "rulesets/taiko/Flashlight.ts",
@@ -304,7 +304,7 @@
       "upstreamPath": "src/rulesets/taiko/hitJudge.ts",
       "upstreamGitBlob": "65334c7e9e7a812e99e301df84ea01eebc5703de",
       "upstreamSha256": "d270245c3a1b828bb6fce31523685792e3f26f6d1043735be7a4bf193be29d9d",
-      "integratedSha256": "beabfc99452f189600643eecbf0ad00de146373349ee14d46cba8b937a601281"
+      "integratedSha256": "7b191aecb4027c12a2332f1108285f90b8ea15a26b2c3f2a0906ef9108c17a89"
     },
     {
       "path": "rulesets/taiko/index.ts",
@@ -325,7 +325,7 @@
       "upstreamPath": "src/rulesets/taiko/Playfield.ts",
       "upstreamGitBlob": "a5e1c9e0b89360946b9ce8c79a0739dae8d9871d",
       "upstreamSha256": "3de5796605d3d764e13e3ea3abfde28a8451d2a6732073ed33d4f466f2616e40",
-      "integratedSha256": "ab44ea0cd7fd5b18bdd37ca7b4813a2cf230b19ab6ed8f157639e69bd4f5258a"
+      "integratedSha256": "9e6c4293707a4de66d0cb6d83e82f03a11e6829601e2e3a76d95a098537c503f"
     },
     {
       "path": "rulesets/taiko/scoreProcessor.ts",
@@ -339,14 +339,14 @@
       "upstreamPath": "src/rulesets/taiko/types.ts",
       "upstreamGitBlob": "5f4a5e536f5af1b43f842c7d61785d1a2e4c440d",
       "upstreamSha256": "8f69115fb78d8aea3ce777b0df1bedccbfe9bc5bc4f8237e537ac417506086ae",
-      "integratedSha256": "91d6b91a0d3d9aceee02f879f6926b6c62ec72d5683fdb4495146a19aff86698"
+      "integratedSha256": "d457a923b68f248c21a5499b23eddc25a2800e482c4f9a8a403f44427188d4e4"
     },
     {
       "path": "types/index.ts",
       "upstreamPath": "src/types/index.ts",
       "upstreamGitBlob": "5da4eb95fcfbb3e22429422ff4e8b3cabf53ac41",
       "upstreamSha256": "2b2ff533360ffa77bae8026f66daa54fbcd176a343bfbb10cf2a9a41e876fb0d",
-      "integratedSha256": "a28ae38b90cdf8ceefdd87a148f1a304ea9b52b8099af70f0f10309c665d3d57"
+      "integratedSha256": "1e36293e1987afd078920f49ebc1cb71e64657a40430493aef0ae0e31ed40e8e"
     },
     {
       "path": "utils/autoReplay.ts",
@@ -360,7 +360,7 @@
       "upstreamPath": "src/utils/hitJudge.ts",
       "upstreamGitBlob": "75587d2c0dd249e20f47cc6f2bcf9c894f047992",
       "upstreamSha256": "450f9453f78e6a76aede6f60defe5ae74a2506bc7d56eec9a059a2d84503cf6a",
-      "integratedSha256": "676428314f856174514ff6fb7ed2b76bb33db428e5885022fe4d37483666c769"
+      "integratedSha256": "65f10d29d6c3960d28f7042ed874b2537916ec8d4e2447f5da8334daf0fa7424"
     },
     {
       "path": "utils/md5.ts",
@@ -381,14 +381,14 @@
       "upstreamPath": "src/utils/scoreProcessor.ts",
       "upstreamGitBlob": "dbdabc0872117edaf6b6936110ac9cca61d9ac04",
       "upstreamSha256": "c8dc18088cc9a458ccdc79d516386d1bb7d6e9d213deb52532eafdec9298fdd9",
-      "integratedSha256": "66b690a05dc2dfafd88ca038a729fe7a0e510a6cf767e1246c9009118a83987b"
+      "integratedSha256": "dbf9788ac78d99e12e5719db4c2de7237af6e3a3f5ce63a79ce0182bbce69cac"
     },
     {
       "path": "utils/sliderDuration.ts",
       "upstreamPath": "src/utils/sliderDuration.ts",
       "upstreamGitBlob": "0192cca0a7f8ca5f853d58e746856c77d7215857",
       "upstreamSha256": "0d10566202cd8efc965d11db843b327241cac43bbd441bd9d695c9f932f18d3c",
-      "integratedSha256": "b647f27d56c9f15f7dd9077a7df37edc5b506e760810409ebfacffec8c72f358"
+      "integratedSha256": "0968946c4b0ab3b2959a57de84c4a82e2e5508b02be4c8091c7b2e419a7ffdeb"
     },
     {
       "path": "utils/stacking.ts",

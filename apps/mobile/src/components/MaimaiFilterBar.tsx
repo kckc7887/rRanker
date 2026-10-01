@@ -256,7 +256,7 @@ export function MaimaiFilterBar({
             accessibilityLabel={`版本名称切换为${locale === 'china' ? '中文' : '日文'}`}
             accessibilityState={{ selected: active }} onPress={() => onVersionLocaleChange(locale)}
             style={[styles.localeButton, { backgroundColor: theme.surface }, active && { backgroundColor: theme.accent }]}>
-            <Text style={[styles.localeText, active && styles.localeTextActive]}>{label}</Text>
+            <Text style={[styles.localeText, active && { color: theme.onAccent }]}>{label}</Text>
           </Pressable>
         );
       })}
@@ -427,5 +427,4 @@ const styles = StyleSheet.create({
   localeSwitch: { flexDirection: 'row', overflow: 'hidden', borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 10 },
   localeButton: { width: 34, height: 36, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
   localeText: { color: '#4B5563', fontSize: 12, fontWeight: '700' },
-  localeTextActive: { color: '#FFF' },
 });

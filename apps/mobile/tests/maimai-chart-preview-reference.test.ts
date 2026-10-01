@@ -1,4 +1,4 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import cases from './fixtures/maimai-simai-cases.json';
 import reference from './fixtures/maimai-simai-reference.json';
 import customReference from './fixtures/maimai-custom-reference.json';
@@ -9,6 +9,21 @@ import { geometryFor, prepareBranch, joinGeometries } from '@/features/simai-cha
 import { prepareAudioEvents } from '@/features/simai-chart-preview/engine/core/audio/AudioManager';
 
 describe('MajSimai 2.2.2 reference output', () => {
+  it('large multiline charts retain every source location without repeatedly copying prefixes', () => {
+    const body = `(120)\n${' 1,\n'.repeat(5000)}`;
+    const original = String.prototype.slice;
+    let copiedPrefixCharacters = 0;
+    const slice = vi.spyOn(String.prototype, 'slice').mockImplementation(function (this: string, start, end) {
+      if (String(this) === body && start === 0 && end !== undefined) copiedPrefixCharacters += end;
+      return original.call(this, start, end);
+    });
+    try {
+      const chart = parseSimaiBody(body);
+      expect(chart.notes).toHaveLength(5000);
+      expect(chart.notes[4999].source).toMatchObject({ line: 5001, column: 2, offset: body.length - 3 });
+      expect(copiedPrefixCharacters).toBeLessThanOrEqual(body.length * 2);
+    } finally { slice.mockRestore(); }
+  });
   for (const [code, expected] of Object.entries(connectedReference)) it(`ViewX connected geometry ${code}`, () => {
     const note = parseSimaiBody(`(120)${code},`).notes[0];
     if (note.type !== 'slide') throw new Error('Expected slide');

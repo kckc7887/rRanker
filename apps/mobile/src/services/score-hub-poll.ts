@@ -1,5 +1,6 @@
 import {
   isRetryableScoreHubError,
+  waitForUploadDelay as sleep,
   requestScoreHubJson as requestJson,
   ScoreHubError,
   type ScoreHubAbortSignal,
@@ -28,29 +29,6 @@ export async function verifyLoginJob(jobId: string, signal?: ScoreHubAbortSignal
   await requestJson('POST', `/auth/login-requests/${encodeURIComponent(jobId)}/verify`, { signal });
 }
 
-function sleep(ms: number, signal?: ScoreHubAbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(new ScoreHubError('已取消'));
-      return;
-    }
-    const timer = setTimeout(() => {
-      if (signal?.aborted) reject(new ScoreHubError('已取消'));
-      else if (signal?.waitUntilResumed) void signal.waitUntilResumed().then(resolve, reject);
-      else resolve();
-    }, ms);
-    if (signal) {
-      const watch = setInterval(() => {
-        if (signal.aborted) {
-          clearTimeout(timer);
-          clearInterval(watch);
-          reject(new ScoreHubError('已取消'));
-        }
-      }, 250);
-      setTimeout(() => clearInterval(watch), ms + 10);
-    }
-  });
-}
 
 export async function pollQrLoginUntilToken(input: {
   attemptId: string;

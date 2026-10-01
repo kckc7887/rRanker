@@ -1,4 +1,4 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Dimensions, Linking, processColor, StyleSheet } from 'react-native';
 import type { TufLevel, TufLevelPass, TufPass, TufPlayer, TufVideoDetails } from '@/domain/tuf';
@@ -15,7 +15,7 @@ const mockRefetch = jest.fn();
 const mockUseTufPasses = jest.fn();
 const mockUseTufLevelSearch = jest.fn();
 const mockUseTufDifficulties = jest.fn();
-const mockPrefetchTufPassPage = jest.fn(async (_playerId: number, _options: unknown, offset: number) => ({
+const mockPrefetchTufPassPage = jest.fn(async (_playerId: number, _options: unknown, offset: number, _signal?: AbortSignal) => ({
   passes: [], total: 61, offset, limit: 30,
 }));
 let mockLevelDetail: TufLevel | undefined;
@@ -93,7 +93,7 @@ jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unkno
   activeAccountId: 'adofai:tuf:25', activeGameId: 'adofai',
 }) }));
 jest.mock('@/hooks/use-tuf', () => ({
-  prefetchTufPassPage: mockPrefetchTufPassPage,
+  prefetchTufPassPage: (...args: Parameters<typeof mockPrefetchTufPassPage>) => mockPrefetchTufPassPage(...args),
   useTufProfile: () => ({ data: mockProfile, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
   useTufPasses: (...args: unknown[]) => mockUseTufPasses(...args),
   useTufLevelSearch: (...args: unknown[]) => mockUseTufLevelSearch(...args),
@@ -180,6 +180,12 @@ describe('TUF screens', () => {
     expect(screen.getByTestId('random-charts-scroll')).toBeTruthy();
     expect(screen.getByText('正在加载完整随机池 · 已加载 1/61')).toBeTruthy();
     expect(screen.getByTestId('random-charts-draw').props.accessibilityState).toEqual({ disabled: true });
+    await waitFor(() => expect(mockPrefetchTufPassPage).toHaveBeenCalled());
+    const signal = mockPrefetchTufPassPage.mock.calls.at(-1)?.[3];
+    expect(signal).toBeDefined();
+    expect(signal?.aborted).toBe(false);
+    await screen.unmount();
+    expect(signal?.aborted).toBe(true);
   });
 
   it('changes server-side record sorting and requests the next page once', async () => {

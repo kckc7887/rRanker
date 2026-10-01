@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { router, useLocalSearchParams } from 'expo-router';
+import { useCallback, useEffect, useRef, useState } from 'react';
+import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 
 import { OsuModeSelectContent } from '@/components/osu/OsuModeSelectContent';
@@ -14,6 +14,7 @@ import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { providerErrorToUserMessage, runProviderOperation } from '@/providers/errors';
+import { useAccountBindingRequest } from '@/hooks/use-account-binding-flow';
 
 type CallbackStatus =
   | { kind: 'processing' }
@@ -40,15 +41,26 @@ export default function OsuOAuthCallbackScreen() {
   const params = useLocalSearchParams<{ code?: string; state?: string; error?: string }>();
   const [status, setStatus] = useState<CallbackStatus>({ kind: 'processing' });
   const processedRef = useRef(false);
+  const focused = useRef(true);
+  const { begin, cancel } = useAccountBindingRequest(true);
+  useFocusEffect(useCallback(() => {
+    focused.current = true;
+    return () => {
+      focused.current = false;
+      cancel();
+      setStatus(current => current.kind === 'processing' || current.kind === 'binding'
+        ? { kind: 'error', message: '操作已取消，请重新发起授权。' } : current);
+    };
+  }, [cancel]));
 
   useEffect(() => {
     if (processedRef.current) return;
     processedRef.current = true;
-    let cancelled = false;
-    const controller = new AbortController();
+    const request = begin();
+    if (!request) return;
 
     const fail = (message: string) => {
-      if (cancelled) return;
+      if (!request.isCurrent()) return;
       setStatus({ kind: 'error', message });
       notifyOsuOAuthOutcome({ status: 'error', message });
     };
@@ -71,8 +83,8 @@ export default function OsuOAuthCallbackScreen() {
         return;
       }
       try {
-        const session = await runProviderOperation('authorization_callback', () => exchangeOsuAuthorizationCode(code, state, controller.signal));
-        if (cancelled) return;
+        const session = await runProviderOperation('authorization_callback', () => exchangeOsuAuthorizationCode(code, state, request.signal));
+        if (!request.isCurrent()) return;
         setStatus({ kind: 'selecting', session });
         // 深链把本页压在登录 Sheet（Modal）之下：先通知 Sheet 关闭，
         // 否则用户仍停留在绑定页、看不到本页的模式选择。
@@ -82,12 +94,15 @@ export default function OsuOAuthCallbackScreen() {
       }
     };
 
-    void run();
-    return () => { cancelled = true; controller.abort(); };
+    void run().finally(request.finish);
+    return cancel;
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 回调只在挂载时消费一次，或依赖已在上方说明
   }, []);
 
   const bindWith = async (modeGameIds: Parameters<typeof bindOsuModes>[0]['modeGameIds'], session: OsuOAuthSession) => {
+    if (!focused.current) return;
+    const request = begin();
+    if (!request) return;
     setStatus({ kind: 'binding' });
     try {
       const state = useSession.getState();
@@ -96,21 +111,26 @@ export default function OsuOAuthCallbackScreen() {
         session,
         existingAccounts: state.boundAccounts,
         credentialIdsByAccountId: state.credentialIdsByAccountId,
+        signal: request.signal,
+        assertCurrent: request.assertCurrent,
       }));
+      if (!request.isCurrent()) return;
       await runProviderOperation('local_commit', () => state.setOsuBinding({
         accounts: result.accounts,
         credentialId: result.credentialId,
         session: result.session,
         activeAccountId: result.activeAccountId,
       }));
+      if (!request.isCurrent()) return;
       invalidateAll();
       const accountName = result.accounts[0]?.displayName ?? 'osu! 账号';
       setStatus({ kind: 'success', accountName });
       notifyOsuOAuthOutcome({ status: 'success', accountName });
     } catch (error) {
+      if (!request.isCurrent()) return;
       setStatus({ kind: 'error', message: messageFor(error) });
       notifyOsuOAuthOutcome({ status: 'error', message: messageFor(error) });
-    }
+    } finally { request.finish(); }
   };
 
   const renderBody = () => {
@@ -178,7 +198,7 @@ export default function OsuOAuthCallbackScreen() {
               pressed && styles.primaryPressed,
             ]}
           >
-            <Text style={styles.primaryText}>返回首页</Text>
+            <Text style={[styles.primaryText, { color: theme.onAccent }]}>返回首页</Text>
           </Pressable>
         ) : null}
       </View>
@@ -194,5 +214,5 @@ const styles = StyleSheet.create({
   body: { fontSize: 14, lineHeight: 21, textAlign: 'center' },
   primary: { borderRadius: 10, padding: 13, alignItems: 'center', alignSelf: 'stretch', marginTop: 4 },
   primaryPressed: { opacity: 0.9 },
-  primaryText: { color: '#FFF', fontWeight: '700' },
+  primaryText: { fontWeight: '700' },
 });

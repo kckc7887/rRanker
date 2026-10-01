@@ -919,15 +919,13 @@ function pointAtFraction(
 }
 
 // Tail arrow visible while a future reversal from the tail exists (even-indexed slide ends).
-function shouldShowTailArrow(
+export function shouldShowTailArrow(
   slides: number, timeMs: number,
   sliderStart: number, slideDur: number
 ): boolean {
-  for (let k = 0; k < slides - 1; k++) {
-    if (k % 2 !== 0) continue;
-    if (timeMs < sliderStart + slideDur * (k + 1)) return true;
-  }
-  return false;
+  if (slides <= 1) return false;
+  const edge = slideDur >= 0 ? 2 * Math.floor((slides - 2) / 2) + 1 : 1;
+  return timeMs < sliderStart + slideDur * edge;
 }
 
 /**
@@ -935,15 +933,13 @@ function shouldShowTailArrow(
  * The ball arrives at the head at the end of odd-indexed slides (1, 3, 5, …).
  * A reversal occurs only if that slide is not the last one (k < slides − 1).
  */
-function shouldShowHeadArrow(
+export function shouldShowHeadArrow(
   slides: number, timeMs: number,
   sliderStart: number, slideDur: number
 ): boolean {
-  for (let k = 1; k < slides - 1; k++) {
-    if (k % 2 !== 1) continue;
-    if (timeMs < sliderStart + slideDur * (k + 1)) return true;
-  }
-  return false;
+  if (slides <= 2) return false;
+  const edge = slideDur >= 0 ? 2 * Math.floor((slides - 1) / 2) : 2;
+  return timeMs < sliderStart + slideDur * edge;
 }
 
 /**

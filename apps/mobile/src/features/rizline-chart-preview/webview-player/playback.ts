@@ -56,7 +56,7 @@ export class PreviewSession {
     this.settings = normalizeRizlineChartPreviewSettings(settings);
     this.musicGain.gain.value = this.settings.volume;
     this.hitGain.gain.value = this.settings.hitSound ? this.settings.hitSoundVolume : 0;
-    this.duration = Math.max(music.duration, chart.durationSeconds + 0.25);
+    this.duration = Math.max(music.duration, chart.durationSeconds + chart.delaySeconds + 0.25);
     this.hits = new HitSoundScheduler(
       context,
       createHitBuffer(context, 1760),
@@ -86,9 +86,9 @@ export class PreviewSession {
     this.hitGain.gain.value = this.settings.hitSound ? this.settings.hitSoundVolume : 0;
     this.renderer.setUserSpeed(this.settings.userSpeed);
     if (!this.settings.hitSound) this.hits.stop();
-    if (this.playing && this.source && this.settings.playbackSpeed !== previousSpeed) {
+    if (this.playing && this.settings.playbackSpeed !== previousSpeed) {
       const context = this.environment.getAudioContext();
-      this.source.playbackRate.value = this.settings.playbackSpeed;
+      if (this.source) this.source.playbackRate.value = this.settings.playbackSpeed;
       this.clock.appendSegment(audioContextTime(context.currentTime), this.settings.playbackSpeed);
       this.hits.reset(this.chartTime);
     }

@@ -55,6 +55,50 @@ function account(id: string): StoredProviderAccountInput {
 }
 
 describe('SecureSessionStore 内置账号兼容', () => {
+  it('treats an empty persisted index as corruption, never as a missing index', async () => {
+    const key = 'rranker.provider.sessions.index.v4';
+    sqlite.values.set(key, '');
+    secure.values.set('rranker.provider.sessions.v2', JSON.stringify({ version: 2, accounts: [account('old')] }));
+    await expect(createStore().loadVault()).rejects.toBeInstanceOf(SessionIndexCorruptError);
+    await expect(createStore().upsertAccount(account('new'))).rejects.toBeInstanceOf(SessionIndexCorruptError);
+    expect(sqlite.values.get(key)).toBe('');
+    expect(sqlite.values.get(`${key}.corrupt`)).toBe('');
+  });
+  it.each([2, 3])('v%s 迁移隔离身份重复项并恢复其余账号', async version => {
+    const good = account('good'), duplicate = account('duplicate');
+    const rows = [good, duplicate, duplicate];
+    const key = `rranker.provider.sessions.v${version}`;
+    const raw = JSON.stringify(version === 2 ? { version, accounts: rows } : {
+      version, credentials: rows.map(row => ({ id: row.id, providerId: row.providerId, session: row.session })),
+      accounts: rows.map(row => ({ ...row, credentialId: row.id })),
+    });
+    secure.values.set(key, raw);
+    const vault = await createStore().loadVault();
+    expect(vault.accounts.map(row => row.id)).toEqual(['good']);
+    expect(vault.recovery?.rejectedAccounts).toBe(2);
+    expect(secure.values.get(key)).toBe(raw);
+    expect((await createStore().loadVault()).accounts).toEqual(vault.accounts);
+  });
+  it.each([2, 3])('混合损坏的 v%s 迁移保留安全原文，重启不复活已删除账号', async version => {
+    const good = account('good');
+    const key = `rranker.provider.sessions.v${version}`;
+    const raw = JSON.stringify(version === 2
+      ? { version, activeAccountId: 'good', accounts: [good, { id: 'bad' }] }
+      : { version, activeAccountId: 'good', credentials: [{ id: 'c', providerId: good.providerId, session: good.session }, { id: 'bad' }], accounts: [{ ...good, credentialId: 'c' }, { id: 'bad' }] });
+    secure.values.set(key, raw);
+    const store = createStore();
+    const restored = await store.loadVault();
+    expect(restored.accounts.map(item => item.id)).toEqual(['good']);
+    expect(restored).toMatchObject({ recovery: { integrity: 'partial', sourceVersion: version, rejectedAccounts: 1 } });
+    expect(secure.values.get(key)).toBe(raw);
+    await store.removeAccount('good');
+    await store.upsertAccount(account('new'));
+    const restarted = await createStore().loadVault();
+    expect(restarted.accounts.map(item => item.id)).toEqual(['new']);
+    expect(restarted).toMatchObject({ recovery: restored.recovery });
+    expect(secure.values.get(key)).toBe(raw);
+    expect(JSON.stringify([...sqlite.values.values()])).not.toContain('token-good');
+  });
   it.each([
     { mode: 'jwt', value: '', persistable: true },
     { mode: 'import-token', persistable: true },
@@ -600,12 +644,12 @@ describe('SecureSessionStore corrupted index preservation', () => {
     expect(sqlite.values.get(INDEX)).toBe('{broken');
   });
 
-  it('skips corrupt legacy vaults without deleting them', async () => {
+  it('拒绝覆盖无法识别的旧会话原文', async () => {
     secure.values.set('rranker.provider.sessions.v3', '{broken');
     secure.values.set('rranker.provider.sessions.v2', '{broken');
     secure.values.set('rranker.diving-fish.session.v1', '{broken');
-    const vault = await createStore().loadVault();
-    expect(vault.accounts).toEqual([]);
+    await expect(createStore().loadVault()).rejects.toBeInstanceOf(SessionPersistenceError);
+    await expect(createStore().upsertAccount(account('new'))).rejects.toBeInstanceOf(SessionPersistenceError);
     expect(secure.values.get('rranker.provider.sessions.v3')).toBe('{broken');
     expect(secure.values.get('rranker.provider.sessions.v2')).toBe('{broken');
     expect(secure.values.get('rranker.diving-fish.session.v1')).toBe('{broken');

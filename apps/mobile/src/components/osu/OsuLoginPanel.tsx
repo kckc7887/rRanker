@@ -174,7 +174,7 @@ export function OsuLoginPanel({
         onPress={() => void openOsuAuthorize()}
         style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
       >
-        <Text style={styles.primaryText}>前往 osu! 授权</Text>
+        <Text style={[styles.primaryText, { color: theme.onAccent }]}>前往 osu! 授权</Text>
       </Pressable>
       <Text style={styles.hint}>
         点击后跳转浏览器完成授权，同意后返回并选择要绑定的模式。

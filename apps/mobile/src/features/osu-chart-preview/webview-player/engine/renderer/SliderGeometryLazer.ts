@@ -24,7 +24,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import type { BeatmapData, Slider } from '../types/index';
+import type { Slider } from '../types/index';
 import { sampleSlider as sampleSliderStable } from './SliderGeometry';
 
 type Point = { x: number; y: number };
@@ -44,34 +44,6 @@ type Point = { x: number; y: number };
  */
 export function sampleSliderLazer(slider: Slider): Point[] {
   return sampleSliderStable(slider);
-}
-
-/**
- * Lazer-model slider tick times (ms): distance-based iteration with d ≤ length per span,
- * where a 1ms epsilon on the span end avoids ticks landing on the tail boundary.
- */
-export function sliderTickTimesLazer(
-  beatmap: BeatmapData,
-  slider: Slider,
-  slideDur: number,
-): number[] {
-  let baseBeatLength = 500;
-  for (const tp of beatmap.timingPoints) {
-    if (tp.time > slider.time) break;
-    if (!tp.inherited) baseBeatLength = tp.beatLength;
-  }
-
-  const tickInterval = baseBeatLength / beatmap.sliderTickRate;
-  if (!isFinite(tickInterval) || tickInterval <= 0) return [];
-
-  const ticks: number[] = [];
-  for (let slide = 0; slide < slider.slides; slide++) {
-    const slideStart = slider.time + slide * slideDur;
-    for (let k = 1; k * tickInterval <= slideDur - 1; k++) {
-      ticks.push(slideStart + k * tickInterval);
-    }
-  }
-  return ticks;
 }
 
 /**

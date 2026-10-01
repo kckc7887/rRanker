@@ -1,5 +1,18 @@
 import type { DataSource } from '@/domain/models';
-import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { DataSourceSchema } from '@/domain/schemas';
+import { z } from 'zod';
+import { cachedSnapshotSource } from '@/domain/refresh-result';
+import type { ResourceMaintenanceRepository } from '@/repositories/resource-repository';
+
+/** 验证缓存的归属和内容；坏行不作为可用快照，存储 I/O 由调用方原样传播。 */
+export function cacheSourceSchema<K extends DataSource['kind']>(kind: K) {
+  return DataSourceSchema.extend({ kind: z.literal(kind) });
+}
+
+export function parseCachedSnapshot<T>(stored: unknown, kind: DataSource['kind'], dataSchema: z.ZodType<T>): { data: T; source: DataSource } | null {
+  const parsed = z.object({ data: dataSchema, source: cacheSourceSchema(kind) }).safeParse(stored);
+  return parsed.success ? { ...parsed.data, source: cachedSnapshotSource(parsed.data.source) } : null;
+}
 
 const resourceWriteGenerations = new Map<string, number>();
 const resourceWriteListeners = new Map<string, Set<() => void>>();
@@ -151,7 +164,7 @@ export function createInflightGuard<K>(): InflightGuard<K> {
  * 精确 key 无需扫描直接删除；前缀需遍历资源表匹配后一并批量删除。
  */
 export async function clearResourcesByPrefix(
-  repository: Pick<SqliteSnapshotRepository, 'listResourceSizes' | 'clearResources'>,
+  repository: ResourceMaintenanceRepository,
   targets: { keys?: readonly string[]; prefixes?: readonly string[] },
 ): Promise<void> {
   const matched = [...(targets.keys ?? [])];

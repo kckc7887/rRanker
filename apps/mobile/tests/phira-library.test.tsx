@@ -72,7 +72,7 @@ describe('Phira personal library', () => {
     await fireEvent.press(screen.getByText('Help me, ERINNNNNN!!'));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: '66661' },
+      params: { songId: '66661', gameId: 'phira' },
     });
   });
 

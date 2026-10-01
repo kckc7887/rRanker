@@ -380,7 +380,7 @@ function NotificationHost({
                     ]}
                   >
                     <Text style={[
-                      styles.actionText,
+                      styles.actionText, { color: theme.onAccent },
                       action.tone === 'destructive' && styles.destructiveActionText,
                       action.tone === 'cancel' && { color: theme.textSecondary },
                     ]}>

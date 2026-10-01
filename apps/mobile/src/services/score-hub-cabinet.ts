@@ -4,38 +4,13 @@ import {
   ScoreHubError,
   type ScoreHubAbortSignal,
 } from '@/services/score-hub-http';
-import type {
-  QrLoginCredential,
-  ScoreHubCabinetScoreJob,
-  ScoreHubCabinetScoreJobCleanupStatus,
-  ScoreHubCabinetScoreJobStage,
-  ScoreHubCabinetScoreJobStatus,
+import {
+  type QrLoginCredential,
+  type ScoreHubCabinetScoreJob,
+  ScoreHubCabinetScoreJobFieldsSchema,
 } from '@/services/score-hub-types';
 
 const QR_LOGIN_POST_TIMEOUT_MS = 150_000;
-
-const CABINET_JOB_STATUSES = new Set<ScoreHubCabinetScoreJobStatus>([
-  'queued',
-  'processing',
-  'completed',
-  'failed',
-]);
-const CABINET_JOB_STAGES = new Set<ScoreHubCabinetScoreJobStage>([
-  'queued',
-  'qr_auth',
-  'preview',
-  'login',
-  'get_music',
-  'logout',
-  'cleanup',
-  'persist',
-]);
-const CABINET_JOB_CLEANUP_STATUSES = new Set<ScoreHubCabinetScoreJobCleanupStatus>([
-  'not_required',
-  'pending',
-  'succeeded',
-  'unconfirmed',
-]);
 
 function cabinetScoreErrorDetails(body: unknown): { code?: string; retryAfter?: string } {
   if (!body || typeof body !== 'object') return {};
@@ -67,38 +42,12 @@ export function cabinetScoreRequestError(body: unknown, status: number): ScoreHu
 }
 
 export function parseCabinetScoreJob(raw: unknown): ScoreHubCabinetScoreJob | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const record = raw as Record<string, unknown>;
-  const status = record.status;
-  const stage = record.stage;
-  const cleanupStatus = record.cleanupStatus;
-  if (typeof record.id !== 'string'
-    || !CABINET_JOB_STATUSES.has(status as ScoreHubCabinetScoreJobStatus)
-    || !CABINET_JOB_STAGES.has(stage as ScoreHubCabinetScoreJobStage)
-    || !CABINET_JOB_CLEANUP_STATUSES.has(cleanupStatus as ScoreHubCabinetScoreJobCleanupStatus)
-    || typeof record.createdAt !== 'string'
-    || typeof record.updatedAt !== 'string') {
-    return null;
-  }
-  const rawProgress = record.progress;
-  const progress = rawProgress && typeof rawProgress === 'object'
-    && typeof (rawProgress as Record<string, unknown>).detailsFetched === 'number'
-    ? { detailsFetched: (rawProgress as { detailsFetched: number }).detailsFetched }
-    : null;
-  const details = cabinetScoreErrorDetails(record);
+  const parsed = ScoreHubCabinetScoreJobFieldsSchema.safeParse(raw);
+  if (!parsed.success) return null;
+  const details = cabinetScoreErrorDetails(raw);
   return {
-    id: record.id,
-    status: status as ScoreHubCabinetScoreJobStatus,
-    stage: stage as ScoreHubCabinetScoreJobStage,
-    cleanupStatus: cleanupStatus as ScoreHubCabinetScoreJobCleanupStatus,
-    progress,
-    syncId: typeof record.syncId === 'string' ? record.syncId : null,
-    scoreCount: typeof record.scoreCount === 'number' ? record.scoreCount : null,
-    error: details.code
-      ? { code: details.code, retryAfter: details.retryAfter ?? null }
-      : null,
-    createdAt: record.createdAt,
-    updatedAt: record.updatedAt,
+    ...parsed.data,
+    error: details.code ? { code: details.code, retryAfter: details.retryAfter ?? null } : null,
   };
 }
 

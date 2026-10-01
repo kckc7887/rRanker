@@ -1,4 +1,5 @@
-import { bindCabinetByQr, fetchMe } from '@/services/score-hub-client';
+import { bindCabinetByQr, fetchMe, fetchScoreHubStatistics } from '@/services/score-hub-client';
+import { parseCabinetScoreJob } from '@/services/score-hub-cabinet';
 
 const fetchMock = vi.hoisted(() => vi.fn());
 
@@ -12,6 +13,23 @@ function jsonResponse(status: number, body: unknown) {
 }
 
 describe('score-hub bind cabinet', () => {
+  it.each([[], {}, { friendCode: 123, hasCabinetUserId: true }, { friendCode: '123', hasCabinetUserId: 'true' }])('rejects malformed profile DTO %j', async body => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, body));
+    await expect(fetchMe('tok')).rejects.toThrow('账号信息响应无效');
+  });
+  it('rejects invalid statistics instead of presenting negative counts', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { dxnetJobs: {
+      totalCount: -1, completedCount: 2, failedCount: 0, successRate: 100, avgDuration: 1,
+    } }));
+    await expect(fetchScoreHubStatistics()).rejects.toThrow('服务统计响应无效');
+  });
+  it('rejects malformed job progress and counts while keeping optional legacy fields', () => {
+    const job = { id: 'job', status: 'queued', stage: 'queued', cleanupStatus: 'not_required', createdAt: 'now', updatedAt: 'now' };
+    expect(parseCabinetScoreJob(job)).toMatchObject({ id: 'job', progress: null, scoreCount: null });
+    for (const fields of [{ progress: { detailsFetched: -1 } }, { progress: [] }, { scoreCount: 1.5 }, { scoreCount: '3' }, { id: '' }]) {
+      expect(parseCabinetScoreJob({ ...job, ...fields })).toBeNull();
+    }
+  });
   beforeEach(() => {
     fetchMock.mockReset();
   });

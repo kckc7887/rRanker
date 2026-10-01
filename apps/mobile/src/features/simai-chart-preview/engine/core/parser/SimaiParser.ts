@@ -10,9 +10,18 @@ export class SimaiParseError extends Error {
     this.name = 'SimaiParseError';
   }
 }
-function location(text: string, offset: number, token: string): SourceLocation {
-  const prefix = text.slice(0, offset).split('\n');
-  return { offset, line: prefix.length, column: prefix[prefix.length - 1].length + 1, text: token };
+function sourceLocator(text: string): (offset: number, token: string) => SourceLocation {
+  const starts = [0];
+  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) starts.push(i + 1);
+  return (offset, token) => {
+    let low = 0, high = starts.length;
+    while (low + 1 < high) {
+      const middle = (low + high) >>> 1;
+      if (starts[middle] <= offset) low = middle;
+      else high = middle;
+    }
+    return { offset, line: low + 1, column: offset - starts[low] + 1, text: token };
+  };
 }
 function fail(message: string, source: SourceLocation): never { throw new SimaiParseError(message, source); }
 function number(value: string, source: SourceLocation, positive = false): number {
@@ -156,7 +165,7 @@ export function parseSimaiChart(text: string, difficulty?: ChartDifficulty | num
   chart.title = fields.title?.value.trim() ?? ''; chart.artist = fields.artist?.value.trim() ?? '';
   chart.designer = fields[`des_${slot}`]?.value.trim() ?? fields.des?.value.trim() ?? '';
   chart.difficulty = slot; chart.availableDifficulties = getAvailableDifficulties(text);
-  chart.firstMs = fields.first ? number(fields.first.value.trim(), location(text, fields.first.offset, fields.first.value)) * 1000 : 0;
+  chart.firstMs = fields.first ? number(fields.first.value.trim(), sourceLocator(text)(fields.first.offset, fields.first.value)) * 1000 : 0;
   for (const [key, field] of Object.entries(fields)) {
     if (key.startsWith('lv_')) chart.level[key] = field.value.trim();
     if (key.startsWith('des_')) chart.designers[key] = field.value.trim();
@@ -167,7 +176,9 @@ export function parseSimaiBody(body: string, defaultBpm?: number, sourceText = b
   let bpm = defaultBpm ?? 0, initialBpm = 0, beat = 0, timeMs = 0, division = 4, hs = 1, sv = 1, group = 0;
   const chart: Chart = { title: '', artist: '', designer: '', bpm: 0, level: {}, designers: {}, availableDifficulties: {}, notes: [], bpmEvents: [], divisorEvents: [], scrollEvents: [], signatures: [], firstMs: 0, measures: 0, durationMs: 0 };
   let token = '', tokenStart = 0, tokenOffsets: number[] = [];
-  const src = (i: number, value: string) => location(sourceText, sourceOffset + i, value);
+  const locate = sourceLocator(sourceText);
+  const src = (i: number, value: string) => locate(sourceOffset + i, value);
+  const commandPattern = /(\([^)]*\)|\{[^}]*\}|<(?:HS|SV)\*[^>]*>)/iy;
   const flush = () => {
     if (!initialBpm && bpm > 0) initialBpm = bpm;
     if (!(bpm > 0)) fail('Missing BPM', src(tokenStart, token));
@@ -203,7 +214,8 @@ export function parseSimaiBody(body: string, defaultBpm?: number, sourceText = b
       }
       i = limit; continue;
     }
-    const command = body.slice(i).match(/^(\([^)]*\)|\{[^}]*\}|<(?:HS|SV)\*[^>]*>)/i);
+    commandPattern.lastIndex = i;
+    const command = commandPattern.exec(body);
     if (command) {
       const value = command[0], origin = src(i, value);
       if (value[0] === '(') { bpm = number(value.slice(1, -1), origin, true); chart.bpmEvents.push({ timing: beat, bpm }); }
@@ -216,7 +228,7 @@ export function parseSimaiBody(body: string, defaultBpm?: number, sourceText = b
       i += value.length; continue;
     }
     if (c === ',') { flush(); timeMs += 240000 / bpm / division; beat += 4 / division; i++; continue; }
-    if (c === 'E' && !token && /^E(?:\s|,|$)/.test(body.slice(i))) { i++; continue; }
+    if (c === 'E' && !token && (i + 1 === body.length || /[\s,]/.test(body[i + 1]))) { i++; continue; }
     if (!token) tokenStart = i;
     token += c; tokenOffsets.push(i); i++;
   }

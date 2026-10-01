@@ -679,21 +679,32 @@ function drumrollTickHits(results: readonly HitResult[], sourceIndex: number): r
   return map.get(sourceIndex) ?? _EMPTY_DRUMROLL_HITS;
 }
 
-// Walk ticks, greedily pair with presses; lerp between rolling levels over DRUMROLL_FADE_MS.
-function computeDrumrollTint(
+type DrumrollTintChange = { time: number; before: number; after: number };
+const drumrollTintChanges = new WeakMap<TaikoDrumRoll, WeakMap<readonly HitResult[], DrumrollTintChange[]>>();
+
+// Retain only changes of rolling level. Silent intervals at zero cost no rows or iterations.
+function drumrollTintTimeline(
   roll: TaikoDrumRoll,
   results: readonly HitResult[],
-  timeMs: number,
-): string {
+): DrumrollTintChange[] {
+  let byResults = drumrollTintChanges.get(roll);
+  if (!byResults) { byResults = new WeakMap(); drumrollTintChanges.set(roll, byResults); }
+  const cached = byResults.get(results);
+  if (cached) return cached;
+  const changes: DrumrollTintChange[] = [];
   const halfWin  = roll.tickInterval / 2;
   const tickHits = drumrollTickHits(results, roll.sourceIndex);
 
   let rolling    = 0;
-  let prev       = 0;
-  let lastChange = -Infinity;
   let hi         = 0;
 
-  for (const tt of roll.tickTimes) {
+  for (let tick = 0; tick < roll.tickCount; tick++) {
+    if (rolling === 0) {
+      if (hi >= tickHits.length) break;
+      tick = Math.max(tick, Math.ceil((tickHits[hi]!.time - halfWin - roll.time) / roll.tickInterval));
+      if (tick >= roll.tickCount) break;
+    }
+    const tt = roll.time + tick * roll.tickInterval;
     const deadline = tt + halfWin;
     while (hi < tickHits.length && tickHits[hi]!.time < tt - halfWin) hi++;
     let wasHit = false;
@@ -705,16 +716,29 @@ function computeDrumrollTint(
     } else {
       eventTime = deadline;
     }
-    if (eventTime > timeMs) break;
     const before = rolling;
     rolling = wasHit
       ? Math.min(DRUMROLL_TICKS_TO_ENGAGE, rolling + 1)
       : Math.max(0,                         rolling - 1);
     if (rolling !== before) {
-      prev       = before;
-      lastChange = eventTime;
+      changes.push({ time: eventTime, before, after: rolling });
     }
   }
+  byResults.set(results, changes);
+  return changes;
+}
+
+export function computeDrumrollTint(roll: TaikoDrumRoll, results: readonly HitResult[], timeMs: number): string {
+  const changes = drumrollTintTimeline(roll, results);
+  let low = 0, high = changes.length;
+  while (low < high) {
+    const mid = Math.floor((low + high) / 2);
+    if (changes[mid]!.time <= timeMs) low = mid + 1; else high = mid;
+  }
+  const change = changes[low - 1];
+  const lastChange = change?.time ?? -Infinity;
+  const prev = change?.before ?? 0;
+  const rolling = change?.after ?? 0;
 
   const fadeT = isFinite(lastChange)
     ? Math.max(0, Math.min(1, (timeMs - lastChange) / DRUMROLL_FADE_MS))
@@ -778,7 +802,12 @@ function drawDrumRoll(
     ctx.stroke();
   }
 
-  for (const tt of roll.tickTimes) {
+  const visibleStart = timeMs + (LANE_LEFT_X - 4 - HIT_TARGET_X) / scrollVel;
+  const visibleEnd = timeMs + (LANE_RIGHT_X + 4 - HIT_TARGET_X) / scrollVel;
+  const firstTick = scrollVel === 0 ? 0 : Math.max(0, Math.ceil((Math.min(visibleStart, visibleEnd) - roll.time) / roll.tickInterval));
+  const lastTick = scrollVel === 0 ? roll.tickCount - 1 : Math.min(roll.tickCount - 1, Math.floor((Math.max(visibleStart, visibleEnd) - roll.time) / roll.tickInterval));
+  for (let tick = firstTick; tick <= lastTick; tick++) {
+    const tt = roll.time + tick * roll.tickInterval;
     const xt = objectX(tt, timeMs, scrollVel);
     if (xt < LANE_LEFT_X - 4 || xt > LANE_RIGHT_X + 4) continue;
     if (tickSprite !== undefined) {

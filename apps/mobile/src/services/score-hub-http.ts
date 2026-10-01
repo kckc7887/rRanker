@@ -1,4 +1,7 @@
 import { fetch as expoFetch } from 'expo/fetch';
+import { z } from 'zod';
+import { requestProviderResponse } from '@/providers/http-json';
+import { ProviderError } from '@/providers/errors';
 
 export const SCORE_HUB_API_BASE = 'https://api.maiscorehub.bakapiano.com/api/v1';
 export const SCORE_HUB_REQUEST_TIMEOUT_MS = 60_000;
@@ -29,7 +32,38 @@ export type ScoreHubAbortSignal = {
   paused?: boolean;
   waitUntilResumed?: () => Promise<void>;
   onCancel?: (listener: () => void) => () => void;
+  addEventListener?: AbortSignal['addEventListener'];
+  removeEventListener?: AbortSignal['removeEventListener'];
 };
+
+/** 将任务取消订阅接入公共 HTTP；不轮询可变标记，结束时释放订阅。 */
+export async function withUploadAbortSignal<T>(signal: ScoreHubAbortSignal | undefined, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
+  await signal?.waitUntilResumed?.();
+  const controller = new AbortController();
+  const cancel = () => controller.abort(new ScoreHubError('已取消'));
+  if (signal?.aborted) cancel();
+  const unsubscribe = signal?.onCancel?.(cancel);
+  signal?.addEventListener?.('abort', cancel, { once: true });
+  try {
+    if (signal?.aborted) cancel();
+    controller.signal.throwIfAborted();
+    return await run(controller.signal);
+  } finally {
+    unsubscribe?.();
+    signal?.removeEventListener?.('abort', cancel);
+  }
+}
+
+/** 取消释放延时计时器，恢复后才允许开始下一次轮询或读取。 */
+export async function waitForUploadDelay(ms: number, signal?: ScoreHubAbortSignal): Promise<void> {
+  await withUploadAbortSignal(signal, nativeSignal => new Promise<void>((resolve, reject) => {
+    const cancel = () => { clearTimeout(timer); reject(nativeSignal.reason); };
+    const timer = setTimeout(() => { nativeSignal.removeEventListener('abort', cancel); resolve(); }, ms);
+    nativeSignal.addEventListener('abort', cancel, { once: true });
+  }));
+  await signal?.waitUntilResumed?.();
+  if (signal?.aborted) throw new ScoreHubError('已取消');
+}
 
 function normalizeNetworkErrorMessage(raw: string): string {
   const lower = raw.toLowerCase();
@@ -79,7 +113,6 @@ export async function requestScoreHubRaw(
     timeoutMs?: number;
   },
 ): Promise<{ status: number; body: unknown }> {
-  await options?.signal?.waitUntilResumed?.();
   if (options?.signal?.aborted) {
     throw new ScoreHubError('已取消');
   }
@@ -93,18 +126,15 @@ export async function requestScoreHubRaw(
   if (options?.token) {
     headers.Authorization = `Bearer ${options.token}`;
   }
-  const controller = new AbortController();
-  let timedOut = false;
-  const timeoutMs = options?.timeoutMs ?? SCORE_HUB_REQUEST_TIMEOUT_MS;
-  const timeout = setTimeout(() => {
-    timedOut = true;
-    controller.abort();
-  }, timeoutMs);
-  const abortWatch = options?.signal ? setInterval(() => {
-    if (options.signal?.aborted) controller.abort();
-  }, 100) : null;
   try {
-    const response = await expoFetch(`${SCORE_HUB_API_BASE}${path}`, {
+    return await withUploadAbortSignal(options?.signal, signal => requestProviderResponse({
+      baseUrl: SCORE_HUB_API_BASE, path, fetcher: expoFetch as unknown as typeof fetch, label: 'score-hub',
+      schema: z.object({ status: z.number(), body: z.unknown() }),
+      authenticated: true, signal, totalAttempts: 1,
+      timeoutMs: options?.timeoutMs ?? SCORE_HUB_REQUEST_TIMEOUT_MS,
+      acceptStatus: () => true,
+      error: status => new ProviderError('network', `score-hub 请求失败（${status}）`, status >= 500),
+      init: {
       method,
       headers,
       body: options?.formData !== undefined
@@ -112,8 +142,8 @@ export async function requestScoreHubRaw(
         : options?.jsonBody === undefined
           ? undefined
           : JSON.stringify(options.jsonBody),
-      signal: controller.signal,
-    });
+      },
+    }, async response => {
     const text = await response.text();
     let body: unknown = null;
     if (text) {
@@ -123,21 +153,19 @@ export async function requestScoreHubRaw(
         body = { error: text };
       }
     }
-    return { status: response.status, body };
+      return { status: response.status, body };
+    }));
   } catch (error) {
-    if (options?.signal?.aborted && !timedOut) throw new ScoreHubError('已取消');
-    if (error instanceof Error && error.name === 'AbortError') {
+    if (options?.signal?.aborted) throw new ScoreHubError('已取消');
+    if (error instanceof ProviderError && error.code === 'timeout') {
       throw new ScoreHubError(
-        timedOut ? 'score-hub 请求超时，正在重试…' : '已取消',
+        'score-hub 请求超时，正在重试…',
         undefined,
-        timedOut,
+        true,
       );
     }
     const raw = error instanceof Error ? error.message : '无法连接 score-hub';
-    throw new ScoreHubError(normalizeNetworkErrorMessage(raw), undefined, true);
-  } finally {
-    clearTimeout(timeout);
-    if (abortWatch !== null) clearInterval(abortWatch);
+    throw new ScoreHubError(normalizeNetworkErrorMessage(raw), undefined, error instanceof ProviderError ? error.retryable : true);
   }
 }
 

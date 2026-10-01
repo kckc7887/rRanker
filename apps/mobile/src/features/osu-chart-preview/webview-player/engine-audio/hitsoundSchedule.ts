@@ -38,7 +38,7 @@
 import type { BeatmapData, HitResult, HitSample, TimingPoint } from '../engine/types/index';
 import type { ComboFrame } from '../engine/renderer/HUDRenderer';
 import type { TaikoInputEvent } from '../engine/rulesets/taiko/input';
-import { slideDurationMs } from '../engine/utils/sliderDuration';
+import { slideDurationMs, sliderEdgeSample } from '../engine/utils/sliderDuration';
 
 const AUDIO_EXTS = ['.wav', '.mp3', '.ogg'];
 
@@ -185,11 +185,11 @@ function scheduleStd(
 
     // Slider head uses edgeSounds[0] (may differ from hitSound).
     const bitmask = (obj?.type === 'slider')
-      ? (obj.edgeSounds[0] ?? obj.hitSound)
+      ? sliderEdgeSample(obj, 0).hitSound
       : (obj?.hitSound ?? result.hitSound);
 
     const hs = obj?.hitSample ?? { normalSet: 0, additionSet: 0, index: 0, volume: 0, filename: '' };
-    const edgeSet = obj?.type === 'slider' ? obj.edgeSets[0] : undefined;
+    const edgeSet = obj?.type === 'slider' ? sliderEdgeSample(obj, 0) : undefined;
     const normalSet   = edgeSet?.normalSet || hs.normalSet || tp.sampleSet || 1;
     const additionSet = edgeSet?.additionSet || hs.additionSet || normalSet;
     const sampleIndex = hs.index       || tp.sampleIndex || 0;
@@ -214,8 +214,8 @@ function scheduleStd(
 
       const beatmapMs = edgeBeatmapMs + oldOffsetMs;
       const tp      = activeTimingPoint(beatmap, edgeBeatmapMs);
-      const bitmask = obj.edgeSounds[n] ?? obj.hitSound;
-      const edgeSet = obj.edgeSets[n] ?? { normalSet: 0, additionSet: 0 };
+      const edgeSet = sliderEdgeSample(obj, n);
+      const bitmask = edgeSet.hitSound;
 
       const normalSet   = edgeSet.normalSet   || obj.hitSample.normalSet   || tp.sampleSet   || 1;
       const additionSet = edgeSet.additionSet || obj.hitSample.additionSet || normalSet;

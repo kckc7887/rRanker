@@ -16,6 +16,12 @@ import { TufLevelDetailScreen } from '@/screens/TufScreens';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { useLocalSearchParams } from 'expo-router';
+import { useState } from 'react';
+import { AccountSwitchSheet } from '@/components/AccountSwitchSheet';
+import { QueryStateView } from '@/components/QueryStateView';
+import { useNotification } from '@/components/AppNotification';
+import { findGame, type GameId } from '@/domain/game-bind-options';
+import { switchBoundAccount, notifyAccountSwitchError } from '@/services/switch-bound-account';
 
 export default function SongDetailScreen() {
   const theme = useAppTheme();
@@ -30,7 +36,30 @@ export default function SongDetailScreen() {
     />;
   }
 
+  if (resolution.target.game !== activeGameId) return <DetailGameSwitch gameId={resolution.target.game} />;
   return <SongDetailTargetScreen target={resolution.target} themeBackground={theme.background} />;
+}
+
+function DetailGameSwitch({ gameId }: { gameId: GameId }) {
+  const accounts = useSession(state => state.boundAccounts).filter(account => account.gameId === gameId);
+  const activeAccountId = useSession(state => state.activeAccountId);
+  const [visible, setVisible] = useState(false);
+  const [expanded, setExpanded] = useState<GameId | null>(gameId);
+  const { showNotification } = useNotification();
+  if (!accounts.length) return <EmptyDataView title="需要绑定游戏账号"
+    detail={`此链接属于${findGame(gameId)?.title ?? gameId}，绑定该游戏账号后可继续打开。`} showBindAction />;
+  return <>
+    <QueryStateView isLoading={false} isError={false} isEmpty data={undefined} renderData={() => <></>}
+      emptyText={`此链接属于${findGame(gameId)?.title ?? gameId}，请选择该游戏账号继续。`}
+      emptyActionLabel="选择账号继续" onEmptyAction={() => setVisible(true)} />
+    <AccountSwitchSheet visible={visible} accounts={accounts} expandedGameId={expanded} activeAccountId={activeAccountId}
+      onClose={() => setVisible(false)} onToggleGame={id => setExpanded(current => current === id ? null : id)}
+      onSelectAccount={account => {
+        setVisible(false);
+        void switchBoundAccount(account.id, { navigateToOverview: false })
+          .catch(error => notifyAccountSwitchError(error, showNotification));
+      }} />
+  </>;
 }
 
 /** 先解析出已校验的 DetailTarget，再按游戏挂载对应详情页。 */

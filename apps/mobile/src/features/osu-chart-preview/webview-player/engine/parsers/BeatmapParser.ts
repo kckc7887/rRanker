@@ -40,6 +40,14 @@ function parseHitSample(raw: string): HitSample {
   };
 }
 
+function sliderDimensions(parts: string[]): { slides: number; length: number } {
+  const slides = Number(parts[6] ?? '1');
+  const length = Number(parts[7] ?? '0');
+  if (!Number.isSafeInteger(slides) || slides < 1) throw new Error('滑条重复次数无效');
+  if (!Number.isFinite(length) || length < 0) throw new Error('滑条长度无效');
+  return { slides, length };
+}
+
 /**
  * Parses `.osu` beatmap text into structured data: metadata, difficulty settings,
  * timing points (time-sorted, uninherited-first at equal times), breaks, and
@@ -214,8 +222,7 @@ export function parseBeatmap(text: string): BeatmapData {
           obj = circle;
         } else if (typeFlags & 2) {
           const curveRaw = parts[5] ?? '';
-          const slides = parseInt(parts[6] ?? '1', 10);
-          const length = parseFloat(parts[7] ?? '0');
+          const { slides, length } = sliderDimensions(parts);
 
           const pipeParts = curveRaw.split('|');
           const curveTypeChar = (pipeParts[0] ?? 'B').trim();
@@ -238,7 +245,6 @@ export function parseBeatmap(text: string): BeatmapData {
           const edgeSounds: number[] = edgeSoundsRaw !== ''
             ? edgeSoundsRaw.split('|').map(s => parseInt(s, 10) || 0)
             : [];
-          while (edgeSounds.length < slides + 1) edgeSounds.push(hitSound);
 
           const edgeSetsRaw = parts[9] ?? '';
           const edgeSets: { normalSet: number; additionSet: number }[] = [];
@@ -251,7 +257,6 @@ export function parseBeatmap(text: string): BeatmapData {
               });
             }
           }
-          while (edgeSets.length < slides + 1) edgeSets.push({ normalSet: 0, additionSet: 0 });
 
           const slider: Slider = {
             type: 'slider',

@@ -95,6 +95,7 @@ async function settle(pending: Promise<void>): Promise<void> {
 }
 
 beforeEach(() => {
+  context.currentTime = 0;
   context.state = 'suspended';
   context.sources = [];
   context.decodedBuffers = [];
@@ -103,6 +104,25 @@ beforeEach(() => {
 });
 
 describe('Rizline playFrom 等待 resume 时的命令代次', () => {
+  it.each([3, -3])('谱面偏移 %s 秒参与播放结束时间', (delaySeconds) => {
+    const preview = new PreviewSession({ ...chart, delaySeconds }, renderer,
+      { duration: 1 } as AudioBuffer, normalizeRizlineChartPreviewSettings({}), environment);
+    expect(preview.duration).toBe(10 + delaySeconds + 0.25);
+    preview.dispose();
+  });
+
+  it('没有音源的谱面尾段仍按新倍速连续前进', async () => {
+    const preview = new PreviewSession(chart, renderer,
+      { duration: 1 } as AudioBuffer, normalizeRizlineChartPreviewSettings({}), environment);
+    await settle(preview.playFrom(2));
+    expect(context.sources).toHaveLength(0);
+    context.currentTime = 1;
+    expect(preview.currentTime).toBeCloseTo(3);
+    preview.setSettings({ playbackSpeed: 2 });
+    context.currentTime = 2;
+    expect(preview.currentTime).toBeCloseTo(5);
+    preview.dispose();
+  });
   it('suspended 上下文完成解码和暂停准备，首次播放才请求音频授权', async () => {
     const decoded = decodeAudio(new Uint8Array([1, 2, 3]).buffer, environment);
     expect(context.release).toBeNull();

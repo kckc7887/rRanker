@@ -1,4 +1,19 @@
 import { applyEase } from './easing';
+import { createIntervalIndex } from '../../chart-preview-shared/webview-player/interval-index';
+
+type TimedSpan = { startSeconds: number; endSeconds: number };
+const timeIndices = new WeakMap<readonly TimedSpan[], ((min: number, max: number) => number[]) | null>();
+
+/** Prepared tracks are immutable. Preserve source-order early-exit semantics for unordered tracks. */
+export function activeSpans<T extends TimedSpan>(spans: readonly T[], seconds: number): readonly T[] {
+  if (!timeIndices.has(spans)) {
+    const ordered = spans.every((span, index) => !Number.isNaN(span.startSeconds) && !Number.isNaN(span.endSeconds)
+      && (index === 0 || span.startSeconds >= spans[index - 1]!.startSeconds));
+    timeIndices.set(spans, ordered ? createIntervalIndex(spans.map((_, i) => i), i => [spans[i]!.startSeconds, spans[i]!.endSeconds]) : null);
+  }
+  const query = timeIndices.get(spans);
+  return query && !Number.isNaN(seconds) ? query(seconds, seconds).map(i => spans[i]!) : spans;
+}
 
 export type Rgba = { r: number; g: number; b: number; a: number };
 
@@ -179,7 +194,7 @@ function fillColorSeconds(spans: ColorSpan[], points: { tick: number }[], second
   }
 }
 
-function secondsAtTick(tick: number, bpm: number, shifts: ValueSpan[]): number {
+function secondsAtTick(tick: number, bpm: number, shifts: readonly ValueSpan[]): number {
   let seconds = Infinity;
   for (const shift of shifts) {
     if (tick > shift.endTick) continue;
@@ -220,7 +235,7 @@ function readValuePoints(raw: unknown, label: string): { tick: number; value: nu
 export function sampleColor(spans: readonly ColorSpan[], nowSeconds: number): Rgba | null {
   if (!spans.length) return null;
   let current: Rgba = spans[0]!.from;
-  for (const span of spans) {
+  for (const span of activeSpans(spans, nowSeconds)) {
     if (nowSeconds > span.endSeconds) continue;
     if (nowSeconds < span.startSeconds) break;
     const progress = (nowSeconds - span.startSeconds) / (span.endSeconds - span.startSeconds);
@@ -249,7 +264,8 @@ export function prepareOfficialChart(raw: unknown): PreparedChart {
     ? readValuePoints(shiftRows, 'bpmShifts')
     : [{ tick: 0, value: 1, easeType: 0, floorPosition: 0 }];
   const bpmSpans = pairNumeric(bpmPoints);
-  const secondsAt = (tick: number) => secondsAtTick(tick, bpm, bpmSpans);
+  const bpmTrack = bpmSpans.map(span => ({ ...span, startSeconds: span.startTick, endSeconds: span.endTick }));
+  const secondsAt = (tick: number) => secondsAtTick(tick, bpm, activeSpans(bpmTrack, tick));
   fillValueSeconds(bpmSpans, secondsAt);
 
   const themes = asList(source.themes, 'themes').map((item, themeIndex) => {
@@ -340,12 +356,13 @@ export function prepareOfficialChart(raw: unknown): PreparedChart {
       };
     });
 
+    const noteSpans = createIntervalIndex(spans.map((_, i) => i), i => [spans[i]!.startSeconds, spans[i]!.endSeconds]);
     const notes: PreviewNote[] = asList(row.notes ?? [], 'notes').map((noteValue, noteId) => {
       const note = asObject(noteValue, `notes[${noteId}]`);
       const seconds = secondsAt(Number(note.time));
       durationSeconds = Math.max(durationSeconds, seconds || 0);
       let spanIndex = -1;
-      for (let index = 0; index < spans.length; index += 1) {
+      for (const index of noteSpans(seconds, seconds)) {
         const span = spans[index]!;
         if (span.startSeconds <= seconds && seconds <= span.endSeconds && span.endSeconds !== Infinity) {
           spanIndex = index;

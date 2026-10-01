@@ -298,9 +298,9 @@ export function StorageManagementScreen() {
                     ]}
                   >
                     {clearing ? (
-                      <ActivityIndicator color="#FFF" />
+                      <ActivityIndicator color={theme.onAccent} />
                     ) : (
-                      <Text style={styles.clearButtonText}>清除已选缓存 · 约 {formatStorageBytes(selectedBytes)}</Text>
+                      <Text style={[styles.clearButtonText, { color: theme.onAccent }]}>清除已选缓存 · 约 {formatStorageBytes(selectedBytes)}</Text>
                     )}
                   </Pressable>
                 ) : null}

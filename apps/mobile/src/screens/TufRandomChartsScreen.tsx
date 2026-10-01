@@ -41,7 +41,7 @@ export function TufRandomChartsScreen() {
     void loadOffsetPagesBounded({
       offsets,
       concurrency: 3,
-      loadPage: (offset) => prefetchTufPassPage(playerId, queryOptions, offset),
+      loadPage: (offset) => prefetchTufPassPage(playerId, queryOptions, offset, controller.signal),
       signal: controller.signal,
     }).then((failures) => {
       if (!controller.signal.aborted) setFailedOffsets(failures.map((failure) => failure.offset));

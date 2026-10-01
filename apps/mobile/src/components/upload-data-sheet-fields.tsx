@@ -384,14 +384,14 @@ export function UploadResultList({
                 <View key={result.account.id} style={styles.resultRow}>
                   <Text style={result.status === 'success'
                     ? [styles.resultSuccess, { color: theme.success }]
-                    : [styles.resultFailure, { color: theme.danger }]}
+                    : [styles.resultFailure, { color: result.status === 'unconfirmed' ? theme.textSecondary : theme.danger }]}
                   >
-                    {result.status === 'success' ? '✓' : '×'} {result.account.providerTitle}
+                    {result.status === 'success' ? '✓' : result.status === 'unconfirmed' ? '?' : '×'} {result.account.providerTitle}
                   </Text>
                   <Text style={[styles.resultDetail, { color: theme.textMuted }]}>
                     {result.status === 'success'
                       ? `写入 ${result.written} 条${result.skipped ? `，跳过 ${result.skipped} 条` : ''}${result.refreshFailed ? '，页面未能更新' : ''}`
-                      : '写入失败，请重试。'}
+                      : result.status === 'unconfirmed' ? '写入未确认，请先核对成绩。' : '写入失败，请重试。'}
                   </Text>
                 </View>
               ))}

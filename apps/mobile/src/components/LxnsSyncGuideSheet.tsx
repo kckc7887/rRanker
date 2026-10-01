@@ -234,7 +234,7 @@ export function LxnsSyncGuideContent({
                 (busy || syncDisabled) && styles.disabled,
               ]}
             >
-              <Text style={styles.syncText}>{busy ? syncBusyLabel : syncButtonLabel}</Text>
+              <Text style={[styles.syncText, { color: theme.onAccent }]}>{busy ? syncBusyLabel : syncButtonLabel}</Text>
               <Text style={styles.syncHint}>{syncHint}</Text>
             </Pressable>
           </GuideStep>
@@ -256,7 +256,7 @@ function GuideStep({
     <View style={[styles.step, { backgroundColor: theme.surface }]}>
       <View style={styles.stepTitleRow}>
         <View style={[styles.number, { backgroundColor: theme.accent }]}>
-          <Text style={styles.numberText}>{number}</Text>
+          <Text style={[styles.numberText, { color: theme.onAccent }]}>{number}</Text>
         </View>
         <Text style={[styles.stepTitle, { color: theme.text }]}>{title}</Text>
       </View>

@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { accountAvatarResourceKey } from '@/domain/account-avatar';
 import { chunithmPersonalResourceKey } from '@/domain/chunithm-personal';
 import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
+import { CatalogSnapshotSchema, ScoreSnapshotSchema } from '@/domain/schemas';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
 import type { ResourceRepository } from '@/repositories/resource-repository';
@@ -65,7 +66,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     );
     if (!row) return null;
     if (row.schema_version !== SNAPSHOT_SCHEMA_VERSION) return null;
-    try { return JSON.parse(row.payload) as ScoreSnapshot; }
+    try { return ScoreSnapshotSchema.safeParse(JSON.parse(row.payload)).data ?? null; }
     catch { return null; }
   }
   async save(accountId: string, snapshot: ScoreSnapshot, assertCurrent?: () => void): Promise<void> {
@@ -92,7 +93,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     );
     if (!row) return null;
     if (row.schema_version !== CATALOG_SCHEMA_VERSION) return null;
-    try { return JSON.parse(row.payload) as CatalogSnapshot; }
+    try { return CatalogSnapshotSchema.safeParse(JSON.parse(row.payload)).data ?? null; }
     catch { return null; }
   }
   async saveCatalog(catalog: CatalogSnapshot, assertCurrent?: () => void): Promise<void> {

@@ -32,6 +32,7 @@ export function GameAccountsScreen() {
   const boundAccounts = useSession(s => s.boundAccounts);
   const activeAccountId = useSession(s => s.activeAccountId);
   const restoreError = useSession(s => s.restoreError);
+  const migrationRecovery = useSession(s => s.migrationRecovery);
   const sourceStatuses = useSyncExternalStore(subscribeAccountSourceStatuses, getAccountSourceStatuses);
   const sourceFailed = sourceStatuses.some((source) => source.status === 'failed');
   const safeAreaInsets = useSafeAreaInsets();
@@ -191,6 +192,9 @@ export function GameAccountsScreen() {
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(safeAreaInsets.bottom, 24) + 72 }]}
         scrollIndicatorInsets={{ bottom: safeAreaInsets.bottom }}>
+        {migrationRecovery ? <Text style={{ color: theme.textSecondary }}>
+          部分旧账号数据无法完整恢复，原数据已保留。已恢复的账号可以继续使用；未恢复的账号可重新绑定。
+        </Text> : null}
         {restoreError ? (
           <View>
             <Text style={styles.error}>{restoreError}</Text>
@@ -228,8 +232,8 @@ export function GameAccountsScreen() {
 
       <Pressable accessibilityRole="button" accessibilityLabel="添加游戏账号" disabled={busy} onPress={openPicker}
         style={({ pressed }) => [styles.fab, { bottom: Math.max(safeAreaInsets.bottom, 12) + 16, backgroundColor: theme.accent }, pressed && styles.fabPressed]}>
-        <SymbolView name="plus" tintColor="#FFF" size={28} weight="semibold"
-          fallback={<Ionicons name="add" size={28} color="#FFF" />} />
+        <SymbolView name="plus" tintColor={theme.onAccent} size={28} weight="semibold"
+          fallback={<Ionicons name="add" size={28} color={theme.onAccent} />} />
       </Pressable>
 
       <GamePickerSheet mode="bind" testAccountsEnabled={testAccountsEnabled} visible={pickerVisible} expandedGameId={expandedPickerGameId}

@@ -8,6 +8,7 @@ const mockShowNotification = jest.fn();
 const mockShowActionNotification = jest.fn();
 let mockRestoreError: string | null = '无法读取本机登录状态，请重试恢复。';
 let mockSourceStatuses: { source: string; status: string }[] = [];
+let mockMigrationRecovery: object | null = null;
 const mockRetrySources = jest.fn(async () => undefined);
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
@@ -28,6 +29,7 @@ jest.mock('@/state/session-store', () => {
     boundAccounts: [],
     activeAccountId: null,
     restoreError: mockRestoreError,
+    migrationRecovery: mockMigrationRecovery,
   });
   const useSession = (selector: (value: unknown) => unknown) => selector(state());
   useSession.getState = state;
@@ -97,6 +99,15 @@ describe('session restore recovery', () => {
     jest.clearAllMocks();
     mockRestoreError = '无法读取本机登录状态，请重试恢复。';
     mockSourceStatuses = [];
+    mockMigrationRecovery = null;
+  });
+  it('shows partial migration recovery without offering destructive reset for healthy restored accounts', async () => {
+    mockRestoreError = null;
+    mockMigrationRecovery = { integrity: 'partial', sourceVersion: 3, rejectedAccounts: 1, rejectedCredentials: 1 };
+    const screen = await render(<GameAccountsScreen />);
+    expect(screen.getByText(/部分旧账号数据无法完整恢复，原数据已保留/)).toBeTruthy();
+    expect(screen.queryByLabelText('清除登录数据并重新绑定')).toBeNull();
+    expect(mockClearSessions).not.toHaveBeenCalled();
   });
   it('offers a separate failed-source retry without clearing the existing account list', async () => {
     mockRestoreError = null;

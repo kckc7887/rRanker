@@ -80,6 +80,7 @@ export class OsuScoreProvider {
   }
 
   private async request<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+    if (signal?.aborted) throw signal.reason;
     const accessToken = await this.ensureFreshAccessToken();
     if (signal?.aborted) throw signal.reason;
     return requestJson({

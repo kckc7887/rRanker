@@ -1,12 +1,14 @@
 import { jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
-import { InteractionManager } from 'react-native';
+import { AppState, InteractionManager } from 'react-native';
+import { AppLifecycleProvider } from '@/state/app-lifecycle';
 import type { AppLifecycleSnapshot } from '@/state/app-lifecycle-core';
 import { useAppRuntime } from '@/hooks/use-app-runtime';
 
 const mockState = { restoreStatus: 'ready', activeAccountId: 'maimai:local', activeGameId: 'maimai', activeProviderId: 'local', boundAccounts: [] };
 let mockLifecycle: AppLifecycleSnapshot;
 let mockController: AbortController;
+let mockRealLifecycle = false;
 const mockFocus = jest.fn();
 const mockPause = jest.fn();
 const mockResume = jest.fn();
@@ -33,7 +35,13 @@ jest.mock('@/state/session-store', () => ({
   useSession: Object.assign((select: (state: unknown) => unknown) => select(mockState), { getState: () => mockState }),
   retryPendingRotationWrites: () => mockRetryPendingRotationWrites(),
 }));
-jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle, getForegroundAbortSignal: () => mockController.signal }));
+jest.mock('@/state/app-lifecycle', () => {
+  const actual = jest.requireActual<typeof import('@/state/app-lifecycle')>('@/state/app-lifecycle');
+  return { ...actual, useAppLifecycle: () => {
+    const snapshot = actual.useAppLifecycle();
+    return mockRealLifecycle ? snapshot : mockLifecycle;
+  }, getForegroundAbortSignal: () => mockRealLifecycle ? actual.getForegroundAbortSignal() : mockController.signal };
+});
 jest.mock('@/state/query-client', () => ({
   queryClient: { cancelQueries: () => mockCancelQueries(), getQueryCache: () => ({ getAll: () => [] }) },
   releaseInactiveQueries: () => mockReleaseQueries(),
@@ -56,6 +64,7 @@ async function flushInteractions() {
 describe('app runtime lifecycle', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockRealLifecycle = false;
     mockCancelQueries.mockImplementation(async () => undefined);
     tasks = [];
     mockState.restoreStatus = 'ready'; mockState.activeAccountId = 'maimai:local'; mockState.activeGameId = 'maimai';
@@ -68,6 +77,38 @@ describe('app runtime lifecycle', () => {
     });
   });
   afterEach(() => jest.restoreAllMocks());
+
+  it('rehydrates through the actual provider after background then inactive, but not a brief inactive', async () => {
+    mockRealLifecycle = true;
+    let change: ((state: 'active' | 'inactive' | 'background') => void) | undefined;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((name: string, listener: typeof change) => {
+      if (name === 'change') change = listener;
+      return { remove: jest.fn() };
+    }) as typeof AppState.addEventListener);
+    const hook = await renderHook(() => useAppRuntime(true), { wrapper: AppLifecycleProvider });
+    await flushInteractions();
+    await flushInteractions();
+    expect(mockHydrate).toHaveBeenCalledTimes(1);
+    const original = mockHydrate.mock.calls[0]![0]!;
+    await act(() => { change?.('background'); });
+    expect(original.aborted).toBe(true);
+    await act(() => { change?.('inactive'); });
+    await act(() => { change?.('active'); });
+    await flushInteractions();
+    await flushInteractions();
+    expect(mockHydrate).toHaveBeenCalledTimes(2);
+    const restored = mockHydrate.mock.calls[1]![0]!;
+    expect(restored.aborted).toBe(false);
+    expect(restored).not.toBe(original);
+    await act(() => { change?.('inactive'); });
+    await act(() => { change?.('active'); });
+    await flushInteractions();
+    await flushInteractions();
+    expect(mockHydrate).toHaveBeenCalledTimes(2);
+    expect(restored.aborted).toBe(false);
+    await hook.unmount();
+    expect(restored.aborted).toBe(true);
+  });
 
   it('hydrates once per foreground generation and runs startup maintenance once', async () => {
     const firstSignal = mockController.signal;

@@ -160,7 +160,7 @@ export default function LxnsOAuthCallbackScreen() {
               pressed && styles.primaryPressed,
             ]}
           >
-            <Text style={styles.primaryText}>返回首页</Text>
+            <Text style={[styles.primaryText, { color: theme.onAccent }]}>返回首页</Text>
           </Pressable>
         ) : null}
       </View>

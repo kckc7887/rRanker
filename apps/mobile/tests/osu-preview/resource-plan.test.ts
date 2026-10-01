@@ -3,8 +3,47 @@ import { parseBeatmap } from '../../src/features/osu-chart-preview/webview-playe
 import { decodeOsuText, findArchiveBytes, findArchiveResource, type PreviewResourceMap } from '../../src/features/osu-chart-preview/webview-player/osu-text';
 import { selectPreviewOsbPaths, selectPreviewResources } from '../../src/features/osu-chart-preview/webview-player/resource-plan';
 import { fixtureOsu } from './fixtures';
+import { convertBeatmapToTaiko } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/taiko/converter';
 
 describe('selected chart resource plan', () => {
+  /* eslint-disable no-extend-native -- Synchronous allocation guards; restore native push in finally before assertions. */
+  it('represents enormous native taiko drumrolls without expanding their tick timeline', () => {
+    const map = parseBeatmap(fixtureOsu(1, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|300:192,1000000000,100'));
+    const push = Array.prototype.push;
+    let appended = 0;
+    Array.prototype.push = function (this: unknown[], ...items: unknown[]) {
+      if ((appended += items.length) > 1000) throw new Error('eager tick expansion');
+      return push.apply(this, items);
+    };
+    let objects: ReturnType<typeof convertBeatmapToTaiko>;
+    try { objects = convertBeatmapToTaiko(map); } finally { Array.prototype.push = push; }
+    expect(objects).toHaveLength(1);
+    expect(objects[0]).toMatchObject({ kind: 'drumroll', tickInterval: 125 });
+    expect(Object.values(objects[0]!).some(Array.isArray)).toBe(false);
+  });
+  it('keeps enormous legal slider repeats compact without filling default edge samples', () => {
+    const text = fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,8,L|300:192,1000000000,100,2|4,1:2|3:1,0:0:0:0:');
+    const push = Array.prototype.push;
+    let appended = 0;
+    Array.prototype.push = function (this: unknown[], ...items: unknown[]) {
+      appended += items.length;
+      if (appended > 1000) throw new Error('eager repeat expansion');
+      return push.apply(this, items);
+    };
+    let map: ReturnType<typeof parseBeatmap>;
+    try { map = parseBeatmap(text); } finally { Array.prototype.push = push; }
+    const slider = map.hitObjects[0]!;
+    expect(slider.type).toBe('slider');
+    if (slider.type !== 'slider') throw new Error('slider missing');
+    expect(slider.slides).toBe(1000000000);
+    expect(slider.edgeSounds).toEqual([2, 4]);
+    expect(slider.edgeSets).toEqual([{ normalSet: 1, additionSet: 2 }, { normalSet: 3, additionSet: 1 }]);
+  });
+  /* eslint-enable no-extend-native */
+  it.each(['0', '-1', '1.5', 'NaN', 'Infinity', '1x'])('rejects invalid repeat %s before derived work', repeat => {
+    const text = fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, `[HitObjects]\n256,192,1000,2,0,L|300:192,${repeat},100`);
+    expect(() => parseBeatmap(text)).toThrow('滑条重复次数');
+  });
   it('decodes UTF16 in runtimes whose TextDecoder only supports UTF8, replacing malformed units', () => {
     const original = globalThis.TextDecoder;
     globalThis.TextDecoder = class extends original {

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
@@ -83,7 +83,7 @@ function ArcadeShopCard({
           onPress={() => onNavigate(shop)}
           style={[styles.navButton, { backgroundColor: theme.accent }]}
         >
-          <Text style={styles.navButtonText}>导航</Text>
+          <Text style={[styles.navButtonText, { color: theme.onAccent }]}>导航</Text>
         </Pressable>
       </View>
     </Card>
@@ -107,6 +107,8 @@ export default function ArcadeFinderScreen() {
   const [isLoading, setIsLoading] = useState(false);
   const [errorKind, setErrorKind] = useState<LoadErrorKind>(null);
   const debouncedKeyword = useDebouncedValue(keyword);
+  const originIntent = useRef(0);
+  useEffect(() => () => { originIntent.current += 1; }, []);
 
   useEffect(() => {
     let cancelled = false;
@@ -140,17 +142,20 @@ export default function ArcadeFinderScreen() {
   }, []);
 
   const acquireOriginFromGps = useCallback(async () => {
+    const intent = ++originIntent.current;
     setLocatingOrigin(true);
     setErrorKind(null);
     try {
       const next = await acquireArcadeGpsOrigin();
+      if (intent !== originIntent.current) return;
       setOrigin(next);
     } catch (error) {
+      if (intent !== originIntent.current) return;
       const message = error instanceof Error ? error.message : String(error);
       setErrorKind(message === 'permission' ? 'permission' : 'location');
       if (!origin) setShops(null);
     } finally {
-      setLocatingOrigin(false);
+      if (intent === originIntent.current) setLocatingOrigin(false);
     }
   }, [origin]);
 
@@ -284,7 +289,7 @@ export default function ArcadeFinderScreen() {
             style={[styles.retryButton, { backgroundColor: theme.accent }]}
             onPress={retryLoad}
           >
-            <Text style={styles.retryText}>重试</Text>
+            <Text style={[styles.retryText, { color: theme.onAccent }]}>重试</Text>
           </Pressable>
         </View>
       ) : (
@@ -315,7 +320,12 @@ export default function ArcadeFinderScreen() {
       <ArcadeOriginPickerSheet
         visible={originPickerVisible}
         onClose={() => setOriginPickerVisible(false)}
-        onSelect={setOrigin}
+        onSelect={next => {
+          originIntent.current += 1;
+          setLocatingOrigin(false);
+          setErrorKind(null);
+          setOrigin(next);
+        }}
       />
     </View>
   );

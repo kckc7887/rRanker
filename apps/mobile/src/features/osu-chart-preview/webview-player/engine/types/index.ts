@@ -149,10 +149,11 @@ export interface Slider {
   comboSkip: number;
   /** Same semantics as HitCircle.stackHeight. */
   stackHeight: number;
-  // Per-edge hitsound bitmasks. Length slides+1; index 0 = head, index n = end of slide n.
+  // Explicit edge bitmasks only; index 0 = head, index n = end of slide n.
+  // Missing entries inherit via sliderEdgeSample without expanding defaults.
   edgeSounds: number[];
   // Per-edge sample-set overrides, index-matched to edgeSounds.
-  // Length slides+1; normalSet/additionSet 0 inherits from hitSample / timing point.
+  // Missing entries or zero values inherit from hitSample / timing point.
   edgeSets: { normalSet: number; additionSet: number }[];
 }
 
