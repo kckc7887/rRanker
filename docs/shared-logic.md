@@ -731,7 +731,7 @@ iOS 截图前若 App 处于 inactive 或 background，先等到 `foreground-read
 
 RPE 速度积分显式读取所属判定线的策略；染色纹理按 64 项、32 MiB 的驻留预算淘汰并复用画布，单张超大纹理使用全分辨率工作画布，不改变颜色、透明度或画质，换资源和释放时清空。Simai 诊断位置通过预计算换行索引查询。Phira 下载在整文件读取前经 `readBudgetedChartDownload` 校验现有字节预算，完整 ArrayBuffer 直接复用，资源分批暂存并检查取消。
 
-osu! 滑条 repeat 必须是正安全整数，边缘采样只保存显式字段并经 `sliderEdgeSample` 读取默认值，不按 repeat 填充数组。`sliderNestedEvents(beatmap, slider, slideDur, isLazer)` 逐项产生 tick、repeat 和 tail，判定与计分复用该流，不另外构造完整的节拍和类别数组；保留 stable 累加与 lazer 边界差异。反向箭头按最后一次对应方向折返计算。`buildAutoReplay(source, hash)` 可接收已解析谱面，标准模式在生成输入前走 `applyStacking`，播放与判定共用同一份坐标。太鼓滚奏用 `tickCount`、`tickInterval` 和起点表达均匀节拍；判定只检查相邻节拍，绘制只遍历可见节拍，着色缓存实际变化并用二分查找支持 seek。
+osu! 滑条 repeat 必须是正安全整数，边缘采样只保存显式字段并经 `sliderEdgeSample` 读取默认值，不按 repeat 填充数组。`computeHitsoundSchedule` 的滑条边缘遍历从 `fromBeatmapMs` 之后的首个可听边缘开始。`sliderNestedEvents(beatmap, slider, slideDur, isLazer)` 逐项产生 tick、repeat 和 tail，判定与计分复用该流，不另外构造完整的节拍和类别数组；保留 stable 累加与 lazer 边界差异。反向箭头按最后一次对应方向折返计算。`buildAutoReplay(source, hash)` 可接收已解析谱面，标准模式在生成输入前走 `applyStacking`，播放与判定共用同一份坐标。太鼓滚奏用 `tickCount`、`tickInterval` 和起点表达均匀节拍；判定只检查相邻节拍，绘制只遍历可见节拍，着色缓存实际变化并用二分查找支持 seek。
 
 Rizline 的 `activeSpans(spans, seconds)` 为不可变、有序时间轨道缓存区间索引，相机、画布位移、速度和颜色共用；无序轨道保留原始提前退出语义。准备时 BPM 换算和音符所属线段查询也复用区间索引，交界处仍保留各采样器原有的首项或末项优先规则。
 

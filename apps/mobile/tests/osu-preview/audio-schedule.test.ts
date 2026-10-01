@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
-import { parseBeatmap, type HitResult } from '../../src/features/osu-chart-preview/webview-player/engine';
+import { parseBeatmap, type HitResult, type Slider } from '../../src/features/osu-chart-preview/webview-player/engine';
+import { slideDurationMs } from '../../src/features/osu-chart-preview/webview-player/engine/utils/sliderDuration';
 import {
   computeHitsoundSchedule,
   hitsoundEventsFromSchedule,
@@ -55,6 +56,19 @@ describe('preview hitsound source identity', () => {
     assert.deepEqual(edge.map(event => [event.normalSet, event.additionSet, event.type]), [[3, 2, 'normal'], [3, 2, 'whistle']]);
     assert.equal(new Set(events.filter(event => event.beatmapMs === 1500).map(event => event.objectId)).size, 2);
     assert.deepEqual(events.filter(event => event.beatmapMs === 2000).map(event => event.type), ['normal', 'finish']);
+  });
+
+  it('starts a seeked slider edge walk at the first audible edge instead of the first repeat', () => {
+    const slides = 1_000_000_000;
+    const beatmap = mapWithObjects([`100,192,1000,2,0,L|240:192,${slides},140,0|0,0:0|0:0,0:0:0:0:`]);
+    const slider = beatmap.hitObjects[0]!;
+    assert.equal(slider.type, 'slider');
+    const slideDur = slideDurationMs(beatmap, slider as Slider);
+    const from = 1000 + slideDur * (slides - 3);
+    const started = performance.now();
+    const sounds = computeHitsoundSchedule({ ...input(beatmap, []), fromBeatmapMs: from });
+    assert.ok(performance.now() - started < 200);
+    assert.deepEqual(sounds.map(sound => sound.beatmapMs), [3, 2, 1, 0].map(left => 1000 + slideDur * (slides - left)));
   });
 
   it('preserves mania hold sample identity while excluding silent body and tail judgements', () => {
