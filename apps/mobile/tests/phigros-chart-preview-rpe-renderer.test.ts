@@ -88,4 +88,37 @@ describe('RPE renderer', () => {
     renderer.dispose();
     expect(tinted.every(item => item.width === 0 && item.height === 0)).toBe(true);
   });
-});
+
+  it('线数阶梯下积分与独立求值一致，绘制量线性增长且染色画布有界', () => {
+    const measure = (lines: number) => {
+      const { renderer, canvases, draws } = environment();
+      const parsed = parseRpeChart({ META: { RPEVersion: 170 }, BPMList: [{ startTime: [0, 0, 1], bpm: 120 }],
+        judgeLineList: Array.from({ length: lines }, (_, line) => ({ Texture: 'custom.png', integrateSpeedEasings: line % 2 === 0, notes: [],
+          eventLayers: Array.from({ length: 3 }, (_, layer) => ({
+            alphaEvents: [{ ...speed, start: 255, end: 255 }],
+            speedEvents: Array.from({ length: 50 }, (_, index) => ({ ...speed, startTime: [index * 2, 0, 1], endTime: [index * 2 + 2, 0, 1],
+              start: 1 + layer + index % 5, end: 2 + (index + line) % 7, easingType: 1 + index % 4 })),
+          })),
+          extended: { colorEvents: [{ ...speed, start: [0, 50, 100], end: [255, 100, 0] }] } })),
+      });
+      renderer.setChart(parsed);
+      renderer.setChartAssets({ textures: new Map([['custom.png', { width: 64, height: 64, naturalWidth: 64, naturalHeight: 64 } as HTMLImageElement]]),
+        videos: new Map(), shaders: new Map(), gifs: new Map(), gifAnims: new Map() });
+      for (const time of [3, 40, 99, 12, 0, 70]) for (let index = 0; index < lines; index += Math.max(1, lines >> 3)) {
+        const line = parsed.lines[index]!;
+        const expected = speedHeightAt(line.eventLayers, parsed.bpmList, line.integrateSpeedEasings, parsed.bpmList.beat(time) / line.bpmfactor);
+        expect(renderer['lineState'](index, time, 675, 450).lineHeight).toBeCloseTo(expected, 9);
+      }
+      draws.length = 0;
+      renderer.render(5);
+      const drawn = draws.length;
+      const tinted = canvases.slice(2);
+      expect(tinted.length).toBeLessThanOrEqual(65);
+      renderer.dispose();
+      expect(tinted.every(canvas => canvas.width === 0 && canvas.height === 0)).toBe(true);
+      return drawn;
+    };
+    const [small, medium, large] = [4, 16, 64].map(measure) as [number, number, number];
+    expect(medium).toBeGreaterThan(small);
+    expect((large - medium) * 4).toBe((medium - small) * 16);
+  });});

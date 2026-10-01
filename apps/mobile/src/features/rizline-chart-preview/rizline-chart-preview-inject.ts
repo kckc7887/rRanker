@@ -11,7 +11,4 @@ const injectors = createChartPreviewInjectors<RizlineChartPreviewConfig>({
   }),
 });
 
-export const buildRizlineChartPreviewConfigJson = injectors.buildConfigJson;
-export const buildRizlineChartPreviewConfigScript = injectors.buildConfigScript;
-export const buildRizlineChartPreviewInjectedJavaScript = injectors.buildInjectedJavaScript;
 export const applyRizlineChartPreviewConfigToHtml = injectors.applyConfigToHtml;

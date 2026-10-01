@@ -147,7 +147,8 @@ function convertSlider(
 
   const tickSpacing = Math.min(beatLength / beatmap.sliderTickRate, taikoDuration / spans);
 
-  const shouldSplit = tickSpacing > 0 && (distance / osuVelocity * 1000) < (2 * beatLength);
+  // 1ms is the timeline resolution: finer spacing cannot be played and would expand into one hit per repeat.
+  const shouldSplit = tickSpacing >= 1 && (distance / osuVelocity * 1000) < (2 * beatLength);
 
   if (shouldSplit) {
     const hits: TaikoHit[] = [];

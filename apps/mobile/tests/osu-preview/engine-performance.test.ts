@@ -17,6 +17,7 @@ import { applyStacking } from '../../src/features/osu-chart-preview/webview-play
 import { computeHitResults } from '../../src/features/osu-chart-preview/webview-player/engine/utils/hitJudge';
 import { computeScoreTimeline } from '../../src/features/osu-chart-preview/webview-player/engine/utils/scoreProcessor';
 import { sliderNestedEvents } from '../../src/features/osu-chart-preview/webview-player/engine/utils/sliderDuration';
+import { computeHitsoundSchedule } from '../../src/features/osu-chart-preview/webview-player/engine-audio/hitsoundSchedule';
 
 describe('indexed render candidates', () => {
   it('streams every stable and lazer tick, repeat and tail in the original order', () => {
@@ -160,6 +161,74 @@ describe('indexed render candidates', () => {
   });
 });
 
+describe('scale ladder', () => {
+  // One unit holds circles and repeating sliders; larger charts repeat the unit end to end.
+  const unit = (offset: number) => [
+    ...Array.from({ length: 10 }, (_, i) => `${100 + i * 20},192,${offset + i * 400},1,0,0:0:0:0:`),
+    ...[1, 2, 3, 4, 50].map((slides, i) => `256,192,${offset + 4200 + i * 6000},2,0,L|356:192,${slides},100`),
+  ];
+  const chart = (scale: number) => {
+    const objects = Array.from({ length: scale }, (_, k) => unit(k * 60000)).flat();
+    return fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n' + objects.join('\n') + '\n');
+  };
+  const measure = (scale: number) => {
+    const text = chart(scale);
+    const beatmap = parseBeatmap(text);
+    const replay = buildAutoReplay(new TextEncoder().encode(text), '');
+    const difficulty = computeModDifficulty(beatmap, replay);
+    applyStacking(beatmap, difficulty);
+    const judged = computeHitResults(beatmap, replay, difficulty);
+    const frames = computeScoreTimeline(judged.results, beatmap, difficulty);
+    const sounds = computeHitsoundSchedule({ mode: 0, beatmap, hitResults: judged.results, maniaSamples: null,
+      taikoGhostTaps: null, comboFrames: [], oldOffsetMs: 0, fromBeatmapMs: -Infinity });
+    return { beatmap, judged, frames, sounds };
+  };
+
+  it('keeps judgement, score and hitsounds proportional to object count with no dropped objects', () => {
+    const base = measure(1);
+    assert.equal(base.beatmap.hitObjects.length, 15);
+    for (const scale of [4, 16]) {
+      const scaled = measure(scale);
+      assert.equal(scaled.beatmap.hitObjects.length, 15 * scale);
+      assert.equal(scaled.judged.results.length, base.judged.results.length * scale);
+      assert.equal(scaled.sounds.length, base.sounds.length * scale);
+      assert.deepEqual(scaled.judged.results.slice(0, base.judged.results.length).map(r => r.judgement),
+        base.judged.results.map(r => r.judgement));
+      assert.ok(scaled.judged.results.every(result => result.judgement === 300 || result.isSliderSub || result.comboIgnore));
+      assert.equal(scaled.frames.at(-1)!.maxCombo, base.frames.at(-1)!.maxCombo * scale);
+    }
+  });
+
+  it('scans replay frames once per chart instead of once per slider while judging', () => {
+    const frameLengthReads = (scale: number) => {
+      const text = chart(scale);
+      const beatmap = parseBeatmap(text);
+      const replay = buildAutoReplay(new TextEncoder().encode(text), '');
+      let reads = 0;
+      const frames = new Proxy(replay.frames, { get(target, key, receiver) {
+        if (key === 'length') reads++;
+        return Reflect.get(target, key, receiver);
+      } });
+      const counted = { ...replay, frames };
+      const difficulty = computeModDifficulty(beatmap, counted);
+      applyStacking(beatmap, difficulty);
+      reads = 0;
+      computeHitResults(beatmap, counted, difficulty);
+      return reads;
+    };
+    const small = frameLengthReads(8);
+    const large = frameLengthReads(64);
+    assert.ok(large < small * 12, `frame length reads grew from ${small} to ${large}`);
+  });
+
+  it('stores only explicit slider edge data regardless of repeat count or chart size', () => {
+    for (const scale of [1, 16]) {
+      for (const object of measure(scale).beatmap.hitObjects) {
+        if (object.type === 'slider') assert.ok(object.edgeSounds.length <= object.slides + 1 && object.edgeSounds.length <= 2);
+      }
+    }
+  });
+});
 type Bitmap = ImageBitmap & { label: string };
 type Draw = { label: string; args: number[]; alpha: number };
 function recorder() {

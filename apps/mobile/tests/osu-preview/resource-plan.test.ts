@@ -39,6 +39,24 @@ describe('selected chart resource plan', () => {
     expect(slider.edgeSounds).toEqual([2, 4]);
     expect(slider.edgeSets).toEqual([{ normalSet: 1, additionSet: 2 }, { normalSet: 3, additionSet: 1 }]);
   });
+  it('bounds converted taiko slider hits by the timeline instead of the repeat count', () => {
+    const convert = (slides: number, length: string) => convertBeatmapToTaiko(parseBeatmap(fixtureOsu(0, 'Native')
+      .replace(/\[HitObjects\][\s\S]*$/, `[HitObjects]\n256,192,1000,2,0,L|300:192,${slides},${length}`)));
+    const push = Array.prototype.push;
+    let appended = 0;
+    Array.prototype.push = function (this: unknown[], ...items: unknown[]) {
+      if ((appended += items.length) > 5000) throw new Error('eager hit expansion');
+      return push.apply(this, items);
+    };
+    try {
+      const objects = convert(100000, '0.0001');
+      expect(objects).toHaveLength(1);
+      expect(objects[0]!.kind).toBe('drumroll');
+    } finally { Array.prototype.push = push; }
+    const ordinary = convert(1, '10');
+    expect(ordinary.length).toBeGreaterThan(0);
+    expect(ordinary.length).toBeLessThanOrEqual(8);
+  });
   /* eslint-enable no-extend-native */
   it.each(['0', '-1', '1.5', 'NaN', 'Infinity', '1x'])('rejects invalid repeat %s before derived work', repeat => {
     const text = fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, `[HitObjects]\n256,192,1000,2,0,L|300:192,${repeat},100`);

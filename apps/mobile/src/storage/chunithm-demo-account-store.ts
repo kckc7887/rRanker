@@ -17,5 +17,3 @@ export function isChunithmDemoAccountId(accountId: string): boolean {
 
 export const parseChunithmDemoAccountProfile = parse;
 export const ChunithmDemoAccountStore = Store;
-
-export const chunithmDemoAccountStore = new ChunithmDemoAccountStore();

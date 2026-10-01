@@ -5,7 +5,6 @@ import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import { majdataProvider } from '@/providers/majdata-provider';
 import {
-  loadMajdataChart,
   loadMajdataParsedChart,
   loadMajdataSong,
   loadMajdataSongSnapshot,
@@ -66,10 +65,6 @@ export function useMajdataLibrarySongs(ids: string[]) {
     ...options, staleTime: 0, refetchOnMount: true,
   })), [ids]);
   return useBoundedQueries(definitions, 4).queries;
-}
-export function useMajdataChart(song?: MajdataSong) {
-  const active = useCachedTabActive();
-  return useQuery({ queryKey: ['majdata-net', 'chart', song?.id, song?.hash], queryFn: ({ signal }) => loadMajdataChart(song!, signal), enabled: active && !!song, notifyOnChangeProps: active ? undefined : [], ...options });
 }
 export function useMajdataParsedChart(song: MajdataSong | undefined, level: number) {
   const active = useCachedTabActive();

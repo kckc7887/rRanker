@@ -194,6 +194,40 @@ describe('Rizline official chart prepare', () => {
       expect(visible.notes.length).toBeLessThan(50);
     }
   });
+  it('keeps per-frame work independent of chart size across a note and span ladder', () => {
+    const viewport = { height: 100, judgeLineY: 75, scrollUnit: 1, visualSpeed: 1, noteRadius: 2 };
+    const measure = (size: number) => {
+      const chart = prepareOfficialChart(fixture());
+      const template = chart.lines[0]!.notes[0]!;
+      chart.lines[0]!.notes = Array.from({ length: size }, (_, id) => ({ ...template, id, seconds: id * 2, floorPosition: id * 3 }));
+      let reads = 0;
+      const spans = Array.from({ length: size }, (_, i) => ({
+        startTick: i, endTick: i + 1, startSeconds: i,
+        get endSeconds() { reads++; return i + 1; }, from: i + 1, to: i + 2, easeType: 0, floorPosition: i,
+      }));
+      chart.camera.xSpans = spans;
+      layoutPreviewFrame(chart, 0, viewport);
+      reads = 0;
+      let visible = 0;
+      for (const time of [size * 1.5, size * 0.25, 3, size * 1.9]) {
+        const full = layoutPreviewFrame(chart, time);
+        const frame = layoutPreviewFrame(chart, time, viewport);
+        const expected = full.notes.filter(note => {
+          const end = note.holdEndSeconds ?? note.seconds;
+          const effect = time >= note.seconds && time <= end + 0.7;
+          const min = Math.min(note.y, note.holdY), max = Math.max(note.y, note.holdY);
+          return effect || (end >= time && max >= -27 && min <= 77);
+        });
+        expect(frame.notes).toEqual(expected);
+        expect(frame.cameraX).toBeCloseTo(time > size ? 1 : time + 1, 6);
+        visible += frame.notes.length;
+      }
+      return { reads, visible };
+    };
+    const ladder = [5000, 20000, 80000].map(measure);
+    for (const step of ladder) expect(step.visible).toBeLessThan(200);
+    expect(Math.max(...ladder.map(step => step.reads))).toBeLessThan(400);
+  });
   it('empty bpmShifts still converts ticks to seconds', () => {
     const chart = prepareOfficialChart(fixture());
     expect(chart.lines[0]?.notes[0]?.seconds).toBe(0.5);

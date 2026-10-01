@@ -7,6 +7,7 @@
  * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
 
+import { lowerBoundBy, upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
 import { findEventIndex, type PgrChart, type PgrHeightEvent, type PgrLine, type PgrMoveEvent, type PgrNote, type PgrTweenEvent } from './pgr-core';
 
 const NOTE_WIDTH_RATIO_BASE = 0.13175016;
@@ -67,28 +68,6 @@ function scaledNoteWidth(stageWidth: number, noteScale: number, multipleScale = 
 
 function scaledHitEffectDiameter(stageWidth: number, noteScale: number): number {
   return stageWidth * HIT_FX_SCALE * clamp(noteScale, 0.5, 2) / 5;
-}
-
-function lowerBoundBy<T>(items: readonly T[], target: number, read: (item: T) => number): number {
-  let low = 0;
-  let high = items.length;
-  while (low < high) {
-    const middle = (low + high) >>> 1;
-    if (read(items[middle]!) < target) low = middle + 1;
-    else high = middle;
-  }
-  return low;
-}
-
-function upperBoundBy<T>(items: readonly T[], target: number, read: (item: T) => number): number {
-  let low = 0;
-  let high = items.length;
-  while (low < high) {
-    const middle = (low + high) >>> 1;
-    if (read(items[middle]!) <= target) low = middle + 1;
-    else high = middle;
-  }
-  return low;
 }
 
 function sampleTweenAt(events: PgrTweenEvent[], time: number, index: number, fallback = 0): number {

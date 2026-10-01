@@ -45,6 +45,17 @@ describe('native Phira staging', () => {
     files.forEach((file, i) => expect(mockWrites.mock.calls[i]![0]).toBe(file.bytes));
   });
 
+  it.each([100, 400, 1600])('stages a %i-resource ladder completely, in order, with a bounded number of timers', async count => {
+    const files = Array.from({ length: count }, (_, i) => ({ name: `ladder/${i}.png`, bytes: new Uint8Array([i % 256]) }));
+    const pending = stagePhiraRpeBundle(3, files, new Directory('file:///preview'));
+    expect(jest.getTimerCount()).toBeLessThanOrEqual(1);
+    await jest.runAllTimersAsync();
+    await expect(pending).resolves.toEqual({ basePath: './rpe/3/' });
+    expect(mockWrites).toHaveBeenCalledTimes(count);
+    files.forEach((file, i) => expect(mockWrites.mock.calls[i]![0]).toBe(file.bytes));
+    expect(jest.getTimerCount()).toBe(0);
+  });
+
   it('checks download size before bytes and keeps a whole buffer without copying', async () => {
     const controller = new AbortController();
     mockSize = 257 * 1024 * 1024;
