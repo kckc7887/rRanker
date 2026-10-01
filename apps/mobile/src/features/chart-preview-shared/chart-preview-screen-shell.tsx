@@ -36,6 +36,7 @@ import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
 import { createRuntimeOperation, recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import { ProviderError, providerErrorToUserMessage } from '@/providers/errors';
 import { useAppTheme } from '@/theme/app-theme';
+import { chartPreviewAppearanceScript } from './chart-preview-inject-factory';
 
 export type ChartPreviewShellSource = {
   uri: string;
@@ -455,6 +456,7 @@ export function ChartPreviewScreenShell<TPayload>({
     return 'true;';
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 注入构建器随屏幕恒定
   }, [request]);
+  const appearanceScript = chartPreviewAppearanceScript(theme);
 
   const blockingError = (request.kind === 'error' ? request.message : null)
     ?? externalError
@@ -478,8 +480,8 @@ export function ChartPreviewScreenShell<TPayload>({
   };
 
   // 播放器 WebView 的深浅色底色（与播放器 HTML 的 --bg 保持一致，避免加载闪色）。
-  const webviewBackground = theme.dark ? '#0b0d12' : '#F7F8FA';
-  const loadingOverlayBackground = theme.dark ? 'rgba(11,13,18,0.72)' : 'rgba(247,248,250,0.72)';
+  const webviewBackground = theme.dark ? '#121212' : '#f5f5f5';
+  const loadingOverlayBackground = theme.dark ? 'rgba(18,18,18,0.72)' : 'rgba(245,245,245,0.72)';
   const progressBar = (
     <ChartPreviewLoadProgressBar
       accent={theme.accent}
@@ -540,11 +542,12 @@ export function ChartPreviewScreenShell<TPayload>({
             setSupportMultipleWindows={false}
             source={{ uri: source.uri }}
             onShouldStartLoadWithRequest={(navigation) => isCurrentView() && navigation.url === source.uri}
-            injectedJavaScriptBeforeContentLoaded={injected}
+            injectedJavaScriptBeforeContentLoaded={`${appearanceScript}\n${injected}`}
             style={[styles.webview, { backgroundColor: webviewBackground }]}
             onLoadEnd={() => {
               if (!isCurrentView()) return;
               recordView('loaded');
+              webRef.current?.injectJavaScript(appearanceScript);
               if (!reInjectOnLoadEnd || request.kind !== 'ready') return;
               const script = buildInjectedJavaScript?.(request.payload);
               if (script !== undefined) webRef.current?.injectJavaScript(script);

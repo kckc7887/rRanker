@@ -104,7 +104,7 @@ describe('谱面确认播放器：main 不持有会话状态', () => {
       expect(source).not.toMatch(/className = ['"`](fs-)?timeline-(bar|tick|label)/);
       const view = playerSource(feature, 'timelineView.ts');
       expect(view).toContain(`export class ${viewClass}`);
-      expect(view).toMatch(/-bar[`'"]/);
+      expect(view).toContain('new HeatTimelineView(options)');
     }
   });
 });

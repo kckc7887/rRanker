@@ -1,5 +1,7 @@
 import { assertChartPreviewGifFrameCount, assertChartPreviewGifFramePixels, assertChartPreviewTexturePixels, ChartPreviewBudgetExceededError, pauseChartPreviewParse } from '../../chart-preview-shared/chart-preview-resource-budget';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
+import { installPreviewControls } from '../../chart-preview-shared/webview-player/controls';
+import { bindHeatTimelineKeyboard } from '../../chart-preview-shared/webview-player/heat-timeline';
 import { closeActiveWheelPopup, setupWheelPopup as setupSharedWheelPopup, type WheelControl } from '../../chart-preview-shared/webview-player/wheel';
 /**
  * Phigros / Phira 谱面确认 WebView 播放器入口。
@@ -10,7 +12,7 @@ import { closeActiveWheelPopup, setupWheelPopup as setupSharedWheelPopup, type W
  *   不使用 HTMLMediaElement 时钟（其 currentTime 有延迟抖动，seek/暂停恢复漂移大）；
  * - PlaybackClock 分段时钟记录播放起点与倍速变化，任意时刻反查精确音乐位置；
  * - 视觉与打击音统一使用 getAudioContextOutputTime 的输出端时间（贴合实际听感）；
- * - 控制器为舞萌式时间轴（音符密度条/刻度/播放头）+ 走带按钮 + 拨轮设置；
+ * - 控制器共用热度时间轴、播放按钮和常驻参数卡片；
  * - 仅播放中常驻 rAF 渲染；暂停/拖动按事件渲染，画布 DPR 封顶与全屏像素预算；
  * - 主线程解析 PGR（WebView file:// 下不使用 Worker）。
  * 观赏播放不包含触控判定与真实计分。
@@ -172,6 +174,7 @@ function start(): void {
   };
 
   const config: Partial<PhigrosChartPreviewConfig> = window.__PHIGROS_CHART_PREVIEW__ ?? {};
+  events.own(installPreviewControls({ sections: ['播放设置', '辅助选项'] }));
   const isRpe = config.format === 'rpe';
   type PreviewRenderer = PgrRenderer | RpeRenderer;
   const renderer: PreviewRenderer = isRpe ? new RpeRenderer(elements.canvas) : new PgrRenderer(elements.canvas);
@@ -759,6 +762,9 @@ function start(): void {
     seekToChartTime(session.chartTime + STEP_SECONDS);
   });
 
+  bindHeatTimelineKeyboard(events, elements.timelineHost,
+    () => session.chartTime / session.chartDuration * 100,
+    percent => { if (ready && !fsLocked) seekToChartTime(percent / 100 * session.chartDuration); });
   events.listen(elements.timelineHost, 'pointerdown', (e) => {
     e.preventDefault();
     e.stopPropagation();

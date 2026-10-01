@@ -401,6 +401,15 @@ JSON 文本包含 `formatVersion: 1`、session、context、entries、`snapshotAt
 
 ## WebView 与文件型功能
 
+四类谱面确认播放器通过 `chart-preview-shared/webview-player/controls.ts` 的
+`installPreviewControls` 共用播放详情布局，参数常驻显示；布局保留原按钮和回调，观察器
+由各入口的 `PlayerEventScope` 释放。Simai 的实时信息位于时间行与热度轨道之间，Buddy
+显示独立 1P/2P 热度并共用进度和 A/B 区间；Rizline 保留设置展开前的舞台比例。
+`HeatTimelineView` 接收各会话的时长、音符起点与位置，以至多 200 格的透明度表达密度，
+空段留空；位置、播放、跳转与持久化仍由原会话和宿主负责。公共预览壳通过
+`chartPreviewAppearanceScript` 注入应用的深浅主题与强调色，并为文字计算可读配色。
+布局、密度和输入回归由 `chart-preview-heat-controls.test.ts`、`chart-preview-wheel.test.ts` 覆盖。
+
 公共预览壳仅允许当前 session 的精确页面 URI 导航，关闭共享/第三方 Cookie、混合内容和
 文件页访问任意来源，保留暂存媒体、皮肤与相对文件所需的读取权限；iOS 文件读取范围为
 当前 session。WebView、准备与播放器异常只进入白名单诊断，不原样输出事件或消息。
@@ -415,7 +424,7 @@ info/chart 另限 6/32 MB；RPE/PGR/PEC/PBC 遍历和 CRC 定期让出并响应�
 - 宿主与四套播放器之间的命令合同集中在 `features/chart-preview-shared/chart-preview-bridge.ts`：宿主命令判别联合是 `pause`（`cause: 'manual' | 'lifecycle'`）、`exit-fullscreen`、`dispose` 与 `background-video-confirmation-result`，播放器事件判别联合是 `progress`、`ready`、`fullscreen`、`settings`、`background-video`、`background-video-confirmation` 与 `error`，未声明的消息按扩展消息透传。`applyChartPreviewHostCommand(raw, player)` 是唯一的命令分派器（四个播放器只实现 `pause` / `exitFullscreen` / `dispose` / 可选 `confirm`），`chartPreviewHostCommandScript(command)` 是唯一的命令序列化入口，`parseChartPreviewHostCommand` / `parseChartPreviewBridgeMessage` 只接受已声明的类型与载荷。暂停（手动或宿主 inactive）只停播并释放临时媒体、不改变全屏；进入全屏只由播放器按钮发起；`dispose` 停播、退出全屏并回收资源且幂等，由壳在释放当前会话时注入（卸载与依赖变化、后台与内存警告、手动重载、播放器失败、内容进程退出），四套播放器都有 `pagehide` 兜底释放。旧 `ready`、旧扁平 `settings` 与旧 `stop` 命令在解析层归一化，不做版本协商。合同由 `chart-preview-host-contract.test.ts` 与 `chart-preview-screen-shell-contract.test.tsx` 覆盖，改动后需重建对应播放器生成物并跑 `npm run check:generated`。
 - Phigros 谱面确认先通过 `services/phigros-chart-preview-resources.ts` 的 `loadPhigrosChartPreviewResources` 下载并验证谱面、音乐和曲绘，自定义 `read` 走 `downloadChartResource` 字节进度，再将文本和 Base64 交给既有预览暂存计划；准备阶段超时为 120 秒。Phira 元数据、zip 下载、解包和暂存均在同一个 120 秒 prepare 生命周期内：详情页交接的 `chart` 直接复用，只有 chartId 时由 `buildPhiraChartPreviewInput` 经公共 Provider 读取一次元数据，退出或超时取消同一信号；zip 同样经 `downloadChartResource` 计入进度后再解包。Phira 兼容下载对 Phigros 资源使用同一校验与重试入口，下载本身仍委托 `downloadChartResource`，校验通过后才组包。发布端缺音乐时客户端不能补出音频，必须修复发布内容后完成真机播放和导入验收。
 - 成绩图由 `features/best-image/` 统一处理偏好、资源、WebView 状态、预览、导出和共享屏幕控制器；控制器组合独立偏好、预览与导出会话，预览轮播同一时刻只挂载当前 WebView 页面。`BestImageScreenShell` 接收外观插槽、预览状态和导出会话三组参数。导出会话独占操作锁、画布等待和临时文件，在权限、捕获与保存前后复核取消；取消后不开始下一步或报告成功，已经开始的原生保存完成后清理临时文件，不删除已保存到相册的图片。
-- 四套播放器的 `main.ts` 只接线，播放状态归各自的会话类，宿主与视图只读。Simai（舞萌与 Majdata 共用）在 `features/simai-chart-preview/webview-player/`：`playback.ts` 的 `SimaiPlaybackSession` 独占播放位置（拍）、命令代次、音源与 rAF，位置与音乐时间换算沿用 `timeConversion.ts` 的 `createSimaiPlaybackTimeline` / `resolvePlaybackRange`；`timelineView.ts` 的 `SimaiTimelineView` 由窗口与横屏全屏控制器各持一个实例，密度条、刻度与播放头节点归实例所有；`backgroundMedia.ts` 的 `SimaiBackgroundMedia` 独占背景图片/视频元素、就绪状态与视频回绕同步，播放状态只作为每帧输入读入；视图与桥回执经 `SimaiPlaybackHost` / `SimaiBackgroundMediaHost` 回调接线。Phigros 与 Phira 在 `features/phigros-chart-preview/webview-player/`：`playback.ts` 的 `PhigrosPlaybackSession` 独占播放位置（谱面秒）、命令代次、音乐音源、打击音调度与 rAF，设置对象由宿主持有、会话只读取当前值；`timelineView.ts` 的 `PhigrosTimelineView` 持有密度条、刻度与播放头节点。Rizline 的 `PreviewSession`（`features/rizline-chart-preview/webview-player/playback.ts`）独占播放位置、音源、帧循环与命令代次，并通过可选的 `PreviewSessionEnvironment`（`defaultPreviewSessionEnvironment`）注入音频上下文与帧循环，生产调用点不传该参数。osu! 的 `PreviewSession` 与 `PlaybackHandle`（`features/osu-chart-preview/webview-player/playback.ts`）同样持有会话，`main.ts` 只保存句柄与界面状态。会话状态由会话类内部改写，`main.ts` 只接线、不声明位置、时钟、代次或音源字段；公共 `PlaybackClock` 与拨轮壳仍是各自的公共入口。四套入口均复用 PlayerEventScope 管理监听、观察器与定时器，释放后的事件不能产生副作用；osu! 入口元数据取自会话。Phigros 复用公共 0.05/0.01 精度拨轮，按帧预览和停滚提交；settings.committed 缺省保持已提交语义，false 仅在宿主当前会话暂存，inactive、后台、卸载及换会话前保存最终值。Phigros 播放中 seek 固定目标时间并提升命令代次，先撤旧帧、音源和已排队打击音再恢复；旧帧不能写回目标。合同由 `chart-preview-playback-ownership.test.ts`、`chart-preview-simai-playback-session.test.ts`、`phigros-chart-preview-playback-session.test.ts` 与 `rizline-chart-preview-playback.test.ts` 覆盖。
+- 四套播放器的 `main.ts` 只接线，播放状态归各自的会话类，宿主与视图只读。Simai（舞萌与 Majdata 共用）在 `features/simai-chart-preview/webview-player/`：`playback.ts` 的 `SimaiPlaybackSession` 独占播放位置（拍）、命令代次、音源与 rAF，位置与音乐时间换算沿用 `timeConversion.ts` 的 `createSimaiPlaybackTimeline` / `resolvePlaybackRange`；`timelineView.ts` 的 `SimaiTimelineView` 由窗口与横屏全屏控制器各持一个实例，热度轨道、刻度与播放头委托公共 HeatTimelineView；`backgroundMedia.ts` 的 `SimaiBackgroundMedia` 独占背景图片/视频元素、就绪状态与视频回绕同步，播放状态只作为每帧输入读入；视图与桥回执经 `SimaiPlaybackHost` / `SimaiBackgroundMediaHost` 回调接线。Phigros 与 Phira 在 `features/phigros-chart-preview/webview-player/`：`playback.ts` 的 `PhigrosPlaybackSession` 独占播放位置（谱面秒）、命令代次、音乐音源、打击音调度与 rAF，设置对象由宿主持有、会话只读取当前值；`timelineView.ts` 的 `PhigrosTimelineView` 将时长与音符起点交给公共 HeatTimelineView。Rizline 的 `PreviewSession`（`features/rizline-chart-preview/webview-player/playback.ts`）独占播放位置、音源、帧循环与命令代次，并通过可选的 `PreviewSessionEnvironment`（`defaultPreviewSessionEnvironment`）注入音频上下文与帧循环，生产调用点不传该参数。osu! 的 `PreviewSession` 与 `PlaybackHandle`（`features/osu-chart-preview/webview-player/playback.ts`）同样持有会话，`main.ts` 只保存句柄与界面状态。会话状态由会话类内部改写，`main.ts` 只接线、不声明位置、时钟、代次或音源字段；公共 `PlaybackClock` 与拨轮壳仍是各自的公共入口。四套入口均复用 PlayerEventScope 管理监听、观察器与定时器，释放后的事件不能产生副作用；osu! 入口元数据取自会话。Phigros 复用公共 0.05/0.01 精度参数控制，按帧预览和操作停止后提交；settings.committed 缺省保持已提交语义，false 仅在宿主当前会话暂存，inactive、后台、卸载及换会话前保存最终值。Phigros 播放中 seek 固定目标时间并提升命令代次，先撤旧帧、音源和已排队打击音再恢复；旧帧不能写回目标。合同由 `chart-preview-playback-ownership.test.ts`、`chart-preview-simai-playback-session.test.ts`、`phigros-chart-preview-playback-session.test.ts` 与 `rizline-chart-preview-playback.test.ts` 覆盖。
 - 上述功能涉及 WebView 内容进程、文件选择、相册权限、原生手势和大图内存，自动化测试不能替代真机验收。
 
 公共谱面壳将准备会话与已挂载内容绑定，资源准备默认限时 120 秒，等待播放器 `ready`
@@ -432,9 +441,10 @@ info/chart 另限 6/32 MB；RPE/PGR/PEC/PBC 遍历和 CRC 定期让出并响应�
 使用 `gameId`、`beatmapsetId`、`beatmapId` 定位当前难度，标题仅用于显示。
 `features/osu-chart-preview/` 提供配置、资源选择与原生准备，复用 `ChartPreviewScreenShell`、
 注入工厂和 `prepareChartPreviewWebviewFromPlan`；准备超时为 120 秒。
-播放器普通窗口与横屏全屏均保持 16:9，沿用圆形走带按钮、音符密度时间轴、拨轮和锁定交互。
-舞萌与 osu! 的拨轮共用 `chart-preview-shared/webview-player/wheel.ts`，即时预览按帧合并，
-滚动停止后提交设置；全屏、滚动页面和退出时关闭浮层。
+播放器普通窗口与横屏全屏均保持 16:9，使用公共热度时间轴；普通窗口提供方形播放按钮与
+常驻参数卡片，全屏保留浮动播放控制和锁定交互。参数共用
+`chart-preview-shared/webview-player/wheel.ts`，横向微调、刻度跳值和键盘调节沿用同一范围与
+设置回调，即时预览按帧合并，操作停止后提交；全屏和退出时结束未完成手势并提交最后值。
 
 `prepareOsuChartPreviewWebViewSource` 在下载前捕获 shared 资源写入代次，与谱包保存入口
 共用 `downloadOsuBeatmapsetArchive`。完整包按 Sayobot、osu.direct、Catboy、Nerinyan
