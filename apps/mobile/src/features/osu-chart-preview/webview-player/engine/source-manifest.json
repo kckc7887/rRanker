@@ -290,7 +290,7 @@
       "upstreamPath": "src/rulesets/taiko/converter.ts",
       "upstreamGitBlob": "d73d9bc30f10b2da70d0f8a5a3fa750b3e90ec59",
       "upstreamSha256": "37df7e0142e76dc08441a6216a5af7863e83fc348148c993bdfd9d4c94a47d05",
-      "integratedSha256": "6b98526d64a78a7a211b4453a0b5192e6a69da4cc566235faa55ee05d7d54dde"
+      "integratedSha256": "c50e5f97931e69e0dfb6ababe386435a0dd2aa6e502b15a9a0fb6c34e12ff15c"
     },
     {
       "path": "rulesets/taiko/Flashlight.ts",
@@ -360,7 +360,7 @@
       "upstreamPath": "src/utils/hitJudge.ts",
       "upstreamGitBlob": "75587d2c0dd249e20f47cc6f2bcf9c894f047992",
       "upstreamSha256": "450f9453f78e6a76aede6f60defe5ae74a2506bc7d56eec9a059a2d84503cf6a",
-      "integratedSha256": "65f10d29d6c3960d28f7042ed874b2537916ec8d4e2447f5da8334daf0fa7424"
+      "integratedSha256": "56c0b5b5e627969cf8066758f3d953da75421a1ae56f4faa798225b2e62ee87a"
     },
     {
       "path": "utils/md5.ts",

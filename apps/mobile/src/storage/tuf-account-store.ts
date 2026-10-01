@@ -28,4 +28,3 @@ export const TufAccountStore = createAccountListStore<TufAccountProfile>({
     return { ...account, displayName };
   },
 }).Store;
-export const tufAccountStore = new TufAccountStore();

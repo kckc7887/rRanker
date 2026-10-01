@@ -139,8 +139,3 @@ export class OsuCache {
     });
   }
 }
-
-/** 测试用：清除 in-flight 去重表。 */
-export function resetOsuInflightForTests(): void {
-  inflightLoads.resetForTests();
-}

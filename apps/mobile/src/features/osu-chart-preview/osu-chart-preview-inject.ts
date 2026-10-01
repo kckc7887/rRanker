@@ -7,7 +7,6 @@ const injectors = createChartPreviewInjectors<OsuChartPreviewConfig>({
   serialize: (config) => JSON.stringify(config),
 });
 
-export const buildOsuChartPreviewConfigJson = injectors.buildConfigJson;
 export const applyOsuChartPreviewConfigToHtml = injectors.applyConfigToHtml;
 
 export function buildOsuChartPreviewAudioScript(audio: Record<string, string>): string {

@@ -186,3 +186,81 @@ describe('Rizline playFrom 等待 resume 时的命令代次', () => {
     expect(animationFrames).toBe(0);
   });
 });
+
+describe('Rizline 偏移、短音频与重复进入退出', () => {
+  function observed(delaySeconds: number, musicDuration = 30) {
+    const rendered: number[] = [];
+    let pendingFrame: FrameRequestCallback | null = null;
+    const cancelled: number[] = [];
+    let handle = 0;
+    const env: PreviewSessionEnvironment = {
+      getAudioContext: () => context as unknown as AudioContext,
+      requestFrame: callback => { pendingFrame = callback; return ++handle; },
+      cancelFrame: value => { cancelled.push(value); pendingFrame = null; },
+    };
+    const spy = { setUserSpeed() {}, render: (_chart: unknown, time: number) => { rendered.push(time); } } as unknown as RizlineRenderer;
+    const preview = new PreviewSession({ ...chart, delaySeconds }, spy, { duration: musicDuration } as AudioBuffer,
+      normalizeRizlineChartPreviewSettings({}), env);
+    return { preview, rendered, cancelled, frame: () => pendingFrame, handle: () => handle };
+  }
+
+  it.each([2.5, -2.5, 0])('偏移 %s 秒时暂停 seek 向前和向后都绘制谱面时间 = 播放位置 - 偏移', async delay => {
+    const { preview, rendered } = observed(delay);
+    for (const target of [6, 1, 9, 0, 6.5]) {
+      await preview.seek(target);
+      expect(rendered.at(-1)).toBeCloseTo(target - delay, 9);
+      expect(preview.chartTime).toBeCloseTo(target - delay, 9);
+    }
+    preview.dispose();
+  });
+
+  it('音频短于谱面时尾段继续前进到总时长后停止并标记结束', async () => {
+    const { preview, frame } = observed(1, 2);
+    await settle(preview.playFrom(1.5));
+    expect(context.sources).toHaveLength(1);
+    expect(preview.duration).toBe(10 + 1 + 0.25);
+    context.currentTime = 5;
+    expect(preview.currentTime).toBeCloseTo(6.5);
+    expect(preview.chartTime).toBeCloseTo(5.5);
+    context.currentTime = 20;
+    frame()?.(0);
+    expect(preview.playing).toBe(false);
+    expect(preview.ended).toBe(true);
+    expect(preview.currentTime).toBe(preview.duration);
+    preview.dispose();
+  });
+
+  it('从音频结束之后的位置开始不创建音源，倍速切换后仍连续前进，结束后再播放回到起点', async () => {
+    const { preview, frame } = observed(0, 1);
+    await settle(preview.playFrom(4));
+    expect(context.sources).toHaveLength(0);
+    context.currentTime = 1;
+    preview.setSettings({ playbackSpeed: 0.5 });
+    context.currentTime = 3;
+    expect(preview.currentTime).toBeCloseTo(6);
+    context.currentTime = 100;
+    frame()?.(0);
+    expect(preview.ended).toBe(true);
+    context.state = 'running';
+    await preview.playFrom(preview.duration);
+    expect(preview.currentTime).toBeCloseTo(0, 6);
+    expect(context.sources).toHaveLength(1);
+    preview.dispose();
+  });
+
+  it('重复进入退出时每个播放中的会话都取消自己的帧回调且不再绘制', async () => {
+    context.state = 'running';
+    for (let round = 0; round < 20; round++) {
+      const { preview, rendered, cancelled, handle } = observed(round % 2 ? -1 : 1);
+      await preview.playFrom(round);
+      expect(handle()).toBe(1);
+      preview.dispose();
+      expect(cancelled).toEqual([1]);
+      const drawn = rendered.length;
+      await preview.seek(3);
+      await preview.playFrom(3);
+      expect(rendered).toHaveLength(drawn);
+      expect(preview.playing).toBe(false);
+    }
+  });
+});

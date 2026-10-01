@@ -78,13 +78,6 @@ function wordArrayToUint8Array(wa: CryptoJS.lib.WordArray): Uint8Array {
   return out;
 }
 
-export function decryptAes(encryptedBase64: string): Uint8Array {
-  const key = Base64.parse(AES_KEY_B64);
-  const iv = Base64.parse(AES_IV_B64);
-  const decrypted = AES.decrypt(encryptedBase64, key, { iv });
-  return wordArrayToUint8Array(decrypted);
-}
-
 export function decryptBytes(data: Uint8Array): Uint8Array {
   const key = Base64.parse(AES_KEY_B64);
   const iv = Base64.parse(AES_IV_B64);

@@ -2,6 +2,7 @@ import { assertChartPreviewGifFrameCount, assertChartPreviewGifFramePixels, asse
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
 import { installPreviewControls } from '../../chart-preview-shared/webview-player/controls';
 import { bindHeatTimelineKeyboard } from '../../chart-preview-shared/webview-player/heat-timeline';
+import { upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
 import { closeActiveWheelPopup, setupWheelPopup as setupSharedWheelPopup, type WheelControl } from '../../chart-preview-shared/webview-player/wheel';
 /**
  * Phigros / Phira 谱面确认 WebView 播放器入口。
@@ -102,17 +103,6 @@ function formatTime(seconds: number): string {
   if (!Number.isFinite(seconds) || seconds < 0) return '00:00';
   const whole = Math.floor(seconds);
   return `${String(Math.floor(whole / 60)).padStart(2, '0')}:${String(whole % 60).padStart(2, '0')}`;
-}
-
-function upperBound(values: readonly number[], target: number): number {
-  let low = 0;
-  let high = values.length;
-  while (low < high) {
-    const middle = (low + high) >>> 1;
-    if (values[middle]! <= target) low = middle + 1;
-    else high = middle;
-  }
-  return low;
 }
 
 function decodeBase64DataUrl(url: string): ArrayBuffer {
@@ -522,7 +512,7 @@ function start(): void {
   }
 
   function renderHud(chartTime: number): void {
-    const passed = upperBound(completionTimes, chartTime);
+    const passed = upperBoundBy(completionTimes, chartTime, (time) => time);
     const total = Math.max(1, completionTimes.length);
     elements.gameProgress.style.width = `${Math.min(100, chartTime / Math.max(1, session.chartDuration) * 100)}%`;
     elements.score.textContent = String(Math.floor(passed / total * 1_000_000)).padStart(7, '0');

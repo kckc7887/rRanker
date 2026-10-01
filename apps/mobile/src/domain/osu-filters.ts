@@ -4,22 +4,6 @@ import { normalizeNumericInput } from '@/utils/numeric-input';
 /** 「无模组」筛选特殊值：与任何具体模组互斥（互斥由筛选栏勾选回调保证）。 */
 export const OSU_MOD_FILTER_NONE = 'NM';
 
-/** 成绩页模组筛选固定常用列表（acronym + 中文标签，同 OsuModBadge 的 acronym 口径）。 */
-export const OSU_RECORDS_MOD_FILTERS: readonly { flag: string; label: string }[] = [
-  { flag: OSU_MOD_FILTER_NONE, label: '无模组' },
-  { flag: 'EZ', label: '简化' },
-  { flag: 'NF', label: '不失败' },
-  { flag: 'HT', label: '半速' },
-  { flag: 'DT', label: '双倍速度' },
-  { flag: 'NC', label: '夜晚核心' },
-  { flag: 'HD', label: '隐藏' },
-  { flag: 'HR', label: '硬式摇滚' },
-  { flag: 'FL', label: '闪光灯' },
-  { flag: 'PF', label: '完美' },
-  { flag: 'SD', label: '突然死亡' },
-  { flag: 'RX', label: '放松' },
-];
-
 /** 成绩页筛选状态口径（useOsuRecordsFilter 的筛选字段子集）。 */
 export type OsuRecordsFilters = {
   keyword: string;

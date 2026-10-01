@@ -338,6 +338,27 @@ function buildKeyPresses(frames: ReplayFrame[], cumTimes: number[]): KeyPress[] 
   return presses;
 }
 
+/** result[i] = min(timeMs of presses[i..]); press times may be non-monotonic. */
+function buildPressSuffixMin(presses: KeyPress[]): number[] {
+  const suffixMin = new Array<number>(presses.length + 1);
+  suffixMin[presses.length] = Infinity;
+  for (let pi = presses.length - 1; pi >= 0; pi--) {
+    suffixMin[pi] = Math.min(presses[pi]!.timeMs, suffixMin[pi + 1]!);
+  }
+  return suffixMin;
+}
+
+/** Skips objects that no remaining press can find unresolved, so they never block again. */
+function advanceBlockStart(states: ObjState[], start: number, minFuturePress: number): number {
+  let index = start;
+  while (index < states.length) {
+    const Y = states[index]!;
+    if (!(Y.type === 'circle' ? Y.headResolved : minFuturePress >= Y.endTime)) break;
+    index++;
+  }
+  return index;
+}
+
 function cursorAt(
   frames: ReplayFrame[],
   cumTimes: number[],
@@ -506,6 +527,9 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
 
   // walkStart: index of first potentially-clickable head; advanced by auto-miss expiry.
   let walkStart = 0;
+  // First object that can still block a later press; times may be non-monotonic, so use the suffix minimum.
+  let blockStart = 0;
+  const pressSuffixMin = buildPressSuffixMin(keyPresses);
 
   for (let pi = 0; pi < keyPresses.length; pi++) {
     const p = keyPresses[pi]!;
@@ -566,7 +590,9 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
       }
     } else {
       // CanBeHitStable: any earlier still-unresolved Y blocks if Y.endTime + 3 < X.startTime.
-      for (let j = 0; j < candIdx; j++) {
+      // Objects that no later press can find unresolved never block again, so the scan skips them.
+      blockStart = advanceBlockStart(states, blockStart, pressSuffixMin[pi]!);
+      for (let j = blockStart; j < candIdx; j++) {
         const Y = states[j]!;
         const yUnresolved = (Y.type === 'circle')
           ? !Y.headResolved
@@ -629,6 +655,8 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
 
   const results: HitResult[] = [];
   const trackingIntervals: { start: number; end: number }[] = [];
+  let sliderFrameStart = 0;
+  let previousSliderTime = -Infinity;
 
   for (let i = 0; i < beatmap.hitObjects.length; i++) {
     const obj = beatmap.hitObjects[i]!;
@@ -712,8 +740,11 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
       }
     };
 
-    let frameIdx = 0;
+    // Objects are time-sorted, so every earlier frame already precedes this slider; only an unsorted list restarts.
+    let frameIdx = slider.time >= previousSliderTime ? sliderFrameStart : 0;
     while (frameIdx < replay.frames.length && cumTimes[frameIdx]! < slider.time) frameIdx++;
+    sliderFrameStart = frameIdx;
+    previousSliderTime = slider.time;
 
     for (const ev of sliderNestedEvents(beatmap, slider, slideDur, modDiff.isLazer)) {
       if (ev.kind === 'tail') break;

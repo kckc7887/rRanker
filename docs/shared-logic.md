@@ -727,7 +727,7 @@ iOS 截图前若 App 处于 inactive 或 background，先等到 `foreground-read
 
 谱面导航请求在 `domain/chart-preview-request.ts`，暂存与交接位于 `features/chart-preview-shared/chart-preview-navigation.ts`。PGR 格式配置共用 `chart-preview-shared/pgr-preview-config.ts`；Phigros 与 Phira 各自的 `chart-preview-input.ts` 组装配置。RPE 路径规范与资源 URL 由 `domain/rpe-resource-path.ts` 统一解释。兼容包下载分别位于 `features/phigros-chart-download/chart-package-download.ts` 与 `features/phira-chart-download/chart-package-download.ts`，公共下载核心不构造游戏资源。
 
-`chart-preview-shared/webview-player/interval-index.ts` 的 `createIntervalIndex` 保留原始条目顺序，返回与闭区间相交的候选，供 osu! mania 与 Rizline 共用。Rizline 按空间区间和特效时间区间合并候选，保留长 Hold、负速与前后 seek，静态绘制顺序只准备一次；未传 viewport 的帧布局仍返回完整结果。播放终点同时覆盖音频和 offset 后的谱尾，无音源尾段仍按公共时钟变速。
+`chart-preview-shared/webview-player/interval-index.ts` 的 `createIntervalIndex` 保留原始条目顺序，返回与闭区间相交的候选，供 osu! mania 与 Rizline 共用。Rizline 按空间区间和特效时间区间合并候选，保留长 Hold、负速与前后 seek，静态绘制顺序只准备一次；未传 viewport 的帧布局仍返回完整结果。播放终点同时覆盖音频和 offset 后的谱尾，无音源尾段仍按公共时钟变速。已排序序列的下界与上界查找统一走 `chart-preview-shared/webview-player/sorted-search.ts` 的 `lowerBoundBy` / `upperBoundBy`，Phigros 的 PGR 与 RPE 渲染器、打击音游标和主入口共用，不再各自手写二分。osu! 非 taiko 谱面的滑条转为 taiko 打击时，间隔小于 1 ms 的拆分按滚奏表示，输出数量由时间轴而非重复次数决定。
 
 RPE 速度积分显式读取所属判定线的策略；染色纹理按 64 项、32 MiB 的驻留预算淘汰并复用画布，单张超大纹理使用全分辨率工作画布，不改变颜色、透明度或画质，换资源和释放时清空。Simai 诊断位置通过预计算换行索引查询。Phira 下载在整文件读取前经 `readBudgetedChartDownload` 校验现有字节预算，完整 ArrayBuffer 直接复用，资源分批暂存并检查取消。
 

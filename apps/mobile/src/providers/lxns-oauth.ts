@@ -14,7 +14,6 @@ import {
   LXNS_TOKEN_REFRESH_SKEW_SECONDS,
 } from './lxns-config';
 
-const PENDING_VERIFIER_KEY = 'rranker.lxns.oauth.pending.v1';
 const PENDING_OAUTH_KEY = 'rranker.lxns.oauth.pending.v2';
 const PENDING_OAUTH_TTL_MS = 10 * 60 * 1000;
 let pendingMutation: Promise<unknown> = Promise.resolve();
@@ -95,13 +94,6 @@ export async function beginLxnsAuthorize(input: {
     keychainAccessible: SecureStore.WHEN_UNLOCKED_THIS_DEVICE_ONLY,
   }));
   return buildAuthorizeUrl(challenge, state);
-}
-
-export async function clearPendingLxnsVerifier(): Promise<void> {
-  await withPendingMutation(async () => {
-    await SecureStore.deleteItemAsync(PENDING_OAUTH_KEY);
-    await SecureStore.deleteItemAsync(PENDING_VERIFIER_KEY).catch(() => undefined);
-  });
 }
 
 /** 读取进行中的授权信息（回调页据此确定绑定目标游戏并校验 state）。 */
