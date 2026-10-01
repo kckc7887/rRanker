@@ -101,8 +101,8 @@ async function checkTailPlayback(page, mode, fixture) {
   const transitionStart = transitionFrames[0], transitionEnd = transitionFrames.at(-1);
   assert.ok(Math.abs((transitionEnd.chartMs - transitionStart.chartMs) - (transitionEnd.timestamp - transitionStart.timestamp)) < 120, 'clock must keep advancing through audio completion');
   const speedSwitchStart = await page.evaluate(duration => ({ timestamp: performance.now(), chartMs: parseFloat(document.querySelector('#timeline-playhead').style.left) / 100 * duration }), totalMs);
-  await page.locator('#speed-trigger').click();
-  await page.locator('#speed-wheel').evaluate(element => element.scrollTo(0, 14 * 28));
+  await page.locator('#speed-trigger').focus();
+  for (let step = 0; step < 5; step++) await page.locator('#speed-trigger').press('ArrowRight');
   await page.waitForFunction(() => document.querySelector('#speed-val').textContent === '1.5');
   await page.locator('#speed-trigger').click();
   const speedStart = await page.evaluate(duration => ({ timestamp: performance.now(), chartMs: parseFloat(document.querySelector('#timeline-playhead').style.left) / 100 * duration }), totalMs);
@@ -178,6 +178,15 @@ try {
     results.push({mode, rejected: true}); await page.close(); continue;
   }
   try { await page.waitForFunction(()=>window.messages.some(m=>m.type==='ready'), undefined, {timeout: 10000}); } catch (error) { console.error(mode, errors, await page.evaluate(()=>({messages:window.messages, status:document.querySelector('#status')?.textContent, config: window.__CHART_PREVIEW__?.chartId, scripts:[...document.scripts].map(s=>s.src)}))); throw error; }
+  const heatTracks = await page.locator('#timeline-bars').evaluate(element => {
+   const bounds = element.getBoundingClientRect();
+   return [...element.querySelectorAll('.heat-track')].map(track => {
+    const row = track.getBoundingClientRect();
+    return row.top >= bounds.top && row.bottom <= bounds.bottom;
+   });
+  });
+  assert.equal(heatTracks.length, buddy ? 2 : 1);
+  assert.ok(heatTracks.every(Boolean), 'every heat track must fit inside its visible container');
   if (tailFixture) {
    results.push(await checkTailPlayback(page, mode, tailFixture));
    assert.deepEqual(errors, []);
@@ -198,15 +207,15 @@ try {
   await page.locator('#btn-prev-measure').click();
   await page.locator('#play').click();await page.waitForTimeout(150);
   const oldIds=await page.evaluate(()=>window.sources.map((s,i)=>s.started&&!s.stopped&&!s.ended&&s.duration<1?i:-1).filter(i=>i>=0));
-  await page.locator('#speed-trigger').click();await page.locator('#speed-wheel').evaluate(el=>el.scrollTo(0,14*28));
+  await page.locator('#speed-trigger').focus();for (let step = 0; step < 5; step++) await page.locator('#speed-trigger').press('ArrowRight');
   await page.waitForFunction(()=>document.querySelector('#speed-val').textContent==='1.5');
   await page.waitForTimeout(180);
   assert.equal(await page.evaluate(ids=>ids.every(i=>window.sources[i].stopped||window.sources[i].ended),oldIds),true);
   await page.locator('#speed-trigger').click();
   await page.waitForTimeout(1700);
   await page.locator('#play').click();
-  await page.locator('#mirror-trigger').click();await page.locator('#mirror-wheel').evaluate(el=>el.scrollTo(0,28));await page.waitForTimeout(180);await page.locator('#mirror-trigger').click();
-  await page.locator('#background-trigger').click();await page.locator('#background-wheel').evaluate(el=>el.scrollTo(0,28));await page.waitForTimeout(180);await page.locator('#background-trigger').click();
+  await page.locator('#mirror-trigger').focus();await page.locator('#mirror-trigger').press('ArrowRight');await page.waitForTimeout(180);
+  await page.locator('#background-trigger').focus();await page.locator('#background-trigger').press('ArrowRight');await page.waitForTimeout(180);
   await page.locator('#btn-fullscreen').click();assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('fullscreen')),true);
   await page.screenshot({path:path.join(output,buddy?'player-buddy.png':'player-single.png')});
   await page.evaluate(()=>window.postMessage({type:'exit-fullscreen'},'*'));await page.waitForFunction(()=>!document.body.classList.contains('fullscreen'));

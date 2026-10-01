@@ -823,14 +823,33 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
 
 `chart-preview-shared/webview-player/wheel.ts` 的 `setupWheelPopup` 接受元素、即时预览与提交
 回调、范围、初始值、可选文本标签及数值格式，供舞萌、Phigros、osu! 与 Rizline 使用；支持 0.05/0.01 精度，返回
-`getValue`、`setValue`、`flush` 与 `dispose`，`closeActiveWheelPopup` 统一关闭当前浮层。
-`frame-scheduler.ts` 按帧合并最新预览，拨轮停止 120 ms 后提交；领域设置解释留在各播放器。
+`getValue`、`setValue`、`flush` 与 `dispose`。`installPreviewControls(options): () => void`
+（`webview-player/controls.ts`）按 `measureNavigation`、`details`、`sections`、`reserveStage`
+组织播放详情、热度进度、播放按钮和常驻设置区；移动原控制节点并保留监听，返回观察器清理函数。
+设置按钮声明 `data-presentation="inline"` 后，`setupWheelPopup` 通过同一范围、格式与回调创建
+参数卡片：横向拖动微调、刻度点击跳值、枚举离散选择和键盘调节；纵向手势交给页面滚动。
+未声明该展示方式的调用方仍使用浮层。`closeActiveWheelPopup` 同时结束参数手势并提交最后值。
+`frame-scheduler.ts` 按帧合并最新预览，操作停止 120 ms 后提交；静默 `setValue` 不回写设置，
+`dispose` 取消未提交预览，领域设置解释留在各播放器。
 桥接设置事件可选 `committed`，缺省按已提交处理；Phigros 的 `false` 预览只暂存在宿主当前会话，
-停滚、inactive、后台、卸载及换会话前保存最终值，迟到消息不得写入新会话。
+操作结束、inactive、后台、卸载及换会话前保存最终值，迟到消息不得写入新会话。
 共享交互模块不解释音符、模式或游戏 ID，新增设置不得另建持久化入口。
-`chart-preview-wheel.test.ts` 验证预览、提交、格式与销毁，
+`chart-preview-wheel.test.ts` 验证预览、提交、格式、方向判定、键盘、枚举及销毁，
 `osu-chart-preview-controls.test.ts` 与 `rizline-chart-preview-controls.test.ts`
 将公共控制器样式和结构与现有播放器直接比较。
+
+`webview-player/heat-timeline.ts` 的 `HeatTimelineView({ host, bars, ruler, playhead, badge })`
+只持有视图节点，`build(duration, tracks, labels)`、`updateProgress(percent, text)`、
+`updateLoop(a, b)` 分别接收时长与音符起点、会话位置、循环百分比；不持有播放时钟。
+`buildHeatDensity(duration, tracks, width)` 将真实起点分到至多 200 格，以不透明度表示密度，
+空段留空、多轨共用最大密度。Simai 适配器将 Buddy 两侧换算到同一主谱时间轴，分别显示
+1P/2P，普通及全屏各有视图实例；PGR/RPE、osu! 与 Rizline 传入各自会话时间单位的数据。
+`bindHeatTimelineKeyboard(events, host, readPercent, seek)` 为没有全局跳转键的入口接入方向键
+与首尾跳转，监听生命周期复用 `PlayerEventScope`。
+`chart-preview-inject-factory.ts` 的 `chartPreviewAppearanceScript({ dark, accent }): string`
+由 `ChartPreviewScreenShell` 在加载前与加载完成时注入应用主题，规范化颜色并保证按钮文字对比度；
+共享样式在深浅中性色表面上使用应用强调色。`chart-preview-heat-controls.test.ts` 覆盖真实密度、
+双轨位置与循环、原节点保留、四类设置布局、键盘释放和主题注入。
 
 ## 跨层硬约束
 
@@ -914,13 +933,13 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
   `playback.ts` 的 `SimaiPlaybackSession` 独占播放位置（拍）、命令代次、音源与 rAF，
   位置换算与播放范围沿用 `timeConversion.ts` 的同一时间轴；
   `timelineView.ts` 的 `SimaiTimelineView` 由窗口与全屏控制器各持一个实例，
-  密度条、刻度与播放头节点归实例所有；`backgroundMedia.ts` 的 `SimaiBackgroundMedia`
+  热度轨道、刻度与播放头委托公共 `HeatTimelineView`；`backgroundMedia.ts` 的 `SimaiBackgroundMedia`
   独占背景图片/视频元素、就绪状态与视频回绕同步，播放状态只作为每帧输入读入。
   三者的视图与桥回执都经 `SimaiPlaybackHost` / `SimaiBackgroundMediaHost` 回调接线。
   Phigros 与 Phira 在 `features/phigros-chart-preview/webview-player/`：`playback.ts` 的
   `PhigrosPlaybackSession` 独占播放位置（谱面秒）、命令代次、音乐音源、打击音调度与 rAF，
   设置对象由宿主持有、会话只读取当前值；seek 固定目标时间并提升代次，撤旧帧、音源与打击音后恢复，旧帧不能改写目标；`timelineView.ts` 的 `PhigrosTimelineView`
-  持有密度条、刻度与播放头节点，时长与音符条目每次构建时传入。
+  将时长与音符条目传入公共 `HeatTimelineView`，不复制密度计算或播放状态。
   Rizline 的 `PreviewSession` 同样独占播放位置、音源、帧循环与命令代次，并通过可选的
   `PreviewSessionEnvironment`（`defaultPreviewSessionEnvironment`）注入音频上下文与帧循环，
   生产调用点不传该参数。osu! 的 `PreviewSession` 与 `PlaybackHandle`

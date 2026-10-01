@@ -5,6 +5,8 @@ import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-p
 import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
 import { md5 } from './engine';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
+import { installPreviewControls } from '../../chart-preview-shared/webview-player/controls';
+import { HeatTimelineView, heatTimeLabels } from '../../chart-preview-shared/webview-player/heat-timeline';
 import {
   applyManiaScrollSpeed, destroyPlayback, pausePlayback, playFrom, presentationTime,
   seekPlayback, startPlayback, type PlaybackHandle,
@@ -27,6 +29,10 @@ const fullscreenButton = element<HTMLButtonElement>('btn-fullscreen');
 const lockButton = element<HTMLButtonElement>('fs-lock');
 const timeline = element('timeline-host');
 const controls = element('controls');
+const timelineView = new HeatTimelineView({
+  host: timeline, bars: element('timeline-bars'), ruler: element('timeline-ruler'),
+  playhead: element('timeline-playhead'), badge: element('timeline-badge'),
+});
 const warnings = new Set<string>();
 const wheels: ReturnType<typeof setupWheelPopup>[] = [];
 let speedWheel: ReturnType<typeof setupWheelPopup> | undefined;
@@ -65,9 +71,7 @@ function syncTransport(): void {
     ? '<path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>' : '<path d="M8 5v14l11-7z"/>';
   playButton.setAttribute('aria-label', playing ? '暂停' : '播放');
   element('time-label').textContent = `${formatClock(position)} / ${formatClock(handle.durationMs)}`;
-  element('timeline-playhead').style.left = `${pct}%`;
-  element('timeline-badge').style.left = `${pct}%`;
-  element('timeline-badge').textContent = formatClock(position);
+  timelineView.updateProgress(pct, formatClock(position));
   timeline.setAttribute('aria-valuenow', String(Math.round(position)));
   timeline.setAttribute('aria-valuetext', `${formatClock(position)} / ${formatClock(handle.durationMs)}`);
   if (handle.session.ended) status('播放结束');
@@ -79,57 +83,12 @@ function tick(time: number): void {
   if (handle?.session.playing) uiFrame = requestAnimationFrame(tick);
 }
 function buildTimeline(): void {
-  if (disposed) return;
-  const bars = element('timeline-bars');
-  const ruler = element('timeline-ruler');
-  bars.replaceChildren();
-  ruler.replaceChildren();
-  if (!handle) return;
-  const duration = handle.durationMs;
-  const width = Math.max(1, Math.ceil(timeline.getBoundingClientRect().width));
-  const count = Math.min(200, width);
-  const buckets = Array.from({ length: count }, () => [0, 0, 0, 0]);
+  if (disposed || !handle) return;
   const beatmap = handle.session.beatmap;
-  for (const note of [...beatmap.hitObjects, ...beatmap.maniaHolds]) {
-    const time = note.time - handle.session.range.startMs;
-    const index = Math.min(count - 1, Math.max(0, Math.floor(time / duration * count)));
-    const kind = note.type === 'slider' ? 1 : note.type === 'hold' ? 2 : note.type === 'spinner' ? 3 : 0;
-    buckets[index][kind]++;
-  }
-  const max = Math.max(1, ...buckets.map(bucket => bucket.reduce((sum, n) => sum + n, 0)));
-  const colors = ['#5b8cff', '#00CED1', '#FF8C00', '#ff69b4'];
-  buckets.forEach((bucket, index) => {
-    const total = bucket.reduce((sum, n) => sum + n, 0);
-    if (!total) return;
-    const bar = document.createElement('div');
-    bar.className = 'timeline-bar';
-    Object.assign(bar.style, { left: `${index / count * 100}%`, width: `${100 / count}%`, height: `${Math.max(2, total / max * 22)}px` });
-    bucket.forEach((value, kind) => {
-      if (!value) return;
-      const segment = document.createElement('div');
-      Object.assign(segment.style, { flex: String(value / total), width: '100%', backgroundColor: colors[kind] });
-      bar.appendChild(segment);
-    });
-    bars.appendChild(bar);
-  });
-  const seconds = duration / 1000;
-  const tickStep = [1, 5, 10, 15, 30, 60, 120, 300].find(step => width * step / seconds >= 4) ?? 300;
-  const labelStep = [5, 10, 15, 30, 60, 120, 300, 600].find(step => width * step / seconds >= 24) ?? 600;
-  for (let time = 0; time <= seconds; time += tickStep) {
-    const pct = `${time / seconds * 100}%`;
-    const major = time % labelStep === 0;
-    const tick = document.createElement('div');
-    tick.className = `timeline-tick ${major ? 'major' : Number.isInteger(time / (labelStep / 2)) ? 'medium' : 'minor'}`;
-    tick.style.left = pct;
-    ruler.appendChild(tick);
-    if (major) {
-      const label = document.createElement('div');
-      label.className = 'timeline-label';
-      label.style.left = pct;
-      label.textContent = formatClock(time * 1000);
-      ruler.appendChild(label);
-    }
-  }
+  const start = handle.session.range.startMs;
+  timelineView.build(handle.durationMs, [{
+    times: [...beatmap.hitObjects, ...beatmap.maniaHolds].map(note => note.time - start),
+  }], heatTimeLabels(handle.durationMs, formatClock));
   syncTransport();
 }
 const timelineObserver = new ResizeObserver(buildTimeline);
@@ -340,6 +299,7 @@ async function initialize(): Promise<void> {
   const config = window.__OSU_CHART_PREVIEW_CONFIG__;
   if (!config) throw new Error('missing-config');
   document.documentElement.dataset.theme = config.theme;
+  events.own(installPreviewControls({ sections: ['画面设置', '辅助选项'] }));
   settings = normalizeOsuChartPreviewSettings(config.settings);
   post('progress', { value: 0.05, label: '正在准备播放器…' });
   const resources = new Map<string, PreviewResource>();
