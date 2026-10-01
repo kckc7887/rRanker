@@ -12,7 +12,7 @@ from android_signing import verify_android_signing
 signing_mode = os.environ.get("SIGNING_MODE")
 expected_certificate_sha256 = os.environ.get("EXPECTED_CERTIFICATE_SHA256") or None
 
-config = json.loads(Path("app.json").read_text())["expo"]
+config = json.loads(Path("app.json").read_text(encoding="utf-8"))["expo"]
 version = config["version"]
 build = config["android"]["versionCode"]
 if not isinstance(version, str) or not re.fullmatch(r"[0-9A-Za-z][0-9A-Za-z.+_-]*", version):
@@ -22,7 +22,7 @@ if type(build) is not int or not 1 <= build <= 2100000000:
 
 expected = {"armeabi-v7a", "arm64-v8a", "x86", "x86_64"}
 release = Path("android/app/build/outputs/apk/release")
-metadata = json.loads((release / "output-metadata.json").read_text())
+metadata = json.loads((release / "output-metadata.json").read_text(encoding="utf-8"))
 elements = metadata["elements"]
 if len(elements) != len(expected):
     raise ValueError("Expected exactly four APK outputs")
@@ -48,13 +48,13 @@ for element in elements:
         native_abis = {name.split("/")[1] for name in archive.namelist() if name.startswith("lib/") and name.endswith(".so")}
     if native_abis != {abi}:
         raise ValueError(f"Native libraries do not match {abi}: {native_abis}")
-    badging = subprocess.check_output([str(build_tools / "aapt"), "dump", "badging", str(apk)], text=True)
+    badging = subprocess.check_output([shutil.which("aapt", path=str(build_tools)) or str(build_tools / "aapt"), "dump", "badging", str(apk)], text=True, encoding="utf-8")
     package_line = next(line for line in badging.splitlines() if line.startswith("package:"))
     attributes = dict(re.findall(r"(\w+)='([^']*)'", package_line))
     if (attributes.get("name"), attributes.get("versionName"), attributes.get("versionCode")) != (config["android"]["package"], version, str(build)):
         raise ValueError(f"APK manifest mismatch for {abi}")
     verify_output = subprocess.check_output(
-        [str(build_tools / "apksigner"), "verify", "--verbose", "--print-certs", str(apk)], text=True)
+        [shutil.which("apksigner", path=str(build_tools)) or str(build_tools / "apksigner"), "verify", "--verbose", "--print-certs", str(apk)], text=True, encoding="utf-8")
     signing = verify_android_signing(verify_output, signing_mode, expected_certificate_sha256)
     verified[abi] = (apk, signing)
 
@@ -73,11 +73,11 @@ evidence = {"sourceSha": os.environ["BUILD_SOURCE_COMMIT"], "optimizationMode": 
             "expectedCertificateSha256": signing_evidence["expectedCertificateSha256"], "apks": []}
 if not re.fullmatch(r"[a-f0-9]{40}", evidence["sourceSha"]):
     raise ValueError("Missing immutable source identity")
-if subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip() != evidence["sourceSha"]:
+if subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, encoding="utf-8").strip() != evidence["sourceSha"]:
     raise ValueError("Build source identity does not match checkout")
-properties = Path("android/gradle.properties").read_text()
-app_gradle = Path("android/app/build.gradle").read_text()
-rules = Path("android/app/proguard-rules.pro").read_text()
+properties = Path("android/gradle.properties").read_text(encoding="utf-8")
+app_gradle = Path("android/app/build.gradle").read_text(encoding="utf-8")
+rules = Path("android/app/proguard-rules.pro").read_text(encoding="utf-8")
 evidence["optimization"] = {
     "minify": bool(re.search(r"^android.enableMinifyInReleaseBuilds=true$", properties, re.M)),
     "shrink": bool(re.search(r"^android.enableShrinkResourcesInReleaseBuilds=true$", properties, re.M)),
@@ -102,9 +102,9 @@ for abi, (apk, _signing) in sorted(verified.items()):
     names.append(name)
     evidence["apks"].append({"file": name, "abi": abi, "sha256": hashlib.sha256(apk.read_bytes()).hexdigest(), "certificateSha256": fingerprint})
     print(name)
-(output / "verification.json").write_text(json.dumps(evidence, indent=2) + "\n")
-with open(os.environ["GITHUB_OUTPUT"], "a") as stream:
+(output / "verification.json").write_text(json.dumps(evidence, indent=2) + "\n", encoding="utf-8")
+with open(os.environ["GITHUB_OUTPUT"], "a", encoding="utf-8") as stream:
     stream.write(f"artifact_name=rRanker-{version}({build})-android\n")
-with open(os.environ["GITHUB_STEP_SUMMARY"], "a") as stream:
+with open(os.environ["GITHUB_STEP_SUMMARY"], "a", encoding="utf-8") as stream:
     stream.write("## Android APKs\n\n" + "\n".join(f"- `{name}`" for name in names))
     stream.write(f"\n\nSigning: {signing_evidence['description']}\n")

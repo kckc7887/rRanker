@@ -4,8 +4,8 @@ import {
   ScoreHubError,
   type ScoreHubAbortSignal,
 } from '@/services/score-hub-client';
+import type { UploadPhase } from '@/services/upload-maimai-types';
 import { scoreHubAccountStore } from '@/storage/score-hub-account-store';
-import type { UploadPhase } from '@/services/upload-maimai-from-friend-code';
 
 export async function loginScoreHubWithFriendCode(input: {
   friendCode: string;

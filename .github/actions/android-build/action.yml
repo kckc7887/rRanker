@@ -22,8 +22,14 @@ inputs:
     default: A
 outputs:
   artifact-name:
-    description: Verified artifact name
-    value: ${{ steps.apks.outputs.artifact_name }}
+    description: Exact candidate name retained across failed-job reruns
+    value: android-candidate-${{ inputs.production == 'true' && 'release' || 'test' }}-${{ inputs.source-sha }}-${{ github.run_attempt }}
+  manifest-digest:
+    description: SHA-256 of the candidate manifest
+    value: ${{ steps.candidate.outputs.digest }}
+  delivery-name:
+    description: Final verified APK artifact name
+    value: ${{ steps.apks.outputs.artifact_name }}-${{ inputs.production == 'true' && 'release' || 'test' }}-${{ inputs.source-sha }}-${{ github.run_attempt }}
 runs:
   using: composite
   steps:
@@ -54,28 +60,7 @@ runs:
             test -n "${ANDROID_KEY_PASSWORD:-}"
           fi
         fi
-    - name: Setup Node
-      uses: actions/setup-node@v6
-      with:
-        node-version: "22"
-        cache: npm
-        cache-dependency-path: apps/mobile/package-lock.json
-    - name: Setup Java
-      uses: actions/setup-java@v5
-      with:
-        distribution: temurin
-        java-version: "17"
-    - name: Setup Android SDK
-      uses: android-actions/setup-android@v4
-      with:
-        cmdline-tools-version: "12266719"
-        log-accepted-android-sdk-licenses: false
-    - name: Setup Gradle
-      uses: gradle/actions/setup-gradle@v6
-    - name: Install dependencies
-      run: npm ci --include=dev
-      shell: bash
-      working-directory: apps/mobile
+    - uses: ./.github/actions/android-setup
     - name: Expo prebuild
       env:
         NODE_ENV: production
@@ -137,32 +122,17 @@ runs:
         python3 ../../.github/scripts/verify-android-apks.py
       shell: bash
       working-directory: apps/mobile
-    - name: Enable KVM
+    - name: Seal candidate contents
+      id: candidate
       shell: bash
-      run: |
-        echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-        sudo udevadm control --reload-rules
-        sudo udevadm trigger --name-match=kvm
-    - name: Release smoke through production routes
-      uses: reactivecircus/android-emulator-runner@v2
-      with:
-        api-level: 31
-        arch: x86_64
-        target: default
-        disable-animations: true
-        script: node .github/scripts/android-smoke.mjs production apps/mobile/build/android-apks/*-x86_64.apk emulator-5554 apps/mobile/build/device-evidence
-    - name: Upload device verification
-      if: always()
+      env:
+        BUILD_SOURCE_COMMIT: ${{ inputs.source-sha }}
+      run: node .github/scripts/android-artifact.mjs seal apps/mobile/build/android-apks
+    - name: Preserve verified candidate APKs
+      id: upload
       uses: actions/upload-artifact@v4
       with:
-        name: android-device-evidence-${{ inputs.production == 'true' && 'release' || 'test' }}-${{ inputs.source-sha }}-${{ github.run_attempt }}
-        path: apps/mobile/build/device-evidence/
-        if-no-files-found: warn
-        retention-days: 7
-    - name: Upload verified APKs
-      uses: actions/upload-artifact@v4
-      with:
-        name: ${{ steps.apks.outputs.artifact_name }}-${{ inputs.source-sha }}-${{ github.run_attempt }}
+        name: android-candidate-${{ inputs.production == 'true' && 'release' || 'test' }}-${{ inputs.source-sha }}-${{ github.run_attempt }}
         path: apps/mobile/build/android-apks/*
         if-no-files-found: error
         compression-level: 0

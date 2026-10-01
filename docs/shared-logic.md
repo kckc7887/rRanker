@@ -376,7 +376,8 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
 水合最多等待 1.5 秒，不另起第二个读取；未知版本或坏结构保留原文，未取得基线不得写入默认值。
 失败只记录受限诊断，成功恢复记一次事件；`preferences-write-coordinator.test.ts` 覆盖竞争和重试。
 
-`storage/secure-session-store.ts` 的会话索引缺失时走旧版迁移；JSON 损坏抛
+`storage/secure-session-store.ts` 是安全会话唯一业务门面；`secure-session-codec.ts` 负责解析、字段校验和指纹，`secure-session-index.ts` 负责索引、保留副本与跨实例串行队列，`secure-session-commit.ts` 负责新凭据校验、索引提交、回滚和附属清理。门面保留原导出，恢复保留副本也进入同一队列，不能越过清除或账号修改。空凭据、非有限到期时间、重复账号或凭据身份不能作为有效会话恢复；指纹包含显示用的 rating possession。
+会话索引缺失时走旧版迁移；JSON 损坏抛
 `SessionIndexCorruptError` 并保留 `.corrupt` 副本，未知版本、顶层结构或账号/凭据行错误抛
 `SessionIndexUnrecognizedError` 并保留 `.unrecognized` 副本，原键不动，后续写入不得
 覆盖。账号引用的凭据不可读或不能解析时整个恢复失败，不静默丢弃关联账号；无账号引用的凭据不参与恢复。账号恢复入口记录脱敏的凭据读取错误。`LargeSecureValueStore.write` 校验新分片与清单读回，失败时恢复旧清单并清理新分片；账号仓库也在读回一致后才提交账号索引。旧版迁移源解析失败时跳过但不删除。`readPreservedSessionIndex` 读取保留副本，
@@ -603,7 +604,10 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
 认证失败提示重新登录，其余终态按公共失败文案提示。不维护逐游戏 waiter，也不二次读取查询缓存推断
 后台刷新是否落定。`UploadDataSheet` 的账号偏好、二维码输入和上传执行
 分别复用 `useUploadAccountPreferences`、`useUploadQrInput`、`useUploadTaskState` / `useUploadExecution`，
-任务真相仍在唯一 `uploadTaskController`，关闭/卸载弹层不取消任务。
+任务真相在 `services/upload-task-controller.ts` 的唯一 `uploadTaskController`，公共业务门面 `upload-maimai-from-friend-code.ts` 保留再导出，类型集中在 `upload-maimai-types.ts`。`begin()` 返回发起任务信号，`isCurrent(signal)` 验证身份；`setPhase(phase, signal)`、`waitForCatalog(signal)`、`complete(result, signal)` 和 `finishCanceled(signal)` 只能影响所属任务。每次曲库请求独立持有 waiter，取消中止前台等待与曲库等待；旧结果、阶段、凭据回调、完成刷新和通知不能影响新任务。关闭/卸载弹层不取消任务。好友码偏好以独立选择代次保护，账号集合变化不丢失首次初始化，等价可写集合不触发重复状态更新。防抖保存须等待目标好友码的勾选读取完成，删除旧好友码的迟到回调不能重置新账号状态；`UploadPrefsStore` 的读取迁移、保存、移除和清空复用 `enqueueKeyMutation`，同一存储实例跨仓库实例串行，避免并发丢失其它好友码的选择。
+
+总览评分适配由 `features/game-content/adapters/overview-presentation.ts` 的 `overviewRatingCard(bundle)` 返回 `DxRatingCard` 参数，玩家名与查分器提示同处组合边界。舞萌和中二的收藏模块分别为 `MaimaiOverviewPins`、`ChunithmOverviewPins`。舞萌详情容器为 `components/maimai/MaimaiSongDetail.tsx`，路由只解码与分派。
+舞萌成绩图页面为 `screens/maimai/MaimaiBestImageScreen.tsx`，筛选分页与资源准备分别复用 `useMaimaiBestImageFilters`、`useMaimaiEmbeddedAssets`、`useMaimaiImageCovers`、`useMaimaiExportAssets`；公共 `useBestImageScreenController`、`usePreparedBestImageSources` 和 `BestImageScreenShell` 保持游戏无关。预览与导出 WebView 都关闭双向滚动指示器，避免原生截图包含滚动条。详细曲库参与 sourceGeneration，数据迟到但分页不变时仍生成预览。
 
 | 能力 | 权威入口 | 使用边界 | 主要验证 |
 |---|---|---|---|
@@ -1004,6 +1008,9 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
 独立 C# 样本来自 MajSimai 与
 MajdataPlay 原始计分方法，普通测试无需 .NET；原生账号、保存和播放仍须真机验收。
 
+机厅服务 `services/nearcade-client.ts` 与 Phigros 平均 ACC 的 `loadPhigrosAccAverages` 复用 `requestJson`，分别保留 12 秒、10 秒期限和一次尝试，响应经 schema/现有解析器校验。机厅游戏列表允许网络失败回退，但取消原样传播；平均 ACC 为可选展示数据，失败返回空集合，取消或超时不继续高档位查询。`useTransientDetailedMaimaiCatalog` 向 Provider 传递 AbortSignal，失活或卸载中止该次请求。
+谱面资源准备继续复用 `prepareChartPreviewWebviewFromPlan`；`stageAsset(moduleId, fileName, directory, signal?)` 在资源解析前后校验共享写入代次，远程缓存复制在字节读取后再次校验，清缓存后的迟到结果不能重建文件。通知动作的同步异常和 Promise 拒绝统一进入 `recordRuntimeError`，不向 console 输出原始错误。osu!catch 的生产构建只计算判定与显示时间线，不运行控制台用的逐毫秒轨迹扫描，来源声明与集成摘要保持可校验。
+
 ## 项目不变量
 
 独立原生诊断使用 `services/native-storage-probe.ts` 的 `runNativeStorageProbe(publish)`。
@@ -1049,21 +1056,22 @@ MajdataPlay 原始计分方法，普通测试无需 .NET；原生账号、保存
 ## CI 公共合同
 
 常规检查与构建统一由 `.github/workflows/quality.yml` 编排；独立桥接诊断仍手动运行，
-`android-account-recovery` 在完整检查成功后执行受控原生账号闭环。
+`android-account-recovery` 在完整检查成功且账号范围命中（或手动选择 all）时执行受控原生账号闭环。
 诊断 Metro 只将 `expo/fetch` 映射到测试适配器；适配器通过公开的 `expo/fetch.js` 入口取得同一原生实现，
 避免按目录缓存的解析结果产生自引用。`native-account-config.test.ts` 使用真实 Metro 解析缓存验证两种导入顺序，
 Vitest 的两种模块名称共用现有 Fetch shim。
-`quality-gate` 聚合范围、轻检查、完整检查与账号闭环，平台构建不能跳过它。
-纯文档只在范围、轻检查成功且后两项明确跳过时通过。PR 使用 head.sha，分支使用
+`build-admission` 汇总构建前检查，双端构建独立消费准入结果；末端 `quality-gate` 汇总全部应执行作业，包含双端构建、Android 冒烟和交付。
+`ci-gate.mjs` 从原始事件核验成功与预期跳过，拒绝缺失、失败、取消和意外跳过。纯文档只在范围、轻检查成功且其余作业明确跳过时通过。PR 使用 head.sha，分支使用
 github.sha；policy 输出、质量检查、门禁、checkout 与构建输入必须对应原始事件同一源码。
 
 | 公共入口 | 输入与输出 | 合同测试 |
 |---|---|---|
 | `.github/scripts/build-policy.mjs`：`buildPolicy({ eventName, event, repository, ref, sha })` | 返回 `{ build, production, sha }`；核验原始事件仓库、分支、删除状态、PR 来源与 40 位 SHA。本仓库分支 push/手动运行允许发布构建；同仓 PR 与 fork 自身运行只检查；fork PR 到 master 只允许无生产凭据构建。CLI 对无法验证的事件失败，不输出事件正文 | `build-policy.test.mjs`、`ci-contract.test.mjs` |
-| `.github/actions/changed-scope/action.yml` | `base-sha` / `head-sha`；返回固定枚举 `functional` / `reason` 与计数 `changed-count`。CI、依赖、构建配置走完整检查；任意目录下的 `*.md` 文件、文档目录、许可与根级 README 截图可以跳过；文档与代码或 CI 混合改动仍走完整检查；无基准或比较失败按功能改动处理 | `changed-scope/self-test.mjs`、轻检查破坏样例 |
+| `.github/actions/changed-scope/action.yml` | `base-sha` / `head-sha` / `account-checks`（auto/all）；返回固定枚举 `functional` / `account` / `reason` 与计数 `changed-count`。账号与共享运行路径触发专项，已知展示路径可省略，未知范围执行；all 强制专项。CI、依赖、构建配置走完整检查；任意目录下的 `*.md` 文件、文档目录、许可与根级 README 截图可以跳过；文档与代码或 CI 混合改动仍走完整检查；无基准或比较失败按功能改动处理 | `changed-scope/self-test.mjs`、轻检查破坏样例 |
 | `.github/scripts/android-account-recovery.mjs` 与 `apps/mobile/native-account-recovery-entry.tsx` | 独立包名、每次生成的测试签名及同源码 SHA。首进程一次领取随机合成凭据，经公共绑定/存储写入读回；强杀并确认退出后，第二进程在同次安装上通过 `restoreAppAccounts()`、真实 Provider 和 ScoreHub `fetchMe()` 认证，禁止再次注入。服务端核对原令牌，失败也清理测试包、端口和服务器；记录固定子步骤、白名单错误分类与清理结果，成功失败都输出领取/拒绝计数和认证布尔值；脱敏证据进入日志与工件，拒绝保存原始异常、logcat 正文或凭据 | `account-recovery.test.mjs`、`ci-contract.test.mjs`、`native-account-{config,fetch,recovery}.test.ts`；真实原生作业另行运行 |
-| `.github/actions/android-build/action.yml` | `source-sha`、字符串布尔 `production`、`signing-mode`、`expected-certificate-sha256`、`optimization-mode`；返回 `artifact-name`。同一入口完成四 ABI Release 编译、签名校验、生产路由冒烟和上传；发布模式独立校验 GITHUB_SHA。现有发布选择 `legacy-debug` 并锁定旧证书，fork 只用 `test-debug`；`release` 私有签名模式仍要求完整 keystore 配置 | `ci-contract.test.mjs`；实际 Gradle 与托管设备另行执行 |
-| `.github/scripts/android-smoke.mjs` | `production` / `native`、APK、明确设备序列号、证据目录。生产检查复用页面路由；主题与日志恢复的强杀重启直接携带目标 VIEW URL，避免导航未就绪时丢失事件。仍要求主题持久化、日志恢复与系统分享通过，失败快照只保留固定页面文案和匿名化控件状态 | `ci-contract.test.mjs` 执行主题检查脚本的延迟启动、旧顺序丢路由和持久化失败样例；真实托管设备另行执行 |
+| `.github/actions/android-build/action.yml` | `source-sha`、字符串布尔 `production`、`signing-mode`、`expected-certificate-sha256`、`optimization-mode`；返回 `artifact-name`、`manifest-digest`、`delivery-name`。同一入口完成四 ABI Release 编译、签名校验和候选工件封存；环境复用 `android-setup`，冒烟和正式交付为独立作业，按准确工件名与摘要消费候选；发布模式独立校验 GITHUB_SHA。现有发布选择 `legacy-debug` 并锁定旧证书，fork 只用 `test-debug`；`release` 私有签名模式仍要求完整 keystore 配置 | `ci-contract.test.mjs`；实际 Gradle 与托管设备另行执行 |
+| `.github/scripts/android-smoke.mjs` | `production` / `native`、APK、明确设备序列号、证据目录。生产检查复用页面路由；主题与日志恢复的强杀重启直接携带目标 VIEW URL，避免导航未就绪时丢失事件。仍要求主题持久化、日志恢复与系统分享通过，设备命令与流程分别位于 `lib/android-device.mjs`、`lib/android-smoke-flow.mjs`。独立 XML 路径杜绝旧快照，空根节点、未生成或不完整 XML 在期限内重试；设备错误、崩溃、断言和超时分别记录，诊断失败不替换首个错误。失败快照只保留固定页面文案和匿名化控件状态 | `android-smoke.test.mjs`、`ci-contract.test.mjs` 覆盖空根恢复、旧 XML、超时、ADB 失败、持久化、分享和诊断失败；真实托管设备另行执行 |
+| `.github/scripts/android-artifact.mjs`：`sealCandidate(directory, sourceSha)`、`verifyCandidate(directory, sourceSha, digest)` | 清单锁定来源、每个文件的 SHA-256、准确文件集合及四 ABI 验证记录。编译只产出一次候选；失败重跑复验原候选，交付名包含验收尝试号 | `android-artifact.test.mjs`、`ci-contract.test.mjs` |
 | `.github/scripts/android_signing.py`：`verify_android_signing(apksigner_output, mode, expected_certificate_sha256=None)` | 仅接受单一签名者的证书 DN / SHA-256，兼容编号标签与 Build Tools 37 的 V1/V2/V3.0 标签；签名者数量若存在必须唯一且为一，重复、混合或未知证书标签失败。来源戳及公钥摘要不替代 APK 证书。`legacy-debug` 必须带合法 pin，任何给定 pin 均严格匹配；`release` 拒绝调试证书。四 ABI 校验器以 verbose 输出复用同一入口，返回同源签名证据与说明，旧调试签名不标为正式签名 | `android_signing.test.py`，含新旧工具格式、额外签名者与四 ABI 验证入口 fixture |
 | `.github/actions/ios-build/action.yml` | `source-sha`、字符串布尔 `production`。Pods 复用 React Native 的 `ENTERPRISE_REPOSITORY` 指向官方 Maven Central；该安装步骤的临时 `CURL_HOME` 统一 HTTP/1.1、连接/传输/低速超时和有限重试，成功失败均清理。正式模式校验 GITHUB_SHA，预留编号、签名 Archive/IPA，先保存制品再提交 TestFlight；测试模式不安装签名、不请求 ASC。私钥、profile 与 keychain 在部分失败时仍清理 | `ci-contract.test.mjs` 使用真实 curl 验证半截下载重试、持续失败退出及配置清理；实际 Xcode、签名与 Apple 处理另行执行 |
 | `.github/scripts/ios-build-number.mjs`：`nextIosBuildNumber(latestBuild, reservedBuilds?)`、`queryReservedIosBuildNumbers(options)`、`reserveIosBuildNumber(env, options?)` | 在全局 iOS 发布锁内取 Apple 最大整数与可信预留最大值加一。查询当前/历史运行的官方仓库 ID、事件、workflow 路径与 SHA；不采信 PR/fork/其它工作流，不下载 artifact 正文。CLI 返回 `build_number` / `artifact_name` / `reservation_path`，预留上传成功后才允许提交 Apple | `ios-build-number.test.mjs`、`ci-contract.test.mjs` |
@@ -1099,7 +1107,7 @@ critical 无论能否解析出公告编号都失败；报告缺字段、条目�
 CI 合同在仓库根目录执行：
 
 ```powershell
-node --test .github/scripts/build-policy.test.mjs .github/scripts/ios-build-number.test.mjs .github/scripts/ci-contract.test.mjs .github/scripts/account-recovery.test.mjs
+node --test .github/scripts/*.test.mjs
 python -B .github/scripts/verify-ios-archive.test.py
 python -B .github/scripts/android_signing.test.py
 ```

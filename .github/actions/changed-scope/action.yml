@@ -1,7 +1,5 @@
 name: Changed scope
-
 description: 仅文档与展示资源走快速路径，CI、依赖与构建配置必须完整检查
-
 inputs:
   base-sha:
     description: 比较基准提交，留空时按当前事件推导
@@ -11,7 +9,10 @@ inputs:
     description: 比较目标提交，留空时使用已检出的 HEAD
     required: false
     default: ""
-
+  account-checks:
+    description: auto runs account recovery for affected or unknown paths; all always runs it
+    required: false
+    default: auto
 outputs:
   functional:
     description: 需要完整检查为 true；无法判定时同样为 true
@@ -22,12 +23,12 @@ outputs:
   changed-count:
     description: 本次比较的变更文件数量
     value: ${{ steps.classify.outputs.changed-count }}
-
+  account:
+    description: Run account recovery
+    value: ${{ steps.classify.outputs.account }}
 runs:
   using: composite
-
   steps:
-    # 判定逻辑在 classify.sh 里，可单独运行（bash -n / self-test.mjs），不依赖 npm 依赖
     - name: Classify changed paths
       id: classify
       shell: bash
@@ -37,4 +38,5 @@ runs:
         SCOPE_PR_BASE: ${{ github.event.pull_request.base.sha }}
         SCOPE_INPUT_BASE: ${{ inputs.base-sha }}
         SCOPE_INPUT_HEAD: ${{ inputs.head-sha }}
+        SCOPE_ACCOUNT_CHECKS: ${{ inputs.account-checks }}
       run: bash "${{ github.action_path }}/classify.sh"

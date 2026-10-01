@@ -55,6 +55,52 @@ function account(id: string): StoredProviderAccountInput {
 }
 
 describe('SecureSessionStore 内置账号兼容', () => {
+  it.each([
+    { mode: 'jwt', value: '', persistable: true },
+    { mode: 'import-token', persistable: true },
+    { mode: 'phi-session', sessionToken: 'token', playerId: '', persistable: true },
+    { mode: 'lxns-oauth', accessToken: '', refreshToken: 'refresh', expiresAt: 1, persistable: true },
+    { mode: 'osu-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: NaN, persistable: true },
+  ])('refuses malformed credentials before writing the vault: $mode', async session => {
+    const input = account('invalid');
+    await expect(createStore().upsertAccount({ ...input, session: session as StoredProviderAccountInput['session'] })).resolves.toBe('');
+    expect((await createStore().loadVault()).accounts).toEqual([]);
+  });
+
+  it.each(['accounts', 'credentials'] as const)('preserves duplicate %s instead of resolving an ambiguous identity', async field => {
+    const store = createStore(); await store.upsertAccount(account('duplicate'));
+    const key = 'rranker.provider.sessions.index.v4';
+    const index = JSON.parse(sqlite.values.get(key)!);
+    index[field].push(index[field][0]);
+    const raw = JSON.stringify(index); sqlite.values.set(key, raw);
+    await expect(store.loadVault()).rejects.toBeInstanceOf(SessionIndexUnrecognizedError);
+    expect(sqlite.values.get(key)).toBe(raw);
+    expect(sqlite.values.get(`${key}.unrecognized`)).toBe(raw);
+  });
+
+  it('serializes preserved-index restoration with clearing the same storage', async () => {
+    const key = 'rranker.provider.sessions.index.v4';
+    await createStore().upsertAccount(account('restored'));
+    sqlite.values.set(`${key}.corrupt`, sqlite.values.get(key)!); sqlite.values.set(key, '{broken');
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    let block = true;
+    const storage = { ...kvStore, getItem: async (name: string) => {
+      const value = await kvStore.getItem(name);
+      if (name === key && block) {
+        block = false; entered(); await new Promise<void>(resolve => { release = resolve; });
+      }
+      return value;
+    } };
+    const restore = restorePreservedSessionIndex(storage); await started;
+    const store = new SecureSessionStore(storage);
+    let cleared = false; const clear = store.clear().then(() => { cleared = true; });
+    await Promise.resolve(); await Promise.resolve(); expect(cleared).toBe(false);
+    release(); await restore; await clear;
+    expect((await store.loadVault()).accounts).toEqual([]);
+  });
+
   it('identifies encrypted credential writes separately from local index commits', async () => {
     const nativeFailure = new Error('native options conversion failed');
     vi.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(nativeFailure);

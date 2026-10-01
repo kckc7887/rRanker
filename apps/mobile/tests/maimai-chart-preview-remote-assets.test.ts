@@ -2,6 +2,7 @@ import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
+import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import {
   MAIMAI_CHART_PREVIEW_ANSWER_SOUND,
   MAIMAI_CHART_PREVIEW_ASSET_BASE,
@@ -24,6 +25,8 @@ const mockFs = vi.hoisted(() => ({
   downloadCalls: [] as string[],
   stagedLocalAssets: [] as string[],
   readAssetTexts: new Map<number, string>(),
+  onReadBytes: vi.fn(async () => {}),
+  writes: [] as string[],
   makeStageDirectory: ((_name: string) => ({ uri: '' })) as (name: string) => { uri: string },
 }));
 
@@ -52,10 +55,12 @@ vi.mock('expo-file-system', () => {
     async bytes() {
       const bytes = mockFs.files.get(this.uri);
       if (!bytes) throw new Error('source does not exist');
+      await mockFs.onReadBytes();
       return Uint8Array.from(bytes);
     }
     create() { mockFs.files.set(this.uri, new Uint8Array()); }
     write(content: string | Uint8Array) {
+      mockFs.writes.push(this.uri);
       mockFs.files.set(this.uri, typeof content === 'string' ? Uint8Array.from(Buffer.from(content)) : Uint8Array.from(content));
     }
     delete() { mockFs.files.delete(this.uri); }
@@ -143,6 +148,8 @@ describe('maimai chart preview remote assets', () => {
     mockFs.downloadCalls.length = 0;
     mockFs.stagedLocalAssets.length = 0;
     mockFs.readAssetTexts.clear();
+    mockFs.onReadBytes.mockReset();
+    mockFs.writes.length = 0;
     mockFs.readAssetTexts.set(1, '<html>');
   });
 
@@ -271,6 +278,20 @@ describe('maimai chart preview remote assets', () => {
     });
     expect(mockFs.downloadCalls).toEqual([TAP.url]);
     expect(mockFs.files.get(stageUri(stagedName))?.byteLength).toBe(TAP.bytes);
+  });
+
+  it('does not recreate cleared preview files after a delayed cache read', async () => {
+    mockFs.remotes.set(TAP.url, TAP_BYTES);
+    mockFs.onReadBytes.mockImplementationOnce(async () => {
+      invalidateResourceWrites('shared');
+      mockFs.files.clear();
+    });
+    await expect(runPlan({
+      remoteCacheDirectory: mockFs.makeStageDirectory('remote') as never,
+      stagedAssets: [{ fileName: TAP.path, url: TAP.url, bytes: TAP.bytes }],
+    })).rejects.toThrow('缓存请求已失效');
+    expect(mockFs.writes).toEqual([]);
+    expect(mockFs.files.size).toBe(0);
   });
 
   it('encodes skins as a data-url script for file:// playback', () => {

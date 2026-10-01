@@ -1,4 +1,3 @@
-import { z } from 'zod';
 import {
   FALLBACK_ARCADE_GAME_TITLES,
   localizeArcadeGameTitleName,
@@ -9,6 +8,10 @@ import {
   type ArcadeShopDetail,
   type ArcadeShopGame,
 } from '@/domain/arcade-shops';
+import { providerErrorFromStatus } from '@/providers/errors';
+import { requestJson } from '@/providers/http-json';
+import { fetch as expoFetch } from 'expo/fetch';
+import { z } from 'zod';
 
 export const NEARCADE_API_BASE = 'https://nearca.de/api';
 
@@ -118,6 +121,16 @@ function mapShopDetail(shop: z.infer<typeof shopSchema>): ArcadeShopDetail {
   };
 }
 
+function requestNearcade<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+  return requestJson({ baseUrl: NEARCADE_API_BASE, path, schema, signal,
+    fetcher: expoFetch as unknown as typeof fetch, label: '机厅查询', totalAttempts: 1,
+    error: status => providerErrorFromStatus(status, {
+      rateLimit: '机厅查询过于频繁，请稍后重试', server: '机厅查询服务暂时不可用',
+      fallback: { code: 'network', message: status => `机厅查询返回 HTTP ${status}` },
+    }),
+  });
+}
+
 export async function fetchNearcadeDiscover(query: DiscoverQuery): Promise<ArcadeShop[]> {
   const params = new URLSearchParams({
     latitude: String(query.latitude),
@@ -127,54 +140,24 @@ export async function fetchNearcadeDiscover(query: DiscoverQuery): Promise<Arcad
     fetchAttendance: 'false',
     includeTimeInfo: 'false',
   });
-  const res = await fetch(`${NEARCADE_API_BASE}/discover?${params.toString()}`, {
-    signal: query.signal,
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) {
-    throw new Error(`nearcade discover failed: HTTP ${res.status}`);
-  }
-  const json: unknown = await res.json();
-  const parsed = discoverResponseSchema.parse(json);
-  return parsed.shops.map(mapShop);
+  return requestNearcade(`/discover?${params.toString()}`, z.unknown().transform(parseDiscoverResponse), query.signal);
 }
 
 export async function fetchNearcadeShop(shopId: number, signal?: AbortSignal): Promise<ArcadeShopDetail> {
   const params = new URLSearchParams({ includeTimeInfo: 'true' });
-  const res = await fetch(`${NEARCADE_API_BASE}/shops/${shopId}?${params.toString()}`, {
-    signal,
-    headers: { Accept: 'application/json' },
-  });
-  if (!res.ok) {
-    throw new Error(`nearcade shop failed: HTTP ${res.status}`);
-  }
-  const json: unknown = await res.json();
-  return parseShopDetailResponse(json);
+  return requestNearcade(`/shops/${shopId}?${params.toString()}`, z.unknown().transform(parseShopDetailResponse), signal);
 }
 
 export async function fetchNearcadeGameTitles(signal?: AbortSignal): Promise<ArcadeGameTitle[]> {
   try {
-    const res = await fetch(`${NEARCADE_API_BASE}/game-titles`, {
-      signal,
-      headers: { Accept: 'application/json' },
-    });
-    if (!res.ok) {
-      throw new Error(`nearcade game-titles failed: HTTP ${res.status}`);
-    }
-    const json: unknown = await res.json();
-    const parsed = gameTitlesResponseSchema.parse(json);
-    return parsed.titles.map((title) => ({
-      id: title.id,
-      key: title.key,
-      name: localizeArcadeGameTitleName(title.key, title.name),
-      seats: title.seats,
-    }));
-  } catch {
+    return await requestNearcade('/game-titles', z.unknown().transform(parseGameTitlesResponse), signal);
+  } catch (error) {
+    if (signal?.aborted) throw error;
     return [...FALLBACK_ARCADE_GAME_TITLES];
   }
 }
 
-/** Exposed for unit tests. */
+/** Decode the upstream contract into the shared shop model. */
 export function parseDiscoverResponse(json: unknown): ArcadeShop[] {
   return discoverResponseSchema.parse(json).shops.map(mapShop);
 }

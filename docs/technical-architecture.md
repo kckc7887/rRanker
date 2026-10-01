@@ -39,6 +39,10 @@ Node.js 最低版本由 `apps/mobile/package.json` 的 `engines` 约束为 22.13
 
 歌曲详情统一为 `/songs/[songId]`：`src/domain/detail-target.ts` 的 `decodeDetailTarget(activeGameId, params)` 把 URL 参数解析成已校验的 `DetailTarget`（舞萌带 `chartType` + `levelIndex`；Phigros/中二/Majdata/Rizline/Muse Dash 用难度索引；Phira 用谱面 ID、TUF 用关卡 ID、osu! 四模式用 `beatmapsetId` + 可选 `beatmapId`/`scoreId`，并按游戏拒绝越界或跨游戏的参数），`app/songs/[songId].tsx` 只按 `target.game` 挂载对应游戏详情页，解析失败显示统一空态。共享卡片的 presentation 携带 `DetailTargetRoute`，跳转经 `detailTargetHref(route)` 生成；`encodeDetailTarget(target)` 是目标到路由的编码入口。
 
+总览路由负责页面编排，`features/game-content/adapters/overview-presentation.ts` 将各游戏载荷转换为评分卡展示参数；舞萌与中二的收藏展示分别由 `MaimaiOverviewPins`、`ChunithmOverviewPins` 承载，共享评分卡不识别游戏。
+歌曲路由中的舞萌业务由 `components/maimai/MaimaiSongDetail.tsx` 管理，包括难度选择、个人曲库动作和成绩展示。
+`app/best-image.tsx` 只做游戏分派，舞萌页面位于 `screens/maimai/MaimaiBestImageScreen.tsx`；筛选与分页由 `use-maimai-best-image-filters.ts` 派生，包内素材、封面和导出资源由 `use-maimai-best-image-resources.ts` 管理。页面继续复用公共成绩图控制器、屏幕壳与导出会话；详细曲库、封面和素材共同决定预览资源代次。
+
 ## 模块职责
 
 | 目录 | 职责 |
@@ -307,9 +311,9 @@ Phigros 预览页在资源准备前读取所选难度的编号谱面清单；多
 舞萌落雪传输及完成刷新，两者通过 `useOverviewOperation` 共享互斥。同步先取消失效查询、
 完成水鱼预刷新与（Rizline 的）曲库尽力刷新，再调用 `refreshGameDataBundle` 并只按它返回的
 终态判定：`success` / `noop` 视为成功，`partial` 按实际失败项提示玩家资料、成绩、最佳成绩或曲库未更新，认证失败提示重新登录；其它终态按公共失败文案提示。每一步等待后与通知前复核前台信号、账号、游戏和操作代次，切换后的旧结果不写新状态；调用方不维护逐游戏 waiter，也不二次读取查询缓存推断后台刷新是否落定。
-`UploadDataSheet` 的账号偏好、二维码输入与任务执行分别由 `useUploadAccountPreferences`、`useUploadQrInput`、`useUploadTaskState` / `useUploadExecution` 管理。唯一后台任务仍是 `uploadTaskController`；关闭或卸载弹层不终止任务，显式取消才结束。
+`UploadDataSheet` 的账号偏好、二维码输入与任务执行分别由 `useUploadAccountPreferences`、`useUploadQrInput`、`useUploadTaskState` / `useUploadExecution` 管理。唯一后台任务由 `services/upload-task-controller.ts` 的 `uploadTaskController` 管理，类型位于 `upload-maimai-types.ts`，业务入口 `upload-maimai-from-friend-code.ts` 保留再导出。每个任务持有自己的取消信号、前台等待与曲库等待；阶段、完成、刷新和通知必须验证发起任务身份。取消立即结束前台等待，迟到曲库与回调不能进入下一任务；关闭或卸载弹层不终止任务，显式取消才结束。上传偏好的读取迁移、保存、删除和清空共用按存储键串行的 `enqueueKeyMutation`；好友码切换以选择代次约束迟到回调，读取目标勾选前不写入上一个好友码的选择。
 上传账号读取失败保留最后一次完整历史列表并提供重试，首次读取失败保持未就绪；
-历史账号选择提交成功后才发布新的好友码与勾选偏好，上传的网络兜底不会吞掉持久化错误。
+历史账号选择提交成功后才发布新的好友码与勾选偏好，上传的网络兜底不会吞掉持久化错误。好友码选择代次独立于任务，旧读取与重试不能覆盖新选择；打开期间账号集合更新不取消正在恢复的偏好，恢复完成时使用当前可写账号。
 
 Kyou 别名的一小时会话缓存位于 `services/phigros-kyou-cache.ts`，查询 Hook 和存储清理均依赖该服务。
 服务通过 `createInflightGuard.share` 共享请求并独立取消消费者，清理使旧请求失效；迟到失败不能清空新缓存。
@@ -553,8 +557,8 @@ MajSimai 输出作为 TypeScript 测试的外部基准。模型、素材与验�
 运行真实内存数据库，CI 的 Node.js 22 满足该要求。
 
 `master` 的分支保护属于 GitHub 仓库配置，不能由工作流文件自动部署。
-发布策略独立核验原始事件、仓库、分支和源码 SHA，并要求该提交的完整质量门禁通过。
-必填状态检查应指向 `quality-gate` 聚合任务；它同时覆盖范围判定、轻检查与完整检查。
+发布策略独立核验原始事件、仓库、分支和源码 SHA，并要求该提交的构建准入检查通过。
+必填状态检查应指向最终 `quality-gate` 聚合任务；它覆盖范围、轻检查、完整质量、应执行的账号专项、构建准入、双端构建和 Android 冒烟与交付。
 
 生产依赖审计由 `scripts/check-production-audit.mjs` 和 `npm run audit:prod` 复核；critical
 及未接受的 high 使门禁失败，当前接受基线为空。`package.json` / lock 对 XML、URI 解码、
@@ -611,7 +615,7 @@ Phigros/Phira 及 RPE 入口，`tsconfig.osu-player.json` 覆盖 osu! 播放入�
 修改后同样需重建 osu!。
 构建器的可选 `licenseBanner` 保留分发许可，`auditModules` 在写出前审计实际依赖。
 `npm run check:generated` 不写文件，从源码重新构建并验证 HTML、player.js、player.bundle
-与交付产物一致。打包成功不代表手机 WebView 播放验收通过。
+与交付产物一致。打包成功不代表手机 WebView 播放验收通过。共享成绩图屏幕的预览与导出 WebView 显式关闭水平和垂直滚动指示器；禁止把原生滚动条捕获到相册图片中。
 
 `npm run benchmark:optimization` 与固定基线比较完整 Simai 帧命令和 RPE Canvas 绘制
 命令，覆盖跳转、暂停、变速、镜像、长 Hold、连接 Slide、Each、Mine、Break 和非单调 SV；
@@ -712,11 +716,8 @@ opened / synchronize / reopened / edited（包含修改目标分支）与手动�
 | 外部 fork PR 到 master | 测试签名 Release APK、无签名 IPA；不读取生产凭据、不提交 TestFlight |
 | 外部 fork PR 到其它分支 | 只做质量检查 |
 
-`changed-scope` 与 `light-check` 并行；`quality` 同时依赖两者成功，有功能或 CI 改动时
-执行一次完整检查，再运行同 SHA 的 `android-account-recovery`。`quality-gate` 始终聚合结果：
-范围或轻检查失败、源码身份不一致、完整检查或账号闭环失败/取消/意外跳过、判定缺失均失败；
-纯文档仅在前两项成功且完整检查和账号闭环明确跳过时通过。
-Android 与 iOS 构建作业均依赖此门禁，仅有功能改动才运行。
+`changed-scope` 与 `light-check` 并行；`quality` 同时依赖两者成功，有功能或 CI 改动时执行完整检查。账号专项按 `account` 范围标志运行；`build-admission` 独立核对原始事件、来源和应执行的质量作业。双端构建只依赖共同准入，互不阻塞发布。
+Android 按编译校验、`android-smoke`、`android-delivery` 顺序运行；末端 `quality-gate` 始终汇总范围、轻检查、完整检查、专项、准入、四个互斥构建作业及 Android 冒烟和交付。`.github/scripts/ci-gate.mjs` 从原始事件重新计算预期：应执行项必须成功，应跳过项必须明确跳过；失败、取消、缺失、意外跳过或意外执行均不能通过。纯文档只运行范围和轻检查。
 
 ### 范围、轻检查与完整质量检查
 
@@ -726,7 +727,8 @@ Android 与 iOS 构建作业均依赖此门禁，仅有功能改动才运行。
 文档目录、许可声明与根级 README 截图全部满足非功能规则时跳过完整检查和构建；
 CI、依赖、构建配置及应用资源改动
 必须完整检查。无基准、基准不可取或 diff 失败按有功能改动处理；分类任务自身失败则阻断门禁。
-`GITHUB_OUTPUT` 仅包含固定枚举和计数 `functional`、`reason`、`changed-count`。
+`GITHUB_OUTPUT` 仅包含固定枚举和计数 `functional`、`account`、`reason`、`changed-count`。
+账号、认证、持久化、公共组件、启动生命周期、依赖、原生配置和 CI 变更触发账号专项；只有已知游戏展示、主题、素材与播放器路径可以省略专项，未知路径或无法比较时执行。手动输入 `account-checks=auto/all`，`all` 强制完整质量检查及账号专项。
 路径写日志前转义控制字符，写 summary 前再转义 HTML；改名同时枚举旧、新路径，不能隐藏代码删除。
 
 轻检查只在 `.github/scripts` 安装固定的真实 YAML 解析器 `yaml` 2.9.0，不安装移动端依赖。
@@ -734,13 +736,13 @@ CI、依赖、构建配置及应用资源改动
 `.mjs` / `.cjs` 的 `node --check` 与分类器自检；缺少 bash 或 pwsh 不静默跳过。
 故意破坏的样例证明语法与分类错误能阻断。此阶段同时执行 `build-policy.test.mjs`、
 `ios-build-number.test.mjs`、`ci-contract.test.mjs`、`account-recovery.test.mjs`、
+`android-smoke.test.mjs`、`android-artifact.test.mjs`、
 `verify-ios-archive.test.py` 与 `android_signing.test.py`，覆盖事件矩阵、伪造来源、门禁失败、
 预留编号、部分签名文件清理、制品身份，以及受控账号闭环的错误令牌与重复领取拒绝。
 
 完整检查在 `apps/mobile` 使用 Node.js 22 与 `npm ci`，依次执行 lint、typecheck、
 全部单元/UI 测试、架构检查、`check:generated`、`npm audit` 和 `audit:prod`。
-生成物检查从当前源码重新构建但不写文件；通过后 `player-artifacts.mjs` 保存逐文件摘要
-与同 SHA 的播放器制品，保留 7 天。完整检查不执行 Expo prebuild 或原生编译。
+生成物检查从当前源码重新构建并比对正式生成物，不写文件。完整检查不执行 Expo prebuild 或原生编译。
 生产审计分执行、解析校验、完整性与政策四层：异常退出、空报告、字段或计数不自洽、
 未知严重级别、无法解析根因的空 via/悬空引用/成环都失败；critical 无条件失败，
 未接受的 high 失败，接受记录的包名、版本与分类必须符合锁文件，当前接受基线为空。
@@ -765,15 +767,15 @@ Android 明确选择 `legacy-debug`，沿用原 Expo 签名，并要求证书 SH
 
 ### Android 与 iOS 制品
 
-`.github/actions/android-build/action.yml` 是 APK 的公共构建入口：Node.js 22、Temurin JDK 17、
-Android SDK、Expo prebuild 与 Gradle，使用 A 优化模式并复用 ABI splits 插件，一次产生
+`.github/actions/android-setup/action.yml` 为正式构建、账号专项与手动诊断统一安装 Node.js 22、Temurin JDK 17、Android SDK、Gradle 和 npm 依赖。
+`.github/actions/android-build/action.yml` 执行 Expo prebuild 与 Gradle，使用 A 优化模式并复用 ABI splits 插件，一次产生
 armeabi-v7a、arm64-v8a、x86、x86_64 四份 APK。版本与版本代码来自 app.json，不自动修改。
 `verify-android-apks.py` 核验输出清单、每包 ABI、Manifest 包名/版本、统一证书、正式包
 所选签名模式、旧证书身份、优化配置和 Record 注解规则，并保存源码 SHA、文件及证书摘要。
 校验选择已安装的最高稳定 Build Tools 并输出版本，使用 `apksigner verify --verbose --print-certs`；
 证书解析兼容编号签名者和 Build Tools 37 的 V1/V2/V3.0 单签名者标签，要求签名者数量为一，
-拒绝重复、混合或未知证书标签，来源戳证书与公钥摘要不参与 APK 签名身份判断。生产路由
-模拟器冒烟通过后上传 APK，保留 14 天；脱敏设备结果独立保留 7 天，临时 keystore 始终清理。
+拒绝重复、混合或未知证书标签，来源戳证书与公钥摘要不参与 APK 签名身份判断。编译校验后先保存候选工件，`android-artifact.mjs` 封存全部文件摘要、四 ABI 校验结果与来源。构建作业输出准确工件名和清单摘要，冒烟及交付按该输出下载、复验，失败重跑复用原候选，不重构工件名或重新编译已成功作业。通过生产路由冒烟后交付 APK；候选与最终 APK 保留 14 天，脱敏设备结果保留 7 天。交付名含本次验收尝试号，临时 keystore 始终清理。
+`android-smoke.mjs` 保留命令行入口，设备命令与 XML 解析在 `lib/android-device.mjs`，流程在 `lib/android-smoke-flow.mjs`。每次抓取使用独立 XML 路径，空根节点、尚未生成或不完整 XML 在统一检查期限内重试，绝不读取上一快照。设备命令、应用崩溃、业务断言和等待超时分别记录；失败后采集诊断不能覆盖首个错误。
 系统分享验收精确识别 framework 的 `ChooserActivity` 与官方 `com.android.intentresolver` 包的 `ChooserActivity` / `ChooserActivityLauncher` 短名和全名，拒绝应用别名、其它 Activity 及组件后缀；分享界面成为顶层活动后，等待该系统包出现已启用且有有效面积的 UI 节点再发送返回键，随后必须回到本应用。
 fork 测试 APK 同样为 Release 优化构建，使用调试签名。现有 Android 发布路径与旧包保持
 证书一致；默认调试私钥属于公开模板材料，不能获得私有发行密钥的身份安全保证。

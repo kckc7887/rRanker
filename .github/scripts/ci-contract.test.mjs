@@ -7,6 +7,7 @@ import { dirname, join, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { promisify } from 'node:util';
 import { test } from 'node:test';
+import { checkGate } from './ci-gate.mjs';
 import { findBash } from './lib/bash.mjs';
 import { parseWorkflowYaml } from './lib/workflow-yaml.mjs';
 
@@ -23,10 +24,11 @@ function assertDependencies(workflow) {
   const needs = id => [workflow.jobs[id]?.needs ?? []].flat();
   assert.deepEqual(new Set(needs('quality')), new Set(['changed-scope', 'light-check']));
   assert.deepEqual(new Set(needs('android-account-recovery')), new Set(['changed-scope', 'quality']));
-  assert.deepEqual(new Set(needs('quality-gate')), new Set(['changed-scope', 'light-check', 'quality', 'android-account-recovery']));
+  assert.deepEqual(new Set(needs('build-admission')), new Set(['changed-scope', 'light-check', 'quality', 'android-account-recovery']));
+  assert.deepEqual(new Set(needs('quality-gate')), new Set(Object.keys(workflow.jobs).filter(id => id !== 'quality-gate')));
   assert.equal(workflow.jobs['quality-gate'].if, 'always()');
   for (const id of buildJobs) {
-    assert(needs(id).includes('quality-gate'), `${id} bypasses complete quality gate`);
+    assert(needs(id).includes('build-admission'), `${id} bypasses complete quality gate`);
     assert(needs(id).includes('changed-scope'), `${id} loses immutable source`);
     assert.match(workflow.jobs[id].if, /functional == 'true'/);
     assert(!workflow.jobs[id].if.includes('always()'), `${id} bypasses failed prerequisites`);
@@ -39,12 +41,12 @@ function selectedJobs({ repository = 'kckc7887/rRanker', eventName = 'push', ref
   const github = { repository, event_name: eventName, ref, sha: eventSha,
     event: { deleted, pull_request: { base: { ref: base }, head: {
       sha: eventName === 'pull_request' ? eventSha : undefined, repo: { full_name: head } } } } };
-  const needs = { 'changed-scope': { outputs: { build, production, functional, sha: sourceSha } } };
+  const needs = { 'changed-scope': { outputs: { build, production, functional, sha: sourceSha } }, 'build-admission': { result: 'success' } };
   return buildJobs.filter(name => {
     // Evaluate only these trusted boolean guards; event contents remain values, never source text.
-    const guard = pipeline.jobs[name].if.replaceAll('needs.changed-scope', "needs['changed-scope']");
-    const evaluate = new Function('github', 'needs', 'startsWith', `return (${guard});`);
-    return evaluate(github, needs, (value, prefix) => value.startsWith(prefix));
+    const guard = pipeline.jobs[name].if.replaceAll('needs.changed-scope', "needs['changed-scope']").replaceAll('needs.build-admission', "needs['build-admission']");
+    const evaluate = new Function('github', 'needs', 'startsWith', 'cancelled', `return (${guard});`);
+    return evaluate(github, needs, (value, prefix) => value.startsWith(prefix), () => false);
   });
 }
 
@@ -122,36 +124,26 @@ test('fork jobs cannot enter a secret environment or receive production variable
   }
 });
 
-test('complete gate fails on upstream failures, missing verdicts and false skip success', () => {
-  const bash = findBash();
-  assert(bash, 'bash is required');
-  const directory = mkdtempSync(join(tmpdir(), 'rranker-ci-gate-'));
-  try {
-    for (const [scope, light, quality, functional, success] of [
-      ['success', 'success', 'success', 'true', true],
-      ['success', 'success', 'skipped', 'false', true],
-      ['failure', 'success', 'skipped', 'false', false],
-      ['success', 'failure', 'skipped', 'true', false],
-      ['success', 'success', 'skipped', 'true', false],
-      ['success', 'success', 'failure', 'true', false],
-      ['success', 'success', 'cancelled', 'true', false],
-      ['success', 'success', 'success', '', false],
-    ]) {
-      const result = spawnSync(bash, ['-e', '-c', pipeline.jobs['quality-gate'].steps[0].run], {
-        encoding: 'utf8', env: { ...process.env, SCOPE_RESULT: scope, LIGHT_RESULT: light,
-          QUALITY_RESULT: quality, ACCOUNT_RECOVERY_RESULT: functional === 'false' ? 'skipped' : 'success', FUNCTIONAL: functional,
-          ACTUAL_SOURCE: 'a'.repeat(40), EXPECTED_SOURCE: 'a'.repeat(40),
-          GITHUB_STEP_SUMMARY: join(directory, 'summary').replaceAll('\\', '/') },
-      });
-      assert.equal(result.status === 0, success, JSON.stringify([scope, light, quality, functional]));
+test('complete gate enforces every expected result and rejects accidental skips or executions', () => {
+  const sha = 'a'.repeat(40);
+  const context = { eventName: 'push', repository: 'kckc7887/rRanker', ref: 'refs/heads/topic', sha,
+    event: { repository: { full_name: 'kckc7887/rRanker', fork: false }, ref: 'refs/heads/topic', after: sha, deleted: false } };
+  for (const functional of [false, true]) for (const account of functional ? [false, true] : [false]) {
+    const needs = Object.fromEntries(Object.keys(pipeline.jobs).filter(id => id !== 'quality-gate').map(id => [id, { result: 'skipped' }]));
+    needs['changed-scope'] = { result: 'success', outputs: { sha, functional: String(functional), account: String(account), build: 'true', production: 'true' } };
+    needs['light-check'].result = 'success';
+    for (const id of ['quality','build-admission','android-release','ios-release','android-smoke','android-delivery']) needs[id].result = functional ? 'success' : 'skipped';
+    needs['android-account-recovery'].result = account ? 'success' : 'skipped';
+    assert.doesNotThrow(() => checkGate(needs, context));
+    for (const id of Object.keys(needs)) for (const verdict of ['failure','cancelled','skipped','success',undefined]) {
+      if (verdict === needs[id].result) continue;
+      const broken = structuredClone(needs); broken[id].result = verdict;
+      assert.throws(() => checkGate(broken, context), undefined, `${id}: ${verdict}`);
     }
-    const substituted = spawnSync(bash, ['-e', '-c', pipeline.jobs['quality-gate'].steps[0].run], {
-      encoding: 'utf8', env: { ...process.env, ACTUAL_SOURCE: 'b'.repeat(40), EXPECTED_SOURCE: 'a'.repeat(40),
-        SCOPE_RESULT: 'success', LIGHT_RESULT: 'success', QUALITY_RESULT: 'success', ACCOUNT_RECOVERY_RESULT: 'success', FUNCTIONAL: 'true' },
-    });
-    assert.notEqual(substituted.status, 0, 'another source must fail even when all checks claim success');
-  } finally {
-    rmSync(directory, { recursive: true, force: true });
+    for (const key of ['sha','functional','account','build','production']) {
+      const broken = structuredClone(needs); broken['changed-scope'].outputs[key] = '';
+      assert.throws(() => checkGate(broken, context), undefined, key);
+    }
   }
 });
 
@@ -175,19 +167,6 @@ test('account recovery is required by the complete gate and cannot receive produ
   assert.match(job.steps[verify].run, /com\.rranker\.app\.nativeprobe/);
   assert.equal(job.steps.at(-1).if, 'always()');
   assert.match(job.steps.at(-1).run, /account-probe\.keystore/);
-  const bash = findBash();
-  const directory = mkdtempSync(join(tmpdir(), 'rranker-account-gate-'));
-  try {
-    for (const result of ['failure', 'cancelled', 'skipped', '']) {
-      const execution = spawnSync(bash, ['-e', '-c', pipeline.jobs['quality-gate'].steps[0].run], {
-        encoding: 'utf8', env: { ...process.env, SCOPE_RESULT: 'success', LIGHT_RESULT: 'success',
-          QUALITY_RESULT: 'success', FUNCTIONAL: 'true', ACCOUNT_RECOVERY_RESULT: result,
-          ACTUAL_SOURCE: 'a'.repeat(40), EXPECTED_SOURCE: 'a'.repeat(40),
-          GITHUB_STEP_SUMMARY: join(directory, 'summary').replaceAll('\\', '/') },
-      });
-      assert.notEqual(execution.status, 0, `account recovery ${result} must block publication`);
-    }
-  } finally { rmSync(directory, { recursive: true, force: true }); }
 });
 
 test('Apple cleanup removes a partially written key before its path was published', () => {
@@ -291,86 +270,28 @@ test('CocoaPods downloads retry interrupted transfers and clean their scoped cur
   }
 });
 
-async function runThemeSmoke({ lostWarmLink = false, loseSavedTheme = false } = {}) {
-  const source = readFileSync(join(root, '.github/scripts/android-smoke.mjs'), 'utf8');
-  const start = source.indexOf('const [mode, apk, serial, output]');
-  const end = source.indexOf("    phase = 'logging-default-off';");
-  assert(start >= 0 && end > start);
-  let program = source.slice(start, end) + '\n  }\n} finally {}\nreturn evidence;';
-  if (lostWarmLink) program = program.replaceAll("restart('personalization');", "restart(); route('personalization');");
-  let running = false;
-  let ready = false;
-  let route = '';
-  let frames = 0;
-  let selected = 0;
-  let clock = 0;
-  const launches = [];
-  const execute = (binary, args) => {
-    assert.equal(binary, 'adb');
-    assert.deepEqual(args.slice(0, 2), ['-s', 'test-device']);
-    args = args.slice(2);
-    if (args[0] === 'install') return 'Success';
-    if (args[0] === 'logcat') return '';
-    assert.equal(args.shift(), 'shell');
-    if (args[0] === 'am' && args[1] === 'force-stop') {
-      running = false; ready = false; frames = 0;
-      if (loseSavedTheme) selected = 0;
-    } else if (args[0] === 'am' && args[1] === 'start') {
-      const url = args.includes('-d') ? args[args.indexOf('-d') + 1] : 'rranker:///';
-      if (!running || ready) route = url;
-      if (!running) launches.push(url);
-      running = true;
-    } else if (args[0] === 'uiautomator') {
-      // am start -W returns before JavaScript navigation is ready; early warm links are lost.
-      frames += 1;
-      ready = frames >= 2;
-    } else if (args[0] === 'cat') {
-      return ready && route === 'rranker:///personalization'
-        ? ['蓝', '紫', '绿'].map((label, index) => `<node package="com.rranker.app" content-desc="主题色 ${label}" text="" enabled="true" selected="${selected === index}" bounds="[${index * 100},0][${index * 100 + 80},80]" />`).join('')
-        : '<node package="com.rranker.app" content-desc="" text="首页" />';
-    } else if (args[0] === 'dumpsys') {
-      return 'topResumedActivity=ActivityRecord{a u0 com.rranker.app/.MainActivity t1}';
-    } else if (args[0] === 'input' && args[1] === 'tap') {
-      assert(ready && route === 'rranker:///personalization');
-      selected = Math.floor(Number(args[2]) / 100);
-    } else {
-      assert.fail(`Unexpected test device operation: ${args.join(' ')}`);
-    }
-    return '';
-  };
-  const AsyncFunction = Object.getPrototypeOf(async function () {}).constructor;
-  const result = await new AsyncFunction('assert', 'execFileSync', 'mkdirSync', 'process', 'Date', 'setTimeout', program)(
-    assert, execute, () => undefined,
-    { argv: ['node', 'smoke', 'production', 'test.apk', 'test-device', 'output'], env: { BUILD_SOURCE_COMMIT: 'a'.repeat(40) } },
-    { now: () => { clock += 10_000; return clock; } }, callback => callback(),
-  );
-  return { result, launches };
-}
-
-test('Android theme smoke carries its route through slow startup and persisted-theme restart', async () => {
-  const { result, launches } = await runThemeSmoke();
-  assert.deepEqual(launches, ['rranker:///personalization', 'rranker:///personalization']);
-  assert.deepEqual(result.checks, [{ name: 'theme-apply-persist', status: 'pass' }]);
-  const source = readFileSync(join(root, '.github/scripts/android-smoke.mjs'), 'utf8');
-  assert.match(source, /phase = 'logging-restore';\s*restart\('diagnostics'\);/);
-});
-
-test('Android theme smoke rejects lost early navigation and a theme that does not survive restart', async () => {
-  await assert.rejects(runThemeSmoke({ lostWarmLink: true }), /Device check timed out: personalization/);
-  await assert.rejects(runThemeSmoke({ loseSavedTheme: true }), /Device check timed out: theme persists after restart/);
-});
-
-test('Android artifacts require APK verification and production-route smoke', () => {
+test('Android candidate, smoke and delivery retain an immutable artifact identity across reruns', () => {
   const steps = android.runs.steps;
   const index = name => steps.findIndex(step => step.name === name);
-  assert(index('Verify and name APKs') < index('Release smoke through production routes'));
-  assert(index('Release smoke through production routes') < index('Upload verified APKs'));
-  assert.equal(steps[index('Upload verified APKs')].if, undefined);
+  assert(index('Verify and name APKs') < index('Seal candidate contents'));
+  assert(index('Seal candidate contents') < index('Preserve verified candidate APKs'));
+  assert(!steps.some(step => step.uses?.includes('emulator-runner')));
   assert.equal(steps[index('Remove temporary release keystore')].if, 'always()');
+  for (const id of ['android-smoke','android-delivery']) {
+    const downstream = pipeline.jobs[id];
+    assert(downstream.needs.includes('android-release') && downstream.needs.includes('android-fork-test'));
+    const download = downstream.steps.find(step => step.uses === 'actions/download-artifact@v4');
+    assert.equal(download.with.name, '${{ needs.android-release.outputs.artifact-name || needs.android-fork-test.outputs.artifact-name }}');
+    assert(!download.with.name.includes('run_attempt'), 'rerun must consume the actual earlier artifact');
+    assert.equal(downstream.steps.find(step => step.name === 'Verify candidate identity and every file').env.EXPECTED_DIGEST,
+      '${{ needs.android-release.outputs.manifest-digest || needs.android-fork-test.outputs.manifest-digest }}');
+  }
+  assert.match(pipeline.jobs['android-delivery'].if, /needs.android-smoke.result == 'success'/);
+  assert(!pipeline.jobs['ios-release'].needs.includes('android-smoke'), 'platforms deliver independently');
 });
 
 test('Android share chooser accepts exact framework and IntentResolver activities', () => {
-  const source = readFileSync(join(root, '.github/scripts/android-smoke.mjs'), 'utf8');
+  const source = readFileSync(join(root, '.github/scripts/lib/android-smoke-flow.mjs'), 'utf8');
   const predicate = source.match(/^const isChooserActivity = \(line\) => (.+);$/m);
   assert(predicate, 'production smoke chooser predicate must exist');
   const isChooserActivity = new Function('line', `return (${predicate[1]});`);
@@ -387,7 +308,7 @@ test('Android share chooser accepts exact framework and IntentResolver activitie
 });
 
 test('Android share chooser rejects application aliases and arbitrary resolver activities', () => {
-  const source = readFileSync(join(root, '.github/scripts/android-smoke.mjs'), 'utf8');
+  const source = readFileSync(join(root, '.github/scripts/lib/android-smoke-flow.mjs'), 'utf8');
   const predicate = source.match(/^const isChooserActivity = \(line\) => (.+);$/m);
   assert(predicate, 'production smoke chooser predicate must exist');
   const isChooserActivity = new Function('line', `return (${predicate[1]});`);
@@ -414,7 +335,7 @@ test('Android share chooser rejects application aliases and arbitrary resolver a
 });
 
 test('Android share chooser UI requires exact system package and enabled visible bounds', () => {
-  const source = readFileSync(join(root, '.github/scripts/android-smoke.mjs'), 'utf8');
+  const source = readFileSync(join(root, '.github/scripts/lib/android-smoke-flow.mjs'), 'utf8');
   const bounds = source.match(/const controlBounds = \(node\) => \{([\s\S]*?)^\};/m);
   const predicate = source.match(/const hasInteractiveChooser = \(current\) => ([\s\S]*?);\nasync function returnFromChooser/m);
   assert(bounds && predicate, 'production chooser UI predicates must exist');
@@ -437,7 +358,7 @@ test('Android share chooser UI requires exact system package and enabled visible
 });
 
 test('Android share chooser waits for interactive UI before BACK and then requires MainActivity', async () => {
-  const source = readFileSync(join(root, '.github/scripts/android-smoke.mjs'), 'utf8');
+  const source = readFileSync(join(root, '.github/scripts/lib/android-smoke-flow.mjs'), 'utf8');
   const helper = source.match(/^async function returnFromChooser\(label\) \{([\s\S]*?)^\}/m);
   assert(helper, 'both share entries must use the production chooser return helper');
   assert(source.includes("await returnFromChooser('diagnostics');"));

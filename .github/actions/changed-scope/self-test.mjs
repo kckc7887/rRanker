@@ -88,7 +88,7 @@ function parseOutputs(text) {
   return outputs;
 }
 
-function classify(repo, { base = '', headSha = '' } = {}) {
+function classify(repo, { base = '', headSha = '', accountChecks = 'auto' } = {}) {
   const outputDirectory = mkdtempSync(join(scenarioRoot, 'out-'));
   const outputPath = join(outputDirectory, 'output.txt');
   const summaryPath = join(outputDirectory, 'summary.md');
@@ -106,6 +106,7 @@ function classify(repo, { base = '', headSha = '' } = {}) {
       SCOPE_PR_BASE: '',
       SCOPE_INPUT_BASE: base,
       SCOPE_INPUT_HEAD: headSha,
+      SCOPE_ACCOUNT_CHECKS: accountChecks,
     },
   });
   const outputText = readFileSync(outputPath, 'utf8');
@@ -123,9 +124,10 @@ function classify(repo, { base = '', headSha = '' } = {}) {
 function expectVerdict(label, run, expected) {
   expectEqual(`${label}：退出码`, run.status, 0);
   expectEqual(`${label}：functional`, run.outputs.functional, expected.functional);
+  expectEqual(`${label}：account`, run.outputs.account, expected.account ?? expected.functional);
   expectEqual(`${label}：reason`, run.outputs.reason, expected.reason);
   expectEqual(`${label}：changed-count`, run.outputs['changed-count'], expected.count);
-  expectEqual(`${label}：输出键`, Object.keys(run.outputs).join(','), 'functional,reason,changed-count');
+  expectEqual(`${label}：输出键`, Object.keys(run.outputs).join(','), 'functional,account,reason,changed-count');
 }
 
 console.log('changed-scope 分类器自检');
@@ -288,6 +290,30 @@ for (const [label, otherPath] of [
   expectTrue('含换行与标记字符的文档路径：summary 里转义后仍可读', run.summary.includes('docs/a\\n::error::injected.md'), run.summary);
   expectTrue('含换行与标记字符的文档路径：summary 对尖括号与 & 做了 HTML 转义', run.summary.includes('docs/a&lt;b&gt;&amp;c.md'), run.summary);
   expectTrue('含换行与标记字符的文档路径：summary 里没有未转义的原文', !run.summary.includes('docs/a<b>&c.md'), run.summary);
+}
+
+for (const [path, account] of [
+  ['apps/mobile/src/components/maimai/SongCard.tsx', 'false'],
+  ['apps/mobile/src/components/common/AccountSelector.tsx', 'true'],
+  ['apps/mobile/src/components/CachedTabScreen.tsx', 'true'],
+  ['apps/mobile/src/state/app-lifecycle-core.ts', 'true'],
+  ['apps/mobile/src/storage/secure-session-store.ts', 'true'],
+  ['apps/mobile/src/providers/http.ts', 'true'],
+  ['apps/mobile/package-lock.json', 'true'],
+  ['apps/mobile/plugins/with-native.js', 'true'],
+  ['.github/scripts/android-smoke.mjs', 'true'],
+  ['unknown/runtime.ts', 'true'],
+]) {
+  const repo = createRepo({ 'README.md': '# base\n' });
+  const base = git(repo, ['rev-parse', 'HEAD']).trim();
+  writeFiles(repo, { [path]: 'change\n' }); commitAll(repo, 'scope');
+  expectVerdict(path, classify(repo, { base }), { functional: 'true', account, reason: 'functional', count: '1' });
+}
+{
+  const repo = createRepo({ 'README.md': '# base\n' });
+  const base = git(repo, ['rev-parse', 'HEAD']).trim();
+  expectVerdict('手动全量专项', classify(repo, { base, accountChecks: 'all' }), { functional: 'true', account: 'true', reason: 'no-changes', count: '0' });
+  expectTrue('无效专项参数失败', classify(repo, { base, accountChecks: 'invalid' }).status !== 0);
 }
 
 if (failures.length) {
