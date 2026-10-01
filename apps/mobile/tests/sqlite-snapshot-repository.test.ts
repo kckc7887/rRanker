@@ -30,6 +30,17 @@ describe('SqliteSnapshotRepository schema migration', () => {
     sqlite.db.runAsync.mockClear();
   });
 
+  it('rejects structurally damaged current snapshots while preserving rows', async () => {
+    const repository = new SqliteSnapshotRepository();
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 5, payload: '{"records":null}' });
+    await expect(repository.getLatest('player')).resolves.toBeNull();
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 1, payload: '{"songs":[{}]}' });
+    await expect(repository.getLatestCatalog()).resolves.toBeNull();
+    expect(sqlite.db.runAsync).not.toHaveBeenCalled();
+    sqlite.db.getFirstAsync.mockRejectedValue(new Error('database unreadable'));
+    await expect(repository.getLatest('player')).rejects.toThrow('database unreadable');
+  });
+
   it('keeps an older score snapshot instead of deleting it', async () => {
     sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 1, payload: '{"player":1}' });
     const repository = new SqliteSnapshotRepository();

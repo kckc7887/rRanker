@@ -111,7 +111,7 @@ describe('Chunithm personal library', () => {
     await fireEvent.press(screen.getByText('练习谱面 · MASTER'));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: '3', levelIndex: '3' },
+      params: { songId: '3', levelIndex: '3', gameId: 'chunithm' },
     });
   });
 });

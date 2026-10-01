@@ -161,7 +161,7 @@ export class ScoreHubAccountStore {
   private readonly credentialIo: Pick<LargeSecureValueStore, 'read' | 'write' | 'delete' | 'createReference'>;
   constructor(
     private readonly storage: KeyValueStore = Storage,
-    secrets = new LargeSecureValueStore(),
+    secrets: Pick<LargeSecureValueStore, 'read' | 'write' | 'delete' | 'createReference'> = new LargeSecureValueStore(),
   ) {
     const io = async <T>(code: SessionPersistenceError['code'], operation: () => Promise<T>): Promise<T> => {
       try { return await operation(); } catch (cause) {
@@ -429,22 +429,38 @@ export class ScoreHubAccountStore {
 
   async clear(): Promise<void> {
     await this.enqueue(async () => {
-      await this.readAll();
-      await this.writeAll({ ...EMPTY_ALL, accounts: {} });
+      await this.removeIndexedAccounts();
       await deleteLegacyAccountKeys();
     });
   }
 
   /** 删除指定好友码的本地 JWT 条目。 */
-  async remove(friendCode: string): Promise<ScoreHubAccountsState> {
-    return this.enqueue(async () => {
-      const code = friendCode.trim();
+  async remove(friendCode: string): Promise<void> {
+    return this.enqueue(() => this.removeIndexedAccounts(friendCode.trim()));
+  }
+
+  private async removeIndexedAccounts(code?: string): Promise<void> {
+    const raw = await this.indexIo.getItem(ACCOUNT_INDEX_KEY);
+    if (raw === null) {
       const state = await this.readAll();
+      if (code === undefined) {
+        await this.writeAll({ ...EMPTY_ALL, accounts: {} });
+        return;
+      }
       if (code && state.accounts[code]) delete state.accounts[code];
       if (state.activeFriendCode === code) state.activeFriendCode = Object.keys(state.accounts)[0] ?? '';
       await this.writeAll(state);
-      return state;
-    });
+      return;
+    }
+    const index = this.parseExistingIndex(raw);
+    const removed = Object.values(index.accounts).filter(entry => code === undefined || entry.friendCode === code);
+    for (const entry of removed) delete index.accounts[entry.friendCode];
+    index.activeFriendCode = resolveActiveFriendCode(index.activeFriendCode, index.accounts);
+    await this.indexIo.setItem(ACCOUNT_INDEX_KEY, JSON.stringify(index));
+    const retained = new Set(Object.values(index.accounts).map(entry => entry.tokenRef));
+    for (const entry of removed) {
+      if (!retained.has(entry.tokenRef)) await this.credentialIo.delete(entry.tokenRef).catch(() => undefined);
+    }
   }
 }
 

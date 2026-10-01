@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ProviderError, providerErrorFromStatus } from '@/providers/errors';
-import { readProviderResponseBytes, requestJson, retryAfterMs } from '@/providers/http-json';
+import { readProviderResponseBytes, requestJson, requestProviderResponse, retryAfterMs } from '@/providers/http-json';
 import { SessionPersistenceError } from '@/domain/session-vault';
 
 const schema = z.object({ ok: z.boolean() });
@@ -23,6 +23,13 @@ function failingFetcher(status: number, headers: Record<string, string> = {}) {
 }
 
 describe('公共请求执行器的尝试次数合同', () => {
+  it('协议可读取非成功状态，但仍遵守正文预算与单次请求', async () => {
+    const fetcher = vi.fn(async () => new Response('body', { status: 500 }));
+    await expect(requestProviderResponse(options({ fetcher, totalAttempts: 1,
+      acceptStatus: () => true, maxResponseBytes: 2 }), async response => ({ ok: Boolean(await response.text()) })))
+      .rejects.toMatchObject({ code: 'upstream_schema' });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it('成功响应的凭据提交失败保留本机阶段且不重新发网络请求', async () => {
     const error = new SessionPersistenceError('credential_storage', { cause: new Error('native secure storage failure') });
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ ok: true })));

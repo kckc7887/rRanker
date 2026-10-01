@@ -7,7 +7,8 @@ export type Difficulty =
   | 'remaster'
   | 'utage'
   | 'unknown';
-export type DataSourceKind = 'rizline' | 'rizline-official' | 'majdata-net' | 'fixture' | 'diving-fish' | 'lxns' | 'dxrating' | 'kyou' | 'tuf' | 'musedash' | 'phira' | 'osu' | 'local' | 'generated' | 'cache';
+export const DATA_SOURCE_KINDS = ['rizline', 'rizline-official', 'majdata-net', 'fixture', 'diving-fish', 'lxns', 'dxrating', 'kyou', 'tuf', 'musedash', 'phira', 'osu', 'local', 'generated', 'cache'] as const;
+export type DataSourceKind = typeof DATA_SOURCE_KINDS[number];
 
 export interface DataSource {
   kind: DataSourceKind;

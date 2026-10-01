@@ -188,7 +188,7 @@ export function LxnsLoginPanel({
         onPress={() => void openLxnsAuthorize()}
         style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
       >
-        <Text style={styles.primaryText}>前往落雪授权</Text>
+        <Text style={[styles.primaryText, { color: theme.onAccent }]}>前往落雪授权</Text>
       </Pressable>
       <Text style={styles.hint}>
         同意授权后将自动返回并绑定。

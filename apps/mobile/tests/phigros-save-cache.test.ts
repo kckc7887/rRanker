@@ -1,7 +1,6 @@
 import { fixtureSource } from '@/fixtures/sanitized';
 import type { PhigrosGameDataPayload } from '@/services/phigros-save-cache';
 import { PhigrosSaveCache, stalePhigrosPayload } from '@/services/phigros-save-cache';
-import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 vi.mock('expo-sqlite', () => ({
   openDatabaseAsync: vi.fn(async () => ({
@@ -36,14 +35,24 @@ function makePayload(overrides: Partial<PhigrosGameDataPayload> = {}): PhigrosGa
 
 function makeRepository(store: Map<string, unknown>) {
   return {
-    getResource: vi.fn(async (key: string) => store.get(key) ?? null),
-    saveResource: vi.fn(async (key: string, _version: number, _updatedAt: string, value: unknown) => {
+    async getResource<T>(key: string): Promise<T | null> { return (store.get(key) as T | undefined) ?? null; },
+    async saveResource(key: string, _version: number, _updatedAt: string, value: unknown, assertCurrent?: () => void) {
+      assertCurrent?.();
       store.set(key, value);
-    }),
-  } as unknown as SqliteSnapshotRepository;
+    },
+  };
 }
 
 describe('PhigrosSaveCache', () => {
+  it.each([
+    {}, { ...makePayload(), records: [{}] }, { ...makePayload(), progress: { cleared: null } },
+    { ...makePayload(), source: { kind: 'unknown' } },
+  ])('rejects damaged payloads without deleting the stored value', async damaged => {
+    const store = new Map<string, unknown>([['phigros-save:player', damaged]]);
+    const cache = new PhigrosSaveCache(makeRepository(store));
+    await expect(cache.load('player')).resolves.toBeNull();
+    expect(store.get('phigros-save:player')).toBe(damaged);
+  });
   it('returns null when nothing was persisted yet', async () => {
     const cache = new PhigrosSaveCache(makeRepository(new Map()));
     await expect(cache.load('phi-player')).resolves.toBeNull();

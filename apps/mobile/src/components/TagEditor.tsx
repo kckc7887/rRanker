@@ -82,7 +82,7 @@ export function TagEditor({
         </TagPressable>
         <TagPressable accessibilityRole="button" accessibilityLabel="添加标签" disabled={disabled}
           onPress={() => void add()} style={[styles.add, { backgroundColor: theme.accent }]}>
-          <Text style={styles.addText}>添加</Text>
+          <Text style={[styles.addText, { color: theme.onAccent }]}>添加</Text>
         </TagPressable>
       </View>
       {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
@@ -226,7 +226,7 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
           <SheetPressable accessibilityRole="button" accessibilityLabel="添加预设标签"
             onPress={() => void addPreset(presetInput)}
             style={({ pressed }) => [styles.sheetAdd, { backgroundColor: theme.accent }, pressed && styles.softPressed]}>
-            <Text style={styles.sheetAddText}>添加</Text>
+            <Text style={[styles.sheetAddText, { color: theme.onAccent }]}>添加</Text>
           </SheetPressable>
         </View> : null}
         <Text style={[styles.sectionLabel, styles.historyLabel, { color: theme.textMuted }]}>历史标签</Text>
@@ -272,7 +272,7 @@ function SelectableTag({ tag, selected, layout = 'chip', onPress }: {
     ]}>
     <View style={[styles.selectionBox, { borderColor: theme.border, backgroundColor: theme.input },
       selected && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
-      {selected ? <Text style={styles.selectionMark}>✓</Text> : null}
+      {selected ? <Text style={[styles.selectionMark, { color: theme.onAccent }]}>✓</Text> : null}
     </View>
     <Text style={[layout === 'row' ? styles.rowSelectionText : styles.chipSelectionText,
       { color: selected ? theme.accent : theme.textSecondary }]}>{tag}</Text>

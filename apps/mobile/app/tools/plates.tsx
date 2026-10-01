@@ -190,7 +190,7 @@ export default function PlatesToolScreen() {
                                 styles.versionChipText,
                                 { color: theme.text },
                                 selectedHere && { color: theme.accent },
-                                active && { color: '#FFFFFF' },
+                                active && { color: theme.onAccent },
                               ]}>
                                 {group.prefix}
                               </Text>
@@ -219,7 +219,7 @@ export default function PlatesToolScreen() {
                                     pressed && styles.pressed,
                                   ]}
                                 >
-                                  <Text style={[styles.tierChipText, { color: theme.textSecondary }, current && { color: '#FFFFFF' }]}>
+                                  <Text style={[styles.tierChipText, { color: theme.textSecondary }, current && { color: theme.onAccent }]}>
                                     {entry.label}
                                   </Text>
                                 </Pressable>

@@ -114,6 +114,8 @@ export type JsonRequestOptions<T> = {
   maxResponseBytes?: number;
   /** 协议可从受限错误正文读取错误 envelope，不能自行再发请求。 */
   onHttpError?: (response: Response) => Promise<ProviderError>;
+  /** 原始协议适配器可显式接管状态码；正文预算、来源检查和取消仍由执行器负责。 */
+  acceptStatus?: (status: number) => boolean;
   onResponse?: (response: Response) => void | Promise<void>;
   diagnosticScenario?: RuntimeRequestScenario;
   diagnosticParentOperationId?: number;
@@ -174,6 +176,10 @@ function normalizeExecutionError(error: unknown, timedOut: boolean, texts: { sch
 }
 
 /** 通用 JSON GET 请求：重试、429 退避、超时与错误归一化（各公开查分 Provider 共用）。 */
+function acceptedStatus(options: Pick<JsonRequestOptions<unknown>, 'acceptStatus'>, response: Response): boolean {
+  return options.acceptStatus ? options.acceptStatus(response.status) : response.ok;
+}
+
 async function requestData<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>, source: string): Promise<T> {
   const { path, schema, fetcher, baseUrl, error, label } = options;
   const timeoutMs = options.timeoutMs ?? 12_000;
@@ -209,7 +215,7 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
       assertRequestActive(options.signal);
       assertProviderResponseOrigin(response, url, sensitive);
       status = response.status;
-      if (!response.ok) {
+      if (!acceptedStatus(options, response)) {
         const mapped = options.onHttpError
           ? await options.onHttpError(boundedResponse(response, { maxBytes: options.maxResponseBytes, signal: controller.signal }))
           : error(response.status);
@@ -264,6 +270,28 @@ export function requestJson<T>(options: JsonRequestOptions<T>): Promise<T> {
 
 export function requestProviderResponse<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>): Promise<T> {
   return requestData(options, read, 'request-json');
+}
+
+/** 非幂等写请求只发送一次；发送后的未知结果不能作为自动重传资格。 */
+export async function requestProviderWrite<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>): Promise<
+  { status: 'success'; data: T } | { status: 'unconfirmed' }
+> {
+  let sent = false;
+  let status: number | undefined;
+  const fetcher = options.fetcher ?? expoFetch as unknown as typeof fetch;
+  try {
+    const data = await requestProviderResponse({ ...options, totalAttempts: 1, fetcher: async (...args) => {
+      sent = true;
+      const response = await fetcher(...args);
+      status = response.status;
+      return response;
+    } }, read);
+    return { status: 'success', data };
+  } catch (error) {
+    if (options.signal?.aborted) throw options.signal.reason ?? error;
+    if (!sent || (status !== undefined && status >= 400 && status < 500)) throw error;
+    return { status: 'unconfirmed' };
+  }
 }
 
 export function requestBytes(options: Omit<JsonRequestOptions<Uint8Array>, 'schema'>): Promise<Uint8Array> {

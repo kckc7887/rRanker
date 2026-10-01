@@ -140,6 +140,14 @@ const lxnsSession: ProviderSession = {
 };
 
 describe('useSession store', () => {
+  it('恢复部分账号时保留无敏感信息的迁移状态，后续正常恢复清除状态', () => {
+    const recovery = { integrity: 'partial' as const, sourceVersion: 3 as const, rejectedAccounts: 1, rejectedCredentials: 1 };
+    useSession.getState().finishRestore({ version: 3, accounts: [], credentials: [], activeAccountId: null, recovery });
+    expect(useSession.getState().restoreStatus).toBe('ready');
+    expect(useSession.getState().migrationRecovery).toEqual(recovery);
+    useSession.getState().finishRestore(null);
+    expect(useSession.getState().migrationRecovery).toBeNull();
+  });
   beforeEach(() => {
     updateAccountSession.mockReset();
     updateAccountSession.mockResolvedValue('applied');

@@ -59,7 +59,8 @@ export interface TaikoDrumRoll {
   endTime: number;
   isStrong: boolean;
   hitSound: number;
-  tickTimes: number[];
+  /** Uniform ticks: tick i occurs at time + i * tickInterval. */
+  tickCount: number;
   /** Per-tick hit window is tickInterval / 2. */
   tickInterval: number;
   sourceIndex: number;

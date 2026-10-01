@@ -51,6 +51,6 @@ export function PasswordLoginPanel({ visible, onSuccess, onBusyChange, login, di
       style={[styles.input, { color: theme.text, backgroundColor: theme.input, borderColor: theme.border }]} placeholderTextColor={theme.textMuted} />
     <TextInput placeholder="密码" accessibilityLabel="密码" value={password} onChangeText={setPassword} secureTextEntry autoCapitalize="none" autoCorrect={false} editable={!busy && !disabled}
       style={[styles.input, { color: theme.text, backgroundColor: theme.input, borderColor: theme.border }]} placeholderTextColor={theme.textMuted} />
-    <Pressable accessibilityRole="button" disabled={busy || disabled} onPress={() => void submit()} style={[styles.primary, { backgroundColor: theme.accent }]}><Text style={styles.primaryText}>账密登录并验证</Text></Pressable>
+    <Pressable accessibilityRole="button" disabled={busy || disabled} onPress={() => void submit()} style={[styles.primary, { backgroundColor: theme.accent }]}><Text style={[styles.primaryText, { color: theme.onAccent }]}>账密登录并验证</Text></Pressable>
   </>;
 }

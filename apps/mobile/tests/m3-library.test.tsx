@@ -342,7 +342,7 @@ describe('M3A personal library screens', () => {
     await fireEvent.press(screen.getByText(/练习谱面/));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: '1', chartType: 'DX', levelIndex: '3' },
+      params: { songId: '1', chartType: 'DX', levelIndex: '3', gameId: 'maimai' },
     });
   });
 

@@ -33,6 +33,7 @@ type V2SessionVault = {
   version: 2;
   activeAccountId: string | null;
   accounts: V2StoredProviderAccount[];
+  recovery?: SessionVault['recovery'];
 };
 
 export type StoredCredentialIndex = {
@@ -46,6 +47,7 @@ export type SessionIndex = {
   activeAccountId: string | null;
   credentials: StoredCredentialIndex[];
   accounts: StoredProviderAccount[];
+  recovery?: SessionVault['recovery'];
 };
 
 function isRemoteProviderId(value: unknown): value is RemoteProviderId {
@@ -132,6 +134,14 @@ function parseAccountMetadata(
   };
 }
 
+function uniqueLegacyIdentities(rows: readonly unknown[]): unknown[] {
+  const counts = new Map<unknown, number>();
+  for (const row of rows) {
+    if (row && typeof row === 'object' && 'id' in row) counts.set(row.id, (counts.get(row.id) ?? 0) + 1);
+  }
+  return rows.filter(row => row && typeof row === 'object' && 'id' in row && nonempty(row.id) && counts.get(row.id) === 1);
+}
+
 export function parseSessionVault(raw: string): SessionVault | null {
   try {
     const parsed = JSON.parse(raw) as Partial<SessionVault>;
@@ -140,7 +150,7 @@ export function parseSessionVault(raw: string): SessionVault | null {
       || !Array.isArray(parsed.accounts)) {
       return null;
     }
-    const credentials = parsed.credentials.flatMap((value) => {
+    const credentials = uniqueLegacyIdentities(parsed.credentials).flatMap((value) => {
       if (!value || typeof value !== 'object') return [];
       const credential = value as Partial<StoredProviderCredential>;
       if (typeof credential.id !== 'string'
@@ -158,7 +168,7 @@ export function parseSessionVault(raw: string): SessionVault | null {
     const credentialProviders = new Map(
       credentials.map((credential) => [credential.id, credential.providerId] as const),
     );
-    const accounts = parsed.accounts.flatMap((value) => {
+    const accounts = uniqueLegacyIdentities(parsed.accounts).flatMap((value) => {
       const account = parseAccountMetadata(value, credentialProviders);
       return account ? [account] : [];
     });
@@ -169,6 +179,7 @@ export function parseSessionVault(raw: string): SessionVault | null {
         : accounts[0]?.id ?? null,
       credentials,
       accounts,
+      ...migrationRecovery(3, parsed.accounts.length - accounts.length, parsed.credentials.length - credentials.length),
     };
   } catch {
     return null;
@@ -179,7 +190,7 @@ export function parseV2Vault(raw: string): V2SessionVault | null {
   try {
     const parsed = JSON.parse(raw) as Partial<V2SessionVault>;
     if (parsed.version !== 2 || !Array.isArray(parsed.accounts)) return null;
-    const accounts = parsed.accounts.flatMap((value) => {
+    const accounts = uniqueLegacyIdentities(parsed.accounts).flatMap((value) => {
       if (!value || typeof value !== 'object') return [];
       const account = value as Partial<V2StoredProviderAccount>;
       if (typeof account.id !== 'string'
@@ -208,6 +219,7 @@ export function parseV2Vault(raw: string): V2SessionVault | null {
         ? parsed.activeAccountId
         : accounts[0]?.id ?? null,
       accounts,
+      ...migrationRecovery(2, parsed.accounts.length - accounts.length, 0),
     };
   } catch {
     return null;
@@ -218,6 +230,7 @@ export function migrateV2Vault(vault: V2SessionVault): SessionVault {
   return {
     version: 3,
     activeAccountId: vault.activeAccountId,
+    ...(vault.recovery ? { recovery: vault.recovery } : {}),
     credentials: vault.accounts.map((account) => ({
       id: credentialIdForLegacyAccount(account.id),
       providerId: account.providerId,
@@ -249,7 +262,26 @@ export function sanitizeVault(vault: SessionVault): SessionVault {
     activeAccountId: vault.activeAccountId,
     credentials: credentials.filter((credential) => usedCredentialIds.has(credential.id)),
     accounts,
+    ...(vault.recovery ? { recovery: vault.recovery } : {}),
   };
+}
+
+function migrationRecovery(sourceVersion: 2 | 3, rejectedAccounts: number, rejectedCredentials: number): Pick<SessionVault, 'recovery'> {
+  return rejectedAccounts || rejectedCredentials
+    ? { recovery: { integrity: 'partial', sourceVersion, rejectedAccounts, rejectedCredentials } }
+    : {};
+}
+
+function indexRecovery(recovery: SessionIndex['recovery'], raw: string): Pick<SessionIndex, 'recovery'> {
+  if (recovery === undefined) return {};
+  if (!recovery || recovery.integrity !== 'partial'
+    || (recovery.sourceVersion !== 2 && recovery.sourceVersion !== 3)
+    || !Number.isSafeInteger(recovery.rejectedAccounts) || recovery.rejectedAccounts < 0
+    || !Number.isSafeInteger(recovery.rejectedCredentials) || recovery.rejectedCredentials < 0) {
+    throw new SessionIndexUnrecognizedError(raw, 'invalid-structure');
+  }
+  return { recovery: { integrity: recovery.integrity, sourceVersion: recovery.sourceVersion,
+    rejectedAccounts: recovery.rejectedAccounts, rejectedCredentials: recovery.rejectedCredentials } };
 }
 
 export function parseSessionIndexOrThrow(raw: string): SessionIndex {
@@ -305,6 +337,7 @@ export function parseSessionIndexOrThrow(raw: string): SessionIndex {
       : accounts[0]?.id ?? null,
     credentials,
     accounts,
+    ...indexRecovery(parsed.recovery, raw),
   };
 }
 
@@ -350,4 +383,3 @@ export function vaultFingerprint(vault: SessionVault): string {
       ]),
   });
 }
-

@@ -25,6 +25,15 @@ export type SessionVault = {
   activeAccountId: string | null;
   credentials: StoredProviderCredential[];
   accounts: StoredProviderAccount[];
+  recovery?: SessionMigrationRecovery;
+};
+
+/** 仅包含完整性摘要；隔离原文继续保存在安全存储中。 */
+export type SessionMigrationRecovery = {
+  integrity: 'partial';
+  sourceVersion: 2 | 3;
+  rejectedAccounts: number;
+  rejectedCredentials: number;
 };
 
 export function sessionsMapFromVault(vault: SessionVault): Record<string, ProviderSession> {

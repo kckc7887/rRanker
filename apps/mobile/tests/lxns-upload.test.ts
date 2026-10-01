@@ -26,6 +26,21 @@ function session(expiresAt = Date.now() + 120_000): LxnsOAuthSession {
 }
 
 describe('落雪成绩上传', () => {
+  it('已发送写入的非重试协议错误仍保留未确认，不盲目重传', async () => {
+    const fetchMock = vi.fn(async () => new Response('', { status: 200, headers: { 'content-length': String(128 * 1024 * 1024) } }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(uploadRecordsToLxns({ session: session(), records: [score] }))
+      .resolves.toMatchObject({ status: 'unconfirmed', uploaded: 0 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+  it('预取消不会消耗过期凭据的刷新令牌', async () => {
+    const fetchMock = vi.fn();
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(uploadRecordsToLxns({
+      session: session(0), records: [score], signal: { aborted: true },
+    })).rejects.toThrow('已取消');
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
   afterEach(() => {
     vi.unstubAllGlobals();
     vi.useRealTimers();
@@ -41,7 +56,7 @@ describe('落雪成绩上传', () => {
     expect(url).toBe(`${LXNS_API_ROOT}/user/maimai/player/scores`);
     expect(request).toMatchObject({
       method: 'POST',
-      headers: expect.objectContaining({ Authorization: 'Bearer old-access' }),
+      headers: expect.objectContaining({ authorization: 'Bearer old-access' }),
       body: JSON.stringify({ scores: [score] }),
     });
   });
@@ -63,7 +78,7 @@ describe('落雪成绩上传', () => {
     });
     expect(fetchMock.mock.calls[0]?.[0]).toBe(LXNS_OAUTH_TOKEN_URL);
     expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({
-      headers: expect.objectContaining({ Authorization: 'Bearer new-access' }),
+      headers: expect.objectContaining({ authorization: 'Bearer new-access' }),
     });
     expect(rotated).toHaveBeenCalledWith({
       previous: expect.objectContaining({ accessToken: 'old-access', refreshToken: 'old-refresh' }),
@@ -72,7 +87,7 @@ describe('落雪成绩上传', () => {
     expect(result.session.refreshToken).toBe('new-refresh');
   });
 
-  it('重试前复核资格，账号失效后不再向上游写入', async () => {
+  it('写入前复核资格，账号失效后不向上游写入', async () => {
     const blocked = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', blocked);
     await expect(uploadRecordsToLxns({
@@ -80,20 +95,6 @@ describe('落雪成绩上传', () => {
     })).rejects.toThrow('缓存请求已失效');
     expect(blocked).not.toHaveBeenCalled();
 
-    vi.useFakeTimers();
-    const fetchMock = vi.fn(async () => new Response('{}', { status: 503 }));
-    vi.stubGlobal('fetch', fetchMock);
-    let eligible = true;
-    const assertion = expect(uploadRecordsToLxns({
-      session: session(),
-      records: [score],
-      assertEligible: () => { if (!eligible) throw new Error('缓存请求已失效'); },
-    })).rejects.toThrow('缓存请求已失效');
-    await vi.advanceTimersByTimeAsync(0);
-    eligible = false;
-    await vi.runAllTimersAsync();
-    await assertion;
-    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
   it('将权限错误标记为不可重试，并在开始前响应取消', async () => {
@@ -112,7 +113,8 @@ describe('落雪成绩上传', () => {
 
   it('在请求进行中立即响应取消信号', async () => {
     vi.useFakeTimers();
-    const signal = { aborted: false };
+    const controller = new AbortController();
+    const signal = controller.signal;
     const fetchMock = vi.fn((_url: string, request: RequestInit) => new Promise<Response>((_resolve, reject) => {
       request.signal?.addEventListener('abort', () => {
         const error = new Error('aborted');
@@ -124,13 +126,14 @@ describe('落雪成绩上传', () => {
     const assertion = expect(uploadRecordsToLxns({
       session: session(), records: [score], signal,
     })).rejects.toThrow('已取消');
-    signal.aborted = true;
+    await vi.advanceTimersByTimeAsync(0);
+    controller.abort();
     await vi.advanceTimersByTimeAsync(100);
     await assertion;
     expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('将连续请求超时报告为可重试 timeout 错误', async () => {
+  it('请求超时标为未确认且不重发写请求', async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn((_url: string, request: RequestInit) => new Promise<Response>((_resolve, reject) => {
       request.signal?.addEventListener('abort', () => {
@@ -141,22 +144,20 @@ describe('落雪成绩上传', () => {
     }));
     vi.stubGlobal('fetch', fetchMock);
     const assertion = expect(uploadRecordsToLxns({ session: session(), records: [score] }))
-      .rejects.toMatchObject({ code: 'timeout', retryable: true } satisfies Partial<ProviderError>);
+      .resolves.toMatchObject({ status: 'unconfirmed', uploaded: 0 });
     await vi.runAllTimersAsync();
     await assertion;
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 
-  it('对服务端错误按既有退避策略重试后返回可重试错误', async () => {
+  it('服务端错误标为未确认且不重发写请求', async () => {
     vi.useFakeTimers();
     const fetchMock = vi.fn(async () => new Response('{}', { status: 503 }));
     vi.stubGlobal('fetch', fetchMock);
     const promise = uploadRecordsToLxns({ session: session(), records: [score] });
-    const assertion = expect(promise).rejects.toMatchObject({
-      code: 'network', retryable: true,
-    } satisfies Partial<ProviderError>);
+    const assertion = expect(promise).resolves.toMatchObject({ status: 'unconfirmed', uploaded: 0 });
     await vi.runAllTimersAsync();
     await assertion;
-    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
   });
 });

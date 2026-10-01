@@ -102,6 +102,19 @@ export function assertChartPreviewDownloadBytes(bytes: number): void {
   }
 }
 
+/** 在整文件读取前校验已有字节预算，读取后复核实际大小并保留原缓冲。 */
+export async function readBudgetedChartDownload(
+  file: { readonly size: number; bytes(): Promise<Uint8Array> },
+  cancellation?: ChartPreviewCancellation,
+): Promise<Uint8Array> {
+  throwIfChartPreviewCancelled(cancellation);
+  assertChartPreviewDownloadBytes(file.size);
+  const bytes = await file.bytes();
+  throwIfChartPreviewCancelled(cancellation);
+  assertChartPreviewDownloadBytes(bytes.byteLength);
+  return bytes;
+}
+
 export function assertChartPreviewEntryCount(count: number): void {
   if (!Number.isFinite(count) || count < 0 || count > CHART_PREVIEW_MAX_ARCHIVE_ENTRIES) {
     throw new ChartPreviewBudgetExceededError('谱面包条目数量超出预算');

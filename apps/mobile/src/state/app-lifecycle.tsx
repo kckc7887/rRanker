@@ -50,12 +50,14 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
   const readyTaskRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
 
   useEffect(() => {
+    let readyGeneration = 0;
     const update = (next: AppLifecycleSnapshot) => {
       snapshotRef.current = next;
       publishAppLifecycleSnapshot(next);
       setSnapshot(next);
     };
     const cancelReadyTask = () => {
+      readyGeneration += 1;
       readyTaskRef.current?.cancel();
       readyTaskRef.current = null;
     };
@@ -83,7 +85,7 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
         return;
       }
       const previous = snapshotRef.current;
-      const startsForegroundGeneration = previous.phase === 'background'
+      const startsForegroundGeneration = getForegroundAbortSignal().aborted
         || previous.foregroundGeneration === 0;
       cancelReadyTask();
       update({
@@ -93,7 +95,10 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
         foregroundReady: false,
       });
       const expectedGeneration = previous.foregroundGeneration + (startsForegroundGeneration ? 1 : 0);
+      const scheduledGeneration = readyGeneration;
       readyTaskRef.current = InteractionManager.runAfterInteractions(() => {
+        if (scheduledGeneration !== readyGeneration) return;
+        readyGeneration += 1;
         readyTaskRef.current = null;
         if (snapshotRef.current.appState === 'background' || snapshotRef.current.appState === 'inactive') return;
         if (startsForegroundGeneration) beginForegroundWork();

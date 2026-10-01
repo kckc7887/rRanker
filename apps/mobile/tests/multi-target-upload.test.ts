@@ -102,6 +102,27 @@ const catalog: CatalogSnapshot = {
 };
 
 describe('好友码多目标写入', () => {
+  it('未确认目标不计入成功写入数，下一目标启动前等待恢复', async () => {
+    const water = createMaimaiBoundAccount({ providerId: 'diving-fish', playerId: 'water', displayName: '水鱼', rating: 0 });
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    let resume!: () => void;
+    let paused = false;
+    const waitUntilResumed = vi.fn(async () => { if (paused) await new Promise<void>(resolve => { resume = resolve; }); });
+    mocks.uploadDivingFish.mockImplementationOnce(async () => { paused = true; return { status: 'unconfirmed', uploaded: 0 }; });
+    const phases: string[] = [];
+    const promise = uploadMaimaiFromFriendCode({ friendCode: '123456789012345', selectedAccountIds: [water.id, local.id],
+      targets: resolveUploadTargets([water, local], { [water.id]: { mode: 'import-token', value: 'token', persistable: true } }),
+      sessionsByAccountId: { [water.id]: { mode: 'import-token', value: 'token', persistable: true } }, resolveCatalog: async () => catalog,
+      signal: { aborted: false, waitUntilResumed }, onPhase: phase => { if ('message' in phase) phases.push(phase.message); }, onNeedFriendAccept: vi.fn() });
+    await vi.waitFor(() => expect(mocks.uploadDivingFish).toHaveBeenCalledTimes(1));
+    expect(mocks.saveSnapshot).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(resume).toBeTypeOf('function'));
+    paused = false; resume();
+    const result = await promise;
+    expect(result.uploaded).toBe(1);
+    expect(result.targetResults.map(row => row.status)).toEqual(['unconfirmed', 'success']);
+    expect(phases.at(-1)).toContain('未确认');
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createFriendLoginJob.mockResolvedValue({
@@ -202,7 +223,7 @@ describe('好友码多目标写入', () => {
       mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh',
       expiresAt: Date.now() + 60_000, persistable: true,
     };
-    mocks.uploadLxns.mockResolvedValue({ uploaded: 1, session: lxnsSession });
+    mocks.uploadLxns.mockResolvedValue({ status: 'success', uploaded: 1, session: lxnsSession });
     let releaseLogin: (value: { jobId: string; botFriendCode: null; body: { __skipAuthToken: string } }) => void = () => undefined;
     mocks.createFriendLoginJob.mockReturnValue(new Promise((resolve) => { releaseLogin = resolve; }));
     const pending = uploadMaimaiFromFriendCode({
@@ -274,7 +295,7 @@ describe('好友码多目标写入', () => {
       mode: 'import-token', value: 'import-token', persistable: true,
     };
     const resolveCatalog = vi.fn(async () => catalog);
-    mocks.uploadLxns.mockResolvedValue({ uploaded: 1, session: lxnsSession });
+    mocks.uploadLxns.mockResolvedValue({ status: 'success', uploaded: 1, session: lxnsSession });
 
     const result = await uploadMaimaiFromFriendCode({
       friendCode: '123456789012345',
@@ -312,7 +333,7 @@ describe('好友码多目标写入', () => {
       mode: 'import-token', value: 'import-token', persistable: true,
     };
     const resolveCatalog = vi.fn(async () => catalog);
-    mocks.uploadDivingFish.mockResolvedValue({ uploaded: 1 });
+    mocks.uploadDivingFish.mockResolvedValue({ status: 'success', uploaded: 1 });
 
     await uploadMaimaiFromFriendCode({
       friendCode: '123456789012345',

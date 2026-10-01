@@ -14,7 +14,7 @@ export function BestImageEntryButton({
   const theme = useAppTheme();
   return <Pressable accessibilityLabel={accessibilityLabel} accessibilityRole="button" onPress={() => router.push('/best-image')}
     style={[styles.button, { backgroundColor: theme.accent }]} testID={testID}>
-    <Text style={styles.text}>{label}</Text>
+    <Text style={[styles.text, { color: theme.onAccent }]}>{label}</Text>
   </Pressable>;
 }
 

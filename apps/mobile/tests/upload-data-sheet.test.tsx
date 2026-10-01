@@ -6,6 +6,7 @@ import { UploadDataSheet } from '@/components/UploadDataSheet';
 import { createLocalMaimaiAccount, createMaimaiBoundAccount, createMaxedMaimaiTestAccount } from '@/domain/bound-account';
 import type { CatalogSnapshot } from '@/domain/models';
 import type { ProviderSession } from '@/providers/contracts';
+import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { NotificationProvider } from '@/components/AppNotification';
 import { ScoreHubError } from '@/services/score-hub-client';
 import { SessionPersistenceError } from '@/domain/session-vault';
@@ -29,6 +30,7 @@ type TestHubEntry = {
   updatedAt: number;
 };
 type MockUploadInput = {
+  onLxnsTokensRotated?: (accountId: string, update: LxnsTokenRotationUpdate) => unknown;
   onPhase: (phase: {
     kind: string;
     message?: string;
@@ -258,6 +260,7 @@ function renderSheet(
   uploadMethod: 'friend_code' | 'qr' = 'friend_code',
   catalogValue: CatalogSnapshot | null | undefined = catalog,
   requestCatalog?: () => Promise<CatalogSnapshot | undefined>,
+  onLxnsTokensRotated?: (accountId: string, update: LxnsTokenRotationUpdate) => void,
 ) {
   return render(
     <NotificationProvider>
@@ -267,6 +270,7 @@ function renderSheet(
         sessionsByAccountId={{ [water.id]: waterSession }}
         catalog={catalogValue ?? undefined}
         requestCatalog={requestCatalog}
+        onLxnsTokensRotated={onLxnsTokensRotated}
         onClose={jest.fn()}
         temporarySelectedAccountIds={temporarySelectedAccountIds}
         uploadMethod={uploadMethod}
@@ -276,6 +280,32 @@ function renderSheet(
 }
 
 describe('好友码统一上传弹窗', () => {
+  it.each(['friend_code', 'qr'] as const)('%s 取消后仍交付已完成的凭据轮换，且不完成旧任务', async (method) => {
+    let input!: MockUploadInput;
+    let finish!: () => void;
+    const upload = method === 'qr' ? mockUploadQr : mockUploadFriend;
+    upload.mockImplementationOnce(value => {
+      input = value;
+      return new Promise(resolve => { finish = () => resolve({ uploaded: 1, skipped: 0,
+        failedAccountNames: [], targetResults: [], refreshedAccounts: [] }); });
+    });
+    const rotated = jest.fn();
+    const view = await renderSheet([water.id], [local, water], true, method, catalog, undefined, rotated);
+    if (method === 'qr') {
+      await fireEvent.changeText(await view.findByLabelText('玩家二维码字符串'), 'SGWCMAIDCURRENT');
+    }
+    const label = method === 'qr' ? '用二维码同步成绩' : '开始上传';
+    await waitFor(() => expect(view.getByLabelText(label).props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(view.getByLabelText(label));
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+    await fireEvent.press(view.getByLabelText('取消当前操作'));
+    const previous = { mode: 'lxns-oauth' as const, accessToken: 'a', refreshToken: 'r', expiresAt: 1, persistable: true as const };
+    const update = { previous, next: { ...previous, accessToken: 'b', refreshToken: 's' } };
+    await act(async () => { await input.onLxnsTokensRotated?.('account', update); finish(); });
+    expect(rotated).toHaveBeenCalledWith('account', update);
+    expect(uploadTaskController.getSnapshot().status).toBe('canceled');
+    await view.unmount();
+  });
   beforeEach(() => {
     uploadTaskController.resetForTests();
     jest.clearAllMocks();

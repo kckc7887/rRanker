@@ -133,7 +133,7 @@ function ToleranceCalculator({ statistics, dualMode = false }: { statistics?: Si
         accessibilityRole="button" accessibilityLabel={`物量分析模式 ${option.label}`}
         accessibilityState={{ selected: analysisMode === option.mode }} onPress={() => setAnalysisMode(option.mode)}
         style={[styles.modeButton, { backgroundColor: theme.surface, borderColor: theme.border }, analysisMode === option.mode && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
-        <Text style={[styles.modeButtonText, { color: theme.textSecondary }, analysisMode === option.mode && styles.modeButtonTextActive]}>{option.mode === 'hundredOneMinus' && dualMode ? `${maximum.toFixed(4)}%-` : option.label}</Text>
+        <Text style={[styles.modeButtonText, { color: analysisMode === option.mode ? theme.onAccent : theme.textSecondary }]}>{option.mode === 'hundredOneMinus' && dualMode ? `${maximum.toFixed(4)}%-` : option.label}</Text>
       </Pressable>)}</View>
       <Text style={[styles.note, { color: theme.textMuted }]}>{dualMode && analysisMode === 'hundredOneMinus' ? `从理论 ${maximum.toFixed(4)}% 扣除损失` : MODE_OPTIONS.find((option) => option.mode === analysisMode)?.detail}</Text>
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.tableScroll}>
@@ -218,7 +218,7 @@ const styles = StyleSheet.create({
   result: { fontSize: 18, fontWeight: '700', color: '#166534', marginTop: 12 },
   error: { color: '#B91C1C', marginTop: 7 }, note: { color: '#6B7280', fontSize: 12, marginVertical: 9, lineHeight: 18 },
   modeRow: { flexDirection: 'row', gap: 8 }, modeButton: { flex: 1, alignItems: 'center', borderRadius: 9, borderWidth: 1, borderColor: '#CBD5E1', paddingVertical: 9, backgroundColor: '#FFFFFF' },
-  modeButtonActive: { backgroundColor: '#5967C9', borderColor: '#5967C9' }, modeButtonText: { color: '#475569', fontWeight: '700' }, modeButtonTextActive: { color: '#FFFFFF' },
+  modeButtonText: { color: '#475569', fontWeight: '700' },
   targetRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginTop: 9 }, targetButton: { flexGrow: 1, minWidth: 68, alignItems: 'center', borderRadius: 9, borderWidth: 1, borderColor: '#CBD5E1', paddingVertical: 8, paddingHorizontal: 8, backgroundColor: '#FFFFFF' },
   targetButtonActive: { backgroundColor: '#E0E7FF', borderColor: '#5967C9' }, targetButtonText: { color: '#475569', fontWeight: '700', fontSize: 12 }, targetButtonTextActive: { color: '#3949AB' },
   tableScroll: { paddingBottom: 2 }, analysisTable: { width: 650, borderWidth: StyleSheet.hairlineWidth, borderColor: '#CBD5E1', borderRadius: 9, overflow: 'hidden' },

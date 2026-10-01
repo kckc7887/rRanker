@@ -46,8 +46,10 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
   const failedAccountNames: string[] = [];
 
   for (const target of input.selected) {
+    await input.signal.waitUntilResumed?.();
     if (input.signal.aborted) throw new ScoreHubError('已取消');
     let written = 0;
+    let status: UploadTargetResult['status'] = 'success';
     let targetSkipped = 0;
     try {
       // 每个目标写入前复核账号是否仍有效：失效目标不发起后续写入，其他目标继续。
@@ -80,7 +82,10 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
           additionalRating: 0,
           source,
         }, localMapped.records, catalog);
-        const assertTarget = () => input.assertAccount(target.account.id);
+        const assertTarget = () => {
+          if (input.signal.aborted) throw new ScoreHubError('已取消');
+          input.assertAccount(target.account.id);
+        };
         assertTarget();
         const { SqliteSnapshotRepository } = await import('@/storage/sqlite-snapshot-repository');
         await new SqliteSnapshotRepository().save(target.account.id, snapshot, assertTarget);
@@ -104,6 +109,7 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
           { assertEligible: () => input.assertAccount(target.account.id) },
         );
         written = result.uploaded;
+        status = result.status;
       } else if (target.account.providerId === 'lxns') {
         if (!lxnsMapped) {
           throw new ProviderError('no_data', '未能准备落雪成绩', false);
@@ -123,12 +129,13 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
           onTokensRotated: (update) => input.onLxnsTokensRotated?.(target.account.id, update),
         });
         written = result.uploaded;
+        status = result.status;
       }
       uploadedTotal += written;
       skipped += targetSkipped;
       targetResults.push({
         account: target.account,
-        status: 'success',
+        status,
         written,
         skipped: targetSkipped,
       });
@@ -147,36 +154,22 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
   }
   if (input.signal.aborted) throw new ScoreHubError('已取消');
 
-  const failedTargets = targetResults.filter((item) => item.status === 'failed');
-  if (targetResults.every((item) => item.status === 'failed')) {
-    input.onPhase({
-      kind: 'error',
-      message: `写入失败：${failedTargets.map((item) => item.account.displayName).join('、')}，请重试。`,
-    });
-    return {
-      uploaded: uploadedTotal,
-      skipped,
-      refreshedAccounts,
-      failedAccountNames,
-      targetResults,
-    };
-  }
+  input.onPhase(completionPhase(targetResults, uploadedTotal, skipped));
+  return { uploaded: uploadedTotal, skipped, refreshedAccounts, failedAccountNames, targetResults };
+}
 
-  input.onPhase({
-    kind: 'done',
-    message: failedTargets.length > 0
-      ? `部分完成：写入 ${uploadedTotal} 条；失败 ${failedTargets.map((item) => item.account.displayName).join('、')}`
-      : skipped > 0
-        ? `完成：写入 ${uploadedTotal} 条，跳过 ${skipped} 条`
-        : `完成：写入 ${uploadedTotal} 条`,
-    uploaded: uploadedTotal,
-    skipped,
-  });
-  return {
-    uploaded: uploadedTotal,
-    skipped,
-    refreshedAccounts,
-    failedAccountNames,
-    targetResults,
-  };
+function completionPhase(targetResults: UploadTargetResult[], uploaded: number, skipped: number): import('@/services/upload-maimai-types').UploadPhase {
+  const failed = targetResults.filter(item => item.status === 'failed');
+  const unconfirmed = targetResults.filter(item => item.status === 'unconfirmed');
+  const names = (items: UploadTargetResult[]) => items.map(item => item.account.displayName).join('、');
+  if (targetResults.every(item => item.status === 'failed')) {
+    return { kind: 'error', message: `写入失败：${names(failed)}，请重试。` };
+  }
+  let message = skipped > 0 ? `完成：写入 ${uploaded} 条，跳过 ${skipped} 条` : `完成：写入 ${uploaded} 条`;
+  if (unconfirmed.length) {
+    message = `已确认写入 ${uploaded} 条；未确认 ${names(unconfirmed)}，请先核对成绩${failed.length ? `；失败 ${names(failed)}` : ''}`;
+  } else if (failed.length) {
+    message = `部分完成：写入 ${uploaded} 条；失败 ${names(failed)}`;
+  }
+  return { kind: 'done', message, uploaded, skipped };
 }

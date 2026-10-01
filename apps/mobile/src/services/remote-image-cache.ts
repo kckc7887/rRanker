@@ -172,8 +172,10 @@ async function loadManifest(): Promise<CacheState> {
   let activeGameId: string | null = null;
   let gameLastUsed = new Map<string, number>();
   if (manifestFile.exists) {
+    // An unreadable index says nothing about ownership; retain every cached file until a successful read.
+    const text = await manifestFile.text();
     try {
-      const parsed = JSON.parse(await manifestFile.text()) as Partial<CacheManifest>;
+      const parsed = JSON.parse(text) as Partial<CacheManifest>;
       if (parsed.version === REMOTE_IMAGE_CACHE_VERSION && parsed.entries) {
         parsedEntries = new Map(
           Object.entries(parsed.entries).filter((entry): entry is [string, CacheEntry] => validEntry(entry[1])),
@@ -215,7 +217,13 @@ async function loadManifest(): Promise<CacheState> {
 }
 
 function manifest(): Promise<CacheState> {
-  manifestPromise ??= loadManifest();
+  if (!manifestPromise) {
+    const pending = loadManifest().catch(error => {
+      if (manifestPromise === pending) manifestPromise = null;
+      throw error;
+    });
+    manifestPromise = pending;
+  }
   return manifestPromise;
 }
 
@@ -241,6 +249,8 @@ function queueManifestWrite(): void {
   manifestWriteTimer = setTimeout(() => {
     manifestWriteTimer = null;
     manifestWriteQueue = manifestWriteQueue.then(persistManifest, persistManifest);
+    // Observe timer-started failures immediately; explicit flush still receives the original rejection.
+    void manifestWriteQueue.catch(() => undefined);
   }, 1000);
 }
 

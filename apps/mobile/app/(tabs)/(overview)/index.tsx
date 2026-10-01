@@ -171,8 +171,8 @@ function PublicOverviewScreen() {
                 onPress={openUpload}
                 style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.accent }, pressed && styles.syncPressed]}
               >
-                <Text style={styles.syncText}>同步数据</Text>
-                <Text style={styles.actionHint}>{compactUploadPhaseLabel(uploadPhase)}</Text>
+                <Text style={[styles.syncText, { color: theme.onAccent }]}>同步数据</Text>
+                <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>{compactUploadPhaseLabel(uploadPhase)}</Text>
               </Pressable>
             ) : bundle.payload.kind === 'maimai' ? (
               <View style={[styles.actionRow, { backgroundColor: theme.accent }]}>
@@ -182,10 +182,10 @@ function PublicOverviewScreen() {
                   onPress={openUpload}
                   style={({ pressed }) => [styles.actionHalf, pressed && styles.syncPressed]}
                 >
-                  <Text style={styles.syncText}>上传数据</Text>
-                  <Text style={styles.actionHint}>{compactUploadPhaseLabel(uploadPhase)}</Text>
+                  <Text style={[styles.syncText, { color: theme.onAccent }]}>上传数据</Text>
+                  <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>{compactUploadPhaseLabel(uploadPhase)}</Text>
                 </Pressable>
-                <View style={styles.actionDivider} />
+                <View style={[styles.actionDivider, { backgroundColor: theme.onAccent, opacity: 0.35 }]} />
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
@@ -197,8 +197,8 @@ function PublicOverviewScreen() {
                     syncBusy && styles.syncDisabled,
                   ]}
                 >
-                  <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
-                  <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
+                  <Text style={[styles.syncText, { color: theme.onAccent }]}>{syncBusy ? '同步中…' : '同步数据'}</Text>
+                  <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>{syncProviderHint(bundle.providerId)}</Text>
                 </Pressable>
               </View>
             ) : bundle.payload.kind === 'chunithm' ? (
@@ -209,10 +209,10 @@ function PublicOverviewScreen() {
                   onPress={openChunithmUpload}
                   style={({ pressed }) => [styles.actionHalf, pressed && styles.syncPressed]}
                 >
-                  <Text style={styles.syncText}>上传数据</Text>
-                  <Text style={styles.actionHint}>同步引导</Text>
+                  <Text style={[styles.syncText, { color: theme.onAccent }]}>上传数据</Text>
+                  <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>同步引导</Text>
                 </Pressable>
-                <View style={styles.actionDivider} />
+                <View style={[styles.actionDivider, { backgroundColor: theme.onAccent, opacity: 0.35 }]} />
                 <Pressable
                   accessibilityRole="button"
                   accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
@@ -224,8 +224,8 @@ function PublicOverviewScreen() {
                     syncBusy && styles.syncDisabled,
                   ]}
                 >
-                  <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
-                  <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
+                  <Text style={[styles.syncText, { color: theme.onAccent }]}>{syncBusy ? '同步中…' : '同步数据'}</Text>
+                  <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>{syncProviderHint(bundle.providerId)}</Text>
                 </Pressable>
               </View>
             ) : bundle.gameId === 'chunithm' ? (
@@ -241,8 +241,8 @@ function PublicOverviewScreen() {
                 onPress={() => void syncData()}
                 style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.accent }, pressed && styles.syncPressed, syncBusy && styles.syncDisabled]}
               >
-                <Text style={styles.syncText}>{syncBusy ? '同步中…' : '同步数据'}</Text>
-                <Text style={styles.actionHint}>{syncProviderHint(bundle.providerId)}</Text>
+                <Text style={[styles.syncText, { color: theme.onAccent }]}>{syncBusy ? '同步中…' : '同步数据'}</Text>
+                <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>{syncProviderHint(bundle.providerId)}</Text>
               </Pressable>
             )}
 

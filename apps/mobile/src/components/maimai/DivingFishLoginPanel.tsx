@@ -181,7 +181,7 @@ export function DivingFishLoginPanel({
         onPress={() => void login()}
         style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
       >
-        <Text style={styles.primaryText}>账密登录并验证</Text>
+        <Text style={[styles.primaryText, { color: theme.onAccent }]}>账密登录并验证</Text>
       </Pressable>
       <Text style={styles.or}>或</Text>
       <TextInput

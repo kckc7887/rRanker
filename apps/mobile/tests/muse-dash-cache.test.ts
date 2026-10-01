@@ -13,7 +13,6 @@ import {
   MuseDashCache,
   resetMuseDashInflightForTests,
 } from '@/services/muse-dash-cache';
-import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 vi.mock('expo-sqlite', () => ({
   openDatabaseAsync: vi.fn(async () => ({
@@ -51,7 +50,7 @@ class FakeResourceRepository {
 }
 
 const repo = new FakeResourceRepository();
-const cache = new MuseDashCache(repo as unknown as SqliteSnapshotRepository);
+const cache = new MuseDashCache(repo);
 
 const player: MuseDashPlayer = {
   rl: 3.45,
@@ -70,6 +69,16 @@ describe('muse dash cache keys', () => {
 });
 
 describe('muse dash cache snapshots', () => {
+  it('保留损坏缓存并拒绝将其传入页面，读取失败独立抛出', async () => {
+    const raw = { source: {}, data: { rl: 'bad' } };
+    const key = museDashPlayerCacheKey('corrupt');
+    await repo.saveResource(key, 1, '', raw);
+    await expect(cache.loadPlayer('corrupt')).resolves.toBeNull();
+    expect(await repo.getResource(key, 1)).toEqual(raw);
+    const failure = new Error('disk unavailable');
+    vi.spyOn(repo, 'getResource').mockRejectedValueOnce(failure);
+    await expect(cache.loadPlayer('corrupt')).rejects.toBe(failure);
+  });
   it('builds source metadata with musedash kind', () => {
     const snapshot = makeMuseDashSnapshot(player, '2026-08-10T00:00:00.000Z');
     expect(snapshot).toEqual({

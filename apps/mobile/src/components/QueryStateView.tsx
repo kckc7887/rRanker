@@ -41,7 +41,7 @@ export function QueryStateView<T,>({
         <Text style={[styles.statusText, { color: theme.textMuted }]}>加载失败，请重试</Text>
         {onRetry ? (
           <Pressable style={[styles.retryButton, { backgroundColor: theme.accent }]} onPress={onRetry}>
-            <Text style={styles.retryText}>重试</Text>
+            <Text style={[styles.retryText, { color: theme.onAccent }]}>重试</Text>
           </Pressable>
         ) : null}
       </View>

@@ -1,5 +1,5 @@
 import {
-  applyStacking, computeModDifficulty, Renderer, Player, TimeMapper, PlaybackClock,
+  computeModDifficulty, Renderer, Player, TimeMapper, PlaybackClock,
   audioContextTime, musicPosition, outputTime,
   getAudioContextOutputTime, warmSkinCaches, warmSliderPaths, drawCursor,
   type BeatmapData, type ReplayData, type ModDifficulty, type SkinAssets,
@@ -247,9 +247,8 @@ export async function startPlayback(
     const beatmap = parseOsuBytes(entry.bytes);
     if (![0, 1, 2, 3].includes(beatmap.mode)) throw new Error('unsupported-mode');
     beatmap.rawOsu = entry.bytes;
-    const replay = buildAutoReplay(entry.bytes, entry.hash);
+    const replay = buildAutoReplay(beatmap, entry.hash);
     const modDiff = computeModDifficulty(beatmap, replay);
-    if (beatmap.mode === 0) applyStacking(beatmap, modDiff);
     warmSliderPaths(beatmap);
     const builtin = await createBuiltinSkin(parseManiaSkinVariant(initial.maniaSkin), beatmap.mode === 3 ? Math.max(1, Math.round(beatmap.circleSize)) : 4, normalizePreviewSettings(initial.settings).holdWidth);
     const skin = { ...builtin, images: new Map(builtin.images) };

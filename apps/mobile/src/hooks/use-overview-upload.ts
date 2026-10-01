@@ -1,4 +1,4 @@
-import { useCallback, useMemo, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNotification } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
 import { formatPlayerScore } from '@/domain/game-data';
@@ -7,7 +7,7 @@ import type { ProviderSession } from '@/providers/contracts';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { applyLxnsTokenRotation, useSession } from '@/state/session-store';
 import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
-import { resolveUploadTargets, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
+import { resolveUploadTargets, uploadTaskController, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
 import { transferMaimaiFromLxns, type LxnsTransferPhase } from '@/services/transfer-maimai-from-lxns';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
 import { isChunithmMaintenanceWindow, CHUNITHM_MAINTENANCE_MESSAGE } from '@/domain/chunithm-maintenance';
@@ -34,6 +34,8 @@ export function useOverviewUpload({ boundAccounts, activeAccountId, activeGameId
   const [maimaiTransferTargetIds, setMaimaiTransferTargetIds] = useState<string[]>([]);
   const [chunithmSyncGuideVisible, setChunithmSyncGuideVisible] = useState(false);
   const [uploadPhase, setUploadPhase] = useState<UploadPhase>({ kind: 'idle' });
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const maimaiLxnsSources = useMemo(
     () => boundAccounts.filter((account) => (
       account.gameId === 'maimai'
@@ -89,9 +91,18 @@ export function useOverviewUpload({ boundAccounts, activeAccountId, activeGameId
       return false;
     }
 
-    if (!operation.begin()) return false;
+    const current = uploadTaskController.getSnapshot();
+    if (['running', 'paused'].includes(current.status) || !operation.begin()) return false;
+    const signal = uploadTaskController.begin();
+    const isCurrent = () => uploadTaskController.isCurrent(signal);
+    const applyPhase = (phase: UploadPhase) => {
+      uploadTaskController.setPhase(phase, signal);
+      if (mounted.current && isCurrent()) setUploadPhase(phase);
+    };
     try {
+      await signal.waitUntilResumed?.();
       const catalog = catalogData ?? (await refetchCatalog()).data;
+      if (!isCurrent()) return false;
       if (!catalog) throw catalogError ?? new Error('舞萌曲库尚未就绪，请稍后重试');
       const phaseLabel = (phase: LxnsTransferPhase) => {
         if (phase.kind === 'reading') return `正在读取 ${phase.account.displayName} 的落雪成绩…`;
@@ -104,57 +115,35 @@ export function useOverviewUpload({ boundAccounts, activeAccountId, activeGameId
         selected,
         sessionsByAccountId,
         catalog,
+        signal,
         onLxnsTokensRotated: applyLxnsTokenRotation,
-        onPhase: (phase) => setUploadPhase({
+        onPhase: (phase) => applyPhase({
           kind: phase.kind === 'refreshing' ? 'syncing' : 'uploading',
           message: phaseLabel(phase),
           providerTitle: phase.account.providerTitle,
         }),
       });
+      if (!isCurrent()) return false;
       await finishUpload(result);
-
-      const failed = result.targetResults.filter((target) => target.status === 'failed');
-      if (failed.length > 0) {
-        showNotification({
-          title: failed.length === result.targetResults.length ? '传输失败' : '部分传输完成',
-          message: failed.map((target) => (
-            `${target.account.displayName}：写入失败，请重试。`
-          )).join('；'),
-          variant: failed.length === result.targetResults.length ? 'error' : 'warning',
-        });
-        setUploadPhase({
-          kind: 'error',
-          message: failed.length === result.targetResults.length
-            ? '所有目标均写入失败'
-            : `部分完成，${failed.length} 个目标失败`,
-        });
+      if (!isCurrent()) return false;
+      uploadTaskController.complete(result, signal);
+      if (!mounted.current) {
+        presentTransferResult(result, sourceAccount.displayName, selected.length, () => {}, applyPhase);
         return false;
       }
 
-      const refreshWarning = result.failedAccountNames.length > 0
-        ? `；${result.failedAccountNames.join('、')}的页面未能更新`
-        : '';
-      showNotification({
-        title: '传输完成',
-        message: `已从 ${sourceAccount.displayName} 向 ${selected.length} 个账号写入 ${result.uploaded} 条成绩${refreshWarning}`,
-        variant: result.failedAccountNames.length > 0 ? 'warning' : 'success',
-      });
-      setUploadPhase({
-        kind: 'done',
-        message: `传输完成：写入 ${result.uploaded} 条`,
-        uploaded: result.uploaded,
-        skipped: result.skipped,
-      });
-      return true;
+      return presentTransferResult(result, sourceAccount.displayName, selected.length, showNotification, applyPhase);
     } catch (transferError) {
+      if (!isCurrent()) return false;
       const message = providerErrorToUserMessage(
         transferError,
         '暂时无法传输成绩，请稍后重试。',
       );
-      setUploadPhase({ kind: 'error', message });
-      showNotification({ title: '传输失败', message, variant: 'error' });
+      applyPhase({ kind: 'error', message });
+      if (mounted.current) showNotification({ title: '传输失败', message, variant: 'error' });
       return false;
     } finally {
+      if (signal.aborted) uploadTaskController.finishCanceled(signal);
       operation.finish();
     }
   }, [
@@ -210,4 +199,48 @@ export function useOverviewUpload({ boundAccounts, activeAccountId, activeGameId
     uploadPhase, setUploadPhase, maimaiLxnsSources, maimaiTransferTargets, maimaiLxnsGuideAvailable,
     friendCodeUploadBusy, showingMaimaiSyncGuide, currentUploadSelection, finishUpload, syncMaimaiFromLxns,
     openUpload, closeUpload, openChunithmUpload };
+}
+function presentTransferResult(result: UploadResult, sourceName: string, targetCount: number,
+  showNotification: (input: Parameters<ReturnType<typeof useNotification>['showNotification']>[0]) => void,
+  applyPhase: (phase: UploadPhase) => void): boolean {
+  const failed = result.targetResults.filter((target) => target.status === 'failed');
+  const unconfirmed = result.targetResults.filter(target => target.status === 'unconfirmed');
+  if (unconfirmed.length) {
+    const message = `已确认写入 ${result.uploaded} 条；${unconfirmed.map(target => target.account.displayName).join('、')}写入未确认，请先核对成绩。${failed.length ? `；${failed.map(target => target.account.displayName).join('、')}写入失败。` : ''}`;
+    showNotification({ title: '传输结果未确认', message, variant: 'warning' });
+    applyPhase({ kind: 'done', message, uploaded: result.uploaded, skipped: result.skipped });
+    return false;
+  }
+  if (failed.length > 0) {
+    showNotification({
+      title: failed.length === result.targetResults.length ? '传输失败' : '部分传输完成',
+      message: failed.map((target) => (
+        `${target.account.displayName}：写入失败，请重试。`
+      )).join('；'),
+      variant: failed.length === result.targetResults.length ? 'error' : 'warning',
+    });
+    applyPhase({
+      kind: 'error',
+      message: failed.length === result.targetResults.length
+        ? '所有目标均写入失败'
+        : `部分完成，${failed.length} 个目标失败`,
+    });
+    return false;
+  }
+
+  const refreshWarning = result.failedAccountNames.length > 0
+    ? `；${result.failedAccountNames.join('、')}的页面未能更新`
+    : '';
+  showNotification({
+    title: '传输完成',
+    message: `已从 ${sourceName} 向 ${targetCount} 个账号写入 ${result.uploaded} 条成绩${refreshWarning}`,
+    variant: result.failedAccountNames.length > 0 ? 'warning' : 'success',
+  });
+  applyPhase({
+    kind: 'done',
+    message: `传输完成：写入 ${result.uploaded} 条`,
+    uploaded: result.uploaded,
+    skipped: result.skipped,
+  });
+  return true;
 }

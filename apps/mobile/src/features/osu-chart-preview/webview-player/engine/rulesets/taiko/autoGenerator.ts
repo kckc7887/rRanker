@@ -88,7 +88,8 @@ export function generateTaikoAutoReplay(beatmap: BeatmapData, _modDiff: ModDiffi
       // One press per pre-computed tick, alternating centre hands so each is a fresh edge.
       // Skip phantom ticks past endTime: the converter emits ticks up to endTime+tickInterval/2,
       // but the judge rejects presses with time > endTime, so pressing them would only ghost-tap.
-      for (const tickTime of h.tickTimes) {
+      for (let tick = 0; tick < h.tickCount; tick++) {
+        const tickTime = h.time + tick * h.tickInterval;
         if (tickTime > h.endTime) continue;
         press(tickTime, hitButton ? LEFT_CENTRE : RIGHT_CENTRE);
         hitButton = !hitButton;

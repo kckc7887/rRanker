@@ -117,7 +117,7 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
             actions: [{ label: '知道了', tone: 'default' }],
           });
         },
-        onLxnsTokensRotated: (accountId, update) => isCurrent() ? onLxnsTokensRotated?.(accountId, update) : undefined,
+        onLxnsTokensRotated,
       });
 
       if (!isCurrent()) return;
@@ -178,7 +178,7 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
         signal,
         onPhase: applyPhase,
         onQrAccepted: () => { if (isCurrent()) setBindQrText(''); },
-        onLxnsTokensRotated: (accountId, update) => isCurrent() ? onLxnsTokensRotated?.(accountId, update) : undefined,
+        onLxnsTokensRotated,
       });
       if (!isCurrent()) return;
       uploadTaskController.complete(result, signal);

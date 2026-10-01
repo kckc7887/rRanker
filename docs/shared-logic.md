@@ -54,6 +54,8 @@ app 路由 / 游戏容器
 
 ## 领域与展示契约
 
+详情编码总是写入 `gameId`，解析显式游戏身份优先，旧链接保留当前游戏回退。`app/songs/[songId].tsx` 在目标游戏与当前游戏不同时通过既有 `AccountSwitchSheet` / `switchBoundAccount` 选择账号，保留原目标参数；取消时不挂载错误游戏的详情。强调色实心按钮、选中标记和加载指示统一使用 `theme.onAccent`，亮色和暗色强调色共用同一前景规则。
+
 | 能力 | 权威入口与主要导出 | 使用边界 | 主要验证 |
 |---|---|---|---|
 | 物量分组展示形状 | `src/domain/game-content.ts`：`GameNoteValue`、`GameNoteGroup` | 只描述「键 + 标签 + 若干数值」的展示形状，各游戏自行构造；消费方是 `features/game-content/presentation.ts` 的 `NoteGroupPresentation`、`features/game-content/adapters/adofai.ts`、`features/game-content/adapters/phira.ts` 与 `domain/majdata.ts` 的 `majdataNoteGroup(counts)` | `majdata.test.ts` |
@@ -359,6 +361,7 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
 没有能力时查询禁用，主动读取经 `requireDetailedCatalogProvider` 拒绝，不返回伪造空曲库。
 `protocolScoreProvider` 保留真实中二/osu! 协议合同，加载器消费解析器缓存实例，避免另建刷新状态。
 `rotateOsuTokens` 的近期轮换和祖先关系共用 64 项上限；解除最后一个 osu! 账号或 `clearSession` 时清空。窗口外的旧刷新令牌不能覆盖当前会话。
+预取消阻止新请求和新轮换；已经完成的轮换始终交给协调器判断资格，页面过期只过滤进度、通知和展示动作。osu! 回调使用 `useAccountBindingRequest` 的取消、重复操作和当前请求守卫，失焦或卸载使旧页面动作失效；提交完成后保留已保存账号。
 `services/account-restoration.ts` 的 `restoreAppAccounts()` / `loadOptionalBoundAccounts()`
 统一安全会话、可选档案及默认本地玩家迁移。`getAccountSourceStatuses()` /
 `subscribeAccountSourceStatuses()` 发布来源级 loading、ready、failed；读取失败保留已加载数据。
@@ -370,6 +373,13 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
 `useAppStartup` 处理启动准备，`useAppRuntime` 处理路由、前后台、内存警告和延后维护。
 界面 Provider/导航仍在根布局装配。
 
+`UploadPrefsStore` 读取缺失时才返回默认值，损坏结构抛 `UploadPrefsCorruptError`，存储 I/O 错误原样传播；迁移清理只删除已成功解析的旧键。`ScoreHubAccountStore` 的普通认证读取严格校验全部被引用令牌，显式删除或清空则先提交有效索引，再独立清理密钥，不要求先读取损坏的令牌。
+
+`repositories/resource-repository.ts` 将普通读写、原子更新和维护能力分为 `ResourceRepository`、`AtomicResourceRepository`、`ResourceMaintenanceRepository`，消费者按实际使用的能力注入。`parseCachedSnapshot` / `cacheSourceSchema` 复用来源校验；TUF、Muse Dash、Phira 在各自缓存模块复用领域 Schema 验证内容，损坏行返回空但保留原文，I/O 失败继续传播。Phira 原子合并重新校验旧 best 快照，错误身份和损坏项不能混入新结果。
+`domain/schemas.ts` 的 `DataSourceSchema`、`PlayerSchema`、`ScoreRecordSchema`、`CatalogSnapshotSchema` 与 `ScoreSnapshotSchema` 校验归一化快照。数据来源集合来自 `DATA_SOURCE_KINDS`；SQLite 成绩、曲库和 Phigros 存档缓存共用这些 Schema，Phigros 自己校验进度、Best 分区及存档元数据，保留可选展示字段与兼容扩展。
+
+ScoreHub 的响应校验集中在 `score-hub-types.ts`：同步成绩、账号资料、机台任务进度及服务统计均先通过 Schema。缺失的旧版可选字段仍归一化为空值；显式错误类型、负数或非整数计数不能被伪装为默认状态。调用方继续通过 `score-hub-client.ts` 与 `parseCabinetScoreJob` 消费规范结果。
+
 `state/theme-store.ts` 的 setter 立即应用主题、曲绘和透明度选择，不回弹、不显示额外提示。
 主题存储复用严格偏好工厂，唯一写入协调器合并全部字段，读到的基线不能覆盖已选择字段。
 读取或保存失败按 0.5/2/10/30 秒退避，之后每 30 秒自动重试；后台暂停新任务，前台补写。
@@ -380,7 +390,7 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
 会话索引缺失时走旧版迁移；JSON 损坏抛
 `SessionIndexCorruptError` 并保留 `.corrupt` 副本，未知版本、顶层结构或账号/凭据行错误抛
 `SessionIndexUnrecognizedError` 并保留 `.unrecognized` 副本，原键不动，后续写入不得
-覆盖。账号引用的凭据不可读或不能解析时整个恢复失败，不静默丢弃关联账号；无账号引用的凭据不参与恢复。账号恢复入口记录脱敏的凭据读取错误。`LargeSecureValueStore.write` 校验新分片与清单读回，失败时恢复旧清单并清理新分片；账号仓库也在读回一致后才提交账号索引。旧版迁移源解析失败时跳过但不删除。`readPreservedSessionIndex` 读取保留副本，
+覆盖。账号引用的凭据不可读或不能解析时整个恢复失败，不静默丢弃关联账号；无账号引用的凭据不参与恢复。账号恢复入口记录脱敏的凭据读取错误。`LargeSecureValueStore.write` 校验新分片与清单读回，失败时恢复旧清单并清理新分片；账号仓库也在读回一致后才提交账号索引。旧版迁移源顶层损坏时保留并报错；混合损坏项保留安全原文，有效项迁移并在 v4 索引记录不含敏感内容的 recovery 计数，后续只读取有效索引。`readPreservedSessionIndex` 读取保留副本，
 `restorePreservedSessionIndex` 只在副本可解析且当前索引不可用时写回。`loadVault()` 的读取和迁移与变更共用仓库串行队列。
 `clear(): Promise<RemoveAccountResult>` 先提交 v4 合法空索引，再分别清理凭据、密码、保留副本和旧来源；
 提交失败保留原账号，提交后的失败只汇总 `cleanupFailures`，空索引阻止旧来源再次迁移。
@@ -468,8 +478,9 @@ Provider 实例的解析与释放分别经 `sessionRuntime().resolve` / `session
   已取消的调用不发出后续业务读取。
 - 上传目标在共同写入入口逐个复核资格：`uploadLatestScoreHubSyncToTargets` 与
   `transferMaimaiFromLxns` 在每个目标写入前调用 `captureAccountWrites` 断言，
-  `uploadRecordsToLxns` / `uploadRecordsToDivingFish` 的 `assertEligible` 在每次重试前再复核；
+  `uploadRecordsToLxns` / `uploadRecordsToDivingFish` 的 `assertEligible` 在发送前再复核；
   失效目标不再向上游写入，其他目标独立完成，已写入的远端结果不回滚。
+  写入经公共 `requestProviderWrite` 单次发送并返回 `success` 或 `unconfirmed`，不确定结果禁止盲目重传。水鱼未确认时经现有 Provider 新鲜读取一次，`uploadedRecordsAreVisible(..., 'exact')` 按唯一谱面身份和可比较字段核验；重复身份、未知状态、缺项或核验失败保留未确认，确认写入数为零。`withUploadAbortSignal` 和 `waitForUploadDelay` 统一恢复等待、监听取消和清理，轮询、目标传输与刷新复用它们。
 - `clearStorageByCategories` 先提升所属游戏代次，再取消并移除查询，然后执行适配器清理。
   同类资源与图片清理通过 `Promise.allSettled` 等待全部终态后汇总失败并测量回收量；原生图片清理返回 false 或抛错均报告失败，部分成功仍保留实际结果。
   `cancelBoundAccountQueries(account, client)` 在解绑删除前使单个账号失效，取消并移除
@@ -716,6 +727,14 @@ iOS 截图前若 App 处于 inactive 或 background，先等到 `foreground-read
 
 谱面导航请求在 `domain/chart-preview-request.ts`，暂存与交接位于 `features/chart-preview-shared/chart-preview-navigation.ts`。PGR 格式配置共用 `chart-preview-shared/pgr-preview-config.ts`；Phigros 与 Phira 各自的 `chart-preview-input.ts` 组装配置。RPE 路径规范与资源 URL 由 `domain/rpe-resource-path.ts` 统一解释。兼容包下载分别位于 `features/phigros-chart-download/chart-package-download.ts` 与 `features/phira-chart-download/chart-package-download.ts`，公共下载核心不构造游戏资源。
 
+`chart-preview-shared/webview-player/interval-index.ts` 的 `createIntervalIndex` 保留原始条目顺序，返回与闭区间相交的候选，供 osu! mania 与 Rizline 共用。Rizline 按空间区间和特效时间区间合并候选，保留长 Hold、负速与前后 seek，静态绘制顺序只准备一次；未传 viewport 的帧布局仍返回完整结果。播放终点同时覆盖音频和 offset 后的谱尾，无音源尾段仍按公共时钟变速。
+
+RPE 速度积分显式读取所属判定线的策略；染色纹理按 64 项、32 MiB 的驻留预算淘汰并复用画布，单张超大纹理使用全分辨率工作画布，不改变颜色、透明度或画质，换资源和释放时清空。Simai 诊断位置通过预计算换行索引查询。Phira 下载在整文件读取前经 `readBudgetedChartDownload` 校验现有字节预算，完整 ArrayBuffer 直接复用，资源分批暂存并检查取消。
+
+osu! 滑条 repeat 必须是正安全整数，边缘采样只保存显式字段并经 `sliderEdgeSample` 读取默认值，不按 repeat 填充数组。`sliderNestedEvents(beatmap, slider, slideDur, isLazer)` 逐项产生 tick、repeat 和 tail，判定与计分复用该流，不另外构造完整的节拍和类别数组；保留 stable 累加与 lazer 边界差异。反向箭头按最后一次对应方向折返计算。`buildAutoReplay(source, hash)` 可接收已解析谱面，标准模式在生成输入前走 `applyStacking`，播放与判定共用同一份坐标。太鼓滚奏用 `tickCount`、`tickInterval` 和起点表达均匀节拍；判定只检查相邻节拍，绘制只遍历可见节拍，着色缓存实际变化并用二分查找支持 seek。
+
+Rizline 的 `activeSpans(spans, seconds)` 为不可变、有序时间轨道缓存区间索引，相机、画布位移、速度和颜色共用；无序轨道保留原始提前退出语义。准备时 BPM 换算和音符所属线段查询也复用区间索引，交界处仍保留各采样器原有的首项或末项优先规则。
+
 Phigros 的谱面资源在服务层：`services/phigros-chart-preview-resources.ts` 提供端口
 `PhigrosChartPreviewResourcePort`、端口工厂 `createPhigrosChartPreviewResourcePort(ossBase?)`、
 加载器工厂 `createPhigrosChartPreviewResourceLoader(port)`，以及默认装配后的
@@ -891,6 +910,7 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
 ### 图片与缓存
 
 - 受控远程图片缓存当前为 v3：总计 10 MiB，单项最多 10 KiB，单线程变换；当前游戏分得 70% 预算，其余按最近使用分配。
+- 图片索引读取 I/O 失败直接传播，保留文件并允许下次重读；只有读成功后才进行内容解析和文件核对。定时写入立即观察拒绝，显式 `flushRemoteImageCacheManifest()` 仍报告原错误，下一次写入可以恢复。
 - 列表图片达到 50% 可见并持续 250 ms 后才进入持久化 scope；在线资源作为主路径，本地压缩文件只作回退。失活只暂停落盘，不把已显示 source 置空。
 - 存储管理显示范围、统计范围和删除范围必须来自同一策略与适配器。不得清空整个 Expo 缓存目录，以免删除框架字体等非业务文件。
 

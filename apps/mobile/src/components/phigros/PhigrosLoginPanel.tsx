@@ -224,7 +224,7 @@ export function PhigrosLoginPanel({
             onPress={() => void beginPhigrosLogin()}
             style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
           >
-            <Text style={styles.primaryText}>开始绑定</Text>
+            <Text style={[styles.primaryText, { color: theme.onAccent }]}>开始绑定</Text>
           </Pressable>
           <Text style={styles.hint}>
             点击后生成授权二维码，也可前往 TapTap 完成授权，授权成功后自动绑定。
@@ -259,7 +259,7 @@ export function PhigrosLoginPanel({
             }}
             style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && styles.primaryPressed]}
           >
-            <Text style={styles.primaryText}>前往 TapTap 授权</Text>
+            <Text style={[styles.primaryText, { color: theme.onAccent }]}>前往 TapTap 授权</Text>
           </Pressable>
           <Pressable
             onPress={cancelPhigrosLogin}

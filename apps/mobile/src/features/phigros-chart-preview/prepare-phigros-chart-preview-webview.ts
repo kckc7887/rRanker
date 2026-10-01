@@ -14,6 +14,7 @@ import {
   type PhigrosChartPreviewConfig,
 } from './phigros-chart-preview-inject';
 import { chartPreviewStageDirectory } from '@/features/chart-preview-shared/chart-preview-assets';
+import { readBudgetedChartDownload, pauseChartPreviewParse, CHART_PREVIEW_PARSE_YIELD_INTERVAL, throwIfChartPreviewCancelled } from '@/features/chart-preview-shared/chart-preview-resource-budget';
 
 // Metro 静态资源模块编号只能在运行时 require 取得（模块级常量），
 // 改写为 import 需补齐 .html/.bundle 的模块声明且无行为收益。
@@ -118,8 +119,9 @@ export async function downloadPhiraChartPreviewZip(
     },
   );
   onProgress?.({ label: CHART_PREVIEW_RESOURCE_LABEL, value: 1 });
-  const bytes = await file.bytes();
-  return Uint8Array.from(bytes).buffer;
+  const bytes = await readBudgetedChartDownload(file, { signal });
+  if (bytes.buffer instanceof ArrayBuffer && bytes.byteOffset === 0 && bytes.byteLength === bytes.buffer.byteLength) return bytes.buffer;
+  return bytes.slice().buffer;
 }
 
 /**
@@ -199,7 +201,15 @@ export async function stagePhiraRpeBundle(
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   const directory = new Directory(root, `rpe/${chartId}`);
   directory.create({ intermediates: true, idempotent: true });
+  let batchBytes = 0;
+  let batchFiles = 0;
   for (const file of files) {
+    throwIfChartPreviewCancelled({ signal });
+    if (batchBytes >= 8 * 1024 * 1024 || batchFiles >= 16) {
+      await pauseChartPreviewParse(CHART_PREVIEW_PARSE_YIELD_INTERVAL, { signal });
+      batchBytes = 0;
+      batchFiles = 0;
+    }
     const separatorIndex = file.name.lastIndexOf('/');
     if (separatorIndex > 0) {
       new Directory(directory, file.name.slice(0, separatorIndex)).create({ intermediates: true, idempotent: true });
@@ -208,7 +218,10 @@ export async function stagePhiraRpeBundle(
     if (target.exists) target.delete();
     target.create();
     target.write(file.bytes);
+    batchBytes += file.bytes.byteLength;
+    batchFiles += 1;
   }
+  throwIfChartPreviewCancelled({ signal });
   return { basePath: `./rpe/${chartId}/` };
 }
 

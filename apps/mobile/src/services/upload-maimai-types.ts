@@ -41,7 +41,7 @@ export type BindCabinetResult = {
 
 export type UploadTargetResult = {
   account: BoundAccount;
-  status: 'success' | 'failed';
+  status: 'success' | 'unconfirmed' | 'failed';
   written: number;
   skipped: number;
   errorMessage?: string;
@@ -54,6 +54,8 @@ export type UploadTarget = {
   disableReason: string | null;
 };
 
+export type UploadWriteResult = { status: 'success' | 'unconfirmed'; uploaded: number };
+
 export type UploadCommonInput = {
   selectedAccountIds: string[];
   targets: UploadTarget[];
@@ -63,4 +65,3 @@ export type UploadCommonInput = {
   onPhase: (phase: UploadPhase) => void;
   onLxnsTokensRotated?: (accountId: string, update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
 };
-

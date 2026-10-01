@@ -125,7 +125,7 @@ describe('SecureStore 聚合数据迁移', () => {
     expect(Object.keys((await store.loadAll()).accounts)).toEqual(['A', 'B']);
   });
 
-  it.each(['load', 'loadAll', 'listWithToken', 'getByFriendCode', 'upsert', 'patch', 'remove', 'save', 'clear'] as const)(
+  it.each(['load', 'loadAll', 'listWithToken', 'getByFriendCode', 'upsert', 'patch', 'save'] as const)(
     'ScoreHub %s 不接受缺失凭据的部分目录', async operation => {
       const kv = createKvStore(), secrets = new LargeSecureValueStore(), store = new ScoreHubAccountStore(kv, secrets);
       await store.save({ friendCode: 'A', token: 'a', hasCabinetBound: true });
@@ -135,12 +135,47 @@ describe('SecureStore 聚合数据迁移', () => {
         : operation === 'upsert' ? store.upsert({ friendCode: 'B', token: 'b' })
           : operation === 'save' ? store.save({ friendCode: 'B', token: 'b', hasCabinetBound: false })
             : operation === 'patch' ? store.patch({ hasCabinetBound: false })
-              : operation === 'remove' ? store.remove('A') : store[operation]();
+              : store[operation]();
       await expect(call).rejects.toMatchObject({ code: 'credential_storage' });
       expect(kv.values.get('rranker.scorehub.accounts.v3')).toBe(before);
       await expect(store.load()).resolves.toMatchObject({ friendCode: 'A', token: 'a' });
     },
   );
+
+  it.each(['remove', 'clear'] as const)('ScoreHub %s 依据有效索引删除，无需读取损坏密钥', async operation => {
+    const kv = createKvStore(), secrets = new LargeSecureValueStore(), store = new ScoreHubAccountStore(kv, secrets);
+    await store.save({ friendCode: 'A', token: 'a', hasCabinetBound: true });
+    const read = vi.spyOn(secrets, 'read').mockRejectedValue(new Error('damaged credential'));
+    await (operation === 'remove' ? store.remove('A') : store.clear());
+    expect(read).not.toHaveBeenCalled();
+    expect(await new ScoreHubAccountStore(kv).loadAll()).toEqual({ activeFriendCode: '', accounts: {} });
+    expect(secure.values.size).toBe(0);
+  });
+
+  it.each(['rranker.upload.prefs.v1', 'rranker.upload.prefs.v2', 'rranker.upload.prefs.v3'])(
+    '损坏上传偏好 %s 保留原文且阻止默认值覆盖', async key => {
+      for (const raw of ['{', '', 'null', '{}', '{"friendCode":"A","selectedAccountIds":[null]}']) {
+        const kv = createKvStore(), store = new UploadPrefsStore(kv);
+        secure.values.clear();
+        const values = key.endsWith('v3') ? kv.values : secure.values;
+        values.set(key, raw);
+        await expect(store.load()).rejects.toMatchObject({ name: 'UploadPrefsCorruptError' });
+        await expect(store.save({ friendCode: 'B', selectedAccountIds: [] })).rejects.toMatchObject({ name: 'UploadPrefsCorruptError' });
+        expect(values.get(key)).toBe(raw);
+        expect(kv.setItem).not.toHaveBeenCalled();
+      }
+    },
+  );
+
+  it('上传偏好读取失败与缺失区分，失败不写入或删除', async () => {
+    const kv = createKvStore(), store = new UploadPrefsStore(kv);
+    const failure = new Error('read unavailable');
+    kv.getItem.mockRejectedValueOnce(failure);
+    await expect(store.load()).rejects.toBe(failure);
+    expect(kv.setItem).not.toHaveBeenCalled();
+    expect(kv.removeItem).not.toHaveBeenCalled();
+    await expect(store.load()).resolves.toMatchObject({ friendCode: '' });
+  });
 
   it.each(['{', JSON.stringify({ version: 4, accounts: {} }), JSON.stringify({ version: 3, accounts: { A: {} } })])(
     'ScoreHub 保留无法识别的已有索引 %s', async raw => {
@@ -257,6 +292,7 @@ describe('SecureStore 聚合数据迁移', () => {
 
   it('上传偏好从 SecureStore 迁入 SQLite 并保持按好友码的选择', async () => {
     const kv = createKvStore();
+    secure.values.set('rranker.upload.prefs.v1', '{broken');
     secure.values.set('rranker.upload.prefs.v2', JSON.stringify({
       friendCode: '10002',
       selectedAccountIds: ['account-b'],
@@ -279,6 +315,7 @@ describe('SecureStore 聚合数据迁移', () => {
     });
     expect(kv.values.has('rranker.upload.prefs.v3')).toBe(true);
     expect(secure.values.has('rranker.upload.prefs.v2')).toBe(false);
+    expect(secure.values.get('rranker.upload.prefs.v1')).toBe('{broken');
     const secureStore = await import('expo-secure-store');
     expect(vi.mocked(secureStore.setItemAsync)).not.toHaveBeenCalled();
   });

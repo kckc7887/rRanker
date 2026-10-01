@@ -9,9 +9,11 @@ import {
   friendCodeFromUser,
   QR_LOGIN_STATUS_LABEL,
   SCORE_HUB_ALL_DIFFICULTIES,
+  ScoreHubLatestSyncSchema,
   type QrLoginCredential,
   type QrLoginTokenResult,
-  type ScoreHubDxnetJobStats,
+  ScoreHubDxnetJobStatsSchema,
+  ScoreHubMeProfileSchema,
   type ScoreHubLatestSync,
   type ScoreHubStatistics,
 } from '@/services/score-hub-types';
@@ -280,11 +282,11 @@ export async function fetchLatestSync(
   if (status !== 200) {
     throw new ScoreHubError(`拉取 sync 失败（HTTP ${status}）`, status);
   }
-  if (body === null) return null;
-  if (!body || typeof body !== 'object') {
+  const parsed = ScoreHubLatestSyncSchema.safeParse(body);
+  if (!parsed.success) {
     throw new ScoreHubError('sync 响应无效');
   }
-  return body as ScoreHubLatestSync;
+  return parsed.data;
 }
 
 export type ScoreHubMeProfile = {
@@ -300,11 +302,9 @@ export async function fetchMe(
   if (status !== 200 || !body || typeof body !== 'object') {
     throw new ScoreHubError(`拉取账号信息失败（HTTP ${status}）`, status);
   }
-  const record = body as Record<string, unknown>;
-  return {
-    friendCode: typeof record.friendCode === 'string' ? record.friendCode : null,
-    hasCabinetUserId: record.hasCabinetUserId === true,
-  };
+  const parsed = ScoreHubMeProfileSchema.safeParse(body);
+  if (!parsed.success) throw new ScoreHubError('账号信息响应无效', status, false);
+  return parsed.data;
 }
 
 function bindCabinetErrorMessage(body: unknown, status: number): string {
@@ -366,24 +366,6 @@ export async function bindCabinetByQr(
   throw new ScoreHubError(bindCabinetErrorMessage(body, status), status);
 }
 
-function parseDxnetJobStats(raw: unknown): ScoreHubDxnetJobStats | null {
-  if (!raw || typeof raw !== 'object') return null;
-  const record = raw as Record<string, unknown>;
-  if (typeof record.totalCount !== 'number'
-    || typeof record.completedCount !== 'number'
-    || typeof record.failedCount !== 'number'
-    || typeof record.successRate !== 'number') {
-    return null;
-  }
-  return {
-    totalCount: record.totalCount,
-    completedCount: record.completedCount,
-    failedCount: record.failedCount,
-    successRate: record.successRate,
-    avgDuration: typeof record.avgDuration === 'number' ? record.avgDuration : null,
-  };
-}
-
 /** 公开接口：近一小时 DXNet update_score 任务统计。 */
 export async function fetchScoreHubStatistics(
   signal?: ScoreHubAbortSignal,
@@ -392,9 +374,9 @@ export async function fetchScoreHubStatistics(
   if (status !== 200 || !body || typeof body !== 'object') {
     throw new ScoreHubError(`拉取服务统计失败（HTTP ${status}）`, status, true);
   }
-  const dxnetJobs = parseDxnetJobStats((body as Record<string, unknown>).dxnetJobs);
-  if (!dxnetJobs) {
-    throw new ScoreHubError('服务统计响应无效', status, true);
+  const parsed = ScoreHubDxnetJobStatsSchema.safeParse((body as Record<string, unknown>).dxnetJobs);
+  if (!parsed.success) {
+    throw new ScoreHubError('服务统计响应无效', status, false);
   }
-  return { dxnetJobs };
+  return { dxnetJobs: parsed.data };
 }

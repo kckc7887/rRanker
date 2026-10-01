@@ -79,10 +79,10 @@ describe('OsuScoreProvider 走公共请求执行器', () => {
     }
   });
 
-  it('请求前取消不发出请求并透传调用方原因', async () => {
+  it.each([0, session.expiresAt])('请求前取消不刷新过期令牌或发出请求 %s', async expiresAt => {
     const controller = new AbortController();
     controller.abort(new Error('已取消'));
-    await expect(new OsuScoreProvider(session).getOwnUser('osu-standard', controller.signal)).rejects.toThrow('已取消');
+    await expect(new OsuScoreProvider({ ...session, expiresAt }).getOwnUser('osu-standard', controller.signal)).rejects.toThrow('已取消');
     expect(mocks.fetch).not.toHaveBeenCalled();
   });
 });

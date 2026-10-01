@@ -1,5 +1,6 @@
 import {
   applyPositionOffsets,
+  applyStacking,
   computeModDifficulty,
   convertBeatmapToCatch,
   generateCatchAutoReplay,
@@ -21,8 +22,8 @@ export function parseOsuBytes(bytes: Uint8Array): BeatmapData {
   return parseBeatmap(decodeOsuText(bytes));
 }
 
-export function buildAutoReplay(bytes: Uint8Array, hash: string): ReplayData {
-  const beatmap = parseOsuBytes(bytes);
+export function buildAutoReplay(source: Uint8Array | BeatmapData, hash: string): ReplayData {
+  const beatmap = source instanceof Uint8Array ? parseOsuBytes(source) : source;
   const stub = stubReplay(beatmap, hash);
   const modDiff = computeModDifficulty(beatmap, stub);
 
@@ -37,5 +38,6 @@ export function buildAutoReplay(bytes: Uint8Array, hash: string): ReplayData {
   if (beatmap.mode === 3) {
     return synthesizeAutoReplay(beatmap, hash, generateManiaAutoReplay(beatmap, modDiff), 0);
   }
+  applyStacking(beatmap, modDiff);
   return synthesizeAutoReplay(beatmap, hash, generateStdAutoReplay(beatmap, modDiff), 0);
 }

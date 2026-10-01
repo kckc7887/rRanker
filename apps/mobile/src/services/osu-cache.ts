@@ -14,6 +14,7 @@ import {
 } from '@/domain/osu';
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import type { AtomicResourceRepository, ResourceMaintenanceRepository } from '@/repositories/resource-repository';
 import {
   clearResourcesByPrefix,
   createInflightGuard, resourceWriteGeneration,
@@ -54,7 +55,7 @@ export function loadOsuSnapshotFresh(
 
 /** osu! 分模式玩家快照的本地持久化（缓存优先渲染）。 */
 export class OsuCache {
-  constructor(private readonly repository = new SqliteSnapshotRepository()) {}
+  constructor(private readonly repository: AtomicResourceRepository & ResourceMaintenanceRepository = new SqliteSnapshotRepository()) {}
 
   async load(gameId: OsuGameId, userId: number): Promise<OsuSnapshot | null> {
     const raw = await this.repository.getResource<unknown>(

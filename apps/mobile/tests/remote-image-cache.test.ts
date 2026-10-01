@@ -118,6 +118,29 @@ import {
 } from '@/services/remote-image-cache';
 
 describe('remote image cache', () => {
+  it('reports a deferred manifest write failure through flush and allows the next write to recover', async () => {
+    vi.useFakeTimers();
+    const write = vi.spyOn(mocks.MockFile.prototype, 'write').mockRejectedValueOnce(new Error('disk full'));
+    try {
+      await markRemoteImageCacheGameActive('maimai');
+      await vi.advanceTimersByTimeAsync(1000);
+      await expect(flushRemoteImageCacheManifest()).rejects.toThrow('disk full');
+      await markRemoteImageCacheGameActive('phigros');
+      await expect(flushRemoteImageCacheManifest()).resolves.toBeUndefined();
+    } finally { write.mockRestore(); vi.useRealTimers(); }
+  });
+  it('preserves cached files on manifest I/O failure and retries the read', async () => {
+    await cacheCompressedRemoteImage('https://example.test/keep.png', { gameId: 'maimai', profile: 'thumbnail' });
+    await flushRemoteImageCacheManifest();
+    resetRemoteImageCacheForTests();
+    const before = new Map(mocks.files);
+    const read = vi.spyOn(mocks.MockFile.prototype, 'text').mockRejectedValueOnce(new Error('storage unavailable'));
+    try {
+      await expect(listRemoteImageCacheUsage()).rejects.toThrow('storage unavailable');
+      expect(mocks.files).toEqual(before);
+      await expect(measureGameRemoteImageCacheBytes('maimai')).resolves.toBe(64);
+    } finally { read.mockRestore(); }
+  });
   beforeEach(() => {
     mocks.files.clear();
     mocks.directories.clear();

@@ -20,10 +20,11 @@ class MemoryRepo {
     return Promise.resolve();
   }
   async updateResource<T>(key: string, _version: number,
-    transform: (previous: T | null) => { value: T; updatedAt: string }) {
-    const { value } = transform((this.values.get(key) as T | undefined) ?? null);
-    this.values.set(key, value);
-    return Promise.resolve(value);
+    transform: (previous: T | null) => { value: T; updatedAt: string; write?: true } | { value: T; write: false }, assertCurrent?: () => void) {
+    const result = transform((this.values.get(key) as T | undefined) ?? null);
+    assertCurrent?.();
+    if (result.write !== false) this.values.set(key, result.value);
+    return Promise.resolve(result.value);
   }
   clearResources(keys: readonly string[]) { keys.forEach((key) => this.values.delete(key)); return Promise.resolve(); }
 }
@@ -38,8 +39,29 @@ const best = (chartId: number, score = 900_000): PhiraQueriedBest => ({
 });
 
 describe('PhiraCache', () => {
+  it('rejects damaged snapshots without deleting them or swallowing storage failures', async () => {
+    const repo = new MemoryRepo(); const cache = new PhiraCache(repo);
+    const damaged = { source, player: { id: 1 }, items: { bad: { record: {} } }, chart: {}, counts: { click: -1 }, data: { results: [{}] } };
+    for (const key of ['phira:player:1', 'phira:bests:1', 'phira:chart:1', 'phira:notes:1', 'phira:charts:ranked:1:']) repo.values.set(key, damaged);
+    expect(await cache.loadPlayer(1)).toBeNull();
+    expect(await cache.loadBests(1)).toBeNull();
+    expect(await cache.loadChart(1)).toBeNull();
+    expect(await cache.loadNotes(1)).toBeNull();
+    expect(await cache.loadPage('ranked', 1)).toBeNull();
+    expect(repo.values.size).toBe(5);
+    vi.spyOn(repo, 'getResource').mockRejectedValue(new Error('read failed'));
+    await expect(cache.loadPlayer(1)).rejects.toThrow('read failed');
+  });
+
+  it('does not merge damaged cached bests into a fresh valid response', async () => {
+    const repo = new MemoryRepo(); const cache = new PhiraCache(repo);
+    repo.values.set('phira:bests:1', { source, items: { broken: null } });
+    await cache.mergeBests(1, [best(101)]);
+    expect(Object.keys((await cache.loadBests(1))!.items)).toEqual(['101']);
+  });
+
   it('isolates queried-best tombstones by player and expands only that account', async () => {
-    const repo = new MemoryRepo(); const cache = new PhiraCache(repo as never);
+    const repo = new MemoryRepo(); const cache = new PhiraCache(repo);
     const tombstone = { chart, record: null, poolRks: null, queriedAt: source.updatedAt };
     await cache.mergeBests(1, [tombstone]);
     expect((await cache.loadBests(1))?.items['38294'].record).toBeNull();
@@ -47,19 +69,19 @@ describe('PhiraCache', () => {
   });
 
   it('invalidates note counts when chartUpdated changes at the consumer boundary', async () => {
-    const repo = new MemoryRepo(); const cache = new PhiraCache(repo as never);
+    const repo = new MemoryRepo(); const cache = new PhiraCache(repo);
     await cache.saveNotes(38294, { chartUpdated: 'old', counts: { click: 1, hold: 0, flick: 0, drag: 0 }, source });
     expect((await cache.loadNotes(38294))?.chartUpdated).not.toBe('new');
   });
 
   it('keeps both charts when two merges of one account overlap', async () => {
-    const repo = new MemoryRepo(); const cache = new PhiraCache(repo as never);
+    const repo = new MemoryRepo(); const cache = new PhiraCache(repo);
     await Promise.all([cache.mergeBests(1, [best(101)]), cache.mergeBests(1, [best(102)])]);
     expect(Object.keys((await cache.loadBests(1))?.items ?? {}).sort()).toEqual(['101', '102']);
   });
 
   it('lets the later merge win on the same chart and keeps the other chart of the same batch', async () => {
-    const repo = new MemoryRepo(); const cache = new PhiraCache(repo as never);
+    const repo = new MemoryRepo(); const cache = new PhiraCache(repo);
     const first = cache.mergeBests(1, [best(201, 900_000), best(202, 900_000)]);
     const second = cache.mergeBests(1, [best(201, 950_000)]);
     await Promise.all([first, second]);
@@ -69,7 +91,7 @@ describe('PhiraCache', () => {
   });
 
   it('keeps the previous update time when merging no value', async () => {
-    const repo = new MemoryRepo(); const cache = new PhiraCache(repo as never);
+    const repo = new MemoryRepo(); const cache = new PhiraCache(repo);
     const seeded = await cache.mergeBests(1, [best(301)]);
     const update = vi.spyOn(repo, 'updateResource');
     const result = await cache.mergeBests(1, []);
