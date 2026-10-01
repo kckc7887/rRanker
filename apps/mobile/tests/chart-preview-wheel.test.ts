@@ -99,6 +99,51 @@ describe('谱面确认常驻参数控件', () => {
     expect(item.commit).not.toHaveBeenCalled();
     expect(frames.size).toBe(0);
   });
+
+  it.each(['.parameter-label', '.parameter-value', '.parameter-ticks', '.parameter-cursor'])(
+    '从 %s 开始拖动时，子节点捕获移交不应中断后续移动', selector => {
+      const item = makeWheel(undefined, undefined, [0, 10, 0.1, 1], true);
+      const child = item.trigger.querySelector(selector)!;
+      const pointer = (target: EventTarget, type: string, x: number) => {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.assign(event, { pointerId: 7, clientX: x, clientY: 20, button: 0, pointerType: 'touch', isPrimary: true });
+        target.dispatchEvent(event);
+      };
+      pointer(child, 'pointerdown', 20);
+      pointer(child, 'pointermove', 28);
+      expect(item.wheel.getValue()).toBe(1.2);
+      pointer(child, 'lostpointercapture', 36);
+      pointer(item.trigger, 'gotpointercapture', 36);
+      pointer(item.trigger, 'pointermove', 36);
+      pointer(item.trigger, 'pointermove', 44);
+      expect(item.wheel.getValue()).toBe(1.6);
+      pointer(item.trigger, 'pointerup', 44);
+      vi.runAllTimers();
+      expect(item.preview).toHaveBeenCalledExactlyOnceWith(1.6);
+      expect(item.commit).toHaveBeenCalledExactlyOnceWith(1.6);
+    },
+  );
+
+  it('仅当前指针在按钮上失去捕获时结束并提交，后续移动无效', () => {
+    const item = makeWheel(undefined, undefined, [0, 10, 0.1, 1], true);
+    const pointer = (type: string, x: number, pointerId = 7) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.assign(event, { pointerId, clientX: x, clientY: 20, button: 0, pointerType: 'touch', isPrimary: true });
+      item.trigger.dispatchEvent(event);
+    };
+    pointer('pointerdown', 20);
+    pointer('pointermove', 28);
+    pointer('lostpointercapture', 28, 8);
+    pointer('pointermove', 36);
+    expect(item.wheel.getValue()).toBe(1.4);
+    pointer('lostpointercapture', 36);
+    expect(item.commit).toHaveBeenCalledExactlyOnceWith(1.4);
+    pointer('pointermove', 68);
+    pointer('pointerup', 68);
+    vi.runAllTimers();
+    expect(item.wheel.getValue()).toBe(1.4);
+    expect(item.commit).toHaveBeenCalledTimes(1);
+  });
 });
 afterEach(() => {
   disposers.splice(0).forEach(dispose => dispose());
