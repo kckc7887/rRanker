@@ -828,13 +828,17 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
 组织播放详情、热度进度、播放按钮和常驻设置区；移动原控制节点并保留监听，返回观察器清理函数。
 设置按钮声明 `data-presentation="inline"` 后，`setupWheelPopup` 通过同一范围、格式与回调创建
 参数卡片：横向拖动微调、刻度点击跳值、枚举离散选择和键盘调节；纵向手势交给页面滚动。
+触摸捕获从数值、刻度等子节点移交给参数按钮时，子节点冒泡的 `lostpointercapture` 不结束
+手势；只有当前指针在按钮本身失去捕获才结束并提交最终值，其他指针的释放不影响当前拖动。
 未声明该展示方式的调用方仍使用浮层。`closeActiveWheelPopup` 同时结束参数手势并提交最后值。
 `frame-scheduler.ts` 按帧合并最新预览，操作停止 120 ms 后提交；静默 `setValue` 不回写设置，
 `dispose` 取消未提交预览，领域设置解释留在各播放器。
 桥接设置事件可选 `committed`，缺省按已提交处理；Phigros 的 `false` 预览只暂存在宿主当前会话，
 操作结束、inactive、后台、卸载及换会话前保存最终值，迟到消息不得写入新会话。
 共享交互模块不解释音符、模式或游戏 ID，新增设置不得另建持久化入口。
-`chart-preview-wheel.test.ts` 验证预览、提交、格式、方向判定、键盘、枚举及销毁，
+`chart-preview-wheel.test.ts` 验证预览、提交、格式、方向判定、键盘、枚举、捕获移交及销毁；
+`check-maimai-player.mjs` 使用浏览器触摸输入验证数值、刻度、游标和枚举的连续拖动、最终设置
+提交及纵向滚动，直接运行生成播放器。
 `osu-chart-preview-controls.test.ts` 与 `rizline-chart-preview-controls.test.ts`
 将公共控制器样式和结构与现有播放器直接比较。
 

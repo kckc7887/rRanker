@@ -365,7 +365,12 @@ function setupInlineParameter(
   events.listen(window, 'pointercancel', event => {
     if (gesture?.id === event.pointerId) { endGesture(); flush(); }
   });
-  events.listen(trigger, 'lostpointercapture', endGesture);
+  events.listen(trigger, 'lostpointercapture', event => {
+    // 触摸的隐式捕获从子节点移交到按钮时，子节点的释放事件会向上冒泡。
+    if (event.target !== trigger || event.pointerId !== gesture?.id) return;
+    endGesture();
+    flush();
+  });
   const close = () => { endGesture(); flush(); };
   inlineControls.add(close);
   refresh();

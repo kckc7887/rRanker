@@ -445,6 +445,8 @@ info/chart 另限 6/32 MB；RPE/PGR/PEC/PBC 遍历和 CRC 定期让出并响应�
 常驻参数卡片，全屏保留浮动播放控制和锁定交互。参数共用
 `chart-preview-shared/webview-player/wheel.ts`，横向微调、刻度跳值和键盘调节沿用同一范围与
 设置回调，即时预览按帧合并，操作停止后提交；全屏和退出时结束未完成手势并提交最后值。
+公共参数控件将子节点的隐式触摸捕获移交到按钮后继续处理同一指针；只有按钮自身的当前
+捕获丢失才结束并提交。纵向触摸仍交给页面滚动，浏览器输入回归覆盖连续拖动与设置桥接。
 
 `prepareOsuChartPreviewWebViewSource` 在下载前捕获 shared 资源写入代次，与谱包保存入口
 共用 `downloadOsuBeatmapsetArchive`。完整包按 Sayobot、osu.direct、Catboy、Nerinyan
