@@ -208,7 +208,12 @@ function scheduleStd(
     if (obj.type !== 'slider') continue;
     const slideDur = slideDurationMs(beatmap, obj);
 
-    for (let n = 1; n <= obj.slides; n++) {
+    // Seeked playback jumps straight to the first audible edge; the guard below keeps the
+    // exact float comparison, so the one-edge margin only absorbs rounding.
+    const firstEdge = slideDur > 0 && Number.isFinite(fromBeatmapMs)
+      ? Math.max(1, Math.floor((fromBeatmapMs - 10 - obj.time) / slideDur) - 1)
+      : 1;
+    for (let n = firstEdge; n <= obj.slides; n++) {
       const edgeBeatmapMs = obj.time + slideDur * n;
       if (edgeBeatmapMs < fromBeatmapMs - 10) continue;
 
