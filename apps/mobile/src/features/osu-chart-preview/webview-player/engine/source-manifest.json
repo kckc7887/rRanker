@@ -143,14 +143,14 @@
       "upstreamPath": "src/rulesets/catch/hitJudge.ts",
       "upstreamGitBlob": "9ddee2c19648f338cf945d91d4952047c52d400e",
       "upstreamSha256": "333d56af56e7b38abfc4cb063c8417206d6bc23f52c57e21a1075394e5e81eea",
-      "integratedSha256": "b50d12e12fd717141229a07abd9718c8f68b5e46d51461cd23b3502bf56e49f4"
+      "integratedSha256": "be2448b2eb2f766949806b9124f8a7989c56439d5fa3bf09547493a3c66c4389"
     },
     {
       "path": "rulesets/catch/index.ts",
       "upstreamPath": "src/rulesets/catch/index.ts",
       "upstreamGitBlob": "6ca73329d423e6111df7f2a770b5a54479b08c3f",
       "upstreamSha256": "c1acfefc57076168bf2c06628ab10b530ba95a8f76961abbd4d6c8fed59c3f38",
-      "integratedSha256": "e8357b9cbd3a0a736f3b7fff72aa9344582d8f6a55164b63a58d95505e023a71"
+      "integratedSha256": "de9704aee855bebfa54c9830804d0ad51413c8d6b5b7118b04bfb452fd81c2f5"
     },
     {
       "path": "rulesets/catch/input.ts",
@@ -185,7 +185,7 @@
       "upstreamPath": "src/rulesets/catch/scoreProcessor.ts",
       "upstreamGitBlob": "b349cad55454c0a929f3e9dbda624c402a984b99",
       "upstreamSha256": "f61c9c747354bde1d38c2a504a5bdc17c9c37bb52b24ea22cd5e733af5ddb92c",
-      "integratedSha256": "98d6d91e0cd377d03e0f2385540b2c78c6e2934b959d34068d11b8949ff62b2e"
+      "integratedSha256": "c33f7d0406892fda602b6149ed0ec883a29a74b39161f81cb0b3b05a736e04e6"
     },
     {
       "path": "rulesets/catch/types.ts",

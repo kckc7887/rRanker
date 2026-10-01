@@ -69,6 +69,7 @@ non_functional() {
 }
 
 functional=true
+account=true
 reason="$reason_no_base"
 count=0
 
@@ -101,12 +102,22 @@ else
     echo "::warning::轻检查无法比较 $(escape_control "$base") 与 $(escape_control "$head")，按有功能改动处理"
   else
     functional=false
+    account=false
     reason="$reason_docs_only"
     while IFS= read -r -d '' path; do
       count=$((count + 1))
       if [ "$functional" = false ] && ! non_functional "$path"; then
         functional=true
         reason="$reason_functional"
+      fi
+      if ! non_functional "$path"; then
+        # Only known presentation/player paths can omit the native account probe.
+        # Shared state, providers, storage, services, configuration and unknown paths stay conservative.
+        case "$path" in
+          *account* | *Account* | *auth* | *Auth* | *session* | *Session* | *login* | *Login* | *credential* | *Credential*) account=true ;;
+          apps/mobile/src/components/maimai/* | apps/mobile/src/components/chunithm/* | apps/mobile/src/components/osu/* | apps/mobile/src/components/phigros/* | apps/mobile/src/components/rizline/* | apps/mobile/src/screens/* | apps/mobile/src/theme/* | apps/mobile/assets/* | apps/mobile/players/*) ;;
+          *) account=true ;;
+        esac
       fi
     done < "$paths_file"
     if [ "$count" -eq 0 ]; then
@@ -115,8 +126,15 @@ else
   fi
 fi
 
+case "${SCOPE_ACCOUNT_CHECKS:-auto}" in
+  auto) ;;
+  all) functional=true; account=true ;;
+  *) echo "::error::Unknown account check selection"; exit 1 ;;
+esac
+
 {
   echo "functional=$functional"
+  echo "account=$account"
   echo "reason=$reason"
   echo "changed-count=$count"
 } >> "${GITHUB_OUTPUT:-/dev/null}"

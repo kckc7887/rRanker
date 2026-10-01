@@ -1,5 +1,6 @@
 import * as SecureStore from 'expo-secure-store';
 import Storage from '@/storage/key-value-storage';
+import { enqueueKeyMutation } from '@/storage/create-account-list-store';
 
 const PREFS_KEY_V1 = 'rranker.upload.prefs.v1';
 const PREFS_KEY_V2 = 'rranker.upload.prefs.v2';
@@ -159,12 +160,13 @@ export class UploadPrefsStore {
   }
 
   async load(): Promise<UploadPrefs> {
-    return this.read();
+    // Reads can migrate data, so they share the same boundary as saves and clears.
+    return enqueueKeyMutation(this.storage, PREFS_KEY_V3, () => this.read());
   }
 
   /** 取某好友码的勾选；无记录则返回空数组。 */
   async getSelectionFor(friendCode: string): Promise<string[]> {
-    const prefs = await this.read();
+    const prefs = await this.load();
     const code = friendCode.trim();
     return code && prefs.selectionsByFriendCode[code]
       ? [...prefs.selectionsByFriendCode[code]!]
@@ -180,35 +182,41 @@ export class UploadPrefsStore {
     selectedAccountIds?: string[];
     writeSelection?: boolean;
   }): Promise<void> {
-    const current = await this.read();
-    const friendCode = prefs.friendCode.trim();
-    const map = { ...current.selectionsByFriendCode };
-    const writeSelection = prefs.writeSelection !== false;
-    if (writeSelection && friendCode && Array.isArray(prefs.selectedAccountIds)) {
-      const ids = sanitizeIds(prefs.selectedAccountIds);
-      if (ids.length > 0) map[friendCode] = ids;
-      else delete map[friendCode];
-    }
-    await this.write(viewFor(friendCode, map));
+    return enqueueKeyMutation(this.storage, PREFS_KEY_V3, async () => {
+      const current = await this.read();
+      const friendCode = prefs.friendCode.trim();
+      const map = { ...current.selectionsByFriendCode };
+      const writeSelection = prefs.writeSelection !== false;
+      if (writeSelection && friendCode && Array.isArray(prefs.selectedAccountIds)) {
+        const ids = sanitizeIds(prefs.selectedAccountIds);
+        if (ids.length > 0) map[friendCode] = ids;
+        else delete map[friendCode];
+      }
+      await this.write(viewFor(friendCode, map));
+    });
   }
 
   /** 删除好友码时同步清理勾选记录。 */
   async removeSelection(friendCode: string): Promise<void> {
     const code = friendCode.trim();
     if (!code) return;
-    const current = await this.read();
-    const map = { ...current.selectionsByFriendCode };
-    delete map[code];
-    const nextActive = current.friendCode === code
-      ? (Object.keys(map)[0] ?? '')
-      : current.friendCode;
-    await this.write(viewFor(nextActive, map));
+    return enqueueKeyMutation(this.storage, PREFS_KEY_V3, async () => {
+      const current = await this.read();
+      const map = { ...current.selectionsByFriendCode };
+      delete map[code];
+      const nextActive = current.friendCode === code
+        ? (Object.keys(map)[0] ?? '')
+        : current.friendCode;
+      await this.write(viewFor(nextActive, map));
+    });
   }
 
   async clear(): Promise<void> {
-    await this.storage.removeItem(PREFS_KEY_V3);
-    await SecureStore.deleteItemAsync(PREFS_KEY_V2);
-    await SecureStore.deleteItemAsync(PREFS_KEY_V1);
+    return enqueueKeyMutation(this.storage, PREFS_KEY_V3, async () => {
+      await this.storage.removeItem(PREFS_KEY_V3);
+      await SecureStore.deleteItemAsync(PREFS_KEY_V2);
+      await SecureStore.deleteItemAsync(PREFS_KEY_V1);
+    });
   }
 }
 

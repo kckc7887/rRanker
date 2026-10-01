@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { afterAll, beforeAll, describe, it } from 'vitest';
+import { afterAll, beforeAll, describe, it, vi } from 'vitest';
+import * as catchInput from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/input';
+import { catchRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/index';
 import { maniaRenderSession, resolveTrackOpacity, taikoLookback, visibleJudgements, visibleManiaObjects, type PreviewRenderOptions } from '../../src/features/osu-chart-preview/webview-player/engine-performance';
 import { buildAutoReplay } from '../../src/features/osu-chart-preview/webview-player/autoplay';
 import { computeModDifficulty, parseBeatmap, type HitResult, type SkinAssets } from '../../src/features/osu-chart-preview/webview-player/engine';
@@ -82,7 +84,7 @@ const skin = (stems: string[]) => ({
   images: new Map(stems.map(label => [`${label}.png`, { label, width: 64, height: 64 }])),
   spinnerImages: new Map(), sounds: new Map(), config: { version: '2.7', maniaSections: [], comboColors: ['#fff'] },
 }) as unknown as SkinAssets;
-function sessionInput(mode: 1 | 3) {
+function sessionInput(mode: 1 | 2 | 3) {
   const objects = mode === 3 ? '64,192,2000,1,0,0:0:0:0:\n192,192,2200,128,0,2600:0:0:0:0:' : '256,192,2000,1,0,0:0:0:0:';
   const text = fixtureOsu(mode, 'Easy').replace(/\[HitObjects\][\s\S]*$/, `1500,-50,4,1,0,100,0,0\n\n[HitObjects]\n${objects}\n`);
   const beatmap = parseBeatmap(text), replay = buildAutoReplay(new TextEncoder().encode(text), '');
@@ -90,6 +92,21 @@ function sessionInput(mode: 1 | 3) {
 }
 
 describe('visual render settings', () => {
+  it('judges catch misses once without diagnostic trajectory resampling or console output', () => {
+    const { beatmap, replay, mod } = sessionInput(2);
+    replay.frames = [{ timeDelta: 0, x: 0, y: 0, keys: 0 }];
+    const samples = vi.spyOn(catchInput, 'sampleCatcherX');
+    const output = vi.spyOn(console, 'log').mockImplementation(() => {});
+    try {
+      const session = catchRuleset.build(beatmap, replay, mod, skin([]), 1);
+      assert.equal(session.hitResults.length, 1);
+      assert.equal(session.hitResults[0]!.judgement, 0);
+      assert.equal(session.accFrames.at(-1)!.acc, 0);
+      assert.equal(samples.mock.calls.length, session.objects.length);
+      assert.equal(output.mock.calls.length, 0);
+    } finally { samples.mockRestore(); output.mockRestore(); }
+  });
+
   it('normalizes opacity without treating zero as absent', () => {
     assert.equal(resolveTrackOpacity({}, 'mania'), 1);
     assert.equal(resolveTrackOpacity({ maniaTrackOpacity: 0 }, 'mania'), 0);

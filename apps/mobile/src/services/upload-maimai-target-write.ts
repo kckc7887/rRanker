@@ -1,7 +1,7 @@
 import { ProviderError } from '@/providers/errors';
-import { ScoreHubError, fetchLatestSync } from '@/services/score-hub-client';
 import { uploadRecordsToDivingFish } from '@/services/diving-fish-upload';
 import { uploadRecordsToLxns } from '@/services/lxns-upload';
+import { ScoreHubError, fetchLatestSync } from '@/services/score-hub-client';
 import {
   buildMusicTitleMap,
   convertHubScoresToDivingFishRecords,
@@ -9,7 +9,7 @@ import {
   convertHubScoresToLxnsRecords,
 } from '@/services/score-hub-sync-map';
 import { buildScoreSnapshot } from '@/services/score-service';
-import type { UploadCommonInput, UploadResult, UploadTarget, UploadTargetResult } from '@/services/upload-maimai-from-friend-code';
+import type { UploadCommonInput, UploadResult, UploadTarget, UploadTargetResult } from '@/services/upload-maimai-types';
 
 export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput & {
   token: string;

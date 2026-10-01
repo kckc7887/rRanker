@@ -283,6 +283,26 @@ describe('SecureStore 聚合数据迁移', () => {
     expect(vi.mocked(secureStore.setItemAsync)).not.toHaveBeenCalled();
   });
 
+  it('多个上传偏好实例的并发保存和删除不丢失其它好友码的选择', async () => {
+    const kv = createKvStore();
+    const first = new UploadPrefsStore(kv), second = new UploadPrefsStore(kv);
+    await Promise.all([
+      first.save({ friendCode: '10001', selectedAccountIds: ['a'] }),
+      second.save({ friendCode: '10002', selectedAccountIds: ['b'] }),
+    ]);
+    expect((await first.load()).selectionsByFriendCode).toEqual({ 10001: ['a'], 10002: ['b'] });
+    await Promise.all([
+      first.save({ friendCode: '10001', selectedAccountIds: ['a2'] }),
+      second.removeSelection('10002'),
+    ]);
+    expect((await second.load()).selectionsByFriendCode).toEqual({ 10001: ['a2'] });
+    await Promise.all([
+      first.save({ friendCode: '10003', selectedAccountIds: ['c'] }),
+      second.clear(),
+    ]);
+    expect((await first.load()).selectionsByFriendCode).toEqual({});
+  });
+
   it('迁移写入失败时保留旧上传偏好供下次重试', async () => {
     const kv = createKvStore();
     kv.setItem.mockRejectedValueOnce(new Error('sqlite unavailable'));

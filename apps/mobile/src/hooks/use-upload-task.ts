@@ -1,21 +1,21 @@
-import { useCallback, useEffect, useRef, useState } from 'react';
-import type { CatalogSnapshot } from '@/domain/models';
-import type { ProviderSession } from '@/providers/contracts';
-import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
-import { providerErrorToUserMessage } from '@/providers/errors';
 import { useNotification } from '@/components/AppNotification';
-import { scoreHubErrorToUserMessage, type ScoreHubAbortSignal } from '@/services/score-hub-client';
-import { uploadMaimaiPreferringSession, uploadMaimaiFromQrLogin, uploadTaskController, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
+import type { CatalogSnapshot } from '@/domain/models';
 import type { useUploadAccountPreferences } from '@/hooks/use-upload-account-preferences';
 import type { useUploadQrInput } from '@/hooks/use-upload-qr-input';
+import type { ProviderSession } from '@/providers/contracts';
+import { providerErrorToUserMessage } from '@/providers/errors';
+import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
+import { scoreHubErrorToUserMessage, type ScoreHubAbortSignal } from '@/services/score-hub-client';
+import { uploadMaimaiFromQrLogin, uploadMaimaiPreferringSession, uploadTaskController, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
+import { useCallback, useEffect, useRef, useState } from 'react';
 
 export function useUploadTaskState(catalog: CatalogSnapshot | undefined, requestCatalog?: () => Promise<CatalogSnapshot | undefined>, onPhaseChange?: (phase: UploadPhase) => void, visible = true) {
   const [snapshot, setSnapshot] = useState(uploadTaskController.getSnapshot());
   const running = snapshot.status === 'running' || snapshot.status === 'paused';
   uploadTaskController.attachCatalogSource(catalog, requestCatalog);
-  const applyPhase = useCallback((next: UploadPhase) => {
-    uploadTaskController.setPhase(next);
+  const applyPhase = useCallback((next: UploadPhase, signal: ScoreHubAbortSignal) => {
+    uploadTaskController.setPhase(next, signal);
   }, []);
   useEffect(() => uploadTaskController.subscribe(next => {
     setSnapshot(next);
@@ -40,14 +40,13 @@ export function useUploadTaskState(catalog: CatalogSnapshot | undefined, request
   }, [catalog]);
 
   const resolveCatalogForUpload = useCallback(
-    () => uploadTaskController.waitForCatalog(),
+    (signal: ScoreHubAbortSignal) => uploadTaskController.waitForCatalog(signal),
     [],
   );
 
   const cancelUpload = () => {
     if (!running || uploadTaskController.getSignal().aborted) return;
     uploadTaskController.cancel();
-    applyPhase({ kind: 'canceling', message: '正在取消…' });
   };
 
   return { phase: snapshot.phase, running, lastResult: snapshot.result, begin, applyPhase, resolveCatalogForUpload, cancelUpload };
@@ -63,7 +62,7 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
   onFinished?: (result: UploadResult) => void | Promise<void>;
 }) {
   const { showNotification, showActionNotification } = useNotification();
-  const { running, begin, applyPhase, resolveCatalogForUpload } = task;
+  const { running, begin, resolveCatalogForUpload } = task;
   const { friendCode, selectedIds, targets, useSessionUpload, refreshAfterUpload } = preferences;
   const { bindQrText, setBindQrText, decodingQr } = qr;
   const uploadErrorMessage = (error: unknown, fallback: string) => (
@@ -86,6 +85,8 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
     }
     const signal = begin();
     if (!signal) return;
+    const isCurrent = () => uploadTaskController.isCurrent(signal);
+    const applyPhase = (phase: UploadPhase) => task.applyPhase(phase, signal);
     const preferSession = useSessionUpload;
     applyPhase({
       kind: 'logging_in',
@@ -102,10 +103,11 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
         selectedAccountIds: selectedIds,
         targets,
         sessionsByAccountId,
-        resolveCatalog: resolveCatalogForUpload,
+        resolveCatalog: () => resolveCatalogForUpload(signal),
         signal,
         onPhase: applyPhase,
         onNeedFriendAccept: (botFriendCode) => {
+          if (!isCurrent()) return;
           showActionNotification({
             title: '请同意好友申请',
             message: botFriendCode
@@ -115,14 +117,17 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
             actions: [{ label: '知道了', tone: 'default' }],
           });
         },
-        onLxnsTokensRotated,
+        onLxnsTokensRotated: (accountId, update) => isCurrent() ? onLxnsTokensRotated?.(accountId, update) : undefined,
       });
 
-      uploadTaskController.complete(result);
-      await refreshAfterUpload(friendCode.trim());
+      if (!isCurrent()) return;
+      uploadTaskController.complete(result, signal);
+      await refreshAfterUpload(friendCode.trim(), isCurrent);
+      if (!isCurrent()) return;
       try {
         await onFinished?.(result);
       } catch {
+        if (!isCurrent()) return;
         showNotification({
           title: '页面刷新失败',
           message: '成绩已上传，请稍后手动同步页面。',
@@ -131,8 +136,8 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
       }
     } catch (error) {
       if (signal.aborted) {
-        applyPhase({ kind: 'idle' });
-      } else {
+        uploadTaskController.finishCanceled(signal);
+      } else if (isCurrent()) {
         const message = uploadErrorMessage(error, '上传失败，请稍后重试。');
         applyPhase({ kind: 'error', message });
       }
@@ -159,6 +164,8 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
     }
     const signal = begin();
     if (!signal) return;
+    const isCurrent = () => uploadTaskController.isCurrent(signal);
+    const applyPhase = (phase: UploadPhase) => task.applyPhase(phase, signal);
     applyPhase({ kind: 'logging_in', message: '正在确认玩家二维码…', authMode: 'qr' });
 
     try {
@@ -167,17 +174,20 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
         selectedAccountIds: selectedIds,
         targets,
         sessionsByAccountId,
-        resolveCatalog: resolveCatalogForUpload,
+        resolveCatalog: () => resolveCatalogForUpload(signal),
         signal,
         onPhase: applyPhase,
-        onQrAccepted: () => setBindQrText(''),
-        onLxnsTokensRotated,
+        onQrAccepted: () => { if (isCurrent()) setBindQrText(''); },
+        onLxnsTokensRotated: (accountId, update) => isCurrent() ? onLxnsTokensRotated?.(accountId, update) : undefined,
       });
-      uploadTaskController.complete(result);
-      await refreshAfterUpload();
+      if (!isCurrent()) return;
+      uploadTaskController.complete(result, signal);
+      await refreshAfterUpload(undefined, isCurrent);
+      if (!isCurrent()) return;
       try {
         await onFinished?.(result);
       } catch {
+        if (!isCurrent()) return;
         showNotification({
           title: '页面刷新失败',
           message: '成绩已上传，请稍后手动同步页面。',
@@ -186,8 +196,8 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
       }
     } catch (error) {
       if (signal.aborted) {
-        applyPhase({ kind: 'idle' });
-      } else {
+        uploadTaskController.finishCanceled(signal);
+      } else if (isCurrent()) {
         const message = uploadErrorMessage(error, '二维码同步失败，请稍后重试。');
         applyPhase({ kind: 'error', message });
         setBindQrText('');

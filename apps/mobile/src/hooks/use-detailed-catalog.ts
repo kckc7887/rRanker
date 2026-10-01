@@ -1,12 +1,11 @@
-import { maimaiCatalogOptions } from '@/services/maimai-catalog-query';
-import { useCallback, useEffect, useState } from 'react';
-import { useQuery } from '@tanstack/react-query';
 import type { AliasSnapshot, CatalogSnapshot, Song } from '@/domain/models';
 import { useAliasedCatalog } from '@/hooks/use-aliased-catalog';
+import { maimaiCatalogOptions } from '@/services/maimai-catalog-query';
+import { useQuery } from '@tanstack/react-query';
+import { useCallback, useEffect, useState } from 'react';
 
-import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { queryClient } from '@/state/query-client';
-
+import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import { requireDetailedCatalogProvider } from '@/providers/contracts';
@@ -63,10 +62,11 @@ export function useTransientDetailedMaimaiCatalog(enabled = true): TransientDeta
       return;
     }
     let active = true;
+    const controller = new AbortController();
     setData(undefined);
     setError(undefined);
     setIsLoading(true);
-    void provider.getDetailedCatalog().then((catalog) => {
+    void provider.getDetailedCatalog(controller.signal).then((catalog) => {
       if (!active) return;
       setData(catalog);
       setIsLoading(false);
@@ -77,6 +77,7 @@ export function useTransientDetailedMaimaiCatalog(enabled = true): TransientDeta
     });
     return () => {
       active = false;
+      controller.abort();
     };
   }, [activeGameId, attempt, enabled, provider]);
 

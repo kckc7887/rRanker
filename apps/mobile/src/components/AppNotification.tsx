@@ -21,6 +21,7 @@ import {
 } from 'react';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/theme/app-theme';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 export type NotificationVariant = 'success' | 'info' | 'warning' | 'error';
 export type NotificationActionTone = 'default' | 'cancel' | 'destructive';
@@ -138,9 +139,9 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     if (cancelAction && claimAction(current.id)) {
       try {
         const result = cancelAction.onPress?.();
-        if (result) void result.catch((error) => console.error('通知操作执行失败', error));
+        if (result) void result.catch((error) => recordRuntimeError('notification-action', error));
       } catch (error) {
-        console.error('通知操作执行失败', error);
+        recordRuntimeError('notification-action', error);
       }
     }
     removeNotification(current.id);
@@ -260,9 +261,9 @@ function NotificationHost({
     dismiss();
     try {
       const result = action.onPress?.();
-      if (result) void result.catch((error) => console.error('通知操作执行失败', error));
+      if (result) void result.catch((error) => recordRuntimeError('notification-action', error));
     } catch (error) {
-      console.error('通知操作执行失败', error);
+      recordRuntimeError('notification-action', error);
     }
   }, [claimAction, dismiss, notification.id]);
 

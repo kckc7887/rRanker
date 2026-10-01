@@ -1,4 +1,7 @@
+import { afterEach, vi } from 'vitest';
 import {
+  fetchNearcadeDiscover,
+  fetchNearcadeGameTitles,
   parseDiscoverResponse,
   parseGameTitlesResponse,
   parseShopDetailResponse,
@@ -158,5 +161,31 @@ describe('nearcade client parsing', () => {
       { id: 1, key: 'maimai_dx', name: '舞萌DX', seats: 2 },
       { id: 3, key: 'chunithm', name: '中二节奏', seats: 1 },
     ]);
+  });
+});
+
+
+describe('nearcade shared transport', () => {
+  afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+  it('classifies HTTP and schema failures through the common provider errors', async () => {
+    const fetcher = vi.fn().mockResolvedValueOnce(new Response('{}', { status: 429 })).mockResolvedValueOnce(new Response('{"shops":"bad"}'));
+    vi.stubGlobal('fetch', fetcher);
+    const query = { latitude: 31, longitude: 121, radiusKm: 10 };
+    await expect(fetchNearcadeDiscover(query)).rejects.toMatchObject({ code: 'rate_limit' });
+    await expect(fetchNearcadeDiscover(query)).rejects.toMatchObject({ code: 'upstream_schema' });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
+  it('does not turn cancellation into a successful fallback title list', async () => {
+    const controller = new AbortController();
+    vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)));
+    const pending = fetchNearcadeGameTitles(controller.signal);
+    const reason = new Error('cancel'); controller.abort(reason);
+    await expect(pending).rejects.toBe(reason);
+  });
+  it('bounds requests even when the underlying transport ignores abort', async () => {
+    vi.useFakeTimers(); vi.stubGlobal('fetch', vi.fn(() => new Promise(() => undefined)));
+    const pending = fetchNearcadeDiscover({ latitude: 31, longitude: 121, radiusKm: 10 });
+    const check = expect(pending).rejects.toMatchObject({ code: 'timeout' });
+    await vi.advanceTimersByTimeAsync(12_000); await check;
   });
 });

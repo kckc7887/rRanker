@@ -4,7 +4,7 @@ import {
   type ScoreHubScoreProgress,
 } from '@/services/score-hub-client';
 import { uploadLatestScoreHubSyncToTargets } from '@/services/upload-maimai-target-write';
-import type { UploadCommonInput, UploadResult, UploadTarget } from '@/services/upload-maimai-from-friend-code';
+import type { UploadCommonInput, UploadResult, UploadTarget } from '@/services/upload-maimai-types';
 
 const DIFFICULTY_LABELS: Record<number, string> = {
   0: 'BASIC',

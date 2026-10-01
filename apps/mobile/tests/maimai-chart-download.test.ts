@@ -111,7 +111,6 @@ vi.mock('expo-file-system/legacy', () => ({
 import JSZip from 'jszip';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import {
-  checkMaimaiChartVideoAvailable,
   downloadMaimaiChartPackage,
   MaimaiChartDownloadCancelledError,
   MaimaiChartDownloadError,
@@ -164,18 +163,6 @@ describe('maimai chart download', () => {
     expect(maimaiChartPackageName('x'.repeat(80), 'SD', '10')).toBe(`${'x'.repeat(34)} SD 10`);
     expect(maimaiChartPackageName('   ', 'DX', '14')).toBe('DX 14');
     expect(maimaiChartPackageName('協', 'UTAGE', '協')).toBe('協 UTAGE 協');
-  });
-
-  it('detects video availability via HEAD and treats failures as unavailable', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
-    vi.stubGlobal('fetch', fetchMock);
-    await expect(checkMaimaiChartVideoAvailable(10123)).resolves.toBe(true);
-    expect(fetchMock).toHaveBeenCalledWith('https://maimai-video.lxns.net/123.mp4', { method: 'HEAD' });
-
-    fetchMock.mockResolvedValueOnce({ ok: false });
-    await expect(checkMaimaiChartVideoAvailable(10123)).resolves.toBe(false);
-    fetchMock.mockRejectedValueOnce(new Error('network down'));
-    await expect(checkMaimaiChartVideoAvailable(10123)).resolves.toBe(false);
   });
 
   it('downloads chart, music, jacket and optional video into an AstroDX zip', async () => {

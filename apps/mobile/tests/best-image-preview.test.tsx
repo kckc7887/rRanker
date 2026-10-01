@@ -4,6 +4,7 @@ import { PixelRatio, Platform, StyleSheet } from 'react-native';
 import BestImageScreen from '../app/best-image';
 
 const mockShowNotification = jest.fn();
+let mockDetailedCatalogReady = true;
 
 jest.mock('@/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
@@ -135,7 +136,7 @@ jest.mock('@/hooks/use-dxrating-chart-tags', () => ({
 jest.mock('@/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({ data: undefined, isLoading: false, isError: false, error: null }),
   useTransientDetailedMaimaiCatalog: () => ({
-    data: jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog,
+    data: mockDetailedCatalogReady ? jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog : undefined,
     error: null,
     isLoading: false,
     refetch: jest.fn(),
@@ -144,6 +145,7 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({
 
 describe('best image preview', () => {
   beforeEach(() => {
+    mockDetailedCatalogReady = true;
     mockShowNotification.mockClear();
     const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
     prepareMaimaiFonts.mockReset().mockImplementation(async () => ({
@@ -155,6 +157,16 @@ describe('best image preview', () => {
       directory: { uri: 'file:///assets/' },
       fullReady: Promise.resolve(),
     }));
+  });
+
+  it('prepares the preview when the detailed catalog arrives after unchanged score pages', async () => {
+    mockDetailedCatalogReady = false;
+    const screen = await render(<BestImageScreen />);
+    await act(async () => {});
+    expect(screen.queryByTestId('best-image-html-preview-0')).toBeNull();
+    mockDetailedCatalogReady = true;
+    await screen.rerender(<BestImageScreen />);
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('B35测试曲'));
   });
 
   it('switches image type and renders the HTML preview', async () => {

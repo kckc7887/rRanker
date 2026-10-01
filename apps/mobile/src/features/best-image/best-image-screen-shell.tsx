@@ -432,7 +432,7 @@ export function BestImageScreenShell<TType extends string>({
             const pageId = pages[index]!.id;
             return <View style={{ width: previewWidth, height: previewHeight }}>
               {/* 单页可能包含数十 MB 的封面数据，同时挂载多个 WebView 会触发 iOS 内存终止。 */}
-              {heavyContentMounted && index === pageIndex ? <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} key={`${pageId}-${webViewGeneration}`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['about:blank', 'file://*', 'https://*']} scrollEnabled={false} source={item} style={styles.webview} testID={`${previewTestIdPrefix}-html-preview-${index}`}
+              {heavyContentMounted && index === pageIndex ? <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} key={`${pageId}-${webViewGeneration}`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['about:blank', 'file://*', 'https://*']} scrollEnabled={false} showsHorizontalScrollIndicator={false} showsVerticalScrollIndicator={false} source={item} style={styles.webview} testID={`${previewTestIdPrefix}-html-preview-${index}`}
                 {...(fileAccessFromFileURLs ? { allowFileAccessFromFileURLs: fileAccessFromFileURLs } : {})}
                 {...(allowingReadAccessToUrl ? { allowingReadAccessToURL: allowingReadAccessToUrl } : {})}
                 onShouldStartLoadWithRequest={(request) => request.isTopFrame === false
@@ -528,6 +528,8 @@ export function BestImageScreenShell<TType extends string>({
               onRequestCloseExport();
             }}
             scrollEnabled={false}
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
             source={exportSource}
             style={styles.webview}
             {...(fileAccessFromFileURLs ? { allowFileAccessFromFileURLs: fileAccessFromFileURLs } : {})}
