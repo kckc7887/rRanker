@@ -61,7 +61,9 @@ const RIGHT = 0b1010;  // 2 | 8
 function easeOut(t: number): number { return t * (2 - t); }
 function easeIn(t: number): number { return t * t; }
 
-function lastFrame(frames: AutoFrame[]): AutoFrame { return frames[frames.length - 1]!; }
+type AutoCursor = { last: AutoFrame };
+function lastFrame(cursor: AutoCursor): AutoFrame { return cursor.last; }
+function emit(cursor: AutoCursor, frame: AutoFrame): AutoFrame { cursor.last = frame; return frame; }
 
 // Repeat-aware path fraction, mirroring the std hit judge's sliderBallPos. Auto only
 // needs to stay within the follow radius, so exact ball parity isn't required.
@@ -86,10 +88,10 @@ function sliderBallPos(
 // at `startTime`. The previous object's button is held until `releaseTime` and released
 // inline (no stationary park on the note). For spaced objects the cursor still waits in
 // place until REACTION_TIME before the note (Auto doesn't drift early).
-function moveToObject(
-  frames: AutoFrame[], targetX: number, targetY: number,
+function* moveToObject(
+  frames: AutoCursor, targetX: number, targetY: number,
   startTime: number, preemptMs: number, useIn: boolean, releaseTime: number,
-): void {
+): Generator<AutoFrame> {
   const lf = lastFrame(frames);
   const { x: startX, y: startY } = lf;
   let holdKeys = lf.keys;
@@ -99,10 +101,10 @@ function moveToObject(
   if (waitTime > lf.time) {
     // Spaced object: release the held key on time, then park until the reaction window.
     if (holdKeys !== 0 && releaseTime <= waitTime) {
-      frames.push({ time: releaseTime, x: startX, y: startY, keys: 0 });
+      yield emit(frames, { time: releaseTime, x: startX, y: startY, keys: 0 });
       holdKeys = 0;
     }
-    frames.push({ time: waitTime, x: startX, y: startY, keys: holdKeys });
+    yield emit(frames, { time: waitTime, x: startX, y: startY, keys: holdKeys });
     fromTime = waitTime;
   }
 
@@ -112,7 +114,7 @@ function moveToObject(
   for (let t = fromTime + FRAME_STEP; t < startTime; t += FRAME_STEP) {
     if (holdKeys !== 0 && t >= releaseTime) holdKeys = 0;   // key-up mid-glide (±1 frame)
     const e = ease((t - fromTime) / dur);
-    frames.push({
+    yield emit(frames, {
       time: Math.trunc(t),
       x: startX + (targetX - startX) * e,
       y: startY + (targetY - startY) * e,
@@ -123,10 +125,10 @@ function moveToObject(
 
 // Hold the button along the slider path, ending on the exact tail (still held — the
 // next move releases it). Returns the key-up time.
-function followSlider(
-  frames: AutoFrame[], beatmap: BeatmapData, slider: Slider, bits: number, radius: number,
+function* followSlider(
+  frames: AutoCursor, beatmap: BeatmapData, slider: Slider, bits: number, radius: number,
   fy: (y: number) => number,
-): number {
+): Generator<AutoFrame, number> {
   const path     = sampleSlider(slider);
   const slideDur = slideDurationMs(beatmap, slider);
   const endTime  = slider.time + slideDur * slider.slides;
@@ -134,16 +136,16 @@ function followSlider(
 
   for (let t = slider.time + FRAME_STEP; t < endTime; t += FRAME_STEP) {
     const p = sliderBallPos(path, t, slider.time, slideDur, slider.slides);
-    frames.push({ time: Math.trunc(t), x: p.x - shift, y: fy(p.y) - shift, keys: bits });
+    yield emit(frames, { time: Math.trunc(t), x: p.x - shift, y: fy(p.y) - shift, keys: bits });
   }
   const pEnd = sliderBallPos(path, endTime, slider.time, slideDur, slider.slides);
-  frames.push({ time: endTime, x: pEnd.x - shift, y: fy(pEnd.y) - shift, keys: bits });
+  yield emit(frames, { time: endTime, x: pEnd.x - shift, y: fy(pEnd.y) - shift, keys: bits });
   return endTime + KEY_UP_DELAY;
 }
 
 // Circle the spin centre at SPIN_RATE, holding the button (still held at the end — the
 // next move releases it). Returns the key-up time (1 ms later than a normal object).
-function spinSpinner(frames: AutoFrame[], spinner: Spinner, bits: number, startAngle: number): number {
+function* spinSpinner(frames: AutoCursor, spinner: Spinner, bits: number, startAngle: number): Generator<AutoFrame, number> {
   let angle = startAngle;
   let prevT = spinner.time;
   const at = (a: number): Point => ({
@@ -155,11 +157,11 @@ function spinSpinner(frames: AutoFrame[], spinner: Spinner, bits: number, startA
     angle += (t - prevT) * SPIN_RATE;
     prevT = t;
     const p = at(angle);
-    frames.push({ time: Math.trunc(t), x: p.x, y: p.y, keys: bits });
+    yield emit(frames, { time: Math.trunc(t), x: p.x, y: p.y, keys: bits });
   }
   angle += (spinner.endTime - prevT) * SPIN_RATE;
   const pEnd = at(angle);
-  frames.push({ time: spinner.endTime, x: pEnd.x, y: pEnd.y, keys: bits });
+  yield emit(frames, { time: spinner.endTime, x: pEnd.x, y: pEnd.y, keys: bits });
   return spinner.endTime + KEY_UP_DELAY + 1;
 }
 
@@ -169,9 +171,9 @@ function spinSpinner(frames: AutoFrame[], spinner: Spinner, bits: number, startA
  * `modDiff` supplies the mod-adjusted radius/preempt and the HR flip; times are
  * beatmap-clock milliseconds.
  */
-export function generateStdAutoReplay(beatmap: BeatmapData, modDiff: ModDifficulty): AutoFrame[] {
+export function* generateStdAutoReplay(beatmap: BeatmapData, modDiff: ModDifficulty): Generator<AutoFrame> {
   const objs = beatmap.hitObjects;
-  if (objs.length === 0) return [];
+  if (objs.length === 0) return;
 
   const radius = modDiff.circleRadiusPx;
   // HR flips Y about the playfield centre at query time (hitJudge `fy`), never mutating raw
@@ -179,10 +181,9 @@ export function generateStdAutoReplay(beatmap: BeatmapData, modDiff: ModDifficul
   // (circle/slider-head: `fy(obj.y) - stackShift`; slider ball: `fy(raw.y) - stackShift`).
   // Stacking is on original positions, so the shift is subtracted AFTER the flip, as in the judge.
   const fy = modDiff.isHR ? (y: number) => 384 - y : (y: number) => y;
-  const frames: AutoFrame[] = [];
-
   // First frame: cursor parked below the playfield, 1500 ms before the first note.
-  frames.push({ time: objs[0]!.time - 1500, x: 256, y: 500, keys: 0 });
+  const frames: AutoCursor = { last: { time: objs[0]!.time - 1500, x: 256, y: 500, keys: 0 } };
+  yield frames.last;
 
   let buttonIndex = 0;
   let prevStartTime = -Infinity;
@@ -217,26 +218,24 @@ export function generateStdAutoReplay(beatmap: BeatmapData, modDiff: ModDifficul
       targetY = fy(o.y) - shift;
     }
 
-    moveToObject(frames, targetX, targetY, startTime, modDiff.preemptMs, isSpinner, releaseTime);
+    yield* moveToObject(frames, targetX, targetY, startTime, modDiff.preemptMs, isSpinner, releaseTime);
 
     // Press the alternating hand, but flip if the previous frame still holds it —
     // an overlapping object would otherwise produce no fresh key edge (a missed press).
     let bits = buttonIndex % 2 === 0 ? LEFT : RIGHT;
     if ((lastFrame(frames).keys & bits) !== 0) bits = bits === LEFT ? RIGHT : LEFT;
-    frames.push({ time: startTime, x: targetX, y: targetY, keys: bits });
+    yield emit(frames, { time: startTime, x: targetX, y: targetY, keys: bits });
 
     if (obj.type === 'circle') {
       releaseTime = startTime + KEY_UP_DELAY;
     } else if (obj.type === 'slider') {
-      releaseTime = followSlider(frames, beatmap, obj, bits, radius, fy);
+      releaseTime = yield* followSlider(frames, beatmap, obj, bits, radius, fy);
     } else {
-      releaseTime = spinSpinner(frames, obj, bits, spinnerStartAngle);
+      releaseTime = yield* spinSpinner(frames, obj, bits, spinnerStartAngle);
     }
   }
 
   // Release the final object's button (no subsequent move to consume it).
   const lf = lastFrame(frames);
-  frames.push({ time: releaseTime, x: lf.x, y: lf.y, keys: 0 });
-
-  return frames;
+  yield emit(frames, { time: releaseTime, x: lf.x, y: lf.y, keys: 0 });
 }

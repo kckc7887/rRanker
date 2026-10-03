@@ -54,6 +54,24 @@ function inputs(ctx: FakeContext, extra: Partial<AudioSyncInputs> = {}): AudioSy
 }
 
 describe('preview audio timeline and lifecycle', () => {
+  it('shares an ordered immutable schedule without eagerly duplicating storyboard events', () => {
+    const schedule = Object.freeze(Array.from({ length: 10000 }, (_, index) => ({
+      beatmapMs: index, type: 'normal' as const, sampleSet: 1, sampleIndex: 0, customFile: '',
+      get source(): never { throw new Error('unused storyboard event expansion'); },
+    })));
+    const audio = new AudioSync(inputs(new FakeContext(), { schedule }));
+    assert.equal(audio.schedule, schedule);
+    audio.destroy();
+  });
+  it('sorts an unordered supplied schedule without mutating it or changing equal-time order', () => {
+    const schedule = Object.freeze([3000, 1000, 1000].map((beatmapMs, index) => ({
+      beatmapMs, type: 'normal' as const, sampleSet: 1, sampleIndex: index, customFile: '',
+    })));
+    const audio = new AudioSync(inputs(new FakeContext(), { schedule }));
+    assert.deepEqual(audio.schedule.map(sound => sound.sampleIndex), [1, 2, 0]);
+    assert.deepEqual(schedule.map(sound => sound.sampleIndex), [0, 1, 2]);
+    audio.destroy();
+  });
   it('toggles storyboard Samples without restarting music or ordinary hitsounds, and resumes a long Sample in place', async () => {
     const ctx = new FakeContext();
     const song = buffer(30), sample = buffer(10), hit = buffer(1);

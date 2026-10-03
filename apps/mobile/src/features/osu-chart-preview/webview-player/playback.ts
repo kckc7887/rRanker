@@ -247,7 +247,7 @@ export async function startPlayback(
     const beatmap = parseOsuBytes(entry.bytes);
     if (![0, 1, 2, 3].includes(beatmap.mode)) throw new Error('unsupported-mode');
     beatmap.rawOsu = entry.bytes;
-    const replay = buildAutoReplay(beatmap, entry.hash);
+    const replay = await buildAutoReplay(beatmap, entry.hash, signal);
     const modDiff = computeModDifficulty(beatmap, replay);
     warmSliderPaths(beatmap);
     const builtin = await createBuiltinSkin(parseManiaSkinVariant(initial.maniaSkin), beatmap.mode === 3 ? Math.max(1, Math.round(beatmap.circleSize)) : 4, normalizePreviewSettings(initial.settings).holdWidth);

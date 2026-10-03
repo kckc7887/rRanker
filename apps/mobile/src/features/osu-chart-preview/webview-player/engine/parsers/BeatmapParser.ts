@@ -28,6 +28,24 @@ import type { BeatmapData, HitObject, HitCircle, Slider, Spinner, ManiaHold, Tim
 
 const DEFAULT_HIT_SAMPLE: HitSample = { normalSet: 0, additionSet: 0, index: 0, volume: 0, filename: '' };
 
+function requireFinite(value: number, field: string): number {
+  if (!Number.isFinite(value)) throw new Error(`谱面数值无效：${field}`);
+  return value;
+}
+
+function requireTime(value: number): number {
+  if (!Number.isSafeInteger(value)) throw new Error('谱面时间无效');
+  return value;
+}
+
+function timingBeatLength(raw: string, inherited: boolean): number {
+  // Legacy difficulty points allow literal NaN to disable ticks at normal velocity.
+  if (inherited && raw.trim().toLowerCase() === 'nan') return NaN;
+  const value = requireFinite(parseFloat(raw), 'BeatLength');
+  if (!inherited && value <= 0) throw new Error('谱面节拍长度无效');
+  return value;
+}
+
 function parseHitSample(raw: string): HitSample {
   if (raw === '' || raw === undefined) return DEFAULT_HIT_SAMPLE;
   const p = raw.split(':');
@@ -177,9 +195,10 @@ export function parseBeatmap(text: string): BeatmapData {
         //         [0]  [1]        [2]   [3]        [4]         [5]    [6]         [7]
         if (parts.length < 2) break;
         const time = parseInt(parts[0] ?? '0', 10);
-        const beatLength = parseFloat(parts[1] ?? '0');
         const meter = parseInt(parts[2] ?? '4', 10);
         const uninherited = parseInt(parts[6] ?? '1', 10);
+        const beatLength = timingBeatLength(parts[1] ?? '0', uninherited === 0);
+        requireTime(time);
         const effects = parseInt(parts[7] ?? '0', 10);
         // Sample volume (field 5): default 100 when absent/blank, clamped 0–100
         // (matches lazer's BindableInt range). Volume 0 is valid (near-mute).
@@ -206,6 +225,9 @@ export function parseBeatmap(text: string): BeatmapData {
         const time = parseInt(parts[2] ?? '0', 10);
         const typeFlags = parseInt(parts[3] ?? '0', 10);
         const hitSound = parseInt(parts[4] ?? '0', 10);
+        requireFinite(x, 'x');
+        requireFinite(y, 'y');
+        requireTime(time);
 
         const newCombo  = (typeFlags & 4) !== 0;
         const comboSkip = (typeFlags >> 4) & 0x7;
@@ -235,8 +257,8 @@ export function parseBeatmap(text: string): BeatmapData {
             const cp = pipeParts[i]?.split(':');
             if (cp && cp.length >= 2) {
               curvePoints.push({
-                x: parseInt(cp[0] ?? '0', 10),
-                y: parseInt(cp[1] ?? '0', 10),
+                x: requireFinite(parseInt(cp[0] ?? '0', 10), 'control x'),
+                y: requireFinite(parseInt(cp[1] ?? '0', 10), 'control y'),
               });
             }
           }
@@ -275,7 +297,7 @@ export function parseBeatmap(text: string): BeatmapData {
           };
           obj = slider;
         } else if (typeFlags & 8) {
-          const endTime = parseInt(parts[5] ?? '0', 10);
+          const endTime = requireTime(parseInt(parts[5] ?? '0', 10));
           const spinner: Spinner = {
             type: 'spinner', time, endTime, hitSound,
             hitSample: parseHitSample(parts[6] ?? ''),
@@ -287,7 +309,7 @@ export function parseBeatmap(text: string): BeatmapData {
           // Holds go into the parallel maniaHolds bucket so the std HitObject union stays narrow.
           const tailRaw = parts[5] ?? '';
           const colon = tailRaw.indexOf(':');
-          const endTime = parseInt(colon === -1 ? tailRaw : tailRaw.slice(0, colon), 10);
+          const endTime = requireTime(parseInt(colon === -1 ? tailRaw : tailRaw.slice(0, colon), 10));
           const sampleRaw = colon === -1 ? '' : tailRaw.slice(colon + 1);
           const hold: ManiaHold = {
             type: 'hold', x, time, endTime, hitSound,
@@ -303,6 +325,10 @@ export function parseBeatmap(text: string): BeatmapData {
   }
 
   if (!arExplicit) data.approachRate = data.overallDifficulty;
+  for (const field of ['hpDrainRate', 'circleSize', 'overallDifficulty', 'approachRate', 'sliderMultiplier', 'sliderTickRate', 'stackLeniency'] as const) {
+    requireFinite(data[field], field);
+  }
+  if (data.sliderMultiplier <= 0 || data.sliderTickRate <= 0) throw new Error('谱面滑条倍率无效');
 
   // At equal times, uninherited (BPM) must precede inherited (SV) or sliders compute too slow.
   data.timingPoints.sort((a, b) => {

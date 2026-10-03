@@ -26,7 +26,7 @@
  */
 import type { BeatmapData, Slider, Spinner, HitCircle } from '../../types/index';
 import type { TaikoHit, TaikoDrumRoll, TaikoSwell, TaikoHitObject } from './types';
-import { sliderEdgeSample } from '../../utils/sliderDuration';
+import { sliderEdgeSample, sliderVelocityMultiplier } from '../../utils/sliderDuration';
 
 /**
  * Port of osu.Game.Rulesets.Taiko.Beatmaps.TaikoBeatmapConverter: maps circles,
@@ -71,7 +71,7 @@ function getTimingAt(beatmap: BeatmapData, time: number): { baseBeatLength: numb
       baseBeatLength = tp.beatLength;
       svMultiplier = 1;
     } else {
-      svMultiplier = Math.max(0.1, Math.min(10, -100 / tp.beatLength));
+      svMultiplier = sliderVelocityMultiplier(tp.beatLength);
     }
   }
   return { baseBeatLength, svMultiplier };
@@ -108,12 +108,12 @@ function convertSpinner(
   };
 }
 
-function convertSlider(
+function* convertSlider(
   beatmap: BeatmapData,
   slider: Slider,
   sourceIndex: number,
   effSM: number,
-): TaikoHitObject[] {
+): Generator<TaikoHitObject> {
   const spans = slider.slides;
   let distance = slider.length;
 
@@ -134,7 +134,8 @@ function convertSlider(
   const isForCurrentRuleset = beatmap.mode === 1;
 
   if (isForCurrentRuleset) {
-    return [makeDrumRoll(beatmap, slider, sourceIndex, taikoDuration)];
+    yield makeDrumRoll(beatmap, slider, sourceIndex, taikoDuration);
+    return;
   }
 
   const osuVelocity = taikoVelocity * (1000 / beatLength);
@@ -147,18 +148,16 @@ function convertSlider(
 
   const tickSpacing = Math.min(beatLength / beatmap.sliderTickRate, taikoDuration / spans);
 
-  // 1ms is the timeline resolution: finer spacing cannot be played and would expand into one hit per repeat.
-  const shouldSplit = tickSpacing >= 1 && (distance / osuVelocity * 1000) < (2 * beatLength);
+  const shouldSplit = tickSpacing > 0 && (distance / osuVelocity * 1000) < (2 * beatLength);
 
   if (shouldSplit) {
-    const hits: TaikoHit[] = [];
     const endLimit = slider.time + taikoDuration + tickSpacing / 8;
     let i = 0;
     const edgeCount = Math.max(slider.slides + 1, slider.edgeSounds.length);
     for (let t = slider.time; t <= endLimit; t += tickSpacing) {
       const hs = sliderEdgeSample(slider, i % edgeCount).hitSound;
       const { isRim, isStrong } = classifyTaikoHit(hs);
-      hits.push({
+      yield {
         kind: 'hit',
         time: t,
         isRim,
@@ -166,13 +165,13 @@ function convertSlider(
         hitSound: hs,
         sourceIndex,
         noteId: 0, // assigned post-sort in convertBeatmapToTaiko
-      });
+      };
       i++;
     }
-    return hits;
+    return;
   }
 
-  return [makeDrumRoll(beatmap, slider, sourceIndex, taikoDuration)];
+  yield makeDrumRoll(beatmap, slider, sourceIndex, taikoDuration);
 }
 
 function makeDrumRoll(

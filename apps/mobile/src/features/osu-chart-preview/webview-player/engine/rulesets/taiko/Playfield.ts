@@ -33,6 +33,7 @@ import type { ComboFrame } from '../../renderer/HUDRenderer';
 import type { ModDifficulty } from '../../utils/modDifficulty';
 import type { RenderOptions } from '../../renderer/Renderer';
 import { TaikoFlashlight } from './Flashlight';
+import { sliderVelocityMultiplier } from '../../utils/sliderDuration';
 
 // Taiko playfield rendering: scrolling lane, notes, drum rolls, swells, input
 // drum, kiai glow, explosions and mascot. Geometry and the scroll model are
@@ -169,7 +170,7 @@ function getTimingAt(tps: readonly TimingPoint[], time: number): {
       svMultiplier   = 1;
       meter          = tp.meter;
     } else {
-      svMultiplier = Math.max(0.1, Math.min(10, -100 / tp.beatLength));
+      svMultiplier = sliderVelocityMultiplier(tp.beatLength);
     }
     kiai = tp.kiai;
   }

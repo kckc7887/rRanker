@@ -727,11 +727,15 @@ iOS 截图前若 App 处于 inactive 或 background，先等到 `foreground-read
 
 谱面导航请求在 `domain/chart-preview-request.ts`，暂存与交接位于 `features/chart-preview-shared/chart-preview-navigation.ts`。PGR 格式配置共用 `chart-preview-shared/pgr-preview-config.ts`；Phigros 与 Phira 各自的 `chart-preview-input.ts` 组装配置。RPE 路径规范与资源 URL 由 `domain/rpe-resource-path.ts` 统一解释。兼容包下载分别位于 `features/phigros-chart-download/chart-package-download.ts` 与 `features/phira-chart-download/chart-package-download.ts`，公共下载核心不构造游戏资源。
 
-`chart-preview-shared/webview-player/interval-index.ts` 的 `createIntervalIndex` 保留原始条目顺序，返回与闭区间相交的候选，供 osu! mania 与 Rizline 共用。Rizline 按空间区间和特效时间区间合并候选，保留长 Hold、负速与前后 seek，静态绘制顺序只准备一次；未传 viewport 的帧布局仍返回完整结果。播放终点同时覆盖音频和 offset 后的谱尾，无音源尾段仍按公共时钟变速。已排序序列的下界与上界查找统一走 `chart-preview-shared/webview-player/sorted-search.ts` 的 `lowerBoundBy` / `upperBoundBy`，Phigros 的 PGR 与 RPE 渲染器、打击音游标和主入口共用，不再各自手写二分。osu! 非 taiko 谱面的滑条转为 taiko 打击时，间隔小于 1 ms 的拆分按滚奏表示，输出数量由时间轴而非重复次数决定。
+`chart-preview-shared/webview-player/interval-index.ts` 的 `createIntervalIndex` 保留原始条目顺序，返回与闭区间相交的候选，供 osu! mania 与 Rizline 共用。Rizline 按空间区间和特效时间区间合并候选，保留长 Hold、负速与前后 seek，静态绘制顺序只准备一次；未传 viewport 的帧布局仍返回完整结果。播放终点同时覆盖音频和 offset 后的谱尾，无音源尾段仍按公共时钟变速。已排序序列的下界与上界查找统一走 `chart-preview-shared/webview-player/sorted-search.ts` 的 `lowerBoundBy` / `upperBoundBy`，Phigros 的 PGR 与 RPE 渲染器、打击音游标和主入口共用，不再各自手写二分。osu! 转谱保留亚毫秒间隔打击的完整时间、采样与计分身份，生成时直接消费各项，不能用滚奏替代密集打击。
 
 RPE 速度积分显式读取所属判定线的策略；染色纹理按 64 项、32 MiB 的驻留预算淘汰并复用画布，单张超大纹理使用全分辨率工作画布，不改变颜色、透明度或画质，换资源和释放时清空。Simai 诊断位置通过预计算换行索引查询。Phira 下载在整文件读取前经 `readBudgetedChartDownload` 校验现有字节预算，完整 ArrayBuffer 直接复用，资源分批暂存并检查取消。
 
 osu! 滑条 repeat 必须是正安全整数，边缘采样只保存显式字段并经 `sliderEdgeSample` 读取默认值，不按 repeat 填充数组。`computeHitsoundSchedule` 的滑条边缘遍历从 `fromBeatmapMs` 之后的首个可听边缘开始。`sliderNestedEvents(beatmap, slider, slideDur, isLazer)` 逐项产生 tick、repeat 和 tail，判定与计分复用该流，不另外构造完整的节拍和类别数组；保留 stable 累加与 lazer 边界差异。反向箭头按最后一次对应方向折返计算。`buildAutoReplay(source, hash)` 可接收已解析谱面，标准模式在生成输入前走 `applyStacking`，播放与判定共用同一份坐标。太鼓滚奏用 `tickCount`、`tickInterval` 和起点表达均匀节拍；判定只检查相邻节拍，绘制只遍历可见节拍，着色缓存实际变化并用二分查找支持 seek。
+
+osu!catch 的 `convertBeatmapToCatch(beatmap, modDiff)` 在同一转换路径内逐项生成滑条事件、派生音符和香蕉，保留 RNG 消费顺序与完整结果，不驻留整条滑条的中间事件和第二份派生音符数组。打击音的 timing point 查询复用 `upperBoundBy`，同时间取最后一项；`AudioSync` 共享已排序的只读 schedule，仅在输入无序时复制排序，`hitSoundEvents` 按需派生。
+
+`buildAutoReplay(source, hash, signal)` 返回 Promise，生产播放准备传入会话信号，复用 `pauseChartPreviewParse` 每 128 个输入样本让出并检查取消；不传信号的同步入口消费同一生成逻辑。标准模式的移动、滑条与转盘轨迹，以及太鼓滚奏输入逐项生成，保留所有采样和按键边沿；最终回放仍使用完整时间排序后的帧表。解析器校验参与展开的有限数值与时间，继承时间点的合法 `NaN` 由 `sliderVelocityMultiplier` 保持普通速度，并关闭标准模式与 catch 滑条 tick。catch 香蕉雨在单精度时间无法前进时改用双精度继续，不重复生成同一时间点。对应合同在 `osu-preview/engine-performance.test.ts` 与 `osu-preview/resource-plan.test.ts`。
 
 Rizline 的 `activeSpans(spans, seconds)` 为不可变、有序时间轨道缓存区间索引，相机、画布位移、速度和颜色共用；无序轨道保留原始提前退出语义。准备时 BPM 换算和音符所属线段查询也复用区间索引，交界处仍保留各采样器原有的首项或末项优先规则。
 

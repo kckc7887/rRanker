@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { createHash } from 'node:crypto';
 import { afterAll, beforeAll, describe, it, vi } from 'vitest';
 import * as catchInput from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/input';
 import { catchRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/index';
@@ -20,6 +21,54 @@ import { sliderNestedEvents } from '../../src/features/osu-chart-preview/webview
 import { computeHitsoundSchedule } from '../../src/features/osu-chart-preview/webview-player/engine-audio/hitsoundSchedule';
 
 describe('indexed render candidates', () => {
+  it('retains every cursor sample and key edge when streaming slider and spinner auto inputs', () => {
+    const counts: number[] = [];
+    const hash = createHash('sha256');
+    for (const mode of [0, 1, 2, 3] as const) for (const repeat of [1, 2, 7, 19]) {
+      const text = fixtureOsu(mode, 'Hard').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,1,2\n'
+        + `256,192,1200,2,8,B|300:192|400:250,${repeat},301.33,2|4\n`
+        + '256,192,2100,1,0\n256,192,12000,8,0,14000\n256,192,14500,1,0');
+      const replay = buildAutoReplay(new TextEncoder().encode(text), '');
+      counts.push(replay.frames.length);
+      hash.update(JSON.stringify(replay.frames));
+    }
+    assert.deepEqual(counts, [297, 362, 684, 1459, 39, 48, 91, 194, 65, 86, 190, 411, 6, 6, 6, 6]);
+    assert.equal(hash.digest('hex'), '6ec3f59960fafef80b3cd9be89e150730ff738fc15304958b9f4024b306162b7');
+  });
+  it('does not parse or mutate a pre-cancelled auto preparation', async () => {
+    const controller = new AbortController();
+    const reason = new Error('already cancelled');
+    controller.abort(reason);
+    const beatmap = parseBeatmap(fixtureOsu(0, 'Native'));
+    Object.defineProperty(beatmap, 'mode', { get() { throw new Error('read after cancellation'); } });
+    await assert.rejects(buildAutoReplay(beatmap, '', controller.signal), error => error === reason);
+  });
+  it('cancels native taiko auto generation between drumroll ticks', async () => {
+    const beatmap = parseBeatmap(fixtureOsu(1, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|300:192,10000,100'));
+    const controller = new AbortController();
+    const reason = new Error('drumroll preparation cancelled');
+    const timer = setTimeout(() => controller.abort(reason), 0);
+    try { await assert.rejects(buildAutoReplay(beatmap, '', controller.signal), error => error === reason); }
+    finally { clearTimeout(timer); }
+  });
+  it('cancels auto preparation inside a long slider before expanding the full cursor track', async () => {
+    const beatmap = parseBeatmap(fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|300:192,1000000000,100'));
+    let reads = 0;
+    Object.defineProperty(beatmap.hitObjects[0], 'slides', { get() {
+      assert.ok(++reads < 1000, 'must yield before eager cursor expansion'); return 1e9;
+    } });
+    const controller = new AbortController();
+    const reason = new Error('preparation cancelled');
+    const timer = setTimeout(() => controller.abort(reason), 0);
+    try { await assert.rejects(async () => buildAutoReplay(beatmap, '', controller.signal), error => error === reason); }
+    finally { clearTimeout(timer); }
+    assert.ok(reads < 1000);
+  });
+  it.each([0, 1, 2, 3] as const)('keeps batched and synchronous auto input identical in mode %s', async mode => {
+    const text = fixtureOsu(mode, 'Hard');
+    assert.deepEqual(await buildAutoReplay(new TextEncoder().encode(text), 'hash', new AbortController().signal),
+      buildAutoReplay(new TextEncoder().encode(text), 'hash'));
+  });
   it('streams every stable and lazer tick, repeat and tail in the original order', () => {
     const beatmap = parseBeatmap(fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|300:192,5,100'));
     const slider = beatmap.hitObjects[0]!;
