@@ -1,5 +1,5 @@
 import { create } from 'zustand';
-import { KALEIDX_GATES_BY_ID, type KaleidxGateId } from '@/domain/kaleidx-scope';
+import { KALEIDX_STAGES_BY_ID, type KaleidxStageId } from '@/domain/kaleidx-scope';
 import {
   emptyKaleidxGateProgress,
   kaleidxScopePreferencesStore,
@@ -13,15 +13,15 @@ type KaleidxScopeProgressState = {
   hydrated: boolean;
   byAccount: KaleidxProgressByAccount;
   hydrate: () => Promise<void>;
-  toggleSong: (accountId: string, gateId: KaleidxGateId, songId: string, runMode?: KaleidxRunMode) => Promise<void>;
-  clearRun: (accountId: string, gateId: KaleidxGateId, runMode: KaleidxRunMode) => Promise<void>;
-  setKeyObtained: (accountId: string, gateId: KaleidxGateId, value: boolean) => Promise<void>;
-  setGateCleared: (accountId: string, gateId: KaleidxGateId, value: boolean) => Promise<void>;
+  toggleSong: (accountId: string, gateId: KaleidxStageId, songId: string, runMode?: KaleidxRunMode) => Promise<void>;
+  clearRun: (accountId: string, gateId: KaleidxStageId, runMode: KaleidxRunMode) => Promise<void>;
+  setKeyObtained: (accountId: string, gateId: KaleidxStageId, value: boolean) => Promise<void>;
+  setGateCleared: (accountId: string, gateId: KaleidxStageId, value: boolean) => Promise<void>;
 };
 
 type PreferencesAccess = Pick<typeof kaleidxScopePreferencesStore, 'load' | 'save'>;
 
-function progressFor(account: KaleidxAccountProgress | undefined, gateId: KaleidxGateId): KaleidxGateProgress {
+function progressFor(account: KaleidxAccountProgress | undefined, gateId: KaleidxStageId): KaleidxGateProgress {
   return account?.[gateId] ?? emptyKaleidxGateProgress();
 }
 
@@ -58,7 +58,7 @@ export function createKaleidxScopeProgressStore(preferences: PreferencesAccess =
 
     const updateGate = (
       accountId: string,
-      gateId: KaleidxGateId,
+      gateId: KaleidxStageId,
       transform: (current: KaleidxGateProgress) => KaleidxGateProgress,
     ) => mutate((current) => {
       const account = current[accountId] ?? {};
@@ -84,7 +84,8 @@ export function createKaleidxScopeProgressStore(preferences: PreferencesAccess =
         await hydrationPromise;
       },
       toggleSong: (accountId, gateId, songId, runMode) => updateGate(accountId, gateId, (current) => {
-        const gate = KALEIDX_GATES_BY_ID[gateId];
+        const gate = KALEIDX_STAGES_BY_ID[gateId];
+        if (gate.trackerKind === 'completion') return current;
         if (!gate.keySongs.some((song) => song.id === songId)) return current;
         if (gate.trackerKind === 'run') {
           if (!runMode) return current;
@@ -108,12 +109,12 @@ export function createKaleidxScopeProgressStore(preferences: PreferencesAccess =
       })),
       setKeyObtained: (accountId, gateId, value) => updateGate(accountId, gateId, (current) => ({
         ...current,
-        keyObtained: value || current.gateCleared,
+        keyObtained: KALEIDX_STAGES_BY_ID[gateId].trackerKind !== 'completion' && (value || current.gateCleared),
       })),
       setGateCleared: (accountId, gateId, value) => updateGate(accountId, gateId, (current) => ({
         ...current,
         gateCleared: value,
-        keyObtained: value ? true : current.keyObtained,
+        keyObtained: KALEIDX_STAGES_BY_ID[gateId].trackerKind !== 'completion' && (value || current.keyObtained),
       })),
     };
   });
@@ -124,7 +125,7 @@ export const useKaleidxScopeProgress = createKaleidxScopeProgressStore();
 export function selectKaleidxGateProgress(
   state: Pick<KaleidxScopeProgressState, 'byAccount'>,
   accountId: string,
-  gateId: KaleidxGateId,
+  gateId: KaleidxStageId,
 ): KaleidxGateProgress {
   return progressFor(state.byAccount[accountId], gateId);
 }

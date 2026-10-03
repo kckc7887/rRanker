@@ -1,8 +1,9 @@
 import { createPreferencesStore } from '@/storage/create-preferences-store';
 import {
-  KALEIDX_GATE_IDS,
-  KALEIDX_GATES_BY_ID,
-  type KaleidxGateId,
+  KALEIDX_STAGE_IDS,
+  KALEIDX_STAGES_BY_ID,
+  type KaleidxStageId,
+  type KaleidxStage,
 } from '@/domain/kaleidx-scope';
 
 export type KaleidxRunMode = 'solo' | 'multi';
@@ -15,7 +16,7 @@ export type KaleidxGateProgress = {
   gateCleared: boolean;
 };
 
-export type KaleidxAccountProgress = Partial<Record<KaleidxGateId, KaleidxGateProgress>>;
+export type KaleidxAccountProgress = Partial<Record<KaleidxStageId, KaleidxGateProgress>>;
 export type KaleidxProgressByAccount = Record<string, KaleidxAccountProgress>;
 
 type StoredKaleidxProgressV1 = {
@@ -42,6 +43,23 @@ function parseSongIds(value: unknown, validIds: Set<string>, limit?: number): st
   return limit === undefined ? parsed : parsed.slice(0, limit);
 }
 
+function parseGateProgress(raw: Record<string, unknown>, gate: KaleidxStage): KaleidxGateProgress {
+  if (gate.trackerKind === 'completion') {
+    return { ...emptyKaleidxGateProgress(), gateCleared: raw.gateCleared === true };
+  }
+  const validIds = new Set(gate.keySongs.map((song) => song.id));
+  const completedLimit = gate.trackerKind === 'random-one' ? 1 : undefined;
+  const parsed: KaleidxGateProgress = {
+    completedSongIds: gate.trackerKind === 'run' ? [] : parseSongIds(raw.completedSongIds, validIds, completedLimit),
+    soloSongIds: gate.trackerKind === 'run' ? parseSongIds(raw.soloSongIds, validIds, 3) : [],
+    multiSongIds: gate.trackerKind === 'run' ? parseSongIds(raw.multiSongIds, validIds, 4) : [],
+    keyObtained: raw.keyObtained === true,
+    gateCleared: raw.gateCleared === true,
+  };
+  if (parsed.gateCleared) parsed.keyObtained = true;
+  return parsed;
+}
+
 export function parseKaleidxProgress(value: unknown): KaleidxProgressByAccount {
   if (!value || typeof value !== 'object') return {};
   const root = value as { version?: unknown; byAccount?: unknown };
@@ -50,22 +68,12 @@ export function parseKaleidxProgress(value: unknown): KaleidxProgressByAccount {
   for (const [accountId, rawAccount] of Object.entries(root.byAccount as Record<string, unknown>)) {
     if (!accountId || accountId.length > 256 || !rawAccount || typeof rawAccount !== 'object') continue;
     const account: KaleidxAccountProgress = {};
-    for (const gateId of KALEIDX_GATE_IDS) {
+    for (const gateId of KALEIDX_STAGE_IDS) {
       const rawGate = (rawAccount as Record<string, unknown>)[gateId];
       if (!rawGate || typeof rawGate !== 'object') continue;
-      const gate = KALEIDX_GATES_BY_ID[gateId];
+      const gate = KALEIDX_STAGES_BY_ID[gateId];
       const raw = rawGate as Record<string, unknown>;
-      const validIds = new Set(gate.keySongs.map((song) => song.id));
-      const completedLimit = gate.trackerKind === 'random-one' ? 1 : undefined;
-      const parsed: KaleidxGateProgress = {
-        completedSongIds: gate.trackerKind === 'run' ? [] : parseSongIds(raw.completedSongIds, validIds, completedLimit),
-        soloSongIds: gate.trackerKind === 'run' ? parseSongIds(raw.soloSongIds, validIds, 3) : [],
-        multiSongIds: gate.trackerKind === 'run' ? parseSongIds(raw.multiSongIds, validIds, 4) : [],
-        keyObtained: raw.keyObtained === true,
-        gateCleared: raw.gateCleared === true,
-      };
-      if (parsed.gateCleared) parsed.keyObtained = true;
-      account[gateId] = parsed;
+      account[gateId] = parseGateProgress(raw, gate);
     }
     if (Object.keys(account).length > 0) output[accountId] = account;
   }

@@ -673,6 +673,26 @@ URL、请求头和 cacheKey 的稳定身份，等价 source 对象不会重置�
 需要包装分组提取器时保留其数据与其它字段。`section-list-viewability.test.tsx`
 通过真实 React Native 分组列表转换入口覆盖标题、尾部、条目及迟到分组事件。
 
+## KALEIDXSCOPE 攻略与进度
+
+`domain/kaleidx-scope.ts` 的 `KALEIDX_GATES` 保留六门钥匙语义，`KALEIDX_STAGES` /
+`KALEIDX_STAGES_BY_ID` 提供完整阶段注册；`KaleidxStageId` 是进度与页面选择的共同身份。
+`kaleidxStageChallenge(stage: KaleidxStage): KaleidxChallenge` 输出随机三曲、ERROR 剧情、
+固定三曲或最终单曲的判别联合。前置关系、课题谱面类型及资料来源均由领域数据提供，页面不另列曲池。
+`resolveKaleidxSchedulePhase(schedule, at?)` 对推算表返回 `null`，不会把参考日期当成已确认的当前条件；
+`KaleidxSchedulePhase.dxLife` 的 `null` 表示后半段数值待确认，缺省表示普通单段 LIFE。
+
+`createKaleidxScopeProgressStore(preferences?)` / `useKaleidxScopeProgress` 统一水合、串行修改及失败回滚。
+`setGateCleared(accountId, stageId, value)` 与 `selectKaleidxGateProgress(state, accountId, stageId)`
+覆盖全部阶段；六门完成仍关联本门钥匙，后续阶段不生成钥匙状态、不回填前置进度。
+`KaleidxScopePreferencesStore` 继续复用 `createPreferencesStore`，同一 v1 键恢复旧记录并保存新增阶段。
+页面使用 `useDetailedCatalog`、`SongCover`、`Card`、`AppNotification` 和公共详情编码入口；
+明确指定谱面类型时，缺失该类型或歌曲均禁用跳转。游戏专属流程只位于活动领域、状态及路由中。
+
+验证为 `kaleidx-scope.test.ts`、`kaleidx-scope-screen.test.tsx`、`detail-target.test.ts`、
+`detail-target-navigation.test.tsx` 与 `consumer-copy-policy.test.ts`，覆盖资料结构、推算边界、
+旧记录往返、账号隔离、独立补记、保存失败及课题详情定位。
+
 ## 共享功能族
 
 | 功能族 | 公共入口 | 游戏侧职责 | 主要验证 |
