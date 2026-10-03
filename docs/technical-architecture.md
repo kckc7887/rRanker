@@ -35,7 +35,7 @@ Node.js 最低版本由 `apps/mobile/package.json` 的 `engines` 约束为 22.13
 
 成绩与曲库两个标签页只做「按当前游戏挂载对应页面」：舞萌专属页（`src/screens/maimai/MaimaiRecordsScreen.tsx`、`src/screens/maimai/MaimaiCatalogScreen.tsx`）自带本游戏的查询、筛选 Store、搜索索引与派生链，其余游戏沿用各自 `screens/*Screens.tsx` 或页面组件；未接入的游戏落到空态。共同路由负责页面装配，各游戏页面负责自己的派生链。
 
-`utils/search.ts` 的搜索文档首次读取文本时才生成假名和罗马音，空关键词浏览不承担全曲库转写；关键词变体只缓存最近一个词，同次筛选复用。Rizline 按歌曲对象复用惰性搜索文档，曲库索引和成绩排序只随输入变化更新。`loadAliasedCatalog` 并行读取曲库和可选别名，别名失败仍保留曲库。各游戏查询和 `useUserLibrary` 在驻留页失活时以 `notifyOnChangeProps: []` 暂停通知，激活渲染读取最新缓存；根部元数据订阅保持活动。`useBoundedQueries` 只为已领取明细建立观察者，加载、重试与重取共用队列：Muse Dash 为 6 路，未启用相关筛选时不建立明细查询；osu! 详情成绩为 4 路。
+`utils/search.ts` 的搜索文档首次读取文本时才生成假名和罗马音，空关键词浏览不承担全曲库转写；关键词变体只缓存最近一个词，同次筛选复用。Phigros 成绩页的标题与惰性搜索文档独立保存；Rizline 按歌曲对象复用惰性搜索文档，曲库索引和成绩排序只随输入变化更新。`loadAliasedCatalog` 并行读取曲库和可选别名，别名失败仍保留曲库。各游戏查询和 `useUserLibrary` 在驻留页失活时以 `notifyOnChangeProps: []` 暂停通知，激活渲染读取最新缓存；根部元数据订阅保持活动。`useBoundedQueries` 只为已领取明细建立观察者，加载、重试与重取共用队列：Muse Dash 为 6 路，未启用相关筛选时不建立明细查询；osu! 详情成绩为 4 路。
 
 歌曲详情统一为 `/songs/[songId]`：`src/domain/detail-target.ts` 的 `decodeDetailTarget(activeGameId, params)` 把 URL 参数解析成已校验的 `DetailTarget`（舞萌带 `chartType` + `levelIndex`；Phigros/中二/Majdata/Rizline/Muse Dash 用难度索引；Phira 用谱面 ID、TUF 用关卡 ID、osu! 四模式用 `beatmapsetId` + 可选 `beatmapId`/`scoreId`，并按游戏拒绝越界或跨游戏槽位）。显式 `gameId` 决定目标游戏，旧链接回退当前游戏；`app/songs/[songId].tsx` 在跨游戏时复用账号选择入口，切换成功后继续原目标，取消时不挂载错误游戏的详情，解析失败显示统一空态。共享卡片的 presentation 携带 `DetailTargetRoute`，跳转经 `detailTargetHref(route)` 生成；`encodeDetailTarget(target)` 总是携带 `gameId`。
 
@@ -476,7 +476,8 @@ info/chart 另限 6/32 MB；RPE/PGR/PEC/PBC 遍历和 CRC 定期让出并响应�
 osu! 自动输入与标准判定共用已应用堆叠的谱面坐标，滑条判定和计分逐项消费公共嵌套事件流。
 catch 转换在生成时直接消费滑条事件和派生音符，保留原始生成顺序与完整最终音符表。
 自动输入的标准模式轨迹和太鼓滚奏逐项生成，播放准备通过 `buildAutoReplay(source, hash, signal)`
-分批消费并复用公共解析让出入口响应取消；同步调用消费相同生成逻辑，最终仍保留完整回放帧表。
+分批消费并复用公共解析让出入口响应取消：每 128 个样本检查，首次让出后按 8 ms 工作时间片调度，
+时间片状态仅属于当前准备任务，定时器等待不计入计算预算。同步调用消费相同生成逻辑，最终仍保留完整回放帧表。
 数值校验保留继承时间点 `NaN` 的普通速度与禁用 tick 语义；香蕉雨遇到单精度累加停滞时用双精度继续。
 打击音采样通过公共二分入口查询时间点；媒体准备和音频会话共享已排序的只读打击音表，
 不重复排序复制，故事板触发元数据按消费者需求生成。

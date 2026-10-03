@@ -180,7 +180,7 @@ Muse Dash 的成就筛选依赖单曲 miss 明细：`museDashMissDetail` 把 `nu
 
 `loadAliasedCatalog` 并行发起目录和别名读取，保留别名失败时目录可用的语义；`cache-first.test.ts` 覆盖并发和可选失败。`useGameData`、`useAliasedCatalog`、`useUserLibrary` 根据 `useCachedTabActive()` 暂停隐藏页的查询通知，回到活动状态直接读取最新 Query 缓存；`enabled=false` 的根部观察者仍正常订阅，见 `account-metadata-observers.test.tsx`。
 
-`utils/search.ts` 的 `buildSearchDocument(values: readonly string[]): SearchDocument` 捕获输入副本，首次读取 `text` / `compact` 时生成并缓存转写文本；`buildSongSearchIndex(songs)` 保留惰性属性，消费者不得通过展开或解构提前物化全文。`searchDocumentMatches(document, keyword)` 与 `searchSongs(index, filters, chartPredicate?)` 复用最近一个关键词的变体，空词不读取索引文本。`advanced-search.test.ts` 覆盖转写次数、输入隔离和搜索语义。
+`utils/search.ts` 的 `buildSearchDocument(values: readonly string[]): SearchDocument` 捕获输入副本，首次读取 `text` / `compact` 时生成并缓存转写文本；`buildSongSearchIndex(songs)` 保留惰性属性，消费者不得通过展开或解构提前物化全文。Phigros 成绩页将标题与搜索文档分开保存，初次浏览只读取标题。`searchDocumentMatches(document, keyword)` 与 `searchSongs(index, filters, chartPredicate?)` 复用最近一个关键词的变体，空词不读取索引文本。`advanced-search.test.ts` 覆盖转写次数、输入隔离和搜索语义；`phigros-records-page.test.tsx` 验证页面初次浏览不转写，输入罗马音后仍能匹配假名别名。
 
 `services/phigros-game-data-service.ts` 的 `loadPhigrosGameData` 接收账号、成绩/曲库 Provider、
 快照缓存、会话数据状态、AbortSignal 和写入断言，负责首次兼容快照与显式云存档读取。
@@ -735,7 +735,7 @@ osu! 滑条 repeat 必须是正安全整数，边缘采样只保存显式字段�
 
 osu!catch 的 `convertBeatmapToCatch(beatmap, modDiff)` 在同一转换路径内逐项生成滑条事件、派生音符和香蕉，保留 RNG 消费顺序与完整结果，不驻留整条滑条的中间事件和第二份派生音符数组。打击音的 timing point 查询复用 `upperBoundBy`，同时间取最后一项；`AudioSync` 共享已排序的只读 schedule，仅在输入无序时复制排序，`hitSoundEvents` 按需派生。
 
-`buildAutoReplay(source, hash, signal)` 返回 Promise，生产播放准备传入会话信号，复用 `pauseChartPreviewParse` 每 128 个输入样本让出并检查取消；不传信号的同步入口消费同一生成逻辑。标准模式的移动、滑条与转盘轨迹，以及太鼓滚奏输入逐项生成，保留所有采样和按键边沿；最终回放仍使用完整时间排序后的帧表。解析器校验参与展开的有限数值与时间，继承时间点的合法 `NaN` 由 `sliderVelocityMultiplier` 保持普通速度，并关闭标准模式与 catch 滑条 tick。catch 香蕉雨在单精度时间无法前进时改用双精度继续，不重复生成同一时间点。对应合同在 `osu-preview/engine-performance.test.ts` 与 `osu-preview/resource-plan.test.ts`。
+`buildAutoReplay(source, hash, signal)` 返回 Promise，生产播放准备传入会话信号，复用 `pauseChartPreviewParse(iteration, cancellation, slice?)` 每 128 个输入样本检查取消。每次准备独立保存时间片状态，首次检查点让出，随后计算累计达到 8 ms 才再次等待，恢复后重新计时；未传时间片的调用保留每批让出语义。不传信号的同步入口消费同一生成逻辑。标准模式的移动、滑条与转盘轨迹，以及太鼓滚奏输入逐项生成，保留所有采样和按键边沿；最终回放仍使用完整时间排序后的帧表。解析器校验参与展开的有限数值与时间，继承时间点的合法 `NaN` 由 `sliderVelocityMultiplier` 保持普通速度，并关闭标准模式与 catch 滑条 tick。catch 香蕉雨在单精度时间无法前进时改用双精度继续，不重复生成同一时间点。对应合同在 `chart-preview-resource-budget.test.ts`、`osu-preview/engine-performance.test.ts` 与 `osu-preview/resource-plan.test.ts`。
 
 Rizline 的 `activeSpans(spans, seconds)` 为不可变、有序时间轨道缓存区间索引，相机、画布位移、速度和颜色共用；无序轨道保留原始提前退出语义。准备时 BPM 换算和音符所属线段查询也复用区间索引，交界处仍保留各采样器原有的首项或末项优先规则。
 

@@ -331,7 +331,7 @@ function PhigrosRecordsScreen() {
       const title = titleMap.get(r.songId) ?? r.songId;
       const song = catalogSongIndex.get(r.songId);
       return [recordKey(r), {
-        ...buildSearchDocument([r.songId, title, ...(song?.aliases ?? [])]),
+        document: buildSearchDocument([r.songId, title, ...(song?.aliases ?? [])]),
         title,
       }] as const;
     }),
@@ -352,7 +352,7 @@ function PhigrosRecordsScreen() {
     if (deferredFilterSpec.keyword.trim()) {
       list = list.filter((item) => {
         const doc = searchDocs.get(recordKey(item.record));
-        return doc ? searchDocumentMatches(doc, deferredFilterSpec.keyword) : false;
+        return doc ? searchDocumentMatches(doc.document, deferredFilterSpec.keyword) : false;
       });
     }
     if (deferredFilterSpec.chapter !== 'all') {

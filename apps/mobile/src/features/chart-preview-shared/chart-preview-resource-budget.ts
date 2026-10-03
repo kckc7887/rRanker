@@ -19,6 +19,8 @@ export const CHART_PREVIEW_MAX_GIF_FRAME_PIXELS = 2_048 * 2_048;
 export const CHART_PREVIEW_MAX_GIF_FRAMES = 4_096;
 /** 长循环每隔这么多步检查取消，并在异步解析中让出主线程。 */
 export const CHART_PREVIEW_PARSE_YIELD_INTERVAL = 128;
+/** 高频轻量循环的单次工作时间；检查步长之外不延长主线程占用。 */
+export const CHART_PREVIEW_PARSE_SLICE_MS = 8;
 /** CRC 每处理这么多字节检查一次取消，并让出主线程。 */
 export const CHART_PREVIEW_CRC_CHUNK_BYTES = 64 * 1024;
 
@@ -89,11 +91,18 @@ export function interruptChartPreviewParse(iteration: number, cancellation?: Cha
   throwIfChartPreviewCancelled(cancellation);
 }
 
-export async function pauseChartPreviewParse(iteration: number, cancellation?: ChartPreviewCancellation): Promise<void> {
+/** 传入每次任务独立的 slice 后，首次检查点让出，此后只在时间片用尽时等待。 */
+export async function pauseChartPreviewParse(
+  iteration: number,
+  cancellation?: ChartPreviewCancellation,
+  slice?: { resumedAt?: number },
+): Promise<void> {
   interruptChartPreviewParse(iteration, cancellation);
   if (iteration === 0 || iteration % CHART_PREVIEW_PARSE_YIELD_INTERVAL !== 0) return;
+  if (slice?.resumedAt !== undefined && performance.now() - slice.resumedAt < CHART_PREVIEW_PARSE_SLICE_MS) return;
   await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
   throwIfChartPreviewCancelled(cancellation);
+  if (slice) slice.resumedAt = performance.now();
 }
 
 export function assertChartPreviewDownloadBytes(bytes: number): void {

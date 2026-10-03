@@ -50,9 +50,11 @@ async function prepareAutoReplay(source: Uint8Array | BeatmapData, hash: string,
   signal.throwIfAborted();
   const beatmap = source instanceof Uint8Array ? parseOsuBytes(source) : source;
   const frames: AutoFrame[] = [];
+  const cancellation = { signal };
+  const slice = {};
   for (const frame of autoFrames(beatmap, hash)) {
     frames.push(frame);
-    if (frames.length % CHART_PREVIEW_PARSE_YIELD_INTERVAL === 0) await pauseChartPreviewParse(frames.length, { signal });
+    if (frames.length % CHART_PREVIEW_PARSE_YIELD_INTERVAL === 0) await pauseChartPreviewParse(frames.length, cancellation, slice);
   }
   signal.throwIfAborted();
   return synthesizeAutoReplay(beatmap, hash, frames);
