@@ -1,11 +1,12 @@
 export const KALEIDX_GATE_IDS = ['blue', 'white', 'purple', 'black', 'yellow', 'red'] as const;
 export type KaleidxGateId = typeof KALEIDX_GATE_IDS[number];
-export type KaleidxDifficulty = 'BASIC' | 'EXPERT' | 'MASTER';
+export type KaleidxDifficulty = 'BASIC' | 'EXPERT' | 'MASTER' | 'Re:MASTER';
 export type KaleidxTrackerKind = 'all' | 'run' | 'random-one';
 
 export type KaleidxSong = {
   id: string;
   title: string;
+  chartType?: 'SD' | 'DX';
 };
 
 export type KaleidxSchedulePhase = {
@@ -13,12 +14,20 @@ export type KaleidxSchedulePhase = {
   endsAt: string | null;
   difficulty: KaleidxDifficulty;
   life: number;
+  dxLife?: number | null;
+};
+
+export type KaleidxReference = {
+  label: string;
+  url: string;
+  checkedAt: string;
 };
 
 export type KaleidxSchedule = {
   label: string;
   switchLabel: string;
   phases: readonly KaleidxSchedulePhase[];
+  evidence?: { status: 'estimated'; source: KaleidxReference };
 };
 
 export type KaleidxGate = {
@@ -276,10 +285,159 @@ export const KALEIDX_GATES_BY_ID = Object.fromEntries(
   KALEIDX_GATES.map((gate) => [gate.id, gate]),
 ) as Record<KaleidxGateId, KaleidxGate>;
 
+export const KALEIDX_FINALE_IDS = ['prism', 'error', 'hope', 'final'] as const;
+export type KaleidxFinaleId = typeof KALEIDX_FINALE_IDS[number];
+export const KALEIDX_STAGE_IDS = [...KALEIDX_GATE_IDS, ...KALEIDX_FINALE_IDS] as const;
+export type KaleidxStageId = typeof KALEIDX_STAGE_IDS[number];
+
+export type KaleidxChallenge =
+  | { kind: 'random-three'; track1: readonly KaleidxSong[]; track2: readonly KaleidxSong[]; track3: KaleidxSong }
+  | { kind: 'error'; track1: readonly KaleidxSong[]; track2: readonly KaleidxSong[]; story: string }
+  | { kind: 'fixed-three'; tracks: readonly [KaleidxSong, KaleidxSong, KaleidxSong] }
+  | { kind: 'final-single'; song: KaleidxSong; endingSong: KaleidxSong; partner: string; mechanics: readonly string[] };
+
+export type KaleidxFinale = Omit<KaleidxGate,
+  'id' | 'trackerKind' | 'keySongs' | 'track1' | 'track2' | 'track3' | 'gateSchedule'
+> & {
+  id: KaleidxFinaleId;
+  trackerKind: 'completion';
+  prerequisites: readonly KaleidxStageId[];
+  completionLabel: string;
+  challenge: KaleidxChallenge;
+  gateSchedule?: KaleidxSchedule;
+  references: readonly KaleidxReference[];
+};
+export type KaleidxStage = KaleidxGate | KaleidxFinale;
+
+const awmcReference = (section: string): KaleidxReference => ({
+  label: 'AWMC 活动资料',
+  url: `https://github.com/AWMC-TEAM/KALEIDXSCOPE/blob/master/${section}KALEIDXSCOPE/index.html`,
+  checkedAt: '2026-10-03',
+});
+const finaleGuide: KaleidxReference = {
+  label: '国服棱镜塔与 ERROR 攻略',
+  url: 'https://bearstaryellowbear.cn/archives/kaleidxscopeleng-jing-ta-he-errormen-jie-suo-gong-lue',
+  checkedAt: '2026-10-03',
+};
+const estimatedSchedule = (label: string, section: string): KaleidxSchedule => ({
+  label,
+  switchLabel: '推算按北京时间 04:00 切换',
+  evidence: { status: 'estimated', source: awmcReference(section) },
+  phases: phases('04', [
+    ['10-01', '10-04', 'MASTER', 1], ['10-04', '10-07', 'MASTER', 10],
+    ['10-07', '10-10', 'MASTER', 30], ['10-10', '10-14', 'MASTER', 50],
+    ['10-14', '10-21', 'EXPERT', 100], ['10-21', null, 'BASIC', 999],
+  ]),
+});
+const dxSongs = (entries: readonly (readonly [string, string])[]): readonly KaleidxSong[] => (
+  songs(entries).map((song) => ({ ...song, chartType: 'DX' }))
+);
+const amereistr: KaleidxSong = { id: '11817', title: 'Amereistr', chartType: 'DX' };
+const blackbox: KaleidxSong = { id: '11818', title: "World's end BLACKBOX", chartType: 'DX' };
+
+export const KALEIDX_FINALES: readonly KaleidxFinale[] = [
+  {
+    id: 'prism', order: 7, label: '棱镜塔', shortLabel: '棱镜塔', color: '#367E9A', onColor: '#FFFFFF',
+    area: '7sRef 区域 4 · 2000 km', openedAt: '2026-10-01T10:00:00+08:00', trackerKind: 'completion',
+    prerequisites: KALEIDX_GATE_IDS, completionLabel: '棱镜塔已通关',
+    requirements: ['通关蓝、白、紫、黑、黄、红六扇门，取得万能钥匙', '完成 7sRef 区域 4（2000 km），使棱镜塔出现', '完成塔内三首课题后进入 ERROR 阶段'],
+    trackerNote: '手动记录本账号的通关情况；区域跑图进度请在机台确认。',
+    perfectChallenge: amereistr,
+    challenge: {
+      kind: 'random-three',
+      track1: dxSongs([
+        ['11310', 'Trick tear'], ['11309', '前衛的Landscape'], ['11395', 'Jouez Avec Moi?'],
+        ['11393', '白花の天使'], ['11392', 'Metamorphosism'], ['11534', 'The Great Banquet'],
+        ['11535', 'Redemption'], ['11536', 'Ether Second'], ['11815', 'IMBRUED:FLUX'], ['11816', '砂の函'],
+      ]),
+      track2: [...dxSongs([
+        ['11311', '躯樹の墓守'], ['11394', "World's end loneliness"], ['11537', 'Straight into the lights'],
+      ]), amereistr],
+      track3: blackbox,
+    },
+    gateSchedule: estimatedSchedule('棱镜塔', 'PRISM'),
+    references: [awmcReference('PRISM'), finaleGuide],
+  },
+  {
+    id: 'error', order: 8, label: 'ERROR 阶段', shortLabel: 'ERROR', color: '#67557D', onColor: '#FFFFFF',
+    area: 'KALEIDXSCOPE · 乱码课题', openedAt: '2026-10-01T10:00:00+08:00', trackerKind: 'completion',
+    prerequisites: ['prism'], completionLabel: 'ERROR 阶段已完成',
+    requirements: ['通关棱镜塔后出现，无需另取钥匙', '完成前两首随机课题，再挑战第三首乱码课题', '推进至剧情蓝屏与重建演出后，继续前往希望之门'],
+    trackerNote: '到达剧情结束后手动标记；剧情蓝屏属于活动演出。',
+    challenge: {
+      kind: 'error',
+      track1: [...KALEIDX_GATES.flatMap((gate) => gate.perfectChallenge ? [{ ...gate.perfectChallenge, chartType: 'DX' as const }] : []), amereistr],
+      track2: [...KALEIDX_GATES.map((gate) => ({ ...gate.track3, chartType: 'DX' as const })), blackbox],
+      story: '第三首显示为乱码课题。计时结束后会出现异常谱面、冻结与剧情蓝屏，随后提示寻找最后的希望。此课题不作为普通曲库歌曲展示。',
+    },
+    references: [awmcReference('ERROR'), finaleGuide],
+  },
+  {
+    id: 'hope', order: 9, label: '希望之门', shortLabel: '希望', color: '#98751F', onColor: '#FFFFFF',
+    area: '希望の扉', openedAt: '2026-10-01T10:00:00+08:00', trackerKind: 'completion',
+    prerequisites: ['error'], completionLabel: '希望之门已通关',
+    requirements: ['完成 ERROR 阶段后，希望之门出现', '国服无需实体 DX PASS，按机台提示进入', '连续完成三首固定课题，开启最终挑战'],
+    trackerNote: '手动记录本账号的通关情况。',
+    challenge: {
+      kind: 'fixed-three',
+      tracks: [
+        { id: '1736', title: 'プリズム△▽リズム', chartType: 'SD' },
+        { id: '10835', title: 'Believe the Rainbow', chartType: 'DX' },
+        { id: '1819', title: 'AFTER PANDORA', chartType: 'SD' },
+      ],
+    },
+    gateSchedule: estimatedSchedule('希望之门', 'HOP'),
+    references: [awmcReference('HOP')],
+  },
+  {
+    id: 'final', order: 10, label: '最终挑战', shortLabel: '最终', color: '#AE496F', onColor: '#FFFFFF',
+    area: 'KALEIDXSCOPE · FINAL SEQUENCE', openedAt: '2026-10-01T10:00:00+08:00', trackerKind: 'completion',
+    prerequisites: ['hope'], completionLabel: '最终挑战已完成',
+    requirements: ['通关希望之门后，国服直接开启最终挑战', '完成 Xaleid◆scopiX 的两段挑战，迎来 ALL COMPLETE'],
+    trackerNote: '完成最终挑战后手动标记，不会自动改写其他阶段的记录。',
+    challenge: {
+      kind: 'final-single',
+      song: { id: '11820', title: 'Xaleid◆scopiX', chartType: 'DX' },
+      endingSong: { id: '11821', title: 'Ref:rain (for 7th Heaven)', chartType: 'DX' },
+      partner: 'Ris（リズ）',
+      mechanics: [
+        '本次挑战只有一首课题曲，包含前半 LIFE 与后半 DX LIFE 两段。',
+        '前半采用通常扣血规则；到达中途演出后恢复生命，继续后半段。',
+        '后半段除 Critical Perfect 外的判定均会扣血。国服各档 DX LIFE 与具体扣血值未完整核实，待确认。',
+        '开放时最低要求 Re:MASTER，后续降难度与 LIFE 缓和见推算参考；实际条件以机台为准。',
+      ],
+    },
+    gateSchedule: {
+      label: '最终挑战', switchLabel: '推算按北京时间 04:00 切换',
+      evidence: { status: 'estimated', source: awmcReference('FINAL') },
+      phases: phases('04', [
+        ['10-01', '10-03', 'Re:MASTER', 1], ['10-03', '10-05', 'Re:MASTER', 5],
+        ['10-05', '10-06', 'Re:MASTER', 10], ['10-06', '10-07', 'Re:MASTER', 30],
+        ['10-07', '10-11', 'MASTER', 30], ['10-11', '10-13', 'MASTER', 50],
+        ['10-13', '10-15', 'MASTER', 100], ['10-15', '10-22', 'EXPERT', 100],
+        ['10-22', null, 'BASIC', 999],
+      ]).map((phase) => ({ ...phase, dxLife: phase.difficulty === 'EXPERT' ? 999 : null })),
+    },
+    references: [awmcReference('FINAL')],
+  },
+];
+
+export const KALEIDX_STAGES: readonly KaleidxStage[] = [...KALEIDX_GATES, ...KALEIDX_FINALES];
+export const KALEIDX_STAGES_BY_ID = Object.fromEntries(
+  KALEIDX_STAGES.map((stage) => [stage.id, stage]),
+) as Record<KaleidxStageId, KaleidxStage>;
+
+export function kaleidxStageChallenge(stage: KaleidxStage): KaleidxChallenge {
+  return stage.trackerKind === 'completion' ? stage.challenge : {
+    kind: 'random-three', track1: stage.track1, track2: stage.track2, track3: stage.track3,
+  };
+}
+
 export function resolveKaleidxSchedulePhase(
   schedule: KaleidxSchedule,
   at: Date = new Date(),
 ): KaleidxSchedulePhase | null {
+  if (schedule.evidence?.status === 'estimated') return null;
   const time = at.getTime();
   return schedule.phases.find((phase) => {
     const start = Date.parse(phase.startsAt);
@@ -288,29 +446,57 @@ export function resolveKaleidxSchedulePhase(
   }) ?? null;
 }
 
-export function validateKaleidxScopeData(gates: readonly KaleidxGate[] = KALEIDX_GATES): string[] {
+export function validateKaleidxScopeData(gates: readonly KaleidxStage[] = KALEIDX_STAGES): string[] {
   const errors: string[] = [];
   const gateIds = new Set<string>();
   for (const gate of gates) {
     if (gateIds.has(gate.id)) errors.push(`门 ID 重复：${gate.id}`);
     gateIds.add(gate.id);
-    for (const [label, pool] of [['钥匙', gate.keySongs], ['TRACK 1', gate.track1], ['TRACK 2', gate.track2]] as const) {
+    const pools = challengePools(gate);
+    if (gate.trackerKind === 'completion') {
+      for (const id of gate.prerequisites) {
+        const prerequisite = gates.find((item) => item.id === id);
+        if (!prerequisite || prerequisite.order >= gate.order) errors.push(`${gate.id} 前置阶段无效：${id}`);
+      }
+    }
+    for (const [label, pool] of pools) {
+      if (!pool.length) errors.push(`${gate.id} ${label}曲池为空`);
       const ids = new Set<string>();
       for (const song of pool) {
-        if (ids.has(song.id)) errors.push(`${gate.id} ${label}歌曲重复：${song.id}`);
-        ids.add(song.id);
+        if (!/^\d+$/.test(song.id) || !song.title.trim()) errors.push(`${gate.id} ${label}歌曲无效`);
+        const identity = `${song.id}:${song.chartType ?? ''}`;
+        if (ids.has(identity)) errors.push(`${gate.id} ${label}歌曲重复：${song.id}`);
+        ids.add(identity);
       }
     }
     for (const schedule of [gate.gateSchedule, gate.perfectSchedule].filter((item): item is KaleidxSchedule => Boolean(item))) {
-      schedule.phases.forEach((phase, index) => {
-        const start = Date.parse(phase.startsAt);
-        const end = phase.endsAt ? Date.parse(phase.endsAt) : Number.POSITIVE_INFINITY;
-        if (!Number.isFinite(start) || start >= end) errors.push(`${gate.id} ${schedule.label}第 ${index + 1} 阶段日期无效`);
-        const previous = schedule.phases[index - 1];
-        if (index > 0 && previous?.endsAt !== phase.startsAt) errors.push(`${gate.id} ${schedule.label}第 ${index + 1} 阶段不连续`);
-        if (phase.life <= 0 || !Number.isSafeInteger(phase.life)) errors.push(`${gate.id} ${schedule.label} LIFE 无效`);
-      });
+      errors.push(...validateSchedule(schedule, `${gate.id} ${schedule.label}`));
     }
   }
   return errors;
+}
+
+function validateSchedule(schedule: KaleidxSchedule, context: string): string[] {
+  const errors: string[] = [];
+  schedule.phases.forEach((phase, index) => {
+    const start = Date.parse(phase.startsAt);
+    const end = phase.endsAt ? Date.parse(phase.endsAt) : Number.POSITIVE_INFINITY;
+    if (!Number.isFinite(start) || (phase.endsAt !== null && !Number.isFinite(end)) || start >= end) errors.push(`${context}第 ${index + 1} 阶段日期无效`);
+    const previous = schedule.phases[index - 1];
+    if (index > 0 && previous?.endsAt !== phase.startsAt) errors.push(`${context}第 ${index + 1} 阶段不连续`);
+    if (phase.life <= 0 || !Number.isSafeInteger(phase.life)) errors.push(`${context} LIFE 无效`);
+    if (phase.dxLife != null && (phase.dxLife <= 0 || !Number.isSafeInteger(phase.dxLife))) errors.push(`${context} DX LIFE 无效`);
+  });
+  return errors;
+}
+
+function challengePools(gate: KaleidxStage): [string, readonly KaleidxSong[]][] {
+  const challenge = kaleidxStageChallenge(gate);
+  const pools: [string, readonly KaleidxSong[]][] = gate.trackerKind === 'completion' ? [] : [['钥匙', gate.keySongs]];
+  if (challenge.kind === 'random-three' || challenge.kind === 'error') {
+    pools.push(['TRACK 1', challenge.track1], ['TRACK 2', challenge.track2]);
+    if (challenge.kind === 'random-three') pools.push(['TRACK 3', [challenge.track3]]);
+  } else if (challenge.kind === 'fixed-three') pools.push(['固定课题', challenge.tracks]);
+  else pools.push(['最终课题与结局曲', [challenge.song, challenge.endingSong]]);
+  return pools;
 }

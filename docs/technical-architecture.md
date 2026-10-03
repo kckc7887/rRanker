@@ -333,6 +333,22 @@ Kyou 别名的一小时会话缓存位于 `services/phigros-kyou-cache.ts`，查
 移除非条目事件。弱引用身份表兼容分组更新后的迟到回调，真实条目的键、分组布局、
 列表窗口与图片持久化门槛保持一致。
 
+## KALEIDXSCOPE 活动工具
+
+`app/tools/kaleidx-scope.tsx` 通过 `domain/kaleidx-scope.ts` 的 `KALEIDX_STAGES` 展示六扇彩色门、
+棱镜塔、ERROR、希望之门与最终挑战。`kaleidxStageChallenge(stage)` 统一转换随机三曲、剧情课题、
+固定三曲和最终单曲；最终挑战包含双段 LIFE、结局曲及搭档奖励。国服未完整确认的缓和表携带
+推算标记、来源和核对日期，只在折叠参考区展示，不参与当前档位计算。
+
+歌曲继续通过 `useDetailedCatalog` 解析真实曲库身份；指定谱面类型的课题只有在该类型存在时才启用
+详情跳转，经 `encodeDetailTarget` / `detailTargetHref` 携带舞萌身份与谱面类型。ERROR 乱码课题
+只展示剧情说明，不构造歌曲 ID 或详情链接。
+
+`state/kaleidx-scope-progress.ts` 使用公共偏好工厂，沿用 `rranker.toolbox.kaleidx-scope.v1`
+的按账号记录；六门保存钥匙曲、单人／多人计划和通关状态，四个后续阶段只使用完成状态。
+前置条件用于提示，不限制补记，也不级联改写其他阶段。保存共用串行队列，失败回滚；
+缺失阶段默认未完成，恢复时过滤无效曲目与未知阶段。
+
 ## 调试设置与诊断日志
 
 设置页的“调试”进入 `app/debug.tsx`，提供“启用测试账号”开关与独立“诊断”入口。
