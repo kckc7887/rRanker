@@ -105,6 +105,7 @@ const phiraChart: PhiraChart = {
 
 function pickedDirectoryMock() {
   return {
+    uri: 'picked://',
     createFile: (name: string, mime: string | null) => {
       native.createFileCalls.push({ name, mime });
       return {

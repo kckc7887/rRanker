@@ -155,9 +155,14 @@ export async function saveChartPackage(
 ): Promise<boolean> {
   try {
     const picked = await Directory.pickDirectoryAsync();
-    const destination = picked.createFile(fileName, 'application/zip');
-    if (output.kind === 'file') output.file.copy(destination);
-    else destination.write(output.bytes);
+    if (output.kind === 'file' && picked.uri.startsWith('file://')) {
+      // Native file copying creates its target; iOS rejects an existing target.
+      output.file.copy(new File(picked.uri, fileName));
+    } else {
+      const destination = picked.createFile(fileName, 'application/zip');
+      if (output.kind === 'file') output.file.copy(destination);
+      else destination.write(output.bytes);
+    }
     return true;
   } catch (error) {
     if (isDirectoryPickerCancellation(error)) return false;
