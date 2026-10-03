@@ -896,6 +896,13 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
   包内部的语言集合入口到 `src/utils/zod-locales.ts`。业务继续从 `zod` 导入，不能
   另建 Schema 工厂或替换错误类；默认英文初始化由原库执行。若增加校验语言需求，
   必须先扩展这个集合和 `metro-code-subsets.test.ts`，不能假定全集仍在移动包中。
+- `scripts/patch-audited-dependencies.cjs` 共用 `applyPatches(root)` 与
+  `verifyPatchedAdvisories(root, lockfile, report)`：安装时修复已核验的 braces 3.0.3 和
+  node-forge 1.4.0，审计时只读核验所有安装副本的版本及完整源码。补丁以原始 SHA-256
+  与唯一文本替换定位，重复执行通过逆向还原校验完整原文，未知内容使安装或审计失败。
+  glob 保护同时覆盖字符串解析和直接 AST 遍历，RSA 保留合法 NULL 参数省略语义。
+  `dependency-compatibility.test.ts` 覆盖漏洞输入和正常消费者，
+  `production-audit-gate.test.ts` 覆盖篡改、副本、版本及公告范围变化。
 - `decodeMaimaiQrFromImageUri(uri, signal?)` 仍是上传图片二维码的公共服务，解码器
   按深路径导入并沿用 jpeg-js 的类型；取消、识别结果、错误和临时图片清理合同由
   `maimai-qr-image-decode.test.ts` 保护，上传组件不得复制识别链路。
@@ -1134,7 +1141,7 @@ secrets 引用、checkout 不持久化 Git 凭据。正式 iOS 使用全局串�
 
 在 `apps/mobile` 执行 `npm run check:architecture`、`npm run check:generated`、
 `npm run check:lossless-assets`、`npm run benchmark:optimization`、
-`npm run benchmark:phigros-push`、`npm run audit:prod`。播放器生成检查从当前
+`npm run benchmark:phigros-push`、`npm run audit:all`、`npm run audit:prod`。播放器生成检查从当前
 源码重新打包，同时验证 HTML、player.js 与 player.bundle；基准比较保留固定提交的绘制
 命令及搜索结果，报告桌面 CPU 分布，不推断手机帧率。推分基准用确定性存档测量
 30/300/1000 条成绩的总耗时与事件循环最大阻塞，不设 CI 耗时门槛。生产审计门槛分执行、校验、
@@ -1142,6 +1149,9 @@ secrets 引用、checkout 不持久化 Git 凭据。正式 iOS 使用全局串�
 critical 无论能否解析出公告编号都失败；报告缺字段、条目与 metadata 不自洽、未知严重级别、
 无法识别的公告，以及空 `via`、悬空引用、成环而无可解析根因都按失败处理；基线记录的分类值、
 包名与版本必须与锁文件一致；接受理由类型由脚本定义，当前接受基线为空。
+完整审计通过同一脚本的 `--all` 执行 `npm audit --json`，包含开发依赖，所有未修复级别均失败，
+不复用生产接受基线。仅两项已修复公告可在实际安装补丁通过完整性核验后通过；不删除报告条目，
+不伪装为零漏洞。新的公告、critical、缺失或改写的补丁仍阻断，审计不自动修补依赖。
 无损 PNG 检查验证 CRC、解压扫描线、RGBA、透明度及所有非 IDAT 块。完整命令和双端云端比较流程见技术架构文档。
 
 仓库轻检查在仓库根目录执行 `node .github/scripts/check-light.mjs`（`--self-test` 额外用故意
