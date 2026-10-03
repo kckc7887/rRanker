@@ -7,7 +7,7 @@ import { lxnsAccessTokenExpired, rotateLxnsTokens, type LxnsOAuthSession } from 
 import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { LXNS_API_ROOT } from '@/providers/lxns-config';
 import type { LxnsUploadScore } from '@/services/score-hub-sync-map';
-import { withUploadAbortSignal, type ScoreHubAbortSignal } from '@/services/score-hub-http';
+import { assertUploadActive, withUploadAbortSignal, type ScoreHubAbortSignal } from '@/services/score-hub-http';
 import type { UploadWriteResult } from '@/services/upload-maimai-types';
 
 export async function uploadRecordsToLxns(input: {
@@ -29,7 +29,7 @@ export async function uploadRecordsToLxns(input: {
       await input.onTokensRotated?.({ previous, next: session });
     }
     await input.signal?.waitUntilResumed?.();
-    signal.throwIfAborted();
+    assertUploadActive(signal);
     input.assertEligible?.();
     const result = await requestProviderWrite({
         baseUrl: LXNS_API_ROOT, path: '/user/maimai/player/scores', fetcher: expoFetch as unknown as typeof fetch,

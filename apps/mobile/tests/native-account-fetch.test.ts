@@ -1,4 +1,6 @@
 import { describe, expect, it, vi } from 'vitest';
+import { AbortController as NativeAbortController } from 'abort-controller';
+import { fetchMe } from '@/services/score-hub-client';
 import { createAccountProbeFetch, ACCOUNT_PROBE_ORIGIN } from './native/expo-fetch-adapter';
 import type { fetch as nativeFetch } from 'expo/fetch';
 
@@ -9,6 +11,23 @@ function response(url: string, redirected = false) {
 }
 
 describe('native account probe transport isolation', () => {
+  it('authenticates ScoreHub through the real request path with the React Native AbortSignal', async () => {
+    const profile = { friendCode: '123456789012345', hasCabinetUserId: true };
+    const result = new Response(JSON.stringify(profile));
+    Object.defineProperty(result, 'url', { value: `${ACCOUNT_PROBE_ORIGIN}/scorehub/me` });
+    const transport = vi.fn().mockResolvedValue(result);
+    vi.stubGlobal('AbortController', NativeAbortController);
+    vi.stubGlobal('fetch', createAccountProbeFetch(transport as typeof nativeFetch));
+    try {
+      await expect(fetchMe('restored-token')).resolves.toEqual(profile);
+      expect(transport).toHaveBeenCalledOnce();
+      expect(transport).toHaveBeenCalledWith(`${ACCOUNT_PROBE_ORIGIN}/scorehub/me`, expect.objectContaining({
+        headers: expect.objectContaining({ authorization: 'Bearer restored-token' }),
+        credentials: 'omit', redirect: 'error',
+      }));
+    } finally { vi.unstubAllGlobals(); }
+  });
+
   it('keeps native body, authentication and cancellation while projecting the official response origin', async () => {
     const actual = response(`${ACCOUNT_PROBE_ORIGIN}/lxns/player`);
     const transport = vi.fn().mockResolvedValue(actual);

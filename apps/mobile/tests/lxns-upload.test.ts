@@ -1,3 +1,4 @@
+import { AbortController as NativeAbortController } from 'abort-controller';
 import { ProviderError } from '@/providers/errors';
 import type { LxnsOAuthSession } from '@/providers/lxns-oauth';
 import { LXNS_API_ROOT, LXNS_OAUTH_TOKEN_URL } from '@/providers/lxns-config';
@@ -25,7 +26,8 @@ function session(expiresAt = Date.now() + 120_000): LxnsOAuthSession {
   };
 }
 
-describe('落雪成绩上传', () => {
+describe.each([['Node', globalThis.AbortController], ['React Native', NativeAbortController]] as const)('落雪成绩上传: %s', (_runtime, Controller) => {
+  beforeEach(() => vi.stubGlobal('AbortController', Controller));
   it('已发送写入的非重试协议错误仍保留未确认，不盲目重传', async () => {
     const fetchMock = vi.fn(async () => new Response('', { status: 200, headers: { 'content-length': String(128 * 1024 * 1024) } }));
     vi.stubGlobal('fetch', fetchMock);
@@ -63,6 +65,7 @@ describe('落雪成绩上传', () => {
 
   it('上传前刷新过期 token 并持久化轮换后的 refresh token', async () => {
     const rotated = vi.fn();
+    const previous = { ...session(Date.now() - 1), refreshToken: `old-refresh-${_runtime}` };
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(new Response(JSON.stringify({
         access_token: 'new-access',
@@ -72,7 +75,7 @@ describe('落雪成绩上传', () => {
       .mockResolvedValueOnce(new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', fetchMock);
     const result = await uploadRecordsToLxns({
-      session: session(Date.now() - 1),
+      session: previous,
       records: [score],
       onTokensRotated: rotated,
     });
@@ -81,7 +84,7 @@ describe('落雪成绩上传', () => {
       headers: expect.objectContaining({ authorization: 'Bearer new-access' }),
     });
     expect(rotated).toHaveBeenCalledWith({
-      previous: expect.objectContaining({ accessToken: 'old-access', refreshToken: 'old-refresh' }),
+      previous: expect.objectContaining({ accessToken: 'old-access', refreshToken: previous.refreshToken }),
       next: expect.objectContaining({ accessToken: 'new-access', refreshToken: 'new-refresh' }),
     });
     expect(result.session.refreshToken).toBe('new-refresh');
