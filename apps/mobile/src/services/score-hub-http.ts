@@ -36,6 +36,11 @@ export type ScoreHubAbortSignal = {
   removeEventListener?: AbortSignal['removeEventListener'];
 };
 
+/** React Native 的 AbortSignal 可能没有 throwIfAborted 或 reason。 */
+export function assertUploadActive(signal: AbortSignal): void {
+  if (signal.aborted) throw signal.reason ?? new ScoreHubError('已取消');
+}
+
 /** 将任务取消订阅接入公共 HTTP；不轮询可变标记，结束时释放订阅。 */
 export async function withUploadAbortSignal<T>(signal: ScoreHubAbortSignal | undefined, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
   await signal?.waitUntilResumed?.();
@@ -46,8 +51,11 @@ export async function withUploadAbortSignal<T>(signal: ScoreHubAbortSignal | und
   signal?.addEventListener?.('abort', cancel, { once: true });
   try {
     if (signal?.aborted) cancel();
-    controller.signal.throwIfAborted();
+    assertUploadActive(controller.signal);
     return await run(controller.signal);
+  } catch (error) {
+    assertUploadActive(controller.signal);
+    throw error;
   } finally {
     unsubscribe?.();
     signal?.removeEventListener?.('abort', cancel);
@@ -57,7 +65,7 @@ export async function withUploadAbortSignal<T>(signal: ScoreHubAbortSignal | und
 /** 取消释放延时计时器，恢复后才允许开始下一次轮询或读取。 */
 export async function waitForUploadDelay(ms: number, signal?: ScoreHubAbortSignal): Promise<void> {
   await withUploadAbortSignal(signal, nativeSignal => new Promise<void>((resolve, reject) => {
-    const cancel = () => { clearTimeout(timer); reject(nativeSignal.reason); };
+    const cancel = () => { clearTimeout(timer); reject(nativeSignal.reason ?? new ScoreHubError('已取消')); };
     const timer = setTimeout(() => { nativeSignal.removeEventListener('abort', cancel); resolve(); }, ms);
     nativeSignal.addEventListener('abort', cancel, { once: true });
   }));

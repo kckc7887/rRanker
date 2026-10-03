@@ -318,6 +318,9 @@ ScoreHub、水鱼和落雪上传共用 `providers/http-json.ts` 的 HTTP 执行�
 完成水鱼预刷新与（Rizline 的）曲库尽力刷新，再调用 `refreshGameDataBundle` 并只按它返回的
 终态判定：`success` / `noop` 视为成功，`partial` 按实际失败项提示玩家资料、成绩、最佳成绩或曲库未更新，认证失败提示重新登录；其它终态按公共失败文案提示。每一步等待后与通知前复核前台信号、账号、游戏和操作代次，切换后的旧结果不写新状态；调用方不维护逐游戏 waiter，也不二次读取查询缓存推断后台刷新是否落定。
 `UploadDataSheet` 的账号偏好、二维码输入与任务执行分别由 `useUploadAccountPreferences`、`useUploadQrInput`、`useUploadTaskState` / `useUploadExecution` 管理。唯一后台任务由 `services/upload-task-controller.ts` 的 `uploadTaskController` 管理，类型位于 `upload-maimai-types.ts`，业务入口 `upload-maimai-from-friend-code.ts` 保留再导出。每个任务持有自己的取消信号、前台等待与曲库等待；阶段、完成、刷新和通知必须验证发起任务身份。取消立即结束前台等待，迟到曲库与回调不能进入下一任务；关闭或卸载弹层不终止任务，显式取消才结束。上传偏好的读取迁移、保存、删除和清空共用按存储键串行的 `enqueueKeyMutation`；好友码切换以选择代次约束迟到回调，读取目标勾选前不写入上一个好友码的选择。
+上传取消在 `score-hub-http.ts` 统一通过 `assertUploadActive` 检查 `aborted`，兼容 React Native
+缺少 `throwIfAborted` / `reason` 的信号；存在的取消原因保持原样，缺失时返回既有取消错误。
+ScoreHub 请求、落雪上传及水鱼只读核验共用该入口，不增加轮询、重传或正常路径等待。
 上传账号读取失败保留最后一次完整历史列表并提供重试，首次读取失败保持未就绪；
 历史账号选择提交成功后才发布新的好友码与勾选偏好，上传的网络兜底不会吞掉持久化错误。好友码选择代次独立于任务，旧读取与重试不能覆盖新选择；打开期间账号集合更新不取消正在恢复的偏好，恢复完成时使用当前可写账号。
 

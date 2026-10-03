@@ -480,7 +480,7 @@ ScoreHub 的响应校验集中在 `score-hub-types.ts`：同步成绩、账号�
   `transferMaimaiFromLxns` 在每个目标写入前调用 `captureAccountWrites` 断言，
   `uploadRecordsToLxns` / `uploadRecordsToDivingFish` 的 `assertEligible` 在发送前再复核；
   失效目标不再向上游写入，其他目标独立完成，已写入的远端结果不回滚。
-  写入经公共 `requestProviderWrite` 单次发送并返回 `success` 或 `unconfirmed`，不确定结果禁止盲目重传。水鱼未确认时经现有 Provider 新鲜读取一次，`uploadedRecordsAreVisible(..., 'exact')` 按唯一谱面身份和可比较字段核验；重复身份、未知状态、缺项或核验失败保留未确认，确认写入数为零。`withUploadAbortSignal` 和 `waitForUploadDelay` 统一恢复等待、监听取消和清理，轮询、目标传输与刷新复用它们。
+  写入经公共 `requestProviderWrite` 单次发送并返回 `success` 或 `unconfirmed`，不确定结果禁止盲目重传。水鱼未确认时经现有 Provider 新鲜读取一次，`uploadedRecordsAreVisible(..., 'exact')` 按唯一谱面身份和可比较字段核验；重复身份、未知状态、缺项或核验失败保留未确认，确认写入数为零。`withUploadAbortSignal` 和 `waitForUploadDelay` 统一恢复等待、监听取消和清理，轮询、目标传输与刷新复用它们。`assertUploadActive(signal)` 共用 `aborted` 检查，有取消 reason 时原样抛出，缺失时使用既有取消错误；不依赖 React Native 未实现的 `throwIfAborted()`。ScoreHub、落雪与水鱼的读取、写入和等待合同同时使用 Node 与 React Native 的 AbortController 验证，取消仍阻止后续写入和只读核验。
 - `clearStorageByCategories` 先提升所属游戏代次，再取消并移除查询，然后执行适配器清理。
   同类资源与图片清理通过 `Promise.allSettled` 等待全部终态后汇总失败并测量回收量；原生图片清理返回 false 或抛错均报告失败，部分成功仍保留实际结果。
   `cancelBoundAccountQueries(account, client)` 在解绑删除前使单个账号失效，取消并移除

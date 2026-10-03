@@ -5,7 +5,7 @@ import { ProviderError } from '@/providers/errors';
 import { requestProviderWrite } from '@/providers/http-json';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { uploadedRecordsAreVisible } from '@/services/upload-refresh-visibility';
-import { withUploadAbortSignal, type ScoreHubAbortSignal } from '@/services/score-hub-http';
+import { assertUploadActive, withUploadAbortSignal, type ScoreHubAbortSignal } from '@/services/score-hub-http';
 import type { UploadWriteResult } from '@/services/upload-maimai-types';
 
 const BASE_URL = 'https://www.diving-fish.com/api/maimaidxprober';
@@ -31,12 +31,12 @@ export async function uploadRecordsToDivingFish(
     // 写请求的响应不确定时只核验一次；新 Provider 不复用旧在飞读取或缓存。
     try {
       await signal?.waitUntilResumed?.();
-      nativeSignal.throwIfAborted();
+      assertUploadActive(nativeSignal);
       options.assertEligible?.();
       const actual = await new DivingFishProvider({ mode: 'import-token', value: importToken, persistable: true }).getRecords(nativeSignal);
       const comparable = uploadedRecordsAreVisible(actual, records, 'exact');
       if (comparable) return { status: 'success', uploaded: records.length };
-    } catch { nativeSignal.throwIfAborted(); }
+    } catch { assertUploadActive(nativeSignal); }
     return { status: 'unconfirmed', uploaded: 0 };
   });
 }

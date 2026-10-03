@@ -1,3 +1,4 @@
+import { AbortController as NativeAbortController } from 'abort-controller';
 import {
   createCabinetScoreJob,
   createUpdateScoreJob,
@@ -21,7 +22,7 @@ function jsonResponse(status: number, body: unknown) {
   };
 }
 
-describe('score-hub poll resilience', () => {
+describe.each([['Node', globalThis.AbortController], ['React Native', NativeAbortController]] as const)('score-hub poll resilience: %s', (_runtime, Controller) => {
   it('取消延时立即清理计时器，暂停后不发起下次轮询', async () => {
     const controller = new UploadTaskController();
     const signal = controller.begin();
@@ -48,11 +49,13 @@ describe('score-hub poll resilience', () => {
     await expect(fetchLatestSync('token')).rejects.toThrow('sync 响应无效');
   });
   beforeEach(() => {
+    vi.stubGlobal('AbortController', Controller);
     fetchMock.mockReset();
     vi.useFakeTimers();
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 
