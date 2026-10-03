@@ -21,6 +21,18 @@ import { sliderNestedEvents } from '../../src/features/osu-chart-preview/webview
 import { computeHitsoundSchedule } from '../../src/features/osu-chart-preview/webview-player/engine-audio/hitsoundSchedule';
 
 describe('indexed render candidates', () => {
+  it('does not add timer waits per frame batch when preparation fits in a work slice', async () => {
+    const text = fixtureOsu(3, 'Hard').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n'
+      + Array.from({ length: 10_000 }, (_, index) => `64,192,${1000 + index * 50},1,0`).join('\n'));
+    const bytes = new TextEncoder().encode(text);
+    const expected = buildAutoReplay(bytes, 'hash');
+    const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
+    const timer = vi.spyOn(globalThis, 'setTimeout');
+    try {
+      assert.deepEqual(await buildAutoReplay(bytes, 'hash', new AbortController().signal), expected);
+      assert.equal(timer.mock.calls.length, 1, 'one initial cancellation opportunity, no per-batch timer tax');
+    } finally { timer.mockRestore(); clock.mockRestore(); }
+  });
   it('retains every cursor sample and key edge when streaming slider and spinner auto inputs', () => {
     const counts: number[] = [];
     const hash = createHash('sha256');

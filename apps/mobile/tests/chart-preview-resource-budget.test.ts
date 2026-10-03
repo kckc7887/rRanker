@@ -14,6 +14,9 @@ import {
   createChartPreviewActualBytes,
   readBudgetedZipEntry,
   readBudgetedChartDownload,
+  pauseChartPreviewParse,
+  CHART_PREVIEW_PARSE_SLICE_MS,
+  CHART_PREVIEW_PARSE_YIELD_INTERVAL,
 } from '@/features/chart-preview-shared/chart-preview-resource-budget';
 
 async function zipEntry(bytes: Uint8Array, checksum = bytes.byteLength === 0 ? 0 : crc32(bytes)) {
@@ -25,6 +28,31 @@ async function zipEntry(bytes: Uint8Array, checksum = bytes.byteLength === 0 ? 0
 }
 
 describe('chart preview actual bytes and cancellation', () => {
+  it('yields by elapsed work, resets the slice after waiting, and keeps task state independent', async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const slice = {};
+    const checkpoint = CHART_PREVIEW_PARSE_YIELD_INTERVAL;
+    try {
+      const first = pauseChartPreviewParse(checkpoint, undefined, slice);
+      expect(vi.getTimerCount()).toBe(1);
+      now = 100;
+      await vi.runAllTimersAsync(); await first;
+      now += CHART_PREVIEW_PARSE_SLICE_MS - 1;
+      await pauseChartPreviewParse(checkpoint * 2, undefined, slice);
+      expect(vi.getTimerCount()).toBe(0);
+      now++;
+      const next = pauseChartPreviewParse(checkpoint * 3, undefined, slice);
+      expect(vi.getTimerCount()).toBe(1);
+      const independent = pauseChartPreviewParse(checkpoint, undefined, {});
+      expect(vi.getTimerCount()).toBe(2);
+      await vi.runAllTimersAsync(); await Promise.all([next, independent]);
+      const controller = new AbortController(); controller.abort(new Error('cancel within slice'));
+      await expect(pauseChartPreviewParse(checkpoint * 4, { signal: controller.signal }, slice)).rejects.toThrow('cancel within slice');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { clock.mockRestore(); vi.useRealTimers(); }
+  });
   it('checks downloaded size and cancellation before allocating a file buffer', async () => {
     const bytes = vi.fn(async () => new Uint8Array([1, 2]));
     await expect(readBudgetedChartDownload({ size: CHART_PREVIEW_MAX_DOWNLOAD_BYTES + 1, bytes }))
