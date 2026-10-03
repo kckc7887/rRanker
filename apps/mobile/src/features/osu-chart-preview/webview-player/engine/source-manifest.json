@@ -7,8 +7,8 @@
   },
   "modifications": {
     "author": "rRanker",
-    "date": "2026-10-01",
-    "description": "Selected parser, ruleset, autoplay and rendering modules with retained source notices; exact beatmap identifiers; system fonts; host video/storyboard backdrop; flat feedback and slider tracks; indexed visibility and mode-specific scroll/opacity controls. Unused rendering helpers are omitted. Slider edge defaults remain sparse; taiko drumroll ticks use a compact uniform timeline, neighbouring-tick judgement and indexed drawing/tint evaluation. Standard slider judgement and scoring stream nested events; reversal arrows use constant-time parity bounds."
+    "date": "2026-10-03",
+    "description": "Selected parser, ruleset, autoplay and rendering modules with retained source notices; exact beatmap identifiers; system fonts; host video/storyboard backdrop; flat feedback and slider tracks; indexed visibility and mode-specific scroll/opacity controls. Unused rendering helpers are omitted. Slider edge defaults remain sparse; taiko drumroll ticks use a compact uniform timeline, neighbouring-tick judgement and indexed drawing/tint evaluation. Standard slider judgement and scoring stream nested events; reversal arrows use constant-time parity bounds. Catch conversion streams intermediate events and derived objects in their original generation order. Taiko conversion retains sub-millisecond hit identities and streams split hits. Auto cursor and drumroll input generation is iterable for cooperative preparation. Numeric validation retains legacy NaN difficulty points; banana showers advance at large absolute timestamps."
   },
   "hashNormalization": "UTF-8 text with CRLF normalized to LF",
   "files": [
@@ -17,7 +17,7 @@
       "upstreamPath": "src/parsers/BeatmapParser.ts",
       "upstreamGitBlob": "926feaf716452bd00dc808651b0b4cdc1e686adf",
       "upstreamSha256": "54b4ea3d1b0ff33ccf2cefcebdbee835ab439d9067dbaf137a1b8b3892d9c40f",
-      "integratedSha256": "33053d6c64c15a1359405d6af029178034fec6a3139f16000a10aab4325d53a1"
+      "integratedSha256": "a61723c2aba64d1100911e8c061ab0d60f69c5ddaeb329b5525109ea7b9cdddf"
     },
     {
       "path": "player/Player.ts",
@@ -129,7 +129,7 @@
       "upstreamPath": "src/rulesets/catch/converter.ts",
       "upstreamGitBlob": "fdc6d3eb600a17787afac91c16035817fd8ebf1c",
       "upstreamSha256": "e6ae9c516d3d50e510ee50a8235ecc89a99e75ec72d5724686d3f96ba9db80a0",
-      "integratedSha256": "ce8a1ff735c145db664fa9782bee5a14ebaf53cf12bbee0484ab2274bf81a4a1"
+      "integratedSha256": "7e7acb5347aef51d99eccad045a515de8b16238bcca7c8d82af3dd1ad1874d17"
     },
     {
       "path": "rulesets/catch/Flashlight.ts",
@@ -269,7 +269,7 @@
       "upstreamPath": "src/rulesets/std/autoGenerator.ts",
       "upstreamGitBlob": "c0c1c3653562dc2ca95390493846e11645a0d1bd",
       "upstreamSha256": "c68719c69693f80a40e58cbdbc00f90de589057c6635ea6f66f99cbf64fe2769",
-      "integratedSha256": "e36802e0ada00aa5f21d81f002abfebdbb5b70eece70095f683d39548aa8def8"
+      "integratedSha256": "0b91973ce2650b0927f00bcaeb8c8dc7eb9b0813e9deff2b1c341685fc0b357f"
     },
     {
       "path": "rulesets/std/index.ts",
@@ -283,14 +283,14 @@
       "upstreamPath": "src/rulesets/taiko/autoGenerator.ts",
       "upstreamGitBlob": "7b49d9816711f895b18c413255fa2307d41eaf0b",
       "upstreamSha256": "44b43ae2f2c7c24fa78eb4603e7e8526d64c6db9bdb93c168ca640e9345edc1a",
-      "integratedSha256": "94342bd66564f2e2f71422ba5d927b94b18d496012a6b9146fdfba0a5ed56be4"
+      "integratedSha256": "36d0a0b5fab2e21e2dc89047dc198a120e1d8086cfff7aca6ca12814bb73a85a"
     },
     {
       "path": "rulesets/taiko/converter.ts",
       "upstreamPath": "src/rulesets/taiko/converter.ts",
       "upstreamGitBlob": "d73d9bc30f10b2da70d0f8a5a3fa750b3e90ec59",
       "upstreamSha256": "37df7e0142e76dc08441a6216a5af7863e83fc348148c993bdfd9d4c94a47d05",
-      "integratedSha256": "c50e5f97931e69e0dfb6ababe386435a0dd2aa6e502b15a9a0fb6c34e12ff15c"
+      "integratedSha256": "61ffe37a460daa63345674f1df4ca42fdc442a79d4427044d80c65b938863cad"
     },
     {
       "path": "rulesets/taiko/Flashlight.ts",
@@ -325,7 +325,7 @@
       "upstreamPath": "src/rulesets/taiko/Playfield.ts",
       "upstreamGitBlob": "a5e1c9e0b89360946b9ce8c79a0739dae8d9871d",
       "upstreamSha256": "3de5796605d3d764e13e3ea3abfde28a8451d2a6732073ed33d4f466f2616e40",
-      "integratedSha256": "9e6c4293707a4de66d0cb6d83e82f03a11e6829601e2e3a76d95a098537c503f"
+      "integratedSha256": "722ba155e07dcbd57a8cf527d4a6b6a4e2ff836a6070734ca2700e46050cac7c"
     },
     {
       "path": "rulesets/taiko/scoreProcessor.ts",
@@ -353,7 +353,7 @@
       "upstreamPath": "src/utils/autoReplay.ts",
       "upstreamGitBlob": "0c305e53c971a83b5b204edfa4ceaa645107a736",
       "upstreamSha256": "4f742d0a4feabcd4aefe1589fd459251f8525c8468f269df5c7c18aa0de6cb60",
-      "integratedSha256": "6b4273555db2bf472acbf614d813bdbb32a183fce754310ba45e63079380b2d3"
+      "integratedSha256": "34b8907187aada09225e3eebf9c6dacffc5419bc8d45ac58a1e406140856518f"
     },
     {
       "path": "utils/hitJudge.ts",
@@ -388,7 +388,7 @@
       "upstreamPath": "src/utils/sliderDuration.ts",
       "upstreamGitBlob": "0192cca0a7f8ca5f853d58e746856c77d7215857",
       "upstreamSha256": "0d10566202cd8efc965d11db843b327241cac43bbd441bd9d695c9f932f18d3c",
-      "integratedSha256": "0968946c4b0ab3b2959a57de84c4a82e2e5508b02be4c8091c7b2e419a7ffdeb"
+      "integratedSha256": "5cde9f0a1121b0bc1e48b413937016600d91703f926fe87183c3a7a8b7f86a16"
     },
     {
       "path": "utils/stacking.ts",

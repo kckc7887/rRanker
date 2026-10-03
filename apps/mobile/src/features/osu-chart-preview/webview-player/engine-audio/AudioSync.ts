@@ -86,7 +86,10 @@ const SAMPLE_CONCURRENCY = 2;
 /** Preview audio uses the supplied complete timeline; it never trims to replay duration. */
 export class AudioSync {
   readonly schedule: readonly PendingSound[];
-  readonly hitSoundEvents: readonly HitSoundEvent[];
+  private events: readonly HitSoundEvent[] | undefined;
+  get hitSoundEvents(): readonly HitSoundEvent[] {
+    return this.events ??= hitsoundEventsFromSchedule(this.schedule);
+  }
   private readonly inputs: AudioSyncInputs;
   private readonly ctx: AudioContext;
   private readonly songGain: GainNode;
@@ -121,7 +124,7 @@ export class AudioSync {
     this.effectsGain = this.ctx.createGain();
     this.songGain.connect(this.ctx.destination);
     this.effectsGain.connect(this.ctx.destination);
-    this.schedule = [...(inputs.schedule ?? computeHitsoundSchedule({
+    const schedule = inputs.schedule ?? computeHitsoundSchedule({
       mode: inputs.mode ?? 0,
       beatmap: inputs.beatmap,
       hitResults: inputs.hitResults,
@@ -130,8 +133,11 @@ export class AudioSync {
       comboFrames: inputs.comboFrames ?? [],
       oldOffsetMs: inputs.beatmap.formatVersion < 5 ? 24 : 0,
       fromBeatmapMs: -Infinity,
-    }))].sort((a, b) => a.beatmapMs - b.beatmapMs);
-    this.hitSoundEvents = hitsoundEventsFromSchedule(this.schedule);
+    });
+    // Production supplies the immutable, already sorted shared timeline. Preserve legacy
+    // callers that supply unsorted sounds without copying every normal preview schedule.
+    this.schedule = schedule.some((sound, index) => index > 0 && sound.beatmapMs < schedule[index - 1]!.beatmapMs)
+      ? [...schedule].sort((a, b) => a.beatmapMs - b.beatmapMs) : schedule;
     this.samples = [...(inputs.extraSamples ?? [])].sort((a, b) => a.timeMs - b.timeMs);
     let end = -Infinity;
     this.sampleEndPrefix = this.samples.map(sample => end = Math.max(end, sample.timeMs + sample.buffer.duration * 1000));

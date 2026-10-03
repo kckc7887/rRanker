@@ -39,6 +39,7 @@ import type { BeatmapData, HitResult, HitSample, TimingPoint } from '../engine/t
 import type { ComboFrame } from '../engine/renderer/HUDRenderer';
 import type { TaikoInputEvent } from '../engine/rulesets/taiko/input';
 import { slideDurationMs, sliderEdgeSample } from '../engine/utils/sliderDuration';
+import { upperBoundBy } from '../../../chart-preview-shared/webview-player/sorted-search';
 
 const AUDIO_EXTS = ['.wav', '.mp3', '.ogg'];
 
@@ -427,16 +428,8 @@ function activeTimingPoint(
   beatmapMs: number,
 ): Pick<TimingPoint, 'sampleSet' | 'sampleIndex' | 'volume'> {
   const tps = beatmap.timingPoints;
-  let sampleSet   = 1;
-  let sampleIndex = 0;
-  let volume      = 100;
-  for (const tp of tps) {
-    if (tp.time > beatmapMs) break;
-    sampleSet   = tp.sampleSet   || 1; // 0=auto → normal (1)
-    sampleIndex = tp.sampleIndex;
-    volume      = tp.volume;
-  }
-  return { sampleSet, sampleIndex, volume };
+  const tp = tps[upperBoundBy(tps, beatmapMs, point => point.time) - 1];
+  return { sampleSet: tp?.sampleSet || 1, sampleIndex: tp?.sampleIndex ?? 0, volume: tp?.volume ?? 100 };
 }
 
 // Sample playback gain 0..1. The object's own sample volume wins when > 0, else the

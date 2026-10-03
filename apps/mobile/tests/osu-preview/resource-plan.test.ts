@@ -4,9 +4,90 @@ import { decodeOsuText, findArchiveBytes, findArchiveResource, type PreviewResou
 import { selectPreviewOsbPaths, selectPreviewResources } from '../../src/features/osu-chart-preview/webview-player/resource-plan';
 import { fixtureOsu } from './fixtures';
 import { convertBeatmapToTaiko } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/taiko/converter';
+import { convertBeatmapToCatch } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/converter';
+import { computeModDifficulty, synthesizeAutoReplay } from '../../src/features/osu-chart-preview/webview-player/engine';
+import { applyPositionOffsets } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/positions';
+import { createHash } from 'node:crypto';
+import { slideDurationMs, sliderNestedEvents } from '../../src/features/osu-chart-preview/webview-player/engine/utils/sliderDuration';
 
 describe('selected chart resource plan', () => {
+  it('retains NaN inherited timing as normal velocity with slider ticks disabled', () => {
+    const map = parseBeatmap(fixtureOsu(0, 'Native')
+      .replace('0,500,4,1,0,100,1,0', '0,500,4,1,0,100,1,0\n500,NaN,4,1,0,100,0,0')
+      .replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|396:192,2,140'));
+    const slider = map.hitObjects[0]!;
+    if (slider.type !== 'slider') throw new Error('slider required');
+    expect(slideDurationMs(map, slider)).toBeCloseTo(500);
+    for (const lazer of [false, true]) expect([...sliderNestedEvents(map, slider, 500, lazer)]).toEqual([
+      { t: 1500, kind: 'repeat' }, { t: 2000, kind: 'tail' },
+    ]);
+    const objects = convertBeatmapToCatch(map, computeModDifficulty(map, synthesizeAutoReplay(map, '', [])));
+    expect(objects.filter(object => object.type === 'fruit')).toHaveLength(3);
+    expect(objects.some(object => object.type === 'droplet')).toBe(false);
+    expect(objects.every(object => Number.isFinite(object.startTime) && Number.isFinite(object.effectiveX))).toBe(true);
+    expect(objects.at(-1)!.startTime).toBeCloseTo(2000);
+    const taiko = convertBeatmapToTaiko({ ...map, mode: 1 });
+    expect(taiko[0]?.kind).toBe('drumroll');
+    expect(taiko.every(object => Number.isFinite(object.time) && (object.kind === 'hit' || Number.isFinite(object.endTime)))).toBe(true);
+  });
+  it.each([
+    ['SliderMultiplier: 1.4', 'SliderMultiplier: NaN'],
+    ['SliderMultiplier: 1.4', 'SliderMultiplier: 0'],
+    ['SliderTickRate: 1', 'SliderTickRate: Infinity'],
+    ['CircleSize: 3', 'CircleSize: Infinity'],
+    ['0,500,4,1,0,100,1,0', '0,Infinity,4,1,0,100,1,0'],
+    ['0,500,4,1,0,100,1,0', '0,0,4,1,0,100,1,0'],
+    ['256,192,0,1,0', '256,192,NaN,1,0'],
+    ['256,192,0,1,0,0:0:0:0:', '256,192,1000,8,0,Infinity'],
+  ])('rejects unusable numeric input before derived expansion: %s', (source, invalid) => {
+    expect(() => parseBeatmap(fixtureOsu(0, 'Native').replace(source, invalid))).toThrow();
+  });
+  /* eslint-disable no-extend-native -- Bound a formerly non-progressing float loop and restore before assertions. */
+  it('finishes a catch banana shower when float precision cannot advance its timestamp', () => {
+    const map = parseBeatmap(fixtureOsu(2, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,2147483648,8,0,2147483748'));
+    const difficulty = computeModDifficulty(map, synthesizeAutoReplay(map, '', [], 0));
+    const push = Array.prototype.push;
+    Array.prototype.push = function (this: unknown[], ...items: unknown[]) {
+      if (this.length > 20) throw new Error('non-progressing banana timeline');
+      return push.apply(this, items);
+    };
+    let objects: ReturnType<typeof convertBeatmapToCatch>;
+    try { objects = convertBeatmapToCatch(map, difficulty); } finally { Array.prototype.push = push; }
+    expect(objects.map(object => object.startTime)).toEqual([2147483648, 2147483748]);
+    expect(objects.map(object => object.bananaIndex)).toEqual([0, 1]);
+  });
+  /* eslint-enable no-extend-native */
+  it('preserves catch generation order, tiny droplets, banana RNG and hyperdash positions', () => {
+    const converted = [];
+    for (const slides of [1, 2, 3, 10]) for (const length of [140, 501, 1733.33]) {
+      const map = parseBeatmap(fixtureOsu(2, 'Native').replace(/\[HitObjects\][\s\S]*$/, `[HitObjects]\n256,192,1000,2,8,L|300:192,${slides},${length}\n256,192,100000,8,0,103001`));
+      const difficulty = computeModDifficulty(map, synthesizeAutoReplay(map, '', [], 0));
+      const objects = convertBeatmapToCatch(map, difficulty);
+      applyPositionOffsets(objects, map, difficulty);
+      converted.push(objects);
+    }
+    expect(converted.map(objects => objects.length)).toEqual([42, 62, 132, 50, 90, 230, 58, 118, 328, 114, 314, 1014]);
+    expect(createHash('sha256').update(JSON.stringify(converted)).digest('hex')).toBe('ab1008b6b55da27cdab75d6901a9486fee23b5ebdbf4ed47dae1142c44e2ad2e');
+  });
   /* eslint-disable no-extend-native -- Synchronous allocation guards; restore native push in finally before assertions. */
+  it('emits every catch fruit without accumulating repeat-sized intermediate events', () => {
+    const map = parseBeatmap(fixtureOsu(2, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|300:192,10000,1'));
+    const difficulty = computeModDifficulty(map, synthesizeAutoReplay(map, '', [], 0));
+    const push = Array.prototype.push;
+    Array.prototype.push = function (this: unknown[], ...items: unknown[]) {
+      if (this.length > 32 && items.some(item => item && typeof item === 'object' && 'pathProgress' in item)) {
+        throw new Error('eager catch event expansion');
+      }
+      return push.apply(this, items);
+    };
+    let objects: ReturnType<typeof convertBeatmapToCatch>;
+    try { objects = convertBeatmapToCatch(map, difficulty); } finally { Array.prototype.push = push; }
+    expect(objects).toHaveLength(10001);
+    expect(objects.every(object => object.type === 'fruit')).toBe(true);
+    expect(objects[0]).toMatchObject({ startTime: 1000, originalX: 256 });
+    expect(objects.at(-1)).toMatchObject({ originalX: 256 });
+    expect(objects.at(-1)!.startTime).toBeGreaterThan(1000);
+  });
   it('represents enormous native taiko drumrolls without expanding their tick timeline', () => {
     const map = parseBeatmap(fixtureOsu(1, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|300:192,1000000000,100'));
     const push = Array.prototype.push;
@@ -39,23 +120,17 @@ describe('selected chart resource plan', () => {
     expect(slider.edgeSounds).toEqual([2, 4]);
     expect(slider.edgeSets).toEqual([{ normalSet: 1, additionSet: 2 }, { normalSet: 3, additionSet: 1 }]);
   });
-  it('bounds converted taiko slider hits by the timeline instead of the repeat count', () => {
-    const convert = (slides: number, length: string) => convertBeatmapToTaiko(parseBeatmap(fixtureOsu(0, 'Native')
-      .replace(/\[HitObjects\][\s\S]*$/, `[HitObjects]\n256,192,1000,2,0,L|300:192,${slides},${length}`)));
-    const push = Array.prototype.push;
-    let appended = 0;
-    Array.prototype.push = function (this: unknown[], ...items: unknown[]) {
-      if ((appended += items.length) > 5000) throw new Error('eager hit expansion');
-      return push.apply(this, items);
-    };
-    try {
-      const objects = convert(100000, '0.0001');
-      expect(objects).toHaveLength(1);
-      expect(objects[0]!.kind).toBe('drumroll');
-    } finally { Array.prototype.push = push; }
-    const ordinary = convert(1, '10');
-    expect(ordinary.length).toBeGreaterThan(0);
-    expect(ordinary.length).toBeLessThanOrEqual(8);
+  it('preserves sub-millisecond converted taiko hits instead of replacing them with a drumroll', () => {
+    const map = parseBeatmap(fixtureOsu(0, 'Native')
+      .replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,8,L|300:192,1000,0.1,2|4,0:0|0:0'));
+    const objects = convertBeatmapToTaiko(map);
+    expect(objects).toHaveLength(1001);
+    expect(objects.every(object => object.kind === 'hit')).toBe(true);
+    expect(objects[0]).toMatchObject({ kind: 'hit', time: 1000, hitSound: 2, isRim: true });
+    expect(objects[1]).toMatchObject({ kind: 'hit', hitSound: 4, isStrong: true });
+    expect(objects[2]).toMatchObject({ kind: 'hit', hitSound: 8, isRim: true });
+    expect(objects[1]!.time - objects[0]!.time).toBeLessThan(1);
+    expect(objects.at(-1)!.time).toBeCloseTo(1357, 6);
   });
   /* eslint-enable no-extend-native */
   it.each(['0', '-1', '1.5', 'NaN', 'Infinity', '1x'])('rejects invalid repeat %s before derived work', repeat => {

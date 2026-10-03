@@ -31,6 +31,11 @@ import type { BeatmapData, Slider } from '../types/index';
 const _durationCache = new WeakMap<Slider, number>();
 const DEFAULT_EDGE_SET = Object.freeze({ normalSet: 0, additionSet: 0 });
 
+/** Legacy NaN difficulty points disable ticks but retain normal slider velocity. */
+export function sliderVelocityMultiplier(beatLength: number): number {
+  return beatLength < 0 ? Math.max(0.1, Math.min(10, -100 / beatLength)) : 1;
+}
+
 /** Missing edges inherit defaults without allocating one row per repeat. */
 export function sliderEdgeSample(slider: Slider, index: number): { hitSound: number; normalSet: number; additionSet: number } {
   return { hitSound: slider.edgeSounds[index] ?? slider.hitSound, ...(slider.edgeSets[index] ?? DEFAULT_EDGE_SET) };
@@ -41,12 +46,14 @@ export type SliderNestedEvent = { t: number; kind: 'tick' | 'repeat' | 'tail' };
 /** Ordered nested events, retaining stable accumulation and lazer boundary semantics without repeat-sized buffers. */
 export function* sliderNestedEvents(beatmap: BeatmapData, slider: Slider, slideDur: number, isLazer: boolean): Generator<SliderNestedEvent> {
   let baseBeatLength = 500;
+  let generateTicks = true;
   for (const tp of beatmap.timingPoints) {
     if (tp.time > slider.time) break;
     if (!tp.inherited) baseBeatLength = tp.beatLength;
+    generateTicks = !Number.isNaN(tp.beatLength);
   }
   const interval = baseBeatLength / beatmap.sliderTickRate;
-  const hasTicks = Number.isFinite(interval) && interval > 0;
+  const hasTicks = generateTicks && Number.isFinite(interval) && interval > 0;
   for (let slide = 0; slide < slider.slides; slide++) {
     const start = slider.time + slide * slideDur;
     if (hasTicks) {
@@ -80,7 +87,7 @@ export function slideDurationMs(beatmap: BeatmapData, slider: Slider): number {
       // Red (uninherited) points reset SV to 1.0, matching osu!'s velocity model.
       svMultiplier = 1;
     } else {
-      svMultiplier = Math.max(0.1, Math.min(10, -100 / tp.beatLength));
+      svMultiplier = sliderVelocityMultiplier(tp.beatLength);
     }
   }
 

@@ -13,7 +13,7 @@ function jsonResponse(status: number, body: unknown) {
 }
 
 describe('score-hub bind cabinet', () => {
-  it.each([[], {}, { friendCode: 123, hasCabinetUserId: true }, { friendCode: '123', hasCabinetUserId: 'true' }])('rejects malformed profile DTO %j', async body => {
+  it.each([[], {}, { friendCode: 123, hasCabinetUserId: true }, { friendCode: '123', hasCabinetUserId: 'true' }].map(body => ({ body })))('rejects malformed profile DTO $body', async ({ body }) => {
     fetchMock.mockResolvedValueOnce(jsonResponse(200, body));
     await expect(fetchMe('tok')).rejects.toThrow('账号信息响应无效');
   });

@@ -71,6 +71,21 @@ describe('preview hitsound source identity', () => {
     assert.deepEqual(sounds.map(sound => sound.beatmapMs), [3, 2, 1, 0].map(left => 1000 + slideDur * (slides - left)));
   });
 
+  it('looks up sample timing without scanning every preceding timing point per hit', () => {
+    const beatmap = mapWithObjects(['256,192,1000,1,0,0:0:0:0:']);
+    const template = beatmap.timingPoints[0]!;
+    let reads = 0;
+    beatmap.timingPoints = Array.from({ length: 20000 }, (_, index) => ({
+      ...template, get time() { if (++reads > 100000) throw new Error('quadratic timing scan'); return index * 10; },
+      sampleSet: index % 3 + 1, sampleIndex: index, volume: 50,
+    }));
+    const results = Array.from({ length: 1000 }, (_, index) => result(0, 180000 + index * 10));
+    const sounds = computeHitsoundSchedule(input(beatmap, results));
+    assert.equal(sounds.length, results.length);
+    assert.deepEqual(sounds.map(sound => sound.sampleIndex), results.map(hit => hit.time / 10));
+    assert.ok(reads < 20000);
+  });
+
   it('preserves mania hold sample identity while excluding silent body and tail judgements', () => {
     const beatmap = mapWithObjects(['64,192,1000,128,8,2000:2:3:4:75:'], 3);
     const head = { ...result(0, 1000, 8), subResult: 'head' as const };
