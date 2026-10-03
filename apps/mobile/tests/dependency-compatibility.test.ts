@@ -25,6 +25,46 @@ function removeTemporaryDirectory(directory: string): void {
 }
 
 describe('安全补丁的实际消费者兼容合同', () => {
+  it('拒绝深层 glob 和直接 AST 遍历，保留常规嵌套与转义语义', () => {
+    const braces = requirePackage('braces');
+    const deep = '{'.repeat(4_000) + 'a,b' + '}'.repeat(4_000);
+    for (const operation of ['parse', 'compile', 'expand', 'stringify']) {
+      expect(() => braces[operation](deep)).toThrow('Brace nesting exceeds safe depth');
+    }
+    let ast: { type: string; nodes: unknown[] } = { type: 'root', nodes: [] };
+    for (let index = 0; index < 1_000; index++) ast = { type: 'root', nodes: [ast] };
+    for (const operation of ['compile', 'expand', 'stringify']) {
+      expect(() => braces[operation](ast)).toThrow('Brace nesting exceeds safe depth');
+    }
+    expect(braces.expand('src/{a,{b,c}}/{01..03}.ts')).toEqual([
+      'src/a/01.ts', 'src/a/02.ts', 'src/a/03.ts',
+      'src/b/01.ts', 'src/b/02.ts', 'src/b/03.ts',
+      'src/c/01.ts', 'src/c/02.ts', 'src/c/03.ts',
+    ]);
+    expect(braces.stringify('a/\\{literal\\}/[{}]')).toBe('a/{literal}/[{}]');
+    expect(requirePackage('micromatch')(['a.ts', 'b.tsx', 'c.js'], '*.{ts,tsx}')).toEqual(['a.ts', 'b.tsx']);
+  });
+
+  it('拒绝 RSA 摘要算法里的额外元素，保留合法签名和可选 NULL 参数', () => {
+    const forge = requirePackage('node-forge');
+    const { asn1, pki } = forge;
+    const keys = pki.rsa.generateKeyPair({ bits: 1024, e: 3 });
+    const digest = forge.md.sha256.create().update('dependency regression');
+    expect(keys.publicKey.verify(digest.digest().bytes(), keys.privateKey.sign(digest))).toBe(true);
+    const sequence = (values: unknown[]) => asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, values);
+    const oid = () => asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false, asn1.oidToDer(forge.oids.sha256).getBytes());
+    const nullValue = () => asn1.create(asn1.Class.UNIVERSAL, asn1.Type.NULL, false, '');
+    const verify = (algorithm: unknown[]) => {
+      const info = sequence([sequence(algorithm), asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OCTETSTRING, false, digest.digest().bytes())]);
+      const signature = keys.privateKey.sign(asn1.toDer(info).getBytes(), 'NONE');
+      return keys.publicKey.verify(digest.digest().bytes(), signature);
+    };
+    expect(verify([oid()])).toBe(true);
+    expect(verify([oid(), nullValue()])).toBe(true);
+    expect(() => verify([oid(), nullValue(), nullValue()])).toThrow('DigestInfo');
+    expect(() => verify([oid(), sequence([])])).toThrow('DigestInfo');
+  });
+
   beforeAll(() => {
     const result = spawnSync(process.execPath, [metroPatch], { cwd: mobileRoot, encoding: 'utf8' });
     expect(result.status, result.stderr).toBe(0);

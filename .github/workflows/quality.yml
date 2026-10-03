@@ -102,7 +102,7 @@ jobs:
       - name: Generated player consistency
         run: npm run check:generated
       - name: Dependency audit
-        run: npm audit
+        run: npm run audit:all
       - name: Production audit policy
         run: npm run audit:prod
   android-account-recovery:

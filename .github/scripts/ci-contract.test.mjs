@@ -67,7 +67,7 @@ test('one branch/PR entry owns all complete checks and platform dependencies', (
   }
   const runs = pipeline.jobs.quality.steps.map(step => step.run).filter(Boolean);
   for (const required of ['npm ci', 'npm run lint', 'npm run typecheck', 'npm test',
-    'npm run check:architecture', 'npm run check:generated', 'npm audit', 'npm run audit:prod']) {
+    'npm run check:architecture', 'npm run check:generated', 'npm run audit:all', 'npm run audit:prod']) {
     assert.equal(runs.filter(run => run === required).length, 1, required);
   }
 });
