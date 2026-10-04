@@ -67,7 +67,6 @@ describe('DetailTarget 编解码', () => {
     expect(encoded).toEqual({ songId: '3720', beatmapId: '22423', gameId: 'osu-standard' });
     expect(encoded).not.toHaveProperty('levelIndex');
 
-    // 同一个 levelIndex 槽位在其它游戏解成难度索引，而不是 beatmap id。
     expect(decodeDetailTarget({ gameId: 'phigros', songId: '3720', levelIndex: '22423' })).toEqual({
       ok: true,
       target: { game: 'phigros', songId: '3720', levelIndex: 22423 },

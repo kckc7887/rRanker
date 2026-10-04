@@ -1,8 +1,5 @@
 import { preparePhigrosBestImageCards } from './phigros-best-image';
-/*
- * DOM 与 CSS 契约直接对齐 phi-plugin resources/html/b19/b19.art。
- * 这里只负责将 rRanker 数据注入原模板并接入 WebView 导出协议。
- */
+/** 模板来源 phi-plugin resources/html/b19/b19.art。 */
 import { formatPhigrosSongRks } from '@/domain/phigros';
 import {
   phigrosAccAverageKey,

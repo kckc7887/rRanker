@@ -3,7 +3,6 @@ import { normalizeMaimaiFc, normalizeMaimaiFs } from './maimai-filters';
 import { DATA_SOURCE_KINDS, type CatalogSnapshot, type ChartType, type Difficulty, type ScoreRecord, type ScoreSnapshot } from './models';
 import { calculateChartRating } from './rating';
 
-/** Normalized snapshots, shared by their owning persistence boundaries. */
 export const DataSourceSchema = z.object({
   kind: z.enum(DATA_SOURCE_KINDS), label: z.string(), updatedAt: z.string(), isStale: z.boolean(),
 }).passthrough();
@@ -64,7 +63,7 @@ function keepRawStatus(
 ): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed || known) return undefined;
-  // Sync Play 不作为产品成就展示，也不保留为 raw 回退
+  /** SYNC 不作为产品成就展示。 */
   if (trimmed.toLowerCase() === 'sync') return undefined;
   return trimmed;
 }

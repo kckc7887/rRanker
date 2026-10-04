@@ -43,7 +43,7 @@ export function loadRemoteImageAsDataUri(url: string | null | undefined, signal?
   }, signal).catch(() => null);
 }
 
-/** Deduplicate by URL, keep output keys and progress in terms of caller IDs. */
+/** 同 URL 只下载一次，结果仍按调用方 ID 返回。 */
 export async function loadImageDataUris(
   ids: readonly string[], urlFor: (id: string) => string | null,
   onProgress?: (completed: number, total: number) => void, signal?: AbortSignal,

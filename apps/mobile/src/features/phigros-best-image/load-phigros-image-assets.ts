@@ -4,7 +4,7 @@ import { loadImageDataUris } from '@/features/best-image/load-remote-image-data-
 import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Directory, File, Paths } from 'expo-file-system';
 
-/** 模块级只缓存短 file URI，禁止再持有 base64 data URI。 */
+/** 缓存 file URI，避免曲绘 base64 常驻 JS 堆。 */
 const cache = createInflightGuard<string>();
 const disposedDirectories = new WeakSet<Directory>();
 
@@ -33,7 +33,7 @@ export function disposePhigrosIllustrationSession(directory: Directory): void {
   if (directory.exists) directory.delete();
 }
 
-/** Documents/rranker —— WebView allowingReadAccess 覆盖字体与曲绘舞台。 */
+/** 字体与曲绘须位于 WebView 可读目录。 */
 export function phigrosReadableRootDirectory(): Directory {
   const directory = new Directory(Paths.document, 'rranker');
   directory.create({ intermediates: true, idempotent: true });
@@ -54,10 +54,6 @@ async function stageFileName(url: string, extensionOverride?: string): Promise<s
   return `${hash}.${extension}`;
 }
 
-/**
- * 预取远程图到磁盘，再复制到可读舞台目录，返回 file:// URI。
- * 使用文件 URI，避免大型图片占用 JS 堆。
- */
 export async function loadRemoteImageDataUri(
   url: string | null | undefined, directory: Directory = phigrosIllustrationStageDirectory(), signal?: AbortSignal,
 ): Promise<string | null> {

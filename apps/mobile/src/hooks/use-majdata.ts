@@ -18,7 +18,6 @@ const options = { staleTime: Infinity, gcTime: Infinity, retry: false, refetchOn
 
 const majdataSongKey = (id: string) => ['majdata-net', 'song', id] as const;
 
-/** 回退时沿用落盘快照的抓取时间。 */
 async function markMajdataSongFallback(id: string): Promise<void> {
   const key = majdataSongKey(id);
   const displayed = queryClient.getQueryData<MajdataSong>(key);
@@ -28,10 +27,6 @@ async function markMajdataSongFallback(id: string): Promise<void> {
   queryClient.setQueryData(key, displayed, Number.isFinite(fetchedAt) ? { updatedAt: fetchedAt } : undefined);
 }
 
-/**
- * 曲目查询的公共取数函数：本地快照先渲染，后台刷新成功才写回查询缓存。
- * 缓存回退走 onFallback，不进入 onFresh，也不冒充本次抓取。
- */
 function loadMajdataSongQuery(id: string, signal: AbortSignal): Promise<MajdataSong> {
   return loadMajdataSong(
     id,

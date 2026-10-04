@@ -92,7 +92,6 @@ function rawSearch(overrides: Record<string, unknown> = {}): OsuBeatmapsetSearch
   } as OsuBeatmapsetSearchRaw;
 }
 
-/** GET /api/v2/beatmapsets/{id} 原始响应（BeatmapsetExtended）：多模式混合 + 转谱。 */
 function rawLookup(overrides: Record<string, unknown> = {}): OsuBeatmapsetLookupRaw {
   return {
     id: 3720,
@@ -130,7 +129,7 @@ function rawLookup(overrides: Record<string, unknown> = {}): OsuBeatmapsetLookup
       },
       { id: 22425, beatmapset_id: 3720, difficulty_rating: 2.1, version: 'Muzukashii', mode: 'taiko', mode_int: 1 },
       { id: 22426, beatmapset_id: 3720, difficulty_rating: 4.4, version: 'Fruits', mode: 'fruits', mode_int: 2 },
-      // 转谱：mode 仍标原模式 osu，mode_int 标查询模式 2（catch 下经 mode_int 分支保留）
+      /** 转谱的 mode 仍为原模式，mode_int 为查询模式。 */
       { id: 22427, beatmapset_id: 3720, difficulty_rating: 5.5, version: 'Convert', mode: 'osu', mode_int: 2 },
     ],
     ...overrides,
@@ -288,9 +287,6 @@ describe('osu! 数据规范化', () => {
 });
 
 describe('osu! 推荐星级 recommendedOsuStar', () => {
-  // 公式口径取自本仓库 `src/domain/osu.ts` 的 `recommendedOsuStar` 既有实现
-  // （实现注释同样只给出分段公式）。仓库内没有该公式的上游文档链接或版本号可引用，
-  // 因此这里只锁定仓库内实现口径，不标注外部版本。
   it('standard/catch/mania 同公式 pp^0.4×0.195', () => {
     expect(recommendedOsuStar('osu-standard', 5000)).toBeCloseTo(5000 ** 0.4 * 0.195, 10);
     expect(recommendedOsuStar('osu-standard', 5000)).toBeCloseTo(5.8833, 3);
@@ -323,7 +319,6 @@ describe('osu! 歌曲详情规范化 normalizeOsuBeatmapsetDetail', () => {
     const taiko = normalizeOsuBeatmapsetDetail(rawLookup(), 'osu-taiko');
     expect(taiko.beatmaps.map((beatmap) => beatmap.id)).toEqual([22425]);
 
-    // catch：Fruits 谱面（mode 匹配）+ Convert 转谱（mode 'osu' 不匹配，经 mode_int=2 分支保留），降序
     const fruits = normalizeOsuBeatmapsetDetail(rawLookup(), 'osu-catch');
     expect(fruits.beatmaps.map((beatmap) => beatmap.id)).toEqual([22427, 22426]);
   });
@@ -387,17 +382,14 @@ describe('osu! 歌曲详情规范化 normalizeOsuBeatmapsetDetail', () => {
     expect(detail.languageName).toBe('日语');
     expect(detail.rating).toBe(4.8);
     expect(detail.favouriteCount).toBe(1234);
-    // 谱师标签：上游空格分隔字符串 → 数组（连续空格/首尾空格剔除）
     expect(detail.tags).toEqual(['anime', 'lia', 'vocal', 'aah']);
 
-    // covers 仅含 list 时按优先链回退
     const listOnly = normalizeOsuBeatmapsetDetail(
       rawLookup({ covers: { list: 'https://x/list.jpg' } }),
       'osu-standard',
     );
     expect(listOnly.cover).toBe('https://x/list.jpg');
 
-    // genre/language/rating/favourite_count 缺失或 null 归一化为 null；tags 缺失/null 为空数组
     const sparse = normalizeOsuBeatmapsetDetail(rawLookup({
       genre: null,
       language: undefined,

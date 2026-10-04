@@ -15,7 +15,6 @@ export { infoValue } from '@/domain/phira-chart-info';
  * prpr/src/scene/game.rs、prpr/src/core.rs、prpr/src/bin.rs、
  * prpr/src/parse/rpe.rs、prpr/src/parse/pgr.rs、prpr/src/parse/pec.rs
  * 固定提交 398744ac9d2f4864abbdfb454c8cb9968a69fbc5。
- * 此处只保留真 Note 四类计数，不持久化上游谱面内容。
  */
 
 const emptyCounts = (): PhiraNoteCounts => ({ click: 0, hold: 0, flick: 0, drag: 0 });
@@ -72,7 +71,7 @@ function* pecNoteCounts(text: string): Generator<void, PhiraNoteCounts> {
     const command = /^n([1-4])(?:\s|$)/.exec(line);
     if (!command) continue;
     assertChartPreviewNoteCount(++noteCount);
-    // PEC n1/n3/n4: 最后一个参数为 fake；n2 比其它 Note 多一个结束时间参数。
+    /** PEC 的 fake 在末尾；n2 另有结束时间。 */
     const fake = Number(/\s(\S+)$/.exec(line)?.[1] ?? line) === 1;
     if (!fake) addKind(counts, Number(command[1]), ['', 'click', 'hold', 'flick', 'drag']);
   }

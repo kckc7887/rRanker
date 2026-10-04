@@ -137,7 +137,6 @@ export function useTufVideoDetails(videoLink: string | null | undefined, enabled
   });
 }
 
-/** TufSongRow 与成绩图批量封面共用同一 Provider、缓存键和缓存时长。 */
 export function tufVideoDetailsQueryOptions(videoLink: string | null | undefined, enabled = true) {
   const normalized = tufHttpsUrl(videoLink);
   return {

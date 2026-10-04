@@ -186,7 +186,6 @@ describe('phira catalog 续扫驱动', () => {
     const first = step(scanObservation());
     expect(first.action).toBe('fetch');
     expect(first.requested).toEqual(requestAt('ranked:', 1, 0));
-    // 已经请求过同一位置：不再重复请求，即使查询层从未报告过请求中。
     expect(step(scanObservation(), first.requested).action).toBe('idle');
     const next = step(scanObservation({ pageCount: 2, lastCursor: 2 }), first.requested);
     expect(next.action).toBe('fetch');

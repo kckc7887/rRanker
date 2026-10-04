@@ -62,7 +62,6 @@ const IMAGE_TYPES: readonly { id: ChunithmBestImageType; label: string }[] = [
   { id: 'best50', label: 'Best50' },
   { id: 'custom', label: '自定义' },
 ];
-/** 自定义模式每页最多 50 行，每行 5 张。 */
 const CUSTOM_MAX_ROWS_PER_PAGE = 50;
 
 const chunithmPreferencesAdapter = {
@@ -607,8 +606,6 @@ export function ChunithmBestImageScreen() {
 }
 
 const chunithmStyles = StyleSheet.create({
-  // 中二差异键：数量输入行（fieldLabel 无 marginBottom、textFieldWrap 带 gap 汇聚）
-  // 与错误文案、角色/背景预览尺寸、空数据居中容器。
   textFieldWrap: { flex: 1, minWidth: 0, gap: 6 },
   fieldLabel: { fontSize: 12, fontWeight: '700' },
   errorText: { fontSize: 11, fontWeight: '600' },
@@ -618,5 +615,4 @@ const chunithmStyles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
 });
 
-/** 共享骨架样式 + 中二差异覆盖。 */
 const styles = { ...bestImageScreenSharedStyles, ...chunithmStyles };

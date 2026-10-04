@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -30,34 +30,22 @@ import type { AutoFrame } from '../../utils/autoReplay';
 import { sampleSlider } from '../../renderer/SliderGeometry';
 import { slideDurationMs } from '../../utils/sliderDuration';
 
-// Faithful port of ppy/osu OsuAutoGenerator / OsuAutoGeneratorBase. Emits a cursor
-// track that presses on each stacked object centre at its start time, so the
-// press-centric std hit judge re-derives all-300s → SS. Coordinate space is
-// osu!pixels on the stacked layout (stacking already applied to `beatmap`).
-//
-// One deviation from lazer for smoothness: the cursor glides continuously across the
-// whole gap between objects and releases the held key *mid-glide* at the key-up time,
-// rather than parking on the note for KEY_UP_DELAY ms before darting. On dense streams
-// the park is ~half the inter-note time, which reads as a jagged stutter.
+/** 参考 ppy/osu OsuAutoGenerator；光标按堆叠后的 osu!px 坐标移动。 */
 
 type Point = { x: number; y: number };
 
-const FRAME_STEP = 1000 / 60;          // 60 fps movement/slider/spinner sampling (~16.667 ms)
-const REACTION_TIME = 100;             // cursor starts moving REACTION_TIME before a note becomes pressable
-const KEY_UP_DELAY = 50;               // button stays held this long past an object's end
-const MIN_FRAME_SEP_ALTERNATING = 266; // below this gap to the previous object, alternate hands
+const FRAME_STEP = 1000 / 60;
+const REACTION_TIME = 100;
+const KEY_UP_DELAY = 50;
+const MIN_FRAME_SEP_ALTERNATING = 266;
 const SPIN_RADIUS = 50;
-const SPIN_RATE = 0.05;                // rad/ms (~477 RPM) — comfortably over any spin requirement
+const SPIN_RATE = 0.05;
 const SPINNER_CENTER_X = 256;
 const SPINNER_CENTER_Y = 192;
 
-// Set BOTH the mouse and key bit for the chosen hand so the judge (scans 0b1111) and
-// the key overlay both react. Left = M1|K1, Right = M2|K2.
-const LEFT = 0b0101;   // 1 | 4
-const RIGHT = 0b1010;  // 2 | 8
+const LEFT = 0b0101;
+const RIGHT = 0b1010;
 
-// Component-wise eased lerp fraction. Out = decelerate into the target (default,
-// between objects); In = accelerate (entering a spinner from outside the spin circle).
 function easeOut(t: number): number { return t * (2 - t); }
 function easeIn(t: number): number { return t * t; }
 
@@ -65,8 +53,6 @@ type AutoCursor = { last: AutoFrame };
 function lastFrame(cursor: AutoCursor): AutoFrame { return cursor.last; }
 function emit(cursor: AutoCursor, frame: AutoFrame): AutoFrame { cursor.last = frame; return frame; }
 
-// Repeat-aware path fraction, mirroring the std hit judge's sliderBallPos. Auto only
-// needs to stay within the follow radius, so exact ball parity isn't required.
 function sliderBallPos(
   path: Point[], timeMs: number, startTime: number, slideDur: number, slides: number,
 ): Point {
@@ -84,10 +70,6 @@ function sliderBallPos(
   };
 }
 
-// Ease the cursor from its current resting frame to (targetX, targetY), arriving exactly
-// at `startTime`. The previous object's button is held until `releaseTime` and released
-// inline (no stationary park on the note). For spaced objects the cursor still waits in
-// place until REACTION_TIME before the note (Auto doesn't drift early).
 function* moveToObject(
   frames: AutoCursor, targetX: number, targetY: number,
   startTime: number, preemptMs: number, useIn: boolean, releaseTime: number,
@@ -99,7 +81,7 @@ function* moveToObject(
   const waitTime = startTime - Math.max(0, preemptMs - REACTION_TIME);
   let fromTime = lf.time;
   if (waitTime > lf.time) {
-    // Spaced object: release the held key on time, then park until the reaction window.
+
     if (holdKeys !== 0 && releaseTime <= waitTime) {
       yield emit(frames, { time: releaseTime, x: startX, y: startY, keys: 0 });
       holdKeys = 0;
@@ -112,7 +94,7 @@ function* moveToObject(
   if (dur <= 0) return;
   const ease = useIn ? easeIn : easeOut;
   for (let t = fromTime + FRAME_STEP; t < startTime; t += FRAME_STEP) {
-    if (holdKeys !== 0 && t >= releaseTime) holdKeys = 0;   // key-up mid-glide (±1 frame)
+    if (holdKeys !== 0 && t >= releaseTime) holdKeys = 0;
     const e = ease((t - fromTime) / dur);
     yield emit(frames, {
       time: Math.trunc(t),
@@ -123,8 +105,6 @@ function* moveToObject(
   }
 }
 
-// Hold the button along the slider path, ending on the exact tail (still held — the
-// next move releases it). Returns the key-up time.
 function* followSlider(
   frames: AutoCursor, beatmap: BeatmapData, slider: Slider, bits: number, radius: number,
   fy: (y: number) => number,
@@ -143,8 +123,6 @@ function* followSlider(
   return endTime + KEY_UP_DELAY;
 }
 
-// Circle the spin centre at SPIN_RATE, holding the button (still held at the end — the
-// next move releases it). Returns the key-up time (1 ms later than a normal object).
 function* spinSpinner(frames: AutoCursor, spinner: Spinner, bits: number, startAngle: number): Generator<AutoFrame, number> {
   let angle = startAngle;
   let prevT = spinner.time;
@@ -165,36 +143,27 @@ function* spinSpinner(frames: AutoCursor, spinner: Spinner, bits: number, startA
   return spinner.endTime + KEY_UP_DELAY + 1;
 }
 
-/**
- * Generate a perfect ("Auto") osu!standard replay for `beatmap`: a 60 fps cursor
- * track in osu!pixels whose presses score all-300s under this library's judge.
- * `modDiff` supplies the mod-adjusted radius/preempt and the HR flip; times are
- * beatmap-clock milliseconds.
- */
 export function* generateStdAutoReplay(beatmap: BeatmapData, modDiff: ModDifficulty): Generator<AutoFrame> {
   const objs = beatmap.hitObjects;
   if (objs.length === 0) return;
 
   const radius = modDiff.circleRadiusPx;
-  // HR flips Y about the playfield centre at query time (hitJudge `fy`), never mutating raw
-  // positions; the generated cursor must land on the same flipped layout the judge compares
-  // (circle/slider-head: `fy(obj.y) - stackShift`; slider ball: `fy(raw.y) - stackShift`).
-  // Stacking is on original positions, so the shift is subtracted AFTER the flip, as in the judge.
+  /** HR 先翻转 y，再扣除原始坐标的 stacking 偏移。 */
+
   const fy = modDiff.isHR ? (y: number) => 384 - y : (y: number) => y;
-  // First frame: cursor parked below the playfield, 1500 ms before the first note.
+
   const frames: AutoCursor = { last: { time: objs[0]!.time - 1500, x: 256, y: 500, keys: 0 } };
   yield frames.last;
 
   let buttonIndex = 0;
   let prevStartTime = -Infinity;
-  // Key-up time for the currently-held object (consumed by the next move). -Infinity = nothing held.
+
   let releaseTime = -Infinity;
 
   for (let i = 0; i < objs.length; i++) {
     const obj = objs[i]!;
     const startTime = obj.time;
 
-    // Dense streams flip hands; objects spaced ≥266 ms reset to the left button.
     if (i > 0 && startTime - prevStartTime < MIN_FRAME_SEP_ALTERNATING) buttonIndex++;
     else buttonIndex = 0;
     prevStartTime = startTime;
@@ -204,7 +173,7 @@ export function* generateStdAutoReplay(beatmap: BeatmapData, modDiff: ModDifficu
     let spinnerStartAngle = 0;
     const isSpinner = obj.type === 'spinner';
     if (isSpinner) {
-      // Enter the spin circle radially from wherever the cursor currently sits.
+
       const lf = lastFrame(frames);
       const dx = lf.x - SPINNER_CENTER_X;
       const dy = lf.y - SPINNER_CENTER_Y;
@@ -220,8 +189,6 @@ export function* generateStdAutoReplay(beatmap: BeatmapData, modDiff: ModDifficu
 
     yield* moveToObject(frames, targetX, targetY, startTime, modDiff.preemptMs, isSpinner, releaseTime);
 
-    // Press the alternating hand, but flip if the previous frame still holds it —
-    // an overlapping object would otherwise produce no fresh key edge (a missed press).
     let bits = buttonIndex % 2 === 0 ? LEFT : RIGHT;
     if ((lastFrame(frames).keys & bits) !== 0) bits = bits === LEFT ? RIGHT : LEFT;
     yield emit(frames, { time: startTime, x: targetX, y: targetY, keys: bits });
@@ -235,7 +202,6 @@ export function* generateStdAutoReplay(beatmap: BeatmapData, modDiff: ModDifficu
     }
   }
 
-  // Release the final object's button (no subsequent move to consume it).
   const lf = lastFrame(frames);
   yield emit(frames, { time: releaseTime, x: lf.x, y: lf.y, keys: 0 });
 }

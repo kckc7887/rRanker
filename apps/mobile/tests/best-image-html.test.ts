@@ -106,11 +106,9 @@ describe('best image html', () => {
     expect(html).toContain('src="ui/Name.png"');
     expect(html).toContain('src="ui/DaniPlate_00.png"');
     expect(html).toContain('class="game-player-name"');
-    // 玩家信息整体置于左上角（原 logo 位置起）
     expect(html).toContain('class="game-plate" alt="" style="left:11px;top:46px');
     expect(html).toContain('class="game-icon" alt="" style="left:15px;top:50px');
     expect(html).toContain('class="game-dxrating" alt="" style="left:115px;top:56px');
-    // 无 frame 收藏品时背景回退渐变
     expect(html).toContain('canvas-background-fallback');
     expect(html).not.toContain('ui/b50.png');
     expect(html).not.toContain('class="profile-app"');

@@ -54,7 +54,6 @@ export class UserLibraryService {
 
   clear(): Promise<void> { return this.repository.clear(); }
 
-  /** 仅清除指定游戏的收藏、练习谱面和条目标签；保留其他游戏及全局标签预设。 */
   clearGame(gameId: GameId): Promise<UserLibraryItem[]> {
     return this.repository.clearGame(gameId);
   }

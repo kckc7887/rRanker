@@ -99,7 +99,6 @@ jest.mock('@/components/AppNotification', () => ({
   useNotificationModalRequestClose: () => () => false,
 }));
 
-/** 游戏详情页替身：把收到的 props 原样渲染出来，供路由断言定位结果。 */
 function mockDetailEcho(testID: string) {
   const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');

@@ -22,7 +22,6 @@ const entry: PhigrosScoreEntry = {
   rks: 15.2,
 };
 
-/** 共享成绩卡（ScoreRecord）视图的既定形状：舞萌语义字段只在此边界借用。 */
 const sharedView: ScoreRecord = {
   songId: 'Glaciaxion.SunsetRay',
   title: 'Glaciaxion.SunsetRay',

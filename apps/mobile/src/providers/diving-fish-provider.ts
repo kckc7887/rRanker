@@ -21,11 +21,6 @@ function parseContract<T>(schema: z.ZodType<T>, value: unknown): T {
   return result.data;
 }
 
-/**
- * 水鱼查分 Provider。请求统一走 http-json 公共执行器：
- * 鉴权头（Cookie / Import-Token）与 credentials 经 init 注入，超时、取消、
- * 状态码映射与解析、网络错误归一化由公共执行器负责；只读端点固定总尝试次数 1。
- */
 export class DivingFishProvider implements ScoreProvider {
   private recordsRequest: Promise<z.infer<typeof DivingFishRecordsResponseSchema>> | null = null;
 

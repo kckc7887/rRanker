@@ -47,11 +47,9 @@ export function useScoreCardArtworkActive(): boolean {
 export type ScoreCardArtwork = {
   source: string | null | undefined;
   scale?: number;
-  /** 仅允许 "none"：预览等一次性场景完全跳过缓存。 */
   cachePolicy?: 'none';
 };
 
-/** 右侧大数字指标块（Rating/RKS 等）：块容器样式 + 若干「文本行」（样式与颜色由调用方给定）。 */
 export type ScoreCardMetricSide = {
   blockStyle: StyleProp<ViewStyle>;
   lines: readonly {
@@ -61,7 +59,6 @@ export type ScoreCardMetricSide = {
   }[];
 };
 
-/** 标签行组：容器 + 每行样式与内容（内容为各游戏徽章组合）。 */
 export type ScoreCardTagRows = {
   containerStyle: StyleProp<ViewStyle>;
   rowStyle: StyleProp<ViewStyle>;
@@ -69,7 +66,6 @@ export type ScoreCardTagRows = {
   testID?: string;
 };
 
-/** 紧凑指标侧栏成绩卡样式组。 */
 export const COMPACT_METRIC_CARD_STYLES = StyleSheet.create({
   card: { borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
   main: { flex: 1, minWidth: 0, gap: 4 },
@@ -103,7 +99,6 @@ export function GameScoreCard({
   mainStyle: StyleProp<ViewStyle>;
   titleStyle: StyleProp<TextStyle>;
   pressedStyle?: StyleProp<ViewStyle>;
-  /** false 时渲染非交互预览（无按压与详情跳转）；缺省保持可点击。 */
   pressable?: boolean;
   artwork?: ScoreCardArtwork;
   testID?: string;

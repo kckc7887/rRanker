@@ -32,8 +32,6 @@ function createRecord(index: number, isCurrent: boolean): ScoreRecord {
   };
 }
 
-// Sanitized structural samples derived from local 678/697-record PoCs; no identity fields remain.
-// 37 old + 17 current explicitly exercise B35/B15 truncation boundaries.
 export const fixtureRecords: ScoreRecord[] = [
   ...Array.from({ length: 37 }, (_, index) => createRecord(index, false)),
   ...Array.from({ length: 17 }, (_, index) => createRecord(index + 37, true)),
@@ -46,10 +44,7 @@ export const unknownEnumRawRecord = {
   title: '未知枚举脱敏样例', type: 'FUTURE_TYPE', version: FIXTURE_OLD_VERSION,
 };
 
-// 8 条 Song fixture，覆盖正常/同名/日文长标题/缺 artist/unknown version/DX/SD/数字 id 对齐等边界。
-// id 与 fixtureRecords 的 songId 对齐：旧版本 "1".."37"，当前版本 "10038".."10054"。
 export const fixtureSongs: Song[] = [
-  // a. 正常曲目（title + artist + version + 至少 1 个 chart）
   {
     id: '1',
     title: '正常曲目 A',
@@ -59,7 +54,6 @@ export const fixtureSongs: Song[] = [
       { songId: '1', type: 'DX', levelIndex: 3, level: '13+', difficulty: 'master', difficultyConstant: 13.6 },
     ],
   },
-  // b. 曲名重复（同 title 不同 id，模拟同名不同版本）
   {
     id: '2',
     title: '正常曲目 A',
@@ -69,7 +63,6 @@ export const fixtureSongs: Song[] = [
       { songId: '2', type: 'SD', levelIndex: 2, level: '12', difficulty: 'expert', difficultyConstant: 12.0 },
     ],
   },
-  // c. 日文长标题
   {
     id: '10038',
     title: 'マスカレイド・マスカレード',
@@ -79,7 +72,6 @@ export const fixtureSongs: Song[] = [
       { songId: '10038', type: 'DX', levelIndex: 4, level: '14+', difficulty: 'remaster', difficultyConstant: 14.7 },
     ],
   },
-  // d. 缺 artist（artist 为 undefined）
   {
     id: '3',
     title: '缺艺术家曲目',
@@ -88,7 +80,6 @@ export const fixtureSongs: Song[] = [
       { songId: '3', type: 'SD', levelIndex: 1, level: '10+', difficulty: 'advanced', difficultyConstant: 10.6 },
     ],
   },
-  // e. 未知 version（version 为 'unknown'）
   {
     id: '4',
     title: '未知版本曲目',
@@ -98,7 +89,6 @@ export const fixtureSongs: Song[] = [
       { songId: '4', type: 'DX', levelIndex: 0, level: '7', difficulty: 'basic', difficultyConstant: 7.0 },
     ],
   },
-  // f. DX 类型曲目（多 chart）
   {
     id: '5',
     title: 'DX 专属曲目',
@@ -109,7 +99,6 @@ export const fixtureSongs: Song[] = [
       { songId: '5', type: 'DX', levelIndex: 3, level: '13+', difficulty: 'master', difficultyConstant: 13.4 },
     ],
   },
-  // g. SD 类型曲目（多 chart）
   {
     id: '6',
     title: 'SD 专属曲目',
@@ -120,7 +109,6 @@ export const fixtureSongs: Song[] = [
       { songId: '6', type: 'SD', levelIndex: 3, level: '13', difficulty: 'master', difficultyConstant: 13.0 },
     ],
   },
-  // h. songId 为数字字符串（与 fixtureRecords 当前版本 songId 对齐）
   {
     id: '10039',
     title: '当前版本对齐曲目',

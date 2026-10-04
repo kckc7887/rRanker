@@ -23,7 +23,6 @@ export interface Player {
   rating: number;
   extension?: {
     kind: 'maimai';
-    /** 已归一化为舞萌/LXNS 段位素材编号。 */
     courseRank?: number;
   };
   presentation?: {
@@ -65,7 +64,7 @@ export interface ChartNotes {
 export interface BuddyChartNotes {
   left: ChartNotes;
   right: ChartNotes;
-  /** 物量总计必须分别从 left/right 读取，禁止误当成单人谱面。 */
+  /** 双人谱面按 left/right 分别统计。 */
   total?: never;
 }
 
@@ -75,7 +74,7 @@ export interface UtageChartMetadata {
   isBuddy: boolean;
 }
 
-/** Phigros 谱面物量：[Tap, Hold, Drag, Flick] */
+/** 物量顺序为 Tap、Hold、Drag、Flick。 */
 export interface PhigrosChartNotes {
   tap: number;
   hold: number;
@@ -171,7 +170,7 @@ export interface ScoreRecord extends Chart {
   rawFc?: string;
   rawFs?: string;
   rawRate?: string;
-  /** 落雪成绩缺曲名、Rating 或评级时为 true，不能把占位值当成真实成绩。 */
+  /** 缺失字段的占位值不代表真实成绩。 */
   incomplete?: boolean;
 }
 

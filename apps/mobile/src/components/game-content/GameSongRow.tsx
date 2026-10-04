@@ -15,7 +15,6 @@ import type { SongRowPresentation } from '@/features/game-content/presentation';
 import { detailTargetHref } from '@/domain/detail-target';
 import { useAppTheme } from '@/theme/app-theme';
 
-/** 封面图两态渲染描述：source 为空或加载失败时回退 ♪ 占位；wrapStyle 提供时额外包一层固定外框。 */
 export type SongRowCoverImage = {
   source: string | null;
   accessibilityLabel: string;
@@ -25,7 +24,6 @@ export type SongRowCoverImage = {
   noteStyle: StyleProp<TextStyle>;
 };
 
-/** 固定外框封面行样式组。 */
 export const WRAPPED_COVER_ROW_STYLES = StyleSheet.create({
   row: { borderRadius: 12, padding: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },
   openSong: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 11 },
@@ -55,7 +53,6 @@ type GameSongRowProps = {
   subtitle?: string;
   subtitleContent?: ReactNode;
   wholeRowPressable?: boolean;
-  /** false 时整行不可点击（歌曲详情未接入的游戏）；缺省 true，行为不变。 */
   pressable?: boolean;
   testID?: string;
   accessibilityLabel?: string | null;
@@ -86,7 +83,6 @@ export function GameSongRow({
   matchNoteStyle,
 }: GameSongRowProps) {
   const theme = useAppTheme();
-  // 封面失败回退状态机：失败后固定 ♪ 占位，直到组件卸载（与各游戏原有行为一致）
   const [coverFailed, setCoverFailed] = useState(false);
   const openDetail = () => router.push(detailTargetHref(presentation.route));
   const title = (

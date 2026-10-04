@@ -24,7 +24,6 @@ import {
   type OsuOAuthSession,
 } from './osu-oauth';
 
-/** osu! 状态码分支文案（401 鉴权、404 无数据、429 限流 60 次/分钟、≥500 服务端）。 */
 const OSU_STATUS_TEXTS: ProviderStatusTexts = {
   authentication: 'osu! 授权已失效，请重新绑定',
   permission: '当前 osu! 账号无权读取该数据',
@@ -34,20 +33,11 @@ const OSU_STATUS_TEXTS: ProviderStatusTexts = {
   fallback: { message: (status) => `osu! 返回 HTTP ${status}` },
 };
 
-/** token 轮换成功后的回调：由调用方按凭据世代校验后把新会话提交到账号存储。 */
 export type OsuTokenRotationHandler = (
   session: OsuOAuthSession,
   expected: OsuOAuthSession,
 ) => void | Promise<unknown>;
 
-/**
- * osu! 官方 API Provider。所有端点要求 Bearer token，请求统一走 http-json 公共执行器：
- * 鉴权头经 init.headers 注入，超时、取消、结构错误与网络错误归一化都由公共执行器负责。
- * 协议差异保留在协议层：
- * - x-api-version 与 osu! 状态码文案（OSU_STATUS_TEXTS）；
- * - 互斥刷新：同构 LxnsOAuthRequestCore.ensureFreshAccessToken，轮换走公共 rotateOsuTokens；
- * - 只读端点固定总尝试次数 1，不自动重试。
- */
 export class OsuScoreProvider {
   private session: OsuOAuthSession;
   private refreshPromise: Promise<void> | null = null;
@@ -110,17 +100,14 @@ export class OsuScoreProvider {
     });
   }
 
-  /** 当前授权用户（identify scope）；绑定阶段用于取 userId/username。 */
   getOwnUser(gameId: OsuGameId, signal?: AbortSignal): Promise<OsuUserResponseRaw> {
     return this.request(`/me/${OSU_RULESET_BY_GAME_ID[gameId]}`, OsuUserResponseSchema, signal);
   }
 
-  /** 玩家资料与模式统计（public scope）。 */
   getUser(userId: number, gameId: OsuGameId, signal?: AbortSignal): Promise<OsuUserResponseRaw> {
     return this.request(`/users/${userId}/${OSU_RULESET_BY_GAME_ID[gameId]}`, OsuUserResponseSchema, signal);
   }
 
-  /** 个人最佳成绩（Top 100，含 beatmap/beatmapset 内嵌信息）。 */
   getBestScores(
     userId: number,
     gameId: OsuGameId,
@@ -135,7 +122,7 @@ export class OsuScoreProvider {
     );
   }
 
-  /** 指定玩家在单张谱面的最佳成绩；未游玩时官方返回 404，归一化为 null。 */
+  /** 未游玩时上游返回 404，转为 null。 */
   async getUserBeatmapScore(
     userId: number,
     beatmapId: number,
@@ -156,7 +143,6 @@ export class OsuScoreProvider {
     }
   }
 
-  /** 谱面搜索（曲库页）：每页 50 份 beatmapset（上游固定），cursor_string 翻页；m 恒为当前模式。 */
   searchBeatmapsets(
     params: OsuBeatmapsetSearchParams,
     signal?: AbortSignal,
@@ -165,7 +151,6 @@ export class OsuScoreProvider {
     return this.request(`/beatmapsets/search?${query}`, OsuBeatmapsetSearchResponseSchema, signal);
   }
 
-  /** 谱面集详情（歌曲详情页）：返回 BeatmapsetExtended 原始数据，模式过滤在规范化层做。 */
   getBeatmapset(beatmapsetId: number | string, signal?: AbortSignal): Promise<OsuBeatmapsetLookupRaw> {
     return this.request(
       `/beatmapsets/${encodeURIComponent(String(beatmapsetId))}`,

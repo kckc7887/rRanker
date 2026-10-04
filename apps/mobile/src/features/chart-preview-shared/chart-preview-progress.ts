@@ -1,8 +1,3 @@
-/**
- * 谱面确认加载进度（公共路径）：
- * 0～1 的单调进度与阶段文案。壳、计划执行器与游戏 prepare 共用，不识别游戏。
- */
-
 export type ChartPreviewLoadProgress = {
   label: string;
   value: number;
@@ -10,7 +5,7 @@ export type ChartPreviewLoadProgress = {
 
 export const CHART_PREVIEW_RESOURCE_LABEL = '正在加载资源…';
 export const CHART_PREVIEW_PLAYER_LABEL = '正在准备播放器…';
-/** native prepare 映射到进度条的上限；其余留给播放器就绪。 */
+/** 预览准备占进度条的前 90%，其余留给播放器就绪。 */
 export const CHART_PREVIEW_PREPARE_END = 0.9;
 
 export function clampChartPreviewProgress(value: number): number {

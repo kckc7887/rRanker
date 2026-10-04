@@ -1,7 +1,6 @@
 import { ActivityIndicator, Pressable, StyleSheet, Text } from 'react-native';
 import { useAppTheme } from '@/theme/app-theme';
 
-/** 无限列表页脚：加载中、后页失败可重试、已经结束。已载列表保持不动。 */
 export function InfinitePageFooter({
   loading,
   failed,

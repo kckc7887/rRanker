@@ -68,10 +68,6 @@ function localPlayer(target: BoundAccount, sourcePlayer: Player): Player {
   };
 }
 
-/**
- * 读取一个已绑定落雪账号的舞萌成绩，并写入用户明确勾选的查分器账号。
- * 来源账号本身只刷新本地快照，不会重复回写到同一个落雪玩家。
- */
 export async function transferMaimaiFromLxns(input: {
   sourceAccount: BoundAccount;
   sourceSession: ProviderSession;
@@ -135,7 +131,6 @@ export async function transferMaimaiFromLxns(input: {
     let status: UploadTargetResult['status'] = 'success';
     let targetSkipped = 0;
     try {
-      // 每个目标写入前复核账号是否仍有效：失效目标不再写入，其他目标继续。
       assertAccount(target.account.id);
       if (target.account.providerId === 'local') {
         const snapshot = buildScoreSnapshot(

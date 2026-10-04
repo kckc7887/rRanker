@@ -11,10 +11,6 @@ import { useAppTheme } from '@/theme/app-theme';
 
 const OSU_MODES: readonly OsuGameId[] = OSU_FAMILY.modeGameIds.filter(isOsuGameId);
 
-/**
- * osu! 模式复选器（绑定页与 OAuth 回调页共用）：
- * 已绑定模式自动勾选且置灰不可取消；确认只返回本次新勾选的模式（只增不删）。
- */
 export function OsuModeSelectContent({ alreadyBound, busy, submitLabel, onSubmit }: {
   alreadyBound: readonly OsuGameId[];
   busy: boolean;

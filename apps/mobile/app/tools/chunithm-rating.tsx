@@ -29,7 +29,6 @@ const CLEAR_TIER_DESCRIPTIONS: readonly { id: ChunithmClearTier; description: st
   { id: 'none', description: '无连击奖励' },
 ];
 
-/** 灯的最低分数来自领域政策，文案里的数字不在这里重复维护。 */
 const CLEAR_TIERS: readonly { id: ChunithmClearTier; label: string; hint: string }[] =
   CLEAR_TIER_DESCRIPTIONS.map((tier) => {
     const minScore = CHUNITHM_CLEAR_TIER_MIN_SCORE[tier.id];
@@ -48,14 +47,6 @@ type ReverseMinimumRow = {
   note: string | null;
 };
 
-/**
- * 反推结果行。
- *
- * - 定数或目标不合法时给「输入无效」，不进入公式。
- * - 可达时给出该灯态合法输入集内的最低分；领域侧已用与正算相同的输入校验复核过。
- * - 公式解更低（说明它在当前灯态不可能出现）时补一行说明，避免把公式值当成能打出的分数。
- * - 不可达时给明确状态，绝不用公式值冒充最低分。
- */
 function reverseMinimumRow(options: {
   id: ReverseMinimumRow['id'];
   name: 'Rating' | 'OP';
@@ -81,7 +72,6 @@ function reverseMinimumRow(options: {
   return { id: options.id, title: `${heading}：${result.score.toLocaleString('en-US')} 分`, note };
 }
 
-/** 反推卡片的两行数据：输入解析后的定数与灯态在这里进入领域反推入口。 */
 function reverseMinimumRows(input: {
   levelValue: number;
   levelValid: boolean;
@@ -129,7 +119,7 @@ export default function ChunithmRatingToolScreen() {
   const [constant, setConstant] = useState(
     () => routeConstant && Number.isFinite(parseNumericInput(routeConstant)) ? routeConstant : '14.0',
   );
-  // 默认分数取 1,010,000 只是为了让首屏与默认灯 AJC 构成合法组合，没有业务含义。
+  /** 默认满分与 AJC 灯态相容。 */
   const [score, setScore] = useState(
     () => routeScore && Number.isFinite(parseNumericInput(routeScore)) ? routeScore : '1010000',
   );
@@ -149,7 +139,6 @@ export default function ChunithmRatingToolScreen() {
   const constantError = violationMessage('level_out_of_range');
   const scoreError = violationMessage('score_out_of_range');
   const lampError = violationMessage('lamp_score_conflict');
-  // Rating 只依赖定数与分数；OP 还要求所选灯与分数是合法组合。
   const rating = constantError || scoreError
     ? null
     : chunithmChartRatingDisplay(parsedInput.levelValue, parsedInput.score);

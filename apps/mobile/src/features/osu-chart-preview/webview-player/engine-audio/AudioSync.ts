@@ -5,19 +5,19 @@
  * Local changes: preview-only audio, complete media range, and identity-preserving hitsound events.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -83,7 +83,7 @@ const FLUSH_HORIZON_S = 2;
 const FLUSH_INTERVAL_MS = 500;
 const SAMPLE_CONCURRENCY = 2;
 
-/** Preview audio uses the supplied complete timeline; it never trims to replay duration. */
+/** 完整预览时间轴不按回放时长截断。 */
 export class AudioSync {
   readonly schedule: readonly PendingSound[];
   private events: readonly HitSoundEvent[] | undefined;
@@ -134,8 +134,7 @@ export class AudioSync {
       oldOffsetMs: inputs.beatmap.formatVersion < 5 ? 24 : 0,
       fromBeatmapMs: -Infinity,
     });
-    // Production supplies the immutable, already sorted shared timeline. Preserve legacy
-    // callers that supply unsorted sounds without copying every normal preview schedule.
+
     this.schedule = schedule.some((sound, index) => index > 0 && sound.beatmapMs < schedule[index - 1]!.beatmapMs)
       ? [...schedule].sort((a, b) => a.beatmapMs - b.beatmapMs) : schedule;
     this.samples = [...(inputs.extraSamples ?? [])].sort((a, b) => a.timeMs - b.timeMs);
@@ -164,7 +163,7 @@ export class AudioSync {
     this.storyboardEnabled = enabled;
     for (const source of this.storyboardSources) {
       source.onended = null;
-      try { source.stop(); } catch { /* Already ended. */ }
+      try { source.stop(); } catch { /** 音源可能已经结束。 */ }
       source.disconnect();
       this.activeEffects.get(source)?.disconnect();
       this.activeEffects.delete(source);
@@ -250,7 +249,7 @@ export class AudioSync {
       const source = this.songSource;
       this.songSource = null;
       source.onended = null;
-      try { source.stop(); } catch { /* The source may already have ended. */ }
+      try { source.stop(); } catch { /** 音源可能已经结束。 */ }
       source.disconnect();
     }
     this.stopEffects();
@@ -373,7 +372,7 @@ export class AudioSync {
       const voices = (this.voices.get(concurrencyKey) ?? []).filter(voice => voice.end > actualWhen);
       if (voices.length >= SAMPLE_CONCURRENCY) {
         const victim = voices.shift()!;
-        try { victim.source.stop(actualWhen); } catch { /* The source may already have ended. */ }
+        try { victim.source.stop(actualWhen); } catch { /** 音源可能已经结束。 */ }
       }
       voices.push({ source, when: actualWhen, end: actualWhen + (buffer.duration - offset) / this.userRate });
       this.voices.set(concurrencyKey, voices);
@@ -386,7 +385,7 @@ export class AudioSync {
     this.timer = null;
     for (const [source, gain] of this.activeEffects) {
       source.onended = null;
-      try { source.stop(); } catch { /* The source may already have ended. */ }
+      try { source.stop(); } catch { /** 音源可能已经结束。 */ }
       source.disconnect();
       gain?.disconnect();
     }

@@ -55,7 +55,7 @@ export function rizlineDifficultyColors(difficulty: RizlineDifficulty, _dark = f
   return { bg: DIFFICULTY_COLORS[difficulty], fg: '#FFFFFF' };
 }
 function isRizlineAp(achievements: number | null | undefined): boolean {
-  // A full-completion float can be 120.00000762939453 after the game's percentage calculation.
+  /** 游戏百分比计算可能将 120% 存为 120.00000762939453。 */
   return achievements != null && Number.isFinite(achievements) && achievements >= 120;
 }
 export function rizlineRecordStatus(record?: Pick<RizlineRecord, 'achievements' | 'ahStatus'>): 'ap' | 'ah' | 'normal' {
@@ -97,8 +97,8 @@ export function rizlineRiztimeThreshold(hit: number, difficulty: RizlineDifficul
   return (1 - k) * hit > 5 ? Math.ceil(k * hit - 1e-12) : hit - 5;
 }
 
-// https://github.com/REDDRAGON-HL/rizline_b40_tool/blob/93b2881d5cea7d53ac11706c028245ed144d8a16/rizb40_tool.js
-// Stored score/accuracy and RKS can represent different plays. Compatibility never proves All Hit.
+/** 来源：https://github.com/REDDRAGON-HL/rizline_b40_tool/blob/93b2881d5cea7d53ac11706c028245ed144d8a16/rizb40_tool.js。 */
+/** 存档成绩与 RKS 可能来自不同游玩，不能据此证明 All Hit。 */
 export function inferRizlineAh(record: Pick<RizlineRecord, 'difficulty' | 'rks' | 'score' | 'achievements' | 'chart'>): RizlineRecord['ahStatus'] {
   if (record.difficulty === 'SP') return 'incompatible';
   const chart = record.chart;

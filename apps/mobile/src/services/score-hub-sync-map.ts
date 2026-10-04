@@ -39,7 +39,6 @@ export type GenericSyncMapResult<T> = {
   skippedUnsupportedChart: number;
 };
 
-/** 解析 hub 的 `"100.2618%"` / 数值为达成率。 */
 export function parseHubAchievement(raw: string | number | null | undefined): number | null {
   if (raw === null || raw === undefined) return null;
   if (typeof raw === 'number') return Number.isFinite(raw) ? raw : null;
@@ -204,7 +203,7 @@ export function convertHubScoresToLxnsRecords(
   return { records, skippedNoSong, skippedBadScore, skippedUnsupportedChart };
 }
 
-/** 用曲库构建 musicId → title；兼容 DX 偏移 id。 */
+/** DX ID 含 10000 偏移。 */
 export function buildMusicTitleMap(catalog: CatalogSnapshot): Map<string, string> {
   const map = new Map<string, string>();
   for (const song of catalog.songs) {
@@ -264,7 +263,6 @@ export function convertHubScoresToDivingFishRecords(
   return { records, skippedNoTitle, skippedBadScore, skippedUnsupportedChart };
 }
 
-/** 将应用内标准舞萌成绩转换成水鱼批量写入契约；宴会场不受水鱼接口支持。 */
 export function convertScoreRecordsToDivingFishRecords(
   scores: readonly ScoreRecord[],
 ): SyncMapResult {
@@ -307,7 +305,6 @@ export function convertScoreRecordsToDivingFishRecords(
   return { records, skippedNoTitle, skippedBadScore, skippedUnsupportedChart };
 }
 
-/** 将应用内标准舞萌成绩转换成落雪批量写入契约。 */
 export function convertScoreRecordsToLxnsRecords(
   scores: readonly ScoreRecord[],
 ): GenericSyncMapResult<LxnsUploadScore> {

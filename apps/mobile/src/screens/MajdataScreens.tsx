@@ -133,7 +133,7 @@ export function MajdataCatalogScreen() {
   const setSongFavorite = library.setSongFavorite;
   const onFavoriteChange = useCallback((songId: string, favorite: boolean) => { void setSongFavorite(songId, favorite); }, [setSongFavorite]);
   const fetchNextPage = query.fetchNextPage;
-  // 筛选不会消耗或重置上游页码；本页无匹配时继续查下一页。
+  /** 本页无匹配时继续请求下一页。 */
   useEffect(() => {
     if (active && !songs.length && query.hasNextPage && !query.isFetching && !query.isError) void fetchNextPage();
   }, [active, fetchNextPage, query.hasNextPage, query.isError, query.isFetching, songs.length]);

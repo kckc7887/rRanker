@@ -40,7 +40,6 @@ function useActiveOsuGameId(): OsuGameId | null {
   return isOsuGameId(activeGameId) ? activeGameId : null;
 }
 
-/** osu! 最佳页：个人最佳前 100（单分区 Top 100）。 */
 export function OsuBestScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
@@ -90,7 +89,6 @@ export function OsuBestScreen() {
   );
 }
 
-/** osu! 成绩页：展示已知成绩集合；打开曲库歌曲后持续补充。 */
 export function OsuRecordsScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
@@ -194,7 +192,6 @@ export function OsuRecordsScreen() {
   );
 }
 
-/** osu! 曲库页：直连 osu.ppy.sh 谱面搜索（每首歌 = 一个 beatmapset）；m 恒为当前模式，玩家不可见。 */
 export function OsuCatalogScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
@@ -208,7 +205,6 @@ export function OsuCatalogScreen() {
   const [nsfw, setNsfw] = useState(false);
   const [extras, setExtras] = useState<readonly OsuExtraFlag[]>([]);
   const debouncedKeyword = useDebouncedValue(keyword, 350);
-  // 逐字段依赖稳定输入身份：hook 下游 useMemo/queryKey 依赖该对象引用，避免每次渲染重建触发重复请求。
   const searchInput = useMemo(() => ({
     q: debouncedKeyword.trim() || undefined,
     general,

@@ -155,7 +155,6 @@ describe('消费者取消与整个操作取消的区别', () => {
     const transport = deferred<Sourced & { value: string }>();
     const published: string[] = [];
     const loadShared = (signal: AbortSignal) => guard.share<Sourced & { value: string }>('player:26', async (requestSignal) => {
-      // 真实加载器会把共享信号交给上游请求；这里用同样的方式让「取消整个操作」生效。
       const cancel = () => transport.reject(requestSignal.reason ?? new Error('操作已取消'));
       requestSignal.addEventListener('abort', cancel, { once: true });
       try {

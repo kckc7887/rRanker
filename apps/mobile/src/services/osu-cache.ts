@@ -22,7 +22,6 @@ import {
   snapshotSource,
 } from '@/services/snapshot-cache-utils';
 
-/** 构造 osu! 缓存快照；source 记录本次拉取时间，供缓存命中时展示来源与过期标。 */
 export function makeOsuSnapshot(
   data: OsuSnapshotData,
   updatedAt = new Date().toISOString(),
@@ -30,7 +29,6 @@ export function makeOsuSnapshot(
   return makeSnapshot(data, { kind: 'osu', label: 'osu.ppy.sh' }, updatedAt);
 }
 
-/** 同一模式同一玩家并发读取共享一次网络请求（总览与最佳页可能并发）。 */
 const inflightLoads = createInflightGuard<string>();
 
 function scoreContent(score: OsuBestScore): string {
@@ -53,7 +51,6 @@ export function loadOsuSnapshotFresh(
   }, signal);
 }
 
-/** osu! 分模式玩家快照的本地持久化（缓存优先渲染）。 */
 export class OsuCache {
   constructor(private readonly repository: AtomicResourceRepository & ResourceMaintenanceRepository = new SqliteSnapshotRepository()) {}
 
@@ -103,7 +100,6 @@ export class OsuCache {
     );
   }
 
-  /** 按谱面 ID 合并已知成绩；同谱面保留总分更高的一条。 */
   async mergeKnownScores(
     gameId: OsuGameId,
     userId: number,
@@ -132,7 +128,6 @@ export class OsuCache {
     }, assertCurrent);
   }
 
-  /** 解绑模式账号时清理该玩家该模式缓存。 */
   async clear(gameId: OsuGameId, userId: number): Promise<void> {
     await clearResourcesByPrefix(this.repository, {
       keys: [osuSnapshotCacheKey(gameId, userId), osuKnownScoresCacheKey(gameId, userId)],

@@ -133,7 +133,7 @@ export function resolvePhigrosChartPreviewAssetBundle({
     return matches[0]!;
   };
 
-  /** 默认谱面和歌曲共用音乐对应 .0，Random 另有 .1–.6 变体。 */
+  /** 默认谱面使用 .0，共用音乐；Random 有 .1–.6 变体。 */
   const defaultDirectory = [`charts/${target.songId}.0/`, `charts/${target.songId}/`]
     .find((prefix) => assets.some((asset) => typeof asset?.path === 'string' && asset.path.startsWith(prefix)));
   if (target.variantIndex !== undefined && (!Number.isSafeInteger(target.variantIndex) || target.variantIndex < 0)) {
@@ -144,7 +144,7 @@ export function resolvePhigrosChartPreviewAssetBundle({
     ? path === `${selectedDirectory}${target.difficulty}.json`
     : chartPattern.test(path), `${target.difficulty} 谱面`);
   const musicId = target.variantIndex ? `${target.songId}.${target.variantIndex}` : target.songId;
-  /** 只有缺少专属音乐时使用共用音乐，损坏的专属资源仍应报错。 */
+  /** 缺少专属音乐才使用共用音乐，损坏资源仍报错。 */
   const musicPath = assets.some((asset) => asset?.path === `music/${musicId}.ogg`)
     ? `music/${musicId}.ogg`
     : `music/${target.songId}.ogg`;
@@ -156,7 +156,7 @@ export function resolvePhigrosChartPreviewAssetBundle({
 
   const manifestUrl = new URL(manifestPath, PHIGROS_OSS_BASE);
   const releaseBase = new URL('./', manifestUrl);
-  /** 查询参数区分发布版本，避免 HTTP 缓存复用同路径的旧资源。 */
+  /** 发布版本进入查询参数，避免复用同路径旧资源。 */
   const toPublicAsset = (asset: AssetRecord): PhigrosChartPreviewAsset => {
     const url = new URL(String(asset.path).split('/').map(encodeURIComponent).join('/'), releaseBase);
     url.searchParams.set('v', resourceVersion);

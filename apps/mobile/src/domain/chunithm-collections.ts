@@ -4,10 +4,7 @@ import type { DataSource } from './models';
 
 export type ChunithmCollectionKind = 'trophy' | 'character' | 'plate' | 'icon';
 
-/**
- * 收藏品进度工具展示的类型。名牌版（plate）与地图头像（icon）在 lxns
- * 公共 API 中整类没有 required 达成条件，无法计算进度，不放入工具。
- */
+/** LXNS 名牌和地图头像没有 required，不能计算进度。 */
 export const CHUNITHM_PROGRESS_TRACKED_KINDS: readonly ChunithmCollectionKind[] = [
   'trophy',
   'character',
@@ -33,11 +30,6 @@ export type ChunithmCollectionRequiredSong = {
   title: string;
 };
 
-/**
- * 收藏品达成条件（lxns 中二 Collection.required 的归一化形态）。
- * 与舞萌的 PlateRequirement 不同：中二使用 rank / full_combo / full_chain，
- * 曲目只有 id 与标题，完成状态由本地成绩快照计算。
- */
 export type ChunithmCollectionRequired = {
   difficulties: number[];
   rank?: ChunithmRankType;
@@ -68,7 +60,6 @@ export function isChunithmCollectionKind(value: string | undefined): value is Ch
   return value === 'trophy' || value === 'character' || value === 'plate' || value === 'icon';
 }
 
-/** 是否“条件可自动计算”（拥有结构化 required 且至少包含一首曲目）。 */
 export function isChunithmCollectionComputable(collection: ChunithmCollection): boolean {
   return Boolean(
     collection.required?.length
@@ -83,7 +74,6 @@ const FULL_COMBO_ORDER = ['fullcombo', 'alljustice', 'alljusticecritical'];
 const FULL_CHAIN_ORDER = ['fullchain', 'fullchain2'];
 const CLEAR_ORDER = ['failed', 'clear', 'hard', 'brave', 'absolute', 'catastrophy'];
 
-/** chunithmRankFromScore 的显示标签 → lxns 原始枚举值。 */
 const RANK_DISPLAY_TO_RAW: Record<string, string> = {
   'D': 'd', 'C': 'c', 'B': 'b', 'BB': 'bb', 'BBB': 'bbb',
   'A': 'a', 'AA': 'aa', 'AAA': 'aaa',
@@ -98,7 +88,6 @@ function meets(value: string | null | undefined, required: string | undefined, o
   return minimum >= 0 && actual >= minimum;
 }
 
-/** 单条成绩是否满足条件组：难度之外的门槛（评级/全连/全链）全部达标。 */
 export function chunithmScoreMeetsRequirement(
   score: ChunithmScore,
   required: ChunithmCollectionRequired,
@@ -116,9 +105,7 @@ export interface ChunithmMissingSongProgress {
 }
 
 export interface ChunithmCollectionProgress {
-  /** 要求谱面总数（按难度逐项计）。 */
   total: number;
-  /** 已完成谱面数。 */
   completed: number;
   completedSongIds: string[];
   missingSongIds: string[];
@@ -126,10 +113,7 @@ export interface ChunithmCollectionProgress {
   byDifficulty: Record<number, { total: number; completed: number }>;
 }
 
-/**
- * 用玩家成绩快照计算收藏品进度（与舞萌 calculatePlateProgress 同构）：
- * 每组条件按曲目逐难度核对，难度数组为空表示任意难度。
- */
+/** 条件中的难度数组为空表示任意难度。 */
 export function calculateChunithmCollectionProgress(
   collection: ChunithmCollection,
   scores: readonly ChunithmScore[],

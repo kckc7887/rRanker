@@ -74,7 +74,7 @@ Canvas 与 Unity 的采样/混合仍需实际画面对照。
 
 七个原始 C# 几何文件原样保存在 `apps/mobile/scripts/maimai-reference/ViewX/`，
 仅用于独立对照与生成路径数据，未作为 Unity 运行时打包。原始文件版权归
-MajdataViewX contributors；副本的路径与 SHA-256 见该目录上层 `sources.json`。
+MajdataViewX contributors；原始位置见该目录上层 `sources.json`。
 生成工具、对照程序和使用方法一并提供，见 `scripts/maimai-reference/README.md`。
 
 MajdataViewX is licensed under the GNU General Public License v3.0. Per
@@ -93,8 +93,8 @@ Copyright bbben, Lezi, Moying, GPL-3.0-or-later. ViewX's NuGet package
 [LingFeng-bbben/MajSimai](https://github.com/LingFeng-bbben/MajSimai).
 Modifications by rRanker on 2026-09-05: canonical note model, source diagnostics,
 millisecond timing, LXNS difficulty/Buddy slots and browser integration.
-The source archive is pinned by SHA-256 in `scripts/maimai-reference/bootstrap.mjs`;
-the independent C# reference compiles that original source. License text is provided in
+The independent C# reference compiles the original source downloaded by
+`scripts/maimai-reference/bootstrap.mjs`. License text is provided in
 `LICENSES/MajSimai-GPL-3.0.txt`; the GPL portions retain their terms in the AGPL
 combination. No MajdataPlay source is copied into the runtime.
 
@@ -168,9 +168,8 @@ version 0.1.1, revision
 [`a8e5d93210188a6bfb3a0181419df0cf1e9675e7`](https://github.com/daladal/replayviewer-js/tree/a8e5d93210188a6bfb3a0181419df0cf1e9675e7).
 Its MIT license is **Copyright (c) 2026 bog**; the complete notice is retained at
 [`LICENSES/replayviewer-js-MIT.txt`](LICENSES/replayviewer-js-MIT.txt).
-The engine's `source-manifest.json` records upstream paths and hashes together
-with the integrated source hashes. Upstream source is adapted, not represented
-as an unchanged copy.
+The engine's `source-manifest.json` records upstream paths and licenses.
+Upstream source is adapted, not represented as an unchanged copy.
 
 Modifications by rRanker, 2026-09-19: shared native resource preparation and
 WebView lifecycle integration; selected-chart loading; fixed-speed audio,
@@ -208,9 +207,7 @@ The original copyright and license notices, the modification notice, and the
 application's AGPLv3 license are included in both generated player files.
 Corresponding source includes the integrated TypeScript, source manifest and
 build scripts in this repository; binary distributors must provide the source
-corresponding to their distributed version. The build checks that its module
-closure contains no replay or skin loaders, LZMA, SoundTouch, difficulty-calculator
-WASM or sample assets. osu! is a trademark of ppy Pty Ltd; rRanker is not
+corresponding to their distributed version. osu! is a trademark of ppy Pty Ltd; rRanker is not
 affiliated with or endorsed by ppy.
 
 ## nonebot-plugin-maimaidx / maimaiDX best-image layout
@@ -258,7 +255,7 @@ Majdata Net 接入按其公开协议实现，使用
 
 `apps/mobile/scripts/maimai-reference/MajdataScoreReference.cs` 包含 MajdataPlay
 `ObjectCounter.cs` 的 `UpdateNoteScoreCount` 原始方法，Copyright MajdataPlay contributors，
-GPL-3.0。方法仅提升为 public，增加空类型以执行原始类型分派；来源和 SHA-256 见同目录
+GPL-3.0。方法仅提升为 public，增加空类型以执行原始类型分派；来源见同目录
 `majdata-source.json`，许可证副本见 `LICENSES/MajdataPlay-GPL-3.0.txt`。
 此方法用于生成测试对照数据，不编入应用。应用的物量和双达成率计算对照该项目的实际规则。
 Simai 解析、渲染和原有皮肤适配现由舞萌与 Majdata Net 共用，仍保留前述来源与许可证。

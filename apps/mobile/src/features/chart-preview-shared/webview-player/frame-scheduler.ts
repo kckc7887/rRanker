@@ -8,7 +8,6 @@ export type LatestFrameScheduler<T> = {
   pending: () => boolean;
 };
 
-/** 将同一显示帧内的连续输入合并为最后一次，避免拖动和拨轮重复整帧渲染。 */
 export function createLatestFrameScheduler<T>(
   requestFrame: FrameRequest,
   cancelFrame: FrameCancel,

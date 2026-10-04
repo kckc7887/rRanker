@@ -1,4 +1,3 @@
-/** Immutable interval tree. Queries preserve input order and support overlapping, reversed and unbounded intervals. */
 export function createIntervalIndex<T>(items: readonly T[], bounds: (item: T) => readonly [number, number]): (min: number, max: number) => T[] {
   let size = 1;
   while (size < items.length) size *= 2;
@@ -6,7 +5,7 @@ export function createIntervalIndex<T>(items: readonly T[], bounds: (item: T) =>
   const ends = new Float64Array(size * 2).fill(-Infinity);
   items.forEach((item, i) => {
     const [a, b] = bounds(item);
-    // Unknown bounds must retain the candidate rather than hide chart content.
+    /** 未知边界保留候选，避免隐藏谱面内容。 */
     starts[size + i] = Number.isNaN(a) || Number.isNaN(b) ? -Infinity : Math.min(a, b);
     ends[size + i] = Number.isNaN(a) || Number.isNaN(b) ? Infinity : Math.max(a, b);
   });

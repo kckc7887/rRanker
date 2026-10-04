@@ -23,7 +23,6 @@ function withPendingMutation<T>(action: () => Promise<T>): Promise<T> {
   return result;
 }
 
-/** 进行中的落雪授权：PKCE verifier + state + 发起绑定的游戏。 */
 export type PendingLxnsOAuth = {
   verifier: string;
   state: string;
@@ -96,7 +95,6 @@ export async function beginLxnsAuthorize(input: {
   return buildAuthorizeUrl(challenge, state);
 }
 
-/** 读取进行中的授权信息（回调页据此确定绑定目标游戏并校验 state）。 */
 export async function readPendingLxnsOAuth(): Promise<PendingLxnsOAuth | null> {
   return withPendingMutation(loadPendingLxnsOAuth);
 }
@@ -189,7 +187,7 @@ export async function exchangeLxnsAuthorizationCode(
       throw new ProviderError('authorization_callback', '授权已过期，请重新发起授权', false);
     }
     if (pending.state !== state) throw new ProviderError('authorization_callback', '授权状态校验失败，请重新发起授权', false);
-    // 消费与删除在同一串行入口完成；失败换码也必须重新授权，迟到回调不会清掉新授权。
+    /** 换码失败也需重新授权，迟到回调不能删除新授权。 */
     await runProviderOperation('credential_storage', () => SecureStore.deleteItemAsync(PENDING_OAUTH_KEY));
     return pending;
   });
@@ -215,10 +213,7 @@ export async function refreshLxnsAccessToken(refreshToken: string, signal?: Abor
   }, signal);
 }
 
-/**
- * 落雪 refresh_token 刷新后立即失效：轮换链必须解析到最新一代，
- * 否则长驻实例会把过期的中间会话重新落盘。
- */
+/** refresh_token 单次使用；旧实例沿轮换链取得最新会话。 */
 const inFlightRefreshes = new Map<string, Promise<LxnsOAuthSession>>();
 const recentRotations = new Map<string, LxnsOAuthSession>();
 const rotationAncestors = new Map<string, Set<string>>();
@@ -321,7 +316,6 @@ export async function rotateLxnsTokens(refreshToken: string): Promise<LxnsOAuthS
   return promise;
 }
 
-/** 落雪授权结果事件：回调页与登录 Sheet 之间的轻量通知。 */
 export type LxnsOAuthOutcome =
   | { status: 'success'; gameId: 'maimai' | 'chunithm'; accountName: string }
   | { status: 'error'; message: string };

@@ -302,7 +302,6 @@ describe('Muse Dash content adapter', () => {
     expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, null]]))).toBe(true);
     expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, undefined]]))).toBe(false);
     expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, 0]]))).toBe(false);
-    // 失败不会自行变成结果，等待它没有意义；重试成功后同一候选才回到已确认集合。
     expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, MUSE_DASH_MISS_DETAIL_FAILED]])))
       .toBe(false);
     expect(keysFor(0)).toEqual([played.key]);

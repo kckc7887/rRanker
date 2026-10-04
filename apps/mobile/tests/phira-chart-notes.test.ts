@@ -76,7 +76,7 @@ describe('Phira chart note readers', () => {
   it('rejects CRC damage through the shared bounded ZIP reader', async () => {
     const source = new JSZip(); source.file('chart.pec', 'n1 0 0 0 1 0');
     const data = await source.generateAsync({ type: 'uint8array', compression: 'STORE' });
-    // 改动 payload，保留中央目录的长度和原校验码。
+    /** 只破坏 payload，保留原长度与校验码。 */
     const offset = new DataView(data.buffer).getUint16(26, true) + new DataView(data.buffer).getUint16(28, true) + 30;
     data[offset] = 'x'.charCodeAt(0);
     await expect(countPhiraChartZip(new Uint8Array(data).buffer)).rejects.toThrow('校验失败');

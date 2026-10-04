@@ -101,8 +101,8 @@ export async function downloadChartResource(
       throwIfChartDownloadCancelled(signal);
       return task.downloadAsync();
     });
-    // Native cancellation can settle after the caller has already left. Reap only
-    // this task's file again when its final callback eventually arrives.
+    /** 原生取消可能迟到，再清理本次下载文件。 */
+
     void pending.then(() => { if (discarded) cleanup(); }, () => { if (discarded) cleanup(); });
     const result = await Promise.race([pending, cancelled]);
     throwIfChartDownloadCancelled(signal);
@@ -156,7 +156,7 @@ export async function saveChartPackage(
   try {
     const picked = await Directory.pickDirectoryAsync();
     if (output.kind === 'file' && picked.uri.startsWith('file://')) {
-      // Native file copying creates its target; iOS rejects an existing target.
+      /** iOS 复制不允许目标文件已存在。 */
       output.file.copy(new File(picked.uri, fileName));
     } else {
       const destination = picked.createFile(fileName, 'application/zip');

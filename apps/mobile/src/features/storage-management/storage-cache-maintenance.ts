@@ -15,7 +15,7 @@ import { pruneRemoteImageCache } from '@/services/remote-image-cache';
 
 let maintenancePromise: Promise<void> | null = null;
 
-/** 每次启动都回收上次异常退出遗留的会话文件，并保留当前版本不可替代的字体/UI 素材。 */
+/** 回收上次会话文件，保留当前字体与 UI 素材。 */
 export function cleanupOrphanedTemporaryStorage(): void {
   clearDirectoryContentsStrict(APP_CACHE_ROOT(), {
     skip: (name) => isExpoSystemCacheEntry(name) || !isTemporaryCacheEntry(name),
@@ -26,7 +26,6 @@ export function cleanupOrphanedTemporaryStorage(): void {
   pruneVersionedAssetRoot(PHIGROS_FONT_ROOT(), [PHIGROS_FONT_CACHE_VERSION]);
 }
 
-/** 首帧后非阻塞调用；同一进程内并发入口共享一次任务。 */
 export function runStorageCacheMaintenance(): Promise<void> {
   if (!maintenancePromise) {
     maintenancePromise = (async () => {

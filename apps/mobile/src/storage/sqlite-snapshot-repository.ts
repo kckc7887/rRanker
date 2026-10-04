@@ -54,7 +54,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     let snapshot: ScoreSnapshot | null = null;
     if (row.schema_version === SNAPSHOT_SCHEMA_VERSION) {
       try { snapshot = ScoreSnapshotSchema.safeParse(JSON.parse(row.payload)).data ?? null; }
-      catch { /* 非 JSON 内容按失效条目处理。 */ }
+      catch {}
     }
     if (snapshot) return snapshot;
     await runDatabaseWrite(() => db.runAsync(
@@ -87,7 +87,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     let catalog: CatalogSnapshot | null = null;
     if (row.schema_version === CATALOG_SCHEMA_VERSION) {
       try { catalog = CatalogSnapshotSchema.safeParse(JSON.parse(row.payload)).data ?? null; }
-      catch { /* 非 JSON 内容按失效条目处理。 */ }
+      catch {}
     }
     if (catalog) return catalog;
     await runDatabaseWrite(() => db.runAsync(
@@ -119,7 +119,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     const decoded = row.schema_version === schemaVersion ? parseResourcePayload<T>(row.payload) : null;
     const value = schema ? schema.safeParse(decoded).data ?? null : decoded;
     if (value !== null) return value;
-    /** 等待写队列期间可能已有新缓存，只删除本次读到的失效内容。 */
+    /** 只删除读到的失效行，保留排队期间覆盖的新值。 */
     await runDatabaseWrite(() => db.runAsync(
       'DELETE FROM resource_snapshots WHERE resource_key = ? AND payload = ? AND schema_version = ?',
       key, row.payload, row.schema_version,
@@ -127,7 +127,6 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     return null;
   }
 
-  /** 读改写共用写队列，任务内不可重入队列。 */
   async updateResource<T>(
     key: string, schemaVersion: number,
     transform: (previous: T | null) => { value: T; updatedAt: string; write?: true } | { value: T; write: false },

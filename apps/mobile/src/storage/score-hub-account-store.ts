@@ -208,7 +208,7 @@ export class ScoreHubAccountStore {
   private async discardUnreferencedSecrets(secretRefs: readonly string[], indexWriteStarted: boolean): Promise<void> {
     let referenced = new Set<string>();
     if (indexWriteStarted) {
-      /** 写入抛错仍可能已提交；读回失败时保留可能已被引用的凭据。 */
+      /** 写入抛错仍可能已提交；读回失败时保留可能被引用的凭据。 */
       const actualRaw = await this.indexIo.getItem(ACCOUNT_INDEX_KEY);
       const actual = actualRaw !== null ? parseIndex(actualRaw) : null;
       if (actualRaw !== null && !actual) throw new SessionPersistenceError('local_commit');
@@ -248,7 +248,6 @@ export class ScoreHubAccountStore {
     });
   }
 
-  /** 写入/更新某好友码条目，并设为 active。 */
   async upsert(partial: {
     friendCode: string;
     token?: string;
@@ -296,7 +295,6 @@ export class ScoreHubAccountStore {
     });
   }
 
-  /** 删除指定好友码的本地 JWT 条目。 */
   async remove(friendCode: string): Promise<void> {
     return this.enqueue(() => this.removeIndexedAccounts(friendCode.trim()));
   }

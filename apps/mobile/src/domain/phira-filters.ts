@@ -73,7 +73,7 @@ export function filterPhiraCharts(
   });
 }
 
-/** Phira 曲库按 id 去重保序：服务端 page=1 返回与 page=0 相同的首页，且 updated 排序在请求间漂移会造成跨页重叠。 */
+/** 排序可能在请求间变化，跨页重复按 ID 去重。 */
 export function dedupePhiraCharts(values: readonly PhiraChart[]): PhiraChart[] {
   const seen = new Set<number>();
   return values.filter((chart) => {
@@ -83,11 +83,7 @@ export function dedupePhiraCharts(values: readonly PhiraChart[]): PhiraChart[] {
   });
 }
 
-/**
- * Phira /chart 分页下一页参数：
- * 服务端 page 从 1 开始且 page<1 会钳制为 1（实测所有 type：page=1 与 page=0 返回完全相同的首页），
- * 因此首页使用 0，后续翻页跳过 1：0 → 2 → 3 → …。
- */
+/** 服务端 page=0/1 均返回首页，后续从 2 开始。 */
 export function phiraCatalogNextPage(
   pages: readonly PhiraChartPage[],
   last: PhiraChartPage | undefined,

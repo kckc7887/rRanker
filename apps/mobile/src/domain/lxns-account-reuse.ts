@@ -3,7 +3,6 @@ import type { GameId } from './game-bind-options';
 import type { ProviderSession } from '@/providers/contracts';
 import { reusableSharedCredentialAccounts } from './shared-credential-account-reuse';
 
-/** 为舞萌和中二节奏复用落雪账号凭据。 */
 export function reusableLxnsAccounts(input: {
   targetGameId: Extract<GameId, 'maimai' | 'chunithm'>;
   accounts: readonly BoundAccount[];

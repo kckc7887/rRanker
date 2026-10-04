@@ -2,7 +2,6 @@ import { router } from 'expo-router';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import { useAppTheme } from '@/theme/app-theme';
 
-/** 导航页通用空态：数据为空时展示，不讨论「属于哪个游戏」。 */
 export function EmptyDataView({
   title = '暂无数据',
   detail = '当前账号暂无可显示内容。',

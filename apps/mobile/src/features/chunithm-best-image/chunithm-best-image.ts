@@ -6,7 +6,7 @@ export type ChunithmBestImageSelectionCount = 0 | 5 | 10;
 export type ChunithmBestImageSection = {
   id: string;
   title: string;
-  /** 多条件筛选时标题下方的小字筛选条件提示。 */
+
   subtitle?: string;
   records: ChunithmScoreCardData[];
 };
@@ -18,7 +18,6 @@ export type ChunithmBestImagePage = {
   sections: ChunithmBestImageSection[];
 };
 
-/** 在 Best 30 / New 20 之后追加 Selection 分区；count=0 不加分区。 */
 export function appendChunithmSelectionScores(
   sections: readonly ChunithmBestImageSection[],
   selections: readonly ChunithmScoreCardData[],
@@ -39,7 +38,6 @@ export function appendChunithmSelectionScores(
   return copied;
 }
 
-/** 按调用方指定的单页数量分页，保持分区顺序与区内顺序。 */
 export function paginateChunithmBestImageSections(
   sections: readonly ChunithmBestImageSection[],
   pageSize = 50,

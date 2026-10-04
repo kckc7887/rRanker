@@ -46,7 +46,6 @@ export function appendPhigrosOverflowRecords(
   return copied;
 }
 
-/** 按调用方指定的单页数量分页，保持分区顺序与区内顺序。 */
 export function paginatePhigrosBestImageSections(
   sections: readonly PhigrosBestImageSection[],
   pageSize = 30,

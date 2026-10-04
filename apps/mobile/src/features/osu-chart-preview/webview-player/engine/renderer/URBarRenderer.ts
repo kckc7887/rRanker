@@ -10,19 +10,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -39,9 +39,9 @@ import type { ManiaHitObject } from '../rulesets/mania/types';
 const CANVAS_W = 1280;
 const CANVAS_H = 720;
 
-// danser-go hiterror.go port.
+/** 参考 danser-go hiterror.go。 */
 const ERROR_BASE        = 4.8;
-const BASE_SCALE        = 0.8;       // px per ms
+const BASE_SCALE        = 0.8;       /** 比例为 0.8px/ms。 */
 const SCALE             = 1;
 const POINT_FADE_OUT_MS = 10000;
 const TICK_BASE_ALPHA   = 0.4;
@@ -53,54 +53,39 @@ const COLOR_300 = 'rgb(51, 204, 255)';
 const COLOR_100 = 'rgb(112, 250, 46)';
 const COLOR_50  = 'rgb(217, 173, 69)';
 
-// Mania has five colored windows (Perfect/Great/Good/Ok/Meh). Perfect/Good/Ok reuse the
-// std palette (blue/green/gold) for visual coherence; Great/Meh fill the gaps. Miss is the
-// uncolored bar edge, matching lazer's BarHitErrorMeter (only hit windows get a zone).
 const COLOR_MANIA_PERFECT = 'rgb(51, 204, 255)';
 const COLOR_MANIA_GREAT   = 'rgb(0, 230, 150)';
 const COLOR_MANIA_GOOD    = 'rgb(112, 250, 46)';
 const COLOR_MANIA_OK      = 'rgb(217, 173, 69)';
 const COLOR_MANIA_MEH     = 'rgb(229, 110, 90)';
 
-// TailNote.cs RELEASE_WINDOW_LENIENCE — lazer judges and plots the tail release offset
-// divided by 1.5 (mirrors hitJudge.ts's RELEASE_LENIENCE).
+/** lazer 尾释放偏差除以 1.5。 */
+
 const RELEASE_LENIENCE = 1.5;
 
 const CX = CANVAS_W / 2;
 const CY = CANVAS_H - 14;
 
-/** One tick on the hit-error bar. `errorPx` is the signed hit error pre-converted to
- * bar pixels (errorMs × 0.8); `time` is when the hit landed (beatmap ms). */
 export interface URHit {
   time: number;
   errorPx: number;
   color: string;
-  // EMA target after this hit lands.
+
   emaPx: number;
-  // Triangle X (px from CX) at the instant this hit landed.
+
   triangleStartPx: number;
 }
 
-/**
- * One colored hit-window band. Zones are drawn inner→outer; each fills
- * [prevWindow, window] on both sides of centre. std/taiko supply three
- * (300/100/50 · great/ok/miss); mania supplies five.
- */
 export interface URZone {
   color: string;
-  window: number;   // outer edge of this zone, ms (half-width)
+  window: number;
 }
 
-/** Precomputed hit-error-bar data: all ticks plus the ruleset's window zones.
- * Built once per session and consumed by {@link drawURBar} every frame. */
 export interface URTimeline {
   hits: URHit[];
   zones: URZone[];
 }
 
-// ─── Build the timeline (called once in Renderer constructor) ────────────────
-
-// Shared EMA + triangle-easing pass over pre-filtered, pre-colored hit errors.
 function buildHits(raw: { time: number; errorMs: number; color: string }[]): URHit[] {
   raw.sort((a, b) => a.time - b.time);
 
@@ -141,8 +126,6 @@ function buildHits(raw: { time: number; errorMs: number; color: string }[]): URH
   return hits;
 }
 
-/** Build the osu!std hit-error timeline: per-circle/slider-head press offsets colored by
- * the mod-adjusted 300/100/50 windows. Spinners and slider sub-results are excluded. */
 export function computeURTimeline(
   results: readonly HitResult[],
   beatmap: BeatmapData,
@@ -152,7 +135,7 @@ export function computeURTimeline(
   const w100 = modDiff.hitWindow100;
   const w50  = modDiff.hitWindow50;
 
-  // |error| < w50 strictly excludes auto-misses (synthetic time = startTime + w50, |err| === w50).
+  /** 严格排除 |error|=w50 的自动 miss。 */
   const raw: { time: number; errorMs: number; color: string }[] = [];
   for (const r of results) {
     if (r.isSliderSub) continue;
@@ -173,12 +156,7 @@ export function computeURTimeline(
   return { hits: buildHits(raw), zones };
 }
 
-/**
- * Build the taiko hit-error timeline. `objectIndex` points into source beatmap.hitObjects
- * (not the converted taiko array); a single slider converts to multiple hits sharing the
- * index. Walks both arrays in lockstep — the taiko judgement pass emits exactly one
- * non-comboIgnore result per kind:'hit' object.
- */
+/** taiko 一个源滑条可转为多个命中，objectIndex 会重复。 */
 export function computeTaikoURTimeline(
   objects: readonly TaikoHitObject[],
   results: readonly HitResult[],
@@ -215,13 +193,7 @@ export function computeTaikoURTimeline(
   return { hits: buildHits(raw), zones };
 }
 
-/**
- * Build the mania hit-error timeline. Tap notes + HoldNote heads contribute their press
- * offset; tails contribute the release offset divided by 1.5 (RELEASE_LENIENCE), matching
- * lazer's AffectsUnstableRate (IsHit only) + the tail window leniency. Bodies have no
- * timing. `objectIndex` is a mania sourceIndex (holds live past beatmap.hitObjects.length),
- * so target times come from `objects`.
- */
+/** mania 头计按下偏差，尾计释放偏差/1.5，身体无时间偏差。 */
 export function computeManiaURTimeline(
   objects: readonly ManiaHitObject[],
   results: readonly HitResult[],
@@ -238,8 +210,8 @@ export function computeManiaURTimeline(
 
   const raw: { time: number; errorMs: number; color: string }[] = [];
   for (const r of results) {
-    if (r.judgement === 0) continue;       // misses (incl. auto-miss) excluded — lazer IsHit gate
-    if (r.subResult === 'body') continue;  // body tracks hold-breaks, no timing
+    if (r.judgement === 0) continue;
+    if (r.subResult === 'body') continue;
     const o = objBySource.get(r.objectIndex);
     if (o === undefined) continue;
 
@@ -248,7 +220,7 @@ export function computeManiaURTimeline(
       errorMs = r.time - o.time;
     } else if (r.subResult === 'tail') {
       errorMs = (r.time - o.endTime) / RELEASE_LENIENCE;
-    } else { // head
+    } else {
       errorMs = r.time - o.startTime;
     }
     raw.push({ time: r.time, errorMs, color: colorFor(r.judgement) });
@@ -275,11 +247,6 @@ function findLatestHit(hits: readonly URHit[], timeMs: number): number {
   return lo;
 }
 
-/**
- * Draw the hit-error bar (bottom-centre): colored window zones, fading tick per hit,
- * and an eased triangle tracking the error EMA. The whole widget holds for 4 s after
- * the last hit then fades out. `ctx` is in logical 1280×720 coords.
- */
 export function drawURBar(
   ctx: CanvasRenderingContext2D,
   timeline: URTimeline,
@@ -307,7 +274,6 @@ export function drawURBar(
   ctx.save();
   ctx.globalAlpha = widgetAlpha;
 
-  // Nested colored windows, inner→outer; each fills [prevPx, endPx] on both sides.
   let prevPx = 0;
   for (const z of timeline.zones) {
     const endPx = z.window * BASE_SCALE;
@@ -321,7 +287,6 @@ export function drawURBar(
   ctx.fillStyle = '#ffffff';
   ctx.fillRect(CX - 1, bgTop, 2, bgH);
 
-  // Additive blend for tick dots.
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (let j = i; j >= 0; j--) {

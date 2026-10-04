@@ -48,7 +48,6 @@ async function readImportToken(authMode: AuthMode, signal?: AbortSignal): Promis
     : null;
 }
 
-/** 登录后换取 Import-Token：已有则复用，没有则 PUT 生成。只把 Token 写入 SecureStore，不落明文其它介质。 */
 async function obtainImportTokenSession(authMode: AuthMode, signal?: AbortSignal): Promise<ProviderSession> {
   let token = await readImportToken(authMode, signal);
   if (!token) {

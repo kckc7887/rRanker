@@ -48,7 +48,7 @@ export function isRizlineNeedsSmsError(error: unknown): boolean {
   return error instanceof ProviderError && error.needsCode === true;
 }
 
-// https://github.com/CHCAT1320/RizlineGameSaveData/blob/ba89227baa2927655ea884a849d6a27ea1cdfb2d/gameDataAes2Json.py
+/** https://github.com/CHCAT1320/RizlineGameSaveData/blob/ba89227baa2927655ea884a849d6a27ea1cdfb2d/gameDataAes2Json.py */
 function saveKey(): Uint8Array {
   const packed = Uint8Array.from('9693ad9f6e7e7034350c223affd2a0b57b6c76572e511b1c93a0d230c09aede7'.match(/../gu)!, pair => parseInt(pair, 16));
   const key = new Uint8Array(32);

@@ -55,7 +55,6 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
       void runAccountOperation(() => uploadPrefsStore.save({
         friendCode: nextCode,
         selectedAccountIds: nextIds,
-        /** 临时勾选不写入持久偏好。 */
         writeSelection: temporarySelectedAccountIds ? false : writeSelection,
       }), () => selection === selectionSeqRef.current);
     }, 300);
@@ -107,7 +106,6 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
 
         if (!entry?.token) return;
 
-        /** 认证或网络失败时保留本地绑定状态。 */
         const me = await fetchMe(entry.token).catch(() => null);
         if (me) {
           if (seq !== bindLookupSeqRef.current || !isCurrent()) return;
@@ -209,7 +207,7 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
     bindLookupSeqRef.current += 1;
     setBindingLookup(false);
     setFriendCode(digits);
-    // Resolve this code's own selection before writing it; storage can outlast the debounce.
+    /** 等待存储期间可能切换好友码，写入前读取对应选择。 */
     persist(digits, selectedIds, false);
     if (digits.length === 15) {
       void runAccountOperation(async () => {

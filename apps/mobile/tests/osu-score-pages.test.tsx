@@ -14,7 +14,6 @@ jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 jest.mock('expo-router', () => ({
   router: { push: (...args: unknown[]) => mockRouterPush(...args) },
 }));
-// 模组徽章测试固定走文字回退形态：图标根路径置空（hook 短路不发请求、不触碰文件系统）
 jest.mock('@/providers/osu-config', () => ({
   ...jest.requireActual<typeof import('@/providers/osu-config')>('@/providers/osu-config'),
   OSU_MOD_ICONS_ROOT: '',
@@ -228,7 +227,7 @@ describe('OsuSongRow 曲库行', () => {
     );
     const badges = screen.getAllByTestId('osu-catalog-difficulty-badge');
     expect(badges).toHaveLength(3);
-    // 0.9 → #4BB3FE；3.56 → #F9D760；7.34 → #4240B0（osu-web 连续色阶伽马2.2插值）。
+    /** osu-web 星带采用伽马 2.2 插值。 */
     expect(StyleSheet.flatten(badges[0].props.style).backgroundColor).toBe('#4BB3FE');
     expect(StyleSheet.flatten(badges[1].props.style).backgroundColor).toBe('#F9D760');
     expect(StyleSheet.flatten(badges[2].props.style).backgroundColor).toBe('#4240B0');
@@ -328,7 +327,6 @@ describe('OsuBestScreen 最佳页', () => {
 
 describe('OsuRecordsScreen 成绩页', () => {
   beforeEach(() => {
-    // 筛选 store 为模块级单例，用例间恢复默认，避免状态泄漏。
     useOsuRecordsFilter.getState().reset();
   });
 
@@ -346,13 +344,11 @@ describe('OsuRecordsScreen 成绩页', () => {
   it('筛选为空结果时切换空态文案，重置后恢复', async () => {
     const screen = await render(<OsuRecordsScreen />);
     await fireEvent.press(screen.getByLabelText('展开 osu! 成绩筛选，当前 全部'));
-    // 勾「无模组」：唯一成绩为 HD+DT，被排除 → 筛选空态文案。
     await fireEvent.press(screen.getByLabelText('osu! 成绩模组筛选，当前 全部'));
     const noneOption = await screen.findByLabelText('NM 无模组，未选中');
     await fireEvent.press(noneOption);
     await fireEvent.press(screen.getByLabelText('完成 osu! 模组筛选'));
     expect(screen.getByText('没有找到符合条件的已知成绩')).toBeTruthy();
-    // 重置清空筛选（clearFilters 不含 collapsed，保持展开态）。
     await fireEvent.press(screen.getByLabelText('重置 osu! 成绩筛选'));
     expect(screen.getByText('Tori no Uta')).toBeTruthy();
   });

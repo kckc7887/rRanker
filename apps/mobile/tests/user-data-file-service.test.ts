@@ -19,7 +19,6 @@ vi.mock('expo-file-system', () => ({
   },
 }));
 
-// Native Expo modules must be mocked before importing the service.
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { createUserDataBackup, MAX_BACKUP_FILE_BYTES } from '@/domain/user-library';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册

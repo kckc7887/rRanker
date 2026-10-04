@@ -55,7 +55,6 @@ jest.mock('@/features/chart-download-shared/use-chart-package-download', () => (
 jest.mock('@/components/TagEditor', () => ({ TagEditor: () => null }));
 jest.mock('@/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: () => null }));
 
-/** 高于筛选上限 16 的定数：把每一页都筛空，得到「翻页有数据但筛选结果为空」的真实场景。 */
 const FILTERED_OUT_DIFFICULTY = 16.2;
 const chart = (id: number): PhiraChart => ({
   id, name: `Chart ${id}`, level: 'AT Lv.16', difficulty: FILTERED_OUT_DIFFICULTY,
@@ -80,7 +79,6 @@ function renderCatalog(client = createClient()) {
   return render(<QueryClientProvider client={client}><PhiraCatalogScreen /></QueryClientProvider>);
 }
 
-/** 通过定数上限把曲目全部筛掉，触发空结果自动续扫。 */
 async function filterOutEveryChart(screen: Awaited<ReturnType<typeof renderCatalog>>) {
   await fireEvent.press(screen.getByLabelText(/展开筛选/));
   const track = screen.getByTestId('phira-filter-constant-track');
@@ -106,7 +104,6 @@ describe('Phira 曲库自动续扫（真实组件 + 真实无限查询）', () =
     await filterOutEveryChart(screen);
 
     await waitFor(() => expect(requested).toEqual(EXPECTED_PAGES_UNTIL_BUDGET), { timeout: 3000 });
-    // 预算耗尽：给出继续入口，而不是一直显示加载中。
     await waitFor(() => expect(screen.getByLabelText('继续扫描')).toBeTruthy(), { timeout: 3000 });
     await waitFor(
       () => expect(screen.getByText(`已扫描 ${PHIRA_CATALOG_PAGE_SCAN_BUDGET} 页仍无匹配谱面`)).toBeTruthy(),
@@ -196,7 +193,6 @@ describe('Phira 曲库自动续扫（真实组件 + 真实无限查询）', () =
 
   it('切换到页数相同的另一个缓存查询时重新判断续扫', async () => {
     const requested: string[] = [];
-    // 当前查询的后页一直悬停在请求中：观察值稳定在「同一页数、仍在扫描」。
     const stalled = Promise.withResolvers<PhiraChartPage>();
     jest.spyOn(phiraProvider, 'getCharts').mockImplementation(async (input) => {
       requested.push(`${input.status}:${input.page}`);
@@ -214,7 +210,6 @@ describe('Phira 曲库自动续扫（真实组件 + 真实无限查询）', () =
 
     await fireEvent.press(screen.getByLabelText('选择谱面类别，当前 上架'));
     await fireEvent.press(screen.getByLabelText('选择谱面类别 特殊'));
-    // 另一个查询按自己的位置继续推进到自己的预算，而不是继承上一个查询的请求位置。
     await waitFor(() => expect(requested).toEqual([
       'ranked:3', 'special:3', 'special:4', 'special:5', 'special:6', 'special:7', 'special:8',
     ]), { timeout: 3000 });

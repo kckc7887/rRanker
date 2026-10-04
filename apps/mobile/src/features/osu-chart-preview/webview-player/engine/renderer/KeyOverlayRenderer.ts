@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -26,8 +26,8 @@
  */
 import type { ReplayData, ReplayFrame, SkinAssets } from '../types/index';
 
-// osu! replay sets M1 (1) whenever K1 (4) fires (and M2/K2); `exclude` suppresses
-// the mouse-key lighting up on every keyboard hit.
+/** 回放 K1/K2 同时带 M1/M2 位，键盘命中时不重复点亮鼠标键。 */
+
 const SYSTEM_UI_FONT = 'system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif';
 
 const KEY_DEFS = [
@@ -68,8 +68,8 @@ function findFrameIndex(times: number[], timeMs: number): number {
   return lo;
 }
 
-// scaleAt/tintAt are interpolated values right before this event applies; lets
-// release-mid-press-ramp resume animation cleanly without main-loop state.
+/** 切换状态前先取插值，保证释放与再按下时动画连续。 */
+
 interface KeyEvent {
   time: number;
   isPress: boolean;
@@ -89,10 +89,6 @@ function outQuad(t: number): number {
   return 1 - u * u;
 }
 
-// Generic press-timeline builder shared by std (4 keys from the replay button bitmask) and
-// catch (3 keys from the catcher path). For each key it records inactive↔active transitions as
-// KeyEvents carrying the interpolated scale/tint at the transition instant, plus a running
-// cumulative press count per frame. `activeAt(frameIdx, keyIdx)` is the per-key active test.
 function buildKeyTimelines(
   times: readonly number[],
   keyCount: number,
@@ -208,7 +204,6 @@ function computeKeyState(
   };
 }
 
-// `div` divides @2x dimensions to native-1x for virtual-space layout.
 function skinAsset(
   images: Map<string, ImageBitmap> | undefined,
   stem: string,
@@ -221,7 +216,6 @@ function skinAsset(
   return null;
 }
 
-// Pre-tinted variant per (bitmap, color); overlaid at variable alpha for white→tint crossfade.
 const _tintCache = new WeakMap<ImageBitmap, Map<string, OffscreenCanvas>>();
 
 function tintBitmap(bitmap: ImageBitmap, color: string): OffscreenCanvas {
@@ -244,7 +238,7 @@ function tintBitmap(bitmap: ImageBitmap, color: string): OffscreenCanvas {
   return osc;
 }
 
-// Danser virtual-768 layout; all magic numbers below are in virtual units.
+/** 布局沿用 Danser 的 768 虚拟坐标。 */
 const CANVAS_W = 1280;
 const CANVAS_H = 720;
 const VIRTUAL_H = 768;
@@ -257,7 +251,7 @@ const KEY_FIRST_OFF_V = 30.4;
 const KEY_SPACING_V   = 47.2;
 const KEY_INSET_V     = 24;
 
-// Danser applies (1.05, 1) pre-rotation, making the vertical bar 5% longer.
+/** Danser 旋转前横向乘 1.05，使竖条延长 5%。 */
 const BG_LENGTH_SCALE = 1.05;
 
 const COUNT_TEXT_HEIGHT_V = 16;
@@ -314,7 +308,7 @@ function drawCount(
 ): void {
   const text = String(count);
 
-  // Prefer scoreentry-N (no skin.ini prefix directive); fall back to scorePrefix glyphs.
+  /** 优先 scoreentry 字形，缺少时用 ScorePrefix。 */
   const digits = Array.from(text);
   const bmps: (ImageBitmap | null)[] = [];
   let allBitmap = true;
@@ -352,11 +346,6 @@ interface KeyRenderState {
   pressedColor: string;
 }
 
-// Shared panel chrome + per-key sprite/animation/count draw, used by both the std (4-key
-// bitmask) overlay and the catch (3-key Left/Right/Dash) overlay. Keys are laid out top-down
-// at KEY_FIRST_OFF_V + k·KEY_SPACING_V, so a 3-key panel simply leaves the bottom slot empty
-// (matching lazer's top-anchored key flow). Positions follow danser-go scoreoverlay.go;
-// primitive fallback when assets are missing.
 function drawKeyPanel(
   ctx: CanvasRenderingContext2D,
   states: readonly KeyRenderState[],
@@ -364,7 +353,6 @@ function drawKeyPanel(
 ): void {
   const images = skin?.images;
 
-  // Anchor top-left at (CANVAS_W, PANEL_TOP); rotate 90° CW with (1.05, 1) pre-scale.
   const bgAsset = skinAsset(images, 'inputoverlay-background');
   if (bgAsset !== null) {
     const nw = bgAsset.bmp.width  / bgAsset.div;
@@ -412,18 +400,12 @@ function drawKeyPanel(
       drawKeyFallback(ctx, 0, 0, keyCanvasW, st.tint, st.pressedColor);
     }
 
-    // Active ctx.scale squishes text in sync with the key sprite (matches danser).
     drawCount(ctx, images, scorePrefix, st.count, 0, 0, COUNT_TEXT_HEIGHT_V * S, COUNT_OVERLAP_V * S);
 
     ctx.restore();
   }
 }
 
-/**
- * Draw the std key overlay (right edge): K1/K2/M1/M2 press state, press animation, and
- * cumulative press counts, read from the per-frame replay button bitmask. Per-replay
- * timelines are built lazily on first call and cached. `ctx` is in logical 1280×720 coords.
- */
 export function drawKeyOverlay(
   ctx: CanvasRenderingContext2D,
   replay: ReplayData,
@@ -448,17 +430,8 @@ export function drawKeyOverlay(
   drawKeyPanel(ctx, states, skin);
 }
 
-// ---- Catch (CTB) key overlay ----
-//
-// Catch has no K1/K2/M1/M2: its actions are MoveLeft, MoveRight, Dash (CatchAction). The legacy
-// replay encodes only the catcher X per frame plus a single Dash bit (Left1); lazer's
-// CatchReplayFrame.FromLegacy reconstructs MoveLeft/MoveRight from the sign of the X delta to the
-// NEXT frame (attached to the previous frame). We mirror that off the decoded catcher path — all
-// decorative (catch judgement is positional, never key-based). Active colours match lazer's
-// LegacyKeyCounterDisplay (first two keys yellow, the rest pink): Left/Right yellow, Dash pink.
+/** catch 按相邻帧 x 差推导方向，Dash 取回放位；判定本身只看位置。 */
 
-// Minimal catcher-path shape (structurally matches rulesets/catch/input CatcherFrame); kept
-// local so this shared renderer doesn't import from a ruleset.
 type CatchPathFrame = { readonly time: number; readonly x: number; readonly dash: boolean };
 
 const CATCH_KEY_COLORS = ['#ffde00', '#ffde00', '#f8009e'] as const;
@@ -476,8 +449,8 @@ function buildCatchData(path: readonly CatchPathFrame[]): {
   const times = new Array<number>(path.length);
   for (let i = 0; i < path.length; i++) times[i] = path[i]!.time;
 
-  // key 0 = MoveLeft, 1 = MoveRight, 2 = Dash. Direction is the sign of x[i+1]−x[i] (lazer
-  // attaches the move action to frame i); the final frame has no successor ⇒ no direction.
+  /** 方向附在前一帧；末帧无后继，不推导方向。 */
+
   const { timelines, counts } = buildKeyTimelines(times, 3, (i, k) => {
     if (k === 2) return path[i]!.dash;
     if (i >= path.length - 1) return false;
@@ -508,11 +481,6 @@ function getCatchData(path: readonly CatchPathFrame[]): {
   return { timelines: cached, counts: _catchCounts.get(path)!, times: _catchTimes.get(path)! };
 }
 
-/**
- * Draw the catch key overlay (right edge): Left / Right / Dash, driven by the decoded
- * catcher path rather than the replay button bitmask (see the section note above).
- * `path` frames are (time ms, catcher x, dash flag); `ctx` is in logical 1280×720 coords.
- */
 export function drawCatchKeyOverlay(
   ctx: CanvasRenderingContext2D,
   path: readonly CatchPathFrame[],

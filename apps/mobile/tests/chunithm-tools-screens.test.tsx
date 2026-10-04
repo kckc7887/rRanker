@@ -102,13 +102,11 @@ jest.mock('expo-linear-gradient', () => {
   };
 });
 
-/** 取出界面实际渲染的文本，用于把屏幕上的数字重新送回领域校验。 */
 function renderedText(element: { props: { children?: unknown } }): string {
   const { children } = element.props;
   return Array.isArray(children) ? children.map((child) => String(child)).join('') : String(children ?? '');
 }
 
-/** 从「OP 80：1,010,000 分」这类反推行里取出分数。 */
 function scoreFromRow(text: string): number {
   return Number(/([\d,]+) 分$/.exec(text)![1]!.replace(/,/g, ''));
 }
@@ -146,12 +144,10 @@ describe('chunithm tool screens', () => {
 
   it('starts from a legal lamp and score combination', async () => {
     const { getByText, queryByText, getByLabelText } = await render(<ChunithmRatingToolScreen />);
-    // 定数 14.0 + 1,010,000 的 AJC：
-    // Rating = 14 + 2.15 = 16.15；OP = 5×(14+2) + 2500×0.0015 + 1.25 = 85.00
+    /** Rating=14+2.15=16.15；OP=5×16+2500×0.0015+1.25=85。 */
     expect(getByText(/Rating：16\.15/)).toBeTruthy();
     expect(getByText(/OVER POWER：85\.00/)).toBeTruthy();
     expect(queryByText(/至少需要/)).toBeNull();
-    // 灯的提示文案由领域侧的最低分数生成
     expect(getByLabelText('AJC（ALL JUSTICE CRITICAL · 至少 1,010,000 分）')).toBeTruthy();
     expect(getByLabelText('无（无连击奖励）')).toBeTruthy();
   });
@@ -160,11 +156,9 @@ describe('chunithm tool screens', () => {
     const { getByText, queryByText, getByLabelText } = await render(<ChunithmRatingToolScreen />);
     await fireEvent.changeText(getByLabelText('分数'), '1009000');
     expect(getByText('AJC 至少需要 1,010,000 分。')).toBeTruthy();
-    // Rating 与灯无关，仍然照常给出；OP 不再计算非法组合
     expect(getByText(/Rating：16\.15/)).toBeTruthy();
     expect(getByText(/OVER POWER：输入无效/)).toBeTruthy();
 
-    // 换成与该分数相容的灯后恢复计算：5×(14+2) + 1500×0.0015 = 82.25
     await fireEvent.press(getByLabelText('无（无连击奖励）'));
     expect(queryByText('AJC 至少需要 1,010,000 分。')).toBeNull();
     expect(getByText(/OVER POWER：82\.25/)).toBeTruthy();
@@ -182,18 +176,15 @@ describe('chunithm tool screens', () => {
     const { getByText, queryByText, getByLabelText } = await render(<ChunithmRatingToolScreen />);
     await fireEvent.changeText(getByLabelText('定数'), '13.7');
     await fireEvent.changeText(getByLabelText('目标 OVER POWER'), '80');
-    // 默认灯是 AJC，合法分数只有 1,010,000；公式解 1,007,667 只能作为说明出现
     const row = getByText(/^OP 80：/);
     expect(renderedText(row)).toBe('OP 80：1,010,000 分');
     expect(queryByText(/^OP 80：1,007,667/)).toBeNull();
     expect(getByText(/公式最低分 1,007,667 分低于 AJC 的合法最低分 1,010,000 分/)).toBeTruthy();
-    // 组合验证：界面展示的分数必须通过正算用的同一个输入边界
     const displayed = scoreFromRow(renderedText(row));
     expect(displayed).toBe(1_010_000);
     expect(parseChunithmChartInput({ levelValue: 13.7, score: displayed, clear: 'ajc' }).violations)
       .toEqual([]);
 
-    // 换成无灯后奖励从 1.25 降到 0：78.5 + 分数差×0.0015 ≥ 80 → 1,000 分 → 1,008,500
     await fireEvent.press(getByLabelText('无（无连击奖励）'));
     const unlit = getByText(/^OP 80：/);
     expect(renderedText(unlit)).toBe('OP 80：1,008,500 分');
@@ -205,7 +196,6 @@ describe('chunithm tool screens', () => {
   });
 
   it('reverses a target rating into a lamp legal minimum score', async () => {
-    // 默认定数 14.0：目标 15.00 的公式解是 1,000,000，而 AJC 只可能出现在 1,010,000
     const { getByText } = await render(<ChunithmRatingToolScreen />);
     const row = getByText(/^Rating 15\.00：/);
     expect(renderedText(row)).toBe('Rating 15.00：1,010,000 分');
@@ -218,7 +208,6 @@ describe('chunithm tool screens', () => {
   it('reports an unreachable reverse target instead of a score', async () => {
     const { getByText, getByLabelText } = await render(<ChunithmRatingToolScreen />);
     await fireEvent.changeText(getByLabelText('定数'), '13.7');
-    // 13.7 的 AJC 满分是 83.50，目标 83.51 不可达
     await fireEvent.changeText(getByLabelText('目标 OVER POWER'), '83.51');
     expect(renderedText(getByText(/^OP 83\.51：/))).toBe('OP 83.51：不可达');
   });
@@ -234,7 +223,6 @@ describe('chunithm tool screens', () => {
     const { getByText, getByLabelText } = await render(<ChunithmRatingToolScreen />);
     expect(getByLabelText('定数').props.value).toBe('12.5');
     expect(getByLabelText('分数').props.value).toBe('1009000');
-    // 12.5 + 2.15 = 14.65，1009000 → Rating 14.65
     expect(getByText(/Rating：14\.65/)).toBeTruthy();
   });
 

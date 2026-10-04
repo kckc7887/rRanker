@@ -90,12 +90,10 @@ function withoutChartNotes(snapshot: ScoreSnapshot): ScoreSnapshot {
   };
 }
 
-/** 缓存优先渲染时的来源标记：label 原样保留，保留原提供方并标记过期（后台刷新中）。 */
 export function staleCachedSnapshot(snapshot: ScoreSnapshot): ScoreSnapshot {
   return staleCached(snapshot);
 }
 
-/** 同一账号并发 load 共享一次网络请求。 */
 const inflightScoreLoads = createInflightGuard<string>();
 
 export class ScoreService {

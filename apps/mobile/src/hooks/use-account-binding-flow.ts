@@ -5,7 +5,6 @@ import { findGame, findProvider, type GameId, type ProviderId } from '@/domain/g
 import { useGamePickerUi } from '@/state/game-picker-ui';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 
-/** 一个绑定面板同一时间只持有一个请求；隐藏、取消或释放使旧请求永久失效。 */
 export function useAccountBindingRequest(visible: boolean, cancelOnBackground = true) {
   const lifecycle = useAppLifecycle();
   const eligible = useRef(true);

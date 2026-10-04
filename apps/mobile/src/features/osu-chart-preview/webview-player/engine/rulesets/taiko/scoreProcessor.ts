@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -31,22 +31,15 @@ import { computeModMultiplier, computeTaikoModMultiplierV2 } from '../../utils/s
 import { slideDurationMs } from '../../utils/sliderDuration';
 import type { TaikoSession, TaikoHitObject } from './types';
 
-/**
- * Taiko ScoreV1 (stable) — port of TaikoLegacyScoreSimulator.simulateHit.
- * Three buckets; modMult scales only comboScore, at display time:
- *
- *   displayed = accuracyScore + bonusScore + round(comboScore × modMult)
- *
- * Lazer (ScoreV2) replays use computeTaikoScoreV2Timeline below.
- */
+/** V1 显示分数=准确率分+奖励分+round(combo 分×Mod 倍率)。 */
 
 const KIAI_F32 = Math.fround(1.2);
-// Stable's `(int)(x * 1.2f)`: single-precision multiply, truncate toward zero.
+/** 乘法按 float32，再向零截断。 */
 function applyKiai(x: number): number {
   return Math.trunc(Math.fround(x * KIAI_F32));
 }
 
-// C# Math.Round default: banker's rounding (half to even).
+/** C# Math.Round 的中点采用向偶数舍入。 */
 function roundToEven(x: number): number {
   const floor = Math.floor(x);
   const diff  = x - floor;
@@ -81,7 +74,7 @@ function computeTaikoGrade(
   else if (r300 > 0.6)                                         g = 'C';
   else                                                         g = 'D';
 
-  const silver = (mods & ((1 << 3) | (1 << 10))) !== 0;  // HD or FL
+  const silver = (mods & ((1 << 3) | (1 << 10))) !== 0;
   if (silver) {
     if (g === 'S')  return 'SH';
     if (g === 'SS') return 'SSH';
@@ -89,14 +82,7 @@ function computeTaikoGrade(
   return g;
 }
 
-/**
- * Taiko `peppyStars + 1` for ScoreV1's combo bonus formula.
- *
- * raw = ((HP+OD+CS+density)/38f × 5f) in f32; peppyStars = round-to-even(raw);
- * +1 then clamp to [2, 7]. Note: taiko's `peppyStars + 1` is one higher than
- * std's diff multiplier at the same raw value — std uses Math.Round(raw)
- * directly. HR/EZ do NOT modify peppyStars (it reads the raw beatmap values).
- */
+/** peppyStars 按未加 Mod 的 HP/OD/CS 和密度计算，向偶数舍入后加 1，限制为 2..7。 */
 export interface PeppyStarsBreakdown {
   hp: number; od: number; cs: number;
   objectCount: number; drainSec: number; density: number;
@@ -104,7 +90,6 @@ export interface PeppyStarsBreakdown {
   peppyStars: number; peppyStarsPlusOne: number;
 }
 
-/** Compute the ScoreV1 difficulty-multiplier breakdown for `beatmap` (see {@link PeppyStarsBreakdown}). */
 export function taikoPeppyStarsBreakdown(beatmap: BeatmapData): PeppyStarsBreakdown {
   const hos = beatmap.hitObjects;
   const hp = beatmap.hpDrainRate;
@@ -121,7 +106,7 @@ export function taikoPeppyStarsBreakdown(beatmap: BeatmapData): PeppyStarsBreakd
       else if (o.type === 'slider')  end = o.time + slideDurationMs(beatmap, o) * o.slides;
       if (end > lastEnd) lastEnd = end;
     }
-    // Lazer uses Math.Round on drainTime here (not trunc).
+
     drainSec = Math.max(1, Math.round((lastEnd - first) / 1000));
   }
 
@@ -137,17 +122,10 @@ export function taikoPeppyStarsBreakdown(beatmap: BeatmapData): PeppyStarsBreakd
   return { hp, od, cs, objectCount, drainSec, density, sum, raw, peppyStars, peppyStarsPlusOne };
 }
 
-/** ScoreV1 per-map score multiplier: 16 × clamped (peppyStars + 1). */
 export function taikoScoreMultiplier(beatmap: BeatmapData): number {
   return 16 * taikoPeppyStarsBreakdown(beatmap).peppyStarsPlusOne;
 }
 
-/**
- * Build the stable (ScoreV1) score/combo/grade timeline from the session's
- * judged results, one frame per scoring event, sorted by time. Kiai applies
- * stable's `(int)(x * 1.2f)` (f32 multiply, truncate); strong hits double both
- * the base and combo-bonus portions.
- */
 export function computeTaikoScoreV1Timeline(
   session: TaikoSession,
   modDiff: ModDifficulty,
@@ -157,7 +135,6 @@ export function computeTaikoScoreV1Timeline(
   const modMult = computeModMultiplier(modDiff.mods);
   const peppyStarsPlusOne = taikoPeppyStarsBreakdown(beatmap).peppyStarsPlusOne;
 
-  // Drumroll/swell only; used to resolve a tick result's parent for strong + kiai-time lookup.
   const objBySrc = new Map<number, TaikoHitObject>();
   for (const o of objects) {
     if (o.kind === 'drumroll' || o.kind === 'swell') {
@@ -180,7 +157,7 @@ export function computeTaikoScoreV1Timeline(
       const obj = objBySrc.get(r.objectIndex);
 
       if (r.strong === true) {
-        // Swell completion: kiai at swell.EndTime (not StartTime); always strong-doubled.
+        /** swell 完成的 kiai 状态取 EndTime，roll tick 则取 roll StartTime。 */
         const swellEnd = obj?.kind === 'swell' ? obj.endTime : r.time;
         const kiai = activeKiaiAt(beatmap, swellEnd);
         const base = 300;
@@ -194,16 +171,15 @@ export function computeTaikoScoreV1Timeline(
         bonusScore += scoreIncrease - comboScoreIncrease;
         comboScore += comboScoreIncrease;
       } else if (obj?.kind === 'drumroll') {
-        // DrumRollTick: kiai at parent roll's StartTime, not tick's own time.
+
         const kiai = activeKiaiAt(beatmap, obj.time);
         let inc = 300;
         if (kiai) inc = applyKiai(inc);
         if (obj.isStrong) inc += Math.trunc(inc / 5);
         bonusScore += inc;
       } else {
-        // SwellTick: lazer's legacy-score simulator omits kiai here, but stable's
-        // runtime applies it — following the simulator produced totals ~1% low
-        // on kiai-heavy maps, so we match stable.
+        /** swell tick 沿用 stable 运行时的 kiai 加分。 */
+
         const kiai = activeKiaiAt(beatmap, r.time);
         let inc = 300;
         if (kiai) inc = applyKiai(inc);
@@ -216,7 +192,6 @@ export function computeTaikoScoreV1Timeline(
       continue;
     }
 
-    // Judgement-0 (wrong colour OR out-of-window) breaks combo.
     if (r.judgement === 0) {
       combo = 0;
       miss++;
@@ -229,12 +204,11 @@ export function computeTaikoScoreV1Timeline(
 
     if (r.judgement > 0) {
       const base = r.judgement;
-      // Per-hit combo bonus scales with base via int division: floor(300/35)=8, floor(100/35)=2.
+
       const comboBefore = Math.max(combo - 1, 0);
       const comboTerm   = Math.min(Math.floor(comboBefore / 10), 10);
       const comboBonusRaw = Math.trunc(base / 35) * 2 * peppyStarsPlusOne * comboTerm;
 
-      // Strong doubles both scoreIncrease and comboScoreIncrease — accuracy then receives 2*base.
       const kiai = activeKiaiAt(beatmap, r.time);
       let scoreIncrease = base + comboBonusRaw;
       if (kiai) scoreIncrease = applyKiai(scoreIncrease);
@@ -255,20 +229,7 @@ export function computeTaikoScoreV1Timeline(
   return frames;
 }
 
-/**
- * Taiko Standardised score (ScoreV2) — port of TaikoScoreProcessor.ComputeTotalScore.
- *
- *   inner = 250_000 * (comboPortion / maxComboPortion)
- *         + 750_000 * pow(accuracy, 3.6) * (accCount / maxAccCount)
- *         + bonusPortion
- *   score = round(round(inner) * modMultiplier)
- *
- * Accuracy = (great + 0.5·ok) / (great+ok+miss) — matches computeTaikoAccTimeline.
- *
- * Known gap: hitJudge doesn't emit per-tick strong-nested results, so we
- * approximate by adding the +150 strong bonus alongside every tick hit on a
- * strong drumroll (stable's "no mash-to-fail drumroll" makes this load-bearing).
- */
+/** V2=round(round(250k×comboProgress+750k×Acc^3.6×accProgress+bonus)×Mod)。 */
 
 const LOG4 = Math.log(4);
 const LOG4_400 = Math.log(400) / LOG4;
@@ -296,12 +257,6 @@ function computeTaikoLazerGrade(accuracy: number, miss: number, mods: number): G
   return g;
 }
 
-/**
- * Build the lazer (Standardised/ScoreV2) score/combo/grade timeline from the
- * session's judged results, sorted by time. See the formula block above; the
- * SmallBonus 10 / LargeBonus 50 (× strongScaleValue 7 for strong hits) values
- * come from lazer's taiko Judgement classes.
- */
 export function computeTaikoScoreV2Timeline(
   session: TaikoSession,
   modDiff: ModDifficulty,
@@ -318,7 +273,6 @@ export function computeTaikoScoreV2Timeline(
     }
   }
 
-  // Pre-pass: compute the denominators assuming every result is MaxResult.
   let maxComboPortion = 0;
   let maxAccCount = 0;
   let simCombo = 0;
@@ -346,10 +300,10 @@ export function computeTaikoScoreV2Timeline(
     if (r.comboIgnore) {
       const parent = objBySrc.get(r.objectIndex);
       if (r.strong === true) {
-        // Swell LargeBonus: strongScaleValue=1 (Swell is not a StrongNestedHitObject).
+
         bonusPortion += 50;
       } else if (parent?.kind === 'drumroll') {
-        // DrumRollTick: SmallBonus 10; strong-nested +150 approximated (see header).
+        /** strong roll tick 额外奖励 150，当前判定未单独生成 strong 子结果。 */
         bonusPortion += 10;
         if (parent.isStrong) bonusPortion += 150;
       }
@@ -362,17 +316,17 @@ export function computeTaikoScoreV2Timeline(
       } else {
         combo += 1;
         if (combo > maxCombo) maxCombo = combo;
-        const base = r.judgement === 300 ? 300 : 150;  // taiko Ok = 150
+        const base = r.judgement === 300 ? 300 : 150;
         accBase += base;
         accCount += 1;
         comboPortion += base * taikoComboFactor(combo);
         if (r.judgement === 300) c300++; else c100++;
-        // Hit-nested LargeBonus 50 × strongScaleValue 7 = 350.
+
         if (r.strong === true) bonusPortion += 350;
       }
     }
 
-    // Running accuracy uses judged-so-far denominator, not map-wide max.
+    /** 运行准确率的分母为已判定音符数。 */
     const accuracy = accBase > 0 || accCount > 0
       ? (accCount > 0 ? accBase / (accCount * 300) : 0)
       : 0;

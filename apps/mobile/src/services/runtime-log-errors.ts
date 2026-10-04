@@ -10,7 +10,7 @@ const installed = new WeakSet<RuntimeExceptionHost>();
 export function installRuntimeLogErrors(host: RuntimeExceptionHost, record: ErrorHandler): void {
   if (installed.has(host)) return;
   const capture: ErrorHandler = (error, fatal) => {
-    try { record(error, fatal); } catch { /* 必须继续执行平台原有异常处理。 */ }
+    try { record(error, fatal); } catch {}
   };
   if (host.RN$useAlwaysAvailableJSErrorHandling !== false && typeof host.RN$registerExceptionListener === 'function') {
     try {
@@ -20,7 +20,7 @@ export function installRuntimeLogErrors(host: RuntimeExceptionHost, record: Erro
       });
       installed.add(host);
       return;
-    } catch { /* 原生监听不可用时尝试现有全局处理器。 */ }
+    } catch {}
   }
   if (host.ErrorUtils) {
     try {
@@ -30,6 +30,6 @@ export function installRuntimeLogErrors(host: RuntimeExceptionHost, record: Erro
         original(error, fatal);
       });
       installed.add(host);
-    } catch { /* 日志初始化失败不得阻止应用启动。 */ }
+    } catch {}
   }
 }

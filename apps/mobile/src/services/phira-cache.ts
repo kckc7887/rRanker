@@ -52,12 +52,6 @@ export class PhiraCache {
   savePlayer(id: number, value: PhiraPlayerSnapshot, assertCurrent?: () => void) { return this.repository.saveResource(phiraPlayerCacheKey(id), PHIRA_PLAYER_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent); }
   async loadBests(id: number): Promise<PhiraBestSnapshot | null> { return validated(await this.repository.getResource(phiraBestCacheKey(id), PHIRA_BEST_SCHEMA_VERSION), bestSchema); }
   saveBests(id: number, value: PhiraBestSnapshot, assertCurrent?: () => void) { return this.repository.saveResource(phiraBestCacheKey(id), PHIRA_BEST_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent); }
-  /**
-   * 合并查询到的 bests 到账号快照。
-   * 提交走仓储的原子读改写，并发的总览刷新与按谱面查询不会互相覆盖；
-   * 同一谱面并发提交时按提交顺序后者获胜。
-   * values 为空表示本次没有成功项：只读回既有快照（可能不存在），不写入、不推进 updatedAt。
-   */
   async mergeBests(id: number, values: readonly PhiraQueriedBest[], assertCurrent?: () => void): Promise<PhiraBestSnapshot | null> {
     if (values.length === 0) {
       const previous = await this.loadBests(id);

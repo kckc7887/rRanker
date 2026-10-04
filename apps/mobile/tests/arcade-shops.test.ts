@@ -140,7 +140,7 @@ describe('arcade opening hours formatting', () => {
     expect(formatArcadeOpeningHoursLines([
       [{ hour: 10, minute: 0 }, { hour: 22, minute: 30 }],
     ])).toEqual(['每日 10:00–22:30']);
-    // index 0 = Sunday … 6 = Saturday (Date#getDay)
+    /** Date#getDay 的 0 为周日。 */
     expect(formatArcadeOpeningHoursLines([
       [{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }],
       [{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }],

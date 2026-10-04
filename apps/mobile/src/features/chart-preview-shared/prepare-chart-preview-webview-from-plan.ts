@@ -1,16 +1,3 @@
-/**
- * 谱面确认 WebView prepare 层声明式清单执行器（公共路径）：
- * 各游戏 prepare 模块只声明清单（stage 目录名、落盘资产、data URL 资产、
- * 额外写盘回调、HTML 模板与 buildHtml），由本执行器完成
- * 「stage 目录 → 落盘资产 → data URL 资产 → 额外写盘 → 读模板 →
- * 生成并写入 index.html」，落盘文件集合与返回值由清单决定，不感知具体游戏。
- * 落盘与资产解析复用本目录 chart-preview-assets 公共层，不重复实现。
- * 资产来源用判别联合表达：moduleId 为本地 bundle 资产（每次覆盖落盘），
- * url + bytes 为对象存储远程资产（bytes 只作进度权重；已有非空缓存则跳过下载）。
- * 远程资产有限并发下载；若提供 remoteCacheDirectory，先写入该目录再复制字节到本次 session。
- * 可选 onProgress 按远程字节权重报告下载，writer 与 HTML 占末段，避免下载结束仍卡住。
- */
-
 import { Directory, File } from 'expo-file-system';
 import { loadItemsBounded } from '@/services/offset-pagination';
 import { createInflightGuard, captureResourceWrites, resourceWriteGeneration } from '@/services/snapshot-cache-utils';
@@ -40,21 +27,21 @@ export type ChartPreviewDataUrlAsset =
   | { key: string; fileName: string; url: string; bytes: number; cacheRevision?: string };
 
 export type ChartPreviewWebviewPlan = {
-  /** stage 目录名（舞萌默认 'rranker-chart-preview'，其它游戏自定义）。 */
+
   directoryName: string;
-  /** 由调用方提前创建的同一会话目录；用于先写音乐/RPE 再准备播放器。 */
+
   directory?: Directory;
-  /** 远程资产的持久缓存目录；缺省则直接写入本次 session。 */
+
   remoteCacheDirectory?: Directory;
-  /** 按清单落盘的资产，fileName 支持 'skin/Tap2.png' 形式的相对路径。 */
+
   stagedAssets: readonly ChartPreviewStagedAsset[];
-  /** 生成 data:audio/wav data URL 的资产，结果以 key 汇入传给 buildHtml 的 Record。 */
+
   dataUrlAssets?: readonly ChartPreviewDataUrlAsset[];
-  /** 额外写盘回调（如 music-data.js）。 */
+
   writers?: readonly ((directory: Directory, signal?: AbortSignal) => Promise<void>)[];
-  /** HTML 模板资产 moduleId（readAssetText 读取）。 */
+
   htmlModuleId: number;
-  /** 由模板、data URL 集合与 stage 目录生成最终 index.html 内容。 */
+
   buildHtml: (template: string, dataUrls: Record<string, string>, directory: Directory) => string;
 };
 

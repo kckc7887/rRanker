@@ -276,7 +276,7 @@ function colourFilter(red: number, green: number, blue: number): string {
 }
 
 function supportsNativeColourFilter(ctx: CanvasRenderingContext2D): boolean {
-  // OffscreenCanvas accepts URL filters but silently ignores them in Chromium.
+  /** Chromium 的 OffscreenCanvas 接受 URL 滤镜，但不会应用。 */
   if (typeof document === 'undefined' || typeof CanvasRenderingContext2D === 'undefined' || !(ctx instanceof CanvasRenderingContext2D)) return false;
   if (nativeColourFilter !== undefined) return nativeColourFilter;
   const canvas = document.createElement('canvas');

@@ -73,7 +73,7 @@ beforeEach(() => {
 
 afterEach(async () => { await cleanup(); queryClient.clear(); });
 
-// React Query publishes observer updates in a scheduled batch after the write promise settles.
+/** React Query 的观察更新晚于写入 Promise 完成。 */
 const publishUpdates = () => new Promise<void>(resolve => { setTimeout(resolve, 0); });
 
 describe('公共个人条目写入边界', () => {
@@ -121,7 +121,6 @@ describe('公共个人条目写入边界', () => {
       if (transition === 'game-switch') mockGameId = 'maimai';
       if (transition === 'background') { mockForeground.abort(); mockForegroundReady = false; }
       await hook.rerender(undefined);
-      // Returning to the original view must not revive a notification from its old lifetime.
       mockGameId = 'rizline'; mockActive = true; mockForegroundReady = true; mockForegroundGeneration += 1;
       mockForeground = new AbortController();
       await hook.rerender(undefined);

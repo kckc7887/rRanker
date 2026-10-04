@@ -8,10 +8,6 @@ import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 
 const LOCAL_RATING_CONCURRENCY = 4;
 
-/**
- * 启动后后台补齐本地玩家账号的真实 Rating。
- * 首帧后再读取完整成绩，避免启动时为每个账号解析大型数据。
- */
 export async function hydrateLocalAccountRatings(
   repository: SnapshotRepository = new SqliteSnapshotRepository(),
   signal?: AbortSignal,

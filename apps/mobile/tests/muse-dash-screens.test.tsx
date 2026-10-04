@@ -316,7 +316,6 @@ describe('Muse Dash screens', () => {
     await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
     await fireEvent.press(screen.getByLabelText('筛选成就 FC'));
 
-    // 失败项即使是 ACC 100 也不算已确认 AP/FC
     expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(2);
     expect(screen.queryAllByTestId('musedash-score-0-47-3')).toHaveLength(0);
     expect(screen.getByText('1 条成绩的成就明细读取失败，筛选只使用已确认的结果。')).toBeTruthy();
@@ -324,7 +323,6 @@ describe('Muse Dash screens', () => {
     await fireEvent.press(screen.getByLabelText('重试失败的成就明细'));
     expect(mockRetryFailedDetails).toHaveBeenCalledTimes(1);
 
-    // 重试成功后失败提示消失，当前筛选结果恢复为 3 条
     mockMissMap = new Map([['0-47:3', 0], ['0-47:1', 0], ['1-1:2', 0]]);
     mockFailedDetailCount = 0;
     await act(async () => { screen.rerender(<MuseDashRecordsScreen />); });

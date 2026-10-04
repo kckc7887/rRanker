@@ -1,7 +1,6 @@
 export const CIRCLE_FEEDBACK_MS = 160;
 export const DRUM_FEEDBACK_MS = 60;
 
-/** A fixed-size ring at the original hit position. No travel, particles or scale punch. */
 export function drawFlatCircleFeedback(
   ctx: CanvasRenderingContext2D, x: number, y: number, radius: number, color: string, ageMs: number,
 ): void {
@@ -20,7 +19,7 @@ export function drawFlatCircleFeedback(
 
 type DrumAction = 'LeftCentre' | 'RightCentre' | 'LeftRim' | 'RightRim';
 
-/** Both built-in textures are left halves, with the circle centre on their right edge. */
+/** 内置半鼓素材的圆心在右缘，右半通过镜像绘制。 */
 export function drawFlatInputDrum(
   ctx: CanvasRenderingContext2D, active: Readonly<Record<DrumAction, number>>, timeMs: number,
   images: ReadonlyMap<string, ImageBitmap> | undefined, x: number, y: number, width: number, height: number,
@@ -36,7 +35,7 @@ export function drawFlatInputDrum(
     ctx.globalAlpha *= 1 - age / DRUM_FEEDBACK_MS;
     ctx.translate(x + (right ? width : 0), y);
     if (right) ctx.scale(-1, 1);
-    // Fit the exact half-box, independent of texture resolution or legacy skin-version offsets.
+
     ctx.drawImage(image, 0, 0, width / 2, height);
     ctx.restore();
   };

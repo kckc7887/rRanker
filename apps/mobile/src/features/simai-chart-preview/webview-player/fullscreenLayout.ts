@@ -7,7 +7,7 @@ export type ChartPreviewCanvasSizeInput = {
   chartCount?: 1 | 2;
 };
 
-/** Buddy 同屏时两个画布之间的间距（逻辑像素）。 */
+/** 双画布间距，单位为逻辑像素。 */
 export const CHART_PREVIEW_DUAL_GAP = 8;
 
 export function chartPreviewCanvasSize({

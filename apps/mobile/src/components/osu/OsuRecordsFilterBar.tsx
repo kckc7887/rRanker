@@ -34,13 +34,11 @@ function modLabel(flag: string): string {
   return flag === OSU_MOD_FILTER_NONE ? '无模组' : flag;
 }
 
-/** 模组触发器值标签：空选「全部」；NM 显示「无模组」；其余 acronym 以「 · 」连接（同曲库页多选口径）。 */
 export function osuModsValueLabel(mods: readonly string[]): string {
   if (mods.length === 0) return '全部';
   return mods.map(modLabel).join(' · ');
 }
 
-/** 收起态摘要：仅列生效条件（全默认时「全部」）；模组以 acronym「+」连接（NM 显示「无模组」）。 */
 export function buildOsuRecordsFilterSummary({
   mods,
   starMin,
@@ -59,10 +57,6 @@ export function buildOsuRecordsFilterSummary({
   ]);
 }
 
-/**
- * osu! 成绩筛选栏：模组多选（NM 无模组与其余互斥）+ 星数/达成率/PP 三组上下限；
- * 复用公共 FilterShell / FilterCheckboxList / 数值范围行（同曲库页与 Phigros 数值行模式）。
- */
 export function OsuRecordsFilterBar({
   collapsed,
   gameId = 'osu-standard',

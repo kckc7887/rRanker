@@ -90,7 +90,7 @@ type ProgressListener = (progress: PhigrosFontProgress) => void;
 
 export type PreparePhigrosFontsOptions = {
   signal?: AbortSignal;
-  /** 仅准备这些字体；未提供时准备完整清单。核心字体始终包含。 */
+
   neededNames?: readonly string[];
 };
 
@@ -198,7 +198,6 @@ export function createPhigrosFontPreparer(
 
 export const preparePhigrosFonts = createPhigrosFontPreparer();
 
-/** 清除成绩图字体本地下载缓存（Documents/rranker/phigros-fonts）。 */
 export function clearPhigrosFontCache(): void {
   invalidateResourceWrites('phigros');
   clearFontCacheDirectory('phigros-fonts');

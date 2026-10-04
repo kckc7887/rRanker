@@ -30,7 +30,6 @@ export const majdataSource = () => snapshotSource({ kind: 'majdata-net', label: 
 export const majdataAccountKey = (id: string) => `majdata-net:account:${id}`;
 export const majdataSongKey = (id: string) => `majdata-net:song:${id}`;
 
-/** 缓存首屏不占用网络槽位；所有实际歌曲请求共用四路上限。 */
 async function requestMajdataSong(id: string, signal: AbortSignal, foregroundSignal: AbortSignal, assertCurrent: () => void): Promise<MajdataSong> {
   return songLoads(async () => {
     assertCurrent();
@@ -112,7 +111,6 @@ export async function loadMajdataSongSnapshot(id: string): Promise<{
   };
 }
 
-/** 一次歌曲读取：数据本身加上它是否来自本地快照。 */
 type MajdataSongLoad = { song: MajdataSong; fromCache: boolean; source: DataSource };
 
 function cachedSongLoad(snapshot: MajdataSongSnapshot): MajdataSongLoad {
@@ -123,10 +121,6 @@ function cachedSongLoad(snapshot: MajdataSongSnapshot): MajdataSongLoad {
   };
 }
 
-/**
- * 歌曲详情与谱面文本的共享请求入口。
- * 网络失败时回退本地快照，回退结果带 `fromCache` 与过期来源，调用端不得把它当成刷新成功。
- */
 async function loadMajdataSongCurrent(id: string, signal?: AbortSignal): Promise<MajdataSongLoad> {
   const assertCurrent = captureResourceWrites('majdata-net');
   return resourceLoads.share(requestKey(majdataSongKey(id)), async requestSignal => {
@@ -173,7 +167,6 @@ export async function loadMajdataSong(
         return cached ? { song: cached.song, fromCache: true, source: cachedSnapshotSource(cached.source) } : null;
       },
       loadFresh: requestSignal => loadMajdataSongCurrent(id, requestSignal),
-      // 服务自己声明哪份数据来自本地快照，兜底不会被包装成刷新成功。
       isFallback: value => value.fromCache,
       onFresh: value => { assertCurrent(); onFresh?.(value.song); },
       onFallback: value => { assertCurrent(); onFallback?.(value.song); },

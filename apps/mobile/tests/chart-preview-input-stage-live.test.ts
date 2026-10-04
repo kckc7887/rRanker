@@ -1,14 +1,4 @@
-/**
- * 谱面确认“传入阶段” live 演示（默认跳过，仅在显式开启时联网执行）：
- *   $env:CHART_PREVIEW_INPUT_STAGE_LIVE='1'; pnpm test:unit -- tests/chart-preview-input-stage-live.test.ts
- *
- * 用与谱面确认屏幕完全相同的公共实现（chart-preview-input.ts）跑真实数据：
- * - Phigros 测试列表 5 首问题歌曲：经 OSS current/catalog/manifest 定位
- *   每个存在难度的谱面/音乐/曲绘，并验证资源 URL 实际可读取、谱面 JSON 可解析。
- * - Phira 测试列表 7 个问题谱面：经社区 API + 谱面包解包构建播放器配置，
- *   验证谱面文本、音乐 base64、RPE 表演素材（extra.json/shader/落盘资源）完整传入。
- * - 用真实播放器 HTML 模板验证配置注入不截断、不丢字符。
- */
+/** 联网检查：CHART_PREVIEW_INPUT_STAGE_LIVE=1 npm run test:unit -- tests/chart-preview-input-stage-live.test.ts。 */
 
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -80,7 +70,6 @@ live('谱面确认传入阶段 live 演示', () => {
             songId,
             difficulty: ['EZ', 'HD', 'IN', 'AT'][levelIndex]!,
           }, controller.signal)).catch((error: unknown) => {
-            // 目录中没有的难度（如 Ramification 无 AT）必须给出明确错误而不是静默。
             const message = error instanceof Error ? error.message : String(error);
             if (/不存在 .* 难度/.test(message)) return null;
             throw error;
@@ -133,13 +122,9 @@ live('谱面确认传入阶段 live 演示', () => {
         );
         expect(prepared.config.game).toBe('phira');
         expect(prepared.config.title).toBe(chart.name);
-
-        // 谱面文本完整且可解析。
         expect(prepared.config.chartText).toBeTruthy();
         const chartJson = JSON.parse(prepared.config.chartText!) as { judgeLineList?: unknown[] };
         expect(Array.isArray(chartJson.judgeLineList)).toBe(true);
-
-        // 音乐 base64 与谱面包原始字节一一对应。
         expect(prepared.musicDataBase64).toBeTruthy();
         const musicBytes = [...staged.entries()].find(([name]) => name.endsWith('.mp3'))?.[1];
         expect(musicBytes).toBeTruthy();
@@ -149,7 +134,6 @@ live('谱面确认传入阶段 live 演示', () => {
           expect(prepared.config.rpeAssets?.basePath).toBe(`./rpe/${chartId}/`);
           expect(prepared.config.rpeAssets?.infoYml).toBeTruthy();
         }
-        // 35829 是带完整演出的特殊谱面：extra.json + shader + 皮肤贴图必须传入。
         if (chartId === 35829) {
           expect(prepared.config.format).toBe('rpe');
           expect(prepared.config.rpeAssets?.extraJson).toBeTruthy();
@@ -158,7 +142,6 @@ live('谱面确认传入阶段 live 演示', () => {
             expect(staged.has(`rpe/35829/${skin}`)).toBe(true);
           }
         }
-        // 66661 是最大社区谱面（约 24MB），必须整体注入不截断。
         if (chartId === 66661) {
           expect(prepared.config.chartText!.length).toBeGreaterThan(20_000_000);
         }
@@ -193,7 +176,6 @@ live('谱面确认传入阶段 live 演示', () => {
       const roundtrip = JSON.parse(injected!) as { chartText?: string; settings?: { playbackSpeed?: number } };
       expect(roundtrip.chartText).toBe(prepared.config.chartText);
       expect(roundtrip.settings?.playbackSpeed).toBe(1.25);
-      // 注入脚本本身的 JSON 化输出与配置完全一致（公共序列化路径）。
       expect(injected).toBe(buildPhigrosChartPreviewConfigJson(prepared.config));
     } finally {
       clearTimeout(timeout);

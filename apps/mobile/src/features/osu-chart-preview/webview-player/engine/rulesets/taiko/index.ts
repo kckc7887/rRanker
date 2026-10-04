@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -50,12 +50,6 @@ import type { TaikoSession, SwellProgress } from './types';
 export type { TaikoSession, TaikoHitObject, TaikoHit, TaikoDrumRoll, TaikoSwell, SwellProgress } from './types';
 export type { TaikoAction, TaikoInputEvent } from './input';
 
-/**
- * osu!taiko implementation of the {@link Ruleset} interface. `build` converts the
- * beatmap through the TaikoBeatmapConverter port (native taiko or std converts),
- * judges the replay's key presses, and precomputes scroll velocities plus all HUD
- * timelines; `draw` renders the scrolling lane via `drawTaikoPlayfield`.
- */
 export const taikoRuleset: Ruleset<TaikoSession> = {
   build(
     beatmap: BeatmapData,
@@ -64,8 +58,7 @@ export const taikoRuleset: Ruleset<TaikoSession> = {
     skin: SkinAssets,
     _qualityTotal: number,
   ): TaikoSession {
-    // Only native taiko (mode 1) or convertible std (mode 0) maps are valid here;
-    // callers must filter out mania/catch beatmaps before dispatching to this ruleset.
+
     console.assert(
       beatmap.mode === 1 || beatmap.mode === 0,
       `taikoRuleset received unsupported beatmap.mode=${beatmap.mode}`,
@@ -77,8 +70,7 @@ export const taikoRuleset: Ruleset<TaikoSession> = {
 
     const barLines = computeBarLineTimes(beatmap);
 
-    // OverlappingScrollAlgorithm: per-object velocities locked at each item's own start time.
-    // Constant Speed 只认 lazer acronym CS，stable 位图里没有这一位。
+    /** Constant Speed 仅对应 lazer 的 CS acronym，stable 没有该位。 */
     const isConstantSpeed = modDiff.isConstantSpeed;
     const smFactor = taikoScrollMultiplier(modDiff);
     const objectVel: number[] = new Array(objects.length);
@@ -126,9 +118,8 @@ export const taikoRuleset: Ruleset<TaikoSession> = {
       else          entry.tickTimes.push(r.time);
     }
 
-    // hitJudge emits exactly one result per TaikoHit, carrying that note's unique noteId.
-    // Keyed by noteId (NOT objectIndex/sourceIndex) so stream-converted slider notes — which
-    // share a sourceIndex — each get their own judgement instead of collapsing onto the first.
+    /** 滑条转换的多颗音符共享 sourceIndex，判定必须按唯一 noteId 映射。 */
+
     const hitJudgmentByNote = new Map<number, { time: number; judgement: number }>();
     for (const r of hitResults) {
       if (r.comboIgnore || r.noteId === undefined) continue;
@@ -162,7 +153,7 @@ export const taikoRuleset: Ruleset<TaikoSession> = {
     options: RenderOptions,
   ): void {
     drawTaikoPlayfield(ctx, s, timeMs, options);
-    // Mode A (skin ships taiko-hit300) → playfield explosion only; Mode B → popup. Never both.
+    /** 有 taiko-hit300 素材时使用落点效果，否则使用弹窗。 */
     if (options.showJudgement && !hasTaikoExplosion(s.skin)) {
       drawJudgements(ctx, s.hitResults, timeMs, s.skin, 'taiko');
     }

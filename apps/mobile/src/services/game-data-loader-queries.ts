@@ -6,7 +6,6 @@ import { ensureMaimaiCatalog } from './maimai-catalog-query';
 import { ensureMuseDashAlbums, ensureMuseDashDiffdiff } from './muse-dash-query';
 import type { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import type { DetailedCatalogProvider } from '@/providers/contracts';
-/** 查询适配层提供的曲库端口；加载器不接触查询客户端。 */
 export function gameDataCatalogQueries(client: QueryClient) {
   return {
     rizline: () => ensureRizlineCatalog(client),

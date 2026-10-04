@@ -174,7 +174,7 @@ function mapSong(
     return {
       songId: String(rawSong.id),
       type,
-      // LXNS 固定用 0 标识 U·TA·GE 的接口索引；领域难度仍为 utage，不能映射成 BASIC。
+      /** LXNS 宴谱接口索引固定为 0。 */
       levelIndex,
       level: raw.level,
       difficulty: 'utage',

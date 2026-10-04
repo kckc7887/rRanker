@@ -1,4 +1,4 @@
-/** 打开 Rizline 谱面确认页并检查导航是否生效。 */
+
 
 import type { Href } from 'expo-router';
 import type { RizlineChartPreviewTarget } from './configuration';

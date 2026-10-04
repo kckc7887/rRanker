@@ -96,14 +96,12 @@ function options(overrides: Partial<Params> = {}): Params {
   };
 }
 
-/** 选中来源账号与两个水鱼目标，然后执行一次传输。 */
 async function transferScore(): Promise<{ ok: boolean | undefined; phase: unknown }> {
   const hook = await renderHook(() => useOverviewUpload(options()));
   await act(async () => { hook.result.current.setMaimaiSourceAccountId(source.id); });
   await act(async () => {
     hook.result.current.setMaimaiTransferTargetIds([water.id, waterSecond.id]);
   });
-  // 来源账号本身不计入可写目标（服务会拒绝把自己作为目标），两个水鱼账号可以写入。
   expect(hook.result.current.maimaiTransferTargets
     .filter((target) => target.writable && target.account.id !== source.id)).toHaveLength(2);
   let ok: boolean | undefined;

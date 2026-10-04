@@ -1,4 +1,4 @@
-/** PGR region masks and procedural edge lighting. No external shader or texture assets. */
+
 import { indexPgrBlocks, samplePgrBlock, type PgrBlock } from './pgr-blocks';
 
 const VERTEX = `
@@ -27,7 +27,7 @@ float noise(vec2 p) {
     mix(hash(i + vec2(0., 1.)), hash(i + vec2(1., 1.)), s.x), s.y);
 }
 vec2 field(vec2 p) {
-  // A padded mask preserves offscreen geometry without inventing a screen-edge outline.
+
   vec4 m = texture2D(regions, (p + .06) / 1.12);
   return vec2(abs(m.r - m.g), abs(m.b - m.a));
 }
@@ -41,7 +41,7 @@ void main() {
     noise(p.yx * 79. - time * .4) + n3 * .5 - .75) * .045;
   vec2 sampleUv = quantized + displacement * vec2(resolution.y / resolution.x, 1.);
   vec2 center = field(sampleUv);
-  // Warning rectangles keep their geometric boundary; only enabled areas distort.
+
   center.y = field(uv).y;
   gl_FragColor = vec4(center, displacement / .09 + .5);
 }`;
@@ -84,12 +84,12 @@ void main() {
   vec3 scattered = max(texture2D(scene, uv + refract).rgb - base, 0.) * active;
   float speck = step(.996, fleck(floor(uv * resolution / vec2(2., 4.)) + floor(time * 24.)));
   vec3 sparks = vec3(.25, .035, .07) * speck * max(active, waiting * .4);
-  // Preserve the original canvas outside the effect, including its full pixel resolution.
+
   float coverage = clamp(step(.001, max(active, waiting)) + outline + halo, 0., 1.);
   gl_FragColor = vec4((mix(base, colour, alpha) + scattered * .7 + sparks) * coverage, coverage);
 }`;
 
-/** Four channels: enabled normal/subtract, disabled normal/subtract. MAX keeps overlaps a union. */
+/** 四通道分别记录启用/禁用区域及减区；MAX 使重叠区域取并集。 */
 export class PgrBlockRenderer {
   private readonly canvas = document.createElement('canvas');
   private readonly gl: WebGLRenderingContext;
@@ -201,7 +201,7 @@ export class PgrBlockRenderer {
     }
     const cursor = this.geometry(time, width / height);
     if (!cursor) return;
-    // Bound the auxiliary framebuffer independently of device DPR.
+
     const scale = Math.min(1, Math.sqrt(1_048_576 / (pixelWidth * pixelHeight)));
     const w = Math.max(1, Math.round(pixelWidth * scale)), h = Math.max(1, Math.round(pixelHeight * scale));
     if (w !== this.width || h !== this.height) {

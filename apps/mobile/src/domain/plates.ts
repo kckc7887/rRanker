@@ -4,7 +4,6 @@ import { normalizeSongId } from './catalog';
 const RATE = ['d', 'c', 'b', 'bb', 'bbb', 'a', 'aa', 'aaa', 's', 'sp', 'ss', 'ssp', 'sss', 'sssp'];
 const FC = ['fc', 'fcp', 'ap', 'app'];
 const FS = ['fs', 'fsp', 'fsd', 'fsdp', 'fdx', 'fdxp'];
-/** 版本牌子达成档位；匹配时优先更长后缀（如舞舞）。 */
 export const PLATE_SUFFIX_ORDER = ['極', '将', '神', '舞舞'] as const;
 export type PlateSuffix = (typeof PLATE_SUFFIX_ORDER)[number];
 
@@ -30,7 +29,7 @@ function typeMatches(record: ScoreRecord, requirement: PlateRequirement, songId:
   return !requirement.songTypes?.[songId] || record.type === requirement.songTypes[songId];
 }
 
-/** 返回该曲尚未满足的难度序号（-1 表示任意难度要求未完成）。 */
+/** 难度 -1 表示任意难度要求。 */
 export function unmetDifficultiesForSong(
   requirements: readonly PlateRequirement[],
   songRecords: readonly ScoreRecord[],
@@ -58,9 +57,7 @@ export interface MissingSongProgress {
 }
 
 export interface PlateProgress {
-  /** 要求谱面总数（按难度逐项计）。 */
   total: number;
-  /** 已完成谱面数。 */
   completed: number;
   completedSongIds: string[];
   missingSongIds: string[];
@@ -106,7 +103,6 @@ export function calculatePlateProgress(plate: Plate, records: readonly ScoreReco
 export type PlateTierLabel = '覇者' | PlateSuffix;
 const MAI_PREFIX = '舞';
 const HASHA_LABEL = '覇者' as const;
-/** 舞代：覇者排在極前，其后仍为極/将/神/舞舞。 */
 const MAI_TIER_ORDER: readonly PlateTierLabel[] = [HASHA_LABEL, ...PLATE_SUFFIX_ORDER];
 
 export function parseVersionPlateName(name: string): { prefix: string; label: PlateTierLabel } | null {
@@ -119,7 +115,6 @@ export function parseVersionPlateName(name: string): { prefix: string; label: Pl
   return null;
 }
 
-/** 进度卡说明：档位对应的达成标签与后缀文案。 */
 export function plateRequirementSpec(label: PlateTierLabel): {
   rate?: string;
   fc?: string;
@@ -149,7 +144,6 @@ function tierOrderForPrefix(prefix: string): readonly PlateTierLabel[] {
   return prefix === MAI_PREFIX ? MAI_TIER_ORDER : PLATE_SUFFIX_ORDER;
 }
 
-/** 仅保留版本牌子（前缀 + 極/将/神/舞舞；覇者归入舞代并排在極前），丢弃其它姓名框。 */
 export function groupPlatesForPicker(plates: readonly Plate[]): VersionPlateGroup[] {
   const versionMap = new Map<string, Map<PlateTierLabel, Plate>>();
   const versionOrder: string[] = [];

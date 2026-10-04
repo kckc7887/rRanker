@@ -38,8 +38,7 @@ export function RenameLocalAccountSheet({
     if (!visible) return;
     setDraft(initialName);
     setError('');
-    // Focus after the pageSheet finishes presenting — autoFocus during present
-    // races the keyboard with Native Tabs and can freeze / stretch the tab bar.
+    /** 等 pageSheet 展开后再聚焦，避免 iOS 键盘与转场冲突。 */
     const handle = InteractionManager.runAfterInteractions(() => {
       inputRef.current?.focus();
     });

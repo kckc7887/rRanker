@@ -28,9 +28,8 @@ import {
 import { useAppTheme } from '@/theme/app-theme';
 import { usePhigrosChartVariantSelection } from '@/features/phigros-chart-preview/use-phigros-chart-variant-selection';
 
-/** Phigros 在进入播放器前完成三类资源下载、校验与一次恢复重试。 */
 const PHIGROS_PREPARE_TIMEOUT_MS = 120_000;
-/** 元数据、谱面包和暂存共享同一可取消的准备期限。 */
+/** 元数据、谱面包和暂存共用准备期限。 */
 const PHIRA_PREPARE_TIMEOUT_MS = 120_000;
 
 type MappedPreview =
@@ -91,7 +90,6 @@ export default function PhigrosChartPreviewScreen() {
       }
       return mapParams(params.game, params.songId, params.levelIndex, params.chartId, params.title);
     },
-    // 字段级依赖避免路由对象引用变化触发重复准备。
     [params.requestId, handedRequest, params.game, params.songId, params.levelIndex, params.chartId, params.title],
   );
   const variantSelection = usePhigrosChartVariantSelection(!('error' in mapped) && mapped.game === 'phigros' ? mapped : null);

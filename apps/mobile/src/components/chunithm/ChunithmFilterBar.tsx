@@ -190,7 +190,6 @@ export function ChunithmFilterBar({
   );
 }
 
-// Chunithm 专属样式：横向芯片滚动收缩与评价双下拉行；其余公共样式见 game-content/FilterShell。
 const styles = StyleSheet.create({
   chipScroll: { flexGrow: 0, flexShrink: 1 },
   rankDropdownRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'stretch', gap: 8 },

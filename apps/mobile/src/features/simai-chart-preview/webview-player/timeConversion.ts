@@ -89,19 +89,11 @@ export function resolvePlaybackRange(
 /** 谱面确认预览曲的固定音乐偏移（秒）；播放、范围与背景视频共用同一值。 */
 export const SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS = 0;
 
-/**
- * 播放位置（拍）与毫秒、音乐秒之间的换算给同一份主谱时间轴使用。
- * 会话与视图共用该对象的实例，不各自换算。
- */
 export interface SimaiPlaybackTimeline {
   readonly totalBeats: number;
-  /** 拍 → 谱面毫秒。 */
   beatsToMs(beats: number): number;
-  /** 谱面毫秒 → 拍。 */
   beatsAtMs(ms: number): number;
-  /** 拍 → 音乐秒数。 */
   musicSecondsAt(beats: number): number;
-  /** 音乐秒数 → 拍。 */
   beatsAtMusicSeconds(seconds: number): number;
 }
 

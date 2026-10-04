@@ -9,7 +9,7 @@ const UNUSED_RUNTIME_BASENAMES = new Set([
   'touchhold_off.png',
 ]);
 
-/** One skin directory; content revision prevents same-size stale objects from sharing cache identity. */
+/** 内容修订参与缓存身份，避免复用同大小的旧皮肤。 */
 export function maimaiChartPreviewSkinStagePath(path: string): string {
   return `skin/${MAIMAI_CHART_PREVIEW_SKIN_REVISION}_${path.split('/').join('_')}`;
 }
@@ -29,7 +29,7 @@ export const MAIMAI_CHART_PREVIEW_SKIN_DATA_FILE = 'skin-data.js';
 export const MAIMAI_CHART_PREVIEW_SKIN_DATA_GLOBAL = '__MAIMAI_CHART_PREVIEW_SKINS__';
 export const MAIMAI_CHART_PREVIEW_SENSOR = { path: 'sensor.webp', width: 2048, height: 2048 } as const;
 
-/** 对齐 Phigros `music-data.js`：iOS file:// 不能稳定读取本地 PNG，改由脚本注入 data URL。 */
+/** iOS file:// 读取本地 PNG 不稳定，改为注入 data URL。 */
 export function maimaiChartPreviewSkinDataScript(entries: Record<string, string>): string {
   return `window.${MAIMAI_CHART_PREVIEW_SKIN_DATA_GLOBAL}=${JSON.stringify(entries)};`;
 }

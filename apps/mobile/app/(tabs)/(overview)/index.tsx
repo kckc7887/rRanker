@@ -114,7 +114,6 @@ function PublicOverviewScreen() {
     accountSwitchTaskRef.current?.cancel();
     accountSwitchTaskRef.current = InteractionManager.runAfterInteractions(() => {
       accountSwitchTaskRef.current = null;
-      // 已在总览账号页：弹层退场后复用目标账号缓存并切换。
       void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
         .catch(error => notifyAccountSwitchError(error, showNotification));
     });

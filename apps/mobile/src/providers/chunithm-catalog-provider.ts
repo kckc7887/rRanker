@@ -345,10 +345,7 @@ function collectionSource(): DataSource {
   };
 }
 
-/**
- * 中二收藏品四类列表。注意：中二公共 API 的列表响应不携带达成条件（required），
- * 条件与完成状态需通过个人 API（/user/chunithm/player/{type}/{id}）逐件获取。
- */
+/** 公共收藏品列表不含达成条件，需通过个人 API 逐件获取。 */
 export function mapChunithmCollections(
   kind: ChunithmCollectionKind,
   input: unknown,

@@ -291,7 +291,7 @@ describe('built-in preview skin', () => {
       {
         const receptor = bitmap(skin, section.imageLookups[`keyimage${col}d`]!);
         const circle = receptor.circles[0]!;
-        // The actual renderer stretches X to lane width, but preserves native @2x Y × 720/768.
+        /** X 按轨道宽拉伸，@2x 贴图的 Y 保留 720/768 比例。 */
         const receptorY = 720 - receptor.height / 2 * (720 / 768) + circle.y / 2 * (720 / 768);
         const radiusX = circle.rx * width / receptor.width;
         const radiusY = circle.ry / 2 * (720 / 768);

@@ -48,7 +48,6 @@ export default function RecordsTabScreen() {
   return <CachedTabScreen><RecordsScreen /></CachedTabScreen>;
 }
 
-/** 成绩标签页只做「选游戏 → 挂载对应页面」；舞萌页面自带自己的查询、筛选与派生链。 */
 export function RecordsScreen() {
   const activeGameId = useSession((s) => s.activeGameId);
   const activeAccountId = useSession((s) => s.activeAccountId);

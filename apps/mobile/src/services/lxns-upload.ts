@@ -25,7 +25,6 @@ export async function uploadRecordsToLxns(input: {
     if (lxnsAccessTokenExpired(session)) {
       const previous = session;
       session = await rotateLxnsTokens(previous.refreshToken);
-      // 已完成的轮换必须交给协调器保存，再处理页面取消。
       await input.onTokensRotated?.({ previous, next: session });
     }
     await input.signal?.waitUntilResumed?.();

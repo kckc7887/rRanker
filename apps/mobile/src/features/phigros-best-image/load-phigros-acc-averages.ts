@@ -50,10 +50,7 @@ function averageFor(response: AverageResponse, record: ScoreRecord): number | nu
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-/**
- * 对齐 phi-plugin Save.getB19 的 Avg 逻辑：先比较同 RKS 区间；若 B27 全部高于
- * 该区间均值，再提升两个 0.05 RKS 档位并切换为 Hyper / Finished 配色。
- */
+/** phi-plugin Save.getB19：B27 全高于均值时提升两个 0.05 RKS 档。 */
 export async function loadPhigrosAccAverages(
   records: readonly ScoreRecord[],
   playerRks: number,

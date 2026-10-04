@@ -10,7 +10,6 @@ import {
   type MaimaiUiManifestEntry,
 } from './maimai-ui-manifest.generated';
 
-/** B50 game 样式拆包素材缓存：Documents/rranker/maimai-assets/{version}/ui/。 */
 export const MAIMAI_UI_CACHE_VERSION = 'v1';
 
 export type MaimaiUiProgressPhase =
@@ -53,7 +52,7 @@ export function createMaimaiUiPreparer(
     return { directory, uiDirectory, temporaryDirectory };
   };
 
-  /** zip 内条目带 maimai-ui/ 前缀，落盘时剥掉，使 HTML 可直接用 ui/<文件名> 相对路径引用。 */
+  /** 去掉压缩包根目录，使 HTML 按 ui/ 相对路径读素材。 */
   const finalPathOf = (path: string) => path.replace(/^maimai-ui\//u, '');
 
   async function isValidUi(uiDirectory: Directory): Promise<boolean> {
@@ -88,7 +87,7 @@ export function createMaimaiUiPreparer(
       if (part.exists) part.delete();
       part.create({ overwrite: true });
       part.write(bytes);
-      // 条目可能仍有子目录：移动前确保目标子目录存在（iOS File.move 要求目标目录已存在）
+      /** iOS File.move 要求目标目录已存在。 */
       const slash = finalPath.lastIndexOf('/');
       if (slash > 0) {
         const parent = new Directory(uiDirectory, finalPath.slice(0, slash));
@@ -165,7 +164,6 @@ export function createMaimaiUiPreparer(
 
 export const prepareMaimaiUi = createMaimaiUiPreparer();
 
-/** 清除 B50 game 样式素材本地下载缓存（Documents/rranker/maimai-assets）。 */
 export function clearMaimaiUiCache(): void {
   invalidateResourceWrites('maimai');
   const root = new Directory(Paths.document, 'rranker', 'maimai-assets');

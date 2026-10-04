@@ -47,7 +47,6 @@ jest.mock('@/state/session-store', () => ({
   }),
 }));
 
-/** 页面是否放行查询：与领域侧解析函数对同一输入给出的结论逐条比对。 */
 function domainAccepts(deltaText: string, chartCostText: string): boolean {
   return parsePhigrosPushDelta(parseNumericInput(deltaText)) != null
     && parsePhigrosPushChartCost(parseNumericInput(chartCostText)) != null;

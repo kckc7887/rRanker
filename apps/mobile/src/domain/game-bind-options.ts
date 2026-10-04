@@ -20,7 +20,6 @@ import osuManiaIcon from '../../assets/images/osu-mania.webp';
 import osuCatchIcon from '../../assets/images/osu-catch.webp';
 import osuTaikoIcon from '../../assets/images/osu-taiko.webp';
 
-/** 已登记查分器 id 的唯一来源：`ProviderId` 与运行时校验共用这份列表。 */
 export const PROVIDER_IDS = [
   'rizline-official',
   'majdata-net',
@@ -40,13 +39,9 @@ export const PROVIDER_IDS = [
 ] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 export type RemoteProviderId = Extract<ProviderId, 'rizline-official' | 'majdata-net' | 'diving-fish' | 'lxns' | 'phi-taptap' | 'osu'>;
-/**
- * 不出现在添加入口、由会话流程直接创建的内部查分器 id。
- * 登记校验据此区分「有意不绑定」与「遗留的未登记 id」。
- */
+/** 这些来源由会话直接创建，不出现在添加入口。 */
 export const INTERNAL_PROVIDER_GAMES = { 'chunithm-temp': 'chunithm' } as const satisfies Partial<Record<ProviderId, GameId>>;
 
-/** 正式支持的游戏 id：每个都需要独立的添加入口、展示资料、工具箱与数据加载器。 */
 export const SUPPORTED_GAME_IDS = [
   'maimai',
   'chunithm',
@@ -57,17 +52,12 @@ export const SUPPORTED_GAME_IDS = [
   'majdata-net',
   'rizline',
 ] as const;
-/** osu! 家族四模式：后台各自注册为独立游戏 id，前台聚合为一个板块。 */
 export const OSU_MODE_GAME_IDS = ['osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko'] as const;
 
 export type SupportedGameId = (typeof SUPPORTED_GAME_IDS)[number];
 export type OsuModeGameId = (typeof OSU_MODE_GAME_IDS)[number];
 export type GameId = SupportedGameId | OsuModeGameId;
 
-/**
- * 游戏 id 的唯一来源：类型、注册表穷尽映射与登记校验都从这三份列表派生，
- * 新增正式游戏只要加进 `SUPPORTED_GAME_IDS`，各注册表缺项即编译失败。
- */
 export const GAME_IDS: readonly GameId[] = [
   ...SUPPORTED_GAME_IDS,
   ...OSU_MODE_GAME_IDS,
@@ -90,19 +80,14 @@ export type GameOption = {
   available: boolean;
   pendingDetail: string;
   providers: ProviderOption[];
-  /** 已绑定游戏列表的既有顺序；未指定的新增游戏按注册顺序追加。 */
   accountOrder?: number;
-  /** 账号合计的固定主题，不按其它游戏的评价体系推导。 */
   accountScoreTheme?: DxRatingTheme;
-  /** 多模式家族 id：前台把同家族成员聚合为一个板块（见 domain/game-mode-family）。 */
   familyId?: string;
-  /** 家族非锚点成员：picker 中不单独列出行，只经家族锚点渲染。 */
+  /** 家族只通过锚点显示选择行。 */
   hiddenInPicker?: boolean;
-  /** 家族板块行图标（锚点成员提供；缺省用自身 icon）。 */
   familyIcon?: ImageSourcePropType;
 };
 
-/** 游戏、家族与 Provider 共用的包内图标，不依赖网络或图片缓存。 */
 const GAME_OPTION_DEFINITIONS = [
   {
     id: 'maimai',
@@ -365,7 +350,6 @@ export function findGame(id: GameId): GameOption | undefined {
   return GAME_OPTIONS.find((game) => game.id === id);
 }
 
-/** 添加入口按绑定能力过滤，已绑定账号仍使用完整注册表。 */
 export function canBindProvider(provider: ProviderOption, testAccountsEnabled: boolean): boolean {
   return provider.bindingKind !== 'fixture' || testAccountsEnabled;
 }
@@ -378,7 +362,6 @@ export function findProvider(id: ProviderId): ProviderOption | undefined {
   return undefined;
 }
 
-/** 需要持久登录凭据的来源；账号管理按注册能力判断，不维护平行来源名单。 */
 export function isCredentialProvider(id: ProviderId | null): boolean {
   const kind = id ? findProvider(id)?.bindingKind : undefined;
   return kind === 'credentials' || kind === 'sms-code' || kind === 'oauth-code' || kind === 'device-code';

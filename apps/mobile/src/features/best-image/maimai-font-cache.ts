@@ -9,15 +9,14 @@ import {
   sha256,
 } from './best-image-font-cache-core';
 
-/** 舞萌导出图思源黑体字体源：对象存储 rranker-maimai-data/fonts。 */
 const FONT_BASE_URL = 'https://rranker-maimai-data.cn-nb1.rains3.com/fonts';
 export const MAIMAI_FONT_CACHE_VERSION = 'v1';
 
 export type MaimaiFontManifestEntry = {
   name: string;
-  /** 对象存储中的文件名（下载源）。 */
+
   fileName: string;
-  /** 缓存目录中的文件名（HTML @font-face 相对路径引用）。 */
+
   cssFileName: string;
   url: string;
   fontBytes: number;
@@ -121,7 +120,6 @@ export function createMaimaiFontPreparer(
 
 export const prepareMaimaiFonts = createMaimaiFontPreparer();
 
-/** 清除成绩图字体本地下载缓存（Documents/rranker/maimai-assets）。 */
 export function clearMaimaiFontCache(): void {
   invalidateResourceWrites('maimai');
   clearFontCacheDirectory('maimai-assets');

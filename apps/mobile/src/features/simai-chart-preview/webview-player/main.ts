@@ -1,11 +1,7 @@
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
 import { installPreviewControls } from '../../chart-preview-shared/webview-player/controls';
 import { bindHeatTimelineKeyboard } from '../../chart-preview-shared/webview-player/heat-timeline';
-/**
- * 舞萌谱面确认 WebView 播放器入口。
- * 播放位置、命令代次、音源与 RAF 归 SimaiPlaybackSession，背景媒体与时间线视图各自持有资源；
- * 这里只做 DOM、设置与控制器的接线。
- */
+
 import {
   getAvailableDifficulties,
   MainRenderer,
@@ -56,7 +52,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/** 宿主释放后的播放器：不再改动界面、也不再回报状态。 */
 let disposed = false;
 const events = new PlayerEventScope(() => disposed);
 const startupController = new AbortController();
@@ -233,7 +228,6 @@ async function main(): Promise<void> {
 
   events.listen(app, 'scroll', closeActiveWheelPopup, { passive: true });
 
-  // 视图状态：全屏、拖动与循环标记由界面持有，播放位置与音源归播放会话。
   let isFullscreen = false;
   let fsLocked = false;
   let fsControlsVisible = false;
@@ -601,7 +595,6 @@ async function main(): Promise<void> {
     else void session.play();
   };
 
-  /** 暂停（手动按钮或宿主生命周期）：停播并释放临时媒体，不改变全屏状态。 */
   const pauseForLifecycle = (): void => {
     if (disposed) return;
     closeActiveWheelPopup();
@@ -609,7 +602,6 @@ async function main(): Promise<void> {
     background.releaseVideo();
   };
 
-  /** 释放：停播、退出全屏、回收资源，幂等；此后不再改动界面或回报状态。 */
   confirmInitialized = accepted => applyBackgroundVideoConfirmation(accepted);
   pauseInitialized = pauseForLifecycle;
   exitFullscreenInitialized = exitFullscreen;
@@ -774,7 +766,6 @@ async function main(): Promise<void> {
   );
   background.setMode(backgroundMode);
 
-  /** 视频背景确认回执：只有发起过询问（pendingBackgroundPreviousMode）时才有意义。 */
   const applyBackgroundVideoConfirmation = (accepted: boolean) => {
     if (pendingBackgroundPreviousMode === null) return;
     const previousMode = pendingBackgroundPreviousMode;
@@ -872,7 +863,6 @@ async function main(): Promise<void> {
     if (isFullscreen) fullscreenTimelineView.updatePlayhead(pct, measure);
     timeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
     if (isFullscreen) fsTimeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
-    // 拖动时实时渲染画面与信息栏，恢复"拖动即看到对应帧"的能力
     renderFrameAll(beats);
     updateOverlayDom();
   };
@@ -914,9 +904,7 @@ async function main(): Promise<void> {
     if (wasPlaying) void session.play();
   });
 
-  // 移动设备拖动被系统中断（多指/来电/通知等）时，pointerup 不会触发；
-  // 若不重置 isDragging，后续 pointermove 会继续按拖动逻辑执行，干扰播放键等点击。
-  // 这里只重置状态并停留在当前帧，不自动恢复播放，避免中断后突然发声。
+  /** 系统中断拖动不保证 pointerup；停在当前帧。 */
   events.listen(document, 'pointercancel', () => {
     if (!isDragging) return;
     isDragging = false;
@@ -1119,8 +1107,6 @@ async function main(): Promise<void> {
     seekToPosition(pct);
     showFsControls();
   });
-
-
 
   events.listen(document, 'visibilitychange', () => {
     if (document.visibilityState === 'hidden') { closeActiveWheelPopup(); if (session.playing) session.pause(); }

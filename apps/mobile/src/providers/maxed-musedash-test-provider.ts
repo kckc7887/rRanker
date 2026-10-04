@@ -15,21 +15,14 @@ import {
 
 export type MaxedMuseDashPlayerSnapshot = { data: MuseDashPlayer; source: DataSource };
 
-/** 单谱面理论满分（Muse Dash 满分 1,000,000）。 */
 export const MUSE_DASH_MAX_SCORE = 1_000_000;
 
-/**
- * 全满成绩的社区 Rating 值（sum）：真实数据语义为 P × 1000，
- * 其中 P = D(a − a² + a⁴)，D 为定数；全 AP（a = 1）时 P = D。
- */
+/** P = D(a − a² + a⁴)，sum = P × 1000；全 AP 时 a = 1。 */
 export function maxedMuseDashChartSum(constant: number | undefined): number | undefined {
   return constant === undefined ? undefined : Math.round(constant * 1000);
 }
 
-/**
- * RL 公式（上游公开口径）：每曲 P = D(a − a² + a⁴)，按 P 降序，
- * RL = (1/5) × Σ[i=1→n] (0.8^(i-1) × P_i)。示例账号全 AP（a = 1）时 P = D（定数）。
- */
+/** 按 P 降序计算 RL = Σ(0.8^(i−1) × P_i) / 5。 */
 export function buildMaxedMuseDashRl(plays: readonly MuseDashPlay[]): number {
   const p = plays
     .flatMap((play) => (play.sum == null ? [] : [play.sum / 1000]))
@@ -43,12 +36,10 @@ export function buildMaxedMuseDashRl(plays: readonly MuseDashPlay[]): number {
   return total / 5;
 }
 
-/** 喵斯难度档 → 统一难度槽位：按档位序号 0-4 对齐（EASY/HARD/MASTER/HIDDEN/EX）。 */
 const MUSEDASH_UNIFIED_DIFFICULTIES = [
   'basic', 'advanced', 'expert', 'master', 'remaster',
 ] as const;
 
-/** 统一模型侧：为曲库中每个非空难度档生成满成绩 ScoreRecord；difficultyConstant 0 表示该谱面无社区定数。 */
 export function buildMaxedMuseDashRecords(
   albums: MuseDashAlbumsResponse,
   constants: ReadonlyMap<string, MuseDashDiffdiffEntry> | null,
@@ -77,7 +68,6 @@ export function buildMaxedMuseDashRecords(
   ));
 }
 
-/** 将 ScoreRecord 转为 MuseDashPlay。 */
 function museDashPlayFromRecord(record: ScoreRecord): MuseDashPlay {
   return {
     uid: record.songId,
@@ -117,7 +107,6 @@ export function buildMaxedMuseDashPlayer(
   };
 }
 
-/** 全满成绩明细：miss 为 0 且 ACC 100 → AP。 */
 export function buildMaxedMuseDashPlayDetail(): MuseDashPlayDetail {
   return {
     play: {
@@ -152,7 +141,6 @@ export function maxedMuseDashPlayDetailSnapshot(): MaxedMuseDashPlayDetailSnapsh
   };
 }
 
-/** 统一模型侧的曲库输入：专辑曲库 + 定数表索引（null 表示完全无定数表）。 */
 export type MaxedMuseDashCatalog = {
   albums: MuseDashAlbumsResponse;
   constants: ReadonlyMap<string, MuseDashDiffdiffEntry> | null;

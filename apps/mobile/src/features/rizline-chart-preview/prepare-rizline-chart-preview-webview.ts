@@ -29,9 +29,6 @@ const CHART_DATA_FILE = 'chart-data.js';
 const MUSIC_DATA_FILE = 'music-data.js';
 const RESOURCE_END = 0.7;
 
-// Metro 静态资源模块编号只能在运行时 require 取得（模块级常量），
-// 改写为 import 需补齐 .html/.bundle 的模块声明且无行为收益。
-
 const HTML_MODULE = require('../../../assets/rizline-chart-preview/index.html') as number;
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const PLAYER_MODULE = require('../../../assets/rizline-chart-preview/player.bundle') as number;
@@ -77,7 +74,7 @@ export function createRizlinePreviewResourceRead(
   };
 }
 
-/** 谱面与音频写成会话目录脚本；iOS file:// 下无法 fetch 本地文件。 */
+/** iOS file:// 无法 fetch 本地文件，谱面与音频通过脚本传入。 */
 async function writeRizlinePreviewDataScripts(directory: Directory, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   const chartFile = new File(directory, PREVIEW_RESOURCE_FILES[0]);

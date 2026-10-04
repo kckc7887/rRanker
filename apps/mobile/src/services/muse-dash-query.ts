@@ -58,19 +58,16 @@ export function ensureMuseDashDiffdiff(queryClient: QueryClient) {
 export type MuseDashSnapshot<T> = { data: T; source: DataSource };
 
 
-/** Muse Dash 玩家实体的规范键：总览数据包与页面读到同一份版本。 */
 export function museDashPlayerEntityKey(userId: string) {
   return ['musedash', 'player', userId] as const;
 }
 
 
-/** 该玩家实体的规范查询选项：随机歌曲页与总览派生视图共用。 */
 export function museDashPlayerQueryOptions(queryClient: QueryClient, userId: string) {
   const queryKey = museDashPlayerEntityKey(userId);
   return {
     queryKey,
     queryFn: async ({ signal }: { signal: AbortSignal }): Promise<MuseDashSnapshot<MuseDashPlayer>> => {
-      // 示例账号：不请求网络玩家资料，由曲库与定数表缓存优先生成全满成绩。
       if (isMuseDashTestUserId(userId)) {
         const [albums, diffdiff] = await Promise.all([
           loadMuseDashAlbumsFreshSnapshot(signal),

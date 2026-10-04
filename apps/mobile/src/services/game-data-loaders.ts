@@ -81,13 +81,8 @@ const tufCache = new TufCache();
 const museDashCache = new MuseDashCache();
 const osuCache = new OsuCache();
 
-/**
- * 一次实体加载的结果：首屏数据包 + 可选的后台刷新终态句柄。
- * 加载器只负责读取与装配；发布职责属于查询适配层，加载器通过上下文端口写入缓存。
- */
 export type GameDataLoadResult = {
   bundle: GameDataBundle;
-  /** 缓存优先路径分离出的后台刷新终态；没有分离刷新时为 undefined。 */
   background?: Promise<GameDataRefreshResult>;
 };
 
@@ -106,13 +101,9 @@ export type GameDataLoaderContext = {
   hasSessionData: boolean;
   signal: AbortSignal;
   assertCurrent: () => void;
-  /** 唯一发布入口：把该实体的数据包写入查询缓存。 */
   publish: (bundle: GameDataBundle) => void | Promise<void>;
-  /** 读取另一个实体已提交的版本（不做网络请求）。 */
   readEntityValue: <T>(entityKey: readonly unknown[]) => T | undefined;
-  /** 写入另一个实体（曲库、最佳成绩等）的已提交版本。 */
   publishEntityValue: <T>(entityKey: readonly unknown[], value: T) => void;
-  /** 失效另一个粒度的实体（如排名）。 */
   invalidateEntityValue: (entityKey: readonly unknown[]) => void;
 };
 
@@ -163,7 +154,6 @@ async function loadMajdataGameDataBundle(context: GameDataLoaderContext): Promis
   }
   const fresh = async (requestSignal: AbortSignal) => {
     try { const result = await loadMajdataFresh(activeAccountId, session, requestSignal);
-      // 新成绩落定后排名实体过期：失效经适配层端口，加载器不再直接操作查询客户端。
       invalidateEntityValue(['majdata-net', 'ranking', activeAccountId]);
       return result; }
     catch (error) { const cached = await loadMajdataCached(activeAccountId); if (cached && !requestSignal.aborted) return staleCached(cached); throw error; }
@@ -194,11 +184,9 @@ async function loadPhiraGameDataBundle(context: GameDataLoaderContext): Promise<
   const toBundle = async (snapshot: PhiraPlayerSnapshot): Promise<GameDataBundle> => ({
     gameId: 'phira', providerId: 'phira-community', profile: phiraProfile,
     payload: { kind: 'phira', snapshot,
-      // 最佳成绩是另一个粒度：已提交版本优先，避免总览与页面各读一份。
       bests: readEntityValue<PhiraBestSnapshot>(bestsKey) ?? await phiraCache.loadBests(playerId),
       playerScore: { label: 'Ranking Score', value: snapshot.player.rks, display: snapshot.player.rks.toFixed(phiraProfile.ratingDigits) }, source: snapshot.source },
   });
-  // 玩家实体是唯一版本来源：页面已加载时直接复用它，只有真正取回新数据才写回实体键。
   const committed = hasSessionData ? undefined : readEntityValue<PhiraPlayerSnapshot>(playerKey);
   const stored = committed === undefined && !hasSessionData ? await phiraCache.loadPlayer(playerId) : null;
   const fetchedFresh = committed === undefined && stored === null;
@@ -234,7 +222,6 @@ async function loadAdofaiGameDataBundle(context: GameDataLoaderContext): Promise
       source,
     },
   });
-  // 玩家实体是唯一版本来源：页面已加载时复用同一版本，不再另开一份读取。
   const playerKey = tufPlayerEntityKey(playerId);
   const committed = hasSessionData ? undefined : readEntityValue<TufPlayerSnapshot>(playerKey);
   const stored = committed === undefined && !hasSessionData ? await tufCache.loadPlayer(playerId) : null;
@@ -268,7 +255,6 @@ async function loadMuseDashGameDataBundle(context: GameDataLoaderContext): Promi
         source,
       },
     });
-    // 示例账号首屏优先读取曲库和定数表缓存。
     const [albums, diffdiff] = await Promise.all([
       context.catalogQueries.museDashAlbums(),
       context.catalogQueries.museDashDiffdiff(),
@@ -297,7 +283,6 @@ async function loadMuseDashGameDataBundle(context: GameDataLoaderContext): Promi
       source,
     },
   });
-  // 玩家实体是唯一版本来源：随机歌曲页与总览共用同一份已提交版本。
   const playerKey = museDashPlayerEntityKey(userId);
   const committed = hasSessionData ? undefined : readEntityValue<{ data: MuseDashPlayer; source: DataSource }>(playerKey);
   const stored = committed === undefined && !hasSessionData ? await museDashCache.loadPlayer(userId) : null;
@@ -343,7 +328,6 @@ async function loadChunithmGameDataBundle(context: GameDataLoaderContext): Promi
         },
       });
     };
-    // 示例账号仍由真实公开曲库生成，但公开曲库只保留在本次 React Query 会话。
     return { bundle: toBundle(await context.catalogQueries.chunithm()) };
   }
   if (activeProviderId === 'lxns' && session?.mode === 'lxns-oauth' && context.protocolScoreProvider instanceof ChunithmScoreProvider) {
@@ -377,8 +361,6 @@ async function loadChunithmGameDataBundle(context: GameDataLoaderContext): Promi
     });
     const cached = hasSessionData ? null : await service.loadCached();
     if (cached) return { bundle: toBundle(cached) };
-    // 一次刷新按 player/scores/bests 分项提交：整批完成才推进抓取时间，
-    // 部分成功保留成功项与失败项，返回的快照带过期标记而不是伪装成本次成功。
     const result = await service.refresh(signal);
     if (result.status === 'cancelled') throw signal.reason ?? new Error('中二个人成绩刷新已取消');
     if (!result.value) {
@@ -464,7 +446,6 @@ async function loadPhigrosGameDataBundle(context: GameDataLoaderContext): Promis
 
 async function loadMaimaiGameDataBundle(context: GameDataLoaderContext): Promise<GameDataLoadResult> {
   const { activeAccountId, activeProviderId, activeAccount, scoreProvider, catalogProvider, signal } = context;
-  // 无绑定账号 / 未选中查分器：按空数据处理，不走成绩 provider。
   if (activeProviderId === null || !isProviderForGame('maimai', activeProviderId) || !catalogProvider || !activeAccountId || activeAccountId === UNBOUND_ACCOUNT_ID) {
     return { bundle: ({
       gameId: 'maimai',
@@ -504,7 +485,6 @@ async function loadMaimaiGameDataBundle(context: GameDataLoaderContext): Promise
     profile: getGameProfile('maimai'),
     payload: maimaiPayloadFromSnapshot(snapshot, getGameProfile('maimai')),
   });
-  // 首次进入优先复用本地快照；已有会话数据后的显式 refetch 才读取网络。
   if (persistScores && !context.hasSessionData) {
     const cached = await repository.getLatest(activeAccountId);
     if (cached) {
@@ -521,10 +501,6 @@ async function loadMaimaiGameDataBundle(context: GameDataLoaderContext): Promise
   return { bundle: toBundle(snapshot) };
 }
 
-/**
- * 每个游戏 id 的必需加载器：穷尽映射，遗漏任一游戏（含 osu! 四模式与保留测试 id）即编译失败，
- * 注册表不提供默认游戏回退，未登记的游戏由选择入口拒绝。
- */
 const GAME_DATA_LOADERS: Record<GameId, GameDataLoader> = {
   maimai: loadMaimaiGameDataBundle,
   chunithm: loadChunithmGameDataBundle,

@@ -238,7 +238,6 @@ describe('ChartPreviewScreenShell 交互', () => {
       prepare: async () => fictionalSource,
     });
 
-    // 主题 mock 的 statusBar 为 'light'；虚构游戏无需自带 StatusBar 组件。
     expect(screen.getByTestId('shell-status-bar-light')).toBeTruthy();
   });
 
@@ -469,7 +468,6 @@ describe('ChartPreviewScreenShell 交互', () => {
     await view.rerender(<FictionalShell request={request} />);
     expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining('"cause":"lifecycle"'));
     expect(mockInjectJavaScript.mock.calls.every(([script]) => !String(script).includes('fullscreen'))).toBe(true);
-    // 生命周期暂停不得静默清除全屏：原生与页面的全屏状态在 inactive 前后一致。
     expect(mockScreenOptions.headerShown).toBe(false);
 
     mockLifecycle = {
@@ -503,7 +501,6 @@ describe('ChartPreviewScreenShell 交互', () => {
     };
     await view.rerender(<FictionalShell request={request} />);
     expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining('"type":"dispose"'));
-    // 释放后旧实例的迟到设置不再写入存储。
     await act(() => {
       (mounted.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"settings","settings":{"speed":9}}' } });
     });

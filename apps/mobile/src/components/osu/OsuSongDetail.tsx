@@ -53,18 +53,12 @@ import { OsuModBadge } from './OsuModBadge';
 import { OsuRankTag } from './OsuRankTag';
 
 const CARD_GAP = 12;
-/** osu 谱面级曲库键的 type 段（无 SD/DX 之分，统一占位 'SD'，levelIndex = beatmap id）。 */
+/** osu! 以 beatmapId 作为难度键，type 固定为 SD。 */
 const OSU_CHART_TYPE = 'SD' as const;
 
 type LibraryHook = ReturnType<typeof useUserLibrary>;
 type OsuGameDataPayload = Extract<GamePayload, { kind: 'osu' }>;
 
-/**
- * osu! 歌曲详情页：songId = beatmapset id。
- * 结构对标公共详情模式（Hero + 简要信息栏 + 难度轮播 + 歌曲信息区）：
- * 难度自高星起降序，星级色作为难度卡主题色（渐变 + 描边）；
- * 进入定位优先成绩卡带入的 beatmap id，否则按 pp 推荐星级取最近卡片。
- */
 export function OsuSongDetail({
   beatmapsetId,
   initialBeatmapId,
@@ -75,7 +69,6 @@ export function OsuSongDetail({
   initialScoreId?: number;
 }) {
   const activeGameId = useSession((s) => s.activeGameId);
-  // 路由层已按 isOsuGameId 分发；此处收窄类型并防御非 osu 游戏误入。
   if (!isOsuGameId(activeGameId)) return <View style={styles.page} />;
   return (
     <OsuSongDetailContent
@@ -113,11 +106,9 @@ function OsuSongDetailContent({
     : undefined;
   const favorite = songItem?.kind === 'song' && songItem.favorite;
   const favoriteDisabled = library.isLoading || library.isUpdating;
-  // beatmapset 不存在或已删除（HTTP 404）归一化为空态，不当作错误。
   const isNoData = detail.error instanceof ProviderError && detail.error.code === 'no_data';
   const isLoading = !song && detail.isLoading;
   const isError = !song && detail.isError && !isNoData;
-  // 空态覆盖：no_data、beatmapsetId 缺失、未绑定不发请求（enabled false 即非 loading）等一切无数据场景。
   const isEmpty = !song && !isLoading && !isError;
   const retry = () => {
     void detail.refetch();
@@ -232,8 +223,7 @@ function OsuDetailBody({
     { key: 'genre', label: '流派', value: song.genreName ?? '未知', flex: 1 },
     { key: 'language', label: '语言', value: song.languageName ?? '未知', flex: 1 },
   ];
-  // 进入定位：成绩卡带入的 beatmap id 优先；否则按推荐星级取最近卡片
-  // （列表降序 + 严格小于比较，并列时天然取更高星）。
+  /** 推荐难度相同时优先高星谱面。 */
   const recommended = recommendedOsuStar(gameId, payload?.player.pp);
   const requestedIndex = initialBeatmapId === undefined
     ? -1
@@ -265,7 +255,6 @@ function OsuDetailBody({
       ],
     });
   };
-  // 本 beatmapset 内按 beatmap id 匹配已知成绩；打开详情后的查询结果会写回同一集合。
   const scoresByBeatmapId = useMemo(() => {
     const map = new Map<number, OsuBestScore>();
     for (const score of knownScores ?? []) {
@@ -432,7 +421,6 @@ function DifficultyCard({
 }) {
   const theme = useAppTheme();
   const { showActionNotification } = useNotification();
-  // 星级色即难度卡主题色：描边 + 从星色到卡面的对角渐变（透明后缀随深浅色，同 TUF 难度卡）。
   const starTheme = resolveOsuStarTheme(beatmap.difficultyRating);
   const chartKey = library.chartKey(String(song.beatmapSetId), OSU_CHART_TYPE, beatmap.id);
   const chartItem = library.data?.find((item) => item.key === chartKey);
@@ -606,7 +594,6 @@ function DifficultyCard({
   );
 }
 
-/** 判定矩阵两行（前三种/后三种），各判定带固定色；PP 独立右块（正常文字色）。 */
 const OSU_JUDGEMENT_ROWS: readonly (readonly {
   key: keyof OsuScoreStatistics;
   label: string;
@@ -674,7 +661,6 @@ function HorizontalText({ text, textStyle }: { text: string; textStyle: object }
   );
 }
 
-/** 时长：total_length 秒 → m:ss；缺失/非法显示 '—'。 */
 function formatOsuDuration(seconds: number | null): string {
   if (seconds == null || !Number.isFinite(seconds) || seconds < 0) return '—';
   const minutes = Math.floor(seconds / 60);
@@ -682,7 +668,6 @@ function formatOsuDuration(seconds: number | null): string {
   return `${minutes}:${String(rest).padStart(2, '0')}`;
 }
 
-/** BPM：整数显示；缺失显示 '—'。 */
 function formatOsuBpm(bpm: number | null): string {
   return bpm == null || !Number.isFinite(bpm) ? '—' : String(Math.round(bpm));
 }
@@ -693,7 +678,6 @@ function formatOsuMetric(value: number | null, digits = 1): string {
   return value == null || !Number.isFinite(value) ? '—' : value.toFixed(digits).replace(/\.0$/u, '');
 }
 
-/** 模式化指标数组：共享卡片只渲染行列，osu! 规则集差异留在游戏侧。 */
 export function buildOsuBeatmapMetricRows(
   gameId: OsuGameId,
   beatmap: OsuBeatmapDetail,
@@ -792,7 +776,6 @@ const styles = StyleSheet.create({
     gap: 8,
     borderRadius: 12,
     padding: 12,
-    // 判定表淡灰遮罩：彩字区域与卡面区分（2026-08-20 应要求自 0.14 加暗），深浅模式同色。
     backgroundColor: 'rgba(128,128,128,0.18)',
   },
   judgementMatrix: { flex: 1, minWidth: 0, gap: 9 },

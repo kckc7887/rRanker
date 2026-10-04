@@ -1,7 +1,6 @@
 /** Generated from MajdataViewX SlideTableNeo / SlideDataBuilder (GPL-3.0).
  * Reproduce with scripts/maimai-reference and generate-maimai-geometry.mjs. */
 
-// Restore in place once; the numeric dictionary is not retained by the renderer.
 function restoreNumbers(value: unknown, numbers: readonly number[]): unknown {
   if (typeof value === 'number') return numbers[value];
   if (Array.isArray(value)) {

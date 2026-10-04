@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -31,24 +31,11 @@ import type { ScoreFrame, Grade } from '../../utils/scoreProcessor';
 import type { AccFrame, ComboFrame } from '../../renderer/HUDRenderer';
 import type { ManiaHitObject, ManiaHoldNote } from './types';
 
-// Mania scoring.
-//
-// Stable ScoreV1 (osu-wiki Gameplay/Score/ScoreV1/osu!mania):
-//   Score      = BaseScore + BonusScore (summed per-event)
-//   BaseScore  = (1_000_000 · ModMult · 0.5 / TotalNotes) · (HitValue / 320)
-//   BonusScore = (1_000_000 · ModMult · 0.5 / TotalNotes) · (HitBonusValue · √Bonus / 320)
-//   Bonus[t]   = clamp(Bonus[t-1] + HitBonus − HitPunishment / ModDivider, 0, 100); Bonus[0] = 100
-// HoldNotes count as ONE event in stable, judged by combined head+tail error capped at GREAT.
-// Bodies and tails aren't separate scoring events in V1.
-//
-// Lazer V2 (ManiaScoreProcessor.cs):
-//   Total = 150000 · comboProgress + 850000 · Acc^(2 + 2·Acc) · accProgress + bonus
-//   comboPortion += getBaseComboScore(r) · clamp(log4(comboAfter), 0.5, log4(400))
-//   getBaseComboScore: Perfect→300 (not 305), Great→300, Good→200, Ok→100, Meh→50, Miss→0
-//   GetBaseScoreForResult: Perfect→305, Great→300, …, Miss→0 (used for Accuracy)
-//   HoldNote = head + tail (accuracy-affecting, max 305 each) + body (IgnoreHit / ComboBreak)
-//
-// SS gate (both V1 and V2): SS only if every result is Great or Perfect.
+/** V1 基础分和奖励各占 500k；bonus 值先更新，再开方参与奖励分。 */
+
+/** V1 将 hold 合并为一次计分，V2 分别计算 head/tail，body 只影响 combo。 */
+
+/** V2：150k×comboProgress+850k×Acc^(2+2×Acc)×accProgress+bonus。 */
 
 const HIT_VALUE: Record<305 | 300 | 200 | 100 | 50 | 0, number> = {
   305: 320, 300: 300, 200: 200, 100: 100, 50: 50, 0: 0,
@@ -63,11 +50,10 @@ const HIT_PUNISHMENT: Record<305 | 300 | 200 | 100 | 50 | 0, number> = {
   305: 0, 300: 0, 200: 8, 100: 24, 50: 44, 0: Number.POSITIVE_INFINITY,
 };
 
-// Mania-specific mod bit (not in the shared Mod enum).
 const MOD_FADE_IN = 1 << 20;
 
-// Stable ScoreV1 mania mod factors. ModMultiplier scales BaseScore + BonusScore directly;
-// ModDivider scales down the Bonus *punishment* per result. Defaults: mult 1.0, div 1.0.
+/** V1 的 ModMultiplier 缩放分数，ModDivider 缩放 bonus 惩罚。 */
+
 function maniaV1ModMultiplier(mods: number): number {
   let m = 1;
   if (hasMod(mods, Mod.NoFail))   m *= 0.5;
@@ -85,10 +71,6 @@ function maniaV1ModDivider(mods: number): number {
   return d;
 }
 
-// Lazer V2: per ManiaMod*.cs, almost all mania mods have ScoreMultiplier = 1.0.
-// Only key-count mods (xK) are 0.9; native-map replays never carry those (and
-// key-count mods are unsupported here), so the V2 mod multiplier is 1.0 across
-// the board.
 function maniaV2ModMultiplier(_mods: number): number {
   return 1;
 }
@@ -113,30 +95,16 @@ function manGrade(
   return g;
 }
 
-/**
- * Accumulated head/tail/body sub-results for one HoldNote, collected while
- * walking the flat HitResult stream. Judgement values are the hit-value buckets
- * (305/300/200/100/50/0); times are in beatmap ms. Input to {@link combineLN}.
- */
 export type SubResults = {
   head?: 305 | 300 | 200 | 100 | 50 | 0;
   tail?: 305 | 300 | 200 | 100 | 50 | 0;
   headTime?: number;
   tailTime?: number;
   bodyBroken: boolean;
-  /** Time the LN's "single judgement" resolves at — the latest of head/tail/body times. */
+
   resolveTime: number;
 };
-/**
- * Collapse a HoldNote's head + tail + body sub-results into the single per-LN
- * judgement that stable (ScoreV1) uses (osu! wiki, Gameplay/Judgement/osu!mania).
- * The bucket is derived from BOTH the head timing error and the SUM of head +
- * tail absolute errors, each against the mod-adjusted note windows scaled by
- * stable's LN leniency factors — so LNs CAN reach MAX (305; replays show
- * countGeki exceeding the tap-note count). Head/tail errors are reconstructed
- * from the sub-result times vs the hold's start/end (raw errors are not stored).
- * Miss (0) if either side missed or the body broke.
- */
+/** V1 hold 按 head 误差及 head/tail 绝对误差之和判定；任一 miss 或断 body 则 miss。 */
 export function combineLN(
   sub: SubResults, hold: ManiaHoldNote, m: ModDifficulty,
 ): 305 | 300 | 200 | 100 | 50 | 0 {
@@ -162,10 +130,6 @@ interface ManiaEvent {
   judgement: 305 | 300 | 200 | 100 | 50 | 0;
 }
 
-/**
- * Walk results, group LN sub-results by sourceIndex, emit one event per scoring object
- * (Note → its judgement; HoldNote → combined head+tail+body).
- */
 function combinedV1Events(
   results: readonly HitResult[],
   objects: readonly ManiaHitObject[],
@@ -203,11 +167,7 @@ function combinedV1Events(
   return out;
 }
 
-/**
- * Mania accuracy timeline. Excludes HoldNote bodies (non-acc in both V1 and V2).
- * V1: denominator 300 (Perfect and Great both display as 100%, matching stable).
- * V2: denominator 305 (Perfect=305, Great=300/305=98.36%, matching lazer).
- */
+/** V1 准确率分母为 300，V2 为 305；两者均排除 hold body。 */
 export function computeManiaAccTimeline(
   results: readonly HitResult[],
   modDiff: ModDifficulty,
@@ -220,7 +180,7 @@ export function computeManiaAccTimeline(
   let objCount = 0;
   for (const r of sorted) {
     if (r.subResult === 'body') continue;
-    // V1 treats Perfect as 300 (stable's MAX and GREAT both display 100% acc).
+
     const value = !modDiff.isLazer && r.judgement === 305 ? 300 : r.judgement;
     judgeSum += value;
     objCount++;
@@ -229,12 +189,7 @@ export function computeManiaAccTimeline(
   return frames;
 }
 
-/**
- * Mania combo timeline.
- * V2 (lazer): head/tail each +1; body IgnoreHit = no change on success, ComboBreak resets.
- * V1 (stable): one combo event per object — HoldNote = single +1 (hit) or reset (miss/break).
- * The two diverge by 2× per LN, so we don't share the generic computeComboTimeline.
- */
+/** V1 每个 hold 仅增加一次 combo，V2 的 head/tail 各增加一次。 */
 export function computeManiaComboTimeline(
   results: readonly HitResult[],
   objects: readonly ManiaHitObject[],
@@ -271,7 +226,6 @@ function computeManiaScoreV1Timeline(
   const modMult = maniaV1ModMultiplier(modDiff.mods);
   const modDiv  = maniaV1ModDivider(modDiff.mods);
 
-  // TotalNotes (per stable): one per Note + one per HoldNote.
   const totalNotes = objects.length;
   if (totalNotes === 0) return [];
 
@@ -294,9 +248,6 @@ function computeManiaScoreV1Timeline(
     }
     if (combo > maxCombo) maxCombo = combo;
 
-    // Update bonus *before* using it (stable: Bonus starts at 100, decremented/incremented
-    // each result before its sqrt is read for BonusScore — empirically matches stable score
-    // totals within rounding).
     if (j === 0) bonus = 0;
     else bonus = Math.max(0, Math.min(100, bonus + HIT_BONUS_ADD[j] - HIT_PUNISHMENT[j] / modDiv));
 
@@ -325,8 +276,8 @@ function computeManiaScoreV1Timeline(
   return frames;
 }
 
-// Per-result combo-base score (lazer getBaseComboScoreForResult). Perfect contributes 300
-// to combo portion but 305 to accuracy portion — that's the whole reason the override exists.
+/** Perfect 对 combo 基础分贡献 300，对准确率贡献 305。 */
+
 function comboBase(j: 305 | 300 | 200 | 100 | 50 | 0): number {
   switch (j) {
     case 305: return 300;
@@ -352,15 +303,13 @@ function computeManiaScoreV2Timeline(
 ): ScoreFrame[] {
   const modMult = maniaV2ModMultiplier(modDiff.mods);
 
-  // Perfect-play prepass: max comboPortion. Accuracy progress is an event count.
-  // Note: 1 acc event; HoldNote: head + tail = 2 acc events. Body excluded (IgnoreHit).
   let maxComboPortion = 0;
   let maxAccCount     = 0;
   let cMaxScratch     = 0;
 
   const pushMax = () => {
     cMaxScratch += 1;
-    maxComboPortion += 300 * comboScale(cMaxScratch);   // Perfect's combo-base = 300
+    maxComboPortion += 300 * comboScale(cMaxScratch);
     maxAccCount     += 1;
   };
   for (const o of objects) {
@@ -376,8 +325,7 @@ function computeManiaScoreV2Timeline(
   let cGood = 0, cOk = 0, cMeh = 0, cMiss = 0;
 
   for (const r of results) {
-    // Body (lazer V2): ComboBreak (j=0) resets combo and falls through to emit a frame;
-    // success is IgnoreHit — no acc/combo contribution, skip silently.
+
     if (r.subResult === 'body') {
       if (r.judgement === 0) combo = 0;
       else continue;
@@ -393,7 +341,7 @@ function computeManiaScoreV2Timeline(
       accSum   += j;
       accCount += 1;
 
-      if      (j === 305 || j === 300) { /* perfect and great stay off the non-great grade flag */ }
+      if      (j === 305 || j === 300) {  }
       else if (j === 200) cGood++;
       else if (j === 100) cOk++;
       else if (j === 50)  cMeh++;
@@ -402,9 +350,9 @@ function computeManiaScoreV2Timeline(
     if (combo > maxCombo) maxCombo = combo;
 
     const comboProgress = maxComboPortion > 0 ? comboPortion / maxComboPortion : 1;
-    // accProgress is a count ratio, not a value ratio (ScoreProcessor.cs:updateScore).
+    /** accProgress 用事件数量比例，不用判定值比例。 */
     const accProgress   = maxAccCount > 0 ? accCount / maxAccCount : 1;
-    // Displayed Accuracy = currentBaseScore / currentMaximumBaseScore (ScoreProcessor.Accuracy).
+
     const displayAcc    = accCount > 0 ? accSum / (305 * accCount) : 1;
     const inner         = 150000 * comboProgress
                         + 850000 * Math.pow(displayAcc, 2 + 2 * displayAcc) * accProgress;
@@ -417,11 +365,6 @@ function computeManiaScoreV2Timeline(
   return frames;
 }
 
-/**
- * Score timeline for the HUD: one frame (time, score, combo, maxCombo, grade)
- * per scoring event. Uses lazer's ScoreV2 formula when `modDiff.isLazer`, else
- * stable's mania ScoreV1 (see the formulas at the top of this module).
- */
 export function computeManiaScoreTimeline(
   results: readonly HitResult[],
   objects: readonly ManiaHitObject[],

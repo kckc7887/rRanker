@@ -41,7 +41,6 @@ export function assertUploadActive(signal: AbortSignal): void {
   if (signal.aborted) throw signal.reason ?? new ScoreHubError('已取消');
 }
 
-/** 将任务取消订阅接入公共 HTTP；不轮询可变标记，结束时释放订阅。 */
 export async function withUploadAbortSignal<T>(signal: ScoreHubAbortSignal | undefined, run: (signal: AbortSignal) => Promise<T>): Promise<T> {
   await signal?.waitUntilResumed?.();
   const controller = new AbortController();
@@ -62,7 +61,6 @@ export async function withUploadAbortSignal<T>(signal: ScoreHubAbortSignal | und
   }
 }
 
-/** 取消释放延时计时器，恢复后才允许开始下一次轮询或读取。 */
 export async function waitForUploadDelay(ms: number, signal?: ScoreHubAbortSignal): Promise<void> {
   await withUploadAbortSignal(signal, nativeSignal => new Promise<void>((resolve, reject) => {
     const cancel = () => { clearTimeout(timer); reject(nativeSignal.reason ?? new ScoreHubError('已取消')); };
@@ -84,7 +82,6 @@ function normalizeNetworkErrorMessage(raw: string): string {
   return raw;
 }
 
-/** 轮询期间可恢复的瞬时错误（单次请求失败不应直接终止整次拉成绩）。 */
 export function isRetryableScoreHubError(error: unknown): boolean {
   if (error instanceof ScoreHubError) {
     if (error.message === '已取消') return false;

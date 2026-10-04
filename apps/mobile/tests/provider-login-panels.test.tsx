@@ -4,7 +4,6 @@ import { resolveProviderLoginPanel } from '@/features/game-content/provider-logi
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 
-/** 会打开登录弹层的凭据类型：登录面板必须按 Provider 登记，不能落到缺省面板。 */
 const LOGIN_BINDING_KINDS = ['credentials', 'sms-code', 'oauth-code', 'device-code'];
 
 const loginEntries = GAME_OPTIONS.flatMap((game) => game.providers

@@ -271,7 +271,7 @@ export function PhigrosBestImageScreen() {
       if (!result.ok) throw result.error;
       if (!cancelled) {
         setFontsReady(true);
-        // 重新创建对象以强制重建 HTML，使已补齐的扩展字体进入当前 WebView。
+        /** 重建 HTML，让补齐的扩展字体进入 WebView。 */
         setTemplateAssets({ ...trimmedAssets });
       }
     })().catch((error) => {
@@ -324,8 +324,7 @@ export function PhigrosBestImageScreen() {
     if (!provider || !lifecycle.foregroundReady) return;
     const uniqueIds = [...new Set(selectedSongIds)];
     const { next, missing } = partitionPhigrosIllustrationCache(uniqueIds, illustrationCacheRef.current);
-    // 先用缓存命中结果立刻出预览，缺失曲目先回退占位，避免切换时整页清空。
-    // 只保留当前选中曲目，避免切换筛选时 session 缓存只增不减。
+    /** 只缓存当前曲目，避免切换筛选后内存持续增长。 */
     illustrationCacheRef.current = next;
     setIllustrations(next);
     setAssetProgress({ done: uniqueIds.length - missing.length, total: uniqueIds.length });
@@ -340,9 +339,7 @@ export function PhigrosBestImageScreen() {
       setAssetProgress({ done: uniqueIds.length, total: uniqueIds.length });
     });
     return () => { cancelled = true; controller.abort(); };
-    // selectedSongKey 是 selectedSongIds.join('|') 的派生签名：ids 内容任何变化必然
-    // ids 与 key 来自同一次渲染，避免写入错误的素材会话。
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 回调只在挂载时消费一次，或依赖已在上方说明
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedSongKey 覆盖曲目数组内容变化。
   }, [illustrationStage, lifecycle.foregroundGeneration, lifecycle.foregroundReady, provider, selectedSongKey]);
 
   useEffect(() => {
@@ -374,7 +371,6 @@ export function PhigrosBestImageScreen() {
   ]);
 
   const htmlPages = useMemo(() => payload && illustrations && accAverages && templateAssets ? pages.map((page) => {
-    // 分辨率选项由 WIDTHS 固定枚举，此处收窄回模板所需的字面量联合（纯类型断言）。
     const outputWidth = width as (typeof WIDTHS)[number];
     const input = {
       type, width: outputWidth, page, playerName: payload.player.displayName, rks: payload.playerScore.display,
@@ -584,9 +580,6 @@ export function PhigrosBestImageScreen() {
 }
 
 const phigrosStyles = StyleSheet.create({
-  // Phigros 差异键：数量输入行（textFieldWrap 无 minWidth）、错误文案、chip 行
-  // 带居中、分数/Acc 区间输入、难度/评价筛选 chip、头像/背景预览尺寸、
-  // 素材错误/重试、素材状态条、空数据居中容器。
   textFieldWrap: { flex: 1, gap: 6 },
   fieldLabel: { fontSize: 12, fontWeight: '700' },
   errorText: { fontSize: 11, fontWeight: '600' },
@@ -607,5 +600,4 @@ const phigrosStyles = StyleSheet.create({
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
 });
 
-/** 共享骨架样式 + Phigros 差异覆盖。 */
 const styles = { ...bestImageScreenSharedStyles, ...phigrosStyles };

@@ -10,7 +10,7 @@ import { useAppTheme } from '@/theme/app-theme';
 
 export type MuseDashSearchResult = { nickname: string; userId: string };
 
-/** musedash.moe 的 user_id 是 32 位小写 hex（可带连字符）。 */
+/** user_id 是 32 位十六进制串，也可能带连字符。 */
 function normalizeUserId(value: string): string | null {
   const normalized = value.replace(/-/g, '');
   return /^[0-9a-f]{32}$/i.test(normalized) ? normalized : null;

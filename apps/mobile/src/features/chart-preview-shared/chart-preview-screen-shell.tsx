@@ -1,14 +1,3 @@
-/**
- * 谱面确认公共屏幕壳（公共路径）：
- * 承接各游戏谱面确认屏幕的全部共有逻辑——prepare 执行与超时中止、
- * 生命周期暂停、返回键退出全屏、卸载释放、ready/fullscreen/error/settings/progress 桥接、
- * 播放器设置 KV 读写合并、错误/加载分支与 WebView 属性透传。
- * 命令与事件都走 `chart-preview-bridge` 的判别联合：短暂 inactive 只下发生命周期暂停并保留全屏，
- * 释放才退出全屏，未声明的消息不进入游戏钩子。
- * 游戏差异仅通过 props 表达（请求对象、文案、testID、注入策略），
- * 壳不感知具体游戏，不出现游戏 ID / Storage key 字面量分支。
- */
-
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { BackHandler, Platform, Pressable, StyleSheet, Text, View } from 'react-native';
 import { Stack } from 'expo-router';
@@ -98,7 +87,7 @@ type PreparedPreview = { source: ChartPreviewShellSource; session: PreviewSessio
 type ReleaseReason = 'memory' | 'process';
 const PREPARE_TIMEOUT_MS = 120_000;
 const READY_TIMEOUT_MS = 60_000;
-// 宿主命令拥有唯一序列化入口；生命周期暂停不得改变全屏，退出全屏与释放都是显式命令。
+
 const LIFECYCLE_PAUSE_SCRIPT = chartPreviewHostCommandScript({ type: 'pause', cause: 'lifecycle' });
 const EXIT_FULLSCREEN_SCRIPT = chartPreviewHostCommandScript({ type: 'exit-fullscreen' });
 const DISPOSE_SCRIPT = chartPreviewHostCommandScript({ type: 'dispose' });
@@ -131,7 +120,7 @@ function ChartPreviewLoadProgressBar({
   labelColor: string;
   valueColor: string;
 }) {
-  // 进度条只在 ready 前显示；下载、解码完成不能代替播放器的 ready 握手。
+  /** 下载结束后仍需等播放器 ready。 */
   const percent = Math.min(99, Math.round(clampChartPreviewProgress(progress.value) * 100));
   const spokenLabel = progress.label.replace(/…$/u, '');
   return (
@@ -197,8 +186,8 @@ export function ChartPreviewScreenShell<TPayload>({
   const loadProgressRef = useRef(loadProgress);
   const progressFlushRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const memoryWarningRef = useRef(lifecycle.memoryWarningGeneration);
-  // 请求或真正的重载一发生，旧回调在 effect 清理之前也立即失效。
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- dependencies identify the preparation lifetime
+  /** 换源时立即让旧回调失效，不等 effect 清理。 */
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 依赖项决定本次准备的生命周期
   const generation = useMemo(() => ({}), [request, externalError, lifecycle.foregroundGeneration, reloadGeneration]);
   const generationRef = useRef(generation);
   generationRef.current = generation;
@@ -279,7 +268,7 @@ export function ChartPreviewScreenShell<TPayload>({
     });
   }, [backgrounded, lifecycle.memoryWarningGeneration, lifecycle.phase, releasePlayer]);
 
-  // 短暂 inactive 只下发生命周期暂停：全屏状态由原生与页面共同保留，回前台后仍然一致。
+  /** 短暂 inactive 只暂停，保留全屏。 */
   useEffect(() => {
     if (lifecycle.phase !== 'inactive') return;
     flushSessionSettings(sessionRef.current);
@@ -300,7 +289,6 @@ export function ChartPreviewScreenShell<TPayload>({
     });
   }, [heavyContentMounted, lifecycle.phase, source]);
 
-  // settingsKey / prepareErrorFallback 为屏幕级恒定值。
   useEffect(() => {
     reloadPendingRef.current = false;
     setPreparedView(null);
@@ -340,7 +328,7 @@ export function ChartPreviewScreenShell<TPayload>({
         if (readyTimeout !== undefined) clearTimeout(readyTimeout);
         if (sessionRef.current === session) {
           sessionRef.current = null;
-          // 卸载前释放最新实例；旧会话清理不得向新实例注入脚本。
+          /** 旧会话不能向新 WebView 发命令。 */
           try { webRef.current?.injectJavaScript(DISPOSE_SCRIPT); }
           catch (error) { recordRuntimeError('chart-preview-host-dispose', error, false, { phase: 'cleanup' }); }
           if (progressFlushRef.current !== null) {
@@ -444,7 +432,6 @@ export function ChartPreviewScreenShell<TPayload>({
     },
   }), [isCurrentSession, viewSession]);
 
-  // 与两屏现状一致：injected 随 request 稳定，不随注入构建器的渲染期引用变化。
   const injected = useMemo(() => {
     if (request.kind === 'ready' && buildInjectedJavaScript) {
       return buildInjectedJavaScript(request.payload);
@@ -475,7 +462,7 @@ export function ChartPreviewScreenShell<TPayload>({
     setPlayerError(message);
   };
 
-  // 播放器 WebView 的深浅色底色（与播放器 HTML 的 --bg 保持一致，避免加载闪色）。
+  /** 与播放器底色一致，避免加载时闪色。 */
   const webviewBackground = theme.dark ? '#121212' : '#f5f5f5';
   const loadingOverlayBackground = theme.dark ? 'rgba(18,18,18,0.72)' : 'rgba(245,245,245,0.72)';
   const progressBar = (
@@ -491,7 +478,7 @@ export function ChartPreviewScreenShell<TPayload>({
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
       <Stack.Screen options={chartPreviewNativeScreenOptions(isFullscreen, Platform.OS, '谱面确认', fullscreenOrientation)} />
-      {/* 入口详情页因深色沉浸头声明了白字状态栏且 push 后仍挂载；壳必须显式接管，否则浅色下白字叠白 header。 */}
+      {/** 详情页仍挂载，显式覆盖其白字状态栏。 */}
       <StatusBar style={theme.statusBar} />
       {blockingError ? (
         <View style={styles.center} accessibilityLabel={`谱面确认错误：${blockingError}`}>

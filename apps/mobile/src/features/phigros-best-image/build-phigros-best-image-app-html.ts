@@ -1,10 +1,5 @@
 import { preparePhigrosBestImageCards } from './phigros-best-image';
-/*
- * Phigros 成绩图「应用风格」模板。
- * 自绘 HTML：顶部按总览页 DxRatingCard 形态（头像 + RKS/课题模式渐变卡 + 进度统计表同一行），
- * 成绩卡片 3 列、以难度色为主题色；不依赖 phi-plugin 模板 CSS，字体使用系统栈。
- * 导出协议（best-image-runtime/height/ready + data-layout-content）与游戏风格保持一致。
- */
+
 import { formatPhigrosSongRks } from '@/domain/phigros';
 import { resolvePhigrosChallengeTheme } from '@/domain/phigros-challenge-theme';
 import { PHIGROS_RATE_COLORS, PHIGROS_RATE_LABELS } from '@/domain/phigros-rate-theme';
@@ -45,7 +40,6 @@ function cssLinearGradient(colors: readonly string[], locations: readonly number
   return `linear-gradient(90deg,${stops.join(',')})`;
 }
 
-/** 评价标签样式与展示文案对齐 PhigrosRateBadge（PHIGROS_RATE_COLORS/LABELS）。 */
 function rateStyle(rate: string): { bg: string; fg: string; label: string } {
   if (rate === 'phi') return { ...PHIGROS_RATE_COLORS.phi, label: PHIGROS_RATE_LABELS.phi };
   if (rate === 'FC') return { ...PHIGROS_RATE_COLORS.vFc, label: PHIGROS_RATE_LABELS.v };

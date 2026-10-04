@@ -22,7 +22,6 @@ export function selectPreviewOsbPaths(osuPath: string, availablePaths: readonly 
     .sort((left, right) => left.localeCompare(right, 'en'));
 }
 
-/** Shares declared resource identities between native extraction and WebView decoding. */
 export function selectPreviewResources(input: {
   osuText: string;
   osuPath: string;
@@ -59,8 +58,7 @@ export function selectPreviewResources(input: {
       for (const name of sampleLookupNames('normal', 1, 0, object.hitSample.filename, beatmap.mode)) addAudio(name);
     }
   }
-  // The player resolves timing-point and slider-edge banks at each actual hit. Stage
-  // only candidates used by this map's sample indices; decode only its final schedule.
+
   for (const index of indices) for (const bank of [1, 2, 3]) {
     for (const type of ['normal', 'whistle', 'finish', 'clap'] as const) {
       for (const name of sampleLookupNames(type, bank, index, '', beatmap.mode)) addAudio(name);

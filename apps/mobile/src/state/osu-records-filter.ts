@@ -4,7 +4,7 @@ export const useOsuRecordsFilter = createFilterStore({
   defaults: {
     keyword: '',
     collapsed: true,
-    // 选中模组 acronym（含 'NM' 无模组特殊值，与其余互斥，互斥由筛选栏回调保证）。
+    /** NM 与其他模组互斥。 */
     mods: [] as string[],
     accuracyMin: '',
     accuracyMax: '',
