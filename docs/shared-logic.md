@@ -291,6 +291,11 @@ Phigros 关闭查询层重复重试，发布服务负责唯一的一次恢复重
   重新走校验与发布入口，不依赖 S3 历史版本。客户端失败回退仍读取本机最后有效曲库。
   独立项目的 `tests/test_publisher.py` 覆盖重复发布、并发校验、指针顺序、精确清理与删除失败；
   调度、凭据及归档配置见技术架构文档的 Rizline 发布说明。
+- 独立发布器 `rizline_publisher.upstream.import_catalog(work, cache, overrides_path, transport="auto", workers=4, stats_url=STATS_URL, log=None)`
+  是本地 CLI 与 Actions 的共同导入入口。预告曲仅在谱面列表非空、全部为 EZ/HD/IN、
+  定数均为 `99` 且国服替换映射后的全部谱面均未进入官方索引时整首跳过；报告的
+  `skippedPreviewSongs` 保留歌曲 ID、谱面 ID 与原因。正式定数与谱面上线后自动纳入，
+  其它资源缺失继续沿用整批失败与旧曲库保留语义，由发布器 `tests/test_publication.py` 覆盖。
 - `rizlinePayloadFromSnapshot(snapshot, catalog?)` 保留原快照与官方指标，集中构造成绩和
   推定分组。`services/rizline-catalog-query.ts` 的 `applyRizlineCatalog(client, data, assertCurrent?)` 等待首屏提交后发布曲库并重建现有数据包派生字段，不额外请求官方存档。
   `useGameResourceSync` 是允许显式注册游戏的元数据编排边界，不把游戏差异放入共享渲染层。
