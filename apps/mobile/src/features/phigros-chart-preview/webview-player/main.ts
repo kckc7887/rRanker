@@ -114,11 +114,12 @@ function decodeBase64DataUrl(url: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-function loadImage(url: string, signal: AbortSignal): Promise<HTMLImageElement> {
+function loadImage(url: string, signal: AbortSignal, textureSafe = false): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     if (signal.aborted || disposed) { reject(new DOMException('已取消', 'AbortError')); return; }
     const image = new Image();
-    // 曲绘画布不回读像素，无 CORS 的公共图床也能显示。
+    // GPU 场景纹理要求源画布可读取；普通 Canvas2D 曲绘保持原加载方式。
+    if (textureSafe && /^https?:/i.test(url)) image.crossOrigin = 'anonymous';
     const cleanup = () => { signal.removeEventListener('abort', onAbort); image.onload = null; image.onerror = null; };
     const onAbort = () => { cleanup(); image.src = ''; reject(new DOMException('已取消', 'AbortError')); };
     image.onload = () => { cleanup(); resolve(image); };
@@ -523,20 +524,32 @@ function start(): void {
   }
 
   function renderFrame(chartTime: number): void {
-    renderer.render(chartTime);
-    applyAttachUiFromRenderer();
-    renderHud(chartTime);
+    if (disposed) return;
+    try {
+      renderer.render(chartTime);
+      applyAttachUiFromRenderer();
+      renderHud(chartTime);
+    } catch {
+      setStatus('谱面画面不可用，请重新加载。');
+      postStatus('error', { message: '谱面画面不可用，请重新加载。' });
+      disposePlayer();
+    }
   }
 
-  async function loadOptionalIllustration(signal: AbortSignal): Promise<HTMLImageElement | null> {
+  async function loadOptionalIllustration(signal: AbortSignal, textureSafe = false): Promise<HTMLImageElement | null> {
     if (typeof config.illustrationUrl !== 'string' || config.illustrationUrl.trim() === '') return null;
-    try { return await loadImage(config.illustrationUrl, signal); }
+    try { return await loadImage(config.illustrationUrl, signal, textureSafe); }
     catch (error) { if (signal.aborted) throw error; return null; }
   }
 
-  async function rpeBackground(chart: RpeChart | null, image: HTMLImageElement | null, signal: AbortSignal) {
-    if (!chart?.background) return image;
-    const url = rpeResourceUrl(config.rpeAssets?.basePath ?? '', chart.background);
+  async function previewBackground(chart: PgrChart | RpeChart, image: HTMLImageElement | null, signal: AbortSignal) {
+    if (!isRpe) {
+      return (chart as PgrChart).blocks.length && /^https?:/i.test(config.illustrationUrl ?? '')
+        ? loadOptionalIllustration(signal, true) : image;
+    }
+    const background = (chart as RpeChart).background;
+    if (!background) return image;
+    const url = rpeResourceUrl(config.rpeAssets?.basePath ?? '', background);
     if (!url) return image;
     try { return await loadImage(url, signal); }
     catch (error) { if (signal.aborted) throw error; return image; }
@@ -581,7 +594,7 @@ function start(): void {
       ]);
       if (signal.aborted) return;
       // RPE：背景优先取谱面包内 META.background，缺失时回退远程曲绘
-      const illustration = await rpeBackground(rpeChart, image, signal);
+      const illustration = await previewBackground(chart, image, signal);
       if (signal.aborted || disposed) return;
       if (isRpe) {
         (renderer as RpeRenderer).setChart(rpeChart!);
@@ -630,11 +643,13 @@ function start(): void {
       ready = true;
       setControlsEnabled(true);
       renderFrame(0);
+      if (disposed) return;
       postStatus('ready', {});
     } catch (error) {
       if (error instanceof DOMException && error.name === 'AbortError') return;
       setStatus('无法打开谱面，请返回重试。');
       postStatus('error', { message: '无法打开谱面，请返回重试。' });
+      disposePlayer();
     }
   }
 
@@ -710,9 +725,9 @@ function start(): void {
     loadController?.abort();
     loadController = null;
     if (isFullscreen) setFullscreen(false);
+    disposed = true;
     session.dispose();
     closeActiveWheelPopup();
-    disposed = true;
     events.dispose();
     window.clearTimeout(controlsTimer);
   }

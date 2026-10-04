@@ -8,6 +8,7 @@
  */
 
 import { lowerBoundBy, upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
+import { parsePgrBlocks, type PgrBlock } from './pgr-blocks';
 
 export const PGR_HEIGHT_RATIO = 0.83175;
 
@@ -45,6 +46,7 @@ export interface PgrChart {
   formatVersion: number;
   offset: number;
   lines: PgrLine[];
+  blocks: PgrBlock[];
   stats: {
     lineCount: number;
     noteCount: number;
@@ -71,6 +73,7 @@ type RawChart = {
   formatVersion: unknown;
   offset?: unknown;
   judgeLineList: RawLine[];
+  blockAreaList?: unknown;
 };
 
 function finiteNumber(value: unknown, label: string): number {
@@ -301,11 +304,14 @@ export function parsePgrChart(source: string | unknown): PgrChart {
     return { bpm, speedEvents, disappearEvents, rotateEvents, moveEvents, notes, maxHoldDuration };
   });
   markMultipleHints(lines);
+  const blocks = parsePgrBlocks(raw.blockAreaList);
+  for (const block of blocks) maxTime = Math.max(maxTime, block.enable, block.disable, block.disappear);
 
   return {
     formatVersion,
     offset: finiteNumber(raw.offset ?? 0, 'offset'),
     lines,
+    blocks,
     stats: { lineCount: lines.length, noteCount, eventCount, maxTime, kindCounts },
   };
 }

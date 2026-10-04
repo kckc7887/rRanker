@@ -797,6 +797,22 @@ Phira 预览 zip 经注入的 `downloadChart`（同一下载入口）再解包�
 `phira-compatible-chart-download.test.ts` 和 `chart-preview-screen-shell-contract.test.tsx`。
 PGR 解析与 prpr 一致：时间倒序或字段无效的判定线事件忽略，缺失的事件/音符数组视为空，不中断整谱。
 
+Phigros 与 Phira 的 PGR 路径统一经 `parsePgrChart(source)` 解析可选 `blockAreaList`，
+`PgrChart.blocks` 保存 `pgr-blocks.ts` 的 `PgrBlock` 与 `PgrBlockKeyframe`。
+`parsePgrBlocks(source: unknown)` 过滤无效条目，区域及关键帧总数使用公共事件预算；
+`samplePgrBlock(block, time, aspect)` 以谱面秒纯函数求值，先按锚点独立轴缩放，再旋转、移动。
+缺少列表得到空区域；关键帧排序后由公共 `upperBoundBy` 选择，同一时刻后写帧优先，
+缓动表独立于 RPE。阶段时间不重排：出现前隐藏，其后依次按启用前、禁用前、消失前求值，
+允许提前启用或仅有预告阶段；零长度阶段不除零，消失时间不晚于禁用时没有渐出阶段。
+`indexPgrBlocks` 复用公共 `createIntervalIndex`，暂停、变速、前后跳转不累积区域状态。
+`PgrRenderer` 持有 `PgrBlockRenderer`：仅在有区域时创建 WebGL，按活动候选绘制，
+同类覆盖取并集，正反覆盖按阶段分别抵消，再计算红色填充、动态边缘、辉光与场景扰动。
+合成位于音符之后、打击特效之前；辅助掩码和扰动纹理各限约 1 百万像素。
+切谱和释放回收纹理、缓冲、程序、着色器与上下文；图形不可用经现有 error 回执结束会话，
+回调中释放后不再调度下一帧。公共壳、设置和桥协议不增加区域专用分支。
+合同由 `phigros-chart-preview-blocks.test.ts`、`phigros-chart-preview-block-renderer.test.ts`
+及 `phigros-chart-preview-playback-session.test.ts` 覆盖；GPU 像素与原生 WebView 行为另行验证。
+
 osu! 的 `features/osu-chart-preview/configuration.ts` 统一路由参数与设置归一化。
 `prepareOsuChartPreviewWebViewSource(target, theme, settings, signal, onProgress?)` 组合
 `downloadOsuBeatmapsetArchive`、`captureResourceWrites('shared', signal)`、
