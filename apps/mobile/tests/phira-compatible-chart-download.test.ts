@@ -17,6 +17,7 @@ const native = vi.hoisted(() => ({
   deleted: [] as string[],
   downloaded: [] as { url: string; uri: string }[],
   pickDirectoryAsync: vi.fn(),
+  copyError: undefined as Error | undefined,
   writes: [] as { uri: string; content: string | Uint8Array }[],
 }));
 
@@ -35,7 +36,10 @@ vi.mock('expo-file-system', () => {
     async bytes() { return native.bytes.get(this.uri) ?? new Uint8Array(0); }
     write(content: string | Uint8Array) { native.writes.push({ uri: this.uri, content }); }
     copy(destination: MockFile) {
-      native.writes.push({ uri: destination.uri, content: native.bytes.get(this.uri) ?? new Uint8Array(0) });
+      if (native.copyError) throw native.copyError;
+      const content = native.bytes.get(this.uri);
+      if (!content) throw new Error('Source file does not exist');
+      native.writes.push({ uri: destination.uri, content });
     }
   }
   class MockDirectory {
@@ -49,7 +53,12 @@ vi.mock('expo-file-system', () => {
       return new MockFile(`picked://${name}`);
     }
     get exists() { return this.uri.startsWith('file:///cache/'); }
-    delete() { native.deleted.push(this.uri); }
+    delete() {
+      native.deleted.push(this.uri);
+      for (const uri of native.bytes.keys()) {
+        if (uri.startsWith(`${this.uri}/`)) native.bytes.delete(uri);
+      }
+    }
     static pickDirectoryAsync() { return native.pickDirectoryAsync(); }
   }
   return { Paths: { cache: 'file:///cache' }, File: MockFile, Directory: MockDirectory };
@@ -103,14 +112,15 @@ const phiraChart: PhiraChart = {
   chartUpdated: null,
 };
 
-function pickedDirectoryMock() {
+function pickedDirectoryMock(uri = 'picked://') {
+  const prefix = uri.endsWith('/') ? uri : `${uri}/`;
   return {
-    uri: 'picked://',
+    uri,
     createFile: (name: string, mime: string | null) => {
       native.createFileCalls.push({ name, mime });
       return {
-        uri: `picked://${name}`,
-        write: (content: string | Uint8Array) => native.writes.push({ uri: `picked://${name}`, content }),
+        uri: `${prefix}${name}`,
+        write: (content: string | Uint8Array) => native.writes.push({ uri: `${prefix}${name}`, content }),
       };
     },
   };
@@ -125,6 +135,7 @@ describe('Phira compatible chart download', () => {
     native.deleted.length = 0;
     native.downloaded.length = 0;
     native.writes.length = 0;
+    native.copyError = undefined;
     native.pickDirectoryAsync.mockResolvedValue(pickedDirectoryMock());
     native.cancelDownload.mockResolvedValue(undefined);
     resources.loadBundle.mockResolvedValue({
@@ -196,9 +207,64 @@ describe('Phira compatible chart download', () => {
     await expect(downloadPhiraChartPackage(phiraChart)).resolves.toBe(true);
     expect(native.downloaded.map((item) => item.url)).toEqual(['https://phira.example/chart.zip']);
     expect(native.createFileCalls).toEqual([{ name: '初音未来的消失 AT Lv.16.zip', mime: 'application/zip' }]);
-    const source = native.bytes.get(native.downloaded[0]!.uri);
+    const source = new TextEncoder().encode(`resource:${phiraChart.file}`);
     const written = native.writes.find((item) => item.uri === 'picked://初音未来的消失 AT Lv.16.zip');
     expect(written?.content).toEqual(source);
+    expect(native.bytes.size).toBe(0);
+    expect(native.deleted).toEqual(native.createdDirs);
+  });
+
+  it.each(['file:///exports', 'content://exports'])('retains the Phira source while choosing %s', async (uri) => {
+    let chooseDirectory!: (directory: ReturnType<typeof pickedDirectoryMock>) => void;
+    native.pickDirectoryAsync.mockImplementationOnce(() => new Promise((resolve) => {
+      chooseDirectory = resolve;
+    }));
+    const pending = downloadPhiraChartPackage(phiraChart);
+    const result = expect(pending).resolves.toBe(true);
+    await vi.waitFor(() => expect(native.pickDirectoryAsync).toHaveBeenCalledOnce());
+    const sourceUri = native.downloaded[0]!.uri;
+    const sourceBeforeSave = native.bytes.get(sourceUri);
+    const deletedBeforeSave = [...native.deleted];
+
+    chooseDirectory(pickedDirectoryMock(uri));
+    await result;
+
+    expect(sourceBeforeSave).toEqual(new TextEncoder().encode(`resource:${phiraChart.file}`));
+    expect(deletedBeforeSave).toEqual([]);
+    expect(native.writes).toEqual([{ uri: `${uri}/初音未来的消失 AT Lv.16.zip`, content: sourceBeforeSave }]);
+    expect(native.bytes.has(sourceUri)).toBe(false);
+    expect(native.deleted).toEqual(native.createdDirs);
+  });
+
+  it.each(['cancel', 'copy failure'] as const)('releases the Phira source after delayed %s', async (outcome) => {
+    let chooseDirectory!: (directory: ReturnType<typeof pickedDirectoryMock>) => void;
+    let rejectPicker!: (error: Error) => void;
+    native.pickDirectoryAsync.mockImplementationOnce(() => new Promise((resolve, reject) => {
+      chooseDirectory = resolve;
+      rejectPicker = reject;
+    }));
+    const copyError = new Error('Copy failed');
+    const pending = downloadPhiraChartPackage(phiraChart);
+    const result = outcome === 'cancel'
+      ? expect(pending).resolves.toBe(false)
+      : expect(pending).rejects.toMatchObject({ cause: copyError });
+    await vi.waitFor(() => expect(native.pickDirectoryAsync).toHaveBeenCalledOnce());
+    const sourceExistsBeforeSave = native.bytes.has(native.downloaded[0]!.uri);
+    const deletedBeforeSave = [...native.deleted];
+
+    if (outcome === 'cancel') {
+      rejectPicker(Object.assign(new Error('The file picker was cancelled by the user'), { code: 'ERR_PICKER_CANCELLED' }));
+    } else {
+      native.copyError = copyError;
+      chooseDirectory(pickedDirectoryMock());
+    }
+    await result;
+
+    expect(sourceExistsBeforeSave).toBe(true);
+    expect(deletedBeforeSave).toEqual([]);
+    expect(native.writes).toEqual([]);
+    expect(native.bytes.size).toBe(0);
+    expect(native.deleted).toEqual(native.createdDirs);
   });
 
   it('treats closing the system directory picker as cancellation', async () => {
