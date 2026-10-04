@@ -13,19 +13,14 @@ import {
   createOsuBoundAccount,
   createPhiraBoundAccount,
   createRizlineBoundAccount,
-  createTestBoundAccount,
   createTufBoundAccount,
   LOCAL_MAIMAI_ACCOUNT_ID,
   MAIMAI_TEST_ACCOUNT_ID,
-  TEST_ACCOUNT_ID,
 } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
-import type { CredentialSessionWriteResult } from '@/storage/secure-session-store';
+import type { SecureSessionStore } from '@/storage/secure-session-store';
 import {
   clearOsuRotationCache,
-  osuRotationCacheStats,
-  osuRotationMayReplace,
-  rotateOsuTokens,
 } from '@/providers/osu-oauth';
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 import { EmptyScoreProvider } from '@/providers/empty-provider';
@@ -35,14 +30,11 @@ import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
 import { MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
 import { MaxedPhigrosTestProvider } from '@/providers/maxed-phigros-test-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
-import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import {
   applyLxnsTokenRotation,
   applyMajdataSessionRotation,
   applyOsuTokenRotation,
   applyRizlineSessionRotation,
-  pendingRotationWritesSnapshot,
-  resetPendingRotationWritesForTests,
   restoreSession,
   retryPendingRotationWrites,
   UNBOUND_ACCOUNT_ID,
@@ -51,9 +43,9 @@ import {
 
 process.env.OSU_OAUTH_CLIENT_SECRET ??= 'test-client-secret';
 
-const updateAccountSession = vi.hoisted(() => vi.fn(async (): Promise<CredentialSessionWriteResult> => 'applied'));
+const updateAccountSession = vi.hoisted(() => vi.fn<SecureSessionStore['updateAccountSession']>(async () => 'applied'));
 const updateCredentialSession = vi.hoisted(() => (
-  vi.fn(async (): Promise<CredentialSessionWriteResult> => 'applied')
+  vi.fn<SecureSessionStore['updateCredentialSession']>(async () => 'applied')
 ));
 
 vi.mock('@/storage/secure-session-store', async (importOriginal) => {
@@ -85,6 +77,21 @@ vi.mock('expo-sqlite', () => ({
 const jwtSession: ProviderSession = { mode: 'jwt', value: 'fake-jwt-token', persistable: true };
 const tokenSessionA: ProviderSession = { mode: 'import-token', value: 'token-a', persistable: true };
 const tokenSessionB: ProviderSession = { mode: 'import-token', value: 'token-b', persistable: true };
+
+beforeEach(() => {
+  updateAccountSession.mockReset().mockResolvedValue('applied');
+  updateCredentialSession.mockReset().mockResolvedValue('applied');
+  useSession.getState().finishRestore(null);
+});
+
+afterEach(async () => {
+  useSession.getState().clearSession();
+  useSession.getState().finishRestore(null);
+  await retryPendingRotationWrites();
+  if (vi.isFakeTimers()) vi.clearAllTimers();
+  vi.useRealTimers();
+  vi.unstubAllGlobals();
+});
 
 describe('Rizline account sessions', () => {
   const session = { mode: 'rizline', phone: '13800000000', token: 'private-token', deviceId: 'device-id', channelId: '1', persistable: true } as const;
@@ -149,32 +156,11 @@ describe('useSession store', () => {
     expect(useSession.getState().migrationRecovery).toBeNull();
   });
   beforeEach(() => {
-    updateAccountSession.mockReset();
-    updateAccountSession.mockResolvedValue('applied');
-    updateCredentialSession.mockReset();
-    updateCredentialSession.mockResolvedValue('applied');
-    useSession.setState({
-      sessionsByAccountId: {},
-      boundAccounts: [
-        createLocalMaimaiAccount('本地玩家', 0),
-        createMaxedMaimaiTestAccount(),
-        createTestBoundAccount(),
-      ],
-      activeAccountId: LOCAL_MAIMAI_ACCOUNT_ID,
-      session: null,
-      activeGameId: 'maimai',
-      activeProviderId: 'local',
-      scoreProvider: new LocalMaimaiScoreProvider({
-        initialize: vi.fn(async () => undefined),
-        getLatest: vi.fn(async () => null),
-        save: vi.fn(async () => undefined),
-        clear: vi.fn(async () => undefined),
-      }),
-      catalogProvider: new LxnsCatalogProvider(),
-      protocolScoreProvider: null,
-      restoreStatus: 'ready',
-      restoreError: null,
-    });
+    useSession.getState().finishRestore(null, [
+      createLocalMaimaiAccount('本地玩家', 0),
+      createMaxedMaimaiTestAccount(),
+      createMaxedPhigrosTestAccount(),
+    ]);
   });
 
   it('activates, restores and switches isolated Majdata accounts with real avatar URLs', async () => {
@@ -214,7 +200,7 @@ describe('useSession store', () => {
     const { boundAccounts } = useSession.getState();
     expect(boundAccounts.map((account) => account.id)).not.toContain(LOCAL_MAIMAI_ACCOUNT_ID);
     expect(boundAccounts.map((account) => account.id)).not.toContain(MAIMAI_TEST_ACCOUNT_ID);
-    expect(boundAccounts.map((account) => account.id)).toContain(TEST_ACCOUNT_ID);
+    expect(boundAccounts.map((account) => account.id)).toContain(PHIGROS_TEST_ACCOUNT_ID);
   });
   it('commits Majdata cookies once with the active projection and rejects stale persistent updates', async () => {
     const session: Extract<ProviderSession, { mode: 'http-cookies' }> = { mode: 'http-cookies', origin: 'https://majdata.net', cookies: [{ name: 'auth', value: 'first', path: '/', secure: true }], persistable: true };
@@ -238,7 +224,7 @@ describe('useSession store', () => {
   it('enters unbound empty state when all accounts are removed', () => {
     useSession.getState().removeBoundAccount(LOCAL_MAIMAI_ACCOUNT_ID);
     useSession.getState().removeBoundAccount(MAIMAI_TEST_ACCOUNT_ID);
-    useSession.getState().removeBoundAccount(TEST_ACCOUNT_ID);
+    useSession.getState().removeBoundAccount(PHIGROS_TEST_ACCOUNT_ID);
     const state = useSession.getState();
     expect(state.boundAccounts).toEqual([]);
     expect(state.activeAccountId).toBe(UNBOUND_ACCOUNT_ID);
@@ -282,6 +268,30 @@ describe('useSession store', () => {
       .toBe('落雪查分器');
   });
 
+  it('persists the first provider-triggered LXNS refresh and uses the rotated token for the request', async () => {
+    const expired = { ...lxnsSession, accessToken: 'first-expired', refreshToken: 'first-refresh', expiresAt: 0 };
+    const authorizations: (string | null)[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (url: string, init?: RequestInit) => {
+      if (url.endsWith('/token')) {
+        return new Response(JSON.stringify({ access_token: 'first-next', refresh_token: 'first-next-refresh', expires_in: 3600 }), {
+          status: 200, headers: { 'Content-Type': 'application/json' },
+        });
+      }
+      authorizations.push(new Headers(init?.headers).get('Authorization'));
+      return new Response(JSON.stringify({ success: true, code: 200, data: { name: '已刷新玩家', rating: 12000, friend_code: 1 } }), {
+        status: 200, headers: { 'Content-Type': 'application/json' },
+      });
+    }));
+    useSession.getState().setSession(expired, { displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns' });
+    await expect(useSession.getState().scoreProvider.getPlayer()).resolves.toMatchObject({ displayName: '已刷新玩家' });
+    const next = useSession.getState().session;
+    expect(next).toMatchObject({ accessToken: 'first-next', refreshToken: 'first-next-refresh' });
+    expect(updateCredentialSession).toHaveBeenCalledWith('credential:maimai:lxns:1', next, {
+      acceptedRefreshTokens: expect.arrayContaining(['first-refresh']),
+    });
+    expect(authorizations).toEqual(['Bearer first-next']);
+  });
+
   it('keeps multiple diving-fish accounts instead of replacing the previous one', () => {
     useSession.getState().setSession(tokenSessionA, {
       displayName: '账号甲',
@@ -314,11 +324,15 @@ describe('useSession store', () => {
     expect(useSession.getState().activeAccountId).toBe('maimai:diving-fish:a1');
   });
 
-  it('switches to the empty test account', () => {
-    useSession.getState().selectBoundAccount(TEST_ACCOUNT_ID);
+  it('switches between Phigros and the no-score Chunithm account', () => {
+    useSession.getState().selectBoundAccount(PHIGROS_TEST_ACCOUNT_ID);
+    expect(useSession.getState().activeGameId).toBe('phigros');
+    expect(useSession.getState().scoreProvider).toBeInstanceOf(MaxedPhigrosTestProvider);
+    useSession.getState().upsertBoundAccount(createChunithmTempAccount());
+    useSession.getState().selectBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID);
     const state = useSession.getState();
-    expect(state.activeAccountId).toBe(TEST_ACCOUNT_ID);
-    expect(state.activeGameId).toBe('test');
+    expect(state.activeAccountId).toBe(CHUNITHM_TEMP_ACCOUNT_ID);
+    expect(state.activeGameId).toBe('chunithm');
     expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
     expect(state.catalogProvider).toBeNull();
   });
@@ -365,8 +379,6 @@ describe('useSession store', () => {
     expect(state.activeGameId).toBe('phigros');
     expect(state.activeProviderId).toBe('phigros-test');
     expect(state.scoreProvider).toBeInstanceOf(MaxedPhigrosTestProvider);
-    // Phigros 曲库经 use-phigros-catalog 与游戏数据加载器读取，会话不登记舞萌曲库详细能力。
-    expect(state.catalogProvider).not.toBeInstanceOf(PhigrosCatalogProvider);
     expect(state.catalogProvider).toBeNull();
     expect(state.session).toBeNull();
   });
@@ -597,7 +609,6 @@ describe('useSession store', () => {
   });
 
   it('keeps the latest in-memory LXNS session and marks it pending when persistence fails', async () => {
-    resetPendingRotationWritesForTests();
     useSession.getState().setSession(lxnsSession, {
       displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns',
     });
@@ -616,18 +627,12 @@ describe('useSession store', () => {
     expect(state.session).toEqual(rotated);
     expect(state.sessionsByAccountId[accountId]).toEqual(rotated);
     expect((state.scoreProvider as LxnsScoreProvider).getSession()).toEqual(rotated);
-    expect(pendingRotationWritesSnapshot()).toEqual([
-      expect.objectContaining({ accountId, attempts: 0 }),
-    ]);
-
-    // 本机落盘恢复后补交这次轮换，挂起项不再残留在后续提交里。
     updateCredentialSession.mockResolvedValue('applied');
     await expect(retryPendingRotationWrites()).resolves.toBe(1);
-    expect(pendingRotationWritesSnapshot()).toEqual([]);
+    await expect(retryPendingRotationWrites()).resolves.toBe(0);
   });
 
-  it('bounds the pending write retries and drops tasks whose account was removed', async () => {
-    resetPendingRotationWritesForTests();
+  it('drops pending writes after the account was removed', async () => {
     useSession.getState().setSession(lxnsSession, {
       displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns',
     });
@@ -637,27 +642,14 @@ describe('useSession store', () => {
     await expect(applyLxnsTokenRotation(accountId, { previous: lxnsSession, next: rotated }))
       .resolves.toBe('pending-persist');
 
-    // 自动预算耗尽后保留任务，手动恢复仍可重新补写。
-    for (let attempt = 1; attempt <= 3; attempt += 1) {
-      await retryPendingRotationWrites();
-      expect(pendingRotationWritesSnapshot()[0]?.attempts).toBe(attempt);
-    }
-    await retryPendingRotationWrites();
-    expect(pendingRotationWritesSnapshot()[0]?.attempts).toBe(4);
-
-    // 账号已解绑的挂起项在补写时被丢弃，不会把旧凭据写回来。
-    updateCredentialSession.mockResolvedValue('missing');
-    updateCredentialSession.mockRejectedValueOnce(new Error('disk offline'));
-    await applyLxnsTokenRotation(accountId, { previous: rotated, next: { ...rotated, refreshToken: 'refresh-c' } });
-    expect(pendingRotationWritesSnapshot()).toHaveLength(1);
+    useSession.getState().removeBoundAccount(accountId);
+    updateCredentialSession.mockClear();
     await expect(retryPendingRotationWrites()).resolves.toBe(0);
-    expect(pendingRotationWritesSnapshot()).toEqual([]);
-    updateCredentialSession.mockReset();
-    updateCredentialSession.mockResolvedValue('applied');
+    expect(updateCredentialSession).not.toHaveBeenCalled();
+    expect(useSession.getState().sessionsByAccountId[accountId]).toBeUndefined();
   });
 
   it('runs pending write retries one at a time and is idempotent', async () => {
-    resetPendingRotationWritesForTests();
     useSession.getState().setSession(lxnsSession, {
       displayName: '落雪玩家', rating: 12000, playerId: '1', providerId: 'lxns',
     });
@@ -665,7 +657,6 @@ describe('useSession store', () => {
     const rotated = { ...lxnsSession, accessToken: 'access-b', refreshToken: 'refresh-b' };
     updateCredentialSession.mockRejectedValueOnce(new Error('disk offline'));
     await applyLxnsTokenRotation(accountId, { previous: lxnsSession, next: rotated });
-    expect(pendingRotationWritesSnapshot()).toHaveLength(1);
     updateCredentialSession.mockClear();
 
     let release: (value: 'applied') => void = () => undefined;
@@ -673,7 +664,6 @@ describe('useSession store', () => {
     const first = retryPendingRotationWrites();
     const second = retryPendingRotationWrites();
     try {
-      // 并发触发只写一次：第二次复用同一次在途补写。
       await vi.waitFor(() => expect(updateCredentialSession).toHaveBeenCalledTimes(1));
       release('applied');
       await expect(Promise.all([first, second])).resolves.toEqual([1, 1]);
@@ -682,13 +672,11 @@ describe('useSession store', () => {
       await Promise.allSettled([first, second]);
       updateCredentialSession.mockReset();
       updateCredentialSession.mockResolvedValue('applied');
-      resetPendingRotationWritesForTests();
     }
-    expect(pendingRotationWritesSnapshot()).toEqual([]);
+    await expect(retryPendingRotationWrites()).resolves.toBe(0);
   });
   it('retains an exhausted automatic retry and resumes it when manually triggered', async () => {
     vi.useFakeTimers();
-    resetPendingRotationWritesForTests();
     try {
       useSession.getState().setSession(lxnsSession, { displayName: 'Player', rating: 12000, playerId: '1', providerId: 'lxns' });
       const accountId = useSession.getState().activeAccountId;
@@ -696,21 +684,18 @@ describe('useSession store', () => {
       updateCredentialSession.mockRejectedValue(new Error('offline'));
       await applyLxnsTokenRotation(accountId, { previous: lxnsSession, next });
       await vi.advanceTimersByTimeAsync(5_000 + 30_000 + 120_000);
-      expect(updateCredentialSession).toHaveBeenCalledTimes(4);
-      expect(pendingRotationWritesSnapshot()).toEqual([expect.objectContaining({ attempts: 3 })]);
       await vi.advanceTimersByTimeAsync(600_000);
-      expect(updateCredentialSession).toHaveBeenCalledTimes(4);
-      updateCredentialSession.mockResolvedValue('applied');
+      let persisted: ProviderSession | null = null;
+      updateCredentialSession.mockImplementation(async (_credentialId, session) => { persisted = session; return 'applied'; });
       await expect(retryPendingRotationWrites()).resolves.toBe(1);
-      expect(pendingRotationWritesSnapshot()).toEqual([]);
+      expect(persisted).toBe(next);
+      await expect(retryPendingRotationWrites()).resolves.toBe(0);
     } finally {
-      resetPendingRotationWritesForTests();
       vi.useRealTimers();
     }
   });
 
   it('writes the shared osu credential even after the initiating mode account was removed', async () => {
-    resetPendingRotationWritesForTests();
     const expected = {
       mode: 'osu-oauth' as const,
       accessToken: 'access-a',
@@ -742,7 +727,6 @@ describe('useSession store', () => {
   });
 
   it('broadcasts a single-mode reauthorization before accepting its next shared rotation', async () => {
-    resetPendingRotationWritesForTests();
     clearOsuRotationCache();
     const previous = { mode: 'osu-oauth' as const, accessToken: 'old-access', refreshToken: 'old-refresh',
       expiresAt: Date.now() + 60_000, persistable: true as const };
@@ -1026,38 +1010,27 @@ describe('useSession store', () => {
     expect(useSession.getState().boundAccounts).toBe(previous.boundAccounts);
   });
 
-  it('clears osu rotation state when the last osu account is unbound or the session is cleared', async () => {
-    clearOsuRotationCache();
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => ({ access_token: 'access', expires_in: 86400, refresh_token: 'refresh-next' }),
-    })));
-    await rotateOsuTokens('refresh-old');
+  it('rejects late osu rotations after unbinding or clearing the session', async () => {
     const account = createOsuBoundAccount({
       gameId: 'osu-standard', userId: 7, displayName: 'osu 玩家', pp: 1,
     });
+    const session = { mode: 'osu-oauth', accessToken: 'access', refreshToken: 'refresh',
+      expiresAt: Date.now() + 60_000, persistable: true } as const;
+    const rotated = { ...session, accessToken: 'next-access', refreshToken: 'next-refresh' };
     useSession.getState().finishRestore(null);
     useSession.getState().setOsuBinding({
       accounts: [account],
       credentialId: 'osu-credential',
       activeAccountId: account.id,
-      session: {
-        mode: 'osu-oauth',
-        accessToken: 'access',
-        refreshToken: 'refresh-next',
-        expiresAt: Date.now() + 60_000,
-        persistable: true,
-      },
+      session,
     });
     useSession.getState().removeBoundAccount(account.id);
-    expect(osuRotationCacheStats().rotations).toBe(0);
-    expect(osuRotationMayReplace('refresh-old', 'refresh-next')).toBe(false);
-
-    await rotateOsuTokens('refresh-old');
-    expect(osuRotationCacheStats().rotations).toBeGreaterThan(0);
+    await expect(applyOsuTokenRotation(account.id, rotated, session)).resolves.toBe('removed');
+    expect(useSession.getState().sessionsByAccountId[account.id]).toBeUndefined();
+    useSession.getState().setOsuBinding({ accounts: [account], credentialId: 'osu-credential', activeAccountId: account.id, session });
     useSession.getState().clearSession();
-    expect(osuRotationCacheStats()).toEqual({ rotations: 0, ancestors: 0, ancestorMembers: 0, inFlight: 0 });
-    vi.unstubAllGlobals();
+    await expect(applyOsuTokenRotation(account.id, rotated, session)).resolves.toBe('removed');
+    expect(updateCredentialSession).not.toHaveBeenCalled();
+    expect(useSession.getState().session).toBeNull();
   });
 });

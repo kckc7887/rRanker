@@ -21,7 +21,6 @@ import { uploadLatestScoreHubSyncToTargets } from '@/services/upload-maimai-targ
 import type { BindCabinetResult, UploadCommonInput, UploadPhase, UploadResult, UploadTarget } from '@/services/upload-maimai-types';
 import { scoreHubAccountStore } from '@/storage/score-hub-account-store';
 export type { BindCabinetResult, UploadCommonInput, UploadPhase, UploadResult, UploadTarget, UploadTargetResult, UploadTaskSnapshot } from '@/services/upload-maimai-types';
-export { UploadTaskController, uploadTaskController } from '@/services/upload-task-controller';
 
 export { scoreProgressMessage } from '@/services/upload-maimai-score-fetch';
 

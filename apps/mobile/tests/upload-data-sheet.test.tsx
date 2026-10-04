@@ -1,5 +1,6 @@
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { UploadTaskController, uploadTaskController } from '@/services/upload-task-controller';
 import { useUploadTaskState } from '@/hooks/use-upload-task';
 import { useUploadAccountPreferences } from '@/hooks/use-upload-account-preferences';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
@@ -10,7 +11,11 @@ import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { NotificationProvider } from '@/components/AppNotification';
 import { ScoreHubError } from '@/services/score-hub-client';
 import { SessionPersistenceError } from '@/domain/session-vault';
-import { uploadTaskController } from '@/services/upload-maimai-from-friend-code';
+import {  } from '@/services/upload-maimai-from-friend-code';
+jest.mock('@/services/upload-task-controller', () => {
+  const actual = jest.requireActual<typeof import('@/services/upload-task-controller')>('@/services/upload-task-controller');
+  return { ...actual, uploadTaskController: new actual.UploadTaskController() };
+});
 
 type TestUploadPrefs = {
   friendCode: string;
@@ -307,7 +312,7 @@ describe('好友码统一上传弹窗', () => {
     await view.unmount();
   });
   beforeEach(() => {
-    uploadTaskController.resetForTests();
+    jest.requireMock<{ uploadTaskController: UploadTaskController }>('@/services/upload-task-controller').uploadTaskController = new UploadTaskController();
     jest.clearAllMocks();
     mockHubAccounts.clear();
     mockHubState = { friendCode: '', hasCabinetBound: false };
@@ -1200,3 +1205,5 @@ describe('好友码统一上传弹窗', () => {
     expect(screen.getByText('维护窗口说明')).toBeTruthy();
   });
 });
+
+afterEach(() => { uploadTaskController.begin(); uploadTaskController.cancel(); });

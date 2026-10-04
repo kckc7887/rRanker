@@ -8,7 +8,6 @@ export function captureEmergencyRuntimeDiagnostic(type: string, fields: Readonly
 export function snapshotEmergencyRuntimeDiagnostics(): RuntimeLogEntry[] {
   return JSON.parse(JSON.stringify(emergencyEvents)) as RuntimeLogEntry[];
 }
-export function resetEmergencyRuntimeDiagnosticsForTests(): void { emergencyEvents.length = 0; }
 
 export type RuntimeDiagnosticRecorder = (
   type: string,

@@ -1,3 +1,4 @@
+import { uploadTaskController } from '@/services/upload-task-controller';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { useNotification } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
@@ -7,7 +8,7 @@ import type { ProviderSession } from '@/providers/contracts';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { applyLxnsTokenRotation, useSession } from '@/state/session-store';
 import { invalidateAccountDataQueries } from '@/services/invalidate-account-data';
-import { resolveUploadTargets, uploadTaskController, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
+import { resolveUploadTargets, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
 import { transferMaimaiFromLxns, type LxnsTransferPhase } from '@/services/transfer-maimai-from-lxns';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
 import { isChunithmMaintenanceWindow, CHUNITHM_MAINTENANCE_MESSAGE } from '@/domain/chunithm-maintenance';

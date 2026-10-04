@@ -1,11 +1,9 @@
 import { QueryClient } from '@tanstack/react-query';
-import { describe, expect, it, vi } from 'vitest';
+import { describe, expect, it } from 'vitest';
 import type { GameDataBundle } from '@/domain/game-data';
 import { getGameProfile } from '@/domain/game-profile';
 import type { Player, ScoreSnapshot } from '@/domain/models';
 import {
-  accountDataQueryKeys,
-  accountScopedDataQueryKeys,
   invalidateAccountDataQueries,
   patchMaimaiPlayerDisplayName,
 } from '@/services/invalidate-account-data';
@@ -61,26 +59,17 @@ function makeBundle(accountId: string, displayName: string): GameDataBundle {
 }
 
 describe('invalidateAccountDataQueries', () => {
-  it('invalidates account data without public resources by default', async () => {
-    const client = new QueryClient();
-    const spy = vi.spyOn(client, 'invalidateQueries').mockResolvedValue(undefined);
-
-    await invalidateAccountDataQueries(client);
-
-    expect(spy.mock.calls.map((call) => call[0]?.queryKey)).toEqual(
-      accountScopedDataQueryKeys().map((key) => [...key]),
-    );
-  });
-
-  it('can explicitly invalidate account data and public resources', async () => {
-    const client = new QueryClient();
-    const spy = vi.spyOn(client, 'invalidateQueries').mockResolvedValue(undefined);
-
-    await invalidateAccountDataQueries(client, 'active', true);
-
-    expect(spy.mock.calls.map((call) => call[0]?.queryKey)).toEqual(
-      accountDataQueryKeys().map((key) => [...key]),
-    );
+  it.each([false, true])('refreshes account data with optional public resources: %s', async (includeGlobal) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false, staleTime: Infinity } } });
+    const accountKey = ['game-data', 4, 'account-a', 'maimai'];
+    const publicKey = ['detailed-catalog', 'maimai', 2];
+    try {
+      await client.fetchQuery({ queryKey: accountKey, queryFn: async () => 'old account' });
+      await client.fetchQuery({ queryKey: publicKey, queryFn: async () => 'old catalog' });
+      await invalidateAccountDataQueries(client, 'none', includeGlobal);
+      await expect(client.fetchQuery({ queryKey: accountKey, queryFn: async () => 'fresh account' })).resolves.toBe('fresh account');
+      await expect(client.fetchQuery({ queryKey: publicKey, queryFn: async () => 'fresh catalog' })).resolves.toBe(includeGlobal ? 'fresh catalog' : 'old catalog');
+    } finally { client.clear(); }
   });
 });
 

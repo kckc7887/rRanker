@@ -5,9 +5,6 @@ import { ProviderError } from '@/providers/errors';
 import type { RizlineSession } from '@/providers/contracts';
 import {
   refreshNeedsLogin,
-  refreshRetryTargets,
-  refreshSucceeded,
-  refreshedFetchedAt,
 } from '@/domain/refresh-result';
 import { rizlineSave } from './fixtures/rizline';
 
@@ -69,14 +66,14 @@ describe('Rizline refresh results', () => {
     const result = await refreshRizlineSnapshot(account, session, signal());
 
     expect(result.status).toBe('success');
-    expect(refreshSucceeded(result)).toBe(true);
+
     expect(result.failures).toEqual([]);
     expect(result.requested).toEqual([account]);
     expect(result.completed).toEqual([account]);
     expect(result.value?.save.userId).toBe('user-a');
     expect(result.value?.source).toMatchObject({ kind: 'rizline-official', label: '官方账号', isStale: false });
-    expect(refreshedFetchedAt(result, '2026-01-01T00:00:00.000Z')).toBe(result.metadata?.fetchedAt);
-    expect(refreshedFetchedAt(result, '2026-01-01T00:00:00.000Z')).not.toBe('2026-01-01T00:00:00.000Z');
+
+
   });
 
   it('keeps the old snapshot and its fetch time without calling it a success', async () => {
@@ -88,17 +85,17 @@ describe('Rizline refresh results', () => {
     const result = await refreshRizlineSnapshot(account, session, signal());
 
     expect(result.status).toBe('failed');
-    expect(refreshSucceeded(result)).toBe(false);
+
     expect(result.failures).toEqual([{ code: 'unknown', target: account, diagnostic: 'offline', retryable: true }]);
     expect(refreshNeedsLogin(result)).toBe(false);
-    expect(refreshRetryTargets(result)).toEqual([account]);
+
     expect(result.value?.save.totalRks).toBe(99.1234);
     // 缓存读取保留原提供方与抓取时间，只用过期标记表达它来自本地。
     expect(result.value?.source).toMatchObject({
       kind: 'rizline-official', label: '官方账号', updatedAt: cachedFetchedAt, isStale: true,
     });
     expect(result.metadata?.fetchedAt).toBe(cachedFetchedAt);
-    expect(refreshedFetchedAt(result, cachedFetchedAt)).toBe(cachedFetchedAt);
+
   });
 
   it('distinguishes an expired login from a network failure by error code', async () => {
@@ -111,14 +108,14 @@ describe('Rizline refresh results', () => {
     expect(expired.metadata).toBeNull();
     expect(refreshNeedsLogin(expired)).toBe(true);
     // 需要重新登录的失败项不作为可重试项。
-    expect(refreshRetryTargets(expired)).toEqual([]);
+
 
     mocks.getSave.mockReset();
     mocks.getSave.mockRejectedValue(new ProviderError('network', '网络连接失败', true));
     const offline = await refreshRizlineSnapshot(account, session, signal());
 
     expect(refreshNeedsLogin(offline)).toBe(false);
-    expect(refreshRetryTargets(offline)).toEqual([account]);
+
   });
 
   it('reports cancellation instead of a failed refresh when the caller already cancelled', async () => {
@@ -131,7 +128,7 @@ describe('Rizline refresh results', () => {
     expect(result.value).toBeNull();
     expect(result.metadata).toBeNull();
     expect(result.failures).toEqual([]);
-    expect(refreshedFetchedAt(result, '2026-01-01T00:00:00.000Z')).toBe('2026-01-01T00:00:00.000Z');
+
     expect(mocks.getSave).not.toHaveBeenCalled();
   });
 });

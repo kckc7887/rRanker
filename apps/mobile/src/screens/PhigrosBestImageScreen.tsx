@@ -198,7 +198,7 @@ export function PhigrosBestImageScreen() {
 
   useEffect(() => {
     if (!provider) { setAvatarItems([]); return; }
-    void provider.getGameVersion().then(loadPhigrosAvatarCatalog).then((remote) => {
+    void loadPhigrosAvatarCatalog().then((remote) => {
       setAvatarItems(remote);
     }).catch(() => setAvatarItems([]));
   }, [provider]);

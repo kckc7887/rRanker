@@ -11,7 +11,7 @@ import {
 } from '@/domain/detail-target';
 
 describe('个人曲库详情身份', () => {
-  it.each(GAME_IDS.filter(game => game !== 'test'))('%s 在缺少曲库元数据时仍可编码歌曲与谱面目标', gameId => {
+  it.each(GAME_IDS)('%s 在缺少曲库元数据时仍可编码歌曲与谱面目标', gameId => {
     for (const kind of ['song', 'chart'] as const) {
       const target = libraryDetailTarget(kind === 'song'
         ? { gameId, kind, songId: '42' }
@@ -93,7 +93,6 @@ describe('DetailTarget 编解码', () => {
       .toMatchObject({ code: 'invalid_parameter', parameter: 'scoreId' });
     expect(decodeDetailTarget('maimai', { songId: '1', gameId: 'phigros' }))
       .toEqual({ ok: true, target: { game: 'phigros', songId: '1' } });
-    expect(errorOf('test', { songId: '1' })).toMatchObject({ code: 'unsupported_game' });
   });
 
   it('缺失或非法参数返回可判别的错误', () => {

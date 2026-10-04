@@ -32,7 +32,6 @@ export function defaultArcadeFinderPreferences(gameId: GameId = 'maimai'): Arcad
     phira: [],
     adofai: [],
     musedash: [],
-    test: [],
     'osu-standard': [],
     'osu-mania': [],
     'osu-catch': [],

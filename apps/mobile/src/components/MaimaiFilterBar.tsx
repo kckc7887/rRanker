@@ -10,7 +10,7 @@ import {
   joinFilterSummary,
 } from '@/components/game-content/FilterShell';
 import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
-import { FILTER_BAR_EXTENSIONS } from '@/features/game-content/filter-bar-extensions';
+import { DxRatingTagFilterRow } from '@/components/maimai/DxRatingTagFilterRow';
 import type { DxRatingChartTag } from '@/domain/dxrating-chart-tags';
 import {
   MAIMAI_FC_ACHIEVEMENTS,
@@ -30,8 +30,6 @@ type OpenDropdown = 'version' | 'solo' | 'multi' | null;
 type VersionSheetValue = string | 'all';
 type SoloSheetValue = MaimaiFcAchievement | 'all';
 type MultiSheetValue = MaimaiFsAchievement | 'all';
-
-export { FilterChipFrame, NeutralChip };
 
 export type DxRatingTagFilterState = 'ready' | 'loading' | 'unavailable';
 
@@ -342,7 +340,7 @@ export function MaimaiFilterBar({
       </View>
 
       {onDxRatingTagIdsChange ? (
-        <FILTER_BAR_EXTENSIONS.tagFilterRow
+        <DxRatingTagFilterRow
           visible={tagSheetVisible}
           tags={dxRatingTags}
           selectedTagIds={selectedDxRatingTagIds}

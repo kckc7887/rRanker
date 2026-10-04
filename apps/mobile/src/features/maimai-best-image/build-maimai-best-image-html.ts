@@ -772,9 +772,6 @@ ${bestImageBridgeRuntimeScript()}
 
 ${bestImageBridgeMeasureScript({
         layoutCall: 'layoutAppProfile();',
-        exportViewportComment: `        // Export WebView is sized to OUTPUT_WIDTH x logicalHeight. Force 1:1 layout so capture
-        // never letterboxes while the native container is still catching up between pages.
-`,
       })}
       const fontReady = document.fonts && document.fonts.ready
         ? document.fonts.ready.catch(() => undefined)

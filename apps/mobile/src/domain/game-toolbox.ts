@@ -199,10 +199,6 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
     ],
     emptyDetail: '中二节奏工具正在准备中。',
   },
-  test: {
-    tools: [],
-    emptyDetail: '测试游戏暂无可用工具。',
-  },
   adofai: {
     tools: [
       {

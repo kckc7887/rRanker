@@ -78,10 +78,6 @@ export async function beginOsuAuthorize(): Promise<string> {
   return buildAuthorizeUrl(state);
 }
 
-export async function clearPendingOsuOAuth(): Promise<void> {
-  await withPendingMutation(() => SecureStore.deleteItemAsync(PENDING_OAUTH_KEY));
-}
-
 async function loadPendingOsuOAuth(): Promise<PendingOsuOAuth | null> {
   const raw = await runProviderOperation('credential_storage', () => SecureStore.getItemAsync(PENDING_OAUTH_KEY));
   if (!raw) return null;
@@ -247,28 +243,6 @@ export function clearOsuRotationCache(): void {
   recentRotations.clear();
   rotationAncestors.clear();
   inFlightRefreshes.clear();
-}
-
-export function osuRotationCacheStats(): {
-  rotations: number;
-  ancestors: number;
-  ancestorMembers: number;
-  inFlight: number;
-} {
-  let ancestorMembers = 0;
-  for (const ancestors of rotationAncestors.values()) ancestorMembers += ancestors.size;
-  return {
-    rotations: recentRotations.size,
-    ancestors: rotationAncestors.size,
-    ancestorMembers,
-    inFlight: inFlightRefreshes.size,
-  };
-}
-
-/** 当前凭据是这次轮换结果的前代时才允许覆盖。重新登录产生的新凭据不在前代集合里。 */
-export function osuRotationMayReplace(currentRefreshToken: string, nextRefreshToken: string): boolean {
-  if (currentRefreshToken === nextRefreshToken) return true;
-  return rotationAncestors.get(nextRefreshToken)?.has(currentRefreshToken) ?? false;
 }
 
 export function osuRotationAncestors(nextRefreshToken: string): readonly string[] {

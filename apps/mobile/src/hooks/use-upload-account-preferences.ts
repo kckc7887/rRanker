@@ -1,9 +1,10 @@
+import { uploadTaskController } from '@/services/upload-task-controller';
 import { useNotification } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { fetchMe } from '@/services/score-hub-client';
-import { resolveUploadTargets, uploadTaskController } from '@/services/upload-maimai-from-friend-code';
+import { resolveUploadTargets } from '@/services/upload-maimai-from-friend-code';
 import { scoreHubAccountStore, type ScoreHubAccountEntry } from '@/storage/score-hub-account-store';
 import { uploadPrefsStore } from '@/storage/upload-prefs-store';
 import { useCallback, useEffect, useRef, useState } from 'react';

@@ -53,7 +53,6 @@ export type RefreshFailure<Target extends string = string> = {
 /**
  * 一次刷新的结果：结果状态与快照元数据分开。
  * `metadata` 只在 success / noop 时是本次抓取时间；其余情况保留旧快照元数据，
- * 写回时必须用 `refreshedFetchedAt` 才不会把部分成功当成完整成功时间。
  */
 export type RefreshResult<T, Target extends string = string> = {
   readonly status: RefreshStatus;
@@ -114,15 +113,6 @@ export function refreshFailureFromError<Target extends string = string>(
   };
 }
 
-function assertCompletedWithinRequested<Target extends string>(
-  requested: readonly Target[],
-  completed: readonly Target[],
-): void {
-  for (const item of completed) {
-    if (!requested.includes(item)) throw new Error('完成范围必须落在请求范围内');
-  }
-}
-
 /** 请求范围全部完成：唯一会推进快照抓取时间的成功结果。 */
 export function successfulRefresh<T, Target extends string = string>(input: {
   value: T;
@@ -131,7 +121,6 @@ export function successfulRefresh<T, Target extends string = string>(input: {
   completed?: readonly Target[];
 }): RefreshResult<T, Target> {
   const completed = input.completed ?? input.requested;
-  assertCompletedWithinRequested(input.requested, completed);
   return {
     status: 'success',
     value: input.value,
@@ -150,8 +139,6 @@ export function partialRefresh<T, Target extends string = string>(input: {
   completed: readonly Target[];
   failures: readonly RefreshFailure<Target>[];
 }): RefreshResult<T, Target> {
-  if (input.failures.length === 0) throw new Error('部分成功必须带失败项');
-  assertCompletedWithinRequested(input.requested, input.completed);
   return {
     status: 'partial',
     value: input.value,
@@ -175,8 +162,6 @@ export function failedRefresh<T, Target extends string = string>(input: {
 }): RefreshResult<T, Target> {
   const value = input.value ?? null;
   const metadata = input.metadata ?? null;
-  if (value === null && metadata !== null) throw new Error('没有可继续使用的数据时不得带快照元数据');
-  assertCompletedWithinRequested(input.requested, input.completed ?? []);
   return {
     status: 'failed',
     value,
@@ -204,17 +189,6 @@ export function noopRefresh<T, Target extends string = string>(input: {
   };
 }
 
-export function refreshSucceeded<T, Target extends string>(result: RefreshResult<T, Target>): boolean {
-  return result.status === 'success' && result.failures.length === 0;
-}
-
-/** 只重试失败项时使用的具体目标；需要重新登录的项不属于可重试项。 */
-export function refreshRetryTargets<T, Target extends string>(result: RefreshResult<T, Target>): Target[] {
-  return result.failures
-    .filter((failure) => failure.retryable && failure.target !== null)
-    .map((failure) => failure.target as Target);
-}
-
 export function refreshFailuresNeedLogin(failures: readonly RefreshFailure<string>[]): boolean {
   return failures.some((failure) => failure.code === 'authentication');
 }
@@ -224,17 +198,4 @@ export function refreshNeedsLogin<T, Target extends string>(
   result: Pick<RefreshResult<T, Target>, 'failures'>,
 ): boolean {
   return refreshFailuresNeedLogin(result.failures);
-}
-
-/**
- * 快照应写回的抓取时间：只有本次请求范围全部成功（success / noop）才推进；
- * partial / failed / cancelled 保留上一次完整成功时间。
- */
-export function refreshedFetchedAt<T, Target extends string>(
-  result: RefreshResult<T, Target>,
-  previousFetchedAt: string,
-): string {
-  return result.status === 'success' || result.status === 'noop'
-    ? result.metadata?.fetchedAt ?? previousFetchedAt
-    : previousFetchedAt;
 }

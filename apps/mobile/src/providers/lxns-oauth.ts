@@ -268,15 +268,6 @@ function rememberLxnsRotation(refreshToken: string, next: LxnsOAuthSession): voi
   pruneLxnsRotationState();
 }
 
-/**
- * 当前凭据是这次轮换结果的前代时才允许提交。重新授权产生的新凭据
- * 不在前代集合里，因此迟到的轮换结果无法覆盖它。
- */
-export function lxnsRotationMayReplace(currentRefreshToken: string, nextRefreshToken: string): boolean {
-  if (currentRefreshToken === nextRefreshToken) return true;
-  return rotationAncestors.get(nextRefreshToken)?.has(currentRefreshToken) ?? false;
-}
-
 export function lxnsRotationAncestors(nextRefreshToken: string): readonly string[] {
   return [...(rotationAncestors.get(nextRefreshToken) ?? [])];
 }

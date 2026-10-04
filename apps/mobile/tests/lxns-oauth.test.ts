@@ -215,15 +215,15 @@ describe('rotateLxnsTokens', () => {
       expires_in: 900,
       refresh_token: 'r2',
     });
-    const { lxnsRotationAncestors, lxnsRotationMayReplace, rotateLxnsTokens } =
+    const { lxnsRotationAncestors, rotateLxnsTokens } =
       await loadLxnsOAuthModule({ fetchImpl: fetchMock });
 
     await rotateLxnsTokens('r1');
 
-    expect(lxnsRotationMayReplace('r1', 'r2')).toBe(true);
+    expect(lxnsRotationAncestors('r2')).toContain('r1');
     expect(lxnsRotationAncestors('r2')).toEqual(['r1']);
     // 重新授权拿到的新 refresh token 不属于旧世代，迟到结果不能覆盖它。
-    expect(lxnsRotationMayReplace('r-fresh', 'r2')).toBe(false);
+    expect(lxnsRotationAncestors('r2')).not.toContain('r-fresh');
   });
 });
 

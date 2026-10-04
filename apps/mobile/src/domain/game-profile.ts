@@ -54,14 +54,6 @@ export const GAME_PROFILES: { [G in GameId]: GameProfile<G> } = {
     bestSections: [],
     capabilities: capabilitiesFor('chunithm'),
   },
-  test: {
-    id: 'test',
-    title: '测试游戏',
-    ratingLabel: 'Rating',
-    ratingDigits: 0,
-    bestSections: [{ id: 'best', title: 'Best', size: 0 }],
-    capabilities: capabilitiesFor('test'),
-  },
   phigros: {
     id: 'phigros',
     title: 'Phigros',

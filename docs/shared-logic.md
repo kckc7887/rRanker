@@ -30,7 +30,7 @@ app 路由 / 游戏容器
 | 展示模型 | `src/features/game-content/presentation.ts`：`TextEffect`、`MetricPresentation`、`BadgePresentation`、`ScoreCardPresentation`、`SongRowPresentation`、`BestSectionPresentation`、`ChartCardPresentation`、`NoteGroupPresentation`、`SongDetailRoute` | 页面容器生成 presentation；共享组件不读取游戏 Hook 或原始 Provider DTO；`SongDetailRoute` 是 `domain/detail-target.ts` 的 `DetailTargetRoute` 别名 | `game-content-adapters.test.ts`、`game-content-host-contract.test.tsx` |
 | 游戏适配器 | `src/features/game-content/adapters/index.ts` 及同目录各游戏适配器：`presentMaimaiScore`、`presentPhigrosScore`、`presentChunithmScore`/`presentChunithmSong`、`presentPhira*`、`presentRizline*`、`presentStandardSong`、`presentTuf*`/`formatTufAccuracy`、`presentMuseDash*`/`formatMuseDashScore`/`formatMuseDashAcc`/`isNumericMuseDashLevel` | 只做「游戏真实模型 → 展示模型」转换：原始 DTO、领域类型与字段解释留在各游戏领域层与 Provider；这里不承载归一化存储或缓存语义 | `game-content-adapters.test.ts` |
 | 详情定位 | `src/domain/detail-target.ts`：`DetailTarget`、`DetailTargetRoute`、`DetailTargetParams`、`decodeDetailTarget(gameId, params)`、`encodeDetailTarget(target)`、`detailTargetHref(route)`、`DetailTargetErrorCode`；`src/domain/user-library.ts`：`libraryDetailTarget(target)` | `/songs/[songId]` 的唯一语义来源；非法、缺失、重复或跨游戏槽位返回可判别错误。个人曲库先生成游戏专属 target，再编码路由，不把内部存储槽位直接复制到 URL；没有详情能力的条目禁用跳转 | `detail-target.test.ts`、`detail-target-navigation.test.tsx` |
-| 当前账号数据包 | `src/domain/game-data.ts`：`GamePayload`、`GamePayloadKind`、`GAME_PAYLOAD_KIND_BY_GAME_ID`、`GamePayloadOf<G>`、`GameDataBundleFor<G>`、`GameDataBundle`、`gameDataBundle()`、`gameAccountMetadata<G>()`；`src/services/game-data-loaders.ts`：`GAME_DATA_LOADERS`、`GameDataLoader`、`GameDataLoaderContext`、`GameDataLoadResult`、`selectGameDataLoader`、`loadGameDataBundle` | `GAME_PAYLOAD_KIND_BY_GAME_ID` 是 `satisfies Record<GameId, …>` 的穷尽映射（保留测试 id 为 `null`），`GameDataBundleFor<G>` 将游戏、Provider、`GameProfile<G>` 和载荷配对，`gameDataBundle` 同时校验运行时身份；`GAME_DATA_LOADERS` 也是 `Record<GameId, GameDataLoader>` 穷尽映射，`selectGameDataLoader` 对未登记游戏直接抛错，缺省没有舞萌回退分支。加载器只读取与装配，不持有查询客户端；曲库由 `services/game-data-loader-queries.ts` 的 `gameDataCatalogQueries(client)` 注入，真实中二与 osu! Provider 从会话的 `protocolScoreProvider` 复用，发布数据包、读写其它实体与失效都经 `GameDataLoaderContext` 的 `publish` / `readEntityValue` / `publishEntityValue` / `invalidateEntityValue` 端口，后台刷新句柄经 `GameDataLoadResult.background` 交回适配层登记 | `game-data.test.ts`、`game-data-loader-registry.test.tsx`、`game-registry.type-check.ts`、`game-data-refresh-contract.test.ts` |
+| 当前账号数据包 | `src/domain/game-data.ts`：`GamePayload`、`GamePayloadKind`、`GAME_PAYLOAD_KIND_BY_GAME_ID`、`GamePayloadOf<G>`、`GameDataBundleFor<G>`、`GameDataBundle`、`gameDataBundle()`、`gameAccountMetadata<G>()`；`src/services/game-data-loaders.ts`：`GAME_DATA_LOADERS`、`GameDataLoader`、`GameDataLoaderContext`、`GameDataLoadResult`、`selectGameDataLoader`、`loadGameDataBundle` | `GAME_PAYLOAD_KIND_BY_GAME_ID` 是 `satisfies Record<GameId, …>` 的穷尽映射（保留测试 id 为 `null`），`GameDataBundleFor<G>` 将游戏、Provider、`GameProfile<G>` 和载荷配对，`gameDataBundle` 同时校验运行时身份；`GAME_DATA_LOADERS` 也是 `Record<GameId, GameDataLoader>` 穷尽映射，`selectGameDataLoader` 对未登记游戏直接抛错，缺省没有舞萌回退分支。加载器只读取与装配，不持有查询客户端；曲库由 `services/game-data-loader-queries.ts` 的 `gameDataCatalogQueries(client)` 注入，真实中二与 osu! Provider 从会话的 `protocolScoreProvider` 复用，发布数据包、读写其它实体与失效都经 `GameDataLoaderContext` 的 `publish` / `readEntityValue` / `publishEntityValue` / `invalidateEntityValue` 端口，后台刷新句柄经 `GameDataLoadResult.background` 交回适配层登记 | `game-data.test.ts`、`game-registry.type-check.ts`、`game-data-refresh-contract.test.ts` |
 | 游戏与能力注册 | `src/domain/game-bind-options.ts`：`SUPPORTED_GAME_IDS`、`OSU_MODE_GAME_IDS`、`RESERVED_GAME_IDS`、`GAME_IDS`、`GameId`、`GAME_OPTIONS`、`PROVIDER_IDS`、`INTERNAL_PROVIDER_IDS`；`src/domain/game-registry.ts`：`gameRegistrationSnapshot`、`gameRegistrationIssues`、`assertGameRegistryComplete`；`src/domain/game-profile.ts`：`GameProfile`、`GameCapabilities`、`getGameProfile` | `GameId` 只有这三份列表一个来源，正式游戏、osu! 四模式与保留测试 id 分类登记；登记校验要求正式游戏都有添加入口、展示资料与工具箱，保留测试 id 不得进入添加入口，查分器在不同游戏不得登记不同绑定方式；`GameCapabilities` 当前只有真实被消费的 `hasTools`，由 `getGameToolbox(id).tools.length > 0` 派生 | `game-registry.test.ts`、`game-registry.type-check.ts`、`game-bind-options.test.ts`、`game-toolbox.test.ts`、`game-data.test.ts`、`overview-capability-contract.test.tsx` |
 
 刷新结果与缓存来源分开表达：`src/domain/refresh-result.ts` 的 `RefreshResult<T, Target>` 是
@@ -141,8 +141,8 @@ Muse Dash 的成就筛选依赖单曲 miss 明细：`museDashMissDetail` 把 `nu
 | 缓存优先 | `src/services/cache-first.ts`：`cacheFirstLoad`、`cacheFirstLoadWithBackground`、`CacheFirstLoad`、`CacheFirstLoadOptions`、`CacheFirstRefreshResult`、`staleCached`、`isCacheFallback` | 统一“本地首屏、后台刷新、失败保留旧数据”；调用方提供读写和游戏语义。`cacheFirstLoadWithBackground` 返回 `{ value, background }`：`value` 供首屏渲染，`background` 是永不 reject 的后台刷新终态句柄（`RefreshResult<T, 'data'>`），调用方不必再猜一个 Promise 返回时完成了多少。命中本地缓存时后台刷新的结果分流：取回新数据进必填的 `onFresh`，服务声明为缓存/兜底（可选 `isFallback`，缺省用 `isCacheFallback`）的结果进 `onFallback(fallback, failure)`，缓存命中与兜底都不会被当成刷新成功；后台刷新抛错进 `onRefreshFailed(failure)`，取消后三者都不发布。没有本地缓存时直接返回刷新结果，不经过这两个回调；冷启动失败直接抛出。`markStale` 决定缓存命中返回值的过期标记。取消分两层：消费者自己的 `signal` 中止只取消本次调用（终态为 `cancelled`，其它共享消费者照常拿到数据），最后一个消费者离开或缓存清理提升代次才取消共享底层任务 | `cache-first.test.ts`、各游戏缓存测试 |
 | 快照公共工具 | `src/services/snapshot-cache-utils.ts`：`makeSnapshot`、`snapshotSource`、`createInflightGuard`、`clearResourcesByPrefix` | 统一快照来源、并发去重和资源前缀清理 | 各游戏缓存测试 |
 | 曲库与别名 | `src/services/aliased-catalog-query.ts`：`AliasedCatalogOptions`、`loadAliasedCatalog`、`aliasedCatalogSource`；`src/hooks/use-aliased-catalog.ts`：`useAliasedCatalog` | 游戏提供目录、别名查询和合并函数；服务负责加载、合并与来源，Hook 订阅规范查询选项；可选 `retry` 允许已自行恢复的服务关闭外层重试 | 曲库与搜索测试 |
-| 游戏数据实体 | `src/services/game-data-query.ts`：`GAME_DATA_QUERY_VERSION`、`gameDataQueryKey`、`GameDataQueryParams`、`GAME_DATA_QUERY_OPTIONS`、`GameDataQueryPort`；`services/tuf-query.ts`、`muse-dash-query.ts`、`phira-query.ts` 的玩家实体键与查询选项 | 账号、游戏、Provider、会话模式组成规范键。实体保存完整 snapshot，原提供方、抓取时间和过期标记跟随同一版本；总览与页面读取同一已提交值。非 React 查询选项显式接收 QueryClient，Hook 只负责订阅 | `game-data-refresh-contract.test.ts`、`game-data-entity-version.test.tsx`、`game-data-loader-registry.test.tsx` |
-| 查询适配层 | `src/services/game-data-query.ts`：`readGameDataBundle`、`publishGameDataBundle`、`publishEntityValue`、`invalidateEntityValue`、`registerGameDataBackground`、`awaitGameDataBackground`、`resetGameDataBackground`、`gameDataBackground`、`gameDataBundleStale`、`refreshGameDataBundle`、`GameDataRefreshInput`、`GameDataRefreshResult`、`GameDataRefreshTarget` | `GameDataQueryPort` 声明读取、写入、失效和可选 QueryCache 观察能力。后台发布等待真实首屏查询结束，避免新值被旧首屏覆盖；移除查询时不再发布。后台终态保留到下一次查询替换或 QueryCache 移除。主动刷新等 refetch 与后台终态，再按「后台落定值 → 已提交版本 → refetch 返回值」取值；保留 `data` / `catalog` / `player` / `scores` / `bests` 的完成项和机器失败码。服务与加载器不导入应用单例，UI 只读返回结果 | `game-data-refresh-contract.test.ts`、`cache-first-background.test.ts`、`game-data-entity-version.test.tsx`、`overview-rizline-sync.test.tsx` |
+| 游戏数据实体 | `src/services/game-data-query.ts`：`GAME_DATA_QUERY_VERSION`、`gameDataQueryKey`、`GameDataQueryParams`、`GAME_DATA_QUERY_OPTIONS`；`services/tuf-query.ts`、`muse-dash-query.ts`、`phira-query.ts` 的玩家实体键与查询选项 | 账号、游戏、Provider、会话模式组成规范键。实体保存完整 snapshot，原提供方、抓取时间和过期标记跟随同一版本；总览与页面读取同一已提交值。非 React 查询选项显式接收 QueryClient，Hook 只负责订阅 | `game-data-refresh-contract.test.ts`、`game-data-entity-version.test.tsx` |
+| 查询适配层 | `src/services/game-data-query.ts`：`readGameDataBundle`、`publishGameDataBundle`、`registerGameDataBackground`、`awaitGameDataBackground`、`refreshGameDataBundle` | 使用真实 QueryClient；后台提交等待首屏查询结束，保留当前实体检查与取消；主动刷新汇总已提交值和实际失败 | `game-data-refresh-contract.test.ts`、`game-data-entity-version.test.tsx` |
 
 曲库查询的非 React 入口位于 `services/aliased-catalog-query.ts`（`AliasedCatalogOptions`、`loadAliasedCatalog`、`aliasedCatalogSource`）与 `services/maimai-catalog-query.ts`、`chunithm-catalog-query.ts`、`phigros-catalog-query.ts`、`rizline-catalog-query.ts`。`ensure*Catalog(client, …)` / `refresh*Catalog(client, …)` 显式接收 QueryClient；`useAliasedCatalog` 与游戏 Hook 只订阅规范选项。加载器由 `gameDataCatalogQueries(client)` 读取这些入口，不调用 Hook。
 
@@ -304,8 +304,8 @@ SecureStore、用户曲库、公共卡片/详情/列表与 Phigros 发布合同�
 | 能力 | 权威入口与主要导出 | 使用边界 | 主要验证 |
 |---|---|---|---|
 | Session | `src/state/session-store.ts`：`useSession`、`SessionState`、`UNBOUND_ACCOUNT_ID`、`SessionsByAccountId`、`restoreSession`、`refreshActiveSessionView`、`applyLxnsTokenRotation(accountId, update)`、`applyOsuTokenRotation(accountId, next, expected)`、`applyRizlineSessionRotation(accountId, next, expected, signal?)`、`retryPendingRotationWrites`、`pendingRotationWritesSnapshot` | 只保存账号状态与纯变换：账号/会话映射、激活账号派生视图（账号、游戏、Provider 与内存会话在同一次状态提交里可见，不存在只看得到一半的中间态）。Store 不构造具体 Provider，也不调用安全存储 API：Provider 来自 `sessionRuntime()` 端口，凭据落盘与轮换来自凭据提交协调器；页面不得维护第二份账号真相。Store 对外只暴露 `applyLxnsTokenRotation` / `applyOsuTokenRotation` / `applyRizlineSessionRotation` 与补写入口，实现委托给同一协调器单例 | `session-store.test.ts`、`session-store-ownership.test.ts`、`session-store-surface.test.ts`、账号切换与 OAuth 测试 |
-| 会话 Provider 解析 | `src/state/session-provider-resolver.ts`：`SessionCredentialRef`、`SessionProfiles`、`ResolvedSessionProviders`、`providerResolverCacheKey(account, credentials)`、`resolveSessionProviders(account, credentials, onLxnsTokenRotation?, onOsuTokenRotation?)`、`releaseResolvedProviders(accountIds)`、`providerResolverStats()`；`src/state/session-runtime.ts`：`SessionRuntime`、`SessionRuntimeRequest`、`sessionRuntime()`、`setLxnsTokenRotation(rotation)`、`setOsuTokenRotation(rotation)` | Provider 实例按「账号 + 凭据版本」缓存，持有会话等运行态的实例不会在每次 render 重建。失效条件只有三种：`release`（解绑、清空会话）、凭据版本变化、账号身份或展示名变化（展示名进本地 Provider 的玩家名；分数展示、头像等元数据字段不进键）。缓存键由账号 id、游戏、Provider、展示名、凭据 id 与会话内容指纹组成，指纹与字段顺序无关。Store 只经 `sessionRuntime()` 声明「需要 Provider」并按账号 `release`；`services/session-providers.ts` 的 `createSessionProviders(account, session, onLxnsTokenRotation, onOsuTokenRotation?)` 只保留游戏差异（Provider 组合与构造参数），不反向读取 Store | `session-provider-resolver.test.ts`、`session-providers.test.ts`、`session-store-ownership.test.ts` |
-| 凭据提交 | `src/services/session-credential-coordinator.ts`：`SessionCredentialCoordinator`、`SessionCredentialState`、`SessionStoreApi`、`OAuthRotationCommitResult` | 轮换资格判定、SecureStore 落盘、内存发布与有界补写的唯一入口。按请求开始时消费掉的凭据世代解析应更新的凭据（落雪与 osu! 各有一条前代关系），只更新仍关联该凭据的账号；落盘经安全存储端口，内存发布只改会话并释放受影响账号的 Provider 缓存，已解绑账号的会话不写回。提交返回 `applied` / `pending-persist` / `stale` / `removed`：发起账号被解绑但共享凭据仍被引用时继续提交，新授权不会被迟到结果覆盖；落盘失败保留内存新会话并按 5/30/120 秒有界退避最多自动补写 3 次。协调器不 import Store 模块，由 Store 侧兼容入口按需装配并注入 `getState` / `setState` / `refreshActiveSessionView` | `session-store-ownership.test.ts`、`session-store.test.ts`、OAuth 与 Rizline 轮换测试 |
+| 会话 Provider 解析 | `src/state/session-provider-resolver.ts`：`resolveSessionProviders`、`releaseResolvedProviders` | 按实际账号和凭据缓存 Provider；账号身份、展示名或会话变化时重建，解绑时释放 | `session-provider-resolver.test.ts`、`session-providers.test.ts` |
+| 凭据提交 | `src/services/session-credential-service.ts` | 模块函数直接提交当前凭据轮换；旧请求不覆盖新授权，解绑后不恢复账号；落盘失败保留新会话并有限补写 | `session-store.test.ts`、OAuth 与 Rizline 轮换测试 |
 | QueryClient | `src/state/query-client.ts`：`queryClient`、`releaseInactiveQueries` | 全应用唯一实例；只有内存警告清理非活动 Query | 生命周期与缓存测试 |
 | 生命周期 | `src/state/app-lifecycle-core.ts`、`app-lifecycle.tsx`：`AppLifecycleProvider`、`useAppLifecycle`、`getForegroundAbortSignal`、`waitForForeground`、`ensureForegroundWork` | 短暂 inactive 不 abort、不换代；后台 abort 前台工作。进入 `foreground-ready` 时，来自后台则换代并 `beginForegroundWork`；若经 inactive 回来且 controller 已空则 `ensureForegroundWork` 重建可取消信号。异步任务传递 AbortSignal | `app-lifecycle.test.tsx`、下载生命周期测试 |
 | 查询前台恢复 | `src/state/query-client.ts`：`resumeInterruptedActiveQueries(client): Promise<void>`；`hooks/use-app-runtime.ts` 装配 | 后台取消结算后，只恢复 active、enabled、pending/idle 且尚无数据的首查。已有缓存、错误、禁用、闲置和正在读取的查询不重新请求；`cancelRefetch: false` 不取消更晚的读取。旧前台回调在再次后台或卸载后失效 | `query-client.test.ts`、`app-runtime.test.tsx` |
@@ -606,7 +606,6 @@ ScoreHub 的响应校验集中在 `score-hub-types.ts`：同步成绩、账号�
 | 远程图片 | `RemoteImage.tsx`、`services/remote-image-cache.ts` | 图片统一选择 native、none 或受控 profile；只有带 gameId 且进入持久化 scope 的可见图片写受控缓存；失活只暂停落盘，不拆已显示 source | `remote-image-cache.test.ts`、`remote-image.test.tsx`、列表合同测试 |
 | 登录面板槽位 | `src/features/game-content/provider-login-panels.tsx`：`PROVIDER_LOGIN_PANELS`、`resolveProviderLoginPanel(provider)`、`ProviderLoginPanelProps`、`ProviderLoginPanel` | 组合边界注册表：共享登录弹层 `components/ProviderLoginSheet.tsx` 只按 Provider 查表渲染外壳、状态与公共文案，游戏面板不注册在共享组件里；按顺序命中专属 Provider → 凭据能力 → 缺省账密面板（`DivingFishLoginPanel`），`gameId` 只随 props 传给需要游戏身份的面板 | `provider-login-panels.test.tsx` |
 | 账号行补充标签 | `src/features/game-content/account-rating-tags.tsx`：`boundAccountRatingTag(account)`；`components/AccountSwitchSheet.tsx` 与 `components/BoundAccountGroupedList.tsx` 的可选 `renderRatingTag?: (account: BoundAccount) => ReactNode` | 组合边界注册表：`BoundAccountGroupedList` 的账号行标签按「注入槽位 → 公共列表内置的舞萌/中二/Phigros 标签 → `boundAccountRatingTag`（当前登记 adofai / musedash）→ 注册表 `accountScoreTheme` 的 `TintedRatingTag`」依次取值，需要引用游戏主题模块的标签只登记在注册表里，共享列表不直接引用游戏组件；`AccountSwitchSheet` 只透传槽位，不设默认渲染 | `account-switch-sheet.test.tsx`、`bound-account-list.test.tsx`、`osu-account-management.test.tsx` |
-| 筛选条扩展槽位 | `src/features/game-content/filter-bar-extensions.tsx`：`FILTER_BAR_EXTENSIONS.tagFilterRow` → `src/components/maimai/DxRatingTagFilterRow.tsx` | 共享筛选条只渲染扩展槽，不直接引用游戏组件；舞萌的谱面标签筛选行（入口与弹层都在舞萌模块内）经 `components/MaimaiFilterBar.tsx` 消费注册表 | `maimai-tag-filter-row.test.tsx`、`filter-shell-host-contract.test.tsx` |
 | 成绩图导出构建器 | 各游戏自己的构建器：`features/maimai-best-image/build-maimai-best-image-html.ts` 的 `buildBestImageHtml`、`features/phigros-best-image/build-phigros-best-image-html.ts` 的 `buildPhigrosBestImageHtml` 与 `build-phigros-best-image-app-html.ts` 的 `buildPhigrosBestImageAppHtml`、`features/chunithm-best-image/build-chunithm-best-image-html.ts` 的 `buildChunithmBestImageHtml`；共享层 `features/best-image/build-best-image-html.ts`（只再导出消息协议）、`build-best-image-canvas-runtime.ts` 与 `best-image-bridge-script.ts`（`bestImageBridgeRuntimeScript`、`bestImageBridgeMeasureScript`、`bestImageBridgeReadyScript` 参数化脚本段） | 模板、素材清单、字体与样式经各构建器的 input 注入，由各游戏屏幕直接调用；共享入口不得承载游戏构建器，游戏也不能从共享入口取本游戏模板。桥接脚本段只由舞萌与中二拼进自己的 HTML（差异走 `layoutCall` / `exportViewportComment` / `assetReadyExpression` 参数），Phigros 的压缩风格脚本仍内联在自己模块里；共享屏幕壳与控制器接收的是已构建好的 sources/htmlPages，不接收构建器 | `best-image-html.test.ts`、`phigros-best-image.test.ts`、`chunithm-best-image.test.ts`、`best-image-screen-contract.test.tsx` |
 
 `MetricBadges.tsx` 提供 `DualTextMetricBadge` 和 `StatusMetricBadge`，保留难度的两个
@@ -738,18 +737,10 @@ osu!catch 的 `convertBeatmapToCatch(beatmap, modDiff)` 在同一转换路径内
 
 Rizline 的 `activeSpans(spans, seconds)` 为不可变、有序时间轨道缓存区间索引，相机、画布位移、速度和颜色共用；无序轨道保留原始提前退出语义。准备时 BPM 换算和音符所属线段查询也复用区间索引，交界处仍保留各采样器原有的首项或末项优先规则。
 
-Phigros 的谱面资源在服务层：`services/phigros-chart-preview-resources.ts` 提供端口
-`PhigrosChartPreviewResourcePort`、端口工厂 `createPhigrosChartPreviewResourcePort(ossBase?)`、
-加载器工厂 `createPhigrosChartPreviewResourceLoader(port)`，以及默认装配后的
-`loadPhigrosChartPreviewResources(target, signal, read?)`、`loadPhigrosChartPreviewVariants(target, signal)`、
-`loadPhigrosChartPreviewBundle(target, signal, ossBase?)`；预览与兼容包下载共用发布恢复、超时、字节校验与取消。
-`domain/phigros-chart-preview.ts` 只保留清单与发布的纯解析：`resolvePhigrosChartPreviewVariants`、
-`resolvePhigrosChartPreviewAssetBundle`（按 `.0`、无编号、唯一编号目录选择默认谱面；
-已有默认目录缺少所选难度时仍报错，不从其它变体拼接，确保匹配默认音乐）、
-`phigrosChartPreviewLevelLabel` 与 `PhigrosChartPreviewResourceRead` 端口形状。
-领域纯度由 `phigros-chart-preview-domain-purity.test.ts` 与 `rizline-chart-preview-domain-purity.test.ts` 钉住：
-这两个领域文件不得静态引入 `@/services/`、`@/providers/`、`@/storage/`、`@/state/`、`@/hooks/`、`@/features/`
-或 Expo/React 模块，纯解析只依赖结构化的发布快照与清单字段。
+Phigros 的 `services/phigros-chart-preview-resources.ts` 直接提供
+`loadPhigrosChartPreviewResources(target, signal, read?)` 与 `loadPhigrosChartPreviewVariants(target, signal)`。
+资源读取复用当前发布与校验；`read(asset, index)` 接入原生下载和进度。
+领域层按实际清单选择谱面、音乐和曲绘，重复编号或缺失必需资源明确报错。
 `PhigrosChartPreviewTarget` 可选 `variantIndex` 指定编号谱面，优先匹配同编号音乐；清单中没有
 专属音乐条目时使用歌曲共用音乐。专属音乐重复、下载失败或校验失败不得触发共用音乐回退；
 未指定编号时保持默认规则。`phigros-resources.test.ts` 覆盖共用音乐、专属音乐与缺失资源。
@@ -839,17 +830,7 @@ catch 实心透明度、同色描边和降级模糊像素；不代替 iOS/Androi
 时长只由默认模式验证。报告同时列明实际覆盖与省略项，生成模式不调用 esbuild。
 
 Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-resources.ts` 提供端口
-`RizlineChartPreviewResourcePort`、默认装配 `defaultRizlineChartPreviewResourcePort()`、
-加载器工厂 `createRizlineChartPreviewResourceLoader(port)` 与 `loadRizlineChartPreviewResources(target, signal, read?)`；
-`domain/rizline-chart-preview.ts` 只保留 `resolveRizlineChartPreviewBundle` 与
-`rizlineChartPreviewResourceUrl` 等纯解析。读取通过端口里的 `rizlineResources.withRelease` 按 `songId`
-与 `levelIndex` 对应难度定位唯一 `.json` 谱面和 `.m4a` 音频，并用清单 `files` 的 size/sha256 走 `verifyResourceBytes`。
-`features/rizline-chart-preview/` 提供配置、打开、注入、原生准备与 WebView 播放器；
-`prepareRizlineChartPreviewWebViewSource` 复用 `downloadChartResource` 与
-`prepareChartPreviewWebviewFromPlan`，把谱面/音频写成会话脚本 `chart-data.js` /
-`music-data.js`。路由 `/songs/rizline-chart-preview` 装配
-`ChartPreviewScreenShell`，全屏方向传 `portrait_up`。官方 JSON 解析与 9:16 Canvas
-绘制留在游戏播放器内。相关合同包括 `rizline-chart-preview-resources.test.ts`、
+直接调用当前发布和下载依赖；实际行为由 `rizline-chart-preview-resources.test.ts`、
 `rizline-chart-preview-resource-ports.test.ts`、
 `rizline-chart-preview-prepare.test.tsx`、`rizline-chart-preview-screen.test.tsx`、
 `rizline-chart-preview-controls.test.ts`、`rizline-chart-preview-chart.test.ts`、
@@ -911,8 +892,7 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
   按深路径导入并沿用 jpeg-js 的类型；取消、识别结果、错误和临时图片清理合同由
   `maimai-qr-image-decode.test.ts` 保护，上传组件不得复制识别链路。
 - 舞萌数值字典与 PNG IDAT 压缩仅属于构建时数据表示；`SLIDE_TABLE`、`AREA_LOOKUP`
-  的运行时类型和值保持完整。特效 `sourceSha256` 标识原始输入，`sha256` 标识生成内容，
-  两者不得混用。`maimai-generated-data.test.ts` 校验数据与像素，加载仍经现有播放器
+  的运行时类型和值保持完整。`maimai-generated-data.test.ts` 校验数据与像素，加载仍经现有播放器
   及 `prepareChartPreviewWebviewFromPlan(plan, signal?, onProgress?)`，不增加网络资源或缓存执行器。
 
 ### 用户文案与错误

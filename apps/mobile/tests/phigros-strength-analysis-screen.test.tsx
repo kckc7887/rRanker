@@ -7,7 +7,6 @@ import {
   describePhigrosStrengthPoolPolicy,
 } from '@/domain/phigros-strength-analysis';
 
-/** 页面说明必须直接引用领域侧由政策常量生成的文本，不能在 UI 里再抄一份数字。 */
 const poolDescription = describePhigrosStrengthPoolPolicy();
 const policyTexts = describePhigrosStrengthPolicyTexts();
 

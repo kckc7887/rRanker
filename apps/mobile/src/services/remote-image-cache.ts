@@ -621,15 +621,3 @@ export async function clearCompressedRemoteImageCache(): Promise<void> {
   if (root.exists) root.delete();
   manifestPromise = null;
 }
-
-export function resetRemoteImageCacheForTests(): void {
-  cacheGeneration += 1;
-  gameGenerations.clear();
-  if (manifestWriteTimer) clearTimeout(manifestWriteTimer);
-  manifestWriteTimer = null;
-  manifestPromise = null;
-  manifestWriteQueue = Promise.resolve();
-  inflight.clear();
-  activeTransforms = 0;
-  transformWaiters.splice(0);
-}

@@ -6,9 +6,6 @@ import type { ChunithmScoreProvider } from '@/providers/chunithm-score-provider'
 import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
 import {
   refreshNeedsLogin,
-  refreshRetryTargets,
-  refreshSucceeded,
-  refreshedFetchedAt,
   snapshotMetadataOf,
 } from '@/domain/refresh-result';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
@@ -63,14 +60,14 @@ describe('ChunithmPersonalService.refresh', () => {
       const result = await service.refresh(signal());
 
       expect(result.status).toBe('success');
-      expect(refreshSucceeded(result)).toBe(true);
+
       expect(result.requested).toEqual(['player', 'scores', 'bests']);
       expect(result.completed).toEqual(['player', 'scores', 'bests']);
       expect(result.failures).toEqual([]);
       expect(snapshotMetadataOf(result.value!.source)).toEqual({
         provider: 'lxns', label: '落雪咖啡屋', fetchedAt: '2026-09-02T03:00:00.000Z', revision: null,
       });
-      expect(refreshedFetchedAt(result, '2026-01-01T00:00:00.000Z')).toBe('2026-09-02T03:00:00.000Z');
+
       const stored = store.get(chunithmPersonalResourceKey(accountId)) as ChunithmPersonalSnapshot;
       expect(stored.source.updatedAt).toBe('2026-09-02T03:00:00.000Z');
       expect(stored.bests.bests).toEqual([{ id: 2 }]);
@@ -95,18 +92,18 @@ describe('ChunithmPersonalService.refresh', () => {
     const result = await service.refresh(signal());
 
     expect(result.status).toBe('partial');
-    expect(refreshSucceeded(result)).toBe(false);
+
     expect(result.completed).toEqual(['player', 'scores']);
     expect(result.failures).toEqual([
       { code: 'network', target: 'bests', diagnostic: '落雪读取失败', retryable: true },
     ]);
-    expect(refreshRetryTargets(result)).toEqual(['bests']);
+
     expect(refreshNeedsLogin(result)).toBe(false);
     // 只有成功项被替换，失败项保留上一次的值；完整成功时间不推进。
     expect(result.value?.player).toMatchObject({ name: '新玩家' });
     expect(result.value?.bests.bests).toEqual([{ id: 11 }]);
     expect(result.metadata?.fetchedAt).toBe('2026-01-01T00:00:00.000Z');
-    expect(refreshedFetchedAt(result, cached.source.updatedAt)).toBe('2026-01-01T00:00:00.000Z');
+
     expect(result.value?.source).toMatchObject({
       kind: 'lxns', label: '落雪咖啡屋', updatedAt: '2026-01-01T00:00:00.000Z', isStale: true,
     });
@@ -128,12 +125,12 @@ describe('ChunithmPersonalService.refresh', () => {
     expect(result.status).toBe('failed');
     expect(result.completed).toEqual([]);
     expect(result.failures.map((failure) => failure.target)).toEqual(['player', 'scores', 'bests']);
-    expect(refreshRetryTargets(result)).toEqual(['player', 'scores', 'bests']);
+
     expect(result.value?.player).toMatchObject({ name: '旧玩家' });
     expect(result.value?.source.isStale).toBe(true);
     expect(result.value?.source.updatedAt).toBe('2026-01-01T00:00:00.000Z');
-    expect(refreshedFetchedAt(result, cached.source.updatedAt)).toBe('2026-01-01T00:00:00.000Z');
-    expect(refreshedFetchedAt(result, '2026-05-05T00:00:00.000Z')).toBe('2026-05-05T00:00:00.000Z');
+
+
     // 全失败不写入缓存。
     expect(store.get(chunithmPersonalResourceKey(accountId))).toBe(cached);
   });
@@ -152,7 +149,7 @@ describe('ChunithmPersonalService.refresh', () => {
     expect(result.value).toBeNull();
     expect(result.metadata).toBeNull();
     expect(refreshNeedsLogin(result)).toBe(true);
-    expect(refreshRetryTargets(result)).toEqual([]);
+
     expect(store.size).toBe(0);
   });
 });

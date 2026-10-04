@@ -23,7 +23,6 @@ export type BoundAccount = {
   ratingPossession?: string | null;
 };
 
-export const TEST_ACCOUNT_ID = 'test:empty';
 export const LOCAL_MAIMAI_ACCOUNT_ID = 'maimai:local';
 export const MAIMAI_TEST_ACCOUNT_ID = 'maimai:test';
 export const CHUNITHM_TEST_ACCOUNT_ID = 'chunithm:test';
@@ -192,18 +191,6 @@ export function createMaxedMuseDashTestAccount(
     scoreLabel: profile.ratingLabel,
     scoreDisplay: Number.isFinite(rl) ? rl.toFixed(2) : '—',
     providerTitle: PROVIDER_TITLES['musedash-test'],
-  };
-}
-
-export function createTestBoundAccount(): BoundAccount {
-  return {
-    id: TEST_ACCOUNT_ID,
-    gameId: 'test',
-    providerId: null,
-    displayName: '测试游戏',
-    scoreLabel: 'Rating',
-    scoreDisplay: '—',
-    providerTitle: '空数据',
   };
 }
 

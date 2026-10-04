@@ -1,15 +1,14 @@
+import { QueryClient } from '@tanstack/react-query';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
   awaitGameDataBackground,
   gameDataQueryKey,
   refreshGameDataBundle,
   registerGameDataBackground,
-  resetGameDataBackground,
-  type GameDataQueryPort,
   type GameDataRefreshResult,
 } from '@/services/game-data-query';
-import { refreshSucceeded, successfulRefresh, failedRefresh } from '@/domain/refresh-result';
-import { gameDataBundle, maimaiPayloadFromSnapshot } from '@/domain/game-data';
+import { successfulRefresh, failedRefresh } from '@/domain/refresh-result';
+import { maimaiPayloadFromSnapshot, type GameDataBundle } from '@/domain/game-data';
 import { getGameProfile } from '@/domain/game-profile';
 import { ProviderError } from '@/providers/errors';
 import { fixtureCatalog, fixturePlayer, fixtureRecords, fixtureSource } from '@/fixtures/sanitized';
@@ -17,9 +16,9 @@ const accountId = 'lxns:player-a';
 const params = { accountId, gameId: 'maimai', providerId: 'lxns', mode: 'lxns-oauth' } as const;
 const queryKey = gameDataQueryKey(params.accountId, params.gameId, params.providerId, params.mode);
 
-function bundle(stale = false, rating = 12345) {
+function bundle(stale = false, rating = 12345): GameDataBundle {
   const profile = getGameProfile('maimai');
-  return gameDataBundle({
+  return {
     gameId: 'maimai',
     providerId: 'lxns',
     profile,
@@ -39,17 +38,15 @@ function bundle(stale = false, rating = 12345) {
         source: { ...fixtureSource, isStale: stale },
       },
     }, profile),
-  });
+  };
 }
 
-/** 只实现适配层声明的最小端口；服务不得依赖应用单例。 */
-function memoryPort(committed?: unknown): GameDataQueryPort & { published: unknown[] } {
-  const published: unknown[] = [];
-  return {
-    getQueryData: <T,>() => committed as T | undefined,
-    setQueryData: (_key: readonly unknown[], value: unknown) => { published.push(value); },
-    published,
-  };
+const clients: QueryClient[] = [];
+function queryClient(committed?: GameDataBundle): QueryClient {
+  const client = new QueryClient();
+  if (committed) client.setQueryData(queryKey, committed);
+  clients.push(client);
+  return client;
 }
 
 function deferred<T>() {
@@ -59,12 +56,15 @@ function deferred<T>() {
   return { promise, resolve, reject };
 }
 
-beforeEach(() => { resetGameDataBackground(); });
-afterEach(() => { resetGameDataBackground(); });
+beforeEach(() => { registerGameDataBackground(queryKey, null); });
+afterEach(() => {
+  registerGameDataBackground(queryKey, null);
+  for (const client of clients.splice(0)) client.clear();
+});
 
 describe('游戏数据主动刷新的终态', () => {
-  it('取回新数据时返回成功终态，UI 不需要读任何其它真相', async () => {
-    const client = memoryPort();
+  it('获取新数据后返回成功与成绩', async () => {
+    const client = queryClient();
     const result = await refreshGameDataBundle({
       client,
       params,
@@ -72,13 +72,13 @@ describe('游戏数据主动刷新的终态', () => {
     });
 
     expect(result.status).toBe('success');
-    expect(refreshSucceeded(result)).toBe(true);
+    expect(result.metadata).toMatchObject({ provider: fixtureSource.kind, fetchedAt: fixtureSource.updatedAt });
     expect(result.failures).toEqual([]);
     expect(result.value?.payload).toMatchObject({ kind: 'maimai', playerScore: { display: '12345' } });
   });
 
   it('曲库失败但成绩提交成功时返回部分失败，并保留可用的成绩', async () => {
-    const client = memoryPort();
+    const client = queryClient();
     const result = await refreshGameDataBundle({
       client,
       params,
@@ -87,7 +87,6 @@ describe('游戏数据主动刷新的终态', () => {
     });
 
     expect(result.status).toBe('partial');
-    expect(refreshSucceeded(result)).toBe(false);
     expect(result.value).not.toBeNull();
     expect(result.requested).toEqual(['data', 'catalog']);
     expect(result.completed).toEqual(['data']);
@@ -95,7 +94,7 @@ describe('游戏数据主动刷新的终态', () => {
   });
 
   it('刷新抛错时返回失败终态，没有可提交的数据', async () => {
-    const client = memoryPort();
+    const client = queryClient();
     const result = await refreshGameDataBundle({
       client,
       params,
@@ -109,7 +108,7 @@ describe('游戏数据主动刷新的终态', () => {
   });
 
   it('只读回缓存时返回失败终态但仍带上可继续使用的旧快照', async () => {
-    const client = memoryPort(bundle(true));
+    const client = queryClient(bundle(true));
     const result = await refreshGameDataBundle({
       client,
       params,
@@ -124,7 +123,7 @@ describe('游戏数据主动刷新的终态', () => {
 
 describe('后台刷新的可等待句柄', () => {
   it('等待分离的后台刷新落定，而不是把 refetch 立即返回的缓存当成终态', async () => {
-    const client = memoryPort(bundle(true));
+    const client = queryClient(bundle(true));
     const pending = deferred<GameDataRefreshResult>();
     registerGameDataBackground(queryKey, pending.promise);
     expect(awaitGameDataBackground(queryKey)).not.toBeNull();
@@ -161,15 +160,12 @@ describe('后台刷新的可等待句柄', () => {
   });
 });
 
-describe('查询适配层的所有权边界', () => {
-
-  it('总览查询与刷新落在同一个实体键上', async () => {
-    const seen: unknown[][] = [];
-    const client: GameDataQueryPort = {
-      getQueryData: <T,>(key: readonly unknown[]) => { seen.push([...key]); return undefined as T | undefined; },
-      setQueryData: () => undefined,
-    };
-    await refreshGameDataBundle({ client, params, refetch: () => ({ data: bundle() }) });
-    expect(seen).toEqual([[...queryKey]]);
+describe('游戏数据查询', () => {
+  it('刷新读取当前查询键上已提交的数据', async () => {
+    const committed = bundle(false, 18000);
+    const client = queryClient(committed);
+    const result = await refreshGameDataBundle({ client, params, refetch: () => ({ data: bundle(false, 17000) }) });
+    expect(result.value).toBe(committed);
+    expect(result.value?.payload).toMatchObject({ kind: 'maimai', playerScore: { display: '18000' } });
   });
 });
