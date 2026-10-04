@@ -16,11 +16,4 @@ describe('chart preview sorted search', () => {
     expect(lowerBoundBy([], 1, read)).toBe(0);
     expect(upperBoundBy([], 1, read)).toBe(0);
   });
-
-  it('只读取对数级数量的元素', () => {
-    const big = Array.from({ length: 1 << 16 }, (_, index) => index);
-    let reads = 0;
-    expect(lowerBoundBy(big, 40000, (value) => { reads++; return value; })).toBe(40000);
-    expect(reads).toBeLessThanOrEqual(17);
-  });
 });

@@ -27,14 +27,14 @@ export function createAndroidDevice(serial, execute = execFileSync) {
   };
   const shell = (...args) => command('shell', ...args);
   const snapshot = () => {
-    // Each read has its own path: a failed dump can never reuse a previous frame.
+    /** 每次读取使用新路径，避免 dump 失败后读取旧帧。 */
     const path = `/sdcard/rranker-smoke-${nonce}-${++sequence}.xml`;
     try {
       shell('rm', '-f', path);
       const result = shell('uiautomator', 'dump', path);
       if (/null root node|could not get idle state/i.test(result)) return [];
       if (/ERROR:/i.test(result)) throw new DeviceCheckError('device-command', 'UI snapshot command failed');
-      // Missing files are transient; transport failures still fail the command.
+      /** 文件尚未生成时重试，ADB 连接失败时报错。 */
       return parseSnapshot(shell(`if [ -s '${path}' ]; then cat '${path}'; fi`));
     } finally {
       try { shell('rm', '-f', path); } catch { /* Cleanup cannot replace the first verdict. */ }

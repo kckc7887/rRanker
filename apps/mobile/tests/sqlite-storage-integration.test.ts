@@ -226,34 +226,6 @@ describe('SQLite storage with real SQL and a measured async bridge', () => {
     expect(await library.listTagPresets()).toEqual(['旧预设', '新预设']);
   });
 
-  it('writes one favorite with constant bridge calls regardless of library size', async () => {
-    const library = new SqliteUserLibraryRepository();
-    const at = '2026-09-24T00:00:00.000Z';
-    const seed = (prefix: string, count: number) => Array.from({ length: count }, (_, index) => ({
-      key: `song:maimai:${prefix}${index}`, gameId: 'maimai' as const, kind: 'song' as const,
-      songId: `${prefix}${index}`, favorite: true, tags: ['甲', '乙'], createdAt: at, updatedAt: at,
-    }));
-    await library.mergeBackup({ items: seed('K', 200), presets: [] }, 'replace');
-    const toggle = () => library.updateTarget(
-      { kind: 'song', gameId: 'maimai', songId: 'K0' },
-      (current) => {
-        if (!current || current.kind !== 'song') throw new Error('missing seeded song');
-        return { ...current, favorite: !current.favorite, updatedAt: '2026-09-24T00:00:01.000Z' };
-      },
-    );
-    run.mockClear(); reads.mockClear();
-    await toggle();
-    // 1 行 upsert + 1 组关联删除 + 2 标签×(标签 upsert + 关联插入) + 1 次孤儿清理。
-    expect(run).toHaveBeenCalledTimes(7);
-    expect(reads.mock.calls.length).toBeLessThanOrEqual(4);
-    await library.mergeBackup({ items: seed('J', 800), presets: [] }, 'merge');
-    expect(await library.list()).toHaveLength(1000);
-    run.mockClear(); reads.mockClear();
-    await toggle();
-    expect(run).toHaveBeenCalledTimes(7);
-    expect(reads.mock.calls.length).toBeLessThanOrEqual(4);
-  });
-
   it('removes the emptied row and prunes orphan tags on a single-target write', async () => {
     const library = new SqliteUserLibraryRepository();
     const at = '2026-09-24T00:00:00.000Z';

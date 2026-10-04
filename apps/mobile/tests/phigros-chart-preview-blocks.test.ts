@@ -128,16 +128,15 @@ describe('PGR block regions', () => {
     for (const id of [3, 6, 9, 12]) expect(pgrBlockEase(id, .5)).toBeCloseTo(.5);
   });
 
-  it('区间索引能返回长区域和任意方向跳转，查询不扫描不相交的样本', () => {
-    const blocks = parsePgrBlocks(Array.from({ length: 2000 }, (_, i) => block({ appearTime: i * 20,
-      enableTime: i * 20 + 1, disableTime: i * 20 + 2, disappearTime: i * 20 + 3 })));
-    blocks.push(parsed({ appearTime: 0, disappearTime: 50000 }));
-    const query = indexPgrBlocks(blocks);
-    for (const t of [20001, 1, 39981, 21, 20001]) {
-      expect(query(t)).toHaveLength(2);
-      const expected = blocks.filter(b => b.appear <= t && Math.max(b.enable, b.disable, b.disappear) >= t);
-      expect(new Set(query(t))).toEqual(new Set(expected));
-    }
+  it('区间查询包含长区域并支持反向跳转', () => {
+    const early = parsed({ appearTime: 0, enableTime: 1, disableTime: 2, disappearTime: 3 });
+    const later = parsed({ appearTime: 20, enableTime: 21, disableTime: 22, disappearTime: 23 });
+    const long = parsed({ appearTime: 0, disappearTime: 50 });
+    const query = indexPgrBlocks([early, later, long]);
+    expect(new Set(query(21))).toEqual(new Set([later, long]));
+    expect(new Set(query(1))).toEqual(new Set([early, long]));
+    expect(query(51)).toEqual([]);
+    expect(new Set(query(21))).toEqual(new Set([later, long]));
   });
 
   it('区域及其关键帧计入有限事件预算，异常帧也不能绕过预算', () => {

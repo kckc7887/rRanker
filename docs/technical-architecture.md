@@ -59,7 +59,7 @@ Node.js 最低版本由 `apps/mobile/package.json` 的 `engines` 约束为 22.13
 | `src/state/` | Session、主题、筛选、生命周期、QueryClient 和界面状态 |
 | `src/storage/` | SQLite/SecureStore/KV 具体实现及存储工厂 |
 | `src/theme/` | 应用主题和主题色解析 |
-| `tests/` | Vitest 纯逻辑测试、Jest UI 测试、结构哈希与字符串金样合同 |
+| `tests/` | Vitest 纯逻辑测试与 Jest UI 行为测试 |
 
 ## 游戏、Provider 与数据链路
 
@@ -617,81 +617,13 @@ MajSimai 输出作为 TypeScript 测试的外部基准。模型、素材与验�
 
 ## 开发、测试与构建
 
-所有 npm 命令在 `apps/mobile` 执行：
+在 `apps/mobile` 使用当前锁文件安装依赖。`npm run lint` 检查源码与测试，`npm run typecheck` 检查应用及四套播放器，`npm test` 执行 Vitest 纯逻辑和 Jest UI 行为测试。
 
-完整单元测试使用 Node.js 22.13 或更新版本；日志事务测试通过内置 `node:sqlite`
-运行真实内存数据库，CI 的 Node.js 22 满足该要求。
+`npm run check:generated` 从当前源码重建四套播放器并比较交付文件；修改播放器后运行对应 `build:*` 命令。不会固定历史源码哈希、宿主树或字符串基线。
 
-`master` 的分支保护属于 GitHub 仓库配置，不能由工作流文件自动部署。
-发布策略独立核验原始事件、仓库、分支和源码 SHA，并要求该提交的构建准入检查通过。
-必填状态检查应指向最终 `quality-gate` 聚合任务；它覆盖范围、轻检查、完整质量、应执行的账号专项、构建准入、双端构建和 Android 冒烟与交付。
+依赖安装保留当前运行或构建所需的 URI、Metro 图片尺寸、小米 WebView 桥及 Expo FileHandle 补丁，不维护依赖审计门禁或补丁证明链。
 
-生产依赖审计由 `scripts/check-production-audit.mjs` 和 `npm run audit:prod` 复核；critical
-及未接受的 high 使门禁失败，当前接受基线为空。`package.json` / lock 对 XML、URI 解码、
-brace-expansion、js-yaml、nanoid、PostCSS 等传递依赖提供兼容修复，Metro 使用 image-size
-2.0.4 的字节与异步文件 API，xcode 使用保留 CommonJS v4 合同的 uuid 11。
-安装的 postinstall 先运行 `patch-decode-uri-component.cjs`：校验官方 0.5.0 源码 SHA 后
-生成仅改变导出形式的 CJS 适配，保留原 ESM 与类型，满足 query-string 7 和 Expo Router
-消费者；版本、摘要或格式不匹配直接使安装失败。`patch-metro-image-size.cjs` 校验 Metro
-0.83.3 与 image-size 2.0.4 版本，以及原始/适配后 `Assets.js` 摘要，使 `getAssetData`
-的文件路径调用官方 `imageSizeFromFile`，ZIP 内字节保持 `imageSize`；适配幂等，未知源码
-直接使安装失败。随后执行既有 WebView 原生桥补丁与 `patch-expo-file-handle.cjs`；后者校验 expo-file-system 19.0.24 原始及适配后源码 SHA，将 Android 文件句柄剩余长度按 Long 取最小值后转 Int，循环完成短读和短写，EOF 返回实际字节，零进度明确失败，不改 iOS 文件入口。`package.json` 的 `expo.autolinking.android.buildFromSource` 指定 `expo-file-system`，使原生构建编译适配后的源码。`dependency-compatibility.test.ts`
-覆盖重复补丁、版本/摘要拒绝、实际路由/Metro/xcode 消费者与 Expo CLI 的 undici 6.28.1 请求能力，使用真实 PNG、JPEG、WebP
-文件路径校验资产尺寸，并保留分辨率缩放与异步插件合同。
-
-```powershell
-npm ci
-npm run lint
-npm run typecheck
-npm run check:architecture
-npm run check:generated
-npm run check:lossless-assets
-npm run audit:prod
-npm run test:unit
-npm run test:ui
-npm test
-```
-
-`npm run test:unit` 使用 Vitest 运行 `tests/**/*.test.ts`；`npm run test:ui` 使用 Jest Expo 串行运行 `tests/**/*.test.tsx`。公共 UI 还由 Host Tree/Style 哈希、HTML/脚本字符串金样和虚构游戏合同保护，禁止仅更新基线来接受未解释差异。
-
-`npm run check:architecture` 扫描 `src` 与 `app` 的全部生产 TypeScript（import / export / require / 受支持的动态导入），
-按 `scripts/lib/architecture-modules.mjs` 的模块登记判定归属并套用
-`scripts/lib/architecture-boundaries.mjs` 的依赖矩阵（跨游戏隔离、公共核心反向依赖、领域/状态/存储/Provider 层反向依赖、服务层运行时导入 Hook、
-`src` 反向依赖 `app`、共享渲染核心按游戏分支），通过时打印扫描文件数与范围；
-默认 `TRANSITION_EXCEPTIONS` 为空；注入例外时必须精确匹配文件、目标和规则。
-嵌套游戏页面按完整路径登记；默认值导入混合具名 `type` 时仍视为运行时依赖。
-拒绝合同由 `tests/architecture-boundaries.test.ts` 与 `tests/shared-entrypoint-boundaries.test.ts` 覆盖；
-脚本异常退出或出现违规即判失败。`@/features/**`、`@/domain/**` 等路径别名同样按仓库内相对路径解析归属。
-
-公共 UI 的宿主结构由 `tests/host-contract-hash.ts` 的 `expectHostContract` 以规范化序列化文本的 sha256 判定，
-`tests/host-contract-baselines/<测试文件名>/<用例域名>.json` 只是诊断基线：哈希不一致时用
-`diffHostContractTrees` / `formatHostContractDiff` 报告按路径定位的结构差异。基线只在
-`HOST_CONTRACT_UPDATE_BASELINE=1` 时改写，测试不会静默写仓库文件；哈希仍是唯一门禁。
-
-应用类型检查与独立播放器检查共同组成 `npm run typecheck`：
-`tsconfig.maimai-player.json` 覆盖 Simai 引擎/入口，`tsconfig.phigros-player.json` 覆盖
-Phigros/Phira 及 RPE 入口，`tsconfig.osu-player.json` 覆盖 osu! 播放入口及引擎，
-`tsconfig.rizline-player.json` 覆盖 Rizline 播放入口。
-播放器源码改动后按所属功能运行 `npm run build:chart-preview`、
-`npm run build:phigros-chart-preview`、`npm run build:osu-chart-preview`
-或 `npm run build:rizline-chart-preview`；
-四者共用 `scripts/lib/build-preview.mjs`，公共拨轮修改需重建舞萌、osu! 与 Rizline；
-`chart-preview-shared/chart-preview-resource-budget.ts` 由 osu! 播放器
-`webview-player/backdrop.ts`、`resource-plan.ts` 与 `events.ts` 引入，进入 osu! 闭包，
-修改后同样需重建 osu!。
-构建器的可选 `licenseBanner` 保留分发许可，`auditModules` 在写出前审计实际依赖。
-`npm run check:generated` 不写文件，从源码重新构建并验证 HTML、player.js、player.bundle
-与交付产物一致。打包成功不代表手机 WebView 播放验收通过。共享成绩图屏幕的预览与导出 WebView 显式关闭水平和垂直滚动指示器；禁止把原生滚动条捕获到相册图片中。
-
-`npm run benchmark:optimization` 与固定基线比较完整 Simai 帧命令和 RPE Canvas 绘制
-命令，覆盖跳转、暂停、变速、镜像、长 Hold、连接 Slide、Each、Mine、Break 和非单调 SV；
-另测 6000 音符场景的 CPU 分布与 5000 首/20000 成绩搜索。Phigros 搜索通过
-`indexSongsById` 一次建立曲库索引，保留首次匹配、别名、排序和筛选合同。
-`npm run benchmark:phigros-push` 用确定性存档测量推分搜索在 30/300/1000 条成绩下的
-总耗时与事件循环最大阻塞，不设 CI 耗时门槛。
-测试中的请求数、数据库调用数和条目重绘次数是受控测量，不代表真机帧率。
-
-本地原生命令包括 `npm run android`、`npm run ios`、Android prebuild 与 APK 脚本。Release、APK、EAS 或原生构建成本较高，只有用户明确要求时才执行；修改原生/Fabric/WebView 行为时，JS 测试通过也不能代替对应平台构建和真机验证。
+Android 使用 Expo prebuild 与 Gradle，iOS 使用 Expo prebuild、Pods 和 Xcode。原生与 WebView 改动需要对应平台验证，JS 测试通过不能代替设备行为。
 
 ### 生产包体积约束
 
@@ -738,145 +670,35 @@ SQLite、KV 冷启并发、默认 KV、SecureStore、Crypto 和 FileSystem 桥�
 结果直接进入 Text/testID 和 logcat；诊断 APK 不代表生产入口已通过验收。
 `BUILD_SOURCE_COMMIT` 注入实际检出的提交身份，优化模式同时进入 Expo extra。
 
-`quality.yml` 的 `android-account-recovery` 使用独立入口 `native-account-recovery-entry.tsx`、
-包名 `com.rranker.app.nativeprobe`、每次生成的测试签名和固定源码 SHA，不使用生产凭据。
-正式入口保持 `expo-router/entry`；只有选择诊断入口时 app/Metro 配置才启用测试插件和
-`tests/native/expo-fetch-adapter.ts`。适配器仅将指定 LXNS / ScoreHub 请求转发至 runner 回环服务，
-适配器通过同一公开入口的 `expo/fetch.js` 名称取得原生 Fetch；Metro 只映射 `expo/fetch`，
-同目录的解析保持一致，避免目录级缓存把适配器内部导入指回自身。
-继续使用真实原生 Expo Fetch，保留认证头、取消和响应流；验证实际响应 URL 且无重定向后，
-才投影原请求 URL 以满足既有来源检查。HTTP 放行仅作用于诊断构建。
-首进程一次领取随机合成凭据，经 `bindLxnsAccount` 和两个公共存储入口保存并读回核验。
-runner 禁止重复领取，强杀并确认旧进程退出后开启恢复认证；第二进程使用同一次安装的同一 APK，
-不清数据、不重装、不重新注入，通过 `restoreAppAccounts()` 恢复账号、凭据关联和活动账号，
-再由真实 Provider 与 `fetchMe()` 请求。服务器只接受首进程对应的原令牌；双阶段同时校验构建 SHA。
-成功与失败均清理合成账号、测试 APK、端口转发、服务器和临时签名。
-测试入口在每个存储读取、凭据领取、绑定、写入、读回、恢复和认证步骤前发布固定子步骤。
-runner 记录最后子步骤，成功失败均保存领取/拒绝计数和认证布尔值；失败只保留白名单错误分类与清理结果，
-不输出原始异常、logcat 正文或凭据。脱敏证据同时进入作业日志与工件，另含 SHA、APK 摘要、进程身份和阶段结果，保留 7 天。
-该闭环验证受控原生恢复；正式 Android/iOS 的真实账号保存、强杀、重启与官方认证另行验收。
-
 双端体积检查使用 Expo 导出，指定 Android 和 iOS 平台、source map、资源映射及输出目录，
 不启动 Expo Web。
 统计主程序 Hermes、独立播放器和按实际内容 SHA-256 去重的导出资源，source map 不计入交付体积。
 播放器已经包含在资源合计内；gzip 只作压缩参考，不代表 APK/IPA 或安装体积。
 Android R8 收益必须通过相同 ABI 的原生 Release 包验收，iOS 需 macOS 出包验收。
 
-`npm run check:lossless-assets` 对照固定基线核验已改 PNG；优化器只选择更小的 IDAT
-压缩流，CRC、解压扫描线、RGBA/透明度和全部非 IDAT 块必须保持一致。原始来源 hash
-与生成 hash 分别保留。基线中不存在的新增 PNG 单独验证 CRC 和完整解码，在报告的
-`addedFiles` 中列出，不计作基线无损比较或压缩收益。仓库素材减少不直接等于导出收益，
-导出中未引用素材不计入收益。
+### CI 与发布
 
-### CI 入口与事件矩阵
+`.github/workflows/quality.yml` 监听分支 push、PR 和手动运行。`changed-scope` 根据实际差异区分文档与功能改动，并由 `build-policy.mjs` 选择构建来源和发布方式。
 
-`.github/workflows/quality.yml` 统一编排质量检查与双端构建。它监听所有分支 push、PR 的
-opened / synchronize / reopened / edited（包含修改目标分支）与手动触发；标签 push 不触发。
-
-| 事件 | 通过范围、轻检查与完整质量门禁后的行为 |
+| 事件 | 功能改动通过质量检查后的行为 |
 |---|---|
-| 本仓库任意分支 push，含 master | 沿用旧签名的四 ABI Release APK、签名 IPA，并将 IPA 提交 TestFlight |
-| 本仓库分支的手动运行 | 与分支 push 相同，固定本次 github.sha |
-| fork 内 push 或手动运行 | 只做质量检查；fork 须自行启用 Actions |
-| 本仓库分支 PR | 只做质量检查 |
-| 外部 fork PR 到 master | 测试签名 Release APK、无签名 IPA；不读取生产凭据、不提交 TestFlight |
-| 外部 fork PR 到其它分支 | 只做质量检查 |
+| 本仓库分支 push 或手动运行 | 四 ABI Release APK、签名 IPA、TestFlight 上传 |
+| 本仓库分支 PR 或 fork 自身运行 | 质量检查 |
+| 外部 fork PR 到 master | 测试签名 Release APK、无签名 IPA |
+| 外部 fork PR 到其它分支 | 质量检查 |
 
-`changed-scope` 与 `light-check` 并行；`quality` 同时依赖两者成功，有功能或 CI 改动时执行完整检查。账号专项按 `account` 范围标志运行；`build-admission` 独立核对原始事件、来源和应执行的质量作业。双端构建只依赖共同准入，互不阻塞发布。
-Android 按编译校验、`android-smoke`、`android-delivery` 顺序运行；末端 `quality-gate` 始终汇总范围、轻检查、完整检查、专项、准入、四个互斥构建作业及 Android 冒烟和交付。`.github/scripts/ci-gate.mjs` 从原始事件重新计算预期：应执行项必须成功，应跳过项必须明确跳过；失败、取消、缺失、意外跳过或意外执行均不能通过。纯文档只运行范围和轻检查。
+纯文档改动跳过应用质量检查和构建；无法取得基准或比较失败时执行完整检查。质量作业安装移动端依赖，执行 lint、typecheck、单元/UI、生成物检查及保留的构建脚本行为测试。
 
-### 范围、轻检查与完整质量检查
+正式和 fork 构建使用独立作业；正式作业进入 `production-release`，fork 不读取生产凭据。`quality-gate` 汇总范围、质量和四个构建作业：必要作业必须成功，其余应跳过。
 
-范围分类复用 `.github/actions/changed-scope/action.yml` 与 `classify.sh`，push 使用
-`github.event.before`，PR 使用 `github.event.pull_request.base.sha`；基准不在本地时只获取
-该提交，再以 `git diff --name-only --no-renames -z` 比较。任意目录下的 `*.md` 文件、
-文档目录、许可声明与根级 README 截图全部满足非功能规则时跳过完整检查和构建；
-CI、依赖、构建配置及应用资源改动
-必须完整检查。无基准、基准不可取或 diff 失败按有功能改动处理；分类任务自身失败则阻断门禁。
-`GITHUB_OUTPUT` 仅包含固定枚举和计数 `functional`、`account`、`reason`、`changed-count`。
-账号、认证、持久化、公共组件、启动生命周期、依赖、原生配置和 CI 变更触发账号专项；只有已知游戏展示、主题、素材与播放器路径可以省略专项，未知路径或无法比较时执行。手动输入 `account-checks=auto/all`，`all` 强制完整质量检查及账号专项。
-路径写日志前转义控制字符，写 summary 前再转义 HTML；改名同时枚举旧、新路径，不能隐藏代码删除。
+Android 构建复用 `.github/actions/android-setup/action.yml` 和 `android-build/action.yml`，执行 Expo prebuild、Gradle、四 ABI 校验和生产路由冒烟后上传 APK。`verify-android-apks.py` 检查实际 Manifest、ABI、签名、版本及构建配置；现有升级签名保持不变。模拟器采集与应用业务错误分别报告，失败后的材料采集不覆盖首错。
 
-轻检查只在 `.github/scripts` 安装固定的真实 YAML 解析器 `yaml` 2.9.0，不安装移动端依赖。
-`check-light.mjs --self-test` 检查 YAML、shell 解码后的 `bash -n`、PowerShell AST、
-`.mjs` / `.cjs` 的 `node --check` 与分类器自检；缺少 bash 或 pwsh 不静默跳过。
-故意破坏的样例证明语法与分类错误能阻断。此阶段同时执行 `build-policy.test.mjs`、
-`ios-build-number.test.mjs`、`ci-contract.test.mjs`、`account-recovery.test.mjs`、
-`android-smoke.test.mjs`、`android-artifact.test.mjs`、
-`verify-ios-archive.test.py` 与 `android_signing.test.py`，覆盖事件矩阵、伪造来源、门禁失败、
-预留编号、部分签名文件清理、制品身份，以及受控账号闭环的错误令牌与重复领取拒绝。
+iOS 构建复用 `.github/actions/ios-build/action.yml`，执行 prebuild、Pods、Archive、产物校验与导出。正式作业使用已有签名材料并上传 TestFlight；测试作业归档无签名 IPA。Pods 下载使用现有有限重试，临时签名和下载配置在结束时清理。
 
-完整检查在 `apps/mobile` 使用 Node.js 22 与 `npm ci`，依次执行 lint、typecheck、
-全部单元/UI 测试、架构检查、`check:generated`、`audit:all` 和 `audit:prod`。
-生成物检查从当前源码重新构建并比对正式生成物，不写文件。完整检查不执行 Expo prebuild 或原生编译。
-生产审计分执行、解析校验、完整性与政策四层：异常退出、空报告、字段或计数不自洽、
-未知严重级别、无法解析根因的空 via/悬空引用/成环都失败；critical 无条件失败，
-未接受的 high 失败，接受记录的包名、版本与分类必须符合锁文件，当前接受基线为空。
-`audit:all` 复用同一入口执行包含开发依赖的 `npm audit --json`，任何未修复级别都阻断，
-不使用生产接受基线。安装阶段的 `patch-audited-dependencies.cjs` 修复 braces 3.0.3 的
-glob 解析与 AST 递归深度，以及 node-forge 1.4.0 的嵌套 DigestAlgorithm 元素数量校验。
-两项公告仍保留在原始报告中；审计只在公告范围、锁定版本、每个安装副本和完整补丁文件
-均符合预期时标记已修复，审计过程不写入补丁。缺失、篡改、未知版本或新增公告仍失败。
-这些修复只用于构建工具依赖，不改变应用谱面规模、播放质量或页面加载路径。
+正式 iOS 作业共用 `rranker-ios-testflight` 串行锁。`ios-build-number.mjs` 根据 Apple 当前编号和已预留编号分配下一编号，预留成功后才能归档上传；失败运行的预留仍占用。应用营销版本不自动修改。
 
-### 来源与发布凭据
+`android-recovery.yml` 保留手动原生桥接诊断，使用测试签名和现有独立入口，不承担常规发布门禁。
 
-`.github/scripts/build-policy.mjs` 的 `buildPolicy({ eventName, event, repository, ref, sha })`
-只根据原始事件校验仓库身份、分支、PR 来源、删除状态与非全零的 40 位 SHA，返回
-`{ build, production, sha }`。PR 一律使用 head.sha，不把 merge SHA 当应用源码；
-其它事件使用 github.sha。质量检查、聚合门禁与四个构建作业独立比较 policy SHA 和原始
-事件 SHA；正式构建 action 还要求 source-sha 等于 GITHUB_SHA 与实际 checkout。
-外部 fork、PR 目标名称或 artifact 自报值都不能提升为正式签名权限。
+`app.config.js` 从当前应用配置设置 Android 优化选项，并注入构建提交身份和 osu! OAuth 配置。凭据缺失时构建仍可完成，相关认证操作明确报告配置不足。客户端内置配置可从安装包提取，不视为服务端保密。
 
-发布作业只接受 `kckc7887/rRanker` 的分支 push / workflow_dispatch，并进入
-`production-release`；该环境须允许本仓库所有分支，并配置 `PRODUCTION_SIGNING_READY=true`。
-Android 明确选择 `legacy-debug`，沿用原 Expo 签名，并要求证书 SHA-256 与工作流固定值一致；
-不依赖新增 keystore secret，不自动建立或替换签名。旧证书是调试证书，该 APK 为 Release
-编译，不能视为商店正式签名制品。iOS 复用现有 ASC、证书、profile、P12 和 keychain 凭据，
-缺失时在解码/安装材料前失败。secret 名称存在不证明证书、私钥或密码有效。
-测试构建作业不进入发布环境、不引用任何 secrets；checkout 不持久化 Git 凭据。
-仓库环境配置、密钥与分支保护独立于工作流文件，文件修改不代表远端配置已部署。
-
-### Android 与 iOS 制品
-
-`.github/actions/android-setup/action.yml` 为正式构建、账号专项与手动诊断统一安装 Node.js 22、Temurin JDK 17、Android SDK、Gradle 和 npm 依赖。
-`.github/actions/android-build/action.yml` 执行 Expo prebuild 与 Gradle，使用 A 优化模式并复用 ABI splits 插件，一次产生
-armeabi-v7a、arm64-v8a、x86、x86_64 四份 APK。版本与版本代码来自 app.json，不自动修改。
-`verify-android-apks.py` 核验输出清单、每包 ABI、Manifest 包名/版本、统一证书、正式包
-所选签名模式、旧证书身份、优化配置和 Record 注解规则，并保存源码 SHA、文件及证书摘要。
-校验选择已安装的最高稳定 Build Tools 并输出版本，使用 `apksigner verify --verbose --print-certs`；
-证书解析兼容编号签名者和 Build Tools 37 的 V1/V2/V3.0 单签名者标签，要求签名者数量为一，
-拒绝重复、混合或未知证书标签，来源戳证书与公钥摘要不参与 APK 签名身份判断。编译校验后先保存候选工件，`android-artifact.mjs` 封存全部文件摘要、四 ABI 校验结果与来源。构建作业输出准确工件名和清单摘要，冒烟及交付按该输出下载、复验，失败重跑复用原候选，不重构工件名或重新编译已成功作业。通过生产路由冒烟后交付 APK；候选与最终 APK 保留 14 天，脱敏设备结果保留 7 天。交付名含本次验收尝试号，临时 keystore 始终清理。
-`android-smoke.mjs` 保留命令行入口，设备命令与 XML 解析在 `lib/android-device.mjs`，流程在 `lib/android-smoke-flow.mjs`。每次抓取使用独立 XML 路径，空根节点、尚未生成或不完整 XML 在统一检查期限内重试，绝不读取上一快照。设备命令、应用崩溃、业务断言和等待超时分别记录；失败后采集诊断不能覆盖首个错误。
-系统分享验收精确识别 framework 的 `ChooserActivity` 与官方 `com.android.intentresolver` 包的 `ChooserActivity` / `ChooserActivityLauncher` 短名和全名，拒绝应用别名、其它 Activity 及组件后缀；分享界面成为顶层活动后，等待该系统包出现已启用且有有效面积的 UI 节点再发送返回键，随后必须回到本应用。
-fork 测试 APK 同样为 Release 优化构建，使用调试签名。现有 Android 发布路径与旧包保持
-证书一致；默认调试私钥属于公开模板材料，不能获得私有发行密钥的身份安全保证。
-
-`.github/actions/ios-build/action.yml` 是 IPA 的公共构建入口，在 macOS 26 执行 Expo
-prebuild、Pods、Archive 与导出。`verify-ios-archive.py` 检查实际 Archive 和最终 IPA
-中的 EXConstants/app.config 源码 SHA、Info.plist 包名、版本和构建号；正式 Archive 还验证 codesign。
-Pods 安装通过 React Native 的 `ENTERPRISE_REPOSITORY` 指向 Maven Central 的
-`https://repo.maven.apache.org/maven2`，保留依赖声明的版本及 Debug/Release 选择。
-该步骤单独设置临时 `CURL_HOME`，让 CocoaPods 与 React Native 的 curl 下载均使用 HTTP/1.1、
-20 秒连接超时、300 秒单次超时、持续 60 秒低于 1 KiB/s 时失败，以及最多 3 次重试和 900 秒重试窗口。
-HTTP 错误与中断均明确失败或有限重试，临时配置无论安装成败都清理，不影响签名和发布请求。
-正式作业先保存 IPA 与脱敏身份 JSON（14 天），再提交 TestFlight；上传接受不等于 Apple
-处理成功或设备验收。测试作业以 CODE_SIGNING_ALLOWED=NO 归档并打包无签名 IPA，不请求 ASC。
-
-所有正式 iOS 作业共用 `rranker-ios-testflight` 串行锁，`cancel-in-progress:false` 与
-`queue:max` 保留最多 100 个等待项；不保证无限队列。`ios-build-number.mjs` 在锁内核验
-当前运行与历史 artifact 的官方仓库/运行身份，取 Apple 当前版本最大整数与可信预留编号
-的最大值加一。预留 artifact 必须先成功上传（90 天），才能签名、归档或提交 Apple；
-失败/取消运行的预留仍占用，避免 Apple 尚未可见或失败重跑重复编号。只读取 artifact
-元数据，不下载/执行正文，分页不完整、超时或 API 错误立即失败。预留依赖保留期限，
-不应提前删除尚可能在 Apple 处理中的记录。营销版本仍由用户决定。
-
-`app.json` 提供版本、包名和插件列表，`app.config.js` 按 `ANDROID_OPTIMIZATION_MODE` 配置
-Android 插件参数，并向 `extra.buildCommit` 与 `extra.androidOptimizationMode` 注入实际检出提交和优化模式。
-osu! OAuth 应用凭据不在源码中保存；动态配置从 `OSU_OAUTH_CLIENT_SECRET` 构建环境变量
-向 `extra.osuOAuthClientSecret` 注入。
-`osu-config.ts` 在调用时读取注入值，测试经同名进程环境变量提供。生产工作流只在本仓库可信
-分支 push 或手动构建中注入，fork 测试不注入；缺失时构建仍可完成，
-但 osu! 换码与令牌轮换明确报告配置不足。客户端内置授权方式的配置可从安装包提取，
-不能把构建注入视为服务端保密；该接入模式不增加后端。
-更换签名后的升级兼容与数据保留须在正式发布前实测确认。
+本地自动验证、模拟器、云端构建、真实账号和实体设备结果分别报告。

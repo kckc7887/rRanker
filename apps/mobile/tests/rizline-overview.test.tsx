@@ -72,16 +72,8 @@ describe('Rizline overview', () => {
     expect(screen.queryByTestId('dx-rating-card-stars')).toBeNull();
   });
 
-  it('places synchronization after the rating card and calls the shared refresh flow', async () => {
+  it('calls the shared refresh flow from synchronization', async () => {
     const screen = await render(<OverviewScreen />);
-    const outline = (value: unknown): string[] => {
-      if (Array.isArray(value)) return value.flatMap(outline);
-      if (!value || typeof value !== 'object') return [];
-      const node = value as { props?: { testID?: string; accessibilityLabel?: string }; children?: unknown[] };
-      return [node.props?.testID ?? '', node.props?.accessibilityLabel ?? '', ...(node.children?.flatMap(outline) ?? [])];
-    };
-    const tree = outline(screen.toJSON());
-    expect(tree.indexOf('dx-rating-card')).toBeLessThan(tree.indexOf('同步数据，当前 官方账号'));
     const sync = screen.getByRole('button', { name: '同步数据，当前 官方账号' });
     await fireEvent.press(sync);
     await waitFor(() => expect(mockRefetch).toHaveBeenCalledTimes(1));

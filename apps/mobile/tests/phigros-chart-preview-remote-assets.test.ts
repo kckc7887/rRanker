@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
 
@@ -201,18 +199,5 @@ describe('chart preview plan executor remote assets', () => {
       expect(values[index]!).toBeGreaterThanOrEqual(values[index - 1]!);
     }
     expect(values[values.length - 1]).toBe(1);
-  });
-
-  it('Phigros/Phira prepare 用 downloadChartResource 报告谱面、音乐与 zip 进度', () => {
-    const prepare = readFileSync(
-      resolve(process.cwd(), 'src/features/phigros-chart-preview/prepare-phigros-chart-preview-webview.ts'),
-      'utf8',
-    );
-    expect(prepare).toContain('export function createPhigrosPreviewResourceRead');
-    expect(prepare).toContain('export async function downloadPhiraChartPreviewZip');
-    expect(prepare).toContain('downloadChartResource');
-    expect(prepare).toContain('weightedChartPreviewProgress');
-    expect(prepare).toContain("'preview-chart.zip'");
-    expect(prepare).toContain('CHART_PREVIEW_RESOURCE_LABEL');
   });
 });

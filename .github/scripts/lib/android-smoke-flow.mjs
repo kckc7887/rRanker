@@ -133,7 +133,7 @@ function failureSnapshot(current) {
 const route = (path) => shell('am', 'start', '-W', '-a', 'android.intent.action.VIEW', '-d', `rranker:///${path}`, '-p', 'com.rranker.app');
 const restart = (path) => {
   shell('am', 'force-stop', 'com.rranker.app');
-  // Keep the route in the launch intent until the JavaScript navigator is ready.
+  /** 启动 Intent 携带路由，避免导航尚未就绪时丢失目标。 */
   if (path) route(path);
   else shell('am', 'start', '-W', '-n', 'com.rranker.app/.MainActivity');
 };
@@ -225,7 +225,7 @@ try {
   evidence.failure = error instanceof DeviceCheckError ? error.message : `Device verification failed during ${phase}`;
   try { evidence.failureSnapshot = failureSnapshot(nodes()); }
   catch { evidence.failureSnapshot = failureSnapshot(lastNodes); }
-  // 只输出受控检查文案；原始命令异常可能包含不应交付的设备输出。
+  /** 错误证据只包含检查文案，省略设备原始输出。 */
 
 }
 return evidence;

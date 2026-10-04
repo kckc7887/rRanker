@@ -1,5 +1,4 @@
 const base = require('./app.json');
-const accountProbe = require('./package.json').main === 'native-account-recovery-entry.tsx';
 
 const optimizationModes = {
   A: { minify: true, shrink: true, optimize: true },
@@ -21,10 +20,8 @@ module.exports = {
   ...base,
   expo: {
     ...base.expo,
-    ...(accountProbe ? { scheme: 'rranker-nativeprobe', android: { ...base.expo.android, package: 'com.rranker.app.nativeprobe' } } : {}),
-    plugins: [...base.expo.plugins.map(plugin => plugin === './plugins/with-android-abi-splits.js'
+    plugins: base.expo.plugins.map(plugin => plugin === './plugins/with-android-abi-splits.js'
       ? [plugin, optimizationModes[optimizationMode]] : plugin),
-    ...(accountProbe ? ['./tests/native/with-account-probe-network.js'] : [])],
     extra: {
       ...base.expo.extra,
       osuOAuthClientSecret: process.env.OSU_OAUTH_CLIENT_SECRET ?? '',

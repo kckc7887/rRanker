@@ -20,38 +20,6 @@ app 路由 / 游戏容器
 - 共享渲染契约和组件不得通过 `if/switch (gameId)` 枚举现有游戏。差异通过适配器、判别联合、能力、主题值、配置或插槽表达。
 - `GAME_OPTIONS`、`GAME_TOOLBOXES`、`GAME_STORAGE_ADAPTERS`、中央数据编排和游戏适配器属于组合边界，可以显式注册或分派游戏，但不得把分支扩散进共享渲染核心。
 
-### 结构检查
-
-`npm run check:architecture`（`scripts/check-architecture.mjs`）解析 `src` 与 `app` 下的全部生产 `.ts`/`.tsx`
-（import、export、`require` 与字符串字面量参数的动态 `import()`），按显式登记表判定模块归属并套用依赖矩阵，
-通过时打印扫描文件数、`src + app` 范围与规则摘要：
-
-- 归属登记在 `scripts/lib/architecture-modules.mjs` 的 `GAME_MODULES`：每个游戏模块声明自己拥有的组件目录
-  （`components/<dir>/`）、页面文件（`screens/<File>.tsx`）与别名前缀；别名只作用于 `MODULE_SCOPED_LAYERS`
-  的 `domain`/`features`/`hooks`/`providers`/`services`，比较时忽略大小写与短横线（`muse-dash` 与 `MuseDash` 等价）。
-  `SHARED_COMPONENT_DIRS`、`SHARED_SCREENS` 登记公共组件目录与公共页面文件。**未登记的组件目录或页面文件直接失败**，
-  因此新增游戏即使页面名与游戏 ID 不同（例如 `TufScreens`）也必须登记，不会因命名差异漏检。
-- 依赖矩阵在 `scripts/lib/architecture-boundaries.mjs`：未登记的模块归属、`src` 反向依赖路由层、
-  跨游戏模块依赖（任一侧属于游戏界面：组件目录、游戏页面与 `features/**` 游戏模块）、
-  公共核心反向依赖游戏模块、领域层反向依赖 UI（`components`/`features`/`hooks`/`screens`/`theme`）、
-  领域层非类型导入依赖 `state`/`storage`/`services`/`providers`（类型导入单独允许）、
-  状态层反向依赖 `components`/`screens`、存储执行核心（`storage/**` 与 `features/storage-management/**`）
-  反向依赖 `components`/`hooks`/`screens`、Provider 层反向依赖 `components`/`features`/`hooks`/`screens`/`state`，
-  服务层的运行时导入不得指向 `hooks`。
-- 共享渲染核心（`SHARED_RENDER_ROOTS`：`components/game-content/`、`features/best-image/`、
-  `features/chart-download-shared/`、`features/chart-preview-shared/`）不得按具体游戏 ID 分支：
-  比较或 `switch` 游戏身份选择器（`game` / `gameId` / `kind`）与游戏 id 字面量都会被拦；
-  `SHARED_DISPATCH_ALLOWED` 里的组合边界保留显式分派权限（`features/game-content/adapters/`、
-  `domain/game-bind-options`、`domain/game-profile`、`domain/game-mode-family`、`domain/game-data`、`domain/game-content`）。
-- 路由层 `app/**` 是组合边界：允许选择游戏页面与按游戏分派，但 `src` 不得反向依赖 `app`。
-- 生产边界没有默认过渡豁免；嵌套 `screens/maimai/` 等游戏页面按登记归属校验。混合 import 中的值与类型边分别判断，只有完整的类型导入可使用类型规则。
-- 允许/拒绝源码合同由 `tests/architecture-boundaries.test.ts` 覆盖（边界反例、共享渲染分派负例、
-  未登记组件目录与页面文件的负例、再导出/相对路径/动态导入/require 绕行负例、全具名 `type` 导入负例，
-  以及合法组合必须通过）。`tests/shared-entrypoint-boundaries.test.ts` 另外钉住公共入口清单
-  （`AccountSwitchSheet`、`BoundAccountGroupedList`、`ProviderLoginSheet`、`MaimaiFilterBar`、
-  `features/best-image/build-best-image-html.ts`）不得直接依赖游戏模块，且边界配置不得为它们保留豁免条目。
-  结构检查不能替代对新间接依赖和业务分支的审查。
-
 ## 领域与展示契约
 
 详情编码总是写入 `gameId`，解析显式游戏身份优先，旧链接保留当前游戏回退。`app/songs/[songId].tsx` 在目标游戏与当前游戏不同时通过既有 `AccountSwitchSheet` / `switchBoundAccount` 选择账号，保留原目标参数；取消时不挂载错误游戏的详情。强调色实心按钮、选中标记和加载指示统一使用 `theme.onAccent`，亮色和暗色强调色共用同一前景规则。
@@ -860,7 +828,7 @@ osu 初始化仅准备并绘制首帧，播放和重播才恢复音频、启动�
 在内建皮肤生成入口统一为半透明实心加不透明同色描边，不修改音符运动、判定或共享设置协议。
 下载与生命周期合同为 `chart-resource-download.test.ts`、`osu-beatmapset-download.test.ts`、
 `chart-preview-screen-shell-contract.test.tsx`；其余合同为 `osu-chart-preview-resources.test.ts`、`osu-chart-preview-prepare.test.tsx`、`osu-chart-preview-screen.test.tsx`、
-`osu-song-detail.test.tsx`、`osu-chart-preview-build.test.ts` 和 `tests/osu-preview/`。
+`osu-song-detail.test.tsx` 和 `tests/osu-preview/`。
 `node scripts/check-osu-player.mjs [Playwright 模块入口]` 在内存打包并验证四模式手动启动、
 catch 实心透明度、同色描边和降级模糊像素；不代替 iOS/Android WebView 真机验证。
 添加 `--generated` 时，复用 `scripts/lib/build-preview.mjs` 的只读
@@ -885,7 +853,7 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
 `rizline-chart-preview-resource-ports.test.ts`、
 `rizline-chart-preview-prepare.test.tsx`、`rizline-chart-preview-screen.test.tsx`、
 `rizline-chart-preview-controls.test.ts`、`rizline-chart-preview-chart.test.ts`、
-`rizline-chart-preview-playfield.test.ts`、`rizline-chart-preview-build.test.ts` 与
+`rizline-chart-preview-playfield.test.ts` 与
 `rizline-ui.test.tsx`。真机 WebView 音画同步无法用单测代替。
 `decodeAudio(bytes, environment?)` 复用 `PreviewSessionEnvironment` 的音频上下文入口，默认调用方
 只传字节；准备只解码，暂停就绪不请求音频授权。显式播放由 `PreviewSession.playFrom` 等待
@@ -934,22 +902,11 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
   写入 `extra.androidOptimizationMode`，`OSU_OAUTH_CLIENT_SECRET` 写入 `extra.osuOAuthClientSecret`。
   osu! 换码与令牌轮换通过 `osu-config.ts` 读取应用凭据，缺失时
   抛 `configuration`；客户端构建注入不具备服务端保密性。
-- 安装的 `scripts/patch-metro-image-size.cjs` 是 Metro 0.83.3 与安全 image-size 2.0.4 的
-  资产尺寸适配入口：校验依赖版本和 `Assets.js` 原始/适配后摘要，普通文件路径使用官方
-  异步 `imageSizeFromFile`，ZIP 内字节继续使用 `imageSize`。重复执行不改变结果，未知版本
-  或源码使安装失败；`dependency-compatibility.test.ts` 直接调用真实 `getAssetData`，覆盖
-  Expo Router PNG、仓库 JPEG/WebP、分辨率缩放及异步资产插件。
+- `scripts/patch-metro-image-size.cjs` 适配 Metro 的资产尺寸读取：文件路径使用异步 `imageSizeFromFile`，ZIP 字节使用 `imageSize`。`dependency-compatibility.test.ts` 验证真实资产消费者。
 - `metro.config.js` 是依赖裁剪入口：保留 Ionicons 子集映射，移动端仅重定向当前 Zod
   包内部的语言集合入口到 `src/utils/zod-locales.ts`。业务继续从 `zod` 导入，不能
   另建 Schema 工厂或替换错误类；默认英文初始化由原库执行。若增加校验语言需求，
   必须先扩展这个集合和 `metro-code-subsets.test.ts`，不能假定全集仍在移动包中。
-- `scripts/patch-audited-dependencies.cjs` 共用 `applyPatches(root)` 与
-  `verifyPatchedAdvisories(root, lockfile, report)`：安装时修复已核验的 braces 3.0.3 和
-  node-forge 1.4.0，审计时只读核验所有安装副本的版本及完整源码。补丁以原始 SHA-256
-  与唯一文本替换定位，重复执行通过逆向还原校验完整原文，未知内容使安装或审计失败。
-  glob 保护同时覆盖字符串解析和直接 AST 遍历，RSA 保留合法 NULL 参数省略语义。
-  `dependency-compatibility.test.ts` 覆盖漏洞输入和正常消费者，
-  `production-audit-gate.test.ts` 覆盖篡改、副本、版本及公告范围变化。
 - `decodeMaimaiQrFromImageUri(uri, signal?)` 仍是上传图片二维码的公共服务，解码器
   按深路径导入并沿用 jpeg-js 的类型；取消、识别结果、错误和临时图片清理合同由
   `maimai-qr-image-decode.test.ts` 保护，上传组件不得复制识别链路。
@@ -963,7 +920,7 @@ Rizline 的谱面资源同样在服务层：`services/rizline-chart-preview-reso
 - 用户界面只表达对象、动作、结果、风险和恢复方式，不显示 Schema、Provider、WebView、SecureStore、SQLite、PKCE、Token、响应或状态机等实现术语。
 - 游戏正式术语、品牌名、单位、用户输入、上游内容、查分器来源和必要署名必须保留。
 - 页面、通知、无障碍文本、WebView 和导出内容不得直接显示 `error.message` 或 `String(error)`；统一使用 `providerErrorToUserMessage` 或场景化兜底。
-- 注释只保留许可证/来源、自动生成标记，以及非显然的正确性、安全和性能约束。修改前端文案或注释时运行 `tests/consumer-copy-policy.test.ts`。
+- 注释只保留许可证、工具指令、必要来源和非显然的信息；自有说明使用简短中文 /**/。
 
 ### 图片与缓存
 
@@ -1139,81 +1096,10 @@ MajdataPlay 原始计分方法，普通测试无需 .NET；原生账号、保存
 6. 按改动范围运行相关单元/UI/合同测试，再运行 lint、typecheck 和完整测试。Host 结构哈希与字符串金样出现差异时修正实现，不通过更新基线掩盖差异。
 7. WebView、导出、原生手势、动画流畅度、生命周期和内存行为仍需对应平台真机验收，自动化通过不能替代该链路。
 
-## 宿主结构合同的哈希与诊断基线
+## 测试与构建
 
-公共 UI 的宿主结构由 `tests/host-contract-hash.ts` 的 `expectHostContract({ name, tree, expectedHash, serialize?, diffLimit? })` 把关：
-通过与否只由规范化序列化文本的 sha256 决定，测试里的哈希字面量是唯一门禁。
-`tests/host-contract-baselines/<name>.json`（`name` 的第一段是校验文件名、第二段起是用例域名，
-例如 `p3-host-contract-visuals/phigros-difficulty-badge`）只是诊断快照：哈希不一致时
-`readHostContractBaseline` 读出记录的结构，`diffHostContractTrees` 与 `formatHostContractDiff`
-给出按路径定位的 changed / added / removed 差异，避免只报两串十六进制；基线缺失或不可用时仍按哈希判定。
-基线只在显式设置 `HOST_CONTRACT_UPDATE_BASELINE=1`（`HOST_CONTRACT_UPDATE_ENV`）时改写，
-否则 `writeHostContractBaseline` 直接抛错，测试不会静默写仓库文件。
-消费者是 `p3-host-contract-{visuals,cards,pickers,song-details}.test.tsx`、`game-content-host-contract.test.tsx`、
-`filter-shell-host-contract.test.tsx` 与 `song-detail-chrome-contract.test.tsx`；
-`host-contract-hash.test.tsx` 自测门禁与差异报告的边界。谱面确认的宿主命令合同由
-`chart-preview-host-contract.test.ts` 直接校验，不走哈希门禁。
+测试通过实际业务入口验证输入输出和用户交互。公共组件允许正常重构，不维护宿主树、源码片段或字符串哈希基线。
 
-## CI 公共合同
+在 `apps/mobile` 运行 `npm test`、`npm run lint`、`npm run typecheck` 和 `npm run check:generated`。生成物检查从当前源码重建并比较交付播放器，不固定历史源码。
 
-常规检查与构建统一由 `.github/workflows/quality.yml` 编排；独立桥接诊断仍手动运行，
-`android-account-recovery` 在完整检查成功且账号范围命中（或手动选择 all）时执行受控原生账号闭环。
-诊断 Metro 只将 `expo/fetch` 映射到测试适配器；适配器通过公开的 `expo/fetch.js` 入口取得同一原生实现，
-避免按目录缓存的解析结果产生自引用。`native-account-config.test.ts` 使用真实 Metro 解析缓存验证两种导入顺序，
-Vitest 的两种模块名称共用现有 Fetch shim。
-`build-admission` 汇总构建前检查，双端构建独立消费准入结果；末端 `quality-gate` 汇总全部应执行作业，包含双端构建、Android 冒烟和交付。
-`ci-gate.mjs` 从原始事件核验成功与预期跳过，拒绝缺失、失败、取消和意外跳过。纯文档只在范围、轻检查成功且其余作业明确跳过时通过。PR 使用 head.sha，分支使用
-github.sha；policy 输出、质量检查、门禁、checkout 与构建输入必须对应原始事件同一源码。
-
-| 公共入口 | 输入与输出 | 合同测试 |
-|---|---|---|
-| `.github/scripts/build-policy.mjs`：`buildPolicy({ eventName, event, repository, ref, sha })` | 返回 `{ build, production, sha }`；核验原始事件仓库、分支、删除状态、PR 来源与 40 位 SHA。本仓库分支 push/手动运行允许发布构建；同仓 PR 与 fork 自身运行只检查；fork PR 到 master 只允许无生产凭据构建。CLI 对无法验证的事件失败，不输出事件正文 | `build-policy.test.mjs`、`ci-contract.test.mjs` |
-| `.github/actions/changed-scope/action.yml` | `base-sha` / `head-sha` / `account-checks`（auto/all）；返回固定枚举 `functional` / `account` / `reason` 与计数 `changed-count`。账号与共享运行路径触发专项，已知展示路径可省略，未知范围执行；all 强制专项。CI、依赖、构建配置走完整检查；任意目录下的 `*.md` 文件、文档目录、许可与根级 README 截图可以跳过；文档与代码或 CI 混合改动仍走完整检查；无基准或比较失败按功能改动处理 | `changed-scope/self-test.mjs`、轻检查破坏样例 |
-| `.github/scripts/android-account-recovery.mjs` 与 `apps/mobile/native-account-recovery-entry.tsx` | 独立包名、每次生成的测试签名及同源码 SHA。首进程一次领取随机合成凭据，经公共绑定/存储写入读回；强杀并确认退出后，第二进程在同次安装上通过 `restoreAppAccounts()`、真实 Provider 和 ScoreHub `fetchMe()` 认证，禁止再次注入。服务端核对原令牌，失败也清理测试包、端口和服务器；记录固定子步骤、白名单错误分类与清理结果，成功失败都输出领取/拒绝计数和认证布尔值；脱敏证据进入日志与工件，拒绝保存原始异常、logcat 正文或凭据 | `account-recovery.test.mjs`、`ci-contract.test.mjs`、`native-account-{config,fetch,recovery}.test.ts`；真实原生作业另行运行 |
-| `.github/actions/android-build/action.yml` | `source-sha`、字符串布尔 `production`、`signing-mode`、`expected-certificate-sha256`、`optimization-mode`；返回 `artifact-name`、`manifest-digest`、`delivery-name`。同一入口完成四 ABI Release 编译、签名校验和候选工件封存；环境复用 `android-setup`，冒烟和正式交付为独立作业，按准确工件名与摘要消费候选；发布模式独立校验 GITHUB_SHA。现有发布选择 `legacy-debug` 并锁定旧证书，fork 只用 `test-debug`；`release` 私有签名模式仍要求完整 keystore 配置 | `ci-contract.test.mjs`；实际 Gradle 与托管设备另行执行 |
-| `.github/scripts/android-smoke.mjs` | `production` / `native`、APK、明确设备序列号、证据目录。生产检查复用页面路由；主题与日志恢复的强杀重启直接携带目标 VIEW URL，避免导航未就绪时丢失事件。仍要求主题持久化、日志恢复与系统分享通过，设备命令与流程分别位于 `lib/android-device.mjs`、`lib/android-smoke-flow.mjs`。独立 XML 路径杜绝旧快照，空根节点、未生成或不完整 XML 在期限内重试；设备错误、崩溃、断言和超时分别记录，诊断失败不替换首个错误。失败快照只保留固定页面文案和匿名化控件状态 | `android-smoke.test.mjs`、`ci-contract.test.mjs` 覆盖空根恢复、旧 XML、超时、ADB 失败、持久化、分享和诊断失败；真实托管设备另行执行 |
-| `.github/scripts/android-artifact.mjs`：`sealCandidate(directory, sourceSha)`、`verifyCandidate(directory, sourceSha, digest)` | 清单锁定来源、每个文件的 SHA-256、准确文件集合及四 ABI 验证记录。编译只产出一次候选；失败重跑复验原候选，交付名包含验收尝试号 | `android-artifact.test.mjs`、`ci-contract.test.mjs` |
-| `.github/scripts/android_signing.py`：`verify_android_signing(apksigner_output, mode, expected_certificate_sha256=None)` | 仅接受单一签名者的证书 DN / SHA-256，兼容编号标签与 Build Tools 37 的 V1/V2/V3.0 标签；签名者数量若存在必须唯一且为一，重复、混合或未知证书标签失败。来源戳及公钥摘要不替代 APK 证书。`legacy-debug` 必须带合法 pin，任何给定 pin 均严格匹配；`release` 拒绝调试证书。四 ABI 校验器以 verbose 输出复用同一入口，返回同源签名证据与说明，旧调试签名不标为正式签名 | `android_signing.test.py`，含新旧工具格式、额外签名者与四 ABI 验证入口 fixture |
-| `.github/actions/ios-build/action.yml` | `source-sha`、字符串布尔 `production`。Pods 复用 React Native 的 `ENTERPRISE_REPOSITORY` 指向官方 Maven Central；该安装步骤的临时 `CURL_HOME` 统一 HTTP/1.1、连接/传输/低速超时和有限重试，成功失败均清理。正式模式校验 GITHUB_SHA，预留编号、签名 Archive/IPA，先保存制品再提交 TestFlight；测试模式不安装签名、不请求 ASC。私钥、profile 与 keychain 在部分失败时仍清理 | `ci-contract.test.mjs` 使用真实 curl 验证半截下载重试、持续失败退出及配置清理；实际 Xcode、签名与 Apple 处理另行执行 |
-| `.github/scripts/ios-build-number.mjs`：`nextIosBuildNumber(latestBuild, reservedBuilds?)`、`queryReservedIosBuildNumbers(options)`、`reserveIosBuildNumber(env, options?)` | 在全局 iOS 发布锁内取 Apple 最大整数与可信预留最大值加一。查询当前/历史运行的官方仓库 ID、事件、workflow 路径与 SHA；不采信 PR/fork/其它工作流，不下载 artifact 正文。CLI 返回 `build_number` / `artifact_name` / `reservation_path`，预留上传成功后才允许提交 Apple | `ios-build-number.test.mjs`、`ci-contract.test.mjs` |
-| `.github/scripts/verify-ios-archive.py`：`verify_app`、`verify_ipa` | 校验实际 Archive 与最终 IPA 的 Expo buildCommit、Info.plist 包名、版本与构建号。IPA 只读取唯一且有界的配置与 manifest，脱敏身份 JSON 不包含 OAuth 或签名材料 | `verify-ios-archive.test.py` |
-| `.github/scripts/lib/workflow-yaml.mjs`：`validateWorkflow`、`validateAction`、`collectBashRuns`、`collectPowerShellRuns` | 使用固定真实 YAML 解析器，按解码后的 shell 文本检查；PowerShell 只解析 AST，不执行构建脚本。解析器或 shell 不可用时失败 | `check-light.mjs --self-test` |
-
-发布作业只进入 `production-release`，并有独立原始事件守卫；fork 构建作业无发布环境、无
-secrets 引用、checkout 不持久化 Git 凭据。正式 iOS 使用全局串行队列并保留最多 100 个
-等待项，预留 artifact 保留 90 天；失败/取消的预留仍占用。环境、密钥与分支保护是远端配置，
-不能从 YAML 修改推断已部署。自动化仅证明相应合同，不代表原生出包、真实账号或设备验收。
-
-## 可复现检查
-
-在 `apps/mobile` 执行 `npm run check:architecture`、`npm run check:generated`、
-`npm run check:lossless-assets`、`npm run benchmark:optimization`、
-`npm run benchmark:phigros-push`、`npm run audit:all`、`npm run audit:prod`。播放器生成检查从当前
-源码重新打包，同时验证 HTML、player.js 与 player.bundle；基准比较保留固定提交的绘制
-命令及搜索结果，报告桌面 CPU 分布，不推断手机帧率。推分基准用确定性存档测量
-30/300/1000 条成绩的总耗时与事件循环最大阻塞，不设 CI 耗时门槛。生产审计门槛分执行、校验、
-完整性、政策四层（退出码 0 通过 / 1 政策失败 / 2 执行失败 / 3 报告不合法 / 4 报告不足以判断）：
-critical 无论能否解析出公告编号都失败；报告缺字段、条目与 metadata 不自洽、未知严重级别、
-无法识别的公告，以及空 `via`、悬空引用、成环而无可解析根因都按失败处理；基线记录的分类值、
-包名与版本必须与锁文件一致；接受理由类型由脚本定义，当前接受基线为空。
-完整审计通过同一脚本的 `--all` 执行 `npm audit --json`，包含开发依赖，所有未修复级别均失败，
-不复用生产接受基线。仅两项已修复公告可在实际安装补丁通过完整性核验后通过；不删除报告条目，
-不伪装为零漏洞。新的公告、critical、缺失或改写的补丁仍阻断，审计不自动修补依赖。
-无损 PNG 检查验证 CRC、解压扫描线、RGBA、透明度及所有非 IDAT 块。完整命令和双端云端比较流程见技术架构文档。
-
-仓库轻检查在仓库根目录执行 `node .github/scripts/check-light.mjs`（`--self-test` 额外用故意
-破坏的样例证明每类检查都会失败）：用固定的真实 YAML 解析器（`yaml` 2.9.0，声明在
-`.github/scripts/package.json`，与 `apps/mobile` 依赖树无关）解析 workflow 与 action，
-按解码后的标量检查 `run:` 的 shell 文本、执行 `bash -n` 与 PowerShell AST、检查 `.mjs`/`.cjs` 的
-`node --check` 语法，并运行分类器自检 `node .github/actions/changed-scope/self-test.mjs`。
-它只读仓库文件，不安装移动端依赖树。
-
-CI 合同在仓库根目录执行：
-
-```powershell
-node --test .github/scripts/*.test.mjs
-python -B .github/scripts/verify-ios-archive.test.py
-python -B .github/scripts/android_signing.test.py
-```
-
-这些命令只运行事件、门禁、编号与脱敏制品 fixture，不执行播放器、Expo prebuild 或原生构建。
+CI 保留文档快速路径、质量检查、双端正式及 fork 构建。Android 在构建作业内完成产物校验和生产路由冒烟后上传，iOS 沿用签名、构建编号和 TestFlight 发布。`quality-gate` 汇总必要作业结果。

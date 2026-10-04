@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it, vi } from 'vitest';
 import { createLocalMaimaiAccount, createMaxedPhigrosTestAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
@@ -54,8 +52,5 @@ describe('会话 Provider 装配的曲库能力', () => {
     expect(unbound.catalogProvider).toBeNull();
   });
 
-  it('装配源码不再用双重断言把曲库换成详细曲库', () => {
-    const source = readFileSync(resolve(process.cwd(), 'src/services/session-providers.ts'), 'utf8');
-    expect(source).not.toMatch(/as\s+unknown\s+as/);
-  });
+
 });

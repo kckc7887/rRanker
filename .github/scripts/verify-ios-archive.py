@@ -1,4 +1,3 @@
-"""Check the archived application's actual Expo config and native metadata."""
 import hashlib
 import json
 import os

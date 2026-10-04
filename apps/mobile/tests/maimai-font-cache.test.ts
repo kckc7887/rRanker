@@ -2,7 +2,6 @@ import { createHash } from 'node:crypto';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MAIMAI_FONT_CACHE_VERSION,
-  MAIMAI_FONT_MANIFEST,
   clearMaimaiFontCache,
   createMaimaiFontPreparer,
   type MaimaiFontManifestEntry,
@@ -87,17 +86,6 @@ describe('maimai remote font cache', () => {
     mockFontFs.remotes.clear();
     mockFontFs.downloadCalls.length = 0;
     mockFontFs.deletes.length = 0;
-  });
-
-  it('pins the verified Noto Sans CJK SC variable font archive', () => {
-    expect(MAIMAI_FONT_MANIFEST).toHaveLength(1);
-    const entry = MAIMAI_FONT_MANIFEST[0]!;
-    expect(entry.name).toBe('maimai-noto');
-    expect(entry.fileName).toBe('NotoSansCJKsc-VF.ttf');
-    expect(entry.cssFileName).toBe('maimai-noto.ttf');
-    expect(entry.url).toBe('https://rranker-maimai-data.cn-nb1.rains3.com/fonts/NotoSansCJKsc-VF.ttf');
-    expect(entry.fontBytes).toBe(36_144_788);
-    expect(entry.fontSha256).toBe('990c807e79c25662a5a9ecf7f971baeb2bf2eab9a559e5ecf15cdfdb8561d21f');
   });
 
   it('downloads, verifies and caches the font with progress events, then reuses the cache', async () => {

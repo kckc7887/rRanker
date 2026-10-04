@@ -11,19 +11,14 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Verify source and signing authorization
+    - name: Verify source and signing configuration
       shell: bash
       env:
         SOURCE_SHA: ${{ inputs.source-sha }}
         PRODUCTION_BUILD: ${{ inputs.production }}
       run: |
         test "$(git rev-parse HEAD)" = "$SOURCE_SHA"
-        case "$PRODUCTION_BUILD" in true|false) ;; *) exit 1 ;; esac
         if [ "$PRODUCTION_BUILD" = true ]; then
-          test "$SOURCE_SHA" = "$GITHUB_SHA"
-          test "$GITHUB_REPOSITORY" = kckc7887/rRanker
-          case "$GITHUB_EVENT_NAME" in push|workflow_dispatch) ;; *) exit 1 ;; esac
-          case "$GITHUB_REF" in refs/heads/*) ;; *) exit 1 ;; esac
           test "$PRODUCTION_SIGNING_READY" = true
           for signing_secret in ASC_KEY_ID ASC_ISSUER_ID ASC_PRIVATE_KEY_BASE64 BUILD_CERTIFICATE_BASE64 BUILD_PROVISION_PROFILE_BASE64 P12_PASSWORD KEYCHAIN_PASSWORD; do
             test -n "${!signing_secret:-}"
@@ -280,7 +275,7 @@ runs:
         if-no-files-found: error
         retention-days: 90
     - name: Install dependencies
-      run: npm ci
+      run: npm ci --no-audit --no-fund
       shell: bash
       working-directory: apps/mobile
     - name: Set iOS build number

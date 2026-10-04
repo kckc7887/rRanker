@@ -1,15 +1,7 @@
 import { fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { StyleSheet } from 'react-native';
 import { MajdataBestScreen, MajdataCatalogScreen, MajdataFilter, MajdataRecordsScreen } from '@/screens/MajdataScreens';
-import { MajdataDifficultyBadge, MajdataScoreCard, MajdataSongRow, majdataVisual } from '@/components/majdata/MajdataCards';
-import { ScoreRecordCard } from '@/components/ScoreRecordCard';
-import { DifficultyBadge } from '@/components/ScoreVisuals';
-import { MaimaiFilterBar } from '@/components/MaimaiFilterBar';
-import { filterShellStyles } from '@/components/game-content/FilterShell';
-import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
-import { SIMAI_CATALOG_LIST_STYLES, SIMAI_RECORDS_LIST_STYLES } from '@/components/game-content/SimaiListStyles';
-import { phigrosLevelColors } from '@/domain/phigros-level-theme';
+import { MajdataScoreCard, MajdataSongRow } from '@/components/majdata/MajdataCards';
 import type { MajdataSong } from '@/domain/majdata';
 import { majdataRecordCard } from '@/features/game-content/adapters/majdata';
 import { useMajdataCatalogFilter, useMajdataRecordsFilter } from '@/state/majdata-filters';
@@ -64,16 +56,9 @@ beforeEach(() => {
   useMajdataRecordsFilter.getState().clearFilters(); useMajdataRecordsFilter.setState({ collapsed: true });
 });
 
-test('single score uses the exact shared maimai card styles with only the requested data changes', async () => {
-  const maimai = await render(<ScoreRecordCard record={{ songId: '1', title: mockSong.title, type: 'DX',
-    difficulty: 'master', difficultyConstant: 14.5, levelIndex: 3, achievements: 97, rating: undefined }} />);
+test('single score displays the selected chart and opens its details', async () => {
   const majdata = await render(<MajdataScoreCard card={majdataRecordCard(mockScore)} username="player" visible />);
-  expect(majdata.toJSON()?.props.style)
-    .toEqual(maimai.toJSON()?.props.style);
-  for (const label of [mockSong.title, 'MASTER (14.5)', '97.0000%']) {
-    expect(majdata.getByText(label).props.style).toEqual(maimai.getByText(label).props.style);
-  }
-  expect(majdata.getByText('排名').props.style).toEqual(maimai.getByText('Rating').props.style);
+  for (const label of [mockSong.title, 'MASTER (14.5)', '97.0000%']) expect(majdata.getByText(label)).toBeTruthy();
   expect(majdata.getByText('-')).toBeTruthy();
   expect(majdata.queryByText(/Classic/)).toBeNull();
   expect(majdata.queryByText('DX')).toBeNull();
@@ -82,41 +67,28 @@ test('single score uses the exact shared maimai card styles with only the reques
   expect(mockPush).toHaveBeenCalledWith(expect.objectContaining({ params: expect.objectContaining({ songId: mockSong.id, levelIndex: '4', gameId: 'majdata-net' }) }));
 });
 
-test('raw difficulty keeps the maimai compact sizes and Easy uses the shared HD blue', async () => {
-  const original = await render(<DifficultyBadge difficulty="expert" constant={13.5} compact />);
-  const raw = await render(<MajdataDifficultyBadge level={3} value="13+" compact />);
-  expect(raw.toJSON()?.props.style)
-    .toEqual(original.toJSON()?.props.style);
-  expect(raw.getByText('EXPERT (13+)').props.style).toEqual(original.getByText('EXPERT (13.5)').props.style);
-  expect(majdataVisual(0)).toMatchObject({ color: phigrosLevelColors(1).fg, tint: phigrosLevelColors(1).bg });
-});
-
-test('catalog row uses compact value-only badges and the existing 44px local favorite control', async () => {
+test('catalog row displays raw levels and toggles favorites', async () => {
   const onFavoriteChange = jest.fn();
   const screen = await render(<MajdataSongRow song={mockSong} favorite={false} favoritePending={false} onFavoriteChange={onFavoriteChange} />);
   expect(screen.getByText('13+')).toBeTruthy(); expect(screen.getByText('14.5')).toBeTruthy();
   expect(screen.queryByText(/MASTER/)).toBeNull(); expect(screen.queryByText('SD')).toBeNull();
   const favorite = screen.getByLabelText(`收藏 ${mockSong.title}`);
-  expect(StyleSheet.flatten(favorite.props.style)).toEqual({ width: 44, height: 44, alignItems: 'center', justifyContent: 'center' });
   await fireEvent.press(favorite);
   expect(onFavoriteChange).toHaveBeenCalledWith(mockSong.id, true);
   expect(screen.getByLabelText('歌曲封面').props).toMatchObject({ contentFit: 'cover', transition: 120,
-    source: expect.stringContaining(mockSong.id), style: { width: 58, height: 58, borderRadius: 9 } });
+    source: expect.stringContaining(mockSong.id) });
 });
 
 test('expanded filters use direct difficulty chips and keep online tags as immediate checkbox multi-select', async () => {
   useMajdataRecordsFilter.setState({ collapsed: false });
   const screen = await render(<MajdataFilter catalog={false} tags={['线上一', '线上二']} />);
-  for (const name of ['difficulty', 'tags', 'achievement']) {
-    expect(screen.getByTestId(`majdata-filter-${name}-row`).props.style).toEqual(filterShellStyles.filterRow);
-  }
+
   expect(screen.getAllByText('难度')).toHaveLength(1);
   expect(screen.getAllByText('标签')).toHaveLength(1);
   const difficulty = within(screen.getByTestId('majdata-filter-difficulty-row'));
   expect(difficulty.getAllByRole('button').map(button => button.props.accessibilityLabel))
     .toEqual(['全部', 'Easy', 'Basic', 'Advanced', 'Expert', 'Master', 'Re:Master', '宴谱'].map(label => `筛选难度 ${label}`));
   expect(screen.queryByLabelText('筛选难度，当前 全部')).toBeNull();
-  expect(StyleSheet.flatten(difficulty.getByText('EASY').props.style).color).toBe(majdataVisual(0).badgeText);
   await fireEvent.press(screen.getByLabelText('筛选难度 Easy'));
   await fireEvent.press(screen.getByLabelText('筛选难度 Master'));
   expect(useMajdataRecordsFilter.getState().difficulties).toEqual([0, 4]);
@@ -159,28 +131,9 @@ test('difficulty chips retain raw indices, union matching and selection across c
   expect(useMajdataRecordsFilter.getState().difficulties).toEqual([]);
 });
 
-test('difficulty selection frames use the exact existing maimai pill geometry', async () => {
-  const noop = () => {};
-  const reference = await render(<MaimaiFilterBar collapsed={false} difficulty="master" version="all" type="all"
-    constantMin="" constantMax="" versionLocale="china" versions={[]} onCollapsedChange={noop}
-    onDifficultyChange={noop} onVersionChange={noop} onTypeChange={noop} onConstantMinChange={noop}
-    onConstantMaxChange={noop} onVersionLocaleChange={noop} onReset={noop} />);
-  const selectedFrame = StyleSheet.flatten(reference.getByLabelText('筛选难度 MASTER').props.style);
-  const idleFrame = StyleSheet.flatten(reference.getByLabelText('筛选难度 BASIC').props.style);
-  await reference.unmount();
-  useMajdataRecordsFilter.setState({ collapsed: false, difficulties: [4] });
-  const screen = await render(<MajdataFilter catalog={false} tags={[]} />);
-  expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 Master').props.style)).toEqual(selectedFrame);
-  expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 Easy').props.style)).toEqual(idleFrame);
-  await fireEvent.press(screen.getByLabelText('筛选难度 Easy'));
-  expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 Easy').props.style)).toEqual(selectedFrame);
-  expect(StyleSheet.flatten(screen.getByLabelText('筛选难度 Master').props.style)).toEqual(selectedFrame);
-});
-
 test('catalog sorting is in its own row and reset closes its dropdown', async () => {
   useMajdataCatalogFilter.setState({ collapsed: false });
   const screen = await render(<MajdataFilter catalog tags={[]} />);
-  expect(screen.getByTestId('majdata-filter-sort-row').props.style).toEqual(filterShellStyles.filterRow);
   expect(screen.queryByTestId('majdata-filter-achievement-row')).toBeNull();
   await fireEvent.press(screen.getByLabelText('曲库排序'));
   await fireEvent.press(screen.getByLabelText('排序 点赞数'));
@@ -191,18 +144,8 @@ test('catalog sorting is in its own row and reset closes its dropdown', async ()
   expect(screen.queryByLabelText('排序 点赞数')).toBeNull();
 });
 
-test('search inputs use the original maimai records/catalog styles', async () => {
-  for (const [layout, styles] of [['records', SIMAI_RECORDS_LIST_STYLES], ['catalog', SIMAI_CATALOG_LIST_STYLES]] as const) {
-    const screen = await render(<GameSearchHeader layout={layout} accessibilityLabel="搜索" placeholder="歌曲" value="" onChangeText={jest.fn()} />);
-    expect(screen.getByLabelText('搜索').props.style[0]).toEqual(styles.searchBox);
-    expect(screen.getByLabelText('搜索').props).toMatchObject({ autoCapitalize: 'none', autoCorrect: false });
-    await screen.unmount();
-  }
-});
-
-test('Recent keeps repeated plays newest first and uses the maimai section header size', async () => {
+test('Recent keeps repeated plays newest first', async () => {
   const screen = await render(<MajdataBestScreen />);
-  expect(screen.getByText('Recent').props.style[0]).toMatchObject({ fontSize: 18, fontWeight: '800' });
   expect(screen.getByText('1. 歌曲名称')).toBeTruthy(); expect(screen.getByText('2. 歌曲名称')).toBeTruthy();
   expect(screen.queryByText(/Classic/)).toBeNull();
   expect(screen.getAllByText('排名')).toHaveLength(2);

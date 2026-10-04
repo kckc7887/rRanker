@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
@@ -206,27 +204,6 @@ describe('maimai chart preview remote assets', () => {
     expect(mockFs.files.get(stageUri('answer.wav'))?.byteLength).toBe(MAIMAI_CHART_PREVIEW_ANSWER_SOUND.bytes);
     expect(seen.answerSoundUrl).toBe(`data:audio/wav;base64,b64:${stageUri('answer.wav')}`);
     result.dispose();
-  });
-
-  it('stages the original bundled sensor through the shared plan and injects it with the remote skins', () => {
-    const prepare = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/prepare-chart-preview-webview.ts'),
-      'utf8',
-    );
-    expect(prepare).toContain("require('../../../assets/maimai-chart-preview/sensor.webp')");
-    expect(prepare).toContain('{ fileName: MAIMAI_CHART_PREVIEW_SENSOR.path, moduleId: SENSOR_MODULE }');
-    expect(prepare).toContain('data:image/webp;base64,${await sensor.base64()}');
-    expect(prepare).not.toContain("require('../../../assets/maimai-chart-preview/answer.wav')");
-    expect(prepare).toContain('maimaiChartPreviewRuntimeSkinAssets');
-    expect(prepare).toContain('maimaiChartPreviewSkinStagePath');
-    expect(prepare).toContain('maimaiChartPreviewSkinDataScript');
-    expect(prepare).toContain('MAIMAI_CHART_PREVIEW_SKIN_DATA_FILE');
-    expect(prepare).toContain('MAIMAI_CHART_PREVIEW_MUSIC_DATA_FILE');
-    expect(prepare).toContain('__CHART_PREVIEW_MUSIC_DATA__');
-    expect(prepare).toContain('downloadChartResource');
-    expect(prepare).toContain('simaiText');
-    expect(prepare).toContain('MAIMAI_CHART_PREVIEW_ANSWER_SOUND');
-    expect(prepare).toContain('remoteCacheDirectory');
   });
 
   it('revisions cached skins and includes community Mine art', () => {

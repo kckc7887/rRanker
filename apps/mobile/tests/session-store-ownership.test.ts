@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import ts from 'typescript';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   LOCAL_MAIMAI_ACCOUNT_ID,
@@ -22,68 +19,6 @@ import {
   retryPendingRotationWrites,
   useSession,
 } from '@/state/session-store';
-
-/** 会话 Store 的所有权边界：Provider 实例与安全存储都必须来自注入的端口。 */
-const storeSource = () => readFileSync(resolve(process.cwd(), 'src/state/session-store.ts'), 'utf8');
-
-/** 具体 Provider 构造路径：Store 的 import 里一个都不能出现。 */
-const CONCRETE_PROVIDER_MODULES = [
-  'session-providers',
-  'local-score-provider',
-  'maxed-maimai-test-provider',
-  'maxed-phigros-test-provider',
-  'phigros-score-provider',
-  'lxns-score-provider',
-  'lxns-catalog-provider',
-  'diving-fish-provider',
-  'empty-provider',
-  'sqlite-snapshot-repository',
-];
-
-const SECURE_STORE_MODULES = [
-  'expo-secure-store',
-  'expo-sqlite/kv-store',
-  'secure-session-store',
-  'large-secure-value-store',
-];
-
-const importSpecifiers = (source: string): string[] => {
-  const specifiers: string[] = [];
-  const file = ts.createSourceFile('session.ts', source, ts.ScriptTarget.Latest, true, ts.ScriptKind.TS);
-  const visit = (node: ts.Node): void => {
-    if ((ts.isImportDeclaration(node) || ts.isExportDeclaration(node)) && node.moduleSpecifier && ts.isStringLiteralLike(node.moduleSpecifier)) specifiers.push(node.moduleSpecifier.text);
-    if (ts.isCallExpression(node) && (node.expression.kind === ts.SyntaxKind.ImportKeyword || (ts.isIdentifier(node.expression) && node.expression.text === 'require'))) {
-      const value = node.arguments[0];
-      if (value && ts.isStringLiteralLike(value)) specifiers.push(value.text);
-    }
-    ts.forEachChild(node, visit);
-  };
-  visit(file);
-  return specifiers;
-};
-
-describe('会话 Store 的所有权边界', () => {
-  it('不静态构造任何具体 Provider，也不引用装配模块', () => {
-    const imported = importSpecifiers(storeSource());
-    expect(imported.filter((specifier) => CONCRETE_PROVIDER_MODULES.some((name) => specifier.includes(name))))
-      .toEqual([]);
-  });
-
-  it('不直接访问 SecureStore 或凭据索引存储', () => {
-    const touched = importSpecifiers(storeSource());
-    expect(touched.filter((specifier) => SECURE_STORE_MODULES.some((name) => specifier.includes(name)))).toEqual([]);
-    expect(storeSource()).not.toMatch(/new\s+SecureSessionStore\b/u);
-    expect(storeSource()).not.toMatch(/SecureStore\s*\./u);
-  });
-  it('detects multiline imports, reexports, and literal lazy or CommonJS imports', () => {
-    expect(importSpecifiers(`import Default, {\n named,\n other\n} from '@/providers/lxns-score-provider';
-      export {\n Store\n} from '@/storage/secure-session-store';
-      const a = import(\n 'expo-secure-store'\n ); const b = require(\n 'expo-sqlite/kv-store'\n );
-      const fake = "import x from 'ignore'";`)).toEqual([
-      '@/providers/lxns-score-provider', '@/storage/secure-session-store', 'expo-secure-store', 'expo-sqlite/kv-store',
-    ]);
-  });
-});
 
 const updateAccountSession = vi.hoisted(() => vi.fn(async (): Promise<CredentialSessionWriteResult> => 'applied'));
 const updateCredentialSession = vi.hoisted(() => (

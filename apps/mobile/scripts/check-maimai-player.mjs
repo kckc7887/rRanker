@@ -29,7 +29,6 @@ if (!generated) {
  ({ parseSimaiChart } = await import(pathToFileURL(path.join(output, 'simai-parser.mjs')).href));
 }
 const extended = '&title=Majdata preview\n&inote_7=(120){4}1m,2hbx[4:2],Chm[4:2],3?-5-7[4:2],4-8b[4:2]*-6m[4:1],<HS*2><SV*0.5>5CK1[4:2],';
-// Synthetic duration fixtures exercise the packaged player; they are not the actual raputa assets or device acceptance.
 const audioTailChart = `&title=Audio tail regression\n&inote_5=(120){4}1${','.repeat(308)}`;
 const chartTailChart = '&title=Chart tail regression\n&inote_5=(120){4}1h[#8],';
 if (parseSimaiChart) {
