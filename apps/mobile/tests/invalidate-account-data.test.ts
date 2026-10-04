@@ -20,7 +20,6 @@ function makeBundle(accountId: string, displayName: string): GameDataBundle {
     id: accountId,
     displayName,
     rating: 0,
-    additionalRating: 0,
     source,
   };
   const snapshot: ScoreSnapshot = {

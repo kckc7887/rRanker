@@ -259,7 +259,7 @@ try {
   await page.locator('#btn-fullscreen').click();assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('fullscreen')),true);
   await page.screenshot({path:path.join(output,buddy?'player-buddy.png':'player-single.png')});
   await page.evaluate(()=>window.postMessage({type:'exit-fullscreen'},'*'));await page.waitForFunction(()=>!document.body.classList.contains('fullscreen'));
-  await page.locator('#play').click();await page.waitForTimeout(100);await page.evaluate(()=>window.postMessage({type:'stop'},'*'));
+  await page.locator('#play').click();await page.waitForTimeout(100);await page.evaluate(()=>window.postMessage({type:'pause',cause:'lifecycle'},'*'));
   await page.waitForFunction(()=>document.querySelector('#play').getAttribute('aria-label')==='播放');
   assert.equal(await page.evaluate(()=>window.sources.every(s=>!s.started||s.stopped||s.ended)),true);
   assert.deepEqual(errors,[]);

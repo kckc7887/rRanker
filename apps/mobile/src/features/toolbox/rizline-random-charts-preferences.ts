@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import type { RandomChartsCount } from '@/domain/random-charts';
 import { defaultRizlineFilters, type RizlineFilters } from '@/domain/rizline-filters';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
@@ -26,7 +27,14 @@ export function parseRizlineRandomChartsPreferences(value: unknown): RizlineRand
 const { Store: RizlineRandomChartsPreferencesStore } = createPreferencesStore<RizlineRandomChartsPreferences>({
   storeKey: 'rranker.toolbox.rizline-random-charts.v1',
   defaults: defaultRizlineRandomChartsPreferences,
-  parse: parseRizlineRandomChartsPreferences,
+  parse: value => parseRizlineRandomChartsPreferences(z.object({
+    version: z.literal(1),
+    count: z.number(),
+    difficulty: z.string(),
+    packId: z.string(),
+    constantMin: z.string(),
+    constantMax: z.string(),
+  }).parse(value)),
   toStored: (preferences) => ({ version: 1, ...parseRizlineRandomChartsPreferences({ ...preferences, version: 1 }) }),
 });
 export { RizlineRandomChartsPreferencesStore };

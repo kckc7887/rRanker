@@ -1,3 +1,4 @@
+import { encodeDetailTarget } from '@/domain/detail-target';
 import type { ScoreRecord } from '@/domain/models';
 import { formatAchievement, scoreRateEffect, scoreRateLabel } from '@/domain/score-presentation';
 import type {
@@ -43,7 +44,7 @@ export function presentMaimaiScore(
   return {
     key: `${record.songId}:${record.type}:${record.levelIndex}`,
     gameId: 'maimai',
-    route: { songId: record.songId, chartType: record.type, levelIndex: record.levelIndex },
+    route: encodeDetailTarget({ game: 'maimai', songId: record.songId, chartType: record.type, levelIndex: record.levelIndex }),
     position,
     title: record.title,
     accessibilityLabel: `查看谱面 ${record.title} ${record.type} ${record.difficulty}`,

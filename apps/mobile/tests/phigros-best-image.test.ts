@@ -30,15 +30,15 @@ function filters(overrides: Partial<typeof DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FIL
 }
 
 describe('Phigros 成绩图', () => {
-  it('兼容旧样式偏好并保存合法的 OVER FLOW 数量与风格', () => {
+  it('保存合法的 OVER FLOW 数量与风格', () => {
     expect(parsePhigrosBestImageStylePreferences({
-      version: 1, avatar: { mode: 'current' }, background: { mode: 'off' },
+      version: 2, avatar: { mode: 'current' }, background: { mode: 'off' },
     })).toMatchObject({ version: 2, ratingStyle: 'game', overflowCount: 0 });
     expect(parsePhigrosBestImageStylePreferences({
-      version: 1, avatar: { mode: 'current' }, background: { mode: 'off' }, overflowCount: 9,
+      version: 2, avatar: { mode: 'current' }, background: { mode: 'off' }, overflowCount: 9,
     }).overflowCount).toBe(9);
     expect(parsePhigrosBestImageStylePreferences({
-      version: 1, avatar: { mode: 'current' }, background: { mode: 'off' }, overflowCount: 4,
+      version: 2, avatar: { mode: 'current' }, background: { mode: 'off' }, overflowCount: 4,
     }).overflowCount).toBe(0);
     expect(parsePhigrosBestImageStylePreferences({
       version: 2, ratingStyle: 'app', avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 3,

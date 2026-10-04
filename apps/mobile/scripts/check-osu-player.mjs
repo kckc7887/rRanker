@@ -229,7 +229,7 @@ try {
     assert.equal(await page.locator('#timeline-host').getAttribute('aria-valuenow'), paused);
     await page.locator('#btn-restart').click();
     await page.waitForFunction(() => document.querySelector('#play-button').getAttribute('aria-label') === '暂停' && Number(document.querySelector('#timeline-host').getAttribute('aria-valuenow')) < 1000);
-    await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'stop' }) })));
+    await page.evaluate(() => window.dispatchEvent(new MessageEvent('message', { data: JSON.stringify({ type: 'pause', cause: 'lifecycle' }) })));
     await page.waitForFunction(() => document.querySelector('#play-button').getAttribute('aria-label') === '播放');
     const stopped = await page.locator('#timeline-host').getAttribute('aria-valuenow');
     await page.waitForTimeout(150);

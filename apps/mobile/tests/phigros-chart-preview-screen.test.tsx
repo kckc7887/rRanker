@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { BackHandler } from 'react-native';
@@ -362,8 +363,11 @@ describe('PhigrosChartPreviewScreen', () => {
       autoHideHomeIndicator: true,
     }));
 
+    mockInjectJavaScript.mockClear();
     expect(hardwareBackHandler?.()).toBe(true);
-    expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining("type:'exit-fullscreen'"));
+    const postMessage = jest.fn();
+    runInNewContext(String(mockInjectJavaScript.mock.calls.at(-1)![0]), { window: { postMessage } });
+    expect(postMessage).toHaveBeenCalledWith({ type: 'exit-fullscreen' }, '*');
 
     await fireEvent(webview, 'message', { nativeEvent: { data: '{"type":"fullscreen","active":false}' } });
     await waitFor(() => expect(latestScreenOptions).toMatchObject({
@@ -380,7 +384,7 @@ describe('PhigrosChartPreviewScreen', () => {
 
     await fireEvent(webview, 'message', {
       nativeEvent: {
-        data: '{"type":"settings","active":false,"message":"ignored","playbackSpeed":2,"noteScale":0.8}',
+        data: "{\"type\":\"settings\",\"settings\":{\"playbackSpeed\":2,\"noteScale\":0.8}}",
       },
     });
 

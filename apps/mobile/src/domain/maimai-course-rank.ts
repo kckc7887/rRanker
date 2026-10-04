@@ -19,7 +19,7 @@ export function normalizeDivingFishCourseRank(value: number | null | undefined):
   if (!Number.isFinite(value)) return undefined;
   const id = Math.floor(value!);
   if (id < 0 || id > 22) return undefined;
-  // 水鱼 11–22 比舞萌/LXNS 的素材编号少一位；11 号素材不是水鱼段位。
+  /** 水鱼 11–22 比舞萌/LXNS 段位素材编号少一位。 */
   return id <= 10 ? id : id + 1;
 }
 
@@ -40,11 +40,10 @@ export function formatMaimaiCourseRank(id: number | null | undefined): MaimaiCou
 }
 
 export function resolveMaimaiCourseRank(
-  player: Pick<Player, 'extension' | 'additionalRating'>,
+  player: Pick<Player, 'extension'>,
 ): MaimaiCourseRankPresentation | null {
   const extensionRank = player.extension?.kind === 'maimai'
     ? player.extension.courseRank
     : undefined;
-  const normalized = extensionRank ?? normalizeDivingFishCourseRank(player.additionalRating);
-  return formatMaimaiCourseRank(normalized);
+  return formatMaimaiCourseRank(extensionRank);
 }

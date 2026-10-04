@@ -11,7 +11,6 @@ import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { NotificationProvider } from '@/components/AppNotification';
 import { ScoreHubError } from '@/services/score-hub-client';
 import { SessionPersistenceError } from '@/domain/session-vault';
-import {  } from '@/services/upload-maimai-from-friend-code';
 jest.mock('@/services/upload-task-controller', () => {
   const actual = jest.requireActual<typeof import('@/services/upload-task-controller')>('@/services/upload-task-controller');
   return { ...actual, uploadTaskController: new actual.UploadTaskController() };
@@ -20,7 +19,7 @@ jest.mock('@/services/upload-task-controller', () => {
 type TestUploadPrefs = {
   friendCode: string;
   selectedAccountIds: string[];
-  selectionsByFriendCode?: Record<string, string[]>;
+  selectionsByFriendCode: Record<string, string[]>;
 };
 type TestSavePrefs = {
   friendCode: string;
@@ -355,7 +354,7 @@ describe('好友码统一上传弹窗', () => {
       sessionsByAccountId: { [water.id]: waterSession },
     }), { initialProps: { accounts: [local] }, wrapper: NotificationProvider });
     await hook.rerender({ accounts: [local, water] });
-    await act(async () => finish({ friendCode: '', selectedAccountIds: [water.id] }));
+    await act(async () => finish({ friendCode: '', selectedAccountIds: [water.id], selectionsByFriendCode: { '': [water.id] } }));
     await waitFor(() => expect(hook.result.current.prefsReady).toBe(true));
     expect(hook.result.current.selectedIds).toEqual([water.id]);
     await hook.unmount();
@@ -370,10 +369,10 @@ describe('好友码统一上传弹窗', () => {
     let finishOld!: (prefs: TestUploadPrefs) => void;
     mockLoadPrefs.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }));
     await act(async () => hook.result.current.onFriendCodeChange('222222222222222'));
-    mockLoadPrefs.mockResolvedValueOnce({ friendCode: '333333333333333', selectedAccountIds: [local.id] });
+    mockLoadPrefs.mockResolvedValueOnce({ friendCode: '333333333333333', selectedAccountIds: [local.id], selectionsByFriendCode: { '333333333333333': [local.id] } });
     await act(async () => hook.result.current.onFriendCodeChange('333333333333333'));
     await waitFor(() => expect(hook.result.current.selectedIds).toEqual([local.id]));
-    await act(async () => finishOld({ friendCode: '222222222222222', selectedAccountIds: [water.id] }));
+    await act(async () => finishOld({ friendCode: '222222222222222', selectedAccountIds: [water.id], selectionsByFriendCode: { '222222222222222': [water.id] } }));
     expect(hook.result.current.friendCode).toBe('333333333333333');
     expect(hook.result.current.selectedIds).toEqual([local.id]);
     expect(mockSelect).not.toHaveBeenCalledWith('222222222222222');
@@ -393,7 +392,7 @@ describe('好友码统一上传弹窗', () => {
       await act(async () => hook.result.current.onFriendCodeChange('222222222222222'));
       await act(async () => { jest.advanceTimersByTime(400); });
       expect(mockSavePrefs).toHaveBeenLastCalledWith({ friendCode: '222222222222222', selectedAccountIds: [water.id], writeSelection: false });
-      await act(async () => finish({ friendCode: '222222222222222', selectedAccountIds: [local.id] }));
+      await act(async () => finish({ friendCode: '222222222222222', selectedAccountIds: [local.id], selectionsByFriendCode: { '222222222222222': [local.id] } }));
       await act(async () => { jest.advanceTimersByTime(400); });
       expect(mockSavePrefs).toHaveBeenLastCalledWith({ friendCode: '222222222222222', selectedAccountIds: [local.id], writeSelection: true });
     } finally {

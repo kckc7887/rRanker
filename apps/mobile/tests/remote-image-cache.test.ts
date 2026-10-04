@@ -1,5 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 
+vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
+
 const mocks = vi.hoisted(() => {
   type StoredFile = { content: string; size: number; modified: number };
   const files = new Map<string, StoredFile>();

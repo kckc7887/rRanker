@@ -39,7 +39,7 @@ describe('公共请求执行器的尝试次数合同', () => {
     { name: '超出正文预算', load: async () => new Response('{"ok":true,"extra":"' + 'x'.repeat(1024) + '"}') },
   ])('发送后的 $name 保持未确认且只发送一次', async ({ load }) => {
     const fetcher = vi.fn(load);
-    await expect(requestProviderWrite(options({ fetcher, totalAttempts: 5, extraRetries: 5, maxResponseBytes: 100 }), response => response.json()))
+    await expect(requestProviderWrite(options({ fetcher, totalAttempts: 5, maxResponseBytes: 100 }), response => response.json()))
       .resolves.toEqual({ status: 'unconfirmed' });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
@@ -79,18 +79,6 @@ describe('公共请求执行器的尝试次数合同', () => {
     const fetcher = failingFetcher(503);
     await expect(requestJson(options({ fetcher: fetcher as typeof fetch, totalAttempts: 4 }))).rejects.toBeInstanceOf(ProviderError);
     expect(fetcher).toHaveBeenCalledTimes(4);
-  });
-
-  it('额外重试次数由 extraRetries 明确表达，总尝试次数等于重试次数加一', async () => {
-    const fetcher = failingFetcher(503);
-    await expect(requestJson(options({ fetcher: fetcher as typeof fetch, extraRetries: 2 }))).rejects.toBeInstanceOf(ProviderError);
-    expect(fetcher).toHaveBeenCalledTimes(3);
-  });
-
-  it('totalAttempts 与 extraRetries 同时给出时以总尝试次数为准', async () => {
-    const fetcher = failingFetcher(503);
-    await expect(requestJson(options({ fetcher: fetcher as typeof fetch, totalAttempts: 2, extraRetries: 5 }))).rejects.toBeInstanceOf(ProviderError);
-    expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
   it('只读请求可以用 totalAttempts 固定为单次尝试，不做自动重试', async () => {

@@ -67,7 +67,7 @@ const STYLE_ITEMS: { kind: BestImageCollectionKind; label: string; }[] = [
   { kind: 'trophy', label: '称号' },
   { kind: 'frame', label: '背景' },
 ];
-const FALLBACK_PLAYER: Pick<Player, 'displayName' | 'presentation' | 'extension' | 'additionalRating'> = {
+const FALLBACK_PLAYER: Pick<Player, 'displayName' | 'presentation' | 'extension'> = {
   displayName: '未读取玩家资料',
   presentation: undefined,
 };
@@ -402,7 +402,7 @@ function maimaiPreviewPlayer(base: typeof FALLBACK_PLAYER, selections: BestImage
   const icon = selectedStyleItem(selections.icon), plate = selectedStyleItem(selections.plate);
   const frame = selectedStyleItem(selections.frame), trophy = selectedStyleItem(selections.trophy);
   return {
-    displayName: base.displayName, additionalRating: base.additionalRating, extension: base.extension,
+    displayName: base.displayName, extension: base.extension,
     presentation: {
       ...base.presentation,
       iconId: icon ? icon.id : base.presentation?.iconId,

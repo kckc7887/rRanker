@@ -1,3 +1,4 @@
+import { encodeDetailTarget } from '@/domain/detail-target';
 import { formatRizlineAccuracy, formatRizlineConstant, formatRizlineRks, rizlineDifficultyIndex, rizlineRecordStatus, sortedRizlineCharts, type RizlineChart, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
 import type { ChartCardPresentation, ScoreCardPresentation, SongRowPresentation } from '../presentation';
 
@@ -10,7 +11,7 @@ export function presentRizlineNotes(chart: RizlineChart) {
 }
 
 export function presentRizlineScore(record: RizlineRecord, title = record.title, position?: number): ScoreCardPresentation<'rizline'> {
-  return { key: record.chartId, gameId: 'rizline', route: { songId: record.songId, levelIndex: record.levelIndex }, title, position,
+  return { key: record.chartId, gameId: 'rizline', route: encodeDetailTarget({ game: 'rizline', songId: record.songId, levelIndex: record.levelIndex }), title, position,
     accessibilityLabel: `查看谱面 ${title} ${record.difficulty}`,
     primaryMetric: { key: 'accuracy', label: '达成率', text: formatRizlineAccuracy(record.achievements) },
     secondaryMetrics: [{ key: 'rks', label: 'RKS', text: formatRizlineRks(record.rks) }],
@@ -20,14 +21,14 @@ export function presentRizlineScore(record: RizlineRecord, title = record.title,
 }
 
 export function presentRizlineSong(song: RizlineSong): SongRowPresentation<'rizline'> {
-  return { key: song.id, gameId: 'rizline', route: { songId: song.id }, title: song.title, subtitle: song.artist ?? '—',
+  return { key: song.id, gameId: 'rizline', route: encodeDetailTarget({ game: 'rizline', songId: song.id }), title: song.title, subtitle: song.artist ?? '—',
     accessibilityLabel: `查看歌曲 ${song.title}`, chartBadges: sortedRizlineCharts(song.charts).map((chart) => ({
       key: chart.id, label: chart.difficulty, value: formatRizlineConstant(chart.constant), tone: chart.difficulty,
     })) };
 }
 
 export function presentRizlineChart(chart: RizlineChart, record?: RizlineRecord): ChartCardPresentation<'rizline'> {
-  return { key: chart.id, gameId: 'rizline', route: { songId: chart.songId, levelIndex: rizlineDifficultyIndex(chart.difficulty) },
+  return { key: chart.id, gameId: 'rizline', route: encodeDetailTarget({ game: 'rizline', songId: chart.songId, levelIndex: rizlineDifficultyIndex(chart.difficulty) }),
     difficulty: { key: 'difficulty', label: chart.difficulty, value: chart.level, tone: chart.difficulty },
     primaryMetric: { key: 'accuracy', label: '达成率', text: formatRizlineAccuracy(record?.achievements) },
     secondaryMetrics: [{ key: 'score', label: 'Score', text: record?.score == null ? '—' : record.score.toLocaleString('en-US') },

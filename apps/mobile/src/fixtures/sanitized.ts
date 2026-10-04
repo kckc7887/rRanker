@@ -10,7 +10,7 @@ export const fixtureSource: DataSource = {
   kind: 'fixture', label: '脱敏测试数据', updatedAt: '2026-07-11T00:00:00.000Z', isStale: false,
 };
 export const fixturePlayer: Player = {
-  id: 'fixture-player', displayName: '测试玩家', rating: 0, additionalRating: 0, source: fixtureSource,
+  id: 'fixture-player', displayName: '测试玩家', rating: 0, source: fixtureSource,
 };
 
 function createRecord(index: number, isCurrent: boolean): ScoreRecord {

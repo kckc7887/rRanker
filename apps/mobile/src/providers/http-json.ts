@@ -130,22 +130,10 @@ export type JsonRequestOptions<T> = {
   timeoutMs?: number;
   /** 总尝试次数：含首次请求，1 表示不自动重试。只读、登录与写请求用 1 明确表达。 */
   totalAttempts?: number;
-  /** 额外重试次数：总尝试次数 = 额外重试次数 + 1。与 totalAttempts 同时给出时以 totalAttempts 为准。 */
-  extraRetries?: number;
-  /** 旧字段：语义等同 totalAttempts（总尝试次数），新调用方请改用 totalAttempts / extraRetries。 */
-  retries?: number;
   /** 覆盖结构、超时和网络错误文案。 */
   messages?: { schema?: string; timeout?: string; network?: string };
   signal?: AbortSignal;
 };
-
-/** 总尝试次数解析：totalAttempts 优先，其次旧字段 retries，再其次 extraRetries + 1。 */
-export function resolveTotalAttempts(options: Pick<JsonRequestOptions<unknown>, 'totalAttempts' | 'extraRetries' | 'retries'>): number {
-  if (options.totalAttempts !== undefined) return options.totalAttempts;
-  if (options.retries !== undefined) return options.retries;
-  if (options.extraRetries !== undefined) return options.extraRetries + 1;
-  return 2;
-}
 
 function providerRequestInit(init: RequestInit | undefined, authenticated: boolean | undefined, signal: AbortSignal) {
   const headers: Record<string, string> = { Accept: 'application/json', 'Cache-Control': 'no-store' };
@@ -183,7 +171,7 @@ function acceptedStatus(options: Pick<JsonRequestOptions<unknown>, 'acceptStatus
 async function requestData<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>, source: string): Promise<T> {
   const { path, schema, fetcher, baseUrl, error, label } = options;
   const timeoutMs = options.timeoutMs ?? 12_000;
-  const totalAttempts = resolveTotalAttempts(options);
+  const totalAttempts = options.totalAttempts ?? 2;
   const schemaMessage = options.messages?.schema ?? `${label}数据结构与已验证契约不一致`;
   const timeoutMessage = options.messages?.timeout ?? `${label}数据读取超时`;
   const networkMessage = options.messages?.network ?? `无法连接${label}服务`;

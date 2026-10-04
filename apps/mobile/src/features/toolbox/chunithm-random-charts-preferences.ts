@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { ChunithmLevelIndex } from '@/domain/chunithm';
 import type { ChunithmRandomChartFilters } from '@/domain/chunithm-random-charts';
@@ -71,7 +72,16 @@ const { Store: ChunithmRandomChartsPreferencesStore } =
   createPreferencesStore<ChunithmRandomChartsPreferences>({
     storeKey: STORE_KEY,
     defaults: defaultChunithmRandomChartsPreferences,
-    parse: parseChunithmRandomChartsPreferences,
+    parse: value => parseChunithmRandomChartsPreferences(z.object({
+      schemaVersion: z.literal(1),
+      count: z.number(),
+      difficulty: z.union([z.number(), z.literal('all')]),
+      version: z.string(),
+      constantMin: z.string(),
+      constantMax: z.string(),
+      rankMin: z.string().nullable(),
+      rankMax: z.string().nullable(),
+    }).parse(value)),
     toStored: (preferences) => ({
       schemaVersion: 1,
       ...parseChunithmRandomChartsPreferences({ schemaVersion: 1, ...preferences }),

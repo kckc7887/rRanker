@@ -289,7 +289,7 @@ describe('Chunithm catalog screen', () => {
     const screen = await render(<ChunithmSongRow song={song} />);
     expect(screen.getByText('13.7')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('打开歌曲详情 B.B.K.K.B.K.K.'));
-    expect(router.push).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '3' } });
+    expect(router.push).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '3', gameId: 'chunithm' } });
   });
 
   it('does not show locked or disabled status labels', async () => {

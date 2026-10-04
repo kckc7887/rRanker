@@ -1,3 +1,4 @@
+import { encodeDetailTarget } from '@/domain/detail-target';
 import { StyleSheet, Text, View } from 'react-native';
 import {
   COMPACT_METRIC_CARD_STYLES,
@@ -28,11 +29,12 @@ export function OsuScoreCard({ gameId, score, position, detailScoreId }: {
       presentation={{
         key: String(score.id),
         gameId,
-        route: {
-          songId: String(score.beatmapset.id),
-          levelIndex: score.beatmap.id,
-          ...(detailScoreId === undefined ? {} : { params: { scoreId: String(detailScoreId) } }),
-        },
+        route: encodeDetailTarget({
+          game: gameId,
+          beatmapsetId: String(score.beatmapset.id),
+          beatmapId: score.beatmap.id,
+          scoreId: detailScoreId,
+        }),
         position,
         title: score.beatmapset.title,
         accessibilityLabel: `成绩 ${score.beatmapset.title}，得分 ${score.score.toLocaleString('en-US')}，准确率 ${formatOsuAccuracy(score.accuracy)}，PP ${ppText}`,

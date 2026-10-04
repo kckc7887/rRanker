@@ -348,9 +348,10 @@ describe('manual runtime logs', () => {
 });
 
 describe('runtime log preferences', () => {
-  it('reads capacity-only preferences as disabled and round trips the enabled flag', async () => {
+  it('rebuilds unsupported preferences and round trips current settings', async () => {
     await Storage.setItem('runtime-log-preferences-v1', JSON.stringify({ capacity: 5000 }));
-    expect(await runtimeLogPreferencesStore.load()).toEqual({ capacity: 5000, enabled: false });
+    expect(await runtimeLogPreferencesStore.load()).toEqual({ capacity: 2000, enabled: false });
+    expect(JSON.parse((await Storage.getItem('runtime-log-preferences-v1'))!)).toEqual({ capacity: 2000, enabled: false });
     await runtimeLogPreferencesStore.save({ capacity: 1000, enabled: true });
     expect(await runtimeLogPreferencesStore.load()).toEqual({ capacity: 1000, enabled: true });
     await Storage.setItem('runtime-log-preferences-v1', JSON.stringify({ capacity: -1, enabled: 'true' }));
@@ -497,7 +498,7 @@ describe('shared operation capture', () => {
       if (kind === 'cancelled') abort.abort();
       throw new DOMException('secret', 'AbortError');
     };
-    await expect(requestJson({ baseUrl: '', path: '', label: 'test', error: () => new ProviderError('unknown', '', false), schema: z.object({}), retries: 1, signal: abort.signal, fetcher })).rejects.toThrow();
+    await expect(requestJson({ baseUrl: '', path: '', label: 'test', error: () => new ProviderError('unknown', '', false), schema: z.object({}), totalAttempts: 1, signal: abort.signal, fetcher })).rejects.toThrow();
     const entry = JSON.parse(controller.snapshot(1)).entries.at(-1);
     expect(entry.fields.errorCode).toBe(kind === 'schema' ? 'upstream_schema' : kind);
     expect(entry.fields.result).toBe(kind === 'cancelled' ? 'cancelled' : 'error');
@@ -554,7 +555,7 @@ describe('shared operation capture', () => {
     vi.useFakeTimers();
     const log = vi.fn(); installRuntimeLogRecorder(log);
     const options = { baseUrl: '', path: '', label: 'test', schema: z.object({}), error: () => new ProviderError('rate_limit', 'secret', true) };
-    const timeout = requestJson({ ...options, timeoutMs: 50, retries: 1, fetcher: (_url, init) => new Promise((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(new DOMException('secret', 'AbortError')))) });
+    const timeout = requestJson({ ...options, timeoutMs: 50, totalAttempts: 1, fetcher: (_url, init) => new Promise((_resolve, reject) => init!.signal!.addEventListener('abort', () => reject(new DOMException('secret', 'AbortError')))) });
     const rejected = expect(timeout).rejects.toMatchObject({ code: 'timeout' });
     await vi.advanceTimersByTimeAsync(50); await rejected;
     expect(log.mock.calls.at(-1)?.[1]).toMatchObject({ errorCode: 'timeout', durationMs: 50 });

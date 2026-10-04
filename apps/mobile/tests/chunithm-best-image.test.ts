@@ -258,32 +258,17 @@ describe('buildChunithmBestImageHtml', () => {
 
 describe('parseChunithmBestImageStylePreferences', () => {
   it('accepts selectionCount 0/5/10', () => {
-    expect(parseChunithmBestImageStylePreferences({ version: 1, selectionCount: 5 }).selectionCount).toBe(5);
-    expect(parseChunithmBestImageStylePreferences({ version: 1, selectionCount: 10 }).selectionCount).toBe(10);
-    expect(parseChunithmBestImageStylePreferences({ version: 1, selectionCount: 3 }).selectionCount).toBe(0);
+    expect(parseChunithmBestImageStylePreferences({ version: 3, selectionCount: 5 }).selectionCount).toBe(5);
+    expect(parseChunithmBestImageStylePreferences({ version: 3, selectionCount: 10 }).selectionCount).toBe(10);
+    expect(parseChunithmBestImageStylePreferences({ version: 3, selectionCount: 3 }).selectionCount).toBe(0);
   });
 
-  it('migrates version 1 to version 3 defaults', () => {
-    const parsed = parseChunithmBestImageStylePreferences({ version: 1, selectionCount: 5 });
+  it('normalizes current choices with character and background defaults', () => {
+    const parsed = parseChunithmBestImageStylePreferences({ version: 3, selectionCount: 5 });
     expect(parsed).toMatchObject({
       version: 3,
       selectionCount: 5,
       character: { mode: 'current' },
-      background: { mode: 'default' },
-    });
-  });
-
-  it('migrates version 2 while discarding plate and trophy choices', () => {
-    expect(parseChunithmBestImageStylePreferences({
-      version: 2,
-      selectionCount: 10,
-      character: { mode: 'off' },
-      plate: { mode: 'item', id: 12, name: '测试名牌' },
-      trophy: { mode: 'random', id: 34, name: '测试称号' },
-    })).toEqual({
-      version: 3,
-      selectionCount: 10,
-      character: { mode: 'off' },
       background: { mode: 'default' },
     });
   });

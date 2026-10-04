@@ -104,7 +104,7 @@ describe('Phigros 领域成绩记录', () => {
     expect(shared).toEqual(sharedView);
 
     const card = presentPhigrosScore(shared);
-    expect(card.route).toEqual({ songId: 'Glaciaxion.SunsetRay', levelIndex: 2 });
+    expect(card.route).toEqual({ songId: 'Glaciaxion.SunsetRay', levelIndex: 2, params: { gameId: 'phigros' } });
     expect(card.primaryMetric).toEqual({
       key: 'score',
       label: 'Score',

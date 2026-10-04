@@ -244,7 +244,7 @@ describe('Chunithm records and B50 screens', () => {
     await fireEvent.press(cards[0]!);
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: '2', levelIndex: '3' },
+      params: { songId: '2', levelIndex: '3', gameId: 'chunithm' },
     });
 
     await fireEvent.changeText(screen.getByLabelText('中二成绩搜索'), '目标艺术家');

@@ -97,7 +97,6 @@ export function GameSongRow({
   const coverImageNode = coverImage && coverImage.source != null && !coverFailed ? (
     <Image
       accessibilityLabel={coverImage.accessibilityLabel}
-      cachePolicy="disk"
       cacheProfile="thumbnail"
       gameId={presentation.gameId}
       contentFit="cover"

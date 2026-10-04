@@ -15,7 +15,6 @@ export class EmptyScoreProvider implements ScoreProvider {
       id: 'test-empty',
       displayName: '测试游戏',
       rating: 0,
-      additionalRating: 0,
       source: emptySource(),
     };
   }

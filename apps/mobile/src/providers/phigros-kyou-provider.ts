@@ -94,7 +94,7 @@ export class PhigrosKyouProvider {
   private fetchJson<T>(name: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
     return requestJson({
       baseUrl: BASE, path: `/${name}`, schema, fetcher: expoFetch as unknown as typeof fetch, signal,
-      label: 'Kyou', timeoutMs: 12_000, retries: 1, diagnosticScenario: 'metadata',
+      label: 'Kyou', timeoutMs: 12_000, totalAttempts: 1, diagnosticScenario: 'metadata',
       error: (status) => new ProviderError('network', `Kyou 请求失败 HTTP ${status}`, true),
       messages: {
         schema: 'Kyou 数据结构与已验证契约不一致',

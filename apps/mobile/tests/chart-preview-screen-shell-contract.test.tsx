@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { BackHandler } from 'react-native';
 import { jest } from '@jest/globals';
@@ -275,7 +276,7 @@ describe('ChartPreviewScreenShell 交互', () => {
     const webview = screen.getByTestId(fictionalTestID);
 
     fireEvent(webview, 'message', {
-      nativeEvent: { data: JSON.stringify({ type: 'settings', speed: 2 }) },
+      nativeEvent: { data: JSON.stringify({ type: 'settings', settings: { speed: 2 } }) },
     });
 
     await waitFor(() => expect(mockSaveSettings).toHaveBeenCalledWith(
@@ -509,7 +510,7 @@ describe('ChartPreviewScreenShell 交互', () => {
     expect(mockSaveSettings).not.toHaveBeenCalled();
   });
 
-  it('只读取声明的设置载荷，旧扁平设置归一化后仍可持久化', async () => {
+  it('只持久化设置信封，拒绝缺少信封的消息', async () => {
     await renderFictionalShell({
       kind: 'ready', payload: { chartName: '虚构谱面' }, prepare: async () => fictionalSource,
     });
@@ -527,7 +528,7 @@ describe('ChartPreviewScreenShell 交互', () => {
         nativeEvent: { data: '{"type":"settings","speed":3,"active":false,"message":"ignored"}' },
       });
     });
-    await waitFor(() => expect(mockSaveSettings).toHaveBeenLastCalledWith(fictionalSettingsKey, '{"speed":3}'));
+    expect(mockSaveSettings).toHaveBeenLastCalledWith(fictionalSettingsKey, '{"speed":2}');
 
     const calls = mockSaveSettings.mock.calls.length;
     await act(() => {
@@ -554,8 +555,11 @@ describe('ChartPreviewScreenShell 交互', () => {
     });
     mockInjectJavaScript.mockClear();
 
+    mockInjectJavaScript.mockClear();
     expect(hardwareBackHandler?.()).toBe(true);
-    expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining("type:'exit-fullscreen'"));
+    const postMessage = jest.fn();
+    runInNewContext(String(mockInjectJavaScript.mock.calls.at(-1)![0]), { window: { postMessage } });
+    expect(postMessage).toHaveBeenCalledWith({ type: 'exit-fullscreen' }, '*');
     addEventListener.mockRestore();
   });
 
@@ -629,7 +633,7 @@ describe('ChartPreviewScreenShell 交互', () => {
     }, { onBridgeMessage, reInjectOnLoadEnd: true });
     const old = latestWebViewProps;
     await act(() => {
-      (old.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"confirmation"}' } });
+      (old.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"background-video-confirmation"}' } });
     });
     const oldBridge = onBridgeMessage.mock.calls[0]![1];
     await act(() => { (old.onContentProcessDidTerminate as () => void)(); });
@@ -641,15 +645,15 @@ describe('ChartPreviewScreenShell 交互', () => {
       for (const message of [
         { type: 'progress', label: '旧实例', value: 1 },
         { type: 'ready' }, { type: 'fullscreen', active: true },
-        { type: 'settings', speed: 3 }, { type: 'error', diagnostic: 'stale' },
-        { type: 'confirmation' },
+        { type: 'settings', settings: { speed: 3 } }, { type: 'error', diagnostic: 'stale' },
+        { type: 'background-video-confirmation' },
       ]) {
         (old.onMessage as (event: unknown) => void)({ nativeEvent: { data: JSON.stringify(message) } });
       }
       for (const name of ['onLoadEnd', 'onError', 'onHttpError', 'onContentProcessDidTerminate', 'onRenderProcessGone']) {
         (old[name] as (event?: unknown) => void)({ nativeEvent: { statusCode: 500 } });
       }
-      oldBridge.postMessage({ type: 'confirmation-result', accepted: true });
+      oldBridge.postMessage({ type: 'background-video-confirmation-result', accepted: true });
       jest.advanceTimersByTime(50);
     });
     expect((old.onShouldStartLoadWithRequest as (navigation: unknown) => boolean)({ url: fictionalSource.uri })).toBe(false);
@@ -745,7 +749,7 @@ describe('ChartPreviewScreenShell 交互', () => {
     await view.rerender(<FictionalShell request={request} options={{ externalError: '谱面请求已失效' }} />);
     const logCount = log.mock.calls.length;
     await act(() => {
-      (old.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"settings","speed":5}' } });
+      (old.onMessage as (event: unknown) => void)({ nativeEvent: { data: "{\"type\":\"settings\",\"settings\":{\"speed\":5}}" } });
       (old.onError as () => void)();
     });
     expect(dispose).toHaveBeenCalledTimes(1);
@@ -817,7 +821,7 @@ describe('ChartPreviewScreenShell 交互', () => {
     expect(prepare).toHaveBeenCalledWith(expect.any(AbortSignal), { speed: 2 }, expect.any(Function));
     await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy(), { interval: 1 });
     await act(() => {
-      (latestWebViewProps.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"settings","volume":3}' } });
+      (latestWebViewProps.onMessage as (event: unknown) => void)({ nativeEvent: { data: "{\"type\":\"settings\",\"settings\":{\"volume\":3}}" } });
     });
     await waitFor(() => expect(mockSaveSettings).toHaveBeenLastCalledWith(fictionalSettingsKey, '{"speed":2,"volume":3}'), { interval: 1 });
   });

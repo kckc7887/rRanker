@@ -57,6 +57,14 @@ const mockItems: UserLibraryItem[] = [
   { key: 'song:maimai:999', gameId: 'maimai', kind: 'song', songId: '999', favorite: true, tags: [], createdAt: timestamp, updatedAt: timestamp },
 ];
 
+jest.mock('expo-sqlite/kv-store', () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(async () => null),
+    setItem: jest.fn(async () => undefined),
+    removeItem: jest.fn(async () => undefined),
+  },
+}));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('@/components/AppNotification', () => ({
@@ -83,7 +91,7 @@ jest.mock('expo-router', () => ({
     canGoBack: () => mockCanGoBack(),
     goBack: () => mockBack(),
   }),
-  useLocalSearchParams: () => ({ songId: '1' }),
+  useLocalSearchParams: () => ({ songId: '1', gameId: 'maimai' }),
 }));
 jest.mock('@/hooks/use-collections', () => ({ useCollections: () => ({
   data: { items: [], source: { kind: 'fixture', label: 'fixture', updatedAt: new Date(0).toISOString(), isStale: false } },

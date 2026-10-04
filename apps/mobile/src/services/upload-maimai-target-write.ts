@@ -79,7 +79,6 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
           id: input.playerIdForLocal,
           displayName: target.account.displayName,
           rating: 0,
-          additionalRating: 0,
           source,
         }, localMapped.records, catalog);
         const assertTarget = () => {

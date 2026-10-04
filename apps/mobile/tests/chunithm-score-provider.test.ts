@@ -203,6 +203,7 @@ describe('ChunithmScoreProvider', () => {
     const cached = {
       player,
       scores: [scores[0]],
+      bests,
       source: {
         kind: 'lxns' as const,
         label: '落雪咖啡屋',
@@ -212,7 +213,7 @@ describe('ChunithmScoreProvider', () => {
     };
     const repository: ResourceRepository = {
       getResource: async <T>(_key: string, schemaVersion: number) => (
-        schemaVersion === 1 ? cached as T : null
+        schemaVersion === 2 ? cached as T : null
       ),
       saveResource: async () => undefined,
       deleteResource: async () => undefined,
@@ -230,7 +231,7 @@ describe('ChunithmScoreProvider', () => {
     ).refresh();
 
     expect(result.status).toBe('failed');
-    expect(result.value?.bests).toEqual({ bests: [], selections: [], new_bests: [] });
+    expect(result.value?.bests).toEqual(bests);
     expect(result.value?.source).toMatchObject({ isStale: true, kind: 'lxns', label: '落雪咖啡屋' });
     expect(result.value?.player?.name).toBe('中二玩家');
   });

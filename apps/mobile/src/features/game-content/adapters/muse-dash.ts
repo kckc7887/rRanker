@@ -1,3 +1,4 @@
+import { encodeDetailTarget } from '@/domain/detail-target';
 import {
   MUSE_DASH_DIFFICULTY_LABELS,
   museDashAccTone,
@@ -74,7 +75,7 @@ export function presentMuseDashScore(
   return {
     key: `${play.uid}:${play.difficulty}`,
     gameId: 'musedash',
-    route: { songId: play.uid, levelIndex: play.difficulty },
+    route: encodeDetailTarget({ game: 'musedash', songId: play.uid, levelIndex: play.difficulty }),
     position: options?.position,
     title,
     accessibilityLabel: `查看谱面 ${title}，ACC ${formatMuseDashAcc(play.acc)}，评价 ${grade}，排名 ${currentRank}`,
@@ -119,7 +120,7 @@ export function presentMuseDashSong(
   return {
     key: raw.song.uid,
     gameId: 'musedash',
-    route: { songId: raw.song.uid },
+    route: encodeDetailTarget({ game: 'musedash', songId: raw.song.uid }),
     title: museDashSongTitle(raw.song),
     subtitle: `${museDashSongAuthor(raw.song)} · ${raw.albumTitle}`,
     accessibilityLabel: `打开歌曲 ${museDashSongTitle(raw.song)}`,
@@ -137,7 +138,7 @@ export function presentMuseDashChart(
   return {
     key: `${raw.song.uid}:${raw.difficultyIndex}`,
     gameId: 'musedash',
-    route: { songId: raw.song.uid, levelIndex: raw.difficultyIndex },
+    route: encodeDetailTarget({ game: 'musedash', songId: raw.song.uid, levelIndex: raw.difficultyIndex }),
     difficulty: {
       key: 'difficulty',
       label: MUSE_DASH_DIFFICULTY_LABELS[raw.difficultyIndex],

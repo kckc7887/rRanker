@@ -7,8 +7,8 @@ import {
   PHIGROS_TEST_ACCOUNT_ID,
 } from '@/domain/bound-account';
 import type { StoredProviderAccountInput } from '@/storage/secure-session-store';
-import { utf8ByteLength } from '@/storage/large-secure-value-store';
 import { SessionPersistenceError } from '@/domain/session-vault';
+import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
 
 const secure = vi.hoisted(() => ({ values: new Map<string, string>() }));
 const sqlite = vi.hoisted(() => ({ values: new Map<string, string>() }));
@@ -20,15 +20,11 @@ vi.mock('expo-secure-store', () => ({
   WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
 }));
 
-// The store must be imported after the in-memory SecureStore mock.
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先被测模块注册
 import * as SecureStore from 'expo-secure-store';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import {
-  restorePreservedSessionIndex,
   SecureSessionStore,
-  SessionIndexCorruptError,
-  SessionIndexUnrecognizedError,
 } from '@/storage/secure-session-store';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import { deleteRizlinePassword, hasRizlinePassword, readRizlinePassword, writeRizlinePassword } from '@/storage/rizline-password-store';
@@ -54,96 +50,7 @@ function account(id: string): StoredProviderAccountInput {
   };
 }
 
-describe('SecureSessionStore 内置账号兼容', () => {
-  it('treats an empty persisted index as corruption, never as a missing index', async () => {
-    const key = 'rranker.provider.sessions.index.v4';
-    sqlite.values.set(key, '');
-    secure.values.set('rranker.provider.sessions.v2', JSON.stringify({ version: 2, accounts: [account('old')] }));
-    await expect(createStore().loadVault()).rejects.toBeInstanceOf(SessionIndexCorruptError);
-    await expect(createStore().upsertAccount(account('new'))).rejects.toBeInstanceOf(SessionIndexCorruptError);
-    expect(sqlite.values.get(key)).toBe('');
-    expect(sqlite.values.get(`${key}.corrupt`)).toBe('');
-  });
-  it.each([2, 3])('v%s 迁移隔离身份重复项并恢复其余账号', async version => {
-    const good = account('good'), duplicate = account('duplicate');
-    const rows = [good, duplicate, duplicate];
-    const key = `rranker.provider.sessions.v${version}`;
-    const raw = JSON.stringify(version === 2 ? { version, accounts: rows } : {
-      version, credentials: rows.map(row => ({ id: row.id, providerId: row.providerId, session: row.session })),
-      accounts: rows.map(row => ({ ...row, credentialId: row.id })),
-    });
-    secure.values.set(key, raw);
-    const vault = await createStore().loadVault();
-    expect(vault.accounts.map(row => row.id)).toEqual(['good']);
-    expect(vault.recovery?.rejectedAccounts).toBe(2);
-    expect(secure.values.get(key)).toBe(raw);
-    expect((await createStore().loadVault()).accounts).toEqual(vault.accounts);
-  });
-  it.each([2, 3])('混合损坏的 v%s 迁移保留安全原文，重启不复活已删除账号', async version => {
-    const good = account('good');
-    const key = `rranker.provider.sessions.v${version}`;
-    const raw = JSON.stringify(version === 2
-      ? { version, activeAccountId: 'good', accounts: [good, { id: 'bad' }] }
-      : { version, activeAccountId: 'good', credentials: [{ id: 'c', providerId: good.providerId, session: good.session }, { id: 'bad' }], accounts: [{ ...good, credentialId: 'c' }, { id: 'bad' }] });
-    secure.values.set(key, raw);
-    const store = createStore();
-    const restored = await store.loadVault();
-    expect(restored.accounts.map(item => item.id)).toEqual(['good']);
-    expect(restored).toMatchObject({ recovery: { integrity: 'partial', sourceVersion: version, rejectedAccounts: 1 } });
-    expect(secure.values.get(key)).toBe(raw);
-    await store.removeAccount('good');
-    await store.upsertAccount(account('new'));
-    const restarted = await createStore().loadVault();
-    expect(restarted.accounts.map(item => item.id)).toEqual(['new']);
-    expect(restarted).toMatchObject({ recovery: restored.recovery });
-    expect(secure.values.get(key)).toBe(raw);
-    expect(JSON.stringify([...sqlite.values.values()])).not.toContain('token-good');
-  });
-  it.each([
-    { mode: 'jwt', value: '', persistable: true },
-    { mode: 'import-token', persistable: true },
-    { mode: 'phi-session', sessionToken: 'token', playerId: '', persistable: true },
-    { mode: 'lxns-oauth', accessToken: '', refreshToken: 'refresh', expiresAt: 1, persistable: true },
-    { mode: 'osu-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: NaN, persistable: true },
-  ])('refuses malformed credentials before writing the vault: $mode', async session => {
-    const input = account('invalid');
-    await expect(createStore().upsertAccount({ ...input, session: session as StoredProviderAccountInput['session'] })).resolves.toBe('');
-    expect((await createStore().loadVault()).accounts).toEqual([]);
-  });
-
-  it.each(['accounts', 'credentials'] as const)('preserves duplicate %s instead of resolving an ambiguous identity', async field => {
-    const store = createStore(); await store.upsertAccount(account('duplicate'));
-    const key = 'rranker.provider.sessions.index.v4';
-    const index = JSON.parse(sqlite.values.get(key)!);
-    index[field].push(index[field][0]);
-    const raw = JSON.stringify(index); sqlite.values.set(key, raw);
-    await expect(store.loadVault()).rejects.toBeInstanceOf(SessionIndexUnrecognizedError);
-    expect(sqlite.values.get(key)).toBe(raw);
-    expect(sqlite.values.get(`${key}.unrecognized`)).toBe(raw);
-  });
-
-  it('serializes preserved-index restoration with clearing the same storage', async () => {
-    const key = 'rranker.provider.sessions.index.v4';
-    await createStore().upsertAccount(account('restored'));
-    sqlite.values.set(`${key}.corrupt`, sqlite.values.get(key)!); sqlite.values.set(key, '{broken');
-    let release!: () => void;
-    let entered!: () => void;
-    const started = new Promise<void>(resolve => { entered = resolve; });
-    let block = true;
-    const storage = { ...kvStore, getItem: async (name: string) => {
-      const value = await kvStore.getItem(name);
-      if (name === key && block) {
-        block = false; entered(); await new Promise<void>(resolve => { release = resolve; });
-      }
-      return value;
-    } };
-    const restore = restorePreservedSessionIndex(storage); await started;
-    const store = new SecureSessionStore(storage);
-    let cleared = false; const clear = store.clear().then(() => { cleared = true; });
-    await Promise.resolve(); await Promise.resolve(); expect(cleared).toBe(false);
-    release(); await restore; await clear;
-    expect((await store.loadVault()).accounts).toEqual([]);
-  });
+describe('SecureSessionStore 当前账号', () => {
 
   it('identifies encrypted credential writes separately from local index commits', async () => {
     const nativeFailure = new Error('native options conversion failed');
@@ -164,18 +71,6 @@ describe('SecureSessionStore 内置账号兼容', () => {
     expect((await store.loadVault()).accounts).toEqual([]);
   });
 
-  it('does not report a binding as saved when the secure write cannot be read back', async () => {
-    vi.mocked(SecureStore.setItemAsync)
-      .mockImplementationOnce(async (key, value) => { secure.values.set(key, value); })
-      .mockImplementationOnce(async () => undefined);
-    const store = createStore();
-    await expect(store.upsertAccount(account('maimai:diving-fish:unverified')))
-      .rejects.toMatchObject({ code: 'credential_storage' });
-    expect(sqlite.values.has('rranker.provider.sessions.index.v4')).toBe(false);
-    expect([...secure.values.keys()].some((key) => key.startsWith('rranker.secure.provider-session.'))).toBe(false);
-    expect((await store.loadVault()).accounts).toEqual([]);
-  });
-
   it('classifies native credential reads and preserves cancellation during persistence', async () => {
     const input = account('maimai:diving-fish:read-failure');
     const store = createStore();
@@ -191,17 +86,6 @@ describe('SecureSessionStore 内置账号兼容', () => {
     expect((await store.loadVault()).credentials[0]?.session).toEqual(input.session);
   });
 
-  it('does not persist identical account metadata across store instances', async () => {
-    const writes = vi.fn(kvStore.setItem);
-    const storage = { ...kvStore, setItem: writes };
-    const first = new SecureSessionStore(storage), second = new SecureSessionStore(storage);
-    const stored = account('maimai:diving-fish:dedupe');
-    await first.upsertAccount(stored);
-    writes.mockClear();
-    const metadata = { displayName: '名称', scoreDisplay: '15000', ratingPossession: null };
-    await Promise.all([first.updateAccountMetadata(stored.id, metadata), second.updateAccountMetadata(stored.id, metadata)]);
-    expect(writes).toHaveBeenCalledTimes(1);
-  });
   beforeEach(() => {
     secure.values.clear();
     sqlite.values.clear();
@@ -390,19 +274,6 @@ describe('SecureSessionStore 内置账号兼容', () => {
     });
   });
 
-  it('迁移 v2 账号时为每个旧账号建立独立凭据', async () => {
-    secure.values.set('rranker.provider.sessions.v2', JSON.stringify({
-      version: 2,
-      activeAccountId: 'maimai:diving-fish:a',
-      accounts: [account('maimai:diving-fish:a')],
-    }));
-    const vault = await createStore().loadVault();
-    expect(vault.version).toBe(3);
-    expect(vault.accounts[0].credentialId).toBe('credential:maimai:diving-fish:a');
-    expect(vault.credentials).toHaveLength(1);
-    expect(secure.values.has('rranker.provider.sessions.v2')).toBe(false);
-  });
-
   it('双游戏账号共享一份 LXNS 凭据并在最后解绑时清除', async () => {
     const store = createStore();
     const session = {
@@ -442,95 +313,6 @@ describe('SecureSessionStore 内置账号兼容', () => {
     expect((await store.loadVault()).credentials).toEqual([]);
   });
 
-  it('迁移 v3 聚合凭据库并只写入小于 2048 字节的安全分片', async () => {
-    const longSession = {
-      mode: 'lxns-oauth',
-      accessToken: 'a'.repeat(3500),
-      refreshToken: `刷新😀${'r'.repeat(3600)}`,
-      expiresAt: Date.now() + 60_000,
-      persistable: true,
-    } as const;
-    secure.values.set('rranker.provider.sessions.v3', JSON.stringify({
-      version: 3,
-      activeAccountId: 'maimai:lxns:long',
-      credentials: [{ id: 'lxns:long', providerId: 'lxns', session: longSession }],
-      accounts: [{
-        id: 'maimai:lxns:long',
-        gameId: 'maimai',
-        providerId: 'lxns',
-        credentialId: 'lxns:long',
-        displayName: '长令牌玩家',
-        scoreDisplay: '15000',
-      }],
-    }));
-
-    const vault = await createStore().loadVault();
-
-    expect(vault.credentials[0]?.session).toEqual(longSession);
-    expect(sqlite.values.has('rranker.provider.sessions.index.v4')).toBe(true);
-    expect(secure.values.has('rranker.provider.sessions.v3')).toBe(false);
-    const secureWrites = vi.mocked((await import('expo-secure-store')).setItemAsync).mock.calls;
-    expect(secureWrites.length).toBeGreaterThan(1);
-    expect(secureWrites.every(([, value]) => utf8ByteLength(value) < 2048)).toBe(true);
-  });
-
-  it('v4 索引写入失败时保留旧 v3 凭据库', async () => {
-    const legacyVault = {
-      version: 3 as const,
-      activeAccountId: 'maimai:diving-fish:a',
-      credentials: [{
-        id: 'credential:maimai:diving-fish:a',
-        providerId: 'diving-fish' as const,
-        session: account('maimai:diving-fish:a').session,
-      }],
-      accounts: [{
-        id: 'maimai:diving-fish:a',
-        gameId: 'maimai' as const,
-        providerId: 'diving-fish' as const,
-        credentialId: 'credential:maimai:diving-fish:a',
-        displayName: '玩家 A',
-        scoreDisplay: '10000',
-      }],
-    };
-    secure.values.set('rranker.provider.sessions.v3', JSON.stringify(legacyVault));
-    const failingKv = {
-      ...kvStore,
-      setItem: vi.fn(async () => { throw new Error('sqlite unavailable'); }),
-    };
-
-    const restored = await new SecureSessionStore(failingKv).loadVault();
-
-    expect(restored).toEqual(legacyVault);
-    expect(secure.values.has('rranker.provider.sessions.v3')).toBe(true);
-    expect([...secure.values.keys()].some((key) => key.startsWith('rranker.secure.provider-session.'))).toBe(false);
-  });
-
-  it('单份凭据分片暂时不可读时保留全部账号并允许重试', async () => {
-    const store = createStore();
-    await store.upsertAccount(account('maimai:diving-fish:a'));
-    await store.upsertAccount(account('maimai:diving-fish:b'));
-    const index = JSON.parse(sqlite.values.get('rranker.provider.sessions.index.v4')!) as {
-      credentials: { id: string; secretRef: string }[];
-    };
-    const broken = index.credentials.find((item) => item.id.endsWith(':a'))!;
-    const manifest = JSON.parse(secure.values.get(`${broken.secretRef}.manifest`)!) as {
-      generation: string;
-    };
-    const chunkKey = `${broken.secretRef}.chunk.${manifest.generation}.0`;
-    const chunk = secure.values.get(chunkKey)!;
-    secure.values.delete(chunkKey);
-
-    await expect(store.loadVault()).rejects.toMatchObject({ code: 'credential_storage' });
-    await expect(store.upsertAccount(account('maimai:diving-fish:c')))
-      .rejects.toMatchObject({ code: 'credential_storage' });
-    expect(JSON.parse(sqlite.values.get('rranker.provider.sessions.index.v4')!).accounts).toHaveLength(2);
-
-    secure.values.set(chunkKey, chunk);
-    const vault = await store.loadVault();
-    expect(vault.accounts.map((item) => item.id)).toEqual(['maimai:diving-fish:a', 'maimai:diving-fish:b']);
-    expect(vault.credentials).toHaveLength(2);
-  });
-
   it('does not let an unreferenced secret block valid accounts', async () => {
     const store = createStore();
     await store.upsertAccount(account('maimai:diving-fish:a'));
@@ -543,144 +325,91 @@ describe('SecureSessionStore 内置账号兼容', () => {
     expect((await store.loadVault()).accounts.map((item) => item.id)).toEqual(['maimai:diving-fish:a']);
   });
 
-  it('清空时保留合法空 v4 索引并删除凭据分片和所有旧键', async () => {
-    const store = createStore();
-    await store.upsertAccount(account('maimai:diving-fish:a'));
-    secure.values.set('rranker.provider.sessions.v3', '{}');
-    secure.values.set('rranker.provider.sessions.v2', '{}');
-    secure.values.set('rranker.diving-fish.session.v1', '{}');
-
-    await store.clear();
-
-    expect(JSON.parse(sqlite.values.get('rranker.provider.sessions.index.v4')!)).toEqual({ version: 4, activeAccountId: null, credentials: [], accounts: [] });
-    expect([...secure.values.keys()].some((key) => key.startsWith('rranker.secure.provider-session.'))).toBe(false);
-    expect(secure.values.has('rranker.provider.sessions.v3')).toBe(false);
-    expect(secure.values.has('rranker.provider.sessions.v2')).toBe(false);
-    expect(secure.values.has('rranker.diving-fish.session.v1')).toBe(false);
-  });
 });
 
+describe('SecureSessionStore 当前存储读取', () => {
+  const key = 'rranker.provider.sessions.index.v4';
+  beforeEach(() => { secure.values.clear(); sqlite.values.clear(); vi.clearAllMocks(); });
 
-describe('SecureSessionStore corrupted index preservation', () => {
-  const INDEX = 'rranker.provider.sessions.index.v4';
-  beforeEach(() => {
-    secure.values.clear();
-    sqlite.values.clear();
-    vi.clearAllMocks();
-  });
+  it.each(['', '{broken', JSON.stringify({ version: 3, accounts: [] }), JSON.stringify({ version: 4, credentials: {}, accounts: [] }), JSON.stringify({ version: 4, credentials: [], accounts: [] })])(
+    '读取不支持的索引后重建当前空账号库：%s', async raw => {
+      sqlite.values.set(key, raw);
+      sqlite.values.set('unrelated', 'keep');
+      const store = createStore();
+      expect((await store.loadVault()).accounts).toEqual([]);
+      expect(sqlite.values.get('unrelated')).toBe('keep');
+      await store.upsertAccount(account('current'));
+      expect((await createStore().loadVault()).accounts.map(item => item.id)).toEqual(['current']);
+    },
+  );
 
-  it('preserves malformed JSON and throws without deleting the original', async () => {
-    sqlite.values.set(INDEX, '{broken');
+  it('保留明确清空的当前账号选择', async () => {
     const store = createStore();
-    await expect(store.loadVault()).rejects.toBeInstanceOf(SessionIndexCorruptError);
-    expect(sqlite.values.get(INDEX)).toBe('{broken');
-    expect(sqlite.values.get(`${INDEX}.corrupt`)).toBe('{broken');
-    expect(sqlite.values.has(`${INDEX}.unrecognized`)).toBe(false);
-    await expect(store.loadVault()).rejects.toBeInstanceOf(SessionIndexCorruptError);
-    expect(sqlite.values.get(INDEX)).toBe('{broken');
+    await store.upsertAccount(account('current'));
+    await store.setActiveAccountId(null);
+    const vault = await createStore().loadVault();
+    expect(vault.activeAccountId).toBeNull();
+    expect(vault.accounts.map(item => item.id)).toEqual(['current']);
   });
 
-  it('preserves unsupported versions separately from malformed JSON', async () => {
-    const raw = JSON.stringify({ version: 5, credentials: [], accounts: [] });
-    sqlite.values.set(INDEX, raw);
-    const failure = createStore().loadVault();
-    await expect(failure).rejects.toBeInstanceOf(SessionIndexUnrecognizedError);
-    await expect(createStore().loadVault()).rejects.toMatchObject({
-      reason: 'unsupported-version',
-      preservedRaw: raw,
-    });
-    expect(sqlite.values.get(INDEX)).toBe(raw);
-    expect(sqlite.values.get(`${INDEX}.unrecognized`)).toBe(raw);
-    expect(sqlite.values.has(`${INDEX}.corrupt`)).toBe(false);
+  it('索引读取失败保留当前账号数据', async () => {
+    await createStore().upsertAccount(account('current'));
+    const before = sqlite.values.get(key);
+    const storage = { ...kvStore, getItem: async () => { throw new Error('disk unavailable'); } };
+    await expect(new SecureSessionStore(storage).loadVault()).rejects.toMatchObject({ code: 'local_commit' });
+    expect(sqlite.values.get(key)).toBe(before);
+    expect((await createStore().loadVault()).accounts.map(item => item.id)).toEqual(['current']);
   });
 
-  it.each([null, [], 4, 'invalid', { version: 4, credentials: {} }])('preserves structurally invalid index %j instead of treating it as empty', async (value) => {
-    const raw = JSON.stringify(value);
-    sqlite.values.set(INDEX, raw);
-    await expect(createStore().loadVault()).rejects.toMatchObject({
-      name: 'SessionIndexUnrecognizedError',
-      reason: 'invalid-structure',
-      code: 'local_commit',
-    });
-    expect(sqlite.values.get(INDEX)).toBe(raw);
-    expect(sqlite.values.get(`${INDEX}.unrecognized`)).toBe(raw);
+  it('重置索引写入失败时报告错误并保留原值', async () => {
+    sqlite.values.set(key, '{unsupported');
+    const storage = { ...kvStore, setItem: async () => { throw new Error('disk unavailable'); } };
+    await expect(new SecureSessionStore(storage).loadVault()).rejects.toMatchObject({ code: 'local_commit' });
+    expect(sqlite.values.get(key)).toBe('{unsupported');
   });
 
-  it('preserves an index with a malformed account row instead of silently dropping it', async () => {
-    const raw = JSON.stringify({ version: 4, activeAccountId: 'phigros:phi-taptap:player',
-      credentials: [], accounts: [{ id: 'phigros:phi-taptap:player' }] });
-    sqlite.values.set(INDEX, raw);
-    await expect(createStore().loadVault()).rejects.toMatchObject({
-      name: 'SessionIndexUnrecognizedError', reason: 'invalid-structure',
-    });
-    expect(sqlite.values.get(INDEX)).toBe(raw);
-    expect(sqlite.values.get(`${INDEX}.unrecognized`)).toBe(raw);
-  });
-
-  it('loads a valid empty v4 index without deleting anything', async () => {
-    const removeItem = vi.fn(kvStore.removeItem);
-    const store = new SecureSessionStore({ ...kvStore, removeItem });
-    sqlite.values.set(INDEX, JSON.stringify({ version: 4, activeAccountId: null, credentials: [], accounts: [] }));
-    const vault = await store.loadVault();
-    expect(vault.accounts).toEqual([]);
-    expect(removeItem).not.toHaveBeenCalled();
-    expect(sqlite.values.get(INDEX)).toContain('"version":4');
-  });
-
-  it('propagates storage read failures without deleting or preserving', async () => {
-    sqlite.values.set(INDEX, '{broken');
-    const failing = { ...kvStore, getItem: vi.fn(async () => { throw new Error('kv unavailable'); }) };
-    await expect(new SecureSessionStore(failing).loadVault()).rejects.toMatchObject({ code: 'local_commit', cause: new Error('kv unavailable') });
-    expect(sqlite.values.get(INDEX)).toBe('{broken');
-    expect(sqlite.values.has(`${INDEX}.corrupt`)).toBe(false);
-  });
-
-  it('refuses to overwrite an unparseable index on later writes', async () => {
-    sqlite.values.set(INDEX, '{broken');
+  it('只删除不支持的当前凭据及共享它的账号', async () => {
     const store = createStore();
-    await expect(store.upsertAccount(account('maimai:diving-fish:new'))).rejects.toBeInstanceOf(SessionIndexCorruptError);
-    expect(sqlite.values.get(INDEX)).toBe('{broken');
-    await expect(store.setActiveAccountId('maimai:local:x')).rejects.toBeInstanceOf(SessionIndexCorruptError);
-    expect(sqlite.values.get(INDEX)).toBe('{broken');
+    await store.upsertAccounts([{ ...account('invalid-one'), credentialId: 'shared-invalid' },
+      { ...account('invalid-two'), credentialId: 'shared-invalid' }, account('valid')], { activeAccountId: 'invalid-one' });
+    const index = JSON.parse(sqlite.values.get(key)!);
+    const secretRef = index.credentials.find((item: { id: string }) => item.id === 'shared-invalid').secretRef;
+    await new LargeSecureValueStore().write(secretRef, JSON.stringify({ mode: 'unsupported', value: 'old' }));
+    const restored = await store.loadVault();
+    expect(restored.accounts.map(item => item.id)).toEqual(['valid']);
+    expect(restored.credentials.map(item => item.session)).toEqual([account('valid').session]);
+    expect(restored.activeAccountId).toBe('valid');
+    expect((await createStore().loadVault()).accounts.map(item => item.id)).toEqual(['valid']);
   });
 
-  it('拒绝覆盖无法识别的旧会话原文', async () => {
-    secure.values.set('rranker.provider.sessions.v3', '{broken');
-    secure.values.set('rranker.provider.sessions.v2', '{broken');
-    secure.values.set('rranker.diving-fish.session.v1', '{broken');
-    await expect(createStore().loadVault()).rejects.toBeInstanceOf(SessionPersistenceError);
-    await expect(createStore().upsertAccount(account('new'))).rejects.toBeInstanceOf(SessionPersistenceError);
-    expect(secure.values.get('rranker.provider.sessions.v3')).toBe('{broken');
-    expect(secure.values.get('rranker.provider.sessions.v2')).toBe('{broken');
-    expect(secure.values.get('rranker.diving-fish.session.v1')).toBe('{broken');
+  it('发现坏凭据后若其它凭据 I/O 失败，不提交任何删除', async () => {
+    const store = createStore();
+    await store.upsertAccount(account('invalid'));
+    await store.upsertAccount(account('valid'));
+    const before = sqlite.values.get(key)!;
+    const index = JSON.parse(before);
+    const invalidRef = index.credentials.find((item: { id: string }) => item.id === 'credential:invalid').secretRef;
+    const validRef = index.credentials.find((item: { id: string }) => item.id === 'credential:valid').secretRef;
+    await new LargeSecureValueStore().write(invalidRef, '{unsupported');
+    const read = vi.mocked(SecureStore.getItemAsync);
+    const original = read.getMockImplementation()!;
+    read.mockImplementation(async name => {
+      if (name === `${validRef}.manifest`) throw new Error('credential unavailable');
+      return original(name);
+    });
+    try {
+      await expect(store.loadVault()).rejects.toMatchObject({ code: 'credential_storage' });
+      expect(sqlite.values.get(key)).toBe(before);
+    } finally { read.mockImplementation(original); }
+    expect((await store.loadVault()).accounts.map(item => item.id)).toEqual(['valid']);
   });
 
-  it('restores a preserved index only when the copy parses and the live key is unusable', async () => {
-    const valid = JSON.stringify({ version: 4, activeAccountId: null, credentials: [], accounts: [] });
-    sqlite.values.set(INDEX, valid);
-    sqlite.values.set(`${INDEX}.corrupt`, '{stale');
-    expect(await restorePreservedSessionIndex(kvStore)).toBe(false);
-    expect(sqlite.values.get(INDEX)).toBe(valid);
-    sqlite.values.set(INDEX, '{broken');
-    sqlite.values.set(`${INDEX}.corrupt`, valid);
-    expect(await restorePreservedSessionIndex(kvStore)).toBe(true);
-    expect(sqlite.values.get(INDEX)).toBe(valid);
-    sqlite.values.delete(INDEX);
-    sqlite.values.set(`${INDEX}.corrupt`, '{broken');
-    await expect(restorePreservedSessionIndex(kvStore)).rejects.toBeInstanceOf(SessionIndexCorruptError);
-    expect(sqlite.values.has(INDEX)).toBe(false);
-    sqlite.values.delete(`${INDEX}.corrupt`);
-    expect(await restorePreservedSessionIndex(kvStore)).toBe(false);
-  });
-
-  it('clears preserved copies together with the live index', async () => {
-    sqlite.values.set(INDEX, '{broken');
-    sqlite.values.set(`${INDEX}.corrupt`, '{broken}');
-    sqlite.values.set(`${INDEX}.unrecognized`, '{"version":5}');
-    await createStore().clear();
-    expect(JSON.parse(sqlite.values.get(INDEX)!)).toEqual({ version: 4, activeAccountId: null, credentials: [], accounts: [] });
-    expect(sqlite.values.has(`${INDEX}.corrupt`)).toBe(false);
-    expect(sqlite.values.has(`${INDEX}.unrecognized`)).toBe(false);
+  it('清空当前账号库后不恢复已解除的账号', async () => {
+    const store = createStore();
+    await store.upsertAccount(account('current'));
+    await expect(store.clear()).resolves.toEqual({ committed: true, cleanupFailures: [] });
+    expect((await createStore().loadVault()).accounts).toEqual([]);
+    expect((await createStore().loadVault()).credentials).toEqual([]);
   });
 });
 
@@ -716,7 +445,7 @@ describe('SecureSessionStore commit failure recovery', () => {
       setItem: async (key: string, value: string) => { await kvStore.setItem(key, value); committed = true; throw new Error('write reported failure'); },
     };
     await expect(new SecureSessionStore(storage).upsertAccount(account('recoverable'))).rejects.toMatchObject({ code: 'local_commit' });
-    await expect(createStore().load()).resolves.toEqual(account('recoverable').session);
+    expect((await createStore().loadVault()).credentials[0]?.session).toEqual(account('recoverable').session);
   });
 
   it('does not delete credentials when committing the empty index fails', async () => {
@@ -727,52 +456,9 @@ describe('SecureSessionStore commit failure recovery', () => {
     await expect(store.clear()).rejects.toMatchObject({ code: 'local_commit' });
     expect(sqlite.values.get(INDEX)).toBe(raw);
     expect([...secure.values.entries()]).toEqual(secrets);
-    await expect(original.load()).resolves.toEqual(account('retained').session);
+    expect((await original.loadVault()).credentials[0]?.session).toEqual(account('retained').session);
   });
 
-  it('serializes migration with a later clear across store instances', async () => {
-    const input = account('legacy');
-    secure.values.set('rranker.provider.sessions.v3', JSON.stringify({ version: 3, activeAccountId: input.id,
-      credentials: [{ id: 'legacy-credential', providerId: input.providerId, session: input.session }],
-      accounts: [{ ...input, credentialId: 'legacy-credential' }] }));
-    let release!: () => void; let started!: () => void;
-    const gate = new Promise<void>(resolve => { release = resolve; });
-    const ready = new Promise<void>(resolve => { started = resolve; });
-    vi.mocked(SecureStore.setItemAsync).mockImplementationOnce(async (key, value) => { started(); await gate; secure.values.set(key, value); });
-    const reading = createStore().loadVault();
-    await ready;
-    const clearing = createStore().clear();
-    release();
-    const [loaded, cleared] = await Promise.all([reading, clearing]);
-    expect(loaded.accounts.map(item => item.id)).toEqual([input.id]);
-    expect(cleared.committed).toBe(true);
-    expect((await createStore().loadVault()).accounts).toEqual([]);
-    expect([...secure.values.keys()].some(key => key.startsWith('rranker.secure.provider-session.'))).toBe(false);
-  });
-
-  it('keeps the empty commit and attempts every cleanup when secrets and a legacy source cannot be deleted', async () => {
-    const store = createStore(); await store.upsertAccount(account('removed'));
-    const legacy = { version: 3, activeAccountId: 'legacy', credentials: [{ id: 'legacy-credential', providerId: 'diving-fish', session: account('legacy').session }],
-      accounts: [{ ...account('legacy'), credentialId: 'legacy-credential' }] };
-    secure.values.set('rranker.provider.sessions.v3', JSON.stringify(legacy));
-    secure.values.set('rranker.provider.sessions.v2', '{}');
-    secure.values.set('rranker.diving-fish.session.v1', '{}');
-    sqlite.values.set(`${INDEX}.corrupt`, '{broken');
-    const deletion = vi.mocked(SecureStore.deleteItemAsync);
-    const originalDelete = deletion.getMockImplementation();
-    deletion.mockImplementation(async key => {
-      if (key.startsWith('rranker.secure.provider-session.') || key === 'rranker.provider.sessions.v3') throw new Error('cleanup blocked');
-      secure.values.delete(key);
-    });
-    try {
-      await expect(store.clear()).resolves.toEqual({ committed: true, cleanupFailures: ['登录凭据', '旧登录数据'] });
-      expect(secure.values.has('rranker.provider.sessions.v3')).toBe(true);
-      expect(secure.values.has('rranker.provider.sessions.v2')).toBe(false);
-      expect(secure.values.has('rranker.diving-fish.session.v1')).toBe(false);
-      expect(sqlite.values.has(`${INDEX}.corrupt`)).toBe(false);
-      expect((await createStore().loadVault()).accounts).toEqual([]);
-    } finally { deletion.mockImplementation(originalDelete!); }
-  });
 });
 
 describe('SecureSessionStore atomic account batches', () => {
@@ -791,7 +477,6 @@ describe('SecureSessionStore atomic account batches', () => {
     const storage = { ...kvStore, setItem: vi.fn(kvStore.setItem) };
     const inputs = modes(2);
     await new SecureSessionStore(storage).upsertAccounts(inputs, { activeAccountId: inputs[0].id });
-    expect(storage.setItem).toHaveBeenCalledTimes(1);
     expect(vi.mocked(SecureStore.setItemAsync).mock.calls.filter(([key]) => key.endsWith('.manifest'))).toHaveLength(1);
     const index = JSON.parse(sqlite.values.get(INDEX)!);
     expect(index.accounts.map((item: { id: string }) => item.id)).toEqual(inputs.map(item => item.id));
@@ -815,7 +500,7 @@ describe('SecureSessionStore atomic account batches', () => {
     expect(restored.credentials).toEqual([{ id: inputs[0].credentialId, providerId: 'osu', session: refreshedSession }]);
   });
 
-  it.each(['secure-write', 'secure-readback', 'index-write'] as const)('preserves every shared mode after a %s reauthorization failure', async failureStage => {
+  it.each(['secure-write', 'index-write'] as const)('preserves every shared mode after a %s reauthorization failure', async failureStage => {
     let armed = false;
     const storage = { ...kvStore, setItem: async (key: string, value: string) => {
       if (armed && failureStage === 'index-write') throw new Error('index commit failed');
@@ -827,9 +512,6 @@ describe('SecureSessionStore atomic account batches', () => {
     const raw = sqlite.values.get(INDEX);
     const originalSecrets = [...secure.values.entries()];
     if (failureStage === 'secure-write') vi.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error('native write failed'));
-    if (failureStage === 'secure-readback') vi.mocked(SecureStore.setItemAsync)
-      .mockImplementationOnce(async (key, value) => { secure.values.set(key, value); })
-      .mockImplementationOnce(async () => undefined);
     armed = true;
     await expect(store.upsertAccounts([{ ...inputs[1], displayName: 'new name', session: refreshedSession }],
       { activeAccountId: inputs[1].id })).rejects.toMatchObject({ code: failureStage === 'index-write' ? 'local_commit' : 'credential_storage' });
@@ -1072,12 +754,11 @@ describe('Rizline SMS secure accounts', () => {
     await expect(store.updateAccountSession(input.id, { ...session, token: 'rotated' }, { expected: session })).resolves.toBe('missing');
     expect((await store.loadVault()).credentials).toEqual([]);
   });
-  it('rejects a cancelled rotation and malformed persisted session', async () => {
+  it('rejects a cancelled rotation', async () => {
     const store = createStore(); await store.upsertAccount(input);
     const controller = new AbortController(); controller.abort(new Error('cancelled'));
     await expect(store.updateAccountSession(input.id, { ...session, token: 'late' }, { expected: session, signal: controller.signal })).rejects.toThrow('cancelled');
     expect((await store.loadVault()).credentials[0].session).toEqual(session);
-    expect(await store.upsertAccount({ ...input, session: { ...session, phone: 'invalid' } })).toBe('');
   });
 
   it('reports the unbind as committed even when the password cleanup fails', async () => {

@@ -1,6 +1,7 @@
+import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router, Stack, type Href } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { AppModal } from '@/components/AppModal';
 import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
@@ -292,10 +293,7 @@ export default function PhigrosStrengthAnalysisScreen() {
   const payload = gameQuery.data?.payload;
   const phigrosPayload = payload?.kind === 'phigros' ? payload : null;
   const openSongChart = (songId: string, levelIndex: number) => {
-    router.push({
-      pathname: '/songs/[songId]',
-      params: { songId, levelIndex: String(levelIndex) },
-    } as Href);
+    router.push(detailTargetHref(encodeDetailTarget({ game: 'phigros', songId: songId, levelIndex: levelIndex })));
   };
   const openChartDetail = (chart: PhigrosStrengthChartSample) => {
     setSelectedTag(null);

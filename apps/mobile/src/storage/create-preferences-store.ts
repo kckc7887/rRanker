@@ -1,13 +1,8 @@
 import Storage from '@/storage/key-value-storage';
-import { accountDirectoryCorruptKey } from '@/storage/create-demo-account-store';
 import type { KeyValueStore } from './create-demo-account-store';
 
 export type { KeyValueStore };
 
-/**
- * 偏好 store 实例的公开形态：
- * 全局单 key（S = void）时无参 load / 单参 save；按账号或游戏分 key 时带 scope 参数。
- */
 export type PreferencesStoreInstance<P, S> = {
   load: [S] extends [void] ? () => Promise<P> : (scope: S) => Promise<P>;
   save: [S] extends [void]
@@ -16,27 +11,12 @@ export type PreferencesStoreInstance<P, S> = {
 };
 
 export type CreatePreferencesStoreOptions<P, S> = {
-  /** 固定存储 key，或按 scope（账号 ID / 游戏 ID 等）拼接 key 的构造器。 */
   storeKey: string | ((scope: S) => string);
-  /** 指定 scope 下无数据（含坏数据回退）时使用的默认值。 */
   defaults: (scope: S) => P;
-  /** 解析并校验存储 JSON（含 schemaVersion 迁移），坏结构返回默认值。 */
   parse: (value: unknown, scope: S) => P;
-  /** Strict consumers must not mistake an unreadable document for a missing one. */
-  readFailure?: 'fallback' | 'throw';
-  /** 写入前构造序列化值；缺省直接存储。 */
   toStored?: (value: P, scope: S) => unknown;
-  /** 已废弃。读取失败不再删除原键。 */
-  clearOnError?: boolean;
-  /** 主 key 无数据时执行一次迁移；返回 null 表示无迁移。 */
-  onMissing?: (context: {
-    storage: KeyValueStore;
-    scope: S;
-    save: (value: P) => Promise<void>;
-  }) => Promise<P | null>;
 };
 
-/** 创建带解析、回退和序列化能力的偏好存储。 */
 export function createPreferencesStore<P, S = void>(options: CreatePreferencesStoreOptions<P, S>) {
   const keyOf = (scope: S): string => (
     typeof options.storeKey === 'string' ? options.storeKey : options.storeKey(scope)
@@ -48,36 +28,16 @@ export function createPreferencesStore<P, S = void>(options: CreatePreferencesSt
 
   const loadPreferences = async (storage: KeyValueStore, scope: S): Promise<P> => {
     const key = keyOf(scope);
-    let raw: string | null;
-    try {
-      raw = await storage.getItem(key);
-    } catch (error) {
-      if (options.readFailure === 'throw') throw error;
-      return options.defaults(scope);
-    }
-    if (!raw) {
-      if (options.onMissing) {
-        const migrated = await options.onMissing({
-          storage,
-          scope,
-          save: (value: P) => savePreferences(storage, scope, value),
-        });
-        if (migrated !== null) return migrated;
-      }
-      return options.defaults(scope);
-    }
+    const raw = await storage.getItem(key);
+    if (raw === null) return options.defaults(scope);
+    let value: P;
     try {
       return options.parse(JSON.parse(raw), scope);
-    } catch (parseError) {
-      try {
-        await storage.setItem(accountDirectoryCorruptKey(key), raw);
-      } catch (error) {
-        // 副本写失败时原键仍然保留。
-        if (options.readFailure === 'throw') throw error;
-      }
-      if (options.readFailure === 'throw') throw parseError;
-      return options.defaults(scope);
+    } catch {
+      value = options.defaults(scope);
     }
+    await savePreferences(storage, scope, value);
+    return value;
   };
 
   const savePreferences = async (

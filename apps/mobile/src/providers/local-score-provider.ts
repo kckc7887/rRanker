@@ -33,7 +33,6 @@ export class LocalMaimaiScoreProvider implements ScoreProvider {
       id: this.accountId,
       displayName: this.displayName,
       rating: 0,
-      additionalRating: 0,
       source: localSource(),
     };
   }

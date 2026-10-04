@@ -1,5 +1,7 @@
+import type { z } from 'zod';
+
 export interface ResourceRepository {
-  getResource<T>(key: string, schemaVersion: number): Promise<T | null>;
+  getResource<T>(key: string, schemaVersion: number, schema?: z.ZodType<T>): Promise<T | null>;
   saveResource<T>(key: string, schemaVersion: number, updatedAt: string, value: T, assertCurrent?: () => void): Promise<void>;
   deleteResource(key: string): Promise<void>;
 }

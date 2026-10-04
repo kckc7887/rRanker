@@ -12,7 +12,7 @@ vi.mock('@/services/phigros-avatar-resolver', () => ({ resolvePhigrosAvatarUrl: 
 vi.mock('expo-sqlite', () => ({ openDatabaseAsync: vi.fn() }));
 
 const source = { kind: 'generated' as const, label: 'TapTap云存档', updatedAt: '2026-09-13T00:00:00Z', isStale: false };
-const player = { id: 'player', displayName: 'Player', rating: 15.4321, additionalRating: 0, source };
+const player = { id: 'player', displayName: 'Player', rating: 15.4321, source };
 const summary: PhigrosSummary = { saveVersion: 1, challengeModeRank: 201, rankingScore: 15.4321, gameVersion: 301,
   avatar: 'summary-avatar', cleared: [1, 2, 3, 4], fullCombo: [0, 1, 2, 3], phi: [0, 0, 1, 2] };
 

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
 import { GAME_IDS, type GameId } from '@/domain/game-bind-options';
 import type { ChunithmCollectionKind } from '@/domain/chunithm-collections';
@@ -20,8 +21,8 @@ export type HomePinPreferences = {
 type StoredPinnedToolsV1 = {
   version: 1;
   pinnedToolIdsByGame: PinnedToolIdsByGame;
-  pinnedPlateIdsByGame?: PinnedPlateIdsByGame;
-  pinnedCollectionIdsByGame?: PinnedCollectionIdsByGame;
+  pinnedPlateIdsByGame: PinnedPlateIdsByGame;
+  pinnedCollectionIdsByGame: PinnedCollectionIdsByGame;
 };
 
 const STORE_KEY = 'rranker.toolbox.pinned-tools.v1';
@@ -94,14 +95,15 @@ export function parseHomePinPreferences(value: unknown): HomePinPreferences {
   return output;
 }
 
-export function parsePinnedToolPreferences(value: unknown): PinnedToolIdsByGame {
-  return parseHomePinPreferences(value).pinnedToolIdsByGame;
-}
-
 const { Store: PinnedToolPreferencesStore } = createPreferencesStore<HomePinPreferences>({
   storeKey: STORE_KEY,
   defaults: emptyHomePinPreferences,
-  parse: parseHomePinPreferences,
+  parse: value => parseHomePinPreferences(z.object({
+    version: z.literal(1),
+    pinnedToolIdsByGame: z.record(z.string(), z.array(z.string())),
+    pinnedPlateIdsByGame: z.record(z.string(), z.array(z.number())),
+    pinnedCollectionIdsByGame: z.record(z.string(), z.array(z.object({ kind: z.enum(['trophy', 'character', 'plate', 'icon']), id: z.number() }))),
+  }).parse(value)),
   toStored: (preferences) => ({
     version: 1,
     ...parseHomePinPreferences({ version: 1, ...preferences }),

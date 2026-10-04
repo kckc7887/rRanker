@@ -3,9 +3,6 @@ import {
   applyChartPreviewConfigToHtml,
   buildChartPreviewConfigJson,
   buildChartPreviewInjectedJavaScript,
-  chartPreviewExitFullscreenScript,
-  chartPreviewStopScript,
-  parseChartPreviewBridgeMessage,
 } from '@/features/simai-chart-preview/chart-preview-inject';
 import { chartPreviewCanvasSize } from '@/features/simai-chart-preview/webview-player/fullscreenLayout';
 import { toggleFullscreenLockUiState } from '@/features/chart-preview-shared/webview-player/fullscreenLock';
@@ -14,7 +11,7 @@ import {
   createLatestFrameScheduler,
   resolveInitialBackgroundState,
 } from '@/features/simai-chart-preview/webview-player/interactionScheduler';
-import { chartPreviewPlayerMessageScript } from '@/features/chart-preview-shared/chart-preview-bridge';
+import { parseChartPreviewBridgeMessage } from '@/features/chart-preview-shared/chart-preview-bridge';
 
 describe('chart preview webview helpers', () => {
 
@@ -79,14 +76,6 @@ describe('chart preview webview helpers', () => {
     expect(html).toContain('window.__CHART_PREVIEW__=');
     expect(html).toContain('"chartId":834');
     expect(html).not.toContain('<!--CHART_PREVIEW_CONFIG-->');
-  });
-
-  it('builds a stop script for leaving the page', () => {
-    expect(chartPreviewStopScript()).toContain("type:'stop'");
-  });
-
-  it('builds a fullscreen-exit script for native back handling', () => {
-    expect(chartPreviewExitFullscreenScript()).toContain("type:'exit-fullscreen'");
   });
 
   it('parses native bridge messages and rejects non-object payloads', () => {
@@ -165,7 +154,7 @@ describe('chart preview webview helpers', () => {
   it('restores the selected background and video confirmation', () => {
     expect(resolveInitialBackgroundState({})).toEqual({ mode: 'image', prompted: false });
     expect(resolveInitialBackgroundState({ backgroundMode: 'none' })).toEqual({ mode: 'none', prompted: false });
-    expect(resolveInitialBackgroundState({ backgroundMode: 'video', videoBackgroundConfirmed: true }))
+    expect(resolveInitialBackgroundState({ backgroundMode: 'video', videoBackgroundPrompted: true }))
       .toEqual({ mode: 'video', prompted: true });
   });
 
@@ -193,18 +182,6 @@ describe('chart preview webview helpers', () => {
     scheduler.flush();
     expect(values).toEqual([2, 3]);
     expect(scheduler.pending()).toBe(false);
-  });
-
-  it('serializes native-to-player bridge messages without executable markup', () => {
-    const script = chartPreviewPlayerMessageScript({
-      type: 'background-video-confirmation-result',
-      accepted: true,
-      text: '</script>',
-    });
-    expect(script).toContain('background-video-confirmation-result');
-    expect(script).toContain('"accepted":true');
-    expect(script).toContain('\\u003c/script>');
-    expect(script).not.toContain('</script>');
   });
 
   it('hides controls while locked and restores them when unlocked', () => {

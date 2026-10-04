@@ -13,7 +13,7 @@ vi.mock('@/features/storage-management/fs-storage', () => ({ measureDirectoryByt
 const inventory: StorageMeasurementInventory = {
   scores: [{ accountId: 'test:remote', bytes: 11 }, { accountId: 'test:local', bytes: 23 }, { accountId: 'another:remote', bytes: 31 }],
   resources: [
-    { key: 'score:test:remote', bytes: 13 },
+    { key: 'phigros-save:test:remote', bytes: 13 },
     { key: 'account-thumbnail:test:no-score-row', bytes: 17 },
     { key: 'account-avatar:test:local', bytes: 19 },
     { key: 'account-thumbnail:another:remote', bytes: 29 },
@@ -22,7 +22,6 @@ const inventory: StorageMeasurementInventory = {
     { key: 'unowned', bytes: 37 },
   ],
   catalogBytes: 41,
-  legacyScoreBytes: 43,
 };
 
 function repository() {
@@ -30,7 +29,6 @@ function repository() {
     listAccountScoreSizes: vi.fn(async () => inventory.scores),
     listResourceSizes: vi.fn(async () => inventory.resources),
     measureCatalogBytes: vi.fn(async () => inventory.catalogBytes),
-    measureLegacyScoreBytes: vi.fn(async () => inventory.legacyScoreBytes),
     clearAccountScores: vi.fn(async (_ids: readonly string[]) => undefined),
     clearResources: vi.fn(async (_keys: readonly string[]) => undefined),
     clearCatalog: vi.fn(async () => undefined),
@@ -51,11 +49,11 @@ describe('storage adapter execution', () => {
     const snapshots = repo as unknown as SqliteSnapshotRepository;
     expect(selectStorageInventory(inventory, ownership)).toEqual({
       accountIds: ['test:remote'],
-      resourceKeys: ['score:test:remote', 'account-thumbnail:test:no-score-row', 'catalog', 'detail:one'],
+      resourceKeys: ['phigros-save:test:remote', 'account-thumbnail:test:no-score-row', 'catalog', 'detail:one'],
       includeCatalog: true,
-      bytes: 137,
+      bytes: 94,
     });
-    await expect(adapter.measure(snapshots, inventory)).resolves.toBe(137);
+    await expect(adapter.measure(snapshots, inventory)).resolves.toBe(94);
     expect(repo.listResourceSizes).not.toHaveBeenCalled();
     const assertOldWriteCurrent = captureResourceWrites('maimai');
     repo.listAccountScoreSizes.mockImplementationOnce(async () => {
@@ -64,7 +62,7 @@ describe('storage adapter execution', () => {
     });
     await adapter.clear(snapshots);
     expect(repo.clearAccountScores).toHaveBeenCalledWith(['test:remote']);
-    expect(repo.clearResources).toHaveBeenCalledWith(['score:test:remote', 'account-thumbnail:test:no-score-row', 'catalog', 'detail:one']);
+    expect(repo.clearResources).toHaveBeenCalledWith(['phigros-save:test:remote', 'account-thumbnail:test:no-score-row', 'catalog', 'detail:one']);
     expect(repo.clearCatalog).toHaveBeenCalledOnce();
     expect(repo.measureCatalogBytes).not.toHaveBeenCalled();
   });

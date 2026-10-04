@@ -21,18 +21,12 @@ import {
 
 export type RemoteImageCacheMode = RemoteImageCacheProfile | 'native' | 'none';
 
-type RemoteImageBaseProps = Omit<ImageProps, 'cachePolicy'> & {
-  /** 兼容既有一次性预览；其它值统一映射到 native。 */
-  cachePolicy?: ImageProps['cachePolicy'];
-};
-
-export type RemoteImageProps = RemoteImageBaseProps & (
+export type RemoteImageProps = Omit<ImageProps, 'cachePolicy'> & (
   | { cacheProfile: RemoteImageCacheProfile; gameId: string }
   | { cacheProfile?: 'native' | 'none'; gameId?: never }
 );
 
-const supportsNativeCachePolicy = typeof Image.clearDiskCache === 'function';
-const supportsCompressedCache = supportsNativeCachePolicy && supportsCompressedRemoteImageCache();
+const supportsCompressedCache = supportsCompressedRemoteImageCache();
 const RemoteImagePersistenceContext = createContext(true);
 const RemoteImageActivityContext = createContext(true);
 
@@ -65,23 +59,15 @@ export function RemoteImagePersistenceScope({
   );
 }
 
-export function resolveRemoteImageCacheMode(
-  cacheProfile: RemoteImageCacheMode | undefined,
-  cachePolicy: ImageProps['cachePolicy'],
-): RemoteImageCacheMode {
-  return cacheProfile ?? (cachePolicy === 'none' ? 'none' : 'native');
-}
-
 export function RemoteImage({
   cacheProfile,
-  cachePolicy,
   gameId,
   onDisplay,
   onError,
   source,
   ...props
 }: RemoteImageProps) {
-  const mode = resolveRemoteImageCacheMode(cacheProfile, cachePolicy);
+  const mode = cacheProfile ?? 'native';
   const tabActive = useContext(RemoteImageActivityContext);
   const persistenceEnabled = useContext(RemoteImagePersistenceContext);
   const active = tabActive;
@@ -155,18 +141,6 @@ export function RemoteImage({
     });
     return () => { task.cancel(); controller.abort(); };
   }, [active, gameId, mode, persistenceEnabled, remoteDisplayed, requestKey, resolved, requestSource]);
-
-  if (!supportsNativeCachePolicy) {
-    return (
-      <Image
-        {...props}
-        cachePolicy={cachePolicy}
-        onDisplay={onDisplay}
-        onError={onError}
-        source={source}
-      />
-    );
-  }
 
   if (!supportsCompressedCache && (mode === 'thumbnail' || mode === 'artwork')) {
     return <Image {...props} cachePolicy="memory" onDisplay={onDisplay} onError={onError} source={source} />;

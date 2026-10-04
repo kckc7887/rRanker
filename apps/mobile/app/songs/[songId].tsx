@@ -27,7 +27,7 @@ export default function SongDetailScreen() {
   const theme = useAppTheme();
   const activeGameId = useSession((s) => s.activeGameId);
   const params = useLocalSearchParams<DetailTargetParams>();
-  const resolution = decodeDetailTarget(activeGameId, params);
+  const resolution = decodeDetailTarget(params);
 
   if (!resolution.ok) {
     return <EmptyDataView

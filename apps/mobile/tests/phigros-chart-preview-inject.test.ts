@@ -5,7 +5,7 @@ import {
   buildPhigrosChartPreviewConfigScript,
   buildPhigrosChartPreviewInjectedJavaScript,
 } from '@/features/phigros-chart-preview/phigros-chart-preview-inject';
-import { parseChartPreviewBridgeMessage } from '@/features/simai-chart-preview/chart-preview-inject';
+import { parseChartPreviewBridgeMessage } from '@/features/chart-preview-shared/chart-preview-bridge';
 
 describe('phigros chart preview config injection', () => {
   const config = {
@@ -98,8 +98,6 @@ describe('phigros chart preview config injection', () => {
     const settings = { playbackSpeed: 2, noteScale: 0.8, lineColor: 'blue' };
     expect(parseChartPreviewBridgeMessage(JSON.stringify({ type: 'settings', settings })))
       .toEqual({ type: 'settings', settings });
-    // 旧播放器的扁平设置消息归一化为同一载荷，宿主不再解释任意顶层字段。
-    expect(parseChartPreviewBridgeMessage(JSON.stringify({ type: 'settings', ...settings })))
-      .toEqual({ type: 'settings', settings });
+    expect(parseChartPreviewBridgeMessage(JSON.stringify({ type: 'settings', ...settings }))).toBeNull();
   });
 });

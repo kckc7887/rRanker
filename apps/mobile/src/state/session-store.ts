@@ -41,7 +41,6 @@ export type SessionState = {
   protocolScoreProvider: SessionProviders['protocolScoreProvider'];
   restoreStatus: SessionRestoreStatus;
   restoreError: string | null;
-  migrationRecovery: SessionVault['recovery'] | null;
   session: ProviderSession | null;
   setSession: (session: ProviderSession, accountMeta?: {
     displayName: string;
@@ -73,7 +72,7 @@ export type SessionState = {
     activeAccountId: string;
   }) => void;
   clearSession: () => void;
-  finishRestore: (vault: SessionVault | ProviderSession | null, optionalAccounts?: BoundAccount[]) => void;
+  finishRestore: (vault: SessionVault | null, optionalAccounts?: BoundAccount[]) => void;
   failRestore: (message: string) => void;
 };
 
@@ -217,7 +216,6 @@ export const useSession = create<SessionState>((set, get) => ({
   ...unboundState(),
   restoreStatus: 'restoring',
   restoreError: null,
-  migrationRecovery: null,
   setSession: (session, accountMeta) => {
     if (session.mode === 'rizline' && accountMeta?.gameId === 'rizline' && accountMeta.playerId) {
       const account = createRizlineBoundAccount({ userId: accountMeta.playerId,
@@ -394,28 +392,7 @@ export const useSession = create<SessionState>((set, get) => ({
     releaseResolvedProviders(dropped);
     set(activateAccount(kept, {}, {}, kept[0]?.id ?? null));
   },
-  finishRestore: (input, optionalAccounts = []) => {
-    const migrationRecovery = input && 'version' in input ? input.recovery ?? null : null;
-    const finish = (profile: ReturnType<typeof activateAccount>) => set({ ...profile, migrationRecovery });
-    // 兼容旧单会话 restore
-    if (input && 'mode' in input) {
-      const session = input as ProviderSession;
-      const pending = createMaimaiBoundAccount({
-        providerId: 'diving-fish',
-        displayName: '水鱼玩家',
-        rating: 0,
-        playerId: 'restored',
-      });
-      finish(activateAccount(
-        [...optionalAccounts, pending],
-        { [pending.id]: session },
-        { [pending.id]: `credential:${pending.id}` },
-        pending.id,
-      ));
-      return;
-    }
-
-    const vault = input as SessionVault | null;
+  finishRestore: (vault, optionalAccounts = []) => {
     if (vault) {
       const sessionsByAccountId = sessionsMapFromVault(vault);
       const credentialIdsByAccountId = credentialIdsMapFromVault(vault);
@@ -425,7 +402,7 @@ export const useSession = create<SessionState>((set, get) => ({
       const compatibleOptionalAccounts = hasFormalChunithmAccount
         ? optionalAccounts.filter((account) => account.providerId !== 'chunithm-temp')
         : optionalAccounts;
-      finish(activateAccount(
+      set(activateAccount(
         [...compatibleOptionalAccounts, ...vault.accounts.map(boundAccountFromStored)],
         sessionsByAccountId,
         credentialIdsByAccountId,
@@ -434,7 +411,7 @@ export const useSession = create<SessionState>((set, get) => ({
       return;
     }
 
-    finish(activateAccount(optionalAccounts, {}, {}, optionalAccounts[0]?.id ?? null));
+    set(activateAccount(optionalAccounts, {}, {}, optionalAccounts[0]?.id ?? null));
   },
   failRestore: (message) => {
     set({
@@ -445,7 +422,7 @@ export const useSession = create<SessionState>((set, get) => ({
 }));
 
 export async function restoreSession(
-  load: () => Promise<SessionVault | ProviderSession | null>,
+  load: () => Promise<SessionVault | null>,
   loadOptionalAccounts?: () => Promise<BoundAccount[]>,
 ): Promise<void> {
   try {

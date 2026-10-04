@@ -1,11 +1,14 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadMajdataCached, loadMajdataCachedSong, loadMajdataFresh, loadMajdataSong, loadMajdataSongSnapshot, loadMajdataChart, loadMajdataParsedChart, clearMajdataAccount, majdataAccountKey, majdataSongKey } from '@/services/majdata-service';
+import { loadMajdataCached, loadMajdataFresh, loadMajdataSong, loadMajdataSongSnapshot, loadMajdataChart, loadMajdataParsedChart, clearMajdataAccount, majdataAccountKey, majdataSongKey } from '@/services/majdata-service';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { MajdataSongSchema } from '@/domain/majdata';
 import type { HttpCookieSession } from '@/providers/http-cookies';
 const mock = vi.hoisted(() => ({ values: new Map<string, unknown>(), getSong: vi.fn(), getChart: vi.fn(), getPlayer: vi.fn(), getRecords: vi.fn(), getRecent: vi.fn() }));
 vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {
-  async getResource(key: string) { return mock.values.get(key) ?? null; }
+  async getResource(key: string, _version: number, schema?: import('zod').z.ZodType) {
+    const value = mock.values.get(key) ?? null;
+    return schema ? schema.safeParse(value).data ?? null : value;
+  }
   async saveResource(key: string, _version: number, _time: string, value: unknown) { mock.values.set(key, value); }
   async clearResources(keys: string[]) { for (const key of keys) mock.values.delete(key); }
 } }));
@@ -15,16 +18,22 @@ vi.mock('@/providers/majdata-provider', () => ({ majdataProvider: mock, MajdataP
 vi.mock('@/state/session-store', () => ({ useSession: { getState: () => ({ sessionsByAccountId: {} }), setState: vi.fn() } }));
 
 const song = MajdataSongSchema.parse({ id: 'uuid-full-001', title: 'song', hash: 'hash1', timestamp: '2026-09-01', levels: ['', '', '', '', '14', '', '宴'] });
+const cachedSource = { kind: 'majdata-net', label: 'Majdata Net', updatedAt: '2026-09-01T00:00:00.000Z', isStale: false };
 const session: HttpCookieSession = { mode: 'http-cookies', origin: 'https://majdata.net', cookies: [{ name: 'auth', value: 'value', secure: true, path: '/' }], persistable: true };
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 beforeEach(() => { mock.values.clear(); vi.clearAllMocks(); mock.getSong.mockResolvedValue(song); mock.getChart.mockResolvedValue('&inote_5=(120)1,\n&inote_7=(120)2m,'); mock.getPlayer.mockResolvedValue({ username: 'player' }); mock.getRecords.mockResolvedValue([]); mock.getRecent.mockResolvedValue([]); });
 describe('Majdata revision and account cache', () => {
+  it('does not reuse an unsupported song snapshot when offline', async () => {
+    mock.values.set(majdataSongKey(song.id), { song });
+    mock.getSong.mockRejectedValue(new Error('offline'));
+    await expect(loadMajdataSong(song.id)).rejects.toThrow('offline');
+  });
   it('isolates account snapshots and removal', async () => {
     await loadMajdataFresh('a', session); await loadMajdataFresh('b', session);
     await clearMajdataAccount('a'); expect(await loadMajdataCached('a')).toBeNull(); expect(await loadMajdataCached('b')).not.toBeNull();
   });
   it('renders a local detail before its fresh request resolves', async () => {
-    mock.values.set(majdataSongKey(song.id), { song }); const fresh = deferred<typeof song>(); mock.getSong.mockReturnValue(fresh.promise);
+    mock.values.set(majdataSongKey(song.id), { song, source: cachedSource }); const fresh = deferred<typeof song>(); mock.getSong.mockReturnValue(fresh.promise);
     const onFresh = vi.fn(); expect(await loadMajdataSong(song.id, undefined, onFresh)).toEqual(song);
     expect(onFresh).not.toHaveBeenCalled(); fresh.resolve({ ...song, hash: 'hash2' }); await vi.waitFor(() => expect(onFresh).toHaveBeenCalledWith(expect.objectContaining({ hash: 'hash2' })));
   });
@@ -32,7 +41,7 @@ describe('Majdata revision and account cache', () => {
     vi.useFakeTimers(); vi.setSystemTime(new Date('2026-09-01T00:00:00.000Z'));
     try {
       await loadMajdataSong(song.id);
-      const stored = await loadMajdataCachedSong(song.id);
+      const stored = await loadMajdataSongSnapshot(song.id);
       expect(stored?.song).toEqual(song);
       expect(stored?.source).toEqual({
         kind: 'majdata-net', label: 'Majdata Net', updatedAt: '2026-09-01T00:00:00.000Z', isStale: false,
@@ -40,7 +49,7 @@ describe('Majdata revision and account cache', () => {
     } finally { vi.useRealTimers(); }
   });
   it('does not publish a cached song fallback as a fresh refresh', async () => {
-    mock.values.set(majdataSongKey(song.id), { song });
+    mock.values.set(majdataSongKey(song.id), { song, source: cachedSource });
     mock.getSong.mockRejectedValue(new Error('offline'));
     const onFresh = vi.fn();
     expect(await loadMajdataSong(song.id, undefined, onFresh)).toEqual(song);
@@ -147,7 +156,7 @@ describe('Majdata revision and account cache', () => {
     expect(mock.values.get(`majdata-net:chart:${song.id}:${song.hash}`)).toBe(freshText);
   });
   it('does not publish a cached callback from a cleared request generation', async () => {
-    mock.values.set(majdataSongKey(song.id), { song });
+    mock.values.set(majdataSongKey(song.id), { song, source: cachedSource });
     const fresh = deferred<typeof song>(); mock.getSong.mockReturnValue(fresh.promise);
     const onFresh = vi.fn(); await loadMajdataSong(song.id, undefined, onFresh);
     invalidateResourceWrites('majdata-net'); fresh.resolve({ ...song, hash: 'hash2' });

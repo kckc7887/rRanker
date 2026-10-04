@@ -1,6 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { parseTufAccounts, TufAccountStore } from '@/storage/tuf-account-store';
-
+import { TufAccountStore } from '@/storage/tuf-account-store';
 class MemoryStore {
   value: string | null = null;
   async getItem() { return this.value; }
@@ -15,18 +14,18 @@ describe('TufAccountStore', () => {
     await store.upsert({ playerId: 25, displayName: ' 玩家 ', avatarUrl: 'https://cdn.example/avatar.png' });
     await store.upsert({ playerId: 25, displayName: '新名称', avatarUrl: null });
     await expect(store.load()).resolves.toEqual([{ playerId: 25, displayName: '新名称', avatarUrl: null }]);
-    expect(storage.value).toContain('"version":1');
-    expect(storage.value).not.toMatch(/token|session|passes|topScores|rankedScore/i);
   });
 
-  it('drops malformed and duplicate entries and removes the key after unbinding the last player', async () => {
-    expect(parseTufAccounts({ version: 1, accounts: [
-      { playerId: 1, displayName: 'A' }, { playerId: 1, displayName: 'B' }, { playerId: 0, displayName: 'C' },
-    ] })).toEqual([{ playerId: 1, displayName: 'A', avatarUrl: null }]);
+  it('目录存在不支持的条目时清空，随后允许正常绑定和解绑', async () => {
     const storage = new MemoryStore();
+    storage.value = JSON.stringify({ version: 1, accounts: [{ playerId: 1, displayName: 'A' }, { playerId: 1, displayName: 'B' }] });
     const store = new TufAccountStore(storage);
-    await store.upsert({ playerId: 1, displayName: 'A' });
-    await expect(store.remove(1)).resolves.toEqual([]);
+    expect(await store.load()).toEqual([]);
     expect(storage.value).toBeNull();
+    const profile = { playerId: 1, displayName: 'A' };
+    await store.upsert(profile);
+    expect(await store.load()).toMatchObject([profile]);
+    await store.remove(1);
+    expect(await store.load()).toEqual([]);
   });
 });

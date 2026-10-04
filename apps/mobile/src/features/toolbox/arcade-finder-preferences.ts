@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { GameId } from '@/domain/game-bind-options';
 import {
@@ -16,14 +17,13 @@ export type ArcadeFinderPreferencesV1 = {
   version: 1;
 } & ArcadeFinderPreferences;
 
-const LEGACY_STORE_KEY = 'rranker.toolbox.arcade-finder.v1';
+const STORE_KEY_PREFIX = 'rranker.toolbox.arcade-finder.v1';
 const VALID_RADIUS = new Set<number>(ARCADE_RADIUS_OPTIONS);
 
 function storeKey(gameId: GameId): string {
-  return `${LEGACY_STORE_KEY}:${gameId}`;
+  return `${STORE_KEY_PREFIX}:${gameId}`;
 }
 
-/** Each game gets its own first-visit default; persisted per-game choices remain authoritative. */
 export function defaultArcadeFinderPreferences(gameId: GameId = 'maimai'): ArcadeFinderPreferences {
   const defaultTitleIds: Record<GameId, number[]> = {
     rizline: [], 'majdata-net': [], maimai: [MAIMAI_DX_TITLE_ID],
@@ -68,21 +68,11 @@ const { Store: ArcadeFinderPreferencesStore } =
   createPreferencesStore<ArcadeFinderPreferences, GameId>({
     storeKey,
     defaults: defaultArcadeFinderPreferences,
-    parse: parseArcadeFinderPreferences,
+    parse: (value, gameId) => parseArcadeFinderPreferences(z.object({ version: z.literal(1), radiusKm: z.number(), titleIds: z.array(z.number()) }).parse(value), gameId),
     toStored: (preferences, gameId) => ({
       version: 1,
       ...parseArcadeFinderPreferences({ version: 1, ...preferences }, gameId),
     }) satisfies ArcadeFinderPreferencesV1,
-    // One-time migration of the pre–per-game key into maimai prefs.
-    onMissing: async ({ storage, scope, save }) => {
-      if (scope !== 'maimai') return null;
-      const legacy = await storage.getItem(LEGACY_STORE_KEY);
-      if (!legacy) return null;
-      const prefs = parseArcadeFinderPreferences(JSON.parse(legacy), 'maimai');
-      await save(prefs);
-      await storage.removeItem(LEGACY_STORE_KEY).catch(() => undefined);
-      return prefs;
-    },
   });
 
 export { ArcadeFinderPreferencesStore };

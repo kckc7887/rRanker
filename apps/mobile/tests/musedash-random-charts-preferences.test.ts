@@ -101,12 +101,11 @@ describe('musedash random charts preferences', () => {
     });
   });
 
-  it('keeps malformed preferences and still returns defaults', async () => {
+  it('rebuilds malformed preferences with current defaults', async () => {
     const storage = new MemoryStore();
     storage.values.set('rranker.toolbox.musedash-random-charts.v1', '{not json');
     const preferences = new MuseDashRandomChartsPreferencesStore(storage);
     await expect(preferences.load()).resolves.toEqual(defaultMuseDashRandomChartsPreferences());
-    expect(storage.values.get('rranker.toolbox.musedash-random-charts.v1')).toBe('{not json');
-    expect(storage.values.get('rranker.toolbox.musedash-random-charts.v1.corrupt')).toBe('{not json');
+    expect(JSON.parse(storage.values.get('rranker.toolbox.musedash-random-charts.v1')!)).toMatchObject(defaultMuseDashRandomChartsPreferences());
   });
 });

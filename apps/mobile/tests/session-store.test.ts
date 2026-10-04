@@ -147,14 +147,7 @@ const lxnsSession: ProviderSession = {
 };
 
 describe('useSession store', () => {
-  it('恢复部分账号时保留无敏感信息的迁移状态，后续正常恢复清除状态', () => {
-    const recovery = { integrity: 'partial' as const, sourceVersion: 3 as const, rejectedAccounts: 1, rejectedCredentials: 1 };
-    useSession.getState().finishRestore({ version: 3, accounts: [], credentials: [], activeAccountId: null, recovery });
-    expect(useSession.getState().restoreStatus).toBe('ready');
-    expect(useSession.getState().migrationRecovery).toEqual(recovery);
-    useSession.getState().finishRestore(null);
-    expect(useSession.getState().migrationRecovery).toBeNull();
-  });
+
   beforeEach(() => {
     useSession.getState().finishRestore(null, [
       createLocalMaimaiAccount('本地玩家', 0),
@@ -182,7 +175,7 @@ describe('useSession store', () => {
     await restoreSession(async () => ({ version: 3 as const, activeAccountId: second.accountId,
       credentials: [first, second].map((a, i) => ({ id: a.credentialId, providerId: 'majdata-net' as const, session: session(i === 0 ? 'one' : 'two') })),
       accounts: [first, second].map(a => ({ id: a.accountId, credentialId: a.credentialId, gameId: a.gameId,
-        providerId: a.providerId, displayName: a.displayName, scoreDisplay: '100.1250% · 99.8750%' })),
+        providerId: a.providerId, displayName: a.displayName, scoreDisplay: '200.0000%' })),
     }));
     expect(useSession.getState().activeAccountId).toBe(second.accountId);
     expect(useSession.getState().session).toEqual(session('two'));
@@ -449,11 +442,7 @@ describe('useSession store', () => {
     expect(state.session).toEqual(tokenSessionA);
   });
 
-  it('restores a persisted session before the app becomes ready', async () => {
-    await restoreSession(async () => jwtSession);
-    expect(useSession.getState()).toMatchObject({ session: jwtSession, restoreStatus: 'ready', restoreError: null });
-    expect(useSession.getState().scoreProvider).toBeInstanceOf(DivingFishProvider);
-  });
+
 
   it('restores a Phigros session when the displayed nickname differs from the player ID', () => {
     const session = { mode: 'phi-session', sessionToken: 'phi-token', playerId: 'phi-player', persistable: true } as const;

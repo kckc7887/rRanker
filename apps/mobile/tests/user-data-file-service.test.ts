@@ -21,9 +21,9 @@ vi.mock('expo-file-system', () => ({
 
 // Native Expo modules must be mocked before importing the service.
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import { createUserDataBackup } from '@/domain/user-library';
+import { createUserDataBackup, MAX_BACKUP_FILE_BYTES } from '@/domain/user-library';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import { MAX_BACKUP_FILE_BYTES, pickUserDataBackup, shareUserDataBackup } from '@/services/user-data-file-service';
+import { pickUserDataBackup, shareUserDataBackup } from '@/services/user-data-file-service';
 
 describe('user data backup file service', () => {
   beforeEach(() => {
@@ -39,12 +39,23 @@ describe('user data backup file service', () => {
   });
 
   it('rejects oversized and invalid backup files', async () => {
-    native.picker.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///large.json', size: MAX_BACKUP_FILE_BYTES + 1 }] });
+    native.size = MAX_BACKUP_FILE_BYTES + 1;
+    native.picker.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///large.json' }] });
     await expect(pickUserDataBackup()).rejects.toThrow('大小上限');
     expect(native.remove).toHaveBeenCalled();
-    native.picker.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///bad.json', size: 5 }] });
+    native.size = 5;
+    native.picker.mockResolvedValueOnce({ canceled: false, assets: [{ uri: 'file:///bad.json' }] });
     native.read.mockResolvedValueOnce('not-json');
     await expect(pickUserDataBackup()).rejects.toThrow('JSON');
+  });
+
+  it('rejects old backup files and reports file I/O errors', async () => {
+    const backup = createUserDataBackup([], '2026-07-13T00:00:00.000Z');
+    native.picker.mockResolvedValue({ canceled: false, assets: [{ uri: 'file:///backup.json' }] });
+    native.read.mockResolvedValueOnce(JSON.stringify({ ...backup, version: 2 }));
+    await expect(pickUserDataBackup()).rejects.toThrow('备份版本或内容无效');
+    native.read.mockRejectedValueOnce(new Error('read failure'));
+    await expect(pickUserDataBackup()).rejects.toThrow('read failure');
   });
 
   it('does not create a file when system sharing is unavailable', async () => {

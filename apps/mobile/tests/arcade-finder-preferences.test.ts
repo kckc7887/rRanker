@@ -71,17 +71,13 @@ describe('arcade finder preferences', () => {
     await expect(store.load('phigros')).resolves.toEqual({ radiusKm: 5, titleIds: [] });
   });
 
-  it('migrates legacy shared key into maimai prefs', async () => {
-    const storage = new MemoryStore();
-    await storage.setItem('rranker.toolbox.arcade-finder.v1', JSON.stringify({
-      version: 1,
-      radiusKm: 15,
-      titleIds: [1],
-    }));
-    const store = new ArcadeFinderPreferencesStore(storage);
-    await expect(store.load('maimai')).resolves.toEqual({ radiusKm: 15, titleIds: [1] });
-    expect(await storage.getItem('rranker.toolbox.arcade-finder.v1')).toBeNull();
-    await expect(store.load('phigros')).resolves.toEqual(defaultArcadeFinderPreferences('phigros'));
-    await expect(store.load('chunithm')).resolves.toEqual(defaultArcadeFinderPreferences('chunithm'));
+  it('rebuilds unsupported data only for its game', async () => {
+    const storage = new MemoryStore(), store = new ArcadeFinderPreferencesStore(storage);
+    await store.save('chunithm', { radiusKm: 20, titleIds: [3] });
+    const other = storage.values.get('rranker.toolbox.arcade-finder.v1:chunithm');
+    storage.values.set('rranker.toolbox.arcade-finder.v1:maimai', JSON.stringify({ version: 0, radiusKm: 5, titleIds: [] }));
+    await expect(store.load('maimai')).resolves.toEqual(defaultArcadeFinderPreferences('maimai'));
+    expect(storage.values.get('rranker.toolbox.arcade-finder.v1:chunithm')).toBe(other);
   });
+
 });

@@ -16,7 +16,6 @@ export type ChartPreviewSettings = {
   showFireworks?: boolean;
   backgroundMode?: 'none' | 'image' | 'video';
   videoBackgroundPrompted?: boolean;
-  videoBackgroundConfirmed?: boolean;
 };
 
 /** Buddy 宴谱预览侧：'0'=1P，'1'=2P，'dual'=1P+2P 同屏。 */
@@ -38,4 +37,3 @@ export type ChartPreviewInjectConfig = {
   /** 播放器界面主题跟随应用，缺省为深色。 */
   theme?: 'light' | 'dark';
 };
-

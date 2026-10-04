@@ -21,7 +21,7 @@ jest.mock('expo-image', () => {
 const presentation = {
   key: 'score',
   gameId: 'maimai' as const,
-  route: { songId: 'song' },
+  route: { songId: 'song', params: { gameId: 'maimai' as const } },
   title: 'Test Song',
   accessibilityLabel: '成绩 Test Song',
   primaryMetric: { key: 'score', label: 'Score', text: '100' },

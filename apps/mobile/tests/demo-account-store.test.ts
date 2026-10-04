@@ -1,8 +1,11 @@
 import { describe, expect, it } from 'vitest';
-import {
-  DemoAccountStore,
-  parseDemoAccountProfiles,
-} from '@/storage/demo-account-store';
+import { DemoAccountStore } from '@/storage/demo-account-store';
+class MemoryStore {
+  values = new Map<string, string>();
+  async getItem(key: string) { return this.values.get(key) ?? null; }
+  async setItem(key: string, value: string) { this.values.set(key, value); }
+  async removeItem(key: string) { this.values.delete(key); }
+}
 
 describe('DemoAccountStore', () => {
   it('upserts and removes demo profiles', async () => {
@@ -20,14 +23,12 @@ describe('DemoAccountStore', () => {
     expect(await store.load()).toEqual([]);
   });
 
-  it('filters invalid demo profiles', () => {
-    expect(parseDemoAccountProfiles({
-      version: 1,
-      accounts: [
-        { id: 'maimai:test', displayName: ' 示例 ' },
-        { id: 'maimai:local', displayName: '本地' },
-        { id: 'maimai:test', displayName: '重复' },
-      ],
-    })).toEqual([{ id: 'maimai:test', displayName: '示例' }]);
+  it('不支持的示例目录清空对应键', async () => {
+    const storage = new MemoryStore();
+    storage.values.set('rranker.maimai-demo-accounts.v1', JSON.stringify({ version: 1, accounts: [
+      { id: 'maimai:test', displayName: '示例' }, { id: 'maimai:local', displayName: '本地' },
+    ] }));
+    expect(await new DemoAccountStore(storage).load()).toEqual([]);
+    expect(storage.values.size).toBe(0);
   });
 });

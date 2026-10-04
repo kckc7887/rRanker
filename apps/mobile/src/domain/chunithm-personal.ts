@@ -69,10 +69,7 @@ export type ChunithmPersonalSnapshot = {
   source: DataSource;
 };
 
-export type LegacyChunithmPersonalSnapshot = Omit<ChunithmPersonalSnapshot, 'bests'>;
-
 export const CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION = 2;
-export const CHUNITHM_PERSONAL_LEGACY_SCHEMA_VERSION = 1;
 
 export function emptyChunithmBests(): ChunithmBests {
   return {
@@ -95,4 +92,3 @@ export function buildChunithmCharacterUrl(characterId: number | null | undefined
   if (!Number.isSafeInteger(characterId) || (characterId ?? -1) < 0) return null;
   return `https://assets2.lxns.net/chunithm/character/${characterId}.png`;
 }
-
