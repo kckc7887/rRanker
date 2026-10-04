@@ -1,3 +1,4 @@
+import { encodeDetailTarget } from '@/domain/detail-target';
 import { View } from 'react-native';
 import {
   GameSongRow,
@@ -32,7 +33,7 @@ export function OsuSongRow({ gameId, song }: {
       presentation={{
         key: String(song.beatmapSetId),
         gameId,
-        route: { songId: String(song.beatmapSetId) },
+        route: encodeDetailTarget({ game: gameId, beatmapsetId: String(song.beatmapSetId) }),
         title: song.title,
         subtitle: song.artist,
         accessibilityLabel: `歌曲 ${song.title}`,

@@ -15,29 +15,6 @@ class MemoryStore {
 describe('maimai random charts preferences', () => {
   it('returns defaults for invalid payloads', () => {
     expect(parseRandomChartsPreferences(null)).toEqual(defaultRandomChartsPreferences());
-    expect(parseRandomChartsPreferences({ schemaVersion: 9, count: 3 }))
-      .toEqual(defaultRandomChartsPreferences());
-  });
-
-  it('migrates legacy count, one difficulty and constants while dropping played', () => {
-    expect(parseRandomChartsPreferences({
-      version: 1,
-      count: 3,
-      difficulties: ['master'],
-      constantMin: ' 13.0 ',
-      constantMax: '14',
-      played: 'unplayed',
-    })).toEqual({
-      ...defaultRandomChartsPreferences(),
-      count: 3,
-      difficulty: 'master',
-      constantMin: '13.0',
-      constantMax: '14',
-    });
-    expect(parseRandomChartsPreferences({
-      version: 1,
-      difficulties: ['master', 'remaster'],
-    }).difficulty).toBe('all');
   });
 
   it('persists the complete independent records-style filter', async () => {
@@ -70,20 +47,6 @@ describe('maimai random charts preferences', () => {
     });
   });
 
-  it('migrates v2 payloads with an empty tag selection', () => {
-    expect(parseRandomChartsPreferences({
-      schemaVersion: 2,
-      count: 2,
-      difficulty: 'master',
-      type: 'UTAGE',
-    })).toEqual({
-      ...defaultRandomChartsPreferences(),
-      count: 2,
-      difficulty: 'master',
-      type: 'UTAGE',
-    });
-  });
-
   it('hydrates Zustand state and persists subsequent edits', async () => {
     const storage = new MemoryStore();
     const preferences = new RandomChartsPreferencesStore(storage);
@@ -113,4 +76,12 @@ describe('maimai random charts preferences', () => {
       });
     });
   });
+  it.each([1, 2])('rebuilds old version %s with current defaults', async version => {
+    const storage = new MemoryStore();
+    storage.values.set('rranker.toolbox.random-charts.v1', JSON.stringify({ schemaVersion: version, count: 3, difficulties: ['master'] }));
+    const store = new RandomChartsPreferencesStore(storage);
+    await expect(store.load()).resolves.toEqual(defaultRandomChartsPreferences());
+    expect(JSON.parse(storage.values.get('rranker.toolbox.random-charts.v1')!)).toEqual({ schemaVersion: 3, ...defaultRandomChartsPreferences() });
+  });
+
 });

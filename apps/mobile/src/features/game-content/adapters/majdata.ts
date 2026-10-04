@@ -1,3 +1,4 @@
+import { encodeDetailTarget } from '@/domain/detail-target';
 import type { ScoreCardPresentation, SongRowPresentation } from '../presentation';
 import { MAJDATA_NAMES, MAJDATA_ORDER, type MajdataScore, type MajdataRecent, type MajdataSong } from '@/domain/majdata';
 
@@ -12,7 +13,7 @@ export function majdataRecentCard(score: MajdataRecent, index: number): MajdataC
     difficulty: score.difficulty, dx: score.acc, combo: score.comboState, timestamp: score.timestamp };
 }
 export function presentMajdataScore(card: MajdataCard, rank?: number): ScoreCardPresentation<'majdata-net'> {
-  return { key: card.key, gameId: 'majdata-net', title: card.title, route: { songId: card.songId, levelIndex: card.level, params: { gameId: 'majdata-net' } },
+  return { key: card.key, gameId: 'majdata-net', title: card.title, route: encodeDetailTarget({ game: 'majdata-net', songId: card.songId, levelIndex: card.level }),
     accessibilityLabel: `${card.title} ${MAJDATA_NAMES[card.level]} ${card.difficulty} ${card.dx.toFixed(4)}%`,
     primaryMetric: { key: 'dx', text: `${card.dx.toFixed(4)}%` },
     secondaryMetrics: [{ key: 'rank', label: '排名', text: rank === undefined ? '-' : String(rank) }],
@@ -20,6 +21,6 @@ export function presentMajdataScore(card: MajdataCard, rank?: number): ScoreCard
 }
 export function presentMajdataSong(song: MajdataSong): SongRowPresentation<'majdata-net'> {
   return { key: song.id, gameId: 'majdata-net', title: song.title, subtitle: song.artist, accessibilityLabel: `打开歌曲 ${song.title}`,
-    route: { songId: song.id, params: { gameId: 'majdata-net' } }, chartBadges: MAJDATA_ORDER.filter(i => song.levels[i]?.trim())
+    route: encodeDetailTarget({ game: 'majdata-net', songId: song.id }), chartBadges: MAJDATA_ORDER.filter(i => song.levels[i]?.trim())
       .map(i => ({ key: `${song.id}:${i}`, label: MAJDATA_NAMES[i], value: song.levels[i], tone: MAJDATA_NAMES[i] })) };
 }

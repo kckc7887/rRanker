@@ -157,7 +157,7 @@ export class RizlineProvider {
     };
     const bytes = await requestProviderResponse({
       baseUrl: BASE_URL, path, schema: z.instanceof(Uint8Array), fetcher: this.fetcher,
-      label: 'Rizline', signal, retries: 1, timeoutMs: 20_000, authenticated: true, diagnosticScenario,
+      label: 'Rizline', signal, totalAttempts: 1, timeoutMs: 20_000, authenticated: true, diagnosticScenario,
       maxResponseBytes: 16 * 1024 * 1024,
       init: { method: 'POST', headers, body: JSON.stringify(body), credentials: 'omit', redirect: 'error' },
       error: httpError,

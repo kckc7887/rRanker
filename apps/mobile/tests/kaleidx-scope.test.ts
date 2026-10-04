@@ -122,10 +122,10 @@ describe('KALEIDX◈SCOPE static data', () => {
 });
 
 describe('KALEIDX◈SCOPE progress parsing and state', () => {
-  it('round-trips old and finale progress through the same v1 preferences key', async () => {
+  it('round-trips gate and finale progress through the current preferences key', async () => {
     const key = 'rranker.toolbox.kaleidx-scope.v1';
     const values = new Map<string, string>([[key, JSON.stringify({ version: 1, byAccount: {
-      a: { white: { soloSongIds: ['11102'], multiSongIds: ['11234'], keyObtained: true, gateCleared: false } },
+      a: { white: { completedSongIds: [], soloSongIds: ['11102'], multiSongIds: ['11234'], keyObtained: true, gateCleared: false } },
     } })]]);
     const preferences = new KaleidxScopePreferencesStore({
       getItem: async (name) => values.get(name) ?? null,
@@ -151,6 +151,22 @@ describe('KALEIDX◈SCOPE progress parsing and state', () => {
     expect(restored.getState().byAccount.b?.final).toBeUndefined();
     expect([...values.keys()]).toEqual([key]);
     expect(JSON.parse(values.get(key)!).version).toBe(1);
+  });
+
+  it('rebuilds an old progress structure without changing other preferences', async () => {
+    const key = 'rranker.toolbox.kaleidx-scope.v1';
+    const values = new Map<string, string>([
+      [key, JSON.stringify({ version: 1, byAccount: { a: { white: { soloSongIds: ['11102'], multiSongIds: [], keyObtained: true, gateCleared: false } } } })],
+      ['other-preference', 'untouched'],
+    ]);
+    const preferences = new KaleidxScopePreferencesStore({
+      getItem: async name => values.get(name) ?? null,
+      setItem: async (name, value) => { values.set(name, value); },
+      removeItem: async name => { values.delete(name); },
+    });
+    await expect(preferences.load()).resolves.toEqual({});
+    expect(JSON.parse(values.get(key)!)).toEqual({ version: 1, byAccount: {} });
+    expect(values.get('other-preference')).toBe('untouched');
   });
 
   it('discards fictitious finale keys and song plans and rolls back failed completion writes', async () => {

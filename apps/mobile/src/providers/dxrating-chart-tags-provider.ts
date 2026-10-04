@@ -134,7 +134,7 @@ export class DxRatingChartTagsProvider {
       signal,
       label: 'DXRating',
       timeoutMs: 12_000,
-      retries: 1,
+      totalAttempts: 1,
       diagnosticScenario: 'metadata',
       error: (status) => providerErrorFromStatus(status, DXRATING_STATUS_TEXTS),
       messages: {

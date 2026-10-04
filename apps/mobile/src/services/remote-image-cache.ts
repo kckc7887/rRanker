@@ -3,6 +3,7 @@ import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Directory, File } from 'expo-file-system';
 import { Image, type ImageRef, type ImageSource } from 'expo-image';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { Platform } from 'react-native';
 import { COMPRESSED_IMAGE_CACHE_ROOT } from '@/features/storage-management/fs-storage';
 
 export type RemoteImageCacheProfile = 'thumbnail' | 'artwork';
@@ -97,12 +98,7 @@ const inflight = createInflightGuard<string>();
 let temporarySequence = 0;
 
 export function supportsCompressedRemoteImageCache(): boolean {
-  const imageClass = Image as typeof Image | undefined;
-  const loadAsync = imageClass?.loadAsync as (typeof Image.loadAsync & { _isMockFunction?: boolean }) | undefined;
-  const fileClass = File as typeof File | undefined;
-  return typeof loadAsync === 'function'
-    && loadAsync._isMockFunction !== true
-    && typeof fileClass?.downloadFileAsync === 'function';
+  return Platform.OS !== 'web';
 }
 
 function normalizeHeaders(headers: Record<string, string> | undefined): Record<string, string> | undefined {

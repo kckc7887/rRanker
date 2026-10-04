@@ -55,7 +55,7 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
       void runAccountOperation(() => uploadPrefsStore.save({
         friendCode: nextCode,
         selectedAccountIds: nextIds,
-        // 临时勾选仅改当前会话 UI，不写入该好友码的持久勾选
+        /** 临时勾选不写入持久偏好。 */
         writeSelection: temporarySelectedAccountIds ? false : writeSelection,
       }), () => selection === selectionSeqRef.current);
     }, 300);
@@ -67,10 +67,8 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
     writableIds: string[],
   ) => {
     const trimmed = code.trim();
-    const map = prefs.selectionsByFriendCode ?? {};
-    const stored = map[trimmed]
-      ?? (prefs.friendCode === trimmed ? prefs.selectedAccountIds : []);
-    const restored = (stored ?? []).filter((id) => writableIds.includes(id));
+    const stored = prefs.selectionsByFriendCode[trimmed] ?? [];
+    const restored = stored.filter((id) => writableIds.includes(id));
     return restored.length > 0 ? restored : writableIds;
   }, []);
 
@@ -109,7 +107,7 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
 
         if (!entry?.token) return;
 
-        // 认证或网络失败继续使用本地缓存；存储故障由外层公共错误路径承接。
+        /** 认证或网络失败时保留本地绑定状态。 */
         const me = await fetchMe(entry.token).catch(() => null);
         if (me) {
           if (seq !== bindLookupSeqRef.current || !isCurrent()) return;

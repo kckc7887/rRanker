@@ -1,3 +1,4 @@
+import { encodeDetailTarget } from '@/domain/detail-target';
 import type { GameNoteGroup } from '@/domain/game-content';
 import {
   formatPhiraAccuracy, phiraGrade,
@@ -31,7 +32,7 @@ export function presentPhiraScore(raw: PhiraQueriedBest, position?: number): Sco
   const xing = phiraRecordXing(raw);
   return {
     key: String(record?.id ?? `unplayed:${raw.chart.id}`), gameId: 'phira',
-    route: { songId: String(raw.chart.id) }, position, title: raw.chart.name,
+    route: encodeDetailTarget({ game: 'phira', chartId: String(raw.chart.id) }), position, title: raw.chart.name,
     accessibilityLabel: `查看谱面 ${raw.chart.name}`,
     primaryMetric: { key: 'score', label: 'Score', text: record ? record.score.toLocaleString('en-US') : '—', tone: grade },
     secondaryMetrics: [
@@ -62,7 +63,7 @@ export function presentPhiraBestSection(items: readonly PhiraQueriedBest[]): Bes
 
 export function presentPhiraSong(chart: PhiraChart): SongRowPresentation<'phira'> {
   return {
-    key: String(chart.id), gameId: 'phira', route: { songId: String(chart.id) },
+    key: String(chart.id), gameId: 'phira', route: encodeDetailTarget({ game: 'phira', chartId: String(chart.id) }),
     title: chart.name, subtitle: chart.composer || '曲师未知', accessibilityLabel: `查看歌曲 ${chart.name}`,
     chartBadges: [{ key: String(chart.id), label: chart.level, value: chart.difficulty.toFixed(1), tone: '4' }],
   };
@@ -71,7 +72,7 @@ export function presentPhiraSong(chart: PhiraChart): SongRowPresentation<'phira'
 export function presentPhiraChart(raw: PhiraRawChart, score?: PhiraQueriedBest): ChartCardPresentation<'phira'> {
   const presented = score ? presentPhiraScore(score) : undefined;
   return {
-    key: String(raw.chart.id), gameId: 'phira', route: { songId: String(raw.chart.id) },
+    key: String(raw.chart.id), gameId: 'phira', route: encodeDetailTarget({ game: 'phira', chartId: String(raw.chart.id) }),
     difficulty: { key: 'difficulty', label: raw.chart.level, value: raw.chart.difficulty.toFixed(1), tone: '4' },
     primaryMetric: presented?.primaryMetric ?? { key: 'score', label: 'Score', text: '—' },
     secondaryMetrics: presented?.secondaryMetrics ?? [

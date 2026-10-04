@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router, Stack, type Href, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Card } from '@/components/Card';
 import { ChunithmDifficultyBadge } from '@/components/chunithm/ChunithmDifficultyBadge';
 import { ChunithmCollectionImage } from '@/components/chunithm/ChunithmCollectionImage';
@@ -23,6 +23,7 @@ import {
   normalizeTrophyTone,
   TROPHY_BADGE_THEMES,
 } from '@/features/best-image/best-image-badge-theme';
+import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
 import { useAppTheme } from '@/theme/app-theme';
@@ -419,7 +420,7 @@ export default function ChunithmCollectionsToolScreen() {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`查看歌曲 ${title ?? item.songId}`}
-                    onPress={() => router.push(`/songs/${encodeURIComponent(item.songId)}` as Href)}
+                    onPress={() => router.push(detailTargetHref(encodeDetailTarget({ game: 'chunithm', songId: item.songId })))}
                     style={({ pressed }) => [styles.song, { backgroundColor: theme.surface }, pressed && styles.pressed]}
                   >
                     <View style={styles.songCopy}>

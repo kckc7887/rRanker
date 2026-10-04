@@ -32,7 +32,6 @@ function makeSnapshot(accountId: string, rating: number): ScoreSnapshot {
     id: accountId,
     displayName: '本地玩家',
     rating,
-    additionalRating: 0,
     source,
   };
   return {

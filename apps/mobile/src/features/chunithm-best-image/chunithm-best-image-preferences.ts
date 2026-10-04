@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { ChunithmBestImageSelectionCount } from './chunithm-best-image';
 
@@ -75,20 +76,6 @@ export function parseChunithmBestImageStylePreferences(
   const selectionCount = raw.selectionCount === 5 || raw.selectionCount === 10
     ? raw.selectionCount
     : 0;
-  if (raw.version === 1) {
-    return {
-      ...DEFAULT_CHUNITHM_BEST_IMAGE_STYLES,
-      selectionCount,
-    };
-  }
-  if (raw.version === 2) {
-    return {
-      version: 3,
-      selectionCount,
-      character: parseChoice(raw.character),
-      background: { mode: 'default' },
-    };
-  }
   if (raw.version !== 3) return { ...DEFAULT_CHUNITHM_BEST_IMAGE_STYLES };
   return {
     version: 3,
@@ -113,9 +100,12 @@ export function resolveChunithmBestImageStyleId(
 const { Store } = createPreferencesStore<ChunithmBestImageStylePreferences, string>({
   storeKey: (accountId) => `${PREFIX}${accountId}`,
   defaults: () => ({ ...DEFAULT_CHUNITHM_BEST_IMAGE_STYLES }),
-  parse: parseChunithmBestImageStylePreferences,
-  // 坏数据回退默认值，不清理对应 key。
-  clearOnError: false,
+  parse: value => parseChunithmBestImageStylePreferences(z.object({
+    version: z.literal(3),
+    selectionCount: z.number(),
+    character: z.union([z.object({ mode: z.enum(['current', 'off']) }), z.object({ mode: z.enum(['item', 'random']), id: z.number().int().nonnegative(), name: z.string().optional() })]),
+    background: z.union([z.object({ mode: z.literal('default') }), z.object({ mode: z.literal('song'), songId: z.number().int().nonnegative() })]),
+  }).parse(value)),
 });
 
 export const chunithmBestImagePreferencesStore = new Store();

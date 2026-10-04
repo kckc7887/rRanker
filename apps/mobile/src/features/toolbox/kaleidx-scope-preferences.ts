@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
 import {
   KALEIDX_STAGE_IDS,
@@ -84,7 +85,10 @@ const { Store: KaleidxScopePreferencesStore } =
   createPreferencesStore<KaleidxProgressByAccount>({
     storeKey: STORE_KEY,
     defaults: () => ({}),
-    parse: parseKaleidxProgress,
+    parse: value => parseKaleidxProgress(z.object({
+      version: z.literal(1),
+      byAccount: z.record(z.string(), z.record(z.string(), z.object({ completedSongIds: z.array(z.string()), soloSongIds: z.array(z.string()), multiSongIds: z.array(z.string()), keyObtained: z.boolean(), gateCleared: z.boolean() }))),
+    }).parse(value)),
     toStored: (byAccount) => ({
       version: 1,
       byAccount: parseKaleidxProgress({ version: 1, byAccount }),

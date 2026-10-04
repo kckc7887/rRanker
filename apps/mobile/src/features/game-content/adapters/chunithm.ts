@@ -1,3 +1,4 @@
+import { encodeDetailTarget } from '@/domain/detail-target';
 import type { ChunithmSong } from '@/domain/chunithm';
 import { CHUNITHM_DIFFICULTY_LABELS } from '@/domain/chunithm';
 import {
@@ -29,7 +30,7 @@ export function presentChunithmScore(
   return {
     key: record.key,
     gameId: 'chunithm',
-    route: { songId: record.songId, levelIndex: record.levelIndex },
+    route: encodeDetailTarget({ game: 'chunithm', songId: record.songId, levelIndex: record.levelIndex }),
     position,
     title: record.title,
     accessibilityLabel: `${record.title}，分数 ${formatChunithmScore(record.score)}，评价 ${rank}，Rating ${
@@ -74,7 +75,7 @@ export function presentChunithmSong(song: ChunithmSong): SongRowPresentation<'ch
   return {
     key: String(song.id),
     gameId: 'chunithm',
-    route: { songId: String(song.id) },
+    route: encodeDetailTarget({ game: 'chunithm', songId: String(song.id) }),
     title: song.title,
     subtitle: `${song.artist ?? '艺术家未知'} · ${song.versionTitle}`,
     accessibilityLabel: `打开歌曲详情 ${song.title}`,

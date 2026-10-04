@@ -69,11 +69,6 @@ export function majdataNoteGroup(counts: (NoteCounts & { mine: number }) | undef
 export function majdataAvatarUrl(username: string): string {
   return `${MAJDATA_BASE}/account/Icon?username=${encodeURIComponent(username)}`;
 }
-/** 兼容首版账号摘要，原快照与账号身份不变。 */
-export function normalizeMajdataTotalDisplay(display: string): string {
-  const pair = /^(\d+(?:\.\d+)?)% · (\d+(?:\.\d+)?)%$/.exec(display);
-  return pair ? `${(Number(pair[1]) + Number(pair[2])).toFixed(4)}%` : display;
-}
 export function majdataRank(ranking: MajdataRanking | undefined, username: string, level: number, hash?: string): number | undefined {
   if (hash && ranking?.hash && ranking.hash !== hash) return undefined;
   const index = ranking?.scores[level]?.findIndex(s => s.player.username.trim().toLowerCase() === username.trim().toLowerCase());

@@ -2,27 +2,14 @@ import type { GameId } from '@/domain/game-bind-options';
 import { isOsuGameId, type OsuGameId } from '@/domain/game-mode-family';
 import type { ChartType } from '@/domain/models';
 
-/**
- * 详情定位目标：`/songs/[songId]` 的唯一语义来源。
- *
- * 判别联合按游戏区分字段名：难度索引用 `levelIndex`，osu! 的谱面 ID 用 `beatmapId`
- * （同一个 URL 槽位在 osu! 分支承载 beatmap id，只有本模块负责这层换算），
- * Phira 用谱面 ID、TUF 用关卡 ID。页面与共享组件只消费已校验的 target，
- * 不再各自解释路由参数。
- */
-
-/** 共享卡片/列表 presentation 携带的详情路由：`DetailTarget` 的编码形态。 */
 export type DetailTargetRoute = {
   songId: string;
   chartType?: string;
   levelIndex?: number;
-  /** osu! 谱面 ID 的规范槽位。 */
   beatmapId?: number;
-  /** 游戏侧可选参数（如 `scoreId`、`gameId`）；共享卡片只透传。 */
-  params?: Readonly<Record<string, string>>;
+  params: Readonly<Record<string, string>> & { gameId: GameId };
 };
 
-/** `/songs/[songId]` 的 URL 参数槽位。 */
 export type DetailTargetParams = {
   songId?: string | string[];
   chartType?: string | string[];
@@ -36,14 +23,12 @@ export type MaimaiDetailTarget = {
   game: 'maimai';
   songId: string;
   chartType?: ChartType;
-  /** 难度索引；舞萌由 chartType + levelIndex 共同定位谱面。 */
   levelIndex?: number;
 };
 
 export type ChartIndexDetailTarget = {
   game: 'phigros' | 'chunithm' | 'majdata-net' | 'rizline' | 'musedash';
   songId: string;
-  /** 该游戏详情页使用的难度索引。 */
   levelIndex?: number;
 };
 
@@ -52,7 +37,6 @@ export type TufDetailTarget = { game: 'adofai'; levelId: string };
 export type OsuDetailTarget = {
   game: OsuGameId;
   beatmapsetId: string;
-  /** 谱面（难度）ID，不是难度索引。 */
   beatmapId?: number;
   scoreId?: number;
 };
@@ -67,15 +51,13 @@ export type DetailTarget =
 export type DetailTargetErrorCode =
   | 'unsupported_game'
   | 'missing_parameter'
-  | 'invalid_parameter'
-  | 'conflicting_parameter';
+  | 'invalid_parameter';
 
 export type DetailTargetError = {
   ok: false;
   code: DetailTargetErrorCode;
   game: GameId | undefined;
   parameter: string;
-  /** 面向开发与日志的说明，不作为用户文案。 */
   message: string;
 };
 
@@ -85,23 +67,6 @@ const CHART_TYPES: readonly ChartType[] = ['SD', 'DX', 'UTAGE'];
 
 const INDEX_GAMES: readonly GameId[] = ['phigros', 'chunithm', 'majdata-net', 'rizline', 'musedash'];
 
-/** 每种游戏允许出现的 URL 槽位；其它游戏的槽位出现即为非法参数。 */
-const ALLOWED_PARAMETERS: Readonly<Record<string, readonly (keyof DetailTargetParams)[]>> = {
-  maimai: ['songId', 'chartType', 'levelIndex', 'gameId'],
-  phigros: ['songId', 'levelIndex', 'gameId'],
-  chunithm: ['songId', 'levelIndex', 'gameId'],
-  'majdata-net': ['songId', 'levelIndex', 'gameId'],
-  rizline: ['songId', 'levelIndex', 'gameId'],
-  musedash: ['songId', 'levelIndex', 'gameId'],
-  phira: ['songId', 'gameId'],
-  adofai: ['songId', 'gameId'],
-  'osu-standard': ['songId', 'levelIndex', 'beatmapId', 'scoreId', 'gameId'],
-  'osu-mania': ['songId', 'levelIndex', 'beatmapId', 'scoreId', 'gameId'],
-  'osu-catch': ['songId', 'levelIndex', 'beatmapId', 'scoreId', 'gameId'],
-  'osu-taiko': ['songId', 'levelIndex', 'beatmapId', 'scoreId', 'gameId'],
-};
-
-/** 目标 → 共享详情路由。osu! 使用规范的 `beatmapId` 槽位。 */
 export function encodeDetailTarget(target: DetailTarget): DetailTargetRoute {
   const params = { gameId: target.game };
   switch (target.game) {
@@ -134,7 +99,6 @@ export function encodeDetailTarget(target: DetailTarget): DetailTargetRoute {
   }
 }
 
-/** 共享详情路由 → `router.push` 的 href；所有游戏共用同一个 URL 文件。 */
 export function detailTargetHref(route: DetailTargetRoute): {
   pathname: '/songs/[songId]';
   params: Record<string, string> & { songId: string };
@@ -218,22 +182,16 @@ function decodeOsuTarget(
   params: DetailTargetParams,
   readers: SlotReaders,
 ): DetailTargetResolution {
-  const levelIndex = readIndex(params, 'levelIndex', readers);
-  if (!levelIndex.ok) return levelIndex;
   const beatmapId = readIndex(params, 'beatmapId', readers);
   if (!beatmapId.ok) return beatmapId;
-  if (beatmapId.value !== undefined && levelIndex.value !== undefined && beatmapId.value !== levelIndex.value) {
-    return readers.fail('conflicting_parameter', 'levelIndex', 'osu! 的 beatmapId 与 levelIndex 槽位给出了不同的谱面');
-  }
   const scoreId = readIndex(params, 'scoreId', readers);
   if (!scoreId.ok) return scoreId;
-  const resolvedBeatmapId = beatmapId.value ?? levelIndex.value;
   return {
     ok: true,
     target: {
       game,
       beatmapsetId,
-      ...(resolvedBeatmapId === undefined ? {} : { beatmapId: resolvedBeatmapId }),
+      ...(beatmapId.value === undefined ? {} : { beatmapId: beatmapId.value }),
       ...(scoreId.value === undefined ? {} : { scoreId: scoreId.value }),
     },
   };
@@ -280,16 +238,20 @@ function decodeChartIndexTarget(
   };
 }
 
-/** URL 参数 → 已校验 target；非法或缺失参数返回可判别的错误。 */
-export function decodeDetailTarget(
-  gameId: GameId | undefined,
-  params: DetailTargetParams,
-): DetailTargetResolution {
-  const readers = createSlotReaders(gameId);
-  const gameParameter = readText(params, 'gameId', readers);
+export function decodeDetailTarget(params: DetailTargetParams): DetailTargetResolution {
+  const initial = createSlotReaders(undefined);
+  const gameParameter = readText(params, 'gameId', initial);
   if (!gameParameter.ok) return gameParameter;
-  const game = (gameParameter.value ?? gameId ?? 'maimai') as GameId;
-  const allowed = Object.hasOwn(ALLOWED_PARAMETERS, game) ? ALLOWED_PARAMETERS[game] : undefined;
+  if (!gameParameter.value) return initial.fail('missing_parameter', 'gameId', 'URL 缺少定位详情所需的 gameId');
+  const game = gameParameter.value as GameId;
+  const readers = createSlotReaders(game);
+  const allowed: readonly (keyof DetailTargetParams)[] | undefined = game === 'maimai'
+    ? ['songId', 'gameId', 'chartType', 'levelIndex']
+    : isOsuGameId(game)
+      ? ['songId', 'gameId', 'beatmapId', 'scoreId']
+      : INDEX_GAMES.includes(game)
+        ? ['songId', 'gameId', 'levelIndex']
+        : game === 'phira' || game === 'adofai' ? ['songId', 'gameId'] : undefined;
   if (!allowed) return readers.fail('unsupported_game', 'gameId', `${game} 还没有详情页`);
   const unexpected = firstUnexpectedParameter(params, allowed);
   if (unexpected) {
@@ -306,8 +268,5 @@ export function decodeDetailTarget(
   if (game === 'adofai') return { ok: true, target: { game: 'adofai', levelId: songId.value } };
   if (isOsuGameId(game)) return decodeOsuTarget(game, songId.value, params, readers);
   if (game === 'maimai') return decodeMaimaiTarget(songId.value, params, readers);
-  if (!INDEX_GAMES.includes(game)) {
-    return readers.fail('unsupported_game', 'gameId', `${game} 还没有详情页`);
-  }
   return decodeChartIndexTarget(game as ChartIndexDetailTarget['game'], songId.value, params, readers);
 }

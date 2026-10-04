@@ -1,3 +1,4 @@
+import type { z } from 'zod';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { accountAvatarResourceKey } from '@/domain/account-avatar';
 import { chunithmPersonalResourceKey } from '@/domain/chunithm-personal';
@@ -11,23 +12,13 @@ import { getRrankerDatabase, runDatabaseWrite, runSerializedSchemaInit } from '@
 const SNAPSHOT_SCHEMA_VERSION = 5;
 const CATALOG_SCHEMA_VERSION = 1;
 
-function scoreResourceKey(accountId: string): string {
-  return `score:${accountId}`;
-}
-
 let schemaReady: Promise<void> | null = null;
 
 async function ensureSnapshotSchema(): Promise<void> {
   if (!schemaReady) {
     schemaReady = runSerializedSchemaInit(async () => {
       const db = await getRrankerDatabase();
-      // 不切换 journal_mode：在单例连接上改 WAL 易与 withExclusiveTransactionAsync
-      // 另开的连接互锁，Android 上会卡住原生队列并拖垮同步轮询。
       await db.execAsync(`
-      CREATE TABLE IF NOT EXISTS score_snapshots (
-        id INTEGER PRIMARY KEY CHECK (id = 1), schema_version INTEGER NOT NULL,
-        updated_at TEXT NOT NULL, payload TEXT NOT NULL
-      );
       CREATE TABLE IF NOT EXISTS catalog_snapshots (
         id INTEGER PRIMARY KEY CHECK (id = 1), schema_version INTEGER NOT NULL,
         updated_at TEXT NOT NULL, payload TEXT NOT NULL
@@ -48,11 +39,6 @@ async function ensureSnapshotSchema(): Promise<void> {
   return schemaReady;
 }
 
-/** 测试用：重置模块级 schema 初始化锁。 */
-export function resetSnapshotSchemaForTests(): void {
-  schemaReady = null;
-}
-
 export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepository, ResourceRepository {
   initialize(): Promise<void> {
     return ensureSnapshotSchema();
@@ -65,9 +51,17 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       'SELECT schema_version, payload FROM account_score_snapshots WHERE account_id = ?', accountId,
     );
     if (!row) return null;
-    if (row.schema_version !== SNAPSHOT_SCHEMA_VERSION) return null;
-    try { return ScoreSnapshotSchema.safeParse(JSON.parse(row.payload)).data ?? null; }
-    catch { return null; }
+    let snapshot: ScoreSnapshot | null = null;
+    if (row.schema_version === SNAPSHOT_SCHEMA_VERSION) {
+      try { snapshot = ScoreSnapshotSchema.safeParse(JSON.parse(row.payload)).data ?? null; }
+      catch { /* 非 JSON 内容按失效条目处理。 */ }
+    }
+    if (snapshot) return snapshot;
+    await runDatabaseWrite(() => db.runAsync(
+      'DELETE FROM account_score_snapshots WHERE account_id = ? AND payload = ? AND schema_version = ?',
+      accountId, row.payload, row.schema_version,
+    ));
+    return null;
   }
   async save(accountId: string, snapshot: ScoreSnapshot, assertCurrent?: () => void): Promise<void> {
     await this.initialize();
@@ -80,9 +74,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
          updated_at=excluded.updated_at, payload=excluded.payload`,
         accountId, SNAPSHOT_SCHEMA_VERSION, snapshot.source.updatedAt, JSON.stringify(snapshot),
       );
-      // 兼容删除旧单槽缓存，避免串号回退
-      await db.runAsync('DELETE FROM score_snapshots WHERE id = ?', 1);
-      await db.runAsync('DELETE FROM resource_snapshots WHERE resource_key = ?', scoreResourceKey(accountId));
+
     });
   }
   async getLatestCatalog(): Promise<CatalogSnapshot | null> {
@@ -92,9 +84,17 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       'SELECT schema_version, payload FROM catalog_snapshots WHERE id = ?', 1,
     );
     if (!row) return null;
-    if (row.schema_version !== CATALOG_SCHEMA_VERSION) return null;
-    try { return CatalogSnapshotSchema.safeParse(JSON.parse(row.payload)).data ?? null; }
-    catch { return null; }
+    let catalog: CatalogSnapshot | null = null;
+    if (row.schema_version === CATALOG_SCHEMA_VERSION) {
+      try { catalog = CatalogSnapshotSchema.safeParse(JSON.parse(row.payload)).data ?? null; }
+      catch { /* 非 JSON 内容按失效条目处理。 */ }
+    }
+    if (catalog) return catalog;
+    await runDatabaseWrite(() => db.runAsync(
+      'DELETE FROM catalog_snapshots WHERE id = 1 AND payload = ? AND schema_version = ?',
+      row.payload, row.schema_version,
+    ));
+    return null;
   }
   async saveCatalog(catalog: CatalogSnapshot, assertCurrent?: () => void): Promise<void> {
     await this.initialize();
@@ -109,25 +109,25 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       );
     });
   }
-  async getResource<T>(key: string, schemaVersion: number): Promise<T | null> {
+  async getResource<T>(key: string, schemaVersion: number, schema?: z.ZodType<T>): Promise<T | null> {
     await this.initialize();
     const db = await getRrankerDatabase();
     const row = await db.getFirstAsync<{ schema_version: number; payload: string }>(
       'SELECT schema_version, payload FROM resource_snapshots WHERE resource_key = ?', key,
     );
     if (!row) return null;
-    if (row.schema_version !== schemaVersion) return null;
-    return parseResourcePayload<T>(row.payload);
+    const decoded = row.schema_version === schemaVersion ? parseResourcePayload<T>(row.payload) : null;
+    const value = schema ? schema.safeParse(decoded).data ?? null : decoded;
+    if (value !== null) return value;
+    /** 等待写队列期间可能已有新缓存，只删除本次读到的失效内容。 */
+    await runDatabaseWrite(() => db.runAsync(
+      'DELETE FROM resource_snapshots WHERE resource_key = ? AND payload = ? AND schema_version = ?',
+      key, row.payload, row.schema_version,
+    ));
+    return null;
   }
 
-  /**
-   * 资源级原子读改写：读取、转换和写入在同一次写入队列任务内完成，调用者不必先读后写。
-   * 并发调用（例如总览批量刷新与详情页按谱面查询同时合并 bests）不会读到彼此的旧快照，
-   * 因此不会出现整包覆盖丢更新。复用必须包含读取的写入队列，而不是另建一把锁：
-   * 队列按调用顺序串行，同一资源的合并顺序即提交顺序，最后提交的值获胜。
-   * 队列内只使用直接数据库调用，不重新进入 runDatabaseWrite（同一队列不可重入）。
-   * transform 只做纯计算；可选代次断言在读取与转换之后、实际提交之前执行。
-   */
+  /** 读改写共用写队列，任务内不可重入队列。 */
   async updateResource<T>(
     key: string, schemaVersion: number,
     transform: (previous: T | null) => { value: T; updatedAt: string; write?: true } | { value: T; write: false },
@@ -140,6 +140,9 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
         'SELECT schema_version, payload FROM resource_snapshots WHERE resource_key = ?', key,
       );
       const previous = row && row.schema_version === schemaVersion ? parseResourcePayload<T>(row.payload) : null;
+      if (row && previous === null) {
+        await db.runAsync('DELETE FROM resource_snapshots WHERE resource_key = ?', key);
+      }
       const result = transform(previous);
       assertCurrent?.();
       if (result.write === false) return result.value;
@@ -201,15 +204,6 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     return row?.bytes ?? 0;
   }
 
-  async measureLegacyScoreBytes(): Promise<number> {
-    await this.initialize();
-    const db = await getRrankerDatabase();
-    const row = await db.getFirstAsync<{ bytes: number }>(
-      'SELECT LENGTH(CAST(payload AS BLOB)) AS bytes FROM score_snapshots WHERE id = ?', 1,
-    );
-    return row?.bytes ?? 0;
-  }
-
   async clearAccountScores(accountIds: readonly string[]): Promise<void> {
     if (!accountIds.length) return;
     await this.initialize();
@@ -219,7 +213,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       await db.withTransactionAsync(async () => {
         await deleteKeys(db, 'account_score_snapshots', 'account_id', unique);
         await deleteKeys(db, 'resource_snapshots', 'resource_key', unique.flatMap((id) => [
-          scoreResourceKey(id), accountAvatarResourceKey(id), chunithmPersonalResourceKey(id),
+          accountAvatarResourceKey(id), chunithmPersonalResourceKey(id),
         ]));
       });
     });
@@ -239,7 +233,6 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     await runDatabaseWrite(async () => {
       const db = await getRrankerDatabase();
       await db.runAsync('DELETE FROM catalog_snapshots WHERE id = ?', 1);
-      await db.runAsync('DELETE FROM score_snapshots WHERE id = ?', 1);
     });
   }
 
@@ -249,12 +242,10 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
       const db = await getRrankerDatabase();
       if (accountId) {
         await db.runAsync('DELETE FROM account_score_snapshots WHERE account_id = ?', accountId);
-        await db.runAsync('DELETE FROM resource_snapshots WHERE resource_key = ?', scoreResourceKey(accountId));
         await db.runAsync('DELETE FROM resource_snapshots WHERE resource_key = ?', accountAvatarResourceKey(accountId));
         await db.runAsync('DELETE FROM resource_snapshots WHERE resource_key = ?', chunithmPersonalResourceKey(accountId));
         return;
       }
-      await db.runAsync('DELETE FROM score_snapshots WHERE id = ?', 1);
       await db.runAsync('DELETE FROM account_score_snapshots');
       await db.runAsync('DELETE FROM catalog_snapshots WHERE id = ?', 1);
       await db.runAsync('DELETE FROM resource_snapshots');
@@ -262,13 +253,12 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
   }
 }
 
-/** 损坏或不可解析的资源正文按缺失处理，保留原行等待后续覆盖。 */
 function parseResourcePayload<T>(payload: string): T | null {
   try { return JSON.parse(payload) as T; }
   catch { return null; }
 }
 
-/** Stay below SQLite's conservative bind limit; table/column names are closed internal values. */
+/** 每批最多 500 个参数，避开 SQLite 参数上限。 */
 async function deleteKeys(db: SQLiteDatabase, table: 'account_score_snapshots' | 'resource_snapshots',
   column: 'account_id' | 'resource_key', keys: readonly string[]): Promise<void> {
   for (let index = 0; index < keys.length; index += 500) {

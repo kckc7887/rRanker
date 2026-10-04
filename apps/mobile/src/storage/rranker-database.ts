@@ -85,11 +85,3 @@ export async function measureRrankerDatabaseAllocation(): Promise<RrankerDatabas
     liveBytesEstimate: pageSize * Math.max(0, pageCount - freePages),
   };
 }
-
-/** 测试用：重置单例与 schema 串行链。 */
-export function resetRrankerDatabaseForTests(): void {
-  databasePromise = null;
-  runtimeLogDatabasePromise = null;
-  runtimeLogWriteChain = Promise.resolve();
-  writeChain = Promise.resolve();
-}

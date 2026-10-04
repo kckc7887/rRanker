@@ -4,10 +4,11 @@ import ChunithmRatingToolScreen from '../app/tools/chunithm-rating';
 import ChunithmCollectionsToolScreen from '../app/tools/chunithm-collections';
 import { calculateChunithmOverPower, parseChunithmChartInput } from '@/domain/chunithm-rating';
 
+const mockPush = jest.fn();
 let mockRouteParams: Record<string, string> = {};
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
-  router: { push: jest.fn(), dismissTo: jest.fn() },
+  router: { push: (href: unknown) => mockPush(href), dismissTo: jest.fn() },
   useLocalSearchParams: () => mockRouteParams,
 }));
 
@@ -404,6 +405,8 @@ describe('chunithm tool screens', () => {
     await fireEvent.press(getByLabelText('选择收藏品'));
     await fireEvent.press(getByLabelText('选择 LUNA ROUND'));
     expect(getByLabelText('添加到主页 LUNA ROUND')).toBeTruthy();
+    await fireEvent.press(getByLabelText('查看歌曲 曲A'));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/songs/[songId]', params: { songId: '100', gameId: 'chunithm' } });
 
     await fireEvent.press(getByLabelText('添加到主页 LUNA ROUND'));
     expect(mockTogglePinnedCollection).toHaveBeenCalledWith('chunithm', 'trophy', 866);

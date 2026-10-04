@@ -1,10 +1,11 @@
+import { z } from 'zod';
 import { randomUUID } from 'expo-crypto';
 import { createPreferencesStore } from './create-preferences-store';
 
 const { Store } = createPreferencesStore<string | null>({
   storeKey: 'rranker.rizline.device.v1',
   defaults: () => null,
-  parse: value => typeof value === 'string' && /^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/iu.test(value) ? value : null,
+  parse: value => z.string().regex(/^[\da-f]{8}(?:-[\da-f]{4}){3}-[\da-f]{12}$/iu).nullable().parse(value),
 });
 let device: Promise<string> | undefined;
 

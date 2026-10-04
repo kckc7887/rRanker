@@ -38,7 +38,7 @@ export type BestImageHiddenStyle = 'icon' | 'plate' | 'trophy' | 'frame';
 export type BestImageHtmlInput = {
   type: BestImageType;
   width: number;
-  player: Pick<Player, 'displayName' | 'presentation' | 'extension' | 'additionalRating'>;
+  player: Pick<Player, 'displayName' | 'presentation' | 'extension'>;
   rating: number;
   ratingStyle?: BestImageRatingStyle;
   scoreSections: readonly BestImageScoreSection[];

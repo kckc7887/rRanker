@@ -1,6 +1,5 @@
 import { captureResourceWrites, createInflightGuard, snapshotSource } from '@/services/snapshot-cache-utils';
 import {
-  CHUNITHM_PERSONAL_LEGACY_SCHEMA_VERSION,
   CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
   chunithmPersonalResourceKey,
   emptyChunithmBests,
@@ -8,7 +7,6 @@ import {
   type ChunithmPersonalSnapshot,
   type ChunithmPlayer,
   type ChunithmScore,
-  type LegacyChunithmPersonalSnapshot,
 } from '@/domain/chunithm-personal';
 import type { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
@@ -56,13 +54,7 @@ export class ChunithmPersonalService {
       key,
       CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
     );
-    if (cached) return { ...cached, source: cachedSnapshotSource(cached.source) };
-    const legacy = await this.repository.getResource<LegacyChunithmPersonalSnapshot>(
-      key,
-      CHUNITHM_PERSONAL_LEGACY_SCHEMA_VERSION,
-    );
-    if (!legacy) return null;
-    return { ...legacy, bests: emptyChunithmBests(), source: cachedSnapshotSource(legacy.source) };
+    return cached ? { ...cached, source: cachedSnapshotSource(cached.source) } : null;
   }
 
   private loadPart(part: ChunithmPersonalPart, signal: AbortSignal): Promise<ChunithmPartValue> {

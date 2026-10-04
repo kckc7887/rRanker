@@ -211,7 +211,7 @@ describe('M4 score list cards', () => {
     await fireEvent.press(screen.getByLabelText('查看谱面 B35高 SD master'));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: '352', chartType: 'SD', levelIndex: '3' },
+      params: { songId: '352', chartType: 'SD', levelIndex: '3', gameId: 'maimai' },
     });
   });
 
@@ -236,7 +236,7 @@ describe('M4 score list cards', () => {
     await fireEvent.press(screen.getByLabelText('查看谱面 B15高 DX remaster'));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: '152', chartType: 'DX', levelIndex: '4' },
+      params: { songId: '152', chartType: 'DX', levelIndex: '4', gameId: 'maimai' },
     });
   });
 

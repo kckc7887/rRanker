@@ -28,7 +28,7 @@ export class RizlineResourceService {
   }
   private url(path: string): string { return `${this.base}/${path.split('/').map(encodeURIComponent).join('/')}`; }
   private requestOptions(signal?: AbortSignal) {
-    return { baseUrl: this.base, fetcher: this.fetcher, signal, retries: 1, label: 'Rizline 曲库',
+    return { baseUrl: this.base, fetcher: this.fetcher, signal, totalAttempts: 1, label: 'Rizline 曲库',
       error: (status: number) => new ProviderError('network', `Rizline 曲库请求失败：${status}`, true) };
   }
   private async prepare(signal: AbortSignal, force: boolean): Promise<RizlineRelease> {

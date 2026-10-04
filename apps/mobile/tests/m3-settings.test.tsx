@@ -118,7 +118,6 @@ jest.mock('@/storage/demo-account-store', () => ({
     upsert: (profile: { id: string; displayName: string }) => mockUpsertDemoAccount(profile),
     remove: (accountId: string) => mockRemoveDemoAccount(accountId),
   })),
-  DEFAULT_DEMO_PLAYER_NAME: '示例账号',
   isMaimaiDemoAccountId: (accountId: string) => accountId === 'maimai:test' || accountId.startsWith('maimai:test:'),
 }));
 jest.mock('@/storage/chunithm-temp-account-store', () => ({
@@ -144,7 +143,6 @@ jest.mock('@/storage/musedash-demo-account-store', () => ({
     save: (profile: { id: string; displayName: string }) => mockSaveMuseDashDemoAccount(profile),
     remove: () => mockRemoveMuseDashDemoAccount(),
   })),
-  DEFAULT_MUSEDASH_DEMO_PLAYER_NAME: '示例账号',
   isMuseDashDemoAccountId: (accountId: string) => accountId === 'musedash:musedash-moe:rranker-demo-maxed',
 }));
 jest.mock('@/storage/tuf-account-store', () => ({

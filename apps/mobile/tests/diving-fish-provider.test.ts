@@ -66,7 +66,6 @@ describe('DivingFishProvider native cookie session', () => {
 
     expect(player).toMatchObject({
       id: 'masked-user', displayName: '脱敏玩家', rating: 12345,
-      additionalRating: 22,
       extension: { kind: 'maimai', courseRank: 23 },
       presentation: { trophyName: '测试称号' },
     });

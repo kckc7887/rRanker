@@ -72,7 +72,7 @@ export async function createLocalBoundAccount(accounts: readonly BoundAccount[])
 type DemoAccountBinding = { create: () => BoundAccount; persist: (account: BoundAccount) => Promise<void>; label: string };
 
 const demoBindings: Partial<Record<ProviderId, DemoAccountBinding>> = {
-    'maimai-test': { create: createMaxedMaimaiTestAccount, persist: (account: BoundAccount) => demoAccounts.upsert({ id: account.id, displayName: account.displayName }), label: '' },
+    'maimai-test': { create: createMaxedMaimaiTestAccount, persist: async (account: BoundAccount) => { await demoAccounts.upsert({ id: account.id, displayName: account.displayName }); }, label: '' },
     'chunithm-test': { create: createMaxedChunithmTestAccount, persist: (account: BoundAccount) => chunithmDemoAccount.save({ id: account.id, displayName: account.displayName }), label: '中二节奏' },
     'phigros-test': { create: createMaxedPhigrosTestAccount, persist: (account: BoundAccount) => phigrosDemoAccount.save({ id: account.id, displayName: account.displayName }), label: ' Phigros ' },
     'musedash-test': { create: createMaxedMuseDashTestAccount, persist: (account: BoundAccount) => museDashDemoAccount.save({ id: account.id, displayName: account.displayName }), label: '喵斯快跑' },

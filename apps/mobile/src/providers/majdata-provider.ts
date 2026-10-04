@@ -23,7 +23,7 @@ export class MajdataProvider {
     const body = new FormData(); body.append('username', credentials.username.trim());
     body.append('password', MD5(credentials.password).toString()); body.append('rememberMe', 'true');
     let cookies: HttpCookieSession['cookies'] = [];
-    await requestProviderResponse({ ...this.options('/account/Login', z.string(), signal), retries: 1,
+    await requestProviderResponse({ ...this.options('/account/Login', z.string(), signal), totalAttempts: 1,
       init: { method: 'POST', body, credentials: 'omit' },
       onResponse: response => { cookies = responseCookies(response); },
     }, response => response.text());

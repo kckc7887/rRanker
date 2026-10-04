@@ -135,7 +135,7 @@ describe('Muse Dash content adapter', () => {
     expect(badges.map((badge) => badge.key)).not.toContain('platform');
     expect(badges.map((badge) => badge.label)).toContain('凛·治愈者');
     expect(badges.map((badge) => badge.label)).toContain('未命名');
-    expect(presented.route).toEqual({ songId: '0-47', levelIndex: 3 });
+    expect(presented.route).toEqual({ songId: '0-47', levelIndex: 3, params: { gameId: 'musedash' } });
   });
 
   it('resolves AP/FC achievements from the requested miss count', () => {

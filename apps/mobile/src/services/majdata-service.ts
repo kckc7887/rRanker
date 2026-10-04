@@ -1,3 +1,6 @@
+import { z } from 'zod';
+import { MajdataSongSchema } from '@/domain/majdata';
+import { DataSourceSchema } from '@/domain/schemas';
 import type { MajdataSnapshot, MajdataSong } from '@/domain/majdata';
 import type { DataSource } from '@/domain/models';
 import type { HttpCookieSession } from '@/providers/http-cookies';
@@ -51,8 +54,11 @@ async function requestMajdataSong(id: string, signal: AbortSignal, foregroundSig
   });
 }
 
-/** 歌曲快照的本地载荷：谱面本体加它被抓取时的来源元数据（旧版本行没有来源）。 */
-type MajdataSongSnapshot = { song: MajdataSong; source?: DataSource };
+const songSnapshotSchema = z.object({
+  song: MajdataSongSchema,
+  source: DataSourceSchema.extend({ kind: z.literal('majdata-net') }),
+});
+type MajdataSongSnapshot = z.infer<typeof songSnapshotSchema>;
 
 export function loadMajdataCached(id: string) { return repository.getResource<MajdataSnapshot>(majdataAccountKey(id), 1); }
 export function clearMajdataAccount(id: string) {
@@ -81,36 +87,28 @@ export async function loadMajdataFresh(id: string, session: HttpCookieSession, s
   const player = await provider.getPlayer(signal);
   const records = await provider.getRecords(signal);
   const recent = await provider.getRecent(player.username, signal);
-  if (signal?.aborted) throw signal.reason;
   assertCurrent();
-  if (accountRequests.get(id) !== generation) throw new Error('请求已失效');
   const snapshot = { player, records, recent, source: majdataSource() };
   await repository.saveResource(majdataAccountKey(id), 1, snapshot.source.updatedAt, snapshot, assertCurrent);
-  if (signal?.aborted) throw signal.reason;
   assertCurrent();
-  if (accountRequests.get(id) !== generation) throw new Error('请求已失效');
   return snapshot;
 }
 
-export function loadMajdataCachedSong(id: string) { return repository.getResource<MajdataSongSnapshot>(majdataSongKey(id), 1); }
+function loadMajdataCachedSong(id: string): Promise<MajdataSongSnapshot | null> {
+  return repository.getResource(majdataSongKey(id), 1, songSnapshotSchema);
+}
 
-/**
- * 本地歌曲快照：歌曲本体、展示来源与快照元数据。
- * 缓存读取保留原提供方与抓取时间，可用修订就是谱面 hash；
- * 旧版本行没有来源信息时不编造元数据（metadata 为 null），展示来源退回本次读取的来源。
- */
 export async function loadMajdataSongSnapshot(id: string): Promise<{
   song: MajdataSong;
   source: DataSource;
-  metadata: SnapshotMetadata | null;
+  metadata: SnapshotMetadata;
 } | null> {
   const cached = await loadMajdataCachedSong(id);
   if (!cached) return null;
-  const stored = cached.source && cached.source.kind !== 'cache' ? cached.source : null;
   return {
     song: cached.song,
-    source: stored ?? majdataSource(),
-    metadata: stored ? snapshotMetadataOf(stored, cached.song.hash) : null,
+    source: cached.source,
+    metadata: snapshotMetadataOf(cached.source, cached.song.hash),
   };
 }
 
@@ -121,7 +119,7 @@ function cachedSongLoad(snapshot: MajdataSongSnapshot): MajdataSongLoad {
   return {
     song: snapshot.song,
     fromCache: true,
-    source: cachedSnapshotSource(snapshot.source ?? majdataSource()),
+    source: cachedSnapshotSource(snapshot.source),
   };
 }
 
@@ -141,7 +139,7 @@ async function loadMajdataSongCurrent(id: string, signal?: AbortSignal): Promise
       assertCurrent();
       if (songRequests.get(id) !== generation) throw new Error('请求已失效');
     };
-    const cached = await repository.getResource<MajdataSongSnapshot>(majdataSongKey(id), 1);
+    const cached = await loadMajdataCachedSong(id);
     try {
       const song = await requestMajdataSong(id, requestSignal, foregroundSignal, assertSongCurrent);
       assertSongCurrent();

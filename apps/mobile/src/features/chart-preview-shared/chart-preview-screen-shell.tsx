@@ -17,10 +17,9 @@ import { WebView } from 'react-native-webview';
 import Storage from '@/storage/key-value-storage';
 import {
   chartPreviewHostCommandScript,
-  isChartPreviewPlayerEvent,
   parseChartPreviewBridgeMessage,
-  parseChartPreviewHostCommand,
-  type ChartPreviewBridgeMessage,
+  type ChartPreviewPlayerEvent,
+  type ChartPreviewHostCommand,
 } from './chart-preview-bridge';
 import { chartPreviewNativeScreenOptions, type ChartPreviewFullscreenOrientation } from './chart-preview-native-screen-options';
 import {
@@ -73,8 +72,8 @@ export type ChartPreviewScreenShellProps<TPayload> = {
   reInjectOnLoadEnd?: boolean;
   blockOnHttpError?: boolean;
   onBridgeMessage?: (
-    message: ChartPreviewBridgeMessage & Record<string, unknown>,
-    bridge: { postMessage: (message: Record<string, unknown>) => void },
+    message: ChartPreviewPlayerEvent,
+    bridge: { postMessage: (command: ChartPreviewHostCommand) => void },
   ) => void;
 };
 
@@ -439,11 +438,8 @@ export function ChartPreviewScreenShell<TPayload>({
   };
 
   const bridge = useMemo(() => ({
-    postMessage: (message: Record<string, unknown>) => {
+    postMessage: (command: ChartPreviewHostCommand) => {
       if (!viewSession || !isCurrentSession(viewSession)) return;
-      // 游戏屏幕回传的命令同样经合同解析，未声明的载荷不下发。
-      const command = parseChartPreviewHostCommand(message);
-      if (command === null) return;
       webRef.current?.injectJavaScript(chartPreviewHostCommandScript(command));
     },
   }), [isCurrentSession, viewSession]);
@@ -556,34 +552,34 @@ export function ChartPreviewScreenShell<TPayload>({
               if (!isCurrentView()) return;
               const data = parseChartPreviewBridgeMessage(event.nativeEvent.data);
               if (!data) return;
-              if (isChartPreviewPlayerEvent(data, 'progress')) {
+              if (data.type === 'progress') {
                 applyLoadProgress(chartPreviewWebViewProgress({
                   label: data.label || CHART_PREVIEW_PLAYER_LABEL,
                   value: data.value ?? 0,
                 }));
               }
-              if (isChartPreviewPlayerEvent(data, 'ready')) {
+              if (data.type === 'ready') {
                 recordView('ready');
                 viewSession?.markReady();
                 commitLoadProgress({ label: CHART_PREVIEW_PLAYER_LABEL, value: 1 });
                 setReady(true);
               }
-              if (isChartPreviewPlayerEvent(data, 'fullscreen')) {
+              if (data.type === 'fullscreen') {
                 setIsFullscreen(data.active);
               }
-              if (isChartPreviewPlayerEvent(data, 'background-video')) {
+              if (data.type === 'background-video') {
                 recordView('background-video', {
                   result: data.result,
                   ...(data.status === undefined ? {} : { status: data.status }),
                   ...(data.errorCode === undefined ? {} : { errorCode: data.errorCode }),
                 });
               }
-              if (isChartPreviewPlayerEvent(data, 'error')) {
+              if (data.type === 'error') {
                 recordView('player-error', { result: 'error', error: data });
                 failPlayer('谱面播放失败，请返回重试。');
                 return;
               }
-              if (isChartPreviewPlayerEvent(data, 'settings')) {
+              if (data.type === 'settings') {
                 if (viewSession) persistSettings(viewSession, data.settings, data.committed);
               }
               onBridgeMessage?.(data, bridge);

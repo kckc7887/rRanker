@@ -17,7 +17,6 @@ function makePayload(overrides: Partial<PhigrosGameDataPayload> = {}): PhigrosGa
       id: 'phi-player',
       displayName: '尘言',
       rating: 15.4321,
-      additionalRating: 0,
       source: fixtureSource,
     },
     records: [],

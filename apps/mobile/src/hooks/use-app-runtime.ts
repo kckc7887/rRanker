@@ -12,7 +12,6 @@ import { runStorageCacheMaintenance } from '@/features/storage-management/storag
 import { markRemoteImageCacheGameActive } from '@/services/remote-image-cache';
 import { hydrateAccountDisplayData } from '@/services/account-thumbnail';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
-import {  } from '@/services/upload-maimai-from-friend-code';
 import { recordRuntimeRoute } from '@/services/runtime-logs';
 import { setThemePersistenceForeground } from '@/state/theme-store';
 import { retryFailedAccountSources } from '@/services/account-restoration';

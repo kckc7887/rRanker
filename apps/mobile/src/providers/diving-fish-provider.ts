@@ -78,7 +78,6 @@ export class DivingFishProvider implements ScoreProvider {
         id: records.username ?? 'diving-fish-user',
         displayName: records.nickname ?? records.username ?? '水鱼玩家',
         rating: records.rating ?? 0,
-        additionalRating: records.additional_rating,
         extension: {
           kind: 'maimai',
           courseRank: normalizeDivingFishCourseRank(records.additional_rating),
@@ -93,7 +92,6 @@ export class DivingFishProvider implements ScoreProvider {
       id: profile.username ?? 'diving-fish-user',
       displayName: profile.nickname ?? profile.username ?? '水鱼玩家',
       rating: profile.rating ?? 0,
-      additionalRating: profile.additional_rating,
       extension: {
         kind: 'maimai',
         courseRank: normalizeDivingFishCourseRank(profile.additional_rating),

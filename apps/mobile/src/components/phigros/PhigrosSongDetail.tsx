@@ -213,8 +213,7 @@ function Detail({
         cover={coverFailed || !coverSource ? undefined : (
           <Image
             accessibilityLabel="曲绘"
-            cachePolicy="disk"
-            cacheProfile="artwork"
+                  cacheProfile="artwork"
             gameId="phigros"
             contentFit="cover"
             onError={() => {

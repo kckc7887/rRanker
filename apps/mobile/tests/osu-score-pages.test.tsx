@@ -180,7 +180,7 @@ describe('OsuScoreCard 最佳成绩卡', () => {
     await fireEvent.press(records.getByTestId(`osu-score-card-${score.id}`));
     expect(mockRouterPush).toHaveBeenLastCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: '3720', levelIndex: '22423', scoreId: String(score.id) },
+      params: { songId: '3720', beatmapId: '22423', scoreId: String(score.id), gameId: 'osu-standard' },
     });
     await records.unmount();
 
@@ -188,7 +188,7 @@ describe('OsuScoreCard 最佳成绩卡', () => {
     await fireEvent.press(best.getByTestId(`osu-score-card-${score.id}`));
     expect(mockRouterPush).toHaveBeenLastCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: '3720', levelIndex: '22423' },
+      params: { songId: '3720', beatmapId: '22423', gameId: 'osu-standard' },
     });
   });
 });

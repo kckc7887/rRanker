@@ -27,7 +27,7 @@ const mockDownloadPhigrosPackage = jest.fn<(
 const mockStartChartDownload = jest.fn(async (
   runner: (options: { signal: AbortSignal }) => Promise<boolean>,
 ) => runner({ signal: new AbortController().signal }));
-let mockSongRouteParams: { songId: string; levelIndex?: string } = { songId: 'Song.A' };
+let mockSongRouteParams: { gameId: string; songId: string; levelIndex?: string } = { songId: 'Song.A', gameId: 'phigros' };
 
 function buildSampleSong(): Song {
   return {
@@ -290,7 +290,7 @@ describe('Phigros song detail', () => {
   });
 
   beforeEach(() => {
-    mockSongRouteParams = { songId: 'Song.A' };
+    mockSongRouteParams = { songId: 'Song.A', gameId: 'phigros' };
     mockCatalogSongVersion = '3.8.0';
     mockAliases = ['测试别名一', '测试别名二'];
     libraryMock.__libraryMockState.data = [];
@@ -424,7 +424,7 @@ describe('Phigros song detail', () => {
   });
 
   it('opens requested levelIndex from route params', async () => {
-    mockSongRouteParams = { songId: 'Song.A', levelIndex: '3' };
+    mockSongRouteParams = { songId: 'Song.A', levelIndex: '3', gameId: 'phigros' };
     const screen = await render(<SongDetailScreen />);
     await waitFor(() => expect(screen.getByTestId('phigros-chart-carousel')).toBeTruthy());
     const carousel = screen.getByTestId('phigros-chart-carousel');
@@ -448,7 +448,7 @@ describe('Phigros song detail', () => {
       />,
     );
     await fireEvent.press(row.getByLabelText('查看歌曲 测试曲'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: 'Song.A' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: 'Song.A', gameId: 'phigros' } });
 
     await fireEvent.press(row.getByLabelText('收藏 测试曲'));
     expect(mockSetSongFavorite).toHaveBeenCalledWith('Song.A', true);
@@ -467,7 +467,7 @@ describe('Phigros song detail', () => {
     await fireEvent.press(card.getByLabelText('查看谱面 测试曲'));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: 'Song.A', levelIndex: '2' },
+      params: { songId: 'Song.A', levelIndex: '2', gameId: 'phigros' },
     });
   });
 

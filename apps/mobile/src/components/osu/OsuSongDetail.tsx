@@ -388,8 +388,7 @@ function Hero({ gameId, song, width }: { gameId: OsuGameId; song: OsuBeatmapsetD
       style={styles.hero}
       cover={failed || !song.cover ? undefined : (
         <Image
-          cachePolicy="disk"
-          cacheProfile="artwork"
+              cacheProfile="artwork"
           gameId={gameId}
           accessibilityLabel={`歌曲封面 ${song.title}`}
           contentFit="cover"

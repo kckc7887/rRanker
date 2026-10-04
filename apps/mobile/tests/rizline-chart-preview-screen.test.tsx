@@ -68,7 +68,7 @@ describe('Rizline 谱面确认页面', () => {
     await fireEvent(player, 'message', { nativeEvent: { data: JSON.stringify({ type: 'ready' }) } });
     expect(screen.queryByTestId('chart-preview-load-progress')).toBeNull();
     await fireEvent(player, 'message', {
-      nativeEvent: { data: JSON.stringify({ type: 'settings', volume: 0.4 }) },
+      nativeEvent: { data: JSON.stringify({ type: 'settings', settings: { volume: 0.4 } }) },
     });
     await waitFor(() => expect(mockSaveSettings).toHaveBeenCalledWith(
       'rranker.rizline-chart-preview.settings.v1',

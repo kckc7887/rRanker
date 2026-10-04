@@ -26,7 +26,6 @@ export function CollectionImage({
   }
   return (
     <Image
-      cachePolicy="disk"
       cacheProfile="native"
       accessibilityLabel={`${kind} 预览`}
       contentFit="contain"

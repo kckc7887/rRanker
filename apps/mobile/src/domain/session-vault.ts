@@ -1,7 +1,6 @@
 import type { GameId, RemoteProviderId } from '@/domain/game-bind-options';
 import type { ProviderSession } from '@/providers/contracts';
 
-/** Identifies the local persistence boundary without exposing native exception text. */
 export class SessionPersistenceError extends Error {
   readonly name: string = 'SessionPersistenceError';
   constructor(readonly code: 'credential_storage' | 'local_commit', options?: ErrorOptions) {
@@ -25,15 +24,6 @@ export type SessionVault = {
   activeAccountId: string | null;
   credentials: StoredProviderCredential[];
   accounts: StoredProviderAccount[];
-  recovery?: SessionMigrationRecovery;
-};
-
-/** 仅包含完整性摘要；隔离原文继续保存在安全存储中。 */
-export type SessionMigrationRecovery = {
-  integrity: 'partial';
-  sourceVersion: 2 | 3;
-  rejectedAccounts: number;
-  rejectedCredentials: number;
 };
 
 export function sessionsMapFromVault(vault: SessionVault): Record<string, ProviderSession> {

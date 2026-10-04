@@ -8,7 +8,6 @@ export type StorageMeasurementInventory = {
   scores: Awaited<ReturnType<SqliteSnapshotRepository['listAccountScoreSizes']>>;
   resources: Awaited<ReturnType<SqliteSnapshotRepository['listResourceSizes']>>;
   catalogBytes: number;
-  legacyScoreBytes: number;
 };
 
 export type StorageOwnership = {
@@ -34,19 +33,18 @@ export type GameStorageAdapter = {
   clear: (snapshots: SqliteSnapshotRepository) => Promise<void>;
 };
 
-const ACCOUNT_RESOURCE_PREFIXES = ['score:', 'chunithm-score:', 'account-avatar:', 'account-thumbnail:', 'phigros-save:'];
+const ACCOUNT_RESOURCE_PREFIXES = ['chunithm-score:', 'account-avatar:', 'account-thumbnail:', 'phigros-save:'];
 
 export async function collectStorageMeasurementInventory(
   snapshots: SqliteSnapshotRepository,
   includeCatalog = true,
 ): Promise<StorageMeasurementInventory> {
-  const [scores, resources, catalogBytes, legacyScoreBytes] = await Promise.all([
+  const [scores, resources, catalogBytes] = await Promise.all([
     snapshots.listAccountScoreSizes(),
     snapshots.listResourceSizes(),
     includeCatalog ? snapshots.measureCatalogBytes() : Promise.resolve(0),
-    includeCatalog ? snapshots.measureLegacyScoreBytes() : Promise.resolve(0),
   ]);
-  return { scores, resources, catalogBytes, legacyScoreBytes };
+  return { scores, resources, catalogBytes };
 }
 
 export function selectStorageInventory(inventory: StorageMeasurementInventory, ownership: StorageOwnership) {
@@ -62,7 +60,7 @@ export function selectStorageInventory(inventory: StorageMeasurementInventory, o
     includeCatalog: ownership.includeCatalog === true,
     bytes: scores.reduce((sum, row) => sum + row.bytes, 0)
       + resources.reduce((sum, row) => sum + row.bytes, 0)
-      + (ownership.includeCatalog ? inventory.catalogBytes + inventory.legacyScoreBytes : 0),
+      + (ownership.includeCatalog ? inventory.catalogBytes : 0),
   };
 }
 
@@ -84,7 +82,7 @@ export function createGameStorageAdapter(
       const inventory = await collectStorageMeasurementInventory(snapshots, false);
       const selected = selectStorageInventory(inventory, ownership);
       await snapshots.clearAccountScores(selected.accountIds);
-      // Resources can exist without any account score row.
+      /** 头像等资源可能没有对应的成绩记录。 */
       await snapshots.clearResources(selected.resourceKeys);
       if (selected.includeCatalog) await snapshots.clearCatalog();
       for (const resource of adapter.fileResources) resource.clear();

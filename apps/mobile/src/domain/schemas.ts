@@ -8,7 +8,7 @@ export const DataSourceSchema = z.object({
   kind: z.enum(DATA_SOURCE_KINDS), label: z.string(), updatedAt: z.string(), isStale: z.boolean(),
 }).passthrough();
 export const PlayerSchema = z.object({
-  id: z.string(), displayName: z.string(), rating: z.number().finite(), additionalRating: z.number().finite().optional(),
+  id: z.string(), displayName: z.string(), rating: z.number().finite(),
   extension: z.object({ kind: z.literal('maimai'), courseRank: z.number().finite().optional() }).optional(),
   presentation: z.object({
     iconId: z.number().finite().optional(), namePlateId: z.number().finite().optional(), frameId: z.number().finite().optional(),

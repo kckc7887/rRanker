@@ -1,5 +1,6 @@
+import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useEffect, useMemo, useState } from 'react';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { QueryStateView } from '@/components/QueryStateView';
 import { RandomChartsPage, RandomUnplayedChartCard } from '@/components/RandomChartsPage';
 import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
@@ -51,7 +52,7 @@ export function RizlineRandomChartsScreen() {
         return record ? <RizlineScoreCard key={chart.id} record={record} title={song.title} artworkSource={rizlineCoverUrl(song)} />
           : <RandomUnplayedChartCard key={chart.id} title={song.title}
             badge={<RizlineDifficultyBadge difficulty={chart.difficulty} level={chart.level} />}
-            onPress={() => router.push({ pathname: '/songs/[songId]', params: { songId: song.id, levelIndex: String(rizlineDifficultyIndex(chart.difficulty)) } } as Href)} />;
+            onPress={() => router.push(detailTargetHref(encodeDetailTarget({ game: 'rizline', songId: song.id, levelIndex: rizlineDifficultyIndex(chart.difficulty) })))} />;
       })} />}
   />;
 }

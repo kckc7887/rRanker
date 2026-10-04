@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import Storage from '@/storage/key-value-storage';
 import { createPreferencesStore, type KeyValueStore } from '@/storage/create-preferences-store';
 import type { CollectionItem } from '@/domain/models';
@@ -44,7 +45,7 @@ export function parseBestImageStylePreferences(value: unknown): BestImageStylePr
   const output: BestImageStyleSelections = {};
   if (!value || typeof value !== 'object') return { version: 3, selections: output, ratingStyle: 'game' };
   const raw = value as { version?: unknown; selections?: unknown; ratingStyle?: unknown };
-  if ((raw.version !== 1 && raw.version !== 2 && raw.version !== 3) || !raw.selections || typeof raw.selections !== 'object') {
+  if (raw.version !== 3 || !raw.selections || typeof raw.selections !== 'object') {
     return { version: 3, selections: output, ratingStyle: 'game' };
   }
   const selections = raw.selections as Record<string, unknown>;
@@ -58,18 +59,35 @@ export function parseBestImageStylePreferences(value: unknown): BestImageStylePr
       if (item) output[kind] = { mode: selection.mode, item };
     }
   }
-  const ratingStyle: BestImageRatingStyle = raw.version === 3 && raw.ratingStyle === 'app'
-    ? 'app'
-    : raw.version === 2 && (raw.ratingStyle === 'app-capsule' || raw.ratingStyle === 'app-rect')
-      ? 'app'
-      : 'game';
+  const ratingStyle: BestImageRatingStyle = raw.ratingStyle === 'app' ? 'app' : 'game';
   return { version: 3, selections: output, ratingStyle };
 }
 
 const { load, save } = createPreferencesStore<BestImageStylePreferencesV3, string | null | undefined>({
   storeKey: keyFor,
   defaults: () => ({ version: 3, selections: {}, ratingStyle: 'game' }),
-  parse: parseBestImageStylePreferences,
+  parse: value => {
+    const stored = z.object({
+      version: z.literal(3),
+      selections: z.record(z.string(), z.union([
+        z.object({ mode: z.literal('off') }),
+        z.object({
+          mode: z.enum(['item', 'random']),
+          item: z.object({
+            id: z.number().int().nonnegative(), kind: z.enum(['icon', 'plate', 'trophy', 'frame']), name: z.string(),
+            color: z.string().nullable().optional(), genre: z.string().nullable().optional(), description: z.string().optional(),
+          }),
+        }),
+      ])),
+      ratingStyle: z.enum(['game', 'app']),
+    }).parse(value);
+    for (const [kind, choice] of Object.entries(stored.selections)) {
+      if (!KINDS.includes(kind as BestImageCollectionKind) || (choice.mode !== 'off' && choice.item.kind !== kind)) {
+        throw new Error('不支持的成绩图藏品选择');
+      }
+    }
+    return parseBestImageStylePreferences(stored);
+  },
 });
 
 export class BestImageStylePreferencesStore {

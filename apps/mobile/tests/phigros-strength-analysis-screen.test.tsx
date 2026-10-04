@@ -147,7 +147,7 @@ describe('Phigros strength analysis screen', () => {
     await fireEvent.press(screen.getByLabelText(/查看推荐谱面 Song 的IN难度卡片/));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: 'song', levelIndex: '2' },
+      params: { songId: 'song', levelIndex: '2', gameId: 'phigros' },
     });
     expect(screen.getByText('差速')).toBeTruthy();
     expect(screen.getByText('样本较少')).toBeTruthy();
@@ -162,7 +162,7 @@ describe('Phigros strength analysis screen', () => {
     await fireEvent.press(screen.getByLabelText('查看歌曲 Song 的AT难度卡片'));
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: 'song', levelIndex: '3' },
+      params: { songId: 'song', levelIndex: '3', gameId: 'phigros' },
     });
     expect(screen.queryByTestId('phigros-strength-tag-songs-sheet')).toBeNull();
 

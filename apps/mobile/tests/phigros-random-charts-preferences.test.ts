@@ -16,29 +16,6 @@ describe('phigros random charts preferences', () => {
   it('returns defaults for invalid payloads', () => {
     expect(parsePhigrosRandomChartsPreferences(null))
       .toEqual(defaultPhigrosRandomChartsPreferences());
-    expect(parsePhigrosRandomChartsPreferences({ version: 9, count: 3 }))
-      .toEqual(defaultPhigrosRandomChartsPreferences());
-  });
-
-  it('migrates legacy count, one difficulty and constants while dropping played', () => {
-    expect(parsePhigrosRandomChartsPreferences({
-      version: 1,
-      count: 3,
-      difficulties: ['expert'],
-      constantMin: ' 13.0 ',
-      constantMax: '15',
-      played: 'unplayed',
-    })).toEqual({
-      ...defaultPhigrosRandomChartsPreferences(),
-      count: 3,
-      level: 2,
-      constantMin: '13.0',
-      constantMax: '15',
-    });
-    expect(parsePhigrosRandomChartsPreferences({
-      version: 1,
-      difficulties: ['expert', 'master'],
-    }).level).toBe('all');
   });
 
   it('persists the complete independent records-style filter', async () => {
@@ -60,45 +37,20 @@ describe('phigros random charts preferences', () => {
     await expect(store.load()).resolves.toEqual(value);
   });
 
-  it('migrates v2 to v3 with an empty tag selection and persists v3', async () => {
-    const migrated = parsePhigrosRandomChartsPreferences({
-      version: 2,
-      count: 3,
-      level: 2,
-      constantMin: '12',
-      chapter: '4',
-      selectedKyouTagIds: [152],
-    });
-    expect(migrated).toMatchObject({
-      count: 3,
-      level: 2,
-      constantMin: '12',
-      chapter: '4',
-      selectedKyouTagIds: [],
-    });
-
-    const storage = new MemoryStore();
-    const store = new PhigrosRandomChartsPreferencesStore(storage);
-    await store.save({ ...migrated, selectedKyouTagIds: [152, 156, 152] });
-    const raw = JSON.parse([...storage.values.values()][0]!);
-    expect(raw.version).toBe(3);
-    await expect(store.load()).resolves.toMatchObject({ selectedKyouTagIds: [152, 156] });
-  });
-
   it('parses chapter only when all or numeric, otherwise falls back to all', () => {
     expect(parsePhigrosRandomChartsPreferences({
-      version: 2,
+      version: 3,
       chapter: '7',
     }).chapter).toBe('7');
     expect(parsePhigrosRandomChartsPreferences({
-      version: 2,
+      version: 3,
       chapter: 'abc',
     }).chapter).toBe('all');
     expect(parsePhigrosRandomChartsPreferences({
-      version: 2,
+      version: 3,
     }).chapter).toBe('all');
     expect(parsePhigrosRandomChartsPreferences({
-      version: 2,
+      version: 3,
       chapter: 'all',
     }).chapter).toBe('all');
   });
@@ -132,4 +84,12 @@ describe('phigros random charts preferences', () => {
       });
     });
   });
+  it.each([1, 2])('rebuilds old version %s with current defaults', async version => {
+    const storage = new MemoryStore();
+    storage.values.set('rranker.toolbox.phigros-random-charts.v1', JSON.stringify({ version: version, count: 3, difficulties: ['master'] }));
+    const store = new PhigrosRandomChartsPreferencesStore(storage);
+    await expect(store.load()).resolves.toEqual(defaultPhigrosRandomChartsPreferences());
+    expect(JSON.parse(storage.values.get('rranker.toolbox.phigros-random-charts.v1')!)).toEqual({ version: 3, ...defaultPhigrosRandomChartsPreferences() });
+  });
+
 });

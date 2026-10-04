@@ -1,3 +1,4 @@
+import { encodeDetailTarget } from '@/domain/detail-target';
 import type { Chart, Song } from '@/domain/models';
 import type { SongRowPresentation } from '../presentation';
 
@@ -12,7 +13,7 @@ export function presentStandardSong<TGameId extends 'maimai' | 'phigros'>(
   return {
     key: song.id,
     gameId,
-    route: { songId: song.id },
+    route: encodeDetailTarget({ game: gameId, songId: song.id }),
     title: song.title,
     subtitle: gameId === 'phigros'
       ? song.artist ?? '曲师未知'

@@ -11,7 +11,7 @@ export function GameSongCover({ source, gameId, size = 58, borderRadius = 9 }: {
 }) {
   const [failed, setFailed] = useState(false);
   if (failed || !source) return <View style={[styles.placeholder, { width: size, height: size, borderRadius }]}><Text style={styles.note}>♪</Text></View>;
-  return <Image cachePolicy="disk" cacheProfile="thumbnail" gameId={gameId} accessibilityLabel="歌曲封面"
+  return <Image cacheProfile="thumbnail" gameId={gameId} accessibilityLabel="歌曲封面"
     contentFit="cover" onError={() => setFailed(true)} source={source}
     style={{ width: size, height: size, borderRadius }} transition={120} />;
 }

@@ -1,5 +1,5 @@
 import { GAME_OPTIONS, type GameId, type ProviderId } from './game-bind-options';
-import { majdataAvatarUrl, normalizeMajdataTotalDisplay } from './majdata';
+import { majdataAvatarUrl } from './majdata';
 import { formatPlayerScore } from './game-data';
 import { isOsuGameId, type OsuGameId } from './game-mode-family';
 import { getGameProfile } from './game-profile';
@@ -101,7 +101,7 @@ export function createMajdataBoundAccount(input: {
     providerId: 'majdata-net',
     displayName: input.displayName,
     scoreLabel: getGameProfile('majdata-net').ratingLabel,
-    scoreDisplay: normalizeMajdataTotalDisplay(input.scoreDisplay ?? '—'),
+    scoreDisplay: input.scoreDisplay ?? '—',
     providerTitle: PROVIDER_TITLES['majdata-net'],
     avatarUrl: input.avatarUrl ?? majdataAvatarUrl(input.displayName),
   };

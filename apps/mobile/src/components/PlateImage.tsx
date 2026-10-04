@@ -22,7 +22,6 @@ export function PlateImage({
   }
   return (
     <Image
-      cachePolicy="disk"
       cacheProfile="native"
       accessibilityLabel="姓名框预览"
       contentFit="contain"

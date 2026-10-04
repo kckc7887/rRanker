@@ -6,11 +6,8 @@ export type ChartPreviewBackgroundMode = 'none' | 'image' | 'video';
 export function resolveInitialBackgroundState(settings: {
   backgroundMode?: unknown;
   videoBackgroundPrompted?: boolean;
-  videoBackgroundConfirmed?: boolean;
 }): { mode: ChartPreviewBackgroundMode; prompted: boolean } {
-  const prompted = settings.videoBackgroundPrompted
-    ?? settings.videoBackgroundConfirmed
-    ?? false;
+  const prompted = settings.videoBackgroundPrompted ?? false;
   const savedMode = settings.backgroundMode === 'none'
     || settings.backgroundMode === 'image'
     || settings.backgroundMode === 'video'

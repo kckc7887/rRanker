@@ -1,5 +1,6 @@
+import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useEffect, useMemo, useState } from 'react';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { MuseDashDifficultyBadge } from '@/components/musedash/MuseDashDifficultyBadge';
 import { MuseDashRecordsFilterBar } from '@/components/musedash/MuseDashFilterBar';
 import { MuseDashScoreCard } from '@/components/musedash/MuseDashScoreCard';
@@ -88,10 +89,7 @@ export function MuseDashRandomChartsScreen() {
     setLastSeed(seed);
     setResults(pickRandomItems(pool, count, seed));
   };
-  const openDetail = (chart: MuseDashRandomChart) => router.push({
-    pathname: '/songs/[songId]',
-    params: { songId: chart.song.uid, levelIndex: String(chart.difficultyIndex) },
-  } as Href);
+  const openDetail = (chart: MuseDashRandomChart) => router.push(detailTargetHref(encodeDetailTarget({ game: 'musedash', songId: chart.song.uid, levelIndex: chart.difficultyIndex })));
 
   return <QueryStateView<MuseDashAlbumsResponse>
     data={albums.data}
