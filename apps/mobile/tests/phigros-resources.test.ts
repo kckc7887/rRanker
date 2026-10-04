@@ -202,6 +202,19 @@ describe('Phigros release transactions', () => {
     expect(result.bundle.chart.url).toContain('_retry=');
   });
 
+  it('stops resource preparation when the file reader is cancelled', async () => {
+    const fixture = releaseFixture();
+    vi.stubGlobal('fetch', vi.fn(async input => fixture.respond(input)));
+    const controller = new AbortController();
+    const reason = new Error('cancelled');
+    await expect(loadPhigrosChartPreviewResources({ songId: 'Song.A', difficulty: 'EZ' },
+      controller.signal, async asset => {
+        controller.abort(reason);
+        return fixture.files[asset.path];
+      })).rejects.toBe(reason);
+    expect(phigrosResources.peek()?.current.resourceVersion).toBe('r1');
+  });
+
   it.each(['missing manifest entry', '404'])('keeps a usable catalog when music is unavailable: %s', async (failure) => {
     const fixture = releaseFixture('r1', ['Song.A'], { music: failure !== 'missing manifest entry' });
     if (failure === '404') delete fixture.files['music/Song.A.ogg'];

@@ -14,7 +14,7 @@ import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { useSession } from '@/state/session-store';
 import { useDebugStore } from '@/state/debug-store';
 import { SessionPersistenceError } from '@/domain/session-vault';
-import { resetEmergencyRuntimeDiagnosticsForTests, snapshotEmergencyRuntimeDiagnostics } from '@/services/runtime-diagnostics-recorder';
+import { snapshotEmergencyRuntimeDiagnostics } from '@/services/runtime-diagnostics-recorder';
 import type { ScoreSnapshot } from '@/domain/models';
 import { CHUNITHM_TEST_ACCOUNT_ID, LOCAL_MAIMAI_ACCOUNT_ID, MAIMAI_TEST_ACCOUNT_ID, MUSEDASH_TEST_ACCOUNT_ID, PHIGROS_TEST_ACCOUNT_ID } from '@/domain/bound-account';
 
@@ -144,11 +144,11 @@ describe('startup account restoration', () => {
   });
 
   it('exposes a failed vault restore as an empty recoverable session', async () => {
-    resetEmergencyRuntimeDiagnosticsForTests();
+    const initialDiagnostics = snapshotEmergencyRuntimeDiagnostics().length;
     vi.mocked(SecureSessionStore.prototype.loadVault).mockRejectedValue(new SessionPersistenceError('credential_storage'));
     await restoreAppAccounts();
     expect(useSession.getState()).toMatchObject({ restoreStatus: 'error', boundAccounts: [], session: null });
-    expect(snapshotEmergencyRuntimeDiagnostics()).toContainEqual(expect.objectContaining({
+    expect(snapshotEmergencyRuntimeDiagnostics().slice(initialDiagnostics)).toContainEqual(expect.objectContaining({
       type: 'error', fields: expect.objectContaining({
         source: 'account-restoration', phase: 'vault', errorCode: 'credential_storage',
       }),

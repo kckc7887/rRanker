@@ -62,7 +62,7 @@ describe('random charts route registry', () => {
   });
 
   it('does not fall back to maimai for unsupported games', async () => {
-    mockActiveGameId = 'test';
+    mockActiveGameId = 'osu-standard';
     const screen = await render(<RandomChartsToolScreen />);
     expect(screen.getByText('当前游戏暂未接入随机歌曲工具')).toBeTruthy();
     expect(screen.queryByText('maimai-random')).toBeNull();

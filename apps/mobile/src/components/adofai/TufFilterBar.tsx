@@ -4,8 +4,7 @@ import { Pressable, StyleSheet, Switch, Text, View } from 'react-native';
 import { TufDifficultyBadge } from './TufDifficultyBadge';
 import { TufWorldAchievementBadge } from './TufScoreCard';
 import { FilterAnchoredDropdown } from '@/components/FilterAnchoredDropdown';
-import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
-import { joinFilterSummary } from '@/components/game-content/FilterShell';
+import { FilterChipFrame, NeutralChip, joinFilterSummary } from '@/components/game-content/FilterShell';
 import { RangeSelector } from '@/components/game-content/RangeSelector';
 import type {
   TufDifficultyBand, TufLevelSort, TufPassAchievementFilter, TufPassSort, TufSortOrder,

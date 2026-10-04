@@ -48,7 +48,7 @@ export async function loadPhigrosGameData({
   };
   checkRelease();
   const saveUpdatedAt = scoreProvider.getSaveUpdatedAt() ?? new Date().toISOString();
-  const avatarUrl = await resolvePhigrosAvatarUrl(gameVersion, summary.avatar);
+  const avatarUrl = await resolvePhigrosAvatarUrl(summary.avatar, signal);
   checkRelease();
   const payload = phigrosPayloadFromSnapshot({
     player, records, bestSections,

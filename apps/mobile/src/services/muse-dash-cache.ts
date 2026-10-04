@@ -146,8 +146,3 @@ export class MuseDashCache {
     });
   }
 }
-
-/** 测试用：清除 in-flight 去重表。 */
-export function resetMuseDashInflightForTests(): void {
-  inflightLoads.resetForTests();
-}

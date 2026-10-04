@@ -1,10 +1,11 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { beforeEach, afterEach, describe, expect, it, vi } from 'vitest';
 import type { CatalogSnapshot } from '@/domain/models';
 import { UploadTaskController } from '@/services/upload-task-controller';
 import { getAppLifecycleSnapshot, publishAppLifecycleSnapshot } from '@/state/app-lifecycle-core';
 
 vi.mock('@/services/runtime-diagnostics-recorder', () => ({ recordRuntimeDiagnostic: vi.fn() }));
-const controller = new UploadTaskController();
+let controller: UploadTaskController;
+beforeEach(() => { controller = new UploadTaskController(); });
 const foreground = getAppLifecycleSnapshot();
 const catalog = (source: string) => ({ source } as unknown as CatalogSnapshot);
 function deferred<T>() {
@@ -12,7 +13,7 @@ function deferred<T>() {
   const promise = new Promise<T>(yes => { resolve = yes; });
   return { promise, resolve };
 }
-afterEach(() => { controller.resetForTests(); publishAppLifecycleSnapshot(foreground); vi.useRealTimers(); });
+afterEach(() => { controller.cancel(); publishAppLifecycleSnapshot(foreground); vi.useRealTimers(); });
 
 describe('upload task ownership', () => {
   it('starts a new catalog request immediately and discards a canceled request arriving later', async () => {

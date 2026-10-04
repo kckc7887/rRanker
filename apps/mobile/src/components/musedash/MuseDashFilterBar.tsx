@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
-import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
-import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
+import { FilterChipFrame, NeutralChip, FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
 import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
 import { MuseDashAchievementBadge } from '@/components/musedash/MuseDashBadges';
 import { MuseDashDifficultyBadge } from '@/components/musedash/MuseDashDifficultyBadge';

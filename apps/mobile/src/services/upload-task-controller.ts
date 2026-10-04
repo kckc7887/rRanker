@@ -161,13 +161,6 @@ export class UploadTaskController {
     listener(this.snapshot);
     return () => { this.listeners.delete(listener); };
   }
-  resetForTests(): void {
-    this.abort(this.task);
-    this.clearIdleReset();
-    this.catalog = undefined;
-    this.requestCatalog = undefined;
-    this.task = createTask();
-    this.snapshot = { taskId: null, status: 'idle', phase: { kind: 'idle' }, result: null };
-  }
+
 }
 export const uploadTaskController = new UploadTaskController();

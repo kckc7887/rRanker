@@ -13,7 +13,6 @@ import {
 import { loadPhigrosGameData } from '@/services/phigros-game-data-service';
 import {
   emptyGamePayload,
-  gameDataBundle,
   maimaiPayloadFromSnapshot,
   osuPayloadFromSnapshot,
   phigrosPayloadFromSnapshot,
@@ -124,14 +123,14 @@ async function loadRizlineGameDataBundle(context: GameDataLoaderContext): Promis
   const profile = getGameProfile('rizline');
   const catalog = await context.catalogQueries.rizline().catch(() => undefined);
   assertCurrent();
-  const toBundle = (snapshot: RizlineSnapshot): GameDataBundle => gameDataBundle({
+  const toBundle = (snapshot: RizlineSnapshot): GameDataBundle => ({
     gameId: 'rizline', providerId: 'rizline-official', profile,
     payload: rizlinePayloadFromSnapshot(snapshot, readEntityValue<RizlineCatalogData>(RIZLINE_CATALOG_QUERY_KEY) ?? catalog),
   });
   if (session?.mode !== 'rizline') {
     const cached = await loadRizlineCached(activeAccountId);
     assertCurrent();
-    return { bundle: cached ? toBundle({ ...staleCached(cached), requiresLogin: true }) : gameDataBundle({
+    return { bundle: cached ? toBundle({ ...staleCached(cached), requiresLogin: true }) : ({
       gameId: 'rizline', providerId: context.activeProviderId !== null && isProviderForGame('rizline', context.activeProviderId) ? context.activeProviderId : null, profile,
       payload: emptyGamePayload('rizline', '请登录 Rizline 官方账号') }) };
   }
@@ -153,13 +152,13 @@ async function loadRizlineGameDataBundle(context: GameDataLoaderContext): Promis
 async function loadMajdataGameDataBundle(context: GameDataLoaderContext): Promise<GameDataLoadResult> {
   const { activeAccountId, hasSessionData, session, signal, assertCurrent, publish, invalidateEntityValue } = context;
   const profile = getGameProfile('majdata-net');
-  const toBundle = (snapshot: MajdataSnapshot): GameDataBundle => gameDataBundle({ gameId: 'majdata-net', providerId: 'majdata-net', profile,
+  const toBundle = (snapshot: MajdataSnapshot): GameDataBundle => ({ gameId: 'majdata-net', providerId: 'majdata-net', profile,
     payload: { kind: 'majdata-net', snapshot, source: snapshot.source,
       playerScore: { label: 'DX · Classic', value: majdataTotal(snapshot.records), display: majdataTotalText(snapshot) } } });
   if (session?.mode !== 'http-cookies') {
     const cached = await loadMajdataCached(activeAccountId);
     if (cached) return { bundle: toBundle(staleCached(cached)) };
-    return { bundle: gameDataBundle({ gameId: 'majdata-net', providerId: context.activeProviderId !== null && isProviderForGame('majdata-net', context.activeProviderId) ? context.activeProviderId : null, profile,
+    return { bundle: ({ gameId: 'majdata-net', providerId: context.activeProviderId !== null && isProviderForGame('majdata-net', context.activeProviderId) ? context.activeProviderId : null, profile,
       payload: emptyGamePayload('majdata-net', '请重新登录 Majdata Net') }) };
   }
   const fresh = async (requestSignal: AbortSignal) => {
@@ -187,12 +186,12 @@ async function loadPhiraGameDataBundle(context: GameDataLoaderContext): Promise<
   const { activeAccountId, activeProviderId, signal, assertCurrent, hasSessionData, readEntityValue, publishEntityValue } = context;
   const playerId = phiraPlayerIdFromAccountId(activeAccountId);
   if (activeProviderId !== 'phira-community' || playerId === null) {
-    return { bundle: gameDataBundle({ gameId: 'phira', providerId: null, profile: getGameProfile('phira'), payload: emptyGamePayload('phira', '未绑定 Phira 玩家') }) };
+    return { bundle: ({ gameId: 'phira', providerId: null, profile: getGameProfile('phira'), payload: emptyGamePayload('phira', '未绑定 Phira 玩家') }) };
   }
   const phiraProfile = getGameProfile('phira');
   const playerKey = phiraPlayerEntityKey(playerId);
   const bestsKey = phiraBestsEntityKey(playerId);
-  const toBundle = async (snapshot: PhiraPlayerSnapshot): Promise<GameDataBundle> => gameDataBundle({
+  const toBundle = async (snapshot: PhiraPlayerSnapshot): Promise<GameDataBundle> => ({
     gameId: 'phira', providerId: 'phira-community', profile: phiraProfile,
     payload: { kind: 'phira', snapshot,
       // 最佳成绩是另一个粒度：已提交版本优先，避免总览与页面各读一份。
@@ -219,12 +218,12 @@ async function loadAdofaiGameDataBundle(context: GameDataLoaderContext): Promise
   const { activeAccountId, activeProviderId, signal, assertCurrent, hasSessionData, readEntityValue, publishEntityValue } = context;
   const playerId = tufPlayerIdFromAccountId(activeAccountId);
   if (activeProviderId !== 'tuf' || playerId === null) {
-    return { bundle: gameDataBundle({
+    return { bundle: ({
       gameId: 'adofai', providerId: null, profile: getGameProfile('adofai'),
       payload: emptyGamePayload('adofai', '未绑定 TUF 玩家'),
     }) };
   }
-  const toBundle = (player: TufPlayer, source: DataSource): GameDataBundle => gameDataBundle({
+  const toBundle = (player: TufPlayer, source: DataSource): GameDataBundle => ({
     gameId: 'adofai', providerId: 'tuf', profile: getGameProfile('adofai'),
     payload: {
       kind: 'adofai', player,
@@ -258,7 +257,7 @@ async function loadMuseDashGameDataBundle(context: GameDataLoaderContext): Promi
   const { activeAccountId, activeProviderId, activeAccount, signal, assertCurrent, hasSessionData, readEntityValue, publishEntityValue } = context;
   const userId = museDashUserIdFromAccountId(activeAccountId);
   if (activeProviderId === 'musedash-test' && userId !== null && isMuseDashTestUserId(userId)) {
-    const toBundle = (player: MuseDashPlayer, source: DataSource): GameDataBundle => gameDataBundle({
+    const toBundle = (player: MuseDashPlayer, source: DataSource): GameDataBundle => ({
       gameId: 'musedash', providerId: 'musedash-test', profile: getGameProfile('musedash'),
       payload: {
         kind: 'musedash', player,
@@ -282,12 +281,12 @@ async function loadMuseDashGameDataBundle(context: GameDataLoaderContext): Promi
     return { bundle: toBundle(snapshot.data, snapshot.source) };
   }
   if (activeProviderId !== 'musedash-moe' || userId === null) {
-    return { bundle: gameDataBundle({
+    return { bundle: ({
       gameId: 'musedash', providerId: null, profile: getGameProfile('musedash'),
       payload: emptyGamePayload('musedash', '未绑定喵斯快跑玩家'),
     }) };
   }
-  const toBundle = (player: MuseDashPlayer, source: DataSource): GameDataBundle => gameDataBundle({
+  const toBundle = (player: MuseDashPlayer, source: DataSource): GameDataBundle => ({
     gameId: 'musedash', providerId: 'musedash-moe', profile: getGameProfile('musedash'),
     payload: {
       kind: 'musedash', player,
@@ -321,7 +320,7 @@ async function loadChunithmGameDataBundle(context: GameDataLoaderContext): Promi
         catalog,
         activeAccount?.displayName ?? '示例账号',
       );
-      return gameDataBundle({
+      return ({
         gameId: 'chunithm',
         providerId: 'chunithm-test',
         profile: getGameProfile('chunithm'),
@@ -354,7 +353,7 @@ async function loadChunithmGameDataBundle(context: GameDataLoaderContext): Promi
       repository,
       activeAccountId,
     );
-    const toBundle = (snapshot: ChunithmPersonalSnapshot): GameDataBundle => gameDataBundle({
+    const toBundle = (snapshot: ChunithmPersonalSnapshot): GameDataBundle => ({
       gameId: 'chunithm',
       providerId: 'lxns',
       profile: getGameProfile('chunithm'),
@@ -391,7 +390,7 @@ async function loadChunithmGameDataBundle(context: GameDataLoaderContext): Promi
     const bundle = toBundle(result.value);
     return { bundle, background: Promise.resolve({ ...result, value: bundle }) };
   }
-  return { bundle: gameDataBundle({
+  return { bundle: ({
     gameId: 'chunithm',
     providerId: activeProviderId !== null && isProviderForGame('chunithm', activeProviderId) ? activeProviderId : null,
     profile: getGameProfile('chunithm'),
@@ -408,10 +407,10 @@ async function loadOsuGameDataBundle(context: GameDataLoaderContext): Promise<Ga
     const provider = context.protocolScoreProvider;
     const toBundle = (snapshot: OsuSnapshot): GameDataBundle => {
       switch (activeGameId) {
-        case 'osu-standard': return gameDataBundle({ gameId: activeGameId, providerId: 'osu', profile: getGameProfile(activeGameId), payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)) });
-        case 'osu-mania': return gameDataBundle({ gameId: activeGameId, providerId: 'osu', profile: getGameProfile(activeGameId), payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)) });
-        case 'osu-catch': return gameDataBundle({ gameId: activeGameId, providerId: 'osu', profile: getGameProfile(activeGameId), payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)) });
-        case 'osu-taiko': return gameDataBundle({ gameId: activeGameId, providerId: 'osu', profile: getGameProfile(activeGameId), payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)) });
+        case 'osu-standard': return ({ gameId: activeGameId, providerId: 'osu', profile: getGameProfile(activeGameId), payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)) });
+        case 'osu-mania': return ({ gameId: activeGameId, providerId: 'osu', profile: getGameProfile(activeGameId), payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)) });
+        case 'osu-catch': return ({ gameId: activeGameId, providerId: 'osu', profile: getGameProfile(activeGameId), payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)) });
+        case 'osu-taiko': return ({ gameId: activeGameId, providerId: 'osu', profile: getGameProfile(activeGameId), payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)) });
       }
     };
     const stored = hasSessionData ? null : await osuCache.load(activeGameId, userId);
@@ -423,20 +422,11 @@ async function loadOsuGameDataBundle(context: GameDataLoaderContext): Promise<Ga
     return { bundle: toBundle(snapshot) };
   }
   switch (activeGameId) {
-    case 'osu-standard': return { bundle: gameDataBundle({ gameId: activeGameId, providerId: null, profile: getGameProfile(activeGameId), payload: emptyGamePayload(activeGameId, '未绑定 osu! 账号') }) };
-    case 'osu-mania': return { bundle: gameDataBundle({ gameId: activeGameId, providerId: null, profile: getGameProfile(activeGameId), payload: emptyGamePayload(activeGameId, '未绑定 osu! 账号') }) };
-    case 'osu-catch': return { bundle: gameDataBundle({ gameId: activeGameId, providerId: null, profile: getGameProfile(activeGameId), payload: emptyGamePayload(activeGameId, '未绑定 osu! 账号') }) };
-    case 'osu-taiko': return { bundle: gameDataBundle({ gameId: activeGameId, providerId: null, profile: getGameProfile(activeGameId), payload: emptyGamePayload(activeGameId, '未绑定 osu! 账号') }) };
+    case 'osu-standard': return { bundle: ({ gameId: activeGameId, providerId: null, profile: getGameProfile(activeGameId), payload: emptyGamePayload(activeGameId, '未绑定 osu! 账号') }) };
+    case 'osu-mania': return { bundle: ({ gameId: activeGameId, providerId: null, profile: getGameProfile(activeGameId), payload: emptyGamePayload(activeGameId, '未绑定 osu! 账号') }) };
+    case 'osu-catch': return { bundle: ({ gameId: activeGameId, providerId: null, profile: getGameProfile(activeGameId), payload: emptyGamePayload(activeGameId, '未绑定 osu! 账号') }) };
+    case 'osu-taiko': return { bundle: ({ gameId: activeGameId, providerId: null, profile: getGameProfile(activeGameId), payload: emptyGamePayload(activeGameId, '未绑定 osu! 账号') }) };
   }
-}
-
-async function loadTestGameDataBundle(): Promise<GameDataLoadResult> {
-  return { bundle: gameDataBundle({
-    gameId: 'test',
-    providerId: null,
-    profile: getGameProfile('test'),
-    payload: emptyGamePayload('test', '测试游戏'),
-  }) };
 }
 
 async function loadPhigrosGameDataBundle(context: GameDataLoaderContext): Promise<GameDataLoadResult> {
@@ -447,7 +437,7 @@ async function loadPhigrosGameDataBundle(context: GameDataLoaderContext): Promis
       catalog,
       activeAccount?.displayName ?? '示例账号',
     );
-    return { bundle: gameDataBundle({
+    return { bundle: ({
       gameId: 'phigros',
       providerId: 'phigros-test',
       profile: getGameProfile('phigros'),
@@ -459,12 +449,12 @@ async function loadPhigrosGameDataBundle(context: GameDataLoaderContext): Promis
       accountId: activeAccountId, scoreProvider, catalogProvider: phigrosCatalogProvider,
       cache: new PhigrosSaveCache(repository), hasSessionData, signal, assertCurrent,
     });
-    return { bundle: gameDataBundle({
+    return { bundle: ({
       gameId: 'phigros', providerId: 'phi-taptap', profile: getGameProfile('phigros'), payload,
     }) };
   }
 
-  return { bundle: gameDataBundle({
+  return { bundle: ({
     gameId: 'phigros',
     providerId: null,
     profile: getGameProfile('phigros'),
@@ -476,7 +466,7 @@ async function loadMaimaiGameDataBundle(context: GameDataLoaderContext): Promise
   const { activeAccountId, activeProviderId, activeAccount, scoreProvider, catalogProvider, signal } = context;
   // 无绑定账号 / 未选中查分器：按空数据处理，不走成绩 provider。
   if (activeProviderId === null || !isProviderForGame('maimai', activeProviderId) || !catalogProvider || !activeAccountId || activeAccountId === UNBOUND_ACCOUNT_ID) {
-    return { bundle: gameDataBundle({
+    return { bundle: ({
       gameId: 'maimai',
       providerId: null,
       profile: getGameProfile('maimai'),
@@ -488,7 +478,7 @@ async function loadMaimaiGameDataBundle(context: GameDataLoaderContext): Promise
     && activeAccount?.scoreDisplay === '—'
     && scoreProvider instanceof LxnsScoreProvider
     && await scoreProvider.getOptionalPlayer() === null) {
-    return { bundle: gameDataBundle({
+    return { bundle: ({
       gameId: 'maimai',
       providerId: 'lxns',
       profile: getGameProfile('maimai'),
@@ -508,7 +498,7 @@ async function loadMaimaiGameDataBundle(context: GameDataLoaderContext): Promise
       ? catalogProvider.getDetailedCatalog(catalogSignal)
       : context.catalogQueries.maimai(catalogProvider),
   );
-  const toBundle = (snapshot: ScoreSnapshot): GameDataBundle => gameDataBundle({
+  const toBundle = (snapshot: ScoreSnapshot): GameDataBundle => ({
     gameId: 'maimai',
     providerId: activeProviderId,
     profile: getGameProfile('maimai'),
@@ -535,7 +525,7 @@ async function loadMaimaiGameDataBundle(context: GameDataLoaderContext): Promise
  * 每个游戏 id 的必需加载器：穷尽映射，遗漏任一游戏（含 osu! 四模式与保留测试 id）即编译失败，
  * 注册表不提供默认游戏回退，未登记的游戏由选择入口拒绝。
  */
-export const GAME_DATA_LOADERS: Record<GameId, GameDataLoader> = {
+const GAME_DATA_LOADERS: Record<GameId, GameDataLoader> = {
   maimai: loadMaimaiGameDataBundle,
   chunithm: loadChunithmGameDataBundle,
   phigros: loadPhigrosGameDataBundle,
@@ -548,15 +538,8 @@ export const GAME_DATA_LOADERS: Record<GameId, GameDataLoader> = {
   'osu-mania': loadOsuGameDataBundle,
   'osu-catch': loadOsuGameDataBundle,
   'osu-taiko': loadOsuGameDataBundle,
-  test: loadTestGameDataBundle,
 };
 
-export function selectGameDataLoader(gameId: GameId): GameDataLoader {
-  const loader: GameDataLoader | undefined = GAME_DATA_LOADERS[gameId];
-  if (!loader) throw new Error(`未登记游戏数据加载器：${gameId}`);
-  return loader;
-}
-
 export function loadGameDataBundle(context: GameDataLoaderContext): Promise<GameDataLoadResult> {
-  return selectGameDataLoader(context.activeGameId)(context);
+  return GAME_DATA_LOADERS[context.activeGameId](context);
 }

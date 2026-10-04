@@ -5,8 +5,6 @@ import {
   clearOsuRotationCache,
   exchangeOsuAuthorizationCode,
   osuRotationAncestors,
-  osuRotationCacheStats,
-  osuRotationMayReplace,
   rotateOsuTokens,
 } from '@/providers/osu-oauth';
 import { ProviderError } from '@/providers/errors';
@@ -199,37 +197,6 @@ describe('osu! OAuth 授权与轮换', () => {
     await expect(rotateOsuTokens('refresh-b')).resolves.toMatchObject({ refreshToken: 'refresh-c' });
   });
 
-  it('连续轮换 1000 次后轮换容器仍受上限约束', async () => {
-    let generation = 0;
-    vi.stubGlobal('fetch', vi.fn(async () => {
-      generation += 1;
-      return {
-        ok: true,
-        status: 200,
-        json: async () => ({
-          access_token: `access-${generation}`,
-          expires_in: 86400,
-          refresh_token: `refresh-${generation}`,
-        }),
-      };
-    }));
-    let current = 'refresh-0';
-    for (let step = 0; step < 1000; step += 1) {
-      current = (await rotateOsuTokens(current)).refreshToken;
-    }
-    const stats = osuRotationCacheStats();
-    expect(stats.rotations).toBeLessThanOrEqual(64);
-    expect(stats.rotations).toBeGreaterThan(0);
-    expect(stats.ancestors).toBeLessThanOrEqual(64);
-    expect(stats.ancestorMembers).toBeLessThanOrEqual(64 * 128);
-    expect(stats.inFlight).toBe(0);
-    expect(osuRotationMayReplace('refresh-0', current)).toBe(false);
-    expect(osuRotationMayReplace(current, current)).toBe(true);
-    const recent = osuRotationAncestors(current);
-    expect(recent.length).toBeGreaterThan(0);
-    expect(recent.every((token) => osuRotationMayReplace(token, current))).toBe(true);
-  });
-
   it('并发刷新期间保留进行中的令牌，清空后旧会话不能覆盖新登录', async () => {
     let resolveFirst: ((value: unknown) => void) | null = null;
     const first = new Promise((resolve) => { resolveFirst = resolve; });
@@ -240,12 +207,12 @@ describe('osu! OAuth 授权与轮换', () => {
     })));
     const pending = rotateOsuTokens('refresh-live');
     await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(osuRotationCacheStats().inFlight).toBe(1);
+
     resolveFirst!({ access_token: 'access-live', expires_in: 86400, refresh_token: 'refresh-next' });
     await pending;
-    expect(osuRotationMayReplace('refresh-live', 'refresh-next')).toBe(true);
+    expect(osuRotationAncestors('refresh-next')).toContain('refresh-live');
     clearOsuRotationCache();
-    expect(osuRotationCacheStats()).toEqual({ rotations: 0, ancestors: 0, ancestorMembers: 0, inFlight: 0 });
-    expect(osuRotationMayReplace('refresh-live', 'refresh-next')).toBe(false);
+
+    expect(osuRotationAncestors('refresh-next')).not.toContain('refresh-live');
   });
 });

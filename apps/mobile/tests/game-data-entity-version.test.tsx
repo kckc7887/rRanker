@@ -1,11 +1,11 @@
 import { jest } from '@jest/globals';
 import { QueryClient } from '@tanstack/react-query';
-import { selectGameDataLoader, type GameDataLoaderContext } from '@/services/game-data-loaders';
+import { loadGameDataBundle, type GameDataLoaderContext } from '@/services/game-data-loaders';
 import { tufPlayerQueryOptions, tufPlayerEntityKey } from '@/services/tuf-query';
 import { museDashPlayerQueryOptions, museDashPlayerEntityKey } from '@/services/muse-dash-query';
 import { phiraPlayerQueryOptions, phiraPlayerEntityKey } from '@/services/phira-query';
 import { gameDataCatalogQueries } from '@/services/game-data-loader-queries';
-import { gameDataQueryKey, registerGameDataBackground, refreshGameDataBundle, resetGameDataBackground } from '@/services/game-data-query';
+import { gameDataQueryKey, registerGameDataBackground, refreshGameDataBundle } from '@/services/game-data-query';
 import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import { emptyChunithmBests } from '@/domain/chunithm-personal';
@@ -41,6 +41,7 @@ const record = (id: number, chartId: number) => PhiraRecordSchema.parse({ id, ch
 
 function context(input: { gameId: GameId; providerId: ProviderId; accountId: string; client: QueryClient }): GameDataLoaderContext {
   const queryKey = gameDataQueryKey(input.accountId, input.gameId, input.providerId, null);
+  backgroundKeys.push(queryKey);
   return {
     activeGameId: input.gameId,
     activeProviderId: input.providerId,
@@ -67,15 +68,20 @@ function context(input: { gameId: GameId; providerId: ProviderId; accountId: str
 }
 
 const clients = new Set<QueryClient>();
+const backgroundKeys: (readonly unknown[])[] = [];
 function createClient() { const client = new QueryClient(); clients.add(client); return client; }
-beforeEach(() => { jest.restoreAllMocks(); resetGameDataBackground(); });
-afterEach(() => { for (const client of clients) client.clear(); clients.clear(); resetGameDataBackground(); });
+beforeEach(() => { jest.restoreAllMocks(); });
+afterEach(() => {
+  for (const client of clients) client.clear();
+  clients.clear();
+  for (const key of backgroundKeys.splice(0)) registerGameDataBackground(key, null);
+});
 
 describe('总览与详情读取同一个实体', () => {
   it('TUF 玩家实体在总览加载后立即可被页面读到同一版本，且不重复请求网络', async () => {
     const profileSpy = jest.spyOn(tufProvider, 'getPlayerProfile').mockResolvedValue(tufPlayer);
     const client = createClient();
-    const loader = selectGameDataLoader('adofai');
+    const loader = loadGameDataBundle;
     const accountId = 'adofai:tuf:25';
 
     const result = await loader(context({ gameId: 'adofai', providerId: 'tuf', accountId, client }));
@@ -91,7 +97,7 @@ describe('总览与详情读取同一个实体', () => {
   it('Muse Dash 玩家实体在总览加载后立即可被随机歌曲页读到同一版本', async () => {
     const playerSpy = jest.spyOn(museDashProvider, 'getPlayer').mockResolvedValue(museDashPlayer);
     const client = createClient();
-    const loader = selectGameDataLoader('musedash');
+    const loader = loadGameDataBundle;
     const accountId = 'musedash:musedash-moe:u-1';
 
     const result = await loader(context({ gameId: 'musedash', providerId: 'musedash-moe', accountId, client }));
@@ -114,7 +120,7 @@ describe('总览与详情读取同一个实体', () => {
     jest.spyOn(phiraProvider, 'getRecordsByIds').mockImplementation(async (ids) => ids.map((id) => record(id, Math.floor(id / 10))));
     jest.spyOn(phiraProvider, 'getChartBest').mockResolvedValue([]);
     const client = createClient();
-    const loader = selectGameDataLoader('phira');
+    const loader = loadGameDataBundle;
     const accountId = `phira:community:${PLAYER_ID}`;
 
     const result = await loader(context({ gameId: 'phira', providerId: 'phira-community', accountId, client }));
@@ -133,7 +139,7 @@ it('TUF 已提交旧实体保持完整来源与原抓取时间', async () => {
   const source = { kind: 'tuf' as const, label: 'The Universal Forums', updatedAt: '2025-01-01T00:00:00.000Z', isStale: true };
   client.setQueryData(tufPlayerEntityKey(25), { data: tufPlayer, source });
   const spy = jest.spyOn(tufProvider, 'getPlayerProfile');
-  const result = await selectGameDataLoader('adofai')(context({ gameId: 'adofai', providerId: 'tuf', accountId: 'adofai:tuf:25', client }));
+  const result = await loadGameDataBundle(context({ gameId: 'adofai', providerId: 'tuf', accountId: 'adofai:tuf:25', client }));
   expect(result.bundle.payload).toMatchObject({ source });
   expect(spy).not.toHaveBeenCalled();
 });
@@ -153,7 +159,7 @@ it('中二分项认证失败经过加载器和主动刷新仍保留具体项与�
   input.session = { mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 1000, persistable: true };
   input.protocolScoreProvider = new ChunithmScoreProvider(input.session);
   input.hasSessionData = true;
-  const loaded = await selectGameDataLoader('chunithm')(input);
+  const loaded = await loadGameDataBundle(input);
   registerGameDataBackground(input.queryKey, loaded.background);
   const result = await refreshGameDataBundle({ client,
     params: { accountId, gameId: 'chunithm', providerId: 'lxns', mode: null },
@@ -178,7 +184,7 @@ it('中二没有可用快照的认证失败保持authentication而不是no_data'
   const result = await refreshGameDataBundle({ client,
     params: { accountId, gameId: 'chunithm', providerId: 'lxns', mode: null },
     refetch: async () => {
-      try { return { data: (await selectGameDataLoader('chunithm')(input)).bundle }; }
+      try { return { data: (await loadGameDataBundle(input)).bundle }; }
       catch (error) { expect(error).toBeInstanceOf(ProviderError); throw error; }
     },
   });

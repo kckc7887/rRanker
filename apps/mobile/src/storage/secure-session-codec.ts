@@ -61,8 +61,7 @@ function isGameId(value: unknown): value is GameId {
     || value === 'osu-standard'
     || value === 'osu-mania'
     || value === 'osu-catch'
-    || value === 'osu-taiko'
-    || value === 'test';
+    || value === 'osu-taiko';
 }
 
 const nonempty = (value: unknown): value is string => typeof value === 'string' && value.length > 0;

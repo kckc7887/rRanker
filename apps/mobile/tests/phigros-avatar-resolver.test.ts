@@ -1,75 +1,62 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
-import {
-  normalizePhigrosAvatarKey,
-  resetPhigrosAvatarAliasCacheForTests,
-  resolvePhigrosAvatarFileName,
-  resolvePhigrosAvatarUrl,
-} from '@/services/phigros-avatar-resolver';
-import { phigrosResources } from '@/services/phigros-resources';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import { loadPhigrosAvatarCatalog, resolvePhigrosAvatarUrl } from '@/services/phigros-avatar-resolver';
+import { phigrosResources, type PhigrosRelease } from '@/services/phigros-resources';
 
-describe('phigros avatar resolver', () => {
-  afterEach(() => {
-    resetPhigrosAvatarAliasCacheForTests();
-    vi.mocked(phigrosResources.peek).mockReturnValue(undefined);
-    vi.unstubAllGlobals();
-  });
+vi.mock('@/services/phigros-resources', () => ({ phigrosResources: { load: vi.fn() } }));
 
-  it('normalizePhigrosAvatarKey strips avatar. prefix', () => {
-    expect(normalizePhigrosAvatarKey('avatar.Glaciaxion')).toBe('Glaciaxion');
-    expect(normalizePhigrosAvatarKey(' Glaciaxion ')).toBe('Glaciaxion');
-  });
+let revision = 0;
+let release: PhigrosRelease;
 
-  it('resolvePhigrosAvatarFileName maps display and internal keys to OSS filename', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(
-      'Cipher : /2&//<|0\tCipher1\nGlaciaxion\tGlaciaxion\n',
-      { status: 200 },
-    )));
-
-    await expect(resolvePhigrosAvatarFileName('3.19.4', 'Cipher1')).resolves.toBe('Cipher1');
-    await expect(resolvePhigrosAvatarFileName('3.19.4', 'Cipher : /2&//<|0')).resolves.toBe('Cipher1');
-    await expect(resolvePhigrosAvatarFileName('3.19.4', 'Glaciaxion')).resolves.toBe('Glaciaxion');
-  });
-
-  it('resolvePhigrosAvatarUrl builds encoded OSS avatar path', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(
-      'Cipher : /2&//<|0\tCipher1\n',
-      { status: 200 },
-    )));
-
-    await expect(resolvePhigrosAvatarUrl('3.19.4', 'Cipher1')).resolves.toBe(
-      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/3.19.4/avatars/Cipher1.png',
-    );
-  });
-
-  it('resolvePhigrosAvatarUrl builds direct name when display equals OSS key', async () => {
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(
-      'Glaciaxion\tGlaciaxion\n',
-      { status: 200 },
-    )));
-
-    await expect(resolvePhigrosAvatarUrl('3.19.4', 'Glaciaxion')).resolves.toBe(
-      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/3.19.4/avatars/Glaciaxion.png',
-    );
-  });
-
-  it('resolvePhigrosAvatarUrl uses the peeked release directory when current exists', async () => {
-    vi.mocked(phigrosResources.peek).mockReturnValue({
-      current: {
-        gameVersion: '3.19.4',
-        resourceVersion: '3.19.4-deadbeef',
-        manifest: 'phigros/releases/3.19.4-deadbeef/manifest.json',
-      },
-    } as ReturnType<typeof phigrosResources.peek>);
-    vi.stubGlobal('fetch', vi.fn(async () => new Response('Glaciaxion\tGlaciaxion\n', { status: 200 })));
-    await expect(resolvePhigrosAvatarUrl('3.19.4', 'Glaciaxion')).resolves.toBe(
-      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/3.19.4-deadbeef/avatars/Glaciaxion.png?v=3.19.4-deadbeef',
-    );
-  });
+beforeEach(() => {
+  release = {
+    revision: `r${++revision}`,
+    avatarAliases: 'Cipher : /2&//<|0\tCipher1\nGlaciaxion\tGlaciaxion\n',
+    current: { manifest: 'phigros/releases/3.19.4-deadbeef/manifest.json', resourceVersion: '3.19.4-deadbeef' },
+  } as PhigrosRelease;
+  vi.mocked(phigrosResources.load).mockReset().mockResolvedValue(release);
 });
 
-vi.mock('@/services/phigros-resources', () => ({
-  phigrosResources: {
-    load: async () => ({ revision: 'r1', avatarAliases: await (await fetch('https://example.com/tmp.tsv')).text() }),
-    peek: vi.fn(() => undefined),
-  },
-}));
+afterEach(() => { vi.restoreAllMocks(); });
+
+describe('phigros avatar resolver', () => {
+  it.each(['Cipher1', 'avatar.Cipher1', ' Cipher : /2&//<|0 '])('resolves %s in the current published directory', async key => {
+    await expect(resolvePhigrosAvatarUrl(key)).resolves.toBe(
+      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/3.19.4-deadbeef/avatars/Cipher1.png?v=3.19.4-deadbeef',
+    );
+  });
+
+  it('encodes an avatar name that is already the published file name', async () => {
+    await expect(resolvePhigrosAvatarUrl('A+B#?')).resolves.toBe(
+      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/3.19.4-deadbeef/avatars/A%2BB%23%3F.png?v=3.19.4-deadbeef',
+    );
+  });
+
+  it('lists each published avatar once in alphabetical order', async () => {
+    release.avatarAliases += 'Cipher alias\tCipher1\ninvalid\n';
+    await expect(loadPhigrosAvatarCatalog()).resolves.toEqual(['Cipher1', 'Glaciaxion']);
+  });
+
+  it('uses the new aliases and directory when the resource release changes', async () => {
+    await resolvePhigrosAvatarUrl('Cipher : /2&//<|0');
+    vi.mocked(phigrosResources.load).mockResolvedValue({
+      ...release, revision: `${release.revision}-new`, avatarAliases: 'Cipher : /2&//<|0\tCipher2\n',
+      current: { ...release.current, manifest: 'phigros/releases/new/manifest.json', resourceVersion: 'new' },
+    });
+    await expect(resolvePhigrosAvatarUrl('Cipher : /2&//<|0')).resolves.toBe(
+      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/new/avatars/Cipher2.png?v=new',
+    );
+  });
+
+  it('returns no avatar when the current release is unavailable', async () => {
+    vi.mocked(phigrosResources.load).mockRejectedValue(new Error('unavailable'));
+    await expect(resolvePhigrosAvatarUrl('Cipher1')).resolves.toBeNull();
+    await expect(loadPhigrosAvatarCatalog()).rejects.toThrow('unavailable');
+  });
+
+  it('preserves cancellation', async () => {
+    const controller = new AbortController();
+    const reason = new Error('cancelled');
+    controller.abort(reason);
+    await expect(resolvePhigrosAvatarUrl('Cipher1', controller.signal)).rejects.toBe(reason);
+  });
+});

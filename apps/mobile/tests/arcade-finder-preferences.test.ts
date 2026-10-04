@@ -27,7 +27,7 @@ describe('arcade finder preferences', () => {
     });
     expect(defaultArcadeFinderPreferences('adofai')).toEqual({ radiusKm: 10, titleIds: [] });
     expect(defaultArcadeFinderPreferences('musedash')).toEqual({ radiusKm: 10, titleIds: [] });
-    expect(defaultArcadeFinderPreferences('test')).toEqual({
+    expect(defaultArcadeFinderPreferences('phira')).toEqual({
       radiusKm: 10,
       titleIds: [],
     });

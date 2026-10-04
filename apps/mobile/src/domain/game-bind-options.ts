@@ -45,7 +45,6 @@ export type RemoteProviderId = Extract<ProviderId, 'rizline-official' | 'majdata
  * 登记校验据此区分「有意不绑定」与「遗留的未登记 id」。
  */
 export const INTERNAL_PROVIDER_GAMES = { 'chunithm-temp': 'chunithm' } as const satisfies Partial<Record<ProviderId, GameId>>;
-export const INTERNAL_PROVIDER_IDS = Object.keys(INTERNAL_PROVIDER_GAMES) as (keyof typeof INTERNAL_PROVIDER_GAMES)[];
 
 /** 正式支持的游戏 id：每个都需要独立的添加入口、展示资料、工具箱与数据加载器。 */
 export const SUPPORTED_GAME_IDS = [
@@ -60,13 +59,10 @@ export const SUPPORTED_GAME_IDS = [
 ] as const;
 /** osu! 家族四模式：后台各自注册为独立游戏 id，前台聚合为一个板块。 */
 export const OSU_MODE_GAME_IDS = ['osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko'] as const;
-/** 类型层保留的空壳游戏 id：只用于切换链路验证，不是选择器条目。 */
-export const RESERVED_GAME_IDS = ['test'] as const;
 
 export type SupportedGameId = (typeof SUPPORTED_GAME_IDS)[number];
 export type OsuModeGameId = (typeof OSU_MODE_GAME_IDS)[number];
-export type ReservedGameId = (typeof RESERVED_GAME_IDS)[number];
-export type GameId = SupportedGameId | OsuModeGameId | ReservedGameId;
+export type GameId = SupportedGameId | OsuModeGameId;
 
 /**
  * 游戏 id 的唯一来源：类型、注册表穷尽映射与登记校验都从这三份列表派生，
@@ -75,7 +71,6 @@ export type GameId = SupportedGameId | OsuModeGameId | ReservedGameId;
 export const GAME_IDS: readonly GameId[] = [
   ...SUPPORTED_GAME_IDS,
   ...OSU_MODE_GAME_IDS,
-  ...RESERVED_GAME_IDS,
 ];
 export type ProviderBindingKind = 'credentials' | 'sms-code' | 'oauth-code' | 'local' | 'fixture' | 'device-code' | 'public-player';
 

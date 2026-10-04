@@ -76,12 +76,3 @@ export function patchMaimaiPlayerDisplayName(
     },
   );
 }
-
-/** 全量数据查询 key（账号维度 + 全局资源），供存储管理清缓存等全量失效使用。 */
-export function accountDataQueryKeys(): readonly (readonly string[])[] {
-  return ALL_QUERY_KEYS;
-}
-
-export function accountScopedDataQueryKeys(): readonly (readonly string[])[] {
-  return ACCOUNT_SCOPED_QUERY_KEYS;
-}

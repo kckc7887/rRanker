@@ -97,8 +97,6 @@ export interface InflightGuard<K> {
   share<T>(key: K, loader: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T>;
   /** Abort shared work and forget in-flight entries when the owning cache is cleared. */
   clear(): void;
-  /** 测试用：清空去重表。 */
-  resetForTests(): void;
 }
 
 export function createInflightGuard<K>(): InflightGuard<K> {
@@ -155,7 +153,6 @@ export function createInflightGuard<K>(): InflightGuard<K> {
       for (const entry of shared.values()) entry.controller.abort();
       shared.clear();
     },
-    resetForTests(): void { this.clear(); },
   };
 }
 

@@ -36,11 +36,6 @@ type StorageScreenData = {
 let lastStorageReport: StorageUsageReport | null = null;
 let storageScreenDataPromise: Promise<StorageScreenData> | null = null;
 
-export function resetStorageManagementScreenCacheForTests(): void {
-  lastStorageReport = null;
-  storageScreenDataPromise = null;
-}
-
 function requestStorageScreenData(): Promise<StorageScreenData> {
   if (storageScreenDataPromise) return storageScreenDataPromise;
   const allowed = listClearableCategoryIds();

@@ -1,5 +1,5 @@
 import { createPreferencesStore } from '@/storage/create-preferences-store';
-import type { GameId } from '@/domain/game-bind-options';
+import { GAME_IDS, type GameId } from '@/domain/game-bind-options';
 import type { ChunithmCollectionKind } from '@/domain/chunithm-collections';
 import { getGameToolbox } from '@/domain/game-toolbox';
 
@@ -25,19 +25,18 @@ type StoredPinnedToolsV1 = {
 };
 
 const STORE_KEY = 'rranker.toolbox.pinned-tools.v1';
-const GAME_IDS: readonly GameId[] = ['rizline', 'majdata-net', 'maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test', 'osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko'];
 const COLLECTION_KINDS: readonly ChunithmCollectionKind[] = ['trophy', 'character', 'plate', 'icon'];
 
 export function emptyPinnedToolIdsByGame(): PinnedToolIdsByGame {
-  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
+  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
 }
 
 export function emptyPinnedPlateIdsByGame(): PinnedPlateIdsByGame {
-  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
+  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
 }
 
 export function emptyPinnedCollectionIdsByGame(): PinnedCollectionIdsByGame {
-  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
+  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
 }
 
 export function emptyHomePinPreferences(): HomePinPreferences {

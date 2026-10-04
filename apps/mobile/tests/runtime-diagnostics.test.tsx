@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { Share } from 'react-native';
-import { recordRuntimeError, snapshotEmergencyRuntimeDiagnostics, resetEmergencyRuntimeDiagnosticsForTests } from '@/services/runtime-diagnostics-recorder';
+import { recordRuntimeError, snapshotEmergencyRuntimeDiagnostics } from '@/services/runtime-diagnostics-recorder';
 import { cleanupOrphanedTemporaryStorage } from '@/features/storage-management/storage-cache-maintenance';
 import {
   initializeRuntimeDiagnostics,
@@ -115,7 +115,7 @@ describe('本地运行诊断', () => {
     mockFiles.clear();
     mockWriteState.active = 0;
     mockWriteState.maximum = 0;
-    resetEmergencyRuntimeDiagnosticsForTests();
+
   });
 
   it('只保留允许的字段并拒绝敏感值', () => {

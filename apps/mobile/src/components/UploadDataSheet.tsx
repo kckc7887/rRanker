@@ -1,3 +1,4 @@
+import { uploadTaskController } from '@/services/upload-task-controller';
 import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,7 +7,7 @@ import type { CatalogSnapshot } from '@/domain/models';
 import type { ProviderSession } from '@/providers/contracts';
 import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { fetchScoreHubStatistics, type ScoreHubDxnetJobStats } from '@/services/score-hub-client';
-import { formatScoreHubStatsSummary, scoreHubSuccessHint, uploadTaskController, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
+import { formatScoreHubStatsSummary, scoreHubSuccessHint, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
 import { AppModal } from '@/components/AppModal';
 import { UploadFriendCodeFields, UploadProgressStatus, UploadQrFields, UploadResultList, UploadTargetList } from '@/components/upload-data-sheet-fields';
 import { uploadDataSheetStyles as styles } from '@/components/upload-data-sheet-styles';

@@ -36,7 +36,6 @@ jest.mock('@/state/toolbox-pins', () => ({
       phira: [],
       adofai: [],
       musedash: [],
-      test: [],
       'osu-standard': [],
       'osu-mania': [],
       'osu-catch': [],

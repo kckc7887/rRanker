@@ -1,6 +1,5 @@
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { NeutralChip } from '@/components/MaimaiFilterBar';
-import { FilterShell, filterShellStyles } from '@/components/game-content/FilterShell';
+import { NeutralChip, FilterShell, filterShellStyles } from '@/components/game-content/FilterShell';
 import {
   ARCADE_RADIUS_OPTIONS,
   buildArcadeFilterSummary,

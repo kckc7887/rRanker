@@ -11,7 +11,6 @@ import {
   loadMuseDashPlayerFresh,
   makeMuseDashSnapshot,
   MuseDashCache,
-  resetMuseDashInflightForTests,
 } from '@/services/muse-dash-cache';
 
 vi.mock('expo-sqlite', () => ({
@@ -146,7 +145,6 @@ describe('muse dash player inflight dedupe', () => {
   let spy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    resetMuseDashInflightForTests();
     spy = vi.spyOn(museDashProvider, 'getPlayer').mockImplementation(
       async (userId) => ({ ...player, user: { ...player.user, user_id: userId } }),
     );

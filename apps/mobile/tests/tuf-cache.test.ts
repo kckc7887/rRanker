@@ -12,7 +12,6 @@ import { tufProvider } from '@/providers/tuf-provider';
 import {
   loadTufPlayerFresh,
   makeTufSnapshot,
-  resetTufInflightForTests,
   TufCache,
 } from '@/services/tuf-cache';
 
@@ -148,7 +147,6 @@ describe('tuf player inflight dedupe', () => {
   let spy: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
-    resetTufInflightForTests();
     spy = vi.spyOn(tufProvider, 'getPlayerProfile').mockImplementation(
       async (id) => ({ ...player, id }) as TufPlayer,
     );

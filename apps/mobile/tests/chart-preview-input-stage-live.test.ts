@@ -16,7 +16,7 @@ import { describe, expect, it } from 'vitest';
 import { buildPhigrosChartPreviewInput } from '@/features/phigros-chart-preview/chart-preview-input';
 import { buildPhiraChartPreviewInput } from '@/features/phira-chart-preview/chart-preview-input';
 import {
-  loadPhigrosChartPreviewBundle,
+  loadPhigrosChartPreviewResources,
   loadPhigrosChartPreviewVariants,
 } from '@/services/phigros-chart-preview-resources';
 import {
@@ -76,7 +76,7 @@ live('谱面确认传入阶段 live 演示', () => {
       const timeout = setTimeout(() => controller.abort(), 120_000);
       try {
         for (let levelIndex = 0; levelIndex <= 3; levelIndex += 1) {
-          const bundle = await withRetry(() => loadPhigrosChartPreviewBundle({
+          const resources = await withRetry(() => loadPhigrosChartPreviewResources({
             songId,
             difficulty: ['EZ', 'HD', 'IN', 'AT'][levelIndex]!,
           }, controller.signal)).catch((error: unknown) => {
@@ -85,7 +85,8 @@ live('谱面确认传入阶段 live 演示', () => {
             if (/不存在 .* 难度/.test(message)) return null;
             throw error;
           });
-          if (!bundle) continue;
+          if (!resources) continue;
+          const { bundle } = resources;
 
           const prepared = await buildPhigrosChartPreviewInput(
             { songId, levelIndex, title: `${songId} IN` },

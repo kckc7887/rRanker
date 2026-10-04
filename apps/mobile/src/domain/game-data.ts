@@ -3,7 +3,7 @@ import { buildChunithmMapIconUrl } from './chunithm-personal';
 import { resolveTufAvatarUrl } from './tuf';
 import { majdataAvatarUrl } from './majdata';
 import { buildRizlineRecords, selectRizlineBest, formatRizlineRks, type RizlineCatalogData, type RizlineSnapshot } from './rizline';
-import { isProviderForGame, type GameId, type GameProviderId } from './game-bind-options';
+import type { GameId, GameProviderId, OsuModeGameId } from './game-bind-options';
 import type { GameProfile } from './game-profile';
 import type { DataSource, Player, ScoreRecord, ScoreSnapshot } from './models';
 import type { ChunithmPlayer, ChunithmScore } from './chunithm-personal';
@@ -122,29 +122,7 @@ export type GamePayload =
 /** 载荷 kind 的并集。 */
 export type GamePayloadKind = GamePayload['kind'];
 
-/**
- * 各游戏的主载荷 kind；`null` 表示该 id 只有空载荷（类型层保留的测试游戏）。
- *
- * `satisfies Record<GameId, …>` 让新增游戏 id 漏登记载荷 kind 时直接编译失败。
- */
-export const GAME_PAYLOAD_KIND_BY_GAME_ID = {
-  maimai: 'maimai',
-  chunithm: 'chunithm',
-  phigros: 'phigros',
-  phira: 'phira',
-  adofai: 'adofai',
-  musedash: 'musedash',
-  'majdata-net': 'majdata-net',
-  rizline: 'rizline',
-  'osu-standard': 'osu',
-  'osu-mania': 'osu',
-  'osu-catch': 'osu',
-  'osu-taiko': 'osu',
-  test: null,
-} as const satisfies Record<GameId, GamePayloadKind | null>;
-
-export type GamePayloadKindByGameId = typeof GAME_PAYLOAD_KIND_BY_GAME_ID;
-export type GamePrimaryPayloadKind<G extends GameId> = Exclude<GamePayloadKindByGameId[G], null>;
+type GamePrimaryPayloadKind<G extends GameId> = G extends OsuModeGameId ? 'osu' : G;
 /** 带指定身份的空载荷：`gameId` 与 `payload.gameId` 必须一致。 */
 export type EmptyGamePayloadOf<G extends GameId> = Extract<GamePayload, { kind: 'empty' }> & { gameId: G };
 /** 该游戏允许的载荷：自己的主载荷，或带同一身份的空载荷。 */
@@ -152,13 +130,6 @@ export type GamePayloadOf<G extends GameId> =
   | Extract<GamePayload, { kind: GamePrimaryPayloadKind<G> }>
   | EmptyGamePayloadOf<G>;
 
-/**
- * 按游戏校验身份与载荷对应关系的数据包形状。
- *
- * 构造时用具体游戏参数（`gameDataBundle({ gameId: 'phigros', … })` 只接受 Phigros 载荷或
- * Phigros 身份的空载荷），读取缓存等不确定具体游戏的场合使用 `GameDataBundle`。
- * 条件类型使多游戏 id（osu! 四模式）展开成各自身份与载荷配对的联合，而不是配错也能通过的单对象。
- */
 export type GameDataBundleFor<G extends GameId> = G extends GameId ? {
   gameId: G;
   providerId: GameProviderId<G> | null;
@@ -167,26 +138,10 @@ export type GameDataBundleFor<G extends GameId> = G extends GameId ? {
 } : never;
 
 /**
- * 构造入参按每个具体游戏分发；联合身份也必须与载荷、Profile 和 Provider 同时配对。
- */
-export type GameDataBundleInput<G extends GameId> = { [P in G]: GameDataBundleFor<P> }[G];
-
-/**
  * 当前选中游戏的一份独立数据包（与其他游戏互不共用）。
  * 身份与载荷按游戏配对：`bundle.gameId === 'rizline'` 同时收窄载荷，不会把别家游戏的载荷写回。
  */
 export type GameDataBundle = { [G in GameId]: GameDataBundleFor<G> }[GameId];
-
-/** 按游戏构造数据包：身份与载荷错配在调用点即编译失败。 */
-export function gameDataBundle<T extends GameDataBundle>(bundle: T): T {
-  if (bundle.profile.id !== bundle.gameId
-    || (bundle.providerId !== null && !isProviderForGame(bundle.gameId, bundle.providerId))
-    || (bundle.payload.kind === 'empty' ? bundle.payload.gameId !== bundle.gameId
-      : GAME_PAYLOAD_KIND_BY_GAME_ID[bundle.gameId] !== bundle.payload.kind)) {
-    throw new Error('Game data identity mismatch');
-  }
-  return bundle;
-}
 
 export type PhigrosGameDataPayload = Extract<GamePayload, { kind: 'phigros' }>;
 

@@ -43,7 +43,7 @@ describe('storage adapter execution', () => {
     resourceKeys: ['catalog'], resourcePrefixes: ['detail:'], includeCatalog: true,
   };
   const adapter = createGameStorageAdapter({
-    gameId: 'test', title: 'Test', color: '#000', note: '', queryKeys: [], fileResources: [], ownership,
+    gameId: 'maimai', title: 'Test', color: '#000', note: '', queryKeys: [], fileResources: [], ownership,
   });
 
   it('measures and clears the same owned inventory, including resources without score rows', async () => {
@@ -57,7 +57,7 @@ describe('storage adapter execution', () => {
     });
     await expect(adapter.measure(snapshots, inventory)).resolves.toBe(137);
     expect(repo.listResourceSizes).not.toHaveBeenCalled();
-    const assertOldWriteCurrent = captureResourceWrites('test');
+    const assertOldWriteCurrent = captureResourceWrites('maimai');
     repo.listAccountScoreSizes.mockImplementationOnce(async () => {
       expect(assertOldWriteCurrent).toThrow('缓存请求已失效');
       return inventory.scores;
@@ -77,7 +77,7 @@ describe('storage adapter execution', () => {
     expect(repo.listResourceSizes).toHaveBeenCalledOnce();
     expect(repo.listAccountScoreSizes).toHaveBeenCalledOnce();
     const accountOnly = createGameStorageAdapter({
-      gameId: 'test', title: 'Test', color: '#000', note: '', queryKeys: [], fileResources: [],
+      gameId: 'maimai', title: 'Test', color: '#000', note: '', queryKeys: [], fileResources: [],
       ownership: { ownsAccount: ownership.ownsAccount },
     });
     await expect(accountOnly.measure(snapshots)).resolves.toBe(41);
@@ -89,7 +89,7 @@ describe('storage adapter execution', () => {
   it('does not clear files after a database failure and permits the next clear to succeed', async () => {
     const clearFiles = vi.fn();
     const failingAdapter = createGameStorageAdapter({
-      gameId: 'test', title: 'Test', color: '#000', note: '', queryKeys: [], ownership,
+      gameId: 'maimai', title: 'Test', color: '#000', note: '', queryKeys: [], ownership,
       fileResources: [{ persistence: 'temporary', root: () => null as never, clear: clearFiles }],
     });
     const repo = repository();

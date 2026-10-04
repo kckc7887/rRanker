@@ -51,7 +51,7 @@ jest.mock('@/features/storage-management/storage-cache-maintenance', () => ({ ru
 jest.mock('@/services/remote-image-cache', () => ({ markRemoteImageCacheGameActive: (gameId: string) => mockActiveGame(gameId) }));
 jest.mock('@/services/account-thumbnail', () => ({ hydrateAccountDisplayData: (signal: AbortSignal) => mockHydrate(signal) }));
 jest.mock('@/services/runtime-diagnostics', () => ({ recordRuntimeDiagnostic: () => mockRecord() }));
-jest.mock('@/services/upload-maimai-from-friend-code', () => ({ uploadTaskController: { pause: () => mockPause(), resume: () => mockResume() } }));
+jest.mock('@/services/upload-task-controller', () => ({ uploadTaskController: { pause: () => mockPause(), resume: () => mockResume() } }));
 jest.mock('@/services/runtime-logs', () => ({ recordRuntimeRoute: (segments: unknown) => mockRoute(segments) }));
 
 type Task = { callback: () => void; cancelled: boolean };

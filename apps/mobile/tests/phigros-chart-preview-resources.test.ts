@@ -1,10 +1,13 @@
 import { releaseFixture } from './fixtures/phigros-release';
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
 import {
   phigrosChartPreviewLevelLabel,
   resolvePhigrosChartPreviewAssetBundle,
+  resolvePhigrosChartPreviewVariants,
 } from '@/domain/phigros-chart-preview';
-import { loadPhigrosChartPreviewBundle } from '@/services/phigros-chart-preview-resources';
+import { loadPhigrosChartPreviewResources } from '@/services/phigros-chart-preview-resources';
+import { phigrosResources } from '@/services/phigros-resources';
 
 const current = {
   gameVersion: '9.9.9',
@@ -30,11 +33,10 @@ describe('phigros chart preview resource resolution', () => {
   it('通过 current 的 release 基址解析动态谱面目录和三类资产', () => {
     const result = resolvePhigrosChartPreviewAssetBundle({
       current, catalog, manifest, target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
-      ossBase: 'https://assets.example/',
     });
-    expect(result.chart.url).toBe('https://assets.example/phigros/releases/9.9.9/charts/DistortedFate.Sakuzyo.7/AT.json?v=9.9.9-test');
-    expect(result.music.url).toBe('https://assets.example/phigros/releases/9.9.9/music/DistortedFate.Sakuzyo.ogg?v=9.9.9-test');
-    expect(result.illustration.url).toBe('https://assets.example/phigros/releases/9.9.9/illustrations/DistortedFate.Sakuzyo.png?v=9.9.9-test');
+    expect(result.chart.url).toBe('https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/9.9.9/charts/DistortedFate.Sakuzyo.7/AT.json?v=9.9.9-test');
+    expect(result.music.url).toBe('https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/9.9.9/music/DistortedFate.Sakuzyo.ogg?v=9.9.9-test');
+    expect(result.illustration.url).toBe('https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/9.9.9/illustrations/DistortedFate.Sakuzyo.png?v=9.9.9-test');
     expect(result.song.difficultyConstant).toBe(17.4);
     expect(result.song.charter).toBe('AT charter');
   });
@@ -43,12 +45,10 @@ describe('phigros chart preview resource resolution', () => {
     expect(() => resolvePhigrosChartPreviewAssetBundle({
       current, catalog, manifest: { assets: manifest.assets.slice(1) },
       target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
-      ossBase: 'https://assets.example/',
     })).toThrow(/谱面.*0/);
     expect(() => resolvePhigrosChartPreviewAssetBundle({
       current, catalog, manifest: { assets: [...manifest.assets, manifest.assets[0]!] },
       target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
-      ossBase: 'https://assets.example/',
     })).toThrow(/谱面.*2/);
   });
 
@@ -109,9 +109,8 @@ describe('phigros chart preview resource resolution', () => {
         ],
       },
       target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
-      ossBase: 'https://assets.example/',
     });
-    expect(result.illustration.url).toBe('https://assets.example/phigros/releases/9.9.9/illustrations-lowres/DistortedFate.Sakuzyo.png?v=9.9.9-test');
+    expect(result.illustration.url).toBe('https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/9.9.9/illustrations-lowres/DistortedFate.Sakuzyo.png?v=9.9.9-test');
   });
 
   it('曲目缺失、难度缺失与音乐缺失给出明确错误', () => {
@@ -119,20 +118,17 @@ describe('phigros chart preview resource resolution', () => {
       current, catalog,
       manifest: { assets: manifest.assets },
       target: { songId: 'Missing.Song', difficulty: 'AT' },
-      ossBase: 'https://assets.example/',
     })).toThrow(/数量异常：0/);
     expect(() => resolvePhigrosChartPreviewAssetBundle({
       current,
       catalog: { songs: [{ ...catalog.songs[0]!, difficulties: [8.1, 13.5, 16.3] }] },
       manifest: { assets: manifest.assets },
       target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
-      ossBase: 'https://assets.example/',
     })).toThrow(/不存在 AT 难度/);
     expect(() => resolvePhigrosChartPreviewAssetBundle({
       current, catalog,
       manifest: { assets: [manifest.assets[0]!, manifest.assets[2]!] },
       target: { songId: 'DistortedFate.Sakuzyo', difficulty: 'AT' },
-      ossBase: 'https://assets.example/',
     })).toThrow(/音乐.*0/);
   });
 
@@ -142,6 +138,21 @@ describe('phigros chart preview resource resolution', () => {
     expect(() => phigrosChartPreviewLevelLabel(4)).toThrow(/不支持的难度下标/);
   });
 
+  it('只列出目标难度的变体并拒绝重复编号', () => {
+    const target = { songId: 'Random.SobremSilentroom', difficulty: 'AT' };
+    expect(resolvePhigrosChartPreviewVariants([
+      { path: 'charts/Random.SobremSilentroom.2/AT.json' },
+      { path: 'charts/Random.SobremSilentroom.0/AT.json' },
+      { path: 'charts/Random.SobremSilentroom.1/AT.json' },
+      { path: 'charts/Random.SobremSilentroom.0/EZ.json' },
+      { path: 'charts/Other.Song.3/AT.json' },
+    ], target)).toEqual([0, 1, 2]);
+    expect(() => resolvePhigrosChartPreviewVariants([
+      { path: 'charts/Random.SobremSilentroom.1/AT.json' },
+      { path: 'charts/Random.SobremSilentroom.1/AT.json' },
+    ], target)).toThrow('谱面编号重复或无效');
+  });
+
   it('catalog/manifest 请求 URL 携带发布版本并校验实际内容', async () => {
     const fixture = releaseFixture('9.9.9-test', ['DistortedFate.Sakuzyo']);
     const requests: string[] = [];
@@ -149,17 +160,18 @@ describe('phigros chart preview resource resolution', () => {
       requests.push(String(input));
       return fixture.respond(input);
     });
-    const bundle = await loadPhigrosChartPreviewBundle(
-      { songId: 'DistortedFate.Sakuzyo', difficulty: 'EZ' }, new AbortController().signal, 'https://assets.example',
+    const { bundle } = await loadPhigrosChartPreviewResources(
+      { songId: 'DistortedFate.Sakuzyo', difficulty: 'EZ' }, new AbortController().signal,
     );
     expect(requests[0]).toContain('phigros/current.json?_check=');
-    expect(requests).toContain('https://assets.example/phigros/releases/9.9.9/catalog.json?v=9.9.9-test');
-    expect(requests).toContain('https://assets.example/phigros/releases/9.9.9/manifest.json?v=9.9.9-test');
+    expect(requests).toContain(`${PHIGROS_OSS_BASE}/phigros/releases/9.9.9/catalog.json?v=9.9.9-test`);
+    expect(requests).toContain(`${PHIGROS_OSS_BASE}/phigros/releases/9.9.9/manifest.json?v=9.9.9-test`);
     expect(bundle.chart.url).toContain('?v=9.9.9-test');
   });
 
 });
 
 afterEach(() => {
+  phigrosResources.clear();
   vi.restoreAllMocks();
 });
