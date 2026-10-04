@@ -38,7 +38,7 @@ export async function downloadPhiraChartPackage(
     options.onProgress?.({ phase: 'downloading', progress: 1 });
     await options.onReadyToSave?.();
     throwIfChartDownloadCancelled(options.signal);
-    return saveChartPackage(
+    return await saveChartPackage(
       phiraCompatiblePackageName(chart.name, chart.level),
       { kind: 'file', file },
     );
