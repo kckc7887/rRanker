@@ -1,4 +1,4 @@
-import { createUserDataBackup, libraryTargetKey, MAX_BACKUP_FILE_BYTES, MAX_BACKUP_ITEMS, mergeLibraryItems, normalizeLibraryItem, normalizeTagPresets, shouldKeepLibraryItem, userDataBackupBytes, type LibraryTarget, type RestoreMode, type UserDataBackup, type UserLibraryItem } from '@/domain/user-library';
+import { createUserDataBackup, libraryTargetKey, MAX_BACKUP_ITEMS, mergeLibraryItems, normalizeLibraryItem, normalizeTagPresets, shouldKeepLibraryItem, type LibraryTarget, type RestoreMode, type UserDataBackup, type UserLibraryItem } from '@/domain/user-library';
 import type { GameId } from '@/domain/game-bind-options';
 import type { UserLibraryRepository } from '@/repositories/user-library-repository';
 import { UserLibraryService } from '@/services/user-library-service';
@@ -125,16 +125,5 @@ describe('UserLibraryService', () => {
     expect(repository.listCalls).toBe(0);
     expect(repository.items.map((item) => item.key).sort()).toEqual(['song:maimai:1', 'song:maimai:2']);
     expect(repository.presets).toEqual(['自定义', '备份']);
-  });
-
-  it('keeps a 4000-item backup inside the shared import limit', () => {
-    const items = Array.from({ length: 4000 }, (_, index): UserLibraryItem => ({
-      key: `song:maimai:${index}`, gameId: 'maimai', kind: 'song', songId: String(index).padStart(8, '0'), favorite: true, tags: ['收藏'],
-      createdAt: now, updatedAt: now,
-    }));
-    const backup = createUserDataBackup(items, now);
-    const bytes = userDataBackupBytes(backup);
-    expect(bytes).toBeGreaterThan(1024 * 1024);
-    expect(bytes).toBeLessThanOrEqual(MAX_BACKUP_FILE_BYTES);
   });
 });

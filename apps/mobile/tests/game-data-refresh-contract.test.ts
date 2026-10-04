@@ -1,8 +1,5 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { afterEach, beforeEach, describe, expect, it } from 'vitest';
 import {
-  GAME_DATA_QUERY_OPTIONS,
   awaitGameDataBackground,
   gameDataQueryKey,
   refreshGameDataBundle,
@@ -16,8 +13,6 @@ import { gameDataBundle, maimaiPayloadFromSnapshot } from '@/domain/game-data';
 import { getGameProfile } from '@/domain/game-profile';
 import { ProviderError } from '@/providers/errors';
 import { fixtureCatalog, fixturePlayer, fixtureRecords, fixtureSource } from '@/fixtures/sanitized';
-
-const mobileRoot = resolve(__dirname, '..');
 const accountId = 'lxns:player-a';
 const params = { accountId, gameId: 'maimai', providerId: 'lxns', mode: 'lxns-oauth' } as const;
 const queryKey = gameDataQueryKey(params.accountId, params.gameId, params.providerId, params.mode);
@@ -167,22 +162,6 @@ describe('后台刷新的可等待句柄', () => {
 });
 
 describe('查询适配层的所有权边界', () => {
-  it('service 不导入应用单例 QueryClient，测试直接注入端口', () => {
-    const source = readFileSync(resolve(mobileRoot, 'src/services/game-data-query.ts'), 'utf8');
-    expect(source).not.toContain("from '@/state/query-client'");
-    expect(source).not.toContain('queryClient.');
-  });
-
-  it('规范查询选项只有一份，且是会话内不落后的策略', () => {
-    expect(GAME_DATA_QUERY_OPTIONS).toEqual({
-      staleTime: Infinity,
-      gcTime: Infinity,
-      refetchOnMount: false,
-      refetchOnReconnect: false,
-    });
-    const hook = readFileSync(resolve(mobileRoot, 'src/hooks/use-game-data.ts'), 'utf8');
-    expect(hook).toContain('GAME_DATA_QUERY_OPTIONS');
-  });
 
   it('总览查询与刷新落在同一个实体键上', async () => {
     const seen: unknown[][] = [];

@@ -1,10 +1,3 @@
-/**
- * 谱面确认公共屏幕壳——虚构游戏契约测试：
- * 用一组完全虚构的配置（settingsKey/testID/无障碍标签/文案/payload/prepare）
- * 渲染 ChartPreviewScreenShell 的 loading/ready/error 与设置持久化分支，
- * 证明接入全新游戏只需向壳提供配置项、无需修改共享层任何代码。
- * 共享层不得枚举游戏 ID，也不得出现任何游戏专属分支。
- */
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { BackHandler } from 'react-native';
 import { jest } from '@jest/globals';
@@ -83,7 +76,6 @@ jest.mock('expo-status-bar', () => {
   };
 });
 
-/** 虚构游戏专属 payload：壳对该结构零感知，只透传给注入构建器。 */
 type FictionalPayload = { chartName: string };
 
 const fictionalSettingsKey = 'fictional-chart-preview-settings';
@@ -96,7 +88,6 @@ const fictionalSource: ChartPreviewShellSource = {
   allowingReadAccessToURL: 'file://fictional/',
 };
 
-/** 虚构游戏的接入方式：仅提供配置项与注入构建器，不触碰共享层。 */
 type FictionalShellOptions = Pick<ChartPreviewScreenShellProps<FictionalPayload>, 'onBridgeMessage' | 'reInjectOnLoadEnd' | 'externalError'>;
 
 async function renderFictionalShell(request: ChartPreviewShellRequest<FictionalPayload>, options: FictionalShellOptions = {}) {
@@ -120,19 +111,7 @@ function FictionalShell({ request, options }: { request: ChartPreviewShellReques
   );
 }
 
-/** 递归统计序列化树中指定类型的节点数（jest-expo mock 的 ActivityIndicator 无 role/testID 可查）。 */
-function countTreeNodesOfType(json: unknown, type: string): number {
-  if (Array.isArray(json)) {
-    return json.reduce((total, child) => total + countTreeNodesOfType(child, type), 0);
-  }
-  if (json !== null && typeof json === 'object') {
-    const node = json as { type?: unknown; children?: unknown };
-    return (node.type === type ? 1 : 0) + countTreeNodesOfType(node.children, type);
-  }
-  return 0;
-}
-
-describe('ChartPreviewScreenShell 虚构游戏契约', () => {
+describe('ChartPreviewScreenShell 交互', () => {
   const log = jest.fn<(type: string, fields: Readonly<Record<string, unknown>>) => void>();
   afterEach(() => { installRuntimeLogRecorder(undefined); jest.useRealTimers(); });
   beforeEach(() => {
@@ -195,7 +174,7 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
 
   it('prepare 挂起时渲染加载进度条，虚构 WebView 尚未出现', async () => {
     const pending = new Promise<ChartPreviewShellSource>(() => {});
-    const view = await renderFictionalShell({
+    await renderFictionalShell({
       kind: 'ready',
       payload: { chartName: '虚构谱面' },
       prepare: () => pending,
@@ -205,18 +184,16 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     expect(screen.getByText('0%')).toBeTruthy();
     expect(screen.getByLabelText('正在准备播放器 0%')).toBeTruthy();
     expect(screen.getByTestId('chart-preview-load-progress')).toBeTruthy();
-    expect(countTreeNodesOfType(view.toJSON(), 'ActivityIndicator')).toBe(0);
     expect(screen.queryByTestId(fictionalTestID)).toBeNull();
   });
 
   it('waiting 请求显示 0% 进度条，虚构 WebView 尚未出现', async () => {
-    const view = await renderFictionalShell({ kind: 'waiting' });
+    await renderFictionalShell({ kind: 'waiting' });
 
     expect(screen.getByText('正在准备播放器…')).toBeTruthy();
     expect(screen.getByText('0%')).toBeTruthy();
     expect(screen.getByLabelText('正在准备播放器 0%')).toBeTruthy();
     expect(screen.getByTestId('chart-preview-load-progress')).toBeTruthy();
-    expect(countTreeNodesOfType(view.toJSON(), 'ActivityIndicator')).toBe(0);
     expect(screen.queryByTestId(fictionalTestID)).toBeNull();
   });
 

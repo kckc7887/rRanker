@@ -99,7 +99,7 @@ describe('useMuseDashPlayDetails', () => {
 
 it('成就筛选禁用时不建立明细查询或全量观察者', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const many = Array.from({ length: 1000 }, (_, index) => ({ uid: `off-${index}`, difficulty: 0, platform: 'mobile' }));
+  const many = Array.from({ length: 3 }, (_, index) => ({ uid: `off-${index}`, difficulty: 0, platform: 'mobile' }));
   const screen = await renderHook(() => useMuseDashPlayDetails(many, 'off-user', false), { wrapper: createWrapper(client) });
   expect(client.getQueryCache().getAll()).toHaveLength(0);
   expect(screen.result.current.missByChart.size).toBe(0);

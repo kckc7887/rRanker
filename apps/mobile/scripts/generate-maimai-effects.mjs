@@ -1,4 +1,4 @@
-// Extract original Unity animation curves. GPL-3.0; see THIRD_PARTY_NOTICES.md.
+/** MajdataViewX Unity 动画来源，GPL-3.0，见 THIRD_PARTY_NOTICES.md。 */
 import fs from 'node:fs';
 import path from 'node:path';
 import { createHash } from 'node:crypto';

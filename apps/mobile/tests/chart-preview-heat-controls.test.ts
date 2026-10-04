@@ -96,13 +96,17 @@ describe('公共播放控制布局', () => {
     dispose();
   });
 
-  it('宿主传入主题色，浅色和深色上的文字有可读回退，并拒绝脚本边界', () => {
-    const dark = chartPreviewAppearanceScript({ dark: true, accent: '#000' });
-    expect(dark).toContain('"--preview-accent":"#000000"');
-    expect(dark).toContain('"--preview-accent-text":"#f1f1f1"');
-    const light = chartPreviewAppearanceScript({ dark: false, accent: '#fff' });
-    expect(light).toContain('"--preview-on-accent":"#000000"');
-    expect(light).toContain('"--preview-accent-text":"#202020"');
-    expect(chartPreviewAppearanceScript({ dark: true, accent: '</script>' })).not.toContain('</script>');
+  it('将主题色应用到页面并为不可读的颜色选择回退', () => {
+    const root = document.documentElement;
+    new Function('document', chartPreviewAppearanceScript({ dark: true, accent: '#000' }))(document);
+    expect(root.dataset.theme).toBe('dark');
+    expect(root.style.getPropertyValue('--preview-accent')).toBe('#000000');
+    expect(root.style.getPropertyValue('--preview-accent-text')).toBe('#f1f1f1');
+    new Function('document', chartPreviewAppearanceScript({ dark: false, accent: '#fff' }))(document);
+    expect(root.dataset.theme).toBe('light');
+    expect(root.style.getPropertyValue('--preview-on-accent')).toBe('#000000');
+    expect(root.style.getPropertyValue('--preview-accent-text')).toBe('#202020');
+    new Function('document', chartPreviewAppearanceScript({ dark: true, accent: '</script>' }))(document);
+    expect(root.style.getPropertyValue('--preview-accent')).toBe('#5B8CFF');
   });
 });

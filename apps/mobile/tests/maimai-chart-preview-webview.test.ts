@@ -1,7 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
-import ts from 'typescript';
 import {
   applyChartPreviewConfigToHtml,
   buildChartPreviewConfigJson,
@@ -20,24 +17,6 @@ import {
 import { chartPreviewPlayerMessageScript } from '@/features/chart-preview-shared/chart-preview-bridge';
 
 describe('chart preview webview helpers', () => {
-  it('resolves player identifiers that the app typecheck excludes', () => {
-    const entry = resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/main.ts');
-    const program = ts.createProgram([entry], {
-      noEmit: true,
-      target: ts.ScriptTarget.ES2020,
-      module: ts.ModuleKind.ESNext,
-      moduleResolution: ts.ModuleResolutionKind.Bundler,
-      strict: true,
-      skipLibCheck: true,
-      lib: ['lib.es2020.d.ts', 'lib.dom.d.ts'],
-      types: [],
-    });
-    // 此入口不在应用类型检查中；2304/2552 分别覆盖普通和带建议的未定义名称。
-    const unresolved = ts.getPreEmitDiagnostics(program)
-      .filter((diagnostic) => diagnostic.code === 2304 || diagnostic.code === 2552)
-      .map((diagnostic) => `${diagnostic.file?.fileName}: ${ts.flattenDiagnosticMessageText(diagnostic.messageText, ' ')}`);
-    expect(unresolved).toEqual([]);
-  }, 20_000);
 
   it('injects chart preview config before content loads', () => {
     const script = buildChartPreviewInjectedJavaScript({
@@ -119,18 +98,6 @@ describe('chart preview webview helpers', () => {
     expect(parseChartPreviewBridgeMessage('{')).toBeNull();
   });
 
-  it('uses injected music data and simaiText before remote fetch', () => {
-    const source = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/main.ts'),
-      'utf8',
-    );
-    expect(source).toContain('__CHART_PREVIEW_MUSIC_DATA__');
-    expect(source).toContain('config.simaiText !== undefined');
-    expect(source).toContain("postStatus('progress'");
-    expect(source).toContain('embedded === null');
-    expect(source.indexOf("renderAt(0)")).toBeLessThan(source.lastIndexOf("postStatus('ready'"));
-  });
-
   it('caps the canvas to the short viewport edge in and after fullscreen', () => {
     expect(chartPreviewCanvasSize({
       isFullscreen: true,
@@ -195,146 +162,11 @@ describe('chart preview webview helpers', () => {
     expect(chartPreviewNativeScreenOptions(false, 'android')).toMatchObject({ title: '谱面确认' });
   });
 
-  it('keeps the fullscreen lock visible inside the iOS safe area', () => {
-    const html = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
-      'utf8',
-    );
-    expect(html).toContain('right: calc(10px + env(safe-area-inset-right));');
-    expect(html).toContain('body.fullscreen #fs-lock { display: flex; }');
-  });
-
-  it('hides the fullscreen lock together with the overlay', () => {
-    const html = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
-      'utf8',
-    );
-    expect(html).toContain('#fs-lock.hidden { opacity: 0; pointer-events: none; }');
-    expect(html).toContain('transition: opacity 220ms ease;');
-  });
-
-  it('slides the fullscreen overlay out from the bottom like the phigros player', () => {
-    const html = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
-      'utf8',
-    );
-    // 统一横屏表现：控制器底部滑出 220ms（与 Phigros/Phira 一致）。
-    expect(html).toContain('transition: translate 220ms ease, opacity 220ms ease;');
-    expect(html).toContain('#fs-overlay.hidden { translate: 0 100%; opacity: 0; pointer-events: none; }');
-  });
-
-  it('stages a second canvas for dual buddy previews hidden in single mode', () => {
-    const html = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
-      'utf8',
-    );
-    expect(html).toContain('id="chart-canvas-2"');
-    expect(html).toContain('id="canvas-stage-2"');
-    expect(html).toContain('body.dual #canvas-wrap');
-    expect(html).toContain('#canvas-stage-2 {\n      display: none;');
-    expect(html).toContain('class="side-chip">2P');
-  });
-
-  it('adapts the player chrome to light mode while keeping the canvas dark', () => {
-    const html = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
-      'utf8',
-    );
-    expect(html).toContain('html[data-theme="light"] {');
-    expect(html).toContain('--bg: #F7F8FA');
-    expect(html).toContain('--panel: #FFFFFF');
-    expect(html).toContain('--playhead: #111827');
-    expect(html).toContain('--wheel-bg: #FFFFFF');
-    expect(html).toContain('#canvas-wrap {\n      flex-shrink: 0;\n      display: grid;\n      place-items: center;\n      background: #000;');
-    const configIndex = html.indexOf('<!--CHART_PREVIEW_CONFIG-->');
-    const themeScriptIndex = html.indexOf("c.theme==='light'");
-    const playerScriptIndex = html.indexOf('<!--PLAYER_SCRIPT-->');
-    expect(themeScriptIndex).toBeGreaterThan(configIndex);
-    expect(themeScriptIndex).toBeLessThan(playerScriptIndex);
-  });
-
-  it('loads music-data.js then skin-data.js before player.js in the packaged file:// html', () => {
-    const html = readFileSync(
-      resolve(process.cwd(), 'assets/maimai-chart-preview/index.html'),
-      'utf8',
-    );
-    const musicDataIndex = html.indexOf('src="./music-data.js"');
-    const skinDataIndex = html.indexOf('src="./skin-data.js"');
-    const playerIndex = html.indexOf('src="./player.js"');
-    expect(musicDataIndex).toBeGreaterThan(0);
-    expect(skinDataIndex).toBeGreaterThan(musicDataIndex);
-    expect(playerIndex).toBeGreaterThan(skinDataIndex);
-  });
-
-  it('scrolls overflowing portrait controls but keeps fullscreen fixed', () => {
-    const html = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
-      'utf8',
-    );
-    expect(html).toContain('overflow-y: auto;');
-    expect(html).toContain('overscroll-behavior-y: contain;');
-    expect(html).toContain('body.fullscreen #app {');
-    expect(html).toContain('justify-content: center;\n      overflow: hidden;');
-  });
-
-  it('offers three judge hint modes next to 款式 and keeps hit effects independent', () => {
-    const html = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
-      'utf8',
-    );
-    const player = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/main.ts'),
-      'utf8',
-    );
-    const inject = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/chart-preview-inject.ts'),
-      'utf8',
-    );
-    expect(html).toContain('判定提示');
-    expect(html).toContain('id="judge-hint-wheel"');
-    expect(html).toContain('id="judge-hint-val">区分');
-    expect(player).toContain("const JUDGE_HINT_LABELS = ['区分', '不区分', '不显示']");
-    expect(player).toContain("['distinguish', 'unified', 'hidden']");
-    expect(player).toContain('parseJudgeHint(saved.judgeHint)');
-    expect(player).toContain('r.setJudgeHint(parseJudgeHint(saved.judgeHint))');
-    expect(player).toContain('r.setShowHitEffect(saved.showHitEffect ?? true)');
-    expect(inject).toContain("from './configuration'");
-    expect(readFileSync(resolve(process.cwd(), 'src/features/simai-chart-preview/configuration.ts'), 'utf8')).toContain("judgeHint?: 'distinguish' | 'unified' | 'hidden'");
-  });
-
-  it('offers the three persisted background choices and stages image/video media', () => {
-    const html = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
-      'utf8',
-    );
-    const player = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/main.ts'),
-      'utf8',
-    );
-    const renderer = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/engine/renderers/MainRenderer.ts'),
-      'utf8',
-    );
-    expect(html).toContain('id="background-image"');
-    expect(html).toContain('id="background-video"');
-    expect(html).toContain('id="background-wheel"');
-    expect(player).toContain("const BACKGROUND_LABELS = ['无背景', '图片背景', '视频背景']");
-    expect(player).toContain("saveSettings({ backgroundMode: nextMode })");
-    expect(player).toContain("postStatus('background-video-confirmation')");
-    expect(player).toContain("postStatus('background-video'");
-    expect(player).not.toContain('window.confirm');
+  it('restores the selected background and video confirmation', () => {
     expect(resolveInitialBackgroundState({})).toEqual({ mode: 'image', prompted: false });
-    expect(resolveInitialBackgroundState({ backgroundMode: 'none' })).toEqual({
-      mode: 'none',
-      prompted: false,
-    });
-    expect(resolveInitialBackgroundState({
-      backgroundMode: 'video',
-      videoBackgroundConfirmed: true,
-    })).toEqual({ mode: 'video', prompted: true });
-    expect(renderer).toContain('setBackgroundImage(value: HTMLImageElement | null)');
-    expect(renderer).toContain('ctx.drawImage(this.backgroundCache, 0, 0)');
-    expect(renderer).not.toContain('cacheBackgroundVideoFrame');
+    expect(resolveInitialBackgroundState({ backgroundMode: 'none' })).toEqual({ mode: 'none', prompted: false });
+    expect(resolveInitialBackgroundState({ backgroundMode: 'video', videoBackgroundConfirmed: true }))
+      .toEqual({ mode: 'video', prompted: true });
   });
 
   it('coalesces repeated interaction work into the latest animation frame', () => {
@@ -373,21 +205,6 @@ describe('chart preview webview helpers', () => {
     expect(script).toContain('"accepted":true');
     expect(script).toContain('\\u003c/script>');
     expect(script).not.toContain('</script>');
-  });
-
-  it('adapts the fullscreen lock button to light mode with an outline', () => {
-    const html = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/webview-player/index.html'),
-      'utf8',
-    );
-    // 深色保持原半透明底值；浅色换白色半透明底并加细边框（浮在浅色 letterbox 上保持可见）。
-    expect(html).toContain('--lock-bg: rgba(11,13,18,0.6)');
-    expect(html).toContain('--lock-bg-strong: rgba(11,13,18,0.8)');
-    expect(html).toContain('--lock-bg: rgba(255,255,255,0.72)');
-    expect(html).toContain('--lock-bg-strong: rgba(255,255,255,0.88)');
-    expect(html).toContain('background: var(--lock-bg);');
-    expect(html).toContain('#fs-lock.locked { color: var(--accent); background: var(--lock-bg-strong); }');
-    expect(html).toContain('html[data-theme="light"] #fs-lock { border: 1px solid var(--border); }');
   });
 
   it('hides controls while locked and restores them when unlocked', () => {

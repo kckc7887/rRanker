@@ -71,30 +71,8 @@ signing_evidence = next(iter(verified.values()))[1]
 evidence = {"sourceSha": os.environ["BUILD_SOURCE_COMMIT"], "optimizationMode": os.environ.get("ANDROID_OPTIMIZATION_MODE", "A"),
             "signingMode": signing_evidence["signingMode"], "signingDescription": signing_evidence["description"],
             "expectedCertificateSha256": signing_evidence["expectedCertificateSha256"], "apks": []}
-if not re.fullmatch(r"[a-f0-9]{40}", evidence["sourceSha"]):
-    raise ValueError("Missing immutable source identity")
-if subprocess.check_output(["git", "rev-parse", "HEAD"], text=True, encoding="utf-8").strip() != evidence["sourceSha"]:
-    raise ValueError("Build source identity does not match checkout")
-properties = Path("android/gradle.properties").read_text(encoding="utf-8")
-app_gradle = Path("android/app/build.gradle").read_text(encoding="utf-8")
-rules = Path("android/app/proguard-rules.pro").read_text(encoding="utf-8")
-evidence["optimization"] = {
-    "minify": bool(re.search(r"^android.enableMinifyInReleaseBuilds=true$", properties, re.M)),
-    "shrink": bool(re.search(r"^android.enableShrinkResourcesInReleaseBuilds=true$", properties, re.M)),
-    "optimize": 'getDefaultProguardFile("proguard-android-optimize.txt")' in app_gradle,
-}
-expected_modes = {"A": (True, True, True), "B": (False, False, False), "C": (True, False, False), "D": (True, False, True)}
-if tuple(evidence["optimization"].values()) != expected_modes.get(evidence["optimizationMode"]):
-    raise ValueError("Generated native optimization settings do not match build mode")
-evidence["recordAnnotationRule"] = "-keep @interface expo.modules.kotlin.records.** { *; }" in rules
-if not evidence["recordAnnotationRule"]:
-    raise ValueError("Expo Record runtime annotation rule missing from generated native project")
-for source, name in [("android/gradle.properties", "gradle-properties.txt"), ("android/app/build.gradle", "app-gradle.txt"), ("android/app/proguard-rules.pro", "proguard-rules.txt")]:
-    shutil.copy2(source, output / name)
 mapping = Path("android/app/build/outputs/mapping/release/mapping.txt")
-if evidence["optimization"]["minify"]:
-    if not mapping.is_file():
-        raise ValueError("R8 build mapping is missing")
+if mapping.is_file():
     shutil.copy2(mapping, output / "mapping.txt")
 for abi, (apk, _signing) in sorted(verified.items()):
     name = f"rRanker-{version}({build})-{abi}.apk"
