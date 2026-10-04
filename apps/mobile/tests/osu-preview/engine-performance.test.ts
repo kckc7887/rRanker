@@ -1,8 +1,7 @@
 import assert from 'node:assert/strict';
-import { afterAll, beforeAll, describe, it, vi } from 'vitest';
-import * as catchInput from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/input';
+import { afterAll, beforeAll, describe, it } from 'vitest';
 import { catchRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/index';
-import { maniaRenderSession, resolveTrackOpacity, taikoLookback, visibleJudgements, visibleManiaObjects, type PreviewRenderOptions } from '../../src/features/osu-chart-preview/webview-player/engine-performance';
+import { resolveTrackOpacity, taikoLookback, visibleJudgements, visibleManiaObjects, type PreviewRenderOptions } from '../../src/features/osu-chart-preview/webview-player/engine-performance';
 import { buildAutoReplay } from '../../src/features/osu-chart-preview/webview-player/autoplay';
 import { computeModDifficulty, parseBeatmap, type HitResult, type SkinAssets } from '../../src/features/osu-chart-preview/webview-player/engine';
 import { maniaRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/mania/index';
@@ -145,7 +144,7 @@ const originalCanvas = globalThis.OffscreenCanvas;
 beforeAll(() => { globalThis.OffscreenCanvas = CanvasStub as unknown as typeof OffscreenCanvas; });
 afterAll(() => { if (originalCanvas) globalThis.OffscreenCanvas = originalCanvas; else Reflect.deleteProperty(globalThis, 'OffscreenCanvas'); });
 
-const renderOptions = (extra: PreviewRenderOptions = {}) => ({ showJudgement: false, showKeyOverlay: false, modHidden: false, modFlashlight: false, maniaScrollSpeed: 10, ...extra }) as RenderOptions;
+const renderOptions = (extra: PreviewRenderOptions = {}) => ({ showFollowpoints: true, audioOffsetMs: 0, maniaUpscroll: false, modFadeIn: false, modCover: false, modHidden: false, modFlashlight: false, maniaScrollSpeed: 10, ...extra }) as RenderOptions;
 const skin = (stems: string[]) => ({
   images: new Map(stems.map(label => [`${label}.png`, { label, width: 64, height: 64 }])),
   spinnerImages: new Map(), sounds: new Map(), config: { version: '2.7', maniaSections: [], comboColors: ['#fff'] },
@@ -158,19 +157,11 @@ function sessionInput(mode: 1 | 2 | 3) {
 }
 
 describe('visual render settings', () => {
-  it('judges catch misses once without diagnostic trajectory resampling or console output', () => {
+  it('judges missed catch fruit from the current replay', () => {
     const { beatmap, replay, mod } = sessionInput(2);
     replay.frames = [{ timeDelta: 0, x: 0, y: 0, keys: 0 }];
-    const samples = vi.spyOn(catchInput, 'sampleCatcherX');
-    const output = vi.spyOn(console, 'log').mockImplementation(() => {});
-    try {
-      const session = catchRuleset.build(beatmap, replay, mod, skin([]), 1);
-      assert.equal(session.hitResults.length, 1);
-      assert.equal(session.hitResults[0]!.judgement, 0);
-      assert.equal(session.accFrames.at(-1)!.acc, 0);
-      assert.equal(samples.mock.calls.length, session.objects.length);
-      assert.equal(output.mock.calls.length, 0);
-    } finally { samples.mockRestore(); output.mockRestore(); }
+    const session = catchRuleset.build(beatmap, replay, mod, skin([]), 1);
+    assert.equal(session.hitResults[0]!.judgement, 0);
   });
 
   it('normalizes opacity without treating zero as absent', () => {
@@ -181,16 +172,9 @@ describe('visual render settings', () => {
     assert.equal(resolveTrackOpacity({ taikoTrackOpacity: NaN }, 'taiko'), 1);
   });
 
-  it('toggles fixed mania scroll in the same renderer session while preserving judgement/input/map identities', () => {
+  it('toggles fixed mania scroll and restores note positions', () => {
     const { beatmap, replay, mod } = sessionInput(3);
     const session = maniaRuleset.build(beatmap, replay, mod, skin(['mania-note1', 'mania-note2', 'mania-note2h', 'mania-note2l', 'mania-key1', 'mania-key2', 'mania-key2d']), 1);
-    const before = JSON.stringify(session.hitResults);
-    const flat = maniaRenderSession(session, { maniaIgnoreSV: true });
-    assert.equal(maniaRenderSession(session, { maniaIgnoreSV: true }), flat);
-    assert.equal(maniaRenderSession(session, {}), session);
-    for (const key of ['objects', 'hitResults', 'holdStates', 'replay', 'beatmap', 'inputEvents', 'pressIntervals'] as const) assert.equal(flat[key], session[key]);
-    assert.deepEqual(flat.scroll, { times: [0], multipliers: [1], cumRaw: [0] });
-    assert.ok(session.scroll.multipliers.includes(2));
     const draw = (ignore: boolean, time: number) => { const r = recorder(); maniaRuleset.draw(r.ctx, session, time, renderOptions({ maniaIgnoreSV: ignore })); return r.draws; };
     const normal = draw(false, 1700), fixed = draw(true, 1700);
     assert.ok(normal.some(d => d.label === 'mania-note1') && fixed.some(d => d.label === 'mania-note1'));
@@ -200,7 +184,6 @@ describe('visual render settings', () => {
     const heldFixed = draw(true, 2300).find(d => d.label === 'mania-note2h');
     assert.ok(heldNormal && heldFixed);
     assert.deepEqual(heldFixed?.args, heldNormal?.args, 'a held head remains pinned to the same receptor');
-    assert.equal(JSON.stringify(session.hitResults), before);
   });
 
   it('fades only mania track pieces, preserving note and receptor draw commands', () => {

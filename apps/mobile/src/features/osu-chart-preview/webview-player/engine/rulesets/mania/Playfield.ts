@@ -25,12 +25,11 @@
  * SOFTWARE.
  */
 import { visibleManiaObjects, maniaRenderSession, resolveTrackOpacity } from "../../../engine-performance";
-import type { SkinAssets, ManiaSkinSection, HitResult } from '../../types/index';
+import type { SkinAssets, ManiaSkinSection } from '../../types/index';
 import type { ManiaSession, ManiaStage, ManiaBarLine } from './types';
 import type { ManiaScroll } from './scroll';
 import type { RenderOptions } from '../../renderer/Renderer';
 import { scrollRawAt, scrollTimeAtRaw } from './scroll';
-import { drawManiaCombo } from '../../renderer/HUDRenderer';
 
 const LOGICAL_W = 1280;
 const LOGICAL_H = 720;
@@ -711,11 +710,6 @@ function drawObjects(
   }
 }
 
-const POPUP_FADE_IN_MS  = 20;
-const POPUP_HOLD_MS     = 160;
-const POPUP_FADE_OUT_MS = 40;
-const POPUP_TOTAL_MS    = POPUP_FADE_IN_MS + POPUP_HOLD_MS + POPUP_FADE_OUT_MS;
-
 interface PressIntervalLookup { start: number; end: number }
 
 function currentOrLastInterval(
@@ -751,147 +745,6 @@ function resolveSkinFrames(
   if (frames.length > 0) return frames;
   const single = skinSpriteNatural(skin, stem);
   return single !== undefined ? [single] : [];
-}
-
-function pickFrame(
-  frames: readonly SkinFrame[],
-  ageMs: number,
-  frameLenMs: number,
-  loop = false,
-): SkinFrame {
-  if (frames.length === 1) return frames[0]!;
-  const raw = Math.max(0, Math.floor(ageMs / frameLenMs));
-  const idx = loop ? (raw % frames.length) : Math.min(frames.length - 1, raw);
-  return frames[idx]!;
-}
-
-function drawFrameNatural(
-  ctx: CanvasRenderingContext2D,
-  frame: SkinFrame,
-  cx: number,
-  cy: number,
-  scale: number,
-): void {
-  const w = frame.bitmap.width * frame.pixelScale * scale;
-  const h = frame.bitmap.height * frame.pixelScale * scale;
-  ctx.drawImage(frame.bitmap, cx - w / 2, cy - h / 2, w, h);
-}
-
-function drawHitExplosions(
-  ctx: CanvasRenderingContext2D,
-  session: ManiaSession,
-  timeMs: number,
-  section: ManiaSkinSection | undefined,
-): void {
-
-}
-
-function drawHoldLights(
-  ctx: CanvasRenderingContext2D,
-  session: ManiaSession,
-  timeMs: number,
-  section: ManiaSkinSection | undefined,
-): void {
-
-}
-
-function drawStageLights(
-  ctx: CanvasRenderingContext2D,
-  session: ManiaSession,
-  timeMs: number,
-  section: ManiaSkinSection | undefined,
-): void {
-
-}
-
-function popupStemFor(judgement: HitResult['judgement']): string {
-  switch (judgement) {
-    case 305: return 'mania-hit300g';
-    case 300: return 'mania-hit300';
-    case 200: return 'mania-hit200';
-    case 100: return 'mania-hit100';
-    case 50:  return 'mania-hit50';
-    default:  return 'mania-hit0';
-  }
-}
-
-function popupTransform(ageMs: number, isMiss: boolean): { alpha: number; scale: number; rot: number } {
-  if (ageMs < 0 || ageMs >= POPUP_TOTAL_MS) return { alpha: 0, scale: 1, rot: 0 };
-  let alpha: number;
-  if (ageMs < POPUP_FADE_IN_MS) {
-    alpha = ageMs / POPUP_FADE_IN_MS;
-  } else if (ageMs < POPUP_FADE_IN_MS + POPUP_HOLD_MS) {
-    alpha = 1;
-  } else {
-    alpha = 1 - (ageMs - POPUP_FADE_IN_MS - POPUP_HOLD_MS) / POPUP_FADE_OUT_MS;
-  }
-
-  let scale: number; let rot = 0;
-  if (isMiss) {
-    const t = Math.min(1, ageMs / 80);
-    scale = 1.2 - 0.2 * t;
-    rot = 0;
-  } else {
-    if (ageMs < 40)        scale = 0.8 + 0.2 * (ageMs / 40);
-    else if (ageMs < 100)  scale = 1.0 - 0.15 * ((ageMs - 40) / 60);
-    else                   scale = 0.85 - 0.45 * Math.min(1, (ageMs - 100) / (POPUP_TOTAL_MS - 100));
-  }
-  return { alpha, scale, rot };
-}
-
-function drawJudgementPopups(
-  ctx: CanvasRenderingContext2D,
-  session: ManiaSession,
-  timeMs: number,
-  section: ManiaSkinSection | undefined,
-  upscroll: boolean,
-): void {
-  /** 同一阶段只显示最近一次判定弹窗。 */
-
-  const { hitResults, layout } = session;
-  if (hitResults.length === 0) return;
-
-  const minT = timeMs - POPUP_TOTAL_MS;
-  let lo = 0, hi = hitResults.length;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (hitResults[mid]!.time < minT) lo = mid + 1; else hi = mid;
-  }
-
-  let chosen: HitResult | null = null;
-  for (let i = hitResults.length - 1; i >= lo; i--) {
-    const r = hitResults[i]!;
-    if (r.time > timeMs) continue;
-    if (r.subResult === 'body') continue;
-    chosen = r;
-    break;
-  }
-  if (chosen === null) return;
-
-  const age = timeMs - chosen.time;
-  const isMiss = chosen.judgement === 0;
-  const { alpha, scale } = popupTransform(age, isMiss);
-  if (alpha <= 0) return;
-
-  const stem = popupStemFor(chosen.judgement);
-  const frames = resolveSkinFrames(session.skin, stem);
-  if (frames.length === 0) return;
-
-  const frameLen = frames.length > 1 ? 50 : POPUP_TOTAL_MS;
-  const frame = pickFrame(frames, age, frameLen);
-
-  /** ScorePosition 是顶部坐标，乘 SKIN_SCALE；不同于 HitPosition。 */
-
-  const scorePositionPx = (section?.scorePosition ?? 300) * SKIN_SCALE;
-
-  const popupY = upscroll ? LOGICAL_H - scorePositionPx : scorePositionPx;
-  const stageCx = (layout.stageLeftX + layout.stageRightX) / 2;
-
-  const prevAlpha = ctx.globalAlpha;
-  ctx.globalAlpha = prevAlpha * alpha;
-
-  drawFrameNatural(ctx, frame, stageCx, popupY, scale);
-  ctx.globalAlpha = prevAlpha;
 }
 
 function computeHeldByColumn(session: ManiaSession, timeMs: number): boolean[] {
@@ -1009,10 +862,9 @@ export function drawManiaPlayfield(
 ): void {
   session = maniaRenderSession(session, options);
   const trackOpacity = resolveTrackOpacity(options, 'mania');
-  const showJudgement = options.showJudgement;
   const speed = Math.max(1, Math.min(40, options.maniaScrollSpeed));
   const timeRange = MAX_TIME_RANGE / speed;
-  /** Upscroll 翻转游戏层；HUD 仅翻转位置，文字保持正立。 */
+  /** Upscroll 翻转游戏层。 */
 
   const upscroll = options.maniaUpscroll;
 
@@ -1086,7 +938,6 @@ export function drawManiaPlayfield(
   drawStageChrome(ctx, layout, session.skin, section);
   ctx.restore();
 
-  drawStageLights(ctx, session, timeMs, section);
 
   if (!keysUnderNotes) {
     drawKeyReceptors(ctx, layout, session.skin, heldByCol);
@@ -1097,12 +948,9 @@ export function drawManiaPlayfield(
   drawStageBottom(ctx, layout, session.skin);
   ctx.restore();
 
-  drawHoldLights(ctx, session, timeMs, section);
-  drawHitExplosions(ctx, session, timeMs, section);
 
   if (upscroll) ctx.restore();
 
-  if (showJudgement) drawJudgementPopups(ctx, session, timeMs, section, upscroll);
 
   if (options.modFlashlight) {
     const combo = comboAtTime(session.comboFrames, timeMs);
@@ -1110,12 +958,4 @@ export function drawManiaPlayfield(
     drawManiaFlashlight(ctx, layout, combo, isBreak, 1);
   }
 
-  if (showJudgement) {
-    const comboPositionRaw = section?.comboPosition ?? 111;
-    const comboBaseY = comboPositionRaw * SKIN_SCALE;
-
-    const comboCy = upscroll ? LOGICAL_H - comboBaseY : comboBaseY;
-    const stageCx = (layout.stageLeftX + layout.stageRightX) / 2;
-    drawManiaCombo(ctx, session.comboFrames, timeMs, stageCx, comboCy, session.skin);
-  }
 }

@@ -38,7 +38,7 @@ const hardScore: OsuBestScore = {
   achievedAt: '2026-01-01T00:00:00.000Z',
 };
 
-const legacyScore: OsuBestScore = {
+const currentScore: OsuBestScore = {
   id: 166715064,
   score: 1111111,
   accuracy: 0.96,
@@ -112,7 +112,7 @@ function osuGameData(pp: number) {
         playCount: 1000,
         globalRank: 1000,
       },
-      bestScores: [hardScore, legacyScore],
+      bestScores: [hardScore, currentScore],
       playerScore: { label: 'PP', value: pp, display: String(pp) },
       source: { kind: 'osu', label: 'osu.ppy.sh', updatedAt: '2026-01-01T00:00:00.000Z', isStale: false },
     },
@@ -383,7 +383,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
     expect(easy.queryAllByLabelText(/^评价 /)).toHaveLength(0);
   });
 
-  it('旧缓存成绩（statistics/达成时间缺失）：判定列为 —，得分/准确率/PP 正常', async () => {
+  it('当前成绩无判定或达成时间时显示 —，得分/准确率/PP 正常', async () => {
     const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
     const normal = within(screen.getByTestId('osu-detail-difficulty-22427'));
     expect(normal.getByText('1,111,111')).toBeTruthy();

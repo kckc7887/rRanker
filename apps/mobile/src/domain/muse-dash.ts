@@ -365,16 +365,6 @@ export function buildMuseDashRawScores(
   });
 }
 
-export function sortMuseDashRawScores(scores: readonly MuseDashRawScore[]): MuseDashRawScore[] {
-  const rating = (value: number | undefined | null) => typeof value === 'number' && Number.isFinite(value) ? value : null;
-  return [...scores].sort((left, right) => {
-    const a = rating(left.play.sum);
-    const b = rating(right.play.sum);
-    if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
-    return b - a;
-  });
-}
-
 /** 默认抽取包含未游玩谱面。 */
 export function buildMuseDashRandomCharts(
   albums: MuseDashAlbumsResponse,

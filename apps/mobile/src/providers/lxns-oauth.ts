@@ -101,19 +101,19 @@ export async function readPendingLxnsOAuth(): Promise<PendingLxnsOAuth | null> {
 
 async function loadPendingLxnsOAuth(): Promise<PendingLxnsOAuth | null> {
   const raw = await runProviderOperation('credential_storage', () => SecureStore.getItemAsync(PENDING_OAUTH_KEY));
-  if (!raw) return null;
+  if (raw === null) return null;
+  let parsed: Partial<PendingLxnsOAuth> | null;
   try {
-    const parsed = JSON.parse(raw) as Partial<PendingLxnsOAuth>;
-    if (typeof parsed.verifier !== 'string' || !parsed.verifier.trim()
-      || typeof parsed.state !== 'string' || !parsed.state.trim()
-      || typeof parsed.expiresAt !== 'number' || !Number.isFinite(parsed.expiresAt)
-      || (parsed.gameId !== 'maimai' && parsed.gameId !== 'chunithm')) {
-      return null;
-    }
-    return parsed as PendingLxnsOAuth;
+    parsed = JSON.parse(raw) as Partial<PendingLxnsOAuth> | null;
   } catch {
-    return null;
+    parsed = null;
   }
+  if (parsed && typeof parsed.verifier === 'string' && parsed.verifier.trim()
+    && typeof parsed.state === 'string' && parsed.state.trim()
+    && typeof parsed.expiresAt === 'number' && Number.isFinite(parsed.expiresAt)
+    && (parsed.gameId === 'maimai' || parsed.gameId === 'chunithm')) return parsed as PendingLxnsOAuth;
+  await runProviderOperation('credential_storage', () => SecureStore.deleteItemAsync(PENDING_OAUTH_KEY));
+  return null;
 }
 
 function parseTokenPayload(payload: unknown): z.infer<typeof TokenResponseSchema> {

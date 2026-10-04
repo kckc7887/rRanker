@@ -4,20 +4,13 @@ import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
 import { dirname, join, resolve } from 'node:path';
 import { runInNewContext } from 'node:vm';
-import { beforeAll, describe, expect, it } from 'vitest';
+import { describe, expect, it } from 'vitest';
 
 const mobileRoot = resolve(__dirname, '..');
 const requirePackage = createRequire(join(mobileRoot, 'package.json'));
 const metroAssetPath = join(dirname(requirePackage.resolve('metro/package.json')), 'src/Assets.js');
 
 describe('依赖适配的实际消费者', () => {
-  beforeAll(() => {
-    for (const patch of ['patch-metro-image-size.cjs', 'patch-decode-uri-component.cjs']) {
-      const result = spawnSync(process.execPath, [join(mobileRoot, 'scripts', patch)], { cwd: mobileRoot, encoding: 'utf8' });
-      expect(result.status, result.stderr).toBe(0);
-    }
-  });
-
   it('CJS 和 ESM 入口都能解码 Unicode', async () => {
     expect(requirePackage('decode-uri-component')('%E4%B8%AD')).toBe('中');
     const esm = await import('decode-uri-component');

@@ -3,7 +3,6 @@ import { StyleSheet } from 'react-native';
 export const SONG_DETAIL_CHROME_STYLES = StyleSheet.create({
   headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
-  headerFavoriteActive: {},
 });
 
 export const SONG_DETAIL_METADATA_STYLES = StyleSheet.create({

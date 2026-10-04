@@ -1,6 +1,7 @@
 import { z } from 'zod';
 import type { OsuGameId } from './game-mode-family';
 import type { DataSource } from './models';
+import { DataSourceSchema } from './schemas';
 
 /** catch 在 API 中称为 fruits。 */
 export const OSU_RULESET_BY_GAME_ID: Record<OsuGameId, string> = {
@@ -494,12 +495,12 @@ const OsuBeatmapsetInfoSnapshotSchema = z.object({
 }).passthrough();
 
 const OsuScoreStatisticsSnapshotSchema = z.object({
-  perfect: z.number().nullable().optional(),
-  great: z.number().nullable().optional(),
-  good: z.number().nullable().optional(),
-  ok: z.number().nullable().optional(),
-  meh: z.number().nullable().optional(),
-  miss: z.number().nullable().optional(),
+  perfect: z.number().nullable(),
+  great: z.number().nullable(),
+  good: z.number().nullable(),
+  ok: z.number().nullable(),
+  meh: z.number().nullable(),
+  miss: z.number().nullable(),
 }).passthrough();
 
 const OsuBestScoreSnapshotSchema = z.object({
@@ -511,9 +512,9 @@ const OsuBestScoreSnapshotSchema = z.object({
   rank: z.string(),
   beatmap: OsuBeatmapInfoSnapshotSchema,
   beatmapset: OsuBeatmapsetInfoSnapshotSchema,
-  statistics: OsuScoreStatisticsSnapshotSchema.nullable().optional(),
-  mods: z.array(z.string()).optional(),
-  achievedAt: z.string().nullable().optional(),
+  statistics: OsuScoreStatisticsSnapshotSchema.nullable(),
+  mods: z.array(z.string()),
+  achievedAt: z.string().nullable(),
 }).passthrough();
 
 const OsuPlayerSnapshotSchema = z.object({
@@ -527,16 +528,9 @@ const OsuPlayerSnapshotSchema = z.object({
   globalRank: z.number().nullable(),
 }).passthrough();
 
-const OsuDataSourceSchema = z.object({
-  kind: z.string(),
-  label: z.string(),
-  updatedAt: z.string(),
-  isStale: z.boolean(),
-}).passthrough();
-
 export const OsuKnownScoresSnapshotSchema = z.object({
   items: z.record(z.string(), OsuBestScoreSnapshotSchema),
-  source: OsuDataSourceSchema,
+  source: DataSourceSchema,
 }).passthrough();
 
 export const OsuSnapshotSchema = z.object({
@@ -544,7 +538,7 @@ export const OsuSnapshotSchema = z.object({
     player: OsuPlayerSnapshotSchema,
     bestScores: z.array(OsuBestScoreSnapshotSchema),
   }).passthrough(),
-  source: OsuDataSourceSchema,
+  source: DataSourceSchema,
 }).passthrough();
 
 function optionalNumber(value: unknown): number | null {

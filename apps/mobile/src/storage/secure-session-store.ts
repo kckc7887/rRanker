@@ -9,8 +9,6 @@ import { credentialIdForAccount, isOAuthRefreshSession, parseSessionIndex, parse
 import { commitSessionVault } from '@/storage/secure-session-commit';
 import { enqueueStorageMutation, INDEX_KEY, persistenceFailure, persistenceOperation, type KeyValueStore } from '@/storage/secure-session-index';
 import { startTimer } from '@/utils/startup-timing';
-export { credentialIdsMapFromVault, sessionsMapFromVault } from '@/domain/session-vault';
-export type { SessionVault, StoredProviderAccount, StoredProviderCredential } from '@/domain/session-vault';
 
 export type StoredProviderAccountInput = Omit<StoredProviderAccount, 'credentialId'> & {
   credentialId?: string;

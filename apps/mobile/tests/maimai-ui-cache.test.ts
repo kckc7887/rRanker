@@ -3,19 +3,29 @@ import JSZip from 'jszip';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   clearMaimaiUiCache,
-  createMaimaiUiPreparer,
+  prepareMaimaiUi,
   type MaimaiUiProgress,
 } from '@/features/best-image/maimai-ui-cache';
 import {
-  type MaimaiUiManifestEntry,
+  MAIMAI_UI_MANIFEST_ENTRIES,
+  MAIMAI_UI_ZIP,
 } from '@/features/best-image/maimai-ui-manifest.generated';
 
 const mockUiFs = vi.hoisted(() => ({
   files: new Map<string, Uint8Array>(),
+  metadata: new Map<string, { length: number; size: number }>(),
+  digests: new Map<string, string>(),
   remotes: new Map<string, Uint8Array | Error | (() => Promise<Uint8Array>)>(),
   downloadCalls: [] as string[],
   deletes: [] as string[],
   createdDirectories: [] as string[],
+}));
+
+vi.mock('expo-crypto', () => ({
+  CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
+  digest: async (_algorithm: string, bytes: Uint8Array) => Uint8Array.from(Buffer.from(
+    mockUiFs.digests.get(`${bytes.byteLength}:${Buffer.from(bytes.subarray(0, 64)).toString('hex')}`) ?? createHash('sha256').update(bytes).digest('hex'), 'hex',
+  )).buffer,
 }));
 
 vi.mock('expo-file-system', () => {
@@ -36,7 +46,13 @@ vi.mock('expo-file-system', () => {
     uri: string;
     constructor(base: string | { uri: string }, ...parts: string[]) { this.uri = joinUri(base, parts); }
     get exists() { return mockUiFs.files.has(this.uri); }
-    get size() { return mockUiFs.files.get(this.uri)?.byteLength ?? 0; }
+    get size() {
+      const bytes = mockUiFs.files.get(this.uri);
+      if (!bytes) return 0;
+      const name = this.uri.split('/').at(-1)!.replace(/\.part$/u, '');
+      const metadata = mockUiFs.metadata.get(name);
+      return metadata?.length === bytes.byteLength ? metadata.size : bytes.byteLength;
+    }
     async bytes() { return Uint8Array.from(mockUiFs.files.get(this.uri) ?? []); }
     create() { mockUiFs.files.set(this.uri, new Uint8Array()); }
     write(content: Uint8Array) { mockUiFs.files.set(this.uri, Uint8Array.from(content)); }
@@ -64,128 +80,81 @@ vi.mock('expo-file-system', () => {
   return { Directory, File, Paths: { document: new Directory('file://', 'document'), cache: new Directory('file://', 'cache') } };
 });
 
-function hex(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
+async function fixture(omit?: string): Promise<Uint8Array> {
+  const zip = new JSZip();
+  for (const entry of MAIMAI_UI_MANIFEST_ENTRIES) {
+    const bytes = new Uint8Array(entry.bytes); bytes.set(Buffer.from(`asset:${entry.path}`).subarray(0, bytes.length));
+    if (entry.path !== omit) zip.file(entry.path, bytes);
+    const name = entry.path.split('/').at(-1)!;
+    mockUiFs.metadata.set(name, { length: bytes.byteLength, size: entry.bytes });
+    mockUiFs.digests.set(`${bytes.byteLength}:${Buffer.from(bytes.subarray(0, 64)).toString('hex')}`, entry.sha256);
+  }
+  const archive = await zip.generateAsync({ type: 'uint8array' });
+  mockUiFs.remotes.set(MAIMAI_UI_ZIP.url, archive);
+  mockUiFs.metadata.set('maimai-ui.zip', { length: archive.byteLength, size: MAIMAI_UI_ZIP.bytes });
+  mockUiFs.digests.set(`${archive.byteLength}:${Buffer.from(archive.subarray(0, 64)).toString('hex')}`, MAIMAI_UI_ZIP.sha256);
+  return archive;
 }
 
-async function fixture(
-  contents: Record<string, string>,
-  zipBytesOverride?: Uint8Array,
-): Promise<{ entries: MaimaiUiManifestEntry[]; zip: { url: string; bytes: number; sha256: string }; rawZip: Uint8Array }> {
-  const zip = new JSZip();
-  for (const [path, text] of Object.entries(contents)) zip.file(path, text);
-  const rawZip = zipBytesOverride ?? await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
-  const url = 'https://ui.test/maimai-ui.zip';
-  mockUiFs.remotes.set(url, rawZip);
-  const entries = Object.entries(contents).map(([path, text]) => {
-    const bytes = Uint8Array.from(Buffer.from(text));
-    return { path, bytes: bytes.byteLength, sha256: hex(bytes) };
-  });
-  return { entries, zip: { url, bytes: rawZip.byteLength, sha256: hex(rawZip) }, rawZip };
-}
+const firstEntry = MAIMAI_UI_MANIFEST_ENTRIES[0]!;
+const cached = () => [...mockUiFs.files.keys()].find(uri => uri.endsWith(`/ui/${firstEntry.path.replace(/^maimai-ui\//u, '')}`));
 
 describe('maimai ui asset cache', () => {
-  beforeEach(() => {
-    mockUiFs.files.clear();
-    mockUiFs.remotes.clear();
-    mockUiFs.downloadCalls.length = 0;
-    mockUiFs.deletes.length = 0;
-    mockUiFs.createdDirectories.length = 0;
+  beforeEach(async () => {
+    mockUiFs.files.clear(); mockUiFs.metadata.clear(); mockUiFs.digests.clear(); mockUiFs.remotes.clear();
+    mockUiFs.downloadCalls.length = 0; mockUiFs.deletes.length = 0; mockUiFs.createdDirectories.length = 0;
+    await fixture();
   });
 
-  it('downloads, verifies and unpacks the archive with progress events, then reuses the cache', async () => {
-    const { entries, zip } = await fixture({
-      'maimai-ui/logo.png': 'logo-data', 'maimai-ui/SD.png': 'sd-data', 'maimai-ui/Star_01.png': 'star-data',
-    });
+  it('publishes current assets, reports completion, and reuses intact files', async () => {
     const progress: MaimaiUiProgress[] = [];
-    const prepare = createMaimaiUiPreparer(zip, entries);
-    const prepared = await prepare((value) => progress.push(value));
-    await prepared.fullReady;
-    expect(progress[0]!.phase).toBe('checking');
-    expect(progress.some((value) => value.phase === 'unpacking')).toBe(true);
-    expect(progress.at(-1)!.phase).toBe('ready');
-    expect(mockUiFs.downloadCalls).toEqual([zip.url]);
-    for (const entry of entries) {
-      const uri = [...mockUiFs.files.keys()].find((key) => key.endsWith(`/ui/${entry.path.replace(/^maimai-ui\//u, '')}`))!;
-      expect(hex(mockUiFs.files.get(uri)!)).toBe(entry.sha256);
-    }
-    expect([...mockUiFs.files.keys()].some((uri) => uri.includes('/tmp/'))).toBe(false);
-
-    // zip 内条目带 maimai-ui/ 前缀：解压前必须创建目标子目录（iOS File.move 要求目标目录存在）
-    expect(mockUiFs.createdDirectories.some((uri) => uri.endsWith('/ui'))).toBe(true);
-
-    const downloads = mockUiFs.downloadCalls.length;
-    const cached = await prepare();
-    await cached.fullReady;
-    expect(mockUiFs.downloadCalls).toHaveLength(downloads);
+    await (await prepareMaimaiUi(value => progress.push(value))).fullReady;
+    expect(progress.at(-1)?.phase).toBe('ready');
+    expect(cached()).toBeTruthy();
+    expect([...mockUiFs.files.keys()].filter(uri => uri.includes('/ui/'))).toHaveLength(MAIMAI_UI_MANIFEST_ENTRIES.length);
+    mockUiFs.remotes.clear();
+    await (await prepareMaimaiUi()).fullReady;
+    expect(mockUiFs.files.get(cached()!)?.byteLength).toBe(firstEntry.bytes);
   });
 
-  it('rejects a mismatched zip size and leaves no partial files', async () => {
-    const { entries, zip } = await fixture({ 'maimai-ui/SD.png': 'sd' });
-    const prepare = createMaimaiUiPreparer({ ...zip, bytes: zip.bytes + 1 }, entries);
-    const prepared = await prepare();
-    await expect(prepared.fullReady).rejects.toThrow('素材压缩包大小不匹配');
-    expect([...mockUiFs.files.keys()].some((uri) => uri.includes('/ui/'))).toBe(false);
-    expect([...mockUiFs.files.keys()].some((uri) => uri.includes('/tmp/'))).toBe(false);
+  it('rejects a truncated archive before publishing assets', async () => {
+    mockUiFs.remotes.set(MAIMAI_UI_ZIP.url, new Uint8Array([1]));
+    await expect((await prepareMaimaiUi()).fullReady).rejects.toThrow('素材压缩包大小不匹配');
+    expect(cached()).toBeUndefined();
   });
 
-  it('rejects a corrupted zip hash', async () => {
-    const { entries, zip, rawZip } = await fixture({ 'maimai-ui/SD.png': 'sd' });
-    const corrupted = Uint8Array.from(rawZip);
-    corrupted[0] = corrupted[0]! ^ 0xff;
-    mockUiFs.remotes.set(zip.url, corrupted);
-    const prepare = createMaimaiUiPreparer(zip, entries);
-    const prepared = await prepare();
-    await expect(prepared.fullReady).rejects.toThrow('素材压缩包校验失败');
-    expect([...mockUiFs.files.keys()].some((uri) => uri.includes('/ui/'))).toBe(false);
+  it('rejects a same-size corrupt archive before publishing assets', async () => {
+    const archive = Uint8Array.from(mockUiFs.remotes.get(MAIMAI_UI_ZIP.url) as Uint8Array);
+    archive[0] ^= 0xff;
+    mockUiFs.remotes.set(MAIMAI_UI_ZIP.url, archive);
+    await expect((await prepareMaimaiUi()).fullReady).rejects.toThrow('素材压缩包校验失败');
+    expect(cached()).toBeUndefined();
   });
 
-  it('rejects a missing or mismatched entry inside the archive', async () => {
-    const { entries, zip } = await fixture({ 'maimai-ui/SD.png': 'sd' });
-    const zip2 = new JSZip();
-    zip2.file('maimai-ui/SD.png', 'wrong-content');
-    const rawZip = await zip2.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
-    mockUiFs.remotes.set(zip.url, rawZip);
-    const prepare = createMaimaiUiPreparer({ ...zip, bytes: rawZip.byteLength, sha256: hex(rawZip) }, entries);
-    const prepared = await prepare();
-    await expect(prepared.fullReady).rejects.toThrow('校验失败');
-    expect([...mockUiFs.files.keys()].some((uri) => uri.includes('/ui/'))).toBe(false);
-    expect([...mockUiFs.files.keys()].some((uri) => uri.includes('/tmp/'))).toBe(false);
+  it('rejects a missing required asset', async () => {
+    await fixture(firstEntry.path);
+    await expect((await prepareMaimaiUi()).fullReady).rejects.toThrow('压缩包缺少');
+    expect(cached()).toBeUndefined();
   });
 
-  it('redownloads when an unpacked file is corrupted', async () => {
-    const { entries, zip } = await fixture({ 'maimai-ui/logo.png': 'logo', 'maimai-ui/SD.png': 'sd' });
-    const prepare = createMaimaiUiPreparer(zip, entries);
-    const first = await prepare();
-    await first.fullReady;
-    const cachedUri = [...mockUiFs.files.keys()].find((key) => key.endsWith('/ui/SD.png'))!;
-    const corrupted = Uint8Array.from(mockUiFs.files.get(cachedUri)!);
-    corrupted[0] = corrupted[0]! ^ 0xff;
-    mockUiFs.files.set(cachedUri, corrupted);
-
-    const second = await prepare();
-    await second.fullReady;
-    expect(mockUiFs.downloadCalls).toEqual([zip.url, zip.url]);
-    expect(hex(mockUiFs.files.get(cachedUri)!)).toBe(entries.find((entry) => entry.path === 'maimai-ui/SD.png')!.sha256);
+  it('replaces a corrupted cached asset', async () => {
+    await (await prepareMaimaiUi()).fullReady;
+    const uri = cached()!, valid = mockUiFs.files.get(uri)!;
+    const corrupt = Uint8Array.from(valid); corrupt[0] ^= 0xff; mockUiFs.files.set(uri, corrupt);
+    await (await prepareMaimaiUi()).fullReady;
+    expect(mockUiFs.files.get(uri)).toEqual(valid);
   });
 
-  it('reports download failure and retries cleanly', async () => {
-    const { entries, zip } = await fixture({ 'maimai-ui/SD.png': 'sd' });
-    mockUiFs.remotes.set(zip.url, new Error('network down'));
-    const prepare = createMaimaiUiPreparer(zip, entries);
-    const failed = await prepare();
-    await expect(failed.fullReady).rejects.toThrow('素材准备失败');
-    expect([...mockUiFs.files.keys()].some((uri) => uri.includes('/ui/'))).toBe(false);
-
-    mockUiFs.remotes.set(zip.url, await new JSZip().file('maimai-ui/SD.png', 'sd').generateAsync({ type: 'uint8array', compression: 'DEFLATE' }));
-    const retried = await prepare();
-    await retried.fullReady;
-    expect(mockUiFs.downloadCalls).toEqual([zip.url, zip.url]);
-  });
-
-  it('clears the local asset cache directory', () => {
+  it('reports network failure, retries, and clears cached files', async () => {
+    const archive = mockUiFs.remotes.get(MAIMAI_UI_ZIP.url)!;
+    mockUiFs.remotes.set(MAIMAI_UI_ZIP.url, new Error('network down'));
+    await expect((await prepareMaimaiUi()).fullReady).rejects.toThrow('素材准备失败');
+    expect(cached()).toBeUndefined();
+    mockUiFs.remotes.set(MAIMAI_UI_ZIP.url, archive);
+    await (await prepareMaimaiUi()).fullReady;
+    expect(cached()).toBeTruthy();
     clearMaimaiUiCache();
-    expect(mockUiFs.deletes.some((uri) => uri.endsWith('/rranker/maimai-assets'))).toBe(true);
+    expect(cached()).toBeUndefined();
   });
 });
 

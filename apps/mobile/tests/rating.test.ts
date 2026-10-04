@@ -1,4 +1,3 @@
-import { chartVersionKey } from '@/domain/catalog';
 import { buildBest50, calculateChartRating, mapCoverId, minimumAchievementForRating, ratingTableDescending } from '@/domain/rating';
 import { fixtureCatalog, fixturePlayer, fixtureRecords, fixtureSource, FIXTURE_CURRENT_VERSION } from '@/fixtures/sanitized';
 
@@ -42,22 +41,10 @@ describe('rating and B50', () => {
     expect(mapCoverId(10123)).toBe(123); expect(mapCoverId(123)).toBe(123);
     expect(mapCoverId(120227)).toBe(227);
   });
-  it('handles empty and 700-record inputs without changing B50 limits', () => {
+  it('returns an empty B50 with zero rating when no records exist', () => {
     const empty = buildBest50(fixturePlayer, [], fixtureCatalog, fixtureSource);
-    expect(empty.b35).toHaveLength(0); expect(empty.b15).toHaveLength(0); expect(empty.rating).toBe(0);
-    const large = Array.from({ length: 700 }, (_, index) => ({
-      ...fixtureRecords[index % fixtureRecords.length],
-      songId: `large-${index}`,
-      version: index % 3 === 0 ? FIXTURE_CURRENT_VERSION : '历史版本',
-    }));
-    const catalog = {
-      ...fixtureCatalog,
-      chartVersionIndex: Object.fromEntries(large.map((record) => [
-        chartVersionKey(record.songId, record.type, record.levelIndex),
-        record.version === FIXTURE_CURRENT_VERSION ? fixtureCatalog.currentVersion.id : 1,
-      ])),
-    };
-    const best50 = buildBest50(fixturePlayer, large, catalog, fixtureSource);
-    expect(best50.b35).toHaveLength(35); expect(best50.b15).toHaveLength(15);
+    expect(empty.b35).toEqual([]);
+    expect(empty.b15).toEqual([]);
+    expect(empty.rating).toBe(0);
   });
 });

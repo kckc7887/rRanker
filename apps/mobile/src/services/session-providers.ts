@@ -11,7 +11,6 @@ import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
 import { MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
 import { MaxedPhigrosTestProvider } from '@/providers/maxed-phigros-test-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
-import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { applyLxnsTokenRotation, applyOsuTokenRotation } from '@/services/session-credential-service';
 
 export type SessionProviders = {
@@ -19,7 +18,6 @@ export type SessionProviders = {
   catalogProvider: DetailedCatalogProvider | null;
   protocolScoreProvider: ChunithmScoreProvider | OsuScoreProvider | null;
 };
-let localRepository: SqliteSnapshotRepository | null = null;
 const EMPTY_PROVIDERS: SessionProviders = {
   scoreProvider: new EmptyScoreProvider(),
   catalogProvider: null,
@@ -53,8 +51,7 @@ function createMaimaiSessionProviders(account: BoundAccount, session: ProviderSe
   const catalogProvider = new LxnsCatalogProvider();
   switch (account.providerId) {
     case 'local': {
-      localRepository ??= new SqliteSnapshotRepository();
-      return { ...EMPTY_PROVIDERS, scoreProvider: new LocalMaimaiScoreProvider(localRepository, account.id, account.displayName), catalogProvider };
+      return { ...EMPTY_PROVIDERS, scoreProvider: new LocalMaimaiScoreProvider(account.id, account.displayName), catalogProvider };
     }
     case 'maimai-test':
       return { ...EMPTY_PROVIDERS, scoreProvider: new MaxedMaimaiTestProvider(account.id, account.displayName), catalogProvider };

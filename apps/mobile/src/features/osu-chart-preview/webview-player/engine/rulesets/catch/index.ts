@@ -26,9 +26,7 @@
  */
 import type { BeatmapData, ReplayData, SkinAssets, HitResult } from '../../types/index';
 import type { ModDifficulty } from '../../utils/modDifficulty';
-import type { AccFrame, ComboFrame } from '../../renderer/HUDRenderer';
-import type { ScoreFrame } from '../../utils/scoreProcessor';
-import type { URTimeline } from '../../renderer/URBarRenderer';
+import type { ComboFrame } from '../../renderer/HUDRenderer';
 import type { RenderOptions } from '../../renderer/Renderer';
 import type { Ruleset } from '../Ruleset';
 import type { CatchSession } from './types';
@@ -37,8 +35,6 @@ import { applyPositionOffsets } from './positions';
 import { catchFrames } from './input';
 import { computeCatchHitResults } from './hitJudge';
 import { drawCatchPlayfield } from './Playfield';
-import { drawCatchKeyOverlay } from '../../renderer/KeyOverlayRenderer';
-import { computeCatchAccTimeline, computeCatchScoreTimeline } from './scoreProcessor';
 import { computeComboTimeline } from '../../renderer/HUDRenderer';
 
 export type { CatchSession } from './types';
@@ -52,10 +48,6 @@ export const catchRuleset: Ruleset<CatchSession> = {
     _qualityTotal: number,
   ): CatchSession {
 
-    console.assert(
-      beatmap.mode === 2 || beatmap.mode === 0,
-      `catchRuleset received unsupported beatmap.mode=${beatmap.mode}`,
-    );
 
     const objects = convertBeatmapToCatch(beatmap, modDiff);
 
@@ -65,19 +57,14 @@ export const catchRuleset: Ruleset<CatchSession> = {
 
     const hitResults = computeCatchHitResults(objects, catcherPath, modDiff.cs);
 
-    const accFrames   = computeCatchAccTimeline(hitResults);
     const comboFrames = computeComboTimeline(hitResults);
-    const scoreFrames = computeCatchScoreTimeline(objects, hitResults, beatmap, replay, modDiff);
 
     return {
       beatmap, replay, modDiff, skin,
       objects,
       catcherPath,
       hitResults,
-      accFrames,
       comboFrames,
-      scoreFrames,
-      urTimeline:  { hits: [], zones: [] },
     };
   },
 
@@ -85,12 +72,8 @@ export const catchRuleset: Ruleset<CatchSession> = {
 
     drawCatchPlayfield(ctx, s, timeMs, options);
 
-    if (options.showKeyOverlay) drawCatchKeyOverlay(ctx, s.catcherPath, timeMs, s.skin);
   },
 
   hitResults:  (s: CatchSession): readonly HitResult[] => s.hitResults,
-  scoreFrames: (s: CatchSession): readonly ScoreFrame[] => s.scoreFrames,
-  accFrames:   (s: CatchSession): readonly AccFrame[]   => s.accFrames,
   comboFrames: (s: CatchSession): readonly ComboFrame[] => s.comboFrames,
-  urTimeline:  (s: CatchSession): URTimeline             => s.urTimeline,
 };

@@ -9,15 +9,18 @@ import {
 } from '@/domain/account-thumbnail';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { useSession } from '@/state/session-store';
+import { z } from 'zod';
 
 const repository = new SqliteSnapshotRepository();
 
 type ThumbnailWrite = {
   revision: string; pending: AccountThumbnailSnapshot; saved: AccountThumbnailSnapshot | null; running?: Promise<void>;
 };
-const thumbnailWrites = new WeakMap<ThumbnailResourceRepository, Map<string, ThumbnailWrite>>();
-
-type ThumbnailResourceRepository = Pick<SqliteSnapshotRepository, 'getResource' | 'saveResource'>;
+const thumbnailWrites = new Map<string, ThumbnailWrite>();
+const thumbnailSchema = z.object({
+  scoreDisplay: z.string().optional(), avatarUrl: z.string().nullable().optional(),
+  challengeModeRank: z.number().finite().nullable().optional(), ratingPossession: z.string().nullable().optional(),
+});
 
 export type AccountThumbnailInput = {
   scoreDisplay?: string;
@@ -29,7 +32,6 @@ export type AccountThumbnailInput = {
 export async function persistBoundAccountThumbnail(
   accountId: string,
   input: AccountThumbnailInput,
-  repo: ThumbnailResourceRepository = repository,
 ): Promise<void> {
   const value: AccountThumbnailSnapshot = {
     ...(input.scoreDisplay !== undefined ? { scoreDisplay: input.scoreDisplay } : {}),
@@ -38,14 +40,12 @@ export async function persistBoundAccountThumbnail(
     ...(input.ratingPossession !== undefined ? { ratingPossession: input.ratingPossession } : {}),
   };
   if (Object.keys(value).length === 0) return;
-  let entries = thumbnailWrites.get(repo);
-  if (!entries) thumbnailWrites.set(repo, entries = new Map());
   const gameScope = accountId.split(':')[0];
   const revision = resourceWriteGeneration(gameScope) + ':' + resourceWriteGeneration('account:' + accountId);
-  let entry = entries.get(accountId);
+  let entry = thumbnailWrites.get(accountId);
   if (!entry || entry.revision !== revision) {
     entry = { revision, pending: {}, saved: null };
-    entries.set(accountId, entry);
+    thumbnailWrites.set(accountId, entry);
   }
   const current = entry;
   current.pending = { ...current.pending, ...value };
@@ -54,7 +54,7 @@ export async function persistBoundAccountThumbnail(
     current.running = Promise.resolve().then(async () => {
       try {
         if (current.saved === null) {
-          current.saved = await repo.getResource<AccountThumbnailSnapshot>(accountThumbnailResourceKey(accountId), ACCOUNT_THUMBNAIL_SCHEMA_VERSION) ?? {};
+          current.saved = await repository.getResource(accountThumbnailResourceKey(accountId), ACCOUNT_THUMBNAIL_SCHEMA_VERSION, thumbnailSchema) ?? {};
         }
         while (Object.keys(current.pending).length) {
           const next: AccountThumbnailSnapshot = { ...current.saved, ...current.pending };
@@ -62,7 +62,7 @@ export async function persistBoundAccountThumbnail(
           assertCurrent();
           if (Object.entries(next).every(([key, field]) => current.saved?.[key as keyof AccountThumbnailSnapshot] === field)) continue;
           try {
-            await repo.saveResource(accountThumbnailResourceKey(accountId), ACCOUNT_THUMBNAIL_SCHEMA_VERSION,
+            await repository.saveResource(accountThumbnailResourceKey(accountId), ACCOUNT_THUMBNAIL_SCHEMA_VERSION,
               new Date().toISOString(), next, assertCurrent);
           } catch (error) {
             current.pending = { ...next, ...current.pending };
@@ -72,9 +72,9 @@ export async function persistBoundAccountThumbnail(
         }
       } finally {
         current.running = undefined;
-        if (entries.size > 128) for (const [key, item] of entries) {
-          if (entries.size <= 128) break;
-          if (!item.running) entries.delete(key);
+        if (thumbnailWrites.size > 128) for (const [key, item] of thumbnailWrites) {
+          if (thumbnailWrites.size <= 128) break;
+          if (!item.running) thumbnailWrites.delete(key);
         }
       }
     });
@@ -83,7 +83,6 @@ export async function persistBoundAccountThumbnail(
 }
 
 export async function hydrateBoundAccountThumbnails(
-  repo: ThumbnailResourceRepository = repository,
   signal?: AbortSignal,
 ): Promise<void> {
   const { boundAccounts, updateBoundAccountScore } = useSession.getState();
@@ -94,11 +93,12 @@ export async function hydrateBoundAccountThumbnails(
     load: async (account) => {
       const assertCurrent = captureResourceWrites(account.gameId, signal, account.id);
       try {
-        const thumbnail = await repo.getResource<AccountThumbnailSnapshot>(
+        const thumbnail = await repository.getResource(
           accountThumbnailResourceKey(account.id),
           ACCOUNT_THUMBNAIL_SCHEMA_VERSION,
+          thumbnailSchema,
         );
-        if (!thumbnail || signal?.aborted) return;
+        if (!thumbnail) return;
         assertCurrent();
         updateBoundAccountScore(
           account.id,
@@ -120,8 +120,8 @@ export function hydrateAccountDisplayData(signal: AbortSignal = getForegroundAbo
     + resourceWriteGeneration(account.gameId) + ':' + resourceWriteGeneration('account:' + account.id)).join('|');
   const existing = displayHydrations.get(signal);
   if (existing?.key === key) return existing.promise;
-  const promise = hydrateBoundAccountThumbnails(undefined, signal)
-    .then(() => hydrateLocalAccountRatings(undefined, signal));
+  const promise = hydrateBoundAccountThumbnails(signal)
+    .then(() => hydrateLocalAccountRatings(signal));
   displayHydrations.set(signal, { key, promise });
   void promise.catch(() => { if (displayHydrations.get(signal)?.promise === promise) displayHydrations.delete(signal); });
   return promise;

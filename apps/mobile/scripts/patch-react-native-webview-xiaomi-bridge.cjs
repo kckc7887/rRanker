@@ -2,7 +2,6 @@ const fs = require('node:fs');
 const path = require('node:path');
 
 const packageRoot = path.dirname(require.resolve('react-native-webview/package.json'));
-const packageJson = JSON.parse(fs.readFileSync(path.join(packageRoot, 'package.json'), 'utf8'));
 const javaPath = path.join(packageRoot, 'android/src/main/java/com/reactnativecommunity/webview/RNCWebView.java');
 const original = 'if (WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)){';
 const replacement = [
@@ -11,9 +10,6 @@ const replacement = [
   '        if (!useLegacyBridge && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)){',
 ].join('\n');
 
-if (packageJson.version !== '13.15.0') {
-  throw new Error(`Unsupported react-native-webview version ${packageJson.version}; review the Xiaomi bridge patch before upgrading.`);
-}
 
 const java = fs.readFileSync(javaPath, 'utf8');
 if (java.includes('if (!useLegacyBridge && WebViewFeature.isFeatureSupported(WebViewFeature.WEB_MESSAGE_LISTENER)){')) {

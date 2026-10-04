@@ -1,8 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseSimaiChart, prepareAudioEvents } from '@/features/simai-chart-preview/engine';
 import {
   SimaiPlaybackSession,
-  type SimaiPlaybackEnvironment,
 } from '@/features/simai-chart-preview/webview-player/playback';
 import {
   beatsToMs,
@@ -128,17 +127,14 @@ function createPlayback() {
   const frames = new FakeFrameLoop();
   const rendered: number[] = [];
   const playStates: boolean[] = [];
-  const environment: SimaiPlaybackEnvironment = {
-    createAudioContext: () => context as unknown as AudioContext,
-    requestFrame: frames.request,
-    cancelFrame: frames.cancel,
-    now: () => frames.now,
-  };
+  vi.stubGlobal('AudioContext', class { constructor() { return context; } });
+  vi.stubGlobal('requestAnimationFrame', frames.request);
+  vi.stubGlobal('cancelAnimationFrame', frames.cancel);
+  vi.spyOn(performance, 'now').mockImplementation(() => frames.now);
   const session = new SimaiPlaybackSession({
     charts: [chart],
     answerEvents: prepareAudioEvents(chart.notes),
     answerSoundUrl: 'data:audio/wav;base64,UklGRg==',
-    environment,
     host: {
       render: (beats) => { rendered.push(beats); },
       onPlayStateChange: (playing) => { playStates.push(playing); },
@@ -147,7 +143,12 @@ function createPlayback() {
   return { session, context, frames, rendered, playStates, chart };
 }
 
-describe('Simai 播放会话的播放状态所有权', () => {
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe('Simai 播放与取消', () => {
   it('resume 未结算时暂停：旧 play Promise 不再启动播放', async () => {
     const { session, context, frames } = createPlayback();
     await session.loadMusic(new ArrayBuffer(8));

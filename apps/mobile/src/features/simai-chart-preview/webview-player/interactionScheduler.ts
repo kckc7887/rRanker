@@ -1,5 +1,5 @@
 export { createLatestFrameScheduler } from '../../chart-preview-shared/webview-player/frame-scheduler';
-export type { FrameRequest, FrameCancel, LatestFrameScheduler } from '../../chart-preview-shared/webview-player/frame-scheduler';
+export type { LatestFrameScheduler } from '../../chart-preview-shared/webview-player/frame-scheduler';
 
 export type ChartPreviewBackgroundMode = 'none' | 'image' | 'video';
 

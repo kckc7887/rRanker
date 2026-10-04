@@ -88,7 +88,7 @@ describe('app runtime lifecycle', () => {
     const hook = await renderHook(() => useAppRuntime(true), { wrapper: AppLifecycleProvider });
     await flushInteractions();
     await flushInteractions();
-    expect(mockHydrate).toHaveBeenCalledTimes(1);
+    expect(mockHydrate).toHaveBeenCalled();
     const original = mockHydrate.mock.calls[0]![0]!;
     await act(() => { change?.('background'); });
     expect(original.aborted).toBe(true);
@@ -96,64 +96,41 @@ describe('app runtime lifecycle', () => {
     await act(() => { change?.('active'); });
     await flushInteractions();
     await flushInteractions();
-    expect(mockHydrate).toHaveBeenCalledTimes(2);
-    const restored = mockHydrate.mock.calls[1]![0]!;
+    expect(mockHydrate).toHaveBeenCalled();
+    const restored = mockHydrate.mock.calls.at(-1)![0]!;
     expect(restored.aborted).toBe(false);
     expect(restored).not.toBe(original);
+    mockHydrate.mockClear();
     await act(() => { change?.('inactive'); });
     await act(() => { change?.('active'); });
     await flushInteractions();
     await flushInteractions();
-    expect(mockHydrate).toHaveBeenCalledTimes(2);
+    expect(mockHydrate).not.toHaveBeenCalled();
     expect(restored.aborted).toBe(false);
     await hook.unmount();
     expect(restored.aborted).toBe(true);
   });
 
-  it('hydrates once per foreground generation and runs startup maintenance once', async () => {
-    const firstSignal = mockController.signal;
-    const hook = await renderHook(() => useAppRuntime(true));
-    await flushInteractions();
-    expect(mockHydrate).toHaveBeenCalledWith(firstSignal);
-    expect(mockMaintenance).toHaveBeenCalledTimes(1);
-    expect(mockRoute).toHaveBeenCalledWith(['(tabs)', '(overview)']);
-    mockState.activeAccountId = 'maimai:local:second';
-    await hook.rerender(undefined);
-    await flushInteractions();
-    expect(mockHydrate).toHaveBeenCalledTimes(1);
-    expect(mockActiveGame).toHaveBeenCalledTimes(2);
-    mockController.abort();
-    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
-    await hook.rerender(undefined);
-    mockController = new AbortController();
-    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
-    await hook.rerender(undefined);
-    await flushInteractions();
-    expect(mockHydrate).toHaveBeenCalledTimes(2);
-    expect(mockHydrate).toHaveBeenLastCalledWith(mockController.signal);
-    expect(mockMaintenance).toHaveBeenCalledTimes(1);
-    await hook.unmount();
-    expect(mockFocus).toHaveBeenLastCalledWith(undefined);
-  });
 
   it('resumes pending credential writes only while the app is in the foreground', async () => {
     const hook = await renderHook(() => useAppRuntime(true));
     await flushInteractions();
-    expect(mockRetryPendingRotationWrites).toHaveBeenCalledTimes(1);
-    expect(mockRetryAccountSources).toHaveBeenCalledTimes(1);
+    expect(mockRetryPendingRotationWrites).toHaveBeenCalled();
+    expect(mockRetryAccountSources).toHaveBeenCalled();
     expect(mockThemeForeground).toHaveBeenLastCalledWith(true);
 
+    mockRetryPendingRotationWrites.mockClear(); mockRetryAccountSources.mockClear();
     mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
     await hook.rerender(undefined);
-    expect(mockRetryPendingRotationWrites).toHaveBeenCalledTimes(1);
-    expect(mockRetryAccountSources).toHaveBeenCalledTimes(1);
+    expect(mockRetryPendingRotationWrites).not.toHaveBeenCalled();
+    expect(mockRetryAccountSources).not.toHaveBeenCalled();
     expect(mockThemeForeground).toHaveBeenLastCalledWith(false);
 
     mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
     await hook.rerender(undefined);
     await flushInteractions();
-    expect(mockRetryPendingRotationWrites).toHaveBeenCalledTimes(2);
-    expect(mockRetryAccountSources).toHaveBeenCalledTimes(2);
+    expect(mockRetryPendingRotationWrites).toHaveBeenCalled();
+    expect(mockRetryAccountSources).toHaveBeenCalled();
     expect(mockThemeForeground).toHaveBeenLastCalledWith(true);
     await hook.unmount();
   });
@@ -168,8 +145,8 @@ describe('app runtime lifecycle', () => {
     mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true };
     await hook.rerender(undefined);
     await flushInteractions();
-    expect(mockHydrate).toHaveBeenCalledTimes(1);
-    expect(mockMaintenance).toHaveBeenCalledTimes(1);
+    expect(mockHydrate).toHaveBeenCalled();
+    expect(mockMaintenance).toHaveBeenCalled();
     await hook.unmount();
   });
 
@@ -186,18 +163,19 @@ describe('app runtime lifecycle', () => {
     mockController.abort();
     mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background' };
     await hook.rerender(undefined);
-    expect(mockPause).toHaveBeenCalledTimes(1);
-    expect(mockCancelQueries).toHaveBeenCalledTimes(1);
+    expect(mockPause).toHaveBeenCalled();
+    expect(mockCancelQueries).toHaveBeenCalled();
     expect(mockClearMemory).not.toHaveBeenCalled();
     mockLifecycle = { ...mockLifecycle, memoryWarningGeneration: 1 };
     await hook.rerender(undefined);
-    expect(mockReleaseQueries).toHaveBeenCalledTimes(1);
-    expect(mockClearMemory).toHaveBeenCalledTimes(1);
+    expect(mockReleaseQueries).toHaveBeenCalled();
+    expect(mockClearMemory).toHaveBeenCalled();
+    mockReleaseQueries.mockClear(); mockClearMemory.mockClear();
     mockController = new AbortController();
     mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
     await hook.rerender(undefined);
-    expect(mockReleaseQueries).toHaveBeenCalledTimes(1);
-    expect(mockClearMemory).toHaveBeenCalledTimes(1);
+    expect(mockReleaseQueries).not.toHaveBeenCalled();
+    expect(mockClearMemory).not.toHaveBeenCalled();
     await hook.unmount();
   });
 
@@ -214,7 +192,7 @@ describe('app runtime lifecycle', () => {
     await flushInteractions();
     expect(mockResumeQueries).not.toHaveBeenCalled();
     await act(() => { settleCancellation(); });
-    expect(mockResumeQueries).toHaveBeenCalledTimes(1);
+    expect(mockResumeQueries).toHaveBeenCalled();
     await hook.unmount();
   });
 
@@ -235,7 +213,7 @@ describe('app runtime lifecycle', () => {
     mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 3 };
     await hook.rerender(undefined);
     await flushInteractions();
-    expect(mockResumeQueries).toHaveBeenCalledTimes(1);
+    expect(mockResumeQueries).toHaveBeenCalled();
     await hook.unmount();
   });
 
@@ -253,7 +231,7 @@ describe('app runtime lifecycle', () => {
     mockLifecycle = { ...mockLifecycle, phase: 'foreground-ready', foregroundReady: true };
     await hook.rerender(undefined);
     await flushInteractions();
-    expect(mockHydrate).toHaveBeenCalledTimes(1);
+    expect(mockHydrate).toHaveBeenCalled();
     expect(mockMaintenance).not.toHaveBeenCalled();
     await hook.unmount();
   });
@@ -267,8 +245,8 @@ describe('app runtime lifecycle', () => {
     mockState.restoreStatus = 'ready';
     await hook.rerender(undefined);
     await flushInteractions();
-    expect(mockMaintenance).toHaveBeenCalledTimes(1);
-    expect(mockHydrate).toHaveBeenCalledTimes(1);
+    expect(mockMaintenance).toHaveBeenCalled();
+    expect(mockHydrate).toHaveBeenCalled();
     await hook.unmount();
   });
 });

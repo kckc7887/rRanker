@@ -57,7 +57,7 @@ export async function loadPreviewAudio(input: {
     endMs = Math.max(endMs, sample.timeMs + buffer.duration * 1000);
     if (sample.layer !== 'Fail') samples.push({ timeMs: sample.timeMs, volume: sample.volume, buffer });
   });
-  const deps = { mode: input.mode, skinSounds: sounds, lazerDefaultSounds: null, synthCache: new Map<string, AudioBuffer>(), ctx };
+  const deps = { mode: input.mode, skinSounds: sounds, synthCache: new Map<string, AudioBuffer>(), ctx };
   for (const sound of input.schedule) {
     const buffer = sound.type === 'combobreak' || sound.type === 'spinnerbonus'
       ? lookupSkinSound(sounds, sound.type)

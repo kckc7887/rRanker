@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { DataSource } from './models';
+import { DataSourceSchema } from './schemas';
 
 const CollectionSchema = z.object({
   id: z.number().int(),
@@ -68,6 +69,14 @@ export type ChunithmPersonalSnapshot = {
   bests: ChunithmBests;
   source: DataSource;
 };
+
+export const ChunithmPersonalSnapshotSchema = z.object({
+  player: ChunithmPlayerSchema.nullable(), scores: z.array(ChunithmScoreSchema),
+  bests: z.object({
+    bests: z.array(ChunithmScoreSchema), selections: z.array(ChunithmScoreSchema), new_bests: z.array(ChunithmScoreSchema),
+  }),
+  source: DataSourceSchema.extend({ kind: z.literal('lxns') }),
+});
 
 export const CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION = 2;
 

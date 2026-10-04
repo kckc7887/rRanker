@@ -8,7 +8,6 @@ import {
   normalizeOsuSnapshot,
   OSU_RULESET_BY_GAME_ID,
   OsuBeatmapsetLookupSchema,
-  OsuSnapshotSchema,
   recommendedOsuStar,
   type OsuBeatmapsetLookupRaw,
   type OsuBeatmapsetSearchRaw,
@@ -250,7 +249,7 @@ describe('osu! 数据规范化', () => {
     expect(snapshot.bestScores[0].beatmapset.listCover).toBe('https://assets.ppy.sh/beatmaps/3720/covers/list.jpg');
   });
 
-  it('normalizeOsuSnapshot：legacy score 字段回退、pp 为空容错', () => {
+  it('normalizeOsuSnapshot：标准成绩字段与空 pp', () => {
     const score = rawScore({ total_score: undefined, score: 985754, pp: null });
     const snapshot = normalizeOsuSnapshot(rawUser(), [score]);
     expect(snapshot.bestScores[0].score).toBe(985754);
@@ -431,7 +430,7 @@ describe('osu! 成绩判定计数与达成时间', () => {
     expect(snapshot.bestScores[0].achievedAt).toBe('2026-01-01T00:00:00.000Z');
   });
 
-  it('旧缓存无 statistics/ended_at/created_at 时归一化为 null', () => {
+  it('上游成绩缺少 statistics 和时间时归一化为 null', () => {
     const snapshot = normalizeOsuSnapshot(rawUser(), [rawScore({
       statistics: undefined,
       ended_at: undefined,
@@ -451,12 +450,12 @@ describe('osu! 成绩判定计数与达成时间', () => {
 });
 
 describe('osu! 成绩模组 mods', () => {
-  it('legacy 字符串数组直接提取 acronym', () => {
+  it('上游 mods 字符串数组提取 acronym', () => {
     const snapshot = normalizeOsuSnapshot(rawUser(), [rawScore({ mods: ['HD', 'DT'] })]);
     expect(snapshot.bestScores[0].mods).toEqual(['HD', 'DT']);
   });
 
-  it('新版 solo score 对象数组（含 settings）取 acronym', () => {
+  it('solo score 对象数组（含 settings）取 acronym', () => {
     const snapshot = normalizeOsuSnapshot(rawUser(), [rawScore({
       mods: [{ acronym: 'HD', settings: {} }, { acronym: 'DT', settings: { speed_change: 1.5 } }],
     })]);
@@ -477,18 +476,6 @@ describe('osu! 成绩模组 mods', () => {
     expect(nullable.bestScores[0].mods).toEqual([]);
   });
 
-  it('快照 Schema：旧缓存无 mods 字段时通过校验（向后兼容不迁移）', () => {
-    const snapshot = normalizeOsuSnapshot(rawUser(), [rawScore({ mods: ['HD'] })]);
-    const legacy = JSON.parse(JSON.stringify({
-      data: {
-        player: { ...snapshot.player },
-        bestScores: [{ ...snapshot.bestScores[0], mods: undefined }],
-      },
-      source: { kind: 'osu', label: 'osu.ppy.sh', updatedAt: '2026-01-01T00:00:00.000Z', isStale: false },
-    })) as Record<string, unknown>;
-    const parsed = OsuSnapshotSchema.parse(legacy);
-    expect(parsed.data.bestScores[0].mods).toBeUndefined();
-  });
 });
 
 describe('OsuBeatmapsetLookupSchema', () => {

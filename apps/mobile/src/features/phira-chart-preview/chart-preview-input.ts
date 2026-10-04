@@ -1,6 +1,5 @@
 import JSZip from 'jszip';
 import {
-  CHART_PREVIEW_MAX_DOWNLOAD_BYTES,
   assertChartPreviewDownloadBytes,
   chartPreviewDeclaredUncompressedSize,
   pauseChartPreviewParse,
@@ -38,7 +37,7 @@ export type PhiraChartPreviewStaging = {
     chartId: number,
     files: readonly { name: string; bytes: Uint8Array }[],
   ) => Promise<{ basePath: string }>;
-  downloadChart?: (url: string, signal: AbortSignal) => Promise<ArrayBuffer>;
+  downloadChart: (url: string, signal: AbortSignal) => Promise<ArrayBuffer>;
 };
 
 function zipBasename(entryName: string, fallback: string): string {
@@ -56,9 +55,7 @@ function chartTextByteLimit(entryName: string, formatHint: string | null): numbe
 async function loadPhiraPreviewArchive(input: PhiraChartPreviewInput, signal: AbortSignal, staging: PhiraChartPreviewStaging) {
   const chart = input.chart ?? await phiraProvider.getChart(input.chartId, signal);
   if (!chart.file) throw new Error('该谱面未提供可下载文件');
-  const zipData = await (staging.downloadChart
-    ? staging.downloadChart(chart.file, signal)
-    : phiraProvider.downloadChart(chart.file, signal, CHART_PREVIEW_MAX_DOWNLOAD_BYTES));
+  const zipData = await staging.downloadChart(chart.file, signal);
   const cancellation: ChartPreviewCancellation = { signal, actualBytes: createChartPreviewActualBytes() };
   assertChartPreviewDownloadBytes(zipData.byteLength);
   throwIfAborted(signal);

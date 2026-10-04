@@ -2,15 +2,11 @@ import type { z } from 'zod';
 import type { SQLiteDatabase } from 'expo-sqlite';
 import { accountAvatarResourceKey } from '@/domain/account-avatar';
 import { chunithmPersonalResourceKey } from '@/domain/chunithm-personal';
-import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
-import { CatalogSnapshotSchema, ScoreSnapshotSchema } from '@/domain/schemas';
-import type { CatalogRepository } from '@/repositories/catalog-repository';
-import type { SnapshotRepository } from '@/repositories/snapshot-repository';
-import type { ResourceRepository } from '@/repositories/resource-repository';
+import type { ScoreSnapshot } from '@/domain/models';
+import { ScoreSnapshotSchema } from '@/domain/schemas';
 import { getRrankerDatabase, runDatabaseWrite, runSerializedSchemaInit } from '@/storage/rranker-database';
 
 const SNAPSHOT_SCHEMA_VERSION = 5;
-const CATALOG_SCHEMA_VERSION = 1;
 
 let schemaReady: Promise<void> | null = null;
 
@@ -19,10 +15,6 @@ async function ensureSnapshotSchema(): Promise<void> {
     schemaReady = runSerializedSchemaInit(async () => {
       const db = await getRrankerDatabase();
       await db.execAsync(`
-      CREATE TABLE IF NOT EXISTS catalog_snapshots (
-        id INTEGER PRIMARY KEY CHECK (id = 1), schema_version INTEGER NOT NULL,
-        updated_at TEXT NOT NULL, payload TEXT NOT NULL
-      );
       CREATE TABLE IF NOT EXISTS resource_snapshots (
         resource_key TEXT PRIMARY KEY, schema_version INTEGER NOT NULL,
         updated_at TEXT NOT NULL, payload TEXT NOT NULL
@@ -39,7 +31,7 @@ async function ensureSnapshotSchema(): Promise<void> {
   return schemaReady;
 }
 
-export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepository, ResourceRepository {
+export class SqliteSnapshotRepository {
   initialize(): Promise<void> {
     return ensureSnapshotSchema();
   }
@@ -75,38 +67,6 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
         accountId, SNAPSHOT_SCHEMA_VERSION, snapshot.source.updatedAt, JSON.stringify(snapshot),
       );
 
-    });
-  }
-  async getLatestCatalog(): Promise<CatalogSnapshot | null> {
-    await this.initialize();
-    const db = await getRrankerDatabase();
-    const row = await db.getFirstAsync<{ schema_version: number; payload: string }>(
-      'SELECT schema_version, payload FROM catalog_snapshots WHERE id = ?', 1,
-    );
-    if (!row) return null;
-    let catalog: CatalogSnapshot | null = null;
-    if (row.schema_version === CATALOG_SCHEMA_VERSION) {
-      try { catalog = CatalogSnapshotSchema.safeParse(JSON.parse(row.payload)).data ?? null; }
-      catch {}
-    }
-    if (catalog) return catalog;
-    await runDatabaseWrite(() => db.runAsync(
-      'DELETE FROM catalog_snapshots WHERE id = 1 AND payload = ? AND schema_version = ?',
-      row.payload, row.schema_version,
-    ));
-    return null;
-  }
-  async saveCatalog(catalog: CatalogSnapshot, assertCurrent?: () => void): Promise<void> {
-    await this.initialize();
-    await runDatabaseWrite(async () => {
-      const db = await getRrankerDatabase();
-      assertCurrent?.();
-      await db.runAsync(
-        `INSERT INTO catalog_snapshots (id, schema_version, updated_at, payload) VALUES (?, ?, ?, ?)
-         ON CONFLICT(id) DO UPDATE SET schema_version=excluded.schema_version,
-         updated_at=excluded.updated_at, payload=excluded.payload`,
-        1, CATALOG_SCHEMA_VERSION, catalog.source.updatedAt, JSON.stringify(catalog),
-      );
     });
   }
   async getResource<T>(key: string, schemaVersion: number, schema?: z.ZodType<T>): Promise<T | null> {
@@ -194,15 +154,6 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     return rows.map((row) => ({ key: row.resource_key, bytes: row.bytes ?? 0 }));
   }
 
-  async measureCatalogBytes(): Promise<number> {
-    await this.initialize();
-    const db = await getRrankerDatabase();
-    const row = await db.getFirstAsync<{ bytes: number }>(
-      'SELECT LENGTH(CAST(payload AS BLOB)) AS bytes FROM catalog_snapshots WHERE id = ?', 1,
-    );
-    return row?.bytes ?? 0;
-  }
-
   async clearAccountScores(accountIds: readonly string[]): Promise<void> {
     if (!accountIds.length) return;
     await this.initialize();
@@ -227,14 +178,6 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     });
   }
 
-  async clearCatalog(): Promise<void> {
-    await this.initialize();
-    await runDatabaseWrite(async () => {
-      const db = await getRrankerDatabase();
-      await db.runAsync('DELETE FROM catalog_snapshots WHERE id = ?', 1);
-    });
-  }
-
   async clear(accountId?: string): Promise<void> {
     await this.initialize();
     await runDatabaseWrite(async () => {
@@ -246,7 +189,6 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
         return;
       }
       await db.runAsync('DELETE FROM account_score_snapshots');
-      await db.runAsync('DELETE FROM catalog_snapshots WHERE id = ?', 1);
       await db.runAsync('DELETE FROM resource_snapshots');
     });
   }

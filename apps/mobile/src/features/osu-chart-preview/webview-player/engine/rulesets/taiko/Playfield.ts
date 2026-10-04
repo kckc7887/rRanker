@@ -566,36 +566,6 @@ function drawHit(
   drawHitCircle(ctx, hit, x, LANE_CENTRE_Y, 1, alpha, timeMs, skin, beatmap, comboNow);
 }
 
-function drawFlyingHits(
-  ctx: CanvasRenderingContext2D,
-  objects: readonly TaikoHitObject[],
-  objectVel: readonly number[],
-  firstIdx: number,
-  lastIdx: number,
-  timeMs: number,
-  skin: SkinAssets | undefined,
-  judgmentByNote: ReadonlyMap<number, { time: number; judgement: number }>,
-  beatmap: BeatmapData,
-  comboNow: number,
-): void {
-
-}
-
-function drawDrumRollFlyingHits(
-  ctx: CanvasRenderingContext2D,
-  objects: readonly TaikoHitObject[],
-  objectVel: readonly number[],
-  firstIdx: number,
-  lastIdx: number,
-  timeMs: number,
-  skin: SkinAssets | undefined,
-  hitResults: readonly HitResult[],
-  beatmap: BeatmapData,
-  comboNow: number,
-): void {
-
-}
-
 interface DrumrollTickHit { time: number; isRim: boolean; }
 const _drumrollHitsByResults = new WeakMap<readonly HitResult[], Map<number, DrumrollTickHit[]>>();
 const _EMPTY_DRUMROLL_HITS: readonly DrumrollTickHit[] = Object.freeze([]);
@@ -1029,33 +999,6 @@ function lastKiaiTransitionAt(
   return { transitionTime, kiaiOn };
 }
 
-function drawTaikoGlow(
-  ctx: CanvasRenderingContext2D,
-  beatmap: BeatmapData,
-  results: readonly HitResult[],
-  timeMs: number,
-  skin: SkinAssets | undefined,
-): void {
-
-}
-
-/** 有 taiko-hit300 任一素材时抑制浮动判定弹窗。 */
-export function hasTaikoExplosion(skin: SkinAssets | undefined): boolean {
-  if (skin === undefined) return false;
-  const i = skin.images;
-  return i.has('taiko-hit300.png')      || i.has('taiko-hit300@2x.png')
-      || i.has('taiko-hit300-0.png')    || i.has('taiko-hit300-0@2x.png');
-}
-
-function drawHitExplosions(
-  ctx: CanvasRenderingContext2D,
-  results: readonly HitResult[],
-  timeMs: number,
-  skin: SkinAssets | undefined,
-): void {
-
-}
-
 const MASCOT_SCALE          = 0.6;
 const MASCOT_FEET_Y         = PLAYFIELD_TOP_Y + 0.2 * PLAYFIELD_H_PX;
 const MASCOT_ANCHOR_X       = 4;
@@ -1245,9 +1188,7 @@ export function drawTaikoPlayfield(
   const trackOpacity = resolveTrackOpacity(options, 'taiko');
 
   drawPlayfieldBackground(ctx, skin, session.beatmap.timingPoints, timeMs, trackOpacity);
-  drawTaikoGlow(ctx, session.beatmap, session.hitResults, timeMs, skin);
   drawHitTarget(ctx, skin);
-  drawHitExplosions(ctx, session.hitResults, timeMs, skin);
 
   /** 仅横向裁剪，保留高于轨道的皮肤 overlay。 */
 
@@ -1275,15 +1216,7 @@ export function drawTaikoPlayfield(
 
   ctx.restore();
 
-  drawFlyingHits(
-    ctx, session.objects, objectVel, firstIdx, lastIdx, timeMs, skin,
-    session.hitJudgmentByNote, session.beatmap, comboNow,
-  );
 
-  drawDrumRollFlyingHits(
-    ctx, session.objects, objectVel, firstIdx, lastIdx, timeMs, skin,
-    session.hitResults, session.beatmap, comboNow,
-  );
 
   drawInputDrum(ctx, session.inputEvents, timeMs, skin);
 

@@ -16,7 +16,6 @@ import {
 import { UserLibraryService } from '@/services/user-library-service';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
-import { SqliteUserLibraryRepository } from '@/storage/sqlite-user-library-repository';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import { useNotification } from '@/components/AppNotification';
 import { getForegroundAbortSignal, useAppLifecycle } from '@/state/app-lifecycle';
@@ -25,7 +24,7 @@ import { createInflightGuard } from '@/services/snapshot-cache-utils';
 
 export const USER_LIBRARY_QUERY_KEY = ['user-library'] as const;
 export const TAG_PRESETS_QUERY_KEY = ['user-library-tag-presets'] as const;
-const service = new UserLibraryService(new SqliteUserLibraryRepository());
+const service = new UserLibraryService();
 
 type Operation =
   | { type: 'favorite'; gameId: GameId; songId: string; value: boolean }

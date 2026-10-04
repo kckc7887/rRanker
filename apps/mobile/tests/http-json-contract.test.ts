@@ -187,6 +187,12 @@ describe('公共请求执行器的请求头合同', () => {
 });
 
 describe('公共请求执行器的实际响应预算与凭据边界', () => {
+  it('平台未提供正文流时仍可读取标准 arrayBuffer', async () => {
+    const response = new Response('body');
+    Object.defineProperty(response, 'body', { value: null });
+    await expect(readProviderResponseBytes(response)).resolves.toEqual(new TextEncoder().encode('body'));
+  });
+
   it.each([undefined, '1'])('按实际流字节中止缺少或伪造长度的响应：%s', async declared => {
     const cancel = vi.fn();
     const body = new ReadableStream<Uint8Array>({

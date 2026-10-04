@@ -27,9 +27,7 @@
 import type { BeatmapData, ReplayData, HitResult, SkinAssets } from '../../types/index';
 import type { ModDifficulty } from '../../utils/modDifficulty';
 import type { TaikoInputEvent } from './input';
-import type { AccFrame, ComboFrame } from '../../renderer/HUDRenderer';
-import type { ScoreFrame } from '../../utils/scoreProcessor';
-import type { URTimeline } from '../../renderer/URBarRenderer';
+import type { ComboFrame } from '../../renderer/HUDRenderer';
 import type { TaikoFlashlight } from './Flashlight';
 
 export type TaikoHitObject = TaikoHit | TaikoDrumRoll | TaikoSwell;
@@ -85,10 +83,7 @@ export interface TaikoSession {
 
   readonly maxScrollMs: number;
   readonly hitResults: readonly HitResult[];
-  readonly accFrames: readonly AccFrame[];
   readonly comboFrames: readonly ComboFrame[];
-  readonly scoreFrames: readonly ScoreFrame[];
-  readonly urTimeline: URTimeline;
   readonly swellProgress: ReadonlyMap<number, SwellProgress>;
 
   readonly hitJudgmentByNote: ReadonlyMap<number, { time: number; judgement: number }>;

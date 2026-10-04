@@ -26,10 +26,7 @@
  */
 import type { BeatmapData, ReplayData, SkinAssets, HitResult } from '../../types/index';
 import type { ModDifficulty } from '../../utils/modDifficulty';
-import type { AccFrame, ComboFrame } from '../../renderer/HUDRenderer';
-import type { ScoreFrame } from '../../utils/scoreProcessor';
-import type { URTimeline } from '../../renderer/URBarRenderer';
-import { computeManiaURTimeline } from '../../renderer/URBarRenderer';
+import type { ComboFrame } from '../../renderer/HUDRenderer';
 import type { RenderOptions } from '../../renderer/Renderer';
 import type { Ruleset } from '../Ruleset';
 import type { ManiaSession } from './types';
@@ -38,9 +35,7 @@ import { maniaFrames } from './input';
 import { buildManiaLayout, drawManiaPlayfield, maniaSkinUpsideDown } from './Playfield';
 import { buildManiaScroll } from './scroll';
 import { computeManiaHitResults } from './hitJudge';
-import {
-  computeManiaScoreTimeline, computeManiaAccTimeline, computeManiaComboTimeline,
-} from './scoreProcessor';
+import { computeManiaComboTimeline } from './scoreProcessor';
 
 export type { ManiaSession } from './types';
 
@@ -52,10 +47,6 @@ export const maniaRuleset: Ruleset<ManiaSession> = {
     skin: SkinAssets,
     _qualityTotal: number,
   ): ManiaSession {
-    console.assert(
-      beatmap.mode === 3,
-      `maniaRuleset received unsupported beatmap.mode=${beatmap.mode}`,
-    );
     const { stages, totalColumns, objects } = convertBeatmapToMania(beatmap, modDiff);
     const barLines = computeManiaBarLines(beatmap);
     const inputEvents = replay.mode === 3 ? maniaFrames(replay, totalColumns) : [];
@@ -108,10 +99,7 @@ export const maniaRuleset: Ruleset<ManiaSession> = {
       holdStates:  new Map(),
       hitResults:  [],
       noteResultByIndex: new Map(),
-      accFrames:   [],
       comboFrames: [],
-      scoreFrames: [],
-      urTimeline:  { hits: [], zones: [] },
     };
     const { results: hitResults, holdStates } = computeManiaHitResults(preliminarySession, modDiff);
 
@@ -120,12 +108,9 @@ export const maniaRuleset: Ruleset<ManiaSession> = {
       if (r.subResult === undefined) noteResultByIndex.set(r.objectIndex, r);
     }
 
-    const accFrames   = computeManiaAccTimeline(hitResults, modDiff);
     const comboFrames = computeManiaComboTimeline(hitResults, objects, modDiff);
-    const scoreFrames = computeManiaScoreTimeline(hitResults, objects, modDiff);
-    const urTimeline  = computeManiaURTimeline(objects, hitResults, modDiff);
 
-    return { ...preliminarySession, hitResults, holdStates, noteResultByIndex, accFrames, comboFrames, scoreFrames, urTimeline };
+    return { ...preliminarySession, hitResults, holdStates, noteResultByIndex, comboFrames };
   },
 
   draw(ctx: CanvasRenderingContext2D, s: ManiaSession, timeMs: number, options: RenderOptions): void {
@@ -133,8 +118,5 @@ export const maniaRuleset: Ruleset<ManiaSession> = {
   },
 
   hitResults:  (s: ManiaSession): readonly HitResult[] => s.hitResults,
-  scoreFrames: (s: ManiaSession): readonly ScoreFrame[] => s.scoreFrames,
-  accFrames:   (s: ManiaSession): readonly AccFrame[]   => s.accFrames,
   comboFrames: (s: ManiaSession): readonly ComboFrame[] => s.comboFrames,
-  urTimeline:  (s: ManiaSession): URTimeline             => s.urTimeline,
 };

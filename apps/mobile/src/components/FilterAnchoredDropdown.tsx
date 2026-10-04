@@ -23,13 +23,6 @@ const DROPDOWN_GAP = 4;
 const DROPDOWN_MAX_HEIGHT = 220;
 const OPTION_HEIGHT = 40;
 const MULTI_CHROME_HEIGHT = 84;
-const FALLBACK_TRIGGER: AnchorLayout = { x: 16, y: 120, width: 200, height: 36 };
-const FALLBACK_ADORNMENT: AnchorLayout = {
-  x: FALLBACK_TRIGGER.x + FALLBACK_TRIGGER.width + 8,
-  y: FALLBACK_TRIGGER.y,
-  width: 68,
-  height: 36,
-};
 
 function computeDropdownTop(anchor: AnchorLayout, optionCount: number, extraHeight = 0): number {
   const windowHeight = Dimensions.get('window').height;
@@ -87,8 +80,6 @@ export function FilterAnchoredDropdown<T extends string>({
   }, [anchor, dropdownFooter, dropdownHeader, multiple, options.length]);
 
   const openFromTrigger = () => {
-    let measured = false;
-
     const applyAnchor = (layout: AnchorLayout, adornment: AnchorLayout | null) => {
       setAnchor(layout);
       setAdornmentAnchor(adornment);
@@ -106,14 +97,7 @@ export function FilterAnchoredDropdown<T extends string>({
     };
 
     triggerRef.current?.measureInWindow((x, y, width, height) => {
-      measured = true;
       measureAdornment({ x, y, width, height });
-    });
-
-    queueMicrotask(() => {
-      if (!measured) {
-        applyAnchor(FALLBACK_TRIGGER, endAdornment ? FALLBACK_ADORNMENT : null);
-      }
     });
   };
 

@@ -1,7 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   PhigrosPlaybackSession,
-  type PhigrosPlaybackEnvironment,
   type PhigrosPlaybackSettings,
 } from '@/features/phigros-chart-preview/webview-player/playback';
 
@@ -134,15 +133,14 @@ function createPlayback(hitSounds?: Partial<Record<'click' | 'drag' | 'flick', s
   const rendered: number[] = [];
   const playStates: boolean[] = [];
   const settings: PhigrosPlaybackSettings = { playbackSpeed: 1, volume: 1, hitSoundVolume: 1 };
-  const environment: PhigrosPlaybackEnvironment = {
-    createAudioContext: () => context as unknown as AudioContext,
-    requestFrame: frames.request,
-    cancelFrame: frames.cancel,
-    now: () => frames.now,
-  };
+  vi.stubGlobal('AudioContext', class { constructor() { return context; } });
+  vi.stubGlobal('window', { AudioContext: globalThis.AudioContext });
+  vi.stubGlobal('requestAnimationFrame', frames.request);
+  vi.stubGlobal('cancelAnimationFrame', frames.cancel);
+  vi.spyOn(performance, 'now').mockImplementation(() => frames.now);
   const session = new PhigrosPlaybackSession({
     settings,
-    environment,
+    hitSounds,
     host: {
       render: (chartTime) => { rendered.push(chartTime); onRender?.(); },
       onPlayStateChange: (playing) => { playStates.push(playing); },
@@ -153,7 +151,12 @@ function createPlayback(hitSounds?: Partial<Record<'click' | 'drag' | 'flick', s
   return { session, context, frames, rendered, playStates, settings };
 }
 
-describe('Phigros 播放会话的播放状态所有权', () => {
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe('Phigros 播放与取消', () => {
   it('渲染回调结束会话时不再安排下一帧', async () => {
     let end: (() => void) | undefined;
     const { session, context, frames } = createPlayback(undefined, () => {

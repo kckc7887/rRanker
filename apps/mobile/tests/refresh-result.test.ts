@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import type { DataSource } from '@/domain/models';
 import { ProviderError } from '@/providers/errors';
 import {
-  assertFreshSnapshotSource,
   cachedSnapshotSource,
   failedRefresh,
   refreshFailureFromError,
@@ -22,22 +21,13 @@ describe('snapshot metadata', () => {
     expect(snapshotMetadataOf(source).revision).toBeNull();
   });
 
-  it('refuses the display-only cache marker where a provider is required', () => {
-    expect(() => snapshotMetadataOf({ ...source, kind: 'cache' })).toThrow('缓存标识');
-  });
 
   it('keeps provider, label and fetch time when a snapshot is read from cache', () => {
     const cached = cachedSnapshotSource(source);
     expect(cached).toEqual({ ...source, isStale: true });
     expect(snapshotMetadataOf(cached)).toEqual(snapshotMetadataOf(source));
-    expect(cachedSnapshotSource(cached)).toBe(cached);
   });
 
-  it('rejects a cache fallback that is written as a refresh result', () => {
-    expect(() => assertFreshSnapshotSource(source)).not.toThrow();
-    expect(() => assertFreshSnapshotSource(cachedSnapshotSource(source))).toThrow('缓存');
-    expect(() => assertFreshSnapshotSource({ ...source, kind: 'cache' })).toThrow('缓存');
-  });
 });
 
 describe('refresh failures', () => {

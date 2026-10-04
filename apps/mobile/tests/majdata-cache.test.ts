@@ -1,17 +1,25 @@
+import { DatabaseSync } from 'node:sqlite';
+import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadMajdataCached, loadMajdataFresh, loadMajdataSong, loadMajdataSongSnapshot, loadMajdataChart, loadMajdataParsedChart, clearMajdataAccount, majdataAccountKey, majdataSongKey } from '@/services/majdata-service';
+import { loadMajdataCached, loadMajdataFresh, loadMajdataSong, loadMajdataSongSnapshot, loadMajdataChart, loadMajdataParsedChart, clearMajdataAccount, majdataSongKey } from '@/services/majdata-service';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { MajdataSongSchema } from '@/domain/majdata';
 import type { HttpCookieSession } from '@/providers/http-cookies';
-const mock = vi.hoisted(() => ({ values: new Map<string, unknown>(), getSong: vi.fn(), getChart: vi.fn(), getPlayer: vi.fn(), getRecords: vi.fn(), getRecent: vi.fn() }));
-vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {
-  async getResource(key: string, _version: number, schema?: import('zod').z.ZodType) {
-    const value = mock.values.get(key) ?? null;
-    return schema ? schema.safeParse(value).data ?? null : value;
-  }
-  async saveResource(key: string, _version: number, _time: string, value: unknown) { mock.values.set(key, value); }
-  async clearResources(keys: string[]) { for (const key of keys) mock.values.delete(key); }
-} }));
+const mock = vi.hoisted(() => ({ getSong: vi.fn(), getChart: vi.fn(), getPlayer: vi.fn(), getRecords: vi.fn(), getRecent: vi.fn() }));
+const database = new DatabaseSync(':memory:');
+const repository = new SqliteSnapshotRepository();
+vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
+  execAsync: async (sql: string) => database.exec(sql),
+  runAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).run(...args),
+  getFirstAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).get(...args) ?? null,
+  getAllAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).all(...args),
+  withTransactionAsync: async (task: () => Promise<void>) => {
+    database.exec('BEGIN'); try { await task(); database.exec('COMMIT'); }
+    catch (error) { database.exec('ROLLBACK'); throw error; }
+  },
+}) }));
+afterAll(() => database.close());
+
 vi.mock('@/providers/majdata-provider', () => ({ majdataProvider: mock, MajdataProvider: class {
   getPlayer = mock.getPlayer; getRecords = mock.getRecords; getRecent = mock.getRecent;
 } }));
@@ -21,10 +29,10 @@ const song = MajdataSongSchema.parse({ id: 'uuid-full-001', title: 'song', hash:
 const cachedSource = { kind: 'majdata-net', label: 'Majdata Net', updatedAt: '2026-09-01T00:00:00.000Z', isStale: false };
 const session: HttpCookieSession = { mode: 'http-cookies', origin: 'https://majdata.net', cookies: [{ name: 'auth', value: 'value', secure: true, path: '/' }], persistable: true };
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-beforeEach(() => { mock.values.clear(); vi.clearAllMocks(); mock.getSong.mockResolvedValue(song); mock.getChart.mockResolvedValue('&inote_5=(120)1,\n&inote_7=(120)2m,'); mock.getPlayer.mockResolvedValue({ username: 'player' }); mock.getRecords.mockResolvedValue([]); mock.getRecent.mockResolvedValue([]); });
+beforeEach(async () => { await repository.initialize(); await repository.clearResources((await repository.listResourceSizes()).map(item => item.key)); vi.clearAllMocks(); mock.getSong.mockResolvedValue(song); mock.getChart.mockResolvedValue('&inote_5=(120)1,\n&inote_7=(120)2m,'); mock.getPlayer.mockResolvedValue({ username: 'player' }); mock.getRecords.mockResolvedValue([]); mock.getRecent.mockResolvedValue([]); });
 describe('Majdata revision and account cache', () => {
   it('does not reuse an unsupported song snapshot when offline', async () => {
-    mock.values.set(majdataSongKey(song.id), { song });
+    await repository.saveResource(majdataSongKey(song.id), 1, 'now', { song });
     mock.getSong.mockRejectedValue(new Error('offline'));
     await expect(loadMajdataSong(song.id)).rejects.toThrow('offline');
   });
@@ -33,7 +41,7 @@ describe('Majdata revision and account cache', () => {
     await clearMajdataAccount('a'); expect(await loadMajdataCached('a')).toBeNull(); expect(await loadMajdataCached('b')).not.toBeNull();
   });
   it('renders a local detail before its fresh request resolves', async () => {
-    mock.values.set(majdataSongKey(song.id), { song, source: cachedSource }); const fresh = deferred<typeof song>(); mock.getSong.mockReturnValue(fresh.promise);
+    await repository.saveResource(majdataSongKey(song.id), 1, 'now', { song, source: cachedSource }); const fresh = deferred<typeof song>(); mock.getSong.mockReturnValue(fresh.promise);
     const onFresh = vi.fn(); expect(await loadMajdataSong(song.id, undefined, onFresh)).toEqual(song);
     expect(onFresh).not.toHaveBeenCalled(); fresh.resolve({ ...song, hash: 'hash2' }); await vi.waitFor(() => expect(onFresh).toHaveBeenCalledWith(expect.objectContaining({ hash: 'hash2' })));
   });
@@ -49,7 +57,7 @@ describe('Majdata revision and account cache', () => {
     } finally { vi.useRealTimers(); }
   });
   it('does not publish a cached song fallback as a fresh refresh', async () => {
-    mock.values.set(majdataSongKey(song.id), { song, source: cachedSource });
+    await repository.saveResource(majdataSongKey(song.id), 1, 'now', { song, source: cachedSource });
     mock.getSong.mockRejectedValue(new Error('offline'));
     const onFresh = vi.fn();
     expect(await loadMajdataSong(song.id, undefined, onFresh)).toEqual(song);
@@ -76,14 +84,14 @@ describe('Majdata revision and account cache', () => {
   it('does not let a removed account request resurrect its snapshot', async () => {
     const recent = deferred<unknown[]>(); mock.getRecent.mockReturnValue(recent.promise);
     const pending = loadMajdataFresh('a', session); await vi.waitFor(() => expect(mock.getRecent).toHaveBeenCalled());
-    await clearMajdataAccount('a'); recent.resolve([]); await expect(pending).rejects.toThrow(); expect(mock.values.has(majdataAccountKey('a'))).toBe(false);
+    await clearMajdataAccount('a'); recent.resolve([]); await expect(pending).rejects.toThrow(); expect(await loadMajdataCached('a')).toBeNull();
   });
   it('rejects cancelled and obsolete detail writes', async () => {
     const old = deferred<typeof song>(); mock.getSong.mockReturnValueOnce(old.promise);
     const controller = new AbortController(); const pending = loadMajdataSong(song.id, controller.signal);
     await vi.waitFor(() => expect(mock.getSong).toHaveBeenCalled()); controller.abort();
     mock.getSong.mockResolvedValue({ ...song, hash: 'hash2' }); await loadMajdataSong(song.id);
-    old.resolve(song); await expect(pending).rejects.toBeDefined(); expect(mock.values.get(majdataSongKey(song.id))).toMatchObject({ song: { hash: 'hash2' } });
+    old.resolve(song); await expect(pending).rejects.toBeDefined(); expect(await repository.getResource(majdataSongKey(song.id), 1)).toMatchObject({ song: { hash: 'hash2' } });
   });
   it('shares full chart text and caches parsed models per revision and difficulty', async () => {
     const [master, utage] = await Promise.all([loadMajdataParsedChart(song, 4), loadMajdataParsedChart(song, 6)]);
@@ -98,12 +106,12 @@ describe('Majdata revision and account cache', () => {
   });
   it('does not label new text as an old revision', async () => {
     mock.getSong.mockResolvedValue({ ...song, hash: 'hash2' }); await expect(loadMajdataChart(song)).rejects.toThrow('谱面已更新');
-    expect(mock.values.has(`majdata-net:chart:${song.id}:${song.hash}`)).toBe(false);
+    expect(await repository.getResource(`majdata-net:chart:${song.id}:${song.hash}`, 1)).toBeNull();
   });
   it('blocks detached refresh writes after cache clearing', async () => {
     const remote = deferred<typeof song>(); mock.getSong.mockReturnValue(remote.promise);
     const pending = loadMajdataSong(song.id); await vi.waitFor(() => expect(mock.getSong).toHaveBeenCalled());
-    invalidateResourceWrites('majdata-net'); remote.resolve(song); await expect(pending).rejects.toThrow('缓存请求已失效'); expect(mock.values.size).toBe(0);
+    invalidateResourceWrites('majdata-net'); remote.resolve(song); await expect(pending).rejects.toThrow('缓存请求已失效'); expect(await repository.listResourceSizes()).toEqual([]);
   });
   it('shares concurrent song metadata without cancelling a remaining consumer', async () => {
     const remote = deferred<typeof song>(); mock.getSong.mockReturnValue(remote.promise);
@@ -115,7 +123,7 @@ describe('Majdata revision and account cache', () => {
     firstController.abort(); await cancelled;
     expect(mock.getSong.mock.calls[0][1].aborted).toBe(false);
     remote.resolve(song); expect(await second).toEqual(song);
-    expect(mock.values.get(majdataSongKey(song.id))).toMatchObject({ song });
+    expect(await repository.getResource(majdataSongKey(song.id), 1)).toMatchObject({ song });
   });
   it('cancels only the departing chart consumer and aborts when all consumers leave', async () => {
     const remote = deferred<string>(); mock.getChart.mockReturnValue(remote.promise);
@@ -130,7 +138,7 @@ describe('Majdata revision and account cache', () => {
     expect(mock.getChart.mock.calls[0][1].aborted).toBe(true);
     remote.resolve('&inote_5=(120)1,');
     await Promise.resolve(); await Promise.resolve();
-    expect(mock.values.has(`majdata-net:chart:${song.id}:${song.hash}`)).toBe(false);
+    expect(await repository.getResource(`majdata-net:chart:${song.id}:${song.hash}`, 1)).toBeNull();
   });
   it('lets another difficulty finish when the first parsed-chart consumer leaves', async () => {
     const remote = deferred<string>(); mock.getChart.mockReturnValue(remote.promise);
@@ -142,7 +150,7 @@ describe('Majdata revision and account cache', () => {
     firstController.abort(); await cancelled;
     remote.resolve('&inote_5=(120)1,\n&inote_7=(120)2m,');
     expect((await second).statistics.counts.mine).toBe(1);
-    expect(mock.values.has(`majdata-net:parsed:${song.id}:${song.hash}:4`)).toBe(false);
+    expect(await repository.getResource(`majdata-net:parsed:${song.id}:${song.hash}:4`, 1)).toBeNull();
   });
   it('starts a new cache generation without joining an invalidated chart request', async () => {
     const oldText = deferred<string>(); mock.getChart.mockReturnValueOnce(oldText.promise);
@@ -152,10 +160,10 @@ describe('Majdata revision and account cache', () => {
     const freshText = '&inote_5=(120)2,'; mock.getChart.mockResolvedValue(freshText);
     expect(await loadMajdataChart(song)).toBe(freshText);
     oldText.resolve('&inote_5=(120)1,'); await rejected;
-    expect(mock.values.get(`majdata-net:chart:${song.id}:${song.hash}`)).toBe(freshText);
+    expect(await repository.getResource(`majdata-net:chart:${song.id}:${song.hash}`, 1)).toBe(freshText);
   });
   it('does not publish a cached callback from a cleared request generation', async () => {
-    mock.values.set(majdataSongKey(song.id), { song, source: cachedSource });
+    await repository.saveResource(majdataSongKey(song.id), 1, 'now', { song, source: cachedSource });
     const fresh = deferred<typeof song>(); mock.getSong.mockReturnValue(fresh.promise);
     const onFresh = vi.fn(); await loadMajdataSong(song.id, undefined, onFresh);
     invalidateResourceWrites('majdata-net'); fresh.resolve({ ...song, hash: 'hash2' });

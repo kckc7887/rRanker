@@ -55,36 +55,62 @@ describe('lxns oauth helpers', () => {
 type FetchMock = ReturnType<typeof vi.fn>;
 
 function tokenResponse(payload: Record<string, unknown>): FetchMock {
-  return vi.fn(async () => ({
-    ok: true,
-    status: 200,
-    json: async () => payload,
-  }));
+  return vi.fn(async () => new Response(JSON.stringify(payload)));
 }
 
 async function loadLxnsOAuthModule(options: {
   fetchImpl?: FetchMock;
   pending?: PendingLxnsOAuth | null;
+  values?: Map<string, string>;
 } = {}) {
   vi.resetModules();
-  let pending = options.pending ?? null;
+  const values = options.values ?? new Map<string, string>();
+  if (options.pending) values.set('rranker.lxns.oauth.pending.v2', JSON.stringify(options.pending));
   if (options.fetchImpl) vi.doMock('expo/fetch', () => ({ fetch: options.fetchImpl }));
   vi.doMock('expo-secure-store', () => ({
-    getItemAsync: vi.fn(async (key: string) => (
-      key === 'rranker.lxns.oauth.pending.v2' && pending
-        ? JSON.stringify(pending)
-        : null
-    )),
+    getItemAsync: vi.fn(async (key: string) => values.get(key) ?? null),
     setItemAsync: vi.fn(async (key: string, value: string) => {
-      if (key === 'rranker.lxns.oauth.pending.v2') pending = JSON.parse(value);
+      values.set(key, value);
     }),
     deleteItemAsync: vi.fn(async (key: string) => {
-      if (key === 'rranker.lxns.oauth.pending.v2') pending = null;
+      values.delete(key);
     }),
     WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
   }));
   return import('@/providers/lxns-oauth');
 }
+
+describe('落雪待授权数据', () => {
+  const key = 'rranker.lxns.oauth.pending.v2';
+  const pending = { verifier: 'verifier', state: 'state', gameId: 'maimai' as const, expiresAt: Date.now() + 600_000 };
+
+  it('读取合法数据不修改存储', async () => {
+    const raw = JSON.stringify(pending);
+    const values = new Map([[key, raw], ['other-account', 'keep']]);
+    const oauth = await loadLxnsOAuthModule({ values });
+    await expect(oauth.readPendingLxnsOAuth()).resolves.toEqual(pending);
+    expect([...values]).toEqual([[key, raw], ['other-account', 'keep']]);
+  });
+
+  it.each([JSON.stringify({ verifier: 'verifier', state: 'state', expiresAt: pending.expiresAt }), '{', 'null', ''])
+    ('旧结构或损坏正文只删除当前键：%s', async raw => {
+      const values = new Map([[key, raw], ['other-account', 'keep']]);
+      const oauth = await loadLxnsOAuthModule({ values });
+      await expect(oauth.readPendingLxnsOAuth()).resolves.toBeNull();
+      expect([...values]).toEqual([['other-account', 'keep']]);
+    });
+
+  it.each(['read', 'delete'] as const)('%s I/O 失败报错并保留数据', async operation => {
+    const raw = operation === 'read' ? JSON.stringify(pending) : '{';
+    const values = new Map([[key, raw], ['other-account', 'keep']]);
+    const oauth = await loadLxnsOAuthModule({ values });
+    const secure = await import('expo-secure-store');
+    const failure = new Error(`${operation} failed`);
+    vi.mocked(operation === 'read' ? secure.getItemAsync : secure.deleteItemAsync).mockRejectedValueOnce(failure);
+    await expect(oauth.readPendingLxnsOAuth()).rejects.toMatchObject({ code: 'credential_storage', cause: failure });
+    expect([...values]).toEqual([[key, raw], ['other-account', 'keep']]);
+  });
+});
 
 describe('rotateLxnsTokens', () => {
   afterEach(() => {
@@ -134,11 +160,7 @@ describe('rotateLxnsTokens', () => {
         access_token: 'a3', token_type: 'Bearer', expires_in: 900, refresh_token: 'r3',
       },
     ];
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => responses.shift(),
-    }));
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(responses.shift())));
     const { rotateLxnsTokens } = await loadLxnsOAuthModule({ fetchImpl: fetchMock });
 
     await rotateLxnsTokens('r1');
@@ -162,11 +184,7 @@ describe('rotateLxnsTokens', () => {
         access_token: 'a3', token_type: 'Bearer', expires_in: 900, refresh_token: 'r3',
       },
     ];
-    const fetchMock = vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => responses.shift(),
-    }));
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify(responses.shift())));
     const { rotateLxnsTokens } = await loadLxnsOAuthModule({ fetchImpl: fetchMock });
 
     await rotateLxnsTokens('r1');
@@ -187,18 +205,10 @@ describe('rotateLxnsTokens', () => {
     let now = 3_000_000;
     vi.spyOn(Date, 'now').mockImplementation(() => now);
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce({
-        ok: true,
-        status: 200,
-        json: async () => ({
-          access_token: 'a2', token_type: 'Bearer', expires_in: 900, refresh_token: 'r2',
-        }),
-      })
-      .mockResolvedValueOnce({
-        ok: false,
-        status: 401,
-        json: async () => ({ error: 'invalid_grant' }),
-      });
+      .mockResolvedValueOnce(new Response(JSON.stringify({
+        access_token: 'a2', token_type: 'Bearer', expires_in: 900, refresh_token: 'r2',
+      })))
+      .mockResolvedValueOnce(new Response('{"error":"invalid_grant"}', { status: 401 }));
     const { rotateLxnsTokens } = await loadLxnsOAuthModule({ fetchImpl: fetchMock });
 
     await rotateLxnsTokens('r1');

@@ -26,9 +26,7 @@
  */
 import type { BeatmapData, ReplayData, SkinAssets, HitResult, HitSample } from '../../types/index';
 import type { ModDifficulty } from '../../utils/modDifficulty';
-import type { AccFrame, ComboFrame } from '../../renderer/HUDRenderer';
-import type { ScoreFrame } from '../../utils/scoreProcessor';
-import type { URTimeline } from '../../renderer/URBarRenderer';
+import type { ComboFrame } from '../../renderer/HUDRenderer';
 import type { ManiaInputEvent } from './input';
 import type { ManiaLayout } from './Playfield';
 import type { ManiaHoldState } from './hitJudge';
@@ -104,8 +102,5 @@ export interface ManiaSession {
   readonly hitResults:  readonly HitResult[];
 
   readonly noteResultByIndex: ReadonlyMap<number, HitResult>;
-  readonly accFrames:   readonly AccFrame[];
   readonly comboFrames: readonly ComboFrame[];
-  readonly scoreFrames: readonly ScoreFrame[];
-  readonly urTimeline:  URTimeline;
 }

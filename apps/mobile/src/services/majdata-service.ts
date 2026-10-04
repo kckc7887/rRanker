@@ -1,5 +1,5 @@
 import { z } from 'zod';
-import { MajdataSongSchema } from '@/domain/majdata';
+import { MajdataSongSchema, MajdataScoreSchema, MajdataRecentSchema } from '@/domain/majdata';
 import { DataSourceSchema } from '@/domain/schemas';
 import type { MajdataSnapshot, MajdataSong } from '@/domain/majdata';
 import type { DataSource } from '@/domain/models';
@@ -7,14 +7,13 @@ import type { HttpCookieSession } from '@/providers/http-cookies';
 import { MajdataProvider, majdataProvider } from '@/providers/majdata-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { applyMajdataSessionRotation, useSession } from '@/state/session-store';
-import { snapshotSource, captureResourceWrites, createInflightGuard, resourceWriteGeneration, subscribeResourceWrites } from './snapshot-cache-utils';
+import { cacheSourceSchema, snapshotSource, captureResourceWrites, createInflightGuard, resourceWriteGeneration, subscribeResourceWrites } from './snapshot-cache-utils';
 import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 import { createBoundedLoadQueue } from './offset-pagination';
 import { parseSimaiChart } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import { simaiStatistics } from '@/features/simai-chart-preview/statistics';
 import { cacheFirstLoad } from './cache-first';
 import {
-  assertFreshSnapshotSource,
   cachedSnapshotSource,
   snapshotMetadataOf,
   type SnapshotMetadata,
@@ -58,8 +57,12 @@ const songSnapshotSchema = z.object({
   source: DataSourceSchema.extend({ kind: z.literal('majdata-net') }),
 });
 type MajdataSongSnapshot = z.infer<typeof songSnapshotSchema>;
+const accountSnapshotSchema = z.object({
+  player: z.object({ username: z.string() }), records: z.array(MajdataScoreSchema), recent: z.array(MajdataRecentSchema),
+  source: cacheSourceSchema('majdata-net'),
+});
 
-export function loadMajdataCached(id: string) { return repository.getResource<MajdataSnapshot>(majdataAccountKey(id), 1); }
+export function loadMajdataCached(id: string) { return repository.getResource(majdataAccountKey(id), 1, accountSnapshotSchema); }
 export function clearMajdataAccount(id: string) {
   accountRequests.set(id, (accountRequests.get(id) ?? 0) + 1);
   return repository.clearResources([majdataAccountKey(id)]);
@@ -77,7 +80,7 @@ export async function loadMajdataFresh(id: string, session: HttpCookieSession, s
   const provider = new MajdataProvider(session, async next => {
     assertCurrent();
     const state = useSession.getState();
-    if (signal?.aborted || accountRequests.get(id) !== generation || state.sessionsByAccountId[id] !== expected) return;
+    if (state.sessionsByAccountId[id] !== expected) return;
     await applyMajdataSessionRotation(id, next, expected, signal);
     assertCurrent();
     expected = useSession.getState().sessionsByAccountId[id]?.mode === 'http-cookies'
@@ -138,7 +141,6 @@ async function loadMajdataSongCurrent(id: string, signal?: AbortSignal): Promise
       const song = await requestMajdataSong(id, requestSignal, foregroundSignal, assertSongCurrent);
       assertSongCurrent();
       const source = majdataSource();
-      assertFreshSnapshotSource(source);
       const snapshot = { song, source };
       await repository.saveResource(majdataSongKey(id), 1, source.updatedAt, snapshot, assertSongCurrent);
       assertSongCurrent();
@@ -147,7 +149,7 @@ async function loadMajdataSongCurrent(id: string, signal?: AbortSignal): Promise
       return { song, fromCache: false, source };
     } catch (error) {
       assertSongCurrent();
-      if (cached && !requestSignal?.aborted && songRequests.get(id) === generation) return cachedSongLoad(cached);
+      if (cached) return cachedSongLoad(cached);
       throw error;
     }
   }, signal);

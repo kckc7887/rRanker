@@ -9,7 +9,6 @@
 | `apps/mobile/app` | 文件路由、根布局与标签页 |
 | `apps/mobile/src/domain` | 游戏模型、计算、筛选与持久化格式 |
 | `apps/mobile/src/providers` | 上游请求、认证和响应转换 |
-| `apps/mobile/src/repositories` | 当前仓库接口 |
 | `apps/mobile/src/storage` | SQLite、KV 与 SecureStore 读写 |
 | `apps/mobile/src/services` | 取数、资源下载、会话提交与上传 |
 | `apps/mobile/src/state` | Zustand 状态、QueryClient 与生命周期 |
@@ -63,7 +62,7 @@ HTTP 请求使用 `totalAttempts` 表示总尝试次数。认证、轮询、取�
 | ScoreHub | v3 账号索引、分片安全令牌 |
 | 可选账号档案 | 所属账号 Store 的当前目录格式 |
 | 偏好 | `createPreferencesStore` 或所属 Store，按键串行写入 |
-| 成绩、曲库、资源 | `SqliteSnapshotRepository`；成绩 schema 5、曲库 schema 1、资源使用所属模块版本 |
+| 成绩、资源 | `SqliteSnapshotRepository`；成绩 schema 5，资源使用所属模块版本 |
 | 个人曲库 | `SqliteUserLibraryRepository`，schema 4，条目、标签与预设 |
 | 运行日志 | 独立日志数据库及当前诊断文件 |
 | 图片和游戏资源 | 对应文件缓存与发布修订目录 |
@@ -117,7 +116,7 @@ KALEIDXSCOPE 的日程、课题和手工进度位于 `domain/kaleidx-scope.ts`�
 
 测试验证实际输入输出、交互、取消、存储往返和 I/O 失败。外部 HTTP、原生 SDK、文件系统和浏览器环境可模拟；生产代码不提供测试替换、统计或 reset 接口。
 
-postinstall 仅保留 decode-uri-component、Metro image-size、Xiaomi WebView 和 Expo FileHandle 的现有运行/构建补丁。
+postinstall 按实际源码调用点应用 decode-uri-component、Metro image-size、Xiaomi WebView 和 Expo FileHandle 的运行/构建补丁。
 
 ### CI 与发布
 

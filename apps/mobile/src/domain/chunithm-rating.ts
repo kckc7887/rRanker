@@ -92,12 +92,6 @@ function rawRatingUnits(levelValue: number, score: number): number {
   return 0;
 }
 
-/** raw 是公式值，低定数在 800000–900000 分可能为负。 */
-export function rawChunithmChartRating(levelValue: number, score: number): number {
-  if (!hasUsableInput(levelValue, score)) return 0;
-  return rawRatingUnits(levelValue, score) / RATING_UNITS;
-}
-
 export function chunithmChartRatingDisplay(levelValue: number, score: number): number {
   if (!hasUsableInput(levelValue, score)) return 0;
   /** 在整数域截断，避免浮点误差跨越两位显示边界。 */

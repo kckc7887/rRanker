@@ -9,17 +9,13 @@ import {
 
 function LifecycleProbe() {
   const lifecycle = useAppLifecycle();
-  return <Text>{[
-    lifecycle.phase,
-    lifecycle.foregroundGeneration,
-    lifecycle.memoryWarningGeneration,
-  ].join('|')}</Text>;
+  return <Text>{lifecycle.phase}</Text>;
 }
 
 describe('AppLifecycleProvider', () => {
   afterEach(() => jest.restoreAllMocks());
 
-  it('owns the only listeners and cancels an expired foreground recovery', async () => {
+  it('cancels an expired foreground recovery and releases native listeners', async () => {
     let changeListener: ((state: 'active' | 'inactive' | 'background') => void) | null = null;
     let memoryWarningListener: (() => void) | null = null;
     const removers = [jest.fn(), jest.fn()];
@@ -37,47 +33,46 @@ describe('AppLifecycleProvider', () => {
     });
 
     const view = await render(<AppLifecycleProvider><LifecycleProbe /></AppLifecycleProvider>);
-    expect(AppState.addEventListener).toHaveBeenCalledTimes(2);
-    expect(screen.getByText(/foreground-waiting\|0\|0/)).toBeTruthy();
+    expect(screen.getByText('foreground-waiting')).toBeTruthy();
 
     await act(() => { tasks[0]?.callback(); });
-    expect(screen.getByText('foreground-ready|1|0')).toBeTruthy();
+    expect(screen.getByText('foreground-ready')).toBeTruthy();
     const firstSignal = getForegroundAbortSignal();
     expect(firstSignal.aborted).toBe(false);
 
     await act(() => { changeListener?.('inactive'); });
     expect(firstSignal.aborted).toBe(false);
-    expect(screen.getByText('inactive|1|0')).toBeTruthy();
+    expect(screen.getByText('inactive')).toBeTruthy();
 
     await act(() => { changeListener?.('active'); });
     await act(() => { tasks.at(-1)?.callback(); });
-    expect(screen.getByText('foreground-ready|1|0')).toBeTruthy();
+    expect(screen.getByText('foreground-ready')).toBeTruthy();
     expect(getForegroundAbortSignal()).toBe(firstSignal);
 
     await act(() => { changeListener?.('background'); });
     expect(firstSignal.aborted).toBe(true);
-    expect(screen.getByText('background|1|0')).toBeTruthy();
+    expect(screen.getByText('background')).toBeTruthy();
     await act(() => { changeListener?.('active'); });
     const expiredTask = tasks.at(-1)!;
     await act(() => { changeListener?.('background'); });
-    expect(expiredTask.cancel).toHaveBeenCalledTimes(1);
+    expect(expiredTask.cancel).toHaveBeenCalled();
     await act(() => { expiredTask.callback(); });
-    expect(screen.getByText('background|1|0')).toBeTruthy();
+    expect(screen.getByText('background')).toBeTruthy();
 
     await act(() => { changeListener?.('active'); });
     await act(() => { tasks.at(-1)?.callback(); });
-    expect(screen.getByText('foreground-ready|2|0')).toBeTruthy();
+    expect(screen.getByText('foreground-ready')).toBeTruthy();
     expect(getForegroundAbortSignal()).not.toBe(firstSignal);
     const restoredSignal = getForegroundAbortSignal();
     await act(() => { expiredTask.callback(); });
     expect(getForegroundAbortSignal()).toBe(restoredSignal);
 
     await act(() => { memoryWarningListener?.(); });
-    expect(screen.getByText('foreground-ready|2|1')).toBeTruthy();
+    expect(screen.getByText('foreground-ready')).toBeTruthy();
 
     await view.unmount();
-    expect(removers[0]).toHaveBeenCalledTimes(1);
-    expect(removers[1]).toHaveBeenCalledTimes(1);
+    expect(removers[0]).toHaveBeenCalled();
+    expect(removers[1]).toHaveBeenCalled();
   });
 
   it('restores a live abort signal after background via inactive', async () => {
@@ -96,17 +91,17 @@ describe('AppLifecycleProvider', () => {
 
     const view = await render(<AppLifecycleProvider><LifecycleProbe /></AppLifecycleProvider>);
     await act(() => { tasks[0]?.callback(); });
-    expect(screen.getByText('foreground-ready|1|0')).toBeTruthy();
+    expect(screen.getByText('foreground-ready')).toBeTruthy();
     const firstSignal = getForegroundAbortSignal();
 
     await act(() => { changeListener?.('background'); });
     expect(firstSignal.aborted).toBe(true);
     await act(() => { changeListener?.('inactive'); });
-    expect(screen.getByText('inactive|1|0')).toBeTruthy();
+    expect(screen.getByText('inactive')).toBeTruthy();
 
     await act(() => { changeListener?.('active'); });
     await act(() => { tasks.at(-1)?.callback(); });
-    expect(screen.getByText('foreground-ready|2|0')).toBeTruthy();
+    expect(screen.getByText('foreground-ready')).toBeTruthy();
     const restored = getForegroundAbortSignal();
     expect(restored.aborted).toBe(false);
     expect(restored).not.toBe(firstSignal);

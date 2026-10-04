@@ -26,25 +26,18 @@
  */
 import type { BeatmapData, ReplayData, SkinAssets, HitResult } from '../../types/index';
 import type { ModDifficulty } from '../../utils/modDifficulty';
-import type { AccFrame, ComboFrame } from '../../renderer/HUDRenderer';
-import type { ScoreFrame } from '../../utils/scoreProcessor';
-import type { URTimeline } from '../../renderer/URBarRenderer';
-import { computeTaikoURTimeline } from '../../renderer/URBarRenderer';
+import type { ComboFrame } from '../../renderer/HUDRenderer';
 import type { RenderOptions } from '../../renderer/Renderer';
 import type { Ruleset } from '../Ruleset';
 import { convertBeatmapToTaiko } from './converter';
 import { taikoFrames } from './input';
 import {
-  computeBarLineTimes, drawTaikoPlayfield, hasTaikoExplosion,
+  computeBarLineTimes, drawTaikoPlayfield,
   scrollVelocityAt, taikoScrollMultiplier, LANE_WIDTH_PX,
 } from './Playfield';
 import { computeTaikoHitResults } from './hitJudge';
 import { TaikoFlashlight } from './Flashlight';
-import {
-  computeTaikoScoreV1Timeline, computeTaikoScoreV2Timeline,
-} from './scoreProcessor';
-import { computeTaikoAccTimeline, computeComboTimeline } from '../../renderer/HUDRenderer';
-import { drawJudgements } from '../../renderer/JudgementRenderer';
+import { computeComboTimeline } from '../../renderer/HUDRenderer';
 import type { TaikoSession, SwellProgress } from './types';
 
 export type { TaikoSession, TaikoHitObject, TaikoHit, TaikoDrumRoll, TaikoSwell, SwellProgress } from './types';
@@ -59,10 +52,6 @@ export const taikoRuleset: Ruleset<TaikoSession> = {
     _qualityTotal: number,
   ): TaikoSession {
 
-    console.assert(
-      beatmap.mode === 1 || beatmap.mode === 0,
-      `taikoRuleset received unsupported beatmap.mode=${beatmap.mode}`,
-    );
 
     const objects = convertBeatmapToTaiko(beatmap);
 
@@ -94,13 +83,10 @@ export const taikoRuleset: Ruleset<TaikoSession> = {
       beatmap, replay, modDiff, skin, objects, inputEvents, ghostTaps: [], barLines,
       objectVel, barLineVel, maxScrollMs,
       hitResults: [],
-      accFrames: [],
       comboFrames: [],
-      scoreFrames: [],
       swellProgress: new Map(),
       hitJudgmentByNote: new Map(),
       flashlight: null,
-      urTimeline: { hits: [], zones: [] },
     };
     const { results: hitResults, ghostTaps } = computeTaikoHitResults(session, modDiff);
 
@@ -133,17 +119,12 @@ export const taikoRuleset: Ruleset<TaikoSession> = {
       swellProgress: swellProgress as ReadonlyMap<number, SwellProgress>,
       hitJudgmentByNote: hitJudgmentByNote as ReadonlyMap<number, { time: number; judgement: number }>,
     };
-    const accFrames   = computeTaikoAccTimeline(hitResults);
     const comboFrames = computeComboTimeline(hitResults);
-    const scoreFrames = modDiff.isLazer
-      ? computeTaikoScoreV2Timeline(sessionWithResults, modDiff)
-      : computeTaikoScoreV1Timeline(sessionWithResults, modDiff);
 
     const flashlight = modDiff.isFL ? new TaikoFlashlight(beatmap, comboFrames) : null;
 
-    const urTimeline = computeTaikoURTimeline(objects, hitResults, modDiff);
 
-    return { ...sessionWithResults, accFrames, comboFrames, scoreFrames, flashlight, urTimeline };
+    return { ...sessionWithResults, comboFrames, flashlight };
   },
 
   draw(
@@ -153,15 +134,8 @@ export const taikoRuleset: Ruleset<TaikoSession> = {
     options: RenderOptions,
   ): void {
     drawTaikoPlayfield(ctx, s, timeMs, options);
-    /** 有 taiko-hit300 素材时使用落点效果，否则使用弹窗。 */
-    if (options.showJudgement && !hasTaikoExplosion(s.skin)) {
-      drawJudgements(ctx, s.hitResults, timeMs, s.skin, 'taiko');
-    }
   },
 
   hitResults:  (s: TaikoSession): readonly HitResult[] => s.hitResults,
-  scoreFrames: (s: TaikoSession): readonly ScoreFrame[] => s.scoreFrames,
-  accFrames:   (s: TaikoSession): readonly AccFrame[] => s.accFrames,
   comboFrames: (s: TaikoSession): readonly ComboFrame[] => s.comboFrames,
-  urTimeline:  (s: TaikoSession): URTimeline => s.urTimeline,
 };

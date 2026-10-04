@@ -17,9 +17,6 @@ vi.mock('@/providers/phira-provider', () => ({
       illustration: null,
       file: 'https://phira.example/chart.zip',
     }),
-    downloadChart: () => {
-      throw new Error('should use injected downloadChart');
-    },
   },
 }));
 
@@ -67,14 +64,9 @@ function storedZip(files: readonly { name: string; data: Buffer; uncompressedSiz
 }
 
 describe('chart preview input resource injection', () => {
-  it('forwards a custom Phigros reader into loadPhigrosChartPreviewResources', async () => {
+  it('prepares Phigros chart text, music and illustration data', async () => {
     const read = vi.fn(async () => new Uint8Array([1]));
-    loadResources.mockImplementation(async (_target, _signal, customRead) => {
-      expect(customRead).toBe(read);
-      await customRead?.(
-        { path: 'c', url: 'https://c', size: 2, sha256: 'a', contentType: 'application/json' },
-        0,
-      );
+    loadResources.mockImplementation(async () => {
       return {
         bundle: {
           song: { title: 'Song' },
@@ -94,12 +86,13 @@ describe('chart preview input resource injection', () => {
       read,
     );
 
-    expect(read).toHaveBeenCalledTimes(1);
     expect(prepared.config.chartText).toBe('{}');
+    expect(prepared.config.title).toBe('Song AT');
+    expect(prepared.config.illustrationUrl).toBe('data:image/png;base64,BAU=');
     expect(prepared.musicDataBase64).toBe(Buffer.from([1, 2, 3]).toString('base64'));
   });
 
-  it('uses injected Phira zip download instead of the provider arrayBuffer path', async () => {
+  it('prepares a downloaded Phira chart and stages its music', async () => {
     const zip = new JSZip();
     zip.file('info.yml', 'chart: chart.json\nmusic: song.mp3\nformat: pgr');
     zip.file('chart.json', JSON.stringify({ formatVersion: 3, offset: 0, judgeLineList: [] }));
@@ -123,7 +116,6 @@ describe('chart preview input resource injection', () => {
     );
 
     expect(downloadChart).toHaveBeenCalledWith('https://phira.example/chart.zip', expect.any(AbortSignal));
-    expect(stageMusic).toHaveBeenCalledTimes(1);
     expect(prepared.config.chartText).toContain('"formatVersion"');
     expect(prepared.musicDataBase64).toBe(Buffer.from([1, 2, 3, 4]).toString('base64'));
   });

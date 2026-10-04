@@ -9,9 +9,7 @@ for (const ext of ['css', 'html', 'wav', 'bundle']) {
   }
 }
 
-// Ionicons 字体子集化：@expo/vector-icons 内部 require 的 vendor 全量字体（约 381KB）
-// 重定向到项目内子集字体 assets/fonts/Ionicons.ttf（scripts/subset-ionicons.mjs 生成，
-// 约 7KB），使 Metro 资产与 expo-font 原生嵌入共用同一份子集文件，避免双份全量字体进包。
+/** Metro 与 expo-font 共用子集字体，避免重复打包全量字体。 */
 const IONICON_VENDOR_SUFFIX = ['vendor', 'react-native-vector-icons', 'Fonts', 'Ionicons.ttf'].join('/');
 const IONICON_SUBSET_FONT = path.join(__dirname, 'assets', 'fonts', 'Ionicons.ttf');
 const previousResolveRequest = config.resolver.resolveRequest;

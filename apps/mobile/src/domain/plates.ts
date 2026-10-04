@@ -14,10 +14,6 @@ function meets(value: string | null, required: string | null | undefined, order:
   const minimum = order.indexOf(required.toLowerCase());
   return minimum >= 0 && actual >= minimum;
 }
-export function recordMeetsRequirement(record: ScoreRecord, requirement: PlateRequirement): boolean {
-  return (requirement.difficulties.length === 0 || requirement.difficulties.includes(record.levelIndex)) &&
-    conditionMeets(record, requirement);
-}
 
 function conditionMeets(record: ScoreRecord, requirement: PlateRequirement): boolean {
   return meets(record.rate, requirement.rate, RATE)

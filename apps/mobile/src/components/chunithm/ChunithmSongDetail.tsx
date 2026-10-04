@@ -213,7 +213,6 @@ function DetailChrome({
         SONG_DETAIL_CHROME_STYLES.headerButton,
         SONG_DETAIL_CHROME_STYLES.headerFloatingButton,
         { top: insets.top, right: 8 },
-        favorite && SONG_DETAIL_CHROME_STYLES.headerFavoriteActive,
         pressed && styles.pressed,
         favoriteDisabled && styles.disabled,
       ]}

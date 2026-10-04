@@ -25,7 +25,7 @@
  * SOFTWARE.
  */
 import type { SkinAssets } from '../../types/index';
-import type { CatchSession, CatchObject, CatchObjectType } from './types';
+import type { CatchSession, CatchObject } from './types';
 import type { CatcherFrame } from './input';
 import type { RenderOptions } from '../../renderer/Renderer';
 import { calculateScaleFromCircleSize } from './converter';
@@ -462,19 +462,14 @@ function redTinted(bitmap: ImageBitmap): CanvasImageSource {
 
 type CatcherState = 'idle' | 'fail' | 'kiai';
 interface HyperWindow { start: number; end: number; }
-interface CaughtObj { time: number; x: number; type: CatchObjectType; scale: number; indexInBeatmap: number; combo: number; }
-interface PlatedFruit extends CaughtObj { explodeAt: number; }
 interface CatchVisualState {
 
   stateChanges: { time: number; state: CatcherState }[];
 
   hypers: HyperWindow[];
 
-  caught: CaughtObj[];
 
-  clearTimes: number[];
 
-  plated: PlatedFruit[];
 }
 
 const _visualCache = new WeakMap<CatchSession, CatchVisualState>();
@@ -496,9 +491,7 @@ function visualState(session: CatchSession): CatchVisualState {
   const results = session.hitResults;
 
   const stateChanges: { time: number; state: CatcherState }[] = [];
-  const caught: CaughtObj[] = [];
 
-  let combo = 0;
   for (let i = 0; i < sorted.length; i++) {
     const obj = sorted[i]!;
     const caughtHit = (results[i]?.judgement ?? 0) > 0;
@@ -509,10 +502,6 @@ function visualState(session: CatchSession): CatchVisualState {
         time: obj.startTime,
         state: caughtHit ? (kiaiAt(session, obj.startTime) ? 'kiai' : 'idle') : 'fail',
       });
-      combo = caughtHit ? combo + 1 : 0;
-    }
-    if (caughtHit && obj.type !== 'tinyDroplet') {
-      caught.push({ time: obj.startTime, x: obj.effectiveX, type: obj.type, scale: obj.scale, indexInBeatmap: obj.indexInBeatmap, combo });
     }
   }
 
@@ -532,37 +521,7 @@ function visualState(session: CatchSession): CatchVisualState {
     prevIdx = i;
   }
 
-  const groups: { newCombo: boolean; endTime: number }[] = [];
-  let curSource = -1;
-  for (const obj of session.objects) {
-    if (obj.sourceIndex !== curSource) {
-      curSource = obj.sourceIndex;
-      const src = session.beatmap.hitObjects[obj.sourceIndex];
-      const nc = src !== undefined && (src.type === 'circle' || src.type === 'slider') ? src.newCombo : true;
-      groups.push({ newCombo: nc, endTime: obj.startTime });
-    } else {
-      const g = groups[groups.length - 1]!;
-      if (obj.startTime > g.endTime) g.endTime = obj.startTime;
-    }
-  }
-  const clearTimes: number[] = [];
-  for (let i = 0; i < groups.length; i++) {
-    if (i === groups.length - 1 || groups[i + 1]!.newCombo) clearTimes.push(groups[i]!.endTime);
-  }
-  clearTimes.sort((a, b) => a - b);
-
-  const plated: PlatedFruit[] = [];
-  for (const c of caught) {
-    if (c.type !== 'fruit') continue;
-    let lo = 0, hi = clearTimes.length - 1, ex = Infinity;
-    while (lo <= hi) {
-      const mid = (lo + hi) >> 1;
-      if (clearTimes[mid]! >= c.time) { ex = clearTimes[mid]!; hi = mid - 1; } else lo = mid + 1;
-    }
-    plated.push({ ...c, explodeAt: ex });
-  }
-
-  vs = { stateChanges, hypers, caught, clearTimes, plated };
+  vs = { stateChanges, hypers };
   _visualCache.set(session, vs);
   return vs;
 }
@@ -613,63 +572,20 @@ function blitCatcher(
   topY: number,
   widthScreen: number,
   facing: number,
-  opts: { alpha?: number; additive?: boolean; extraTint?: number; tintFull?: boolean } = {},
+  extraTint: number,
 ): void {
   const dw = widthScreen;
   const dh = widthScreen * (bitmap.height / bitmap.width);
   ctx.save();
-  if (opts.additive) ctx.globalCompositeOperation = 'lighter';
-  if (opts.alpha !== undefined) ctx.globalAlpha = opts.alpha;
   ctx.translate(centreX, topY);
   ctx.scale(facing, 1);
-  const src: CanvasImageSource = opts.tintFull ? redTinted(bitmap) : bitmap;
-  ctx.drawImage(src, -dw / 2, 0, dw, dh);
+  ctx.drawImage(bitmap, -dw / 2, 0, dw, dh);
 
-  if (opts.extraTint !== undefined && opts.extraTint > 0.02 && !opts.tintFull) {
-    ctx.globalAlpha = (opts.alpha ?? 1) * opts.extraTint;
+  if (extraTint > 0.02) {
+    ctx.globalAlpha *= extraTint;
     ctx.drawImage(redTinted(bitmap), -dw / 2, 0, dw, dh);
   }
   ctx.restore();
-}
-
-function drawDashTrail(
-  ctx: CanvasRenderingContext2D,
-  session: CatchSession,
-  vs: CatchVisualState,
-  idle: ImageBitmap,
-  timeMs: number,
-  topY: number,
-  widthScreen: number,
-): void {
-
-}
-
-function drawHyperAfterimages(
-  ctx: CanvasRenderingContext2D,
-  session: CatchSession,
-  vs: CatchVisualState,
-  idle: ImageBitmap,
-  timeMs: number,
-  topY: number,
-  widthScreen: number,
-): void {
-
-}
-
-function drawHitExplosions(
-  ctx: CanvasRenderingContext2D, session: CatchSession, vs: CatchVisualState, timeMs: number, catcherX: number,
-): void {
-
-}
-
-function drawCaughtPlate(
-  ctx: CanvasRenderingContext2D,
-  session: CatchSession,
-  vs: CatchVisualState,
-  timeMs: number,
-  catcherX: number,
-): void {
-
 }
 
 const _sortedCache = new WeakMap<CatchSession, readonly CatchObject[]>();
@@ -730,13 +646,9 @@ function drawCatcherAndFeedback(ctx: CanvasRenderingContext2D, session: CatchSes
   const dh = widthScreen * (dims.logH / dims.logW);
   const topY = CATCH_LINE_Y - dh * (CATCHER_RIM_Y / dims.logH) + CATCHER_TOP_OFFSET;
 
-  drawDashTrail(ctx, session, vs, idle, timeMs, topY, widthScreen);
-  drawHyperAfterimages(ctx, session, vs, idle, timeMs, topY, widthScreen);
   blitCatcher(ctx, body, screenX(catcherX), topY, widthScreen, facingAt(path, timeMs),
-    { extraTint: hyperFactorAt(vs, timeMs) });
+    hyperFactorAt(vs, timeMs));
 
-  drawCaughtPlate(ctx, session, vs, timeMs, catcherX);
-  drawHitExplosions(ctx, session, vs, timeMs, catcherX);
 }
 
 export function drawCatchPlayfield(ctx: CanvasRenderingContext2D, session: CatchSession, timeMs: number, options: RenderOptions): void {

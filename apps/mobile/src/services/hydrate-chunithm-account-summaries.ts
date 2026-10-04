@@ -1,8 +1,8 @@
 import {
   buildChunithmMapIconUrl,
   CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+  ChunithmPersonalSnapshotSchema,
   chunithmPersonalResourceKey,
-  type ChunithmPersonalSnapshot,
 } from '@/domain/chunithm-personal';
 import { useSession } from '@/state/session-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
@@ -23,9 +23,10 @@ export async function hydrateChunithmAccountSummaries(signal?: AbortSignal): Pro
     signal,
     load: async (account) => {
       try {
-        const snapshot = await repository.getResource<ChunithmPersonalSnapshot>(
+        const snapshot = await repository.getResource(
           chunithmPersonalResourceKey(account.id),
           CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+          ChunithmPersonalSnapshotSchema,
         );
         const player = snapshot?.player;
         if (!player || signal?.aborted) return;

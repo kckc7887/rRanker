@@ -26,20 +26,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-export interface SimaiPlaybackEnvironment {
-  createAudioContext(): AudioContext;
-  requestFrame(callback: (timestamp: number) => void): number;
-  cancelFrame(handle: number): void;
-  now(): number;
-}
-
-export const defaultSimaiPlaybackEnvironment: SimaiPlaybackEnvironment = {
-  createAudioContext: () => new AudioContext(),
-  requestFrame: (callback) => requestAnimationFrame(callback),
-  cancelFrame: (handle) => cancelAnimationFrame(handle),
-  now: () => performance.now(),
-};
-
 export interface SimaiPlaybackHost {
   render(beats: number): void;
   onPlayStateChange?(playing: boolean): void;
@@ -58,7 +44,6 @@ export interface SimaiPlaybackOptions {
   /** 音量范围 0～10。 */
   soundVolume?: number;
   musicOffset?: number;
-  environment?: SimaiPlaybackEnvironment;
   host: SimaiPlaybackHost;
 }
 
@@ -68,7 +53,6 @@ export class SimaiPlaybackSession {
   private readonly answerEvents: readonly PreparedAudioEvent[];
   private readonly answerSoundUrl: string;
   private readonly musicOffset: number;
-  private readonly environment: SimaiPlaybackEnvironment;
   private readonly host: SimaiPlaybackHost;
   private range = { totalDurationMs: 0, totalBeats: 0 };
   private timeline: SimaiPlaybackTimeline;
@@ -99,7 +83,6 @@ export class SimaiPlaybackSession {
     this.playbackSpeed = options.speed ?? 1;
     this.musicVolume = options.musicVolume ?? 10;
     this.soundVolume = options.soundVolume ?? 10;
-    this.environment = options.environment ?? defaultSimaiPlaybackEnvironment;
     this.host = options.host;
     this.timeline = createSimaiPlaybackTimeline(this.charts[0]!, 0, this.musicOffset);
     this.applyRange();
@@ -175,11 +158,11 @@ export class SimaiPlaybackSession {
       await this.startSource(musicSeconds, command);
     } else {
       this.stopSource(true);
-      this.lastFrameTimestamp = this.environment.now();
+      this.lastFrameTimestamp = performance.now();
     }
     if (command !== this.command || this.disposed) return;
     this.cancelFrame();
-    this.frame = this.environment.requestFrame(this.tick);
+    this.frame = requestAnimationFrame(this.tick);
   }
 
   pause(): void {
@@ -256,13 +239,13 @@ export class SimaiPlaybackSession {
 
   private cancelFrame(): void {
     if (this.frame === null) return;
-    this.environment.cancelFrame(this.frame);
+    cancelAnimationFrame(this.frame);
     this.frame = null;
   }
 
   private async ensureAudio(resume = true): Promise<AudioContext> {
     if (!this.context) {
-      const context = this.environment.createAudioContext();
+      const context = new AudioContext();
       this.context = context;
       this.musicGain = context.createGain();
       this.musicGain.gain.value = this.musicVolume / 10;
@@ -393,6 +376,6 @@ export class SimaiPlaybackSession {
     }
     this.host.render(this.beatsPosition);
     this.scheduleAnswers(this.timeline.beatsToMs(this.beatsPosition));
-    this.frame = this.environment.requestFrame(this.tick);
+    this.frame = requestAnimationFrame(this.tick);
   };
 }

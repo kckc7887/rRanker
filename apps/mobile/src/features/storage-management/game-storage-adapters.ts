@@ -16,11 +16,9 @@ import { clearPhigrosIllustrationStage, phigrosIllustrationStageDirectory } from
 import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-font-cache';
 import { clearMaimaiUiCache } from '@/features/best-image/maimai-ui-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
-import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { MAIMAI_ASSETS_ROOT, PHIGROS_FONT_ROOT } from '@/features/storage-management/fs-storage';
 import { resetPhigrosKyouAliasesCache } from '@/services/phigros-kyou-cache';
 import {
-  collectStorageMeasurementInventory,
   createGameStorageAdapter,
   selectStorageInventory,
   type GameStorageAdapter,
@@ -54,16 +52,12 @@ function accountOwnership(gameId: GameId, exclude?: (accountId: string) => boole
   return (accountId: string) => (accountId === gameId || accountId.startsWith(`${gameId}:`)) && !exclude?.(accountId);
 }
 
-export async function measureDurableLocalMaimaiBytes(
-  snapshots: SqliteSnapshotRepository,
-  inventory?: StorageMeasurementInventory,
-): Promise<number> {
-  const measured = inventory ?? await collectStorageMeasurementInventory(snapshots, false);
-  return selectStorageInventory(measured, { ownsAccount: isDurableMaimaiAccountId }).bytes;
+export function measureDurableLocalMaimaiBytes(inventory: StorageMeasurementInventory): number {
+  return selectStorageInventory(inventory, { ownsAccount: isDurableMaimaiAccountId }).bytes;
 }
 
 const maimaiFileResources: GameStorageAdapter['fileResources'] = [{
-  persistence: 'versioned-asset', root: MAIMAI_ASSETS_ROOT, clear: clearMaimaiUiCache,
+  root: MAIMAI_ASSETS_ROOT, clear: clearMaimaiUiCache,
 }];
 const maimaiAdapter = createGameStorageAdapter({
   gameId: 'maimai',
@@ -78,13 +72,12 @@ const maimaiAdapter = createGameStorageAdapter({
   ownership: {
     ownsAccount: accountOwnership('maimai', isDurableMaimaiAccountId),
     resourceKeys: MAIMAI_CATALOG_RESOURCE_KEYS,
-    includeCatalog: true,
   },
 });
 
 const phigrosFileResources: GameStorageAdapter['fileResources'] = [
-  { persistence: 'versioned-asset', root: PHIGROS_FONT_ROOT, clear: clearPhigrosFontCache },
-  { persistence: 'temporary', root: phigrosIllustrationStageDirectory, clear: clearPhigrosIllustrationStage },
+  { root: PHIGROS_FONT_ROOT, clear: clearPhigrosFontCache },
+  { root: phigrosIllustrationStageDirectory, clear: clearPhigrosIllustrationStage },
 ];
 const phigrosAdapter = createGameStorageAdapter({
   gameId: 'phigros',

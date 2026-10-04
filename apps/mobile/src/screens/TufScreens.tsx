@@ -398,7 +398,6 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
       } : undefined}
       favoriteStyle={(pressed) => [
         styles.headerButton, styles.headerFloatingButton, { top: insets.top + 8, right: 8 },
-        favorite && styles.headerFavoriteActive,
         pressed && { opacity: 0.7 },
       ]}
     />
@@ -549,7 +548,6 @@ const styles = StyleSheet.create({
   heroArtist: { color: 'rgba(255,255,255,0.94)', fontSize: 15, lineHeight: 21, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.3)', textShadowRadius: 6 },
   headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
-  headerFavoriteActive: {},
   metadata: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 10, paddingVertical: 12 },
   metadataCellRoot: { minWidth: 0 },
   metadataCell: { minWidth: 0, alignItems: 'center', paddingHorizontal: 4, gap: 3 },

@@ -7,8 +7,7 @@ import {
   type AnyScoreProvider,
   type DetailedCatalogProvider,
 } from '@/providers/contracts';
-import type { CatalogRepository } from '@/repositories/catalog-repository';
-import type { SnapshotRepository } from '@/repositories/snapshot-repository';
+import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { ProviderError } from '@/providers/errors';
 import { startTimer, timed } from '@/utils/startup-timing';
 import { staleCached } from '@/services/cache-first';
@@ -45,38 +44,6 @@ export function buildScoreSnapshot(
   };
 }
 
-function withoutInvalidUtageRecords(snapshot: ScoreSnapshot): ScoreSnapshot {
-  const records = snapshot.records.filter(
-    (record) => !isUtageSongId(record.songId) || record.type === 'UTAGE',
-  );
-  const removedInvalidRecordCount = snapshot.records.length - records.length;
-  const b35 = snapshot.best50.b35.filter(
-    (record) => !isUtageSongId(record.songId) && record.type !== 'UTAGE',
-  );
-  const b15 = snapshot.best50.b15.filter(
-    (record) => !isUtageSongId(record.songId) && record.type !== 'UTAGE',
-  );
-  if (records.length === snapshot.records.length &&
-    b35.length === snapshot.best50.b35.length &&
-    b15.length === snapshot.best50.b15.length) {
-    return snapshot;
-  }
-  return {
-    ...snapshot,
-    records,
-    best50: {
-      ...snapshot.best50,
-      b35,
-      b15,
-      rating: [...b35, ...b15].reduce((total, record) => total + record.rating, 0),
-      unmatchedRecordCount: Math.max(
-        0,
-        snapshot.best50.unmatchedRecordCount - removedInvalidRecordCount,
-      ),
-    },
-  };
-}
-
 function withoutChartNotes(snapshot: ScoreSnapshot): ScoreSnapshot {
   const strip = ({ notes: _notes, ...record }: ScoreRecord): ScoreRecord => record;
   return {
@@ -97,12 +64,12 @@ export function staleCachedSnapshot(snapshot: ScoreSnapshot): ScoreSnapshot {
 const inflightScoreLoads = createInflightGuard<string>();
 
 export class ScoreService {
+  private readonly repository = new SqliteSnapshotRepository();
   constructor(
     private readonly scoreProvider: AnyScoreProvider,
     private readonly catalogProvider: DetailedCatalogProvider,
     private readonly accountId: string,
-    private readonly snapshotRepository?: SnapshotRepository,
-    private readonly catalogRepository?: CatalogRepository,
+    private readonly persistScores = true,
     private readonly catalogLoader?: (
       detailed: boolean,
       signal: AbortSignal,
@@ -111,32 +78,13 @@ export class ScoreService {
 
   private async loadCatalog(detailed = false, signal: AbortSignal): Promise<CatalogSnapshot> {
     const assertCurrent = captureResourceWrites('maimai', signal, this.accountId);
-    try {
-      const catalog = this.catalogLoader
-        ? await this.catalogLoader(detailed, signal)
-        : detailed
-          ? await this.catalogProvider.getDetailedCatalog(signal)
-          : await this.catalogProvider.getCatalog(signal);
-      assertCurrent();
-      if (!detailed) {
-        const stopSave = startTimer('score.saveCatalog');
-        await this.catalogRepository?.saveCatalog(catalog, assertCurrent);
-        stopSave();
-      }
-      return catalog;
-    } catch (error) {
-      assertCurrent();
-      if (detailed) throw error;
-      const cached = await this.catalogRepository?.getLatestCatalog();
-      if (!cached) throw error;
-      return {
-        ...cached,
-        source: {
-          ...cached.source,
-          isStale: true,
-        },
-      };
-    }
+    const catalog = this.catalogLoader
+      ? await this.catalogLoader(detailed, signal)
+      : detailed
+        ? await this.catalogProvider.getDetailedCatalog(signal)
+        : await this.catalogProvider.getCatalog(signal);
+    assertCurrent();
+    return catalog;
   }
 
   async load(signal: AbortSignal = getForegroundAbortSignal()): Promise<ScoreSnapshot> {
@@ -172,7 +120,7 @@ export class ScoreService {
       const snapshot = catalogDriven ? withoutChartNotes(builtSnapshot) : builtSnapshot;
       stopBuild();
       const stopSave = startTimer('score.saveSnapshot');
-      if (!signal.aborted) await this.snapshotRepository?.save(this.accountId, snapshot, assertCurrent);
+      if (this.persistScores) await this.repository.save(this.accountId, snapshot, assertCurrent);
       stopSave();
       stopLoad();
       return snapshot;
@@ -180,13 +128,12 @@ export class ScoreService {
       assertCurrent();
       stopLoad();
       if (error instanceof ProviderError && (error.code === 'authentication' || error.code === 'permission')) throw error;
-      const cached = await this.snapshotRepository?.getLatest(this.accountId);
+      const cached = this.persistScores ? await this.repository.getLatest(this.accountId) : null;
       if (cached) {
-        const sanitized = withoutInvalidUtageRecords(cached);
         return {
-          ...sanitized,
+          ...cached,
           source: {
-            ...sanitized.source,
+            ...cached.source,
             isStale: true,
           },
         };

@@ -25,8 +25,6 @@ jest.mock('@/storage/sqlite-snapshot-repository', () => {
     async saveResource() { return undefined; }
     async updateResource() { return undefined; }
     async getLatest() { return null; }
-    async saveCatalog() { return undefined; }
-    async getLatestCatalog() { return null; }
     async clearResources() { return undefined; }
     async listResourceSizes() { return []; }
   }

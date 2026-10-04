@@ -17,26 +17,21 @@ export type FontCacheManifestEntry = {
 export type FontCacheDirectories = {
   directory: Directory;
   fontDirectory: Directory;
-  temporaryDirectory: Directory;
 };
 
 export function errorMessage(error: unknown): string {
   return error instanceof Error ? error.message : String(error);
 }
 
-export function createFontCacheDirectories(
+export function ensureFontCacheDirectories(
   assetDirectoryName: string,
   cacheVersion: string,
-): () => FontCacheDirectories {
-  return () => {
-    const directory = new Directory(Paths.document, 'rranker', assetDirectoryName, cacheVersion);
-    const fontDirectory = new Directory(directory, 'font');
-    const temporaryDirectory = new Directory(directory, 'tmp');
-    directory.create({ intermediates: true, idempotent: true });
-    fontDirectory.create({ intermediates: true, idempotent: true });
-    temporaryDirectory.create({ intermediates: true, idempotent: true });
-    return { directory, fontDirectory, temporaryDirectory };
-  };
+): FontCacheDirectories {
+  const directory = new Directory(Paths.document, 'rranker', assetDirectoryName, cacheVersion);
+  const fontDirectory = new Directory(directory, 'font');
+  directory.create({ intermediates: true, idempotent: true });
+  fontDirectory.create({ intermediates: true, idempotent: true });
+  return { directory, fontDirectory };
 }
 
 export function clearFontCacheDirectory(assetDirectoryName: string): void {
@@ -59,7 +54,6 @@ export function createFontCacheGuard<Entry extends FontCacheManifestEntry>(optio
   ensureFont: (
     entry: Entry,
     fontDirectory: Directory,
-    temporaryDirectory: Directory,
     onDownloadStart: () => void,
     signal?: AbortSignal,
   ) => Promise<File>;
@@ -74,7 +68,6 @@ export function createFontCacheGuard<Entry extends FontCacheManifestEntry>(optio
   async function ensureFont(
     entry: Entry,
     fontDirectory: Directory,
-    temporaryDirectory: Directory,
     onDownloadStart: () => void,
     signal?: AbortSignal,
   ): Promise<File> {

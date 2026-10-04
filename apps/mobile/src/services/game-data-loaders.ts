@@ -30,7 +30,7 @@ import {
   UNBOUND_ACCOUNT_ID,
 } from '@/state/session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import { shouldPersistMaimaiCatalog, shouldPersistScoreSnapshot } from '@/domain/provider-capabilities';
+import { shouldPersistScoreSnapshot } from '@/domain/provider-capabilities';
 import { sharedProvider as phigrosCatalogProvider } from './phigros-catalog-query';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
@@ -334,7 +334,6 @@ async function loadChunithmGameDataBundle(context: GameDataLoaderContext): Promi
     const provider = context.protocolScoreProvider;
     const service = new ChunithmPersonalService(
       provider,
-      repository,
       activeAccountId,
     );
     const toBundle = (snapshot: ChunithmPersonalSnapshot): GameDataBundle => ({
@@ -429,7 +428,7 @@ async function loadPhigrosGameDataBundle(context: GameDataLoaderContext): Promis
   if (scoreProvider instanceof PhigrosScoreProvider) {
     const payload = await loadPhigrosGameData({
       accountId: activeAccountId, scoreProvider, catalogProvider: phigrosCatalogProvider,
-      cache: new PhigrosSaveCache(repository), hasSessionData, signal, assertCurrent,
+      cache: new PhigrosSaveCache(), hasSessionData, signal, assertCurrent,
     });
     return { bundle: ({
       gameId: 'phigros', providerId: 'phi-taptap', profile: getGameProfile('phigros'), payload,
@@ -468,13 +467,11 @@ async function loadMaimaiGameDataBundle(context: GameDataLoaderContext): Promise
   }
 
   const persistScores = shouldPersistScoreSnapshot(activeProviderId);
-  const persistCatalog = shouldPersistMaimaiCatalog(activeProviderId);
   const service = new ScoreService(
     scoreProvider,
     catalogProvider,
     activeAccountId,
-    persistScores ? repository : undefined,
-    persistCatalog ? repository : undefined,
+    persistScores,
     (detailed, catalogSignal) => detailed
       ? catalogProvider.getDetailedCatalog(catalogSignal)
       : context.catalogQueries.maimai(catalogProvider),

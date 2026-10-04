@@ -182,13 +182,13 @@ export async function collectStorageUsage(): Promise<StorageUsageReport> {
     coverUsage,
   ] = await Promise.all([
     library.measureBytes(),
-    inventoryPromise.then((inventory) => measureDurableLocalMaimaiBytes(snapshots, inventory)),
+    inventoryPromise.then((inventory) => measureDurableLocalMaimaiBytes(inventory)),
     measureSharedCacheBytes(),
     measureRrankerDatabaseAllocation(),
     measureDirectoryBytesAsync(APP_DOCUMENT_ROOT()),
     measureDirectoryBytesAsync(APP_CACHE_ROOT()),
     inventoryPromise.then((inventory) => Promise.all(
-      GAME_STORAGE_ADAPTERS.map((adapter) => adapter.measure(snapshots, inventory)),
+      GAME_STORAGE_ADAPTERS.map((adapter) => adapter.measure(inventory)),
     )),
     listRemoteImageCacheUsage(),
   ]);

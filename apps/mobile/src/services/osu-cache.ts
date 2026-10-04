@@ -14,7 +14,6 @@ import {
 } from '@/domain/osu';
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import type { AtomicResourceRepository, ResourceMaintenanceRepository } from '@/repositories/resource-repository';
 import {
   clearResourcesByPrefix,
   createInflightGuard, resourceWriteGeneration,
@@ -52,16 +51,14 @@ export function loadOsuSnapshotFresh(
 }
 
 export class OsuCache {
-  constructor(private readonly repository: AtomicResourceRepository & ResourceMaintenanceRepository = new SqliteSnapshotRepository()) {}
+  private readonly repository = new SqliteSnapshotRepository();
 
   async load(gameId: OsuGameId, userId: number): Promise<OsuSnapshot | null> {
-    const raw = await this.repository.getResource<unknown>(
+    return this.repository.getResource(
       osuSnapshotCacheKey(gameId, userId),
       OSU_SNAPSHOT_SCHEMA_VERSION,
+      OsuSnapshotSchema,
     );
-    if (!raw) return null;
-    const parsed = OsuSnapshotSchema.safeParse(raw);
-    return parsed.success ? (parsed.data as OsuSnapshot) : null;
   }
 
   async save(
@@ -78,25 +75,10 @@ export class OsuCache {
   }
 
   async loadKnownScores(gameId: OsuGameId, userId: number): Promise<OsuKnownScoresSnapshot | null> {
-    const raw = await this.repository.getResource<unknown>(
+    return this.repository.getResource(
       osuKnownScoresCacheKey(gameId, userId),
       OSU_KNOWN_SCORES_SCHEMA_VERSION,
-    );
-    if (!raw) return null;
-    const parsed = OsuKnownScoresSnapshotSchema.safeParse(raw);
-    return parsed.success ? (parsed.data as OsuKnownScoresSnapshot) : null;
-  }
-
-  async saveKnownScores(
-    gameId: OsuGameId,
-    userId: number,
-    snapshot: OsuKnownScoresSnapshot, assertCurrent?: () => void,
-  ): Promise<void> {
-    await this.repository.saveResource(
-      osuKnownScoresCacheKey(gameId, userId),
-      OSU_KNOWN_SCORES_SCHEMA_VERSION,
-      snapshot.source.updatedAt,
-      snapshot, assertCurrent,
+      OsuKnownScoresSnapshotSchema,
     );
   }
 

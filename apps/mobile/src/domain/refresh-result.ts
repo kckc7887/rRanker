@@ -1,5 +1,6 @@
 import type { DataSource } from '@/domain/models';
-import type { ProviderErrorCode } from '@/providers/errors';
+import { ProviderError, type ProviderErrorCode } from '@/providers/errors';
+import { SessionPersistenceError } from '@/domain/session-vault';
 
 /** 缓存保留原提供方和抓取时间，不改成本次读取时间。 */
 export type SnapshotMetadata = {
@@ -10,16 +11,11 @@ export type SnapshotMetadata = {
 };
 
 export function snapshotMetadataOf(source: DataSource, revision: string | null = null): SnapshotMetadata {
-  if (source.kind === 'cache') throw new Error('快照元数据不接受缓存标识作为提供方');
   return { provider: source.kind, label: source.label, fetchedAt: source.updatedAt, revision };
 }
 
 export function cachedSnapshotSource(source: DataSource): DataSource {
   return source.isStale ? source : { ...source, isStale: true };
-}
-
-export function assertFreshSnapshotSource(source: DataSource): void {
-  if (source.isStale || source.kind === 'cache') throw new Error('缓存回退不能作为刷新结果写入');
 }
 
 export type RefreshStatus = 'success' | 'partial' | 'failed' | 'cancelled' | 'noop';
@@ -41,45 +37,12 @@ export type RefreshResult<T, Target extends string = string> = {
   readonly failures: readonly RefreshFailure<Target>[];
 };
 
-const PROVIDER_ERROR_CODES: Record<ProviderErrorCode, true> = {
-  authentication: true,
-  permission: true,
-  rate_limit: true,
-  timeout: true,
-  upstream_schema: true,
-  no_data: true,
-  cache_corrupt: true,
-  network: true,
-  unknown: true,
-  authorization_prepare: true,
-  authorization_open: true,
-  authorization_callback: true,
-  verification: true,
-  configuration: true,
-  credential_storage: true,
-  local_commit: true,
-};
-
-function isProviderErrorCode(value: unknown): value is ProviderErrorCode {
-  return typeof value === 'string' && Object.hasOwn(PROVIDER_ERROR_CODES, value);
-}
-
-type ProviderErrorLike = { code: ProviderErrorCode; retryable: boolean; message: string };
-
-function isProviderErrorLike(error: unknown): error is ProviderErrorLike {
-  if (!error || typeof error !== 'object') return false;
-  const candidate = error as { code?: unknown; retryable?: unknown; message?: unknown };
-  return isProviderErrorCode(candidate.code)
-    && typeof candidate.retryable === 'boolean'
-    && typeof candidate.message === 'string';
-}
-
 export function refreshFailureFromError<Target extends string = string>(
   error: unknown,
   target: Target | null = null,
 ): RefreshFailure<Target> {
-  if (isProviderErrorLike(error)) {
-    return { code: error.code, target, diagnostic: error.message, retryable: error.retryable };
+  if (error instanceof ProviderError || error instanceof SessionPersistenceError) {
+    return { code: error.code, target, diagnostic: error.message, retryable: error instanceof ProviderError ? error.retryable : false };
   }
   return {
     code: 'unknown',

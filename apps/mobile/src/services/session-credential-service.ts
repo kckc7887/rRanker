@@ -138,10 +138,10 @@ export async function applyLxnsTokenRotation(accountId: string, update: LxnsToke
     acceptedRefreshTokens: [update.previous.refreshToken, ...lxnsRotationAncestors(update.next.refreshToken)] });
 }
 
-export async function applyOsuTokenRotation(accountId: string, next: OsuOAuthSession, expected?: OsuOAuthSession): Promise<OAuthRotationCommitResult> {
+export async function applyOsuTokenRotation(accountId: string, next: OsuOAuthSession, expected: OsuOAuthSession): Promise<OAuthRotationCommitResult> {
   await retryPendingRotationWrites();
   return commitOAuthRotation({ accountId, next,
-    acceptedRefreshTokens: [expected?.refreshToken ?? next.refreshToken, ...osuRotationAncestors(next.refreshToken)] });
+    acceptedRefreshTokens: [expected.refreshToken, ...osuRotationAncestors(next.refreshToken)] });
 }
 
 export async function applyRizlineSessionRotation(accountId: string, next: RizlineSession, expected: RizlineSession, signal?: AbortSignal): Promise<void> {
