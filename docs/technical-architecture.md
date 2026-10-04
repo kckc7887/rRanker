@@ -217,6 +217,10 @@ SP→AT→IN→HD→EZ；默认 IN，成绩入口定位原难度。歌曲与谱�
 
 公开资源唯一基址为 `https://rranker-rizline-data.cn-nb1.rains3.com`。独立发布项目位于
 `D:/Projects/rizline-resource-publisher`，其维护说明管理官方导入、人工补充、校验、构建及发布。
+导入通过 `rizline_publisher.upstream.import_catalog` 跳过预告曲：谱面列表非空、全部为
+EZ/HD/IN 且定数均为 `99`，并且国服替换映射后的全部谱面均未进入官方索引。
+跳过项记入导入报告的 `skippedPreviewSongs`；正式定数与谱面上线后自动纳入。
+普通曲目缺谱、部分缺谱及下载或解析失败仍中止导入，不替换已发布曲库。
 维护命令由 `rizline_publisher` 模块提供，`overrides.json` 保留人工修订，
 `work/supplement-template.json` 按完整官方 ID 列出缺项。独立项目的
 `.github/workflows/publish.yml` 配置每日北京时间 20:00（UTC 12:00）从 `main` 实际发布；
