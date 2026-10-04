@@ -484,6 +484,6 @@ export class PhigrosPlaybackSession {
     this.chartTimePosition = chartTime;
     this.updateHitSounds(chartTime);
     this.host.render(chartTime);
-    this.frame = this.scheduleFrame();
+    if (!this.disposed && this.playing) this.frame = this.scheduleFrame();
   };
 }

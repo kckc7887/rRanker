@@ -64,6 +64,7 @@ Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict
 - [nearcade](https://nearcade.phizone.cn/)
 - [PhiZone Player](https://github.com/PhiZone/player)
 - [phira](https://github.com/TeamFlos/phira)
+- [PhiVideo](https://github.com/phigrostl/PhiVideo/tree/361e000f5eefc803bdd4ec3c86c402197ea7d30c)——PGR `blockAreaList` 字段与关键帧结构参考；区域采样、合成和动态特效由 rRanker 实现
 - [replayviewer-js](https://github.com/daladal/replayviewer-js)——osu! 四模式谱面解析、自动演奏与渲染
 - [RizlineGameSaveData](https://github.com/CHCAT1320/RizlineGameSaveData)——Rizline 官方账号登录与云存档协议参考
 - [rizline_b40_tool](https://github.com/REDDRAGON-HL/rizline_b40_tool)——Rizline AH 与最佳成绩分组算法参考

@@ -453,6 +453,19 @@ info/chart 另限 6/32 MB；RPE/PGR/PEC/PBC 遍历和 CRC 定期让出并响应�
 - 四套播放器的 `main.ts` 只接线，播放状态归各自的会话类，宿主与视图只读。Simai（舞萌与 Majdata 共用）在 `features/simai-chart-preview/webview-player/`：`playback.ts` 的 `SimaiPlaybackSession` 独占播放位置（拍）、命令代次、音源与 rAF，位置与音乐时间换算沿用 `timeConversion.ts` 的 `createSimaiPlaybackTimeline` / `resolvePlaybackRange`；`timelineView.ts` 的 `SimaiTimelineView` 由窗口与横屏全屏控制器各持一个实例，热度轨道、刻度与播放头委托公共 HeatTimelineView；`backgroundMedia.ts` 的 `SimaiBackgroundMedia` 独占背景图片/视频元素、就绪状态与视频回绕同步，播放状态只作为每帧输入读入；视图与桥回执经 `SimaiPlaybackHost` / `SimaiBackgroundMediaHost` 回调接线。Phigros 与 Phira 在 `features/phigros-chart-preview/webview-player/`：`playback.ts` 的 `PhigrosPlaybackSession` 独占播放位置（谱面秒）、命令代次、音乐音源、打击音调度与 rAF，设置对象由宿主持有、会话只读取当前值；`timelineView.ts` 的 `PhigrosTimelineView` 将时长与音符起点交给公共 HeatTimelineView。Rizline 的 `PreviewSession`（`features/rizline-chart-preview/webview-player/playback.ts`）独占播放位置、音源、帧循环与命令代次，并通过可选的 `PreviewSessionEnvironment`（`defaultPreviewSessionEnvironment`）注入音频上下文与帧循环，生产调用点不传该参数。osu! 的 `PreviewSession` 与 `PlaybackHandle`（`features/osu-chart-preview/webview-player/playback.ts`）同样持有会话，`main.ts` 只保存句柄与界面状态。会话状态由会话类内部改写，`main.ts` 只接线、不声明位置、时钟、代次或音源字段；公共 `PlaybackClock` 与拨轮壳仍是各自的公共入口。四套入口均复用 PlayerEventScope 管理监听、观察器与定时器，释放后的事件不能产生副作用；osu! 入口元数据取自会话。Phigros 复用公共 0.05/0.01 精度参数控制，按帧预览和操作停止后提交；settings.committed 缺省保持已提交语义，false 仅在宿主当前会话暂存，inactive、后台、卸载及换会话前保存最终值。Phigros 播放中 seek 固定目标时间并提升命令代次，先撤旧帧、音源和已排队打击音再恢复；旧帧不能写回目标。合同由 `chart-preview-playback-ownership.test.ts`、`chart-preview-simai-playback-session.test.ts`、`phigros-chart-preview-playback-session.test.ts` 与 `rizline-chart-preview-playback.test.ts` 覆盖。
 - 上述功能涉及 WebView 内容进程、文件选择、相册权限、原生手势和大图内存，自动化测试不能替代真机验收。
 
+PGR 的区域数据随原谱面文本进入 `parsePgrChart`，保存在 `PgrChart.blocks`；
+Phigros 与 Phira 共用这一入口。`pgr-blocks.ts` 负责秒时间、阶段、关键帧缓动与矩形变换，
+区域尾部参与播放时长。`PgrRenderer` 在音符和打击特效之间调用 `PgrBlockRenderer`，
+使用公共区间索引查询当前候选，再以 WebGL 三步处理覆盖掩码、动态扰动和边缘合成；
+掩码、扰动纹理各约 1 百万像素，场景纹理跟随主画布尺寸并校验设备纹理限制。
+无区域的旧谱保持 Canvas2D 路径。有区域的谱面要求 WebGL 与 `EXT_blend_minmax`；
+初始化或绘制失败通过既有错误回执结束播放并释放资源，重载由公共谱面壳负责。
+区域特效读取场景纹理，因此远程曲绘使用匿名 CORS 加载；服务不允许跨域时沿用可选曲绘失败回退，
+避免污染画布后导致整个谱面无法绘制。内嵌曲绘和无区域谱面的加载路径不变。
+区域只影响视觉，自动演奏与打击音仍由原播放会话控制；不增加持久化、设置或桥协议。
+源码变化后运行 `npm run build:phigros-chart-preview`，生成物由 `npm run check:generated` 校验。
+浏览器 GPU 检查不替代 Android／iOS WebView 的画面、性能与上下文恢复验收。
+
 公共谱面壳将准备会话与已挂载内容绑定，资源准备默认限时 120 秒，等待播放器 `ready`
 默认限时 60 秒，分别可通过请求的 `timeoutMs`、`readyTimeoutMs` 调整；等待用户选择资源
 时不启动计时。超时直接显示可重试状态，不依赖底层任务响应取消；旧会话的准备结果、
