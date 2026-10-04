@@ -13,7 +13,6 @@ import {
   shouldKeepLibraryItem,
 } from '@/domain/user-library';
 import type { LibraryTarget, RestoreMode, UserLibraryItem } from '@/domain/user-library';
-import type { UserLibraryRepository } from '@/repositories/user-library-repository';
 import { getRrankerDatabase, runDatabaseWrite, runSerializedSchemaInit } from '@/storage/rranker-database';
 
 const USER_LIBRARY_SCHEMA_VERSION = 4;
@@ -132,7 +131,7 @@ async function initializeUserLibrarySchema(): Promise<void> {
   }
 }
 
-export class SqliteUserLibraryRepository implements UserLibraryRepository {
+export class SqliteUserLibraryRepository {
   private initialize(): Promise<void> {
     return ensureUserLibrarySchema();
   }

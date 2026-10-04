@@ -15,7 +15,7 @@ export function chartPreviewAppearanceScript(appearance: { dark: boolean; accent
   return `(function(){var root=document.documentElement;root.dataset.theme=${JSON.stringify(appearance.dark ? 'dark' : 'light')};var values=${JSON.stringify(values)};Object.keys(values).forEach(function(key){root.style.setProperty(key,values[key]);});})();true;`;
 }
 
-export type ChartPreviewInjectSpec<TConfig> = {
+type ChartPreviewInjectSpec<TConfig> = {
 
   globalVar: string;
 
@@ -24,9 +24,7 @@ export type ChartPreviewInjectSpec<TConfig> = {
   serialize: (config: TConfig) => string;
 };
 
-export type ChartPreviewInjectors<TConfig> = {
-  buildConfigJson: (config: TConfig) => string;
-  buildConfigScript: (config: TConfig) => string;
+type ChartPreviewInjectors<TConfig> = {
   buildInjectedJavaScript: (config: TConfig) => string;
   applyConfigToHtml: (html: string, config: TConfig) => string;
 };
@@ -42,10 +40,7 @@ export function createChartPreviewInjectors<TConfig>(
     `window.${globalVar}={...(window.${globalVar}||{}),...${buildConfigJson(config)}};true;`;
   const applyConfigToHtml = (html: string, config: TConfig): string => {
     const script = buildConfigScript(config);
-    if (html.includes(placeholder)) {
-      return html.replace(placeholder, () => script);
-    }
-    return script + html;
+    return html.replace(placeholder, () => script);
   };
-  return { buildConfigJson, buildConfigScript, buildInjectedJavaScript, applyConfigToHtml };
+  return { buildInjectedJavaScript, applyConfigToHtml };
 }

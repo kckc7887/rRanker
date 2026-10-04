@@ -1,6 +1,7 @@
 import { captureResourceWrites, createInflightGuard, snapshotSource } from '@/services/snapshot-cache-utils';
 import {
   CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+  ChunithmPersonalSnapshotSchema,
   chunithmPersonalResourceKey,
   emptyChunithmBests,
   type ChunithmBests,
@@ -9,10 +10,9 @@ import {
   type ChunithmScore,
 } from '@/domain/chunithm-personal';
 import type { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
-import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { loadItemsBounded } from '@/services/offset-pagination';
 import {
-  assertFreshSnapshotSource,
   cachedSnapshotSource,
   cancelledRefresh,
   failedRefresh,
@@ -35,17 +35,18 @@ const CHUNITHM_PERSONAL_SOURCE = { kind: 'lxns', label: '落雪咖啡屋' } as c
 type ChunithmPartValue = ChunithmPlayer | null | ChunithmScore[] | ChunithmBests;
 
 export class ChunithmPersonalService {
+  private readonly repository = new SqliteSnapshotRepository();
   constructor(
     private readonly provider: ChunithmScoreProvider,
-    private readonly repository: SqliteSnapshotRepository,
     private readonly accountId: string,
   ) {}
 
   async loadCached(): Promise<ChunithmPersonalSnapshot | null> {
     const key = chunithmPersonalResourceKey(this.accountId);
-    const cached = await this.repository.getResource<ChunithmPersonalSnapshot>(
+    const cached = await this.repository.getResource(
       key,
       CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+      ChunithmPersonalSnapshotSchema,
     );
     return cached ? { ...cached, source: cachedSnapshotSource(cached.source) } : null;
   }
@@ -67,7 +68,7 @@ export class ChunithmPersonalService {
   }
 
   private static previousMetadata(previous: ChunithmPersonalSnapshot | null): SnapshotMetadata | null {
-    if (!previous || previous.source.kind === 'cache') return null;
+    if (!previous) return null;
     return snapshotMetadataOf(previous.source);
   }
 
@@ -107,7 +108,6 @@ export class ChunithmPersonalService {
       ));
     if (refreshFailures.length === 0) {
       const source = snapshotSource(CHUNITHM_PERSONAL_SOURCE);
-      assertFreshSnapshotSource(source);
       const snapshot: ChunithmPersonalSnapshot = {
         player: (parts.get('player') ?? null) as ChunithmPlayer | null,
         scores: (parts.get('scores') ?? []) as ChunithmScore[],

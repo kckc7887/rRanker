@@ -43,7 +43,7 @@ rRanker 是一个多音游数据管理应用。你可以在一个应用中查看
 
 ```bash
 cd apps/mobile
-npm install
+npm ci --no-audit --no-fund
 npm start
 ```
 

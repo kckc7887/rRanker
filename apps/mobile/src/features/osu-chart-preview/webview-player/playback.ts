@@ -1,5 +1,5 @@
 import {
-  computeModDifficulty, Renderer, Player, TimeMapper, PlaybackClock,
+  computeModDifficulty, Renderer, PlaybackClock,
   audioContextTime, musicPosition, outputTime,
   getAudioContextOutputTime, warmSkinCaches, warmSliderPaths, drawCursor,
   type BeatmapData, type ReplayData, type ModDifficulty, type SkinAssets,
@@ -30,7 +30,7 @@ export function getAudioContext(): AudioContext {
 
 function createRenderer(canvas: HTMLCanvasElement, beatmap: BeatmapData, replay: ReplayData, modDiff: ModDifficulty, skin: SkinAssets): Renderer {
   warmSkinCaches(skin);
-  return new Renderer(canvas, new Player(1), replay, beatmap, createGameplaySkin(skin, replay.mode), new TimeMapper(replay.frames), null, modDiff);
+  return new Renderer(canvas, replay, beatmap, createGameplaySkin(skin, replay.mode), modDiff);
 }
 
 export function createGameplaySkin(skin: SkinAssets, mode: number): SkinAssets {
@@ -84,8 +84,7 @@ export class PreviewSession {
 
   private configureRenderer(): void {
     Object.assign(this.renderer.options, {
-      showJudgement: false, showKeyOverlay: false, showFollowpoints: true,
-      showURBar: false, showModIcons: false, maniaScrollSpeed: MANIA_SCROLL_DEFAULT,
+      showFollowpoints: true, maniaScrollSpeed: MANIA_SCROLL_DEFAULT,
       backdropOverlay: (ctx: CanvasRenderingContext2D) => this.media.drawUnder(ctx, this.mediaTime),
       hudOverlay: (ctx: CanvasRenderingContext2D, timeMs: number) => {
         this.media.drawOver(ctx, this.mediaTime);
@@ -199,7 +198,6 @@ export class PreviewSession {
     const skin = { ...builtin, images: new Map(builtin.images) };
     const previousOptions = { ...this.renderer.options };
     const next = createRenderer(this.canvas, this.beatmap, this.replay, this.modDiff, skin);
-    this.renderer.stop();
     this.renderer = next;
     this.skin = skin;
     this.renderedSkinVariant = variant;
@@ -213,7 +211,6 @@ export class PreviewSession {
     this.disposed = true;
     this.skinRequest++;
     this.controller.abort();
-    this.renderer.stop();
     this.audioSync.destroy();
     this.media.dispose();
   }
@@ -270,10 +267,9 @@ export async function startPlayback(
     signal.throwIfAborted();
     const range = resolvePlaybackRange(beatmap, decoded.song ? decoded.song.duration * 1000 : null, media.range, decoded.endMs);
     audio = new AudioSync({
-      ctx, beatmap, songBuffer: decoded.song, skinSounds: skin.sounds, mergedSounds: decoded.sounds,
-      beatmapHitsounds: true, hitResults: renderer.hitResults, introOffsetMs: range.startMs,
+      ctx, songBuffer: decoded.song, skinSounds: skin.sounds, mergedSounds: decoded.sounds,
+      beatmapHitsounds: true, introOffsetMs: range.startMs,
       mode: beatmap.mode, schedule, extraSamples: decoded.samples,
-      maniaSamples: renderer.maniaSamples, taikoGhostTaps: renderer.taikoGhostTaps, comboFrames: renderer.comboFrames,
     });
     session = new PreviewSession(canvas, beatmap, replay, modDiff, renderer, audio, media, range, controller, skin, initial);
     const handle = { session, durationMs: range.durationMs, media };
@@ -282,7 +278,6 @@ export async function startPlayback(
     return handle;
   } catch (error) {
     controller.abort();
-    renderer?.stop();
     audio?.destroy();
     media?.dispose();
     if (preparing === controller) preparing = null;

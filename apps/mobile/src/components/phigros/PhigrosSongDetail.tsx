@@ -659,5 +659,4 @@ function DetailRateBadge({ record }: { record: ScoreRecord }) {
   return <PhigrosRateBadge rate={resolvePhigrosRate(record)} fc={record.fc === 'ap'} />;
 }
 
-export { VERTICAL_SONG_DETAIL_STYLES as PHIGROS_SONG_DETAIL_STYLES } from '@/components/game-content/SongDetailChromeStyles';
 const styles = PHIGROS_SONG_DETAIL_STYLES;

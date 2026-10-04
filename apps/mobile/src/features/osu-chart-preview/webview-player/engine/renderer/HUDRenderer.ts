@@ -25,70 +25,9 @@
  * SOFTWARE.
  */
 import type { HitResult, SkinAssets } from '../types/index';
-import type { ScoreFrame } from '../utils/scoreProcessor';
 
 const SYSTEM_UI_FONT = 'system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei UI", sans-serif';
-
-const CANVAS_W  = 1280;
-
-const SCORE_RIGHT_X = CANVAS_W - 4;
-const SCORE_Y       = 4;
-const SCORE_DIGIT_H = 30;
-const SCORE_DIGITS  = 8;
-
-const ACC_DIGIT_H = 22;
-const ACC_RIGHT_X = CANVAS_W - 4;
-const ACC_Y       = SCORE_Y + SCORE_DIGIT_H + 2;
-
-const COMBO_LEFT_X  = 14;
-const CANVAS_H      = 720;
-const COMBO_DIGIT_H = 32;
-const COMBO_Y       = CANVAS_H - COMBO_DIGIT_H - 4;
 const COMBO_ANIM_MS = 250;
-
-export interface AccFrame {
-  time: number;
-  acc:  number;
-}
-
-/** 准确率=sum(judgements)/(300×音符数)，不计滑条子判定与 comboIgnore。 */
-export function computeAccTimeline(results: readonly HitResult[]): AccFrame[] {
-  const sorted = [...results].sort((a, b) => a.time - b.time);
-
-  const frames: AccFrame[] = [];
-  let judgeSum = 0;
-  let objCount = 0;
-
-  for (const r of sorted) {
-
-    if (r.isSliderSub) continue;
-    if (r.comboIgnore) continue;
-    judgeSum += r.judgement;
-    objCount++;
-    frames.push({ time: r.time, acc: judgeSum / (300 * objCount) });
-  }
-
-  return frames;
-}
-
-/** taiko 准确率=(great+0.5×ok)/(great+ok+miss)。 */
-export function computeTaikoAccTimeline(results: readonly HitResult[]): AccFrame[] {
-  const sorted = [...results].sort((a, b) => a.time - b.time);
-
-  const frames: AccFrame[] = [];
-  let weightedSum = 0;
-  let objCount = 0;
-
-  for (const r of sorted) {
-    if (r.comboIgnore) continue;
-    if      (r.judgement === 300) weightedSum += 300;
-    else if (r.judgement === 100) weightedSum += 150;
-    objCount++;
-    frames.push({ time: r.time, acc: weightedSum / (300 * objCount) });
-  }
-
-  return frames;
-}
 
 export interface ComboFrame {
   time:  number;
@@ -211,110 +150,6 @@ function drawScoreText(
   }
 }
 
-const MOD_STEMS: [number, string, string][] = [
-  [1 << 0,  'selection-mod-nofail',      'NF'],
-  [1 << 1,  'selection-mod-easy',         'EZ'],
-  [1 << 3,  'selection-mod-hidden',       'HD'],
-  [1 << 4,  'selection-mod-hardrock',     'HR'],
-  [1 << 5,  'selection-mod-suddendeath',  'SD'],
-  [1 << 6,  'selection-mod-doubletime',   'DT'],
-  [1 << 7,  'selection-mod-relax',        'RX'],
-  [1 << 8,  'selection-mod-halftime',     'HT'],
-  [1 << 9,  'selection-mod-nightcore',    'NC'],
-  [1 << 10, 'selection-mod-flashlight',   'FL'],
-  [1 << 12, 'selection-mod-spunout',      'SO'],
-  [1 << 20, 'selection-mod-fadein',       'FI'],
-  [1 << 30, 'selection-mod-mirror',       'MR'],
-];
-
-const MOD_ICON_H   = 30;
-const MOD_ICON_GAP = 2;
-const MOD_Y        = ACC_Y + ACC_DIGIT_H + 6;
-
-/** NC 包含 DT，只显示 NC 图标。 */
-export function drawModIcons(
-  ctx: CanvasRenderingContext2D,
-  mods: number,
-  skin?: SkinAssets,
-): void {
-  if (mods === 0) return;
-
-  const hasNC = (mods & (1 << 9)) !== 0;
-  const active: { stem: string; label: string }[] = [];
-  for (const [bit, stem, label] of MOD_STEMS) {
-    if ((mods & bit) === 0) continue;
-    if (bit === (1 << 6) && hasNC) continue;
-    active.push({ stem, label });
-  }
-  if (active.length === 0) return;
-
-  const modImg = (stem: string) =>
-    skin?.images.get(`${stem}@2x.png`) ?? skin?.images.get(`${stem}.png`);
-
-  const widths = active.map(({ stem }) => {
-    const bmp = modImg(stem);
-    return bmp ? (bmp.width / bmp.height) * MOD_ICON_H : MOD_ICON_H * 1.6;
-  });
-  const totalW = widths.reduce((s, w) => s + w, 0) + MOD_ICON_GAP * (active.length - 1);
-
-  let x = ACC_RIGHT_X - totalW;
-  for (let i = 0; i < active.length; i++) {
-    const { stem, label } = active[i]!;
-    const w = widths[i]!;
-    const bmp = modImg(stem);
-
-    if (bmp) {
-      ctx.drawImage(bmp, x, MOD_Y, w, MOD_ICON_H);
-    } else {
-      ctx.save();
-      ctx.beginPath();
-      const r = 4;
-      ctx.moveTo(x + r, MOD_Y);
-      ctx.arcTo(x + w, MOD_Y, x + w, MOD_Y + MOD_ICON_H, r);
-      ctx.arcTo(x + w, MOD_Y + MOD_ICON_H, x, MOD_Y + MOD_ICON_H, r);
-      ctx.arcTo(x, MOD_Y + MOD_ICON_H, x, MOD_Y, r);
-      ctx.arcTo(x, MOD_Y, x + w, MOD_Y, r);
-      ctx.closePath();
-      ctx.fillStyle = 'rgba(0,0,0,0.6)';
-      ctx.fill();
-      ctx.font = `bold ${Math.round(MOD_ICON_H * 0.55)}px ${SYSTEM_UI_FONT}`;
-      ctx.textAlign = 'center';
-      ctx.textBaseline = 'middle';
-      ctx.fillStyle = '#ffffff';
-      ctx.fillText(label, x + w / 2, MOD_Y + MOD_ICON_H / 2);
-      ctx.restore();
-    }
-
-    x += w + MOD_ICON_GAP;
-  }
-}
-
-export function drawScore(
-  ctx: CanvasRenderingContext2D,
-  scoreFrames: readonly ScoreFrame[],
-  timeMs: number,
-  skin?: SkinAssets,
-): void {
-  const i     = findBefore(scoreFrames, timeMs);
-  const score = i >= 0 ? scoreFrames[i]!.score : 0;
-
-  const text = String(Math.max(0, Math.trunc(score))).padStart(SCORE_DIGITS, '0');
-  drawScoreText(ctx, text, SCORE_RIGHT_X, SCORE_Y, SCORE_DIGIT_H, skin?.config.scorePrefix ?? 'score', skin);
-}
-
-export function drawHUD(
-  ctx: CanvasRenderingContext2D,
-  accFrames: readonly AccFrame[],
-  timeMs: number,
-  skin?: SkinAssets
-): void {
-  const i   = findBefore(accFrames, timeMs);
-  const acc = i >= 0 ? accFrames[i]!.acc : 1;
-
-  const text = (acc * 100).toFixed(2) + '%';
-  drawScoreText(ctx, text, ACC_RIGHT_X, ACC_Y, ACC_DIGIT_H, skin?.config.scorePrefix ?? 'score', skin);
-}
-
 const MANIA_COMBO_DIGIT_H = 28;
 
 function drawPopCombo(
@@ -347,20 +182,6 @@ function drawPopCombo(
   ctx.translate(-cx, -cy);
   drawScoreText(ctx, text, rightX, topY, digitH, comboPrefix, skin);
   ctx.restore();
-}
-
-export function drawCombo(
-  ctx: CanvasRenderingContext2D,
-  comboFrames: readonly ComboFrame[],
-  timeMs: number,
-  skin?: SkinAssets
-): void {
-  drawPopCombo(ctx, comboFrames, timeMs, 'x', COMBO_DIGIT_H, skin, (totalW) => ({
-    rightX: COMBO_LEFT_X + 4 + totalW,
-    topY:   COMBO_Y,
-    cx:     COMBO_LEFT_X + 4 + totalW / 2,
-    cy:     COMBO_Y + COMBO_DIGIT_H / 2,
-  }));
 }
 
 export function drawManiaCombo(

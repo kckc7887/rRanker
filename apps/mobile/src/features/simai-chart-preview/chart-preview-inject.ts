@@ -23,13 +23,7 @@ const chartPreviewInjectors = createChartPreviewInjectors<ChartPreviewInjectConf
   }),
 });
 
-export function buildChartPreviewConfigJson(config: ChartPreviewInjectConfig): string {
-  return chartPreviewInjectors.buildConfigJson(config);
-}
 
-export function buildChartPreviewConfigScript(config: ChartPreviewInjectConfig): string {
-  return chartPreviewInjectors.buildConfigScript(config);
-}
 
 export function buildChartPreviewInjectedJavaScript(config: ChartPreviewInjectConfig): string {
   return chartPreviewInjectors.buildInjectedJavaScript(config);

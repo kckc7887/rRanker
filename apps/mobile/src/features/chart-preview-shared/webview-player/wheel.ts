@@ -48,11 +48,7 @@ export function createWheel(
   let selectedItem: HTMLElement | null = null;
   let pendingCommit = false;
   let disposed = false;
-  const previewScheduler = createLatestFrameScheduler(
-    requestAnimationFrame,
-    cancelAnimationFrame,
-    onPreview,
-  );
+  const previewScheduler = createLatestFrameScheduler(onPreview);
 
   const itemLabel = (v: number) => {
     if (labels) {
@@ -231,7 +227,7 @@ function setupInlineParameter(
   let pending = false;
   let timer = 0;
   const events = new PlayerEventScope(() => disposed);
-  const scheduler = createLatestFrameScheduler(requestAnimationFrame, cancelAnimationFrame, onPreview);
+  const scheduler = createLatestFrameScheduler(onPreview);
   const field = trigger.closest<HTMLElement>('.field');
   const labelNodes = field ? Array.from(field.childNodes).filter(node =>
     node.nodeType === 3 || (node instanceof HTMLElement && node.tagName === 'SPAN')) : [];

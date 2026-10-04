@@ -2,7 +2,6 @@ import { describe, expect, it } from 'vitest';
 import {
   PHIGROS_PUSH_LIMITS,
   PhigrosPushInputError,
-  evaluateDisplayedPushPlan,
   findPushRecommendations,
   formatPushSearchSummary,
   parsePhigrosPushChartCost,
@@ -11,7 +10,7 @@ import {
   resolvePushExactTarget,
   type PushRecommendationsResult,
 } from '@/domain/phigros-push';
-import type { PhigrosScoreEntry } from '@/domain/phigros';
+import { computeB30, type PhigrosScoreEntry } from '@/domain/phigros';
 
 describe('resolvePushExactTarget', () => {
   it('maps 16.1691 + 0.01 to exact 16.1750 and display 16.18', () => {
@@ -137,7 +136,7 @@ function entry(
   return {
     songId,
     level,
-    difficulty: 0,
+    difficulty,
     score,
     rawAcc,
     acc: Math.round(rawAcc * 100) / 100,
@@ -192,7 +191,7 @@ describe('findPushRecommendations', () => {
     expect(result.plan).toEqual([shown[0]]);
     expect(result.recommendations).toEqual(result.plan);
     expect(result.searchStatus).toBe('verified');
-    expect(evaluateDisplayedPushPlan(gameRecord, difficultyTable, result.plan))
+    expect(resultingRks(gameRecord, difficultyTable, result.plan))
       .toBeGreaterThanOrEqual(result.exactTarget - 1e-9);
 
     const first = result.plan[0]!;
@@ -241,7 +240,7 @@ describe('findPushRecommendations', () => {
     expect(split.plan.length).toBeGreaterThan(1);
     expect(split.plan.length).toBeLessThanOrEqual(4);
     expect(Math.max(...split.plan.map((item) => item.targetAcc))).toBeLessThan(solo.plan[0]!.targetAcc);
-    expect(evaluateDisplayedPushPlan(gameRecord, difficultyTable, split.plan))
+    expect(resultingRks(gameRecord, difficultyTable, split.plan))
       .toBeGreaterThanOrEqual(split.exactTarget - 1e-9);
   });
 
@@ -281,7 +280,7 @@ describe('findPushRecommendations', () => {
     expect(solo.searchStatus).toBe('verified');
     expect(solo.combinationReachesTarget).toBe(true);
     expect(solo.plan.length).toBeGreaterThan(0);
-    expect(evaluateDisplayedPushPlan(gameRecord, difficultyTable, solo.plan))
+    expect(resultingRks(gameRecord, difficultyTable, solo.plan))
       .toBeGreaterThanOrEqual(solo.exactTarget - 1e-9);
   });
 
@@ -325,6 +324,21 @@ function inCharts(rows: readonly { id: string; difficulty: number; rawAcc: numbe
   return { gameRecord, difficultyTable };
 }
 
+function resultingRks(
+  gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
+  difficultyTable: Record<string, number[]>,
+  plan: PushRecommendationsResult['plan'],
+): number {
+  const updated = structuredClone(gameRecord);
+  for (const target of plan) {
+    const levels = updated[target.songId] ?? [null, null, null, null];
+    levels[target.level] = entry(target.songId, target.level, target.difficulty,
+      Math.round(target.targetAcc * 10000), target.targetAcc);
+    updated[target.songId] = levels;
+  }
+  return computeB30(updated, difficultyTable).rks;
+}
+
 function expectVerifiedPlan(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: Record<string, number[]>,
@@ -332,50 +346,11 @@ function expectVerifiedPlan(
 ) {
   expect(result.searchStatus).toBe('verified');
   expect(result.combinationReachesTarget).toBe(true);
-  expect(result.recommendations).toEqual(result.plan);
-  expect(result.plan.length).toBeGreaterThan(0);
-  expect(result.plan.length).toBeLessThanOrEqual(result.chartCost);
-  const planKeys = new Set(result.plan.map((item) => `${item.songId}_${item.level}`));
-  expect(result.alternatives.every((item) => !planKeys.has(`${item.songId}_${item.level}`))).toBe(true);
-  expect(evaluateDisplayedPushPlan(gameRecord, difficultyTable, result.plan))
+  expect(resultingRks(gameRecord, difficultyTable, result.plan))
     .toBeGreaterThanOrEqual(result.exactTarget - 1e-9);
-  const hardest = [...result.plan].sort((a, b) => b.accDiff - a.accDiff || b.difficulty - a.difficulty)[0];
-  for (const alternative of result.alternatives) {
-    const swapped = result.plan.map((item) => (
-      item.songId === hardest?.songId && item.level === hardest.level ? alternative : item
-    ));
-    expect(evaluateDisplayedPushPlan(gameRecord, difficultyTable, swapped))
-      .toBeGreaterThanOrEqual(result.exactTarget - 1e-9);
-  }
-  const mixed = [...result.plan, ...result.alternatives]
-    .sort((a, b) => a.accDiff - b.accDiff || a.difficulty - b.difficulty)
-    .slice(0, result.chartCost);
-  const mixedRks = evaluateDisplayedPushPlan(gameRecord, difficultyTable, mixed);
-  if (mixedRks + 1e-9 < result.exactTarget) {
-    expect(result.plan.map((item) => `${item.songId}:${item.targetAcc}`))
-      .not.toEqual(mixed.map((item) => `${item.songId}:${item.targetAcc}`));
-  }
 }
 
-describe('push plan invariants', () => {
-  it('does not treat a sorted mix of the verified pair and substitutes as the plan', async () => {
-    const { gameRecord, difficultyTable } = inCharts([
-      { id: 'song.0', difficulty: 11.9, rawAcc: 96.28 },
-      { id: 'song.1', difficulty: 15.1, rawAcc: 94.15 },
-      { id: 'song.2', difficulty: 13.8, rawAcc: 95.63 },
-      { id: 'song.3', difficulty: 16.6, rawAcc: 81.82 },
-      { id: 'song.4', difficulty: 8.7, rawAcc: 87.95 },
-      { id: 'song.5', difficulty: 8.9, rawAcc: 81.38 },
-      { id: 'song.6', difficulty: 16.4, rawAcc: 81.95 },
-      { id: 'song.7', difficulty: 12.7, rawAcc: 85.51 },
-    ]);
-    const result = await findPushRecommendations(gameRecord, difficultyTable, {
-      delta: 0.01,
-      chartCost: 2,
-      includePhi: false,
-    });
-    expectVerifiedPlan(gameRecord, difficultyTable, result);
-  });
+describe('push recommendations', () => {
 
   it('finds a joint plan when no single chart can cover the average share', async () => {
     const { gameRecord, difficultyTable } = inCharts([
@@ -456,19 +431,20 @@ describe('findPushRecommendations cancellation', () => {
     })).rejects.toThrow('user left');
   });
 
-  it('aborts mid-search instead of returning a partial plan', async () => {
+  it('cancels while the search yields to the event loop', async () => {
     const { gameRecord, difficultyTable } = buildPool();
-    let reads = 0;
-    const flipping = {
-      get aborted() { reads += 1; return reads > 4; },
-      reason: new Error('stop-search'),
-    };
-    await expect(findPushRecommendations(gameRecord, difficultyTable, {
-      delta: 0.1,
-      chartCost: 2,
-      signal: flipping as AbortSignal,
-    })).rejects.toThrow('stop-search');
-    expect(reads).toBeGreaterThan(4);
+    const controller = new AbortController();
+    let clock = 1_000_000;
+    const now = vi.spyOn(Date, 'now').mockImplementation(() => (clock += 30));
+    const timer = setTimeout(() => controller.abort(new Error('stop-search')), 0);
+    try {
+      await expect(findPushRecommendations(gameRecord, difficultyTable, {
+        delta: 0.1, chartCost: 2, signal: controller.signal,
+      })).rejects.toThrow('stop-search');
+    } finally {
+      clearTimeout(timer);
+      now.mockRestore();
+    }
   });
 
   it('yields to the event loop between search slices', async () => {

@@ -1,7 +1,5 @@
 /** 联网检查：CHART_PREVIEW_INPUT_STAGE_LIVE=1 npm run test:unit -- tests/chart-preview-input-stage-live.test.ts。 */
 
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { describe, expect, it } from 'vitest';
 import { buildPhigrosChartPreviewInput } from '@/features/phigros-chart-preview/chart-preview-input';
 import { buildPhiraChartPreviewInput } from '@/features/phira-chart-preview/chart-preview-input';
@@ -9,11 +7,8 @@ import {
   loadPhigrosChartPreviewResources,
   loadPhigrosChartPreviewVariants,
 } from '@/services/phigros-chart-preview-resources';
-import {
-  applyPhigrosChartPreviewConfigToHtml,
-  buildPhigrosChartPreviewConfigJson,
-} from '@/features/phigros-chart-preview/phigros-chart-preview-inject';
 import { phiraProvider } from '@/providers/phira-provider';
+import { phigrosResources } from '@/services/phigros-resources';
 
 const live = process.env.CHART_PREVIEW_INPUT_STAGE_LIVE === '1' ? describe : describe.skip;
 
@@ -27,20 +22,6 @@ const PHIGROS_CASES = [
 
 const PHIRA_CASES = [19365, 27282, 42017, 50299, 36040, 35829, 66661] as const;
 
-/** OSS 偶发 SSL 握手失败，live 演示统一重试。 */
-async function withRetry<T>(fn: () => Promise<T>, attempts = 4, delayMs = 2500): Promise<T> {
-  let lastError: unknown;
-  for (let attempt = 1; attempt <= attempts; attempt += 1) {
-    try {
-      return await fn();
-    } catch (error) {
-      lastError = error;
-      if (attempt < attempts) await new Promise((done) => setTimeout(done, delayMs * attempt));
-    }
-  }
-  throw lastError;
-}
-
 function bytesToBase64(bytes: Uint8Array): string {
   return Buffer.from(bytes).toString('base64');
 }
@@ -52,7 +33,7 @@ live('谱面确认传入阶段 live 演示', () => {
     const variants = await loadPhigrosChartPreviewVariants({ songId, difficulty: 'IN' }, signal);
     expect(variants).toEqual([0, 1, 2, 3, 4, 5, 6]);
     for (const variantIndex of variants.filter((value) => value !== 0)) {
-      const prepared = await buildPhigrosChartPreviewInput({ songId, levelIndex: 2, variantIndex }, {}, signal);
+      const prepared = await buildPhigrosChartPreviewInput({ songId, levelIndex: 2, variantIndex }, {}, signal, asset => phigrosResources.bytes(asset.url, signal));
       expect(JSON.parse(prepared.config.chartText!).judgeLineList.length).toBeGreaterThan(0);
       expect(Buffer.from(prepared.musicDataBase64!, 'base64').subarray(0, 4).toString()).toBe('OggS');
       expect(prepared.config.illustrationUrl).toMatch(/^data:image\/png;base64,/);
@@ -66,10 +47,10 @@ live('谱面确认传入阶段 live 演示', () => {
       const timeout = setTimeout(() => controller.abort(), 120_000);
       try {
         for (let levelIndex = 0; levelIndex <= 3; levelIndex += 1) {
-          const resources = await withRetry(() => loadPhigrosChartPreviewResources({
+          const resources = await loadPhigrosChartPreviewResources({
             songId,
             difficulty: ['EZ', 'HD', 'IN', 'AT'][levelIndex]!,
-          }, controller.signal)).catch((error: unknown) => {
+          }, controller.signal, asset => phigrosResources.bytes(asset.url, controller.signal)).catch((error: unknown) => {
             const message = error instanceof Error ? error.message : String(error);
             if (/不存在 .* 难度/.test(message)) return null;
             throw error;
@@ -81,6 +62,7 @@ live('谱面确认传入阶段 live 演示', () => {
             { songId, levelIndex, title: `${songId} IN` },
             {},
             controller.signal,
+            asset => phigrosResources.bytes(asset.url, controller.signal),
           );
           const chartJson = JSON.parse(prepared.config.chartText!) as { judgeLineList?: unknown[] };
           expect(Array.isArray(chartJson.judgeLineList)).toBe(true);
@@ -99,6 +81,7 @@ live('谱面确认传入阶段 live 演示', () => {
     for (const chartId of PHIRA_CASES) {
       const staged = new Map<string, Uint8Array>();
       const staging = {
+        downloadChart: (url: string, signal: AbortSignal) => phiraProvider.downloadChart(url, signal),
         stageMusic: async (bytes: Uint8Array, fileName: string) => {
           staged.set(fileName, bytes);
           return { uri: `mem://${fileName}`, base64: bytesToBase64(bytes) };
@@ -142,43 +125,10 @@ live('谱面确认传入阶段 live 演示', () => {
             expect(staged.has(`rpe/35829/${skin}`)).toBe(true);
           }
         }
-        if (chartId === 66661) {
-          expect(prepared.config.chartText!.length).toBeGreaterThan(20_000_000);
-        }
       } finally {
         clearTimeout(timeout);
       }
     }
   }, 600_000);
 
-  it('配置注入：最大谱面（66661）经真实 HTML 模板注入后不截断、不丢字符', async () => {
-    const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), 90_000);
-    try {
-      const chart = await phiraProvider.getChart(66661, controller.signal);
-      const staging = {
-        stageMusic: async (bytes: Uint8Array, fileName: string) => ({ uri: `mem://${fileName}`, base64: bytesToBase64(bytes) }),
-        stageRpeBundle: async () => ({ basePath: './rpe/66661/' }),
-      };
-      const prepared = await buildPhiraChartPreviewInput(
-        { chartId: 66661, chart },
-        { playbackSpeed: 1.25 },
-        controller.signal,
-        staging,
-      );
-      const templatePath = resolve(process.cwd(), 'src/features/phigros-chart-preview/webview-player/index.html');
-      const template = readFileSync(templatePath, 'utf8');
-      const html = applyPhigrosChartPreviewConfigToHtml(template, prepared.config);
-
-      expect(html.includes('<!--PHIGROS_CHART_PREVIEW_CONFIG-->')).toBe(false);
-      const injected = /<script>window\.__PHIGROS_CHART_PREVIEW__=(.*?);<\/script>/s.exec(html)?.[1];
-      expect(injected).toBeTruthy();
-      const roundtrip = JSON.parse(injected!) as { chartText?: string; settings?: { playbackSpeed?: number } };
-      expect(roundtrip.chartText).toBe(prepared.config.chartText);
-      expect(roundtrip.settings?.playbackSpeed).toBe(1.25);
-      expect(injected).toBe(buildPhigrosChartPreviewConfigJson(prepared.config));
-    } finally {
-      clearTimeout(timeout);
-    }
-  }, 600_000);
 });

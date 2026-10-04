@@ -1,3 +1,5 @@
+import { DatabaseSync } from 'node:sqlite';
+import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { cacheRizlineSave, clearRizlineAccount, loadRizlineCached, loadRizlineFresh, loadRizlineWithFallback } from '@/services/rizline-service';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
@@ -5,7 +7,6 @@ import { ProviderError } from '@/providers/errors';
 import type { RizlineSession } from '@/providers/contracts';
 import { rizlineSave } from './fixtures/rizline';
 const mocks = vi.hoisted(() => ({
-  values: new Map<string, unknown>(),
   getSave: vi.fn(),
   loginWithPassword: vi.fn(),
   rotate: vi.fn(),
@@ -16,12 +17,21 @@ const mocks = vi.hoisted(() => ({
   sessionsByAccountId: {} as Record<string, RizlineSession>,
   options: [] as { session?: RizlineSession; onSessionChanged?: (next: RizlineSession) => Promise<void>; allowExpiredToken?: boolean }[],
 }));
-vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {
-  async getResource(key: string) { return mocks.values.get(key) ?? null; }
-  async saveResource(key: string, _version: number, _time: string, value: unknown, assertCurrent?: () => void) { assertCurrent?.(); mocks.values.set(key, value); }
-  async clearResources(keys: string[]) { keys.forEach(key => mocks.values.delete(key)); }
-} }));
-vi.mock('@/providers/rizline-provider', () => ({ RizlineProvider: class {
+const database = new DatabaseSync(':memory:');
+const repository = new SqliteSnapshotRepository();
+vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
+  execAsync: async (sql: string) => database.exec(sql),
+  runAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).run(...args),
+  getFirstAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).get(...args) ?? null,
+  getAllAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).all(...args),
+  withTransactionAsync: async (task: () => Promise<void>) => {
+    database.exec('BEGIN'); try { await task(); database.exec('COMMIT'); }
+    catch (error) { database.exec('ROLLBACK'); throw error; }
+  },
+}) }));
+afterAll(() => database.close());
+
+vi.mock('@/providers/rizline-provider', async (importOriginal) => ({ ...(await importOriginal<typeof import('@/providers/rizline-provider')>()), RizlineProvider: class {
   constructor(options: { session?: RizlineSession; onSessionChanged?: (next: RizlineSession) => Promise<void>; allowExpiredToken?: boolean } = {}) { mocks.options.push(options); }
   getSave = mocks.getSave;
   loginWithPassword = mocks.loginWithPassword;
@@ -37,9 +47,10 @@ vi.mock('@/storage/rizline-password-store', () => ({
 }));
 const session: RizlineSession = { mode: 'rizline', token: 'token', phone: '13800138000', deviceId: 'device', channelId: '1', persistable: true };
 const accountA = 'rizline:official:user-a', accountB = 'rizline:official:user-b';
-beforeEach(() => {
+beforeEach(async () => {
   invalidateResourceWrites('rizline');
-  mocks.values.clear();
+  await repository.initialize();
+  await repository.clearResources((await repository.listResourceSizes()).map(item => item.key));
   mocks.options.length = 0;
   mocks.sessionsByAccountId = {};
   mocks.getSave.mockReset();

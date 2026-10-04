@@ -137,14 +137,7 @@ async function stageRemoteAsset(
   const target = new File(sessionDirectory, fileName);
   if (target.exists && target.size === source.size) return target;
   if (target.exists) target.delete();
-  const payload = await source.bytes();
-  if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
-  assertGeneration();
-  target.create({ intermediates: true, overwrite: true });
-  target.write(payload);
-  if (target.size !== source.size) {
-    throw new Error(`远程资产复制失败：${fileName}`);
-  }
+  source.copy(target);
   return target;
 }
 

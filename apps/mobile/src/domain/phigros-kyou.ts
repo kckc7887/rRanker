@@ -11,10 +11,6 @@ export const PHIGROS_KYOU_RESOURCE_KEYS = [
   PHIGROS_KYOU_TAGS_RESOURCE_KEY,
 ] as const;
 
-export function isPhigrosKyouResourceKey(key: string): boolean {
-  return (PHIGROS_KYOU_RESOURCE_KEYS as readonly string[]).includes(key);
-}
-
 export type PhigrosKyouDifficulty = 'ez' | 'hd' | 'in' | 'at';
 export type PhigrosKyouTagType = 'primary' | 'secondary';
 

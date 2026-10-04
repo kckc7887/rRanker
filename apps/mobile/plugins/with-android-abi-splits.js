@@ -24,9 +24,6 @@ const SPLITS_BLOCK = `    splits {
 /** prebuild 会重写原生文件，分包和 R8 设置在此注入。 */
 function withAndroidAbiSplits(config, options = {}) {
   const { minify = true, shrink = true, optimize = true } = options;
-  if ([minify, shrink, optimize].some(value => typeof value !== 'boolean') || (shrink && !minify)) {
-    throw new Error(`[${TAG}] Invalid release optimization settings`);
-  }
   config = withDangerousMod(config, ['android', async (config) => {
     const file = path.join(config.modRequest.platformProjectRoot, 'app', 'proguard-rules.pro');
     const contents = await fs.readFile(file, 'utf8');
@@ -57,10 +54,6 @@ function withAndroidAbiSplits(config, options = {}) {
     );
     const src = config.modResults.contents;
     if (src.includes(`@generated begin ${TAG}`)) {
-      return config;
-    }
-
-    if (/\bsplits\s*\{\s*\n\s*abi\s*\{/.test(src)) {
       return config;
     }
 

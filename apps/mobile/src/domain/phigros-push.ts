@@ -872,19 +872,6 @@ async function findPushRecommendationsWithControl(
   );
 }
 
-export function evaluateDisplayedPushPlan(
-  gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
-  difficultyTable: PhigrosDifficultyTable,
-  displayed: readonly DisplayedPush[],
-): number {
-  const base = toSimRecords(collectScoredEntries(gameRecord, difficultyTable));
-  let sims = base;
-  for (const item of displayed) {
-    sims = replacedSims(sims, item.songId, item.level, item.difficulty, item.targetAcc);
-  }
-  return calculateFinalRks(sims);
-}
-
 export function formatPushSearchSummary(result: PushRecommendationsResult): string {
   const phi = result.includePhi ? '' : '（已排除 φ）';
   const adjust = `可增加成本谱面数、降低加值${result.includePhi ? '' : '或开启包含 φ'}。`;

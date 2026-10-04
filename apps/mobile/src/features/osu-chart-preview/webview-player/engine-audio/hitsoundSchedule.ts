@@ -373,7 +373,6 @@ export interface SampleResolverDeps {
   mode: 0 | 1 | 2 | 3;
   skinSounds: ReadonlyMap<string, AudioBuffer>;
 
-  lazerDefaultSounds: ReadonlyMap<string, AudioBuffer> | null;
 
   synthCache: Map<string, AudioBuffer>;
 
@@ -427,15 +426,12 @@ export function resolveSample(
   customFile: string,
   deps: SampleResolverDeps,
 ): AudioBuffer {
-  const { mode, skinSounds, lazerDefaultSounds, synthCache, ctx } = deps;
+  const { mode, skinSounds, synthCache, ctx } = deps;
 
-  const setName = SET_NAMES[sampleSet] ?? 'normal';
   for (const name of sampleLookupNames(type, sampleSet, sampleIndex, customFile, mode)) {
     const buffer = lookupSkinSound(skinSounds, name);
     if (buffer !== null) return buffer;
   }
-  const lz = customFile === '' && mode !== 1 ? lazerDefaultSounds?.get(`${setName}-hit${type}.wav`) : undefined;
-  if (lz !== undefined) return lz;
 
   return synthBuffer(type, ctx, synthCache);
 }

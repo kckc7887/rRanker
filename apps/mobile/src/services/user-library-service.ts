@@ -2,10 +2,10 @@ import { createUserDataBackup, libraryTargetKey, normalizeTagPresets, normalizeT
 import type { LibraryTarget, RestoreMode, UserDataBackup, UserLibraryItem } from '@/domain/user-library';
 import type { GameId } from '@/domain/game-bind-options';
 import type { ChartType } from '@/domain/models';
-import type { UserLibraryRepository } from '@/repositories/user-library-repository';
+import { SqliteUserLibraryRepository } from '@/storage/sqlite-user-library-repository';
 
 export class UserLibraryService {
-  constructor(private readonly repository: UserLibraryRepository) {}
+  private readonly repository = new SqliteUserLibraryRepository();
 
   list(gameId?: GameId): Promise<UserLibraryItem[]> { return this.repository.list(gameId); }
   listTagPresets(): Promise<string[]> {

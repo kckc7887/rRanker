@@ -115,7 +115,7 @@ describe('preview hitsound source identity', () => {
     assert.equal(lookupSkinSound(sounds, 'sb\\kick.wav'), wanted);
     assert.equal(lookupSkinSound(sounds, 'kick.wav'), null);
     assert.equal(resolveSample('normal', 1, 0, 'sb/kick.wav', {
-      mode: 0, skinSounds: sounds, lazerDefaultSounds: null, synthCache: new Map(), ctx: {} as BaseAudioContext,
+      mode: 0, skinSounds: sounds, synthCache: new Map(), ctx: {} as BaseAudioContext,
     }), wanted);
   });
 
@@ -134,7 +134,7 @@ describe('preview hitsound source identity', () => {
     const fallback = { duration: 2 } as AudioBuffer;
     assert.equal(resolveSample('clap', 2, 3, '', {
       mode: 0, skinSounds: new Map([['soft-hitclap3.ogg', numbered], ['soft-hitclap.wav', fallback]]),
-      lazerDefaultSounds: null, synthCache: new Map(), ctx: {} as BaseAudioContext,
+      synthCache: new Map(), ctx: {} as BaseAudioContext,
     }), numbered);
   });
 });

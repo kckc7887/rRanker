@@ -168,7 +168,7 @@ version 0.1.1, revision
 [`a8e5d93210188a6bfb3a0181419df0cf1e9675e7`](https://github.com/daladal/replayviewer-js/tree/a8e5d93210188a6bfb3a0181419df0cf1e9675e7).
 Its MIT license is **Copyright (c) 2026 bog**; the complete notice is retained at
 [`LICENSES/replayviewer-js-MIT.txt`](LICENSES/replayviewer-js-MIT.txt).
-The engine's `source-manifest.json` records upstream paths and licenses.
+The engine's `source-manifest.json` records its upstream source and license.
 Upstream source is adapted, not represented as an unchanged copy.
 
 Modifications by rRanker, 2026-09-19: shared native resource preparation and
@@ -185,8 +185,8 @@ do not grant rights to those media.
 The upstream's MIT declaration is not treated as replacing the licenses of
 code it identifies as ported from other projects:
 
-- **danser-go**: the included `renderer/URBarRenderer.ts` and
-  `renderer/FollowpointRenderer.ts` explicitly identify danser-go ports.
+- **danser-go**: the included `renderer/FollowpointRenderer.ts` identifies
+  its danser-go source.
   The other osu!standard judgement and rendering references retain their source
   attribution. danser-go's GPL version 3 license, **Copyright (c) 2018-2024
   Sebastian Krajewski (mail@wieku.me)**, is preserved in full at

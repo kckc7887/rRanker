@@ -30,7 +30,6 @@ import {
 
 export {
   applyChartPreviewConfigToHtml,
-  buildChartPreviewConfigScript,
   buildChartPreviewInjectedJavaScript,
   type ChartPreviewInjectConfig,
 } from './chart-preview-inject';

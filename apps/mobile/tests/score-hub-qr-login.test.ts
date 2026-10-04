@@ -13,10 +13,7 @@ const fetchMock = vi.hoisted(() => vi.fn());
 vi.mock('expo/fetch', () => ({ fetch: fetchMock }));
 
 function jsonResponse(status: number, body: unknown) {
-  return {
-    status,
-    text: async () => JSON.stringify(body),
-  };
+  return new Response(JSON.stringify(body), { status });
 }
 
 describe('score-hub qr-login', () => {
@@ -52,6 +49,10 @@ describe('score-hub qr-login', () => {
     expect(() => parseQrLoginInitBody(400, {
       message: { code: 'qr_expired', message: '二维码已过期' },
     })).toThrow(/玩家二维码/);
+  });
+
+  it('拒绝缺少响应类型的旧结构', () => {
+    expect(() => parseQrLoginInitBody(201, { token: 'tok' })).toThrow();
   });
 
   it('文本凭证走 JSON POST', async () => {

@@ -7,9 +7,6 @@ const directory = dirname(entry);
 const packagePath = join(directory, 'package.json');
 const metadata = JSON.parse(readFileSync(packagePath, 'utf8'));
 const source = readFileSync(join(directory, 'index.js'), 'utf8');
-if (metadata.version !== '0.5.0') {
-  throw new Error(`不支持 decode-uri-component ${metadata.version}`);
-}
 const exported = 'export default function decodeUriComponent(';
 if (source.split(exported).length !== 2 || /^import\s/m.test(source)) {
   throw new Error('找不到 decode-uri-component 的函数导出');

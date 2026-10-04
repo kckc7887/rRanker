@@ -4,7 +4,6 @@ import { jest } from '@jest/globals';
 import { BackHandler } from 'react-native';
 import MaimaiChartPreviewScreen from '../app/songs/chart-preview';
 import {
-  createLatestFrameScheduler,
   resolveInitialBackgroundState,
 } from '@/features/simai-chart-preview/webview-player/interactionScheduler';
 import {
@@ -241,26 +240,6 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     ].join('\n');
     expect(getAvailableDifficulties(simai)).toEqual({ 2: true, 3: true, 4: true, 5: true });
     expect(parseSimaiChart(simai, 5).difficulty).toBe(5);
-  });
-
-  it('coalesces repeated pointer work into the latest display frame', () => {
-    const callbacks = new Map<number, FrameRequestCallback>();
-    const rendered: number[] = [];
-    let nextHandle = 1;
-    const scheduler = createLatestFrameScheduler<number>(
-      (callback) => {
-        const handle = nextHandle++;
-        callbacks.set(handle, callback);
-        return handle;
-      },
-      (handle) => callbacks.delete(handle),
-      (value) => rendered.push(value),
-    );
-    scheduler.schedule(10);
-    scheduler.schedule(20);
-    expect(callbacks.size).toBe(1);
-    callbacks.values().next().value?.(0);
-    expect(rendered).toEqual([20]);
   });
 
   it('restores the selected background after video confirmation', () => {

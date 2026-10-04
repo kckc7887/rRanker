@@ -26,17 +26,8 @@ const phigrosChartPreviewInjectors = createChartPreviewInjectors<PhigrosChartPre
   }),
 });
 
-export function buildPhigrosChartPreviewConfigJson(config: PhigrosChartPreviewConfig): string {
-  return phigrosChartPreviewInjectors.buildConfigJson(config);
-}
 
-export function buildPhigrosChartPreviewConfigScript(config: PhigrosChartPreviewConfig): string {
-  return phigrosChartPreviewInjectors.buildConfigScript(config);
-}
 
-export function buildPhigrosChartPreviewInjectedJavaScript(config: PhigrosChartPreviewConfig): string {
-  return phigrosChartPreviewInjectors.buildInjectedJavaScript(config);
-}
 
 export function applyPhigrosChartPreviewConfigToHtml(html: string, config: PhigrosChartPreviewConfig): string {
   return phigrosChartPreviewInjectors.applyConfigToHtml(html, config);

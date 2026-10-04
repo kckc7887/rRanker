@@ -1,5 +1,4 @@
 import { describe, expect, it } from 'vitest';
-import { TUF_PAGE_SIZE } from '@/domain/tuf';
 import { TufProvider } from '@/providers/tuf-provider';
 
 const live = process.env.TUF_LIVE_SMOKE === '1' ? describe : describe.skip;
@@ -26,6 +25,5 @@ live('TUF public API live schema smoke', () => {
     const difficultyHash = await provider.getDifficultyHash();
     expect(difficulties.length).toBeGreaterThan(0);
     expect(difficultyHash.hash.length).toBeGreaterThan(0);
-    expect(TUF_PAGE_SIZE).toBe(30);
   }, 30_000);
 });

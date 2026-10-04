@@ -23,7 +23,6 @@ let mockPlateQuery: { data?: PlateSnapshot; isLoading: boolean; isError: boolean
   isLoading: false, isError: false, error: null, refetch: jest.fn(),
 };
 jest.mock('@/hooks/use-plates', () => ({ usePlates: () => mockPlateQuery }));
-jest.mock('@/hooks/use-songs', () => ({ useSongs: () => ({ data: [], isLoading: false, isError: false, error: null, refetch: jest.fn() }) }));
 jest.mock('@/components/PlateImage', () => ({ PlateImage: () => null }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({ data: jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog, isLoading: false, isError: false, error: null, refetch: jest.fn() }) }));
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => { const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized'); return { data: { records: fixtures.fixtureRecords, source: fixtures.fixtureSource, best50: { b35: [], b15: [] } }, isLoading: false, isError: false, error: null, refetch: jest.fn() }; } }));
@@ -124,7 +123,7 @@ describe('M2 tool screens', () => {
     mockToleranceParams = { plateId: '6102' };
     const screen = await render(<PlatesToolScreen />);
     expect(screen.getByLabelText('当前牌子 真神')).toBeTruthy();
-    await fireEvent.press(screen.getByText('歌曲 1'));
+    await fireEvent.press(screen.getByText('正常曲目 A'));
     expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/songs/[songId]', params: { songId: '1', gameId: 'maimai' } });
     await fireEvent.press(screen.getByLabelText('添加到主页 真神'));
     expect(mockTogglePinnedPlate).toHaveBeenCalledWith('maimai', 6102);

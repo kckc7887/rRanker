@@ -1,4 +1,5 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
+import * as SecureStore from 'expo-secure-store';
 import {
   beginOsuAuthorize,
   buildAuthorizeUrl,
@@ -11,27 +12,53 @@ import { ProviderError } from '@/providers/errors';
 
 process.env.OSU_OAUTH_CLIENT_SECRET ??= 'test-client-secret';
 
-vi.mock('expo-secure-store', () => {
-  let pending: string | null = JSON.stringify({ state: 'state-1' });
-  return {
+const values = vi.hoisted(() => new Map<string, string>());
+vi.mock('expo-secure-store', () => ({
     WHEN_UNLOCKED_THIS_DEVICE_ONLY: 'WHEN_UNLOCKED_THIS_DEVICE_ONLY',
-    getItemAsync: vi.fn(async () => pending),
-    setItemAsync: vi.fn(async (_key: string, value: string) => { pending = value; }),
-    deleteItemAsync: vi.fn(async () => { pending = null; }),
-  };
-});
+    getItemAsync: vi.fn(async (key: string) => values.get(key) ?? null),
+    setItemAsync: vi.fn(async (key: string, value: string) => { values.set(key, value); }),
+    deleteItemAsync: vi.fn(async (key: string) => { values.delete(key); }),
+}));
+beforeEach(() => { values.clear(); vi.clearAllMocks(); });
 
 function stubTokenFetch(body: unknown, status = 200) {
-  vi.stubGlobal('fetch', vi.fn(async () => ({
-    ok: status >= 200 && status < 300,
-    status,
-    json: async () => body,
-  })));
+  vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(body), { status })));
 }
 
 afterEach(() => {
   vi.unstubAllGlobals();
   clearOsuRotationCache();
+});
+
+describe('osu! 待授权数据', () => {
+  const key = 'rranker.osu.oauth.pending.v1';
+  const pending = { state: 'state-1', expiresAt: Date.now() + 600_000 };
+
+  it('合法数据在错误回调后仍可使用', async () => {
+    const raw = JSON.stringify(pending);
+    values.set(key, raw);
+    values.set('other-account', 'keep');
+    await expect(exchangeOsuAuthorizationCode('code', 'different-state')).rejects.toMatchObject({ code: 'authorization_callback' });
+    expect([...values]).toEqual([[key, raw], ['other-account', 'keep']]);
+  });
+
+  it.each([JSON.stringify({ state: 'state-1' }), '{', 'null', ''])
+    ('旧结构或损坏正文只删除当前键：%s', async raw => {
+      values.set(key, raw);
+      values.set('other-account', 'keep');
+      await expect(exchangeOsuAuthorizationCode('code', pending.state)).rejects.toMatchObject({ code: 'authorization_callback' });
+      expect([...values]).toEqual([['other-account', 'keep']]);
+    });
+
+  it.each(['read', 'delete'] as const)('%s I/O 失败报错并保留数据', async operation => {
+    const raw = operation === 'read' ? JSON.stringify(pending) : '{';
+    values.set(key, raw);
+    values.set('other-account', 'keep');
+    const failure = new Error(`${operation} failed`);
+    vi.mocked(operation === 'read' ? SecureStore.getItemAsync : SecureStore.deleteItemAsync).mockRejectedValueOnce(failure);
+    await expect(exchangeOsuAuthorizationCode('code', pending.state)).rejects.toMatchObject({ code: 'credential_storage', cause: failure });
+    expect([...values]).toEqual([[key, raw], ['other-account', 'keep']]);
+  });
 });
 
 describe('osu! OAuth 授权与轮换', () => {
@@ -55,16 +82,12 @@ describe('osu! OAuth 授权与轮换', () => {
   it('exchangeOsuAuthorizationCode 成功换取会话（携带 client_secret）', async () => {
     const authorizeUrl = await beginOsuAuthorize();
     const state = new URLSearchParams(authorizeUrl.split('?')[1]).get('state');
-    const fetchMock = vi.fn(async (_url: unknown, init: { body?: unknown }) => ({
-      ok: true,
-      status: 200,
-      json: async () => ({
+    const fetchMock = vi.fn(async (_url: unknown, _init: { body?: unknown }) => new Response(JSON.stringify({
         access_token: 'access-1',
         expires_in: 86400,
         refresh_token: 'refresh-1',
         token_type: 'Bearer',
-      }),
-    }));
+    })));
     vi.stubGlobal('fetch', fetchMock);
     if (!state) throw new Error('authorize url is missing state');
     const session = await exchangeOsuAuthorizationCode('code-1', state);
@@ -80,9 +103,7 @@ describe('osu! OAuth 授权与轮换', () => {
   });
 
   it('exchangeOsuAuthorizationCode 在请求令牌前拒绝缺省、空、错误、过期和重复的 state', async () => {
-    const fetchMock = vi.fn(async () => ({
-      ok: true, status: 200, json: async () => ({ access_token: 'a', expires_in: 86400, refresh_token: 'r' }),
-    }));
+    const fetchMock = vi.fn(async () => new Response('{"access_token":"a","expires_in":86400,"refresh_token":"r"}'));
     vi.stubGlobal('fetch', fetchMock);
     const authorizeUrl = await beginOsuAuthorize();
     const state = new URLSearchParams(authorizeUrl.split('?')[1]).get('state') ?? '';
@@ -98,11 +119,9 @@ describe('osu! OAuth 授权与轮换', () => {
   it('exchangeOsuAuthorizationCode 成功后不能再次使用同一 state', async () => {
     const authorizeUrl = await beginOsuAuthorize();
     const state = new URLSearchParams(authorizeUrl.split('?')[1]).get('state') ?? '';
-    const fetchMock = vi.fn(async () => ({
-      ok: true, status: 200, json: async () => ({
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({
         access_token: 'access-1', expires_in: 86400, refresh_token: 'refresh-1',
-      }),
-    }));
+    })));
     vi.stubGlobal('fetch', fetchMock);
     await exchangeOsuAuthorizationCode('code-1', state);
     await expect(exchangeOsuAuthorizationCode('code-1', state)).rejects.toMatchObject({ code: 'authorization_callback' });
@@ -162,11 +181,7 @@ describe('osu! OAuth 授权与轮换', () => {
       const payload = await (calls === 1 ? first : Promise.resolve({
         access_token: 'access-2', expires_in: 86400, refresh_token: 'refresh-2',
       }));
-      return {
-        ok: true,
-        status: 200,
-        json: async () => payload,
-      };
+      return new Response(JSON.stringify(payload));
     }));
     const rotating = Promise.all([
       rotateOsuTokens('refresh-1'),
@@ -186,11 +201,7 @@ describe('osu! OAuth 授权与轮换', () => {
       { access_token: 'access-b', expires_in: 86400, refresh_token: 'refresh-b' },
       { access_token: 'access-c', expires_in: 86400, refresh_token: 'refresh-c' },
     ];
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => payloads.shift(),
-    })));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(payloads.shift()))));
     const second = await rotateOsuTokens('refresh-a');
     const third = await rotateOsuTokens(second.refreshToken);
     await expect(rotateOsuTokens('refresh-a')).resolves.toMatchObject({ refreshToken: third.refreshToken });
@@ -200,11 +211,7 @@ describe('osu! OAuth 授权与轮换', () => {
   it('并发刷新期间保留进行中的令牌，清空后旧会话不能覆盖新登录', async () => {
     let resolveFirst: ((value: unknown) => void) | null = null;
     const first = new Promise((resolve) => { resolveFirst = resolve; });
-    vi.stubGlobal('fetch', vi.fn(async () => ({
-      ok: true,
-      status: 200,
-      json: async () => first,
-    })));
+    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(await first))));
     const pending = rotateOsuTokens('refresh-live');
     await new Promise((resolve) => setTimeout(resolve, 10));
 

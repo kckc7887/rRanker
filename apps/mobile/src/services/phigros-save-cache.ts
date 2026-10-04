@@ -1,7 +1,6 @@
 import type { PhigrosGameDataPayload } from '@/domain/game-data';
 import { staleCached } from '@/services/cache-first';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import type { ResourceRepository } from '@/repositories/resource-repository';
 import { z } from 'zod';
 import { DataSourceSchema, PlayerSchema, ScoreRecordSchema } from '@/domain/schemas';
 
@@ -32,14 +31,14 @@ export function stalePhigrosPayload(payload: PhigrosGameDataPayload): PhigrosGam
 }
 
 export class PhigrosSaveCache {
-  constructor(private readonly repository: Pick<ResourceRepository, 'getResource' | 'saveResource'> = new SqliteSnapshotRepository()) {}
+  private readonly repository = new SqliteSnapshotRepository();
 
   async load(accountId: string): Promise<PhigrosGameDataPayload | null> {
-    const stored = await this.repository.getResource<unknown>(
+    return this.repository.getResource(
       phigrosSaveResourceKey(accountId),
       PHIGROS_SAVE_SCHEMA_VERSION,
+      payloadSchema,
     );
-    return payloadSchema.safeParse(stored).data ?? null;
   }
 
   async save(accountId: string, payload: PhigrosGameDataPayload, assertCurrent?: () => void): Promise<void> {

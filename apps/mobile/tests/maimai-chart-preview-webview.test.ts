@@ -1,7 +1,6 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   applyChartPreviewConfigToHtml,
-  buildChartPreviewConfigJson,
   buildChartPreviewInjectedJavaScript,
 } from '@/features/simai-chart-preview/chart-preview-inject';
 import { chartPreviewCanvasSize } from '@/features/simai-chart-preview/webview-player/fullscreenLayout';
@@ -13,69 +12,22 @@ import {
 } from '@/features/simai-chart-preview/webview-player/interactionScheduler';
 import { parseChartPreviewBridgeMessage } from '@/features/chart-preview-shared/chart-preview-bridge';
 
+afterEach(() => vi.unstubAllGlobals());
+
 describe('chart preview webview helpers', () => {
 
-  it('injects chart preview config before content loads', () => {
-    const script = buildChartPreviewInjectedJavaScript({
-      chartId: 10834,
-      difficulty: 5,
-      title: '测试曲 DX MASTER',
-      backgroundImageUrl: 'https://assets2.lxns.net/maimai/jacket/834.png',
-      backgroundVideoUrl: 'https://maimai-video.lxns.net/834.mp4',
-      settings: { backgroundMode: 'video', videoBackgroundPrompted: true },
-    });
-    expect(script).toContain('window.__CHART_PREVIEW__=');
-    expect(script).toContain('"chartId":10834');
-    expect(script).toContain('"difficulty":5');
-    expect(script).toContain('"backgroundMode":"video"');
-    expect(script).toContain('"videoBackgroundPrompted":true');
-    expect(script).toContain('"backgroundImageUrl":"https://assets2.lxns.net/maimai/jacket/834.png"');
-    expect(script).toContain('"backgroundVideoUrl":"https://maimai-video.lxns.net/834.mp4"');
-    expect(script).toContain('true;');
+  it('injects chart settings and merges subsequent native updates', () => {
+    const window = { __CHART_PREVIEW__: { answerSoundUrl: 'data:audio/wav;base64,UklGRg==' } };
+    new Function('window', buildChartPreviewInjectedJavaScript({ chartId: 10834, difficulty: 5, buddySide: 'dual', settings: { backgroundMode: 'video' }, theme: 'light' }))(window);
+    expect(window.__CHART_PREVIEW__).toMatchObject({ chartId: 10834, difficulty: 5, buddySide: 'dual', theme: 'light', answerSoundUrl: 'data:audio/wav;base64,UklGRg==', settings: { backgroundMode: 'video' } });
   });
-
-  it('injects the inlined answer sound and preserves it during fallback injection', () => {
-    const audioUrl = 'data:audio/wav;base64,UklGRg==';
-    const html = applyChartPreviewConfigToHtml('<!--CHART_PREVIEW_CONFIG-->', {
-      chartId: 834,
-      difficulty: 4,
-      answerSoundUrl: audioUrl,
-    });
-    expect(html).toContain(`"answerSoundUrl":"${audioUrl}"`);
-    expect(buildChartPreviewInjectedJavaScript({ chartId: 834, difficulty: 4 }))
-      .toContain('...(window.__CHART_PREVIEW__||{})');
-  });
-
-  it('serializes the buddy side for dual-screen previews', () => {
-    const script = buildChartPreviewInjectedJavaScript({
-      chartId: 111325,
-      difficulty: 4,
-      title: 'テスト',
-      buddySide: 'dual',
-    });
-    expect(script).toContain('"buddySide":"dual"');
-    expect(buildChartPreviewConfigJson({
-      chartId: 111325,
-      difficulty: 4,
-      buddySide: '1',
-    })).toContain('"buddySide":"1"');
-  });
-
-  it('serializes the player theme with dark as the default', () => {
-    expect(buildChartPreviewConfigJson({ chartId: 10834, difficulty: 5 }))
-      .toContain('"theme":"dark"');
-    expect(buildChartPreviewConfigJson({ chartId: 10834, difficulty: 5, theme: 'light' }))
-      .toContain('"theme":"light"');
-  });
-
-  it('writes config into html template marker for file:// loading', () => {
-    const html = applyChartPreviewConfigToHtml(
-      '<html><!--CHART_PREVIEW_CONFIG--><script src="./player.js"></script></html>',
-      { chartId: 834, difficulty: 4, title: 'SD' },
-    );
-    expect(html).toContain('window.__CHART_PREVIEW__=');
-    expect(html).toContain('"chartId":834');
-    expect(html).not.toContain('<!--CHART_PREVIEW_CONFIG-->');
+  it('writes escaped configuration into the current HTML template', () => {
+    const title = '</script><script>throw 1</script>$$';
+    const html = applyChartPreviewConfigToHtml('<html><!--CHART_PREVIEW_CONFIG--></html>', { chartId: 834, difficulty: 4, title });
+    const script = /<script>(.*?)<\/script>/s.exec(html)![1];
+    const window = { __CHART_PREVIEW__: {} };
+    new Function('window', script)(window);
+    expect(window.__CHART_PREVIEW__).toMatchObject({ chartId: 834, difficulty: 4, title, theme: 'dark' });
   });
 
   it('parses native bridge messages and rejects non-object payloads', () => {
@@ -158,30 +110,38 @@ describe('chart preview webview helpers', () => {
       .toEqual({ mode: 'video', prompted: true });
   });
 
-  it('coalesces repeated interaction work into the latest animation frame', () => {
+  it('coalesces interaction work and flushes or cancels the latest value', () => {
     let nextHandle = 1;
     const callbacks = new Map<number, FrameRequestCallback>();
     const values: number[] = [];
-    const scheduler = createLatestFrameScheduler<number>(
-      (callback) => {
-        const handle = nextHandle++;
-        callbacks.set(handle, callback);
-        return handle;
-      },
-      (handle) => callbacks.delete(handle),
-      (value) => values.push(value),
-    );
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => {
+      const handle = nextHandle++;
+      callbacks.set(handle, callback);
+      return handle;
+    });
+    vi.stubGlobal('cancelAnimationFrame', (handle: number) => callbacks.delete(handle));
+    const advanceFrame = () => {
+      const queued = [...callbacks.values()];
+      callbacks.clear();
+      for (const callback of queued) callback(0);
+    };
+    const scheduler = createLatestFrameScheduler<number>((value) => values.push(value));
 
     scheduler.schedule(1);
     scheduler.schedule(2);
-    expect(callbacks.size).toBe(1);
-    callbacks.values().next().value?.(0);
+    expect(values).toEqual([]);
+    advanceFrame();
     expect(values).toEqual([2]);
 
     scheduler.schedule(3);
     scheduler.flush();
+    advanceFrame();
     expect(values).toEqual([2, 3]);
-    expect(scheduler.pending()).toBe(false);
+
+    scheduler.schedule(4);
+    scheduler.cancel();
+    advanceFrame();
+    expect(values).toEqual([2, 3]);
   });
 
   it('hides controls while locked and restores them when unlocked', () => {

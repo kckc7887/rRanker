@@ -26,9 +26,7 @@
  */
 import type { BeatmapData, ReplayData, SkinAssets, HitResult } from '../../types/index';
 import type { ModDifficulty } from '../../utils/modDifficulty';
-import type { AccFrame, ComboFrame } from '../../renderer/HUDRenderer';
-import type { ScoreFrame } from '../../utils/scoreProcessor';
-import type { URTimeline } from '../../renderer/URBarRenderer';
+import type { ComboFrame } from '../../renderer/HUDRenderer';
 import type { RenderOptions } from '../../renderer/Renderer';
 import type { Ruleset } from '../Ruleset';
 
@@ -36,11 +34,8 @@ import { drawHitObjects } from '../../renderer/HitObjectRenderer';
 import { drawFollowpoints } from '../../renderer/FollowpointRenderer';
 import { drawCursor } from '../../renderer/CursorRenderer';
 import { drawJudgements } from '../../renderer/JudgementRenderer';
-import { drawKeyOverlay } from '../../renderer/KeyOverlayRenderer';
-import { computeAccTimeline, computeComboTimeline } from '../../renderer/HUDRenderer';
+import { computeComboTimeline } from '../../renderer/HUDRenderer';
 import { computeHitResults, type SpinnerAngleData } from '../../utils/hitJudge';
-import { computeScoreTimeline } from '../../utils/scoreProcessor';
-import { computeURTimeline } from '../../renderer/URBarRenderer';
 import { Flashlight } from '../../renderer/FlashlightRenderer';
 
 export interface StdSession {
@@ -52,10 +47,7 @@ export interface StdSession {
   readonly spinnerAngles: Map<number, SpinnerAngleData>;
   readonly trackingIntervals: { start: number; end: number }[];
   readonly flashlight: Flashlight | null;
-  readonly accFrames: AccFrame[];
   readonly comboFrames: ComboFrame[];
-  readonly scoreFrames: ScoreFrame[];
-  readonly urTimeline: URTimeline;
   readonly qualityTotal: number;
 }
 
@@ -90,10 +82,7 @@ export const stdRuleset: Ruleset<StdSession> = {
     qualityTotal: number,
   ): StdSession {
     const { results, spinnerAngles, trackingIntervals } = computeHitResults(beatmap, replay, modDiff);
-    const accFrames   = computeAccTimeline(results);
     const comboFrames = computeComboTimeline(results);
-    const scoreFrames = computeScoreTimeline(results, beatmap, modDiff);
-    const urTimeline  = computeURTimeline(results, beatmap, modDiff);
     const flashlight  = modDiff.isFL
       ? new Flashlight(beatmap, replay, modDiff, results, trackingIntervals, qualityTotal)
       : null;
@@ -103,10 +92,7 @@ export const stdRuleset: Ruleset<StdSession> = {
       spinnerAngles,
       trackingIntervals,
       flashlight,
-      accFrames,
       comboFrames,
-      scoreFrames,
-      urTimeline,
       qualityTotal,
     };
   },
@@ -123,12 +109,8 @@ export const stdRuleset: Ruleset<StdSession> = {
     drawJudgements(ctx, s.hitResults, timeMs, s.skin, 'std', md.circleRadiusPx);
     if (options.modFlashlight) stdFlashlight(s).draw(ctx, timeMs);
     drawCursor(ctx, s.replay, timeMs, s.skin);
-    if (options.showKeyOverlay) drawKeyOverlay(ctx, s.replay, timeMs, s.skin);
   },
 
   hitResults:  (s) => s.hitResults,
-  scoreFrames: (s) => s.scoreFrames,
-  accFrames:   (s) => s.accFrames,
   comboFrames: (s) => s.comboFrames,
-  urTimeline:  (s) => s.urTimeline,
 };

@@ -826,11 +826,7 @@ async function main(): Promise<void> {
     for (const r of renderers) r.resize(isFullscreen);
     renderAt(session.positionBeats);
   };
-  const resizeScheduler = createLatestFrameScheduler(
-    requestAnimationFrame,
-    cancelAnimationFrame,
-    resize,
-  );
+  const resizeScheduler = createLatestFrameScheduler(resize);
   const scheduleResize = () => resizeScheduler.schedule(undefined);
   events.own(() => resizeScheduler.cancel());
   events.listen(window, 'resize', scheduleResize);
@@ -841,11 +837,7 @@ async function main(): Promise<void> {
   resize();
 
   timelineView.build();
-  const timelineLayoutScheduler = createLatestFrameScheduler(
-    requestAnimationFrame,
-    cancelAnimationFrame,
-    () => timelineView.build(),
-  );
+  const timelineLayoutScheduler = createLatestFrameScheduler(() => timelineView.build());
   events.own(() => timelineLayoutScheduler.cancel());
   events.listen(window, 'resize', () => timelineLayoutScheduler.schedule(undefined));
   const timelineObserver = new ResizeObserver(() => timelineLayoutScheduler.schedule(undefined));
@@ -866,11 +858,7 @@ async function main(): Promise<void> {
     renderFrameAll(beats);
     updateOverlayDom();
   };
-  const seekScheduler = createLatestFrameScheduler(
-    requestAnimationFrame,
-    cancelAnimationFrame,
-    seekToPosition,
-  );
+  const seekScheduler = createLatestFrameScheduler(seekToPosition);
   events.own(() => seekScheduler.cancel());
   for (const host of [timelineHost, fsTimelineHost]) {
     bindHeatTimelineKeyboard(events, host,

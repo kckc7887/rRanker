@@ -21,24 +21,21 @@ const inventory: StorageMeasurementInventory = {
     { key: 'detail:one', bytes: 5 },
     { key: 'unowned', bytes: 37 },
   ],
-  catalogBytes: 41,
 };
 
 function repository() {
   return {
     listAccountScoreSizes: vi.fn(async () => inventory.scores),
     listResourceSizes: vi.fn(async () => inventory.resources),
-    measureCatalogBytes: vi.fn(async () => inventory.catalogBytes),
     clearAccountScores: vi.fn(async (_ids: readonly string[]) => undefined),
     clearResources: vi.fn(async (_keys: readonly string[]) => undefined),
-    clearCatalog: vi.fn(async () => undefined),
   };
 }
 
 describe('storage adapter execution', () => {
   const ownership = {
     ownsAccount: (id: string) => id.startsWith('test:') && id !== 'test:local',
-    resourceKeys: ['catalog'], resourcePrefixes: ['detail:'], includeCatalog: true,
+    resourceKeys: ['catalog'], resourcePrefixes: ['detail:'],
   };
   const adapter = createGameStorageAdapter({
     gameId: 'maimai', title: 'Test', color: '#000', note: '', queryKeys: [], fileResources: [], ownership,
@@ -50,11 +47,9 @@ describe('storage adapter execution', () => {
     expect(selectStorageInventory(inventory, ownership)).toEqual({
       accountIds: ['test:remote'],
       resourceKeys: ['phigros-save:test:remote', 'account-thumbnail:test:no-score-row', 'catalog', 'detail:one'],
-      includeCatalog: true,
-      bytes: 94,
+      bytes: 53,
     });
-    await expect(adapter.measure(snapshots, inventory)).resolves.toBe(94);
-    expect(repo.listResourceSizes).not.toHaveBeenCalled();
+    await expect(adapter.measure(inventory)).resolves.toBe(53);
     const assertOldWriteCurrent = captureResourceWrites('maimai');
     repo.listAccountScoreSizes.mockImplementationOnce(async () => {
       expect(assertOldWriteCurrent).toThrow('缓存请求已失效');
@@ -63,32 +58,25 @@ describe('storage adapter execution', () => {
     await adapter.clear(snapshots);
     expect(repo.clearAccountScores).toHaveBeenCalledWith(['test:remote']);
     expect(repo.clearResources).toHaveBeenCalledWith(['phigros-save:test:remote', 'account-thumbnail:test:no-score-row', 'catalog', 'detail:one']);
-    expect(repo.clearCatalog).toHaveBeenCalledOnce();
-    expect(repo.measureCatalogBytes).not.toHaveBeenCalled();
   });
 
-  it('shares inventory reads for multiple measurements and leaves catalog out when not owned', async () => {
+  it('excludes catalog and other accounts from account-only storage', async () => {
     const repo = repository();
     const snapshots = repo as unknown as SqliteSnapshotRepository;
     const measured = await collectStorageMeasurementInventory(snapshots);
-    await Promise.all([adapter.measure(snapshots, measured), adapter.measure(snapshots, measured)]);
-    expect(repo.listResourceSizes).toHaveBeenCalledOnce();
-    expect(repo.listAccountScoreSizes).toHaveBeenCalledOnce();
     const accountOnly = createGameStorageAdapter({
       gameId: 'maimai', title: 'Test', color: '#000', note: '', queryKeys: [], fileResources: [],
       ownership: { ownsAccount: ownership.ownsAccount },
     });
-    await expect(accountOnly.measure(snapshots)).resolves.toBe(41);
+    await expect(accountOnly.measure(measured)).resolves.toBe(41);
     await accountOnly.clear(snapshots);
-    expect(repo.measureCatalogBytes).toHaveBeenCalledOnce();
-    expect(repo.clearCatalog).not.toHaveBeenCalled();
   });
 
   it('does not clear files after a database failure and permits the next clear to succeed', async () => {
     const clearFiles = vi.fn();
     const failingAdapter = createGameStorageAdapter({
       gameId: 'maimai', title: 'Test', color: '#000', note: '', queryKeys: [], ownership,
-      fileResources: [{ persistence: 'temporary', root: () => null as never, clear: clearFiles }],
+      fileResources: [{ root: () => null as never, clear: clearFiles }],
     });
     const repo = repository();
     repo.clearResources.mockRejectedValueOnce(new Error('write failed'));

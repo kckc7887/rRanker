@@ -1,3 +1,4 @@
+import { View } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import {
@@ -53,6 +54,16 @@ const KYOU_TAGS = [
 ];
 
 describe('PhigrosFilterBar chapter picker', () => {
+  it('waits for native layout before opening the chapter dropdown', async () => {
+    let measure: ((x: number, y: number, width: number, height: number) => void) | undefined;
+    jest.spyOn(View.prototype, 'measureInWindow').mockImplementation(callback => { measure = callback; });
+    const screen = await render(<PhigrosFilterBar {...baseProps} chapter="all" versions={VERSIONS} onChapterChange={jest.fn()} />);
+    await fireEvent.press(screen.getByLabelText('章节筛选，当前 全部'));
+    expect(screen.queryByLabelText('选择章节 Chapter 5 霓虹灯牌')).toBeNull();
+    await act(async () => { measure!(32, 240, 180, 36); });
+    expect(screen.getByLabelText('选择章节 Chapter 5 霓虹灯牌')).toBeTruthy();
+  });
+
   it('can stay expanded without rendering collapse controls', async () => {
     const screen = await render(<PhigrosFilterBar {...baseProps} collapsible={false} collapsed />);
     expect(screen.getByText('定数')).toBeTruthy();

@@ -1,16 +1,10 @@
 import type { DataSource } from '@/domain/models';
 import { DataSourceSchema } from '@/domain/schemas';
 import { z } from 'zod';
-import { cachedSnapshotSource } from '@/domain/refresh-result';
-import type { ResourceMaintenanceRepository } from '@/repositories/resource-repository';
+import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 export function cacheSourceSchema<K extends DataSource['kind']>(kind: K) {
   return DataSourceSchema.extend({ kind: z.literal(kind) });
-}
-
-export function parseCachedSnapshot<T>(stored: unknown, kind: DataSource['kind'], dataSchema: z.ZodType<T>): { data: T; source: DataSource } | null {
-  const parsed = z.object({ data: dataSchema, source: cacheSourceSchema(kind) }).safeParse(stored);
-  return parsed.success ? { ...parsed.data, source: cachedSnapshotSource(parsed.data.source) } : null;
 }
 
 const resourceWriteGenerations = new Map<string, number>();
@@ -148,7 +142,7 @@ export function createInflightGuard<K>(): InflightGuard<K> {
 }
 
 export async function clearResourcesByPrefix(
-  repository: ResourceMaintenanceRepository,
+  repository: SqliteSnapshotRepository,
   targets: { keys?: readonly string[]; prefixes?: readonly string[] },
 ): Promise<void> {
   const matched = [...(targets.keys ?? [])];

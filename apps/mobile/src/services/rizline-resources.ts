@@ -1,17 +1,18 @@
 import { fetch as expoFetch } from 'expo/fetch';
+import { z } from 'zod';
 import { type RizlineCatalogData, RIZLINE_RESOURCE_BASE } from '@/domain/rizline';
 import { RizlineCatalogSchema, RizlineCurrentSchema, RizlineManifestSchema } from '@/providers/rizline-catalog-schema';
 import { requestBytes, requestJson } from '@/providers/http-json';
 import { ProviderError } from '@/providers/errors';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import { captureResourceWrites, createInflightGuard, resourceWriteGeneration, snapshotSource } from './snapshot-cache-utils';
+import { cacheSourceSchema, captureResourceWrites, createInflightGuard, resourceWriteGeneration, snapshotSource } from './snapshot-cache-utils';
 import { cacheFirstLoad, staleCached } from './cache-first';
 import { VerifiedReleaseSession, verifyResourceBytes } from './verified-release';
 
 export const RIZLINE_CATALOG_KEY = 'rizline:catalog';
 export type RizlineReleaseFile = { path: string; size: number; sha256: string };
 export type RizlineRelease = RizlineCatalogData & { files: readonly RizlineReleaseFile[] };
-type Repository = Pick<SqliteSnapshotRepository, 'getResource' | 'saveResource'>;
+const cachedCatalogSchema = z.object({ snapshot: RizlineCatalogSchema, source: cacheSourceSchema('rizline') });
 function catalogData(release: RizlineRelease): RizlineCatalogData {
   return { snapshot: release.snapshot, source: release.source };
 }
@@ -19,16 +20,15 @@ export class RizlineResourceService {
   private readonly releases = new VerifiedReleaseSession<RizlineRelease>((signal, force) => this.prepare(signal, force));
   private readonly loads = createInflightGuard<string>();
   private revision: string | undefined;
-  constructor(private readonly repository: Repository = new SqliteSnapshotRepository(), private readonly fetcher: typeof fetch = expoFetch as unknown as typeof fetch,
-    private readonly base = RIZLINE_RESOURCE_BASE) {}
+  private readonly repository = new SqliteSnapshotRepository();
 
   clear(): void { this.loads.clear(); this.releases.clear(); this.revision = undefined; }
   withRelease<T>(action: (release: RizlineRelease) => Promise<T>, signal?: AbortSignal, check = false): Promise<T> {
     return this.releases.withRelease(action, signal, check);
   }
-  private url(path: string): string { return `${this.base}/${path.split('/').map(encodeURIComponent).join('/')}`; }
+  private url(path: string): string { return `${RIZLINE_RESOURCE_BASE}/${path.split('/').map(encodeURIComponent).join('/')}`; }
   private requestOptions(signal?: AbortSignal) {
-    return { baseUrl: this.base, fetcher: this.fetcher, signal, totalAttempts: 1, label: 'Rizline 曲库',
+    return { baseUrl: RIZLINE_RESOURCE_BASE, fetcher: expoFetch as unknown as typeof fetch, signal, totalAttempts: 1, label: 'Rizline 曲库',
       error: (status: number) => new ProviderError('network', `Rizline 曲库请求失败：${status}`, true) };
   }
   private async prepare(signal: AbortSignal, force: boolean): Promise<RizlineRelease> {
@@ -71,9 +71,7 @@ export class RizlineResourceService {
     };
   }
   async loadCached(): Promise<RizlineCatalogData | null> {
-    const cached = await this.repository.getResource<RizlineCatalogData>(RIZLINE_CATALOG_KEY, 1);
-    if (!cached || !RizlineCatalogSchema.safeParse(cached.snapshot).success) return null;
-    return cached;
+    return this.repository.getResource(RIZLINE_CATALOG_KEY, 1, cachedCatalogSchema);
   }
   loadFresh(signal?: AbortSignal): Promise<RizlineCatalogData> {
     const generation = resourceWriteGeneration('rizline');

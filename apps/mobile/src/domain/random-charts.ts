@@ -254,7 +254,3 @@ export function filterPhigrosRandomCharts(
   }
   return picks;
 }
-
-export function chartPickKey(pick: RandomChartPick): string {
-  return chartVersionKey(pick.songId, pick.type, pick.levelIndex);
-}

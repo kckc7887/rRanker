@@ -13,9 +13,8 @@ export async function readProviderResponseBytes(response: Response, options: {
   maxBytes?: number; signal?: AbortSignal; message?: string;
 } = {}): Promise<Uint8Array> {
   const maximum = options.maxBytes ?? PROVIDER_MAX_RESPONSE_BYTES;
-  if (!Number.isSafeInteger(maximum) || maximum < 1) throw new TypeError('响应预算必须是有限正整数');
   const exceeded = () => new ProviderError('upstream_schema', options.message ?? '响应大小超出读取预算', false);
-  const declared = response.headers?.get('content-length');
+  const declared = response.headers.get('content-length');
   const stream = response.body;
   if (declared && /^\d+$/.test(declared) && Number(declared) > maximum) {
     void stream?.cancel().catch(() => undefined);
@@ -23,11 +22,7 @@ export async function readProviderResponseBytes(response: Response, options: {
   }
   if (options.signal?.aborted) throw options.signal.reason;
   if (!stream) {
-    const bytes = typeof response.arrayBuffer === 'function'
-      ? new Uint8Array(await abortable(response.arrayBuffer(), options.signal))
-      : new TextEncoder().encode(typeof response.text === 'function'
-        ? await abortable(response.text(), options.signal)
-        : JSON.stringify(await abortable(response.json(), options.signal)));
+    const bytes = new Uint8Array(await abortable(response.arrayBuffer(), options.signal));
     if (bytes.byteLength > maximum) throw exceeded();
     return bytes;
   }
@@ -258,7 +253,7 @@ export async function requestProviderWrite<T>(options: JsonRequestOptions<T>, re
 > {
   let sent = false;
   let status: number | undefined;
-  const fetcher = options.fetcher ?? expoFetch as unknown as typeof fetch;
+  const fetcher = options.fetcher;
   try {
     const data = await requestProviderResponse({ ...options, totalAttempts: 1, fetcher: async (...args) => {
       sent = true;

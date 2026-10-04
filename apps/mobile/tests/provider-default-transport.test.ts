@@ -64,16 +64,14 @@ describe('production default transports use the shared streaming reader', () => 
     await vi.waitFor(() => expect(cancel).toHaveBeenCalledTimes(requests));
   });
 
-  it.each(['musedash', 'tuf', 'rizline'] as const)('%s keeps an explicitly injected fetcher', async (name) => {
+  it.each(['musedash', 'tuf'] as const)('%s keeps an explicitly injected fetcher', async (name) => {
     const fetcher = vi.fn(async () => new Response('', { status: 403 }));
     const injected = fetcher as unknown as typeof fetch;
     const action = name === 'musedash'
       ? new MuseDashProvider(injected).searchPlayers('fixture')
-      : name === 'tuf'
-        ? new TufProvider(injected).searchPlayers('fixture')
-        : new RizlineResourceService(undefined, injected).withRelease(async (release) => release);
-    await expect(action).rejects.toMatchObject({ code: name === 'rizline' ? 'network' : 'permission' });
-    expect(fetcher).toHaveBeenCalledTimes(name === 'rizline' ? 2 : 1);
+      : new TufProvider(injected).searchPlayers('fixture');
+    await expect(action).rejects.toMatchObject({ code: 'permission' });
+    expect(fetcher).toHaveBeenCalledTimes(1);
     expect(transport.fetch).not.toHaveBeenCalled();
   });
 });

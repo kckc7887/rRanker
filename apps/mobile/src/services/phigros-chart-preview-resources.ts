@@ -7,9 +7,6 @@ import {
 } from '@/domain/phigros-chart-preview';
 import { phigrosResources, verifyPhigrosResource } from '@/services/phigros-resources';
 
-const READ_TIMEOUT_MS = 60_000;
-const RESOURCE_KINDS = ['chart', 'music', 'illustration'] as const;
-
 export type PhigrosChartPreviewResources = {
   bundle: PhigrosChartPreviewBundle;
   chart: Uint8Array;
@@ -28,16 +25,14 @@ export function loadPhigrosChartPreviewVariants(
 export function loadPhigrosChartPreviewResources(
   target: PhigrosChartPreviewTarget,
   signal: AbortSignal,
-  read?: PhigrosChartPreviewResourceRead,
+  read: PhigrosChartPreviewResourceRead,
 ): Promise<PhigrosChartPreviewResources> {
   return phigrosResources.withRelease(async release => {
     const bundle = resolvePhigrosChartPreviewAssetBundle({ ...release, target });
     const bytes: Uint8Array[] = [];
-    for (const [index, asset] of [bundle.chart, bundle.music, bundle.illustration].entries()) {
-      asset.url = phigrosResources.assetUrl(release, phigrosResources.asset(release, asset.path));
-      const data = read
-        ? await read(asset, index)
-        : await phigrosResources.bytes(asset.url, signal, READ_TIMEOUT_MS, RESOURCE_KINDS[index]);
+    for (const [index, resource] of [bundle.chart, bundle.music, bundle.illustration].entries()) {
+      const asset = { ...resource, url: phigrosResources.assetUrl(release, resource) };
+      const data = await read(asset, index);
       await verifyPhigrosResource(data, asset);
       if (signal.aborted) throw signal.reason;
       bytes.push(data);

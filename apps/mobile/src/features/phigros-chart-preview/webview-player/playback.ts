@@ -39,25 +39,6 @@ function decodeBase64DataUrl(url: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-export interface PhigrosPlaybackEnvironment {
-  createAudioContext(): AudioContext;
-  requestFrame(callback: (timestamp: number) => void): number;
-  cancelFrame(handle: number): void;
-  now(): number;
-}
-
-export const defaultPhigrosPlaybackEnvironment: PhigrosPlaybackEnvironment = {
-  createAudioContext: () => {
-    const AudioContextClass = window.AudioContext
-      ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
-    if (!AudioContextClass) throw new Error('浏览器不支持 Web Audio');
-    return new AudioContextClass({ latencyHint: 'interactive' });
-  },
-  requestFrame: (callback) => requestAnimationFrame(callback),
-  cancelFrame: (handle) => cancelAnimationFrame(handle),
-  now: () => performance.now(),
-};
-
 export interface PhigrosPlaybackSettings {
   playbackSpeed: number;
   volume: number;
@@ -82,7 +63,6 @@ export interface PhigrosPlaybackOptions {
   settings: PhigrosPlaybackSettings;
 
   hitSounds?: Partial<Record<HitSoundKind, string>> | undefined;
-  environment?: PhigrosPlaybackEnvironment;
   host: PhigrosPlaybackHost;
 }
 
@@ -90,7 +70,6 @@ export class PhigrosPlaybackSession {
   private readonly clock = new PlaybackClock();
   private readonly settings: PhigrosPlaybackSettings;
   private readonly hitSoundDataUrls: Partial<Record<HitSoundKind, string>> | undefined;
-  private readonly environment: PhigrosPlaybackEnvironment;
   private readonly host: PhigrosPlaybackHost;
   private chartTimeline: PhigrosChartTimeline = { durationSeconds: 0, offsetSeconds: 0 };
   private chartTimePosition = 0;
@@ -117,7 +96,6 @@ export class PhigrosPlaybackSession {
   constructor(options: PhigrosPlaybackOptions) {
     this.settings = options.settings;
     this.hitSoundDataUrls = options.hitSounds;
-    this.environment = options.environment ?? defaultPhigrosPlaybackEnvironment;
     this.host = options.host;
   }
 
@@ -208,7 +186,7 @@ export class PhigrosPlaybackSession {
       await this.startSource(musicSeconds, command);
     } else {
       this.stopSource(true);
-      this.lastFrameTimestamp = this.environment.now();
+      this.lastFrameTimestamp = performance.now();
     }
     if (this.disposed || command !== this.command) return;
     this.cancelFrame();
@@ -279,13 +257,16 @@ export class PhigrosPlaybackSession {
 
   private cancelFrame(): void {
     if (this.frame === null) return;
-    this.environment.cancelFrame(this.frame);
+    cancelAnimationFrame(this.frame);
     this.frame = null;
   }
 
   private async ensureAudio(resume = true): Promise<AudioContext> {
     if (!this.context) {
-      const context = this.environment.createAudioContext();
+      const AudioContextClass = window.AudioContext
+        ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
+      if (!AudioContextClass) throw new Error('浏览器不支持 Web Audio');
+      const context = new AudioContextClass({ latencyHint: 'interactive' });
       this.context = context;
       this.musicGain = context.createGain();
       this.musicGain.gain.value = this.settings.volume;
@@ -444,7 +425,7 @@ export class PhigrosPlaybackSession {
 
   private scheduleFrame(): number {
     const command = this.command;
-    return this.environment.requestFrame(timestamp => {
+    return requestAnimationFrame(timestamp => {
       if (this.disposed || command !== this.command) return;
       this.tick(timestamp);
     });

@@ -402,10 +402,6 @@ export function selectPhi3(allRecords: PhigrosScoreEntry[]): PhigrosScoreEntry[]
     .slice(0, 3);
 }
 
-export function sumPhi3Contribution(allRecords: PhigrosScoreEntry[]): number {
-  return selectPhi3(allRecords).reduce((sum, s) => sum + s.difficulty, 0);
-}
-
 export function collectScoredEntries(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
@@ -469,13 +465,6 @@ export function gameRecordToPhigrosScoreRecords(
   return collectScoredEntries(gameRecord, difficultyTable)
     .map(toPhigrosScoreRecord)
     .sort((a, b) => b.rks - a.rks || b.acc - a.acc);
-}
-
-export function gameRecordToScoreRecords(
-  gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
-  difficultyTable: PhigrosDifficultyTable,
-): ScoreRecord[] {
-  return gameRecordToPhigrosScoreRecords(gameRecord, difficultyTable).map(phigrosSharedScoreRecord);
 }
 
 export function computeB30(
@@ -702,18 +691,4 @@ export function loadChaptersTable(raw: string): PhigrosChaptersTable | null {
 
   if (definitions.length === 0 || !sawMappingMarker) return null;
   return { definitions, songChapter };
-}
-
-/** 同曲定数优先保留先出现的版本。 */
-export function mergeDifficultyTables(
-  primary: PhigrosDifficultyTable,
-  ...fallbacks: PhigrosDifficultyTable[]
-): PhigrosDifficultyTable {
-  const merged: PhigrosDifficultyTable = { ...primary };
-  for (const table of fallbacks) {
-    for (const [id, diffs] of Object.entries(table)) {
-      if (!merged[id]) merged[id] = diffs;
-    }
-  }
-  return merged;
 }

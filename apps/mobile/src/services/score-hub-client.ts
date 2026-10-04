@@ -141,10 +141,6 @@ export function parseQrLoginInitBody(status: number, body: unknown): QrLoginInit
     if (record.kind === 'async' && typeof record.attemptId === 'string' && record.attemptId) {
       return { kind: 'async', attemptId: record.attemptId };
     }
-    /** 响应可直接返回 token。 */
-    if (typeof record.token === 'string' && record.token) {
-      return { kind: 'fast', token: record.token, friendCode: friendCodeFromUser(record.user) };
-    }
   }
   if (isQrExpiredErrorBody(body)) {
     throw new ScoreHubError(

@@ -26,9 +26,7 @@
  */
 import type { BeatmapData, ReplayData, SkinAssets, HitResult } from '../../types/index';
 import type { ModDifficulty } from '../../utils/modDifficulty';
-import type { AccFrame, ComboFrame } from '../../renderer/HUDRenderer';
-import type { ScoreFrame } from '../../utils/scoreProcessor';
-import type { URTimeline } from '../../renderer/URBarRenderer';
+import type { ComboFrame } from '../../renderer/HUDRenderer';
 import type { CatcherFrame } from './input';
 
 export type CatchObjectType = 'fruit' | 'droplet' | 'tinyDroplet' | 'banana';
@@ -71,8 +69,5 @@ export interface CatchSession {
   readonly catcherPath: readonly CatcherFrame[];
 
   readonly hitResults:  readonly HitResult[];
-  readonly accFrames:   readonly AccFrame[];
   readonly comboFrames: readonly ComboFrame[];
-  readonly scoreFrames: readonly ScoreFrame[];
-  readonly urTimeline:  URTimeline;
 }

@@ -1,7 +1,5 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
-  bestImageJacketUrl,
-  imageCachePathToFileUri,
   loadBestImageJackets,
 } from '@/features/best-image/load-best-image-jackets';
 
@@ -55,7 +53,7 @@ describe('best image jacket temporary loading', () => {
   });
 
   it('marks a failed jacket as null without retaining a file', async () => {
-    mocks.failUrls.add(bestImageJacketUrl('11449'));
+    mocks.failUrls.add('https://assets2.lxns.net/maimai/jacket/1449.png');
     await expect(loadBestImageJackets(['11449'])).resolves.toEqual({ '11449': null });
     expect(mocks.files.size).toBe(0);
   });
@@ -65,15 +63,10 @@ describe('best image jacket temporary loading', () => {
       '1447': expect.stringContaining('data:image/png;base64,'),
       '11447': expect.stringContaining('data:image/png;base64,'),
     });
-    expect(mocks.urls).toHaveLength(1);
+    expect(mocks.urls).toEqual(['https://assets2.lxns.net/maimai/jacket/1447.png']);
   });
 
-  it('keeps compatibility URL helpers', () => {
-    expect(bestImageJacketUrl('11447')).toBe('https://assets2.lxns.net/maimai/jacket/1447.png');
-    expect(bestImageJacketUrl('110123')).toBe('https://assets2.lxns.net/maimai/jacket/123.png');
-    expect(imageCachePathToFileUri('/data/user/0/app/cache/1449.png'))
-      .toBe('file:///data/user/0/app/cache/1449.png');
-  });
+
 });
 
 vi.mock('@/features/chart-download-shared/chart-download-shared', async () => {

@@ -33,7 +33,7 @@ const HTML_MODULE = require('../../../assets/rizline-chart-preview/index.html') 
 // eslint-disable-next-line @typescript-eslint/no-require-imports
 const PLAYER_MODULE = require('../../../assets/rizline-chart-preview/player.bundle') as number;
 
-export function createRizlinePreviewResourceRead(
+function createRizlinePreviewResourceRead(
   directory: Directory,
   signal: AbortSignal,
   onProgress?: (progress: ChartPreviewLoadProgress) => void,
@@ -45,7 +45,7 @@ export function createRizlinePreviewResourceRead(
       label: CHART_PREVIEW_RESOURCE_LABEL,
       value: weightedChartPreviewProgress(
         fractions.map((fraction, index) => ({
-          weight: weights[index] ?? 1,
+          weight: weights[index]!,
           fraction,
         })),
       ),
@@ -53,7 +53,7 @@ export function createRizlinePreviewResourceRead(
   };
   return async (asset, index) => {
     weights[index] = asset.size > 0 ? asset.size : 1;
-    const fileName = PREVIEW_RESOURCE_FILES[index] ?? `preview-resource-${index}`;
+    const fileName = PREVIEW_RESOURCE_FILES[index]!;
     const file = await downloadChartResource(
       directory,
       fileName,

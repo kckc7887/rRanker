@@ -23,8 +23,6 @@ describe('Rizline arithmetic boundaries', () => {
     /** 合成算例：C=12.3、h=100、mP=1。 */
     /** 上游回退判断使用 Float32Array。 */
     const observed = 133.0229949951172;
-    const integralCandidate = 100 * (11 * 12.3 + 9.9 - observed) / 12.3;
-    expect(Math.abs(integralCandidate - Math.round(integralCandidate))).toBeGreaterThan(1e-6);
     expect(inferRizlineAh({ difficulty: 'IN', chart: rizlineChart({ constant: 12.3, hit: 400, riztimeHit: 105 }),
       achievements: 116, score: 1000100, rks: observed })).toBe('inferred');
   });

@@ -23,7 +23,7 @@ const mockFs = vi.hoisted(() => ({
   downloadCalls: [] as string[],
   stagedLocalAssets: [] as string[],
   readAssetTexts: new Map<number, string>(),
-  onReadBytes: vi.fn(async () => {}),
+  onDownloadReady: vi.fn(async () => {}),
   writes: [] as string[],
   makeStageDirectory: ((_name: string) => ({ uri: '' })) as (name: string) => { uri: string },
 }));
@@ -53,7 +53,6 @@ vi.mock('expo-file-system', () => {
     async bytes() {
       const bytes = mockFs.files.get(this.uri);
       if (!bytes) throw new Error('source does not exist');
-      await mockFs.onReadBytes();
       return Uint8Array.from(bytes);
     }
     create() { mockFs.files.set(this.uri, new Uint8Array()); }
@@ -80,6 +79,7 @@ vi.mock('expo-file-system', () => {
       if (remote instanceof Error) throw remote;
       if (!remote) throw new Error(`missing remote ${url}`);
       mockFs.files.set(destination.uri, Uint8Array.from(remote));
+      await mockFs.onDownloadReady();
       return destination;
     }
   }
@@ -146,7 +146,7 @@ describe('maimai chart preview remote assets', () => {
     mockFs.downloadCalls.length = 0;
     mockFs.stagedLocalAssets.length = 0;
     mockFs.readAssetTexts.clear();
-    mockFs.onReadBytes.mockReset();
+    mockFs.onDownloadReady.mockReset();
     mockFs.writes.length = 0;
     mockFs.readAssetTexts.set(1, '<html>');
   });
@@ -257,9 +257,9 @@ describe('maimai chart preview remote assets', () => {
     expect(mockFs.files.get(stageUri(stagedName))?.byteLength).toBe(TAP.bytes);
   });
 
-  it('does not recreate cleared preview files after a delayed cache read', async () => {
+  it('does not recreate cleared preview files after a delayed download', async () => {
     mockFs.remotes.set(TAP.url, TAP_BYTES);
-    mockFs.onReadBytes.mockImplementationOnce(async () => {
+    mockFs.onDownloadReady.mockImplementationOnce(async () => {
       invalidateResourceWrites('shared');
       mockFs.files.clear();
     });

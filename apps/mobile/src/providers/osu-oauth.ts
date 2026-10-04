@@ -79,15 +79,19 @@ export async function beginOsuAuthorize(): Promise<string> {
 
 async function loadPendingOsuOAuth(): Promise<PendingOsuOAuth | null> {
   const raw = await runProviderOperation('credential_storage', () => SecureStore.getItemAsync(PENDING_OAUTH_KEY));
-  if (!raw) return null;
+  if (raw === null) return null;
+  let parsed: Partial<PendingOsuOAuth> | null;
   try {
-    const parsed = JSON.parse(raw) as Partial<PendingOsuOAuth>;
-    if (typeof parsed.state !== 'string' || !parsed.state.trim()) return null;
-    if (typeof parsed.expiresAt !== 'number' || !Number.isFinite(parsed.expiresAt)) return null;
-    return { state: parsed.state, expiresAt: parsed.expiresAt };
+    parsed = JSON.parse(raw) as Partial<PendingOsuOAuth> | null;
   } catch {
-    return null;
+    parsed = null;
   }
+  if (parsed && typeof parsed.state === 'string' && parsed.state.trim()
+    && typeof parsed.expiresAt === 'number' && Number.isFinite(parsed.expiresAt)) {
+    return { state: parsed.state, expiresAt: parsed.expiresAt };
+  }
+  await runProviderOperation('credential_storage', () => SecureStore.deleteItemAsync(PENDING_OAUTH_KEY));
+  return null;
 }
 
 function parseTokenPayload(payload: unknown): z.infer<typeof TokenResponseSchema> {

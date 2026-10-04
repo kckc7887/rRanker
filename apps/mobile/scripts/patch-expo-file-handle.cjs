@@ -3,12 +3,8 @@ const { dirname, join } = require('node:path');
 
 /** 保留 64 位文件位置，并完成短读、短写。 */
 const packagePath = require.resolve('expo-file-system/package.json');
-const metadata = JSON.parse(readFileSync(packagePath, 'utf8'));
 const handlePath = join(dirname(packagePath), 'android/src/main/java/expo/modules/filesystem/FileSystemFileHandle.kt');
 const source = readFileSync(handlePath, 'utf8');
-if (metadata.version !== '19.0.24') {
-  throw new Error(`不支持 expo-file-system ${metadata.version}`);
-}
 
 const originalRead = 'val buffer = ByteBuffer.allocate(length.coerceAtMost((fileChannel.size() - fileChannel.position()).toInt()))\n      fileChannel.read(buffer)\n      return buffer.array()';
 const originalWrite = '      fileChannel.write(buffer)';

@@ -26,9 +26,7 @@
  */
 import type { BeatmapData, ReplayData, SkinAssets, HitResult } from '../types/index';
 import type { ModDifficulty } from '../utils/modDifficulty';
-import type { AccFrame, ComboFrame } from '../renderer/HUDRenderer';
-import type { ScoreFrame } from '../utils/scoreProcessor';
-import type { URTimeline } from '../renderer/URBarRenderer';
+import type { ComboFrame } from '../renderer/HUDRenderer';
 import type { RenderOptions } from '../renderer/Renderer';
 
 export interface Ruleset<Session> {
@@ -50,11 +48,8 @@ export interface Ruleset<Session> {
 
   hitResults(session: Session): readonly HitResult[];
 
-  scoreFrames(session: Session): readonly ScoreFrame[];
 
-  accFrames(session: Session): readonly AccFrame[];
 
   comboFrames(session: Session): readonly ComboFrame[];
 
-  urTimeline(session: Session): URTimeline;
 }

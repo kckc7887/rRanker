@@ -26,9 +26,8 @@ import {
 } from '@/domain/muse-dash';
 import { museDashProvider } from '@/providers/muse-dash-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import type { ResourceRepository, ResourceMaintenanceRepository } from '@/repositories/resource-repository';
-import { clearResourcesByPrefix, createInflightGuard, resourceWriteGeneration, makeSnapshot, parseCachedSnapshot } from '@/services/snapshot-cache-utils';
-import { assertFreshSnapshotSource } from '@/domain/refresh-result';
+import { cacheSourceSchema, clearResourcesByPrefix, createInflightGuard, resourceWriteGeneration, makeSnapshot } from '@/services/snapshot-cache-utils';
+import { cachedSnapshotSource } from '@/domain/refresh-result';
 
 export function makeMuseDashSnapshot<T>(data: T, updatedAt = new Date().toISOString()): { data: T; source: DataSource } {
   return makeSnapshot(data, { kind: 'musedash', label: 'MuseDash.moe' }, updatedAt);
@@ -75,18 +74,18 @@ export function loadMuseDashDiffdiffFreshSnapshot(
 }
 
 export class MuseDashCache {
-  constructor(private readonly repository: ResourceRepository & ResourceMaintenanceRepository = new SqliteSnapshotRepository()) {}
+  private readonly repository = new SqliteSnapshotRepository();
 
   private async readSnapshot<T>(key: string, version: number, dataSchema: z.ZodType<T>): Promise<{ data: T; source: DataSource } | null> {
-    const stored = await this.repository.getResource<unknown>(key, version);
-    return parseCachedSnapshot(stored, 'musedash', dataSchema);
+    return this.repository.getResource(key, version, z.object({
+      data: dataSchema, source: cacheSourceSchema('musedash').transform(cachedSnapshotSource),
+    }));
   }
 
   async loadPlayer(userId: string): Promise<MuseDashPlayerSnapshot | null> {
     return this.readSnapshot(museDashPlayerCacheKey(userId), MUSE_DASH_PLAYER_SCHEMA_VERSION, MuseDashPlayerSchema);
   }
   async savePlayer(userId: string, snapshot: MuseDashPlayerSnapshot, assertCurrent?: () => void): Promise<void> {
-    assertFreshSnapshotSource(snapshot.source);
     await this.repository.saveResource(museDashPlayerCacheKey(userId), MUSE_DASH_PLAYER_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot, assertCurrent);
   }
 
@@ -96,7 +95,6 @@ export class MuseDashCache {
     );
   }
   async savePlayDetail(userId: string, uid: string, difficulty: number, platform: string, snapshot: MuseDashPlayDetailSnapshot, assertCurrent?: () => void): Promise<void> {
-    assertFreshSnapshotSource(snapshot.source);
     await this.repository.saveResource(
       museDashPlayDetailCacheKey(userId, uid, difficulty, platform),
       MUSE_DASH_PLAY_DETAIL_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot, assertCurrent,
@@ -107,7 +105,6 @@ export class MuseDashCache {
     return this.readSnapshot(MUSE_DASH_ALBUMS_CACHE_KEY, MUSE_DASH_ALBUMS_SCHEMA_VERSION, MuseDashAlbumsResponseSchema);
   }
   async saveAlbums(snapshot: MuseDashAlbumsSnapshot, assertCurrent?: () => void): Promise<void> {
-    assertFreshSnapshotSource(snapshot.source);
     await this.repository.saveResource(MUSE_DASH_ALBUMS_CACHE_KEY, MUSE_DASH_ALBUMS_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot, assertCurrent);
   }
 
@@ -115,7 +112,6 @@ export class MuseDashCache {
     return this.readSnapshot(MUSE_DASH_CE_CACHE_KEY, MUSE_DASH_CE_SCHEMA_VERSION, MuseDashCeResponseSchema);
   }
   async saveCe(snapshot: MuseDashCeSnapshot, assertCurrent?: () => void): Promise<void> {
-    assertFreshSnapshotSource(snapshot.source);
     await this.repository.saveResource(MUSE_DASH_CE_CACHE_KEY, MUSE_DASH_CE_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot, assertCurrent);
   }
 
@@ -123,7 +119,6 @@ export class MuseDashCache {
     return this.readSnapshot(MUSE_DASH_DIFFDIFF_CACHE_KEY, MUSE_DASH_DIFFDIFF_SCHEMA_VERSION, MuseDashDiffdiffResponseSchema);
   }
   async saveDiffdiff(snapshot: MuseDashDiffdiffSnapshot, assertCurrent?: () => void): Promise<void> {
-    assertFreshSnapshotSource(snapshot.source);
     await this.repository.saveResource(MUSE_DASH_DIFFDIFF_CACHE_KEY, MUSE_DASH_DIFFDIFF_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot, assertCurrent);
   }
 

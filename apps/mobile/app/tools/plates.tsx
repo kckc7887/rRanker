@@ -19,7 +19,7 @@ import {
 import type { Plate } from '@/domain/models';
 import { usePlates } from '@/hooks/use-plates';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
-import { useSongs } from '@/hooks/use-songs';
+import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
@@ -55,7 +55,7 @@ export default function PlatesToolScreen() {
   const routePlateId = parsePlateIdParam(plateIdParam);
   const plates = usePlates();
   const scores = useScoreSnapshot();
-  const songs = useSongs();
+  const songs = useDetailedCatalog();
   const activeGameId = useSession((state) => state.activeGameId);
   const pinnedPlateIds = useToolboxPins((state) => state.pinnedPlateIdsByGame[activeGameId]);
   const hydratePins = useToolboxPins((state) => state.hydrate);
@@ -90,7 +90,7 @@ export default function PlatesToolScreen() {
   );
   const songTitleById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const song of songs.data ?? []) map.set(song.id, song.title);
+    for (const song of songs.data?.songs ?? []) map.set(song.id, song.title);
     return map;
   }, [songs.data]);
   const activeGroup = groups.find((group) => group.prefix === openPrefix) ?? null;

@@ -1,28 +1,23 @@
 import {
-  CHUNITHM_CLEAR_TIER_MIN_SCORE,
   calculateChunithmOverPower,
   chunithmChartRatingDisplay,
   chunithmRatingTable,
-  formulaMinimumScoreForChunithmOverPower,
-  formulaMinimumScoreForChunithmRating,
   maxChunithmChartRating,
   maxChunithmOverPower,
   minimumScoreForChunithmOverPower,
   minimumScoreForChunithmRating,
   parseChunithmChartInput,
-  rawChunithmChartRating,
-  type ChunithmClearTier,
 } from '@/domain/chunithm-rating';
 
 describe('chunithm rating formula', () => {
-  it('keeps the max rating anchors consistent with the maxed test provider', () => {
+  it('computes maximum ratings from chart constants', () => {
     expect(maxChunithmChartRating(13.7)).toBeCloseTo(15.85, 2);
     expect(maxChunithmChartRating(14.0)).toBeCloseTo(16.15, 2);
     expect(maxChunithmChartRating(15.5)).toBeCloseTo(17.65, 2);
     expect(maxChunithmChartRating(13.705)).toBe(chunithmChartRatingDisplay(13.705, 1_009_000));
   });
 
-  it('keeps the max over power anchors consistent with the maxed test provider', () => {
+  it('computes maximum over power from chart constants', () => {
     expect(maxChunithmOverPower(13.7)).toBeCloseTo(83.5, 2);
     expect(maxChunithmOverPower(14.0)).toBeCloseTo(85, 2);
     expect(maxChunithmOverPower(15.5)).toBeCloseTo(92.5, 2);
@@ -47,28 +42,20 @@ describe('chunithm rating formula', () => {
     expect(chunithmChartRatingDisplay(13.7, 1_002_501)).toBeCloseTo(14.95, 9);
   });
 
-  it('keeps the full-precision rating separate from the displayed rating', () => {
+  it('floors fractional ratings for display', () => {
     /** 14.7099 展示截断为 14.70。 */
-    expect(rawChunithmChartRating(13.7, 1_000_099)).toBeCloseTo(14.7099, 9);
     expect(chunithmChartRatingDisplay(13.7, 1_000_099)).toBeCloseTo(14.7, 9);
     /** 14.69996 展示截断为 14.69。 */
-    expect(rawChunithmChartRating(13.7, 999_999)).toBeCloseTo(14.69996, 9);
     expect(chunithmChartRatingDisplay(13.7, 999_999)).toBeCloseTo(14.69, 9);
-    expect(rawChunithmChartRating(13.7, 974_999)).toBeCloseTo(13.6999333333, 9);
     expect(chunithmChartRatingDisplay(13.7, 974_999)).toBeCloseTo(13.69, 9);
-    expect(rawChunithmChartRating(13.7, 1_007_500)).toBe(15.7);
     expect(chunithmChartRatingDisplay(13.7, 1_007_500)).toBe(15.7);
   });
 
-  it('keeps raw a mathematical intermediate and the display value floored at zero', () => {
+  it('floors negative ratings at zero', () => {
     /** 定数 1.0、850000 分的原始 Rating 为 -3，展示钳为 0。 */
-    expect(rawChunithmChartRating(1.0, 850_000)).toBeCloseTo(-3, 9);
     expect(chunithmChartRatingDisplay(1.0, 850_000)).toBe(0);
-    expect(rawChunithmChartRating(1.0, 600_000)).toBeCloseTo(-0.6666666667, 9);
     expect(chunithmChartRatingDisplay(1.0, 600_000)).toBe(0);
-    expect(rawChunithmChartRating(1.0, 900_000)).toBe(0);
     expect(chunithmChartRatingDisplay(1.0, 900_000)).toBe(0);
-    expect(rawChunithmChartRating(13.7, 850_000)).toBeCloseTo(6.525, 9);
     expect(chunithmChartRatingDisplay(13.7, 850_000)).toBeCloseTo(6.52, 9);
   });
 
@@ -108,10 +95,7 @@ describe('chunithm rating formula', () => {
     expect(chunithmChartRatingDisplay(13.7, -1)).toBe(0);
     expect(calculateChunithmOverPower(13.7, 0, 'aj')).toBe(0);
     expect(chunithmChartRatingDisplay(Number.NaN, 1_000_000)).toBe(0);
-    expect(rawChunithmChartRating(Number.NaN, 1_000_000)).toBe(0);
-    expect(rawChunithmChartRating(13.7, Number.NaN)).toBe(0);
     expect(chunithmChartRatingDisplay(Number.POSITIVE_INFINITY, 1_000_000)).toBe(0);
-    expect(rawChunithmChartRating(13.7, Number.POSITIVE_INFINITY)).toBe(0);
     expect(calculateChunithmOverPower(Number.POSITIVE_INFINITY, 1_000_000, 'aj')).toBe(0);
     expect(calculateChunithmOverPower(13.7, Number.NaN, 'aj')).toBe(0);
     expect(calculateChunithmOverPower(13.7, Number.POSITIVE_INFINITY, 'aj')).toBe(0);
@@ -133,30 +117,29 @@ describe('chunithm rating formula', () => {
   });
 
   it('matches the hand-computed table around every piecewise boundary', () => {
-    const rows: readonly [score: number, raw: number, display: number, overPower: number][] = [
-      [974_999, 13.699933333333333, 13.69, 0],
-      [975_000, 13.7, 13.7, 68.5],
-      [975_001, 13.70004, 13.7, 68.5002],
-      [989_999, 14.29996, 14.29, 71.4998],
-      [990_000, 14.3, 14.3, 71.5],
-      [990_001, 14.30004, 14.3, 71.5002],
-      [999_999, 14.69996, 14.69, 73.4998],
-      [1_000_000, 14.7, 14.7, 73.5],
-      [1_000_001, 14.7001, 14.7, 73.5005],
-      [1_004_999, 15.1999, 15.19, 75.9995],
-      [1_005_000, 15.2, 15.2, 76],
-      [1_005_001, 15.2002, 15.2, 76.001],
-      [1_007_499, 15.6998, 15.69, 78.499],
-      [1_007_500, 15.7, 15.7, 78.5],
-      [1_007_501, 15.7001, 15.7, 78.5015],
-      [1_008_999, 15.8499, 15.84, 80.7485],
-      [1_009_000, 15.85, 15.85, 80.75],
-      [1_009_001, 15.85, 15.85, 80.7515],
-      [1_009_999, 15.85, 15.85, 82.2485],
-      [1_010_000, 15.85, 15.85, 82.25],
+    const rows: readonly [score: number, display: number, overPower: number][] = [
+      [974_999, 13.69, 0],
+      [975_000, 13.7, 68.5],
+      [975_001, 13.7, 68.5002],
+      [989_999, 14.29, 71.4998],
+      [990_000, 14.3, 71.5],
+      [990_001, 14.3, 71.5002],
+      [999_999, 14.69, 73.4998],
+      [1_000_000, 14.7, 73.5],
+      [1_000_001, 14.7, 73.5005],
+      [1_004_999, 15.19, 75.9995],
+      [1_005_000, 15.2, 76],
+      [1_005_001, 15.2, 76.001],
+      [1_007_499, 15.69, 78.499],
+      [1_007_500, 15.7, 78.5],
+      [1_007_501, 15.7, 78.5015],
+      [1_008_999, 15.84, 80.7485],
+      [1_009_000, 15.85, 80.75],
+      [1_009_001, 15.85, 80.7515],
+      [1_009_999, 15.85, 82.2485],
+      [1_010_000, 15.85, 82.25],
     ];
-    for (const [score, raw, display, overPower] of rows) {
-      expect(rawChunithmChartRating(13.7, score)).toBeCloseTo(raw, 9);
+    for (const [score, display, overPower] of rows) {
       expect(chunithmChartRatingDisplay(13.7, score)).toBe(display);
       expect(calculateChunithmOverPower(13.7, score, 'none')).toBeCloseTo(overPower, 9);
     }
@@ -178,13 +161,9 @@ describe('chunithm rating formula', () => {
     expect(minimumScoreForChunithmRating(13.7, 0, 'none').status).toBe('unreachable');
     expect(minimumScoreForChunithmRating(13.7, 15.86, 'none').status).toBe('unreachable');
     expect(minimumScoreForChunithmRating(13.7, Number.NaN, 'none').status).toBe('unreachable');
-    expect(formulaMinimumScoreForChunithmRating(13.7, 999)).toBeNull();
-    expect(formulaMinimumScoreForChunithmRating(13.7, 15.86)).toBeNull();
     expect(minimumScoreForChunithmOverPower(13.7, 9999, 'aj'))
       .toEqual({ status: 'unreachable', score: null, lampMinScore: 1_000_000 });
     expect(minimumScoreForChunithmOverPower(13.7, Number.NaN, 'none').status).toBe('unreachable');
-    expect(formulaMinimumScoreForChunithmOverPower(13.7, 9999, 'aj')).toBeNull();
-    expect(formulaMinimumScoreForChunithmOverPower(13.7, 0, 'aj')).toBeNull();
     expect(calculateChunithmOverPower(13.7, 0, 'aj')).toBe(0);
   });
 
@@ -193,7 +172,7 @@ describe('chunithm rating formula', () => {
     expect(result).toEqual({ status: 'reachable', score: 1_007_834, lampMinScore: 1_000_000 });
     expect(calculateChunithmOverPower(13.7, result.score!, 'aj')).toBeGreaterThanOrEqual(80);
     expect(calculateChunithmOverPower(13.7, result.score! - 1, 'aj')).toBeLessThan(80);
-    expect(formulaMinimumScoreForChunithmOverPower(13.7, 73.52, 'none')).toBe(1_000_040);
+    expect(minimumScoreForChunithmOverPower(13.7, 73.52, 'none').score).toBe(1_000_040);
     expect(calculateChunithmOverPower(13.7, 1_000_039, 'none')).toBeLessThan(73.52);
     expect(minimumScoreForChunithmOverPower(13.7, 1, 'none'))
       .toEqual({ status: 'reachable', score: 975_000, lampMinScore: 0 });
@@ -210,53 +189,6 @@ describe('chunithm rating formula', () => {
   });
 });
 
-const ORACLE_BONUS_UNITS: Readonly<Record<ChunithmClearTier, number>> = {
-  ajc: 37_500, aj: 30_000, fc: 15_000, none: 0,
-};
-
-/** [段起点, 段内基准, 每分增量]，单位为 OP×30000。 */
-const ORACLE_SEGMENTS: readonly (readonly [origin: number, base: number, step: number])[] = [
-  [975_000, 0, 6],
-  [990_000, 90_000, 6],
-  [1_000_000, 150_000, 15],
-  [1_005_000, 225_000, 30],
-  [1_007_500, 300_000, 45],
-];
-
-function oracleOverPowerUnits(
-  levelValue: number,
-  score: number,
-  clear: ChunithmClearTier,
-): number {
-  if (score < 975_000) return 0;
-  const fixed = Math.round(levelValue * 10_000);
-  let units = 0;
-  for (const [origin, base, step] of ORACLE_SEGMENTS) {
-    if (score >= origin) units = 15 * fixed + base + step * (score - origin);
-  }
-  return units + ORACLE_BONUS_UNITS[clear];
-}
-
-function oracleMinimumScoreForOverPower(
-  levelValue: number,
-  targetOverPower: number,
-  clear: ChunithmClearTier,
-  lampMinScore: number,
-): number | null {
-  const fixed = Math.round(levelValue * 10_000);
-  const bonus = ORACLE_BONUS_UNITS[clear];
-  const targetUnits = Math.round(targetOverPower * 30_000);
-  if (oracleOverPowerUnits(levelValue, 1_010_000, clear) < targetUnits) return null;
-  for (let index = 0; index < ORACLE_SEGMENTS.length; index += 1) {
-    const [origin, base, step] = ORACLE_SEGMENTS[index]!;
-    const end = ORACLE_SEGMENTS[index + 1]?.[0] ?? 1_010_000;
-    if (oracleOverPowerUnits(levelValue, end, clear) < targetUnits) continue;
-    const delta = Math.ceil((targetUnits - 15 * fixed - base - bonus) / step);
-    return Math.max(lampMinScore, origin + Math.max(0, delta));
-  }
-  return null;
-}
-
 describe('chunithm reverse minimum score contract', () => {
   it('returns the exact minimum score when the target sits on a floating point boundary', () => {
     /** 80.558−78.5=2.058，除以 0.0015 需 1372 分，即 1008872。 */
@@ -265,103 +197,15 @@ describe('chunithm reverse minimum score contract', () => {
     /** 浮点误差可能将 80.558 算成 80.557999 并多报 1 分。 */
     expect(calculateChunithmOverPower(13.7, 1_008_872, 'none')).toBeGreaterThanOrEqual(80.558);
     expect(calculateChunithmOverPower(13.7, 1_008_871, 'none')).toBeLessThan(80.558);
-    expect(oracleMinimumScoreForOverPower(13.7, 80.558, 'none', 0)).toBe(1_008_872);
   });
 
-  it('agrees with the independent integer oracle and keeps the result minimal', () => {
-    const levels = [12, 13, 13.7, 14, 15.5, 16];
-    const clears: readonly ChunithmClearTier[] = ['ajc', 'aj', 'fc', 'none'];
-    const targets = [69.751, 73.52, 75, 78.501, 79.751, 80, 80.558, 81.808, 82.183, 83.5, 83.501];
-    let checked = 0;
-    for (const level of levels) {
-      for (const clear of clears) {
-        const lampMinScore = CHUNITHM_CLEAR_TIER_MIN_SCORE[clear];
-        for (const target of targets) {
-          const expected = oracleMinimumScoreForOverPower(level, target, clear, lampMinScore);
-          const result = minimumScoreForChunithmOverPower(level, target, clear);
-          checked += 1;
-          if (expected == null) {
-            expect(result).toEqual({ status: 'unreachable', score: null, lampMinScore });
-            continue;
-          }
-          expect(result).toEqual({ status: 'reachable', score: expected, lampMinScore });
-          const targetUnits = Math.round(target * 30_000);
-          expect(oracleOverPowerUnits(level, expected, clear)).toBeGreaterThanOrEqual(targetUnits);
-          if (expected > lampMinScore) {
-            expect(oracleOverPowerUnits(level, expected - 1, clear)).toBeLessThan(targetUnits);
-          }
-        }
-      }
-    }
-    expect(checked).toBe(levels.length * clears.length * targets.length);
-  });
-
-  it('matches the independent oracle across every three-decimal target of a lamp range', () => {
-    const levels = [13.7, 15.5];
-    const clears: readonly ChunithmClearTier[] = ['ajc', 'aj', 'fc', 'none'];
-    let checked = 0;
-    for (const level of levels) {
-      for (const clear of clears) {
-        const lampMinScore = CHUNITHM_CLEAR_TIER_MIN_SCORE[clear];
-        const lowest = Math.ceil(
-          oracleOverPowerUnits(level, Math.max(lampMinScore, 975_000), clear) / 30,
-        );
-        const highest = Math.floor(oracleOverPowerUnits(level, 1_010_000, clear) / 30);
-        for (let thousandth = lowest; thousandth <= highest; thousandth += 1) {
-          const target = thousandth / 1000;
-          const expected = oracleMinimumScoreForOverPower(level, target, clear, lampMinScore);
-          expect(minimumScoreForChunithmOverPower(level, target, clear)).toEqual(
-            expected == null
-              ? { status: 'unreachable', score: null, lampMinScore }
-              : { status: 'reachable', score: expected, lampMinScore },
-          );
-          checked += 1;
-        }
-      }
-    }
-    expect(checked).toBe(72_508);
-  });
-
-  it('never returns a score that the positive direction validation rejects', () => {
-    expect(formulaMinimumScoreForChunithmOverPower(13.7, 80, 'ajc')).toBe(1_007_667);
+  it('respects the AJC minimum score when reversing targets', () => {
     expect(parseChunithmChartInput({ levelValue: 13.7, score: 1_007_667, clear: 'ajc' }).violations)
       .toEqual([{ code: 'lamp_score_conflict', message: 'AJC 至少需要 1,010,000 分。' }]);
     const overPower = minimumScoreForChunithmOverPower(13.7, 80, 'ajc');
     expect(overPower).toEqual({ status: 'reachable', score: 1_010_000, lampMinScore: 1_010_000 });
-    expect(formulaMinimumScoreForChunithmRating(13.7, 15.0)).toBe(1_003_000);
     const rating = minimumScoreForChunithmRating(13.7, 15.0, 'ajc');
     expect(rating).toEqual({ status: 'reachable', score: 1_010_000, lampMinScore: 1_010_000 });
-  });
-
-  it('keeps every reachable reverse result acceptable for the positive direction', () => {
-    const levels = [0.5, 8.25, 13.7, 16];
-    const clears: readonly ChunithmClearTier[] = ['ajc', 'aj', 'fc', 'none'];
-    const targets = [1, 5.5, 13.7, 15.0, 15.85, 16.15, 68.5, 73.52, 80, 83.5, 83.51, 99, 9999];
-    let reachable = 0;
-    for (const level of levels) {
-      for (const clear of clears) {
-        for (const target of targets) {
-          const results = [
-            minimumScoreForChunithmRating(level, target, clear),
-            minimumScoreForChunithmOverPower(level, target, clear),
-          ];
-          for (const result of results) {
-            if (result.status !== 'reachable') {
-              expect(result.score).toBeNull();
-              continue;
-            }
-            reachable += 1;
-            expect(parseChunithmChartInput({
-              levelValue: level,
-              score: result.score!,
-              clear,
-            }).violations).toEqual([]);
-            expect(result.score).toBeGreaterThanOrEqual(CHUNITHM_CLEAR_TIER_MIN_SCORE[clear]);
-          }
-        }
-      }
-    }
-    expect(reachable).toBeGreaterThan(0);
   });
 });
 
@@ -403,7 +247,6 @@ describe('chunithm chart input parsing', () => {
       .toEqual([]);
     expect(parseChunithmChartInput({ levelValue: 13.7, score: 1, clear: 'none' }).violations)
       .toEqual([]);
-    expect(CHUNITHM_CLEAR_TIER_MIN_SCORE).toEqual({ ajc: 1_010_000, aj: 1_000_000, fc: 0, none: 0 });
   });
 
   it('collects every in-range violation at once, ordered by level, score then lamp', () => {

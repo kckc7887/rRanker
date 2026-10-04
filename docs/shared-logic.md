@@ -47,7 +47,7 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。HTTP 
 
 `rranker-database.ts` 提供数据库连接和 `runDatabaseWrite`。业务 schema、事务与写入共用队列；日志数据库单独串行。任务内不可再次进入同一队列。
 
-`SqliteSnapshotRepository` 提供当前成绩、曲库与资源缓存。版本不符或正文损坏仅删除受影响条目；等待写队列后的删除使用读到的值作为条件，保留后来写入的有效缓存。I/O 错误传播，不按失效内容处理。
+`SqliteSnapshotRepository` 提供当前成绩与资源缓存。版本不符或正文损坏仅删除受影响条目；等待写队列后的删除使用读到的值作为条件，保留后来写入的有效缓存。I/O 错误传播，不按失效内容处理。
 
 `createPreferencesStore` 读取并校验当前格式，成功读到不支持的结构才写当前默认值。`preferences-write-coordinator.ts` 管理真实页面选择、串行保存和失败补写，恢复未完成时不把占位默认值覆盖到磁盘。
 
@@ -88,7 +88,7 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。HTTP 
 
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。
 
-Phigros/Rizline 的资源服务提供实际 `read(asset, index)`，预览和下载使用同一发布清单、完整性校验、取消与共享下载逻辑。资源根和发布版本由真实发布元数据确定。
+Phigros/Rizline 预览和下载共用发布资源、完整性校验、取消与共享下载入口；调用方提供实际进度或落盘回调。资源根目录由当前发布地址确定，元数据使用已校验的当前类型。
 
 `features/chart-download-shared` 提供原生下载、进度和取消；各游戏负责组装谱面包。
 

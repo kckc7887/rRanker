@@ -1,27 +1,12 @@
-import { afterEach, describe, expect, it, vi } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadChaptersTable } from '@/domain/phigros';
 import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
-import { PhigrosResourceService } from '@/services/phigros-resources';
+import { phigrosResources } from '@/services/phigros-resources';
 import { releaseFixture } from './fixtures/phigros-release';
 
-function jsonResponse(body: unknown, ok = true): Response {
-  return {
-    ok,
-    status: ok ? 200 : 404,
-    json: async () => body,
-    text: async () => JSON.stringify(body),
-  } as Response;
-}
-
-function textResponse(body: string, ok = true): Response {
-  return {
-    ok,
-    status: ok ? 200 : 404,
-    json: async () => ({}),
-    text: async () => body,
-  } as Response;
-}
+beforeEach(() => phigrosResources.clear());
+afterEach(() => phigrosResources.clear());
 
 const SAMPLE_CSV = '\uFEFF'
   + '# Phigros 章节定义：章节变量,章节显示名\r\n'
@@ -85,32 +70,11 @@ describe('PhigrosCatalogProvider chapters', () => {
     vi.restoreAllMocks();
   });
 
-  function catalogJson(songs: unknown[]) {
-    return jsonResponse({ schemaVersion: 1, songCount: songs.length, songs });
-  }
-
   it('maps songs to chapter titles, versions and version ids', async () => {
+    const fixture = releaseFixture('r1', ['SongA.Artist', 'SongB.Composer', 'SongD.None']);
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith('/phigros/current.json')) {
-        return jsonResponse({
-          schemaVersion: 1,
-          gameVersion: '3.19.4',
-          catalog: 'phigros/releases/3.19.4/catalog.json',
-          manifest: 'phigros/releases/3.19.4/manifest.json',
-        });
-      }
-      if (url.endsWith('/catalog.json')) {
-        return catalogJson([
-          { id: 'SongA.Artist', title: 'A', composer: 'Artist', illustrator: 'I', charters: ['e'], difficulties: [2] },
-          { id: 'SongB.Composer', title: 'B', composer: 'Composer', illustrator: 'I', charters: ['e'], difficulties: [3] },
-          { id: 'SongD.None', title: 'D', composer: 'None', illustrator: 'I', charters: ['e'], difficulties: [2] },
-        ]);
-      }
-      if (chaptersUrl(url)) {
-        return textResponse(SAMPLE_CSV);
-      }
-      return textResponse('', false);
+      if (chaptersUrl(input)) return new Response(SAMPLE_CSV);
+      return fixture.respond(input);
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -142,47 +106,26 @@ describe('PhigrosCatalogProvider chapters', () => {
   });
 
   it('falls back to game version when chapters.csv is unavailable', async () => {
+    const fixture = releaseFixture('r1', ['SongA.Artist']);
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith('/phigros/current.json')) {
-        return jsonResponse({
-          schemaVersion: 1,
-          gameVersion: '3.19.4',
-          catalog: 'phigros/releases/3.19.4/catalog.json',
-          manifest: 'phigros/releases/3.19.4/manifest.json',
-        });
-      }
-      if (url.endsWith('/catalog.json')) {
-        return catalogJson([
-          { id: 'SongA.Artist', title: 'A', composer: 'Artist', illustrator: 'I', charters: ['e'], difficulties: [2] },
-        ]);
-      }
-      return textResponse('', false);
+      if (chaptersUrl(input)) return new Response('', { status: 404 });
+      return fixture.respond(input);
     });
     vi.stubGlobal('fetch', fetchMock);
 
     const provider = new PhigrosCatalogProvider();
     const catalog = await provider.getCatalog();
-    expect(catalog.versions).toEqual([{ id: 0, title: '3.19.4' }]);
-    expect(catalog.songs[0]?.version).toBe('3.19.4');
+    expect(catalog.versions).toEqual([{ id: 0, title: '9.9.9' }]);
+    expect(catalog.songs[0]?.version).toBe('9.9.9');
     expect(catalog.songs[0]?.versionId).toBeUndefined();
     expect(catalog.chartVersionIndex).toEqual({ 'SongA.Artist': 0 });
   });
 
   it('requests chapters from the fixed chapters.csv path', async () => {
+    const fixture = releaseFixture('r1', ['SongA.Artist']);
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
-      const url = String(input);
-      if (url.endsWith('/phigros/current.json')) {
-        return jsonResponse({
-          schemaVersion: 1,
-          gameVersion: '3.19.4',
-          catalog: 'phigros/releases/3.19.4/catalog.json',
-          manifest: 'phigros/releases/3.19.4/manifest.json',
-        });
-      }
-      if (url.endsWith('/catalog.json')) return catalogJson([]);
-      if (chaptersUrl(url)) return textResponse(SAMPLE_CSV);
-      return textResponse('', false);
+      if (chaptersUrl(input)) return new Response(SAMPLE_CSV);
+      return fixture.respond(input);
     });
     vi.stubGlobal('fetch', fetchMock);
 
@@ -216,8 +159,7 @@ describe('PhigrosCatalogProvider chapters recheck', () => {
       return fixture.respond(input);
     });
     vi.stubGlobal('fetch', fetchMock);
-    const resources = new PhigrosResourceService('https://example.com');
-    return { fetchMock, provider: new PhigrosCatalogProvider(resources) };
+    return { fetchMock, provider: new PhigrosCatalogProvider() };
   }
 
   it('reuses the catalog snapshot without refetching chapters on the same release', async () => {
@@ -269,24 +211,4 @@ describe('PhigrosCatalogProvider chapters recheck', () => {
     expect(second.songs[0]?.version).toBe('Chapter Legacy 过去的章节');
     expect(second.versions[0]?.title).not.toBe('9.9.9');
   });
-});
-
-vi.mock('@/services/phigros-resources', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/services/phigros-resources')>();
-  return {
-    ...actual,
-    phigrosResources: {
-      peek: () => undefined,
-      load: async () => {
-        const current = await (await fetch(`${PHIGROS_OSS_BASE}/phigros/current.json`)).json();
-        const catalog = await (await fetch(`${PHIGROS_OSS_BASE}/${current.catalog}`)).json();
-        return { current, catalog, noteCounts: '', fetchedAt: new Date().toISOString() };
-      },
-      bytes: async (url: string) => {
-        const response = await fetch(url);
-        if (!response.ok) throw new Error('unavailable');
-        return new TextEncoder().encode(await response.text());
-      },
-    },
-  };
 });

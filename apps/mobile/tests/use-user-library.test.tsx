@@ -24,7 +24,6 @@ jest.mock('@/state/query-client', () => {
     queries: { retry: false, gcTime: Infinity }, mutations: { retry: false, gcTime: Infinity },
   } }) };
 });
-jest.mock('@/storage/sqlite-user-library-repository', () => ({ SqliteUserLibraryRepository: class {} }));
 jest.mock('@/services/user-library-service', () => ({ UserLibraryService: class {
   list = async () => [];
   listTagPresets = async () => [];

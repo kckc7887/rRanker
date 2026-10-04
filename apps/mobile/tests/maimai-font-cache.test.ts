@@ -3,16 +3,26 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   MAIMAI_FONT_CACHE_VERSION,
   clearMaimaiFontCache,
-  createMaimaiFontPreparer,
+  prepareMaimaiFonts,
+  MAIMAI_FONT_MANIFEST,
   type MaimaiFontManifestEntry,
   type MaimaiFontProgress,
 } from '@/features/best-image/maimai-font-cache';
 
 const mockFontFs = vi.hoisted(() => ({
   files: new Map<string, Uint8Array>(),
+  metadata: new Map<string, { length: number; size: number }>(),
+  digests: new Map<string, string>(),
   remotes: new Map<string, Uint8Array | Error | (() => Promise<Uint8Array>)>(),
   downloadCalls: [] as string[],
   deletes: [] as string[],
+}));
+
+vi.mock('expo-crypto', () => ({
+  CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
+  digest: async (_algorithm: string, bytes: Uint8Array) => Uint8Array.from(Buffer.from(
+    mockFontFs.digests.get(`${bytes.byteLength}:${Buffer.from(bytes.subarray(0, 64)).toString('hex')}`) ?? createHash('sha256').update(bytes).digest('hex'), 'hex',
+  )).buffer,
 }));
 
 vi.mock('expo-file-system', () => {
@@ -23,7 +33,7 @@ vi.mock('expo-file-system', () => {
   class Directory {
     readonly uri: string;
     constructor(base: string | { uri: string }, ...parts: string[]) { this.uri = joinUri(base, parts); }
-    create() { /* in-memory directories always exist */ }
+    create() {}
     delete() { mockFontFs.deletes.push(this.uri); for (const uri of [...mockFontFs.files.keys()]) {
       if (uri.startsWith(this.uri)) mockFontFs.files.delete(uri);
     } }
@@ -33,7 +43,13 @@ vi.mock('expo-file-system', () => {
     uri: string;
     constructor(base: string | { uri: string }, ...parts: string[]) { this.uri = joinUri(base, parts); }
     get exists() { return mockFontFs.files.has(this.uri); }
-    get size() { return mockFontFs.files.get(this.uri)?.byteLength ?? 0; }
+    get size() {
+      const bytes = mockFontFs.files.get(this.uri);
+      if (!bytes) return 0;
+      const name = this.uri.split('/').at(-1)!.replace(/\.part$/u, '');
+      const metadata = mockFontFs.metadata.get(name);
+      return metadata?.length === bytes.byteLength ? metadata.size : bytes.byteLength;
+    }
     async bytes() { return Uint8Array.from(mockFontFs.files.get(this.uri) ?? []); }
     create() { mockFontFs.files.set(this.uri, new Uint8Array()); }
     write(content: Uint8Array) { mockFontFs.files.set(this.uri, Uint8Array.from(content)); }
@@ -61,28 +77,20 @@ vi.mock('expo-file-system', () => {
   return { Directory, File, Paths: { document: new Directory('file://', 'document'), cache: new Directory('file://', 'cache') } };
 });
 
-function hex(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
-}
-
 async function fixtureEntry(name: string, contents = `font:${name}`): Promise<MaimaiFontManifestEntry> {
-  const fontBytes = Uint8Array.from(Buffer.from(contents));
-  const fileName = `${name}.ttf`;
-  const url = `https://fonts.test/${fileName}`;
-  mockFontFs.remotes.set(url, fontBytes);
-  return {
-    name,
-    fileName,
-    cssFileName: fileName,
-    url,
-    fontBytes: fontBytes.byteLength,
-    fontSha256: hex(fontBytes),
-  };
+  const entry = MAIMAI_FONT_MANIFEST[0]!;
+  const bytes = Uint8Array.from(Buffer.from(contents));
+  mockFontFs.remotes.set(entry.url, bytes);
+  mockFontFs.metadata.set(entry.cssFileName, { length: bytes.byteLength, size: entry.fontBytes });
+  mockFontFs.digests.set(`${bytes.byteLength}:${Buffer.from(bytes.subarray(0, 64)).toString('hex')}`, entry.fontSha256);
+  return entry;
 }
 
 describe('maimai remote font cache', () => {
   beforeEach(() => {
     mockFontFs.files.clear();
+    mockFontFs.metadata.clear();
+    mockFontFs.digests.clear();
     mockFontFs.remotes.clear();
     mockFontFs.downloadCalls.length = 0;
     mockFontFs.deletes.length = 0;
@@ -91,7 +99,7 @@ describe('maimai remote font cache', () => {
   it('downloads, verifies and caches the font with progress events, then reuses the cache', async () => {
     const entry = await fixtureEntry('maimai');
     const progress: MaimaiFontProgress[] = [];
-    const prepare = createMaimaiFontPreparer([entry]);
+    const prepare = prepareMaimaiFonts;
     const prepared = await prepare((value) => progress.push(value));
     expect(progress[0].phase).toBe('checking');
     await prepared.fullReady;
@@ -111,7 +119,7 @@ describe('maimai remote font cache', () => {
   it('rejects a mismatched size and leaves no final or partial font', async () => {
     const entry = await fixtureEntry('broken', 'font:broken');
     mockFontFs.remotes.set(entry.url, Uint8Array.from(Buffer.from('too-short')));
-    const prepare = createMaimaiFontPreparer([entry]);
+    const prepare = prepareMaimaiFonts;
     const prepared = await prepare();
     await expect(prepared.fullReady).rejects.toThrow('字体大小不匹配');
     expect([...mockFontFs.files.keys()].some((uri) => uri.includes('/font/'))).toBe(false);
@@ -120,10 +128,10 @@ describe('maimai remote font cache', () => {
 
   it('redownloads a same-size cached font when its hash is corrupted', async () => {
     const entry = await fixtureEntry('maimai');
-    const prepare = createMaimaiFontPreparer([entry]);
+    const prepare = prepareMaimaiFonts;
     const first = await prepare();
     await first.fullReady;
-    const cachedUri = [...mockFontFs.files.keys()].find((uri) => uri.endsWith('/font/maimai.ttf'))!;
+    const cachedUri = [...mockFontFs.files.keys()].find((uri) => uri.endsWith(`/font/${entry.cssFileName}`))!;
     const corrupted = Uint8Array.from(mockFontFs.files.get(cachedUri)!);
     corrupted[0] = corrupted[0]! ^ 0xff;
     mockFontFs.files.set(cachedUri, corrupted);
@@ -131,7 +139,7 @@ describe('maimai remote font cache', () => {
     const second = await prepare();
     await second.fullReady;
     expect(mockFontFs.downloadCalls).toEqual([entry.url, entry.url]);
-    expect(hex(mockFontFs.files.get(cachedUri)!)).toBe(entry.fontSha256);
+    expect(mockFontFs.files.get(cachedUri)).toEqual(mockFontFs.remotes.get(entry.url));
   });
 
   it('deduplicates concurrent downloads for the same font', async () => {
@@ -140,7 +148,7 @@ describe('maimai remote font cache', () => {
     let release!: () => void;
     const gate = new Promise<void>((resolve) => { release = resolve; });
     mockFontFs.remotes.set(entry.url, async () => { await gate; return bytes; });
-    const prepare = createMaimaiFontPreparer([entry]);
+    const prepare = prepareMaimaiFonts;
     const first = prepare();
     const second = prepare();
     await vi.waitFor(() => expect(mockFontFs.downloadCalls).toEqual([entry.url]));
@@ -153,7 +161,7 @@ describe('maimai remote font cache', () => {
   it('reports download failure and retries cleanly', async () => {
     const entry = await fixtureEntry('maimai');
     mockFontFs.remotes.set(entry.url, new Error('network down'));
-    const prepare = createMaimaiFontPreparer([entry]);
+    const prepare = prepareMaimaiFonts;
     const failed = await prepare();
     await expect(failed.fullReady).rejects.toThrow('字体准备失败');
     expect([...mockFontFs.files.keys()].some((uri) => uri.includes('/font/'))).toBe(false);

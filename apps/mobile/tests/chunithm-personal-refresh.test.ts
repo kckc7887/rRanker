@@ -1,14 +1,30 @@
 import type { ChunithmBests, ChunithmPersonalSnapshot } from '@/domain/chunithm-personal';
-import { chunithmPersonalResourceKey, emptyChunithmBests } from '@/domain/chunithm-personal';
+import { CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION, chunithmPersonalResourceKey, emptyChunithmBests } from '@/domain/chunithm-personal';
 import type { DataSource } from '@/domain/models';
-import { ProviderError } from '@/providers/errors';
-import type { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
-import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
+import { DatabaseSync } from 'node:sqlite';
 import {
   refreshNeedsLogin,
   snapshotMetadataOf,
 } from '@/domain/refresh-result';
-import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+let ProviderError: typeof import('@/providers/errors')['ProviderError'];
+let ChunithmScoreProvider: typeof import('@/providers/chunithm-score-provider')['ChunithmScoreProvider'];
+let ChunithmPersonalService: typeof import('@/services/chunithm-personal-service')['ChunithmPersonalService'];
+let repository: InstanceType<typeof import('@/storage/sqlite-snapshot-repository')['SqliteSnapshotRepository']>;
+let database: DatabaseSync;
+vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
+  execAsync: async (sql: string) => database.exec(sql),
+  runAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).run(...args),
+  getFirstAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).get(...args) ?? null,
+}) }));
+beforeEach(async () => {
+  database = new DatabaseSync(':memory:'); vi.resetModules();
+  ({ ProviderError } = await import('@/providers/errors'));
+  ({ ChunithmScoreProvider } = await import('@/providers/chunithm-score-provider'));
+  ({ ChunithmPersonalService } = await import('@/services/chunithm-personal-service'));
+  const { SqliteSnapshotRepository } = await import('@/storage/sqlite-snapshot-repository');
+  repository = new SqliteSnapshotRepository();
+});
+afterEach(() => { database.close(); vi.unstubAllGlobals(); });
 
 const accountId = 'chunithm:lxns:refresh';
 const providerSource: DataSource = {
@@ -19,15 +35,6 @@ function makeSnapshot(overrides: Partial<ChunithmPersonalSnapshot> = {}): Chunit
   return { player: null, scores: [], bests: emptyChunithmBests(), source: providerSource, ...overrides };
 }
 
-function makeRepository(store: Map<string, unknown>) {
-  return {
-    getResource: async (key: string) => store.get(key) ?? null,
-    saveResource: async (key: string, _version: number, _updatedAt: string, value: unknown) => {
-      store.set(key, value);
-    },
-  } as unknown as SqliteSnapshotRepository;
-}
-
 type PartLoaders = {
   player: () => Promise<ChunithmPersonalSnapshot['player']>;
   scores: () => Promise<ChunithmPersonalSnapshot['scores']>;
@@ -35,27 +42,29 @@ type PartLoaders = {
 };
 
 function makePartsProvider(parts: PartLoaders) {
-  return {
-    getPlayer: () => parts.player(),
-    getScores: () => parts.scores(),
-    getBests: () => parts.bests(),
-  } as unknown as ChunithmScoreProvider;
+  vi.stubGlobal('fetch', vi.fn(async (url: string) => {
+    let data: unknown;
+    try { data = await (url.endsWith('/bests') ? parts.bests() : url.endsWith('/scores') ? parts.scores() : parts.player()); }
+    catch (error) { if (error instanceof ProviderError && error.code === 'authentication') return new Response('{}', { status: 401 }); throw error; }
+    return new Response(JSON.stringify({ success: true, data }), { status: 200 });
+  }));
+  return new ChunithmScoreProvider({ mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 120000, persistable: true });
 }
-
 const signal = () => new AbortController().signal;
-const player = (name: string) => ({ name, rating: 1 } as never);
+const player = (name: string) => ({ name, rating: 1, level: 1, friend_code: 1, class_emblem: { base: 0, medal: 0 }, reborn_count: 0,
+  over_power: 0, over_power_progress: 0, currency: 0, total_currency: 0, total_play_count: 0 });
+const score = (id: number) => ({ id, level_index: 3, score: 1000000, clear: 'clear' as const });
 
 describe('ChunithmPersonalService.refresh', () => {
   it('only advances the snapshot time when player, scores and bests all completed', async () => {
     vi.useFakeTimers();
     vi.setSystemTime(new Date('2026-09-02T03:00:00.000Z'));
     try {
-      const store = new Map<string, unknown>();
       const service = new ChunithmPersonalService(makePartsProvider({
         player: async () => player('新玩家'),
-        scores: async () => [{ id: 1 } as never],
-        bests: async () => ({ ...emptyChunithmBests(), bests: [{ id: 2 } as never] }),
-      }), makeRepository(store), accountId);
+        scores: async () => [score(1)],
+        bests: async () => ({ ...emptyChunithmBests(), bests: [score(2)] }),
+      }), accountId);
 
       const result = await service.refresh(signal());
 
@@ -68,9 +77,9 @@ describe('ChunithmPersonalService.refresh', () => {
         provider: 'lxns', label: '落雪咖啡屋', fetchedAt: '2026-09-02T03:00:00.000Z', revision: null,
       });
 
-      const stored = store.get(chunithmPersonalResourceKey(accountId)) as ChunithmPersonalSnapshot;
+      const stored = await repository.getResource(chunithmPersonalResourceKey(accountId), CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION) as ChunithmPersonalSnapshot;
       expect(stored.source.updatedAt).toBe('2026-09-02T03:00:00.000Z');
-      expect(stored.bests.bests).toEqual([{ id: 2 }]);
+      expect(stored.bests.bests).toEqual([score(2)]);
     } finally {
       vi.useRealTimers();
     }
@@ -79,15 +88,15 @@ describe('ChunithmPersonalService.refresh', () => {
   it('keeps the successful parts and the concrete failures when only some items completed', async () => {
     const cached = makeSnapshot({
       player: player('旧玩家'),
-      scores: [{ id: 10 } as never],
-      bests: { ...emptyChunithmBests(), bests: [{ id: 11 } as never] },
+      scores: [score(10)],
+      bests: { ...emptyChunithmBests(), bests: [score(11)] },
     });
-    const store = new Map<string, unknown>([[chunithmPersonalResourceKey(accountId), cached]]);
+    await repository.saveResource(chunithmPersonalResourceKey(accountId), CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION, cached.source.updatedAt, cached);
     const service = new ChunithmPersonalService(makePartsProvider({
       player: async () => player('新玩家'),
-      scores: async () => [{ id: 12 } as never],
-      bests: async () => { throw new ProviderError('network', '落雪读取失败', true); },
-    }), makeRepository(store), accountId);
+      scores: async () => [score(12)],
+      bests: async () => { throw new Error('落雪读取失败'); },
+    }), accountId);
 
     const result = await service.refresh(signal());
 
@@ -95,29 +104,29 @@ describe('ChunithmPersonalService.refresh', () => {
 
     expect(result.completed).toEqual(['player', 'scores']);
     expect(result.failures).toEqual([
-      { code: 'network', target: 'bests', diagnostic: '落雪读取失败', retryable: true },
+      expect.objectContaining({ code: 'network', target: 'bests', retryable: true }),
     ]);
 
     expect(refreshNeedsLogin(result)).toBe(false);
     expect(result.value?.player).toMatchObject({ name: '新玩家' });
-    expect(result.value?.bests.bests).toEqual([{ id: 11 }]);
+    expect(result.value?.bests.bests).toEqual([score(11)]);
     expect(result.metadata?.fetchedAt).toBe('2026-01-01T00:00:00.000Z');
 
     expect(result.value?.source).toMatchObject({
       kind: 'lxns', label: '落雪咖啡屋', updatedAt: '2026-01-01T00:00:00.000Z', isStale: true,
     });
-    expect((store.get(chunithmPersonalResourceKey(accountId)) as ChunithmPersonalSnapshot).source.updatedAt)
+    expect((await repository.getResource(chunithmPersonalResourceKey(accountId), CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION) as ChunithmPersonalSnapshot).source.updatedAt)
       .toBe('2026-01-01T00:00:00.000Z');
   });
 
   it('returns the still usable old snapshot without advancing its time when every item failed', async () => {
-    const cached = makeSnapshot({ player: player('旧玩家'), scores: [{ id: 10 } as never] });
-    const store = new Map<string, unknown>([[chunithmPersonalResourceKey(accountId), cached]]);
+    const cached = makeSnapshot({ player: player('旧玩家'), scores: [score(10)] });
+    await repository.saveResource(chunithmPersonalResourceKey(accountId), CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION, cached.source.updatedAt, cached);
     const service = new ChunithmPersonalService(makePartsProvider({
       player: async () => { throw new Error('offline'); },
       scores: async () => { throw new Error('offline'); },
       bests: async () => { throw new Error('offline'); },
-    }), makeRepository(store), accountId);
+    }), accountId);
 
     const result = await service.refresh(signal());
 
@@ -130,16 +139,15 @@ describe('ChunithmPersonalService.refresh', () => {
     expect(result.value?.source.updatedAt).toBe('2026-01-01T00:00:00.000Z');
 
 
-    expect(store.get(chunithmPersonalResourceKey(accountId))).toBe(cached);
+    expect(await repository.getResource(chunithmPersonalResourceKey(accountId), CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION)).toEqual(cached);
   });
 
   it('reports an expired login by error code even when there is no fallback snapshot', async () => {
-    const store = new Map<string, unknown>();
     const service = new ChunithmPersonalService(makePartsProvider({
       player: async () => { throw new ProviderError('authentication', '登录已失效', false); },
       scores: async () => { throw new ProviderError('authentication', '登录已失效', false); },
       bests: async () => { throw new ProviderError('authentication', '登录已失效', false); },
-    }), makeRepository(store), 'chunithm:lxns:no-cache');
+    }), 'chunithm:lxns:no-cache');
 
     const result = await service.refresh(signal());
 
@@ -148,7 +156,7 @@ describe('ChunithmPersonalService.refresh', () => {
     expect(result.metadata).toBeNull();
     expect(refreshNeedsLogin(result)).toBe(true);
 
-    expect(store.size).toBe(0);
+    expect(await service.loadCached()).toBeNull();
   });
 });
 
@@ -159,7 +167,7 @@ it('取消一个中二消费者仍允许另一个得到共享刷新终态', asyn
   const getPlayer = vi.fn(async () => { await gate; return player('新玩家'); });
   const service = new ChunithmPersonalService(makePartsProvider({ player: getPlayer,
     scores: async () => [], bests: async () => emptyChunithmBests(),
-  }), makeRepository(new Map()), 'chunithm:cancel-consumer');
+  }), 'chunithm:cancel-consumer');
   const a = service.refresh(first.signal), b = service.refresh(second.signal);
   first.abort(new Error('first left'));
   expect((await a).status).toBe('cancelled');

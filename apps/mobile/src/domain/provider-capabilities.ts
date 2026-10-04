@@ -21,8 +21,3 @@ export function shouldPersistScoreSnapshot(providerId: ProviderId | null): boole
     && providerId !== 'chunithm-test'
     && providerId !== 'phi-taptap';
 }
-
-export function shouldPersistMaimaiCatalog(providerId: ProviderId | null): boolean {
-  void providerId;
-  return false;
-}
