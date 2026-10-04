@@ -372,9 +372,7 @@ describe('Phigros song detail', () => {
     const screen = await render(<SongDetailScreen />);
     await waitFor(() => expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy());
     expect(screen.getAllByText('Score').length).toBeGreaterThan(0);
-    // IN constant 14.8 → floor 14
     expect(screen.getByText('14')).toBeTruthy();
-    // AT constant 15.9 → floor 15
     expect(screen.getByText('15')).toBeTruthy();
   });
 
@@ -484,8 +482,7 @@ describe('Phigros song detail', () => {
     await fireEvent.press(screen.getAllByLabelText('加入练习清单')[0]!);
     expect(mockSetChartPractice).toHaveBeenCalledWith('Song.A', 'SD', 3, true);
 
-    // iOS（jest-expo 默认平台）：滚动区内的练习/谱面确认按钮必须走 gesture-handler 按压体系，
-    // 否则 iOS 滚动手势竞争会取消原生 Pressable 的点击，表现为按钮完全无反应。
+    /** iOS 滚动区需原生手势识别器，避免滚动竞争取消点击。 */
     expect(screen.getAllByLabelText(/查看谱面确认：/)[0]!.props.testID).toBe('gesture-handler-pressable');
     expect(screen.getAllByLabelText(/下载谱面文件：/)[0]!.props.testID).toBe('gesture-handler-pressable');
     expect(screen.getAllByLabelText('加入练习清单')[0]!.props.testID).toBe('gesture-handler-pressable');

@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -26,7 +26,6 @@
  */
 import type { ReplayData, ReplayFrame, SkinAssets } from '../types/index';
 
-// Per-replay cumulative-time cache; WeakMap keeps it GC-safe.
 const _cumTimes = new WeakMap<ReplayFrame[], number[]>();
 
 function getCumulativeTimes(frames: ReplayFrame[]): number[] {
@@ -44,19 +43,14 @@ function getCumulativeTimes(frames: ReplayFrame[]): number[] {
 }
 
 const TRAIL_LENGTH = 10;
-const CURSOR_RADIUS = 6; // primitive fallback only
+const CURSOR_RADIUS = 6;
 
-// Must match HitObjectRenderer.
 const SCALE = Math.min(800 / 512, 600 / 384) * 0.9;
 const OFFSET_X = (1280 - 512 * SCALE) / 2;
 const OFFSET_Y = (720 - 384 * SCALE) / 2;
 
-// osu! draws every cursor-system sprite (cursor, cursormiddle, cursortrail) at
-// "screen scale": each sprite's native @2x-adjusted size with the playfield's
-// 1.6 "stable magic ratio" undone (NonPlayfieldSprite + LegacyCursorTrail both
-// apply Texture.ScaleAdjust *= 1.6). In our osu-px→canvas space that is
-// native/1.6 osu-px, then ×SCALE to canvas px. The shared factor means cursor
-// and trail scale together, so the trail is only smaller when its texture is.
+/** cursor 系列按原生尺寸除以 stable 的 1.6 比例，再映射到画布。 */
+
 const CURSOR_PX_PER_NATIVE = SCALE / 1.6;
 
 function toCanvas(x: number, y: number): [number, number] {
@@ -65,8 +59,8 @@ function toCanvas(x: number, y: number): [number, number] {
 
 type ResolvedSprite = { bmp: ImageBitmap; scale: number };
 
-// @2x preferred; reports the native scale-divisor (2 for @2x, 1 for SD). A 1×1
-// bitmap is osu!'s "suppressed element" convention, so it resolves to undefined.
+/** @2x 尺寸需折半；1×1 占位图表示隐藏素材。 */
+
 function resolveCursorSprite(
   images: Map<string, ImageBitmap>,
   stem: string
@@ -78,8 +72,6 @@ function resolveCursorSprite(
   return undefined;
 }
 
-// Draw a cursor-system sprite centered at (cx, cy) at its native @2x-adjusted
-// size; aspect preserved for non-square art.
 function drawSprite(
   ctx: CanvasRenderingContext2D,
   s: ResolvedSprite,
@@ -135,12 +127,6 @@ function interpolateCursor(
   return toCanvas(x, y);
 }
 
-/**
- * Draw the replay cursor (interpolated between replay frames) and its trail at `timeMs`
- * (beatmap ms). Uses the skin's cursor/cursormiddle/cursortrail sprites at osu!'s
- * screen-scale sizing; falls back to primitive circles only when no skin is supplied.
- * `ctx` is in logical 1280×720 coords; replay frames are osu!pixels.
- */
 export function drawCursor(
   ctx: CanvasRenderingContext2D,
   replay: ReplayData,
@@ -157,9 +143,8 @@ export function drawCursor(
   const trailStart = Math.max(0, idx - TRAIL_LENGTH + 1);
   const trail = skin ? resolveCursorSprite(skin.images, 'cursortrail') : undefined;
 
-  // The primitive pink trail is only for the no-skin case. A loaded skin that
-  // suppresses (1×1) or omits cursortrail shows no trail at all — never the dev
-  // primitive over a real skin (e.g. YUGEN ships a 1×1 cursortrail = no trail).
+  /** 真实皮肤缺少或隐藏 cursortrail 时，不绘制开发用轨迹。 */
+
   if (trail || !skin) {
     for (let i = idx; i >= trailStart; i--) {
       const age = idx - i;
@@ -183,7 +168,7 @@ export function drawCursor(
 
   const [cx, cy] = interpolateCursor(frames, times, timeMs);
   const cursor = skin ? resolveCursorSprite(skin.images, 'cursor') : undefined;
-  // cursormiddle layers above cursor; many skins put the real cursor art here.
+  /** cursormiddle 叠于 cursor 之上。 */
   const cursorMiddle = skin ? resolveCursorSprite(skin.images, 'cursormiddle') : undefined;
 
   if (cursor || cursorMiddle) {

@@ -143,7 +143,6 @@ const phiraAdapter = createGameStorageAdapter({
   ownership: { ownsAccount: accountOwnership('phira'), resourcePrefixes: ['phira:'] },
 });
 
-/** osu! 四模式：后台各注册为独立游戏，按模式统计/清除各自的快照缓存。 */
 const OSU_STORAGE_COLOR = '#FF66AA';
 const OSU_STORAGE_NOTE = '玩家资料、Top 100 与已知成绩快照；SQLite 为估算值';
 

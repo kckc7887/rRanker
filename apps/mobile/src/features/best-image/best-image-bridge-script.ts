@@ -1,14 +1,13 @@
 export type BestImageBridgeMeasureOptions = {
-  /** measureAndFit 开头的页面布局调用（各家页面特有布局函数，带分号）。 */
+
   layoutCall: string;
 };
 
 export type BestImageBridgeReadyOptions = {
-  /** 参与就绪竞速的资源 Promise 表达式（舞萌把 fontReady 一并计入）；缺省时内联 Promise.all(imageReady)。 */
+
   assetReadyExpression?: string;
 };
 
-/** postToNative 定义与 runtime 消息广播（含 250ms 重发）。 */
 export function bestImageBridgeRuntimeScript(): string {
   return `      const postToNative = (message) => {
         const bridge = window.ReactNativeWebView;
@@ -28,7 +27,6 @@ export function bestImageBridgeRuntimeScript(): string {
       window.setTimeout(() => postToNative(runtimeMessage), 250);`;
 }
 
-/** measureAndFit、schedule、Resize/MutationObserver 注册与 resize/load 监听。 */
 export function bestImageBridgeMeasureScript(options: BestImageBridgeMeasureOptions): string {
   return `      const measureAndFit = () => {
         pending = false;
@@ -82,7 +80,6 @@ export function bestImageBridgeMeasureScript(options: BestImageBridgeMeasureOpti
       window.addEventListener('load', schedule);`;
 }
 
-/** 图片就绪收集、5000ms 超时竞速与 best-image-ready 消息（防重 + 250ms 重发）。 */
 export function bestImageBridgeReadyScript(options: BestImageBridgeReadyOptions = {}): string {
   const assetReadyLine = options.assetReadyExpression
     ? `      const assetReady = ${options.assetReadyExpression};\n`

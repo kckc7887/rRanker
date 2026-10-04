@@ -40,7 +40,6 @@ export {
   stageAsset,
 } from '@/features/chart-preview-shared/chart-preview-assets';
 
-// Metro 在运行时解析这些静态资源模块。
 const HTML_MODULE = require('../../../assets/maimai-chart-preview/index.html') as number;
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- Metro 静态资源编号只能在运行时 require
 const PLAYER_MODULE = require('../../../assets/maimai-chart-preview/player.bundle') as number;
@@ -81,7 +80,6 @@ async function downloadPreviewFile(
   );
 }
 
-/** 将播放器脚本、远程皮肤与正解音写入同一 session；皮肤编码为 skin-data.js。 */
 export async function prepareChartPreviewWebViewSource(
   config: ChartPreviewInjectConfig,
   signal?: AbortSignal,

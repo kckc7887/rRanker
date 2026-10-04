@@ -13,9 +13,6 @@ import {
 } from '@/features/phigros-chart-preview/webview-player/rpe-core';
 import { RPE_PRESET_SHADERS } from '@/features/phigros-chart-preview/webview-player/rpe-preset-shaders';
 
-// 覆盖 RPE 解析语义：
-// 缓动表顺序、速度积分、事件插值、音符归一化、父子线、extra.json/info.yml 解析。
-
 function line(overrides: Record<string, unknown> = {}): Record<string, unknown> {
   return {
     Texture: 'line.png',
@@ -74,9 +71,8 @@ describe('rpe core', () => {
     expect(Math.abs(easing(3, undefined, 0.5) - (1 - Math.cos(Math.PI / 4)))).toBeLessThan(1e-9);
     expect(Math.abs(easing(4, undefined, 0.5) - 0.75)).toBeLessThan(1e-9);
     expect(Math.abs(easing(5, undefined, 0.5) - 0.25)).toBeLessThan(1e-9);
-    // 截取区间：quadOut 在 [0.5,1] 上归一化，x=0.5 → 0.75
+    /** 截取区间：quadOut 在 [0.5,1] 上归一化，x=0.5 → 0.75 */
     expect(Math.abs(easing(4, undefined, 0.5, 0.5, 1) - 0.75)).toBeLessThan(1e-9);
-    // bezier 线性等价
     expect(Math.abs(easing(1, [0, 0, 1, 1], 0.3) - 0.3)).toBeLessThan(1e-9);
   });
 
@@ -95,27 +91,25 @@ describe('rpe core', () => {
       event({ start: 9, end: 9 }),
       event({ startBeat: 8, endBeat: 12, start: 18, end: 18 }),
     ])];
-    // 0..4 拍 = 0..2s，速度 9 → 高度 18；事件后恒定 9 延伸：6 拍(3s) → 18+9=27
+    /** 0..4 拍 = 0..2s，速度 9 → 高度 18；事件后恒定 9 延伸：6 拍(3s) → 18+9=27 */
     expect(Math.abs(speedHeightAt(layers, bpm, false, 4) - 18)).toBeLessThan(1e-6);
     expect(Math.abs(speedHeightAt(layers, bpm, false, 6) - 27)).toBeLessThan(1e-6);
-    // 10 拍(5s)：A 积分 18 + A 后延伸 18 + B 内积分 18 = 54
+    /** 10 拍(5s)：A 积分 18 + A 后延伸 18 + B 内积分 18 = 54 */
     expect(Math.abs(speedHeightAt(layers, bpm, false, 10) - 54)).toBeLessThan(1e-6);
   });
 
   it('速度积分：quadOut 事件与 PhiZone/player getIntegral 公式一致', () => {
     const bpm = bpm120();
     const ev = event({ start: 0, end: 18, easingType: 4 });
-    // 参考公式（!integrateEasings）：k=(end-start)/(f'(1)-f'(0))，b=start-k·f'(0)，× lengthSec/Δbeats
-    // 来源与实现一致：PhiZone/player（MPL-2.0，https://github.com/PhiZone/player）的 RPE 速度积分语义，
-    // 许可证全文见 LICENSES/player-MPL-2.0.txt，来源清单见仓库根 THIRD_PARTY_NOTICES.md。
-    // 仓库只做语义对照，没有固定上游版本或提交，因此这里不写版本号。
+    /** 参考公式（!integrateEasings）：k=(end-start)/(f'(1)-f'(0))，b=start-k·f'(0)，× lengthSec/Δbeats */
+    /** 参考 PhiZone/player（MPL-2.0）：https://github.com/PhiZone/player。 */
     const f = (x: number) => 1 - (1 - x) * (1 - x);
     const df0 = (f(1e-12) - f(0)) / 1e-12;
     const df1 = (f(1) - f(1 - 1e-12)) / 1e-12;
     const k = 18 / (df1 - df0);
     const b = 0 - k * df0;
     const x = 0.5;
-    const expected = (k * f(x) + b * x) * (2 / 4); // lengthSec=2s, Δbeats=4
+    const expected = (k * f(x) + b * x) * (2 / 4); /** 2 秒、4 拍。 */
     expect(Math.abs(getIntegral(ev, bpm, false, 2) - expected)).toBeLessThan(1e-6);
   });
 
@@ -258,7 +252,7 @@ describe('rpe core', () => {
     expect(note0.tint).toEqual([255, 0, 0]);
     expect(note0.tintHitEffects).toEqual([0, 255, 0]);
     expect(note0.judgeArea).toBe(0.5);
-    // extra.bpm 覆盖 BPMList：240bpm 下 4 拍 = 1s
+    /** extra.bpm 覆盖 BPMList：240bpm 下 4 拍 = 1s */
     expect(chart.bpmList.timeSec(4)).toBe(1);
     expect(chart.extras.videos.length).toBe(1);
     const video = chart.extras.videos[0]!;
@@ -266,7 +260,6 @@ describe('rpe core', () => {
     expect(video.alpha).toBe(0.8);
     expect(video.startTimeSec).toBe(0.5); // 2 拍 @240bpm = 0.5s
     const bpm = chart.bpmList;
-    // 视频 dim 事件：数值插值
     const dimEvents = video.dim as RpeEvent[];
     expect(getEventValue(dimEvents[0]!, 0, bpm)).toBe(0);
     expect(getEventValue(dimEvents[0]!, 2, bpm)).toBe(0.25);
@@ -277,9 +270,7 @@ describe('rpe core', () => {
     const offsetEvents = effect.vars['offset'] as RpeEvent[];
     expect(getEventValue(offsetEvents[0]!, 3, bpm)).toEqual([0.5, -0.5]);
     expect(effect.vars['zoom']).toBe(1.5);
-    // 文本事件值不做插值
     expect(getEventValue(line0.textEvents[0]!, 3, bpm)).toBe('hello');
-    // 比例事件默认 1
     expect(getEventValue(line0.scaleXEvents[0]!, 0, bpm)).toBe(1);
   });
 
@@ -298,13 +289,12 @@ describe('rpe core', () => {
 
   it('gif 判定线进度键帧：无效时长回退单键帧，其余按循环填充', () => {
     const bpm = bpm120();
-    // totalMs 无效时仅回退起始键帧
     expect(buildGifAnim([], 0, bpm)).toEqual([{ t: 0, v: 0, easingType: 1, easingLeft: 0, easingRight: 1, bezier: 0, bezierPoints: [0, 0, 1, 1] }]);
-    // 无事件也按循环填充到 2s 之外：首键帧 0/0，且包含 v=1 的循环跳变
+    /** 无事件也按循环填充到 2s 之外：首键帧 0/0，且包含 v=1 的循环跳变 */
     const empty = buildGifAnim([], 100, bpm);
     expect(empty[0]).toEqual({ t: 0, v: 0, easingType: 1, easingLeft: 0, easingRight: 1, bezier: 0, bezierPoints: [0, 0, 1, 1] });
     expect(empty.some((kf) => kf.v === 1)).toBe(true);
-    // 事件在 [0,2] 拍（0..1s）生成 start/end 键帧：v 从 0 到 1
+    /** 事件在 [0,2] 拍（0..1s）生成 start/end 键帧：v 从 0 到 1 */
     const kfs = buildGifAnim([{
       startBeat: 0, endBeat: 2, start: 0, end: 1,
       easingType: 1, easingLeft: 0, easingRight: 1, bezier: 0, bezierPoints: [0, 0, 1, 1],

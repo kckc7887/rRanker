@@ -10,7 +10,7 @@ export type SimaiStatistics = {
 };
 const empty = (): NoteCounts => ({ tap: 0, hold: 0, slide: 0, touch: 0, break: 0 });
 
-/** One connected slide branch is one judgment unit; its head is independent. */
+/** 连接 slide 每个分支计一份判定，头部另计。 */
 export function simaiStatistics(chart: Chart): SimaiStatistics {
   const result: SimaiStatistics = { counts: { ...empty(), mine: 0 }, scoring: empty(), mines: empty(), units: [] };
   const add = (unit: SimaiJudgmentUnit) => {

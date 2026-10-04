@@ -2,13 +2,11 @@ import { create } from 'zustand';
 
 type SetterName<K extends string> = `set${Capitalize<K>}`;
 
-/** 偏好持久化访问（load/save），与各游戏 random-charts preferences store 的子集同构。 */
 export type RandomChartsPreferencesAccess<Preferences extends object> = {
   load: () => Promise<Preferences>;
   save: (preferences: Preferences) => Promise<unknown>;
 };
 
-/** 持久化随机歌曲筛选 store 公共形态：偏好字段 + 水合状态 + setter + clearFilters。 */
 export type RandomChartsFilterStore<Preferences extends object> = Preferences & {
   hydrated: boolean;
   collapsed: boolean;
@@ -20,10 +18,6 @@ export type RandomChartsFilterStore<Preferences extends object> = Preferences & 
   clearFilters: () => void;
 };
 
-/**
- * 各游戏随机歌曲筛选 store 的公共工厂：串行保存队列、水合前脏写保护、
- * clearFilters 仅重置 clearKeys；setter 命名恒为 `set${Capitalize(key)}`。
- */
 export function createPersistedRandomChartsFilterStore<Preferences extends object>(input: {
   preferences: RandomChartsPreferencesAccess<Preferences>;
   defaults: () => Preferences;

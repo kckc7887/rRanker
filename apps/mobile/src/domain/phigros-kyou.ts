@@ -122,10 +122,7 @@ function catalogChartSignature(song: Song): string {
     .map((chart) => chart.difficultyConstant));
 }
 
-/**
- * Kyou 与 APK 使用不同歌曲 ID。只接受可唯一证明的标题、章节或定数组合匹配；
- * 无法唯一对应的条目留空，避免同名曲串数据。
- */
+/** Kyou 与 APK 的歌曲 ID 不同，歧义匹配留空。 */
 export function buildPhigrosKyouSongMap(
   catalog: CatalogSnapshot,
   kyouSongs: readonly PhigrosKyouSong[],
@@ -252,10 +249,7 @@ interface PhigrosKyouPresentedTagResolution {
   secondary: readonly PhigrosKyouResolvedTag[];
 }
 
-/**
- * 统一主标签归属口径：普通谱面归入最高票主标签；票数接近时归入前两项。
- * 展示层可把后者合成为“综合”，分析层则保留两个真实主标签作为五维样本。
- */
+/** 票数接近时取前两项，分析保留两个标签。 */
 export function resolvePhigrosKyouPrimaryTags(
   tags: readonly PhigrosKyouResolvedTag[],
 ): PhigrosKyouPrimaryTagResolution {

@@ -92,7 +92,6 @@ async function initializeUserLibrarySchema(): Promise<void> {
   }
   if (current) return;
 
-  /** 只重建个人曲库表；事务失败回滚，不影响成绩和资源缓存。 */
   await db.execAsync('PRAGMA foreign_keys = OFF');
   try {
     await db.withTransactionAsync(async () => {
@@ -237,7 +236,7 @@ export class SqliteUserLibraryRepository implements UserLibraryRepository {
     });
   }
 
-  /** 估算个人曲库相关表占用（按 UTF-8 文本字节与固定字段估算，不含索引开销）。 */
+  /** 文本按 UTF-8 字节估算，不含索引开销。 */
   async measureBytes(): Promise<number> {
     await this.initialize();
     const db = await getRrankerDatabase();

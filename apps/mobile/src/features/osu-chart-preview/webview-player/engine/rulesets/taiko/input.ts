@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -26,16 +26,14 @@
  */
 import type { ReplayData } from '../../types/index';
 
-/** One of the four taiko keys. Matches TaikoAction enum order in osu.Game.Rulesets.Taiko/TaikoAction.cs. */
 export type TaikoAction = 'LeftRim' | 'LeftCentre' | 'RightCentre' | 'RightRim';
 
-/** A single key press (rising edge only) at `time` ms on the beatmap clock. */
 export interface TaikoInputEvent {
   time: number;
   action: TaikoAction;
 }
 
-// Stable .osr bitfield: bit 0=LeftCentre, 1=LeftRim, 2=RightCentre, 3=RightRim.
+/** stable 位掩码：bit0 左中心、bit1 左边缘、bit2 右中心、bit3 右边缘。 */
 const BIT_TO_ACTION: readonly { bit: number; action: TaikoAction }[] = [
   { bit: 1, action: 'LeftCentre'  },
   { bit: 2, action: 'LeftRim'     },
@@ -43,12 +41,7 @@ const BIT_TO_ACTION: readonly { bit: number; action: TaikoAction }[] = [
   { bit: 8, action: 'RightRim'    },
 ];
 
-/**
- * Extract rising-edge key presses from a taiko replay's raw frames, sorted by
- * time. Accumulates timeDelta including negatives — lazer encodes audio lead-in
- * as the first frame's negative delta, and dropping it shifts the whole timeline
- * forward past every hit window.
- */
+/** 负前导 delta 仍参与时间累加。 */
 export function taikoFrames(replay: ReplayData): TaikoInputEvent[] {
   const events: TaikoInputEvent[] = [];
   let cumTime = 0;

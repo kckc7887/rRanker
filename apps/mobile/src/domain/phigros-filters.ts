@@ -12,7 +12,6 @@ export type PhigrosRankFilter = PhigrosRateKind | 'fc';
 
 export const PHIGROS_LEVELS: readonly PhigrosLevel[] = [0, 1, 2, 3];
 
-/** 与成绩卡片评价标签一致：φ / FC / V / S / A / B / C / F */
 export const PHIGROS_RANK_FILTERS: readonly { value: PhigrosRankFilter; label: string }[] = [
   { value: 'phi', label: PHIGROS_RATE_LABELS.phi },
   { value: 'fc', label: 'FC' },
@@ -60,7 +59,6 @@ export function parsePhigrosScoreBound(input: string): number | undefined {
   return Number.isFinite(value) && value >= 0 && value <= PHIGROS_MAX_SCORE ? value : undefined;
 }
 
-/** 分数区间（dxScore）；空上下限表示不限；非法或上下限颠倒时不匹配 */
 export function matchesPhigrosScoreRange(
   score: number | null | undefined,
   minInput: string,
@@ -75,7 +73,6 @@ export function matchesPhigrosScoreRange(
   return true;
 }
 
-/** φ = 满分；FC = Full Combo 且非 φ；其余按评价等级严格匹配 */
 export function matchesPhigrosRankFilter(
   record: { dxScore?: number | null; fc?: string | null },
   filter: PhigrosRankFilter | null,
@@ -87,7 +84,6 @@ export function matchesPhigrosRankFilter(
   return phigrosScoreToRate(score, isFc) === filter;
 }
 
-/** Acc 百分数区间；非法输入、越界与倒置区间均不匹配。 */
 export function matchesPhigrosAccuracyRange(value: number, minInput: string, maxInput: string): boolean {
   const bounds = [minInput, maxInput].map(input => {
     const normalized = normalizeNumericInput(input);

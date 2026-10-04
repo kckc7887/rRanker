@@ -30,12 +30,10 @@ import type { ResourceRepository, ResourceMaintenanceRepository } from '@/reposi
 import { clearResourcesByPrefix, createInflightGuard, resourceWriteGeneration, makeSnapshot, parseCachedSnapshot } from '@/services/snapshot-cache-utils';
 import { assertFreshSnapshotSource } from '@/domain/refresh-result';
 
-/** 构造 Muse Dash 缓存快照；source 的 updatedAt 记录本次拉取时间，供缓存命中时展示来源与过期标。 */
 export function makeMuseDashSnapshot<T>(data: T, updatedAt = new Date().toISOString()): { data: T; source: DataSource } {
   return makeSnapshot(data, { kind: 'musedash', label: 'MuseDash.moe' }, updatedAt);
 }
 
-/** 并发读取共享一次网络请求（总览、成绩、曲库可能并发）。 */
 const inflightLoads = createInflightGuard<string>();
 
 export function loadMuseDashPlayerFresh(userId: string, signal?: AbortSignal): Promise<MuseDashPlayer> {
@@ -64,10 +62,6 @@ export function loadMuseDashDiffdiffFresh(signal?: AbortSignal): Promise<MuseDas
   return inflightLoads.share(resourceWriteGeneration('musedash') + ':' + 'diffdiff', requestSignal => museDashProvider.getDiffdiff(requestSignal), signal);
 }
 
-/**
- * 全局公开资源（曲库/定数表）的请求入口：只请求新数据并包装为快照，
- * 不读本地持久化缓存；网络请求由 inflightLoads 去重，多路并发只发一次。
- */
 export function loadMuseDashAlbumsFreshSnapshot(
   signal?: AbortSignal,
 ): Promise<MuseDashAlbumsSnapshot> {
@@ -80,11 +74,6 @@ export function loadMuseDashDiffdiffFreshSnapshot(
   return loadMuseDashDiffdiffFresh(signal).then((entries) => makeMuseDashSnapshot(entries));
 }
 
-/**
- * Muse Dash 公开数据的本地持久化快照（缓存优先渲染）。
- * 曲库、定数表与名称表是账号无关的全局资源；玩家资料与成绩明细按 userId 归属。
- * 读取一律是缓存读取：保留原提供方与抓取时间并标记过期；写入只接受抓取结果，缓存回退不得落盘。
- */
 export class MuseDashCache {
   constructor(private readonly repository: ResourceRepository & ResourceMaintenanceRepository = new SqliteSnapshotRepository()) {}
 
@@ -138,7 +127,6 @@ export class MuseDashCache {
     await this.repository.saveResource(MUSE_DASH_DIFFDIFF_CACHE_KEY, MUSE_DASH_DIFFDIFF_SCHEMA_VERSION, snapshot.source.updatedAt, snapshot, assertCurrent);
   }
 
-  /** 解绑玩家时清理其资料、成绩明细缓存；曲库、定数表、名称表等全局公开资源保留。 */
   async clearPlayer(userId: string): Promise<void> {
     await clearResourcesByPrefix(this.repository, {
       keys: [museDashPlayerCacheKey(userId)],

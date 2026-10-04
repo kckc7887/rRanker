@@ -246,7 +246,6 @@ export class SecureSessionStore {
       const activeAccountId = vault.activeAccountId === accountId
         ? (accounts[0]?.id ?? null)
         : vault.activeAccountId;
-      /** 索引提交后才清理附属密码。 */
       const cleanupFailures = accounts.length === vault.accounts.length ? [] : [...await this.saveVaultUnlocked({
         ...vault,
         activeAccountId,

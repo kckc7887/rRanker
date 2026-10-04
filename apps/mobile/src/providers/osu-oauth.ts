@@ -23,7 +23,6 @@ function withPendingMutation<T>(action: () => Promise<T>): Promise<T> {
   return result;
 }
 
-/** 进行中的 osu! 授权：state（osu! 无 PKCE，凭 state 防 CSRF）。 */
 export type PendingOsuOAuth = {
   state: string;
   expiresAt: number;
@@ -182,11 +181,7 @@ async function refreshOsuAccessToken(refreshToken: string): Promise<OsuOAuthSess
   });
 }
 
-/**
- * 公共令牌轮换：并发刷新按 refreshToken 去重（复用 snapshot-cache-utils 的
- * createInflightGuard），并缓存最近的轮换结果。osu! refresh_token 单次使用：
- * 持有旧 token 的实例可从缓存直接拿到本进程内最新会话，避免 invalid_grant。
- */
+/** refresh_token 单次使用；旧实例沿轮换链取得最新会话。 */
 const inFlightRefreshes = new Map<string, Promise<OsuOAuthSession>>();
 const recentRotations = new Map<string, OsuOAuthSession>();
 const rotationAncestors = new Map<string, Set<string>>();
@@ -237,7 +232,6 @@ function rememberOsuRotation(refreshToken: string, next: OsuOAuthSession): void 
   pruneRotationState();
 }
 
-/** 解除绑定或清空会话时丢掉轮换关系。进行中的刷新完成后不再写回。 */
 export function clearOsuRotationCache(): void {
   rotationEpoch += 1;
   recentRotations.clear();
@@ -302,11 +296,10 @@ export async function rotateOsuTokens(refreshToken: string): Promise<OsuOAuthSes
   return promise;
 }
 
-/** osu! 授权结果事件：回调页与登录 Sheet 之间的轻量通知。 */
 export type OsuOAuthOutcome =
   | { status: 'success'; accountName: string }
   | { status: 'error'; message: string }
-  /** 授权码已换取、回调页进入模式选择：通知登录 Sheet 关闭，避免 Modal 盖住回调页。 */
+  /** 模式选择前关闭登录弹层，避免遮住回调页。 */
   | { status: 'awaiting-mode-selection' };
 
 const outcomeListeners = new Set<(outcome: OsuOAuthOutcome) => void>();

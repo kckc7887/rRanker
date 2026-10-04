@@ -21,10 +21,7 @@ const SPLITS_BLOCK = `    splits {
         }
     }`;
 
-/**
- * 一次 assembleRelease 按 ABI 各出一份 APK，避免四合一 fat 包。
- * prebuild 会重写原生文件；分包、R8 和资源裁剪必须由同一插件持久化。
- */
+/** prebuild 会重写原生文件，分包和 R8 设置在此注入。 */
 function withAndroidAbiSplits(config, options = {}) {
   const { minify = true, shrink = true, optimize = true } = options;
   if ([minify, shrink, optimize].some(value => typeof value !== 'boolean') || (shrink && !minify)) {
@@ -33,7 +30,7 @@ function withAndroidAbiSplits(config, options = {}) {
   config = withDangerousMod(config, ['android', async (config) => {
     const file = path.join(config.modRequest.platformProjectRoot, 'app', 'proguard-rules.pro');
     const contents = await fs.readFile(file, 'utf8');
-    // Expo Record annotations are instantiated by reflection; full-mode R8 must retain their instances.
+    /** Expo Record 注解通过反射创建，R8 full mode 必须保留。 */
     const rule = '-keep @interface expo.modules.kotlin.records.** { *; }';
     if (!contents.includes(rule)) await fs.writeFile(file, `${contents.trimEnd()}\n\n${rule}\n`);
     return config;
@@ -63,7 +60,6 @@ function withAndroidAbiSplits(config, options = {}) {
       return config;
     }
 
-    // 手工已写入但无标记时避免重复插入
     if (/\bsplits\s*\{\s*\n\s*abi\s*\{/.test(src)) {
       return config;
     }

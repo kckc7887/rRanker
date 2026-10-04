@@ -21,7 +21,6 @@ import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { parseNumericInput } from '@/utils/numeric-input';
 
-/** 输入框文案与领域入口共用同一份范围常量，页面不再另写阈值。 */
 const DELTA_ERROR = `加值至少为 ${PHIGROS_PUSH_LIMITS.minDelta}，且最多两位小数。`;
 const CHART_COST_ERROR = `成本须为 ${PHIGROS_PUSH_LIMITS.minChartCost}–${PHIGROS_PUSH_LIMITS.maxChartCost} 的整数（愿意打几张谱面）。`;
 

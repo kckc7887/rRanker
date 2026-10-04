@@ -1,4 +1,4 @@
-// MIT replayviewer-js source exports. Keep this preview entry free of replay/skin loaders.
+
 export type * from './engine/types/index';
 export { parseBeatmap } from './engine/parsers/BeatmapParser';
 export { md5 } from './engine/utils/md5';

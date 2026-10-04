@@ -90,7 +90,6 @@ class FakeAudioContext {
     throw new Error('unsupported');
   }
 
-  /** 仍被会话持有的音源：释放时会 disconnect。 */
   heldSourceCount(): number {
     return this.sources.filter((source) => !source.disconnected).length;
   }

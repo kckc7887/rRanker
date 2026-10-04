@@ -66,7 +66,6 @@ function useActiveTufPlayerId() {
   return tufPlayerIdFromAccountId(accountId);
 }
 
-
 function uniqueById<T extends { id: number }>(items: T[]): T[] {
   return [...new Map(items.map((item) => [item.id, item])).values()];
 }
@@ -594,7 +593,6 @@ const styles = StyleSheet.create({
     gap: 8,
     borderRadius: 12,
     padding: 12,
-    // 判定表淡灰遮罩：彩字区域与卡面轻微区分，深浅模式同色。
     backgroundColor: 'rgba(128,128,128,0.14)',
   },
   judgementMatrix: { flex: 1, minWidth: 0, gap: 9 },

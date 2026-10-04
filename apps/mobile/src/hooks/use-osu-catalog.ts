@@ -15,7 +15,6 @@ import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import { applyOsuTokenRotation, useSession } from '@/state/session-store';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 
-/** 曲库搜索筛选状态（不含 gameId/cursor，由 hook 内部按当前游戏与翻页补齐）。 */
 export type OsuCatalogSearchInput = {
   q?: string;
   general: readonly OsuGeneralFlag[];
@@ -26,7 +25,6 @@ export type OsuCatalogSearchInput = {
   extras: readonly OsuExtraFlag[];
 };
 
-/** osu! 曲库搜索一页：50 份 beatmapset 归一化后的歌曲 + 上游 total/推荐难度/翻页游标。 */
 export type OsuCatalogPage = {
   songs: OsuCatalogSong[];
   total: number;
@@ -34,13 +32,6 @@ export type OsuCatalogPage = {
   cursor: string | null;
 };
 
-/**
- * osu! 曲库搜索（osu.ppy.sh 官方 API，实时结果不做本地快照）：
- * - 仅 osu 会话（osu-oauth）可用，未绑定/非 osu 账号不发请求；
- * - m 参数由 buildOsuBeatmapsetSearchQuery 恒按当前游戏模式注入，玩家不可见；
- * - cursor_string 无限滚动，跨页按 beatmapSetId 去重（防翻页重叠）；
- * - token 轮换与 use-game-data 的 osu 分支同构（applyOsuTokenRotation 广播到共享凭据账号）。
- */
 export function useOsuCatalogSearch(gameId: OsuGameId | null, input: OsuCatalogSearchInput, enabled = true) {
   const tabActive = useCachedTabActive();
   const session = useSession((s) => s.session);
@@ -51,7 +42,6 @@ export function useOsuCatalogSearch(gameId: OsuGameId | null, input: OsuCatalogS
 
   const params = useMemo<OsuBeatmapsetSearchParams | null>(
     () => (gameId === null ? null : { gameId, ...input }),
-    // input 由调用方（曲库页）以逐字段依赖 useMemo 稳定身份，此处整体依赖即可。
     [gameId, input],
   );
 

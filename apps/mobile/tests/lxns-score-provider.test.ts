@@ -72,7 +72,6 @@ describe('LXNS player presentation', () => {
       const url = String(input);
       requestedUrls.push(url);
       if (url.includes('/oauth/token')) {
-        // 刷新在途时调用方取消：轮换结果仍可提交，但这次读取不应该再发出。
         controller.abort(new Error('已取消'));
         return new Response(JSON.stringify({
           access_token: 'fresh-access', refresh_token: 'rotated-refresh', expires_in: 3600,

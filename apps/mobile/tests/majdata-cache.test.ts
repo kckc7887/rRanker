@@ -54,7 +54,6 @@ describe('Majdata revision and account cache', () => {
     const onFresh = vi.fn();
     expect(await loadMajdataSong(song.id, undefined, onFresh)).toEqual(song);
     await vi.waitFor(() => expect(mock.getSong).toHaveBeenCalled());
-    // 等后台「网络失败 → 本地兜底」这条链走完，再确认兜底没有进 onFresh。
     await new Promise((resolve) => setTimeout(resolve, 20));
     expect(onFresh).not.toHaveBeenCalled();
   });

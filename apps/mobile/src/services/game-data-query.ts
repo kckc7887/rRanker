@@ -84,7 +84,7 @@ export function publishEntityValue<T>(
     publish();
     return Promise.resolve();
   }
-  /** 等首屏查询提交，避免后台新值被首屏缓存覆盖。 */
+  /** 先等首屏提交，避免它覆盖后台新值。 */
   return new Promise((resolve, reject) => {
     const unsubscribe = cache.subscribe((event) => {
       if (event.query !== query) return;
@@ -114,7 +114,6 @@ export function registerGameDataBackground(
     return;
   }
   backgroundRefreshes.set(id, background.catch(error => failedRefresh<GameDataBundle, GameDataRefreshTarget>({ requested: dataRequested, failures: [refreshFailureFromError(error, 'data')] })));
-  /** 保留已结算句柄，供 refetch 返回后读取。 */
 }
 
 export function awaitGameDataBackground(
@@ -292,7 +291,6 @@ function buildRefreshResult(input: {
 }): GameDataRefreshResult {
   const { terminal, requested } = input;
   if (input.structured) return combineStructuredRefresh(input, input.structured);
-  /** 缓存仍可用时也保留认证或网络失败。 */
   const dataFailure = input.transportFailure
     ?? (terminal ? dataPartFailure(terminal) : null)
     ?? dataPartFailure(terminal);

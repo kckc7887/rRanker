@@ -270,7 +270,6 @@ export function LevelChip({ level, active, onPress }: {
   );
 }
 
-// Phigros 专属样式：难度/评价芯片、Kyou 标签触发器；其余公共样式见 game-content/FilterShell。
 const styles = StyleSheet.create({
   chipScroll: { flexGrow: 0, flexShrink: 1 },
   levelChip: { minHeight: 30, borderRadius: 6, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },

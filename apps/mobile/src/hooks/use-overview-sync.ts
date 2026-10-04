@@ -80,10 +80,6 @@ function failureAsError(failure: RefreshFailure<GameDataRefreshTarget>): unknown
     : new ProviderError(failure.code, failure.diagnostic, failure.retryable);
 }
 
-/**
- * 只读主动刷新的返回值判定结果：成功 / 部分失败 / 全部失败，以及每种终态的用户文案。
- * 不再等待逐游戏 waiter，也不再二次读取查询缓存来猜后台刷新是否落定。
- */
 function reportRefreshResult(input: {
   gameId: GameId;
   providerId: ProviderId | null;
@@ -169,7 +165,6 @@ export function useOverviewSync({ boundAccounts, activeAccountId, activeGameId, 
       && resourceWriteGeneration(activeGameId) === gameGeneration
       && resourceWriteGeneration(`account:${activeAccountId}`) === accountGeneration);
     try {
-      // 用户主动同步优先，终止登录后仍可能在后台运行的同账号自动刷新。
       accountGeneration = await cancelStaleSyncQueries(activeGameId, activeAccountId);
       if (!isCurrent()) return false;
       const account = boundAccounts.find((item) => item.id === activeAccountId);
@@ -187,10 +182,8 @@ export function useOverviewSync({ boundAccounts, activeAccountId, activeGameId, 
         rizlineCatalogFailed = await refreshRizlineCatalogBestEffort();
         if (!isCurrent()) return false;
       }
-      // 先把相关页面标为过期但不并发请求，再只刷新当前总览一次。
       await invalidateAccountDataQueries(queryClient, 'none');
       if (!isCurrent()) return false;
-      // 主动刷新返回包含提交结果的终态：等待该实体的后台分离刷新落定后才判定。
       const result = await refreshGameDataBundle({
         client: queryClient,
         params: {

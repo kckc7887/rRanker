@@ -15,7 +15,7 @@ export const MAIMAI_FS_ACHIEVEMENTS: readonly { value: MaimaiFsAchievement; labe
   { value: 'fsp', label: 'FS+' }, { value: 'fs', label: 'FS' },
 ];
 
-/** 1-based ranks so FC/FS 最低档位 never falsy as `0`. */
+/** 档位从 1 开始，避免最低档被当作未选。 */
 const FC_RANK: Record<MaimaiFcAchievement, number> = { fc: 1, fcp: 2, ap: 3, app: 4 };
 const FS_RANK: Record<MaimaiFsAchievement, number> = { fs: 1, fsp: 2, fsd: 3, fsdp: 4 };
 
@@ -61,7 +61,7 @@ export function normalizeMaimaiFc(value: string | null | undefined): MaimaiFcAch
 export function normalizeMaimaiFs(value: string | null | undefined): MaimaiFsAchievement | null {
   const normalized = value?.trim().toLowerCase();
   if (!normalized) return null;
-  // Sync Play 上游常丢失，产品侧不展示/不筛选 SYNC
+  /** 上游 SYNC 常缺失，不展示或筛选。 */
   if (normalized === 'sync') return null;
   if (normalized === 'fdx') return 'fsd';
   if (normalized === 'fdxp') return 'fsdp';
@@ -112,4 +112,3 @@ export function matchesMultiAchievementFilter(
   if (!filter) return true;
   return matchesAchievementStatus(record, { family: 'fs', value: filter }, true);
 }
-

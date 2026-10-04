@@ -172,7 +172,6 @@ describe('findPushRecommendations', () => {
 
     expect(result.chartCost).toBe(4);
     expect(result.perChartShare).toBeCloseTo(result.gainNeeded / 4, 3);
-    // 用户口径：涨约 0.1、成本 4 张谱面 → 每张约 0.025（精确加值略小于显示加值）
     expect(result.perChartShare).toBeGreaterThan(0.02);
     expect(result.perChartShare).toBeLessThan(0.03);
   });
@@ -207,7 +206,6 @@ describe('findPushRecommendations', () => {
         || (current.accDiff === previous.accDiff && current.difficulty >= previous.difficulty)).toBe(true);
     }
 
-    // 提高第一首到目标 ACC 后总 RKS 应至少达到「当前 + 单首份额」
     const pushSong = first.songId;
     const pushed = { ...gameRecord };
     const levels = [...(pushed[pushSong] ?? [null, null, null, null])];

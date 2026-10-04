@@ -193,7 +193,6 @@ export function MuseDashRecordsScreen() {
     const filtered = achievement === 'all'
       ? baseFiltered
       : baseFiltered.filter((item) => {
-        // 只有已确认的 miss 明细才能判定 AP/FC；pending、failed 与 unknown 都不算已满足。
         const detail = museDashMissDetail(missMap.get(`${item.play.uid}:${item.play.difficulty}`));
         return detail.status === 'known'
           && matchesMuseDashAchievementFilter(item.play.acc, detail.miss, achievement);

@@ -4,7 +4,6 @@ import { useCachedTabActive } from '@/components/CachedTabScreen';
 import { getForegroundAbortSignal, useAppLifecycle } from '@/state/app-lifecycle';
 import { createBoundedLoadQueue, loadItemsBounded } from '@/services/offset-pagination';
 
-/** 逐项保留查询键，只订阅已领取条目；加载和重试共用一条有界执行队列。 */
 export function useBoundedQueries<T>(
   options: readonly UseQueryOptions<T>[],
   concurrency: number,

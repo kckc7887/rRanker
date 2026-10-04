@@ -6,7 +6,6 @@ import { phigrosResources, type PhigrosRelease } from '@/services/phigros-resour
 
 const OSS_BASE = PHIGROS_OSS_BASE;
 
-/** 章节映射表（手动维护，独立于游戏版本发布） */
 const CHAPTERS_PATH = `${OSS_BASE}/phigros/chapters.csv`;
 
 const LEVEL_INDEX_MAP: Record<number, Chart['difficulty']> = {
@@ -48,11 +47,6 @@ export class PhigrosCatalogProvider implements CatalogProvider {
     return new TextDecoder().decode(await this.resources.bytes(url, signal, 12_000, 'catalog'));
   }
 
-  /**
-   * 拉取章节映射表。`check` 时带缓存绕过参数。
-   * 重拉或解析失败且已有会话副本时保留上次结果；首次失败回退无章节。
-   * @returns 会话中的章节表是否因此次调用而改变
-   */
   private async refreshChapters(signal: AbortSignal | undefined, check: boolean): Promise<boolean> {
     const url = check
       ? `${CHAPTERS_PATH}?_check=${Date.now()}-${++this.chaptersSequence}`

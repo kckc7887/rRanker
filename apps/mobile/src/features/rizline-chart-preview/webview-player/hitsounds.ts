@@ -33,7 +33,7 @@ export class HitSoundScheduler {
 
   stop(): void {
     for (const source of this.active) {
-      try { source.stop(); } catch { /* already stopped */ }
+      try { source.stop(); } catch {}
     }
     this.active.clear();
   }

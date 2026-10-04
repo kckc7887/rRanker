@@ -1,4 +1,3 @@
-/** Owns one preference document: user changes stay in memory until storage recovers. */
 export function createPreferencesWriteCoordinator<P extends object>(ports: {
   load(): Promise<P>;
   save(value: P): Promise<void>;

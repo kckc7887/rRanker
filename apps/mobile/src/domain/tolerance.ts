@@ -71,12 +71,7 @@ export function singleNoteLoss(notes: NoteCounts, kind: NoteKind, judgment: Norm
   return NOTE_WEIGHT[kind] * (1 - NORMAL_RATIO[judgment as NormalJudgment]) / total * 100;
 }
 
-/**
- * 返回单个 Note 在指定判定下用于物量分析表的达成率数值：
- * - zeroPlus：从 0% 起累计该 Note 实际获得的达成率；
- * - hundredMinus：从 100% 起扣除的数值，BREAK 奖励会使结果为负数；
- * - hundredOneMinus：从 101% 起扣除的损失。
- */
+/** hundredMinus 计入 BREAK 奖励，扣除值可能为负。 */
 export function singleNoteAnalysis(
   notes: NoteCounts,
   kind: NoteKind,

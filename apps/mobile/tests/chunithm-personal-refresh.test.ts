@@ -99,7 +99,6 @@ describe('ChunithmPersonalService.refresh', () => {
     ]);
 
     expect(refreshNeedsLogin(result)).toBe(false);
-    // 只有成功项被替换，失败项保留上一次的值；完整成功时间不推进。
     expect(result.value?.player).toMatchObject({ name: '新玩家' });
     expect(result.value?.bests.bests).toEqual([{ id: 11 }]);
     expect(result.metadata?.fetchedAt).toBe('2026-01-01T00:00:00.000Z');
@@ -131,7 +130,6 @@ describe('ChunithmPersonalService.refresh', () => {
     expect(result.value?.source.updatedAt).toBe('2026-01-01T00:00:00.000Z');
 
 
-    // 全失败不写入缓存。
     expect(store.get(chunithmPersonalResourceKey(accountId))).toBe(cached);
   });
 

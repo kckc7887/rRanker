@@ -11,17 +11,13 @@ if (!Object.hasOwn(optimizationModes, optimizationMode)) {
   throw new Error('Invalid ANDROID_OPTIMIZATION_MODE');
 }
 
-/**
- * app.json 提供版本、包名与插件列表；动态配置按优化模式设置 Android 插件参数。
- * 构建提交身份、优化模式与 osu! OAuth 应用凭据经 extra 注入应用。
- * osu! 凭据缺失时换码或令牌轮换明确报错；客户端构建注入不具备服务端保密性。
- */
 module.exports = {
   ...base,
   expo: {
     ...base.expo,
     plugins: base.expo.plugins.map(plugin => plugin === './plugins/with-android-abi-splits.js'
       ? [plugin, optimizationModes[optimizationMode]] : plugin),
+    /** extra 随客户端打包，不能作为服务端秘密。 */
     extra: {
       ...base.expo.extra,
       osuOAuthClientSecret: process.env.OSU_OAUTH_CLIENT_SECRET ?? '',

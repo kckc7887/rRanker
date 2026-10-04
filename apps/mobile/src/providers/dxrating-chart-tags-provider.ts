@@ -9,10 +9,7 @@ import { ProviderError, providerErrorFromStatus, type ProviderStatusTexts } from
 import { requestJson } from '@/providers/http-json';
 
 const DXRATING_BASE_URL = 'https://miruku.dxrating.net';
-/**
- * 领域层按「song_id 即曲名」匹配，这只在 legacy 方案下成立；接口默认方案未在契约中固定，
- * 且同一接口的 public 方案返回不透明 ID 与新增 sheet_id，必须显式请求 legacy，避免默认方案变更后静默失配。
- */
+/** 上游 legacy 方案以曲名作 song_id；public 方案使用不透明 ID。 */
 const DXRATING_TAGS_PATH = '/api/v1/tags?idScheme=legacy';
 
 const LocalizedStringSchema = z.record(z.string(), z.string());

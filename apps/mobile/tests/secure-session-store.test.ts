@@ -767,7 +767,6 @@ describe('Rizline SMS secure accounts', () => {
     await writeRizlinePassword(input.id, 'secret-password');
     const deleteItemAsync = vi.mocked(SecureStore.deleteItemAsync);
     const originalDelete = deleteItemAsync.getMockImplementation();
-    // 只让附属密码引用删除失败；凭据索引与其它清理仍然成功。
     deleteItemAsync.mockImplementation(async (key: string) => {
       if (String(key).includes('rizline-password')) throw new Error('keychain busy');
       secure.values.delete(key);
@@ -782,7 +781,6 @@ describe('Rizline SMS secure accounts', () => {
       else deleteItemAsync.mockReset();
     }
 
-    // 提交点已经过去：账号与凭据确实已删除，附属清理失败不能反推账号还在。
     const vault = await store.loadVault();
     expect(vault.accounts).toEqual([]);
     expect(vault.credentials).toEqual([]);

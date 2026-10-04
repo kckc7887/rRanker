@@ -201,8 +201,7 @@ export function prepareBranch(branch: SlideBranch): { geometry: Geometry; startM
   const geometries = branch.segments.map(geometryFor), length = geometries.reduce((n, g) => n + g.length, 0);
   let startMs = branch.delayMs;
   return geometries.map((geometry) => {
-    // ViewX GetSlidesFromRawContent skips duration brackets, then MakeConnSlide
-    // advances over the combined path at constant speed. Keep written durations in the model.
+    /** ViewX 沿连接路径匀速前进，模型仍保留各段书写时长。 */
     const durationMs = branch.durationMs * geometry.length / length;
     const result = { geometry, startMs, durationMs }; startMs += durationMs; return result;
   });

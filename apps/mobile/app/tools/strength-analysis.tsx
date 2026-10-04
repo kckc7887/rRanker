@@ -22,7 +22,6 @@ import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { useAppTheme } from '@/theme/app-theme';
 
-/** 分析池与空态说明由领域侧政策常量生成，页面不再维护第二份数字。 */
 const POOL_DESCRIPTION = describePhigrosStrengthPoolPolicy();
 const POLICY_TEXTS = describePhigrosStrengthPolicyTexts();
 

@@ -43,13 +43,10 @@ export class MuseDashProvider {
     });
   }
 
-  /** /search/:string 昵称搜索，返回 [[nickname, user_id], ...]。 */
   searchPlayers(query: string, signal?: AbortSignal) {
     return this.request(`/search/${encodeURIComponent(query.trim())}`, MuseDashSearchResponseSchema, 'player-search', signal);
   }
-  /** /player/:id 玩家资料与全部成绩。 */
   getPlayer(userId: string, signal?: AbortSignal) { return this.request(`/player/${encodeURIComponent(userId)}`, MuseDashPlayerSchema, 'player-profile', signal); }
-  /** /rank/:uid/:difficulty/:platform/:id 单曲原始成绩明细（含 miss/judge/combo，成就判定用）。 */
   getPlayDetail(uid: string, difficulty: number, platform: string, userId: string, signal?: AbortSignal) {
     return this.request(
       `/rank/${encodeURIComponent(uid)}/${difficulty}/${encodeURIComponent(platform)}/${encodeURIComponent(userId)}`,
@@ -57,11 +54,8 @@ export class MuseDashProvider {
       signal,
     );
   }
-  /** /albums 全量曲库（专辑 → 歌曲）。 */
   getAlbums(signal?: AbortSignal) { return this.request('/albums', MuseDashAlbumsResponseSchema, 'catalog', signal); }
-  /** /ce 角色与精灵名称表。 */
   getCe(signal?: AbortSignal) { return this.request('/ce', MuseDashCeResponseSchema, 'characters', signal); }
-  /** /diffdiff 全曲定数表。 */
   getDiffdiff(signal?: AbortSignal) { return this.request('/diffdiff', MuseDashDiffdiffResponseSchema, 'difficulty', signal); }
 }
 

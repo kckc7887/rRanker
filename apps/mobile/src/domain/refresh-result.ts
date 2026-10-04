@@ -1,62 +1,39 @@
 import type { DataSource } from '@/domain/models';
 import type { ProviderErrorCode } from '@/providers/errors';
 
-/**
- * 快照元数据：原提供方、抓取时间与可用修订。
- * 它只描述「这份数据是谁在什么时候抓到的」，不表达新鲜度，也不表达刷新是否成功；
- * 缓存读取保留原提供方与抓取时间，不把抓取时间改写成当前时间。
- */
+/** 缓存保留原提供方和抓取时间，不改成本次读取时间。 */
 export type SnapshotMetadata = {
-  /** 原提供方；缓存命中时仍是原提供方，`cache` 只是展示标记。 */
   readonly provider: DataSource['kind'];
-  /** 展示用名称，不承载错误原因或新鲜度。 */
   readonly label: string;
-  /** 该数据实际抓取完成的时间。 */
   readonly fetchedAt: string;
-  /** 该快照对应的可用修订；没有修订语义时为 null。 */
   readonly revision: string | null;
 };
 
-/**
- * 从持久化来源读出快照元数据。`cache` 是展示层的过期标记而不是提供方，
- * 直接传进来会抛错；缓存读取请先用 `cachedSnapshotSource` 打标再取元数据。
- */
 export function snapshotMetadataOf(source: DataSource, revision: string | null = null): SnapshotMetadata {
   if (source.kind === 'cache') throw new Error('快照元数据不接受缓存标识作为提供方');
   return { provider: source.kind, label: source.label, fetchedAt: source.updatedAt, revision };
 }
 
-/** 缓存读取的展示来源：保留原提供方、抓取时间与修订，只补充过期标记。 */
 export function cachedSnapshotSource(source: DataSource): DataSource {
   return source.isStale ? source : { ...source, isStale: true };
 }
 
-/** 持久化新快照前的断言：缓存命中或网络失败兜底不得被当成刷新结果写入。 */
 export function assertFreshSnapshotSource(source: DataSource): void {
   if (source.isStale || source.kind === 'cache') throw new Error('缓存回退不能作为刷新结果写入');
 }
 
-/** 一次刷新的终态；`partial` 带失败项，`failed` 可附仍允许使用的旧快照。 */
 export type RefreshStatus = 'success' | 'partial' | 'failed' | 'cancelled' | 'noop';
 
 export type RefreshFailure<Target extends string = string> = {
-  /** 机器可判定的原因：是否重新登录只看它，不读展示文案。 */
   readonly code: ProviderErrorCode;
-  /** 出错的单个项，供只重试失败项使用；整批失败时为 null。 */
   readonly target: Target | null;
-  /** 仅供诊断链路使用，任何情况下都不作为界面文案。 */
   readonly diagnostic: string;
-  /** 重试是否可能成功；需要重新登录的失败项为 false。 */
   readonly retryable: boolean;
 };
 
-/**
- * 一次刷新的结果：结果状态与快照元数据分开。
- * `metadata` 只在 success / noop 时是本次抓取时间；其余情况保留旧快照元数据，
- */
+/** metadata 只在 success/noop 中表示本次抓取，其余保留原时间。 */
 export type RefreshResult<T, Target extends string = string> = {
   readonly status: RefreshStatus;
-  /** 仍可继续使用的数据；`cancelled` 或首次刷新失败时为 null。 */
   readonly value: T | null;
   readonly metadata: SnapshotMetadata | null;
   readonly requested: readonly Target[];
@@ -64,7 +41,6 @@ export type RefreshResult<T, Target extends string = string> = {
   readonly failures: readonly RefreshFailure<Target>[];
 };
 
-/** 公共提供方错误的机器字段；领域层只按结构识别，不依赖 provider 的运行时实现。 */
 const PROVIDER_ERROR_CODES: Record<ProviderErrorCode, true> = {
   authentication: true,
   permission: true,
@@ -113,7 +89,6 @@ export function refreshFailureFromError<Target extends string = string>(
   };
 }
 
-/** 请求范围全部完成：唯一会推进快照抓取时间的成功结果。 */
 export function successfulRefresh<T, Target extends string = string>(input: {
   value: T;
   metadata: SnapshotMetadata;
@@ -131,7 +106,7 @@ export function successfulRefresh<T, Target extends string = string>(input: {
   };
 }
 
-/** 部分成功：保留成功项、失败项与实际完成范围，不推进完整成功时间。 */
+/** 部分成功保留失败项，不推进整批成功时间。 */
 export function partialRefresh<T, Target extends string = string>(input: {
   value: T;
   metadata: SnapshotMetadata;
@@ -149,10 +124,6 @@ export function partialRefresh<T, Target extends string = string>(input: {
   };
 }
 
-/**
- * 失败：可以附带仍允许使用的旧快照及其原抓取时间。
- * 旧快照的来源无法识别时用 `value` + `metadata: null` 表达，调用端不得据此推进成功时间。
- */
 export function failedRefresh<T, Target extends string = string>(input: {
   value?: T | null;
   metadata?: SnapshotMetadata | null;
@@ -172,14 +143,12 @@ export function failedRefresh<T, Target extends string = string>(input: {
   };
 }
 
-/** 取消：没有任何数据与时间被提交。 */
 export function cancelledRefresh<T, Target extends string = string>(
   requested: readonly Target[],
 ): RefreshResult<T, Target> {
   return { status: 'cancelled', value: null, metadata: null, requested: [...requested], completed: [], failures: [] };
 }
 
-/** 没有需要刷新的项：沿用现有快照与它的抓取时间。 */
 export function noopRefresh<T, Target extends string = string>(input: {
   value: T;
   metadata: SnapshotMetadata;
@@ -193,7 +162,6 @@ export function refreshFailuresNeedLogin(failures: readonly RefreshFailure<strin
   return failures.some((failure) => failure.code === 'authentication');
 }
 
-/** 是否需要重新登录：只看机器错误码。 */
 export function refreshNeedsLogin<T, Target extends string>(
   result: Pick<RefreshResult<T, Target>, 'failures'>,
 ): boolean {

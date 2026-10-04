@@ -86,7 +86,6 @@ class FakeAudioContext {
     throw new Error('unsupported');
   }
 
-  /** 仍被会话持有的音源：旧音源在释放时会 stop + disconnect。 */
   heldSourceCount(): number {
     return this.sources.filter((source) => !source.disconnected).length;
   }
@@ -97,7 +96,6 @@ class FakeAudioContext {
 }
 
 class FakeFrameLoop {
-  /** 与性能时钟一致：页面已运行一段时间，静音看谱的首帧差值为正。 */
   now = 1000;
   private callbacks = new Map<number, (timestamp: number) => void>();
   private nextHandle = 1;
@@ -210,7 +208,6 @@ describe('Simai 播放会话的播放状态所有权', () => {
     await pending;
 
     session.dispose();
-    // 会话自有的音乐与正解音增益节点在释放时断开。
     const gainsAfterFirstDispose = context.gains.slice(0, 2).map((gain) => gain.disconnectCount);
     session.dispose();
 
@@ -263,7 +260,7 @@ describe('Simai 播放会话的播放状态所有权', () => {
     context.releaseResumeNow();
     await pending;
 
-    // 谱面起点的音乐位置为负（引导拍），音源在 2 秒引导后开始，输出端时钟从 0.05 秒起计。
+    /** 谱面含 2 秒引导，输出时钟从 0.05 秒起计。 */
     context.currentTime = 1.05;
     frames.advance(16);
     const firstPosition = session.positionBeats;

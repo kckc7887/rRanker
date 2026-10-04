@@ -11,7 +11,6 @@ export type ChartPreviewSettings = {
   highlightExNotes?: boolean;
   normalColorBreakSlide?: boolean;
   showHitEffect?: boolean;
-  /** 判定提示：区分 / 不区分 / 不显示。缺省 distinguish。 */
   judgeHint?: 'distinguish' | 'unified' | 'hidden';
   showFireworks?: boolean;
   backgroundMode?: 'none' | 'image' | 'video';
@@ -34,6 +33,5 @@ export type ChartPreviewInjectConfig = {
   backgroundImageUrl?: string;
   backgroundVideoUrl?: string;
   buddySide?: BuddyPreviewSide;
-  /** 播放器界面主题跟随应用，缺省为深色。 */
   theme?: 'light' | 'dark';
 };

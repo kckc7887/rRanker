@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -26,13 +26,7 @@
  */
 import type { ReplayFrame } from '../types/index';
 
-/**
- * Maps presentation (real/wall-clock) time to beatmap time for a replay, accounting for
- * intro/outro trim and mod speed. All values are ms. `mapDurationMs` is the summed frame
- * deltas (beatmap time); `presentationDurationMs` is the trimmed duration divided by
- * `speed`, floored at 1000ms. Trim offsets derive from beatmap note times (not frame
- * deltas) so `presentationDurationMs` is always positive.
- */
+/** 回放时长按裁剪区间与 Mod 速度换算，单位 ms；最短 1000ms。 */
 export class TimeMapper {
   readonly introOffsetMs: number;
   readonly outroOffsetMs: number;
@@ -56,10 +50,6 @@ export class TimeMapper {
       (cumTime - this.introOffsetMs - this.outroOffsetMs) / speed);
   }
 
-  /**
-   * Convert presentation (real) time → beatmap time.
-   * With speed mods, beatmap time advances faster than real time.
-   */
   toMapTime(presentationMs: number): number {
     return presentationMs * this.speed + this.introOffsetMs;
   }

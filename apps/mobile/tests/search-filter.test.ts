@@ -7,7 +7,6 @@ describe('filterSongs', () => {
     expect(filterSongs(fixtureSongs, '   ')).toHaveLength(fixtureSongs.length);
   });
   it('matches the title case-insensitively', () => {
-    // fixture title '正常曲目 A' 应能被小写关键词 '正常曲目 a' 命中
     const matched = filterSongs(fixtureSongs, '正常曲目 a');
     expect(matched).toHaveLength(2);
     expect(matched.every((s) => s.title.toLowerCase().includes('正常曲目 a'))).toBe(true);

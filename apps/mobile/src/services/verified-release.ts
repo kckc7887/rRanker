@@ -11,7 +11,6 @@ function assertActive(signal?: AbortSignal): void {
   if (signal?.aborted) throw signal.reason ?? new Error('Resource request cancelled');
 }
 
-/** Publishes only completed releases; cancellation belongs to individual consumers. */
 export class VerifiedReleaseSession<T> {
   private value: T | undefined;
   private generation = 0;

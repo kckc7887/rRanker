@@ -2,8 +2,6 @@ import { describe, expect, it, vi } from 'vitest';
 import { OsuCache, makeOsuSnapshot } from '@/services/osu-cache';
 import { normalizeOsuSnapshot } from '@/domain/osu';
 
-// 避免加载真实 SQLite 仓库（其依赖链进入 react-native，node 环境不可解析）；
-// 测试注入 FakeRepository 代替。
 vi.mock('@/storage/sqlite-snapshot-repository', () => ({
   SqliteSnapshotRepository: vi.fn(function SqliteSnapshotRepositoryMock() {
     return {};
@@ -14,7 +12,6 @@ type ResourceUpdate<T> = { value: T; updatedAt: string; write?: true } | { value
 
 type StoredRow = { version: number; payload: unknown };
 
-/** 模拟 SqliteSnapshotRepository 的版本化资源存取（与真实实现同语义）。 */
 class FakeRepository {
   rows = new Map<string, StoredRow>();
   cleared: string[] = [];

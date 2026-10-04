@@ -29,7 +29,6 @@ function messageFor(error: unknown): string {
   });
 }
 
-/** 完成落雪授权并绑定对应游戏账号。 */
 export default function LxnsOAuthCallbackScreen() {
   const theme = useAppTheme();
   const params = useLocalSearchParams<{ code?: string; state?: string; error?: string }>();
@@ -151,8 +150,7 @@ export default function LxnsOAuthCallbackScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="返回首页"
-            // dismissTo('/')：回退到栈内已有的主页（tabs），而不是 replace 新建一份
-            // 主页实例（replace 会造成「主页可被退出、退出回到账号管理页」的叠层 bug）。
+            /** 复用栈内主页，避免重复页面。 */
             onPress={() => router.dismissTo('/')}
             style={({ pressed }) => [
               styles.primary,

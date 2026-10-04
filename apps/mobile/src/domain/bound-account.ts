@@ -4,22 +4,16 @@ import { formatPlayerScore } from './game-data';
 import { isOsuGameId, type OsuGameId } from './game-mode-family';
 import { getGameProfile } from './game-profile';
 
-/** 已绑定账号：切换列表展开后的一页行（图标由 UI 按 provider/game 解析）。 */
 export type BoundAccount = {
   id: string;
   gameId: GameId;
   providerId: ProviderId | null;
   displayName: string;
-  /** 如 DX RATING */
   scoreLabel: string;
-  /** 展示用分数，空为 — */
   scoreDisplay: string;
   providerTitle: string;
-  /** 玩家头像 URL；Phigros / 落雪等远程账号优先展示。 */
   avatarUrl?: string | null;
-  /** Phigros 课题模式分数；旧账号未刷新前为空。 */
   challengeModeRank?: number | null;
-  /** 中二节奏 Rating 领域；旧账号未刷新前为空。 */
   ratingPossession?: string | null;
 };
 
@@ -28,7 +22,7 @@ export const MAIMAI_TEST_ACCOUNT_ID = 'maimai:test';
 export const CHUNITHM_TEST_ACCOUNT_ID = 'chunithm:test';
 export const PHIGROS_TEST_ACCOUNT_ID = 'phigros:test';
 export const CHUNITHM_TEMP_ACCOUNT_ID = 'chunithm:temp';
-/** 喵斯示例账号的哨兵 user_id；含非 hex 字符，与真实 32 位 hex user_id 永不冲突。 */
+/** 示例 ID 含非 hex 字符，与真实 user_id 区分。 */
 export const MUSEDASH_TEST_USER_ID = 'rranker-demo-maxed';
 export const MUSEDASH_TEST_ACCOUNT_ID = `musedash:musedash-moe:${MUSEDASH_TEST_USER_ID}`;
 
@@ -337,10 +331,7 @@ export function createPhigrosBoundAccount(input: {
   };
 }
 
-/**
- * osu! 模式账号：一个 osu 用户按模式各绑定一个账号，账号 id 含模式与用户 id；
- * 凭据（credentialId）跨模式共享，由会话层统一管理。
- */
+/** osu! 各模式分别绑定账号，共用凭据。 */
 export function createOsuBoundAccount(input: {
   gameId: OsuGameId;
   userId: number;
@@ -355,14 +346,13 @@ export function createOsuBoundAccount(input: {
     providerId: 'osu',
     displayName: input.displayName,
     scoreLabel: profile.ratingLabel,
-    // 不千分位：账号行 scoreDisplay 需可被 Number() 解析恢复（会话库回读）。
+    /** scoreDisplay 回读时使用 Number()，不能带千分位。 */
     scoreDisplay: input.pp == null || !Number.isFinite(input.pp) ? '—' : String(Math.round(input.pp)),
     providerTitle: PROVIDER_TITLES.osu,
     avatarUrl: input.avatarUrl,
   };
 }
 
-/** 从 osu 模式账号 id 解析 osu 用户 id；非 osu 账号返回 null。 */
 export function osuUserIdFromAccountId(accountId: string): number | null {
   const match = /^osu-(standard|mania|catch|taiko):osu:(\d+)$/.exec(accountId);
   if (!match) return null;

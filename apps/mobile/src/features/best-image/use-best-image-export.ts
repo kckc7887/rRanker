@@ -100,7 +100,7 @@ export function useBestImageExport(config: {
     session.operation.record(phase, { pageIndex, result: 'start' });
   };
 
-  // Each mounted canvas retains its own session and waiter; late messages cannot finish another page.
+  /** 每页独立等待，旧消息不能结束其它页。 */
   const renderedSession = active.current;
   const renderedWait = renderedSession?.wait;
   const handleExportMessage = (data: string) => {
@@ -169,7 +169,7 @@ export function useBestImageExport(config: {
           assertCurrent(session);
         }
       }
-      // A cancelled native capture still owns its returned file until this session cleans it up.
+      /** 原生截图取消后仍可能返回文件，需要清理。 */
       const capture = { uri, filename: '' };
       session.captures.push(capture);
       assertCurrent(session);

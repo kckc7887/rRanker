@@ -658,7 +658,6 @@ describe('M2 song query screens', () => {
     expect(screen.getByLabelText('切换版本名称')).toBeTruthy();
     expect(screen.queryByLabelText('数据来源状态')).toBeNull();
     expect(screen.getByTestId('song-detail-scroll').props.directionalLockEnabled).toBeUndefined();
-    // 默认 true：从底部卡片上滑时 ScrollView 可接手触摸；勿锁死为 false。
     expect(screen.getByTestId('song-detail-scroll').props.canCancelContentTouches).not.toBe(false);
     expect(screen.getByLabelText('难度卡片').props.directionalLockEnabled).toBe(true);
     expect(screen.getByLabelText('难度卡片').props.contentOffset.x).toBeGreaterThan(0);

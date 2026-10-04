@@ -60,7 +60,6 @@ export function GamePickerSheet({
   onClose: () => void;
   onToggleGame: (id: GameId) => void;
   onSelectProvider: (gameId: GameId, provider: ProviderOption) => void;
-  /** switch 模式下，无查分器的游戏（如测试游戏）点此项切换 */
   onSelectGame?: (gameId: GameId) => void;
   onSelectUnavailableGame: (title: string, detail: string) => void;
 }) {
@@ -68,7 +67,6 @@ export function GamePickerSheet({
   const insets = useSafeAreaInsets();
   const sheetTitle = title ?? (mode === 'switch' ? '切换游戏' : '选择游戏');
 
-  /** 家族聚合：同 familyId 的游戏折叠为一个板块行（锚点携带查分器，成员为模式子行）。 */
   const entries = useMemo(() => {
     const result: { key: string; game: GameOption; familyTitle?: string; modeGames: GameOption[] }[] = [];
     const seenFamilies = new Set<string>();

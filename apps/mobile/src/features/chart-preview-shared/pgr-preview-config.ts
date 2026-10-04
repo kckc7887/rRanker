@@ -12,7 +12,7 @@ export type PgrPreviewSettings = {
 };
 
 export type PgrPreviewRpeAssets = {
-  /** 相对播放器 HTML 的谱面包资源目录（判定线贴图/背景/gif/视频），以 / 结尾。 */
+  /** 资源目录相对播放器 HTML，末尾须带 /。 */
   basePath: string;
   extraJson: string | null;
   infoYml: string | null;
@@ -29,10 +29,10 @@ export type PgrPreviewConfig = {
   illustrationUrl?: string;
   hitSounds?: { click?: string; drag?: string; flick?: string };
   settings?: PgrPreviewSettings;
-  /** 谱面格式：pgr（默认）或 rpe；RPE 时提供 rpeAssets。 */
+
   format?: 'pgr' | 'rpe';
   rpeAssets?: PgrPreviewRpeAssets | null;
-  /** 播放器界面主题跟随应用，缺省为深色。 */
+
   theme?: 'light' | 'dark';
 };
 

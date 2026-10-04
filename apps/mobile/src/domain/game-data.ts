@@ -12,14 +12,12 @@ import type { MuseDashPlayer } from './muse-dash';
 import type { PhiraBestSnapshot, PhiraPlayerSnapshot } from './phira';
 import { formatOsuPp, type OsuBestScore, type OsuPlayer, type OsuSnapshot } from './osu';
 
-/** 通用 BestN 分区；具体谱面条目仍可按游戏扩展。 */
 export type BestListSection = {
   id: string;
   title: string;
   records: ScoreRecord[];
 };
 
-/** 各游戏玩家主分数（名字因游戏而异：DX Rating / RKS / …） */
 export type PlayerScoreSummary = {
   label: string;
   value: number;
@@ -32,13 +30,6 @@ export type ChunithmBestListSection = {
   scores: ChunithmScore[];
 };
 
-/**
- * 分游戏载荷。新游戏新增 kind，不要往舞萌字段里塞无关数据。
- * - maimai：DX Rating + B35/B15 + 水鱼/落雪成绩曲库
- * - phigros：RKS + Phi3/Best27
- * - empty：测试等空壳游戏，不继承舞萌成绩
- * - unsupported：已登记但尚未接入成绩模型的游戏
- */
 export type GamePayload =
   | ReturnType<typeof rizlinePayloadFromSnapshot>
   | { kind: 'majdata-net'; snapshot: import('./majdata').MajdataSnapshot; playerScore: PlayerScoreSummary; source: DataSource }
@@ -99,7 +90,7 @@ export type GamePayload =
       player: ChunithmPlayer | null;
       scores: ChunithmScore[];
       bestSections: ChunithmBestListSection[];
-      /** Selection 10；仅供成绩图底部追加，最佳列表页不展示。 */
+      /** Selection 10 只追加到成绩图，不进入最佳列表。 */
       selections: ChunithmScore[];
       playerScore: PlayerScoreSummary;
       source: DataSource;
@@ -119,13 +110,10 @@ export type GamePayload =
       source: DataSource;
     };
 
-/** 载荷 kind 的并集。 */
 export type GamePayloadKind = GamePayload['kind'];
 
 type GamePrimaryPayloadKind<G extends GameId> = G extends OsuModeGameId ? 'osu' : G;
-/** 带指定身份的空载荷：`gameId` 与 `payload.gameId` 必须一致。 */
 export type EmptyGamePayloadOf<G extends GameId> = Extract<GamePayload, { kind: 'empty' }> & { gameId: G };
-/** 该游戏允许的载荷：自己的主载荷，或带同一身份的空载荷。 */
 export type GamePayloadOf<G extends GameId> =
   | Extract<GamePayload, { kind: GamePrimaryPayloadKind<G> }>
   | EmptyGamePayloadOf<G>;
@@ -137,10 +125,6 @@ export type GameDataBundleFor<G extends GameId> = G extends GameId ? {
   payload: GamePayloadOf<G>;
 } : never;
 
-/**
- * 当前选中游戏的一份独立数据包（与其他游戏互不共用）。
- * 身份与载荷按游戏配对：`bundle.gameId === 'rizline'` 同时收窄载荷，不会把别家游戏的载荷写回。
- */
 export type GameDataBundle = { [G in GameId]: GameDataBundleFor<G> }[GameId];
 
 export type PhigrosGameDataPayload = Extract<GamePayload, { kind: 'phigros' }>;
@@ -219,7 +203,6 @@ export function emptyGamePayload<G extends GameId>(gameId: G, displayName: strin
   };
 }
 
-/** osu! 模式载荷：四模式游戏共用同一形状，PP 为主信息。 */
 export function osuPayloadFromSnapshot(
   snapshot: OsuSnapshot,
   profile: GameProfile,
@@ -237,14 +220,12 @@ export function osuPayloadFromSnapshot(
   };
 }
 
-/** Build account display metadata without network or persistence side effects. */
 export function gameAccountMetadata(bundle: GameDataBundle): ({
   scoreDisplay: string; displayName?: string; avatarUrl?: string | null;
   challengeModeRank?: number | null; ratingPossession?: string | null;
   storedDisplayName?: string;
 } | null) {
   const { providerId, profile } = bundle;
-  // 身份与载荷的对应关系已在参数类型上校验；这里按载荷 kind 读取展示字段。
   const p: GamePayload = bundle.payload;
   switch (p.kind) {
     case 'rizline': return { scoreDisplay: p.playerScore.display, displayName: p.player.username, storedDisplayName: p.player.username };

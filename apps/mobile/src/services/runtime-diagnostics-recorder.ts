@@ -58,7 +58,7 @@ export function recordRuntimeDiagnostic(
   fields: Readonly<Record<string, unknown>> = {},
 ): Promise<void> {
   captureEmergencyRuntimeDiagnostic(type, fields);
-  // 致命事件在原错误处理器结束进程之前同步落盘；普通事件由控制器有界合批。
-  try { logRecorder?.(type, fields); } catch { /* 日志不得递归报告自身错误。 */ }
+  /** 致命事件须在平台错误处理器结束进程前落盘。 */
+  try { logRecorder?.(type, fields); } catch {}
   try { return recorder(type, fields).catch(() => undefined); } catch { return Promise.resolve(); }
 }

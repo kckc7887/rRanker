@@ -17,13 +17,11 @@ export const TUF_SESSION_RESOURCE_QUERY_OPTIONS = {
 } as const;
 
 
-/** TUF 玩家实体的规范键：总览数据包与页面读到同一份版本。 */
 export function tufPlayerEntityKey(playerId: number) {
   return ['tuf', 'player', playerId, 'profile'] as const;
 }
 
 
-/** 该玩家实体的规范查询选项：页面与总览派生视图共用。 */
 export function tufPlayerQueryOptions(queryClient: QueryClient, playerId: number) {
   const queryKey = tufPlayerEntityKey(playerId);
   return {

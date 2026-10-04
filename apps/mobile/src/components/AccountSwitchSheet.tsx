@@ -6,7 +6,6 @@ import type { BoundAccount } from '@/domain/bound-account';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
 import { useAppTheme } from '@/theme/app-theme';
 
-/** 总览切换：仅列出已绑定游戏，展开为账号行；游戏评分标签由调用方注入。 */
 export function AccountSwitchSheet({
   visible,
   accounts,
@@ -24,7 +23,6 @@ export function AccountSwitchSheet({
   onClose: () => void;
   onToggleGame: (id: GameId) => void;
   onSelectAccount: (account: BoundAccount) => void;
-  /** 游戏评分标签槽位（如 osu! PP 标签）：共享弹层只转发，不引用游戏组件。 */
   renderRatingTag?: (account: BoundAccount) => ReactNode;
 }) {
   const insets = useSafeAreaInsets();

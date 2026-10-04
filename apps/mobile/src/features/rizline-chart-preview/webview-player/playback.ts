@@ -108,7 +108,7 @@ export class PreviewSession {
 
   private stopSource(): void {
     if (!this.source) return;
-    try { this.source.stop(); } catch { /** 音源可能已自然结束。 */ }
+    try { this.source.stop(); } catch {}
     this.source.disconnect();
     this.source = null;
   }

@@ -25,7 +25,6 @@ import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { buildSearchDocument, buildSongSearchIndex, searchDocumentMatches } from '@/utils/search';
 
-/** 舞萌成绩列表：查询、筛选 Store、搜索索引与派生计算都只在这个页面内挂载。 */
 export function MaimaiRecordsScreen() {
   const activeAccountId = useSession((state) => state.activeAccountId);
   const { data, isLoading, isError, error, refetch } = useScoreSnapshot();

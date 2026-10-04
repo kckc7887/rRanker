@@ -137,7 +137,6 @@ export function PhiraCatalogScreen() {
   const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const [status, setStatus] = useState<PhiraChartStatus>('ranked'); const [keyword, setKeyword] = useState('');
   const [collapsed, setCollapsed] = useState(true); const [constantMin, setConstantMin] = useState(''); const [constantMax, setConstantMax] = useState(''); const [sort, setSort] = useState<PhiraCatalogSort>('updated');
   const debounced = useDebouncedValue(keyword, 350); const query = usePhiraCharts(status, debounced);
-  // Phira /chart 的 page=1 与 page=0 重复且 updated 排序在请求间漂移，跨页需按 id 去重，避免 FlatList 重复 key。
   const charts = useMemo(() => filterPhiraCharts(dedupePhiraCharts(query.data?.pages.flatMap((page) => page.results) ?? []), constantMin, constantMax, sort), [constantMax, constantMin, query.data?.pages, sort]);
   const pageCount = query.data?.pages.length ?? 0;
   const pageState = phiraCatalogPageState<PhiraChart>({

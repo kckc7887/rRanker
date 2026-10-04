@@ -126,7 +126,6 @@ describe('OsuRecordsFilterBar 成绩筛选栏', () => {
     expect(onModsChange).toHaveBeenCalledWith(['NM']);
 
     await screen.unmount();
-    // NM 已选再勾 DT：草稿立即移除 NM，完成后提交 DT。
     const withNone = await render(
       <OsuRecordsFilterBar {...baseProps} mods={['NM']} onModsChange={onModsChange} />,
     );
@@ -138,7 +137,6 @@ describe('OsuRecordsFilterBar 成绩筛选栏', () => {
     expect(onModsChange).toHaveBeenCalledWith(['DT']);
 
     await withNone.unmount();
-    // 已有具体模组时勾 NM：草稿只保留 NM。
     const withHd = await render(
       <OsuRecordsFilterBar {...baseProps} mods={['HD']} onModsChange={onModsChange} />,
     );

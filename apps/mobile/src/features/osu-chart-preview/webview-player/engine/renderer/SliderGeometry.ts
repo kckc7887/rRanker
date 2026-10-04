@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -28,14 +28,9 @@ import type { BeatmapData, Slider } from '../types/index';
 
 type Point = { x: number; y: number };
 
-// Shared across HitObjectRenderer, FollowpointRenderer, and hit judgement.
 const _sliderPathCache = new WeakMap<Slider, Point[]>();
 
-/**
- * Sample a slider's curve into a dense, arc-length-parametrized polyline in osu!pixels
- * (~1 point per pixel of length). Memoized per Slider object (WeakMap) — Bézier
- * resampling is milliseconds-expensive on Firefox's software canvas path.
- */
+/** 按弧长重采样至约 1 点/osu!像素。 */
 export function sampleSlider(slider: Slider): Point[] {
   let cached = _sliderPathCache.get(slider);
   if (cached === undefined) {
@@ -57,16 +52,12 @@ function computeSliderPath(slider: Slider): Point[] {
   }
 }
 
-/** Pre-sample every slider path in the beatmap so the first rendered frame doesn't pay
- * Bézier-sampling stalls on long maps (Firefox is ms-per-sample). Safe to call repeatedly. */
 export function warmSliderPaths(beatmap: BeatmapData): void {
   for (const obj of beatmap.hitObjects) {
     if (obj.type === 'slider') sampleSlider(obj);
   }
 }
 
-/** Sample a linear ('L') slider path: evenly spaced points along the control polyline,
- * clamped/extended to the .osu-declared `length` (osu!pixels). */
 export function sampleLinear(points: Point[], length: number): Point[] {
   if (points.length === 0) return [];
   if (points.length === 1 || length <= 0) return [{ ...points[0]! }];
@@ -83,9 +74,7 @@ export function sampleLinear(points: Point[], length: number): Point[] {
   return result;
 }
 
-/** Sample a Bézier ('B'/'C') slider path. Piecewise: repeated control points (red anchors)
- * split the curve into independent Bézier sub-segments; the dense result is re-sampled to
- * even arc-length spacing over `length` osu!pixels. */
+/** 重复控制点是红锚，切分为独立贝塞尔段。 */
 export function sampleBezier(points: Point[], length: number): Point[] {
   if (points.length === 0) return [];
   if (points.length === 1 || length <= 0) return [{ ...points[0]! }];
@@ -106,9 +95,7 @@ export function sampleBezier(points: Point[], length: number): Point[] {
   return samplePolyline(densePoly, length, Math.max(2, Math.ceil(length) + 1));
 }
 
-/** Sample a perfect-circle ('P') slider path: the arc through 3 control points, swept for
- * `length` osu!pixels. Falls back to linear for collinear points and to Bézier when not
- * exactly 3 control points (matching osu!). */
+/** 三点共线按直线；非三点 P 曲线按贝塞尔处理。 */
 export function samplePerfectCircle(points: Point[], length: number): Point[] {
   if (points.length !== 3) return sampleBezier(points, length);
   if (length <= 0) return [{ ...points[0]! }];
@@ -134,7 +121,7 @@ export function samplePerfectCircle(points: Point[], length: number): Point[] {
   const midAngle   = Math.atan2(b.y - oy, b.x - ox);
   const endAngle   = Math.atan2(c.y - oy, c.x - ox);
 
-  // Sweep is CCW iff B comes before C going CCW from A.
+  /** 从 A 逆时针先到 B 再到 C 时，弧线逆时针展开。 */
   const midNorm = normalizeAngle(midAngle - startAngle);
   const endNorm = normalizeAngle(endAngle - startAngle);
   const sweepAngle = midNorm < endNorm ? endNorm : endNorm - 2 * Math.PI;
@@ -150,7 +137,6 @@ export function samplePerfectCircle(points: Point[], length: number): Point[] {
   return result;
 }
 
-// Red anchors are consecutive duplicate control points.
 function splitBezierSegments(points: Point[]): Point[][] {
   const segments: Point[][] = [];
   let current: Point[] = [points[0]!];

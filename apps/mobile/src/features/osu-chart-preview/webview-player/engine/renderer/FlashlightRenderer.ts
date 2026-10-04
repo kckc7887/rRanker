@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -28,7 +28,6 @@ import type { BeatmapData, ReplayData, HitResult, ReplayFrame } from '../types/i
 import type { ModDifficulty } from '../utils/modDifficulty';
 import { computeComboTimeline } from './HUDRenderer';
 
-// Must match HitObjectRenderer / CursorRenderer.
 const CANVAS_W = 1280;
 const CANVAS_H = 720;
 const PLAYFIELD_W = 512;
@@ -37,8 +36,8 @@ const SCALE = Math.min(800 / PLAYFIELD_W, 600 / PLAYFIELD_H) * 0.9;
 const OFFSET_X = (CANVAS_W - PLAYFIELD_W * SCALE) / 2;
 const OFFSET_Y = (CANVAS_H - PLAYFIELD_H * SCALE) / 2;
 
-// osu!stable / Danser values.
-const DEFAULT_FL_SIZE      = 168;    // osu! pixels
+/** 沿用 osu!stable / danser 的光束参数。 */
+const DEFAULT_FL_SIZE      = 168;    /** 半径单位为 osu! 像素。 */
 const INTRO_START_SIZE     = DEFAULT_FL_SIZE * 8;
 const BREAK_SIZE           = DEFAULT_FL_SIZE * 2.5;
 const FL_DURATION_MS       = 800;
@@ -95,7 +94,6 @@ function evaluateSegments(
   return seg.vStart + (seg.vEnd - seg.vStart) * eu;
 }
 
-// Truncates any in-flight previous segment to keep the piecewise function single-valued.
 function addTimelineEvent(
   segments: Segment[],
   initial: number,
@@ -157,7 +155,7 @@ function cursorAtTime(
   };
 }
 
-// Danser-style 120ms OutQuad lerp at fixed CURSOR_STEP_MS cadence; render lookup is O(1).
+/** 沿用 Danser 的 120ms OutQuad 光标延迟。 */
 function buildSmoothedCursor(replay: ReplayData): SmoothedCursor {
   const frames = replay.frames;
   if (frames.length === 0) {
@@ -209,7 +207,7 @@ function smoothedAt(sc: SmoothedCursor, timeMs: number): { x: number; y: number 
 
 let _falloffBitmap: OffscreenCanvas | null = null;
 
-// Alpha channel = 1 - (r/R)^5 = erase weight for destination-out blit.
+/** 擦除权重为 1-(r/R)^5。 */
 function getFalloffBitmap(): OffscreenCanvas {
   if (_falloffBitmap !== null) return _falloffBitmap;
   const SIZE = 512;
@@ -229,8 +227,6 @@ function getFalloffBitmap(): OffscreenCanvas {
   return osc;
 }
 
-/** Precomputed flashlight state: beam-size and slider-dim animation segments plus the
- * delay-smoothed cursor track. Built once in the {@link Flashlight} constructor. */
 export interface FlashlightTimelines {
   sizeSegments: Segment[];
   dimSegments:  Segment[];
@@ -268,7 +264,7 @@ function buildSizeTimeline(
       events.push({ kind: 'breakEndPrep', t: b.endTime - FL_DURATION_MS });
     }
   }
-  // Combo events sort before break events at equal times so break restore uses the latest tier.
+  /** 同时间先更新 combo，休息段恢复使用最新档位。 */
   events.sort((a, b) => {
     if (a.t !== b.t) return a.t - b.t;
     const rank = (k: Evt['kind']): number =>
@@ -311,14 +307,6 @@ function buildDimTimeline(
   return segments;
 }
 
-/**
- * osu!std Flashlight-mod overlay, following stable/danser behaviour: a soft-edged beam
- * (radius in osu!pixels: 168 base, shrinking at 100/200 combo, widening during breaks and
- * the intro/outro) that trails the cursor with a 120 ms eased delay, plus extra dimming
- * while a slider is being tracked. Everything time-dependent is precomputed at construction;
- * `draw` is a cheap per-frame composite. `trackingIntervals` are (start, end) map-time ms
- * ranges during which the player tracked a slider.
- */
 export class Flashlight {
   private readonly timelines: FlashlightTimelines;
   private readonly falloff: OffscreenCanvas;
@@ -339,7 +327,7 @@ export class Flashlight {
       smoothed:     buildSmoothedCursor(replay),
     };
     this.falloff = getFalloffBitmap();
-    // Physical-sized buffer keeps falloff crisp on HiDPI; bctx is pre-scaled to logical coords.
+
     this.buffer  = new OffscreenCanvas(CANVAS_W * qualityTotal, CANVAS_H * qualityTotal);
     const bctx = this.buffer.getContext('2d');
     if (bctx === null) throw new Error('Flashlight: failed to get 2D context on buffer canvas');
@@ -347,15 +335,13 @@ export class Flashlight {
     this.bctx = bctx;
   }
 
-  /** Composite the darkness-with-beam overlay onto `ctx` (logical 1280×720 coords) for the
-   * given beatmap time. Call after gameplay is drawn, before HUD layers. */
   draw(ctx: CanvasRenderingContext2D, timeMs: number): void {
     const size = evaluateSegments(this.timelines.sizeSegments, timeMs, INTRO_START_SIZE);
     const dim  = evaluateSegments(this.timelines.dimSegments,  timeMs, 0);
     const pos  = smoothedAt(this.timelines.smoothed, timeMs);
 
-    // HR-aware draw: the raw replay cursor is already in the played-orientation
-    // coordinate space (the player actually moved there), so no y-flip here.
+    /** 回放光标已处于 HR 实际方向，无需再次翻转 y。 */
+
     const cx = OFFSET_X + pos.x * SCALE;
     const cy = OFFSET_Y + pos.y * SCALE;
     const d  = size * SCALE * 2;
@@ -368,7 +354,7 @@ export class Flashlight {
     bctx.fillStyle = `rgba(0, 0, 0, ${MAX_DIM})`;
     bctx.fillRect(0, 0, CANVAS_W, CANVAS_H);
 
-    // Effective eraser = (1 - (r/R)^5) * (1 - dim) via falloff alpha × globalAlpha.
+    /** 有效擦除权重为 (1-(r/R)^5)×(1-dim)。 */
     bctx.globalCompositeOperation = 'destination-out';
     bctx.globalAlpha = 1 - dim;
     bctx.drawImage(this.falloff, cx - d / 2, cy - d / 2, d, d);
@@ -379,7 +365,7 @@ export class Flashlight {
     ctx.save();
     ctx.globalCompositeOperation = 'source-over';
     ctx.globalAlpha = 1;
-    // Buffer is physical-sized; explicit dest size lands it at logical 1280×720.
+
     ctx.drawImage(this.buffer, 0, 0, CANVAS_W, CANVAS_H);
     ctx.restore();
   }

@@ -29,23 +29,16 @@ import type { ResourceRepository, ResourceMaintenanceRepository } from '@/reposi
 import { clearResourcesByPrefix, createInflightGuard, resourceWriteGeneration, makeSnapshot, parseCachedSnapshot } from '@/services/snapshot-cache-utils';
 import { assertFreshSnapshotSource } from '@/domain/refresh-result';
 
-/** 构造 TUF 缓存快照；source 的 updatedAt 记录本次拉取时间，供缓存命中时展示来源与过期标。 */
 export function makeTufSnapshot<T>(data: T, updatedAt = new Date().toISOString()): { data: T; source: DataSource } {
   return makeSnapshot(data, { kind: 'tuf', label: 'TUF 社区公开数据' }, updatedAt);
 }
 
-/** 同一 TUF 玩家资料并发读取共享一次网络请求（总览与最佳页可能并发）。 */
 const inflightPlayerLoads = createInflightGuard<string>();
 
 export function loadTufPlayerFresh(playerId: number, signal?: AbortSignal): Promise<TufPlayer> {
   return inflightPlayerLoads.share(resourceWriteGeneration('adofai') + ':' + resourceWriteGeneration(`account:adofai:tuf:${playerId}`) + ':' + playerId, requestSignal => tufProvider.getPlayerProfile(playerId, requestSignal), signal);
 }
 
-/**
- * TUF 公开数据的本地持久化快照（缓存优先渲染）。
- * 曲库分页、关卡详情与难度列表是账号无关的全局资源；玩家资料与成绩页按 playerId 归属。
- * 读取一律是缓存读取：保留原提供方与抓取时间并标记过期；写入只接受抓取结果，缓存回退不得落盘。
- */
 export class TufCache {
   constructor(private readonly repository: ResourceRepository & ResourceMaintenanceRepository = new SqliteSnapshotRepository()) {}
 
@@ -125,7 +118,6 @@ export class TufCache {
     );
   }
 
-  /** 解绑玩家时清理其资料与成绩页缓存；曲库等全局公开资源保留。 */
   async clearPlayer(playerId: number): Promise<void> {
     await clearResourcesByPrefix(this.repository, {
       keys: [tufPlayerCacheKey(playerId)],

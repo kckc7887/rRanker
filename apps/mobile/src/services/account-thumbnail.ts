@@ -26,10 +26,6 @@ export type AccountThumbnailInput = {
   ratingPossession?: string | null;
 };
 
-/**
- * 数据同步成功后持久化账号列表缩略元数据。
- * 展示字段齐全后再写入；失败静默，不影响同步与渲染。
- */
 export async function persistBoundAccountThumbnail(
   accountId: string,
   input: AccountThumbnailInput,
@@ -76,7 +72,6 @@ export async function persistBoundAccountThumbnail(
         }
       } finally {
         current.running = undefined;
-        // Bound memory even after many deleted/rebound accounts.
         if (entries.size > 128) for (const [key, item] of entries) {
           if (entries.size <= 128) break;
           if (!item.running) entries.delete(key);
@@ -87,10 +82,6 @@ export async function persistBoundAccountThumbnail(
   await current.running;
 }
 
-/**
- * 启动与账号列表挂载时，从缩略快照补齐所有已绑定账号的展示元数据。
- * 无快照（从未同步过）的账号保持当前值；单个账号读取失败不阻断列表。
- */
 export async function hydrateBoundAccountThumbnails(
   repo: ThumbnailResourceRepository = repository,
   signal?: AbortSignal,
@@ -118,14 +109,12 @@ export async function hydrateBoundAccountThumbnails(
           thumbnail.ratingPossession ?? undefined,
         );
       } catch {
-        // 单个账号缓存读取失败不阻断列表
       }
     },
   });
 }
 
 const displayHydrations = new WeakMap<AbortSignal, { key: string; promise: Promise<void> }>();
-/** Root and account list share one hydration per foreground/account membership/cache generation. */
 export function hydrateAccountDisplayData(signal: AbortSignal = getForegroundAbortSignal()): Promise<void> {
   const key = useSession.getState().boundAccounts.map((account) => account.id + ':'
     + resourceWriteGeneration(account.gameId) + ':' + resourceWriteGeneration('account:' + account.id)).join('|');

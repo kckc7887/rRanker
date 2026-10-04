@@ -30,19 +30,6 @@ import type {
   BestImageCaptureRef,
 } from './use-best-image-screen-controller';
 
-/**
- * best-image 三屏（舞萌/中二/Phigros）共用的屏幕骨架。
- *
- * 只承载三屏渲染结构 1:1 同构的部分：ScrollView 外壳 → 类型分段 → 自定义面板外壳 →
- * 样式选择列表容器 → 分辨率行 → 预览轮播（FlatList + WebView 三种消息 → pageDots）→
- * 导出按钮 + 状态行 → 导出遮罩 Modal。
- *
- * 结构与样式值经参数/插槽表达，不枚举游戏 ID：
- * - 三屏有差异的样式键（exportRoot 背景色等）由各屏覆盖注入；
- * - 自定义面板内容、样式列表头/行、加载占位、素材状态条、picker 均为插槽；
- * - 预览/导出 WebView 的文件访问参数与 testID 前缀为参数。
- */
-
 export type BestImageScreenShellStyles = {
   page: ViewStyle;
   content: ViewStyle;
@@ -54,7 +41,7 @@ export type BestImageScreenShellStyles = {
   customPanel: ViewStyle;
   panelTitle: TextStyle;
   styleList: ViewStyle;
-  /** 样式选择行（各屏插槽渲染，样式值三屏同构）。 */
+
   styleRow: ViewStyle;
   stylePreview: ViewStyle;
   styleCopy: ViewStyle;
@@ -82,7 +69,6 @@ export type BestImageScreenShellStyles = {
   exportCancelText: TextStyle;
 };
 
-/** 共享样式全集：骨架用键 + 各屏自定义面板/样式行共用的键（fieldRow、chip 等）。 */
 export type BestImageScreenSharedStyles = BestImageScreenShellStyles & {
   fieldRow: ViewStyle;
   textInput: TextStyle;
@@ -97,11 +83,6 @@ export type BestImageScreenSharedStyles = BestImageScreenShellStyles & {
   loadingText: TextStyle;
 };
 
-/**
- * 三屏逐字同值的共享样式键（含各屏自定义面板/样式行共用的 fieldRow、chip 等）。
- * 差异键（textFieldWrap/fieldLabel/errorText/fontStatus/exportRoot 等）由各屏
- * 自己的 StyleSheet 覆盖，不在此统一。
- */
 export const bestImageScreenSharedStyles: BestImageScreenSharedStyles = StyleSheet.create({
   page: { flex: 1 },
   content: { padding: 16, paddingBottom: 32, alignItems: 'stretch' },
@@ -189,33 +170,33 @@ export function BestImageChoiceChip({
 }
 
 export type BestImageScreenAppearance<TType extends string> = {
-  /** 类型分段选项（舞萌 Best50 / 中二 Best50 / Phigros Best30 + 各自「自定义」）。 */
+
   imageTypes: readonly { id: TType; label: string }[];
   activeType: TType;
   onSelectType: (id: TType) => void;
-  /** 自定义面板标题之下的游戏筛选表单；null 时整个面板不渲染。 */
+
   customPanelBody: ReactNode;
-  /** 样式列表顶部整块（Rating 风格分段 / Selection·OVER FLOW 追加行等）。 */
+
   styleListHeader: ReactNode;
-  /** 样式选择行（收藏品 / 角色 / 头像背景等）。 */
+
   styleRows: ReactNode;
   widths: readonly number[];
   activeWidth: number;
   onChooseWidth: (width: number) => void;
   dimensionMeta: ReactNode;
-  /** 预览等待时的占位内容（外层 loadingPreview View 由骨架提供）。 */
+
   loadingPreview: ReactNode;
-  /** 素材准备状态条（舞萌/Phigros 各自渲染，中二为 null）。 */
+
   fontStatus: ReactNode;
-  /** 状态条位置：Phigros 在 pageDots 之前，舞萌在之后。 */
+
   fontStatusAboveDots: boolean;
-  /** 各游戏的 picker Modal（骨架内置于 ScrollView 之后）。 */
+
   pickers: ReactNode;
   styles: BestImageScreenShellStyles;
 };
 
 export type BestImageScreenPreview = {
-  /** 预览 WebView testID 前缀（best-image / chunithm-best-image / phigros-best-image）。 */
+
   previewTestIdPrefix: string;
   sources: readonly BestImageWebViewSource[] | null;
   pages: readonly { id: string }[];
@@ -223,9 +204,9 @@ export type BestImageScreenPreview = {
   onPageIndexChange: (index: number) => void;
   onPreviewStatesChange: BestImagePreviewStatesSetter;
   onPreviewMessage: (data: string, pageId: string) => void;
-  /** 预览/导出 WebView 是否携带 allowFileAccessFromFileURLs（中二为 false）。 */
+
   fileAccessFromFileURLs: boolean;
-  /** 预览/导出 WebView 的 allowingReadAccessToURL（素材目录 URI）。 */
+
   allowingReadAccessToUrl: string | null | undefined;
 };
 
@@ -237,13 +218,13 @@ export type BestImageScreenExportSession = {
   onExport: () => void;
   exportIndex: number | null;
   exportHeight: number;
-  /** 导出画布当前页源；null 时不渲染画布。 */
+
   exportSource: BestImageWebViewSource | null;
   exportWebViewKeyPrefix: string;
   captureRef: BestImageCaptureRef;
-  /** 导出捕获容器的无障碍标签（中二/Phigros「导出画布 第N页」；舞萌不传）。 */
+
   captureAccessibilityLabel?: string;
-  /** 导出捕获容器背景（舞萌 '#E7EDF5'；中二/Phigros 不传）。 */
+
   captureBackgroundColor?: string;
   onExportMessage: (data: string) => void;
   onRequestCloseExport: () => void;
@@ -323,8 +304,8 @@ export function BestImageScreenShell<TType extends string>({
   ), null);
   const [webViewRetryGeneration, setWebViewGeneration] = useState(0);
   const webViewGeneration = `${lifecycle.foregroundGeneration}-${webViewRetryGeneration}`;
-  // 新页面源、轮播页或内容进程代表一次新的预览；重新渲染不轮换编号。
-  // eslint-disable-next-line react-hooks/exhaustive-deps -- source and generation define the operation lifetime
+  /** 仅换源或换页建立新预览。 */
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- 源和代次决定本次预览
   const previewOperation = useMemo(() => createRuntimeOperation('best-image-preview'), [sources, pageIndex, webViewGeneration, heavyContentMounted]);
   const activePreviewOperation = useRef<typeof previewOperation | null>(previewOperation);
   activePreviewOperation.current = previewOperation;
@@ -431,7 +412,7 @@ export function BestImageScreenShell<TType extends string>({
           renderItem={({ item, index }) => {
             const pageId = pages[index]!.id;
             return <View style={{ width: previewWidth, height: previewHeight }}>
-              {/* 单页可能包含数十 MB 的封面数据，同时挂载多个 WebView 会触发 iOS 内存终止。 */}
+              {/** 多页同时挂载 WebView 可能触发 iOS 内存终止。 */}
               {heavyContentMounted && index === pageIndex ? <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} key={`${pageId}-${webViewGeneration}`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['about:blank', 'file://*', 'https://*']} scrollEnabled={false} showsHorizontalScrollIndicator={false} showsVerticalScrollIndicator={false} source={item} style={styles.webview} testID={`${previewTestIdPrefix}-html-preview-${index}`}
                 {...(fileAccessFromFileURLs ? { allowFileAccessFromFileURLs: fileAccessFromFileURLs } : {})}
                 {...(allowingReadAccessToUrl ? { allowingReadAccessToURL: allowingReadAccessToUrl } : {})}

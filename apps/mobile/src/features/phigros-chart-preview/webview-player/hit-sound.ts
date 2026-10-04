@@ -1,7 +1,4 @@
 /**
- * Phigros 谱面打击音时间轴。
- * Tap 与 Hold 头部使用 click，Drag/Flick 使用同名音效；Hold 持续期间不重复触发。
- *
  * 许可证：打击音分配语义衍生自 TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira），
  * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
@@ -17,7 +14,6 @@ const SOUND_BY_NOTE_KIND: Readonly<Record<string, HitSoundKind>> = Object.freeze
   flick: 'flick',
 });
 
-/** 与舞萌谱面确认一致的前瞻窗口：提前 1.5 秒调度，掉帧时仍有裕量。 */
 export const HIT_SOUND_LOOKAHEAD_SECONDS = 1.5;
 
 export interface HitSoundEvent {

@@ -121,8 +121,7 @@ function RemoteImageSectionList<
     let hasSectionExtractor = false;
     const guarded = sections.map((section, index) => {
       const key = section.key || String(index);
-      // RN sends section objects through item key extractors for header/footer visibility.
-      // Retain old identities weakly because delayed callbacks can outlive a sections update.
+      /** RN 会将分组对象传给行 keyExtractor；弱引用也保留迟到回调所需的分组键。 */
       sectionKeys.set(section, key);
       if (!section.keyExtractor) return section;
       hasSectionExtractor = true;

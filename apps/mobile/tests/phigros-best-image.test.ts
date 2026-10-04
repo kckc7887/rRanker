@@ -121,7 +121,7 @@ describe('Phigros 成绩图', () => {
   });
 
   it('XING Acc 按物量公式两位小数计算，并用于自定义筛选', () => {
-    // N=1000：Good → 99.97；Miss → 99.90
+    /** 1000 物量：Good 扣 0.03，Miss 扣 0.10。 */
     expect(calculatePhigrosXingAcc(1000, 'good')).toBe(99.97);
     expect(calculatePhigrosXingAcc(1000, 'miss')).toBe(99.9);
     expect(isPhigrosXingAcc(99.97, 1000, 'good')).toBe(true);

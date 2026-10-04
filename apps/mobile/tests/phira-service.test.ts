@@ -84,12 +84,9 @@ describe('Phira player seed and best service', () => {
     expect(result.refresh.updatedChartIds).toEqual([]);
     expect(result.refresh.requestedChartIds).toEqual([7, 8]);
     expect(result.refresh.failures.map((failure) => failure.chartId).sort()).toEqual([7, 8]);
-    // 失败明细带上重试所需的谱面，页面只重试失败项时不必重建候选集合。
     expect(result.refresh.failures.map((failure) => failure.target.chart.id).sort()).toEqual([7, 8]);
-    // 缓存回退返回旧数据，不代表本次刷新成功。
     expect(result.snapshot?.source.updatedAt).toBe(cached.source.updatedAt);
     expect(result.snapshot?.items).toEqual(cached.items);
-    // 全失败只提交成功项集合（此处为空）；空集合不写入，见 PhiraCache 的空合并合同。
     expect(merge).toHaveBeenCalledWith(323528, [], expect.any(Function));
   });
 
@@ -102,7 +99,6 @@ describe('Phira player seed and best service', () => {
 
     expect(result.refresh).toMatchObject({ status: 'failed', requestedChartIds: [7, 8], updatedChartIds: [] });
     expect(result.refresh.failures.map((failure) => failure.chartId)).toEqual([7, 8]);
-    // 没有可用成绩可保留时 snapshot 为 null，但本次操作的结果仍然存在。
     expect(result.snapshot).toBeNull();
   });
 
@@ -160,7 +156,6 @@ describe('Phira player seed and best service', () => {
       status: 'partial', updatedChartIds: [11], requestedChartIds: [11, 12],
     });
     expect(result.refresh.failures.map((failure) => failure.chartId)).toEqual([12]);
-    // 部分成功按成功覆盖范围推进时间戳；未覆盖谱面的新鲜度仍看各自 queriedAt。
     expect(result.snapshot?.source.updatedAt).toBe('2026-03-03T00:00:00.000Z');
   });
 

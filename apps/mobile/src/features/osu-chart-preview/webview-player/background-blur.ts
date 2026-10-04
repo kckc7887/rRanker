@@ -5,7 +5,7 @@ function gaussianTaps(sigma: number): Tap[] {
   const weights = Array.from({ length: radius + 1 }, (_, index) => Math.exp(-index * index / (2 * sigma * sigma)));
   const total = weights[0]! + weights.slice(1).reduce((sum, weight) => sum + weight * 2, 0);
   const taps: Tap[] = [{ offset: 0, weight: weights[0]! / total }];
-  // Adjacent texels share one bilinear sample; all weights still sum to one.
+  /** 双线性采样合并相邻 texel，权重总和保持 1。 */
   for (let index = 1; index <= radius; index += 2) {
     const first = weights[index]!, second = weights[index + 1] ?? 0;
     const weight = first + second;
@@ -24,8 +24,8 @@ function supportsCanvasBlur(): boolean {
     ctx.filter = 'blur(2px)';
     ctx.fillStyle = '#fff';
     ctx.fillRect(8, 8, 2, 2);
-    // Some engines accept the property without applying it. Read only our own tiny,
-    // origin-clean probe; never read pixels from map images, storyboards or video.
+    /** 部分引擎只接受滤镜属性但不应用；用本地小画布探测，避免读取跨域图片。 */
+
     const outside = ctx.getImageData(6, 8, 1, 1).data[3]!;
     const inside = ctx.getImageData(8, 8, 1, 1).data[3]!;
     return outside > 0 && inside > outside && inside < 255;
@@ -55,7 +55,7 @@ export class PreviewBackgroundBlur {
       return;
     }
 
-    // Canvas filters use output bitmap pixels, independently of the draw transform.
+    /** 滤镜半径按输出像素计算，不随 draw transform 缩放。 */
     const outputWidth = ctx.canvas.width, outputHeight = ctx.canvas.height;
     const logicalRadius = Math.max(radius * source.width / outputWidth, radius * source.height / outputHeight);
     const downsample = Math.max(1, logicalRadius / 2);

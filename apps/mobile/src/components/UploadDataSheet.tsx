@@ -40,12 +40,10 @@ export function UploadDataSheet({
   onClose: () => void;
   onPhaseChange?: (phase: UploadPhase) => void;
   onFinished?: (result: UploadResult) => void | Promise<void>;
-  /** 仅本次打开使用；不覆盖用户平时保存的上传目标。 */
+  /** 临时选择不覆盖持久目标。 */
   temporarySelectedAccountIds?: readonly string[];
   onLxnsTokensRotated?: (accountId: string, update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
-  /** 可选的页内顶部导航，仅在特定账号提供其它上传页面时显示。 */
   headerAccessory?: ReactNode;
-  /** 替换好友码页面内容，但保留同一个原生上传弹层与顶部导航。 */
   contentOverride?: ReactNode;
   uploadMethod?: 'friend_code' | 'qr';
   externalBusy?: boolean;

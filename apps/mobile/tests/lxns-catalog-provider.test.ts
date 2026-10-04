@@ -242,7 +242,6 @@ describe('LxnsCatalogProvider', () => {
     };
     const fetchMock = vi.fn(async (input: RequestInfo | URL) => {
       const url = String(input);
-      // Prefer longer path segments so /frame/ does not collide with other substrings.
       const kind = (['trophy', 'icon', 'plate', 'frame'] as const).find((item) => url.includes(`/maimai/${item}/list`));
       if (!kind) return new Response(JSON.stringify({}), { status: 200 });
       return new Response(JSON.stringify(byKind[kind]), { status: 200 });

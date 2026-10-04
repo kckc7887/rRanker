@@ -3,11 +3,6 @@ import type { PhiraQueriedBest } from '@/domain/phira';
 import { PhiraCache } from '@/services/phira-cache';
 vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
 
-/**
- * 内存仓储复刻真实仓储的读改写边界：
- * 读在 await 之前取快照，只有 `updateResource` 是单次原子读改写。
- * 绕过 `updateResource` 的 load → merge → save 会在并发交错下丢更新。
- */
 class MemoryRepo {
   values = new Map<string, unknown>();
   async getResource<T>(key: string) {

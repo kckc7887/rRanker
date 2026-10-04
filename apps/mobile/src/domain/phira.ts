@@ -91,7 +91,6 @@ const pagedCharts = z.object({
   pageNum: z.number().int().positive().optional(),
 }).passthrough();
 
-/** 将数组和分页响应统一为分页对象。 */
 export const PhiraChartPageSchema = z.union([pagedCharts, z.array(PhiraChartSchema)]).transform((value) =>
   Array.isArray(value) ? { results: value, total: value.length } : { ...value, total: value.total ?? value.count },
 );
@@ -130,7 +129,6 @@ export type PhiraPlayerSnapshot = {
   stats: PhiraUserStats;
   pool: PhiraPool;
   recent: PhiraRecord[];
-  /** Pool 与 Recent 中出现过的谱面去重补全结果。 */
   seedCharts: PhiraChart[];
   source: DataSource;
 };
@@ -160,7 +158,7 @@ export function formatPhiraAccuracy(value: number): string {
   return `${percent.toFixed(2)}%`;
 }
 
-/** OpenAPI 返回 0–1 的投票均值；客户端按游戏内五分制展示。 */
+/** 上游投票均值为 0–1，展示乘 5。 */
 export function formatPhiraRating(value: number | null | undefined): string {
   return value == null ? '—' : `${(value * 5).toFixed(2)} / 5`;
 }
@@ -176,30 +174,18 @@ export function phiraGrade(record: Pick<PhiraRecord, 'score' | 'fullCombo'>): st
   return 'F';
 }
 
-/** 筛选结果为空时自动翻页的扫描预算：耗尽后暂停自动翻页，避免空结果无限扫描。 */
 export const PHIRA_CATALOG_PAGE_SCAN_BUDGET = 8;
 
-/**
- * Phira 曲库分页判别状态：初次加载/初次失败是与 ready 互不混淆的终态；
- * ready 恒带 items（可以为空数组），并独立描述后页情况，
- * 因此「预算暂停 / 后页失败 / 尚未搜完」不会再被压成同一个布尔组合。
- */
 export type PhiraCatalogPageState<T> =
   | { status: 'loading' }
   | { status: 'error' }
   | {
     status: 'ready';
-    /** 已加载并筛选后的条目；可以为空数组。 */
     items: readonly T[];
-    /** 上游还有后页。 */
     hasNextPage: boolean;
-    /** 结果为空且仍在扫描后页（预算内自动翻页，或正在请求后页）。 */
     scanning: boolean;
-    /** 结果为空且有后页，但扫描预算已耗尽：需要用户显式继续。 */
     paused: boolean;
-    /** 上一次后页请求失败；已加载结果保持不变。 */
     nextPageFailed: boolean;
-    /** 后页已耗尽：当前 items 就是全部结果，空数组表示确认没有匹配。 */
     exhausted: boolean;
   };
 
@@ -230,13 +216,12 @@ export function phiraCatalogPageState<T>(input: {
   };
 }
 
-/** 共享列表壳（CatalogListPage）渲染输入：由判别状态派生，保证不存在「无加载、无错误、无空态、无 data」的组合。 */
 export type PhiraCatalogListView<T> = {
   isLoading: boolean;
   isError: boolean;
   isEmpty: boolean;
   data: readonly T[] | undefined;
-  /** 空态原因：exhausted=后页耗尽确认无结果；scanBudget=预算耗尽但仍有后页，不等于全库无结果。 */
+  /** 预算耗尽仍可能有后页，不代表全库无匹配。 */
   emptyReason?: 'exhausted' | 'scanBudget';
 };
 
@@ -252,40 +237,29 @@ export function phiraCatalogListView<T>(state: PhiraCatalogPageState<T>): PhiraC
   return { isLoading: false, isError: false, isEmpty: false, data: state.items };
 }
 
-/** 一次曲库查询的身份：类别与归一化搜索词相同就是同一个查询。 */
 export function phiraCatalogQueryIdentity(status: PhiraChartStatus, search = ''): string {
   return `${status}|${search.trim()}`;
 }
 
-/**
- * 自动续扫的观察值：查询身份 + 已成功接收的页数与末页游标。
- * 查询层可能把「请求中」与「请求结束」合并成一次通知，因此推进只读这两个成功接收的标记。
- */
+/** 查询通知可能合并，只按成功页数与末页游标推进续扫。 */
 export type PhiraCatalogScanObservation = {
   identity: string;
-  /** 已成功接收的页数；没有页时不会续扫。 */
   pageCount: number;
-  /** 已接收末页的游标；查询层没有提供游标时为 null。 */
   lastCursor: number | null;
-  /** 当前仍需自动续扫：结果为空、预算内、后页未失败且未耗尽。 */
   scanning: boolean;
-  /** 查询层报告后页请求在途；只用于防重，不作为推进依据。 */
   isFetchingNextPage: boolean;
 };
 
-/** 已经发出过续扫请求的位置。 */
 export type PhiraCatalogScanRequest = Pick<PhiraCatalogScanObservation, 'identity' | 'pageCount' | 'lastCursor'>;
 
 export type PhiraCatalogScanStep = {
   action: 'fetch' | 'idle';
-  /** 查询身份改变时释放旧预约，即使新查询无需续扫。 */
   requested: PhiraCatalogScanRequest | null;
 };
 
 export function phiraCatalogScanObservation(input: {
   identity: string;
   pageCount: number;
-  /** 游标来自查询层，不是有限数字时视为没有游标。 */
   lastCursor?: unknown;
   scanning: boolean;
   isFetchingNextPage: boolean;
@@ -299,10 +273,6 @@ export function phiraCatalogScanObservation(input: {
   };
 }
 
-/**
- * 续扫驱动：每成功收到一页（页数或末游标变化）、或换到另一个查询身份后都重新判断，
- * 同一位置只请求一次，因此不会并发重复请求同一页。
- */
 export function phiraCatalogScanNext(input: {
   observation: PhiraCatalogScanObservation;
   requested: PhiraCatalogScanRequest | null;

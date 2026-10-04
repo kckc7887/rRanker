@@ -1,17 +1,10 @@
-/**
- * osu! 模组元数据：acronym → 模组类型 → 徽章配色。
- * 数据来源 osu-web 的 database/mods.json（osu/taiko/fruits/mania 四规则集
- * UserPlayable 模组 + SV2 成绩可携带的系统模组；同 acronym 跨规则集类型一致，统一映射）。
- * 配色来源 osu-web 的 resources/css/bem/mod.less + colors.less：
- * 背景 = 六类 osu 官方模组色（hsl(hue,100%,70%) 档 / System 黄），
- * 前景 = color-mix(in srgb-linear, black, 背景 10%)，与 osu-web 徽章文字/图标同色。
- */
+/** 来源：osu-web database/mods.json、resources/css/bem/mod.less 和 colors.less。
+ * 前景按 color-mix(in srgb-linear, black, 背景 10%) 计算。 */
 
 import type { OsuGameId } from './game-mode-family';
 import { OSU_MODE_GAME_IDS } from './game-bind-options';
 import { OSU_MODE_INT_BY_GAME_ID } from './osu';
 
-/** osu! 模组类型（与 osu-web ModType 一致，决定徽章底色）。 */
 export type OsuModType =
   | 'DifficultyReduction'
   | 'DifficultyIncrease'
@@ -20,38 +13,27 @@ export type OsuModType =
   | 'Fun'
   | 'System';
 
-/** 模组徽章配色（背景/前景十六进制）。 */
 export type OsuModTheme = {
   background: string;
   foreground: string;
 };
 
-/** 六类模组配色（精确值按 osu-web color-mix 语义预先计算硬编码）。 */
 export const OSU_MOD_THEME_BY_TYPE: Record<OsuModType, OsuModTheme> = {
-  // lime hsl(90,100%,70%)
   DifficultyReduction: { background: '#B3FF66', foreground: '#3C591E' },
-  // red hsl(360,100%,70%)
   DifficultyIncrease: { background: '#FF6666', foreground: '#591E1E' },
-  // purple hsl(255,100%,70%)
   Conversion: { background: '#8C66FF', foreground: '#2D1E59' },
-  // blue hsl(200,100%,70%)
   Automation: { background: '#66CCFF', foreground: '#1E4659' },
-  // pink hsl(333,100%,70%)
   Fun: { background: '#FF66AB', foreground: '#591E39' },
-  // yellow #ffcc22
   System: { background: '#FFCC22', foreground: '#594605' },
 };
 
-/** acronym → 模组类型（67 项：66 个 UserPlayable + SV2）。 */
 export const OSU_MOD_TYPE_BY_ACRONYM: Record<string, OsuModType> = {
-  // DifficultyReduction（降难）
   EZ: 'DifficultyReduction',
   NF: 'DifficultyReduction',
   HT: 'DifficultyReduction',
   DC: 'DifficultyReduction',
   NR: 'DifficultyReduction',
   SR: 'DifficultyReduction',
-  // DifficultyIncrease（增难）
   AC: 'DifficultyIncrease',
   BL: 'DifficultyIncrease',
   CO: 'DifficultyIncrease',
@@ -65,7 +47,6 @@ export const OSU_MOD_TYPE_BY_ACRONYM: Record<string, OsuModType> = {
   SD: 'DifficultyIncrease',
   ST: 'DifficultyIncrease',
   TC: 'DifficultyIncrease',
-  // Conversion（转换）
   '1K': 'Conversion',
   '2K': 'Conversion',
   '3K': 'Conversion',
@@ -88,11 +69,9 @@ export const OSU_MOD_TYPE_BY_ACRONYM: Record<string, OsuModType> = {
   SG: 'Conversion',
   SW: 'Conversion',
   TP: 'Conversion',
-  // Automation（自动化）
   AP: 'Automation',
   RX: 'Automation',
   SO: 'Automation',
-  // Fun（趣味）
   AD: 'Fun',
   AS: 'Fun',
   BM: 'Fun',
@@ -114,7 +93,6 @@ export const OSU_MOD_TYPE_BY_ACRONYM: Record<string, OsuModType> = {
   WD: 'Fun',
   WG: 'Fun',
   WU: 'Fun',
-  // System（系统）
   TD: 'System',
   SV2: 'System',
 };
@@ -200,7 +178,7 @@ const OSU_MOD_GAMEPLAY_MULTIPLIERS: Partial<Record<
   NC: ALL_MODES_SPEED_150,
 };
 
-/** osu-web 当前四规则集 UserPlayable 列表；顺序与官方 mods.json 一致。 */
+/** 列表与 osu-web 当前四规则集 UserPlayable 一致。 */
 export const OSU_USER_PLAYABLE_MODS_BY_GAME_ID: Record<OsuGameId, readonly string[]> = {
   'osu-standard': ['EZ', 'NF', 'HT', 'DC', 'HR', 'SD', 'PF', 'DT', 'NC', 'HD', 'TC', 'FL', 'BL', 'ST', 'AC', 'TP', 'DA', 'CL', 'RD', 'MR', 'AL', 'SG', 'RX', 'AP', 'SO', 'TR', 'WG', 'SI', 'GR', 'DF', 'WU', 'WD', 'BR', 'AD', 'MU', 'NS', 'MG', 'RP', 'AS', 'FR', 'BU', 'SY', 'DP', 'BM', 'TD'],
   'osu-taiko': ['EZ', 'NF', 'HT', 'DC', 'SR', 'HR', 'SD', 'PF', 'DT', 'NC', 'HD', 'FL', 'AC', 'RD', 'DA', 'CL', 'SW', 'SG', 'CS', 'RX', 'WU', 'WD', 'MU', 'AS'],
@@ -208,7 +186,7 @@ export const OSU_USER_PLAYABLE_MODS_BY_GAME_ID: Record<OsuGameId, readonly strin
   'osu-mania': ['EZ', 'NF', 'HT', 'DC', 'NR', 'HR', 'SD', 'PF', 'DT', 'NC', 'FI', 'HD', 'CO', 'FL', 'AC', 'RD', 'DS', 'MR', 'DA', 'CL', 'IN', 'CS', 'HO', '1K', '2K', '3K', '4K', '5K', '6K', '7K', '8K', '9K', '10K', 'WU', 'WD', 'MU', 'AS'],
 };
 
-/** 官方 Wiki 中文概要的内置简明转述；不在运行时抓取网页。 */
+/** 说明转述自官方 Wiki 中文概要。 */
 const OSU_MOD_COPY: Record<string, readonly [englishName: string, chineseName: string, description: string]> = {
   EZ: ['Easy', '简单', '降低谱面整体难度，使判定、尺寸或生命值更宽松。'],
   NF: ['No Fail', '不会失败', '即使生命值耗尽也可继续完成谱面。'],
@@ -322,12 +300,10 @@ export function osuUserPlayableMods(gameId: OsuGameId): readonly OsuModMetadata[
   });
 }
 
-/** 模组图标文件名（远程图标包按 acronym 小写命名，如 DT → dt.svg）。 */
 export function osuModIconFileName(acronym: string): string {
   return `${acronym.toLowerCase()}.svg`;
 }
 
-/** 查询模组配色：未知 acronym 返回 null（展示层静默跳过该模组）。 */
 export function resolveOsuModTheme(acronym: string): OsuModTheme | null {
   const type = OSU_MOD_TYPE_BY_ACRONYM[acronym];
   return type ? OSU_MOD_THEME_BY_TYPE[type] : null;

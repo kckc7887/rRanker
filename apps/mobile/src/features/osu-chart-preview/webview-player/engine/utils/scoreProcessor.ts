@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -33,15 +33,8 @@ import {
   lazerSpinnerMaxBonusSpins,
 } from './hitJudge';
 
-/** osu! rank grade. Silver variants (`SH`/`SSH`) are only emitted when HD or FL is active. */
 export type Grade = 'SSH' | 'SS' | 'SH' | 'S' | 'A' | 'B' | 'C' | 'D';
 
-/**
- * One score-timeline sample, emitted per scoring event and sorted by `time`
- * (beatmap ms). Consumers binary-search the frame array to display score /
- * combo / grade at any playback time; each frame carries the running totals
- * as of that event.
- */
 export interface ScoreFrame {
   time:     number;
   score:    number;
@@ -50,7 +43,7 @@ export interface ScoreFrame {
   grade:    Grade;
 }
 
-// Banker's rounding.
+/** 中点向偶数舍入。 */
 function roundToEven(x: number): number {
   const floor = Math.floor(x);
   const diff  = x - floor;
@@ -59,10 +52,6 @@ function roundToEven(x: number): number {
   return floor % 2 === 0 ? floor : floor + 1;
 }
 
-/**
- * Stable ScoreV1 difficulty multiplier (integer 2–7) from raw beatmap stats
- * plus object density. Uses banker's rounding, matching osu!stable.
- */
 export function computeDifficultyMultiplier(beatmap: BeatmapData): number {
   const hos = beatmap.hitObjects;
   if (hos.length === 0) return 2;
@@ -76,11 +65,11 @@ export function computeDifficultyMultiplier(beatmap: BeatmapData): number {
     if (end > lastEnd) lastEnd = end;
   }
 
-  // Stable's integer-second drainTime (/1000 truncates).
+  /** stable drainTime 按整数秒截断。 */
   const drainSec = Math.max(1, Math.trunc((lastEnd - first) / 1000));
   const density  = Math.min(16, Math.max(0, (hos.length / drainSec) * 8));
 
-  // Stable uses RAW .osu stats, not mod-adjusted (HR/EZ haven't modified yet).
+  /** 难度加分读取未加 Mod 的谱面难度。 */
   const fr  = Math.fround;
   const sum = fr(beatmap.hpDrainRate) + fr(beatmap.overallDifficulty)
             + fr(beatmap.circleSize) + fr(density);
@@ -88,19 +77,18 @@ export function computeDifficultyMultiplier(beatmap: BeatmapData): number {
 }
 
 const MOD_MULTIPLIERS: [number, number][] = [
-  [1 << 0,  0.5 ],   // NoFail
-  [1 << 1,  0.5 ],   // Easy
-  [1 << 8,  0.3 ],   // HalfTime
-  [1 << 3,  1.06],   // Hidden
-  [1 << 4,  1.06],   // HardRock
-  [1 << 6,  1.12],   // DoubleTime (NC shares DT's bit)
-  [1 << 10, 1.12],   // Flashlight
-  [1 << 12, 0.9 ],   // SpunOut
-  [1 << 7,  0   ],   // Relax
-  [1 << 13, 0   ],   // Autopilot
+  [1 << 0,  0.5 ],
+  [1 << 1,  0.5 ],
+  [1 << 8,  0.3 ],
+  [1 << 3,  1.06],
+  [1 << 4,  1.06],
+  [1 << 6,  1.12],
+  [1 << 10, 1.12],
+  [1 << 12, 0.9 ],
+  [1 << 7,  0   ],
+  [1 << 13, 0   ],
 ];
 
-/** Product of the stable per-mod score multipliers for a stable mod bitmask. */
 export function computeModMultiplier(mods: number): number {
   let m = 1;
   for (const [bit, val] of MOD_MULTIPLIERS) {
@@ -109,23 +97,16 @@ export function computeModMultiplier(mods: number): number {
   return m;
 }
 
-// Lazer RateAdjustModHelper.ScoreMultiplier; speed truncated to 0.1 first.
 function rateAdjustScoreMultiplier(speed: number): number {
   const truncated = Math.trunc(speed * 10) / 10;
   const offset = truncated - 1;
   return speed >= 1 ? 1 + offset / 5 : 0.6 + offset;
 }
 
-// Lazer UsesDefaultConfiguration; HD/HR/FL collapse to 1.0 when customised.
 function hasDefaultConfig(mod: LazerMod): boolean {
   return mod.settings === undefined || Object.keys(mod.settings).length === 0;
 }
 
-/**
- * Taiko Standardised/ScoreV2 mod multiplier from lazer acronym mods. Differs
- * from the V1 bitmask table only in DT/NC (rate-derived, 1.10 at 1.5×) and in
- * HD/HR/FL collapsing to 1.0 when the mod has customised settings.
- */
 export function computeTaikoModMultiplierV2(lazerMods: readonly LazerMod[]): number {
   let m = 1;
   for (const mod of lazerMods) {
@@ -154,8 +135,6 @@ export function computeTaikoModMultiplierV2(lazerMods: readonly LazerMod[]): num
   return m;
 }
 
-
-
 function computeGrade(
   c300: number, c100: number, c50: number, miss: number, mods: number,
 ): Grade {
@@ -173,7 +152,7 @@ function computeGrade(
   else if (r300 > 0.6)                                         g = 'C';
   else                                                         g = 'D';
 
-  const silver = (mods & ((1 << 3) | (1 << 10))) !== 0;   // HD or FL
+  const silver = (mods & ((1 << 3) | (1 << 10))) !== 0;
   if (silver) {
     if (g === 'S')  return 'SH';
     if (g === 'SS') return 'SSH';
@@ -189,27 +168,22 @@ function buildSliderSubKinds(beatmap: BeatmapData, isLazer: boolean): Map<number
   return streams;
 }
 
-// Stable spinner spin score (danser scorev1 spinner.go / hitresult.go ScoreValue):
-// scoringRotationCount counts HALF-spins. At each increment c>1, danser awards exactly one
-// of: SpinnerBonus (1100) when c past requirement+3 with matching parity, else SpinnerPoints
-// (100) on even c (a full spin), else SpinnerSpin (0). All are RawHits → flat, no combo/mod
-// scaling. We replay the increments c=2..floor(totalRad/π) to match the parity exactly.
+/** stable 转盘按半圈计数；奖励与普通转圈分按奇偶规则互斥。 */
+
 function stableSpinnerSpinScore(od: number, durationMs: number, totalRad: number): number {
   const req = stableSpinnerRequirementHalfSpins(od, durationMs);
   const halfSpins = Math.floor(totalRad / Math.PI);
   let score = 0;
   for (let c = 2; c <= halfSpins; c++) {
-    if (c > req + 3 && (c - (req + 3)) % 2 === 0) score += 1100;       // SpinnerBonus
-    else if (c % 2 === 0)                          score += 100;       // SpinnerPoints
-    // odd c (SpinnerSpin) → 0
+    if (c > req + 3 && (c - (req + 3)) % 2 === 0) score += 1100;
+    else if (c % 2 === 0)                          score += 100;
+
   }
   return score;
 }
 
-// Lazer spinner bonusPortion (Spinner.cs nested ticks + ScoreProcessor.GetBaseScoreForResult):
-// each completed FULL spin triggers the next tick — the first SpinsRequired+gap(2) are
-// SpinnerTick (SmallBonus = 10), the rest are SpinnerBonusTick (LargeBonus = 50), capped at
-// MaximumBonusSpins. Bonus is added raw (outside the 0–1M combo/acc normalisation).
+/** lazer 转盘前段每圈加 10，超过要求及 2 圈间隔后每圈加 50。 */
+
 function lazerSpinnerBonusPortion(od: number, durationMs: number, totalRad: number): number {
   const req      = lazerSpinnerRequirementFullSpins(od, durationMs);
   const maxBonus = lazerSpinnerMaxBonusSpins(od, durationMs);
@@ -223,19 +197,14 @@ type ComboOp = 'increment' | 'reset' | 'hold';
 
 interface ScoreEvent {
   time:   number;
-  // raw = flat (ticks/ends/bonus); scaled = combo-scaled Hit300/100/50.
+
   kind:   'raw' | 'scaled';
   value:  number;
   combo:  ComboOp;
-  // null = excluded from acc/grade.
+
   counts: 300 | 100 | 50 | 0 | null;
 }
 
-/**
- * Build the osu!standard score/combo/grade timeline from judged hit results.
- * Dispatches to lazer standardised scoring for lazer replays, else stable
- * ScoreV1. Returned frames are sorted by time (beatmap ms), one per scoring event.
- */
 export function computeScoreTimeline(
   results: readonly HitResult[],
   beatmap: BeatmapData,
@@ -245,7 +214,6 @@ export function computeScoreTimeline(
   return computeScoreV1Timeline(results, beatmap, modDiff);
 }
 
-// Stable ScoreV1; the final frame matches stable's result-screen values.
 function computeScoreV1Timeline(
   results: readonly HitResult[],
   beatmap: BeatmapData,
@@ -255,9 +223,6 @@ function computeScoreV1Timeline(
   const modMult  = computeModMultiplier(modDiff.mods);
   const subKinds = buildSliderSubKinds(beatmap, false);
 
-  // Translate each HitResult into one or two ScoreEvents. Slider main results
-  // split into SliderStart (at head time) + final Hit300/100/50 (at tail time)
-  // so intermediate score/combo updates line up with stable's event ordering.
   const events: ScoreEvent[] = [];
 
   for (const r of results) {
@@ -275,7 +240,7 @@ function computeScoreV1Timeline(
           combo: 'increment', counts: null,
         });
       } else {
-        // Tail miss does not break combo; tick/repeat miss does.
+        /** tail miss 不断 combo，tick/repeat miss 会断。 */
         events.push({
           time: r.time, kind: 'raw', value: 0,
           combo: kind === 'tail' ? 'hold' : 'reset',
@@ -299,7 +264,7 @@ function computeScoreV1Timeline(
       if (r.judgement === 0) {
         events.push({ time: tailTime, kind: 'scaled', value: 0, combo: 'hold', counts: 0 });
       } else {
-        // std hitJudge only emits 300|100|50|0; the widened HitResult union (mania 305/200) never reaches here.
+
         const stdJ = r.judgement as 300 | 100 | 50;
         events.push({
           time: tailTime, kind: 'scaled', value: stdJ,
@@ -323,8 +288,6 @@ function computeScoreV1Timeline(
       });
     }
 
-    // Spinner spin points + bonus: flat (RawHits), independent of the final tier and
-    // awarded even on a missed spinner for every full spin completed.
     if (obj.type === 'spinner' && r.spinnerTotalRad !== undefined) {
       const spin = stableSpinnerSpinScore(modDiff.od, obj.endTime - obj.time, r.spinnerTotalRad);
       if (spin > 0) {
@@ -333,7 +296,7 @@ function computeScoreV1Timeline(
     }
   }
 
-  // Equal-time order: slider subs apply before the main slider's final scaled event.
+  /** 同一时间先处理 slider 子结果，再处理主结果。 */
   events.sort((a, b) => {
     if (a.time !== b.time) return a.time - b.time;
     const pa = a.kind === 'raw' ? 0 : 1;
@@ -346,7 +309,7 @@ function computeScoreV1Timeline(
   let c300 = 0, c100 = 0, c50 = 0, miss = 0;
 
   for (const e of events) {
-    // Combo-bonus uses (combo - 1) so the first hit of a streak gets no bonus.
+
     if      (e.combo === 'reset')     combo = 0;
     else if (e.combo === 'increment') combo += 1;
     if (combo > maxCombo) maxCombo = combo;
@@ -372,13 +335,11 @@ function computeScoreV1Timeline(
   return frames;
 }
 
-// Lazer per-result base score values. SpinnerBonus omitted (unused).
 const SV_BASE          = 300;
 const SV_SLIDER_END    = 150;
 const SV_SLIDER_START  = 30;
 const SV_LEGACY_END    = 10;
 
-// Drives max value, acc-affecting-ness, and miss combo behaviour (tail miss holds combo).
 type LzKind = 'base' | 'sliderStart' | 'sliderPoint' | 'sliderRepeat' | 'sliderEnd' | 'legacyEnd';
 
 function lzMaxValue(k: LzKind): number {
@@ -392,12 +353,10 @@ function lzMaxValue(k: LzKind): number {
   }
 }
 
-// Lazer accuracy: only base hits and SliderEnd count toward acc.
 function lzAffectsAcc(k: LzKind): boolean {
   return k === 'base' || k === 'sliderEnd';
 }
 
-// Threshold on accuracy (not c300/total); HD/FL → silver.
 function computeLazerGrade(accuracy: number, miss: number, mods: number): Grade {
   let g: Grade;
   if      (accuracy >= 1.0)                  g = 'SS';
@@ -414,9 +373,8 @@ function computeLazerGrade(accuracy: number, miss: number, mods: number): Grade 
   return g;
 }
 
-// Lazer standardised scoring:
-// score = round(round(500000*acc*comboProgress + 500000*acc^5*accProgress + bonus) * modMult).
-// CL flips head/tail from base/sliderEnd (acc) to sliderStart/legacyEnd (non-acc); rest identical.
+/** lazer=round(round(500k×Acc×comboProgress+500k×Acc^5×accProgress+bonus)×Mod)。 */
+
 function computeScoreV3Timeline(
   results: readonly HitResult[],
   beatmap: BeatmapData,
@@ -426,7 +384,6 @@ function computeScoreV3Timeline(
   const useLazerSliderAcc = !modDiff.lzNoSliderAcc;
   const subKinds = buildSliderSubKinds(beatmap, true);
 
-  // Perfect-play prepass: comboPartMax / accPartMax / maxHits are the denominators.
   let comboPartMax = 0;
   let accPartMax   = 0;
   let maxHits      = 0;
@@ -460,11 +417,11 @@ function computeScoreV3Timeline(
     time:     number;
     kind:     LzKind;
     hit:      boolean;
-    // base = actual judgement; others = 300 or 0.
+
     judgement: 300 | 100 | 50 | 0;
     isMain:   boolean;
     counts:   300 | 100 | 50 | 0 | null;
-    // Spinner Small/LargeBonus added to bonusPortion (raw, un-normalised). 0 elsewhere.
+
     bonus?:   number;
   }
 
@@ -497,7 +454,7 @@ function computeScoreV3Timeline(
     if (obj.type === 'slider') {
       const headHit = !r.comboBreak;
       if (useLazerSliderAcc) {
-        // r.judgement carries the head judgement (see hitJudge useLazerSliderScoring).
+
         const stdJ = r.judgement as 300 | 100 | 50 | 0;
         events.push({
           time: r.time,
@@ -508,7 +465,7 @@ function computeScoreV3Timeline(
           counts: stdJ,
         });
       } else {
-        // CL: SliderStart (no acc); only comboBreak matters here.
+
         events.push({
           time: r.time,
           kind: 'sliderStart',
@@ -523,7 +480,7 @@ function computeScoreV3Timeline(
 
     const hit = r.judgement !== 0;
     const stdJ = r.judgement as 300 | 100 | 50 | 0;
-    // Spinner contributes Small/LargeBonus on top of its base (Great/Ok/Meh/Miss) hit.
+
     const bonus = obj.type === 'spinner' && r.spinnerTotalRad !== undefined
       ? lazerSpinnerBonusPortion(modDiff.od, obj.endTime - obj.time, r.spinnerTotalRad)
       : 0;
@@ -538,7 +495,6 @@ function computeScoreV3Timeline(
     });
   }
 
-  // Equal-time: subs process before main events so the tail's combo op runs first.
   events.sort((a, b) => {
     if (a.time !== b.time) return a.time - b.time;
     return (a.isMain ? 1 : 0) - (b.isMain ? 1 : 0);
@@ -548,24 +504,22 @@ function computeScoreV3Timeline(
   let combo = 0, maxCombo = 0;
   let comboPart = 0;
   let accPart   = 0;
-  let bonus     = 0;       // running spinner Small/LargeBonus portion
+  let bonus     = 0;
   let hits      = 0;
   let miss = 0;
 
   for (const e of events) {
     bonus += e.bonus ?? 0;
 
-    // combo op: base/tick/repeat miss → reset; tail miss → hold.
     if (e.hit) {
       combo += 1;
     } else if (e.kind === 'sliderEnd' || e.kind === 'legacyEnd') {
-      // hold — tail miss doesn't break combo
+
     } else {
       combo = 0;
     }
     if (combo > maxCombo) maxCombo = combo;
 
-    // A missed default-lazer tail spares comboPart even though it hurts acc.
     const missedSliderEnd = !e.hit && e.kind === 'sliderEnd';
     if (!missedSliderEnd) {
       const value = e.hit

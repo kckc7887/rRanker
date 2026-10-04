@@ -111,11 +111,6 @@ export async function loadRizlineFresh(id: string, session: RizlineSession, sign
 
 type RizlineRefreshAttempt = { result: RefreshResult<RizlineSnapshot, string>; error: unknown };
 
-/**
- * 一次云存档刷新的结果：缓存回退不等于刷新成功。
- * 成功只带本次抓取时间；失败时仍可发布本地快照，但它保留原提供方与抓取时间并标记过期，
- * 失败原因只由机器错误码表达。
- */
 async function refreshRizline(
   id: string,
   session: RizlineSession,
@@ -153,7 +148,6 @@ async function refreshRizline(
   }
 }
 
-/** 机器可判定的刷新结果；只重试失败项时复用同一入口与 target。 */
 export async function refreshRizlineSnapshot(
   id: string,
   session: RizlineSession,

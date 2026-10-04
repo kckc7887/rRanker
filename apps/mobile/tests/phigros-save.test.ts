@@ -41,7 +41,6 @@ function writeIntLE(value: number): number[] {
   return [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff];
 }
 
-/** 按 phiTool GameRecord 二进制布局构造一条曲目记录 */
 function buildGameRecordPayload(): Uint8Array {
   const songId = new TextEncoder().encode('Glaciaxion.SunsetRay');
   const keyPayload = new Uint8Array([...songId, 0, 0]);

@@ -11,7 +11,7 @@ function uint64(view: DataView, offset: number, value: number): void {
   view.setUint32(offset + 4, Math.floor(value / 0x100000000), true);
 }
 
-/** STORE 头只保留长度、CRC 与偏移，媒体正文直接从文件写入文件。 */
+/** STORE 正文从源文件直接复制，头部只写长度、CRC 和偏移。 */
 export function storedZipHeader(entry: ZipEntry, central = false): Uint8Array {
   const largeSize = entry.size >= ZIP32_MAX;
   const largeOffset = central && entry.offset >= ZIP32_MAX;

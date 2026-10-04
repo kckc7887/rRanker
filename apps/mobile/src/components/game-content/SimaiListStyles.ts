@@ -1,6 +1,5 @@
 import { StyleSheet } from 'react-native';
 
-// 来自舞萌页面的既有列表、搜索和曲库行样式，双方统一消费。
 export const SIMAI_BEST_LIST_STYLES = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' },
   list: { flex: 1 },

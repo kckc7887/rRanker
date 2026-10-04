@@ -62,7 +62,6 @@ function tokenResponse(payload: Record<string, unknown>): FetchMock {
   }));
 }
 
-/** 以独立模块实例加载 lxns-oauth，隔离模块级轮换缓存并注入网络/存储 mock。 */
 async function loadLxnsOAuthModule(options: {
   fetchImpl?: FetchMock;
   pending?: PendingLxnsOAuth | null;
@@ -222,7 +221,6 @@ describe('rotateLxnsTokens', () => {
 
     expect(lxnsRotationAncestors('r2')).toContain('r1');
     expect(lxnsRotationAncestors('r2')).toEqual(['r1']);
-    // 重新授权拿到的新 refresh token 不属于旧世代，迟到结果不能覆盖它。
     expect(lxnsRotationAncestors('r2')).not.toContain('r-fresh');
   });
 });

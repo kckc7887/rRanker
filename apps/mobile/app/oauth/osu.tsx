@@ -35,7 +35,6 @@ function invalidateAll() {
   void queryClient.invalidateQueries({ queryKey: ['songs'] });
 }
 
-/** 完成 osu! 授权并绑定所选模式。 */
 export default function OsuOAuthCallbackScreen() {
   const theme = useAppTheme();
   const params = useLocalSearchParams<{ code?: string; state?: string; error?: string }>();
@@ -86,8 +85,7 @@ export default function OsuOAuthCallbackScreen() {
         const session = await runProviderOperation('authorization_callback', () => exchangeOsuAuthorizationCode(code, state, request.signal));
         if (!request.isCurrent()) return;
         setStatus({ kind: 'selecting', session });
-        // 深链把本页压在登录 Sheet（Modal）之下：先通知 Sheet 关闭，
-        // 否则用户仍停留在绑定页、看不到本页的模式选择。
+        /** 深链页面被登录弹层遮挡，需先关闭弹层。 */
         notifyOsuOAuthOutcome({ status: 'awaiting-mode-selection' });
       } catch (error) {
         fail(messageFor(error));
@@ -96,7 +94,7 @@ export default function OsuOAuthCallbackScreen() {
 
     void run().finally(request.finish);
     return cancel;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 回调只在挂载时消费一次，或依赖已在上方说明
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 挂载时只消费一次授权回调。
   }, []);
 
   const bindWith = async (modeGameIds: Parameters<typeof bindOsuModes>[0]['modeGameIds'], session: OsuOAuthSession) => {
@@ -189,8 +187,7 @@ export default function OsuOAuthCallbackScreen() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="返回首页"
-            // dismissTo('/')：回退到栈内已有的主页（tabs），而不是 replace 新建一份
-            // 主页实例（replace 会造成「主页可被退出、退出回到账号管理页」的叠层 bug）。
+            /** 复用栈内主页，避免重复页面。 */
             onPress={() => router.dismissTo('/')}
             style={({ pressed }) => [
               styles.primary,

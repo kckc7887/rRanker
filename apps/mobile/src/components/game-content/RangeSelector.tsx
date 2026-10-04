@@ -70,10 +70,7 @@ export function rangeValueForDrag(
   return start + (deltaX / trackWidth) * (maximum - minimum);
 }
 
-/**
- * 从当前未筛选数据建立边界，并在同一 resetKey 生命周期内只扩不缩。
- * 已有筛选值会参与扩边，避免被静默钳制；无数据时才使用 fallback。
- */
+/** 同一 resetKey 内范围只扩不缩，并纳入已选值，避免钳制筛选。 */
 export function useStableRangeBounds(
   values: readonly number[],
   fallback: RangeBounds,

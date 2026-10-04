@@ -40,7 +40,6 @@ export async function measureDirectoryBytesAsync(
   }
 }
 
-/** 清理前后实际释放量使用：读取失败向上抛出，避免伪造 0。 */
 export function measureDirectoryBytesStrictAsync(
   directory: Directory,
   options?: DirectoryListOptions,
@@ -60,14 +59,13 @@ export function clearDirectoryContents(
       try {
         item.delete();
       } catch {
-        /** 单个文件失败不影响其余文件。 */
+
       }
     }
   } catch {
 
   }
 }
-
 
 export function clearDirectoryContentsStrict(
   directory: Directory,
@@ -81,7 +79,6 @@ export function clearDirectoryContentsStrict(
   }
 }
 
-/** 仅保留当前版本目录，并清除当前版本内的下载临时目录。 */
 export function pruneVersionedAssetRoot(root: Directory, currentVersions: readonly string[]): void {
   if (!root.exists) return;
   for (const item of root.list()) {

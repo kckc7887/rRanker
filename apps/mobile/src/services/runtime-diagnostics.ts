@@ -137,7 +137,6 @@ export function trimRuntimeDiagnosticStore(store: RuntimeDiagnosticStore): Runti
 
 async function readStoreFile(file: File): Promise<RuntimeDiagnosticStore | null> {
   if (!file.exists) return null;
-  /** 读取失败继续抛出，不能当成空记录覆盖正文。 */
   const contents = await file.text();
   try {
     const parsed = JSON.parse(contents) as RuntimeDiagnosticStore;
@@ -231,13 +230,11 @@ installRuntimeDiagnosticRecorder((type, fields) => persistRuntimeDiagnostic(
 
 export function snapshotRuntimeDiagnostics(): Promise<RuntimeDiagnosticStore> {
   eventBatch = null;
-  /** 快照排在已提交事件之后，先于后续事件。 */
   const pending = writeQueue.then(readStore);
   writeQueue = pending.then(() => undefined, () => undefined);
   return pending;
 }
 
-/** 立即固定内存事件，磁盘读取最多等待 1.5 秒。 */
 export async function snapshotRuntimeDiagnosticsForExport() {
   const emergency = snapshotEmergencyRuntimeDiagnostics();
   let timer: ReturnType<typeof setTimeout> | undefined;

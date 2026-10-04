@@ -118,7 +118,7 @@ describe('settings navigation', () => {
     mockLoadPrefs.mockClear();
     mockExportDiagnostics.mockReset();
     mockExportDiagnostics.mockResolvedValue(undefined);
-    // 预览卡流光徽章会启动循环动画，测试环境替换为无操作桩避免原生驱动报错。
+    /** 替换循环动画，避免测试中的原生驱动报错。 */
     jest.spyOn(Animated, 'loop').mockReturnValue({
       start: jest.fn(),
       stop: jest.fn(),

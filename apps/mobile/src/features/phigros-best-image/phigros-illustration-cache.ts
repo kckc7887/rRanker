@@ -1,4 +1,3 @@
-/** 按会话缓存拆分曲绘：已缓存直接复用，仅返回尚未加载的 songId。 */
 export function partitionPhigrosIllustrationCache(
   songIds: readonly string[],
   cache: Readonly<Record<string, string | null>>,

@@ -11,7 +11,6 @@ import type { OsuGameId } from '@/domain/game-mode-family';
 import { useAppTheme } from '@/theme/app-theme';
 import { OsuModeSelectContent } from './OsuModeSelectContent';
 
-/** 绑定页内的模式选择弹层（复用已有 osu 账号时进入）。 */
 export function OsuModeSelectSheet({ visible, alreadyBound, busy, onClose, onSubmit }: {
   visible: boolean;
   alreadyBound: readonly OsuGameId[];

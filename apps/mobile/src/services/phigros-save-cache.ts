@@ -23,7 +23,6 @@ function phigrosSaveResourceKey(accountId: string): string {
   return `phigros-save:${accountId}`;
 }
 
-/** 缓存优先渲染时的来源标记：source 与 catalogSource 均打标，label 原样保留。 */
 export function stalePhigrosPayload(payload: PhigrosGameDataPayload): PhigrosGameDataPayload {
   return {
     ...payload,
@@ -32,11 +31,6 @@ export function stalePhigrosPayload(payload: PhigrosGameDataPayload): PhigrosGam
   };
 }
 
-/**
- * Phigros 云端存档的本地持久化快照。
- * 每次同步都需重新下载云存档 zip 并解析（TapTap 存档 + 定数表），
- * 首次查询可读取兼容快照；显式同步由数据服务重新加载。
- */
 export class PhigrosSaveCache {
   constructor(private readonly repository: Pick<ResourceRepository, 'getResource' | 'saveResource'> = new SqliteSnapshotRepository()) {}
 

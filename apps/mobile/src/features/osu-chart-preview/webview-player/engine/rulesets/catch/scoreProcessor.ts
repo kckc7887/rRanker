@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -31,21 +31,8 @@ import { computeDifficultyMultiplier } from '../../utils/scoreProcessor';
 import type { AccFrame } from '../../renderer/HUDRenderer';
 import type { CatchObject } from './types';
 
-// Catch scoring. The catch object → HitResult mapping (set in hitJudge.ts) is:
-//   fruit       → 300 caught / 0 miss, comboBreak on miss          (Great)
-//   droplet     → 100 caught / 0 miss, comboBreak on miss          (LargeTickHit)
-//   tinyDroplet → 50  caught / 0 miss, comboIgnore                 (SmallTickHit)
-//   banana      → 300 caught / 0 miss, comboIgnore (bonus only)    (LargeBonus)
-// The numeric `judgement` only flags caught (>0) vs missed (0); the V1/V2 weights below
-// come from `catchType`, NOT that value. Combo = fruit + droplet only; accuracy =
-// fruit + droplet + tinyDroplet (bananas excluded). No hit windows.
+/** combo 仅计水果和水滴；准确率还计 tiny，香蕉仅计奖励。 */
 
-/**
- * Running catch accuracy after each judged object. Catch weights every fruit/droplet/tiny
- * equally (caught ⇒ 300/300, missed ⇒ 0/300) → caught / total over those three; bananas
- * (bonus) never count. The shared computeAccTimeline can't be reused: it skips comboIgnore
- * results, which would drop tiny droplets.
- */
 export function computeCatchAccTimeline(results: readonly HitResult[]): AccFrame[] {
   const sorted = [...results].sort((a, b) => a.time - b.time);
 
@@ -53,7 +40,7 @@ export function computeCatchAccTimeline(results: readonly HitResult[]): AccFrame
   let caught = 0;
   let judged = 0;
   for (const r of sorted) {
-    if (r.catchType === 'banana') continue;   // bonus: accuracy-neutral
+    if (r.catchType === 'banana') continue;
     judged++;
     if (r.judgement > 0) caught++;
     frames.push({ time: r.time, acc: judged > 0 ? caught / judged : 1 });
@@ -61,9 +48,6 @@ export function computeCatchAccTimeline(results: readonly HitResult[]): AccFrame
   return frames;
 }
 
-// Catch grade is purely accuracy-cutoff based (CatchScoreProcessor.RankFromAccuracy):
-// X 100% / S 98% / A 94% / B 90% / C 85%. Stable uses the same thresholds, so V1 and V2
-// share this. HD/FL → silver SS/S.
 function catchGrade(accuracy: number, mods: number): Grade {
   let g: Grade;
   if      (accuracy >= 1.0)  g = 'SS';
@@ -73,7 +57,7 @@ function catchGrade(accuracy: number, mods: number): Grade {
   else if (accuracy >= 0.85) g = 'C';
   else                       g = 'D';
 
-  const silver = (mods & ((1 << 3) | (1 << 10))) !== 0;  // HD or FL
+  const silver = (mods & ((1 << 3) | (1 << 10))) !== 0;
   if (silver) {
     if (g === 'S')  return 'SH';
     if (g === 'SS') return 'SSH';
@@ -81,27 +65,21 @@ function catchGrade(accuracy: number, mods: number): Grade {
   return g;
 }
 
-// Catch V1 mod multiplier (GetLegacyScoreMultiplier). Differs from the shared std
-// table only in HR (1.12, not 1.06). Scales the combo bonus at display time. NC sets the
-// DT bit too, so bit 6 covers both.
 function catchV1ModMultiplier(mods: number): number {
   let m = 1;
-  if (mods & (1 << 0))  m *= 0.5;   // NoFail
-  if (mods & (1 << 1))  m *= 0.5;   // Easy
-  if (mods & (1 << 8))  m *= 0.3;   // HalfTime / Daycore
-  if (mods & (1 << 3))  m *= 1.06;  // Hidden
-  if (mods & (1 << 4))  m *= 1.12;  // HardRock (catch-custom)
-  if (mods & (1 << 6))  m *= 1.06;  // DoubleTime / Nightcore
-  if (mods & (1 << 10)) m *= 1.12;  // Flashlight
-  if (mods & (1 << 7))  m *= 0;     // Relax — no score
+  if (mods & (1 << 0))  m *= 0.5;
+  if (mods & (1 << 1))  m *= 0.5;
+  if (mods & (1 << 8))  m *= 0.3;
+  if (mods & (1 << 3))  m *= 1.06;
+  if (mods & (1 << 4))  m *= 1.12;
+  if (mods & (1 << 6))  m *= 1.06;
+  if (mods & (1 << 10)) m *= 1.12;
+  if (mods & (1 << 7))  m *= 0;
   return m;
 }
 
-// Stable ScoreV1 (per stable's simulateHit): Fruit 300 (+ combo-scaled bonus), Droplet 100, TinyDroplet 10,
-// Banana 1100 (bonus). Only fruit get the combo multiplier; only fruit + droplet build
-// combo. scoreIncrease/25 is integer division (300/25 = 12); scoreMultiplier is the
-// difficulty "peppy stars" factor (computeDifficultyMultiplier). Displayed score mirrors
-// taiko/std V1: accuracyScore + bonusScore + round(comboScore × modMult).
+/** V1 仅水果享有 combo 加分；显示分数为基础分+奖励+round(combo 分×Mod)。 */
+
 function computeCatchScoreV1Timeline(
   beatmap: BeatmapData,
   results: readonly HitResult[],
@@ -128,18 +106,18 @@ function computeCatchScoreV1Timeline(
       if (hit) caught++;
 
       if (r.catchType === 'tinyDroplet') {
-        if (hit) accuracyScore += 10;            // no combo
+        if (hit) accuracyScore += 10;
       } else if (hit) {
         combo++;
         if (combo > maxCombo) maxCombo = combo;
         if (r.catchType === 'fruit') {
           accuracyScore += 300;
           comboScore += Math.trunc(Math.max(0, combo - 1) * 12 * diffMult);
-        } else {                                 // droplet
+        } else {
           accuracyScore += 100;
         }
       } else {
-        combo = 0;                               // fruit/droplet miss breaks combo
+        combo = 0;
       }
     }
 
@@ -151,9 +129,8 @@ function computeCatchScoreV1Timeline(
 }
 
 const COMBO_BASE = 4;
-const LOG4_200 = Math.log(200) / Math.log(COMBO_BASE);   // log4(combo_cap) ≈ 3.8219
+const LOG4_200 = Math.log(200) / Math.log(COMBO_BASE);
 
-// GetComboScoreChange multiplier: clamp(log4(comboAfter), 0.5, log4(200)).
 function comboFactor(combo: number): number {
   if (combo <= 0) return 0.5;
   const l = Math.log(combo) / Math.log(COMBO_BASE);
@@ -164,16 +141,13 @@ function hasDefaultConfig(mod: LazerMod): boolean {
   return mod.settings === undefined || Object.keys(mod.settings).length === 0;
 }
 
-// Lazer RateAdjustModHelper.ScoreMultiplier; speed truncated to a 0.1 step first.
+/** 速率先截断到 0.1，再计算 Mod 倍率。 */
 function rateAdjustMultiplier(speed: number): number {
   const truncated = Math.trunc(speed * 10) / 10;
   const offset = truncated - 1;
   return speed >= 1 ? 1 + offset / 5 : 0.6 + offset;
 }
 
-// Catch V2 mod multiplier (lazer's catch score-multiplier table). HR 1.12 (vs taiko's
-// 1.06); DT/NC/HT/DC are rate-adjusted; CL 0.96; RX 0.1; HD/HR/FL collapse to 1 when
-// the mod carries a non-default configuration.
 function catchV2ModMultiplier(lazerMods: readonly LazerMod[]): number {
   let m = 1;
   for (const mod of lazerMods) {
@@ -202,10 +176,8 @@ function catchV2ModMultiplier(lazerMods: readonly LazerMod[]): number {
   return m;
 }
 
-// CatchScoreProcessor.ComputeTotalScore: a fixed 400k slice is reserved for tiny droplets,
-// scaled by their share of (tiny + fruit). The rest is the log-curve combo portion; bananas
-// add a flat 200 bonus each. comboProgress = running comboPortion / full-map maxComboPortion
-// (final-frame-exact, like taiko/mania); dropletsHit = caught tinies / total tinies.
+/** V2 给 tiny 预留 400k 分，剩余按 combo 对数曲线计分；香蕉每根加 200。 */
+
 function computeCatchScoreV2Timeline(
   objects: readonly CatchObject[],
   results: readonly HitResult[],
@@ -223,7 +195,6 @@ function computeCatchScoreV2Timeline(
   const comboPortionWeight   = 1000000 - 400000 * fruitTinyScale;
   const dropletsPortionWeight = 400000 * fruitTinyScale;
 
-  // Full-map max combo portion: every fruit/droplet caught, in start-time order.
   let maxComboPortion = 0;
   let simCombo = 0;
   for (const o of [...objects].sort((a, b) => a.startTime - b.startTime)) {
@@ -273,11 +244,6 @@ function computeCatchScoreV2Timeline(
   return frames;
 }
 
-/**
- * Running score/combo/grade after each judged object. Dispatches on the replay's origin:
- * stable replays get ScoreV1, lazer replays get the standardised (1M-base) total —
- * matching what the .osr header's `score` field holds in each case.
- */
 export function computeCatchScoreTimeline(
   objects: readonly CatchObject[],
   results: readonly HitResult[],

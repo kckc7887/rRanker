@@ -11,10 +11,6 @@ import { OsuDifficultyBadge } from './OsuDifficultyBadge';
 import { OsuModBadge } from './OsuModBadge';
 import { OsuRankTag } from './OsuRankTag';
 
-/**
- * osu! 最佳成绩卡：标题歌名、主信息得分、下方难度标签（N★）+ 评价标签、
- * 右侧上下居中小字准确率 + 大字 PP。点击进入歌曲详情页（songId = beatmapset id）。
- */
 export function OsuScoreCard({ gameId, score, position, detailScoreId }: {
   gameId: OsuGameId;
   score: OsuBestScore;

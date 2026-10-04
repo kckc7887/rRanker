@@ -44,14 +44,14 @@ export function createRuntimeLogController(dependencies: {
   const publish = (patch: Partial<RuntimeLogState>) => {
     state = { ...state, ...patch };
     for (const listener of listeners) {
-      try { listener(); } catch { /* 订阅者不得中断落盘或异常处理。 */ }
+      try { listener(); } catch {}
     }
   };
   const fail = (phase: NonNullable<RuntimeLogState['failurePhase']>, error: unknown) => {
     if (phase !== 'history') { clearPending(); recordingFailure = error; }
     const id = state.activeId;
     if (id !== null && phase !== 'history') {
-      try { repository?.finish(id, 'failed'); } catch { /* 下次启动恢复未结束记录。 */ }
+      try { repository?.finish(id, 'failed'); } catch {}
     }
     publish({
       activeId: phase === 'history' ? id : null, failed: true, busy: false, historyBusy: false, failurePhase: phase,

@@ -79,7 +79,6 @@ describe('osu! 模组元数据映射', () => {
   });
 
   it('resolveOsuModTheme：已知模组返回类型色，未知 acronym 返回 null', () => {
-    // HD/DT 增难红、EZ 降难绿、RX 自动化蓝、CL 转换紫、TD/SV2 系统黄
     expect(resolveOsuModTheme('HD')).toEqual({ background: '#FF6666', foreground: '#591E1E' });
     expect(resolveOsuModTheme('EZ')).toEqual({ background: '#B3FF66', foreground: '#3C591E' });
     expect(resolveOsuModTheme('RX')).toEqual({ background: '#66CCFF', foreground: '#1E4659' });

@@ -10,19 +10,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -36,7 +36,6 @@ import type { ModDifficulty } from '../utils/modDifficulty';
 import { sampleSlider } from './SliderGeometry';
 import { slideDurationMs } from '../utils/sliderDuration';
 
-// Must match HitObjectRenderer.
 const PLAYFIELD_W = 512;
 const PLAYFIELD_H = 384;
 const CANVAS_W = 1280;
@@ -49,13 +48,9 @@ function toCanvas(x: number, y: number): [cx: number, cy: number] {
   return [OFFSET_X + x * SCALE, OFFSET_Y + y * SCALE];
 }
 
-
-
-
-
-// Danser constants.
+/** 沿用 Danser 的轨迹参数。 */
 const PRE_EMPT      = 800;
-const LINE_DIST     = 32;    // osu!pixels
+const LINE_DIST     = 32;    /** 距离单位为 osu! 像素。 */
 const TRAIL_CAP     = 5000;
 const HIT_FADE_IN   = 400;
 const HIT_FADE_OUT  = 240;
@@ -72,7 +67,7 @@ interface FollowpointArt {
 
 const _artCache = new WeakMap<Map<string, ImageBitmap>, FollowpointArt | null>();
 
-// Skips 1×1 placeholder images (skins use them to suppress engine defaults).
+/** 1×1 占位图表示隐藏默认素材。 */
 function resolveFollowpointArt(images: Map<string, ImageBitmap>): FollowpointArt | null {
   const cached = _artCache.get(images);
   if (cached !== undefined) return cached;
@@ -111,7 +106,7 @@ function startPosStacked(obj: HitObject, radiusOsu: number, flipY: (y: number) =
   return { x: obj.x + shift, y: flipY(obj.y) + shift };
 }
 
-// Slider end depends on slide parity: odd ends at tail, even ends back at head.
+/** 奇数次滑动终点在尾，偶数次回到头。 */
 function endPosStacked(obj: HitObject, radiusOsu: number, flipY: (y: number) => number): { x: number; y: number } | null {
   if (obj.type === 'spinner') return null;
   if (obj.type === 'circle') {
@@ -132,12 +127,7 @@ function objectEndTime(obj: HitObject, beatmap: BeatmapData): number {
   return obj.time;
 }
 
-/**
- * Draw followpoint trails between consecutive std hit objects at `timeMs` (beatmap ms).
- * Ported from danser: dots fade in/out along prev→next with a cascading wave; danser's
- * slide/scale animations are omitted. Trails are skipped across spinners, new combos,
- * and gaps shorter than 1.5 dot-spacings. `ctx` is in logical 1280×720 coords.
- */
+/** 轨迹绘制参考 danser。 */
 export function drawFollowpoints(
   ctx: CanvasRenderingContext2D,
   beatmap: BeatmapData,
@@ -157,7 +147,6 @@ export function drawFollowpoints(
 
   const objects = beatmap.hitObjects;
 
-  // Binary-search the visible window; iterating every pair dominates frame time on long maps.
   let firstIdx = 1;
   let lastIdx = objects.length - 1;
   if (objects.length > 1) {
@@ -198,7 +187,7 @@ export function drawFollowpoints(
     const duration = nextTime - prevTime;
     if (duration <= 0) continue;
 
-    // Gate trail on `next` being visible (prevents trail appearing before it at high AR).
+    /** 后一个音符可见时才显示轨迹，避免高 AR 下提前出现。 */
     const nextAppear = nextTime - preempt;
 
     if (timeMs < Math.max(prevTime - PRE_EMPT, nextAppear)) continue;
@@ -215,7 +204,7 @@ export function drawFollowpoints(
 
     const rotation = Math.atan2(dy, dx);
 
-    // bitmap × CircleRadius/64 × SCALE; @2x bitmaps halved later.
+    /** 位图尺寸乘 CircleRadius/64，再转画布坐标；@2x 尺寸折半。 */
     const sizeFactor = (radiusOsu / 64) * SCALE;
 
     const startProgress = Math.max(LINE_DIST * 1.5, distance - TRAIL_CAP);

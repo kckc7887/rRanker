@@ -12,18 +12,11 @@ export const MAX_TAG_LENGTH = 24;
 export const MAX_TAGS_PER_ITEM = 30;
 export const MAX_TAG_PRESETS = 30;
 export const MAX_BACKUP_ITEMS = 5000;
-/** 与 schema 允许的最大备份体积对齐，导出和导入使用同一上限。 */
 export const MAX_BACKUP_FILE_BYTES = 12 * 1024 * 1024;
 
 const GameIdSchema = z.enum(GAME_IDS);
 
-/**
- * 曲库歌曲 id 规范化：adofai 关卡 id 是完整数字（如 11372），
- * musedash 歌曲 uid 是「专辑-歌曲」格式（如 "0-48"），
- * phira 谱面 id 是 5 位完整数字（如 66661），
- * osu 歌曲 id 是完整 beatmapset id（如 3720），
- * 都不适用 maimai 的 U·TA·GE 截断语义；其余游戏使用 normalizeSongId。
- */
+/** ADOFAI、Muse Dash、Phira 和 osu! 保留完整 ID；只有舞萌适用宴谱 ID 截断。 */
 export function normalizeLibrarySongId(gameId: GameId, songId: string | number): string {
   return gameId === 'rizline' || gameId === 'majdata-net' || gameId === 'adofai' || gameId === 'musedash' || gameId === 'phira' || isOsuGameId(gameId)
     ? String(songId)
@@ -46,7 +39,6 @@ export interface ChartLibraryTarget {
 
 export type LibraryTarget = SongLibraryTarget | ChartLibraryTarget;
 
-/** 个人条目的详情身份来自存储目标，不依赖曲库元数据是否已经加载。 */
 export function libraryDetailTarget(item: LibraryTarget): DetailTarget | null {
   const levelIndex = item.kind === 'chart' ? item.levelIndex : undefined;
   switch (item.gameId) {

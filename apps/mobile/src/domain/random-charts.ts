@@ -52,7 +52,6 @@ export type PhigrosRandomChartFilters = {
   accuracyMax: string;
   rank: PhigrosRankFilter | null;
   xing: PhigrosXingKind | null;
-  /** 章节筛选：值来自 catalog.versions 的 id 字符串；'all' 不过滤 */
   chapter: string | 'all';
   selectedKyouTagIds: number[];
 };
@@ -77,7 +76,7 @@ function hashSeed(seed: string): number {
   return hash >>> 0;
 }
 
-/** Mulberry32 — deterministic PRNG for reproducible picks. */
+/** 使用 Mulberry32，种子相同则抽取结果相同。 */
 function createRng(seed: string): () => number {
   let state = hashSeed(seed) || 1;
   return () => {
@@ -94,7 +93,6 @@ function clampCount(count: number): number {
   return Math.min(4, Math.max(1, Math.floor(count)));
 }
 
-/** Generic deterministic sampling without replacement; game-specific data stays outside this contract. */
 export function pickRandomItems<T>(
   items: readonly T[],
   count: number,

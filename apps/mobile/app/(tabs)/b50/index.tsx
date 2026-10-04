@@ -213,8 +213,7 @@ function PhigrosBestScreen() {
   const canReadScores = canReadPhigrosScores(activeProviderId, session?.mode);
   const phigrosPayload = gameData.data?.payload.kind === 'phigros' ? gameData.data.payload : null;
 
-  // useMemo 稳定引用：catalogSongs 是两个下游 useMemo 的依赖，裸 ?? [] 会在
-  // 每次渲染产生新数组导致它们重复计算。
+  /** 无数据时保留数组引用，避免下游重复计算。 */
   const catalogSongs = useMemo(() => catalogQuery.data?.snapshot.songs ?? [], [catalogQuery.data]);
   const titleMap = useMemo(() => {
     const map = new Map<string, string>();

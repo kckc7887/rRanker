@@ -3,7 +3,7 @@ import { loadImageDataUris } from './load-remote-image-data-uri';
 
 const JACKET_ROOT = 'https://assets2.lxns.net/maimai/jacket';
 
-/** 将 Android 原生绝对路径转为 expo-file-system 可读 URI。 */
+/** Android 缓存路径可能没有 file 协议。 */
 export function imageCachePathToFileUri(cachePath: string): string {
   if (/^[a-z][a-z\d+.-]*:\/\//i.test(cachePath)) return cachePath;
   return `file://${cachePath.startsWith('/') ? '' : '/'}${cachePath}`;

@@ -59,11 +59,11 @@ export function compactUploadPhaseLabel(phase: UploadPhase): string {
   }
 }
 
-/** 好友申请可能延迟出现，需多次刷新列表。 */
+/** 好友申请可能延迟出现，需重读列表。 */
 export const FRIEND_REQUEST_REFRESH_HINT =
   '好友申请发出后，可能需在“舞萌-中二公众号 → 我的记录 → 舞萌DX”多刷新几次才能看到申请。';
 
-/** 按近一小时公开成功率给出分档提示（rate 为 0–100）。 */
+/** rate 单位为百分比。 */
 export function scoreHubSuccessHint(rate: number | null, totalCount: number): string {
   if (totalCount <= 0 || rate === null || !Number.isFinite(rate)) {
     return '近一小时暂无公开任务统计，服务状态不明，可稍后再试。';
@@ -153,7 +153,6 @@ function resolveSelectedTargets(input: UploadCommonInput): UploadTarget[] {
   return selected;
 }
 
-/** ScoreHub JWT 失效（需回退好友码登录）。 */
 export function isScoreHubAuthExpired(error: unknown): boolean {
   return error instanceof ScoreHubError
     && (error.status === 401 || error.status === 403);
@@ -184,10 +183,6 @@ export async function uploadMaimaiFromFriendCode(input: UploadCommonInput & {
   });
 }
 
-/**
- * 已绑定机台后：复用指定好友码的本地 ScoreHub JWT 直接拉分写出，
- * 不创建 login-requests / 好友申请。
- */
 export async function uploadMaimaiWithScoreHubSession(input: UploadCommonInput & {
   expectedFriendCode?: string | null;
 }): Promise<UploadResult> {
@@ -241,7 +236,6 @@ export async function uploadMaimaiWithScoreHubSession(input: UploadCommonInput &
         error instanceof ScoreHubError ? error.status : 401,
       );
     }
-    // /me 短暂失败时仍尝试用缓存 token 拉分
   }
 
   if (!friendCode) {
@@ -296,7 +290,6 @@ export async function uploadMaimaiPreferringSession(input: UploadCommonInput & {
   return uploadMaimaiFromFriendCode(input);
 }
 
-/** 独立绑定玩家二维码：仅用指定好友码的 ScoreHub 会话 PUT /me/cabinet。 */
 export async function bindScoreHubCabinetByQr(input: {
   qrCode: string;
   friendCode?: string | null;
@@ -338,7 +331,6 @@ export async function bindScoreHubCabinetByQr(input: {
         error instanceof ScoreHubError ? error.status : 401,
       );
     }
-    // 其他 /me 失败仍尝试绑定；由 bind 接口给出最终错误
   }
 
   try {

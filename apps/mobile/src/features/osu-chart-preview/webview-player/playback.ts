@@ -38,7 +38,7 @@ export function createGameplaySkin(skin: SkinAssets, mode: number): SkinAssets {
   const transparent = skin.images.get('hit300.png');
   if (!transparent || transparent.width <= 1 || transparent.height <= 1) throw new Error('无法准备播放画面');
   const images = new Map(skin.images);
-  // A missing or 1x1 cursor triggers primitive fallback; this built-in 2x2 sentinel suppresses it.
+  /** 2×2 透明 cursor 占位用于隐藏；缺失或 1×1 会触发默认绘制。 */
   for (const stem of ['cursor', 'cursormiddle', 'cursortrail']) {
     images.set(`${stem}.png`, transparent);
     images.set(`${stem}@2x.png`, transparent);
@@ -191,8 +191,7 @@ export class PreviewSession {
     const builtin = await createBuiltinSkin(variant, Math.max(1, Math.round(this.beatmap.circleSize)), this.settings.holdWidth);
     if (this.disposed || request !== this.skinRequest) return;
     if (variant === this.renderedSkinVariant) {
-      // Sessions own their image map. Width changes replace only three tiny body textures;
-      // the ruleset and its judgement/scroll indexes stay alive while dragging the control.
+
       for (const [name, bitmap] of builtin.images) if (/-body(?:@2x)?\.png$/.test(name)) this.skin.images.set(name, bitmap);
       if (!this.playing) this.draw();
       return;

@@ -28,10 +28,6 @@ export function osuKnownScoresQueryKey(
   return ['osu-known-scores', activeAccountId, gameId, userId] as const;
 }
 
-/**
- * osu! 已知成绩集合：首次用当前 Best Top 100 去重播种，之后只读取本地持久化集合。
- * 打开歌曲详情发现的新成绩会通过同一 query key 合并进来，不请求 recent。
- */
 export function useOsuKnownScores(
   gameId: OsuGameId | null,
   seedScores: readonly OsuBestScore[] = EMPTY_SCORES,
@@ -74,7 +70,6 @@ export function useOsuKnownScores(
   return { ...query, data: scores, snapshot: query.data, bound };
 }
 
-/** 打开歌曲详情时查询该模式下每张难度的玩家最佳成绩，并合并进已知集合。 */
 export function useOsuBeatmapsetUserScores(
   gameId: OsuGameId,
   song: OsuBeatmapsetDetail | null,

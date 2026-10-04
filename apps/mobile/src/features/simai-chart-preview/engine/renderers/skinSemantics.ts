@@ -1,6 +1,4 @@
-/** Runtime sprite contract; object names are immutable S3 keys.
- * Sprites use the full image rectangle and center pivot; default density is 100 pixels/world unit.
- * Native alpha bounds and dimensions are recorded in the audited manifest. */
+/** 皮肤以图片中心为轴，默认密度为 100 像素/世界单位。 */
 export const SKIN_ALIASES: Readonly<Record<string, string>> = {
   'TouchHoldSkins/touchhold_mine_border.png': 'TouchHoldSkins/touchhold_break_mine.png',
 };
@@ -12,20 +10,20 @@ export function resolveStarSkin(path: string, pink: boolean): string {
   if (path === 'StarSkins/star_double.png') return 'StarSkins/star_pink_double.png';
   return path;
 }
-// Pink artwork has a different pixel resolution; preserve the original single/double star footprint.
+/** 粉色素材分辨率不同，按原星星尺寸缩放。 */
 export const SKIN_DISPLAY_SIZE: Readonly<Record<string, readonly [number, number]>> = {
   'StarSkins/star_pink.png': [1.26, 1.26],
   'StarSkins/star_pink_double.png': [1.22, 1.26],
 };
-// Measured from the original 2048px sensor.webp: eight E-region centers fit touchPoint at radius 3.1.
+/** 2048px sensor.webp 的 E 区中心对应半径 3.1。 */
 export const SENSOR_TRANSFORM = { center: [1025.5, 997] as const, pixelsPerUnit: 197 } as const;
-// S3 outline.png: 480px ring radius, 6px stroke and approximately 29px marker diameter at 100 PPU.
+/** outline.png：100 PPU 下环半径 480px、线宽 6px、标记直径约 29px。 */
 export const JUDGMENT_OUTLINE = { lineWidth: 0.06, markerRadius: 0.145 } as const;
 export const SKIN_TRANSFORM = {
   pixelsPerUnit: 100,
   pivot: [0.5, 0.5] as const,
   holdSlice: [0.29, 0.29] as const,
-  // Image y grows down; ViewX world y and angles grow counterclockwise.
+  /** 图片 Y 向下；ViewX 的 Y 向上，角度逆时针。 */
   canvasYSign: -1,
   canvasAngleSign: -1,
   touchPetalDegrees: [90, 180, 270, 360],

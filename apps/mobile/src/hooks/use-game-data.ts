@@ -43,7 +43,6 @@ export function useGameData(enabled = true) {
     queryKey,
     enabled: enabled && tabActive,
     notifyOnChangeProps: tabActive ? undefined : [],
-    // 规范查询选项集中在 services/game-data-query.ts：一个实体只有一份新鲜度策略。
     ...GAME_DATA_QUERY_OPTIONS,
     queryFn: async ({ signal }): Promise<GameDataBundle> => {
       const assertCurrent = captureResourceWrites(activeGameId, signal, activeAccountId);
@@ -64,13 +63,11 @@ export function useGameData(enabled = true) {
         hasSessionData,
         signal,
         assertCurrent,
-        // 加载器不持有查询客户端：发布、读取与失效都经适配层端口。
         publish: (bundle) => publishGameDataBundle(queryClient, queryKey, bundle, assertCurrent),
         readEntityValue: (entityKey) => readGameDataBundle(queryClient, entityKey),
         publishEntityValue: (entityKey, value) => { void publishEntityValue(queryClient, entityKey, value, assertCurrent); },
         invalidateEntityValue: (entityKey) => invalidateEntityValue(queryClient, entityKey),
       });
-      // 后台分离刷新的终态句柄交给适配层登记：主动刷新据此等待「网络与提交全部落定」。
       registerGameDataBackground(queryKey, result.background);
       return result.bundle;
     },

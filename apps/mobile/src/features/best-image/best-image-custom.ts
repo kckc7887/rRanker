@@ -27,18 +27,18 @@ export type CustomBestImageFilters = {
   nearMiss: boolean;
   selectedDxRatingTagIds: readonly number[];
   dxRatingTagIndex: DxRatingChartTagIndex;
-  /** 版本名 → 展示名（跟随筛选器的中/日切换）。 */
+
   versionLabels: Readonly<Record<string, string>>;
-  /** 版本以外生效筛选条件的展示标签（如难度/类型/定数/达成率/成就/寸/严格）。 */
+
   conditionLabels: readonly string[];
-  /** 版本筛选生效时的展示标签；未缩窄版本时为空。 */
+
   versionConditionLabel: string | null;
 };
 
 export type BestImageScoreSectionData = {
   id: string;
   title: string;
-  /** 多条件筛选时标题下方的小字筛选条件提示。 */
+
   subtitle?: string;
   records: readonly ScoreRecord[];
   rankOffset?: number;
@@ -84,7 +84,6 @@ function limited(records: readonly ScoreRecord[], quantity: number): ScoreRecord
   return quantity === 0 ? ranked : ranked.slice(0, quantity);
 }
 
-/** 单个条件时标题为「{条件}N」，多个条件时标题为「自定义N」并附小字提示。 */
 function buildSectionTitle(
   conditions: readonly string[],
   count: number,
@@ -197,11 +196,7 @@ export function paginateBestImageSections(
   }));
 }
 
-/**
- * Keep each exported bitmap in roughly the same memory range as a 1080 px,
- * 50-row page. Higher resolutions therefore use more, shorter pages instead
- * of constructing one exceptionally large native bitmap.
- */
+/** 单页像素量以 1080px、50 行为基准。 */
 export function maximumBestImageRowsForWidth(width: number): number {
   const safeWidth = Number.isFinite(width) && width > 0 ? width : 1080;
   return Math.max(1, Math.min(50, Math.floor(50 * (1080 / safeWidth) ** 2)));

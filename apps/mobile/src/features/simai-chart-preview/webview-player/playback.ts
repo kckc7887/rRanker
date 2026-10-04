@@ -1,9 +1,3 @@
-/**
- * 舞萌谱面确认播放会话。
- * 独占播放位置（拍）、命令代次、音源与 rAF；位置的拍/毫秒/音乐秒换算沿用 timeConversion，
- * 视图、背景与控制只通过回调接线，不各自保存播放状态。
- */
-
 import { AudioManager, type PreparedAudioEvent } from '../engine/core/audio/AudioManager';
 import { ANSWER_SOUND_BASE_OFFSET_MS } from '../engine/utils/constants';
 import type { Chart } from '../engine/types';
@@ -32,7 +26,6 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-/** 外部环境边界：由调用方注入，便于在不改全局对象的前提下验证会话。 */
 export interface SimaiPlaybackEnvironment {
   createAudioContext(): AudioContext;
   requestFrame(callback: (timestamp: number) => void): number;
@@ -47,25 +40,22 @@ export const defaultSimaiPlaybackEnvironment: SimaiPlaybackEnvironment = {
   now: () => performance.now(),
 };
 
-/** 会话向播放器界面派发的事件出口。 */
 export interface SimaiPlaybackHost {
-  /** 位置或播放状态变化后重绘（含背景视频同步、时间轴与信息栏）。 */
   render(beats: number): void;
-  /** 播放状态变化：开始、暂停与自然结束都会通知。 */
   onPlayStateChange?(playing: boolean): void;
   /** 播到循环区间终点时返回回绕位置，null 表示不循环。 */
   loopTarget?(beats: number): number | null;
 }
 
 export interface SimaiPlaybackOptions {
-  /** 参与播放范围计算的谱面；第一份是位置换算的主谱。 */
+  /** 第一份谱面提供播放时间轴。 */
   charts: readonly Chart[];
   answerEvents: readonly PreparedAudioEvent[];
   answerSoundUrl: string;
   speed?: number;
-  /** 0～10，与设置面板一致。 */
+  /** 音量范围 0～10。 */
   musicVolume?: number;
-  /** 0～10，与设置面板一致。 */
+  /** 音量范围 0～10。 */
   soundVolume?: number;
   musicOffset?: number;
   environment?: SimaiPlaybackEnvironment;
@@ -97,7 +87,6 @@ export class SimaiPlaybackSession {
   private command = 0;
   private frame: number | null = null;
   private lastFrameTimestamp = 0;
-  /** 播放状态与释放状态由会话内部改写，宿主只读。 */
   playing = false;
   disposed = false;
   private resourceGeneration = 0;
@@ -140,20 +129,15 @@ export class SimaiPlaybackSession {
     return this.getMusicTime();
   }
 
-  /** 拍 → 谱面毫秒：视图绘制与信息栏与会话共用同一时间轴。 */
   beatsToMs(beats: number): number {
     return this.timeline.beatsToMs(beats);
   }
 
-  /** 谱面毫秒 → 拍：拖动定位等视图输入复用同一时间轴。 */
   beatsAtMs(ms: number): number {
     return this.timeline.beatsAtMs(ms);
   }
 
-  /**
-   * 载入预览曲并在此之后确定播放范围。
-   * 解码失败进入静音看谱；范围仍按谱尾与音乐结尾的较晚者计算。
-   */
+  /** 解码失败时静音看谱，范围取谱尾与音乐结尾的较晚者。 */
   async loadMusic(bytes: ArrayBuffer | null): Promise<boolean> {
     if (this.disposed) return false;
     const generation = ++this.resourceGeneration;
@@ -256,7 +240,6 @@ export class SimaiPlaybackSession {
       try {
         node?.disconnect();
       } catch {
-        /* 已断开 */
       }
     }
     this.source = null;
@@ -319,13 +302,11 @@ export class SimaiPlaybackSession {
         source.stop();
       }
     } catch {
-      /* 已停止 */
     }
     try {
       source.disconnect();
       gain?.disconnect();
     } catch {
-      /* 已断开 */
     }
   }
 
@@ -359,7 +340,7 @@ export class SimaiPlaybackSession {
         this.sourceGain = null;
         source.disconnect();
         gain.disconnect();
-        // 音频自然结束后保留公共时钟，剩余谱面继续沿同一时间轴播放。
+        /** 音乐结束后继续用原时钟播放剩余谱面。 */
       }
     };
     source.start(startTime, clamped);

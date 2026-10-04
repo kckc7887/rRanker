@@ -60,7 +60,7 @@ export class PhigrosResourceService {
   }
 
   url(path: string, release?: PhigrosRelease): string {
-    // Encode object-key segments before URL parsing; '#' and '?' belong to song IDs.
+    /** 先编码路径段，歌曲 ID 中的 # 和 ? 不作 URL 分隔符。 */
     const url = new URL(path.split('/').map(encodeURIComponent).join('/'), `${this.base}/`);
     if (release) {
       url.searchParams.set('v', release.current.resourceVersion);
@@ -84,7 +84,6 @@ export class PhigrosResourceService {
   }
 
   async bytes(url: string, signal?: AbortSignal, timeoutMs = 12_000, diagnosticScenario: RuntimeRequestScenario = 'resource'): Promise<Uint8Array> {
-    // The shared request runner owns timeout, cancellation and HTTP error handling.
     return requestBytes({
       baseUrl: '', path: url, signal, timeoutMs, diagnosticScenario, totalAttempts: 1, label: 'Phigros', fetcher: expoFetch as unknown as typeof fetch,
       error: (status) => new ProviderError('network', `Phigros 资源请求失败：${status}`, true),

@@ -2,7 +2,6 @@ import { useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 
-/** 舞萌歌曲封面的共同外观、失败占位和可见图片缓存入口。 */
 export function GameSongCover({ source, gameId, size = 58, borderRadius = 9 }: {
   source: string | null;
   gameId: string;

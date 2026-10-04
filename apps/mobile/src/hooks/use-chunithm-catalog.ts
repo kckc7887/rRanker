@@ -9,7 +9,6 @@ import { queryClient } from '@/state/query-client';
 
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 
-/** 中二曲库。别名随曲库一并合并，供当前会话内的搜索与详情展示。 */
 export function useChunithmCatalog(enabled = true) {
   const tabActive = useCachedTabActive();
   const activeGameId = useSession((state) => state.activeGameId);

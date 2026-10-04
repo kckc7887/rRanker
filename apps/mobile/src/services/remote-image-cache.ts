@@ -168,7 +168,7 @@ async function loadManifest(): Promise<CacheState> {
   let activeGameId: string | null = null;
   let gameLastUsed = new Map<string, number>();
   if (manifestFile.exists) {
-    // An unreadable index says nothing about ownership; retain every cached file until a successful read.
+    /** 读取失败时保留缓存文件。 */
     const text = await manifestFile.text();
     try {
       const parsed = JSON.parse(text) as Partial<CacheManifest>;
@@ -245,7 +245,7 @@ function queueManifestWrite(): void {
   manifestWriteTimer = setTimeout(() => {
     manifestWriteTimer = null;
     manifestWriteQueue = manifestWriteQueue.then(persistManifest, persistManifest);
-    // Observe timer-started failures immediately; explicit flush still receives the original rejection.
+    /** 定时写入先接住拒绝；flush 仍返回原失败。 */
     void manifestWriteQueue.catch(() => undefined);
   }, 1000);
 }
@@ -465,7 +465,7 @@ function releaseSharedObject(value: { release?: () => void } | null | undefined)
   try {
     value?.release?.();
   } catch {
-    // 原生对象可能已经随视图卸载释放。
+    /** 原生引用可能已随视图释放。 */
   }
 }
 
