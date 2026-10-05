@@ -54,7 +54,7 @@ function CountChip({
       <Text style={[
         styles.chipText,
         { color: theme.textSecondary },
-        active && styles.chipTextActive,
+        active && { color: theme.onAccent },
       ]}>
         {value}
       </Text>
@@ -127,7 +127,7 @@ export function RandomChartsPage({
             style={[styles.drawButton, { backgroundColor: theme.accent }, drawDisabled && styles.disabled]}
             testID="random-charts-draw"
           >
-            <Text style={styles.drawButtonText}>
+            <Text style={[styles.drawButtonText, { color: theme.onAccent }]}>
               {hasDrawn ? '再抽一次' : '抽取'}
             </Text>
           </Pressable>
@@ -202,7 +202,6 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
   },
   chipText: { fontSize: 13, fontWeight: '700' },
-  chipTextActive: { color: '#FFFFFF' },
   filterContainer: {
     overflow: 'hidden',
     borderRadius: 12,

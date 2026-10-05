@@ -19,13 +19,24 @@ import type {
 } from '@/services/upload-maimai-from-friend-code';
 import { captureAccountWrites } from '@/services/snapshot-cache-utils';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { withUploadAbortSignal, type ScoreHubAbortSignal } from '@/services/score-hub-http';
 
 export type LxnsTransferPhase =
   | { kind: 'reading'; account: BoundAccount }
   | { kind: 'uploading'; account: BoundAccount }
   | { kind: 'refreshing'; account: BoundAccount };
 
-type TransferSignal = { aborted: boolean };
+type TransferSignal = ScoreHubAbortSignal;
+
+function validateTransferSource(sourceAccount: BoundAccount, sourceSession: ProviderSession, selected: readonly UploadTarget[]) {
+  if (sourceAccount.providerId !== 'lxns' || sourceSession.mode !== 'lxns-oauth') {
+    throw new ProviderError('authentication', '数据来源必须是已授权的舞萌落雪账号', false);
+  }
+  if (selected.length === 0) throw new ProviderError('no_data', '请至少勾选一个上传目标', false);
+  if (selected.some(target => !target.writable)) throw new ProviderError('permission', '所选目标中包含不可写账号', false);
+  if (selected.some(target => target.account.id === sourceAccount.id)) throw new ProviderError('permission', '数据来源不能同时作为上传目标', false);
+  return sourceSession;
+}
 
 function assertNotCanceled(signal?: TransferSignal) {
   if (signal?.aborted) throw new ProviderError('unknown', '已取消', false);
@@ -74,18 +85,7 @@ export async function transferMaimaiFromLxns(input: {
     update: LxnsTokenRotationUpdate,
   ) => void | Promise<unknown>;
 }): Promise<UploadResult> {
-  if (input.sourceAccount.providerId !== 'lxns' || input.sourceSession.mode !== 'lxns-oauth') {
-    throw new ProviderError('authentication', '数据来源必须是已授权的舞萌落雪账号', false);
-  }
-  if (input.selected.length === 0) {
-    throw new ProviderError('no_data', '请至少勾选一个上传目标', false);
-  }
-  if (input.selected.some((target) => !target.writable)) {
-    throw new ProviderError('permission', '所选目标中包含不可写账号', false);
-  }
-  if (input.selected.some((target) => target.account.id === input.sourceAccount.id)) {
-    throw new ProviderError('permission', '数据来源不能同时作为上传目标', false);
-  }
+  const sourceSession = validateTransferSource(input.sourceAccount, input.sourceSession, input.selected);
 
   const assertAccount = captureAccountWrites([
     input.sourceAccount,
@@ -94,13 +94,13 @@ export async function transferMaimaiFromLxns(input: {
   assertNotCanceled(input.signal);
   input.onPhase?.({ kind: 'reading', account: input.sourceAccount });
   const sourceProvider = new LxnsScoreProvider(
-    input.sourceSession,
+    sourceSession,
     (update) => input.onLxnsTokensRotated?.(input.sourceAccount.id, update),
   );
-  const [sourcePlayer, sourceRecords] = await Promise.all([
-    sourceProvider.getPlayer(),
-    sourceProvider.getRecords(),
-  ]);
+  const [sourcePlayer, sourceRecords] = await withUploadAbortSignal(input.signal, signal => Promise.all([
+    sourceProvider.getPlayer(signal),
+    sourceProvider.getRecords(signal),
+  ]));
   if (sourceRecords.length === 0) {
     throw new ProviderError(
       'no_data',
@@ -111,7 +111,7 @@ export async function transferMaimaiFromLxns(input: {
 
   const repository = new SqliteSnapshotRepository();
   const sourceSnapshot = buildScoreSnapshot(sourcePlayer, sourceRecords, input.catalog);
-  const assertSource = () => assertAccount(input.sourceAccount.id);
+  const assertSource = () => { assertNotCanceled(input.signal); assertAccount(input.sourceAccount.id); };
   assertSource();
   await repository.save(input.sourceAccount.id, sourceSnapshot, assertSource);
 
@@ -128,9 +128,11 @@ export async function transferMaimaiFromLxns(input: {
   let skipped = 0;
 
   for (const target of input.selected) {
+    await input.signal?.waitUntilResumed?.();
     assertNotCanceled(input.signal);
     input.onPhase?.({ kind: 'uploading', account: target.account });
     let written = 0;
+    let status: UploadTargetResult['status'] = 'success';
     let targetSkipped = 0;
     try {
       // 每个目标写入前复核账号是否仍有效：失效目标不再写入，其他目标继续。
@@ -141,7 +143,7 @@ export async function transferMaimaiFromLxns(input: {
           sourceSnapshot.records,
           input.catalog,
         );
-        const assertTarget = () => assertAccount(target.account.id);
+        const assertTarget = () => { assertNotCanceled(input.signal); assertAccount(target.account.id); };
         assertTarget();
         await repository.save(target.account.id, snapshot, assertTarget);
         refreshedAccounts.push({ account: target.account, snapshot, assertCurrent: assertTarget });
@@ -152,13 +154,15 @@ export async function transferMaimaiFromLxns(input: {
         if (!session || session.mode !== 'import-token') {
           throw new ProviderError('authentication', '水鱼上传需要 Import-Token', false);
         }
-        written = (await uploadRecordsToDivingFish(
+        const result = await uploadRecordsToDivingFish(
           session.value,
           divingFishMapped.records,
           input.signal,
           { assertEligible: () => assertAccount(target.account.id) },
-        )).uploaded;
-        uploadedDivingFishAccounts.push(target.account);
+        );
+        written = result.uploaded;
+        status = result.status;
+        if (status === 'success') uploadedDivingFishAccounts.push(target.account);
       } else if (target.account.providerId === 'lxns') {
         targetSkipped = skippedCount(lxnsMapped);
         const session = input.sessionsByAccountId[target.account.id];
@@ -173,19 +177,20 @@ export async function transferMaimaiFromLxns(input: {
           onTokensRotated: (update) => input.onLxnsTokensRotated?.(target.account.id, update),
         });
         written = uploadResult.uploaded;
+        status = uploadResult.status;
 
-        try {
+        if (status === 'success') try {
           input.onPhase?.({ kind: 'refreshing', account: target.account });
           const provider = new LxnsScoreProvider(
             uploadResult.session,
             (update) => input.onLxnsTokensRotated?.(target.account.id, update),
           );
-          const [player, records] = await Promise.all([
-            provider.getPlayer(),
-            provider.getRecords(),
-          ]);
+          const [player, records] = await withUploadAbortSignal(input.signal, signal => Promise.all([
+            provider.getPlayer(signal),
+            provider.getRecords(signal),
+          ]));
           const snapshot = buildScoreSnapshot(player, records, input.catalog);
-          const assertTarget = () => assertAccount(target.account.id);
+          const assertTarget = () => { assertNotCanceled(input.signal); assertAccount(target.account.id); };
           assertTarget();
           await repository.save(target.account.id, snapshot, assertTarget);
           refreshedAccounts.push({ account: target.account, snapshot, assertCurrent: assertTarget });
@@ -201,7 +206,7 @@ export async function transferMaimaiFromLxns(input: {
       skipped += targetSkipped;
       targetResults.push({
         account: target.account,
-        status: 'success',
+        status,
         written,
         skipped: targetSkipped,
         refreshFailed: refreshFailedAccountIds.has(target.account.id),

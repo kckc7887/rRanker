@@ -1,6 +1,8 @@
 import { pollForToken } from '@/providers/phigros-auth';
 import { ProviderError } from '@/providers/errors';
 
+vi.mock('expo/fetch', () => ({ fetch: (...args: Parameters<typeof fetch>) => fetch(...args) }));
+
 function jsonResponse(body: unknown, status = 200) {
   return new Response(JSON.stringify(body), {
     status,

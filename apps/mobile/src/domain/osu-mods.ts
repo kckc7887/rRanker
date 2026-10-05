@@ -8,6 +8,8 @@
  */
 
 import type { OsuGameId } from './game-mode-family';
+import { OSU_MODE_GAME_IDS } from './game-bind-options';
+import { OSU_MODE_INT_BY_GAME_ID } from './osu';
 
 /** osu! 模组类型（与 osu-web ModType 一致，决定徽章底色）。 */
 export type OsuModType =
@@ -145,14 +147,14 @@ export type OsuModGameplayMultiplier = {
 };
 
 const ALL_MODES_SPEED_075 = Object.fromEntries(
-  (['osu-standard', 'osu-taiko', 'osu-catch', 'osu-mania'] as const).map((gameId) => [
+  OSU_MODE_GAME_IDS.map((gameId) => [
     gameId,
     [{ label: '默认速度', value: '0.75×' }],
   ]),
 ) as Partial<Record<OsuGameId, readonly OsuModGameplayMultiplier[]>>;
 
 const ALL_MODES_SPEED_150 = Object.fromEntries(
-  (['osu-standard', 'osu-taiko', 'osu-catch', 'osu-mania'] as const).map((gameId) => [
+  OSU_MODE_GAME_IDS.map((gameId) => [
     gameId,
     [{ label: '默认速度', value: '1.50×' }],
   ]),
@@ -277,7 +279,8 @@ const OSU_MOD_COPY: Record<string, readonly [englishName: string, chineseName: s
   SV2: ['Score V2', '新版计分', '使用 ScoreV2 计分系统；可出现在成绩中但不可主动选择。'],
 };
 
-const ALL_OSU_GAME_IDS: readonly OsuGameId[] = ['osu-standard', 'osu-taiko', 'osu-catch', 'osu-mania'];
+const ALL_OSU_GAME_IDS: readonly OsuGameId[] = [...OSU_MODE_GAME_IDS]
+  .sort((left, right) => OSU_MODE_INT_BY_GAME_ID[left] - OSU_MODE_INT_BY_GAME_ID[right]);
 
 export const OSU_MOD_METADATA: readonly OsuModMetadata[] = Object.entries(OSU_MOD_TYPE_BY_ACRONYM).map(
   ([acronym, type]) => {

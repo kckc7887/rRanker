@@ -35,10 +35,10 @@ import type { CatchSession } from './types';
 import { convertBeatmapToCatch } from './converter';
 import { applyPositionOffsets } from './positions';
 import { catchFrames } from './input';
-import { computeCatchHitResults, logCatchMissReport } from './hitJudge';
+import { computeCatchHitResults } from './hitJudge';
 import { drawCatchPlayfield } from './Playfield';
 import { drawCatchKeyOverlay } from '../../renderer/KeyOverlayRenderer';
-import { computeCatchAccTimeline, computeCatchScoreTimeline, logCatchScoreCheck } from './scoreProcessor';
+import { computeCatchAccTimeline, computeCatchScoreTimeline } from './scoreProcessor';
 import { computeComboTimeline } from '../../renderer/HUDRenderer';
 
 export type { CatchSession } from './types';
@@ -77,11 +77,6 @@ export const catchRuleset: Ruleset<CatchSession> = {
     const accFrames   = computeCatchAccTimeline(hitResults);
     const comboFrames = computeComboTimeline(hitResults);
     const scoreFrames = computeCatchScoreTimeline(objects, hitResults, beatmap, replay, modDiff);
-
-    // Validation aid (browser console): our final score/combo/acc vs the .osr header, plus a
-    // per-miss report to tell near-edge frame-quantization misses from genuine position/path bugs.
-    logCatchScoreCheck(hitResults, scoreFrames, accFrames, replay, modDiff);
-    logCatchMissReport(objects, catcherPath, modDiff.cs);
 
     return {
       beatmap, replay, modDiff, skin,

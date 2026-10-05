@@ -10,12 +10,15 @@ vi.mock('@/storage/sqlite-snapshot-repository', () => ({
   }),
 }));
 
+type ResourceUpdate<T> = { value: T; updatedAt: string; write?: true } | { value: T; write: false };
+
 type StoredRow = { version: number; payload: unknown };
 
 /** 模拟 SqliteSnapshotRepository 的版本化资源存取（与真实实现同语义）。 */
 class FakeRepository {
   rows = new Map<string, StoredRow>();
   cleared: string[] = [];
+  writeCount = 0;
 
   async getResource<T>(key: string, schemaVersion: number): Promise<T | null> {
     const row = this.rows.get(key);
@@ -24,15 +27,16 @@ class FakeRepository {
   }
 
   async saveResource(key: string, schemaVersion: number, _updatedAt: string, value: unknown): Promise<void> {
+    this.writeCount++;
     this.rows.set(key, { version: schemaVersion, payload: value });
   }
 
   private pending = Promise.resolve();
-  updateResource<T>(key: string, schemaVersion: number, update: (value: T | null) => { value: T; updatedAt: string }): Promise<T> {
+  updateResource<T>(key: string, schemaVersion: number, update: (value: T | null) => ResourceUpdate<T>): Promise<T> {
     const task = this.pending.then(async () => {
       const previous = await this.getResource<T>(key, schemaVersion);
       const next = update(previous);
-      await this.saveResource(key, schemaVersion, next.updatedAt, next.value);
+      if (next.write !== false) await this.saveResource(key, schemaVersion, next.updatedAt, next.value);
       return next.value;
     });
     this.pending = task.then(() => undefined, () => undefined);
@@ -133,4 +137,28 @@ it('并发更新不同谱面的已知成绩不会相互覆盖', async () => {
   await Promise.all([cache.mergeKnownScores('osu-standard', 2, [knownScore]), cache.mergeKnownScores('osu-standard', 2, [other])]);
   const saved = await cache.loadKnownScores('osu-standard', 2);
   expect(Object.keys(saved!.items).sort()).toEqual(['22423', '22424']);
+});
+
+
+it('重复、低分和空播种保持已有时间且不写入，等分元数据变化仍提交', async () => {
+  const repository = new FakeRepository();
+  const cache = new OsuCache(repository as never);
+  const first = await cache.mergeKnownScores('osu-standard', 2, [knownScore]);
+  await cache.mergeKnownScores('osu-standard', 2, [{ ...knownScore }]);
+  await cache.mergeKnownScores('osu-standard', 2, [{ ...knownScore, score: knownScore.score - 1 }]);
+  const empty = await cache.mergeKnownScores('osu-standard', 2, []);
+  expect(repository.writeCount).toBe(1);
+  expect(empty.source.updatedAt).toBe(first.source.updatedAt);
+  await cache.mergeKnownScores('osu-standard', 2, [{ ...knownScore, rank: 'SS' }]);
+  expect(repository.writeCount).toBe(2);
+  expect((await cache.loadKnownScores('osu-standard', 2))?.items['22423'].rank).toBe('SS');
+});
+
+it('对象字段顺序不使相同成绩重复提交', async () => {
+  const repository = new FakeRepository();
+  const cache = new OsuCache(repository as never);
+  await cache.mergeKnownScores('osu-standard', 2, [knownScore]);
+  const reordered = Object.fromEntries(Object.entries(knownScore).reverse()) as typeof knownScore;
+  await cache.mergeKnownScores('osu-standard', 2, [reordered]);
+  expect(repository.writeCount).toBe(1);
 });

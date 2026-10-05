@@ -21,7 +21,7 @@ module.exports = [
     files: [
       'app/best-image.tsx',
     ],
-    rules: { complexity: ['error', 73] },
+    rules: { complexity: ['error', 71] },
   },
   {
     files: [
@@ -65,9 +65,12 @@ module.exports = [
     files: [
       'src/features/osu-chart-preview/webview-player/engine-audio/hitsoundSchedule.ts',
       'src/features/osu-chart-preview/webview-player/storyboard.ts',
-      'src/screens/PhiraScreens.tsx',
     ],
     rules: { complexity: ['error', 46] },
+  },
+  {
+    files: ['src/screens/PhiraScreens.tsx'],
+    rules: { complexity: ['error', 45] },
   },
   {
     files: [
@@ -83,7 +86,6 @@ module.exports = [
   },
   {
     files: [
-      'src/components/MaimaiFilterBar.tsx',
       'src/features/osu-chart-preview/webview-player/engine/utils/scoreProcessor.ts',
     ],
     rules: { complexity: ['error', 41] },
@@ -92,9 +94,16 @@ module.exports = [
     files: [
       'app/tools/strength-analysis.tsx',
       'src/features/osu-chart-preview/webview-player/engine/rulesets/taiko/Playfield.ts',
-      'src/providers/http-json.ts',
     ],
     rules: { complexity: ['error', 39] },
+  },
+  {
+    files: ['src/components/MaimaiFilterBar.tsx'],
+    rules: { complexity: ['error', 38] },
+  },
+  {
+    files: ['src/providers/http-json.ts'],
+    rules: { complexity: ['error', 37] },
   },
   {
     files: [
@@ -115,7 +124,6 @@ module.exports = [
     files: [
       'src/components/phigros/PhigrosFilterBar.tsx',
       'src/domain/random-charts.ts',
-      'src/features/phigros-chart-preview/chart-preview-input.ts',
     ],
     rules: { complexity: ['error', 32] },
   },
@@ -129,7 +137,6 @@ module.exports = [
   },
   {
     files: [
-      'src/features/chart-preview-shared/chart-preview-screen-shell.tsx',
       'src/features/phigros-chart-preview/webview-player/rpe-renderer.ts',
     ],
     rules: { complexity: ['error', 30] },
@@ -137,7 +144,6 @@ module.exports = [
   {
     files: [
       'src/features/osu-chart-preview/webview-player/engine/rulesets/mania/hitJudge.ts',
-      'src/hooks/use-overview-sync.ts',
     ],
     rules: { complexity: ['error', 29] },
   },
@@ -157,30 +163,28 @@ module.exports = [
       'src/components/UploadDataSheet.tsx',
       'src/components/osu/OsuSongDetail.tsx',
       'src/services/score-hub-poll.ts',
+      'src/hooks/use-overview-sync.ts',
     ],
     rules: { complexity: ['error', 27] },
   },
   {
     files: [
-      'app/diagnostics.tsx',
       'src/domain/game-data.ts',
       'src/state/session-store.ts',
       'tests/consumer-copy-policy.test.ts',
+      'src/features/chart-preview-shared/chart-preview-screen-shell.tsx',
     ],
     rules: { complexity: ['error', 26] },
   },
   {
     files: [
-      'app/\\(tabs\\)/search/index.tsx',
       'src/components/game-content/SmsLoginPanel.tsx',
       'src/features/osu-chart-preview/webview-player/engine/rulesets/mania/Playfield.ts',
-      'src/services/lxns-upload.ts',
     ],
     rules: { complexity: ['error', 25] },
   },
   {
     files: [
-      'app/tools/chunithm-rating.tsx',
       'src/components/game-content/GameScoreCard.tsx',
       'src/features/osu-chart-preview/webview-player/engine/rulesets/taiko/scoreProcessor.ts',
       'src/features/toolbox/random-charts-preferences.ts',
@@ -192,12 +196,11 @@ module.exports = [
   {
     files: [
       'src/components/phira/PhiraFilterBar.tsx',
-      'src/domain/runtime-log.ts',
       'src/features/best-image/use-best-image-export.ts',
       'src/features/osu-chart-preview/webview-player/engine/rulesets/taiko/index.ts',
       'src/hooks/use-upload-qr-input.ts',
       'src/providers/http-cookies.ts',
-      'src/providers/lxns-oauth-request.ts',
+      'src/services/lxns-upload.ts',
     ],
     rules: { complexity: ['error', 23] },
   },
@@ -209,8 +212,6 @@ module.exports = [
       'src/features/chart-download-shared/use-chart-package-download.ts',
       'src/features/osu-chart-preview/webview-player/builtin-skin.ts',
       'src/features/osu-chart-preview/webview-player/engine/rulesets/catch/scoreProcessor.ts',
-      'src/features/phigros-chart-preview/webview-player/main.ts',
-      'src/services/diving-fish-upload.ts',
     ],
     rules: { complexity: ['error', 22] },
   },
@@ -220,6 +221,7 @@ module.exports = [
       'app/tools/tolerance.tsx',
       'src/components/game-content/GameSongRow.tsx',
       'src/services/lxns-account-binding.ts',
+      'src/services/diving-fish-upload.ts',
     ],
     rules: { complexity: ['error', 21] },
   }

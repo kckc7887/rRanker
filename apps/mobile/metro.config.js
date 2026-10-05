@@ -20,8 +20,13 @@ const ZOD_LOCALE_INDEXES = new Set(['index.js', 'index.cjs'].map(
   (name) => path.join(ZOD_ROOT, 'v4', 'locales', name),
 ));
 const ZOD_LOCALE_SUBSET = path.join(__dirname, 'src', 'utils', 'zod-locales.ts');
+const ACCOUNT_PROBE = require('./package.json').main === 'native-account-recovery-entry.tsx';
+const ACCOUNT_PROBE_FETCH = path.join(__dirname, 'tests', 'native', 'expo-fetch-adapter.ts');
 
 config.resolver.resolveRequest = (context, moduleName, platform) => {
+  if (ACCOUNT_PROBE && platform === 'android' && moduleName === 'expo/fetch') {
+    return { type: 'sourceFile', filePath: ACCOUNT_PROBE_FETCH };
+  }
   if (
     moduleName.endsWith(IONICON_VENDOR_SUFFIX) &&
     context.originModulePath.includes(path.join('@expo', 'vector-icons'))

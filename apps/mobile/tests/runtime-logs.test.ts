@@ -14,6 +14,7 @@ import Storage from 'expo-sqlite/kv-store';
 import { runtimeLogPreferencesStore } from '@/storage/runtime-log-preferences-store';
 
 const databases: DatabaseSync[] = [];
+const controllers: ReturnType<typeof createRuntimeLogController>[] = [];
 function fixture(capacity: RuntimeLogCapacity = 2000) {
   const sql = new DatabaseSync(':memory:');
   databases.push(sql);
@@ -38,15 +39,20 @@ function fixture(capacity: RuntimeLogCapacity = 2000) {
     save: vi.fn(async (value: RuntimeLogPreferences) => { saved = { ...value }; }),
   };
   let time = 0;
-  const create = () => createRuntimeLogController({
+  const create = () => {
+    const controller = createRuntimeLogController({
     repository: async () => repository, preferences,
     context: () => ({ platform: 'ios', appVersion: '0.3.0', route: '/songs/[songId]' }),
     now: () => new Date(1_700_000_000_000 + time++).toISOString(),
   });
+    controllers.push(controller);
+    return controller;
+  };
   return { repository, controller: create(), create, preferences, sql, db };
 }
 
 afterEach(() => {
+  controllers.splice(0).forEach(controller => controller.flush());
   databases.splice(0).forEach((db) => db.close());
   installRuntimeLogRecorder(undefined);
   installRuntimeDiagnosticRecorder(async () => undefined);
@@ -56,6 +62,72 @@ afterEach(() => {
 });
 
 describe('manual runtime logs', () => {
+  it.each(['start', 'stop'] as const)('waits for enabled startup storage before concurrent %s', async control => {
+    const { repository, preferences } = fixture();
+    preferences.load.mockResolvedValueOnce({ capacity: 2000, enabled: true });
+    let opened!: (value: RuntimeLogRepository) => void;
+    const controller = createRuntimeLogController({ repository: () => new Promise(resolve => { opened = resolve; }), preferences, context: () => ({}) });
+    controllers.push(controller);
+    const initialization = controller.initialize();
+    await vi.waitFor(() => expect(controller.getSnapshot().ready).toBe(true));
+    const command = controller[control]();
+    await Promise.resolve();
+    expect(preferences.save).not.toHaveBeenCalled();
+    opened(repository);
+    await Promise.all([initialization, command]);
+    expect(repository.list()).toHaveLength(1);
+    expect(repository.list()[0]?.status).toBe(control === 'stop' ? 'stopped' : 'recording');
+    expect(controller.getSnapshot()).toMatchObject({ enabled: control === 'start', activeId: control === 'start' ? 1 : null });
+  });
+  it('batches ordinary events at 32 entries or 100 ms and publishes once per commit', async () => {
+    vi.useFakeTimers();
+    const { controller, repository, db } = fixture();
+    await controller.start();
+    const transactions = vi.spyOn(db, 'withTransactionSync');
+    const published = vi.fn();
+    controller.subscribe(published);
+    for (let index = 0; index < 31; index++) controller.record('task', { attempt: index });
+    expect(repository.snapshot(1).entries).toHaveLength(1);
+    await vi.advanceTimersByTimeAsync(99);
+    expect(transactions).not.toHaveBeenCalled();
+    await vi.advanceTimersByTimeAsync(1);
+    expect(repository.snapshot(1).entries).toHaveLength(32);
+    expect(transactions).toHaveBeenCalledTimes(1);
+    expect(published).toHaveBeenCalledTimes(1);
+    for (let index = 31; index < 63; index++) controller.record('task', { attempt: index });
+    expect(transactions).toHaveBeenCalledTimes(2);
+    expect(published).toHaveBeenCalledTimes(2);
+    expect(repository.snapshot(1).entries.slice(1).map(entry => entry.fields.attempt)).toEqual(Array.from({ length: 63 }, (_, i) => i));
+  });
+
+  it.each(['fatal', 'background', 'snapshot', 'stop'] as const)('flushes pending events at the %s boundary', async boundary => {
+    vi.useFakeTimers();
+    const { controller, repository } = fixture();
+    await controller.start();
+    controller.record('task', { taskPhase: 'pending' });
+    if (boundary === 'fatal') controller.record('error', { fatal: true, error: new TypeError('secret') });
+    if (boundary === 'background') controller.record('lifecycle', { lifecyclePhase: 'background' });
+    if (boundary === 'snapshot') controller.snapshot(1);
+    if (boundary === 'stop') await controller.stop();
+    expect(repository.snapshot(1).entries[1]?.fields.taskPhase).toBe('pending');
+    if (boundary === 'fatal') expect(repository.snapshot(1).entries.at(-1)?.severity).toBe('fatal');
+    const savedCount = repository.snapshot(1).entries.length;
+    await vi.advanceTimersByTimeAsync(100);
+    expect(repository.snapshot(1).entries).toHaveLength(savedCount);
+  });
+
+  it('rolls back an entire batch and its sequence if a later insert fails', async () => {
+    const { controller, repository, sql } = fixture();
+    await controller.start();
+    sql.exec("CREATE TRIGGER reject_batch BEFORE INSERT ON log_entries WHEN NEW.sequence = 3 BEGIN SELECT RAISE(ABORT, 'injected failure'); END;");
+    controller.record('task', { attempt: 1 });
+    controller.record('task', { attempt: 2 });
+    controller.flush();
+    expect(repository.snapshot(1).entries).toHaveLength(1);
+    expect(repository.snapshot(1).summary.totalCount).toBe(1);
+    expect(controller.getSnapshot()).toMatchObject({ failed: true, activeId: null });
+  });
+
   it('does not open storage while disabled and loads history only on request', async () => {
     const { preferences, repository } = fixture();
     const open = vi.fn(async () => repository);
@@ -83,14 +155,18 @@ describe('manual runtime logs', () => {
     const { controller, repository } = fixture();
     await controller.initialize();
     controller.record('task', { taskPhase: 'before' });
+    controller.flush();
     expect(repository.list()).toEqual([]);
     expect(controller.getSnapshot()).toMatchObject({ activeId: null, capacity: 2000 });
     await Promise.all([controller.start(), controller.start()]);
     const id = controller.getSnapshot().activeId!;
     controller.record('lifecycle', { lifecyclePhase: 'background' });
+    controller.flush();
     controller.record('lifecycle', { lifecyclePhase: 'foreground-ready' });
+    controller.flush();
     await controller.stop();
     controller.record('task', { taskPhase: 'after' });
+    controller.flush();
     expect(repository.list()).toHaveLength(1);
     expect(repository.snapshot(id).entries.map((entry) => entry.type)).toEqual(['recording-start', 'lifecycle', 'lifecycle', 'recording-stop']);
     expect(repository.list()[0]?.status).toBe('stopped');
@@ -101,6 +177,7 @@ describe('manual runtime logs', () => {
     await controller.start();
     const id = controller.getSnapshot().activeId!;
     for (let index = 0; index < capacity + 20; index++) controller.record('task', { attempt: index });
+    controller.flush();
     const snapshot = repository.snapshot(id);
     expect(snapshot.entries).toHaveLength(capacity);
     expect(snapshot.entries[0]?.fields.attempt).toBe(20);
@@ -116,10 +193,12 @@ describe('manual runtime logs', () => {
     const { controller, create, repository } = fixture();
     await controller.start();
     controller.record('error', { error: new TypeError('secret') });
+    controller.flush();
     const restarted = create();
     await restarted.initialize();
     expect(restarted.getSnapshot()).toMatchObject({ enabled: true, activeId: 2, sessions: [{ id: 2, status: 'recording', count: 1 }, { id: 1, status: 'interrupted', count: 2 }] });
     restarted.record('task', {});
+    restarted.flush();
     expect(repository.list()[0]?.count).toBe(2);
     await Promise.all([restarted.initialize(), restarted.initialize()]);
     expect(repository.list().map((session) => session.id)).toEqual([2, 1]);
@@ -173,9 +252,12 @@ describe('manual runtime logs', () => {
     await controller.start();
     const id = controller.getSnapshot().activeId!;
     controller.record('task', { taskPhase: 'saved' });
-    vi.spyOn(repository, 'append').mockImplementationOnce(() => { throw new Error('storage failed'); });
+    controller.flush();
+    vi.spyOn(repository, 'appendBatch').mockImplementationOnce(() => { throw new Error('storage failed'); });
     controller.record('task', { taskPhase: 'lost' });
+    controller.flush();
     controller.record('task', { taskPhase: 'ignored' });
+    controller.flush();
     expect(controller.getSnapshot()).toMatchObject({ enabled: true, activeId: null, failed: true });
     expect(repository.snapshot(id).entries).toHaveLength(2);
     expect(repository.list()[0]?.status).toBe('failed');
@@ -189,9 +271,11 @@ describe('manual runtime logs', () => {
     const { controller, repository, sql } = fixture();
     await controller.start();
     controller.record('task', { taskPhase: 'saved' });
+    controller.flush();
     const before = repository.list()[0]!;
     sql.exec("CREATE TRIGGER reject_entry BEFORE INSERT ON log_entries WHEN NEW.sequence = 3 BEGIN SELECT RAISE(ABORT, 'injected failure'); END;");
     controller.record('task', { taskPhase: 'failed' });
+    controller.flush();
     expect(repository.list()[0]).toMatchObject({ count: before.count, lastAt: before.lastAt, status: 'failed' });
     expect(sql.prepare('SELECT sequence FROM log_sessions WHERE id = ?').get(before.id)?.sequence).toBe(2);
     expect(controller.getSnapshot().activeId).toBeNull();
@@ -222,6 +306,7 @@ describe('manual runtime logs', () => {
     await expect(controller.stop()).rejects.toThrow();
     expect(controller.getSnapshot()).toMatchObject({ enabled: true, activeId: 1, busy: false });
     controller.record('task', {});
+    controller.flush();
     expect(repository.list()[0]?.count).toBe(2);
   });
 
@@ -240,6 +325,7 @@ describe('manual runtime logs', () => {
     const id = controller.getSnapshot().activeId!;
     const snapshot = controller.snapshot(id);
     controller.record('route', { route: '/diagnostics' });
+    controller.flush();
     expect(JSON.parse(snapshot).entries).toHaveLength(1);
     expect(JSON.parse(controller.snapshot(id)).entries).toHaveLength(2);
     expect(controller.getSnapshot().activeId).toBe(id);
@@ -252,6 +338,7 @@ describe('manual runtime logs', () => {
     await controller.start();
     const list = vi.spyOn(repository, 'list');
     controller.record('task', {});
+    controller.flush();
     expect(list).not.toHaveBeenCalled();
     expect(controller.getSnapshot().sessions[0]).toMatchObject({ count: 2 });
     const entries = repository.snapshot(1).entries;
@@ -372,10 +459,13 @@ describe('shared operation capture', () => {
     await requestJson({ ...options, schema: z.object({ player: z.string() }) });
     fetcher.mockResolvedValueOnce(new Response(new Uint8Array([1, 2, 3])));
     await requestBytes(options);
+    controller.flush();
     const entries = repository.snapshot(controller.getSnapshot().activeId!).entries;
     expect(entries.filter((entry) => entry.type === 'request').map((entry) => [entry.fields.source, entry.fields.result, entry.fields.attempt, entry.fields.status])).toEqual([
-      ['request-json', 'error', 1, 503], ['request-json', 'success', 2, 200], ['request-bytes', 'success', 1, 200],
+      ['request-json', 'retry', 1, 503], ['request-json', 'success', 2, 200], ['request-bytes', 'success', 1, 200],
     ]);
+    expect(entries[2]?.severity).toBe('warn');
+    expect(entries[3]?.severity).toBe('info');
     expect(JSON.stringify(entries)).not.toMatch(/Alice|private|secret-token/u);
     expect(entries[1]?.type).toBe('request-start');
     expect(new Set(entries.slice(1, 4).map((entry) => entry.fields.operationId)).size).toBe(1);
@@ -386,7 +476,7 @@ describe('shared operation capture', () => {
     const log = vi.fn(); installRuntimeLogRecorder(log);
     let finish!: (response: Response) => void;
     const options = { baseUrl: '', path: '/secret', label: 'test', error: () => new ProviderError('network', 'secret', false), schema: z.object({}) };
-    const first = requestJson({ ...options, diagnosticScenario: 'chart', fetcher: () => new Promise((resolve) => { finish = resolve; }) });
+    const first = requestJson({ ...options, diagnosticParentOperationId: 123, diagnosticScenario: 'chart', fetcher: () => new Promise((resolve) => { finish = resolve; }) });
     await requestJson({ ...options, diagnosticScenario: 'music', fetcher: async () => new Response('{}') });
     finish(new Response('{}')); await first;
     const events = log.mock.calls.map(([type, fields]) => ({ type, ...fields }));
@@ -394,6 +484,8 @@ describe('shared operation capture', () => {
     expect(events[0].operationId).toBe(events[3].operationId);
     expect(events[1].operationId).toBe(events[2].operationId);
     expect(events[0].operationId).not.toBe(events[1].operationId);
+    expect(events[0].parentOperationId).toBe(123);
+    expect(events[3].parentOperationId).toBe(123);
   });
 
   it.each(['schema', 'network', 'timeout', 'cancelled'] as const)('records normalized %s results', async (kind) => {
@@ -420,6 +512,33 @@ describe('shared operation capture', () => {
     expect(log).toHaveBeenCalledTimes(2);
     recordRuntimeError('query', new ProviderError('timeout', 'secret', true), false, { phase: 'final', operationId: operation.operationId });
     expect(log.mock.calls.at(-1)?.[1]).toMatchObject({ phase: 'final', operationId: operation.operationId, fatal: false });
+  });
+
+  it('records parent operations and phase durations without advancing duplicate stages', () => {
+    vi.useFakeTimers();
+    const log = vi.fn(); installRuntimeLogRecorder(log);
+    const operation = createRuntimeOperation('preview', { parentOperationId: 17 });
+    vi.advanceTimersByTime(10); operation.record('prepare');
+    vi.advanceTimersByTime(20); operation.record('prepare');
+    vi.advanceTimersByTime(30); operation.record('ready', { result: 'success' });
+    expect(log).toHaveBeenCalledTimes(2);
+    expect(log.mock.calls[0]?.[1]).toMatchObject({ parentOperationId: 17, durationMs: 10, phaseDurationMs: 10 });
+    expect(log.mock.calls[1]?.[1]).toMatchObject({ parentOperationId: 17, durationMs: 60, phaseDurationMs: 50 });
+  });
+
+  it.each([
+    ['operation', { phase: 'prepare' }, 'debug'],
+    ['operation', { result: 'success' }, 'info'],
+    ['error', { result: 'cancelled', error: new Error('secret') }, 'info'],
+    ['operation', { result: 'fallback', error: new Error('secret') }, 'warn'],
+    ['operation', { result: 'failed' }, 'error'],
+    ['request', { result: 'error', status: 503 }, 'error'],
+    ['error', { fatal: true, error: new Error('secret') }, 'fatal'],
+    ['operation', { severity: 'fatal' }, 'debug'],
+  ] as const)('classifies %s safely as %s', (type, fields, severity) => {
+    const entry = sanitizeRuntimeLogEntry(type, fields, 'now');
+    expect(entry.severity).toBe(severity);
+    if ('result' in fields && fields.result === 'cancelled') expect(entry.error).toBeUndefined();
   });
 
   it('records provider JSON schema failures with a normalized code and shared request ID', async () => {

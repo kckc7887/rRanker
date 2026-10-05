@@ -28,4 +28,3 @@ export const MuseDashAccountStore = createAccountListStore<MuseDashAccountProfil
     return { userId: account.userId.trim(), displayName };
   },
 }).Store;
-export const museDashAccountStore = new MuseDashAccountStore();

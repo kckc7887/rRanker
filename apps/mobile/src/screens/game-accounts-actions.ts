@@ -2,7 +2,7 @@ import { InteractionManager } from 'react-native';
 import type { ActionNotificationInput, NotificationInput } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
 import { providerErrorToUserMessage } from '@/providers/errors';
-import { switchBoundAccount } from '@/services/switch-bound-account';
+import { notifyAccountSwitchError, switchBoundAccount } from '@/services/switch-bound-account';
 import type { QueryClient } from '@tanstack/react-query';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 
@@ -145,7 +145,7 @@ export async function addOrSwitchDemoAccount(input: {
   setBusy: (busy: boolean) => void;
   setPickerVisible: (visible: boolean) => void;
   setMessage: (message: string) => void;
-  onSelectExisting: (account: BoundAccount) => void;
+  onSelectExisting: (account: BoundAccount) => Promise<boolean>;
   upsertBoundAccount: (account: BoundAccount) => void;
   showNotification: (notification: NotificationInput) => unknown;
 }): Promise<void> {
@@ -155,8 +155,9 @@ export async function addOrSwitchDemoAccount(input: {
     if (existing) {
       input.setPickerVisible(false);
       InteractionManager.runAfterInteractions(() => {
-        input.onSelectExisting(existing);
-        input.setMessage(input.existingMessage(existing));
+        void input.onSelectExisting(existing).then(saved => {
+          if (saved) input.setMessage(input.existingMessage(existing));
+        }).catch(error => notifyAccountSwitchError(error, input.showNotification));
       });
       return;
     }
@@ -165,9 +166,9 @@ export async function addOrSwitchDemoAccount(input: {
     input.upsertBoundAccount(account);
     input.setPickerVisible(false);
     InteractionManager.runAfterInteractions(() => {
-      void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
-        .catch(() => undefined);
-      input.setMessage(input.successMessage(account));
+      void switchBoundAccount(account.id, { navigateToOverview: false }).then(saved => {
+        if (saved) input.setMessage(input.successMessage(account));
+      }).catch(error => notifyAccountSwitchError(error, input.showNotification));
     });
   } catch (error) {
     input.showNotification({
@@ -265,18 +266,29 @@ export async function bindOrSwitchPublicPlayer(input: {
   onCreated: () => void;
   upsertBoundAccount: (account: BoundAccount) => void;
   setMessage: (message: string) => void;
+  showNotification: (notification: NotificationInput) => unknown;
 }): Promise<void> {
   const existing = input.existing;
   if (existing) {
-    await switchBoundAccount(existing.id, { navigateToOverview: false });
-    input.setMessage(input.existingMessage(existing));
-    input.onExistingBound();
+    try {
+      if (await switchBoundAccount(existing.id, { navigateToOverview: false })) {
+        input.setMessage(input.existingMessage(existing));
+        input.onExistingBound();
+      }
+    } catch (error) { notifyAccountSwitchError(error, input.showNotification); }
     return;
   }
   const account = input.create();
-  await input.persist(account);
+  try { await input.persist(account); }
+  catch (error) {
+    input.showNotification({ title: '绑定失败', message: providerErrorToUserMessage(error, '无法绑定玩家，请重试。'), variant: 'error' });
+    return;
+  }
   input.upsertBoundAccount(account);
-  await switchBoundAccount(account.id, { navigateToOverview: false });
-  input.setMessage(input.successMessage(account));
-  input.onCreated();
+  try {
+    if (await switchBoundAccount(account.id, { navigateToOverview: false })) {
+      input.setMessage(input.successMessage(account));
+      input.onCreated();
+    }
+  } catch (error) { notifyAccountSwitchError(error, input.showNotification); }
 }

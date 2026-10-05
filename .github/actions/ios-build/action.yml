@@ -323,7 +323,26 @@ runs:
       shell: bash
       working-directory: apps/mobile
     - name: Install CocoaPods
-      run: cd ios && pod install
+      env:
+        ENTERPRISE_REPOSITORY: https://repo.maven.apache.org/maven2
+      run: |
+        curl_config_dir="$(mktemp -d "$RUNNER_TEMP/rranker-pods-curl.XXXXXX")"
+        trap 'rm -f "$curl_config_dir/.curlrc"; rmdir "$curl_config_dir"' EXIT
+        export CURL_HOME="$curl_config_dir"
+        cat > "$CURL_HOME/.curlrc" <<'CURL_CONFIG'
+        http1.1
+        fail
+        connect-timeout = 20
+        max-time = 300
+        speed-limit = 1024
+        speed-time = 60
+        retry = 3
+        retry-all-errors
+        retry-delay = 2
+        retry-max-time = 900
+        CURL_CONFIG
+        cd ios
+        pod install
       shell: bash
       working-directory: apps/mobile
     - name: Install Apple signing credentials

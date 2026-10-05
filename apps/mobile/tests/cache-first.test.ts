@@ -1,7 +1,8 @@
-import { vi } from 'vitest';
+import { afterEach, vi } from 'vitest';
 import { fixtureSource } from '@/fixtures/sanitized';
 import { ProviderError } from '@/providers/errors';
-import { cacheFirstLoad, isCacheFallback, staleCached } from '@/services/cache-first';
+import { cacheFirstLoad, cacheFirstLoadWithBackground, isCacheFallback, staleCached } from '@/services/cache-first';
+import { installRuntimeLogRecorder } from '@/services/runtime-diagnostics-recorder';
 import { loadAliasedCatalog } from '@/services/aliased-catalog-query';
 
 vi.mock('@/state/app-lifecycle-core', () => ({
@@ -9,6 +10,7 @@ vi.mock('@/state/app-lifecycle-core', () => ({
 }));
 
 type Sample = { value: number; source: typeof fixtureSource };
+afterEach(() => installRuntimeLogRecorder(undefined));
 
 it('starts independent catalog and alias reads together while keeping alias failure optional', async () => {
   let finishCatalog!: (value: Sample) => void;
@@ -32,6 +34,21 @@ function makeSample(value: number, source = fixtureSource): Sample {
 }
 
 describe('cacheFirstLoad', () => {
+  it('records cache hits and publication stages under one parent operation without copying data', async () => {
+    const log = vi.fn(); installRuntimeLogRecorder(log);
+    const load = await cacheFirstLoadWithBackground({
+      loadCached: async () => makeSample(1), loadFresh: async () => makeSample(2), onFresh: vi.fn(),
+      diagnosticParentOperationId: 41,
+    });
+    expect((await load.background).status).toBe('success');
+    const fields = log.mock.calls.map(call => call[1]);
+    expect(fields.map(field => field.phase)).toEqual(['cache-read', 'cache-read-complete', 'refresh', 'refresh-complete', 'cache-publish', 'cache-publish-complete', 'settled']);
+    expect(fields[1]).toMatchObject({ cacheCount: 1, result: 'hit' });
+    expect(fields.every(field => field.parentOperationId === 41)).toBe(true);
+    expect(new Set(fields.map(field => field.operationId)).size).toBe(1);
+    expect(fields.at(-1)).toMatchObject({ result: 'success' });
+    expect(JSON.stringify(fields)).not.toContain(fixtureSource.label);
+  });
   it('serves the stale-marked cache first and refreshes in background', async () => {
     const cached = makeSample(1);
     const fresh = makeSample(2);

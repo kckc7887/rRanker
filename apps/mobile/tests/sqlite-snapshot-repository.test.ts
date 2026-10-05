@@ -30,6 +30,17 @@ describe('SqliteSnapshotRepository schema migration', () => {
     sqlite.db.runAsync.mockClear();
   });
 
+  it('rejects structurally damaged current snapshots while preserving rows', async () => {
+    const repository = new SqliteSnapshotRepository();
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 5, payload: '{"records":null}' });
+    await expect(repository.getLatest('player')).resolves.toBeNull();
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 1, payload: '{"songs":[{}]}' });
+    await expect(repository.getLatestCatalog()).resolves.toBeNull();
+    expect(sqlite.db.runAsync).not.toHaveBeenCalled();
+    sqlite.db.getFirstAsync.mockRejectedValue(new Error('database unreadable'));
+    await expect(repository.getLatest('player')).rejects.toThrow('database unreadable');
+  });
+
   it('keeps an older score snapshot instead of deleting it', async () => {
     sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 1, payload: '{"player":1}' });
     const repository = new SqliteSnapshotRepository();
@@ -110,5 +121,30 @@ describe('SqliteSnapshotRepository schema migration', () => {
     await expect(repository.updateResource<{ count: number }>('counter', 1, (previous) => ({
       value: { count: (previous?.count ?? 0) + 1 }, updatedAt: 'later',
     }))).resolves.toEqual({ count: 1 });
+  });
+});
+
+
+describe('SqliteSnapshotRepository explicit unchanged update', () => {
+  beforeEach(() => {
+    resetRrankerDatabaseForTests(); resetSnapshotSchemaForTests();
+    sqlite.db.getFirstAsync.mockResolvedValue({ schema_version: 1, payload: '{"count":1}' });
+    sqlite.db.runAsync.mockClear();
+  });
+  it('返回等价的新对象仍可以显式跳过写入，并复核提交资格', async () => {
+    const assertCurrent = vi.fn();
+    const repository = new SqliteSnapshotRepository();
+    await expect(repository.updateResource<{ count: number }>('counter', 1, previous => ({
+      value: { ...previous! }, write: false,
+    }), assertCurrent)).resolves.toEqual({ count: 1 });
+    expect(assertCurrent).toHaveBeenCalledOnce();
+    expect(sqlite.db.runAsync).not.toHaveBeenCalled();
+  });
+  it('无写入结果不能绕过失效断言', async () => {
+    const repository = new SqliteSnapshotRepository();
+    await expect(repository.updateResource<{ count: number }>('counter', 1, previous => ({
+      value: previous!, write: false,
+    }), () => { throw new Error('stale'); })).rejects.toThrow('stale');
+    expect(sqlite.db.runAsync).not.toHaveBeenCalled();
   });
 });

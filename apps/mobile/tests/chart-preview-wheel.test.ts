@@ -6,11 +6,16 @@ let frameId = 0;
 const frames = new Map<number, FrameRequestCallback>();
 const disposers: (() => void)[] = [];
 
-function makeWheel(labels?: readonly string[], format?: (value: number) => string) {
+function makeWheel(labels?: readonly string[], format?: (value: number) => string, range = [0, 3, 1, 1], inline = false) {
   const container = document.createElement('section');
   container.innerHTML = '<button></button><aside style="visibility:hidden"><div><div></div></div></aside><span></span>';
   document.body.append(container);
   const trigger = container.querySelector('button')!;
+  if (inline) {
+    container.className = 'field';
+    container.prepend(document.createTextNode('播放速度'));
+    trigger.dataset.presentation = 'inline';
+  }
   const popup = container.querySelector('aside')!;
   const viewport = popup.firstElementChild as HTMLElement;
   const list = viewport.firstElementChild as HTMLElement;
@@ -20,7 +25,7 @@ function makeWheel(labels?: readonly string[], format?: (value: number) => strin
   }) as typeof viewport.scrollTo;
   const preview = vi.fn();
   const commit = vi.fn();
-  const wheel = setupWheelPopup(trigger, popup, viewport, list, value, preview, commit, 0, 3, 1, 1, labels, format);
+  const wheel = setupWheelPopup(trigger, popup, viewport, list, value, preview, commit, range[0], range[1], range[2], range[3], labels, format);
   disposers.push(wheel.dispose);
   return { wheel, trigger, popup, viewport, list, value, preview, commit };
 }
@@ -30,6 +35,115 @@ beforeEach(() => {
   frames.clear();
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frames.set(++frameId, callback); return frameId; });
   vi.stubGlobal('cancelAnimationFrame', (id: number) => frames.delete(id));
+});
+
+describe('谱面确认常驻参数控件', () => {
+  it('键盘按真实小数步长预览，关闭或生命周期暂停时仅提交最终值', () => {
+    const item = makeWheel(undefined, value => `${value.toFixed(2)}×`, [0.5, 2, 0.05, 1], true);
+    expect(item.trigger.getAttribute('role')).toBe('slider');
+    expect(item.trigger.getAttribute('aria-label')).toBe('播放速度');
+    expect(item.popup.hidden).toBe(true);
+    item.trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    item.trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight', bubbles: true }));
+    expect(item.value.textContent).toBe('1.10×');
+    expect(item.preview).not.toHaveBeenCalled();
+    closeActiveWheelPopup();
+    vi.runAllTimers();
+    expect(item.preview).toHaveBeenCalledExactlyOnceWith(1.1);
+    expect(item.commit).toHaveBeenCalledExactlyOnceWith(1.1);
+  });
+
+  it('枚举、静默回退与禁用状态直接复用同一个设置入口', () => {
+    const item = makeWheel(['无', '图片', '视频'], undefined, [0, 2, 1, 0], true);
+    item.trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'End', bubbles: true }));
+    item.wheel.flush();
+    expect(item.commit).toHaveBeenCalledExactlyOnceWith(2);
+    item.wheel.setValue(0);
+    expect(item.value.textContent).toBe('无');
+    expect(item.trigger.getAttribute('aria-valuenow')).toBe('0');
+    item.trigger.disabled = true;
+    item.trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    vi.runAllTimers();
+    expect(item.wheel.getValue()).toBe(0);
+    expect(item.commit).toHaveBeenCalledTimes(1);
+  });
+
+  it('纵向触摸滚动不改变数值，横向拖动微调且取消后停止响应', () => {
+    const item = makeWheel(undefined, undefined, [0, 10, 0.1, 1], true);
+    const pointer = (target: EventTarget, type: string, x: number, y: number) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.assign(event, { pointerId: 1, clientX: x, clientY: y, button: 0, pointerType: 'touch', isPrimary: true });
+      target.dispatchEvent(event);
+    };
+    pointer(item.trigger, 'pointerdown', 20, 20);
+    pointer(window, 'pointermove', 22, 70);
+    pointer(window, 'pointerup', 22, 70);
+    expect(item.wheel.getValue()).toBe(1);
+    expect(item.commit).not.toHaveBeenCalled();
+    pointer(item.trigger, 'pointerdown', 20, 20);
+    pointer(window, 'pointermove', 32, 21);
+    pointer(window, 'pointercancel', 32, 21);
+    expect(item.wheel.getValue()).toBe(1.3);
+    expect(item.commit).toHaveBeenCalledExactlyOnceWith(1.3);
+    pointer(window, 'pointermove', 80, 21);
+    expect(item.wheel.getValue()).toBe(1.3);
+  });
+
+  it('释放撤销排队预览、提交和所有交互', () => {
+    const item = makeWheel(undefined, undefined, [0, 3, 1, 1], true);
+    item.trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'End' }));
+    item.wheel.dispose();
+    item.trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' }));
+    vi.runAllTimers();
+    expect(item.preview).not.toHaveBeenCalled();
+    expect(item.commit).not.toHaveBeenCalled();
+    expect(frames.size).toBe(0);
+  });
+
+  it.each(['.parameter-label', '.parameter-value', '.parameter-ticks', '.parameter-cursor'])(
+    '从 %s 开始拖动时，子节点捕获移交不应中断后续移动', selector => {
+      const item = makeWheel(undefined, undefined, [0, 10, 0.1, 1], true);
+      const child = item.trigger.querySelector(selector)!;
+      const pointer = (target: EventTarget, type: string, x: number) => {
+        const event = new Event(type, { bubbles: true, cancelable: true });
+        Object.assign(event, { pointerId: 7, clientX: x, clientY: 20, button: 0, pointerType: 'touch', isPrimary: true });
+        target.dispatchEvent(event);
+      };
+      pointer(child, 'pointerdown', 20);
+      pointer(child, 'pointermove', 28);
+      expect(item.wheel.getValue()).toBe(1.2);
+      pointer(child, 'lostpointercapture', 36);
+      pointer(item.trigger, 'gotpointercapture', 36);
+      pointer(item.trigger, 'pointermove', 36);
+      pointer(item.trigger, 'pointermove', 44);
+      expect(item.wheel.getValue()).toBe(1.6);
+      pointer(item.trigger, 'pointerup', 44);
+      vi.runAllTimers();
+      expect(item.preview).toHaveBeenCalledExactlyOnceWith(1.6);
+      expect(item.commit).toHaveBeenCalledExactlyOnceWith(1.6);
+    },
+  );
+
+  it('仅当前指针在按钮上失去捕获时结束并提交，后续移动无效', () => {
+    const item = makeWheel(undefined, undefined, [0, 10, 0.1, 1], true);
+    const pointer = (type: string, x: number, pointerId = 7) => {
+      const event = new Event(type, { bubbles: true, cancelable: true });
+      Object.assign(event, { pointerId, clientX: x, clientY: 20, button: 0, pointerType: 'touch', isPrimary: true });
+      item.trigger.dispatchEvent(event);
+    };
+    pointer('pointerdown', 20);
+    pointer('pointermove', 28);
+    pointer('lostpointercapture', 28, 8);
+    pointer('pointermove', 36);
+    expect(item.wheel.getValue()).toBe(1.4);
+    pointer('lostpointercapture', 36);
+    expect(item.commit).toHaveBeenCalledExactlyOnceWith(1.4);
+    pointer('pointermove', 68);
+    pointer('pointerup', 68);
+    vi.runAllTimers();
+    expect(item.wheel.getValue()).toBe(1.4);
+    expect(item.commit).toHaveBeenCalledTimes(1);
+  });
 });
 afterEach(() => {
   disposers.splice(0).forEach(dispose => dispose());
@@ -106,5 +220,31 @@ describe('共享谱面确认拨轮', () => {
     item.viewport.dispatchEvent(new Event('scroll'));
     vi.runAllTimers();
     expect(item.commit).not.toHaveBeenCalled();
+  });
+
+  it.each([
+    [[0.5, 2, 0.05, 1], 11, 1.05],
+    [[0, 1, 0.01, 0.5], 51, 0.51],
+  ])('保留小数步长且显式flush只提交最终值一次', (range, index, expected) => {
+    const item = makeWheel(undefined, value => value.toFixed(2), range);
+    item.viewport.scrollTop = index * 28;
+    item.viewport.dispatchEvent(new Event('scroll'));
+    item.wheel.flush();
+    item.wheel.flush();
+    vi.runAllTimers();
+    expect(item.preview).toHaveBeenCalledExactlyOnceWith(expected);
+    expect(item.commit).toHaveBeenCalledExactlyOnceWith(expected);
+    expect(item.value.textContent).toBe(expected.toFixed(2));
+  });
+
+  it('关闭弹层先提交当前值，后续计时器不重复提交', () => {
+    const item = makeWheel();
+    item.trigger.click();
+    item.viewport.scrollTop = 84;
+    item.viewport.dispatchEvent(new Event('scroll'));
+    closeActiveWheelPopup();
+    vi.runAllTimers();
+    expect(item.preview).toHaveBeenCalledExactlyOnceWith(3);
+    expect(item.commit).toHaveBeenCalledExactlyOnceWith(3);
   });
 });

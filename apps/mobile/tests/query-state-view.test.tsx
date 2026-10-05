@@ -1,10 +1,27 @@
 import type { ReactElement } from 'react';
+import { jest } from '@jest/globals';
 import { Text } from 'react-native';
 import { fireEvent, render } from '@testing-library/react-native';
 import { QueryStateView } from '@/components/QueryStateView';
+import { BestImageEntryButton } from '@/components/BestImageEntryButton';
+import { createAppTheme } from '@/theme/theme-tokens';
+
+let mockTheme = createAppTheme('light', '#FFFFFF');
+jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
+jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 
 describe('QueryStateView five states', () => {
   const renderData = (): ReactElement => <Text>data-content</Text>;
+
+  it.each(['#FFFFFF', '#000000'])('keeps shared accent actions readable on %s', async accent => {
+    mockTheme = createAppTheme('light', accent);
+    const screen = await render(<>
+      <QueryStateView isLoading={false} isError isEmpty={false} data={undefined} onRetry={() => {}} renderData={renderData} />
+      <BestImageEntryButton label="生成成绩图" />
+    </>);
+    expect(screen.getByText('重试')).toHaveStyle({ color: mockTheme.onAccent });
+    expect(screen.getByText('生成成绩图')).toHaveStyle({ color: mockTheme.onAccent });
+  });
 
   it('shows the loading indicator when isLoading and no data', async () => {
     const { queryByText } = await render(

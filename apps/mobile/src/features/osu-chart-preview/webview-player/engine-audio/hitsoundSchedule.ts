@@ -38,7 +38,8 @@
 import type { BeatmapData, HitResult, HitSample, TimingPoint } from '../engine/types/index';
 import type { ComboFrame } from '../engine/renderer/HUDRenderer';
 import type { TaikoInputEvent } from '../engine/rulesets/taiko/input';
-import { slideDurationMs } from '../engine/utils/sliderDuration';
+import { slideDurationMs, sliderEdgeSample } from '../engine/utils/sliderDuration';
+import { upperBoundBy } from '../../../chart-preview-shared/webview-player/sorted-search';
 
 const AUDIO_EXTS = ['.wav', '.mp3', '.ogg'];
 
@@ -185,11 +186,11 @@ function scheduleStd(
 
     // Slider head uses edgeSounds[0] (may differ from hitSound).
     const bitmask = (obj?.type === 'slider')
-      ? (obj.edgeSounds[0] ?? obj.hitSound)
+      ? sliderEdgeSample(obj, 0).hitSound
       : (obj?.hitSound ?? result.hitSound);
 
     const hs = obj?.hitSample ?? { normalSet: 0, additionSet: 0, index: 0, volume: 0, filename: '' };
-    const edgeSet = obj?.type === 'slider' ? obj.edgeSets[0] : undefined;
+    const edgeSet = obj?.type === 'slider' ? sliderEdgeSample(obj, 0) : undefined;
     const normalSet   = edgeSet?.normalSet || hs.normalSet || tp.sampleSet || 1;
     const additionSet = edgeSet?.additionSet || hs.additionSet || normalSet;
     const sampleIndex = hs.index       || tp.sampleIndex || 0;
@@ -208,14 +209,19 @@ function scheduleStd(
     if (obj.type !== 'slider') continue;
     const slideDur = slideDurationMs(beatmap, obj);
 
-    for (let n = 1; n <= obj.slides; n++) {
+    // Seeked playback jumps straight to the first audible edge; the guard below keeps the
+    // exact float comparison, so the one-edge margin only absorbs rounding.
+    const firstEdge = slideDur > 0 && Number.isFinite(fromBeatmapMs)
+      ? Math.max(1, Math.floor((fromBeatmapMs - 10 - obj.time) / slideDur) - 1)
+      : 1;
+    for (let n = firstEdge; n <= obj.slides; n++) {
       const edgeBeatmapMs = obj.time + slideDur * n;
       if (edgeBeatmapMs < fromBeatmapMs - 10) continue;
 
       const beatmapMs = edgeBeatmapMs + oldOffsetMs;
       const tp      = activeTimingPoint(beatmap, edgeBeatmapMs);
-      const bitmask = obj.edgeSounds[n] ?? obj.hitSound;
-      const edgeSet = obj.edgeSets[n] ?? { normalSet: 0, additionSet: 0 };
+      const edgeSet = sliderEdgeSample(obj, n);
+      const bitmask = edgeSet.hitSound;
 
       const normalSet   = edgeSet.normalSet   || obj.hitSample.normalSet   || tp.sampleSet   || 1;
       const additionSet = edgeSet.additionSet || obj.hitSample.additionSet || normalSet;
@@ -422,16 +428,8 @@ function activeTimingPoint(
   beatmapMs: number,
 ): Pick<TimingPoint, 'sampleSet' | 'sampleIndex' | 'volume'> {
   const tps = beatmap.timingPoints;
-  let sampleSet   = 1;
-  let sampleIndex = 0;
-  let volume      = 100;
-  for (const tp of tps) {
-    if (tp.time > beatmapMs) break;
-    sampleSet   = tp.sampleSet   || 1; // 0=auto → normal (1)
-    sampleIndex = tp.sampleIndex;
-    volume      = tp.volume;
-  }
-  return { sampleSet, sampleIndex, volume };
+  const tp = tps[upperBoundBy(tps, beatmapMs, point => point.time) - 1];
+  return { sampleSet: tp?.sampleSet || 1, sampleIndex: tp?.sampleIndex ?? 0, volume: tp?.volume ?? 100 };
 }
 
 // Sample playback gain 0..1. The object's own sample volume wins when > 0, else the

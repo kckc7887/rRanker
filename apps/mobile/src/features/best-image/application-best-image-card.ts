@@ -89,16 +89,6 @@ export function renderApplicationBestImageCard(card: ApplicationBestImageCardPre
   </article>`;
 }
 
-export function renderApplicationBestImageSection(
-  title: string,
-  cards: readonly ApplicationBestImageCardPresentation[],
-): string {
-  const escapedTitle = escapeApplicationBestImageHtml(title);
-  const content = cards.map(renderApplicationBestImageCard).join('')
-    || '<div class="empty-section">暂无符合条件的成绩</div>';
-  return `<section class="score-section" aria-label="${escapedTitle}"><div class="section-divider"><span>${escapedTitle}</span></div><div class="score-grid">${content}</div></section>`;
-}
-
 export function applicationBestImageCardCss({
   width,
   gridGap,

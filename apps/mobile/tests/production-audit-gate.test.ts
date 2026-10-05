@@ -1,5 +1,5 @@
 import { spawnSync } from 'node:child_process';
-import { chmodSync, copyFileSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { chmodSync, copyFileSync, cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { delimiter, join, resolve } from 'node:path';
 import { afterAll, describe, expect, it } from 'vitest';
@@ -14,6 +14,7 @@ import {
   parseLockfile,
   runAuditCommand,
 } from '../scripts/check-production-audit.mjs';
+import { applyPatches, verifyPatchedAdvisories } from '../scripts/patch-audited-dependencies.cjs';
 
 const mobileRoot = resolve(__dirname, '..');
 const gateScript = resolve(mobileRoot, 'scripts/check-production-audit.mjs');
@@ -94,10 +95,11 @@ afterAll(() => rmSync(tempRoot, { recursive: true, force: true }));
 
 let caseIndex = 0;
 /** 用 PATH 前置的假 npm 跑真实脚本，验证退出码与错误路径。 */
-function runGate(stdout: string, exitCode: number, lockfile?: string) {
+function runGate(stdout: string, exitCode: number, lockfile?: string, args: string[] = []) {
   const directory = join(tempRoot, `case-${caseIndex++}`);
   mkdirSync(join(directory, 'pkg', 'scripts'), { recursive: true });
   copyFileSync(gateScript, join(directory, 'pkg', 'scripts', 'check-production-audit.mjs'));
+  copyFileSync(join(mobileRoot, 'scripts/patch-audited-dependencies.cjs'), join(directory, 'pkg', 'scripts/patch-audited-dependencies.cjs'));
   writeFileSync(join(directory, 'pkg', 'package-lock.json'), lockfile ?? JSON.stringify({ lockfileVersion: 3, packages: {} }));
   const payload = join(directory, 'payload.json');
   writeFileSync(payload, stdout);
@@ -107,7 +109,7 @@ function runGate(stdout: string, exitCode: number, lockfile?: string) {
     writeFileSync(join(directory, 'npm'), `#!/bin/sh\ncat "${payload}"\nexit ${exitCode}\n`);
     chmodSync(join(directory, 'npm'), 0o755);
   }
-  const result = spawnSync(process.execPath, [join(directory, 'pkg', 'scripts', 'check-production-audit.mjs')], {
+  const result = spawnSync(process.execPath, [join(directory, 'pkg', 'scripts', 'check-production-audit.mjs'), ...args], {
     cwd: join(directory, 'pkg'),
     encoding: 'utf8',
     env: { ...process.env, PATH: `${directory}${delimiter}${process.env.PATH ?? ''}` },
@@ -116,6 +118,63 @@ function runGate(stdout: string, exitCode: number, lockfile?: string) {
 }
 
 describe('production audit gate: 执行层', () => {
+  it('完整审计仍阻断 low 和未知公告，不复用生产 high 接受基线', () => {
+    const low = parseAuditReport(report({ postcss: packageEntry('postcss', 'low', [{ id: 'GHSA-aaaa-bbbb-cccc', severity: 'low' }]) }));
+    expect(evaluatePolicy({ report: low, lockfile: postcssLockfile, strict: true }).failures).not.toHaveLength(0);
+    expect(evaluatePolicy({ report: parseAuditReport(postcssReport), lockfile: postcssLockfile, accepted: [acceptedPostcss], strict: true }).failures).not.toHaveLength(0);
+    const unidentified = report({ postcss: packageEntry('postcss', 'low', [{ severity: 'low' }]) });
+    expect(runGate(unidentified, 1, JSON.stringify(postcssLockfile), ['--all']).status).toBe(1);
+    expect(runGate(emptyReport, 0, undefined, ['--all']).status).toBe(0);
+  });
+
+  it('补丁校验覆盖全文件、每个安装副本、版本和公告范围，审计不负责补写', () => {
+    const directory = join(tempRoot, 'patched-audit');
+    const dependency = join(directory, 'node_modules/braces');
+    cpSync(join(mobileRoot, 'node_modules/braces'), dependency, { recursive: true });
+    const lock = parseLockfile(JSON.stringify({ packages: { 'node_modules/braces': { version: '3.0.3' } } }));
+    const id = 'GHSA-vfj7-8cjw-p6xm';
+    const parsed = parseAuditReport(report({ braces: packageEntry('braces', 'high', [{ id }]) }));
+    const verify = () => verifyPatchedAdvisories(directory, lock, parsed);
+    expect([...verify()]).toEqual([id]);
+    expect(evaluatePolicy({ report: parsed, lockfile: lock, strict: true, verifiedPatches: verify() }).failures).toEqual([]);
+    expect(evaluatePolicy({ report: parsed, lockfile: lock, strict: true }).failures).not.toHaveLength(0);
+    const extra = parseAuditReport(report({ braces: packageEntry('braces', 'high', [{ id }, { id: 'GHSA-aaaa-bbbb-cccc' }]) }));
+    expect(evaluatePolicy({ report: extra, lockfile: lock, strict: true, verifiedPatches: verify() }).failures).toHaveLength(1);
+    const missing = runGate(report({ braces: packageEntry('braces', 'high', [{ id }]) }), 1, JSON.stringify(lock), ['--all']);
+    expect(missing.status).toBe(4);
+    expect(missing.stderr).toContain('补丁校验');
+    const path = join(dependency, 'lib/compile.js');
+    const original = readFileSync(path, 'utf8');
+    writeFileSync(path, original + '\n// unexpected change\n');
+    expect(verify).toThrow();
+    expect(readFileSync(path, 'utf8')).toContain('unexpected change');
+    writeFileSync(path, original.replace('walk(child, node, depth + 1)', 'walk(child, node)'));
+    expect(verify).toThrow();
+    writeFileSync(path, original);
+    lock.packages['node_modules/braces'].version = '3.0.4';
+    expect(verify).toThrow('version');
+    lock.packages['node_modules/braces'].version = '3.0.3';
+    lock.packages['node_modules/other/node_modules/braces'] = { version: '3.0.3' };
+    expect(verify).toThrow();
+    delete lock.packages['node_modules/other/node_modules/braces'];
+    parsed.advisories.get(id)!.packages.add('other');
+    expect(verify).toThrow('scope');
+    parsed.advisories.get(id)!.packages.delete('other');
+    parsed.packages.get('braces')!.nodes.push('../braces');
+    expect(verify).toThrow('locations');
+    // Installation is idempotent, but does not silently accept unknown source.
+    const fullLock = readFileSync(join(mobileRoot, 'package-lock.json'), 'utf8');
+    const installed = JSON.parse(fullLock);
+    for (const name of ['node-forge']) cpSync(join(mobileRoot, 'node_modules', name), join(directory, 'node_modules', name), { recursive: true });
+    writeFileSync(join(directory, 'package-lock.json'), JSON.stringify({ packages: Object.fromEntries(
+      ['braces', 'node-forge'].map(name => [`node_modules/${name}`, installed.packages[`node_modules/${name}`]]),
+    ) }));
+    applyPatches(directory); applyPatches(directory);
+    expect(readFileSync(path, 'utf8')).toBe(original);
+    writeFileSync(path, original + '\n// unexpected change\n');
+    expect(() => applyPatches(directory)).toThrow();
+  });
+
   it('把没有退出码的执行当作失败', () => {
     expect(describeExecutionFailure({ status: null, stdout: '', stderr: '' })).toContain('没有退出码');
   });

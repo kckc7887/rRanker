@@ -1,6 +1,8 @@
 import * as SecureStore from 'expo-secure-store';
 import Storage from '@/storage/key-value-storage';
 import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
+import { enqueueKeyMutation } from '@/storage/create-account-list-store';
+import { SessionPersistenceError } from '@/domain/session-vault';
 
 const ACCOUNT_KEY_V1 = 'rranker.scorehub.account.v1';
 const ACCOUNT_KEY_V2 = 'rranker.scorehub.account.v2';
@@ -60,19 +62,25 @@ function activeView(state: ScoreHubAccountsState): ScoreHubAccountState {
   };
 }
 
+function resolveActiveFriendCode(requested: unknown, accounts: Record<string, unknown>, keepMissing = false): string {
+  const code = typeof requested === 'string' ? requested.trim() : '';
+  return code && accounts[code] ? code : (Object.keys(accounts)[0] ?? (keepMissing ? code : ''));
+}
+
 function parseIndex(raw: string): ScoreHubAccountIndex | null {
   try {
     const parsed = JSON.parse(raw) as Partial<ScoreHubAccountIndex>;
-    if (parsed.version !== 3 || !parsed.accounts || typeof parsed.accounts !== 'object') {
+    if (parsed.version !== 3 || typeof parsed.activeFriendCode !== 'string'
+      || !parsed.accounts || typeof parsed.accounts !== 'object' || Array.isArray(parsed.accounts)) {
       return null;
     }
     const accounts: Record<string, StoredScoreHubAccountEntry> = {};
     for (const [key, value] of Object.entries(parsed.accounts)) {
-      if (!value || typeof value !== 'object') continue;
+      if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
       const friendCode = typeof value.friendCode === 'string'
         ? value.friendCode.trim()
         : key.trim();
-      if (!friendCode || typeof value.tokenRef !== 'string' || !value.tokenRef) continue;
+      if (!friendCode || accounts[friendCode] || typeof value.tokenRef !== 'string' || !value.tokenRef) return null;
       accounts[friendCode] = {
         friendCode,
         tokenRef: value.tokenRef,
@@ -80,14 +88,9 @@ function parseIndex(raw: string): ScoreHubAccountIndex | null {
         updatedAt: typeof value.updatedAt === 'number' ? value.updatedAt : Date.now(),
       };
     }
-    const requestedActive = typeof parsed.activeFriendCode === 'string'
-      ? parsed.activeFriendCode.trim()
-      : '';
     return {
       version: 3,
-      activeFriendCode: requestedActive && accounts[requestedActive]
-        ? requestedActive
-        : (Object.keys(accounts)[0] ?? requestedActive),
+      activeFriendCode: resolveActiveFriendCode(parsed.activeFriendCode, accounts, true),
       accounts,
     };
   } catch {
@@ -99,12 +102,14 @@ function parseV2(raw: string): ScoreHubAccountsState | null {
   try {
     const parsed = JSON.parse(raw) as Partial<ScoreHubAccountsState>;
     const accounts: Record<string, ScoreHubAccountEntry> = {};
-    if (parsed.accounts && typeof parsed.accounts === 'object') {
+    if (typeof parsed.activeFriendCode !== 'string'
+      || !parsed.accounts || typeof parsed.accounts !== 'object' || Array.isArray(parsed.accounts)) return null;
+    if (parsed.accounts) {
       for (const [key, value] of Object.entries(parsed.accounts)) {
-        if (!value || typeof value !== 'object') continue;
+        if (!value || typeof value !== 'object' || Array.isArray(value)) return null;
         const friendCode = typeof value.friendCode === 'string' ? value.friendCode.trim() : key.trim();
         const token = typeof value.token === 'string' ? value.token : '';
-        if (!friendCode || !token) continue;
+        if (!friendCode || !token || accounts[friendCode]) return null;
         accounts[friendCode] = {
           friendCode,
           token,
@@ -113,13 +118,7 @@ function parseV2(raw: string): ScoreHubAccountsState | null {
         };
       }
     }
-    const activeFriendCode = typeof parsed.activeFriendCode === 'string'
-      ? parsed.activeFriendCode.trim()
-      : '';
-    const resolvedActive = activeFriendCode && accounts[activeFriendCode]
-      ? activeFriendCode
-      : (Object.keys(accounts)[0] ?? '');
-    return { activeFriendCode: resolvedActive, accounts };
+    return { activeFriendCode: resolveActiveFriendCode(parsed.activeFriendCode, accounts), accounts };
   } catch {
     return null;
   }
@@ -128,6 +127,8 @@ function parseV2(raw: string): ScoreHubAccountsState | null {
 function parseV1(raw: string): ScoreHubAccountsState | null {
   try {
     const parsed = JSON.parse(raw) as Partial<ScoreHubAccountState>;
+    if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed) || typeof parsed.friendCode !== 'string'
+      || (parsed.token !== undefined && typeof parsed.token !== 'string')) return null;
     const friendCode = typeof parsed.friendCode === 'string' ? parsed.friendCode.trim() : '';
     const token = typeof parsed.token === 'string' && parsed.token ? parsed.token : '';
     if (!friendCode || !token) {
@@ -156,16 +157,49 @@ async function deleteLegacyAccountKeys(): Promise<void> {
 }
 
 export class ScoreHubAccountStore {
+  private readonly indexIo: KeyValueStore;
+  private readonly credentialIo: Pick<LargeSecureValueStore, 'read' | 'write' | 'delete' | 'createReference'>;
   constructor(
     private readonly storage: KeyValueStore = Storage,
-    private readonly secrets = new LargeSecureValueStore(),
-  ) {}
+    secrets: Pick<LargeSecureValueStore, 'read' | 'write' | 'delete' | 'createReference'> = new LargeSecureValueStore(),
+  ) {
+    const io = async <T>(code: SessionPersistenceError['code'], operation: () => Promise<T>): Promise<T> => {
+      try { return await operation(); } catch (cause) {
+        if (cause instanceof SessionPersistenceError) throw cause;
+        throw new SessionPersistenceError(code, { cause });
+      }
+    };
+    this.indexIo = {
+      getItem: key => io('local_commit', () => storage.getItem(key)),
+      setItem: (key, value) => io('local_commit', () => storage.setItem(key, value)),
+      removeItem: key => io('local_commit', () => storage.removeItem(key)),
+    };
+    this.credentialIo = {
+      read: ref => io('credential_storage', () => secrets.read(ref)),
+      write: (ref, value) => io('credential_storage', () => secrets.write(ref, value)),
+      delete: ref => io('credential_storage', () => secrets.delete(ref)),
+      createReference: namespace => {
+        try { return secrets.createReference(namespace); }
+        catch (cause) { throw new SessionPersistenceError('credential_storage', { cause }); }
+      },
+    };
+  }
+
+  private enqueue<T>(operation: () => Promise<T>): Promise<T> {
+    return enqueueKeyMutation(this.storage, ACCOUNT_INDEX_KEY, operation);
+  }
+
+  private parseExistingIndex(raw: string): ScoreHubAccountIndex {
+    const parsed = parseIndex(raw);
+    if (!parsed) throw new SessionPersistenceError('local_commit');
+    return parsed;
+  }
 
   private async loadIndexedState(index: ScoreHubAccountIndex): Promise<ScoreHubAccountsState> {
     const accounts: Record<string, ScoreHubAccountEntry> = {};
     for (const item of Object.values(index.accounts)) {
-      const token = await this.secrets.read(item.tokenRef);
-      if (!token) continue;
+      const token = await this.credentialIo.read(item.tokenRef);
+      if (!token) throw new SessionPersistenceError('credential_storage');
       accounts[item.friendCode] = {
         friendCode: item.friendCode,
         token,
@@ -174,9 +208,7 @@ export class ScoreHubAccountStore {
       };
     }
     return {
-      activeFriendCode: index.activeFriendCode && accounts[index.activeFriendCode]
-        ? index.activeFriendCode
-        : (Object.keys(accounts)[0] ?? index.activeFriendCode),
+      activeFriendCode: resolveActiveFriendCode(index.activeFriendCode, accounts, true),
       accounts,
     };
   }
@@ -184,30 +216,26 @@ export class ScoreHubAccountStore {
   private async migrateLegacyState(state: ScoreHubAccountsState): Promise<ScoreHubAccountsState | null> {
     try {
       await this.writeAll(state);
-      const raw = await this.storage.getItem(ACCOUNT_INDEX_KEY);
-      const index = raw ? parseIndex(raw) : null;
+      const raw = await this.indexIo.getItem(ACCOUNT_INDEX_KEY);
+      const index = raw !== null ? this.parseExistingIndex(raw) : null;
       const verified = index ? await this.loadIndexedState(index) : null;
       if (!verified || JSON.stringify(verified) !== JSON.stringify(state)) {
-        await this.clearIndexedState();
         return null;
       }
       return verified;
     } catch {
-      await this.clearIndexedState().catch(() => undefined);
       return null;
     }
   }
 
   private async readAll(): Promise<ScoreHubAccountsState> {
-    const indexRaw = await this.storage.getItem(ACCOUNT_INDEX_KEY);
-    if (indexRaw) {
-      const index = parseIndex(indexRaw);
-      if (index) return this.loadIndexedState(index);
-      await this.storage.removeItem(ACCOUNT_INDEX_KEY);
+    const indexRaw = await this.indexIo.getItem(ACCOUNT_INDEX_KEY);
+    if (indexRaw !== null) {
+      return this.loadIndexedState(this.parseExistingIndex(indexRaw));
     }
 
-    const rawV2 = await SecureStore.getItemAsync(ACCOUNT_KEY_V2);
-    if (rawV2) {
+    const rawV2 = await this.readLegacyKey(ACCOUNT_KEY_V2);
+    if (rawV2 !== null) {
       const parsed = parseV2(rawV2);
       if (parsed) {
         const migrated = await this.migrateLegacyState(parsed);
@@ -217,11 +245,11 @@ export class ScoreHubAccountStore {
         }
         return parsed;
       }
-      await SecureStore.deleteItemAsync(ACCOUNT_KEY_V2);
+      throw new SessionPersistenceError('local_commit');
     }
 
-    const rawV1 = await SecureStore.getItemAsync(ACCOUNT_KEY_V1);
-    if (rawV1) {
+    const rawV1 = await this.readLegacyKey(ACCOUNT_KEY_V1);
+    if (rawV1 !== null) {
       const migrated = parseV1(rawV1);
       if (migrated) {
         const stored = await this.migrateLegacyState(migrated);
@@ -231,26 +259,34 @@ export class ScoreHubAccountStore {
         }
         return migrated;
       }
-      await SecureStore.deleteItemAsync(ACCOUNT_KEY_V1);
+      throw new SessionPersistenceError('local_commit');
     }
     return { ...EMPTY_ALL, accounts: {} };
   }
 
+  private async readLegacyKey(key: string): Promise<string | null> {
+    try { return await SecureStore.getItemAsync(key); }
+    catch (cause) { throw new SessionPersistenceError('credential_storage', { cause }); }
+  }
+
   private async writeAll(state: ScoreHubAccountsState): Promise<void> {
-    const currentRaw = await this.storage.getItem(ACCOUNT_INDEX_KEY);
-    const current = currentRaw ? parseIndex(currentRaw) : null;
+    const currentRaw = await this.indexIo.getItem(ACCOUNT_INDEX_KEY);
+    const current = currentRaw !== null ? this.parseExistingIndex(currentRaw) : null;
     const accounts: Record<string, StoredScoreHubAccountEntry> = {};
     const newSecretRefs: string[] = [];
+    let indexWriteStarted = false;
 
     try {
       for (const entry of Object.values(state.accounts)) {
         const previous = current?.accounts[entry.friendCode];
-        const previousToken = previous ? await this.secrets.read(previous.tokenRef) : null;
+        const previousToken = previous ? await this.credentialIo.read(previous.tokenRef) : null;
+        if (previous && !previousToken) throw new SessionPersistenceError('credential_storage');
         let tokenRef = previous?.tokenRef;
         if (!tokenRef || previousToken !== entry.token) {
-          tokenRef = this.secrets.createReference('scorehub-token');
-          await this.secrets.write(tokenRef, entry.token);
+          tokenRef = this.credentialIo.createReference('scorehub-token');
           newSecretRefs.push(tokenRef);
+          await this.credentialIo.write(tokenRef, entry.token);
+          if (await this.credentialIo.read(tokenRef) !== entry.token) throw new SessionPersistenceError('credential_storage');
         }
         accounts[entry.friendCode] = {
           friendCode: entry.friendCode,
@@ -264,56 +300,63 @@ export class ScoreHubAccountStore {
         activeFriendCode: state.activeFriendCode,
         accounts,
       };
-      await this.storage.setItem(ACCOUNT_INDEX_KEY, JSON.stringify(index));
+      indexWriteStarted = true;
+      await this.indexIo.setItem(ACCOUNT_INDEX_KEY, JSON.stringify(index));
     } catch (error) {
-      for (const secretRef of newSecretRefs) {
-        await this.secrets.delete(secretRef).catch(() => undefined);
-      }
+      await this.discardUnreferencedSecrets(newSecretRefs, indexWriteStarted).catch(() => undefined);
       throw error;
     }
 
     const retained = new Set(Object.values(accounts).map((item) => item.tokenRef));
     for (const previous of Object.values(current?.accounts ?? {})) {
       if (!retained.has(previous.tokenRef)) {
-        await this.secrets.delete(previous.tokenRef).catch(() => undefined);
+        await this.credentialIo.delete(previous.tokenRef).catch(() => undefined);
       }
+    }
+  }
+
+  private async discardUnreferencedSecrets(secretRefs: readonly string[], indexWriteStarted: boolean): Promise<void> {
+    let referenced = new Set<string>();
+    if (indexWriteStarted) {
+      // 写入抛错不代表尚未提交；读回失败时保留所有可能已被引用的凭据。
+      const actualRaw = await this.indexIo.getItem(ACCOUNT_INDEX_KEY);
+      const actual = actualRaw !== null ? this.parseExistingIndex(actualRaw) : null;
+      referenced = new Set(Object.values(actual?.accounts ?? {}).map(item => item.tokenRef));
+    }
+    for (const secretRef of secretRefs) {
+      if (!referenced.has(secretRef)) await this.credentialIo.delete(secretRef).catch(() => undefined);
     }
   }
 
   /** 当前 active 账号扁平视图（兼容旧调用）。 */
   async load(): Promise<ScoreHubAccountState> {
-    return activeView(await this.readAll());
+    return this.enqueue(async () => activeView(await this.readAll()));
   }
 
   async loadAll(): Promise<ScoreHubAccountsState> {
-    return this.readAll();
+    return this.enqueue(() => this.readAll());
   }
 
   /** 列出所有已存 JWT 的好友码（按最近更新倒序）。 */
   async listWithToken(): Promise<ScoreHubAccountEntry[]> {
-    const state = await this.readAll();
-    return Object.values(state.accounts)
+    return this.enqueue(async () => Object.values((await this.readAll()).accounts)
       .filter((entry) => Boolean(entry.token))
-      .sort((a, b) => b.updatedAt - a.updatedAt);
+      .sort((a, b) => b.updatedAt - a.updatedAt));
   }
 
   async getByFriendCode(friendCode: string): Promise<ScoreHubAccountEntry | null> {
     const code = friendCode.trim();
     if (!code) return null;
-    const state = await this.readAll();
-    return state.accounts[code] ?? null;
+    return this.enqueue(async () => (await this.readAll()).accounts[code] ?? null);
   }
 
   async select(friendCode: string): Promise<ScoreHubAccountState> {
-    const code = friendCode.trim();
-    const state = await this.readAll();
-    if (code && state.accounts[code]) {
-      state.activeFriendCode = code;
-    } else {
-      state.activeFriendCode = code;
-    }
-    await this.writeAll(state);
-    return activeView(state);
+    return this.enqueue(async () => {
+      const state = await this.readAll();
+      state.activeFriendCode = friendCode.trim();
+      await this.writeAll(state);
+      return activeView(state);
+    });
   }
 
   /** 写入/更新某好友码条目，并设为 active。 */
@@ -322,6 +365,10 @@ export class ScoreHubAccountStore {
     token?: string;
     hasCabinetBound?: boolean;
   }): Promise<ScoreHubAccountState> {
+    return this.enqueue(() => this.upsertUnlocked(partial));
+  }
+
+  private async upsertUnlocked(partial: { friendCode: string; token?: string; hasCabinetBound?: boolean }): Promise<ScoreHubAccountState> {
     const friendCode = partial.friendCode.trim();
     const state = await this.readAll();
     const existing = friendCode ? state.accounts[friendCode] : undefined;
@@ -364,51 +411,56 @@ export class ScoreHubAccountStore {
 
   /** 兼容旧 API：更新 active（若带 friendCode 则切到该码）。 */
   async patch(partial: Partial<ScoreHubAccountState>): Promise<ScoreHubAccountState> {
-    const current = await this.load();
-    const friendCode = typeof partial.friendCode === 'string'
-      ? partial.friendCode.trim()
-      : current.friendCode;
-    const token = partial.token !== undefined
-      ? (partial.token || undefined)
-      : current.token;
-    const hasCabinetBound = typeof partial.hasCabinetBound === 'boolean'
-      ? partial.hasCabinetBound
-      : current.hasCabinetBound;
+    return this.enqueue(async () => {
+      const current = activeView(await this.readAll());
+      const friendCode = typeof partial.friendCode === 'string'
+        ? partial.friendCode.trim()
+        : current.friendCode;
+      const token = partial.token !== undefined
+        ? (partial.token || undefined)
+        : current.token;
+      const hasCabinetBound = typeof partial.hasCabinetBound === 'boolean'
+        ? partial.hasCabinetBound
+        : current.hasCabinetBound;
 
-    return this.upsert({
-      friendCode,
-      token,
-      hasCabinetBound,
+      return this.upsertUnlocked({ friendCode, token, hasCabinetBound });
     });
   }
 
   async clear(): Promise<void> {
-    await this.clearIndexedState();
-    await SecureStore.deleteItemAsync(ACCOUNT_KEY_V2);
-    await SecureStore.deleteItemAsync(ACCOUNT_KEY_V1);
+    await this.enqueue(async () => {
+      await this.removeIndexedAccounts();
+      await deleteLegacyAccountKeys();
+    });
   }
 
   /** 删除指定好友码的本地 JWT 条目。 */
-  async remove(friendCode: string): Promise<ScoreHubAccountsState> {
-    const code = friendCode.trim();
-    const state = await this.readAll();
-    if (code && state.accounts[code]) {
-      delete state.accounts[code];
-    }
-    if (state.activeFriendCode === code) {
-      state.activeFriendCode = Object.keys(state.accounts)[0] ?? '';
-    }
-    await this.writeAll(state);
-    return state;
+  async remove(friendCode: string): Promise<void> {
+    return this.enqueue(() => this.removeIndexedAccounts(friendCode.trim()));
   }
 
-  private async clearIndexedState(): Promise<void> {
-    const raw = await this.storage.getItem(ACCOUNT_INDEX_KEY);
-    const index = raw ? parseIndex(raw) : null;
-    for (const account of Object.values(index?.accounts ?? {})) {
-      await this.secrets.delete(account.tokenRef).catch(() => undefined);
+  private async removeIndexedAccounts(code?: string): Promise<void> {
+    const raw = await this.indexIo.getItem(ACCOUNT_INDEX_KEY);
+    if (raw === null) {
+      const state = await this.readAll();
+      if (code === undefined) {
+        await this.writeAll({ ...EMPTY_ALL, accounts: {} });
+        return;
+      }
+      if (code && state.accounts[code]) delete state.accounts[code];
+      if (state.activeFriendCode === code) state.activeFriendCode = Object.keys(state.accounts)[0] ?? '';
+      await this.writeAll(state);
+      return;
     }
-    await this.storage.removeItem(ACCOUNT_INDEX_KEY);
+    const index = this.parseExistingIndex(raw);
+    const removed = Object.values(index.accounts).filter(entry => code === undefined || entry.friendCode === code);
+    for (const entry of removed) delete index.accounts[entry.friendCode];
+    index.activeFriendCode = resolveActiveFriendCode(index.activeFriendCode, index.accounts);
+    await this.indexIo.setItem(ACCOUNT_INDEX_KEY, JSON.stringify(index));
+    const retained = new Set(Object.values(index.accounts).map(entry => entry.tokenRef));
+    for (const entry of removed) {
+      if (!retained.has(entry.tokenRef)) await this.credentialIo.delete(entry.tokenRef).catch(() => undefined);
+    }
   }
 }
 

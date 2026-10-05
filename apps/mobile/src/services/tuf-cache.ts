@@ -1,4 +1,5 @@
 import type { DataSource } from '@/domain/models';
+import { z } from 'zod';
 import type {
   TufDifficultiesSnapshot,
   TufLevelDetailSnapshot,
@@ -20,11 +21,13 @@ import {
   tufLevelPageCacheKey,
   tufPassPageCacheKey,
   tufPlayerCacheKey,
+  TufPlayerSchema, TufPassPageSchema, TufLevelPageSchema, TufLevelDetailResponseSchema, TufDifficultyListSchema,
 } from '@/domain/tuf';
 import { tufProvider } from '@/providers/tuf-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import { clearResourcesByPrefix, createInflightGuard, resourceWriteGeneration, makeSnapshot } from '@/services/snapshot-cache-utils';
-import { assertFreshSnapshotSource, cachedSnapshotSource } from '@/domain/refresh-result';
+import type { ResourceRepository, ResourceMaintenanceRepository } from '@/repositories/resource-repository';
+import { clearResourcesByPrefix, createInflightGuard, resourceWriteGeneration, makeSnapshot, parseCachedSnapshot } from '@/services/snapshot-cache-utils';
+import { assertFreshSnapshotSource } from '@/domain/refresh-result';
 
 /** 构造 TUF 缓存快照；source 的 updatedAt 记录本次拉取时间，供缓存命中时展示来源与过期标。 */
 export function makeTufSnapshot<T>(data: T, updatedAt = new Date().toISOString()): { data: T; source: DataSource } {
@@ -44,15 +47,15 @@ export function loadTufPlayerFresh(playerId: number, signal?: AbortSignal): Prom
  * 读取一律是缓存读取：保留原提供方与抓取时间并标记过期；写入只接受抓取结果，缓存回退不得落盘。
  */
 export class TufCache {
-  constructor(private readonly repository = new SqliteSnapshotRepository()) {}
+  constructor(private readonly repository: ResourceRepository & ResourceMaintenanceRepository = new SqliteSnapshotRepository()) {}
 
-  private async readSnapshot<S extends { source: DataSource }>(key: string, version: number): Promise<S | null> {
-    const stored = await this.repository.getResource<S>(key, version);
-    return stored ? { ...stored, source: cachedSnapshotSource(stored.source) } : null;
+  private async readSnapshot<T>(key: string, version: number, dataSchema: z.ZodType<T>): Promise<{ data: T; source: DataSource } | null> {
+    const stored = await this.repository.getResource<unknown>(key, version);
+    return parseCachedSnapshot(stored, 'tuf', dataSchema);
   }
 
   async loadPlayer(playerId: number): Promise<TufPlayerSnapshot | null> {
-    return this.readSnapshot<TufPlayerSnapshot>(tufPlayerCacheKey(playerId), TUF_PLAYER_SCHEMA_VERSION);
+    return this.readSnapshot(tufPlayerCacheKey(playerId), TUF_PLAYER_SCHEMA_VERSION, TufPlayerSchema);
   }
   async savePlayer(playerId: number, snapshot: TufPlayerSnapshot, assertCurrent?: () => void): Promise<void> {
     assertFreshSnapshotSource(snapshot.source);
@@ -64,7 +67,7 @@ export class TufCache {
     options: Omit<TufPassQuery, 'offset' | 'limit'>,
     offset: number,
   ): Promise<TufPassPageSnapshot | null> {
-    return this.readSnapshot<TufPassPageSnapshot>(tufPassPageCacheKey(playerId, options, offset), TUF_PASS_PAGE_SCHEMA_VERSION);
+    return this.readSnapshot(tufPassPageCacheKey(playerId, options, offset), TUF_PASS_PAGE_SCHEMA_VERSION, TufPassPageSchema);
   }
   async savePassPage(
     playerId: number,
@@ -85,7 +88,7 @@ export class TufCache {
     options: Omit<TufLevelQuery, 'offset' | 'limit'>,
     offset: number,
   ): Promise<TufLevelPageSnapshot | null> {
-    return this.readSnapshot<TufLevelPageSnapshot>(tufLevelPageCacheKey(options, offset), TUF_LEVEL_PAGE_SCHEMA_VERSION);
+    return this.readSnapshot(tufLevelPageCacheKey(options, offset), TUF_LEVEL_PAGE_SCHEMA_VERSION, TufLevelPageSchema);
   }
   async saveLevelPage(
     options: Omit<TufLevelQuery, 'offset' | 'limit'>,
@@ -102,7 +105,7 @@ export class TufCache {
   }
 
   async loadLevel(levelId: number): Promise<TufLevelDetailSnapshot | null> {
-    return this.readSnapshot<TufLevelDetailSnapshot>(tufLevelCacheKey(levelId), TUF_LEVEL_SCHEMA_VERSION);
+    return this.readSnapshot(tufLevelCacheKey(levelId), TUF_LEVEL_SCHEMA_VERSION, TufLevelDetailResponseSchema);
   }
   async saveLevel(levelId: number, snapshot: TufLevelDetailSnapshot, assertCurrent?: () => void): Promise<void> {
     assertFreshSnapshotSource(snapshot.source);
@@ -110,7 +113,7 @@ export class TufCache {
   }
 
   async loadDifficulties(): Promise<TufDifficultiesSnapshot | null> {
-    return this.readSnapshot<TufDifficultiesSnapshot>(TUF_DIFFICULTIES_CACHE_KEY, TUF_DIFFICULTIES_SCHEMA_VERSION);
+    return this.readSnapshot(TUF_DIFFICULTIES_CACHE_KEY, TUF_DIFFICULTIES_SCHEMA_VERSION, TufDifficultyListSchema);
   }
   async saveDifficulties(snapshot: TufDifficultiesSnapshot, assertCurrent?: () => void): Promise<void> {
     assertFreshSnapshotSource(snapshot.source);

@@ -11,6 +11,7 @@ import {
 import { measureManagedStorageBytes } from '@/features/storage-management/storage-usage';
 import { clearGameRemoteImageCache } from '@/services/remote-image-cache';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 const snapshots = new SqliteSnapshotRepository();
 
@@ -46,7 +47,8 @@ export async function clearStorageByCategories(
   for (const id of unique) {
     try {
       if (id === 'shared') {
-        await clearSharedCache();
+        const result = await clearSharedCache();
+        failures.push(...result.failures);
         clearedIds.push(id);
         continue;
       }
@@ -60,10 +62,17 @@ export async function clearStorageByCategories(
       await client.cancelQueries(ownedQueries);
       client.removeQueries(ownedQueries);
       adapter.resetMemory?.();
-      await Promise.all([
-        adapter.clear(snapshots),
-        clearGameRemoteImageCache(id),
+      const results = await Promise.allSettled([
+        Promise.resolve().then(() => adapter.clear(snapshots)),
+        Promise.resolve().then(() => clearGameRemoteImageCache(id)),
       ]);
+      let failed = false;
+      results.forEach((result, index) => {
+        if (result.status !== 'rejected') return;
+        failed = true;
+        recordRuntimeError('storage-clear', result.reason, false, { phase: index === 0 ? 'resource-cleanup' : 'image-cleanup' });
+      });
+      if (failed) { failures.push(String(id)); continue; }
       clearedIds.push(id);
     } catch {
       failures.push(id === 'shared' ? '共享缓存' : String(id));

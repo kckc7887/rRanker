@@ -1,4 +1,6 @@
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
+import { installPreviewControls } from '../../chart-preview-shared/webview-player/controls';
+import { bindHeatTimelineKeyboard } from '../../chart-preview-shared/webview-player/heat-timeline';
 /**
  * 舞萌谱面确认 WebView 播放器入口。
  * 播放位置、命令代次、音源与 RAF 归 SimaiPlaybackSession，背景媒体与时间线视图各自持有资源；
@@ -12,7 +14,6 @@ import {
   parseSimaiSideChart,
   prepareAudioEvents,
   type Chart,
-  type Note,
 } from '../engine';
 import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-preview-bridge';
 import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
@@ -20,12 +21,11 @@ import { DEFAULT_JUDGE_HINT, parseJudgeHint } from '../engine/utils/judgeHint';
 import { ChartPreviewSkin } from '../engine/renderers/skinAtlas';
 import { CHART_PREVIEW_DUAL_GAP, chartPreviewCanvasSize } from './fullscreenLayout';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
-import { SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS } from './timeConversion';
+import { getLeadInMs, SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS } from './timeConversion';
 import { SimaiPlaybackSession } from './playback';
 import {
   SimaiTimelineView,
   type SimaiTimelineEntry,
-  type SimaiTimelineNoteKind,
 } from './timelineView';
 import { SimaiBackgroundMedia } from './backgroundMedia';
 import {
@@ -65,9 +65,9 @@ let exitFullscreenInitialized: (() => void) | undefined;
 let confirmInitialized: ((accepted: boolean) => void) | undefined;
 function releasePlayer(): void {
   if (disposed) return;
+  closeActiveWheelPopup();
   disposed = true;
   startupController.abort();
-  closeActiveWheelPopup();
   events.dispose();
   pauseInitialized = undefined;
   exitFullscreenInitialized = undefined;
@@ -139,15 +139,6 @@ const SPEED_MIN = 0.1;
 const SPEED_MAX = 5;
 const SPEED_STEP = 0.1;
 const SPEED_DEFAULT = 1;
-
-const TIMELINE_KIND_BY_NOTE_TYPE: Readonly<Record<Note['type'], SimaiTimelineNoteKind>> = Object.freeze({
-  tap: 'tap',
-  break: 'break',
-  'hold-start': 'hold',
-  slide: 'slide',
-  touch: 'touch',
-  'touch-hold-start': 'touch',
-});
 
 async function main(): Promise<void> {
   if (disposed) return;
@@ -274,6 +265,11 @@ async function main(): Promise<void> {
   }
 
   titleEl.textContent = config.title?.trim() || `谱面 ${config.chartId}`;
+  events.own(installPreviewControls({
+    measureNavigation: true,
+    details: [$('header'), $('info-bar')],
+    sections: ['播放与声音', '画面与判定', '视觉效果'],
+  }));
   postLoadProgress('正在加载谱面…', 0.15, statusEl);
 
   const saved = config.settings ?? {};
@@ -332,10 +328,11 @@ async function main(): Promise<void> {
   }
   const chart = charts[0]!;
   postLoadProgress('正在加载谱面…', 0.35, statusEl);
-  const allNotes = charts.flatMap((c) => c.notes.map(n => {
-    const shift = 240000 / charts[0]!.bpm - 240000 / c.bpm;
+  const notesBySide = charts.map((c) => c.notes.map(n => {
+    const shift = getLeadInMs(charts[0]!.bpm) - getLeadInMs(c.bpm);
     return { ...n, timingMs: n.timingMs + shift, endTimeMs: n.endTimeMs + shift };
   }));
+  const allNotes = notesBySide.flat();
 
   const chartCount = charts.length as 1 | 2;
   const canvases = [canvas];
@@ -455,10 +452,8 @@ async function main(): Promise<void> {
   for (let m = 0; m <= maxMeasure; m++) {
     measurePercents.push(Math.min(100, (session.beatsToMs(m * 4) / totalDurationMs) * 100));
   }
-  const timelineEntries: SimaiTimelineEntry[] = allNotes.map((note) => ({
-    timeMs: note.timingMs,
-    kind: TIMELINE_KIND_BY_NOTE_TYPE[note.type],
-  }));
+  const timelineEntries: SimaiTimelineEntry[] = notesBySide.flatMap((notes, side) =>
+    notes.map(note => ({ timeMs: note.timingMs, side })));
 
   const timelineView = new SimaiTimelineView({
     host: timelineHost,
@@ -466,7 +461,7 @@ async function main(): Promise<void> {
     ruler: timelineRuler,
     playhead: timelinePlayhead,
     badge: timelineBadge,
-    classPrefix: 'timeline',
+    trackCount: charts.length,
     durationMs: totalDurationMs,
     maxMeasure,
     measurePercents,
@@ -478,7 +473,7 @@ async function main(): Promise<void> {
     ruler: fsTimelineRuler,
     playhead: fsTimelinePlayhead,
     badge: fsTimelineBadge,
-    classPrefix: 'fs-timeline',
+    trackCount: charts.length,
     durationMs: totalDurationMs,
     maxMeasure,
     measurePercents,
@@ -609,6 +604,7 @@ async function main(): Promise<void> {
   /** 暂停（手动按钮或宿主生命周期）：停播并释放临时媒体，不改变全屏状态。 */
   const pauseForLifecycle = (): void => {
     if (disposed) return;
+    closeActiveWheelPopup();
     session.pause();
     background.releaseVideo();
   };
@@ -886,6 +882,11 @@ async function main(): Promise<void> {
     seekToPosition,
   );
   events.own(() => seekScheduler.cancel());
+  for (const host of [timelineHost, fsTimelineHost]) {
+    bindHeatTimelineKeyboard(events, host,
+      () => session.beatsToMs(session.positionBeats) / totalDurationMs * 100,
+      percent => { if (!fsLocked) seekToPosition(percent); });
+  }
 
   events.listen(timelineHost, 'pointerdown', (e) => {
     e.preventDefault();
@@ -1077,6 +1078,10 @@ async function main(): Promise<void> {
     updateLoopBtn(btnLoopB, loopB !== null);
     updateLoopBtn(fsLoopA, loopA !== null);
     updateLoopBtn(fsLoopB, loopB !== null);
+    const a = loopA === null ? null : session.beatsToMs(loopA) / totalDurationMs * 100;
+    const b = loopB === null ? null : session.beatsToMs(loopB) / totalDurationMs * 100;
+    timelineView.updateLoop(a, b);
+    fullscreenTimelineView.updateLoop(a, b);
   };
 
   const toggleLoopA = () => {
@@ -1118,7 +1123,7 @@ async function main(): Promise<void> {
 
 
   events.listen(document, 'visibilitychange', () => {
-    if (document.visibilityState === 'hidden' && session.playing) session.pause();
+    if (document.visibilityState === 'hidden') { closeActiveWheelPopup(); if (session.playing) session.pause(); }
   });
 
   renderAt(0);

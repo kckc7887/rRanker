@@ -133,7 +133,7 @@ export function ArcadeOriginPickerSheet({
             onPress={() => { void search(); }}
             style={[styles.primary, { backgroundColor: theme.accent }, searching && styles.disabled]}
           >
-            {searching ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryText}>设为原点</Text>}
+            {searching ? <ActivityIndicator color={theme.onAccent} /> : <Text style={[styles.primaryText, { color: theme.onAccent }]}>设为原点</Text>}
           </Pressable>
         </View>
       </View>

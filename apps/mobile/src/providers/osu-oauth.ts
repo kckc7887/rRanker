@@ -82,10 +82,6 @@ export async function clearPendingOsuOAuth(): Promise<void> {
   await withPendingMutation(() => SecureStore.deleteItemAsync(PENDING_OAUTH_KEY));
 }
 
-/** 读取进行中的授权信息（回调页据此校验 state）。 */
-export async function readPendingOsuOAuth(): Promise<PendingOsuOAuth | null> {
-  return withPendingMutation(loadPendingOsuOAuth);
-}
 async function loadPendingOsuOAuth(): Promise<PendingOsuOAuth | null> {
   const raw = await runProviderOperation('credential_storage', () => SecureStore.getItemAsync(PENDING_OAUTH_KEY));
   if (!raw) return null;

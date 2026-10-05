@@ -1,12 +1,15 @@
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { useUploadTaskState } from '@/hooks/use-upload-task';
+import { useUploadAccountPreferences } from '@/hooks/use-upload-account-preferences';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
 import { createLocalMaimaiAccount, createMaimaiBoundAccount, createMaxedMaimaiTestAccount } from '@/domain/bound-account';
 import type { CatalogSnapshot } from '@/domain/models';
 import type { ProviderSession } from '@/providers/contracts';
+import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { NotificationProvider } from '@/components/AppNotification';
 import { ScoreHubError } from '@/services/score-hub-client';
+import { SessionPersistenceError } from '@/domain/session-vault';
 import { uploadTaskController } from '@/services/upload-maimai-from-friend-code';
 
 type TestUploadPrefs = {
@@ -27,6 +30,7 @@ type TestHubEntry = {
   updatedAt: number;
 };
 type MockUploadInput = {
+  onLxnsTokensRotated?: (accountId: string, update: LxnsTokenRotationUpdate) => unknown;
   onPhase: (phase: {
     kind: string;
     message?: string;
@@ -256,6 +260,7 @@ function renderSheet(
   uploadMethod: 'friend_code' | 'qr' = 'friend_code',
   catalogValue: CatalogSnapshot | null | undefined = catalog,
   requestCatalog?: () => Promise<CatalogSnapshot | undefined>,
+  onLxnsTokensRotated?: (accountId: string, update: LxnsTokenRotationUpdate) => void,
 ) {
   return render(
     <NotificationProvider>
@@ -265,6 +270,7 @@ function renderSheet(
         sessionsByAccountId={{ [water.id]: waterSession }}
         catalog={catalogValue ?? undefined}
         requestCatalog={requestCatalog}
+        onLxnsTokensRotated={onLxnsTokensRotated}
         onClose={jest.fn()}
         temporarySelectedAccountIds={temporarySelectedAccountIds}
         uploadMethod={uploadMethod}
@@ -274,6 +280,32 @@ function renderSheet(
 }
 
 describe('好友码统一上传弹窗', () => {
+  it.each(['friend_code', 'qr'] as const)('%s 取消后仍交付已完成的凭据轮换，且不完成旧任务', async (method) => {
+    let input!: MockUploadInput;
+    let finish!: () => void;
+    const upload = method === 'qr' ? mockUploadQr : mockUploadFriend;
+    upload.mockImplementationOnce(value => {
+      input = value;
+      return new Promise(resolve => { finish = () => resolve({ uploaded: 1, skipped: 0,
+        failedAccountNames: [], targetResults: [], refreshedAccounts: [] }); });
+    });
+    const rotated = jest.fn();
+    const view = await renderSheet([water.id], [local, water], true, method, catalog, undefined, rotated);
+    if (method === 'qr') {
+      await fireEvent.changeText(await view.findByLabelText('玩家二维码字符串'), 'SGWCMAIDCURRENT');
+    }
+    const label = method === 'qr' ? '用二维码同步成绩' : '开始上传';
+    await waitFor(() => expect(view.getByLabelText(label).props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(view.getByLabelText(label));
+    await waitFor(() => expect(upload).toHaveBeenCalledTimes(1));
+    await fireEvent.press(view.getByLabelText('取消当前操作'));
+    const previous = { mode: 'lxns-oauth' as const, accessToken: 'a', refreshToken: 'r', expiresAt: 1, persistable: true as const };
+    const update = { previous, next: { ...previous, accessToken: 'b', refreshToken: 's' } };
+    await act(async () => { await input.onLxnsTokensRotated?.('account', update); finish(); });
+    expect(rotated).toHaveBeenCalledWith('account', update);
+    expect(uploadTaskController.getSnapshot().status).toBe('canceled');
+    await view.unmount();
+  });
   beforeEach(() => {
     uploadTaskController.resetForTests();
     jest.clearAllMocks();
@@ -308,6 +340,111 @@ describe('好友码统一上传弹窗', () => {
     mockUploadQr.mockResolvedValue({
       uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
     });
+  });
+
+  it('偏好读取期间账号更新仍完成初始化并使用当前可写账号', async () => {
+    let finish!: (prefs: TestUploadPrefs) => void;
+    mockLoadPrefs.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    const hook = await renderHook<ReturnType<typeof useUploadAccountPreferences>, { accounts: (typeof local)[] }>(({ accounts }) => useUploadAccountPreferences({
+      visible: true, running: false, decodingQr: false, accounts,
+      sessionsByAccountId: { [water.id]: waterSession },
+    }), { initialProps: { accounts: [local] }, wrapper: NotificationProvider });
+    await hook.rerender({ accounts: [local, water] });
+    await act(async () => finish({ friendCode: '', selectedAccountIds: [water.id] }));
+    await waitFor(() => expect(hook.result.current.prefsReady).toBe(true));
+    expect(hook.result.current.selectedIds).toEqual([water.id]);
+    await hook.unmount();
+  });
+
+  it('好友码快速切换丢弃旧偏好并保留新账号勾选', async () => {
+    const hook = await renderHook(() => useUploadAccountPreferences({
+      visible: true, running: false, decodingQr: false, accounts: [local, water],
+      sessionsByAccountId: { [water.id]: waterSession },
+    }), { wrapper: NotificationProvider });
+    await waitFor(() => expect(hook.result.current.prefsReady).toBe(true));
+    let finishOld!: (prefs: TestUploadPrefs) => void;
+    mockLoadPrefs.mockImplementationOnce(() => new Promise(resolve => { finishOld = resolve; }));
+    await act(async () => hook.result.current.onFriendCodeChange('222222222222222'));
+    mockLoadPrefs.mockResolvedValueOnce({ friendCode: '333333333333333', selectedAccountIds: [local.id] });
+    await act(async () => hook.result.current.onFriendCodeChange('333333333333333'));
+    await waitFor(() => expect(hook.result.current.selectedIds).toEqual([local.id]));
+    await act(async () => finishOld({ friendCode: '222222222222222', selectedAccountIds: [water.id] }));
+    expect(hook.result.current.friendCode).toBe('333333333333333');
+    expect(hook.result.current.selectedIds).toEqual([local.id]);
+    expect(mockSelect).not.toHaveBeenCalledWith('222222222222222');
+    await hook.unmount();
+  });
+
+  it('慢偏好读取不会把上个好友码的勾选写入新好友码', async () => {
+    const hook = await renderHook(() => useUploadAccountPreferences({
+      visible: true, running: false, decodingQr: false, accounts: [local, water],
+      sessionsByAccountId: { [water.id]: waterSession },
+    }), { wrapper: NotificationProvider });
+    await waitFor(() => expect(hook.result.current.prefsReady).toBe(true));
+    jest.useFakeTimers();
+    try {
+      let finish!: (prefs: TestUploadPrefs) => void;
+      mockLoadPrefs.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+      await act(async () => hook.result.current.onFriendCodeChange('222222222222222'));
+      await act(async () => { jest.advanceTimersByTime(400); });
+      expect(mockSavePrefs).toHaveBeenLastCalledWith({ friendCode: '222222222222222', selectedAccountIds: [water.id], writeSelection: false });
+      await act(async () => finish({ friendCode: '222222222222222', selectedAccountIds: [local.id] }));
+      await act(async () => { jest.advanceTimersByTime(400); });
+      expect(mockSavePrefs).toHaveBeenLastCalledWith({ friendCode: '222222222222222', selectedAccountIds: [local.id], writeSelection: true });
+    } finally {
+      await hook.unmount();
+      jest.useRealTimers();
+    }
+  });
+
+  it('删除旧好友码期间切换账号不会被迟到清理重置登录状态', async () => {
+    setHubEntry({ friendCode: '111111111111111', token: 'tok-a', hasCabinetBound: false, updatedAt: 2 });
+    mockHubAccounts.set('222222222222222', { friendCode: '222222222222222', token: 'tok-b', hasCabinetBound: true, updatedAt: 1 });
+    const hook = await renderHook(() => useUploadAccountPreferences({
+      visible: true, running: false, decodingQr: false, accounts: [local, water],
+      sessionsByAccountId: { [water.id]: waterSession },
+    }), { wrapper: NotificationProvider });
+    await waitFor(() => expect(hook.result.current.prefsReady && !hook.result.current.bindingLookup).toBe(true));
+    let finish!: () => void;
+    mockRemoveSelection.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve(undefined); }));
+    let removal!: Promise<void>;
+    await act(async () => { removal = hook.result.current.removeStoredFriendCode('111111111111111'); });
+    mockFetchMe.mockResolvedValueOnce({ friendCode: '222222222222222', hasCabinetUserId: true });
+    await act(async () => hook.result.current.selectStoredFriendCode('222222222222222'));
+    expect(hook.result.current.hasStoredToken).toBe(true);
+    await act(async () => { finish(); await removal; });
+    expect(hook.result.current.friendCode).toBe('222222222222222');
+    expect(hook.result.current.hasStoredToken).toBe(true);
+    expect(hook.result.current.hasCabinetBound).toBe(true);
+    await hook.unmount();
+  });
+
+  it('取消后重新上传不会接收旧任务的进度、完成或错误回调', async () => {
+    let oldInput!: MockUploadInput;
+    let rejectOld!: (error: Error) => void;
+    let finishNew!: () => void;
+    mockUploadFriend.mockImplementationOnce(input => {
+      oldInput = input;
+      return new Promise((_resolve, reject) => { rejectOld = reject; });
+    }).mockImplementationOnce(() => new Promise(resolve => {
+      finishNew = () => resolve({ uploaded: 2, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] });
+    }));
+    const screen = await renderSheet([water.id]);
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(screen.getByLabelText('开始上传'));
+    await waitFor(() => expect(mockUploadFriend).toHaveBeenCalledTimes(1));
+    await fireEvent.press(screen.getByLabelText('取消当前操作'));
+    await fireEvent.press(screen.getByLabelText('开始上传'));
+    await waitFor(() => expect(mockUploadFriend).toHaveBeenCalledTimes(2));
+    const current = uploadTaskController.getSnapshot();
+    await act(async () => {
+      oldInput.onPhase({ kind: 'done', message: '旧任务迟到', uploaded: 1, skipped: 0 });
+      rejectOld(new Error('old task failed'));
+    });
+    expect(uploadTaskController.getSnapshot()).toBe(current);
+    expect(screen.queryByText('旧任务迟到')).toBeNull();
+    await act(async () => finishNew());
+    expect(uploadTaskController.getSnapshot().result?.uploaded).toBe(2);
   });
 
   it('上传任务暂停后等待恢复，并复用同一个进行中任务', async () => {
@@ -645,6 +782,94 @@ describe('好友码统一上传弹窗', () => {
     await waitFor(() => expect(mockRemove).toHaveBeenCalledWith('111111111111111'));
     await waitFor(() => expect(mockRemoveSelection).toHaveBeenCalledWith('111111111111111'));
     await waitFor(() => expect(screen.queryByLabelText('选择好友码 111111111111111')).toBeNull());
+  });
+
+  it('首次凭据读取失败保留未就绪状态且通知重试后可继续', async () => {
+    mockLoadHubAccount.mockRejectedValueOnce(new SessionPersistenceError('credential_storage', { cause: new Error('private native detail') }));
+    const screen = await renderSheet([water.id]);
+    expect(await screen.findByText('无法安全保存账号凭据，请重试；若仍失败，请查看诊断。')).toBeTruthy();
+    expect(screen.getByLabelText('开始上传').props.accessibilityState.disabled).toBe(true);
+    expect(screen.queryByText('private native detail')).toBeNull();
+    expect(mockSelect).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText('重试'));
+    await waitFor(() => expect(screen.getByLabelText('开始上传').props.accessibilityState.disabled).toBe(false));
+    expect(mockUploadFriend).not.toHaveBeenCalled();
+  });
+
+  it('历史目录读取失败保留上次完整列表并允许重试', async () => {
+    setHubEntry({ friendCode: '111111111111111', token: 'tok-a', hasCabinetBound: false, updatedAt: 2 });
+    mockHubAccounts.set('222222222222222', { friendCode: '222222222222222', token: 'tok-b', hasCabinetBound: true, updatedAt: 1 });
+    const screen = await renderSheet([water.id]);
+    await waitFor(() => expect(mockUpsert).toHaveBeenCalled());
+    mockListWithToken.mockRejectedValueOnce(new SessionPersistenceError('credential_storage'));
+    await fireEvent.press(screen.getByLabelText('选择已保存的 ScoreHub 好友码'));
+    expect(await screen.findByText('账号操作失败')).toBeTruthy();
+    expect(screen.getByLabelText('选择好友码 111111111111111')).toBeTruthy();
+    expect(screen.getByLabelText('选择好友码 222222222222222')).toBeTruthy();
+    await fireEvent.press(screen.getByText('重试'));
+    await waitFor(() => expect(mockListWithToken).toHaveBeenCalledTimes(4));
+    expect(screen.getByLabelText('选择好友码 222222222222222')).toBeTruthy();
+  });
+
+  it('历史选择保存失败保持原好友码和勾选且重试成功后才发布偏好', async () => {
+    setHubEntry({ friendCode: '111111111111111', token: 'tok-a', hasCabinetBound: false, updatedAt: 2 });
+    mockHubAccounts.set('222222222222222', { friendCode: '222222222222222', token: 'tok-b', hasCabinetBound: true, updatedAt: 1 });
+    mockLoadPrefs.mockResolvedValue({ friendCode: '111111111111111', selectedAccountIds: [water.id], selectionsByFriendCode: { '111111111111111': [water.id], '222222222222222': [local.id] } });
+    const screen = await renderSheet();
+    await waitFor(() => expect(mockUpsert).toHaveBeenCalled());
+    await fireEvent.press(screen.getByLabelText('选择已保存的 ScoreHub 好友码'));
+    mockSelect.mockRejectedValueOnce(new SessionPersistenceError('local_commit'));
+    await fireEvent.press(screen.getByLabelText('选择好友码 222222222222222'));
+    expect(await screen.findByText('无法保存本机账号信息，请重试；若仍失败，请查看诊断。')).toBeTruthy();
+    expect(screen.getByLabelText('舞萌好友码').props.value).toBe('111111111111111');
+    expect(screen.getByLabelText('上传到 水鱼玩家（水鱼查分器）').props.accessibilityState.checked).toBe(true);
+    expect(screen.getByLabelText('选择好友码 222222222222222')).toBeTruthy();
+    expect(mockSavePrefs).not.toHaveBeenCalled();
+    mockFetchMe.mockResolvedValueOnce({ friendCode: '222222222222222', hasCabinetUserId: true });
+    await fireEvent.press(screen.getByText('重试'));
+    await waitFor(() => expect(screen.getByLabelText('舞萌好友码').props.value).toBe('222222222222222'));
+    await waitFor(() => expect(mockSavePrefs).toHaveBeenCalledWith({ friendCode: '222222222222222', selectedAccountIds: [local.id], writeSelection: false }));
+    expect(screen.getByLabelText('上传到 本地玩家（本地查分器）').props.accessibilityState.checked).toBe(true);
+  });
+
+  it('删除保存失败保留历史条目并用相同入口重试', async () => {
+    setHubEntry({ friendCode: '111111111111111', token: 'tok-a', hasCabinetBound: false, updatedAt: 2 });
+    const screen = await renderSheet([water.id]);
+    await waitFor(() => expect(mockUpsert).toHaveBeenCalled());
+    await fireEvent.press(screen.getByLabelText('选择已保存的 ScoreHub 好友码'));
+    mockRemove.mockRejectedValueOnce(new SessionPersistenceError('local_commit'));
+    await fireEvent.press(screen.getByLabelText('删除好友码 111111111111111'));
+    expect(await screen.findByText('账号操作失败')).toBeTruthy();
+    expect(screen.getByLabelText('选择好友码 111111111111111')).toBeTruthy();
+    expect(mockRemoveSelection).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText('重试'));
+    await waitFor(() => expect(screen.queryByLabelText('选择好友码 111111111111111')).toBeNull());
+    expect(mockRemoveSelection).toHaveBeenCalledWith('111111111111111');
+  });
+
+  it('验证后的本机存储故障显示固定错误并保留已保存账号', async () => {
+    setHubEntry({ friendCode: '111111111111111', token: 'tok-a', hasCabinetBound: true, updatedAt: 2 });
+    mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: true });
+    mockUpsert.mockRejectedValueOnce(new SessionPersistenceError('credential_storage'));
+    const screen = await renderSheet([water.id]);
+    expect(await screen.findByText('无法安全保存账号凭据，请重试；若仍失败，请查看诊断。')).toBeTruthy();
+    expect(screen.getByLabelText('已保存舞萌账号')).toBeTruthy();
+    expect(mockRemove).not.toHaveBeenCalled();
+    await fireEvent.press(screen.getByText('重试'));
+    await waitFor(() => expect(mockUpsert).toHaveBeenCalledTimes(2));
+    expect(screen.getByLabelText('已保存舞萌账号')).toBeTruthy();
+  });
+
+  it('上传凭据读取失败不会按令牌过期回退好友码', async () => {
+    setHubEntry({ friendCode: '111111111111111', token: 'tok-a', hasCabinetBound: true, updatedAt: 2 });
+    mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: true });
+    mockUploadSession.mockRejectedValueOnce(new SessionPersistenceError('credential_storage'));
+    const screen = await renderSheet([water.id]);
+    await waitFor(() => expect(screen.getByLabelText('已保存舞萌账号')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('开始上传'));
+    expect(await screen.findByText('无法安全保存账号凭据，请重试；若仍失败，请查看诊断。')).toBeTruthy();
+    expect(mockUploadFriend).not.toHaveBeenCalled();
+    expect(mockRemove).not.toHaveBeenCalled();
   });
 
   it('每次只临时勾选当前可写账号且不保存目标变化', async () => {

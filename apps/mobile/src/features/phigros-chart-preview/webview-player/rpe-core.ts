@@ -13,7 +13,6 @@
 
 import { rpeBundleRelativePath } from '../../../domain/rpe-resource-path';
 
-export const RPE_WIDTH = 1350;
 export const RPE_HEIGHT = 900;
 
 // ---------------- 缓动（prpr RPE_TWEEN_MAP 语义） ----------------

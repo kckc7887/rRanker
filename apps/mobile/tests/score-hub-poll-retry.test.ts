@@ -1,3 +1,4 @@
+import { AbortController as NativeAbortController } from 'abort-controller';
 import {
   createCabinetScoreJob,
   createUpdateScoreJob,
@@ -5,7 +6,10 @@ import {
   pollCabinetScoreJobUntilDone,
   pollUpdateScoreUntilDone,
   ScoreHubError,
+  fetchLatestSync,
 } from '@/services/score-hub-client';
+import { waitForUploadDelay } from '@/services/score-hub-http';
+import { UploadTaskController } from '@/services/upload-task-controller';
 
 const fetchMock = vi.hoisted(() => vi.fn());
 
@@ -18,13 +22,40 @@ function jsonResponse(status: number, body: unknown) {
   };
 }
 
-describe('score-hub poll resilience', () => {
+describe.each([['Node', globalThis.AbortController], ['React Native', NativeAbortController]] as const)('score-hub poll resilience: %s', (_runtime, Controller) => {
+  it('取消延时立即清理计时器，暂停后不发起下次轮询', async () => {
+    const controller = new UploadTaskController();
+    const signal = controller.begin();
+    const waiting = waitForUploadDelay(5000, signal);
+    const canceled = expect(waiting).rejects.toThrow('已取消');
+    await vi.advanceTimersByTimeAsync(0);
+    controller.cancel();
+    await canceled;
+    expect(vi.getTimerCount()).toBe(0);
+    const next = controller.begin();
+    let completed = false;
+    const delay = waitForUploadDelay(5000, next).then(() => { completed = true; });
+    await vi.advanceTimersByTimeAsync(0);
+    controller.pause();
+    await vi.advanceTimersByTimeAsync(5000);
+    expect(completed).toBe(false);
+    controller.resume();
+    await delay;
+    controller.cancel();
+    expect(vi.getTimerCount()).toBe(0);
+  });
+  it.each([{ id: 'sync', scores: [{ musicId: '1', chartIndex: 0, type: null }] }, { id: 'sync', scores: {} }, {}])('拒绝损坏的同步 DTO', async body => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, body));
+    await expect(fetchLatestSync('token')).rejects.toThrow('sync 响应无效');
+  });
   beforeEach(() => {
+    vi.stubGlobal('AbortController', Controller);
     fetchMock.mockReset();
     vi.useFakeTimers();
   });
 
   afterEach(() => {
+    vi.unstubAllGlobals();
     vi.useRealTimers();
   });
 

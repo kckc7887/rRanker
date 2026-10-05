@@ -7,7 +7,9 @@
  * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
 
+import { lowerBoundBy, upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
 import { findEventIndex, type PgrChart, type PgrHeightEvent, type PgrLine, type PgrMoveEvent, type PgrNote, type PgrTweenEvent } from './pgr-core';
+import { PgrBlockRenderer } from './pgr-block-renderer';
 
 const NOTE_WIDTH_RATIO_BASE = 0.13175016;
 const HOLD_ATLAS = Object.freeze({ normal: [50, 50], multi: [96, 97] } as const);
@@ -67,28 +69,6 @@ function scaledNoteWidth(stageWidth: number, noteScale: number, multipleScale = 
 
 function scaledHitEffectDiameter(stageWidth: number, noteScale: number): number {
   return stageWidth * HIT_FX_SCALE * clamp(noteScale, 0.5, 2) / 5;
-}
-
-function lowerBoundBy<T>(items: readonly T[], target: number, read: (item: T) => number): number {
-  let low = 0;
-  let high = items.length;
-  while (low < high) {
-    const middle = (low + high) >>> 1;
-    if (read(items[middle]!) < target) low = middle + 1;
-    else high = middle;
-  }
-  return low;
-}
-
-function upperBoundBy<T>(items: readonly T[], target: number, read: (item: T) => number): number {
-  let low = 0;
-  let high = items.length;
-  while (low < high) {
-    const middle = (low + high) >>> 1;
-    if (read(items[middle]!) <= target) low = middle + 1;
-    else high = middle;
-  }
-  return low;
 }
 
 function sampleTweenAt(events: PgrTweenEvent[], time: number, index: number, fallback = 0): number {
@@ -203,6 +183,7 @@ export class PgrRenderer {
   private readonly context: CanvasRenderingContext2D;
   private readonly resizeObserver: ResizeObserver;
   private chart: PgrChart | null = null;
+  private blocks: PgrBlockRenderer | null = null;
   private illustration: HTMLImageElement | null = null;
   private noteAssets: NoteAssets | null = null;
   private hitFxTexture: HTMLCanvasElement | null = null;
@@ -233,6 +214,9 @@ export class PgrRenderer {
   }
 
   setChart(chart: PgrChart): void {
+    this.blocks?.dispose();
+    this.blocks = null;
+    if (chart.blocks.length) this.blocks = new PgrBlockRenderer(chart.blocks);
     this.chart = chart;
     this.cursors = chart.lines.map(() => ({ speed: 0, disappear: 0, rotate: 0, move: 0 }));
     this.renderCaches = chart.lines.map(createLineRenderCache);
@@ -259,6 +243,8 @@ export class PgrRenderer {
     if (this.disposed) return;
     this.disposed = true;
     this.resizeObserver.disconnect();
+    this.blocks?.dispose();
+    this.blocks = null;
     this.chart = null;
     this.illustration = null;
     this.noteAssets = null;
@@ -365,6 +351,7 @@ export class PgrRenderer {
         }
       }
     }
+    this.blocks?.draw(context, time, width, height, pixelWidth, pixelHeight);
     this.drawHitEffects(context, time, width, height);
     context.globalAlpha = 1;
     this.lastTime = time;

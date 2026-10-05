@@ -41,5 +41,3 @@ export class ChunithmTempAccountStore {
     await this.storage.removeItem(STORE_KEY);
   }
 }
-
-export const chunithmTempAccountStore = new ChunithmTempAccountStore();

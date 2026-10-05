@@ -21,6 +21,9 @@ import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { providerLoginSheetStyles as styles } from '@/components/provider-login-sheet-styles';
+import { useAccountBindingRequest } from '@/hooks/use-account-binding-flow';
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 export function OsuLoginPanel({
   visible,
@@ -37,6 +40,7 @@ export function OsuLoginPanel({
   const credentialIdsByAccountId = useSession((s) => s.credentialIdsByAccountId);
   const setOsuBinding = useSession((s) => s.setOsuBinding);
   const lifecycle = useAppLifecycle();
+  const reuseRequests = useAccountBindingRequest(visible);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [showReusableAccounts, setShowReusableAccounts] = useState(false);
@@ -47,8 +51,8 @@ export function OsuLoginPanel({
   }, [busy, onBusyChange]);
 
   useEffect(() => {
-    if (lifecycle.foregroundReady) setBusy(false);
-  }, [lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
+    if (lifecycle.phase === 'background') setBusy(false);
+  }, [lifecycle.phase]);
 
   const osuReusableAccounts = useMemo(() => {
     return reusablePartiallyBoundAccounts({
@@ -85,9 +89,11 @@ export function OsuLoginPanel({
   });
 
   const invalidateAll = () => {
-    void queryClient.invalidateQueries({ queryKey: ['score-snapshot'] });
-    void queryClient.invalidateQueries({ queryKey: ['game-data'] });
-    void queryClient.invalidateQueries({ queryKey: ['songs'] });
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['score-snapshot'] }),
+      queryClient.invalidateQueries({ queryKey: ['game-data'] }),
+      queryClient.invalidateQueries({ queryKey: ['songs'] }),
+    ]).catch(error => recordRuntimeError('osu-binding', error, false, { phase: 'query-refresh' }));
   };
 
   const openOsuAuthorize = async () => {
@@ -113,6 +119,10 @@ export function OsuLoginPanel({
       setMessage('已有 osu! 账号凭据不可用，请重新授权');
       return;
     }
+    const task = reuseRequests.begin();
+    if (!task) return;
+    const assertAccountCurrent = captureResourceWrites(account.gameId, task.signal, account.id);
+    const assertCurrent = () => { task.assertCurrent(); assertAccountCurrent(); };
     setBusy(true);
     setMessage(`正在使用「${account.displayName}」绑定选中模式…`);
     try {
@@ -122,7 +132,10 @@ export function OsuLoginPanel({
         credentialId,
         existingAccounts: boundAccounts,
         credentialIdsByAccountId,
+        signal: task.signal,
+        assertCurrent,
       }));
+      assertCurrent();
       await runProviderOperation('local_commit', () => setOsuBinding({
         accounts: result.accounts,
         credentialId: result.credentialId,
@@ -133,9 +146,8 @@ export function OsuLoginPanel({
       reset();
       onSuccess();
     } catch (error) {
-      setMessage(messageFor(error));
-      setBusy(false);
-    }
+      if (task.isCurrent()) setMessage(messageFor(error));
+    } finally { if (task.isCurrent()) setBusy(false); task.finish(); }
   };
 
   const onSuccessRef = useRef(onSuccess);
@@ -162,7 +174,7 @@ export function OsuLoginPanel({
         onPress={() => void openOsuAuthorize()}
         style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
       >
-        <Text style={styles.primaryText}>前往 osu! 授权</Text>
+        <Text style={[styles.primaryText, { color: theme.onAccent }]}>前往 osu! 授权</Text>
       </Pressable>
       <Text style={styles.hint}>
         点击后跳转浏览器完成授权，同意后返回并选择要绑定的模式。

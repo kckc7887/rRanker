@@ -34,22 +34,7 @@ jobs:
         with:
           ref: ${{ github.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: apps/mobile/package-lock.json
-      - uses: actions/setup-java@v5
-        with:
-          distribution: temurin
-          java-version: "17"
-      - uses: android-actions/setup-android@v4
-        with:
-          cmdline-tools-version: "12266719"
-          log-accepted-android-sdk-licenses: false
-      - uses: gradle/actions/setup-gradle@v6
-      - name: Install dependencies
-        run: npm ci --include=dev
+      - uses: ./.github/actions/android-setup
       - name: Verify diagnostic build settings
         run: npx vitest run tests/android-build-optimization.test.ts
       - name: Select independent native entry

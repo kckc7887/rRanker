@@ -16,7 +16,7 @@ export function normalizeModuleToken(value) {
  * `screens` 是 `src/screens` 下的页面文件名，`aliases` 用于 domain/services/features 的文件前缀。
  */
 export const GAME_MODULES = Object.freeze([
-  { module: 'maimai', components: ['maimai'], screens: ['MaimaiRandomChartsScreen.tsx', 'MaimaiScreens.tsx', 'maimai/MaimaiRecordsScreen.tsx', 'maimai/MaimaiCatalogScreen.tsx'], aliases: ['maimai'] },
+  { module: 'maimai', components: ['maimai'], screens: ['MaimaiRandomChartsScreen.tsx', 'MaimaiScreens.tsx', 'maimai/MaimaiRecordsScreen.tsx', 'maimai/MaimaiCatalogScreen.tsx', 'maimai/MaimaiBestImageScreen.tsx'], aliases: ['maimai'] },
   { module: 'chunithm', components: ['chunithm'], screens: ['ChunithmBestImageScreen.tsx', 'ChunithmRandomChartsScreen.tsx'], aliases: ['chunithm'] },
   { module: 'phigros', components: ['phigros'], screens: ['PhigrosBestImageScreen.tsx', 'PhigrosRandomChartsScreen.tsx'], aliases: ['phigros'] },
   { module: 'phira', components: ['phira'], screens: ['PhiraScreens.tsx', 'PhiraRandomChartsScreen.tsx'], aliases: ['phira'] },

@@ -33,9 +33,10 @@ import {
 } from './chart-preview-progress';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
-import { createRuntimeOperation } from '@/services/runtime-diagnostics-recorder';
+import { createRuntimeOperation, recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import { ProviderError, providerErrorToUserMessage } from '@/providers/errors';
 import { useAppTheme } from '@/theme/app-theme';
+import { chartPreviewAppearanceScript } from './chart-preview-inject-factory';
 
 export type ChartPreviewShellSource = {
   uri: string;
@@ -87,6 +88,9 @@ type PreviewSession = {
   generation: object;
   memoryWarningGeneration: number;
   operation: ReturnType<typeof createRuntimeOperation>;
+  settingsKey: string;
+  settings: Record<string, unknown>;
+  settingsPending: boolean;
   release: () => void;
   markReady: () => void;
 };
@@ -99,6 +103,11 @@ const READY_TIMEOUT_MS = 60_000;
 const LIFECYCLE_PAUSE_SCRIPT = chartPreviewHostCommandScript({ type: 'pause', cause: 'lifecycle' });
 const EXIT_FULLSCREEN_SCRIPT = chartPreviewHostCommandScript({ type: 'exit-fullscreen' });
 const DISPOSE_SCRIPT = chartPreviewHostCommandScript({ type: 'dispose' });
+
+function disposeSource(source?: ChartPreviewShellSource): void {
+  try { source?.dispose?.(); }
+  catch (error) { recordRuntimeError('chart-preview-release', error, false, { phase: 'cleanup' }); }
+}
 
 async function loadSettings(settingsKey: string): Promise<Record<string, unknown>> {
   try {
@@ -165,8 +174,16 @@ export function ChartPreviewScreenShell<TPayload>({
   const lifecycle = useAppLifecycle();
   const foreground = lifecycle.foregroundReady;
   const webRef = useRef<WebView>(null);
-  const settingsRef = useRef<Record<string, unknown>>({});
   const settingsWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const flushSessionSettings = useCallback((session: PreviewSession | null) => {
+    if (!session?.settingsPending) return;
+    session.settingsPending = false;
+    const serialized = JSON.stringify(session.settings);
+    settingsWriteQueueRef.current = settingsWriteQueueRef.current
+      .catch(() => undefined)
+      .then(() => Storage.setItem(session.settingsKey, serialized))
+      .catch(error => recordRuntimeError('chart-preview-settings', error, false, { phase: 'persist' }));
+  }, []);
 
   const [preparedView, setPreparedView] = useState<PreparedPreview | null>(null);
   const [stageError, setStageError] = useState<string | null>(null);
@@ -266,8 +283,9 @@ export function ChartPreviewScreenShell<TPayload>({
   // 短暂 inactive 只下发生命周期暂停：全屏状态由原生与页面共同保留，回前台后仍然一致。
   useEffect(() => {
     if (lifecycle.phase !== 'inactive') return;
+    flushSessionSettings(sessionRef.current);
     webRef.current?.injectJavaScript(LIFECYCLE_PAUSE_SCRIPT);
-  }, [lifecycle.phase]);
+  }, [lifecycle.phase, flushSessionSettings]);
 
   useEffect(() => {
     if (!foreground) return;
@@ -299,7 +317,6 @@ export function ChartPreviewScreenShell<TPayload>({
     let readyTimeout: ReturnType<typeof setTimeout> | undefined;
     let preparedSource: ChartPreviewShellSource | undefined;
     let finished = false;
-    settingsRef.current = {};
     const operation = createRuntimeOperation('chart-preview');
     operation.record('prepare', { result: 'start' });
     const finish = (result: string, error?: unknown) => {
@@ -312,8 +329,12 @@ export function ChartPreviewScreenShell<TPayload>({
       generation: prepareGeneration,
       memoryWarningGeneration: lifecycleRef.current.memoryWarningGeneration,
       operation,
+      settingsKey,
+      settings: {},
+      settingsPending: false,
       release: () => {
         if (!session.active) return;
+        flushSessionSettings(session);
         session.active = false;
         finish('cancelled');
         if (prepareTimeout !== undefined) clearTimeout(prepareTimeout);
@@ -321,14 +342,15 @@ export function ChartPreviewScreenShell<TPayload>({
         if (sessionRef.current === session) {
           sessionRef.current = null;
           // 卸载前释放最新实例；旧会话清理不得向新实例注入脚本。
-          webRef.current?.injectJavaScript(DISPOSE_SCRIPT);
+          try { webRef.current?.injectJavaScript(DISPOSE_SCRIPT); }
+          catch (error) { recordRuntimeError('chart-preview-host-dispose', error, false, { phase: 'cleanup' }); }
           if (progressFlushRef.current !== null) {
             clearTimeout(progressFlushRef.current);
             progressFlushRef.current = null;
           }
         }
         controller.abort();
-        preparedSource?.dispose?.();
+        disposeSource(preparedSource);
         preparedSource = undefined;
       },
       markReady: () => {
@@ -360,12 +382,12 @@ export function ChartPreviewScreenShell<TPayload>({
         if (!isCurrentSession(session)) return;
         const settings = await loadSettings(settingsKey);
         if (!isCurrentSession(session)) return;
-        settingsRef.current = settings;
+        session.settings = settings;
         const prepared = await request.prepare(controller.signal, settings, (progress) => {
           if (isCurrentSession(session)) applyLoadProgress(chartPreviewPrepareProgress(progress));
         });
         if (!isCurrentSession(session)) {
-          prepared.dispose?.();
+          disposeSource(prepared);
           return;
         }
         preparedSource = prepared;
@@ -410,14 +432,11 @@ export function ChartPreviewScreenShell<TPayload>({
     return () => subscription.remove();
   }, [isFullscreen]);
 
-  const persistSettings = useCallback((partial: Record<string, unknown>) => {
-    settingsRef.current = { ...settingsRef.current, ...partial };
-    const serialized = JSON.stringify(settingsRef.current);
-    settingsWriteQueueRef.current = settingsWriteQueueRef.current
-      .catch(() => undefined)
-      .then(() => Storage.setItem(settingsKey, serialized))
-      .catch(() => undefined);
-  }, [settingsKey]);
+  const persistSettings = (session: PreviewSession, partial: Record<string, unknown>, committed = true) => {
+    session.settings = { ...session.settings, ...partial };
+    session.settingsPending = true;
+    if (committed || !foreground) flushSessionSettings(session);
+  };
 
   const bridge = useMemo(() => ({
     postMessage: (message: Record<string, unknown>) => {
@@ -437,6 +456,7 @@ export function ChartPreviewScreenShell<TPayload>({
     return 'true;';
     // eslint-disable-next-line react-hooks/exhaustive-deps -- 注入构建器随屏幕恒定
   }, [request]);
+  const appearanceScript = chartPreviewAppearanceScript(theme);
 
   const blockingError = (request.kind === 'error' ? request.message : null)
     ?? externalError
@@ -460,8 +480,8 @@ export function ChartPreviewScreenShell<TPayload>({
   };
 
   // 播放器 WebView 的深浅色底色（与播放器 HTML 的 --bg 保持一致，避免加载闪色）。
-  const webviewBackground = theme.dark ? '#0b0d12' : '#F7F8FA';
-  const loadingOverlayBackground = theme.dark ? 'rgba(11,13,18,0.72)' : 'rgba(247,248,250,0.72)';
+  const webviewBackground = theme.dark ? '#121212' : '#f5f5f5';
+  const loadingOverlayBackground = theme.dark ? 'rgba(18,18,18,0.72)' : 'rgba(245,245,245,0.72)';
   const progressBar = (
     <ChartPreviewLoadProgressBar
       accent={theme.accent}
@@ -522,11 +542,12 @@ export function ChartPreviewScreenShell<TPayload>({
             setSupportMultipleWindows={false}
             source={{ uri: source.uri }}
             onShouldStartLoadWithRequest={(navigation) => isCurrentView() && navigation.url === source.uri}
-            injectedJavaScriptBeforeContentLoaded={injected}
+            injectedJavaScriptBeforeContentLoaded={`${appearanceScript}\n${injected}`}
             style={[styles.webview, { backgroundColor: webviewBackground }]}
             onLoadEnd={() => {
               if (!isCurrentView()) return;
               recordView('loaded');
+              webRef.current?.injectJavaScript(appearanceScript);
               if (!reInjectOnLoadEnd || request.kind !== 'ready') return;
               const script = buildInjectedJavaScript?.(request.payload);
               if (script !== undefined) webRef.current?.injectJavaScript(script);
@@ -563,7 +584,7 @@ export function ChartPreviewScreenShell<TPayload>({
                 return;
               }
               if (isChartPreviewPlayerEvent(data, 'settings')) {
-                persistSettings(data.settings);
+                if (viewSession) persistSettings(viewSession, data.settings, data.committed);
               }
               onBridgeMessage?.(data, bridge);
             }}

@@ -14,6 +14,7 @@ import {
 } from '@/domain/osu';
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import type { AtomicResourceRepository, ResourceMaintenanceRepository } from '@/repositories/resource-repository';
 import {
   clearResourcesByPrefix,
   createInflightGuard, resourceWriteGeneration,
@@ -32,6 +33,11 @@ export function makeOsuSnapshot(
 /** 同一模式同一玩家并发读取共享一次网络请求（总览与最佳页可能并发）。 */
 const inflightLoads = createInflightGuard<string>();
 
+function scoreContent(score: OsuBestScore): string {
+  return JSON.stringify(score, (_key, value: unknown) => value && typeof value === 'object' && !Array.isArray(value)
+    ? Object.fromEntries(Object.entries(value).sort(([left], [right]) => left.localeCompare(right))) : value);
+}
+
 export function loadOsuSnapshotFresh(
   provider: OsuScoreProvider,
   gameId: OsuGameId,
@@ -49,7 +55,7 @@ export function loadOsuSnapshotFresh(
 
 /** osu! 分模式玩家快照的本地持久化（缓存优先渲染）。 */
 export class OsuCache {
-  constructor(private readonly repository = new SqliteSnapshotRepository()) {}
+  constructor(private readonly repository: AtomicResourceRepository & ResourceMaintenanceRepository = new SqliteSnapshotRepository()) {}
 
   async load(gameId: OsuGameId, userId: number): Promise<OsuSnapshot | null> {
     const raw = await this.repository.getResource<unknown>(
@@ -106,12 +112,18 @@ export class OsuCache {
     return this.repository.updateResource<OsuKnownScoresSnapshot>(
       osuKnownScoresCacheKey(gameId, userId), OSU_KNOWN_SCORES_SCHEMA_VERSION, (previous) => {
     const parsed = OsuKnownScoresSnapshotSchema.safeParse(previous);
-    const items = { ...(parsed.success ? (parsed.data as OsuKnownScoresSnapshot).items : {}) };
+    const existingSnapshot = parsed.success ? parsed.data as OsuKnownScoresSnapshot : null;
+    const items = { ...(existingSnapshot?.items ?? {}) };
+    let changed = false;
     for (const score of scores) {
       const key = String(score.beatmap.id);
       const existing = items[key];
-      if (!existing || score.score >= existing.score) items[key] = score;
+      if (!existing || (score.score >= existing.score && scoreContent(existing) !== scoreContent(score))) {
+        items[key] = score;
+        changed = true;
+      }
     }
+    if (!changed && existingSnapshot) return { value: existingSnapshot, write: false };
     const snapshot: OsuKnownScoresSnapshot = {
       items,
       source: snapshotSource({ kind: 'osu', label: 'osu.ppy.sh' }),
@@ -126,9 +138,4 @@ export class OsuCache {
       keys: [osuSnapshotCacheKey(gameId, userId), osuKnownScoresCacheKey(gameId, userId)],
     });
   }
-}
-
-/** 测试用：清除 in-flight 去重表。 */
-export function resetOsuInflightForTests(): void {
-  inflightLoads.resetForTests();
 }

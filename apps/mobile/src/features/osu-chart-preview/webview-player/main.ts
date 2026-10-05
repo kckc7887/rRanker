@@ -4,7 +4,9 @@ import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-
 import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-preview-bridge';
 import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
 import { md5 } from './engine';
-import { parseOsuBytes } from './autoplay';
+import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
+import { installPreviewControls } from '../../chart-preview-shared/webview-player/controls';
+import { HeatTimelineView, heatTimeLabels } from '../../chart-preview-shared/webview-player/heat-timeline';
 import {
   applyManiaScrollSpeed, destroyPlayback, pausePlayback, playFrom, presentationTime,
   seekPlayback, startPlayback, type PlaybackHandle,
@@ -27,12 +29,17 @@ const fullscreenButton = element<HTMLButtonElement>('btn-fullscreen');
 const lockButton = element<HTMLButtonElement>('fs-lock');
 const timeline = element('timeline-host');
 const controls = element('controls');
+const timelineView = new HeatTimelineView({
+  host: timeline, bars: element('timeline-bars'), ruler: element('timeline-ruler'),
+  playhead: element('timeline-playhead'), badge: element('timeline-badge'),
+});
 const warnings = new Set<string>();
 const wheels: ReturnType<typeof setupWheelPopup>[] = [];
 let speedWheel: ReturnType<typeof setupWheelPopup> | undefined;
 let settings = normalizeOsuChartPreviewSettings({});
 let handle: PlaybackHandle | null = null;
 let disposed = false;
+const events = new PlayerEventScope(() => disposed);
 let dragging = false;
 let wasPlayingBeforeDrag = false;
 let fullscreen = false;
@@ -45,7 +52,7 @@ let lastUiFrame = -Infinity;
 function post(type: string, values: Record<string, unknown> = {}): void {
   if (!disposed) window.ReactNativeWebView?.postMessage(JSON.stringify({ type, ...values }));
 }
-function status(message: string): void { element('status').textContent = message; }
+function status(message: string): void { if (!disposed) element('status').textContent = message; }
 function warn(message: string): void {
   if (disposed) return;
   warnings.add(message);
@@ -64,9 +71,7 @@ function syncTransport(): void {
     ? '<path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>' : '<path d="M8 5v14l11-7z"/>';
   playButton.setAttribute('aria-label', playing ? '暂停' : '播放');
   element('time-label').textContent = `${formatClock(position)} / ${formatClock(handle.durationMs)}`;
-  element('timeline-playhead').style.left = `${pct}%`;
-  element('timeline-badge').style.left = `${pct}%`;
-  element('timeline-badge').textContent = formatClock(position);
+  timelineView.updateProgress(pct, formatClock(position));
   timeline.setAttribute('aria-valuenow', String(Math.round(position)));
   timeline.setAttribute('aria-valuetext', `${formatClock(position)} / ${formatClock(handle.durationMs)}`);
   if (handle.session.ended) status('播放结束');
@@ -78,60 +83,20 @@ function tick(time: number): void {
   if (handle?.session.playing) uiFrame = requestAnimationFrame(tick);
 }
 function buildTimeline(): void {
-  const bars = element('timeline-bars');
-  const ruler = element('timeline-ruler');
-  bars.replaceChildren();
-  ruler.replaceChildren();
-  if (!handle) return;
-  const duration = handle.durationMs;
-  const width = Math.max(1, Math.ceil(timeline.getBoundingClientRect().width));
-  const count = Math.min(200, width);
-  const buckets = Array.from({ length: count }, () => [0, 0, 0, 0]);
+  if (disposed || !handle) return;
   const beatmap = handle.session.beatmap;
-  for (const note of [...beatmap.hitObjects, ...beatmap.maniaHolds]) {
-    const time = note.time - handle.session.range.startMs;
-    const index = Math.min(count - 1, Math.max(0, Math.floor(time / duration * count)));
-    const kind = note.type === 'slider' ? 1 : note.type === 'hold' ? 2 : note.type === 'spinner' ? 3 : 0;
-    buckets[index][kind]++;
-  }
-  const max = Math.max(1, ...buckets.map(bucket => bucket.reduce((sum, n) => sum + n, 0)));
-  const colors = ['#5b8cff', '#00CED1', '#FF8C00', '#ff69b4'];
-  buckets.forEach((bucket, index) => {
-    const total = bucket.reduce((sum, n) => sum + n, 0);
-    if (!total) return;
-    const bar = document.createElement('div');
-    bar.className = 'timeline-bar';
-    Object.assign(bar.style, { left: `${index / count * 100}%`, width: `${100 / count}%`, height: `${Math.max(2, total / max * 22)}px` });
-    bucket.forEach((value, kind) => {
-      if (!value) return;
-      const segment = document.createElement('div');
-      Object.assign(segment.style, { flex: String(value / total), width: '100%', backgroundColor: colors[kind] });
-      bar.appendChild(segment);
-    });
-    bars.appendChild(bar);
-  });
-  const seconds = duration / 1000;
-  const tickStep = [1, 5, 10, 15, 30, 60, 120, 300].find(step => width * step / seconds >= 4) ?? 300;
-  const labelStep = [5, 10, 15, 30, 60, 120, 300, 600].find(step => width * step / seconds >= 24) ?? 600;
-  for (let time = 0; time <= seconds; time += tickStep) {
-    const pct = `${time / seconds * 100}%`;
-    const major = time % labelStep === 0;
-    const tick = document.createElement('div');
-    tick.className = `timeline-tick ${major ? 'major' : Number.isInteger(time / (labelStep / 2)) ? 'medium' : 'minor'}`;
-    tick.style.left = pct;
-    ruler.appendChild(tick);
-    if (major) {
-      const label = document.createElement('div');
-      label.className = 'timeline-label';
-      label.style.left = pct;
-      label.textContent = formatClock(time * 1000);
-      ruler.appendChild(label);
-    }
-  }
+  const start = handle.session.range.startMs;
+  timelineView.build(handle.durationMs, [{
+    times: [...beatmap.hitObjects, ...beatmap.maniaHolds].map(note => note.time - start),
+  }], heatTimeLabels(handle.durationMs, formatClock));
   syncTransport();
 }
 const timelineObserver = new ResizeObserver(buildTimeline);
 timelineObserver.observe(timeline);
+events.own(() => timelineObserver.disconnect());
+events.own(() => cancelAnimationFrame(uiFrame));
+events.own(() => window.clearTimeout(controlsTimer));
+events.own(destroyPlayback);
 
 function syncControlsVisibility(): void {
   controls.classList.toggle('hidden', !controlsVisible || locked);
@@ -142,6 +107,7 @@ function showControls(): void {
   controlsVisible = true;
   syncControlsVisibility();
   if (fullscreen && !dragging) controlsTimer = window.setTimeout(() => {
+    if (disposed) return;
     controlsVisible = false;
     syncControlsVisibility();
   }, 5000);
@@ -152,6 +118,7 @@ function hideControls(): void {
   syncControlsVisibility();
 }
 function setFullscreen(active: boolean): void {
+  if (disposed) return;
   closeActiveWheelPopup();
   fullscreen = active;
   document.body.classList.toggle('fullscreen', active);
@@ -188,6 +155,7 @@ function setupSettings(mode: number): void {
         changeSettings({ [key]: key === 'maniaSkin' ? value === 1 ? 'circle' : 'brick' : value });
       }, persistSettings, min, max, step, initial, labels, format);
     wheels.push(wheel);
+    events.own(wheel.dispose);
     return wheel;
   };
   const percent = (value: number) => `${value}%`;
@@ -205,7 +173,7 @@ function setupSettings(mode: number): void {
   ] as const) {
     const button = element<HTMLButtonElement>(id);
     button.setAttribute('aria-pressed', String(settings[key]));
-    button.addEventListener('click', () => {
+    events.listen(button, 'click', () => {
       changeSettings({ [key]: !settings[key] });
       button.setAttribute('aria-pressed', String(settings[key]));
       persistSettings();
@@ -234,31 +202,31 @@ function togglePlay(): void {
 }
 /** 暂停（手动按钮或宿主生命周期）：只停播与收起浮层，不改变全屏状态。 */
 function pauseForLifecycle(): void {
+  if (disposed) return;
   dragging = false;
+  for (const wheel of wheels) wheel.flush();
   closeActiveWheelPopup();
   if (handle) { pausePlayback(handle.session); status('已暂停'); syncTransport(); }
 }
 function dispose(): void {
   if (disposed) return;
+  for (const wheel of wheels) wheel.flush();
+  closeActiveWheelPopup();
   if (fullscreen) setFullscreen(false);
   disposed = true;
-  destroyPlayback();
+  events.dispose();
   handle = null;
-  timelineObserver.disconnect();
-  for (const wheel of wheels) wheel.dispose();
-  cancelAnimationFrame(uiFrame);
-  window.clearTimeout(controlsTimer);
   delete window.__OSU_PREVIEW_AUDIO__;
   delete window.__OSU_CHART_PREVIEW_CONFIG__;
-  void disposeBuiltinSkins();
+  void disposeBuiltinSkins().catch(() => undefined);
 }
-playButton.addEventListener('click', togglePlay);
-element('btn-restart').addEventListener('click', () => { void runTransport(session => playFrom(session, 0)); });
+events.listen(playButton, 'click', togglePlay);
+events.listen(element('btn-restart'), 'click', () => { void runTransport(session => playFrom(session, 0)); });
 for (const [id, delta] of [['btn-step-back', -5000], ['btn-step-forward', 5000]] as const) {
-  element(id).addEventListener('click', () => void runTransport(session => seekPlayback(session, presentationTime(session) + delta, session.playing)));
+  events.listen(element(id), 'click', () => void runTransport(session => seekPlayback(session, presentationTime(session) + delta, session.playing)));
 }
-fullscreenButton.addEventListener('click', () => setFullscreen(!fullscreen));
-lockButton.addEventListener('click', event => {
+events.listen(fullscreenButton, 'click', () => setFullscreen(!fullscreen));
+events.listen(lockButton, 'click', event => {
   event.stopPropagation();
   const next = toggleFullscreenLockUiState(locked);
   locked = next.locked;
@@ -267,18 +235,18 @@ lockButton.addEventListener('click', event => {
   lockButton.setAttribute('aria-pressed', String(locked));
   if (next.overlayHidden) hideControls(); else showControls();
 });
-canvas.addEventListener('pointerdown', () => {
+events.listen(canvas, 'pointerdown', () => {
   if (!fullscreen) return;
   if (controlsVisible) hideControls(); else showControls();
 });
-controls.addEventListener('pointerdown', () => window.clearTimeout(controlsTimer));
-element('app').addEventListener('scroll', closeActiveWheelPopup, { passive: true });
+events.listen(controls, 'pointerdown', () => window.clearTimeout(controlsTimer));
+events.listen(element('app'), 'scroll', closeActiveWheelPopup, { passive: true });
 function seekFromPointer(event: PointerEvent): void {
   const rect = timeline.getBoundingClientRect();
   const percent = Math.min(1, Math.max(0, (event.clientX - rect.left) / Math.max(1, rect.width)));
   void runTransport(session => seekPlayback(session, percent * session.range.durationMs, false));
 }
-timeline.addEventListener('pointerdown', event => {
+events.listen(timeline, 'pointerdown', event => {
   if (!handle || locked) return;
   event.preventDefault();
   event.stopPropagation();
@@ -287,16 +255,16 @@ timeline.addEventListener('pointerdown', event => {
   pausePlayback(handle.session);
   seekFromPointer(event);
 });
-document.addEventListener('pointermove', event => { if (dragging) seekFromPointer(event); });
-document.addEventListener('pointerup', () => {
+events.listen(document, 'pointermove', event => { if (dragging) seekFromPointer(event); });
+events.listen(document, 'pointerup', () => {
   if (!dragging) return;
   dragging = false;
   if (wasPlayingBeforeDrag) void runTransport(session => playFrom(session, presentationTime(session)));
   else showControls();
 });
-document.addEventListener('pointercancel', () => { dragging = false; syncTransport(); showControls(); });
-window.addEventListener('resize', () => { closeActiveWheelPopup(); buildTimeline(); });
-window.addEventListener('keydown', event => {
+events.listen(document, 'pointercancel', () => { dragging = false; syncTransport(); showControls(); });
+events.listen(window, 'resize', () => { closeActiveWheelPopup(); buildTimeline(); });
+events.listen(window, 'keydown', event => {
   if (event.code === 'Escape' && fullscreen) { event.preventDefault(); setFullscreen(false); return; }
   if (locked) return;
   if ((event.code === 'F3' || event.code === 'F4') && handle?.session.beatmap.mode === 3) {
@@ -322,15 +290,16 @@ function receiveMessage(event: MessageEvent): void {
     dispose,
   });
 }
-window.addEventListener('message', receiveMessage);
-document.addEventListener('message', event => receiveMessage(event as MessageEvent));
-window.addEventListener('pagehide', dispose);
-document.addEventListener('visibilitychange', () => { if (document.hidden) pauseForLifecycle(); });
+events.listen(window, 'message', receiveMessage);
+events.listen(document, 'message', event => receiveMessage(event as MessageEvent));
+events.listen(window, 'pagehide', dispose);
+events.listen(document, 'visibilitychange', () => { if (document.hidden) pauseForLifecycle(); });
 
 async function initialize(): Promise<void> {
   const config = window.__OSU_CHART_PREVIEW_CONFIG__;
   if (!config) throw new Error('missing-config');
   document.documentElement.dataset.theme = config.theme;
+  events.own(installPreviewControls({ sections: ['画面设置', '辅助选项'] }));
   settings = normalizeOsuChartPreviewSettings(config.settings);
   post('progress', { value: 0.05, label: '正在准备播放器…' });
   const resources = new Map<string, PreviewResource>();
@@ -350,9 +319,16 @@ async function initialize(): Promise<void> {
   delete window.__OSU_PREVIEW_AUDIO__;
   const bytes = resources.get(config.chartPath);
   if (!(bytes instanceof Uint8Array)) throw new Error('missing-chart');
-  const beatmap = parseOsuBytes(bytes);
+  post('progress', { value: 0.2, label: '正在准备音画…' });
+  const loaded = await startPlayback(canvas, resources, {
+    path: config.chartPath, bytes, hash: md5(bytes),
+  }, warn, { settings, maniaSkin: settings.maniaSkin, maniaScrollSpeed: settings.maniaScrollSpeed });
+  resources.clear();
+  delete window.__OSU_CHART_PREVIEW_CONFIG__;
+  if (disposed) { loaded.session.destroy(); return; }
+  handle = loaded;
+  const beatmap = loaded.session.beatmap;
   const mode = beatmap.mode;
-  if (mode !== 0 && mode !== 1 && mode !== 2 && mode !== 3) throw new Error('unsupported-mode');
   const labels = ['osu!standard', 'osu!taiko', 'osu!catch', 'osu!mania'];
   element('title').textContent = `${config.title || beatmap.title || 'osu!'} [${beatmap.version}]`;
   if (mode !== config.requestedMode) {
@@ -362,14 +338,6 @@ async function initialize(): Promise<void> {
     node.hidden = Number(node.dataset.mode) !== mode;
   }
   setupSettings(mode);
-  post('progress', { value: 0.2, label: '正在准备音画…' });
-  const loaded = await startPlayback(canvas, resources, {
-    path: config.chartPath, bytes, hash: md5(bytes), mode,
-  }, warn, { settings, maniaSkin: settings.maniaSkin, maniaScrollSpeed: settings.maniaScrollSpeed });
-  resources.clear();
-  delete window.__OSU_CHART_PREVIEW_CONFIG__;
-  if (disposed) { loaded.session.destroy(); return; }
-  handle = loaded;
   element('storyboard-enabled').hidden = !loaded.media.capabilities.storyboard;
   element('video-enabled').hidden = !loaded.media.capabilities.video;
   for (const input of document.querySelectorAll<HTMLInputElement | HTMLButtonElement | HTMLSelectElement>('input,button,select')) {

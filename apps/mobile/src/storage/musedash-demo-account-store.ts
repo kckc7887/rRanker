@@ -17,5 +17,3 @@ export function isMuseDashDemoAccountId(accountId: string): boolean {
 
 export const parseMuseDashDemoAccountProfile = parse;
 export const MuseDashDemoAccountStore = Store;
-
-export const museDashDemoAccountStore = new MuseDashDemoAccountStore();

@@ -4,7 +4,6 @@
  * 资源 URL 复用 domain/maimai-chart-preview 与 domain/maimai-assets 公共路径。
  */
 
-import { downloadSimaiPackage } from '@/features/chart-download-shared/simai-package';
 import { maimaiJacketUrl } from '@/domain/maimai-assets';
 import {
   maimaiChartPreviewChartId,
@@ -20,6 +19,7 @@ import {
   type ChartPackageDownloadOptions,
   type ChartPackageDownloadProgress,
 } from '@/features/chart-download-shared/chart-download-shared';
+import { downloadSimaiPackage } from '@/features/chart-download-shared/simai-package';
 
 export { MaimaiChartDownloadCancelledError, MaimaiChartDownloadError };
 export type MaimaiChartDownloadProgress = ChartPackageDownloadProgress;
@@ -41,16 +41,6 @@ export function maimaiChartPackageName(
   levelLabel: string,
 ): string {
   return chartPackageNameWithSuffix(title, `${chartType} ${levelLabel}`);
-}
-
-/** LXNS 背景视频按曲提供；HEAD 探测 200 视为可用，网络异常按不可用处理。 */
-export async function checkMaimaiChartVideoAvailable(chartId: number): Promise<boolean> {
-  try {
-    const response = await fetch(maimaiChartPreviewVideoUrl(chartId), { method: 'HEAD' });
-    return response.ok;
-  } catch {
-    return false;
-  }
 }
 
 /**

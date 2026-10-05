@@ -39,6 +39,7 @@ export function useOsuBeatmapsetsByIds(
         return normalizeOsuBeatmapsetDetail(raw, gameId);
       },
       enabled: bound && tabActive,
+    notifyOnChangeProps: tabActive ? undefined : [],
       staleTime: 60_000,
     })),
   });

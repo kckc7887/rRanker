@@ -1,8 +1,10 @@
-import { useInfiniteQuery, useQueries, useQuery } from '@tanstack/react-query';
+import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useBoundedQueries } from '@/hooks/use-bounded-queries';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import { majdataProvider } from '@/providers/majdata-provider';
 import {
-  loadMajdataChart,
   loadMajdataParsedChart,
   loadMajdataSong,
   loadMajdataSongSnapshot,
@@ -40,7 +42,7 @@ function loadMajdataSongQuery(id: string, signal: AbortSignal): Promise<MajdataS
     id,
     signal,
     (fresh) => queryClient.setQueryData(majdataSongKey(id), fresh),
-    () => { void markMajdataSongFallback(id); },
+    () => { void markMajdataSongFallback(id).catch(error => recordRuntimeError('majdata-cache', error)); },
   );
 }
 
@@ -51,21 +53,24 @@ export function useMajdataSongs(sort: string, search: string) {
   const active = useCachedTabActive();
   return useInfiniteQuery({ queryKey: ['majdata-net', 'catalog', sort, search], initialPageParam: 0,
     queryFn: ({ pageParam, signal }) => majdataProvider.getSongs(pageParam, sort, search, signal),
-    getNextPageParam: (last, pages) => last.length < 30 ? undefined : pages.length, enabled: active, ...options });
+    getNextPageParam: (last, pages) => last.length < 30 ? undefined : pages.length, enabled: active, notifyOnChangeProps: active ? undefined : [], ...options });
 }
 export function useMajdataSong(id: string, enabled = true) {
-  return useQuery({ queryKey: majdataSongKey(id), queryFn: ({ signal }) => loadMajdataSongQuery(id, signal), enabled: enabled && !!id, ...options, staleTime: 0, refetchOnMount: true });
+  const active = useCachedTabActive();
+  return useQuery({ queryKey: majdataSongKey(id), queryFn: ({ signal }) => loadMajdataSongQuery(id, signal), enabled: active && enabled && !!id, notifyOnChangeProps: active ? undefined : [], ...options, staleTime: 0, refetchOnMount: true });
 }
 export function useMajdataLibrarySongs(ids: string[]) {
-  return useQueries({ queries: ids.map(id => ({ queryKey: majdataSongKey(id), queryFn: ({ signal }: { signal: AbortSignal }) => loadMajdataSongQuery(id, signal), ...options, staleTime: 0, refetchOnMount: true })) });
-}
-export function useMajdataChart(song?: MajdataSong) {
-  return useQuery({ queryKey: ['majdata-net', 'chart', song?.id, song?.hash], queryFn: ({ signal }) => loadMajdataChart(song!, signal), enabled: !!song, ...options });
+  const definitions = useMemo(() => [...new Set(ids)].map(id => ({
+    queryKey: majdataSongKey(id), queryFn: ({ signal }: { signal: AbortSignal }) => loadMajdataSongQuery(id, signal),
+    ...options, staleTime: 0, refetchOnMount: true,
+  })), [ids]);
+  return useBoundedQueries(definitions, 4).queries;
 }
 export function useMajdataParsedChart(song: MajdataSong | undefined, level: number) {
-  return useQuery({ queryKey: ['majdata-net', 'parsed', song?.id, song?.hash, level], queryFn: ({ signal }) => loadMajdataParsedChart(song!, level, signal), enabled: !!song, ...options });
+  const active = useCachedTabActive();
+  return useQuery({ queryKey: ['majdata-net', 'parsed', song?.id, song?.hash, level], queryFn: ({ signal }) => loadMajdataParsedChart(song!, level, signal), enabled: active && !!song, notifyOnChangeProps: active ? undefined : [], ...options });
 }
 export function useMajdataRanking(id: string, enabled: boolean) {
   const active = useCachedTabActive(); const accountId = useSession(s => s.activeAccountId);
-  return useQuery({ queryKey: ['majdata-net', 'ranking', accountId, id], queryFn: ({ signal }) => majdataProvider.getRanking(id, signal), enabled: enabled && active, ...options });
+  return useQuery({ queryKey: ['majdata-net', 'ranking', accountId, id], queryFn: ({ signal }) => majdataProvider.getRanking(id, signal), enabled: enabled && active, notifyOnChangeProps: active ? undefined : [], ...options });
 }

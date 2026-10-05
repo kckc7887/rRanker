@@ -6,6 +6,8 @@
  * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
 
+import { upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
+
 export type HitSoundKind = 'click' | 'drag' | 'flick';
 
 const SOUND_BY_NOTE_KIND: Readonly<Record<string, HitSoundKind>> = Object.freeze({
@@ -45,12 +47,5 @@ export function buildHitSoundEvents(chart: { lines: { notes: { kind: string; tim
 }
 
 export function findHitSoundCursor(events: readonly HitSoundEvent[], time: number): number {
-  let low = 0;
-  let high = events.length;
-  while (low < high) {
-    const middle = (low + high) >>> 1;
-    if (events[middle]!.time <= time) low = middle + 1;
-    else high = middle;
-  }
-  return low;
+  return upperBoundBy(events, time, (event) => event.time);
 }

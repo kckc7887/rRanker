@@ -1,6 +1,7 @@
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { RecordsScreen } from '../app/(tabs)/records';
+import * as search from '@/utils/search';
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -21,6 +22,7 @@ jest.mock('@/state/session-store', () => ({
 let mockGameQuery: Record<string, unknown>;
 let mockCatalogQuery: Record<string, unknown>;
 let mockTagsQuery: Record<string, unknown>;
+let mockKeyword = '';
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => mockGameQuery }));
 jest.mock('@/hooks/use-phigros-catalog', () => ({ usePhigrosCatalog: () => mockCatalogQuery }));
 jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => mockTagsQuery }));
@@ -49,7 +51,7 @@ jest.mock('@/state/records-filter', () => ({
 }));
 jest.mock('@/state/phigros-records-filter', () => ({
   usePhigrosRecordsFilter: () => ({
-    keyword: '', collapsed: false, level: 'all', constantMin: '', constantMax: '',
+    keyword: mockKeyword, collapsed: false, level: 'all', constantMin: '', constantMax: '',
     accuracyMin: '', accuracyMax: '', rank: null, xing: null, chapter: 'all',
     selectedKyouTagIds: [],
     setKeyword: jest.fn(), setCollapsed: jest.fn(), setLevel: jest.fn(), setConstantMin: jest.fn(),
@@ -86,7 +88,7 @@ function setSuccessfulQueries() {
   mockCatalogQuery = {
     data: {
       snapshot: {
-        songs: [{ id: 'Song.A', title: '测试曲' }],
+        songs: [{ id: 'Song.A', title: '测试曲', aliases: ['テスト'] }],
         versions: [],
         source: { kind: 'generated', label: 'Phigros3.8.0', updatedAt: '2026-08-11T00:00:00.000Z', isStale: false },
       },
@@ -108,7 +110,33 @@ function setSuccessfulQueries() {
 describe('Phigros records screen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    mockKeyword = '';
     setSuccessfulQueries();
+  });
+
+  it('leaves search text uncomputed until a keyword is entered and still matches romanized aliases', async () => {
+    mockSessionState = { activeGameId: 'phigros', activeAccountId: 'phigros:test', activeProviderId: 'phigros-test', session: null };
+    const build = search.buildSearchDocument;
+    const reads = jest.fn();
+    const spy = jest.spyOn(search, 'buildSearchDocument').mockImplementation(values => {
+      const document = build(values);
+      return {
+        get text() { reads(); return document.text; },
+        get compact() { reads(); return document.compact; },
+      };
+    });
+    try {
+      const screen = await render(<RecordsScreen />);
+      expect(screen.getByTestId('phigros-records-list')).toBeTruthy();
+      expect(reads).not.toHaveBeenCalled();
+      mockKeyword = 'tesuto';
+      await screen.rerender(<RecordsScreen />);
+      expect(reads).toHaveBeenCalled();
+      expect(screen.getByText('测试曲')).toBeTruthy();
+      mockKeyword = 'absent-title';
+      await screen.rerender(<RecordsScreen />);
+      expect(screen.queryByText('测试曲')).toBeNull();
+    } finally { spy.mockRestore(); }
   });
 
   it('renders the records list for the sample account without a session', async () => {

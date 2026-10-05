@@ -344,13 +344,13 @@ function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: stri
 
 function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
   const theme = useAppTheme();
-  return <Pressable onPress={onPress} style={[styles.chip, { backgroundColor: theme.surfaceMuted }, active && { backgroundColor: theme.accent }]}><Text style={[styles.chipText, { color: theme.textSecondary }, active && styles.chipTextActive]}>{label}</Text></Pressable>;
+  return <Pressable onPress={onPress} style={[styles.chip, { backgroundColor: theme.surfaceMuted }, active && { backgroundColor: theme.accent }]}><Text style={[styles.chipText, { color: theme.textSecondary }, active && { color: theme.onAccent }]}>{label}</Text></Pressable>;
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' }, filters: { padding: 12, gap: 8 }, chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: { backgroundColor: '#E5E7EB', borderRadius: 15, paddingHorizontal: 10, paddingVertical: 6 }, chipActive: { backgroundColor: '#246BFD' },
-  chipText: { color: '#374151', fontSize: 11 }, chipTextActive: { color: '#FFF' }, list: { padding: 12, paddingTop: 2, gap: 9, flexGrow: 1 },
+  chip: { backgroundColor: '#E5E7EB', borderRadius: 15, paddingHorizontal: 10, paddingVertical: 6 },
+  chipText: { color: '#374151', fontSize: 11 }, list: { padding: 12, paddingTop: 2, gap: 9, flexGrow: 1 },
   row: { backgroundColor: '#FFF', borderRadius: 12, padding: 11, flexDirection: 'row', alignItems: 'center', gap: 11 }, main: { flex: 1, gap: 3 },
   cover: { width: 58, height: 58, borderRadius: 9 },
   museDashCover: { borderRadius: 29 },

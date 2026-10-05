@@ -114,8 +114,11 @@ export type JsonRequestOptions<T> = {
   maxResponseBytes?: number;
   /** 协议可从受限错误正文读取错误 envelope，不能自行再发请求。 */
   onHttpError?: (response: Response) => Promise<ProviderError>;
+  /** 原始协议适配器可显式接管状态码；正文预算、来源检查和取消仍由执行器负责。 */
+  acceptStatus?: (status: number) => boolean;
   onResponse?: (response: Response) => void | Promise<void>;
   diagnosticScenario?: RuntimeRequestScenario;
+  diagnosticParentOperationId?: number;
   path: string;
   schema: z.ZodType<T>;
   fetcher: FetchLike;
@@ -173,6 +176,10 @@ function normalizeExecutionError(error: unknown, timedOut: boolean, texts: { sch
 }
 
 /** 通用 JSON GET 请求：重试、429 退避、超时与错误归一化（各公开查分 Provider 共用）。 */
+function acceptedStatus(options: Pick<JsonRequestOptions<unknown>, 'acceptStatus'>, response: Response): boolean {
+  return options.acceptStatus ? options.acceptStatus(response.status) : response.ok;
+}
+
 async function requestData<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>, source: string): Promise<T> {
   const { path, schema, fetcher, baseUrl, error, label } = options;
   const timeoutMs = options.timeoutMs ?? 12_000;
@@ -182,7 +189,7 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
   const networkMessage = options.messages?.network ?? `无法连接${label}服务`;
   let previousError: ProviderError | null = null;
   const operationId = nextRuntimeOperationId();
-  const diagnostic = { source, scenario: options.diagnosticScenario, operationId };
+  const diagnostic = { source, scenario: options.diagnosticScenario, operationId, parentOperationId: options.diagnosticParentOperationId };
   void recordRuntimeDiagnostic('request-start', diagnostic);
   for (let attempt = 0; attempt < totalAttempts; attempt += 1) {
     if (options.signal?.aborted) {
@@ -208,7 +215,7 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
       assertRequestActive(options.signal);
       assertProviderResponseOrigin(response, url, sensitive);
       status = response.status;
-      if (!response.ok) {
+      if (!acceptedStatus(options, response)) {
         const mapped = options.onHttpError
           ? await options.onHttpError(boundedResponse(response, { maxBytes: options.maxResponseBytes, signal: controller.signal }))
           : error(response.status);
@@ -218,6 +225,7 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
         if (mapped.retryable && willRetry) {
           previousError = mapped;
           if (response.status === 429) await pause(retryAfterMs(response), options.signal);
+          result = 'retry';
           continue;
         }
         throw mapped;
@@ -240,11 +248,12 @@ async function requestData<T>(options: JsonRequestOptions<T>, read: (response: R
       });
       diagnosticError = normalized;
       if (normalized.code === 'upstream_schema') throw normalized;
-      if (attempt + 1 < totalAttempts) { previousError = normalized; continue; }
+      if (attempt + 1 < totalAttempts) { previousError = normalized; result = 'retry'; continue; }
       throw normalized;
     } finally {
       void recordRuntimeDiagnostic('request', {
         ...diagnostic, result, status, attempt: attempt + 1, durationMs: Date.now() - started,
+        severity: result === 'retry' ? 'warn' : undefined,
         errorCode: result === 'cancelled' ? 'cancelled' : diagnosticError instanceof ProviderError ? diagnosticError.code : undefined,
         error: result === 'cancelled' ? undefined : diagnosticError,
       });
@@ -263,6 +272,28 @@ export function requestProviderResponse<T>(options: JsonRequestOptions<T>, read:
   return requestData(options, read, 'request-json');
 }
 
+/** 非幂等写请求只发送一次；发送后的未知结果不能作为自动重传资格。 */
+export async function requestProviderWrite<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>): Promise<
+  { status: 'success'; data: T } | { status: 'unconfirmed' }
+> {
+  let sent = false;
+  let status: number | undefined;
+  const fetcher = options.fetcher ?? expoFetch as unknown as typeof fetch;
+  try {
+    const data = await requestProviderResponse({ ...options, totalAttempts: 1, fetcher: async (...args) => {
+      sent = true;
+      const response = await fetcher(...args);
+      status = response.status;
+      return response;
+    } }, read);
+    return { status: 'success', data };
+  } catch (error) {
+    if (options.signal?.aborted) throw options.signal.reason ?? error;
+    if (!sent || (status !== undefined && status >= 400 && status < 500)) throw error;
+    return { status: 'unconfirmed' };
+  }
+}
+
 export function requestBytes(options: Omit<JsonRequestOptions<Uint8Array>, 'schema'>): Promise<Uint8Array> {
   return requestData({ ...options, schema: z.instanceof(Uint8Array) },
     async (response) => new Uint8Array(await response.arrayBuffer()), 'request-bytes');
@@ -270,6 +301,7 @@ export function requestBytes(options: Omit<JsonRequestOptions<Uint8Array>, 'sche
 
 export type ProviderJsonOptions = {
   diagnosticScenario?: RuntimeRequestScenario;
+  diagnosticParentOperationId?: number;
   baseUrl: string;
   path: string;
   /** 三段错误文案（无效 JSON/读取超时/无法连接），由调用方按数据源逐字提供。 */
@@ -291,6 +323,7 @@ export function fetchProviderJson(options: ProviderJsonOptions): Promise<unknown
     fetcher: expoFetch as unknown as FetchLike,
     signal: options.signal,
     diagnosticScenario: options.diagnosticScenario,
+    diagnosticParentOperationId: options.diagnosticParentOperationId,
     label: '公共曲库',
     totalAttempts: 1,
     error: (status) => providerErrorFromStatus(status),

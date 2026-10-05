@@ -4,7 +4,7 @@ import {
   type DownloadProgressData,
 } from 'expo-file-system/legacy';
 import { ProviderError, providerErrorFromStatus, type ProviderErrorCode } from '@/providers/errors';
-import { nextRuntimeOperationId, recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
+import { nextRuntimeOperationId, recordRuntimeDiagnostic, recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 export class ChartPackageDownloadError extends ProviderError {
   constructor(message: string, options?: ErrorOptions, code: ProviderErrorCode = 'unknown', retryable = false) {
@@ -59,7 +59,8 @@ export function createChartDownloadSessionDirectory(): Directory {
 }
 
 export function cleanupChartDownloadSessionDirectory(directory: Directory): void {
-  if (directory.exists) directory.delete();
+  try { if (directory.exists) directory.delete(); }
+  catch (error) { recordRuntimeError('chart-download-cleanup', error, false, { phase: 'cleanup' }); }
 }
 
 export async function downloadChartResource(
@@ -79,7 +80,8 @@ export async function downloadChartResource(
   void recordRuntimeDiagnostic('request-start', diagnostic);
   let discarded = false;
   const cleanup = () => {
-    try { if (file.exists) file.delete(); } catch { /* Session cleanup also owns failed downloads. */ }
+    try { if (file.exists) file.delete(); }
+    catch (error) { recordRuntimeError('chart-resource-cleanup', error, false, { phase: 'cleanup', operationId: diagnostic.operationId }); }
   };
   const task = createDownloadResumable(url, file.uri, {}, (progress) => {
     if (!discarded && !signal?.aborted) onProgress?.(progress);
@@ -153,9 +155,14 @@ export async function saveChartPackage(
 ): Promise<boolean> {
   try {
     const picked = await Directory.pickDirectoryAsync();
-    const destination = picked.createFile(fileName, 'application/zip');
-    if (output.kind === 'file') output.file.copy(destination);
-    else destination.write(output.bytes);
+    if (output.kind === 'file' && picked.uri.startsWith('file://')) {
+      // Native file copying creates its target; iOS rejects an existing target.
+      output.file.copy(new File(picked.uri, fileName));
+    } else {
+      const destination = picked.createFile(fileName, 'application/zip');
+      if (output.kind === 'file') output.file.copy(destination);
+      else destination.write(output.bytes);
+    }
     return true;
   } catch (error) {
     if (isDirectoryPickerCancellation(error)) return false;

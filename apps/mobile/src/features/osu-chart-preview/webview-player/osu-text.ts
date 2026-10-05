@@ -59,10 +59,6 @@ export function archiveBasename(path: string): string {
   return slash >= 0 ? normalized.slice(slash + 1) : normalized;
 }
 
-export function isOsuPath(path: string): boolean {
-  return archiveBasename(path).toLowerCase().endsWith('.osu');
-}
-
 export function isOsbPath(path: string): boolean {
   return archiveBasename(path).toLowerCase().endsWith('.osb');
 }

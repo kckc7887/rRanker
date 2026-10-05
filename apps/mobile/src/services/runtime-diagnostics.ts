@@ -2,7 +2,7 @@ import Constants from 'expo-constants';
 import { File, Paths } from 'expo-file-system';
 import * as Sharing from 'expo-sharing';
 import { Share } from 'react-native';
-import { sanitizeRuntimeLogEntry, type RuntimeLogEntry } from '@/domain/runtime-log';
+import { sanitizeRuntimeLogEntry, type RuntimeLogEntry, type RuntimeLogSeverity } from '@/domain/runtime-log';
 import { RUNTIME_DIAGNOSTIC_STORE_FILE_NAME } from '@/features/storage-management/cache-policy';
 import {
   installRuntimeDiagnosticRecorder,
@@ -32,6 +32,9 @@ export type RuntimeDiagnosticFields = {
   source?: string;
   phase?: string;
   operationId?: number;
+  parentOperationId?: number;
+  phaseDurationMs?: number;
+  severity?: RuntimeLogSeverity;
   durationMs?: number;
   credentialWrite?: string;
   attempts?: number;
@@ -115,7 +118,7 @@ export function sanitizeRuntimeDiagnosticEvent(
 function sanitizeDiagnosticDetails(type: RuntimeDiagnosticEventType | EmergencyDiagnosticType, fields: RuntimeDiagnosticFields, at: string): Partial<RuntimeDiagnosticEvent> {
   if (!['error', 'operation', 'session'].includes(type)) return {};
   const safeEntry = sanitizeRuntimeLogEntry(type, { ...fields }, at);
-  return { details: safeEntry.fields, ...(safeEntry.error ? { error: safeEntry.error } : {}) };
+  return { details: safeEntry.fields, severity: safeEntry.severity, ...(safeEntry.error ? { error: safeEntry.error } : {}) };
 }
 
 export function trimRuntimeDiagnosticStore(store: RuntimeDiagnosticStore): RuntimeDiagnosticStore {

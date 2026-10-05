@@ -14,6 +14,9 @@ import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { providerLoginSheetStyles as styles } from '@/components/provider-login-sheet-styles';
+import { useAccountBindingRequest } from '@/hooks/use-account-binding-flow';
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 const sessions = new SecureSessionStore();
 const QR_SIZE = 180;
@@ -51,12 +54,14 @@ export function PhigrosLoginPanel({
   const theme = useAppTheme();
   const setSession = useSession((s) => s.setSession);
   const lifecycle = useAppLifecycle();
+  const requests = useAccountBindingRequest(visible, false);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [phiDevice, setPhiDevice] = useState<DeviceCodeResult | null>(null);
   const [phiExpiresAt, setPhiExpiresAt] = useState(0);
+  const phiDeviceRef = useRef(phiDevice);
+  phiDeviceRef.current = phiDevice;
   const phiTimer = useRef<ReturnType<typeof setInterval> | null>(null);
-  const phiPollingRef = useRef(false);
   const phiNextAllowedAtRef = useRef(0);
 
   useEffect(() => {
@@ -71,9 +76,9 @@ export function PhigrosLoginPanel({
     setMessage('');
     setBusy(false);
     setPhiDevice(null);
+    phiDeviceRef.current = null;
     setPhiExpiresAt(0);
     if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
-    phiPollingRef.current = false;
     phiNextAllowedAtRef.current = 0;
   };
 
@@ -84,47 +89,60 @@ export function PhigrosLoginPanel({
   const messageFor = (error: unknown) => providerErrorToUserMessage(error, '验证失败，请稍后重试。');
 
   const invalidateAll = () => {
-    void queryClient.invalidateQueries({ queryKey: ['score-snapshot'] });
-    void queryClient.invalidateQueries({ queryKey: ['game-data'] });
-    void queryClient.invalidateQueries({ queryKey: ['songs'] });
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['score-snapshot'] }),
+      queryClient.invalidateQueries({ queryKey: ['game-data'] }),
+      queryClient.invalidateQueries({ queryKey: ['songs'] }),
+    ]).catch(error => recordRuntimeError('phigros-binding', error, false, { phase: 'query-refresh' }));
   };
 
   const beginPhigrosLogin = async () => {
+    const task = requests.begin(getForegroundAbortSignal());
+    if (!task) return;
     setBusy(true);
     setMessage('正在请求 TapTap 授权…');
-    const signal = getForegroundAbortSignal();
+    const signal = task.signal;
     try {
       const device = await PhigrosScoreProvider.beginLogin(signal);
-      if (signal.aborted) return;
+      task.assertCurrent();
+      phiDeviceRef.current = device;
       setPhiDevice(device);
       setPhiExpiresAt(Date.now() + device.expiresIn * 1000);
       setMessage('请使用二维码或前往 TapTap 完成授权。');
     } catch (error) {
-      if (signal.aborted) return;
+      if (!task.isCurrent()) return;
       setMessage(messageFor(error));
     } finally {
-      if (!signal.aborted) setBusy(false);
+      if (task.isCurrent()) setBusy(false);
+      task.finish();
     }
   };
 
   const pollPhigros = async () => {
-    if (!phiDevice) return;
-    if (phiPollingRef.current) return;
+    if (!phiDevice || phiDeviceRef.current !== phiDevice) return;
     if (!getAppLifecycleSnapshot().foregroundReady) return;
     const now = Date.now();
     if (now < phiNextAllowedAtRef.current) {
       setMessage('操作太频繁，请稍后再试。');
       return;
     }
+    const task = requests.begin(getForegroundAbortSignal());
+    if (!task) return;
+    const assertGameCurrent = captureResourceWrites('phigros', task.signal);
+    const assertCurrent = () => {
+      task.assertCurrent(); assertGameCurrent();
+      if (phiDeviceRef.current !== phiDevice || !getAppLifecycleSnapshot().foregroundReady) {
+        throw Object.assign(new Error('绑定请求已取消'), { name: 'AbortError' });
+      }
+    };
     const remaining = Math.max(0, Math.floor((phiExpiresAt - now) / 1000));
     setMessage(`等待授权中…（${remaining} 秒后过期）`);
-    phiPollingRef.current = true;
-    const signal = getForegroundAbortSignal();
+    const signal = task.signal;
     try {
       const result = await PhigrosScoreProvider.pollLogin(phiDevice, signal);
+      assertCurrent();
       if (result === 'pending' || result === 'waiting') return;
       if (result === 'slowdown') {
-        if (!getAppLifecycleSnapshot().foregroundReady) return;
         phiNextAllowedAtRef.current = Date.now() + 5_000;
         setMessage('操作太频繁，请稍后再试。');
         return;
@@ -133,11 +151,12 @@ export function PhigrosLoginPanel({
       setMessage('正在保存并验证…');
       const newSession = result;
       if (newSession.mode !== 'phi-session') {
-        if (!getAppLifecycleSnapshot().foregroundReady) return;
         setMessage('授权返回异常，请重试');
         return;
       }
       const account = createPhigrosBoundAccount({ playerId: newSession.playerId, rating: 0 });
+      const assertAccountCurrent = captureResourceWrites('phigros', signal, account.id);
+      assertCurrent(); assertAccountCurrent();
       await sessions.upsertAccount({
         id: account.id,
         gameId: 'phigros',
@@ -145,13 +164,14 @@ export function PhigrosLoginPanel({
         displayName: account.displayName,
         scoreDisplay: account.scoreDisplay,
         session: newSession,
-      });
+      }, signal);
+      assertCurrent(); assertAccountCurrent();
       setSession(newSession);
       invalidateAll();
       reset();
       onSuccess();
     } catch (error) {
-      if (signal.aborted || !getAppLifecycleSnapshot().foregroundReady) return;
+      if (!task.isCurrent() || !getAppLifecycleSnapshot().foregroundReady) return;
       const expired = Date.now() >= phiExpiresAt;
       if (!expired && isTransientNetworkError(error)) {
         setMessage('网络波动，自动重试中…');
@@ -160,7 +180,7 @@ export function PhigrosLoginPanel({
       if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
       setMessage(providerErrorToUserMessage(error, '授权失败，请重新尝试。'));
     } finally {
-      phiPollingRef.current = false;
+      task.finish();
     }
   };
 
@@ -184,10 +204,11 @@ export function PhigrosLoginPanel({
   }, [phiDevice, lifecycle.foregroundGeneration, lifecycle.foregroundReady, visible]);
 
   const cancelPhigrosLogin = () => {
+    requests.cancel();
     if (phiTimer.current) { clearInterval(phiTimer.current); phiTimer.current = null; }
-    phiPollingRef.current = false;
     phiNextAllowedAtRef.current = 0;
     setPhiDevice(null);
+    phiDeviceRef.current = null;
     setPhiExpiresAt(0);
     setMessage('');
     setBusy(false);
@@ -203,7 +224,7 @@ export function PhigrosLoginPanel({
             onPress={() => void beginPhigrosLogin()}
             style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
           >
-            <Text style={styles.primaryText}>开始绑定</Text>
+            <Text style={[styles.primaryText, { color: theme.onAccent }]}>开始绑定</Text>
           </Pressable>
           <Text style={styles.hint}>
             点击后生成授权二维码，也可前往 TapTap 完成授权，授权成功后自动绑定。
@@ -227,10 +248,18 @@ export function PhigrosLoginPanel({
             <Text style={[styles.message, { color: theme.text }]}>{message}</Text>
           </View>
           <Pressable
-            onPress={() => void openTapTapAuthorize(phiDevice.qrcodeUrl)}
+            onPress={() => {
+              const device = phiDevice;
+              void openTapTapAuthorize(device.qrcodeUrl).catch(error => {
+                recordRuntimeError('phigros-binding', error, false, { phase: 'authorization-open' });
+                if (phiDeviceRef.current === device && getAppLifecycleSnapshot().foregroundReady) {
+                  setMessage(providerErrorToUserMessage(error, '无法打开 TapTap 授权页面，请重试或使用二维码。'));
+                }
+              });
+            }}
             style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && styles.primaryPressed]}
           >
-            <Text style={styles.primaryText}>前往 TapTap 授权</Text>
+            <Text style={[styles.primaryText, { color: theme.onAccent }]}>前往 TapTap 授权</Text>
           </Pressable>
           <Pressable
             onPress={cancelPhigrosLogin}

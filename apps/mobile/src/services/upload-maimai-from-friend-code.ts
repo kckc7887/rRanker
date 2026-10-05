@@ -1,8 +1,6 @@
-import { uploadLatestScoreHubSyncToTargets } from '@/services/upload-maimai-target-write';
-import { loginScoreHubWithFriendCode } from '@/services/upload-maimai-login';
-import { uploadMaimaiAfterScoreHubToken } from '@/services/upload-maimai-score-fetch';
-import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
 import type { BoundAccount } from '@/domain/bound-account';
+import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
+import { SessionPersistenceError } from '@/domain/session-vault';
 import type { ProviderSession } from '@/providers/contracts';
 import {
   bindCabinetByQr,
@@ -16,290 +14,16 @@ import {
   type ScoreHubAbortSignal,
   type ScoreHubCabinetScoreJob,
 } from '@/services/score-hub-client';
-import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
-import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
-import { scoreHubAccountStore } from '@/storage/score-hub-account-store';
-import { waitForForeground } from '@/state/app-lifecycle-core';
-import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
 import { captureAccountWrites } from '@/services/snapshot-cache-utils';
+import { loginScoreHubWithFriendCode } from '@/services/upload-maimai-login';
+import { uploadMaimaiAfterScoreHubToken } from '@/services/upload-maimai-score-fetch';
+import { uploadLatestScoreHubSyncToTargets } from '@/services/upload-maimai-target-write';
+import type { BindCabinetResult, UploadCommonInput, UploadPhase, UploadResult, UploadTarget } from '@/services/upload-maimai-types';
+import { scoreHubAccountStore } from '@/storage/score-hub-account-store';
+export type { BindCabinetResult, UploadCommonInput, UploadPhase, UploadResult, UploadTarget, UploadTargetResult, UploadTaskSnapshot } from '@/services/upload-maimai-types';
+export { UploadTaskController, uploadTaskController } from '@/services/upload-task-controller';
 
 export { scoreProgressMessage } from '@/services/upload-maimai-score-fetch';
-
-export type UploadPhase =
-  | { kind: 'idle' }
-  | { kind: 'logging_in'; message: string; authMode?: 'friend_code' | 'qr' | 'session' }
-  | { kind: 'sending_friend'; message: string; botFriendCode: string | null }
-  | { kind: 'awaiting_friend'; message: string; botFriendCode: string | null }
-  | { kind: 'fetching_scores'; message: string }
-  | { kind: 'syncing_catalog'; message: string }
-  | { kind: 'awaiting_catalog'; message: string }
-  | { kind: 'binding'; message: string }
-  | { kind: 'uploading'; message: string; providerTitle: string }
-  | { kind: 'syncing'; message: string; providerTitle: string }
-  | { kind: 'canceling'; message: string }
-  | { kind: 'done'; message: string; uploaded: number; skipped: number }
-  | { kind: 'error'; message: string };
-
-export type UploadResult = {
-  uploaded: number;
-  skipped: number;
-  refreshedAccounts: { account: BoundAccount; snapshot: ScoreSnapshot; assertCurrent?: () => void }[];
-  failedAccountNames: string[];
-  targetResults: UploadTargetResult[];
-};
-
-export type UploadTaskSnapshot = {
-  taskId: string | null;
-  status: 'idle' | 'running' | 'paused' | 'done' | 'canceled' | 'error';
-  phase: UploadPhase;
-  result: UploadResult | null;
-};
-
-type CatalogWaiter = {
-  promise: Promise<CatalogSnapshot>;
-  resolve: (catalog: CatalogSnapshot) => void;
-  reject: (error: Error) => void;
-  unsubscribeCancel?: () => void;
-};
-
-export class UploadTaskController {
-  private snapshot: UploadTaskSnapshot = {
-    taskId: null,
-    status: 'idle',
-    phase: { kind: 'idle' },
-    result: null,
-  };
-  private listeners = new Set<(snapshot: UploadTaskSnapshot) => void>();
-  private cancelListeners = new Set<() => void>();
-  private resumeWaiters = new Set<() => void>();
-  private signal: ScoreHubAbortSignal = this.createSignal();
-  private catalog: CatalogSnapshot | undefined;
-  private requestCatalog: (() => Promise<CatalogSnapshot | undefined>) | undefined;
-  private catalogWaiter: CatalogWaiter | null = null;
-  private catalogRequest: Promise<void> | null = null;
-  private idleResetTimer: ReturnType<typeof setTimeout> | null = null;
-
-  private createSignal(): ScoreHubAbortSignal {
-    this.cancelListeners = new Set();
-    this.resumeWaiters = new Set();
-    const signal: ScoreHubAbortSignal = {
-      aborted: false,
-      paused: false,
-      waitUntilResumed: async () => {
-        if (signal.aborted) throw new ScoreHubError('已取消');
-        while (signal.paused && !signal.aborted) {
-          await new Promise<void>((resolve) => this.resumeWaiters.add(resolve));
-        }
-        if (signal.aborted) throw new ScoreHubError('已取消');
-        await waitForForeground();
-        if (signal.aborted) throw new ScoreHubError('已取消');
-      },
-      onCancel: (listener) => {
-        this.cancelListeners.add(listener);
-        return () => this.cancelListeners.delete(listener);
-      },
-    };
-    return signal;
-  }
-
-  private publish(next: UploadTaskSnapshot): void {
-    this.snapshot = next;
-    for (const listener of this.listeners) listener(next);
-    void recordRuntimeDiagnostic('task', { taskPhase: next.phase.kind });
-  }
-
-  getSnapshot(): UploadTaskSnapshot {
-    return this.snapshot;
-  }
-
-  getSignal(): ScoreHubAbortSignal {
-    return this.signal;
-  }
-
-  attachCatalogSource(
-    catalog: CatalogSnapshot | undefined,
-    requestCatalog?: () => Promise<CatalogSnapshot | undefined>,
-  ): void {
-    this.catalog = catalog;
-    this.requestCatalog = requestCatalog;
-  }
-
-  finishCatalogWait(nextCatalog: CatalogSnapshot): void {
-    const waiter = this.catalogWaiter;
-    if (!waiter) return;
-    this.catalogWaiter = null;
-    waiter.unsubscribeCancel?.();
-    waiter.resolve(nextCatalog);
-  }
-
-  private cancelCatalogWait(): void {
-    const waiter = this.catalogWaiter;
-    if (!waiter) return;
-    this.catalogWaiter = null;
-    waiter.unsubscribeCancel?.();
-    waiter.reject(new ScoreHubError('已取消'));
-  }
-
-  private syncCatalogForUpload(): void {
-    const waiter = this.catalogWaiter;
-    if (!waiter || this.catalogRequest) return;
-    this.setPhase({ kind: 'syncing_catalog', message: '成绩已获取，正在同步曲库…' });
-    const attempt = Promise.resolve().then(async () => {
-      try {
-        const nextCatalog = await this.requestCatalog?.();
-        if (this.signal.aborted) {
-          this.cancelCatalogWait();
-          return;
-        }
-        const availableCatalog = nextCatalog ?? this.catalog;
-        if (availableCatalog) {
-          this.finishCatalogWait(availableCatalog);
-        } else if (this.catalogWaiter === waiter) {
-          this.setPhase({ kind: 'awaiting_catalog', message: '成绩已获取，曲库暂未同步。请重试。' });
-        }
-      } catch {
-        if (this.catalogWaiter === waiter && !this.signal.aborted) {
-          this.setPhase({ kind: 'awaiting_catalog', message: '成绩已获取，曲库暂未同步。请重试。' });
-        }
-      } finally {
-        if (this.catalogRequest === attempt) this.catalogRequest = null;
-        if (this.catalogWaiter && this.catalogWaiter !== waiter && !this.signal.aborted) {
-          this.setPhase({ kind: 'awaiting_catalog', message: '成绩已获取，曲库暂未同步。请重试。' });
-        }
-      }
-    });
-    this.catalogRequest = attempt;
-  }
-
-  waitForCatalog(): Promise<CatalogSnapshot> {
-    const availableCatalog = this.catalog;
-    if (availableCatalog) return Promise.resolve(availableCatalog);
-    if (this.signal.aborted) return Promise.reject(new ScoreHubError('已取消'));
-    const existing = this.catalogWaiter;
-    if (existing) return existing.promise;
-
-    let resolve!: (nextCatalog: CatalogSnapshot) => void;
-    let reject!: (error: Error) => void;
-    const promise = new Promise<CatalogSnapshot>((promiseResolve, promiseReject) => {
-      resolve = promiseResolve;
-      reject = promiseReject;
-    });
-    const waiter: CatalogWaiter = { promise, resolve, reject };
-    waiter.unsubscribeCancel = this.signal.onCancel?.(() => {
-      if (this.catalogWaiter === waiter) this.cancelCatalogWait();
-    });
-    this.catalogWaiter = waiter;
-    this.syncCatalogForUpload();
-    return promise;
-  }
-
-  retryCatalogSync(): void {
-    this.syncCatalogForUpload();
-  }
-
-  private clearIdleReset(): void {
-    if (this.idleResetTimer) {
-      clearTimeout(this.idleResetTimer);
-      this.idleResetTimer = null;
-    }
-  }
-
-  begin(): ScoreHubAbortSignal {
-    if (this.snapshot.status === 'running' || this.snapshot.status === 'paused') return this.signal;
-    this.signal = this.createSignal();
-    this.publish({
-      taskId: `upload-${Date.now().toString(36)}`,
-      status: 'running',
-      phase: { kind: 'logging_in', message: '正在准备上传…' },
-      result: null,
-    });
-    return this.signal;
-  }
-
-  setPhase(phase: UploadPhase): void {
-    this.clearIdleReset();
-    const status = phase.kind === 'done' ? 'done' : phase.kind === 'error' ? 'error' : this.snapshot.status;
-    this.publish({ ...this.snapshot, phase, status });
-    if (phase.kind === 'done') {
-      this.idleResetTimer = setTimeout(() => {
-        this.idleResetTimer = null;
-        this.publish({ ...this.snapshot, phase: { kind: 'idle' } });
-      }, 5_000);
-    }
-  }
-
-  pause(): void {
-    if (this.snapshot.status !== 'running') return;
-    this.signal.paused = true;
-    this.publish({ ...this.snapshot, status: 'paused' });
-  }
-
-  resume(): void {
-    if (this.snapshot.status !== 'paused') return;
-    this.signal.paused = false;
-    for (const resolve of this.resumeWaiters) resolve();
-    this.resumeWaiters.clear();
-    this.publish({ ...this.snapshot, status: 'running' });
-  }
-
-  cancel(): void {
-    if (this.snapshot.status !== 'running' && this.snapshot.status !== 'paused') return;
-    this.signal.aborted = true;
-    for (const resolve of this.resumeWaiters) resolve();
-    this.resumeWaiters.clear();
-    for (const listener of this.cancelListeners) listener();
-    this.cancelListeners.clear();
-    this.cancelCatalogWait();
-    this.publish({ ...this.snapshot, status: 'canceled', phase: { kind: 'canceling', message: '正在取消…' } });
-  }
-
-  complete(result: UploadResult): void {
-    this.publish({ ...this.snapshot, status: 'done', result });
-  }
-
-  fail(phase: UploadPhase): void {
-    this.publish({ ...this.snapshot, status: this.signal.aborted ? 'canceled' : 'error', phase });
-  }
-
-  subscribe(listener: (snapshot: UploadTaskSnapshot) => void): () => void {
-    this.listeners.add(listener);
-    listener(this.snapshot);
-    return () => this.listeners.delete(listener);
-  }
-
-  resetForTests(): void {
-    if (this.snapshot.status === 'running' || this.snapshot.status === 'paused') this.cancel();
-    this.clearIdleReset();
-    this.cancelCatalogWait();
-    this.catalog = undefined;
-    this.requestCatalog = undefined;
-    this.catalogRequest = null;
-    this.signal = this.createSignal();
-    this.snapshot = { taskId: null, status: 'idle', phase: { kind: 'idle' }, result: null };
-  }
-}
-
-export const uploadTaskController = new UploadTaskController();
-
-export type BindCabinetResult = {
-  friendCode: string;
-  alreadyBound: boolean;
-};
-
-export type UploadTargetResult = {
-  account: BoundAccount;
-  status: 'success' | 'failed';
-  written: number;
-  skipped: number;
-  errorMessage?: string;
-  refreshFailed?: boolean;
-};
-
-export type UploadTarget = {
-  account: BoundAccount;
-  writable: boolean;
-  disableReason: string | null;
-};
 
 export const QR_REQUIRES_BIND_MESSAGE =
   '首次使用前请在此绑定玩家二维码。请先到「好友码」上传一次成绩完成登录，再粘贴玩家二维码绑定。';
@@ -420,16 +144,6 @@ export function resolveUploadTargets(
     });
 }
 
-export type UploadCommonInput = {
-  selectedAccountIds: string[];
-  targets: UploadTarget[];
-  sessionsByAccountId: Record<string, ProviderSession | undefined>;
-  resolveCatalog: () => Promise<CatalogSnapshot>;
-  signal: ScoreHubAbortSignal;
-  onPhase: (phase: UploadPhase) => void;
-  onLxnsTokensRotated?: (accountId: string, update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
-};
-
 function resolveSelectedTargets(input: UploadCommonInput): UploadTarget[] {
   const selected = input.targets.filter(
     (target) => target.writable && input.selectedAccountIds.includes(target.account.id),
@@ -521,6 +235,7 @@ export async function uploadMaimaiWithScoreHubSession(input: UploadCommonInput &
       token: cached.token,
     });
   } catch (error) {
+    if (error instanceof SessionPersistenceError) throw error;
     if (isScoreHubAuthExpired(error)) {
       throw new ScoreHubError(
         '登录已失效。将改用好友码重新登录。',

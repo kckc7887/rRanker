@@ -143,6 +143,7 @@ async function stageRemoteAsset(
     : await downloadRemoteAsset(url, bytes, sourceDirectory, fileName, signal, onFraction);
   onFraction?.(1);
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
+  assertGeneration();
   if (!cacheDirectory) return source;
 
   ensureParentDirectory(sessionDirectory, fileName);
@@ -151,6 +152,7 @@ async function stageRemoteAsset(
   if (target.exists) target.delete();
   const payload = await source.bytes();
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
+  assertGeneration();
   target.create({ intermediates: true, overwrite: true });
   target.write(payload);
   if (target.size !== source.size) {
@@ -200,7 +202,7 @@ export async function prepareChartPreviewWebviewFromPlan(
       assertCurrent();
       ensureParentDirectory(directory, asset.fileName);
       if ('moduleId' in asset) {
-        await stageAsset(asset.moduleId, asset.fileName, directory);
+        await stageAsset(asset.moduleId, asset.fileName, directory, signal);
       } else {
         await stageRemoteAsset(
           asset.url,

@@ -1,125 +1,42 @@
 import { fetch as expoFetch } from 'expo/fetch';
+import { z } from 'zod';
 import type { DivingFishUploadRecord } from '@/services/score-hub-sync-map';
 import { ProviderError } from '@/providers/errors';
+import { requestProviderWrite } from '@/providers/http-json';
+import { DivingFishProvider } from '@/providers/diving-fish-provider';
+import { uploadedRecordsAreVisible } from '@/services/upload-refresh-visibility';
+import { assertUploadActive, withUploadAbortSignal, type ScoreHubAbortSignal } from '@/services/score-hub-http';
+import type { UploadWriteResult } from '@/services/upload-maimai-types';
 
 const BASE_URL = 'https://www.diving-fish.com/api/maimaidxprober';
-const RETRY_DELAYS_MS = [0, 15_000, 60_000];
-
-type UploadAbortSignal = { aborted: boolean };
-
-function canceledError(): ProviderError {
-  return new ProviderError('unknown', '已取消', false);
-}
-
-/**
- * 每次尝试前的共同入口：先看取消，再复核调用方给的账号资格。
- * 资格断言缺省是空操作，写入方不必自己判断是否传了断言。
- */
-function createAttemptGuard(
-  signal?: UploadAbortSignal,
-  assertEligible?: () => void,
-): () => void {
-  return () => {
-    if (signal?.aborted) throw canceledError();
-    assertEligible?.();
-  };
-}
-
-function waitForRetry(ms: number, signal?: UploadAbortSignal): Promise<void> {
-  return new Promise((resolve, reject) => {
-    if (signal?.aborted) {
-      reject(canceledError());
-      return;
-    }
-    const timer = setTimeout(resolve, ms);
-    let watch: ReturnType<typeof setInterval> | undefined;
-    if (signal) {
-      watch = setInterval(() => {
-        if (signal.aborted) {
-          clearTimeout(timer);
-          if (watch !== undefined) clearInterval(watch);
-          reject(canceledError());
-        }
-      }, 100);
-      setTimeout(() => {
-        if (watch !== undefined) clearInterval(watch);
-      }, ms + 10);
-    }
-  });
-}
 
 export async function uploadRecordsToDivingFish(
   importToken: string,
   records: DivingFishUploadRecord[],
-  signal?: UploadAbortSignal,
-  options: {
-    /** 每次尝试前的资格复核：账号已失效时立即停止，不再向上游写入。 */
-    assertEligible?: () => void;
-  } = {},
-): Promise<{ uploaded: number }> {
-  if (!importToken.trim()) {
-    throw new ProviderError('authentication', '上传需要 Import-Token', false);
-  }
-  if (records.length === 0) {
-    throw new ProviderError('no_data', '没有可上传的成绩', false);
-  }
-
-  let lastError: unknown;
-  const assertUsable = createAttemptGuard(signal, options.assertEligible);
-  for (const delay of RETRY_DELAYS_MS) {
-    assertUsable();
-    if (delay > 0) {
-      await waitForRetry(delay, signal);
-    }
-    assertUsable();
+  signal?: ScoreHubAbortSignal,
+  options: { assertEligible?: () => void } = {},
+): Promise<UploadWriteResult> {
+  if (!importToken.trim()) throw new ProviderError('authentication', '上传需要 Import-Token', false);
+  if (!records.length) throw new ProviderError('no_data', '没有可上传的成绩', false);
+  return withUploadAbortSignal(signal, async nativeSignal => {
+    options.assertEligible?.();
+    const result = await requestProviderWrite({
+        baseUrl: BASE_URL, path: '/player/update_records', fetcher: expoFetch as unknown as typeof fetch,
+        schema: z.unknown(), label: '水鱼上传', signal: nativeSignal,
+        authenticated: true, timeoutMs: 120_000, totalAttempts: 1,
+        init: { method: 'POST', headers: { 'Content-Type': 'application/json', 'Import-Token': importToken }, body: JSON.stringify(records) },
+        error: status => new ProviderError(status >= 500 ? 'network' : 'unknown', `水鱼上传失败（${status}）`, status >= 500),
+      }, response => response.text());
+    if (result.status === 'success') return { status: 'success', uploaded: records.length };
+    // 写请求的响应不确定时只核验一次；新 Provider 不复用旧在飞读取或缓存。
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 120_000);
-      const abortWatch = signal ? setInterval(() => {
-        if (signal.aborted) controller.abort();
-      }, 100) : null;
-      try {
-        const response = await expoFetch(`${BASE_URL}/player/update_records`, {
-          method: 'POST',
-          headers: {
-            Accept: 'application/json',
-            'Content-Type': 'application/json',
-            'Import-Token': importToken,
-          },
-          body: JSON.stringify(records),
-          signal: controller.signal,
-        });
-        if (response.ok) {
-          return { uploaded: records.length };
-        }
-        // Diving-Fish 偶发 HTML 500 但仍写入：按 degraded success
-        const text = await response.text();
-        if (response.status === 500 && /<!DOCTYPE html>/i.test(text)) {
-          return { uploaded: records.length };
-        }
-        if (response.status >= 500) {
-          lastError = new ProviderError('network', `水鱼上传失败（${response.status}）`, true);
-          continue;
-        }
-        throw new ProviderError('unknown', `水鱼上传失败（${response.status}）`, false);
-      } finally {
-        clearTimeout(timeout);
-        if (abortWatch !== null) clearInterval(abortWatch);
-      }
-    } catch (error) {
-      if (signal?.aborted) throw canceledError();
-      if (error instanceof ProviderError && !error.retryable) throw error;
-      lastError = error;
-      if (error instanceof Error && error.name === 'AbortError') {
-        lastError = new ProviderError('timeout', '水鱼上传超时', true, { cause: error });
-        continue;
-      }
-      if (!(error instanceof ProviderError)) {
-        lastError = new ProviderError('network', '无法连接水鱼上传服务', true, { cause: error });
-      }
-    }
-  }
-
-  if (lastError instanceof ProviderError) throw lastError;
-  throw new ProviderError('network', '水鱼上传失败', true, { cause: lastError });
+      await signal?.waitUntilResumed?.();
+      assertUploadActive(nativeSignal);
+      options.assertEligible?.();
+      const actual = await new DivingFishProvider({ mode: 'import-token', value: importToken, persistable: true }).getRecords(nativeSignal);
+      const comparable = uploadedRecordsAreVisible(actual, records, 'exact');
+      if (comparable) return { status: 'success', uploaded: records.length };
+    } catch { assertUploadActive(nativeSignal); }
+    return { status: 'unconfirmed', uploaded: 0 };
+  });
 }

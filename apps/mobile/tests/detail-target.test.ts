@@ -24,6 +24,7 @@ describe('个人曲库详情身份', () => {
 });
 
 function roundTrip(target: DetailTarget): DetailTarget {
+  expect(detailTargetHref(encodeDetailTarget(target)).params.gameId).toBe(target.game);
   const resolution = decodeDetailTarget(target.game, detailTargetHref(encodeDetailTarget(target)).params);
   expect(resolution.ok).toBe(true);
   return (resolution as { ok: true; target: DetailTarget }).target;
@@ -64,7 +65,7 @@ describe('DetailTarget 编解码', () => {
     const encoded = detailTargetHref(encodeDetailTarget({
       game: 'osu-standard', beatmapsetId: '3720', beatmapId: 22423,
     })).params;
-    expect(encoded).toEqual({ songId: '3720', beatmapId: '22423' });
+    expect(encoded).toEqual({ songId: '3720', beatmapId: '22423', gameId: 'osu-standard' });
     expect(encoded).not.toHaveProperty('levelIndex');
 
     // 既有 osu 成绩卡仍把 beatmap id 写在 levelIndex 槽位，解码后同样只产出 beatmapId。
@@ -90,12 +91,16 @@ describe('DetailTarget 编解码', () => {
       .toMatchObject({ code: 'invalid_parameter', parameter: 'chartType' });
     expect(errorOf('phigros', { songId: 'Song.A', scoreId: '9' }))
       .toMatchObject({ code: 'invalid_parameter', parameter: 'scoreId' });
-    expect(errorOf('maimai', { songId: '1', gameId: 'phigros' }))
-      .toMatchObject({ code: 'invalid_parameter', parameter: 'gameId' });
+    expect(decodeDetailTarget('maimai', { songId: '1', gameId: 'phigros' }))
+      .toEqual({ ok: true, target: { game: 'phigros', songId: '1' } });
     expect(errorOf('test', { songId: '1' })).toMatchObject({ code: 'unsupported_game' });
   });
 
   it('缺失或非法参数返回可判别的错误', () => {
+    for (const gameId of ['toString', '__proto__', 'constructor']) {
+      expect(decodeDetailTarget('maimai', { songId: '1', gameId }))
+        .toMatchObject({ ok: false, code: 'unsupported_game' });
+    }
     expect(errorOf('maimai', {})).toMatchObject({ code: 'missing_parameter', parameter: 'songId' });
     expect(errorOf('phigros', { songId: '   ' }))
       .toMatchObject({ code: 'missing_parameter', parameter: 'songId' });

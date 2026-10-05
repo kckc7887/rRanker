@@ -31,7 +31,7 @@ import {
   SessionIndexUnrecognizedError,
 } from '@/storage/secure-session-store';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import { hasRizlinePassword, writeRizlinePassword } from '@/storage/rizline-password-store';
+import { deleteRizlinePassword, hasRizlinePassword, readRizlinePassword, writeRizlinePassword } from '@/storage/rizline-password-store';
 
 const kvStore = {
   getItem: async (key: string) => sqlite.values.get(key) ?? null,
@@ -55,6 +55,96 @@ function account(id: string): StoredProviderAccountInput {
 }
 
 describe('SecureSessionStore 内置账号兼容', () => {
+  it('treats an empty persisted index as corruption, never as a missing index', async () => {
+    const key = 'rranker.provider.sessions.index.v4';
+    sqlite.values.set(key, '');
+    secure.values.set('rranker.provider.sessions.v2', JSON.stringify({ version: 2, accounts: [account('old')] }));
+    await expect(createStore().loadVault()).rejects.toBeInstanceOf(SessionIndexCorruptError);
+    await expect(createStore().upsertAccount(account('new'))).rejects.toBeInstanceOf(SessionIndexCorruptError);
+    expect(sqlite.values.get(key)).toBe('');
+    expect(sqlite.values.get(`${key}.corrupt`)).toBe('');
+  });
+  it.each([2, 3])('v%s 迁移隔离身份重复项并恢复其余账号', async version => {
+    const good = account('good'), duplicate = account('duplicate');
+    const rows = [good, duplicate, duplicate];
+    const key = `rranker.provider.sessions.v${version}`;
+    const raw = JSON.stringify(version === 2 ? { version, accounts: rows } : {
+      version, credentials: rows.map(row => ({ id: row.id, providerId: row.providerId, session: row.session })),
+      accounts: rows.map(row => ({ ...row, credentialId: row.id })),
+    });
+    secure.values.set(key, raw);
+    const vault = await createStore().loadVault();
+    expect(vault.accounts.map(row => row.id)).toEqual(['good']);
+    expect(vault.recovery?.rejectedAccounts).toBe(2);
+    expect(secure.values.get(key)).toBe(raw);
+    expect((await createStore().loadVault()).accounts).toEqual(vault.accounts);
+  });
+  it.each([2, 3])('混合损坏的 v%s 迁移保留安全原文，重启不复活已删除账号', async version => {
+    const good = account('good');
+    const key = `rranker.provider.sessions.v${version}`;
+    const raw = JSON.stringify(version === 2
+      ? { version, activeAccountId: 'good', accounts: [good, { id: 'bad' }] }
+      : { version, activeAccountId: 'good', credentials: [{ id: 'c', providerId: good.providerId, session: good.session }, { id: 'bad' }], accounts: [{ ...good, credentialId: 'c' }, { id: 'bad' }] });
+    secure.values.set(key, raw);
+    const store = createStore();
+    const restored = await store.loadVault();
+    expect(restored.accounts.map(item => item.id)).toEqual(['good']);
+    expect(restored).toMatchObject({ recovery: { integrity: 'partial', sourceVersion: version, rejectedAccounts: 1 } });
+    expect(secure.values.get(key)).toBe(raw);
+    await store.removeAccount('good');
+    await store.upsertAccount(account('new'));
+    const restarted = await createStore().loadVault();
+    expect(restarted.accounts.map(item => item.id)).toEqual(['new']);
+    expect(restarted).toMatchObject({ recovery: restored.recovery });
+    expect(secure.values.get(key)).toBe(raw);
+    expect(JSON.stringify([...sqlite.values.values()])).not.toContain('token-good');
+  });
+  it.each([
+    { mode: 'jwt', value: '', persistable: true },
+    { mode: 'import-token', persistable: true },
+    { mode: 'phi-session', sessionToken: 'token', playerId: '', persistable: true },
+    { mode: 'lxns-oauth', accessToken: '', refreshToken: 'refresh', expiresAt: 1, persistable: true },
+    { mode: 'osu-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: NaN, persistable: true },
+  ])('refuses malformed credentials before writing the vault: $mode', async session => {
+    const input = account('invalid');
+    await expect(createStore().upsertAccount({ ...input, session: session as StoredProviderAccountInput['session'] })).resolves.toBe('');
+    expect((await createStore().loadVault()).accounts).toEqual([]);
+  });
+
+  it.each(['accounts', 'credentials'] as const)('preserves duplicate %s instead of resolving an ambiguous identity', async field => {
+    const store = createStore(); await store.upsertAccount(account('duplicate'));
+    const key = 'rranker.provider.sessions.index.v4';
+    const index = JSON.parse(sqlite.values.get(key)!);
+    index[field].push(index[field][0]);
+    const raw = JSON.stringify(index); sqlite.values.set(key, raw);
+    await expect(store.loadVault()).rejects.toBeInstanceOf(SessionIndexUnrecognizedError);
+    expect(sqlite.values.get(key)).toBe(raw);
+    expect(sqlite.values.get(`${key}.unrecognized`)).toBe(raw);
+  });
+
+  it('serializes preserved-index restoration with clearing the same storage', async () => {
+    const key = 'rranker.provider.sessions.index.v4';
+    await createStore().upsertAccount(account('restored'));
+    sqlite.values.set(`${key}.corrupt`, sqlite.values.get(key)!); sqlite.values.set(key, '{broken');
+    let release!: () => void;
+    let entered!: () => void;
+    const started = new Promise<void>(resolve => { entered = resolve; });
+    let block = true;
+    const storage = { ...kvStore, getItem: async (name: string) => {
+      const value = await kvStore.getItem(name);
+      if (name === key && block) {
+        block = false; entered(); await new Promise<void>(resolve => { release = resolve; });
+      }
+      return value;
+    } };
+    const restore = restorePreservedSessionIndex(storage); await started;
+    const store = new SecureSessionStore(storage);
+    let cleared = false; const clear = store.clear().then(() => { cleared = true; });
+    await Promise.resolve(); await Promise.resolve(); expect(cleared).toBe(false);
+    release(); await restore; await clear;
+    expect((await store.loadVault()).accounts).toEqual([]);
+  });
+
   it('identifies encrypted credential writes separately from local index commits', async () => {
     const nativeFailure = new Error('native options conversion failed');
     vi.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(nativeFailure);
@@ -453,7 +543,7 @@ describe('SecureSessionStore 内置账号兼容', () => {
     expect((await store.loadVault()).accounts.map((item) => item.id)).toEqual(['maimai:diving-fish:a']);
   });
 
-  it('清空时删除 v4 索引、凭据分片和所有旧键', async () => {
+  it('清空时保留合法空 v4 索引并删除凭据分片和所有旧键', async () => {
     const store = createStore();
     await store.upsertAccount(account('maimai:diving-fish:a'));
     secure.values.set('rranker.provider.sessions.v3', '{}');
@@ -462,7 +552,7 @@ describe('SecureSessionStore 内置账号兼容', () => {
 
     await store.clear();
 
-    expect(sqlite.values.has('rranker.provider.sessions.index.v4')).toBe(false);
+    expect(JSON.parse(sqlite.values.get('rranker.provider.sessions.index.v4')!)).toEqual({ version: 4, activeAccountId: null, credentials: [], accounts: [] });
     expect([...secure.values.keys()].some((key) => key.startsWith('rranker.secure.provider-session.'))).toBe(false);
     expect(secure.values.has('rranker.provider.sessions.v3')).toBe(false);
     expect(secure.values.has('rranker.provider.sessions.v2')).toBe(false);
@@ -554,12 +644,12 @@ describe('SecureSessionStore corrupted index preservation', () => {
     expect(sqlite.values.get(INDEX)).toBe('{broken');
   });
 
-  it('skips corrupt legacy vaults without deleting them', async () => {
+  it('拒绝覆盖无法识别的旧会话原文', async () => {
     secure.values.set('rranker.provider.sessions.v3', '{broken');
     secure.values.set('rranker.provider.sessions.v2', '{broken');
     secure.values.set('rranker.diving-fish.session.v1', '{broken');
-    const vault = await createStore().loadVault();
-    expect(vault.accounts).toEqual([]);
+    await expect(createStore().loadVault()).rejects.toBeInstanceOf(SessionPersistenceError);
+    await expect(createStore().upsertAccount(account('new'))).rejects.toBeInstanceOf(SessionPersistenceError);
     expect(secure.values.get('rranker.provider.sessions.v3')).toBe('{broken');
     expect(secure.values.get('rranker.provider.sessions.v2')).toBe('{broken');
     expect(secure.values.get('rranker.diving-fish.session.v1')).toBe('{broken');
@@ -588,9 +678,329 @@ describe('SecureSessionStore corrupted index preservation', () => {
     sqlite.values.set(`${INDEX}.corrupt`, '{broken}');
     sqlite.values.set(`${INDEX}.unrecognized`, '{"version":5}');
     await createStore().clear();
-    expect(sqlite.values.has(INDEX)).toBe(false);
+    expect(JSON.parse(sqlite.values.get(INDEX)!)).toEqual({ version: 4, activeAccountId: null, credentials: [], accounts: [] });
     expect(sqlite.values.has(`${INDEX}.corrupt`)).toBe(false);
     expect(sqlite.values.has(`${INDEX}.unrecognized`)).toBe(false);
+  });
+});
+
+describe('SecureSessionStore commit failure recovery', () => {
+  const INDEX = 'rranker.provider.sessions.index.v4';
+  beforeEach(() => { secure.values.clear(); sqlite.values.clear(); vi.clearAllMocks(); });
+
+  it.each(['missing', 'existing'] as const)('keeps every referenced credential when cancellation rollback fails with %s baseline', async baseline => {
+    const controller = new AbortController();
+    let armed = false;
+    const failure = new Error('rollback blocked');
+    const storage = { ...kvStore,
+      setItem: async (key: string, value: string) => {
+        if (armed && controller.signal.aborted) throw failure;
+        await kvStore.setItem(key, value);
+        if (armed) controller.abort(new Error('cancelled'));
+      },
+      removeItem: async (key: string) => { if (armed) throw failure; await kvStore.removeItem(key); },
+    };
+    const store = new SecureSessionStore(storage);
+    if (baseline === 'existing') await store.upsertAccount(account('first'));
+    armed = true;
+    await expect(store.upsertAccount(account('committed'), controller.signal)).rejects.toMatchObject({ code: 'local_commit', cause: failure });
+    const vault = await store.loadVault();
+    expect(vault.accounts.map(item => item.id)).toEqual(baseline === 'existing' ? ['first', 'committed'] : ['committed']);
+    expect(vault.credentials.find(item => item.id.endsWith(':committed'))?.session).toEqual(account('committed').session);
+  });
+
+  it('preserves new secrets when the actual index cannot be read after a failed write', async () => {
+    let committed = false;
+    const storage = { ...kvStore,
+      getItem: async (key: string) => { if (committed) throw new Error('readback unavailable'); return kvStore.getItem(key); },
+      setItem: async (key: string, value: string) => { await kvStore.setItem(key, value); committed = true; throw new Error('write reported failure'); },
+    };
+    await expect(new SecureSessionStore(storage).upsertAccount(account('recoverable'))).rejects.toMatchObject({ code: 'local_commit' });
+    await expect(createStore().load()).resolves.toEqual(account('recoverable').session);
+  });
+
+  it('does not delete credentials when committing the empty index fails', async () => {
+    const original = createStore(); await original.upsertAccount(account('retained'));
+    const raw = sqlite.values.get(INDEX);
+    const secrets = [...secure.values.entries()];
+    const store = new SecureSessionStore({ ...kvStore, setItem: async () => { throw new Error('empty commit failed'); } });
+    await expect(store.clear()).rejects.toMatchObject({ code: 'local_commit' });
+    expect(sqlite.values.get(INDEX)).toBe(raw);
+    expect([...secure.values.entries()]).toEqual(secrets);
+    await expect(original.load()).resolves.toEqual(account('retained').session);
+  });
+
+  it('serializes migration with a later clear across store instances', async () => {
+    const input = account('legacy');
+    secure.values.set('rranker.provider.sessions.v3', JSON.stringify({ version: 3, activeAccountId: input.id,
+      credentials: [{ id: 'legacy-credential', providerId: input.providerId, session: input.session }],
+      accounts: [{ ...input, credentialId: 'legacy-credential' }] }));
+    let release!: () => void; let started!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const ready = new Promise<void>(resolve => { started = resolve; });
+    vi.mocked(SecureStore.setItemAsync).mockImplementationOnce(async (key, value) => { started(); await gate; secure.values.set(key, value); });
+    const reading = createStore().loadVault();
+    await ready;
+    const clearing = createStore().clear();
+    release();
+    const [loaded, cleared] = await Promise.all([reading, clearing]);
+    expect(loaded.accounts.map(item => item.id)).toEqual([input.id]);
+    expect(cleared.committed).toBe(true);
+    expect((await createStore().loadVault()).accounts).toEqual([]);
+    expect([...secure.values.keys()].some(key => key.startsWith('rranker.secure.provider-session.'))).toBe(false);
+  });
+
+  it('keeps the empty commit and attempts every cleanup when secrets and a legacy source cannot be deleted', async () => {
+    const store = createStore(); await store.upsertAccount(account('removed'));
+    const legacy = { version: 3, activeAccountId: 'legacy', credentials: [{ id: 'legacy-credential', providerId: 'diving-fish', session: account('legacy').session }],
+      accounts: [{ ...account('legacy'), credentialId: 'legacy-credential' }] };
+    secure.values.set('rranker.provider.sessions.v3', JSON.stringify(legacy));
+    secure.values.set('rranker.provider.sessions.v2', '{}');
+    secure.values.set('rranker.diving-fish.session.v1', '{}');
+    sqlite.values.set(`${INDEX}.corrupt`, '{broken');
+    const deletion = vi.mocked(SecureStore.deleteItemAsync);
+    const originalDelete = deletion.getMockImplementation();
+    deletion.mockImplementation(async key => {
+      if (key.startsWith('rranker.secure.provider-session.') || key === 'rranker.provider.sessions.v3') throw new Error('cleanup blocked');
+      secure.values.delete(key);
+    });
+    try {
+      await expect(store.clear()).resolves.toEqual({ committed: true, cleanupFailures: ['登录凭据', '旧登录数据'] });
+      expect(secure.values.has('rranker.provider.sessions.v3')).toBe(true);
+      expect(secure.values.has('rranker.provider.sessions.v2')).toBe(false);
+      expect(secure.values.has('rranker.diving-fish.session.v1')).toBe(false);
+      expect(sqlite.values.has(`${INDEX}.corrupt`)).toBe(false);
+      expect((await createStore().loadVault()).accounts).toEqual([]);
+    } finally { deletion.mockImplementation(originalDelete!); }
+  });
+});
+
+describe('SecureSessionStore atomic account batches', () => {
+  const INDEX = 'rranker.provider.sessions.index.v4';
+  const originalSession = { mode: 'osu-oauth', accessToken: 'original-access', refreshToken: 'original-refresh',
+    expiresAt: 2_000_000_000_000, persistable: true } as const;
+  const refreshedSession = { ...originalSession, accessToken: 'new-access', refreshToken: 'new-refresh' };
+  const modes = (userId: number, session: StoredProviderAccountInput['session'] = originalSession): StoredProviderAccountInput[] => (
+    ['osu-standard', 'osu-mania'] as const
+  ).map(gameId => ({ id: `${gameId}:osu:${userId}`, gameId, providerId: 'osu', credentialId: `osu:shared:${userId}`,
+    displayName: `player-${userId}`, scoreDisplay: '1234', session }));
+
+  beforeEach(() => { secure.values.clear(); sqlite.values.clear(); vi.clearAllMocks(); });
+
+  it('writes a shared credential once and restores the first selected account as active', async () => {
+    const storage = { ...kvStore, setItem: vi.fn(kvStore.setItem) };
+    const inputs = modes(2);
+    await new SecureSessionStore(storage).upsertAccounts(inputs, { activeAccountId: inputs[0].id });
+    expect(storage.setItem).toHaveBeenCalledTimes(1);
+    expect(vi.mocked(SecureStore.setItemAsync).mock.calls.filter(([key]) => key.endsWith('.manifest'))).toHaveLength(1);
+    const index = JSON.parse(sqlite.values.get(INDEX)!);
+    expect(index.accounts.map((item: { id: string }) => item.id)).toEqual(inputs.map(item => item.id));
+    expect(index.credentials).toHaveLength(1);
+    const restored = await new SecureSessionStore(storage).loadVault();
+    expect(restored.activeAccountId).toBe(inputs[0].id);
+    expect(restored.credentials).toEqual([{ id: inputs[0].credentialId, providerId: 'osu', session: originalSession }]);
+    expect(restored.accounts.map(item => item.id)).toEqual(inputs.map(item => item.id));
+  });
+
+  it('restores all shared modes with the new session after reauthorizing only mania', async () => {
+    const store = createStore(), inputs = modes(2);
+    await store.upsertAccounts(inputs, { activeAccountId: inputs[0].id });
+    await store.upsertAccounts([{ ...inputs[1], displayName: 'updated player', session: refreshedSession }],
+      { activeAccountId: inputs[1].id });
+    const restored = await createStore().loadVault();
+    expect(restored.activeAccountId).toBe(inputs[1].id);
+    expect(restored.accounts).toHaveLength(2);
+    expect(restored.accounts.every(item => item.credentialId === inputs[0].credentialId)).toBe(true);
+    expect(restored.accounts.find(item => item.id === inputs[1].id)?.displayName).toBe('updated player');
+    expect(restored.credentials).toEqual([{ id: inputs[0].credentialId, providerId: 'osu', session: refreshedSession }]);
+  });
+
+  it.each(['secure-write', 'secure-readback', 'index-write'] as const)('preserves every shared mode after a %s reauthorization failure', async failureStage => {
+    let armed = false;
+    const storage = { ...kvStore, setItem: async (key: string, value: string) => {
+      if (armed && failureStage === 'index-write') throw new Error('index commit failed');
+      await kvStore.setItem(key, value);
+    } };
+    const store = new SecureSessionStore(storage);
+    const inputs = modes(2);
+    await store.upsertAccounts(inputs, { activeAccountId: inputs[0].id });
+    const raw = sqlite.values.get(INDEX);
+    const originalSecrets = [...secure.values.entries()];
+    if (failureStage === 'secure-write') vi.mocked(SecureStore.setItemAsync).mockRejectedValueOnce(new Error('native write failed'));
+    if (failureStage === 'secure-readback') vi.mocked(SecureStore.setItemAsync)
+      .mockImplementationOnce(async (key, value) => { secure.values.set(key, value); })
+      .mockImplementationOnce(async () => undefined);
+    armed = true;
+    await expect(store.upsertAccounts([{ ...inputs[1], displayName: 'new name', session: refreshedSession }],
+      { activeAccountId: inputs[1].id })).rejects.toMatchObject({ code: failureStage === 'index-write' ? 'local_commit' : 'credential_storage' });
+    expect(sqlite.values.get(INDEX)).toBe(raw);
+    expect([...secure.values.entries()]).toEqual(originalSecrets);
+    const restored = await new SecureSessionStore(storage).loadVault();
+    expect(restored.activeAccountId).toBe(inputs[0].id);
+    expect(restored.accounts.map(item => item.id)).toEqual(inputs.map(item => item.id));
+    expect(restored.credentials[0].session).toEqual(originalSession);
+  });
+
+  it.each(['signal', 'generation'] as const)('rolls back the complete batch when %s becomes invalid during the index write', async guard => {
+    const controller = new AbortController();
+    const reason = new Error('binding is no longer current');
+    let armed = false, current = true;
+    const assertCurrent = () => { if (!current) throw reason; };
+    const storage = { ...kvStore, setItem: async (key: string, value: string) => {
+      await kvStore.setItem(key, value);
+      if (armed) {
+        armed = false;
+        if (guard === 'signal') controller.abort(reason);
+        else current = false;
+      }
+    } };
+    const store = new SecureSessionStore(storage);
+    const inputs = modes(2);
+    await store.upsertAccounts(inputs, { activeAccountId: inputs[0].id });
+    const raw = sqlite.values.get(INDEX), originalSecrets = [...secure.values.entries()];
+    armed = true;
+    await expect(store.upsertAccounts(modes(2, refreshedSession), { activeAccountId: inputs[1].id,
+      signal: controller.signal, assertCurrent })).rejects.toBe(reason);
+    expect(sqlite.values.get(INDEX)).toBe(raw);
+    expect([...secure.values.entries()]).toEqual(originalSecrets);
+    expect((await new SecureSessionStore(storage).loadVault()).credentials[0].session).toEqual(originalSession);
+  });
+
+  it('discards earlier new credentials when a later credential in the same batch cannot be saved', async () => {
+    const store = createStore();
+    await store.upsertAccount(account('existing'));
+    const raw = sqlite.values.get(INDEX), originalSecrets = [...secure.values.entries()];
+    const writing = vi.mocked(SecureStore.setItemAsync), previousWrite = writing.getMockImplementation();
+    let manifests = 0;
+    writing.mockImplementation(async (key, value) => {
+      if (key.endsWith('.manifest') && ++manifests === 2) throw new Error('second credential failed');
+      secure.values.set(key, value);
+    });
+    try {
+      const inputs = [...modes(2), ...modes(3)];
+      await expect(store.upsertAccounts(inputs, { activeAccountId: inputs[0].id })).rejects.toMatchObject({ code: 'credential_storage' });
+      expect(manifests).toBe(2);
+      expect(sqlite.values.get(INDEX)).toBe(raw);
+      expect([...secure.values.entries()]).toEqual(originalSecrets);
+      expect((await createStore().loadVault()).accounts.map(item => item.id)).toEqual(['existing']);
+    } finally { writing.mockImplementation(previousWrite!); }
+  });
+
+  it('removes a newly created index when the batch is cancelled during its first commit', async () => {
+    const controller = new AbortController(), reason = new Error('cancelled');
+    const storage = { ...kvStore, setItem: async (key: string, value: string) => {
+      await kvStore.setItem(key, value); controller.abort(reason);
+    } };
+    const inputs = modes(2);
+    await expect(new SecureSessionStore(storage).upsertAccounts(inputs, { activeAccountId: inputs[0].id,
+      signal: controller.signal })).rejects.toBe(reason);
+    expect(sqlite.values.has(INDEX)).toBe(false);
+    expect([...secure.values]).toEqual([]);
+    expect((await new SecureSessionStore(storage).loadVault()).accounts).toEqual([]);
+  });
+
+  it('checks the binding generation again after waiting behind another store instance', async () => {
+    let release!: () => void, started!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const ready = new Promise<void>(resolve => { started = resolve; });
+    let blocked = false, current = true;
+    const reason = new Error('source account removed');
+    const storage = { ...kvStore, setItem: async (key: string, value: string) => {
+      if (blocked) { blocked = false; started(); await gate; }
+      await kvStore.setItem(key, value);
+    } };
+    const first = new SecureSessionStore(storage), second = new SecureSessionStore(storage);
+    await first.upsertAccount(account('existing'));
+    const originalSecrets = [...secure.values.entries()];
+    vi.mocked(SecureStore.setItemAsync).mockClear();
+    blocked = true;
+    const preceding = first.setActiveAccountId('existing');
+    await ready;
+    const inputs = modes(2);
+    const pending = second.upsertAccounts(inputs, { activeAccountId: inputs[0].id, assertCurrent: () => { if (!current) throw reason; } });
+    const rejection = expect(pending).rejects.toBe(reason);
+    current = false; release();
+    await preceding; await rejection;
+    expect(vi.mocked(SecureStore.setItemAsync)).not.toHaveBeenCalled();
+    expect([...secure.values.entries()]).toEqual(originalSecrets);
+    expect((await first.loadVault()).accounts.map(item => item.id)).toEqual(['existing']);
+  });
+
+  it('serializes concurrent complete batches across store instances without losing accounts', async () => {
+    let release!: () => void, started!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const ready = new Promise<void>(resolve => { started = resolve; });
+    let blocked = false;
+    const storage = { ...kvStore, getItem: async (key: string) => {
+      const value = await kvStore.getItem(key);
+      if (blocked && key === INDEX) { blocked = false; started(); await gate; }
+      return value;
+    } };
+    const first = new SecureSessionStore(storage), second = new SecureSessionStore(storage);
+    await first.upsertAccount(account('existing'));
+    const batchB = modes(2), batchC = modes(3);
+    blocked = true;
+    const savingB = first.upsertAccounts(batchB, { activeAccountId: batchB[0].id });
+    await ready;
+    const savingC = second.upsertAccounts(batchC, { activeAccountId: batchC[0].id });
+    release(); await Promise.all([savingB, savingC]);
+    const restored = await new SecureSessionStore(storage).loadVault();
+    expect(restored.accounts.map(item => item.id)).toEqual(['existing', ...batchB.map(item => item.id), ...batchC.map(item => item.id)]);
+    expect(restored.credentials).toHaveLength(3);
+    expect(restored.activeAccountId).toBe(batchC[0].id);
+  });
+
+  it('preserves the committed batch when cancellation arrives during old credential cleanup', async () => {
+    const store = createStore(), inputs = modes(2);
+    await store.upsertAccounts(inputs, { activeAccountId: inputs[0].id });
+    const controller = new AbortController();
+    vi.mocked(SecureStore.deleteItemAsync).mockImplementationOnce(async key => {
+      secure.values.delete(key); controller.abort(new Error('left after commit'));
+    });
+    await expect(store.upsertAccounts(modes(2, refreshedSession), { activeAccountId: inputs[1].id,
+      signal: controller.signal })).resolves.toBeUndefined();
+    expect(controller.signal.aborted).toBe(true);
+    const restored = await createStore().loadVault();
+    expect(restored.activeAccountId).toBe(inputs[1].id);
+    expect(restored.accounts).toHaveLength(2);
+    expect(restored.credentials[0].session).toEqual(refreshedSession);
+  });
+});
+
+describe('Rizline password mutation lifetime', () => {
+  beforeEach(() => { secure.values.clear(); vi.clearAllMocks(); });
+
+  it('restores the previous password when cancellation arrives during the secure write', async () => {
+    await writeRizlinePassword('cancelled-password', 'previous');
+    const controller = new AbortController(); const reason = new Error('cancelled');
+    vi.mocked(SecureStore.setItemAsync).mockImplementationOnce(async (key, value) => { secure.values.set(key, value); controller.abort(reason); });
+    await expect(writeRizlinePassword('cancelled-password', 'late', { signal: controller.signal })).rejects.toBe(reason);
+    await expect(readRizlinePassword('cancelled-password')).resolves.toBe('previous');
+  });
+
+  it('serializes deletion with an in-flight write and leaves no password behind', async () => {
+    let release!: () => void; let started!: () => void;
+    const gate = new Promise<void>(resolve => { release = resolve; });
+    const ready = new Promise<void>(resolve => { started = resolve; });
+    vi.mocked(SecureStore.setItemAsync).mockImplementationOnce(async (key, value) => { started(); await gate; secure.values.set(key, value); });
+    const writing = writeRizlinePassword('removed-password', 'late');
+    const rejected = expect(writing).rejects.toThrow('密码保存已失效');
+    await ready;
+    const deleting = deleteRizlinePassword('removed-password');
+    release();
+    await rejected; await deleting;
+    await expect(hasRizlinePassword('removed-password')).resolves.toBe(false);
+  });
+
+  it('rejects an old generation and allows a new write after queued deletion', async () => {
+    let current = true;
+    const old = writeRizlinePassword('rebound-password', 'old', { assertCurrent: () => { if (!current) throw new Error('account replaced'); } });
+    current = false;
+    await expect(old).rejects.toThrow('account replaced');
+    const deleting = deleteRizlinePassword('rebound-password');
+    const newer = writeRizlinePassword('rebound-password', 'new');
+    await Promise.all([deleting, newer]);
+    await expect(readRizlinePassword('rebound-password')).resolves.toBe('new');
   });
 });
 
@@ -634,6 +1044,13 @@ describe('Rizline SMS secure accounts', () => {
     expect((await store.loadVault()).credentials).toEqual([]);
     expect(await hasRizlinePassword(input.id)).toBe(false);
     expect([...secure.values.keys()].some(key => key.includes('rizline-password'))).toBe(false);
+  });
+  it('clears the separately stored password when clearing all login data', async () => {
+    const store = createStore(); await store.upsertAccount(input);
+    await writeRizlinePassword(input.id, 'secret-password');
+    await expect(store.clear()).resolves.toEqual({ committed: true, cleanupFailures: [] });
+    expect((await store.loadVault()).accounts).toEqual([]);
+    await expect(hasRizlinePassword(input.id)).resolves.toBe(false);
   });
   it('rotates a Rizline session when expected matches by token rather than JSON field order', async () => {
     const store = createStore();

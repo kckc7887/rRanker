@@ -12,6 +12,7 @@ export function usePlates(enabled = true) {
   const queryKey = ['plates', activeAccountId, activeGameId];
   return useQuery({
     enabled: enabled && tabActive && activeGameId === 'maimai' && provider !== null,
+    notifyOnChangeProps: tabActive ? undefined : [],
     queryKey,
     queryFn: () => requireDetailedCatalogProvider(provider).getPlates(),
   });

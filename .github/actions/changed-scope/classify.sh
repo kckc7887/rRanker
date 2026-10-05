@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 #
-# 变更范围判定：自述文件、文档、许可声明与 README 截图可以跳过完整检查；CI 与构建配置必须完整检查。
+# 变更范围判定：Markdown 文档、文档目录、许可声明与 README 截图可以跳过完整检查；CI 与构建配置必须完整检查。
 #
 # 输出（写进 GITHUB_OUTPUT，全部是固定枚举或数字）：
 #   functional    true/false，无法判定时一律为 true
@@ -58,17 +58,18 @@ escape_html() {
   printf '%s' "$value"
 }
 
-# 只有自述文件、文档、许可声明与 README 截图可以走快速路径
+# Markdown 文档、文档目录、许可声明与 README 截图可以走快速路径
 non_functional() {
   case "$1" in
-    README.md | */README.md | CLAUDE.md | */CLAUDE.md) return 0 ;;
-    LICENSE | LICENSES/* | THIRD_PARTY_NOTICES.md) return 0 ;;
+    *.md) return 0 ;;
+    LICENSE | LICENSES/*) return 0 ;;
     docs/* | assets/images/*) return 0 ;;
   esac
   return 1
 }
 
 functional=true
+account=true
 reason="$reason_no_base"
 count=0
 
@@ -101,12 +102,22 @@ else
     echo "::warning::轻检查无法比较 $(escape_control "$base") 与 $(escape_control "$head")，按有功能改动处理"
   else
     functional=false
+    account=false
     reason="$reason_docs_only"
     while IFS= read -r -d '' path; do
       count=$((count + 1))
       if [ "$functional" = false ] && ! non_functional "$path"; then
         functional=true
         reason="$reason_functional"
+      fi
+      if ! non_functional "$path"; then
+        # Only known presentation/player paths can omit the native account probe.
+        # Shared state, providers, storage, services, configuration and unknown paths stay conservative.
+        case "$path" in
+          *account* | *Account* | *auth* | *Auth* | *session* | *Session* | *login* | *Login* | *credential* | *Credential*) account=true ;;
+          apps/mobile/src/components/maimai/* | apps/mobile/src/components/chunithm/* | apps/mobile/src/components/osu/* | apps/mobile/src/components/phigros/* | apps/mobile/src/components/rizline/* | apps/mobile/src/screens/* | apps/mobile/src/theme/* | apps/mobile/assets/* | apps/mobile/players/*) ;;
+          *) account=true ;;
+        esac
       fi
     done < "$paths_file"
     if [ "$count" -eq 0 ]; then
@@ -115,14 +126,21 @@ else
   fi
 fi
 
+case "${SCOPE_ACCOUNT_CHECKS:-auto}" in
+  auto) ;;
+  all) functional=true; account=true ;;
+  *) echo "::error::Unknown account check selection"; exit 1 ;;
+esac
+
 {
   echo "functional=$functional"
+  echo "account=$account"
   echo "reason=$reason"
   echo "changed-count=$count"
 } >> "${GITHUB_OUTPUT:-/dev/null}"
 
 if [ "$functional" = false ]; then
-  echo "轻检查：$count 个改动都落在自述文件、文档、许可声明与 README 截图"
+  echo "轻检查：$count 个改动都落在 Markdown 文档、文档目录、许可声明与 README 截图"
   while IFS= read -r -d '' path; do
     echo "  改动：$(escape_control "$path")"
   done < "$paths_file"
@@ -135,9 +153,9 @@ if [ -n "${GITHUB_STEP_SUMMARY:-}" ]; then
     echo "### 轻检查"
     echo
     if [ "$functional" = false ]; then
-      echo "改动只落在自述文件、文档、许可声明与 README 截图，跳过完整质量检查与构建。"
+      echo "改动只落在 Markdown 文档、文档目录、许可声明与 README 截图，跳过完整质量检查与构建。"
     else
-      echo "存在影响应用功能的改动，继续完整检查。"
+      echo "改动超出文档快速路径，或无法确认变更范围，继续完整检查。"
     fi
     echo
     echo "- 判定依据：\`$reason\`"

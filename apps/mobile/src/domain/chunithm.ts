@@ -79,10 +79,6 @@ export function chunithmAliasesForSong(
   return [...(aliases.get(String(songId)) ?? [])];
 }
 
-export function chunithmSongDetailResourceKey(songId: string | number): string {
-  return `${CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX}${songId}`;
-}
-
 export const CHUNITHM_DIFFICULTY_LABELS: Record<ChunithmLevelIndex, string> = {
   0: 'BASIC',
   1: 'ADVANCED',

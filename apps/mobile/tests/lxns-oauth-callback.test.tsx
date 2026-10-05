@@ -1,11 +1,12 @@
-import { act, fireEvent, render, screen } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import LxnsOAuthCallbackScreen from '../app/oauth/lxns';
-import { createMaimaiBoundAccount } from '@/domain/bound-account';
+import { createChunithmBoundAccount, createMaimaiBoundAccount } from '@/domain/bound-account';
 import { SessionPersistenceError } from '@/domain/session-vault';
 import { ProviderError } from '@/providers/errors';
 
 let mockParams: Record<string, string | undefined> = {};
+let mockFocused = true;
 const mockDismissTo = jest.fn((..._args: unknown[]) => undefined);
 const mockExchange = jest.fn(async (..._args: unknown[]): Promise<unknown> => undefined);
 const mockNotify = jest.fn((..._args: unknown[]) => undefined);
@@ -13,6 +14,11 @@ const mockNotify = jest.fn((..._args: unknown[]) => undefined);
 jest.mock('expo-router', () => ({
   router: { dismissTo: (...args: unknown[]) => mockDismissTo(...args) },
   useLocalSearchParams: () => mockParams,
+  useFocusEffect: (callback: () => void | (() => void)) => {
+    const React = jest.requireActual<typeof import('react')>('react');
+    const focused = mockFocused;
+    React.useEffect(() => focused ? callback() : undefined, [callback, focused]);
+  },
 }));
 
 jest.mock('@/providers/lxns-oauth', () => ({
@@ -34,8 +40,10 @@ jest.mock('@/services/lxns-account-binding', () => ({
   bindLxnsAccount: (...args: unknown[]) => mockBindLxnsAccount(...args),
 }));
 
-const mockSetSession = jest.fn();
+const mockSetSession = jest.fn((..._args: unknown[]): unknown => undefined);
 const mockRemoveBoundAccount = jest.fn();
+const mockInvalidateQueries = jest.fn();
+const mockTempRemove = jest.fn(async () => undefined);
 jest.mock('@/state/session-store', () => ({
   useSession: Object.assign(
     () => undefined,
@@ -44,11 +52,11 @@ jest.mock('@/state/session-store', () => ({
 }));
 
 jest.mock('@/state/query-client', () => ({
-  queryClient: { invalidateQueries: jest.fn() },
+  queryClient: { invalidateQueries: (...args: unknown[]) => mockInvalidateQueries(...args) },
 }));
 
 jest.mock('@/storage/chunithm-temp-account-store', () => ({
-  ChunithmTempAccountStore: jest.fn(() => ({ remove: jest.fn(async () => undefined) })),
+  ChunithmTempAccountStore: jest.fn(() => ({ remove: () => mockTempRemove() })),
 }));
 
 jest.mock('@/theme/app-theme', () => ({
@@ -77,14 +85,23 @@ const mockSession = {
   persistable: true,
 } as const;
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>(done => { resolve = done; });
+  return { promise, resolve };
+}
+
 beforeEach(() => {
   mockParams = {};
+  mockFocused = true;
   mockDismissTo.mockClear();
   mockExchange.mockReset();
   mockNotify.mockClear();
   mockBindLxnsAccount.mockReset();
-  mockSetSession.mockClear();
+  mockSetSession.mockReset();
   mockRemoveBoundAccount.mockClear();
+  mockInvalidateQueries.mockClear();
+  mockTempRemove.mockClear();
 });
 
 describe('LXNS OAuth 回调页', () => {
@@ -122,13 +139,65 @@ describe('LXNS OAuth 回调页', () => {
 
     expect(screen.getByText('授权成功')).toBeTruthy();
     expect(mockExchange).toHaveBeenCalledWith('auth-code', 'expected-state', expect.any(AbortSignal));
-    expect(mockBindLxnsAccount).toHaveBeenCalledWith({ gameId: 'maimai', session: mockSession });
+    expect(mockBindLxnsAccount).toHaveBeenCalledWith({
+      gameId: 'maimai', session: mockSession, signal: expect.any(AbortSignal), assertCurrent: expect.any(Function),
+    });
     expect(mockSetSession).toHaveBeenCalledTimes(1);
     expect(mockNotify).toHaveBeenCalledWith({
       status: 'success',
       gameId: 'maimai',
       accountName: '落雪玩家',
     });
+  });
+
+  it.each([
+    ['maimai', '卸载'], ['maimai', '失焦'], ['chunithm', '卸载'], ['chunithm', '失焦'],
+  ] as const)('%s 回调页%s后忽略绑定迟到结果及全部页面动作', async (gameId, exit) => {
+    const binding = deferred<unknown>();
+    mockParams = { code: 'auth-code', state: 'expected-state', gameId };
+    const { readPendingLxnsOAuth } = jest.requireMock('@/providers/lxns-oauth') as { readPendingLxnsOAuth: ReturnType<typeof jest.fn> };
+    readPendingLxnsOAuth.mockResolvedValueOnce({ verifier: 'verifier', state: 'expected-state', gameId });
+    mockExchange.mockResolvedValue(mockSession);
+    mockBindLxnsAccount.mockReturnValue(binding.promise);
+    const rendered = await render(<LxnsOAuthCallbackScreen />);
+    await waitFor(() => expect(mockBindLxnsAccount).toHaveBeenCalledTimes(1));
+    const input = mockBindLxnsAccount.mock.calls[0][0] as { signal: AbortSignal; assertCurrent: () => void };
+    if (exit === '卸载') await rendered.unmount();
+    else { mockFocused = false; await rendered.rerender(<LxnsOAuthCallbackScreen />); }
+    expect(input.signal.aborted).toBe(true);
+    expect(input.assertCurrent).toThrow();
+    await act(async () => binding.resolve({
+      account: gameId === 'maimai' ? mockAccount : createChunithmBoundAccount({
+        displayName: '中二玩家', rating: 16, playerId: '12345',
+      }),
+      credentialId: 'lxns:credential', session: mockSession,
+    }));
+    expect(mockSetSession).not.toHaveBeenCalled();
+    expect(mockRemoveBoundAccount).not.toHaveBeenCalled();
+    expect(mockTempRemove).not.toHaveBeenCalled();
+    expect(mockInvalidateQueries).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled();
+  });
+
+  it('激活已开始后退出阻止中二临时账号清理及成功提示', async () => {
+    const activation = deferred<void>();
+    mockParams = { code: 'auth-code', state: 'expected-state', gameId: 'chunithm' };
+    const { readPendingLxnsOAuth } = jest.requireMock('@/providers/lxns-oauth') as { readPendingLxnsOAuth: ReturnType<typeof jest.fn> };
+    readPendingLxnsOAuth.mockResolvedValueOnce({ verifier: 'verifier', state: 'expected-state', gameId: 'chunithm' });
+    mockExchange.mockResolvedValue(mockSession);
+    mockBindLxnsAccount.mockResolvedValue({
+      account: createChunithmBoundAccount({ displayName: '中二玩家', rating: 16, playerId: '12345' }),
+      credentialId: 'lxns:credential', session: mockSession,
+    });
+    mockSetSession.mockReturnValue(activation.promise);
+    const rendered = await render(<LxnsOAuthCallbackScreen />);
+    await waitFor(() => expect(mockSetSession).toHaveBeenCalledTimes(1));
+    await rendered.unmount();
+    await act(async () => activation.resolve());
+    expect(mockRemoveBoundAccount).not.toHaveBeenCalled();
+    expect(mockTempRemove).not.toHaveBeenCalled();
+    expect(mockInvalidateQueries).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalled();
   });
 
   it('上游返回 error 参数时展示失败并通知错误', async () => {

@@ -24,15 +24,14 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import type { BeatmapData, ReplayData, ReplayFrame, HitResult, Slider, Spinner } from '../types/index';
+import type { BeatmapData, ReplayData, ReplayFrame, HitResult, Spinner } from '../types/index';
 import type { ModDifficulty } from './modDifficulty';
 import { sampleSlider } from '../renderer/SliderGeometry';
 import {
   sampleSliderLazer,
-  sliderTickTimesLazer,
   sliderBallPosLazer,
 } from '../renderer/SliderGeometryLazer';
-import { slideDurationMs } from './sliderDuration';
+import { slideDurationMs, sliderNestedEvents } from './sliderDuration';
 
 const SPINNER_CENTER_X = 256;
 const SPINNER_CENTER_Y = 192;
@@ -339,6 +338,27 @@ function buildKeyPresses(frames: ReplayFrame[], cumTimes: number[]): KeyPress[] 
   return presses;
 }
 
+/** result[i] = min(timeMs of presses[i..]); press times may be non-monotonic. */
+function buildPressSuffixMin(presses: KeyPress[]): number[] {
+  const suffixMin = new Array<number>(presses.length + 1);
+  suffixMin[presses.length] = Infinity;
+  for (let pi = presses.length - 1; pi >= 0; pi--) {
+    suffixMin[pi] = Math.min(presses[pi]!.timeMs, suffixMin[pi + 1]!);
+  }
+  return suffixMin;
+}
+
+/** Skips objects that no remaining press can find unresolved, so they never block again. */
+function advanceBlockStart(states: ObjState[], start: number, minFuturePress: number): number {
+  let index = start;
+  while (index < states.length) {
+    const Y = states[index]!;
+    if (!(Y.type === 'circle' ? Y.headResolved : minFuturePress >= Y.endTime)) break;
+    index++;
+  }
+  return index;
+}
+
 function cursorAt(
   frames: ReplayFrame[],
   cumTimes: number[],
@@ -403,32 +423,6 @@ function sliderBallPos(
   let   frac     = slideF - slideIdx;
   if (slideIdx % 2 === 1) frac = 1 - frac;
   return pointAtFraction(path, frac);
-}
-
-/**
- * Stable-style slider tick times (beatmap ms), spaced `beatLength / sliderTickRate`
- * within each slide, excluding a 1 ms guard before each slide end. Lazer replays
- * use the distance-based `sliderTickTimesLazer` instead.
- */
-export function sliderTickTimes(beatmap: BeatmapData, slider: Slider, slideDur: number): number[] {
-  let baseBeatLength = 500;
-  for (const tp of beatmap.timingPoints) {
-    if (tp.time > slider.time) break;
-    if (!tp.inherited) baseBeatLength = tp.beatLength;
-  }
-
-  const tickInterval = baseBeatLength / beatmap.sliderTickRate;
-  if (!isFinite(tickInterval) || tickInterval <= 0) return [];
-
-  const ticks: number[] = [];
-  for (let slide = 0; slide < slider.slides; slide++) {
-    const slideStart = slider.time + slide * slideDur;
-    const slideEnd   = slideStart + slideDur;
-    for (let t = slideStart + tickInterval; t < slideEnd - 1; t += tickInterval) {
-      ticks.push(t);
-    }
-  }
-  return ticks;
 }
 
 // Sliders: notelock treats them resolved iff pressTime >= endTime (stable's slider.IsHit).
@@ -533,6 +527,9 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
 
   // walkStart: index of first potentially-clickable head; advanced by auto-miss expiry.
   let walkStart = 0;
+  // First object that can still block a later press; times may be non-monotonic, so use the suffix minimum.
+  let blockStart = 0;
+  const pressSuffixMin = buildPressSuffixMin(keyPresses);
 
   for (let pi = 0; pi < keyPresses.length; pi++) {
     const p = keyPresses[pi]!;
@@ -593,7 +590,9 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
       }
     } else {
       // CanBeHitStable: any earlier still-unresolved Y blocks if Y.endTime + 3 < X.startTime.
-      for (let j = 0; j < candIdx; j++) {
+      // Objects that no later press can find unresolved never block again, so the scan skips them.
+      blockStart = advanceBlockStart(states, blockStart, pressSuffixMin[pi]!);
+      for (let j = blockStart; j < candIdx; j++) {
         const Y = states[j]!;
         const yUnresolved = (Y.type === 'circle')
           ? !Y.headResolved
@@ -656,6 +655,8 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
 
   const results: HitResult[] = [];
   const trackingIntervals: { start: number; end: number }[] = [];
+  let sliderFrameStart = 0;
+  let previousSliderTime = -Infinity;
 
   for (let i = 0; i < beatmap.hitObjects.length; i++) {
     const obj = beatmap.hitObjects[i]!;
@@ -707,20 +708,9 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
     const tailLeniency = Math.min(36, totalDur / 2);
     const stackShift = slider.stackHeight * hitRadius / 10;
 
-    const tickTimes = modDiff.isLazer
-      ? sliderTickTimesLazer(beatmap, slider, slideDur)
-      : sliderTickTimes(beatmap, slider, slideDur);
-
-    type NTEvent = { t: number; kind: 'tick' | 'repeat' };
-    const nonTail: NTEvent[] = [];
-    for (const t of tickTimes) nonTail.push({ t, kind: 'tick' });
-    for (let edge = 1; edge < slider.slides; edge++) {
-      nonTail.push({ t: slider.time + slideDur * edge, kind: 'repeat' });
-    }
-    nonTail.sort((a, b) => a.t - b.t);
-
     const headHit = s.headHit;
-    const totalNested = 1 + tickTimes.length + slider.slides;
+    let totalNested = 2;
+    let lastNonTailTime = -Infinity;
     let   hitNested   = headHit ? 1 : 0;
 
     let tracking = false;
@@ -750,10 +740,16 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
       }
     };
 
-    let frameIdx = 0;
+    // Objects are time-sorted, so every earlier frame already precedes this slider; only an unsorted list restarts.
+    let frameIdx = slider.time >= previousSliderTime ? sliderFrameStart : 0;
     while (frameIdx < replay.frames.length && cumTimes[frameIdx]! < slider.time) frameIdx++;
+    sliderFrameStart = frameIdx;
+    previousSliderTime = slider.time;
 
-    for (const ev of nonTail) {
+    for (const ev of sliderNestedEvents(beatmap, slider, slideDur, modDiff.isLazer)) {
+      if (ev.kind === 'tail') break;
+      totalNested++;
+      lastNonTailTime = ev.t;
       while (frameIdx < replay.frames.length && cumTimes[frameIdx]! < ev.t) {
         const f = replay.frames[frameIdx]!;
         stepTracking(cumTimes[frameIdx]!, f.x, f.y, (f.keys & 0b1111) !== 0);
@@ -773,9 +769,7 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
       });
     }
 
-    const tailStart = nonTail.length > 0
-      ? Math.max(tailTime - tailLeniency, nonTail[nonTail.length - 1]!.t)
-      : tailTime - tailLeniency;
+    const tailStart = Math.max(tailTime - tailLeniency, lastNonTailTime);
 
     while (frameIdx < replay.frames.length && cumTimes[frameIdx]! < tailStart) {
       const f = replay.frames[frameIdx]!;

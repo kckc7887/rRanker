@@ -45,7 +45,7 @@ const mockClearTufCache = jest.fn(async (_playerId?: number) => undefined);
 const mockRemoveMuseDashAccount = jest.fn(async (_userId?: string) => undefined);
 const mockClearMuseDashCache = jest.fn(async (_userId?: string) => undefined);
 const mockSwitchBoundAccount = jest.fn(
-  (accountId: string, _options?: unknown) => mockSelectBoundAccount(accountId),
+  async (accountId: string, _options?: unknown) => { mockSelectBoundAccount(accountId); return true; },
 );
 const mockClearOrder: string[] = [];
 const mockSession: ProviderSession = { mode: 'jwt', value: 'token', persistable: true };
@@ -172,6 +172,7 @@ jest.mock('@/services/muse-dash-cache', () => ({
   })),
 }));
 jest.mock('@/services/switch-bound-account', () => ({
+  notifyAccountSwitchError: jest.fn(),
   switchBoundAccount: (accountId: string, options?: unknown) => (
     mockSwitchBoundAccount(accountId, options)
   ),

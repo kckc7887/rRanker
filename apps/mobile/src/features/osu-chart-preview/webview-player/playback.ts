@@ -1,5 +1,5 @@
 import {
-  applyStacking, computeModDifficulty, Renderer, Player, TimeMapper, PlaybackClock,
+  computeModDifficulty, Renderer, Player, TimeMapper, PlaybackClock,
   audioContextTime, musicPosition, outputTime,
   getAudioContextOutputTime, warmSkinCaches, warmSliderPaths, drawCursor,
   type BeatmapData, type ReplayData, type ModDifficulty, type SkinAssets,
@@ -16,7 +16,7 @@ import type { PreviewResourceMap } from './osu-text';
 import type { OsuMode } from './modes';
 import { MANIA_SCROLL_DEFAULT, clampManiaScrollSpeed } from './scroll-speed';
 import { normalizePreviewSettings, type PreviewSettings } from './preview-settings';
-export type PreviewChartEntry = { path: string; bytes: Uint8Array; hash: string; mode: OsuMode };
+export type PreviewChartEntry = { path: string; bytes: Uint8Array; hash: string; mode?: OsuMode };
 export type PreviewInitialOptions = { settings?: Partial<PreviewSettings>; maniaSkin?: ManiaSkinVariant; maniaScrollSpeed?: number };
 
 export type PlaybackHandle = { session: PreviewSession; durationMs: number; media: PreviewMedia };
@@ -245,17 +245,17 @@ export async function startPlayback(
     const ctx = getAudioContext();
     signal.throwIfAborted();
     const beatmap = parseOsuBytes(entry.bytes);
+    if (![0, 1, 2, 3].includes(beatmap.mode)) throw new Error('unsupported-mode');
     beatmap.rawOsu = entry.bytes;
-    const replay = buildAutoReplay(entry.bytes, entry.hash);
+    const replay = await buildAutoReplay(beatmap, entry.hash, signal);
     const modDiff = computeModDifficulty(beatmap, replay);
-    if (beatmap.mode === 0) applyStacking(beatmap, modDiff);
     warmSliderPaths(beatmap);
     const builtin = await createBuiltinSkin(parseManiaSkinVariant(initial.maniaSkin), beatmap.mode === 3 ? Math.max(1, Math.round(beatmap.circleSize)) : 4, normalizePreviewSettings(initial.settings).holdWidth);
     const skin = { ...builtin, images: new Map(builtin.images) };
     signal.throwIfAborted();
     renderer = createRenderer(canvas, beatmap, replay, modDiff, skin);
     const schedule = computeHitsoundSchedule({
-      mode: entry.mode, beatmap, hitResults: renderer.hitResults,
+      mode: beatmap.mode, beatmap, hitResults: renderer.hitResults,
       maniaSamples: renderer.maniaSamples, taikoGhostTaps: renderer.taikoGhostTaps,
       comboFrames: renderer.comboFrames, oldOffsetMs: renderer.oldOffsetMs, fromBeatmapMs: -Infinity,
     });
@@ -265,7 +265,7 @@ export async function startPlayback(
     });
     media.bindTriggers(hitsoundEventsFromSchedule(schedule));
     const decoded = await loadPreviewAudio({
-      ctx, files, osuPath: entry.path, songName: beatmap.audioFilename, mode: entry.mode,
+      ctx, files, osuPath: entry.path, songName: beatmap.audioFilename, mode: beatmap.mode,
       schedule, samples: media.visuals.samples, signal, onWarning: warn,
     });
     signal.throwIfAborted();
@@ -273,7 +273,7 @@ export async function startPlayback(
     audio = new AudioSync({
       ctx, beatmap, songBuffer: decoded.song, skinSounds: skin.sounds, mergedSounds: decoded.sounds,
       beatmapHitsounds: true, hitResults: renderer.hitResults, introOffsetMs: range.startMs,
-      mode: entry.mode, schedule, extraSamples: decoded.samples,
+      mode: beatmap.mode, schedule, extraSamples: decoded.samples,
       maniaSamples: renderer.maniaSamples, taikoGhostTaps: renderer.taikoGhostTaps, comboFrames: renderer.comboFrames,
     });
     session = new PreviewSession(canvas, beatmap, replay, modDiff, renderer, audio, media, range, controller, skin, initial);

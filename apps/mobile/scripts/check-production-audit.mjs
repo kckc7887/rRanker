@@ -3,9 +3,11 @@ import { execSync } from 'node:child_process';
 import { readFileSync } from 'node:fs';
 import { dirname, resolve } from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { verifyPatchedAdvisories } from './patch-audited-dependencies.cjs';
 
 /**
- * 生产依赖审计门槛：critical 一律失败，high 只允许基线内已定性的公告。
+ * 依赖审计门槛：critical 一律失败；已核验安装补丁的公告保留在报告中。
+ * 生产模式的其余 high 只允许基线内已定性的公告；--all 阻断所有未修复公告。
  *
  * 门禁分四层，任何一层不通过都必须显式报告并以非零退出码结束，不允许静默通过：
  *   1. 执行层 runAuditCommand / describeExecutionFailure：确认 `npm audit --omit=dev --json` 真的跑完；
@@ -380,19 +382,19 @@ function checkAcceptedRecord(record, report, packageNames, lockfile) {
 }
 
 /**
- * 政策层：critical 一律失败（公告级与包级都算）；high 只允许基线内的记录，且记录必须与当前报告
- * 和锁文件一致；无法定性的 high/critical 公告同样失败；有效空报告通过（只提示基线里已消失的条目）。
+ * 政策层：critical 一律失败；补丁凭据由只读完整性核验提供。
+ * strict 阻断所有其余公告；生产模式保留 high 基线合同。有效空报告通过。
  */
-export function evaluatePolicy({ report, lockfile, accepted = ACCEPTED_HIGH }) {
+export function evaluatePolicy({ report, lockfile, accepted = ACCEPTED_HIGH, verifiedPatches = new Set(), strict = false }) {
   const failures = [];
   const notices = [];
   const baseline = buildBaseline(accepted, failures);
   const advisories = [...report.advisories.values()].sort((a, b) => a.id.localeCompare(b.id));
-  const rows = advisories.map((advisory) => evaluateAdvisory({ advisory, report, lockfile, baseline, failures, notices }));
+  const rows = advisories.map((advisory) => evaluateAdvisory({ advisory, report, lockfile, baseline, failures, notices, verifiedPatches, strict }));
   // 公告级 critical 已经点名过的包不再重复报一次包级 critical
   const criticalPackages = new Set(rows.filter((row) => row.severity === 'critical').flatMap((row) => row.packages));
   evaluateCriticalPackages({ report, lockfile, coveredPackages: criticalPackages, failures });
-  evaluateUnidentifiedAdvisories(report, failures, notices);
+  evaluateUnidentifiedAdvisories(report, failures, notices, strict);
 
   const stale = [...baseline.keys()].filter((id) => !report.advisories.has(id)).sort();
   for (const id of stale) {
@@ -432,7 +434,7 @@ function buildBaseline(accepted, failures) {
   return baseline;
 }
 
-function evaluateAdvisory({ advisory, report, lockfile, baseline, failures, notices }) {
+function evaluateAdvisory({ advisory, report, lockfile, baseline, failures, notices, verifiedPatches, strict }) {
   const packageNames = sortedUnique([...advisory.packages]);
   const severity = highestSeverity([
     ...advisory.severities,
@@ -442,6 +444,14 @@ function evaluateAdvisory({ advisory, report, lockfile, baseline, failures, noti
 
   if (!SEVERITIES.includes(severity)) {
     failures.push({ code: 'unknown-severity', message: `公告 ${advisory.id} 的严重级别 ${JSON.stringify(severity)} 无法判定，门禁按失败处理` });
+    return row;
+  }
+  if (severity !== 'critical' && verifiedPatches.has(advisory.id)) {
+    notices.push(`已验证安装补丁：${advisory.id}（${packageNames.join('、')}），原始报告条目保留`);
+    return row;
+  }
+  if (strict && severity !== 'critical') {
+    failures.push({ code: 'unpatched-advisory', message: `未修复的 ${severity} 公告：${advisory.id} —— ${describePackages(lockfile, report, packageNames)}` });
     return row;
   }
   if (severity !== 'high' && severity !== 'critical') {
@@ -470,7 +480,7 @@ function evaluateAdvisory({ advisory, report, lockfile, baseline, failures, noti
   return row;
 }
 
-function evaluateUnidentifiedAdvisories(report, failures, notices) {
+function evaluateUnidentifiedAdvisories(report, failures, notices, strict = false) {
   for (const item of report.unidentified) {
     const severity = highestSeverity([item.severity, report.packages.get(item.package)?.severity]);
     if (!SEVERITIES.includes(severity)) {
@@ -478,7 +488,7 @@ function evaluateUnidentifiedAdvisories(report, failures, notices) {
         code: 'unknown-severity',
         message: `无法定性的公告 ${item.package} 严重级别 ${JSON.stringify(severity)} 不能判定，门禁按失败处理：${item.title} ${item.url}`,
       });
-    } else if (severity === 'high' || severity === 'critical') {
+    } else if (strict || severity === 'high' || severity === 'critical') {
       failures.push({
         code: 'unidentified',
         message: `无法定性的 ${severity} 公告（缺少 GHSA 编号，不能按基线接受）：${item.package} —— ${item.title} ${item.url}`,
@@ -495,7 +505,9 @@ function printReport(report) {
 }
 
 function main() {
-  const execution = runAuditCommand();
+  const strict = process.argv.includes('--all');
+  const args = strict ? ['audit', '--json'] : AUDIT_ARGS;
+  const execution = runAuditCommand({ args });
   const executionFailure = describeExecutionFailure(execution);
   if (executionFailure) {
     console.error(`[执行层] ${executionFailure}`);
@@ -505,7 +517,7 @@ function main() {
     process.exitCode = EXIT_CODES.execution;
     return;
   }
-  console.log(`[执行层] npm audit --omit=dev --json 完成（exit=${execution.status}，输出 ${execution.stdout.length} 字节）`);
+  console.log(`[执行层] npm ${args.join(' ')} 完成（exit=${execution.status}，输出 ${execution.stdout.length} 字节）`);
 
   let report;
   let lockfile;
@@ -534,7 +546,15 @@ function main() {
   }
 
   printReport(report);
-  const verdict = evaluatePolicy({ report, lockfile });
+  let verifiedPatches;
+  try {
+    verifiedPatches = verifyPatchedAdvisories(PACKAGE_ROOT, lockfile, report);
+  } catch (error) {
+    console.error(`[补丁校验] ${error.message}`);
+    process.exitCode = EXIT_CODES.integrity;
+    return;
+  }
+  const verdict = evaluatePolicy({ report, lockfile, verifiedPatches, strict });
   for (const notice of verdict.notices) console.log(`[提示] ${notice}`);
 
   if (report.total === 0) {
@@ -546,7 +566,7 @@ function main() {
     process.exitCode = EXIT_CODES.policy;
     return;
   }
-  console.log('[政策层] 生产依赖审计门槛通过。');
+  console.log(`[政策层] ${strict ? '完整' : '生产'}依赖审计门槛通过。`);
 }
 
 const invokedDirectly = process.argv[1] ? resolve(process.argv[1]) === fileURLToPath(import.meta.url) : false;

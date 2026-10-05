@@ -29,6 +29,44 @@ import type { BeatmapData, Slider } from '../types/index';
 // Slider duration depends only on (beatmap, slider), both stable after parsing.
 // Memoized per-slider so per-frame callers stop re-scanning timingPoints linearly.
 const _durationCache = new WeakMap<Slider, number>();
+const DEFAULT_EDGE_SET = Object.freeze({ normalSet: 0, additionSet: 0 });
+
+/** Legacy NaN difficulty points disable ticks but retain normal slider velocity. */
+export function sliderVelocityMultiplier(beatLength: number): number {
+  return beatLength < 0 ? Math.max(0.1, Math.min(10, -100 / beatLength)) : 1;
+}
+
+/** Missing edges inherit defaults without allocating one row per repeat. */
+export function sliderEdgeSample(slider: Slider, index: number): { hitSound: number; normalSet: number; additionSet: number } {
+  return { hitSound: slider.edgeSounds[index] ?? slider.hitSound, ...(slider.edgeSets[index] ?? DEFAULT_EDGE_SET) };
+}
+
+export type SliderNestedEvent = { t: number; kind: 'tick' | 'repeat' | 'tail' };
+
+/** Ordered nested events, retaining stable accumulation and lazer boundary semantics without repeat-sized buffers. */
+export function* sliderNestedEvents(beatmap: BeatmapData, slider: Slider, slideDur: number, isLazer: boolean): Generator<SliderNestedEvent> {
+  let baseBeatLength = 500;
+  let generateTicks = true;
+  for (const tp of beatmap.timingPoints) {
+    if (tp.time > slider.time) break;
+    if (!tp.inherited) baseBeatLength = tp.beatLength;
+    generateTicks = !Number.isNaN(tp.beatLength);
+  }
+  const interval = baseBeatLength / beatmap.sliderTickRate;
+  const hasTicks = generateTicks && Number.isFinite(interval) && interval > 0;
+  for (let slide = 0; slide < slider.slides; slide++) {
+    const start = slider.time + slide * slideDur;
+    if (hasTicks) {
+      if (isLazer) {
+        for (let k = 1; k * interval <= slideDur - 1; k++) yield { t: start + k * interval, kind: 'tick' };
+      } else {
+        for (let t = start + interval; t < start + slideDur - 1; t += interval) yield { t, kind: 'tick' };
+      }
+    }
+    if (slide < slider.slides - 1) yield { t: slider.time + slideDur * (slide + 1), kind: 'repeat' };
+  }
+  yield { t: slider.time + slideDur * slider.slides, kind: 'tail' };
+}
 
 /**
  * Duration of ONE slide of a slider in beatmap ms:
@@ -49,7 +87,7 @@ export function slideDurationMs(beatmap: BeatmapData, slider: Slider): number {
       // Red (uninherited) points reset SV to 1.0, matching osu!'s velocity model.
       svMultiplier = 1;
     } else {
-      svMultiplier = Math.max(0.1, Math.min(10, -100 / tp.beatLength));
+      svMultiplier = sliderVelocityMultiplier(tp.beatLength);
     }
   }
 

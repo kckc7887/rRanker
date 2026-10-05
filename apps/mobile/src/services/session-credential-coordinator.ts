@@ -4,7 +4,7 @@ import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { lxnsRotationAncestors } from '@/providers/lxns-oauth';
 import { osuRotationAncestors } from '@/providers/osu-oauth';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
-import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
+import { nextRuntimeOperationId, recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
 import { sessionRuntime, setLxnsTokenRotation, setOsuTokenRotation } from '@/state/session-runtime';
 
 type OsuOAuthSession = Extract<ProviderSession, { mode: 'osu-oauth' }>;
@@ -40,6 +40,7 @@ export type OAuthRotationCommitResult = 'applied' | 'pending-persist' | 'stale' 
 
 /** 落盘失败仍待提交的轮换：上游已消费旧 refresh token，不能再重新刷新一次。 */
 type PendingRotationWrite = {
+  operationId: number;
   accountId: string;
   session: RotatableOAuthSession;
   acceptedRefreshTokens: readonly string[];
@@ -210,18 +211,20 @@ export class SessionCredentialCoordinator {
           if (result === 'applied') {
             applied += 1;
             this.pendingRotationWrites.delete(credentialId);
-            void recordRuntimeDiagnostic('session', { credentialWrite: 'applied' });
+            void recordRuntimeDiagnostic('session', { credentialWrite: 'applied', operationId: entry.operationId,
+              phase: 'credential-persist', attempts: entry.attempts + 1, result: 'success' });
             continue;
           }
           // 已不属于该世代、或凭据与关联账号都已消失：过期任务不再补写。
           this.pendingRotationWrites.delete(credentialId);
-          void recordRuntimeDiagnostic('session', { credentialWrite: 'dropped', reason: result });
-        } catch {
+          void recordRuntimeDiagnostic('session', { credentialWrite: 'dropped', result, operationId: entry.operationId, phase: 'credential-persist' });
+        } catch (error) {
           if (this.pendingRotationWrites.get(credentialId) !== entry) continue;
           const attempts = Math.min(entry.attempts + 1, 1_000_000);
           this.pendingRotationWrites.set(credentialId, { ...entry, attempts,
             nextAttemptAt: Date.now() + PENDING_ROTATION_RETRY_DELAYS_MS[Math.min(attempts, PENDING_ROTATION_RETRY_DELAYS_MS.length - 1)]! });
-          void recordRuntimeDiagnostic('session', { credentialWrite: attempts >= PENDING_ROTATION_RETRY_DELAYS_MS.length ? 'waiting' : 'retry-scheduled', attempts });
+          void recordRuntimeDiagnostic('session', { credentialWrite: attempts >= PENDING_ROTATION_RETRY_DELAYS_MS.length ? 'waiting' : 'retry-scheduled',
+            attempts, operationId: entry.operationId, phase: 'credential-persist', errorCode: 'credential_storage', error, severity: 'warn' });
         }
       }
       if (this.pendingRotationWrites.size > 0) this.schedulePendingRotationRetry();
@@ -268,11 +271,12 @@ export class SessionCredentialCoordinator {
       });
       if (result === 'applied' && this.pendingRotationWrites.get(credentialId)?.session === input.next) this.pendingRotationWrites.delete(credentialId);
       return result === 'applied' ? 'applied' : result === 'stale' ? 'stale' : 'removed';
-    } catch {
+    } catch (error) {
       if (sessionsByCredential(this.store.getState().sessionsByAccountId, this.store.getState().credentialIdsByAccountId).get(credentialId) !== input.next) return 'stale';
       // 本机落盘失败时保留内存中的新会话并登记补写：上游已消费旧 refresh token，
       // 再次刷新只会失败。进程退出前仍未保存成功时用户可能需要重新授权。
       this.pendingRotationWrites.set(credentialId, {
+        operationId: nextRuntimeOperationId(),
         accountId: input.accountId,
         session: input.next,
         acceptedRefreshTokens: input.acceptedRefreshTokens,
@@ -280,7 +284,9 @@ export class SessionCredentialCoordinator {
         nextAttemptAt: Date.now() + PENDING_ROTATION_RETRY_DELAYS_MS[0],
       });
       this.schedulePendingRotationRetry();
-      void recordRuntimeDiagnostic('session', { credentialWrite: 'pending' });
+      void recordRuntimeDiagnostic('session', { credentialWrite: 'pending', phase: 'credential-persist',
+        operationId: this.pendingRotationWrites.get(credentialId)?.operationId,
+        result: 'pending', errorCode: 'credential_storage', error, severity: 'warn' });
       return 'pending-persist';
     }
   }

@@ -48,7 +48,7 @@ export const filterShellStyles = StyleSheet.create({
   roundedChipFrame: { borderRadius: 10 },
   neutralChip: { minHeight: 30, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 999, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
   neutralChipText: { color: '#374151', fontSize: 12 },
-  neutralChipTextActive: { color: '#FFF', fontWeight: '700' },
+  neutralChipTextActive: { fontWeight: '700' },
   rangeRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7 },
   /** 带静态底色的区间输入框。 */
   rangeInput: {
@@ -195,7 +195,7 @@ export function NeutralChip({ label, active, onPress, accessibilityLabel }: {
   return (
     <FilterChipFrame active={active} accessibilityLabel={accessibilityLabel ?? `筛选 ${label}`} onPress={onPress}>
       <View style={[filterShellStyles.neutralChip, { backgroundColor: theme.surface, borderColor: theme.border }, active && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
-        <Text style={[filterShellStyles.neutralChipText, { color: theme.textSecondary }, active && filterShellStyles.neutralChipTextActive]}>{label}</Text>
+        <Text style={[filterShellStyles.neutralChipText, { color: theme.textSecondary }, active && { ...filterShellStyles.neutralChipTextActive, color: theme.onAccent }]}>{label}</Text>
       </View>
     </FilterChipFrame>
   );

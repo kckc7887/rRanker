@@ -68,6 +68,9 @@ describe('AppLifecycleProvider', () => {
     await act(() => { tasks.at(-1)?.callback(); });
     expect(screen.getByText('foreground-ready|2|0')).toBeTruthy();
     expect(getForegroundAbortSignal()).not.toBe(firstSignal);
+    const restoredSignal = getForegroundAbortSignal();
+    await act(() => { expiredTask.callback(); });
+    expect(getForegroundAbortSignal()).toBe(restoredSignal);
 
     await act(() => { memoryWarningListener?.(); });
     expect(screen.getByText('foreground-ready|2|1')).toBeTruthy();
@@ -103,7 +106,7 @@ describe('AppLifecycleProvider', () => {
 
     await act(() => { changeListener?.('active'); });
     await act(() => { tasks.at(-1)?.callback(); });
-    expect(screen.getByText('foreground-ready|1|0')).toBeTruthy();
+    expect(screen.getByText('foreground-ready|2|0')).toBeTruthy();
     const restored = getForegroundAbortSignal();
     expect(restored.aborted).toBe(false);
     expect(restored).not.toBe(firstSignal);

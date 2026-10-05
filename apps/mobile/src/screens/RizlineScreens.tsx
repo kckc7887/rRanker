@@ -6,7 +6,6 @@ import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
 import { RizlineFilterBar } from '@/components/rizline/RizlineFilterBar';
 import { RizlineScoreCard } from '@/components/rizline/RizlineScoreCard';
 import { RizlineSongRow } from '@/components/rizline/RizlineSongRow';
-import { useNotification } from '@/components/AppNotification';
 import { filterRizlineSongs, rizlinePackOptions } from '@/domain/rizline-filters';
 import { rizlineCoverUrl, sortRizlineRecords, type RizlineRecord } from '@/domain/rizline';
 import { useGameData } from '@/hooks/use-game-data';
@@ -22,7 +21,7 @@ export function RizlineBestScreen() {
   const theme = useAppTheme(); const inset = useNativeTabBottomInset();
   const query = useGameData(); const catalogQuery = useRizlineCatalog();
   const payload = query.data?.payload.kind === 'rizline' ? query.data.payload : undefined;
-  const songs = useMemo(() => new Map(catalogQuery.data?.snapshot.songs.map((song) => [song.id, song])), [catalogQuery.data]);
+  const songs = useMemo(() => new Map(catalogQuery.data?.snapshot.songs.map((song) => [song.id, song])), [catalogQuery.data?.snapshot.songs]);
   const sections = useMemo(() => payload ? [
     { key: 'ah5', title: 'AH5（推定）', data: payload.best.ah5 },
     { key: 'b35', title: 'Best35（推定）', data: payload.best.b35 },
@@ -44,11 +43,14 @@ export function RizlineRecordsScreen() {
   const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const query = useGameData(); const catalogQuery = useRizlineCatalog();
   const [keyword, setKeyword] = useState(''); const debounced = useDebouncedValue(keyword);
   const payload = query.data?.payload.kind === 'rizline' ? query.data.payload : undefined;
-  const songs = useMemo(() => new Map(catalogQuery.data?.snapshot.songs.map((song) => [song.id, song])), [catalogQuery.data]);
-  const records = useMemo(() => sortRizlineRecords(payload?.records ?? []).filter((record) => {
+  const songs = useMemo(() => new Map(catalogQuery.data?.snapshot.songs.map((song) => [song.id, song])), [catalogQuery.data?.snapshot.songs]);
+  const sortedRecords = useMemo(() => sortRizlineRecords(payload?.records ?? []), [payload?.records]);
+  const searchIndex = useMemo(() => sortedRecords.map(record => {
     const song = songs.get(record.songId);
-    return searchDocumentMatches(buildSearchDocument([song?.title ?? record.title, record.songId, song?.artist ?? '']), debounced);
-  }), [debounced, payload?.records, songs]);
+    return { record, document: buildSearchDocument([song?.title ?? record.title, record.songId, song?.artist ?? '']) };
+  }), [sortedRecords, songs]);
+  const records = useMemo(() => searchIndex.filter(({ document }) => searchDocumentMatches(document, debounced))
+    .map(({ record }) => record), [debounced, searchIndex]);
   return <View style={[styles.page, { backgroundColor: theme.background }]}><RecordsListPage
     beforeList={<GameSearchHeader value={keyword} onChangeText={setKeyword} placeholder="搜索 Rizline 成绩" wrapStyle={styles.searchWrap} inputStyle={styles.search} />}
     data={records.length ? records : undefined} isLoading={query.isLoading} isError={query.isError} error={query.error}
@@ -63,7 +65,7 @@ export function RizlineRecordsScreen() {
 
 export function RizlineCatalogScreen() {
   const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const query = useRizlineCatalog();
-  const library = useUserLibrary(); const filter = useRizlineCatalogFilter(); const { showNotification } = useNotification();
+  const library = useUserLibrary(); const filter = useRizlineCatalogFilter();
   const keyword = useDebouncedValue(filter.keyword);
   const songs = useMemo(() => query.data?.snapshot.songs ?? [], [query.data]);
   const filtered = useMemo(() => filterRizlineSongs(songs, filter, keyword), [filter, keyword, songs]);
@@ -82,7 +84,7 @@ export function RizlineCatalogScreen() {
       contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], scrollIndicatorInsets: { bottom: inset },
       keyExtractor: (song) => song.id, renderItem: ({ item }) => <RizlineSongRow song={item} favorite={favorites.has(item.id)}
         favoritePending={library.isLoading || library.isUpdating} onFavoriteChange={(songId, favorite) => {
-          void library.setSongFavorite(songId, favorite).catch(() => showNotification({ title: '收藏保存失败', message: '请重试。', variant: 'error' }));
+          void library.setSongFavorite(songId, favorite);
         }} />,
     }} /></View>;
 }

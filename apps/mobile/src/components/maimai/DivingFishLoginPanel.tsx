@@ -12,6 +12,10 @@ import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { providerLoginSheetStyles as styles } from '@/components/provider-login-sheet-styles';
+import { useAccountBindingRequest } from '@/hooks/use-account-binding-flow';
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
+import { cancelBoundAccountQueries } from '@/screens/game-accounts-actions';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 const auth = new DivingFishAuthProvider();
 const sessions = new SecureSessionStore();
@@ -28,6 +32,7 @@ export function DivingFishLoginPanel({
   const theme = useAppTheme();
   const setSession = useSession((s) => s.setSession);
   const lifecycle = useAppLifecycle();
+  const requests = useAccountBindingRequest(visible);
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [importToken, setImportToken] = useState('');
@@ -38,10 +43,6 @@ export function DivingFishLoginPanel({
     onBusyChange(busy);
   }, [busy, onBusyChange]);
 
-  useEffect(() => {
-    if (lifecycle.foregroundReady) setBusy(false);
-  }, [lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
-
   const reset = () => {
     setUsername('');
     setPassword('');
@@ -51,21 +52,28 @@ export function DivingFishLoginPanel({
   };
 
   useEffect(() => {
-    if (!visible) reset();
-  }, [visible]);
+    if (!visible || lifecycle.phase === 'background') reset();
+  }, [visible, lifecycle.phase]);
 
   const messageFor = (error: unknown) => providerErrorToUserMessage(error, '验证失败，请稍后重试。');
 
   const invalidateAll = () => {
-    void queryClient.invalidateQueries({ queryKey: ['score-snapshot'] });
-    void queryClient.invalidateQueries({ queryKey: ['game-data'] });
-    void queryClient.invalidateQueries({ queryKey: ['songs'] });
+    void Promise.all([
+      queryClient.invalidateQueries({ queryKey: ['score-snapshot'] }),
+      queryClient.invalidateQueries({ queryKey: ['game-data'] }),
+      queryClient.invalidateQueries({ queryKey: ['songs'] }),
+    ]).catch(error => recordRuntimeError('diving-fish-binding', error, false, { phase: 'query-refresh' }));
   };
 
-  const validateAndActivate = async (newSession: ProviderSession) => {
+  const validateAndActivate = async (newSession: ProviderSession, signal: AbortSignal, assertRequest: () => void) => {
     const providerId = 'diving-fish' as const;
+    const assertGameCurrent = captureResourceWrites('maimai', signal);
+    let assertAccountCurrent: () => void = () => undefined;
+    const assertCurrent = () => { assertRequest(); assertGameCurrent(); assertAccountCurrent(); };
     try {
       await validateAndActivateSession(newSession, {
+        signal,
+        assertCurrent,
         createProvider: (session) => (
           new DivingFishProvider(session)
         ),
@@ -76,6 +84,10 @@ export function DivingFishLoginPanel({
             rating: player.rating,
             playerId: player.id,
           });
+          const cancelling = cancelBoundAccountQueries(account, queryClient);
+          assertAccountCurrent = captureResourceWrites('maimai', signal, account.id);
+          await cancelling;
+          assertCurrent();
           await sessions.upsertAccount({
             id: account.id,
             gameId: 'maimai',
@@ -83,7 +95,8 @@ export function DivingFishLoginPanel({
             displayName: account.displayName,
             scoreDisplay: account.scoreDisplay,
             session: sessionToSave,
-          });
+          }, signal);
+          assertCurrent();
         },
         activate: (sessionToActivate, player) => {
           setSession(sessionToActivate, {
@@ -105,23 +118,32 @@ export function DivingFishLoginPanel({
 
   const login = async () => {
     if (!username.trim() || !password) { setMessage('请输入水鱼用户名和密码'); return; }
+    const task = requests.begin();
+    if (!task) return;
+    const assertGameCurrent = captureResourceWrites('maimai', task.signal);
+    const assertCurrent = () => { task.assertCurrent(); assertGameCurrent(); };
     setBusy(true); setMessage('正在登录并获取上传凭证…');
     try {
-      const newSession = await auth.loginWithPassword({ username: username.trim(), password });
-      await validateAndActivate(newSession);
+      const newSession = await auth.loginWithPassword({ username: username.trim(), password }, task.signal);
+      assertCurrent();
+      await validateAndActivate(newSession, task.signal, assertCurrent);
       reset();
       onSuccess();
-    } catch (error) { setMessage(messageFor(error)); setBusy(false); setPassword(''); }
+    } catch (error) { if (task.isCurrent()) { setMessage(messageFor(error)); setPassword(''); } }
+    finally { if (task.isCurrent()) setBusy(false); task.finish(); }
   };
 
   const connectWithToken = async () => {
+    const task = requests.begin();
+    if (!task) return;
     setBusy(true); setMessage('正在验证上传凭证…');
     try {
       const newSession = auth.useImportToken(importToken);
-      await validateAndActivate(newSession);
+      await validateAndActivate(newSession, task.signal, task.assertCurrent);
       reset();
       onSuccess();
-    } catch (error) { setMessage(messageFor(error)); setBusy(false); }
+    } catch (error) { if (task.isCurrent()) setMessage(messageFor(error)); }
+    finally { if (task.isCurrent()) setBusy(false); task.finish(); }
   };
 
   return (
@@ -159,7 +181,7 @@ export function DivingFishLoginPanel({
         onPress={() => void login()}
         style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
       >
-        <Text style={styles.primaryText}>账密登录并验证</Text>
+        <Text style={[styles.primaryText, { color: theme.onAccent }]}>账密登录并验证</Text>
       </Pressable>
       <Text style={styles.or}>或</Text>
       <TextInput

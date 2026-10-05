@@ -1,4 +1,4 @@
-import { useState, useSyncExternalStore } from 'react';
+import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SymbolView } from 'expo-symbols';
@@ -23,6 +23,8 @@ import { useAppTheme } from '@/theme/app-theme';
 import { useAccountBindingFlow } from '@/hooks/use-account-binding-flow';
 import { useManagedAccountOperations } from '@/hooks/use-managed-account-operations';
 import { providerErrorToUserMessage } from '@/providers/errors';
+import { useAppLifecycle } from '@/state/app-lifecycle';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 export function GameAccountsScreen() {
   const theme = useAppTheme();
@@ -30,6 +32,7 @@ export function GameAccountsScreen() {
   const boundAccounts = useSession(s => s.boundAccounts);
   const activeAccountId = useSession(s => s.activeAccountId);
   const restoreError = useSession(s => s.restoreError);
+  const migrationRecovery = useSession(s => s.migrationRecovery);
   const sourceStatuses = useSyncExternalStore(subscribeAccountSourceStatuses, getAccountSourceStatuses);
   const sourceFailed = sourceStatuses.some((source) => source.status === 'failed');
   const safeAreaInsets = useSafeAreaInsets();
@@ -42,27 +45,49 @@ export function GameAccountsScreen() {
     bindPhiraPlayer, bindMuseDashPlayer, promptRemoveAccount, saveLocalAccountName } = useManagedAccountOperations(flow);
   const [collapsedManagedGameIds, setCollapsedManagedGameIds] = useState<Set<GameId>>(() => new Set());
   const [recovering, setRecovering] = useState(false);
+  const recoveryLock = useRef(false);
+  const mounted = useRef(true);
+  const lifecycle = useAppLifecycle();
+  const canNotify = useRef(lifecycle.phase !== 'background');
+  canNotify.current = lifecycle.phase !== 'background';
+  useEffect(() => () => { mounted.current = false; }, []);
+
+  const recover = (action: () => Promise<void>) => {
+    if (recoveryLock.current) return;
+    recoveryLock.current = true;
+    setRecovering(true);
+    void action().catch(error => {
+      recordRuntimeError('account-recovery', error, false, { phase: 'restore' });
+      if (mounted.current && canNotify.current) {
+        showNotification({ title: '恢复失败', message: providerErrorToUserMessage(error, '无法恢复本机账号，请稍后重试。'), variant: 'error' });
+      }
+    }).finally(() => {
+      recoveryLock.current = false;
+      if (mounted.current) setRecovering(false);
+    });
+  };
 
   const retryRestore = () => {
-    if (recovering) return;
-    setRecovering(true);
-    void restoreAppAccounts().finally(() => setRecovering(false));
+    recover(restoreAppAccounts);
   };
 
   const clearSessionsAndReload = () => {
-    if (recovering) return;
-    setRecovering(true);
-    void (async () => {
+    recover(async () => {
       try {
-        await new SecureSessionStore().clear();
+        const result = await new SecureSessionStore().clear();
         await restoreAppAccounts();
-        showNotification({ title: '已清除登录数据', message: '请重新绑定需要使用的账号。', variant: 'info' });
+        if (mounted.current && canNotify.current) {
+          showNotification({ title: '已清除登录数据',
+            message: result.cleanupFailures.length ? `请重新绑定需要使用的账号。${result.cleanupFailures.join('、')}清理失败。` : '请重新绑定需要使用的账号。',
+            variant: result.cleanupFailures.length ? 'warning' : 'info' });
+        }
       } catch (error) {
-        showNotification({ title: '清除失败', message: providerErrorToUserMessage(error, '无法清除登录数据，请稍后重试。'), variant: 'error' });
-      } finally {
-        setRecovering(false);
+        recordRuntimeError('account-recovery', error, false, { phase: 'clear' });
+        if (mounted.current && canNotify.current) {
+          showNotification({ title: '清除失败', message: providerErrorToUserMessage(error, '无法清除登录数据，请稍后重试。'), variant: 'error' });
+        }
       }
-    })();
+    });
   };
 
   const confirmClearSessions = () => {
@@ -167,6 +192,9 @@ export function GameAccountsScreen() {
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <ScrollView contentContainerStyle={[styles.content, { paddingBottom: Math.max(safeAreaInsets.bottom, 24) + 72 }]}
         scrollIndicatorInsets={{ bottom: safeAreaInsets.bottom }}>
+        {migrationRecovery ? <Text style={{ color: theme.textSecondary }}>
+          部分旧账号数据无法完整恢复，原数据已保留。已恢复的账号可以继续使用；未恢复的账号可重新绑定。
+        </Text> : null}
         {restoreError ? (
           <View>
             <Text style={styles.error}>{restoreError}</Text>
@@ -185,7 +213,7 @@ export function GameAccountsScreen() {
         {sourceFailed ? <View>
           <Text style={styles.error}>部分本机账号暂时无法读取，已加载的账号可以继续使用。</Text>
           <Pressable accessibilityRole="button" accessibilityLabel="重试读取账号" disabled={busy || recovering}
-            onPress={() => { if (recovering) return; setRecovering(true); void retryFailedAccountSources().finally(() => setRecovering(false)); }}>
+            onPress={() => recover(retryFailedAccountSources)}>
             <Text style={styles.retryRestore}>重试读取账号</Text>
           </Pressable>
         </View> : null}
@@ -204,8 +232,8 @@ export function GameAccountsScreen() {
 
       <Pressable accessibilityRole="button" accessibilityLabel="添加游戏账号" disabled={busy} onPress={openPicker}
         style={({ pressed }) => [styles.fab, { bottom: Math.max(safeAreaInsets.bottom, 12) + 16, backgroundColor: theme.accent }, pressed && styles.fabPressed]}>
-        <SymbolView name="plus" tintColor="#FFF" size={28} weight="semibold"
-          fallback={<Ionicons name="add" size={28} color="#FFF" />} />
+        <SymbolView name="plus" tintColor={theme.onAccent} size={28} weight="semibold"
+          fallback={<Ionicons name="add" size={28} color={theme.onAccent} />} />
       </Pressable>
 
       <GamePickerSheet mode="bind" testAccountsEnabled={testAccountsEnabled} visible={pickerVisible} expandedGameId={expandedPickerGameId}

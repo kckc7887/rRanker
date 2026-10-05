@@ -2,6 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import type { TufPassPage, TufPlayer } from '@/domain/tuf';
 import {
   TUF_DIFFICULTIES_CACHE_KEY,
+  TufPlayerSchema,
   tufLevelCacheKey,
   tufLevelPageCacheKey,
   tufPassPageCacheKey,
@@ -14,7 +15,6 @@ import {
   resetTufInflightForTests,
   TufCache,
 } from '@/services/tuf-cache';
-import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 vi.mock('expo-sqlite', () => ({
   openDatabaseAsync: vi.fn(async () => ({
@@ -52,9 +52,9 @@ class FakeResourceRepository {
 }
 
 const repo = new FakeResourceRepository();
-const cache = new TufCache(repo as unknown as SqliteSnapshotRepository);
+const cache = new TufCache(repo);
 
-const player = { id: 25, name: '公开玩家', rankedScore: 100 } as TufPlayer;
+const player = TufPlayerSchema.parse({ id: 25, name: '公开玩家', rankedScore: 100 });
 
 describe('tuf cache keys', () => {
   it('builds stable namespaced resource keys', () => {
@@ -82,6 +82,15 @@ describe('tuf cache keys', () => {
 });
 
 describe('tuf cache snapshots', () => {
+  it('损坏缓存不进入页面且保留原行，存储读取失败仍抛出', async () => {
+    const raw = { source: {}, data: { id: 'bad' } };
+    await repo.saveResource(tufPlayerCacheKey(25), 1, '', raw);
+    await expect(cache.loadPlayer(25)).resolves.toBeNull();
+    expect(await repo.getResource(tufPlayerCacheKey(25), 1)).toEqual(raw);
+    const failure = new Error('disk unavailable');
+    vi.spyOn(repo, 'getResource').mockRejectedValueOnce(failure);
+    await expect(cache.loadPlayer(25)).rejects.toBe(failure);
+  });
   it('builds source metadata with tuf kind', () => {
     const snapshot = makeTufSnapshot(player, '2026-08-10T00:00:00.000Z');
     expect(snapshot).toEqual({

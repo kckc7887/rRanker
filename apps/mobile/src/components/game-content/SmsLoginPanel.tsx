@@ -97,7 +97,7 @@ export function SmsLoginPanel({ visible, onSuccess, onBusyChange, sendCode, logi
       <Pressable accessibilityRole="button" accessibilityLabel="获取验证码" disabled={busy || remaining > 0}
         accessibilityValue={remaining > 0 ? { text: `${remaining} 秒后可重新获取` } : undefined}
         onPress={() => void run('send')} style={[styles.primary, smsStyles.sendButton, { backgroundColor: theme.accent, opacity: busy || remaining > 0 ? 0.5 : 1 }]}>
-        <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.primaryText, smsStyles.sendText]}>
+        <Text numberOfLines={1} adjustsFontSizeToFit style={[styles.primaryText, smsStyles.sendText, { color: theme.onAccent }]}>
           {remaining > 0 ? `${remaining} 秒` : retryAt > 0 ? '重新获取' : '获取验证码'}
         </Text>
       </Pressable>
@@ -107,7 +107,7 @@ export function SmsLoginPanel({ visible, onSuccess, onBusyChange, sendCode, logi
       style={[styles.input, { color: theme.text, backgroundColor: theme.input, borderColor: theme.border }]} placeholderTextColor={theme.textMuted} />
     <Pressable accessibilityRole="button" disabled={busy} onPress={() => void run('login')}
       style={[styles.primary, { backgroundColor: theme.accent, opacity: busy ? 0.5 : 1 }]}>
-      <Text style={styles.primaryText}>登录并同步账号</Text>
+      <Text style={[styles.primaryText, { color: theme.onAccent }]}>登录并同步账号</Text>
     </Pressable>
   </>;
 }

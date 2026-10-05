@@ -66,5 +66,3 @@ export class DemoAccountStore {
     await this.storage.setItem(STORE_KEY, JSON.stringify(value));
   }
 }
-
-export const demoAccountStore = new DemoAccountStore();
