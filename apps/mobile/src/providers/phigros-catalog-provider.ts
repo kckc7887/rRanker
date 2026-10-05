@@ -1,4 +1,4 @@
-import { buildPhigrosAvatarUrl, PHIGROS_OSS_BASE } from '@/domain/account-avatar';
+import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
 import type { DataSource, Song, Chart, ChartType, CatalogSnapshot } from '@/domain/models';
 import { loadChaptersTable, loadNoteCountsTable, type PhigrosChaptersTable } from '@/domain/phigros';
 import type { CatalogProvider } from './contracts';
@@ -171,7 +171,8 @@ export class PhigrosCatalogProvider implements CatalogProvider {
   private releaseFileUrl(relative: string): string | null {
     const release = this.release;
     if (!release) return null;
-    return phigrosResources.url(`${phigrosResources.directory(release.current)}${relative}`, release);
+    const asset = release.manifest.assets.find(item => item.path === relative);
+    return asset ? phigrosResources.assetUrl(release, asset) : null;
   }
 
   getIllustrationUrl(songId: string): string | null {
@@ -187,12 +188,6 @@ export class PhigrosCatalogProvider implements CatalogProvider {
   }
 
   getAvatarUrl(avatarName: string): string | null {
-    const release = this.release;
-    if (!release) return null;
-    return buildPhigrosAvatarUrl(
-      phigrosResources.directory(release.current),
-      avatarName,
-      release.current.resourceVersion,
-    );
+    return this.releaseFileUrl(`avatars/${avatarName.trim()}.png`);
   }
 }

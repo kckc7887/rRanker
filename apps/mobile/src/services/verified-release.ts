@@ -1,5 +1,14 @@
 import { ProviderError } from '@/providers/errors';
 import { sha256 } from '@/utils/resource-integrity';
+import { z } from 'zod';
+
+export function resourceObjectPathSchema(game: string, categories: readonly string[]) {
+  return z.string().refine(path => {
+    const parts = path.split('/');
+    return parts.length === 3 && parts[0] === game && categories.includes(parts[1]!)
+      && /^[a-f\d]{64}\.[a-z\d]+$/.test(parts[2]!);
+  }, 'Invalid resource object path');
+}
 
 export async function verifyResourceBytes(bytes: Uint8Array, asset: { size?: number; sha256: string }, message: string): Promise<void> {
   if ((asset.size !== undefined && bytes.byteLength !== asset.size) || await sha256(bytes) !== asset.sha256.toLowerCase()) {

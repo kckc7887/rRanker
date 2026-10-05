@@ -23,7 +23,7 @@ describe('Phigros release transactions', () => {
     expect(result.chart).toEqual(fixture.files[`charts/${id}.${variantIndex}/EZ.json`]);
     expect(result.bundle.music.path).toBe(`music/${id}.ogg`);
     expect(result.music).toEqual(fixture.files[`music/${id}.ogg`]);
-    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('current.json'))).toHaveLength(1);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('latest.json'))).toHaveLength(1);
   });
 
   it('still rejects a variant when neither dedicated nor shared music is published', async () => {
@@ -53,7 +53,7 @@ describe('Phigros release transactions', () => {
     vi.stubGlobal('fetch', fetcher);
     await expect(loadPhigrosChartPreviewResources({ songId: 'Song.A', difficulty: 'EZ', variantIndex: 1 },
       new AbortController().signal, readResource)).rejects.toThrow('校验失败');
-    expect(fetcher.mock.calls.some(([url]) => String(url).includes('/music/Song.A.ogg'))).toBe(false);
+    expect(fetcher.mock.calls.some(([url]) => String(url).includes(fixture.objectKeys['music/Song.A.ogg']!))).toBe(false);
   });
 
   it('rechecks the pointer but reuses verified metadata for an unchanged release', async () => {
@@ -91,14 +91,14 @@ describe('Phigros release transactions', () => {
     calls.length = 0;
     await expect(service.load(undefined, true)).rejects.toThrow('校验失败');
     expect(service.peek()).toBe(first);
-    expect(calls.filter((url) => url.includes('current.json'))).toHaveLength(2);
+    expect(calls.filter((url) => url.includes('latest.json'))).toHaveLength(2);
     expect(calls.some((url) => url.includes('_retry='))).toBe(true);
   });
 
   it('recovers when stale asset data is replaced on the forced retry', async () => {
     const fixture = releaseFixture();
     vi.stubGlobal('fetch', vi.fn(async (input) => {
-      if (String(input).includes('catalog.json') && !String(input).includes('_retry=')) return new Response('old data');
+      if (String(input).includes(fixture.current.catalog) && !String(input).includes('_retry=')) return new Response('old data');
       return fixture.respond(input);
     }));
     expect((await new PhigrosResourceService().load()).catalog.songs).toHaveLength(1);
@@ -128,7 +128,7 @@ describe('Phigros release transactions', () => {
     release();
     await rejection;
     await expect(second).resolves.toBeDefined();
-    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('current.json'))).toHaveLength(1);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('latest.json'))).toHaveLength(1);
   });
 
   it('fully cancelled old requests cannot overwrite a newer successful release', async () => {
@@ -158,7 +158,7 @@ describe('Phigros release transactions', () => {
     vi.stubGlobal('fetch', fetcher);
     const service = new PhigrosResourceService();
     await expect(service.withRelease(async (release) => service.asset(release, 'music/Missing.ogg'))).rejects.toThrow('缺失');
-    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('current.json'))).toHaveLength(2);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('latest.json'))).toHaveLength(2);
   });
 
   it('forces metadata recovery even when a concurrent unchanged-pointer check is in flight', async () => {
@@ -184,8 +184,8 @@ describe('Phigros release transactions', () => {
     await Promise.resolve();
     resume();
     await Promise.all([checking, recovering]);
-    expect(requests.filter((url) => url.includes('current.json'))).toHaveLength(2);
-    expect(requests.some((url) => url.includes('manifest.json') && url.includes('_retry='))).toBe(true);
+    expect(requests.filter((url) => url.includes('latest.json'))).toHaveLength(2);
+    expect(requests.some((url) => url.includes('/manifests/') && url.includes('_retry='))).toBe(true);
   });
 
   it('preview and package readers retry a corrupt asset and return only verified bytes', async () => {
@@ -203,7 +203,7 @@ describe('Phigros release transactions', () => {
       });
     expect(result.chart).toEqual(fixture.files['charts/Song.A.0/EZ.json']);
     expect(result.music).toEqual(fixture.files['music/Song.A.ogg']);
-    expect(requests.filter((url) => url.includes('current.json'))).toHaveLength(2);
+    expect(requests.filter((url) => url.includes('latest.json'))).toHaveLength(2);
     expect(resourceUrls.some(url => url.includes('_retry='))).toBe(true);
   });
 
@@ -228,7 +228,7 @@ describe('Phigros release transactions', () => {
     await expect(loadPhigrosChartPreviewResources({ songId: 'Song.A', difficulty: 'EZ' },
       new AbortController().signal, readResource)).rejects.toThrow();
     expect(phigrosResources.peek()?.catalog.songs).toHaveLength(1);
-    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('current.json'))).toHaveLength(2);
+    expect(fetcher.mock.calls.filter(([url]) => String(url).includes('latest.json'))).toHaveLength(2);
   });
 
   it('encodes special song IDs as object keys rather than URL queries or regex syntax', async () => {
@@ -239,7 +239,8 @@ describe('Phigros release transactions', () => {
     const result = await loadPhigrosChartPreviewResources({ songId: id, difficulty: 'EZ' }, new AbortController().signal, readResource);
     const chartUrl = new URL(urls.find(url => url.includes('/charts/'))!);
     expect(chartUrl.hash).toBe('');
-    expect(decodeURIComponent(chartUrl.pathname)).toContain(id);
+    expect(chartUrl.pathname).toBe(`/${fixture.objectKeys[`charts/${id}.0/EZ.json`]}`);
+    expect(result.bundle.chart.path).toContain(id);
     expect(result.chart).toEqual(fixture.files[`charts/${id}.0/EZ.json`]);
   });
 });

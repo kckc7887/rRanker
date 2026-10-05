@@ -75,7 +75,8 @@ mapping = Path("android/app/build/outputs/mapping/release/mapping.txt")
 if mapping.is_file():
     shutil.copy2(mapping, output / "mapping.txt")
 for abi, (apk, _signing) in sorted(verified.items()):
-    name = f"rRanker-{version}({build})-{abi}.apk"
+    public_abi = {"arm64-v8a": "arm64", "armeabi-v7a": "armeabi", "x86": "x86", "x86_64": "x86_64"}[abi]
+    name = f"rRanker-{public_abi}.apk"
     shutil.copy2(apk, output / name)
     names.append(name)
     evidence["apks"].append({"file": name, "abi": abi, "sha256": hashlib.sha256(apk.read_bytes()).hexdigest(), "certificateSha256": fingerprint})

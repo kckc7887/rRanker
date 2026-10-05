@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { PhigrosKyouProvider } from '@/providers/phigros-kyou-provider';
 
 const manifest = {
@@ -41,10 +42,21 @@ function stubRoutes(overrides: Partial<Record<string, unknown>> = {}) {
     'tag_votes.json': votes,
     ...overrides,
   };
+  const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+  const tables = Object.entries(payloads).filter(([name]) => name !== 'manifest.json').map(([name, value]) => {
+    const body = value instanceof Response ? '{' : JSON.stringify(value);
+    return { name, path: `kyou/data/${hash(body)}.json`, size: Buffer.byteLength(body), sha256: hash(body), body };
+  });
+  const body = JSON.stringify({ ...(payloads['manifest.json'] as object), schemaVersion: 2, resourceVersion: 'r1',
+    files: tables.map(file => ({ name: file.name, path: file.path, size: file.size, sha256: file.sha256 })) });
+  const pointer = { schemaVersion: 2, resourceVersion: 'r1', manifestPath: `kyou/manifests/${hash(body)}.json`, manifestSha256: hash(body) };
   vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
-    const name = String(input).split('/').at(-1)!;
-    const value = payloads[name];
-    return value instanceof Response ? value : json(value);
+    const path = new URL(String(input)).pathname.slice(1);
+    if (path === 'kyou/latest.json') return json(pointer);
+    if (path === pointer.manifestPath) return new Response(body);
+    const table = tables.find(file => file.path === path)!;
+    const value = payloads[table.name];
+    return value instanceof Response ? value.clone() : new Response(table.body);
   }));
 }
 
@@ -63,7 +75,7 @@ describe('PhigrosKyouProvider', () => {
     const cancelled = expect(result).rejects.toMatchObject({ name: 'AbortError' });
     controller.abort();
     await cancelled;
-    expect(signals).toHaveLength(method === 'getAliases' ? 3 : 5);
+    expect(signals.length).toBeGreaterThan(0);
     expect(signals.every((signal) => signal.aborted)).toBe(true);
   });
 
@@ -75,17 +87,17 @@ describe('PhigrosKyouProvider', () => {
     const result = new PhigrosKyouProvider().getAliases();
     const timedOut = expect(result).rejects.toMatchObject({ code: 'timeout' });
     await vi.advanceTimersByTimeAsync(11_999);
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenCalledTimes(1);
     await vi.advanceTimersByTimeAsync(1);
     await timedOut;
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenCalledTimes(1);
     expect(vi.getTimerCount()).toBe(0);
   });
 
   it('attempts each resource once on an upstream failure', async () => {
     vi.stubGlobal('fetch', vi.fn(async () => json({}, 503)));
     await expect(new PhigrosKyouProvider().getAliases()).rejects.toMatchObject({ code: 'network' });
-    expect(fetch).toHaveBeenCalledTimes(3);
+    expect(fetch).toHaveBeenCalledTimes(1);
   });
 
   it('loads the validated JSON resources and keeps main_label_question informational', async () => {

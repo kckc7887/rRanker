@@ -156,6 +156,8 @@ class ApkVerifierIntegrationTests(unittest.TestCase):
         self.assertEqual(evidence["signingMode"], "legacy-debug")
         self.assertEqual(evidence["expectedCertificateSha256"], FINGERPRINT)
         self.assertEqual(len(evidence["apks"]), 4)
+        self.assertEqual({item["file"] for item in evidence["apks"]},
+                         {"rRanker-arm64.apk", "rRanker-armeabi.apk", "rRanker-x86.apk", "rRanker-x86_64.apk"})
         self.assertEqual({item["certificateSha256"] for item in evidence["apks"]}, {FINGERPRINT})
         summary = (self.root / "summary.md").read_text()
         self.assertIn(evidence["signingDescription"], summary)

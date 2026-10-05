@@ -1,22 +1,25 @@
 import { fetch as expoFetch } from 'expo/fetch';
 import type { RuntimeRequestScenario } from '@/domain/runtime-log';
 import { z } from 'zod';
-import { PHIGROS_OSS_BASE, phigrosReleaseDirectory } from '@/domain/account-avatar';
+import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
 import { requestBytes, requestJson } from '@/providers/http-json';
 import { ProviderError } from '@/providers/errors';
-import { VerifiedReleaseSession, verifyResourceBytes } from './verified-release';
+import { resourceObjectPathSchema, VerifiedReleaseSession, verifyResourceBytes } from './verified-release';
+
+const ObjectPathSchema = resourceObjectPathSchema('phigros', ['avatars', 'charts', 'illustrations', 'illustrations-blur', 'illustrations-lowres', 'music', 'metadata']);
 
 const CurrentSchema = z.object({
-  schemaVersion: z.literal(1), gameVersion: z.string().min(1),
+  schemaVersion: z.literal(2), gameVersion: z.string().min(1),
   resourceVersion: z.string().min(1), publishedAt: z.string().min(1),
-  catalog: z.string().min(1), manifest: z.string().min(1),
-  noteCounts: z.string().min(1), manifestSha256: z.string().regex(/^[a-f\d]{64}$/i),
+  catalog: ObjectPathSchema, manifest: resourceObjectPathSchema('phigros', ['manifests']),
+  noteCounts: ObjectPathSchema, manifestSha256: z.string().regex(/^[a-f\d]{64}$/i),
 });
 const AssetSchema = z.object({
-  path: z.string().min(1), size: z.number().int().positive(),
+  path: z.string().min(1), objectKey: ObjectPathSchema, size: z.number().int().positive(),
   sha256: z.string().regex(/^[a-f\d]{64}$/i), contentType: z.string(),
 });
 const ManifestSchema = z.object({
+  schemaVersion: z.literal(2), resourceVersion: z.string().min(1),
   gameVersion: z.string(), generatedAt: z.string(), assets: z.array(AssetSchema),
 });
 const CatalogSchema = z.object({
@@ -58,12 +61,8 @@ export class PhigrosResourceService {
   }
 
   url(path: string, release?: PhigrosRelease): string {
-    /** 先编码路径段，歌曲 ID 中的 # 和 ? 不作 URL 分隔符。 */
     const url = new URL(path.split('/').map(encodeURIComponent).join('/'), `${PHIGROS_OSS_BASE}/`);
-    if (release) {
-      url.searchParams.set('v', release.current.resourceVersion);
-      if (release.bypass) url.searchParams.set('_retry', release.bypass);
-    }
+    if (release?.bypass) url.searchParams.set('_retry', release.bypass);
     return url.href;
   }
 
@@ -73,12 +72,8 @@ export class PhigrosResourceService {
     return matches[0]!;
   }
 
-  directory(current: Pick<PhigrosRelease['current'], 'manifest'>): string {
-    return phigrosReleaseDirectory(current.manifest);
-  }
-
   assetUrl(release: PhigrosRelease, asset: PhigrosResourceAsset): string {
-    return this.url(`${this.directory(release.current)}${asset.path}`, release);
+    return this.url(asset.objectKey, release);
   }
 
   async bytes(url: string, signal?: AbortSignal, timeoutMs = 12_000, diagnosticScenario: RuntimeRequestScenario = 'resource'): Promise<Uint8Array> {
@@ -99,7 +94,7 @@ export class PhigrosResourceService {
     const nonce = `${Date.now()}-${++this.sequence}`;
     const current = await requestJson({
       diagnosticScenario: 'release',
-      baseUrl: PHIGROS_OSS_BASE, path: `/phigros/current.json?_check=${nonce}`, schema: CurrentSchema,
+      baseUrl: PHIGROS_OSS_BASE, path: `/phigros/latest.json?_check=${nonce}`, schema: CurrentSchema,
       fetcher: expoFetch as unknown as typeof fetch, signal, totalAttempts: 1, label: 'Phigros',
       error: (status) => new ProviderError('network', `Phigros 发布信息请求失败：${status}`, true),
     });
@@ -111,18 +106,22 @@ export class PhigrosResourceService {
     await verifyResourceBytes(rawManifest, { sha256: current.manifestSha256 }, 'Phigros 清单校验失败');
     candidate.manifest = ManifestSchema.parse(JSON.parse(new TextDecoder().decode(rawManifest)));
     if (candidate.manifest.gameVersion !== current.gameVersion
-      || candidate.manifest.generatedAt !== current.publishedAt) {
+      || candidate.manifest.resourceVersion !== current.resourceVersion
+      || candidate.manifest.generatedAt !== current.publishedAt
+      || current.manifest !== `phigros/manifests/${current.manifestSha256}.json`
+      || new Set(candidate.manifest.assets.map(asset => asset.path)).size !== candidate.manifest.assets.length
+      || candidate.manifest.assets.some(asset => !asset.objectKey.split('/')[2]!.startsWith(`${asset.sha256}.`))) {
       throw new ProviderError('upstream_schema', 'Phigros 发布内容不一致', true);
     }
-    const directory = this.directory(current);
-    const relative = (path: string) => {
-      if (!path.startsWith(directory)) throw new ProviderError('upstream_schema', 'Phigros 发布路径不一致', true);
-      return path.slice(directory.length);
-    };
+    const catalogAsset = this.asset(candidate, 'catalog.json');
+    const notesAsset = this.asset(candidate, 'metadata/note_counts.tsv');
+    if (catalogAsset.objectKey !== current.catalog || notesAsset.objectKey !== current.noteCounts) {
+      throw new ProviderError('upstream_schema', 'Phigros 发布路径不一致', true);
+    }
     const avatarAsset = candidate.manifest.assets.find((asset) => asset.path === 'metadata/tmp.tsv');
     const [catalog, notes, difficulty, avatars] = await Promise.all([
-      this.readAsset(candidate, this.asset(candidate, relative(current.catalog)), signal, 'catalog'),
-      this.readAsset(candidate, this.asset(candidate, relative(current.noteCounts)), signal),
+      this.readAsset(candidate, catalogAsset, signal, 'catalog'),
+      this.readAsset(candidate, notesAsset, signal),
       this.readAsset(candidate, this.asset(candidate, 'metadata/difficulty.tsv'), signal, 'difficulty'),
       avatarAsset ? this.readAsset(candidate, avatarAsset, signal) : Promise.resolve(new Uint8Array()),
     ]);

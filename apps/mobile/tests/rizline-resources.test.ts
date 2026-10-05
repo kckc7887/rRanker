@@ -22,20 +22,27 @@ beforeEach(async () => {
 afterEach(() => database.close());
 
 const hash = (value: string) => createHash('sha256').update(value).digest('hex');
-function fixture(revision = 'r1') {
-  const prefix = `rizline/releases/${revision}/`;
+function fixture(revision = 'r1', omitResources = false) {
   const catalogObject = rizlineCatalog(revision);
+  const media = rizlineCatalogAssetFiles(catalogObject).map(file => {
+    const category = file.path.includes('/audio/') ? 'audio' : 'charts';
+    return { path: `rizline/${category}/${hash(file.path)}.${category === 'audio' ? 'm4a' : 'json'}`, size: 1, sha256: hash(file.path), original: file.path };
+  });
+  for (const song of catalogObject.songs) {
+    song.audioPath = media.find(file => file.original === song.audioPath)!.path;
+    for (const chart of song.charts) chart.chartPath = media.find(file => file.original === chart.chartPath)!.path;
+  }
   const catalog = JSON.stringify(catalogObject);
+  const catalogPath = `rizline/metadata/${hash(catalog)}.json`;
   const files = [
-    { path: `${prefix}catalog.json`, size: Buffer.byteLength(catalog), sha256: hash(catalog) },
-    ...rizlineCatalogAssetFiles(catalogObject).map(file => ({ ...file, sha256: hash(file.path) })),
+    { path: catalogPath, size: Buffer.byteLength(catalog), sha256: hash(catalog) },
+    ...(omitResources ? [] : media),
   ];
-  const manifest = JSON.stringify({ schemaVersion: 1, resourceVersion: revision, gameVersion: '2.7.1', catalogPath: `${prefix}catalog.json`,
-    files });
-  const current = JSON.stringify({ schemaVersion: 1, resourceVersion: revision, manifestPath: `${prefix}manifest.json`, manifestSha256: hash(manifest) });
-  return { catalog, respond: (input: RequestInfo | URL) => {
+  const manifest = JSON.stringify({ schemaVersion: 2, resourceVersion: revision, gameVersion: '2.7.1', catalogPath, files });
+  const current = JSON.stringify({ schemaVersion: 2, resourceVersion: revision, manifestPath: `rizline/manifests/${hash(manifest)}.json`, manifestSha256: hash(manifest) });
+  return { catalog, catalogPath, respond: (input: RequestInfo | URL) => {
     const path = new URL(String(input)).pathname;
-    return new Response(path.endsWith('current.json') ? current : path.endsWith('manifest.json') ? manifest : catalog);
+    return new Response(path.endsWith('latest.json') ? current : path.includes('/manifests/') ? manifest : catalog);
   } };
 }
 describe('Rizline verified catalog releases', () => {
@@ -48,7 +55,7 @@ describe('Rizline verified catalog releases', () => {
   });
   it('keeps the last valid catalog offline and rejects corrupted updates', async () => {
     let release = fixture(); let corrupt = false;
-    const fetcher = transport.fetch.mockImplementation(async input => String(input).includes('/catalog.json') && corrupt ? new Response('corrupt') : release.respond(input));
+    const fetcher = transport.fetch.mockImplementation(async input => String(input).includes(release.catalogPath) && corrupt ? new Response('corrupt') : release.respond(input));
     const service = new RizlineResourceService();
     await service.loadFresh(); release = fixture('r2'); corrupt = true;
     await expect(service.loadFresh()).rejects.toThrow('校验失败');
@@ -92,17 +99,23 @@ describe('Rizline verified catalog releases', () => {
     });
   });
   it('rejects catalogs whose audio or chart paths are missing from the manifest', async () => {
-    const prefix = 'rizline/releases/r1/';
-    const catalogObject = rizlineCatalog();
-    const catalog = JSON.stringify(catalogObject);
-    const manifest = JSON.stringify({ schemaVersion: 1, resourceVersion: 'r1', gameVersion: '2.7.1', catalogPath: `${prefix}catalog.json`,
-      files: [{ path: `${prefix}catalog.json`, size: Buffer.byteLength(catalog), sha256: hash(catalog) }] });
-    const current = JSON.stringify({ schemaVersion: 1, resourceVersion: 'r1', manifestPath: `${prefix}manifest.json`, manifestSha256: hash(manifest) });
-    transport.fetch.mockImplementation(async input => {
-      const path = new URL(String(input)).pathname;
-      return new Response(path.endsWith('current.json') ? current : path.endsWith('manifest.json') ? manifest : catalog);
-    });
+    const release = fixture('r1', true);
+    transport.fetch.mockImplementation(async input => release.respond(input));
     const service = new RizlineResourceService();
     await expect(service.loadFresh()).rejects.toThrow('曲库内容不一致');
+  });
+  it('rebuilds only the unsupported catalog cache and preserves it on I/O failure', async () => {
+    const release = fixture();
+    transport.fetch.mockImplementation(async input => release.respond(input));
+    const service = new RizlineResourceService();
+    await service.loadFresh();
+    const read = vi.spyOn(database, 'prepare').mockImplementation(() => { throw new Error('database unavailable'); });
+    await expect(service.loadCached()).rejects.toThrow('database unavailable');
+    read.mockRestore();
+    expect((await service.loadCached())?.snapshot.resourceVersion).toBe('r1');
+    database.exec("UPDATE resource_snapshots SET schema_version = 1 WHERE resource_key = 'rizline:catalog'");
+    database.exec("INSERT INTO resource_snapshots VALUES ('unrelated', 1, '', '{}')");
+    expect(await service.loadCached()).toBeNull();
+    expect(database.prepare("SELECT resource_key FROM resource_snapshots").all()).toEqual([{ resource_key: 'unrelated' }]);
   });
 });
