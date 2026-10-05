@@ -21,7 +21,7 @@ const defaultRequests: [string, () => Promise<unknown>, number][] = [
   ['Phigros device code', () => requestDeviceCode(), 1],
   ['TUF player search', () => new TufProvider().searchPlayers('fixture'), 1],
   ['DXRating tags', () => new DxRatingChartTagsProvider().getChartTags(), 1],
-  ['Kyou metadata', () => new PhigrosKyouProvider().getAliases(), 3],
+  ['Kyou metadata', () => new PhigrosKyouProvider().getAliases(), 1],
   ['Phigros release', () => new PhigrosResourceService().load(), 2],
   ['Phigros bytes', () => new PhigrosResourceService().bytes('https://resource.test/chart'), 1],
   ['Rizline release', () => new RizlineResourceService().withRelease(async (release) => release), 2],

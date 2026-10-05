@@ -11,7 +11,7 @@ import { loadPhigrosChartPreviewResources } from '@/services/phigros-chart-previ
 import { phigrosResources } from '@/services/phigros-resources';
 
 function asset(path: string, size = 1, contentType = 'application/json'): PhigrosResourceAsset {
-  return { path, size, contentType, sha256: 'a'.repeat(64) };
+  return { path, objectKey: `phigros/${path.split('/')[0]}/${'a'.repeat(64)}.${path.split('.').at(-1)}`, size, contentType, sha256: 'a'.repeat(64) };
 }
 const catalog = {
   songCount: 1,
@@ -21,6 +21,7 @@ const catalog = {
   }],
 };
 const manifest = {
+  schemaVersion: 2 as const, resourceVersion: 'r1',
   gameVersion: '9.9.9', generatedAt: '9.9.9-test',
   assets: [
     asset('charts/DistortedFate.Sakuzyo.7/AT.json', 100, 'application/json'),
@@ -150,7 +151,7 @@ describe('phigros chart preview resource resolution', () => {
     ], target)).toThrow('谱面编号重复或无效');
   });
 
-  it('catalog/manifest 请求 URL 携带发布版本并校验实际内容', async () => {
+  it('通过清单映射请求固定哈希地址并校验实际内容', async () => {
     const fixture = releaseFixture('9.9.9-test', ['DistortedFate.Sakuzyo']);
     const requests: string[] = [];
     vi.spyOn(globalThis, 'fetch').mockImplementation(async (input) => {
@@ -160,10 +161,10 @@ describe('phigros chart preview resource resolution', () => {
     await loadPhigrosChartPreviewResources(
       { songId: 'DistortedFate.Sakuzyo', difficulty: 'EZ' }, new AbortController().signal, (asset) => phigrosResources.bytes(asset.url),
     );
-    expect(requests[0]).toContain('phigros/current.json?_check=');
-    expect(requests).toContain(`${PHIGROS_OSS_BASE}/phigros/releases/9.9.9/catalog.json?v=9.9.9-test`);
-    expect(requests).toContain(`${PHIGROS_OSS_BASE}/phigros/releases/9.9.9/manifest.json?v=9.9.9-test`);
-    expect(requests).toContain(`${PHIGROS_OSS_BASE}/phigros/releases/9.9.9/charts/DistortedFate.Sakuzyo.0/EZ.json?v=9.9.9-test`);
+    expect(requests[0]).toContain('phigros/latest.json?_check=');
+    expect(requests).toContain(`${PHIGROS_OSS_BASE}/${fixture.current.catalog}`);
+    expect(requests).toContain(`${PHIGROS_OSS_BASE}/${fixture.current.manifest}`);
+    expect(requests).toContain(`${PHIGROS_OSS_BASE}/${fixture.objectKeys['charts/DistortedFate.Sakuzyo.0/EZ.json']}`);
   });
 
 });

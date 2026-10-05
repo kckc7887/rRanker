@@ -10,6 +10,7 @@ import {
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { useSession } from '@/state/session-store';
 import { z } from 'zod';
+import { isPhigrosAvatarUrl } from '@/domain/account-avatar';
 
 const repository = new SqliteSnapshotRepository();
 
@@ -21,6 +22,11 @@ const thumbnailSchema = z.object({
   scoreDisplay: z.string().optional(), avatarUrl: z.string().nullable().optional(),
   challengeModeRank: z.number().finite().nullable().optional(), ratingPossession: z.string().nullable().optional(),
 });
+function schemaForAccount(accountId: string) {
+  return accountId.startsWith('phigros:')
+    ? thumbnailSchema.refine(value => !value.avatarUrl || isPhigrosAvatarUrl(value.avatarUrl))
+    : thumbnailSchema;
+}
 
 export type AccountThumbnailInput = {
   scoreDisplay?: string;
@@ -54,7 +60,7 @@ export async function persistBoundAccountThumbnail(
     current.running = Promise.resolve().then(async () => {
       try {
         if (current.saved === null) {
-          current.saved = await repository.getResource(accountThumbnailResourceKey(accountId), ACCOUNT_THUMBNAIL_SCHEMA_VERSION, thumbnailSchema) ?? {};
+          current.saved = await repository.getResource(accountThumbnailResourceKey(accountId), ACCOUNT_THUMBNAIL_SCHEMA_VERSION, schemaForAccount(accountId)) ?? {};
         }
         while (Object.keys(current.pending).length) {
           const next: AccountThumbnailSnapshot = { ...current.saved, ...current.pending };
@@ -96,7 +102,7 @@ export async function hydrateBoundAccountThumbnails(
         const thumbnail = await repository.getResource(
           accountThumbnailResourceKey(account.id),
           ACCOUNT_THUMBNAIL_SCHEMA_VERSION,
-          thumbnailSchema,
+          schemaForAccount(account.id),
         );
         if (!thumbnail) return;
         assertCurrent();

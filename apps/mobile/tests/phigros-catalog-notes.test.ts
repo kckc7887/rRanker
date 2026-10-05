@@ -18,21 +18,21 @@ it('maps verified note counts and refreshes same-version resources without mixin
   await resources.load(undefined, true);
   const second = await provider.getCatalog();
   expect(second.songs).toHaveLength(2);
-  expect(provider.getIllustrationUrl('Song.New')).toContain('/phigros/releases/9.9.9/illustrations/Song.New.png?v=r2');
+  expect(provider.getIllustrationUrl('Song.New')).toContain(fixture.objectKeys['illustrations/Song.New.png']);
   expect(await provider.getGameVersion()).toBe('9.9.9');
 });
 
-it('builds illustration and avatar URLs from the current manifest directory', async () => {
-  const fixture = releaseFixture('9.9.9-deadbeef', ['Song.A'], { releaseDirectory: 'phigros/releases/9.9.9-deadbeef' });
+it('maps illustration and avatar logical names to immutable objects', async () => {
+  const fixture = releaseFixture('9.9.9-deadbeef', ['Song.A']);
   vi.stubGlobal('fetch', vi.fn(async (input) => fixture.respond(input)));
   const provider = new PhigrosCatalogProvider();
   await provider.getCatalog();
   expect(provider.getIllustrationUrl('Song.A')).toBe(
-    'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/9.9.9-deadbeef/illustrations/Song.A.png?v=9.9.9-deadbeef',
+    `https://rranker-phigros-data.cn-nb1.rains3.com/${fixture.objectKeys['illustrations/Song.A.png']}`,
   );
-  expect(provider.getIllustrationUrl('Song.A')).not.toContain('/phigros/releases/9.9.9/illustrations/');
+  expect(provider.getIllustrationUrl('missing')).toBeNull();
   expect(provider.getAvatarUrl('Glaciaxion')).toBe(
-    'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/9.9.9-deadbeef/avatars/Glaciaxion.png?v=9.9.9-deadbeef',
+    `https://rranker-phigros-data.cn-nb1.rains3.com/${fixture.objectKeys['avatars/Glaciaxion.png']}`,
   );
 });
 
