@@ -270,3 +270,23 @@ describe('Rizline 偏移、短音频与会话释放', () => {
     }
   });
 });
+it('AB 在音频末尾连续回跳，暂停拖动和改变倍速保留端点', async () => {
+  let frame: FrameRequestCallback = () => {};
+  context.state = 'running';
+  vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frame = callback; return 1; });
+  const preview = session();
+  preview.loop.toggle('a', 2); preview.loop.toggle('b', 30);
+  await preview.playFrom(29);
+  context.currentTime = 2; frame(2000);
+  expect(preview.currentTime).toBe(2);
+  expect(preview.playing).toBe(true);
+  context.currentTime = 31; frame(31000);
+  expect(preview.currentTime).toBe(2);
+  preview.pause(); await preview.seek(30);
+  expect(preview.currentTime).toBe(30); expect(preview.playing).toBe(false);
+  preview.setSettings({ playbackSpeed: 2 });
+  await preview.playFrom(30);
+  expect(preview.currentTime).toBe(2);
+  context.currentTime += 1; expect(preview.currentTime).toBe(4);
+  preview.dispose(); frame(32000); expect(preview.playing).toBe(false);
+});

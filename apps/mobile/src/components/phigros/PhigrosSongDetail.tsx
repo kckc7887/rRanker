@@ -516,7 +516,7 @@ function ChartCard({
             game: 'phigros',
             songId: song.id,
             levelIndex: chart.levelIndex,
-            title: `${song.title} ${label}`,
+            title: song.title,
           }, {
             push: (href) => router.push(href),
             topRouteName: () => {

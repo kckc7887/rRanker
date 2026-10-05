@@ -5,13 +5,20 @@ export interface PreviewControlsOptions {
   measureNavigation?: boolean;
   details?: readonly HTMLElement[];
   sections: readonly string[];
-  reserveStage?: HTMLElement;
+  stageAspectRatio?: number;
+}
+
+export function setPreviewFullscreen(active: boolean): void {
+  const scroll = document.querySelector<HTMLElement>('.preview-scroll');
+  if (active && scroll) scroll.dataset.windowScroll = String(scroll.scrollTop);
+  document.body.classList.toggle('fullscreen', active);
+  if (!active && scroll) scroll.scrollTop = Number(scroll.dataset.windowScroll ?? 0);
 }
 
 export function installPreviewControls(options: PreviewControlsOptions): () => void {
   const controls = document.getElementById('controls')!;
   const events = new PlayerEventScope(() => false);
-  const stageRect = options.reserveStage?.getBoundingClientRect();
+
   const style = document.createElement('style');
   style.textContent = PREVIEW_CONTROLS_STYLE;
   document.head.append(style);
@@ -21,7 +28,19 @@ export function installPreviewControls(options: PreviewControlsOptions): () => v
   const time = document.getElementById('time-label')!.closest<HTMLElement>('.row')!;
   const timeline = document.getElementById('timeline-host')!.closest<HTMLElement>('.row')!;
   const transport = controls.querySelector<HTMLElement>('.transport-group')!;
-  const loop = controls.querySelector<HTMLElement>('.loop-row');
+  let loop = controls.querySelector<HTMLElement>('.loop-row');
+  if (!loop) {
+    loop = document.createElement('div');
+    loop.className = 'row loop-row';
+    for (const endpoint of ['a', 'b']) {
+      const button = document.createElement('button');
+      button.id = `btn-loop-${endpoint}`;
+      button.type = 'button';
+      button.className = 'loop-btn';
+      button.textContent = `${endpoint.toUpperCase()} —`;
+      loop.append(button);
+    }
+  }
   time.classList.add('preview-time-row');
   timeline.classList.add('preview-timeline-row');
   transport.classList.add('preview-transport');
@@ -89,21 +108,28 @@ export function installPreviewControls(options: PreviewControlsOptions): () => v
   events.own(() => observer.disconnect());
   syncSections();
 
-  if (options.reserveStage && stageRect) {
-    const slot = document.createElement('div');
-    slot.className = 'preview-stage-slot';
-    const ratio = stageRect.width > 0 && stageRect.height > 0 ? stageRect.height / stageRect.width : 1;
-    options.reserveStage.before(slot);
-    slot.append(options.reserveStage);
-    const resize = () => {
-      if (!document.body.classList.contains('fullscreen')) {
-        slot.style.setProperty('--preview-stage-height', `${Math.max(1, slot.getBoundingClientRect().width * ratio)}px`);
-      }
-    };
-    resize();
-    const resizeObserver = new ResizeObserver(resize);
-    resizeObserver.observe(slot);
-    events.own(() => resizeObserver.disconnect());
-  }
+  const app = document.getElementById('app')!;
+  const header = document.getElementById('header')!;
+  const stage = document.getElementById('stage-wrap') ?? document.getElementById('canvas-wrap')!;
+  const scroll = document.createElement('div');
+  scroll.className = 'preview-scroll';
+  controls.before(scroll);
+  scroll.append(controls);
+  const resize = () => {
+    if (document.body.classList.contains('fullscreen')) return;
+    const remaining = Math.max(0, app.clientHeight - header.offsetHeight - 32);
+    const ratio = options.stageAspectRatio ?? 16 / 9;
+    const height = Math.min(stage.clientWidth / ratio, remaining * 0.55);
+    stage.style.setProperty('--preview-stage-height', `${Math.max(1, height)}px`);
+    stage.style.setProperty('--preview-stage-width', `${Math.max(1, height * ratio)}px`);
+  };
+  const resizeObserver = new ResizeObserver(resize);
+  resizeObserver.observe(app);
+  resizeObserver.observe(header);
+  events.own(() => resizeObserver.disconnect());
+  const fullscreenObserver = new MutationObserver(resize);
+  fullscreenObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  events.own(() => fullscreenObserver.disconnect());
+  resize();
   return () => events.dispose();
 }

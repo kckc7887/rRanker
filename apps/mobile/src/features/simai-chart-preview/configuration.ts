@@ -1,3 +1,4 @@
+import type { PreviewDifficulty } from '../chart-preview-shared/webview-player/heading';
 import type { Chart } from './engine/types';
 export type ChartPreviewSettings = {
   hiSpeed?: number;
@@ -28,6 +29,7 @@ export type ChartPreviewInjectConfig = {
   parsedChart?: Chart;
   difficulty: number;
   title?: string;
+  previewDifficulty?: PreviewDifficulty;
   settings?: ChartPreviewSettings;
   answerSoundUrl?: string;
   backgroundImageUrl?: string;

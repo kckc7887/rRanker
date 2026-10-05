@@ -84,6 +84,14 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。HTTP 
 - `chart-preview-navigation.ts` 交接当前预览请求。
 - `webview-player` 提供四套播放器共用的设置 UI 与手势。
 
+`webview-player/controls.ts` 的 `installPreviewControls` 复用原按钮与监听，固定标题和画面，下方控制与参数独立滚动；`stageAspectRatio` 保留各游戏比例，画面高度不超过标题下方可用空间的 55%。实时信息使用固定列数、行高与等宽数字。`setPreviewFullscreen` 保存、恢复普通模式滚动位置。
+
+`heading.ts` 的 `PreviewDifficulty` 接收游戏侧格式化的标签、数值、配色和附加身份，`renderPreviewHeading` 分开显示曲名与难度。舞萌、Phigros、Rizline 使用真实定数，osu! 使用原生难度名与星数，Majdata、Phira 使用原生难度；缺失显示“—”，公共层不解释游戏身份。
+
+`playback-loop.ts` 的 `PlaybackLoop` 由四套会话分别持有，端点沿用各自时间单位、不持久化；`toggle` 记录、清除、交换端点，`target` 在两个不同端点就绪并到达 B 时返回 A。`bindPlaybackLoop` 同步普通与全屏按钮和 `HeatTimelineView.updateLoop`。各会话先检查循环再处理结束，回跳沿用原 seek/播放路径同步音频、打击音、背景与渲染。
+
+`fullscreen-controls.ts` 的 `bindFullscreenControls` 共用整页非控件区域点击与 5 秒隐藏计时；拖动不切换显隐，操作期间暂停计时，结束后重新计时。游戏入口保留方向与锁定状态，锁定时只唤出解锁入口。行为由 `chart-preview-loop-controls.test.ts`、各播放会话测试和浏览器交互验证，浏览器结果不替代真机验收。
+
 设置采用当前信封格式，暂停和 seek 使用当前命令；释放只清理所属会话的帧、音源、监听器和临时资源。共享播放器源变更后重建四套生成物并运行 `check:generated`。
 
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。

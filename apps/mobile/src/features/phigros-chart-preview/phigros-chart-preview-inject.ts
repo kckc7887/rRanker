@@ -14,6 +14,7 @@ const phigrosChartPreviewInjectors = createChartPreviewInjectors<PhigrosChartPre
     game: config.game,
     sourceLabel: config.sourceLabel,
     title: config.title ?? '',
+    previewDifficulty: config.previewDifficulty,
     chartUrl: config.chartUrl ?? null,
     chartText: config.chartText ?? null,
     musicUrl: config.musicUrl ?? null,

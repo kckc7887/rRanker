@@ -1,3 +1,4 @@
+import type { PreviewDifficulty } from './webview-player/heading';
 export type PgrPreviewSettings = {
   playbackSpeed?: number;
   noteScale?: number;
@@ -23,6 +24,7 @@ export type PgrPreviewConfig = {
   game: string;
   sourceLabel?: string;
   title?: string;
+  previewDifficulty?: PreviewDifficulty;
   chartUrl?: string;
   chartText?: string;
   musicUrl?: string;

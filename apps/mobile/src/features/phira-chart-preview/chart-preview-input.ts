@@ -1,3 +1,4 @@
+import { PHIRA_DIFFICULTY_COLORS } from '@/domain/phira-score-presentation';
 import JSZip from 'jszip';
 import {
   assertChartPreviewDownloadBytes,
@@ -136,6 +137,8 @@ export async function buildPhiraChartPreviewInput(
   return {
     config: {
       game: 'phira', sourceLabel: 'Phira 谱面', title: input.title ?? chart.name,
+      previewDifficulty: { label: chart.level ?? '—', value: Number.isFinite(chart.difficulty) ? chart.difficulty.toFixed(1) : '—',
+        background: PHIRA_DIFFICULTY_COLORS.bg, text: PHIRA_DIFFICULTY_COLORS.fg },
       chartText, illustrationUrl, settings,
       ...(rpeAssets ? { format: 'rpe', rpeAssets } : {}),
     },

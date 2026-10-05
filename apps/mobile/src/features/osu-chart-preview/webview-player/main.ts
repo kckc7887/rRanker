@@ -1,3 +1,6 @@
+import { renderPreviewHeading } from '../../chart-preview-shared/webview-player/heading';
+import { bindPlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
+import { bindFullscreenControls } from '../../chart-preview-shared/webview-player/fullscreen-controls';
 import type { OsuChartPreviewConfig, OsuChartPreviewSettings } from '../configuration';
 import { normalizeOsuChartPreviewSettings } from '../configuration';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
@@ -5,7 +8,7 @@ import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-p
 import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
 import { md5 } from './engine';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
-import { installPreviewControls } from '../../chart-preview-shared/webview-player/controls';
+import { installPreviewControls, setPreviewFullscreen } from '../../chart-preview-shared/webview-player/controls';
 import { HeatTimelineView, heatTimeLabels } from '../../chart-preview-shared/webview-player/heat-timeline';
 import {
   applyManiaScrollSpeed, destroyPlayback, pausePlayback, playFrom, presentationTime,
@@ -46,7 +49,6 @@ let fullscreen = false;
 let locked = false;
 let controlsVisible = true;
 let uiFrame = 0;
-let controlsTimer = 0;
 let lastUiFrame = -Infinity;
 
 function post(type: string, values: Record<string, unknown> = {}): void {
@@ -95,33 +97,23 @@ const timelineObserver = new ResizeObserver(buildTimeline);
 timelineObserver.observe(timeline);
 events.own(() => timelineObserver.disconnect());
 events.own(() => cancelAnimationFrame(uiFrame));
-events.own(() => window.clearTimeout(controlsTimer));
 events.own(destroyPlayback);
 
 function syncControlsVisibility(): void {
   controls.classList.toggle('hidden', !controlsVisible || locked);
   lockButton.classList.toggle('hidden', !controlsVisible);
 }
-function showControls(): void {
-  window.clearTimeout(controlsTimer);
-  controlsVisible = true;
-  syncControlsVisibility();
-  if (fullscreen && !dragging) controlsTimer = window.setTimeout(() => {
-    if (disposed) return;
-    controlsVisible = false;
-    syncControlsVisibility();
-  }, 5000);
-}
-function hideControls(): void {
-  window.clearTimeout(controlsTimer);
-  controlsVisible = false;
-  syncControlsVisibility();
-}
+const fullscreenControls = bindFullscreenControls(events, {
+  active: () => fullscreen,
+  render: visible => { controlsVisible = visible; syncControlsVisibility(); },
+});
+function showControls(): void { fullscreenControls.show(); }
+function hideControls(): void { fullscreenControls.hide(); }
 function setFullscreen(active: boolean): void {
   if (disposed) return;
   closeActiveWheelPopup();
   fullscreen = active;
-  document.body.classList.toggle('fullscreen', active);
+  setPreviewFullscreen(active);
   fullscreenButton.setAttribute('aria-label', active ? '退出全屏' : '进入全屏');
   if (!active) {
     locked = false;
@@ -235,11 +227,7 @@ events.listen(lockButton, 'click', event => {
   lockButton.setAttribute('aria-pressed', String(locked));
   if (next.overlayHidden) hideControls(); else showControls();
 });
-events.listen(canvas, 'pointerdown', () => {
-  if (!fullscreen) return;
-  if (controlsVisible) hideControls(); else showControls();
-});
-events.listen(controls, 'pointerdown', () => window.clearTimeout(controlsTimer));
+
 events.listen(element('app'), 'scroll', closeActiveWheelPopup, { passive: true });
 function seekFromPointer(event: PointerEvent): void {
   const rect = timeline.getBoundingClientRect();
@@ -330,7 +318,10 @@ async function initialize(): Promise<void> {
   const beatmap = loaded.session.beatmap;
   const mode = beatmap.mode;
   const labels = ['osu!standard', 'osu!taiko', 'osu!catch', 'osu!mania'];
-  element('title').textContent = `${config.title || beatmap.title || 'osu!'} [${beatmap.version}]`;
+  renderPreviewHeading(config.title || beatmap.title || 'osu!', {
+    value: '—', background: '#AAAAAA', text: '#FFFFFF', ...config.previewDifficulty,
+    label: config.previewDifficulty?.label || beatmap.version,
+  });
   if (mode !== config.requestedMode) {
     element('mode-notice').textContent = `当前条目为转谱，正在按原生 ${labels[mode]} 模式播放。`;
   }
@@ -345,6 +336,14 @@ async function initialize(): Promise<void> {
   }
   timeline.setAttribute('aria-disabled', 'false');
   timeline.setAttribute('aria-valuemax', String(loaded.durationMs));
+  const loopSession = handle.session;
+  const loopDuration = handle.durationMs;
+  bindPlaybackLoop(events, {
+    loop: loopSession.loop, position: () => loopSession.currentTimeMs,
+    percent: position => loopDuration > 0 ? position / loopDuration * 100 : 0,
+    format: position => (position / 1000).toFixed(2) + 's',
+    update: (a, b) => timelineView.updateLoop(a, b),
+  });
   buildTimeline();
   status('已就绪');
   syncTransport();

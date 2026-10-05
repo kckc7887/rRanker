@@ -710,7 +710,8 @@ describe('M2 song query screens', () => {
         songId: '1',
         chartType: 'DX',
         levelIndex: '3',
-        title: '正常曲目 A DX MASTER',
+        title: '正常曲目 A',
+        constant: '13.6',
       }),
     }));
     const notesTable = within(screen.getByLabelText('谱面物量'));

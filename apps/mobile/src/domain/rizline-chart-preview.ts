@@ -24,7 +24,7 @@ export type RizlineChartPreviewBundle = {
   gameVersion: string;
   resourceVersion: string;
   song: { id: string; title: string; artist: string | null };
-  chart: RizlineChartPreviewAsset & { difficulty: RizlineDifficulty; level: string };
+  chart: RizlineChartPreviewAsset & { difficulty: RizlineDifficulty; level: string; constant: number | null };
   music: RizlineChartPreviewAsset;
 };
 
@@ -78,7 +78,7 @@ export function resolveRizlineChartPreviewBundle(
     gameVersion: release.snapshot.gameVersion,
     resourceVersion: release.snapshot.resourceVersion,
     song: { id: song.id, title: song.title, artist: song.artist },
-    chart: { ...toAsset(requiredFile(files, chart.chartPath, '谱面文件')), difficulty, level: chart.level },
+    chart: { ...toAsset(requiredFile(files, chart.chartPath, '谱面文件')), difficulty, level: chart.level, constant: chart.constant },
     music: toAsset(requiredFile(files, song.audioPath, '音频文件')),
   };
 }

@@ -15,7 +15,7 @@ html[data-theme="light"] body.preview-controls {
   --accent:var(--control-accent); --playhead:var(--control-text); --playhead-glow:none;
   color:var(--control-text);
 }
-.preview-controls:not(.fullscreen) #app { overflow-y:auto; overscroll-behavior-y:contain; scrollbar-width:thin; }
+.preview-controls:not(.fullscreen) #app { overflow:hidden; }
 .preview-controls:not(.fullscreen) #header { align-items:center; padding:2px 2px 4px; border-bottom:1px solid var(--control-line); }
 .preview-controls #title { font-size:15px; font-weight:650; }
 .preview-controls :is(#status,#mode-notice,#media-notice) { color:var(--control-muted); }
@@ -91,14 +91,23 @@ html[data-theme="light"] body.preview-controls {
 .preview-controls #controls .preview-settings .toggle[aria-pressed="true"] { background:var(--control-raised); border-color:var(--control-accent-text); color:var(--control-text); }
 .preview-settings .toggle[aria-pressed="true"]::before { background:var(--control-accent); border-color:var(--control-accent-text); }
 .preview-controls [hidden] { display:none!important; }
-.preview-controls:not(.fullscreen) .preview-details { display:flex; flex-wrap:wrap; align-items:baseline; gap:4px 12px; padding-bottom:9px; margin-top:-2px; border-bottom:1px solid var(--control-line); color:var(--control-muted); font-size:10px; line-height:16px; }
-.preview-controls:not(.fullscreen) .preview-details :is(#header,#info-bar,.info-row) { display:contents; }
-.preview-controls:not(.fullscreen) .preview-details #title { flex:1 1 65%; min-width:0; font-size:11px; line-height:16px; font-weight:550; white-space:normal; overflow-wrap:anywhere; color:var(--control-text); }
-.preview-controls:not(.fullscreen) .preview-details #status { margin-left:auto; font-size:10px; }
-.preview-controls:not(.fullscreen) .preview-details .info-item { flex:0 1 auto; white-space:normal; overflow:visible; font-size:10px; }
+.preview-controls:not(.fullscreen) .preview-details { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:22px; gap:4px 12px; padding-bottom:9px; border-bottom:1px solid var(--control-line); color:var(--control-muted); font-size:10px; line-height:22px; }
+.preview-controls:not(.fullscreen) .preview-details :is(#info-bar,.info-row) { display:contents; }
+.preview-controls:not(.fullscreen) .preview-details .info-item { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:10px; }
 .preview-details .info-val { color:var(--control-text); font-variant-numeric:tabular-nums; }
-.preview-stage-slot { display:flex; flex:0 0 var(--preview-stage-height); height:var(--preview-stage-height); min-height:var(--preview-stage-height); width:100%; }
-body.fullscreen .preview-stage-slot { display:contents; }
+@media(min-width:600px) { .preview-controls:not(.fullscreen) .preview-details { grid-template-columns:repeat(3,minmax(0,1fr)); } }
+.preview-controls:not(.fullscreen) #header { display:grid; grid-template-columns:minmax(0,1fr); gap:4px; flex:none; }
+.preview-controls:not(.fullscreen) #title { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; white-space:normal; overflow-wrap:anywhere; height:40px; line-height:20px; overflow:hidden; }
+.preview-heading-badges { display:flex; gap:8px; align-items:center; min-width:0; height:26px; }
+.preview-difficulty { display:flex; gap:5px; min-width:0; max-width:100%; overflow:hidden; white-space:nowrap; border:1px solid; border-radius:999px; padding:4px 10px; font-size:11px; font-weight:700; }
+.preview-difficulty-label { min-width:0; overflow:hidden; text-overflow:ellipsis; }
+.preview-difficulty-value { flex:none; font-variant-numeric:tabular-nums; }
+.preview-identity { flex:none; max-width:40%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:var(--control-muted); }
+.preview-controls:not(.fullscreen) #status { max-width:100%; width:100%; height:16px; line-height:16px; }
+.preview-scroll { flex:1; min-height:0; overflow-y:auto; overscroll-behavior-y:contain; scrollbar-width:thin; }
+.preview-controls:not(.fullscreen) :is(#stage-wrap,#canvas-wrap) { flex:none; height:var(--preview-stage-height)!important; min-height:0; width:100%; }
+.preview-controls:not(.fullscreen) #stage-wrap .stage { width:min(100%,var(--preview-stage-width)); height:100%; aspect-ratio:auto; }
+body.fullscreen .preview-scroll { display:contents; }
 body.fullscreen :is(.preview-settings,.preview-time-heading,.preview-details) { display:none!important; }
 .preview-controls .heat-timeline { position:relative; height:44px!important; min-height:44px; width:100%; touch-action:none; }
 .preview-controls .heat-timeline[data-tracks="2"] { height:106px!important; min-height:106px; }
@@ -118,6 +127,29 @@ body.fullscreen :is(.preview-settings,.preview-time-heading,.preview-details) { 
 .heat-loop-marker { position:absolute; top:13px; transform:translateX(-50%); width:14px; height:14px; font-size:8px; line-height:12px; text-align:center; background:var(--control-panel); color:var(--control-text); border:1px solid var(--control-text); border-radius:3px; z-index:6; }
 .heat-loop-range { position:absolute; top:-2px; height:20px; background:var(--control-raised); border-top:1px solid var(--control-muted); opacity:.55; }
 .preview-controls .heat-timeline :is(#timeline-playhead,#fs-timeline-playhead,#timeline-badge,#fs-timeline-badge) { display:none; }
+body.preview-controls.fullscreen :is(#controls,#fs-overlay) {
+  position:fixed; inset:auto max(12px,env(safe-area-inset-right)) max(10px,env(safe-area-inset-bottom)) max(12px,env(safe-area-inset-left));
+  width:auto; max-width:760px; margin:0 auto; padding:10px 12px; gap:6px; border:1px solid var(--control-line);
+  border-top:3px solid var(--control-accent); border-radius:14px; background:var(--control-panel); box-shadow:none; color:var(--control-text);
+}
+body.preview-controls.fullscreen #controls { display:grid; }
+body.preview-controls.fullscreen:has(#fs-overlay) #controls { display:none; }
+body.preview-controls.fullscreen #fs-overlay { display:flex; flex-direction:column; }
+body.preview-controls.fullscreen :is(#controls,#fs-overlay).hidden { opacity:0; pointer-events:none; transform:translateY(120%); }
+body.preview-controls.fullscreen .transport-group { display:flex; gap:6px; width:100%; align-items:stretch; }
+body.preview-controls.fullscreen .transport-side { display:contents; }
+body.preview-controls.fullscreen :is(#controls,#fs-overlay) .transport-btn {
+  flex:1; width:auto; min-width:0; height:44px; padding:4px; border-radius:9px; border:1px solid var(--control-line);
+  background:var(--control-raised); color:var(--control-text); display:flex; flex-direction:column; justify-content:center; align-items:center; gap:2px;
+}
+body.preview-controls.fullscreen .transport-btn::after { content:attr(aria-label); font-size:10px; line-height:12px; white-space:nowrap; }
+body.preview-controls.fullscreen :is(#controls,#fs-overlay) :is(#play,#play-button,#fs-play) { flex:1.3; height:44px; width:auto; border-radius:9px; background:var(--control-accent); color:var(--control-on-accent); box-shadow:none; }
+body.preview-controls.fullscreen :is(#controls,#fs-overlay) .transport-btn svg { width:18px; height:18px; }
+.preview-controls :is(#controls,#fs-overlay) .loop-row { display:flex; gap:10px; width:100%; }
+.preview-controls :is(#controls,#fs-overlay) .loop-btn { flex:1; min-width:0; min-height:36px; border:1px solid var(--control-line); border-radius:9px; background:var(--control-bg); color:var(--control-muted); font-variant-numeric:tabular-nums; }
+.preview-controls :is(#controls,#fs-overlay) .loop-btn.on { border-color:var(--control-accent-text); color:var(--control-accent-text); background:var(--control-raised); }
+.preview-controls .loop-sep { display:none; }
+body.preview-controls.fullscreen :is(#time-label,#fs-time-label) { font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
 @media(max-width:375px) { .preview-controls:not(.fullscreen) #controls { padding:10px; } .parameter-label { font-size:10px; } .parameter-value { font-size:13px; } }
 @media(prefers-reduced-motion:reduce) { .preview-controls #controls * { transition:none!important; } }
 `;

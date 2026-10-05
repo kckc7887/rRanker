@@ -1,3 +1,4 @@
+import { formatOsuStar, resolveOsuStarTheme } from '@/domain/osu-star-theme';
 import { useMemo } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import { ChartPreviewScreenShell } from '@/features/chart-preview-shared/chart-preview-screen-shell';
@@ -12,6 +13,8 @@ export default function OsuChartPreviewScreen() {
     beatmapsetId?: string;
     beatmapId?: string;
     title?: string;
+    star?: string;
+    difficultyName?: string;
   }>();
   const dark = useAppTheme().dark;
   const request = useMemo(() => {
@@ -22,6 +25,9 @@ export default function OsuChartPreviewScreen() {
       title: params.title,
     });
     if (!target) return { kind: 'error' as const, message: '缺少或无效的谱面参数，请返回歌曲详情重试。' };
+    const star = params.star?.trim() ? Number(params.star) : NaN;
+    const starTheme = resolveOsuStarTheme(star);
+    target.previewDifficulty = { label: params.difficultyName ?? '', value: Number.isFinite(star) ? formatOsuStar(star) : '—', ...starTheme };
     return {
       kind: 'ready' as const,
       payload: target,
@@ -29,7 +35,7 @@ export default function OsuChartPreviewScreen() {
       prepare: (signal: AbortSignal, settings: unknown, onProgress?: (progress: ChartPreviewLoadProgress) => void) =>
         prepareOsuChartPreviewWebViewSource(target, dark ? 'dark' : 'light', settings, signal, onProgress),
     };
-  }, [params.gameId, params.beatmapsetId, params.beatmapId, params.title, dark]);
+  }, [params.star, params.difficultyName, params.gameId, params.beatmapsetId, params.beatmapId, params.title, dark]);
   return (
     <ChartPreviewScreenShell
       request={request}

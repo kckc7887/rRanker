@@ -1,3 +1,4 @@
+import { formatRizlineConstant, rizlineDifficultyColors } from '@/domain/rizline';
 import { Directory, File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
@@ -132,7 +133,10 @@ export async function prepareRizlineChartPreviewWebViewSource(
         assertCurrent();
         return applyRizlineChartPreviewConfigToHtml(template, {
           theme,
-          title: target.title ?? `${bundle.song.title} ${bundle.chart.difficulty}`,
+          title: target.title ?? bundle.song.title,
+          previewDifficulty: { label: bundle.chart.difficulty, value: formatRizlineConstant(bundle.chart.constant),
+            background: rizlineDifficultyColors(bundle.chart.difficulty, theme === 'dark').bg,
+            text: rizlineDifficultyColors(bundle.chart.difficulty, theme === 'dark').fg },
           settings: normalizeRizlineChartPreviewSettings(settings),
         });
       },

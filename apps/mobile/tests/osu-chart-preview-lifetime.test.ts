@@ -1,3 +1,4 @@
+import { PlaybackLoop } from '@/features/chart-preview-shared/webview-player/playback-loop';
 // @vitest-environment jsdom
 import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
@@ -42,7 +43,7 @@ beforeEach(() => {
   playback.start.mockResolvedValue({
     session: {
       beatmap: { mode: 3, title: 'Session title', version: 'Native mania', hitObjects: [], maniaHolds: [] },
-      playing: false, ended: false, range: { startMs: 0, durationMs: 1000 },
+      loop: new PlaybackLoop(), currentTimeMs: 0, playing: false, ended: false, range: { startMs: 0, durationMs: 1000 },
       destroy: playback.sessionDestroy, setSettings: playback.setSettings, setSkin: vi.fn(async () => {}),
     },
     durationMs: 1000, media: { capabilities: { storyboard: false, video: false } },
@@ -60,7 +61,7 @@ describe('osu! 播放器入口生命周期', () => {
   it('标题和原生模式来自准备会话，dispose后交互、观察器和计时器均无副作用', async () => {
     await import('@/features/osu-chart-preview/webview-player/main');
     expect(document.getElementById('status')!.textContent, JSON.stringify(post.mock.calls)).not.toContain('无法');
-    expect(document.getElementById('title')!.textContent).toBe('Session title [Native mania]');
+    expect(document.getElementById('title')!.textContent).toBe('Session title');
     expect(document.getElementById('mode-notice')!.textContent).toContain('osu!mania');
     document.getElementById('btn-fullscreen')!.click();
     message('dispose');

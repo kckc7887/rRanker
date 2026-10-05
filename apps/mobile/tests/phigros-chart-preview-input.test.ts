@@ -69,7 +69,7 @@ describe('chart preview input resource injection', () => {
     loadResources.mockImplementation(async () => {
       return {
         bundle: {
-          song: { title: 'Song' },
+          song: { title: 'Song', difficultyConstant: 16.4 },
           target: { difficulty: 'AT' },
           illustration: { contentType: 'image/png' },
         },
@@ -80,14 +80,15 @@ describe('chart preview input resource injection', () => {
     });
 
     const prepared = await buildPhigrosChartPreviewInput(
-      { songId: 'Song.Id', levelIndex: 3, title: 'Song AT' },
+      { songId: 'Song.Id', levelIndex: 3, title: 'Song', variantIndex: 1 },
       {},
       new AbortController().signal,
       read,
     );
 
     expect(prepared.config.chartText).toBe('{}');
-    expect(prepared.config.title).toBe('Song AT');
+    expect(prepared.config.title).toBe('Song');
+    expect(prepared.config.previewDifficulty).toMatchObject({ label: 'AT', value: '16.4', identity: '里谱 1' });
     expect(prepared.config.illustrationUrl).toBe('data:image/png;base64,BAU=');
     expect(prepared.musicDataBase64).toBe(Buffer.from([1, 2, 3]).toString('base64'));
   });

@@ -89,6 +89,7 @@ export async function prepareOsuChartPreviewWebViewSource(
     const config: OsuChartPreviewConfig = {
       theme,
       title: target.title,
+      previewDifficulty: target.previewDifficulty,
       requestedMode: OSU_MODE_INT_BY_GAME_ID[target.gameId] as 0 | 1 | 2 | 3,
       chartPath: preparedResources.chartPath,
       files: preparedResources.files,

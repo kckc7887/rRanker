@@ -1,3 +1,4 @@
+import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import { bytesToBase64 } from '@/utils/crypto-subset';
 import { phigrosChartPreviewLevelLabel, type PhigrosChartPreviewAsset } from '@/domain/phigros-chart-preview';
 import { loadPhigrosChartPreviewResources } from '@/services/phigros-chart-preview-resources';
@@ -27,7 +28,14 @@ export async function buildPhigrosChartPreviewInput(
     config: {
       game: 'phigros',
       sourceLabel: 'Phigros 谱面',
-      title: `${input.title ?? `${bundle.song.title} ${bundle.target.difficulty}`}${input.variantIndex ? ` · 里谱 ${input.variantIndex}` : ''}`,
+      title: input.title ?? bundle.song.title,
+      previewDifficulty: {
+        label: phigrosLevelLabel(input.levelIndex),
+        value: Number.isFinite(bundle.song.difficultyConstant) ? bundle.song.difficultyConstant.toFixed(1) : '—',
+        background: phigrosLevelColors(input.levelIndex).bg,
+        text: phigrosLevelColors(input.levelIndex).fg,
+        identity: input.variantIndex ? `里谱 ${input.variantIndex}` : undefined,
+      },
       chartText: new TextDecoder('utf-8', { fatal: true }).decode(resources.chart),
       illustrationUrl: `data:${bundle.illustration.contentType};base64,${bytesToBase64(resources.illustration)}`,
       settings,

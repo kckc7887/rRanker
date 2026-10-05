@@ -1,5 +1,8 @@
+import { renderPreviewHeading } from '../../chart-preview-shared/webview-player/heading';
+import { bindFullscreenControls } from '../../chart-preview-shared/webview-player/fullscreen-controls';
+import { bindPlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
-import { installPreviewControls } from '../../chart-preview-shared/webview-player/controls';
+import { installPreviewControls, setPreviewFullscreen } from '../../chart-preview-shared/webview-player/controls';
 import { HeatTimelineView, heatTimeLabels } from '../../chart-preview-shared/webview-player/heat-timeline';
 import type { RizlineChartPreviewConfig, RizlineChartPreviewSettings } from '../configuration';
 import {
@@ -57,7 +60,6 @@ let fullscreen = false;
 let locked = false;
 let controlsVisible = true;
 let uiFrame = 0;
-let controlsTimer = 0;
 let lastUiFrame = -Infinity;
 const STEP_SECONDS = 5;
 
@@ -102,25 +104,17 @@ function syncControlsVisibility(): void {
   controls.classList.toggle('hidden', !controlsVisible || locked);
   lockButton.classList.toggle('hidden', !controlsVisible);
 }
-function showControls(): void {
-  window.clearTimeout(controlsTimer);
-  controlsVisible = true;
-  syncControlsVisibility();
-  if (fullscreen && !dragging) controlsTimer = window.setTimeout(() => {
-    controlsVisible = false;
-    syncControlsVisibility();
-  }, 5000);
-}
-function hideControls(): void {
-  window.clearTimeout(controlsTimer);
-  controlsVisible = false;
-  syncControlsVisibility();
-}
+const fullscreenControls = bindFullscreenControls(events, {
+  active: () => fullscreen,
+  render: visible => { controlsVisible = visible; syncControlsVisibility(); },
+});
+function showControls(): void { fullscreenControls.show(); }
+function hideControls(): void { fullscreenControls.hide(); }
 function setFullscreen(active: boolean): void {
   if (disposed) return;
   closeActiveWheelPopup();
   fullscreen = active;
-  document.body.classList.toggle('fullscreen', active);
+  setPreviewFullscreen(active);
   fullscreenButton.setAttribute('aria-label', active ? '退出全屏' : '进入全屏');
   if (!active) {
     locked = false;
@@ -219,7 +213,6 @@ function dispose(): void {
   timelineObserver.disconnect();
   for (const wheel of wheels) wheel.dispose();
   cancelAnimationFrame(uiFrame);
-  window.clearTimeout(controlsTimer);
   delete window.__RIZLINE_CHART_PREVIEW_CONFIG__;
 }
 
@@ -238,11 +231,7 @@ events.listen(lockButton, 'click', (event) => {
   lockButton.setAttribute('aria-pressed', String(locked));
   if (next.overlayHidden) hideControls(); else showControls();
 });
-events.listen(canvas, 'pointerdown', () => {
-  if (!fullscreen) return;
-  if (controlsVisible) hideControls(); else showControls();
-});
-events.listen(controls, 'pointerdown', () => window.clearTimeout(controlsTimer));
+
 function seekFromPointer(event: PointerEvent): void {
   if (!session) return;
   const rect = timeline.getBoundingClientRect();
@@ -325,9 +314,9 @@ async function initialize(): Promise<void> {
   const config = window.__RIZLINE_CHART_PREVIEW_CONFIG__;
   if (!config) throw new Error('missing-config');
   document.documentElement.dataset.theme = config.theme;
-  events.own(installPreviewControls({ sections: ['播放设置', '辅助选项'], reserveStage: element('stage-wrap') }));
+  events.own(installPreviewControls({ sections: ['播放设置', '辅助选项'], stageAspectRatio: 9 / 16 }));
   settings = normalizeRizlineChartPreviewSettings(config.settings);
-  element('title').textContent = config.title || '谱面确认';
+  renderPreviewHeading(config.title || '谱面确认', config.previewDifficulty);
   setupSettings();
   post('progress', { value: 0.05, label: '正在准备播放器…' });
   const chartJson = window.__RIZLINE_CHART_PREVIEW_CHART__;
@@ -346,6 +335,14 @@ async function initialize(): Promise<void> {
   for (const input of document.querySelectorAll<HTMLInputElement | HTMLButtonElement>('button')) {
     input.disabled = false;
   }
+  const loopSession = session;
+  const loopDuration = session.duration;
+  bindPlaybackLoop(events, {
+    loop: loopSession.loop, position: () => loopSession.currentTime,
+    percent: position => loopDuration > 0 ? position / loopDuration * 100 : 0,
+    format: position => position.toFixed(2) + 's',
+    update: (a, b) => timelineView.updateLoop(a, b),
+  });
   buildTimeline();
   status('已就绪');
   syncTransport();

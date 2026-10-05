@@ -1,3 +1,4 @@
+import { PlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 /**
  * 许可证：对时与打击音调度语义衍生自 TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira），
  * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
@@ -67,6 +68,7 @@ export interface PhigrosPlaybackOptions {
 }
 
 export class PhigrosPlaybackSession {
+  readonly loop = new PlaybackLoop();
   private readonly clock = new PlaybackClock();
   private readonly settings: PhigrosPlaybackSettings;
   private readonly hitSoundDataUrls: Partial<Record<HitSoundKind, string>> | undefined;
@@ -152,8 +154,8 @@ export class PhigrosPlaybackSession {
   async play(): Promise<void> {
     if (this.disposed) return;
     const command = ++this.command;
-    const target = this.chartTimePosition >= this.chartTimeline.durationSeconds - RESTART_TAIL_S
-      ? 0 : this.chartTimePosition;
+    const target = this.loop.target(this.chartTimePosition) ?? (this.chartTimePosition >= this.chartTimeline.durationSeconds - RESTART_TAIL_S
+      ? 0 : this.chartTimePosition);
     this.cancelFrame();
     this.stopSource(true);
     this.stopActiveHitSounds();
@@ -447,6 +449,11 @@ export class PhigrosPlaybackSession {
         chartTime += ((timestamp - this.lastFrameTimestamp) / 1000) * this.settings.playbackSpeed;
       }
       this.lastFrameTimestamp = timestamp;
+    }
+    const loopTarget = this.loop.target(chartTime);
+    if (loopTarget !== null) {
+      void this.seek(loopTarget);
+      return;
     }
     if (chartTime >= this.chartTimeline.durationSeconds + CHART_END_EPSILON_S) {
       this.finishPlayback();

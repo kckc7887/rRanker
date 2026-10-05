@@ -1,3 +1,7 @@
+import { DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
+import { majdataVisual } from '@/components/majdata/MajdataCards';
+import { difficultyFromIndex } from '@/domain/catalog';
+import type { PreviewDifficulty } from '@/features/chart-preview-shared/webview-player/heading';
 import { majdataAsset } from '@/domain/majdata';
 import { loadMajdataSong, loadMajdataParsedChart } from '@/services/majdata-service';
 import { useCallback, useMemo } from 'react';
@@ -29,6 +33,15 @@ function parseChartType(value: string | undefined): ChartType | null {
   return null;
 }
 
+function maimaiPreviewDifficulty(chartType: ChartType, levelIndex: number, rawConstant: string | undefined, buddySide: BuddyPreviewSide | undefined): PreviewDifficulty {
+  const visual = DIFFICULTY_VISUAL[chartType === 'UTAGE' ? 'utage' : difficultyFromIndex(levelIndex)];
+  const constant = rawConstant?.trim() ? Number(rawConstant) : NaN;
+  const side = buddySide === undefined ? '' : buddySide === 'dual' ? ' · 1P+2P' : ` · ${Number(buddySide) + 1}P`;
+  return { label: visual.label, value: Number.isFinite(constant) ? constant.toFixed(1) : '—',
+    background: visual.badgeBackground, text: visual.badgeText, border: visual.badgeBorder,
+    identity: `${chartType === 'UTAGE' ? '宴' : chartType}${side}` };
+}
+
 type MappedPreview =
   | { error: string }
   | {
@@ -39,6 +52,7 @@ type MappedPreview =
       difficulty: number;
       buddySide: BuddyPreviewSide | undefined;
       title: string | undefined;
+      previewDifficulty?: PreviewDifficulty;
       backgroundImageUrl: string;
       backgroundVideoUrl: string;
     };
@@ -55,6 +69,7 @@ export default function MaimaiChartPreviewScreen() {
     levelIndex?: string;
     buddySide?: string;
     title?: string;
+    constant?: string;
   }>();
 
   const mapped = useMemo(
@@ -83,6 +98,7 @@ export default function MaimaiChartPreviewScreen() {
               );
         return {
           chartId,
+          previewDifficulty: maimaiPreviewDifficulty(chartType, levelIndex, params.constant, buddySide),
           chartUrl: maimaiChartPreviewSimaiUrl(chartId),
           musicUrl: maimaiChartPreviewMusicUrl(chartId),
           difficulty,
@@ -95,7 +111,7 @@ export default function MaimaiChartPreviewScreen() {
         return { error: '无法打开该谱面，请返回歌曲详情重试。' };
       }
     },
-    [params.hash, params.gameId, params.buddySide, params.chartType, params.levelIndex, params.songId, params.title],
+    [params.constant, params.hash, params.gameId, params.buddySide, params.chartType, params.levelIndex, params.songId, params.title],
   );
 
   const request = useMemo(
@@ -109,9 +125,14 @@ export default function MaimaiChartPreviewScreen() {
             if (mapped.hash && song?.hash !== mapped.hash) throw new Error('谱面已更新，请返回歌曲详情重试');
             const parsed = song ? await loadMajdataParsedChart(song, mapped.difficulty - 1, signal) : undefined;
             if (signal.aborted) throw signal.reason;
+            const visual = song ? majdataVisual(mapped.difficulty - 1) : undefined;
             return prepareChartPreviewWebViewSource({
               parsedChart: parsed?.chart,
               ...mapped,
+              ...(song && visual ? { title: song.title, previewDifficulty: {
+                label: visual.label, value: song.levels[mapped.difficulty - 1]?.trim() || '—',
+                background: visual.badgeBackground, text: visual.badgeText, border: visual.badgeBorder,
+              } } : {}),
               settings: settings as ChartPreviewSettings,
               theme: isDark ? 'dark' : 'light',
             }, signal, onProgress);

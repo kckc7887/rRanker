@@ -1,3 +1,4 @@
+import { PlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 import {
   computeModDifficulty, Renderer, PlaybackClock,
   audioContextTime, musicPosition, outputTime,
@@ -47,6 +48,7 @@ export function createGameplaySkin(skin: SkinAssets, mode: number): SkinAssets {
 }
 
 export class PreviewSession {
+  readonly loop = new PlaybackLoop();
   readonly clock = new PlaybackClock();
   playing = false;
   ended = false;
@@ -129,6 +131,11 @@ export class PreviewSession {
   private tick = (): void => {
     this.frame = null;
     if (this.disposed || !this.playing) return;
+    const loopTarget = this.loop.target(this.currentTimeMs);
+    if (loopTarget !== null) {
+      void this.playFrom(loopTarget);
+      return;
+    }
     if (this.currentTimeMs >= this.range.durationMs) {
       this.pause();
       this.positionMs = this.range.durationMs;
@@ -146,6 +153,7 @@ export class PreviewSession {
     this.pause();
     const generation = ++this.command;
     this.positionMs = Math.max(0, Math.min(presentationMs, this.range.durationMs));
+    this.positionMs = this.loop.target(this.positionMs) ?? this.positionMs;
     if (this.positionMs >= this.range.durationMs) this.positionMs = 0;
     await this.audioSync.playFrom(this.positionMs);
     if (this.disposed || generation !== this.command) return;
@@ -175,7 +183,7 @@ export class PreviewSession {
     this.ended = this.positionMs >= this.range.durationMs;
     this.clock.setOffset(musicPosition((this.range.startMs + this.positionMs) / 1000));
     this.draw(true);
-    if (playing && !this.ended) await this.playFrom(this.positionMs);
+    if (playing && (!this.ended || this.loop.target(this.positionMs) !== null)) await this.playFrom(this.loop.target(this.positionMs) ?? this.positionMs);
   }
 
   async setSkin(variant: ManiaSkinVariant): Promise<void> {

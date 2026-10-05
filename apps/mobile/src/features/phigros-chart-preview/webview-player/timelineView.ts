@@ -16,6 +16,10 @@ export class PhigrosTimelineView {
       heatTimeLabels(durationSeconds, this.options.formatTime));
   }
 
+  updateLoop(a: number | null, b: number | null): void {
+    this.heat.updateLoop(a, b);
+  }
+
   updatePlayhead(chartTime: number, durationSeconds: number): void {
     this.heat.updateProgress(durationSeconds > 0 ? chartTime / durationSeconds * 100 : 0, this.options.formatTime(chartTime));
   }
