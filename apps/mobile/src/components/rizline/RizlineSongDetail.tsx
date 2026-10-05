@@ -124,7 +124,7 @@ function RizlineChartCard({ chart, record, library, cardWidth, songTitle }: {
         cancelPreviewNavigation.current = openRizlineChartPreview({
           songId: chart.songId,
           levelIndex,
-          title: `${songTitle} ${chart.difficulty}`,
+          title: songTitle,
         }, {
           push: (href) => router.push(href),
           topRouteName: () => {

@@ -14,6 +14,7 @@ const chartPreviewInjectors = createChartPreviewInjectors<ChartPreviewInjectConf
     parsedChart: config.parsedChart,
     difficulty: config.difficulty,
     title: config.title ?? '',
+    previewDifficulty: config.previewDifficulty,
     settings: config.settings ?? null,
     answerSoundUrl: config.answerSoundUrl,
     backgroundImageUrl: config.backgroundImageUrl,

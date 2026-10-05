@@ -1,3 +1,4 @@
+import type { PreviewDifficulty } from '../chart-preview-shared/webview-player/heading';
 export const USER_SPEED_MIN = 0;
 export const USER_SPEED_MAX = 20;
 export const USER_SPEED_DEFAULT = 3.5;
@@ -27,6 +28,7 @@ export type RizlineChartPreviewSettings = {
 export type RizlineChartPreviewConfig = {
   theme: 'light' | 'dark';
   title?: string;
+  previewDifficulty?: PreviewDifficulty;
   settings: RizlineChartPreviewSettings;
 };
 

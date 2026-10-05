@@ -549,6 +549,8 @@ function DifficultyCard({
             beatmapsetId: String(song.beatmapSetId),
             beatmapId: String(beatmap.id),
             title: song.title,
+            star: String(beatmap.difficultyRating),
+            difficultyName: beatmap.version,
           },
         })}
         style={({ pressed }) => [

@@ -1,5 +1,8 @@
+import { renderPreviewHeading } from '../../chart-preview-shared/webview-player/heading';
+import { bindFullscreenControls } from '../../chart-preview-shared/webview-player/fullscreen-controls';
+import { bindPlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
-import { installPreviewControls } from '../../chart-preview-shared/webview-player/controls';
+import { installPreviewControls, setPreviewFullscreen } from '../../chart-preview-shared/webview-player/controls';
 import { bindHeatTimelineKeyboard } from '../../chart-preview-shared/webview-player/heat-timeline';
 
 import {
@@ -139,7 +142,6 @@ async function main(): Promise<void> {
   if (disposed) return;
   const app = $('app');
   const statusEl = $('status');
-  const titleEl = $('title');
   const canvas = $('chart-canvas') as HTMLCanvasElement;
   const canvasWrap = $('canvas-wrap');
   const canvasStage = $('canvas-stage');
@@ -149,8 +151,6 @@ async function main(): Promise<void> {
   const btnStepForward = $('btn-step-forward') as HTMLButtonElement;
   const btnNextMeasure = $('btn-next-measure') as HTMLButtonElement;
   const btnRestart = $('btn-restart') as HTMLButtonElement;
-  const btnLoopA = $('btn-loop-a') as HTMLButtonElement;
-  const btnLoopB = $('btn-loop-b') as HTMLButtonElement;
   const btnFullscreen = $('btn-fullscreen') as HTMLButtonElement;
   const fsOverlay = $('fs-overlay');
   const fsLock = $('fs-lock') as HTMLButtonElement;
@@ -161,8 +161,6 @@ async function main(): Promise<void> {
   const fsTimelineBadge = $('fs-timeline-badge');
   const fsTimeLabel = $('fs-time-label');
   const fsTransport = $('fs-transport');
-  const fsLoopA = $('fs-loop-a') as HTMLButtonElement;
-  const fsLoopB = $('fs-loop-b') as HTMLButtonElement;
   const timelineHost = $('timeline-host');
   const timelineBars = $('timeline-bars');
   const timelineRuler = $('timeline-ruler');
@@ -231,11 +229,8 @@ async function main(): Promise<void> {
   let isFullscreen = false;
   let fsLocked = false;
   let fsControlsVisible = false;
-  let fsHideTimer: number | undefined;
   let isDragging = false;
   let wasPlaying = false;
-  let loopA: number | null = null;
-  let loopB: number | null = null;
 
   const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
   const PAUSE_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>';
@@ -258,10 +253,11 @@ async function main(): Promise<void> {
     return;
   }
 
-  titleEl.textContent = config.title?.trim() || `谱面 ${config.chartId}`;
+  renderPreviewHeading(config.title?.trim() || `谱面 ${config.chartId}`, config.previewDifficulty);
   events.own(installPreviewControls({
     measureNavigation: true,
-    details: [$('header'), $('info-bar')],
+    stageAspectRatio: config.buddySide === 'dual' ? 2 : 1,
+    details: [$('info-bar')],
     sections: ['播放与声音', '画面与判定', '视觉效果'],
   }));
   postLoadProgress('正在加载谱面…', 0.15, statusEl);
@@ -388,9 +384,6 @@ async function main(): Promise<void> {
     host: {
       render: (beats) => renderAt(beats),
       onPlayStateChange: () => syncPlayButtons(),
-      loopTarget: (beats) => loopA !== null && loopB !== null && loopA !== loopB && beats >= loopB
-        ? loopA
-        : null,
     },
   });
 
@@ -809,7 +802,7 @@ async function main(): Promise<void> {
       isFullscreen,
       containerWidth: rect.width,
       viewportWidth,
-      viewportHeight,
+      viewportHeight: isFullscreen ? viewportHeight : rect.height,
       chartCount,
     });
     const resizeKey = `${isFullscreen}:${size}:${window.devicePixelRatio || 1}`;
@@ -944,23 +937,13 @@ async function main(): Promise<void> {
     fsOverlay.classList.toggle('hidden', !fsControlsVisible || fsLocked);
     fsLock.classList.toggle('hidden', !fsControlsVisible);
   }
-  events.own(() => window.clearTimeout(fsHideTimer));
 
-  function showFsControls() {
-    window.clearTimeout(fsHideTimer);
-    fsControlsVisible = true;
-    syncFsControlsVisibility();
-    fsHideTimer = window.setTimeout(() => {
-      fsControlsVisible = false;
-      syncFsControlsVisibility();
-    }, 5000);
-  }
-
-  function hideFsControls() {
-    window.clearTimeout(fsHideTimer);
-    fsControlsVisible = false;
-    syncFsControlsVisibility();
-  }
+  const fullscreenControls = bindFullscreenControls(events, {
+    active: () => isFullscreen,
+    render: visible => { fsControlsVisible = visible; syncFsControlsVisibility(); },
+  });
+  function showFsControls(): void { fullscreenControls.show(); }
+  function hideFsControls(): void { fullscreenControls.hide(); }
 
   function exitFullscreen() {
     if (!isFullscreen) return;
@@ -968,16 +951,15 @@ async function main(): Promise<void> {
     fsLocked = false;
     fsLock.classList.remove('locked');
     fsLock.setAttribute('aria-label', '锁定');
-    document.body.classList.remove('fullscreen');
-    fsControlsVisible = false;
-    syncFsControlsVisibility();
+    setPreviewFullscreen(false);
+    hideFsControls();
     postStatus('fullscreen', { active: false });
     if (!disposed) requestAnimationFrame(resize);
   }
 
   function enterFullscreen() {
     isFullscreen = true;
-    document.body.classList.add('fullscreen');
+    setPreviewFullscreen(true);
     fullscreenTimelineView.build();
     fsTransport.replaceChildren();
     const makeBtn = (id: string, label: string, html: string) => {
@@ -1015,7 +997,6 @@ async function main(): Promise<void> {
     events.listen(document.getElementById('fs-next-measure')!, 'click', () => skipToMeasure(1));
     events.listen(document.getElementById('fs-fullscreen')!, 'click', exitFullscreen);
     events.listen(fsPlay, 'click', togglePlayback);
-    syncLoopButtons();
     showFsControls();
     postStatus('fullscreen', { active: true });
   }
@@ -1025,12 +1006,7 @@ async function main(): Promise<void> {
     else enterFullscreen();
   });
 
-  events.listen(canvasWrap, 'click', (e) => {
-    if (!isFullscreen) return;
-    e.stopPropagation();
-    if (fsControlsVisible) hideFsControls();
-    else showFsControls();
-  });
+
 
   events.listen(fsLock, 'click', (e) => {
     e.stopPropagation();
@@ -1044,46 +1020,13 @@ async function main(): Promise<void> {
 
   events.listen(fsOverlay, 'pointerdown', (e) => { e.stopPropagation(); });
 
-  const updateLoopBtn = (btn: HTMLButtonElement, active: boolean) => {
-    if (active) btn.classList.add('on');
-    else btn.classList.remove('on');
-  };
-
-  const syncLoopButtons = () => {
-    updateLoopBtn(btnLoopA, loopA !== null);
-    updateLoopBtn(btnLoopB, loopB !== null);
-    updateLoopBtn(fsLoopA, loopA !== null);
-    updateLoopBtn(fsLoopB, loopB !== null);
-    const a = loopA === null ? null : session.beatsToMs(loopA) / totalDurationMs * 100;
-    const b = loopB === null ? null : session.beatsToMs(loopB) / totalDurationMs * 100;
-    timelineView.updateLoop(a, b);
-    fullscreenTimelineView.updateLoop(a, b);
-  };
-
-  const toggleLoopA = () => {
-    loopA = loopA === null ? session.positionBeats : null;
-    if (loopA !== null && loopB !== null && loopA > loopB) {
-      const previousLoopA = loopA;
-      loopA = loopB;
-      loopB = previousLoopA;
-    }
-    syncLoopButtons();
-  };
-
-  const toggleLoopB = () => {
-    loopB = loopB === null ? session.positionBeats : null;
-    if (loopA !== null && loopB !== null && loopA > loopB) {
-      const previousLoopA = loopA;
-      loopA = loopB;
-      loopB = previousLoopA;
-    }
-    syncLoopButtons();
-  };
-
-  events.listen(btnLoopA, 'click', toggleLoopA);
-  events.listen(btnLoopB, 'click', toggleLoopB);
-  events.listen(fsLoopA, 'click', toggleLoopA);
-  events.listen(fsLoopB, 'click', toggleLoopB);
+  bindPlaybackLoop(events, {
+    loop: session.loop,
+    position: () => session.positionBeats,
+    percent: beats => session.beatsToMs(beats) / totalDurationMs * 100,
+    format: beats => (session.beatsToMs(beats) / 1000).toFixed(2) + 's',
+    update: (a, b) => { timelineView.updateLoop(a, b); fullscreenTimelineView.updateLoop(a, b); },
+  });
   events.listen(fsTimelineHost, 'pointerdown', (e) => {
     e.preventDefault();
     e.stopPropagation();

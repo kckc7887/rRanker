@@ -520,7 +520,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
     await fireEvent.press(preview);
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/osu-chart-preview',
-      params: { gameId: 'osu-standard', beatmapsetId: '3720', beatmapId: '22423', title: '鳥の詩' },
+      params: { gameId: 'osu-standard', beatmapsetId: '3720', beatmapId: '22423', title: '鳥の詩', star: '5.5', difficultyName: 'Hard' },
     });
 
     await fireEvent.press(download);
@@ -561,7 +561,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
       await fireEvent.press(screen.getByTestId('osu-detail-preview-22427'));
       expect(mockPush).toHaveBeenCalledWith({
         pathname: '/songs/osu-chart-preview',
-        params: { gameId, beatmapsetId: '3720', beatmapId: '22427', title: '鳥の詩' },
+        params: { gameId, beatmapsetId: '3720', beatmapId: '22427', title: '鳥の詩', star: '4.3', difficultyName: 'Normal' },
       });
     },
   );

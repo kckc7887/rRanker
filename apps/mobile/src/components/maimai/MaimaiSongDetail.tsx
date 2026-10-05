@@ -487,7 +487,8 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
         songId: song.id,
         chartType: chart.type,
         levelIndex: String(chart.levelIndex),
-        title: previewTitle,
+        title: song.title,
+        constant: String(chart.difficultyConstant),
         ...(buddySide === undefined ? {} : { buddySide: String(buddySide) }),
       },
     } as Href);

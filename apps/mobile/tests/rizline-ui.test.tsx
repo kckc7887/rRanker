@@ -123,7 +123,7 @@ describe('Rizline UI', () => {
     await fireEvent.press(preview);
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/rizline-chart-preview',
-      params: { songId: 'song.a', levelIndex: '2', title: '测试歌曲 IN' },
+      params: { songId: 'song.a', levelIndex: '2', title: '测试歌曲' },
     });
     await fireEvent.changeText(within(screen.getByTestId('rizline-chart-tags-IN')).getByLabelText('新标签'), '交互');
     await fireEvent.press(within(screen.getByTestId('rizline-chart-tags-IN')).getByLabelText('添加标签'));

@@ -7,6 +7,7 @@ const injectors = createChartPreviewInjectors<RizlineChartPreviewConfig>({
   serialize: (config) => JSON.stringify({
     theme: config.theme,
     title: config.title ?? '',
+    previewDifficulty: config.previewDifficulty,
     settings: config.settings,
   }),
 });

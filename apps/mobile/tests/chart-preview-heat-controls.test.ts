@@ -73,8 +73,9 @@ describe('公共播放控制', () => {
     const html = readFileSync(resolve(process.cwd(), `src/features/${feature}-chart-preview/webview-player/index.html`), 'utf8');
     const parsed = new DOMParser().parseFromString(html, 'text/html');
     document.body.innerHTML = parsed.body.innerHTML;
+    vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
     const element = (id: string) => document.getElementById(id)!;
-    const details = feature === 'simai' ? [element('header'), element('info-bar')] : undefined;
+    const details = feature === 'simai' ? [element('info-bar')] : undefined;
     const clicked = vi.fn();
     element('btn-restart').addEventListener('click', clicked);
     const dispose = installPreviewControls({ measureNavigation: feature === 'simai', details, sections: ['播放设置', '画面设置', '视觉效果'] });

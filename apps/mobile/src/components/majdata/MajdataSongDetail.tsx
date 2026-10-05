@@ -139,7 +139,7 @@ function MajdataChartCard({ song, level, width, library, best, active }: {
       <Text style={[styles.actionText, simaiChartActionTextStyle(theme.dark, visual, Boolean(practice), level === 5)]}>{practice ? '已加入练习清单' : '加入练习清单'}</Text>
     </DetailPressable>
     <DetailPressable accessibilityRole="button" accessibilityLabel={`查看谱面确认：${title}`}
-      onPress={() => router.push({ pathname: '/songs/chart-preview', params: { gameId: 'majdata-net', songId: song.id, levelIndex: String(level), hash: song.hash, title } })}
+      onPress={() => router.push({ pathname: '/songs/chart-preview', params: { gameId: 'majdata-net', songId: song.id, levelIndex: String(level), hash: song.hash, title: song.title } })}
       style={[styles.action, styles.chartSearchAction, actions]}><Text style={[styles.actionText, actionText]}>查看谱面确认</Text></DetailPressable>
     <DetailPressable accessibilityRole="button" accessibilityLabel={`下载谱面文件：${title}`} disabled={download.isRunning}
       accessibilityState={{ disabled: download.isRunning }} onPress={startDownload}

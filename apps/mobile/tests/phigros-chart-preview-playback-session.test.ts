@@ -320,3 +320,29 @@ it('dispose 后晚到的音乐解码不重建已释放资源', async () => {
   expect(await loading).toBe(false);
   expect(session.musicDurationSeconds).toBeNull();
 });
+
+it('AB 在谱尾先回跳并按新倍速继续，暂停跳转不会自动播放', async () => {
+  const { session, context, frames, settings } = createPlayback();
+  context.state = 'running';
+  session.loop.toggle('a', 2);
+  session.loop.toggle('b', 30);
+  session.moveTo(29.5);
+  await session.play();
+  frames.advance(16);
+  frames.advance(1000);
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  expect(session.chartTime).toBe(2);
+  expect(session.playing).toBe(true);
+  session.pause();
+  await session.seek(30);
+  expect(session.chartTime).toBe(30);
+  expect(session.playing).toBe(false);
+  settings.playbackSpeed = 2;
+  await session.play();
+  expect(session.chartTime).toBe(2);
+  frames.advance(500);
+  expect(session.chartTime).toBeCloseTo(3);
+  session.dispose();
+  frames.advance(1000);
+  expect(session.playing).toBe(false);
+});

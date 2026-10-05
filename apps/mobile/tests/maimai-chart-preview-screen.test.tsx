@@ -33,7 +33,8 @@ jest.mock('expo-router', () => ({
     songId: '834',
     chartType: 'DX',
     levelIndex: '3',
-    title: '测试曲 DX MASTER',
+    title: '测试曲',
+    constant: '14.7',
   }),
 }));
 
@@ -105,6 +106,11 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     await render(<MaimaiChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('maimai-chart-preview-webview')).toBeTruthy());
     const webview = screen.getByTestId('maimai-chart-preview-webview');
+
+    expect(mockPrepareChartPreview).toHaveBeenCalledWith(expect.objectContaining({
+      title: '测试曲',
+      previewDifficulty: expect.objectContaining({ label: 'MASTER', value: '14.7', identity: 'DX' }),
+    }));
 
     expect(latestScreenOptions).toMatchObject({
       headerShown: true,

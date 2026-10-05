@@ -1,6 +1,9 @@
+import { renderPreviewHeading } from '../../chart-preview-shared/webview-player/heading';
+import { bindPlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
+import { bindFullscreenControls } from '../../chart-preview-shared/webview-player/fullscreen-controls';
 import { assertChartPreviewGifFrameCount, assertChartPreviewGifFramePixels, assertChartPreviewTexturePixels, ChartPreviewBudgetExceededError, pauseChartPreviewParse } from '../../chart-preview-shared/chart-preview-resource-budget';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
-import { installPreviewControls } from '../../chart-preview-shared/webview-player/controls';
+import { installPreviewControls, setPreviewFullscreen } from '../../chart-preview-shared/webview-player/controls';
 import { bindHeatTimelineKeyboard } from '../../chart-preview-shared/webview-player/heat-timeline';
 import { upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
 import { closeActiveWheelPopup, setupWheelPopup as setupSharedWheelPopup, type WheelControl } from '../../chart-preview-shared/webview-player/wheel';
@@ -164,7 +167,7 @@ function start(): void {
     hitSounds: config.hitSounds,
     host: {
       render: (chartTime) => renderFrame(chartTime),
-      onPlayStateChange: () => { syncPlayButtons(); showControls(); },
+      onPlayStateChange: () => syncPlayButtons(),
       onPlaybackError: () => setStatus('无法播放音乐，请重试。'),
     },
   });
@@ -175,7 +178,6 @@ function start(): void {
   let wasPlayingBeforeDrag = false;
   let completionTimes: number[] = [];
   let timelineNotes: { time: number; kind: string }[] = [];
-  let controlsTimer = 0;
   let controlsVisible = true;
   let fsLocked = false;
   const wheels: WheelControl[] = [];
@@ -390,7 +392,7 @@ function start(): void {
     if (isRpe) applyAttachUi((renderer as RpeRenderer).attachUi);
   }
 
-  if (config.title) elements.title.textContent = config.title;
+  renderPreviewHeading(config.title || '谱面确认', config.previewDifficulty);
   elements.status.textContent = config.sourceLabel ?? '';
 
   function setStatus(text: string): void {
@@ -411,6 +413,7 @@ function start(): void {
     elements.btnStepForward.disabled = !value;
     elements.fullscreen.disabled = !value;
     elements.multiHint.disabled = !value;
+    for (const button of elements.controls.querySelectorAll<HTMLButtonElement>('.loop-btn')) button.disabled = !value;
     for (const id of ['speed-trigger', 'note-size-trigger', 'volume-trigger', 'dim-trigger', 'hit-sound-volume-trigger', 'line-color-trigger']) {
       ($(id) as HTMLButtonElement).disabled = !value;
     }
@@ -480,6 +483,13 @@ function start(): void {
     playhead: elements.timelinePlayhead,
     badge: elements.timelineBadge,
     formatTime,
+  });
+
+  bindPlaybackLoop(events, {
+    loop: session.loop, position: () => session.chartTime,
+    percent: position => session.chartDuration > 0 ? position / session.chartDuration * 100 : 0,
+    format: position => position.toFixed(2) + 's',
+    update: (a, b) => timelineView.updateLoop(a, b),
   });
 
   function buildTimeline(): void {
@@ -647,22 +657,12 @@ function start(): void {
     elements.fsLock.classList.toggle('hidden', !controlsVisible);
   }
 
-  function showControls(): void {
-    window.clearTimeout(controlsTimer);
-    controlsVisible = true;
-    syncControlsVisibility();
-    if (!isFullscreen) return;
-    controlsTimer = window.setTimeout(() => {
-      controlsVisible = false;
-      syncControlsVisibility();
-    }, 5000);
-  }
-
-  function hideControls(): void {
-    window.clearTimeout(controlsTimer);
-    controlsVisible = false;
-    syncControlsVisibility();
-  }
+  const fullscreenControls = bindFullscreenControls(events, {
+    active: () => isFullscreen,
+    render: visible => { controlsVisible = visible; syncControlsVisibility(); },
+  });
+  function showControls(): void { fullscreenControls.show(); }
+  function hideControls(): void { fullscreenControls.hide(); }
 
   function seekToChartTime(target: number): void {
     void session.seek(target);
@@ -675,18 +675,14 @@ function start(): void {
     closeActiveWheelPopup();
     isFullscreen = active;
     renderer.setFullscreen(active);
-    document.body.classList.toggle('fullscreen', active);
+    setPreviewFullscreen(active);
     elements.fullscreen.setAttribute('aria-label', active ? '退出全屏' : '进入全屏');
     if (!active) {
       fsLocked = false;
       elements.fsLock.classList.remove('locked');
       elements.fsLock.setAttribute('aria-label', '锁定');
-      window.clearTimeout(controlsTimer);
-      controlsVisible = true;
-      syncControlsVisibility();
-    } else {
-      showControls();
     }
+    showControls();
     postStatus('fullscreen', { active });
   }
 
@@ -707,7 +703,6 @@ function start(): void {
     session.dispose();
     closeActiveWheelPopup();
     events.dispose();
-    window.clearTimeout(controlsTimer);
   }
 
   function applyStageMetrics(): void {
@@ -831,11 +826,7 @@ function start(): void {
   });
 
   events.listen(elements.fullscreen, 'click', () => setFullscreen(!isFullscreen));
-  events.listen(elements.stage, 'pointerdown', () => {
-    if (!isFullscreen) return;
-    if (controlsVisible) hideControls();
-    else showControls();
-  });
+
   events.listen(elements.fsLock, 'click', (e) => {
     e.stopPropagation();
     const nextState = toggleFullscreenLockUiState(fsLocked);

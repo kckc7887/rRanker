@@ -1,3 +1,4 @@
+import { PlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 import { PlaybackClock, audioContextTime, musicPosition, outputTime } from '../../chart-preview-shared/webview-player/playbackClock';
 import { getAudioContextOutputTime } from '../../chart-preview-shared/webview-player/audioClock';
 import { hitEvents, type PreparedChart } from './chart-prepare';
@@ -12,6 +13,7 @@ export function getAudioContext(): AudioContext {
 }
 
 export class PreviewSession {
+  readonly loop = new PlaybackLoop();
   readonly clock = new PlaybackClock();
   playing = false;
   ended = false;
@@ -87,6 +89,11 @@ export class PreviewSession {
   private tick = (): void => {
     this.frame = null;
     if (this.disposed || !this.playing) return;
+    const loopTarget = this.loop.target(this.currentTime);
+    if (loopTarget !== null) {
+      void this.playFrom(loopTarget);
+      return;
+    }
     if (this.currentTime >= this.duration) {
       this.pause();
       this.position = this.duration;
@@ -118,6 +125,7 @@ export class PreviewSession {
     this.pause();
     const generation = ++this.command;
     this.position = Math.max(0, Math.min(seconds, this.duration));
+    this.position = this.loop.target(this.position) ?? this.position;
     if (this.position >= this.duration) this.position = 0;
     const context = getAudioContext();
     if (context.state !== 'running') await context.resume();

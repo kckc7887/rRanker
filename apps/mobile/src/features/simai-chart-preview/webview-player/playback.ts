@@ -1,3 +1,4 @@
+import { PlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 import { AudioManager, type PreparedAudioEvent } from '../engine/core/audio/AudioManager';
 import { ANSWER_SOUND_BASE_OFFSET_MS } from '../engine/utils/constants';
 import type { Chart } from '../engine/types';
@@ -29,8 +30,6 @@ function clamp(value: number, min: number, max: number): number {
 export interface SimaiPlaybackHost {
   render(beats: number): void;
   onPlayStateChange?(playing: boolean): void;
-  /** 播到循环区间终点时返回回绕位置，null 表示不循环。 */
-  loopTarget?(beats: number): number | null;
 }
 
 export interface SimaiPlaybackOptions {
@@ -48,6 +47,7 @@ export interface SimaiPlaybackOptions {
 }
 
 export class SimaiPlaybackSession {
+  readonly loop = new PlaybackLoop();
   private readonly clock = new PlaybackClock();
   private readonly charts: readonly Chart[];
   private readonly answerEvents: readonly PreparedAudioEvent[];
@@ -147,6 +147,7 @@ export class SimaiPlaybackSession {
   async play(): Promise<void> {
     if (this.disposed) return;
     const command = ++this.command;
+    this.beatsPosition = this.loop.target(this.beatsPosition) ?? this.beatsPosition;
     await this.ensureAudio();
     if (command !== this.command || this.disposed) return;
     this.playing = true;
@@ -356,6 +357,14 @@ export class SimaiPlaybackSession {
     }
     this.lastFrameTimestamp = timestamp;
 
+    const loopTarget = this.loop.target(beats);
+    if (loopTarget !== null) {
+      this.beatsPosition = clamp(loopTarget, 0, this.range.totalBeats);
+      this.host.render(this.beatsPosition);
+      void this.play();
+      return;
+    }
+
     if (beats >= this.range.totalBeats && !this.source) {
       this.playing = false;
       this.stopSource(true);
@@ -367,13 +376,6 @@ export class SimaiPlaybackSession {
     }
 
     this.beatsPosition = Math.min(beats, this.range.totalBeats);
-    const loopTarget = this.host.loopTarget?.(this.beatsPosition) ?? null;
-    if (loopTarget !== null) {
-      this.beatsPosition = clamp(loopTarget, 0, this.range.totalBeats);
-      this.host.render(this.beatsPosition);
-      void this.play();
-      return;
-    }
     this.host.render(this.beatsPosition);
     this.scheduleAnswers(this.timeline.beatsToMs(this.beatsPosition));
     this.frame = requestAnimationFrame(this.tick);

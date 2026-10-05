@@ -498,7 +498,7 @@ describe('Phigros song detail', () => {
     }));
     const href = mockPush.mock.calls.at(-1)?.[0] as { params: { requestId: string } };
     expect(resolveChartPreviewNavigation(href.params.requestId)).toEqual({
-      game: 'phigros', songId: 'Song.A', levelIndex: 3, title: '测试曲 AT',
+      game: 'phigros', songId: 'Song.A', levelIndex: 3, title: '测试曲',
     });
 
     await fireEvent.press(screen.getAllByLabelText(/下载谱面文件：/)[0]!);

@@ -1,3 +1,4 @@
+import type { PreviewDifficulty } from '../chart-preview-shared/webview-player/heading';
 import type { OsuGameId } from '../../domain/game-mode-family';
 
 export type OsuChartPreviewTarget = {
@@ -5,6 +6,7 @@ export type OsuChartPreviewTarget = {
   beatmapsetId: number;
   beatmapId: number;
   title?: string;
+  previewDifficulty?: PreviewDifficulty;
 };
 
 export type OsuChartPreviewFile = {
@@ -30,6 +32,7 @@ export type OsuChartPreviewSettings = {
 export type OsuChartPreviewConfig = {
   theme: 'light' | 'dark';
   title?: string;
+  previewDifficulty?: PreviewDifficulty;
   requestedMode: 0 | 1 | 2 | 3;
   chartPath: string;
   files: OsuChartPreviewFile[];

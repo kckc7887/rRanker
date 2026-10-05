@@ -42,7 +42,7 @@ jest.mock('@/features/osu-chart-preview/prepare-osu-chart-preview-webview', () =
 describe('osu 谱面确认页面', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    mockParams = { gameId: 'osu-catch', beatmapsetId: '10', beatmapId: '21', title: 'Song Hard' };
+    mockParams = { gameId: 'osu-catch', beatmapsetId: '10', beatmapId: '21', title: 'Song', star: '5.23', difficultyName: 'Hard' };
   });
 
   it('通过公共壳恢复设置、准备当前难度并在 ready 后撤下进度', async () => {
@@ -50,7 +50,8 @@ describe('osu 谱面确认页面', () => {
     await waitFor(() => expect(screen.getByTestId('osu-chart-preview-webview')).toBeTruthy());
     expect(mockPrepare).toHaveBeenCalledTimes(1);
     expect(mockPrepare).toHaveBeenCalledWith(
-      { gameId: 'osu-catch', beatmapsetId: 10, beatmapId: 21, title: 'Song Hard' },
+      expect.objectContaining({ gameId: 'osu-catch', beatmapsetId: 10, beatmapId: 21, title: 'Song',
+        previewDifficulty: expect.objectContaining({ label: 'Hard', value: '5.23★' }) }),
       'dark', { maniaSkin: 'circle', maniaScrollSpeed: 12 }, expect.any(AbortSignal), expect.any(Function),
     );
     expect(screen.getByTestId('chart-preview-load-progress')).toBeTruthy();

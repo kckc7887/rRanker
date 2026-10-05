@@ -292,3 +292,26 @@ describe('Simai 会话时间轴换算与既有函数一致', () => {
     }
   });
 });
+
+it('AB 在谱尾先回跳，暂停不自启，倍速不改变端点，释放取消回跳帧', async () => {
+  const { session, context, frames } = createPlayback();
+  context.state = 'running';
+  session.loop.toggle('a', 2);
+  session.loop.toggle('b', session.totalBeats);
+  session.moveTo(session.totalBeats - 1);
+  await session.play();
+  frames.advance(1000);
+  for (let i = 0; i < 8; i++) await Promise.resolve();
+  expect(session.positionBeats).toBe(2);
+  expect(session.playing).toBe(true);
+  session.pause();
+  session.moveTo(session.totalBeats);
+  frames.advance(1000);
+  expect(session.positionBeats).toBe(session.totalBeats);
+  session.setSpeed(2);
+  await session.play();
+  expect(session.positionBeats).toBe(2);
+  session.dispose();
+  frames.advance(1000);
+  expect(session.playing).toBe(false);
+});
