@@ -67,37 +67,37 @@ function hitBits(hit: TaikoHit, hitButton: boolean): number {
  * taiko conversion is mod-independent (raw difficulty — see convertBeatmapToTaiko),
  * so it's intentionally unused. Times are beatmap-clock milliseconds.
  */
-export function generateTaikoAutoReplay(beatmap: BeatmapData, _modDiff: ModDifficulty): AutoFrame[] {
+export function* generateTaikoAutoReplay(beatmap: BeatmapData, _modDiff: ModDifficulty): Generator<AutoFrame> {
   const objects = convertBeatmapToTaiko(beatmap);
-  if (objects.length === 0) return [];
+  if (objects.length === 0) return;
 
-  const frames: AutoFrame[] = [];
-  const press = (time: number, keys: number): void => { frames.push({ time, x: 0, y: 0, keys }); };
+  const press = (time: number, keys: number): AutoFrame => ({ time, x: 0, y: 0, keys });
 
   let hitButton = true;  // true = Left, false = Right
 
-  press(objects[0]!.time - 1000, 0);
+  yield press(objects[0]!.time - 1000, 0);
 
   for (let i = 0; i < objects.length; i++) {
     const h = objects[i]!;
     const endTime = h.kind === 'hit' ? h.time : h.endTime;
 
     if (h.kind === 'hit') {
-      press(h.time, hitBits(h, hitButton));
+      yield press(h.time, hitBits(h, hitButton));
     } else if (h.kind === 'drumroll') {
       // One press per pre-computed tick, alternating centre hands so each is a fresh edge.
       // Skip phantom ticks past endTime: the converter emits ticks up to endTime+tickInterval/2,
       // but the judge rejects presses with time > endTime, so pressing them would only ghost-tap.
-      for (const tickTime of h.tickTimes) {
+      for (let tick = 0; tick < h.tickCount; tick++) {
+        const tickTime = h.time + tick * h.tickInterval;
         if (tickTime > h.endTime) continue;
-        press(tickTime, hitButton ? LEFT_CENTRE : RIGHT_CENTRE);
+        yield press(tickTime, hitButton ? LEFT_CENTRE : RIGHT_CENTRE);
         hitButton = !hitButton;
       }
     } else {
       const req = h.requiredHits;
       const hitRate = Math.min(SWELL_HIT_SPEED, (h.endTime - h.time) / req);
       for (let count = 0; count < req; count++) {
-        press(h.time + count * hitRate, SWELL_CYCLE[count % 4]!);
+        yield press(h.time + count * hitRate, SWELL_CYCLE[count % 4]!);
       }
     }
 
@@ -106,10 +106,9 @@ export function generateTaikoAutoReplay(beatmap: BeatmapData, _modDiff: ModDiffi
     const next = objects[i + 1];
     const canDelay = next === undefined || next.time > endTime + KEY_UP_DELAY;
     const delay = canDelay ? KEY_UP_DELAY : (next!.time - endTime) * 0.9;
-    press(endTime + delay, 0);
+    yield press(endTime + delay, 0);
 
     hitButton = !hitButton;
   }
 
-  return frames;
 }

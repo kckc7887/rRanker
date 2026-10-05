@@ -1,4 +1,6 @@
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
+import { installPreviewControls } from '../../chart-preview-shared/webview-player/controls';
+import { HeatTimelineView, heatTimeLabels } from '../../chart-preview-shared/webview-player/heat-timeline';
 import type { RizlineChartPreviewConfig, RizlineChartPreviewSettings } from '../configuration';
 import {
   PLAYBACK_SPEED_MAX,
@@ -38,6 +40,10 @@ const fullscreenButton = element<HTMLButtonElement>('btn-fullscreen');
 const lockButton = element<HTMLButtonElement>('fs-lock');
 const timeline = element('timeline-host');
 const controls = element('controls');
+const timelineView = new HeatTimelineView({
+  host: timeline, bars: element('timeline-bars'), ruler: element('timeline-ruler'),
+  playhead: element('timeline-playhead'), badge: element('timeline-badge'),
+});
 const wheels: ReturnType<typeof setupWheelPopup>[] = [];
 let userSpeedWheel: ReturnType<typeof setupWheelPopup> | undefined;
 let settings = normalizeRizlineChartPreviewSettings({});
@@ -72,9 +78,7 @@ function syncTransport(): void {
     ? '<path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>' : '<path d="M8 5v14l11-7z"/>';
   playButton.setAttribute('aria-label', playing ? '暂停' : '播放');
   element('time-label').textContent = `${formatClock(position)} / ${formatClock(session.duration)}`;
-  element('timeline-playhead').style.left = `${pct}%`;
-  element('timeline-badge').style.left = `${pct}%`;
-  element('timeline-badge').textContent = formatClock(position);
+  timelineView.updateProgress(pct, formatClock(position));
   if (session.ended) status('播放结束');
 }
 function tick(time: number): void {
@@ -84,60 +88,11 @@ function tick(time: number): void {
   if (session?.playing) uiFrame = requestAnimationFrame(tick);
 }
 function buildTimeline(): void {
-  const bars = element('timeline-bars');
-  const ruler = element('timeline-ruler');
-  bars.replaceChildren();
-  ruler.replaceChildren();
-  if (!session) return;
-  const duration = session.duration;
-  const width = Math.max(1, Math.ceil(timeline.getBoundingClientRect().width));
-  const count = Math.min(200, width);
-  const buckets = Array.from({ length: count }, () => [0, 0, 0]);
-  for (const line of session.chart.lines) {
-    for (const note of line.notes) {
-      const time = note.seconds + session.chart.delaySeconds;
-      const index = Math.min(count - 1, Math.max(0, Math.floor(time / duration * count)));
-      const kind = note.kind === 1 ? 1 : note.kind === 2 ? 2 : 0;
-      buckets[index]![kind]! += 1;
-    }
-  }
-  const max = Math.max(1, ...buckets.map((bucket) => bucket.reduce((sum, n) => sum + n, 0)));
-  const colors = ['#5b8cff', '#00CED1', '#FF8C00'];
-  buckets.forEach((bucket, index) => {
-    const total = bucket.reduce((sum, n) => sum + n, 0);
-    if (!total) return;
-    const bar = document.createElement('div');
-    bar.className = 'timeline-bar';
-    Object.assign(bar.style, {
-      left: `${index / count * 100}%`,
-      width: `${100 / count}%`,
-      height: `${Math.max(2, total / max * 22)}px`,
-    });
-    bucket.forEach((value, kind) => {
-      if (!value) return;
-      const segment = document.createElement('div');
-      Object.assign(segment.style, { flex: String(value / total), width: '100%', backgroundColor: colors[kind] });
-      bar.appendChild(segment);
-    });
-    bars.appendChild(bar);
-  });
-  const tickStep = [1, 5, 10, 15, 30, 60, 120, 300].find((step) => width * step / duration >= 4) ?? 300;
-  const labelStep = [5, 10, 15, 30, 60, 120, 300, 600].find((step) => width * step / duration >= 24) ?? 600;
-  for (let time = 0; time <= duration; time += tickStep) {
-    const pct = `${time / duration * 100}%`;
-    const major = time % labelStep === 0;
-    const mark = document.createElement('div');
-    mark.className = `timeline-tick ${major ? 'major' : Number.isInteger(time / (labelStep / 2)) ? 'medium' : 'minor'}`;
-    mark.style.left = pct;
-    ruler.appendChild(mark);
-    if (major) {
-      const label = document.createElement('div');
-      label.className = 'timeline-label';
-      label.style.left = pct;
-      label.textContent = formatClock(time);
-      ruler.appendChild(label);
-    }
-  }
+  if (disposed || !session) return;
+  const chart = session.chart;
+  timelineView.build(session.duration, [{
+    times: chart.lines.flatMap(line => line.notes.map(note => note.seconds + chart.delaySeconds)),
+  }], heatTimeLabels(session.duration, formatClock));
   syncTransport();
 }
 const timelineObserver = new ResizeObserver(buildTimeline);
@@ -255,6 +210,7 @@ function pauseForLifecycle(): void {
 }
 function dispose(): void {
   if (disposed) return;
+  closeActiveWheelPopup();
   if (fullscreen) setFullscreen(false);
   disposed = true;
   events.dispose();
@@ -369,6 +325,7 @@ async function initialize(): Promise<void> {
   const config = window.__RIZLINE_CHART_PREVIEW_CONFIG__;
   if (!config) throw new Error('missing-config');
   document.documentElement.dataset.theme = config.theme;
+  events.own(installPreviewControls({ sections: ['播放设置', '辅助选项'], reserveStage: element('stage-wrap') }));
   settings = normalizeRizlineChartPreviewSettings(config.settings);
   element('title').textContent = config.title || '谱面确认';
   setupSettings();

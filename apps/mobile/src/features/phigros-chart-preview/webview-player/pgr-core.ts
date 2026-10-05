@@ -7,6 +7,9 @@
  * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
 
+import { lowerBoundBy, upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
+import { parsePgrBlocks, type PgrBlock } from './pgr-blocks';
+
 export const PGR_HEIGHT_RATIO = 0.83175;
 
 const NOTE_KINDS: Readonly<Record<number, PgrNoteKind>> = Object.freeze({ 1: 'tap', 2: 'drag', 3: 'hold', 4: 'flick' });
@@ -43,6 +46,7 @@ export interface PgrChart {
   formatVersion: number;
   offset: number;
   lines: PgrLine[];
+  blocks: PgrBlock[];
   stats: {
     lineCount: number;
     noteCount: number;
@@ -69,6 +73,7 @@ type RawChart = {
   formatVersion: unknown;
   offset?: unknown;
   judgeLineList: RawLine[];
+  blockAreaList?: unknown;
 };
 
 function finiteNumber(value: unknown, label: string): number {
@@ -177,14 +182,7 @@ function normalizeSpeedEvents(source: unknown, bpm: number, maxTime: number): Pg
 
 export function findEventIndex<T extends { 0: number }>(events: readonly T[], time: number): number {
   if (!events.length) return -1;
-  let low = 0;
-  let high = events.length;
-  while (low < high) {
-    const middle = (low + high) >>> 1;
-    if (events[middle][0] <= time) low = middle + 1;
-    else high = middle;
-  }
-  return Math.max(0, low - 1);
+  return Math.max(0, upperBoundBy(events, time, (event) => event[0]) - 1);
 }
 
 export function sampleTween(events: PgrTweenEvent[], time: number, fallback = 0): number {
@@ -216,14 +214,7 @@ export function sampleHeight(events: PgrHeightEvent[], time: number): number {
 }
 
 export function lowerBoundNotes<T extends { time: number }>(notes: readonly T[], time: number): number {
-  let low = 0;
-  let high = notes.length;
-  while (low < high) {
-    const middle = (low + high) >>> 1;
-    if (notes[middle]!.time < time) low = middle + 1;
-    else high = middle;
-  }
-  return low;
+  return lowerBoundBy(notes, time, (note) => note.time);
 }
 
 function normalizeNotes(
@@ -313,11 +304,14 @@ export function parsePgrChart(source: string | unknown): PgrChart {
     return { bpm, speedEvents, disappearEvents, rotateEvents, moveEvents, notes, maxHoldDuration };
   });
   markMultipleHints(lines);
+  const blocks = parsePgrBlocks(raw.blockAreaList);
+  for (const block of blocks) maxTime = Math.max(maxTime, block.enable, block.disable, block.disappear);
 
   return {
     formatVersion,
     offset: finiteNumber(raw.offset ?? 0, 'offset'),
     lines,
+    blocks,
     stats: { lineCount: lines.length, noteCount, eventCount, maxTime, kindCounts },
   };
 }

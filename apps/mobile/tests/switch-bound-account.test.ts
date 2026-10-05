@@ -6,10 +6,10 @@ import {
   createMaxedPhigrosTestAccount,
 } from '@/domain/bound-account';
 import { queryClient } from '@/state/query-client';
-import { switchBoundAccount } from '@/services/switch-bound-account';
+import { notifyAccountSwitchError, switchBoundAccount } from '@/services/switch-bound-account';
 
 const mocks = vi.hoisted(() => ({
-  setActiveAccountId: vi.fn(async () => undefined),
+  setActiveAccountId: vi.fn(async (_accountId: string): Promise<void> => undefined),
   canDismiss: vi.fn(() => false),
   dismissTo: vi.fn(),
   navigate: vi.fn(),
@@ -90,12 +90,51 @@ describe('switchBoundAccount', () => {
     },
   );
 
-  it('does not persist or navigate again when selecting the active account in place', async () => {
+  it('persists the active account again without repeating state selection or navigation in place', async () => {
+    const select = vi.spyOn(mocks.sessionState!, 'selectBoundAccount');
     await switchBoundAccount(local.id, { navigateToOverview: false });
 
-    expect(mocks.setActiveAccountId).not.toHaveBeenCalled();
+    expect(mocks.setActiveAccountId).toHaveBeenCalledWith(local.id);
+    expect(select).not.toHaveBeenCalled();
     expect(mocks.dismissTo).not.toHaveBeenCalled();
     expect(mocks.navigate).not.toHaveBeenCalled();
+  });
+
+  it('keeps the immediate selection on write failure and retries the same target', async () => {
+    const failure = new Error('storage failed');
+    mocks.setActiveAccountId.mockRejectedValueOnce(failure);
+    await expect(switchBoundAccount(demoAccounts[0].id, { navigateToOverview: false })).rejects.toMatchObject({ cause: failure });
+    expect(mocks.sessionState?.activeAccountId).toBe(demoAccounts[0].id);
+    await expect(switchBoundAccount(demoAccounts[0].id, { navigateToOverview: false })).resolves.toBe(true);
+    expect(mocks.setActiveAccountId).toHaveBeenCalledTimes(2);
+  });
+
+  it('shows a fixed retry message for the current failed choice', async () => {
+    mocks.setActiveAccountId.mockRejectedValueOnce(new Error('private storage detail'));
+    const error = await switchBoundAccount(demoAccounts[0].id, { navigateToOverview: false }).catch(error => error);
+    const notify = vi.fn();
+    notifyAccountSwitchError(error, notify);
+    expect(notify).toHaveBeenCalledWith({ title: '当前账号未保存',
+      message: '当前已切换，账号选择未保存，请重新选择', variant: 'error' });
+  });
+
+  it('suppresses an old failed B choice even after a later C then B choice', async () => {
+    let reject!: (reason: unknown) => void;
+    mocks.setActiveAccountId.mockReturnValueOnce(new Promise<void>((_resolve, fail) => { reject = fail; }));
+    const old = switchBoundAccount(demoAccounts[0].id, { navigateToOverview: false }).catch(error => error);
+    await switchBoundAccount(demoAccounts[1].id, { navigateToOverview: false });
+    await switchBoundAccount(demoAccounts[0].id, { navigateToOverview: false });
+    reject(new Error('late failure'));
+    const notify = vi.fn(); notifyAccountSwitchError(await old, notify);
+    expect(notify).not.toHaveBeenCalled();
+  });
+
+  it('returns false for an old successful choice so callers cannot announce stale success', async () => {
+    let resolve!: () => void;
+    mocks.setActiveAccountId.mockReturnValueOnce(new Promise<void>(done => { resolve = done; }));
+    const old = switchBoundAccount(demoAccounts[0].id, { navigateToOverview: false });
+    await switchBoundAccount(demoAccounts[1].id, { navigateToOverview: false });
+    resolve(); await expect(old).resolves.toBe(false);
   });
 
   it('ignores an account id that is not currently bound', async () => {

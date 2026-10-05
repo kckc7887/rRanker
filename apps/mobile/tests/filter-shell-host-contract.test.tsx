@@ -207,6 +207,6 @@ test('exports the stable filter bar host tree contract', async () => {
   expectHostContract({
     name: 'filter-shell-host-contract/filter-bars',
     tree: trees,
-    expectedHash: 'f69d9201cf74d143e0045b9dcd978814630b745aa05b8bd53616c42f91177ebc',
+    expectedHash: 'a2a9aeaf706a1b1f2d489a8873fa044b0fb3d89a0d2e946d46de6dcdac3b1e7f',
   });
 });

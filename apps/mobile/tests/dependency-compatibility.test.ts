@@ -1,5 +1,6 @@
 import { spawnSync } from 'node:child_process';
 import { createHash } from 'node:crypto';
+import { createServer } from 'node:http';
 import { copyFileSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
@@ -11,6 +12,8 @@ const mobileRoot = resolve(__dirname, '..');
 const requirePackage = createRequire(join(mobileRoot, 'package.json'));
 const metroPatch = join(mobileRoot, 'scripts/patch-metro-image-size.cjs');
 const metroAssetPath = join(dirname(requirePackage.resolve('metro/package.json')), 'src/Assets.js');
+const fileHandlePatch = join(mobileRoot, 'scripts/patch-expo-file-handle.cjs');
+const fileHandlePath = join(dirname(requirePackage.resolve('expo-file-system/package.json')), 'android/src/main/java/expo/modules/filesystem/FileSystemFileHandle.kt');
 
 function removeTemporaryDirectory(directory: string): void {
   const target = resolve(directory);
@@ -22,6 +25,46 @@ function removeTemporaryDirectory(directory: string): void {
 }
 
 describe('安全补丁的实际消费者兼容合同', () => {
+  it('拒绝深层 glob 和直接 AST 遍历，保留常规嵌套与转义语义', () => {
+    const braces = requirePackage('braces');
+    const deep = '{'.repeat(4_000) + 'a,b' + '}'.repeat(4_000);
+    for (const operation of ['parse', 'compile', 'expand', 'stringify']) {
+      expect(() => braces[operation](deep)).toThrow('Brace nesting exceeds safe depth');
+    }
+    let ast: { type: string; nodes: unknown[] } = { type: 'root', nodes: [] };
+    for (let index = 0; index < 1_000; index++) ast = { type: 'root', nodes: [ast] };
+    for (const operation of ['compile', 'expand', 'stringify']) {
+      expect(() => braces[operation](ast)).toThrow('Brace nesting exceeds safe depth');
+    }
+    expect(braces.expand('src/{a,{b,c}}/{01..03}.ts')).toEqual([
+      'src/a/01.ts', 'src/a/02.ts', 'src/a/03.ts',
+      'src/b/01.ts', 'src/b/02.ts', 'src/b/03.ts',
+      'src/c/01.ts', 'src/c/02.ts', 'src/c/03.ts',
+    ]);
+    expect(braces.stringify('a/\\{literal\\}/[{}]')).toBe('a/{literal}/[{}]');
+    expect(requirePackage('micromatch')(['a.ts', 'b.tsx', 'c.js'], '*.{ts,tsx}')).toEqual(['a.ts', 'b.tsx']);
+  });
+
+  it('拒绝 RSA 摘要算法里的额外元素，保留合法签名和可选 NULL 参数', () => {
+    const forge = requirePackage('node-forge');
+    const { asn1, pki } = forge;
+    const keys = pki.rsa.generateKeyPair({ bits: 1024, e: 3 });
+    const digest = forge.md.sha256.create().update('dependency regression');
+    expect(keys.publicKey.verify(digest.digest().bytes(), keys.privateKey.sign(digest))).toBe(true);
+    const sequence = (values: unknown[]) => asn1.create(asn1.Class.UNIVERSAL, asn1.Type.SEQUENCE, true, values);
+    const oid = () => asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OID, false, asn1.oidToDer(forge.oids.sha256).getBytes());
+    const nullValue = () => asn1.create(asn1.Class.UNIVERSAL, asn1.Type.NULL, false, '');
+    const verify = (algorithm: unknown[]) => {
+      const info = sequence([sequence(algorithm), asn1.create(asn1.Class.UNIVERSAL, asn1.Type.OCTETSTRING, false, digest.digest().bytes())]);
+      const signature = keys.privateKey.sign(asn1.toDer(info).getBytes(), 'NONE');
+      return keys.publicKey.verify(digest.digest().bytes(), signature);
+    };
+    expect(verify([oid()])).toBe(true);
+    expect(verify([oid(), nullValue()])).toBe(true);
+    expect(() => verify([oid(), nullValue(), nullValue()])).toThrow('DigestInfo');
+    expect(() => verify([oid(), sequence([])])).toThrow('DigestInfo');
+  });
+
   beforeAll(() => {
     const result = spawnSync(process.execPath, [metroPatch], { cwd: mobileRoot, encoding: 'utf8' });
     expect(result.status, result.stderr).toBe(0);
@@ -163,5 +206,57 @@ describe('安全补丁的实际消费者兼容合同', () => {
     const identifiers = Array.from({ length: 16 }, () => project.generateUuid());
     expect(identifiers.every(identifier => /^[A-F0-9]{24}$/.test(identifier))).toBe(true);
     expect(new Set(identifiers).size).toBe(identifiers.length);
+  });
+
+  it('Expo Android 文件句柄补丁可重复执行并核验已安装原生源码', () => {
+    for (let attempt = 0; attempt < 2; attempt++) {
+      const result = spawnSync(process.execPath, [fileHandlePatch], { cwd: mobileRoot, encoding: 'utf8' });
+      expect(result.status, result.stderr).toBe(0);
+    }
+    expect(createHash('sha256').update(readFileSync(fileHandlePath)).digest('hex')).toBe('0ff23e6c358721d9d1c8399960c7bb544a32759e8f0bc4ecc549bc714f9f2c1b');
+  });
+
+  it('Expo autolinking 实际配置编译已修正的文件系统源码', () => {
+    const metadataPath = requirePackage.resolve('expo-modules-autolinking/package.json');
+    const metadata = JSON.parse(readFileSync(metadataPath, 'utf8'));
+    const cli = join(dirname(metadataPath), metadata.bin['expo-modules-autolinking']);
+    const result = spawnSync(process.execPath, [cli, 'resolve', '--platform', 'android', '--json'], { cwd: mobileRoot, encoding: 'utf8' });
+    expect(result.status, result.stderr).toBe(0);
+    const config = JSON.parse(result.stdout);
+    expect(config.configuration.buildFromSource).toEqual(['expo-file-system']);
+    expect(config.modules.find((item: { packageName: string }) => item.packageName === 'expo-file-system').projects[0].sourceDir.replaceAll('\\', '/')).toContain('expo-file-system/android');
+  });
+
+  it.each(['version', 'source'] as const)('Expo 文件句柄补丁拒绝未核验的 %s 并保持原文件', drift => {
+    const directory = mkdtempSync(join(tmpdir(), 'rranker-file-handle-contract-'));
+    try {
+      const dependency = join(directory, 'node_modules/expo-file-system');
+      const target = join(dependency, 'android/src/main/java/expo/modules/filesystem/FileSystemFileHandle.kt');
+      mkdirSync(dirname(target), { recursive: true });
+      writeFileSync(join(dependency, 'package.json'), JSON.stringify({ name: 'expo-file-system', version: drift === 'version' ? '19.0.25' : '19.0.24' }));
+      const source = readFileSync(fileHandlePath, 'utf8') + (drift === 'source' ? '\n// changed\n' : '');
+      writeFileSync(target, source);
+      const script = join(directory, 'patch.cjs');
+      copyFileSync(fileHandlePatch, script);
+      const result = spawnSync(process.execPath, [script], { cwd: directory, encoding: 'utf8' });
+      expect(result.status).not.toBe(0);
+      expect(result.stderr).toContain('Expo 文件句柄补丁版本或源码不符合已验证契约');
+      expect(readFileSync(target, 'utf8')).toBe(source);
+    } finally { removeTemporaryDirectory(directory); }
+  });
+
+  it('Expo CLI 的实际 undici 消费者保持补丁版本和本地请求能力', async () => {
+    const expoRequire = createRequire(requirePackage.resolve('expo/package.json'));
+    const cliRequire = createRequire(expoRequire.resolve('@expo/cli/package.json'));
+    expect(cliRequire('undici/package.json').version).toBe('6.28.1');
+    const server = createServer((_request, response) => { response.setHeader('Content-Type', 'application/json'); response.end('{"ok":true}'); });
+    await new Promise<void>(resolve => server.listen(0, '127.0.0.1', resolve));
+    try {
+      const address = server.address();
+      if (address === null || typeof address === 'string') throw new Error('测试服务地址不可用');
+      const response = await cliRequire('undici').request(`http://127.0.0.1:${address.port}`);
+      expect(response.statusCode).toBe(200);
+      expect(await response.body.json()).toEqual({ ok: true });
+    } finally { await new Promise<void>((resolve, reject) => server.close(error => error ? reject(error) : resolve())); }
   });
 });

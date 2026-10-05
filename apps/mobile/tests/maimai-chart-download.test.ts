@@ -1,4 +1,8 @@
 import { downloadSimaiPackage } from '@/features/chart-download-shared/simai-package';
+import { storedZipEnd, storedZipHeader } from '@/features/chart-download-shared/stored-zip';
+import { createChartPreviewCrc32 } from '@/features/chart-preview-shared/chart-preview-resource-budget';
+import { saveChartPackage } from '@/features/chart-download-shared/chart-download-shared';
+import { Directory } from 'expo-file-system';
 const native = vi.hoisted(() => ({
   downloadFileAsync: vi.fn(),
   pickDirectoryAsync: vi.fn(),
@@ -11,6 +15,13 @@ const native = vi.hoisted(() => ({
   deleted: [] as string[],
   createdDirs: [] as string[],
   cancelDownload: vi.fn(),
+  reads: [] as number[],
+  closed: [] as string[],
+  shortReads: false,
+  shortWrites: false,
+  emptyRead: false,
+  writeError: undefined as Error | undefined,
+  deleteError: undefined as Error | undefined,
 }));
 
 vi.mock('expo-file-system', () => {
@@ -25,12 +36,50 @@ vi.mock('expo-file-system', () => {
       native.bytes.set(file.uri, new TextEncoder().encode(`${url}\n谱面内容`));
       return file;
     }
-    get exists() { return native.texts.has(this.uri); }
-    get size() { return native.texts.get(this.uri)?.length ?? 0; }
+    get exists() { return native.bytes.has(this.uri); }
+    get size() { return native.bytes.get(this.uri)?.length ?? 0; }
     async text() { return native.texts.get(this.uri) ?? ''; }
-    async bytes() { return native.bytes.get(this.uri) ?? new Uint8Array(0); }
-    write(content: string | Uint8Array) { native.writes.push({ uri: this.uri, content }); }
-    delete() { native.deleted.push(this.uri); }
+    async bytes() { throw new Error('whole-file reads are forbidden'); }
+    create() { native.bytes.set(this.uri, new Uint8Array()); }
+    copy(destination: { uri: string; write: (bytes: Uint8Array) => void }) {
+      if (destination.uri.startsWith('file://') && native.bytes.has(destination.uri)) {
+        throw new Error('The destination file already exists');
+      }
+      destination.write(native.bytes.get(this.uri)!);
+    }
+    open() {
+      const uri = this.uri;
+      let offset = 0;
+      let closed = false;
+      return {
+        get offset() { return offset; }, set offset(value: number) { offset = value; },
+        get size() { return native.bytes.get(uri)?.length ?? 0; },
+        readBytes(length: number) {
+          if (closed) throw new Error('closed');
+          native.reads.push(length);
+          if (native.emptyRead) return new Uint8Array();
+          const end = offset + (native.shortReads ? Math.min(length, 4096) : length);
+          const chunk = native.bytes.get(uri)!.slice(offset, end);
+          offset += chunk.length;
+          return chunk;
+        },
+        writeBytes(bytes: Uint8Array) {
+          if (closed) throw new Error('closed');
+          if (native.writeError) throw native.writeError;
+          if (native.shortWrites) bytes = bytes.subarray(0, Math.min(bytes.length, 4096));
+          const previous = native.bytes.get(uri)!;
+          const next = new Uint8Array(Math.max(previous.length, offset + bytes.length));
+          next.set(previous); next.set(bytes, offset); offset += bytes.length;
+          native.bytes.set(uri, next);
+        },
+        close() { closed = true; native.closed.push(uri); },
+      };
+    }
+    write(content: string | Uint8Array) {
+      native.writes.push({ uri: this.uri, content });
+      native.bytes.set(this.uri, typeof content === 'string' ? new TextEncoder().encode(content) : content);
+    }
+    delete() { if (native.deleteError) throw native.deleteError; native.deleted.push(this.uri); native.bytes.delete(this.uri); }
   }
   class MockDirectory {
     uri: string;
@@ -38,8 +87,19 @@ vi.mock('expo-file-system', () => {
       this.uri = parts.map((part) => (typeof part === 'string' ? part : part.uri)).join('/');
     }
     create() { native.createdDirs.push(this.uri); }
+    createFile(name: string, mime: string | null) {
+      native.createFileCalls.push({ name, mime });
+      const file = new MockFile(this, name);
+      if (file.exists) throw new Error('The destination file already exists');
+      file.create();
+      return file;
+    }
     get exists() { return this.uri.startsWith('file:///cache/'); }
-    delete() { native.deleted.push(this.uri); }
+    delete() {
+      if (native.deleteError) throw native.deleteError;
+      native.deleted.push(this.uri);
+      for (const uri of native.bytes.keys()) if (uri.startsWith(`${this.uri}/`)) native.bytes.delete(uri);
+    }
     static pickDirectoryAsync() { return native.pickDirectoryAsync(); }
   }
   return { Paths: { cache: 'file:///cache' }, File: MockFile, Directory: MockDirectory };
@@ -68,7 +128,6 @@ vi.mock('expo-file-system/legacy', () => ({
 import JSZip from 'jszip';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import {
-  checkMaimaiChartVideoAvailable,
   downloadMaimaiChartPackage,
   MaimaiChartDownloadCancelledError,
   MaimaiChartDownloadError,
@@ -77,6 +136,7 @@ import {
 
 function pickedDirectoryMock() {
   return {
+    uri: 'picked://',
     createFile: (name: string, mime: string | null) => {
       native.createFileCalls.push({ name, mime });
       return {
@@ -98,6 +158,13 @@ describe('maimai chart download', () => {
     native.createFileCalls.length = 0;
     native.deleted.length = 0;
     native.createdDirs.length = 0;
+    native.reads.length = 0;
+    native.closed.length = 0;
+    native.shortReads = false;
+    native.shortWrites = false;
+    native.emptyRead = false;
+    native.writeError = undefined;
+    native.deleteError = undefined;
     native.downloadFileAsync.mockImplementation(async (url: string, uri: string) => {
       native.downloaded.push({ url, uri });
     });
@@ -114,18 +181,6 @@ describe('maimai chart download', () => {
     expect(maimaiChartPackageName('x'.repeat(80), 'SD', '10')).toBe(`${'x'.repeat(34)} SD 10`);
     expect(maimaiChartPackageName('   ', 'DX', '14')).toBe('DX 14');
     expect(maimaiChartPackageName('協', 'UTAGE', '協')).toBe('協 UTAGE 協');
-  });
-
-  it('detects video availability via HEAD and treats failures as unavailable', async () => {
-    const fetchMock = vi.fn().mockResolvedValue({ ok: true });
-    vi.stubGlobal('fetch', fetchMock);
-    await expect(checkMaimaiChartVideoAvailable(10123)).resolves.toBe(true);
-    expect(fetchMock).toHaveBeenCalledWith('https://maimai-video.lxns.net/123.mp4', { method: 'HEAD' });
-
-    fetchMock.mockResolvedValueOnce({ ok: false });
-    await expect(checkMaimaiChartVideoAvailable(10123)).resolves.toBe(false);
-    fetchMock.mockRejectedValueOnce(new Error('network down'));
-    await expect(checkMaimaiChartVideoAvailable(10123)).resolves.toBe(false);
   });
 
   it('downloads chart, music, jacket and optional video into an AstroDX zip', async () => {
@@ -184,6 +239,55 @@ describe('maimai chart download', () => {
       '测试曲目 SD 5/maidata.txt',
       '测试曲目 SD 5/track.mp3',
     ]);
+  });
+
+  it.each([
+    {
+      name: '舞萌 DX 12+.adx.zip',
+      chart: '舞萌 DX 12+/maidata.txt',
+      download: () => downloadMaimaiChartPackage({ songId: '123', chartType: 'DX', levelIndex: 3, levelLabel: '12+', title: '舞萌', includeVideo: false }),
+    },
+    {
+      name: 'Majdata Master.zip',
+      chart: 'Majdata Master/maidata.txt',
+      download: () => downloadSimaiPackage({ title: 'Majdata', suffix: 'Master', resources: [{ fileName: 'maidata.txt', url: 'https://majdata.net/chart' }] }),
+    },
+  ])('saves a nonempty iOS package as $name without precreating the copy target', async ({ name, chart, download }) => {
+    native.pickDirectoryAsync.mockResolvedValueOnce(new Directory('file:///exports'));
+
+    await expect(download()).resolves.toBe(true);
+
+    const bytes = native.bytes.get(`file:///exports/${name}`)!;
+    expect(bytes.length).toBeGreaterThan(0);
+    const zip = await JSZip.loadAsync(bytes, { checkCRC32: true });
+    expect(await zip.file(chart)!.async('string')).toContain('谱面内容');
+    expect(native.createFileCalls).toEqual([]);
+    expect(native.deleted).toContain(native.createdDirs[0]);
+  });
+
+  it('preserves an existing iOS package when native copying rejects the same name', async () => {
+    const uri = 'file:///exports/Majdata Master.zip';
+    const original = new Uint8Array([1, 2, 3]);
+    native.bytes.set(uri, original);
+    native.pickDirectoryAsync.mockResolvedValueOnce(new Directory('file:///exports'));
+
+    await expect(downloadSimaiPackage({ title: 'Majdata', suffix: 'Master', resources: [{ fileName: 'maidata.txt', url: 'https://majdata.net/chart' }] }))
+      .rejects.toBeInstanceOf(MaimaiChartDownloadError);
+
+    expect(native.bytes.get(uri)).toEqual(original);
+    expect(native.createFileCalls).toEqual([]);
+    expect(native.deleted).not.toContain(uri);
+    expect(native.deleted).toContain(native.createdDirs[0]);
+  });
+
+  it('keeps creating and writing the destination for iOS byte output', async () => {
+    const bytes = new Uint8Array([1, 2, 3]);
+    native.pickDirectoryAsync.mockResolvedValueOnce(new Directory('file:///exports'));
+
+    await expect(saveChartPackage('bytes.zip', { kind: 'bytes', bytes })).resolves.toBe(true);
+
+    expect(native.createFileCalls).toEqual([{ name: 'bytes.zip', mime: 'application/zip' }]);
+    expect(native.bytes.get('file:///exports/bytes.zip')).toEqual(bytes);
   });
 
   it('reports download and organizing progress before opening the save location', async () => {
@@ -307,6 +411,88 @@ describe('maimai chart download', () => {
     const controller = new AbortController(); controller.abort();
     await expect(downloadSimaiPackage({ title: 'Majdata', suffix: 'Master', resources }, { signal: controller.signal })).rejects.toThrow();
     expect(native.deleted).toContain(native.createdDirs[native.createdDirs.length - 1]);
+  });
+
+  it('copies large media in at most 64 KiB chunks, tolerates short reads and closes every handle', async () => {
+    const bytes = new Uint8Array(200_000).fill(7);
+    native.resourceBytes.set('https://example/media', bytes);
+    native.shortReads = true;
+    native.shortWrites = true;
+    await downloadSimaiPackage({ title: 'Large', suffix: '', resources: [{ fileName: 'track.mp3', url: 'https://example/media' }] });
+    const zip = await JSZip.loadAsync(native.writes[0].content as Uint8Array, { checkCRC32: true });
+    expect(await zip.file('Large/track.mp3')!.async('uint8array')).toEqual(bytes);
+    expect(Math.max(...native.reads)).toBeLessThanOrEqual(65_536);
+    expect(native.closed).toHaveLength(2);
+  });
+
+  it('cancels during organizing without saving and closes input/output', async () => {
+    native.resourceBytes.set('https://example/media', new Uint8Array(200_000));
+    const controller = new AbortController();
+    await expect(downloadSimaiPackage({ title: 'Large', suffix: '', resources: [{ fileName: 'track.mp3', url: 'https://example/media' }] }, {
+      signal: controller.signal,
+      onProgress: event => { if (event.phase === 'organizing' && event.progress > 0) controller.abort(); },
+    })).rejects.toBeInstanceOf(MaimaiChartDownloadCancelledError);
+    expect(native.pickDirectoryAsync).not.toHaveBeenCalled();
+    expect(native.reads).toEqual([65_536]);
+    expect(native.closed).toHaveLength(2);
+  });
+
+  it('rejects truncated reads and write failure, preserving the error through cleanup', async () => {
+    const request = { title: 'Chart', suffix: '', resources: [{ fileName: 'maidata.txt', url: 'https://example/chart' }] };
+    native.emptyRead = true;
+    await expect(downloadSimaiPackage(request)).rejects.toThrow('读取不完整');
+    expect(native.closed).toHaveLength(2);
+    native.emptyRead = false;
+    native.writeError = new Error('disk-full');
+    native.deleteError = new Error('cleanup');
+    await expect(downloadSimaiPackage(request)).rejects.toThrow('disk-full');
+    expect(native.closed).toHaveLength(3);
+    expect(native.pickDirectoryAsync).not.toHaveBeenCalled();
+  });
+
+  it('keeps staged bytes until file saving completes and cleanup failure cannot turn success into failure', async () => {
+    native.deleteError = new Error('cleanup');
+    await expect(downloadSimaiPackage({ title: 'Chart', suffix: '', resources: [{ fileName: 'maidata.txt', url: 'https://example/chart' }] })).resolves.toBe(true);
+    expect(native.writes[0].content).toBeInstanceOf(Uint8Array);
+  });
+
+  it('awaits the save picker before releasing the archive and its session', async () => {
+    let choose!: (value: ReturnType<typeof pickedDirectoryMock>) => void;
+    native.pickDirectoryAsync.mockImplementationOnce(() => new Promise(resolve => { choose = resolve; }));
+    const operation = downloadSimaiPackage({ title: 'Chart', suffix: '', resources: [{ fileName: 'maidata.txt', url: 'https://example/chart' }] });
+    await vi.waitFor(() => expect(native.pickDirectoryAsync).toHaveBeenCalledTimes(1));
+    expect(native.deleted).toEqual([]);
+    expect([...native.bytes.keys()].some(uri => uri.endsWith('/package.zip'))).toBe(true);
+    choose(pickedDirectoryMock());
+    await expect(operation).resolves.toBe(true);
+    expect(native.writes[0].content).toBeInstanceOf(Uint8Array);
+    expect(native.bytes.size).toBe(0);
+  });
+
+  it('encodes ZIP64 entry sizes, central offsets and archive counts without truncation', () => {
+    const entry = { name: new TextEncoder().encode('large.bin'), size: 0x100000123, offset: 0x100000456, crc: 17 };
+    const local = storedZipHeader(entry);
+    const central = storedZipHeader(entry, true);
+    const a = new DataView(local.buffer); const b = new DataView(central.buffer);
+    expect(a.getUint16(4, true)).toBe(45);
+    expect(a.getUint32(18, true)).toBe(0xffffffff);
+    expect(a.getBigUint64(30 + entry.name.length + 4, true)).toBe(BigInt(entry.size));
+    expect(b.getUint32(42, true)).toBe(0xffffffff);
+    expect(b.getBigUint64(46 + entry.name.length + 20, true)).toBe(BigInt(entry.offset));
+    const end = new DataView(storedZipEnd(65_535, 70, entry.offset).buffer);
+    expect(end.getUint32(0, true)).toBe(0x06064b50);
+    expect(end.getBigUint64(32, true)).toBe(65_535n);
+    expect(end.getBigUint64(48, true)).toBe(BigInt(entry.offset));
+    expect(end.getBigUint64(64, true)).toBe(BigInt(entry.offset + 70));
+    expect(end.getUint32(76, true)).toBe(0x06054b50);
+  });
+
+  it('shares incremental CRC32 across chunks and preserves the empty checksum', () => {
+    const crc = createChartPreviewCrc32();
+    expect(crc.value()).toBe(0);
+    crc.update(new TextEncoder().encode('1234'));
+    crc.update(new TextEncoder().encode('56789'));
+    expect(crc.value()).toBe(0xcbf43926);
   });
 
 });

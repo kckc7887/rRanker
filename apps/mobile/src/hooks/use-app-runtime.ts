@@ -39,6 +39,7 @@ export function useAppRuntime(ready: boolean) {
   }, [activeAccountId, activeGameId, restoreStatus]);
 
   useEffect(() => {
+    if (lifecycle.phase === 'background') return;
     const sessionState = useSession.getState();
     void recordRuntimeDiagnostic('lifecycle', {
       lifecyclePhase: lifecycle.phase,

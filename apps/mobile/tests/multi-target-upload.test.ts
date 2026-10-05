@@ -2,6 +2,7 @@ import type { CatalogSnapshot } from '@/domain/models';
 import { createLocalMaimaiAccount, createMaimaiBoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
 import { ProviderError } from '@/providers/errors';
+import { SessionPersistenceError } from '@/domain/session-vault';
 import { ScoreHubError } from '@/services/score-hub-client';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 
@@ -83,6 +84,7 @@ import {
   resolveUploadTargets,
   uploadMaimaiFromFriendCode,
   uploadMaimaiFromQrLogin,
+  uploadMaimaiPreferringSession,
   uploadMaimaiWithScoreHubSession,
 } from '@/services/upload-maimai-from-friend-code';
 
@@ -100,6 +102,27 @@ const catalog: CatalogSnapshot = {
 };
 
 describe('好友码多目标写入', () => {
+  it('未确认目标不计入成功写入数，下一目标启动前等待恢复', async () => {
+    const water = createMaimaiBoundAccount({ providerId: 'diving-fish', playerId: 'water', displayName: '水鱼', rating: 0 });
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    let resume!: () => void;
+    let paused = false;
+    const waitUntilResumed = vi.fn(async () => { if (paused) await new Promise<void>(resolve => { resume = resolve; }); });
+    mocks.uploadDivingFish.mockImplementationOnce(async () => { paused = true; return { status: 'unconfirmed', uploaded: 0 }; });
+    const phases: string[] = [];
+    const promise = uploadMaimaiFromFriendCode({ friendCode: '123456789012345', selectedAccountIds: [water.id, local.id],
+      targets: resolveUploadTargets([water, local], { [water.id]: { mode: 'import-token', value: 'token', persistable: true } }),
+      sessionsByAccountId: { [water.id]: { mode: 'import-token', value: 'token', persistable: true } }, resolveCatalog: async () => catalog,
+      signal: { aborted: false, waitUntilResumed }, onPhase: phase => { if ('message' in phase) phases.push(phase.message); }, onNeedFriendAccept: vi.fn() });
+    await vi.waitFor(() => expect(mocks.uploadDivingFish).toHaveBeenCalledTimes(1));
+    expect(mocks.saveSnapshot).not.toHaveBeenCalled();
+    await vi.waitFor(() => expect(resume).toBeTypeOf('function'));
+    paused = false; resume();
+    const result = await promise;
+    expect(result.uploaded).toBe(1);
+    expect(result.targetResults.map(row => row.status)).toEqual(['unconfirmed', 'success']);
+    expect(phases.at(-1)).toContain('未确认');
+  });
   beforeEach(() => {
     vi.clearAllMocks();
     mocks.createFriendLoginJob.mockResolvedValue({
@@ -200,7 +223,7 @@ describe('好友码多目标写入', () => {
       mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh',
       expiresAt: Date.now() + 60_000, persistable: true,
     };
-    mocks.uploadLxns.mockResolvedValue({ uploaded: 1, session: lxnsSession });
+    mocks.uploadLxns.mockResolvedValue({ status: 'success', uploaded: 1, session: lxnsSession });
     let releaseLogin: (value: { jobId: string; botFriendCode: null; body: { __skipAuthToken: string } }) => void = () => undefined;
     mocks.createFriendLoginJob.mockReturnValue(new Promise((resolve) => { releaseLogin = resolve; }));
     const pending = uploadMaimaiFromFriendCode({
@@ -272,7 +295,7 @@ describe('好友码多目标写入', () => {
       mode: 'import-token', value: 'import-token', persistable: true,
     };
     const resolveCatalog = vi.fn(async () => catalog);
-    mocks.uploadLxns.mockResolvedValue({ uploaded: 1, session: lxnsSession });
+    mocks.uploadLxns.mockResolvedValue({ status: 'success', uploaded: 1, session: lxnsSession });
 
     const result = await uploadMaimaiFromFriendCode({
       friendCode: '123456789012345',
@@ -310,7 +333,7 @@ describe('好友码多目标写入', () => {
       mode: 'import-token', value: 'import-token', persistable: true,
     };
     const resolveCatalog = vi.fn(async () => catalog);
-    mocks.uploadDivingFish.mockResolvedValue({ uploaded: 1 });
+    mocks.uploadDivingFish.mockResolvedValue({ status: 'success', uploaded: 1 });
 
     await uploadMaimaiFromFriendCode({
       friendCode: '123456789012345',
@@ -510,6 +533,27 @@ describe('好友码多目标写入', () => {
     expect(result.uploaded).toBe(1);
     expect(phases).not.toContain('awaiting_friend');
     expect(phases.at(-1)).toBe('done');
+  });
+
+  it.each(['credential_storage', 'local_commit'] as const)('会话验证后的 %s 故障不被网络兜底吞掉或转好友码登录', async code => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    mocks.accountLoad.mockResolvedValue({ friendCode: '123456789012345', hasCabinetBound: true, token: 'session-token' });
+    const failure = new SessionPersistenceError(code);
+    mocks.accountPatch.mockRejectedValueOnce(failure);
+    await expect(uploadMaimaiPreferringSession({
+      friendCode: '123456789012345',
+      preferSession: true,
+      selectedAccountIds: [local.id],
+      targets: resolveUploadTargets([local], {}),
+      sessionsByAccountId: {},
+      resolveCatalog: async () => catalog,
+      signal: { aborted: false },
+      onPhase: vi.fn(),
+      onNeedFriendAccept: vi.fn(),
+    })).rejects.toBe(failure);
+    expect(mocks.createFriendLoginJob).not.toHaveBeenCalled();
+    expect(mocks.createUpdateScoreJob).not.toHaveBeenCalled();
+    expect(mocks.saveSnapshot).not.toHaveBeenCalled();
   });
 
   it('二维码登录后创建独立成绩任务并复用同一写出链路', async () => {

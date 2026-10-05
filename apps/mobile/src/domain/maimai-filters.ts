@@ -113,8 +113,3 @@ export function matchesMultiAchievementFilter(
   return matchesAchievementStatus(record, { family: 'fs', value: filter }, true);
 }
 
-export function maimaiAchievementStatusLabel(filter: MaimaiAchievementStatus): string {
-  if (!filter) return '全部';
-  const options = filter.family === 'fc' ? MAIMAI_FC_ACHIEVEMENTS : MAIMAI_FS_ACHIEVEMENTS;
-  return options.find((item) => item.value === filter.value)?.label ?? '全部';
-}

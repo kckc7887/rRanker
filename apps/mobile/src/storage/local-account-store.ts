@@ -67,5 +67,3 @@ export class LocalAccountStore {
     await this.store.remove(accountId);
   }
 }
-
-export const localAccountStore = new LocalAccountStore();

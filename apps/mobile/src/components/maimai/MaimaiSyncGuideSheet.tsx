@@ -235,7 +235,7 @@ function MaimaiTransferPicker({
                   borderColor: theme.accent,
                 },
               ]}>
-                {checked ? <Text style={styles.checkmark}>✓</Text> : null}
+                {checked ? <Text style={[styles.checkmark, { color: target.writable ? theme.onAccent : theme.textMuted }]}>✓</Text> : null}
               </View>
               <BoundAccountAvatar accountId={target.account.id} style={styles.avatar} />
               <AccountLabels account={target.account} detail={target.disableReason ?? undefined} />

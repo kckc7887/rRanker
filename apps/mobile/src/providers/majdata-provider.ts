@@ -6,11 +6,12 @@ import { requestJson, requestProviderResponse } from './http-json';
 import { cookieHeader, responseCookies, type HttpCookieSession } from './http-cookies';
 import { ProviderError, providerErrorFromStatus } from './errors';
 import type { LoginCredentials } from './contracts';
+import type { RuntimeRequestScenario } from '@/domain/runtime-log';
 
 export class MajdataProvider {
   constructor(private session?: HttpCookieSession, private readonly onSession?: (next: HttpCookieSession) => Promise<void>, private readonly fetcher: typeof fetch = expoFetch as unknown as typeof fetch) {}
-  private options<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal) {
-    return { path, schema, baseUrl: MAJDATA_BASE, label: 'Majdata Net', fetcher: this.fetcher, signal, authenticated: true,
+  private options<T>(path: string, schema: z.ZodType<T>, signal?: AbortSignal, diagnosticScenario: RuntimeRequestScenario = 'player-profile') {
+    return { path, schema, baseUrl: MAJDATA_BASE, label: 'Majdata Net', fetcher: this.fetcher, signal, authenticated: true, diagnosticScenario,
       error: (status: number) => providerErrorFromStatus(status, { authentication: '用户名或密码错误，请重新登录', permission: '账号暂时无法访问', noData: '未找到数据', rateLimit: '请稍后再试', server: 'Majdata Net 暂时不可用', fallback: { message: () => 'Majdata Net 请求失败' } }), init: { credentials: 'omit' as const, headers: this.session ? { Cookie: cookieHeader(this.session, `${MAJDATA_BASE}${path}`) } : {} as Record<string, string> },
       onResponse: async (response: Response) => {
         if (!this.session || signal?.aborted) return;
@@ -32,13 +33,13 @@ export class MajdataProvider {
     return this.session;
   }
   getPlayer(signal?: AbortSignal) { return requestJson(this.options('/account/info/', z.object({ username: z.string().min(1) }), signal)); }
-  getRecords(signal?: AbortSignal) { return requestJson(this.options('/account/scores', z.array(MajdataScoreSchema), signal)); }
-  getRecent(username: string, signal?: AbortSignal) { return requestJson(this.options(`/account/Recent?username=${encodeURIComponent(username)}`, z.array(MajdataRecentSchema), signal)); }
+  getRecords(signal?: AbortSignal) { return requestJson(this.options('/account/scores', z.array(MajdataScoreSchema), signal, 'scores')); }
+  getRecent(username: string, signal?: AbortSignal) { return requestJson(this.options(`/account/Recent?username=${encodeURIComponent(username)}`, z.array(MajdataRecentSchema), signal, 'scores')); }
   getSongs(page: number, sort: string, search: string, signal?: AbortSignal) {
-    return requestJson(this.options(`/maichart/list?page=${page}&sort=${encodeURIComponent(sort)}&search=${encodeURIComponent(search)}`, z.array(MajdataSongSchema), signal));
+    return requestJson(this.options(`/maichart/list?page=${page}&sort=${encodeURIComponent(sort)}&search=${encodeURIComponent(search)}`, z.array(MajdataSongSchema), signal, 'catalog'));
   }
-  getSong(id: string, signal?: AbortSignal) { return requestJson(this.options(`/maichart/${encodeURIComponent(id)}/summary`, MajdataSongSchema, signal)); }
-  getRanking(id: string, signal?: AbortSignal) { return requestJson(this.options(`/maichart/${encodeURIComponent(id)}/score`, MajdataRankingSchema, signal)); }
-  getChart(id: string, signal?: AbortSignal) { return requestProviderResponse(this.options(`/maichart/${encodeURIComponent(id)}/chart`, z.string().min(1), signal), response => response.text()); }
+  getSong(id: string, signal?: AbortSignal) { return requestJson(this.options(`/maichart/${encodeURIComponent(id)}/summary`, MajdataSongSchema, signal, 'chart-detail')); }
+  getRanking(id: string, signal?: AbortSignal) { return requestJson(this.options(`/maichart/${encodeURIComponent(id)}/score`, MajdataRankingSchema, signal, 'scores')); }
+  getChart(id: string, signal?: AbortSignal) { return requestProviderResponse(this.options(`/maichart/${encodeURIComponent(id)}/chart`, z.string().min(1), signal, 'chart'), response => response.text()); }
 }
 export const majdataProvider = new MajdataProvider();

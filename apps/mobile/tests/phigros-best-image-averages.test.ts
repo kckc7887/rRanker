@@ -13,9 +13,31 @@ function record(songId: string, achievements: number): ScoreRecord {
   };
 }
 
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('Phigros B30 Avg', () => {
+  it('忽略畸形响应且不会发起高档位重查', async () => {
+    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: { 'Alpha.Artist.0': { IN: { accAvg: 101 } } } }) }));
+    vi.stubGlobal('fetch', fetchMock);
+    expect(await loadPhigrosAccAverages([record('Alpha.Artist', 99)], 16)).toEqual({});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it('取消或超时立即结束不响应取消的网络请求', async () => {
+    vi.useFakeTimers();
+    const fetchMock = vi.fn(() => new Promise<Response>(() => {}));
+    vi.stubGlobal('fetch', fetchMock);
+    const controller = new AbortController();
+    const cancelled = loadPhigrosAccAverages([record('Alpha.Artist', 99)], 16, controller.signal);
+    controller.abort();
+    expect(await cancelled).toEqual({});
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    const timedOut = loadPhigrosAccAverages([record('Alpha.Artist', 99)], 16);
+    await vi.advanceTimersByTimeAsync(10_000);
+    expect(await timedOut).toEqual({});
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+  });
+
   it('使用原项目 allAccAvg 协议并按当前 ACC 标记 Higher / Lower', async () => {
     const records = [record('Alpha.Artist', 99.5), record('Beta.Artist', 98.5)];
     const fetchMock = vi.fn(async (_url: string, _request: RequestInit) => ({

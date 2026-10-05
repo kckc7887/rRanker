@@ -4,12 +4,12 @@
   "version": "0.4.0",
   "license": "AGPL-3.0-only",
   "scripts": {
-    "postinstall": "node scripts/patch-decode-uri-component.cjs && node scripts/patch-metro-image-size.cjs && node scripts/patch-react-native-webview-xiaomi-bridge.cjs",
+    "postinstall": "node scripts/patch-decode-uri-component.cjs && node scripts/patch-metro-image-size.cjs && node scripts/patch-react-native-webview-xiaomi-bridge.cjs && node scripts/patch-expo-file-handle.cjs && node scripts/patch-audited-dependencies.cjs",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
-    "lint": "eslint app src tests vitest.config.ts jest.config.js",
+    "lint": "eslint app src tests native-account-recovery-entry.tsx vitest.config.ts jest.config.js",
     "typecheck": "tsc --noEmit && npm run typecheck:maimai-player && npm run typecheck:phigros-player && npm run typecheck:osu-player && npm run typecheck:rizline-player",
     "typecheck:phigros-player": "tsc -p tsconfig.phigros-player.json",
     "check:generated": "node scripts/build-chart-preview.mjs --check && node scripts/build-phigros-chart-preview.mjs --check && node scripts/build-osu-chart-preview.mjs --check && node scripts/build-rizline-chart-preview.mjs --check",
@@ -17,6 +17,7 @@
     "typecheck:rizline-player": "tsc -p tsconfig.rizline-player.json",
     "check:architecture": "node scripts/check-architecture.mjs",
     "audit:prod": "node scripts/check-production-audit.mjs",
+    "audit:all": "node scripts/check-production-audit.mjs --all",
     "benchmark:optimization": "node scripts/benchmark-optimization.mjs",
     "benchmark:phigros-push": "node scripts/benchmark-phigros-push.mjs",
     "check:lossless-assets": "node scripts/verify-lossless-assets.mjs",
@@ -121,5 +122,12 @@
   "private": true,
   "engines": {
     "node": ">=22.13"
+  },
+  "expo": {
+    "autolinking": {
+      "android": {
+        "buildFromSource": ["expo-file-system"]
+      }
+    }
   }
 }

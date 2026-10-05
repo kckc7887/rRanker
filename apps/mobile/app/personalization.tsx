@@ -87,7 +87,7 @@ export default function PersonalizationScreen() {
                   appearance === option.id && { backgroundColor: theme.accent, borderColor: theme.accent },
                 ]}
               >
-                <Text style={{ color: appearance === option.id ? '#FFF' : theme.textSecondary, fontWeight: '700' }}>
+                <Text style={{ color: appearance === option.id ? theme.onAccent : theme.textSecondary, fontWeight: '700' }}>
                   {option.label}
                 </Text>
               </Pressable>

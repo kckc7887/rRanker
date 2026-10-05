@@ -51,7 +51,7 @@ export interface AutoFrame {
 export function synthesizeAutoReplay(
   beatmap: BeatmapData,
   beatmapHash: string,
-  autoFrames: AutoFrame[],
+  autoFrames: Iterable<AutoFrame>,
   mods = 0,
 ): ReplayData {
   // Stable sort keeps insertion order for equal timestamps (release-before-press

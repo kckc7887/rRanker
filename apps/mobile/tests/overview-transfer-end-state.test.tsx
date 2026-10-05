@@ -13,11 +13,12 @@ import { jest } from '@jest/globals';
 import { useOverviewUpload } from '@/hooks/use-overview-upload';
 import { createMaimaiBoundAccount, type BoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
-import type { UploadResult, UploadTargetResult } from '@/services/upload-maimai-from-friend-code';
+import { uploadTaskController, type UploadResult, type UploadTargetResult } from '@/services/upload-maimai-from-friend-code';
+import type { transferMaimaiFromLxns } from '@/services/transfer-maimai-from-lxns';
 import { fixtureCatalog } from '@/fixtures/sanitized';
 
 const mockNotification = jest.fn();
-const mockTransfer = jest.fn<() => Promise<UploadResult>>();
+const mockTransfer = jest.fn<typeof transferMaimaiFromLxns>();
 const mockInvalidate = jest.fn(async () => undefined);
 const mockUpdateBoundAccountScore = jest.fn();
 
@@ -25,7 +26,7 @@ jest.mock('@/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockNotification }),
 }));
 jest.mock('@/services/transfer-maimai-from-lxns', () => ({
-  transferMaimaiFromLxns: () => mockTransfer(),
+  transferMaimaiFromLxns: (...args: Parameters<typeof transferMaimaiFromLxns>) => mockTransfer(...args),
 }));
 jest.mock('@/services/invalidate-account-data', () => ({
   invalidateAccountDataQueries: () => mockInvalidate(),
@@ -118,12 +119,83 @@ async function transferScore(): Promise<{ ok: boolean | undefined; phase: unknow
 }
 
 beforeEach(() => {
+  uploadTaskController.resetForTests();
   jest.clearAllMocks();
   mockInvalidate.mockResolvedValue(undefined);
 });
-afterEach(async () => { await cleanup(); });
+afterEach(async () => { await cleanup(); uploadTaskController.resetForTests(); });
 
 describe('总览从落雪传输成绩的页面终态', () => {
+  it('暂停时不开始曲库和传输，恢复后继续同一任务', async () => {
+    const refetch = jest.fn(async () => ({ data: fixtureCatalog }));
+    const config = options({ catalogQuery: { data: undefined, error: null, refetch } as unknown as Params['catalogQuery'] });
+    const hook = await renderHook(() => useOverviewUpload(config));
+    await act(async () => {
+      hook.result.current.setMaimaiSourceAccountId(source.id);
+      hook.result.current.setMaimaiTransferTargetIds([water.id]);
+    });
+    let pauseFirst = true;
+    const unsubscribe = uploadTaskController.subscribe(snapshot => {
+      if (pauseFirst && snapshot.status === 'running') { pauseFirst = false; uploadTaskController.pause(); }
+    });
+    mockTransfer.mockResolvedValue(transferResult({ targetResults: [targetResult(water, 'success')] }));
+    let pending!: Promise<boolean>;
+    try {
+      await act(async () => { pending = hook.result.current.syncMaimaiFromLxns(); });
+      expect(uploadTaskController.getSnapshot().status).toBe('paused');
+      expect(refetch).not.toHaveBeenCalled();
+      expect(mockTransfer).not.toHaveBeenCalled();
+      await act(async () => { uploadTaskController.resume(); await pending; });
+      expect(refetch).toHaveBeenCalledTimes(1);
+      expect(mockTransfer).toHaveBeenCalledTimes(1);
+      expect(uploadTaskController.getSnapshot().status).toBe('done');
+    } finally { unsubscribe(); await hook.unmount(); }
+  });
+
+  it('卸载后已发送的传输正常结算但不触发页面通知', async () => {
+    let finish!: (result: UploadResult) => void;
+    mockTransfer.mockImplementation(() => new Promise(resolve => { finish = resolve; }));
+    const config = options();
+    const hook = await renderHook(() => useOverviewUpload(config));
+    await act(async () => {
+      hook.result.current.setMaimaiSourceAccountId(source.id);
+      hook.result.current.setMaimaiTransferTargetIds([water.id]);
+    });
+    let pending!: Promise<boolean>;
+    await act(async () => { pending = hook.result.current.syncMaimaiFromLxns(); });
+    expect(mockTransfer).toHaveBeenCalledTimes(1);
+    await hook.unmount();
+    const result = transferResult({ uploaded: 120, targetResults: [targetResult(water, 'success')] });
+    await act(async () => { finish(result); await pending; });
+    expect(uploadTaskController.getSnapshot()).toMatchObject({ status: 'done', result });
+    expect(mockNotification).not.toHaveBeenCalled();
+    expect(config.operation.finish).toHaveBeenCalledTimes(1);
+  });
+  it('同时保留未确认目标和失败目标，不把未确认计为成功', async () => {
+    mockTransfer.mockResolvedValue(transferResult({ targetResults: [
+      { account: water, status: 'unconfirmed', written: 0, skipped: 0 },
+      targetResult(waterSecond, 'failed'),
+    ] }));
+    const { ok } = await transferScore();
+    expect(ok).toBe(false);
+    expect(mockNotification).toHaveBeenCalledWith(expect.objectContaining({
+      variant: 'warning', message: expect.stringMatching(/水鱼玩家.*未确认.*水鱼二号.*失败/),
+    }));
+  });
+
+  it('接入公共上传取消信号，取消后的迟到结果不通知、不刷新', async () => {
+    mockTransfer.mockImplementation(async input => {
+      expect(input.signal).toBe(uploadTaskController.getSignal());
+      expect(input.signal?.waitUntilResumed).toBeInstanceOf(Function);
+      uploadTaskController.cancel();
+      return transferResult({ uploaded: 120, targetResults: [targetResult(water, 'success')] });
+    });
+    const { ok } = await transferScore();
+    expect(ok).toBe(false);
+    expect(mockNotification).not.toHaveBeenCalled();
+    expect(mockInvalidate).not.toHaveBeenCalled();
+  });
+
   it('部分目标失败时给出警告通知与「部分完成」状态，且不报告传输成功', async () => {
     mockTransfer.mockResolvedValue(transferResult({
       uploaded: 120,

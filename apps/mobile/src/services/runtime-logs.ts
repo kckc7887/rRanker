@@ -6,6 +6,7 @@ import * as Sharing from 'expo-sharing';
 import { getRuntimeLogDatabase, runSerializedSchemaInit } from '@/storage/rranker-database';
 import { RUNTIME_LOG_SCHEMA, RuntimeLogRepository } from '@/storage/runtime-log-repository';
 import { runtimeLogPreferencesStore } from '@/storage/runtime-log-preferences-store';
+import { getAppLifecycleSnapshot, subscribeAppLifecycleSnapshot } from '@/state/app-lifecycle-core';
 import { createRuntimeLogController } from './runtime-log-controller';
 import { installRuntimeLogErrors, type RuntimeExceptionHost } from './runtime-log-errors';
 import { installRuntimeLogRecorder, recordRuntimeDiagnostic, recordRuntimeError } from './runtime-diagnostics-recorder';
@@ -31,9 +32,20 @@ export const runtimeLogs = createRuntimeLogController({
   }),
 });
 
+let lifecycleSubscribed = false;
 export function initializeRuntimeLogs(): Promise<void> {
   installRuntimeLogRecorder(runtimeLogs.record);
   installRuntimeLogErrors(globalThis as RuntimeExceptionHost, (error, fatal) => recordRuntimeError('runtime', error, fatal));
+  if (!lifecycleSubscribed) {
+    lifecycleSubscribed = true;
+    let previousPhase = getAppLifecycleSnapshot().phase;
+    subscribeAppLifecycleSnapshot(snapshot => {
+      const enteringBackground = snapshot.phase === 'background' && previousPhase !== 'background';
+      previousPhase = snapshot.phase;
+      if (enteringBackground) void recordRuntimeDiagnostic('lifecycle', { lifecyclePhase: 'background' });
+      if (snapshot.phase === 'background') runtimeLogs.flush();
+    });
+  }
   return runtimeLogs.initialize();
 }
 
@@ -49,14 +61,19 @@ export async function shareRuntimeLog(id: number): Promise<void> {
   // 在第一个 await 前固定正文，分享面板触发的生命周期事件不进入此次快照。
   const contents = runtimeLogs.snapshot(id);
   sharing = true;
+  let file: File | undefined;
   try {
     const { emergency, storageAvailable, ...diagnostics } = await snapshotRuntimeDiagnosticsForExport();
     const combined = JSON.stringify({ ...JSON.parse(contents), diagnostics, emergency, storageAvailable }, null, 2);
     try {
       if (!await Sharing.isAvailableAsync()) throw new Error('sharing unavailable');
-      const file = new File(Paths.cache, `rranker-runtime-log-${id}-${Date.now()}-${++exportSequence}.txt`);
+      file = new File(Paths.cache, `rranker-runtime-log-${id}-${Date.now()}-${++exportSequence}.txt`);
       await file.write(combined);
       await Sharing.shareAsync(file.uri, { dialogTitle: '分享日志', mimeType: 'text/plain', UTI: 'public.plain-text' });
     } catch { await Share.share({ title: '日志', message: combined }); }
-  } finally { sharing = false; }
+  } finally {
+    try { if (file?.exists) file.delete(); }
+    catch (error) { recordRuntimeError('runtime-log', error, false, { phase: 'share-cleanup' }); }
+    sharing = false;
+  }
 }

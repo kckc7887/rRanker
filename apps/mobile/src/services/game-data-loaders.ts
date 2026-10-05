@@ -39,6 +39,7 @@ import { OsuScoreProvider } from '@/providers/osu-score-provider';
 import { PhigrosSaveCache } from '@/services/phigros-save-cache';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import { ProviderError } from '@/providers/errors';
+import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
 import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
 import { isOsuGameId } from '@/domain/game-mode-family';
 import { loadOsuSnapshotFresh, OsuCache } from '@/services/osu-cache';
@@ -247,7 +248,8 @@ async function loadAdofaiGameDataBundle(context: GameDataLoaderContext): Promise
   if (fetchedFresh) {
     assertCurrent();
     publishEntityValue(playerKey, snapshot);
-    if (!signal.aborted) void tufCache.savePlayer(playerId, snapshot, assertCurrent).catch(() => undefined);
+    if (!signal.aborted) void tufCache.savePlayer(playerId, snapshot, assertCurrent).catch(error =>
+      recordRuntimeDiagnostic('operation', { source: 'game-data', gameType: 'adofai', phase: 'cache-persist', result: signal.aborted ? 'cancelled' : 'failed', error }));
   }
   return { bundle: toBundle(snapshot.data, snapshot.source) };
 }
@@ -305,7 +307,8 @@ async function loadMuseDashGameDataBundle(context: GameDataLoaderContext): Promi
   if (fetchedFresh) {
     assertCurrent();
     publishEntityValue(playerKey, snapshot);
-    if (!signal.aborted) void museDashCache.savePlayer(userId, snapshot, assertCurrent).catch(() => undefined);
+    if (!signal.aborted) void museDashCache.savePlayer(userId, snapshot, assertCurrent).catch(error =>
+      recordRuntimeDiagnostic('operation', { source: 'game-data', gameType: 'musedash', phase: 'cache-persist', result: signal.aborted ? 'cancelled' : 'failed', error }));
   }
   return { bundle: toBundle(snapshot.data, snapshot.source) };
 }
@@ -415,7 +418,8 @@ async function loadOsuGameDataBundle(context: GameDataLoaderContext): Promise<Ga
     const snapshot = stored
       ? staleCached(stored)
       : await loadOsuSnapshotFresh(provider, activeGameId, userId, signal);
-    if (!stored && !signal.aborted) void osuCache.save(activeGameId, userId, snapshot, assertCurrent).catch(() => undefined);
+    if (!stored && !signal.aborted) void osuCache.save(activeGameId, userId, snapshot, assertCurrent).catch(error =>
+      recordRuntimeDiagnostic('operation', { source: 'game-data', gameType: activeGameId, phase: 'cache-persist', result: signal.aborted ? 'cancelled' : 'failed', error }));
     return { bundle: toBundle(snapshot) };
   }
   switch (activeGameId) {

@@ -1,3 +1,4 @@
+import { createIntervalIndex } from '../../chart-preview-shared/webview-player/interval-index';
 import type { HitResult } from './engine';
 import type { ManiaHitObject, ManiaSession } from './engine/rulesets/mania/types';
 import type { TaikoHitObject } from './engine/rulesets/taiko/types';
@@ -36,35 +37,16 @@ export function taikoLookback(objects: readonly TaikoHitObject[]): number {
   return lookback;
 }
 
-type ManiaIndex = { size: number; maxEnd: Float64Array; starts: Float64Array };
-const maniaIndices = new WeakMap<readonly ManiaHitObject[], ManiaIndex>();
+const maniaIndices = new WeakMap<readonly ManiaHitObject[], (min: number, max: number) => ManiaHitObject[]>();
 
 /** An interval index avoids scanning unrelated taps when one hold spans a large part of a chart. */
 export function visibleManiaObjects(objects: readonly ManiaHitObject[], minTime: number, maxTime: number): ManiaHitObject[] {
-  let index = maniaIndices.get(objects);
-  if (!index) {
-    let size = 1;
-    while (size < objects.length) size *= 2;
-    const maxEnd = new Float64Array(size * 2).fill(-Infinity);
-    const starts = new Float64Array(objects.length);
-    objects.forEach((object, i) => {
-      starts[i] = object.kind === 'note' ? object.time : object.startTime;
-      maxEnd[size + i] = object.kind === 'note' ? object.time : object.endTime;
-    });
-    for (let i = size - 1; i > 0; i--) maxEnd[i] = Math.max(maxEnd[i * 2]!, maxEnd[i * 2 + 1]!);
-    index = { size, maxEnd, starts };
-    maniaIndices.set(objects, index);
+  let query = maniaIndices.get(objects);
+  if (!query) {
+    query = createIntervalIndex(objects, object => object.kind === 'note' ? [object.time, object.time] : [object.startTime, object.endTime]);
+    maniaIndices.set(objects, query);
   }
-  const visible: ManiaHitObject[] = [];
-  const visit = (node: number, first: number, end: number): void => {
-    if (first >= objects.length || index!.maxEnd[node]! < minTime || index!.starts[first]! > maxTime) return;
-    if (end - first === 1) { visible.push(objects[first]!); return; }
-    const mid = (first + end) >>> 1;
-    visit(node * 2, first, mid);
-    visit(node * 2 + 1, mid, end);
-  };
-  visit(1, 0, index.size);
-  return visible;
+  return query(minTime, maxTime);
 }
 
 type ResultIndex = { result: HitResult; displayTime: number; index: number };

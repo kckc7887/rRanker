@@ -1,6 +1,6 @@
 import { crc32 } from 'node:zlib';
 import JSZip from 'jszip';
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import {
   CHART_PREVIEW_CRC_CHUNK_BYTES,
   CHART_PREVIEW_MAX_DOWNLOAD_BYTES,
@@ -13,6 +13,10 @@ import {
   ChartPreviewBudgetExceededError,
   createChartPreviewActualBytes,
   readBudgetedZipEntry,
+  readBudgetedChartDownload,
+  pauseChartPreviewParse,
+  CHART_PREVIEW_PARSE_SLICE_MS,
+  CHART_PREVIEW_PARSE_YIELD_INTERVAL,
 } from '@/features/chart-preview-shared/chart-preview-resource-budget';
 
 async function zipEntry(bytes: Uint8Array, checksum = bytes.byteLength === 0 ? 0 : crc32(bytes)) {
@@ -24,6 +28,46 @@ async function zipEntry(bytes: Uint8Array, checksum = bytes.byteLength === 0 ? 0
 }
 
 describe('chart preview actual bytes and cancellation', () => {
+  it('yields by elapsed work, resets the slice after waiting, and keeps task state independent', async () => {
+    vi.useFakeTimers();
+    let now = 0;
+    const clock = vi.spyOn(performance, 'now').mockImplementation(() => now);
+    const slice = {};
+    const checkpoint = CHART_PREVIEW_PARSE_YIELD_INTERVAL;
+    try {
+      const first = pauseChartPreviewParse(checkpoint, undefined, slice);
+      expect(vi.getTimerCount()).toBe(1);
+      now = 100;
+      await vi.runAllTimersAsync(); await first;
+      now += CHART_PREVIEW_PARSE_SLICE_MS - 1;
+      await pauseChartPreviewParse(checkpoint * 2, undefined, slice);
+      expect(vi.getTimerCount()).toBe(0);
+      now++;
+      const next = pauseChartPreviewParse(checkpoint * 3, undefined, slice);
+      expect(vi.getTimerCount()).toBe(1);
+      const independent = pauseChartPreviewParse(checkpoint, undefined, {});
+      expect(vi.getTimerCount()).toBe(2);
+      await vi.runAllTimersAsync(); await Promise.all([next, independent]);
+      const controller = new AbortController(); controller.abort(new Error('cancel within slice'));
+      await expect(pauseChartPreviewParse(checkpoint * 4, { signal: controller.signal }, slice)).rejects.toThrow('cancel within slice');
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { clock.mockRestore(); vi.useRealTimers(); }
+  });
+  it('checks downloaded size and cancellation before allocating a file buffer', async () => {
+    const bytes = vi.fn(async () => new Uint8Array([1, 2]));
+    await expect(readBudgetedChartDownload({ size: CHART_PREVIEW_MAX_DOWNLOAD_BYTES + 1, bytes }))
+      .rejects.toBeInstanceOf(ChartPreviewBudgetExceededError);
+    expect(bytes).not.toHaveBeenCalled();
+    const controller = new AbortController(); controller.abort(new Error('cancelled'));
+    await expect(readBudgetedChartDownload({ size: 2, bytes }, { signal: controller.signal })).rejects.toThrow('cancelled');
+    expect(bytes).not.toHaveBeenCalled();
+    const buffer = new Uint8Array([1, 2]);
+    bytes.mockResolvedValue(buffer);
+    expect(await readBudgetedChartDownload({ size: 2, bytes })).toBe(buffer);
+    const late = new AbortController();
+    bytes.mockImplementation(async () => { late.abort(new Error('late cancel')); return buffer; });
+    await expect(readBudgetedChartDownload({ size: 2, bytes }, { signal: late.signal })).rejects.toThrow('late cancel');
+  });
   it('bounds GIF frame counts before allocating decoded frames', () => {
     expect(() => assertChartPreviewGifFrameCount(CHART_PREVIEW_MAX_GIF_FRAMES)).not.toThrow();
     for (const count of [CHART_PREVIEW_MAX_GIF_FRAMES + 1, Infinity, NaN, -1, 1.5]) {

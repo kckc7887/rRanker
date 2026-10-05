@@ -19,6 +19,8 @@ export const CHART_PREVIEW_MAX_GIF_FRAME_PIXELS = 2_048 * 2_048;
 export const CHART_PREVIEW_MAX_GIF_FRAMES = 4_096;
 /** 长循环每隔这么多步检查取消，并在异步解析中让出主线程。 */
 export const CHART_PREVIEW_PARSE_YIELD_INTERVAL = 128;
+/** 高频轻量循环的单次工作时间；检查步长之外不延长主线程占用。 */
+export const CHART_PREVIEW_PARSE_SLICE_MS = 8;
 /** CRC 每处理这么多字节检查一次取消，并让出主线程。 */
 export const CHART_PREVIEW_CRC_CHUNK_BYTES = 64 * 1024;
 
@@ -89,17 +91,37 @@ export function interruptChartPreviewParse(iteration: number, cancellation?: Cha
   throwIfChartPreviewCancelled(cancellation);
 }
 
-export async function pauseChartPreviewParse(iteration: number, cancellation?: ChartPreviewCancellation): Promise<void> {
+/** 传入每次任务独立的 slice 后，首次检查点让出，此后只在时间片用尽时等待。 */
+export async function pauseChartPreviewParse(
+  iteration: number,
+  cancellation?: ChartPreviewCancellation,
+  slice?: { resumedAt?: number },
+): Promise<void> {
   interruptChartPreviewParse(iteration, cancellation);
   if (iteration === 0 || iteration % CHART_PREVIEW_PARSE_YIELD_INTERVAL !== 0) return;
+  if (slice?.resumedAt !== undefined && performance.now() - slice.resumedAt < CHART_PREVIEW_PARSE_SLICE_MS) return;
   await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
   throwIfChartPreviewCancelled(cancellation);
+  if (slice) slice.resumedAt = performance.now();
 }
 
 export function assertChartPreviewDownloadBytes(bytes: number): void {
   if (!Number.isFinite(bytes) || bytes < 0 || bytes > CHART_PREVIEW_MAX_DOWNLOAD_BYTES) {
     throw new ChartPreviewBudgetExceededError(CHART_PREVIEW_DOWNLOAD_BUDGET_MESSAGE);
   }
+}
+
+/** 在整文件读取前校验已有字节预算，读取后复核实际大小并保留原缓冲。 */
+export async function readBudgetedChartDownload(
+  file: { readonly size: number; bytes(): Promise<Uint8Array> },
+  cancellation?: ChartPreviewCancellation,
+): Promise<Uint8Array> {
+  throwIfChartPreviewCancelled(cancellation);
+  assertChartPreviewDownloadBytes(file.size);
+  const bytes = await file.bytes();
+  throwIfChartPreviewCancelled(cancellation);
+  assertChartPreviewDownloadBytes(bytes.byteLength);
+  return bytes;
 }
 
 export function assertChartPreviewEntryCount(count: number): void {
@@ -208,19 +230,29 @@ function crc32TableBytes(): Uint32Array {
   return crc32Table;
 }
 
-async function crc32(bytes: Uint8Array, cancellation?: ChartPreviewCancellation): Promise<number> {
-  if (bytes.length === 0) return 0;
+/** 增量 CRC32 供解包校验与文件式组包共用同一张表。 */
+export function createChartPreviewCrc32() {
   const table = crc32TableBytes();
   let crc = -1;
-  for (let index = 0; index < bytes.length; index += 1) {
-    if (index > 0 && index % CHART_PREVIEW_CRC_CHUNK_BYTES === 0) {
-      throwIfChartPreviewCancelled(cancellation);
+  return {
+    update(bytes: Uint8Array): void {
+      for (const byte of bytes) crc = (crc >>> 8) ^ table[(crc ^ byte) & 0xff]!;
+    },
+    value: () => (crc ^ -1) >>> 0,
+  };
+}
+
+async function crc32(bytes: Uint8Array, cancellation?: ChartPreviewCancellation): Promise<number> {
+  const crc = createChartPreviewCrc32();
+  for (let offset = 0; offset < bytes.length; offset += CHART_PREVIEW_CRC_CHUNK_BYTES) {
+    throwIfChartPreviewCancelled(cancellation);
+    crc.update(bytes.subarray(offset, offset + CHART_PREVIEW_CRC_CHUNK_BYTES));
+    if (offset + CHART_PREVIEW_CRC_CHUNK_BYTES < bytes.length) {
       await new Promise<void>((resolve) => { setTimeout(resolve, 0); });
-      throwIfChartPreviewCancelled(cancellation);
     }
-    crc = (crc >>> 8) ^ table[(crc ^ bytes[index]!) & 0xff]!;
   }
-  return (crc ^ -1) >>> 0;
+  throwIfChartPreviewCancelled(cancellation);
+  return crc.value();
 }
 
 export async function assertChartPreviewZipPayload(

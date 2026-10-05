@@ -147,6 +147,87 @@ function assertMatchesGolden(raw: unknown, golden: GoldenChart, detailed: boolea
 }
 
 describe('Rizline official chart prepare', () => {
+  it('samples large camera, canvas and colour tracks by active interval across seeks', () => {
+    const chart = prepareOfficialChart(fixture());
+    let reads = 0;
+    const values = Array.from({ length: 10000 }, (_, i) => ({
+      startTick: i, endTick: i + 1, startSeconds: i,
+      get endSeconds() { reads++; return i + 1; },
+      from: i + 1, to: i + 2, easeType: 0, floorPosition: i,
+    }));
+    chart.camera.scaleSpans = values;
+    chart.camera.xSpans = values;
+    chart.canvases[0]!.xSpans = values;
+    chart.canvases[0]!.speedSpans = values;
+    chart.lines[0]!.judgeRing = values.map((v, i) => ({
+      startSeconds: i, get endSeconds() { reads++; return i + 1; },
+      from: { r: i, g: 0, b: 0, a: 255 }, to: { r: i + 1, g: 0, b: 0, a: 255 },
+    }));
+    layoutPreviewFrame(chart, 0);
+    reads = 0;
+    for (const time of [9000.5, 9999, 4000.25, 0, 10000, -1]) {
+      const frame = layoutPreviewFrame(chart, time);
+      expect(frame.cameraScale).toBe(time < 0 ? 1 : time + 1);
+      expect(frame.judgeRings[0]!.r).toBe(time < 0 ? 0 : time);
+    }
+    expect(reads).toBeLessThan(200);
+  });
+  it('indexes visible notes without losing negative-speed notes, long holds, hit effects or reverse seeks', () => {
+    const chart = prepareOfficialChart(fixture());
+    const line = chart.lines[0]!;
+    const template = line.notes[0]!;
+    line.notes = Array.from({ length: 20000 }, (_, id) => ({ ...template, id, seconds: id * 2, floorPosition: id * 3 }));
+    line.notes.push({ ...template, id: 20000, kind: 2, seconds: 0, floorPosition: -100, holdEndSeconds: 50000, holdEndFloorPosition: 100000, holdEndCanvasIndex: 0 });
+    line.notes.push({ ...template, id: 20001, seconds: 30000, floorPosition: -8 });
+    chart.canvases[0]!.speedSpans[0]!.from = -1;
+    const viewport = { height: 100, judgeLineY: 75, scrollUnit: 1, visualSpeed: 1, noteRadius: 2 };
+    for (const time of [0, 10, 25000, 5, 30000, 0]) {
+      const full = layoutPreviewFrame(chart, time);
+      const visible = layoutPreviewFrame(chart, time, viewport);
+      const expected = full.notes.filter(note => {
+        const end = note.holdEndSeconds ?? note.seconds;
+        const effect = time >= note.seconds && time <= end + 0.7;
+        const min = Math.min(note.y, note.holdY), max = Math.max(note.y, note.holdY);
+        return effect || (end >= time && max >= -27 && min <= 77);
+      });
+      expect(visible.notes).toEqual(expected);
+      expect(visible.notes.length).toBeLessThan(50);
+    }
+  });
+  it('keeps per-frame work independent of chart size across a note and span ladder', () => {
+    const viewport = { height: 100, judgeLineY: 75, scrollUnit: 1, visualSpeed: 1, noteRadius: 2 };
+    const measure = (size: number) => {
+      const chart = prepareOfficialChart(fixture());
+      const template = chart.lines[0]!.notes[0]!;
+      chart.lines[0]!.notes = Array.from({ length: size }, (_, id) => ({ ...template, id, seconds: id * 2, floorPosition: id * 3 }));
+      let reads = 0;
+      const spans = Array.from({ length: size }, (_, i) => ({
+        startTick: i, endTick: i + 1, startSeconds: i,
+        get endSeconds() { reads++; return i + 1; }, from: i + 1, to: i + 2, easeType: 0, floorPosition: i,
+      }));
+      chart.camera.xSpans = spans;
+      layoutPreviewFrame(chart, 0, viewport);
+      reads = 0;
+      let visible = 0;
+      for (const time of [size * 1.5, size * 0.25, 3, size * 1.9]) {
+        const full = layoutPreviewFrame(chart, time);
+        const frame = layoutPreviewFrame(chart, time, viewport);
+        const expected = full.notes.filter(note => {
+          const end = note.holdEndSeconds ?? note.seconds;
+          const effect = time >= note.seconds && time <= end + 0.7;
+          const min = Math.min(note.y, note.holdY), max = Math.max(note.y, note.holdY);
+          return effect || (end >= time && max >= -27 && min <= 77);
+        });
+        expect(frame.notes).toEqual(expected);
+        expect(frame.cameraX).toBeCloseTo(time > size ? 1 : time + 1, 6);
+        visible += frame.notes.length;
+      }
+      return { reads, visible };
+    };
+    const ladder = [5000, 20000, 80000].map(measure);
+    for (const step of ladder) expect(step.visible).toBeLessThan(200);
+    expect(Math.max(...ladder.map(step => step.reads))).toBeLessThan(400);
+  });
   it('empty bpmShifts still converts ticks to seconds', () => {
     const chart = prepareOfficialChart(fixture());
     expect(chart.lines[0]?.notes[0]?.seconds).toBe(0.5);

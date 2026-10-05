@@ -76,6 +76,7 @@ export function useOsuCatalogSearch(gameId: OsuGameId | null, input: OsuCatalogS
     initialPageParam: undefined as string | undefined,
     getNextPageParam: (last) => last.cursor ?? undefined,
     enabled: enabled && tabActive && bound && params !== null,
+    notifyOnChangeProps: tabActive ? undefined : [],
     staleTime: 60_000,
   });
 

@@ -683,7 +683,7 @@ describe('osu! 详情入口解锁', () => {
     const row = screen.getByLabelText('歌曲 鳥の詩');
     expect(row.props.accessibilityRole).toBe('button');
     await fireEvent.press(row);
-    expect(mockPush).toHaveBeenCalledWith('/songs/3720');
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '3720' } });
   });
 
   it('OsuScoreCard 可按压，点击进入歌曲详情并定位该成绩的 beatmap', async () => {

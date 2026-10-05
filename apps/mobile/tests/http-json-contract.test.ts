@@ -1,7 +1,7 @@
 import { describe, expect, it, vi } from 'vitest';
 import { z } from 'zod';
 import { ProviderError, providerErrorFromStatus } from '@/providers/errors';
-import { readProviderResponseBytes, requestJson, retryAfterMs } from '@/providers/http-json';
+import { readProviderResponseBytes, requestJson, requestProviderResponse, requestProviderWrite, retryAfterMs } from '@/providers/http-json';
 import { SessionPersistenceError } from '@/domain/session-vault';
 
 const schema = z.object({ ok: z.boolean() });
@@ -23,6 +23,52 @@ function failingFetcher(status: number, headers: Record<string, string> = {}) {
 }
 
 describe('公共请求执行器的尝试次数合同', () => {
+  it('预取消与发送前校验失败不会变成未确认写入，也不发送请求', async () => {
+    const controller = new AbortController();
+    const reason = new Error('cancelled before write');
+    controller.abort(reason);
+    const fetcher = vi.fn(async () => new Response('{"ok":true}'));
+    await expect(requestProviderWrite(options({ fetcher, signal: controller.signal }), response => response.json())).rejects.toBe(reason);
+    await expect(requestProviderWrite(options({ fetcher, authenticated: true, baseUrl: 'not-a-url' }), response => response.json())).rejects.toBeInstanceOf(ProviderError);
+    expect(fetcher).not.toHaveBeenCalled();
+  });
+  it.each([
+    { name: 'HTML 500', load: async () => new Response('<html>error</html>', { status: 500 }) },
+    { name: '断开连接', load: async (): Promise<Response> => { throw new TypeError('connection lost'); } },
+    { name: '无效成功正文', load: async () => new Response('{"ok":"yes"}') },
+    { name: '超出正文预算', load: async () => new Response('{"ok":true,"extra":"' + 'x'.repeat(1024) + '"}') },
+  ])('发送后的 $name 保持未确认且只发送一次', async ({ load }) => {
+    const fetcher = vi.fn(load);
+    await expect(requestProviderWrite(options({ fetcher, totalAttempts: 5, extraRetries: 5, maxResponseBytes: 100 }), response => response.json()))
+      .resolves.toEqual({ status: 'unconfirmed' });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it.each([400, 401, 403, 429])('写入被 %s 明确拒绝时保留失败并且不重传', async status => {
+    const fetcher = failingFetcher(status, { 'Retry-After': '5' });
+    await expect(requestProviderWrite(options({ fetcher, totalAttempts: 5 }), response => response.json())).rejects.toBeInstanceOf(ProviderError);
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+  it('写入发送后取消保留取消原因并清理请求定时器', async () => {
+    vi.useFakeTimers();
+    try {
+      const controller = new AbortController();
+      const reason = new Error('cancelled after send');
+      const fetcher = vi.fn(() => new Promise<Response>(() => {}));
+      const pending = requestProviderWrite(options({ fetcher, signal: controller.signal, totalAttempts: 5 }), response => response.json());
+      const rejected = expect(pending).rejects.toBe(reason);
+      controller.abort(reason);
+      await rejected;
+      expect(fetcher).toHaveBeenCalledTimes(1);
+      expect(vi.getTimerCount()).toBe(0);
+    } finally { vi.useRealTimers(); }
+  });
+  it('协议可读取非成功状态，但仍遵守正文预算与单次请求', async () => {
+    const fetcher = vi.fn(async () => new Response('body', { status: 500 }));
+    await expect(requestProviderResponse(options({ fetcher, totalAttempts: 1,
+      acceptStatus: () => true, maxResponseBytes: 2 }), async response => ({ ok: Boolean(await response.text()) })))
+      .rejects.toMatchObject({ code: 'upstream_schema' });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
   it('成功响应的凭据提交失败保留本机阶段且不重新发网络请求', async () => {
     const error = new SessionPersistenceError('credential_storage', { cause: new Error('native secure storage failure') });
     const fetcher = vi.fn(async () => new Response(JSON.stringify({ ok: true })));

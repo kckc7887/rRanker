@@ -5,6 +5,28 @@ export type OffsetPageFailure = {
 
 export type BoundedLoadFailure<T> = { item: T; error: unknown };
 
+/** 多个批次共享在飞上限；也用于查询自身发起的重连、失效与手动重取。 */
+export function createBoundedLoadQueue(concurrency: number) {
+  const limit = Math.max(1, Math.floor(concurrency));
+  const pending: (() => Promise<void>)[] = [];
+  let active = 0;
+  const pump = () => {
+    const available = limit - active;
+    if (available <= 0 || pending.length === 0) return;
+    const items = pending.splice(0, available);
+    active += items.length;
+    void loadItemsBounded({ items, concurrency: available, load: run => run() });
+  };
+  return <T>(load: () => Promise<T>): Promise<T> => new Promise((resolve, reject) => {
+    pending.push(async () => {
+      try { resolve(await load()); }
+      catch (error) { reject(error); }
+      finally { active--; pump(); }
+    });
+    pump();
+  });
+}
+
 /** 公共有限并发加载器：支持取消，并将单项失败隔离后返回。 */
 export async function loadItemsBounded<T, R>({
   items, concurrency, load, onItem, signal, failureMode = 'collect',

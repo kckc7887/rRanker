@@ -14,6 +14,7 @@ import { base64ToBytes } from '@/utils/crypto-subset';
 import type { RizlineSession } from './contracts';
 import { ProviderError, providerErrorFromStatus } from './errors';
 import { requestProviderResponse, retryAfterMs } from './http-json';
+import type { RuntimeRequestScenario } from '@/domain/runtime-log';
 
 const BASE_URL = 'https://rizserver.pigeongames.net';
 const GAME_ID = 'pigeongames.rizline';
@@ -126,7 +127,7 @@ export class RizlineProvider {
     this.fetcher = options.fetcher ?? expoFetch as unknown as typeof fetch;
   }
 
-  private async post(path: string, body: Record<string, string>, phone: string, signal?: AbortSignal) {
+  private async post(path: string, body: Record<string, string>, phone: string, signal?: AbortSignal, diagnosticScenario: RuntimeRequestScenario = 'player-profile') {
     const deviceId = this.session?.deviceId ?? await getRizlineDeviceId();
     const headers: Record<string, string> = {
       Accept: '*/*',
@@ -156,7 +157,7 @@ export class RizlineProvider {
     };
     const bytes = await requestProviderResponse({
       baseUrl: BASE_URL, path, schema: z.instanceof(Uint8Array), fetcher: this.fetcher,
-      label: 'Rizline', signal, retries: 1, timeoutMs: 20_000, authenticated: true,
+      label: 'Rizline', signal, retries: 1, timeoutMs: 20_000, authenticated: true, diagnosticScenario,
       maxResponseBytes: 16 * 1024 * 1024,
       init: { method: 'POST', headers, body: JSON.stringify(body), credentials: 'omit', redirect: 'error' },
       error: httpError,
@@ -237,7 +238,7 @@ export class RizlineProvider {
     if (!this.options.allowExpiredToken && isRizlineTokenExpired(current.token)) {
       throw new ProviderError('authentication', '登录已失效，请重新登录', false);
     }
-    const { bytes, token } = await this.post('/game/rn_login', {}, phone, signal);
+    const { bytes, token } = await this.post('/game/rn_login', {}, phone, signal, 'scores');
     const save = decryptRizlineSave(bytes);
     if (signal?.aborted) throw signal.reason;
     if (save.userId !== claims.userId) throw new ProviderError('authentication', '读取到的账号不一致，请重新登录', false);

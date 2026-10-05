@@ -10,8 +10,9 @@ import type { RizlineRecord } from '@/domain/rizline';
 import type { TufPass } from '@/domain/tuf';
 import type { OsuBestScore } from '@/domain/osu';
 import { fixtureRecords } from '@/fixtures/sanitized';
-import { decodeDetailTarget, type DetailTarget } from '@/domain/detail-target';
+import { decodeDetailTarget, encodeDetailTarget, type DetailTarget } from '@/domain/detail-target';
 import { GameScoreCard } from '@/components/game-content/GameScoreCard';
+import { GameSongRow } from '@/components/game-content/GameSongRow';
 import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
 import {
   presentChunithmScore,
@@ -24,10 +25,21 @@ import {
 } from '@/features/game-content/adapters';
 import { presentMajdataScore } from '@/features/game-content/adapters/majdata';
 import SongDetailScreen from '../app/songs/[songId]';
+import { createLocalMaimaiAccount } from '@/domain/bound-account';
 
 let mockActiveGameId: GameId = 'maimai';
 let mockRouteParams: Record<string, string> = { songId: '1' };
 const mockPush = jest.fn();
+const mockCrossAccount = { ...createLocalMaimaiAccount('Phigros 玩家', 0), id: 'phigros:test', gameId: 'phigros' as const };
+const mockSwitch = jest.fn(async (_id: string, _options: unknown) => { mockActiveGameId = 'phigros'; });
+jest.mock('@/services/switch-bound-account', () => ({ switchBoundAccount: (id: string, options: unknown) => mockSwitch(id, options), notifyAccountSwitchError: jest.fn() }));
+jest.mock('@/components/AccountSwitchSheet', () => ({ AccountSwitchSheet: (props: { visible: boolean; onClose: () => void; onSelectAccount: (account: unknown) => void }) => {
+  const React = jest.requireActual<typeof import('react')>('react');
+  const RN = jest.requireActual<typeof import('react-native')>('react-native');
+  return props.visible ? React.createElement(RN.View, null,
+    React.createElement(RN.Text, { onPress: props.onClose }, '取消选择'),
+    React.createElement(RN.Text, { onPress: () => props.onSelectAccount(mockCrossAccount) }, '使用目标账号')) : null;
+} }));
 
 jest.mock('expo-router', () => ({
   router: { push: (...args: unknown[]) => mockPush(...args), replace: jest.fn() },
@@ -54,11 +66,29 @@ jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
 }) }));
 jest.mock('@/state/session-store', () => ({
   UNBOUND_ACCOUNT_ID: 'maimai:unbound',
-  useSession: (selector: (state: { activeGameId: GameId; activeAccountId: string }) => unknown) => selector({
+  useSession: (selector: (state: { activeGameId: GameId; activeAccountId: string; boundAccounts: typeof mockCrossAccount[] }) => unknown) => selector({
     activeGameId: mockActiveGameId,
     activeAccountId: 'detail-target-account',
+    boundAccounts: [mockCrossAccount],
   }),
 }));
+
+it('跨游戏详情取消选择不加载错误游戏，切换成功后继续同一目标', async () => {
+  mockActiveGameId = 'maimai';
+  mockRouteParams = { songId: 'target-song', gameId: 'phigros', levelIndex: '2' };
+  mockSwitch.mockClear();
+  const view = await render(<SongDetailScreen />);
+  expect(view.queryByTestId('phigros-detail')).toBeNull();
+  await fireEvent.press(view.getByText('选择账号继续'));
+  await fireEvent.press(view.getByText('取消选择'));
+  expect(mockSwitch).not.toHaveBeenCalled();
+  expect(view.queryByTestId('phigros-detail')).toBeNull();
+  await fireEvent.press(view.getByText('选择账号继续'));
+  await fireEvent.press(view.getByText('使用目标账号'));
+  expect(mockSwitch).toHaveBeenCalledWith(mockCrossAccount.id, { navigateToOverview: false });
+  await view.rerender(<SongDetailScreen />);
+  expect(view.getByTestId('phigros-detail').props.children).toBe(JSON.stringify({ songId: 'target-song', levelIndex: 2 }));
+});
 jest.mock('@/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({ data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
   useMaimaiSongDetail: () => ({ data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn() }),
@@ -301,6 +331,24 @@ beforeEach(() => {
 });
 
 describe('成绩卡 → 详情路由 → 详情定位 往返', () => {
+  it.each(CASES)('$name 公共歌曲行保留完整详情定位参数', async (testCase) => {
+    const row = await render(<GameSongRow presentation={{ key: 'song', gameId: testCase.game,
+      route: encodeDetailTarget(testCase.target), title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
+      cover={null} badges={null} rowStyle={null} mainStyle={null} titleStyle={null} subtitleStyle={null} />);
+    await fireEvent.press(row.getByLabelText('打开歌曲'));
+    expect(decodeDetailTarget(testCase.game, pushedHref().params)).toEqual({ ok: true, target: testCase.target });
+  });
+
+  it('公共歌曲行保留额外参数与未转义歌曲身份', async () => {
+    const row = await render(<GameSongRow presentation={{ key: 'song', gameId: 'majdata-net',
+      route: { songId: '歌曲/空 格', levelIndex: 5, params: { gameId: 'majdata-net', scoreId: '42' } },
+      title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
+      cover={null} badges={null} rowStyle={null} mainStyle={null} titleStyle={null} subtitleStyle={null} />);
+    await fireEvent.press(row.getByLabelText('打开歌曲'));
+    expect(pushedHref()).toEqual({ pathname: '/songs/[songId]',
+      params: { songId: '歌曲/空 格', levelIndex: '5', gameId: 'majdata-net', scoreId: '42' } });
+  });
+
   it.each(CASES)('$name 卡片点击后解出同一谱面的 DetailTarget', async (testCase) => {
     const card = await render(testCase.card);
     await fireEvent.press(card.getByTestId(testCase.cardTestID));

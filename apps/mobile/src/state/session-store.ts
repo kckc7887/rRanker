@@ -47,6 +47,7 @@ export type SessionState = {
   protocolScoreProvider: SessionProfiles['protocolScoreProvider'];
   restoreStatus: SessionRestoreStatus;
   restoreError: string | null;
+  migrationRecovery: SessionVault['recovery'] | null;
   /** 当前激活账号的会话；切换账号时随之更换。 */
   session: ProviderSession | null;
   setSession: (session: ProviderSession, accountMeta?: {
@@ -255,6 +256,7 @@ export const useSession = create<SessionState>((set, get) => ({
   ...unboundState(),
   restoreStatus: 'restoring',
   restoreError: null,
+  migrationRecovery: null,
   setSession: (session, accountMeta) => {
     if (session.mode === 'rizline' && accountMeta?.gameId === 'rizline' && accountMeta.playerId) {
       const account = createRizlineBoundAccount({ userId: accountMeta.playerId,
@@ -398,19 +400,16 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   setOsuBinding: (input) => {
     const state = get();
-    const nextSessions = { ...state.sessionsByAccountId };
-    const nextCredentialIds = { ...state.credentialIdsByAccountId };
-    for (const account of input.accounts) {
-      nextSessions[account.id] = input.session;
-      nextCredentialIds[account.id] = input.credentialId;
-    }
-    const nextAccounts = dedupeAccounts([
-      ...state.boundAccounts,
-      ...input.accounts,
-    ]);
     const active = input.accounts.find((account) => account.id === input.activeAccountId)
       ?? input.accounts[0];
     if (!active) return;
+    const nextCredentialIds = { ...state.credentialIdsByAccountId };
+    for (const account of input.accounts) {
+      nextCredentialIds[account.id] = input.credentialId;
+    }
+    const nextSessions = sessionsForCredentialUpdate(state.sessionsByAccountId, nextCredentialIds, input.credentialId, input.session);
+    const nextAccounts = input.accounts.reduce(upsertAccountList, state.boundAccounts);
+    releaseAccountProviders(Object.keys(nextCredentialIds).filter(accountId => nextCredentialIds[accountId] === input.credentialId));
     set({
       sessionsByAccountId: nextSessions,
       credentialIdsByAccountId: nextCredentialIds,
@@ -458,6 +457,8 @@ export const useSession = create<SessionState>((set, get) => ({
     set(activateAccount(kept, {}, {}, kept[0]?.id ?? null));
   },
   finishRestore: (input, optionalAccounts = []) => {
+    const migrationRecovery = input && 'version' in input ? input.recovery ?? null : null;
+    const finish = (profile: ReturnType<typeof activateAccount>) => set({ ...profile, migrationRecovery });
     // 兼容旧单会话 restore
     if (input && 'mode' in input) {
       const session = input as ProviderSession;
@@ -467,7 +468,7 @@ export const useSession = create<SessionState>((set, get) => ({
         rating: 0,
         playerId: 'restored',
       });
-      set(activateAccount(
+      finish(activateAccount(
         [...optionalAccounts, pending],
         { [pending.id]: session },
         { [pending.id]: `credential:${pending.id}` },
@@ -486,7 +487,7 @@ export const useSession = create<SessionState>((set, get) => ({
       const compatibleOptionalAccounts = hasFormalChunithmAccount
         ? optionalAccounts.filter((account) => account.providerId !== 'chunithm-temp')
         : optionalAccounts;
-      set(activateAccount(
+      finish(activateAccount(
         [...compatibleOptionalAccounts, ...vault.accounts.map(boundAccountFromStored)],
         sessionsByAccountId,
         credentialIdsByAccountId,
@@ -495,7 +496,7 @@ export const useSession = create<SessionState>((set, get) => ({
       return;
     }
 
-    set(activateAccount(optionalAccounts, {}, {}, optionalAccounts[0]?.id ?? null));
+    finish(activateAccount(optionalAccounts, {}, {}, optionalAccounts[0]?.id ?? null));
   },
   failRestore: (message) => {
     set({

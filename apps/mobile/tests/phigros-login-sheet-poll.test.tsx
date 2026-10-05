@@ -33,6 +33,8 @@ const mockSession = {
   playerId: 'player-1',
   persistable: true,
 } as const;
+const mockSave = jest.fn(async (_account: unknown, _signal?: AbortSignal) => 'credential');
+const mockSetSession = jest.fn();
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -51,7 +53,7 @@ jest.mock('@/theme/app-theme', () => ({
   }),
 }));
 jest.mock('@/storage/secure-session-store', () => ({
-  SecureSessionStore: jest.fn(() => ({ upsertAccount: jest.fn(async () => undefined) })),
+  SecureSessionStore: jest.fn(() => ({ upsertAccount: (account: unknown, signal?: AbortSignal) => mockSave(account, signal) })),
 }));
 jest.mock('@/storage/chunithm-temp-account-store', () => ({
   ChunithmTempAccountStore: jest.fn(() => ({ remove: jest.fn(async () => undefined) })),
@@ -64,7 +66,7 @@ jest.mock('@/state/session-store', () => ({
     boundAccounts: [],
     sessionsByAccountId: {},
     credentialIdsByAccountId: {},
-    setSession: jest.fn(),
+    setSession: mockSetSession,
     removeBoundAccount: jest.fn(),
   }),
 }));
@@ -80,15 +82,16 @@ const pollLoginMock = (PhigrosScoreProvider.pollLogin as unknown as jest.Mock<an
 
 type Screen = Awaited<ReturnType<typeof render>>;
 
-function LoginSheet({ onSuccess = () => undefined }: { onSuccess?: () => void }) {
+function LoginSheet({ visible = true, onSuccess = () => undefined }: { visible?: boolean; onSuccess?: () => void }) {
   return <ProviderLoginSheet
-    visible provider={phiProvider} gameId="phigros" gameTitle="Phigros"
+    visible={visible} provider={phiProvider} gameId="phigros" gameTitle="Phigros"
     onClose={() => undefined} onSuccess={onSuccess}
   />;
 }
 
 describe('ProviderLoginSheet Phigros polling', () => {
   beforeEach(() => {
+    jest.clearAllMocks();
     jest.useFakeTimers();
     mockLifecycle = {
       appState: 'active', phase: 'foreground-ready', foregroundReady: true,
@@ -116,6 +119,44 @@ describe('ProviderLoginSheet Phigros polling', () => {
     expect(screen.getByLabelText('TapTap 授权二维码')).toBeTruthy();
     await waitFor(() => expect(pollLoginMock).toHaveBeenCalled());
   };
+
+  it.each(['cancel', 'hide', 'unmount'])('prevents a late poll from binding after %s', async transition => {
+    let release!: (value: typeof mockSession) => void;
+    pollLoginMock.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }));
+    const success = jest.fn(); const screen = await render(<LoginSheet onSuccess={success} />);
+    await startLogin(screen);
+    const signal = pollLoginMock.mock.calls[0][1] as AbortSignal;
+    if (transition === 'cancel') await fireEvent.press(screen.getByText('取消授权'));
+    if (transition === 'hide') await screen.rerender(<LoginSheet visible={false} onSuccess={success} />);
+    if (transition === 'unmount') await screen.unmount();
+    expect(signal.aborted).toBe(true);
+    await act(async () => { release(mockSession); });
+    expect(mockSave).not.toHaveBeenCalled(); expect(mockSetSession).not.toHaveBeenCalled(); expect(success).not.toHaveBeenCalled();
+    if (transition !== 'unmount') await screen.unmount();
+  });
+
+  it('ignores an old poll after cancellation and a successful new authorization', async () => {
+    let release!: (value: typeof mockSession) => void;
+    pollLoginMock.mockImplementationOnce(() => new Promise(resolve => { release = resolve; }))
+      .mockResolvedValueOnce(mockSession);
+    const success = jest.fn(); const screen = await render(<LoginSheet onSuccess={success} />);
+    await startLogin(screen);
+    await fireEvent.press(screen.getByText('取消授权'));
+    await fireEvent.press(screen.getByText('开始绑定'));
+    await waitFor(() => expect(success).toHaveBeenCalledTimes(1));
+    await act(async () => { release(mockSession); });
+    expect(mockSave).toHaveBeenCalledTimes(1); expect(mockSetSession).toHaveBeenCalledTimes(1);
+    expect(success).toHaveBeenCalledTimes(1); await screen.unmount();
+  });
+
+  it('reports failure when both TapTap and browser opening fail', async () => {
+    jest.mocked(Linking.openURL).mockRejectedValue(new Error('native open failed'));
+    const screen = await render(<LoginSheet />); await startLogin(screen);
+    await fireEvent.press(screen.getByText('前往 TapTap 授权'));
+    await waitFor(() => expect(screen.getByText('无法打开 TapTap 授权页面，请重试或使用二维码。')).toBeTruthy());
+    expect(screen.queryByText(/native open failed/u)).toBeNull();
+    await screen.unmount();
+  });
 
   it('requests a device code without opening TapTap until the authorize button is pressed', async () => {
     const screen = await render(<LoginSheet />);

@@ -72,7 +72,7 @@ export default function ArcadeShopDetailScreen() {
             style={[styles.primaryButton, { backgroundColor: theme.accent }]}
             onPress={() => { void load(); }}
           >
-            <Text style={styles.primaryButtonText}>重试</Text>
+            <Text style={[styles.primaryButtonText, { color: theme.onAccent }]}>重试</Text>
           </Pressable>
         </View>
       ) : (
@@ -105,7 +105,7 @@ export default function ArcadeShopDetailScreen() {
               onPress={() => openArcadeNavigation(shop, { showActionNotification, showNotification })}
               style={[styles.primaryButton, { backgroundColor: theme.accent, alignSelf: 'flex-start' }]}
             >
-              <Text style={styles.primaryButtonText}>导航</Text>
+              <Text style={[styles.primaryButtonText, { color: theme.onAccent }]}>导航</Text>
             </Pressable>
           </Card>
 

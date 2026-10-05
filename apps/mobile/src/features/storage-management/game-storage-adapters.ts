@@ -152,7 +152,7 @@ const osuStandardAdapter = createGameStorageAdapter({
   title: findGame('osu-standard')?.title ?? 'osu!standard',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
-  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
+  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores'], ['osu-beatmapset-user-scores']],
   fileResources: [],
   ownership: { ownsAccount: accountOwnership('osu-standard'), resourcePrefixes: ['osu:osu-standard:', 'osu-known-scores:osu-standard:'] },
 });
@@ -162,7 +162,7 @@ const osuManiaAdapter = createGameStorageAdapter({
   title: findGame('osu-mania')?.title ?? 'osu!mania',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
-  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
+  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores'], ['osu-beatmapset-user-scores']],
   fileResources: [],
   ownership: { ownsAccount: accountOwnership('osu-mania'), resourcePrefixes: ['osu:osu-mania:', 'osu-known-scores:osu-mania:'] },
 });
@@ -172,7 +172,7 @@ const osuCatchAdapter = createGameStorageAdapter({
   title: findGame('osu-catch')?.title ?? 'osu!catch',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
-  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
+  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores'], ['osu-beatmapset-user-scores']],
   fileResources: [],
   ownership: { ownsAccount: accountOwnership('osu-catch'), resourcePrefixes: ['osu:osu-catch:', 'osu-known-scores:osu-catch:'] },
 });
@@ -182,7 +182,7 @@ const osuTaikoAdapter = createGameStorageAdapter({
   title: findGame('osu-taiko')?.title ?? 'osu!taiko',
   color: OSU_STORAGE_COLOR,
   note: OSU_STORAGE_NOTE,
-  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores']],
+  queryKeys: [['score-snapshot'], ['game-data'], ['osu-catalog-search'], ['osu-beatmapset-detail'], ['osu-known-scores'], ['osu-beatmapset-user-scores']],
   fileResources: [],
   ownership: { ownsAccount: accountOwnership('osu-taiko'), resourcePrefixes: ['osu:osu-taiko:', 'osu-known-scores:osu-taiko:'] },
 });

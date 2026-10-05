@@ -5,11 +5,18 @@ import { useNotification } from '@/components/AppNotification';
 import { Card } from '@/components/Card';
 import { SongCover } from '@/components/SongCover';
 import { normalizeSongId } from '@/domain/catalog';
+import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
+import type { Song } from '@/domain/models';
 import {
   KALEIDX_GATES,
+  KALEIDX_STAGES,
+  KALEIDX_STAGES_BY_ID,
+  kaleidxStageChallenge,
   resolveKaleidxSchedulePhase,
   type KaleidxGate,
-  type KaleidxGateId,
+  type KaleidxStage,
+  type KaleidxStageId,
+  type KaleidxReference,
   type KaleidxSchedule,
   type KaleidxSong,
 } from '@/domain/kaleidx-scope';
@@ -24,7 +31,7 @@ type SongResolution = {
   catalogSongId?: string;
 };
 
-function gatePalette(gate: KaleidxGate, dark: boolean) {
+function gatePalette(gate: KaleidxStage, dark: boolean) {
   return {
     accent: dark ? gate.darkColor ?? gate.color : gate.color,
     onAccent: dark ? gate.darkOnColor ?? gate.onColor : gate.onColor,
@@ -42,34 +49,33 @@ export default function KaleidxScopeToolScreen() {
   const clearRun = useKaleidxScopeProgress((state) => state.clearRun);
   const setKeyObtained = useKaleidxScopeProgress((state) => state.setKeyObtained);
   const setGateCleared = useKaleidxScopeProgress((state) => state.setGateCleared);
-  const [selectedGateId, setSelectedGateId] = useState<KaleidxGateId>('blue');
+  const [selectedGateId, setSelectedGateId] = useState<KaleidxStageId>('blue');
   const [runMode, setRunMode] = useState<KaleidxRunMode>('solo');
   const [expandedPools, setExpandedPools] = useState<Set<string>>(new Set());
   const [keyProgressExpanded, setKeyProgressExpanded] = useState(false);
-  const [scheduleExpanded, setScheduleExpanded] = useState(false);
   const [pending, setPending] = useState(false);
-  const gate = KALEIDX_GATES.find((item) => item.id === selectedGateId)!;
+  const gate = KALEIDX_STAGES.find((item) => item.id === selectedGateId)!;
   const { accent: gateAccent, onAccent: gateOnAccent } = gatePalette(gate, theme.dark);
   const gateProgress = selectKaleidxGateProgress({ byAccount: progress }, activeAccountId, selectedGateId);
   const catalogSongIds = useMemo(() => {
-    const exact = new Map<string, string>();
-    const normalized = new Map<string, string>();
+    const exact = new Map<string, Song>();
+    const normalized = new Map<string, Song>();
     for (const song of catalog.data?.songs ?? []) {
-      exact.set(song.id, song.id);
+      exact.set(song.id, song);
       const normalizedId = normalizeSongId(song.id);
-      if (!normalized.has(normalizedId)) normalized.set(normalizedId, song.id);
+      if (!normalized.has(normalizedId)) normalized.set(normalizedId, song);
     }
     return { exact, normalized };
   }, [catalog.data?.songs]);
 
   useEffect(() => { void hydrate(); }, [hydrate]);
 
-  const resolveSong = (songId: string): SongResolution => {
+  const resolveSong = (song: KaleidxSong): SongResolution => {
     if (!catalog.data) return { availability: catalog.isLoading ? 'loading' : 'missing' };
-    const catalogSongId = catalogSongIds.exact.get(songId)
-      ?? catalogSongIds.normalized.get(normalizeSongId(songId));
-    return catalogSongId
-      ? { availability: 'available', catalogSongId }
+    const catalogSong = catalogSongIds.exact.get(song.id)
+      ?? catalogSongIds.normalized.get(normalizeSongId(song.id));
+    return catalogSong && (!song.chartType || catalogSong.charts.some((chart) => chart.type === song.chartType))
+      ? { availability: 'available', catalogSongId: catalogSong.id }
       : { availability: 'missing' };
   };
 
@@ -96,7 +102,7 @@ export default function KaleidxScopeToolScreen() {
     : gateProgress.completedSongIds;
   const targetCount = gate.trackerKind === 'run'
     ? (runMode === 'solo' ? 3 : 4)
-    : gate.trackerKind === 'random-one' ? 1 : gate.keySongs.length;
+    : gate.trackerKind === 'random-one' ? 1 : gate.trackerKind === 'completion' ? 0 : gate.keySongs.length;
 
   return (
     <ScrollView style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.content}>
@@ -110,7 +116,7 @@ export default function KaleidxScopeToolScreen() {
       </Card>
 
       <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.gateTabs}>
-        {KALEIDX_GATES.map((item) => {
+        {KALEIDX_STAGES.map((item) => {
           const selected = item.id === selectedGateId;
           const itemProgress = progress[activeAccountId]?.[item.id] ?? emptyKaleidxGateProgress();
           const { accent, onAccent } = gatePalette(item, theme.dark);
@@ -126,14 +132,14 @@ export default function KaleidxScopeToolScreen() {
                 { borderColor: selected ? accent : theme.border, backgroundColor: selected ? accent : theme.surface },
               ]}
             >
-              <Text style={[styles.gateTabText, { color: selected ? onAccent : theme.textSecondary }]}>{item.shortLabel}门</Text>
+              <Text style={[styles.gateTabText, { color: selected ? onAccent : theme.textSecondary }]}>{item.shortLabel}{item.trackerKind === 'completion' ? '' : '门'}</Text>
               {itemProgress.gateCleared ? <Text style={{ color: selected ? onAccent : accent }}>✓</Text> : null}
             </Pressable>
           );
         })}
       </ScrollView>
 
-      <GateOverview gate={gate} progressCount={selectedSongIds.length} targetCount={targetCount} />
+      <GateOverview gate={gate} progressCount={selectedSongIds.length} targetCount={targetCount} completed={gateProgress.gateCleared} />
 
       <Card style={{ ...styles.sectionCard, borderLeftColor: gateAccent }} testID={`kaleidx-unlock-${gate.id}`}>
         <SectionTitle title="解锁步骤" />
@@ -145,11 +151,18 @@ export default function KaleidxScopeToolScreen() {
         ))}
         {gate.perfectChallenge ? <View style={[styles.embeddedSection, { borderTopColor: theme.border }]}>
           <Text style={[styles.poolLabel, { color: theme.text }]}>区域完美挑战</Text>
-          <InfoSongRow song={gate.perfectChallenge} role="完美挑战" resolution={resolveSong(gate.perfectChallenge.id)} accent={gateAccent} />
+          <InfoSongRow song={gate.perfectChallenge} role="完美挑战" resolution={resolveSong(gate.perfectChallenge)} accent={gateAccent} />
         </View> : null}
       </Card>
 
-      <Card style={{ ...styles.sectionCard, borderLeftColor: gateAccent }} testID={`kaleidx-progress-${gate.id}`}>
+      {gate.trackerKind === 'completion' ? <Card style={{ ...styles.sectionCard, borderLeftColor: gateAccent }} testID={`kaleidx-progress-${gate.id}`}>
+        <SectionTitle title="阶段进度" />
+        <Text style={[styles.sectionNote, { color: theme.textMuted }]}>{gate.trackerNote}</Text>
+        {gate.prerequisites.map((id) => <Text key={id} style={[styles.sectionNote, { color: theme.textSecondary }]}>
+          {KALEIDX_STAGES_BY_ID[id].label} · {progress[activeAccountId]?.[id]?.gateCleared ? '已记录完成' : '尚未记录完成'}
+        </Text>)}
+        <StatusToggle label={gate.completionLabel} value={gateProgress.gateCleared} color={gateAccent} disabled={pending} onPress={() => void mutate(() => setGateCleared(activeAccountId, gate.id, !gateProgress.gateCleared))} />
+      </Card> : <Card style={{ ...styles.sectionCard, borderLeftColor: gateAccent }} testID={`kaleidx-progress-${gate.id}`}>
         <CollapsibleSectionHeader
           title="钥匙进度"
           meta={`${selectedSongIds.length}/${targetCount}`}
@@ -179,7 +192,7 @@ export default function KaleidxScopeToolScreen() {
               song={song}
               checked={selectedSongIds.includes(song.id)}
               disabled={pending}
-              resolution={resolveSong(song.id)}
+              resolution={resolveSong(song)}
               gate={gate}
               onToggle={() => void mutate(() => toggleSong(activeAccountId, gate.id, song.id, gate.trackerKind === 'run' ? runMode : undefined))}
             />
@@ -190,36 +203,79 @@ export default function KaleidxScopeToolScreen() {
           <StatusToggle label="门曲已通关" value={gateProgress.gateCleared} color={gateAccent} disabled={pending} onPress={() => void mutate(() => setGateCleared(activeAccountId, gate.id, !gateProgress.gateCleared))} />
         </View>
         </> : null}
-      </Card>
+      </Card>}
 
-      <Card style={{ ...styles.sectionCard, borderLeftColor: gateAccent }} testID={`kaleidx-challenge-${gate.id}`}>
-        <SectionTitle title="门内挑战" />
-        <Text style={[styles.sectionNote, { color: theme.textMuted }]}>同一次挑战固定难度；TRACK 1、2 从对应池随机，TRACK 3 为门曲。</Text>
-        <ChallengePool label="TRACK 1 随机池" songs={gate.track1} expanded={expandedPools.has(`${gate.id}:1`)} onToggle={() => togglePool(setExpandedPools, `${gate.id}:1`)} resolveSong={resolveSong} />
-        <ChallengePool label="TRACK 2 随机池" songs={gate.track2} expanded={expandedPools.has(`${gate.id}:2`)} onToggle={() => togglePool(setExpandedPools, `${gate.id}:2`)} resolveSong={resolveSong} />
-        <Text style={[styles.poolLabel, { color: theme.text }]}>TRACK 3 · 固定门曲</Text>
-        <InfoSongRow song={gate.track3} role="门曲" resolution={resolveSong(gate.track3.id)} accent={gateAccent} />
-      </Card>
-
-      <Card style={{ ...styles.sectionCard, borderLeftColor: gateAccent }} testID={`kaleidx-schedule-${gate.id}`}>
-        <CollapsibleSectionHeader
-          title="难度与 LIFE"
-          expanded={scheduleExpanded}
-          accent={gateAccent}
-          onToggle={() => setScheduleExpanded((value) => !value)}
-        />
-        {scheduleExpanded ? <>
-          <ScheduleBlock schedule={gate.gateSchedule} accent={gateAccent} />
-          {gate.perfectSchedule ? <ScheduleBlock schedule={gate.perfectSchedule} accent={gateAccent} /> : null}
-        </> : null}
-      </Card>
+      <StageChallenge gate={gate} accent={gateAccent} expandedPools={expandedPools} setExpandedPools={setExpandedPools} resolveSong={resolveSong} />
+      <StageSchedule key={gate.id} gate={gate} accent={gateAccent} />
+      {gate.trackerKind === 'completion' ? <StageReferences key={`${gate.id}:sources`} sources={gate.references} accent={gateAccent} /> : null}
     </ScrollView>
   );
 }
 
-function GateOverview({ gate, progressCount, targetCount }: { gate: KaleidxGate; progressCount: number; targetCount: number }) {
+function StageChallenge({ gate, accent, expandedPools, setExpandedPools, resolveSong }: {
+  gate: KaleidxStage;
+  accent: string;
+  expandedPools: Set<string>;
+  setExpandedPools: React.Dispatch<React.SetStateAction<Set<string>>>;
+  resolveSong: (song: KaleidxSong) => SongResolution;
+}) {
   const theme = useAppTheme();
-  const current = resolveKaleidxSchedulePhase(gate.gateSchedule);
+  const challenge = kaleidxStageChallenge(gate);
+  return (
+      <Card style={{ ...styles.sectionCard, borderLeftColor: accent }} testID={`kaleidx-challenge-${gate.id}`}>
+        <SectionTitle title="门内挑战" />
+        {challenge.kind === 'random-three' || challenge.kind === 'error' ? <>
+          <Text style={[styles.sectionNote, { color: theme.textMuted }]}>同一次挑战固定难度；TRACK 1、2 从对应池随机。</Text>
+          <ChallengePool label="TRACK 1 随机池" songs={challenge.track1} expanded={expandedPools.has(`${gate.id}:1`)} onToggle={() => togglePool(setExpandedPools, `${gate.id}:1`)} resolveSong={resolveSong} />
+          <ChallengePool label="TRACK 2 随机池" songs={challenge.track2} expanded={expandedPools.has(`${gate.id}:2`)} onToggle={() => togglePool(setExpandedPools, `${gate.id}:2`)} resolveSong={resolveSong} />
+          {challenge.kind === 'random-three' ? <>
+            <Text style={[styles.poolLabel, { color: theme.text }]}>TRACK 3 · 固定门曲</Text>
+            <InfoSongRow song={challenge.track3} role="门曲" resolution={resolveSong(challenge.track3)} accent={accent} />
+          </> : <>
+            <Text style={[styles.poolLabel, { color: theme.text }]}>TRACK 3 · 乱码课题</Text>
+            <Text style={[styles.sectionNote, { color: theme.textSecondary }]}>{challenge.story}</Text>
+          </>}
+        </> : challenge.kind === 'fixed-three' ? <>
+          <Text style={[styles.sectionNote, { color: theme.textMuted }]}>三首课题固定，不随机选曲。</Text>
+          {challenge.tracks.map((song, index) => <InfoSongRow key={`${song.id}:${song.chartType}`} song={song} role={`TRACK ${index + 1} · 固定课题`} resolution={resolveSong(song)} accent={accent} />)}
+        </> : <>
+          <InfoSongRow song={challenge.song} role="最终课题" resolution={resolveSong(challenge.song)} accent={accent} />
+          {challenge.mechanics.map((line) => <Text key={line} style={[styles.sectionNote, { color: theme.textSecondary }]}>{line}</Text>)}
+          <Text style={[styles.poolLabel, { color: theme.text }]}>通关奖励 · 搭档 {challenge.partner}</Text>
+          <InfoSongRow song={challenge.endingSong} role="结局曲" resolution={resolveSong(challenge.endingSong)} accent={accent} />
+        </>}
+      </Card>
+  );
+}
+
+function StageSchedule({ gate, accent }: { gate: KaleidxStage; accent: string }) {
+  const theme = useAppTheme();
+  const [scheduleExpanded, setScheduleExpanded] = useState(false);
+  return (gate.gateSchedule || gate.perfectSchedule ? <Card style={{ ...styles.sectionCard, borderLeftColor: accent }} testID={`kaleidx-schedule-${gate.id}`}>
+        <CollapsibleSectionHeader
+          title={gate.gateSchedule?.evidence?.status === 'estimated' ? '缓和参考（推算）' : '难度与 LIFE'}
+          expanded={scheduleExpanded}
+          accent={accent}
+          onToggle={() => setScheduleExpanded((value) => !value)}
+        />
+        {scheduleExpanded ? <>
+          {gate.gateSchedule ? <ScheduleBlock schedule={gate.gateSchedule} accent={accent} /> : null}
+          {gate.perfectSchedule ? <ScheduleBlock schedule={gate.perfectSchedule} accent={accent} /> : null}
+        </> : null}
+      </Card> : <Text style={[styles.sectionNote, { color: theme.textMuted }]}>本阶段国服难度与 LIFE 日程待确认。</Text>);
+}
+
+function StageReferences({ sources, accent }: { sources: readonly KaleidxReference[]; accent: string }) {
+  const [expanded, setExpanded] = useState(false);
+  return <Card style={styles.sectionCard}>
+    <CollapsibleSectionHeader title="资料来源" expanded={expanded} accent={accent} onToggle={() => setExpanded((value) => !value)} />
+    {expanded ? sources.map((source) => <ReferenceNote key={source.url} source={source} />) : null}
+  </Card>;
+}
+
+function GateOverview({ gate, progressCount, targetCount, completed }: { gate: KaleidxStage; progressCount: number; targetCount: number; completed: boolean }) {
+  const theme = useAppTheme();
+  const current = gate.gateSchedule ? resolveKaleidxSchedulePhase(gate.gateSchedule) : null;
   const { accent, onAccent } = gatePalette(gate, theme.dark);
   return <Card style={{ ...styles.overview, borderColor: accent }} testID={`kaleidx-gate-${gate.id}`}>
     <View style={styles.overviewHeader}>
@@ -228,11 +284,11 @@ function GateOverview({ gate, progressCount, targetCount }: { gate: KaleidxGate;
         <Text style={[styles.overviewTitle, { color: theme.text }]}>{gate.label}</Text>
         <Text style={[styles.overviewArea, { color: theme.textSecondary }]}>{gate.area}</Text>
       </View>
-      <Text style={[styles.overviewProgress, { color: accent }]}>{progressCount}/{targetCount}</Text>
+      <Text style={[styles.overviewProgress, { color: accent }]}>{gate.trackerKind === 'completion' ? (completed ? '已完成' : '未完成') : `${progressCount}/${targetCount}`}</Text>
     </View>
     <View style={styles.metaRow}>
       <Text style={[styles.metaChip, { color: theme.textSecondary, backgroundColor: theme.surfaceMuted }]}>开放 {formatDate(gate.openedAt)}</Text>
-      <Text style={[styles.metaChip, { color: current ? accent : theme.textMuted, backgroundColor: theme.surfaceMuted }]}>{current ? `${current.difficulty} · LIFE ${current.life}` : '尚未开放'}</Text>
+      <Text style={[styles.metaChip, { color: current ? accent : theme.textMuted, backgroundColor: theme.surfaceMuted }]}>{current ? `${current.difficulty} · LIFE ${current.life}` : gate.trackerKind === 'completion' ? (gate.gateSchedule ? '缓和日程为推算' : '难度与 LIFE 待确认') : '尚未开放'}</Text>
     </View>
   </Card>;
 }
@@ -286,12 +342,12 @@ function SongInfo({ song, resolution, role }: { song: KaleidxSong; resolution: S
     <SongCover songId={jacketSongId} size={46} borderRadius={8} />
     <View style={styles.songCopy}>
       <Text numberOfLines={2} style={[styles.songTitle, { color: theme.text }]}>{song.title}</Text>
-      <Text style={[styles.songMeta, { color: theme.textMuted }]}>#{song.id}{role ? ` · ${role}` : ''}{resolution.availability === 'missing' ? ' · 曲库尚未同步' : resolution.availability === 'loading' ? ' · 曲库加载中' : ''}</Text>
+      <Text style={[styles.songMeta, { color: theme.textMuted }]}>#{song.id}{song.chartType ? ` · ${song.chartType === 'SD' ? '标准谱' : 'DX 谱'}` : ''}{role ? ` · ${role}` : ''}{resolution.availability === 'missing' ? ' · 曲库尚未同步' : resolution.availability === 'loading' ? ' · 曲库加载中' : ''}</Text>
     </View>
     {resolution.availability === 'available' ? <Text style={[styles.songArrow, { color: theme.accent }]}>›</Text> : null}
   </>;
   return resolution.availability === 'available' && resolution.catalogSongId
-    ? <Pressable accessibilityRole="link" accessibilityLabel={`查看歌曲 ${song.title}`} onPress={() => router.push({ pathname: '/songs/[songId]', params: { songId: resolution.catalogSongId! } })} style={styles.songInfo}>{content}</Pressable>
+    ? <Pressable accessibilityRole="link" accessibilityLabel={`查看歌曲 ${song.title}`} onPress={() => router.push(detailTargetHref(encodeDetailTarget({ game: 'maimai', songId: resolution.catalogSongId!, chartType: song.chartType })))} style={styles.songInfo}>{content}</Pressable>
     : <View style={styles.songInfo}>{content}</View>;
 }
 
@@ -301,7 +357,7 @@ function InfoSongRow({ song, role, resolution, accent }: { song: KaleidxSong; ro
 }
 
 function ChallengePool({ label, songs: poolSongs, expanded, onToggle, resolveSong }: {
-  label: string; songs: readonly KaleidxSong[]; expanded: boolean; onToggle: () => void; resolveSong: (songId: string) => SongResolution;
+  label: string; songs: readonly KaleidxSong[]; expanded: boolean; onToggle: () => void; resolveSong: (song: KaleidxSong) => SongResolution;
 }) {
   const theme = useAppTheme();
   return <View style={[styles.pool, { borderColor: theme.border }]}>
@@ -309,7 +365,7 @@ function ChallengePool({ label, songs: poolSongs, expanded, onToggle, resolveSon
       <Text style={[styles.poolLabel, { color: theme.text }]}>{label}</Text>
       <Text style={[styles.poolCount, { color: theme.textMuted }]}>{poolSongs.length} 首 · {expanded ? '收起' : '展开'}</Text>
     </Pressable>
-    {expanded ? <View style={styles.poolSongs}>{poolSongs.map((song) => <View key={song.id} style={[styles.poolSong, { borderTopColor: theme.border }]}><SongInfo song={song} resolution={resolveSong(song.id)} /></View>)}</View> : null}
+    {expanded ? <View style={styles.poolSongs}>{poolSongs.map((song) => <View key={song.id} style={[styles.poolSong, { borderTopColor: theme.border }]}><SongInfo song={song} resolution={resolveSong(song)} /></View>)}</View> : null}
   </View>;
 }
 
@@ -318,13 +374,26 @@ function ScheduleBlock({ schedule, accent }: { schedule: KaleidxSchedule; accent
   const current = resolveKaleidxSchedulePhase(schedule);
   return <View style={styles.scheduleBlock}>
     <View style={styles.scheduleHeader}><Text style={[styles.scheduleLabel, { color: theme.text }]}>{schedule.label}</Text><Text style={[styles.scheduleSwitch, { color: theme.textMuted }]}>{schedule.switchLabel}</Text></View>
+    {schedule.evidence ? <>
+      <Text style={[styles.sectionNote, { color: theme.textMuted }]}>推算参考，未获国服完整确认；不代表当前机台条件。</Text>
+      <ReferenceNote source={schedule.evidence.source} />
+    </> : null}
     {schedule.phases.map((phase) => {
       const active = phase === current;
-      return <View key={phase.startsAt} accessibilityLabel={`${schedule.label} ${formatDate(phase.startsAt)}起 ${phase.difficulty} LIFE ${phase.life}${active ? '，当前阶段' : ''}`} style={[styles.scheduleRow, { borderLeftColor: active ? accent : theme.border, backgroundColor: active ? `${accent}16` : 'transparent' }]}>
+      const value = `${phase.difficulty} · LIFE ${phase.life}${phase.dxLife !== undefined ? ` / DX LIFE ${phase.dxLife ?? '待确认'}` : ''}`;
+      return <View key={phase.startsAt} accessibilityLabel={`${schedule.label} ${formatDate(phase.startsAt)}起 ${phase.difficulty} LIFE ${phase.life}${phase.dxLife !== undefined ? ` DX LIFE ${phase.dxLife ?? '待确认'}` : ''}${schedule.evidence ? '，推算' : ''}${active ? '，当前阶段' : ''}`} style={[styles.scheduleRow, { borderLeftColor: active ? accent : theme.border, backgroundColor: active ? `${accent}16` : 'transparent' }]}>
         <Text style={[styles.scheduleDate, { color: theme.textMuted }]}>{formatDate(phase.startsAt)}{phase.endsAt ? `—${formatDate(phase.endsAt)}` : ' 起'}</Text>
-        <Text style={[styles.scheduleValue, { color: active ? accent : theme.textSecondary }]}>{phase.difficulty} · LIFE {phase.life}{active ? ' · 当前' : ''}</Text>
+        <Text style={[styles.scheduleValue, { color: active ? accent : theme.textSecondary }]}>{value}{active ? ' · 当前' : ''}</Text>
       </View>;
     })}
+  </View>;
+}
+
+function ReferenceNote({ source }: { source: KaleidxReference }) {
+  const theme = useAppTheme();
+  return <View style={styles.scheduleBlock}>
+    <Text style={[styles.sectionNote, { color: theme.textMuted }]}>{source.label} · 核对 {source.checkedAt}</Text>
+    <Text selectable style={[styles.sectionNote, { color: theme.textMuted }]}>{source.url}</Text>
   </View>;
 }
 
@@ -412,7 +481,7 @@ const styles = StyleSheet.create({
   scheduleHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 8, marginTop: 4 },
   scheduleLabel: { fontSize: 13, fontWeight: '800' },
   scheduleSwitch: { fontSize: 10 },
-  scheduleRow: { borderLeftWidth: 3, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
+  scheduleRow: { flexWrap: 'wrap', borderLeftWidth: 3, borderRadius: 7, paddingHorizontal: 10, paddingVertical: 8, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 8 },
   scheduleDate: { fontSize: 10, fontVariant: ['tabular-nums'] },
   scheduleValue: { fontSize: 11, fontWeight: '800' },
   disabled: { opacity: 0.5 },

@@ -1,74 +1,19 @@
-import { isHttpCookieSession } from '@/providers/http-cookies';
-import * as SecureStore from 'expo-secure-store';
-import Storage from '@/storage/key-value-storage';
-import type { GameId, RemoteProviderId } from '@/domain/game-bind-options';
-import type { ProviderSession } from '@/providers/contracts';
-import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
-import { deleteRizlinePassword } from '@/storage/rizline-password-store';
-import { startTimer } from '@/utils/startup-timing';
 import type { SessionVault, StoredProviderAccount, StoredProviderCredential } from '@/domain/session-vault';
 import { SessionPersistenceError } from '@/domain/session-vault';
-export { sessionsMapFromVault, credentialIdsMapFromVault } from '@/domain/session-vault';
+import type { ProviderSession } from '@/providers/contracts';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
+import Storage from '@/storage/key-value-storage';
+import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
+import { deleteRizlinePassword } from '@/storage/rizline-password-store';
+import { credentialIdForLegacyAccount, isOAuthRefreshSession, isPersistableSession, migrateV2Vault, parseSessionIndex, parseSessionIndexOrThrow, parseSessionVault, parseStoredSession, parseV2Vault, sanitizeVault, SessionIndexCorruptError, SessionIndexUnrecognizedError, sessionMatchesExpected, vaultFingerprint, type SessionIndex } from '@/storage/secure-session-codec';
+import { commitSessionVault } from '@/storage/secure-session-commit';
+import { enqueueStorageMutation, INDEX_CORRUPT_KEY, INDEX_KEY, INDEX_UNRECOGNIZED_KEY, LEGACY_SESSION_KEY, LEGACY_VAULT_KEYS, persistenceFailure, persistenceOperation, V2_VAULT_KEY, VAULT_KEY, type KeyValueStore } from '@/storage/secure-session-index';
+import { startTimer } from '@/utils/startup-timing';
+import * as SecureStore from 'expo-secure-store';
+export { credentialIdsMapFromVault, sessionsMapFromVault } from '@/domain/session-vault';
 export type { SessionVault, StoredProviderAccount, StoredProviderCredential } from '@/domain/session-vault';
-
-const LEGACY_SESSION_KEY = 'rranker.diving-fish.session.v1';
-const V2_VAULT_KEY = 'rranker.provider.sessions.v2';
-const VAULT_KEY = 'rranker.provider.sessions.v3';
-const INDEX_KEY = 'rranker.provider.sessions.index.v4';
-const INDEX_CORRUPT_KEY = `${INDEX_KEY}.corrupt`;
-const INDEX_UNRECOGNIZED_KEY = `${INDEX_KEY}.unrecognized`;
-const LEGACY_VAULT_KEYS = [VAULT_KEY, V2_VAULT_KEY, LEGACY_SESSION_KEY] as const;
-
-/** 会话索引不是合法 JSON。原键保留，副本写在 corrupt 键上，调用方可重试读取。 */
-export class SessionIndexCorruptError extends SessionPersistenceError {
-  readonly name = 'SessionIndexCorruptError';
-
-  constructor(readonly preservedRaw: string, options?: { cause?: unknown }) {
-    super('local_commit', options);
-  }
-}
-
-/** 会话索引版本或顶层结构无法识别。原键保留，副本写在 unrecognized 键上，后续写入不得覆盖原键。 */
-export class SessionIndexUnrecognizedError extends SessionPersistenceError {
-  readonly name = 'SessionIndexUnrecognizedError';
-
-  constructor(
-    readonly preservedRaw: string,
-    readonly reason: 'unsupported-version' | 'invalid-structure',
-  ) {
-    super('local_commit');
-  }
-}
-
-/** 读取损坏或无法识别时保留的索引原文。没有副本时返回 null。 */
-export async function readPreservedSessionIndex(
-  storage: KeyValueStore = Storage,
-): Promise<string | null> {
-  return (await storage.getItem(INDEX_UNRECOGNIZED_KEY)) ?? (await storage.getItem(INDEX_CORRUPT_KEY));
-}
-
-/**
- * 只有保留副本重新解析通过才写回原键。当前索引可用时直接返回 false，不做任何写入。
- * 没有副本时返回 false；副本仍无法解析时抛出类型化错误，原键保持不动。
- */
-export async function restorePreservedSessionIndex(
-  storage: KeyValueStore = Storage,
-): Promise<boolean> {
-  const currentRaw = await storage.getItem(INDEX_KEY);
-  if (currentRaw) {
-    try {
-      parseSessionIndexOrThrow(currentRaw);
-      return false;
-    } catch {
-      // 当前索引不可用，继续尝试用保留副本恢复。
-    }
-  }
-  const preserved = await readPreservedSessionIndex(storage);
-  if (!preserved) return false;
-  parseSessionIndexOrThrow(preserved);
-  await storage.setItem(INDEX_KEY, preserved);
-  return true;
-}
+export { parseSessionVault, SessionIndexCorruptError, SessionIndexUnrecognizedError } from '@/storage/secure-session-codec';
+export { readPreservedSessionIndex, restorePreservedSessionIndex } from '@/storage/secure-session-index';
 
 export type StoredProviderAccountInput = Omit<StoredProviderAccount, 'credentialId'> & {
   credentialId?: string;
@@ -90,59 +35,6 @@ export type RemoveAccountResult = {
   cleanupFailures: readonly string[];
 };
 
-type V2StoredProviderAccount = Omit<StoredProviderAccount, 'credentialId'> & {
-  session: ProviderSession;
-};
-
-type V2SessionVault = {
-  version: 2;
-  activeAccountId: string | null;
-  accounts: V2StoredProviderAccount[];
-};
-
-type StoredCredentialIndex = {
-  id: string;
-  providerId: RemoteProviderId;
-  secretRef: string;
-};
-
-type SessionIndex = {
-  version: 4;
-  activeAccountId: string | null;
-  credentials: StoredCredentialIndex[];
-  accounts: StoredProviderAccount[];
-};
-
-type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
-};
-
-const storageMutationTails = new WeakMap<KeyValueStore, Promise<void>>();
-
-function persistenceFailure(code: SessionPersistenceError['code'], cause: unknown): never {
-  if (cause instanceof SessionPersistenceError || (cause instanceof Error && cause.name === 'AbortError')) throw cause;
-  throw new SessionPersistenceError(code, { cause });
-}
-
-async function persistenceOperation<T>(code: SessionPersistenceError['code'], operation: () => Promise<T>): Promise<T> {
-  try { return await operation(); } catch (cause) { return persistenceFailure(code, cause); }
-}
-
-function enqueueStorageMutation<T>(
-  storage: KeyValueStore,
-  mutation: () => Promise<T>,
-): Promise<T> {
-  const previous = storageMutationTails.get(storage) ?? Promise.resolve();
-  const result = previous.then(mutation, mutation);
-  const tail = result.then(() => undefined, () => undefined);
-  storageMutationTails.set(storage, tail);
-  return result.finally(() => {
-    if (storageMutationTails.get(storage) === tail) storageMutationTails.delete(storage);
-  });
-}
-
 const EMPTY_VAULT: SessionVault = {
   version: 3,
   activeAccountId: null,
@@ -150,314 +42,14 @@ const EMPTY_VAULT: SessionVault = {
   accounts: [],
 };
 
-function isRemoteProviderId(value: unknown): value is RemoteProviderId {
-  return value === 'rizline-official' || value === 'majdata-net' || value === 'diving-fish' || value === 'lxns' || value === 'phi-taptap' || value === 'osu';
-}
-
-function isGameId(value: unknown): value is GameId {
-  return value === 'rizline' || value === 'majdata-net' || value === 'maimai'
-    || value === 'chunithm'
-    || value === 'phigros'
-    || value === 'osu-standard'
-    || value === 'osu-mania'
-    || value === 'osu-catch'
-    || value === 'osu-taiko'
-    || value === 'test';
-}
-
-function isPersistableSession(session: ProviderSession): session is ProviderSession & { persistable: true } {
-  if (session.mode === 'http-cookies') return isHttpCookieSession(session);
-  if (session.persistable !== true) return false;
-  if (session.mode === 'rizline') {
-    return typeof session.token === 'string' && session.token.length > 0
-      && typeof session.phone === 'string' && /^1\d{10}$/.test(session.phone)
-      && typeof session.deviceId === 'string' && session.deviceId.length > 0
-      && typeof session.channelId === 'string' && session.channelId.length > 0;
-  }
-  if (session.mode === 'jwt' || session.mode === 'import-token' || session.mode === 'phi-session') return true;
-  if (session.mode === 'lxns-oauth') {
-    return typeof session.accessToken === 'string'
-      && typeof session.refreshToken === 'string'
-      && typeof session.expiresAt === 'number';
-  }
-  if (session.mode === 'osu-oauth') {
-    return typeof session.accessToken === 'string'
-      && typeof session.refreshToken === 'string'
-      && typeof session.expiresAt === 'number';
-  }
-  return false;
-}
-
-function sessionMatchesExpected(current: ProviderSession | undefined, expected?: ProviderSession): boolean {
-  if (!expected) return true;
-  if (expected.mode === 'rizline' || current?.mode === 'rizline') {
-    return current?.mode === 'rizline' && expected.mode === 'rizline' && current.token === expected.token;
-  }
-  return JSON.stringify(current) === JSON.stringify(expected);
-}
-
-/** 可轮换的 OAuth 会话：落雪与 osu! 都按 refresh token 判定凭据世代。 */
-function isOAuthRefreshSession(
-  session: ProviderSession | undefined,
-): session is ProviderSession & { mode: 'lxns-oauth' | 'osu-oauth'; refreshToken: string } {
-  return session?.mode === 'lxns-oauth' || session?.mode === 'osu-oauth';
-}
-
-function credentialIdForLegacyAccount(accountId: string): string {
-  return `credential:${accountId}`;
-}
-
-function parseAccountMetadata(
-  value: unknown,
-  credentialProviders: ReadonlyMap<string, RemoteProviderId>,
-): StoredProviderAccount | null {
-  if (!value || typeof value !== 'object') return null;
-  const account = value as Partial<StoredProviderAccount>;
-  if (typeof account.id !== 'string'
-    || typeof account.displayName !== 'string'
-    || typeof account.scoreDisplay !== 'string'
-    || typeof account.credentialId !== 'string'
-    || !isGameId(account.gameId)
-    || !isRemoteProviderId(account.providerId)
-    || credentialProviders.get(account.credentialId) !== account.providerId) {
-    return null;
-  }
-  return {
-    id: account.id,
-    gameId: account.gameId,
-    providerId: account.providerId,
-    credentialId: account.credentialId,
-    displayName: account.displayName,
-    scoreDisplay: account.scoreDisplay,
-    challengeModeRank: account.challengeModeRank,
-    ratingPossession: typeof account.ratingPossession === 'string'
-      || account.ratingPossession === null
-      ? account.ratingPossession
-      : undefined,
-  };
-}
-
-export function parseSessionVault(raw: string): SessionVault | null {
-  try {
-    const parsed = JSON.parse(raw) as Partial<SessionVault>;
-    if (parsed.version !== 3
-      || !Array.isArray(parsed.credentials)
-      || !Array.isArray(parsed.accounts)) {
-      return null;
-    }
-    const credentials = parsed.credentials.flatMap((value) => {
-      if (!value || typeof value !== 'object') return [];
-      const credential = value as Partial<StoredProviderCredential>;
-      if (typeof credential.id !== 'string'
-        || !isRemoteProviderId(credential.providerId)
-        || !credential.session
-        || !isPersistableSession(credential.session)) {
-        return [];
-      }
-      return [{
-        id: credential.id,
-        providerId: credential.providerId,
-        session: credential.session,
-      }];
-    });
-    const credentialProviders = new Map(
-      credentials.map((credential) => [credential.id, credential.providerId] as const),
-    );
-    const accounts = parsed.accounts.flatMap((value) => {
-      const account = parseAccountMetadata(value, credentialProviders);
-      return account ? [account] : [];
-    });
-    return {
-      version: 3,
-      activeAccountId: typeof parsed.activeAccountId === 'string'
-        ? parsed.activeAccountId
-        : accounts[0]?.id ?? null,
-      credentials,
-      accounts,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function parseV2Vault(raw: string): V2SessionVault | null {
-  try {
-    const parsed = JSON.parse(raw) as Partial<V2SessionVault>;
-    if (parsed.version !== 2 || !Array.isArray(parsed.accounts)) return null;
-    const accounts = parsed.accounts.flatMap((value) => {
-      if (!value || typeof value !== 'object') return [];
-      const account = value as Partial<V2StoredProviderAccount>;
-      if (typeof account.id !== 'string'
-        || typeof account.displayName !== 'string'
-        || typeof account.scoreDisplay !== 'string'
-        || !isGameId(account.gameId)
-        || !isRemoteProviderId(account.providerId)
-        || !account.session
-        || !isPersistableSession(account.session)) {
-        return [];
-      }
-      return [{
-        id: account.id,
-        gameId: account.gameId,
-        providerId: account.providerId,
-        displayName: account.displayName,
-        scoreDisplay: account.scoreDisplay,
-        challengeModeRank: account.challengeModeRank,
-        ratingPossession: account.ratingPossession,
-        session: account.session,
-      }];
-    });
-    return {
-      version: 2,
-      activeAccountId: typeof parsed.activeAccountId === 'string'
-        ? parsed.activeAccountId
-        : accounts[0]?.id ?? null,
-      accounts,
-    };
-  } catch {
-    return null;
-  }
-}
-
-function migrateV2Vault(vault: V2SessionVault): SessionVault {
-  return {
-    version: 3,
-    activeAccountId: vault.activeAccountId,
-    credentials: vault.accounts.map((account) => ({
-      id: credentialIdForLegacyAccount(account.id),
-      providerId: account.providerId,
-      session: account.session,
-    })),
-    accounts: vault.accounts.map(({ session: _session, ...account }) => ({
-      ...account,
-      credentialId: credentialIdForLegacyAccount(account.id),
-    })),
-  };
-}
-
-function sanitizeVault(vault: SessionVault): SessionVault {
-  const credentials = vault.credentials.filter((credential) => (
-    isRemoteProviderId(credential.providerId)
-    && isPersistableSession(credential.session)
-  ));
-  const credentialProviders = new Map(
-    credentials.map((credential) => [credential.id, credential.providerId] as const),
-  );
-  const accounts = vault.accounts.filter((account) => (
-    credentialProviders.get(account.credentialId) === account.providerId
-    && isRemoteProviderId(account.providerId)
-    && isGameId(account.gameId)
-  ));
-  const usedCredentialIds = new Set(accounts.map((account) => account.credentialId));
-  return {
-    version: 3,
-    activeAccountId: vault.activeAccountId,
-    credentials: credentials.filter((credential) => usedCredentialIds.has(credential.id)),
-    accounts,
-  };
-}
-
-function parseSessionIndexOrThrow(raw: string): SessionIndex {
-  let parsed: Partial<SessionIndex>;
-  try {
-    parsed = JSON.parse(raw) as Partial<SessionIndex>;
-  } catch (cause) {
-    throw new SessionIndexCorruptError(raw, { cause });
-  }
-  if (!parsed || typeof parsed !== 'object' || Array.isArray(parsed)) {
-    throw new SessionIndexUnrecognizedError(raw, 'invalid-structure');
-  }
-  if (typeof parsed.version === 'number' && parsed.version !== 4) {
-    throw new SessionIndexUnrecognizedError(raw, 'unsupported-version');
-  }
-  if (parsed.version !== 4
-    || !Array.isArray(parsed.credentials)
-    || !Array.isArray(parsed.accounts)) {
-    throw new SessionIndexUnrecognizedError(raw, 'invalid-structure');
-  }
-  const credentials = parsed.credentials.flatMap((value) => {
-    if (!value || typeof value !== 'object') return [];
-    const credential = value as Partial<StoredCredentialIndex>;
-    if (typeof credential.id !== 'string'
-      || !isRemoteProviderId(credential.providerId)
-      || typeof credential.secretRef !== 'string'
-      || !credential.secretRef) {
-      return [];
-    }
-    return [{
-      id: credential.id,
-      providerId: credential.providerId,
-      secretRef: credential.secretRef,
-    }];
-  });
-  if (credentials.length !== parsed.credentials.length) {
-    throw new SessionIndexUnrecognizedError(raw, 'invalid-structure');
-  }
-  const credentialProviders = new Map(
-    credentials.map((credential) => [credential.id, credential.providerId] as const),
-  );
-  const accounts = parsed.accounts.flatMap((value) => {
-    const account = parseAccountMetadata(value, credentialProviders);
-    return account ? [account] : [];
-  });
-  if (accounts.length !== parsed.accounts.length) {
-    throw new SessionIndexUnrecognizedError(raw, 'invalid-structure');
-  }
-  return {
-    version: 4,
-    activeAccountId: typeof parsed.activeAccountId === 'string'
-      ? parsed.activeAccountId
-      : accounts[0]?.id ?? null,
-    credentials,
-    accounts,
-  };
-}
-
-function parseSessionIndex(raw: string): SessionIndex | null {
-  try {
-    return parseSessionIndexOrThrow(raw);
-  } catch {
-    return null;
-  }
-}
-
-function parseStoredSession(raw: string | null): ProviderSession | null {
-  if (!raw) return null;
-  try {
-    const session = JSON.parse(raw) as ProviderSession;
-    return isPersistableSession(session) ? session : null;
-  } catch {
-    return null;
-  }
-}
-
-function vaultFingerprint(vault: SessionVault): string {
-  return JSON.stringify({
-    activeAccountId: vault.activeAccountId,
-    credentials: [...vault.credentials]
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map((credential) => [
-        credential.id,
-        credential.providerId,
-        credential.session,
-      ]),
-    accounts: [...vault.accounts]
-      .sort((a, b) => a.id.localeCompare(b.id))
-      .map((account) => [
-        account.id,
-        account.gameId,
-        account.providerId,
-        account.credentialId,
-        account.displayName,
-        account.scoreDisplay,
-        account.challengeModeRank ?? null,
-      ]),
-  });
-}
-
 async function deleteLegacyVaultKeys(): Promise<void> {
   for (const key of LEGACY_VAULT_KEYS) {
-    await SecureStore.deleteItemAsync(key).catch(() => undefined);
+    try {
+      const raw = await SecureStore.getItemAsync(key);
+      if (raw === null) continue;
+      const parsed = key === VAULT_KEY ? parseSessionVault(raw) : key === V2_VAULT_KEY ? parseV2Vault(raw) : parseStoredSession(raw);
+      if (parsed && !('recovery' in parsed && parsed.recovery)) await SecureStore.deleteItemAsync(key);
+    } catch { /* 无法完整识别的来源继续留在安全存储中。 */ }
   }
 }
 
@@ -467,7 +59,7 @@ export class SecureSessionStore {
   private readonly credentialIo: Pick<LargeSecureValueStore, 'read' | 'write' | 'delete' | 'createReference'>;
   constructor(
     private readonly storage: KeyValueStore = Storage,
-    secrets = new LargeSecureValueStore(),
+    secrets: Pick<LargeSecureValueStore, 'read' | 'write' | 'delete' | 'createReference'> = new LargeSecureValueStore(),
   ) {
     this.indexIo = {
       getItem: (key) => persistenceOperation('local_commit', () => storage.getItem(key)),
@@ -503,10 +95,10 @@ export class SecureSessionStore {
 
   private async loadOrCreateIndexUnlocked(): Promise<SessionIndex> {
     const currentRaw = await this.indexIo.getItem(INDEX_KEY);
-    const current = currentRaw ? await this.parseStoredIndex(currentRaw) : null;
+    const current = currentRaw !== null ? await this.parseStoredIndex(currentRaw) : null;
     if (current) return current;
 
-    const vault = await this.loadVault();
+    const vault = await this.loadVaultUnlocked();
     const migratedRaw = await this.indexIo.getItem(INDEX_KEY);
     const migrated = migratedRaw ? parseSessionIndex(migratedRaw) : null;
     if (migrated) return migrated;
@@ -538,6 +130,7 @@ export class SecureSessionStore {
       activeAccountId: index.activeAccountId,
       credentials,
       accounts: index.accounts,
+      ...(index.recovery ? { recovery: index.recovery } : {}),
     });
   }
 
@@ -561,23 +154,28 @@ export class SecureSessionStore {
 
   /**
    * 索引存在但无法解析时保留原文并抛类型化错误，不回退旧键；
-   * 旧版迁移源解析失败时跳过但不删除（凭据只有这一份，不得销毁）。
+   * 旧版迁移源顶层损坏同样阻止写入，原文留在安全存储。
    */
   async loadVault(): Promise<SessionVault> {
+    return this.enqueueMutation(() => this.loadVaultUnlocked());
+  }
+
+  private async loadVaultUnlocked(): Promise<SessionVault> {
     const stopIndex = startTimer('vault.index.read');
     const indexRaw = await this.indexIo.getItem(INDEX_KEY);
     stopIndex();
-    if (indexRaw) {
+    if (indexRaw !== null) {
       return this.loadIndexedVault(await this.parseStoredIndex(indexRaw));
     }
 
     const vaultRaw = await persistenceOperation('credential_storage', () => SecureStore.getItemAsync(VAULT_KEY));
-    if (vaultRaw) {
+    if (vaultRaw !== null) {
       const vault = parseSessionVault(vaultRaw);
+      if (!vault) throw new SessionPersistenceError('credential_storage');
       if (vault) {
         const migrated = await this.migrateLegacyVault(vault);
         if (migrated) {
-          await deleteLegacyVaultKeys();
+          if (!migrated.recovery) await deleteLegacyVaultKeys();
           return migrated;
         }
         return vault;
@@ -585,13 +183,14 @@ export class SecureSessionStore {
     }
 
     const v2Raw = await persistenceOperation('credential_storage', () => SecureStore.getItemAsync(V2_VAULT_KEY));
-    if (v2Raw) {
+    if (v2Raw !== null) {
       const v2 = parseV2Vault(v2Raw);
+      if (!v2) throw new SessionPersistenceError('credential_storage');
       if (v2) {
         const legacyVault = migrateV2Vault(v2);
         const migrated = await this.migrateLegacyVault(legacyVault);
         if (migrated) {
-          await deleteLegacyVaultKeys();
+          if (!migrated.recovery) await deleteLegacyVaultKeys();
           return migrated;
         }
         return legacyVault;
@@ -599,11 +198,11 @@ export class SecureSessionStore {
     }
 
     const legacy = await persistenceOperation('credential_storage', () => SecureStore.getItemAsync(LEGACY_SESSION_KEY));
-    if (!legacy) return { ...EMPTY_VAULT, credentials: [], accounts: [] };
+    if (legacy === null) return { ...EMPTY_VAULT, credentials: [], accounts: [] };
 
     const session = parseStoredSession(legacy);
     if (!session) {
-      return { ...EMPTY_VAULT, credentials: [], accounts: [] };
+      throw new SessionPersistenceError('credential_storage');
     }
     const accountId = 'maimai:diving-fish:migrated';
     const credentialId = credentialIdForLegacyAccount(accountId);
@@ -632,67 +231,8 @@ export class SecureSessionStore {
     return legacyVault;
   }
 
-  private async saveVaultUnlocked(vault: SessionVault, signal?: AbortSignal): Promise<void> {
-    const sanitized = sanitizeVault(vault);
-    const currentRaw = await this.indexIo.getItem(INDEX_KEY);
-    const current = currentRaw ? await this.parseStoredIndex(currentRaw) : null;
-    const nextCredentials: StoredCredentialIndex[] = [];
-    const newSecretRefs: string[] = [];
-
-    try {
-      for (const credential of sanitized.credentials) {
-        const previous = current?.credentials.find((item) => (
-          item.id === credential.id && item.providerId === credential.providerId
-        ));
-        const previousSession = previous
-          ? parseStoredSession(await this.credentialIo.read(previous.secretRef))
-          : null;
-        if (previous
-          && previousSession
-          && JSON.stringify(previousSession) === JSON.stringify(credential.session)) {
-          nextCredentials.push(previous);
-          continue;
-        }
-        const secretRef = this.credentialIo.createReference('provider-session');
-        newSecretRefs.push(secretRef);
-        const serialized = JSON.stringify(credential.session);
-        await this.credentialIo.write(secretRef, serialized);
-        if (await this.credentialIo.read(secretRef) !== serialized) {
-          throw new SessionPersistenceError('credential_storage');
-        }
-        nextCredentials.push({
-          id: credential.id,
-          providerId: credential.providerId,
-          secretRef,
-        });
-      }
-
-      const index: SessionIndex = {
-        version: 4,
-        activeAccountId: sanitized.activeAccountId,
-        credentials: nextCredentials,
-        accounts: sanitized.accounts,
-      };
-      if (signal?.aborted) throw signal.reason;
-      await this.indexIo.setItem(INDEX_KEY, JSON.stringify(index));
-      if (signal?.aborted) {
-        if (currentRaw === null) await this.indexIo.removeItem(INDEX_KEY);
-        else await this.indexIo.setItem(INDEX_KEY, currentRaw);
-        throw signal.reason;
-      }
-    } catch (error) {
-      for (const secretRef of newSecretRefs) {
-        await this.credentialIo.delete(secretRef).catch(() => undefined);
-      }
-      throw error;
-    }
-
-    const retained = new Set(nextCredentials.map((item) => item.secretRef));
-    for (const previous of current?.credentials ?? []) {
-      if (!retained.has(previous.secretRef)) {
-        await this.credentialIo.delete(previous.secretRef).catch(() => undefined);
-      }
-    }
+  private saveVaultUnlocked(vault: SessionVault, signal?: AbortSignal, assertCurrent?: () => void): Promise<readonly string[]> {
+    return commitSessionVault({ index: this.indexIo, credentials: this.credentialIo, parseIndex: raw => this.parseStoredIndex(raw) }, vault, signal, assertCurrent);
   }
 
   async saveVault(vault: SessionVault): Promise<void> {
@@ -700,38 +240,59 @@ export class SecureSessionStore {
   }
 
   private async upsertAccountUnlocked(account: StoredProviderAccountInput, signal?: AbortSignal): Promise<string> {
-    if (signal?.aborted) throw signal.reason;
-    const vault = await this.loadVault();
     const credentialId = account.credentialId
       ?? credentialIdForLegacyAccount(account.id);
-    const nextCredential: StoredProviderCredential = {
-      id: credentialId,
-      providerId: account.providerId,
-      session: account.session,
+    await this.upsertAccountsUnlocked([account], { activeAccountId: account.id, signal });
+    return credentialId;
+  }
+
+  private async upsertAccountsUnlocked(accounts: readonly StoredProviderAccountInput[], options: {
+    activeAccountId: string;
+    signal?: AbortSignal;
+    assertCurrent?: () => void;
+  }): Promise<void> {
+    const assertCurrent = () => {
+      if (options.signal?.aborted) throw options.signal.reason;
+      options.assertCurrent?.();
     };
-    const nextAccount: StoredProviderAccount = {
-      id: account.id,
-      gameId: account.gameId,
-      providerId: account.providerId,
-      credentialId,
-      displayName: account.displayName,
-      scoreDisplay: account.scoreDisplay,
-      challengeModeRank: account.challengeModeRank,
-      ratingPossession: account.ratingPossession,
-    };
+    assertCurrent();
+    const vault = await this.loadVaultUnlocked();
+    assertCurrent();
+    const nextCredentials = new Map(vault.credentials.map(credential => [credential.id, credential]));
+    const nextAccounts = new Map(vault.accounts.map(account => [account.id, account]));
+    for (const account of accounts) {
+      const credentialId = account.credentialId ?? credentialIdForLegacyAccount(account.id);
+      nextCredentials.delete(credentialId);
+      nextCredentials.set(credentialId, { id: credentialId, providerId: account.providerId, session: account.session });
+      nextAccounts.delete(account.id);
+      nextAccounts.set(account.id, {
+        id: account.id,
+        gameId: account.gameId,
+        providerId: account.providerId,
+        credentialId,
+        displayName: account.displayName,
+        scoreDisplay: account.scoreDisplay,
+        challengeModeRank: account.challengeModeRank,
+        ratingPossession: account.ratingPossession,
+      });
+    }
     await this.saveVaultUnlocked({
       version: 3,
-      activeAccountId: account.id,
-      credentials: [
-        ...vault.credentials.filter((item) => item.id !== credentialId),
-        nextCredential,
-      ],
-      accounts: [
-        ...vault.accounts.filter((item) => item.id !== account.id),
-        nextAccount,
-      ],
-    }, signal);
-    return credentialId;
+      activeAccountId: options.activeAccountId,
+      credentials: [...nextCredentials.values()],
+      accounts: [...nextAccounts.values()],
+    }, options.signal, options.assertCurrent);
+  }
+
+  /** 验证完成后一次合并账号与共享凭据，索引和激活账号在同一次提交中保存。 */
+  async upsertAccounts(accounts: readonly StoredProviderAccountInput[], options: {
+    activeAccountId: string;
+    signal?: AbortSignal;
+    assertCurrent?: () => void;
+  }): Promise<void> {
+    if (!accounts.every(account => isPersistableSession(account.session))) throw new SessionPersistenceError('credential_storage');
+    if (!accounts.some(account => account.id === options.activeAccountId)) throw new SessionPersistenceError('local_commit');
+    await this.enqueueMutation(() => this.upsertAccountsUnlocked(accounts, options));
   }
 
   async upsertAccount(account: StoredProviderAccountInput, signal?: AbortSignal): Promise<string> {
@@ -747,7 +308,7 @@ export class SecureSessionStore {
     if (!isPersistableSession(session)) return 'missing';
     return this.enqueueMutation(async () => {
       if (options?.signal?.aborted) throw options.signal.reason;
-      const vault = await this.loadVault();
+      const vault = await this.loadVaultUnlocked();
       const existing = vault.accounts.find((account) => account.id === accountId);
       if (!existing) return 'missing';
       const credential = vault.credentials.find(item => item.id === existing.credentialId);
@@ -777,7 +338,7 @@ export class SecureSessionStore {
   ): Promise<CredentialSessionWriteResult> {
     if (!isPersistableSession(session)) return 'missing';
     return this.enqueueMutation(async () => {
-      const vault = await this.loadVault();
+      const vault = await this.loadVaultUnlocked();
       const credential = vault.credentials.find(item => item.id === credentialId);
       if (!credential) return 'missing';
       // 没有账号引用的凭据会被 sanitize 丢弃，写入不可能生效。
@@ -824,25 +385,22 @@ export class SecureSessionStore {
    */
   async removeAccount(accountId: string): Promise<RemoveAccountResult> {
     return this.enqueueMutation(async () => {
-      const vault = await this.loadVault();
+      const vault = await this.loadVaultUnlocked();
       const accounts = vault.accounts.filter((item) => item.id !== accountId);
-      if (accounts.length === vault.accounts.length) {
-        return { committed: true, cleanupFailures: [] };
-      }
       const activeAccountId = vault.activeAccountId === accountId
         ? (accounts[0]?.id ?? null)
         : vault.activeAccountId;
       // 提交点：这里抛出表示账号与凭据仍然完整，调用方可以保留界面账号并重试。
-      await this.saveVaultUnlocked({
+      const cleanupFailures = accounts.length === vault.accounts.length ? [] : [...await this.saveVaultUnlocked({
         ...vault,
         activeAccountId,
         accounts,
-      });
-      const cleanupFailures: string[] = [];
+      })];
       try {
         await deleteRizlinePassword(accountId);
-      } catch {
+      } catch (error) {
         cleanupFailures.push('密码');
+        recordRuntimeError('session-persistence', error, false, { phase: 'password-cleanup' });
       }
       return { committed: true, cleanupFailures };
     });
@@ -871,7 +429,7 @@ export class SecureSessionStore {
   async save(session: ProviderSession): Promise<void> {
     if (!isPersistableSession(session)) return;
     await this.enqueueMutation(async () => {
-      const vault = await this.loadVault();
+      const vault = await this.loadVaultUnlocked();
       if (vault.activeAccountId) {
         const existing = vault.accounts.find((account) => account.id === vault.activeAccountId);
         if (existing) {
@@ -893,23 +451,60 @@ export class SecureSessionStore {
     });
   }
 
-  async clear(): Promise<void> {
-    await this.enqueueMutation(async () => {
-      await this.clearIndexedVault();
-      await this.indexIo.removeItem(INDEX_CORRUPT_KEY).catch(() => undefined);
-      await this.indexIo.removeItem(INDEX_UNRECOGNIZED_KEY).catch(() => undefined);
-      await persistenceOperation('credential_storage', () => SecureStore.deleteItemAsync(VAULT_KEY));
-      await persistenceOperation('credential_storage', () => SecureStore.deleteItemAsync(V2_VAULT_KEY));
-      await persistenceOperation('credential_storage', () => SecureStore.deleteItemAsync(LEGACY_SESSION_KEY));
+  async clear(): Promise<RemoveAccountResult & { committed: true }> {
+    return this.enqueueMutation(async () => {
+      const secretRefs = new Set<string>();
+      const passwordAccountIds = new Set<string>();
+      const cleanupFailures: string[] = [];
+      const collectAccounts = (accounts: readonly StoredProviderAccount[]) => {
+        for (const account of accounts) {
+          if (account.providerId === 'rizline-official') passwordAccountIds.add(account.id);
+        }
+      };
+      const cleanup = async (label: string, operation: () => Promise<unknown>) => {
+        try { await operation(); } catch (error) {
+          cleanupFailures.push(label);
+          recordRuntimeError('session-persistence', error, false, { phase: 'clear-cleanup' });
+        }
+      };
+      for (const key of [INDEX_KEY, INDEX_CORRUPT_KEY, INDEX_UNRECOGNIZED_KEY]) {
+        await cleanup('登录数据读取', async () => {
+          const raw = await this.indexIo.getItem(key);
+          const index = raw ? parseSessionIndex(raw) : null;
+          for (const credential of index?.credentials ?? []) secretRefs.add(credential.secretRef);
+          collectAccounts(index?.accounts ?? []);
+        });
+      }
+      for (const key of LEGACY_VAULT_KEYS) {
+        await cleanup('旧登录数据读取', async () => {
+          const raw = await persistenceOperation('credential_storage', () => SecureStore.getItemAsync(key));
+          if (!raw) return;
+          const vault = key === VAULT_KEY ? parseSessionVault(raw)
+            : key === V2_VAULT_KEY ? parseV2Vault(raw) : null;
+          for (const account of vault?.accounts ?? []) {
+            if (account.providerId === 'rizline-official') passwordAccountIds.add(account.id);
+          }
+        });
+      }
+      // 合法空索引是清空的提交点；它必须保留，避免旧来源清理失败后再次迁移。
+      await this.indexIo.setItem(INDEX_KEY, JSON.stringify({ version: 4, activeAccountId: null, credentials: [], accounts: [] } satisfies SessionIndex));
+      for (const reference of secretRefs) await cleanup('登录凭据', () => this.credentialIo.delete(reference));
+      for (const accountId of passwordAccountIds) await cleanup('密码', () => deleteRizlinePassword(accountId));
+      for (const key of [INDEX_CORRUPT_KEY, INDEX_UNRECOGNIZED_KEY]) await cleanup('登录数据副本', () => this.indexIo.removeItem(key));
+      for (const key of LEGACY_VAULT_KEYS) {
+        await cleanup('旧登录数据', () => persistenceOperation('credential_storage', () => SecureStore.deleteItemAsync(key)));
+      }
+      return { committed: true, cleanupFailures: [...new Set(cleanupFailures)] };
     });
   }
 
   private async clearIndexedVault(): Promise<void> {
     const raw = await this.indexIo.getItem(INDEX_KEY);
     const index = raw ? parseSessionIndex(raw) : null;
+    // 迁移失败时移除候选索引，允许下次从保留的旧来源重新迁移；先断开引用再清理。
+    await this.indexIo.removeItem(INDEX_KEY);
     for (const credential of index?.credentials ?? []) {
       await this.credentialIo.delete(credential.secretRef).catch(() => undefined);
     }
-    await this.indexIo.removeItem(INDEX_KEY);
   }
 }

@@ -18,6 +18,8 @@ import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { providerLoginSheetStyles as styles } from '@/components/provider-login-sheet-styles';
+import { useAccountBindingRequest } from '@/hooks/use-account-binding-flow';
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 
 const chunithmTempAccount = new ChunithmTempAccountStore();
 
@@ -41,6 +43,7 @@ export function LxnsLoginPanel({
   const credentialIdsByAccountId = useSession((s) => s.credentialIdsByAccountId);
   const removeBoundAccount = useSession((s) => s.removeBoundAccount);
   const lifecycle = useAppLifecycle();
+  const reuseRequests = useAccountBindingRequest(visible);
   const [message, setMessage] = useState('');
   const [busy, setBusy] = useState(false);
   const [showReusableAccounts, setShowReusableAccounts] = useState(false);
@@ -88,7 +91,8 @@ export function LxnsLoginPanel({
     void queryClient.invalidateQueries({ queryKey: ['songs'] });
   };
 
-  const activateLxnsBinding = async (result: LxnsBindingResult) => {
+  const activateLxnsBinding = async (result: LxnsBindingResult, assertCurrent: () => void) => {
+    assertCurrent();
     const rating = Number(result.account.scoreDisplay);
     await runProviderOperation('local_commit', () => setSession(result.session, {
       accountId: result.account.id,
@@ -100,10 +104,14 @@ export function LxnsLoginPanel({
       avatarUrl: result.account.avatarUrl,
       ratingPossession: result.account.ratingPossession,
     }));
+    assertCurrent();
     if (result.account.gameId === 'chunithm') {
       await runProviderOperation('local_commit', () => removeBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID));
+      assertCurrent();
       await chunithmTempAccount.remove().catch(() => undefined);
+      assertCurrent();
     }
+    assertCurrent();
     invalidateAll();
   };
 
@@ -130,6 +138,10 @@ export function LxnsLoginPanel({
       setMessage('已有落雪账号凭据不可用，请重新授权');
       return;
     }
+    const task = reuseRequests.begin();
+    if (!task) return;
+    const assertAccountCurrent = captureResourceWrites(account.gameId, task.signal, account.id);
+    const assertCurrent = () => { task.assertCurrent(); assertAccountCurrent(); };
     setBusy(true);
     setMessage(`正在使用「${account.displayName}」绑定 ${gameTitle}…`);
     try {
@@ -137,14 +149,17 @@ export function LxnsLoginPanel({
         gameId: gameId === 'chunithm' ? 'chunithm' : 'maimai',
         session,
         credentialId,
+        signal: task.signal,
+        assertCurrent,
       }));
-      await activateLxnsBinding(result);
+      assertCurrent();
+      await activateLxnsBinding(result, assertCurrent);
+      assertCurrent();
       reset();
       onSuccess();
     } catch (error) {
-      setMessage(messageFor(error));
-      setBusy(false);
-    }
+      if (task.isCurrent()) setMessage(messageFor(error));
+    } finally { if (task.isCurrent()) setBusy(false); task.finish(); }
   };
 
   const onSuccessRef = useRef(onSuccess);
@@ -173,7 +188,7 @@ export function LxnsLoginPanel({
         onPress={() => void openLxnsAuthorize()}
         style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
       >
-        <Text style={styles.primaryText}>前往落雪授权</Text>
+        <Text style={[styles.primaryText, { color: theme.onAccent }]}>前往落雪授权</Text>
       </Pressable>
       <Text style={styles.hint}>
         同意授权后将自动返回并绑定。

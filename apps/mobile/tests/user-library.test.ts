@@ -3,6 +3,7 @@ import {
   normalizeLibraryItem, normalizeTagName, normalizeTags, parseUserDataBackup, songLibraryKey,
 } from '@/domain/user-library';
 import type { ChartLibraryItem, SongLibraryItem } from '@/domain/user-library';
+import { GAME_IDS } from '@/domain/game-bind-options';
 
 const createdAt = '2026-07-13T00:00:00.000Z';
 const updatedAt = '2026-07-13T01:00:00.000Z';
@@ -14,6 +15,15 @@ const chart: ChartLibraryItem = {
 };
 
 describe('user library domain', () => {
+  it.each([1, 2, 3])('accepts all registered games in version %i backups and legacy keys', (version) => {
+    const items = GAME_IDS.map(gameId => ({ ...song, gameId, songId: '5', key: songLibraryKey(gameId, '5') }));
+    const backup = { format: 'rranker-user-data', version, exportedAt: updatedAt, items,
+      ...(version === 1 ? {} : { tagPresets: [] }) };
+    expect(parseUserDataBackup(backup).items.map(item => item.gameId).sort()).toEqual([...GAME_IDS].sort());
+    for (const item of items) expect(inferGameIdFromKey(item.key)).toBe(item.gameId);
+    expect(() => parseUserDataBackup({ ...backup, items: [{ ...song, gameId: 'unknown' }] })).toThrow();
+  });
+
   it('round-trips Rizline favorites, SP practice and scoped tags without changing official IDs', () => {
     const items = [
       { ...song, gameId: 'rizline' as const, songId: 'Song.A.0', key: songLibraryKey('rizline', 'Song.A.0'), tags: ['歌曲标签'] },

@@ -30,7 +30,7 @@ export type ChartPreviewPlayerEvent =
   | { type: 'progress'; label?: string; value?: number }
   | { type: 'ready' }
   | { type: 'fullscreen'; active: boolean }
-  | { type: 'settings'; settings: Record<string, unknown> }
+  | { type: 'settings'; settings: Record<string, unknown>; committed?: boolean }
   | {
       type: 'background-video';
       result: 'success' | 'error';
@@ -57,7 +57,7 @@ export type ChartPreviewPlayerHandlers = {
   confirm?: (accepted: boolean) => void;
 };
 
-const SETTINGS_RESERVED_KEYS = new Set(['type', 'message', 'active']);
+const SETTINGS_RESERVED_KEYS = new Set(['type', 'message', 'active', 'committed']);
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
@@ -69,15 +69,17 @@ function isBackgroundVideoErrorCode(value: unknown): value is ChartPreviewBackgr
 
 /** 旧播放器把设置键平铺在顶层：去掉桥接保留键后作为设置载荷；新播放器使用 `settings` 信封。 */
 function readSettingsEvent(message: Record<string, unknown>): ChartPreviewPlayerEvent | null {
+  if ('committed' in message && typeof message.committed !== 'boolean') return null;
+  const commit = typeof message.committed === 'boolean' ? { committed: message.committed } : {};
   if ('settings' in message) {
-    return isPlainObject(message.settings) ? { type: 'settings', settings: message.settings } : null;
+    return isPlainObject(message.settings) ? { type: 'settings', settings: message.settings, ...commit } : null;
   }
   const settings: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(message)) {
     if (SETTINGS_RESERVED_KEYS.has(key)) continue;
     settings[key] = value;
   }
-  return { type: 'settings', settings };
+  return { type: 'settings', settings, ...commit };
 }
 
 function readBackgroundVideoEvent(message: Record<string, unknown>): ChartPreviewPlayerEvent | null {

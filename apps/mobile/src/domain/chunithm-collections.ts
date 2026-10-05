@@ -4,13 +4,6 @@ import type { DataSource } from './models';
 
 export type ChunithmCollectionKind = 'trophy' | 'character' | 'plate' | 'icon';
 
-export const CHUNITHM_COLLECTION_KINDS: readonly ChunithmCollectionKind[] = [
-  'trophy',
-  'character',
-  'plate',
-  'icon',
-];
-
 /**
  * 收藏品进度工具展示的类型。名牌版（plate）与地图头像（icon）在 lxns
  * 公共 API 中整类没有 required 达成条件，无法计算进度，不放入工具。

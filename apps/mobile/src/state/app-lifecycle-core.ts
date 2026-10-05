@@ -27,6 +27,7 @@ const readyFallback: AppLifecycleSnapshot = {
   memoryWarningGeneration: 0,
 };
 const waiters = new Set<ForegroundWaiter>();
+const snapshotListeners = new Set<(snapshot: AppLifecycleSnapshot) => void>();
 const abortedController = new AbortController();
 abortedController.abort();
 let currentSnapshot: AppLifecycleSnapshot = readyFallback;
@@ -49,6 +50,9 @@ export function ensureForegroundWork(): void {
 
 export function publishAppLifecycleSnapshot(snapshot: AppLifecycleSnapshot): void {
   currentSnapshot = snapshot;
+  for (const listener of [...snapshotListeners]) {
+    try { listener(snapshot); } catch { /* 生命周期观察者不能阻止前后台切换。 */ }
+  }
   if (!snapshot.foregroundReady) return;
   for (const waiter of waiters) {
     if (waiter.signal && waiter.abortListener) {
@@ -61,6 +65,11 @@ export function publishAppLifecycleSnapshot(snapshot: AppLifecycleSnapshot): voi
 
 export function getAppLifecycleSnapshot(): AppLifecycleSnapshot {
   return currentSnapshot;
+}
+
+export function subscribeAppLifecycleSnapshot(listener: (snapshot: AppLifecycleSnapshot) => void): () => void {
+  snapshotListeners.add(listener);
+  return () => { snapshotListeners.delete(listener); };
 }
 
 export function getForegroundAbortSignal(): AbortSignal {

@@ -15,6 +15,7 @@ import { queryClient } from '@/state/query-client';
 import { applyOsuTokenRotation, useSession } from '@/state/session-store';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
+import { loadItemsBounded } from '@/services/offset-pagination';
 
 const osuCache = new OsuCache();
 const EMPTY_SCORES: readonly OsuBestScore[] = [];
@@ -51,6 +52,7 @@ export function useOsuKnownScores(
     queryKey: key,
     queryFn: () => osuCache.loadKnownScores(gameId as OsuGameId, userId as number),
     enabled: enabled && tabActive && bound,
+    notifyOnChangeProps: tabActive ? undefined : [],
     staleTime: 60_000,
   });
 
@@ -98,8 +100,11 @@ export function useOsuBeatmapsetUserScores(
         session as OsuOAuthSession,
         (next, expected) => applyOsuTokenRotation(activeAccountId, next, expected),
       );
-      const settled = await Promise.allSettled(currentSong.beatmaps.map(
-        async (beatmap): Promise<OsuBestScore | null> => {
+      const scoresById = new Map<number, OsuBestScore>();
+      const failures = await loadItemsBounded({
+        items: currentSong.beatmaps, concurrency: 4, signal,
+        onItem: (score: OsuBestScore | null, beatmap) => { if (score) scoresById.set(beatmap.id, score); },
+        load: async (beatmap): Promise<OsuBestScore | null> => {
           const raw = await provider.getUserBeatmapScore(userId as number, beatmap.id, gameId, signal);
           if (!raw) return null;
           return normalizeOsuBeatmapUserScore(
@@ -120,10 +125,11 @@ export function useOsuBeatmapsetUserScores(
             },
           );
         },
-      ));
-      const scores = settled.flatMap((result) => (
-        result.status === 'fulfilled' && result.value ? [result.value] : []
-      ));
+      });
+      const scores = currentSong.beatmaps.flatMap(beatmap => {
+        const score = scoresById.get(beatmap.id);
+        return score ? [score] : [];
+      });
       if (scores.length > 0 && !signal.aborted) {
         const snapshot = await osuCache.mergeKnownScores(gameId, userId as number, scores, assertCurrent);
         assertCurrent();
@@ -132,8 +138,8 @@ export function useOsuBeatmapsetUserScores(
           snapshot,
         );
       }
-      const rejected = settled.find((result) => result.status === 'rejected');
-      if (rejected?.status === 'rejected') throw rejected.reason;
+      if (signal.aborted) throw signal.reason ?? new Error('操作已取消');
+      if (failures.length) throw failures[0].error;
       return scores;
     },
     enabled: bound && song !== null && song.beatmaps.length > 0,

@@ -1,10 +1,11 @@
-import { fireEvent, render, screen, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import OsuOAuthCallbackScreen from '../app/oauth/osu';
 import { createOsuBoundAccount } from '@/domain/bound-account';
 import { ProviderError } from '@/providers/errors';
 
 let mockParams: Record<string, string | undefined> = {};
+let mockBlur: (() => void) | undefined;
 const mockDismissTo = jest.fn((..._args: unknown[]) => undefined);
 const mockExchange = jest.fn(async (..._args: unknown[]): Promise<unknown> => undefined);
 const mockNotify = jest.fn((..._args: unknown[]) => undefined);
@@ -17,6 +18,10 @@ const mockRequireState = jest.fn((state: unknown) => {
 jest.mock('expo-router', () => ({
   router: { dismissTo: (...args: unknown[]) => mockDismissTo(...args) },
   useLocalSearchParams: () => mockParams,
+  useFocusEffect: (effect: () => (() => void) | undefined) => {
+    const React = jest.requireActual<typeof import('react')>('react');
+    React.useEffect(() => { mockBlur = effect(); return mockBlur; }, [effect]);
+  },
 }));
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
@@ -89,6 +94,23 @@ beforeEach(() => {
 });
 
 describe('osu! OAuth 回调页', () => {
+  it.each(['blur', 'unmount'])('%s 后取消绑定，忽略迟到结果与页面通知', async leave => {
+    mockParams = { code: 'auth-code', state: 'expected-state' };
+    mockExchange.mockResolvedValue(mockSession);
+    let resolve!: (value: unknown) => void;
+    mockBindOsuModes.mockImplementation(() => new Promise(done => { resolve = done; }));
+    const view = await render(<OsuOAuthCallbackScreen />);
+    await fireEvent.press(screen.getByLabelText('osu!mania'));
+    await fireEvent.press(screen.getByLabelText('绑定选中模式'));
+    await waitFor(() => expect(mockBindOsuModes).toHaveBeenCalledTimes(1));
+    const input = mockBindOsuModes.mock.calls[0][0] as { signal?: AbortSignal };
+    if (leave === 'blur') await act(() => mockBlur?.());
+    else await view.unmount();
+    expect(input.signal?.aborted).toBe(true);
+    await act(() => resolve({ accounts: [mockAccount], credentialId: 'c', session: mockSession, activeAccountId: mockAccount.id }));
+    expect(mockSetOsuBinding).not.toHaveBeenCalled();
+    expect(mockNotify).not.toHaveBeenCalledWith(expect.objectContaining({ status: 'success' }));
+  });
   it('构建缺少应用凭据时直接显示配置阶段', async () => {
     mockParams = { code: 'auth-code', state: 'expected-state' };
     mockExchange.mockRejectedValue(new ProviderError('configuration', 'raw configuration details', false));
@@ -116,12 +138,12 @@ describe('osu! OAuth 回调页', () => {
     await waitFor(() => expect(screen.getByLabelText('osu!mania').props.accessibilityState.checked).toBe(true));
     await fireEvent.press(screen.getByLabelText('绑定选中模式'));
 
-    await waitFor(() => expect(mockBindOsuModes).toHaveBeenCalledWith({
+    await waitFor(() => expect(mockBindOsuModes).toHaveBeenCalledWith(expect.objectContaining({
       modeGameIds: ['osu-mania'],
       session: mockSession,
       existingAccounts: [],
       credentialIdsByAccountId: {},
-    }));
+    })));
     await waitFor(() => expect(mockSetOsuBinding).toHaveBeenCalledWith({
       accounts: [mockAccount],
       credentialId: 'osu:credential',

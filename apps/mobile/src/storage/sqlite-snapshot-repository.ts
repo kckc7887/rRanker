@@ -2,6 +2,7 @@ import type { SQLiteDatabase } from 'expo-sqlite';
 import { accountAvatarResourceKey } from '@/domain/account-avatar';
 import { chunithmPersonalResourceKey } from '@/domain/chunithm-personal';
 import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
+import { CatalogSnapshotSchema, ScoreSnapshotSchema } from '@/domain/schemas';
 import type { CatalogRepository } from '@/repositories/catalog-repository';
 import type { SnapshotRepository } from '@/repositories/snapshot-repository';
 import type { ResourceRepository } from '@/repositories/resource-repository';
@@ -65,7 +66,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     );
     if (!row) return null;
     if (row.schema_version !== SNAPSHOT_SCHEMA_VERSION) return null;
-    try { return JSON.parse(row.payload) as ScoreSnapshot; }
+    try { return ScoreSnapshotSchema.safeParse(JSON.parse(row.payload)).data ?? null; }
     catch { return null; }
   }
   async save(accountId: string, snapshot: ScoreSnapshot, assertCurrent?: () => void): Promise<void> {
@@ -92,7 +93,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
     );
     if (!row) return null;
     if (row.schema_version !== CATALOG_SCHEMA_VERSION) return null;
-    try { return JSON.parse(row.payload) as CatalogSnapshot; }
+    try { return CatalogSnapshotSchema.safeParse(JSON.parse(row.payload)).data ?? null; }
     catch { return null; }
   }
   async saveCatalog(catalog: CatalogSnapshot, assertCurrent?: () => void): Promise<void> {
@@ -129,7 +130,7 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
    */
   async updateResource<T>(
     key: string, schemaVersion: number,
-    transform: (previous: T | null) => { value: T; updatedAt: string },
+    transform: (previous: T | null) => { value: T; updatedAt: string; write?: true } | { value: T; write: false },
     assertCurrent?: () => void,
   ): Promise<T> {
     await this.initialize();
@@ -139,8 +140,10 @@ export class SqliteSnapshotRepository implements SnapshotRepository, CatalogRepo
         'SELECT schema_version, payload FROM resource_snapshots WHERE resource_key = ?', key,
       );
       const previous = row && row.schema_version === schemaVersion ? parseResourcePayload<T>(row.payload) : null;
-      const { value, updatedAt } = transform(previous);
+      const result = transform(previous);
       assertCurrent?.();
+      if (result.write === false) return result.value;
+      const { value, updatedAt } = result;
       await db.runAsync(
         `INSERT INTO resource_snapshots (resource_key, schema_version, updated_at, payload) VALUES (?, ?, ?, ?)
          ON CONFLICT(resource_key) DO UPDATE SET schema_version=excluded.schema_version,

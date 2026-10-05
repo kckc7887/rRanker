@@ -26,14 +26,12 @@
  */
 import type { BeatmapData, HitResult, LazerMod } from '../types/index';
 import type { ModDifficulty } from './modDifficulty';
-import { slideDurationMs } from './sliderDuration';
+import { slideDurationMs, sliderNestedEvents, type SliderNestedEvent } from './sliderDuration';
 import {
-  sliderTickTimes,
   stableSpinnerRequirementHalfSpins,
   lazerSpinnerRequirementFullSpins,
   lazerSpinnerMaxBonusSpins,
 } from './hitJudge';
-import { sliderTickTimesLazer } from '../renderer/SliderGeometryLazer';
 
 /** osu! rank grade. Silver variants (`SH`/`SSH`) are only emitted when HD or FL is active. */
 export type Grade = 'SSH' | 'SS' | 'SH' | 'S' | 'A' | 'B' | 'C' | 'D';
@@ -183,29 +181,12 @@ function computeGrade(
   return g;
 }
 
-type SubKind = 'tick' | 'repeat' | 'tail';
-
-function buildSliderSubKinds(beatmap: BeatmapData, isLazer: boolean): Map<number, SubKind[]> {
-  const m = new Map<number, SubKind[]>();
-  for (let i = 0; i < beatmap.hitObjects.length; i++) {
-    const obj = beatmap.hitObjects[i]!;
-    if (obj.type !== 'slider') continue;
-    const slideDur = slideDurationMs(beatmap, obj);
-    // Must match hitJudge.ts tick emission (lazer distance-based vs stable time-interval).
-    const ticks = isLazer
-      ? sliderTickTimesLazer(beatmap, obj, slideDur)
-      : sliderTickTimes(beatmap, obj, slideDur);
-    const events: { t: number; kind: SubKind }[] = [];
-    for (const t of ticks) events.push({ t, kind: 'tick' });
-    for (let edge = 1; edge < obj.slides; edge++) {
-      events.push({ t: obj.time + slideDur * edge, kind: 'repeat' });
-    }
-    events.sort((a, b) => a.t - b.t);
-    const kinds: SubKind[] = events.map(e => e.kind);
-    kinds.push('tail');
-    m.set(i, kinds);
-  }
-  return m;
+function buildSliderSubKinds(beatmap: BeatmapData, isLazer: boolean): Map<number, Generator<SliderNestedEvent>> {
+  const streams = new Map<number, Generator<SliderNestedEvent>>();
+  beatmap.hitObjects.forEach((obj, i) => {
+    if (obj.type === 'slider') streams.set(i, sliderNestedEvents(beatmap, obj, slideDurationMs(beatmap, obj), isLazer));
+  });
+  return streams;
 }
 
 // Stable spinner spin score (danser scorev1 spinner.go / hitresult.go ScoreValue):
@@ -278,16 +259,13 @@ function computeScoreV1Timeline(
   // split into SliderStart (at head time) + final Hit300/100/50 (at tail time)
   // so intermediate score/combo updates line up with stable's event ordering.
   const events: ScoreEvent[] = [];
-  const subCursor = new Map<number, number>();
 
   for (const r of results) {
     const objIdx = r.objectIndex;
     const obj    = beatmap.hitObjects[objIdx]!;
 
     if (r.isSliderSub === true) {
-      const idx  = subCursor.get(objIdx) ?? 0;
-      subCursor.set(objIdx, idx + 1);
-      const kind = subKinds.get(objIdx)?.[idx] ?? 'tick';
+      const kind = subKinds.get(objIdx)?.next().value?.kind ?? 'tick';
       const hit  = r.judgement !== 0;
 
       if (hit) {
@@ -471,10 +449,9 @@ function computeScoreV3Timeline(
       continue;
     }
     pushMax(useLazerSliderAcc ? 'base' : 'sliderStart');
-    const subs = subKinds.get(i) ?? [];
-    for (const s of subs) {
-      if (s === 'tail') continue;
-      pushMax(s === 'tick' ? 'sliderPoint' : 'sliderRepeat');
+    for (const event of sliderNestedEvents(beatmap, obj, slideDurationMs(beatmap, obj), true)) {
+      if (event.kind === 'tail') continue;
+      pushMax(event.kind === 'tick' ? 'sliderPoint' : 'sliderRepeat');
     }
     pushMax(useLazerSliderAcc ? 'sliderEnd' : 'legacyEnd');
   }
@@ -492,16 +469,13 @@ function computeScoreV3Timeline(
   }
 
   const events: LzEvent[] = [];
-  const subCursor = new Map<number, number>();
 
   for (const r of results) {
     const objIdx = r.objectIndex;
     const obj    = beatmap.hitObjects[objIdx]!;
 
     if (r.isSliderSub === true) {
-      const idx = subCursor.get(objIdx) ?? 0;
-      subCursor.set(objIdx, idx + 1);
-      const subKind = subKinds.get(objIdx)?.[idx] ?? 'tick';
+      const subKind = subKinds.get(objIdx)?.next().value?.kind ?? 'tick';
       const hit = r.judgement !== 0;
 
       let kind: LzKind;

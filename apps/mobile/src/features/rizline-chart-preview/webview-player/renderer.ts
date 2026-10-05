@@ -106,7 +106,10 @@ export class RizlineRenderer {
   }
 
   render(chart: PreparedChart, nowSeconds: number): void {
-    const frame = layoutPreviewFrame(chart, nowSeconds);
+    const frame = layoutPreviewFrame(chart, nowSeconds, {
+      height: this.canvas.height, judgeLineY: this.judgeLineY, scrollUnit: this.scrollUnit,
+      visualSpeed: this.visualSpeed, noteRadius: this.noteScale * (TAP_OUTER + LINE_STROKE),
+    });
     const context = this.context;
     const scale = frame.cameraScale;
     const base = chart.themes[0]!;
@@ -185,8 +188,7 @@ export class RizlineRenderer {
     context.fillRect(0, 0, this.canvas.width, this.canvas.height);
     context.lineWidth = this.noteScale * LINE_STROKE;
     context.lineCap = 'round';
-    const ordered = [...frame.spans].sort((left, right) => left.startTick - right.startTick);
-    for (const span of ordered) this.strokeSpan(context, span, scale);
+    for (const span of frame.spans) this.strokeSpan(context, span, scale);
     {
       const gradient = context.createLinearGradient(0, this.centerY - this.frameHeight / 2, 0, this.centerY + this.frameHeight / 2);
       gradient.addColorStop(1324 / DESIGN_HEIGHT, fillTransparent);

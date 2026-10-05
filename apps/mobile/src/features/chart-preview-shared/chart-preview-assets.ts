@@ -9,6 +9,8 @@ import { Asset } from 'expo-asset';
 import { Directory, File, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { resolveChartPreviewAssetUri } from './chart-preview-asset-uri';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 
 let sessionCounter = 0;
 
@@ -27,11 +29,15 @@ export function createChartPreviewSessionDirectory(name: string): Directory {
 }
 
 export function disposeChartPreviewSessionDirectory(directory: Directory): void {
-  if (directory.exists) directory.delete();
+  try { if (directory.exists) directory.delete(); }
+  catch (error) { recordRuntimeError('chart-preview-cleanup', error, false, { phase: 'cleanup' }); }
 }
 
-export async function stageAsset(moduleId: number, fileName: string, directory: Directory): Promise<File> {
+export async function stageAsset(moduleId: number, fileName: string, directory: Directory, signal?: AbortSignal): Promise<File> {
+  const assertCurrent = captureResourceWrites('shared', signal);
+  assertCurrent();
   const sourceUri = await loadAssetFileUri(moduleId, fileName);
+  assertCurrent();
   const target = new File(directory, fileName);
   const source = new File(sourceUri);
   if (target.exists) target.delete();

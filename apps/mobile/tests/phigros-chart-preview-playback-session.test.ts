@@ -129,7 +129,7 @@ class FakeFrameLoop {
   }
 }
 
-function createPlayback(hitSounds?: Partial<Record<'click' | 'drag' | 'flick', string>>) {
+function createPlayback(hitSounds?: Partial<Record<'click' | 'drag' | 'flick', string>>, onRender?: () => void) {
   const context = new FakeAudioContext();
   const frames = new FakeFrameLoop();
   const rendered: number[] = [];
@@ -145,7 +145,7 @@ function createPlayback(hitSounds?: Partial<Record<'click' | 'drag' | 'flick', s
     settings,
     environment,
     host: {
-      render: (chartTime) => { rendered.push(chartTime); },
+      render: (chartTime) => { rendered.push(chartTime); onRender?.(); },
       onPlayStateChange: (playing) => { playStates.push(playing); },
     },
   });
@@ -155,6 +155,20 @@ function createPlayback(hitSounds?: Partial<Record<'click' | 'drag' | 'flick', s
 }
 
 describe('Phigros 播放会话的播放状态所有权', () => {
+  it('渲染回调结束会话时不再安排下一帧', async () => {
+    let end: (() => void) | undefined;
+    const { session, context, frames } = createPlayback(undefined, () => {
+      const action = end; end = undefined; action?.();
+    });
+    await session.loadMusic(new ArrayBuffer(8));
+    const pending = session.play(); context.releaseResumeNow(); await pending;
+    end = () => session.dispose();
+    frames.advance(16);
+    expect(session.disposed).toBe(true);
+    expect(frames.pending).toBe(0);
+    expect(context.heldSourceCount()).toBe(0);
+  });
+
   it('resume 未结算时暂停：旧 play Promise 不再启动播放', async () => {
     const { session, context, frames } = createPlayback();
     await session.loadMusic(new ArrayBuffer(8));

@@ -22,4 +22,3 @@ export const PhiraAccountStore = createAccountListStore<PhiraAccountProfile>({
   parse: parsePhiraAccounts,
   keyOf: (account) => account.playerId,
 }).Store;
-export const phiraAccountStore = new PhiraAccountStore();

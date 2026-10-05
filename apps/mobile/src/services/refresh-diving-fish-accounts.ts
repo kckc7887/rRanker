@@ -8,6 +8,7 @@ import { buildScoreSnapshot } from '@/services/score-service';
 import { uploadedRecordsAreVisible } from '@/services/upload-refresh-visibility';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
+import { withUploadAbortSignal, waitForUploadDelay, type ScoreHubAbortSignal } from '@/services/score-hub-http';
 
 const REFRESH_RETRY_DELAYS_MS = [0, 2_000, 5_000, 10_000] as const;
 const repository = new SqliteSnapshotRepository();
@@ -27,16 +28,13 @@ export type RefreshDivingFishAccountsResult = {
   failed: FailedDivingFishAccountRefresh[];
 };
 
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
 
 async function refreshOne(input: {
   account: BoundAccount;
   session: ProviderSession;
   catalog: CatalogSnapshot;
   expectedRecords?: readonly DivingFishUploadRecord[];
-  signal?: { aborted: boolean };
+  signal?: ScoreHubAbortSignal;
   assertAccount?: (accountId: string) => void;
 }): Promise<ScoreSnapshot> {
   const guardGeneration = captureResourceWrites(input.account.gameId, undefined, input.account.id);
@@ -50,14 +48,15 @@ async function refreshOne(input: {
   for (const delay of REFRESH_RETRY_DELAYS_MS) {
     assertCurrent();
     if (input.signal?.aborted) throw new Error('已取消');
-    if (delay > 0) await sleep(delay);
+    if (delay > 0) await waitForUploadDelay(delay, input.signal);
+    await input.signal?.waitUntilResumed?.();
     if (input.signal?.aborted) throw new Error('已取消');
     try {
       const provider = new DivingFishProvider(input.session);
-      const [player, rawRecords] = await Promise.all([
-        provider.getPlayer(),
-        provider.getRecords(),
-      ]);
+      const [player, rawRecords] = await withUploadAbortSignal(input.signal, signal => Promise.all([
+        provider.getPlayer(signal),
+        provider.getRecords(signal),
+      ]));
       const snapshot = buildScoreSnapshot(player, rawRecords, input.catalog);
       if (input.expectedRecords?.length
         && !uploadedRecordsAreVisible(snapshot.records, input.expectedRecords)) {
@@ -95,7 +94,7 @@ export async function refreshDivingFishAccounts(input: {
   sessionsByAccountId: Record<string, ProviderSession | undefined>;
   catalog: CatalogSnapshot;
   expectedRecords?: readonly DivingFishUploadRecord[];
-  signal?: { aborted: boolean };
+  signal?: ScoreHubAbortSignal;
   assertAccount?: (accountId: string) => void;
   onRefreshing?: (account: BoundAccount) => void;
 }): Promise<RefreshDivingFishAccountsResult> {
@@ -104,6 +103,8 @@ export async function refreshDivingFishAccounts(input: {
 
   // 串行读取，避免多个账号同时触发水鱼限流。
   for (const account of input.accounts) {
+    await input.signal?.waitUntilResumed?.();
+    if (input.signal?.aborted) throw new Error('已取消');
     const session = input.sessionsByAccountId[account.id];
     if (!session || session.mode !== 'import-token') {
       failed.push({ account, error: new Error('缺少可读取的水鱼 Import-Token') });

@@ -110,7 +110,7 @@ export function RenameLocalAccountSheet({
             onPress={() => void save()}
             style={[styles.primary, { backgroundColor: theme.accent }, saving && styles.disabled]}
           >
-            {saving ? <ActivityIndicator color="#FFF" /> : <Text style={styles.primaryText}>保存</Text>}
+            {saving ? <ActivityIndicator color={theme.onAccent} /> : <Text style={[styles.primaryText, { color: theme.onAccent }]}>保存</Text>}
           </Pressable>
         </View>
       </View>

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, ScrollView, Text, View, type ViewToken } from 'react-native';
+import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { SongListSectionHeader } from '@/components/game-content/SongListSectionHeader';
@@ -69,35 +69,25 @@ export function MajdataFilter({ catalog, tags }: { catalog: boolean; tags: strin
   </FilterShell>;
 }
 
-function useVisibleCards() {
-  const [visible, setVisible] = useState<ReadonlySet<string>>(() => new Set());
-  const onViewableItemsChanged = useCallback(({ viewableItems }: { viewableItems: ViewToken<MajdataCard>[] }) => {
-    const next = new Set(viewableItems.map(value => value.item.key));
-    setVisible(current => current.size === next.size && [...current].every(key => next.has(key)) ? current : next);
-  }, []);
-  return { visible, onViewableItemsChanged };
-}
-
 export function MajdataBestScreen() {
   const query = useGameData();
   const theme = useAppTheme();
   const bottom = useNativeTabBottomInset();
-  const viewability = useVisibleCards();
   const snapshot = query.data?.payload.kind === 'majdata-net' ? query.data.payload.snapshot : undefined;
   const cards = useMemo(() => [...(snapshot?.recent ?? [])]
     .sort((a, b) => majdataTime(b.timestamp) - majdataTime(a.timestamp)).map(majdataRecentCard), [snapshot?.recent]);
   const sections = useMemo(() => [{ title: 'Recent', data: cards }], [cards]);
   return <View style={[bestStyles.page, { backgroundColor: theme.background }]}>
-    <BestListPage data={cards.length ? sections : undefined} isLoading={query.isLoading}
+    <BestListPage<MajdataCard, typeof sections[number]> data={cards.length ? sections : undefined} isLoading={query.isLoading}
       isError={query.isError && !snapshot} error={query.error} isEmpty={!cards.length}
       emptyText="暂无最近游玩" onRetry={() => void query.refetch()}
       sectionListProps={{ testID: 'majdata-recent-results-list', contentInsetAdjustmentBehavior: 'automatic',
         style: bestStyles.list, contentContainerStyle: [bestStyles.listContent, { paddingBottom: bottom + 16 }],
         scrollIndicatorInsets: { bottom }, stickySectionHeadersEnabled: false, keyExtractor: item => item.key,
-        onViewableItemsChanged: viewability.onViewableItemsChanged, refreshing: query.isRefetching, onRefresh: () => void query.refetch(),
+        refreshing: query.isRefetching, onRefresh: () => void query.refetch(),
         renderSectionHeader: ({ section }) => <SongListSectionHeader title={section.title} count={section.data.length} />,
         renderItem: ({ item, index }) => <MajdataScoreCard card={item} username={snapshot?.player.username ?? ''}
-          visible={viewability.visible.has(item.key)} position={index + 1} /> }} />
+          position={index + 1} /> }} />
   </View>;
 }
 
@@ -105,7 +95,6 @@ export function MajdataRecordsScreen() {
   const query = useGameData();
   const theme = useAppTheme();
   const bottom = useNativeTabBottomInset();
-  const viewability = useVisibleCards();
   const filter = useMajdataRecordsFilter();
   const keyword = useDebouncedValue(filter.keyword);
   const snapshot = query.data?.payload.kind === 'majdata-net' ? query.data.payload.snapshot : undefined;
@@ -124,8 +113,8 @@ export function MajdataRecordsScreen() {
         style: recordsStyles.list, contentContainerStyle: [recordsStyles.listContent, { paddingBottom: bottom + 16 }],
         scrollIndicatorInsets: { bottom }, keyExtractor: item => item.key,
         ListHeaderComponent: snapshot ? <View style={recordsStyles.header}><Text style={recordsStyles.note}>共 {cards.length} 条成绩</Text></View> : null,
-        onViewableItemsChanged: viewability.onViewableItemsChanged, refreshing: query.isRefetching, onRefresh: () => void query.refetch(),
-        renderItem: ({ item }) => <MajdataScoreCard card={item} username={snapshot?.player.username ?? ''} visible={viewability.visible.has(item.key)} /> }} />
+        refreshing: query.isRefetching, onRefresh: () => void query.refetch(),
+        renderItem: ({ item }) => <MajdataScoreCard card={item} username={snapshot?.player.username ?? ''} /> }} />
   </View>;
 }
 

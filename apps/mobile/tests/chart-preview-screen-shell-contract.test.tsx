@@ -307,6 +307,80 @@ describe('ChartPreviewScreenShell 虚构游戏契约', () => {
     ));
   });
 
+  it.each(['inactive', 'background', 'unmount'] as const)('预览设置只保留最新值，%s前提交且隔离释放后回执', async (exit) => {
+    const request: ChartPreviewShellRequest<FictionalPayload> = {
+      kind: 'ready', payload: { chartName: '虚构谱面' }, prepare: async () => fictionalSource,
+    };
+    const view = await renderFictionalShell(request);
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+    const current = latestWebViewProps;
+    await act(() => {
+      for (const speed of [1.05, 1.1, 1.15]) {
+        (current.onMessage as (event: unknown) => void)({ nativeEvent: { data: JSON.stringify({
+          type: 'settings', settings: { speed }, committed: false,
+        }) } });
+      }
+    });
+    expect(mockSaveSettings).not.toHaveBeenCalled();
+    if (exit === 'unmount') await act(() => view.unmount());
+    else {
+      mockLifecycle = { ...mockLifecycle, appState: exit, phase: exit, foregroundReady: false };
+      await view.rerender(<FictionalShell request={request} />);
+    }
+    await waitFor(() => expect(mockSaveSettings).toHaveBeenCalledWith(fictionalSettingsKey, '{"speed":1.15}'));
+    expect(mockSaveSettings).toHaveBeenCalledTimes(1);
+    if (exit !== 'inactive') {
+      await act(() => {
+        (current.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"settings","settings":{"speed":9}}' } });
+      });
+      expect(mockSaveSettings).toHaveBeenCalledTimes(1);
+    }
+  });
+
+  it('停止滚动提交预览设置一次，正常释放不重复写入', async () => {
+    const view = await renderFictionalShell({ kind: 'ready', payload: { chartName: '虚构谱面' }, prepare: async () => fictionalSource });
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+    const send = (committed: boolean) => (latestWebViewProps.onMessage as (event: unknown) => void)({
+      nativeEvent: { data: JSON.stringify({ type: 'settings', settings: { volume: 0.51 }, committed }) },
+    });
+    await act(() => send(false));
+    expect(mockSaveSettings).not.toHaveBeenCalled();
+    await act(() => send(true));
+    await waitFor(() => expect(mockSaveSettings).toHaveBeenCalledTimes(1));
+    await act(() => view.unmount());
+    expect(mockSaveSettings).toHaveBeenCalledTimes(1);
+  });
+
+  it('切换准备会话前保存最后预览，新会话复用已提交值并拒绝旧预览回填', async () => {
+    mockLoadSettings.mockImplementation(async () => mockSaveSettings.mock.calls.at(-1)?.[1] ?? null);
+    const first: ChartPreviewShellRequest<FictionalPayload> = { kind: 'ready', payload: { chartName: 'first' }, prepare: async () => fictionalSource };
+    const view = await renderFictionalShell(first);
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+    const old = latestWebViewProps;
+    await act(() => (old.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"settings","settings":{"volume":0.51},"committed":false}' } }));
+    const secondPrepare = jest.fn(async (_signal: AbortSignal, _settings: unknown) => ({ ...fictionalSource, uri: 'file://second/index.html' }));
+    const second: ChartPreviewShellRequest<FictionalPayload> = { kind: 'ready', payload: { chartName: 'second' }, prepare: secondPrepare };
+    await view.rerender(<FictionalShell request={second} />);
+    await waitFor(() => expect(secondPrepare).toHaveBeenCalledWith(expect.anything(), { volume: 0.51 }, expect.anything()));
+    await act(() => (old.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"settings","settings":{"volume":0.9},"committed":false}' } }));
+    await act(() => view.unmount());
+    expect(mockSaveSettings).toHaveBeenCalledTimes(1);
+    mockLoadSettings.mockReset().mockResolvedValue(null);
+  });
+
+  it('资源释放失败不覆盖原准备失败或中断后续会话', async () => {
+    const dispose = jest.fn(() => { throw new Error('release-error'); });
+    const request: ChartPreviewShellRequest<FictionalPayload> = { kind: 'ready', payload: { chartName: '虚构谱面' }, prepare: async () => ({ ...fictionalSource, dispose }) };
+    const view = await renderFictionalShell(request);
+    await waitFor(() => expect(screen.getByTestId(fictionalTestID)).toBeTruthy());
+    await act(() => (latestWebViewProps.onError as () => void)());
+    expect(screen.getByText('播放器加载失败，请返回重试。')).toBeTruthy();
+    expect(dispose).toHaveBeenCalledTimes(1);
+    expect(log.mock.calls).toEqual(expect.arrayContaining([['error', expect.objectContaining({ source: 'chart-preview-release', phase: 'cleanup' })]]));
+    await act(() => view.unmount());
+    expect(dispose).toHaveBeenCalledTimes(1);
+  });
+
   it('缺省仍把主播放器 HTTP 错误作为阻断错误', async () => {
     await renderFictionalShell({
       kind: 'ready',

@@ -23,7 +23,7 @@ function metroResolver(previous?: Resolve): Resolve {
     module, __dirname: projectRoot,
     require: Object.assign((name: string) => name === 'expo/metro-config'
       ? { getDefaultConfig: () => ({ resolver: { assetExts: [], resolveRequest: previous } }) }
-      : nodeRequire(name), { resolve: nodeRequire.resolve }),
+      : name === './package.json' ? { main: 'expo-router/entry' } : nodeRequire(name), { resolve: nodeRequire.resolve }),
   });
   return (module.exports as { resolver: { resolveRequest: Resolve } }).resolver.resolveRequest;
 }

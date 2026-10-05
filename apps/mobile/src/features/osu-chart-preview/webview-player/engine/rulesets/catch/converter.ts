@@ -28,6 +28,7 @@ import type { BeatmapData, Slider, Spinner, HitCircle } from '../../types/index'
 import type { ModDifficulty } from '../../utils/modDifficulty';
 import type { CatchObject, CatchObjectType } from './types';
 import { sampleSlider } from '../../renderer/SliderGeometry';
+import { sliderVelocityMultiplier } from '../../utils/sliderDuration';
 
 /**
  * Port of osu.Game.Rulesets.Catch.Beatmaps.CatchBeatmapConverter + the nested-object
@@ -86,20 +87,22 @@ export function calculateCatchWidth(cs: number): number {
 // slider's velocity/duration — and therefore its tail time + tiny-droplet count — are wrong.)
 // `DifficultyPointAt` falls back to DEFAULT instead, so svMultiplier stays 1 before the first
 // inherited point; both branches reset it the same way the loop does.
-function getTimingAt(beatmap: BeatmapData, time: number): { baseBeatLength: number; svMultiplier: number } {
+function getTimingAt(beatmap: BeatmapData, time: number): { baseBeatLength: number; svMultiplier: number; generateTicks: boolean } {
   const firstUninherited = beatmap.timingPoints.find((tp) => !tp.inherited);
   let baseBeatLength = firstUninherited ? firstUninherited.beatLength : 500;
   let svMultiplier = 1;
+  let generateTicks = true;
   for (const tp of beatmap.timingPoints) {
     if (tp.time > time) break;
     if (!tp.inherited) {
       baseBeatLength = tp.beatLength;
       svMultiplier = 1;
     } else {
-      svMultiplier = Math.max(0.1, Math.min(10, -100 / tp.beatLength));
+      svMultiplier = sliderVelocityMultiplier(tp.beatLength);
     }
+    generateTicks = !Number.isNaN(tp.beatLength);
   }
-  return { baseBeatLength, svMultiplier };
+  return { baseBeatLength, svMultiplier, generateTicks };
 }
 
 // LegacyRulesetExtensions.GetPrecisionAdjustedBeatLength(this, timingPoint, "fruits").
@@ -139,20 +142,19 @@ interface SliderEvent { type: SliderEventType; time: number; pathProgress: numbe
  * still advances `lastEvent` so it seeds the final tiny-droplet segment. All arithmetic
  * here is double (no float casts).
  */
-function generateSliderEvents(
+function* generateSliderEvents(
   startTime: number,
   spanDuration: number,
   velocity: number,
   tickDistance: number,
   totalDistance: number,
   spanCount: number,
-): SliderEvent[] {
-  const events: SliderEvent[] = [];
+): Generator<SliderEvent> {
   const length = Math.min(MAX_LENGTH, totalDistance);
   const td = clamp(tickDistance, 0, length);
   const minDistanceFromEnd = velocity * 10;
 
-  events.push({ type: 'head', time: startTime, pathProgress: 0 });
+  yield { type: 'head', time: startTime, pathProgress: 0 };
 
   for (let span = 0; span < spanCount; span++) {
     const spanStartTime = startTime + span * spanDuration;
@@ -168,10 +170,10 @@ function generateSliderEvents(
       }
     }
     if (reversed) ticks.reverse();
-    for (const t of ticks) events.push(t);
+    yield* ticks;
 
     if (span < spanCount - 1) {
-      events.push({ type: 'repeat', time: spanStartTime + spanDuration, pathProgress: (span + 1) % 2 });
+      yield { type: 'repeat', time: spanStartTime + spanDuration, pathProgress: (span + 1) % 2 };
     }
   }
 
@@ -180,11 +182,9 @@ function generateSliderEvents(
   const legacyLastTickTime = Math.max(startTime + totalDuration / 2, (finalSpanStartTime + spanDuration) + TAIL_LENIENCY);
   let legacyLastTickProgress = (legacyLastTickTime - finalSpanStartTime) / spanDuration;
   if (spanCount % 2 === 0) legacyLastTickProgress = 1 - legacyLastTickProgress;
-  events.push({ type: 'legacyLastTick', time: legacyLastTickTime, pathProgress: legacyLastTickProgress });
+  yield { type: 'legacyLastTick', time: legacyLastTickTime, pathProgress: legacyLastTickProgress };
 
-  events.push({ type: 'tail', time: startTime + totalDuration, pathProgress: spanCount % 2 });
-
-  return events;
+  yield { type: 'tail', time: startTime + totalDuration, pathProgress: spanCount % 2 };
 }
 
 function makeNested(
@@ -222,8 +222,8 @@ function convertCircle(circle: HitCircle, sourceIndex: number, indexInBeatmap: n
 // Slider → JuiceStream → head Fruit + Tick Droplets + Repeat/Tail Fruits + interpolated
 // TinyDroplets. The nested X base is the head's EffectiveX (XOffset still 0 at generation
 // time, so clamp(originalX, 0, 512)) plus the head-relative path X.
-function convertSlider(beatmap: BeatmapData, slider: Slider, sourceIndex: number, indexInBeatmap: number, scale: number): CatchObject[] {
-  const { baseBeatLength, svMultiplier } = getTimingAt(beatmap, slider.time);
+function* convertSlider(beatmap: BeatmapData, slider: Slider, sourceIndex: number, indexInBeatmap: number, scale: number): Generator<CatchObject> {
+  const { baseBeatLength, svMultiplier, generateTicks } = getTimingAt(beatmap, slider.time);
 
   // Velocity / TickDistance — JuiceStream.ApplyDefaultsToSelf. scoringDistance is the
   // deliberate round-trip `Velocity * BeatLength` (NOT 100*SliderMultiplier) for stable parity.
@@ -232,7 +232,7 @@ function convertSlider(beatmap: BeatmapData, slider: Slider, sourceIndex: number
   const scoringDistance = velocity * baseBeatLength;
   // Pre-v8 .osu formats: SV doesn't scale tick count over the same distance (CatchBeatmapConverter).
   const tickDistanceMultiplier = beatmap.formatVersion < 8 ? 1 / svMultiplier : 1;
-  const tickDistance = scoringDistance / beatmap.sliderTickRate * tickDistanceMultiplier;
+  const tickDistance = generateTicks ? scoringDistance / beatmap.sliderTickRate * tickDistanceMultiplier : 0;
 
   const spanCount = slider.slides;            // SpanCount = RepeatCount + 1
   const pathDistance = slider.length;          // Path.Distance = ExpectedDistance (.osu length)
@@ -242,7 +242,6 @@ function convertSlider(beatmap: BeatmapData, slider: Slider, sourceIndex: number
 
   const jsEffectiveX = Math.fround(clamp(slider.x, 0, CATCH_WIDTH));
 
-  const out: CatchObject[] = [];
   let lastEvent: SliderEvent | null = null;
   for (const e of events) {
     if (lastEvent !== null) {
@@ -254,37 +253,37 @@ function convertSlider(beatmap: BeatmapData, slider: Slider, sourceIndex: number
         while (timeBetweenTiny > 100) timeBetweenTiny /= 2;
         for (let t = timeBetweenTiny; t < sinceLastTick; t += timeBetweenTiny) {
           const progress = lastEvent.pathProgress + (t / sinceLastTick) * (e.pathProgress - lastEvent.pathProgress);
-          out.push(makeNested('tinyDroplet', t + lastEvent.time, jsEffectiveX + pathRelativeXAt(slider, progress), scale, sourceIndex, indexInBeatmap, slider.hitSound));
+          yield makeNested('tinyDroplet', t + lastEvent.time, jsEffectiveX + pathRelativeXAt(slider, progress), scale, sourceIndex, indexInBeatmap, slider.hitSound);
         }
       }
     }
     lastEvent = e;
 
     if (e.type === 'tick') {
-      out.push(makeNested('droplet', e.time, jsEffectiveX + pathRelativeXAt(slider, e.pathProgress), scale, sourceIndex, indexInBeatmap, slider.hitSound));
+      yield makeNested('droplet', e.time, jsEffectiveX + pathRelativeXAt(slider, e.pathProgress), scale, sourceIndex, indexInBeatmap, slider.hitSound);
     } else if (e.type === 'head' || e.type === 'tail' || e.type === 'repeat') {
-      out.push(makeNested('fruit', e.time, jsEffectiveX + pathRelativeXAt(slider, e.pathProgress), scale, sourceIndex, indexInBeatmap, slider.hitSound));
+      yield makeNested('fruit', e.time, jsEffectiveX + pathRelativeXAt(slider, e.pathProgress), scale, sourceIndex, indexInBeatmap, slider.hitSound);
     }
     // legacyLastTick: no object (it only advanced lastEvent above).
   }
-  return out;
 }
 
 // Spinner → BananaShower → evenly-time-spaced Bananas. Int-truncated loop bounds, a
 // float spacing accumulator (its FP rounding can add/drop the final banana — reproduce with
 // Math.fround on every float op). Bananas carry no base X (the position pass assigns a
 // random xOffset).
-function convertSpinner(spinner: Spinner, sourceIndex: number, indexInBeatmap: number, scale: number): CatchObject[] {
+function* convertSpinner(spinner: Spinner, sourceIndex: number, indexInBeatmap: number, scale: number): Generator<CatchObject> {
   const startTimeI = Math.trunc(spinner.time);    // (int)StartTime
   const endTimeI = Math.trunc(spinner.endTime);   // (int)EndTime
   let spacing = Math.fround(spinner.endTime - spinner.time); // (float)(EndTime - StartTime)
   while (spacing > 100) spacing = Math.fround(spacing / 2);
-  if (spacing <= 0) return [];
+  if (spacing <= 0) return;
 
-  const out: CatchObject[] = [];
   let count = 0;
-  for (let time = startTimeI; time <= endTimeI; time = Math.fround(time + spacing)) {
-    out.push({
+  let time = startTimeI;
+  let useDouble = false;
+  while (time <= endTimeI) {
+    yield {
       type: 'banana',
       startTime: time,
       originalX: 0,
@@ -297,10 +296,15 @@ function convertSpinner(spinner: Spinner, sourceIndex: number, indexInBeatmap: n
       bananaIndex: count,
       hyperDash: false,
       distanceToHyperDash: 0,
-    });
+    };
     count++;
+    // Keep the legacy float accumulator wherever it progresses. At large absolute
+    // timestamps a float step can round back to the same (or an earlier) time;
+    // continue at double precision instead of emitting that banana forever.
+    const next = Math.fround(time + spacing);
+    if (next <= time) useDouble = true;
+    time = useDouble ? time + spacing : next;
   }
-  return out;
 }
 
 /**

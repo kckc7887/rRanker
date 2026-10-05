@@ -20,6 +20,7 @@ import {
   getEventValue,
   getIntegral,
 } from './rpe-core';
+import { lowerBoundBy, upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
 import type { NoteAssets } from './renderer';
 
 export type RpeLineColorKey = 'white' | 'gold' | 'blue';
@@ -229,28 +230,6 @@ function scaledHitEffectDiameter(stageWidth: number, noteScale: number): number 
   return stageWidth * HIT_FX_SCALE * clamp(noteScale, 0.5, 2) / 5;
 }
 
-function lowerBoundBy<T>(items: readonly T[], target: number, read: (item: T) => number): number {
-  let low = 0;
-  let high = items.length;
-  while (low < high) {
-    const middle = (low + high) >>> 1;
-    if (read(items[middle]!) < target) low = middle + 1;
-    else high = middle;
-  }
-  return low;
-}
-
-function upperBoundBy<T>(items: readonly T[], target: number, read: (item: T) => number): number {
-  let low = 0;
-  let high = items.length;
-  while (low < high) {
-    const middle = (low + high) >>> 1;
-    if (read(items[middle]!) <= target) low = middle + 1;
-    else high = middle;
-  }
-  return low;
-}
-
 function drawCover(context: CanvasRenderingContext2D, image: HTMLImageElement | null, width: number, height: number): void {
   if (!image?.naturalWidth) return;
   const scale = Math.max(width / image.naturalWidth, height / image.naturalHeight);
@@ -394,6 +373,9 @@ export class RpeRenderer {
   private disposed = false;
   private readonly ownedShaderTextures = new Set<WebGLTexture>();
   private tintedTextures: WeakMap<object, Map<string, HTMLCanvasElement>> | null = null;
+  private readonly tintLru = new Map<HTMLCanvasElement, { image: object; key: string; bytes: number }>();
+  private tintBytes = 0;
+  private tintWorkspace: HTMLCanvasElement | null = null;
   private gl: WebGLRenderingContext | null = null;
   private glPrograms: Map<string, WebGLProgram> | null = null;
   private shaderDefaults: Map<string, [string, number | number[]][]> | null = null;
@@ -435,7 +417,10 @@ export class RpeRenderer {
     this.resetTimeline(0);
   }
 
-  setChartAssets(assets: RpeChartAssets): void { this.chartAssets = assets; }
+  setChartAssets(assets: RpeChartAssets): void {
+    this.clearTints();
+    this.chartAssets = assets;
+  }
   setIllustration(image: HTMLImageElement | null): void { this.illustration = image; }
   setNoteAssets(assets: NoteAssets): void {
     this.noteAssets = assets;
@@ -467,7 +452,7 @@ export class RpeRenderer {
     this.illustration = null;
     this.noteAssets = null;
     this.hitFxTexture = null;
-    this.tintedTextures = null;
+    this.clearTints();
     this.cursors = [];
     this.activeWindows = [];
     this.hitEvents = [];
@@ -546,6 +531,7 @@ export class RpeRenderer {
     events: readonly RpeEvent[],
     cur: number[],
     lastHeight: number[],
+    integrateEasings: boolean,
   ): number {
     while (cur.length < layerIndex + 1) cur.push(0);
     while (lastHeight.length < layerIndex + 1) lastHeight.push(0);
@@ -557,7 +543,7 @@ export class RpeRenderer {
       while (cur[layerIndex]! < events.length - 1 && beat > events[cur[layerIndex]! + 1]!.startBeat) {
         lastHeight[layerIndex] =
           (lastHeight[layerIndex] ?? 0) +
-          getIntegral(events[cur[layerIndex]!]!, this.chart!.bpmList, this.lineIntegrateEasings(layerIndex)) +
+          getIntegral(events[cur[layerIndex]!]!, this.chart!.bpmList, integrateEasings) +
           (events[cur[layerIndex]!]!.end as number) *
             (this.chart!.bpmList.timeSec(events[cur[layerIndex]! + 1]!.startBeat) -
               this.chart!.bpmList.timeSec(events[cur[layerIndex]!]!.endBeat));
@@ -565,20 +551,16 @@ export class RpeRenderer {
       }
       let height = lastHeight[layerIndex] ?? 0;
       if (beat <= events[cur[layerIndex]!]!.endBeat) {
-        height += getIntegral(events[cur[layerIndex]!]!, this.chart!.bpmList, this.lineIntegrateEasings(layerIndex), beat);
+        height += getIntegral(events[cur[layerIndex]!]!, this.chart!.bpmList, integrateEasings, beat);
       } else {
         height +=
-          getIntegral(events[cur[layerIndex]!]!, this.chart!.bpmList, this.lineIntegrateEasings(layerIndex)) +
+          getIntegral(events[cur[layerIndex]!]!, this.chart!.bpmList, integrateEasings) +
           (events[cur[layerIndex]!]!.end as number) *
             (this.chart!.bpmList.timeSec(beat) - this.chart!.bpmList.timeSec(events[cur[layerIndex]!]!.endBeat));
       }
       return height;
     }
     return 0;
-  }
-
-  private lineIntegrateEasings(lineIndex: number): boolean {
-    return this.chart!.lines[lineIndex]!.integrateSpeedEasings;
   }
 
   // ---- 判定线状态（含父级组合） ----
@@ -597,7 +579,7 @@ export class RpeRenderer {
       x += (this.handleEvent(beat / line.bpmfactor, layerIndex, layer.moveXEvents, cursor.x) as number) ?? 0;
       y += (this.handleEvent(beat / line.bpmfactor, layerIndex, layer.moveYEvents, cursor.y) as number) ?? 0;
       rot += (this.handleEvent(beat / line.bpmfactor, layerIndex, layer.rotateEvents, cursor.rot) as number) ?? 0;
-      lineHeight += this.handleSpeed(beat / line.bpmfactor, layerIndex, layer.speedEvents, cursor.speed, cursor.lastHeight);
+      lineHeight += this.handleSpeed(beat / line.bpmfactor, layerIndex, layer.speedEvents, cursor.speed, cursor.lastHeight, line.integrateSpeedEasings);
     }
     const incline = (this.handleEvent(beat / line.bpmfactor, 0, line.inclineEvents, cursor.incline) as number) ?? 0;
     const scaleXValue = (this.handleEvent(beat / line.bpmfactor, 0, line.scaleXEvents, cursor.scaleX) as number) ?? 1;
@@ -802,8 +784,32 @@ export class RpeRenderer {
     const source = image as CanvasImageSource & { naturalWidth?: number; naturalHeight?: number };
     const imageWidth = (image as { width?: number }).width ?? source.naturalWidth ?? 0;
     const imageHeight = (image as { height?: number }).height ?? source.naturalHeight ?? 0;
-    if (!canvas || canvas.width !== imageWidth || canvas.height !== imageHeight) {
-      canvas = document.createElement('canvas');
+    if (canvas && canvas.width === imageWidth && canvas.height === imageHeight) {
+      const entry = this.tintLru.get(canvas)!;
+      this.tintLru.delete(canvas);
+      this.tintLru.set(canvas, entry);
+      return canvas;
+    }
+    if (canvas) this.releaseTint(canvas);
+    const bytes = imageWidth * imageHeight * 4;
+    const byteBudget = 32 * 1024 * 1024;
+    if (bytes > byteBudget) {
+      // 超过缓存预算的贴图仍按原分辨率绘制，只复用一张即时工作画布。
+      canvas = this.tintWorkspace ??= document.createElement('canvas');
+    } else {
+      while (this.tintLru.size >= 64 || this.tintBytes + bytes > byteBudget) {
+        const oldest = this.tintLru.keys().next().value!;
+        this.releaseTint(oldest, false);
+        if (canvas) { canvas.width = 0; canvas.height = 0; }
+        canvas = oldest;
+      }
+      canvas ??= document.createElement('canvas');
+      perImage.set(key, canvas);
+      this.tintLru.set(canvas, { image: image as object, key, bytes });
+      this.tintBytes += bytes;
+    }
+    {
+      // 重设尺寸同时清除像素和合成状态，复用画布不能继承 destination-in。
       canvas.width = imageWidth;
       canvas.height = imageHeight;
       const tintContext = canvas.getContext('2d')!;
@@ -815,9 +821,25 @@ export class RpeRenderer {
       tintContext.fillRect(0, 0, canvas.width, canvas.height);
       tintContext.globalCompositeOperation = 'destination-in';
       tintContext.drawImage(image, 0, 0);
-      perImage.set(key, canvas);
     }
     return canvas;
+  }
+
+  private releaseTint(canvas: HTMLCanvasElement, clear = true): void {
+    const entry = this.tintLru.get(canvas);
+    if (entry) {
+      this.tintedTextures?.get(entry.image)?.delete(entry.key);
+      this.tintBytes -= entry.bytes;
+      this.tintLru.delete(canvas);
+    }
+    if (clear) { canvas.width = 0; canvas.height = 0; }
+  }
+
+  private clearTints(): void {
+    for (const canvas of this.tintLru.keys()) this.releaseTint(canvas);
+    if (this.tintWorkspace) { this.tintWorkspace.width = 0; this.tintWorkspace.height = 0; }
+    this.tintWorkspace = null;
+    this.tintedTextures = null;
   }
 
   private drawHold(

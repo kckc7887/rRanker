@@ -103,11 +103,12 @@ const ALLOWED_PARAMETERS: Readonly<Record<string, readonly (keyof DetailTargetPa
 
 /** 目标 → 共享详情路由。osu! 使用规范的 `beatmapId` 槽位。 */
 export function encodeDetailTarget(target: DetailTarget): DetailTargetRoute {
+  const params = { gameId: target.game };
   switch (target.game) {
     case 'phira':
-      return { songId: target.chartId };
+      return { songId: target.chartId, params };
     case 'adofai':
-      return { songId: target.levelId };
+      return { songId: target.levelId, params };
     case 'osu-standard':
     case 'osu-mania':
     case 'osu-catch':
@@ -115,17 +116,19 @@ export function encodeDetailTarget(target: DetailTarget): DetailTargetRoute {
       return {
         songId: target.beatmapsetId,
         ...(target.beatmapId === undefined ? {} : { beatmapId: target.beatmapId }),
-        ...(target.scoreId === undefined ? {} : { params: { scoreId: String(target.scoreId) } }),
+        params: { ...params, ...(target.scoreId === undefined ? {} : { scoreId: String(target.scoreId) }) },
       };
     case 'maimai':
       return {
         songId: target.songId,
+        params,
         ...(target.chartType === undefined ? {} : { chartType: target.chartType }),
         ...(target.levelIndex === undefined ? {} : { levelIndex: target.levelIndex }),
       };
     default:
       return {
         songId: target.songId,
+        params,
         ...(target.levelIndex === undefined ? {} : { levelIndex: target.levelIndex }),
       };
   }
@@ -282,9 +285,11 @@ export function decodeDetailTarget(
   gameId: GameId | undefined,
   params: DetailTargetParams,
 ): DetailTargetResolution {
-  const game = gameId ?? 'maimai';
   const readers = createSlotReaders(gameId);
-  const allowed = ALLOWED_PARAMETERS[game];
+  const gameParameter = readText(params, 'gameId', readers);
+  if (!gameParameter.ok) return gameParameter;
+  const game = (gameParameter.value ?? gameId ?? 'maimai') as GameId;
+  const allowed = Object.hasOwn(ALLOWED_PARAMETERS, game) ? ALLOWED_PARAMETERS[game] : undefined;
   if (!allowed) return readers.fail('unsupported_game', 'gameId', `${game} 还没有详情页`);
   const unexpected = firstUnexpectedParameter(params, allowed);
   if (unexpected) {
@@ -295,12 +300,6 @@ export function decodeDetailTarget(
   if (!songId.ok) return songId;
   if (songId.value === undefined) {
     return readers.fail('missing_parameter', 'songId', 'URL 缺少定位详情所需的 songId');
-  }
-
-  const gameParameter = readText(params, 'gameId', readers);
-  if (!gameParameter.ok) return gameParameter;
-  if (gameParameter.value !== undefined && gameParameter.value !== game) {
-    return readers.fail('invalid_parameter', 'gameId', `参数 gameId=${gameParameter.value} 与当前游戏 ${game} 不一致`);
   }
 
   if (game === 'phira') return { ok: true, target: { game: 'phira', chartId: songId.value } };

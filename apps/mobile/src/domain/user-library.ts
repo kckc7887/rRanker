@@ -1,6 +1,6 @@
 import { z } from 'zod';
 import { normalizeSongId } from './catalog';
-import type { GameId } from './game-bind-options';
+import { GAME_IDS, type GameId } from './game-bind-options';
 import { isOsuGameId } from './game-mode-family';
 import type { ChartType } from './models';
 import type { DetailTarget } from './detail-target';
@@ -15,8 +15,8 @@ export const MAX_BACKUP_ITEMS = 5000;
 /** 与 schema 允许的最大备份体积对齐，导出和导入使用同一上限。 */
 export const MAX_BACKUP_FILE_BYTES = 12 * 1024 * 1024;
 
-const KNOWN_GAME_IDS = new Set<GameId>(['rizline', 'majdata-net', 'maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test', 'osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko']);
-const GameIdSchema = z.enum(['rizline', 'majdata-net', 'maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test', 'osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko']);
+const KNOWN_GAME_IDS = new Set<GameId>(GAME_IDS);
+const GameIdSchema = z.enum(GAME_IDS);
 
 /**
  * 曲库歌曲 id 规范化：adofai 关卡 id 是完整数字（如 11372），

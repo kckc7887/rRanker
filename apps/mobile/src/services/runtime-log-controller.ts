@@ -1,4 +1,4 @@
-import { isRuntimeLogCapacity, sanitizeRuntimeLogEntry, type RuntimeLogCapacity, type RuntimeLogPreferences, type RuntimeLogSession } from '@/domain/runtime-log';
+import { isRuntimeLogCapacity, sanitizeRuntimeLogEntry, type RuntimeLogCapacity, type RuntimeLogEntry, type RuntimeLogPreferences, type RuntimeLogSession } from '@/domain/runtime-log';
 import type { RuntimeLogRepository } from '@/storage/runtime-log-repository';
 import { recordRuntimeError } from './runtime-diagnostics-recorder';
 
@@ -27,6 +27,14 @@ export function createRuntimeLogController(dependencies: {
   let repositoryLoading: Promise<RuntimeLogRepository> | undefined;
   let initialization: Promise<void> | undefined;
   let controlQueue = Promise.resolve();
+  let pendingEntries: RuntimeLogEntry[] = [];
+  let flushTimer: ReturnType<typeof setTimeout> | undefined;
+  let recordingFailure: unknown;
+  const clearPending = () => {
+    if (flushTimer !== undefined) clearTimeout(flushTimer);
+    flushTimer = undefined;
+    pendingEntries = [];
+  };
   const serializeControl = (operation: () => Promise<void>): Promise<void> => {
     const pending = controlQueue.then(operation);
     controlQueue = pending.catch(() => undefined);
@@ -40,6 +48,7 @@ export function createRuntimeLogController(dependencies: {
     }
   };
   const fail = (phase: NonNullable<RuntimeLogState['failurePhase']>, error: unknown) => {
+    if (phase !== 'history') { clearPending(); recordingFailure = error; }
     const id = state.activeId;
     if (id !== null && phase !== 'history') {
       try { repository?.finish(id, 'failed'); } catch { /* 下次启动恢复未结束记录。 */ }
@@ -49,6 +58,19 @@ export function createRuntimeLogController(dependencies: {
       sessions: phase === 'history' ? state.sessions : state.sessions.map((session) => session.id === id ? { ...session, status: 'failed' } : session),
     });
     recordRuntimeError('runtime-log', error, false, { phase });
+  };
+  const flush = (): void => {
+    if (flushTimer !== undefined) clearTimeout(flushTimer);
+    flushTimer = undefined;
+    const entries = pendingEntries;
+    pendingEntries = [];
+    const id = state.activeId;
+    if (!entries.length || id === null) return;
+    try {
+      repository!.appendBatch(id, entries);
+      publish({ sessions: state.sessions.map(session => session.id === id
+        ? { ...session, lastAt: entries.at(-1)!.at, count: Math.min(session.capacity, session.count + entries.length) } : session) });
+    } catch (error) { fail('recording', error); }
   };
   const ensureRepository = (): Promise<RuntimeLogRepository> => {
     if (repository) return Promise.resolve(repository);
@@ -62,6 +84,8 @@ export function createRuntimeLogController(dependencies: {
     return repositoryLoading;
   };
   const beginRecording = () => {
+    clearPending();
+    recordingFailure = undefined;
     const at = now();
     const entry = sanitizeRuntimeLogEntry('recording-start', { ...dependencies.context(), capacity: state.capacity }, at);
     const id = repository!.start(state.capacity, at, entry);
@@ -69,8 +93,8 @@ export function createRuntimeLogController(dependencies: {
     publish({ sessions: repository!.list(), failed: false, failurePhase: null, historyReady: true });
   };
   const initialize = (): Promise<void> => {
-    if (state.ready) return Promise.resolve();
     if (initialization) return initialization;
+    if (state.ready) return Promise.resolve();
     publish({ busy: true });
     initialization = (async () => {
       try {
@@ -89,11 +113,13 @@ export function createRuntimeLogController(dependencies: {
 
   return {
     initialize,
+    flush,
     loadHistory: (): Promise<void> => serializeControl(async () => {
       await initialize();
       publish({ historyBusy: true });
       try {
         const loaded = await ensureRepository();
+        flush();
         publish({ sessions: loaded.list(), historyReady: true, historyBusy: false,
           ...(state.failurePhase === 'history' ? { failed: false, failurePhase: null } : {}) });
       } catch (error) { fail('history', error); throw error; }
@@ -124,7 +150,9 @@ export function createRuntimeLogController(dependencies: {
         publish({ busy: false });
       } catch (error) { fail('recording', error); throw error; }
     }),
-    stop: (): Promise<void> => serializeControl(async () => {
+    stop: (): Promise<void> => {
+      flush();
+      return serializeControl(async () => {
       await initialize();
       if (!state.enabled && state.activeId === null) return;
       publish({ busy: true });
@@ -136,21 +164,25 @@ export function createRuntimeLogController(dependencies: {
       }
       publish({ enabled: false });
       try {
+        flush();
+        if (state.failed && state.failurePhase === 'recording') throw recordingFailure;
         if (state.activeId !== null) repository!.finish(state.activeId, 'stopped', sanitizeRuntimeLogEntry('recording-stop', {}, now()));
         publish({ activeId: null, sessions: repository?.list() ?? state.sessions, busy: false, failed: false, failurePhase: null });
       } catch (error) { fail('recording', error); throw error; }
-    }),
+      });
+    },
     record(type: string, fields: Readonly<Record<string, unknown>>): void {
       if (state.activeId === null) return;
       try {
         const entry = sanitizeRuntimeLogEntry(type, { route: dependencies.context().route, ...fields }, now());
-        repository!.append(state.activeId, entry);
-        publish({ sessions: state.sessions.map((session) => session.id === state.activeId
-          ? { ...session, lastAt: entry.at, count: Math.min(session.capacity, session.count + 1) } : session) });
+        pendingEntries.push(entry);
+        if (pendingEntries.length >= 32 || entry.severity === 'fatal' || (type === 'lifecycle' && entry.fields.lifecyclePhase === 'background')) flush();
+        else flushTimer ??= setTimeout(flush, 100);
       } catch (error) { fail('recording', error); }
     },
     snapshot(id: number): string {
       if (!repository) throw new Error('log store unavailable');
+      flush();
       const snapshotAt = now();
       return JSON.stringify({ formatVersion: 1, snapshotAt, ...repository.snapshot(id) }, null, 2);
     },

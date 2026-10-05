@@ -1,4 +1,8 @@
 import type { ScoreRecord } from '@/domain/models';
+import { providerErrorFromStatus } from '@/providers/errors';
+import { requestJson } from '@/providers/http-json';
+import { fetch as expoFetch } from 'expo/fetch';
+import { z } from 'zod';
 
 const PHI_PLUGIN_API = 'https://phib19.top:8080';
 const LEVELS = ['EZ', 'HD', 'IN', 'AT'] as const;
@@ -6,7 +10,9 @@ const LEVELS = ['EZ', 'HD', 'IN', 'AT'] as const;
 export type PhigrosAccAverageKind = 'Lower' | 'Higher' | 'Hyper' | 'Finished';
 export type PhigrosAccAverage = { value: number; kind: PhigrosAccAverageKind };
 
-type AverageResponse = Record<string, Record<string, { accAvg?: number | null } | undefined> | undefined>;
+const averagesSchema = z.record(z.string(), z.record(z.string(), z.object({ accAvg: z.number().min(0).max(100).nullish() })));
+const responseSchema = z.object({ data: averagesSchema, error: z.unknown().optional() }).refine(value => !value.error);
+type AverageResponse = z.infer<typeof averagesSchema>;
 
 export function phigrosAccAverageKey(record: Pick<ScoreRecord, 'songId' | 'levelIndex'>): string {
   return `${record.songId}:${record.levelIndex}`;
@@ -25,25 +31,16 @@ async function requestAverages(
   const songIds = [...new Set(records.map((record) => apiSongId(record.songId)))];
   if (!songIds.length) return {};
   if (signal?.aborted) return {};
-  const controller = new AbortController();
-  const cancel = () => controller.abort();
-  signal?.addEventListener('abort', cancel, { once: true });
-  const timeout = setTimeout(() => controller.abort(), 10_000);
-  try {
-    const response = await fetch(`${PHI_PLUGIN_API}/get/scoreList/allAccAvg`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ songIds, minRks, maxRks }),
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`平均 ACC 接口返回 HTTP ${response.status}`);
-    const json = await response.json() as { data?: AverageResponse; error?: unknown };
-    if (json.error || !json.data) throw new Error('平均 ACC 接口返回无效数据');
-    return json.data;
-  } finally {
-    clearTimeout(timeout);
-    signal?.removeEventListener('abort', cancel);
-  }
+  const response = await requestJson({
+    baseUrl: PHI_PLUGIN_API, path: '/get/scoreList/allAccAvg', schema: responseSchema,
+    fetcher: expoFetch as unknown as typeof fetch, label: '平均 ACC', signal, timeoutMs: 10_000, totalAttempts: 1,
+    init: { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ songIds, minRks, maxRks }) },
+    error: status => providerErrorFromStatus(status, {
+      rateLimit: '平均 ACC 查询过于频繁', server: '平均 ACC 服务暂时不可用',
+      fallback: { code: 'network', message: status => `平均 ACC 接口返回 HTTP ${status}` },
+    }),
+  });
+  return response.data;
 }
 
 function averageFor(response: AverageResponse, record: ScoreRecord): number | null {

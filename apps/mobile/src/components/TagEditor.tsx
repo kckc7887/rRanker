@@ -14,7 +14,7 @@ import {
 import { GestureHandlerRootView, Pressable as GesturePressable } from 'react-native-gesture-handler';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { AppModal } from '@/components/AppModal';
-import { normalizeTagName, normalizeTags } from '@/domain/user-library';
+import { MAX_TAGS_PER_ITEM, normalizeTagName, normalizeTags } from '@/domain/user-library';
 import { useAppTheme } from '@/theme/app-theme';
 
 type TagCommitResult = { ok: true } | { ok: false; error: string };
@@ -82,7 +82,7 @@ export function TagEditor({
         </TagPressable>
         <TagPressable accessibilityRole="button" accessibilityLabel="添加标签" disabled={disabled}
           onPress={() => void add()} style={[styles.add, { backgroundColor: theme.accent }]}>
-          <Text style={styles.addText}>添加</Text>
+          <Text style={[styles.addText, { color: theme.onAccent }]}>添加</Text>
         </TagPressable>
       </View>
       {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
@@ -110,6 +110,7 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const [selected, setSelected] = useState<string[]>(tags);
+  const selectedRef = useRef(selected);
   const [draftPresets, setDraftPresets] = useState<string[]>(presets);
   const [presetInput, setPresetInput] = useState('');
   const [message, setMessage] = useState('');
@@ -119,12 +120,20 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
 
   const selectedKeys = useMemo(() => new Set(selected.map((value) => normalizeTagName(value).key)), [selected]);
   const toggle = (tag: string) => {
-    setMessage('');
-    setSelected((current) => {
+    try {
+      const current = selectedRef.current;
       const key = normalizeTagName(tag).key;
-      return current.some((item) => normalizeTagName(item).key === key)
-        ? current.filter((item) => normalizeTagName(item).key !== key) : normalizeTags([...current, tag]);
-    });
+      const alreadySelected = current.some((item) => normalizeTagName(item).key === key);
+      if (!alreadySelected && current.length >= MAX_TAGS_PER_ITEM) {
+        setMessage(`最多可选择 ${MAX_TAGS_PER_ITEM} 个标签`);
+        return;
+      }
+      const next = alreadySelected ? current.filter((item) => normalizeTagName(item).key !== key)
+        : normalizeTags([...current, tag]);
+      selectedRef.current = next;
+      setSelected(next);
+      setMessage('');
+    } catch { setMessage('标签无效，请检查后重试。'); }
   };
   const persistPresets = async (values: string[]) => {
     try {
@@ -156,7 +165,7 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
 
   return <AppModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}
     onShow={() => {
-      setSelected(tags); setDraftPresets(presets); setMessage(''); setSaving(false); setTimeout(capturePresetBounds, 0);
+      selectedRef.current = tags; setSelected(tags); setDraftPresets(presets); setMessage(''); setSaving(false); setTimeout(capturePresetBounds, 0);
     }}>
     <View testID="tag-preset-sheet" style={[styles.sheet, { backgroundColor: theme.background, paddingBottom: Math.max(insets.bottom, 12) }]}>
       <View testID="tag-preset-sheet-grabber" style={[styles.sheetGrabber, { backgroundColor: theme.border }]} />
@@ -217,7 +226,7 @@ function TagPresetSheet({ visible, tags, presets, historyTags, presetsEditable, 
           <SheetPressable accessibilityRole="button" accessibilityLabel="添加预设标签"
             onPress={() => void addPreset(presetInput)}
             style={({ pressed }) => [styles.sheetAdd, { backgroundColor: theme.accent }, pressed && styles.softPressed]}>
-            <Text style={styles.sheetAddText}>添加</Text>
+            <Text style={[styles.sheetAddText, { color: theme.onAccent }]}>添加</Text>
           </SheetPressable>
         </View> : null}
         <Text style={[styles.sectionLabel, styles.historyLabel, { color: theme.textMuted }]}>历史标签</Text>
@@ -263,7 +272,7 @@ function SelectableTag({ tag, selected, layout = 'chip', onPress }: {
     ]}>
     <View style={[styles.selectionBox, { borderColor: theme.border, backgroundColor: theme.input },
       selected && { backgroundColor: theme.accent, borderColor: theme.accent }]}>
-      {selected ? <Text style={styles.selectionMark}>✓</Text> : null}
+      {selected ? <Text style={[styles.selectionMark, { color: theme.onAccent }]}>✓</Text> : null}
     </View>
     <Text style={[layout === 'row' ? styles.rowSelectionText : styles.chipSelectionText,
       { color: selected ? theme.accent : theme.textSecondary }]}>{tag}</Text>

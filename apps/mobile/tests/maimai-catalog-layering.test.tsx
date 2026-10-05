@@ -10,7 +10,7 @@ import { MAIMAI_CATALOG_QUERY_KEY } from '@/services/maimai-catalog-query';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 
 const mockGetCatalog = jest.fn<() => Promise<CatalogSnapshot>>();
-const mockGetDetailedCatalog = jest.fn<() => Promise<CatalogSnapshot>>();
+const mockGetDetailedCatalog = jest.fn<(signal?: AbortSignal) => Promise<CatalogSnapshot>>();
 const mockGetAliases = jest.fn<() => Promise<AliasSnapshot>>();
 const mockGetSong = jest.fn<(songId: string, catalog?: CatalogSnapshot) => Promise<Song>>();
 const mockUseGameData = jest.fn();
@@ -169,6 +169,9 @@ describe('舞萌曲库分层', () => {
     await waitFor(() => expect(hook.result.current.data).toBeDefined());
     expect(mockGetDetailedCatalog).toHaveBeenCalledTimes(1);
     expect(queryClient.getQueryCache().findAll()).toHaveLength(0);
+    const signal = mockGetDetailedCatalog.mock.calls[0]?.[0] as AbortSignal;
+    expect(signal.aborted).toBe(false);
     await hook.unmount();
+    expect(signal.aborted).toBe(true);
   });
 });

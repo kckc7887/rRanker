@@ -323,6 +323,21 @@ Only the public numeric format example is used; its score-upload code is neither
 copied into nor executed by rRanker. The application reads scores and does not
 provide an official score-upload operation.
 
+## Phigros block-area field reference (PhiVideo)
+
+`apps/mobile/src/features/phigros-chart-preview/webview-player/pgr-blocks.ts`
+references the region and keyframe field definitions in **phigrostl/PhiVideo**,
+[`Application/BlockArea.h` at `361e000f5eefc803bdd4ec3c86c402197ea7d30c`](https://github.com/phigrostl/PhiVideo/blob/361e000f5eefc803bdd4ec3c86c402197ea7d30c/src/PhiVideo/Application/BlockArea.h).
+The upstream is MIT licensed, **Copyright (c) 2026 たおりん**. Its complete,
+unchanged license and copyright notice are retained in
+[`LICENSES/PhiVideo-MIT.txt`](LICENSES/PhiVideo-MIT.txt).
+
+rRanker expresses these fields as TypeScript types and implements validation,
+time sampling, transforms, interval indexing, mask composition and procedural
+GPU effects. No upstream shader, texture or simplified rectangle renderer is
+included. This field reference does not replace the existing phira attribution
+for PGR parsing and playback semantics. The project's own license remains AGPL-3.0-only.
+
 ## AES-GCM implementation (@noble/ciphers)
 
 The Rizline save decoder imports `@noble/ciphers/aes.js` from **@noble/ciphers 2.4.0**,
