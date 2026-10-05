@@ -1,4 +1,4 @@
-import { buildLxnsIconUrl, accountAvatarResourceKey } from '@/domain/account-avatar';
+import { buildLxnsIconUrl, accountAvatarResourceKey, accountAvatarSchemaVersion, isPhigrosAvatarUrl } from '@/domain/account-avatar';
 import { tufPlayerIdFromAccountId, type BoundAccount } from '@/domain/bound-account';
 import { buildChunithmMapIconUrl, CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION, chunithmPersonalResourceKey, type ChunithmPersonalSnapshot } from '@/domain/chunithm-personal';
 import { resolveTufAvatarUrl } from '@/domain/tuf';
@@ -19,7 +19,6 @@ export type PhigrosAccountHydration = {
   avatarUrl: string | null;
 };
 
-const AVATAR_RESOURCE_SCHEMA = 1;
 const AVATAR_SYNC_CONCURRENCY = 3;
 const repository = new SqliteSnapshotRepository();
 const tufCache = new TufCache();
@@ -54,7 +53,7 @@ export function hydratePhigrosAccount(
 
 function readCachedAvatarUrl(accountId: string): Promise<string | null> {
   return repository
-    .getResource<{ avatarUrl: string }>(accountAvatarResourceKey(accountId), AVATAR_RESOURCE_SCHEMA)
+    .getResource<{ avatarUrl: string }>(accountAvatarResourceKey(accountId), accountAvatarSchemaVersion(accountId))
     .then((cached) => cached?.avatarUrl ?? null);
 }
 
@@ -157,7 +156,7 @@ export async function syncAllAccountAvatars(
 ): Promise<void> {
   const pending = accounts.filter((account) => (
     (account.providerId === 'lxns' || account.providerId === 'phi-taptap' || account.providerId === 'tuf')
-    && !account.avatarUrl
+    && (!account.avatarUrl || (account.gameId === 'phigros' && !isPhigrosAvatarUrl(account.avatarUrl)))
   ));
   let nextIndex = 0;
   const worker = async () => {

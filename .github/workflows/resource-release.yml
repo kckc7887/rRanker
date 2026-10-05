@@ -1,0 +1,25 @@
+name: Publish release APKs
+on:
+  release:
+    types: [published]
+permissions:
+  contents: read
+concurrency:
+  group: resource-release
+  cancel-in-progress: false
+jobs:
+  publish:
+    if: github.repository == 'kckc7887/rRanker' && !github.event.release.draft && !github.event.release.prerelease
+    runs-on: ubuntu-latest
+    timeout-minutes: 95
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: master
+          persist-credentials: false
+      - uses: actions/setup-node@v6
+        with:
+          node-version: '22'
+      - run: node .github/scripts/publish-release.mjs
+        env:
+          RESOURCE_PUBLISHER_TOKEN: ${{ secrets.RESOURCE_PUBLISHER_TOKEN }}

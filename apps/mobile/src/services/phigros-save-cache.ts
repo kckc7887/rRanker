@@ -6,7 +6,7 @@ import { DataSourceSchema, PlayerSchema, ScoreRecordSchema } from '@/domain/sche
 
 export type { PhigrosGameDataPayload } from '@/domain/game-data';
 
-const PHIGROS_SAVE_SCHEMA_VERSION = 1;
+const PHIGROS_SAVE_SCHEMA_VERSION = 2;
 const progressCounts = z.tuple([z.number().int().nonnegative(), z.number().int().nonnegative(), z.number().int().nonnegative(), z.number().int().nonnegative()]);
 const payloadSchema: z.ZodType<PhigrosGameDataPayload> = z.object({
   kind: z.literal('phigros'), resourceRevision: z.string().optional(), player: PlayerSchema,

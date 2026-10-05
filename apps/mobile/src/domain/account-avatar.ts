@@ -2,25 +2,15 @@ export const PHIGROS_OSS_BASE = 'https://rranker-phigros-data.cn-nb1.rains3.com'
 
 export const LXNS_COLLECTION_ASSET_ROOT = 'https://assets2.lxns.net/maimai';
 
-/** 资源对象与发布清单在同一目录。 */
-export function phigrosReleaseDirectory(manifestPath: string | null | undefined): string {
-  const path = manifestPath?.trim();
-  if (!path) return '';
-  const index = path.lastIndexOf('/');
-  return index <= 0 ? '' : path.slice(0, index + 1);
+export function accountAvatarSchemaVersion(accountId: string): number {
+  return accountId.startsWith('phigros:') ? 2 : 1;
 }
 
-export function buildPhigrosAvatarUrl(
-  releaseDirectory: string | null | undefined,
-  avatarName: string | null | undefined,
-  resourceVersion?: string,
-): string | null {
-  const name = avatarName?.trim();
-  const directory = releaseDirectory?.trim();
-  if (!directory || !name) return null;
-  const prefix = directory.endsWith('/') ? directory : `${directory}/`;
-  const url = `${PHIGROS_OSS_BASE}/${prefix}avatars/${encodeURIComponent(name)}.png`;
-  return resourceVersion ? `${url}?v=${encodeURIComponent(resourceVersion)}` : url;
+export function isPhigrosAvatarUrl(value: string): boolean {
+  try {
+    const url = new URL(value);
+    return url.origin === PHIGROS_OSS_BASE && /^\/phigros\/avatars\/[a-f\d]{64}\.png$/.test(url.pathname);
+  } catch { return false; }
 }
 
 export function buildLxnsIconUrl(iconId: number | null | undefined): string | null {

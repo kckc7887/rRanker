@@ -1,8 +1,7 @@
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
-import { accountAvatarResourceKey } from '@/domain/account-avatar';
+import { accountAvatarResourceKey, accountAvatarSchemaVersion } from '@/domain/account-avatar';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
-const AVATAR_RESOURCE_SCHEMA = 1;
 const repository = new SqliteSnapshotRepository();
 
 export async function persistBoundAccountAvatar(
@@ -11,7 +10,8 @@ export async function persistBoundAccountAvatar(
 ): Promise<void> {
   const assertCurrent = captureResourceWrites(accountId.split(':')[0], undefined, accountId);
   const key = accountAvatarResourceKey(accountId);
-  const previous = await repository.getResource<{ avatarUrl: string }>(key, AVATAR_RESOURCE_SCHEMA);
+  const schemaVersion = accountAvatarSchemaVersion(accountId);
+  const previous = await repository.getResource<{ avatarUrl: string }>(key, schemaVersion);
   assertCurrent();
   if ((previous?.avatarUrl ?? null) === avatarUrl) return;
   if (!avatarUrl) {
@@ -20,7 +20,7 @@ export async function persistBoundAccountAvatar(
   }
   await repository.saveResource(
     key,
-    AVATAR_RESOURCE_SCHEMA,
+    schemaVersion,
     new Date().toISOString(),
     { avatarUrl },
     assertCurrent,

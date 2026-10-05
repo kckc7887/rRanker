@@ -7,11 +7,19 @@ import type {
   PhigrosKyouTagType,
 } from '@/domain/phigros-kyou';
 import { ProviderError } from '@/providers/errors';
-import { requestJson } from '@/providers/http-json';
+import { requestBytes, requestJson } from '@/providers/http-json';
+import { resourceObjectPathSchema, verifyResourceBytes } from '@/services/verified-release';
 
-const BASE = `${PHIGROS_OSS_BASE}/kyou/latest`;
+const HashSchema = z.string().regex(/^[a-f\d]{64}$/);
+const CurrentSchema = z.object({
+  schemaVersion: z.literal(2), resourceVersion: z.string().min(1),
+  manifestPath: resourceObjectPathSchema('kyou', ['manifests']), manifestSha256: HashSchema,
+});
 
 const ManifestSchema = z.object({
+  schemaVersion: z.literal(2), resourceVersion: z.string().min(1),
+  files: z.array(z.object({ name: z.string().min(1), path: resourceObjectPathSchema('kyou', ['data']),
+    size: z.number().int().positive(), sha256: HashSchema })),
   ok: z.literal(true),
   source: z.string().min(1),
   finished_unix: z.number().finite().positive(),
@@ -91,17 +99,48 @@ function assertCount(actual: number, expected: number, label: string): void {
 }
 
 export class PhigrosKyouProvider {
-  private fetchJson<T>(name: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
-    return requestJson({
-      baseUrl: BASE, path: `/${name}`, schema, fetcher: expoFetch as unknown as typeof fetch, signal,
+  private requestOptions(signal?: AbortSignal) {
+    return {
+      baseUrl: PHIGROS_OSS_BASE, fetcher: expoFetch as unknown as typeof fetch, signal,
       label: 'Kyou', timeoutMs: 12_000, totalAttempts: 1, diagnosticScenario: 'metadata',
-      error: (status) => new ProviderError('network', `Kyou 请求失败 HTTP ${status}`, true),
+      error: (status: number) => new ProviderError('network', `Kyou 请求失败 HTTP ${status}`, true),
       messages: {
         schema: 'Kyou 数据结构与已验证契约不一致',
         timeout: 'Kyou 数据读取超时',
         network: '无法连接 Kyou 数据服务',
       },
-    });
+    } as const;
+  }
+
+  private async release(signal?: AbortSignal): Promise<z.infer<typeof ManifestSchema>> {
+    const pointer = await requestJson({ ...this.requestOptions(signal), path: `/kyou/latest.json?_check=${Date.now()}`, schema: CurrentSchema });
+    if (pointer.manifestPath !== `kyou/manifests/${pointer.manifestSha256}.json`) {
+      throw new ProviderError('upstream_schema', 'Kyou 清单路径不一致', true);
+    }
+    const manifest = await this.verifiedJson(pointer.manifestPath, { sha256: pointer.manifestSha256 }, ManifestSchema, signal);
+    if (manifest.resourceVersion !== pointer.resourceVersion
+      || new Set(manifest.files.map(file => file.name)).size !== manifest.files.length
+      || manifest.files.some(file => !file.path.split('/')[2]!.startsWith(`${file.sha256}.`))) {
+      throw new ProviderError('upstream_schema', 'Kyou 发布内容不一致', true);
+    }
+    return manifest;
+  }
+
+  private async verifiedJson<T>(path: string, expected: { size?: number; sha256: string }, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+    const bytes = await requestBytes({ ...this.requestOptions(signal), path: `/${path}` });
+    await verifyResourceBytes(bytes, expected, 'Kyou 资源校验失败');
+    let value: unknown;
+    try { value = JSON.parse(new TextDecoder().decode(bytes)); }
+    catch { throw new ProviderError('upstream_schema', 'Kyou 数据格式无效', true); }
+    const parsed = schema.safeParse(value);
+    if (!parsed.success) throw new ProviderError('upstream_schema', 'Kyou 数据结构与已验证契约不一致', true);
+    return parsed.data;
+  }
+
+  private fetchJson<T>(manifest: z.infer<typeof ManifestSchema>, name: string, schema: z.ZodType<T>, signal?: AbortSignal): Promise<T> {
+    const file = manifest.files.find(item => item.name === name);
+    if (!file) throw new ProviderError('upstream_schema', `Kyou 发布缺少 ${name}`, true);
+    return this.verifiedJson(file.path, file, schema, signal);
   }
 
   private source(finishedUnix: number, label: string) {
@@ -114,10 +153,10 @@ export class PhigrosKyouProvider {
   }
 
   async getAliases(signal?: AbortSignal): Promise<PhigrosKyouAliasesSnapshot> {
-    const [manifest, songs, aliases] = await Promise.all([
-      this.fetchJson('manifest.json', ManifestSchema, signal),
-      this.fetchJson('songs.json', z.array(SongSchema), signal),
-      this.fetchJson('aliases.json', z.array(AliasSchema), signal),
+    const manifest = await this.release(signal);
+    const [songs, aliases] = await Promise.all([
+      this.fetchJson(manifest, 'songs.json', z.array(SongSchema), signal),
+      this.fetchJson(manifest, 'aliases.json', z.array(AliasSchema), signal),
     ]);
     assertCount(songs.length, manifest.songs_rows, '歌曲');
     assertCount(aliases.length, manifest.aliases_rows, '别名');
@@ -141,12 +180,12 @@ export class PhigrosKyouProvider {
   }
 
   async getChartTags(signal?: AbortSignal): Promise<PhigrosKyouChartTagsSnapshot> {
-    const [manifest, songs, charts, tags, votes] = await Promise.all([
-      this.fetchJson('manifest.json', ManifestSchema, signal),
-      this.fetchJson('songs.json', z.array(SongSchema), signal),
-      this.fetchJson('charts.json', z.array(ChartSchema), signal),
-      this.fetchJson('tag_catalog.json', z.array(TagSchema), signal),
-      this.fetchJson('tag_votes.json', z.array(TagVoteSchema), signal),
+    const manifest = await this.release(signal);
+    const [songs, charts, tags, votes] = await Promise.all([
+      this.fetchJson(manifest, 'songs.json', z.array(SongSchema), signal),
+      this.fetchJson(manifest, 'charts.json', z.array(ChartSchema), signal),
+      this.fetchJson(manifest, 'tag_catalog.json', z.array(TagSchema), signal),
+      this.fetchJson(manifest, 'tag_votes.json', z.array(TagVoteSchema), signal),
     ]);
     assertCount(songs.length, manifest.songs_rows, '歌曲');
     assertCount(charts.length, manifest.charts_rows, '谱面');

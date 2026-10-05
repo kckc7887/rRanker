@@ -32,20 +32,19 @@ export class RizlineResourceService {
       error: (status: number) => new ProviderError('network', `Rizline 曲库请求失败：${status}`, true) };
   }
   private async prepare(signal: AbortSignal, force: boolean): Promise<RizlineRelease> {
-    const current = await requestJson({ ...this.requestOptions(signal), path: `/rizline/current.json?_check=${Date.now()}`,
+    const current = await requestJson({ ...this.requestOptions(signal), path: `/rizline/latest.json?_check=${Date.now()}`,
       schema: RizlineCurrentSchema, diagnosticScenario: 'release' });
     const identity = JSON.stringify(current);
     const previous = this.releases.peek();
     if (!force && previous && identity === this.revision) return { ...previous, source: snapshotSource({ kind: 'rizline', label: 'Rizline 曲库' }) };
-    const prefix = `rizline/releases/${current.resourceVersion}/`;
-    if (!current.manifestPath.startsWith(prefix)) throw new ProviderError('upstream_schema', 'Rizline 发布路径不一致', true);
+    if (current.manifestPath !== `rizline/manifests/${current.manifestSha256}.json`) throw new ProviderError('upstream_schema', 'Rizline 发布路径不一致', true);
     const bytes = async (path: string) => requestBytes({ ...this.requestOptions(signal), baseUrl: '', path: this.url(path) + (force ? `?_retry=${Date.now()}` : ''), diagnosticScenario: 'catalog' });
     const rawManifest = await bytes(current.manifestPath);
     await verifyResourceBytes(rawManifest, { sha256: current.manifestSha256 }, 'Rizline 清单校验失败');
     const manifest = RizlineManifestSchema.parse(JSON.parse(new TextDecoder().decode(rawManifest)));
     const paths = new Set(manifest.files.map(file => file.path));
     if (manifest.resourceVersion !== current.resourceVersion || paths.size !== manifest.files.length
-      || manifest.files.some(file => !file.path.startsWith(prefix)) || !manifest.catalogPath.startsWith(prefix)) {
+      || manifest.files.some(file => !file.path.split('/')[2]!.startsWith(`${file.sha256}.`))) {
       throw new ProviderError('upstream_schema', 'Rizline 发布内容不一致', true);
     }
     const catalogFile = manifest.files.find(file => file.path === manifest.catalogPath);
@@ -71,7 +70,7 @@ export class RizlineResourceService {
     };
   }
   async loadCached(): Promise<RizlineCatalogData | null> {
-    return this.repository.getResource(RIZLINE_CATALOG_KEY, 1, cachedCatalogSchema);
+    return this.repository.getResource(RIZLINE_CATALOG_KEY, 2, cachedCatalogSchema);
   }
   loadFresh(signal?: AbortSignal): Promise<RizlineCatalogData> {
     const generation = resourceWriteGeneration('rizline');
@@ -80,7 +79,7 @@ export class RizlineResourceService {
       const release = await this.releases.load(requestSignal, true);
       assertCurrent();
       const data = catalogData(release);
-      await this.repository.saveResource(RIZLINE_CATALOG_KEY, 1, data.source.updatedAt, data, assertCurrent);
+      await this.repository.saveResource(RIZLINE_CATALOG_KEY, 2, data.source.updatedAt, data, assertCurrent);
       assertCurrent();
       return data;
     }, signal);

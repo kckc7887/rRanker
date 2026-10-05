@@ -88,7 +88,11 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。HTTP 
 
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。
 
-Phigros/Rizline 预览和下载共用发布资源、完整性校验、取消与共享下载入口；调用方提供实际进度或落盘回调。资源根目录由当前发布地址确定，元数据使用已校验的当前类型。
+Phigros/Rizline 预览和下载共用 `phigrosResources`、`rizlineResources`、`VerifiedReleaseSession` 与 `verifyResourceBytes`；调用方提供实际进度或落盘回调。`resourceObjectPathSchema` 限定资源组、分类与哈希文件名。Phigros 曲绘、头像、成绩图和预览通过清单逻辑路径查找对象，实际 URL 来自 `objectKey`；默认谱、里谱和共用音乐选择仍由 `phigros-chart-preview.ts` 处理。哈希 URL 不附加全局发布版本，未变化资源可以继续命中缓存。
+
+`PhigrosKyouProvider` 在一次调用中固定已验证的清单，再按表名读取并校验字节；别名、标签、引用关系和完整性检查共用现有 Provider 入口。Rizline 曲库缓存使用格式 2，并沿用 `SqliteSnapshotRepository` 对结构失效与 I/O 失败的区分。
+
+Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图读取时校验 Phigros 头像属于当前哈希地址结构，失效缓存通过所属仓库入口重建；头像同步会重新解析结构失效的地址，其他游戏头像缓存格式保持各自合同。
 
 `features/chart-download-shared` 提供原生下载、进度和取消；各游戏负责组装谱面包。
 
