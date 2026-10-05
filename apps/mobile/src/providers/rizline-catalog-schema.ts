@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import { RIZLINE_DIFFICULTIES, type RizlineCatalog } from '@/domain/rizline';
+import { resourceObjectPathSchema } from '@/services/verified-release';
 
 export const RizlineResourcePathSchema = z.string().min(1).refine(path => !path.startsWith('/')
   && !path.includes('\\') && !path.includes(':') && path.split('/').every(part => part !== '' && part !== '.' && part !== '..'));
@@ -45,9 +46,10 @@ export const RizlineCatalogSchema: z.ZodType<RizlineCatalog> = z.object({
 });
 const HashSchema = z.string().regex(/^[a-f\d]{64}$/i);
 export const RizlineCurrentSchema = z.object({
-  schemaVersion: z.literal(1), resourceVersion: z.string().min(1), manifestPath: RizlineResourcePathSchema, manifestSha256: HashSchema,
+  schemaVersion: z.literal(2), resourceVersion: z.string().min(1), manifestPath: resourceObjectPathSchema('rizline', ['manifests']), manifestSha256: HashSchema,
 });
+const ObjectPathSchema = resourceObjectPathSchema('rizline', ['covers', 'audio', 'charts', 'metadata']);
 export const RizlineManifestSchema = z.object({
-  schemaVersion: z.literal(1), resourceVersion: z.string().min(1), gameVersion: z.string().min(1), catalogPath: RizlineResourcePathSchema,
-  files: z.array(z.object({ path: RizlineResourcePathSchema, size: z.number().int().nonnegative(), sha256: HashSchema })),
+  schemaVersion: z.literal(2), resourceVersion: z.string().min(1), gameVersion: z.string().min(1), catalogPath: ObjectPathSchema,
+  files: z.array(z.object({ path: ObjectPathSchema, size: z.number().int().positive(), sha256: HashSchema })),
 });

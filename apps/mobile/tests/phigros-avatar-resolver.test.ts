@@ -1,58 +1,42 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { loadPhigrosAvatarCatalog, resolvePhigrosAvatarUrl } from '@/services/phigros-avatar-resolver';
-import { phigrosResources, type PhigrosRelease } from '@/services/phigros-resources';
+import { phigrosResources } from '@/services/phigros-resources';
+import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
+import { releaseFixture } from './fixtures/phigros-release';
 
-vi.mock('@/services/phigros-resources', () => ({ phigrosResources: { load: vi.fn() } }));
-
+let release: ReturnType<typeof releaseFixture>;
 let revision = 0;
-let release: PhigrosRelease;
-
 beforeEach(() => {
-  release = {
-    revision: `r${++revision}`,
-    avatarAliases: 'Cipher : /2&//<|0\tCipher1\nGlaciaxion\tGlaciaxion\n',
-    current: { manifest: 'phigros/releases/3.19.4-deadbeef/manifest.json', resourceVersion: '3.19.4-deadbeef' },
-  } as PhigrosRelease;
-  vi.mocked(phigrosResources.load).mockReset().mockResolvedValue(release);
+  phigrosResources.clear();
+  release = releaseFixture(`r${++revision}`, ['Song.A'], { avatars: {
+    'Cipher : /2&//<|0': 'Cipher1', 'Cipher alias': 'Cipher1', Glaciaxion: 'Glaciaxion', 'A+B#?': 'A+B#?',
+  } });
+  vi.stubGlobal('fetch', vi.fn(async input => release.respond(input)));
 });
-
-afterEach(() => { vi.restoreAllMocks(); });
+afterEach(() => { phigrosResources.clear(); vi.unstubAllGlobals(); });
 
 describe('phigros avatar resolver', () => {
-  it.each(['Cipher1', 'avatar.Cipher1', ' Cipher : /2&//<|0 '])('resolves %s in the current published directory', async key => {
-    await expect(resolvePhigrosAvatarUrl(key)).resolves.toBe(
-      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/3.19.4-deadbeef/avatars/Cipher1.png?v=3.19.4-deadbeef',
-    );
+  it.each(['Cipher1', 'avatar.Cipher1', ' Cipher : /2&//<|0 '])('maps %s through the manifest', async key => {
+    await expect(resolvePhigrosAvatarUrl(key)).resolves.toBe(`${PHIGROS_OSS_BASE}/${release.objectKeys['avatars/Cipher1.png']}`);
   });
-
-  it('encodes an avatar name that is already the published file name', async () => {
-    await expect(resolvePhigrosAvatarUrl('A+B#?')).resolves.toBe(
-      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/3.19.4-deadbeef/avatars/A%2BB%23%3F.png?v=3.19.4-deadbeef',
-    );
+  it('maps special characters in logical names without exposing them in object URLs', async () => {
+    await expect(resolvePhigrosAvatarUrl('A+B#?')).resolves.toBe(`${PHIGROS_OSS_BASE}/${release.objectKeys['avatars/A+B#?.png']}`);
+    await expect(resolvePhigrosAvatarUrl('missing')).resolves.toBeNull();
   });
-
   it('lists each published avatar once in alphabetical order', async () => {
-    release.avatarAliases += 'Cipher alias\tCipher1\ninvalid\n';
-    await expect(loadPhigrosAvatarCatalog()).resolves.toEqual(['Cipher1', 'Glaciaxion']);
+    await expect(loadPhigrosAvatarCatalog()).resolves.toEqual(['A+B#?', 'Cipher1', 'Glaciaxion']);
   });
-
-  it('uses the new aliases and directory when the resource release changes', async () => {
+  it('uses the new alias mapping after a verified release refresh', async () => {
     await resolvePhigrosAvatarUrl('Cipher : /2&//<|0');
-    vi.mocked(phigrosResources.load).mockResolvedValue({
-      ...release, revision: `${release.revision}-new`, avatarAliases: 'Cipher : /2&//<|0\tCipher2\n',
-      current: { ...release.current, manifest: 'phigros/releases/new/manifest.json', resourceVersion: 'new' },
-    });
-    await expect(resolvePhigrosAvatarUrl('Cipher : /2&//<|0')).resolves.toBe(
-      'https://rranker-phigros-data.cn-nb1.rains3.com/phigros/releases/new/avatars/Cipher2.png?v=new',
-    );
+    release = releaseFixture(`r${++revision}`, ['Song.A'], { avatars: { 'Cipher : /2&//<|0': 'Cipher2' } });
+    await phigrosResources.load(undefined, true);
+    await expect(resolvePhigrosAvatarUrl('Cipher : /2&//<|0')).resolves.toBe(`${PHIGROS_OSS_BASE}/${release.objectKeys['avatars/Cipher2.png']}`);
   });
-
   it('returns no avatar when the current release is unavailable', async () => {
-    vi.mocked(phigrosResources.load).mockRejectedValue(new Error('unavailable'));
+    vi.mocked(fetch).mockRejectedValue(new Error('unavailable'));
     await expect(resolvePhigrosAvatarUrl('Cipher1')).resolves.toBeNull();
-    await expect(loadPhigrosAvatarCatalog()).rejects.toThrow('unavailable');
+    await expect(loadPhigrosAvatarCatalog()).rejects.toThrow();
   });
-
   it('preserves cancellation', async () => {
     const controller = new AbortController();
     const reason = new Error('cancelled');

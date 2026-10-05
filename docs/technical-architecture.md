@@ -79,7 +79,9 @@ HTTP 请求使用 `totalAttempts` 表示总尝试次数。认证、轮询、取�
 
 ## 资源、图片与成绩图
 
-Phigros 和 Rizline 通过 `latest.json` 与资源清单取得发布修订，实际资源校验大小和 SHA-256。下载取消后不提交临时文件，缓存命中复用当前资源。预览与谱面下载调用同一资源读取入口。
+Phigros、Rizline 和 Kyou 分别读取所属资源组的 `latest.json`，校验 schemaVersion 2 指针、清单 SHA-256 和对象摘要。清单位于 `manifests/<sha256>.json`，媒体按固定分类目录和内容哈希存放。Phigros 保留逻辑 `path`，通过 `objectKey` 定位实际资源；Rizline 曲库直接保存对象路径；Kyou 清单将表名映射到对象路径、大小和摘要。发布流程由 [rRankerResourcePublisher](https://github.com/kckc7887/rRankerResourcePublisher) 管理。
+
+下载取消后不提交临时文件，缓存命中复用当前资源。预览与谱面下载调用同一资源读取入口。Rizline 曲库缓存格式为 2；读取到其他格式时仅重建该曲库缓存，I/O 失败保留现有数据。
 
 `RemoteImage` 使用显式 `cacheProfile`：thumbnail、artwork、native 或 none。在线图显示成功后才生成压缩缓存；不可见页面不开始新落盘，缓存解码失败时移除该压缩条目。Web 使用平台支持的图片路径。
 
@@ -125,6 +127,8 @@ postinstall 按实际源码调用点应用 decode-uri-component、Metro image-si
 四个原生构建作业互斥：正式仓库分支 push/手动触发走 Android/iOS 正式构建；向 master 提交的 fork PR 走双端测试构建。保留当前签名与发布条件，fork 作业不取得发布凭据。
 
 Android 在同一作业内构建四个 ABI，校验 Manifest、签名和产物，安装 x86_64 APK 走生产路由冒烟，再上传最终产物。手动原生诊断入口位于 `android-recovery.yml`。
+
+对外 APK 名为 `rRanker-arm64.apk`、`rRanker-armeabi.apk`、`rRanker-x86.apk`、`rRanker-x86_64.apk`；构建归档名保留版本、提交与运行标识。`resource-release.yml` 仅处理正式 Release 的 published 事件，通过 `RESOURCE_PUBLISHER_TOKEN` 向发布仓库的 `apk.yml` 发送 Release ID，并查询该次运行结果。令牌仅需发布仓库 Actions 读写权限，S3 凭据由发布仓库持有。发布仓库验证全部附件后更新 rranker 桶的四个 `release/rRanker-<ABI>.apk` 固定地址。
 
 iOS 正式构建在同一 TestFlight 队列串行分配编号、签名、校验 IPA 并上传 App Store Connect。平台最低版本、Android 优化模式和原生插件以 Expo 配置为准。
 
