@@ -11,7 +11,6 @@ import {
   MuseDashPlayerSchema,
   buildMuseDashRandomCharts,
   buildMuseDashRawScores,
-  sortMuseDashRawScores,
   filterMuseDashRandomCharts,
   museDashAccTone,
   museDashAchievementDetailsPending,
@@ -54,14 +53,6 @@ describe('Muse Dash content adapter', () => {
   const songsByUid = museDashSongsByUid(parsedAlbums);
   const fullSong = songsByUid.get('0-47')!;
   const constants = museDashDiffdiffMap(parsedDiffdiff);
-
-  it('orders known ratings before unknown values without substituting raw scores', () => {
-    const base = buildMuseDashRawScores(parsedPlayer, parsedAlbums, parsedCe, parsedDiffdiff)[0]!;
-    const known = { ...base, play: { ...base.play, sum: 1, score: 10 } };
-    const unknown = { ...base, play: { ...base.play, sum: undefined, score: 1_000_000 } };
-    const invalid = { ...base, play: { ...base.play, sum: NaN, score: 2_000_000 } };
-    expect(sortMuseDashRawScores([unknown, known, invalid])).toEqual([known, unknown, invalid]);
-  });
 
   it('builds a full-catalog random pool and only requires scores for score conditions', () => {
     const rawScores = buildMuseDashRawScores(parsedPlayer, parsedAlbums, parsedCe, parsedDiffdiff);
@@ -135,7 +126,7 @@ describe('Muse Dash content adapter', () => {
     expect(badges.map((badge) => badge.key)).not.toContain('platform');
     expect(badges.map((badge) => badge.label)).toContain('凛·治愈者');
     expect(badges.map((badge) => badge.label)).toContain('未命名');
-    expect(presented.route).toEqual({ songId: '0-47', levelIndex: 3 });
+    expect(presented.route).toEqual({ songId: '0-47', levelIndex: 3, params: { gameId: 'musedash' } });
   });
 
   it('resolves AP/FC achievements from the requested miss count', () => {
@@ -302,7 +293,6 @@ describe('Muse Dash content adapter', () => {
     expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, null]]))).toBe(true);
     expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, undefined]]))).toBe(false);
     expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, 0]]))).toBe(false);
-    // 失败不会自行变成结果，等待它没有意义；重试成功后同一候选才回到已确认集合。
     expect(museDashAchievementDetailsPending(pool, filters, new Map([[played.key, MUSE_DASH_MISS_DETAIL_FAILED]])))
       .toBe(false);
     expect(keysFor(0)).toEqual([played.key]);

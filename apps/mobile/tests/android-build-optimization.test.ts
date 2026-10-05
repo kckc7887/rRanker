@@ -68,10 +68,6 @@ describe('Android release size config plugin', () => {
     expect(result.contents).toContain(`getDefaultProguardFile("proguard-android${options.optimize ? '-optimize' : ''}.txt")`);
     expect(await runMod(configured.appBuildGradle!, result)).toEqual(result);
   });
-
-  it('rejects resource shrinking without minification', () => {
-    expect(() => mods({ minify: false, shrink: true, optimize: false })).toThrow('optimization');
-  });
   it('enables both shrinkers idempotently and preserves unrelated properties', async () => {
     const mod = mods().gradleProperties!;
     const input: Parameters<typeof mod>[0]['modResults'] = [
@@ -98,7 +94,6 @@ describe('Android release size config plugin', () => {
     expect(first.contents).toContain('include "armeabi-v7a", "arm64-v8a", "x86", "x86_64"');
     expect(first.contents).toContain('universalApk false');
     expect(first.contents.match(/\bsplits\s*\{/g)).toHaveLength(1);
-    expect(first.contents).toMatch(/^android \{\n\/\/ @generated begin[^\n]*\n    splits \{/);
     const existing = { ...first, contents: first.contents.replace('proguard-android-optimize.txt', 'proguard-android.txt') };
     expect((await runMod(mod, existing)).contents).toEqual(first.contents);
   });

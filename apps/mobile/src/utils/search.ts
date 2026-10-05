@@ -19,7 +19,7 @@ export const EMPTY_SONG_FILTERS: SongSearchFilters = {
   keyword: '', types: [], difficulties: [], songVersionIds: [], chartVersionIds: [],
 };
 
-/** Hepburn ↔ Kunrei/Nihon 等同假名拼写；按长度优先替换。 */
+/** 按长度优先匹配同一假名的罗马音拼写。 */
 const ROMAJI_MORA_ALIASES: readonly (readonly [string, string])[] = [
   ['tsu', 'tu'],
   ['shi', 'si'],
@@ -52,7 +52,7 @@ export function compactSearchText(value: string): string {
   return normalizeSearchText(value).replace(/[\s\p{P}\p{S}]+/gu, '');
 }
 
-/** づ/ぢ 与 ず/じ 在检索中视为同音。 */
+/** 检索时将 づ/ぢ 与 ず/じ 视为同音。 */
 export function canonicalizeSearchKana(value: string): string {
   return value.replace(/\u3065/g, '\u305a').replace(/\u3062/g, '\u3058');
 }
@@ -68,7 +68,7 @@ function uniqueSearchVariants(values: readonly string[]): string[] {
   return result;
 }
 
-/** 生成同一假名下的多种罗马音拼写变体（有上限，避免长词组合爆炸）。 */
+/** 限制变体数量，避免长词组合爆炸。 */
 export function expandRomajiAliases(romaji: string): string[] {
   const normalized = normalizeSearchText(romaji);
   if (!normalized) return [];
@@ -99,7 +99,7 @@ function documentVariants(value: string): string[] {
   const hiragana = canonicalizeSearchKana(normalizeSearchText(toHiragana(source)));
   const romaji = normalizeSearchText(toRomaji(source));
   const romajiFromKana = hiragana ? normalizeSearchText(toRomaji(hiragana)) : '';
-  // 索引侧只存源文 / 假名 / Hepburn，避免长曲名罗马音别名组合爆炸。
+  /** 索引只存源文、假名与 Hepburn，避免展开全部组合。 */
   return uniqueSearchVariants([source, hiragana, romaji, romajiFromKana]);
 }
 
@@ -154,7 +154,6 @@ export function searchDocumentMatches(document: SearchDocument, keyword: string)
   return variants.some((variant) => document.text.includes(variant) || document.compact.includes(variant));
 }
 
-/** 仅当关键词未命中标题但命中别名时返回第一个命中的别名。 */
 export function findMatchedAlias(song: Song, keyword: string): string | undefined {
   const variants = keywordVariants(keyword);
   if (variants.length === 0) return undefined;

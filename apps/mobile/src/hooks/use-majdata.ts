@@ -18,12 +18,6 @@ const options = { staleTime: Infinity, gcTime: Infinity, retry: false, refetchOn
 
 const majdataSongKey = (id: string) => ['majdata-net', 'song', id] as const;
 
-/**
- * 缓存回退的落点：把落盘快照的抓取时间写回查询缓存。
- *
- * 回退数据不是本次刷新结果，读快照元数据而不是取当前时间，回退因此不会表现为刚刚抓取成功；
- * 没有元数据（旧版本行）时保持原时间标记不变。
- */
 async function markMajdataSongFallback(id: string): Promise<void> {
   const key = majdataSongKey(id);
   const displayed = queryClient.getQueryData<MajdataSong>(key);
@@ -33,10 +27,6 @@ async function markMajdataSongFallback(id: string): Promise<void> {
   queryClient.setQueryData(key, displayed, Number.isFinite(fetchedAt) ? { updatedAt: fetchedAt } : undefined);
 }
 
-/**
- * 曲目查询的公共取数函数：本地快照先渲染，后台刷新成功才写回查询缓存。
- * 缓存回退走 onFallback，不进入 onFresh，也不冒充本次抓取。
- */
 function loadMajdataSongQuery(id: string, signal: AbortSignal): Promise<MajdataSong> {
   return loadMajdataSong(
     id,

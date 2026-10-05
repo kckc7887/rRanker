@@ -1,8 +1,7 @@
 import { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
-import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
-import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
+import { FilterChipFrame, NeutralChip, FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
 import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
 import {
   CHUNITHM_DIFFICULTY_LABELS,
@@ -191,7 +190,6 @@ export function ChunithmFilterBar({
   );
 }
 
-// Chunithm 专属样式：横向芯片滚动收缩与评价双下拉行；其余公共样式见 game-content/FilterShell。
 const styles = StyleSheet.create({
   chipScroll: { flexGrow: 0, flexShrink: 1 },
   rankDropdownRow: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'stretch', gap: 8 },

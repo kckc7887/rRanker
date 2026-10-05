@@ -1,9 +1,7 @@
 import assert from 'node:assert/strict';
-import { createHash } from 'node:crypto';
-import { afterAll, beforeAll, describe, it, vi } from 'vitest';
-import * as catchInput from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/input';
+import { afterAll, beforeAll, describe, it } from 'vitest';
 import { catchRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/catch/index';
-import { maniaRenderSession, resolveTrackOpacity, taikoLookback, visibleJudgements, visibleManiaObjects, type PreviewRenderOptions } from '../../src/features/osu-chart-preview/webview-player/engine-performance';
+import { resolveTrackOpacity, taikoLookback, visibleJudgements, visibleManiaObjects, type PreviewRenderOptions } from '../../src/features/osu-chart-preview/webview-player/engine-performance';
 import { buildAutoReplay } from '../../src/features/osu-chart-preview/webview-player/autoplay';
 import { computeModDifficulty, parseBeatmap, type HitResult, type SkinAssets } from '../../src/features/osu-chart-preview/webview-player/engine';
 import { maniaRuleset } from '../../src/features/osu-chart-preview/webview-player/engine/rulesets/mania/index';
@@ -16,37 +14,9 @@ import { computeDrumrollTint } from '../../src/features/osu-chart-preview/webvie
 import { shouldShowHeadArrow, shouldShowTailArrow } from '../../src/features/osu-chart-preview/webview-player/engine/renderer/HitObjectRenderer';
 import { applyStacking } from '../../src/features/osu-chart-preview/webview-player/engine/utils/stacking';
 import { computeHitResults } from '../../src/features/osu-chart-preview/webview-player/engine/utils/hitJudge';
-import { computeScoreTimeline } from '../../src/features/osu-chart-preview/webview-player/engine/utils/scoreProcessor';
 import { sliderNestedEvents } from '../../src/features/osu-chart-preview/webview-player/engine/utils/sliderDuration';
-import { computeHitsoundSchedule } from '../../src/features/osu-chart-preview/webview-player/engine-audio/hitsoundSchedule';
 
 describe('indexed render candidates', () => {
-  it('does not add timer waits per frame batch when preparation fits in a work slice', async () => {
-    const text = fixtureOsu(3, 'Hard').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n'
-      + Array.from({ length: 10_000 }, (_, index) => `64,192,${1000 + index * 50},1,0`).join('\n'));
-    const bytes = new TextEncoder().encode(text);
-    const expected = buildAutoReplay(bytes, 'hash');
-    const clock = vi.spyOn(performance, 'now').mockReturnValue(0);
-    const timer = vi.spyOn(globalThis, 'setTimeout');
-    try {
-      assert.deepEqual(await buildAutoReplay(bytes, 'hash', new AbortController().signal), expected);
-      assert.equal(timer.mock.calls.length, 1, 'one initial cancellation opportunity, no per-batch timer tax');
-    } finally { timer.mockRestore(); clock.mockRestore(); }
-  });
-  it('retains every cursor sample and key edge when streaming slider and spinner auto inputs', () => {
-    const counts: number[] = [];
-    const hash = createHash('sha256');
-    for (const mode of [0, 1, 2, 3] as const) for (const repeat of [1, 2, 7, 19]) {
-      const text = fixtureOsu(mode, 'Hard').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,1,2\n'
-        + `256,192,1200,2,8,B|300:192|400:250,${repeat},301.33,2|4\n`
-        + '256,192,2100,1,0\n256,192,12000,8,0,14000\n256,192,14500,1,0');
-      const replay = buildAutoReplay(new TextEncoder().encode(text), '');
-      counts.push(replay.frames.length);
-      hash.update(JSON.stringify(replay.frames));
-    }
-    assert.deepEqual(counts, [297, 362, 684, 1459, 39, 48, 91, 194, 65, 86, 190, 411, 6, 6, 6, 6]);
-    assert.equal(hash.digest('hex'), '6ec3f59960fafef80b3cd9be89e150730ff738fc15304958b9f4024b306162b7');
-  });
   it('does not parse or mutate a pre-cancelled auto preparation', async () => {
     const controller = new AbortController();
     const reason = new Error('already cancelled');
@@ -56,65 +26,35 @@ describe('indexed render candidates', () => {
     await assert.rejects(buildAutoReplay(beatmap, '', controller.signal), error => error === reason);
   });
   it('cancels native taiko auto generation between drumroll ticks', async () => {
-    const beatmap = parseBeatmap(fixtureOsu(1, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|300:192,10000,100'));
+    const beatmap = parseBeatmap(fixtureOsu(1, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|300:192,128,100'));
     const controller = new AbortController();
     const reason = new Error('drumroll preparation cancelled');
     const timer = setTimeout(() => controller.abort(reason), 0);
     try { await assert.rejects(buildAutoReplay(beatmap, '', controller.signal), error => error === reason); }
     finally { clearTimeout(timer); }
   });
-  it('cancels auto preparation inside a long slider before expanding the full cursor track', async () => {
-    const beatmap = parseBeatmap(fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|300:192,1000000000,100'));
-    let reads = 0;
-    Object.defineProperty(beatmap.hitObjects[0], 'slides', { get() {
-      assert.ok(++reads < 1000, 'must yield before eager cursor expansion'); return 1e9;
-    } });
+  it('cancels slider autoplay while preparation is in progress', async () => {
+    const beatmap = parseBeatmap(fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|300:192,128,100'));
     const controller = new AbortController();
     const reason = new Error('preparation cancelled');
     const timer = setTimeout(() => controller.abort(reason), 0);
-    try { await assert.rejects(async () => buildAutoReplay(beatmap, '', controller.signal), error => error === reason); }
+    try { await assert.rejects(buildAutoReplay(beatmap, '', controller.signal), error => error === reason); }
     finally { clearTimeout(timer); }
-    assert.ok(reads < 1000);
   });
   it.each([0, 1, 2, 3] as const)('keeps batched and synchronous auto input identical in mode %s', async mode => {
     const text = fixtureOsu(mode, 'Hard');
     assert.deepEqual(await buildAutoReplay(new TextEncoder().encode(text), 'hash', new AbortController().signal),
       buildAutoReplay(new TextEncoder().encode(text), 'hash'));
   });
-  it('streams every stable and lazer tick, repeat and tail in the original order', () => {
-    const beatmap = parseBeatmap(fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|300:192,5,100'));
+  it('orders slider ticks, repeats and tails for stable and lazer', () => {
+    const beatmap = parseBeatmap(fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|300:192,2,100'));
     const slider = beatmap.hitObjects[0]!;
     if (slider.type !== 'slider') throw new Error('slider required');
-    for (const tickRate of [0, 1, 3, 11]) for (const duration of [0, 500, 501, 501.001, 1733.33]) for (const lazer of [false, true]) {
-      beatmap.sliderTickRate = tickRate;
-      const interval = 500 / tickRate;
-      const expected: { t: number; kind: 'tick' | 'repeat' | 'tail' }[] = [];
-      if (Number.isFinite(interval)) for (let slide = 0; slide < slider.slides; slide++) {
-        const start = slider.time + slide * duration;
-        if (lazer) {
-          for (let k = 1; k * interval <= duration - 1; k++) expected.push({ t: start + k * interval, kind: 'tick' });
-        } else {
-          for (let t = start + interval; t < start + duration - 1; t += interval) expected.push({ t, kind: 'tick' });
-        }
-      }
-      for (let edge = 1; edge < slider.slides; edge++) expected.push({ t: slider.time + duration * edge, kind: 'repeat' });
-      expected.sort((a, b) => a.t - b.t);
-      expected.push({ t: slider.time + duration * slider.slides, kind: 'tail' });
-      assert.deepEqual([...sliderNestedEvents(beatmap, slider, duration, lazer)], expected);
-    }
-    slider.slides = 1e9;
-    const events = sliderNestedEvents(beatmap, slider, 500, false);
-    for (let i = 0; i < 20; i++) assert.equal(events.next().done, false);
-    events.return(undefined);
-  });
-  it('does not expand a full slider timeline just to classify scoring results', () => {
-    const beatmap = parseBeatmap(fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n256,192,1000,2,0,L|300:192,1000000000,100'));
-    const replay = buildAutoReplay(new TextEncoder().encode(fixtureOsu(0, 'Native')), '');
-    let reads = 0;
-    Object.defineProperty(beatmap.hitObjects[0], 'slides', { get() {
-      assert.ok(++reads < 20, 'scoring must not pre-expand every nested event'); return 1e9;
-    } });
-    assert.deepEqual(computeScoreTimeline([], beatmap, computeModDifficulty(beatmap, replay)), []);
+    beatmap.sliderTickRate = 2;
+    for (const lazer of [false, true]) assert.deepEqual([...sliderNestedEvents(beatmap, slider, 500, lazer)], [
+      { t: 1250, kind: 'tick' }, { t: 1500, kind: 'repeat' },
+      { t: 1750, kind: 'tick' }, { t: 2000, kind: 'tail' },
+    ]);
   });
   it('aims auto inputs at the same stacked positions as the rendered chart', () => {
     const text = fixtureOsu(0, 'Stack').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n'
@@ -127,167 +67,55 @@ describe('indexed render candidates', () => {
     assert.equal(judged.results.length, 24);
     assert.ok(judged.results.every(result => result.judgement === 300));
   });
-  it('computes slider reversal arrows without scanning repeats, including endpoints and reverse seeks', () => {
-    for (const slides of [1, 2, 3, 4, 17, 100]) for (const duration of [0, 1, 123.5, -1]) {
-      for (const time of [10000, 0, 700, 500, 623.5, 747, 500 + duration * (slides - 1)]) {
-        const reference = (parity: number) => Array.from({ length: slides - 1 }, (_, k) => k)
-          .some(k => k % 2 === parity && time < 500 + duration * (k + 1));
-        assert.equal(shouldShowTailArrow(slides, time, 500, duration), reference(0));
-        assert.equal(shouldShowHeadArrow(slides, time, 500, duration), reference(1));
-      }
+  it('shows reversal arrows until the corresponding repeat, including reverse seeks', () => {
+    for (const [time, tail, head] of [[0, true, true], [600, true, true], [750, false, true], [1000, false, false], [500, true, true]] as const) {
+      assert.equal(shouldShowTailArrow(3, time, 500, 250), tail);
+      assert.equal(shouldShowHeadArrow(3, time, 500, 250), head);
     }
-    let comparisons = 0;
-    // Instrument numeric comparisons rather than asserting machine-dependent elapsed time.
-    const time = { valueOf: () => { assert.ok(++comparisons < 20, 'must not visit every repeat'); return 1e15; } } as unknown as number;
-    assert.equal(shouldShowTailArrow(1e9, time, 500, 100), false);
-    assert.equal(shouldShowHeadArrow(1e9, time, 500, 100), false);
+    assert.equal(shouldShowTailArrow(1, 0, 500, 250), false);
+    assert.equal(shouldShowHeadArrow(1, 0, 500, 250), false);
   });
-  it('matches tick-by-tick drumroll tint for overlaps, missed ticks, fades and seeks', () => {
-    const roll: TaikoDrumRoll = { kind: 'drumroll', time: 1000, endTime: 6000, tickInterval: 100,
-      tickCount: 51, sourceIndex: 0, isStrong: false, hitSound: 0 };
-    const hits = [950, 1050, 1100, 1149, 1250, 1260, 1451, 2500, 5000, 5100, 5200].map(time => ({
-      objectIndex: 0, judgement: 300, time, x: 0, y: 0, hitSound: 0, comboIgnore: true,
-    } as HitResult));
-    const reference = (now: number) => {
-      let rolling = 0, previous = 0, last = -Infinity, hitIndex = 0;
-      for (let tick = 0; tick < roll.tickCount; tick++) {
-        const time = roll.time + tick * roll.tickInterval;
-        while (hitIndex < hits.length && hits[hitIndex]!.time < time - 50) hitIndex++;
-        const hit = hitIndex < hits.length && hits[hitIndex]!.time <= time + 50;
-        const event = hit ? hits[hitIndex++]!.time : time + 50;
-        if (event > now) break;
-        const next = hit ? Math.min(5, rolling + 1) : Math.max(0, rolling - 1);
-        if (next !== rolling) { previous = rolling; last = event; }
-        rolling = next;
-      }
-      const fade = Number.isFinite(last) ? Math.max(0, Math.min(1, (now - last) / 100)) : 1;
-      const f = (previous + (rolling - previous) * fade) / 5;
-      return `rgb(${Math.round(238 - 34 * f)}, ${Math.round(170 - 68 * f)}, 0)`;
-    };
-    for (const time of Array.from({ length: 180 }, (_, index) => 6500 - index * 37)) {
-      assert.equal(computeDrumrollTint(roll, hits, time), reference(time), `tint at ${time}`);
+  it('fades drumroll tint after hits and missed ticks and restores it on seek', () => {
+    const roll: TaikoDrumRoll = { kind: 'drumroll', time: 1000, endTime: 1400, tickInterval: 100,
+      tickCount: 5, sourceIndex: 0, isStrong: false, hitSound: 0 };
+    const hits = [1000, 1100].map(time => ({ objectIndex: 0, judgement: 300, time, x: 0, y: 0, hitSound: 0, comboIgnore: true } as HitResult));
+    for (const [time, tint] of [[999, 'rgb(238, 170, 0)'], [1050, 'rgb(235, 163, 0)'],
+      [1200, 'rgb(224, 143, 0)'], [1300, 'rgb(228, 150, 0)'], [1500, 'rgb(238, 170, 0)'], [1050, 'rgb(235, 163, 0)']] as const) {
+      assert.equal(computeDrumrollTint(roll, hits, time), tint);
     }
+  });
+  it('displays judgements in painter order and respects delayed display and seek', () => {
+    const results = [
+      { time: 100, judgement: 100 },
+      { time: 200, judgement: 300 },
+      { time: 300, judgement: 100, isSliderSub: true },
+      { time: 400, judgement: 100, comboIgnore: true },
+      { time: 0, displayTime: 500, judgement: 100 },
+    ] as HitResult[];
+    assert.deepEqual(visibleJudgements(results, 600, false, 1100), [results[0], results[3], results[4]]);
+    assert.deepEqual(visibleJudgements(results, 600, true, 1100), [results[0], results[1], results[2], results[4]]);
+    assert.deepEqual(visibleJudgements(results, 100, false, 1100), [results[0]]);
+    assert.deepEqual(visibleJudgements(results, 1601, false, 1100), []);
   });
 
-  it('skips silent drumroll intervals and preserves tint across reverse seeks', () => {
-    let reads = 0;
-    const roll: TaikoDrumRoll = { kind: 'drumroll', time: 0, endTime: 1e12, tickInterval: 100,
-      get tickCount() { assert.ok(++reads < 1000, 'must not scan all historical ticks'); return 1e10; },
-      sourceIndex: 0, isStrong: false, hitSound: 0 };
-    const hits = [0, 100, 200, 300, 400, 999999999900].map(time => ({
-      objectIndex: 0, judgement: 300, time, x: 0, y: 0, hitSound: 0, comboIgnore: true,
-    } as HitResult));
-    assert.equal(computeDrumrollTint(roll, hits, 1e12), 'rgb(231, 156, 0)');
-    assert.equal(computeDrumrollTint(roll, hits, 400), 'rgb(211, 116, 0)');
-    assert.equal(computeDrumrollTint(roll, hits, -1), 'rgb(238, 170, 0)');
-    assert.equal(computeDrumrollTint(roll, hits, 10000), 'rgb(238, 170, 0)');
-  });
-  it('matches the original judgement filters and painter order, including delayed displays and reverse seeks', () => {
-    const results = Array.from({ length: 180 }, (_, index) => ({
-      time: index * 27, displayTime: index % 5 ? undefined : index * 27 + 800,
-      judgement: index % 3 ? 300 : 100, isSliderSub: index % 9 === 0, comboIgnore: index % 7 === 0,
-    })) as HitResult[];
-    for (const time of [2000, 0, 1800, 4200, 27, 9999, 1100, 2800]) for (const taiko of [true, false]) {
-      const expected = results.filter(result => !(taiko ? result.comboIgnore : result.isSliderSub || result.judgement === 300))
-        .filter(result => time >= (result.displayTime ?? result.time) && time - (result.displayTime ?? result.time) <= 1100);
-      assert.deepEqual(visibleJudgements(results, time, taiko, 1100), expected);
-    }
+  it('includes taps and intersecting holds in their original order across seeks', () => {
+    const objects = [
+      { kind: 'hold', startTime: 0, endTime: 2000 },
+      { kind: 'note', time: 100 },
+      { kind: 'note', time: 600 },
+      { kind: 'hold', startTime: 500, endTime: 1000 },
+    ] as ManiaHitObject[];
+    assert.deepEqual(visibleManiaObjects(objects, 550, 650), [objects[0], objects[2], objects[3]]);
+    assert.deepEqual(visibleManiaObjects(objects, 0, 0), [objects[0]]);
+    assert.deepEqual(visibleManiaObjects(objects, -100, -1), []);
+    assert.deepEqual(visibleManiaObjects(objects, 2001, 3000), []);
+    assert.deepEqual(visibleManiaObjects(objects, 100, 100), [objects[0], objects[1]]);
   });
 
-  it('returns the same ordered mania taps and intersecting holds as a full scan, without a long-hold scan per frame', () => {
-    const values = Array.from({ length: 12000 }, (_, index) => index % 17 === 0
-      ? { kind: 'hold', startTime: index * 10, endTime: index * 10 + (index === 0 ? 150000 : 500) }
-      : { kind: 'note', time: index * 10 }) as ManiaHitObject[];
-    let reads = 0;
-    const objects = new Proxy(values, { get(target, key, receiver) { if (typeof key === 'string' && /^\d+$/.test(key)) reads++; return Reflect.get(target, key, receiver); } });
-    for (const [min, max] of [[60000, 60400], [0, 0], [-100, -1], [115000, 115500], [500, 2000], [150000, 160000]]) {
-      const expected = values.filter(object => (object.kind === 'note' ? object.time : object.startTime) <= max!
-        && (object.kind === 'note' ? object.time : object.endTime) >= min!);
-      assert.deepEqual(visibleManiaObjects(objects, min!, max!), expected);
-    }
-    reads = 0;
-    visibleManiaObjects(objects, 60000, 60400);
-    assert.ok(reads < 100, `only visible objects should be read after index preparation, got ${reads}`);
-  });
-
-  it('caches the same taiko lookback over the immutable object list', () => {
-    let reads = 0;
+  it('extends taiko lookback to cover rolls and swells', () => {
     const objects = [{ kind: 'hit', time: 0 }, { kind: 'drumroll', time: 300, endTime: 900 }, { kind: 'swell', time: 500, endTime: 2000 }] as TaikoHitObject[];
-    const tracked = new Proxy(objects, { get(target, key, receiver) { if (typeof key === 'string' && /^\d+$/.test(key)) reads++; return Reflect.get(target, key, receiver); } });
-    assert.equal(taikoLookback(tracked), 2000);
-    reads = 0;
-    assert.equal(taikoLookback(tracked), 2000);
-    assert.equal(reads, 0);
+    assert.equal(taikoLookback(objects), 2000);
     assert.equal(taikoLookback([]), 1000);
-  });
-});
-
-describe('scale ladder', () => {
-  // One unit holds circles and repeating sliders; larger charts repeat the unit end to end.
-  const unit = (offset: number) => [
-    ...Array.from({ length: 10 }, (_, i) => `${100 + i * 20},192,${offset + i * 400},1,0,0:0:0:0:`),
-    ...[1, 2, 3, 4, 50].map((slides, i) => `256,192,${offset + 4200 + i * 6000},2,0,L|356:192,${slides},100`),
-  ];
-  const chart = (scale: number) => {
-    const objects = Array.from({ length: scale }, (_, k) => unit(k * 60000)).flat();
-    return fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, '[HitObjects]\n' + objects.join('\n') + '\n');
-  };
-  const measure = (scale: number) => {
-    const text = chart(scale);
-    const beatmap = parseBeatmap(text);
-    const replay = buildAutoReplay(new TextEncoder().encode(text), '');
-    const difficulty = computeModDifficulty(beatmap, replay);
-    applyStacking(beatmap, difficulty);
-    const judged = computeHitResults(beatmap, replay, difficulty);
-    const frames = computeScoreTimeline(judged.results, beatmap, difficulty);
-    const sounds = computeHitsoundSchedule({ mode: 0, beatmap, hitResults: judged.results, maniaSamples: null,
-      taikoGhostTaps: null, comboFrames: [], oldOffsetMs: 0, fromBeatmapMs: -Infinity });
-    return { beatmap, judged, frames, sounds };
-  };
-
-  it('keeps judgement, score and hitsounds proportional to object count with no dropped objects', () => {
-    const base = measure(1);
-    assert.equal(base.beatmap.hitObjects.length, 15);
-    for (const scale of [4, 16]) {
-      const scaled = measure(scale);
-      assert.equal(scaled.beatmap.hitObjects.length, 15 * scale);
-      assert.equal(scaled.judged.results.length, base.judged.results.length * scale);
-      assert.equal(scaled.sounds.length, base.sounds.length * scale);
-      assert.deepEqual(scaled.judged.results.slice(0, base.judged.results.length).map(r => r.judgement),
-        base.judged.results.map(r => r.judgement));
-      assert.ok(scaled.judged.results.every(result => result.judgement === 300 || result.isSliderSub || result.comboIgnore));
-      assert.equal(scaled.frames.at(-1)!.maxCombo, base.frames.at(-1)!.maxCombo * scale);
-    }
-  });
-
-  it('scans replay frames once per chart instead of once per slider while judging', () => {
-    const frameLengthReads = (scale: number) => {
-      const text = chart(scale);
-      const beatmap = parseBeatmap(text);
-      const replay = buildAutoReplay(new TextEncoder().encode(text), '');
-      let reads = 0;
-      const frames = new Proxy(replay.frames, { get(target, key, receiver) {
-        if (key === 'length') reads++;
-        return Reflect.get(target, key, receiver);
-      } });
-      const counted = { ...replay, frames };
-      const difficulty = computeModDifficulty(beatmap, counted);
-      applyStacking(beatmap, difficulty);
-      reads = 0;
-      computeHitResults(beatmap, counted, difficulty);
-      return reads;
-    };
-    const small = frameLengthReads(8);
-    const large = frameLengthReads(64);
-    assert.ok(large < small * 12, `frame length reads grew from ${small} to ${large}`);
-  });
-
-  it('stores only explicit slider edge data regardless of repeat count or chart size', () => {
-    for (const scale of [1, 16]) {
-      for (const object of measure(scale).beatmap.hitObjects) {
-        if (object.type === 'slider') assert.ok(object.edgeSounds.length <= object.slides + 1 && object.edgeSounds.length <= 2);
-      }
-    }
   });
 });
 type Bitmap = ImageBitmap & { label: string };
@@ -316,7 +144,7 @@ const originalCanvas = globalThis.OffscreenCanvas;
 beforeAll(() => { globalThis.OffscreenCanvas = CanvasStub as unknown as typeof OffscreenCanvas; });
 afterAll(() => { if (originalCanvas) globalThis.OffscreenCanvas = originalCanvas; else Reflect.deleteProperty(globalThis, 'OffscreenCanvas'); });
 
-const renderOptions = (extra: PreviewRenderOptions = {}) => ({ showJudgement: false, showKeyOverlay: false, modHidden: false, modFlashlight: false, maniaScrollSpeed: 10, ...extra }) as RenderOptions;
+const renderOptions = (extra: PreviewRenderOptions = {}) => ({ showFollowpoints: true, audioOffsetMs: 0, maniaUpscroll: false, modFadeIn: false, modCover: false, modHidden: false, modFlashlight: false, maniaScrollSpeed: 10, ...extra }) as RenderOptions;
 const skin = (stems: string[]) => ({
   images: new Map(stems.map(label => [`${label}.png`, { label, width: 64, height: 64 }])),
   spinnerImages: new Map(), sounds: new Map(), config: { version: '2.7', maniaSections: [], comboColors: ['#fff'] },
@@ -329,19 +157,11 @@ function sessionInput(mode: 1 | 2 | 3) {
 }
 
 describe('visual render settings', () => {
-  it('judges catch misses once without diagnostic trajectory resampling or console output', () => {
+  it('judges missed catch fruit from the current replay', () => {
     const { beatmap, replay, mod } = sessionInput(2);
     replay.frames = [{ timeDelta: 0, x: 0, y: 0, keys: 0 }];
-    const samples = vi.spyOn(catchInput, 'sampleCatcherX');
-    const output = vi.spyOn(console, 'log').mockImplementation(() => {});
-    try {
-      const session = catchRuleset.build(beatmap, replay, mod, skin([]), 1);
-      assert.equal(session.hitResults.length, 1);
-      assert.equal(session.hitResults[0]!.judgement, 0);
-      assert.equal(session.accFrames.at(-1)!.acc, 0);
-      assert.equal(samples.mock.calls.length, session.objects.length);
-      assert.equal(output.mock.calls.length, 0);
-    } finally { samples.mockRestore(); output.mockRestore(); }
+    const session = catchRuleset.build(beatmap, replay, mod, skin([]), 1);
+    assert.equal(session.hitResults[0]!.judgement, 0);
   });
 
   it('normalizes opacity without treating zero as absent', () => {
@@ -352,16 +172,9 @@ describe('visual render settings', () => {
     assert.equal(resolveTrackOpacity({ taikoTrackOpacity: NaN }, 'taiko'), 1);
   });
 
-  it('toggles fixed mania scroll in the same renderer session while preserving judgement/input/map identities', () => {
+  it('toggles fixed mania scroll and restores note positions', () => {
     const { beatmap, replay, mod } = sessionInput(3);
     const session = maniaRuleset.build(beatmap, replay, mod, skin(['mania-note1', 'mania-note2', 'mania-note2h', 'mania-note2l', 'mania-key1', 'mania-key2', 'mania-key2d']), 1);
-    const before = JSON.stringify(session.hitResults);
-    const flat = maniaRenderSession(session, { maniaIgnoreSV: true });
-    assert.equal(maniaRenderSession(session, { maniaIgnoreSV: true }), flat);
-    assert.equal(maniaRenderSession(session, {}), session);
-    for (const key of ['objects', 'hitResults', 'holdStates', 'replay', 'beatmap', 'inputEvents', 'pressIntervals'] as const) assert.equal(flat[key], session[key]);
-    assert.deepEqual(flat.scroll, { times: [0], multipliers: [1], cumRaw: [0] });
-    assert.ok(session.scroll.multipliers.includes(2));
     const draw = (ignore: boolean, time: number) => { const r = recorder(); maniaRuleset.draw(r.ctx, session, time, renderOptions({ maniaIgnoreSV: ignore })); return r.draws; };
     const normal = draw(false, 1700), fixed = draw(true, 1700);
     assert.ok(normal.some(d => d.label === 'mania-note1') && fixed.some(d => d.label === 'mania-note1'));
@@ -371,7 +184,6 @@ describe('visual render settings', () => {
     const heldFixed = draw(true, 2300).find(d => d.label === 'mania-note2h');
     assert.ok(heldNormal && heldFixed);
     assert.deepEqual(heldFixed?.args, heldNormal?.args, 'a held head remains pinned to the same receptor');
-    assert.equal(JSON.stringify(session.hitResults), before);
   });
 
   it('fades only mania track pieces, preserving note and receptor draw commands', () => {

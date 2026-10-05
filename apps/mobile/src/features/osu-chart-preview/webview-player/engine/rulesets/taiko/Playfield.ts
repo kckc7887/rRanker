@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -35,11 +35,7 @@ import type { RenderOptions } from '../../renderer/Renderer';
 import { TaikoFlashlight } from './Flashlight';
 import { sliderVelocityMultiplier } from '../../utils/sliderDuration';
 
-// Taiko playfield rendering: scrolling lane, notes, drum rolls, swells, input
-// drum, kiai glow, explosions and mascot. Geometry and the scroll model are
-// ported from lazer's TaikoPlayfield / OverlappingScrollAlgorithm; sprite
-// behaviour follows stable's legacy skin classes (LegacyCirclePiece,
-// LegacyInputDrum, LegacySwell) where noted.
+/** 参考 ppy/osu TaikoPlayfield、OverlappingScrollAlgorithm 与 legacy skin classes。 */
 
 const LOGICAL_W = 1280;
 const LOGICAL_H = 720;
@@ -48,7 +44,7 @@ const BASE_HEIGHT       = 200;
 const INPUT_DRUM_WIDTH  = 180;
 const HIT_TARGET_OFFSET = -24;
 const HIT_TARGET_WIDTH  = BASE_HEIGHT;
-const HIT_TARGET_CENTRE_PF = INPUT_DRUM_WIDTH + HIT_TARGET_WIDTH / 2 + HIT_TARGET_OFFSET; // 256
+const HIT_TARGET_CENTRE_PF = INPUT_DRUM_WIDTH + HIT_TARGET_WIDTH / 2 + HIT_TARGET_OFFSET;
 
 const DEFAULT_SIZE = 0.45;
 const STRONG_SCALE = 1 / 0.65;
@@ -57,7 +53,7 @@ const VELOCITY_MULTIPLIER = 1.4;
 
 const PLAYFIELD_SCALE  = 1.0;
 const PLAYFIELD_H_PX   = BASE_HEIGHT * PLAYFIELD_SCALE;
-const PLAYFIELD_TOP_Y  = (LOGICAL_H - PLAYFIELD_H_PX) / 2; // 260
+const PLAYFIELD_TOP_Y  = (LOGICAL_H - PLAYFIELD_H_PX) / 2;
 const LANE_CENTRE_Y    = PLAYFIELD_TOP_Y + PLAYFIELD_H_PX / 2;
 const INPUT_DRUM_W_PX  = INPUT_DRUM_WIDTH * PLAYFIELD_SCALE;
 const HIT_TARGET_X     = HIT_TARGET_CENTRE_PF * PLAYFIELD_SCALE;
@@ -67,9 +63,8 @@ const LANE_RIGHT_X     = LOGICAL_W;
 const NOTE_RADIUS_PX        = (DEFAULT_SIZE * BASE_HEIGHT * PLAYFIELD_SCALE) / 2;
 const STRONG_NOTE_RADIUS_PX = NOTE_RADIUS_PX * STRONG_SCALE;
 
-/** Canvas x of the hit-target centre (1280×720 logical px); judgements/explosions anchor here. */
 export const HIT_TARGET_CANVAS_X = HIT_TARGET_X;
-/** Canvas y of the lane centre (1280×720 logical px). */
+
 export const HIT_TARGET_CANVAS_Y = LANE_CENTRE_Y;
 
 const DRUM_FLASH_MS = 60;
@@ -77,8 +72,6 @@ const DRUM_FLASH_MS = 60;
 const DON_COLOUR      = 'rgb(235, 69, 44)';
 const KAT_COLOUR      = 'rgb(68, 141, 171)';
 
-
-// Drumroll tint: idle YellowDark → engaged YellowDarker; 100ms fade per transition (lazer colours).
 const DRUMROLL_IDLE_RGB        = { r: 238, g: 170, b:   0 } as const;
 const DRUMROLL_ENGAGED_RGB     = { r: 204, g: 102, b:   0 } as const;
 const DRUMROLL_TICKS_TO_ENGAGE = 5;
@@ -88,10 +81,8 @@ function skinImg(images: Map<string, ImageBitmap>, stem: string): ImageBitmap | 
   return images.get(`${stem}@2x.png`) ?? images.get(`${stem}.png`);
 }
 
-// Lazer treats `Version: latest` as the newest legacy version and an unspecified version as 1.0.
+/** 皮肤 Version=latest 表示最新版，未设置则按 1.0。 */
 
-
-// Multiplicative tint: draw → multiply-fill → destination-in mask. Per-bitmap × per-color, GC-safe.
 const _tintCache = new WeakMap<ImageBitmap, Map<string, OffscreenCanvas>>();
 function tintBitmap(bitmap: ImageBitmap, color: string): OffscreenCanvas {
   let colorMap = _tintCache.get(bitmap);
@@ -121,26 +112,20 @@ function drawCentredBitmap(
   cy: number,
   d: number,
 ): void {
-  // Preserve aspect (@2x assets can be slightly off-square).
+
   const aspect = bitmap.width / bitmap.height;
   const drawW = aspect >= 1 ? d : d * aspect;
   const drawH = aspect >= 1 ? d / aspect : d;
   ctx.drawImage(bitmap, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
 }
 
-// Logical (½-for-@2x) longer side of a base note sprite. The base (taiko[big]circle) is drawn
-// so its full texture spans the note's display diameter `d`, i.e. display-px per logical-px = d / this.
 function baseLogicalExtent(images: Map<string, ImageBitmap>, stem: string, bitmap: ImageBitmap): number {
   const pixelScale = images.has(`${stem}@2x.png`) ? 0.5 : 1;
   return Math.max(bitmap.width, bitmap.height) * pixelScale;
 }
 
-// Draw a circle overlay (taiko[big]circleoverlay) the way osu!stable's LegacyCirclePiece does:
-// centred at the SAME per-pixel scale as the base sprite, at the overlay's own native dimensions —
-// NOT squashed into the base's square box. A tall overlay (a normal-sized circle plus a "this note
-// is big" arrow extending well above it) therefore keeps its proportions, so the circle lands on the
-// note at normal size and the arrow pokes up toward the top of the playfield. For a square overlay
-// matching the base this is identical to drawCentredBitmap(…, d).
+/** overlay 与底图使用相同像素缩放，保留超出底图的箭头尺寸。 */
+
 function drawOverlayNative(
   ctx: CanvasRenderingContext2D,
   bitmap: ImageBitmap,
@@ -177,21 +162,14 @@ function getTimingAt(tps: readonly TimingPoint[], time: number): {
   return { baseBeatLength, svMultiplier, meter, kiai };
 }
 
-// Scroll calibration, ported faithfully from lazer's OverlappingScrollAlgorithm +
-// TaikoPlayfieldAdjustmentContainer:
-//   on-screen velocity = Multiplier × scrollLength / timeRange
-//   Multiplier         = SliderMultiplier × scrollSpeed × DEFAULT_BEAT_LENGTH / localBeatLength
-// taiko is RelativeScaleBeatLengths=false, so BaseBeatLength is the fixed DEFAULT_BEAT_LENGTH (not the
-// most-common beat length); scroll therefore scales with the local BPM (1/localBeatLength), as in stable.
-const DEFAULT_BEAT_LENGTH = 1000;   // TimingControlPoint.DEFAULT_BEAT_LENGTH
-const TAIKO_MIN_ASPECT = 5 / 4;     // TaikoPlayfieldAdjustmentContainer.MINIMUM_ASPECT
-const TAIKO_MAX_ASPECT = 16 / 9;    //                                  .MAXIMUM_ASPECT
+/** 滚速=Multiplier×滚动距离/timeRange，Multiplier 随局部 BPM 和 SV 变化。 */
+
+const DEFAULT_BEAT_LENGTH = 1000;
+const TAIKO_MIN_ASPECT = 5 / 4;
+const TAIKO_MAX_ASPECT = 16 / 9;
 const STABLE_GAMEFIELD_HEIGHT = 480;
 const STABLE_HIT_LOCATION = 160;
 
-// Port of TaikoPlayfieldAdjustmentContainer.ComputeTimeRange(): visible time (ms) for a Multiplier-1 note.
-// Aspect-only (no BPM term — taiko uses the Overlapping algorithm), with aspect clamped to taiko's locked
-// range. Our canvas is fixed 16:9, which is exactly MAXIMUM_ASPECT, so this evaluates to ~4952 ms.
 function computeTaikoTimeRange(): number {
   const aspect = Math.max(TAIKO_MIN_ASPECT, Math.min(TAIKO_MAX_ASPECT, LOGICAL_W / LOGICAL_H));
   const inLength = aspect * STABLE_GAMEFIELD_HEIGHT - STABLE_HIT_LOCATION;
@@ -200,12 +178,6 @@ function computeTaikoTimeRange(): number {
 
 const TAIKO_TIME_RANGE_MS = computeTaikoTimeRange();
 
-/**
- * Scroll velocity (logical px per ms) for an object starting at `time`, from
- * the beatmap's active timing point. `smFactor` is the HR/EZ scroll scaling
- * from {@link taikoScrollMultiplier}; `isConstantSpeed` ignores inherited SV
- * (the ConstantSpeed mod's behaviour).
- */
 export function scrollVelocityAt(
   beatmap: BeatmapData,
   time: number,
@@ -215,26 +187,21 @@ export function scrollVelocityAt(
   const { baseBeatLength, svMultiplier } = getTimingAt(beatmap.timingPoints, time);
   const scrollSpeed = isConstantSpeed ? 1 : svMultiplier;
   if (baseBeatLength <= 0) return 0;
-  // lazer: Multiplier × scrollLength (= LANE_WIDTH_PX) / timeRange.
+
   const multiplier = (beatmap.sliderMultiplier * smFactor * scrollSpeed * DEFAULT_BEAT_LENGTH) / baseBeatLength;
   return (multiplier * LANE_WIDTH_PX) / TAIKO_TIME_RANGE_MS;
 }
 
-/**
- * HR/EZ scroll-speed factor applied post-conversion (TaikoModHardRock scales
- * scrolling, not rhythm). The extra 4/3 is lazer's 16:9-playfield constant,
- * which matches our fixed canvas aspect.
- */
+/** HR/EZ 改变滚速；4/3 是固定 16:9 场地系数。 */
 export function taikoScrollMultiplier(modDiff: ModDifficulty): number {
   if (modDiff.isHR) return 1.4 * 4 / 3;
   if (modDiff.isEZ) return 0.8;
   return 1;
 }
 
-/** Scrollable lane width (hit target → right edge, logical px); a note's on-screen lifetime is LANE_WIDTH_PX / velocity. */
 export const LANE_WIDTH_PX = LANE_RIGHT_X - HIT_TARGET_X;
 
-// Hidden: fade starts at spawn, completes after 37.5% of travel. Hits only — drumroll body and swells exempt.
+/** Hidden 在前 37.5% 行程淡出，roll 和 swell 不受影响。 */
 const TAIKO_HD_FADE_START = 1.0;
 const TAIKO_HD_FADE_DURATION = 0.375;
 
@@ -248,11 +215,6 @@ function taikoHiddenAlpha(hitTime: number, timeMs: number, scrollVel: number): n
   return (age - fadeEndAge) / (preempt * TAIKO_HD_FADE_DURATION);
 }
 
-/**
- * Bar-line times (ms): one line per measure (meter × beatLength) from each
- * uninherited timing point until the next, extending 5 s past the last object.
- * Pre-computed once per session; render walks a binary-searched slice.
- */
 export function computeBarLineTimes(beatmap: BeatmapData): number[] {
   const uninherited: TimingPoint[] = [];
   for (const tp of beatmap.timingPoints) if (!tp.inherited) uninherited.push(tp);
@@ -294,7 +256,6 @@ function findObjectVisibleRange(
   const minTime = timeMs - lookbackMs;
   const maxTime = timeMs + scrollMs;
 
-  // firstIdx: smallest i with endTimeOf(objects[i]) >= minTime.
   let lo = 0, hi = n;
   while (lo < hi) {
     const mid = (lo + hi) >>> 1;
@@ -305,7 +266,7 @@ function findObjectVisibleRange(
   if (firstIdx >= n || objects[firstIdx]!.time > maxTime) {
     return { firstIdx, lastIdx: firstIdx - 1 };
   }
-  // lastIdx: largest i with objects[i].time <= maxTime.
+
   lo = firstIdx; hi = n - 1;
   while (lo < hi) {
     const mid = (lo + hi + 1) >>> 1;
@@ -339,7 +300,6 @@ function objectX(objectTime: number, timeMs: number, scrollVel: number): number 
   return HIT_TARGET_X + (objectTime - timeMs) * scrollVel;
 }
 
-// Equal-rate fade for taiko-bar-right-glow (unlike taiko-glow which has asymmetric rates).
 const BAR_GLOW_FADE_PER_MS = 1 / 200;
 
 function drawPlayfieldBackground(
@@ -355,7 +315,6 @@ function drawPlayfieldBackground(
   const barRightGlow = skin ? skinImg(skin.images, 'taiko-bar-right-glow') : undefined;
   const barLeft      = skin ? skinImg(skin.images, 'taiko-bar-left')       : undefined;
 
-  // bar-right covers the entire playfield (including behind the drum); bar-left layers on top.
   if (barRight !== undefined) {
     ctx.drawImage(barRight, 0, PLAYFIELD_TOP_Y, LANE_RIGHT_X, PLAYFIELD_H_PX);
     if (barRightGlow !== undefined) {
@@ -381,7 +340,6 @@ function drawPlayfieldBackground(
 
   ctx.restore();
 
-  // bar-left (native 181×200) sits on top of bar-right at the drum's right edge.
   if (barLeft !== undefined) {
     ctx.drawImage(barLeft, 0, PLAYFIELD_TOP_Y, INPUT_DRUM_W_PX, PLAYFIELD_H_PX);
   } else {
@@ -402,7 +360,6 @@ function drawPlayfieldBackground(
   }
 }
 
-// Sprites render at texture's natural size × scale (NOT fit to hit-target column).
 const HIT_TARGET_BIG_SCALE      = 0.8;
 const HIT_TARGET_APPROACH_SCALE = 0.83;
 const HIT_TARGET_BIG_ALPHA      = 0.22;
@@ -433,7 +390,7 @@ function drawBarLines(
   lookbackMs: number,
   skin: SkinAssets | undefined,
 ): void {
-  // Conservative bracket; per-line pixel check below culls fast-velocity lines not yet entered.
+
   const { firstIdx, lastIdx } = findTimeRange(times, timeMs - lookbackMs, timeMs + maxScrollMs);
   if (lastIdx < firstIdx) return;
 
@@ -463,7 +420,6 @@ function drawBarLines(
   ctx.stroke();
 }
 
-// combo<50 → hold; 50–149 → swap per beat; ≥150 → per half-beat. Phase from active red line.
 function bpmPacedOverlayFrame(
   combo: number,
   timeMs: number,
@@ -504,7 +460,6 @@ function comboAt(comboFrames: readonly ComboFrame[], timeMs: number): number {
   return lo > 0 ? comboFrames[lo - 1]!.combo : 0;
 }
 
-// `${stem}-${n}` numbered frames, or single unnumbered fallback. 1×1 → missing (placeholder convention).
 function resolveSkinFrames(images: Map<string, ImageBitmap>, stem: string): SpriteWithScale[] {
   const frames: SpriteWithScale[] = [];
   for (let i = 0; ; i++) {
@@ -517,18 +472,9 @@ function resolveSkinFrames(images: Map<string, ImageBitmap>, stem: string): Spri
   return single !== undefined ? [single] : [];
 }
 
-// Flying-hit (lazer DrawableHit.UpdateHitStateTransforms): 900ms total, 800ms fade.
-
-
-
-
-
-
-
 const MISS_FADE_MS            = 100;
 
-// Y-arc is two stitched quadratics with discontinuous velocity at apex — don't smooth into one curve.
-
+/** 飞出轨迹由两段抛物线拼接，顶点速度不连续。 */
 
 function drawHitCircle(
   ctx: CanvasRenderingContext2D,
@@ -545,7 +491,7 @@ function drawHitCircle(
   const baseR = hit.isStrong ? STRONG_NOTE_RADIUS_PX : NOTE_RADIUS_PX;
   const r = baseR * scaleFactor;
   const colour = hit.isRim ? KAT_COLOUR : DON_COLOUR;
-  // Tinted base sprite + untinted overlay, as in stable's LegacyCirclePiece; strong uses big variants.
+
   const baseStem    = hit.isStrong ? 'taikobigcircle'        : 'taikohitcircle';
   const overlayStem = hit.isStrong ? 'taikobigcircleoverlay' : 'taikohitcircleoverlay';
   const base = skin ? skinImg(skin.images, baseStem) : undefined;
@@ -559,7 +505,7 @@ function drawHitCircle(
 
     if (skin !== undefined) {
       const frames = resolveSkinFrames(skin.images, overlayStem);
-      // Strong overlay falls back to the non-strong frames if the skin doesn't ship it.
+
       const overlayFrames = frames.length > 0
         ? frames
         : (hit.isStrong ? resolveSkinFrames(skin.images, 'taikohitcircleoverlay') : []);
@@ -598,10 +544,7 @@ function drawHit(
   comboNow: number,
   isHD: boolean,
 ): void {
-  // Post-judgement branching:
-  // miss → 100ms fade in place; hit → drawn by drawFlyingHits, the flying-hit pass.
-  // Under HD the in-lane note already faded to 0 before the hit target, so nothing is drawn here;
-  // the flying-hit animation itself still plays (see drawFlyingHits) — it ignores mods by design.
+
   const r = hit.isStrong ? STRONG_NOTE_RADIUS_PX : NOTE_RADIUS_PX;
   const judged = judgmentByNote.get(hit.noteId);
   if (judged !== undefined && timeMs >= judged.time) {
@@ -623,44 +566,6 @@ function drawHit(
   drawHitCircle(ctx, hit, x, LANE_CENTRE_Y, 1, alpha, timeMs, skin, beatmap, comboNow);
 }
 
-// Flying-hit pass (outside lane clip). X continues to scroll via objectX during the arc.
-// Plays regardless of mods (incl. HD): the hit animation is a viewer-visible event even when the
-// approaching note was faded out by HD — matching drawDrumRollFlyingHits, which never gated on HD.
-function drawFlyingHits(
-  ctx: CanvasRenderingContext2D,
-  objects: readonly TaikoHitObject[],
-  objectVel: readonly number[],
-  firstIdx: number,
-  lastIdx: number,
-  timeMs: number,
-  skin: SkinAssets | undefined,
-  judgmentByNote: ReadonlyMap<number, { time: number; judgement: number }>,
-  beatmap: BeatmapData,
-  comboNow: number,
-): void {
-  // The built-in preview keeps feedback local; this legacy effect is disabled.
-}
-
-// Drum-roll tick hits spawn a flying note circle coloured by the pressed key (lazer's
-// DrawableFlyingHit: centre→don, rim→kat). Same fly-off arc as a real hit, but no
-// hit-target explosion or judgement text. Shown in HD too — the roll body stays visible.
-function drawDrumRollFlyingHits(
-  ctx: CanvasRenderingContext2D,
-  objects: readonly TaikoHitObject[],
-  objectVel: readonly number[],
-  firstIdx: number,
-  lastIdx: number,
-  timeMs: number,
-  skin: SkinAssets | undefined,
-  hitResults: readonly HitResult[],
-  beatmap: BeatmapData,
-  comboNow: number,
-): void {
-  // The built-in preview keeps feedback local; this legacy effect is disabled.
-}
-
-// Per-replay tick-hit cache: results → (sourceIndex → tick hits). isRim records the pressed
-// key (centre→don/0, rim→kat/8) so the flying-hit pass can colour each note like a real hit.
 interface DrumrollTickHit { time: number; isRim: boolean; }
 const _drumrollHitsByResults = new WeakMap<readonly HitResult[], Map<number, DrumrollTickHit[]>>();
 const _EMPTY_DRUMROLL_HITS: readonly DrumrollTickHit[] = Object.freeze([]);
@@ -683,7 +588,6 @@ function drumrollTickHits(results: readonly HitResult[], sourceIndex: number): r
 type DrumrollTintChange = { time: number; before: number; after: number };
 const drumrollTintChanges = new WeakMap<TaikoDrumRoll, WeakMap<readonly HitResult[], DrumrollTintChange[]>>();
 
-// Retain only changes of rolling level. Silent intervals at zero cost no rows or iterations.
 function drumrollTintTimeline(
   roll: TaikoDrumRoll,
   results: readonly HitResult[],
@@ -777,7 +681,7 @@ function drawDrumRoll(
   const bodyVisible = xEnd > LANE_LEFT_X - 4 && xHead < LANE_RIGHT_X + r + 4;
 
   if (bodyVisible && rollMiddle !== undefined && rollEnd !== undefined) {
-    // taiko-roll-middle is 1×128 (SD); stretched horizontally to body length.
+    /** taiko-roll-middle 的原生尺寸为 1×128，横向拉伸成 roll body。 */
     const d = r * 2;
     const endAspect = rollEnd.width / rollEnd.height;
     const endDrawW  = d * endAspect;
@@ -842,9 +746,6 @@ function drawDrumRoll(
   }
 }
 
-// Swell rendering, ported from stable's LegacySwell presentation.
-// Reuses osu!std spinner sprites at natural sizes; no primitive fallback.
-
 const SWELL_DISPLAY_OFFSET_X = 250;
 const SWELL_DISPLAY_OFFSET_Y = 100;
 const SWELL_BODY_BASE_SCALE      = 0.8;
@@ -853,7 +754,7 @@ const SWELL_APPROACH_END_SCALE   = 0.1 * SWELL_BODY_BASE_SCALE;
 const SWELL_APPROACH_ALPHA       = 0.8;
 const SWELL_FADE_IN_MS           = 200;
 const SWELL_FADE_OUT_MS          = 300;
-// Body bump per press damps back toward base; ~halflife 120ms (linear-decay approximation).
+
 const SWELL_BODY_BUMP_PER_HIT    = 0.02;
 const SWELL_BODY_BUMP_MAX        = 0.94 - SWELL_BODY_BASE_SCALE;
 const SWELL_BODY_BUMP_DECAY_MS   = 240;
@@ -864,7 +765,6 @@ const SWELL_CLEAR_MOVE_MS        = 240;
 const SWELL_CLEAR_FADE_IN_MS     = 120;
 const SWELL_COUNTER_Y_OFFSET     = 130;
 
-// Sprite at natural display size; @2x halved. 1×1 → missing (skin-author suppression convention).
 type SpriteWithScale = { bitmap: ImageBitmap; pixelScale: number };
 function skinSpriteNatural(images: Map<string, ImageBitmap>, stem: string): SpriteWithScale | undefined {
   const at2x = images.get(`${stem}@2x.png`);
@@ -890,7 +790,6 @@ function scoreDigitNatural(images: Map<string, ImageBitmap>, digit: string): Spr
   return skinSpriteNatural(images, `score-${digit}`);
 }
 
-// Aborts on any missing digit to avoid mixed-glyph (skin + system-font) output.
 function drawScoreDigits(
   ctx: CanvasRenderingContext2D,
   images: Map<string, ImageBitmap>,
@@ -952,7 +851,6 @@ function drawSwell(
   const visibleFrom  = swell.time - 4000;
   if (timeMs < visibleFrom || timeMs > visibleTo) return;
 
-  // Scroll in, then park at hit target (lazer clamps X≥0).
   const scrollX = objectX(swell.time, timeMs, scrollVel);
   const cx = timeMs >= swell.time ? Math.max(HIT_TARGET_X, scrollX) : scrollX;
   const cy = LANE_CENTRE_Y;
@@ -962,11 +860,9 @@ function drawSwell(
   const clusterCx = cx + offX;
   const clusterCy = cy + offY;
 
-  // Generous cull bound — approach circle can be ~600px diameter at scale 1.488.
   const cull = 800;
   if (cx > LANE_RIGHT_X + cull || cx < LANE_LEFT_X - cull) return;
 
-  // OutQuad fade-out after terminal time.
   let containerAlpha = 1;
   if (timeMs > terminalTime) {
     const t = (timeMs - terminalTime) / SWELL_FADE_OUT_MS;
@@ -978,7 +874,7 @@ function drawSwell(
   ctx.save();
   ctx.globalAlpha = containerAlpha;
 
-  // Warning: at outer centre pre-StartTime; over 200ms post-StartTime, moves to cluster, scales 1→3, fades out.
+  /** swell 警告在开始后 200ms 内移向音符群，并缩放、淡出。 */
   if (sprWarning !== undefined && timeMs < swell.time + SWELL_FADE_IN_MS) {
     const activeT = timeMs - swell.time;
     let wx = cx, wy = cy, wScale = 1, wAlpha = 1;
@@ -1082,19 +978,8 @@ function drawObject(
 ): void {
   if (o.kind === 'hit')           drawHit(ctx, o, timeMs, scrollVel, skin, judgmentByNote, beatmap, comboNow, isHD);
   else if (o.kind === 'drumroll') drawDrumRoll(ctx, o, timeMs, scrollVel, skin, hitResults);
-  // Swells render outside the lane clip (drawTaikoPlayfield). HD doesn't fade drumroll/swell.
+
 }
-
-// Kiai glow (taiko-glow): fades on/off with kiai; per-hit pulse 0.8 → 0.95 → 0.8 over 80ms.
-
-
-
-
-
-
-
-
-
 
 function lastKiaiTransitionAt(
   tps: readonly TimingPoint[],
@@ -1114,55 +999,6 @@ function lastKiaiTransitionAt(
   return { transitionTime, kiaiOn };
 }
 
-function drawTaikoGlow(
-  ctx: CanvasRenderingContext2D,
-  beatmap: BeatmapData,
-  results: readonly HitResult[],
-  timeMs: number,
-  skin: SkinAssets | undefined,
-): void {
-  // The built-in preview keeps feedback local; this legacy effect is disabled.
-}
-
-// Hit-target explosion (separate from floating popup). Multi-frame skips scale-punch.
-
-
-
- // 300
-
-
-
-
-
-
-
-
-// Default frame length = 1000/frameCount; non-looping (clamp to last).
-
-
-/**
- * True when the skin ships taiko-hit300 in any variant, i.e. it uses hit-target
- * explosions. Callers use this to suppress the floating judgement popup — a
- * skin gets one style or the other, never both.
- */
-export function hasTaikoExplosion(skin: SkinAssets | undefined): boolean {
-  if (skin === undefined) return false;
-  const i = skin.images;
-  return i.has('taiko-hit300.png')      || i.has('taiko-hit300@2x.png')
-      || i.has('taiko-hit300-0.png')    || i.has('taiko-hit300-0@2x.png');
-}
-
-function drawHitExplosions(
-  ctx: CanvasRenderingContext2D,
-  results: readonly HitResult[],
-  timeMs: number,
-  skin: SkinAssets | undefined,
-): void {
-  // The built-in preview keeps feedback local; this legacy effect is disabled.
-}
-
-// Pippidon mascot: idle/kiai/clear/fail. Clear is one-shot 15-frame mirror sequence; others BPM-paced.
-
 const MASCOT_SCALE          = 0.6;
 const MASCOT_FEET_Y         = PLAYFIELD_TOP_Y + 0.2 * PLAYFIELD_H_PX;
 const MASCOT_ANCHOR_X       = 4;
@@ -1172,7 +1008,7 @@ const MASCOT_CLEAR_TOTAL_MS = MASCOT_CLEAR_FRAME_MS * MASCOT_CLEAR_ORDER.length;
 
 type MascotState = 'idle' | 'kiai' | 'clear' | 'fail';
 
-// NO-DASH naming: pippidonidle0, pippidonidle1, ... Bare pippidonidle as fallback for index 0.
+/** pippidon 使用无短横线的帧名，区别于其它 taiko 动画。 */
 function resolvePippidonFrames(images: Map<string, ImageBitmap>, stem: string): SpriteWithScale[] {
   const frames: SpriteWithScale[] = [];
   for (let i = 0; ; i++) {
@@ -1206,7 +1042,6 @@ function lastComboAffectingResult(
   return undefined;
 }
 
-// Latest combo%50 milestone OR swell completion at/before timeMs (within MASCOT_CLEAR_TOTAL_MS window).
 function lastClearTriggerTime(
   results: readonly HitResult[],
   comboFrames: readonly ComboFrame[],
@@ -1233,7 +1068,7 @@ function lastClearTriggerTime(
   for (let i = rLo - 1; i >= 0; i--) {
     const r = results[i]!;
     if (timeMs - r.time > MASCOT_CLEAR_TOTAL_MS + 16) break;
-    // hitJudge contract: swell completion = comboIgnore && strong === true.
+
     if (r.comboIgnore && r.strong === true && r.judgement > 0) {
       if (r.time > trigger) trigger = r.time;
       break;
@@ -1260,7 +1095,7 @@ function drawTaikoMascot(
     if (clearAge < MASCOT_CLEAR_TOTAL_MS) {
       state = 'clear';
     } else {
-      // Clear sequence ended — fall through to base state.
+
       const lastR = lastComboAffectingResult(results, timeMs);
       const { kiai } = getTimingAt(beatmap.timingPoints, timeMs);
       if (lastR && lastR.judgement === 0) state = 'fail';
@@ -1275,7 +1110,6 @@ function drawTaikoMascot(
     else                                 state = 'idle';
   }
 
-  // Mascot uses NO-DASH frame naming (pippidonidle0, …), unlike the rest of the taiko sprite family.
   const stateStem = `pippidon${state}`;
   const frames = resolvePippidonFrames(skin.images, stateStem);
   if (frames.length === 0) return;
@@ -1284,11 +1118,10 @@ function drawTaikoMascot(
   if (state === 'clear') {
     const seqIdx = Math.min(MASCOT_CLEAR_ORDER.length - 1, Math.floor(clearAge / MASCOT_CLEAR_FRAME_MS));
     const target = MASCOT_CLEAR_ORDER[seqIdx]!;
-    // Cap to available frames (skinner may ship fewer than 7); the loader
-    // stops at the first missing frame and the partial sequence plays.
+
     frameIdx = Math.min(target, frames.length - 1);
   } else {
-    // BPM-paced: one frame per beat of the active uninherited timing point.
+
     const tp = getUninheritedAt(beatmap.timingPoints, timeMs);
     const beat = tp.beatLength > 0 ? Math.floor((timeMs - tp.time) / tp.beatLength) : 0;
     const wrapped = ((beat % frames.length) + frames.length) % frames.length;
@@ -1305,7 +1138,6 @@ function drawTaikoMascot(
   ctx.drawImage(sp.bitmap, dx, dy, drawW, drawH);
 }
 
-// Freshest press time per action within [timeMs - DRUM_FLASH_MS, timeMs]; binary-searched.
 function activeActionsAt(
   events: readonly TaikoInputEvent[],
   timeMs: number,
@@ -1339,12 +1171,6 @@ function drawInputDrum(
   drawFlatInputDrum(ctx, activeActionsAt(events, timeMs), timeMs, skin?.images, 0, PLAYFIELD_TOP_Y, INPUT_DRUM_W_PX, PLAYFIELD_H_PX);
 }
 
-/**
- * Per-frame entry point: draws the whole taiko playfield for `timeMs` onto the
- * 1280×720 logical canvas, reading (never mutating) the prebuilt session.
- * Order: background → kiai glow → hit target → explosions
- * → [lane clip] bar lines + objects → flying-hits → drum → swells → mascot → FL.
- */
 export function drawTaikoPlayfield(
   ctx: CanvasRenderingContext2D,
   session: TaikoSession,
@@ -1358,20 +1184,14 @@ export function drawTaikoPlayfield(
   const comboNow = comboAt(session.comboFrames, timeMs);
   const isHD = options.modHidden;
 
-  // Lookback covers the longest still-trailing drum-roll/swell.
   const lookback = taikoLookback(session.objects);
   const trackOpacity = resolveTrackOpacity(options, 'taiko');
 
   drawPlayfieldBackground(ctx, skin, session.beatmap.timingPoints, timeMs, trackOpacity);
-  drawTaikoGlow(ctx, session.beatmap, session.hitResults, timeMs, skin);
   drawHitTarget(ctx, skin);
-  drawHitExplosions(ctx, session.hitResults, timeMs, skin);
 
-  // Clip horizontally (notes enter at the right edge, exit past the drum on the left) but NOT
-  // vertically: stable's taiko playfield doesn't mask notes top/bottom, and a skin can ship a tall
-  // taikobigcircleoverlay (4sbet1) whose "this note is big" arrow pokes above the lane. Regular
-  // notes never reach the lane's vertical edges, so the full-height band is a no-op for them; only
-  // such overflowing overlays become visible. Bar lines + flying-hits set their own y, unaffected.
+  /** 仅横向裁剪，保留高于轨道的皮肤 overlay。 */
+
   ctx.save();
   ctx.beginPath();
   ctx.rect(LANE_LEFT_X, 0, LANE_RIGHT_X - LANE_LEFT_X, LOGICAL_H);
@@ -1383,7 +1203,7 @@ export function drawTaikoPlayfield(
   ctx.restore();
 
   const { firstIdx, lastIdx } = findObjectVisibleRange(session.objects, timeMs, maxScrollMs, lookback);
-  // Back-to-front: later objects drawn first so earlier-in-time notes overlap on top.
+
   for (let i = lastIdx; i >= firstIdx; i--) {
     drawObject(
       ctx, session.objects[i]!, timeMs, objectVel[i]!, skin,
@@ -1396,21 +1216,10 @@ export function drawTaikoPlayfield(
 
   ctx.restore();
 
-  // Flying-hit arc renders outside lane clip so the parabola isn't masked (lazer's ProxyContent).
-  drawFlyingHits(
-    ctx, session.objects, objectVel, firstIdx, lastIdx, timeMs, skin,
-    session.hitJudgmentByNote, session.beatmap, comboNow,
-  );
 
-  // Drum-roll tick hits fly off too (same layer); shown even in HD since the roll stays visible.
-  drawDrumRollFlyingHits(
-    ctx, session.objects, objectVel, firstIdx, lastIdx, timeMs, skin,
-    session.hitResults, session.beatmap, comboNow,
-  );
 
   drawInputDrum(ctx, session.inputEvents, timeMs, skin);
 
-  // Swells render outside the lane clip and after the drum: the spinner cluster can extend past both.
   for (let i = lastIdx; i >= firstIdx; i--) {
     const o = session.objects[i]!;
     if (o.kind !== 'swell') continue;
@@ -1419,12 +1228,9 @@ export function drawTaikoPlayfield(
 
   drawTaikoMascot(ctx, session.beatmap, session.hitResults, session.comboFrames, timeMs, skin);
 
-  // FL last: lazer's Depth=float.MinValue puts it above everything (notes, drum, swells, mascot).
   if (options.modFlashlight) taikoFlashlight(session).draw(ctx, timeMs);
 }
 
-// FL toggled on for a non-FL replay: built lazily on first draw (FL replays get theirs
-// at session build).
 const _flCache = new WeakMap<TaikoSession, TaikoFlashlight>();
 function taikoFlashlight(session: TaikoSession): TaikoFlashlight {
   if (session.flashlight !== null) return session.flashlight;

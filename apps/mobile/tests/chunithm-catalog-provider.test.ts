@@ -1,7 +1,3 @@
-import type {
-  ChunithmCatalogSnapshot,
-  ChunithmSongDetailSnapshot,
-} from '@/domain/chunithm';
 import {
   ChunithmCatalogProvider,
   mapChunithmAliases,
@@ -9,8 +5,6 @@ import {
   mapChunithmCollections,
   mapChunithmSongDetail,
 } from '@/providers/chunithm-catalog-provider';
-import { cacheFirstLoad } from '@/services/cache-first';
-import type { ResourceRepository } from '@/repositories/resource-repository';
 
 const responsePayload = {
   versions: [
@@ -247,38 +241,9 @@ describe('ChunithmCatalogProvider', () => {
     });
   });
 
-  it('rejects malformed song detail and supports resource cache fallback', async () => {
+  it('rejects malformed song detail', () => {
     expect(() => mapChunithmSongDetail({ id: 3, title: 'broken' }))
       .toThrow(expect.objectContaining({ code: 'upstream_schema' }));
-    const cached = mapChunithmSongDetail(detailPayload);
-    const repository: ResourceRepository = {
-      saveResource: async () => undefined,
-      getResource: async <T>() => cached as T,
-      deleteResource: async () => undefined,
-    };
-    const result = await cacheFirstLoad<ChunithmSongDetailSnapshot>({ loadCached: () => repository.getResource<ChunithmSongDetailSnapshot>('chunithm-song-detail:3', 1), loadFresh: async () => {
-        throw new Error('network');
-      }, onFresh: () => undefined });
-    expect(result.source).toEqual({ ...cached.source, isStale: true });
-    expect(result.song.difficulties[0]?.notes?.total).toBe(333);
-  });
-
-  it('falls back to the game-specific cached resource when the network fails', async () => {
-    const cached = mapChunithmCatalog(responsePayload);
-    const getResource = vi.fn(async () => cached);
-    const repository: ResourceRepository = {
-      saveResource: async () => undefined,
-      getResource: async <T>() => await getResource() as T,
-      deleteResource: async () => undefined,
-    };
-
-    const result = await cacheFirstLoad<ChunithmCatalogSnapshot>({ loadCached: () => repository.getResource<ChunithmCatalogSnapshot>('chunithm-catalog', 2), loadFresh: async () => {
-      throw new Error('network');
-      }, onFresh: () => undefined });
-
-    expect(getResource).toHaveBeenCalledTimes(1);
-    expect(result.source).toEqual({ ...cached.source, isStale: true });
-    expect(result.songs).toHaveLength(2);
   });
 
   it('fetches and maps the chunithm trophy list without auth', async () => {

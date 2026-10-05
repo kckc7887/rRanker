@@ -1,5 +1,5 @@
 import {
-  backupPreview, buildTagHistory, chartLibraryKey, createUserDataBackup, inferGameIdFromKey, mergeLibraryItems,
+  buildTagHistory, chartLibraryKey, createUserDataBackup, mergeLibraryItems,
   normalizeLibraryItem, normalizeTagName, normalizeTags, parseUserDataBackup, songLibraryKey,
 } from '@/domain/user-library';
 import type { ChartLibraryItem, SongLibraryItem } from '@/domain/user-library';
@@ -15,12 +15,13 @@ const chart: ChartLibraryItem = {
 };
 
 describe('user library domain', () => {
-  it.each([1, 2, 3])('accepts all registered games in version %i backups and legacy keys', (version) => {
+  it('accepts current game identities and rejects old backups and missing gameId', () => {
     const items = GAME_IDS.map(gameId => ({ ...song, gameId, songId: '5', key: songLibraryKey(gameId, '5') }));
-    const backup = { format: 'rranker-user-data', version, exportedAt: updatedAt, items,
-      ...(version === 1 ? {} : { tagPresets: [] }) };
+    const backup = createUserDataBackup(items, updatedAt);
     expect(parseUserDataBackup(backup).items.map(item => item.gameId).sort()).toEqual([...GAME_IDS].sort());
-    for (const item of items) expect(inferGameIdFromKey(item.key)).toBe(item.gameId);
+    for (const version of [1, 2, 4]) expect(() => parseUserDataBackup({ ...backup, version })).toThrow();
+    const { gameId: _gameId, ...withoutGameId } = items[0];
+    expect(() => parseUserDataBackup({ ...backup, items: [withoutGameId] })).toThrow();
     expect(() => parseUserDataBackup({ ...backup, items: [{ ...song, gameId: 'unknown' }] })).toThrow();
   });
 
@@ -36,7 +37,6 @@ describe('user library domain', () => {
     expect(restored.items).toEqual(expect.arrayContaining(items));
     expect(new Set(restored.items.map(item => item.key)).size).toBe(3);
     expect(mergeLibraryItems(items, restored.items)).toHaveLength(3);
-    expect(backupPreview(restored)).toEqual({ songs: 2, charts: 1, tags: 3 });
   });
   it('builds stable normalized song and chart keys per game', () => {
     expect(songLibraryKey('maimai', '10001')).toBe('song:maimai:1');
@@ -50,14 +50,12 @@ describe('user library domain', () => {
     expect(songLibraryKey('adofai', '11372')).toBe('song:adofai:11372');
     expect(chartLibraryKey('adofai', 11372, 'SD', 0)).toBe('chart:adofai:11372:SD:0');
     expect(normalizeLibraryItem({ ...song, gameId: 'adofai', songId: '11372' }).key).toBe('song:adofai:11372');
-    expect(inferGameIdFromKey('song:adofai:11372')).toBe('adofai');
   });
 
   it('keeps musedash uid song ids intact instead of applying maimai id truncation', () => {
     expect(songLibraryKey('musedash', '0-47')).toBe('song:musedash:0-47');
     expect(songLibraryKey('musedash', 0)).toBe('song:musedash:0');
     expect(normalizeLibraryItem({ ...song, gameId: 'musedash', songId: '0-47' }).key).toBe('song:musedash:0-47');
-    expect(inferGameIdFromKey('song:musedash:0-47')).toBe('musedash');
   });
 
   it('keeps phira chart ids intact instead of applying maimai id truncation', () => {
@@ -65,7 +63,6 @@ describe('user library domain', () => {
     expect(songLibraryKey('phira', '66661')).toBe('song:phira:66661');
     expect(normalizeLibraryItem({ ...song, gameId: 'phira', songId: '66661' }).key).toBe('song:phira:66661');
     expect(normalizeLibraryItem({ ...song, gameId: 'phira', songId: '38294' }).key).toBe('song:phira:38294');
-    expect(inferGameIdFromKey('song:phira:66661')).toBe('phira');
   });
 
   it('keeps osu beatmap ids intact and scopes identical ids by four independent modes', () => {
@@ -121,8 +118,6 @@ describe('user library domain', () => {
     expect(backup.items.map((item) => item.key)).toEqual(['chart:maimai:1:DX:3', 'song:maimai:1']);
     expect(backup.version).toBe(3);
     expect(backup.tagPresets).toEqual(['爆发', '交互', '星星', '鬼歌', '大歌']);
-    expect(backupPreview(backup)).toEqual({ songs: 1, charts: 1, tags: 2 });
-    expect(JSON.stringify(backup)).not.toMatch(/token|cookie|player|records/i);
     expect(() => parseUserDataBackup({ ...backup, token: 'secret' })).toThrow();
     expect(() => parseUserDataBackup({ ...backup, version: 4 })).toThrow();
   });
@@ -147,27 +142,6 @@ describe('user library domain', () => {
         practice: true,
       }),
     ]);
-  });
-
-  it('imports legacy v2 backups as maimai library items', () => {
-    const legacy = {
-      format: 'rranker-user-data' as const,
-      version: 2 as const,
-      exportedAt: updatedAt,
-      tagPresets: ['爆发'],
-      items: [{
-        key: 'song:1',
-        kind: 'song' as const,
-        songId: '1',
-        favorite: true,
-        tags: [],
-        createdAt,
-        updatedAt,
-      }],
-    };
-    const parsed = parseUserDataBackup(legacy);
-    expect(parsed.items[0]?.key).toBe('song:maimai:1');
-    expect(parsed.items[0]?.gameId).toBe('maimai');
   });
 
   it('builds recent history excluding the current item and presets', () => {

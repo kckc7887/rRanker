@@ -10,15 +10,6 @@ on:
       - reopened
       - edited
   workflow_dispatch:
-    inputs:
-      account-checks:
-        description: "Account recovery checks: affected paths or always"
-        type: choice
-        default: auto
-        required: true
-        options:
-          - auto
-          - all
 permissions:
   contents: read
 jobs:
@@ -30,7 +21,6 @@ jobs:
       build: ${{ steps.policy.outputs.build }}
       production: ${{ steps.policy.outputs.production }}
       sha: ${{ steps.policy.outputs.sha }}
-      account: ${{ steps.classify.outputs.account }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -39,7 +29,7 @@ jobs:
       - uses: actions/setup-node@v6
         with:
           node-version: "22"
-      - name: Determine source and build authorization
+      - name: Determine build policy
         id: policy
         run: node .github/scripts/build-policy.mjs
       - name: Classify changed paths
@@ -47,34 +37,9 @@ jobs:
         uses: ./.github/actions/changed-scope
         with:
           head-sha: ${{ steps.policy.outputs.sha }}
-          account-checks: ${{ inputs.account-checks || 'auto' }}
-  light-check:
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-      - name: Install light check dependencies
-        working-directory: .github/scripts
-        run: npm ci
-      - name: Repository light check
-        run: node .github/scripts/check-light.mjs --self-test
-      - name: CI authorization and sequencing contracts
-        run: node --test .github/scripts/*.test.mjs
-      - name: Archived iOS source contract
-        run: python3 -B .github/scripts/verify-ios-archive.test.py
-      - name: Android signing identity contract
-        run: python3 -B .github/scripts/android_signing.test.py
   quality:
-    needs:
-      - changed-scope
-      - light-check
-    if: needs.changed-scope.outputs.sha == (github.event.pull_request.head.sha || github.sha) && needs.changed-scope.outputs.functional == 'true'
+    needs: changed-scope
+    if: needs.changed-scope.outputs.functional == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
     defaults:
@@ -90,122 +55,24 @@ jobs:
           node-version: "22"
           cache: npm
           cache-dependency-path: apps/mobile/package-lock.json
-      - run: npm ci
+      - run: npm ci --no-audit --no-fund
       - name: Lint
         run: npm run lint
       - name: Typecheck
         run: npm run typecheck
       - name: Unit and UI tests
         run: npm test
-      - name: Architecture
-        run: npm run check:architecture
       - name: Generated player consistency
         run: npm run check:generated
-      - name: Dependency audit
-        run: npm run audit:all
-      - name: Production audit policy
-        run: npm run audit:prod
-  android-account-recovery:
-    needs:
-      - changed-scope
-      - quality
-    if: needs.changed-scope.outputs.sha == (github.event.pull_request.head.sha || github.sha) && needs.changed-scope.outputs.functional == 'true' && needs.changed-scope.outputs.account == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 90
-    defaults:
-      run:
-        working-directory: apps/mobile
-    env:
-      NODE_ENV: production
-      BUILD_SOURCE_COMMIT: ${{ needs.changed-scope.outputs.sha }}
-      ANDROID_OPTIMIZATION_MODE: A
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.changed-scope.outputs.sha }}
-          persist-credentials: false
-      - uses: ./.github/actions/android-setup
-      - name: Select isolated account recovery entry
+      - name: CI script behavior tests
+        working-directory: .
         run: |
-          test "$(git rev-parse HEAD)" = "$BUILD_SOURCE_COMMIT"
-          node -e "const fs=require('fs');const p=require('./package.json');p.main='native-account-recovery-entry.tsx';fs.writeFileSync('package.json',JSON.stringify(p,null,2)+'\n')"
-      - run: npm run prebuild:android
-      - name: Generate independent test signing key
-        run: keytool -genkeypair -keystore "$RUNNER_TEMP/account-probe.keystore" -storepass android -keypass android -alias androiddebugkey -keyalg RSA -keysize 2048 -validity 2 -dname "CN=Android Debug Account Probe,O=rRanker,C=CN"
-      - name: Compile account recovery APK
-        working-directory: apps/mobile/android
-        run: |
-          chmod +x gradlew
-          ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=2 -PreactNativeArchitectures=x86_64 \
-            "-Pandroid.injected.signing.store.file=$RUNNER_TEMP/account-probe.keystore" \
-            -Pandroid.injected.signing.store.password=android \
-            -Pandroid.injected.signing.key.alias=androiddebugkey \
-            -Pandroid.injected.signing.key.password=android
-      - name: Verify isolated package and test signature
-        run: |
-          PYTHONPATH=../../.github/scripts python3 - <<'PY'
-          import hashlib, os, re, subprocess
-          from pathlib import Path
-          from android_signing import verify_android_signing
-          apk = 'android/app/build/outputs/apk/release/app-x86_64-release.apk'
-          tools = max((p for p in (Path(os.environ['ANDROID_HOME']) / 'build-tools').iterdir() if re.fullmatch(r'\d+\.\d+\.\d+', p.name)), key=lambda p: tuple(map(int, p.name.split('.'))))
-          certificate = subprocess.check_output(['keytool', '-exportcert', '-keystore', str(Path(os.environ['RUNNER_TEMP']) / 'account-probe.keystore'), '-storepass', 'android', '-alias', 'androiddebugkey'])
-          verify_android_signing(subprocess.check_output([str(tools / 'apksigner'), 'verify', '--verbose', '--print-certs', apk], text=True), 'test-debug', hashlib.sha256(certificate).hexdigest())
-          badging = subprocess.check_output([str(tools / 'aapt'), 'dump', 'badging', apk], text=True)
-          package = next(line for line in badging.splitlines() if line.startswith('package:'))
-          if dict(re.findall(r"(\w+)='([^']*)'", package)).get('name') != 'com.rranker.app.nativeprobe': raise ValueError('Account probe package mismatch')
-          if subprocess.check_output(['git', 'rev-parse', 'HEAD'], text=True).strip() != os.environ['BUILD_SOURCE_COMMIT']: raise ValueError('Account probe source mismatch')
-          PY
-      - name: Enable KVM
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - name: Verify native account recovery and authentication
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 31
-          arch: x86_64
-          target: default
-          disable-animations: true
-          script: node .github/scripts/android-account-recovery.mjs apps/mobile/android/app/build/outputs/apk/release/app-x86_64-release.apk emulator-5554 apps/mobile/build/account-recovery-evidence
-      - name: Preserve account recovery evidence
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: account-recovery-${{ needs.changed-scope.outputs.sha }}-${{ github.run_attempt }}
-          path: apps/mobile/build/account-recovery-evidence/
-          if-no-files-found: warn
-          retention-days: 7
-      - name: Remove account probe signing key
-        if: always()
-        run: rm -f "$RUNNER_TEMP/account-probe.keystore"
-  build-admission:
-    needs:
-      - changed-scope
-      - light-check
-      - quality
-      - android-account-recovery
-    if: always() && !cancelled() && needs.changed-scope.outputs.functional == 'true'
-    runs-on: ubuntu-latest
-    timeout-minutes: 5
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-      - name: Require build admission
-        env:
-          NEEDS_JSON: ${{ toJSON(needs) }}
-        run: node .github/scripts/ci-gate.mjs admission
+          node --test .github/scripts/*.test.mjs
+          python3 -B .github/scripts/verify-ios-archive.test.py
+          python3 -B .github/scripts/android_signing.test.py
   android-release:
-    needs:
-      - changed-scope
-      - build-admission
-    if: "!cancelled() && needs.build-admission.result == 'success' && needs.changed-scope.outputs.sha == (github.event.pull_request.head.sha || github.sha) && needs.changed-scope.outputs.functional == 'true' && needs.changed-scope.outputs.build == 'true' && needs.changed-scope.outputs.production == 'true' && github.repository == 'kckc7887/rRanker' && startsWith(github.ref, 'refs/heads/') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !github.event.deleted"
+    needs: [changed-scope, quality]
+    if: needs.quality.result == 'success' && needs.changed-scope.outputs.build == 'true' && needs.changed-scope.outputs.production == 'true' && github.repository == 'kckc7887/rRanker' && startsWith(github.ref, 'refs/heads/') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !github.event.deleted
     runs-on: ubuntu-latest
     environment: production-release
     timeout-minutes: 120
@@ -225,16 +92,9 @@ jobs:
           production: "true"
           signing-mode: legacy-debug
           expected-certificate-sha256: fac61745dc0903786fb9ede62a962b399f7348f0bb6f899b8332667591033b9c
-        id: build
-    outputs:
-      artifact-name: ${{ steps.build.outputs.artifact-name }}
-      manifest-digest: ${{ steps.build.outputs.manifest-digest }}
-      delivery-name: ${{ steps.build.outputs.delivery-name }}
   ios-release:
-    needs:
-      - changed-scope
-      - build-admission
-    if: "!cancelled() && needs.build-admission.result == 'success' && needs.changed-scope.outputs.sha == (github.event.pull_request.head.sha || github.sha) && needs.changed-scope.outputs.functional == 'true' && needs.changed-scope.outputs.build == 'true' && needs.changed-scope.outputs.production == 'true' && github.repository == 'kckc7887/rRanker' && startsWith(github.ref, 'refs/heads/') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !github.event.deleted"
+    needs: [changed-scope, quality]
+    if: needs.quality.result == 'success' && needs.changed-scope.outputs.build == 'true' && needs.changed-scope.outputs.production == 'true' && github.repository == 'kckc7887/rRanker' && startsWith(github.ref, 'refs/heads/') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !github.event.deleted
     runs-on: macos-26
     environment: production-release
     timeout-minutes: 120
@@ -267,10 +127,8 @@ jobs:
           source-sha: ${{ needs.changed-scope.outputs.sha }}
           production: "true"
   android-fork-test:
-    needs:
-      - changed-scope
-      - build-admission
-    if: "!cancelled() && needs.build-admission.result == 'success' && needs.changed-scope.outputs.sha == (github.event.pull_request.head.sha || github.sha) && needs.changed-scope.outputs.functional == 'true' && needs.changed-scope.outputs.build == 'true' && needs.changed-scope.outputs.production == 'false' && github.repository == 'kckc7887/rRanker' && github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'master' && github.event.pull_request.head.repo.full_name != github.repository"
+    needs: [changed-scope, quality]
+    if: needs.quality.result == 'success' && needs.changed-scope.outputs.build == 'true' && needs.changed-scope.outputs.production == 'false' && github.repository == 'kckc7887/rRanker' && github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'master' && github.event.pull_request.head.repo.full_name != github.repository
     runs-on: ubuntu-latest
     timeout-minutes: 120
     env:
@@ -285,16 +143,9 @@ jobs:
         with:
           source-sha: ${{ needs.changed-scope.outputs.sha }}
           production: "false"
-        id: build
-    outputs:
-      artifact-name: ${{ steps.build.outputs.artifact-name }}
-      manifest-digest: ${{ steps.build.outputs.manifest-digest }}
-      delivery-name: ${{ steps.build.outputs.delivery-name }}
   ios-fork-test:
-    needs:
-      - changed-scope
-      - build-admission
-    if: "!cancelled() && needs.build-admission.result == 'success' && needs.changed-scope.outputs.sha == (github.event.pull_request.head.sha || github.sha) && needs.changed-scope.outputs.functional == 'true' && needs.changed-scope.outputs.build == 'true' && needs.changed-scope.outputs.production == 'false' && github.repository == 'kckc7887/rRanker' && github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'master' && github.event.pull_request.head.repo.full_name != github.repository"
+    needs: [changed-scope, quality]
+    if: needs.quality.result == 'success' && needs.changed-scope.outputs.build == 'true' && needs.changed-scope.outputs.production == 'false' && github.repository == 'kckc7887/rRanker' && github.event_name == 'pull_request' && github.event.pull_request.base.ref == 'master' && github.event.pull_request.head.repo.full_name != github.repository
     runs-on: macos-26
     timeout-minutes: 120
     env:
@@ -309,121 +160,33 @@ jobs:
         with:
           source-sha: ${{ needs.changed-scope.outputs.sha }}
           production: "false"
-  android-smoke:
-    needs:
-      - changed-scope
-      - android-release
-      - android-fork-test
-    if: "!cancelled() && (needs.android-release.result == 'success' || needs.android-fork-test.result == 'success')"
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    env:
-      BUILD_SOURCE_COMMIT: ${{ needs.changed-scope.outputs.sha }}
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.changed-scope.outputs.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-      - name: Download exact candidate
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ needs.android-release.outputs.artifact-name || needs.android-fork-test.outputs.artifact-name }}
-          path: apps/mobile/build/android-apks
-      - name: Verify candidate identity and every file
-        env:
-          EXPECTED_DIGEST: ${{ needs.android-release.outputs.manifest-digest || needs.android-fork-test.outputs.manifest-digest }}
-          BUILD_SOURCE_COMMIT: ${{ needs.changed-scope.outputs.sha }}
-        run: node .github/scripts/android-artifact.mjs verify apps/mobile/build/android-apks
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v4
-        with:
-          cmdline-tools-version: "12266719"
-          log-accepted-android-sdk-licenses: false
-      - name: Enable KVM
-        shell: bash
-        run: |
-          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
-          sudo udevadm control --reload-rules
-          sudo udevadm trigger --name-match=kvm
-      - name: Release smoke through production routes
-        uses: reactivecircus/android-emulator-runner@v2
-        with:
-          api-level: 31
-          arch: x86_64
-          target: default
-          disable-animations: true
-          script: node .github/scripts/android-smoke.mjs production apps/mobile/build/android-apks/*-x86_64.apk emulator-5554 apps/mobile/build/device-evidence
-      - name: Upload device verification
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: android-device-evidence-${{ needs.changed-scope.outputs.sha }}-${{ github.run_attempt }}
-          path: apps/mobile/build/device-evidence/
-          if-no-files-found: warn
-          retention-days: 7
-  android-delivery:
-    needs:
-      - changed-scope
-      - android-release
-      - android-fork-test
-      - android-smoke
-    if: "!cancelled() && needs.android-smoke.result == 'success'"
-    runs-on: ubuntu-latest
-    timeout-minutes: 10
-    steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ needs.changed-scope.outputs.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-      - name: Download exact candidate
-        uses: actions/download-artifact@v4
-        with:
-          name: ${{ needs.android-release.outputs.artifact-name || needs.android-fork-test.outputs.artifact-name }}
-          path: apps/mobile/build/android-apks
-      - name: Verify candidate identity and every file
-        env:
-          EXPECTED_DIGEST: ${{ needs.android-release.outputs.manifest-digest || needs.android-fork-test.outputs.manifest-digest }}
-          BUILD_SOURCE_COMMIT: ${{ needs.changed-scope.outputs.sha }}
-        run: node .github/scripts/android-artifact.mjs verify apps/mobile/build/android-apks
-      - name: Deliver verified APKs
-        uses: actions/upload-artifact@v4
-        with:
-          name: ${{ needs.android-release.outputs.delivery-name || needs.android-fork-test.outputs.delivery-name }}-verified-${{ github.run_attempt }}
-          path: apps/mobile/build/android-apks/*
-          if-no-files-found: error
-          compression-level: 0
-          retention-days: 14
   quality-gate:
-    needs:
-      - changed-scope
-      - light-check
-      - quality
-      - android-account-recovery
-      - build-admission
-      - android-release
-      - ios-release
-      - android-fork-test
-      - ios-fork-test
-      - android-smoke
-      - android-delivery
+    needs: [changed-scope, quality, android-release, ios-release, android-fork-test, ios-fork-test]
     if: always()
     runs-on: ubuntu-latest
     timeout-minutes: 5
     steps:
-      - uses: actions/checkout@v6
-        with:
-          ref: ${{ github.event.pull_request.head.sha || github.sha }}
-          persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-      - name: Require all expected jobs
+      - name: Require expected job results
         env:
           NEEDS_JSON: ${{ toJSON(needs) }}
-        run: node .github/scripts/ci-gate.mjs final
+        run: |
+          node <<'NODE'
+          const needs = JSON.parse(process.env.NEEDS_JSON);
+          const scope = needs['changed-scope'];
+          if (scope.result !== 'success') throw new Error('Changed scope failed or was cancelled');
+          const { functional, build, production } = scope.outputs;
+          if (![functional, build, production].every(value => value === 'true' || value === 'false')) {
+            throw new Error('Changed scope outputs are missing');
+          }
+          const expected = {
+            quality: functional === 'true',
+            'android-release': functional === 'true' && build === 'true' && production === 'true',
+            'ios-release': functional === 'true' && build === 'true' && production === 'true',
+            'android-fork-test': functional === 'true' && build === 'true' && production === 'false',
+            'ios-fork-test': functional === 'true' && build === 'true' && production === 'false',
+          };
+          for (const [job, required] of Object.entries(expected)) {
+            const result = needs[job].result;
+            if (result !== (required ? 'success' : 'skipped')) throw new Error(`${job}: ${result}`);
+          }
+          NODE

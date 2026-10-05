@@ -1,4 +1,4 @@
-/** 纯函数：供 RN 壳与单元测试共用，避免拉取 react-native。 */
+
 
 import { createChartPreviewInjectors } from '@/features/chart-preview-shared/chart-preview-inject-factory';
 
@@ -26,19 +26,9 @@ const phigrosChartPreviewInjectors = createChartPreviewInjectors<PhigrosChartPre
   }),
 });
 
-export function buildPhigrosChartPreviewConfigJson(config: PhigrosChartPreviewConfig): string {
-  return phigrosChartPreviewInjectors.buildConfigJson(config);
-}
 
-export function buildPhigrosChartPreviewConfigScript(config: PhigrosChartPreviewConfig): string {
-  return phigrosChartPreviewInjectors.buildConfigScript(config);
-}
 
-export function buildPhigrosChartPreviewInjectedJavaScript(config: PhigrosChartPreviewConfig): string {
-  return phigrosChartPreviewInjectors.buildInjectedJavaScript(config);
-}
 
-/** 把配置脚本写入 HTML 模板（file:// 下比 injectedJavaScript 更可靠）。 */
 export function applyPhigrosChartPreviewConfigToHtml(html: string, config: PhigrosChartPreviewConfig): string {
   return phigrosChartPreviewInjectors.applyConfigToHtml(html, config);
 }

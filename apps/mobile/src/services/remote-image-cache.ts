@@ -3,6 +3,7 @@ import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Directory, File } from 'expo-file-system';
 import { Image, type ImageRef, type ImageSource } from 'expo-image';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
+import { Platform } from 'react-native';
 import { COMPRESSED_IMAGE_CACHE_ROOT } from '@/features/storage-management/fs-storage';
 
 export type RemoteImageCacheProfile = 'thumbnail' | 'artwork';
@@ -97,12 +98,7 @@ const inflight = createInflightGuard<string>();
 let temporarySequence = 0;
 
 export function supportsCompressedRemoteImageCache(): boolean {
-  const imageClass = Image as typeof Image | undefined;
-  const loadAsync = imageClass?.loadAsync as (typeof Image.loadAsync & { _isMockFunction?: boolean }) | undefined;
-  const fileClass = File as typeof File | undefined;
-  return typeof loadAsync === 'function'
-    && loadAsync._isMockFunction !== true
-    && typeof fileClass?.downloadFileAsync === 'function';
+  return Platform.OS !== 'web';
 }
 
 function normalizeHeaders(headers: Record<string, string> | undefined): Record<string, string> | undefined {
@@ -172,7 +168,7 @@ async function loadManifest(): Promise<CacheState> {
   let activeGameId: string | null = null;
   let gameLastUsed = new Map<string, number>();
   if (manifestFile.exists) {
-    // An unreadable index says nothing about ownership; retain every cached file until a successful read.
+    /** 读取失败时保留缓存文件。 */
     const text = await manifestFile.text();
     try {
       const parsed = JSON.parse(text) as Partial<CacheManifest>;
@@ -249,7 +245,7 @@ function queueManifestWrite(): void {
   manifestWriteTimer = setTimeout(() => {
     manifestWriteTimer = null;
     manifestWriteQueue = manifestWriteQueue.then(persistManifest, persistManifest);
-    // Observe timer-started failures immediately; explicit flush still receives the original rejection.
+    /** 定时写入先接住拒绝；flush 仍返回原失败。 */
     void manifestWriteQueue.catch(() => undefined);
   }, 1000);
 }
@@ -469,7 +465,7 @@ function releaseSharedObject(value: { release?: () => void } | null | undefined)
   try {
     value?.release?.();
   } catch {
-    // 原生对象可能已经随视图卸载释放。
+    /** 原生引用可能已随视图释放。 */
   }
 }
 
@@ -620,16 +616,4 @@ export async function clearCompressedRemoteImageCache(): Promise<void> {
   const root = COMPRESSED_IMAGE_CACHE_ROOT();
   if (root.exists) root.delete();
   manifestPromise = null;
-}
-
-export function resetRemoteImageCacheForTests(): void {
-  cacheGeneration += 1;
-  gameGenerations.clear();
-  if (manifestWriteTimer) clearTimeout(manifestWriteTimer);
-  manifestWriteTimer = null;
-  manifestPromise = null;
-  manifestWriteQueue = Promise.resolve();
-  inflight.clear();
-  activeTransforms = 0;
-  transformWaiters.splice(0);
 }

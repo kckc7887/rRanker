@@ -1,8 +1,3 @@
-/**
- * Rizline 谱面确认资源定位（纯领域）：
- * 按当前发布曲库与清单 files 解析唯一谱面 JSON 和 m4a 的路径、URL 与完整性字段。
- * 资源下载、字节校验、超时、重试与取消编排在 services/rizline-chart-preview-resources。
- */
 
 import {
   RIZLINE_DIFFICULTIES,
@@ -33,14 +28,12 @@ export type RizlineChartPreviewBundle = {
   music: RizlineChartPreviewAsset;
 };
 
-/** 纯解析所需的最小发布清单形状；服务层的 RizlineRelease 结构上满足它。 */
 export type RizlineChartPreviewReleaseFile = { path: string; size: number; sha256: string };
 export type RizlineChartPreviewRelease = {
   snapshot: RizlineCatalog;
   files: readonly RizlineChartPreviewReleaseFile[];
 };
 
-/** 资源字节读取端口形状；默认实现由服务层的资源端口提供。 */
 export type RizlineChartPreviewResourceRead = (
   asset: RizlineChartPreviewAsset,
   index: number,

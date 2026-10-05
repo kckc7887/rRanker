@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -39,7 +39,7 @@ function requireTime(value: number): number {
 }
 
 function timingBeatLength(raw: string, inherited: boolean): number {
-  // Legacy difficulty points allow literal NaN to disable ticks at normal velocity.
+  /** osu! 时间点中的 NaN 表示正常速度但禁用 tick。 */
   if (inherited && raw.trim().toLowerCase() === 'nan') return NaN;
   const value = requireFinite(parseFloat(raw), 'BeatLength');
   if (!inherited && value <= 0) throw new Error('谱面节拍长度无效');
@@ -66,12 +66,6 @@ function sliderDimensions(parts: string[]): { slides: number; length: number } {
   return { slides, length };
 }
 
-/**
- * Parses `.osu` beatmap text into structured data: metadata, difficulty settings,
- * timing points (time-sorted, uninherited-first at equal times), breaks, and
- * time-sorted hit objects (mania hold notes land in the separate `maniaHolds` list).
- * Coordinates and slider lengths are in osu!pixels; all times are milliseconds.
- */
 export function parseBeatmap(text: string): BeatmapData {
   const data: BeatmapData = {
     mode: 0,
@@ -99,7 +93,6 @@ export function parseBeatmap(text: string): BeatmapData {
   const lines = text.split(/\r?\n/);
   let section = '';
 
-  // First non-empty line of an .osu file is `osu file format vN`.
   for (const rawLine of lines) {
     const line = rawLine.trim();
     if (line === '') continue;
@@ -108,9 +101,8 @@ export function parseBeatmap(text: string): BeatmapData {
     break;
   }
 
-  // Older .osu file formats (pre-v8) omit ApproachRate; osu! stable falls back
-  // to OverallDifficulty in that case.  Track whether AR was explicitly set so
-  // we can apply the fallback after the Difficulty section is fully parsed.
+  /** pre-v8 .osu 缺少 AR 时按 OD 处理。 */
+
   let arExplicit = false;
 
   for (const rawLine of lines) {
@@ -136,8 +128,8 @@ export function parseBeatmap(text: string): BeatmapData {
           if (m === 0 || m === 1 || m === 2 || m === 3) data.mode = m;
         }
         else if (key === 'StackLeniency') {
-          // `parseFloat(val) || 0.7` would clobber an explicit 0 (falsy) — maps
-          // that disable stacking via `StackLeniency:0` need that to survive.
+          /** StackLeniency 的显式 0 表示禁用堆叠。 */
+
           const v = parseFloat(val);
           if (!isNaN(v)) data.stackLeniency = v;
         }
@@ -173,8 +165,8 @@ export function parseBeatmap(text: string): BeatmapData {
         break;
       }
       case 'Events': {
-        // Only break rows are consumed here. Event rows: `type,startTime,...`.
-        // Break is type `2` (numeric) or `Break` (string form). Both are valid.
+        /** 休息段接受类型 2 或 Break。 */
+
         const parts = line.split(',');
         if (parts.length < 3) break;
         const kind = (parts[0] ?? '').trim();
@@ -188,11 +180,8 @@ export function parseBeatmap(text: string): BeatmapData {
       }
       case 'TimingPoints': {
         const parts = line.split(',');
-        // Minimum: time + beatLength.  Old format versions (< v7) have only 2–5
-        // fields and have no inherited (SV) points, so parts[6] defaults to '1'
-        // (uninherited) via the ?? fallback below — which is correct.
-        // Format: time,beatLength,meter,sampleSet,sampleIndex,volume,uninherited,effects
-        //         [0]  [1]        [2]   [3]        [4]         [5]    [6]         [7]
+        /** pre-v7 时间点没有 SV 字段，缺项按 uninherited 处理。 */
+
         if (parts.length < 2) break;
         const time = parseInt(parts[0] ?? '0', 10);
         const meter = parseInt(parts[2] ?? '4', 10);
@@ -200,8 +189,8 @@ export function parseBeatmap(text: string): BeatmapData {
         const beatLength = timingBeatLength(parts[1] ?? '0', uninherited === 0);
         requireTime(time);
         const effects = parseInt(parts[7] ?? '0', 10);
-        // Sample volume (field 5): default 100 when absent/blank, clamped 0–100
-        // (matches lazer's BindableInt range). Volume 0 is valid (near-mute).
+        /** 时间点音量 0 有效；缺省为 100。 */
+
         const rawVol = parseInt(parts[5] ?? '', 10);
         const volume = Number.isFinite(rawVol) ? Math.max(0, Math.min(100, rawVol)) : 100;
         const tp: TimingPoint = {
@@ -304,9 +293,8 @@ export function parseBeatmap(text: string): BeatmapData {
           };
           obj = spinner;
         } else if (typeFlags & 128) {
-          // Mania hold note: `x,y,time,type,hitSound,endTime:normalSet:additionSet:index:volume:filename`.
-          // The endTime + sample share parts[5] separated by ':' (unlike spinner which uses ',').
-          // Holds go into the parallel maniaHolds bucket so the std HitObject union stays narrow.
+          /** mania 长押的结束时间与音色位于同一冒号分隔字段。 */
+
           const tailRaw = parts[5] ?? '';
           const colon = tailRaw.indexOf(':');
           const endTime = requireTime(parseInt(colon === -1 ? tailRaw : tailRaw.slice(0, colon), 10));
@@ -330,7 +318,7 @@ export function parseBeatmap(text: string): BeatmapData {
   }
   if (data.sliderMultiplier <= 0 || data.sliderTickRate <= 0) throw new Error('谱面滑条倍率无效');
 
-  // At equal times, uninherited (BPM) must precede inherited (SV) or sliders compute too slow.
+  /** 同时间先处理 BPM 再处理 SV，否则滑条速度错误。 */
   data.timingPoints.sort((a, b) => {
     if (a.time !== b.time) return a.time - b.time;
     if (!a.inherited && b.inherited) return -1;
@@ -338,7 +326,7 @@ export function parseBeatmap(text: string): BeatmapData {
     return 0;
   });
 
-  // Stable sort preserves file order for 2B notelock and combo numbering.
+  /** 保留同时间音符的文件顺序，供 notelock 与 combo 使用。 */
   data.hitObjects.sort((a, b) => a.time - b.time);
 
   return data;

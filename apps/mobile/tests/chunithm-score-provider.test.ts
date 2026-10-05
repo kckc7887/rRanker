@@ -1,6 +1,4 @@
-import type { ResourceRepository } from '@/repositories/resource-repository';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
-import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
 
 const session = {
   mode: 'lxns-oauth',
@@ -199,39 +197,4 @@ describe('ChunithmScoreProvider', () => {
     await pending;
   });
 
-  it('falls back to the latest valid account snapshot on a later network failure', async () => {
-    const cached = {
-      player,
-      scores: [scores[0]],
-      source: {
-        kind: 'lxns' as const,
-        label: '落雪咖啡屋',
-        updatedAt: '2026-07-27T00:00:00Z',
-        isStale: false,
-      },
-    };
-    const repository: ResourceRepository = {
-      getResource: async <T>(_key: string, schemaVersion: number) => (
-        schemaVersion === 1 ? cached as T : null
-      ),
-      saveResource: async () => undefined,
-      deleteResource: async () => undefined,
-    };
-    const provider = {
-      getPlayer: vi.fn().mockRejectedValue(new Error('network')),
-      getScores: vi.fn().mockRejectedValue(new Error('network')),
-      getBests: vi.fn().mockRejectedValue(new Error('network')),
-    } as unknown as ChunithmScoreProvider;
-
-    const result = await new ChunithmPersonalService(
-      provider,
-      repository as never,
-      'chunithm:lxns:1',
-    ).refresh();
-
-    expect(result.status).toBe('failed');
-    expect(result.value?.bests).toEqual({ bests: [], selections: [], new_bests: [] });
-    expect(result.value?.source).toMatchObject({ isStale: true, kind: 'lxns', label: '落雪咖啡屋' });
-    expect(result.value?.player?.name).toBe('中二玩家');
-  });
 });

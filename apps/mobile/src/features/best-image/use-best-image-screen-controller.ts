@@ -9,7 +9,6 @@ import { useBestImagePreview } from './use-best-image-preview';
 import { useBestImageExport } from './use-best-image-export';
 export type { BestImageScreenControllerConfig, BestImageScreenControllerRuntime } from './best-image-controller-types';
 
-/** Own the generated HTML files; disposal always follows the corresponding source generation. */
 export function usePreparedBestImageSources(
   htmlPages: readonly string[] | null,
   directory?: Directory | null,
@@ -50,7 +49,6 @@ export function useBestImageScreenController<TType extends string, TPrefs, TPick
   return { width, setWidth, type, setType, quantityText, setQuantityText, picker, setPicker, ...preferences, ...preview, ...exporting };
 }
 
-/** 控制器返回值中供骨架透传的类型别名（pageHeights / previewStates 的 setter 形态）。 */
 export type BestImagePageHeightsSetter = Dispatch<SetStateAction<Record<string, number>>>;
 export type BestImagePreviewStatesSetter = Dispatch<SetStateAction<Record<string, BestImageWebViewState>>>;
 export type BestImageCaptureRef = RefObject<View | null>;

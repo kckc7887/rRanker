@@ -2,8 +2,7 @@ import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
-import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
-import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
+import { FilterChipFrame, NeutralChip, FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
 import type { RangeBounds } from '@/components/game-content/RangeSelector';
 import { MetricFilterSelectRows, MetricFilterRangeRow, MetricFilterChoiceRow, type MetricFilterSelectRow } from '@/components/game-content/MetricFilterRows';
 import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
@@ -271,7 +270,6 @@ export function LevelChip({ level, active, onPress }: {
   );
 }
 
-// Phigros 专属样式：难度/评价芯片、Kyou 标签触发器；其余公共样式见 game-content/FilterShell。
 const styles = StyleSheet.create({
   chipScroll: { flexGrow: 0, flexShrink: 1 },
   levelChip: { minHeight: 30, borderRadius: 6, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },

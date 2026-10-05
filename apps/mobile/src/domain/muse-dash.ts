@@ -5,12 +5,8 @@ export type MuseDashDifficultySlot = 'all' | 0 | 1 | 2 | 3 | 4;
 export type MuseDashDlcFilter = 'all' | string;
 export type MuseDashAchievementFilter = 'all' | 'fc' | 'ap';
 
-/**
- * Muse Dash 社区查分（https://api.musedash.moe）上游契约。
- * 每个字段保持上游原始语义，不与其他游戏合并；展示转换由本游戏适配器完成。
- */
+/** 上游：https://api.musedash.moe。 */
 
-/** /albums 中单曲的多语言名称/作者；部分旧曲可能缺失。 */
 const MuseDashLocalizedSchema = z.object({
   name: z.string().optional(),
   author: z.string().optional(),
@@ -22,9 +18,9 @@ export const MuseDashSongSchema = z.object({
   author: z.string().min(1),
   cover: z.string().optional(),
   bpm: z.string().optional(),
-  /** 上游个别条目含 null 谱师，保留原样由适配器过滤。 */
+  /** 上游谱师条目可能为 null。 */
   levelDesigner: z.array(z.string().nullable()).optional().default([]),
-  /** 5 档难度，索引 0-4；字符串 "0" 表示该档不存在，部分特殊档位为非数字（如 "L"/"?"）。 */
+  /** 难度索引为 0–4；字符串 0 表示不存在，L/? 是特殊档位。 */
   difficulty: z.array(z.string()).length(5).default(['0', '0', '0', '0', '0']),
   ChineseS: MuseDashLocalizedSchema.optional(),
   ChineseT: MuseDashLocalizedSchema.optional(),
@@ -42,7 +38,6 @@ export const MuseDashAlbumSchema = z.object({
 
 export const MuseDashAlbumsResponseSchema = z.record(z.string(), MuseDashAlbumSchema);
 
-/** /diffdiff 条目：[uid, difficulty, level, absolute, relative] */
 export const MuseDashDiffdiffEntrySchema = z.tuple([
   z.string(),
   z.number(),
@@ -53,7 +48,7 @@ export const MuseDashDiffdiffEntrySchema = z.tuple([
 
 export const MuseDashDiffdiffResponseSchema = z.array(MuseDashDiffdiffEntrySchema);
 
-/** /ce：角色（c）与精灵（e）的多语言名称表，数组下标即 character_uid / elfin_uid。 */
+/** /ce 数组下标对应 character_uid / elfin_uid。 */
 export const MuseDashCeResponseSchema = z.object({
   c: z.record(z.string(), z.array(z.string())),
   e: z.record(z.string(), z.array(z.string())),
@@ -86,7 +81,6 @@ export const MuseDashPlayerSchema = z.object({
   }).passthrough(),
 }).passthrough();
 
-/** /rank/:uid/:difficulty/:platform/:id 单曲原始成绩明细（成就判定需要 miss 数）。 */
 export const MuseDashPlayDetailSchema = z.object({
   play: z.object({
     acc: z.number().optional(),
@@ -104,7 +98,7 @@ export const MuseDashPlayDetailSchema = z.object({
   now: z.number().optional(),
 }).passthrough();
 
-/** /search/:string 返回 [[昵称, user_id], ...]。 */
+/** 搜索结果为 [昵称, user_id]。 */
 export const MuseDashSearchResponseSchema = z.array(z.tuple([z.string(), z.string()]));
 
 export type MuseDashSong = z.infer<typeof MuseDashSongSchema>;
@@ -116,14 +110,13 @@ export type MuseDashPlay = z.infer<typeof MuseDashPlaySchema>;
 export type MuseDashPlayer = z.infer<typeof MuseDashPlayerSchema>;
 export type MuseDashPlayDetail = z.infer<typeof MuseDashPlayDetailSchema>;
 
-/** 成绩展示输入：成绩 + 曲库 join 结果 + 角色/精灵名称（可能缺失）+ 社区定数。 */
 export type MuseDashRawScore = {
   play: MuseDashPlay;
   song: MuseDashSong | null;
   albumTitle: string;
   characterName: string | null;
   elfinName: string | null;
-  /** 社区定数（/diffdiff relative），无定数时为 undefined。 */
+  /** 社区定数取 /diffdiff 的 relative。 */
   constant?: number;
 };
 
@@ -147,7 +140,6 @@ export type MuseDashRandomChartFilters = {
   achievement: 'all' | 'fc' | 'ap';
 };
 
-/** Muse Dash 缓存快照：独立命名空间 `musedash:`，不复用其他游戏快照。 */
 export type MuseDashAlbumsSnapshot = { data: MuseDashAlbumsResponse; source: DataSource };
 export type MuseDashCeSnapshot = { data: MuseDashCeResponse; source: DataSource };
 export type MuseDashDiffdiffSnapshot = { data: MuseDashDiffdiffEntry[]; source: DataSource };
@@ -177,7 +169,6 @@ export function museDashPlayDetailCacheKey(
   return `musedash:detail:${userId}:${uid}:${difficulty}:${platform}`;
 }
 
-/** ChineseS 优先的歌曲名；缺失时回退原始字段。 */
 export function museDashSongTitle(song: MuseDashSong): string {
   return song.ChineseS?.name?.trim() || song.name;
 }
@@ -186,14 +177,12 @@ export function museDashSongAuthor(song: MuseDashSong): string {
   return song.ChineseS?.author?.trim() || song.author;
 }
 
-/** 定数表索引：`${uid}:${difficulty}` → 条目。 */
 export function museDashDiffdiffMap(entries: readonly MuseDashDiffdiffEntry[]): Map<string, MuseDashDiffdiffEntry> {
   const map = new Map<string, MuseDashDiffdiffEntry>();
   for (const entry of entries) map.set(`${entry[0]}:${entry[1]}`, entry);
   return map;
 }
 
-/** 中文名优先的角色/精灵名称；uid 非数字或越界时返回 null。 */
 export function museDashCharacterName(ce: MuseDashCeResponse, characterUid: string | undefined): string | null {
   if (!characterUid) return null;
   const names = ce.c.ChineseS;
@@ -212,10 +201,9 @@ export function museDashElfinName(ce: MuseDashCeResponse, elfinUid: string | und
   return name ? name : null;
 }
 
-/** 难度档位标签（Muse Dash 5 档：EASY/HARD/MASTER/HIDDEN/EX）。 */
 export const MUSE_DASH_DIFFICULTY_LABELS = ['EASY', 'HARD', 'MASTER', 'HIDDEN', 'EX'] as const;
 
-/** 成就：请求到的 miss 数为 0 时，ACC 100 为 AP、其余为 FC；有 miss 或无数据时为无。 */
+/** 只有确认 miss=0 才能判定 AP/FC。 */
 export type MuseDashAchievement = 'AP' | 'FC';
 
 export function resolveMuseDashAchievement(acc: number, miss: number | undefined): MuseDashAchievement | null {
@@ -223,35 +211,24 @@ export function resolveMuseDashAchievement(acc: number, miss: number | undefined
   return acc >= 100 ? 'AP' : 'FC';
 }
 
-/**
- * 成就筛选依赖的单曲 miss 明细状态：
- * pending=请求尚未返回（可以等待），failed=请求最终失败（重试前不会再变化），
- * unknown=已取到但上游没有 miss 字段（无法判定，不会再变化），known=已确认。
- * 只有 known 才可用于判定 AP/FC。
- */
+/** pending 可等待；failed 需重试；unknown 无 miss 字段，不能判定成就。 */
 export type MuseDashMissDetail =
   | { status: 'pending' }
   | { status: 'failed' }
   | { status: 'unknown' }
   | { status: 'known'; miss: number };
 
-/**
- * 明细表取值里的失败哨兵：查询最终失败，与 unknown（已取到但上游没有 miss 字段）分开，
- * 让页面能提示并可针对失败项单独重试。只由查询层写入，判定一律经 museDashMissDetail。
- */
 export const MUSE_DASH_MISS_DETAIL_FAILED = 'failed';
 
-/** 明细表取值：数字为已确认 miss，null 为请求未返回，undefined 为上游无该字段，失败见失败哨兵。 */
+/** 数字为 miss 数，null 为未返回，undefined 为上游缺失；失败使用哨兵。 */
 export type MuseDashMissDetailValue = number | null | undefined | typeof MUSE_DASH_MISS_DETAIL_FAILED;
 
-/** 明细表取值 → 四态；pending 与 failed 都不会自行变成结果，重试才可能改变 failed。 */
 export function museDashMissDetail(value: MuseDashMissDetailValue): MuseDashMissDetail {
   if (value === MUSE_DASH_MISS_DETAIL_FAILED) return { status: 'failed' };
   if (value === null) return { status: 'pending' };
   return value === undefined ? { status: 'unknown' } : { status: 'known', miss: value };
 }
 
-/** 成就筛选选项与文案（仿 maimai-filters 的 MAIMAI_FC_ACHIEVEMENTS 模式）。 */
 export const MUSE_DASH_ACHIEVEMENT_FILTERS: readonly { value: 'all' | 'fc' | 'ap'; label: string }[] = [
   { value: 'all', label: '全部' },
   { value: 'fc', label: 'FC' },
@@ -262,7 +239,6 @@ export function museDashAchievementFilterLabel(filter: 'all' | 'fc' | 'ap'): str
   return MUSE_DASH_ACHIEVEMENT_FILTERS.find((item) => item.value === filter)?.label ?? '全部';
 }
 
-/** 成就筛选（仿 maimai-filters 纯函数模式）：全部恒真；FC 需 miss 为 0（含 AP）；AP 需 miss 为 0 且 ACC 100。 */
 export function matchesMuseDashAchievementFilter(
   acc: number,
   miss: number | undefined,
@@ -273,7 +249,6 @@ export function matchesMuseDashAchievementFilter(
   return filter === 'ap' ? acc >= 100 : true;
 }
 
-/** 定数下限/上限输入解析（仿 parseConstantBound）；非法或空输入返回 undefined。 */
 export function parseMuseDashConstantBound(input: string): number | undefined {
   const text = input.trim();
   if (!text) return undefined;
@@ -281,7 +256,6 @@ export function parseMuseDashConstantBound(input: string): number | undefined {
   return Number.isFinite(value) && value >= 0 ? value : undefined;
 }
 
-/** 定数区间匹配：constant 落在 [min, max] 内（输入为空端不限制）。 */
 export function matchesMuseDashConstantRange(constant: number, minInput: string, maxInput: string): boolean {
   const min = parseMuseDashConstantBound(minInput);
   const max = parseMuseDashConstantBound(maxInput);
@@ -290,7 +264,6 @@ export function matchesMuseDashConstantRange(constant: number, minInput: string,
   return true;
 }
 
-/** ACC 下限/上限输入解析（仿 parseAchievementBound，喵斯 ACC 上限 100）。 */
 export function parseMuseDashAccBound(input: string): number | undefined {
   const text = input.trim();
   if (!text) return undefined;
@@ -298,7 +271,6 @@ export function parseMuseDashAccBound(input: string): number | undefined {
   return Number.isFinite(value) && value >= 0 && value <= 100 ? value : undefined;
 }
 
-/** ACC 区间匹配：acc 落在 [min, max] 内（输入为空端不限制）。 */
 export function matchesMuseDashAccRange(acc: number, minInput: string, maxInput: string): boolean {
   const min = parseMuseDashAccBound(minInput);
   const max = parseMuseDashAccBound(maxInput);
@@ -307,7 +279,6 @@ export function matchesMuseDashAccRange(acc: number, minInput: string, maxInput:
   return true;
 }
 
-/** 难度档筛选：曲库歌曲（存在该档）或成绩（难度等于该档）。 */
 export function matchesMuseDashDifficultySlotFilter(
   availableSlots: readonly boolean[],
   difficulty: number,
@@ -316,12 +287,10 @@ export function matchesMuseDashDifficultySlotFilter(
   return slot === 'all' || (slot === difficulty && (availableSlots[difficulty] ?? true));
 }
 
-/** DLC（专辑）筛选：专辑标题等于所选或未选。 */
 export function matchesMuseDashDlcFilter(albumTitle: string, filter: 'all' | string): boolean {
   return filter === 'all' || albumTitle === filter;
 }
 
-/** ACC 色阶：100 金、95 银、90 红、80 蓝、70 绿、60 灰、更低紫。 */
 export function museDashAccTone(acc: number): string {
   if (acc >= 100) return 'acc-gold';
   if (acc >= 95) return 'acc-silver';
@@ -332,7 +301,6 @@ export function museDashAccTone(acc: number): string {
   return 'acc-purple';
 }
 
-/** 评价：90 以上 S、80 以上 A、70 B、60 C、更低 D；S 按 ACC 分金银红。 */
 export function museDashGrade(acc: number): 'S' | 'A' | 'B' | 'C' | 'D' {
   if (acc >= 90) return 'S';
   if (acc >= 80) return 'A';
@@ -341,7 +309,6 @@ export function museDashGrade(acc: number): 'S' | 'A' | 'B' | 'C' | 'D' {
   return 'D';
 }
 
-/** 排名标签：#1 彩、<10 金、<50 蓝、<100 绿；排名缺失或 >=100 时无。 */
 export function museDashRankBadge(rank: number): { label: string; tone: string } | null {
   if (!Number.isInteger(rank) || rank <= 0) return null;
   if (rank === 1) return { label: '#1', tone: 'rank-rainbow' };
@@ -351,12 +318,10 @@ export function museDashRankBadge(rank: number): { label: string; tone: string }
   return null;
 }
 
-/** 封面图 URL（musedash.moe 静态资源），无封面时返回 null。 */
 export function museDashCoverUrl(cover: string | undefined): string | null {
   return cover ? `https://musedash.moe/covers/${encodeURIComponent(cover)}.webp` : null;
 }
 
-/** 把 albums 响应展开为带专辑信息的歌曲列表，保持上游顺序。 */
 export function museDashSongsFromAlbums(albums: MuseDashAlbumsResponse): { song: MuseDashSong; albumTitle: string; albumTag?: string }[] {
   return Object.entries(albums).flatMap(([albumKey, album]) =>
     Object.values(album.music).map((song) => ({
@@ -367,7 +332,6 @@ export function museDashSongsFromAlbums(albums: MuseDashAlbumsResponse): { song:
   );
 }
 
-/** 歌曲 uid → 带专辑信息歌曲的索引（成绩 join 曲库用）。 */
 export function museDashSongsByUid(
   albums: MuseDashAlbumsResponse,
 ): Map<string, { song: MuseDashSong; albumTitle: string }> {
@@ -401,17 +365,7 @@ export function buildMuseDashRawScores(
   });
 }
 
-export function sortMuseDashRawScores(scores: readonly MuseDashRawScore[]): MuseDashRawScore[] {
-  const rating = (value: number | undefined | null) => typeof value === 'number' && Number.isFinite(value) ? value : null;
-  return [...scores].sort((left, right) => {
-    const a = rating(left.play.sum);
-    const b = rating(right.play.sum);
-    if (a === null || b === null) return a === b ? 0 : a === null ? 1 : -1;
-    return b - a;
-  });
-}
-
-/** 全曲库谱面池；成绩仅作为可选 join，不会在默认筛选下排除未游玩谱面。 */
+/** 默认抽取包含未游玩谱面。 */
 export function buildMuseDashRandomCharts(
   albums: MuseDashAlbumsResponse,
   diffdiff: readonly MuseDashDiffdiffEntry[],
@@ -456,7 +410,6 @@ export function filterMuseDashRandomCharts(
     if (scoreFilterActive && !chart.score) return false;
     if (chart.score && !matchesMuseDashAccRange(chart.score.play.acc, filters.accMin, filters.accMax)) return false;
     if (filters.achievement !== 'all' && chart.score) {
-      // 只有已确认的 miss 明细才能判定 AP/FC；pending、failed 与 unknown 一律不算已满足。
       const detail = museDashMissDetail(missByChart.get(chart.key));
       if (detail.status !== 'known') return false;
       if (!matchesMuseDashAchievementFilter(chart.score.play.acc, detail.miss, filters.achievement)) return false;
@@ -465,11 +418,7 @@ export function filterMuseDashRandomCharts(
   });
 }
 
-/**
- * 成就筛选所需的 miss 明细是否仍在请求中：抽取流程据此等待，避免用未确认明细的候选。
- * unknown（已取到但无 miss 字段）与 failed（请求最终失败）都不会再自行变化，
- * 不构成等待理由；失败项要靠页面上的重试恢复。
- */
+/** unknown 和 failed 不会自行更新，不能继续等待。 */
 export function museDashAchievementDetailsPending(
   charts: readonly MuseDashRandomChart[],
   filters: MuseDashRandomChartFilters,

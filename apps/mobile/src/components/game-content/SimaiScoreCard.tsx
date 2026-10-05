@@ -6,7 +6,6 @@ import { useAppTheme } from '@/theme/app-theme';
 import { GameScoreCard, type ScoreCardArtwork } from './GameScoreCard';
 import { simaiScoreCardStyles as styles } from './SimaiScoreCardStyles';
 
-/** 舞萌成绩卡的共同结构。适配层只提供指标、徽章和真实成就。 */
 export function SimaiScoreCard({ presentation, artwork, achievements, sideMetric, difficultyBadge, chartTypeBadge,
   supplementalMetric, rate, fc, fs, badgesTestID, interactive = true,
 }: {

@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type {
   MuseDashAchievementFilter,
@@ -78,7 +79,17 @@ const { Store: MuseDashRandomChartsPreferencesStore } =
   createPreferencesStore<MuseDashRandomChartsPreferences>({
     storeKey: STORE_KEY,
     defaults: defaultMuseDashRandomChartsPreferences,
-    parse: parseMuseDashRandomChartsPreferences,
+    parse: value => parseMuseDashRandomChartsPreferences(z.object({
+      schemaVersion: z.literal(1),
+      count: z.number(),
+      difficultySlot: z.union([z.number(), z.literal('all')]),
+      dlc: z.string(),
+      constantMin: z.string(),
+      constantMax: z.string(),
+      accMin: z.string(),
+      accMax: z.string(),
+      achievement: z.string(),
+    }).parse(value)),
     toStored: (preferences) => ({
       schemaVersion: 1,
       ...parseMuseDashRandomChartsPreferences({ schemaVersion: 1, ...preferences }),

@@ -1,10 +1,9 @@
 import type { OsuBestScore } from './osu';
 import { normalizeNumericInput } from '@/utils/numeric-input';
 
-/** 「无模组」筛选特殊值：与任何具体模组互斥（互斥由筛选栏勾选回调保证）。 */
+/** NM 与具体模组互斥。 */
 export const OSU_MOD_FILTER_NONE = 'NM';
 
-/** 成绩页筛选状态口径（useOsuRecordsFilter 的筛选字段子集）。 */
 export type OsuRecordsFilters = {
   keyword: string;
   mods: readonly string[];
@@ -23,7 +22,6 @@ function finiteBound(value: string): number | undefined {
   return Number.isFinite(parsed) ? parsed : Number.NaN;
 }
 
-/** 数值区间匹配：空为不限、非法输入 false、min>max false、闭区间比较（同 Phira matchesPhiraRange 口径）。 */
 export function matchesOsuRange(value: number, minInput: string, maxInput: string): boolean {
   const min = finiteBound(minInput);
   const max = finiteBound(maxInput);
@@ -32,12 +30,7 @@ export function matchesOsuRange(value: number, minInput: string, maxInput: strin
   return (min === undefined || value >= min) && (max === undefined || value <= max);
 }
 
-/**
- * 成绩页本地过滤（Top 100 客户端筛，不排序、保持上游 pp 序）：
- * - keyword：标题/艺术家/谱面名任一包含即命中（大小写不敏感）；
- * - mods：含 NM 时仅无模组成绩命中；否则 AND（每个选中 acronym 均在成绩 mods 中）；
- * - 达成率输入为百分比（98~99.5），与 accuracy*100 比较；难度为星数；PP 缺失在设置 pp 范围时排除。
- */
+/** 筛选保持上游 PP 顺序；准确率输入为百分数。 */
 export function filterOsuBestScores(
   values: readonly OsuBestScore[],
   filters: OsuRecordsFilters,

@@ -1,17 +1,10 @@
 import type { DataSource } from '@/domain/models';
 import { DataSourceSchema } from '@/domain/schemas';
 import { z } from 'zod';
-import { cachedSnapshotSource } from '@/domain/refresh-result';
-import type { ResourceMaintenanceRepository } from '@/repositories/resource-repository';
+import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
-/** 验证缓存的归属和内容；坏行不作为可用快照，存储 I/O 由调用方原样传播。 */
 export function cacheSourceSchema<K extends DataSource['kind']>(kind: K) {
   return DataSourceSchema.extend({ kind: z.literal(kind) });
-}
-
-export function parseCachedSnapshot<T>(stored: unknown, kind: DataSource['kind'], dataSchema: z.ZodType<T>): { data: T; source: DataSource } | null {
-  const parsed = z.object({ data: dataSchema, source: cacheSourceSchema(kind) }).safeParse(stored);
-  return parsed.success ? { ...parsed.data, source: cachedSnapshotSource(parsed.data.source) } : null;
 }
 
 const resourceWriteGenerations = new Map<string, number>();
@@ -19,15 +12,12 @@ const resourceWriteListeners = new Map<string, Set<() => void>>();
 export function resourceWriteGeneration(scope: string): number {
   return resourceWriteGenerations.get(scope) ?? 0;
 }
-/** Invalidates detached cache-first refreshes as well as active queries. */
 export function invalidateResourceWrites(scope: string): void {
   resourceWriteGenerations.set(scope, (resourceWriteGenerations.get(scope) ?? 0) + 1);
   for (const notify of [...(resourceWriteListeners.get(scope) ?? [])]) {
-    // A failed cancellation must not prevent other tasks or the cache clear itself.
-    try { notify(); } catch { /* Write guards still reject invalidated publication. */ }
+    try { notify(); } catch {}
   }
 }
-/** Cancels idle work synchronously when its scope is cleared. Always unsubscribe on completion. */
 export function subscribeResourceWrites(scope: string, onInvalidate: () => void): () => void {
   let listeners = resourceWriteListeners.get(scope);
   if (!listeners) {
@@ -43,7 +33,6 @@ export function subscribeResourceWrites(scope: string, onInvalidate: () => void)
     }
   };
 }
-/** 在任何 await 之前捕获账号写入资格。删除或重建同一 ID 后，旧任务不能再提交。 */
 export function captureAccountWrites(
   accounts: readonly { id: string; gameId: string }[],
 ): (accountId: string) => void {
@@ -73,7 +62,6 @@ export function captureResourceWrites(scope: string, signal?: AbortSignal, accou
   };
 }
 
-/** 构造缓存快照的 source：kind/label 由各游戏传入，updatedAt 记录本次拉取时间。 */
 export function snapshotSource(
   source: Pick<DataSource, 'kind' | 'label'>,
   updatedAt = new Date().toISOString(),
@@ -81,7 +69,6 @@ export function snapshotSource(
   return { ...source, updatedAt, isStale: false };
 }
 
-/** 构造缓存快照；source 的 updatedAt 记录本次拉取时间，供缓存命中时展示来源与过期标。 */
 export function makeSnapshot<T>(
   data: T,
   source: Pick<DataSource, 'kind' | 'label'>,
@@ -90,15 +77,11 @@ export function makeSnapshot<T>(
   return { data, source: snapshotSource(source, updatedAt) };
 }
 
-/** in-flight 去重守卫：并发调用同一 key 的加载共享一次网络请求，请求结束（成功或失败）后移除。 */
 export interface InflightGuard<K> {
   dedupe<T>(key: K, loader: () => Promise<T>, signal?: AbortSignal): Promise<T>;
-  /** Each consumer cancels independently; only the last cancellation aborts the shared loader. */
+  /** 仅最后一个消费者取消时中止共享请求。 */
   share<T>(key: K, loader: (signal: AbortSignal) => Promise<T>, signal?: AbortSignal): Promise<T>;
-  /** Abort shared work and forget in-flight entries when the owning cache is cleared. */
   clear(): void;
-  /** 测试用：清空去重表。 */
-  resetForTests(): void;
 }
 
 export function createInflightGuard<K>(): InflightGuard<K> {
@@ -155,16 +138,11 @@ export function createInflightGuard<K>(): InflightGuard<K> {
       for (const entry of shared.values()) entry.controller.abort();
       shared.clear();
     },
-    resetForTests(): void { this.clear(); },
   };
 }
 
-/**
- * 按精确 key 与前缀清理资源（解绑玩家时清理个人缓存，全局公开资源保留）：
- * 精确 key 无需扫描直接删除；前缀需遍历资源表匹配后一并批量删除。
- */
 export async function clearResourcesByPrefix(
-  repository: ResourceMaintenanceRepository,
+  repository: SqliteSnapshotRepository,
   targets: { keys?: readonly string[]; prefixes?: readonly string[] },
 ): Promise<void> {
   const matched = [...(targets.keys ?? [])];

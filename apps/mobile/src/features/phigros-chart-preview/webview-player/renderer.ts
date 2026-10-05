@@ -1,8 +1,4 @@
 /**
- * Phigros PGR Canvas 渲染器。
- * 固定使用内置皮肤（Tap2/Drag/Flick2/Hold2 及 HL 变体、hit.png），
- * 图集参数硬编码 hit: 6×5、普通 Hold 50/50、高亮 Hold 96/97、hitfx 1。
- *
  * 许可证：渲染语义衍生自 TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira），
  * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
@@ -23,10 +19,10 @@ const JUDGE_LINE_COLORS: Readonly<Record<string, string>> = Object.freeze({
   gold: 'rgba(255, 236, 159, 0.8823529412)',
   blue: 'rgba(180, 225, 255, 0.9215686275)',
 });
-/** 与舞萌渲染器一致：DPR=3 设备封顶 2，节省约 56% 像素。 */
+
 const MAX_DPR = 2;
 const FULLSCREEN_MIN_DPR = 1;
-/** 与舞萌渲染器一致的全屏总像素预算，避免大屏合成顶满 vsync 预算。 */
+
 const FULLSCREEN_MAX_PIXELS = 2_500_000;
 
 export type LineColorKey = 'white' | 'gold' | 'blue';

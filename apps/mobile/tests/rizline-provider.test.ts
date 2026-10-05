@@ -15,7 +15,6 @@ function token(extra = {}) {
 }
 const session: RizlineSession = { mode: 'rizline', phone, token: token(), deviceId: 'fixture-device', channelId: '1', persistable: true };
 function encrypt(value: unknown): Uint8Array {
-  // Node/OpenSSL is independent of the production noble implementation and packed-key expansion.
   const key = Buffer.from('5866617b714f2e397354477076346963533a405d5848456a727a5567715d7c51', 'hex');
   const nonce = Buffer.from('00112233445566778899aabb', 'hex');
   const cipher = createCipheriv('aes-256-gcm', key, nonce);
@@ -27,8 +26,8 @@ const jsonResponse = (value: unknown, headers?: HeadersInit) => new Response(JSO
 
 describe('Rizline authenticated save decoding', () => {
   it('matches the published NIST AES-256-GCM example 2 ciphertext and 128-bit tag', () => {
-    // NIST GCM-AES256 example 2, pages 22–23 (96-bit IV; no AAD).
-    // https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/AES_GCM.pdf
+    /** NIST GCM-AES256 示例 2，96 位 IV，无 AAD。 */
+    /** https://csrc.nist.gov/CSRC/media/Projects/Cryptographic-Standards-and-Guidelines/documents/examples/AES_GCM.pdf */
     const key = Buffer.from('feffe9928665731c6d6a8f9467308308feffe9928665731c6d6a8f9467308308', 'hex');
     const nonce = Buffer.from('cafebabefacedbaddecaf888', 'hex');
     const plaintext = Buffer.from('d9313225f88406e5a55909c5aff5269a86a7a9531534f7da2e4c303d8a318a721c3c0c95956809532fcf0e2449a6b525b16aedf5aa0de657ba637b391aafd255', 'hex');

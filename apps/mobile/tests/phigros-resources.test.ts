@@ -1,3 +1,4 @@
+import type { PhigrosChartPreviewAsset } from '@/domain/phigros-chart-preview';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PhigrosResourceService, phigrosResources } from '@/services/phigros-resources';
 import {
@@ -5,6 +6,8 @@ import {
   loadPhigrosChartPreviewVariants,
 } from '@/services/phigros-chart-preview-resources';
 import { releaseFixture } from './fixtures/phigros-release';
+
+const readResource = (asset: PhigrosChartPreviewAsset) => phigrosResources.bytes(asset.url);
 
 afterEach(() => { phigrosResources.clear(); vi.unstubAllGlobals(); });
 
@@ -15,7 +18,7 @@ describe('Phigros release transactions', () => {
     const fetcher = vi.fn(async (input) => fixture.respond(input));
     vi.stubGlobal('fetch', fetcher);
     const result = await loadPhigrosChartPreviewResources({ songId: id, difficulty: 'EZ', variantIndex },
-      new AbortController().signal);
+      new AbortController().signal, readResource);
     expect(result.bundle.chart.path).toBe(`charts/${id}.${variantIndex}/EZ.json`);
     expect(result.chart).toEqual(fixture.files[`charts/${id}.${variantIndex}/EZ.json`]);
     expect(result.bundle.music.path).toBe(`music/${id}.ogg`);
@@ -27,7 +30,7 @@ describe('Phigros release transactions', () => {
     const fixture = releaseFixture('r1', ['Song.A'], { variants: [1], variantMusic: false, music: false });
     vi.stubGlobal('fetch', vi.fn(async (input) => fixture.respond(input)));
     await expect(loadPhigrosChartPreviewResources({ songId: 'Song.A', difficulty: 'EZ', variantIndex: 1 },
-      new AbortController().signal)).rejects.toThrow(/音乐.*0/);
+      new AbortController().signal, readResource)).rejects.toThrow(/音乐.*0/);
   });
 
   it('lists numeric variants in order and loads the selected chart with its matching music', async () => {
@@ -36,11 +39,11 @@ describe('Phigros release transactions', () => {
     const target = { songId: 'Random.SobremSilentroom', difficulty: 'EZ' };
     const signal = new AbortController().signal;
     expect(await loadPhigrosChartPreviewVariants(target, signal)).toEqual([0, 1, 2, 3, 4, 5, 6]);
-    const result = await loadPhigrosChartPreviewResources({ ...target, variantIndex: 6 }, signal);
+    const result = await loadPhigrosChartPreviewResources({ ...target, variantIndex: 6 }, signal, readResource);
     expect(result.bundle.chart.path).toBe('charts/Random.SobremSilentroom.6/EZ.json');
     expect(new TextDecoder().decode(result.music)).toBe('OggSvariant6');
     delete fixture.files['music/Random.SobremSilentroom.6.ogg'];
-    await expect(loadPhigrosChartPreviewResources({ ...target, variantIndex: 6 }, signal)).rejects.toThrow();
+    await expect(loadPhigrosChartPreviewResources({ ...target, variantIndex: 6 }, signal, readResource)).rejects.toThrow();
   });
 
   it('rejects corrupt dedicated music even when shared music is available', async () => {
@@ -49,7 +52,7 @@ describe('Phigros release transactions', () => {
     const fetcher = vi.fn(async (input) => fixture.respond(input));
     vi.stubGlobal('fetch', fetcher);
     await expect(loadPhigrosChartPreviewResources({ songId: 'Song.A', difficulty: 'EZ', variantIndex: 1 },
-      new AbortController().signal)).rejects.toThrow('校验失败');
+      new AbortController().signal, readResource)).rejects.toThrow('校验失败');
     expect(fetcher.mock.calls.some(([url]) => String(url).includes('/music/Song.A.ogg'))).toBe(false);
   });
 
@@ -57,7 +60,7 @@ describe('Phigros release transactions', () => {
     const fixture = releaseFixture();
     const fetcher = vi.fn(async (input: RequestInfo | URL) => fixture.respond(input));
     vi.stubGlobal('fetch', fetcher);
-    const service = new PhigrosResourceService('https://example.com');
+    const service = new PhigrosResourceService();
     const first = await service.load();
     fetcher.mockClear();
     expect(await service.load(undefined, true)).toBe(first);
@@ -68,7 +71,7 @@ describe('Phigros release transactions', () => {
   it('replaces metadata and new songs on same-game-version republication', async () => {
     let fixture = releaseFixture();
     vi.stubGlobal('fetch', vi.fn(async (input) => fixture.respond(input)));
-    const service = new PhigrosResourceService('https://example.com');
+    const service = new PhigrosResourceService();
     const first = await service.load();
     fixture = releaseFixture('r2', ['Song.A', 'Song.New']);
     const second = await service.load(undefined, true);
@@ -81,7 +84,7 @@ describe('Phigros release transactions', () => {
     let fixture = releaseFixture();
     const calls: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input) => { calls.push(String(input)); return fixture.respond(input); }));
-    const service = new PhigrosResourceService('https://example.com');
+    const service = new PhigrosResourceService();
     const first = await service.load();
     fixture = releaseFixture('r2');
     fixture.files['catalog.json'][0] = 32;
@@ -98,16 +101,16 @@ describe('Phigros release transactions', () => {
       if (String(input).includes('catalog.json') && !String(input).includes('_retry=')) return new Response('old data');
       return fixture.respond(input);
     }));
-    expect((await new PhigrosResourceService('https://example.com').load()).catalog.songs).toHaveLength(1);
+    expect((await new PhigrosResourceService().load()).catalog.songs).toHaveLength(1);
   });
 
-  it('accepts legacy pointers without a manifest hash and rejects a wrong supplied hash', async () => {
+  it('rejects releases with a missing or incorrect manifest hash', async () => {
     const fixture = releaseFixture();
     delete (fixture.current as Partial<typeof fixture.current>).manifestSha256;
     vi.stubGlobal('fetch', vi.fn(async (input) => fixture.respond(input)));
-    await expect(new PhigrosResourceService('https://example.com').load()).resolves.toBeDefined();
+    await expect(new PhigrosResourceService().load()).rejects.toThrow();
     fixture.current.manifestSha256 = '0'.repeat(64);
-    await expect(new PhigrosResourceService('https://example.com').load()).rejects.toThrow('清单校验失败');
+    await expect(new PhigrosResourceService().load()).rejects.toThrow('清单校验失败');
   });
 
   it('a cancelled waiter does not cancel another consumer of the same request', async () => {
@@ -116,7 +119,7 @@ describe('Phigros release transactions', () => {
     const gate = new Promise<void>((resolve) => { release = resolve; });
     const fetcher = vi.fn(async (input) => { await gate; return fixture.respond(input); });
     vi.stubGlobal('fetch', fetcher);
-    const service = new PhigrosResourceService('https://example.com');
+    const service = new PhigrosResourceService();
     const controller = new AbortController();
     const first = service.load(controller.signal);
     const rejection = expect(first).rejects.toThrow('cancelled');
@@ -138,7 +141,7 @@ describe('Phigros release transactions', () => {
       if (++count === 1) { await gate; return old.respond(input); }
       return fresh.respond(input);
     }));
-    const service = new PhigrosResourceService('https://example.com');
+    const service = new PhigrosResourceService();
     const controller = new AbortController();
     const cancelled = expect(service.load(controller.signal)).rejects.toThrow();
     controller.abort();
@@ -153,14 +156,14 @@ describe('Phigros release transactions', () => {
     const fixture = releaseFixture();
     const fetcher = vi.fn(async (input) => fixture.respond(input));
     vi.stubGlobal('fetch', fetcher);
-    const service = new PhigrosResourceService('https://example.com');
+    const service = new PhigrosResourceService();
     await expect(service.withRelease(async (release) => service.asset(release, 'music/Missing.ogg'))).rejects.toThrow('缺失');
     expect(fetcher.mock.calls.filter(([url]) => String(url).includes('current.json'))).toHaveLength(2);
   });
 
   it('forces metadata recovery even when a concurrent unchanged-pointer check is in flight', async () => {
     const fixture = releaseFixture();
-    const service = new PhigrosResourceService('https://example.com');
+    const service = new PhigrosResourceService();
     vi.stubGlobal('fetch', vi.fn(async (input) => fixture.respond(input)));
     await service.load();
     let resume!: () => void;
@@ -189,9 +192,11 @@ describe('Phigros release transactions', () => {
     const fixture = releaseFixture();
     const requests: string[] = [];
     vi.stubGlobal('fetch', vi.fn(async (input) => { requests.push(String(input)); return fixture.respond(input); }));
+    const resourceUrls: string[] = [];
     let corrupt = true;
     const result = await loadPhigrosChartPreviewResources({ songId: 'Song.A', difficulty: 'EZ' },
       new AbortController().signal, async (asset) => {
+        resourceUrls.push(asset.url);
         const bytes = fixture.files[asset.path];
         if (corrupt) { corrupt = false; return new Uint8Array(bytes.length); }
         return bytes;
@@ -199,7 +204,20 @@ describe('Phigros release transactions', () => {
     expect(result.chart).toEqual(fixture.files['charts/Song.A.0/EZ.json']);
     expect(result.music).toEqual(fixture.files['music/Song.A.ogg']);
     expect(requests.filter((url) => url.includes('current.json'))).toHaveLength(2);
-    expect(result.bundle.chart.url).toContain('_retry=');
+    expect(resourceUrls.some(url => url.includes('_retry='))).toBe(true);
+  });
+
+  it('stops resource preparation when the file reader is cancelled', async () => {
+    const fixture = releaseFixture();
+    vi.stubGlobal('fetch', vi.fn(async input => fixture.respond(input)));
+    const controller = new AbortController();
+    const reason = new Error('cancelled');
+    await expect(loadPhigrosChartPreviewResources({ songId: 'Song.A', difficulty: 'EZ' },
+      controller.signal, async asset => {
+        controller.abort(reason);
+        return fixture.files[asset.path];
+      })).rejects.toBe(reason);
+    expect(phigrosResources.peek()?.current.resourceVersion).toBe('r1');
   });
 
   it.each(['missing manifest entry', '404'])('keeps a usable catalog when music is unavailable: %s', async (failure) => {
@@ -208,7 +226,7 @@ describe('Phigros release transactions', () => {
     const fetcher = vi.fn(async (input) => fixture.respond(input));
     vi.stubGlobal('fetch', fetcher);
     await expect(loadPhigrosChartPreviewResources({ songId: 'Song.A', difficulty: 'EZ' },
-      new AbortController().signal)).rejects.toThrow();
+      new AbortController().signal, readResource)).rejects.toThrow();
     expect(phigrosResources.peek()?.catalog.songs).toHaveLength(1);
     expect(fetcher.mock.calls.filter(([url]) => String(url).includes('current.json'))).toHaveLength(2);
   });
@@ -216,10 +234,12 @@ describe('Phigros release transactions', () => {
   it('encodes special song IDs as object keys rather than URL queries or regex syntax', async () => {
     const id = 'A+B.[x]#?%';
     const fixture = releaseFixture('r1', [id]);
-    vi.stubGlobal('fetch', vi.fn(async (input) => fixture.respond(input)));
-    const result = await loadPhigrosChartPreviewResources({ songId: id, difficulty: 'EZ' }, new AbortController().signal);
-    expect(new URL(result.bundle.chart.url).hash).toBe('');
-    expect(decodeURIComponent(new URL(result.bundle.chart.url).pathname)).toContain(id);
+    const urls: string[] = [];
+    vi.stubGlobal('fetch', vi.fn(async (input) => { urls.push(String(input)); return fixture.respond(input); }));
+    const result = await loadPhigrosChartPreviewResources({ songId: id, difficulty: 'EZ' }, new AbortController().signal, readResource);
+    const chartUrl = new URL(urls.find(url => url.includes('/charts/'))!);
+    expect(chartUrl.hash).toBe('');
+    expect(decodeURIComponent(chartUrl.pathname)).toContain(id);
     expect(result.chart).toEqual(fixture.files[`charts/${id}.0/EZ.json`]);
   });
 });

@@ -10,7 +10,6 @@ import {
 } from '@/domain/phira';
 import type { DataSource } from '@/domain/models';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import type { AtomicResourceRepository, ResourceMaintenanceRepository } from '@/repositories/resource-repository';
 import { cacheSourceSchema, snapshotSource } from '@/services/snapshot-cache-utils';
 import { z } from 'zod';
 
@@ -34,30 +33,19 @@ const noteSchema = z.object({
   unavailableReason: z.string().optional(), source: sourceSchema,
 });
 const pageSchema = z.object({ data: PhiraChartPageSchema, source: sourceSchema });
-function validated<T>(value: unknown, schema: z.ZodType<T>): T | null {
-  const parsed = schema.safeParse(value);
-  return parsed.success ? parsed.data : null;
-}
-
 export function phiraSource(updatedAt = new Date().toISOString()): DataSource {
   return snapshotSource({ kind: 'phira', label: 'Phira 社区公开数据' }, updatedAt);
 }
 
 export class PhiraCache {
-  constructor(private readonly repository: Pick<AtomicResourceRepository, 'getResource' | 'saveResource' | 'updateResource'> & Pick<ResourceMaintenanceRepository, 'clearResources'> = new SqliteSnapshotRepository()) {}
+  private readonly repository = new SqliteSnapshotRepository();
   async loadPlayer(id: number): Promise<PhiraPlayerSnapshot | null> {
-    const value = validated(await this.repository.getResource(phiraPlayerCacheKey(id), PHIRA_PLAYER_SCHEMA_VERSION), playerSchema);
-    return value?.player.id === id ? value : null;
+    return this.repository.getResource(phiraPlayerCacheKey(id), PHIRA_PLAYER_SCHEMA_VERSION,
+      playerSchema.refine(value => value.player.id === id));
   }
   savePlayer(id: number, value: PhiraPlayerSnapshot, assertCurrent?: () => void) { return this.repository.saveResource(phiraPlayerCacheKey(id), PHIRA_PLAYER_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent); }
-  async loadBests(id: number): Promise<PhiraBestSnapshot | null> { return validated(await this.repository.getResource(phiraBestCacheKey(id), PHIRA_BEST_SCHEMA_VERSION), bestSchema); }
+  async loadBests(id: number): Promise<PhiraBestSnapshot | null> { return this.repository.getResource(phiraBestCacheKey(id), PHIRA_BEST_SCHEMA_VERSION, bestSchema); }
   saveBests(id: number, value: PhiraBestSnapshot, assertCurrent?: () => void) { return this.repository.saveResource(phiraBestCacheKey(id), PHIRA_BEST_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent); }
-  /**
-   * 合并查询到的 bests 到账号快照。
-   * 提交走仓储的原子读改写，并发的总览刷新与按谱面查询不会互相覆盖；
-   * 同一谱面并发提交时按提交顺序后者获胜。
-   * values 为空表示本次没有成功项：只读回既有快照（可能不存在），不写入、不推进 updatedAt。
-   */
   async mergeBests(id: number, values: readonly PhiraQueriedBest[], assertCurrent?: () => void): Promise<PhiraBestSnapshot | null> {
     if (values.length === 0) {
       const previous = await this.loadBests(id);
@@ -65,21 +53,21 @@ export class PhiraCache {
       return previous;
     }
     return this.repository.updateResource<PhiraBestSnapshot>(phiraBestCacheKey(id), PHIRA_BEST_SCHEMA_VERSION, (previous) => {
-      const items = { ...(validated(previous, bestSchema)?.items ?? {}) };
+      const items = { ...(bestSchema.safeParse(previous).data?.items ?? {}) };
       for (const item of values) items[String(item.chart.id)] = item;
       const source = phiraSource();
       return { value: { items, source }, updatedAt: source.updatedAt };
     }, assertCurrent);
   }
   async loadChart(id: number): Promise<PhiraChartSnapshot | null> {
-    const value = validated(await this.repository.getResource(phiraChartCacheKey(id), PHIRA_CHART_SCHEMA_VERSION), chartSchema);
-    return value?.chart.id === id ? value : null;
+    return this.repository.getResource(phiraChartCacheKey(id), PHIRA_CHART_SCHEMA_VERSION,
+      chartSchema.refine(value => value.chart.id === id));
   }
   saveChart(id: number, value: PhiraChartSnapshot, assertCurrent?: () => void) { return this.repository.saveResource(phiraChartCacheKey(id), PHIRA_CHART_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent); }
-  async loadNotes(id: number): Promise<PhiraNoteSnapshot | null> { return validated(await this.repository.getResource(phiraNoteCacheKey(id), PHIRA_NOTE_SCHEMA_VERSION), noteSchema); }
+  async loadNotes(id: number): Promise<PhiraNoteSnapshot | null> { return this.repository.getResource(phiraNoteCacheKey(id), PHIRA_NOTE_SCHEMA_VERSION, noteSchema); }
   saveNotes(id: number, value: PhiraNoteSnapshot, assertCurrent?: () => void) { return this.repository.saveResource(phiraNoteCacheKey(id), PHIRA_NOTE_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent); }
   async loadPage(status: PhiraChartStatus, page: number, search = '') {
-    return validated(await this.repository.getResource(phiraPageCacheKey(status, page, search), PHIRA_PAGE_SCHEMA_VERSION), pageSchema);
+    return this.repository.getResource(phiraPageCacheKey(status, page, search), PHIRA_PAGE_SCHEMA_VERSION, pageSchema);
   }
   savePage(status: PhiraChartStatus, page: number, search: string, value: { data: PhiraChartPage; source: DataSource }, assertCurrent?: () => void) {
     return this.repository.saveResource(phiraPageCacheKey(status, page, search), PHIRA_PAGE_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent);

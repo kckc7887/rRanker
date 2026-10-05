@@ -1,10 +1,3 @@
-/**
- * 谱面确认 WebView 配置注入四件套泛型工厂（公共路径）：
- * 各游戏注入模块以全局变量名、HTML 占位注释与配置序列化器参数化，
- * 产出 config JSON、config script、injectedJavaScript 与 applyConfigToHtml，
- * 各游戏通过配置注入资源和主题。
- */
-
 import { hexToRgb, normalizeAccentHex } from '../../theme/accent-color';
 
 export function chartPreviewAppearanceScript(appearance: { dark: boolean; accent: string }): string {
@@ -22,18 +15,16 @@ export function chartPreviewAppearanceScript(appearance: { dark: boolean; accent
   return `(function(){var root=document.documentElement;root.dataset.theme=${JSON.stringify(appearance.dark ? 'dark' : 'light')};var values=${JSON.stringify(values)};Object.keys(values).forEach(function(key){root.style.setProperty(key,values[key]);});})();true;`;
 }
 
-export type ChartPreviewInjectSpec<TConfig> = {
-  /** WebView 内挂载配置的 window 全局变量名。 */
+type ChartPreviewInjectSpec<TConfig> = {
+
   globalVar: string;
-  /** HTML 模板中的配置占位注释。 */
+
   placeholder: string;
-  /** 配置对象转 JSON 字符串（字段顺序与默认值由各游戏定义）。 */
+
   serialize: (config: TConfig) => string;
 };
 
-export type ChartPreviewInjectors<TConfig> = {
-  buildConfigJson: (config: TConfig) => string;
-  buildConfigScript: (config: TConfig) => string;
+type ChartPreviewInjectors<TConfig> = {
   buildInjectedJavaScript: (config: TConfig) => string;
   applyConfigToHtml: (html: string, config: TConfig) => string;
 };
@@ -49,10 +40,7 @@ export function createChartPreviewInjectors<TConfig>(
     `window.${globalVar}={...(window.${globalVar}||{}),...${buildConfigJson(config)}};true;`;
   const applyConfigToHtml = (html: string, config: TConfig): string => {
     const script = buildConfigScript(config);
-    if (html.includes(placeholder)) {
-      return html.replace(placeholder, () => script);
-    }
-    return script + html;
+    return html.replace(placeholder, () => script);
   };
-  return { buildConfigJson, buildConfigScript, buildInjectedJavaScript, applyConfigToHtml };
+  return { buildInjectedJavaScript, applyConfigToHtml };
 }

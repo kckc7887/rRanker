@@ -1,11 +1,10 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { InteractionManager } from 'react-native';
-import {
-  resetStorageManagementScreenCacheForTests,
-  StorageManagementScreen,
-} from '@/screens/StorageManagementScreen';
+import * as React from 'react';
 import type { StorageUsageReport } from '@/features/storage-management/storage-usage';
+const mockReactNative = jest.requireActual<typeof import('react-native')>('react-native');
+let StorageManagementScreen: typeof import('@/screens/StorageManagementScreen').StorageManagementScreen;
 
 const mockNotify = jest.fn();
 const mockClear = jest.fn(async (_ids: unknown) => ({
@@ -67,7 +66,11 @@ jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
 
 describe('StorageManagementScreen', () => {
   beforeEach(() => {
-    resetStorageManagementScreenCacheForTests();
+    jest.isolateModules(() => {
+      jest.doMock('react', () => React);
+      jest.doMock('react-native', () => mockReactNative);
+      StorageManagementScreen = jest.requireActual<typeof import('@/screens/StorageManagementScreen')>('@/screens/StorageManagementScreen').StorageManagementScreen;
+    });
     mockNotify.mockClear();
     mockClear.mockReset().mockResolvedValue({ clearedIds: ['shared'], failures: [], reclaimedBytes: 2048 });
     mockSave.mockClear();

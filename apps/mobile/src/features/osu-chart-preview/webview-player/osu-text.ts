@@ -69,8 +69,8 @@ export function findArchiveResource(files: PreviewResourceMap, name: string, sou
   for (const [path, resource] of files) {
     if (normalizeArchivePath(path).toLowerCase() === wanted) return { path, resource };
   }
-  // Even a unique basename elsewhere can belong to another map. The declaring
-  // .osu/.osb path already includes any archive wrapper, so never guess a suffix.
+  /** 按声明的 .osu/.osb 路径定位资源，不能猜测其它目录的同名文件。 */
+
   return undefined;
 }
 

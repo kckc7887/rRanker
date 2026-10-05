@@ -60,8 +60,7 @@ async function refreshOne(input: {
       const snapshot = buildScoreSnapshot(player, rawRecords, input.catalog);
       if (input.expectedRecords?.length
         && !uploadedRecordsAreVisible(snapshot.records, input.expectedRecords)) {
-        // 严格逐条回配仅用于等待水鱼最终一致性；宴会场、曲名归一化等差异
-        // 不能推翻一次已经成功的账号读取，更不能把已写入的数据误报成同步失败。
+        /** 宴谱和曲名映射差异不应推翻已成功的读取。 */
         lastReadableSnapshot = snapshot;
         continue;
       }
@@ -85,10 +84,6 @@ async function refreshOne(input: {
   throw new Error('应用内成绩同步失败');
 }
 
-/**
- * 直接按上传目标账号读取水鱼并写入分账号快照。
- * 读取成功但尚未出现刚上传成绩时也会重试，覆盖水鱼的最终一致性窗口。
- */
 export async function refreshDivingFishAccounts(input: {
   accounts: readonly BoundAccount[];
   sessionsByAccountId: Record<string, ProviderSession | undefined>;
@@ -101,7 +96,6 @@ export async function refreshDivingFishAccounts(input: {
   const refreshed: RefreshedDivingFishAccount[] = [];
   const failed: FailedDivingFishAccountRefresh[] = [];
 
-  // 串行读取，避免多个账号同时触发水鱼限流。
   for (const account of input.accounts) {
     await input.signal?.waitUntilResumed?.();
     if (input.signal?.aborted) throw new Error('已取消');

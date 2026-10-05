@@ -39,7 +39,7 @@ export class PhiraProvider {
       signal,
       label: 'Phira',
       timeoutMs: 12_000,
-      retries: 1,
+      totalAttempts: 1,
       diagnosticScenario,
       error: statusError,
       messages: {

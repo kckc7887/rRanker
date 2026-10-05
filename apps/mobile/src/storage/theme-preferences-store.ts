@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
 import { normalizeAccentHex } from '@/theme/accent-color';
 
@@ -37,6 +38,7 @@ const ACCENTS = new Set<AppAccent>([
 export function parseThemePreferences(value: unknown): ThemePreferences {
   if (!value || typeof value !== 'object') return DEFAULT_THEME_PREFERENCES;
   const input = value as Partial<ThemePreferences> & { accent?: string; customHex?: string };
+  if (input.version !== undefined && input.version !== 3) return DEFAULT_THEME_PREFERENCES;
   const appearance = APPEARANCES.has(input.appearance as AppAppearance)
     ? input.appearance as AppAppearance
     : DEFAULT_THEME_PREFERENCES.appearance;
@@ -87,14 +89,16 @@ function normalizeRange(value: unknown, min: number, max: number, fallback: numb
 const themeStore = createPreferencesStore<ThemePreferences>({
   storeKey: STORAGE_KEY,
   defaults: () => DEFAULT_THEME_PREFERENCES,
-  parse: (value) => {
-    if (!value || typeof value !== 'object' || Array.isArray(value)) throw new Error('Unrecognized theme preference document');
-    const version = 'version' in value ? value.version : undefined;
-    if (version !== undefined && version !== 1 && version !== 2 && version !== 3) throw new Error('Unrecognized theme preference version');
-    return parseThemePreferences(value);
-  },
+  parse: value => parseThemePreferences(z.object({
+    version: z.literal(3),
+    appearance: z.enum(['system', 'light', 'dark']),
+    accent: z.custom<AppAccent>(value => ACCENTS.has(value as AppAccent)),
+    customHex: z.string(),
+    scoreCardArtworkEnabled: z.boolean(),
+    scoreCardArtworkTransparency: z.number(),
+    scoreCardArtworkBlur: z.number(),
+  }).parse(value)),
   toStored: parseThemePreferences,
-  readFailure: 'throw',
 });
 
 export const ThemePreferencesStore = themeStore.Store;

@@ -26,7 +26,6 @@ export interface OsuCatalogFilterBarProps {
   language: number;
   nsfw: boolean;
   extras: readonly OsuExtraFlag[];
-  /** 上游返回的当前用户推荐难度（星数），用于「推荐难度N★」值标签；未知时不显示数字。 */
   recommendedDifficulty: number | null;
   onCollapsedChange: (value: boolean) => void;
   onGeneralChange: (values: readonly OsuGeneralFlag[]) => void;
@@ -45,7 +44,6 @@ function filterLabel<F extends string>(
   return filters.find((item) => item.flag === flag)?.label ?? flag;
 }
 
-/** 常规组值标签：选中项「 · 」连接；「推荐难度」选中且已知星数时追加 N★（两位小数）。 */
 export function osuGeneralValueLabel(
   general: readonly OsuGeneralFlag[],
   recommendedDifficulty: number | null,
@@ -65,7 +63,6 @@ function joinedExtraLabel(extras: readonly OsuExtraFlag[]): string {
   return extras.map((flag) => filterLabel(OSU_EXTRA_FILTERS, flag)).join(' · ');
 }
 
-/** 收起态摘要：仅列生效条件（全默认时「全部」）。 */
 export function buildOsuCatalogFilterSummary({
   general,
   status,
@@ -91,11 +88,6 @@ export function buildOsuCatalogFilterSummary({
   ]);
 }
 
-/**
- * osu! 曲库筛选栏：全部选项来自 osu.ppy.sh 官方搜索接口（m 恒为当前模式，不提供任何模式控件）。
- * 六个筛选组布局三行各两个（常规+分类、流派+语言、不良内容+其他）：
- * 常规/其他用公共 FilterCheckboxList（选项带复选框、勾选即生效、无完成按钮），其余用公共 FilterAnchoredDropdown 单选。
- */
 export function OsuCatalogFilterBar({
   collapsed,
   general,
@@ -243,8 +235,7 @@ export function OsuCatalogFilterBar({
   );
 }
 
-// osu 专属样式：公共下拉/复选框列表根节点 flex:1 只在横向行容器内生效（宽度分配），
-// 每个控件必须直接放在 row 容器里（同中二评价双下拉行），不得放进纵向 cell 包裹层（flexBasis 0 会导致列容器高度塌陷、内容互相叠压）。
+/** 下拉需直接放在横向行内，避免 flexBasis: 0 压塌纵向容器。 */
 const styles = StyleSheet.create({
   pairRow: { flexDirection: 'row', alignItems: 'stretch', gap: 8 },
 });

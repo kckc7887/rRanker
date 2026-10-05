@@ -16,7 +16,7 @@ export function resolvePlaybackRange(
   }
   for (const hold of beatmap.maniaHolds) lastNoteMs = Math.max(lastNoteMs, hold.endTime);
   const startMs = Math.min(0, media.startMs, -Math.max(0, beatmap.audioLeadIn));
-  // Allow the final note's release/feedback to finish, even for a silent map.
+  /** 末尾保留松键和反馈时间，静音谱面也适用。 */
   const endMs = Math.max(lastNoteMs + 1000, songDurationMs ?? 0, media.endMs, soundEndMs, 1000);
   return { startMs, endMs, durationMs: endMs - startMs };
 }

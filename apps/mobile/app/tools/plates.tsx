@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { router, Stack, type Href, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { SymbolView } from 'expo-symbols';
@@ -19,7 +19,8 @@ import {
 import type { Plate } from '@/domain/models';
 import { usePlates } from '@/hooks/use-plates';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
-import { useSongs } from '@/hooks/use-songs';
+import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
+import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
 import { useAppTheme } from '@/theme/app-theme';
@@ -54,7 +55,7 @@ export default function PlatesToolScreen() {
   const routePlateId = parsePlateIdParam(plateIdParam);
   const plates = usePlates();
   const scores = useScoreSnapshot();
-  const songs = useSongs();
+  const songs = useDetailedCatalog();
   const activeGameId = useSession((state) => state.activeGameId);
   const pinnedPlateIds = useToolboxPins((state) => state.pinnedPlateIdsByGame[activeGameId]);
   const hydratePins = useToolboxPins((state) => state.hydrate);
@@ -89,7 +90,7 @@ export default function PlatesToolScreen() {
   );
   const songTitleById = useMemo(() => {
     const map = new Map<string, string>();
-    for (const song of songs.data ?? []) map.set(song.id, song.title);
+    for (const song of songs.data?.songs ?? []) map.set(song.id, song.title);
     return map;
   }, [songs.data]);
   const activeGroup = groups.find((group) => group.prefix === openPrefix) ?? null;
@@ -278,7 +279,7 @@ export default function PlatesToolScreen() {
               return (
                 <Pressable
                   style={({ pressed }) => [styles.song, { backgroundColor: theme.surface }, pressed && styles.pressed]}
-                  onPress={() => router.push(`/songs/${encodeURIComponent(item.songId)}` as Href)}
+                  onPress={() => router.push(detailTargetHref(encodeDetailTarget({ game: 'maimai', songId: item.songId })))}
                 >
                   <View style={styles.songCopy}>
                     <Text style={[styles.songId, { color: theme.textMuted }]}>#{item.songId}</Text>

@@ -28,7 +28,7 @@ export async function uploadRecordsToDivingFish(
         error: status => new ProviderError(status >= 500 ? 'network' : 'unknown', `水鱼上传失败（${status}）`, status >= 500),
       }, response => response.text());
     if (result.status === 'success') return { status: 'success', uploaded: records.length };
-    // 写请求的响应不确定时只核验一次；新 Provider 不复用旧在飞读取或缓存。
+    /** 写入结果未知时只查一次，不重发。 */
     try {
       await signal?.waitUntilResumed?.();
       assertUploadActive(nativeSignal);

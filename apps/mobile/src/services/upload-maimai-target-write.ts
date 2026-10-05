@@ -52,7 +52,6 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
     let status: UploadTargetResult['status'] = 'success';
     let targetSkipped = 0;
     try {
-      // 每个目标写入前复核账号是否仍有效：失效目标不发起后续写入，其他目标继续。
       input.assertAccount(target.account.id);
       input.onPhase({
         kind: 'uploading',
@@ -79,7 +78,6 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
           id: input.playerIdForLocal,
           displayName: target.account.displayName,
           rating: 0,
-          additionalRating: 0,
           source,
         }, localMapped.records, catalog);
         const assertTarget = () => {

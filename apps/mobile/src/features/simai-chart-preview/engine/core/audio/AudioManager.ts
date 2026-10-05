@@ -3,12 +3,12 @@ import { ANSWER_SOUND_BASE_OFFSET_MS } from "../../utils/constants";
 import { getAudioContextOutputTime } from "../../../../chart-preview-shared/webview-player/audioClock";
 
 const SCHEDULE_LOOKAHEAD_MS = 1500;
-// 待播源上限，达到即停止本帧调度由后续帧续上，等效自适应收缩前瞻。
+/** 待播源达到上限后由后续帧续排。 */
 const MAX_PENDING_SOURCES = 96;
-// 事件间隔小于该值视为超密段。
+/** 密集段最大间隔，单位为毫秒。 */
 const DENSE_GAP_MS = 40;
 const MIN_TICK_TAIL_MS = 30;
-// 连续超密事件达到该数量时离线烘焙成单个 AudioBuffer，整段只挂一个 source。
+/** 密集段合并成一个 AudioBuffer，减少同时挂载的音源。 */
 const MIN_RUN_EVENTS = 16;
 
 export interface AudioManagerConfig {
@@ -22,7 +22,7 @@ export interface AudioManagerConfig {
 interface ScheduledSourceEntry {
   source: AudioBufferSourceNode;
   startTime: number;
-  /** 任何 clear 都必须停止（烘焙段跨度长，残留会与重排后的段重叠） */
+  /** 长烘焙段清理时必须停止，避免与重排的段重叠。 */
   stopOnClear?: boolean;
 }
 
@@ -82,10 +82,6 @@ export function prepareAudioEvents(notes: readonly Note[] | null): PreparedAudio
   return merged;
 }
 
-/**
- * 正解音（打击音）调度器：仅负责 answer 音频的加载、准备与按谱面时刻调度播放。
- * 不持有音乐播放，也不管理 React 生命周期——音乐播放与输出时钟归 usePreviewAudio 所有。
- */
 export class AudioManager {
   private audioContext: AudioContext;
   private outputNode: AudioNode;
@@ -101,13 +97,12 @@ export class AudioManager {
   private handledEvents = new Set<string>();
   private scheduledSources = new Set<ScheduledSourceEntry>();
   private preprocessedCache = new WeakMap<readonly PreparedAudioEvent[], PreprocessedEvents>();
-  /** touch/holdEnd 开关变化时自增，烘焙缓存随之失效 */
+  /** 开关变化使烘焙缓存失效。 */
   private toggleEpoch = 0;
 
   private lastScheduledTimeMs = -Infinity;
 
   private answerSoundPath: string;
-  /** 全部正解音共享的音量节点，音量调整即时生效且省一半音频图节点。 */
   private answerGainNode: GainNode;
 
   constructor(config: AudioManagerConfig) {
@@ -167,7 +162,6 @@ export class AudioManager {
         try {
           source.disconnect();
         } catch {
-          // 忽略已经断开的 source
         }
       };
     } catch (error) {
@@ -242,7 +236,6 @@ export class AudioManager {
         try {
           source.disconnect();
         } catch {
-          // 忽略已经断开的 source
         }
       };
     } catch (error) {
@@ -359,14 +352,13 @@ export class AudioManager {
     return this.enabled;
   }
 
-  /** 开关变更后已烘焙 run 内容失效：停掉在途 run source 并清除其 handled 键，下次调度重烘重排。 */
+  /** 开关变化后停止旧烘焙段，重新生成并调度。 */
   private invalidateBakedRuns(): void {
     for (const entry of this.scheduledSources) {
       if (!entry.stopOnClear) continue;
       try {
         entry.source.stop();
       } catch {
-        // 忽略已停止的 source
       }
       this.scheduledSources.delete(entry);
     }
@@ -441,13 +433,11 @@ export class AudioManager {
       try {
         entry.source.stop();
       } catch {
-        // 忽略已经结束的 source
       }
 
       try {
         entry.source.disconnect();
       } catch {
-        // 忽略已经断开的 source
       }
 
       this.scheduledSources.delete(entry);

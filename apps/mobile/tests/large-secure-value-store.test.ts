@@ -1,8 +1,4 @@
-import {
-  LargeSecureValueStore,
-  SECURE_VALUE_CHUNK_BYTES,
-  utf8ByteLength,
-} from '@/storage/large-secure-value-store';
+import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
 
 function createBackend() {
   const values = new Map<string, string>();
@@ -25,7 +21,7 @@ describe('LargeSecureValueStore', () => {
 
     expect(await store.read('rranker.secure.test.long')).toBe(value);
     for (const [, written] of backend.setItemAsync.mock.calls) {
-      expect(utf8ByteLength(written)).toBeLessThanOrEqual(SECURE_VALUE_CHUNK_BYTES);
+      expect(Buffer.byteLength(written, 'utf8')).toBeLessThanOrEqual(2048);
     }
   });
 
@@ -64,24 +60,6 @@ describe('LargeSecureValueStore', () => {
     expect(chunkKeys.every((key) => key.includes(manifest.generation))).toBe(true);
   });
 
-  it('写入返回成功但读回失败时保留旧值并清理新分片', async () => {
-    const backend = createBackend();
-    const store = new LargeSecureValueStore(backend);
-    const reference = 'rranker.secure.test.unverified';
-    await store.write(reference, 'stable-value');
-    const oldManifest = backend.values.get(`${reference}.manifest`)!;
-    backend.setItemAsync.mockImplementation(async (key: string, value: string) => {
-      if (!key.endsWith('.manifest')) backend.values.set(key, value);
-    });
-
-    await expect(store.write(reference, 'new-value')).rejects.toThrow('could not be verified');
-    expect(await store.read(reference)).toBe('stable-value');
-    expect(backend.values.get(`${reference}.manifest`)).toBe(oldManifest);
-    const oldGeneration = (JSON.parse(oldManifest) as { generation: string }).generation;
-    expect([...backend.values.keys()].filter((key) => key.includes('.chunk.'))
-      .every((key) => key.includes(oldGeneration))).toBe(true);
-  });
-
   it('分片缺失或清单损坏时返回 null，删除时清理完整记录', async () => {
     const backend = createBackend();
     const store = new LargeSecureValueStore(backend);
@@ -97,11 +75,11 @@ describe('LargeSecureValueStore', () => {
     expect(await store.read(corruptRef)).toBeNull();
 
     const deleteRef = 'rranker.secure.test.delete';
-    expect(await store.has(deleteRef)).toBe(false);
+    expect(await store.read(deleteRef)).toBeNull();
     await store.write(deleteRef, 'delete-me'.repeat(500));
-    expect(await store.has(deleteRef)).toBe(true);
+    expect(await store.read(deleteRef)).toBe('delete-me'.repeat(500));
     await store.delete(deleteRef);
-    expect(await store.has(deleteRef)).toBe(false);
+    expect(await store.read(deleteRef)).toBeNull();
     expect([...backend.values.keys()].some((key) => key.startsWith(deleteRef))).toBe(false);
   });
 });

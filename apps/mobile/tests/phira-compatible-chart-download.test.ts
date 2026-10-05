@@ -1,4 +1,3 @@
-// Native Expo modules must be mocked before importing the download module.
 
 import JSZip from 'jszip';
 

@@ -28,7 +28,6 @@ import {
 
 const TYPES: ChartType[] = ['SD', 'DX', 'UTAGE'];
 
-/** 舞萌曲库列表：查询、筛选 Store、搜索索引与派生计算都只在这个页面内挂载。 */
 export function MaimaiCatalogScreen() {
   const query = useDetailedCatalog();
   const dxRatingChartTags = useDxRatingChartTags();

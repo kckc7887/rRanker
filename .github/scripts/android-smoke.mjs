@@ -11,7 +11,7 @@ mkdirSync(output, { recursive: true });
 const apkSha256 = createHash('sha256').update(readFileSync(apk)).digest('hex');
 const evidence = await runAndroidSmoke({ mode, apk, device: createAndroidDevice(serial), sourceSha: process.env.BUILD_SOURCE_COMMIT });
 evidence.apkSha256 = apkSha256;
-// Failure reporting must preserve the first device verdict, even if saving evidence fails.
+/** 保存证据失败时保留设备检查的原始错误。 */
 try {
   writeFileSync(join(output, 'smoke-result.json'), JSON.stringify(evidence, null, 2) + '\n');
 } catch {

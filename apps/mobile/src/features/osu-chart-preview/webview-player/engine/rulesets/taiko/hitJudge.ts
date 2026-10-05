@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -30,22 +30,6 @@ import type { TaikoSession, TaikoHit, TaikoDrumRoll, TaikoSwell } from './types'
 import type { TaikoAction, TaikoInputEvent } from './input';
 import { HIT_TARGET_CANVAS_X, HIT_TARGET_CANVAS_Y } from './Playfield';
 
-/**
- * Per-press taiko judgement.
- *
- * Invariant relied on by computeTaikoURTimeline: emits exactly one
- * non-comboIgnore result per TaikoHit (real press OR auto-miss), pushed in
- * source order. The final time-sort preserves that relative order because
- * auto-miss times (h.time + missW) are monotonic in source order.
- *
- * Also returns ghostTaps: presses that interacted with NO object — no Hit
- * within the miss window and outside every drum-roll/swell span. These carry
- * no judgement (they don't touch score/acc/combo); AudioSync plays a bare
- * don/kat for them so empty-section taps and warm-up taps are audible, the way
- * stable's drum sounds on any key press.
- */
-
-/** Output of {@link computeTaikoHitResults}: time-sorted judgements plus unmatched presses. */
 export interface TaikoJudgeResult {
   results: HitResult[];
   ghostTaps: TaikoInputEvent[];
@@ -61,12 +45,6 @@ function isLeftAction(a: TaikoAction): boolean {
   return a === 'LeftCentre' || a === 'LeftRim';
 }
 
-/**
- * Judge every input event against the session's converted objects, mirroring
- * lazer's per-press taiko rules (colour check, strong pairing, drum-roll tick
- * consumption, swell alternation, auto-miss expiry). Hit windows come from the
- * mod-adjusted `modDiff.taikoHitWindow*` values; times are milliseconds.
- */
 export function computeTaikoHitResults(
   session: TaikoSession,
   modDiff: ModDifficulty,
@@ -86,11 +64,10 @@ export function computeTaikoHitResults(
     else                            swells.push(o);
   }
 
-  // Tick window = tickInterval/2 enforces the mash-speed cap (a press can only
-  // consume the nearest unconsumed tick within half a tick interval).
+  /** 每次按键只消耗半个 tick 间隔内最近的未消耗 tick。 */
+
   const tickConsumed = drumrolls.map(() => new Set<number>());
 
-  // lastWasRim=null → no press yet; either colour can start.
   type SwellState = { lastWasRim: boolean | null; remaining: number; completed: boolean };
   const swellStates: SwellState[] = swells.map(s => ({
     lastWasRim: null,
@@ -107,9 +84,8 @@ export function computeTaikoHitResults(
       objectIndex: h.sourceIndex,
       noteId: h.noteId,
       judgement: 0,
-      // An unpressed note auto-misses at the lowest *successful* window (Ok), not Miss
-      // — lazer's `HitWindows.CanBeHit(timeOffset)` is `timeOffset <= WindowFor(Ok)`,
-      // so the note expires once the clock passes time + okW. See the okW drain below.
+      /** 未按音符在 +Ok 窗口后自动 miss。 */
+
       time: h.time + okW,
       x: HIT_TARGET_CANVAS_X, y: HIT_TARGET_CANVAS_Y,
       hitSound: h.hitSound,
@@ -118,30 +94,16 @@ export function computeTaikoHitResults(
   }
 
   let hitIdx = 0;
-  // Time of the last press that resolved a Hit. lazer's DrawableHit.OnPressed sets
-  // `pressHandledThisFrame` when a press HITS (not on a wrong-colour miss): the hit
-  // note — drawn on top, so first in the input queue — then absorbs any *other* press
-  // in the same frame, returning before it can reach the next note. So a simultaneous
-  // don+kat double can't pick off two adjacent notes; the second press is discarded.
-  // Replay frames emit all their presses at one cumulative (integer-ms) time, so a
-  // shared ev.time identifies one frame. Only a successful Hit blocks; a wrong-colour
-  // miss leaves the frame open (it consumes its own note, then propagation continues).
+  /** 一次成功判定会吸收同一回放帧的其它按键；错色 miss 不吸收。 */
+
   let lastHitTime = Number.NaN;
 
   for (let i = 0; i < inputEvents.length; i++) {
     if (eventConsumed[i]) continue;
     const ev = inputEvents[i]!;
 
-    // Absorbed: a Hit already resolved at this frame-time (see lastHitTime above).
     if (ev.time === lastHitTime) continue;
 
-    // Drain unpressed notes that lazer has already auto-missed. The expiry boundary
-    // is the Ok (lowest successful) window, NOT Miss: lazer one-sidedly auto-misses an
-    // un-hit note once `time + okW < now` (CanBeHit → false). Using missW here keeps a
-    // stale note alive ~18 ms too long, so a late press gets greedily mis-assigned to
-    // it (Miss) instead of falling through to the next note (which lazer hits) —
-    // cascading a whole dense stream a note out of phase. A press can still CONSUME a
-    // note as a Miss out to ±missW below (early side); that path is unchanged.
     while (hitIdx < hits.length && hits[hitIdx]!.time + okW < ev.time) {
       emitAutoMiss(hits[hitIdx]!);
       hitIdx++;
@@ -161,7 +123,6 @@ export function computeTaikoHitResults(
         else if (absDelta < okW)    judgement = 100;
         else                        judgement = 0;
 
-        // Strong second-key only counts if the first key was a successful hit.
         let strong = false;
         let secondHitTime = 0;
         if (h.isStrong && judgement !== 0) {
@@ -195,7 +156,7 @@ export function computeTaikoHitResults(
           result.strongSecondHitTime = secondHitTime;
         }
         results.push(result);
-        // A successful Hit (not a wrong-colour/late miss) arms frame absorption.
+
         if (judgement !== 0) lastHitTime = ev.time;
         hitIdx++;
         continue;
@@ -213,7 +174,7 @@ export function computeTaikoHitResults(
       let nearestIdx = -1;
       let nearestDist = Infinity;
       const center = (ev.time - dr.time) / dr.tickInterval;
-      // Only neighbours can be within half an interval; include both on a tie.
+
       for (let t = Math.max(0, Math.floor(center)); t <= Math.min(dr.tickCount - 1, Math.ceil(center)); t++) {
         if (consumed.has(t)) continue;
         const dist = Math.abs(ev.time - (dr.time + t * dr.tickInterval));
@@ -226,9 +187,8 @@ export function computeTaikoHitResults(
           judgement: 300,
           time: ev.time,
           x: HIT_TARGET_CANVAS_X, y: HIT_TARGET_CANVAS_Y,
-          // A tick plays don/kat by the pressed key, never the drumroll's own
-          // additions (a finish-tagged roll must not play finish on every tick).
-          // centre → normal(0), rim → clap(8). AudioSync reads this hitSound.
+          /** roll/swell 音效按实际按键颜色，忽略物件附加的 finish 音效。 */
+
           hitSound: isCentreAction(ev.action) ? 0 : 8,
           comboBreak: false,
           comboIgnore: true,
@@ -257,15 +217,14 @@ export function computeTaikoHitResults(
             judgement: 300,
             time: ev.time,
             x: HIT_TARGET_CANVAS_X, y: HIT_TARGET_CANVAS_Y,
-            // Same as drumroll ticks: ignore the spinner's additions (incl. finish)
-            // and play don/kat by the pressed key. rim → clap(8), centre → normal(0).
+
             hitSound: evRim ? 8 : 0,
             comboBreak: false,
             comboIgnore: true,
           });
           if (st.remaining <= 0) {
             st.completed = true;
-            // LargeBonus completion: strong:true distinguishes it from a per-tick result on the same objectIndex.
+            /** strong=true 区分 swell 完成奖励与其单次 tick。 */
             results.push({
               objectIndex: sw.sourceIndex,
               judgement: 300,
@@ -283,9 +242,8 @@ export function computeTaikoHitResults(
     }
     if (swMatched) continue;
 
-    // Nothing to interact with at this press: no Hit in window, no active
-    // drum-roll, no active swell. It's a ghost tap — audible in stable, scored
-    // nowhere.
+    /** 空按键只播放鼓声，不计分。 */
+
     ghostTaps.push(ev);
   }
 

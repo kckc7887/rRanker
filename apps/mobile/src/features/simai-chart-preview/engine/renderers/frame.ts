@@ -53,7 +53,7 @@ export function prepareChart(chart: Chart): PreparedChart {
     if ('hasFirework' in note && note.hasFirework) fireworks.push(note);
   }
   const index = (notes: Note[], time: (note: Note) => number): TimedNotes => {
-    // Stable sort retains original input order for simultaneous events (the last one wins).
+    /** 同时刻事件保留输入顺序，最后一项生效。 */
     const sorted = notes.filter((note) => !Number.isNaN(time(note))).sort((a, b) => time(a) - time(b));
     return { notes: sorted, times: sorted.map(time) };
   };
@@ -106,7 +106,7 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
   const latest = (events: TimedNotes | undefined) => events?.notes[completedAt(events.times, now) - 1];
   const firework = latest(prepared.fireworks);
   const touchOverlaps = new Map<string | number, Note[]>();
-  // Touch visibility still evaluates full SV semantics, including zero and negative velocity.
+  /** Touch 可见性也受零速、负速 SV 影响。 */
   for (const n of prepared.touches) {
     if (n.timingMs >= now && -elapsed(n) < arcadeTouchDurations(config.hiSpeed * n.hiSpeed / (config.alwaysKeepHiSpeed ? config.playbackSpeed : 1)).wholeDuration) {
       const notes = touchOverlaps.get(n.position) ?? []; notes.push(n); touchOverlaps.set(n.position, notes);

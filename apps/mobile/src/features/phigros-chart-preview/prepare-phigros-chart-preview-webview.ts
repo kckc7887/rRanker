@@ -16,16 +16,12 @@ import {
 import { chartPreviewStageDirectory } from '@/features/chart-preview-shared/chart-preview-assets';
 import { readBudgetedChartDownload, pauseChartPreviewParse, CHART_PREVIEW_PARSE_YIELD_INTERVAL, throwIfChartPreviewCancelled } from '@/features/chart-preview-shared/chart-preview-resource-budget';
 
-// Metro 静态资源模块编号只能在运行时 require 取得（模块级常量），
-// 改写为 import 需补齐 .html/.bundle 的模块声明且无行为收益。
- 
 const HTML_MODULE = require('../../../assets/phigros-chart-preview/index.html') as number;
 // eslint-disable-next-line @typescript-eslint/no-require-imports -- Metro 静态资源编号只能在运行时 require
 const PLAYER_MODULE = require('../../../assets/phigros-chart-preview/player.bundle') as number;
 
-/** 内置皮肤与命中音源：对象存储 rranker-phigros-data/chart-preview（与本地 assets/phigros-chart-preview 同名同路径）。 */
 const PHIGROS_CHART_PREVIEW_ASSET_BASE = 'https://rranker-phigros-data.cn-nb1.rains3.com/chart-preview';
-/** 持久缓存文件名带这一修订；会话里仍落成 skin/原文件名，播放器路径不变。 */
+
 const PHIGROS_SKIN_CACHE_REVISION = '20260922';
 
 const SKIN_ASSETS: readonly { fileName: string; url: string; bytes: number }[] = [
@@ -124,11 +120,7 @@ export async function downloadPhiraChartPreviewZip(
   return bytes.slice().buffer;
 }
 
-/**
- * 将 HTML / player.js / 内置皮肤落到缓存目录，打击音以 data URL 注入配置，
- * 本地音乐以 base64 写入 music-data.js（iOS file:// 下无法 fetch 本地文件）。
- * file:// WebView 上比依赖 injectedJavaScriptBeforeContentLoaded 更稳。
- */
+/** iOS file:// 无法 fetch 本地音乐，改用 base64 脚本。 */
 export async function preparePhigrosChartPreviewWebViewSource(
   config: PhigrosChartPreviewConfig,
   musicDataBase64: string | null = null,
@@ -170,7 +162,6 @@ export async function preparePhigrosChartPreviewWebViewSource(
   }, signal, onProgress);
 }
 
-/** Phira 谱面音乐落盘到预览 stage 目录，并返回其 base64 供 WebView 解码。 */
 export async function stagePhiraChartMusic(
   bytes: Uint8Array,
   fileName: string,
@@ -187,11 +178,6 @@ export async function stagePhiraChartMusic(
   return { uri: file.uri, base64 };
 }
 
-/**
- * Phira RPE 谱面包资源落盘：全部非文本条目写入 stage 目录 rpe/{chartId}/，
- * 返回相对播放器 HTML 的 basePath（皮肤同机制：file:// WebView 经相对路径加载子资源）。
- * 文本资源（extra.json/info.yml/.glsl）由调用方读文本注入，不经文件 fetch。
- */
 export async function stagePhiraRpeBundle(
   chartId: number,
   files: readonly { name: string; bytes: Uint8Array }[],

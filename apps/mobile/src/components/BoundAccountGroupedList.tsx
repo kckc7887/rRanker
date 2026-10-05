@@ -76,7 +76,6 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
   onToggleGame: (gameId: GameId) => void;
   onSelectAccount?: (account: BoundAccount) => void;
   renderActions?: (account: BoundAccount) => ReactNode;
-  /** 账号行 Rating 标签槽位：提供时替换内置各游戏标签（如 osu PP 标签，由调用方注入）。 */
   renderRatingTag?: (account: BoundAccount) => ReactNode;
   emptyText?: string;
   hydrationEnabled?: boolean;
@@ -87,7 +86,6 @@ export function BoundAccountGroupedList({ accounts, expandedGameId, isGameExpand
     .join('|');
   useHydrateAccountSummaries(avatarHydrateKey, hydrationEnabled);
 
-  /** 家族分组：osu! 板块 → 模式子组（仅显示有绑定账号的模式）→ 账号；非家族游戏保持原样。 */
   const { gameGroups, familyGroups } = useMemo(() => {
     const gameGroups: GameGroup[] = [];
     const familyByMode = new Map<string, FamilyGroup>();

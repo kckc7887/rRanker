@@ -17,7 +17,6 @@ const baseFilters: OsuRecordsFilters = {
   ppMax: '',
 };
 
-/** HD+DT 成绩：98.52% / 5.5★ / pp 72.98。 */
 const hdDt: OsuBestScore = {
   id: 1,
   score: 985754,
@@ -32,7 +31,6 @@ const hdDt: OsuBestScore = {
   achievedAt: null,
 };
 
-/** 无模组成绩：96.00% / 4.3★ / pp 55.4。 */
 const noMod: OsuBestScore = {
   id: 2,
   score: 1111111,
@@ -47,7 +45,6 @@ const noMod: OsuBestScore = {
   achievedAt: null,
 };
 
-/** 仅 DT 成绩：99.00% / 6.9★ / pp 缺失。 */
 const dtOnly: OsuBestScore = {
   id: 3,
   score: 1234567,
@@ -139,7 +136,6 @@ describe('filterOsuBestScores 成绩筛选', () => {
       .toEqual([1]);
     expect(filterOsuBestScores(all, { ...baseFilters, ppMax: '60' }).map((s) => s.id))
       .toEqual([2]);
-    // ppMax 设为 9999 仍属「已设置范围」：pp 缺失的 dtOnly 依旧被排除。
     expect(filterOsuBestScores(all, { ...baseFilters, ppMax: '9999' }).map((s) => s.id))
       .toEqual([1, 2]);
   });

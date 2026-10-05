@@ -15,7 +15,7 @@ export function buildHeatDensity(duration: number, tracks: readonly HeatTimeline
     }
     return bins;
   });
-  // 多轨共用最大值，空段保持空白；非空段最小不透明度为 2/22。
+  /** 多轨共用峰值，非空段至少 2/22 不透明度。 */
   const maximum = Math.max(1, ...counts.flat());
   return counts.map(bins => bins.map(count => count === 0 ? 0 : Math.max(2 / 22, count / maximum)));
 }

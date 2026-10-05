@@ -76,7 +76,7 @@ export class EffectRenderer {
     ctx.globalCompositeOperation = 'copy'; ctx.drawImage(this.shaderFrames[((Math.ceil(time * 0.5 * 5) % 5) + 5) % 5], 0, 0);
     ctx.globalCompositeOperation = 'destination-in';
     const gradient = ctx.createRadialGradient(256, 256, 0, 256, 256, Math.sqrt(2) * 256);
-    // Canvas interpolates radial stops; dense samples reproduce the shader's squared-radius ramps.
+    /** 径向采样拟合 Shader 的半径平方渐变。 */
     for (let i = 0; i <= 128; i++) {
       const radius = Math.min(1, (i / 128) ** 2 * 2) * alpha;
       const opacity = clamp((radius - 0.018) / (0.054 - 0.018)) * clamp((0.429 - radius) / (0.429 - 0.36));

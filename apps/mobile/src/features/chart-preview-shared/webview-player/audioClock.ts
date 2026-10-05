@@ -1,8 +1,3 @@
-/**
- * AudioContext 输出端时间估算（谱面确认 WebView 播放器公共层）：
- * 视觉时钟要贴合听众实际听到的时刻，而不是调度时刻。
- */
-
 function getFinitePositiveLatency(value: number | undefined): number | null {
   return value !== undefined && Number.isFinite(value) && value > 0 ? value : null;
 }
@@ -38,10 +33,7 @@ function getAudioOutputLatency(audioContext: AudioContext): number {
   );
 }
 
-/**
- * 返回当前估算已到达输出端（即听众耳朵正在听到）的 AudioContext 时刻。
- * 供视觉时钟与打击音调度使用，不要用于 source.start()。
- */
+/** 输出端时间用于视觉同步，不能用来调度 source.start。 */
 export function getAudioContextOutputTime(audioContext: AudioContext): number {
   const currentTime = audioContext.currentTime;
   const latencyAdjustedTime = currentTime - getAudioOutputLatency(audioContext);

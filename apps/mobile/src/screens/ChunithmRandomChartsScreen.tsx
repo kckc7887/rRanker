@@ -1,5 +1,6 @@
+import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useEffect, useMemo, useState } from 'react';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { ChunithmDifficultyBadge } from '@/components/chunithm/ChunithmDifficultyBadge';
 import { ChunithmFilterBar } from '@/components/chunithm/ChunithmFilterBar';
 import { ChunithmScoreCard } from '@/components/chunithm/ChunithmScoreCard';
@@ -62,10 +63,7 @@ export function ChunithmRandomChartsScreen() {
     setLastSeed(seed);
     setResults(pickRandomItems(pool, count, seed));
   };
-  const openDetail = (pick: ChunithmRandomChartPick) => router.push({
-    pathname: '/songs/[songId]',
-    params: { songId: pick.songId, levelIndex: String(pick.levelIndex) },
-  } as Href);
+  const openDetail = (pick: ChunithmRandomChartPick) => router.push(detailTargetHref(encodeDetailTarget({ game: 'chunithm', songId: pick.songId, levelIndex: pick.levelIndex })));
 
   return (
     <QueryStateView<ChunithmCatalogSnapshot>

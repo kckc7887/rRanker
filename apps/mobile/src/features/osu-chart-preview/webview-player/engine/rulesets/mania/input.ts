@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -26,25 +26,13 @@
  */
 import type { ReplayData } from '../../types/index';
 
-/** A single key edge decoded from the replay: a press or release of one column at `time` ms. */
 export interface ManiaInputEvent {
   time: number;
   column: number;
   kind: 'press' | 'release';
 }
 
-/**
- * Decode each .osr frame's MouseX as a column bitmask:
- * LSB = column 0, bit i = column i. Only bits 0..totalColumns-1 are honoured —
- * stable's first replay frame encodes its cursor-X marker (`256` = bit 8) in
- * MouseX, which would otherwise leak as a spurious column-8 press. ppy/osu's
- * LegacyReplayDecoder applies the same `i < TotalColumns` clip.
- *
- * cumTime accumulates negative deltas (lazer encodes audio lead-in as a
- * negative first delta; dropping it shifts the whole timeline forward past
- * every hit window). Output events are emitted in frame order; once spurious
- * bits are masked off, the event stream is monotonic in time.
- */
+/** MouseX 保存列位掩码；只读取列数范围内的位，并保留负前导时间。 */
 export function maniaFrames(replay: ReplayData, totalColumns: number): ManiaInputEvent[] {
   const events: ManiaInputEvent[] = [];
   if (totalColumns <= 0) return events;

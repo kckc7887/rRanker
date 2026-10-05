@@ -47,6 +47,14 @@ jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   useNavigation: () => ({ canGoBack: () => mockCanGoBack(), goBack: () => mockBack() }),
 }));
+jest.mock('expo-sqlite/kv-store', () => ({
+  __esModule: true,
+  default: {
+    getItem: jest.fn(async () => null),
+    setItem: jest.fn(async () => undefined),
+    removeItem: jest.fn(async () => undefined),
+  },
+}));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('expo-image', () => {
   const React = jest.requireActual<typeof import('react')>('react');
@@ -497,12 +505,6 @@ describe('TUF screens', () => {
     expect(mockReplace).toHaveBeenCalledWith('/(tabs)/search');
   });
 
-  /**
-   * 后页终态合同（公共 InfinitePageFooter 在 TUF 两个真实入口上的接线）：
-   * 页脚由查询的 `isFetchNextPageError` / `hasNextPage` / `isFetchingNextPage` 驱动，
-   * 后页失败必须保留已载列表并给出重试入口，耗尽才显示「没有更多了」。
-   * Phira 的同一页脚已由 phira-catalog-scan / phira-ui 覆盖，TUF 成绩页与曲库页此前没有用例。
-   */
   it('keeps loaded records and offers a retry when the records next page fails', async () => {
     mockUseTufPasses.mockReturnValue(infinite([pass(1, '已载成绩')], 'passes', {
       isFetchNextPageError: true,

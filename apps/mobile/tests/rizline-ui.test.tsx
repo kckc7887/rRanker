@@ -77,7 +77,7 @@ describe('Rizline UI', () => {
     expect(screen.getByText('RKS')).toHaveStyle({ fontSize: 10 });
     expect(screen.queryByText('AP')).toBeNull();
     await fireEvent.press(screen.getByTestId('rizline-score-song.a.IN'));
-    expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: 'song.a', levelIndex: '2' } });
+    expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: 'song.a', levelIndex: '2', gameId: 'rizline' } });
   });
 
   it('shows both inferred best sections and orders records by RKS', async () => {

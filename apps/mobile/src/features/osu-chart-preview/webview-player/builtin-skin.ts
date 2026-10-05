@@ -73,7 +73,7 @@ function commonSpecs(): Sprite[] {
   add('approachcircle', 128, 128, ctx => ring(ctx, 64, 64, 58, '#ffffff', 2));
   add('sliderb', 128, 128, ctx => disc(ctx, 64, 64, 51, P.white));
   add('sliderfollowcircle', 224, 224, ctx => ring(ctx, 112, 112, 99, '#ffffff40', 2));
-  // The reverse endpoint retains a plain ring cue, without an arrow or emblem.
+
   add('reversearrow', 128, 128, ctx => ring(ctx, 64, 64, 27, P.white, 4));
   add('sliderscorepoint', 32, 32, ctx => disc(ctx, 16, 16, 5, P.white));
   add('followpoint', 16, 16, ctx => disc(ctx, 8, 8, 2, '#ffffff66'));
@@ -112,8 +112,8 @@ function commonSpecs(): Sprite[] {
     disc(ctx, 90, 100, 50, '#151a22', '#737d89', 2);
     rect(ctx, 89.5, 23, 1, 154, '#737d89');
   });
-  // flat-feedback maps these LEFT half textures to the left half of the drum,
-  // then mirrors them for the right. Both use the same 90x200 origin and size.
+  /** 左右半鼓共用 90×200 逻辑盒，右半由左半镜像。 */
+
   add('taiko-drum-inner', 90, 200, ctx => disc(ctx, 90, 100, 48, P.don));
   add('taiko-drum-outer', 90, 200, ctx => {
     disc(ctx, 90, 100, 76, P.kat);
@@ -124,20 +124,18 @@ function commonSpecs(): Sprite[] {
   for (const stem of ['taiko-hit300', 'taiko-hit300k', 'taiko-hit100', 'taiko-hit100k', 'taiko-hit0']) blank(stem);
   for (const state of ['idle', 'kiai', 'fail', 'clear']) blank('pippidon' + state);
 
-  // Fruit identity is encoded by the original tint and size; all silhouettes stay round.
-  // Opaque white stroke tints to the same combo colour as the 50% fill.
   for (const stem of ['fruit-pear', 'fruit-grapes', 'fruit-apple', 'fruit-orange', 'fruit-drop', 'fruit-bananas']) {
     add(stem, 128, 128, ctx => disc(ctx, 64, 64, 56, '#ffffff80', '#ffffff', 4));
     blank(stem + '-overlay');
   }
   for (const state of ['idle', 'fail', 'kiai']) add('fruit-catcher-' + state, 160, 40, ctx => {
-    // Only 80% of the legacy visual width is catchable. The top edge is the y=16 catch anchor.
+    /** 盘沿 y=16 为落点，只有贴图宽度的 80% 可接音符。 */
     rect(ctx, 16, 16, 128, 8, P.white);
   });
   blank('scoreboard-explosion-1');
   blank('scoreboard-explosion-2');
 
-  // Missing glyphs trigger text fallback; retain transparent sentinels.
+  /** 透明占位阻止默认素材回退。 */
   for (const prefix of ['default', 'score', 'combo', 'scoreentry']) {
     for (const glyph of [...'0123456789', 'dot', 'percent', 'x', 'comma']) blank(prefix + '-' + glyph, 1);
   }
@@ -168,7 +166,7 @@ function maniaSpecs(variant: ManiaSkinVariant, keys: number, fitScale: number): 
   for (let col = 0; col < keys; col++) {
     const special = keys % 2 === 1 && col === Math.floor(keys / 2);
     const laneWidth = (special ? 70 : 80) * fitScale;
-    // Only overflowing stages override widths, through the engine's existing 480-space config.
+
     section.columnWidth?.push(laneWidth / MANIA_CONFIG_SCALE);
     const family = special ? 'center' : Math.min(col, keys - 1 - col) % 2 === 0 ? 'outer' : 'inner';
     const accent = family === 'center' ? P.gold : family === 'outer' ? P.white : P.mint;
@@ -224,8 +222,7 @@ function maniaImages(variant: ManiaSkinVariant, fitScale: number): Promise<Map<s
   const cacheKey = `${variant}:${fitScale}`;
   let pending = maniaImageCache.get(cacheKey);
   if (!pending) {
-    // Five columns contain both regular lane colours and the narrow centre lane.
-    // Share only at the same fitted width: receptors encode the note's screen height.
+
     pending = rasterize(maniaSpecs(variant, 5, fitScale).specs);
     maniaImageCache.set(cacheKey, pending);
     const current = pending;
@@ -239,8 +236,7 @@ function maniaBodyImages(variant: ManiaSkinVariant, widthPercent: number): Promi
   let pending = maniaBodyCache.get(cacheKey);
   if (!pending) {
     const visibleWidth = (variant === 'circle' ? 108 : 118) * widthPercent / 100;
-    // A uniform row stretches through the original LN path. Across both variants,
-    // all 91 integer widths occupy at most 546 × 256 × 2 RGBA pixels (~1.07 MiB).
+
     pending = rasterize((['outer', 'inner', 'center'] as const).map(family => ({
       stem: `builtin/${variant}/${family}-body`, width: 128, height: 1,
       paint: ctx => rect(ctx, (128 - visibleWidth) / 2, 0, visibleWidth, 1,
@@ -253,7 +249,6 @@ function maniaBodyImages(variant: ManiaSkinVariant, widthPercent: number): Promi
   return pending;
 }
 
-/** Shared immutable assets; copy images before applying session-local changes. */
 export function createBuiltinSkin(variant: ManiaSkinVariant, keys = 4, holdWidth = 60): Promise<SkinAssets> {
   const columnCount = Number.isFinite(keys) ? Math.max(1, Math.round(keys)) : 4;
   const widthPercent = Number.isFinite(holdWidth) ? Math.max(10, Math.min(100, Math.round(holdWidth))) : 60;
@@ -264,7 +259,7 @@ export function createBuiltinSkin(variant: ManiaSkinVariant, keys = 4, holdWidth
     return pending;
   }
   const fitScale = maniaFitScale(columnCount);
-  // Start all owners before awaiting, so disposal also captures in-flight resources.
+  /** 先创建全部素材持有者，释放时才能回收仍在加载的资源。 */
   const commonPending = commonImages();
   const maniaPending = maniaImages(variant, fitScale);
   const bodyPending = maniaBodyImages(variant, widthPercent);
@@ -284,14 +279,14 @@ export function createBuiltinSkin(variant: ManiaSkinVariant, keys = 4, holdWidth
     };
   })();
   skinCache.set(cacheKey, pending);
-  // Evict wrappers only; bitmap owners keep old renderers valid until global disposal.
+  /** 仅逐出包装对象，旧 renderer 持有的 bitmap 保持有效。 */
   while (skinCache.size > SKIN_CACHE_LIMIT) skinCache.delete(skinCache.keys().next().value!);
   const current = pending;
   void current.catch(() => { if (skinCache.get(cacheKey) === current) skinCache.delete(cacheKey); });
   return pending;
 }
 
-/** Call only once the preview has released every renderer using these shared bitmaps. */
+/** 全部 renderer 释放后，才能回收共享 bitmap。 */
 export async function disposeBuiltinSkins(): Promise<void> {
   const pending = [...skinCache.values()];
   const common = commonCache.promise;

@@ -65,7 +65,6 @@ export function resolveChunithmRatingTier(rating: number): ChunithmRatingTierThe
   return resolveTier(RATING_TIERS, value);
 }
 
-/** 把档位色规范化为渐变边框：单色档复制为双色，虹档保留完整六色均分。 */
 export function resolveChunithmRatingTierBorder(rating: number): {
   borderColors: readonly [string, string, ...string[]];
   borderLocations: readonly [number, number, ...number[]];
@@ -82,7 +81,6 @@ export function resolveChunithmRatingTierBorder(rating: number): {
   };
 }
 
-/** 卡片主题：领域色作背景、档位色作描边；无成绩时原样回退领域主题。 */
 export function resolveChunithmRatingCardTheme(
   rating: number | null,
   ratingPossession: string | null | undefined,

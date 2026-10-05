@@ -1,4 +1,3 @@
-/** 一次播放器实例拥有的 DOM 监听与清理；释放后的排队事件不再执行。 */
 export class PlayerEventScope {
   private cleanups: (() => void)[] = [];
   private closed = false;
@@ -30,7 +29,7 @@ export class PlayerEventScope {
     if (this.closed) return;
     this.closed = true;
     for (const cleanup of this.cleanups.splice(0).reverse()) {
-      try { cleanup(); } catch { /* 一个资源释放失败不能阻止其它监听与媒体释放。 */ }
+      try { cleanup(); } catch { /** 单个资源释放失败不能阻止其它资源释放。 */ }
     }
   }
 }

@@ -52,7 +52,7 @@ export function parseDuration(value: string, bpm: number, slide: boolean, source
     const [localBpm, duration, extra] = value.split('#');
     if (extra !== undefined) fail('Invalid duration', source);
     if (localBpm === '') {
-      // LXNS supplies [#seconds] slides as well as holds.
+      /** LXNS 的 slide 也使用 [#秒] 时长。 */
       durationMs = number(duration, source) * 1000;
     } else {
       const tempo = number(localBpm, source, true);

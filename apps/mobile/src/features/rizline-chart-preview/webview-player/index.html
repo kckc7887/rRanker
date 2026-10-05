@@ -110,7 +110,6 @@
     }
     #playfield { position: absolute; inset: 0; width: 100%; height: 100%; display: block; }
 
-    /* ---- 下方播放控制器：样式与交互对齐舞萌谱面确认 ---- */
     #controls {
       flex-shrink: 0;
       background: var(--panel);
@@ -186,7 +185,7 @@
       color: var(--muted);
       font-variant-numeric: tabular-nums;
     }
-    /* 时间轴：舞萌式音符密度条 + 刻度 + 播放头 */
+
     #timeline-host {
       flex: 1;
       position: relative;
@@ -262,7 +261,7 @@
       pointer-events: none;
       z-index: 10;
     }
-    /* 拨轮：舞萌式触发钮 + 滚动吸附滚轮 */
+
     .field {
       display: flex;
       align-items: center;
@@ -381,7 +380,7 @@
       width: 100%;
       height: 100%;
     }
-    /* 全屏控制层与舞萌 fs-overlay 一致：只保留时间轴 + 时间 + 走带按钮。 */
+
     body.fullscreen #controls {
       position: absolute;
       z-index: 8;
@@ -396,7 +395,7 @@
     }
     body.fullscreen #controls.hidden { translate: 0 100%; opacity: 0; pointer-events: none; }
     body.fullscreen .controls-settings { display: none; }
-    /* 全屏锁定按钮：与舞萌 fs-lock 一致（右侧垂直居中，锁定后控制器强制隐藏）。 */
+
     #fs-lock {
       display: none;
       position: fixed;

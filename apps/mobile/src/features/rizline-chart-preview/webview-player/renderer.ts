@@ -35,7 +35,7 @@ export type PlayfieldMetrics = {
   scrollUnit: number;
 };
 
-/** Fit the 1080×1920 (9:16) playfield into a canvas, letterboxing leftover space. */
+/** 1080×1920 播放区等比缩放，余下区域留黑。 */
 export function measurePlayfield(width: number, height: number): PlayfieldMetrics {
   const pixelWidth = Math.max(1, width);
   const pixelHeight = Math.max(1, height);

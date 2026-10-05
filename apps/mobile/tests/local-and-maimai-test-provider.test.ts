@@ -1,12 +1,27 @@
 import { chartVersionKey } from '@/domain/catalog';
 import { LOCAL_MAIMAI_ACCOUNT_ID } from '@/domain/bound-account';
-import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
-import type { CatalogRepository } from '@/repositories/catalog-repository';
-import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
+import type { CatalogSnapshot } from '@/domain/models';
 import { buildMaxedMaimaiRecords, MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
 import { isCatalogDrivenScoreProvider } from '@/providers/contracts';
-import type { SnapshotRepository } from '@/repositories/snapshot-repository';
-import { buildScoreSnapshot, ScoreService } from '@/services/score-service';
+import { DatabaseSync } from 'node:sqlite';
+let LocalMaimaiScoreProvider: typeof import('@/providers/local-score-provider')['LocalMaimaiScoreProvider'];
+let ScoreService: typeof import('@/services/score-service')['ScoreService'];
+let buildScoreSnapshot: typeof import('@/services/score-service')['buildScoreSnapshot'];
+let repository: InstanceType<typeof import('@/storage/sqlite-snapshot-repository')['SqliteSnapshotRepository']>;
+let database: DatabaseSync;
+vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
+  execAsync: async (sql: string) => database.exec(sql),
+  runAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).run(...args),
+  getFirstAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).get(...args) ?? null,
+}) }));
+beforeEach(async () => {
+  database = new DatabaseSync(':memory:'); vi.resetModules();
+  ({ LocalMaimaiScoreProvider } = await import('@/providers/local-score-provider'));
+  ({ ScoreService, buildScoreSnapshot } = await import('@/services/score-service'));
+  const { SqliteSnapshotRepository } = await import('@/storage/sqlite-snapshot-repository');
+  repository = new SqliteSnapshotRepository();
+});
+afterEach(() => database.close());
 
 const source = {
   kind: 'lxns' as const,
@@ -53,24 +68,6 @@ const catalog: CatalogSnapshot = {
   source,
 };
 
-class MemorySnapshotRepository implements SnapshotRepository, CatalogRepository {
-  snapshots = new Map<string, ScoreSnapshot>();
-  catalog: CatalogSnapshot | null = null;
-  async initialize() {}
-  async getLatest(accountId: string) {
-    return this.snapshots.get(accountId) ?? null;
-  }
-  async save(accountId: string, snapshot: ScoreSnapshot) {
-    this.snapshots.set(accountId, structuredClone(snapshot));
-  }
-  async clear(accountId?: string) {
-    if (accountId) this.snapshots.delete(accountId);
-    else this.snapshots.clear();
-  }
-  async getLatestCatalog() { return this.catalog; }
-  async saveCatalog(catalog: CatalogSnapshot) { this.catalog = structuredClone(catalog); }
-}
-
 function catalogProvider(getDetailedCatalog: () => Promise<CatalogSnapshot>) {
   return {
     getCatalog: getDetailedCatalog,
@@ -89,8 +86,7 @@ function catalogProvider(getDetailedCatalog: () => Promise<CatalogSnapshot>) {
 
 describe('本地查分器', () => {
   it('首次为空，写入快照后可完全从本地读取', async () => {
-    const repository = new MemorySnapshotRepository();
-    const provider = new LocalMaimaiScoreProvider(repository);
+    const provider = new LocalMaimaiScoreProvider();
     await expect(provider.getPlayer()).resolves.toMatchObject({
       id: LOCAL_MAIMAI_ACCOUNT_ID,
       displayName: '本地玩家',
@@ -101,7 +97,7 @@ describe('本地查分器', () => {
 
     const records = buildMaxedMaimaiRecords(catalog);
     const stored = buildScoreSnapshot(await provider.getPlayer(), records, catalog);
-    repository.snapshots.set(LOCAL_MAIMAI_ACCOUNT_ID, stored);
+    await repository.save(LOCAL_MAIMAI_ACCOUNT_ID, stored);
     await expect(provider.getRecords()).resolves.toHaveLength(2);
     await expect(provider.getPlayer()).resolves.toMatchObject({
       displayName: '本地玩家',
@@ -110,17 +106,16 @@ describe('本地查分器', () => {
   });
 
   it('多个本地玩家按账号 ID 隔离成绩，并分别使用自己的名称', async () => {
-    const repository = new MemorySnapshotRepository();
     const aliceId = 'maimai:local:alice';
     const bobId = 'maimai:local:bob';
-    const alice = new LocalMaimaiScoreProvider(repository, aliceId, 'Alice');
-    const bob = new LocalMaimaiScoreProvider(repository, bobId, 'Bob');
+    const alice = new LocalMaimaiScoreProvider(aliceId, 'Alice');
+    const bob = new LocalMaimaiScoreProvider(bobId, 'Bob');
     const aliceSnapshot = buildScoreSnapshot(
       await alice.getPlayer(),
       buildMaxedMaimaiRecords(catalog).slice(0, 1),
       catalog,
     );
-    repository.snapshots.set(aliceId, aliceSnapshot);
+    await repository.save(aliceId, aliceSnapshot);
 
     await expect(alice.getRecords()).resolves.toHaveLength(1);
     await expect(bob.getRecords()).resolves.toEqual([]);
@@ -129,9 +124,8 @@ describe('本地查分器', () => {
   });
 
   it('曲库离线时回退到已有的本地快照', async () => {
-    const repository = new MemorySnapshotRepository();
-    const provider = new LocalMaimaiScoreProvider(repository);
-    repository.snapshots.set(LOCAL_MAIMAI_ACCOUNT_ID, buildScoreSnapshot(
+    const provider = new LocalMaimaiScoreProvider();
+    await repository.save(LOCAL_MAIMAI_ACCOUNT_ID, buildScoreSnapshot(
       await provider.getPlayer(),
       buildMaxedMaimaiRecords(catalog),
       catalog,
@@ -141,7 +135,6 @@ describe('本地查分器', () => {
       provider,
       catalogProvider(fail),
       LOCAL_MAIMAI_ACCOUNT_ID,
-      repository,
     ).load();
     expect(snapshot.source).toMatchObject({ kind: 'local', isStale: true });
     expect(snapshot.records).toHaveLength(2);
@@ -192,15 +185,11 @@ describe('舞萌示例查分器', () => {
   });
 
   it('详细曲库请求失败时不使用轻量曲库猜测测试成绩', async () => {
-    const repository = new MemorySnapshotRepository();
-    repository.catalog = structuredClone(catalog);
     const fail = async (): Promise<CatalogSnapshot> => { throw new Error('offline'); };
     await expect(new ScoreService(
       new MaxedMaimaiTestProvider(),
       catalogProvider(fail),
       'maimai:test',
-      undefined,
-      repository,
     ).load()).rejects.toThrow('offline');
   });
 });

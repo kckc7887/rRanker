@@ -2,7 +2,7 @@ import { useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { StyleSheet, View } from 'react-native';
 
-/** 落雪游戏资源根；姓名框为 /plate/{id}.png（约 720×116）。 */
+/** LXNS 姓名框素材约为 720×116。 */
 export const LXNS_PLATE_ROOT = 'https://assets2.lxns.net/maimai/plate';
 const PLATE_ASPECT = 720 / 116;
 
@@ -22,7 +22,6 @@ export function PlateImage({
   }
   return (
     <Image
-      cachePolicy="disk"
       cacheProfile="native"
       accessibilityLabel="姓名框预览"
       contentFit="contain"

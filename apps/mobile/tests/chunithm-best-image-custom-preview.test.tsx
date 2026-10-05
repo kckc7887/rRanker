@@ -168,7 +168,6 @@ jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
     html,
     baseUrl: 'https://assets2.lxns.net/',
   })),
-  prepareAndroidBestImageWebViewSources: jest.fn(() => ({ sources: [], dispose: jest.fn() })),
 }));
 
 type RenderedScreen = Awaited<ReturnType<typeof render>>;

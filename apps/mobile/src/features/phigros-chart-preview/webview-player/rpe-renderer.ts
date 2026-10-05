@@ -1,8 +1,4 @@
 /**
- * RPE 谱面 Canvas 渲染器，
- * 语义对照 PhiZone/player（Line.ts/PlainNote.ts/LongNote.ts/Video.ts/Game.ts/ShaderPipeline.ts）
- * 与 TeamFlos/phira 的 prpr 核心（RPE 路径）。接口与 PgrRenderer 对齐，供 main.ts 按谱面格式二选一。
- *
  * 许可证：本文件语义对照 PhiZone/player（MPL-2.0，https://github.com/PhiZone/player）与
  * TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira）移植，相应部分按各自原许可提供
  * （与本项目 AGPL-3.0 兼容）；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
@@ -76,8 +72,8 @@ const JUDGE_LINE_COLORS: Readonly<Record<string, string>> = Object.freeze({
 });
 const VISUAL_END_GRACE_SEC = 1;
 const MAX_DRAW_DISTANCE_RATIO = 3;
-const FADEOUT_TIME = 0.16; // prpr note.rs：show_below=false 线在击打前 0.16s 淡出
-// 与 renderer.ts（PGR）一致的 DPR 封顶与全屏像素预算
+const FADEOUT_TIME = 0.16; /** 单位：秒。 */
+
 const MAX_DPR = 2;
 const FULLSCREEN_MIN_DPR = 1;
 const FULLSCREEN_MAX_PIXELS = 2_500_000;
@@ -94,7 +90,7 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-// PhiZone/player ShaderPipeline.transformForLoops：把 GLSL for 循环展开为 WebGL1 可编译形式
+/** WebGL1 要求循环边界固定，按 PhiZone/player 展开 GLSL 循环。 */
 function transformForLoops(src: string, max = 1024): string {
   const findMatchingBrace = (code: string, openIdx: number): number => {
     let depth = 0;
@@ -204,7 +200,7 @@ function transformForLoops(src: string, max = 1024): string {
   return out;
 }
 
-// prpr parse_ctrl_events + Anim：ctrl 键帧（x 升序），区间 [kf_i, kf_{i+1}] 用事件 i+1 的缓动
+/** ctrl 区间使用后一关键帧的缓动。 */
 function ctrlValue(control: readonly { x: number; easing: number; value: number }[], x: number): number {
   if (!control || control.length === 0) return 1;
   if (control.length === 1) return control[0]!.value;
@@ -217,7 +213,6 @@ function ctrlValue(control: readonly { x: number; easing: number; value: number 
   return kf1.value + (kf2.value - kf1.value) * progress;
 }
 
-// PhiZone/player Game.ts 的坐标换算
 function p(position: number, width: number): number { return (position / 1350) * width; }
 function o(offset: number, height: number): number { return (offset / 900) * height; }
 function d(distance: number, height: number): number { return (distance * height * 2) / 15; }
@@ -505,7 +500,6 @@ export class RpeRenderer {
     }
   }
 
-  // ---- 事件求值（PhiZone/player Line.ts handleEvent/handleSpeed 语义） ----
   private handleEvent(
     beat: number,
     layerIndex: number,
@@ -563,7 +557,6 @@ export class RpeRenderer {
     return 0;
   }
 
-  // ---- 判定线状态（含父级组合） ----
   private lineState(lineIndex: number, time: number, width: number, height: number): Omit<LineState, 'cos' | 'sin' | 'screenX' | 'screenY'> {
     const line = this.chart!.lines[lineIndex]!;
     const cursor = this.cursors[lineIndex]!;
@@ -588,9 +581,9 @@ export class RpeRenderer {
     const colorValue = this.handleEvent(beat / line.bpmfactor, 0, line.colorEvents, cursor.color);
     const gif = this.gifValue(this.chartAssets?.gifAnims.get(lineIndex) ?? [], time, cursor.gif);
     const paintValue = this.handleEvent(beat / line.bpmfactor, 0, line.paintEvents, cursor.paint) as number | null | undefined;
-    // prpr：RPE 负 alpha（pe_alpha_extension 仅 PEC 启用）＝整线连同音符隐藏
+    /** RPE 负 alpha 隐藏整线及音符。 */
     const alphaExt = alpha < 0 ? 1 : 0;
-    // prpr rpe.rs：show_below = is_cover != 1（isCover 线只画线上方）
+
     const drawBelow = line.isCover !== 1;
     return {
       line,
@@ -648,7 +641,6 @@ export class RpeRenderer {
     };
   }
 
-  // ---- 音符 ----
   private advanceActiveNotes(lineIndex: number, time: number): void {
     const line = this.chart!.lines[lineIndex]!;
     const window = this.activeWindows[lineIndex]!;
@@ -685,10 +677,10 @@ export class RpeRenderer {
   private drawNote(context: CanvasRenderingContext2D, note: RpeNote, state: LineState, time: number): boolean {
     if (time < note.hitTime - note.visibleTime) return false;
     if (note.isFake && time >= note.hitTime && note.kind !== 'hold') return false;
-    // autoplay：普通音符击打即消失（PhiZone/player 判定后语义），Hold 持续到尾部
+
     if (note.kind !== 'hold' && time >= note.hitTime) return false;
     const line = state.line;
-    // prpr CtrlObject：ctrl 键帧以 chartDist（×RPE_HEIGHT/2）为 x 轴求值
+
     const ctrlX = (note.headHeight - state.lineHeight + note.yOffsetRaw / note.speed) * 450;
     const ctrlAlpha = ctrlValue(line.alphaControl, ctrlX);
     const ctrlSize = ctrlValue(line.sizeControl, ctrlX);
@@ -696,7 +688,7 @@ export class RpeRenderer {
     const ctrlY = ctrlValue(line.yControl, ctrlX);
     const effectiveSpeed = note.speed * ctrlY;
     const direction = note.above ? -1 : 1;
-    // 到判定线的无符号谱面距离（PhiZone/player PlainNote.update 的 dist，含 yOffset）
+
     const headDist = d((note.headHeight - state.lineHeight) * effectiveSpeed, state.height) + o(note.yOffset, state.height);
     if (Math.abs(headDist) > state.height * MAX_DRAW_DISTANCE_RATIO) return false;
     const chartDist = (headDist / state.height) * 900;
@@ -705,7 +697,7 @@ export class RpeRenderer {
     const isMulti = this.settings.multiHint && note.multipleHint;
     const style = isMulti ? this.noteAssets!.multi : this.noteAssets!.normal;
     const multipleScale = isMulti ? style[note.kind].naturalWidth / this.noteAssets!.normal[note.kind].naturalWidth : 1;
-    // prpr note.rs：宽度随 size×ctrlSize；高度仅 noteUniformScale 时随（Hold 头/尾高度始终不随）
+    /** Hold 头尾高度不随 size；其它音符高度仅在 noteUniformScale 时缩放。 */
     const baseNoteWidth = scaledNoteWidth(state.width, this.settings.noteScale ?? 1, multipleScale);
     const noteWidth = baseNoteWidth * note.size * ctrlSize;
     const noteHeightFactor = this.chart!.info.noteUniformScale === true ? note.size * ctrlSize : 1;
@@ -715,7 +707,7 @@ export class RpeRenderer {
     context.translate(along, 0);
     context.scale(1, direction);
     if (note.kind === 'hold') {
-      // prpr note.rs：show_below=false（isCover）且未到击打时，反向（头在线下）隐藏；holdPartialCover 时按尾距离判定
+
       const coverDist = this.chart!.info.holdPartialCover === true
         ? (note.tailHeight - state.lineHeight) * effectiveSpeed
         : (note.headHeight - state.lineHeight) * effectiveSpeed;
@@ -724,7 +716,7 @@ export class RpeRenderer {
         return false;
       }
       const tailDist = d((note.tailHeight - state.lineHeight) * effectiveSpeed, state.height) + o(note.yOffset, state.height);
-      // 头过线后头贴判定线（prpr：bottom = 0），body/tail 持续到尾部
+
       const bottom = time >= note.hitTime ? o(note.yOffset, state.height) : headDist;
       const top = tailDist;
       if (top <= bottom) {
@@ -744,7 +736,7 @@ export class RpeRenderer {
         time < note.hitTime,
       );
     } else {
-      // show_below=false（isCover）：击打前 0.16s 淡出（prpr FADEOUT_TIME），反向（头在线下）隐藏
+
       let alpha = note.alpha / 255 * ctrlAlpha;
       if (!state.drawBelow) {
         if ((note.headHeight - state.lineHeight) * effectiveSpeed < 0) {
@@ -755,7 +747,7 @@ export class RpeRenderer {
       }
       context.globalAlpha = alpha;
       const image = this.tintedCanvas(style[note.kind], note.tint);
-      // 注意：tintedCanvas 可能返回 canvas（无 naturalWidth/naturalHeight），统一用 width/height 回退
+
       const imageWidth = image.width;
       const imageHeight = image.height;
       const noteHeight = baseNoteWidth * noteHeightFactor * imageHeight / imageWidth;
@@ -766,9 +758,9 @@ export class RpeRenderer {
   }
 
   private tintedCanvas<T extends CanvasImageSource>(image: T, tint: [number, number, number] | null): T | HTMLCanvasElement {
-    // 白色 tint 与原图逐像素一致，直接返回原图（prpr WHITE 语义）
+
     if (!tint || (tint[0] === 255 && tint[1] === 255 && tint[2] === 255)) return image;
-    // 缓存按「图片身份 × 颜色」键控（WeakMap 以 image 为键，避免不同贴图共用同一颜色缓存）
+
     let cache = this.tintedTextures;
     if (!cache) {
       cache = new WeakMap();
@@ -794,7 +786,7 @@ export class RpeRenderer {
     const bytes = imageWidth * imageHeight * 4;
     const byteBudget = 32 * 1024 * 1024;
     if (bytes > byteBudget) {
-      // 超过缓存预算的贴图仍按原分辨率绘制，只复用一张即时工作画布。
+
       canvas = this.tintWorkspace ??= document.createElement('canvas');
     } else {
       while (this.tintLru.size >= 64 || this.tintBytes + bytes > byteBudget) {
@@ -809,13 +801,13 @@ export class RpeRenderer {
       this.tintBytes += bytes;
     }
     {
-      // 重设尺寸同时清除像素和合成状态，复用画布不能继承 destination-in。
+      /** 重设尺寸清除合成状态，避免复用画布继承 destination-in。 */
       canvas.width = imageWidth;
       canvas.height = imageHeight;
       const tintContext = canvas.getContext('2d')!;
       tintContext.drawImage(image, 0, 0);
-      // prpr 颜色语义为逐通道相乘：multiply 后必须用 destination-in 恢复原 alpha，
-      // 否则透明区域会变成不透明的 tint 色（白色实块）
+      /** multiply 后用 destination-in 恢复原 alpha，避免透明区域变实色。 */
+
       tintContext.globalCompositeOperation = 'multiply';
       tintContext.fillStyle = `rgb(${tint[0]},${tint[1]},${tint[2]})`;
       tintContext.fillRect(0, 0, canvas.width, canvas.height);
@@ -852,7 +844,7 @@ export class RpeRenderer {
     top: number,
     showHead: boolean,
   ): void {
-    // prpr LongNote.resize：body 宽随 size，头/尾高度按基础宽度（不随 size）
+
     const source = image as CanvasImageSource & { naturalWidth?: number; naturalHeight?: number };
     const imageWidth = (image as { width?: number }).width ?? source.naturalWidth ?? 0;
     const imageHeight = (image as { height?: number }).height ?? source.naturalHeight ?? 0;
@@ -884,7 +876,6 @@ export class RpeRenderer {
     );
   }
 
-  // ---- 渲染 ----
   private gifValue(animKfs: readonly RpeGifKeyframe[], timeSec: number, cursor: { index: number }): number {
     if (!animKfs || animKfs.length === 0) return 0;
     if (cursor.index > 0 && timeSec <= animKfs[cursor.index]!.t) cursor.index = 0;
@@ -920,7 +911,7 @@ export class RpeRenderer {
     const tintStyle = tint ? `rgb(${tint[0]},${tint[1]},${tint[2]})` : null;
     if (line.texture === 'line.png') {
       if (line.paintEvents.length > 0) {
-        // prpr JudgeLineKind::Paint：值>0 时在判定线处画填充圆（半径 = 值×播放区宽/窗口宽）
+
         const paint = state.paint ?? -1;
         if (paint > 0) {
           const radius = (paint * state.width) / Math.max(1, this.canvas.clientWidth);
@@ -933,7 +924,7 @@ export class RpeRenderer {
         return;
       }
       if (line.textEvents.length > 0) {
-        // PhiZone/player：文本事件替换判定线视觉（白色/colorEvents 色、p(100) 字号、居中、随线旋转）
+
         context.fillStyle = tintStyle ?? '#ffffff';
         context.font = `${p(100, state.width)}px system-ui, -apple-system, "Segoe UI", "Microsoft YaHei UI", sans-serif`;
         context.textAlign = 'center';
@@ -942,7 +933,7 @@ export class RpeRenderer {
         context.restore();
         return;
       }
-      // 默认判定线：lineLength/2 × 播放区宽（prpr draw_line(−len, 0, len, 0)）
+
       const infoLineLength = this.chart!.info.lineLength;
       const lineLength = Number.isFinite(infoLineLength) && (infoLineLength ?? 0) > 0 ? infoLineLength! : 6;
       const halfSpan = (lineLength / 2) * state.width;
@@ -955,7 +946,7 @@ export class RpeRenderer {
       context.restore();
       return;
     }
-    // 自定义贴图判定线（prpr JudgeLineKind::Texture / TextureGif）
+
     const gifData = line.gifEvents.length > 0 ? this.chartAssets?.gifs.get(line.texture) : undefined;
     const staticImage = gifData ? undefined : this.chartAssets?.textures.get(line.texture);
     if (gifData?.frames.length) {
@@ -976,7 +967,7 @@ export class RpeRenderer {
       return;
     }
     if (staticImage?.naturalWidth) {
-      // PhiZone/player：自定义贴图按自然尺寸 × width/1350 × scaleX/scaleY 绘制
+
       const unit = state.width / 1350;
       const drawWidth = staticImage.naturalWidth * unit * state.scaleX;
       const drawHeight = staticImage.naturalHeight * unit * state.scaleY;
@@ -1015,8 +1006,6 @@ export class RpeRenderer {
     this.lastNotesOnHiddenLines = 0;
     if (!Number.isFinite(this.lastTime) || time < this.lastTime || time - this.lastTime > 0.35) this.resetTimeline(time);
 
-    // 播放区按有效宽高比 letterbox（prpr resource.rs viewport 语义）：
-    // 比例 = 用户覆盖 ?? (forceAspectRatio ? info : min(info, 窗口)) ?? 窗口；谱面 1350×900 完整映射进播放区
     const infoAspect = this.chart.info.aspectRatio;
     const chartAspect = Number.isFinite(infoAspect) && (infoAspect ?? 0) > 0 ? infoAspect! : null;
     let aspect = this.settings.aspectRatio ?? undefined;
@@ -1044,7 +1033,7 @@ export class RpeRenderer {
     context.save();
     context.translate(boxX, boxY);
     if (this.settings.flipX) {
-      // prpr flip_x：播放区 X 镜像
+
       context.translate(boxWidth, 0);
       context.scale(-1, 1);
     }
@@ -1060,7 +1049,7 @@ export class RpeRenderer {
     for (let lineIndex = 0; lineIndex < this.chart.lines.length; lineIndex += 1) {
       states.push(this.worldState(lineIndex, time, boxWidth, boxHeight));
     }
-    // 视频：depth 1，在判定线（depth ≥ 2）之下（PhiZone/player Video.setDepth(zIndex ?? 1)）
+
     this.drawVideos(context, time, boxWidth, boxHeight);
     for (const lineIndex of drawOrder) {
       const state = states[lineIndex]!;
@@ -1079,7 +1068,7 @@ export class RpeRenderer {
       }
     }
     this.drawHitEffects(context, time, boxWidth, boxHeight);
-    // attachUI：HUD 元素跟随判定线变换（prpr Chart::with_element：位置/旋转/缩放/透明度/颜色）
+
     const attachUi: Partial<Record<number, RpeAttachUiTransform>> = {};
     for (let lineIndex = 0; lineIndex < this.chart.lines.length; lineIndex += 1) {
       const attach = this.chart.lines[lineIndex]!.attachUI;
@@ -1158,9 +1147,8 @@ export class RpeRenderer {
     }
   }
 
-  // ---- 视频（PhiZone/player Video.ts 语义） ----
   private eventValueAt(value: unknown, beat: number, cursor: { index: number }): unknown {
-    // 常量（数值/数组）原样返回；事件列表按游标求值（数组值逐分量插值）
+
     if (!Array.isArray(value) || !value[0] || !('startBeat' in (value[0] as object))) return value;
     const events = value as RpeEvent[];
     if (cursor.index > 0 && beat <= events[cursor.index]!.startBeat) cursor.index = 0;
@@ -1187,16 +1175,16 @@ export class RpeRenderer {
     const beat = this.chart!.bpmList.beat(time);
     let alpha = this.eventValueAt(video.alpha, beat, this.videoCursors[index]!.alpha) as number | number[] | string;
     const dim = this.eventValueAt(video.dim, beat, this.videoCursors[index]!.dim) as number | number[] | string;
-    // 进度同步（PhiZone/player：startTimeSec 起播、结束后回 0）
+
     const local = time - video.startTimeSec;
     if (Math.abs(element.currentTime - local) > 0.25) {
-      try { element.currentTime = local; } catch { /* 未缓冲到位时忽略，下一帧重试 */ }
+      try { element.currentTime = local; } catch {}
     }
-    if (element.paused) element.play().catch(() => { /* 自动播放受限时静默 */ });
+    if (element.paused) element.play().catch(() => {});
     const vw = element.videoWidth;
     const vh = element.videoHeight;
     if (!vw || !vh) return;
-    // 变换：attach 在判定线模型内渲染（prpr chart.rs/video.rs），否则屏幕居中
+
     let cx = width / 2;
     let cy = height / 2;
     let rot = 0;
@@ -1229,7 +1217,7 @@ export class RpeRenderer {
     context.drawImage(element, -drawWidth / 2, -drawHeight / 2, drawWidth, drawHeight);
     context.restore();
     if ((Number(dim) || 0) > 0) {
-      // PhiZone/player：与视频同区域的黑色遮罩，alpha = dim
+
       context.save();
       context.translate(cx, cy);
       context.rotate(rot);
@@ -1240,7 +1228,6 @@ export class RpeRenderer {
     }
   }
 
-  // ---- 全屏 shader 特效后处理（prpr 与 PhiZone/player effects：整幅画面逐 effect 过 shader） ----
   private renderEffectPasses(time: number, width: number, height: number): void {
     const effects = this.settings.effects === false
       ? []
@@ -1262,7 +1249,7 @@ export class RpeRenderer {
     const gl = this.gl!;
     const pixelW = this.canvas.width;
     const pixelH = this.canvas.height;
-    // 上传 2D 画面作为第一个 pass 的输入
+
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.bindTexture(gl.TEXTURE_2D, this.glSourceTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.canvas);
@@ -1320,7 +1307,7 @@ export class RpeRenderer {
     for (const [name, value] of Object.entries(effect.vars)) {
       const evaluated = this.eventValueAt(value, beat, cursor[name] ??= { index: 0 });
       if (typeof evaluated === 'string') {
-        // sampler2D uniform：字符串值引用谱面图片纹理
+
         const location = gl.getUniformLocation(program, name);
         if (location !== null) {
           const unit = this.bindShaderTexture(evaluated, gl);
@@ -1407,7 +1394,7 @@ export class RpeRenderer {
       gl.bindBuffer(gl.ARRAY_BUFFER, this.glQuad);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
     }
-    // 编译缺失的 shader 程序，并解析 shader 声明的默认 uniform（// %值% 注释，PhiZone/player DEFAULT_VALUE_REGEX）
+    /** shader 的 // %值% 是 uniform 默认值声明。 */
     for (const [name, source] of this.chartAssets?.shaders ?? []) {
       if (this.glPrograms!.has(name)) continue;
       const program = this.compileGlProgram(source);

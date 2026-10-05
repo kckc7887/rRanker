@@ -161,7 +161,6 @@ describe('osu 原生资源准备生命周期', () => {
     mockArchivesByUrl.set('https://dl.sayobot.cn/beatmaps/download/full/10', new Uint8Array(damaged));
     const result = await prepareOsuChartPreviewWebViewSource(target, 'dark', {}, new AbortController().signal);
     expect(mockDownloadedUrls).toHaveLength(2);
-    // 单遍落盘：已校验的图片先写入隔离候选，视频失败后整个候选被清理，不可见半份资源。
     expect(mockWrites.filter(path => path.includes('/candidate-1/media/'))).toHaveLength(1);
     expect(mockWrites.filter(path => path.includes('/candidate-1/media/'))[0]).toMatch(/0\.png$/u);
     expect([...mockFiles.keys()].some(path => path.includes('/candidate-1/'))).toBe(false);

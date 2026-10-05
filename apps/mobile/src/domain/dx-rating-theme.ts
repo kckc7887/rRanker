@@ -1,4 +1,3 @@
-/** 舞萌 Rating 应用主题，参数以用户提供的 preview.html 为准。 */
 
 import { resolveTier } from './tier-theme';
 

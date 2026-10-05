@@ -10,7 +10,6 @@ import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import { requireDetailedCatalogProvider } from '@/providers/contracts';
 
-/** 舞萌轻量曲库。只有当前游戏是舞萌且已绑定账号时才触发请求，其它游戏不会复用舞萌缓存。 */
 export function useDetailedCatalog(enabled = true) {
   const tabActive = useCachedTabActive();
   const activeAccountId = useSession((state) => state.activeAccountId);

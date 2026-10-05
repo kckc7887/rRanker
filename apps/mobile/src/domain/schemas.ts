@@ -1,14 +1,14 @@
 import { z } from 'zod';
 import { normalizeMaimaiFc, normalizeMaimaiFs } from './maimai-filters';
-import { DATA_SOURCE_KINDS, type CatalogSnapshot, type ChartType, type Difficulty, type ScoreRecord, type ScoreSnapshot } from './models';
+import { DATA_SOURCE_KINDS, type ChartType, type Difficulty, type ScoreRecord, type ScoreSnapshot } from './models';
 import { calculateChartRating } from './rating';
+import { isUtageSongId } from './catalog';
 
-/** Normalized snapshots, shared by their owning persistence boundaries. */
 export const DataSourceSchema = z.object({
   kind: z.enum(DATA_SOURCE_KINDS), label: z.string(), updatedAt: z.string(), isStale: z.boolean(),
 }).passthrough();
 export const PlayerSchema = z.object({
-  id: z.string(), displayName: z.string(), rating: z.number().finite(), additionalRating: z.number().finite().optional(),
+  id: z.string(), displayName: z.string(), rating: z.number().finite(),
   extension: z.object({ kind: z.literal('maimai'), courseRank: z.number().finite().optional() }).optional(),
   presentation: z.object({
     iconId: z.number().finite().optional(), namePlateId: z.number().finite().optional(), frameId: z.number().finite().optional(),
@@ -32,23 +32,17 @@ export const ScoreRecordSchema = chartSchema.extend({
   incomplete: z.boolean().optional(),
 });
 const versionSchema = z.object({ id: z.number().finite(), title: z.string() });
-export const CatalogSnapshotSchema: z.ZodType<CatalogSnapshot> = z.object({
-  currentVersion: versionSchema, versions: z.array(versionSchema),
-  chartVersionIndex: z.record(z.string(), z.number().finite()), source: DataSourceSchema,
-  songs: z.array(z.object({
-    id: z.string(), title: z.string(), version: z.string(), charts: z.array(chartSchema),
-    artist: z.string().optional(), illustrator: z.string().optional(), versionId: z.number().finite().optional(),
-    bpm: z.number().finite().optional(), genre: z.string().optional(), region: z.string().optional(), rights: z.string().optional(),
-    aliases: z.array(z.string()).optional(), locked: z.boolean().optional(), disabled: z.boolean().optional(),
-  }).passthrough()),
-}).passthrough();
 export const ScoreSnapshotSchema: z.ZodType<ScoreSnapshot> = z.object({
   player: PlayerSchema, records: z.array(ScoreRecordSchema), source: DataSourceSchema, catalogSource: DataSourceSchema,
   best50: z.object({
     player: PlayerSchema, currentVersion: versionSchema, b35: z.array(ScoreRecordSchema), b15: z.array(ScoreRecordSchema),
     unmatchedRecordCount: count, rating: z.number().finite(), generatedAt: z.string(), source: DataSourceSchema,
   }).passthrough(),
-}).passthrough();
+}).passthrough().refine(snapshot => (
+  snapshot.records.every(record => !isUtageSongId(record.songId) || record.type === 'UTAGE')
+  && [...snapshot.best50.b35, ...snapshot.best50.b15]
+    .every(record => !isUtageSongId(record.songId) && record.type !== 'UTAGE')
+), { message: '不支持的宴谱成绩结构' });
 
 function mapKnownFc(value: string | null | undefined): string | null {
   return normalizeMaimaiFc(value);
@@ -64,7 +58,7 @@ function keepRawStatus(
 ): string | undefined {
   const trimmed = value?.trim();
   if (!trimmed || known) return undefined;
-  // Sync Play 不作为产品成就展示，也不保留为 raw 回退
+  /** SYNC 不作为产品成就展示。 */
   if (trimmed.toLowerCase() === 'sync') return undefined;
   return trimmed;
 }

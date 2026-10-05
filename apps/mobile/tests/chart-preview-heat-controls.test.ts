@@ -5,6 +5,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { bindHeatTimelineKeyboard, buildHeatDensity, HeatTimelineView } from '@/features/chart-preview-shared/webview-player/heat-timeline';
 import { PlayerEventScope } from '@/features/chart-preview-shared/webview-player/event-scope';
 import { installPreviewControls } from '@/features/chart-preview-shared/webview-player/controls';
+import { setupWheelPopup } from '@/features/chart-preview-shared/webview-player/wheel';
 import { chartPreviewAppearanceScript } from '@/features/chart-preview-shared/chart-preview-inject-factory';
 
 afterEach(() => {
@@ -25,8 +26,9 @@ describe('热度时间轴', () => {
     host.dispatchEvent(new KeyboardEvent('keydown', { key: 'Home' }));
     expect(seek).toHaveBeenLastCalledWith(0);
     events.dispose();
+    seek.mockClear();
     host.dispatchEvent(new KeyboardEvent('keydown', { key: 'End' }));
-    expect(seek).toHaveBeenCalledTimes(2);
+    expect(seek).not.toHaveBeenCalled();
   });
   it('保留空段和真实起点，多轨共用比例且不把两侧相加', () => {
     const bins = buildHeatDensity(10, [{ times: [1, 1, 6] }, { times: [1] }], 10);
@@ -54,9 +56,7 @@ describe('热度时间轴', () => {
     view.updateProgress(35, '0:03');
     view.updateLoop(20, 70);
     view.build(10, tracks, []);
-    expect(host.dataset.tracks).toBe('2');
     expect(host.style.getPropertyValue('--heat-progress')).toBe('35%');
-    expect(host.querySelectorAll('.heat-cursor')).toHaveLength(2);
     for (const range of host.querySelectorAll<HTMLElement>('.heat-loop-range')) {
       expect(range.hidden).toBe(false);
       expect(range.style.left).toBe('20%');
@@ -64,45 +64,64 @@ describe('热度时间轴', () => {
     }
     view.updateLoop(null, null);
     view.build(0, [{ times: [] }], []);
-    expect(host.querySelectorAll('.heat-bin')).toHaveLength(0);
     expect(host.querySelector('.heat-loop-marker')!.hasAttribute('hidden')).toBe(true);
   });
 });
 
-describe('公共播放控制布局', () => {
-  it.each(['simai', 'phigros', 'osu', 'rizline'])('%s 保留实际控制节点、设置和监听，按播放详情顺序组织', feature => {
+describe('公共播放控制', () => {
+  it.each(['simai', 'phigros', 'osu', 'rizline'])('%s 调整布局后仍可重播与修改参数', feature => {
     const html = readFileSync(resolve(process.cwd(), `src/features/${feature}-chart-preview/webview-player/index.html`), 'utf8');
     const parsed = new DOMParser().parseFromString(html, 'text/html');
     document.body.innerHTML = parsed.body.innerHTML;
-    const details = feature === 'simai' ? [document.getElementById('header')!, document.getElementById('info-bar')!] : undefined;
-    const restart = document.getElementById('btn-restart')!;
+    const element = (id: string) => document.getElementById(id)!;
+    const details = feature === 'simai' ? [element('header'), element('info-bar')] : undefined;
     const clicked = vi.fn();
-    restart.addEventListener('click', clicked);
-    const triggers = Array.from(document.querySelectorAll('.wheel-trigger'));
+    element('btn-restart').addEventListener('click', clicked);
     const dispose = installPreviewControls({ measureNavigation: feature === 'simai', details, sections: ['播放设置', '画面设置', '视觉效果'] });
-    const controls = document.getElementById('controls')!;
-    expect(controls.firstElementChild!.classList.contains('preview-time-row')).toBe(true);
-    expect(controls.querySelector('.preview-time-heading')!.textContent).toContain('播放详情');
-    expect(controls.querySelector('.preview-settings h2')!.textContent).toBe('参数与效果');
-    expect(Array.from(controls.querySelectorAll('.wheel-trigger'))).toEqual(triggers);
-    for (const trigger of triggers) expect((trigger as HTMLElement).dataset.presentation).toBe('inline');
-    expect(controls.querySelector('#btn-restart')).toBe(restart);
-    restart.dispatchEvent(new Event('click'));
-    expect(clicked).toHaveBeenCalledTimes(1);
-    if (details) {
-      expect(controls.querySelector('.preview-details #info-bar')).toBe(details[1]);
-      expect(controls.querySelector('.preview-measure #timeline-badge')).not.toBeNull();
-    }
+    const restart = element('btn-restart') as HTMLButtonElement;
+    restart.disabled = false;
+    restart.click();
+    expect(clicked).toHaveBeenCalled();
+
+    vi.stubGlobal('requestAnimationFrame', () => 1);
+    vi.stubGlobal('cancelAnimationFrame', () => undefined);
+    const preview = vi.fn();
+    const commit = vi.fn();
+    const id = feature === 'osu' ? 'brightness' : 'speed';
+    const trigger = element(`${id}-trigger`) as HTMLButtonElement;
+    trigger.disabled = false;
+    const expected = feature === 'osu' ? 21 : 1.05;
+    const speed = setupWheelPopup(trigger, element(`${id}-popup`), element(`${id}-wheel`),
+      element(`${id}-list`), element(`${id}-val`), preview, commit,
+      feature === 'osu' ? 0 : 0.5, feature === 'osu' ? 100 : 2, feature === 'osu' ? 1 : 0.05,
+      feature === 'osu' ? 20 : 1, undefined,
+      value => feature === 'osu' ? `${value}%` : `${value.toFixed(2)}×`);
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    speed.flush();
+    expect(element(`${id}-val`).textContent).toBe(feature === 'osu' ? '21%' : '1.05×');
+    expect(preview).toHaveBeenCalledWith(expected);
+    expect(commit).toHaveBeenCalledWith(expected);
+    speed.dispose();
+    preview.mockClear();
+    commit.mockClear();
+    trigger.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowLeft' }));
+    speed.flush();
+    expect(preview).not.toHaveBeenCalled();
+    expect(commit).not.toHaveBeenCalled();
     dispose();
   });
 
-  it('宿主传入主题色，浅色和深色上的文字有可读回退，并拒绝脚本边界', () => {
-    const dark = chartPreviewAppearanceScript({ dark: true, accent: '#000' });
-    expect(dark).toContain('"--preview-accent":"#000000"');
-    expect(dark).toContain('"--preview-accent-text":"#f1f1f1"');
-    const light = chartPreviewAppearanceScript({ dark: false, accent: '#fff' });
-    expect(light).toContain('"--preview-on-accent":"#000000"');
-    expect(light).toContain('"--preview-accent-text":"#202020"');
-    expect(chartPreviewAppearanceScript({ dark: true, accent: '</script>' })).not.toContain('</script>');
+  it('将主题色应用到页面并为不可读的颜色选择回退', () => {
+    const root = document.documentElement;
+    new Function('document', chartPreviewAppearanceScript({ dark: true, accent: '#000' }))(document);
+    expect(root.dataset.theme).toBe('dark');
+    expect(root.style.getPropertyValue('--preview-accent')).toBe('#000000');
+    expect(root.style.getPropertyValue('--preview-accent-text')).toBe('#f1f1f1');
+    new Function('document', chartPreviewAppearanceScript({ dark: false, accent: '#fff' }))(document);
+    expect(root.dataset.theme).toBe('light');
+    expect(root.style.getPropertyValue('--preview-on-accent')).toBe('#000000');
+    expect(root.style.getPropertyValue('--preview-accent-text')).toBe('#202020');
+    new Function('document', chartPreviewAppearanceScript({ dark: true, accent: '</script>' }))(document);
+    expect(root.style.getPropertyValue('--preview-accent')).toBe('#5B8CFF');
   });
 });

@@ -6,7 +6,6 @@ import { persistBoundAccountThumbnail } from '@/services/account-thumbnail';
 import { persistBoundAccountAvatar } from '@/services/resolve-account-avatar-persist';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 
-/** Mounted once below QueryClientProvider; all page observers remain side-effect free. */
 export function useSyncAccountMetadata(): void {
   const { data, activeAccountId } = useGameData(false);
   useEffect(() => {

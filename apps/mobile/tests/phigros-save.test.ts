@@ -6,10 +6,9 @@ import {
   computeB30,
   decryptBytes,
   decodeSaveZip,
-  gameRecordToScoreRecords,
+  gameRecordToPhigrosScoreRecords,
   loadDifficultyTable,
   loadNoteCountsTable,
-  mergeDifficultyTables,
   normalizePhigrosSongId,
   parsePhigrosGameProgress,
   parseGameRecord,
@@ -18,7 +17,6 @@ import {
   phigrosScoreToRate,
   roundRks,
   selectPhi3,
-  sumPhi3Contribution,
 } from '@/domain/phigros';
 import { readFileSync } from 'node:fs';
 import { join } from 'node:path';
@@ -41,7 +39,6 @@ function writeIntLE(value: number): number[] {
   return [value & 0xff, (value >>> 8) & 0xff, (value >>> 16) & 0xff, (value >>> 24) & 0xff];
 }
 
-/** 按 phiTool GameRecord 二进制布局构造一条曲目记录 */
 function buildGameRecordPayload(): Uint8Array {
   const songId = new TextEncoder().encode('Glaciaxion.SunsetRay');
   const keyPayload = new Uint8Array([...songId, 0, 0]);
@@ -202,7 +199,7 @@ describe('phigros save parsing', () => {
     expect(Object.keys(record).sort()).toEqual(['A.A', 'B.B', 'C.C']);
   });
 
-  it('gameRecordToScoreRecords returns all played charts, not only B27', () => {
+  it('gameRecordToPhigrosScoreRecords returns all played charts, not only B27', () => {
     const gameRecord = {
       'Glaciaxion.SunsetRay': [
         { songId: 'Glaciaxion.SunsetRay', level: 0 as const, difficulty: 0, score: 900000, rawAcc: 95, acc: 95, fc: false, rks: 0 },
@@ -220,15 +217,15 @@ describe('phigros save parsing', () => {
     const table = loadDifficultyTable(
       'Glaciaxion.SunsetRay\t1.0\t6.5\t12.6\nTest.Other\t2.0\t7.0\t\n',
     );
-    const records = gameRecordToScoreRecords(gameRecord, table);
+    const records = gameRecordToPhigrosScoreRecords(gameRecord, table);
     expect(records).toHaveLength(3);
-    expect(records.map((r) => `${r.songId}:${r.levelIndex}`)).toEqual([
+    expect(records.map((r) => `${r.songId}:${r.level}`)).toEqual([
       'Glaciaxion.SunsetRay:2',
       'Test.Other:1',
       'Glaciaxion.SunsetRay:0',
     ]);
-    expect(records[0]?.difficulty).toBe('expert');
-    expect(records[1]?.level).toBe('HD');
+    expect(records[0]?.difficultyConstant).toBe(12.6);
+    expect(records[1]?.level).toBe(1);
   });
 
   it('calculateRks returns 0 below 70% acc', () => {
@@ -251,7 +248,6 @@ describe('phigros save parsing', () => {
       },
     ];
     expect(selectPhi3(records)).toHaveLength(1);
-    expect(sumPhi3Contribution(records)).toBe(15);
   });
 
   it('computeB30: Best27 用成绩定数，Phi3 用 acc=100% 的谱面定数，除以 30', () => {
@@ -293,7 +289,6 @@ describe('phigros save parsing', () => {
       { songId: 'HighAcc', level: 2 as const, difficulty: 12, score: 990000, rawAcc: 100, acc: 100, fc: false, rks: 12 },
     ];
     expect(selectPhi3(records).map((r) => r.songId)).toEqual(['HighAcc']);
-    expect(sumPhi3Contribution(records)).toBe(12);
   });
 
   it('parseGameRecord reads full reference fixture (221 songs / 291 charts)', () => {
@@ -305,7 +300,7 @@ describe('phigros save parsing', () => {
     expect(charts).toBe(291);
   });
 
-  it('gameRecordToScoreRecords keeps charts missing from difficulty table', () => {
+  it('gameRecordToPhigrosScoreRecords keeps charts missing from difficulty table', () => {
     const gameRecord = {
       'Unknown.NewSong': [
         null,
@@ -323,18 +318,10 @@ describe('phigros save parsing', () => {
         null,
       ],
     };
-    const records = gameRecordToScoreRecords(gameRecord, {});
+    const records = gameRecordToPhigrosScoreRecords(gameRecord, {});
     expect(records).toHaveLength(1);
     expect(records[0]?.songId).toBe('Unknown.NewSong');
-    expect(records[0]?.rate).toBe('phi');
-  });
-
-  it('mergeDifficultyTables fills missing songs from fallback', () => {
-    const merged = mergeDifficultyTables(
-      loadDifficultyTable('A.A\t1\t2\t3\t4\n'),
-      loadDifficultyTable('B.B\t5\t6\t7\t8\n'),
-    );
-    expect(Object.keys(merged).sort()).toEqual(['A.A', 'B.B']);
+    expect(records[0]).toMatchObject({ fullCombo: true, rawAcc: 100 });
   });
 
   it('parseChallengeModeRank decodes level and rank correctly', () => {

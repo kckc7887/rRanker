@@ -58,7 +58,6 @@ export function majdataTotal(records: readonly MajdataScore[]): number {
 export function majdataTotalText(snapshot: MajdataSnapshot): string {
   return `${majdataTotal(snapshot.records).toFixed(4)}%`;
 }
-/** 详情物量表的展示分组：直接沿用 Simai 统计的键与顺序，未解析谱面时没有分组。 */
 export function majdataNoteGroup(counts: (NoteCounts & { mine: number }) | undefined): GameNoteGroup | undefined {
   if (!counts) return undefined;
   return {
@@ -68,11 +67,6 @@ export function majdataNoteGroup(counts: (NoteCounts & { mine: number }) | undef
 }
 export function majdataAvatarUrl(username: string): string {
   return `${MAJDATA_BASE}/account/Icon?username=${encodeURIComponent(username)}`;
-}
-/** 兼容首版账号摘要，原快照与账号身份不变。 */
-export function normalizeMajdataTotalDisplay(display: string): string {
-  const pair = /^(\d+(?:\.\d+)?)% · (\d+(?:\.\d+)?)%$/.exec(display);
-  return pair ? `${(Number(pair[1]) + Number(pair[2])).toFixed(4)}%` : display;
 }
 export function majdataRank(ranking: MajdataRanking | undefined, username: string, level: number, hash?: string): number | undefined {
   if (hash && ranking?.hash && ranking.hash !== hash) return undefined;

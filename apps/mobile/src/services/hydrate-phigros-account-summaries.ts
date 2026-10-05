@@ -4,10 +4,6 @@ import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 import { hydratePhigrosAccount } from '@/services/resolve-account-avatar';
 import { loadItemsBounded } from '@/services/offset-pagination';
 
-/**
- * 只读取 LeanCloud summary，为所有 TapTap 账号刷新列表元数据。
- * 不下载或解密完整成绩存档。
- */
 export async function hydratePhigrosAccountSummaries(
   signal: AbortSignal = getForegroundAbortSignal(),
 ): Promise<void> {
@@ -41,7 +37,6 @@ export async function hydratePhigrosAccountSummaries(
           challengeModeRank: summary.challengeModeRank,
         });
       } catch {
-        // 单个账号网络失败不阻断列表；保留上次持久化的元数据。
       }
     },
   });

@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadOptionalBoundAccounts, restoreAppAccounts, getAccountSourceStatuses, retryFailedAccountSources, subscribeAccountSourceStatuses } from '@/services/account-restoration';
+import { loadOptionalBoundAccounts, restoreAppAccounts, getAccountSourceStatuses, retryFailedAccountSources } from '@/services/account-restoration';
 import { LocalAccountStore } from '@/storage/local-account-store';
 import { DemoAccountStore } from '@/storage/demo-account-store';
 import { ChunithmDemoAccountStore } from '@/storage/chunithm-demo-account-store';
@@ -10,12 +10,10 @@ import { TufAccountStore } from '@/storage/tuf-account-store';
 import { MuseDashAccountStore } from '@/storage/musedash-account-store';
 import { PhiraAccountStore } from '@/storage/phira-account-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
-import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { useSession } from '@/state/session-store';
 import { useDebugStore } from '@/state/debug-store';
 import { SessionPersistenceError } from '@/domain/session-vault';
-import { resetEmergencyRuntimeDiagnosticsForTests, snapshotEmergencyRuntimeDiagnostics } from '@/services/runtime-diagnostics-recorder';
-import type { ScoreSnapshot } from '@/domain/models';
+import { snapshotEmergencyRuntimeDiagnostics } from '@/services/runtime-diagnostics-recorder';
 import { CHUNITHM_TEST_ACCOUNT_ID, LOCAL_MAIMAI_ACCOUNT_ID, MAIMAI_TEST_ACCOUNT_ID, MUSEDASH_TEST_ACCOUNT_ID, PHIGROS_TEST_ACCOUNT_ID } from '@/domain/bound-account';
 
 vi.mock('expo-sqlite', () => ({ openDatabaseAsync: vi.fn() }));
@@ -23,7 +21,7 @@ vi.mock('expo-sqlite', () => ({ openDatabaseAsync: vi.fn() }));
 describe('startup account restoration', () => {
   beforeEach(() => {
     vi.spyOn(LocalAccountStore.prototype, 'load').mockResolvedValue([]);
-    vi.spyOn(LocalAccountStore.prototype, 'upsert').mockResolvedValue(undefined);
+    vi.spyOn(LocalAccountStore.prototype, 'upsert').mockResolvedValue([]);
     vi.spyOn(DemoAccountStore.prototype, 'load').mockResolvedValue([]);
     vi.spyOn(ChunithmDemoAccountStore.prototype, 'load').mockResolvedValue(null);
     vi.spyOn(PhigrosDemoAccountStore.prototype, 'load').mockResolvedValue(null);
@@ -32,23 +30,13 @@ describe('startup account restoration', () => {
     vi.spyOn(TufAccountStore.prototype, 'load').mockResolvedValue([]);
     vi.spyOn(MuseDashAccountStore.prototype, 'load').mockResolvedValue([]);
     vi.spyOn(PhiraAccountStore.prototype, 'load').mockResolvedValue([]);
-    vi.spyOn(SqliteSnapshotRepository.prototype, 'getLatest').mockResolvedValue(null);
     vi.spyOn(SecureSessionStore.prototype, 'loadVault').mockResolvedValue({ version: 3, activeAccountId: null, credentials: [], accounts: [] });
     useDebugStore.setState({ testAccountsEnabled: false, hydrated: true });
     useSession.getState().finishRestore(null, []);
   });
   afterEach(() => vi.restoreAllMocks());
 
-  it('migrates an existing local score snapshot once while deferring rating hydration', async () => {
-    vi.mocked(SqliteSnapshotRepository.prototype.getLatest).mockResolvedValue({ player: { displayName: '  旧玩家  ', rating: 15000 } } as ScoreSnapshot);
-    const first = await loadOptionalBoundAccounts();
-    expect(LocalAccountStore.prototype.upsert).toHaveBeenCalledWith({ id: LOCAL_MAIMAI_ACCOUNT_ID, displayName: '旧玩家' });
-    expect(first).toMatchObject([{ id: LOCAL_MAIMAI_ACCOUNT_ID, displayName: '旧玩家', scoreDisplay: '00000' }]);
-    vi.mocked(LocalAccountStore.prototype.load).mockResolvedValue([{ id: LOCAL_MAIMAI_ACCOUNT_ID, displayName: '旧玩家' }]);
-    await loadOptionalBoundAccounts();
-    expect(SqliteSnapshotRepository.prototype.getLatest).toHaveBeenCalledOnce();
-    expect(LocalAccountStore.prototype.upsert).toHaveBeenCalledOnce();
-  });
+
 
   it('keeps other account sources when one directory cannot be read', async () => {
     vi.mocked(TufAccountStore.prototype.load).mockRejectedValue(new Error('tuf io'));
@@ -90,22 +78,12 @@ describe('startup account restoration', () => {
     expect(useSession.getState().boundAccounts).toEqual([changed, added]);
   });
 
-  it('keeps restoring other sources when a status subscriber throws', async () => {
-    const unsubscribe = subscribeAccountSourceStatuses(() => { throw new Error('subscriber failed'); });
-    try {
-      vi.mocked(TufAccountStore.prototype.load).mockResolvedValue([{ playerId: 1, displayName: 'TUF' }]);
-      await expect(restoreAppAccounts()).resolves.toBeUndefined();
-      expect(useSession.getState().boundAccounts[0]?.displayName).toBe('TUF');
-      expect(getAccountSourceStatuses().find((source) => source.source === 'phira')?.status).toBe('ready');
-    } finally { unsubscribe(); }
-  });
+
 
   it('does not rebuild the default local account when its directory cannot be read', async () => {
     vi.mocked(LocalAccountStore.prototype.load).mockRejectedValue(new Error('local io'));
-    vi.mocked(SqliteSnapshotRepository.prototype.getLatest).mockResolvedValue({ player: { displayName: '旧玩家', rating: 15000 } } as ScoreSnapshot);
     await expect(loadOptionalBoundAccounts()).resolves.toEqual([]);
     expect(LocalAccountStore.prototype.upsert).not.toHaveBeenCalled();
-    expect(SqliteSnapshotRepository.prototype.getLatest).not.toHaveBeenCalled();
   });
 
   it('does not invent a deleted local or demo account on an empty installation', async () => {
@@ -144,11 +122,11 @@ describe('startup account restoration', () => {
   });
 
   it('exposes a failed vault restore as an empty recoverable session', async () => {
-    resetEmergencyRuntimeDiagnosticsForTests();
+    const initialDiagnostics = snapshotEmergencyRuntimeDiagnostics().length;
     vi.mocked(SecureSessionStore.prototype.loadVault).mockRejectedValue(new SessionPersistenceError('credential_storage'));
     await restoreAppAccounts();
     expect(useSession.getState()).toMatchObject({ restoreStatus: 'error', boundAccounts: [], session: null });
-    expect(snapshotEmergencyRuntimeDiagnostics()).toContainEqual(expect.objectContaining({
+    expect(snapshotEmergencyRuntimeDiagnostics().slice(initialDiagnostics)).toContainEqual(expect.objectContaining({
       type: 'error', fields: expect.objectContaining({
         source: 'account-restoration', phase: 'vault', errorCode: 'credential_storage',
       }),

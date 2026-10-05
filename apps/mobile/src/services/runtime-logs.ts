@@ -58,7 +58,7 @@ let sharing = false;
 let exportSequence = 0;
 export async function shareRuntimeLog(id: number): Promise<void> {
   if (sharing) return;
-  // 在第一个 await 前固定正文，分享面板触发的生命周期事件不进入此次快照。
+  /** 分享面板触发的生命周期事件不进入此次快照。 */
   const contents = runtimeLogs.snapshot(id);
   sharing = true;
   let file: File | undefined;

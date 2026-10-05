@@ -166,7 +166,6 @@ describe('cacheFirstLoad', () => {
       await new Promise(resolve => setTimeout(resolve, 0));
       expect(onFresh).not.toHaveBeenCalled();
       if (cancel) expect(onFallback).not.toHaveBeenCalled();
-      // 第二个参数是机器可判定的刷新结果：服务用缓存替代刷新时为 null，调用端不必读文案。
       else expect(onFallback).toHaveBeenCalledWith(fallback, null);
     }
   });
@@ -179,7 +178,6 @@ describe('cacheFirstLoad', () => {
       loadFresh: async () => fallback,
       onFresh,
       onFallback,
-      // 服务声明这份数据取自本地快照；即使来源标记看起来新鲜也不能算刷新成功。
       isFallback: (value) => value === fallback,
     });
 

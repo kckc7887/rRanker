@@ -76,14 +76,11 @@ vi.mock('@/features/storage-management/fs-storage', () => ({
   measureDirectoryBytesAsync: mocks.measureDirectoryBytes,
   measureDirectoryBytesStrictAsync: mocks.measureDirectoryBytes,
   clearDirectoryContentsStrict: mocks.clearDirectoryContentsStrict,
-  clearAppOwnedCacheContents: () => undefined,
-  clearAppOwnedCacheContentsStrict: () => undefined,
   APP_CACHE_ROOT: () => null,
   APP_DOCUMENT_ROOT: () => null,
   PHIGROS_FONT_ROOT: () => null,
   PHIGROS_ILLUSTRATION_ROOT: () => null,
   MAIMAI_ASSETS_ROOT: () => null,
-  OSU_MOD_ICONS_ROOT: () => null,
 }));
 
 vi.mock('@/services/remote-image-cache', () => ({
@@ -170,7 +167,7 @@ describe('app-owned cache entries', () => {
     expect(isAppOwnedCacheEntry('rRanker-backup-x.json')).toBe(true);
     expect(isAppOwnedCacheEntry('ExponentAsset-123.ttf')).toBe(false);
     expect(isAppOwnedCacheEntry('Image')).toBe(false);
-    expect(isAppOwnedCacheEntry('rranker-runtime-diagnostics.json')).toBe(false);
+    expect(isAppOwnedCacheEntry('rranker-runtime-diagnostics.json')).toBe(true);
     expect(isAppOwnedCacheEntry('rranker-runtime-diagnostics.txt')).toBe(true);
   });
 });
@@ -222,7 +219,7 @@ describe('phira storage segment', () => {
     };
     const adapter = getGameStorageAdapter('phira');
     expect(adapter?.title).toBe('Phira');
-    await expect(adapter?.measure(snapshots as never)).resolves.toBe(150);
+    await expect(adapter?.measure(await collectStorageMeasurementInventory(snapshots as never))).resolves.toBe(150);
     await adapter?.clear(snapshots as never);
     expect(clearAccountScores).toHaveBeenCalledWith([]);
     expect(clearResources).toHaveBeenCalledWith([
@@ -293,7 +290,7 @@ describe('osu storage segment', () => {
     };
     const adapter = getGameStorageAdapter('osu-standard');
     // 仅 osu-standard 自身的快照 + 该模式账号的头像/缩略图（accountId 前缀归属）
-    await expect(adapter?.measure(snapshots as never)).resolves.toBe(180);
+    await expect(adapter?.measure(await collectStorageMeasurementInventory(snapshots as never))).resolves.toBe(180);
     await adapter?.clear(snapshots as never);
     expect(clearAccountScores).toHaveBeenCalledWith([]);
     expect(clearResources).toHaveBeenCalledWith([
@@ -320,17 +317,17 @@ describe('shared cache note wording', () => {
     expect(options.skip('third-party-cache')).toBe(false);
     expect(options.skip('ExponentAsset-Ionicons.ttf')).toBe(true);
     expect(options.skip('rranker-remote-image-cache-v2')).toBe(true);
-    expect(options.skip('rranker-runtime-diagnostics.json')).toBe(true);
+    expect(options.skip('rranker-runtime-diagnostics.json')).toBe(false);
     expect(options.skip('rranker-runtime-diagnostics.txt')).toBe(false);
     expect(options.skip('rranker-runtime-log-31-1.txt')).toBe(false);
   });
 
-  it('does not count migrating diagnostic bytes as reclaimed storage', async () => {
+  it('counts diagnostic files left in cache as removable storage', async () => {
     mocks.measureDirectoryBytes.mockClear();
     await measureManagedStorageBytes();
     const calls = mocks.measureDirectoryBytes.mock.calls as unknown[][];
     const options = calls[0]?.[1] as { skip: (name: string) => boolean };
-    expect(options.skip('rranker-runtime-diagnostics.json')).toBe(true);
+    expect(options.skip('rranker-runtime-diagnostics.json')).toBe(false);
     expect(options.skip('rranker-runtime-diagnostics.txt')).toBe(false);
     expect(options.skip('rranker-runtime-log-31-1.txt')).toBe(false);
     expect(options.skip('rranker-remote-image-cache-v2')).toBe(false);
@@ -339,20 +336,19 @@ describe('shared cache note wording', () => {
 });
 
 describe('storage measurement inventory', () => {
-  it('reads shared SQLite rows once before partitioning every game', async () => {
+  it('partitions current account resources and catalog storage by game', async () => {
     const snapshots = {
-      listAccountScoreSizes: vi.fn(async () => []),
-      listResourceSizes: vi.fn(async () => []),
-      measureCatalogBytes: vi.fn(async () => 10),
-      measureLegacyScoreBytes: vi.fn(async () => 20),
+      listAccountScoreSizes: async () => [{ accountId: 'maimai:lxns:u1', bytes: 20 }],
+      listResourceSizes: async () => [
+        { key: 'osu:osu-standard:42', bytes: 40 },
+        { key: 'detailed-catalog', bytes: 10 },
+      ],
     };
     const inventory = await collectStorageMeasurementInventory(snapshots as never);
-    await Promise.all(GAME_STORAGE_ADAPTERS.map((adapter) => adapter.measure(snapshots as never, inventory)));
-    expect(snapshots.listAccountScoreSizes).toHaveBeenCalledTimes(1);
-    expect(snapshots.listResourceSizes).toHaveBeenCalledTimes(1);
-    expect(snapshots.measureCatalogBytes).toHaveBeenCalledTimes(1);
-    expect(snapshots.measureLegacyScoreBytes).toHaveBeenCalledTimes(1);
+    expect(await getGameStorageAdapter('maimai')!.measure(inventory)).toBe(30);
+    expect(await getGameStorageAdapter('osu-standard')!.measure(inventory)).toBe(40);
   });
+
 });
 
 describe('storage usage report', () => {
@@ -429,7 +425,7 @@ describe('phigros resource coverage', () => {
       clearResources,
     };
     const adapter = getGameStorageAdapter('phigros');
-    await expect(adapter?.measure(snapshots as never)).resolves.toBe(190);
+    await expect(adapter?.measure(await collectStorageMeasurementInventory(snapshots as never))).resolves.toBe(190);
     await adapter?.clear(snapshots as never);
     expect(clearAccountScores).toHaveBeenCalledWith([]);
     expect(clearResources).toHaveBeenCalledWith([
@@ -456,7 +452,7 @@ describe('chunithm resource coverage', () => {
       clearResources,
     };
     const adapter = getGameStorageAdapter('chunithm');
-    await expect(adapter?.measure(snapshots as never)).resolves.toBe(60);
+    await expect(adapter?.measure(await collectStorageMeasurementInventory(snapshots as never))).resolves.toBe(60);
     await adapter?.clear(snapshots as never);
     expect(clearResources).toHaveBeenCalledWith([
       'chunithm-collections:character',
@@ -481,15 +477,12 @@ describe('maimai resource coverage', () => {
         { key: 'account-thumbnail:maimai:local:a', bytes: 20 },
         { key: 'account-avatar:maimai:local:a', bytes: 30 },
       ]),
-      measureCatalogBytes: vi.fn(async () => 0),
-      measureLegacyScoreBytes: vi.fn(async () => 0),
-      clearCatalog: vi.fn(async () => undefined),
       clearAccountScores,
       clearResources,
     };
     const adapter = getGameStorageAdapter('maimai');
     // SQLite 可清部分 110 + maimai-assets 目录 1000
-    await expect(adapter?.measure(snapshots as never)).resolves.toBe(1110);
+    await expect(adapter?.measure(await collectStorageMeasurementInventory(snapshots as never))).resolves.toBe(1110);
     await adapter?.clear(snapshots as never);
     expect(clearAccountScores).toHaveBeenCalledWith(['maimai:lxns:u1']);
     expect(clearResources).toHaveBeenCalledWith(['account-thumbnail:maimai:lxns:u1']);
@@ -505,8 +498,8 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     mocks.clearGameRemoteImageCache.mockClear();
     mocks.clearGameRemoteImageCache.mockReturnValueOnce(images.promise);
     mocks.measureDirectoryBytes.mockClear();
-    for (let index = 0; index < 5; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(20);
-    for (let index = 0; index < 5; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(10);
+    for (let index = 0; index < 4; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(20);
+    for (let index = 0; index < 4; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(10);
     let settled = false;
     const pending = clearStorageByCategories(['phira'], {
       cancelQueries: vi.fn(async () => undefined), removeQueries: vi.fn(),
@@ -515,10 +508,10 @@ describe('clearing storage compacts the database and resets in-memory caches', (
       await vi.waitFor(() => expect(mocks.clearGameRemoteImageCache).toHaveBeenCalledWith('phira'));
       await Promise.resolve(); await Promise.resolve();
       expect(settled).toBe(false);
-      expect(mocks.measureDirectoryBytes).toHaveBeenCalledTimes(5);
+      expect(mocks.measureDirectoryBytes).toHaveBeenCalledTimes(4);
       images.resolve();
-      await expect(pending).resolves.toEqual({ clearedIds: [], failures: ['phira'], reclaimedBytes: 50 });
-      expect(mocks.measureDirectoryBytes).toHaveBeenCalledTimes(10);
+      await expect(pending).resolves.toEqual({ clearedIds: [], failures: ['phira'], reclaimedBytes: 40 });
+      expect(mocks.measureDirectoryBytes).toHaveBeenCalledTimes(8);
     } finally { images.resolve(); await pending; clear.mockRestore(); }
   });
 
@@ -571,7 +564,7 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     expect(options.skip('rranker-best-image-session-1.tmp')).toBe(false);
     expect(options.skip('third-party-cache')).toBe(false);
     expect(options.skip('ExponentAsset-Ionicons.ttf')).toBe(true);
-    expect(options.skip('rranker-runtime-diagnostics.json')).toBe(true);
+    expect(options.skip('rranker-runtime-diagnostics.json')).toBe(false);
     expect(options.skip('rranker-runtime-diagnostics.txt')).toBe(false);
     expect(options.skip('rranker-runtime-log-31-1.txt')).toBe(false);
   });
@@ -593,10 +586,10 @@ describe('clearing storage compacts the database and resets in-memory caches', (
 
   it('preserves reclaimed bytes when disk clear fails but memory and files succeed', async () => {
     mocks.clearDiskCache.mockRejectedValueOnce(new Error('disk unavailable'));
-    for (let index = 0; index < 5; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(20);
-    for (let index = 0; index < 5; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(10);
+    for (let index = 0; index < 4; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(20);
+    for (let index = 0; index < 4; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(10);
     await expect(clearStorageByCategories(['shared'], { cancelQueries: vi.fn(), removeQueries: vi.fn() } as never)).resolves.toMatchObject({
-      clearedIds: ['shared'], failures: ['图片磁盘缓存'], reclaimedBytes: 50,
+      clearedIds: ['shared'], failures: ['图片磁盘缓存'], reclaimedBytes: 40,
     });
   });
 });
@@ -629,6 +622,6 @@ describe('Majdata storage segment', () => {
     const snapshots = { listAccountScoreSizes: vi.fn(async () => []), listResourceSizes: vi.fn(async () => [...resources.map(key => ({ key, bytes: 10 })), { key: 'local-tags', bytes: 100 }, { key: 'phira:chart:1', bytes: 99 }]), clearAccountScores: vi.fn(async () => undefined), clearResources: vi.fn(async () => undefined) };
     const adapter = getGameStorageAdapter('majdata-net')!; expect(listClearableCategoryIds()).toContain('majdata-net');
     expect(adapter.queryKeys).toContainEqual(['game-data']); expect(adapter.queryKeys).toContainEqual(['majdata-net']);
-    expect(await adapter.measure(snapshots as never)).toBe(40); await adapter.clear(snapshots as never); expect(snapshots.clearResources).toHaveBeenCalledWith(resources);
+    expect(await adapter.measure(await collectStorageMeasurementInventory(snapshots as never))).toBe(40); await adapter.clear(snapshots as never); expect(snapshots.clearResources).toHaveBeenCalledWith(resources);
   });
 });

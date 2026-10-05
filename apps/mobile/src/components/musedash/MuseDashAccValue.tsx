@@ -4,7 +4,6 @@ import { MUSE_DASH_ACC_GRADIENTS, museDashAccGradientKind } from '@/domain/mused
 import { formatMuseDashAcc } from '@/features/game-content/adapters';
 import { useAppTheme } from '@/theme/app-theme';
 
-/** 大字 ACC：100 金渐变、95 银渐变、90 红渐变，90 以下白色；未游玩显示 —。 */
 export function MuseDashAccValue({ acc, style }: { acc: number | undefined; style?: object }) {
   const theme = useAppTheme();
   if (acc === undefined) {

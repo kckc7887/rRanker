@@ -136,7 +136,7 @@ export async function pollLoginUntilToken(input: {
     if (stage === 'wait_acceptance' || stage === 'wait_user_request') {
       input.onWaitingFriend?.({ botFriendCode: bot, stage });
     } else {
-      // send_request 等发送阶段：尚未发出申请，不要提示「等待同意」
+      /** 尚未发送申请，不能提示等待同意。 */
       input.onSendingFriend?.({ botFriendCode: bot, stage });
     }
 
@@ -146,7 +146,6 @@ export async function pollLoginUntilToken(input: {
       try {
         await verifyLoginJob(input.jobId, input.signal);
       } catch {
-        // verify 失败不中断轮询
       }
     }
 
@@ -178,7 +177,6 @@ export async function pollUpdateScoreUntilDone(input: {
       ));
     } catch (error) {
       if (!isRetryableScoreHubError(error)) throw error;
-      // 服务端任务可能仍在抓取；单次 poll 断连（如 terminated）不应整段放弃。
       const message = error instanceof Error
         ? error.message
         : '网络连接中断，正在重试…';

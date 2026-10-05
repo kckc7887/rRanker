@@ -68,7 +68,7 @@ function property(value: unknown, key: string): unknown {
 }
 
 function frameLocation(file: unknown, line: unknown, column: unknown): string {
-  // 地址只保留打包文件名和数值位置，避免路径、查询参数或账号数据进入日志。
+  /** 日志地址只保留打包文件名和数值位置。 */
   const name = typeof file === 'string'
     ? file.split(/[?#]/u)[0]!.split(/[/\\]/u).at(-1) ?? '' : '';
   const safeFile = /^(?:index\.(?:android|ios)\.bundle|index\.bundle|main\.jsbundle|[a-zA-Z_$][\w.$-]{0,80}\.[jt]sx?)$/u.test(name)
@@ -92,7 +92,7 @@ export function sanitizeRuntimeLogError(value: unknown): NonNullable<RuntimeLogE
       if (match) stack.push(frameLocation(match[1], Number(match[2]), Number(match[3])));
     }
   }
-  // 任意异常消息可能包含玩家资料或完整请求；摘要由错误类别生成，不依赖黑名单猜测隐私。
+  /** 原始异常可能含玩家资料，摘要使用错误类别。 */
   const summaries: Record<string, string> = {
     TypeError: 'Invalid value or operation', RangeError: 'Value outside supported range',
     ReferenceError: 'Missing reference', SyntaxError: 'Invalid syntax or data',
@@ -151,7 +151,7 @@ export function sanitizeRuntimeLogEntry(type: string, input: Readonly<Record<str
     at, type: words.test(type) ? type : 'event', fields, severity: runtimeLogSeverity(type, fields, input),
     ...(error !== undefined && fields.errorCode !== 'cancelled' && fields.result !== 'cancelled' ? { error: sanitizeRuntimeLogError(error) } : {}),
   };
-  // 所有保留字段均为 ASCII；裁剪序列化长度同时限制 UTF-8 字节数。
+  /** 保留字段均为 ASCII，序列化长度同时限制 UTF-8 字节数。 */
   while (JSON.stringify(entry).length > 8192 && entry.error?.stack.length) entry.error.stack.pop();
   return entry;
 }

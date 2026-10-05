@@ -25,7 +25,7 @@ describe('Rizline identities and score semantics', () => {
     save.myBest[0].completeRate = 120;
     expect(buildRizlineRecords(save)[0].ap).toBe(true);
     // Numeric example: HiXcc/RizlineSavingTest@88b16f9, RizScoreUploader.py:37 (MIT, Copyright (c) 2026 HiXcc).
-    // Source and full license: THIRD_PARTY_NOTICES.md, LICENSES/RizlineSavingTest-MIT.txt.
+    /** 来源与完整许可：THIRD_PARTY_NOTICES.md、LICENSES/RizlineSavingTest-MIT.txt。 */
     const fullCompletion = Math.fround(Math.fround(1.2) * 100);
     expect(fullCompletion).toBe(120.00000762939453);
     save.myBest[0].completeRate = fullCompletion;

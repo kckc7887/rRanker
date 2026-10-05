@@ -1,7 +1,6 @@
 import { TintedRatingTag } from '@/components/TintedRatingTag';
 import type { DxRatingTheme } from '@/domain/dx-rating-theme';
 
-/** osu! 账号行 PP 标签主题（DxRatingTheme 形状，TintedRatingTag 公共骨架渲染）。 */
 export const OSU_PP_RATING_THEME: DxRatingTheme = {
   id: 'osu-pp',
   label: 'PP',

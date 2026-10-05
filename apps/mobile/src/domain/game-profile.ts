@@ -1,7 +1,6 @@
 import type { GameId } from './game-bind-options';
 import { getGameToolbox } from './game-toolbox';
 
-/** BestN 分区定义：舞萌是 B35+B15；其他音游通常是一组 BestN。 */
 export type BestSectionSpec = {
   id: string;
   title: string;
@@ -9,13 +8,9 @@ export type BestSectionSpec = {
 };
 
 export type GameCapabilities = {
-  /** 是否有已注册的游戏工具箱；总览据此决定是否展示工具箱入口。 */
   hasTools: boolean;
 };
 
-/**
- * 游戏展示口径。导航上的最佳/成绩/查找是音游共性；差异在各游戏的 payload 与筛选维度。
- */
 export type GameProfile<G extends GameId = GameId> = {
   id: G;
   title: string;
@@ -53,14 +48,6 @@ export const GAME_PROFILES: { [G in GameId]: GameProfile<G> } = {
     ratingDigits: 0,
     bestSections: [],
     capabilities: capabilitiesFor('chunithm'),
-  },
-  test: {
-    id: 'test',
-    title: '测试游戏',
-    ratingLabel: 'Rating',
-    ratingDigits: 0,
-    bestSections: [{ id: 'best', title: 'Best', size: 0 }],
-    capabilities: capabilitiesFor('test'),
   },
   phigros: {
     id: 'phigros',

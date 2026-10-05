@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
-import { router, Stack, type Href, useLocalSearchParams } from 'expo-router';
+import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Card } from '@/components/Card';
 import { ChunithmDifficultyBadge } from '@/components/chunithm/ChunithmDifficultyBadge';
 import { ChunithmCollectionImage } from '@/components/chunithm/ChunithmCollectionImage';
@@ -23,6 +23,7 @@ import {
   normalizeTrophyTone,
   TROPHY_BADGE_THEMES,
 } from '@/features/best-image/best-image-badge-theme';
+import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
 import { useAppTheme } from '@/theme/app-theme';
@@ -36,7 +37,6 @@ function progressPercent(completed: number, total: number): number {
   return total ? Math.min(100, (completed / total) * 100) : 0;
 }
 
-/** 称号颜色徽章（normal/铜/银/金 → 实体徽章；彩虹 → 渐变徽章；image → 图片预览）。 */
 function TrophyBadge({ collection }: { collection: ChunithmCollection }) {
   const tone = normalizeTrophyTone(collection.color);
   if (collection.color === 'image') {
@@ -63,7 +63,6 @@ function TrophyBadge({ collection }: { collection: ChunithmCollection }) {
   );
 }
 
-/** 收藏品预览：称号用徽章/图片，角色/名牌/头像用 CDN 图片。 */
 function CollectionPreview({ kind, collection }: { kind: ChunithmCollectionKind; collection: ChunithmCollection }) {
   if (kind === 'trophy') {
     return <TrophyBadge collection={collection} />;
@@ -419,7 +418,7 @@ export default function ChunithmCollectionsToolScreen() {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`查看歌曲 ${title ?? item.songId}`}
-                    onPress={() => router.push(`/songs/${encodeURIComponent(item.songId)}` as Href)}
+                    onPress={() => router.push(detailTargetHref(encodeDetailTarget({ game: 'chunithm', songId: item.songId })))}
                     style={({ pressed }) => [styles.song, { backgroundColor: theme.surface }, pressed && styles.pressed]}
                   >
                     <View style={styles.songCopy}>

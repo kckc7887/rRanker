@@ -23,14 +23,9 @@ function base64ToUint8Array(base64: string): Uint8Array {
     }
     return bytes;
   }
-  // Node / Jest 回退
   return Uint8Array.from(Buffer.from(normalized, 'base64'));
 }
 
-/**
- * 将相册图片本地解码为舞萌玩家二维码字符串。
- * 先压成 JPEG 再交给 jsQR，避免把大图原文件直接塞给解码器。
- */
 function throwIfAborted(signal?: AbortSignal): void {
   if (!signal?.aborted) return;
   const error = new Error('二维码识别已取消');
@@ -79,7 +74,6 @@ export async function decodeMaimaiQrFromImageUri(uri: string, signal?: AbortSign
     }
     return payload;
   } finally {
-    // 识别只消费 base64，压图产出的临时 JPEG 立即删除，避免在缓存目录遗留文件。
-    try { new File(prepared.uri).delete(); } catch { /* 临时文件可能已由系统清理。 */ }
+    try { new File(prepared.uri).delete(); } catch {}
   }
 }

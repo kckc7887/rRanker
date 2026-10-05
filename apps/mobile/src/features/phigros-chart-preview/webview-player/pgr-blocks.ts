@@ -22,12 +22,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-/**
- * PGR blockAreaList field structure references phigrostl/PhiVideo (MIT),
- * revision 361e000f5eefc803bdd4ec3c86c402197ea7d30c, Application/BlockArea.h.
- * Copyright (c) 2026 たおりん. See THIRD_PARTY_NOTICES.md and LICENSES/PhiVideo-MIT.txt.
- * rRanker implements time sampling, transforms and indexing independently.
- */
+/** 结构来源 phigrostl/PhiVideo Application/BlockArea.h；MIT。 */
 import { CHART_PREVIEW_MAX_EVENTS, ChartPreviewBudgetExceededError } from '../../chart-preview-shared/chart-preview-resource-budget';
 import { createIntervalIndex } from '../../chart-preview-shared/webview-player/interval-index';
 import { upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
@@ -46,7 +41,8 @@ export interface PgrBlock {
   scale: PgrBlockKeyframe[];
 }
 export interface PgrBlockSample {
-  /** Counterclockwise corners, in normalized screen coordinates (Y up). */
+
+  /** 归一化坐标，Y 向上，顶点逆时针排列。 */
   corners: readonly [Point, Point, Point, Point];
   opacity: number;
   enabled: boolean;
@@ -66,7 +62,7 @@ function point(value: unknown): Point | null {
 }
 const list = (value: unknown): unknown[] => Array.isArray(value) ? value : [];
 
-/** The PGR block easing IDs are distinct from RPE easingType. */
+/** PGR block 缓动编号与 RPE 不同。 */
 export function pgrBlockEase(id: number, progress: number): number {
   const t = Math.max(0, Math.min(1, progress));
   if (id === 13) return 0;
@@ -160,7 +156,6 @@ export function samplePgrBlock(block: PgrBlock, time: number, aspect: number): P
     opacity, enabled: time >= block.enable && time < block.disable, subtract: block.subtract };
 }
 
-/** Sorted once, queried without playback history; the same time always yields the same geometry. */
 export function indexPgrBlocks(blocks: readonly PgrBlock[]): (time: number) => PgrBlock[] {
   const sorted = [...blocks].sort((a, b) => a.appear - b.appear);
   const query = createIntervalIndex(sorted, block => [block.appear, Math.max(block.enable, block.disable, block.disappear)]);

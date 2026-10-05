@@ -411,8 +411,7 @@ const styles = StyleSheet.create({
   overlay: {
     ...StyleSheet.absoluteFillObject,
     zIndex: 1000,
-    // Keep a high elevation so toasts stay above sheets/modals; empty areas still
-    // pass touches via pointerEvents="box-none" on non-action notifications.
+    /** 通知层需高于原生弹层，空白区域仍允许触摸穿透。 */
     elevation: 1000,
     alignItems: 'center',
     paddingHorizontal: 16,

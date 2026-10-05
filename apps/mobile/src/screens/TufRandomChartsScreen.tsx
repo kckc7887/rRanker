@@ -47,8 +47,7 @@ export function TufRandomChartsScreen() {
       if (!controller.signal.aborted) setFailedOffsets(failures.map((failure) => failure.offset));
     });
     return () => controller.abort();
-    // retryVersion is the explicit trigger for retrying only the failed offsets.
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 回调只在挂载时消费一次，或依赖已在上方说明
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- retryVersion 触发失败页重试，不随分页结果重启。
   }, [firstPage?.limit, firstPage?.total, playerId, queryOptions, retryVersion]);
 
   const loaded = useMemo(() => uniqueTufPassesByLevel(

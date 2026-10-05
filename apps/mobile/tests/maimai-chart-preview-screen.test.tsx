@@ -1,9 +1,9 @@
+import { runInNewContext } from 'node:vm';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { BackHandler } from 'react-native';
 import MaimaiChartPreviewScreen from '../app/songs/chart-preview';
 import {
-  createLatestFrameScheduler,
   resolveInitialBackgroundState,
 } from '@/features/simai-chart-preview/webview-player/interactionScheduler';
 import {
@@ -79,16 +79,6 @@ jest.mock('@/components/AppNotification', () => ({
 jest.mock('@/features/simai-chart-preview/prepare-chart-preview-webview', () => ({
   buildChartPreviewInjectedJavaScript: () => 'true;',
   chartPreviewAllowsFileAccess: () => true,
-  chartPreviewExitFullscreenScript: () => "window.postMessage({type:'exit-fullscreen'}, '*');true;",
-  chartPreviewStopScript: () => "window.postMessage({type:'stop'}, '*');true;",
-  parseChartPreviewBridgeMessage: (raw: string) => {
-    try {
-      const parsed = JSON.parse(raw) as unknown;
-      return parsed !== null && typeof parsed === 'object' ? parsed : null;
-    } catch {
-      return null;
-    }
-  },
   prepareChartPreviewWebViewSource: (input: unknown) => mockPrepareChartPreview(input),
 }));
 
@@ -135,10 +125,11 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     expect(latestScreenOptions).not.toHaveProperty('statusBarHidden');
     expect(latestScreenOptions).not.toHaveProperty('navigationBarHidden');
 
+    mockInjectJavaScript.mockClear();
     expect(hardwareBackHandler?.()).toBe(true);
-    expect(mockInjectJavaScript).toHaveBeenCalledWith(
-      expect.stringContaining("type:'exit-fullscreen'"),
-    );
+    const postMessage = jest.fn();
+    runInNewContext(String(mockInjectJavaScript.mock.calls.at(-1)![0]), { window: { postMessage } });
+    expect(postMessage).toHaveBeenCalledWith({ type: 'exit-fullscreen' }, '*');
 
     await fireEvent(webview, 'message', {
       nativeEvent: { data: '{"type":"fullscreen","active":false}' },
@@ -158,7 +149,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
 
     await fireEvent(webview, 'message', {
       nativeEvent: {
-        data: '{"type":"settings","active":false,"message":"ignored","hiSpeed":7.5,"backgroundMode":"video","videoBackgroundPrompted":true}',
+        data: "{\"type\":\"settings\",\"settings\":{\"hiSpeed\":7.5,\"backgroundMode\":\"video\",\"videoBackgroundPrompted\":true}}",
       },
     });
 
@@ -175,10 +166,10 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
 
     await act(async () => {
       await fireEvent(webview, 'message', {
-        nativeEvent: { data: '{"type":"settings","backgroundMode":"image"}' },
+        nativeEvent: { data: "{\"type\":\"settings\",\"settings\":{\"backgroundMode\":\"image\"}}" },
       });
       await fireEvent(webview, 'message', {
-        nativeEvent: { data: '{"type":"settings","videoBackgroundPrompted":true}' },
+        nativeEvent: { data: "{\"type\":\"settings\",\"settings\":{\"videoBackgroundPrompted\":true}}" },
       });
       await Promise.resolve();
       await Promise.resolve();
@@ -251,27 +242,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     expect(parseSimaiChart(simai, 5).difficulty).toBe(5);
   });
 
-  it('coalesces repeated pointer work into the latest display frame', () => {
-    const callbacks = new Map<number, FrameRequestCallback>();
-    const rendered: number[] = [];
-    let nextHandle = 1;
-    const scheduler = createLatestFrameScheduler<number>(
-      (callback) => {
-        const handle = nextHandle++;
-        callbacks.set(handle, callback);
-        return handle;
-      },
-      (handle) => callbacks.delete(handle),
-      (value) => rendered.push(value),
-    );
-    scheduler.schedule(10);
-    scheduler.schedule(20);
-    expect(callbacks.size).toBe(1);
-    callbacks.values().next().value?.(0);
-    expect(rendered).toEqual([20]);
-  });
-
-  it('defaults old settings to image and remembers either prompt marker', () => {
+  it('restores the selected background after video confirmation', () => {
     expect(resolveInitialBackgroundState({})).toEqual({ mode: 'image', prompted: false });
     expect(resolveInitialBackgroundState({
       backgroundMode: 'video',
@@ -279,7 +250,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     })).toEqual({ mode: 'image', prompted: false });
     expect(resolveInitialBackgroundState({
       backgroundMode: 'video',
-      videoBackgroundConfirmed: true,
+      videoBackgroundPrompted: true,
     })).toEqual({ mode: 'video', prompted: true });
   });
 });

@@ -200,7 +200,7 @@ export function PhigrosLoginPanel({
     return () => {
       stopPolling();
     };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 回调只在挂载时消费一次，或依赖已在上方说明
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- 只按设备、可见性与前台状态重启轮询。
   }, [phiDevice, lifecycle.foregroundGeneration, lifecycle.foregroundReady, visible]);
 
   const cancelPhigrosLogin = () => {

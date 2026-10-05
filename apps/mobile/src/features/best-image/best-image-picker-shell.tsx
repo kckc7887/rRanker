@@ -15,7 +15,6 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/theme/app-theme';
 
-/** 成绩图素材选择器的弹层外壳。 */
 export type BestImagePickerShellStyles = {
   root: ViewStyle;
   grabber: ViewStyle;
@@ -57,9 +56,9 @@ export function BestImagePickerShell<TItem>({
 }: {
   visible: boolean;
   onClose: () => void;
-  /** 标题子节点。 */
+
   title: ReactNode;
-  /** 计数子节点。 */
+
   countText: ReactNode;
   closeLabel: string;
   searchLabel: string;

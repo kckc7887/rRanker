@@ -1,7 +1,6 @@
 type Point = { x: number; y: number };
 type ToCanvas = (x: number, y: number) => readonly [number, number];
 
-/** Solid track and slim outline, using the engine's sampled path and coordinate transform. */
 export function buildFlatSliderBody(
   path: readonly Point[], radius: number, borderColor: string, trackColor: string,
   quality: number, toCanvas: ToCanvas,
@@ -15,7 +14,6 @@ export function buildFlatSliderBody(
     maxX = Math.max(maxX, x); maxY = Math.max(maxY, y);
   }
 
-  // Preserve the upstream integer-aligned cache bounds and density. No shadow is painted.
   const pad = radius + 2;
   const ox = Math.floor(minX - pad), oy = Math.floor(minY - pad);
   const w = Math.ceil(maxX + pad) - ox, h = Math.ceil(maxY + pad) - oy;
@@ -29,7 +27,7 @@ export function buildFlatSliderBody(
   ctx.lineCap = 'round';
   ctx.lineJoin = 'round';
 
-  // 59/64 is the canonical visible hit-circle radius; heads, tails and track stay aligned.
+  /** 59/64 是可见圆半径，保持 head、tail 与轨道对齐。 */
   const outerRadius = radius * 59 / 64;
   const outline = radius * 3 / 64;
   ctx.lineWidth = outerRadius * 2;

@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -28,12 +28,7 @@ import type { BeatmapData, Slider, Spinner, HitCircle } from '../../types/index'
 import type { TaikoHit, TaikoDrumRoll, TaikoSwell, TaikoHitObject } from './types';
 import { sliderEdgeSample, sliderVelocityMultiplier } from '../../utils/sliderDuration';
 
-/**
- * Port of osu.Game.Rulesets.Taiko.Beatmaps.TaikoBeatmapConverter: maps circles,
- * sliders and spinners to hits, drum rolls / note streams, and swells.
- * Float-precision quirks preserved: VELOCITY/SWELL multipliers via Math.fround,
- * (int) casts via Math.trunc.
- */
+/** 参考 ppy/osu TaikoBeatmapConverter；float 用 fround，int 转换向零截断。 */
 
 const VELOCITY_MULTIPLIER = Math.fround(1.4);
 const SWELL_HIT_MULTIPLIER = Math.fround(1.65);
@@ -43,10 +38,6 @@ const HITSOUND_WHISTLE = 2;
 const HITSOUND_FINISH = 4;
 const HITSOUND_CLAP = 8;
 
-/**
- * Derive a note's colour and finisher status from its .osu hitSound bitmask:
- * whistle/clap → rim (kat), finish → strong, as in TaikoBeatmapConverter.
- */
 export function classifyTaikoHit(hitSound: number): { isRim: boolean; isStrong: boolean } {
   return {
     isRim: (hitSound & (HITSOUND_WHISTLE | HITSOUND_CLAP)) !== 0,
@@ -54,14 +45,12 @@ export function classifyTaikoHit(hitSound: number): { isRim: boolean; isStrong: 
   };
 }
 
-// Local copy (not difficultyRate) to keep OD in raw double — avoids that helper's Math.fround step.
 function difficultyRange(diff: number, min: number, mid: number, max: number): number {
   if (diff > 5) return mid + (max - mid) * (diff - 5) / 5;
   if (diff < 5) return mid - (mid - min) * (5 - diff) / 5;
   return mid;
 }
 
-// Mirrors the shared sliderDuration helper so std and taiko agree on the active timing point.
 function getTimingAt(beatmap: BeatmapData, time: number): { baseBeatLength: number; svMultiplier: number } {
   let baseBeatLength = 500;
   let svMultiplier = 1;
@@ -86,7 +75,7 @@ function convertCircle(circle: HitCircle, sourceIndex: number): TaikoHit {
     isStrong,
     hitSound: circle.hitSound,
     sourceIndex,
-    noteId: 0, // assigned post-sort in convertBeatmapToTaiko
+    noteId: 0,
   };
 }
 
@@ -117,7 +106,7 @@ function* convertSlider(
   const spans = slider.slides;
   let distance = slider.length;
 
-  // Source comment: "Do not combine the following two lines!" — float ordering.
+  /** 保留两步 float 运算的顺序，不能合并。 */
   distance *= VELOCITY_MULTIPLIER;
   distance *= spans;
 
@@ -140,8 +129,8 @@ function* convertSlider(
 
   const osuVelocity = taikoVelocity * (1000 / beatLength);
 
-  // Format v8+ uses raw beatLength for tickSpacing; pre-v8 keeps the speed-adjusted
-  // value (legacy quirk preserved by TaikoBeatmapConverter).
+  /** v8 起 tickSpacing 使用原始节拍长度，之前使用变速后的长度。 */
+
   if (beatmap.formatVersion >= 8) {
     beatLength = baseBeatLength;
   }
@@ -164,7 +153,7 @@ function* convertSlider(
         isStrong,
         hitSound: hs,
         sourceIndex,
-        noteId: 0, // assigned post-sort in convertBeatmapToTaiko
+        noteId: 0,
       };
       i++;
     }
@@ -180,14 +169,14 @@ function makeDrumRoll(
   sourceIndex: number,
   durationMs: number,
 ): TaikoDrumRoll {
-  // Lazer clamps tickRate: 3 if SliderTickRate==3, else 4. Uses BASE (un-SV-adjusted) beat length.
+
   const tickRate = beatmap.sliderTickRate === 3 ? 3 : 4;
   const { baseBeatLength } = getTimingAt(beatmap, slider.time);
   const tickInterval = baseBeatLength / tickRate;
 
   const startTime = slider.time;
   const endTime = startTime + durationMs;
-  // Inclusive of startTime; the end + half-interval boundary is exclusive.
+
   const tickCount = tickInterval > 0 ? Math.max(0, Math.ceil(durationMs / tickInterval + 0.5)) : 0;
   if (!Number.isSafeInteger(tickCount) || !Number.isFinite(endTime)) throw new Error('滚奏时间无效');
 
@@ -204,23 +193,11 @@ function makeDrumRoll(
   };
 }
 
-/**
- * Convert a beatmap's hit objects to taiko objects (TaikoBeatmapConverter port).
- * Handles both native taiko maps and std converts; output is time-sorted, with
- * each Hit assigned a unique `noteId`. Uses RAW (unmodded) difficulty — see below.
- */
 export function convertBeatmapToTaiko(
   beatmap: BeatmapData,
 ): TaikoHitObject[] {
-  // Conversion uses RAW (unmodded) SliderMultiplier and OD. In lazer, WorkingBeatmap.
-  // GetPlayableBeatmap runs TaikoBeatmapConverter.Convert BEFORE any IApplicableToDifficulty
-  // mod, so HR's SliderMultiplier (×1.4×4/3) and OD (×1.4) boosts — and EZ's halving — do NOT
-  // change converted note times / counts / the drumroll-vs-stream split. Per TaikoModHardRock's
-  // own doc, its SliderMultiplier factor is the *scrolling speed* (applied post-conversion via
-  // taikoScrollMultiplier), not a rhythm change. Feeding HR's boosted SM in here would compress
-  // every stream-converted slider's internal note spacing, desyncing it from the replay's
-  // presses (≈ all-miss under HR on slider-heavy converts). Hit windows still use the modded
-  // OD via modDiff.taikoHitWindow* in hitJudge — that's the correct post-conversion path.
+  /** 转换使用未加 Mod 的难度；HR/EZ 在转换后影响滚速和判定窗口。 */
+
   const effSM = beatmap.sliderMultiplier;
   const effOd = beatmap.overallDifficulty;
   const out: TaikoHitObject[] = [];
@@ -235,11 +212,9 @@ export function convertBeatmapToTaiko(
       out.push(convertSpinner(obj, i, effOd));
     }
   }
-  // Defensive: stream-converted sliders may overshoot the next source object's start time.
+
   out.sort((a, b) => a.time - b.time);
-  // Assign each Hit a unique noteId (its post-sort index). sourceIndex is NOT unique for
-  // stream-converted sliders, so per-note render state must key on noteId instead. See
-  // hitJudgmentByNote in index.ts / Playfield.ts.
+
   for (let i = 0; i < out.length; i++) {
     const o = out[i]!;
     if (o.kind === 'hit') o.noteId = i;

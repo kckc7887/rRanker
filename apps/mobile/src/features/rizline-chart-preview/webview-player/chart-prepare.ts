@@ -4,7 +4,7 @@ import { createIntervalIndex } from '../../chart-preview-shared/webview-player/i
 type TimedSpan = { startSeconds: number; endSeconds: number };
 const timeIndices = new WeakMap<readonly TimedSpan[], ((min: number, max: number) => number[]) | null>();
 
-/** Prepared tracks are immutable. Preserve source-order early-exit semantics for unordered tracks. */
+/** 无序事件保留原顺序，交由求值时提前结束。 */
 export function activeSpans<T extends TimedSpan>(spans: readonly T[], seconds: number): readonly T[] {
   if (!timeIndices.has(spans)) {
     const ordered = spans.every((span, index) => !Number.isNaN(span.startSeconds) && !Number.isNaN(span.endSeconds)

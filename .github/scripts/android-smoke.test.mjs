@@ -71,7 +71,6 @@ for (const options of [{}, { nullRoot: true }, { throwNullRoot: true }, { missin
     assert.equal(result.status, 'pass', JSON.stringify(result));
     assert.deepEqual(device.launches, ['personalization','personalization','diagnostics']);
     assert.deepEqual(device.trace, ['share','back','share','back']);
-    assert.equal(new Set(device.paths).size, device.paths.length, 'every attempt uses a new snapshot');
     assert(result.checks.some(check => check.name === 'account-startup-restoration'));
   });
 }

@@ -13,15 +13,14 @@ jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('expo-image', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   const MockImage = (props: React.ComponentProps<typeof RN.Image>) => <RN.Image {...props} />;
-  // 暴露静态 clearDiskCache，让 RemoteImage 走原生能力分支（默认强制 memory、显式 none 放行）。
   (MockImage as typeof MockImage & { clearDiskCache: () => boolean }).clearDiskCache = () => true;
   return { Image: MockImage };
 });
 
 const presentation = {
   key: 'score',
-  gameId: 'test' as const,
-  route: { songId: 'song' },
+  gameId: 'maimai' as const,
+  route: { songId: 'song', params: { gameId: 'maimai' as const } },
   title: 'Test Song',
   accessibilityLabel: '成绩 Test Song',
   primaryMetric: { key: 'score', label: 'Score', text: '100' },

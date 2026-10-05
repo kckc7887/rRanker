@@ -60,7 +60,7 @@ describe('osu 谱面确认页面', () => {
     await fireEvent(player, 'message', { nativeEvent: { data: JSON.stringify({ type: 'ready' }) } });
     expect(screen.queryByTestId('chart-preview-load-progress')).toBeNull();
     await fireEvent(player, 'message', {
-      nativeEvent: { data: JSON.stringify({ type: 'settings', backgroundBlur: 5 }) },
+      nativeEvent: { data: JSON.stringify({ type: 'settings', settings: { backgroundBlur: 5 } }) },
     });
     await waitFor(() => expect(mockSaveSettings).toHaveBeenCalledWith(
       'rranker.osu-chart-preview.settings.v1',

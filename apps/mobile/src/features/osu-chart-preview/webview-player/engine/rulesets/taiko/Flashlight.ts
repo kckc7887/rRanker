@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -24,18 +24,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-/**
- * osu!taiko Flashlight overlay, following lazer's TaikoModFlashlight: a fixed
- * circle centred on the hit target whose size shrinks at combo tiers 100/200
- * and expands during breaks (800 ms tweens).
- *
- * Compositing note: a single source-over radial gradient (transparent at
- * center → smoothstep band → opaque black at outerR) over the already-drawn
- * gameplay. Beyond outerR the canvas spec extends with the offset-1 color
- * (opaque black), so one fillRect both reveals the hole and darkens the
- * corners. A destination-out approach would mark pixels transparent rather
- * than reveal underlying gameplay, so it can't work on the main canvas.
- */
+/** 参考 ppy/osu TaikoModFlashlight；使用 source-over 黑色渐变，避免擦除游戏层。 */
 
 import type { BeatmapData } from '../../types/index';
 import type { ComboFrame } from '../../renderer/HUDRenderer';
@@ -52,7 +41,6 @@ const COMBO_TIER1_MULT      = 0.8125;
 const COMBO_TIER2_MULT      = 0.625;
 const BREAK_MIN_DURATION    = FL_FADE_MS * 2;
 
-// Must mirror Playfield.ts constants. FL darkens the input drum too.
 const PLAYFIELD_LEFT_X  = 0;
 const PLAYFIELD_RIGHT_X = 1280;
 const PLAYFIELD_TOP_Y   = 260;
@@ -89,7 +77,7 @@ function evalSegments(segments: readonly Segment[], t: number, initial: number):
   return seg.vStart + (seg.vEnd - seg.vStart) * u;
 }
 
-// If a tween is running, start from current value and truncate its end so the timeline stays single-valued.
+/** 新动画从当前值起步，并截断前一段。 */
 function addEvent(segments: Segment[], initial: number, t: number, target: number): void {
   const startVal = evalSegments(segments, t, initial);
   if (segments.length > 0) {
@@ -116,7 +104,6 @@ function buildSizeTimeline(
 
   const events: Evt[] = [];
 
-  // Filter to tier-boundary crossings only (compact timeline; same result as lazer).
   let lastTier = 1.0;
   for (const cf of comboFrames) {
     const tier = comboTierMult(cf.combo);
@@ -129,7 +116,7 @@ function buildSizeTimeline(
   for (const b of beatmap.breaks) {
     if (b.endTime - b.startTime > BREAK_MIN_DURATION) {
       events.push({ kind: 'breakStart',   t: b.startTime });
-      // Start the shrink-back so size lands at comboTarget exactly at b.endTime.
+
       events.push({ kind: 'breakEndPrep', t: b.endTime - FL_FADE_MS });
     }
   }
@@ -158,11 +145,6 @@ function buildSizeTimeline(
   return segments;
 }
 
-/**
- * Precomputed taiko flashlight. The constructor builds a piecewise-linear size
- * timeline from combo-tier crossings and break periods; `draw` evaluates it at
- * `timeMs` and paints the darken-with-reveal gradient over the finished frame.
- */
 export class TaikoFlashlight {
   private readonly sizeSegments: Segment[];
   private readonly initialSize = DEFAULT_FL_SIZE * SIZE_MULTIPLIER;

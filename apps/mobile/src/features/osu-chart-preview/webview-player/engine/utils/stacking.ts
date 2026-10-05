@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -29,10 +29,7 @@ import type { ModDifficulty } from './modDifficulty';
 import { slideDurationMs } from './sliderDuration';
 import { sampleSlider } from '../renderer/SliderGeometry';
 
-// osu!'s note-stacking algorithm. Effective position = nominal -
-// (stackHeight * stackOffset) on both axes, stackOffset = hitRadius / 10;
-// without it, hit detection false-misses correctly-aimed notes.
-// formatVersion >= 6 uses the backward-walk algorithm; < 6 the old forward walk.
+/** 堆叠偏移为 stackHeight×radius/10；v6 起向后遍历，之前向前遍历。 */
 
 const STACK_DISTANCE = 3;
 
@@ -45,11 +42,8 @@ function objectEndTime(beatmap: BeatmapData, obj: BeatmapData['hitObjects'][numb
   return obj.time;
 }
 
-// Geometric slider endpoint (curve position at the end of the last span), matching
-// danser/osu! stacking which keys the tail-stack distance check on GetEndPosition —
-// NOT the last control point, which can sit tens of px off the real endpoint for
-// arc/bezier curves (missing tail-stacks → wrong stackHeight → edge-of-radius misjudge).
-// Even repeat counts return to the head. Cached: sampleSlider tessellates the curve.
+/** 尾部堆叠按实际路径终点，不能用最后控制点。 */
+
 const sliderEndCache = new WeakMap<Slider, { x: number; y: number }>();
 function sliderEndPos(slider: Slider): { x: number; y: number } {
   if (slider.slides % 2 === 0) return { x: slider.x, y: slider.y };
@@ -63,14 +57,6 @@ function sliderEndPos(slider: Slider): { x: number; y: number } {
   return end;
 }
 
-/**
- * Compute and mutate `stackHeight` on every circle/slider in place (spinners
- * untouched). 0 = base position; N shifts the note by -N*radius/10 on both
- * axes, with earlier notes in a stack getting higher values. Uses the time
- * threshold `preemptMs * stackLeniency` and dispatches on `formatVersion < 6`
- * to osu!'s old stacking algorithm. Call once after parsing, before judging
- * or rendering.
- */
 export function applyStacking(beatmap: BeatmapData, modDiff: ModDifficulty): void {
   const objs = beatmap.hitObjects;
   if (objs.length === 0) return;
@@ -83,9 +69,6 @@ export function applyStacking(beatmap: BeatmapData, modDiff: ModDifficulty): voi
   else                            applyOldStacking(beatmap, modDiff);
 }
 
-// Modern (v6+) algorithm — the danser/lazer pass 2 only; pass 1's chain-endpoint
-// scan is redundant for a full rebuild.
-// Per-branch break thresholds: circle uses startI-endN, slider uses startI-startN.
 function applyNewStacking(beatmap: BeatmapData, modDiff: ModDifficulty): void {
   const objs = beatmap.hitObjects;
   const n = objs.length;
@@ -105,10 +88,9 @@ function applyNewStacking(beatmap: BeatmapData, modDiff: ModDifficulty): void {
         const endTimeJ = objectEndTime(beatmap, objJ);
         if (objs[curI]!.time - endTimeJ > stackThreshold) break;
 
-        // Circle I lands on slider J's tail: bump every k in (j, i] sharing that tail.
         if (objJ.type === 'slider') {
           const tail = sliderEndPos(objJ as Slider);
-          // curI only ever indexes a non-spinner (starts at i, moves to already-checked j).
+
           const cur = objs[curI] as HitCircle | Slider;
           const dx = tail.x - cur.x;
           const dy = tail.y - cur.y;
@@ -158,8 +140,6 @@ function applyNewStacking(beatmap: BeatmapData, modDiff: ModDifficulty): void {
   }
 }
 
-// Old (pre-v6) algorithm, stable's applyStacking2: forward walk; sliders are
-// re-evaluated even when already stacked.
 function applyOldStacking(beatmap: BeatmapData, modDiff: ModDifficulty): void {
   const objs = beatmap.hitObjects;
   const n = objs.length;
@@ -190,7 +170,6 @@ function applyOldStacking(beatmap: BeatmapData, modDiff: ModDifficulty): void {
         continue;
       }
 
-      // J at slider I's tail: bump J down-right (negative stack).
       if (objI.type === 'slider') {
         const dxEnd = objJ.x - iEndPos.x;
         const dyEnd = objJ.y - iEndPos.y;

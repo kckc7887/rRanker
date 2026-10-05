@@ -1,7 +1,7 @@
 export type GameNoteValue = {
   key: string;
   label: string;
-  /** 判定/物量计数值；允许 string 以承载无数据占位符（如 osu 判定表的 '—'）。 */
+  /** 无数据时使用字符串占位。 */
   value: number | string;
 };
 

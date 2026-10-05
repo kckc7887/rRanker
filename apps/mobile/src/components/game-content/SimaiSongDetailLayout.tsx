@@ -44,7 +44,7 @@ export function SimaiSongChrome({ favorite }: { favorite?: SongDetailFavoriteOpt
     backStyle={pressed => [styles.headerButton, styles.headerFloatingButton, { top: insets.top, left: 8 }, pressed && { opacity: 0.7 }]}
     favorite={favorite}
     favoriteStyle={pressed => [styles.headerButton, styles.headerFloatingButton, { top: insets.top, right: 8 },
-      favorite?.active && styles.headerFavoriteActive, pressed && { opacity: 0.7 }]} />;
+      pressed && { opacity: 0.7 }]} />;
 }
 
 export function SimaiSongMetadata({ items, testIDPrefix = 'metadata' }: {

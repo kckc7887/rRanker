@@ -43,7 +43,7 @@ rRanker 是一个多音游数据管理应用。你可以在一个应用中查看
 
 ```bash
 cd apps/mobile
-npm install
+npm ci --no-audit --no-fund
 npm start
 ```
 
@@ -58,6 +58,9 @@ Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict
 - [落雪咖啡屋](https://maimai.lxns.net/)
 - [Phi-plugin](https://github.com/Catrong/phi-plugin)
 - [maimai-prober-frontend](https://github.com/Lxns-Network/maimai-prober-frontend)
+- [MajdataViewX](https://github.com/re-poem/MajdataViewX)
+- [MajSimai](https://github.com/LingFeng-bbben/MajSimai)
+- [MajdataPlay](https://github.com/TeamMajdata/MajdataPlay)
 - [nonebot-plugin-maimaidx](https://github.com/Yuri-YuzuChaN/nonebot-plugin-maimaidx)
 - [maimaiDX](https://github.com/Yuri-YuzuChaN/maimaiDX)
 - [DXRating](https://github.com/gekichumai/dxrating)
@@ -66,6 +69,8 @@ Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict
 - [phira](https://github.com/TeamFlos/phira)
 - [PhiVideo](https://github.com/phigrostl/PhiVideo/tree/361e000f5eefc803bdd4ec3c86c402197ea7d30c)
 - [replayviewer-js](https://github.com/daladal/replayviewer-js)
+- [danser-go](https://github.com/Wieku/danser-go)
+- [osu](https://github.com/ppy/osu)
 - [RizlineGameSaveData](https://github.com/CHCAT1320/RizlineGameSaveData)
 - [rizline_b40_tool](https://github.com/REDDRAGON-HL/rizline_b40_tool)
 - [RizlineSavingTest](https://github.com/HiXcc/RizlineSavingTest)

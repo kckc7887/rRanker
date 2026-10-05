@@ -1,14 +1,6 @@
 import { SecureSessionStore } from '@/storage/secure-session-store';
-import {
-  DEFAULT_LOCAL_PLAYER_NAME,
-  LocalAccountStore,
-  normalizeLocalPlayerName,
-} from '@/storage/local-account-store';
-import {
-  DEFAULT_DEMO_PLAYER_NAME,
-  DemoAccountStore,
-} from '@/storage/demo-account-store';
-import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { LocalAccountStore } from '@/storage/local-account-store';
+import { DemoAccountStore } from '@/storage/demo-account-store';
 import {
   createMaxedChunithmTestAccount,
   createChunithmTempAccount,
@@ -19,22 +11,12 @@ import {
   createTufBoundAccount,
   createMuseDashBoundAccount,
   createPhiraBoundAccount,
-  LOCAL_MAIMAI_ACCOUNT_ID,
   type BoundAccount,
 } from '@/domain/bound-account';
 import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
-import {
-  ChunithmDemoAccountStore,
-  DEFAULT_CHUNITHM_DEMO_PLAYER_NAME,
-} from '@/storage/chunithm-demo-account-store';
-import {
-  DEFAULT_PHIGROS_DEMO_PLAYER_NAME,
-  PhigrosDemoAccountStore,
-} from '@/storage/phigros-demo-account-store';
-import {
-  DEFAULT_MUSEDASH_DEMO_PLAYER_NAME,
-  MuseDashDemoAccountStore,
-} from '@/storage/musedash-demo-account-store';
+import { ChunithmDemoAccountStore } from '@/storage/chunithm-demo-account-store';
+import { PhigrosDemoAccountStore } from '@/storage/phigros-demo-account-store';
+import { MuseDashDemoAccountStore } from '@/storage/musedash-demo-account-store';
 
 import { TufAccountStore } from '@/storage/tuf-account-store';
 import { MuseDashAccountStore } from '@/storage/musedash-account-store';
@@ -53,31 +35,16 @@ const chunithmTempAccount = new ChunithmTempAccountStore();
 const tufAccounts = new TufAccountStore();
 const museDashAccounts = new MuseDashAccountStore();
 const phiraAccounts = new PhiraAccountStore();
-const snapshots = new SqliteSnapshotRepository();
 
 async function loadLocalBoundAccounts() {
-  let stored = await localAccounts.load();
-  // 已有默认本地玩家数据时迁移一次账号记录。
-  if (stored.length === 0) {
-    const snapshot = await snapshots.getLatest(LOCAL_MAIMAI_ACCOUNT_ID);
-    if (snapshot) {
-      const displayName = normalizeLocalPlayerName(snapshot.player.displayName)
-        ?? DEFAULT_LOCAL_PLAYER_NAME;
-      const profile = { id: LOCAL_MAIMAI_ACCOUNT_ID, displayName };
-      await localAccounts.upsert(profile);
-      stored = [profile];
-    }
-  }
-  // 首帧只建账号档案（rating 先为 0）；真实 Rating 由 hydrateLocalAccountRatings
-  // 首帧后再读取完整成绩，避免启动时阻塞界面。
-  return stored.map((profile) => createLocalMaimaiAccount(profile.displayName, 0, profile.id));
+  return (await localAccounts.load()).map(profile => createLocalMaimaiAccount(profile.displayName, 0, profile.id));
 }
 
 async function loadDemoBoundAccounts() {
   const stored = await demoAccounts.load();
   return stored.map((profile) => createMaxedMaimaiTestAccount(
     0,
-    profile.displayName || DEFAULT_DEMO_PLAYER_NAME,
+    profile.displayName,
     profile.id,
   ));
 }
@@ -87,7 +54,7 @@ async function loadChunithmDemoBoundAccount() {
   return stored
     ? createMaxedChunithmTestAccount(
         0,
-        stored.displayName || DEFAULT_CHUNITHM_DEMO_PLAYER_NAME,
+        stored.displayName,
       )
     : null;
 }
@@ -97,7 +64,7 @@ async function loadPhigrosDemoBoundAccount() {
   return stored
     ? createMaxedPhigrosTestAccount(
         0,
-        stored.displayName || DEFAULT_PHIGROS_DEMO_PLAYER_NAME,
+        stored.displayName,
       )
     : null;
 }
@@ -107,7 +74,7 @@ async function loadMuseDashDemoBoundAccount() {
   return stored
     ? createMaxedMuseDashTestAccount(
         0,
-        stored.displayName || DEFAULT_MUSEDASH_DEMO_PLAYER_NAME,
+        stored.displayName,
       )
     : null;
 }
@@ -133,9 +100,7 @@ export function subscribeAccountSourceStatuses(listener: () => void): () => void
 }
 function publishSource(next: AccountSourceStatus): void {
   sourceStatuses = [...sourceStatuses.filter((item) => item.source !== next.source), next];
-  for (const listener of sourceListeners) {
-    try { listener(); } catch { /* A subscriber must not prevent another source from restoring. */ }
-  }
+  for (const listener of sourceListeners) listener();
 }
 async function readAccountSource(source: typeof sources[number]): Promise<BoundAccount[]> {
   publishSource({ source: source.id, status: 'loading' });

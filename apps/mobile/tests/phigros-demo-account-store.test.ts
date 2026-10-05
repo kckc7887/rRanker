@@ -1,7 +1,11 @@
-import {
-  parsePhigrosDemoAccountProfile,
-  PhigrosDemoAccountStore,
-} from '@/storage/phigros-demo-account-store';
+import { PhigrosDemoAccountStore } from '@/storage/phigros-demo-account-store';
+
+class MemoryStore {
+  values = new Map<string, string>();
+  async getItem(key: string) { return this.values.get(key) ?? null; }
+  async setItem(key: string, value: string) { this.values.set(key, value); }
+  async removeItem(key: string) { this.values.delete(key); }
+}
 
 describe('PhigrosDemoAccountStore', () => {
   it('保存、恢复并删除固定示例账号', async () => {
@@ -18,14 +22,13 @@ describe('PhigrosDemoAccountStore', () => {
     expect(await store.load()).toBeNull();
   });
 
-  it('拒绝错误账号 ID 和空名称', () => {
-    expect(parsePhigrosDemoAccountProfile({
-      version: 1,
-      account: { id: 'phigros:phi-taptap:test', displayName: '示例账号' },
-    })).toBeNull();
-    expect(parsePhigrosDemoAccountProfile({
-      version: 1,
-      account: { id: 'phigros:test', displayName: ' ' },
-    })).toBeNull();
-  });
+  it.each([{ version: 2, account: {} }, { version: 1, account: { id: 'maimai:test', displayName: '旧账号' } }])(
+    '不支持的示例记录清空对应键', async value => {
+      const storage = new MemoryStore();
+      storage.values.set('rranker.phigros-demo-account.v1', JSON.stringify(value));
+      const store = new PhigrosDemoAccountStore(storage);
+      expect(await store.load()).toBeNull();
+      expect(storage.values.has('rranker.phigros-demo-account.v1')).toBe(false);
+    },
+  );
 });

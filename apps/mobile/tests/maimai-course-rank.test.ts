@@ -22,12 +22,10 @@ describe('maimai course rank', () => {
     expect(formatMaimaiCourseRank(23)).toMatchObject({ label: '里皆传', assetIndex: 23 });
   });
 
-  it('prefers the normalized game extension and keeps legacy WaterFish snapshots readable', () => {
+  it('reads the normalized game extension for UI presentation', () => {
     expect(resolveMaimaiCourseRank({
       extension: { kind: 'maimai', courseRank: 23 },
-      additionalRating: 0,
     })?.label).toBe('里皆传');
-    expect(resolveMaimaiCourseRank({ additionalRating: 21 })?.label).toBe('真皆传');
     expect(resolveMaimaiCourseRank({})).toBeNull();
   });
 });

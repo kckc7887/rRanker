@@ -8,7 +8,6 @@ function recordKey(input: { title: string; type: ChartType; levelIndex: number }
   return `${input.type}\u0000${input.levelIndex}\u0000${input.title}`;
 }
 
-/** 水鱼读取结果至少包含刚上传的达成率；更高的历史最佳成绩同样视为已同步。 */
 export function uploadedRecordsAreVisible(
   actualRecords: readonly Pick<ScoreRecord, 'title' | 'type' | 'levelIndex' | 'achievements' | 'dxScore' | 'fc' | 'fs' | 'rawFc' | 'rawFs'>[],
   uploadedRecords: readonly VisibilityUploadRecord[],

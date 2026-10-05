@@ -1,9 +1,4 @@
-/**
- * osu! 模组圆形徽章：类型色圆形底 + 单色模组图标（远程按需下载，磁盘缓存）。
- * 样式参考 osu-web 模组徽章配色（mod.less 六类色 + color-mix 前景），
- * 以圆形替代官方六边形（六边形过宽）；图标未就绪/失败时圆内回退显示模组缩写文字
- * （与 osu-web 无图标时 data-acronym 文字回退一致）。
- */
+/** 配色参考 osu-web 的 mod.less。 */
 import { useEffect, useState } from 'react';
 import { fetch as expoFetch } from 'expo/fetch';
 import { StyleSheet, Text, View } from 'react-native';
@@ -12,15 +7,11 @@ import { DetailPressable } from '@/components/game-content/DetailPressable';
 import { osuModIconFileName, resolveOsuModTheme } from '@/domain/osu-mods';
 import { OSU_MOD_ICONS_ROOT } from '@/providers/osu-config';
 
-/** 默认直径：对齐标签行胶囊高度（GameDifficultyBadge 高 24）。 */
 const DEFAULT_SIZE = 22;
-
-// ---- 图标会话缓存（内存 → 远程），inflight 防重共享同一下载 Promise ----
 
 const memoryXmlCache = new Map<string, string>();
 const inFlightIcons = new Map<string, Promise<string | null>>();
 
-/** 远程图标文本（原始单色 SVG）；非 SVG 响应/网络失败/未配置根路径均返回 null（静默）。 */
 async function fetchOsuModIconXml(acronym: string): Promise<string | null> {
   if (!OSU_MOD_ICONS_ROOT) return null;
   try {
@@ -36,7 +27,6 @@ async function fetchOsuModIconXml(acronym: string): Promise<string | null> {
   }
 }
 
-/** 确保图标文本可用：内存 → 远程；任一环节失败静默返回 null。 */
 async function ensureOsuModIconXml(acronym: string): Promise<string | null> {
   const cached = memoryXmlCache.get(acronym);
   if (cached) return cached;
@@ -58,7 +48,6 @@ async function ensureOsuModIconXml(acronym: string): Promise<string | null> {
   return pending;
 }
 
-/** 模组图标文本加载 hook：就绪返回原始 SVG 文本，未就绪/不可用为 null。 */
 export function useOsuModIconXml(acronym: string): string | null {
   const [xml, setXml] = useState<string | null>(() => memoryXmlCache.get(acronym) ?? null);
   useEffect(() => {
@@ -75,14 +64,12 @@ export function useOsuModIconXml(acronym: string): string | null {
 
 type OsuModBadgeProps = {
   acronym: string;
-  /** 圆形直径，默认 22（对齐标签行胶囊高度）。 */
   size?: number;
   testID?: string;
   onPress?: () => void;
   accessibilityLabel?: string;
 };
 
-/** 单个模组徽章：未知 acronym 静默不渲染。 */
 export function OsuModBadge({
   acronym,
   size = DEFAULT_SIZE,
@@ -93,7 +80,7 @@ export function OsuModBadge({
   const theme = resolveOsuModTheme(acronym);
   const xml = useOsuModIconXml(acronym);
   if (!theme) return null;
-  // 图标源为单色（white fill/stroke），渲染前替换为该类型前景色。
+  /** 上游图标为白色填充或描边，需替换为类型前景色。 */
   const tintedXml = xml ? xml.replaceAll('white', theme.foreground) : null;
   const iconBox = Math.round(size * 0.72);
   const badge = (

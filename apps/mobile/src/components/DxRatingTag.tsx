@@ -2,7 +2,6 @@ import { StyleSheet, Text, View } from 'react-native';
 import { resolveDxRatingTheme } from '@/domain/dx-rating-theme';
 import { TintedRatingTag } from '@/components/TintedRatingTag';
 
-/** 切换列表用的 DX Rating 数字标签，配色与总览牌子主题一致，档位星标经尾随插槽渲染。 */
 export function DxRatingTag({
   rating,
 }: {
@@ -29,7 +28,6 @@ export function DxRatingTag({
 }
 
 const styles = StyleSheet.create({
-  /** 舞萌标签比公共骨架更紧凑：去掉最小高度、改用自身内边距。 */
   tag: { minHeight: 0, paddingHorizontal: 10, paddingVertical: 4 },
   value: { fontSize: 14, letterSpacing: 0.8 },
   stars: { fontSize: 10, fontWeight: '800', letterSpacing: -1 },

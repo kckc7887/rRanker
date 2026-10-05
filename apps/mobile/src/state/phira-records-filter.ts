@@ -14,7 +14,6 @@ export const usePhiraRecordsFilter = createFilterStore({
     xing: null as PhiraXingKind | null,
     sort: 'score' as PhiraScoreSort,
   },
-  // 清除筛选时同时恢复折叠状态和排序。
   clearKeys: [
     'keyword', 'collapsed', 'constantMin', 'constantMax', 'accuracyMin', 'accuracyMax',
     'rank', 'xing', 'sort',

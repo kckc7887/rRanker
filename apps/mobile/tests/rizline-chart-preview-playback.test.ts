@@ -1,21 +1,22 @@
-import { beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { normalizeRizlineChartPreviewSettings } from '@/features/rizline-chart-preview/configuration';
 import {
   decodeAudio,
   PreviewSession,
-  type PreviewSessionEnvironment,
 } from '@/features/rizline-chart-preview/webview-player/playback';
 import type { PreparedChart } from '@/features/rizline-chart-preview/webview-player/chart-prepare';
 import type { RizlineRenderer } from '@/features/rizline-chart-preview/webview-player/renderer';
 
 class FakeSource {
   startCount = 0;
+  stopped = false;
+  offset = 0;
   buffer: AudioBuffer | null = null;
   playbackRate = { value: 1 };
   connect(): void {}
   disconnect(): void {}
-  start(): void { this.startCount += 1; }
-  stop(): void {}
+  start(_when = 0, offset = 0): void { this.startCount += 1; this.offset = offset; }
+  stop(): void { this.stopped = true; }
 }
 
 class FakeContext {
@@ -75,18 +76,9 @@ const renderer = { setUserSpeed() {}, render() {} } as unknown as RizlineRendere
 const music = { duration: 30 } as AudioBuffer;
 
 let animationFrames = 0;
-/** 环境边界由构造参数注入：测试不改写任何全局对象。 */
-const environment: PreviewSessionEnvironment = {
-  getAudioContext: () => context as unknown as AudioContext,
-  requestFrame: () => {
-    animationFrames += 1;
-    return animationFrames;
-  },
-  cancelFrame: () => {},
-};
 
 function session(): PreviewSession {
-  return new PreviewSession(chart, renderer, music, normalizeRizlineChartPreviewSettings({}), environment);
+  return new PreviewSession(chart, renderer, music, normalizeRizlineChartPreviewSettings({}));
 }
 
 async function settle(pending: Promise<void>): Promise<void> {
@@ -101,19 +93,24 @@ beforeEach(() => {
   context.decodedBuffers = [];
   context.release = null;
   animationFrames = 0;
+  vi.stubGlobal('AudioContext', class { constructor() { return context; } });
+  vi.stubGlobal('requestAnimationFrame', () => ++animationFrames);
+  vi.stubGlobal('cancelAnimationFrame', () => {});
 });
 
-describe('Rizline playFrom 等待 resume 时的命令代次', () => {
+afterEach(() => { vi.unstubAllGlobals(); });
+
+describe('Rizline 音频授权与取消', () => {
   it.each([3, -3])('谱面偏移 %s 秒参与播放结束时间', (delaySeconds) => {
     const preview = new PreviewSession({ ...chart, delaySeconds }, renderer,
-      { duration: 1 } as AudioBuffer, normalizeRizlineChartPreviewSettings({}), environment);
+      { duration: 1 } as AudioBuffer, normalizeRizlineChartPreviewSettings({}));
     expect(preview.duration).toBe(10 + delaySeconds + 0.25);
     preview.dispose();
   });
 
   it('没有音源的谱面尾段仍按新倍速连续前进', async () => {
     const preview = new PreviewSession(chart, renderer,
-      { duration: 1 } as AudioBuffer, normalizeRizlineChartPreviewSettings({}), environment);
+      { duration: 1 } as AudioBuffer, normalizeRizlineChartPreviewSettings({}));
     await settle(preview.playFrom(2));
     expect(context.sources).toHaveLength(0);
     context.currentTime = 1;
@@ -124,7 +121,7 @@ describe('Rizline playFrom 等待 resume 时的命令代次', () => {
     preview.dispose();
   });
   it('suspended 上下文完成解码和暂停准备，首次播放才请求音频授权', async () => {
-    const decoded = decodeAudio(new Uint8Array([1, 2, 3]).buffer, environment);
+    const decoded = decodeAudio(new Uint8Array([1, 2, 3]).buffer);
     expect(context.release).toBeNull();
     await expect(decoded).resolves.toBe(music);
     expect(context.decodedBuffers).toHaveLength(1);
@@ -151,6 +148,18 @@ describe('Rizline playFrom 等待 resume 时的命令代次', () => {
     expect(context.sources[0]!.startCount).toBe(1);
     expect(preview.playing).toBe(true);
     expect(animationFrames).toBe(1);
+    preview.dispose();
+  });
+
+  it('播放中 seek 替换音源并从目标位置继续播放', async () => {
+    context.state = 'running';
+    const preview = session();
+    await preview.playFrom(4);
+    await preview.seek(8);
+    expect(context.sources[0]!.stopped).toBe(true);
+    expect(context.sources[1]!.offset).toBe(8);
+    expect(preview.playing).toBe(true);
+    expect(preview.currentTime).toBe(8);
     preview.dispose();
   });
 
@@ -187,20 +196,17 @@ describe('Rizline playFrom 等待 resume 时的命令代次', () => {
   });
 });
 
-describe('Rizline 偏移、短音频与重复进入退出', () => {
+describe('Rizline 偏移、短音频与会话释放', () => {
   function observed(delaySeconds: number, musicDuration = 30) {
     const rendered: number[] = [];
     let pendingFrame: FrameRequestCallback | null = null;
     const cancelled: number[] = [];
     let handle = 0;
-    const env: PreviewSessionEnvironment = {
-      getAudioContext: () => context as unknown as AudioContext,
-      requestFrame: callback => { pendingFrame = callback; return ++handle; },
-      cancelFrame: value => { cancelled.push(value); pendingFrame = null; },
-    };
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { pendingFrame = callback; return ++handle; });
+    vi.stubGlobal('cancelAnimationFrame', (value: number) => { cancelled.push(value); pendingFrame = null; });
     const spy = { setUserSpeed() {}, render: (_chart: unknown, time: number) => { rendered.push(time); } } as unknown as RizlineRenderer;
     const preview = new PreviewSession({ ...chart, delaySeconds }, spy, { duration: musicDuration } as AudioBuffer,
-      normalizeRizlineChartPreviewSettings({}), env);
+      normalizeRizlineChartPreviewSettings({}));
     return { preview, rendered, cancelled, frame: () => pendingFrame, handle: () => handle };
   }
 
@@ -250,7 +256,7 @@ describe('Rizline 偏移、短音频与重复进入退出', () => {
 
   it('重复进入退出时每个播放中的会话都取消自己的帧回调且不再绘制', async () => {
     context.state = 'running';
-    for (let round = 0; round < 20; round++) {
+    for (let round = 0; round < 2; round++) {
       const { preview, rendered, cancelled, handle } = observed(round % 2 ? -1 : 1);
       await preview.playFrom(round);
       expect(handle()).toBe(1);

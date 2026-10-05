@@ -1,7 +1,6 @@
 import { normalizeSongId } from './catalog';
 import type { CollectionItem, CollectionKind, PlateRequirement } from './models';
 
-/** 展示顺序：头像 → 姓名框 → 背景 → 称号。 */
 export const COLLECTION_KIND_ORDER: readonly CollectionKind[] = ['icon', 'plate', 'frame', 'trophy'];
 
 export const COLLECTION_KIND_LABEL: Record<CollectionKind, string> = {
@@ -19,7 +18,6 @@ function requiredSongIds(requirements: readonly PlateRequirement[]): Set<string>
   return ids;
 }
 
-/** 曲目专属：required 所涉曲目并集恰好等于当前曲。 */
 export function isSongExclusiveCollection(
   item: CollectionItem,
   songId: string | number,

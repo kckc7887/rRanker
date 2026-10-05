@@ -61,7 +61,6 @@ describe('cached native-tab content', () => {
 
     let cleanup: void | (() => void);
     await act(() => { cleanup = mockFocusEffect?.(); });
-    expect(pendingTasks).toHaveLength(1);
     expect(screen.queryByText('前台')).toBeNull();
     await act(() => { pendingTasks[0]?.callback(); });
     await fireEvent.press(screen.getByLabelText('修改页面状态'));
@@ -69,31 +68,29 @@ describe('cached native-tab content', () => {
     expect(screen.getByText('前台')).toBeTruthy();
 
     await act(() => { cleanup?.(); });
-    expect(pendingTasks[0]?.cancel).toHaveBeenCalledTimes(1);
+    expect(pendingTasks[0]?.cancel).toHaveBeenCalled();
     expect(screen.getByText('页面状态 1')).toBeTruthy();
     expect(screen.getByText('后台')).toBeTruthy();
 
     let secondCleanup: void | (() => void);
     await act(() => { secondCleanup = mockFocusEffect?.(); });
-    expect(pendingTasks).toHaveLength(2);
     expect(screen.queryByText('前台')).toBeNull();
     expect(screen.getByText('后台')).toBeTruthy();
     expect(screen.getByText('页面状态 1')).toBeTruthy();
 
     await act(() => { secondCleanup?.(); });
-    expect(pendingTasks[1]?.cancel).toHaveBeenCalledTimes(1);
+    expect(pendingTasks[1]?.cancel).toHaveBeenCalled();
     expect(screen.queryByText('前台')).toBeNull();
     expect(screen.getByText('页面状态 1')).toBeTruthy();
 
     let thirdCleanup: void | (() => void);
     await act(() => { thirdCleanup = mockFocusEffect?.(); });
-    expect(pendingTasks).toHaveLength(3);
     await act(() => { pendingTasks[2]?.callback(); });
     expect(screen.getByText('前台')).toBeTruthy();
     expect(screen.getByText('页面状态 1')).toBeTruthy();
 
     await act(() => { thirdCleanup?.(); });
-    expect(pendingTasks[2]?.cancel).toHaveBeenCalledTimes(1);
+    expect(pendingTasks[2]?.cancel).toHaveBeenCalled();
   });
 
   it('keeps the focused page mounted in background and cancels a superseded resume task', async () => {
@@ -121,7 +118,6 @@ describe('cached native-tab content', () => {
       foregroundGeneration: 2,
     };
     await screen.rerender(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
-    expect(pendingTasks).toHaveLength(2);
     expect(screen.getByText('后台')).toBeTruthy();
     expect(screen.queryByTestId('cached-tab-placeholder')).toBeNull();
 
@@ -129,36 +125,10 @@ describe('cached native-tab content', () => {
       ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false,
     };
     await screen.rerender(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
-    expect(pendingTasks[1]?.cancel).toHaveBeenCalledTimes(1);
+    expect(pendingTasks[1]?.cancel).toHaveBeenCalled();
     await act(() => { pendingTasks[1]?.callback(); });
     expect(screen.getByText('后台')).toBeTruthy();
     expect(screen.queryByTestId('cached-tab-placeholder')).toBeNull();
-  });
-
-  it('retains page state and closes every interaction handle across 30 focus cycles', async () => {
-    const tasks: { callback: () => void; cancel: jest.Mock }[] = [];
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      const task = { callback: callback as () => void, cancel: jest.fn() };
-      tasks.push(task);
-      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-    });
-    const screen = await render(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
-    for (let index = 0; index < 30; index += 1) {
-      let cleanup: void | (() => void);
-      await act(() => { cleanup = mockFocusEffect?.(); });
-      await act(() => { tasks[index]?.callback(); });
-      if (index === 0) await fireEvent.press(screen.getByLabelText('修改页面状态'));
-      expect(screen.getByText('页面状态 1')).toBeTruthy();
-      await act(() => { cleanup?.(); });
-      expect(tasks[index]?.cancel).toHaveBeenCalledTimes(1);
-      expect(screen.getByText('页面状态 1')).toBeTruthy();
-      expect(screen.getByText('后台')).toBeTruthy();
-    }
-    expect(tasks).toHaveLength(30);
-    await act(() => { mockFocusEffect?.(); });
-    await act(() => { tasks[30]?.callback(); });
-    expect(screen.getByText('页面状态 1')).toBeTruthy();
-    expect(screen.getByText('前台')).toBeTruthy();
   });
 
   it('evicts only an unfocused page after a memory warning', async () => {

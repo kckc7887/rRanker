@@ -1,10 +1,3 @@
-/**
- * 谱面确认 WebView stage 资产公共层：
- * 负责缓存 stage 目录创建、expo-asset 模块资产解析下载（含 Android
- * release 资源标识符回退）、落盘与读文本，不感知具体游戏；
- * 各游戏 stage 目录名由调用方传入。
- */
-
 import { Asset } from 'expo-asset';
 import { Directory, File, Paths } from 'expo-file-system';
 import { Platform } from 'react-native';
@@ -20,7 +13,6 @@ export function chartPreviewStageDirectory(name: string): Directory {
   return directory;
 }
 
-/** 每次预览独占 stage，避免切谱和并发准备互相覆盖。 */
 export function createChartPreviewSessionDirectory(name: string): Directory {
   sessionCounter += 1;
   const directory = new Directory(Paths.cache, `${name}-session-${Date.now()}-${sessionCounter}`);

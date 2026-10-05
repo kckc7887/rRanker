@@ -6,12 +6,6 @@ import { DxRatingTagFilterSheet } from '@/components/maimai/DxRatingTagFilterShe
 import type { DxRatingChartTag } from '@/domain/dxrating-chart-tags';
 import { useAppTheme } from '@/theme/app-theme';
 
-/**
- * 舞萌谱面标签筛选入口：触发行与弹层都属于舞萌模块。
- *
- * 公共筛选条只保留通用能力，本入口经组合边界的扩展注册表注入；
- * 弹层开关状态仍由调用方持有，重置筛选时由调用方收起。
- */
 export function DxRatingTagFilterRow({
   visible,
   tags,
@@ -26,8 +20,7 @@ export function DxRatingTagFilterRow({
   tags: readonly DxRatingChartTag[];
   selectedTagIds: readonly number[];
   state: DxRatingTagFilterState;
-  /** 已格式化的当前选择文案，由公共筛选条按公共格式化入口提供。 */
-  value: string;
+    value: string;
   onApply: (tagIds: number[]) => void;
   onOpen: () => void;
   onClose: () => void;

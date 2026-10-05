@@ -193,7 +193,6 @@ export function MuseDashRecordsScreen() {
     const filtered = achievement === 'all'
       ? baseFiltered
       : baseFiltered.filter((item) => {
-        // 只有已确认的 miss 明细才能判定 AP/FC；pending、failed 与 unknown 都不算已满足。
         const detail = museDashMissDetail(missMap.get(`${item.play.uid}:${item.play.difficulty}`));
         return detail.status === 'known'
           && matchesMuseDashAchievementFilter(item.play.acc, detail.miss, achievement);
@@ -478,7 +477,6 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
       } : undefined}
       favoriteStyle={(pressed) => [
         styles.headerButton, styles.headerFloatingButton, { top: insets.top, right: 8 },
-        favorite && styles.headerFavoriteActive,
         pressed && { opacity: 0.7 },
       ]}
     />
@@ -561,7 +559,6 @@ const styles = StyleSheet.create({
   page: { flex: 1 }, list: { flex: 1 }, listContent: { padding: 12, gap: 9 },
   headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
-  headerFavoriteActive: {},
   sectionHeader: { marginTop: 8, marginBottom: 3, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
   detailNotice: {
     marginHorizontal: 12, marginBottom: 8, flexDirection: 'row', alignItems: 'center', gap: 10,

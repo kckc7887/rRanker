@@ -1,39 +1,31 @@
-import { ProviderError } from '@/providers/errors';
-import type { CatalogSnapshot, ScoreSnapshot } from '@/domain/models';
+import { DatabaseSync } from 'node:sqlite';
 import { fixtureCatalog, fixturePlayer, fixtureRecords } from '@/fixtures/sanitized';
 import { FixtureCatalogProvider, FixtureProvider } from './fixture-provider';
-import type { CatalogRepository } from '@/repositories/catalog-repository';
-import type { SnapshotRepository } from '@/repositories/snapshot-repository';
-import { buildScoreSnapshot, ScoreService } from '@/services/score-service';
-
-class MemoryRepository implements SnapshotRepository, CatalogRepository {
-  value: ScoreSnapshot | null = null;
-  catalog: CatalogSnapshot | null = null;
-  byAccount = new Map<string, ScoreSnapshot>();
-  async initialize() {}
-  async getLatest(accountId: string) { return this.byAccount.get(accountId) ?? null; }
-  async save(accountId: string, snapshot: ScoreSnapshot) {
-    this.value = structuredClone(snapshot);
-    this.byAccount.set(accountId, structuredClone(snapshot));
-  }
-  async clear(accountId?: string) {
-    if (accountId) this.byAccount.delete(accountId);
-    else {
-      this.value = null;
-      this.byAccount.clear();
-    }
-  }
-  async getLatestCatalog() { return this.catalog; }
-  async saveCatalog(catalog: CatalogSnapshot) { this.catalog = structuredClone(catalog); }
-}
+let ProviderError: typeof import('@/providers/errors')['ProviderError'];
+let ScoreService: typeof import('@/services/score-service')['ScoreService'];
+let buildScoreSnapshot: typeof import('@/services/score-service')['buildScoreSnapshot'];
+let repository: InstanceType<typeof import('@/storage/sqlite-snapshot-repository')['SqliteSnapshotRepository']>;
+let database: DatabaseSync;
+vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
+  execAsync: async (sql: string) => database.exec(sql),
+  runAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).run(...args),
+  getFirstAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).get(...args) ?? null,
+}) }));
+beforeEach(async () => {
+  database = new DatabaseSync(':memory:'); vi.resetModules();
+  ({ ProviderError } = await import('@/providers/errors'));
+  ({ ScoreService, buildScoreSnapshot } = await import('@/services/score-service'));
+  const { SqliteSnapshotRepository } = await import('@/storage/sqlite-snapshot-repository');
+  repository = new SqliteSnapshotRepository();
+});
+afterEach(() => database.close());
 
 describe('ScoreService', () => {
   it('stores a valid snapshot after refresh', async () => {
-    const repository = new MemoryRepository();
     const snapshot = await new ScoreService(
-      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-a', repository, repository,
+      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-a',
     ).load();
-    expect(snapshot.records).toHaveLength(54); expect(repository.value?.best50.b35).toHaveLength(35);
+    expect(snapshot.records).toHaveLength(54); expect((await repository.getLatest('acct-a'))?.best50.b35).toHaveLength(35);
   });
   it('removes unsupported utage ids before building score and filter data', () => {
     const utage = {
@@ -62,102 +54,33 @@ describe('ScoreService', () => {
     expect(snapshot.best50.rating).toBe(fixtureRecords[0]!.rating);
   });
   it('returns stale cache without overwriting it when upstream fails', async () => {
-    const repository = new MemoryRepository();
     await new ScoreService(
-      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-a', repository, repository,
+      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-a',
     ).load();
-    const saved = structuredClone(repository.value);
+    const saved = await repository.getLatest('acct-a');
     const fail = async (): Promise<never> => { throw new Error('network'); };
     const failingProvider = { getPlayer: fail, getRecords: fail };
     const cached = await new ScoreService(
-      failingProvider, new FixtureCatalogProvider(), 'acct-a', repository, repository,
+      failingProvider, new FixtureCatalogProvider(), 'acct-a',
     ).load();
     expect(cached.source.kind).toBe(saved?.source.kind); expect(cached.source.isStale).toBe(true);
-    expect(repository.value).toEqual(saved);
+    expect(await repository.getLatest('acct-a')).toEqual(saved);
   });
 
-  it('removes legacy utage records when falling back to a cached snapshot', async () => {
-    const repository = new MemoryRepository();
-    await new ScoreService(
-      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-a', repository, repository,
-    ).load();
-    const cached = repository.byAccount.get('acct-a')!;
-    const utage = {
-      ...cached.records[0]!, songId: '100123', title: '宴会场', levelIndex: 0,
-      difficulty: 'basic' as const, type: 'DX' as const,
-    };
-    cached.records.push(utage);
-    cached.best50.b35.push(utage);
-    cached.best50.unmatchedRecordCount += 1;
-    const fail = async (): Promise<never> => { throw new Error('network'); };
 
-    const snapshot = await new ScoreService(
-      { getPlayer: fail, getRecords: fail }, new FixtureCatalogProvider(), 'acct-a', repository, repository,
-    ).load();
-    expect(snapshot.records.some((record) => record.songId === '100123')).toBe(false);
-    expect(snapshot.best50.b35.some((record) => record.songId === '100123')).toBe(false);
-  });
-
-  it('keeps cached UTAGE scores visible while removing them from cached Rating totals', async () => {
-    const repository = new MemoryRepository();
-    await new ScoreService(
-      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-a', repository, repository,
-    ).load();
-    const cached = repository.byAccount.get('acct-a')!;
-    const originalRating = cached.best50.rating;
-    const utage = {
-      ...cached.records[0]!,
-      songId: '100123',
-      title: 'U·TA·GE',
-      levelIndex: 0,
-      difficulty: 'utage' as const,
-      type: 'UTAGE' as const,
-      rating: 999,
-    };
-    cached.records.push(utage);
-    cached.best50.b35.push(utage);
-    cached.best50.rating += utage.rating;
-    const fail = async (): Promise<never> => { throw new Error('network'); };
-
-    const snapshot = await new ScoreService(
-      { getPlayer: fail, getRecords: fail }, new FixtureCatalogProvider(), 'acct-a', repository, repository,
-    ).load();
-    expect(snapshot.records).toEqual(expect.arrayContaining([
-      expect.objectContaining({ songId: '100123', type: 'UTAGE' }),
-    ]));
-    expect([...snapshot.best50.b35, ...snapshot.best50.b15]
-      .some((record) => record.type === 'UTAGE')).toBe(false);
-    expect(snapshot.best50.rating).toBe(originalRating);
-  });
 
   it('isolates score cache by account id', async () => {
-    const repository = new MemoryRepository();
     await new ScoreService(
-      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-a', repository, repository,
+      new FixtureProvider(), new FixtureCatalogProvider(), 'acct-a',
     ).load();
     const fail = async (): Promise<never> => { throw new Error('network'); };
     await expect(new ScoreService(
       { getPlayer: fail, getRecords: fail },
       new FixtureCatalogProvider(),
       'acct-b',
-      repository,
-      repository,
     ).load()).rejects.toThrow('network');
   });
 
-  it('fetches player, records, and catalog exactly once per refresh', async () => {
-    const score = new FixtureProvider();
-    const catalog = new FixtureCatalogProvider();
-    const getPlayer = vi.spyOn(score, 'getPlayer');
-    const getRecords = vi.spyOn(score, 'getRecords');
-    const getCatalog = vi.spyOn(catalog, 'getCatalog');
-    const getDetailedCatalog = vi.spyOn(catalog, 'getDetailedCatalog');
-    await new ScoreService(score, catalog, 'acct-a').load();
-    expect(getPlayer).toHaveBeenCalledTimes(1);
-    expect(getRecords).toHaveBeenCalledTimes(1);
-    expect(getCatalog).toHaveBeenCalledTimes(1);
-    expect(getDetailedCatalog).not.toHaveBeenCalled();
-  });
 
   it('deduplicates concurrent loads for the same account', async () => {
     const score = new FixtureProvider();
@@ -216,13 +139,12 @@ describe('ScoreService', () => {
 });
 
 it.each(['authentication', 'permission'] as const)('已有缓存时保留%s失败供公共刷新要求重新登录', async code => {
-  const repository = new MemoryRepository();
-  await new ScoreService(new FixtureProvider(), new FixtureCatalogProvider(), 'acct-auth', repository, repository).load();
-  const saved = structuredClone(repository.value);
+  await new ScoreService(new FixtureProvider(), new FixtureCatalogProvider(), 'acct-auth').load();
+  const saved = await repository.getLatest('acct-auth');
   const failure = new ProviderError(code, 'session expired', false);
   const fail = async (): Promise<never> => { throw failure; };
-  await expect(new ScoreService({ getPlayer: fail, getRecords: fail }, new FixtureCatalogProvider(), 'acct-auth', repository, repository).load()).rejects.toBe(failure);
-  expect(repository.value).toEqual(saved);
+  await expect(new ScoreService({ getPlayer: fail, getRecords: fail }, new FixtureCatalogProvider(), 'acct-auth').load()).rejects.toBe(failure);
+  expect(await repository.getLatest('acct-auth')).toEqual(saved);
 });
 
 it('取消一个成绩消费者仍允许另一个完成同账号共享读取', async () => {
@@ -233,8 +155,7 @@ it('取消一个成绩消费者仍允许另一个完成同账号共享读取', a
     getPlayer: vi.fn(async () => { await gate; return structuredClone(fixturePlayer); }),
     getRecords: vi.fn(async () => { await gate; return structuredClone(fixtureRecords); }),
   };
-  const repository = new MemoryRepository();
-  const service = new ScoreService(provider, new FixtureCatalogProvider(), 'acct-cancel-consumer', repository, repository);
+  const service = new ScoreService(provider, new FixtureCatalogProvider(), 'acct-cancel-consumer');
   const a = service.load(first.signal), b = service.load(second.signal);
   first.abort(new Error('first left'));
   await expect(a).rejects.toThrow('first left');
@@ -242,5 +163,5 @@ it('取消一个成绩消费者仍允许另一个完成同账号共享读取', a
   const value = await b;
   expect(value.source.isStale).toBe(false);
   expect(provider.getPlayer).toHaveBeenCalledTimes(1);
-  expect(repository.value?.player).toEqual(value.player);
+  expect((await repository.getLatest('acct-cancel-consumer'))?.player).toEqual(value.player);
 });

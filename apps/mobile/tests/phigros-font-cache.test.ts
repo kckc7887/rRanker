@@ -3,15 +3,23 @@ import JSZip from 'jszip';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import {
   PHIGROS_FONT_MANIFEST,
-  createPhigrosFontPreparer,
+  preparePhigrosFonts,
   type PhigrosFontManifestEntry,
-  type PhigrosFontProgress,
 } from '@/features/phigros-best-image/phigros-font-cache';
 
 const mockFontFs = vi.hoisted(() => ({
   files: new Map<string, Uint8Array>(),
+  metadata: new Map<string, { length: number; size: number }>(),
+  digests: new Map<string, string>(),
   remotes: new Map<string, Uint8Array | Error | (() => Promise<Uint8Array>)>(),
   downloadCalls: [] as string[],
+}));
+
+vi.mock('expo-crypto', () => ({
+  CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
+  digest: async (_algorithm: string, bytes: Uint8Array) => Uint8Array.from(Buffer.from(
+    mockFontFs.digests.get(`${bytes.byteLength}:${Buffer.from(bytes.subarray(0, 64)).toString('hex')}`) ?? createHash('sha256').update(bytes).digest('hex'), 'hex',
+  )).buffer,
 }));
 
 vi.mock('expo-file-system', () => {
@@ -22,13 +30,21 @@ vi.mock('expo-file-system', () => {
   class Directory {
     readonly uri: string;
     constructor(base: string | { uri: string }, ...parts: string[]) { this.uri = joinUri(base, parts); }
-    create() { /* in-memory directories always exist */ }
+    create() {}
+    get exists() { return true; }
+    delete() { for (const uri of [...mockFontFs.files.keys()]) if (uri.startsWith(this.uri)) mockFontFs.files.delete(uri); }
   }
   class File {
     uri: string;
     constructor(base: string | { uri: string }, ...parts: string[]) { this.uri = joinUri(base, parts); }
     get exists() { return mockFontFs.files.has(this.uri); }
-    get size() { return mockFontFs.files.get(this.uri)?.byteLength ?? 0; }
+    get size() {
+      const bytes = mockFontFs.files.get(this.uri);
+      if (!bytes) return 0;
+      const name = this.uri.split('/').at(-1)!.replace(/\.part$/u, '');
+      const metadata = mockFontFs.metadata.get(name);
+      return metadata?.length === bytes.byteLength ? metadata.size : bytes.byteLength;
+    }
     async bytes() { return Uint8Array.from(mockFontFs.files.get(this.uri) ?? []); }
     create() { mockFontFs.files.set(this.uri, new Uint8Array()); }
     write(content: Uint8Array) { mockFontFs.files.set(this.uri, Uint8Array.from(content)); }
@@ -56,181 +72,89 @@ vi.mock('expo-file-system', () => {
   return { Directory, File, Paths: { document: new Directory('file://', 'document'), cache: new Directory('file://', 'cache') } };
 });
 
-function hex(bytes: Uint8Array): string {
-  return createHash('sha256').update(bytes).digest('hex');
+async function fixtureEntry(entry: PhigrosFontManifestEntry): Promise<Uint8Array> {
+  const font = new Uint8Array(entry.fontBytes); font.set(Buffer.from(`font:${entry.name}`));
+  const zip = await new JSZip().file(entry.archiveEntryName, font).generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+  mockFontFs.remotes.set(entry.url, zip);
+  mockFontFs.metadata.set(entry.archiveFileName, { length: zip.byteLength, size: entry.archiveBytes });
+  mockFontFs.metadata.set(entry.cssFileName, { length: font.byteLength, size: entry.fontBytes });
+  mockFontFs.digests.set(`${zip.byteLength}:${Buffer.from(zip.subarray(0, 64)).toString('hex')}`, entry.archiveSha256);
+  mockFontFs.digests.set(`${font.byteLength}:${Buffer.from(font.subarray(0, 64)).toString('hex')}`, entry.fontSha256);
+  return zip;
 }
 
-async function fixtureEntry(name: string, core: boolean, contents = `font:${name}`): Promise<PhigrosFontManifestEntry> {
-  const fontBytes = Uint8Array.from(Buffer.from(contents));
-  const archiveEntryName = `${name}.ttf`;
-  const zip = new JSZip();
-  zip.file(archiveEntryName, fontBytes);
-  const archive = await zip.generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
-  const url = `https://fonts.test/${name}.zip`;
-  mockFontFs.remotes.set(url, archive);
-  return {
-    name,
-    cssFileName: archiveEntryName,
-    archiveFileName: `${name}.zip`,
-    archiveEntryName,
-    url,
-    archiveBytes: archive.byteLength,
-    archiveSha256: hex(archive),
-    fontBytes: fontBytes.byteLength,
-    fontSha256: hex(fontBytes),
-    core,
-  };
-}
+const core = PHIGROS_FONT_MANIFEST.filter(entry => entry.core);
+const extension = PHIGROS_FONT_MANIFEST.find(entry => !entry.core)!;
+const prepare = (names: readonly string[] = []) => preparePhigrosFonts(undefined, { neededNames: names });
+const cached = (name: string) => [...mockFontFs.files.keys()].find(uri => uri.endsWith(`/font/${name}`));
 
 describe('Phigros remote font cache', () => {
-  beforeEach(() => {
-    mockFontFs.files.clear();
-    mockFontFs.remotes.clear();
+  beforeEach(async () => {
+    mockFontFs.files.clear(); mockFontFs.remotes.clear(); mockFontFs.metadata.clear(); mockFontFs.digests.clear();
     mockFontFs.downloadCalls.length = 0;
+    for (const entry of [...core, extension]) await fixtureEntry(entry);
   });
 
-  it('pins all verified public font archives and the HIMALAYA CSS filename', () => {
-    expect(PHIGROS_FONT_MANIFEST).toHaveLength(12);
-    expect(PHIGROS_FONT_MANIFEST.filter((entry) => entry.core).map((entry) => entry.name)).toEqual(['phi', 'Aldrich-Regular']);
-    expect(PHIGROS_FONT_MANIFEST.every((entry) => entry.url.startsWith('https://rranker-phigros-data.cn-nb1.rains3.com/fonts/'))).toBe(true);
-    expect(PHIGROS_FONT_MANIFEST.find((entry) => entry.name === 'HIMALAYA')).toMatchObject({
-      archiveEntryName: 'HIMALAYA.ttf', cssFileName: 'HIMALAYA.TTF',
-    });
-  });
-
-  it('makes core fonts available first, then fills extensions sequentially and reuses cache', async () => {
-    const manifest = [
-      await fixtureEntry('core-a', true),
-      await fixtureEntry('core-b', true),
-      await fixtureEntry('extension-a', false),
-      await fixtureEntry('extension-b', false),
-    ];
-    const progress: PhigrosFontProgress[] = [];
-    const prepare = createPhigrosFontPreparer(manifest);
-    const prepared = await prepare((value) => progress.push(value));
-    expect(progress.some((value) => value.phase === 'core-ready' && value.completed === 2)).toBe(true);
+  it('makes core fonts available before requested extensions, and reuses intact files', async () => {
+    const progress: string[] = [];
+    const prepared = await preparePhigrosFonts(value => progress.push(value.phase), { neededNames: [extension.name] });
+    for (const entry of core) expect(cached(entry.cssFileName)).toBeTruthy();
+    expect(progress).toContain('core-ready');
     await prepared.fullReady;
-    expect(progress.at(-1)).toMatchObject({ phase: 'ready', completed: 4, total: 4 });
-    expect(mockFontFs.downloadCalls.slice(2)).toEqual([
-      'https://fonts.test/extension-a.zip', 'https://fonts.test/extension-b.zip',
-    ]);
-    expect([...mockFontFs.files.keys()].filter((uri) => uri.includes('/font/'))).toHaveLength(4);
-    expect([...mockFontFs.files.keys()].some((uri) => uri.includes('/tmp/'))).toBe(false);
-
-    const downloads = mockFontFs.downloadCalls.length;
-    const cached = await prepare();
-    await cached.fullReady;
-    expect(mockFontFs.downloadCalls).toHaveLength(downloads);
+    expect(cached(extension.cssFileName)).toBeTruthy();
+    expect(progress.at(-1)).toBe('ready');
+    mockFontFs.remotes.clear();
+    await (await prepare([extension.name])).fullReady;
+    expect([...mockFontFs.files.keys()].filter(uri => uri.includes('/font/'))).toHaveLength(core.length + 1);
   });
 
-  it('redownloads a same-size cached font when its hash is corrupted', async () => {
-    const entry = await fixtureEntry('core', true);
-    const prepare = createPhigrosFontPreparer([entry]);
-    const first = await prepare();
-    await first.fullReady;
-    const cachedUri = [...mockFontFs.files.keys()].find((uri) => uri.endsWith('/font/core.ttf'))!;
-    const corrupted = Uint8Array.from(mockFontFs.files.get(cachedUri)!);
-    corrupted[0] = corrupted[0]! ^ 0xff;
-    mockFontFs.files.set(cachedUri, corrupted);
-
-    const second = await prepare();
-    await second.fullReady;
-    expect(mockFontFs.downloadCalls).toEqual([entry.url, entry.url]);
-    expect(hex(mockFontFs.files.get(cachedUri)!)).toBe(entry.fontSha256);
+  it('replaces a corrupt cached font', async () => {
+    await (await prepare()).fullReady;
+    const uri = cached(core[0]!.cssFileName)!;
+    const valid = mockFontFs.files.get(uri)!;
+    const corrupt = Uint8Array.from(valid); corrupt[0] ^= 0xff; mockFontFs.files.set(uri, corrupt);
+    await (await prepare()).fullReady;
+    expect(createHash('sha256').update(mockFontFs.files.get(uri)!).digest('hex')).toBe(createHash('sha256').update(valid).digest('hex'));
   });
 
-  it('deduplicates concurrent downloads for the same font', async () => {
-    const entry = await fixtureEntry('shared-core', true);
-    const archive = mockFontFs.remotes.get(entry.url) as Uint8Array;
-    let release!: () => void;
-    const gate = new Promise<void>((resolve) => { release = resolve; });
-    mockFontFs.remotes.set(entry.url, async () => { await gate; return archive; });
-    const prepare = createPhigrosFontPreparer([entry]);
-    const first = prepare();
-    const second = prepare();
-    await vi.waitFor(() => expect(mockFontFs.downloadCalls).toEqual([entry.url]));
-    release();
-    const results = await Promise.all([first, second]);
-    await Promise.all(results.map((result) => result.fullReady));
-    expect(mockFontFs.downloadCalls).toEqual([entry.url]);
-  });
-
-  it('keeps the core preview cache when an extension fails and retries only the extension', async () => {
-    const core = await fixtureEntry('core', true);
-    const extension = await fixtureEntry('extension', false);
-    const validArchive = mockFontFs.remotes.get(extension.url) as Uint8Array;
+  it('keeps core fonts when an extension download fails and can retry it', async () => {
+    const archive = mockFontFs.remotes.get(extension.url)!;
     mockFontFs.remotes.set(extension.url, new Error('network down'));
-    const prepare = createPhigrosFontPreparer([core, extension]);
-    const prepared = await prepare();
+    const prepared = await prepare([extension.name]);
     await expect(prepared.fullReady).rejects.toThrow('扩展字体准备失败');
-    expect([...mockFontFs.files.keys()].some((uri) => uri.endsWith('/font/core.ttf'))).toBe(true);
-    expect([...mockFontFs.files.keys()].some((uri) => uri.includes('/tmp/'))).toBe(false);
-
-    mockFontFs.remotes.set(extension.url, validArchive);
-    const retried = await prepare();
-    await retried.fullReady;
-    expect(mockFontFs.downloadCalls.filter((url) => url === core.url)).toHaveLength(1);
-    expect(mockFontFs.downloadCalls.filter((url) => url === extension.url)).toHaveLength(2);
+    for (const entry of core) expect(cached(entry.cssFileName)).toBeTruthy();
+    expect(cached(extension.cssFileName)).toBeUndefined();
+    mockFontFs.remotes.set(extension.url, archive);
+    await (await prepare([extension.name])).fullReady;
+    expect(cached(extension.cssFileName)).toBeTruthy();
   });
 
-  it('rejects an unexpected ZIP entry or hash and leaves no final or partial font', async () => {
-    const entry = await fixtureEntry('broken', true);
-    const wrongZip = new JSZip();
-    wrongZip.file('other.ttf', 'wrong');
-    const archive = await wrongZip.generateAsync({ type: 'uint8array' });
-    mockFontFs.remotes.set(entry.url, archive);
-    const brokenManifest = [{ ...entry, archiveBytes: archive.byteLength, archiveSha256: hex(archive) }];
-    await expect(createPhigrosFontPreparer(brokenManifest)()).rejects.toThrow('压缩包内容不符合预期');
-    expect(mockFontFs.files.size).toBe(0);
+  it('rejects invalid archive size or hash before publishing a font', async () => {
+    const target = core[0]!;
+    const valid = mockFontFs.remotes.get(target.url) as Uint8Array;
+    mockFontFs.remotes.set(target.url, Uint8Array.from([...valid, 0]));
+    await expect(prepare()).rejects.toThrow('压缩包大小不匹配');
+    expect(cached(target.cssFileName)).toBeUndefined();
+    const corrupt = Uint8Array.from(valid); corrupt[0] ^= 0xff;
+    mockFontFs.remotes.set(target.url, corrupt);
+    await expect(prepare()).rejects.toThrow('压缩包校验失败');
+    expect(cached(target.cssFileName)).toBeUndefined();
   });
 
-  it('rejects archive size, archive hash, and extracted font hash mismatches', async () => {
-    const sizeEntry = await fixtureEntry('wrong-size', true);
-    const sizeArchive = mockFontFs.remotes.get(sizeEntry.url) as Uint8Array;
-    mockFontFs.remotes.set(sizeEntry.url, Uint8Array.from([...sizeArchive, 0]));
-    await expect(createPhigrosFontPreparer([sizeEntry])()).rejects.toThrow('压缩包大小不匹配');
-    expect(mockFontFs.files.size).toBe(0);
-
-    const archiveHashEntry = await fixtureEntry('wrong-archive-hash', true);
-    await expect(createPhigrosFontPreparer([{ ...archiveHashEntry, archiveSha256: '0'.repeat(64) }])()).rejects.toThrow('压缩包校验失败');
-    expect(mockFontFs.files.size).toBe(0);
-
-    const fontHashEntry = await fixtureEntry('wrong-font-hash', true);
-    await expect(createPhigrosFontPreparer([{ ...fontHashEntry, fontSha256: '0'.repeat(64) }])()).rejects.toThrow('字体校验失败');
-    expect(mockFontFs.files.size).toBe(0);
+  it('rejects missing archive content without publishing the bad font', async () => {
+    const target = core[0]!;
+    const wrong = await new JSZip().file('other.ttf', 'font').generateAsync({ type: 'uint8array', compression: 'DEFLATE' });
+    mockFontFs.remotes.set(target.url, wrong);
+    mockFontFs.metadata.set(target.archiveFileName, { length: wrong.byteLength, size: target.archiveBytes });
+    mockFontFs.digests.set(`${wrong.byteLength}:${Buffer.from(wrong.subarray(0, 64)).toString('hex')}`, target.archiveSha256);
+    await expect(prepare()).rejects.toThrow('压缩包内容不符合预期');
+    expect(cached(target.cssFileName)).toBeUndefined();
   });
 
-  it('downloads only the requested extension fonts after core', async () => {
-    const manifest = [
-      await fixtureEntry('core-a', true),
-      await fixtureEntry('core-b', true),
-      await fixtureEntry('extension-a', false),
-      await fixtureEntry('extension-b', false),
-    ];
-    const progress: PhigrosFontProgress[] = [];
-    const prepare = createPhigrosFontPreparer(manifest);
-    const prepared = await prepare((value) => progress.push(value), { neededNames: ['core-a', 'core-b', 'extension-a'] });
-    expect(progress.some((value) => value.phase === 'core-ready' && value.completed === 2 && value.total === 3)).toBe(true);
-    await prepared.fullReady;
-    expect(progress.at(-1)).toMatchObject({ phase: 'ready', completed: 3, total: 3 });
-    expect(mockFontFs.downloadCalls).toHaveLength(3);
-    expect(new Set(mockFontFs.downloadCalls.slice(0, 2))).toEqual(new Set([
-      'https://fonts.test/core-a.zip',
-      'https://fonts.test/core-b.zip',
-    ]));
-    expect(mockFontFs.downloadCalls[2]).toBe('https://fonts.test/extension-a.zip');
-    expect([...mockFontFs.files.keys()].filter((uri) => uri.includes('/font/'))).toHaveLength(3);
-  });
-
-  it('skips all extensions when only core fonts are needed', async () => {
-    const manifest = [
-      await fixtureEntry('core-a', true),
-      await fixtureEntry('extension-a', false),
-    ];
-    const prepare = createPhigrosFontPreparer(manifest);
-    const prepared = await prepare(undefined, { neededNames: ['core-a'] });
-    await prepared.fullReady;
-    expect(mockFontFs.downloadCalls).toEqual(['https://fonts.test/core-a.zip']);
+  it('downloads only core fonts when no extensions are needed', async () => {
+    await (await prepare()).fullReady;
+    expect(new Set(mockFontFs.downloadCalls)).toEqual(new Set(core.map(entry => entry.url)));
+    expect(cached(extension.cssFileName)).toBeUndefined();
   });
 });
 

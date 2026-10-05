@@ -1,6 +1,5 @@
 import type { ImageSourcePropType } from 'react-native';
 
-/** 版本 Logo 源：对象存储 rranker/assets/images/version-logos（与本地 assets/images 同名同路径）。 */
 const VERSION_LOGO_BASE = 'https://rranker.cn-nb1.rains3.com/assets/images/version-logos';
 
 function versionLogo(fileName: string): ImageSourcePropType {
@@ -23,7 +22,7 @@ const SHARED = {
   19900: versionLogo('19900.png'),
 } as const satisfies Record<number, ImageSourcePropType>;
 
-/** 各主版本国服 / 日服 Logo。旧框时代两侧同图；DX 起国服用年份 branding。 */
+/** DX 起国服 Logo 使用年份标识。 */
 export const VERSION_LOGO_SOURCES: Readonly<Record<number, { china: ImageSourcePropType; japan: ImageSourcePropType }>> = {
   10000: { china: SHARED[10000], japan: SHARED[10000] },
   11000: { china: SHARED[11000], japan: SHARED[11000] },

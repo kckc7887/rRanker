@@ -44,10 +44,8 @@ export function TufDifficultyBadge({
   };
   return <GameDifficultyBadge
     accessibilityLabel={accessibilityLabel}
-    clipped
-    fallbackTextColor="#FFFFFF"
-    special={!visual && difficulty.tone === 'tuf-special' ? { gradient: SPECIAL_DIFFICULTY_GRADIENT } : undefined}
-    style={style ?? null}
+    special={!visual && difficulty.tone === 'tuf-special' ? { gradient: SPECIAL_DIFFICULTY_GRADIENT, textColor: '#FFFFFF' } : undefined}
+    style={[{ overflow: 'hidden' }, style]}
     text={text}
     theme={colors}
   />;

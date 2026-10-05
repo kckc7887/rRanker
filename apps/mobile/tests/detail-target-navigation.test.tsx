@@ -28,7 +28,7 @@ import SongDetailScreen from '../app/songs/[songId]';
 import { createLocalMaimaiAccount } from '@/domain/bound-account';
 
 let mockActiveGameId: GameId = 'maimai';
-let mockRouteParams: Record<string, string> = { songId: '1' };
+let mockRouteParams: Record<string, string> = { songId: '1', gameId: 'maimai' };
 const mockPush = jest.fn();
 const mockCrossAccount = { ...createLocalMaimaiAccount('Phigros 玩家', 0), id: 'phigros:test', gameId: 'phigros' as const };
 const mockSwitch = jest.fn(async (_id: string, _options: unknown) => { mockActiveGameId = 'phigros'; });
@@ -99,7 +99,6 @@ jest.mock('@/components/AppNotification', () => ({
   useNotificationModalRequestClose: () => () => false,
 }));
 
-/** 游戏详情页替身：把收到的 props 原样渲染出来，供路由断言定位结果。 */
 function mockDetailEcho(testID: string) {
   const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
@@ -327,7 +326,7 @@ function pushedHref(): { pathname: string; params: Record<string, string> } {
 beforeEach(() => {
   jest.clearAllMocks();
   mockActiveGameId = 'maimai';
-  mockRouteParams = { songId: '1' };
+  mockRouteParams = { songId: '1', gameId: 'maimai' };
 });
 
 describe('成绩卡 → 详情路由 → 详情定位 往返', () => {
@@ -336,7 +335,7 @@ describe('成绩卡 → 详情路由 → 详情定位 往返', () => {
       route: encodeDetailTarget(testCase.target), title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
       cover={null} badges={null} rowStyle={null} mainStyle={null} titleStyle={null} subtitleStyle={null} />);
     await fireEvent.press(row.getByLabelText('打开歌曲'));
-    expect(decodeDetailTarget(testCase.game, pushedHref().params)).toEqual({ ok: true, target: testCase.target });
+    expect(decodeDetailTarget(pushedHref().params)).toEqual({ ok: true, target: testCase.target });
   });
 
   it('公共歌曲行保留额外参数与未转义歌曲身份', async () => {
@@ -356,7 +355,7 @@ describe('成绩卡 → 详情路由 → 详情定位 往返', () => {
 
     const href = pushedHref();
     expect(href.pathname).toBe('/songs/[songId]');
-    expect(decodeDetailTarget(testCase.game, href.params)).toEqual({ ok: true, target: testCase.target });
+    expect(decodeDetailTarget(href.params)).toEqual({ ok: true, target: testCase.target });
     await card.unmount();
   });
 
@@ -382,14 +381,13 @@ describe('成绩卡 → 详情路由 → 详情定位 往返', () => {
 
     const href = pushedHref();
     expect(href.pathname).toBe('/songs/[songId]');
-    expect(href.params).toEqual({ songId: '3720', levelIndex: '22423', scoreId: '166715063' });
+    expect(href.params).toEqual({ songId: '3720', beatmapId: '22423', scoreId: '166715063', gameId: 'osu-standard' });
 
-    const resolution = decodeDetailTarget('osu-standard', href.params);
+    const resolution = decodeDetailTarget(href.params);
     expect(resolution).toEqual({
       ok: true,
       target: { game: 'osu-standard', beatmapsetId: '3720', beatmapId: 22423, scoreId: 166715063 },
     });
-    expect(Object.keys((resolution as { target: DetailTarget }).target)).not.toContain('levelIndex');
 
     mockActiveGameId = 'osu-standard';
     mockRouteParams = href.params;
@@ -403,7 +401,7 @@ describe('成绩卡 → 详情路由 → 详情定位 往返', () => {
 
   it('非法或缺失的定位参数显示明确空态且不挂载游戏详情页', async () => {
     mockActiveGameId = 'phigros';
-    mockRouteParams = { songId: 'Song.A', levelIndex: 'abc' };
+    mockRouteParams = { songId: 'Song.A', levelIndex: 'abc', gameId: 'phigros' };
     const route = await render(<SongDetailScreen />);
     expect(route.getByText('无法打开谱面')).toBeTruthy();
     expect(route.queryByTestId('phigros-detail')).toBeNull();

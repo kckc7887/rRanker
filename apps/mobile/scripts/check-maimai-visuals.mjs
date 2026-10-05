@@ -65,11 +65,6 @@ window.visual = {
    }
    return {imagePixels,pixels:read(),width:canvas.width,height:canvas.height};
   } finally {clearInterval(pump);video.pause();stream?.getTracks().forEach(track=>track.stop());video.srcObject=null;renderer.setBackgroundVideo(null);}
- },
- async playback(name) {
-  const start=performance.now(); let frames=0;
-  await new Promise(resolve=>{ const tick=()=>{const elapsed=performance.now()-start; renderer.renderAtTime(charts[name],1500+elapsed); frames++;if(elapsed<3000)requestAnimationFrame(tick);else resolve(null);};requestAnimationFrame(tick); });
-  return {frames,elapsed:performance.now()-start};
  }
 };
 window.ready=true;
@@ -91,7 +86,6 @@ try {
    const stats=await page.evaluate(([name,time])=>window.visual.render(name,time),[sample,time]);
    const name=sample+'-'+time+'.png';await page.screenshot({path:path.join(output,name)});results.push({sample,time,name,stats});
  }
- const playback=await page.evaluate(()=>window.visual.playback('chain'));
  const settings=[];
  for(const [name,body,time] of [
   ['pink-single','1x-5[4:2]',1850],['pink-double','1x-5[4:2]*-7[4:2]',1850],
@@ -113,6 +107,6 @@ try {
   await page.screenshot({path:path.join(output,file)});backgrounds.push({width,height,size,video,file,...result});
  }
  if(errors.length)throw new Error(errors.join('\n'));
- await fs.writeFile(path.join(output,'results.json'),JSON.stringify({errors,playback,frames:results,settings,backgrounds},null,2));
- console.log(JSON.stringify({output,frames:results.length,settings:settings.length,backgrounds:backgrounds.length,playback,errors}));
+ await fs.writeFile(path.join(output,'results.json'),JSON.stringify({errors,frames:results,settings,backgrounds},null,2));
+ console.log(JSON.stringify({output,frames:results.length,settings:settings.length,backgrounds:backgrounds.length,errors}));
 } finally { await browser.close(); }

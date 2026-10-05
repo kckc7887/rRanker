@@ -19,11 +19,8 @@ export function DxRatingCard({
   label: string;
   display: string;
   meta: string;
-  /** 用于选档的数值；空账号传 null 用中性灰底 */
   rating: number | null;
-  /** 自定义主题（如 Phigros 课题模式） */
   themeOverride?: DxRatingTheme;
-  /** 使用档位色描边 Rating 数字；多色时描边渲染为横向渐变。 */
   valueTheme?: {
     label: string;
     colors: readonly [string, ...string[]];
@@ -32,9 +29,7 @@ export function DxRatingCard({
     title: string;
     value: string;
   };
-  /** 移除外层渐变边框，并补偿内边距以保持卡片尺寸与内容位置。 */
   borderless?: boolean;
-  /** 长数值保持单行，并按可用宽度缩小字号。 */
   fitValue?: boolean;
   accessibilityLabel?: string;
 }) {
@@ -100,8 +95,7 @@ function RatingValue({
 }) {
   const [maskSettled, setMaskSettled] = useState(false);
   useEffect(() => {
-    // Android MaskedView 首帧快照可能早于遮罩文字绘制而为空；
-    // 双 rAF 越过首帧后翻转状态，触发一次原生遮罩重绘，与切换账号后重新快照的路径一致。
+    /** Android 首帧可能拍到空遮罩，双 rAF 后重建。 */
     let second: number | null = null;
     const first = requestAnimationFrame(() => {
       second = requestAnimationFrame(() => setMaskSettled(true));
@@ -128,10 +122,8 @@ function RatingValue({
     <View style={styles.outlinedValueWrap}>
       {colors.length >= 2 ? (
         <FlowingGradientValue
-          // 进程首次挂载的遮罩快照可能为空且不会再重拍（切换账号会重建卡片生效）；
-          // 首帧用隐形预热挂载吃掉该坑位，双 rAF 后换 key 重建为正式挂载，与切号路径一致。
           key={maskSettled ? 'gradient-live' : 'gradient-warm'}
-          // Android 硬件模式可能缓存首次文字布局前的空遮罩，software 模式可随布局完成立即更新。
+          /** software 避免缓存文字布局前的空遮罩。 */
           androidRenderingMode="software"
           pointerEvents="none"
           maskStyle={[StyleSheet.absoluteFill, maskSettled ? undefined : styles.outlineWarm]}

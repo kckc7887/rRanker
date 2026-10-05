@@ -1,5 +1,6 @@
+import { z } from 'zod';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
-import type { GameId } from '@/domain/game-bind-options';
+import { GAME_IDS, type GameId } from '@/domain/game-bind-options';
 import type { ChunithmCollectionKind } from '@/domain/chunithm-collections';
 import { getGameToolbox } from '@/domain/game-toolbox';
 
@@ -20,24 +21,23 @@ export type HomePinPreferences = {
 type StoredPinnedToolsV1 = {
   version: 1;
   pinnedToolIdsByGame: PinnedToolIdsByGame;
-  pinnedPlateIdsByGame?: PinnedPlateIdsByGame;
-  pinnedCollectionIdsByGame?: PinnedCollectionIdsByGame;
+  pinnedPlateIdsByGame: PinnedPlateIdsByGame;
+  pinnedCollectionIdsByGame: PinnedCollectionIdsByGame;
 };
 
 const STORE_KEY = 'rranker.toolbox.pinned-tools.v1';
-const GAME_IDS: readonly GameId[] = ['rizline', 'majdata-net', 'maimai', 'chunithm', 'phigros', 'phira', 'adofai', 'musedash', 'test', 'osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko'];
 const COLLECTION_KINDS: readonly ChunithmCollectionKind[] = ['trophy', 'character', 'plate', 'icon'];
 
 export function emptyPinnedToolIdsByGame(): PinnedToolIdsByGame {
-  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
+  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
 }
 
 export function emptyPinnedPlateIdsByGame(): PinnedPlateIdsByGame {
-  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
+  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
 }
 
 export function emptyPinnedCollectionIdsByGame(): PinnedCollectionIdsByGame {
-  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], test: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
+  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
 }
 
 export function emptyHomePinPreferences(): HomePinPreferences {
@@ -95,14 +95,15 @@ export function parseHomePinPreferences(value: unknown): HomePinPreferences {
   return output;
 }
 
-export function parsePinnedToolPreferences(value: unknown): PinnedToolIdsByGame {
-  return parseHomePinPreferences(value).pinnedToolIdsByGame;
-}
-
 const { Store: PinnedToolPreferencesStore } = createPreferencesStore<HomePinPreferences>({
   storeKey: STORE_KEY,
   defaults: emptyHomePinPreferences,
-  parse: parseHomePinPreferences,
+  parse: value => parseHomePinPreferences(z.object({
+    version: z.literal(1),
+    pinnedToolIdsByGame: z.record(z.string(), z.array(z.string())),
+    pinnedPlateIdsByGame: z.record(z.string(), z.array(z.number())),
+    pinnedCollectionIdsByGame: z.record(z.string(), z.array(z.object({ kind: z.enum(['trophy', 'character', 'plate', 'icon']), id: z.number() }))),
+  }).parse(value)),
   toStored: (preferences) => ({
     version: 1,
     ...parseHomePinPreferences({ version: 1, ...preferences }),

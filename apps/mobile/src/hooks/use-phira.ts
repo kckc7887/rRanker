@@ -44,16 +44,10 @@ export function usePhiraBests(playerId: number | null, enabled = true) {
   });
 }
 
-/**
- * 页面可见的一次刷新结果：service 摘要加上 Hook 自己管理的取消语义。
- * `success` / `partial` / `failed` / `noop` 由 service 判定，`cancelled` 表示本次操作在完成前被取消。
- */
 export type PhiraBestRefreshOutcome = {
   status: PhiraBestRefreshStatus | 'cancelled';
-  /** 本次请求覆盖的谱面数；取消除外。 */
   requestedCount: number;
   updatedCount: number;
-  /** 失败项谱面 id；页面据此显示失败数量并提供重试。 */
   failedChartIds: number[];
 };
 
@@ -67,11 +61,6 @@ const outcomeFrom = (result: PhiraBestRefreshResult): PhiraBestRefreshOutcome =>
   failedChartIds: result.refresh.failures.map((failure) => failure.chartId),
 });
 
-/**
- * 主动刷新当前玩家已查询谱面的最佳成绩。
- * 操作摘要由每次调用的返回值交给页面（页面自有通知入口），bests 查询只承载缓存快照，
- * 普通缓存重新加载不承担保存操作结果的职责。
- */
 export function useRefreshAllPhiraBests(playerId: number | null) {
   const lifetime = useRef(new AbortController());
   const failedTargets = useRef<readonly PhiraBestRefreshTarget[]>([]);
@@ -127,7 +116,7 @@ export function usePhiraCharts(status: PhiraChartStatus, search: string, enabled
       { status, page: pageParam, search: normalized || undefined },
       signal,
     ),
-    // Phira /chart 的 page=1 返回与 page=0 相同的首页，翻页须跳过 1（0 → 2 → 3 → …）。
+    /** Phira 的 page=1 与首页相同，翻页顺序为 0、2、3… */
     getNextPageParam: (last, pages) => phiraCatalogNextPage(pages, last),
     enabled: enabled && tabActive,
     notifyOnChangeProps: tabActive ? undefined : [],
@@ -135,7 +124,6 @@ export function usePhiraCharts(status: PhiraChartStatus, search: string, enabled
   });
 }
 
-/** 按谱面 ID 批量读取（Phira 官方收藏页同款 /chart/multi-get），供个人曲库行展示。 */
 export function usePhiraChartsByIds(ids: readonly number[]) {
   const sorted = useMemo(() => [...new Set(ids)].sort((a, b) => a - b), [ids]);
   return useQuery({

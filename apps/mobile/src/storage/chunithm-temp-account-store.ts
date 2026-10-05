@@ -1,5 +1,5 @@
 import Storage from '@/storage/key-value-storage';
-import { AccountDirectoryEnvelopeError, loadAccountDirectory, type KeyValueStore } from '@/storage/create-demo-account-store';
+import { loadAccountDirectory, type KeyValueStore } from '@/storage/create-demo-account-store';
 
 type StoredChunithmTempAccountV1 = {
   version: 1;
@@ -8,21 +8,17 @@ type StoredChunithmTempAccountV1 = {
 
 const STORE_KEY = 'rranker.chunithm-temp-account.v1';
 
-export function parseChunithmTempAccount(value: unknown): boolean {
+function parseChunithmTempAccount(value: unknown): boolean {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
-    throw new AccountDirectoryEnvelopeError('invalid-structure');
+    throw new TypeError('不支持的中二账号设置');
   }
   const raw = value as { version?: unknown; enabled?: unknown };
-  if (typeof raw.version === 'number' && raw.version !== 1) {
-    throw new AccountDirectoryEnvelopeError('unsupported-version');
-  }
   if (raw.version !== 1 || typeof raw.enabled !== 'boolean') {
-    throw new AccountDirectoryEnvelopeError('invalid-structure');
+    throw new TypeError('不支持的中二账号设置');
   }
   return raw.enabled;
 }
 
-/** 中二首版临时账号开关；账号本身不携带成绩或凭据。 */
 export class ChunithmTempAccountStore {
   constructor(private readonly storage: KeyValueStore = Storage) {}
 
@@ -31,13 +27,11 @@ export class ChunithmTempAccountStore {
   }
 
   async enable(): Promise<void> {
-    await this.load();
     const value: StoredChunithmTempAccountV1 = { version: 1, enabled: true };
     await this.storage.setItem(STORE_KEY, JSON.stringify(value));
   }
 
   async remove(): Promise<void> {
-    await this.load();
     await this.storage.removeItem(STORE_KEY);
   }
 }

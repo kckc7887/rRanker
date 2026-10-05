@@ -4,7 +4,7 @@ import SongDetailScreen from '../app/songs/[songId]';
 import { MuseDashSongDetailScreen } from '@/screens/MuseDashScreens';
 import type { MuseDashAlbumsResponse, MuseDashCeResponse, MuseDashPlayer } from '@/domain/muse-dash';
 
-let mockRouteParams: Record<string, string> = { songId: '0-47' };
+let mockRouteParams: Record<string, string> = { songId: '0-47', gameId: 'musedash' };
 const mockDiffdiff = [
   ['0-47', 3, '11', 640.1, 11.5],
   ['0-47', 4, '12', 739.7, 12.5],
@@ -110,7 +110,7 @@ const carouselOffset = (screen: Awaited<ReturnType<typeof render>>): number => {
 };
 
 beforeEach(() => {
-  mockRouteParams = { songId: '0-47' };
+  mockRouteParams = { songId: '0-47', gameId: 'musedash' };
 });
 
 describe('Muse Dash 歌曲详情真实路由', () => {
@@ -121,7 +121,7 @@ describe('Muse Dash 歌曲详情真实路由', () => {
     await direct.unmount();
     expect(directOffset).toBe(directInterval);
 
-    mockRouteParams = { songId: '0-47', levelIndex: '3' };
+    mockRouteParams = { songId: '0-47', levelIndex: '3', gameId: 'musedash' };
     const routed = await render(<SongDetailScreen />);
     const routedOffset = carouselOffset(routed);
     expect(routedOffset).toBe(directOffset);

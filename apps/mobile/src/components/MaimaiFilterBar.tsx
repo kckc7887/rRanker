@@ -10,7 +10,7 @@ import {
   joinFilterSummary,
 } from '@/components/game-content/FilterShell';
 import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
-import { FILTER_BAR_EXTENSIONS } from '@/features/game-content/filter-bar-extensions';
+import { DxRatingTagFilterRow } from '@/components/maimai/DxRatingTagFilterRow';
 import type { DxRatingChartTag } from '@/domain/dxrating-chart-tags';
 import {
   MAIMAI_FC_ACHIEVEMENTS,
@@ -31,11 +31,8 @@ type VersionSheetValue = string | 'all';
 type SoloSheetValue = MaimaiFcAchievement | 'all';
 type MultiSheetValue = MaimaiFsAchievement | 'all';
 
-export { FilterChipFrame, NeutralChip };
-
 export type DxRatingTagFilterState = 'ready' | 'loading' | 'unavailable';
 
-/** 查询无数据且未终态失败时一律视为加载中：未启用、自动重试中都不误报为不可用。 */
 export function dxRatingTagFilterState(query: {
   data?: unknown;
   isLoading: boolean;
@@ -54,7 +51,6 @@ export interface VersionFilterOption {
 
 export interface MaimaiFilterBarProps {
   collapsed: boolean;
-  /** 是否显示展开/收起按钮；成绩图片自定义等固定展开场景传 false，仅保留重置。 */
   collapsible?: boolean;
   difficulty: Difficulty | 'all';
   version: string | 'all';
@@ -72,7 +68,6 @@ export interface MaimaiFilterBarProps {
   dxRatingTags?: readonly DxRatingChartTag[];
   selectedDxRatingTagIds?: readonly number[];
   dxRatingTagState?: DxRatingTagFilterState;
-  /** 版本改为多选复选框模式（成绩图片自定义使用）。 */
   versionMulti?: boolean;
   selectedVersions?: readonly string[];
   currentVersionTitle?: string;
@@ -342,7 +337,7 @@ export function MaimaiFilterBar({
       </View>
 
       {onDxRatingTagIdsChange ? (
-        <FILTER_BAR_EXTENSIONS.tagFilterRow
+        <DxRatingTagFilterRow
           visible={tagSheetVisible}
           tags={dxRatingTags}
           selectedTagIds={selectedDxRatingTagIds}
@@ -415,7 +410,6 @@ function QuickChip({ label, active, onPress }: { label: string; active: boolean;
   );
 }
 
-// Maimai 专属样式：版本切换、快捷芯片等；标签筛选入口样式归 components/maimai，公共样式见 game-content/FilterShell 的 filterShellStyles。
 const styles = StyleSheet.create({
   dropdownControls: { flex: 1, minWidth: 0, flexDirection: 'row', alignItems: 'center', gap: 8 },
   versionQuickActions: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },

@@ -1,3 +1,4 @@
+import { uploadTaskController } from '@/services/upload-task-controller';
 import { useEffect, useState, type ReactNode } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, Text, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -6,7 +7,7 @@ import type { CatalogSnapshot } from '@/domain/models';
 import type { ProviderSession } from '@/providers/contracts';
 import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { fetchScoreHubStatistics, type ScoreHubDxnetJobStats } from '@/services/score-hub-client';
-import { formatScoreHubStatsSummary, scoreHubSuccessHint, uploadTaskController, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
+import { formatScoreHubStatsSummary, scoreHubSuccessHint, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
 import { AppModal } from '@/components/AppModal';
 import { UploadFriendCodeFields, UploadProgressStatus, UploadQrFields, UploadResultList, UploadTargetList } from '@/components/upload-data-sheet-fields';
 import { uploadDataSheetStyles as styles } from '@/components/upload-data-sheet-styles';
@@ -39,12 +40,10 @@ export function UploadDataSheet({
   onClose: () => void;
   onPhaseChange?: (phase: UploadPhase) => void;
   onFinished?: (result: UploadResult) => void | Promise<void>;
-  /** 仅本次打开使用；不覆盖用户平时保存的上传目标。 */
+  /** 临时选择不覆盖持久目标。 */
   temporarySelectedAccountIds?: readonly string[];
   onLxnsTokensRotated?: (accountId: string, update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
-  /** 可选的页内顶部导航，仅在特定账号提供其它上传页面时显示。 */
   headerAccessory?: ReactNode;
-  /** 替换好友码页面内容，但保留同一个原生上传弹层与顶部导航。 */
   contentOverride?: ReactNode;
   uploadMethod?: 'friend_code' | 'qr';
   externalBusy?: boolean;

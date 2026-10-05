@@ -72,7 +72,7 @@ export async function createLocalBoundAccount(accounts: readonly BoundAccount[])
 type DemoAccountBinding = { create: () => BoundAccount; persist: (account: BoundAccount) => Promise<void>; label: string };
 
 const demoBindings: Partial<Record<ProviderId, DemoAccountBinding>> = {
-    'maimai-test': { create: createMaxedMaimaiTestAccount, persist: (account: BoundAccount) => demoAccounts.upsert({ id: account.id, displayName: account.displayName }), label: '' },
+    'maimai-test': { create: createMaxedMaimaiTestAccount, persist: async (account: BoundAccount) => { await demoAccounts.upsert({ id: account.id, displayName: account.displayName }); }, label: '' },
     'chunithm-test': { create: createMaxedChunithmTestAccount, persist: (account: BoundAccount) => chunithmDemoAccount.save({ id: account.id, displayName: account.displayName }), label: '中二节奏' },
     'phigros-test': { create: createMaxedPhigrosTestAccount, persist: (account: BoundAccount) => phigrosDemoAccount.save({ id: account.id, displayName: account.displayName }), label: ' Phigros ' },
     'musedash-test': { create: createMaxedMuseDashTestAccount, persist: (account: BoundAccount) => museDashDemoAccount.save({ id: account.id, displayName: account.displayName }), label: '喵斯快跑' },
@@ -111,17 +111,9 @@ export async function saveLocalAccountName(account: BoundAccount, displayName: s
 
 export type AccountCleanupAttempt = (label: string, action: () => Promise<unknown>) => Promise<void>;
 
-/**
- * 关键解绑提交：抛出表示尚未提交（账号与凭据保持原样，可重试）；
- * 返回 `{ cleanupFailures }` 表示提交已完成、但提交后的附属清理失败，
- * 调用方必须按“已解绑 + 有失败项”处理，不能反推账号还在。
- */
+/** cleanupFailures 只表示提交后的清理失败，账号已经解绑。 */
 export type AccountRemovalSubmit = (label: string, action: () => Promise<unknown>) => Promise<void>;
 
-/**
- * 解绑执行计划：关键解绑提交与分项清理分开。
- * submit 抛出表示提交未完成；submit 返回的 cleanupFailures 与 cleanup 失败一样只记录。
- */
 export type AccountRemovalPlan = {
   submit: AccountRemovalSubmit;
   cleanup: AccountCleanupAttempt;

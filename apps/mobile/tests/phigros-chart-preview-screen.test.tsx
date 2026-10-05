@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm';
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { BackHandler } from 'react-native';
@@ -38,8 +39,7 @@ jest.mock('expo-router', () => ({
       return null;
     },
   },
-  // 真实 useLocalSearchParams 每次渲染都返回新对象；这里同样每次展开，
-  // 防止屏幕对 params 对象身份的错误依赖在测试中被掩盖。
+  /** 路由参数每次渲染都返回新对象。 */
   useLocalSearchParams: () => ({ ...mockRouteParams }),
 }));
 
@@ -197,7 +197,6 @@ describe('PhigrosChartPreviewScreen', () => {
       illustrationUrl: expect.stringContaining(';base64,Ag=='),
       settings: { playbackSpeed: 1.5 },
     }), 'AQ=='));
-    // 参数对象身份在每次渲染都会变化，prepare 只应执行一次。
     expect(mockPrepare).toHaveBeenCalledTimes(1);
   });
 
@@ -334,7 +333,6 @@ describe('PhigrosChartPreviewScreen', () => {
       }),
     }), 'QUJDRA=='));
     expect(mockPrepare).toHaveBeenCalledTimes(1);
-    // 非文本条目（bg.png/song.mp3）落盘；文本条目（chart.json/extra.json/info.yml/glsl）不落盘
     expect(mockStageRpeBundle).toHaveBeenCalledWith(38294, [
       { name: 'bg.png', bytes: expect.any(Uint8Array) },
       { name: 'song.mp3', bytes: expect.any(Uint8Array) },
@@ -362,8 +360,11 @@ describe('PhigrosChartPreviewScreen', () => {
       autoHideHomeIndicator: true,
     }));
 
+    mockInjectJavaScript.mockClear();
     expect(hardwareBackHandler?.()).toBe(true);
-    expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining("type:'exit-fullscreen'"));
+    const postMessage = jest.fn();
+    runInNewContext(String(mockInjectJavaScript.mock.calls.at(-1)![0]), { window: { postMessage } });
+    expect(postMessage).toHaveBeenCalledWith({ type: 'exit-fullscreen' }, '*');
 
     await fireEvent(webview, 'message', { nativeEvent: { data: '{"type":"fullscreen","active":false}' } });
     await waitFor(() => expect(latestScreenOptions).toMatchObject({
@@ -380,7 +381,7 @@ describe('PhigrosChartPreviewScreen', () => {
 
     await fireEvent(webview, 'message', {
       nativeEvent: {
-        data: '{"type":"settings","active":false,"message":"ignored","playbackSpeed":2,"noteScale":0.8}',
+        data: "{\"type\":\"settings\",\"settings\":{\"playbackSpeed\":2,\"noteScale\":0.8}}",
       },
     });
 

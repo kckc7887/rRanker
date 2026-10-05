@@ -1,75 +1,176 @@
-import type { BoundAccount } from '@/domain/bound-account';
-import { resolvePhigrosAvatarUrl } from '@/services/phigros-avatar-resolver';
+import { buildLxnsIconUrl, accountAvatarResourceKey } from '@/domain/account-avatar';
+import { tufPlayerIdFromAccountId, type BoundAccount } from '@/domain/bound-account';
+import { buildChunithmMapIconUrl, CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION, chunithmPersonalResourceKey, type ChunithmPersonalSnapshot } from '@/domain/chunithm-personal';
+import { resolveTufAvatarUrl } from '@/domain/tuf';
+import type { ProviderSession } from '@/providers/contracts';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
-import { PhigrosCatalogProvider } from '@/providers/phigros-catalog-provider';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 import { applyLxnsTokenRotation } from '@/state/session-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
-import {
-  createAccountAvatarResolver,
-  type AccountAvatarResolver,
-  type AccountAvatarResolverPorts,
-  type PhigrosAccountHydration,
-} from '@/services/account-avatar-resolver';
+import { resolvePhigrosAvatarUrl } from '@/services/phigros-avatar-resolver';
 import { persistBoundAccountAvatar } from '@/services/resolve-account-avatar-persist';
 import { loadTufPlayerFresh, makeTufSnapshot, TufCache } from '@/services/tuf-cache';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics-recorder';
 
-export type { PhigrosAccountHydration };
+export type PhigrosAccountHydration = {
+  summary: Awaited<ReturnType<PhigrosScoreProvider['getSummary']>>;
+  avatarUrl: string | null;
+};
 
+const AVATAR_RESOURCE_SCHEMA = 1;
+const AVATAR_SYNC_CONCURRENCY = 3;
 const repository = new SqliteSnapshotRepository();
 const tufCache = new TufCache();
 
-/** 应用运行时装配：落雪轮换、协议客户端、仓储与前台信号都在这里接到真实实现。 */
-function createDefaultPorts(): AccountAvatarResolverPorts {
-  return {
-    snapshots: {
-      latest: (accountId) => repository.getLatest(accountId),
-      resource: (key, schemaVersion) => repository.getResource(key, schemaVersion),
-    },
-    providers: {
-      lxnsIconId: async (session, accountId, signal) => {
-        const provider = new LxnsScoreProvider(
-          session,
-          (update) => applyLxnsTokenRotation(accountId, update),
-        );
-        return (await provider.getPlayer(signal)).presentation?.iconId;
-      },
-      chunithmMapIconId: async (session, accountId, signal) => {
-        const provider = new ChunithmScoreProvider(
-          session,
-          (update) => applyLxnsTokenRotation(accountId, update),
-        );
-        return (await provider.getPlayer(signal))?.map_icon?.id;
-      },
-      phigrosAccount: async (account: BoundAccount, session, signal): Promise<PhigrosAccountHydration> => {
-        const provider = new PhigrosScoreProvider(session);
-        const catalog = new PhigrosCatalogProvider();
-        const [summary, gameVersion] = await Promise.all([
-          provider.getSummary(signal),
-          catalog.getGameVersion(signal),
-        ]);
-        return { summary, avatarUrl: await resolvePhigrosAvatarUrl(gameVersion, summary.avatar) };
-      },
-    },
-    tuf: {
-      cachedPlayer: async (playerId) => (await tufCache.loadPlayer(playerId))?.data ?? null,
-      refreshPlayer: async (playerId, signal) => {
-        const player = await loadTufPlayerFresh(playerId, signal);
-        if (!signal.aborted) void tufCache.savePlayer(playerId, makeTufSnapshot(player)).catch(error =>
-          recordRuntimeDiagnostic('operation', { source: 'account-avatar', gameType: 'adofai', phase: 'cache-persist', result: signal.aborted ? 'cancelled' : 'failed', error }));
-        return player;
-      },
-    },
-    persistAvatar: persistBoundAccountAvatar,
-    foregroundSignal: getForegroundAbortSignal,
-  };
+const accountAvatarInflight = new Map<string, Promise<string | null>>();
+const phigrosSummaryInflight = new Map<string, Promise<PhigrosAccountHydration>>();
+const phigrosSummaryCache = new Map<string, PhigrosAccountHydration>();
+
+export function hydratePhigrosAccount(
+  account: BoundAccount,
+  session: ProviderSession,
+  signal: AbortSignal = getForegroundAbortSignal(),
+): Promise<PhigrosAccountHydration> {
+  const cached = phigrosSummaryCache.get(account.id);
+  if (cached) return Promise.resolve(cached);
+  const existing = phigrosSummaryInflight.get(account.id);
+  if (existing) return existing;
+  const pending = (async () => {
+    if (signal.aborted || session.mode !== 'phi-session') throw new Error('account hydration aborted');
+    const summary = await new PhigrosScoreProvider(session).getSummary(signal);
+    const result = { summary, avatarUrl: await resolvePhigrosAvatarUrl(summary.avatar, signal) };
+    if (signal.aborted) throw new Error('account hydration aborted');
+    phigrosSummaryCache.set(account.id, result);
+    return result;
+  })();
+  phigrosSummaryInflight.set(account.id, pending);
+  void pending.finally(() => {
+    if (phigrosSummaryInflight.get(account.id) === pending) phigrosSummaryInflight.delete(account.id);
+  }).catch(() => undefined);
+  return pending;
 }
 
-const defaultResolver: AccountAvatarResolver = createAccountAvatarResolver(createDefaultPorts());
+function readCachedAvatarUrl(accountId: string): Promise<string | null> {
+  return repository
+    .getResource<{ avatarUrl: string }>(accountAvatarResourceKey(accountId), AVATAR_RESOURCE_SCHEMA)
+    .then((cached) => cached?.avatarUrl ?? null);
+}
 
-export const hydratePhigrosAccount = defaultResolver.hydratePhigrosAccount;
-export const resolveAccountAvatarUrl = defaultResolver.resolveAccountAvatarUrl;
-export const syncAllAccountAvatars = defaultResolver.syncAllAccountAvatars;
+async function resolveLxnsAvatarUrl(
+  account: BoundAccount,
+  session: ProviderSession | undefined,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const fromSnapshot = account.gameId === 'chunithm'
+    ? buildChunithmMapIconUrl((
+      await repository.getResource<ChunithmPersonalSnapshot>(
+        chunithmPersonalResourceKey(account.id),
+        CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+      )
+    )?.player?.map_icon?.id)
+    : buildLxnsIconUrl((await repository.getLatest(account.id))?.player.presentation?.iconId);
+  if (fromSnapshot) return fromSnapshot;
+
+  if (session?.mode !== 'lxns-oauth') return null;
+
+  try {
+    if (account.gameId === 'chunithm') {
+      const provider = new ChunithmScoreProvider(session, update => applyLxnsTokenRotation(account.id, update));
+      return buildChunithmMapIconUrl((await provider.getPlayer(signal))?.map_icon?.id);
+    }
+    const provider = new LxnsScoreProvider(session, update => applyLxnsTokenRotation(account.id, update));
+    return buildLxnsIconUrl((await provider.getPlayer(signal)).presentation?.iconId);
+  } catch {
+    return null;
+  }
+}
+
+async function resolvePhigrosAvatarUrlForAccount(
+  account: BoundAccount,
+  session: ProviderSession | undefined,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const cached = await readCachedAvatarUrl(account.id);
+  if (cached) return cached;
+
+  if (session?.mode !== 'phi-session') return null;
+
+  try {
+    return (await hydratePhigrosAccount(account, session, signal)).avatarUrl;
+  } catch {
+    return null;
+  }
+}
+
+async function resolveTufAvatarUrlForAccount(
+  account: BoundAccount,
+  signal: AbortSignal,
+): Promise<string | null> {
+  const persisted = await readCachedAvatarUrl(account.id);
+  if (persisted) return persisted;
+  const playerId = tufPlayerIdFromAccountId(account.id);
+  if (playerId === null) return null;
+  try {
+    const cachedAvatar = resolveTufAvatarUrl((await tufCache.loadPlayer(playerId))?.data);
+    if (cachedAvatar) return cachedAvatar;
+    const player = await loadTufPlayerFresh(playerId, signal);
+    if (!signal.aborted) void tufCache.savePlayer(playerId, makeTufSnapshot(player)).catch(error =>
+      recordRuntimeDiagnostic('operation', { source: 'account-avatar', gameType: 'adofai', phase: 'cache-persist', result: signal.aborted ? 'cancelled' : 'failed', error }));
+    return resolveTufAvatarUrl(player);
+  } catch {
+    return null;
+  }
+}
+
+export function resolveAccountAvatarUrl(
+  account: BoundAccount,
+  session: ProviderSession | undefined,
+  signal: AbortSignal = getForegroundAbortSignal(),
+): Promise<string | null> {
+  const existing = accountAvatarInflight.get(account.id);
+  if (existing) return existing;
+  const pending = (async () => {
+    if (signal.aborted) return null;
+    const avatarUrl = account.providerId === 'lxns'
+      ? await resolveLxnsAvatarUrl(account, session, signal)
+      : account.providerId === 'phi-taptap'
+        ? await resolvePhigrosAvatarUrlForAccount(account, session, signal)
+        : account.providerId === 'tuf'
+          ? await resolveTufAvatarUrlForAccount(account, signal)
+          : null;
+    return signal.aborted ? null : avatarUrl;
+  })();
+  accountAvatarInflight.set(account.id, pending);
+  void pending.finally(() => {
+    if (accountAvatarInflight.get(account.id) === pending) accountAvatarInflight.delete(account.id);
+  }).catch(() => undefined);
+  return pending;
+}
+
+export async function syncAllAccountAvatars(
+  accounts: readonly BoundAccount[],
+  sessionsByAccountId: Readonly<Record<string, ProviderSession>>,
+  update: (accountId: string, avatarUrl: string) => void,
+  signal: AbortSignal = getForegroundAbortSignal(),
+): Promise<void> {
+  const pending = accounts.filter((account) => (
+    (account.providerId === 'lxns' || account.providerId === 'phi-taptap' || account.providerId === 'tuf')
+    && !account.avatarUrl
+  ));
+  let nextIndex = 0;
+  const worker = async () => {
+    while (!signal.aborted) {
+      const account = pending[nextIndex];
+      nextIndex += 1;
+      if (!account) return;
+      const avatarUrl = await resolveAccountAvatarUrl(account, sessionsByAccountId[account.id], signal);
+      if (!avatarUrl || signal.aborted) continue;
+
+      update(account.id, avatarUrl);
+      await persistBoundAccountAvatar(account.id, avatarUrl);
+    }
+  };
+  await Promise.all(Array.from({ length: Math.min(AVATAR_SYNC_CONCURRENCY, pending.length) }, () => worker()));
+}

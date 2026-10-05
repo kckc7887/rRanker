@@ -17,7 +17,7 @@ afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
 
 describe('Phigros B30 Avg', () => {
   it('忽略畸形响应且不会发起高档位重查', async () => {
-    const fetchMock = vi.fn(async () => ({ ok: true, json: async () => ({ data: { 'Alpha.Artist.0': { IN: { accAvg: 101 } } } }) }));
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ data: { 'Alpha.Artist.0': { IN: { accAvg: 101 } } } })));
     vi.stubGlobal('fetch', fetchMock);
     expect(await loadPhigrosAccAverages([record('Alpha.Artist', 99)], 16)).toEqual({});
     expect(fetchMock).toHaveBeenCalledTimes(1);
@@ -40,13 +40,10 @@ describe('Phigros B30 Avg', () => {
 
   it('使用原项目 allAccAvg 协议并按当前 ACC 标记 Higher / Lower', async () => {
     const records = [record('Alpha.Artist', 99.5), record('Beta.Artist', 98.5)];
-    const fetchMock = vi.fn(async (_url: string, _request: RequestInit) => ({
-      ok: true,
-      json: async () => ({ data: {
+    const fetchMock = vi.fn(async (_url: string, _request: RequestInit) => new Response(JSON.stringify({ data: {
         'Alpha.Artist.0': { IN: { accAvg: 99.1 } },
         'Beta.Artist.0': { IN: { accAvg: 99.0 } },
-      } }),
-    }));
+    } })));
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await loadPhigrosAccAverages(records, 16.1053);
@@ -62,8 +59,8 @@ describe('Phigros B30 Avg', () => {
   it('B27 全部高于均值时切换到高两档的 Hyper / Finished 配色', async () => {
     const records = [record('Alpha.Artist', 99.5)];
     const fetchMock = vi.fn()
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { 'Alpha.Artist.0': { IN: { accAvg: 99.0 } } } }) })
-      .mockResolvedValueOnce({ ok: true, json: async () => ({ data: { 'Alpha.Artist.0': { IN: { accAvg: 99.7 } } } }) });
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { 'Alpha.Artist.0': { IN: { accAvg: 99.0 } } } })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ data: { 'Alpha.Artist.0': { IN: { accAvg: 99.7 } } } })));
     vi.stubGlobal('fetch', fetchMock);
 
     const result = await loadPhigrosAccAverages(records, 16.1053);

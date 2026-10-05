@@ -27,7 +27,7 @@ export type ColourCommand = CommandTiming & {
 export type ParameterCommand = CommandTiming & { type: 'P'; parameter: 'H' | 'V' | 'A' };
 export type StoryboardCommand = ScalarCommand | VectorCommand | ColourCommand | ParameterCommand;
 
-/** 未展开的故事板循环。求值时按时间映射到单次迭代，不复制 count 份指令。 */
+/** 故事板循环按当前时间求值，不复制全部迭代。 */
 export type StoryboardLoop = {
   start: number;
   count: number;
@@ -409,7 +409,6 @@ function activeLoopCommands(loop: StoryboardLoop, timeMs: number, parentShift = 
   return commands;
 }
 
-/** 在给定时间展开当前迭代。没有循环时返回原数组，避免每帧复制。 */
 export function resolveStoryboardCommands(
   commands: readonly StoryboardCommand[],
   loops: readonly StoryboardLoop[] | undefined,

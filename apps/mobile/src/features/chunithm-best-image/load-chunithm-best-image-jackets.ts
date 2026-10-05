@@ -4,8 +4,7 @@ import { loadRemoteBestImageAssetDataUri } from '@/features/best-image/load-remo
 
 export const CHUNITHM_BEST_IMAGE_JACKET_ROOT = 'https://assets2.lxns.net/chunithm/jacket';
 
-
-/** WORLD'S END 优先 originId，其余用 songId。 */
+/** WORLD'S END 封面使用原曲 originId。 */
 export function resolveChunithmBestImageJacketId(
   songId: string,
   levelIndex: number,

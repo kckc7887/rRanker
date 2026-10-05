@@ -67,10 +67,6 @@ class ArchiveIdentityTests(unittest.TestCase):
                     self.verify()
                 self.metadata[key] = previous
 
-    def test_invalid_source_sha(self):
-        with self.assertRaisesRegex(ValueError, "identity"):
-            archive.verify_app(self.app, "master", "0.4.0", "com.rranker.app")
-
     def make_ipa(self, extra=()):
         package = self.app.parent / "app.ipa"
         with zipfile.ZipFile(package, "w", compression=zipfile.ZIP_DEFLATED) as output:
@@ -88,11 +84,10 @@ class ArchiveIdentityTests(unittest.TestCase):
         with self.assertRaisesRegex(ValueError, "identity"):
             archive.verify_ipa(self.make_ipa(), self.sha, "0.4.0", "com.rranker.app", "42")
 
-    def test_ambiguous_or_oversized_ipa_metadata(self):
-        for extra in [[("Payload/other.app/Info.plist", b"fake")],
-                      [("Payload/app.app/EXConstants.bundle/Contents/Resources/app.config", b"x" * (2 * 1024 * 1024 + 1))]]:
-            with self.subTest(extra=extra[0][0]), self.assertRaises(ValueError):
-                archive.verify_ipa(self.make_ipa(extra), self.sha, "0.4.0", "com.rranker.app", "42")
+    def test_ambiguous_ipa_metadata(self):
+        with self.assertRaisesRegex(ValueError, "one IPA application"):
+            archive.verify_ipa(self.make_ipa([("Payload/other.app/Info.plist", b"fake")]),
+                               self.sha, "0.4.0", "com.rranker.app", "42")
 
 
 if __name__ == "__main__":

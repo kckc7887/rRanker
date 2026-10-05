@@ -1,8 +1,4 @@
-/**
- * 谱面预览资源 URI 解析（公共层，纯函数不拉取 react-native）：
- * 处理 expo-asset localUri 在各平台/构建形态下的绝对地址归一，
- * Android release 会把 drawable 资产暴露为资源标识符而非 file URI。
- */
+/** Android release 可能以资源标识符返回内置图片。 */
 
 export type ChartPreviewAssetUri = {
   uri: string;
@@ -12,10 +8,6 @@ export type ChartPreviewAssetUri = {
 const ABSOLUTE_URI_PATTERN = /^[a-z][a-z\d+.-]*:/i;
 const ANDROID_RESOURCE_IDENTIFIER_PATTERN = /^[a-z\d_]+$/;
 
-/**
- * Android release builds expose bundled drawable assets as resource identifiers
- * (for example `assets_<bundle>_<name>`) instead of file URIs.
- */
 export function resolveChartPreviewAssetUri(
   localUri: string,
   assetType: string,

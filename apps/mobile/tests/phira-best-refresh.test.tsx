@@ -121,7 +121,6 @@ const stubPlayerTransport = (chartIds: readonly number[]) => {
     ids.map((id) => record(id, Math.floor(id / 10), 900_000)));
 };
 
-/** 只替换 transport：谱面最佳成绩的返回由各用例决定。 */
 const chartBestCalls: number[] = [];
 function stubChartBest(load: (chartId: number) => Promise<unknown[]>) {
   jest.spyOn(phiraProvider, 'getChartBest').mockImplementation(async (_playerId, chartId) => {
@@ -283,7 +282,6 @@ describe('Phira 记录页刷新结果可见', () => {
 
     await waitFor(() => expect(screen.getByText('谱面成绩未更新')).toBeTruthy());
     expect(screen.getByText('1 首谱面刷新失败，可点此重试。')).toBeTruthy();
-    // 可用数据保留在列表里。
     expect(screen.getByText('Chart 101')).toBeTruthy();
     expect(screen.getByText('950000')).toBeTruthy();
 
@@ -313,7 +311,6 @@ describe('Phira 记录页刷新结果可见', () => {
     await fireEvent.press(screen.getByText('重试失败项'));
     await waitFor(() => expect(chartBestCalls).toEqual([202]));
     await waitFor(() => expect(screen.getByText('Chart 202')).toBeTruthy());
-    // 重试成功后失败提示自行关闭。
     await waitFor(() => expect(screen.queryByText('部分谱面成绩未更新')).toBeNull(), { timeout: 3000 });
   });
 

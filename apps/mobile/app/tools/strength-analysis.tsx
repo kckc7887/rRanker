@@ -1,6 +1,7 @@
+import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { router, Stack, type Href } from 'expo-router';
+import { router, Stack } from 'expo-router';
 import { AppModal } from '@/components/AppModal';
 import { Card } from '@/components/Card';
 import { EmptyDataView } from '@/components/EmptyDataView';
@@ -21,7 +22,6 @@ import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { useAppTheme } from '@/theme/app-theme';
 
-/** 分析池与空态说明由领域侧政策常量生成，页面不再维护第二份数字。 */
 const POOL_DESCRIPTION = describePhigrosStrengthPoolPolicy();
 const POLICY_TEXTS = describePhigrosStrengthPolicyTexts();
 
@@ -292,10 +292,7 @@ export default function PhigrosStrengthAnalysisScreen() {
   const payload = gameQuery.data?.payload;
   const phigrosPayload = payload?.kind === 'phigros' ? payload : null;
   const openSongChart = (songId: string, levelIndex: number) => {
-    router.push({
-      pathname: '/songs/[songId]',
-      params: { songId, levelIndex: String(levelIndex) },
-    } as Href);
+    router.push(detailTargetHref(encodeDetailTarget({ game: 'phigros', songId: songId, levelIndex: levelIndex })));
   };
   const openChartDetail = (chart: PhigrosStrengthChartSample) => {
     setSelectedTag(null);

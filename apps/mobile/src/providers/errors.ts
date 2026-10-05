@@ -40,7 +40,6 @@ const DEFAULT_PROVIDER_USER_MESSAGES: ProviderUserMessages = {
   local_commit: '无法保存本机账号信息，请重试；若仍失败，请查看诊断。',
 };
 
-/** 已分类的网络或存储错误保留原阶段；原生错误只展示当前操作的固定文案。 */
 export async function runProviderOperation<T>(code: ProviderErrorCode, action: () => T | Promise<T>): Promise<T> {
   try { return await action(); }
   catch (error) {

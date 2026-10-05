@@ -3,16 +3,16 @@ import { createAccountListStore } from '@/storage/create-account-list-store';
 
 export type MuseDashAccountProfile = { userId: string; displayName: string };
 
-export function parseMuseDashAccounts(value: unknown): MuseDashAccountProfile[] {
+function parseMuseDashAccounts(value: unknown): MuseDashAccountProfile[] {
   const { accounts } = assertAccountListEnvelope(value);
   const seen = new Set<string>();
   return accounts.flatMap((entry): MuseDashAccountProfile[] => {
-    if (!entry || typeof entry !== 'object') return [];
+    if (!entry || typeof entry !== 'object') throw new TypeError('不支持的账号目录');
     const item = entry as { userId?: unknown; displayName?: unknown };
     const displayName = typeof item.displayName === 'string' ? item.displayName.trim() : '';
-    if (typeof item.userId !== 'string' || !item.userId.trim() || !displayName) return [];
+    if (typeof item.userId !== 'string' || !item.userId.trim() || !displayName) throw new TypeError('不支持的账号目录');
     const userId = item.userId.trim();
-    if (seen.has(userId)) return [];
+    if (seen.has(userId)) throw new TypeError('不支持的账号目录');
     seen.add(userId);
     return [{ userId, displayName }];
   });

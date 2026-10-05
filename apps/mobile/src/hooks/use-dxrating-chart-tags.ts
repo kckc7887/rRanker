@@ -8,7 +8,6 @@ import { useSession } from '@/state/session-store';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 const provider = new DxRatingChartTagsProvider();
 
-// 标签数据禁止缓存：不落盘、不复用旧快照；失败只走自动重试，不设手动重试入口。
 const DXRATING_TAGS_MAX_AUTO_RETRIES = 3;
 const DXRATING_TAGS_ERROR_POLL_INTERVAL_MS = 30_000;
 

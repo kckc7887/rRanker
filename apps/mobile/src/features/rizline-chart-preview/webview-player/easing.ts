@@ -1,4 +1,4 @@
-/** Official chart `easeType` indices: linear, power in/out, step, circular, sine. */
+/** easeType 按官方谱面编号索引缓动。 */
 
 function clampUnit(amount: number): number {
   if (!Number.isFinite(amount)) return 0;

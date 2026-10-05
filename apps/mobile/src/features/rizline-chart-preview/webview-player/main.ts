@@ -201,7 +201,7 @@ async function runTransport(action: (current: PreviewSession) => void | Promise<
 function togglePlay(): void {
   void runTransport((current) => current.playing ? current.pause() : current.playFrom(current.ended ? 0 : current.currentTime));
 }
-/** 暂停（手动按钮或宿主生命周期）：只停播与收起浮层，不改变全屏状态。 */
+
 function pauseForLifecycle(): void {
   if (disposed) return;
   dragging = false;
@@ -300,7 +300,7 @@ events.listen(window, 'keydown', (event) => {
   }
 });
 function receiveMessage(event: MessageEvent): void {
-  // 生命周期合同由公共层派生：暂停停播保全屏，退出全屏与释放是显式命令。
+
   applyChartPreviewHostCommand(event.data, {
     pause: pauseForLifecycle,
     exitFullscreen: () => setFullscreen(false),

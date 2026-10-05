@@ -16,10 +16,7 @@ const fetchMock = vi.hoisted(() => vi.fn());
 vi.mock('expo/fetch', () => ({ fetch: fetchMock }));
 
 function jsonResponse(status: number, body: unknown) {
-  return {
-    status,
-    text: async () => JSON.stringify(body),
-  };
+  return new Response(JSON.stringify(body), { status });
 }
 
 describe.each([['Node', globalThis.AbortController], ['React Native', NativeAbortController]] as const)('score-hub poll resilience: %s', (_runtime, Controller) => {

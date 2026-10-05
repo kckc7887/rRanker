@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { MaimaiFcAchievement, MaimaiFsAchievement } from '@/domain/maimai-filters';
 import type { ChartType, Difficulty } from '@/domain/models';
@@ -63,30 +64,16 @@ function parseTagIds(value: unknown): number[] {
   return result;
 }
 
-function parseLegacyDifficulty(value: unknown): Difficulty | 'all' {
-  if (!Array.isArray(value)) return 'all';
-  const valid = [...new Set(value)].filter(
-    (item): item is Difficulty => typeof item === 'string' && VALID_DIFFICULTIES.has(item as Difficulty),
-  );
-  return valid.length === 1 ? valid[0]! : 'all';
-}
-
 export function parseRandomChartsPreferences(value: unknown): RandomChartsPreferences {
   const output = defaultRandomChartsPreferences();
   if (!value || typeof value !== 'object') return output;
   const raw = value as Record<string, unknown>;
+  if (raw.schemaVersion !== 3) return output;
 
   if (typeof raw.count === 'number' && VALID_COUNTS.has(raw.count as RandomChartsCount)) {
     output.count = raw.count as RandomChartsCount;
   }
 
-  if (raw.version === 1 && raw.schemaVersion === undefined) {
-    output.difficulty = parseLegacyDifficulty(raw.difficulties);
-    output.constantMin = parseInput(raw.constantMin);
-    output.constantMax = parseInput(raw.constantMax);
-    return output;
-  }
-  if (raw.schemaVersion !== 2 && raw.schemaVersion !== 3) return defaultRandomChartsPreferences();
 
   if (raw.difficulty === 'all'
     || (typeof raw.difficulty === 'string' && VALID_DIFFICULTIES.has(raw.difficulty as Difficulty))) {
@@ -111,9 +98,7 @@ export function parseRandomChartsPreferences(value: unknown): RandomChartsPrefer
     && VALID_MULTI.has(raw.multiAchievement as MaimaiFsAchievement)) {
     output.multiAchievement = raw.multiAchievement as MaimaiFsAchievement;
   }
-  if (raw.schemaVersion === 3) {
-    output.selectedDxRatingTagIds = parseTagIds(raw.selectedDxRatingTagIds);
-  }
+  output.selectedDxRatingTagIds = parseTagIds(raw.selectedDxRatingTagIds);
   if (raw.versionLocale === 'china' || raw.versionLocale === 'japan') {
     output.versionLocale = raw.versionLocale;
   }
@@ -134,7 +119,21 @@ function toStored(preferences: RandomChartsPreferences): StoredRandomChartsPrefe
 const { Store: RandomChartsPreferencesStore } = createPreferencesStore<RandomChartsPreferences>({
   storeKey: STORE_KEY,
   defaults: defaultRandomChartsPreferences,
-  parse: parseRandomChartsPreferences,
+  parse: value => parseRandomChartsPreferences(z.object({
+    schemaVersion: z.literal(3),
+    count: z.number(),
+    difficulty: z.string(),
+    version: z.string(),
+    type: z.string(),
+    constantMin: z.string(),
+    constantMax: z.string(),
+    achievementMin: z.string(),
+    achievementMax: z.string(),
+    soloAchievement: z.string().nullable(),
+    multiAchievement: z.string().nullable(),
+    selectedDxRatingTagIds: z.array(z.number()),
+    versionLocale: z.string(),
+  }).parse(value)),
   toStored,
 });
 

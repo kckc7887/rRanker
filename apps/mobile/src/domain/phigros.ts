@@ -59,7 +59,7 @@ class ByteReader {
     return s;
   }
 
-  /** GameRecord 键格式：varshort(len) + utf8(len-2) + 2 字节校验，与 phiTool 一致 */
+  /** GameRecord 键为 varshort(len)+utf8(len−2)+2 字节校验，与 phiTool 一致。 */
   getGameRecordKey(): string {
     const len = this.getVarInt();
     if (len < 2) throw new Error('GameRecord 键长度无效');
@@ -82,7 +82,7 @@ export function decryptBytes(data: Uint8Array): Uint8Array {
   const key = Base64.parse(AES_KEY_B64);
   const iv = Base64.parse(AES_IV_B64);
   const decrypted = AES.decrypt(
-    // crypto-js 接受 { ciphertext: WordArray }；类型定义偏窄，这里按运行时契约传参
+    /** crypto-js 运行时接受 {ciphertext: WordArray}，类型定义偏窄。 */
     { ciphertext: uint8ArrayToWordArray(data) } as unknown as string,
     key,
     { iv },
@@ -113,38 +113,27 @@ export type PhigrosScoreEntry = {
   level: PhigrosLevel;
   difficulty: number;
   score: number;
-  /** 存档原始准确率（百分数 0–100，未四舍五入） */
+  /** 准确率单位为百分数 0–100，保留存档精度。 */
   rawAcc: number;
-  /** 展示用准确率（保留两位） */
+  /** 展示准确率保留两位。 */
   acc: number;
   fc: boolean;
   rks: number;
   targetAccForPlusOne?: number | null;
 };
 
-/**
- * Phigros 单谱真实成绩。
- *
- * Phigros 只有一套谱面类型与一套成绩口径，这里只保留真实语义：
- * 分数是 `score`、准确率是 `rawAcc`（存档全精度）与 `acc`（展示两位）、
- * 单谱定数是 `rks`、满连是 `fullCombo`。
- * 舞萌语义字段（`type` 的 SD/DX、`dxScore`、`fc`/`fs`）不属于 Phigros，
- * 只在共享成绩卡边界由 `phigrosSharedScoreRecord` 借用。
- */
 export type PhigrosScoreRecord = {
   songId: string;
   level: PhigrosLevel;
-  /** 谱面定数（发布资源 difficulty 表） */
+  /** 此处 rks 表示谱面定数。 */
   difficultyConstant: number;
-  /** 单次游玩分数（0–1,000,000） */
   score: number;
-  /** 存档原始准确率（百分数 0–100，未四舍五入） */
+  /** 准确率单位为百分数 0–100，保留存档精度。 */
   rawAcc: number;
-  /** 展示用准确率（保留两位） */
+  /** 展示准确率保留两位。 */
   acc: number;
-  /** 成绩定数（由谱面定数与原始准确率算出） */
+  /** 成绩 RKS 使用原始准确率计算。 */
   rks: number;
-  /** 是否 Full Combo */
   fullCombo: boolean;
 };
 
@@ -152,13 +141,10 @@ export type PhigrosB30 = {
   rks: number;
   best27: PhigrosScoreEntry[];
   phi3: PhigrosScoreEntry[];
-  /** Best27 各曲 RKS 之和（计入总 RKS 分子） */
   best27RksSum: number;
-  /** Phi3 各曲定数之和（计入总 RKS 分子；与 phiTool parse_b27 一致） */
+  /** Phi3 对总 RKS 的贡献取谱面定数之和。 */
   phi3ContributionSum: number;
-  /** Best27 平均 RKS */
   best27AvgRks: number;
-  /** Phi3 平均定数贡献 */
   phi3AvgContribution: number;
 };
 
@@ -174,9 +160,9 @@ export type PhigrosSummary = {
 };
 
 export type PhigrosChallengeMode = {
-  /** 课题模式颜色等级（0-5：白绿蓝红金彩） */
+  /** 颜色等级 0–5：白、绿、蓝、红、金、彩。 */
   level: number;
-  /** 课题模式数字（1-99；0 代表未激活） */
+  /** 课题等级为 1–99，0 表示未激活。 */
   rank: number;
 };
 
@@ -201,7 +187,7 @@ export type PhigrosGameProgress = {
   completed: string;
   songUpdateInfo: number;
   challengeModeRank: number;
-  /** Phigros Data，依次为 KiB / MiB / GiB / TiB / PiB。 */
+  /** Data 各项单位依次为 KiB、MiB、GiB、TiB、PiB。 */
   money: [number, number, number, number, number];
   unlockFlagOfSpasmodic: number;
   unlockFlagOfIgallta: number;
@@ -225,7 +211,7 @@ export function parsePhigrosUser(buf: ArrayBuffer | SharedArrayBuffer | Uint8Arr
   };
 }
 
-/** 对齐原项目 GameProgress 的二进制布局，读取玩家 Data 与解锁进度。 */
+/** 按 GameProgress 的二进制布局读取。 */
 export function parsePhigrosGameProgress(
   buf: ArrayBuffer | SharedArrayBuffer | Uint8Array,
 ): PhigrosGameProgress {
@@ -303,7 +289,7 @@ export function parseSummary(summaryBase64: string): PhigrosSummary {
   return result;
 }
 
-/** 课题模式编码：summary.challengeModeRank = level*100 + rank */
+/** challengeModeRank = level×100 + rank。 */
 export function parseChallengeModeRank(challengeModeRank: number): PhigrosChallengeMode {
   const value = Number.isFinite(challengeModeRank) ? Math.max(0, Math.floor(challengeModeRank)) : 0;
   const level = Math.min(5, Math.floor(value / 100));
@@ -317,14 +303,12 @@ export function parseGameRecord(
   const r = new ByteReader(buf);
   const record: Record<string, (PhigrosScoreEntry | null)[]> = {};
 
-  // 与 astrbot GameRecord 一致：首 varint 仅作 songsnum 记录，循环以 remaining 为准。
-  // 若以首 varint 为上限，常见值为 27，会导致只解析 B27 条而非完整存档。
+  /** 首 varint 是 songsnum，常为 27；读取必须以 remaining 为准，不能只取 B27。 */
   if (r.remaining() > 0) {
     r.getVarInt();
   }
 
-  // 对齐 phiTool PhigrosLibrary.GameRecord.read：
-  // varshort(keyLen) + utf8(keyLen-2) + checksum2 + u8(bodyLen) + body；仅 EZ/HD/IN/AT。
+  /** phiTool GameRecord.read：varshort(keyLen)+utf8(keyLen−2)+校验2字节+u8(bodyLen)+body。 */
   while (r.remaining() > 0) {
     const entryStart = r.pos;
     try {
@@ -372,12 +356,12 @@ export function parseGameRecord(
   return record;
 }
 
-/** 游戏内显示为 100% 的准确率（存档浮点可能为 99.996 等） */
+/** 存档浮点 99.996 等值在游戏内显示为 100%。 */
 export function isAcc100Percent(rawAcc: number): boolean {
   return rawAcc >= 99.995;
 }
 
-/** Phigros 评价等级（F/C/B/A/S/V/φ），基于 score 与 FC，对齐 phi-plugin fCompute.rate */
+/** 评价算法对齐 phi-plugin fCompute.rate。 */
 export const PHIGROS_MAX_SCORE = 1_000_000;
 
 export function phigrosScoreToRate(
@@ -396,7 +380,7 @@ export function phigrosScoreToRate(
   return 'new';
 }
 
-/** 成绩定数：rawAcc 为存档百分数（0–100）；acc≥100% 时等于谱面定数 */
+/** rawAcc 单位为百分数；达到 100% 时成绩 RKS 等于谱面定数。 */
 export function calculateRks(difficulty: number, rawAcc: number): number {
   if (rawAcc < 70) return 0;
   return difficulty * ((rawAcc - 55) / 45) ** 2;
@@ -406,12 +390,11 @@ export function roundRks(value: number): number {
   return Math.round(value * 10000) / 10000;
 }
 
-/** 单曲成绩 RKS 展示：始终两位小数（非谱面定数、非玩家总 RKS） */
 export function formatPhigrosSongRks(rks: number): string {
   return rks.toFixed(2);
 }
 
-/** Phi3 槽：acc=100% 按谱面定数降序取前三；贡献取谱面定数（非成绩定数） */
+/** Phi3 取 100% 谱面中定数最高的三张，贡献使用谱面定数。 */
 export function selectPhi3(allRecords: PhigrosScoreEntry[]): PhigrosScoreEntry[] {
   return [...allRecords]
     .filter((r) => isAcc100Percent(r.rawAcc))
@@ -419,12 +402,6 @@ export function selectPhi3(allRecords: PhigrosScoreEntry[]): PhigrosScoreEntry[]
     .slice(0, 3);
 }
 
-/** Phi3 槽位对总 RKS 的贡献 = 谱面定数之和（非成绩定数） */
-export function sumPhi3Contribution(allRecords: PhigrosScoreEntry[]): number {
-  return selectPhi3(allRecords).reduce((sum, s) => sum + s.difficulty, 0);
-}
-
-/** 将存档 gameRecord 展开为带定数与 RKS 的全部游玩记录 */
 export function collectScoredEntries(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
@@ -448,7 +425,6 @@ export function collectScoredEntries(
   return allRecords;
 }
 
-/** 存档成绩的生产映射：只产出 Phigros 真实语义，不填舞萌占位字段。 */
 export function toPhigrosScoreRecord(entry: PhigrosScoreEntry): PhigrosScoreRecord {
   return {
     songId: entry.songId,
@@ -462,14 +438,7 @@ export function toPhigrosScoreRecord(entry: PhigrosScoreEntry): PhigrosScoreReco
   };
 }
 
-/**
- * 共享成绩卡与列表（`ScoreRecord`）的 Phigros 视图。
- *
- * `ScoreRecord` 的 `type` / `dxScore` / `fc` / `fs` 是舞萌语义字段，这是 Phigros 借用它们的
- * 唯一边界：与 Majdata 相同，`SD` 只作为共享结构的内部兼容值，不展示谱面类型，
- * `dxScore` 承载 Phigros 分数、`fc === 'ap'` 表示满连、`fs` 恒为 null。
- * 领域与 Provider 不再各自拼这些字段。
- */
+/** 共享视图借用 dxScore 保存分数、fc=ap 表示满连；SD 不用于展示类型。 */
 export function phigrosSharedScoreRecord(record: PhigrosScoreRecord): ScoreRecord {
   return {
     songId: record.songId,
@@ -489,7 +458,6 @@ export function phigrosSharedScoreRecord(record: PhigrosScoreRecord): ScoreRecor
   };
 }
 
-/** 完整存档成绩列表（全部已游玩谱面，按成绩 RKS 降序） */
 export function gameRecordToPhigrosScoreRecords(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
@@ -497,14 +465,6 @@ export function gameRecordToPhigrosScoreRecords(
   return collectScoredEntries(gameRecord, difficultyTable)
     .map(toPhigrosScoreRecord)
     .sort((a, b) => b.rks - a.rks || b.acc - a.acc);
-}
-
-/** 完整存档成绩列表的共享成绩卡视图（按成绩 RKS 降序） */
-export function gameRecordToScoreRecords(
-  gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
-  difficultyTable: PhigrosDifficultyTable,
-): ScoreRecord[] {
-  return gameRecordToPhigrosScoreRecords(gameRecord, difficultyTable).map(phigrosSharedScoreRecord);
 }
 
 export function computeB30(
@@ -640,7 +600,6 @@ export function loadDifficultyTable(raw: string): PhigrosDifficultyTable {
   return table;
 }
 
-/** 将 chart 目录 ID（常带 `.0`）对齐到 catalog song.id */
 export function normalizePhigrosSongId(chartSongId: string): string {
   return chartSongId.replace(/\.0$/, '');
 }
@@ -665,10 +624,7 @@ function parseNoteCountsCell(raw: string): PhigrosChartNotes | null {
   }
 }
 
-/**
- * 解析 OSS `metadata/note_counts.tsv`。
- * 列：songId, EZ, HD, IN, [AT]；每格为 JSON `[Tap,Hold,Drag,Flick]`。
- */
+/** note_counts.tsv 列为 songId、EZ、HD、IN、可选 AT；每格为 [Tap,Hold,Drag,Flick]。 */
 export function loadNoteCountsTable(raw: string): Record<string, PhigrosChartNotes[]> {
   const table: Record<string, PhigrosChartNotes[]> = {};
   for (const line of raw.trim().split('\n')) {
@@ -699,13 +655,7 @@ export interface PhigrosChaptersTable {
   songChapter: Record<string, string>;
 }
 
-/**
- * 解析 OSS `chapters.csv`（两段式：章节定义 + 歌曲映射）。
- * 定义段：`章节变量,章节显示名`；映射段：`songId,章节变量`；
- * 以注释行 `# 歌曲章节映射：songId,章节变量` 为分段标记。
- * 容忍：BOM、CRLF、空行、注释行；映射引用未定义变量的行丢弃。
- * 无有效定义（或格式不完整）时返回 null，调用方回退现状。
- */
+/** chapters.csv 以 # 歌曲章节映射：songId,章节变量 分隔定义与映射。 */
 export function loadChaptersTable(raw: string): PhigrosChaptersTable | null {
   const lines = raw.replace(/^\uFEFF/, '').split(/\r?\n/);
   const definitions: PhigrosChapterDefinition[] = [];
@@ -741,18 +691,4 @@ export function loadChaptersTable(raw: string): PhigrosChaptersTable | null {
 
   if (definitions.length === 0 || !sawMappingMarker) return null;
   return { definitions, songChapter };
-}
-
-/** 合并定数表：优先保留先出现的版本，后续仅补缺曲目 */
-export function mergeDifficultyTables(
-  primary: PhigrosDifficultyTable,
-  ...fallbacks: PhigrosDifficultyTable[]
-): PhigrosDifficultyTable {
-  const merged: PhigrosDifficultyTable = { ...primary };
-  for (const table of fallbacks) {
-    for (const [id, diffs] of Object.entries(table)) {
-      if (!merged[id]) merged[id] = diffs;
-    }
-  }
-  return merged;
 }

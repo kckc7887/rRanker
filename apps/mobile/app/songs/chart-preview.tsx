@@ -19,7 +19,7 @@ import {
 } from '@/features/simai-chart-preview/prepare-chart-preview-webview';
 import type { BuddyPreviewSide, ChartPreviewSettings } from '@/features/simai-chart-preview/chart-preview-inject';
 import { ChartPreviewScreenShell } from '@/features/chart-preview-shared/chart-preview-screen-shell';
-import type { ChartPreviewBridgeMessage } from '@/features/chart-preview-shared/chart-preview-bridge';
+import type { ChartPreviewPlayerEvent, ChartPreviewHostCommand } from '@/features/chart-preview-shared/chart-preview-bridge';
 import type { ChartPreviewLoadProgress } from '@/features/chart-preview-shared/chart-preview-progress';
 import { useNotification } from '@/components/AppNotification';
 import { useAppTheme } from '@/theme/app-theme';
@@ -121,8 +121,8 @@ export default function MaimaiChartPreviewScreen() {
   );
 
   const handleBridgeMessage = useCallback((
-    message: ChartPreviewBridgeMessage,
-    bridge: { postMessage: (message: Record<string, unknown>) => void },
+    message: ChartPreviewPlayerEvent,
+    bridge: { postMessage: (command: ChartPreviewHostCommand) => void },
   ) => {
     if (message.type !== 'background-video-confirmation') return;
     showActionNotification({

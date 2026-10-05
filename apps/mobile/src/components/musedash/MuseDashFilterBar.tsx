@@ -1,8 +1,7 @@
 import { useState } from 'react';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
-import { FilterChipFrame, NeutralChip } from '@/components/MaimaiFilterBar';
-import { FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
+import { FilterChipFrame, NeutralChip, FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
 import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
 import { MuseDashAchievementBadge } from '@/components/musedash/MuseDashBadges';
 import { MuseDashDifficultyBadge } from '@/components/musedash/MuseDashDifficultyBadge';
@@ -17,7 +16,6 @@ const DIFFICULTY_SLOTS: readonly FilterSelectOption<string>[] = [
   ...MUSE_DASH_DIFFICULTY_LABELS.map((label, index) => ({ value: String(index), label })),
 ];
 
-/** 收起态摘要（仿 buildMaimaiFilterSummary / buildPhigrosFilterSummary）：仅列出非默认条件，全默认显示「全部」。 */
 export function buildMuseDashFilterSummary({
   difficultySlot, dlc, constantMin, constantMax, accMin, accMax, achievement,
 }: {
@@ -227,7 +225,6 @@ export function MuseDashRecordsFilterBar({
   );
 }
 
-// MuseDash 游戏差异样式保留本地：芯片行作为水平 ScrollView 内容容器（无 flexDirection）；区间行带 minWidth 收缩。
 const styles = StyleSheet.create({
   chipRow: { gap: 6, alignItems: 'center' },
 });

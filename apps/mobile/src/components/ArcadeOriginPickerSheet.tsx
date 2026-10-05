@@ -71,7 +71,6 @@ export function ArcadeOriginPickerSheet({
           label = formatArcadeGeocodedLabel(places[0]) || query;
         }
       } catch {
-        // Keep the user query as label when reverse geocode is unavailable.
       }
       onSelect({
         source: 'custom',

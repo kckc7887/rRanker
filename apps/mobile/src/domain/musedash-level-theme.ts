@@ -1,9 +1,3 @@
-/**
- * Muse Dash 难度档位主题：EASY 绿、HARD 蓝、MASTER 粉、HIDDEN 黑、EX 白。
- * 与中二 DIFFICULTY_THEME / DIFFICULTY_CARD_VISUAL 同构：{ background, border, text } 胶囊配色 + 卡片淡色 tint；
- * lightAction/darkAction 分别为浅色/深色模式下动作（练习清单按钮）的颜色；
- * EX 白色采用白底深字（参照舞萌 Re:MASTER 白底深字先例），浅色动作色用深字色保证可分辨。
- */
 export type MuseDashLevelTheme = {
   background: string;
   border: string;

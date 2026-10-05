@@ -1,14 +1,7 @@
-/**
- * prpr 内置后处理特效预设（来源 TeamFlos/phira 的 prpr 核心，GPL-3.0）。
- * 谱面包内同名 shader 优先；仅当 extra.json 的 effect.shader 引用预设名
- * 且谱面包未提供对应文件时使用
- * （circleBlur/radialBlur 仅文件名带下划线，shader 名不变）。
- * 内嵌为字符串常量随 player.bundle 分发，不依赖 metro 资源解析。
- * 许可证全文与上游来源说明见仓库根 THIRD_PARTY_NOTICES.md。
- */
+/** 来源 TeamFlos/phira 的 prpr 核心，GPL-3.0；许可证见 THIRD_PARTY_NOTICES.md。 */
 export const RPE_PRESET_SHADERS: Readonly<Record<string, string>> = Object.freeze({
   chromatic: `#version 100
-// Adapted from https://godotshaders.com/shader/chromatic-abberation/
+/** 来源 https://godotshaders.com/shader/chromatic-abberation/ */
 precision mediump float;
 
 varying lowp vec2 uv;
@@ -29,7 +22,7 @@ void main() {
   int sample_count = int(sampleCount);
   for (int i = 0; i < 64; ++i) {
     if (i >= sample_count) break;
-    float t = 2.0 * float(i) / float(sample_count - 1); // range 0.0->2.0
+    float t = 2.0 * float(i) / float(sample_count - 1);
     vec3 slice = vec3(1.0 - t, 1.0 - abs(t - 1.0), t - 1.0);
     slice = max(slice, 0.0);
     sum += slice;
@@ -40,7 +33,7 @@ void main() {
 }
 `,
   circleBlur: `#version 100
-// Adapted from https://godotshaders.com/shader/artsy-circle-blur-type-thingy/
+/** 来源 https://godotshaders.com/shader/artsy-circle-blur-type-thingy/ */
 precision mediump float;
 
 varying lowp vec2 uv;
@@ -68,7 +61,7 @@ void main() {
 }
 `,
   fisheye: `#version 100
-// Adapted from https://www.shadertoy.com/view/4s2GRR
+/** 来源 https://www.shadertoy.com/view/4s2GRR */
 precision mediump float;
 
 varying lowp vec2 uv;
@@ -98,7 +91,7 @@ void main() {
 }
 `,
   glitch: `#version 100
-// Adapted from https://godotshaders.com/shader/glitch-effect-shader/
+/** 来源 https://godotshaders.com/shader/glitch-effect-shader/ */
 precision highp float;
 
 varying lowp vec2 uv;
@@ -140,7 +133,7 @@ void main() {
 }
 `,
   grayscale: `# version 100
-// Adapted from https://www.shadertoy.com/view/lsdXDH
+/** 来源 https://www.shadertoy.com/view/lsdXDH */
 precision mediump float;
 
 varying lowp vec2 uv;
@@ -156,7 +149,7 @@ void main() {
 }
 `,
   noise: `#version 100
-// Adapted from https://godotshaders.com/shader/screen-noise-effect-shader/
+/** 来源 https://godotshaders.com/shader/screen-noise-effect-shader/ */
 precision highp float;
 
 varying lowp vec2 uv;
@@ -175,7 +168,7 @@ void main() {
 }
 `,
   pixel: `#version 100
-// Adapted from https://godotshaders.com/shader/pixelate-2/
+/** 来源 https://godotshaders.com/shader/pixelate-2/ */
 precision mediump float;
 
 varying lowp vec2 uv;
@@ -192,7 +185,7 @@ void main() {
 }
 `,
   radialBlur: `#version 100
-// Adapted from https://godotshaders.com/shader/radical-blur-shader/
+/** 来源 https://godotshaders.com/shader/radical-blur-shader/ */
 precision mediump float;
 
 varying lowp vec2 uv;
@@ -216,7 +209,7 @@ void main() {
 }
 `,
   shockwave: `#version 100
-// Adapted from https://www.shadertoy.com/view/llj3Dz
+/** 来源 https://www.shadertoy.com/view/llj3Dz */
 precision mediump float;
 
 varying lowp vec2 uv;
@@ -257,7 +250,7 @@ void main() {
 }
 `,
   vignette: `#version 100
-// Adapted from https://www.shadertoy.com/view/lsKSWR
+/** 来源 https://www.shadertoy.com/view/lsKSWR */
 precision mediump float;
 
 varying lowp vec2 uv;

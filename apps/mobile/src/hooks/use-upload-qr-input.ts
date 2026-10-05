@@ -78,7 +78,7 @@ export function useUploadQrInput(visible: boolean, running: boolean, uploadMetho
           const cacheRoot = `${Paths.normalize(decodeURIComponent(Paths.cache.uri)).replace(/\/+$/, '')}/`;
           const pickedFile = Paths.normalize(decodeURIComponent(assetUri));
           if (pickedFile.startsWith(cacheRoot)) new File(assetUri).delete();
-        } catch { /* The picker cache copy may already be gone. */ }
+        } catch {}
       }
     }
   };

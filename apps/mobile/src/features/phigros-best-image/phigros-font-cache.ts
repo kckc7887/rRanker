@@ -4,7 +4,7 @@ import { Directory, File } from 'expo-file-system';
 import JSZip from 'jszip';
 import {
   clearFontCacheDirectory,
-  createFontCacheDirectories,
+  ensureFontCacheDirectories,
   createFontCacheGuard,
   errorMessage,
   sha256,
@@ -90,115 +90,108 @@ type ProgressListener = (progress: PhigrosFontProgress) => void;
 
 export type PreparePhigrosFontsOptions = {
   signal?: AbortSignal;
-  /** 仅准备这些字体；未提供时准备完整清单。核心字体始终包含。 */
+
   neededNames?: readonly string[];
 };
 
-export function createPhigrosFontPreparer(
-  manifest: readonly PhigrosFontManifestEntry[] = PHIGROS_FONT_MANIFEST,
-) {
-  const directories = createFontCacheDirectories('phigros-fonts', PHIGROS_FONT_CACHE_VERSION);
 
-  async function downloadFont(
-    entry: PhigrosFontManifestEntry,
-    fontDirectory: Directory,
-    temporaryDirectory: Directory,
-    signal: AbortSignal,
-    assertCurrent: () => void,
-  ): Promise<File> {
-    const finalFile = new File(fontDirectory, entry.cssFileName);
-    const archiveFile = new File(temporaryDirectory, `${entry.archiveFileName}.part`);
-    const fontPartFile = new File(temporaryDirectory, `${entry.cssFileName}.part`);
-    let fontPartMoved = false;
-    try {
-      if (archiveFile.exists) archiveFile.delete();
-      if (fontPartFile.exists) fontPartFile.delete();
-      await downloadChartResource(temporaryDirectory, `${entry.archiveFileName}.part`, entry.url, signal);
-      assertCurrent();
-      if (archiveFile.size !== entry.archiveBytes) {
-        throw new Error(`${entry.name} 压缩包大小不匹配`);
-      }
-      const archiveBytes = await archiveFile.bytes();
-      if (await sha256(archiveBytes) !== entry.archiveSha256) {
-        throw new Error(`${entry.name} 压缩包校验失败`);
-      }
-      const zip = await JSZip.loadAsync(archiveBytes);
-      const files = Object.values(zip.files).filter((file) => !file.dir);
-      if (files.length !== 1 || files[0]?.name !== entry.archiveEntryName) {
-        throw new Error(`${entry.name} 压缩包内容不符合预期`);
-      }
-      const fontBytes = await files[0].async('uint8array');
-      if (fontBytes.byteLength !== entry.fontBytes || await sha256(fontBytes) !== entry.fontSha256) {
-        throw new Error(`${entry.name} 字体校验失败`);
-      }
-      fontPartFile.create({ overwrite: true });
-      fontPartFile.write(fontBytes);
-      assertCurrent();
-      if (finalFile.exists) finalFile.delete();
-      fontPartFile.move(finalFile);
-      fontPartMoved = true;
-      return finalFile;
-    } finally {
-      if (archiveFile.exists) archiveFile.delete();
-      if (!fontPartMoved && fontPartFile.exists) fontPartFile.delete();
+async function downloadFont(
+  entry: PhigrosFontManifestEntry,
+  fontDirectory: Directory,
+  temporaryDirectory: Directory,
+  signal: AbortSignal,
+  assertCurrent: () => void,
+): Promise<File> {
+  const finalFile = new File(fontDirectory, entry.cssFileName);
+  const archiveFile = new File(temporaryDirectory, `${entry.archiveFileName}.part`);
+  const fontPartFile = new File(temporaryDirectory, `${entry.cssFileName}.part`);
+  let fontPartMoved = false;
+  try {
+    if (archiveFile.exists) archiveFile.delete();
+    if (fontPartFile.exists) fontPartFile.delete();
+    await downloadChartResource(temporaryDirectory, `${entry.archiveFileName}.part`, entry.url, signal);
+    assertCurrent();
+    if (archiveFile.size !== entry.archiveBytes) {
+      throw new Error(`${entry.name} 压缩包大小不匹配`);
     }
+    const archiveBytes = await archiveFile.bytes();
+    if (await sha256(archiveBytes) !== entry.archiveSha256) {
+      throw new Error(`${entry.name} 压缩包校验失败`);
+    }
+    const zip = await JSZip.loadAsync(archiveBytes);
+    const files = Object.values(zip.files).filter((file) => !file.dir);
+    if (files.length !== 1 || files[0]?.name !== entry.archiveEntryName) {
+      throw new Error(`${entry.name} 压缩包内容不符合预期`);
+    }
+    const fontBytes = await files[0].async('uint8array');
+    if (fontBytes.byteLength !== entry.fontBytes || await sha256(fontBytes) !== entry.fontSha256) {
+      throw new Error(`${entry.name} 字体校验失败`);
+    }
+    fontPartFile.create({ overwrite: true });
+    fontPartFile.write(fontBytes);
+    assertCurrent();
+    if (finalFile.exists) finalFile.delete();
+    fontPartFile.move(finalFile);
+    fontPartMoved = true;
+    return finalFile;
+  } finally {
+    if (archiveFile.exists) archiveFile.delete();
+    if (!fontPartMoved && fontPartFile.exists) fontPartFile.delete();
   }
+}
 
-  const { ensureFont } = createFontCacheGuard({ downloadFont, scope: 'phigros' });
+const { ensureFont } = createFontCacheGuard({ downloadFont, scope: 'phigros' });
 
-  return async function preparePhigrosFonts(
-    onProgress?: ProgressListener,
-    options?: PreparePhigrosFontsOptions,
-  ): Promise<PreparedPhigrosFonts> {
-    const signal = options?.signal;
-    const { directory, fontDirectory, temporaryDirectory } = directories();
-    const neededSet = options?.neededNames ? new Set(options.neededNames) : null;
-    const selected = neededSet
-      ? manifest.filter((entry) => entry.core || neededSet.has(entry.name))
-      : [...manifest];
-    const completed = new Set<string>();
-    const total = selected.length;
-    const emit = (phase: PhigrosFontProgressPhase, currentFont: string | null, error?: string) => {
-      if (!signal?.aborted) onProgress?.({ phase, completed: completed.size, total, currentFont, error });
-    };
-    const core = selected.filter((entry) => entry.core);
-    const extensions = selected.filter((entry) => !entry.core);
-    emit('checking', null);
+export async function preparePhigrosFonts(
+  onProgress?: ProgressListener,
+  options?: PreparePhigrosFontsOptions,
+): Promise<PreparedPhigrosFonts> {
+  const signal = options?.signal;
+  const { directory, fontDirectory } = ensureFontCacheDirectories('phigros-fonts', PHIGROS_FONT_CACHE_VERSION);
+  const neededSet = options?.neededNames ? new Set(options.neededNames) : null;
+  const selected = neededSet
+    ? PHIGROS_FONT_MANIFEST.filter((entry) => entry.core || neededSet.has(entry.name))
+    : [...PHIGROS_FONT_MANIFEST];
+  const completed = new Set<string>();
+  const total = selected.length;
+  const emit = (phase: PhigrosFontProgressPhase, currentFont: string | null, error?: string) => {
+    if (!signal?.aborted) onProgress?.({ phase, completed: completed.size, total, currentFont, error });
+  };
+  const core = selected.filter((entry) => entry.core);
+  const extensions = selected.filter((entry) => !entry.core);
+  emit('checking', null);
+  try {
+    await Promise.all(core.map(async (entry) => {
+      await ensureFont(entry, fontDirectory, () => emit('downloading-core', entry.name), signal);
+      completed.add(entry.name);
+      emit('downloading-core', entry.name);
+    }));
+  } catch (error) {
+    const message = errorMessage(error);
+    emit('error', null, message);
+    throw new Error(`核心字体准备失败：${message}`, { cause: error });
+  }
+  emit('core-ready', null);
+
+  const fullReady = (async () => {
     try {
-      await Promise.all(core.map(async (entry) => {
-        await ensureFont(entry, fontDirectory, temporaryDirectory, () => emit('downloading-core', entry.name), signal);
+      for (const entry of extensions) {
+        emit('checking', entry.name);
+        await ensureFont(entry, fontDirectory, () => emit('downloading-extensions', entry.name), signal);
         completed.add(entry.name);
-        emit('downloading-core', entry.name);
-      }));
+        emit('downloading-extensions', entry.name);
+      }
+      emit('ready', null);
     } catch (error) {
       const message = errorMessage(error);
       emit('error', null, message);
-      throw new Error(`核心字体准备失败：${message}`, { cause: error });
+      throw new Error(`扩展字体准备失败：${message}`, { cause: error });
     }
-    emit('core-ready', null);
-
-    const fullReady = (async () => {
-      try {
-        for (const entry of extensions) {
-          emit('checking', entry.name);
-          await ensureFont(entry, fontDirectory, temporaryDirectory, () => emit('downloading-extensions', entry.name), signal);
-          completed.add(entry.name);
-          emit('downloading-extensions', entry.name);
-        }
-        emit('ready', null);
-      } catch (error) {
-        const message = errorMessage(error);
-        emit('error', null, message);
-        throw new Error(`扩展字体准备失败：${message}`, { cause: error });
-      }
-    })();
-    return { directory, fullReady };
-  };
+  })();
+  return { directory, fullReady };
 }
 
-export const preparePhigrosFonts = createPhigrosFontPreparer();
 
-/** 清除成绩图字体本地下载缓存（Documents/rranker/phigros-fonts）。 */
 export function clearPhigrosFontCache(): void {
   invalidateResourceWrites('phigros');
   clearFontCacheDirectory('phigros-fonts');

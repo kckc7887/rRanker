@@ -1,4 +1,3 @@
-"""Validate verified apksigner certificate output and describe its signing mode."""
 import re
 
 
@@ -28,7 +27,7 @@ def verify_android_signing(apksigner_output, mode, expected_certificate_sha256=N
             continue
         if not re.search(r" certificate (?:DN|SHA-256 digest):", line):
             continue
-        # Build Tools 37 labels a single signer by its strongest verified scheme.
+        # Build Tools 37 按最高签名版本标识签名者。
         match = re.fullmatch(
             r"(Signer #1|V(?:1|2|3\.0) Signer:) certificate (DN|SHA-256 digest): (.+)", line
         )
