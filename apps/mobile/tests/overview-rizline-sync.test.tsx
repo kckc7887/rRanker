@@ -8,7 +8,6 @@ import { failedRefresh, successfulRefresh, type RefreshResult } from '@/domain/r
 import {
   gameDataQueryKey,
   registerGameDataBackground,
-  resetGameDataBackground,
 } from '@/services/game-data-query';
 import { queryClient } from '@/state/query-client';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
@@ -48,10 +47,10 @@ function options(refetch: () => Promise<unknown>, overrides: Partial<Params> = {
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 
 beforeEach(() => {
-  jest.clearAllMocks(); queryClient.clear(); beginForegroundWork(); resetGameDataBackground();
+  jest.clearAllMocks(); queryClient.clear(); beginForegroundWork(); registerGameDataBackground(key, null);
   mockCatalog.mockResolvedValue(undefined);
 });
-afterEach(async () => { await cleanup(); queryClient.clear(); beginForegroundWork(); resetGameDataBackground(); });
+afterEach(async () => { await cleanup(); queryClient.clear(); beginForegroundWork(); registerGameDataBackground(key, null); });
 
 it('still synchronizes scores when catalog refresh fails and reports partial failure', async () => {
   mockCatalog.mockRejectedValue(new Error('catalog offline'));

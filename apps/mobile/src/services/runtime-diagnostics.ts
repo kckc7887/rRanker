@@ -62,7 +62,6 @@ export type RuntimeDiagnosticStore = {
 const storeFile = () => new File(Paths.document, RUNTIME_DIAGNOSTIC_STORE_FILE_NAME);
 const previousStoreFile = () => new File(Paths.document, `${RUNTIME_DIAGNOSTIC_STORE_FILE_NAME}.previous`);
 const pendingStoreFile = () => new File(Paths.document, `${RUNTIME_DIAGNOSTIC_STORE_FILE_NAME}.pending`);
-const legacyStoreFile = () => new File(Paths.cache, RUNTIME_DIAGNOSTIC_STORE_FILE_NAME);
 const exportFile = () => new File(Paths.cache, 'rranker-runtime-diagnostics.txt');
 const MAX_SESSIONS = 3;
 const MAX_EVENTS = 256;
@@ -138,7 +137,6 @@ export function trimRuntimeDiagnosticStore(store: RuntimeDiagnosticStore): Runti
 
 async function readStoreFile(file: File): Promise<RuntimeDiagnosticStore | null> {
   if (!file.exists) return null;
-  // 读取失败须保留原文件供重试，不能按空记录继续写入。
   const contents = await file.text();
   try {
     const parsed = JSON.parse(contents) as RuntimeDiagnosticStore;
@@ -150,7 +148,7 @@ async function readStoreFile(file: File): Promise<RuntimeDiagnosticStore | null>
 
 async function readStore(): Promise<RuntimeDiagnosticStore> {
   return await readStoreFile(storeFile()) ?? await readStoreFile(previousStoreFile())
-    ?? await readStoreFile(legacyStoreFile()) ?? { sessions: [] };
+    ?? { sessions: [] };
 }
 
 async function writeStore(store: RuntimeDiagnosticStore): Promise<void> {
@@ -166,14 +164,12 @@ async function writeStore(store: RuntimeDiagnosticStore): Promise<void> {
       current.delete();
     }
   }
-  // 暂存写入和替换均可能失败；替换期间保留可读取的上一份完整正文。
+  /** 替换失败时保留上一份完整正文。 */
   pending.move(storeFile());
-  for (const obsoleteFile of [previousStoreFile, legacyStoreFile]) {
-    try {
-      const obsolete = obsoleteFile();
-      if (obsolete.exists) obsolete.delete();
-    } catch { /* 已保存正文仍有效，下次写入继续回收旧副本。 */ }
-  }
+  try {
+    const previous = previousStoreFile();
+    if (previous.exists) previous.delete();
+  } catch { /** 正文已保存，副本留待下次写入清理。 */ }
 }
 
 function enqueueWrite(operation: () => Promise<void>): Promise<void> {
@@ -234,13 +230,11 @@ installRuntimeDiagnosticRecorder((type, fields) => persistRuntimeDiagnostic(
 
 export function snapshotRuntimeDiagnostics(): Promise<RuntimeDiagnosticStore> {
   eventBatch = null;
-  // 读取也占据队列位置，后续事件不能抢在本次快照之前落盘。
   const pending = writeQueue.then(readStore);
   writeQueue = pending.then(() => undefined, () => undefined);
   return pending;
 }
 
-/** The in-memory snapshot is frozen immediately; disk reads have a bounded wait. */
 export async function snapshotRuntimeDiagnosticsForExport() {
   const emergency = snapshotEmergencyRuntimeDiagnostics();
   let timer: ReturnType<typeof setTimeout> | undefined;

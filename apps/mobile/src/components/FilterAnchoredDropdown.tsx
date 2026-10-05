@@ -22,15 +22,7 @@ type AnchorLayout = Pick<LayoutRectangle, 'x' | 'y' | 'width' | 'height'>;
 const DROPDOWN_GAP = 4;
 const DROPDOWN_MAX_HEIGHT = 220;
 const OPTION_HEIGHT = 40;
-/** 多选模式下头部/底部操作区预留高度（估算用）。 */
 const MULTI_CHROME_HEIGHT = 84;
-const FALLBACK_TRIGGER: AnchorLayout = { x: 16, y: 120, width: 200, height: 36 };
-const FALLBACK_ADORNMENT: AnchorLayout = {
-  x: FALLBACK_TRIGGER.x + FALLBACK_TRIGGER.width + 8,
-  y: FALLBACK_TRIGGER.y,
-  width: 68,
-  height: 36,
-};
 
 function computeDropdownTop(anchor: AnchorLayout, optionCount: number, extraHeight = 0): number {
   const windowHeight = Dimensions.get('window').height;
@@ -68,15 +60,11 @@ export function FilterAnchoredDropdown<T extends string>({
   selectedValue: T;
   onSelect: (value: T) => void;
   optionAccessibilityPrefix: string;
-  /** 紧邻触发器的附加控件；下拉展开时会叠在遮罩之上保持可点。 */
   endAdornment?: ReactNode;
-  /** 多选模式：选项点击切换选中而不关闭，需配合 selectedValues/onValuesChange 与完成按钮。 */
   multiple?: boolean;
   selectedValues?: readonly T[];
   onValuesChange?: (values: T[]) => void;
-  /** 下拉顶部操作区（如全选快捷按钮）；仅在多选模式渲染。 */
   dropdownHeader?: (close: () => void) => ReactNode;
-  /** 下拉底部操作区（如完成按钮）；仅在多选模式渲染。 */
   dropdownFooter?: (close: () => void) => ReactNode;
 }) {
   const theme = useAppTheme();
@@ -92,8 +80,6 @@ export function FilterAnchoredDropdown<T extends string>({
   }, [anchor, dropdownFooter, dropdownHeader, multiple, options.length]);
 
   const openFromTrigger = () => {
-    let measured = false;
-
     const applyAnchor = (layout: AnchorLayout, adornment: AnchorLayout | null) => {
       setAnchor(layout);
       setAdornmentAnchor(adornment);
@@ -111,15 +97,7 @@ export function FilterAnchoredDropdown<T extends string>({
     };
 
     triggerRef.current?.measureInWindow((x, y, width, height) => {
-      measured = true;
       measureAdornment({ x, y, width, height });
-    });
-
-    // Jest 等环境不会触发 measureInWindow，仍要渲染 overlay 选项。
-    queueMicrotask(() => {
-      if (!measured) {
-        applyAnchor(FALLBACK_TRIGGER, endAdornment ? FALLBACK_ADORNMENT : null);
-      }
     });
   };
 

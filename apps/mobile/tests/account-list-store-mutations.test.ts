@@ -22,7 +22,6 @@ const { Store } = createAccountListStore<Profile>({
 
 class MemoryStore {
   value: string | null = null;
-  /** 前 N 次读取会停在同一个闸门上，用来把两个读改写操作的交错固定下来。 */
   blockedReads = 0;
   failNextSet = false;
   private release!: () => void;
@@ -122,7 +121,6 @@ describe('account list store mutations', () => {
     storage.blockedReads = 1;
 
     const pending = store.upsert(profile('a'));
-    // 让排队的 upsert 先发出它自己的读，再确认 load 没有被同一条队列挡住。
     await Promise.resolve();
     await expect(store.load()).resolves.toEqual([]);
     storage.unblockReads();

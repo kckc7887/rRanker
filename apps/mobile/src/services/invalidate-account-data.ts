@@ -2,10 +2,6 @@ import type { QueryClient } from '@tanstack/react-query';
 import type { GameDataBundle } from '@/domain/game-data';
 import { queryClient } from '@/state/query-client';
 
-/**
- * 查询 key 包含账号 ID，防止账号之间共用缓存。
- * 清缓存只针对这些 key，避免切号时白清全局资源。
- */
 const ACCOUNT_SCOPED_QUERY_KEYS = [
   ['game-data'],
   ['score-snapshot'],
@@ -17,7 +13,6 @@ const ACCOUNT_SCOPED_QUERY_KEYS = [
   ['phigros-push-rks'],
 ] as const;
 
-/** 全局资源查询：与账号无关（如中二曲库）。 */
 const GLOBAL_QUERY_KEYS = [
   ['detailed-catalog'],
   ['chunithm-catalog'],
@@ -28,7 +23,6 @@ const ALL_QUERY_KEYS = [
   ...GLOBAL_QUERY_KEYS,
 ] as const;
 
-/** 让当前账号数据重新读取；公开曲库默认保留在当前 App 会话。 */
 export async function invalidateAccountDataQueries(
   client: QueryClient = queryClient,
   refetchType: 'active' | 'inactive' | 'all' | 'none' = 'active',
@@ -43,10 +37,6 @@ export async function invalidateAccountDataQueries(
   );
 }
 
-/**
- * 本地玩家改名只需同步展示名，不应触发曲库/牌子等全量 refetch（会卡死命名弹层）。
- * queryKey: ['game-data', version, accountId, ...]
- */
 export function patchMaimaiPlayerDisplayName(
   accountId: string,
   displayName: string,
@@ -60,7 +50,6 @@ export function patchMaimaiPlayerDisplayName(
       },
     },
     (current) => {
-      // 身份与载荷一起判定：数据包是「按游戏配对」的联合，改名前也必须确认它就是舞萌数据。
       if (!current || current.gameId !== 'maimai' || current.payload.kind !== 'maimai') return current;
       return {
         ...current,
@@ -75,13 +64,4 @@ export function patchMaimaiPlayerDisplayName(
       };
     },
   );
-}
-
-/** 全量数据查询 key（账号维度 + 全局资源），供存储管理清缓存等全量失效使用。 */
-export function accountDataQueryKeys(): readonly (readonly string[])[] {
-  return ALL_QUERY_KEYS;
-}
-
-export function accountScopedDataQueryKeys(): readonly (readonly string[])[] {
-  return ACCOUNT_SCOPED_QUERY_KEYS;
 }

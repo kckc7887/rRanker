@@ -8,14 +8,13 @@ import { SessionPersistenceError } from '@/domain/session-vault';
 type FetchLike = typeof fetch;
 export const PROVIDER_MAX_RESPONSE_BYTES = 64 * 1024 * 1024;
 
-/** 只限制实际读取量，不把 Content-Length 或完整 arrayBuffer 分配当作限额。 */
+/** 按流累计字节，限制实际读取量。 */
 export async function readProviderResponseBytes(response: Response, options: {
   maxBytes?: number; signal?: AbortSignal; message?: string;
 } = {}): Promise<Uint8Array> {
   const maximum = options.maxBytes ?? PROVIDER_MAX_RESPONSE_BYTES;
-  if (!Number.isSafeInteger(maximum) || maximum < 1) throw new TypeError('响应预算必须是有限正整数');
   const exceeded = () => new ProviderError('upstream_schema', options.message ?? '响应大小超出读取预算', false);
-  const declared = response.headers?.get('content-length');
+  const declared = response.headers.get('content-length');
   const stream = response.body;
   if (declared && /^\d+$/.test(declared) && Number(declared) > maximum) {
     void stream?.cancel().catch(() => undefined);
@@ -23,12 +22,7 @@ export async function readProviderResponseBytes(response: Response, options: {
   }
   if (options.signal?.aborted) throw options.signal.reason;
   if (!stream) {
-    // 空正文以及不提供流的调用方适配器仍校验实际字节；原生 transport 使用 Expo 的流。
-    const bytes = typeof response.arrayBuffer === 'function'
-      ? new Uint8Array(await abortable(response.arrayBuffer(), options.signal))
-      : new TextEncoder().encode(typeof response.text === 'function'
-        ? await abortable(response.text(), options.signal)
-        : JSON.stringify(await abortable(response.json(), options.signal)));
+    const bytes = new Uint8Array(await abortable(response.arrayBuffer(), options.signal));
     if (bytes.byteLength > maximum) throw exceeded();
     return bytes;
   }
@@ -96,7 +90,7 @@ const pause = (ms: number, signal?: AbortSignal) => new Promise<void>((resolve, 
   signal?.addEventListener('abort', onAbort, { once: true });
 });
 
-/** Retry-After 头解析：秒或 HTTP 日期，默认上限 5s；交互式冷却可指定其它上限。 */
+/** Retry-After 支持秒数或 HTTP 日期，默认最多等待 5 秒。 */
 export function retryAfterMs(response: Response, maxMs = 5_000): number {
   const raw = response.headers.get('Retry-After');
   if (!raw) return 1_000;
@@ -108,13 +102,10 @@ export function retryAfterMs(response: Response, maxMs = 5_000): number {
 
 export type JsonRequestOptions<T> = {
   init?: RequestInit;
-  /** 凭据请求不使用系统 Cookie，也不自动跟随重定向。 */
+  /** 凭据请求禁用自动 Cookie 和重定向。 */
   authenticated?: boolean;
-  /** 实际流读取上限，默认 64 MiB；较大资源由公共下载入口显式提供预算。 */
   maxResponseBytes?: number;
-  /** 协议可从受限错误正文读取错误 envelope，不能自行再发请求。 */
   onHttpError?: (response: Response) => Promise<ProviderError>;
-  /** 原始协议适配器可显式接管状态码；正文预算、来源检查和取消仍由执行器负责。 */
   acceptStatus?: (status: number) => boolean;
   onResponse?: (response: Response) => void | Promise<void>;
   diagnosticScenario?: RuntimeRequestScenario;
@@ -123,29 +114,14 @@ export type JsonRequestOptions<T> = {
   schema: z.ZodType<T>;
   fetcher: FetchLike;
   baseUrl: string;
-  /** 状态码 → 错误（文案由调用方按游戏提供）。 */
   error: (status: number) => ProviderError;
-  /** 游戏名（用于超时/网络/结构错误的文案，如「MuseDash.moe」）。 */
   label: string;
   timeoutMs?: number;
-  /** 总尝试次数：含首次请求，1 表示不自动重试。只读、登录与写请求用 1 明确表达。 */
+  /** 包含首次请求。 */
   totalAttempts?: number;
-  /** 额外重试次数：总尝试次数 = 额外重试次数 + 1。与 totalAttempts 同时给出时以 totalAttempts 为准。 */
-  extraRetries?: number;
-  /** 旧字段：语义等同 totalAttempts（总尝试次数），新调用方请改用 totalAttempts / extraRetries。 */
-  retries?: number;
-  /** 覆盖结构、超时和网络错误文案。 */
   messages?: { schema?: string; timeout?: string; network?: string };
   signal?: AbortSignal;
 };
-
-/** 总尝试次数解析：totalAttempts 优先，其次旧字段 retries，再其次 extraRetries + 1。 */
-export function resolveTotalAttempts(options: Pick<JsonRequestOptions<unknown>, 'totalAttempts' | 'extraRetries' | 'retries'>): number {
-  if (options.totalAttempts !== undefined) return options.totalAttempts;
-  if (options.retries !== undefined) return options.retries;
-  if (options.extraRetries !== undefined) return options.extraRetries + 1;
-  return 2;
-}
 
 function providerRequestInit(init: RequestInit | undefined, authenticated: boolean | undefined, signal: AbortSignal) {
   const headers: Record<string, string> = { Accept: 'application/json', 'Cache-Control': 'no-store' };
@@ -175,7 +151,6 @@ function normalizeExecutionError(error: unknown, timedOut: boolean, texts: { sch
     : new ProviderError('network', texts.network, true, { cause: error });
 }
 
-/** 通用 JSON GET 请求：重试、429 退避、超时与错误归一化（各公开查分 Provider 共用）。 */
 function acceptedStatus(options: Pick<JsonRequestOptions<unknown>, 'acceptStatus'>, response: Response): boolean {
   return options.acceptStatus ? options.acceptStatus(response.status) : response.ok;
 }
@@ -183,7 +158,7 @@ function acceptedStatus(options: Pick<JsonRequestOptions<unknown>, 'acceptStatus
 async function requestData<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>, source: string): Promise<T> {
   const { path, schema, fetcher, baseUrl, error, label } = options;
   const timeoutMs = options.timeoutMs ?? 12_000;
-  const totalAttempts = resolveTotalAttempts(options);
+  const totalAttempts = options.totalAttempts ?? 2;
   const schemaMessage = options.messages?.schema ?? `${label}数据结构与已验证契约不一致`;
   const timeoutMessage = options.messages?.timeout ?? `${label}数据读取超时`;
   const networkMessage = options.messages?.network ?? `无法连接${label}服务`;
@@ -272,13 +247,13 @@ export function requestProviderResponse<T>(options: JsonRequestOptions<T>, read:
   return requestData(options, read, 'request-json');
 }
 
-/** 非幂等写请求只发送一次；发送后的未知结果不能作为自动重传资格。 */
+/** 未知写入结果不能自动重发。 */
 export async function requestProviderWrite<T>(options: JsonRequestOptions<T>, read: (response: Response) => Promise<unknown>): Promise<
   { status: 'success'; data: T } | { status: 'unconfirmed' }
 > {
   let sent = false;
   let status: number | undefined;
-  const fetcher = options.fetcher ?? expoFetch as unknown as typeof fetch;
+  const fetcher = options.fetcher;
   try {
     const data = await requestProviderResponse({ ...options, totalAttempts: 1, fetcher: async (...args) => {
       sent = true;
@@ -304,17 +279,12 @@ export type ProviderJsonOptions = {
   diagnosticParentOperationId?: number;
   baseUrl: string;
   path: string;
-  /** 三段错误文案（无效 JSON/读取超时/无法连接），由调用方按数据源逐字提供。 */
   invalidJsonMessage: string;
   timeoutMessage: string;
   networkMessage: string;
   signal?: AbortSignal;
 };
 
-/**
- * 公共曲库类 JSON GET：走同一执行器（超时、取消、状态码映射与解析/超时/网络错误归一化），
- * 只读曲库语义下总尝试次数固定为 1；错误文案由调用方逐字提供。
- */
 export function fetchProviderJson(options: ProviderJsonOptions): Promise<unknown> {
   return requestData({
     baseUrl: options.baseUrl,

@@ -1,16 +1,18 @@
-import { describe, expect, it, vi } from 'vitest';
-import { QueryClient } from '@tanstack/react-query';
+import { describe, expect, it } from 'vitest';
+import { QueryClient, QueryObserver } from '@tanstack/react-query';
 import { releaseInactiveQueries } from '@/state/query-client';
 
-describe('query memory pressure', () => {
-  it('removes only inactive queries', () => {
+describe('query cache cleanup', () => {
+  it('retains observed data and removes unused data', () => {
     const client = new QueryClient();
-    const removeQueries = vi.spyOn(client, 'removeQueries');
-
-    releaseInactiveQueries(client);
-
-    const predicate = removeQueries.mock.calls[0]?.[0]?.predicate;
-    expect(predicate?.({ isActive: () => true } as never)).toBe(false);
-    expect(predicate?.({ isActive: () => false } as never)).toBe(true);
+    client.setQueryData(['active'], 'retained');
+    client.setQueryData(['inactive'], 'discarded');
+    const observer = new QueryObserver(client, { queryKey: ['active'], staleTime: Infinity });
+    const unsubscribe = observer.subscribe(() => {});
+    try {
+      releaseInactiveQueries(client);
+      expect(client.getQueryData(['active'])).toBe('retained');
+      expect(client.getQueryData(['inactive'])).toBeUndefined();
+    } finally { unsubscribe(); observer.destroy(); client.clear(); }
   });
 });

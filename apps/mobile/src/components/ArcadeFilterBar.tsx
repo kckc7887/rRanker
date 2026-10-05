@@ -1,6 +1,5 @@
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
-import { NeutralChip } from '@/components/MaimaiFilterBar';
-import { FilterShell, filterShellStyles } from '@/components/game-content/FilterShell';
+import { NeutralChip, FilterShell, filterShellStyles } from '@/components/game-content/FilterShell';
 import {
   ARCADE_RADIUS_OPTIONS,
   buildArcadeFilterSummary,
@@ -10,7 +9,6 @@ import {
 } from '@/domain/arcade-shops';
 import { useAppTheme } from '@/theme/app-theme';
 
-/** Keep room for search + a slice of the shop list when filters are expanded. */
 const EXPANDED_BODY_MAX_RATIO = 0.52;
 
 export type ArcadeFilterBarProps = {
@@ -46,7 +44,6 @@ export function ArcadeFilterBar({
   const { height: windowHeight } = useWindowDimensions();
   const expandedBodyMaxHeight = Math.round(windowHeight * EXPANDED_BODY_MAX_RATIO);
   const originLabel = origin?.label?.trim() || (locatingOrigin ? '定位中…' : '未设置');
-  // Collapsed summary only shows a custom origin address; GPS "当前位置" stays out of the chip line.
   const summary = buildArcadeFilterSummary({
     radiusKm,
     titleIds,
@@ -129,7 +126,6 @@ export function ArcadeFilterBar({
   );
 }
 
-// 机厅查找专属样式：展开态收缩、滚动体与原点/机型行；其余公共样式见 game-content/FilterShell。
 const styles = StyleSheet.create({
   filterBarExpanded: { flexShrink: 1 },
   expandedBody: { gap: 10, paddingBottom: 4 },

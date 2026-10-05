@@ -8,10 +8,6 @@ import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import { applyOsuTokenRotation, useSession } from '@/state/session-store';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 
-/**
- * 按个人曲库中的 beatmapset id 批量补齐 osu! 详情。
- * query key 与单曲详情完全一致，因此两处共享同一份 60 秒 React Query 缓存。
- */
 export function useOsuBeatmapsetsByIds(
   gameId: OsuGameId,
   beatmapsetIds: readonly string[],

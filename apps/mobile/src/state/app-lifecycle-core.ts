@@ -51,7 +51,7 @@ export function ensureForegroundWork(): void {
 export function publishAppLifecycleSnapshot(snapshot: AppLifecycleSnapshot): void {
   currentSnapshot = snapshot;
   for (const listener of [...snapshotListeners]) {
-    try { listener(snapshot); } catch { /* 生命周期观察者不能阻止前后台切换。 */ }
+    try { listener(snapshot); } catch {}
   }
   if (!snapshot.foregroundReady) return;
   for (const waiter of waiters) {

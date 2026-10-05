@@ -39,7 +39,6 @@ export function phigrosCatalogOptions(
     enabled,
     retry: false,
     queryKey: PHIGROS_CATALOG_QUERY_KEY,
-    // 曲库与已验证发布只保留在会话内，更新检查由所有页面共用。
     loadCached: async () => null,
     loadCatalog: async (signal) => {
       const release = await phigrosResources.load(signal, true);
@@ -70,7 +69,6 @@ export function phigrosCatalogOptions(
       aliasMissing: '（别名暂不可用）',
     }, { includeCatalogStale: false }),
     wrapData: (catalog) => ({ snapshot: catalog, provider }),
-    // 无本地缓存路径，cacheFirstLoad 不会触发后台回写。
     onFresh: () => undefined,
   };
 }

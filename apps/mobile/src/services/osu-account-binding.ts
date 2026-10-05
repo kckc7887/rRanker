@@ -18,11 +18,9 @@ import { SecureSessionStore } from '@/storage/secure-session-store';
 const sessions = new SecureSessionStore();
 
 export type OsuBindingResult = {
-  /** 本次新建/更新的模式账号。 */
   accounts: BoundAccount[];
   credentialId: string;
   session: OsuOAuthSession;
-  /** 建议激活的账号 id（首个选中模式）。 */
   activeAccountId: string;
 };
 
@@ -38,11 +36,6 @@ function requireOsuSession(session: ProviderSession): OsuOAuthSession {
   return session;
 }
 
-/**
- * 绑定 osu! 模式：同一 osu 用户共享一个凭据（credentialId），按选中模式各建一个账号。
- * - 已存在同用户（playerId 相同）的账号时复用其 credentialId（重复 OAuth 登录合并）；
- * - 空选择报错；重复模式按去重处理；仅创建选中模式。
- */
 export async function bindOsuModes(input: {
   modeGameIds: readonly OsuGameId[];
   session: ProviderSession;

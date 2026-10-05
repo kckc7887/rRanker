@@ -70,7 +70,6 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return meta;
   }
 
-  /** 云存档在 LeanCloud 上的更新时间（UI 与下载缓存穿透共用） */
   getSaveUpdatedAt(): string | null {
     return this.saveMeta?.updatedAt ?? null;
   }
@@ -202,7 +201,6 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return loaded;
   }
 
-  /** Phigros 真实成绩记录 → 共享成绩卡视图（共享 `ScoreRecord` 的字段在领域边界借用）。 */
   async getRecords(signal?: AbortSignal): Promise<ScoreRecord[]> {
     const { gameRecord, diffTable } = await this.loadSave(signal);
     return gameRecordToPhigrosScoreRecords(gameRecord, diffTable).map(phigrosSharedScoreRecord);
@@ -227,8 +225,6 @@ export class PhigrosScoreProvider implements ScoreProvider {
     });
   }
 
-  /** 推分推荐：返回已验证计划、替补和搜索状态。chartCost 按谱面计。
-   *  参数先经领域侧唯一入口校验，非法时在读取存档前抛出 PhigrosPushInputError。 */
   async getPushRecommendations(
     delta: number,
     chartCost: number,
@@ -240,7 +236,6 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return findPushRecommendations(gameRecord, diffTable, request);
   }
 
-  /** 丢弃内存缓存，下次拉取会重新请求云存档 */
   invalidateCache(): void {
     this.cacheGeneration += 1;
     this.saveCache = null;
@@ -250,7 +245,7 @@ export class PhigrosScoreProvider implements ScoreProvider {
     this.saveLoadPromise = null;
   }
 
-  /** Best30 分区：Phi3 + Best27，与 RKS 计算口径一致 */
+  /** Best30 = Phi3 + Best27。 */
   async getBestSections(signal?: AbortSignal): Promise<{ id: string; title: string; records: ScoreRecord[] }[]> {
     const b30 = await this.getB30(signal);
     const toShared = (entries: PhigrosScoreEntry[]) => entries

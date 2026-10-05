@@ -2,7 +2,6 @@ import { StyleSheet, Text, View } from 'react-native';
 import { resolveChunithmRatingCardTheme } from '@/domain/chunithm-rating-theme';
 import { TintedRatingTag } from '@/components/TintedRatingTag';
 
-/** 账号列表用的中二 Rating 数字标签，背景由 Rating 领域决定、边框由 Rating 档位决定。 */
 export function ChunithmRatingTag({
   display,
   ratingPossession,
@@ -34,7 +33,6 @@ export function ChunithmRatingTag({
 }
 
 const styles = StyleSheet.create({
-  /** 中二标签以纵向内边距撑高，不走公共骨架的最小高度。 */
   tag: { minHeight: 0, paddingHorizontal: 10, paddingVertical: 5 },
   empty: {
     alignSelf: 'flex-start',

@@ -1,3 +1,4 @@
+import { encodeDetailTarget } from '@/domain/detail-target';
 import type { ScoreRecord } from '@/domain/models';
 import {
   formatPhigrosSongRks,
@@ -22,7 +23,7 @@ export function presentPhigrosScore(
   return {
     key: `${record.songId}:SD:${record.levelIndex}`,
     gameId: 'phigros',
-    route: { songId: record.songId, levelIndex: record.levelIndex },
+    route: encodeDetailTarget({ game: 'phigros', songId: record.songId, levelIndex: record.levelIndex }),
     position,
     title,
     accessibilityLabel: `查看谱面 ${title}`,

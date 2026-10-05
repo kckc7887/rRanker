@@ -1,13 +1,14 @@
 import type { RizlineSave, RizlineSnapshot } from '@/domain/rizline';
 import { rizlineUserIdFromAccountId } from '@/domain/bound-account';
 import type { RizlineSession } from '@/providers/contracts';
-import { isRizlineTokenExpired, RizlineProvider } from '@/providers/rizline-provider';
+import { isRizlineTokenExpired, RizlineProvider, RizlineSaveSchema } from '@/providers/rizline-provider';
+import { z } from 'zod';
 import { ProviderError } from '@/providers/errors';
 import { applyRizlineSessionRotation, useSession } from '@/state/session-store';
 import { deleteRizlinePassword, hasRizlinePassword, readRizlinePassword } from '@/storage/rizline-password-store';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
-import { captureResourceWrites, createInflightGuard, invalidateResourceWrites, resourceWriteGeneration, snapshotSource } from './snapshot-cache-utils';
+import { cacheSourceSchema, captureResourceWrites, createInflightGuard, invalidateResourceWrites, resourceWriteGeneration, snapshotSource } from './snapshot-cache-utils';
 import {
   cachedSnapshotSource,
   cancelledRefresh,
@@ -21,8 +22,10 @@ import {
 
 const repository = new SqliteSnapshotRepository();
 const loads = createInflightGuard<string>();
+const snapshotSchema = z.object({ save: RizlineSaveSchema, source: cacheSourceSchema('rizline-official') });
 export const rizlineAccountKey = (id: string) => `rizline:account:${id}`;
-export function loadRizlineCached(id: string) { return repository.getResource<RizlineSnapshot>(rizlineAccountKey(id), 1); }
+export function loadRizlineCached(id: string): Promise<RizlineSnapshot | null> { return repository.getResource(rizlineAccountKey(id), 1,
+  snapshotSchema.refine(snapshot => snapshot.save.userId === rizlineUserIdFromAccountId(id))); }
 export async function clearRizlineAccount(id: string): Promise<void> {
   invalidateResourceWrites(`account:${id}`);
   await Promise.all([repository.clearResources([rizlineAccountKey(id)]), deleteRizlinePassword(id)]);
@@ -111,11 +114,6 @@ export async function loadRizlineFresh(id: string, session: RizlineSession, sign
 
 type RizlineRefreshAttempt = { result: RefreshResult<RizlineSnapshot, string>; error: unknown };
 
-/**
- * 一次云存档刷新的结果：缓存回退不等于刷新成功。
- * 成功只带本次抓取时间；失败时仍可发布本地快照，但它保留原提供方与抓取时间并标记过期，
- * 失败原因只由机器错误码表达。
- */
 async function refreshRizline(
   id: string,
   session: RizlineSession,
@@ -140,7 +138,7 @@ async function refreshRizline(
     if (!cached) {
       return { error, result: failedRefresh<RizlineSnapshot, string>({ requested: [id], failures: [failure] }) };
     }
-    const metadata = cached.source.kind === 'cache' ? null : snapshotMetadataOf(cached.source);
+    const metadata = snapshotMetadataOf(cached.source);
     return {
       error,
       result: failedRefresh<RizlineSnapshot, string>({
@@ -153,7 +151,6 @@ async function refreshRizline(
   }
 }
 
-/** 机器可判定的刷新结果；只重试失败项时复用同一入口与 target。 */
 export async function refreshRizlineSnapshot(
   id: string,
   session: RizlineSession,

@@ -1,145 +1,39 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest';
-import {
-  CACHE_POLICY_REGISTRY,
-  isSessionOnlyResourceKey,
-  isTemporaryCacheEntry,
-  resourceCachePersistence,
-} from '@/features/storage-management/cache-policy';
+import { describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  marker: null as string | null,
-  setMarker: vi.fn(),
-  clearDisk: vi.fn(async () => true),
-  clearMemory: vi.fn(async () => true),
-  compact: vi.fn(async () => undefined),
+  files: new Set<string>(),
   clearDirectoryContentsStrict: vi.fn(),
 }));
 
-vi.mock('expo-sqlite/kv-store', () => ({ default: {
-  getItem: vi.fn(async () => mocks.marker),
-  setItem: vi.fn(async (_key: string, value: string) => {
-    mocks.marker = value;
-    mocks.setMarker(value);
-  }),
-} }));
-vi.mock('expo-image', () => ({ Image: {
-  clearDiskCache: mocks.clearDisk,
-  clearMemoryCache: mocks.clearMemory,
-} }));
-vi.mock('@/storage/rranker-database', () => ({ compactRrankerDatabase: mocks.compact }));
 vi.mock('@/features/best-image/maimai-font-cache', () => ({ MAIMAI_FONT_CACHE_VERSION: 'v1' }));
 vi.mock('@/features/best-image/maimai-ui-cache', () => ({ MAIMAI_UI_CACHE_VERSION: 'v1' }));
 vi.mock('@/features/phigros-best-image/phigros-font-cache', () => ({ PHIGROS_FONT_CACHE_VERSION: 'v1' }));
 vi.mock('@/features/storage-management/fs-storage', () => ({
-  APP_CACHE_ROOT: () => ({ exists: false }),
+  APP_CACHE_ROOT: () => ({ exists: true }),
   MAIMAI_ASSETS_ROOT: () => ({ exists: false }),
-  OSU_MOD_ICONS_ROOT: () => ({ exists: false }),
   PHIGROS_FONT_ROOT: () => ({ exists: false }),
   PHIGROS_ILLUSTRATION_ROOT: () => ({ exists: false }),
   clearDirectoryContentsStrict: mocks.clearDirectoryContentsStrict,
   pruneVersionedAssetRoot: vi.fn(),
 }));
-vi.mock('@/features/storage-management/expo-system-cache', () => ({ isExpoSystemCacheEntry: () => false }));
-vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
+vi.mock('@/features/storage-management/expo-system-cache', () => ({ isExpoSystemCacheEntry: (name: string) => name.startsWith('ExponentAsset-') }));
 vi.mock('@/services/remote-image-cache', () => ({ pruneRemoteImageCache: vi.fn(async () => undefined) }));
 
-// 原生依赖 mock 完成后再导入迁移入口。
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
-import {
-  cleanupOrphanedTemporaryStorage,
-  migrateLegacyStorageCaches,
-} from '@/features/storage-management/storage-cache-maintenance';
+import { cleanupOrphanedTemporaryStorage } from '@/features/storage-management/storage-cache-maintenance';
 
-describe('cache policy registry', () => {
-  it('contains all four persistence classes', () => {
-    expect(new Set(CACHE_POLICY_REGISTRY.map((item) => item.persistence))).toEqual(new Set([
-      'durable', 'session-only', 'temporary', 'bounded-cache', 'versioned-asset',
-    ]));
-  });
-
-  it('classifies public derived rows without matching durable account snapshots', () => {
-    expect(isSessionOnlyResourceKey('detailed-catalog')).toBe(true);
-    expect(resourceCachePersistence('phira:notes:38294')).toBe('session-only');
-    expect(resourceCachePersistence('phira:player:323528')).toBe('durable');
-    expect(resourceCachePersistence('osu:osu-standard:2')).toBe('durable');
-    expect(isTemporaryCacheEntry('rranker-chart-preview-session-1')).toBe(true);
-    expect(isTemporaryCacheEntry('rranker-remote-image-cache-v1')).toBe(true);
-    expect(isTemporaryCacheEntry('rranker-remote-image-cache-v2')).toBe(false);
-    expect(isTemporaryCacheEntry('ExponentAsset-font.ttf')).toBe(false);
-    expect(isTemporaryCacheEntry('rranker-runtime-diagnostics.json')).toBe(false);
-    expect(isTemporaryCacheEntry('rranker-runtime-diagnostics.txt')).toBe(true);
-    expect(isTemporaryCacheEntry('rranker-runtime-log-31-1.txt')).toBe(true);
-  });
-});
-
-describe('legacy cache migration', () => {
-  beforeEach(() => {
-    mocks.marker = null;
-    mocks.setMarker.mockClear();
-    mocks.clearDisk.mockReset().mockResolvedValue(true);
-    mocks.clearMemory.mockReset().mockResolvedValue(true);
-    mocks.compact.mockClear();
-  });
-
-  function repository() {
-    return {
-      listResourceSizes: vi.fn(async () => [
-        { key: 'detailed-catalog', bytes: 100 },
-        { key: 'phira:notes:1', bytes: 200 },
-        { key: 'phira:player:1', bytes: 300 },
-      ]),
-      clearResources: vi.fn(async () => undefined),
-      clearCatalog: vi.fn(async () => undefined),
-    };
-  }
-
-  it('deletes only session rows, protects durable data and is idempotent', async () => {
-    const snapshots = repository();
-    await migrateLegacyStorageCaches(snapshots as never);
-    expect(snapshots.clearResources).toHaveBeenCalledWith(['detailed-catalog', 'phira:notes:1']);
-    expect(snapshots.clearCatalog).toHaveBeenCalledTimes(1);
-    expect(mocks.setMarker).toHaveBeenCalledWith('done');
-
-    await migrateLegacyStorageCaches(snapshots as never);
-    expect(snapshots.clearResources).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not write the marker on failure and retries on the next launch', async () => {
-    const snapshots = repository();
-    mocks.clearDisk.mockResolvedValueOnce(false).mockResolvedValueOnce(true);
-    await expect(migrateLegacyStorageCaches(snapshots as never)).rejects.toThrow('原生图片磁盘缓存');
-    expect(mocks.marker).toBeNull();
-
-    await expect(migrateLegacyStorageCaches(snapshots as never)).resolves.toBeUndefined();
-    expect(mocks.marker).toBe('done');
-    expect(snapshots.clearResources).toHaveBeenCalledTimes(2);
-  });
-});
-
-describe('startup orphan cleanup', () => {
-  it('removes only rRanker temporary entries from the shared cache root', () => {
-    mocks.clearDirectoryContentsStrict.mockClear();
-    cleanupOrphanedTemporaryStorage();
-    const options = mocks.clearDirectoryContentsStrict.mock.calls[0]?.[1] as {
-      skip: (name: string) => boolean;
-    };
-    expect(options.skip('rranker-chart-preview-session-1')).toBe(false);
-    expect(options.skip('rRanker-backup-session.json')).toBe(false);
-    expect(options.skip('rranker-remote-image-cache-v1')).toBe(false);
-    expect(options.skip('rranker-remote-image-cache-v2')).toBe(true);
-    expect(options.skip('Image')).toBe(true);
-    expect(options.skip('ExponentAsset-Ionicons.ttf')).toBe(true);
-    expect(options.skip('rranker-runtime-diagnostics.json')).toBe(true);
-    expect(options.skip('rranker-runtime-diagnostics.txt')).toBe(false);
-    expect(options.skip('rranker-runtime-log-31-1.txt')).toBe(false);
-  });
-
-  it('keeps an unmigrated diagnostic source while removing other temporary files', () => {
-    const files = new Set(['rranker-runtime-diagnostics.json', 'rranker-runtime-diagnostics.txt', 'rranker-chart-preview-session-1']);
-    mocks.clearDirectoryContentsStrict.mockImplementationOnce((_root, options: { skip: (name: string) => boolean }) => {
-      for (const name of files) if (!options.skip(name)) files.delete(name);
+describe('startup cache cleanup', () => {
+  it('removes temporary files and retains current image cache, system files and other applications', () => {
+    mocks.files = new Set([
+      'rranker-chart-preview-session-1', 'rRanker-backup-session.json',
+      'rranker-remote-image-cache-v1', 'rranker-remote-image-cache-v2',
+      'rranker-runtime-diagnostics.json', 'rranker-runtime-log-31-1.txt',
+      'ExponentAsset-Ionicons.ttf', 'Image', 'another-app.json',
+    ]);
+    mocks.clearDirectoryContentsStrict.mockImplementation((_root, options: { skip: (name: string) => boolean }) => {
+      for (const name of mocks.files) if (!options.skip(name)) mocks.files.delete(name);
     });
     cleanupOrphanedTemporaryStorage();
-    expect([...files]).toEqual(['rranker-runtime-diagnostics.json']);
+    expect([...mocks.files]).toEqual(['rranker-remote-image-cache-v2', 'ExponentAsset-Ionicons.ttf', 'Image', 'another-app.json']);
   });
 });

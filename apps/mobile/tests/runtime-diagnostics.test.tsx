@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { Share } from 'react-native';
-import { recordRuntimeError, snapshotEmergencyRuntimeDiagnostics, resetEmergencyRuntimeDiagnosticsForTests } from '@/services/runtime-diagnostics-recorder';
+import { recordRuntimeError, snapshotEmergencyRuntimeDiagnostics } from '@/services/runtime-diagnostics-recorder';
 import { cleanupOrphanedTemporaryStorage } from '@/features/storage-management/storage-cache-maintenance';
 import {
   initializeRuntimeDiagnostics,
@@ -115,7 +115,7 @@ describe('本地运行诊断', () => {
     mockFiles.clear();
     mockWriteState.active = 0;
     mockWriteState.maximum = 0;
-    resetEmergencyRuntimeDiagnosticsForTests();
+
   });
 
   it('只保留允许的字段并拒绝敏感值', () => {
@@ -235,8 +235,7 @@ describe('本地运行诊断', () => {
   });
 });
 
-describe('诊断正文迁移与跨启动保留', () => {
-  const legacyPath = 'cache/rranker-runtime-diagnostics.json';
+describe('诊断正文持久化与替换', () => {
   const documentPath = 'document/rranker-runtime-diagnostics.json';
   const previousPath = `${documentPath}.previous`;
   const pendingPath = `${documentPath}.pending`;
@@ -288,87 +287,33 @@ describe('诊断正文迁移与跨启动保留', () => {
     }
   });
 
-  it('迁移旧正文并只在新正文写入成功后删除旧文件', async () => {
-    const previous = storedSession('2026-09-06T00:00:00.000Z');
-    mockFiles.set(legacyPath, JSON.stringify({ sessions: [previous] }));
-    let releaseWrite = () => {};
-    let enteredWrite = () => {};
-    const writing = new Promise<void>((resolve) => { enteredWrite = resolve; });
-    mockWrite.mockImplementationOnce(async () => {
-      enteredWrite();
-      await new Promise<void>((resolve) => { releaseWrite = resolve; });
-      return undefined;
-    });
-    const starting = runtime.initializeRuntimeDiagnostics();
-    const duplicate = runtime.initializeRuntimeDiagnostics();
-    await writing;
-    expect(mockFiles.has(legacyPath)).toBe(true);
-    expect(mockFiles.has(documentPath)).toBe(false);
-    releaseWrite();
-    await Promise.all([starting, duplicate]);
+  it('不读取旧缓存正文，启动清理直接删除该临时文件', async () => {
+    const path = 'cache/rranker-runtime-diagnostics.json';
+    mockFiles.set(path, JSON.stringify({ sessions: [storedSession('old')] }));
+    await runtime.initializeRuntimeDiagnostics();
     const snapshot = await runtime.snapshotRuntimeDiagnostics();
-    expect(snapshot.sessions).toHaveLength(2);
-    expect(snapshot.sessions[0]).toEqual(previous);
+    expect(snapshot.sessions).toHaveLength(1);
+    expect(snapshot.sessions[0]?.events).toEqual([]);
+    expect(mockRead.mock.calls.map(([uri]) => uri)).not.toContain(path);
+    cleanupOrphanedTemporaryStorage();
+    expect(mockFiles.has(path)).toBe(false);
     expect(mockFiles.has(documentPath)).toBe(true);
-    expect(mockFiles.has(legacyPath)).toBe(false);
-    expect(mockWrite).toHaveBeenCalledTimes(1);
   });
 
-  it('新正文优先于旧副本并且重复初始化不重复添加会话', async () => {
+  it('已提交正文优先于替换副本并且重复初始化不重复添加会话', async () => {
     const current = storedSession('2026-09-07T00:00:00.000Z');
     mockFiles.set(documentPath, JSON.stringify({ sessions: [current] }));
     mockFiles.set(previousPath, JSON.stringify({ sessions: [storedSession('previous')] }));
-    mockFiles.set(legacyPath, JSON.stringify({ sessions: [storedSession('old')] }));
     await runtime.initializeRuntimeDiagnostics();
     await runtime.initializeRuntimeDiagnostics();
     const snapshot = await runtime.snapshotRuntimeDiagnostics();
     expect(snapshot.sessions).toHaveLength(2);
     expect(snapshot.sessions[0]).toEqual(current);
-    expect(mockRead.mock.calls.map(([uri]) => uri)).not.toContain(legacyPath);
     expect(mockRead.mock.calls.map(([uri]) => uri)).not.toContain(previousPath);
-    expect(mockFiles.has(legacyPath)).toBe(false);
     expect(mockFiles.has(previousPath)).toBe(false);
   });
 
-  it('迁移读取未完成及写入失败后，启动清理保留旧正文并清理其它临时文件', async () => {
-    const previous = storedSession('2026-09-06T00:00:00.000Z');
-    const contents = JSON.stringify({ sessions: [previous] });
-    const temporaryPaths = ['cache/rranker-runtime-diagnostics.txt', 'cache/rranker-runtime-log-31-1.txt', 'cache/rranker-preview-session.tmp'];
-    const populateTemporaryFiles = () => {
-      for (const path of temporaryPaths) mockFiles.set(path, 'temporary');
-    };
-    const expectCleaned = () => {
-      expect(mockFiles.get(legacyPath)).toBe(contents);
-      for (const path of temporaryPaths) expect(mockFiles.has(path)).toBe(false);
-    };
-    mockFiles.set(legacyPath, contents);
-    populateTemporaryFiles();
-    let releaseRead = () => {};
-    let enteredRead = () => {};
-    const reading = new Promise<void>((resolve) => { enteredRead = resolve; });
-    mockRead.mockImplementationOnce(async (uri) => {
-      expect(uri).toBe(legacyPath);
-      enteredRead();
-      await new Promise<void>((resolve) => { releaseRead = resolve; });
-      return undefined;
-    });
-    mockWrite.mockRejectedValueOnce(new Error('write failed'));
-    const starting = runtime.initializeRuntimeDiagnostics();
-    await reading;
-    cleanupOrphanedTemporaryStorage();
-    expectCleaned();
-    releaseRead();
-    await starting;
-    expect(mockFiles.has(documentPath)).toBe(false);
-    populateTemporaryFiles();
-    cleanupOrphanedTemporaryStorage();
-    expectCleaned();
-    await runtime.initializeRuntimeDiagnostics();
-    expect(mockFiles.has(legacyPath)).toBe(false);
-    expect((await runtime.snapshotRuntimeDiagnostics()).sessions[0]).toEqual(previous);
-  });
-
-  it.each([legacyPath, documentPath, previousPath])('读取 %s 失败时保留正文并允许重新初始化', async (path) => {
+  it.each([documentPath, previousPath])('读取 %s 失败时保留正文并允许重新初始化', async (path) => {
     const previous = storedSession('2026-09-06T00:00:00.000Z');
     const contents = JSON.stringify({ sessions: [previous] });
     mockFiles.set(path, contents);
@@ -379,22 +324,6 @@ describe('诊断正文迁移与跨启动保留', () => {
     expect(mockDelete).not.toHaveBeenCalled();
     await runtime.initializeRuntimeDiagnostics();
     expect((await runtime.snapshotRuntimeDiagnostics()).sessions[0]).toEqual(previous);
-  });
-
-  it('迁移写入失败后保留旧正文，后续记录可重试且不重复创建当前会话', async () => {
-    const previous = storedSession('2026-09-06T00:00:00.000Z');
-    mockFiles.set(legacyPath, JSON.stringify({ sessions: [previous] }));
-    mockWrite.mockRejectedValueOnce(new Error('write failed'));
-    await runtime.initializeRuntimeDiagnostics();
-    expect(mockFiles.has(legacyPath)).toBe(true);
-    expect(mockDelete).not.toHaveBeenCalled();
-    await runtime.recordRuntimeDiagnostic('task', { taskPhase: 'retry' });
-    await runtime.initializeRuntimeDiagnostics();
-    const snapshot = await runtime.snapshotRuntimeDiagnostics();
-    expect(snapshot.sessions).toHaveLength(2);
-    expect(snapshot.sessions[0]).toEqual(previous);
-    expect(snapshot.sessions[1]?.events.map((entry) => entry.taskPhase)).toEqual(['retry']);
-    expect(mockFiles.has(legacyPath)).toBe(false);
   });
 
   it('暂存部分写入失败不会破坏正文，重启忽略未完成暂存并可重试', async () => {
@@ -455,26 +384,6 @@ describe('诊断正文迁移与跨启动保留', () => {
     await runtime.initializeRuntimeDiagnostics();
     expect((await runtime.snapshotRuntimeDiagnostics()).sessions[0]).toEqual(previous);
     expect(mockFiles.has(previousPath)).toBe(false);
-  });
-
-  it('新正文无效时读取有效旧正文，旧正文删除失败后仍优先读取新正文', async () => {
-    const previous = storedSession('2026-09-06T00:00:00.000Z');
-    mockFiles.set(documentPath, '{');
-    mockFiles.set(legacyPath, JSON.stringify({ sessions: [previous] }));
-    let failDelete = true;
-    mockDelete.mockImplementation((uri) => {
-      if (uri === legacyPath && failDelete) {
-        failDelete = false;
-        throw new Error('delete failed');
-      }
-      return undefined;
-    });
-    await runtime.initializeRuntimeDiagnostics();
-    expect(mockFiles.has(legacyPath)).toBe(true);
-    expect((await runtime.snapshotRuntimeDiagnostics()).sessions[0]).toEqual(previous);
-    await runtime.recordRuntimeDiagnostic('task', { taskPhase: 'retry-cleanup' });
-    expect(mockFiles.has(legacyPath)).toBe(false);
-    expect((await runtime.snapshotRuntimeDiagnostics()).sessions).toHaveLength(2);
   });
 
   it('清空缓存并重启后仍保留最近三次启动和最多 256 条事件', async () => {

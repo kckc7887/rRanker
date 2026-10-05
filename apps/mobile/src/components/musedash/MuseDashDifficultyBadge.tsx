@@ -5,7 +5,6 @@ import { GameDifficultyBadge } from '@/components/game-content/GameDifficultyBad
 
 export type MuseDashDifficultyBadgeDisplay = 'constant' | 'label' | 'label-and-value';
 
-/** 难度实心胶囊：EASY 绿 / HARD 蓝 / MASTER 粉 / HIDDEN 黑 / EX 白（白底深字）。 */
 export function MuseDashDifficultyBadge({
   levelIndex,
   level,

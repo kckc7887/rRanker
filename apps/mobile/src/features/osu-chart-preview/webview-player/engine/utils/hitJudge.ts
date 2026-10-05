@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -36,33 +36,24 @@ import { slideDurationMs, sliderNestedEvents } from './sliderDuration';
 const SPINNER_CENTER_X = 256;
 const SPINNER_CENTER_Y = 192;
 
-// osu!stable: any click whose |delta| ≥ 400 ms relative to a circle's start time
-// is shaken regardless of notelock state (HittableRange in danser).
+/** stable 对距起始时间至少 400ms 的点击播放 shake。 */
+
 const HITTABLE_RANGE = 400;
 
-// osu!stable: 2B tolerance when comparing previous-object endTime against next
-// object's startTime (Tolerance2B = 3 ms).
+/** stable 的相邻物件结束/开始比较允许 3ms 容差。 */
+
 const NOTELOCK_TOLERANCE = 3;
 
-/**
- * Per-spinner rotation timeline, one entry per input sample, sorted by time
- * (beatmap ms). Produced by `computeHitResults`; sampled via `getSpinnerStateAt`.
- */
 export interface SpinnerAngleData {
   times: number[];
-  // cumAngles: signed visual rotation (sprite, rad). absAngles: reversal-immune total
-  // rotation magnitude (lazer SpinHistory.TotalRotation, rad) for judgement/progress.
+  /** cumAngles 是视觉旋转，absAngles 是不因反向摆动重复增加的判定旋转，单位 rad。 */
+
   cumAngles: number[];
   absAngles: number[];
-  // Beatmap-times at which a spinner-bonus is awarded — drives the on-screen popup
-  // and the spinnerbonus sample (once per bonus spin past the requirement+gap).
+
   bonusTimes: number[];
 }
 
-/**
- * Sample a spinner's rotation state at `timeMs` (beatmap ms) by binary search:
- * signed visual angle plus reversal-immune total angle, both in radians.
- */
 export function getSpinnerStateAt(
   data: SpinnerAngleData,
   timeMs: number,
@@ -77,9 +68,6 @@ export function getSpinnerStateAt(
   return { cumAngle: data.cumAngles[lo]!, absAngle: data.absAngles[lo]! };
 }
 
-// Linear OD→rate with a knee at OD 5 (danser's DifficultyRate). The f32 round-
-// trip on `od` matches danser/osu!stable byte-for-byte on boundary cases where
-// a DA-mod OD is not exactly representable as f64.
 function difficultyRate(od: number, minV: number, midV: number, maxV: number): number {
   const d = Math.fround(od);
   if (d > 5) return midV + (maxV - midV) * (d - 5) / 5;
@@ -87,42 +75,21 @@ function difficultyRate(od: number, minV: number, midV: number, maxV: number): n
   return midV;
 }
 
-/**
- * Stable spinner requirement, counted in HALF-spins.
- * SpinnerRatio = DifficultyRate(od, 3, 5, 7.5) is half-spins/sec (not full
- * rotations), matching stable's scoringRotationCount. A requirement of 0 is the
- * fast path that hands out an instant 300 on degenerate/very-short spinners.
- */
+/** stable 转盘要求用半圈计数，lazer 用整圈。 */
 export function stableSpinnerRequirementHalfSpins(od: number, durationMs: number): number {
   return Math.floor(durationMs / 1000 * difficultyRate(od, 3, 5, 7.5));
 }
 
-/**
- * Lazer spinner requirement, counted in FULL spins.
- * MinRPS = DifficultyRange(od, 90, 150, 225)/60 = 1.5/2.5/3.75 spins/s at
- * OD 0/5/10. The +1e-4 nudge guards against rates that land just under an
- * integer in f64.
- */
 export function lazerSpinnerRequirementFullSpins(od: number, durationMs: number): number {
   return Math.floor(durationMs / 1000 * difficultyRate(od, 1.5, 2.5, 3.75) + 1e-4);
 }
 
-/**
- * Lazer Spinner.cs MaximumBonusSpins: floor(maxRps·secs + 1e-4) − SpinsRequired −
- * bonus_spins_gap(2), floored at 0. maxRps = DifficultyRange(OD, COMPLETE_RPM_RANGE
- * = 250/380/430)/60. Caps how many LargeBonus (1000-popup) ticks a spinner can yield.
- */
 export function lazerSpinnerMaxBonusSpins(od: number, durationMs: number): number {
   const maxRps = difficultyRate(od, 250, 380, 430) / 60;
   const maxTotal = Math.floor(durationMs / 1000 * maxRps + 1e-4);
   return Math.max(0, maxTotal - lazerSpinnerRequirementFullSpins(od, durationMs) - 2);
 }
 
-// Beatmap-times at which a spinner-bonus is awarded (the on-screen popup increments and
-// the spinnerbonus sample fires). Dispatched like the bonus scoring:
-//   lazer  — one per completed full spin past SpinsRequired+gap(2), capped at MaximumBonusSpins.
-//   stable — danser's per-half-spin SpinnerBonus parity: c > req+3 with (c-(req+3)) even.
-// Walks the (already monotonic) absAngles timeline once, emitting the crossing time of each.
 function spinnerBonusTickTimes(
   times: readonly number[],
   absAngles: readonly number[],
@@ -134,7 +101,7 @@ function spinnerBonusTickTimes(
   if (isLazer) {
     const req  = lazerSpinnerRequirementFullSpins(od, durationMs);
     const last = req + 2 + lazerSpinnerMaxBonusSpins(od, durationMs);
-    let k = req + 3;   // first bonus spin (1-based completion count past the gap)
+    let k = req + 3;
     for (let i = 0; i < absAngles.length && k <= last; i++) {
       const spins = Math.floor(absAngles[i]! / (2 * Math.PI));
       while (k <= spins && k <= last) { out.push(times[i]!); k++; }
@@ -153,11 +120,6 @@ function spinnerBonusTickTimes(
   return out;
 }
 
-/**
- * Spinner completion fraction (0..1) for `totalRad` of reversal-immune rotation.
- * Uses the same requirement thresholds as the final judgement so a progress
- * display flips exactly at the first-clear-tier instant.
- */
 export function spinnerProgress(od: number, durationMs: number, totalRad: number, isLazer: boolean): number {
   if (isLazer) {
     const req = lazerSpinnerRequirementFullSpins(od, durationMs);
@@ -171,7 +133,7 @@ export function spinnerProgress(od: number, durationMs: number, totalRad: number
 
 function judgeSpinner(od: number, durationMs: number, totalRad: number, isLazer: boolean): 300 | 100 | 50 | 0 {
   if (isLazer) {
-    // Lazer UpdatePostFor: completion-based, with an instant-300 fast path.
+
     const req = lazerSpinnerRequirementFullSpins(od, durationMs);
     if (req === 0) return 300;
     const completion = (totalRad / (2 * Math.PI)) / req;
@@ -180,9 +142,7 @@ function judgeSpinner(od: number, durationMs: number, totalRad: number, isLazer:
     if (completion >= 0.75) return 50;
     return 0;
   }
-  // Stable UpdatePostFor (new scoring, post-2019-05-10). Thresholds are offset
-  // by ±1 half-spin from `requirement` — the +1 for Great is what makes a
-  // 1 s / OD 5 spinner need 3 full rotations, not 2.5.
+
   const req = stableSpinnerRequirementHalfSpins(od, durationMs);
   if (req === 0) return 300;
   const halfSpins = totalRad / Math.PI;
@@ -194,15 +154,12 @@ function judgeSpinner(od: number, durationMs: number, totalRad: number, isLazer:
 
 const TAU = 2 * Math.PI;
 
-// Port of osu!lazer's SpinnerSpinHistory: the reversal-immune rotation accumulator.
-// TotalRotation = TAU·completedSpins + currentSpinMaxRotation, where each spin only
-// credits its high-water mark — wobbling back and forth (or rapidly reversing to
-// "cheese" extra spins) adds nothing until you spin past 0 again. Forward-only: we
-// build the timeline once in chronological order, so the rewind branch is unneeded.
+/** 每圈只累计最大转角，反向摆动不能重复加转数。 */
+
 function makeSpinHistory() {
-  let totalAccum = 0;              // signed running rotation (rad)
-  let accumAtLastCompletion = 0;   // snapshot at the last full-spin completion
-  let currentMax = 0;              // high-water |currentSpin| in this spin (0..TAU)
+  let totalAccum = 0;
+  let accumAtLastCompletion = 0;
+  let currentMax = 0;
   let completedSpins = 0;
   return {
     report(delta: number) {
@@ -221,11 +178,6 @@ function makeSpinHistory() {
   };
 }
 
-// `cumAngles` is the signed visual rotation (drives the sprite); `absAngles` is the
-// reversal-immune total rotation magnitude (SpinHistory.total) used for judgement,
-// progress, and spin-bonus. The window is bracketed with samples interpolated exactly
-// at spinner.time / spinner.endTime so we don't drop the partial spin at either end
-// (lazer samples input continuously from StartTime; we only have sparse .osr frames).
 function buildSpinnerAngles(
   spinner: Spinner,
   frames: ReplayFrame[],
@@ -240,29 +192,24 @@ function buildSpinnerAngles(
 
   const hist = makeSpinHistory();
   let prevAngle: number | null = null;
-  let prevDelta = 0;   // last unwrapped delta — velocity proxy for direction-aware unwrap
-  let cumAngle = 0;    // signed visual rotation
+  let prevDelta = 0;
+  let cumAngle = 0;
 
   const sample = (t: number, x: number, y: number) => {
     const dx = x - SPINNER_CENTER_X;
     const dy = y - SPINNER_CENTER_Y;
-    // Min radius 5px: ignore atan2 noise near the spinner centre.
+
     if (dx * dx + dy * dy >= 25) {
       const angle = Math.atan2(dy, dx);
       if (prevAngle !== null) {
-        // Direction-aware (velocity-continuity) unwrap: choose the 2π-multiple of the
-        // raw delta nearest the previous delta, so a >180° gap from fast spinning is
-        // continued in the spin direction instead of folded the short way (which the
-        // old shortest-arc unwrap did, silently dropping rotation on short spinners).
+        /** 选择接近前次角速度的 2π 分支，保留超过半圈的快转采样。 */
+
         let d = angle - prevAngle;
         while (d - prevDelta >  Math.PI) d -= TAU;
         while (d - prevDelta < -Math.PI) d += TAU;
-        prevDelta = d;   // raw resolved delta — continuity proxy for the next unwrap
-        // Rate mods scale spinner rotation: danser spinner.go `delta *= GetSpeed()`.
-        // The .osr frames sit on the map-time clock (cumTimes span the map-time
-        // window), but the requirement is calibrated for that full map-time duration —
-        // so a DT player's real-time spins must be scaled up by `speed` to match
-        // (×1.5 DT/NC, ×0.75 HT). Without it, DT spinners under-count → spurious 100/50.
+        prevDelta = d;
+        /** DT/HT 将真实旋转乘播放速率，匹配谱面时间内的要求。 */
+
         const scaled = d * speed;
         cumAngle += scaled;
         hist.report(scaled);
@@ -304,23 +251,16 @@ function buildCumTimes(frames: ReplayFrame[]): number[] {
   return cumTimes;
 }
 
-
-
 interface KeyPress {
   timeMs: number;
   x: number;
   y: number;
 }
 
-// osu! tracks two independent buttons — Left (M1|K1) and Right (M2|K2) — each as a
-// boolean; a press is the rising edge of EITHER. A K1/K2 keypress also raises its
-// paired mouse bit, so a single tap shows up as two set bits in one column, not two
-// presses. When BOTH columns rise in the same frame (a simultaneous double-tap),
-// danser consumes leftCondE then rightCondE within one UpdateClickFor pass, so two
-// objects resolve from that one frame (ruleset.go/circle.go). Emitting one press per
-// frame would drop the second click and cascade an off-by-one through the stream.
-const LEFT_BTN = 0b0101;   // M1 | K1
-const RIGHT_BTN = 0b1010;  // M2 | K2
+/** M1/K1 和 M2/K2 分别合并成左右键沿；同帧左右沿可各消耗一个音符。 */
+
+const LEFT_BTN = 0b0101;
+const RIGHT_BTN = 0b1010;
 function buildKeyPresses(frames: ReplayFrame[], cumTimes: number[]): KeyPress[] {
   const presses: KeyPress[] = [];
   let prevKeys = 0;
@@ -329,8 +269,7 @@ function buildKeyPresses(frames: ReplayFrame[], cumTimes: number[]): KeyPress[] 
     const curKeys = f.keys & 0b1111;
     const leftRise  = (prevKeys & LEFT_BTN)  === 0 && (curKeys & LEFT_BTN)  !== 0;
     const rightRise = (prevKeys & RIGHT_BTN) === 0 && (curKeys & RIGHT_BTN) !== 0;
-    // Both presses share this frame's time + cursor position; emit left-before-right
-    // to match danser's consumption order (only matters for which object each resolves).
+
     if (leftRise)  presses.push({ timeMs: cumTimes[i]!, x: f.x, y: f.y });
     if (rightRise) presses.push({ timeMs: cumTimes[i]!, x: f.x, y: f.y });
     prevKeys = curKeys;
@@ -338,7 +277,6 @@ function buildKeyPresses(frames: ReplayFrame[], cumTimes: number[]): KeyPress[] 
   return presses;
 }
 
-/** result[i] = min(timeMs of presses[i..]); press times may be non-monotonic. */
 function buildPressSuffixMin(presses: KeyPress[]): number[] {
   const suffixMin = new Array<number>(presses.length + 1);
   suffixMin[presses.length] = Infinity;
@@ -348,7 +286,6 @@ function buildPressSuffixMin(presses: KeyPress[]): number[] {
   return suffixMin;
 }
 
-/** Skips objects that no remaining press can find unresolved, so they never block again. */
 function advanceBlockStart(states: ObjState[], start: number, minFuturePress: number): number {
   let index = start;
   while (index < states.length) {
@@ -425,8 +362,8 @@ function sliderBallPos(
   return pointAtFraction(path, frac);
 }
 
-// Sliders: notelock treats them resolved iff pressTime >= endTime (stable's slider.IsHit).
-// Spinners: headResolved=true from start; notelock blocks subsequent clicks until endTime.
+/** stable 的 slider 在结束前仍参与 notelock，spinner 从开始阻塞到结束。 */
+
 interface ObjState {
   type: 'circle' | 'slider' | 'spinner';
   startTime: number;
@@ -442,31 +379,15 @@ interface ObjState {
 interface HitResultsOutput {
   results: HitResult[];
   spinnerAngles: Map<number, SpinnerAngleData>;
-  /**
-   * Time intervals (beatmap ms) during which the player is actively tracking a slider —
-   * computed from the same hysteresis walk used for tick/repeat/tail judgement.
-   * Used by the flashlight renderer to dim the lit area during slider tracking.
-   * Sorted by `start`; intervals do not overlap (each slider closes before the next begins).
-   */
+
   trackingIntervals: { start: number; end: number }[];
 }
 
-/**
- * Judge an osu!standard replay: re-simulates osu!'s per-press hit logic (press
- * consumption, notelock, slider tracking, spinner rotation) over the raw input
- * frames and returns one `HitResult` stream plus spinner timelines and slider
- * tracking intervals, all in beatmap ms. Stable vs lazer semantics are selected
- * from `modDiff` (isLazer + CL sub-flags).
- *
- * An on-circle press ≥ w50 from the start time (but within ±400 ms) resolves as
- * a Miss at press time, freeing notelock — matching stable.
- */
 export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modDiff: ModDifficulty): HitResultsOutput {
   const od = modDiff.od;
 
-  // Lazer rules: <= unrounded window, head/start notelock, PostHit chain-miss. CL reverts.
   const useLazerRules = modDiff.isLazer && !modDiff.lzLegacyNotelock;
-  // Independent of useLazerRules — CL's two sub-flags can differ.
+
   const useLazerSliderScoring = modDiff.isLazer && !modDiff.lzNoSliderAcc;
   const w300 = useLazerRules ? modDiff.hitWindow300U : modDiff.hitWindow300;
   const w100 = useLazerRules ? modDiff.hitWindow100U : modDiff.hitWindow100;
@@ -525,25 +446,19 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
     }
   }
 
-  // walkStart: index of first potentially-clickable head; advanced by auto-miss expiry.
   let walkStart = 0;
-  // First object that can still block a later press; times may be non-monotonic, so use the suffix minimum.
+
   let blockStart = 0;
   const pressSuffixMin = buildPressSuffixMin(keyPresses);
 
   for (let pi = 0; pi < keyPresses.length; pi++) {
     const p = keyPresses[pi]!;
 
-    // Stable's UpdatePostFor uses strict `time > startTime + Hit50`.
     while (walkStart < states.length) {
       const s = states[walkStart]!;
       if (s.type === 'spinner' || s.headResolved) { walkStart++; continue; }
-      // Stable removes a slider at its endTime (UpdatePostFor → isHit), after which
-      // the head can no longer be clicked (slider.go: clickable only while
-      // !isHit). For a SHORT slider (duration < w50) endTime precedes
-      // startTime+w50, so the head's hittable window is capped at endTime — a press
-      // in (endTime, startTime+w50] must fall through to the next object, not hit
-      // the head. Lazer keeps the head clickable past endTime (`|| lazer`).
+      /** stable 短 slider 的 head 判定在 EndTime 截止；lazer 仍允许之后点击。 */
+
       const expireAt = (s.type === 'slider' && !modDiff.isLazer)
         ? Math.min(s.startTime + w50, s.endTime)
         : s.startTime + w50;
@@ -555,19 +470,16 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
         walkStart++;
         continue;
       }
-      break; // current head still in its hit window
+      break;
     }
 
-    // Find first unresolved circle/slider-head the cursor is inside (in
-    // chronological order). Stop when we pass objects too far in the future
-    // for HittableRange to allow.
     let candIdx = -1;
     for (let j = walkStart; j < states.length; j++) {
       const s = states[j]!;
       if (s.startTime > p.timeMs + HITTABLE_RANGE) break;
       if (s.type === 'spinner' || s.headResolved) continue;
       const dx = p.x - s.x, dy = p.y - s.y;
-      if (dx * dx + dy * dy > hitRadiusSq) continue;  // PositionalMiss path: don't consume
+      if (dx * dx + dy * dy > hitRadiusSq) continue;
       candIdx = j;
       break;
     }
@@ -578,8 +490,7 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
 
     let blocked = false;
     if (useLazerRules) {
-      // CanBeHitLazer: block iff previous head unhit AND p.timeMs < lastObj.startTime.
-      // Past lastObj.startTime, next becomes clickable — permits streams through sliders.
+
       let lastObj: ObjState | null = null;
       for (let j = candIdx - 1; j >= 0; j--) {
         const Y = states[j]!;
@@ -589,8 +500,7 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
         blocked = true;
       }
     } else {
-      // CanBeHitStable: any earlier still-unresolved Y blocks if Y.endTime + 3 < X.startTime.
-      // Objects that no later press can find unresolved never block again, so the scan skips them.
+
       blockStart = advanceBlockStart(states, blockStart, pressSuffixMin[pi]!);
       for (let j = blockStart; j < candIdx; j++) {
         const Y = states[j]!;
@@ -607,11 +517,11 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
     }
 
     if (blocked) {
-      // Shake: press consumed but head stays clickable for a later press / auto-miss.
+
       continue;
     }
 
-    // Stable: int64(|delta|) < window. Lazer: |delta| <= unrounded window.
+    /** stable 比较 int(|delta|)<window，lazer 比较 |delta|≤未取整窗口。 */
     const offset = Math.abs(p.timeMs - X.startTime);
     let judgement: 300 | 100 | 50 | 0;
     if (useLazerRules) {
@@ -631,8 +541,8 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
     X.headJudgement  = judgement;
     X.headPressTime  = p.timeMs;
 
-    // Lazer PostHit: on a hit, force-miss every earlier unresolved circle/slider at press time.
-    // Miss doesn't chain. Stable instead auto-misses them at startTime + w50.
+    /** lazer 成功判定会强制 miss 前方未判定 head；Miss 不连锁。 */
+
     if (useLazerRules && judgement !== 0) {
       for (let j = walkStart; j < candIdx; j++) {
         const Y = states[j]!;
@@ -696,8 +606,8 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
       continue;
     }
 
-    // Geometry is keyed on isLazer itself (not useLazerSliderScoring): CL uses
-    // lazer sampling/ticks but scores them under stable-style rules.
+    /** CL 沿用 lazer 几何采样，但采用 stable 风格 slider 计分。 */
+
     const slider     = obj;
     const slideDur   = slideDurationMs(beatmap, slider);
     const path       = modDiff.isLazer ? sampleSliderLazer(slider) : sampleSlider(slider);
@@ -740,7 +650,6 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
       }
     };
 
-    // Objects are time-sorted, so every earlier frame already precedes this slider; only an unsorted list restarts.
     let frameIdx = slider.time >= previousSliderTime ? sliderFrameStart : 0;
     while (frameIdx < replay.frames.length && cumTimes[frameIdx]! < slider.time) frameIdx++;
     sliderFrameStart = frameIdx;
@@ -782,16 +691,9 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
       stepTracking(tailStart, cur.x, cur.y, kh);
     }
 
-    // Stable judges the slider end exactly once at the first frame ≥ tailStart;
-    // there is no rescue look-ahead. The synth check above (at tailStart) is
-    // our equivalent — anything after that would diverge from stable and count
-    // sliders as 300 that stable scores 100 (or miss, if the head was missed).
     const tailHit = tracking;
     if (tailHit) hitNested++;
 
-    // Close any open tracking interval at tailTime so flashlight dim ends with
-    // the slider. If tracking went false earlier, stepTracking already pushed
-    // the interval — nothing to do here.
     if (trackingStart !== null) {
       trackingIntervals.push({ start: trackingStart, end: tailTime });
       trackingStart = null;
@@ -802,16 +704,11 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
       time: tailTime, x: tb.x, y: tb.y,
       hitSound: 0, comboBreak: false,
       isSliderSub: true,
-      // Default lazer: the tail is a SliderTail (acc-affecting, max 150).
-      // CL / stable: tail has no acc contribution — accMax stays undefined and
-      // isSliderSub alone keeps it out of the accuracy denominator.
+      /** 默认 lazer tail 计准确率，stable/CL tail 不计。 */
+
       ...(useLazerSliderScoring ? { accMax: 150 as const } : {}),
     });
 
-    // Under default lazer, the head is its own full 300/100/50/miss judgement
-    // and it's what lands in scoreInfo.statistics.great/ok/meh/miss.
-    // Under stable / CL, we keep the fraction-based combine (the classic
-    // hitNested/totalNested threshold).
     let sliderJudgement: 300 | 100 | 50 | 0;
     if (useLazerSliderScoring) {
       sliderJudgement = s.headJudgement;
@@ -820,7 +717,6 @@ export function computeHitResults(beatmap: BeatmapData, replay: ReplayData, modD
     else if (hitNested / totalNested >= 0.5)    sliderJudgement = 100;
     else                                        sliderJudgement = 50;
 
-    // Main popup at ball's final resting position: even slides→head, odd→tail (matches stable).
     const finalBall = ballStackedAt(tailTime);
     results.push({
       objectIndex: i,

@@ -11,7 +11,6 @@ export type TufAvatarSource = {
   user?: { avatarUrl?: string | null } | null;
 };
 
-/** TUF 同时在搜索结果与公开资料里使用过不同头像字段；统一在边界解析。 */
 export function resolveTufAvatarUrl(player: TufAvatarSource | null | undefined): string | null {
   return player?.pfp?.trim()
     || player?.user?.avatarUrl?.trim()
@@ -283,7 +282,6 @@ export function filterTufPasses(
   return passes.filter((pass) => tufPassMatchesFilters(pass, difficulty, achievement));
 }
 
-/** bestPerLevel 分页的防御性去重：保留上游排序中最先出现的每关最佳。 */
 export function uniqueTufPassesByLevel(passes: readonly TufPass[]): TufPass[] {
   const byLevel = new Map<number, TufPass>();
   for (const pass of passes) {
@@ -399,11 +397,6 @@ export function tufMediaImageCandidates(
   return candidates;
 }
 
-/**
- * TUF 缓存快照：resource_snapshots 表内独立命名空间 `tuf:`，
- * 每个游戏保留自己的缓存结构与 schema 版本，不复用其他游戏快照。
- * source 供 cacheFirstLoad 打「数据可能过期」标并保留 label 与拉取时间。
- */
 export type TufPlayerSnapshot = { data: TufPlayer; source: DataSource };
 export type TufPassPageSnapshot = { data: TufPassPage; source: DataSource };
 export type TufLevelPageSnapshot = { data: TufLevelPage; source: DataSource };

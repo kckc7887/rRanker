@@ -1,8 +1,9 @@
 import { z } from 'zod';
 import type { OsuGameId } from './game-mode-family';
 import type { DataSource } from './models';
+import { DataSourceSchema } from './schemas';
 
-/** osu! API 的 ruleset 值：catch 的 API 值是 fruits（官方命名），不是 catch。 */
+/** catch 在 API 中称为 fruits。 */
 export const OSU_RULESET_BY_GAME_ID: Record<OsuGameId, string> = {
   'osu-standard': 'osu',
   'osu-taiko': 'taiko',
@@ -17,8 +18,6 @@ export const OSU_MODE_INT_BY_GAME_ID: Record<OsuGameId, number> = {
   'osu-mania': 3,
 };
 
-// ---- 上游原始响应 Schema（请求带 x-api-version: 20220705，legacy 字段容错） ----
-
 const OsuCoversSchema = z.object({
   cover: z.string().optional(),
   'cover@2x': z.string().optional(),
@@ -30,11 +29,7 @@ const OsuCoversSchema = z.object({
   'slimcover@2x': z.string().optional(),
 }).passthrough();
 
-/**
- * 单张谱面原始结构（BeatmapExtended 属性）：详情页需要 bpm/cs（mania 即键数）/
- * drain（HP）/accuracy（OD）/ar/物件计数/时长等属性；上游可能对部分字段返回
- * null（未统计），统一 nullable 容错，缺失时规范化为 null。
- */
+/** 上游 cs 在 mania 中表示键数，drain 表示 HP，accuracy 表示 OD。 */
 const OsuBeatmapSchema = z.object({
   id: z.number(),
   beatmapset_id: z.number(),
@@ -73,7 +68,6 @@ const OsuWeightSchema = z.object({
   pp: z.number(),
 }).passthrough();
 
-/** 成绩判定计数（20220705 版 statistics）：各键可能缺失或为 null，逐字段容错。 */
 const OsuScoreStatisticsSchema = z.object({
   perfect: z.number().nullable().optional(),
   great: z.number().nullable().optional(),
@@ -83,16 +77,12 @@ const OsuScoreStatisticsSchema = z.object({
   miss: z.number().nullable().optional(),
 }).passthrough();
 
-/**
- * 成绩模组（mods）：legacy 格式为 acronym 字符串数组，新版 solo score 为
- * { acronym, settings } 对象数组；两者并存容错，规范化时统一提取 acronym。
- */
+/** 上游同时返回 acronym 字符串数组或 {acronym, settings} 数组。 */
 const OsuScoreModsSchema = z.array(z.union([
   z.string(),
   z.object({ acronym: z.string().optional() }).passthrough(),
 ])).optional().nullable();
 
-/** 个人最佳成绩条目（x-api-version 20220705 新版格式 + legacy score 字段容错）。 */
 export const OsuBestScoreSchema = z.object({
   id: z.number(),
   accuracy: z.number(),
@@ -112,7 +102,6 @@ export const OsuBestScoreSchema = z.object({
 }).passthrough();
 export type OsuBestScoreRaw = z.infer<typeof OsuBestScoreSchema>;
 
-/** GET /beatmaps/{beatmap}/scores/users/{user}：指定玩家在单张谱面的最佳成绩。 */
 export const OsuBeatmapUserScoreResponseSchema = z.object({
   score: OsuBestScoreSchema,
 }).passthrough();
@@ -127,7 +116,6 @@ const OsuUserStatisticsSchema = z.object({
   country_rank: z.number().nullable().optional(),
 }).passthrough();
 
-/** GET /api/v2/me/{mode} 与 /api/v2/users/{user}/{mode} 的响应。 */
 export const OsuUserResponseSchema = z.object({
   id: z.number(),
   username: z.string(),
@@ -136,7 +124,6 @@ export const OsuUserResponseSchema = z.object({
 }).passthrough();
 export type OsuUserResponseRaw = z.infer<typeof OsuUserResponseSchema>;
 
-/** GET /api/v2/beatmapsets/search 响应条目：beatmap（含 mode/mode_int 供按模式过滤）。 */
 const OsuSearchBeatmapSchema = z.object({
   id: z.number(),
   beatmapset_id: z.number(),
@@ -147,7 +134,6 @@ const OsuSearchBeatmapSchema = z.object({
   status: z.string().optional(),
 }).passthrough();
 
-/** GET /api/v2/beatmapsets/search 响应条目：beatmapset（曲库页的「歌曲」）。 */
 const OsuSearchBeatmapsetSchema = z.object({
   id: z.number(),
   title: z.string(),
@@ -159,7 +145,7 @@ const OsuSearchBeatmapsetSchema = z.object({
   beatmaps: z.array(OsuSearchBeatmapSchema).optional(),
 }).passthrough();
 
-/** GET /api/v2/beatmapsets/search 响应：每页 50 份（上游 osu.beatmaps.max 固定），cursor_string 翻页。 */
+/** 上游每页最多 50 个谱面集，用 cursor_string 翻页。 */
 export const OsuBeatmapsetSearchResponseSchema = z.object({
   beatmapsets: z.array(OsuSearchBeatmapsetSchema),
   total: z.number(),
@@ -168,19 +154,16 @@ export const OsuBeatmapsetSearchResponseSchema = z.object({
 }).passthrough();
 export type OsuBeatmapsetSearchRaw = z.infer<typeof OsuBeatmapsetSearchResponseSchema>;
 
-/** beatmapset 的流派（BeatmapsetExtended.genre，仅取 name 展示）。 */
 const OsuGenreSchema = z.object({
   id: z.number().optional(),
   name: z.string().optional(),
 }).passthrough();
 
-/** beatmapset 的语言（BeatmapsetExtended.language，仅取 name 展示）。 */
 const OsuLanguageSchema = z.object({
   id: z.number().optional(),
   name: z.string().optional(),
 }).passthrough();
 
-/** GET /api/v2/beatmapsets/{id} 响应（BeatmapsetExtended，歌曲详情页数据源）。 */
 export const OsuBeatmapsetLookupSchema = z.object({
   id: z.number(),
   title: z.string(),
@@ -195,13 +178,10 @@ export const OsuBeatmapsetLookupSchema = z.object({
   rating: z.number().nullable().optional(),
   favourite_count: z.number().nullable().optional(),
   play_count: z.number().nullable().optional(),
-  /** 谱师自打的标签（空格分隔字符串），展示层拆分为胶囊。 */
   tags: z.string().nullable().optional(),
   beatmaps: z.array(OsuBeatmapSchema).optional(),
 }).passthrough();
 export type OsuBeatmapsetLookupRaw = z.infer<typeof OsuBeatmapsetLookupSchema>;
-
-// ---- 规范化快照（游戏自有 DTO，独立于上游字段） ----
 
 export type OsuBeatmapInfo = {
   id: number;
@@ -218,7 +198,6 @@ export type OsuBeatmapsetInfo = {
   listCover: string | null;
 };
 
-/** 判定计数展示口径：旧缓存/旧版成绩无 statistics 时整体为 null。 */
 export type OsuScoreStatistics = {
   perfect: number | null;
   great: number | null;
@@ -230,7 +209,7 @@ export type OsuScoreStatistics = {
 
 export type OsuBestScore = {
   id: number;
-  /** 展示用得分：新版 total_score，legacy 回退 score/classic_total_score。 */
+  /** 上游 total_score 优先，其次 score / classic_total_score。 */
   score: number;
   accuracy: number;
   maxCombo: number | null;
@@ -238,11 +217,9 @@ export type OsuBestScore = {
   rank: string;
   beatmap: OsuBeatmapInfo;
   beatmapset: OsuBeatmapsetInfo;
-  /** 判定计数（perfect/great/good/ok/meh/miss）；旧版成绩或旧缓存无该数据时为 null。 */
   statistics: OsuScoreStatistics | null;
-  /** 达成成绩所用模组的 acronym（如 HD/DT）；旧版成绩或旧缓存无该数据时为空数组。 */
   mods: string[];
-  /** 达成时间（ISO 字符串）：新版 ended_at，legacy 回退 created_at；缺失为 null。 */
+  /** 上游 ended_at 优先，其次 created_at。 */
   achievedAt: string | null;
 };
 
@@ -262,13 +239,11 @@ export type OsuSnapshotData = {
   bestScores: OsuBestScore[];
 };
 
-/** 已知成绩集合：以谱面 ID 去重，打开歌曲详情后可持续补充。 */
 export type OsuKnownScoresSnapshot = {
   items: Record<string, OsuBestScore>;
   source: DataSource;
 };
 
-/** 曲库页条目：一首歌 = 一个 beatmapset；难度标签为该 set 下当前模式全部 beatmaps 星数升序。 */
 export type OsuCatalogSong = {
   beatmapSetId: number;
   title: string;
@@ -278,7 +253,6 @@ export type OsuCatalogSong = {
   difficultyRatings: number[];
 };
 
-/** 歌曲详情页单张谱面（BeatmapExtended 规范化）：数值属性缺失为 null，展示层负责 '—'。 */
 export type OsuBeatmapDetail = {
   id: number;
   version: string;
@@ -296,7 +270,6 @@ export type OsuBeatmapDetail = {
   maxCombo: number | null;
 };
 
-/** 歌曲详情页歌曲（GET /beatmapsets/{id} 规范化）：beatmaps 已按当前模式过滤并按星数降序。 */
 export type OsuBeatmapsetDetail = {
   beatmapSetId: number;
   title: string;
@@ -308,23 +281,17 @@ export type OsuBeatmapsetDetail = {
   languageName: string | null;
   rating: number | null;
   favouriteCount: number | null;
-  /** 谱师自打的标签（上游 tags 空格分隔 → 数组；无标签为空数组）。 */
   tags: string[];
   beatmaps: OsuBeatmapDetail[];
 };
 
-// ---- 曲库搜索（beatmapset search）筛选口径 ----
-
-/** 常规组筛选（请求参数 c，点号连接）：与 osu 官网侧栏一致。 */
 export type OsuGeneralFlag =
   | 'recommended' | 'converts' | 'follows' | 'spotlights' | 'featured_artists';
 
-/** 分类筛选（请求参数 s）：与 osu 官网一致。 */
 export type OsuSearchStatus =
   | 'any' | 'leaderboard' | 'ranked' | 'qualified' | 'loved'
   | 'favourites' | 'pending' | 'wip' | 'graveyard' | 'mine';
 
-/** 其他筛选（请求参数 e，点号连接）。 */
 export type OsuExtraFlag = 'video' | 'storyboard';
 
 export const OSU_GENERAL_FILTERS: readonly { flag: OsuGeneralFlag; label: string }[] = [
@@ -388,13 +355,11 @@ export const OSU_EXTRA_FILTERS: readonly { flag: OsuExtraFlag; label: string }[]
   { flag: 'storyboard', label: '有故事板' },
 ];
 
-/** 不良内容：隐藏（默认，nsfw=false）/ 显示（nsfw=true）。 */
 export const OSU_NSFW_FILTERS: readonly { value: boolean; label: string }[] = [
   { value: false, label: '隐藏' },
   { value: true, label: '显示' },
 ];
 
-/** 曲库搜索请求（UI 筛选状态口径，经 buildOsuBeatmapsetSearchQuery 转为请求参数）。 */
 export type OsuBeatmapsetSearchParams = {
   gameId: OsuGameId;
   q?: string;
@@ -407,12 +372,6 @@ export type OsuBeatmapsetSearchParams = {
   extras: readonly OsuExtraFlag[];
 };
 
-/**
- * UI 筛选状态 → 请求参数：
- * - m 恒为当前游戏模式（OSU_MODE_INT_BY_GAME_ID），玩家不可见不可改；
- * - c/e 点号连接常规/其他多选，仅在非空时携带；
- * - s/g/l 非默认（any/0）才携带；nsfw 恒携带（默认 false）；q/cursor_string 非空才携带。
- */
 export function buildOsuBeatmapsetSearchQuery(
   params: OsuBeatmapsetSearchParams,
 ): Record<string, string> {
@@ -429,7 +388,6 @@ export function buildOsuBeatmapsetSearchQuery(
   return query;
 }
 
-/** 搜索响应 → 曲库条目：标题/作者 unicode 优先；难度仅取当前模式全部 beatmaps（含转谱）并升序。 */
 export function normalizeOsuCatalogSongs(
   raw: OsuBeatmapsetSearchRaw,
   gameId: OsuGameId,
@@ -457,13 +415,6 @@ export function normalizeOsuCatalogSongs(
   });
 }
 
-/**
- * beatmapset lookup 响应 → 歌曲详情 DTO：
- * - 标题/艺术家 unicode 优先；封面取方形卡片图优先（详情 Hero 为方形，card@2x 分辨率最合适）；
- * - 难度过滤口径与曲库 normalizeOsuCatalogSongs 完全一致（mode === ruleset || mode_int === modeInt），
- *   过滤后按星数从高到低排序（详情页轮播自高星起）；
- * - 全部数值属性 optionalNumber 容错，缺失归一化为 null。
- */
 export function normalizeOsuBeatmapsetDetail(
   raw: OsuBeatmapsetLookupRaw,
   gameId: OsuGameId,
@@ -512,7 +463,6 @@ export function normalizeOsuBeatmapsetDetail(
   };
 }
 
-/** 快照 = 数据 + 来源（与 TUF/喵斯快照同构，data 字段承载游戏自有 DTO）。 */
 export type OsuSnapshot = {
   data: OsuSnapshotData;
   source: DataSource;
@@ -529,8 +479,6 @@ export function osuKnownScoresCacheKey(gameId: OsuGameId, userId: number): strin
   return `osu-known-scores:${gameId}:${userId}`;
 }
 
-// ---- 缓存快照校验 Schema ----
-
 const OsuBeatmapInfoSnapshotSchema = z.object({
   id: z.number(),
   beatmapSetId: z.number(),
@@ -546,14 +494,13 @@ const OsuBeatmapsetInfoSnapshotSchema = z.object({
   listCover: z.string().nullable(),
 }).passthrough();
 
-/** 快照中的判定计数：可选字段（旧缓存无 statistics 时整体缺失），向后兼容不迁移。 */
 const OsuScoreStatisticsSnapshotSchema = z.object({
-  perfect: z.number().nullable().optional(),
-  great: z.number().nullable().optional(),
-  good: z.number().nullable().optional(),
-  ok: z.number().nullable().optional(),
-  meh: z.number().nullable().optional(),
-  miss: z.number().nullable().optional(),
+  perfect: z.number().nullable(),
+  great: z.number().nullable(),
+  good: z.number().nullable(),
+  ok: z.number().nullable(),
+  meh: z.number().nullable(),
+  miss: z.number().nullable(),
 }).passthrough();
 
 const OsuBestScoreSnapshotSchema = z.object({
@@ -565,10 +512,9 @@ const OsuBestScoreSnapshotSchema = z.object({
   rank: z.string(),
   beatmap: OsuBeatmapInfoSnapshotSchema,
   beatmapset: OsuBeatmapsetInfoSnapshotSchema,
-  statistics: OsuScoreStatisticsSnapshotSchema.nullable().optional(),
-  /** 可选字段（旧缓存无 mods 时整体缺失），向后兼容不迁移。 */
-  mods: z.array(z.string()).optional(),
-  achievedAt: z.string().nullable().optional(),
+  statistics: OsuScoreStatisticsSnapshotSchema.nullable(),
+  mods: z.array(z.string()),
+  achievedAt: z.string().nullable(),
 }).passthrough();
 
 const OsuPlayerSnapshotSchema = z.object({
@@ -582,16 +528,9 @@ const OsuPlayerSnapshotSchema = z.object({
   globalRank: z.number().nullable(),
 }).passthrough();
 
-const OsuDataSourceSchema = z.object({
-  kind: z.string(),
-  label: z.string(),
-  updatedAt: z.string(),
-  isStale: z.boolean(),
-}).passthrough();
-
 export const OsuKnownScoresSnapshotSchema = z.object({
   items: z.record(z.string(), OsuBestScoreSnapshotSchema),
-  source: OsuDataSourceSchema,
+  source: DataSourceSchema,
 }).passthrough();
 
 export const OsuSnapshotSchema = z.object({
@@ -599,19 +538,13 @@ export const OsuSnapshotSchema = z.object({
     player: OsuPlayerSnapshotSchema,
     bestScores: z.array(OsuBestScoreSnapshotSchema),
   }).passthrough(),
-  source: OsuDataSourceSchema,
+  source: DataSourceSchema,
 }).passthrough();
-
-// ---- 规范化 ----
 
 function optionalNumber(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null;
 }
 
-/**
- * 成绩模组提取：legacy 字符串直接取，新版对象取 acronym；
- * 无效项（空串/无 acronym/非字符串非对象）静默丢弃，整体缺失归一化为空数组。
- */
 function normalizeOsuScoreMods(mods: OsuBestScoreRaw['mods']): string[] {
   if (!mods) return [];
   return mods.flatMap((mod) => {
@@ -621,7 +554,6 @@ function normalizeOsuScoreMods(mods: OsuBestScoreRaw['mods']): string[] {
   });
 }
 
-/** osu! 成绩端点共用的原始成绩规范化；缺 beatmap/beatmapset 的条目不可展示。 */
 export function normalizeOsuScores(scores: readonly OsuBestScoreRaw[]): OsuBestScore[] {
   return scores.flatMap((raw) => {
       if (!raw.beatmap || !raw.beatmapset) return [];
@@ -650,7 +582,6 @@ export function normalizeOsuScores(scores: readonly OsuBestScoreRaw[]): OsuBestS
             ?? covers.card
             ?? null,
         },
-        // 判定计数：上游缺失（旧版成绩）时整体归一化为 null，展示层显示 '—'。
         statistics: raw.statistics ? {
           perfect: optionalNumber(raw.statistics.perfect),
           great: optionalNumber(raw.statistics.great),
@@ -659,18 +590,13 @@ export function normalizeOsuScores(scores: readonly OsuBestScoreRaw[]): OsuBestS
           meh: optionalNumber(raw.statistics.meh),
           miss: optionalNumber(raw.statistics.miss),
         } : null,
-        // 达成时间：新版 ended_at 优先，legacy 回退 created_at。
         achievedAt: raw.ended_at ?? raw.created_at ?? null,
-        // 模组 acronym：legacy 字符串/新版对象统一提取；缺失为空数组。
         mods: normalizeOsuScoreMods(raw.mods),
       }];
     });
 }
 
-/**
- * 单谱成绩端点不保证内嵌 beatmap/beatmapset；用当前详情或既有成绩补齐展示元数据，
- * 再走成绩端点共用规范化函数，避免产生第三套成绩映射。
- */
+/** 单谱成绩可能不带谱面元数据，使用当前详情补齐。 */
 export function normalizeOsuBeatmapUserScore(
   raw: OsuBestScoreRaw,
   gameId: OsuGameId,
@@ -697,7 +623,6 @@ export function normalizeOsuBeatmapUserScore(
   return normalizeOsuScores([enriched])[0] ?? null;
 }
 
-/** 原始响应 → 游戏自有快照。 */
 export function normalizeOsuSnapshot(
   user: OsuUserResponseRaw,
   scores: readonly OsuBestScoreRaw[],
@@ -717,9 +642,6 @@ export function normalizeOsuSnapshot(
   };
 }
 
-// ---- 展示口径 ----
-
-/** beatmapset 状态 → 中文标签（详情页简要信息栏「分类」列；未知状态展示层回退「未知」）。 */
 export const OSU_STATUS_LABELS: Record<string, string> = {
   ranked: '上架',
   approved: '认可',
@@ -730,12 +652,7 @@ export const OSU_STATUS_LABELS: Record<string, string> = {
   graveyard: '坟场',
 };
 
-/**
- * 推荐星级（纯函数，不依赖上游 recommended_difficulty）：
- * - osu-taiko：pp^0.35 × 0.27；
- * - 其余三模式（standard/catch/mania）：pp^0.4 × 0.195；
- * - pp 为 null/undefined/非有限数/≤0（未绑定、未加载、无成绩）时返回 1★。
- */
+/** taiko 推荐星级为 pp^0.35×0.27，其余模式为 pp^0.4×0.195。 */
 export function recommendedOsuStar(gameId: OsuGameId, pp: number | null | undefined): number {
   if (pp == null || !Number.isFinite(pp) || pp <= 0) return 1;
   const base = gameId === 'osu-taiko' ? 0.35 : 0.4;
@@ -743,18 +660,16 @@ export function recommendedOsuStar(gameId: OsuGameId, pp: number | null | undefi
   return Math.pow(pp, base) * scale;
 }
 
-/** PP 展示：四舍五入整数 + 千分位（osu! 官方口径）。 */
+/** PP 按整数四舍五入显示。 */
 export function formatOsuPp(pp: number | null | undefined): string {
   if (pp == null || !Number.isFinite(pp)) return '—';
   return Math.round(pp).toLocaleString('en-US');
 }
 
-/** 准确率展示：两位小数百分比。 */
 export function formatOsuAccuracy(accuracy: number): string {
   return `${(accuracy * 100).toFixed(2)}%`;
 }
 
-/** 游戏时间小字：X 天 X 小时 / X 小时。 */
 export function formatOsuPlayTime(seconds: number | null): string {
   if (seconds == null || !Number.isFinite(seconds) || seconds <= 0) return '游戏时间 0 小时';
   const totalMinutes = Math.floor(seconds / 60);

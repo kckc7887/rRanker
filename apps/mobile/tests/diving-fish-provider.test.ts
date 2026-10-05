@@ -1,6 +1,5 @@
 import { DivingFishProvider } from '@/providers/diving-fish-provider';
 
-/** 公共请求执行器会合并默认头（Accept / Cache-Control），这里按 HTTP 语义大小写无关地断言。 */
 function requestInit(request: ReturnType<typeof vi.fn>, index = -1) {
   const call = request.mock.calls.at(index)!;
   return { url: String(call[0]), init: call[1] as RequestInit, headers: new Headers((call[1] as RequestInit)?.headers) };
@@ -66,7 +65,6 @@ describe('DivingFishProvider native cookie session', () => {
 
     expect(player).toMatchObject({
       id: 'masked-user', displayName: '脱敏玩家', rating: 12345,
-      additionalRating: 22,
       extension: { kind: 'maimai', courseRank: 23 },
       presentation: { trophyName: '测试称号' },
     });

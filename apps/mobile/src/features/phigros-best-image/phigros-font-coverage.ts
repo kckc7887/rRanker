@@ -3,7 +3,6 @@ import {
   type PhigrosFontManifestEntry,
 } from './phigros-font-cache';
 
-/** Manifest `name` → CSS `font-family` 名称（与 common.css 一致）。 */
 export const PHIGROS_FONT_CSS_FAMILY: Readonly<Record<string, string>> = {
   phi: 'PHI',
   'Aldrich-Regular': 'Aldrich',
@@ -19,7 +18,6 @@ export const PHIGROS_FONT_CSS_FAMILY: Readonly<Record<string, string>> = {
   'NotoSansMath-Regular': 'NotoSansMath-Regular',
 };
 
-/** body 字体栈顺序（不含 Aldrich；Aldrich 仅用于页脚 / 分区分隔线）。 */
 export const PHIGROS_BODY_FONT_STACK_ORDER = [
   'phi',
   'NotoSansArabic',
@@ -39,7 +37,7 @@ function inRange(code: number, start: number, end: number): boolean {
 }
 
 function isEmojiCodePoint(code: number): boolean {
-  // 仅补充平面与明确 emoji 区块；BMP 符号走 NotoSansSymbols2，避免误拉 ~24MB 彩色 Emoji。
+  /** BMP 符号使用 NotoSansSymbols2，避免加载彩色 Emoji 字体。 */
   return inRange(code, 0x1F300, 0x1FAFF)
     || inRange(code, 0x1F1E6, 0x1F1FF)
     || code === 0x20E3;
@@ -91,7 +89,7 @@ function isSymbolBlock(code: number): boolean {
     || inRange(code, 0x2B00, 0x2BFF);
 }
 
-/** PHI 已覆盖：基本拉丁、常用标点、CJK。其余西欧/西里尔等走 NOTO。 */
+/** PHI 已覆盖拉丁、标点和 CJK，NOTO 仅补其余字符。 */
 function needsNotoSansRegular(code: number): boolean {
   if (code <= 0x007F) return false;
   if (inRange(code, 0x00A0, 0x024F)) return true;
@@ -101,10 +99,6 @@ function needsNotoSansRegular(code: number): boolean {
   return false;
 }
 
-/**
- * 根据成绩图可见文本解析需要的字体（始终包含核心字体）。
- * 扩展字体按 Unicode 脚本/区块启发式映射到参考模板 fallback 栈。
- */
 export function resolveNeededPhigrosFonts(
   texts: readonly string[],
   manifest: readonly PhigrosFontManifestEntry[] = PHIGROS_FONT_MANIFEST,
@@ -138,10 +132,6 @@ export function phigrosFontCssFamilyNames(entries: readonly PhigrosFontManifestE
     .filter((name): name is string => !!name);
 }
 
-/**
- * 裁剪模板 CSS：只保留所需 @font-face，并缩短 body font-family 栈。
- * Aldrich 相关选择器保留原样（核心字体始终下载）。
- */
 export function trimPhigrosBestImageCss(
   css: string,
   neededEntries: readonly PhigrosFontManifestEntry[],

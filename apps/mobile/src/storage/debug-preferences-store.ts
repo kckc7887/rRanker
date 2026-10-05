@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createPreferencesStore } from './create-preferences-store';
 
 export type DebugPreferences = { testAccountsEnabled: boolean };
@@ -5,10 +6,7 @@ export type DebugPreferences = { testAccountsEnabled: boolean };
 const { Store } = createPreferencesStore<DebugPreferences>({
   storeKey: 'debug-preferences-v1',
   defaults: () => ({ testAccountsEnabled: false }),
-  parse: (value) => ({
-    testAccountsEnabled: value !== null && typeof value === 'object'
-      && 'testAccountsEnabled' in value && value.testAccountsEnabled === true,
-  }),
+  parse: value => z.object({ testAccountsEnabled: z.boolean() }).parse(value),
 });
 
 export const DebugPreferencesStore = Store;

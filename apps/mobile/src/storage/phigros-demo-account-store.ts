@@ -3,17 +3,14 @@ import { createDemoAccountStore, type DemoAccountProfile } from '@/storage/creat
 
 export type PhigrosDemoAccountProfile = DemoAccountProfile;
 
-const { parse, Store } = createDemoAccountStore({
+const { Store } = createDemoAccountStore({
   storeKey: 'rranker.phigros-demo-account.v1',
   isTestAccountId: isPhigrosDemoAccountId,
   saveErrorMessage: 'Phigros 示例账号名称不能为空',
 });
 
-export const DEFAULT_PHIGROS_DEMO_PLAYER_NAME = '示例账号';
-
 export function isPhigrosDemoAccountId(accountId: string): boolean {
   return accountId === PHIGROS_TEST_ACCOUNT_ID;
 }
 
-export const parsePhigrosDemoAccountProfile = parse;
 export const PhigrosDemoAccountStore = Store;

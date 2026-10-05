@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -31,7 +31,7 @@ const SYSTEM_UI_FONT = 'system-ui, "Segoe UI", "PingFang SC", "Microsoft YaHei U
 
 const CANVAS_W = 1280;
 const CANVAS_H = 720;
-// Must match HitObjectRenderer.
+
 const SCALE    = Math.min(800 / 512, 600 / 384) * 0.9;
 const OFFSET_X = (CANVAS_W - 512 * SCALE) / 2;
 const OFFSET_Y = (CANVAS_H - 384 * SCALE) / 2;
@@ -40,34 +40,32 @@ function toCanvas(x: number, y: number): [number, number] {
   return [OFFSET_X + x * SCALE, OFFSET_Y + y * SCALE];
 }
 
-// Danser hitresults.go.
+/** 动画参考 Danser hitresults.go。 */
 const RESULT_FADE_IN  = 120;
 const POST_EMPT       = 500;
 const RESULT_FADE_OUT = 600;
 const TOTAL_MS        = POST_EMPT + RESULT_FADE_OUT;
 
-// Miss drifts y+45 over lifetime and rotates by an angle that doubles.
 const MISS_Y_START    = -5;
 const MISS_Y_END      = 40;
 const MISS_ROT_RANGE  = 0.3;
 const MISS_ROT_CENTER = 0.15;
 
-// Lazer LegacyJudgementPieceOld (legacy-skin taiko popups). Multi-frame skips scale/move/rotate.
+/** taiko 动画参考 lazer LegacyJudgementPieceOld。 */
 const LEGACY_TAIKO_FADE_IN_MS         = 120;
 const LEGACY_TAIKO_FADE_OUT_DELAY_MS  = 500;
 const LEGACY_TAIKO_FADE_OUT_MS        = 600;
 const LEGACY_TAIKO_TOTAL_MS           = LEGACY_TAIKO_FADE_OUT_DELAY_MS + LEGACY_TAIKO_FADE_OUT_MS;
 
-// Lazer getFrameLength (applyConfigFrameRate=false) = 1000 / textures.Length.
+/** 沿用 lazer：帧长=1000/纹理数。 */
 const LEGACY_TAIKO_ANIM_TOTAL_MS = 1000;
 
-// Y=-5 start matches stable legacyVersion > 1.0 path; we don't parse skin.ini Version.
 const LEGACY_TAIKO_MISS_SCALE_MS     = 100;
 const LEGACY_TAIKO_MISS_SCALE_START  = 1.6;
 const LEGACY_TAIKO_MISS_SCALE_END    = 1.0;
 const LEGACY_TAIKO_MISS_Y_START_PX   = -5;
 const LEGACY_TAIKO_MISS_Y_END_PX     = 75;
-// Spec: RNG.NextSingle(-8.6f, 8.6f) degrees.
+/** lazer 随机旋转范围为 ±8.6 度。 */
 const LEGACY_TAIKO_MISS_ROT_MAX_RAD  = (8.6 * Math.PI) / 180;
 
 function clamp01(t: number): number { return t <= 0 ? 0 : t >= 1 ? 1 : t; }
@@ -79,7 +77,6 @@ function legacyTaikoFade(age: number): number {
   return 1 - (age - LEGACY_TAIKO_FADE_OUT_DELAY_MS) / LEGACY_TAIKO_FADE_OUT_MS;
 }
 
-// Snap to 0.95 between the 0.9→1.0 segments matches lazer's LegacyJudgementPieceOld.
 function legacyTaikoHitScale(age: number): number {
   if (age < 96)  return 0.6 + (1.1 - 0.6) * (age / 96);
   if (age < 120) return 1.1;
@@ -88,7 +85,6 @@ function legacyTaikoHitScale(age: number): number {
   return 1.0;
 }
 
-// First image present and not a 1×1 placeholder wins; @2x preferred.
 const SKIN_STEMS: Record<number, string[]> = {
   300: ['hit300', 'hit300-0'],
   100: ['hit100', 'hit100-0'],
@@ -96,8 +92,8 @@ const SKIN_STEMS: Record<number, string[]> = {
   0:   ['hit0',   'hit0-0'],
 };
 
-// Split from std fallback: a 1×1 taiko-prefixed placeholder is an explicit suppression and
-// must NOT fall through to the bare hit300 stem (which on many skins is a non-empty std sprite).
+/** taiko 的 1×1 占位图是显式隐藏，不能回退到 standard 素材。 */
+
 const TAIKO_SKIN_STEMS: Record<number, string[]> = {
   300: ['taiko-hit300'],
   100: ['taiko-hit100'],
@@ -114,16 +110,12 @@ const TAIKO_STD_FALLBACK: Record<number, string[]> = {
   0:   ['hit0',   'hit0-0'],
 };
 
-/** Look up a stem trying @2x then 1x. Returns the bitmap regardless of size. */
 function lookupStem(images: Map<string, ImageBitmap>, stem: string): ImageBitmap | undefined {
   return images.get(`${stem}@2x.png`) ?? images.get(`${stem}.png`);
 }
 
-/** Sprite + how to interpret its pixel size (@2x sprites halve to natural). */
 interface SpriteWithScale { bitmap: ImageBitmap; pixelScale: number }
 
-/** @2x-aware lookup that returns the natural-size scale alongside the bitmap.
- *  Filters 1×1 placeholder PNGs (the skin-author "explicitly suppressed" convention). */
 function lookupStemNatural(images: Map<string, ImageBitmap>, stem: string): SpriteWithScale | undefined {
   const at2x = images.get(`${stem}@2x.png`);
   if (at2x !== undefined && at2x.width > 1) return { bitmap: at2x, pixelScale: 0.5 };
@@ -132,8 +124,6 @@ function lookupStemNatural(images: Map<string, ImageBitmap>, stem: string): Spri
   return undefined;
 }
 
-/** Returns true if the skin ships a 1×1 placeholder for this stem (suppression).
- *  Used to halt the fallback chain when a skinner explicitly blanked the stem. */
 function isStemSuppressed(images: Map<string, ImageBitmap>, stem: string): boolean {
   const at2x = images.get(`${stem}@2x.png`);
   if (at2x !== undefined && at2x.width === 1) return true;
@@ -157,8 +147,6 @@ function resolveStemFrames(images: Map<string, ImageBitmap>, stem: string): Spri
   return single !== undefined ? [single] : [];
 }
 
-/** std: first present, non-1×1 stem wins (@2x preferred), reported with its native scale
- *  so the burst can be drawn at canonical legacy scale instead of a fixed box. */
 function resolveStdJudgementSprite(
   images: Map<string, ImageBitmap>,
   judgement: number,
@@ -172,7 +160,6 @@ function resolveStdJudgementSprite(
   return undefined;
 }
 
-// Taiko mode: any taiko-prefixed stem (even 1×1) is authoritative — never fall through to std.
 function resolveJudgementImage(
   images: Map<string, ImageBitmap>,
   judgement: number,
@@ -204,7 +191,6 @@ function resolveJudgementImage(
   return undefined;
 }
 
-// Returns null on explicit 1×1 suppression (skip std fallback); [] when nothing shipped.
 function resolveTaikoPopupFrames(
   images: Map<string, ImageBitmap>,
   judgement: number,
@@ -241,21 +227,18 @@ const FONT_SIZE: Record<number, number> = {
   0:   26,
 };
 
-// Taiko bursts (including std-sprite fallbacks) draw into this fixed box, in canvas px.
 const IMAGE_SIZE = 128;
 
-// osu! OBJECT_DIMENSIONS (= 2 × OBJECT_RADIUS). std bursts use the canonical legacy scale —
-// one @1x texture pixel = one osu! gamefield unit, a 128px@1x sprite spans the circle
-// diameter (2 × radius) — matching danser hitresults.go (nativeTex × CircleRadius/64) and the
-// hit-circle/head/ball scaling in HitObjectRenderer's canonicalDiameter.
+/** standard 判定贴图按原生像素×radius/64 缩放。 */
+
 const OBJECT_DIAMETER_PX = 128;
 
-// Danser bounce-in: 0.6→1.1 (96ms), hold (24ms), 1.1→0.9 (24ms), 0.9→1.0 (24ms).
+/** Danser 弹入：0.6→1.1(96ms)，停24ms，再各用24ms收敛至1。 */
 function bounceScale(age: number): number {
-  const a = RESULT_FADE_IN * 0.8;   // 96
-  const b = RESULT_FADE_IN;         // 120
-  const c = RESULT_FADE_IN * 1.2;   // 144
-  const d = RESULT_FADE_IN * 1.4;   // 168
+  const a = RESULT_FADE_IN * 0.8;
+  const b = RESULT_FADE_IN;
+  const c = RESULT_FADE_IN * 1.2;
+  const d = RESULT_FADE_IN * 1.4;
   if (age < a) return 0.6 + (1.1 - 0.6) * (age / a);
   if (age < b) return 1.1;
   if (age < c) return 1.1 + (0.9 - 1.1) * ((age - b) / (c - b));
@@ -263,23 +246,12 @@ function bounceScale(age: number): number {
   return 1.0;
 }
 
-/**
- * Deterministic per-result rotation seed in [-0.15, +0.15].  Uses result.time
- * so the rotation is stable across frames without storing any per-result state.
- */
 function missRotationSeed(time: number): number {
   const x = Math.sin(time * 0.1234567) * 43758.5453;
   const frac = x - Math.floor(x);
   return frac * MISS_ROT_RANGE - MISS_ROT_CENTER;
 }
 
-/**
- * Draw judgement popups (300/100/50/miss bursts) for every result whose animation window
- * contains `timeMs` (beatmap ms). In taiko mode `result.x/y` are already canvas coords
- * (popups pre-placed by the judgement pipeline); in std mode they are osu!pixels and are
- * converted here. `circleRadiusOsuPx` (std only) is the mod-adjusted osu!-pixel circle
- * radius used to size bursts at canonical legacy scale; omitted for taiko (fixed box).
- */
 export function drawJudgements(
   ctx: CanvasRenderingContext2D,
   results: readonly HitResult[],
@@ -294,7 +266,7 @@ export function drawJudgements(
       if (result.comboIgnore === true) continue;
     } else {
       if (result.isSliderSub === true) continue;
-      // 300s hidden by default to reduce visual noise on clean plays.
+
       if (result.judgement === 300) continue;
     }
 
@@ -315,7 +287,6 @@ export function drawJudgements(
     let y = cy;
     let rotation = 0;
 
-    // Multi-frame popups skip the scale bounce — the frame animation carries the punch.
     let taikoFrames: SpriteWithScale[] | null | undefined;
     if (isTaiko && skin) {
       taikoFrames = resolveTaikoPopupFrames(skin.images, displayJudgement, result.strong === true);
@@ -323,8 +294,7 @@ export function drawJudgements(
     const isTaikoAnim = isTaiko && taikoFrames !== undefined && taikoFrames !== null && taikoFrames.length > 1;
 
     if (isTaiko) {
-      // Legacy taiko popup animation (lazer LegacyJudgementPieceOld); multi-frame
-      // popups skip scale/move/rotate.
+
       alpha = legacyTaikoFade(age);
       if (isTaikoAnim) {
         scale = 1.0;
@@ -337,7 +307,7 @@ export function drawJudgements(
         const yu = clamp01(age / LEGACY_TAIKO_TOTAL_MS);
         y += LEGACY_TAIKO_MISS_Y_START_PX
            + (LEGACY_TAIKO_MISS_Y_END_PX - LEGACY_TAIKO_MISS_Y_START_PX) * (yu * yu);
-        // r seeded from result.time so the tumble is stable across replay seeks.
+        /** 旋转由判定时间确定，seek 后保持一致。 */
         const r = missRotationSeed(result.time) * (LEGACY_TAIKO_MISS_ROT_MAX_RAD / MISS_ROT_CENTER);
         if (age < LEGACY_TAIKO_FADE_IN_MS) {
           rotation = r * (age / LEGACY_TAIKO_FADE_IN_MS);
@@ -376,7 +346,7 @@ export function drawJudgements(
     const strong = isTaiko && result.strong === true;
 
     if (isTaiko && taikoFrames !== undefined && taikoFrames !== null && taikoFrames.length > 0) {
-      // Natural sprite size; multi-frame holds last frame after lifetime ends.
+
       let frameIdx = 0;
       if (taikoFrames.length > 1) {
         const frameLen = LEGACY_TAIKO_ANIM_TOTAL_MS / taikoFrames.length;
@@ -387,11 +357,9 @@ export function drawJudgements(
       const drawH = sp.bitmap.height * sp.pixelScale;
       ctx.drawImage(sp.bitmap, -drawW / 2, -drawH / 2, drawW, drawH);
     } else if (isTaiko && taikoFrames === null) {
-      // 1×1 placeholder suppression — render nothing.
+
     } else {
-      // Resolve the burst sprite + its draw size. std sizes at canonical legacy scale
-      // (native @1x texture × 2·radius/128 — same scale as hit circles, per danser
-      // hitresults.go); taiko keeps its fixed IMAGE_SIZE box.
+
       let burst: { bitmap: ImageBitmap; drawW: number; drawH: number } | undefined;
       if (!isTaiko) {
         const sp = skin ? resolveStdJudgementSprite(skin.images, displayJudgement) : undefined;
@@ -408,7 +376,7 @@ export function drawJudgements(
           ? resolveJudgementImage(skin.images, displayJudgement, true, strong)
           : undefined;
         if (bitmap !== undefined) {
-          // Preserve native aspect inside IMAGE_SIZE² box; pill-shaped sprites need this.
+          /** 保持素材纵横比，避免长条贴图被压成方形。 */
           const aspect = bitmap.width / bitmap.height;
           burst = {
             bitmap,

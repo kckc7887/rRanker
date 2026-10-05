@@ -79,7 +79,6 @@ export function useMaimaiBestImageFilters({ maimai, activeAccountId, imageType, 
     setSplitVersions(false);
   }, [activeAccountId, versionOptions]);
 
-  /** 单个非数量条件时标题为「{条件}N」；多个条件时标题为「自定义N」并附小字提示。 */
   const versionConditionLabel = useMemo(() => {
     if (versions.length === 0) return null;
     if (versions.length === versionOptions.length) return null;

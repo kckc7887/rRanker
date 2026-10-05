@@ -1,7 +1,11 @@
-import {
-  ChunithmDemoAccountStore,
-  parseChunithmDemoAccountProfile,
-} from '@/storage/chunithm-demo-account-store';
+import { ChunithmDemoAccountStore } from '@/storage/chunithm-demo-account-store';
+
+class MemoryStore {
+  values = new Map<string, string>();
+  async getItem(key: string) { return this.values.get(key) ?? null; }
+  async setItem(key: string, value: string) { this.values.set(key, value); }
+  async removeItem(key: string) { this.values.delete(key); }
+}
 
 describe('ChunithmDemoAccountStore', () => {
   it('保存、恢复并删除固定示例账号', async () => {
@@ -18,14 +22,13 @@ describe('ChunithmDemoAccountStore', () => {
     expect(await store.load()).toBeNull();
   });
 
-  it('拒绝错误账号 ID 和空名称', () => {
-    expect(parseChunithmDemoAccountProfile({
-      version: 1,
-      account: { id: 'maimai:test', displayName: '示例账号' },
-    })).toBeNull();
-    expect(parseChunithmDemoAccountProfile({
-      version: 1,
-      account: { id: 'chunithm:test', displayName: ' ' },
-    })).toBeNull();
-  });
+  it.each([{ version: 2, account: {} }, { version: 1, account: { id: 'maimai:test', displayName: '旧账号' } }])(
+    '不支持的示例记录清空对应键', async value => {
+      const storage = new MemoryStore();
+      storage.values.set('rranker.chunithm-demo-account.v1', JSON.stringify(value));
+      const store = new ChunithmDemoAccountStore(storage);
+      expect(await store.load()).toBeNull();
+      expect(storage.values.has('rranker.chunithm-demo-account.v1')).toBe(false);
+    },
+  );
 });

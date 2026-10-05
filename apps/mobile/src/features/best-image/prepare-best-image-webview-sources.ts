@@ -36,5 +36,3 @@ export function prepareBestImageWebViewSources(
     throw error;
   }
 }
-
-export const prepareAndroidBestImageWebViewSources = prepareBestImageWebViewSources;

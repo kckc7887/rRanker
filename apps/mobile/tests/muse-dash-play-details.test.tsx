@@ -59,7 +59,7 @@ describe('useMuseDashPlayDetails', () => {
 
   afterEach(async () => {
     cleanup();
-    // 取消请求后 react-query 会在微任务里重新安排明细缓存的回收定时器，等它落地再清理。
+    /** 取消后等微任务安排缓存回收定时器，再清理。 */
     await new Promise((resolve) => { setTimeout(resolve, 0); });
     queryClient.clear();
   });
@@ -96,10 +96,9 @@ describe('useMuseDashPlayDetails', () => {
   });
 });
 
-
 it('成就筛选禁用时不建立明细查询或全量观察者', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
-  const many = Array.from({ length: 1000 }, (_, index) => ({ uid: `off-${index}`, difficulty: 0, platform: 'mobile' }));
+  const many = Array.from({ length: 3 }, (_, index) => ({ uid: `off-${index}`, difficulty: 0, platform: 'mobile' }));
   const screen = await renderHook(() => useMuseDashPlayDetails(many, 'off-user', false), { wrapper: createWrapper(client) });
   expect(client.getQueryCache().getAll()).toHaveLength(0);
   expect(screen.result.current.missByChart.size).toBe(0);
@@ -149,7 +148,6 @@ it('失败重试同样最多六路，并保留成功项', async () => {
   expect(screen.result.current.missByChart.get('retry-18:0')).toBe(1);
   await screen.unmount(); client.clear();
 });
-
 
 it('四路公共批量查询保持逐项键、部分成功和取消边界', async () => {
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });

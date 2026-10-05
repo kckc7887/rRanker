@@ -45,7 +45,7 @@ const mockDownloadPackage = jest.fn<(
   options?: MockDownloadOptions,
 ) => Promise<boolean>>();
 let mockVideoAvailable = false;
-let mockSongRouteParams: { songId: string; chartType?: string; levelIndex?: string } = { songId: '1' };
+let mockSongRouteParams: { gameId: string; songId: string; chartType?: string; levelIndex?: string } = { songId: '1', gameId: 'maimai' };
 let mockDetailedCatalogAvailable = true;
 const mockDxRatingTags = Array.from({ length: 14 }, (_, index) => ({
   id: index + 1,
@@ -273,7 +273,7 @@ jest.mock('@/components/CollectionImage', () => ({ CollectionImage: () => null }
 
 describe('M2 song query screens', () => {
   beforeEach(() => {
-    mockSongRouteParams = { songId: '1' };
+    mockSongRouteParams = { songId: '1', gameId: 'maimai' };
     mockDetailedCatalogAvailable = true;
     mockDxRatingTagCount = 0;
     mockDxRatingTagSongTitle = '正常曲目 A';
@@ -658,7 +658,6 @@ describe('M2 song query screens', () => {
     expect(screen.getByLabelText('切换版本名称')).toBeTruthy();
     expect(screen.queryByLabelText('数据来源状态')).toBeNull();
     expect(screen.getByTestId('song-detail-scroll').props.directionalLockEnabled).toBeUndefined();
-    // 默认 true：从底部卡片上滑时 ScrollView 可接手触摸；勿锁死为 false。
     expect(screen.getByTestId('song-detail-scroll').props.canCancelContentTouches).not.toBe(false);
     expect(screen.getByLabelText('难度卡片').props.directionalLockEnabled).toBe(true);
     expect(screen.getByLabelText('难度卡片').props.contentOffset.x).toBeGreaterThan(0);
@@ -890,7 +889,7 @@ describe('M2 song query screens', () => {
   });
 
   it('renders U·TA·GE without Rating calculation and shows separate 1P/2P notes', async () => {
-    mockSongRouteParams = { songId: '100123', chartType: 'UTAGE', levelIndex: '0' };
+    mockSongRouteParams = { songId: '100123', chartType: 'UTAGE', levelIndex: '0', gameId: 'maimai' };
     mockDxRatingTagCount = 1;
     mockDxRatingTagSongTitle = '[協]協 U·TA·GE';
     mockDxRatingTagSheetType = 'utage2p';
@@ -950,7 +949,7 @@ describe('M2 song query screens', () => {
   });
 
   it('opens the chart type and exact difficulty supplied by a score card', async () => {
-    mockSongRouteParams = { songId: '1', chartType: 'SD', levelIndex: '0' };
+    mockSongRouteParams = { songId: '1', chartType: 'SD', levelIndex: '0', gameId: 'maimai' };
     const screen = await render(<SongDetailScreen />);
 
     expect(screen.getByText('谱师：SD基础谱师')).toBeTruthy();
@@ -962,7 +961,7 @@ describe('M2 song query screens', () => {
   });
 
   it('shows the version of the currently selected SD or DX chart', async () => {
-    mockSongRouteParams = { songId: '7', chartType: 'SD', levelIndex: '3' };
+    mockSongRouteParams = { songId: '7', chartType: 'SD', levelIndex: '3', gameId: 'maimai' };
     const screen = await render(<SongDetailScreen />);
 
     expect(screen.getByTestId('metadata-value-版本').props.children).toBe('脱敏过往版本');

@@ -1,5 +1,6 @@
 import { z } from 'zod';
 import type { DataSource } from './models';
+import { DataSourceSchema } from './schemas';
 
 const CollectionSchema = z.object({
   id: z.number().int(),
@@ -69,10 +70,15 @@ export type ChunithmPersonalSnapshot = {
   source: DataSource;
 };
 
-export type LegacyChunithmPersonalSnapshot = Omit<ChunithmPersonalSnapshot, 'bests'>;
+export const ChunithmPersonalSnapshotSchema = z.object({
+  player: ChunithmPlayerSchema.nullable(), scores: z.array(ChunithmScoreSchema),
+  bests: z.object({
+    bests: z.array(ChunithmScoreSchema), selections: z.array(ChunithmScoreSchema), new_bests: z.array(ChunithmScoreSchema),
+  }),
+  source: DataSourceSchema.extend({ kind: z.literal('lxns') }),
+});
 
 export const CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION = 2;
-export const CHUNITHM_PERSONAL_LEGACY_SCHEMA_VERSION = 1;
 
 export function emptyChunithmBests(): ChunithmBests {
   return {
@@ -95,4 +101,3 @@ export function buildChunithmCharacterUrl(characterId: number | null | undefined
   if (!Number.isSafeInteger(characterId) || (characterId ?? -1) < 0) return null;
   return `https://assets2.lxns.net/chunithm/character/${characterId}.png`;
 }
-

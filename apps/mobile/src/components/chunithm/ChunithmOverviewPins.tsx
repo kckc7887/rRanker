@@ -14,7 +14,6 @@ import { useChunithmCollections } from '@/hooks/use-chunithm-collections';
 
 import { useAppTheme } from '@/theme/app-theme';
 
-/** 称号颜色徽章（normal/铜/银/金 → 实体徽章；彩虹 → 渐变徽章；image → 图片预览）。 */
 function CollectionPreview({ kind, collection }: { kind: ChunithmCollectionKind; collection: ChunithmCollection; }) {
   if (kind !== 'trophy') {
     return (
@@ -140,4 +139,3 @@ function PinnedChunithmCollectionKindGroup({
     );
   });
 }
-

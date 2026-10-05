@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -30,41 +30,17 @@ import type { CatchObject } from './types';
 import { LegacyRandom } from './random';
 import { calculateCatchWidth } from './converter';
 
-/**
- * Position generation. Ports `CatchBeatmapProcessor.ApplyPositionOffsets` +
- * `applyHardRockOffset` + `initialiseHyperDash` from ppy/osu master. Reproduces the byte-exact
- * `EffectiveX` array (every catch judgement reads it) and the hyperdash (red-fruit) flags.
- *
- * A SINGLE `LegacyRandom(1337)` is shared across the whole beatmap; the number and order of
- * draws — including the throwaway `next()` calls (banana type/rotation/colour, droplet
- * rotation) — are load-bearing. Iteration is over TOP-LEVEL objects in beatmap order; within a
- * JuiceStream we walk nested objects in construction (generation) order, NOT start-time order
- * — our flat list is already in that order, contiguous per source object.
- *
- * Cast discipline: `Math.fround` the float-typed values (xOffset, effectiveX,
- * positionDiff, distanceToHyper, scale/width), `Math.trunc` the `(int)` casts (time deltas,
- * RNG int overloads), everything else double.
- */
+/** 参考 ppy/osu CatchBeatmapProcessor；同一随机流按物件生成顺序抽样。 */
 
-const WIDTH = 512; // CatchPlayfield.WIDTH
-const RNG_SEED = 1337; // CatchBeatmapProcessor.RNG_SEED
-const ALLOWED_CATCH_RANGE = 0.8; // Catcher.ALLOWED_CATCH_RANGE
-const BASE_DASH_SPEED = 1.0; // Catcher.BASE_DASH_SPEED (px/ms)
+const WIDTH = 512;
+const RNG_SEED = 1337;
+const ALLOWED_CATCH_RANGE = 0.8;
+const BASE_DASH_SPEED = 1.0;
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.max(lo, Math.min(hi, v));
 }
 
-/**
- * Run the full position pass over the flat palpable list produced by `convertBeatmapToCatch`
- * (mutates `xOffset`, `effectiveX`, `hyperDash`, `distanceToHyperDash`, `hyperDashTargetX`
- * in place; all X values are osu-px on the 0..512 playfield). Ports lazer's
- * `CatchBeatmapProcessor` byte-exactly, including its shared `LegacyRandom(1337)` draw
- * order. Must run AFTER conversion and BEFORE judgement, with `objects` still in generation
- * order. `beatmap` is needed to dispatch on each source object's top-level type and to read
- * a slider's final control point (the JuiceStream `lastPosition` HardRock seed); `modDiff`
- * supplies the HR/Mirror flags and the circle size for the hyperdash pass.
- */
 export function applyPositionOffsets(objects: CatchObject[], beatmap: BeatmapData, modDiff: ModDifficulty): void {
   const rng = new LegacyRandom(RNG_SEED);
   const hardRock = modDiff.isHR;
@@ -72,7 +48,6 @@ export function applyPositionOffsets(objects: CatchObject[], beatmap: BeatmapDat
   let lastPosition: number | null = null;
   let lastStartTime = 0;
 
-  // Walk top-level groups (contiguous by sourceIndex; generation order == beatmap order).
   let i = 0;
   while (i < objects.length) {
     const src = objects[i]!.sourceIndex;
@@ -81,8 +56,7 @@ export function applyPositionOffsets(objects: CatchObject[], beatmap: BeatmapDat
     const top = beatmap.hitObjects[src];
 
     if (top?.type === 'circle') {
-      // Standalone Fruit (one object). XOffset stays 0 unless HardRock (which is the only
-      // path that consumes fruit RNG); non-HR fruit consumes zero draws.
+
       const fruit = objects[i]!;
       fruit.xOffset = 0;
       if (hardRock) {
@@ -91,8 +65,8 @@ export function applyPositionOffsets(objects: CatchObject[], beatmap: BeatmapDat
         lastStartTime = r.lastStartTime;
       }
     } else if (top?.type === 'spinner') {
-      // BananaShower: 4 draws per banana — NextDouble for X, then 3 discarded
-      // (stable's type / rotation / colour). Bananas don't touch lastPosition.
+      /** 每根香蕉消耗 4 次随机数，后三次对应类型、旋转与颜色。 */
+
       for (let k = i; k < j; k++) {
         const banana = objects[k]!;
         banana.xOffset = Math.fround(rng.nextDouble() * WIDTH);
@@ -101,10 +75,8 @@ export function applyPositionOffsets(objects: CatchObject[], beatmap: BeatmapDat
         rng.next();
       }
     } else if (top?.type === 'slider') {
-      // JuiceStream. The two stable BUG!! values (preserved on purpose): lastPosition uses the
-      // last CONTROL POINT, not the computed path end; lastStartTime is the (early-referenced)
-      // start time, not the end time. ControlPoints[^1] is head-relative in lazer; our
-      // curvePoints are absolute, so OriginalX + relativeLastCP == the absolute last curvePoint.
+      /** 沿用上游规则：记录最后控制点和起始时间，而非路径终点与结束时间。 */
+
       const cps = top.curvePoints;
       lastPosition = Math.fround(cps[cps.length - 1]!.x);
       lastStartTime = top.time;
@@ -113,36 +85,28 @@ export function applyPositionOffsets(objects: CatchObject[], beatmap: BeatmapDat
         const nested = objects[k]!;
         nested.xOffset = 0;
         if (nested.type === 'tinyDroplet') {
-          // ±20px integer jitter, clamped so OriginalX + XOffset stays in [0, 512]. One draw.
+
           nested.xOffset = Math.fround(
             clamp(rng.nextIntRange(-20, 20), -nested.originalX, WIDTH - nested.originalX),
           );
         } else if (nested.type === 'droplet') {
-          rng.next(); // discarded: stable's droplet rotation
+          rng.next(); /** 消耗 stable 水滴旋转的随机数。 */
         }
-        // nested fruit (head/repeat/tail): no RNG, xOffset stays 0
+
       }
     }
 
     i = j;
   }
 
-  // EffectiveX = clamp(OriginalX + XOffset, 0, 512) — lazer applies the clamp lazily in the
-  // CatchHitObject getter. Compute for every object now that all offsets are final.
   for (const obj of objects) {
     obj.effectiveX = Math.fround(clamp(obj.originalX + obj.xOffset, 0, WIDTH));
   }
 
   initialiseHyperDash(objects, modDiff.cs);
 
-  // Mirror — CatchModMirror is IApplicableToBeatmap, so it runs AFTER the processor
-  // (offsets + hyperdash). It reflects every object's X about the playfield centre
-  // (OriginalX → WIDTH − OriginalX, XOffset → −XOffset, banana XOffset → WIDTH − XOffset,
-  // juice-stream path X negated) — all of which reduce to EffectiveX → WIDTH − EffectiveX for
-  // the in-range gameplay value judgement reads. Hyperdash is mirror-symmetric (distances
-  // preserved, directions flip in lockstep), so lazer does NOT recompute it after the flip; we
-  // just reflect the stored target X too. The replay catcher X is already in post-mod (mirrored)
-  // space, so reflecting the objects lets judgement compare directly.
+  /** Mirror 在偏移和 hyperdash 计算后反射位置。 */
+
   if (modDiff.isMirror) {
     for (const obj of objects) {
       obj.effectiveX = Math.fround(WIDTH - obj.effectiveX);
@@ -153,42 +117,37 @@ export function applyPositionOffsets(objects: CatchObject[], beatmap: BeatmapDat
   }
 }
 
-/**
- * `applyHardRockOffset` — HR-only fruit X jitter, applied per top-level Fruit. Returns
- * the carried `lastPosition`/`lastStartTime` (the `positionDiff === 0` random branch returns
- * the OLD pair — it `return`s before the trailing update; reproduce exactly).
- */
+/** 重叠音符的随机偏移分支不更新前次位置与时间。 */
 function applyHardRockOffset(
   obj: CatchObject,
   lastPosition: number | null,
   lastStartTime: number,
   rng: LegacyRandom,
 ): { lastPosition: number | null; lastStartTime: number } {
-  let offsetPosition = obj.originalX; // float
+  let offsetPosition = obj.originalX;
   const startTime = obj.startTime;
 
-  // First fruit, or a previous fruit landed at x=0 (preserved stable quirk): record, no offset.
   if (lastPosition === null || lastPosition === 0) {
     return { lastPosition: offsetPosition, lastStartTime: startTime };
   }
 
-  const positionDiff = Math.fround(offsetPosition - lastPosition); // float subtraction
-  const timeDiff = Math.trunc(startTime - lastStartTime); // (int) time delta (stable BUG!!)
+  const positionDiff = Math.fround(offsetPosition - lastPosition);
+  const timeDiff = Math.trunc(startTime - lastStartTime);
 
   if (timeDiff > 1000) {
     return { lastPosition: offsetPosition, lastStartTime: startTime };
   }
 
   if (positionDiff === 0) {
-    // Stacked notes → random jitter. maxOffset = timeDiff/4d (double division). This branch
-    // sets XOffset but does NOT update lastPosition/lastStartTime.
+    /** 重叠偏移的上限为 timeDiff/4，且不更新前次状态。 */
+
     offsetPosition = applyRandomOffset(offsetPosition, timeDiff / 4, rng);
     obj.xOffset = Math.fround(offsetPosition - obj.originalX);
     return { lastPosition, lastStartTime };
   }
 
   if (Math.abs(positionDiff) < Math.trunc(timeDiff / 3)) {
-    // timeDiff/3 is INT division (the ReSharper PossibleLossOfFraction comment); keep it.
+    /** timeDiff/3 按整数除法截断。 */
     offsetPosition = applyOffset(offsetPosition, positionDiff);
   }
 
@@ -196,8 +155,6 @@ function applyHardRockOffset(
   return { lastPosition: offsetPosition, lastStartTime: startTime };
 }
 
-// HR random jitter: NextBool direction + an int rand in [0, maxOffset) capped at 20px, then
-// reflected off the nearer edge (non-strict bounds <= 512 / >= 0).
 function applyRandomOffset(position: number, maxOffset: number, rng: LegacyRandom): number {
   const right = rng.nextBool();
   const rand = Math.min(20, Math.fround(rng.nextDoubleRange(0, Math.max(0, maxOffset))));
@@ -211,8 +168,6 @@ function applyRandomOffset(position: number, maxOffset: number, rng: LegacyRando
   return Math.fround(position);
 }
 
-// HR deterministic mirror push by `amount`, dropped entirely if it would breach an edge
-// (strict < 512 / > 0 — note: NOT reflected, unlike applyRandomOffset).
 function applyOffset(position: number, amount: number): number {
   if (amount > 0) {
     if (position + amount < WIDTH) position += amount;
@@ -222,20 +177,14 @@ function applyOffset(position: number, amount: number): number {
   return Math.fround(position);
 }
 
-/**
- * `initialiseHyperDash`. Walks the GLOBALLY start-time-sorted palpable subset (Fruit OR
- * non-tiny Droplet — bananas and tiny droplets never participate), marking a fruit "hyper"
- * (red) when the next object is unreachable at BASE_DASH_SPEED. Reads `effectiveX`, so it must
- * run after all offsetting. The full catcher width (margins divided back out) is the deliberate
- * stable-parity bug.
- */
+/** hyperdash 只计算水果和非 tiny 水滴，使用不含 0.8 边距系数的盘宽。 */
 function initialiseHyperDash(objects: CatchObject[], cs: number): void {
   const palpable = objects
     .filter((o) => o.type === 'fruit' || o.type === 'droplet')
-    .sort((a, b) => a.startTime - b.startTime); // stable sort (ES2019+)
+    .sort((a, b) => a.startTime - b.startTime);
 
   let halfCatcherWidth = calculateCatchWidth(cs) / 2;
-  halfCatcherWidth /= ALLOWED_CATCH_RANGE; // /= 0.8 — full catcher size, margins excluded
+  halfCatcherWidth /= ALLOWED_CATCH_RANGE;
 
   let lastDirection = 0;
   let lastExcess = halfCatcherWidth;
@@ -249,7 +198,7 @@ function initialiseHyperDash(objects: CatchObject[], cs: number): void {
     cur.distanceToHyperDash = 0;
 
     const thisDirection = nxt.effectiveX > cur.effectiveX ? 1 : -1;
-    // Int-truncated start times (stable parity) minus a ¼-frame grace (1000/60/4 ms).
+    /** 起始时间取整后，扣除四分之一帧宽限。 */
     const timeToNext = Math.trunc(nxt.startTime) - Math.trunc(cur.startTime) - 1000 / 60 / 4;
     const distanceToNext =
       Math.abs(nxt.effectiveX - cur.effectiveX) - (lastDirection === thisDirection ? lastExcess : halfCatcherWidth);

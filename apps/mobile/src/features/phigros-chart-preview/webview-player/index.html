@@ -119,13 +119,12 @@
     .combo-block.is-visible { display: grid; }
     .combo-block strong { font-size: var(--combo-font-size, 26px); font-weight: 600; font-variant-numeric: tabular-nums; transform-origin: center; }
     .combo-block span { margin-top: .55em; font-size: var(--combo-label-font-size, 8px); letter-spacing: .08em; opacity: .85; }
-    /* RPE attachUI：HUD 元素跟随判定线（默认隐藏，仅谱面声明 attachUI 时显示） */
+
     .hud-attach { position: absolute; left: 50%; top: 50%; transform-origin: center; font-family: inherit; font-size: clamp(16px, 2.6vw, 40px); font-weight: 700; color: #fff; white-space: nowrap; }
     #hud-pause { font-size: clamp(22px, 4vw, 64px); }
     #hud-name { font-size: clamp(14px, 2vw, 32px); }
     #hud-level { font-size: clamp(12px, 1.6vw, 24px); font-weight: 500; }
 
-    /* ---- 下方播放控制器：样式与交互对齐舞萌谱面确认 ---- */
     #controls {
       flex-shrink: 0;
       background: var(--panel);
@@ -201,7 +200,7 @@
       color: var(--muted);
       font-variant-numeric: tabular-nums;
     }
-    /* 时间轴：舞萌式音符密度条 + 刻度 + 播放头 */
+
     #timeline-host {
       flex: 1;
       position: relative;
@@ -277,7 +276,7 @@
       pointer-events: none;
       z-index: 10;
     }
-    /* 拨轮：舞萌式触发钮 + 滚动吸附滚轮 */
+
     .field {
       display: flex;
       align-items: center;
@@ -392,13 +391,13 @@
       border: 0;
       border-radius: 0;
     }
-    /* 横屏全屏时播放窗保持 16:9 比例，只按视口适配缩放（黑边填充）。 */
+
     body.fullscreen .stage {
       aspect-ratio: 16 / 9;
       width: min(100vw, calc(100vh * 16 / 9));
       height: auto;
     }
-    /* 全屏控制层与舞萌 fs-overlay 一致：只保留时间轴 + 时间 + 走带按钮。 */
+
     body.fullscreen #controls {
       position: absolute;
       z-index: 8;
@@ -413,7 +412,7 @@
     }
     body.fullscreen #controls.hidden { translate: 0 100%; opacity: 0; pointer-events: none; }
     body.fullscreen .controls-settings { display: none; }
-    /* 全屏锁定按钮：与舞萌 fs-lock 一致（右侧垂直居中，锁定后控制器强制隐藏）。 */
+
     #fs-lock {
       display: none;
       position: fixed;

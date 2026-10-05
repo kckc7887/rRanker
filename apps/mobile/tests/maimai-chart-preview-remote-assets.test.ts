@@ -1,5 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
@@ -25,7 +23,7 @@ const mockFs = vi.hoisted(() => ({
   downloadCalls: [] as string[],
   stagedLocalAssets: [] as string[],
   readAssetTexts: new Map<number, string>(),
-  onReadBytes: vi.fn(async () => {}),
+  onDownloadReady: vi.fn(async () => {}),
   writes: [] as string[],
   makeStageDirectory: ((_name: string) => ({ uri: '' })) as (name: string) => { uri: string },
 }));
@@ -55,7 +53,6 @@ vi.mock('expo-file-system', () => {
     async bytes() {
       const bytes = mockFs.files.get(this.uri);
       if (!bytes) throw new Error('source does not exist');
-      await mockFs.onReadBytes();
       return Uint8Array.from(bytes);
     }
     create() { mockFs.files.set(this.uri, new Uint8Array()); }
@@ -82,6 +79,7 @@ vi.mock('expo-file-system', () => {
       if (remote instanceof Error) throw remote;
       if (!remote) throw new Error(`missing remote ${url}`);
       mockFs.files.set(destination.uri, Uint8Array.from(remote));
+      await mockFs.onDownloadReady();
       return destination;
     }
   }
@@ -148,7 +146,7 @@ describe('maimai chart preview remote assets', () => {
     mockFs.downloadCalls.length = 0;
     mockFs.stagedLocalAssets.length = 0;
     mockFs.readAssetTexts.clear();
-    mockFs.onReadBytes.mockReset();
+    mockFs.onDownloadReady.mockReset();
     mockFs.writes.length = 0;
     mockFs.readAssetTexts.set(1, '<html>');
   });
@@ -208,27 +206,6 @@ describe('maimai chart preview remote assets', () => {
     result.dispose();
   });
 
-  it('stages the original bundled sensor through the shared plan and injects it with the remote skins', () => {
-    const prepare = readFileSync(
-      resolve(process.cwd(), 'src/features/simai-chart-preview/prepare-chart-preview-webview.ts'),
-      'utf8',
-    );
-    expect(prepare).toContain("require('../../../assets/maimai-chart-preview/sensor.webp')");
-    expect(prepare).toContain('{ fileName: MAIMAI_CHART_PREVIEW_SENSOR.path, moduleId: SENSOR_MODULE }');
-    expect(prepare).toContain('data:image/webp;base64,${await sensor.base64()}');
-    expect(prepare).not.toContain("require('../../../assets/maimai-chart-preview/answer.wav')");
-    expect(prepare).toContain('maimaiChartPreviewRuntimeSkinAssets');
-    expect(prepare).toContain('maimaiChartPreviewSkinStagePath');
-    expect(prepare).toContain('maimaiChartPreviewSkinDataScript');
-    expect(prepare).toContain('MAIMAI_CHART_PREVIEW_SKIN_DATA_FILE');
-    expect(prepare).toContain('MAIMAI_CHART_PREVIEW_MUSIC_DATA_FILE');
-    expect(prepare).toContain('__CHART_PREVIEW_MUSIC_DATA__');
-    expect(prepare).toContain('downloadChartResource');
-    expect(prepare).toContain('simaiText');
-    expect(prepare).toContain('MAIMAI_CHART_PREVIEW_ANSWER_SOUND');
-    expect(prepare).toContain('remoteCacheDirectory');
-  });
-
   it('revisions cached skins and includes community Mine art', () => {
     expect(maimaiChartPreviewSkinStagePath('TapSkins/tap.png')).toMatch(/^skin\/[a-f0-9]{16}_TapSkins_tap.png$/);
     expect(isMaimaiChartPreviewRuntimeSkinPath('TapSkins/tap.png')).toBe(true);
@@ -280,9 +257,9 @@ describe('maimai chart preview remote assets', () => {
     expect(mockFs.files.get(stageUri(stagedName))?.byteLength).toBe(TAP.bytes);
   });
 
-  it('does not recreate cleared preview files after a delayed cache read', async () => {
+  it('does not recreate cleared preview files after a delayed download', async () => {
     mockFs.remotes.set(TAP.url, TAP_BYTES);
-    mockFs.onReadBytes.mockImplementationOnce(async () => {
+    mockFs.onDownloadReady.mockImplementationOnce(async () => {
       invalidateResourceWrites('shared');
       mockFs.files.clear();
     });

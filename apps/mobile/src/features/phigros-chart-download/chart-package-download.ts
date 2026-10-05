@@ -66,7 +66,7 @@ export async function downloadPhigrosChartAsPhiraPackage(
     zip.file('chart.json', resources.chart);
     zip.file('music.ogg', resources.music);
     zip.file('illustration.png', resources.illustration);
-    // 音乐与图片已是压缩格式，STORE 可避免无收益的压缩峰值。
+    /** 音乐与图片已压缩，使用 STORE 避免再次压缩的内存峰值。 */
     const zipBytes = await zip.generateAsync(
       { type: 'uint8array', compression: 'STORE' },
       ({ percent }) => options.onProgress?.({

@@ -23,7 +23,7 @@ async function videoAvailable(url: string, signal: AbortSignal): Promise<boolean
   try {
     return await requestProviderResponse({
       path: url, baseUrl: '', schema: z.boolean(), label: '背景视频',
-      fetcher: expoFetch as unknown as typeof fetch, signal, retries: 1,
+      fetcher: expoFetch as unknown as typeof fetch, signal, totalAttempts: 1,
       init: { method: 'HEAD', headers: { Accept: '*/*' } },
       error: providerErrorFromStatus,
     }, async () => true);

@@ -118,7 +118,6 @@ jest.mock('@/storage/demo-account-store', () => ({
     upsert: (profile: { id: string; displayName: string }) => mockUpsertDemoAccount(profile),
     remove: (accountId: string) => mockRemoveDemoAccount(accountId),
   })),
-  DEFAULT_DEMO_PLAYER_NAME: '示例账号',
   isMaimaiDemoAccountId: (accountId: string) => accountId === 'maimai:test' || accountId.startsWith('maimai:test:'),
 }));
 jest.mock('@/storage/chunithm-temp-account-store', () => ({
@@ -144,7 +143,6 @@ jest.mock('@/storage/musedash-demo-account-store', () => ({
     save: (profile: { id: string; displayName: string }) => mockSaveMuseDashDemoAccount(profile),
     remove: () => mockRemoveMuseDashDemoAccount(),
   })),
-  DEFAULT_MUSEDASH_DEMO_PLAYER_NAME: '示例账号',
   isMuseDashDemoAccountId: (accountId: string) => accountId === 'musedash:musedash-moe:rranker-demo-maxed',
 }));
 jest.mock('@/storage/tuf-account-store', () => ({
@@ -495,7 +493,6 @@ describe('M3A game account management', () => {
     expect(mockClearSnapshots).not.toHaveBeenCalled();
 
     await waitFor(() => expect(screen.getByLabelText('添加游戏账号').props.accessibilityState.disabled).toBe(false));
-    // 关键解绑失败后账号仍在列表里，用户可再次发起解绑。
     expect(screen.getByLabelText('解除绑定 测试水鱼')).toBeTruthy();
   });
 
@@ -506,7 +503,6 @@ describe('M3A game account management', () => {
     await fireEvent.press(screen.getByLabelText('解除绑定 测试水鱼'));
     await fireEvent.press(screen.getByText('确认解绑'));
 
-    // 提交已经完成：磁盘账号已删除，界面必须一起移除，只把附属清理失败报出来。
     await waitFor(() => expect(mockRemoveBoundAccount).toHaveBeenCalledWith(mockAccount.id));
     await waitFor(() => expect(screen.getByText('部分清除失败（密码），其余项目已清除，请重试')).toBeTruthy());
   });
@@ -518,7 +514,6 @@ describe('M3A game account management', () => {
     await fireEvent.press(screen.getByLabelText('解除绑定 测试水鱼'));
     await fireEvent.press(screen.getByText('确认解绑'));
 
-    // 提交已经完成：界面必须移除账号，把「活动账号没写成功」当成可重试的清理失败报告。
     await waitFor(() => expect(mockRemoveBoundAccount).toHaveBeenCalledWith(mockAccount.id));
     await waitFor(() => expect(screen.getByText('部分清除失败（当前账号），其余项目已清除，请重试')).toBeTruthy());
   });

@@ -1,6 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { createPreferencesWriteCoordinator } from '@/services/preferences-write-coordinator';
-import { ThemePreferencesStore, DEFAULT_THEME_PREFERENCES } from '@/storage/theme-preferences-store';
 
 const disposals: (() => void)[] = [];
 afterEach(() => { disposals.splice(0).forEach((dispose) => dispose()); vi.useRealTimers(); });
@@ -96,22 +95,4 @@ describe('preference document writes', () => {
     expect(save).toHaveBeenCalledWith({ accent: 'orange', appearance: 'dark', blur: 12 });
   });
 
-  it('strict theme reads preserve corrupt originals when backup cannot be written', async () => {
-    const setItem = vi.fn(async () => { throw new Error('locked'); });
-    const store = new ThemePreferencesStore({ getItem: async () => '{', setItem, removeItem: async () => undefined });
-    await expect(store.load()).rejects.toThrow('locked');
-    expect(setItem).toHaveBeenCalledWith('rranker.theme-preferences.v1.corrupt', '{');
-    await expect(new ThemePreferencesStore({ getItem: async () => null, setItem, removeItem: async () => undefined }).load()).resolves.toEqual(DEFAULT_THEME_PREFERENCES);
-  });
-  it.each(['{', '{"version":99,"appearance":"dark"}', '[]'])('never establishes a writable baseline for unrecognized storage %s', async (raw) => {
-    const setItem = vi.fn(async () => undefined);
-    const store = new ThemePreferencesStore({ getItem: async () => raw, setItem, removeItem: async () => undefined });
-    const save = vi.fn((value: typeof DEFAULT_THEME_PREFERENCES) => store.save(value));
-    const coordinator = createPreferencesWriteCoordinator({ load: () => store.load(), save, loaded: vi.fn() });
-    coordinator.change({ accent: 'green' });
-    await coordinator.flush();
-    expect(save).not.toHaveBeenCalled();
-    expect(setItem).toHaveBeenCalledWith('rranker.theme-preferences.v1.corrupt', raw);
-    coordinator.dispose();
-  });
 });

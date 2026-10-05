@@ -1,3 +1,4 @@
+import { uploadTaskController } from '@/services/upload-task-controller';
 import { useNotification } from '@/components/AppNotification';
 import { isMaimaiMaintenanceWindow, MAIMAI_MAINTENANCE_MESSAGE } from '@/domain/maimai-maintenance';
 import type { CatalogSnapshot } from '@/domain/models';
@@ -7,7 +8,7 @@ import type { ProviderSession } from '@/providers/contracts';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { scoreHubErrorToUserMessage, type ScoreHubAbortSignal } from '@/services/score-hub-client';
-import { uploadMaimaiFromQrLogin, uploadMaimaiPreferringSession, uploadTaskController, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
+import { uploadMaimaiFromQrLogin, uploadMaimaiPreferringSession, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export function useUploadTaskState(catalog: CatalogSnapshot | undefined, requestCatalog?: () => Promise<CatalogSnapshot | undefined>, onPhaseChange?: (phase: UploadPhase) => void, visible = true) {

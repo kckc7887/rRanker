@@ -12,11 +12,9 @@ import {
 } from '@/domain/phigros';
 
 export type PushExactTarget = {
-  /** 游戏内两位四舍五入显示分 */
+  /** 游戏内显示分保留两位，四舍五入。 */
   displayRks: number;
-  /** 达成显示目标所需的精确最低 RKS */
   exactTarget: number;
-  /** 加值后的期望显示分 */
   displayTarget: number;
 };
 
@@ -30,10 +28,9 @@ export type PushRecommendation = {
   currentChartRks: number;
   expectedChartRks: number;
   isInBest27: boolean;
-  /** 在同一组 Best27/Phi3 里，该曲达到目标 Acc 后的边际 RKS 增益。 */
+  /** 增益在同一组 Best27/Phi3 中计算。 */
   rksGain: number;
   maxPossibleGain: number;
-  /** 用于卡片展示的成绩记录（当前成绩；未打谱面 score=0），保持 Phigros 真实语义。 */
   record: PhigrosScoreRecord;
 };
 
@@ -42,50 +39,35 @@ export type PushRecommendationsResult = {
   displayRks: number;
   exactTarget: number;
   displayTarget: number;
-  /** 愿意投入的谱面数；预算按谱面计，同一首歌的不同难度各算一张。 */
+  /** 预算按谱面计，同曲不同难度分别占一张。 */
   chartCost: number;
-  /** 精确总加值（exactTarget - currentRks） */
   gainNeeded: number;
-  /** 每张谱面需承担的总 RKS 份额（gainNeeded / chartCost） */
+  /** 每张谱面承担 gainNeeded / chartCost 的总 RKS 份额。 */
   perChartShare: number;
-  /** 是否包含目标 Acc 为 100%（φ）的谱面 */
   includePhi: boolean;
-  /**
-   * verified：plan 已取整并重新核算，精确 RKS 达到目标。
-   * not_found：搜索预算内没有找到方案，不能据此断定无解。
-   * unreachable：上界证明在 φ 约束和成本谱面数内无法达到。
-   */
+  /** not_found 表示搜索预算内未找到，不等于无解。 */
   searchStatus: PushSearchStatus;
-  /** 与 searchStatus === 'verified' 相同。 */
   combinationReachesTarget: boolean;
-  /** 已验证方案，长度不超过 chartCost。页面只能对这组作达标保证。 */
   plan: PushRecommendation[];
-  /**
-   * 可替换 plan 中 Acc 差值最大的一张（Acc 差值相同则取定数更高者）。
-   * 替换后重新核算仍达标。不进入 plan，也不能与 plan 混排后宣称前 N 张达标。
-   */
+  /** 替补替换 Acc 差值最大的一张，不与 plan 混排。 */
   alternatives: PushRecommendation[];
-  /** 与 plan 相同。 */
   recommendations: PushRecommendation[];
 };
 
 export type PushSearchStatus = 'verified' | 'not_found' | 'unreachable';
 
-/** 推分参数的合法范围：页面与领域入口共用的唯一来源。 */
 export const PHIGROS_PUSH_LIMITS = Object.freeze({
-  /** 期望加值下限；更小的加值不会改变游戏内两位显示分 */
+  /** 小于 0.01 的加值不会改变两位显示分。 */
   minDelta: 0.01,
-  /** 期望加值保留的小数位（超出部分四舍五入） */
   deltaDecimals: 2,
-  /** 愿意投入的谱面数下限 */
+  /** 预算按谱面计，同曲不同难度分别占一张。 */
   minChartCost: 1,
-  /** 愿意投入的谱面数上限 */
+  /** 预算按谱面计，同曲不同难度分别占一张。 */
   maxChartCost: 30,
 });
 
 const PUSH_DELTA_SCALE = 10 ** PHIGROS_PUSH_LIMITS.deltaDecimals;
 
-/** 推分参数非法时抛出；code 稳定，供调用方与测试判定，不依赖文案。 */
 export type PhigrosPushInputErrorCode = 'delta_out_of_range' | 'chart_cost_out_of_range' | 'search_pool_out_of_range';
 
 export class PhigrosPushInputError extends Error {
@@ -98,17 +80,12 @@ export class PhigrosPushInputError extends Error {
   }
 }
 
-/**
- * 期望加值解析：NaN、Infinity、小于下限都返回 null；其余四舍五入到两位小数。
- * 页面输入框与领域入口都经这里，避免两处各维护一份范围。
- */
 export function parsePhigrosPushDelta(value: number): number | null {
   if (!Number.isFinite(value) || value < PHIGROS_PUSH_LIMITS.minDelta) return null;
   const rounded = Math.round(value * PUSH_DELTA_SCALE) / PUSH_DELTA_SCALE;
   return !Number.isFinite(rounded) || rounded < PHIGROS_PUSH_LIMITS.minDelta ? null : rounded;
 }
 
-/** 成本谱面数解析：非整数、NaN、Infinity 与超出 1–30 都返回 null。 */
 export function parsePhigrosPushChartCost(value: number): number | null {
   return Number.isInteger(value)
     && value >= PHIGROS_PUSH_LIMITS.minChartCost
@@ -125,11 +102,6 @@ export type PhigrosPushRequest = {
   signal?: AbortSignal;
 };
 
-/**
- * 推分请求参数解析与校验的唯一入口：页面与领域入口都从这里取值。
- * 非法输入抛出带 code 的 PhigrosPushInputError，不进入搜索，也不会被编码成
- * unreachable / verified 之类的业务结论。
- */
 export function resolvePhigrosPushRequest(request: {
   delta: number;
   chartCost: number;
@@ -172,7 +144,6 @@ type SimRecord = {
   isPhi: boolean;
 };
 
-/** 搜索过程中让出主线程的时间片。单次计算超过该值才让出，避免小规模搜索被拆散。 */
 const PUSH_YIELD_INTERVAL_MS = 16;
 
 type PushSearchControl = {
@@ -191,7 +162,7 @@ async function yieldPushSearch(control: PushSearchControl): Promise<void> {
   if (control.signal?.aborted) throw control.signal.reason ?? new Error('推分搜索已取消');
 }
 
-/** 游戏内两位小数四舍五入 → 精确推分目标 */
+/** 游戏内显示分保留两位，四舍五入。 */
 export function resolvePushExactTarget(currentRks: number, delta: number): PushExactTarget {
   const displayRks = Math.round(currentRks * 100) / 100;
   return {
@@ -258,7 +229,6 @@ function replacedSims(
   });
 }
 
-/** 在当前模拟上，把一张谱面抬到刚好达到 goalRks 的最小两位 Acc。已达标或必须 φ 且不允许时返回 null。 */
 async function minimumPushAcc(
   sims: SimRecord[],
   songId: string,
@@ -845,16 +815,8 @@ function finishPushResult(
   };
 }
 
-/**
- * 推分推荐。单谱面和多谱面都返回已取整并重新核算的 plan。
- * chartCost 的单位是谱面：同一首歌的不同难度各占一张预算。
- * 参数先经 resolvePhigrosPushRequest 校验：delta 与 chartCost 非法时抛出
- * PhigrosPushInputError（异步拒绝），不会返回搜索状态。
- * 多张不再要求每一张单独达到平均份额；搜索预算内找不到方案时状态为 not_found。
- * includePhi=false 时最高目标 Acc 为 99.99，不把 φ 计入可达上界。
- * searchPoolLimit 只限制联合搜索候选池，不改变不可达上界所使用的全部谱面。
- * 长搜索按时间片让出主线程；signal 取消时在让出点抛出来源 reason，不返回半份方案。
- */
+/** 预算按谱面计；禁用 φ 时最高 Acc 为 99.99。
+ * 搜索池限制不缩小可达上界；取消不返回部分方案。 */
 export async function findPushRecommendations(
   gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
   difficultyTable: PhigrosDifficultyTable,
@@ -910,21 +872,6 @@ async function findPushRecommendationsWithControl(
   );
 }
 
-/** 把展示给用户的曲目和 targetAcc 应用到原始成绩后的精确 RKS。 */
-export function evaluateDisplayedPushPlan(
-  gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
-  difficultyTable: PhigrosDifficultyTable,
-  displayed: readonly DisplayedPush[],
-): number {
-  const base = toSimRecords(collectScoredEntries(gameRecord, difficultyTable));
-  let sims = base;
-  for (const item of displayed) {
-    sims = replacedSims(sims, item.songId, item.level, item.difficulty, item.targetAcc);
-  }
-  return calculateFinalRks(sims);
-}
-
-/** 搜索状态对应的页面说明。未找到方案时不写成数学意义上的无解。 */
 export function formatPushSearchSummary(result: PushRecommendationsResult): string {
   const phi = result.includePhi ? '' : '（已排除 φ）';
   const adjust = `可增加成本谱面数、降低加值${result.includePhi ? '' : '或开启包含 φ'}。`;

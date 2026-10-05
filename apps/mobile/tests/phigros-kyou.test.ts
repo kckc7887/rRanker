@@ -2,7 +2,6 @@ import type { CatalogSnapshot, Chart, Song } from '@/domain/models';
 import {
   buildPhigrosKyouChartTagIndex,
   buildPhigrosKyouSongMap,
-  isPhigrosKyouResourceKey,
   mapPhigrosKyouAliases,
   phigrosKyouChartHasAllTags,
   phigrosKyouTagsForChart,
@@ -58,11 +57,6 @@ function kyouChart(songId: string, songName: string, levelIndex: number, constan
 }
 
 describe('Phigros Kyou mapping', () => {
-  it('classifies both SQLite snapshots as Kyou-owned Phigros resources', () => {
-    expect(isPhigrosKyouResourceKey('phigros-kyou-aliases')).toBe(true);
-    expect(isPhigrosKyouResourceKey('phigros-kyou-chart-tags')).toBe(true);
-    expect(isPhigrosKyouResourceKey('dxrating-chart-tags')).toBe(false);
-  });
 
   it('normalizes punctuation, resolves duplicate Another Me, applies Mountain override, and skips extras', () => {
     const snapshot = catalog([
@@ -211,25 +205,5 @@ describe('Phigros Kyou mapping', () => {
       tag(3, '协调', 'primary', 8),
       tag(4, '手速', 'primary', 6),
     ])[0]).toMatchObject({ name: '综合?', votes: 36 });
-  });
-
-  it('maps a complete 982-chart catalog while ignoring the chartless April Fool entry', () => {
-    const appSongs: Song[] = [];
-    const sourceSongs: { songId: string; name: string; pack: string }[] = [];
-    const sourceCharts: PhigrosKyouChart[] = [];
-    for (let songIndex = 0; songIndex < 312; songIndex += 1) {
-      const songId = `song-${songIndex}`;
-      const title = `Title ${songIndex}`;
-      const count = songIndex < 46 ? 4 : 3;
-      const charts = Array.from({ length: count }, (_, levelIndex) => chart(songId, levelIndex, songIndex + levelIndex / 10));
-      appSongs.push({ id: songId, title, version: `Pack ${songIndex}`, charts });
-      sourceSongs.push({ songId: `k-${songIndex}`, name: title, pack: `Pack ${songIndex}` });
-      sourceCharts.push(...charts.map((item) => kyouChart(`k-${songIndex}`, title, item.levelIndex, item.difficultyConstant)));
-    }
-    sourceSongs.push({ songId: 'Special_13', name: 'Oblivion: PHIN', pack: 'April Fool' });
-    expect(sourceCharts).toHaveLength(982);
-    const mapped = buildPhigrosKyouSongMap(catalog(appSongs), sourceSongs, sourceCharts);
-    expect(mapped.size).toBe(312);
-    expect(mapped.has('Special_13')).toBe(false);
   });
 });

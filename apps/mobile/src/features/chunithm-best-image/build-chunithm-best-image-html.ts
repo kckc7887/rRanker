@@ -33,12 +33,12 @@ export type ChunithmBestImageHtmlInput = {
   ratingDisplay: string;
   page: ChunithmBestImagePage;
   coverUrls?: Readonly<Record<string, string | null>>;
-  /** jacketId keyed by score card key */
+  /** 按成绩卡 key 索引。 */
   jacketIds?: Readonly<Record<string, string>>;
   characterDataUri?: string | null;
   backgroundDataUri?: string | null;
   hideCharacter?: boolean;
-  /** 底部署名的数据源文案（查分器名称）。 */
+
   dataSource?: string;
 };
 

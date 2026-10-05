@@ -1,6 +1,5 @@
 import JSZip from 'jszip';
 import {
-  CHART_PREVIEW_MAX_DOWNLOAD_BYTES,
   assertChartPreviewDownloadBytes,
   chartPreviewDeclaredUncompressedSize,
   pauseChartPreviewParse,
@@ -22,9 +21,8 @@ import { throwIfAborted } from '@/services/phira-chart-notes';
 import { phiraProvider } from '@/providers/phira-provider';
 import type { PgrPreviewSettings, PgrPreviewRpeAssets, PreparedPgrPreviewInput } from '@/features/chart-preview-shared/pgr-preview-config';
 
-/** 谱面文本经 HTML 配置注入的上限，避免超大谱面拖垮 WebView。 */
 export const CHART_TEXT_LIMIT = 6_000_000;
-/** RPE 社区谱面普遍远大于 PGR（真实谱面 66661 的 chart JSON 约 24MB），RPE 上限单独放宽。 */
+/** RPE 社区谱面通常较大，单独设置文本限额。 */
 export const RPE_CHART_TEXT_LIMIT = 32_000_000;
 
 export type PhiraChartPreviewInput = {
@@ -33,14 +31,13 @@ export type PhiraChartPreviewInput = {
   chart?: PhiraChart;
 };
 
-/** Phira 谱面包资源的落盘能力，由 RN 侧注入（本模块不依赖 expo-file-system）。 */
 export type PhiraChartPreviewStaging = {
   stageMusic: (bytes: Uint8Array, fileName: string) => Promise<{ uri: string; base64: string }>;
   stageRpeBundle: (
     chartId: number,
     files: readonly { name: string; bytes: Uint8Array }[],
   ) => Promise<{ basePath: string }>;
-  downloadChart?: (url: string, signal: AbortSignal) => Promise<ArrayBuffer>;
+  downloadChart: (url: string, signal: AbortSignal) => Promise<ArrayBuffer>;
 };
 
 function zipBasename(entryName: string, fallback: string): string {
@@ -55,13 +52,10 @@ function chartTextByteLimit(entryName: string, formatHint: string | null): numbe
   return CHART_TEXT_LIMIT;
 }
 
-
 async function loadPhiraPreviewArchive(input: PhiraChartPreviewInput, signal: AbortSignal, staging: PhiraChartPreviewStaging) {
   const chart = input.chart ?? await phiraProvider.getChart(input.chartId, signal);
   if (!chart.file) throw new Error('该谱面未提供可下载文件');
-  const zipData = await (staging.downloadChart
-    ? staging.downloadChart(chart.file, signal)
-    : phiraProvider.downloadChart(chart.file, signal, CHART_PREVIEW_MAX_DOWNLOAD_BYTES));
+  const zipData = await staging.downloadChart(chart.file, signal);
   const cancellation: ChartPreviewCancellation = { signal, actualBytes: createChartPreviewActualBytes() };
   assertChartPreviewDownloadBytes(zipData.byteLength);
   throwIfAborted(signal);

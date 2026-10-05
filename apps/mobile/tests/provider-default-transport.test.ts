@@ -5,9 +5,10 @@ import { DxRatingChartTagsProvider } from '@/providers/dxrating-chart-tags-provi
 import { PhigrosKyouProvider } from '@/providers/phigros-kyou-provider';
 import { PROVIDER_MAX_RESPONSE_BYTES } from '@/providers/http-json';
 import { PhigrosResourceService } from '@/services/phigros-resources';
-import { RizlineResourceService } from '@/services/rizline-resources';
-import { defaultRizlineChartPreviewResourcePort } from '@/services/rizline-chart-preview-resources';
+import { RizlineResourceService, rizlineResources } from '@/services/rizline-resources';
+import { loadRizlineChartPreviewResources } from '@/services/rizline-chart-preview-resources';
 import { requestDeviceCode } from '@/providers/phigros-auth';
+import { rizlineCatalog, rizlineCatalogAssetFiles } from './fixtures/rizline';
 
 const transport = vi.hoisted(() => ({ fetch: vi.fn<typeof fetch>() }));
 vi.mock('expo/fetch', () => ({ fetch: transport.fetch }));
@@ -24,9 +25,19 @@ const defaultRequests: [string, () => Promise<unknown>, number][] = [
   ['Phigros release', () => new PhigrosResourceService().load(), 2],
   ['Phigros bytes', () => new PhigrosResourceService().bytes('https://resource.test/chart'), 1],
   ['Rizline release', () => new RizlineResourceService().withRelease(async (release) => release), 2],
-  ['Rizline preview bytes', async () => (await defaultRizlineChartPreviewResourcePort()).readBytes({
-    path: 'chart', url: 'https://resource.test/chart', size: 1, sha256: 'a'.repeat(64),
-  }, 0), 1],
+  ['Rizline preview bytes', async () => {
+    const snapshot = rizlineCatalog();
+    const release = vi.spyOn(rizlineResources, 'withRelease').mockImplementation(async action => action({
+      snapshot,
+      source: { kind: 'rizline', label: 'Rizline 曲库', updatedAt: '', isStale: false },
+      files: rizlineCatalogAssetFiles(snapshot).map(file => ({ ...file, sha256: 'a'.repeat(64) })),
+    }));
+    try {
+      return await loadRizlineChartPreviewResources({ songId: 'Song.A.0', levelIndex: 2 }, new AbortController().signal);
+    } finally {
+      release.mockRestore();
+    }
+  }, 1],
 ];
 
 describe('production default transports use the shared streaming reader', () => {
@@ -53,16 +64,14 @@ describe('production default transports use the shared streaming reader', () => 
     await vi.waitFor(() => expect(cancel).toHaveBeenCalledTimes(requests));
   });
 
-  it.each(['musedash', 'tuf', 'rizline'] as const)('%s keeps an explicitly injected fetcher', async (name) => {
+  it.each(['musedash', 'tuf'] as const)('%s keeps an explicitly injected fetcher', async (name) => {
     const fetcher = vi.fn(async () => new Response('', { status: 403 }));
     const injected = fetcher as unknown as typeof fetch;
     const action = name === 'musedash'
       ? new MuseDashProvider(injected).searchPlayers('fixture')
-      : name === 'tuf'
-        ? new TufProvider(injected).searchPlayers('fixture')
-        : new RizlineResourceService(undefined, injected).withRelease(async (release) => release);
-    await expect(action).rejects.toMatchObject({ code: name === 'rizline' ? 'network' : 'permission' });
-    expect(fetcher).toHaveBeenCalledTimes(name === 'rizline' ? 2 : 1);
+      : new TufProvider(injected).searchPlayers('fixture');
+    await expect(action).rejects.toMatchObject({ code: 'permission' });
+    expect(fetcher).toHaveBeenCalledTimes(1);
     expect(transport.fetch).not.toHaveBeenCalled();
   });
 });

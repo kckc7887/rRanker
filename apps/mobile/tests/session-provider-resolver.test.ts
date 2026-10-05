@@ -1,122 +1,56 @@
-import { describe, expect, it, vi } from 'vitest';
-import { createChunithmBoundAccount, createOsuBoundAccount, createLocalMaimaiAccount, createMaxedMaimaiTestAccount } from '@/domain/bound-account';
+import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { createChunithmBoundAccount, createOsuBoundAccount, createLocalMaimaiAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
-import { EmptyScoreProvider } from '@/providers/empty-provider';
-import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
-import {
-  providerResolverCacheKey,
-  providerResolverStats,
-  releaseResolvedProviders,
-  resetProviderResolverForTests,
-  resolveSessionProviders,
-} from '@/state/session-provider-resolver';
+import { useSession } from '@/state/session-store';
 
-vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
+vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class { async getLatest() { return null; } } }));
+vi.mock('@/storage/secure-session-store', () => ({ SecureSessionStore: class {} }));
 
-process.env.OSU_OAUTH_CLIENT_SECRET ??= 'test-client-secret';
+const lxnsSession: ProviderSession = {
+  mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh',
+  expiresAt: Date.now() + 600_000, persistable: true,
+};
 
-const lxnsSession = (refreshToken: string): Extract<ProviderSession, { mode: 'lxns-oauth' }> => ({
-  mode: 'lxns-oauth',
-  accessToken: `access-${refreshToken}`,
-  refreshToken,
-  expiresAt: Date.now() + 600_000,
-  persistable: true,
-});
+beforeEach(() => useSession.getState().finishRestore(null));
 
-const account = () => ({ ...createLocalMaimaiAccount('本地玩家', 0) });
-
-const resolve = (
-  bound: Parameters<typeof resolveSessionProviders>[0],
-  credentials: Parameters<typeof resolveSessionProviders>[1],
-) => resolveSessionProviders(bound, credentials, vi.fn());
-
-describe('Provider resolver 缓存与失效条件', () => {
-  it('同一账号与同一凭据版本复用实例，不重复构造', () => {
-    resetProviderResolverForTests();
-    const bound = account();
-    const before = providerResolverStats().created;
-
-    const first = resolve(bound, { id: 'credential:local', session: null });
-    const second = resolve({ ...bound }, { id: 'credential:local', session: null });
-
-    expect(second.providers.scoreProvider).toBe(first.providers.scoreProvider);
-    expect(second.providers.catalogProvider).toBe(first.providers.catalogProvider);
-    expect(second.cacheKey).toBe(first.cacheKey);
-    expect(providerResolverStats().created).toBe(before + 1);
+describe('当前账号的 Provider', () => {
+  it('切换本地账号后查分显示对应玩家名，改名立即生效', async () => {
+    const first = createLocalMaimaiAccount('玩家甲', 0);
+    const second = { ...createLocalMaimaiAccount('玩家乙', 0), id: 'maimai:local:second' };
+    useSession.getState().upsertBoundAccount(first);
+    useSession.getState().upsertBoundAccount(second);
+    useSession.getState().selectBoundAccount(first.id);
+    expect((await useSession.getState().scoreProvider.getPlayer())?.displayName).toBe('玩家甲');
+    useSession.getState().selectBoundAccount(second.id);
+    expect((await useSession.getState().scoreProvider.getPlayer())?.displayName).toBe('玩家乙');
+    useSession.getState().renameLocalAccount(second.id, '新名字');
+    expect((await useSession.getState().scoreProvider.getPlayer())?.displayName).toBe('新名字');
   });
 
-  it('换账号或换凭据都产生新的缓存键与新实例', () => {
-    resetProviderResolverForTests();
-    const bound = account();
-    const baseKey = providerResolverCacheKey(bound, { id: 'credential:local', session: null });
-
-    expect(providerResolverCacheKey({ ...bound, id: 'maimai:local:second' }, { id: 'credential:local', session: null }))
-      .not.toBe(baseKey);
-    expect(providerResolverCacheKey(bound, { id: 'credential:other', session: null })).not.toBe(baseKey);
+  it('重新授权后当前中二查分器使用新会话', () => {
+    const account = createChunithmBoundAccount({ playerId: '2', displayName: '中二玩家', rating: 17 });
+    const metadata = { gameId: 'chunithm', accountId: account.id, providerId: 'lxns',
+      playerId: '2', displayName: account.displayName, rating: 17, credentialId: 'shared' } as const;
+    useSession.getState().setSession(lxnsSession, metadata);
+    const next = { ...lxnsSession, accessToken: 'new-access', refreshToken: 'new-refresh' };
+    useSession.getState().setSession(next, metadata);
+    const provider = useSession.getState().protocolScoreProvider;
+    expect(provider).toBeInstanceOf(ChunithmScoreProvider);
+    expect(provider?.getSession()).toEqual(next);
   });
 
-  it('凭据版本改变（轮换或重新授权）后缓存键改变并重建实例', () => {
-    resetProviderResolverForTests();
-    const bound = { ...createMaxedMaimaiTestAccount(), providerId: 'lxns' as const };
-    const original = lxnsSession('refresh-a');
-    const rotated = lxnsSession('refresh-b');
-
-    const before = resolve(bound, { id: 'lxns:shared', session: original });
-    expect(before.providers.scoreProvider).toBeInstanceOf(LxnsScoreProvider);
-
-    const afterRotation = resolve(bound, { id: 'lxns:shared', session: rotated });
-    expect(afterRotation.providers.scoreProvider).not.toBe(before.providers.scoreProvider);
-    expect(afterRotation.cacheKey).not.toBe(before.cacheKey);
-
-    // 重新授权拿到另一份凭据引用时同样失效。
-    const reAuthorized = resolve(bound, { id: 'lxns:another', session: rotated });
-    expect(reAuthorized.cacheKey).not.toBe(afterRotation.cacheKey);
-    expect(reAuthorized.providers.scoreProvider).not.toBe(afterRotation.providers.scoreProvider);
-  });
-
-  it('解绑账号会清掉该账号的已解析实例', () => {
-    resetProviderResolverForTests();
-    const bound = account();
-    const first = resolve(bound, { id: 'credential:local', session: null });
-    expect(providerResolverStats().entries).toBe(1);
-
-    releaseResolvedProviders([bound.id]);
-
-    expect(providerResolverStats().entries).toBe(0);
-    const recreated = resolve(bound, { id: 'credential:local', session: null });
-    expect(recreated.providers.scoreProvider).not.toBe(first.providers.scoreProvider);
-  });
-
-  it('凭据字段顺序不同但内容相同保持同一缓存键', () => {
-    const bound = account();
-    const session: ProviderSession = { mode: 'import-token', value: 'token', persistable: true };
-    const reordered: ProviderSession = { persistable: true, value: 'token', mode: 'import-token' };
-    expect(providerResolverCacheKey(bound, { id: 'credential:x', session }))
-      .toBe(providerResolverCacheKey(bound, { id: 'credential:x', session: reordered }));
-  });
-
-  it('未绑定账号返回共享的空 Provider', () => {
-    resetProviderResolverForTests();
-    const unbound = resolve(null, { id: null, session: null });
-    expect(unbound.providers.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
-    expect(unbound.providers.catalogProvider).toBeNull();
-  });
-  it('中二与 osu 的领域 Provider 在同一凭据版本下共享实例并随轮换失效', () => {
-    const chunithm = createChunithmBoundAccount({ playerId: '2', displayName: '中二玩家', rating: 17 });
-    const osu = createOsuBoundAccount({ gameId: 'osu-mania', userId: 7, displayName: 'osu 玩家', pp: 100 });
-    const osuSession = { mode: 'osu-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 60_000, persistable: true } as const;
-    for (const [bound, session, expectedClass] of [[chunithm, lxnsSession('first'), ChunithmScoreProvider], [osu, osuSession, OsuScoreProvider]] as const) {
-      resetProviderResolverForTests();
-      const first = resolve(bound, { id: 'shared', session });
-      const same = resolve({ ...bound }, { id: 'shared', session: { ...session } });
-      expect(first.providers.protocolScoreProvider).toBeInstanceOf(expectedClass);
-      expect(same.providers.protocolScoreProvider).toBe(first.providers.protocolScoreProvider);
-      expect(first.providers.catalogProvider).toBeNull();
-      const next = resolve(bound, { id: 'shared', session: { ...session, accessToken: 'next', refreshToken: 'next' } });
-      expect(next.providers.protocolScoreProvider).not.toBe(first.providers.protocolScoreProvider);
-      expect(providerResolverStats().entries).toBe(1);
-    }
+  it('osu! 模式切换保留各自查分器与共享会话', () => {
+    const accounts = [createOsuBoundAccount({ gameId: 'osu-standard', userId: 7, displayName: '标准', pp: 100 }),
+      createOsuBoundAccount({ gameId: 'osu-mania', userId: 7, displayName: '键盘', pp: 50 })];
+    const session = { mode: 'osu-oauth', accessToken: 'access', refreshToken: 'refresh',
+      expiresAt: Date.now() + 60_000, persistable: true } as const;
+    useSession.getState().setOsuBinding({ accounts, session, credentialId: 'osu:shared', activeAccountId: accounts[0].id });
+    useSession.getState().selectBoundAccount(accounts[1].id);
+    const provider = useSession.getState().protocolScoreProvider;
+    expect(useSession.getState().activeGameId).toBe('osu-mania');
+    expect(provider).toBeInstanceOf(OsuScoreProvider);
+    expect(provider?.getSession()).toBe(session);
   });
 });

@@ -1,5 +1,6 @@
 module.exports = {
   preset: 'jest-expo',
+  setupFilesAfterEnv: ['<rootDir>/tests/native-layout-shim.js'],
   testMatch: ['<rootDir>/tests/**/*.test.tsx'],
   moduleNameMapper: {
     '^@/(.*)$': '<rootDir>/src/$1',

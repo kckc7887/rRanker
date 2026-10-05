@@ -60,7 +60,7 @@ function RizlineSongDetailContent({ song, library, initialLevelIndex }: { song: 
   const duration = seconds === null ? '—' : `${Math.floor(seconds / 60)}:${String(Math.floor(seconds % 60)).padStart(2, '0')}`;
   return <ScrollView testID="rizline-song-detail-scroll" contentContainerStyle={styles.content}>
     <View style={[styles.hero, { width, height: width }]}>
-      {cover && !coverFailed ? <RemoteImage accessibilityLabel="曲绘" source={cover} cachePolicy="disk" cacheProfile="artwork" gameId="rizline"
+      {cover && !coverFailed ? <RemoteImage accessibilityLabel="曲绘" source={cover} cacheProfile="artwork" gameId="rizline"
         contentFit="cover" onError={() => setCoverFailed(true)} style={StyleSheet.absoluteFillObject} transition={120} />
         : <View style={[styles.heroPlaceholder, { backgroundColor: theme.input }]}><Text style={styles.heroPlaceholderNote}>♪</Text></View>}
       <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']} locations={[0, 1]} style={styles.heroShade} />

@@ -1,21 +1,16 @@
-/**
- * 跨层回归：总览「从落雪传输成绩」的多目标终态。
- *
- * 接缝：`transferMaimaiFromLxns` 的 `targetResults` → `useOverviewUpload.syncMaimaiFromLxns`
- * 的通知与 `uploadPhase`。服务侧结果已由 `transfer-maimai-from-lxns.test.ts` 覆盖，
- * 但**页面终态**（部分目标失败 / 全部目标失败 / 全部成功）在本文件之前没有任何测试：
- * 仓库内没有测试引用过「部分传输完成」「所有目标均写入失败」这些用户可见文案，
- * `overview-upload-actions.test.tsx` 只覆盖同步与好友码上传入口。
- * 传输服务在这里按合同边界 mock，断言的是页面如何呈现它的结果。
- */
 import { act, cleanup, renderHook } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { UploadTaskController, uploadTaskController } from '@/services/upload-task-controller';
 import { useOverviewUpload } from '@/hooks/use-overview-upload';
 import { createMaimaiBoundAccount, type BoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
-import { uploadTaskController, type UploadResult, type UploadTargetResult } from '@/services/upload-maimai-from-friend-code';
+import { type UploadResult, type UploadTargetResult } from '@/services/upload-maimai-from-friend-code';
 import type { transferMaimaiFromLxns } from '@/services/transfer-maimai-from-lxns';
 import { fixtureCatalog } from '@/fixtures/sanitized';
+jest.mock('@/services/upload-task-controller', () => {
+  const actual = jest.requireActual<typeof import('@/services/upload-task-controller')>('@/services/upload-task-controller');
+  return { ...actual, uploadTaskController: new actual.UploadTaskController() };
+});
 
 const mockNotification = jest.fn();
 const mockTransfer = jest.fn<typeof transferMaimaiFromLxns>();
@@ -101,14 +96,12 @@ function options(overrides: Partial<Params> = {}): Params {
   };
 }
 
-/** 选中来源账号与两个水鱼目标，然后执行一次传输。 */
 async function transferScore(): Promise<{ ok: boolean | undefined; phase: unknown }> {
   const hook = await renderHook(() => useOverviewUpload(options()));
   await act(async () => { hook.result.current.setMaimaiSourceAccountId(source.id); });
   await act(async () => {
     hook.result.current.setMaimaiTransferTargetIds([water.id, waterSecond.id]);
   });
-  // 来源账号本身不计入可写目标（服务会拒绝把自己作为目标），两个水鱼账号可以写入。
   expect(hook.result.current.maimaiTransferTargets
     .filter((target) => target.writable && target.account.id !== source.id)).toHaveLength(2);
   let ok: boolean | undefined;
@@ -119,11 +112,11 @@ async function transferScore(): Promise<{ ok: boolean | undefined; phase: unknow
 }
 
 beforeEach(() => {
-  uploadTaskController.resetForTests();
+  jest.requireMock<{ uploadTaskController: UploadTaskController }>('@/services/upload-task-controller').uploadTaskController = new UploadTaskController();
   jest.clearAllMocks();
   mockInvalidate.mockResolvedValue(undefined);
 });
-afterEach(async () => { await cleanup(); uploadTaskController.resetForTests(); });
+afterEach(async () => { await cleanup(); uploadTaskController.begin(); uploadTaskController.cancel(); });
 
 describe('总览从落雪传输成绩的页面终态', () => {
   it('暂停时不开始曲库和传输，恢复后继续同一任务', async () => {

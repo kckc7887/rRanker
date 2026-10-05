@@ -5,7 +5,6 @@ import { SimaiScoreCard } from '@/components/game-content/SimaiScoreCard';
 import { presentMaimaiScore } from '@/features/game-content/adapters';
 import { maimaiJacketUrl } from '@/domain/maimai-assets';
 
-/** 成绩页卡片数据；未游玩谱面可省略达成率/Rating/成就字段。 */
 export type ScoreRecordCardData = {
   songId: string;
   title: string;
@@ -29,9 +28,7 @@ export const ScoreRecordCard = memo(function ScoreRecordCard({
 }: {
   record: ScoreRecord | ScoreRecordCardData;
   rank?: number;
-  /** false 时渲染纯预览卡（无按压与详情跳转）；缺省保持可点击。 */
   interactive?: boolean;
-  /** 预览等一次性场景传 "none" 完全跳过曲绘缓存。 */
   artworkCachePolicy?: 'none';
 }) {
   const presentation = presentMaimaiScore(record, rank);

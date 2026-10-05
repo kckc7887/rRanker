@@ -6,7 +6,6 @@ import { useAppTheme } from '@/theme/app-theme';
 import { GameSongRow } from './GameSongRow';
 import { SIMAI_CATALOG_LIST_STYLES as styles } from './SimaiListStyles';
 
-/** 舞萌曲库的封面、歌曲内容和右侧本地收藏按钮。 */
 export function FavoriteSongRow({ presentation, cover, badges, subtitleContent, matchedAlias, favorite, favoritePending, onFavoriteChange }: {
   presentation: SongRowPresentation;
   cover: ReactNode;

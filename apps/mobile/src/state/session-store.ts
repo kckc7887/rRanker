@@ -10,31 +10,25 @@ import {
   type BoundAccount,
 } from '@/domain/bound-account';
 import type { GameId, ProviderId, RemoteProviderId } from '@/domain/game-bind-options';
-import type { ProviderSession, RizlineSession } from '@/providers/contracts';
-import type { SessionProfiles } from '@/state/session-provider-resolver';
-import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
-import type { HttpCookieSession } from '@/providers/http-cookies';
+import type { ProviderSession } from '@/providers/contracts';
+import type { SessionProviders } from '@/services/session-providers';
+import { resolveSessionProviders, releaseResolvedProviders } from '@/state/session-provider-resolver';
 import {
   credentialIdsMapFromVault,
   sessionsMapFromVault,
   type SessionVault,
 } from '@/domain/session-vault';
 import { startTimer } from '@/utils/startup-timing';
-import { sessionRuntime } from '@/state/session-runtime';
 import { clearOsuRotationCache } from '@/providers/osu-oauth';
-import type { SessionCredentialCoordinator } from '@/services/session-credential-coordinator';
+import { EmptyScoreProvider } from '@/providers/empty-provider';
 
-/** 无已绑定账号时的占位 ID；页面按空数据处理。 */
 export const UNBOUND_ACCOUNT_ID = 'maimai:unbound';
+const emptyScoreProvider = new EmptyScoreProvider();
 
 export type SessionsByAccountId = Record<string, ProviderSession>;
 
 type OsuOAuthSession = Extract<ProviderSession, { mode: 'osu-oauth' }>;
 
-/**
- * 规范账号数据与派生内存视图。Store 只做纯变换：
- * Provider 实例来自注入的运行时端口，凭据落盘与轮换来自凭据提交协调器。
- */
 export type SessionState = {
   sessionsByAccountId: SessionsByAccountId;
   credentialIdsByAccountId: Record<string, string>;
@@ -42,13 +36,11 @@ export type SessionState = {
   activeAccountId: string;
   activeGameId: GameId;
   activeProviderId: ProviderId | null;
-  scoreProvider: SessionProfiles['scoreProvider'];
-  catalogProvider: SessionProfiles['catalogProvider'];
-  protocolScoreProvider: SessionProfiles['protocolScoreProvider'];
+  scoreProvider: SessionProviders['scoreProvider'];
+  catalogProvider: SessionProviders['catalogProvider'];
+  protocolScoreProvider: SessionProviders['protocolScoreProvider'];
   restoreStatus: SessionRestoreStatus;
   restoreError: string | null;
-  migrationRecovery: SessionVault['recovery'] | null;
-  /** 当前激活账号的会话；切换账号时随之更换。 */
   session: ProviderSession | null;
   setSession: (session: ProviderSession, accountMeta?: {
     displayName: string;
@@ -73,39 +65,25 @@ export type SessionState = {
   renameLocalAccount: (accountId: string, displayName: string) => void;
   selectBoundAccount: (accountId: string) => void;
   removeBoundAccount: (accountId: string) => void;
-  /** osu! 多模式绑定激活：一次写入多个模式账号（共享 credential）并激活其中一个。 */
   setOsuBinding: (input: {
     accounts: BoundAccount[];
     credentialId: string;
     session: OsuOAuthSession;
     activeAccountId: string;
   }) => void;
-  setActiveProviderId: (providerId: ProviderId) => void;
-  setActiveGameId: (gameId: GameId) => void;
   clearSession: () => void;
-  finishRestore: (vault: SessionVault | ProviderSession | null, optionalAccounts?: BoundAccount[]) => void;
+  finishRestore: (vault: SessionVault | null, optionalAccounts?: BoundAccount[]) => void;
   failRestore: (message: string) => void;
 };
 
 export type SessionRestoreStatus = 'restoring' | 'ready' | 'error';
 
-/** 账号被移除后释放它的 Provider 缓存：同一账号只保留当前实例。 */
-function releaseAccountProviders(accountIds: readonly string[]): void {
-  sessionRuntime().release(accountIds);
-}
-
-/**
- * 多账号操作改了规范数据（例如共享凭据轮换把新会话广播给所有关联账号）后，
- * 让激活账号的派生视图按同一批数据重新解析：调用方不再需要自己拼 Provider 字段。
- * 传入 `sessionsByAccountId` 可让会话与派生视图落在同一次提交里。
- */
-export function refreshActiveSessionView(sessionsByAccountId?: SessionsByAccountId): void {
+export function refreshActiveSessionView(sessionsByAccountId: SessionsByAccountId): void {
   const state = useSession.getState();
-  const sessions = sessionsByAccountId ?? state.sessionsByAccountId;
   const account = state.boundAccounts.find((item) => item.id === state.activeAccountId);
-  useSession.setState({ sessionsByAccountId: sessions,
-    ...(account && (!sessionsByAccountId || (sessions[account.id] ?? null) !== state.session)
-      ? activeAccountFields(account, sessions, state.credentialIdsByAccountId) : {}) });
+  useSession.setState({ sessionsByAccountId,
+    ...(account && (sessionsByAccountId[account.id] ?? null) !== state.session
+      ? activeAccountFields(account, sessionsByAccountId, state.credentialIdsByAccountId) : {}) });
 }
 
 export function replaceRestoredOptionalAccounts(matches: (account: BoundAccount) => boolean, accounts: BoundAccount[]): void {
@@ -117,10 +95,6 @@ export function replaceRestoredOptionalAccounts(matches: (account: BoundAccount)
     restoreStatus: state.restoreStatus, restoreError: state.restoreError });
 }
 
-/**
- * 一次转换生成激活账号的全部派生字段：当前 ID、游戏、Provider 与内存会话
- * 在同一份状态提交里同时可见，不存在只看得到一半的中间态。
- */
 function activeAccountFields(
   account: BoundAccount,
   sessionsByAccountId: SessionsByAccountId,
@@ -131,23 +105,8 @@ function activeAccountFields(
     activeAccountId: account.id,
     activeGameId: account.gameId,
     activeProviderId: account.providerId,
-    ...providersForAccountWithCredential(account, sessionsByAccountId, credentialIdsByAccountId),
+    ...resolveSessionProviders(account, credentialIdsByAccountId[account.id] ?? null, sessionsByAccountId[account.id] ?? null),
   };
-}
-
-function providersForAccountWithCredential(
-  account: BoundAccount | null,
-  sessionsByAccountId: SessionsByAccountId,
-  credentialIdsByAccountId: Record<string, string>,
-) {
-  const { providers } = sessionRuntime().resolve({
-    account,
-    credentials: {
-      id: account ? credentialIdsByAccountId[account.id] ?? null : null,
-      session: account ? sessionsByAccountId[account.id] ?? null : null,
-    },
-  });
-  return providers;
 }
 
 function dedupeAccounts(accounts: BoundAccount[]): BoundAccount[] {
@@ -162,7 +121,7 @@ function dedupeAccounts(accounts: BoundAccount[]): BoundAccount[] {
 }
 
 function upsertAccountList(accounts: BoundAccount[], next: BoundAccount): BoundAccount[] {
-  return dedupeAccounts([...accounts.filter((account) => account.id !== next.id), next]);
+  return [...accounts.filter((account) => account.id !== next.id), next];
 }
 
 function unboundState(extra?: Partial<SessionState>) {
@@ -174,7 +133,9 @@ function unboundState(extra?: Partial<SessionState>) {
     activeAccountId: UNBOUND_ACCOUNT_ID,
     activeGameId: 'maimai' as GameId,
     activeProviderId: null as ProviderId | null,
-    ...providersForAccountWithCredential(null, {}, {}),
+    scoreProvider: emptyScoreProvider,
+    catalogProvider: null,
+    protocolScoreProvider: null,
     ...extra,
   };
 }
@@ -238,8 +199,7 @@ function bindSessionAccount(
   );
 }
 
-/** 共享凭据广播：同一凭据下的账号一起拿到新会话，不改变账号集合。 */
-function sessionsForCredentialUpdate(
+export function sessionsForCredentialUpdate(
   sessionsByAccountId: SessionsByAccountId,
   credentialIdsByAccountId: Record<string, string>,
   credentialId: string,
@@ -256,7 +216,6 @@ export const useSession = create<SessionState>((set, get) => ({
   ...unboundState(),
   restoreStatus: 'restoring',
   restoreError: null,
-  migrationRecovery: null,
   setSession: (session, accountMeta) => {
     if (session.mode === 'rizline' && accountMeta?.gameId === 'rizline' && accountMeta.playerId) {
       const account = createRizlineBoundAccount({ userId: accountMeta.playerId,
@@ -344,7 +303,6 @@ export const useSession = create<SessionState>((set, get) => ({
     const state = get();
     set({
       boundAccounts: accounts.map((item) => item === account ? next : item),
-      // 展示名会进 Provider 实例（本地玩家名），激活账号改名时同步重建派生视图。
       ...(isActive && next.displayName !== account.displayName
         ? activeAccountFields(next, state.sessionsByAccountId, state.credentialIdsByAccountId)
         : {}),
@@ -361,7 +319,6 @@ export const useSession = create<SessionState>((set, get) => ({
       boundAccounts: current.boundAccounts.map((item) => (
         item.id === accountId ? renamed : item
       )),
-      // 本地 Provider 实例内嵌玩家名：改名后必须解析出新实例。
       ...(current.activeAccountId === accountId
         ? activeAccountFields(renamed, current.sessionsByAccountId, current.credentialIdsByAccountId)
         : {}),
@@ -384,13 +341,12 @@ export const useSession = create<SessionState>((set, get) => ({
     const removed = sessionsByAccountId[accountId];
     const { [accountId]: _removed, ...restSessions } = sessionsByAccountId;
     const { [accountId]: _removedCredential, ...restCredentialIds } = credentialIdsByAccountId;
-    const nextAccounts = dedupeAccounts(boundAccounts.filter((account) => account.id !== accountId));
+    const nextAccounts = boundAccounts.filter((account) => account.id !== accountId);
     if (removed?.mode === 'osu-oauth'
       && !Object.values(restSessions).some((session) => session?.mode === 'osu-oauth')) {
       clearOsuRotationCache();
     }
-    // 解绑使该账号的 Provider 实例失效：缓存条目按账号释放，不会留给下次绑定复用。
-    releaseAccountProviders([accountId]);
+    releaseResolvedProviders([accountId]);
     set(activateAccount(
       nextAccounts,
       restSessions,
@@ -400,16 +356,14 @@ export const useSession = create<SessionState>((set, get) => ({
   },
   setOsuBinding: (input) => {
     const state = get();
-    const active = input.accounts.find((account) => account.id === input.activeAccountId)
-      ?? input.accounts[0];
-    if (!active) return;
+    const active = input.accounts.find((account) => account.id === input.activeAccountId)!;
     const nextCredentialIds = { ...state.credentialIdsByAccountId };
     for (const account of input.accounts) {
       nextCredentialIds[account.id] = input.credentialId;
     }
     const nextSessions = sessionsForCredentialUpdate(state.sessionsByAccountId, nextCredentialIds, input.credentialId, input.session);
     const nextAccounts = input.accounts.reduce(upsertAccountList, state.boundAccounts);
-    releaseAccountProviders(Object.keys(nextCredentialIds).filter(accountId => nextCredentialIds[accountId] === input.credentialId));
+    releaseResolvedProviders(Object.keys(nextCredentialIds).filter(accountId => nextCredentialIds[accountId] === input.credentialId));
     set({
       sessionsByAccountId: nextSessions,
       credentialIdsByAccountId: nextCredentialIds,
@@ -418,24 +372,6 @@ export const useSession = create<SessionState>((set, get) => ({
       restoreStatus: 'ready',
       restoreError: null,
     });
-  },
-  setActiveProviderId: (providerId) => {
-    const { boundAccounts } = get();
-    const match = boundAccounts.find(
-      (account) => account.gameId === 'maimai' && account.providerId === providerId,
-    );
-    if (match) {
-      get().selectBoundAccount(match.id);
-      return;
-    }
-    set({
-      activeGameId: 'maimai',
-      activeProviderId: providerId,
-    });
-  },
-  setActiveGameId: (gameId) => {
-    const match = get().boundAccounts.find((account) => account.gameId === gameId);
-    if (match) get().selectBoundAccount(match.id);
   },
   clearSession: () => {
     clearOsuRotationCache();
@@ -453,31 +389,10 @@ export const useSession = create<SessionState>((set, get) => ({
     const dropped = get().boundAccounts
       .filter((account) => !kept.includes(account))
       .map((account) => account.id);
-    releaseAccountProviders(dropped);
+    releaseResolvedProviders(dropped);
     set(activateAccount(kept, {}, {}, kept[0]?.id ?? null));
   },
-  finishRestore: (input, optionalAccounts = []) => {
-    const migrationRecovery = input && 'version' in input ? input.recovery ?? null : null;
-    const finish = (profile: ReturnType<typeof activateAccount>) => set({ ...profile, migrationRecovery });
-    // 兼容旧单会话 restore
-    if (input && 'mode' in input) {
-      const session = input as ProviderSession;
-      const pending = createMaimaiBoundAccount({
-        providerId: 'diving-fish',
-        displayName: '水鱼玩家',
-        rating: 0,
-        playerId: 'restored',
-      });
-      finish(activateAccount(
-        [...optionalAccounts, pending],
-        { [pending.id]: session },
-        { [pending.id]: `credential:${pending.id}` },
-        pending.id,
-      ));
-      return;
-    }
-
-    const vault = input as SessionVault | null;
+  finishRestore: (vault, optionalAccounts = []) => {
     if (vault) {
       const sessionsByAccountId = sessionsMapFromVault(vault);
       const credentialIdsByAccountId = credentialIdsMapFromVault(vault);
@@ -487,7 +402,7 @@ export const useSession = create<SessionState>((set, get) => ({
       const compatibleOptionalAccounts = hasFormalChunithmAccount
         ? optionalAccounts.filter((account) => account.providerId !== 'chunithm-temp')
         : optionalAccounts;
-      finish(activateAccount(
+      set(activateAccount(
         [...compatibleOptionalAccounts, ...vault.accounts.map(boundAccountFromStored)],
         sessionsByAccountId,
         credentialIdsByAccountId,
@@ -496,7 +411,7 @@ export const useSession = create<SessionState>((set, get) => ({
       return;
     }
 
-    finish(activateAccount(optionalAccounts, {}, {}, optionalAccounts[0]?.id ?? null));
+    set(activateAccount(optionalAccounts, {}, {}, optionalAccounts[0]?.id ?? null));
   },
   failRestore: (message) => {
     set({
@@ -507,7 +422,7 @@ export const useSession = create<SessionState>((set, get) => ({
 }));
 
 export async function restoreSession(
-  load: () => Promise<SessionVault | ProviderSession | null>,
+  load: () => Promise<SessionVault | null>,
   loadOptionalAccounts?: () => Promise<BoundAccount[]>,
 ): Promise<void> {
   try {
@@ -525,71 +440,10 @@ export async function restoreSession(
   }
 }
 
-/**
- * 兼容入口桥接：轮换提交、挂起补写与 Rizline 轮换都在凭据提交协调器里，
- * 这里按需加载协调器并复用同一实例，Store 自身不 import 存储实现或 Provider 构造路径。
- */
-let credentialCoordinatorBridge: Promise<SessionCredentialCoordinator> | null = null;
-let credentialCoordinatorInstance: SessionCredentialCoordinator | null = null;
-
-function loadCredentialCoordinator(): Promise<SessionCredentialCoordinator> {
-  credentialCoordinatorBridge ??= import('@/services/session-credential-coordinator').then(
-    ({ SessionCredentialCoordinator }) => {
-      credentialCoordinatorInstance = new SessionCredentialCoordinator({
-        getState: () => useSession.getState(),
-        setState: (partial) => useSession.setState(partial as Partial<SessionState>),
-        refreshActiveSessionView,
-      });
-      return credentialCoordinatorInstance;
-    },
-  );
-  return credentialCoordinatorBridge;
-}
-
-export async function applyLxnsTokenRotation(
-  accountId: string,
-  update: LxnsTokenRotationUpdate,
-): Promise<'applied' | 'pending-persist' | 'stale' | 'removed'> {
-  return (await loadCredentialCoordinator()).applyLxnsTokenRotation(accountId, update);
-}
-
-export async function applyOsuTokenRotation(
-  accountId: string,
-  next: OsuOAuthSession,
-  expected?: OsuOAuthSession,
-): Promise<'applied' | 'pending-persist' | 'stale' | 'removed'> {
-  return (await loadCredentialCoordinator()).applyOsuTokenRotation(accountId, next, expected);
-}
-
-export async function applyRizlineSessionRotation(
-  accountId: string,
-  next: RizlineSession,
-  expected: RizlineSession,
-  signal?: AbortSignal,
-): Promise<void> {
-  await (await loadCredentialCoordinator()).applyRizlineSessionRotation(accountId, next, expected, signal);
-}
-
-export async function applyMajdataSessionRotation(accountId: string, next: HttpCookieSession, expected: HttpCookieSession, signal?: AbortSignal): Promise<void> {
-  await (await loadCredentialCoordinator()).applyMajdataSessionRotation(accountId, next, expected, signal);
-}
-
-/** 仍未落盘的轮换摘要：状态跟着同一协调器单例，兼容入口不维护第二份。 */
-export function pendingRotationWritesSnapshot(): readonly {
-  credentialId: string;
-  accountId: string;
-  attempts: number;
-}[] {
-  return credentialCoordinatorInstance?.pendingRotationWritesSnapshot() ?? [];
-}
-
-export async function retryPendingRotationWrites(): Promise<number> {
-  return (await loadCredentialCoordinator()).retryPendingRotationWrites();
-}
-
-/** 测试用：清空挂起轮换、定时器与已装配的协调器。 */
-export function resetPendingRotationWritesForTests(): void {
-  credentialCoordinatorInstance?.resetPendingRotationWritesForTests();
-  credentialCoordinatorInstance = null;
-  credentialCoordinatorBridge = null;
-}
+export {
+  applyLxnsTokenRotation,
+  applyOsuTokenRotation,
+  applyRizlineSessionRotation,
+  applyMajdataSessionRotation,
+  retryPendingRotationWrites,
+} from '@/services/session-credential-service';

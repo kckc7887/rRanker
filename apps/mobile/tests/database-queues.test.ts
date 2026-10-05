@@ -1,7 +1,6 @@
-import { afterEach, expect, it } from 'vitest';
-import { resetRrankerDatabaseForTests, runDatabaseWrite, runSerializedSchemaInit } from '@/storage/rranker-database';
+import { expect, it } from 'vitest';
+import { runDatabaseWrite, runSerializedSchemaInit } from '@/storage/rranker-database';
 
-afterEach(resetRrankerDatabaseForTests);
 it('initializes the log database while an unrelated business write is pending', async () => {
   let finish!: () => void;
   const business = runDatabaseWrite(() => new Promise<void>((resolve) => { finish = resolve; }));

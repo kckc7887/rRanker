@@ -9,7 +9,7 @@ export type KeyValueStorage = {
 
 const instances = new WeakMap<KeyValueStorage, KeyValueStorage>();
 
-/** Own the complete native statement lifetime for each underlying KV instance. */
+/** 同一原生实例串行执行，避免语句尚未释放就开始下一次操作。 */
 export function createSerializedKeyValueStorage(storage: KeyValueStorage): KeyValueStorage {
   const existing = instances.get(storage);
   if (existing) return existing;

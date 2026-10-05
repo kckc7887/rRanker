@@ -6,7 +6,6 @@ import { phigrosResources, type PhigrosRelease } from '@/services/phigros-resour
 
 const OSS_BASE = PHIGROS_OSS_BASE;
 
-/** 章节映射表（手动维护，独立于游戏版本发布） */
 const CHAPTERS_PATH = `${OSS_BASE}/phigros/chapters.csv`;
 
 const LEVEL_INDEX_MAP: Record<number, Chart['difficulty']> = {
@@ -26,7 +25,6 @@ const LEVEL_LABEL_MAP: Record<number, string> = {
 const CHART_TYPE: ChartType = 'SD';
 
 export class PhigrosCatalogProvider implements CatalogProvider {
-  constructor(private readonly resources = phigrosResources) {}
   private catalog: CatalogSnapshot | null = null;
   private catalogRelease: PhigrosRelease | undefined;
   private release: PhigrosRelease | undefined;
@@ -45,14 +43,9 @@ export class PhigrosCatalogProvider implements CatalogProvider {
   resetCatalogCache(): void { this.catalog = null; }
 
   private async fetchText(url: string, signal?: AbortSignal): Promise<string> {
-    return new TextDecoder().decode(await this.resources.bytes(url, signal, 12_000, 'catalog'));
+    return new TextDecoder().decode(await phigrosResources.bytes(url, signal, 12_000, 'catalog'));
   }
 
-  /**
-   * 拉取章节映射表。`check` 时带缓存绕过参数。
-   * 重拉或解析失败且已有会话副本时保留上次结果；首次失败回退无章节。
-   * @returns 会话中的章节表是否因此次调用而改变
-   */
   private async refreshChapters(signal: AbortSignal | undefined, check: boolean): Promise<boolean> {
     const url = check
       ? `${CHAPTERS_PATH}?_check=${Date.now()}-${++this.chaptersSequence}`
@@ -88,18 +81,18 @@ export class PhigrosCatalogProvider implements CatalogProvider {
   }
 
   async getGameVersion(signal?: AbortSignal): Promise<string> {
-    this.release = await this.resources.load(signal);
+    this.release = await phigrosResources.load(signal);
     return this.release.current.gameVersion;
   }
 
   async getCatalog(signal?: AbortSignal, checkChapters = false): Promise<CatalogSnapshot> {
-    const release = await this.resources.load(signal);
+    const release = await phigrosResources.load(signal);
     if (!checkChapters && this.catalog && this.catalogRelease === release) return this.catalog;
     const chaptersChanged = checkChapters || !this.chaptersAttempted
       ? await this.refreshChapters(signal, checkChapters)
       : false;
     if (signal?.aborted) throw signal.reason;
-    if (this.resources.peek() && this.resources.peek() !== release) return this.getCatalog(signal);
+    if (phigrosResources.peek() && phigrosResources.peek() !== release) return this.getCatalog(signal);
     if (this.catalog && this.catalogRelease === release && !chaptersChanged) return this.catalog;
     return this.buildCatalog(release);
   }
@@ -178,7 +171,7 @@ export class PhigrosCatalogProvider implements CatalogProvider {
   private releaseFileUrl(relative: string): string | null {
     const release = this.release;
     if (!release) return null;
-    return this.resources.url(`${this.resources.directory(release.current)}${relative}`, release);
+    return phigrosResources.url(`${phigrosResources.directory(release.current)}${relative}`, release);
   }
 
   getIllustrationUrl(songId: string): string | null {
@@ -197,7 +190,7 @@ export class PhigrosCatalogProvider implements CatalogProvider {
     const release = this.release;
     if (!release) return null;
     return buildPhigrosAvatarUrl(
-      this.resources.directory(release.current),
+      phigrosResources.directory(release.current),
       avatarName,
       release.current.resourceVersion,
     );

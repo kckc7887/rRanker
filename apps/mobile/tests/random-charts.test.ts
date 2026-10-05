@@ -1,6 +1,6 @@
 import type { CatalogSnapshot, ScoreRecord, Song } from '@/domain/models';
+import { chartVersionKey } from '@/domain/catalog';
 import {
-  chartPickKey,
   filterMaimaiRandomCharts,
   filterPhigrosRandomCharts,
   pickRandomItems,
@@ -146,7 +146,7 @@ describe('filterMaimaiRandomCharts', () => {
       constantMin: '13',
       constantMax: '14',
     });
-    expect(pool.map(chartPickKey)).toEqual(['1:DX:3']);
+    expect(pool.map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['1:DX:3']);
   });
 
   it('excludes U·TA·GE when a constant bound is entered like the records page', () => {
@@ -163,7 +163,7 @@ describe('filterMaimaiRandomCharts', () => {
       ...maimaiFilters,
       achievementMin: '98.5',
     });
-    expect(filtered.map(chartPickKey)).toEqual(['1:DX:3']);
+    expect(filtered.map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['1:DX:3']);
 
     const invalid = filterMaimaiRandomCharts(catalog, records, {
       ...maimaiFilters,
@@ -181,8 +181,8 @@ describe('filterMaimaiRandomCharts', () => {
       ...maimaiFilters,
       multiAchievement: 'fs',
     });
-    expect(solo.map(chartPickKey)).toEqual(['1:DX:3']);
-    expect(multi.map(chartPickKey)).toEqual(['2:SD:1']);
+    expect(solo.map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['1:DX:3']);
+    expect(multi.map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['2:SD:1']);
   });
 
   it('matches DXRating tags with every selected tag and supports U·TA·GE fallback', () => {
@@ -190,13 +190,13 @@ describe('filterMaimaiRandomCharts', () => {
       ...maimaiFilters,
       selectedDxRatingTagIds: [1],
     }, tagSnapshot);
-    expect(high.map(chartPickKey)).toEqual(['1:DX:3']);
+    expect(high.map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['1:DX:3']);
 
     const spin = filterMaimaiRandomCharts(catalog, records, {
       ...maimaiFilters,
       selectedDxRatingTagIds: [2],
     }, tagSnapshot);
-    expect(spin.map(chartPickKey)).toEqual(['2:SD:1']);
+    expect(spin.map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['2:SD:1']);
 
     const both = filterMaimaiRandomCharts(catalog, records, {
       ...maimaiFilters,
@@ -208,7 +208,7 @@ describe('filterMaimaiRandomCharts', () => {
       ...maimaiFilters,
       selectedDxRatingTagIds: [3],
     }, tagSnapshot);
-    expect(utage.map(chartPickKey)).toEqual(['100123:UTAGE:0']);
+    expect(utage.map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['100123:UTAGE:0']);
   });
 
   it('does not widen the pool when selected tags cannot be loaded', () => {
@@ -328,9 +328,9 @@ describe('filterPhigrosRandomCharts', () => {
       { ...filters, xing: 'good' },
       { 'song:2': 100 },
     );
-    expect(accuracy.map(chartPickKey)).toEqual(['song:SD:2']);
-    expect(rank.map(chartPickKey)).toEqual(['song:SD:2']);
-    expect(xing.map(chartPickKey)).toEqual(['song:SD:2']);
+    expect(accuracy.map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['song:SD:2']);
+    expect(rank.map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['song:SD:2']);
+    expect(xing.map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['song:SD:2']);
   });
 
   it('requires every selected Kyou tag on the same chart', () => {
@@ -347,14 +347,14 @@ describe('filterPhigrosRandomCharts', () => {
       {},
       tagIndex,
     );
-    expect(both.map(chartPickKey)).toEqual(['song:SD:2']);
+    expect(both.map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['song:SD:2']);
     expect(filterPhigrosRandomCharts(
       phigrosCatalog,
       phigrosRecords,
       { ...filters, selectedKyouTagIds: [152] },
       {},
       tagIndex,
-    ).map(chartPickKey)).toEqual(['song:SD:2', 'song:SD:3']);
+    ).map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['song:SD:2', 'song:SD:3']);
     expect(filterPhigrosRandomCharts(
       phigrosCatalog,
       phigrosRecords,

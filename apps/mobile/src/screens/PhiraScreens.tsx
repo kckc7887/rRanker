@@ -137,7 +137,6 @@ export function PhiraCatalogScreen() {
   const theme = useAppTheme(); const inset = useNativeTabBottomInset(); const [status, setStatus] = useState<PhiraChartStatus>('ranked'); const [keyword, setKeyword] = useState('');
   const [collapsed, setCollapsed] = useState(true); const [constantMin, setConstantMin] = useState(''); const [constantMax, setConstantMax] = useState(''); const [sort, setSort] = useState<PhiraCatalogSort>('updated');
   const debounced = useDebouncedValue(keyword, 350); const query = usePhiraCharts(status, debounced);
-  // Phira /chart 的 page=1 与 page=0 重复且 updated 排序在请求间漂移，跨页需按 id 去重，避免 FlatList 重复 key。
   const charts = useMemo(() => filterPhiraCharts(dedupePhiraCharts(query.data?.pages.flatMap((page) => page.results) ?? []), constantMin, constantMax, sort), [constantMax, constantMin, query.data?.pages, sort]);
   const pageCount = query.data?.pages.length ?? 0;
   const pageState = phiraCatalogPageState<PhiraChart>({
@@ -281,7 +280,7 @@ function PhiraSongDetailContent({
     { key: 'bad', label: 'Bad', value: score.data.record.bad }, { key: 'miss', label: 'Miss', value: score.data.record.miss },
   ] } : null;
   return <ScrollView testID="phira-song-detail-scroll" contentContainerStyle={detailStyles.content}>
-      <View style={[detailStyles.hero, { width, height: width }]}>{chart.illustration && !coverFailed ? <Image accessibilityLabel="曲绘" source={chart.illustration} cachePolicy="disk" cacheProfile="artwork" gameId="phira" contentFit="cover" onError={() => setCoverFailed(true)} style={StyleSheet.absoluteFillObject} transition={120} /> : <View style={[detailStyles.heroPlaceholder, { backgroundColor: theme.input }]}><Text style={detailStyles.heroPlaceholderNote}>♪</Text></View>}
+      <View style={[detailStyles.hero, { width, height: width }]}>{chart.illustration && !coverFailed ? <Image accessibilityLabel="曲绘" source={chart.illustration} cacheProfile="artwork" gameId="phira" contentFit="cover" onError={() => setCoverFailed(true)} style={StyleSheet.absoluteFillObject} transition={120} /> : <View style={[detailStyles.heroPlaceholder, { backgroundColor: theme.input }]}><Text style={detailStyles.heroPlaceholderNote}>♪</Text></View>}
         <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']} locations={[0, 1]} style={detailStyles.heroShade} />
         <View style={detailStyles.heroCopy}><Text numberOfLines={1} style={detailStyles.songId}>#{chart.id}</Text><AutoScrollText testID="phira-song-title-scroll" text={chart.name} textStyle={detailStyles.title} style={detailStyles.singleLine} contentContainerStyle={detailStyles.singleLineContent} /><Text numberOfLines={1} style={detailStyles.artist}>{chart.composer || '曲师未知'}</Text></View></View>
       <SongMetadataTable accessibilityLabel="歌曲详情数据" items={[

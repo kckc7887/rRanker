@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -42,7 +42,7 @@ const PLAYFIELD_H = 384;
 const CANVAS_W = 1280;
 const CANVAS_H = 720;
 
-// Fixed to original 800×600 reference so hit objects size is canvas-independent.
+/** 按 800×600 基准缩放，音符大小不随画布尺寸改变。 */
 const SCALE = Math.min(800 / PLAYFIELD_W, 600 / PLAYFIELD_H) * 0.9;
 const OFFSET_X = (CANVAS_W - PLAYFIELD_W * SCALE) / 2;
 const OFFSET_Y = (CANVAS_H - PLAYFIELD_H * SCALE) / 2;
@@ -51,15 +51,10 @@ function toCanvas(x: number, y: number): [cx: number, cy: number] {
   return [OFFSET_X + x * SCALE, OFFSET_Y + y * SCALE];
 }
 
+/** osu! wiki 半径公式：r=(54.4-4.48×CS)×1.00041。 */
 
+/** 圆形有效区域约占素材宽度的 0.922，绘制尺寸补偿透明边。 */
 
-
-
-// osu! wiki: r = (54.4 - 4.48 * CS) * 1.00041
-
-
-// Visible-circle/half-width ratio of hitcircle sprites (≈0.922 for 118-in-128).
-// draw size = radius * 2 / ratio so transparent padding extends beyond CS radius.
 const _circleRatioCache = new WeakMap<ImageBitmap, number>();
 
 function hitCircleRatio(bitmap: ImageBitmap): number {
@@ -91,16 +86,11 @@ function hitCircleRatio(bitmap: ImageBitmap): number {
   return ratio;
 }
 
-// "Instafade" skins ship blank hitcircle.png/hitcircleoverlay.png and bake circle art
-// into default-N.png combo digits, so the circle vanishes the instant its number stops
-// drawing (a legacy skinning exploit for instant hit feedback).
+/** Instafade 皮肤把圆形画进数字；圆形素材留空，数字消失即命中反馈。 */
+
 const _isBlankCache = new WeakMap<ImageBitmap, boolean>();
 
-/**
- * True when a bitmap is a 1×1 placeholder or fully transparent (alpha ≤ 64 everywhere,
- * sampled at 32×32). Used to detect instafade skins and skin-author sprite suppression.
- * First call per bitmap pays a synchronous canvas readback; results are cached.
- */
+/** 1×1 或全透明素材表示隐藏；透明度检测使用 32×32 采样。 */
 export function isBlankImage(bitmap: ImageBitmap): boolean {
   const cached = _isBlankCache.get(bitmap);
   if (cached !== undefined) return cached;
@@ -124,17 +114,7 @@ export function isBlankImage(bitmap: ImageBitmap): boolean {
   return blank;
 }
 
-/**
- * Pre-populate the per-bitmap caches (`hitCircleRatio` / `isBlankImage`) so the
- * first render after a skin switch doesn't pay the GPU→CPU readback stall.
- * Safe to call multiple times — each underlying cache is a no-op on hit.
- *
- * Each warm is a synchronous OffscreenCanvas draw + getImageData readback, so only
- * the sprites the two functions are actually queried with get warmed:
- * - isBlankImage: hitcircle/hitcircleoverlay, sliderstartcircle(+overlay),
- *   pippidon* stubs, and combo digits.
- * - hitCircleRatio: the `hitCirclePrefix` combo digits (instafade sizing).
- */
+/** 预热需要的位图，避免首帧 GPU 回读阻塞。 */
 export function warmSkinCaches(skin: SkinAssets): void {
   const digitPrefix = `${skin.config.hitCirclePrefix.toLowerCase()}-`;
   for (const [key, bitmap] of skin.images) {
@@ -152,8 +132,6 @@ function skinImg(images: Map<string, ImageBitmap>, stem: string): ImageBitmap | 
   return images.get(`${stem}@2x.png`) ?? images.get(`${stem}.png`);
 }
 
-// Like skinImg but also reports the texture scale (2 for @2x/HD, 1 for SD) so callers
-// can recover the @1x-equivalent native size for canonical sizing.
 function skinImgScaled(
   images: Map<string, ImageBitmap>, stem: string,
 ): { bmp: ImageBitmap; scale: number } | undefined {
@@ -164,21 +142,15 @@ function skinImgScaled(
   return undefined;
 }
 
-// osu! draws legacy gameplay sprites at *canonical* scale: one @1x texture pixel = one
-// osu! gamefield unit, and OBJECT_DIMENSIONS (128 = 2×OBJECT_RADIUS) spans the object
-// diameter (2× our `radius`). So a 128px@1x / 256px@2x circle is drawn at exactly 2×
-// radius and the visible art lands wherever the skin author placed it — unlike
-// hitCircleRatio, which normalises each sprite to its outermost opaque pixel and so
-// sizes circles inconsistently between skins (a faint fill vs a crisp ring). Using the
-// canonical scale keeps every circle/head/approach the same size osu would draw, which
-// is what lets slider heads line up with the slider body across skins.
-const OBJECT_DIAMETER_PX = 128; // osu! OBJECT_DIMENSIONS (2 × OBJECT_RADIUS)
+/** 皮肤以 128px 原生尺寸对应直径 2r，@2x 折半；不按非透明区域重新缩放。 */
+
+const OBJECT_DIAMETER_PX = 128;
 function canonicalDiameter(img: { bmp: ImageBitmap; scale: number }, radius: number): number {
   return (img.bmp.width / img.scale) / OBJECT_DIAMETER_PX * (2 * radius);
 }
 
-// 3-step tint: draw → multiply-blend color → destination-in mask. The destination-in
-// is required because multiply bleeds into transparent areas.
+/** multiply 会污染透明区，需用 destination-in 恢复遮罩。 */
+
 const _tintCache = new WeakMap<ImageBitmap, Map<string, OffscreenCanvas>>();
 
 function tintBitmap(bitmap: ImageBitmap, color: string): OffscreenCanvas {
@@ -206,7 +178,6 @@ function tintBitmap(bitmap: ImageBitmap, color: string): OffscreenCanvas {
   return osc;
 }
 
-// HR-flipped paths cached here only; non-HR is shared via sampleSlider.
 const _sliderPathsHR = new WeakMap<Slider, { x: number; y: number }[]>();
 
 function getSliderPathForMod(slider: Slider, isHR: boolean): { x: number; y: number }[] {
@@ -220,8 +191,6 @@ function getSliderPathForMod(slider: Slider, isHR: boolean): { x: number; y: num
   return path;
 }
 
-// Danser HitFadeOut.
-
 const EXPLOSION_FADE_DUR  = 240;
 const EXPLOSION_TOTAL_DUR = EXPLOSION_FADE_DUR;
 
@@ -233,7 +202,7 @@ const DEFAULT_COMBO_COLORS = [
   '#f08040',
 ];
 
-// colorIndex advances by (1 + comboSkip) on newCombo; spinners don't affect it.
+/** 新 combo 按 1+comboSkip 推进颜色，spinner 不参与。 */
 function buildComboIndices(beatmap: BeatmapData): number[] {
   const indices = new Array<number>(beatmap.hitObjects.length);
   let colorIndex = -1;
@@ -250,7 +219,7 @@ function buildComboIndices(beatmap: BeatmapData): number[] {
   return indices;
 }
 
-// 1-based within combo; spinners excluded (set to 0).
+/** combo 数字从 1 开始，spinner 不编号。 */
 function buildComboNumbers(beatmap: BeatmapData): number[] {
   const numbers = new Array<number>(beatmap.hitObjects.length);
   let current = 0;
@@ -272,8 +241,6 @@ function buildComboNumbers(beatmap: BeatmapData): number[] {
   return numbers;
 }
 
-// Cache combo indices/numbers per beatmap — they depend only on hit-object
-// new-combo flags, not on time, so rebuilding every frame was pure waste.
 const _comboCache = new WeakMap<BeatmapData, { indices: number[]; numbers: number[] }>();
 
 function getComboData(beatmap: BeatmapData): { indices: number[]; numbers: number[] } {
@@ -288,17 +255,14 @@ function getComboData(beatmap: BeatmapData): { indices: number[]; numbers: numbe
   return cached;
 }
 
-// Upper bound on how long after `obj.time` any given object can still be
-// visible — used as a lookback window when binary-searching for the first
-// still-visible object. Dominated by sliders (`slideDur × slides + fade`) and
-// long spinners (`endTime - time + fade`); circles contribute at most ~500 ms
-// regardless of mods, so w50 isn't worth a per-modDiff key here.
+/** 可见窗口须覆盖滑条/转盘结束与淡出，不能只按起始时间截取。 */
+
 const _maxObjectLifetimeCache = new WeakMap<BeatmapData, number>();
 
 function getMaxObjectLifetime(beatmap: BeatmapData): number {
   const cached = _maxObjectLifetimeCache.get(beatmap);
   if (cached !== undefined) return cached;
-  let max = 500; // floor: covers circle w50 + explosion buffer at any OD
+  let max = 500;
   for (const obj of beatmap.hitObjects) {
     let life = 500;
     if (obj.type === 'slider') {
@@ -326,7 +290,6 @@ function getHitCirclesSet(hitResults: readonly HitResult[]): Set<number> {
   return cached;
 }
 
-// Returns lastIdx = firstIdx - 1 when nothing overlaps.
 function findVisibleRange(
   beatmap: BeatmapData,
   timeMs: number,
@@ -379,7 +342,6 @@ function hdSliderBodyAlpha(timeMs: number, appearTime: number, preempt: number, 
   return 1 - p * (2 - p);
 }
 
-// Module-scope scratch buffers reused per RAF; JS single-threaded means clear-at-entry is safe.
 interface Vis {
   index: number;
   color: string;
@@ -394,14 +356,6 @@ const _visible: Vis[] = [];
 const _bodyOrder: number[] = [];
 const _frontOrder: number[] = [];
 
-/**
- * Draw all osu!std hit objects (circles, sliders, spinners) visible at `timeMs` (beatmap ms),
- * including approach circles, combo numbers, slider bodies/balls/repeat arrows, hit explosions,
- * and HD fade behaviour. `ctx` is in logical 1280×720 coords; positions are converted from
- * osu!pixels internally. `hitResults` gates hit-explosion vs miss-fade; `spinnerAngles`
- * supplies per-spinner rotation state; `qualityTotal` is the backing-store supersample factor
- * used to rasterize cached slider bodies at full density.
- */
 export function drawHitObjects(
   ctx: CanvasRenderingContext2D,
   beatmap: BeatmapData,
@@ -433,7 +387,6 @@ export function drawHitObjects(
 
   const { indices: comboIndices, numbers: comboNumbers } = getComboData(beatmap);
 
-  // Instafade: combo numbers render at hitcircle size (the circle art is baked into the digits).
   const _instafadeHc  = skinImg(skin.images, 'hitcircle');
   const circleInstafade = _instafadeHc !== undefined && isBlankImage(_instafadeHc);
   const _instafadeSc  = skinImg(skin.images, 'sliderstartcircle');
@@ -443,7 +396,6 @@ export function drawHitObjects(
 
   const hitCircles = getHitCirclesSet(hitResults);
 
-  // Hit circles use explosion animation instead of this fade.
   const SLIDER_FADE = 240;
   const CIRCLE_FADE = 200;
 
@@ -453,7 +405,6 @@ export function drawHitObjects(
   const visible = _visible;
   visible.length = 0;
 
-  // Binary search cuts 3000+ per-frame compares down to ~visible-object count.
   const { firstIdx, lastIdx } = findVisibleRange(
     beatmap,
     timeMs,
@@ -507,8 +458,8 @@ export function drawHitObjects(
       alpha = 1;
     } else {
       if (obj.type === 'circle') {
-        // Stable: alpha=1 until hitTime+w100, linear 1→0 over (w50-w100). OutQuad
-        // tail after hitTime+w50 would multiply 0, so skipped as a visual no-op.
+        /** stable 在 w100 后线性淡出，到 w50 已为透明。 */
+
         if (timeMs < hitTime + w100) {
           alpha = 1;
         } else {
@@ -536,12 +487,8 @@ export function drawHitObjects(
     });
   }
 
-  // ── Depth-sorted index arrays (Danser render-ordering rules) ──
-  // Pass 1 (bodies): only sliders, depth = endTime+10. Later-ending body draws
-  //   on top of earlier-ending body (correct for 2B overlapping sliders).
-  // Pass 2 (front layer): every visible object. Spinners depth = +∞ (always at
-  //   the back); circles and slider heads/balls depth = startTime, so earlier
-  //   start renders on top.
+  /** Danser 分层：滑条体按结束时间，前景按起始时间；较早音符盖住较晚音符。 */
+
   const bodyOrder  = _bodyOrder;
   const frontOrder = _frontOrder;
   bodyOrder.length  = 0;
@@ -554,7 +501,6 @@ export function drawHitObjects(
   bodyOrder.sort((a, b) => visible[b]!.bodyDepth - visible[a]!.bodyDepth);
   frontOrder.sort((a, b) => visible[b]!.frontDepth - visible[a]!.frontDepth);
 
-  // Slider bodies go on the bottom layer so later hit-circle overlap renders on top.
   for (const v of bodyOrder) {
     const { index, alpha, slideDur, color } = visible[v]!;
     const obj = beatmap.hitObjects[index]!;
@@ -600,7 +546,6 @@ export function drawHitObjects(
     ctx.restore();
   }
 
-  // Back-to-front so earlier objects render on top of later approach circles (stable layering).
   for (const v of frontOrder) {
     const { index, color, alpha, slideDur, comboNumber, wasHit } = visible[v]!;
     const obj = beatmap.hitObjects[index]!;
@@ -632,7 +577,7 @@ export function drawHitObjects(
         drawCircleHitExplosion(ctx, cx, cy, radius, color, skin.images, dt);
       } else {
         drawCircle(ctx, cx, cy, radius, color, skin.images);
-        // Combo number hard-cuts at hit time (required for instafade skins).
+        /** 数字在命中时立即消失，保持 Instafade 效果。 */
         if (timeMs < obj.time) {
           drawComboNumber(ctx, cx, cy, radius, comboNumber, skin, circleInstafade);
           const t = (obj.time - timeMs) / preempt;
@@ -646,7 +591,6 @@ export function drawHitObjects(
       const activeStart = obj.time;
       const activeEnd   = obj.time + slideDur * obj.slides;
 
-      // Slider body and repeat arrows are drawn in pass 1.
       if (timeMs < obj.time) {
         if (isHD) {
           const headAlpha = hdCircleAlpha(timeMs, obj.time - preempt, preempt);
@@ -669,7 +613,6 @@ export function drawHitObjects(
         }
       }
 
-      // Hidden skips explosion: object already invisible by hit time.
       if (!isHD && wasHit && timeMs >= obj.time && timeMs < obj.time + EXPLOSION_TOTAL_DUR) {
         const dt = timeMs - obj.time;
         const explosionAlpha = Math.max(0, 1 - dt / EXPLOSION_FADE_DUR);
@@ -683,7 +626,7 @@ export function drawHitObjects(
         const slideProgress = (timeMs - activeStart) / slideDur;
         const slideIndex = Math.min(obj.slides - 1, Math.floor(slideProgress));
         let t = slideProgress - Math.floor(slideProgress);
-        // Odd-indexed slides travel tail→head (reverse direction)
+
         if (slideIndex % 2 === 1) t = 1 - t;
         t = Math.max(0, Math.min(1, t));
 
@@ -717,12 +660,12 @@ function drawCircle(
   const overlay   = skinImgScaled(images, 'hitcircleoverlay');
 
   if (hitcircle) {
-    // Blank base = instafade.
+
     if (isBlankImage(hitcircle.bmp)) return;
     const d = canonicalDiameter(hitcircle, radius);
     ctx.drawImage(tintBitmap(hitcircle.bmp, color), cx - d / 2, cy - d / 2, d, d);
-    // 1×1 overlay placeholders would stretch into a faint gray box. Overlay drawn at
-    // its own canonical size (may differ from the base) and centred.
+    /** 1×1 overlay 表示隐藏，不能拉伸成灰框。 */
+
     if (overlay && !isBlankImage(overlay.bmp)) {
       const od = canonicalDiameter(overlay, radius);
       ctx.drawImage(overlay.bmp, cx - od / 2, cy - od / 2, od, od);
@@ -745,8 +688,7 @@ function drawCircle(
   ctx.fill();
 }
 
-
-// Skinning rule: if sliderstartcircle exists, never show hitcircleoverlay (use the dedicated one).
+/** 有 sliderstartcircle 时只用专属 overlay。 */
 function drawSliderHeadCircle(
   ctx: CanvasRenderingContext2D,
   cx: number, cy: number,
@@ -788,7 +730,6 @@ function drawSliderHeadCircle(
   ctx.fill();
 }
 
-// Combo number is intentionally NOT drawn here — instant disappearance IS the instafade exploit.
 function drawCircleHitExplosion(
   ctx: CanvasRenderingContext2D,
   cx: number, cy: number,
@@ -811,8 +752,7 @@ function drawApproachCircle(
   const approach = skinImgScaled(images, 'approachcircle');
 
   if (approach) {
-    // `radius` here is the current (shrinking) approach radius; canonical scale makes
-    // the sprite converge to the hit-circle ring as it reaches the object size.
+
     const d = canonicalDiameter(approach, radius);
     ctx.drawImage(tintBitmap(approach.bmp, color), cx - d / 2, cy - d / 2, d, d);
     return;
@@ -825,22 +765,15 @@ function drawApproachCircle(
   ctx.stroke();
 }
 
-// Slider body cache: the body (border + dark interior + blurred glow) is fully
-// determined by (slider, radius, borderColor, isHR).  None of these change
-// mid-session, so we build each body once into a tight-bbox offscreen and blit
-// it every frame.  Firefox's software-rasterised 2D filter/compositing path
-// makes the previous "rebuild every frame into a full 1280×720 offscreen"
-// approach catastrophic for buzzslider-heavy maps; a per-slider cache collapses
-// that to one build per slider lifetime + one cheap drawImage per frame.
-//
-// Keyed by Slider reference — GC-safe, never stale across sessions.
+/** 每条滑条缓存紧包围盒位图，避免 Firefox 每帧全画布滤镜开销。 */
+
 interface CachedSliderBody {
   bmp: OffscreenCanvas;
-  ox: number;        // logical (1280-space) top-left of the bitmap
+  ox: number;        /** 位图左上角使用逻辑坐标。 */
   oy: number;
-  w: number;         // logical draw size (bmp is `quality`× this internally)
+  w: number;         /** 绘制尺寸为逻辑尺寸，内部位图另乘 quality。 */
   h: number;
-  radius: number;    // cache key — rebuild if any of these change
+  radius: number;
   borderColor: string;
   trackColor: string;
   isHR: boolean;
@@ -848,17 +781,7 @@ interface CachedSliderBody {
 }
 const _sliderBodyCache = new WeakMap<Slider, CachedSliderBody>();
 
-// Slider-body cross-section, faithful to osu! LegacyDrawableSliderPath.ColourAt:
-// position 0 = outer edge, 1 = centre. [0,SHADOW] = transparent→25%-black drop shadow,
-// [SHADOW,BORDER] = SliderBorder ring, [BORDER,1] = track gradient. SHADOW = 1 −
-// LEGACY_CIRCLE_RADIUS/OBJECT_RADIUS = 5/64, so with path radius = `radius` (osu's
-// OBJECT_RADIUS) the border's outer edge sits at LEGACY_CIRCLE_RADIUS (0.922·radius) —
-// exactly where canonical-scale hit circles draw their ring (see canonicalDiameter),
-// so heads and bodies coincide; the 0.922→1.0 shadow ring is the drop shadow.
-
-
-
-
+/** 沿用 LegacyDrawableSliderPath：外侧 5/64 为阴影，边框与圆形 0.922r 对齐。 */
 
 function buildSliderBody(
   path: { x: number; y: number }[],
@@ -894,12 +817,12 @@ function drawSliderBody(
     cached = { ...built, radius, borderColor, trackColor, isHR, quality };
     _sliderBodyCache.set(slider, cached);
   }
-  // bmp is quality× oversized; draw back at logical (w, h) so the main
-  // ctx.scale(total) lands it at ~1 texel per backing-store pixel.
+  /** 高密度位图按逻辑尺寸回绘，每个 backing-store 像素对应约一个 texel。 */
+
   ctx.drawImage(cached.bmp, cached.ox, cached.oy, cached.w, cached.h);
 }
 
-// Path is dense (~1pt/px) and arc-length parametrized, so direct index lerp is accurate.
+/** 路径按弧长采样至约 1 点/像素，可直接按下标插值。 */
 function pointAtFraction(
   path: { x: number; y: number }[],
   t: number
@@ -918,7 +841,6 @@ function pointAtFraction(
   };
 }
 
-// Tail arrow visible while a future reversal from the tail exists (even-indexed slide ends).
 export function shouldShowTailArrow(
   slides: number, timeMs: number,
   sliderStart: number, slideDur: number
@@ -928,11 +850,6 @@ export function shouldShowTailArrow(
   return timeMs < sliderStart + slideDur * edge;
 }
 
-/**
- * Return true while there is at least one future reversal from the HEAD endpoint.
- * The ball arrives at the head at the end of odd-indexed slides (1, 3, 5, …).
- * A reversal occurs only if that slide is not the last one (k < slides − 1).
- */
 export function shouldShowHeadArrow(
   slides: number, timeMs: number,
   sliderStart: number, slideDur: number
@@ -942,14 +859,6 @@ export function shouldShowHeadArrow(
   return timeMs < sliderStart + slideDur * edge;
 }
 
-/**
- * Draw the slider ball at the given canvas position.
- * Uses the skin's sliderb.png / sliderb0.png when available, otherwise
- * draws a primitive white circle with a combo-colored border.
- * The skin's sliderfollowcircle is drawn behind the ball at canonical scale.
- * When `allowTint` is true (skin.ini [General] AllowSliderBallTint), the
- * bitmap is multiply-tinted by the current combo color, matching stable.
- */
 function drawSliderBall(
   ctx: CanvasRenderingContext2D,
   cx: number, cy: number,
@@ -958,10 +867,8 @@ function drawSliderBall(
   images: Map<string, ImageBitmap>,
   allowTint: boolean
 ): void {
-  // Follow circle: skin's sliderfollowcircle at canonical legacy scale — osu!/danser draw it
-  // 1:1 with every other gameplay sprite, and the native art (~256px vs the 128px hitcircle)
-  // lands it at ~2× the hit radius. A 1×1 sprite is deliberate suppression → draw nothing.
-  // The primitive ring fires only when no skin sprite resolves at all.
+  /** sliderfollowcircle 按皮肤原生尺寸绘制；1×1 表示隐藏。 */
+
   const follow = skinImgScaled(images, 'sliderfollowcircle');
   if (follow) {
     if (follow.bmp.width > 1) {
@@ -1005,7 +912,6 @@ function getUninheritedTimingPoints(
   return arr;
 }
 
-// Considers only uninherited (real BPM) points.
 function getActiveTiming(
   timingPoints: BeatmapData['timingPoints'],
   timeMs: number
@@ -1024,7 +930,6 @@ function getActiveTiming(
   return { beatLength: arr[lo]!.beatLength, tpTime: arr[lo]!.time };
 }
 
-// Pulses 1.3→1.0 once per beat in sync with BPM.
 function drawRepeatArrow(
   ctx: CanvasRenderingContext2D,
   cx: number, cy: number,
@@ -1066,7 +971,6 @@ function drawRepeatArrow(
   ctx.restore();
 }
 
-// Instafade-aware: when hitcircle is blank, digits fill CS radius (art is baked into them).
 function drawComboNumber(
   ctx: CanvasRenderingContext2D,
   cx: number, cy: number,
@@ -1082,56 +986,45 @@ function drawComboNumber(
   const prefix = skin.config.hitCirclePrefix;
   const hitCircleOverlap = skin.config.hitCircleOverlap;
 
-  // Prefix may contain path segments; SkinLoader keys the map by full path.
   const firstDigit = digits[0]!;
   const digitBitmaps = digits.map(d =>
     images.get(`${prefix}-${d}@2x.png`) ?? images.get(`${prefix}-${d}.png`)
   );
 
   if (digitBitmaps.every(b => b !== undefined)) {
-    // Digit size = SD-native × hitcircle-derived scale; the fixed-fraction heuristic
-    // ignores the skin author's intended digit/hitcircle ratio and breaks large digit skins.
+
     const hc = skinImgScaled(images, 'hitcircle');
     let scale: number;
     if (hc !== undefined && !isBlankImage(hc.bmp)) {
       const hcNativeW = hc.bmp.width / hc.scale;
-      const hcDrawn = canonicalDiameter(hc, radius); // = hcNativeW × radius/64
-      scale = hcDrawn / hcNativeW;                    // → radius/64 (canonical)
+      const hcDrawn = canonicalDiameter(hc, radius);
+      scale = hcDrawn / hcNativeW;
     } else {
-      // No hitcircle: stable's implicit base is a 128-unit SD sprite filling diameter 2r.
+      /** 缺少 hitcircle 时，stable 按 128px 原生素材填满直径 2r。 */
       scale = (2 * radius) / 128;
     }
 
-    // Determine the digit's SD-native height (halve @2x if only HD exists).
     const sdImg = images.get(`${prefix}-${firstDigit}.png`);
     const hdImg = images.get(`${prefix}-${firstDigit}@2x.png`);
     const nativeH = sdImg?.height ?? (hdImg !== undefined ? hdImg.height / 2 : digitBitmaps[0]!.height);
 
-    // Normal skins (danser circle.go:169 — `font.GetSize() * 0.8`):
-    //   font-draw-size = digit_SD_height × 0.8, then everything (glyph widths
-    //   AND overlap) is scaled by the universal hitcircle scale. The 0.8 is
-    //   the on-circle combo-text specific factor — don't use it for HUD/score
-    //   glyphs, and don't use it for the instafade branch (which wants the
-    //   baked-in hitcircle art to fill CS radius exactly).
+    /** Danser 圆内数字额外乘 0.8；HUD 与 Instafade 数字不使用该比例。 */
+
     const fontScale = 0.8 * scale;
     const targetH = instafade
       ? radius * 2 / hitCircleRatio(digitBitmaps[0]!)
       : nativeH * fontScale;
 
-    // Per-digit drawn widths, preserving each bitmap's aspect ratio
     const widths = digitBitmaps.map(b => b!.width * (targetH / b!.height));
 
-    // hitCircleOverlap is in SD pixels and is scaled by the same font-draw
-    // factor as the glyph widths (danser font.go: `(advance - Overlap) *
-    // scale/initialSize`). Instafade keeps its own sizing path.
+    /** 数字间距使用 SD 像素，与字体尺寸按同一比例缩放。 */
+
     const scaledOverlap = instafade
       ? hitCircleOverlap * (targetH / nativeH)
       : hitCircleOverlap * fontScale;
 
     const advances = widths.map(w => w - scaledOverlap);
 
-    // Total span: sum of advances minus the last overlap (the last digit has no
-    // advance after it, so its contribution is just its drawn width, not advance)
     const totalW = advances.slice(0, -1).reduce((s, a) => s + a, 0) + widths[widths.length - 1]!;
 
     let x = cx - totalW / 2;
@@ -1152,9 +1045,6 @@ function drawComboNumber(
   }
 }
 
-// Layers (bottom→top): bg, glow, bottom(f/3), top(f/2), middle2(f), middle(white→red),
-// circle(f), metre, approachcircle(1.9→0.1). Rotating discs scale 0.8→1.0 with completion.
-// `images` is the dedicated spinnerImages map (no Default fallback).
 function drawSpinner(
   ctx: CanvasRenderingContext2D,
   images: Map<string, ImageBitmap>,
@@ -1168,10 +1058,9 @@ function drawSpinner(
 ): void {
   const [cx, cy] = toCanvas(SPINNER_CENTER_X, SPINNER_CENTER_Y);
 
-  // Matches danser back-manager (384/480 × 0.78 = 0.624 per native px in 640×480).
+  /** 沿用 Danser：384/480×0.78=0.624，每个原生像素对应 0.624 逻辑像素。 */
   const SPINNER_SCALE = 0.624 * (CANVAS_H / 480);
 
-  // 1×1 placeholders count as suppression (returned undefined).
   type Resolved = { bmp: ImageBitmap; scale: number };
   function resolve(stem: string): Resolved | undefined {
     const hd = images.get(`${stem}@2x.png`);
@@ -1197,7 +1086,7 @@ function drawSpinner(
 
   const completionScale = 0.8 + Math.min(1, progress) * 0.2;
 
-  // danser: centred at (ScaledWidth/2, 396.9) in a 640×480 frame.
+  /** Danser 的 640×480 坐标中，背景中心位于 y=396.9。 */
   const bg = resolve('spinner-background');
   if (bg) drawAt(bg, CANVAS_W / 2, CANVAS_H * (396.9 / 480));
 
@@ -1218,12 +1107,11 @@ function drawSpinner(
   const middle2 = resolve('spinner-middle2');
   if (middle2) drawAt(middle2, cx, cy, cumAngle, completionScale);
 
-  // white → pure red via offscreen multiply of rgb(255, k, k) with k fading 255→0.
   const middle = resolve('spinner-middle');
   if (middle) {
     const t = Math.min(1, Math.max(0, (timeMs - spinner.time) / Math.max(1, spinner.endTime - spinner.time)));
-    // Quantized to 32 fade levels so tintBitmap's cache is hit instead of
-    // re-compositing an OffscreenCanvas every frame.
+    /** 量化为 32 档渐变，使着色位图可复用。 */
+
     const step = Math.round(t * 31);
     if (step > 0) {
       const chan = Math.round(255 * (1 - step / 31));
@@ -1271,9 +1159,8 @@ function drawSpinner(
     if (spin) drawAt(spin, CANVAS_W / 2, CANVAS_H * (582 / 768));
   }
 
-  // Bonus popup: cumulative 1000-per-spin counter (legacy convention), re-popping on each
-  // bonus with a scale/fade keyed to the most recent tick (lazer DrawableSpinner bonus
-  // display: ScaleTo 1.5→1 OutQuint over 1s, FadeOutFromOne over 800ms).
+  /** 沿用 spinner 每转 1000 分的累计奖励显示。 */
+
   if (bonusTimes.length > 0) {
     let count = 0;
     for (let i = 0; i < bonusTimes.length; i++) {
@@ -1284,17 +1171,14 @@ function drawSpinner(
     if (count > 0 && age < BONUS_FADE_MS) {
       const alpha = 1 - age / BONUS_FADE_MS;
       const scale = 1 + 0.5 * Math.pow(1 - Math.min(1, age / BONUS_SCALE_MS), 5);
-      // lazer LegacySpinner places the bonus counter 80 legacy-units below the spinner
-      // centre (SPINNER_Y_CENTRE 248 → bonus Y 328); the legacy space maps to canvas via
-      // CANVAS_H/480 (same as spinner-background's placement).
+      /** lazer 奖励分位于转盘中心下方 80 个 legacy 单位。 */
+
       const bonusY = cy + 80 * (CANVAS_H / 480);
       drawSpinnerBonusNumber(ctx, skin, cx, bonusY, count * 1000, alpha, scale);
     }
   }
 }
 
-// Centered score-font number for the spinner bonus popup. Falls back to canvas text
-// when the skin ships no score-digit glyphs.
 function drawSpinnerBonusNumber(
   ctx: CanvasRenderingContext2D,
   skin: SkinAssets,

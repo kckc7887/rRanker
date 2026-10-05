@@ -1,7 +1,6 @@
 import {
   canReadChunithmScores,
   canReadPhigrosScores,
-  shouldPersistMaimaiCatalog,
   shouldPersistScoreSnapshot,
 } from '@/domain/provider-capabilities';
 
@@ -44,9 +43,4 @@ describe('快照持久化能力', () => {
     expect(shouldPersistScoreSnapshot('diving-fish')).toBe(true);
   });
 
-  it('曲库快照对任意 Provider 均持久化', () => {
-    expect(shouldPersistMaimaiCatalog(null)).toBe(false);
-    expect(shouldPersistMaimaiCatalog('diving-fish')).toBe(false);
-    expect(shouldPersistMaimaiCatalog('phigros-test')).toBe(false);
-  });
 });

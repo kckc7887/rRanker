@@ -1,8 +1,12 @@
-import {
-  MuseDashDemoAccountStore,
-  parseMuseDashDemoAccountProfile,
-} from '@/storage/musedash-demo-account-store';
+import { MuseDashDemoAccountStore } from '@/storage/musedash-demo-account-store';
 import { MUSEDASH_TEST_ACCOUNT_ID } from '@/domain/bound-account';
+
+class MemoryStore {
+  values = new Map<string, string>();
+  async getItem(key: string) { return this.values.get(key) ?? null; }
+  async setItem(key: string, value: string) { this.values.set(key, value); }
+  async removeItem(key: string) { this.values.delete(key); }
+}
 
 describe('MuseDashDemoAccountStore', () => {
   it('保存、恢复并删除固定示例账号', async () => {
@@ -19,14 +23,13 @@ describe('MuseDashDemoAccountStore', () => {
     expect(await store.load()).toBeNull();
   });
 
-  it('拒绝错误账号 ID 和空名称', () => {
-    expect(parseMuseDashDemoAccountProfile({
-      version: 1,
-      account: { id: 'maimai:test', displayName: '示例账号' },
-    })).toBeNull();
-    expect(parseMuseDashDemoAccountProfile({
-      version: 1,
-      account: { id: MUSEDASH_TEST_ACCOUNT_ID, displayName: ' ' },
-    })).toBeNull();
-  });
+  it.each([{ version: 2, account: {} }, { version: 1, account: { id: 'maimai:test', displayName: '旧账号' } }])(
+    '不支持的示例记录清空对应键', async value => {
+      const storage = new MemoryStore();
+      storage.values.set('rranker.musedash-demo-account.v1', JSON.stringify(value));
+      const store = new MuseDashDemoAccountStore(storage);
+      expect(await store.load()).toBeNull();
+      expect(storage.values.has('rranker.musedash-demo-account.v1')).toBe(false);
+    },
+  );
 });

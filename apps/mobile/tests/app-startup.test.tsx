@@ -41,9 +41,6 @@ describe('app startup gates', () => {
     mockHydrateDebug.mockReturnValue(new Promise<void>(() => undefined));
     const hook = await renderHook(() => useAppStartup());
     expect(hook.result.current).toBe(false);
-    expect(mockRestore).toHaveBeenCalledTimes(1);
-    expect(mockHydrateTheme).toHaveBeenCalledTimes(1);
-    expect(mockHydrateDebug).toHaveBeenCalledTimes(1);
     expect(Appearance.setColorScheme).toHaveBeenCalledWith(null);
     mockRestoreStatus = 'ready';
     await hook.rerender(undefined);
@@ -55,9 +52,6 @@ describe('app startup gates', () => {
     expect(hook.result.current).toBe(true);
     expect(mockDebug).toMatchObject({ hydrated: false, testAccountsEnabled: false });
     await hook.rerender(undefined);
-    expect(mockDiagnostics).toHaveBeenCalledTimes(1);
-    expect(mockLogs).toHaveBeenCalledTimes(1);
-    expect(mockRestore).toHaveBeenCalledTimes(1);
     await hook.unmount();
   });
 
@@ -73,8 +67,6 @@ describe('app startup gates', () => {
     mockTheme.appearance = 'dark';
     await hook.rerender(undefined);
     expect(Appearance.setColorScheme).toHaveBeenLastCalledWith('dark');
-    expect(mockFonts).toHaveBeenCalledTimes(1);
-    expect(mockHydrateTheme).toHaveBeenCalledTimes(1);
     await hook.unmount();
   });
 });

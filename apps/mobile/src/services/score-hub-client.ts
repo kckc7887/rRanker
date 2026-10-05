@@ -141,10 +141,6 @@ export function parseQrLoginInitBody(status: number, body: unknown): QrLoginInit
     if (record.kind === 'async' && typeof record.attemptId === 'string' && record.attemptId) {
       return { kind: 'async', attemptId: record.attemptId };
     }
-    // 兼容旧版直接返回 token
-    if (typeof record.token === 'string' && record.token) {
-      return { kind: 'fast', token: record.token, friendCode: friendCodeFromUser(record.user) };
-    }
   }
   if (isQrExpiredErrorBody(body)) {
     throw new ScoreHubError(
@@ -183,7 +179,6 @@ export async function createFriendLoginJob(
   throw new ScoreHubError(`创建登录失败（HTTP ${status}）`, status);
 }
 
-/** 公众号玩家二维码登录：提交文本或图片，返回快路径 token 或慢路径 attemptId。 */
 export async function loginByQr(
   credential: QrLoginCredential,
   signal?: ScoreHubAbortSignal,
@@ -219,7 +214,6 @@ export async function loginByQr(
 }
 
 
-/** 完整二维码登录：提交凭证并在需要时轮询慢路径，最终返回 token。 */
 export async function loginByQrUntilToken(input: {
   credential: QrLoginCredential;
   signal?: ScoreHubAbortSignal;
@@ -334,7 +328,6 @@ export type BindCabinetResult = {
   alreadyBound: boolean;
 };
 
-/** 已登录用户绑定玩家二维码（PUT /me/cabinet）。已绑定视为成功。 */
 export async function bindCabinetByQr(
   token: string,
   qrCode: string,
@@ -366,7 +359,6 @@ export async function bindCabinetByQr(
   throw new ScoreHubError(bindCabinetErrorMessage(body, status), status);
 }
 
-/** 公开接口：近一小时 DXNet update_score 任务统计。 */
 export async function fetchScoreHubStatistics(
   signal?: ScoreHubAbortSignal,
 ): Promise<ScoreHubStatistics> {

@@ -1,10 +1,8 @@
-/** Phigros 静态资源根路径。 */
 export const PHIGROS_OSS_BASE = 'https://rranker-phigros-data.cn-nb1.rains3.com';
 
-/** 落雪咖啡屋舞萌收藏素材根路径。 */
 export const LXNS_COLLECTION_ASSET_ROOT = 'https://assets2.lxns.net/maimai';
 
-/** 发布对象目录，与 current.manifest 同级；不含清单文件名。 */
+/** 资源对象与发布清单在同一目录。 */
 export function phigrosReleaseDirectory(manifestPath: string | null | undefined): string {
   const path = manifestPath?.trim();
   if (!path) return '';

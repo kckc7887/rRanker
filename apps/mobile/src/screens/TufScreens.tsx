@@ -66,7 +66,6 @@ function useActiveTufPlayerId() {
   return tufPlayerIdFromAccountId(accountId);
 }
 
-
 function uniqueById<T extends { id: number }>(items: T[]): T[] {
   return [...new Map(items.map((item) => [item.id, item])).values()];
 }
@@ -273,11 +272,11 @@ function TufLevelHero({ level }: { level: TufLevel }) {
 
   return <View testID="tuf-level-hero" style={[styles.hero, { width, height: width }]}>
     {mediaActive && candidate ? <Image accessibilityLabel={`关卡头图 ${level.song}`}
-      cachePolicy="disk" cacheProfile="artwork" gameId="adofai" contentFit="cover" onError={() => setCandidateIndex((index) => index + 1)}
+      cacheProfile="artwork" gameId="adofai" contentFit="cover" onError={() => setCandidateIndex((index) => index + 1)}
       source={candidate} style={StyleSheet.absoluteFillObject} transition={120} /> : (
       <LinearGradient colors={theme.dark ? ['#173346', '#3C416A', '#532A2C'] : ['#DDF6FF', '#E5E7F7', '#FFE2DF']}
         end={{ x: 1, y: 1 }} start={{ x: 0, y: 0 }} style={StyleSheet.absoluteFillObject}>
-        <Image accessibilityLabel={`关卡备用图 ${level.song}`} cachePolicy="disk" cacheProfile="artwork" gameId="adofai" contentFit="contain"
+        <Image accessibilityLabel={`关卡备用图 ${level.song}`} cacheProfile="artwork" gameId="adofai" contentFit="contain"
           onError={candidate ? () => setCandidateIndex((index) => index + 1) : undefined}
           source={candidate ?? ADOFAI_ICON} style={styles.heroFallbackImage} transition={120} />
       </LinearGradient>
@@ -315,7 +314,7 @@ function TufUpstreamTag({ name }: { name: string }) {
   useEffect(() => setIconFailed(false), [icon]);
   return <View accessibilityLabel={`标签 ${name}`}
     style={[styles.upstreamTag, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
-    {icon && !iconFailed ? <Image accessibilityLabel={`${name} 标签图标`} cachePolicy="disk" cacheProfile="native" contentFit="contain"
+    {icon && !iconFailed ? <Image accessibilityLabel={`${name} 标签图标`} cacheProfile="native" contentFit="contain"
       onError={() => setIconFailed(true)} source={icon} style={styles.upstreamTagIcon} /> : null}
     <Text numberOfLines={1} style={[styles.upstreamTagText, { color: theme.textSecondary }]}>{name}</Text>
   </View>;
@@ -399,7 +398,6 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
       } : undefined}
       favoriteStyle={(pressed) => [
         styles.headerButton, styles.headerFloatingButton, { top: insets.top + 8, right: 8 },
-        favorite && styles.headerFavoriteActive,
         pressed && { opacity: 0.7 },
       ]}
     />
@@ -550,7 +548,6 @@ const styles = StyleSheet.create({
   heroArtist: { color: 'rgba(255,255,255,0.94)', fontSize: 15, lineHeight: 21, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.3)', textShadowRadius: 6 },
   headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
   headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
-  headerFavoriteActive: {},
   metadata: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 10, paddingVertical: 12 },
   metadataCellRoot: { minWidth: 0 },
   metadataCell: { minWidth: 0, alignItems: 'center', paddingHorizontal: 4, gap: 3 },
@@ -594,7 +591,6 @@ const styles = StyleSheet.create({
     gap: 8,
     borderRadius: 12,
     padding: 12,
-    // 判定表淡灰遮罩：彩字区域与卡面轻微区分，深浅模式同色。
     backgroundColor: 'rgba(128,128,128,0.14)',
   },
   judgementMatrix: { flex: 1, minWidth: 0, gap: 9 },

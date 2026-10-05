@@ -23,7 +23,6 @@ function pack(value) {
 }
 const packed = pack({ SLIDE_TABLE: entries, AREA_LOOKUP: areas });
 const restore = `
-// Restore in place once; the numeric dictionary is not retained by the renderer.
 function restoreNumbers(value: unknown, numbers: readonly number[]): unknown {
   if (typeof value === 'number') return numbers[value];
   if (Array.isArray(value)) {

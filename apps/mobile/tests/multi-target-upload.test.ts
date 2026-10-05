@@ -77,7 +77,6 @@ vi.mock('@/storage/score-hub-account-store', () => ({
   },
 }));
 
-// Must be imported after the hoisted workflow mocks.
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import {
   bindScoreHubCabinetByQr,

@@ -14,7 +14,7 @@ export async function buildPhigrosChartPreviewInput(
   input: PhigrosChartPreviewInput,
   settings: PgrPreviewSettings,
   signal: AbortSignal,
-  read?: (asset: PhigrosChartPreviewAsset, index: number) => Promise<Uint8Array>,
+  read: (asset: PhigrosChartPreviewAsset, index: number) => Promise<Uint8Array>,
 ): Promise<PreparedPgrPreviewInput> {
   const resources = await loadPhigrosChartPreviewResources({
     songId: input.songId,

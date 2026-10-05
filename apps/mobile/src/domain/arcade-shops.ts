@@ -13,7 +13,7 @@ export type ArcadeOpeningTime = {
   minute: number;
 };
 
-/** One day slot: [open, close]. Length 1 = same for whole week; 7 = Mon–Sun. */
+/** 营业时间数组长 1 表示整周通用，长 7 表示周一至周日。 */
 export type ArcadeOpeningDay = readonly [ArcadeOpeningTime, ArcadeOpeningTime];
 
 export type ArcadeShop = {
@@ -33,7 +33,7 @@ export type ArcadeShopDetail = ArcadeShop & {
   isOpen: boolean | null;
 };
 
-/** Matches nearcade “即将打烊” window (10 minutes before close). */
+/** 沿用 nearcade 的关门前 10 分钟提示。 */
 export const ARCADE_CLOSING_SOON_MINUTES = 10;
 
 export type ArcadeBusinessStatus = 'open' | 'closing_soon' | 'closed' | 'unknown';
@@ -51,7 +51,7 @@ export const CHUNITHM_TITLE_ID = 3;
 export const ARCADE_RADIUS_OPTIONS = [1, 2, 5, 10, 15, 20, 30] as const;
 export type ArcadeRadiusKm = (typeof ARCADE_RADIUS_OPTIONS)[number];
 
-/** Static fallback when `/game-titles` is unavailable (Chinese display names). */
+/** /game-titles 不可用时使用静态名称。 */
 export const FALLBACK_ARCADE_GAME_TITLES: readonly ArcadeGameTitle[] = [
   { id: 1, key: 'maimai_dx', name: '舞萌DX', seats: 2 },
   { id: 2, key: 'maimai', name: 'maimai', seats: 2 },
@@ -89,7 +89,6 @@ export function localizeArcadeGameTitleName(key: string, apiName: string): strin
   return FALLBACK_NAME_BY_KEY.get(key) ?? apiName;
 }
 
-/** Strip HTML tags/entities from nearcade free-text fields for plain Text display. */
 export function stripArcadeHtml(value: string): string {
   return value
     .replace(/<\s*br\s*\/?\s*>/gi, '\n')
@@ -129,7 +128,7 @@ export function formatArcadeGamesSummary(games: readonly ArcadeShopGame[]): stri
     .join(' · ');
 }
 
-/** Align with JS `Date#getDay()` / nearcade (`Sunday = 0`). */
+/** 与 Date.getDay() 一致，周日为 0。 */
 const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'] as const;
 
 function pad2(value: number): string {
@@ -161,10 +160,7 @@ export function formatArcadeBusinessStatus(status: ArcadeBusinessStatus): string
   }
 }
 
-/**
- * Resolve open / closing-soon / closed from local clock + openingHours.
- * Overnight ranges (close <= open) are supported.
- */
+/** 关门时间早于开门时间表示跨夜营业。 */
 export function resolveArcadeBusinessStatus(
   openingHours: readonly ArcadeOpeningDay[],
   now: Date = new Date(),
@@ -187,13 +183,12 @@ export function resolveArcadeBusinessStatus(
     isOpen = nowMin >= openMin && nowMin < closeMin;
     minutesToClose = closeMin - nowMin;
   } else if (closeMin < openMin) {
-    // e.g. 10:00–02:00
     isOpen = nowMin >= openMin || nowMin < closeMin;
     minutesToClose = nowMin >= openMin
       ? dayMinutes - nowMin + closeMin
       : closeMin - nowMin;
   } else {
-    // open === close → treat as closed / unknown hours
+    /** 起止时间相同不视为全天营业。 */
     return 'unknown';
   }
 
@@ -202,7 +197,6 @@ export function resolveArcadeBusinessStatus(
   return 'open';
 }
 
-/** Human-readable opening hours lines for detail UI. */
 export function formatArcadeOpeningHoursLines(openingHours: readonly ArcadeOpeningDay[]): string[] {
   if (openingHours.length === 0) return ['营业时间未知'];
   if (openingHours.length === 1) {
@@ -225,7 +219,7 @@ export function shopMatchesNameKeyword(
   return name.includes(q) || address.includes(q);
 }
 
-/** AND semantics: shop must include every selected titleId. Empty selection → all shops. */
+/** 多选游戏取交集。 */
 export function shopMatchesGameTitles(
   shop: Pick<ArcadeShop, 'games'>,
   titleIds: readonly number[],
@@ -255,7 +249,6 @@ export type ArcadeOrigin = {
   label: string;
 };
 
-/** Build a short display label from platform reverse-geocode fields. */
 export function formatArcadeGeocodedLabel(parts: {
   city?: string | null;
   district?: string | null;
@@ -304,13 +297,11 @@ export type ArcadeMapAppOption = {
   label: string;
 };
 
-/** Prefer formatted address; fall back to shop name when address is empty. */
 export function resolveArcadeNavigateDestination(shop: ArcadeNavigateTarget): string {
   const address = formatArcadeAddress(shop).trim();
   return address || shop.name.trim();
 }
 
-/** iOS: Apple / Amap / Baidu. Android: Amap / Baidu (no Apple Maps). */
 export function listArcadeMapApps(platform: 'ios' | 'android' | 'windows' | 'macos' | 'web'): readonly ArcadeMapAppOption[] {
   const shared: ArcadeMapAppOption[] = [
     { id: 'amap', label: '高德地图' },

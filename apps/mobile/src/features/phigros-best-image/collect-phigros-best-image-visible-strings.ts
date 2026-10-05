@@ -24,7 +24,6 @@ export type PhigrosBestImageFontTextInput = {
   pages: readonly PhigrosBestImagePage[];
 };
 
-/** 收集成绩图可见文本，供按脚本筛选扩展字体。 */
 export function collectPhigrosBestImageVisibleStrings(input: PhigrosBestImageFontTextInput): string[] {
   const values: string[] = [
     ...FIXED_UI_STRINGS,

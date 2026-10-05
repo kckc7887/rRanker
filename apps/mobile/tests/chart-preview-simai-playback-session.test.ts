@@ -1,8 +1,7 @@
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseSimaiChart, prepareAudioEvents } from '@/features/simai-chart-preview/engine';
 import {
   SimaiPlaybackSession,
-  type SimaiPlaybackEnvironment,
 } from '@/features/simai-chart-preview/webview-player/playback';
 import {
   beatsToMs,
@@ -86,7 +85,6 @@ class FakeAudioContext {
     throw new Error('unsupported');
   }
 
-  /** 仍被会话持有的音源：旧音源在释放时会 stop + disconnect。 */
   heldSourceCount(): number {
     return this.sources.filter((source) => !source.disconnected).length;
   }
@@ -97,7 +95,6 @@ class FakeAudioContext {
 }
 
 class FakeFrameLoop {
-  /** 与性能时钟一致：页面已运行一段时间，静音看谱的首帧差值为正。 */
   now = 1000;
   private callbacks = new Map<number, (timestamp: number) => void>();
   private nextHandle = 1;
@@ -130,17 +127,14 @@ function createPlayback() {
   const frames = new FakeFrameLoop();
   const rendered: number[] = [];
   const playStates: boolean[] = [];
-  const environment: SimaiPlaybackEnvironment = {
-    createAudioContext: () => context as unknown as AudioContext,
-    requestFrame: frames.request,
-    cancelFrame: frames.cancel,
-    now: () => frames.now,
-  };
+  vi.stubGlobal('AudioContext', class { constructor() { return context; } });
+  vi.stubGlobal('requestAnimationFrame', frames.request);
+  vi.stubGlobal('cancelAnimationFrame', frames.cancel);
+  vi.spyOn(performance, 'now').mockImplementation(() => frames.now);
   const session = new SimaiPlaybackSession({
     charts: [chart],
     answerEvents: prepareAudioEvents(chart.notes),
     answerSoundUrl: 'data:audio/wav;base64,UklGRg==',
-    environment,
     host: {
       render: (beats) => { rendered.push(beats); },
       onPlayStateChange: (playing) => { playStates.push(playing); },
@@ -149,7 +143,12 @@ function createPlayback() {
   return { session, context, frames, rendered, playStates, chart };
 }
 
-describe('Simai 播放会话的播放状态所有权', () => {
+afterEach(() => {
+  vi.unstubAllGlobals();
+  vi.restoreAllMocks();
+});
+
+describe('Simai 播放与取消', () => {
   it('resume 未结算时暂停：旧 play Promise 不再启动播放', async () => {
     const { session, context, frames } = createPlayback();
     await session.loadMusic(new ArrayBuffer(8));
@@ -210,7 +209,6 @@ describe('Simai 播放会话的播放状态所有权', () => {
     await pending;
 
     session.dispose();
-    // 会话自有的音乐与正解音增益节点在释放时断开。
     const gainsAfterFirstDispose = context.gains.slice(0, 2).map((gain) => gain.disconnectCount);
     session.dispose();
 
@@ -263,7 +261,7 @@ describe('Simai 播放会话的播放状态所有权', () => {
     context.releaseResumeNow();
     await pending;
 
-    // 谱面起点的音乐位置为负（引导拍），音源在 2 秒引导后开始，输出端时钟从 0.05 秒起计。
+    /** 谱面含 2 秒引导，输出时钟从 0.05 秒起计。 */
     context.currentTime = 1.05;
     frames.advance(16);
     const firstPosition = session.positionBeats;

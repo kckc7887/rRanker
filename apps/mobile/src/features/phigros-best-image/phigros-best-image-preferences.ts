@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { PhigrosBestImageOverflowCount } from './phigros-best-image';
 
@@ -30,11 +31,11 @@ function parseChoice(value: unknown): PhigrosImageStyleChoice {
 export function parsePhigrosBestImageStylePreferences(value: unknown): PhigrosBestImageStylePreferences {
   if (!value || typeof value !== 'object') return defaults;
   const raw = value as { version?: unknown; ratingStyle?: unknown; avatar?: unknown; background?: unknown; overflowCount?: unknown };
-  if (raw.version !== 1 && raw.version !== 2) return defaults;
+  if (raw.version !== 2) return defaults;
   const overflowCount = raw.overflowCount === 3 || raw.overflowCount === 6 || raw.overflowCount === 9
     ? raw.overflowCount
     : 0;
-  const ratingStyle: PhigrosBestImageRatingStyle = raw.version === 2 && raw.ratingStyle === 'app' ? 'app' : 'game';
+  const ratingStyle: PhigrosBestImageRatingStyle = raw.ratingStyle === 'app' ? 'app' : 'game';
   return {
     version: 2,
     ratingStyle,
@@ -44,13 +45,18 @@ export function parsePhigrosBestImageStylePreferences(value: unknown): PhigrosBe
   };
 }
 
+const choiceSchema = z.union([z.object({ mode: z.enum(['current', 'off']) }), z.object({ mode: z.enum(['item', 'random']), key: z.string().min(1) })]);
+
 const { Store } = createPreferencesStore<PhigrosBestImageStylePreferences, string>({
   storeKey: (accountId) => `${PREFIX}${accountId}`,
-  // 回退时返回共享的默认对象。
   defaults: () => defaults,
-  parse: parsePhigrosBestImageStylePreferences,
-  // 坏数据回退默认值，不清理对应 key。
-  clearOnError: false,
+  parse: value => parsePhigrosBestImageStylePreferences(z.object({
+    version: z.literal(2),
+    ratingStyle: z.enum(['game', 'app']),
+    avatar: choiceSchema,
+    background: choiceSchema,
+    overflowCount: z.number(),
+  }).parse(value)),
 });
 
 export const phigrosBestImagePreferencesStore = new Store();

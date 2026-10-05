@@ -1,11 +1,4 @@
 /**
- * RPE（Re:PhiEdit）谱面解析与缓动/速度积分，
- * 语义对照 PhiZone/player（utils.ts/Line.ts/Game.ts）与 TeamFlos/phira 的 prpr 核心（RPE 路径）：
- * - easingType 1..29 直接索引缓动表（prpr RPE_TWEEN_MAP 语义，29 号为真实 elasticInOut）；
- * - 速度高度 = 事件内积分 + 事件结束后恒定 end 速度延伸（getIntegral 语义）；
- * - 多事件层相加；extra.json 的 bpm 覆盖谱面 BPMList；负 alpha 保留（渲染层按 prpr 整线隐藏）；
- * - 事件值可为数值/数组/字符串（文本事件），数组逐分量插值。
- *
  * 许可证：本文件语义对照 PhiZone/player（MPL-2.0，https://github.com/PhiZone/player）与
  * TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira）移植，相应部分按各自原许可提供
  * （与本项目 AGPL-3.0 兼容）；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
@@ -15,7 +8,6 @@ import { rpeBundleRelativePath } from '../../../domain/rpe-resource-path';
 
 export const RPE_HEIGHT = 900;
 
-// ---------------- 缓动（prpr RPE_TWEEN_MAP 语义） ----------------
 const sineIn = (x: number): number => Math.sin((x * Math.PI) / 2);
 const sineOut = (x: number): number => 1 - Math.cos((x * Math.PI) / 2);
 const quadOut = (x: number): number => 1 - (1 - x) * (1 - x);
@@ -55,7 +47,7 @@ const bounceOut = (x: number): number =>
         : 7.5625 * (x -= 2.625 / 2.75) * x + 0.984375;
 const bounceIn = (x: number): number => 1 - bounceOut(1 - x);
 const bounceInOut = (x: number): number => (x < 0.5 ? (1 - bounceOut(1 - 2 * x)) / 2 : (1 + bounceOut(2 * x - 1)) / 2);
-// prpr core/tween.rs：29 号是真实的 elasticInOut（PhiZone/player 用 bounceInOut 顶替，此处按 prpr）
+/** prpr 第 29 号缓动为 elasticInOut。 */
 const elasticInOut = (x: number): number => {
   if (x === 0 || x === 1) return x;
   const t = x * 2;
@@ -65,7 +57,7 @@ const elasticInOut = (x: number): number => {
   return 0.5 * Math.pow(2, -10 * (t - 1)) * Math.sin((t - 1.1) * 5 * Math.PI) + 1;
 };
 
-/** easingType 1..29 直接索引（index 0 = type 1，prpr RPE_TWEEN_MAP 语义） */
+/** prpr 缓动编号 1..29 对应数组下标 0..28。 */
 const EASINGS: readonly ((x: number) => number)[] = [
   (x) => x, sineIn, sineOut, quadOut, quadIn, sineInOut, quadInOut,
   cubicOut, cubicIn, quartOut, quartIn, cubicInOut, quartInOut,
@@ -101,7 +93,6 @@ function calculateEasingValue(func: (x: number) => number, x: number, easingLeft
   return (progress - progressStart) / (progressEnd - progressStart);
 }
 
-/** cubic-bezier 缓动（gre/bezier-easing 语义） */
 function bezierEasing(x1: number, y1: number, x2: number, y2: number): (x: number) => number {
   const cx = 3 * x1;
   const bx = 3 * (x2 - x1) - cx;
@@ -133,7 +124,6 @@ function bezierEasing(x1: number, y1: number, x2: number, y2: number): (x: numbe
   return (x) => sampleY(solve(x));
 }
 
-/** 事件缓动进度（PhiZone/player easing()） */
 export function easing(
   type: number,
   bezierPoints: number[] | undefined,
@@ -164,7 +154,7 @@ function derivative(type: number, x: number, easingLeft = 0, easingRight = 1): n
   );
 }
 
-/** 现代积分缓动的数值积分（Gauss，替代 PhiZone/player 的解析积分表） */
+/** 三点 Gauss 求积计算缓动积分。 */
 function calculateEasingIntegral(type: number, x: number, easingLeft = 0, easingRight = 1): number {
   const p = sanitizeEasingParams(type, x, easingLeft, easingRight);
   const func = EASINGS[p.type - 1]!;
@@ -180,7 +170,6 @@ function calculateEasingIntegral(type: number, x: number, easingLeft = 0, easing
   return (radius * sum) / (r - l);
 }
 
-// ---------------- 类型 ----------------
 export type RpeTriple = [number, number, number] | number;
 export type RpeEventValue = number | number[] | string;
 export type RpeNoteKind = 'tap' | 'hold' | 'flick' | 'drag';
@@ -311,9 +300,8 @@ export interface RpeChart {
   stats: { lineCount: number; noteCount: number; eventCount: number; maxTime: number; kindCounts: Record<RpeNoteKind, number> };
 }
 
-// ---------------- 事件值 / 速度积分（PhiZone/player getEventValue / getIntegral） ----------------
 function interpolateValue(start: RpeEventValue, end: RpeEventValue, progress: number): RpeEventValue {
-  // 文本事件值不做插值，直接取当前事件的 start
+
   if (typeof start === 'string') return start;
   if (Array.isArray(start) || Array.isArray(end)) {
     const a = Array.isArray(start) ? start : [start as number];
@@ -336,7 +324,6 @@ function getEventValueInner(event: RpeEvent, x: number): RpeEventValue {
   return interpolateValue(event.start, event.end, progress);
 }
 
-/** 事件在 beat 处的值（事件区间外钳制为 start/end） */
 export function getEventValue(event: RpeEvent, beat: number, bpmList: BpmList): RpeEventValue {
   const startSec = bpmList.timeSec(event.startBeat);
   const progressedSec = bpmList.timeSec(beat) - startSec;
@@ -349,11 +336,7 @@ function integrate(type: number, x: number, k: number, b: number, easingLeft: nu
   return k * calculateEasingValue(EASINGS[p.type - 1]!, p.x, p.easingLeft, p.easingRight) + b * p.x;
 }
 
-/**
- * 速度事件到 beat 处的积分高度（PhiZone/player getIntegral）：
- * easing<=1 梯形；>1 时 integrateEasings=false 用 k·f+b 积分、true 用归一化积分；
- * 事件结束后由调用方按恒定 end 速度延伸。
- */
+/** 事件内积分；结束后按 end 速度延伸。integrateEasings 决定使用归一化缓动积分。 */
 export function getIntegral(
   event: RpeEvent,
   bpmList: BpmList,
@@ -385,7 +368,6 @@ export function getIntegral(
   return (event.start as number) * progressedSec + ((event.end as number) - (event.start as number)) * integral * lengthSec;
 }
 
-/** 整条速度时间线在 beat 处的高度（PhiZone/player Line.handleSpeed + calculateHeight 语义） */
 export function speedHeightAt(
   layers: readonly (RpeEventLayer | null | undefined)[],
   bpmList: BpmList,
@@ -418,14 +400,12 @@ export function speedHeightAt(
   return total;
 }
 
-/** 最后一个 startBeat <= beat 的事件下标 */
 function eventIndexAt(events: readonly RpeEvent[], beat: number): number {
   let index = 0;
   while (index < events.length - 1 && beat > events[index + 1]!.startBeat) index += 1;
   return index;
 }
 
-// ---------------- BPMList（PhiZone/player getTimeSec 语义） ----------------
 interface BpmElement {
   startBeat: number;
   startTimeSec: number;
@@ -479,7 +459,6 @@ function finite(value: unknown, label: string): number {
   return number;
 }
 
-// ---------------- 解析 ----------------
 const NOTE_KINDS: Readonly<Record<number, RpeNoteKind>> = { 1: 'tap', 2: 'hold', 3: 'flick', 4: 'drag' };
 
 interface RawRpeEvent {
@@ -502,7 +481,7 @@ function normalizeEvents(events: RawRpeEvent[] | null | undefined, lineIndex: nu
     return {
       startBeat: toBeats(event.startTime ?? event.time ?? [0, 0, 1]),
       endBeat: toBeats(event.endTime ?? [9999, 0, 1]),
-      // 值为数值/数组/字符串（文本事件），数组与字符串原样保留
+
       start: event.start ?? 0,
       end: event.end ?? 0,
       easingType: Math.round(event.easingType ?? 1),
@@ -534,7 +513,7 @@ export function parseRpeChart(source: string | object, extrasInput: RpeExtrasInp
   if (!Array.isArray(raw.judgeLineList)) throw new Error('judgeLineList 缺失');
   const meta = raw.META ?? {};
   const rpeVersion = Number(meta.RPEVersion ?? 160);
-  // prpr parse/extra.rs：extra.json 的 bpm 覆盖谱面 BPMList
+  /** extra.json 的 bpm 覆盖谱面 BPMList。 */
   const extrasRaw = parseExtras(extrasInput.extraJson);
   const bpmList = new BpmList(
     extrasRaw.bpmItems ?? (raw.BPMList ?? []).map((item) => [toBeats(item.startTime ?? [0, 0, 1]), finite(item.bpm, 'BPM')]),
@@ -574,8 +553,8 @@ export function parseRpeChart(source: string | object, extrasInput: RpeExtrasInp
         kind,
         type: rawNote.type,
         positionX: finite(rawNote.positionX, `判定线 ${lineIndex} 音符 ${noteIndex} positionX`),
-        yOffset: finite(rawNote.yOffset ?? 0, 'yOffset') * speed, // PhiZone/player：yOffset *= speed
-        yOffsetRaw: finite(rawNote.yOffset ?? 0, 'yOffset'), // prpr ctrl 节点求值用未烘焙值
+        yOffset: finite(rawNote.yOffset ?? 0, 'yOffset') * speed,
+        yOffsetRaw: finite(rawNote.yOffset ?? 0, 'yOffset'), /** ctrl 使用未乘速度的偏移。 */
         above: rawNote.above === 1,
         isFake: rawNote.isFake === 1 || rawNote.isFake === true,
         alpha: rawNote.alpha === undefined ? 255 : clamp(finite(rawNote.alpha, 'alpha'), 0, 255),
@@ -600,7 +579,6 @@ export function parseRpeChart(source: string | object, extrasInput: RpeExtrasInp
       };
     }).sort((a, b) => (a.hitTime - a.visibleTime) - (b.hitTime - b.visibleTime) || a.hitTime - b.hitTime);
 
-    // ctrl 节点（prpr parse_ctrl_events：按 x 升序保留原始键值，渲染层按区间+移位缓动求值）
     const parseControl = (items: RawRpeControl[] | undefined, key: 'alpha' | 'pos' | 'size' | 'y'): RpeControlKeyframe[] =>
       (items ?? [])
         .map((item) => ({
@@ -640,7 +618,6 @@ export function parseRpeChart(source: string | object, extrasInput: RpeExtrasInp
     };
   });
 
-  // 循环父级检测
   for (let i = 0; i < lines.length; i += 1) {
     const seen = new Set([i]);
     let current = lines[i]!.parent;
@@ -651,7 +628,6 @@ export function parseRpeChart(source: string | object, extrasInput: RpeExtrasInp
     }
   }
 
-  // 多押提示：同刻多音符
   const counts = new Map<string, number>();
   for (const line of lines) {
     for (const note of line.notes) {
@@ -764,9 +740,8 @@ interface RawRpeNote {
   judgeArea?: number;
 }
 
-// ---------------- extra.json（PhiZone/player extra：videos/effects；prpr：bpm 覆盖 BPMList） ----------------
 function normalizeAnimated(value: RpeEventValue | RawRpeEvent[] | undefined): RpeEventValue | RpeEvent[] {
-  // 数值/数组 → 常量；事件数组 → 事件列表（值可为数值或数组，逐分量插值）
+
   if (
     Array.isArray(value) &&
     (typeof value[0] === 'number' || Array.isArray(value[0])) &&
@@ -803,7 +778,7 @@ function parseExtras(extraSource: string | null | undefined): ParsedExtrasRaw {
     }[];
   };
   if (!raw || typeof raw !== 'object') return out;
-  // prpr parse/extra.rs：extra.bpm 覆盖谱面 BPMList（列表形式；数值按恒定 BPM）
+  /** extra.bpm 可为 BPM 列表或恒定值，覆盖谱面 BPMList。 */
   if (typeof raw.bpm === 'number') {
     out.bpmItems = [[0, finite(raw.bpm, 'extra BPM')]];
   } else if (Array.isArray(raw.bpm)) {
@@ -849,7 +824,6 @@ function parseExtras(extraSource: string | null | undefined): ParsedExtrasRaw {
   return out;
 }
 
-// ---------------- gif 判定线进度键帧（prpr parse/rpe.rs parse_gif_events） ----------------
 export interface RpeGifKeyframe {
   t: number;
   v: number;
@@ -902,7 +876,6 @@ export function buildGifAnim(events: readonly RpeEvent[], totalMs: number, bpmLi
   return kfs;
 }
 
-// ---------------- info.yml（背景暗度/宽高比等谱面元信息） ----------------
 export function parseInfoYml(source: string | null | undefined): RpeInfo {
   const info: RpeInfo = {};
   if (typeof source !== 'string' || !source) return info;

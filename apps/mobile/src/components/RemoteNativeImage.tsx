@@ -9,7 +9,6 @@ export type RemoteNativeImageProps = NativeImageProps & (
   | { cacheProfile?: Extract<RemoteImageCacheMode, 'native' | 'none'>; gameId?: never }
 );
 
-/** 保留 RN.Image 调用形态；原生运行时统一走共享远程图片入口。 */
 export function RemoteNativeImage({ cacheProfile, gameId, resizeMode, ...props }: RemoteNativeImageProps) {
   if (!supportsNativeCachePolicy) return <NativeImage {...props} resizeMode={resizeMode} />;
   const contentFit = resizeMode === 'stretch'

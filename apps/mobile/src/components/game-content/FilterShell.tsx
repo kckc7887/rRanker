@@ -3,25 +3,12 @@ import { Pressable, StyleSheet, Text, View, type StyleProp, type ViewStyle } fro
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { useAppTheme } from '@/theme/app-theme';
 
-/**
- * 六个筛选栏（Maimai / Chunithm / MuseDash / Phigros / Arcade / Tuf）的公共外壳模块：
- * - FilterShell：收起摘要态 + 展开表单态的容器切换，含重置与展开/收起操作；
- * - CollapseToggleAction / ResetFilterButton：原先在六处逐字重复的操作组件；
- * - joinFilterSummary：各游戏 summary builder 共用的「过滤空项后以 · 连接，空则『全部』」骨架；
- * - filterShellStyles：六处逐字相同的公共样式；带 Plain 后缀的变体供底色/颜色由主题内联注入的调用方使用。
- * 游戏差异（无障碍文案前缀、根容器样式变体、行内容）一律经 props 注入，保证各游戏渲染输出不变。
- */
-
-/** summary builder 公共骨架：过滤空项后以「 · 」连接，全空时显示「全部」。 */
 export function joinFilterSummary(parts: readonly (string | null | undefined)[]): string {
   return parts.filter(Boolean).join(' · ') || '全部';
 }
 
-/** 筛选栏的公共样式与布局变体。 */
 export const filterShellStyles = StyleSheet.create({
-  /** 带静态底色的展开态根容器。 */
   filterBar: { padding: 16, gap: 10, backgroundColor: '#FFF', borderBottomWidth: 1, borderBottomColor: '#E5E7EB' },
-  /** 由主题注入底色的展开态根容器。 */
   filterBarPlain: { padding: 16, gap: 10, borderBottomWidth: 1 },
   collapsedBar: { minHeight: 48, paddingHorizontal: 16, borderBottomWidth: 1, flexDirection: 'row', alignItems: 'center', gap: 4 },
   collapsedMain: { flex: 1, minWidth: 0, minHeight: 48, flexDirection: 'row', alignItems: 'center', gap: 8 },
@@ -38,11 +25,9 @@ export const filterShellStyles = StyleSheet.create({
   resetButtonText: { fontSize: 12, fontWeight: '800' },
   filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
-  /** 由主题注入颜色的标签。 */
   filterLabelPlain: { fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
   wideFilterLabel: { width: 44 },
   chipRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
-  /** 带纵向留白的芯片行。 */
   chipRowPadded: { flexDirection: 'row', gap: 6, alignItems: 'center', paddingVertical: 1 },
   chipFrame: { borderWidth: 2, borderColor: 'transparent', borderRadius: 999, padding: 2, alignItems: 'center', justifyContent: 'center' },
   roundedChipFrame: { borderRadius: 10 },
@@ -50,7 +35,6 @@ export const filterShellStyles = StyleSheet.create({
   neutralChipText: { color: '#374151', fontSize: 12 },
   neutralChipTextActive: { fontWeight: '700' },
   rangeRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7 },
-  /** 带静态底色的区间输入框。 */
   rangeInput: {
     flex: 1,
     minWidth: 0,
@@ -67,7 +51,6 @@ export const filterShellStyles = StyleSheet.create({
     textAlignVertical: 'center',
     includeFontPadding: false,
   },
-  /** 由主题注入底色的区间输入框。 */
   rangeInputPlain: {
     flex: 1,
     minWidth: 0,
@@ -82,7 +65,6 @@ export const filterShellStyles = StyleSheet.create({
     includeFontPadding: false,
   },
   rangeSeparator: { color: '#6B7280', fontSize: 13, fontWeight: '700' },
-  /** 由主题注入颜色的分隔符。 */
   rangeSeparatorPlain: { fontSize: 13, fontWeight: '700' },
 });
 
@@ -98,7 +80,6 @@ function CollapseToggleAction({ expanded, label }: { expanded: boolean; label: s
 
 function ResetFilterButton({ onPress, accessibilityLabel }: {
   onPress: () => void;
-  /** 无障碍标签默认「重置筛选」，Chunithm 等传专属文案。 */
   accessibilityLabel?: string;
 }) {
   const theme = useAppTheme();
@@ -112,28 +93,19 @@ function ResetFilterButton({ onPress, accessibilityLabel }: {
 
 export interface FilterShellProps {
   collapsed: boolean;
-  /** 是否允许收起；成绩图片自定义等固定展开场景传 false，仅保留重置。 */
   collapsible?: boolean;
-  /** 收起态摘要文本，由各游戏 summary builder 生成。 */
   summary: string;
-  /** 展开态根容器样式；默认 filterShellStyles.filterBar，底色内联注入的游戏传 filterBarPlain。 */
   barStyle?: StyleProp<ViewStyle>;
-  /** 展开态根容器追加样式（如 Arcade 的 flexShrink 收缩）。 */
   barExtraStyle?: StyleProp<ViewStyle>;
-  /** 收起态展开动作的无障碍前缀，拼为「{prefix}，当前 {summary}」；Chunithm 传专属前缀。 */
   expandLabelPrefix?: string;
-  /** 收起按钮无障碍标签，默认「收起筛选」。 */
   collapseLabel?: string;
-  /** 重置按钮无障碍标签，默认「重置筛选」。 */
   resetLabel?: string;
   onCollapsedChange: (collapsed: boolean) => void;
-  /** 收起动作；需联动清理（如关闭下拉）的调用方自行包装，默认直接收起。 */
   onCollapse?: () => void;
   onReset: () => void;
   children: ReactNode;
 }
 
-/** 筛选栏公共外壳：收起态渲染摘要行，展开态渲染「筛选」头部 + 各游戏行内容插槽。 */
 export function FilterShell({
   collapsed,
   collapsible = true,
@@ -187,7 +159,6 @@ export function FilterShell({
   );
 }
 
-/** 中性筛选芯片。 */
 export function NeutralChip({ label, active, onPress, accessibilityLabel }: {
   label: string; active: boolean; onPress: () => void; accessibilityLabel?: string;
 }) {
@@ -201,7 +172,6 @@ export function NeutralChip({ label, active, onPress, accessibilityLabel }: {
   );
 }
 
-/** 带选中态描边的筛选芯片外框。 */
 export function FilterChipFrame({
   active,
   accessibilityLabel,

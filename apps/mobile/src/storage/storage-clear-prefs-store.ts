@@ -1,7 +1,8 @@
 import Storage from '@/storage/key-value-storage';
+import { z } from 'zod';
+import { createPreferencesStore } from './create-preferences-store';
 import type { GameId } from '@/domain/game-bind-options';
 
-/** 可勾选清除的类别：各游戏 id + 共享缓存。 */
 export type StorageClearCategoryId = GameId | 'shared';
 
 export type StorageClearPreferences = {
@@ -19,7 +20,7 @@ export function parseStorageClearPreferences(
   const fallback = { version: 1 as const, selectedIds: [...allowedIds] };
   if (!value || typeof value !== 'object') return fallback;
   const input = value as { version?: unknown; selectedIds?: unknown };
-  if (!Array.isArray(input.selectedIds)) return fallback;
+  if ((input.version !== undefined && input.version !== 1) || !Array.isArray(input.selectedIds)) return fallback;
   const selectedIds = input.selectedIds.filter(
     (id): id is StorageClearCategoryId => typeof id === 'string' && allowed.has(id as StorageClearCategoryId),
   );
@@ -28,21 +29,20 @@ export function parseStorageClearPreferences(
 
 export class StorageClearPreferencesStore {
   async load(allowedIds: readonly StorageClearCategoryId[]): Promise<StorageClearPreferences> {
-    try {
-      const raw = await Storage.getItem(STORAGE_KEY);
-      if (!raw) return parseStorageClearPreferences(null, allowedIds);
-      return parseStorageClearPreferences(JSON.parse(raw), allowedIds);
-    } catch {
-      return parseStorageClearPreferences(null, allowedIds);
-    }
+    return load(Storage, allowedIds);
   }
 
   async save(preferences: StorageClearPreferences): Promise<void> {
-    await Storage.setItem(STORAGE_KEY, JSON.stringify({
-      version: 1,
-      selectedIds: preferences.selectedIds,
-    }));
+    await save(Storage, [], preferences);
   }
 }
+
+const { load, save } = createPreferencesStore<StorageClearPreferences, readonly StorageClearCategoryId[]>({
+  storeKey: STORAGE_KEY,
+  defaults: allowedIds => ({ version: 1, selectedIds: [...allowedIds] }),
+  parse: (value, allowedIds) => parseStorageClearPreferences(z.object({
+    version: z.literal(1), selectedIds: z.array(z.string()),
+  }).parse(value), allowedIds),
+});
 
 export const storageClearPreferencesStore = new StorageClearPreferencesStore();

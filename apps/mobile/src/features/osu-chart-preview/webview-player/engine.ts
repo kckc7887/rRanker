@@ -1,4 +1,4 @@
-// MIT replayviewer-js source exports. Keep this preview entry free of replay/skin loaders.
+
 export type * from './engine/types/index';
 export { parseBeatmap } from './engine/parsers/BeatmapParser';
 export { md5 } from './engine/utils/md5';
@@ -17,8 +17,6 @@ export { Renderer } from './engine/renderer/Renderer';
 export { drawCursor } from './engine/renderer/CursorRenderer';
 export { warmSkinCaches } from './engine/renderer/HitObjectRenderer';
 export { warmSliderPaths } from './engine/renderer/SliderGeometry';
-export { Player } from './engine/player/Player';
-export { TimeMapper } from './engine/player/TimeMapper';
 export { PlaybackClock, audioContextTime, musicPosition, outputTime } from '../../chart-preview-shared/webview-player/playbackClock';
 export { getAudioContextOutputTime } from '../../chart-preview-shared/webview-player/audioClock';
 export { loadItemsBounded } from '../../../services/offset-pagination';

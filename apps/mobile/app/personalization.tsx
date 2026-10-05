@@ -22,7 +22,6 @@ const APPEARANCES: { id: AppAppearance; label: string }[] = [
   { id: 'dark', label: '深色' },
 ];
 
-/** 曲绘预览固定成绩：舞萌 ID 834「PANDORA PARADOXXX」Re:MASTER；101% 达成率对应 SSS+（rate=sssp）、官方单曲 Rating = floor(15.0 + 22.4) = 37。 */
 const SCORE_CARD_ARTWORK_PREVIEW_RECORD = {
   songId: '834',
   title: 'PANDORA PARADOXXX',

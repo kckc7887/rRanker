@@ -15,7 +15,7 @@ export function resolveTrackOpacity(options: object, mode: 'mania' | 'taiko'): n
 }
 
 const constantManiaSessions = new WeakMap<ManiaSession, ManiaSession>();
-/** Only the renderer receives this view. Judgement, replay and all resource clocks retain map time. */
+
 export function maniaRenderSession(session: ManiaSession, options: object): ManiaSession {
   if (!(options as PreviewRenderOptions).maniaIgnoreSV) return session;
   let view = constantManiaSessions.get(session);
@@ -39,7 +39,6 @@ export function taikoLookback(objects: readonly TaikoHitObject[]): number {
 
 const maniaIndices = new WeakMap<readonly ManiaHitObject[], (min: number, max: number) => ManiaHitObject[]>();
 
-/** An interval index avoids scanning unrelated taps when one hold spans a large part of a chart. */
 export function visibleManiaObjects(objects: readonly ManiaHitObject[], minTime: number, maxTime: number): ManiaHitObject[] {
   let query = maniaIndices.get(objects);
   if (!query) {
@@ -52,7 +51,6 @@ export function visibleManiaObjects(objects: readonly ManiaHitObject[], minTime:
 type ResultIndex = { result: HitResult; displayTime: number; index: number };
 const judgementIndices = new WeakMap<readonly HitResult[], { std?: ResultIndex[]; taiko?: ResultIndex[] }>();
 
-/** Search by display time, then retain the original painter order, including delayed slider displays. */
 export function visibleJudgements(results: readonly HitResult[], timeMs: number, taiko: boolean, lifetime: number): HitResult[] {
   let cache = judgementIndices.get(results);
   if (!cache) { cache = {}; judgementIndices.set(results, cache); }

@@ -1,17 +1,19 @@
+import { z } from 'zod';
+import { MajdataSongSchema, MajdataScoreSchema, MajdataRecentSchema } from '@/domain/majdata';
+import { DataSourceSchema } from '@/domain/schemas';
 import type { MajdataSnapshot, MajdataSong } from '@/domain/majdata';
 import type { DataSource } from '@/domain/models';
 import type { HttpCookieSession } from '@/providers/http-cookies';
 import { MajdataProvider, majdataProvider } from '@/providers/majdata-provider';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { applyMajdataSessionRotation, useSession } from '@/state/session-store';
-import { snapshotSource, captureResourceWrites, createInflightGuard, resourceWriteGeneration, subscribeResourceWrites } from './snapshot-cache-utils';
+import { cacheSourceSchema, snapshotSource, captureResourceWrites, createInflightGuard, resourceWriteGeneration, subscribeResourceWrites } from './snapshot-cache-utils';
 import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 import { createBoundedLoadQueue } from './offset-pagination';
 import { parseSimaiChart } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import { simaiStatistics } from '@/features/simai-chart-preview/statistics';
 import { cacheFirstLoad } from './cache-first';
 import {
-  assertFreshSnapshotSource,
   cachedSnapshotSource,
   snapshotMetadataOf,
   type SnapshotMetadata,
@@ -27,7 +29,6 @@ export const majdataSource = () => snapshotSource({ kind: 'majdata-net', label: 
 export const majdataAccountKey = (id: string) => `majdata-net:account:${id}`;
 export const majdataSongKey = (id: string) => `majdata-net:song:${id}`;
 
-/** 缓存首屏不占用网络槽位；所有实际歌曲请求共用四路上限。 */
 async function requestMajdataSong(id: string, signal: AbortSignal, foregroundSignal: AbortSignal, assertCurrent: () => void): Promise<MajdataSong> {
   return songLoads(async () => {
     assertCurrent();
@@ -51,10 +52,17 @@ async function requestMajdataSong(id: string, signal: AbortSignal, foregroundSig
   });
 }
 
-/** 歌曲快照的本地载荷：谱面本体加它被抓取时的来源元数据（旧版本行没有来源）。 */
-type MajdataSongSnapshot = { song: MajdataSong; source?: DataSource };
+const songSnapshotSchema = z.object({
+  song: MajdataSongSchema,
+  source: DataSourceSchema.extend({ kind: z.literal('majdata-net') }),
+});
+type MajdataSongSnapshot = z.infer<typeof songSnapshotSchema>;
+const accountSnapshotSchema = z.object({
+  player: z.object({ username: z.string() }), records: z.array(MajdataScoreSchema), recent: z.array(MajdataRecentSchema),
+  source: cacheSourceSchema('majdata-net'),
+});
 
-export function loadMajdataCached(id: string) { return repository.getResource<MajdataSnapshot>(majdataAccountKey(id), 1); }
+export function loadMajdataCached(id: string) { return repository.getResource(majdataAccountKey(id), 1, accountSnapshotSchema); }
 export function clearMajdataAccount(id: string) {
   accountRequests.set(id, (accountRequests.get(id) ?? 0) + 1);
   return repository.clearResources([majdataAccountKey(id)]);
@@ -72,7 +80,7 @@ export async function loadMajdataFresh(id: string, session: HttpCookieSession, s
   const provider = new MajdataProvider(session, async next => {
     assertCurrent();
     const state = useSession.getState();
-    if (signal?.aborted || accountRequests.get(id) !== generation || state.sessionsByAccountId[id] !== expected) return;
+    if (state.sessionsByAccountId[id] !== expected) return;
     await applyMajdataSessionRotation(id, next, expected, signal);
     assertCurrent();
     expected = useSession.getState().sessionsByAccountId[id]?.mode === 'http-cookies'
@@ -81,54 +89,41 @@ export async function loadMajdataFresh(id: string, session: HttpCookieSession, s
   const player = await provider.getPlayer(signal);
   const records = await provider.getRecords(signal);
   const recent = await provider.getRecent(player.username, signal);
-  if (signal?.aborted) throw signal.reason;
   assertCurrent();
-  if (accountRequests.get(id) !== generation) throw new Error('请求已失效');
   const snapshot = { player, records, recent, source: majdataSource() };
   await repository.saveResource(majdataAccountKey(id), 1, snapshot.source.updatedAt, snapshot, assertCurrent);
-  if (signal?.aborted) throw signal.reason;
   assertCurrent();
-  if (accountRequests.get(id) !== generation) throw new Error('请求已失效');
   return snapshot;
 }
 
-export function loadMajdataCachedSong(id: string) { return repository.getResource<MajdataSongSnapshot>(majdataSongKey(id), 1); }
+function loadMajdataCachedSong(id: string): Promise<MajdataSongSnapshot | null> {
+  return repository.getResource(majdataSongKey(id), 1, songSnapshotSchema);
+}
 
-/**
- * 本地歌曲快照：歌曲本体、展示来源与快照元数据。
- * 缓存读取保留原提供方与抓取时间，可用修订就是谱面 hash；
- * 旧版本行没有来源信息时不编造元数据（metadata 为 null），展示来源退回本次读取的来源。
- */
 export async function loadMajdataSongSnapshot(id: string): Promise<{
   song: MajdataSong;
   source: DataSource;
-  metadata: SnapshotMetadata | null;
+  metadata: SnapshotMetadata;
 } | null> {
   const cached = await loadMajdataCachedSong(id);
   if (!cached) return null;
-  const stored = cached.source && cached.source.kind !== 'cache' ? cached.source : null;
   return {
     song: cached.song,
-    source: stored ?? majdataSource(),
-    metadata: stored ? snapshotMetadataOf(stored, cached.song.hash) : null,
+    source: cached.source,
+    metadata: snapshotMetadataOf(cached.source, cached.song.hash),
   };
 }
 
-/** 一次歌曲读取：数据本身加上它是否来自本地快照。 */
 type MajdataSongLoad = { song: MajdataSong; fromCache: boolean; source: DataSource };
 
 function cachedSongLoad(snapshot: MajdataSongSnapshot): MajdataSongLoad {
   return {
     song: snapshot.song,
     fromCache: true,
-    source: cachedSnapshotSource(snapshot.source ?? majdataSource()),
+    source: cachedSnapshotSource(snapshot.source),
   };
 }
 
-/**
- * 歌曲详情与谱面文本的共享请求入口。
- * 网络失败时回退本地快照，回退结果带 `fromCache` 与过期来源，调用端不得把它当成刷新成功。
- */
 async function loadMajdataSongCurrent(id: string, signal?: AbortSignal): Promise<MajdataSongLoad> {
   const assertCurrent = captureResourceWrites('majdata-net');
   return resourceLoads.share(requestKey(majdataSongKey(id)), async requestSignal => {
@@ -141,12 +136,11 @@ async function loadMajdataSongCurrent(id: string, signal?: AbortSignal): Promise
       assertCurrent();
       if (songRequests.get(id) !== generation) throw new Error('请求已失效');
     };
-    const cached = await repository.getResource<MajdataSongSnapshot>(majdataSongKey(id), 1);
+    const cached = await loadMajdataCachedSong(id);
     try {
       const song = await requestMajdataSong(id, requestSignal, foregroundSignal, assertSongCurrent);
       assertSongCurrent();
       const source = majdataSource();
-      assertFreshSnapshotSource(source);
       const snapshot = { song, source };
       await repository.saveResource(majdataSongKey(id), 1, source.updatedAt, snapshot, assertSongCurrent);
       assertSongCurrent();
@@ -155,7 +149,7 @@ async function loadMajdataSongCurrent(id: string, signal?: AbortSignal): Promise
       return { song, fromCache: false, source };
     } catch (error) {
       assertSongCurrent();
-      if (cached && !requestSignal?.aborted && songRequests.get(id) === generation) return cachedSongLoad(cached);
+      if (cached) return cachedSongLoad(cached);
       throw error;
     }
   }, signal);
@@ -175,7 +169,6 @@ export async function loadMajdataSong(
         return cached ? { song: cached.song, fromCache: true, source: cachedSnapshotSource(cached.source) } : null;
       },
       loadFresh: requestSignal => loadMajdataSongCurrent(id, requestSignal),
-      // 服务自己声明哪份数据来自本地快照，兜底不会被包装成刷新成功。
       isFallback: value => value.fromCache,
       onFresh: value => { assertCurrent(); onFresh?.(value.song); },
       onFallback: value => { assertCurrent(); onFallback?.(value.song); },

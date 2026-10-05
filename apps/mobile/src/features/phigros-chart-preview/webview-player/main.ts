@@ -5,19 +5,6 @@ import { bindHeatTimelineKeyboard } from '../../chart-preview-shared/webview-pla
 import { upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
 import { closeActiveWheelPopup, setupWheelPopup as setupSharedWheelPopup, type WheelControl } from '../../chart-preview-shared/webview-player/wheel';
 /**
- * Phigros / Phira 谱面确认 WebView 播放器入口。
- * 播放位置、命令代次、音乐音源、打击音调度与 rAF 归 PhigrosPlaybackSession；
- * 这里只做 DOM、设置、时间轴视图与控制器的接线。
- * 对时、性能与控制面板全部对齐舞萌谱面确认播放器：
- * - 音乐解码为 AudioBuffer，经 AudioBufferSourceNode 在 AudioContext 时钟上播放，
- *   不使用 HTMLMediaElement 时钟（其 currentTime 有延迟抖动，seek/暂停恢复漂移大）；
- * - PlaybackClock 分段时钟记录播放起点与倍速变化，任意时刻反查精确音乐位置；
- * - 视觉与打击音统一使用 getAudioContextOutputTime 的输出端时间（贴合实际听感）；
- * - 控制器共用热度时间轴、播放按钮和常驻参数卡片；
- * - 仅播放中常驻 rAF 渲染；暂停/拖动按事件渲染，画布 DPR 封顶与全屏像素预算；
- * - 主线程解析 PGR（WebView file:// 下不使用 Worker）。
- * 观赏播放不包含触控判定与真实计分。
- *
  * 许可证：谱面解析与渲染部分语义衍生自 TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira），
  * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
@@ -118,7 +105,7 @@ function loadImage(url: string, signal: AbortSignal, textureSafe = false): Promi
   return new Promise((resolve, reject) => {
     if (signal.aborted || disposed) { reject(new DOMException('已取消', 'AbortError')); return; }
     const image = new Image();
-    // GPU 场景纹理要求源画布可读取；普通 Canvas2D 曲绘保持原加载方式。
+    /** GPU 场景纹理要求源画布可读取。 */
     if (textureSafe && /^https?:/i.test(url)) image.crossOrigin = 'anonymous';
     const cleanup = () => { signal.removeEventListener('abort', onAbort); image.onload = null; image.onerror = null; };
     const onAbort = () => { cleanup(); image.src = ''; reject(new DOMException('已取消', 'AbortError')); };
@@ -212,7 +199,7 @@ function start(): void {
     for (const line of chart.lines) {
       if (line.texture !== 'line.png' && line.gifEvents.length === 0) textureNames.add(line.texture);
     }
-    // shader sampler2D uniform 引用的图片
+
     for (const effect of chart.extras.effects) {
       for (const value of Object.values(effect.vars)) {
         if (typeof value === 'string') textureNames.add(value);
@@ -221,7 +208,6 @@ function start(): void {
     return textureNames;
   }
 
-  /** RPE：加载谱面包资源（贴图/gif/视频；shader 文本来自注入配置）。 */
   async function loadRpeChartAssets(chart: RpeChart, signal: AbortSignal): Promise<RpeChartAssets> {
     const basePath = config.rpeAssets?.basePath ?? '';
     const textures = new Map<string, HTMLImageElement>();
@@ -296,7 +282,7 @@ function start(): void {
     }
 
     const gifTextures = new Set<string>();
-    // gif 判定线（prpr JudgeLineKind::TextureGif）：ImageDecoder 解码帧；iOS 无 ImageDecoder 时降级静态贴图
+    /** iOS 缺少 ImageDecoder 时使用静态贴图。 */
     for (const line of chart.lines) {
       if (line.gifEvents.length === 0 || gifTextures.has(line.texture)) continue;
       gifTextures.add(line.texture);
@@ -313,7 +299,7 @@ function start(): void {
             const image = await loadImage(fallbackUrl, signal);
             textures.set(line.texture, image);
           } catch {
-            /* 忽略 */
+
           }
         }
       })());
@@ -351,7 +337,7 @@ function start(): void {
       const gif = gifs.get(line.texture);
       if (gif) gifAnims.set(line.lineIndex, buildGifAnim(line.gifEvents, gif.totalMs, chart.bpmList));
     }
-    // shader 文本按谱面里的相对路径引用注入，与落盘身份相同。
+
     const shaders = new Map<string, string>();
     const injectedShaders = config.rpeAssets?.shaders ?? {};
     for (const effect of chart.extras.effects) {
@@ -359,14 +345,13 @@ function start(): void {
       const source = injectedShaders[effect.shader];
       if (typeof source === 'string') shaders.set(effect.shader, source);
     }
-    // prpr 内置特效预设兜底（内嵌随包分发）：谱面包未提供同名 shader 时使用。
+
     for (const [name, source] of Object.entries(RPE_PRESET_SHADERS)) {
       if (!shaders.has(name)) shaders.set(name, source);
     }
     return { textures, videos, shaders, gifs, gifAnims };
   }
 
-  // attachUI：HUD 元素跟随判定线（prpr Chart::with_element 语义；1 Pause/2 ComboNumber/3 Combo/4 Score/5 Bar/6 Name/7 Level）
   const ATTACH_UI_ELEMENTS: Readonly<Record<number, { element: () => HTMLElement; always: boolean }>> = Object.freeze({
     1: { element: () => elements.pauseNode, always: false },
     2: { element: () => elements.combo, always: true },
@@ -431,10 +416,7 @@ function start(): void {
     }
   }
 
-  /**
-   * 音乐字节由宿主解析（iOS file:// 下优先注入的 base64），解码与音源归播放会话。
-   * 失败与取消保持既有行为：取消沿 AbortSignal 上抛，其余进入静音看谱。
-   */
+  /** iOS file:// 下从注入的 base64 解码音乐。 */
   async function loadPreviewMusic(signal: AbortSignal): Promise<void> {
     try {
       let bytes: ArrayBuffer;
@@ -491,7 +473,6 @@ function start(): void {
       });
   }
 
-  // ---- 舞萌式时间轴 ----
   const timelineView = new PhigrosTimelineView({
     host: elements.timelineHost,
     bars: elements.timelineBars,
@@ -571,7 +552,7 @@ function start(): void {
       if (signal.aborted) return;
       setLoadProgress('正在解析谱面…', 0.45);
       const chart: PgrChart | RpeChart = await new Promise((resolve, reject) => {
-        // 主线程解析：WebView file:// 下不使用 Worker，解析期间状态保持可见。
+
         const parseTimer = window.setTimeout(() => {
           signal.removeEventListener('abort', cancelParse);
           if (signal.aborted || disposed) { reject(new DOMException('预览已释放', 'AbortError')); return; }
@@ -593,7 +574,7 @@ function start(): void {
         loadPreviewMusic(signal),
       ]);
       if (signal.aborted) return;
-      // RPE：背景优先取谱面包内 META.background，缺失时回退远程曲绘
+
       const illustration = await previewBackground(chart, image, signal);
       if (signal.aborted || disposed) return;
       if (isRpe) {
@@ -683,7 +664,6 @@ function start(): void {
     syncControlsVisibility();
   }
 
-  /** 跳转：位置、时钟与打击音时间轴在会话内更新，视图在此重绘。 */
   function seekToChartTime(target: number): void {
     void session.seek(target);
     renderer.resetTimeline(session.chartTime);
@@ -710,7 +690,6 @@ function start(): void {
     postStatus('fullscreen', { active });
   }
 
-  /** 暂停（手动按钮或宿主生命周期）：只停播，不改变全屏状态。 */
   function pauseForLifecycle(): void {
     if (disposed) return;
     flushSettings();
@@ -718,7 +697,6 @@ function start(): void {
     session.pause();
   }
 
-  /** 释放：停播、退出全屏、回收资源，幂等；此后不再改动界面或回报状态。 */
   function disposePlayer(): void {
     if (disposed) return;
     flushSettings();
@@ -732,7 +710,6 @@ function start(): void {
     window.clearTimeout(controlsTimer);
   }
 
-  // HUD 随 16:9 播放窗宽度缩放，并限制极端尺寸下的比例。
   function applyStageMetrics(): void {
     if (disposed) return;
     const width = elements.stage.getBoundingClientRect().width;
@@ -747,7 +724,6 @@ function start(): void {
   events.own(() => stageObserver.disconnect());
   applyStageMetrics();
 
-  // ---- 事件绑定 ----
   events.listen(elements.play, 'click', () => {
     if (!ready) return;
     if (session.playing) session.pause();
@@ -791,12 +767,11 @@ function start(): void {
     timelineDragging = false;
   });
 
-  // 拨轮设置
   setupWheelPopup(
     $('speed-trigger'), $('speed-popup'), $('speed-wheel'), $('speed-list'), $('speed-val'),
     (value) => {
       settings.playbackSpeed = value;
-      // 播放中改变倍速：采样级同步（与舞萌一致），不打断当前声源。
+
       session.applySpeedChange();
       applySettings();
       if (!session.playing) renderFrame(session.chartTime);
@@ -878,7 +853,7 @@ function start(): void {
   events.own(() => timelineObserver.disconnect());
 
   events.listen(window, 'message', (event) => {
-    // 生命周期合同由公共层派生：暂停停播保全屏，退出全屏与释放是显式命令。
+
     applyChartPreviewHostCommand(event.data, {
       pause: pauseForLifecycle,
       exitFullscreen: () => setFullscreen(false),

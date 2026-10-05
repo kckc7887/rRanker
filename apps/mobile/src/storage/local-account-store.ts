@@ -1,7 +1,6 @@
-import Storage from '@/storage/key-value-storage';
 import { isLocalMaimaiAccountId } from '@/domain/bound-account';
 import { assertAccountListEnvelope } from '@/storage/create-demo-account-store';
-import { createAccountListStore, type KeyValueStore } from '@/storage/create-account-list-store';
+import { createAccountListStore } from '@/storage/create-account-list-store';
 
 export type LocalAccountProfile = {
   id: string;
@@ -17,25 +16,25 @@ export function normalizeLocalPlayerName(value: string): string | null {
   return trimmed.slice(0, LOCAL_PLAYER_NAME_MAX_LENGTH);
 }
 
-export function parseLocalAccountProfiles(value: unknown): LocalAccountProfile[] {
+function parseLocalAccountProfiles(value: unknown): LocalAccountProfile[] {
   const { accounts } = assertAccountListEnvelope(value);
   const seen = new Set<string>();
   const profiles: LocalAccountProfile[] = [];
   for (const candidate of accounts) {
-    if (!candidate || typeof candidate !== 'object') continue;
+    if (!candidate || typeof candidate !== 'object') throw new TypeError('不支持的账号目录');
     const account = candidate as { id?: unknown; displayName?: unknown };
-    if (typeof account.id !== 'string' || !isLocalMaimaiAccountId(account.id) || seen.has(account.id)) continue;
+    if (typeof account.id !== 'string' || !isLocalMaimaiAccountId(account.id) || seen.has(account.id)) throw new TypeError('不支持的账号目录');
     const displayName = typeof account.displayName === 'string'
       ? normalizeLocalPlayerName(account.displayName)
       : null;
-    if (!displayName) continue;
+    if (!displayName) throw new TypeError('不支持的账号目录');
     seen.add(account.id);
     profiles.push({ id: account.id, displayName });
   }
   return profiles;
 }
 
-const { Store } = createAccountListStore<LocalAccountProfile>({
+export const LocalAccountStore = createAccountListStore<LocalAccountProfile>({
   storeKey: 'rranker.local-maimai-accounts.v1',
   parse: parseLocalAccountProfiles,
   keyOf: (account) => account.id,
@@ -46,24 +45,4 @@ const { Store } = createAccountListStore<LocalAccountProfile>({
     }
     return { id: profile.id, displayName };
   },
-});
-
-export class LocalAccountStore {
-  private readonly store: InstanceType<typeof Store>;
-
-  constructor(private readonly storage: KeyValueStore = Storage) {
-    this.store = new Store(storage);
-  }
-
-  load(): Promise<LocalAccountProfile[]> {
-    return this.store.load();
-  }
-
-  async upsert(profile: LocalAccountProfile): Promise<void> {
-    await this.store.upsert(profile);
-  }
-
-  async remove(accountId: string): Promise<void> {
-    await this.store.remove(accountId);
-  }
-}
+}).Store;

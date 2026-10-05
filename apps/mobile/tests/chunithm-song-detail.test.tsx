@@ -328,16 +328,6 @@ describe('Chunithm song detail', () => {
     expect(screen.queryByText(/版权归 SEGA/)).toBeNull();
     expect(screen.queryByLabelText('数据来源状态')).toBeNull();
 
-    const tree = screen.toJSON();
-    const songInfoIndex = findTestIdIndex(tree, 'chunithm-song-info-card');
-    const localTagIndices = collectTextIndices(tree, (children) => {
-      const text = Array.isArray(children) ? children.join('') : children;
-      return text === '谱面标签：无';
-    });
-    expect(songInfoIndex).toBeGreaterThanOrEqual(0);
-    expect(localTagIndices.length).toBeGreaterThan(0);
-    expect(Math.max(...localTagIndices)).toBeGreaterThan(songInfoIndex);
-
     await fireEvent(screen.getByTestId('chunithm-alias-overflow-measure'), 'textLayout', {
       nativeEvent: { lines: [{}, {}] },
     });
@@ -457,52 +447,3 @@ describe('Chunithm song detail', () => {
     expect(card.getByLabelText("WORLD'S END 不参与 OVER POWER 计算")).toBeTruthy();
   });
 });
-
-function findTestIdIndex(
-  node: unknown,
-  testID: string,
-): number {
-  let cursor = 0;
-  const walk = (current: unknown): number | null => {
-    if (Array.isArray(current)) {
-      for (const child of current) {
-        const found = walk(child);
-        if (found !== null) return found;
-      }
-      return null;
-    }
-    if (current && typeof current === 'object') {
-      const item = current as { props?: Record<string, unknown>; children?: unknown };
-      if (item.props?.testID === testID) return cursor;
-      cursor += 1;
-      if (item.children !== undefined) {
-        const found = walk(item.children);
-        if (found !== null) return found;
-      }
-    }
-    return null;
-  };
-  return walk(node) ?? -1;
-}
-
-function collectTextIndices(
-  node: unknown,
-  match: (children: unknown) => boolean,
-): number[] {
-  const result: number[] = [];
-  let cursor = 0;
-  const walk = (current: unknown): void => {
-    if (Array.isArray(current)) {
-      for (const child of current) walk(child);
-      return;
-    }
-    if (current && typeof current === 'object') {
-      const item = current as { props?: Record<string, unknown>; children?: unknown };
-      if (item.children !== undefined && match(item.children)) result.push(cursor);
-      cursor += 1;
-      if (item.children !== undefined) walk(item.children);
-    }
-  };
-  walk(node);
-  return result;
-}

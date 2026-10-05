@@ -12,19 +12,14 @@ import {
 } from 'react-native';
 import { useFlowingProgress } from './use-flowing-progress';
 
-/** 渐变色组（expo-linear-gradient colors 原样形态） */
 type GradientColors = readonly [string, string, ...string[]];
 type GradientLocations = readonly [number, number, ...number[]];
 
-/** 五处挂法的渐变方向一致（左→右），作为骨架固定值 */
 const HORIZONTAL_START: { x: number; y: number } = { x: 0, y: 0.5 };
 const HORIZONTAL_END: { x: number; y: number } = { x: 1, y: 0.5 };
 
-/** 宽度相关渲染状态：依赖内容/轨道宽度的样式经函数形态取值 */
 export interface FlowingGradientState {
-  /** 内容宽度（实测值或初始值，下限 1） */
   width: number;
-  /** 流光轨道宽度 = width × trackMultiplier */
   trackWidth: number;
 }
 
@@ -38,10 +33,6 @@ function resolveStateStyle(
   return style(state);
 }
 
-/**
- * 流光轨道：useFlowingProgress 驱动 translateX 扫过 MaskedView。
- * 独立成子组件，静态挂法（flowing=false）不触碰流光 Hook 与页签活跃订阅。
- */
 function FlowingGradientTrack({
   duration,
   state,
@@ -56,13 +47,9 @@ function FlowingGradientTrack({
 }: {
   duration: number;
   state: FlowingGradientState;
-  /** 轨道右缘贴内容右缘起步（Phigros 的 -trackWidth+width 挂法） */
   alignTrackToContent: boolean;
-  /** 轨道定位样式（flowTrack） */
   trackStyle?: StyleProp<ViewStyle>;
-  /** 轨道显式高度（Phigros 传 lineHeight；其余靠 top/bottom 拉伸） */
   trackHeight?: number;
-  /** 轨道外包裹层样式（Phigros 的内容盒尺寸 View） */
   trackWrapStyle?: StateStyle;
   colors: GradientColors;
   locations?: GradientLocations;
@@ -99,11 +86,6 @@ function FlowingGradientTrack({
   return wrapStyle == null ? track : <View style={wrapStyle}>{track}</View>;
 }
 
-/**
- * MaskedView 流光渐变文本公共骨架（ChunithmGradientScore / GradientAchievement /
- * PhigrosScoreValue→FlowingGradientText / MuseDashAccValue / DxRatingCard→RatingValue）。
- * 各游戏通过 props 提供渐变色、轨道倍数、字号、周期和布局。
- */
 export function FlowingGradientValue({
   maskElement,
   maskStyle,
@@ -133,47 +115,29 @@ export function FlowingGradientValue({
   flowingStyle,
   flowingTestID,
 }: {
-  /** 遮罩元素：调用方构造，保持各游戏原有遮罩树形 */
   maskElement: ReactElement;
-  /** MaskedView 样式；依赖内容宽度的挂法（Phigros）传函数 */
   maskStyle: StateStyle;
   testID?: string;
   accessibilityLabel?: string;
-  /** 作为可聚焦节点暴露（maimai/Phigros 挂法） */
   accessible?: boolean;
-  /** DxRatingCard 描边遮罩的软件渲染开关。 */
   androidRenderingMode?: 'software' | 'hardware';
   pointerEvents?: 'auto' | 'none' | 'box-none' | 'box-only';
-  /** 宽度测量挂法：mask-layout=MaskedView onLayout（中二/maimai）；hidden-text=隐形测量文本（Phigros）；none=静态不测 */
   measure?: 'mask-layout' | 'hidden-text' | 'none';
-  /** 内容宽度初值。 */
   initialWidth?: number;
-  /** hidden-text 挂法的外层容器样式（Phigros scoreMeasureWrap） */
   measureWrapStyle?: StyleProp<ViewStyle>;
-  /** hidden-text 挂法的测量文本样式（含各游戏字号字重） */
   measureTextStyle?: StyleProp<TextStyle>;
-  /** hidden-text 挂法的测量文本内容 */
   text?: string;
-  /** 流光开关：false 时只渲染静态渐变 */
   flowing?: boolean;
-  /** 流光周期（ms） */
   duration?: number;
-  /** 流光轨道宽度 = 内容宽度 × 倍数（中二/maimai ×2、Phigros ×3） */
   trackMultiplier?: number;
-  /** 轨道右缘贴内容右缘起步（Phigros 挂法） */
   alignTrackToContent?: boolean;
-  /** 轨道定位样式（flowTrack） */
   trackStyle?: StyleProp<ViewStyle>;
-  /** 轨道显式高度（Phigros 传 lineHeight；其余靠 top/bottom 拉伸） */
   trackHeight?: number;
-  /** 轨道外包裹层样式（Phigros 的内容盒尺寸 View） */
   trackWrapStyle?: StateStyle;
-  /** 静态渐变色组（flowing=false 时渲染） */
   staticColors?: GradientColors;
   staticLocations?: GradientLocations;
   staticStyle?: StyleProp<ViewStyle>;
   staticTestID?: string;
-  /** 流光渐变色组（flowing=true 时渲染于轨道内） */
   flowingColors?: GradientColors;
   flowingLocations?: GradientLocations;
   flowingStyle?: StateStyle;
@@ -187,7 +151,7 @@ export function FlowingGradientValue({
     ? (event: LayoutChangeEvent) => setWidth(event.nativeEvent.layout.width)
     : undefined;
   const handleTextLayout = (event: LayoutChangeEvent) => {
-    // Phigros 挂法：向上取整去重，忽略 0 宽抖动
+    /** 向上取整并忽略 0 宽抖动。 */
     const next = Math.ceil(event.nativeEvent.layout.width);
     if (next > 0 && next !== width) setWidth(next);
   };

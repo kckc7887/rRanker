@@ -10,7 +10,8 @@ import { useCatalogFilter } from '@/state/catalog-filter';
 
 let mockToleranceParams: Record<string, string> = {};
 const mockDismissTo = jest.fn();
-jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { push: jest.fn(), dismissTo: (href: unknown) => mockDismissTo(href) }, useLocalSearchParams: () => mockToleranceParams }));
+const mockPush = jest.fn();
+jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { push: (href: unknown) => mockPush(href), dismissTo: (href: unknown) => mockDismissTo(href) }, useLocalSearchParams: () => mockToleranceParams }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
 const mockSource: DataSource = { kind: 'fixture', label: '测试来源', updatedAt: '2026-07-13T00:00:00.000Z', isStale: false };
@@ -22,7 +23,6 @@ let mockPlateQuery: { data?: PlateSnapshot; isLoading: boolean; isError: boolean
   isLoading: false, isError: false, error: null, refetch: jest.fn(),
 };
 jest.mock('@/hooks/use-plates', () => ({ usePlates: () => mockPlateQuery }));
-jest.mock('@/hooks/use-songs', () => ({ useSongs: () => ({ data: [], isLoading: false, isError: false, error: null, refetch: jest.fn() }) }));
 jest.mock('@/components/PlateImage', () => ({ PlateImage: () => null }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => ({ data: jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized').fixtureCatalog, isLoading: false, isError: false, error: null, refetch: jest.fn() }) }));
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => { const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized'); return { data: { records: fixtures.fixtureRecords, source: fixtures.fixtureSource, best50: { b35: [], b15: [] } }, isLoading: false, isError: false, error: null, refetch: jest.fn() }; } }));
@@ -48,6 +48,7 @@ describe('M2 tool screens', () => {
     mockPinnedPlateIds = [];
     mockTogglePinnedPlate.mockClear();
     mockDismissTo.mockClear();
+    mockPush.mockClear();
     useRecordsFilter.getState().reset();
     useCatalogFilter.getState().reset();
   });
@@ -122,6 +123,8 @@ describe('M2 tool screens', () => {
     mockToleranceParams = { plateId: '6102' };
     const screen = await render(<PlatesToolScreen />);
     expect(screen.getByLabelText('当前牌子 真神')).toBeTruthy();
+    await fireEvent.press(screen.getByText('正常曲目 A'));
+    expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/songs/[songId]', params: { songId: '1', gameId: 'maimai' } });
     await fireEvent.press(screen.getByLabelText('添加到主页 真神'));
     expect(mockTogglePinnedPlate).toHaveBeenCalledWith('maimai', 6102);
   });

@@ -15,59 +15,12 @@ type PhigrosStrengthRecord = Pick<PhigrosScoreRecord, 'songId' | 'level' | 'diff
 
 const FLOATING_FLOOR_EPSILON = 1e-9;
 const STRENGTH_EQUALITY_EPSILON = 1e-9;
-/** Acc 的百分之一单位：政策里的 Acc 用百分数表示，内部按 ×100 的整数搜索。 */
 const ACC_UNITS_PER_PERCENT = 100;
 
-/**
- * 实力分析政策对象的形状：describe* 与画像判定都按这个类型取政策，
- * 因此可以传入变体政策做「改政策 → 说明与阈值同步」的锁定测试。
- */
-export type PhigrosStrengthPolicy = {
-  /** 阈值 = 玩家 RKS − 该偏移，向下取到一位小数 */
-  thresholdOffset: number;
-  /** 阈值上限 */
-  thresholdCap: number;
-  /** 计入基础分析池的最低评级（按从低到高排列，至少一项） */
-  includedRates: readonly [string, ...string[]];
-  /** 标签样本数低于该值视为小样本并触发补充 */
-  smallSampleCount: number;
-  /** 每个标签最多向下补入的样本数 */
-  maxSupplementsPerTag: number;
-  /** 细分标签入选所需的最低票数（严格大于） */
-  secondaryTagMinVotes: number;
-  /** 主标签轴数；不匹配时停止生成雷达 */
-  primaryAxisCount: number;
-  /** 画像判定：五维均衡允许的覆盖率占比最大最小差 */
-  profileBalancedShareGap: number;
-  /** 画像判定：双核型要求的前两名占比和 */
-  profileDualCoreShareSum: number;
-  /** 画像判定：双核型要求的第二名占比下限 */
-  profileDualCoreSecondShare: number;
-  /** 画像判定：特化型要求的第一名占比下限 */
-  profileSpecializedShare: number;
-  /** 画像判定：特化型要求的第一名领先第二名占比差 */
-  profileSpecializedLead: number;
-  /** 候选池稀缺系数的最大加成 */
-  maxAvailabilityBonus: number;
-  /** 推荐条数 */
-  recommendationCount: number;
-  /** 推荐要求的最小标签 RKS 增益 */
-  recommendationMinGain: number;
-  /** 推荐搜索的最低目标 Acc（%） */
-  recommendationMinAcc: number;
-  /** 推荐搜索的最高目标 Acc（%） */
-  recommendationMaxAcc: number;
-};
-
-/**
- * 实力分析的政策常量：阈值、候选池、补充样本、细分标签票数、主标签画像阈值、
- * 雷达轴数与推荐预算的唯一来源。页面说明与空态文案由本对象的 describe* 函数生成，
- * 不再在 UI 里维护第二份数字；改变政策只改这一处。
- */
-export const PHIGROS_STRENGTH_POLICY: PhigrosStrengthPolicy = Object.freeze({
+export const PHIGROS_STRENGTH_POLICY = {
   thresholdOffset: 0.2,
   thresholdCap: 16,
-  includedRates: Object.freeze(['a', 's', 'v', 'phi'] as const),
+  includedRates: ['a', 's', 'v', 'phi'],
   smallSampleCount: 3,
   maxSupplementsPerTag: 5,
   secondaryTagMinVotes: 3,
@@ -82,44 +35,32 @@ export const PHIGROS_STRENGTH_POLICY: PhigrosStrengthPolicy = Object.freeze({
   recommendationMinGain: 0.0001,
   recommendationMinAcc: 70,
   recommendationMaxAcc: 100,
-});
+} as const;
 
 const INCLUDED_RATES = new Set<string>(PHIGROS_STRENGTH_POLICY.includedRates);
 
-/**
- * 分析池说明文案。数字全部来自 PHIGROS_STRENGTH_POLICY，UI 直接引用这段文本，
- * 改变政策后页面说明会随之更新，不需要在页面里同步第二份。
- */
-export function describePhigrosStrengthPoolPolicy(
-  policy: PhigrosStrengthPolicy = PHIGROS_STRENGTH_POLICY,
-): string {
-  const lowestRate = policy.includedRates[0].toUpperCase();
-  return `阈值取玩家 RKS 减 ${policy.thresholdOffset} 后向下保留一位小数，最高为 ${policy.thresholdCap.toFixed(1)}。`
+export function describePhigrosStrengthPoolPolicy(): string {
+  const lowestRate = PHIGROS_STRENGTH_POLICY.includedRates[0].toUpperCase();
+  return `阈值取玩家 RKS 减 ${PHIGROS_STRENGTH_POLICY.thresholdOffset} 后向下保留一位小数，最高为 ${PHIGROS_STRENGTH_POLICY.thresholdCap.toFixed(1)}。`
     + `候选池包含定数达到阈值的全部谱面，稀缺系数只由候选数量决定；`
     + `基础分析池仅包含 RKS 达标且评级 ${lowestRate} 以上的成绩。`
-    + `标签基础样本为 1–${policy.smallSampleCount - 1} 张时，`
-    + `从候选池内已有成绩但未入分析池的同标签谱面按 RKS 向下补入最多 ${policy.maxSupplementsPerTag} 张，`
+    + `标签基础样本为 1–${PHIGROS_STRENGTH_POLICY.smallSampleCount - 1} 张时，`
+    + `从候选池内已有成绩但未入分析池的同标签谱面按 RKS 向下补入最多 ${PHIGROS_STRENGTH_POLICY.maxSupplementsPerTag} 张，`
     + '参与标签平均、覆盖率和歌曲列表。再对未达到同类满分基准的结果应用校准并封顶。';
 }
 
-/**
- * 页面空态与提示文案：与池说明同源，数字全部取自政策对象。
- * 传入变体政策即可验证「改政策 → 说明同步」，页面不再内联第二份数字。
- */
-export function describePhigrosStrengthPolicyTexts(
-  policy: PhigrosStrengthPolicy = PHIGROS_STRENGTH_POLICY,
-): {
+export function describePhigrosStrengthPolicyTexts(): {
   poolRateLabel: string;
   emptyPool: string;
   noSecondaryTags: string;
   unexpectedPrimaryAxes: string;
 } {
-  const poolRateLabel = policy.includedRates[0].toUpperCase();
+  const poolRateLabel = PHIGROS_STRENGTH_POLICY.includedRates[0].toUpperCase();
   return {
     poolRateLabel,
     emptyPool: `当前没有同时满足 RKS 阈值与 ${poolRateLabel} 以上评级的成绩。`,
-    noSecondaryTags: `入池谱面没有票数大于 ${policy.secondaryTagMinVotes} 的细分标签。`,
-    unexpectedPrimaryAxes: `Kyou 主标签不是预期的 ${policy.primaryAxisCount} 项，已停止生成雷达以避免错误结论。`,
+    noSecondaryTags: `入池谱面没有票数大于 ${PHIGROS_STRENGTH_POLICY.secondaryTagMinVotes} 的细分标签。`,
+    unexpectedPrimaryAxes: `Kyou 主标签不是预期的 ${PHIGROS_STRENGTH_POLICY.primaryAxisCount} 项，已停止生成雷达以避免错误结论。`,
   };
 }
 
@@ -354,7 +295,6 @@ function weakestSort(left: PhigrosTagRksStat, right: PhigrosTagRksStat): number 
 
 export function resolvePhigrosStrengthProfileLabel(
   tags: readonly Pick<PhigrosTagRksStat, 'tagId' | 'name' | 'sampleCoverage'>[],
-  policy: PhigrosStrengthPolicy = PHIGROS_STRENGTH_POLICY,
 ): string {
   const coverages = tags.map((tag) => ({
     ...tag,
@@ -367,20 +307,20 @@ export function resolvePhigrosStrengthProfileLabel(
     .sort((left, right) => right.share - left.share || left.tagId - right.tagId);
   const highestShare = ranked[0]!.share;
   const lowestShare = ranked.at(-1)!.share;
-  if (tags.length === policy.primaryAxisCount
+  if (tags.length === PHIGROS_STRENGTH_POLICY.primaryAxisCount
     && ranked.every((tag) => tag.coverage > 0)
-    && highestShare - lowestShare <= policy.profileBalancedShareGap) {
-    return policy.primaryAxisCount === 5 ? '五维均衡型' : `${policy.primaryAxisCount}维均衡型`;
+    && highestShare - lowestShare <= PHIGROS_STRENGTH_POLICY.profileBalancedShareGap) {
+    return '五维均衡型';
   }
   const first = ranked[0]!;
   const second = ranked[1];
   if (second
-    && first.share + second.share >= policy.profileDualCoreShareSum
-    && second.share >= policy.profileDualCoreSecondShare) {
+    && first.share + second.share >= PHIGROS_STRENGTH_POLICY.profileDualCoreShareSum
+    && second.share >= PHIGROS_STRENGTH_POLICY.profileDualCoreSecondShare) {
     return `${first.name}·${second.name}双核型`;
   }
-  if (first.share >= policy.profileSpecializedShare
-    || first.share - (second?.share ?? 0) >= policy.profileSpecializedLead) {
+  if (first.share >= PHIGROS_STRENGTH_POLICY.profileSpecializedShare
+    || first.share - (second?.share ?? 0) >= PHIGROS_STRENGTH_POLICY.profileSpecializedLead) {
     return `${first.name}特化型`;
   }
   return `${first.name}倾向型`;

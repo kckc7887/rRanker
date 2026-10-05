@@ -1,20 +1,18 @@
 import { captureResourceWrites, createInflightGuard, snapshotSource } from '@/services/snapshot-cache-utils';
 import {
-  CHUNITHM_PERSONAL_LEGACY_SCHEMA_VERSION,
   CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+  ChunithmPersonalSnapshotSchema,
   chunithmPersonalResourceKey,
   emptyChunithmBests,
   type ChunithmBests,
   type ChunithmPersonalSnapshot,
   type ChunithmPlayer,
   type ChunithmScore,
-  type LegacyChunithmPersonalSnapshot,
 } from '@/domain/chunithm-personal';
 import type { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
-import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { loadItemsBounded } from '@/services/offset-pagination';
 import {
-  assertFreshSnapshotSource,
   cachedSnapshotSource,
   cancelledRefresh,
   failedRefresh,
@@ -27,42 +25,30 @@ import {
 } from '@/domain/refresh-result';
 import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 
-/** 一个消费者取消不会中止其它消费者需要的分项刷新。 */
 const inflightChunithmRefreshes = createInflightGuard<string>();
 
-/** 一次个人数据刷新的项：每一项独立请求、独立失败。 */
 export type ChunithmPersonalPart = 'player' | 'scores' | 'bests';
 
 const CHUNITHM_PERSONAL_PARTS: readonly ChunithmPersonalPart[] = ['player', 'scores', 'bests'];
-/** 个人数据的来源身份；落雪中二成绩与曲库共用同一提供方标识。 */
 const CHUNITHM_PERSONAL_SOURCE = { kind: 'lxns', label: '落雪咖啡屋' } as const;
 
 type ChunithmPartValue = ChunithmPlayer | null | ChunithmScore[] | ChunithmBests;
 
 export class ChunithmPersonalService {
+  private readonly repository = new SqliteSnapshotRepository();
   constructor(
     private readonly provider: ChunithmScoreProvider,
-    private readonly repository: SqliteSnapshotRepository,
     private readonly accountId: string,
   ) {}
 
-  /**
-   * 本地快照读取。它是缓存读取，不是新鲜结果：来源保留原提供方与抓取时间，只标记过期，
-   * 调用端据 `isStale` 判断数据是否已刷新，不得把它当成本次同步成功。
-   */
   async loadCached(): Promise<ChunithmPersonalSnapshot | null> {
     const key = chunithmPersonalResourceKey(this.accountId);
-    const cached = await this.repository.getResource<ChunithmPersonalSnapshot>(
+    const cached = await this.repository.getResource(
       key,
       CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+      ChunithmPersonalSnapshotSchema,
     );
-    if (cached) return { ...cached, source: cachedSnapshotSource(cached.source) };
-    const legacy = await this.repository.getResource<LegacyChunithmPersonalSnapshot>(
-      key,
-      CHUNITHM_PERSONAL_LEGACY_SCHEMA_VERSION,
-    );
-    if (!legacy) return null;
-    return { ...legacy, bests: emptyChunithmBests(), source: cachedSnapshotSource(legacy.source) };
+    return cached ? { ...cached, source: cachedSnapshotSource(cached.source) } : null;
   }
 
   private loadPart(part: ChunithmPersonalPart, signal: AbortSignal): Promise<ChunithmPartValue> {
@@ -81,17 +67,11 @@ export class ChunithmPersonalService {
     );
   }
 
-  /** 旧快照的元数据；来源缺失或被标成缓存时没有可保留的提供方。 */
   private static previousMetadata(previous: ChunithmPersonalSnapshot | null): SnapshotMetadata | null {
-    if (!previous || previous.source.kind === 'cache') return null;
+    if (!previous) return null;
     return snapshotMetadataOf(previous.source);
   }
 
-  /**
-   * 一次中二个人数据刷新：player、scores、bests 各自独立提交。
-   * 只有三项全部完成才推进快照抓取时间；部分完成时保留成功项、保留失败项的具体 target 与
-   * 机器错误码，并用旧时间加过期标记发布仍可使用的合并快照；全失败不写入缓存。
-   */
   async refresh(
     signal: AbortSignal = getForegroundAbortSignal(),
   ): Promise<RefreshResult<ChunithmPersonalSnapshot, ChunithmPersonalPart>> {
@@ -128,7 +108,6 @@ export class ChunithmPersonalService {
       ));
     if (refreshFailures.length === 0) {
       const source = snapshotSource(CHUNITHM_PERSONAL_SOURCE);
-      assertFreshSnapshotSource(source);
       const snapshot: ChunithmPersonalSnapshot = {
         player: (parts.get('player') ?? null) as ChunithmPlayer | null,
         scores: (parts.get('scores') ?? []) as ChunithmScore[],
@@ -143,7 +122,6 @@ export class ChunithmPersonalService {
     const metadata = ChunithmPersonalService.previousMetadata(previous);
     const usable = metadata && previous ? previous : null;
     if (completed.length === 0 || !usable) {
-      // 没有新项，或没有旧快照可以补齐失败项：不写入、不推进完整成功时间。
       return failedRefresh<ChunithmPersonalSnapshot, ChunithmPersonalPart>({
         value: usable ? { ...usable, source: cachedSnapshotSource(usable.source) } : null,
         metadata,
@@ -156,7 +134,6 @@ export class ChunithmPersonalService {
       player: parts.has('player') ? (parts.get('player') as ChunithmPlayer | null) : usable.player,
       scores: parts.has('scores') ? (parts.get('scores') as ChunithmScore[]) : usable.scores,
       bests: parts.has('bests') ? (parts.get('bests') as ChunithmBests) : usable.bests,
-      // 保留原提供方与抓取时间；该范围没有完整刷新，用过期标记表达而不是改写成当前时间。
       source: cachedSnapshotSource(usable.source),
     };
     await this.save(merged, assertCurrent);

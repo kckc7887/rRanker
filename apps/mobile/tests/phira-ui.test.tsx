@@ -301,7 +301,6 @@ describe('Phira catalog pagination states', () => {
   const catalogPage = (page: number) => ({
     results: Array.from({ length: 30 }, (_, index) => ({ ...mockChart, id: page * 30 + index + 1 })),
   });
-  // 通过定数上限把 16.2 的曲目全部筛掉，得到「翻页有数据但筛选结果为空」的真实场景。
   const filterOutEveryChart = async (screen: Awaited<ReturnType<typeof render>>) => {
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
     const track = screen.getByTestId('phira-filter-constant-track');

@@ -20,11 +20,9 @@ describe('Rizline arithmetic boundaries', () => {
   });
 
   it('accepts float32 storage rounding when score reconstructs the compatible All Hit candidate', () => {
-    // Constructed arithmetic case, not a captured player record: C=12.3, h=100, mP=1.
-    // Pinned public implementation compares Float32Array values for this fallback.
+    /** 合成算例：C=12.3、h=100、mP=1。 */
+    /** 上游回退判断使用 Float32Array。 */
     const observed = 133.0229949951172;
-    const integralCandidate = 100 * (11 * 12.3 + 9.9 - observed) / 12.3;
-    expect(Math.abs(integralCandidate - Math.round(integralCandidate))).toBeGreaterThan(1e-6);
     expect(inferRizlineAh({ difficulty: 'IN', chart: rizlineChart({ constant: 12.3, hit: 400, riztimeHit: 105 }),
       achievements: 116, score: 1000100, rks: observed })).toBe('inferred');
   });
@@ -32,7 +30,7 @@ describe('Rizline arithmetic boundaries', () => {
   it('keeps a compatible result estimated when score and accuracy may be from other plays', () => {
     const chart = rizlineChart({ difficulty: 'HD', constant: 12, hit: 400, riztimeHit: 111 });
     expect(inferRizlineAh({ difficulty: 'HD', chart, achievements: 116, score: 1010000, rks: 141.3 })).toBe('inferred');
-    // An integer-compatible RKS identifies a possible no-Miss play, not which historical play produced it.
+    /** RKS 与无 Miss 算法相符，不能确定实际是哪次游玩。 */
   });
 });
 
@@ -62,7 +60,7 @@ describe('Rizline best contribution uncertainty', () => {
 });
 
 it('matches real official normal and SP Bamboo identities without dropping the final variant suffix', () => {
-  // Metadata copied from the official 2.7.1 resource catalog; player values below are synthetic.
+  /** 元数据取自官方 2.7.1 资源目录，玩家数值为合成样例。 */
   const normal = rizlineSong({ id: 'Bamboo.rissyuu.0', title: '竹', charts: [rizlineChart({
     id: 'chart.Bamboo.rissyuu.0.IN', songId: 'Bamboo.rissyuu.0', constant: 14.2, level: '14', hit: 1166, riztimeHit: 122, maxScore: 1012200,
   })] });

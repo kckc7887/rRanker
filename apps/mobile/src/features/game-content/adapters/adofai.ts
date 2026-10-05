@@ -1,3 +1,4 @@
+import { encodeDetailTarget } from '@/domain/detail-target';
 import type { GameNoteGroup } from '@/domain/game-content';
 import type {
   TufLevel,
@@ -52,7 +53,7 @@ export function presentTufScore(pass: TufPass, position?: number): ScoreCardPres
     ...(pass.isDuplicate ? [{ key: 'duplicate', label: '重复', tone: 'muted' }] : []),
   ];
   return {
-    key: String(pass.id), gameId: 'adofai', route: { songId: String(pass.levelId) },
+    key: String(pass.id), gameId: 'adofai', route: encodeDetailTarget({ game: 'adofai', levelId: String(pass.levelId) }),
     position, title: pass.level.song,
     accessibilityLabel: `查看关卡 ${pass.level.song}，Score V2 ${pass.scoreV2.toFixed(2)}`,
     primaryMetric: { key: 'score-v2', label: 'Score V2', text: pass.scoreV2.toFixed(2), tone: 'adofai-score' },
@@ -74,7 +75,7 @@ export function formatTufAccuracy(value: number): string {
 
 export function presentTufLevel(level: TufLevel): SongRowPresentation<'adofai'> {
   return {
-    key: String(level.id), gameId: 'adofai', route: { songId: String(level.id) },
+    key: String(level.id), gameId: 'adofai', route: encodeDetailTarget({ game: 'adofai', levelId: String(level.id) }),
     title: level.song, subtitle: level.artist || '艺术家未知',
     accessibilityLabel: `打开 TUF 关卡 ${level.song}`,
     chartBadges: [{
@@ -87,7 +88,7 @@ export function presentTufLevel(level: TufLevel): SongRowPresentation<'adofai'> 
 export function presentTufChart(level: TufLevel, pass?: TufPass): ChartCardPresentation<'adofai'> {
   const score = pass ? presentTufScore(pass) : undefined;
   return {
-    key: String(level.id), gameId: 'adofai', route: { songId: String(level.id) },
+    key: String(level.id), gameId: 'adofai', route: encodeDetailTarget({ game: 'adofai', levelId: String(level.id) }),
     difficulty: { key: 'difficulty', label: tufLevelLabel(level), value: level.baseScore?.toFixed(2), tone: tufLevelTone(level) },
     primaryMetric: score?.primaryMetric ?? { key: 'score-v2', label: 'Score V2', text: '—' },
     secondaryMetrics: score?.secondaryMetrics ?? [], grade: score?.grade,

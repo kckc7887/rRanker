@@ -30,10 +30,6 @@ const OSU_TOOLS: readonly GameToolDefinition[] = [
   },
 ];
 
-/**
- * 游戏级工具注册表。工具箱页面和总览入口只消费此处配置，
- * 新游戏不需要在页面组件里增加 gameId 分支。
- */
 export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
   rizline: { tools: [
     { id: 'random-charts', href: '/tools/random-charts', title: '随机歌曲',
@@ -198,10 +194,6 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
       },
     ],
     emptyDetail: '中二节奏工具正在准备中。',
-  },
-  test: {
-    tools: [],
-    emptyDetail: '测试游戏暂无可用工具。',
   },
   adofai: {
     tools: [

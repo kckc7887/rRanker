@@ -1,14 +1,12 @@
 import type { SessionVault } from '@/domain/session-vault';
-import { SessionPersistenceError } from '@/domain/session-vault';
 import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import type { LargeSecureValueStore } from '@/storage/large-secure-value-store';
-import { parseSessionIndexOrThrow, parseStoredSession, sanitizeVault, type SessionIndex, type StoredCredentialIndex } from '@/storage/secure-session-codec';
+import { parseSessionIndexOrThrow, parseStoredSession, type SessionIndex, type StoredCredentialIndex } from '@/storage/secure-session-codec';
 import { INDEX_KEY, type KeyValueStore } from '@/storage/secure-session-index';
 
 type SessionCommitIo = {
   index: KeyValueStore;
   credentials: Pick<LargeSecureValueStore, 'read' | 'write' | 'delete' | 'createReference'>;
-  parseIndex: (raw: string) => Promise<SessionIndex>;
 };
 
 export async function commitSessionVault(io: SessionCommitIo, vault: SessionVault, signal?: AbortSignal, assertCurrent?: () => void): Promise<readonly string[]> {
@@ -17,9 +15,9 @@ export async function commitSessionVault(io: SessionCommitIo, vault: SessionVaul
     assertCurrent?.();
   };
   assertCommitCurrent();
-  const sanitized = sanitizeVault(vault);
+  const referenced = new Set(vault.accounts.map(account => account.credentialId));
   const currentRaw = await io.index.getItem(INDEX_KEY);
-  const current = currentRaw ? await io.parseIndex(currentRaw) : null;
+  const current = currentRaw === null ? null : parseSessionIndexOrThrow(currentRaw);
   assertCommitCurrent();
   const nextCredentials: StoredCredentialIndex[] = [];
   const newSecretRefs: string[] = [];
@@ -27,7 +25,8 @@ export async function commitSessionVault(io: SessionCommitIo, vault: SessionVaul
   let phase = 'credential-write';
 
   try {
-    for (const credential of sanitized.credentials) {
+    for (const credential of vault.credentials) {
+      if (!referenced.has(credential.id)) continue;
       assertCommitCurrent();
       const previous = current?.credentials.find((item) => (
         item.id === credential.id && item.providerId === credential.providerId
@@ -47,11 +46,6 @@ export async function commitSessionVault(io: SessionCommitIo, vault: SessionVaul
       const serialized = JSON.stringify(credential.session);
       await io.credentials.write(secretRef, serialized);
       assertCommitCurrent();
-      const persisted = await io.credentials.read(secretRef);
-      assertCommitCurrent();
-      if (persisted !== serialized) {
-        throw new SessionPersistenceError('credential_storage');
-      }
       nextCredentials.push({
         id: credential.id,
         providerId: credential.providerId,
@@ -61,10 +55,9 @@ export async function commitSessionVault(io: SessionCommitIo, vault: SessionVaul
 
     const index: SessionIndex = {
       version: 4,
-      activeAccountId: sanitized.activeAccountId,
+      activeAccountId: vault.activeAccountId,
       credentials: nextCredentials,
-      accounts: sanitized.accounts,
-      ...((sanitized.recovery ?? current?.recovery) ? { recovery: sanitized.recovery ?? current?.recovery } : {}),
+      accounts: vault.accounts,
     };
     assertCommitCurrent();
     indexWriteStarted = true;

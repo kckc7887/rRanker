@@ -67,7 +67,7 @@ const STYLE_ITEMS: { kind: BestImageCollectionKind; label: string; }[] = [
   { kind: 'trophy', label: '称号' },
   { kind: 'frame', label: '背景' },
 ];
-const FALLBACK_PLAYER: Pick<Player, 'displayName' | 'presentation' | 'extension' | 'additionalRating'> = {
+const FALLBACK_PLAYER: Pick<Player, 'displayName' | 'presentation' | 'extension'> = {
   displayName: '未读取玩家资料',
   presentation: undefined,
 };
@@ -402,7 +402,7 @@ function maimaiPreviewPlayer(base: typeof FALLBACK_PLAYER, selections: BestImage
   const icon = selectedStyleItem(selections.icon), plate = selectedStyleItem(selections.plate);
   const frame = selectedStyleItem(selections.frame), trophy = selectedStyleItem(selections.trophy);
   return {
-    displayName: base.displayName, additionalRating: base.additionalRating, extension: base.extension,
+    displayName: base.displayName, extension: base.extension,
     presentation: {
       ...base.presentation,
       iconId: icon ? icon.id : base.presentation?.iconId,
@@ -470,8 +470,6 @@ function MaimaiFontStatus({ webViewSources, assetsReady, exportAssetError, asset
 }
 
 const maimaiStyles = StyleSheet.create({
-  // 舞萌差异键：数量输入行（fieldLabel 带 marginBottom、无 gap 汇聚）、
-  // 错误文案字号、chip 行、禁用 chip、素材错误/重试、素材状态条、导出遮罩底色。
   textFieldWrap: { flex: 1, minWidth: 0 },
   fieldLabel: { fontSize: 12, fontWeight: '700', marginBottom: 6 },
   errorText: { marginTop: 4, fontSize: 10, lineHeight: 14 },
@@ -486,5 +484,4 @@ const maimaiStyles = StyleSheet.create({
   exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#E7EDF5' },
 });
 
-/** 共享骨架样式 + 舞萌差异覆盖。 */
 const styles = { ...bestImageScreenSharedStyles, ...maimaiStyles };

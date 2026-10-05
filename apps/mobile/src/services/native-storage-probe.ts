@@ -36,7 +36,7 @@ async function runProbe(
   let timedOut = false;
   const progress: ProbeProgress = { phase: 'operation' };
   const completion = settleProbe(name, work, progress).then((result) => {
-    // Native calls cannot be cancelled. Cleanup remains attached to their completion.
+    /** 原生调用无法取消，完成后仍须清理临时键。 */
     if (timedOut) console.info(`RRANKER_NATIVE_PROBE_COMPLETION ${JSON.stringify(result)}`);
     return result;
   });
@@ -53,7 +53,6 @@ async function runProbe(
   finally { if (timer !== undefined) clearTimeout(timer); }
 }
 
-/** Only temporary, generated probe keys are accessed; account data is never inspected. */
 export async function runNativeStorageProbe(
   publish: (result: NativeProbeResult) => void,
   options: { timeoutMs?: number } = {},

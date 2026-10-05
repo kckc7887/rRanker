@@ -23,21 +23,17 @@ type CommunityGeolocation = {
   ) => void;
 };
 
-/** True only in Android builds that autolinked RNCGeolocation (not Expo Go). */
 function isAndroidCommunityGeolocationLinked(): boolean {
   if (Platform.OS !== 'android') return false;
   try {
     if (TurboModuleRegistry.get('RNCGeolocation') != null) return true;
   } catch {
-    // TurboModuleRegistry.get may throw when the module is missing.
+    /** 模块未链接时 get 可能抛错。 */
   }
   return NativeModules.RNCGeolocation != null;
 }
 
-/**
- * Lazily load community geolocation only when the native module is linked.
- * A top-level import crashes Expo Go because the package is not in that client.
- */
+/** 模块未链接时不能顶层导入，否则 Expo Go 崩溃。 */
 async function tryLoadAndroidGeolocation(): Promise<CommunityGeolocation | null> {
   if (!isAndroidCommunityGeolocationLinked()) return null;
   try {
@@ -88,7 +84,7 @@ async function acquireAndroidLocationManagerCoords(
       maximumAge: 60_000,
     });
   } catch {
-    // Soft fallback: accept coarser / older LocationManager cache without GMS.
+    /** 无 GMS 时降级使用较粗定位。 */
     return getAndroidCurrentPosition(geolocation, {
       enableHighAccuracy: false,
       timeout: 10_000,
@@ -115,16 +111,11 @@ async function labelForCoords(coords: Coords): Promise<string> {
       label = formatArcadeGeocodedLabel(places[0]) || label;
     }
   } catch {
-    // Keep the generic GPS label when reverse geocode is unavailable.
   }
   return label;
 }
 
-/**
- * Resolve GPS origin for arcade finder.
- * Android custom/EAS builds use LocationManager (no GMS) via community geolocation.
- * Expo Go / iOS / unlinked native module fall back to expo-location.
- */
+/** Android 使用无 GMS 的 LocationManager，未链接模块时回退 expo-location。 */
 export async function acquireArcadeGpsOrigin(): Promise<ArcadeOrigin> {
   const permission = await Location.requestForegroundPermissionsAsync();
   if (permission.status !== 'granted') {

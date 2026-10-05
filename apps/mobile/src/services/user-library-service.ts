@@ -1,19 +1,19 @@
-import { assertUserDataBackupExportable, createUserDataBackup, DEFAULT_TAG_PRESETS, libraryTargetKey, normalizeLibraryItem, normalizeTagPresets, normalizeTags, shouldKeepLibraryItem } from '@/domain/user-library';
-import type { LibraryTarget, RestoreMode, UserDataBackup, UserDataBackupV3, UserLibraryItem } from '@/domain/user-library';
+import { createUserDataBackup, libraryTargetKey, normalizeTagPresets, normalizeTags } from '@/domain/user-library';
+import type { LibraryTarget, RestoreMode, UserDataBackup, UserLibraryItem } from '@/domain/user-library';
 import type { GameId } from '@/domain/game-bind-options';
 import type { ChartType } from '@/domain/models';
-import type { UserLibraryRepository } from '@/repositories/user-library-repository';
+import { SqliteUserLibraryRepository } from '@/storage/sqlite-user-library-repository';
 
 export class UserLibraryService {
-  constructor(private readonly repository: UserLibraryRepository, private readonly now = () => new Date().toISOString()) {}
+  private readonly repository = new SqliteUserLibraryRepository();
 
   list(gameId?: GameId): Promise<UserLibraryItem[]> { return this.repository.list(gameId); }
   listTagPresets(): Promise<string[]> {
-    return this.repository.listTagPresets?.() ?? Promise.resolve([...DEFAULT_TAG_PRESETS]);
+    return this.repository.listTagPresets();
   }
   setTagPresets(values: readonly string[]): Promise<string[]> {
     const normalized = normalizeTagPresets(values);
-    return this.repository.setTagPresets?.(normalized) ?? Promise.resolve(normalized);
+    return this.repository.setTagPresets(normalized);
   }
 
   setSongFavorite(gameId: GameId, songId: string, favorite: boolean): Promise<UserLibraryItem[]> {
@@ -43,24 +43,17 @@ export class UserLibraryService {
         tags, createdAt: current?.createdAt ?? timestamp, updatedAt: timestamp });
   }
 
-  async createBackup(): Promise<UserDataBackupV3> {
+  async createBackup(): Promise<UserDataBackup> {
     const [items, tagPresets] = await Promise.all([this.repository.list(), this.listTagPresets()]);
-    const backup = createUserDataBackup(items, this.now(), tagPresets);
-    assertUserDataBackupExportable(backup);
-    return backup;
+    return createUserDataBackup(items, new Date().toISOString(), tagPresets);
   }
 
   async restore(backup: UserDataBackup, mode: RestoreMode): Promise<UserLibraryItem[]> {
-    const imported = backup.items.map((item) => normalizeLibraryItem(item)).filter(shouldKeepLibraryItem);
-    const importedPresets = backup.version === 1 ? [...DEFAULT_TAG_PRESETS] : backup.tagPresets;
-    // v1 备份不带预设：合并模式传空数组以保留当前预设，替换模式回退默认预设。
-    const presets = backup.version === 1 && mode === 'merge' ? [] : importedPresets;
-    return this.repository.mergeBackup({ items: imported, presets }, mode);
+    return this.repository.mergeBackup({ items: backup.items, presets: backup.tagPresets }, mode);
   }
 
   clear(): Promise<void> { return this.repository.clear(); }
 
-  /** 仅清除指定游戏的收藏、练习谱面和条目标签；保留其他游戏及全局标签预设。 */
   clearGame(gameId: GameId): Promise<UserLibraryItem[]> {
     return this.repository.clearGame(gameId);
   }
@@ -69,7 +62,7 @@ export class UserLibraryService {
     target: LibraryTarget,
     create: (current: UserLibraryItem | undefined, timestamp: string) => UserLibraryItem,
   ): Promise<UserLibraryItem[]> {
-    const timestamp = this.now();
+    const timestamp = new Date().toISOString();
     return this.repository.updateTarget(target, (current) => create(current, timestamp));
   }
 }

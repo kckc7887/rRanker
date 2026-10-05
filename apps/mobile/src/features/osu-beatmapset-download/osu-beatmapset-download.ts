@@ -24,10 +24,7 @@ import { ProviderError } from '@/providers/errors';
 import { captureResourceWrites, subscribeResourceWrites } from '@/services/snapshot-cache-utils';
 
 const DOWNLOAD_IDLE_TIMEOUT_MS = 15_000;
-/**
- * 普通谱包导出独立预算：与预览同值但符号与文案独立，可单独调整。
- * 同值理由：校验的瞬时内存约束由设备决定，不因子功能放宽。
- */
+
 export const OSU_BEATMAPSET_PACKAGE_MAX_BYTES = 256 * 1024 * 1024;
 export const OSU_BEATMAPSET_PACKAGE_OVERSIZE_MESSAGE = '谱包过大，暂不支持下载';
 let archiveSequence = 0;
@@ -35,11 +32,11 @@ let archiveSequence = 0;
 export type OsuBeatmapsetArchiveOptions = {
   signal?: AbortSignal;
   onProgress?: (progress: DownloadProgressData) => void;
-  /** Validation owns its temporary outputs and must discard them on failure or cancellation. */
+
   validate?: (file: File, signal: AbortSignal) => Promise<void>;
-  /** 下载传输与落盘文件的字节上限，默认预览预算；超出即拒绝且不再切源。 */
+
   maxArchiveBytes?: number;
-  /** 超出上限时的错误文案。 */
+
   oversizeMessage?: string;
 };
 
@@ -79,7 +76,7 @@ export async function downloadOsuBeatmapsetArchive(
     let discarded = false;
     let budgetExceeded: ChartPreviewBudgetExceededError | undefined;
     const cleanup = () => {
-      try { if (attemptFile.exists) attemptFile.delete(); } catch { /* Session cleanup retries removal. */ }
+      try { if (attemptFile.exists) attemptFile.delete(); } catch {  }
     };
     const onExternalAbort = () => controller.abort(signal?.reason);
     signal?.addEventListener('abort', onExternalAbort, { once: true });
@@ -151,10 +148,10 @@ export async function downloadOsuBeatmapsetArchive(
       discarded = true;
       controller.abort(error);
       cleanup();
-      // User cancellation and cache invalidation stop the whole chain. Only an
-      // individual source's transport/content failure advances to another source.
+      /** 仅当前来源的传输或内容错误才切源；取消或超限结束下载。 */
+
       assertCurrent();
-      // 预算超限说明同一份资源在任何来源都过大，不再换源重试。
+
       if (budgetExceeded) throw budgetExceeded;
       if (error instanceof ChartPreviewBudgetExceededError) throw error;
       lastError = error;

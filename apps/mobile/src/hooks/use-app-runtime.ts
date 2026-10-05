@@ -1,3 +1,4 @@
+import { uploadTaskController } from '@/services/upload-task-controller';
 import { useEffect, useRef } from 'react';
 import { focusManager } from '@tanstack/react-query';
 import { Image as ExpoImage } from 'expo-image';
@@ -11,7 +12,6 @@ import { runStorageCacheMaintenance } from '@/features/storage-management/storag
 import { markRemoteImageCacheGameActive } from '@/services/remote-image-cache';
 import { hydrateAccountDisplayData } from '@/services/account-thumbnail';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
-import { uploadTaskController } from '@/services/upload-maimai-from-friend-code';
 import { recordRuntimeRoute } from '@/services/runtime-logs';
 import { setThemePersistenceForeground } from '@/state/theme-store';
 import { retryFailedAccountSources } from '@/services/account-restoration';
@@ -70,7 +70,7 @@ export function useAppRuntime(ready: boolean) {
         return resumeInterruptedActiveQueries(queryClient);
       }).catch(() => undefined);
       uploadTaskController.resume();
-      // 前台恢复是补交落盘失败的凭据轮换的安全入口：不重新刷新，只重试本机写入。
+      /** 前台恢复时补交轮换凭据，不重新联网刷新。 */
       void retryPendingRotationWrites();
     } else if (lifecycle.phase === 'background') uploadTaskController.pause();
     if (lifecycle.phase === 'background') {

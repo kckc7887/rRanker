@@ -1,9 +1,4 @@
-/**
- * 谱面确认资源预算。下载、解压、事件、音符、循环、纹理与解析让出都使用有限上限。
- * 声明大小、实际读出字节、解码像素和进程内存是四套口径。
- * 本模块约束声明大小和实际读出字节；单张纹理像素由播放器在解码时检查。
- * 解压输出按块检查限额、暂停并检查取消，完整输出仅在验证通过后拼接。这些常量不是进程内存上限。
- */
+/** 下载与解压按字节计限额；纹理解码另按像素限制。 */
 
 export const CHART_PREVIEW_MAX_DOWNLOAD_BYTES = 256 * 1024 * 1024;
 export const CHART_PREVIEW_MAX_ARCHIVE_ENTRIES = 4_096;
@@ -12,16 +7,16 @@ export const CHART_PREVIEW_MAX_TOTAL_UNCOMPRESSED_BYTES = 256 * 1024 * 1024;
 export const CHART_PREVIEW_MAX_EVENTS = 200_000;
 export const CHART_PREVIEW_MAX_NOTES = 100_000;
 export const CHART_PREVIEW_MAX_NESTING_DEPTH = 32;
-/** 不超过该条数时才把循环展开成指令对象；超出后按时间求值。 */
+/** 短循环展开，长循环按时间求值。 */
 export const CHART_PREVIEW_MAX_LOOP_EXPANSION = 4_096;
 export const CHART_PREVIEW_MAX_TEXTURE_PIXELS = 4_096 * 4_096;
 export const CHART_PREVIEW_MAX_GIF_FRAME_PIXELS = 2_048 * 2_048;
 export const CHART_PREVIEW_MAX_GIF_FRAMES = 4_096;
-/** 长循环每隔这么多步检查取消，并在异步解析中让出主线程。 */
+
 export const CHART_PREVIEW_PARSE_YIELD_INTERVAL = 128;
-/** 高频轻量循环的单次工作时间；检查步长之外不延长主线程占用。 */
+
 export const CHART_PREVIEW_PARSE_SLICE_MS = 8;
-/** CRC 每处理这么多字节检查一次取消，并让出主线程。 */
+
 export const CHART_PREVIEW_CRC_CHUNK_BYTES = 64 * 1024;
 
 export class ChartPreviewBudgetError extends Error {
@@ -31,10 +26,7 @@ export class ChartPreviewBudgetError extends Error {
   }
 }
 
-/**
- * 明确的预算超限（字节/数量超出上限）。与“无法确定声明量”等格式问题区分：
- * 超限说明同一份资源在任何来源都过大，不再换源重试。
- */
+/** 超限时换源无效，停止重试。 */
 export class ChartPreviewBudgetExceededError extends ChartPreviewBudgetError {
   constructor(message: string) {
     super(message);
@@ -53,7 +45,7 @@ export function createChartPreviewActualBytes(): ChartPreviewActualBytes {
 export type ChartPreviewCancellation = {
   signal?: AbortSignal;
   assertCurrent?: () => void;
-  /** 同一次准备里实际读出的解压字节。超出总声明上限时停止后续条目。 */
+
   actualBytes?: ChartPreviewActualBytes;
 };
 
@@ -91,7 +83,7 @@ export function interruptChartPreviewParse(iteration: number, cancellation?: Cha
   throwIfChartPreviewCancelled(cancellation);
 }
 
-/** 传入每次任务独立的 slice 后，首次检查点让出，此后只在时间片用尽时等待。 */
+/** 首个检查点让出，此后按时间片让出。 */
 export async function pauseChartPreviewParse(
   iteration: number,
   cancellation?: ChartPreviewCancellation,
@@ -111,7 +103,6 @@ export function assertChartPreviewDownloadBytes(bytes: number): void {
   }
 }
 
-/** 在整文件读取前校验已有字节预算，读取后复核实际大小并保留原缓冲。 */
 export async function readBudgetedChartDownload(
   file: { readonly size: number; bytes(): Promise<Uint8Array> },
   cancellation?: ChartPreviewCancellation,
@@ -230,7 +221,6 @@ function crc32TableBytes(): Uint32Array {
   return crc32Table;
 }
 
-/** 增量 CRC32 供解包校验与文件式组包共用同一张表。 */
 export function createChartPreviewCrc32() {
   const table = crc32TableBytes();
   let crc = -1;
@@ -289,7 +279,7 @@ export async function readBudgetedZipEntry(
     const streamingEntry = entry as BudgetedZipEntry & { internalStream?: (type: 'uint8array') => ZipOutputStream };
     if (typeof streamingEntry.internalStream !== 'function') { reject(new Error('谱面资源不支持受限解压流')); return; }
     const stream = streamingEntry.internalStream('uint8array');
-    // JSZip 的公开 helper 只提供暂停，没有销毁；错误必须同时传播至上游 inflater。
+    /** JSZip 错误在 inflater 调用栈内中止；销毁监听器需等 data 回调退出。 */
     const worker = stream._worker;
     if (!worker) { stream.pause(); reject(new Error('无法中止谱面解压流')); return; }
     const workers: ZipWorker[] = [];
@@ -303,7 +293,7 @@ export async function readBudgetedZipEntry(
     const push = source.push;
     let insidePush = false;
     const destroy = (error: Error) => {
-      // 错误必须在 data 回调栈退出后销毁 listener，否则 JSZip 的 emit 循环会触发未捕获异常。
+
       for (const current of workers) current.isPaused = false;
       worker.error(error);
     };
@@ -327,9 +317,9 @@ export async function readBudgetedZipEntry(
         if (unwind) throw reason;
       } else destroy(reason);
     };
-    // AbortSignal 的 listener 不能抛异常；data listener 在受控入口内负责中止 inflater。
+
     const onAbort = () => fail(cancellation?.signal?.reason, false);
-    // 受控入口围住整个 inflater 调用：取消/超限只在这里被接住，不越过 JSZip 调度器。
+
     source.push = function (chunk: unknown) {
       insidePush = true;
       try { return push.call(this, chunk); }
@@ -343,7 +333,7 @@ export async function readBudgetedZipEntry(
     cancellation?.signal?.addEventListener('abort', onAbort, { once: true });
     stream.on('data', (chunk: Uint8Array) => {
       if (settled) { if (insidePush && pendingDestroy) throw pendingDestroy; return; }
-      // 所有失败只在受控 inflater 栈内展开，并在该栈退出后销毁流。
+
       try {
         throwIfChartPreviewCancelled(cancellation);
         const next = length + chunk.byteLength;

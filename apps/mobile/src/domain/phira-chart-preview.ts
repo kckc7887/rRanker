@@ -1,9 +1,4 @@
-/**
- * Phira 谱面 ZIP 内容定位，语义与 @/services/phira-chart-notes 的 countPhiraChartZip
- * 以及 TeamFlos/phira 的 prpr 核心的 info.yml 读取约定一致：
- * info.yml 提供 chart/music/illustration/format 键，缺失时按扩展名推断。
- * PGR 与 RPE 谱面支持观赏预览，PEC/PBC 由调用方给出明确提示。
- */
+/** info.yml 字段约定来自 TeamFlos/phira 的 prpr；未指定时按扩展名推断。 */
 
 import { infoValue } from './phira-chart-info';
 import { rpeBundleRelativePath } from '@/domain/rpe-resource-path';
@@ -24,17 +19,14 @@ export type PhiraChartZipMediaPlan = {
 };
 
 export type PhiraRpeBundleFile = {
-  /** 合法相对路径；路径穿越的条目不会进入计划。 */
   name: string;
   entryName: string;
-  /** 是否文本资源（extra.json/info.yml/.glsl），由 RN 侧读文本注入。 */
   text: boolean;
 };
 
 const CHART_EXTENSION_PATTERN = /\.(json|pec|pbc)$/i;
 const MUSIC_EXTENSION_PATTERN = /\.(mp3|ogg|wav|m4a|aac|flac)$/i;
 
-/** 按 info.yml 键或扩展名推断定位谱面、音乐与曲绘条目；不解析谱面内容。 */
 export function resolvePhiraChartZipMediaPlan(
   entries: readonly PhiraChartZipFileEntry[],
   infoText: string | null,
@@ -57,10 +49,7 @@ export function resolvePhiraChartZipMediaPlan(
   return { chartEntryName, musicEntryName, illustrationEntryName };
 }
 
-/**
- * 判定谱面格式，分支与 countPhiraChartZip 一致：
- * pbc/pec 优先按 info.yml format 与扩展名，JSON 文本按 META 键区分 RPE 与 PGR。
- */
+/** PEC/PBC 先按 format/扩展名判断；JSON 的 META 区分 RPE/PGR。 */
 export function classifyPhiraChartFormat(
   entryName: string,
   formatHint: string | null,
@@ -76,12 +65,7 @@ export const PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE = '暂不支持预览该谱
 
 const TEXT_BUNDLE_EXTENSION_PATTERN = /\.(glsl|json|ya?ml|txt)$/i;
 
-/**
- * RPE 谱面包资源计划：ZIP 内非目录条目按合法相对路径落盘。
- * extra.json/info.yml/文本条目标 text（RN 侧读文本注入，不经文件 fetch）；
- * 其余（背景/贴图/gif/视频/音乐）落盘为本地文件。路径穿越的条目拒绝。
- * 同一相对路径先到先得（调用方保证顺序稳定）。
- */
+/** extra.json、info.yml 和着色器按文本注入，不经原生文件 fetch。 */
 export function buildPhiraRpeBundlePlan(
   entries: readonly PhiraChartZipFileEntry[],
 ): PhiraRpeBundleFile[] {

@@ -17,11 +17,8 @@ async function readBundledAssetBase64(moduleId: number): Promise<string> {
     if (!uri) throw new Error('打包素材没有可读取的 URI');
     return await new File(uri).base64();
   } catch (initialError) {
-    // Android release bundles Metro assets as raw/drawable resources. In that
-    // environment expo-asset may expose only a resource identifier (for
-    // example `assets_rating_rating_base_01`) and mark images as downloaded.
-    // Resolve that identifier through React Native, then ask expo-asset to copy
-    // it to a real cache file before reading it.
+    /** Android release 的资源标识需先复制为可读缓存文件。 */
+
     const resourceUri = Image.resolveAssetSource(moduleId)?.uri;
     if (!resourceUri) throw initialError;
     const [cachedAsset] = await Asset.loadAsync(resourceUri);

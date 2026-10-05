@@ -1,10 +1,3 @@
-/**
- * Muse Dash 展示色阶：ACC/评价/成就/排名 tone → 颜色（仿 phigros-rate-theme 的 domain 主题值模式）。
- * ACC 与评价使用同档色：100 金、95 银、90 红、80 蓝、70 绿、60 灰、更低紫；
- * 金色文字用舞萌先例亮金 #D69B24，银色文字用带金属感的银灰；
- * 成就 AP 金、FC 粉；排名 #1 用彩虹渐变（组件层 LayeredGradientBadge），<10 金、<50 蓝、<100 绿。
- * 金色/银色徽章（评价 S 金档、AP、排名 <10）由组件层渲染渐变胶囊（金色复用共享 BADGE_GOLD_* 渐变 + 深字）。
- */
 import { BADGE_GOLD_BORDER_COLORS, BADGE_GOLD_FILL_COLORS } from '@/domain/badge-theme';
 
 export const MUSE_DASH_TONE_COLORS: Readonly<Record<string, string>> = {
@@ -20,7 +13,6 @@ export const MUSE_DASH_TONE_COLORS: Readonly<Record<string, string>> = {
   'rank-green': '#16A34A',
 };
 
-/** 金色/银色胶囊渐变（金色复用共享 BADGE_GOLD_* 常量，银色仿中二 platinum）。 */
 export type MuseDashMetalGradient = {
   fill: readonly [string, string, ...string[]];
   border: readonly [string, string, ...string[]];

@@ -6,8 +6,7 @@ export default function TabLayout() {
   const theme = useAppTheme();
   return (
     <NativeTabs
-      // Opaque solid bar only — any material/blur at the scroll edge blends into
-      // page content and reads as an abnormally tall iOS tab bar again.
+      /** iOS 滚动边缘的模糊会与页面内容混合。 */
       backgroundColor={theme.surface}
       blurEffect="none"
       backBehavior="history"

@@ -1,4 +1,4 @@
-import { applyChartPreviewConfigToHtml, buildChartPreviewConfigJson } from '@/features/simai-chart-preview/chart-preview-inject';
+import { applyChartPreviewConfigToHtml } from '@/features/simai-chart-preview/chart-preview-inject';
 import majdataCases from './fixtures/majdata-simai-cases.json';
 import majdataReference from './fixtures/majdata-simai-reference.json';
 import scoreReference from './fixtures/majdata-score-reference.json';
@@ -142,7 +142,8 @@ describe('MajdataPlay original judgment method', () => {
 it('injects Simai strings without interpreting HTML endings or dollar replacements', () => {
   const simaiText = '&title=</script><script>throw 1</script>\n&inote_7=(120)1$$,2$,3-7[4:1],';
   const config = { chartId: 'uuid', difficulty: 7, simaiText };
-  const safe = buildChartPreviewConfigJson(config); expect(JSON.parse(safe).simaiText).toBe(simaiText); expect(safe).not.toContain('</script>');
   const html = applyChartPreviewConfigToHtml('<!--CHART_PREVIEW_CONFIG-->', config);
-  expect(html).toContain('1$$,2$'); expect(html.match(/<script>/g)).toHaveLength(1);
+  const window = { __CHART_PREVIEW__: { simaiText: '' } };
+  new Function('window', /<script>(.*?)<\/script>/s.exec(html)![1])(window);
+  expect(window.__CHART_PREVIEW__.simaiText).toBe(simaiText);
 });

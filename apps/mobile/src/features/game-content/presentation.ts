@@ -1,3 +1,4 @@
+import type { GameId } from '@/domain/game-bind-options';
 import type { DetailTargetRoute } from '@/domain/detail-target';
 import type { GameNoteGroup } from '@/domain/game-content';
 
@@ -19,13 +20,9 @@ export type BadgePresentation = {
   effect?: TextEffect;
 };
 
-/**
- * 详情跳转参数：`DetailTarget` 的编码形态，编解码集中在 `domain/detail-target.ts`。
- * 共享卡片只透传，具体游戏的语义由该模块按游戏判别。
- */
 export type SongDetailRoute = DetailTargetRoute;
 
-export type ScoreCardPresentation<TGameId extends string = string> = {
+export type ScoreCardPresentation<TGameId extends GameId = GameId> = {
   key: string;
   gameId: TGameId;
   route: SongDetailRoute;
@@ -40,7 +37,7 @@ export type ScoreCardPresentation<TGameId extends string = string> = {
   supportingText?: string;
 };
 
-export type SongRowPresentation<TGameId extends string = string> = {
+export type SongRowPresentation<TGameId extends GameId = GameId> = {
   key: string;
   gameId: TGameId;
   route: SongDetailRoute;
@@ -51,7 +48,7 @@ export type SongRowPresentation<TGameId extends string = string> = {
 };
 
 export type BestSectionPresentation<
-  TGameId extends string = string,
+  TGameId extends GameId = GameId,
 > = {
   id: string;
   title: string;
@@ -60,7 +57,7 @@ export type BestSectionPresentation<
 
 export type NoteGroupPresentation = GameNoteGroup;
 
-export type ChartCardPresentation<TGameId extends string = string> = {
+export type ChartCardPresentation<TGameId extends GameId = GameId> = {
   key: string;
   gameId: TGameId;
   route: SongDetailRoute;

@@ -11,13 +11,13 @@ import {
 } from '@/domain/detail-target';
 
 describe('个人曲库详情身份', () => {
-  it.each(GAME_IDS.filter(game => game !== 'test'))('%s 在缺少曲库元数据时仍可编码歌曲与谱面目标', gameId => {
+  it.each(GAME_IDS)('%s 在缺少曲库元数据时仍可编码歌曲与谱面目标', gameId => {
     for (const kind of ['song', 'chart'] as const) {
       const target = libraryDetailTarget(kind === 'song'
         ? { gameId, kind, songId: '42' }
         : { gameId, kind, songId: '42', type: 'SD', levelIndex: 2 });
       expect(target).not.toBeNull();
-      expect(decodeDetailTarget(gameId, detailTargetHref(encodeDetailTarget(target!)).params))
+      expect(decodeDetailTarget(detailTargetHref(encodeDetailTarget(target!)).params))
         .toEqual({ ok: true, target });
     }
   });
@@ -25,13 +25,13 @@ describe('个人曲库详情身份', () => {
 
 function roundTrip(target: DetailTarget): DetailTarget {
   expect(detailTargetHref(encodeDetailTarget(target)).params.gameId).toBe(target.game);
-  const resolution = decodeDetailTarget(target.game, detailTargetHref(encodeDetailTarget(target)).params);
+  const resolution = decodeDetailTarget(detailTargetHref(encodeDetailTarget(target)).params);
   expect(resolution.ok).toBe(true);
   return (resolution as { ok: true; target: DetailTarget }).target;
 }
 
-function errorOf(gameId: GameId | undefined, params: Parameters<typeof decodeDetailTarget>[1]) {
-  const resolution = decodeDetailTarget(gameId, params);
+function errorOf(gameId: GameId, params: Parameters<typeof decodeDetailTarget>[0]) {
+  const resolution = decodeDetailTarget({ ...params, gameId });
   expect(resolution.ok).toBe(false);
   return resolution as { ok: false; code: DetailTargetErrorCode; parameter: string; message: string };
 }
@@ -60,7 +60,6 @@ describe('DetailTarget 编解码', () => {
   it('osu 的 beatmap id 与难度索引不混淆', () => {
     const osu = roundTrip({ game: 'osu-mania', beatmapsetId: '3720', beatmapId: 22423 });
     expect(osu).toEqual({ game: 'osu-mania', beatmapsetId: '3720', beatmapId: 22423 });
-    expect(Object.keys(osu)).not.toContain('levelIndex');
 
     const encoded = detailTargetHref(encodeDetailTarget({
       game: 'osu-standard', beatmapsetId: '3720', beatmapId: 22423,
@@ -68,15 +67,7 @@ describe('DetailTarget 编解码', () => {
     expect(encoded).toEqual({ songId: '3720', beatmapId: '22423', gameId: 'osu-standard' });
     expect(encoded).not.toHaveProperty('levelIndex');
 
-    // 既有 osu 成绩卡仍把 beatmap id 写在 levelIndex 槽位，解码后同样只产出 beatmapId。
-    const legacy = decodeDetailTarget('osu-standard', { songId: '3720', levelIndex: '22423' });
-    expect(legacy).toEqual({
-      ok: true,
-      target: { game: 'osu-standard', beatmapsetId: '3720', beatmapId: 22423 },
-    });
-
-    // 同一个 levelIndex 槽位在其它游戏解成难度索引，而不是 beatmap id。
-    expect(decodeDetailTarget('phigros', { songId: '3720', levelIndex: '22423' })).toEqual({
+    expect(decodeDetailTarget({ gameId: 'phigros', songId: '3720', levelIndex: '22423' })).toEqual({
       ok: true,
       target: { game: 'phigros', songId: '3720', levelIndex: 22423 },
     });
@@ -84,21 +75,21 @@ describe('DetailTarget 编解码', () => {
 
   it('错误的游戏字段组合返回可判别的错误', () => {
     expect(errorOf('osu-standard', { songId: '3720', beatmapId: '1', levelIndex: '2' }))
-      .toMatchObject({ code: 'conflicting_parameter', parameter: 'levelIndex' });
+      .toMatchObject({ code: 'invalid_parameter', parameter: 'levelIndex' });
     expect(errorOf('phigros', { songId: 'Song.A', beatmapId: '22423' }))
       .toMatchObject({ code: 'invalid_parameter', parameter: 'beatmapId' });
     expect(errorOf('phigros', { songId: 'Song.A', chartType: 'DX' }))
       .toMatchObject({ code: 'invalid_parameter', parameter: 'chartType' });
     expect(errorOf('phigros', { songId: 'Song.A', scoreId: '9' }))
       .toMatchObject({ code: 'invalid_parameter', parameter: 'scoreId' });
-    expect(decodeDetailTarget('maimai', { songId: '1', gameId: 'phigros' }))
+    expect(decodeDetailTarget({ songId: '1', gameId: 'phigros' }))
       .toEqual({ ok: true, target: { game: 'phigros', songId: '1' } });
-    expect(errorOf('test', { songId: '1' })).toMatchObject({ code: 'unsupported_game' });
   });
 
   it('缺失或非法参数返回可判别的错误', () => {
+    expect(decodeDetailTarget({ songId: '1' })).toMatchObject({ ok: false, code: 'missing_parameter', parameter: 'gameId' });
     for (const gameId of ['toString', '__proto__', 'constructor']) {
-      expect(decodeDetailTarget('maimai', { songId: '1', gameId }))
+      expect(decodeDetailTarget({ songId: '1', gameId }))
         .toMatchObject({ ok: false, code: 'unsupported_game' });
     }
     expect(errorOf('maimai', {})).toMatchObject({ code: 'missing_parameter', parameter: 'songId' });
@@ -117,26 +108,26 @@ describe('DetailTarget 编解码', () => {
   });
 
   it('空字符串槽位等价于未提供', () => {
-    expect(decodeDetailTarget('phigros', { songId: 'Song.A', levelIndex: '' }))
+    expect(decodeDetailTarget({ gameId: 'phigros', songId: 'Song.A', levelIndex: '' }))
       .toEqual({ ok: true, target: { game: 'phigros', songId: 'Song.A' } });
   });
 
-  it('共享卡片的 href 保持既有 URL 形状', () => {
-    expect(detailTargetHref({ songId: '352', chartType: 'SD', levelIndex: 3 })).toEqual({
+  it('共享卡片的 href 携带游戏与谱面参数', () => {
+    expect(detailTargetHref(encodeDetailTarget({ game: 'maimai', songId: '352', chartType: 'SD', levelIndex: 3 }))).toEqual({
       pathname: '/songs/[songId]',
-      params: { songId: '352', chartType: 'SD', levelIndex: '3' },
+      params: { songId: '352', chartType: 'SD', levelIndex: '3', gameId: 'maimai' },
     });
-    expect(detailTargetHref({ songId: '3720', levelIndex: 22423, params: { scoreId: '9' } })).toEqual({
+    expect(detailTargetHref(encodeDetailTarget({ game: 'osu-standard', beatmapsetId: '3720', beatmapId: 22423, scoreId: 9 }))).toEqual({
       pathname: '/songs/[songId]',
-      params: { songId: '3720', levelIndex: '22423', scoreId: '9' },
+      params: { songId: '3720', beatmapId: '22423', scoreId: '9', gameId: 'osu-standard' },
     });
     expect(detailTargetHref({ songId: 'uuid-1', levelIndex: 5, params: { gameId: 'majdata-net' } })).toEqual({
       pathname: '/songs/[songId]',
       params: { songId: 'uuid-1', levelIndex: '5', gameId: 'majdata-net' },
     });
-    expect(detailTargetHref({ songId: '1740' })).toEqual({
+    expect(detailTargetHref(encodeDetailTarget({ game: 'maimai', songId: '1740' }))).toEqual({
       pathname: '/songs/[songId]',
-      params: { songId: '1740' },
+      params: { songId: '1740', gameId: 'maimai' },
     });
   });
 });

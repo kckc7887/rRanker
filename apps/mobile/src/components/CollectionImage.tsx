@@ -5,7 +5,7 @@ import type { CollectionKind } from '@/domain/models';
 
 const ASSET_ROOT = 'https://assets2.lxns.net/maimai';
 
-/** icon / plate / frame 预览；称号无 CDN 图。 */
+/** 称号没有 CDN 图片。 */
 export function CollectionImage({
   kind,
   collectionId,
@@ -26,7 +26,6 @@ export function CollectionImage({
   }
   return (
     <Image
-      cachePolicy="disk"
       cacheProfile="native"
       accessibilityLabel={`${kind} 预览`}
       contentFit="contain"

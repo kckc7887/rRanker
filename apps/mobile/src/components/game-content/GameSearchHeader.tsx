@@ -2,7 +2,6 @@ import { StyleSheet, Text, TextInput, View, type StyleProp, type TextStyle, type
 import { useAppTheme } from '@/theme/app-theme';
 import { SIMAI_CATALOG_LIST_STYLES, SIMAI_RECORDS_LIST_STYLES } from './SimaiListStyles';
 
-// 差异页面通过 wrapStyle 和 inputStyle 覆盖布局。
 const styles = StyleSheet.create({
   wrap: { padding: 16, gap: 8, borderBottomWidth: StyleSheet.hairlineWidth },
   input: { height: 44, borderRadius: 10, borderWidth: 1, paddingHorizontal: 12, fontSize: 14 },
@@ -10,17 +9,13 @@ const styles = StyleSheet.create({
 });
 
 type GameSearchHeaderProps = {
-  /** 复用既有成绩/曲库搜索结构；缺省维持社区游戏搜索栏。 */
   layout?: 'records' | 'catalog';
   resultCountText?: string;
-  // 缺省时使用 placeholder 作为无障碍标签。
   accessibilityLabel?: string;
   placeholder: string;
   value: string;
   onChangeText: (value: string) => void;
-  // 不传则不渲染「已加载」计数行（Phira 形态）
   loaded?: number;
-  // 传入时计数行渲染为「已加载 loaded / total 条」（TUF 形态）
   total?: number;
   wrapStyle?: StyleProp<ViewStyle>;
   inputStyle?: StyleProp<TextStyle>;

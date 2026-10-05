@@ -1,5 +1,6 @@
+import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useEffect, useMemo, useState } from 'react';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import {
   RandomChartsPage,
   RandomUnplayedChartCard,
@@ -87,10 +88,7 @@ export function PhigrosRandomChartsScreen() {
     setLastSeed(seed);
     setResults(pickRandomItems(pool, count, seed));
   };
-  const openDetail = (pick: RandomChartPick) => router.push({
-    pathname: '/songs/[songId]',
-    params: { songId: pick.songId, levelIndex: String(pick.levelIndex) },
-  } as Href);
+  const openDetail = (pick: RandomChartPick) => router.push(detailTargetHref(encodeDetailTarget({ game: 'phigros', songId: pick.songId, levelIndex: pick.levelIndex })));
 
   return (
     <QueryStateView<CatalogSnapshot>

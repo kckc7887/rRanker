@@ -49,12 +49,10 @@ export function maxChunithmChartOverPower(levelValue: number): number {
   return roundToTwo((Math.max(0, levelValue) + 3) * 5);
 }
 
-/** 中二难度档 → 统一难度槽位：0-4 按档位序号对齐（ULTIMA 落 remaster 槽），WORLD'S END 落特殊谱面槽。 */
 const CHUNITHM_UNIFIED_DIFFICULTIES = [
   'basic', 'advanced', 'expert', 'master', 'remaster', 'utage',
 ] as const;
 
-/** 统一模型侧：为每个未禁用谱面生成满成绩 ScoreRecord（WORLD'S END 无 Rating 语义，记 0）。 */
 export function buildMaxedChunithmRecords(catalog: ChunithmCatalogSnapshot): ScoreRecord[] {
   return catalog.songs.flatMap((song) => {
     if (song.disabled) return [];
@@ -79,7 +77,6 @@ export function buildMaxedChunithmRecords(catalog: ChunithmCatalogSnapshot): Sco
   });
 }
 
-/** 将 ScoreRecord 转为 ChunithmScore。 */
 function chunithmScoreFromRecord(record: ScoreRecord): ChunithmScore {
   return {
     id: Number(record.songId),

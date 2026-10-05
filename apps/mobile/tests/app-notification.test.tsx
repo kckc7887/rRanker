@@ -2,7 +2,7 @@ import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Animated, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useRef } from 'react';
-import { resetEmergencyRuntimeDiagnosticsForTests, snapshotEmergencyRuntimeDiagnostics } from '@/services/runtime-diagnostics-recorder';
+import { snapshotEmergencyRuntimeDiagnostics } from '@/services/runtime-diagnostics-recorder';
 import {
   NotificationProvider,
   useNotification,
@@ -114,7 +114,7 @@ describe('全局顶部通知', () => {
   });
 
   it.each([false, true])('通知动作异常走脱敏记录且不泄漏原始错误，返回键=%s', async (back) => {
-    resetEmergencyRuntimeDiagnosticsForTests();
+    const initialDiagnostics = snapshotEmergencyRuntimeDiagnostics().length;
     const output = jest.spyOn(console, 'error').mockImplementation(() => {});
     (back ? mockCancel : mockDelete).mockImplementationOnce(() => { throw new Error('credential=private-test-value'); });
     const screen = await renderNotifications();
@@ -122,7 +122,7 @@ describe('全局顶部通知', () => {
     if (back) await act(async () => { hardwareBackHandler?.(); });
     else await fireEvent.press(screen.getByText('删除'));
     expect(output).not.toHaveBeenCalled();
-    const diagnostics = snapshotEmergencyRuntimeDiagnostics();
+    const diagnostics = snapshotEmergencyRuntimeDiagnostics().slice(initialDiagnostics);
     expect(diagnostics).toHaveLength(1);
     expect(JSON.stringify(diagnostics)).not.toContain('private-test-value');
   });

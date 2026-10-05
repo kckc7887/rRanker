@@ -7,11 +7,10 @@ const root = fileURLToPath(new URL('../../', import.meta.url));
 
 export function readGeneratedPreview(assetName) {
   const output = path.join(root, 'assets', assetName);
-  const script = fs.readFileSync(path.join(output, 'player.bundle'));
-  if (!script.equals(fs.readFileSync(path.join(output, 'player.js')))) {
-    throw new Error(`Generated player files differ: ${assetName}`);
-  }
-  return { html: fs.readFileSync(path.join(output, 'index.html'), 'utf8'), script };
+  return {
+    html: fs.readFileSync(path.join(output, 'index.html'), 'utf8'),
+    script: fs.readFileSync(path.join(output, 'player.bundle')),
+  };
 }
 
 export async function buildPreview(sourceName, assetName, marker, scripts, options = {}) {
@@ -22,11 +21,7 @@ export async function buildPreview(sourceName, assetName, marker, scripts, optio
     bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2020'],
     minify: true, sourcemap: false, logLevel: 'silent',
     ...(options.licenseBanner ? { banner: { js: options.licenseBanner } } : {}),
-    ...(options.auditModules ? { metafile: true } : {}),
   });
-  if (options.auditModules) {
-    await options.auditModules(Object.keys(result.metafile.inputs).map(input => path.resolve(input)));
-  }
   const template = fs.readFileSync(path.join(source, 'index.html'), 'utf8').replaceAll('\r\n', '\n');
   if (!template.includes(marker) || !template.includes('<!--PLAYER_SCRIPT-->')) {
     throw new Error('index.html template missing config/player markers');

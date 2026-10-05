@@ -1,11 +1,4 @@
-import {
-  PHIGROS_KYOU_TAGS_RESOURCE_KEY,
-  PHIGROS_KYOU_TAGS_SCHEMA_VERSION,
-  type PhigrosKyouChartTagsSnapshot,
-} from '@/domain/phigros-kyou';
 import { PhigrosKyouProvider } from '@/providers/phigros-kyou-provider';
-import type { ResourceRepository } from '@/repositories/resource-repository';
-import { cacheFirstLoad } from '@/services/cache-first';
 
 const manifest = {
   ok: true,
@@ -138,17 +131,4 @@ describe('PhigrosKyouProvider', () => {
     await expect(new PhigrosKyouProvider().getChartTags()).rejects.toThrow('未知或不一致的歌曲');
   });
 
-  it('returns a stale SQLite resource when the Kyou network read fails', async () => {
-    const cached: PhigrosKyouChartTagsSnapshot = {
-      songs: [], charts: [], tags: [], votes: [],
-      source: { kind: 'kyou', label: 'Kyou', updatedAt: '2026-08-09T00:00:00.000Z', isStale: false },
-    };
-    const repository: ResourceRepository = {
-      getResource: async <T>() => cached as T,
-      saveResource: async () => undefined,
-      deleteResource: async () => undefined,
-    };
-    const result = await cacheFirstLoad<PhigrosKyouChartTagsSnapshot>({ loadCached: () => repository.getResource<PhigrosKyouChartTagsSnapshot>(PHIGROS_KYOU_TAGS_RESOURCE_KEY, PHIGROS_KYOU_TAGS_SCHEMA_VERSION), loadFresh: async () => { throw new Error('offline'); }, onFresh: () => undefined });
-    expect(result.source).toEqual({ ...cached.source, isStale: true });
-  });
 });

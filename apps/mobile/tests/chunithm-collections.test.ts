@@ -66,7 +66,6 @@ describe('chunithm collections domain', () => {
     expect(chunithmScoreMeetsRequirement(score({ id: 100, level_index: 0, rank: 's' }), requirement)).toBe(true);
     expect(chunithmScoreMeetsRequirement(score({ id: 100, level_index: 0, rank: 'ss' }), requirement)).toBe(true);
     expect(chunithmScoreMeetsRequirement(score({ id: 100, level_index: 0, rank: 'aaa' }), requirement)).toBe(false);
-    // 无 rank 字段时按分数推断：90 万分 → A，低于 S
     expect(chunithmScoreMeetsRequirement(
       score({ id: 100, level_index: 0, score: 900_000 }),
       requirement,
@@ -90,7 +89,6 @@ describe('chunithm collections domain', () => {
       score({ id: 300, level_index: 3, full_combo: 'alljustice' }),
     ]);
 
-    // 组1：曲A×4难度 + 曲B×4难度；组2：曲C×1难度 → 共 9 项
     expect(progress.total).toBe(9);
     expect(progress.completed).toBe(5);
     expect(progress.completedSongIds).toEqual(['100', '300']);
@@ -106,7 +104,7 @@ describe('chunithm collections domain', () => {
       score({ id: 100, level_index: 3, rank: 's' }),
       score({ id: 200, level_index: 0, rank: 's' }),
       score({ id: 200, level_index: 1, rank: 's' }),
-      score({ id: 200, level_index: 2, rank: 'aaa' }), // 低于 S
+      score({ id: 200, level_index: 2, rank: 'aaa' }),
       score({ id: 200, level_index: 3, rank: 's' }),
       score({ id: 300, level_index: 3, full_combo: 'alljustice' }),
     ]);
@@ -137,7 +135,6 @@ describe('chunithm collections domain', () => {
   });
 
   it('ranks by score when the upstream score has no rank field', () => {
-    // 无 rank 字段时按分数推断评级：1009000 → SSS+
     const requirement = { difficulties: [3], rank: 'sss' as const, songs: [{ id: 600, title: '曲F' }] };
     const progress = calculateChunithmCollectionProgress(
       { id: 6, name: '按分评级', required: [requirement] },

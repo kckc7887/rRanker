@@ -1,9 +1,3 @@
-/**
- * 舞萌谱面确认背景媒体。
- * 独占图片与视频元素、就绪状态与视频回绕同步；播放状态只作为每帧输入读入，
- * 渲染器与桥回执通过宿主回调接线。
- */
-
 import type { BpmEvent } from '../engine/types';
 import { resolveBackgroundVideoFrame } from './timeConversion';
 import type { ChartPreviewBackgroundMode } from './interactionScheduler';
@@ -14,13 +8,10 @@ const VIDEO_SEEK_TOLERANCE_SECONDS = 0.04;
 const VIDEO_RATE_ADJUSTMENT = 0.1;
 
 export interface SimaiBackgroundMediaHost {
-  /** 背景就绪状态变化后重绘。 */
   render(): void;
-  /** 视频背景加载结果回报播放器桥。 */
   reportVideo(result: 'success' | 'error', video?: HTMLVideoElement): void;
   readStatus(): string;
   writeStatus(message: string): void;
-  /** 把背景交给各侧渲染器。 */
   setImage(image: HTMLImageElement | null): void;
   setVideo(video: HTMLVideoElement | null): void;
 }
@@ -101,7 +92,6 @@ export class SimaiBackgroundMedia {
     this.host.render();
   }
 
-  /** 每帧把视频背景对齐到当前拍位置；图片背景无需逐帧处理。 */
   syncFrame(input: SimaiBackgroundFrameInput): void {
     if (this.disposed) return;
     if (this.mode !== 'video' || !this.videoReady || this.videoFailed) return;

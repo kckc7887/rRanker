@@ -30,7 +30,7 @@ function deflateSmallest(bytes) {
   return best;
 }
 
-/** Preserve filtered scanlines and every non-IDAT chunk byte, including XMP and color metadata. */
+/** 只重压缩 IDAT，保留扫描行及其它 PNG 块。 */
 export function recompressPng(bytes) {
   if (!bytes.subarray(0, 8).equals(SIGNATURE)) throw new Error('Invalid PNG signature');
   const chunks = [], idat = [];

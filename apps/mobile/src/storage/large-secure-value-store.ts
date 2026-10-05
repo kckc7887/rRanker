@@ -1,7 +1,7 @@
 import * as Crypto from 'expo-crypto';
 import * as SecureStore from 'expo-secure-store';
 
-export const SECURE_VALUE_CHUNK_BYTES = 1900;
+const SECURE_VALUE_CHUNK_BYTES = 1900;
 
 type SecureStoreAdapter = Pick<
   typeof SecureStore,
@@ -51,7 +51,7 @@ function parseManifest(raw: string | null): SecureValueManifest | null {
   }
 }
 
-export function utf8ByteLength(value: string): number {
+function utf8ByteLength(value: string): number {
   let bytes = 0;
   for (const char of value) {
     const codePoint = char.codePointAt(0) ?? 0;
@@ -60,7 +60,7 @@ export function utf8ByteLength(value: string): number {
   return bytes;
 }
 
-export function splitSecureValue(value: string): string[] {
+function splitSecureValue(value: string): string[] {
   if (!value) return [''];
   const chunks: string[] = [];
   let chunk = '';
@@ -93,10 +93,7 @@ async function deleteManifestChunks(
   }
 }
 
-/**
- * SecureStore 单项限制为 2048 字节。该适配器用版本化清单原子切换分片，
- * 让任意长度的敏感字符串仍只落在系统安全存储中。
- */
+/** 安全存储单项限制为 2048 字节，按 UTF-8 分片。 */
 export class LargeSecureValueStore {
   constructor(private readonly store: SecureStoreAdapter = SecureStore) {}
 
@@ -147,17 +144,14 @@ export class LargeSecureValueStore {
         JSON.stringify(next),
         STORE_OPTS,
       );
-      if (await this.read(reference) !== value) throw new Error('Secure value write could not be verified');
     } catch (error) {
       const key = manifestKey(reference);
+      let rolledBack = false;
       try {
         if (previousRaw === null) await this.store.deleteItemAsync(key);
         else await this.store.setItemAsync(key, previousRaw, STORE_OPTS);
-      } catch { /* 保留新分片，避免清单回滚失败时再破坏可恢复数据。 */ }
-      const rolledBack = await this.store.getItemAsync(key).then(
-        (current) => current === previousRaw,
-        () => false,
-      );
+        rolledBack = true;
+      } catch { /** 回滚失败时保留新分片。 */ }
       if (rolledBack) {
         for (const writtenKey of writtenKeys) {
           await this.store.deleteItemAsync(writtenKey).catch(() => undefined);

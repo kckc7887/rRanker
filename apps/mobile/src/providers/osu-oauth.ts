@@ -23,7 +23,6 @@ function withPendingMutation<T>(action: () => Promise<T>): Promise<T> {
   return result;
 }
 
-/** 进行中的 osu! 授权：state（osu! 无 PKCE，凭 state 防 CSRF）。 */
 export type PendingOsuOAuth = {
   state: string;
   expiresAt: number;
@@ -78,21 +77,21 @@ export async function beginOsuAuthorize(): Promise<string> {
   return buildAuthorizeUrl(state);
 }
 
-export async function clearPendingOsuOAuth(): Promise<void> {
-  await withPendingMutation(() => SecureStore.deleteItemAsync(PENDING_OAUTH_KEY));
-}
-
 async function loadPendingOsuOAuth(): Promise<PendingOsuOAuth | null> {
   const raw = await runProviderOperation('credential_storage', () => SecureStore.getItemAsync(PENDING_OAUTH_KEY));
-  if (!raw) return null;
+  if (raw === null) return null;
+  let parsed: Partial<PendingOsuOAuth> | null;
   try {
-    const parsed = JSON.parse(raw) as Partial<PendingOsuOAuth>;
-    if (typeof parsed.state !== 'string' || !parsed.state.trim()) return null;
-    if (typeof parsed.expiresAt !== 'number' || !Number.isFinite(parsed.expiresAt)) return null;
-    return { state: parsed.state, expiresAt: parsed.expiresAt };
+    parsed = JSON.parse(raw) as Partial<PendingOsuOAuth> | null;
   } catch {
-    return null;
+    parsed = null;
   }
+  if (parsed && typeof parsed.state === 'string' && parsed.state.trim()
+    && typeof parsed.expiresAt === 'number' && Number.isFinite(parsed.expiresAt)) {
+    return { state: parsed.state, expiresAt: parsed.expiresAt };
+  }
+  await runProviderOperation('credential_storage', () => SecureStore.deleteItemAsync(PENDING_OAUTH_KEY));
+  return null;
 }
 
 function parseTokenPayload(payload: unknown): z.infer<typeof TokenResponseSchema> {
@@ -186,11 +185,7 @@ async function refreshOsuAccessToken(refreshToken: string): Promise<OsuOAuthSess
   });
 }
 
-/**
- * 公共令牌轮换：并发刷新按 refreshToken 去重（复用 snapshot-cache-utils 的
- * createInflightGuard），并缓存最近的轮换结果。osu! refresh_token 单次使用：
- * 持有旧 token 的实例可从缓存直接拿到本进程内最新会话，避免 invalid_grant。
- */
+/** refresh_token 单次使用；旧实例沿轮换链取得最新会话。 */
 const inFlightRefreshes = new Map<string, Promise<OsuOAuthSession>>();
 const recentRotations = new Map<string, OsuOAuthSession>();
 const rotationAncestors = new Map<string, Set<string>>();
@@ -241,34 +236,11 @@ function rememberOsuRotation(refreshToken: string, next: OsuOAuthSession): void 
   pruneRotationState();
 }
 
-/** 解除绑定或清空会话时丢掉轮换关系。进行中的刷新完成后不再写回。 */
 export function clearOsuRotationCache(): void {
   rotationEpoch += 1;
   recentRotations.clear();
   rotationAncestors.clear();
   inFlightRefreshes.clear();
-}
-
-export function osuRotationCacheStats(): {
-  rotations: number;
-  ancestors: number;
-  ancestorMembers: number;
-  inFlight: number;
-} {
-  let ancestorMembers = 0;
-  for (const ancestors of rotationAncestors.values()) ancestorMembers += ancestors.size;
-  return {
-    rotations: recentRotations.size,
-    ancestors: rotationAncestors.size,
-    ancestorMembers,
-    inFlight: inFlightRefreshes.size,
-  };
-}
-
-/** 当前凭据是这次轮换结果的前代时才允许覆盖。重新登录产生的新凭据不在前代集合里。 */
-export function osuRotationMayReplace(currentRefreshToken: string, nextRefreshToken: string): boolean {
-  if (currentRefreshToken === nextRefreshToken) return true;
-  return rotationAncestors.get(nextRefreshToken)?.has(currentRefreshToken) ?? false;
 }
 
 export function osuRotationAncestors(nextRefreshToken: string): readonly string[] {
@@ -328,11 +300,10 @@ export async function rotateOsuTokens(refreshToken: string): Promise<OsuOAuthSes
   return promise;
 }
 
-/** osu! 授权结果事件：回调页与登录 Sheet 之间的轻量通知。 */
 export type OsuOAuthOutcome =
   | { status: 'success'; accountName: string }
   | { status: 'error'; message: string }
-  /** 授权码已换取、回调页进入模式选择：通知登录 Sheet 关闭，避免 Modal 盖住回调页。 */
+  /** 模式选择前关闭登录弹层，避免遮住回调页。 */
   | { status: 'awaiting-mode-selection' };
 
 const outcomeListeners = new Set<(outcome: OsuOAuthOutcome) => void>();

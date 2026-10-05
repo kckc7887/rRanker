@@ -1,6 +1,6 @@
 import type { DataSource, Player } from '@/domain/models';
 import type { ScoreProvider } from '@/providers/contracts';
-import type { SnapshotRepository } from '@/repositories/snapshot-repository';
+import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { LOCAL_MAIMAI_ACCOUNT_ID } from '@/domain/bound-account';
 
 function localSource(): DataSource {
@@ -13,8 +13,8 @@ function localSource(): DataSource {
 }
 
 export class LocalMaimaiScoreProvider implements ScoreProvider {
+  private readonly repository = new SqliteSnapshotRepository();
   constructor(
-    private readonly repository: SnapshotRepository,
     private readonly accountId = LOCAL_MAIMAI_ACCOUNT_ID,
     private readonly displayName = '本地玩家',
   ) {}
@@ -33,7 +33,6 @@ export class LocalMaimaiScoreProvider implements ScoreProvider {
       id: this.accountId,
       displayName: this.displayName,
       rating: 0,
-      additionalRating: 0,
       source: localSource(),
     };
   }

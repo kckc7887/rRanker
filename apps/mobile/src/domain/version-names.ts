@@ -7,7 +7,7 @@ export interface VersionNameMapping {
 
 export type VersionNameLocale = 'china' | 'japan';
 
-// 2026-07-13 由 LXNS /song/list 与水鱼 /music_data 的发布曲目交叉统计核实。
+/** 名称依据 LXNS /song/list 与水鱼 /music_data 的发布曲目。 */
 export const VERSION_NAME_MAPPINGS: readonly VersionNameMapping[] = [
   { versionId: 10000, china: 'maimai', japan: 'maimai', code: '真' },
   { versionId: 11000, china: 'maimai PLUS', japan: 'maimai PLUS', code: '真' },

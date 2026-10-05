@@ -6,11 +6,7 @@ interface BpmPoint {
   cumulativeMs: number;
 }
 
-/**
- * 谱面 beat 与物理 ms 互转的权威原语。构造时把 BPM 变速事件积分成累积毫秒，
- * 之后 msFromBeat / beatFromMs 为 O(log n) 二分查询。
- * 应用层 timeConversion 与渲染器热路径都应复用本类，避免各自开码 BPM 扫描。
- */
+/** BPM 分段积分，拍数与毫秒通过二分互转。 */
 export class TimingTimeline {
   private defaultBpm: number;
   private bpmPoints: BpmPoint[];
@@ -85,7 +81,6 @@ export class TimingTimeline {
     return points;
   }
 
-  /** 二分查找最后一个 value &lt;= target 的元素索引，不存在则返回 -1。 */
   private findLastLe<T>(arr: readonly T[], getValue: (item: T) => number, target: number): number {
     let lo = 0;
     let hi = arr.length - 1;

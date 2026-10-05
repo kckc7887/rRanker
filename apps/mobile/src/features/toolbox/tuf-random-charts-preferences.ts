@@ -1,3 +1,4 @@
+import { z } from 'zod';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { RandomChartsCount } from '@/domain/random-charts';
 import type { TufDifficultyBand, TufPassAchievementFilter } from '@/domain/tuf';
@@ -67,7 +68,15 @@ const { Store: TufRandomChartsPreferencesStore } =
   createPreferencesStore<TufRandomChartsPreferences>({
     storeKey: STORE_KEY,
     defaults: defaultTufRandomChartsPreferences,
-    parse: parseTufRandomChartsPreferences,
+    parse: value => parseTufRandomChartsPreferences(z.object({
+      schemaVersion: z.literal(1),
+      count: z.number(),
+      difficultyBand: z.string(),
+      difficultyMin: z.string(),
+      difficultyMax: z.string(),
+      includeSpecial: z.boolean(),
+      achievement: z.string(),
+    }).parse(value)),
     toStored: (preferences) => ({
       schemaVersion: 1,
       ...parseTufRandomChartsPreferences({ schemaVersion: 1, ...preferences }),

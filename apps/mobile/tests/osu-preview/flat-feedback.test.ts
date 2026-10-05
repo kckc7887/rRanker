@@ -63,7 +63,7 @@ function skin(stems: string[] = []): SkinAssets {
     config: { version: '2.7', comboColors: ['#80ead5'], maniaSections: [], hitCirclePrefix: 'default', scorePrefix: 'score', comboPrefix: 'combo' },
   } as unknown as SkinAssets;
 }
-const options = { showJudgement: false, showKeyOverlay: false, modHidden: false, modFlashlight: false, maniaScrollSpeed: 20 } as RenderOptions;
+const options = { showFollowpoints: true, audioOffsetMs: 0, maniaUpscroll: false, modFadeIn: false, modCover: false, modHidden: false, modFlashlight: false, maniaScrollSpeed: 20 } as RenderOptions;
 function input(mode: 0 | 1 | 2 | 3, objects: string) {
   const text = fixtureOsu(mode, 'Easy').replace(/\[HitObjects\][\s\S]*$/, `[HitObjects]\n${objects}\n`);
   const beatmap = parseBeatmap(text);
@@ -147,4 +147,3 @@ describe('local flat feedback', () => {
     }
   });
 });
-

@@ -213,7 +213,6 @@ function DetailChrome({
         SONG_DETAIL_CHROME_STYLES.headerButton,
         SONG_DETAIL_CHROME_STYLES.headerFloatingButton,
         { top: insets.top, right: 8 },
-        favorite && SONG_DETAIL_CHROME_STYLES.headerFavoriteActive,
         pressed && styles.pressed,
         favoriteDisabled && styles.disabled,
       ]}
@@ -347,8 +346,7 @@ function Hero({ song, width }: { song: ChunithmSong; width: number }) {
       cover={failed ? undefined : (
         <Image
           accessibilityLabel={`歌曲封面 ${song.title}`}
-          cachePolicy="disk"
-          cacheProfile="artwork"
+              cacheProfile="artwork"
           gameId="chunithm"
           contentFit="cover"
           onError={() => setFailed(true)}

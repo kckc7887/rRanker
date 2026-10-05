@@ -16,7 +16,6 @@ type NotificationApi = {
   showNotification: (input: NotificationInput) => number;
 };
 
-/** Open a specific map app. Returns false when the system cannot open the URL. */
 export async function openArcadeMapApp(
   app: ArcadeMapAppId,
   shop: ArcadeNavigateTarget,
@@ -30,7 +29,6 @@ export async function openArcadeMapApp(
   }
 }
 
-/** Present the app action dialog for choosing a map, then open the selected app. */
 export function openArcadeNavigation(
   shop: ArcadeNavigateTarget,
   notify: NotificationApi,

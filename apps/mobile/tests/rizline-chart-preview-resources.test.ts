@@ -1,5 +1,5 @@
 import { createHash } from 'node:crypto';
-import { describe, expect, it, vi } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import { rizlineCatalog, rizlineCatalogAssetFiles, rizlineChart, rizlineSong } from './fixtures/rizline';
 import {
   resolveRizlineChartPreviewBundle,
@@ -23,17 +23,23 @@ vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepositor
 
 const hash = 'a'.repeat(64);
 
-function release(): RizlineRelease {
+function release(bytes: Record<string, Uint8Array> = {}): RizlineRelease {
   const snapshot = rizlineCatalog();
   return {
     snapshot,
     source: { kind: 'rizline', label: 'Rizline 曲库', updatedAt: '2026-09-20T00:00:00.000Z', isStale: false },
     files: [
       { path: 'rizline/releases/r1/catalog.json', size: 1, sha256: hash },
-      ...rizlineCatalogAssetFiles(snapshot).map((file) => ({ ...file, sha256: hash })),
+      ...rizlineCatalogAssetFiles(snapshot).map(file => ({
+        ...file,
+        size: bytes[file.path]?.byteLength ?? file.size,
+        sha256: bytes[file.path] ? createHash('sha256').update(bytes[file.path]).digest('hex') : hash,
+      })),
     ],
   };
 }
+
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
 
 describe('Rizline chart preview resource resolution', () => {
   it('locates the unique chart JSON and shared m4a from the current release', () => {
@@ -60,46 +66,49 @@ describe('Rizline chart preview resource resolution', () => {
         songs: [rizlineSong({ charts: [rizlineChart({ chartPath: 'rizline/releases/r1/charts/missing.json' })] })],
       },
     }, { songId: 'Song.A.0', levelIndex: 2 })).toThrow('谱面文件不在发布清单中');
+    expect(() => resolveRizlineChartPreviewBundle({
+      ...current, files: current.files.filter(file => !file.path.endsWith('/audio/Song.A.0.m4a')),
+    }, { songId: 'Song.A.0', levelIndex: 2 })).toThrow('音频文件不在发布清单中');
   });
 
-  it('loads through withRelease and verifies chart and audio bytes', async () => {
+  it.each(['download', 'native file'])('verifies chart and audio from %s', async source => {
     const chartBytes = Uint8Array.from([1, 2, 3]);
     const musicBytes = Uint8Array.from([4, 5, 6, 7]);
-    const digest = (bytes: Uint8Array) => createHash('sha256').update(bytes).digest('hex');
-    const current: RizlineRelease = {
-      ...release(),
-      files: release().files.map((file) => {
-        if (file.path.endsWith('/charts/Song.A.0.IN.json')) {
-          return { ...file, size: chartBytes.byteLength, sha256: digest(chartBytes) };
-        }
-        if (file.path.endsWith('/audio/Song.A.0.m4a')) {
-          return { ...file, size: musicBytes.byteLength, sha256: digest(musicBytes) };
-        }
-        return file;
-      }),
-    };
-    const withRelease = vi.spyOn(rizlineResources, 'withRelease').mockImplementation(async (action) => action(current));
-    const read = vi.fn(async (asset: { path: string }) => (
-      asset.path.endsWith('.json') ? chartBytes : musicBytes
-    ));
-    try {
-      await expect(loadRizlineChartPreviewResources(
-        { songId: 'Song.A.0', levelIndex: 2 },
-        new AbortController().signal,
-        read,
-      )).resolves.toMatchObject({
-        chart: { difficulty: 'IN', path: 'rizline/releases/r1/charts/Song.A.0.IN.json' },
-        music: { path: 'rizline/releases/r1/audio/Song.A.0.m4a' },
-      });
-      expect(read).toHaveBeenCalledTimes(2);
-      await expect(loadRizlineChartPreviewResources(
-        { songId: 'Song.A.0', levelIndex: 2 },
-        new AbortController().signal,
-        async () => Uint8Array.from([9]),
-      )).rejects.toThrow('Rizline 谱面校验失败');
-    } finally {
-      withRelease.mockRestore();
-    }
+    const current = release({
+      'rizline/releases/r1/charts/Song.A.0.IN.json': chartBytes,
+      'rizline/releases/r1/audio/Song.A.0.m4a': musicBytes,
+    });
+    vi.spyOn(rizlineResources, 'withRelease').mockImplementation(async action => action(current));
+    vi.stubGlobal('fetch', vi.fn(async url => new Response(String(url).includes('/charts/') ? chartBytes : musicBytes)));
+    const read = async (asset: { path: string }) => asset.path.endsWith('.json') ? chartBytes : musicBytes;
+    await expect(loadRizlineChartPreviewResources(
+      { songId: 'Song.A.0', levelIndex: 2 }, new AbortController().signal,
+      source === 'native file' ? read : undefined,
+    )).resolves.toMatchObject({
+      chart: { difficulty: 'IN', path: 'rizline/releases/r1/charts/Song.A.0.IN.json' },
+      music: { path: 'rizline/releases/r1/audio/Song.A.0.m4a' },
+    });
+  });
+
+  it('rejects corrupt chart bytes', async () => {
+    vi.spyOn(rizlineResources, 'withRelease').mockImplementation(async action => action(release()));
+    await expect(loadRizlineChartPreviewResources(
+      { songId: 'Song.A.0', levelIndex: 2 }, new AbortController().signal, async () => Uint8Array.from([9]),
+    )).rejects.toThrow('Rizline 谱面校验失败');
+  });
+
+  it('stops resource preparation when the file reader is cancelled', async () => {
+    const chartBytes = Uint8Array.from([1, 2, 3]);
+    const current = release({ 'rizline/releases/r1/charts/Song.A.0.IN.json': chartBytes });
+    vi.spyOn(rizlineResources, 'withRelease').mockImplementation(async action => action(current));
+    const controller = new AbortController();
+    const reason = new Error('cancelled');
+    await expect(loadRizlineChartPreviewResources(
+      { songId: 'Song.A.0', levelIndex: 2 }, controller.signal, async () => {
+        controller.abort(reason);
+        return chartBytes;
+      },
+    )).rejects.toBe(reason);
   });
 });
 

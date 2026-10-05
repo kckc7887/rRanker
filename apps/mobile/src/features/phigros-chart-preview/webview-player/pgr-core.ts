@@ -1,8 +1,4 @@
 /**
- * PGR 谱面解析与时间轴，语义依据 TeamFlos/phira 的 prpr 核心的 PGR 解析行为。
- * 该模块保持纯函数、不依赖 DOM，供 WebView 播放器与 Vitest 共用。
- * 时间倒序或字段无效的判定线事件按 prpr 忽略；缺失的事件/音符数组视为空。
- *
  * 许可证：解析语义衍生自 TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira），
  * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
@@ -97,7 +93,7 @@ function optionalFinite(value: unknown): number | null {
   return Number.isFinite(number) ? number : null;
 }
 
-/** prpr `validate_events!`：时间倒序或字段无效的条目忽略，不中断整谱。 */
+/** prpr 忽略倒序或字段无效的事件，不中断整谱。 */
 function eventTimes(raw: { startTime?: unknown; endTime?: unknown } | null | undefined, bpm: number): [number, number] | null {
   if (!raw || typeof raw !== 'object') return null;
   const startTicks = optionalFinite(raw.startTime);

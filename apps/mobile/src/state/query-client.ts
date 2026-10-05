@@ -27,7 +27,7 @@ export const queryClient = new QueryClient({
   },
 });
 
-// 终态句柄与实际查询同寿命；解绑、释放闲置查询与clear都回收其后台结果。
+/** 终态句柄随查询回收。 */
 queryClient.getQueryCache().subscribe(event => {
   if (event.type === 'removed') registerGameDataBackground(event.query.queryKey, undefined);
 });

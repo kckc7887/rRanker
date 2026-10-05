@@ -47,7 +47,7 @@ export class UploadTaskController {
   private publish(next: UploadTaskSnapshot): void {
     this.snapshot = next;
     for (const listener of this.listeners) {
-      try { listener(next); } catch { /* One observer cannot interrupt task settlement. */ }
+      try { listener(next); } catch {}
     }
     void recordRuntimeDiagnostic('task', { taskPhase: next.phase.kind });
   }
@@ -77,7 +77,7 @@ export class UploadTaskController {
         if (!this.isCurrent(task.signal) || task.waiter !== waiter) return;
         const available = catalog ?? this.catalog;
         if (available) this.finishCatalogWait(available, task.signal);
-      } catch { /* A retry remains available for this task only. */ }
+      } catch {}
       finally {
         if (task.request === attempt) task.request = null;
         if (this.isCurrent(task.signal) && task.waiter === waiter) {
@@ -109,7 +109,7 @@ export class UploadTaskController {
     for (const resolve of task.resumeWaiters) resolve();
     task.resumeWaiters.clear();
     for (const listener of task.cancelListeners) {
-      try { listener(); } catch { /* All cancellation consumers must be released. */ }
+      try { listener(); } catch {}
     }
     task.cancelListeners.clear();
     task.waiter?.reject(new ScoreHubError('已取消'));
@@ -161,13 +161,6 @@ export class UploadTaskController {
     listener(this.snapshot);
     return () => { this.listeners.delete(listener); };
   }
-  resetForTests(): void {
-    this.abort(this.task);
-    this.clearIdleReset();
-    this.catalog = undefined;
-    this.requestCatalog = undefined;
-    this.task = createTask();
-    this.snapshot = { taskId: null, status: 'idle', phase: { kind: 'idle' }, result: null };
-  }
+
 }
 export const uploadTaskController = new UploadTaskController();

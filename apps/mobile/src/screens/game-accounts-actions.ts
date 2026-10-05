@@ -6,7 +6,6 @@ import { notifyAccountSwitchError, switchBoundAccount } from '@/services/switch-
 import type { QueryClient } from '@tanstack/react-query';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 
-/** Cancel only the removed account's observers; shared public catalogs remain usable. */
 export async function cancelBoundAccountQueries(account: BoundAccount, client: QueryClient): Promise<void> {
   invalidateResourceWrites('account:' + account.id);
   const externalId = account.id.slice(account.id.lastIndexOf(':') + 1);
@@ -184,10 +183,6 @@ export async function addOrSwitchDemoAccount(input: {
 
 export type LabeledAttempt = (label: string, action: () => Promise<unknown>) => Promise<void>;
 
-/**
- * 关键提交返回的附属清理失败项；提交本身失败必须抛出，不能用返回值表达。
- * 返回值不是这个形状（例如删除接口返回被删记录）时按无附属清理失败处理。
- */
 export type AccountRemovalSubmission = { cleanupFailures?: readonly string[] };
 
 function submissionCleanupFailures(result: unknown): readonly string[] {
@@ -197,29 +192,24 @@ function submissionCleanupFailures(result: unknown): readonly string[] {
 }
 
 export type AccountRemovalAttempts = {
-  /** 关键解绑提交：抛出表示尚未提交（账号与凭据保持原样）。 */
   submit: LabeledAttempt;
-  /** 分项清理：失败只记录。 */
   cleanup: LabeledAttempt;
 };
 
 export type AccountRemovalOutcome =
   | { status: 'unbound'; cleanupFailures: readonly string[] }
-  /** 关键解绑提交失败：账号与凭据保持原样，界面保留该账号作为重试入口。 */
   | { status: 'blocked'; reason: string };
 
 export async function removeBoundPlayerAccount(input: {
   includePersonalData: boolean;
   displayName: string;
   prepareRemoval?: () => Promise<void>;
-  /** 关键解绑提交（submit 失败即中断）与分项清理（cleanup 失败只记录）。 */
   clearPlayer: (attempts: AccountRemovalAttempts) => Promise<void>;
   clearPersonalData: () => Promise<unknown>;
   removeBoundAccount: () => void;
   persistActive: () => Promise<unknown>;
   afterRemove?: () => void;
   formatMessage: (cleanupFailures: readonly string[]) => string;
-  /** 关键解绑失败时的文案；缺省按通用错误处理。 */
   formatBlockedMessage?: (error: unknown) => string;
   setBusy: (busy: boolean) => void;
   setMessage: (message: string) => void;
@@ -228,8 +218,7 @@ export async function removeBoundPlayerAccount(input: {
   input.setBusy(true);
   const cleanupFailures: string[] = [];
   const cleanup: LabeledAttempt = (label, action) => attemptLabeled(cleanupFailures, label, action);
-  // 关键提交不吞错误：落盘失败必须让账号留在界面上，由用户重试。
-  // 提交已经完成后的附属清理失败（例如密码引用删除）只记录，账号按已解绑处理。
+  /** 提交失败保留账号；提交后的附属清理失败只记录。 */
   const submit: LabeledAttempt = async (_label, action) => {
     const result = await action();
     for (const failure of submissionCleanupFailures(result)) {

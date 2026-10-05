@@ -3,19 +3,19 @@
  * Adapted for fixed-speed chart preview.
  *
  * MIT License
- * 
+ *
  * Copyright (c) 2026 bog
- * 
+ *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
  * in the Software without restriction, including without limitation the rights
  * to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
  * copies of the Software, and to permit persons to whom the Software is
  * furnished to do so, subject to the following conditions:
- * 
+ *
  * The above copyright notice and this permission notice shall be included in all
  * copies or substantial portions of the Software.
- * 
+ *
  * THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
  * IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
  * FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
@@ -29,28 +29,11 @@ import { sampleSlider as sampleSliderStable } from './SliderGeometry';
 
 type Point = { x: number; y: number };
 
-// Lazer-flavoured sibling to SliderGeometry (the stable-behaviour module). The load-bearing
-// stable-vs-lazer differences that justify the split:
-//   (1) tick generation: stable uses time-based iteration with a 1ms safety cutoff, lazer
-//       uses distance-based iteration with d ≤ length;
-//   (2) span reversal: stable reverses path generation, lazer mirrors at sample time;
-//   (3) any future divergences (arc tessellation, CS) land here without touching the
-//       stable path.
-
-/**
- * Lazer-model slider path sampling. Lazer's "more detail for circular arcs" refinement is
- * a no-op under JS float64 (sampling is already pixel-accurate), so this delegates to the
- * stable sampler; the entry point exists so callers can pick the model explicitly.
- */
 export function sampleSliderLazer(slider: Slider): Point[] {
   return sampleSliderStable(slider);
 }
 
-/**
- * Lazer-model slider-ball position at `timeMs`: repeats are handled by mirroring the
- * progress fraction on odd spans at sample time (per danser's PositionAtLazer,
- * math.Mod(progress, 2)) rather than by reversing the generated path.
- */
+/** lazer 按奇数 span 镜像进度，不反转生成路径。 */
 export function sliderBallPosLazer(
   path: Point[],
   timeMs: number,

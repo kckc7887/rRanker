@@ -71,7 +71,7 @@ export function enrichRecordsWithCatalog(
   });
 }
 
-/** Exact IDs, first match: matches Array.find even for duplicate source entries. */
+/** 重复 ID 保留首项，与 Array.find 一致。 */
 export function indexSongsById<T extends { id: string }>(songs: readonly T[]): ReadonlyMap<string, T> {
   const index = new Map<string, T>();
   for (const song of songs) if (!index.has(song.id)) index.set(song.id, song);

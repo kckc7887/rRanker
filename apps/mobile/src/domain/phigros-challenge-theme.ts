@@ -74,12 +74,6 @@ const THEMES: readonly Omit<DxRatingTheme, 'starCount'>[] = [
   },
 ];
 
-/**
- * 课题分档位区间宽度为 100。
- * 后直接索引 THEMES，与 min = [0, 100, 200, 300, 400, 500] 的升序 tier 表逐值等价
- * （value 归一化后落在 [100k, 100(k+1)) 即第 k 档，≥500 恒为最后一档），
- * 故派生 tier 视图接入公共 resolveTier，THEMES 主题数据保持不动。
- */
 const CHALLENGE_TIERS: readonly ThemeTier<Omit<DxRatingTheme, 'starCount'>>[] = THEMES.map(
   (theme, index) => ({ min: index * 100, theme }),
 );

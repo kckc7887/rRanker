@@ -157,7 +157,6 @@ export async function fetchNearcadeGameTitles(signal?: AbortSignal): Promise<Arc
   }
 }
 
-/** Decode the upstream contract into the shared shop model. */
 export function parseDiscoverResponse(json: unknown): ArcadeShop[] {
   return discoverResponseSchema.parse(json).shops.map(mapShop);
 }

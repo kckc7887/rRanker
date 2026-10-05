@@ -29,7 +29,6 @@ if (!generated) {
  ({ parseSimaiChart } = await import(pathToFileURL(path.join(output, 'simai-parser.mjs')).href));
 }
 const extended = '&title=Majdata preview\n&inote_7=(120){4}1m,2hbx[4:2],Chm[4:2],3?-5-7[4:2],4-8b[4:2]*-6m[4:1],<HS*2><SV*0.5>5CK1[4:2],';
-// Synthetic duration fixtures exercise the packaged player; they are not the actual raputa assets or device acceptance.
 const audioTailChart = `&title=Audio tail regression\n&inote_5=(120){4}1${','.repeat(308)}`;
 const chartTailChart = '&title=Chart tail regression\n&inote_5=(120){4}1h[#8],';
 if (parseSimaiChart) {
@@ -260,7 +259,7 @@ try {
   await page.locator('#btn-fullscreen').click();assert.equal(await page.locator('body').evaluate(el=>el.classList.contains('fullscreen')),true);
   await page.screenshot({path:path.join(output,buddy?'player-buddy.png':'player-single.png')});
   await page.evaluate(()=>window.postMessage({type:'exit-fullscreen'},'*'));await page.waitForFunction(()=>!document.body.classList.contains('fullscreen'));
-  await page.locator('#play').click();await page.waitForTimeout(100);await page.evaluate(()=>window.postMessage({type:'stop'},'*'));
+  await page.locator('#play').click();await page.waitForTimeout(100);await page.evaluate(()=>window.postMessage({type:'pause',cause:'lifecycle'},'*'));
   await page.waitForFunction(()=>document.querySelector('#play').getAttribute('aria-label')==='播放');
   assert.equal(await page.evaluate(()=>window.sources.every(s=>!s.started||s.stopped||s.ended)),true);
   assert.deepEqual(errors,[]);

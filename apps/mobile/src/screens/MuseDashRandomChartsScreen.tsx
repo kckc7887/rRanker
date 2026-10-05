@@ -1,5 +1,6 @@
+import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useEffect, useMemo, useState } from 'react';
-import { router, type Href } from 'expo-router';
+import { router } from 'expo-router';
 import { MuseDashDifficultyBadge } from '@/components/musedash/MuseDashDifficultyBadge';
 import { MuseDashRecordsFilterBar } from '@/components/musedash/MuseDashFilterBar';
 import { MuseDashScoreCard } from '@/components/musedash/MuseDashScoreCard';
@@ -70,12 +71,11 @@ export function MuseDashRandomChartsScreen() {
     () => filterMuseDashRandomCharts(charts, activeFilters, missMap.missByChart),
     [activeFilters, charts, missMap.missByChart],
   );
-  // 成就筛选依赖 miss 明细：明细仍在请求时等待到达，抽取只使用已确认的候选。
   const achievementDetailsPending = useMemo(
     () => museDashAchievementDetailsPending(charts, activeFilters, missMap.missByChart),
     [activeFilters, charts, missMap.missByChart],
   );
-  // 请求最终失败与 unknown 分开：失败时候选不完整，给出可重试的可见状态而不是静默缩小候选池。
+  /** 明细失败时提示重试，不能把未知候选当作不匹配。 */
   const achievementDetailsFailed = achievement === 'all' ? 0 : missMap.failedCount;
   const dlcOptions = useMemo(() => albums.data
     ? [...new Set(museDashSongsFromAlbums(albums.data).map((item) => item.albumTitle))]
@@ -88,10 +88,7 @@ export function MuseDashRandomChartsScreen() {
     setLastSeed(seed);
     setResults(pickRandomItems(pool, count, seed));
   };
-  const openDetail = (chart: MuseDashRandomChart) => router.push({
-    pathname: '/songs/[songId]',
-    params: { songId: chart.song.uid, levelIndex: String(chart.difficultyIndex) },
-  } as Href);
+  const openDetail = (chart: MuseDashRandomChart) => router.push(detailTargetHref(encodeDetailTarget({ game: 'musedash', songId: chart.song.uid, levelIndex: chart.difficultyIndex })));
 
   return <QueryStateView<MuseDashAlbumsResponse>
     data={albums.data}

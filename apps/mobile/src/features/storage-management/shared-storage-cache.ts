@@ -1,12 +1,12 @@
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
-import { isBoundedCacheEntry, isLegacyRuntimeDiagnosticCacheEntry } from './cache-policy';
+import { isBoundedCacheEntry } from './cache-policy';
 import { isExpoSystemCacheEntry } from './expo-system-cache';
 import { clearDirectoryContentsStrict, measureDirectoryBytesAsync, APP_CACHE_ROOT } from './fs-storage';
 import { reloadUiIconFonts } from './ui-icon-fonts';
 import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 function keepSharedCacheEntry(name: string): boolean {
-  return isExpoSystemCacheEntry(name) || isBoundedCacheEntry(name) || isLegacyRuntimeDiagnosticCacheEntry(name);
+  return isExpoSystemCacheEntry(name) || isBoundedCacheEntry(name);
 }
 
 export async function measureSharedCacheBytes(): Promise<number> {
@@ -15,7 +15,6 @@ export async function measureSharedCacheBytes(): Promise<number> {
 
 export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean; failures: string[] }> {
   invalidateResourceWrites('shared');
-  // Preserve framework fonts and uncommitted diagnostic migration sources.
   clearDirectoryContentsStrict(APP_CACHE_ROOT(), { skip: keepSharedCacheEntry });
   const { Image } = await import('expo-image');
   const failures: string[] = [];

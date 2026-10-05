@@ -20,12 +20,10 @@ const TERMINAL_PHASES: ReadonlySet<BestImageWebViewPhase> = new Set([
   'timeout',
 ]);
 
-/** 完成或失败后忽略迟到事件，避免页面状态倒退。 */
 export function isBestImageWebViewTerminal(phase: BestImageWebViewPhase): boolean {
   return TERMINAL_PHASES.has(phase);
 }
 
-/** 设置页面状态；未提供版本时保留当前值。 */
 export function updateBestImageWebViewState(
   setStates: Dispatch<SetStateAction<Record<string, BestImageWebViewState>>>,
   pageId: string,
@@ -41,7 +39,6 @@ export function updateBestImageWebViewState(
   }));
 }
 
-/** 终态不会被渲染中状态覆盖。 */
 export function updateBestImageWebViewRenderingState(
   setStates: Dispatch<SetStateAction<Record<string, BestImageWebViewState>>>,
   pageId: string,
@@ -60,7 +57,6 @@ export function updateBestImageWebViewRenderingState(
   });
 }
 
-/** 页面加载完成：仍处于 loading 时才置为 loaded（各板块共用的 WebView onLoadEnd 语义）。 */
 export function markBestImageWebViewLoaded(
   setStates: Dispatch<SetStateAction<Record<string, BestImageWebViewState>>>,
   pageId: string,
@@ -72,10 +68,6 @@ export function markBestImageWebViewLoaded(
   ));
 }
 
-/**
- * 渲染超时：页面就绪前长时间无响应则置为 timeout（舞萌板块的既有 12 秒保护）。
- * enabled 对应「WebView 页面源已就绪」；phase 为当前页阶段。
- */
 export function useBestImageWebViewTimeout(
   enabled: boolean,
   pageId: string,

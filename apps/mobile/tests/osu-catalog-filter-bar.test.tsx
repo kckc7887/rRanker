@@ -103,7 +103,6 @@ describe('OsuCatalogFilterBar 筛选栏', () => {
     expect(screen.queryAllByTestId('osu-catalog-filter-full-row')).toHaveLength(0);
     for (const row of pairRows) {
       expect(StyleSheet.flatten(row.props.style).flexDirection).toBe('row');
-      // 一行两个：每个 pair row 直接包含两个下拉/复选框列表根节点。
       expect(row.children.filter((child) => typeof child !== 'string')).toHaveLength(2);
     }
   });
@@ -132,7 +131,6 @@ describe('OsuCatalogFilterBar 筛选栏', () => {
     await waitFor(() => expect(screen.getByLabelText('选择常规 包括转谱')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('选择常规 包括转谱'));
     expect(onGeneralChange).toHaveBeenCalledWith(['converts']);
-    // 勾选后列表保持展开、可继续勾选；公共复选框列表没有完成按钮。
     expect(screen.getByLabelText('选择常规 推荐难度')).toBeTruthy();
     expect(screen.queryByLabelText('完成筛选选择')).toBeNull();
     await fireEvent.press(screen.getByLabelText('关闭下拉列表'));

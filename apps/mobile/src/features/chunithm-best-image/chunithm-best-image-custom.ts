@@ -11,15 +11,15 @@ import type { ChunithmBestImageSection } from './chunithm-best-image';
 export type CustomChunithmBestImageFilters = {
   quantity: number;
   difficulty: ChunithmLevelIndex | 'all';
-  /** String(GameVersion.id)，'all' 表示不限版本。 */
+
   version: string | 'all';
   constantMin: string;
   constantMax: string;
   rankMin: ChunithmRank | null;
   rankMax: ChunithmRank | null;
-  /** 版本筛选生效时的展示标签（如「STAR」）；未缩窄版本时为空。 */
+
   versionConditionLabel: string | null;
-  /** 版本以外生效筛选条件的展示标签（如难度/定数/评价）。 */
+
   conditionLabels: readonly string[];
 };
 
@@ -37,7 +37,6 @@ export const DEFAULT_CUSTOM_CHUNITHM_BEST_IMAGE_FILTERS: CustomChunithmBestImage
 
 export { parseBestImageQuantity };
 
-/** 单个条件时标题为「{条件}N」，多个条件时标题为「自定义N」并附小字提示。 */
 function buildSectionTitle(
   conditions: readonly string[],
   count: number,

@@ -1,5 +1,4 @@
-// crypto-js 深路径子模块的类型补充（@types/crypto-js 未提供深路径声明）。
-// 运行时见 src/utils/crypto-subset.ts：深路径导入可避免 CommonJS 主入口全量进包。
+/** @types/crypto-js 不提供深路径声明。 */
 declare module 'crypto-js/aes.js' {
   import CryptoJS from 'crypto-js';
   const AES: typeof CryptoJS.AES;

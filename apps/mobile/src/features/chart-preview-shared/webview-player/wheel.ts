@@ -48,11 +48,7 @@ export function createWheel(
   let selectedItem: HTMLElement | null = null;
   let pendingCommit = false;
   let disposed = false;
-  const previewScheduler = createLatestFrameScheduler(
-    requestAnimationFrame,
-    cancelAnimationFrame,
-    onPreview,
-  );
+  const previewScheduler = createLatestFrameScheduler(onPreview);
 
   const itemLabel = (v: number) => {
     if (labels) {
@@ -231,7 +227,7 @@ function setupInlineParameter(
   let pending = false;
   let timer = 0;
   const events = new PlayerEventScope(() => disposed);
-  const scheduler = createLatestFrameScheduler(requestAnimationFrame, cancelAnimationFrame, onPreview);
+  const scheduler = createLatestFrameScheduler(onPreview);
   const field = trigger.closest<HTMLElement>('.field');
   const labelNodes = field ? Array.from(field.childNodes).filter(node =>
     node.nodeType === 3 || (node instanceof HTMLElement && node.tagName === 'SPAN')) : [];
@@ -366,7 +362,7 @@ function setupInlineParameter(
     if (gesture?.id === event.pointerId) { endGesture(); flush(); }
   });
   events.listen(trigger, 'lostpointercapture', event => {
-    // 触摸的隐式捕获从子节点移交到按钮时，子节点的释放事件会向上冒泡。
+    /** 子节点的隐式捕获释放事件会冒泡到按钮。 */
     if (event.target !== trigger || event.pointerId !== gesture?.id) return;
     endGesture();
     flush();

@@ -9,17 +9,13 @@ import {
   type LxnsOAuthSession,
 } from './lxns-oauth';
 
-/** token 轮换提交：被本次轮换消费掉的旧会话与轮换结果一起上报，提交方据此校验凭据世代。 */
 export type LxnsTokenRotationUpdate = {
-  /** 请求开始时的会话；其 refresh_token 已在上游被消费。 */
   previous: LxnsOAuthSession;
   next: LxnsOAuthSession;
 };
 
-/** token 轮换成功后的回调：由调用方按凭据世代校验后把新会话提交到账号存储。 */
 export type LxnsTokenRotationHandler = (update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
 
-/** 落雪品牌的状态码文案：在协议层显式声明，不复用其它数据源的文案做字符串改写。 */
 const LXNS_STATUS_TEXTS: ProviderStatusTexts = {
   authentication: '登录信息或 Token 无效',
   permission: '当前账号无权读取该数据',
@@ -33,24 +29,16 @@ export function lxnsErrorFromStatus(status: number): ProviderError {
   return providerErrorFromStatus(status, LXNS_STATUS_TEXTS);
 }
 
-/** 各游戏 provider 注入的差异化文案：envelope 校验失败、鉴权拒绝兜底、超时。 */
 export type LxnsOAuthRequestTexts = {
   envelopeSchemaMessage: string;
   authRejectedFallback: string;
   timeoutMessage: string;
 };
 
-/** 取消检查统一走这里：轮换与请求之间要复查多次，避免在方法里重复展开分支。 */
 function assertNotAborted(signal?: AbortSignal): void {
   if (signal?.aborted) throw signal.reason;
 }
 
-/**
- * LXNS OAuth 请求核心：持有会话并负责 token 互斥轮换（refreshPromise 去重，
- * 轮换走公共 rotateLxnsTokens），为落雪系 provider 提供同构的 Bearer 请求骨架。
- * request 返回 null 当且仅当 optional 分支命中（HTTP 404 / envelope code 404 / data 缺失）；
- * 非 optional 时上游 data 为 null/undefined 会原样透传，由调用方自行判别。
- */
 export class LxnsOAuthRequestCore {
   private session: LxnsOAuthSession;
   private refreshPromise: Promise<void> | null = null;
@@ -90,7 +78,7 @@ export class LxnsOAuthRequestCore {
   ): Promise<unknown> {
     assertNotAborted(signal);
     const accessToken = await this.ensureFreshAccessToken();
-    // 刷新可能耗时：轮换结果仍会为其它共享账号提交，但这次业务读取必须先重新确认取消。
+    /** 轮换仍须保存，但已取消的业务请求不能继续读取。 */
     assertNotAborted(signal);
     try {
       const envelope = await requestJson({

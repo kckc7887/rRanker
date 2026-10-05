@@ -264,7 +264,6 @@ describe('Chunithm overview', () => {
   });
 
   it('does not warn when the cache-first refetch resolves stale but the background refresh already settled fresh', async () => {
-    // 缓存优先：refetch 立即返回打标缓存；后台网络读取落定后最终缓存已回写为新鲜数据。
     mockRefetch.mockResolvedValue({
       data: {
         ...mockBundle,

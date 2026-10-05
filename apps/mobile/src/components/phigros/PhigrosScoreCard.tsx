@@ -29,9 +29,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   record: ScoreRecord;
   catalogTitle?: string;
   rank?: number;
-  /** 推分页：当前 Acc → 目标 Acc */
   pushHint?: PhigrosPushHint;
-  /** 谱面物量；缺省时不判定 XING */
   totalNotes?: number;
   artworkSource?: string | null;
 }) {

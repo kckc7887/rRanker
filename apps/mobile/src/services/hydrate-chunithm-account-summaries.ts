@@ -1,8 +1,8 @@
 import {
   buildChunithmMapIconUrl,
   CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+  ChunithmPersonalSnapshotSchema,
   chunithmPersonalResourceKey,
-  type ChunithmPersonalSnapshot,
 } from '@/domain/chunithm-personal';
 import { useSession } from '@/state/session-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
@@ -11,7 +11,6 @@ import { loadItemsBounded } from '@/services/offset-pagination';
 
 const repository = new SqliteSnapshotRepository();
 
-/** 从分账号缓存补齐中二账号列表所需的 Rating、领域与头像摘要。 */
 export async function hydrateChunithmAccountSummaries(signal?: AbortSignal): Promise<void> {
   const accounts = useSession.getState().boundAccounts.filter(
     (account) => account.gameId === 'chunithm' && account.providerId === 'lxns',
@@ -24,9 +23,10 @@ export async function hydrateChunithmAccountSummaries(signal?: AbortSignal): Pro
     signal,
     load: async (account) => {
       try {
-        const snapshot = await repository.getResource<ChunithmPersonalSnapshot>(
+        const snapshot = await repository.getResource(
           chunithmPersonalResourceKey(account.id),
           CHUNITHM_PERSONAL_SNAPSHOT_SCHEMA_VERSION,
+          ChunithmPersonalSnapshotSchema,
         );
         const player = snapshot?.player;
         if (!player || signal?.aborted) return;
@@ -48,7 +48,6 @@ export async function hydrateChunithmAccountSummaries(signal?: AbortSignal): Pro
           ratingPossession: player.rating_possession ?? null,
         });
       } catch {
-        // 单个账号缓存读取失败不阻断列表；保留上次持久化的元数据。
       }
     },
   });

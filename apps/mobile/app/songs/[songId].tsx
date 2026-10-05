@@ -27,7 +27,7 @@ export default function SongDetailScreen() {
   const theme = useAppTheme();
   const activeGameId = useSession((s) => s.activeGameId);
   const params = useLocalSearchParams<DetailTargetParams>();
-  const resolution = decodeDetailTarget(activeGameId, params);
+  const resolution = decodeDetailTarget(params);
 
   if (!resolution.ok) {
     return <EmptyDataView
@@ -62,7 +62,6 @@ function DetailGameSwitch({ gameId }: { gameId: GameId }) {
   </>;
 }
 
-/** 先解析出已校验的 DetailTarget，再按游戏挂载对应详情页。 */
 function SongDetailTargetScreen({ target, themeBackground }: {
   target: DetailTarget;
   themeBackground: string;
@@ -82,7 +81,7 @@ function SongDetailTargetScreen({ target, themeBackground }: {
       return <PhiraSongDetailScreen chartId={target.chartId} />;
     case 'adofai':
       return <TufLevelDetailScreen levelId={target.levelId} />;
-    // osu! 四模式共用歌曲详情页：beatmapsetId 定位谱面集，beatmapId 定位成绩卡带入的难度。
+    /** beatmapsetId 定位歌曲，beatmapId 定位难度。 */
     case 'osu-standard':
     case 'osu-mania':
     case 'osu-catch':

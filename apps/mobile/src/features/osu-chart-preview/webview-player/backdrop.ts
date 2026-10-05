@@ -280,7 +280,7 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
         ctx.save();
         if (presentation.backgroundBlur > 0) {
           if (!compositeSurface) {
-            // HTML Canvas supports the tested SVG colour matrix path; OffscreenCanvas does not.
+            /** SVG 色矩阵滤镜只在 HTML Canvas 生效，OffscreenCanvas 不支持。 */
             compositeSurface = document.createElement('canvas');
             compositeSurface.width = 1280; compositeSurface.height = 720;
             compositeContext = compositeSurface.getContext('2d')!;
