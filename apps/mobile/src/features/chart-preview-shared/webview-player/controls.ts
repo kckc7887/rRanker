@@ -40,6 +40,10 @@ export function installPreviewControls(options: PreviewControlsOptions): () => v
       button.textContent = `${endpoint.toUpperCase()} —`;
       loop.append(button);
     }
+    const separator = document.createElement('span');
+    separator.className = 'loop-sep';
+    separator.textContent = '⇌';
+    loop.firstElementChild!.after(separator);
   }
   time.classList.add('preview-time-row');
   timeline.classList.add('preview-timeline-row');
@@ -115,8 +119,18 @@ export function installPreviewControls(options: PreviewControlsOptions): () => v
   scroll.className = 'preview-scroll';
   controls.before(scroll);
   scroll.append(controls);
+  const fullscreenPanel = document.getElementById('fs-overlay') ?? controls;
   const resize = () => {
-    if (document.body.classList.contains('fullscreen')) return;
+    if (document.body.classList.contains('fullscreen')) {
+      document.body.style.setProperty('--preview-fullscreen-controls-height', `${fullscreenPanel.offsetHeight}px`);
+      return;
+    }
+    const title = document.getElementById('title')!;
+    const text = title.firstElementChild as HTMLElement | null;
+    const overflow = Math.max(0, (text?.scrollWidth ?? 0) - title.clientWidth);
+    title.style.setProperty('--title-offset', `${-overflow}px`);
+    title.style.setProperty('--title-duration', `${Math.max(6, overflow / 28 + 3)}s`);
+    title.classList.toggle('is-scrolling', overflow > 0);
     const remaining = Math.max(0, app.clientHeight - header.offsetHeight - 32);
     const ratio = options.stageAspectRatio ?? 16 / 9;
     const height = Math.min(stage.clientWidth / ratio, remaining * 0.55);
@@ -126,9 +140,11 @@ export function installPreviewControls(options: PreviewControlsOptions): () => v
   const resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(app);
   resizeObserver.observe(header);
+  resizeObserver.observe(fullscreenPanel);
   events.own(() => resizeObserver.disconnect());
   const fullscreenObserver = new MutationObserver(resize);
   fullscreenObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+  fullscreenObserver.observe(document.getElementById('title')!, { childList: true, subtree: true });
   events.own(() => fullscreenObserver.disconnect());
   resize();
   return () => events.dispose();

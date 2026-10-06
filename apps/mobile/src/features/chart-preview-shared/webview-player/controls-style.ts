@@ -16,7 +16,7 @@ html[data-theme="light"] body.preview-controls {
   color:var(--control-text);
 }
 .preview-controls:not(.fullscreen) #app { overflow:hidden; }
-.preview-controls:not(.fullscreen) #header { align-items:center; padding:2px 2px 4px; border-bottom:1px solid var(--control-line); }
+.preview-controls:not(.fullscreen) #header { align-items:center; padding:2px 2px 4px; border:0; }
 .preview-controls #title { font-size:15px; font-weight:650; }
 .preview-controls :is(#status,#mode-notice,#media-notice) { color:var(--control-muted); }
 .preview-controls:not(.fullscreen) #controls {
@@ -91,19 +91,19 @@ html[data-theme="light"] body.preview-controls {
 .preview-controls #controls .preview-settings .toggle[aria-pressed="true"] { background:var(--control-raised); border-color:var(--control-accent-text); color:var(--control-text); }
 .preview-settings .toggle[aria-pressed="true"]::before { background:var(--control-accent); border-color:var(--control-accent-text); }
 .preview-controls [hidden] { display:none!important; }
-.preview-controls:not(.fullscreen) .preview-details { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); grid-auto-rows:22px; gap:4px 12px; padding-bottom:9px; border-bottom:1px solid var(--control-line); color:var(--control-muted); font-size:10px; line-height:22px; }
+.preview-controls:not(.fullscreen) .preview-details { display:flex; flex-wrap:nowrap; align-items:center; gap:12px; height:28px; min-width:0; overflow-x:auto; overflow-y:hidden; scrollbar-width:thin; color:var(--control-muted); font-size:10px; line-height:20px; }
 .preview-controls:not(.fullscreen) .preview-details :is(#info-bar,.info-row) { display:contents; }
-.preview-controls:not(.fullscreen) .preview-details .info-item { min-width:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; font-size:10px; }
+.preview-controls:not(.fullscreen) .preview-details .info-item { flex:none; white-space:nowrap; overflow:visible; font-size:10px; }
 .preview-details .info-val { color:var(--control-text); font-variant-numeric:tabular-nums; }
-@media(min-width:600px) { .preview-controls:not(.fullscreen) .preview-details { grid-template-columns:repeat(3,minmax(0,1fr)); } }
-.preview-controls:not(.fullscreen) #header { display:grid; grid-template-columns:minmax(0,1fr); gap:4px; flex:none; }
-.preview-controls:not(.fullscreen) #title { display:-webkit-box; -webkit-box-orient:vertical; -webkit-line-clamp:2; white-space:normal; overflow-wrap:anywhere; height:40px; line-height:20px; overflow:hidden; }
-.preview-heading-badges { display:flex; gap:8px; align-items:center; min-width:0; height:26px; }
-.preview-difficulty { display:flex; gap:5px; min-width:0; max-width:100%; overflow:hidden; white-space:nowrap; border:1px solid; border-radius:999px; padding:4px 10px; font-size:11px; font-weight:700; }
-.preview-difficulty-label { min-width:0; overflow:hidden; text-overflow:ellipsis; }
-.preview-difficulty-value { flex:none; font-variant-numeric:tabular-nums; }
-.preview-identity { flex:none; max-width:40%; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:11px; color:var(--control-muted); }
-.preview-controls:not(.fullscreen) #status { max-width:100%; width:100%; height:16px; line-height:16px; }
+.preview-controls:not(.fullscreen) #header { display:flex; justify-content:flex-start; align-items:center; gap:8px; flex:none; min-height:28px; }
+.preview-controls:not(.fullscreen) #title { flex:0 1 12em; width:12em; min-width:0; height:24px; line-height:24px; white-space:nowrap; overflow:hidden; text-overflow:clip; }
+.preview-controls #title>span { display:inline-block; width:max-content; }
+.preview-controls #title.is-scrolling>span { animation:preview-title-scroll var(--title-duration) linear 1s infinite alternate; }
+@keyframes preview-title-scroll { from { transform:translateX(0); } to { transform:translateX(var(--title-offset)); } }
+.preview-heading-badges { display:flex; flex:none; align-items:center; }
+.preview-difficulty { display:flex; white-space:nowrap; border:1px solid; border-radius:999px; padding:3px 9px; font-size:11px; font-weight:700; }
+.preview-difficulty-value { font-variant-numeric:tabular-nums; }
+.preview-controls:not(.fullscreen) #status { flex:1; min-width:0; width:auto; text-align:right; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; font-size:10px; line-height:16px; }
 .preview-scroll { flex:1; min-height:0; overflow-y:auto; overscroll-behavior-y:contain; scrollbar-width:thin; }
 .preview-controls:not(.fullscreen) :is(#stage-wrap,#canvas-wrap) { flex:none; height:var(--preview-stage-height)!important; min-height:0; width:100%; }
 .preview-controls:not(.fullscreen) #stage-wrap .stage { width:min(100%,var(--preview-stage-width)); height:100%; aspect-ratio:auto; }
@@ -143,12 +143,16 @@ body.preview-controls.fullscreen :is(#controls,#fs-overlay) .transport-btn {
   background:var(--control-raised); color:var(--control-text); display:flex; flex-direction:column; justify-content:center; align-items:center; gap:2px;
 }
 body.preview-controls.fullscreen .transport-btn::after { content:attr(aria-label); font-size:10px; line-height:12px; white-space:nowrap; }
-body.preview-controls.fullscreen :is(#controls,#fs-overlay) :is(#play,#play-button,#fs-play) { flex:1.3; height:44px; width:auto; border-radius:9px; background:var(--control-accent); color:var(--control-on-accent); box-shadow:none; }
+body.preview-controls.fullscreen :is(#controls,#fs-overlay) :is(#play,#play-button,#fs-play) { flex:1.3; height:44px; width:auto; border-radius:9px; background:var(--control-accent); color:var(--control-on-accent); box-shadow:none; display:flex; flex-direction:column; align-items:center; justify-content:center; gap:2px; }
+body.preview-controls.fullscreen :is(#play,#play-button)::after { content:attr(aria-label); font-size:10px; line-height:12px; }
 body.preview-controls.fullscreen :is(#controls,#fs-overlay) .transport-btn svg { width:18px; height:18px; }
-.preview-controls :is(#controls,#fs-overlay) .loop-row { display:flex; gap:10px; width:100%; }
-.preview-controls :is(#controls,#fs-overlay) .loop-btn { flex:1; min-width:0; min-height:36px; border:1px solid var(--control-line); border-radius:9px; background:var(--control-bg); color:var(--control-muted); font-variant-numeric:tabular-nums; }
+.preview-controls :is(#controls,#fs-overlay) .loop-row { display:flex; justify-content:space-between; gap:4px; width:100%; color:var(--control-muted); }
+.preview-controls :is(#controls,#fs-overlay) .loop-btn { flex:none; width:44%; min-width:36px; min-height:36px; padding:3px 14px; font-family:monospace; font-size:13px; font-weight:700; border:1px solid var(--control-line); border-radius:10px; background:var(--control-bg); color:var(--control-muted); font-variant-numeric:tabular-nums; cursor:pointer; }
 .preview-controls :is(#controls,#fs-overlay) .loop-btn.on { border-color:var(--control-accent-text); color:var(--control-accent-text); background:var(--control-raised); }
-.preview-controls .loop-sep { display:none; }
+.preview-controls .loop-sep { display:inline; margin:0 2px; }
+body.preview-controls.fullscreen #fs-lock { top:auto; right:max(12px,env(safe-area-inset-right),calc((100vw - 760px) / 2)); bottom:calc(max(10px,env(safe-area-inset-bottom)) + var(--preview-fullscreen-controls-height,0px) + 16px); left:auto; transform:none; width:48px; height:48px; border-radius:9px; border:1px solid var(--control-line); background:var(--control-panel); color:var(--control-text); flex-direction:column; gap:3px; box-shadow:none; }
+body.preview-controls.fullscreen #fs-lock::after { content:attr(aria-label); font-size:10px; line-height:12px; }
+body.preview-controls.fullscreen #fs-lock.locked { color:var(--control-on-accent); background:var(--control-accent); border-color:var(--control-accent); }
 body.preview-controls.fullscreen :is(#time-label,#fs-time-label) { font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
 @media(max-width:375px) { .preview-controls:not(.fullscreen) #controls { padding:10px; } .parameter-label { font-size:10px; } .parameter-value { font-size:13px; } }
 @media(prefers-reduced-motion:reduce) { .preview-controls #controls * { transition:none!important; } }
