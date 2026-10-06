@@ -1,4 +1,7 @@
-import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import type { ReactElement } from 'react';
+import { notifyManager } from '@tanstack/query-core';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
+import { act, fireEvent, render as renderScreen, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Animated, InteractionManager, Platform, processColor, StyleSheet } from 'react-native';
 import { SearchScreen } from '../app/(tabs)/search';
@@ -271,7 +274,75 @@ jest.mock('@/hooks/use-collections', () => ({ useCollections: () => ({
 }) }));
 jest.mock('@/components/CollectionImage', () => ({ CollectionImage: () => null }));
 
+async function render(ui: ReactElement) {
+  const client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
+  const screen = await renderScreen(<QueryClientProvider client={client}>{ui}</QueryClientProvider>);
+  await waitFor(() => expect(client.isFetching()).toBe(0));
+  await act(async () => {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  });
+  return screen;
+}
+
+const DXTAG_BASE = 'https://rranker-maimai-data.cn-nb1.rains3.com/DXTag';
+
+type RenderNode = {
+  props?: { testID?: string; accessibilityLabel?: string };
+  children?: RenderNode | RenderNode[] | string | null;
+};
+
+function asNode(value: unknown): RenderNode | null {
+  return value !== null && typeof value === 'object' ? value as RenderNode : null;
+}
+
+function childNodes(node: RenderNode): RenderNode[] {
+  if (Array.isArray(node.children)) return node.children.flatMap((child) => {
+    const current = asNode(child);
+    return current ? [current] : [];
+  });
+  const current = asNode(node.children);
+  return current ? [current] : [];
+}
+
+function markerOrder(node: RenderNode | null): string[] {
+  if (!node) return [];
+  const markers: string[] = [];
+  if (node.props?.testID === 'dxrating-config-tags') markers.push('tags');
+  if (node.props?.testID === 'maimai-difficulty-radar-master') markers.push('radar');
+  if (node.props?.accessibilityLabel === '谱面物量') markers.push('notes');
+  for (const child of childNodes(node)) markers.push(...markerOrder(child));
+  return markers;
+}
+
+function masterChart(node: unknown): RenderNode | null {
+  const single = asNode(node);
+  const nodes = Array.isArray(node) ? node.flatMap((child) => {
+    const current = asNode(child);
+    return current ? [current] : [];
+  }) : single ? [single] : [];
+  for (const current of nodes) {
+    for (const child of childNodes(current)) {
+      const found = masterChart(child);
+      if (found) return found;
+    }
+    const order = markerOrder(current);
+    if (order.includes('tags') && order.includes('radar') && order.includes('notes')) return current;
+  }
+  return null;
+}
+
 describe('M2 song query screens', () => {
+  beforeAll(() => {
+    notifyManager.setScheduler((callback) => {
+      callback();
+    });
+  });
+  afterAll(() => {
+    notifyManager.setScheduler((callback) => {
+      setTimeout(callback, 0);
+    });
+  });
+
   beforeEach(() => {
     mockSongRouteParams = { songId: '1', gameId: 'maimai' };
     mockDetailedCatalogAvailable = true;
@@ -959,6 +1030,61 @@ describe('M2 song query screens', () => {
     expect(screen.getAllByText(/MASTER|BASIC/).map((node) =>
       Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children))
       .toEqual(['MASTER', 'BASIC']);
+  });
+
+  it('shows a difficulty-colored five-axis radar between DXRating tags and note counts', async () => {
+    mockDxRatingTagCount = 1;
+    mockVideoHead.mockImplementation(async (url: string) => {
+      if (url === `${DXTAG_BASE}/10001.json`) {
+        return new Response(JSON.stringify([
+          { difficulty: 3, scores: [1.2, 3.4, 5.6, 7.8, 9] },
+          { difficulty: 0, scores: [2, 2, 2, 2, 2] },
+        ]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      if (url === `${DXTAG_BASE}/1.json`) {
+        return new Response(JSON.stringify([
+          { difficulty: 3, scores: [8, 1, 2, 3, 4] },
+        ]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      }
+      return new Response(null, { status: mockVideoAvailable ? 200 : 404 });
+    });
+    const screen = await render(<SongDetailScreen />);
+    await waitFor(() => expect(screen.getByTestId('maimai-difficulty-radar-master')).toBeTruthy());
+
+    expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/10001.json`, expect.any(Object));
+    expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/10001.json`)).toHaveLength(1);
+    const radar = screen.getByTestId('maimai-difficulty-radar-master');
+    for (const axis of ['键盘', '星星', '技巧', '体力', '爆发']) {
+      expect(JSON.stringify(radar)).toContain(axis);
+    }
+    expect(screen.queryByText('1.2')).toBeNull();
+    const masterColor = { payload: processColor('#7137C8'), type: 0 };
+    expect(screen.getByTestId('maimai-difficulty-radar-shape-master').props).toEqual(expect.objectContaining({
+      stroke: masterColor,
+      fill: masterColor,
+      fillOpacity: 0.35,
+    }));
+    expect(screen.getByTestId('maimai-difficulty-radar-shape-master').props.strokeDasharray).toBeUndefined();
+    expect(markerOrder(masterChart(screen.toJSON()))).toEqual(['tags', 'radar', 'notes']);
+
+    await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
+    await waitFor(() => expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/1.json`, expect.any(Object)));
+    await waitFor(() => expect(screen.getByTestId('maimai-difficulty-radar-master')).toBeTruthy());
+  });
+
+  it('hides the difficulty radar when DXTag is missing and does not request it for utage', async () => {
+    const missing = await render(<SongDetailScreen />);
+    expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/10001.json`, expect.any(Object));
+    expect(missing.queryByTestId('maimai-difficulty-radar-master')).toBeNull();
+    expect(missing.getByLabelText('谱面物量')).toBeTruthy();
+    expect(missing.getByText('谱师：DX主谱师')).toBeTruthy();
+
+    mockSongRouteParams = { songId: '100123', chartType: 'UTAGE', gameId: 'maimai' };
+    mockVideoHead.mockClear();
+    const utage = await render(<SongDetailScreen />);
+    expect(utage.getByText('两人协力')).toBeTruthy();
+    expect(utage.queryByTestId(/maimai-difficulty-radar/)).toBeNull();
+    expect(mockVideoHead.mock.calls.some(([url]) => String(url).includes('/DXTag/'))).toBe(false);
   });
 
   it('shows the version of the currently selected SD or DX chart', async () => {

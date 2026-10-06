@@ -12,6 +12,7 @@ import {
   DxRatingChartTagSheet,
   type DxRatingChartTagSheetData,
 } from '@/components/maimai/DxRatingChartTagSheet';
+import { MaimaiDifficultyRadar } from '@/components/maimai/MaimaiDifficultyRadar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { AchievementValue, ChartTypeBadge, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
@@ -52,6 +53,7 @@ import {
 import { useCollections } from '@/hooks/use-collections';
 import { useDetailedCatalog, useMaimaiSongDetail } from '@/hooks/use-detailed-catalog';
 import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
+import { useMaimaiDxTagScores } from '@/hooks/use-maimai-dxtag';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { ProviderError } from '@/providers/errors';
@@ -479,6 +481,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     ? `U·TA·GE · ${chart.level}`
     : `${chart.type} · ${visual.label} · ${chart.level}`;
   const chartTagPresets = dxratingTags.map((tag) => tag.name);
+  const dxTagScores = useMaimaiDxTagScores(song.id, chart.type, chart.levelIndex);
 
   const openChartPreview = (buddySide?: 0 | 1 | 'dual') => {
     router.push({
@@ -551,6 +554,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     <DxRatingTags tags={dxratingTags}
       onTagPress={showDxRatingTagDescription}
       onShowAll={() => onShowAllDxRatingTags({ songTitle: song.title, chartLabel, tags: dxratingTags })} />
+    {dxTagScores ? <MaimaiDifficultyRadar scores={dxTagScores} color={visual.color} difficulty={chart.difficulty} /> : null}
     <ChartNotesTables chart={chart} loading={notesLoading} error={notesError} onRetry={onRetryNotes} />
     <DetailPressable accessibilityRole="button" accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
       disabled={library.isUpdating}
