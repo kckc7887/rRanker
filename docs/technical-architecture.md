@@ -34,7 +34,7 @@
 
 | 游戏 | 主要来源与数据 |
 |---|---|
-| 舞萌 | 水鱼或 LXNS 账号成绩、LXNS 曲库、DXRating 标签 |
+| 舞萌 | 水鱼或 LXNS 账号成绩、LXNS 曲库、DXRating 标签；歌曲详情按谱面文件读取发布桶 `DXTag/{谱面文件ID}.json` 的五维难点 |
 | CHUNITHM | LXNS 成绩、曲库、个人资料与合集 |
 | Phigros | Kyou 认证与云存档、发布资源中的曲库和定数 |
 | ADOFAI | TUF 玩家、最佳成绩和关卡 |

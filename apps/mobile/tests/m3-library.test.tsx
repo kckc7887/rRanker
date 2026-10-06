@@ -127,6 +127,7 @@ useMaimaiSongDetail: (songId: string) => {
 jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => ({
   data: undefined, isLoading: false, isError: false, error: null,
 }) }));
+jest.mock('@/hooks/use-maimai-dxtag', () => ({ useMaimaiDxTagScores: () => null }));
 jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => ({ data: undefined, error: null }) }));
 jest.mock('@/hooks/use-plates', () => ({ usePlates: () => ({ data: undefined, error: null }) }));
 jest.mock('@/hooks/use-muse-dash', () => ({ useMuseDashAlbums: () => ({ data: undefined, source: undefined, error: null }) }));
