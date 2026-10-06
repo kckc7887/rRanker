@@ -39,29 +39,8 @@ export const PHIGROS_STRENGTH_POLICY = {
 
 const INCLUDED_RATES = new Set<string>(PHIGROS_STRENGTH_POLICY.includedRates);
 
-export function describePhigrosStrengthPoolPolicy(): string {
-  const lowestRate = PHIGROS_STRENGTH_POLICY.includedRates[0].toUpperCase();
-  return `阈值取玩家 RKS 减 ${PHIGROS_STRENGTH_POLICY.thresholdOffset} 后向下保留一位小数，最高为 ${PHIGROS_STRENGTH_POLICY.thresholdCap.toFixed(1)}。`
-    + `候选池包含定数达到阈值的全部谱面，稀缺系数只由候选数量决定；`
-    + `基础分析池仅包含 RKS 达标且评级 ${lowestRate} 以上的成绩。`
-    + `标签基础样本为 1–${PHIGROS_STRENGTH_POLICY.smallSampleCount - 1} 张时，`
-    + `从候选池内已有成绩但未入分析池的同标签谱面按 RKS 向下补入最多 ${PHIGROS_STRENGTH_POLICY.maxSupplementsPerTag} 张，`
-    + '参与标签平均、覆盖率和歌曲列表。再对未达到同类满分基准的结果应用校准并封顶。';
-}
-
-export function describePhigrosStrengthPolicyTexts(): {
-  poolRateLabel: string;
-  emptyPool: string;
-  noSecondaryTags: string;
-  unexpectedPrimaryAxes: string;
-} {
-  const poolRateLabel = PHIGROS_STRENGTH_POLICY.includedRates[0].toUpperCase();
-  return {
-    poolRateLabel,
-    emptyPool: `当前没有同时满足 RKS 阈值与 ${poolRateLabel} 以上评级的成绩。`,
-    noSecondaryTags: `入池谱面没有票数大于 ${PHIGROS_STRENGTH_POLICY.secondaryTagMinVotes} 的细分标签。`,
-    unexpectedPrimaryAxes: `Kyou 主标签不是预期的 ${PHIGROS_STRENGTH_POLICY.primaryAxisCount} 项，已停止生成雷达以避免错误结论。`,
-  };
+export function describePhigrosStrengthUnexpectedPrimaryAxes(): string {
+  return `Kyou 主标签不是预期的 ${PHIGROS_STRENGTH_POLICY.primaryAxisCount} 项，已停止生成雷达以避免错误结论。`;
 }
 
 export interface PhigrosStrengthPool {

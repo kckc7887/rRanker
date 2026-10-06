@@ -1,14 +1,15 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { ReactNode } from 'react';
 import PhigrosStrengthAnalysisScreen from '../app/tools/strength-analysis';
+import type { CatalogSnapshot } from '@/domain/models';
+import { buildPhigrosKyouChartTagIndex, type PhigrosKyouChartTagsSnapshot } from '@/domain/phigros-kyou';
 import {
-  describePhigrosStrengthPolicyTexts,
-  describePhigrosStrengthPoolPolicy,
+  analyzePhigrosStrength,
+  describePhigrosStrengthUnexpectedPrimaryAxes,
 } from '@/domain/phigros-strength-analysis';
 
-const poolDescription = describePhigrosStrengthPoolPolicy();
-const policyTexts = describePhigrosStrengthPolicyTexts();
+const unexpectedPrimaryAxes = describePhigrosStrengthUnexpectedPrimaryAxes();
 
 const mockGameRefetch = jest.fn(async () => undefined);
 const mockCatalogRefetch = jest.fn(async () => undefined);
@@ -95,6 +96,19 @@ function score(levelIndex: number, rating: number, rate: string) {
   };
 }
 
+function renderedAnalysis() {
+  return analyzePhigrosStrength(
+    16.1691,
+    [score(2, 15.9, 'a'), score(3, 16.1, 's')],
+    buildPhigrosKyouChartTagIndex(
+      tagSnapshot as PhigrosKyouChartTagsSnapshot,
+      catalogSnapshot as unknown as CatalogSnapshot,
+    ),
+    tags,
+    catalogSnapshot as unknown as CatalogSnapshot,
+  );
+}
+
 function setSuccessfulQueries(stale = false) {
   mockGameQuery = {
     isLoading: false, isError: false, isDataStale: stale, refetch: mockGameRefetch,
@@ -123,50 +137,58 @@ describe('Phigros strength analysis screen', () => {
     setSuccessfulQueries();
   });
 
-  it('renders the pool, five-axis summary, detailed tags and accessibility description', async () => {
+  it('renders the profile, axis values, score cards and selected-song sheet', async () => {
+    const analysis = renderedAnalysis();
     const screen = await render(<PhigrosStrengthAnalysisScreen />);
-    expect(screen.getByText('基础池 RKS ≥ 15.9 · A 及以上')).toBeTruthy();
-    expect(screen.getByText('16.1691')).toBeTruthy();
-    expect(screen.getByText('分析：读谱·耐力双核型')).toBeTruthy();
+    const readingTag = analysis.mainTags.find((tag) => tag.name === '读谱');
+    const firstPractice = analysis.recommendations[0];
+    expect(readingTag).toBeTruthy();
+    expect(firstPractice).toBeTruthy();
+    expect(screen.getByText(`分析：${analysis.mainTagProfileLabel}`)).toBeTruthy();
     expect(screen.queryByText('五维主标签')).toBeNull();
-    expect(screen.getByLabelText(/五维实力雷达/)).toBeTruthy();
-    expect(screen.getByText('原始 16.0000 × 1.0062')).toBeTruthy();
-    expect(screen.getByText('原始 16.1000 × 1.0062')).toBeTruthy();
-    expect(screen.getByText(poolDescription).props.numberOfLines).toBe(1);
-    expect(screen.getByLabelText('展开分析池说明').props.accessibilityState).toEqual({ expanded: false });
-    await fireEvent.press(screen.getByLabelText('展开分析池说明'));
-    expect(screen.getByLabelText('收起分析池说明').props.accessibilityState).toEqual({ expanded: true });
-    expect(screen.getByText(poolDescription).props.numberOfLines).toBeUndefined();
-    await fireEvent.press(screen.getByLabelText('收起分析池说明'));
-    expect(screen.getByLabelText('展开分析池说明')).toBeTruthy();
-    expect(screen.getByText(poolDescription).props.numberOfLines).toBe(1);
-    expect(screen.getByText('候选均定 16.1000')).toBeTruthy();
+    expect(screen.queryByText('细分标签')).toBeNull();
+    expect(screen.queryByText('差速')).toBeNull();
+    expect(screen.queryByLabelText('展开分析池说明')).toBeNull();
+    expect(screen.queryByText(/针对 /)).toBeNull();
+    const axisValueCounts = new Map<string, number>();
+    for (const tag of analysis.mainTags) {
+      const value = tag.averageRks == null ? '—' : tag.averageRks.toFixed(4);
+      axisValueCounts.set(value, (axisValueCounts.get(value) ?? 0) + 1);
+    }
+    for (const [value, count] of axisValueCounts) {
+      expect(screen.getAllByText(value)).toHaveLength(count);
+    }
     expect(screen.getByText('薄弱项练习')).toBeTruthy();
-    expect(screen.getByText('针对 读谱 · 由低定数起，目标按单张独立估算')).toBeTruthy();
-    expect(screen.getAllByText(/目标 Acc ≥ \d+\.\d{2}%/).length).toBeGreaterThan(0);
-    await fireEvent.press(screen.getByLabelText(/查看推荐谱面 Song 的IN难度卡片/));
+    expect(screen.getAllByText('99%').length).toBeGreaterThan(0);
+    expect(screen.getAllByLabelText('查看谱面 Song')).toHaveLength(analysis.recommendations.length);
+    await fireEvent.press(screen.getAllByLabelText('查看谱面 Song')[0]!);
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: 'song', levelIndex: '2', gameId: 'phigros' },
+      params: {
+        songId: firstPractice!.songId,
+        levelIndex: String(firstPractice!.levelIndex),
+        gameId: 'phigros',
+      },
     });
-    expect(screen.getByText('差速')).toBeTruthy();
-    expect(screen.getByText('样本较少')).toBeTruthy();
 
-    await fireEvent.press(screen.getAllByLabelText('查看读谱标签歌曲列表')[0]!);
-    expect(screen.getByTestId('phigros-strength-tag-songs-sheet')).toBeTruthy();
-    expect(screen.getByText('读谱标签歌曲')).toBeTruthy();
-    expect(screen.getByText('2 张入池 · 2 张候选')).toBeTruthy();
-    expect(screen.getByText('覆盖 100% · 均定 16.1000 · ×1.0062')).toBeTruthy();
-    expect(screen.getAllByText('Song').length).toBeGreaterThan(0);
-    expect(screen.getByText('RKS 15.9000')).toBeTruthy();
-    await fireEvent.press(screen.getByLabelText('查看歌曲 Song 的AT难度卡片'));
+    await fireEvent.press(screen.getByLabelText('查看读谱标签歌曲列表'));
+    const sheet = screen.getByTestId('phigros-strength-tag-songs-sheet');
+    expect(within(sheet).getByText('读谱')).toBeTruthy();
+    expect(within(sheet).queryByText(/覆盖/)).toBeNull();
+    expect(within(sheet).getAllByLabelText('查看谱面 Song')).toHaveLength(readingTag!.charts.length);
+    expect(within(sheet).getByText('15.90')).toBeTruthy();
+    await fireEvent.press(within(sheet).getAllByLabelText('查看谱面 Song')[0]!);
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/[songId]',
-      params: { songId: 'song', levelIndex: '3', gameId: 'phigros' },
+      params: {
+        songId: readingTag!.charts[0]!.songId,
+        levelIndex: String(readingTag!.charts[0]!.levelIndex),
+        gameId: 'phigros',
+      },
     });
     expect(screen.queryByTestId('phigros-strength-tag-songs-sheet')).toBeNull();
 
-    await fireEvent.press(screen.getAllByLabelText('查看读谱标签歌曲列表')[0]!);
+    await fireEvent.press(screen.getByLabelText('查看读谱标签歌曲列表'));
     await fireEvent.press(screen.getByLabelText('关闭标签歌曲列表'));
     expect(screen.queryByTestId('phigros-strength-tag-songs-sheet')).toBeNull();
   });
@@ -197,20 +219,6 @@ describe('Phigros strength analysis screen', () => {
     expect(mockTagsRefetch).toHaveBeenCalledTimes(1);
   });
 
-  it('renders the secondary-tag empty state from the policy text', async () => {
-    setSuccessfulQueries();
-    mockTagsQuery = {
-      isLoading: false, isError: false, refetch: mockTagsRefetch,
-      data: {
-        ...tagSnapshot,
-        votes: tagSnapshot.votes.filter((vote) => vote.tagType !== 'secondary'),
-      },
-    };
-    const screen = await render(<PhigrosStrengthAnalysisScreen />);
-    expect(screen.getByText('暂无细分标签样本')).toBeTruthy();
-    expect(screen.getByText(policyTexts.noSecondaryTags)).toBeTruthy();
-  });
-
   it('renders the axis mismatch text from the policy instead of a hard-coded count', async () => {
     setSuccessfulQueries();
     mockTagsQuery = {
@@ -219,6 +227,6 @@ describe('Phigros strength analysis screen', () => {
     };
     const screen = await render(<PhigrosStrengthAnalysisScreen />);
     expect(screen.getByText('标签结构暂不可用')).toBeTruthy();
-    expect(screen.getByText(policyTexts.unexpectedPrimaryAxes)).toBeTruthy();
+    expect(screen.getByText(unexpectedPrimaryAxes)).toBeTruthy();
   });
 });

@@ -115,7 +115,7 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         id: 'strength-analysis',
         href: '/tools/strength-analysis',
         title: '实力分析',
-        detail: '用五维主标签雷达与细分标签 RKS 定位强弱项',
+        detail: '用五维雷达查看标签强弱，并列出薄弱项练习',
         summaryLabel: '实力分析',
       },
       {

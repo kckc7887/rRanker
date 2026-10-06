@@ -1,12 +1,13 @@
-import { StyleSheet, View } from 'react-native';
-import Svg, { Circle, Line, Polygon, Text as SvgText } from 'react-native-svg';
+import { Pressable, StyleSheet, Text, View } from 'react-native';
+import Svg, { Circle, Line, Polygon } from 'react-native-svg';
 import type { PhigrosTagRksStat } from '@/domain/phigros-strength-analysis';
 import { useAppTheme } from '@/theme/app-theme';
 
 const SIZE = 320;
 const CENTER = SIZE / 2;
-const CHART_RADIUS = 118;
-const LABEL_RADIUS = 140;
+const CHART_RADIUS = 64;
+const LABEL_RADIUS = 104;
+const LABEL_WIDTH = 84;
 const RING_RATIOS = [0.25, 0.5, 0.75, 1] as const;
 
 function polarPoint(index: number, count: number, radius: number) {
@@ -23,6 +24,15 @@ function pointsString(points: readonly { x: number; y: number }[]): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
+}
+
+function labelAnchor(x: number): 'middle' | 'start' | 'end' {
+  if (Math.abs(x - CENTER) < 12) return 'middle';
+  return x < CENTER ? 'end' : 'start';
+}
+
+function formatAxisRks(tag: PhigrosTagRksStat): string {
+  return tag.averageRks == null ? '—' : tag.averageRks.toFixed(4);
 }
 
 export function PhigrosStrengthRadar({
@@ -43,18 +53,9 @@ export function PhigrosStrengthRadar({
     const ratio = tag.averageRks == null ? 0 : clamp((tag.averageRks - min) / span, 0, 1);
     return polarPoint(index, tags.length, CHART_RADIUS * ratio);
   });
-  const accessibilityLabel = `五维实力雷达，刻度 ${min.toFixed(1)} 到 ${max.toFixed(4)}。${tags
-    .map((tag) => `${tag.name} ${tag.averageRks == null ? '无数据' : `修正后 ${tag.averageRks.toFixed(4)}，原始平均 ${tag.rawAverageRks!.toFixed(4)}，总系数 ${tag.coefficient.toFixed(4)}，${tag.sampleCount}张入池谱面，${tag.eligibleChartCount}张候选谱面，覆盖率 ${(tag.sampleCoverage * 100).toFixed(0)}%，候选平均定数 ${tag.eligibleAverageDifficulty?.toFixed(4) ?? '无数据'}`}`)
-    .join('；')}`;
 
   return (
-    <View
-      accessible
-      accessibilityRole="image"
-      accessibilityLabel={accessibilityLabel}
-      style={styles.wrap}
-      testID="phigros-strength-radar"
-    >
+    <View style={styles.wrap} testID="phigros-strength-radar">
       <Svg width="100%" height="100%" viewBox={`0 0 ${SIZE} ${SIZE}`}>
         {RING_RATIOS.map((ratio) => (
           <Polygon
@@ -101,25 +102,39 @@ export function PhigrosStrengthRadar({
             strokeWidth={2}
           />
         ))}
-        {tags.map((tag, index) => {
-          const point = polarPoint(index, tags.length, LABEL_RADIUS);
-          const anchor = Math.abs(point.x - CENTER) < 8 ? 'middle' : point.x < CENTER ? 'start' : 'end';
-          return (
-            <SvgText
-              key={tag.tagId}
-              x={point.x}
-              y={point.y + 5}
-              fill={theme.text}
-              fontSize={14}
-              fontWeight="700"
-              textAnchor={anchor}
-              onPress={onTagPress ? () => onTagPress(tag) : undefined}
-            >
-              {tag.name}
-            </SvgText>
-          );
-        })}
       </Svg>
+      {tags.map((tag, index) => {
+        const point = polarPoint(index, tags.length, LABEL_RADIUS);
+        const anchor = labelAnchor(point.x);
+        const align = anchor === 'middle' ? 'center' : anchor === 'end' ? 'right' : 'left';
+        return (
+          <Pressable
+            key={tag.tagId}
+            accessibilityRole="button"
+            accessibilityLabel={`查看${tag.name}标签歌曲列表`}
+            disabled={!onTagPress}
+            onPress={() => onTagPress?.(tag)}
+            style={[
+              styles.label,
+              anchor === 'middle' ? {
+                left: `${(point.x / SIZE) * 100}%`,
+                marginLeft: -LABEL_WIDTH / 2,
+                alignItems: 'center',
+              } : anchor === 'end' ? {
+                right: `${((SIZE - point.x) / SIZE) * 100}%`,
+                alignItems: 'flex-end',
+              } : {
+                left: `${(point.x / SIZE) * 100}%`,
+                alignItems: 'flex-start',
+              },
+              { top: `${(point.y / SIZE) * 100}%` },
+            ]}
+          >
+            <Text style={[styles.labelName, { color: theme.text, textAlign: align }]}>{tag.name}</Text>
+            <Text style={[styles.labelValue, { color: theme.textSecondary, textAlign: align }]}>{formatAxisRks(tag)}</Text>
+          </Pressable>
+        );
+      })}
     </View>
   );
 }
@@ -130,7 +145,11 @@ const styles = StyleSheet.create({
     maxWidth: SIZE,
     aspectRatio: 1,
     alignSelf: 'center',
-    alignItems: 'center',
-    justifyContent: 'center',
   },
+  label: {
+    position: 'absolute',
+    width: LABEL_WIDTH,
+  },
+  labelName: { fontSize: 13, lineHeight: 16, fontWeight: '700' },
+  labelValue: { fontSize: 11, lineHeight: 14, fontVariant: ['tabular-nums'] },
 });
