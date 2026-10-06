@@ -25,6 +25,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   pushHint,
   totalNotes,
   artworkSource,
+  pressable = true,
 }: {
   record: ScoreRecord;
   catalogTitle?: string;
@@ -32,6 +33,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   pushHint?: PhigrosPushHint;
   totalNotes?: number;
   artworkSource?: string | null;
+  pressable?: boolean;
 }) {
   const theme = useAppTheme();
   const score = record.dxScore ?? 0;
@@ -58,6 +60,7 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
         ],
       }}
       presentation={presentation}
+      pressable={pressable}
       titleStyle={styles.title}
     >
         <PhigrosScoreValue
