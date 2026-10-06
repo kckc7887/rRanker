@@ -54,8 +54,8 @@ describe('公共循环与全屏交互', () => {
     document.body.innerHTML = '<div id="header"><div id="title"></div></div>';
     renderPreviewHeading('<长曲名>', { label: 'Re:MASTER', value: '14.9', background: '#fff', text: '#7137C8', identity: 'DX · 1P+2P' });
     expect(document.getElementById('title')!.textContent).toBe('<长曲名>');
-    expect(document.querySelector('.preview-difficulty')!.textContent).toBe('Re:MASTER 14.9');
-    expect(document.querySelector('.preview-identity')!.textContent).toBe('DX · 1P+2P');
+    expect(document.querySelector('.preview-difficulty')!.textContent).toBe('14.9');
+    expect(document.getElementById('header')!.textContent).toBe('<长曲名>14.9');
     renderPreviewHeading('另一首');
     expect(document.querySelector('.preview-difficulty')!.textContent).toBe('—');
     expect(document.querySelector('.preview-identity')).toBeNull();

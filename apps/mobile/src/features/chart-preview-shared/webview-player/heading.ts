@@ -9,22 +9,19 @@ export type PreviewDifficulty = {
 
 export function renderPreviewHeading(title: string, difficulty?: PreviewDifficulty): void {
   const titleElement = document.getElementById('title')!;
-  titleElement.textContent = title;
+  const text = document.createElement('span');
+  text.textContent = title;
+  titleElement.replaceChildren(text);
   titleElement.title = title;
   document.querySelector('.preview-heading-badges')?.remove();
   const row = document.createElement('div');
   row.className = 'preview-heading-badges';
   const badge = document.createElement('span');
   badge.className = 'preview-difficulty';
-  if (difficulty) {
-    const label = document.createElement('span');
-    label.className = 'preview-difficulty-label';
-    label.textContent = difficulty.label;
-    const value = document.createElement('span');
-    value.className = 'preview-difficulty-value';
-    value.textContent = difficulty.value;
-    badge.append(label, ' ', value);
-  } else badge.textContent = '—';
+  const value = document.createElement('span');
+  value.className = 'preview-difficulty-value';
+  value.textContent = difficulty?.value || '—';
+  badge.append(value);
   badge.title = badge.textContent;
   if (difficulty) {
     badge.style.backgroundColor = difficulty.background;
@@ -32,12 +29,5 @@ export function renderPreviewHeading(title: string, difficulty?: PreviewDifficul
     badge.style.borderColor = difficulty.border ?? difficulty.background;
   }
   row.append(badge);
-  if (difficulty?.identity) {
-    const identity = document.createElement('span');
-    identity.className = 'preview-identity';
-    identity.textContent = difficulty.identity;
-    identity.title = difficulty.identity;
-    row.append(identity);
-  }
   titleElement.after(row);
 }
