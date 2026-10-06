@@ -518,6 +518,8 @@ export function ChartPreviewScreenShell<TPayload>({
             allowingReadAccessToURL={source.allowingReadAccessToURL}
             allowsInlineMediaPlayback
             mediaPlaybackRequiresUserAction={false}
+            showsHorizontalScrollIndicator={false}
+            showsVerticalScrollIndicator={false}
             javaScriptEnabled
             domStorageEnabled
             originWhitelist={['file://*']}
