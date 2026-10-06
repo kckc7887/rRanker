@@ -13,7 +13,7 @@ const rowSchema = z.object({
   difficulty: z.number().int().gte(0).lte(4),
   scores: z.tuple([score, score, score, score, score]),
 }).passthrough();
-const documentSchema = z.array(rowSchema).min(1);
+export const maimaiDxTagChartsSchema = z.array(rowSchema).min(1);
 
 export type MaimaiDxTagScores = readonly [number, number, number, number, number];
 export type MaimaiDxTagChart = { difficulty: number; scores: MaimaiDxTagScores };
@@ -43,7 +43,7 @@ export async function loadMaimaiDxTag(chartId: number, signal?: AbortSignal): Pr
     const rows = await requestJson({
       baseUrl: MAIMAI_DXTAG_BASE_URL,
       path: `/DXTag/${chartId}.json`,
-      schema: documentSchema,
+      schema: maimaiDxTagChartsSchema,
       fetcher: expoFetch as unknown as typeof fetch,
       signal,
       label: 'DXTag',
