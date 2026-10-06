@@ -1,12 +1,14 @@
+import { Fragment } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Line, Polygon, Text as SvgText } from 'react-native-svg';
 import { MAIMAI_DXTAG_AXES, type MaimaiDxTagScores } from '@/providers/maimai-dxtag';
 import { useAppTheme } from '@/theme/app-theme';
 
-const SIZE = 220;
+const SIZE = 320;
 const CENTER = SIZE / 2;
-const CHART_RADIUS = 68;
-const LABEL_RADIUS = 96;
+const CHART_RADIUS = 104;
+const LABEL_RADIUS = 128;
+const VALUE_OFFSET = 18;
 const RING_RATIOS = [0.5, 1] as const;
 const FILL_OPACITY = 0.35;
 
@@ -64,15 +66,24 @@ export function MaimaiDifficultyRadar({
       {MAIMAI_DXTAG_AXES.map((axis, index) => {
         const point = polarPoint(index, LABEL_RADIUS);
         const anchor = Math.abs(point.x - CENTER) < 8 ? 'middle' : point.x < CENTER ? 'start' : 'end';
-        return <SvgText
-          key={axis}
-          x={point.x}
-          y={point.y + 4}
-          fill={theme.text}
-          fontSize={12}
-          fontWeight="700"
-          textAnchor={anchor}
-        >{axis}</SvgText>;
+        return <Fragment key={axis}>
+          <SvgText
+            x={point.x}
+            y={point.y}
+            fill={theme.text}
+            fontSize={15}
+            fontWeight="700"
+            textAnchor={anchor}
+          >{axis}</SvgText>
+          <SvgText
+            x={point.x}
+            y={point.y + VALUE_OFFSET}
+            fill={color}
+            fontSize={14}
+            fontWeight="700"
+            textAnchor={anchor}
+          >{scores[index].toFixed(1)}</SvgText>
+        </Fragment>;
       })}
     </Svg>
   </View>;
@@ -81,7 +92,6 @@ export function MaimaiDifficultyRadar({
 const styles = StyleSheet.create({
   wrap: {
     width: '100%',
-    maxWidth: SIZE,
     aspectRatio: 1,
     alignSelf: 'center',
     marginTop: 10,

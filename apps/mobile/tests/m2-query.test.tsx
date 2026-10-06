@@ -1054,10 +1054,10 @@ describe('M2 song query screens', () => {
     expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/10001.json`, expect.any(Object));
     expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/10001.json`)).toHaveLength(1);
     const radar = screen.getByTestId('maimai-difficulty-radar-master');
-    for (const axis of ['键盘', '星星', '技巧', '体力', '爆发']) {
-      expect(JSON.stringify(radar)).toContain(axis);
+    const radarJson = JSON.stringify(radar);
+    for (const label of ['键盘', '星星', '技巧', '体力', '爆发', '1.2', '3.4', '5.6', '7.8', '9.0']) {
+      expect(radarJson).toContain(label);
     }
-    expect(screen.queryByText('1.2')).toBeNull();
     const masterColor = { payload: processColor('#7137C8'), type: 0 };
     expect(screen.getByTestId('maimai-difficulty-radar-shape-master').props).toEqual(expect.objectContaining({
       stroke: masterColor,
