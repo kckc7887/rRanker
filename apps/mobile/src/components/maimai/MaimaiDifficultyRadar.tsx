@@ -6,9 +6,9 @@ import { useAppTheme } from '@/theme/app-theme';
 
 const SIZE = 320;
 const CENTER = SIZE / 2;
-const CHART_RADIUS = 104;
+const CHART_RADIUS = 92;
 const LABEL_RADIUS = 128;
-const VALUE_OFFSET = 18;
+const VALUE_OFFSET = 20;
 const RING_RATIOS = [0.5, 1] as const;
 const FILL_OPACITY = 0.35;
 
@@ -65,7 +65,10 @@ export function MaimaiDifficultyRadar({
       />
       {MAIMAI_DXTAG_AXES.map((axis, index) => {
         const point = polarPoint(index, LABEL_RADIUS);
-        const anchor = Math.abs(point.x - CENTER) < 8 ? 'middle' : point.x < CENTER ? 'start' : 'end';
+        const anchor = Math.abs(point.x - CENTER) < 8 ? 'middle' : point.x < CENTER ? 'end' : 'start';
+        const valueY = index === 0
+          ? point.y + VALUE_OFFSET
+          : point.y + (point.y < CENTER ? -VALUE_OFFSET : VALUE_OFFSET);
         return <Fragment key={axis}>
           <SvgText
             x={point.x}
@@ -77,7 +80,7 @@ export function MaimaiDifficultyRadar({
           >{axis}</SvgText>
           <SvgText
             x={point.x}
-            y={point.y + VALUE_OFFSET}
+            y={valueY}
             fill={color}
             fontSize={14}
             fontWeight="700"
