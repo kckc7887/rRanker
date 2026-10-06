@@ -5,6 +5,7 @@ import { router, Stack } from 'expo-router';
 import { AppModal } from '@/components/AppModal';
 import { RandomUnplayedChartCard } from '@/components/RandomChartsPage';
 import { EmptyDataView } from '@/components/EmptyDataView';
+import { ScoreCardArtworkScope } from '@/components/game-content/GameScoreCard';
 import { PhigrosDifficultyBadge } from '@/components/phigros/PhigrosDifficultyBadge';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { PhigrosStrengthRadar } from '@/components/phigros/PhigrosStrengthRadar';
@@ -59,6 +60,7 @@ function TagSongsSheet({
       visible={tag != null}
       onRequestClose={onClose}
     >
+      <ScoreCardArtworkScope>
       <View testID="phigros-strength-tag-songs-sheet" style={[styles.sheet, { backgroundColor: theme.background }]}>
         <View style={[styles.sheetGrabber, { backgroundColor: theme.border }]} />
         <View style={styles.sheetHeader}>
@@ -103,6 +105,7 @@ function TagSongsSheet({
           )}
         />
       </View>
+      </ScoreCardArtworkScope>
     </AppModal>
   );
 }
@@ -282,6 +285,7 @@ export default function PhigrosStrengthAnalysisScreen() {
             max={analysis.radarDomain.max}
             onTagPress={setSelectedTag}
           />
+          <ScoreCardArtworkScope>
           <View style={styles.practiceSection}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>薄弱项练习</Text>
             {analysis.recommendations.length > 0 ? analysis.recommendations.map((recommendation) => {
@@ -302,6 +306,7 @@ export default function PhigrosStrengthAnalysisScreen() {
               <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无可提升推荐</Text>
             )}
           </View>
+          </ScoreCardArtworkScope>
         </>
       )}
     </ScrollView>
