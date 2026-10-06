@@ -25,11 +25,10 @@ export const PHIGROS_STRENGTH_POLICY = {
   maxSupplementsPerTag: 5,
   secondaryTagMinVotes: 3,
   primaryAxisCount: 5,
-  profileBalancedShareGap: 0.08,
-  profileDualCoreShareSum: 0.6,
-  profileDualCoreSecondShare: 0.24,
-  profileSpecializedShare: 0.4,
-  profileSpecializedLead: 0.15,
+  profileBalancedSpread: 0.05,
+  profileDualCoreLead: 0.03,
+  profileDualCoreGap: 0.05,
+  profileSpecializedLead: 0.08,
   maxAvailabilityBonus: 0.02,
   recommendationCount: 3,
   recommendationMinGain: 0.0001,
@@ -273,35 +272,30 @@ function weakestSort(left: PhigrosTagRksStat, right: PhigrosTagRksStat): number 
 }
 
 export function resolvePhigrosStrengthProfileLabel(
-  tags: readonly Pick<PhigrosTagRksStat, 'tagId' | 'name' | 'sampleCoverage'>[],
+  tags: readonly Pick<PhigrosTagRksStat, 'tagId' | 'name' | 'averageRks'>[],
 ): string {
-  const coverages = tags.map((tag) => ({
-    ...tag,
-    coverage: Number.isFinite(tag.sampleCoverage) ? Math.max(0, tag.sampleCoverage) : 0,
-  }));
-  const coverageTotal = coverages.reduce((sum, tag) => sum + tag.coverage, 0);
-  if (coverageTotal <= 0) return '主标签暂无评价';
-  const ranked = coverages
-    .map((tag) => ({ ...tag, share: tag.coverage / coverageTotal }))
-    .sort((left, right) => right.share - left.share || left.tagId - right.tagId);
-  const highestShare = ranked[0]!.share;
-  const lowestShare = ranked.at(-1)!.share;
-  if (tags.length === PHIGROS_STRENGTH_POLICY.primaryAxisCount
-    && ranked.every((tag) => tag.coverage > 0)
-    && highestShare - lowestShare <= PHIGROS_STRENGTH_POLICY.profileBalancedShareGap) {
+  const ranked = tags
+    .filter((tag) => tag.averageRks != null && Number.isFinite(tag.averageRks))
+    .sort((left, right) => right.averageRks! - left.averageRks! || left.tagId - right.tagId);
+  if (ranked.length === 0) return '主标签暂无评价';
+  const highest = ranked[0]!.averageRks!;
+  const lowest = ranked[ranked.length - 1]!.averageRks!;
+  if (ranked.length === tags.length
+    && tags.length === PHIGROS_STRENGTH_POLICY.primaryAxisCount
+    && highest - lowest <= PHIGROS_STRENGTH_POLICY.profileBalancedSpread) {
     return '五维均衡型';
   }
   const first = ranked[0]!;
   const second = ranked[1];
-  if (second
-    && first.share + second.share >= PHIGROS_STRENGTH_POLICY.profileDualCoreShareSum
-    && second.share >= PHIGROS_STRENGTH_POLICY.profileDualCoreSecondShare) {
+  const third = ranked[2];
+  const lead = second == null ? Number.POSITIVE_INFINITY : first.averageRks! - second.averageRks!;
+  const secondLead = second != null && third != null ? second.averageRks! - third.averageRks! : 0;
+  if (second != null
+    && lead <= PHIGROS_STRENGTH_POLICY.profileDualCoreLead
+    && secondLead >= PHIGROS_STRENGTH_POLICY.profileDualCoreGap) {
     return `${first.name}·${second.name}双核型`;
   }
-  if (first.share >= PHIGROS_STRENGTH_POLICY.profileSpecializedShare
-    || first.share - (second?.share ?? 0) >= PHIGROS_STRENGTH_POLICY.profileSpecializedLead) {
-    return `${first.name}特化型`;
-  }
+  if (lead >= PHIGROS_STRENGTH_POLICY.profileSpecializedLead) return `${first.name}特化型`;
   return `${first.name}倾向型`;
 }
 

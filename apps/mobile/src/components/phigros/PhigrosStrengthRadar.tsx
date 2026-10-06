@@ -1,20 +1,21 @@
+import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
 import Svg, { Circle, Line, Polygon } from 'react-native-svg';
 import type { PhigrosTagRksStat } from '@/domain/phigros-strength-analysis';
 import { useAppTheme } from '@/theme/app-theme';
 
-const SIZE = 320;
-const CENTER = SIZE / 2;
-const CHART_RADIUS = 64;
-const LABEL_RADIUS = 104;
-const LABEL_WIDTH = 84;
+const LABEL_RESERVE = 72;
+const TOP_PAD = 44;
+const BOTTOM_PAD = 36;
 const RING_RATIOS = [0.25, 0.5, 0.75, 1] as const;
 
-function polarPoint(index: number, count: number, radius: number) {
+function axisPoint(index: number, count: number, radius: number, cx: number, cy: number) {
   const angle = -Math.PI / 2 + (index * Math.PI * 2) / count;
   return {
-    x: CENTER + Math.cos(angle) * radius,
-    y: CENTER + Math.sin(angle) * radius,
+    x: cx + Math.cos(angle) * radius,
+    y: cy + Math.sin(angle) * radius,
+    cos: Math.cos(angle),
+    sin: Math.sin(angle),
   };
 }
 
@@ -24,11 +25,6 @@ function pointsString(points: readonly { x: number; y: number }[]): string {
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
-}
-
-function labelAnchor(x: number): 'middle' | 'start' | 'end' {
-  if (Math.abs(x - CENTER) < 12) return 'middle';
-  return x < CENTER ? 'end' : 'start';
 }
 
 function formatAxisRks(tag: PhigrosTagRksStat): string {
@@ -47,66 +43,74 @@ export function PhigrosStrengthRadar({
   onTagPress?: (tag: PhigrosTagRksStat) => void;
 }) {
   const theme = useAppTheme();
+  const [width, setWidth] = useState(320);
+  const chartRadius = Math.max(88, width / 2 - LABEL_RESERVE);
+  const cx = width / 2;
+  const cy = TOP_PAD + chartRadius;
+  const height = cy + chartRadius + BOTTOM_PAD;
   const span = Math.max(max - min, 0.1);
-  const axes = tags.map((_, index) => polarPoint(index, tags.length, CHART_RADIUS));
+  const ringPoints = (ratio: number) => tags.map((_, index) => axisPoint(index, tags.length, chartRadius * ratio, cx, cy));
   const dataPoints = tags.map((tag, index) => {
     const ratio = tag.averageRks == null ? 0 : clamp((tag.averageRks - min) / span, 0, 1);
-    return polarPoint(index, tags.length, CHART_RADIUS * ratio);
+    return axisPoint(index, tags.length, chartRadius * ratio, cx, cy);
   });
 
   return (
-    <View style={styles.wrap} testID="phigros-strength-radar">
-      <Svg width="100%" height="100%" viewBox={`0 0 ${SIZE} ${SIZE}`}>
-        {RING_RATIOS.map((ratio) => (
+    <View
+      onLayout={(event) => {
+        const next = Math.round(event.nativeEvent.layout.width);
+        setWidth((current) => (current === next ? current : next));
+      }}
+      style={[styles.wrap, { height }]}
+      testID="phigros-strength-radar"
+    >
+        <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
+          {RING_RATIOS.map((ratio) => (
+            <Polygon
+              key={ratio}
+              points={pointsString(ringPoints(ratio))}
+              fill="none"
+              stroke={theme.border}
+              strokeWidth={ratio === 1 ? 1.6 : 1}
+              strokeOpacity={ratio === 1 ? 0.9 : 0.45}
+            />
+          ))}
+          {ringPoints(1).map((point, index) => (
+            <Line
+              key={tags[index]!.tagId}
+              x1={cx}
+              y1={cy}
+              x2={point.x}
+              y2={point.y}
+              stroke={theme.border}
+              strokeWidth={1}
+              strokeOpacity={0.55}
+            />
+          ))}
           <Polygon
-            key={ratio}
-            points={pointsString(tags.map((_, index) => polarPoint(
-              index,
-              tags.length,
-              CHART_RADIUS * ratio,
-            )))}
-            fill="none"
-            stroke={theme.border}
-            strokeWidth={ratio === 1 ? 1.4 : 1}
-            strokeOpacity={ratio === 1 ? 0.9 : 0.55}
-          />
-        ))}
-        {axes.map((point, index) => (
-          <Line
-            key={tags[index]!.tagId}
-            x1={CENTER}
-            y1={CENTER}
-            x2={point.x}
-            y2={point.y}
-            stroke={theme.border}
-            strokeWidth={1}
-            strokeOpacity={0.65}
-          />
-        ))}
-        <Polygon
-          points={pointsString(dataPoints)}
-          fill={theme.accent}
-          fillOpacity={0.2}
-          stroke={theme.accent}
-          strokeWidth={2.4}
-          strokeLinejoin="round"
-        />
-        {dataPoints.map((point, index) => tags[index]!.averageRks == null ? null : (
-          <Circle
-            key={tags[index]!.tagId}
-            cx={point.x}
-            cy={point.y}
-            r={3.5}
-            fill={theme.surface}
+            points={pointsString(dataPoints)}
+            fill={theme.accent}
+            fillOpacity={0.22}
             stroke={theme.accent}
-            strokeWidth={2}
+            strokeWidth={2.5}
+            strokeLinejoin="round"
           />
-        ))}
-      </Svg>
+          {dataPoints.map((point, index) => tags[index]!.averageRks == null ? null : (
+            <Circle
+              key={tags[index]!.tagId}
+              cx={point.x}
+              cy={point.y}
+              r={4}
+              fill={theme.background}
+              stroke={theme.accent}
+              strokeWidth={2}
+            />
+          ))}
+        </Svg>
       {tags.map((tag, index) => {
-        const point = polarPoint(index, tags.length, LABEL_RADIUS);
-        const anchor = labelAnchor(point.x);
-        const align = anchor === 'middle' ? 'center' : anchor === 'end' ? 'right' : 'left';
+        const vertex = axisPoint(index, tags.length, chartRadius, cx, cy);
+        const anchor = Math.abs(vertex.cos) < 0.35 ? 'middle' : vertex.cos < 0 ? 'end' : 'start';
+        const y = anchor === 'middle' ? vertex.y - 42 : vertex.y - 18;
         return (
           <Pressable
             key={tag.tagId}
@@ -116,22 +120,14 @@ export function PhigrosStrengthRadar({
             onPress={() => onTagPress?.(tag)}
             style={[
               styles.label,
-              anchor === 'middle' ? {
-                left: `${(point.x / SIZE) * 100}%`,
-                marginLeft: -LABEL_WIDTH / 2,
-                alignItems: 'center',
-              } : anchor === 'end' ? {
-                right: `${((SIZE - point.x) / SIZE) * 100}%`,
-                alignItems: 'flex-end',
-              } : {
-                left: `${(point.x / SIZE) * 100}%`,
-                alignItems: 'flex-start',
-              },
-              { top: `${(point.y / SIZE) * 100}%` },
+              { top: y },
+              anchor === 'middle' ? { left: vertex.x - 40, width: 80, alignItems: 'center' }
+                : anchor === 'end' ? { right: width - vertex.x + 8, alignItems: 'flex-end' }
+                  : { left: vertex.x + 8, alignItems: 'flex-start' },
             ]}
           >
-            <Text style={[styles.labelName, { color: theme.text, textAlign: align }]}>{tag.name}</Text>
-            <Text style={[styles.labelValue, { color: theme.textSecondary, textAlign: align }]}>{formatAxisRks(tag)}</Text>
+            <Text style={[styles.labelName, { color: theme.text }]}>{tag.name}</Text>
+            <Text style={[styles.labelValue, { color: theme.accent }]}>{formatAxisRks(tag)}</Text>
           </Pressable>
         );
       })}
@@ -140,16 +136,8 @@ export function PhigrosStrengthRadar({
 }
 
 const styles = StyleSheet.create({
-  wrap: {
-    width: '100%',
-    maxWidth: SIZE,
-    aspectRatio: 1,
-    alignSelf: 'center',
-  },
-  label: {
-    position: 'absolute',
-    width: LABEL_WIDTH,
-  },
-  labelName: { fontSize: 13, lineHeight: 16, fontWeight: '700' },
-  labelValue: { fontSize: 11, lineHeight: 14, fontVariant: ['tabular-nums'] },
+  wrap: { width: '100%', marginHorizontal: -8 },
+  label: { position: 'absolute' },
+  labelName: { fontSize: 15, lineHeight: 18, fontWeight: '800' },
+  labelValue: { fontSize: 13, lineHeight: 16, fontWeight: '800', fontVariant: ['tabular-nums'] },
 });
