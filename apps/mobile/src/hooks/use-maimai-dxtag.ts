@@ -1,11 +1,11 @@
 import { useQuery } from '@tanstack/react-query';
 import type { ChartType } from '@/domain/models';
 import {
-  loadMaimaiDxTag,
   maimaiDxTagChartId,
   maimaiDxTagScoresForDifficulty,
   type MaimaiDxTagScores,
 } from '@/providers/maimai-dxtag';
+import { loadCachedMaimaiDxTag } from '@/services/maimai-dxtag-cache';
 
 export function useMaimaiDxTagScores(
   songId: string,
@@ -16,7 +16,7 @@ export function useMaimaiDxTagScores(
   const query = useQuery({
     enabled: chartId !== null,
     queryKey: ['maimai-dxtag', chartId],
-    queryFn: ({ signal }) => chartId === null ? null : loadMaimaiDxTag(chartId, signal),
+    queryFn: ({ signal }) => chartId === null ? null : loadCachedMaimaiDxTag(chartId, signal),
     staleTime: Infinity,
     retry: false,
   });

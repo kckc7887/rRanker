@@ -12,6 +12,7 @@ import {
 } from '@/components/special-difficulty-theme';
 import { songDetailScreenOptions } from '@/components/game-content/SongDetailScreenOptions';
 import { useCatalogFilter } from '@/state/catalog-filter';
+import { loadCachedMaimaiDxTag } from '@/services/maimai-dxtag-cache';
 
 jest.spyOn(Animated, 'loop').mockReturnValue({
   start: jest.fn(), stop: jest.fn(), reset: jest.fn(),
@@ -86,6 +87,18 @@ jest.mock('@/features/maimai-chart-download/maimai-chart-download', () => ({
 jest.mock('expo/fetch', () => ({
   fetch: (url: string, init?: RequestInit) => mockVideoHead(url, init),
 }));
+jest.mock('@/storage/sqlite-snapshot-repository', () => {
+  const values = new Map<string, unknown>();
+  class MemorySnapshotRepository {
+    async getResource(key: string) {
+      return values.get(key) ?? null;
+    }
+    async saveResource(key: string, _version: number, _updatedAt: string, value: unknown) {
+      values.set(key, value);
+    }
+  }
+  return { SqliteSnapshotRepository: MemorySnapshotRepository, dxtagCache: values };
+});
 jest.mock('@/features/phigros-chart-download/chart-package-download', () => ({
   downloadPhigrosChartAsPhiraPackage: jest.fn(),
   downloadPhiraChartPackage: jest.fn(),
@@ -344,6 +357,7 @@ describe('M2 song query screens', () => {
   });
 
   beforeEach(() => {
+    (jest.requireMock('@/storage/sqlite-snapshot-repository') as { dxtagCache: Map<string, unknown> }).dxtagCache.clear();
     mockSongRouteParams = { songId: '1', gameId: 'maimai' };
     mockDetailedCatalogAvailable = true;
     mockDxRatingTagCount = 0;
@@ -1070,14 +1084,22 @@ describe('M2 song query screens', () => {
     await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
     await waitFor(() => expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/1.json`, expect.any(Object)));
     await waitFor(() => expect(screen.getByTestId('maimai-difficulty-radar-master')).toBeTruthy());
+
+    mockVideoHead.mockClear();
+    const cached = await loadCachedMaimaiDxTag(10001);
+    expect(cached?.find((chart) => chart.difficulty === 3)?.scores).toEqual([1.2, 3.4, 5.6, 7.8, 9]);
+    expect(mockVideoHead).not.toHaveBeenCalled();
   });
 
   it('hides the difficulty radar when DXTag is missing and does not request it for utage', async () => {
     const missing = await render(<SongDetailScreen />);
-    expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/10001.json`, expect.any(Object));
+    expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/10001.json`)).toHaveLength(1);
     expect(missing.queryByTestId('maimai-difficulty-radar-master')).toBeNull();
     expect(missing.getByLabelText('谱面物量')).toBeTruthy();
     expect(missing.getByText('谱师：DX主谱师')).toBeTruthy();
+    const missingAgain = await loadCachedMaimaiDxTag(10001);
+    expect(missingAgain).toBeNull();
+    expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/10001.json`)).toHaveLength(2);
 
     mockSongRouteParams = { songId: '100123', chartType: 'UTAGE', gameId: 'maimai' };
     mockVideoHead.mockClear();

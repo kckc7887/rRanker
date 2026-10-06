@@ -3,6 +3,7 @@ import { rizlineResources } from '@/services/rizline-resources';
 import type { GameId } from '@/domain/game-bind-options';
 import { findGame } from '@/domain/game-bind-options';
 import { DXRATING_CHART_TAGS_RESOURCE_KEY } from '@/domain/dxrating-chart-tags';
+import { MAIMAI_DXTAG_RESOURCE_PREFIX } from '@/services/maimai-dxtag-cache';
 import {
   PHIGROS_KYOU_RESOURCE_KEYS,
 } from '@/domain/phigros-kyou';
@@ -66,12 +67,13 @@ const maimaiAdapter = createGameStorageAdapter({
   note: '账号成绩快照与当前版本导出素材；SQLite 为估算值',
   queryKeys: [
     ['score-snapshot'], ['game-data'], ['songs'], ['detailed-catalog'], ['plates'],
-    ['collections'], ['dxrating-chart-tags'], ['best-image-collections'],
+    ['collections'], ['dxrating-chart-tags'], ['best-image-collections'], ['maimai-dxtag'],
   ],
   fileResources: maimaiFileResources,
   ownership: {
     ownsAccount: accountOwnership('maimai', isDurableMaimaiAccountId),
     resourceKeys: MAIMAI_CATALOG_RESOURCE_KEYS,
+    resourcePrefixes: [MAIMAI_DXTAG_RESOURCE_PREFIX],
   },
 });
 
