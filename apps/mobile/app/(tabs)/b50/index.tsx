@@ -258,7 +258,7 @@ function PhigrosBestScreen() {
     ({ item, index }) => (
       <PhigrosScoreCard
         record={item}
-        artworkSource={catalogQuery.data?.provider?.getIllustrationUrl(item.songId)}
+        artworkSource={catalogQuery.data?.provider?.getIllustrationLowresUrl(item.songId)}
         catalogTitle={titleMap.get(item.songId) ?? item.songId}
         rank={index + 1}
         totalNotes={noteTotalByKey[phigrosChartNoteKey(item.songId, item.levelIndex)]}
