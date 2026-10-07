@@ -4,18 +4,18 @@ import {
   maimaiDxTagChartId, maimaiDxTagScoresForDifficulty,
   type MaimaiDxTagScores,
 } from '@/domain/maimai-dxtag';
-import { analyzeMaimaiStrength, buildMaimaiStrengthPool, type MaimaiStrengthTarget } from '@/domain/maimai-strength-analysis';
+import { analyzeMaimaiStrength, buildMaimaiStrengthPool } from '@/domain/maimai-strength-analysis';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useBoundedQueries } from '@/hooks/use-bounded-queries';
 import { loadCachedMaimaiDxTag } from '@/services/maimai-dxtag-cache';
 
-export function useMaimaiStrength(target: MaimaiStrengthTarget, enabled: boolean) {
+export function useMaimaiStrength(enabled: boolean) {
   const scores = useScoreSnapshot(enabled);
   const catalog = useDetailedCatalog(enabled);
   const pool = useMemo(() => catalog.data && scores.data
-    ? buildMaimaiStrengthPool(catalog.data, scores.data.records, target) : undefined,
-  [catalog.data, scores.data, target]);
+    ? buildMaimaiStrengthPool(catalog.data, scores.data.records) : undefined,
+  [catalog.data, scores.data]);
   const charts = useMemo(() => {
     const unique = new Map<string, { songId: string; type: 'SD' | 'DX' | 'UTAGE'; levelIndex: number }>();
     for (const chart of [...(pool?.played ?? []), ...(pool?.candidates ?? [])]) {
@@ -35,21 +35,19 @@ export function useMaimaiStrength(target: MaimaiStrengthTarget, enabled: boolean
   const { queries, retryFailed } = useBoundedQueries(definitions, 4, enabled, false);
   const byId = new Map(ids.map((id, index) => [id, queries[index]]));
   const features = new Map<string, MaimaiDxTagScores>();
-  let missing = 0;
   for (const chart of charts) {
     const id = maimaiDxTagChartId(chart.songId, chart.type);
     const query = id === null ? undefined : byId.get(id);
     if (!query?.isSuccess) continue;
     const value = query.data ? maimaiDxTagScoresForDifficulty(query.data, chart.levelIndex) : null;
     if (value) features.set(chartVersionKey(chart.songId, chart.type, chart.levelIndex), value);
-    else missing++;
   }
   const completed = queries.filter(query => query.isSuccess || query.isError).length;
   const failed = queries.filter(query => query.isError).length;
   const analysis = catalog.data && scores.data
-    ? analyzeMaimaiStrength(catalog.data, scores.data.records, features, target) : undefined;
+    ? analyzeMaimaiStrength(catalog.data, scores.data.records, features) : undefined;
   return {
-    analysis, completed, total: ids.length, missing, failed, retryFailed,
+    analysis, hasFeatureError: failed > 0, retryFailed,
     pending: completed < ids.length,
     isLoading: scores.isLoading || catalog.isLoading,
     isError: scores.isError || catalog.isError,

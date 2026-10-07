@@ -101,6 +101,7 @@ export function MaimaiDifficultyRadar({
         const nameY = anchor === 'middle' ? pointAt(0, CHART_RADIUS).y - LABEL_GAP - VALUE_OFFSET : placed.y;
         return <Fragment key={axis}>
           <SvgText
+            testID={`maimai-difficulty-radar-axis-${difficulty}-${scoreIndex}`}
             onPress={onAxisPress ? () => onAxisPress(scoreIndex) : undefined}
             x={x}
             y={nameY}
