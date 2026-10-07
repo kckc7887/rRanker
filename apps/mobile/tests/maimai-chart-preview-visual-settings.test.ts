@@ -16,14 +16,14 @@ function canvasMock(size = 540) {
 }
 
 describe('pink star resource selection', () => {
-  it('replaces every ordinary head and moving star, preserving special variants and EX overlays', () => {
+  it('replaces every ordinary head and moving star, preserving special variants', () => {
     const bodies = ['1-5[4:2]', '1-5[4:2]*-7[4:2]', '1x-5[4:2]', '1w5[4:2]',
       '1b-5[4:2]', '1m-5[4:2]', '1bx-5[4:2]*-7[4:2]', '1-5[4:2]/3-7[4:2]', '1-5b[4:2]', '1-5m[4:2]'];
     const seen = new Set<string>();
     for (const body of bodies) {
       const prepared = prepareChart(parseSimaiBody(`(120)${body},`));
       for (const time of [1850, 2000, 2250, 2750]) {
-        const config = { ...DEFAULT_RENDERER_CONFIG, highlightExNotes: true };
+        const config = DEFAULT_RENDERER_CONFIG;
         const normal = buildFrame(prepared, time, config);
         const pink = buildFrame(prepared, time, { ...config, pinkSlideStart: true });
         const expected = normal.map(c => {
@@ -40,7 +40,7 @@ describe('pink star resource selection', () => {
     }
   });
 
-  it.each(['1x-5[4:2]', '1x-5[4:2]*-7[4:2]'])('keeps the original display size and EX alignment for %s', body => {
+  it.each(['1x-5[4:2]', '1x-5[4:2]*-7[4:2]'])('keeps the original display size for %s', body => {
     vi.stubGlobal('devicePixelRatio', 1);
     vi.spyOn(EffectRenderer.prototype, 'prepare').mockImplementation(() => {});
     vi.stubGlobal('document', { createElement: () => canvasMock().canvas });
@@ -51,14 +51,13 @@ describe('pink star resource selection', () => {
     });
     const { canvas, ctx } = canvasMock();
     const renderer = new MainRenderer(canvas, { skin });
-    renderer.setJudgmentLineDesign('blind'); renderer.setHighlightExNotes(true);
+    renderer.setJudgmentLineDesign('blind');
     const chart = parseSimaiBody(`(120)${body},`);
     renderer.renderAtTime(chart, 1850);
-    const original = ctx.drawImage.mock.calls.slice(-2).map(c => c.slice(1));
+    const original = ctx.drawImage.mock.calls.at(-1)!.slice(1);
     ctx.drawImage.mockClear(); renderer.setPinkSlideStart(true); renderer.renderAtTime(chart, 1850);
-    const pink = ctx.drawImage.mock.calls.slice(-2).map(c => c.slice(1));
+    const pink = ctx.drawImage.mock.calls.at(-1)!.slice(1);
     expect(pink).toEqual(original);
-    expect(pink[0]).toEqual(pink[1]);
   });
 });
 

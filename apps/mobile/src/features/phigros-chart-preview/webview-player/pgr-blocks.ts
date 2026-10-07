@@ -130,10 +130,15 @@ function sample(keys: readonly PgrBlockKeyframe[], time: number, initial: Point)
     from.value[1] + (to.value[1] - from.value[1]) * y], anchor: from.anchor };
 }
 
-export function samplePgrBlock(block: PgrBlock, time: number, aspect: number): PgrBlockSample | null {
-  if (!Number.isFinite(time) || time < block.appear) return null;
+export function samplePgrBlock(block: PgrBlock, time: number, aspect: number, enabledOnly = false): PgrBlockSample | null {
+  if (!Number.isFinite(time)) return null;
+  const enabled = time >= block.enable && time < block.disable;
   let opacity: number;
-  if (time < block.enable) opacity = (time - block.appear) / (block.enable - block.appear);
+  if (enabledOnly) {
+    if (!enabled) return null;
+    opacity = 1;
+  } else if (time < block.appear) return null;
+  else if (time < block.enable) opacity = (time - block.appear) / (block.enable - block.appear);
   else if (time < block.disable) opacity = 1;
   else if (time < block.disappear) opacity = (block.disappear - time) / (block.disappear - block.disable);
   else return null;
@@ -153,11 +158,12 @@ export function samplePgrBlock(block: PgrBlock, time: number, aspect: number): P
     return [rx + move.value[0] - center[0], ry + move.value[1] - center[1]];
   };
   return { corners: [transform(left, bottom), transform(right, bottom), transform(right, top), transform(left, top)],
-    opacity, enabled: time >= block.enable && time < block.disable, subtract: block.subtract };
+    opacity, enabled, subtract: block.subtract };
 }
 
-export function indexPgrBlocks(blocks: readonly PgrBlock[]): (time: number) => PgrBlock[] {
-  const sorted = [...blocks].sort((a, b) => a.appear - b.appear);
-  const query = createIntervalIndex(sorted, block => [block.appear, Math.max(block.enable, block.disable, block.disappear)]);
+export function indexPgrBlocks(blocks: readonly PgrBlock[], enabledOnly = false): (time: number) => PgrBlock[] {
+  const sorted = [...blocks].sort((a, b) => enabledOnly ? a.enable - b.enable : a.appear - b.appear);
+  const query = createIntervalIndex(sorted, block => enabledOnly
+    ? [block.enable, block.disable] : [block.appear, Math.max(block.enable, block.disable, block.disappear)]);
   return time => query(time, time);
 }

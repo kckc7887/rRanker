@@ -46,6 +46,38 @@ describe('PGR block regions', () => {
     expect(at({ appearTime: 4, enableTime: 4, disableTime: 4, disappearTime: 4 }, 4)).toBeNull();
   });
 
+  it('判定范围只服从启用区间，显示生命周期与透明度不改变范围', () => {
+    const region = parsed({ appearTime: 9, enableTime: 4, disableTime: 8, disappearTime: 3 });
+    expect(samplePgrBlock(region, 5, 1)).toBeNull();
+    const enabled = samplePgrBlock(region, 4, 1, true)!;
+    expect(enabled.opacity).toBe(1);
+    expect(enabled.enabled).toBe(true);
+    expect(enabled.corners[0][0]).toBeCloseTo(.2);
+    expect(enabled.corners[0][1]).toBeCloseTo(.3);
+    expect(samplePgrBlock(region, 3.99, 1, true)).toBeNull();
+    expect(samplePgrBlock(region, 8, 1, true)).toBeNull();
+    expect(indexPgrBlocks([region])(5)).toEqual([]);
+    expect(indexPgrBlocks([region], true)(5)).toContain(region);
+    expect(indexPgrBlocks([region], true)(3)).toEqual([]);
+    expect(indexPgrBlocks([region], true)(9)).toEqual([]);
+    expect(samplePgrBlock(parsed(), 3, 1, true)).toBeNull();
+    expect(samplePgrBlock(parsed(), 9, 1, true)).toBeNull();
+    expect(samplePgrBlock(parsed({ enableTime: 4, disableTime: 4 }), 4, 1, true)).toBeNull();
+  });
+
+  it('判定范围在不可见阶段仍应用负缩放、屏幕比例旋转与移动', () => {
+    const region = parsed({ appearTime: 9,
+      bottomLeftPercentage: vector(.2, .2), topRightPercentage: vector(.4, .4),
+      rotateEvents: [{ time: 4, rotation: 90, anchor: vector(.2, .2), easeType: 0 }],
+      scaleEvents: [{ time: 4, scale: vector(-2, .5), anchor: vector(.2, .2), easeTypeX: 0, easeTypeY: 0 }],
+      moveEvents: [move(4, .4, .5)],
+    });
+    const corners = samplePgrBlock(region, 5, 2, true)!.corners;
+    expect(corners[0][0]).toBeCloseTo(.3); expect(corners[0][1]).toBeCloseTo(.4);
+    expect(corners[1][0]).toBeCloseTo(.3); expect(corners[1][1]).toBeCloseTo(-.4);
+    expect(corners[2][0]).toBeCloseTo(.25); expect(corners[2][1]).toBeCloseTo(-.4);
+  });
+
   it('阶段时间不重排；提前启用或禁用时仍可显示有效的出现与消失阶段', () => {
     expect(at({ appearTime: 5 }, 5)).toMatchObject({ enabled: true, opacity: 1 });
     expect(at({ enableTime: 9, disableTime: 1 }, 5.5)).toMatchObject({ enabled: false, opacity: .5 });
