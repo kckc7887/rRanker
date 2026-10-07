@@ -7,8 +7,7 @@ import {
 import { analyzeMaimaiStrength, buildMaimaiStrengthPool } from '@/domain/maimai-strength-analysis';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
-import { useBoundedQueries } from '@/hooks/use-bounded-queries';
-import { loadCachedMaimaiDxTag } from '@/services/maimai-dxtag-cache';
+import { useMaimaiDxTag } from '@/hooks/use-maimai-dxtag';
 
 export function useMaimaiStrength(enabled: boolean) {
   const scores = useScoreSnapshot(enabled);
@@ -23,35 +22,23 @@ export function useMaimaiStrength(enabled: boolean) {
     }
     return [...unique.values()];
   }, [pool]);
-  const ids = useMemo(() => [...new Set(charts.flatMap(chart => {
-    const id = maimaiDxTagChartId(chart.songId, chart.type);
-    return id === null ? [] : [id];
-  }))], [charts]);
-  const definitions = useMemo(() => ids.map(id => ({
-    queryKey: ['maimai-dxtag', id] as const,
-    queryFn: ({ signal }: { signal: AbortSignal }) => loadCachedMaimaiDxTag(id, signal),
-    staleTime: Infinity, retry: false,
-  })), [ids]);
-  const { queries, retryFailed } = useBoundedQueries(definitions, 4, enabled, false);
-  const byId = new Map(ids.map((id, index) => [id, queries[index]]));
+  const dxTag = useMaimaiDxTag(enabled && charts.length > 0);
   const features = new Map<string, MaimaiDxTagScores>();
   for (const chart of charts) {
     const id = maimaiDxTagChartId(chart.songId, chart.type);
-    const query = id === null ? undefined : byId.get(id);
-    if (!query?.isSuccess) continue;
-    const value = query.data ? maimaiDxTagScoresForDifficulty(query.data, chart.levelIndex) : null;
+    const rows = id === null ? undefined : dxTag.data?.library[id];
+    const value = rows ? maimaiDxTagScoresForDifficulty(rows, chart.levelIndex) : null;
     if (value) features.set(chartVersionKey(chart.songId, chart.type, chart.levelIndex), value);
   }
-  const completed = queries.filter(query => query.isSuccess || query.isError).length;
-  const failed = queries.filter(query => query.isError).length;
   const analysis = catalog.data && scores.data
     ? analyzeMaimaiStrength(catalog.data, scores.data.records, features) : undefined;
   return {
-    analysis, hasFeatureError: failed > 0, retryFailed,
-    pending: completed < ids.length,
+    analysis, hasFeatureError: dxTag.isError || !!dxTag.data?.source.isStale,
+    retryFailed: () => { void dxTag.refetch(); },
+    pending: charts.length > 0 && dxTag.isFetching,
     isLoading: scores.isLoading || catalog.isLoading,
     isError: scores.isError || catalog.isError,
-    isStale: scores.isDataStale || catalog.data?.source.isStale,
+    isStale: scores.isDataStale || catalog.data?.source.isStale || dxTag.data?.source.isStale,
     retry: () => { void scores.refetch(); void catalog.refetch(); },
   };
 }

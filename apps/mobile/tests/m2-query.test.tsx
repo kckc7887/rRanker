@@ -1,3 +1,5 @@
+import { normalizeSongId } from '@/domain/catalog';
+import type { CatalogSnapshot, Song } from '@/domain/models';
 import type { ReactElement } from 'react';
 import { notifyManager } from '@tanstack/query-core';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
@@ -1049,24 +1051,25 @@ describe('M2 song query screens', () => {
   it('shows a difficulty-colored five-axis radar between DXRating tags and note counts', async () => {
     mockDxRatingTagCount = 1;
     mockVideoHead.mockImplementation(async (url: string) => {
-      if (url === `${DXTAG_BASE}/10001.json`) {
-        return new Response(JSON.stringify([
-          { difficulty: 3, scores: [1.2, 3.4, 5.6, 7.8, 9] },
-          { difficulty: 0, scores: [2, 2, 2, 2, 2] },
-        ]), { status: 200, headers: { 'Content-Type': 'application/json' } });
-      }
-      if (url === `${DXTAG_BASE}/1.json`) {
-        return new Response(JSON.stringify([
-          { difficulty: 3, scores: [8, 1, 2, 3, 4] },
-        ]), { status: 200, headers: { 'Content-Type': 'application/json' } });
+      if (url === `${DXTAG_BASE}/all.json`) {
+        const { data: catalog } = jest.requireMock<{ useDetailedCatalog: () => { data: CatalogSnapshot } }>('@/hooks/use-detailed-catalog').useDetailedCatalog();
+        const library = Object.fromEntries(catalog.songs.flatMap((song: Song) =>
+          ['SD', 'DX'].flatMap(type => {
+            const charts = song.charts.filter(chart => chart.type === type);
+            return charts.length ? [[Number(normalizeSongId(song.id)) + (type === 'DX' ? 10000 : 0), charts.map(chart => ({
+              difficulty: chart.levelIndex, scores: type === 'SD' ? [8, 1, 2, 3, 4]
+                : chart.levelIndex === 3 ? [1.2, 3.4, 5.6, 7.8, 9] : [2, 2, 2, 2, 2],
+            }))]] : [];
+          })));
+        return new Response(JSON.stringify(library), { status: 200 });
       }
       return new Response(null, { status: mockVideoAvailable ? 200 : 404 });
     });
     const screen = await render(<SongDetailScreen />);
     await waitFor(() => expect(screen.getByTestId('maimai-difficulty-radar-master')).toBeTruthy());
 
-    expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/10001.json`, expect.any(Object));
-    expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/10001.json`)).toHaveLength(1);
+    expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/all.json`, expect.any(Object));
+    expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/all.json`)).toHaveLength(1);
     const radar = screen.getByTestId('maimai-difficulty-radar-master');
     const radarJson = JSON.stringify(radar);
     for (const label of ['键盘', '星星', '技巧', '体力', '爆发', '1.2', '3.4', '5.6', '7.8', '9.0']) {
@@ -1082,24 +1085,24 @@ describe('M2 song query screens', () => {
     expect(markerOrder(masterChart(screen.toJSON()))).toEqual(['tags', 'radar', 'notes']);
 
     await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
-    await waitFor(() => expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/1.json`, expect.any(Object)));
+    await waitFor(() => expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/all.json`, expect.any(Object)));
     await waitFor(() => expect(screen.getByTestId('maimai-difficulty-radar-master')).toBeTruthy());
 
     mockVideoHead.mockClear();
-    const cached = await loadCachedMaimaiDxTag(10001);
-    expect(cached?.find((chart) => chart.difficulty === 3)?.scores).toEqual([1.2, 3.4, 5.6, 7.8, 9]);
+    const cached = await loadCachedMaimaiDxTag(jest.requireMock<{ useDetailedCatalog: () => { data: CatalogSnapshot } }>('@/hooks/use-detailed-catalog').useDetailedCatalog().data);
+    expect(cached.library['10001']?.find((chart) => chart.difficulty === 3)?.scores).toEqual([1.2, 3.4, 5.6, 7.8, 9]);
     expect(mockVideoHead).not.toHaveBeenCalled();
   });
 
   it('hides the difficulty radar when DXTag is missing and does not request it for utage', async () => {
     const missing = await render(<SongDetailScreen />);
-    expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/10001.json`)).toHaveLength(1);
+    expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/all.json`)).toHaveLength(1);
     expect(missing.queryByTestId('maimai-difficulty-radar-master')).toBeNull();
     expect(missing.getByLabelText('谱面物量')).toBeTruthy();
     expect(missing.getByText('谱师：DX主谱师')).toBeTruthy();
-    const missingAgain = await loadCachedMaimaiDxTag(10001);
-    expect(missingAgain).toBeNull();
-    expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/10001.json`)).toHaveLength(2);
+    await expect(loadCachedMaimaiDxTag(jest.requireMock<{ useDetailedCatalog: () => { data: CatalogSnapshot } }>('@/hooks/use-detailed-catalog').useDetailedCatalog().data))
+      .rejects.toMatchObject({ code: 'no_data' });
+    expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/all.json`)).toHaveLength(2);
 
     mockSongRouteParams = { songId: '100123', chartType: 'UTAGE', gameId: 'maimai' };
     mockVideoHead.mockClear();

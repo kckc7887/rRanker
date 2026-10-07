@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import StrengthAnalysisToolScreen from '../app/tools/strength-analysis';
 import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
@@ -39,8 +39,10 @@ function record(id: number): ScoreRecord {
   return { songId: String(id), title: `Song ${id}`, type: 'DX', levelIndex: 3, level: '13', difficulty: 'master',
     difficultyConstant: 13, achievements: 100.5, rating: 280, dxScore: null, fc: null, fs: null, rate: 'sssp', version: 'current' };
 }
-function response(scores: number[] = [4, 5, 6, 7, 8]) {
-  return new Response(JSON.stringify([{ difficulty: 3, scores }]), { status: 200 });
+function response() {
+  const library = Object.fromEntries(mockCatalog.songs.map(song => [Number(song.id) + 10000,
+    [{ difficulty: 3, scores: song.id === '4' ? [8, 8, 6, 7, 8] : [4, 5, 6, 7, 8] }]]));
+  return new Response(JSON.stringify(library), { status: 200 });
 }
 const clients: QueryClient[] = [];
 async function mount() {
@@ -62,7 +64,7 @@ beforeEach(() => {
   mockScoreQuery = { data: { records: mockRecords }, isLoading: false, isError: false, refetch: jest.fn() };
   mockCatalogQuery = { data: mockCatalog, isLoading: false, isError: false, refetch: jest.fn() };
   (jest.requireMock('@/storage/sqlite-snapshot-repository') as { values: Map<string, unknown> }).values.clear();
-  mockFetch.mockImplementation(async url => response(url.endsWith('/10004.json') ? [8, 8, 6, 7, 8] : undefined));
+  mockFetch.mockImplementation(async () => response());
 });
 afterEach(() => { for (const client of clients.splice(0)) client.clear(); });
 
@@ -83,24 +85,25 @@ it('opens from the toolbox, shows recommendations and navigates from supporting 
   expect(screen.queryByText(/计算说明|特征文件|样本较少|支撑成绩/)).toBeNull();
 });
 
-it('keeps partial results, distinguishes missing difficulty from failures and retries failed requests', async () => {
-  mockFetch.mockImplementation(async url => {
-    if (url.endsWith('/10002.json')) return new Response(JSON.stringify([{ difficulty: 2, scores: [4, 5, 6, 7, 8] }]), { status: 200 });
-    if (url.endsWith('/10003.json')) return new Response('', { status: 404 });
-    if (url.endsWith('/10004.json')) return new Response('', { status: 500 });
-    return response();
-  });
+it('retries a library failure and excludes missing charts and difficulties from partial data', async () => {
+  mockFetch.mockImplementation(async () => new Response('', { status: 500 }));
   const { screen } = await mount();
   await waitFor(() => expect(screen.getByText('部分数据加载失败，点击重试')).toBeTruthy());
+  mockFetch.mockImplementation(async () => new Response(JSON.stringify({
+    '10001': [{ difficulty: 3, scores: [4, 5, 6, 7, 8] }],
+    '10002': [{ difficulty: 2, scores: [4, 5, 6, 7, 8] }],
+  }), { status: 200 }));
+  await fireEvent.press(screen.getByText('部分数据加载失败，点击重试'));
+  await waitFor(() => expect(screen.queryByText('部分数据加载失败，点击重试')).toBeNull());
   expect(screen.getByTestId('maimai-difficulty-radar-shape-strength')).toBeTruthy();
   await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
   expect(screen.getByText('Song 1')).toBeTruthy();
   expect(screen.queryByText('Song 2')).toBeNull();
   expect(screen.queryByText('Song 3')).toBeNull();
-  await fireEvent.press(screen.getByText('完成'));
-  mockFetch.mockImplementation(async () => response([8, 8, 6, 7, 8]));
-  await fireEvent.press(screen.getByText('部分数据加载失败，点击重试'));
-  await waitFor(() => expect(screen.queryByText('部分数据加载失败，点击重试')).toBeNull());
+  expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([
+    'https://rranker-maimai-data.cn-nb1.rains3.com/DXTag/all.json',
+    'https://rranker-maimai-data.cn-nb1.rains3.com/DXTag/all.json',
+  ]);
 });
 
 it('closes the old account sheet and never shows its strengths for a newly selected account', async () => {
@@ -116,25 +119,37 @@ it('closes the old account sheet and never shows its strengths for a newly selec
   expect(screen.queryByText('Song 1')).toBeNull();
 });
 
-it('bounds active network requests and stops adding work when the screen loses focus', async () => {
-  mockRecords = Array.from({ length: 8 }, (_, i) => record(i + 1));
-  mockScoreQuery = { ...mockScoreQuery, data: { records: mockRecords } };
-  const pending: (() => void)[] = [];
-  mockFetch.mockImplementation(() => new Promise(resolve => pending.push(() => resolve(response()))));
-  const { screen, tree } = await mount();
-  await waitFor(() => expect(pending).toHaveLength(4));
+it('waits for focus and loads every chart with one library request', async () => {
   mockFocused = false;
-  await screen.rerender(tree());
-  await act(async () => { for (const resolve of pending) resolve(); });
-  expect(pending).toHaveLength(4);
-  mockFetch.mockImplementation(async () => response());
+  const { screen, tree } = await mount();
+  expect(mockFetch).not.toHaveBeenCalled();
   mockFocused = true;
   await screen.rerender(tree());
-  await waitFor(() => expect(screen.getByTestId('maimai-difficulty-radar-axis-strength-0')).toBeTruthy());
+  await waitFor(() => expect(screen.getByText('Song 4')).toBeTruthy());
   await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
-  await waitFor(() => expect(screen.getByText('Song 8')).toBeTruthy());
+  expect(screen.getByText('Song 1')).toBeTruthy();
+  expect(screen.getByText('Song 2')).toBeTruthy();
+  expect(screen.getByText('Song 3')).toBeTruthy();
+  expect(mockFetch.mock.calls.map(([url]) => url)).toEqual([
+    'https://rranker-maimai-data.cn-nb1.rains3.com/DXTag/all.json',
+  ]);
 });
 
+it('checks library coverage again when the LXNS catalog updates while open', async () => {
+  const { screen, tree } = await mount();
+  await waitFor(() => expect(screen.getByText('Song 4')).toBeTruthy());
+  mockCatalog = { ...mockCatalog,
+    source: { ...mockCatalog.source, updatedAt: '2026-10-07T00:00:00.000Z' },
+    songs: [...mockCatalog.songs, { id: '5', title: 'Song 5', version: 'current', charts: [record(5)] }],
+  };
+  mockCatalogQuery = { ...mockCatalogQuery, data: mockCatalog };
+  mockScoreQuery = { ...mockScoreQuery, data: { records: [...mockRecords, record(5)] } };
+  await screen.rerender(tree());
+  await waitFor(() => expect(screen.getByTestId('maimai-difficulty-radar-axis-strength-0')).toBeTruthy());
+  expect(mockFetch).toHaveBeenCalledTimes(2);
+  await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
+  await waitFor(() => expect(screen.getByText('Song 5')).toBeTruthy());
+});
 
 it('only includes scores at or above 100.5% without offering a target selector', async () => {
   mockRecords[0].achievements = 100.4999;
