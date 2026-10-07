@@ -37,7 +37,7 @@ jest.mock('@/components/AppModal', () => {
 
 function record(id: number): ScoreRecord {
   return { songId: String(id), title: `Song ${id}`, type: 'DX', levelIndex: 3, level: '13', difficulty: 'master',
-    difficultyConstant: 13, achievements: 100, rating: 280, dxScore: null, fc: null, fs: null, rate: 'sss', version: 'current' };
+    difficultyConstant: 13, achievements: 100.5, rating: 280, dxScore: null, fc: null, fs: null, rate: 'sssp', version: 'current' };
 }
 function response(scores: number[] = [4, 5, 6, 7, 8]) {
   return new Response(JSON.stringify([{ difficulty: 3, scores }]), { status: 200 });
@@ -69,22 +69,18 @@ afterEach(() => { for (const client of clients.splice(0)) client.clear(); });
 it('opens from the toolbox, shows recommendations and navigates from supporting scores with chart identity', async () => {
   expect(getGameToolbox('maimai').tools.find(tool => tool.title === '实力分析')?.href).toBe('/tools/strength-analysis');
   const { screen } = await mount();
-  await waitFor(() => expect(screen.getByText('训练：键盘、星星 · 目标 100%')).toBeTruthy());
+  await waitFor(() => expect(screen.getByText('Song 4')).toBeTruthy());
   expect(screen.getByText('未游玩')).toBeTruthy();
-  expect(screen.getByText('相对擅长：爆发 · 相对薄弱：键盘')).toBeTruthy();
-  await fireEvent.press(screen.getAllByText('键盘')[0]);
-  expect(screen.getByText('键盘 · 支撑成绩')).toBeTruthy();
-  expect(screen.getAllByText('键盘 4.0')).toHaveLength(3);
+  expect(screen.getByText('分析：相对擅长：爆发 · 相对薄弱：键盘')).toBeTruthy();
+  await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
+  expect(screen.getByText('完成')).toBeTruthy();
+  expect(screen.getByText('Song 2')).toBeTruthy();
+  expect(screen.getByText('Song 3')).toBeTruthy();
   await fireEvent.press(screen.getByText('Song 1'));
   expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '1', gameId: 'maimai', chartType: 'DX', levelIndex: '3' } });
-  expect(screen.queryByText('键盘 · 支撑成绩')).toBeNull();
-  await fireEvent.press(screen.getByText('SSS+ · 100.5%'));
-  await waitFor(() => expect(screen.queryByTestId('maimai-difficulty-radar-shape-strength')).toBeNull());
-  expect(screen.queryByText('训练：键盘、星星 · 目标 100%')).toBeNull();
-  await fireEvent.press(screen.getByText('SS · 99%'));
-  await waitFor(() => expect(screen.getByText('训练：键盘、星星 · 目标 99%')).toBeTruthy());
-  await fireEvent.press(screen.getByText('计算说明 展开'));
-  expect(screen.getByText(/每个维度取达到目标达成率/)).toBeTruthy();
+  expect(screen.queryByText('完成')).toBeNull();
+  expect(screen.queryByText(/SSS?[+]?[ ·]/)).toBeNull();
+  expect(screen.queryByText(/计算说明|特征文件|样本较少|支撑成绩/)).toBeNull();
 });
 
 it('keeps partial results, distinguishes missing difficulty from failures and retries failed requests', async () => {
@@ -95,26 +91,27 @@ it('keeps partial results, distinguishes missing difficulty from failures and re
     return response();
   });
   const { screen } = await mount();
-  await waitFor(() => expect(screen.getByText(/特征文件 4\/4 · 缺失谱面 2 · 失败文件 1/)).toBeTruthy());
+  await waitFor(() => expect(screen.getByText('部分数据加载失败，点击重试')).toBeTruthy());
   expect(screen.getByTestId('maimai-difficulty-radar-shape-strength')).toBeTruthy();
-  await fireEvent.press(screen.getAllByText('键盘')[0]);
+  await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
   expect(screen.getByText('Song 1')).toBeTruthy();
+  expect(screen.queryByText('Song 2')).toBeNull();
+  expect(screen.queryByText('Song 3')).toBeNull();
   await fireEvent.press(screen.getByText('完成'));
   mockFetch.mockImplementation(async () => response([8, 8, 6, 7, 8]));
-  await fireEvent.press(screen.getByText('重试失败特征'));
-  await waitFor(() => expect(screen.getByText(/特征文件 4\/4 · 缺失谱面 2 · 失败文件 0/)).toBeTruthy());
-  expect(screen.queryByText('重试失败特征')).toBeNull();
+  await fireEvent.press(screen.getByText('部分数据加载失败，点击重试'));
+  await waitFor(() => expect(screen.queryByText('部分数据加载失败，点击重试')).toBeNull());
 });
 
 it('closes the old account sheet and never shows its strengths for a newly selected account', async () => {
   const { screen, tree } = await mount();
-  await waitFor(() => expect(screen.getByText('训练：键盘、星星 · 目标 100%')).toBeTruthy());
-  await fireEvent.press(screen.getAllByText('键盘')[0]);
+  await waitFor(() => expect(screen.getByText('Song 4')).toBeTruthy());
+  await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
   mockSession = { ...mockSession, activeAccountId: 'second' };
   mockScoreQuery = { ...mockScoreQuery, data: { records: [] } };
   await screen.rerender(tree());
-  expect(screen.queryByText('键盘 · 支撑成绩')).toBeNull();
-  expect(screen.queryByText('相对擅长：爆发 · 相对薄弱：键盘')).toBeNull();
+  expect(screen.queryByText('完成')).toBeNull();
+  expect(screen.queryByText('分析：相对擅长：爆发 · 相对薄弱：键盘')).toBeNull();
   expect(screen.queryByTestId('maimai-difficulty-radar-shape-strength')).toBeNull();
   expect(screen.queryByText('Song 1')).toBeNull();
 });
@@ -133,6 +130,18 @@ it('bounds active network requests and stops adding work when the screen loses f
   mockFetch.mockImplementation(async () => response());
   mockFocused = true;
   await screen.rerender(tree());
-  await waitFor(() => expect(screen.getByText(/特征文件 8\/8/)).toBeTruthy());
-  expect(screen.getByText('4.0')).toBeTruthy();
+  await waitFor(() => expect(screen.getByTestId('maimai-difficulty-radar-axis-strength-0')).toBeTruthy());
+  await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
+  await waitFor(() => expect(screen.getByText('Song 8')).toBeTruthy());
+});
+
+
+it('only includes scores at or above 100.5% without offering a target selector', async () => {
+  mockRecords[0].achievements = 100.4999;
+  const { screen } = await mount();
+  await waitFor(() => expect(screen.getByTestId('maimai-difficulty-radar-axis-strength-0')).toBeTruthy());
+  await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
+  await waitFor(() => expect(screen.getByText('Song 3')).toBeTruthy());
+  expect(screen.getByText('Song 2')).toBeTruthy();
+  expect(screen.queryByText('Song 1')).toBeNull();
 });

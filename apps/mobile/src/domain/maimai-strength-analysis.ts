@@ -3,7 +3,7 @@ import { MAIMAI_DXTAG_AXES, type MaimaiDxTagScores } from './maimai-dxtag';
 import type { CatalogSnapshot, Chart, ScoreRecord } from './models';
 import { buildBestRecordMap } from './random-charts';
 
-export type MaimaiStrengthTarget = 99 | 100 | 100.5;
+const TARGET_ACHIEVEMENT = 100.5;
 export type MaimaiStrengthChart = Chart & { title: string };
 export type MaimaiStrengthSample = { record: ScoreRecord; value: number };
 export type MaimaiStrengthAxis = {
@@ -23,11 +23,11 @@ const keyOf = (chart: Chart) => chartVersionKey(chart.songId, chart.type, chart.
 const average = (values: readonly number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
 
 export function buildMaimaiStrengthPool(
-  catalog: CatalogSnapshot, records: readonly ScoreRecord[], target: MaimaiStrengthTarget,
+  catalog: CatalogSnapshot, records: readonly ScoreRecord[],
 ) {
   const best = buildBestRecordMap(records.filter(record => record.type !== 'UTAGE' && !record.incomplete));
   const played = [...best.values()];
-  const mastered = played.filter(record => record.achievements >= target);
+  const mastered = played.filter(record => record.achievements >= TARGET_ACHIEVEMENT);
   const constants = mastered.map(record => record.difficultyConstant)
     .filter(value => Number.isFinite(value) && value > 0).sort((a, b) => b - a).slice(0, 10);
   const baseline = constants.length ? average(constants) : null;
@@ -39,7 +39,7 @@ export function buildMaimaiStrengthPool(
         if (chart.type === 'UTAGE' || !Number.isFinite(chart.difficultyConstant) || chart.difficultyConstant <= 0
           || chart.difficultyConstant < baseline - 0.5 - EPSILON
           || chart.difficultyConstant > baseline + 0.3 + EPSILON) continue;
-        if ((best.get(keyOf(chart))?.achievements ?? -Infinity) >= target) continue;
+        if ((best.get(keyOf(chart))?.achievements ?? -Infinity) >= TARGET_ACHIEVEMENT) continue;
         candidates.set(keyOf(chart), { ...chart, title: song.title });
       }
     }
@@ -49,9 +49,9 @@ export function buildMaimaiStrengthPool(
 
 export function analyzeMaimaiStrength(
   catalog: CatalogSnapshot, records: readonly ScoreRecord[],
-  scores: ReadonlyMap<string, MaimaiDxTagScores>, target: MaimaiStrengthTarget,
+  scores: ReadonlyMap<string, MaimaiDxTagScores>,
 ) {
-  const pool = buildMaimaiStrengthPool(catalog, records, target);
+  const pool = buildMaimaiStrengthPool(catalog, records);
   const axes: MaimaiStrengthAxis[] = MAIMAI_DXTAG_AXES.map((name, index) => {
     const samples = pool.mastered.flatMap(record => {
       const value = scores.get(keyOf(record))?.[index];
@@ -67,7 +67,7 @@ export function analyzeMaimaiStrength(
   const balanced = sufficient && max - min <= 0.3 + EPSILON;
   const strongest = sufficient ? axes.filter(axis => Math.abs(axis.value! - max) <= EPSILON).map(axis => axis.name) : [];
   const weakest = sufficient ? axes.filter(axis => Math.abs(axis.value! - min) <= EPSILON).map(axis => axis.name) : [];
-  const conclusion = !sufficient ? '样本不足，请补充成绩或降低掌握目标'
+  const conclusion = !sufficient ? '暂无足够成绩'
     : balanced ? '五维较均衡' : `相对擅长：${strongest.join('、')} · 相对薄弱：${weakest.join('、')}`;
   const cutoff = [...values].sort((a, b) => a - b)[1];
   const trainingAxes = axes.flatMap((axis, index) => balanced || axis.value! <= cutoff + EPSILON ? [index] : []);
