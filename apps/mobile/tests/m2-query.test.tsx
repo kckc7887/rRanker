@@ -323,7 +323,7 @@ function markerOrder(node: RenderNode | null): string[] {
   if (!node) return [];
   const markers: string[] = [];
   if (node.props?.testID === 'dxrating-config-tags') markers.push('tags');
-  if (node.props?.testID === 'maimai-difficulty-radar-master') markers.push('radar');
+  if (node.props?.testID === 'simai-difficulty-radar-master') markers.push('radar');
   if (node.props?.accessibilityLabel === '谱面物量') markers.push('notes');
   for (const child of childNodes(node)) markers.push(...markerOrder(child));
   return markers;
@@ -1066,27 +1066,27 @@ describe('M2 song query screens', () => {
       return new Response(null, { status: mockVideoAvailable ? 200 : 404 });
     });
     const screen = await render(<SongDetailScreen />);
-    await waitFor(() => expect(screen.getByTestId('maimai-difficulty-radar-master')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('simai-difficulty-radar-master')).toBeTruthy());
 
     expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/all.json`, expect.any(Object));
     expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/all.json`)).toHaveLength(1);
-    const radar = screen.getByTestId('maimai-difficulty-radar-master');
+    const radar = screen.getByTestId('simai-difficulty-radar-master');
     const radarJson = JSON.stringify(radar);
     for (const label of ['键盘', '星星', '技巧', '体力', '爆发', '1.2', '3.4', '5.6', '7.8', '9.0']) {
       expect(radarJson).toContain(label);
     }
     const masterColor = { payload: processColor('#7137C8'), type: 0 };
-    expect(screen.getByTestId('maimai-difficulty-radar-shape-master').props).toEqual(expect.objectContaining({
+    expect(screen.getByTestId('simai-difficulty-radar-shape-master').props).toEqual(expect.objectContaining({
       stroke: masterColor,
       fill: masterColor,
       fillOpacity: 0.35,
     }));
-    expect(screen.getByTestId('maimai-difficulty-radar-shape-master').props.strokeDasharray).toBeUndefined();
+    expect(screen.getByTestId('simai-difficulty-radar-shape-master').props.strokeDasharray).toBeUndefined();
     expect(markerOrder(masterChart(screen.toJSON()))).toEqual(['tags', 'radar', 'notes']);
 
     await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
     await waitFor(() => expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/all.json`, expect.any(Object)));
-    await waitFor(() => expect(screen.getByTestId('maimai-difficulty-radar-master')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('simai-difficulty-radar-master')).toBeTruthy());
 
     mockVideoHead.mockClear();
     const cached = await loadCachedMaimaiDxTag(jest.requireMock<{ useDetailedCatalog: () => { data: CatalogSnapshot } }>('@/hooks/use-detailed-catalog').useDetailedCatalog().data);
@@ -1097,7 +1097,7 @@ describe('M2 song query screens', () => {
   it('hides the difficulty radar when DXTag is missing and does not request it for utage', async () => {
     const missing = await render(<SongDetailScreen />);
     expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/all.json`)).toHaveLength(1);
-    expect(missing.queryByTestId('maimai-difficulty-radar-master')).toBeNull();
+    expect(missing.queryByTestId('simai-difficulty-radar-master')).toBeNull();
     expect(missing.getByLabelText('谱面物量')).toBeTruthy();
     expect(missing.getByText('谱师：DX主谱师')).toBeTruthy();
     await expect(loadCachedMaimaiDxTag(jest.requireMock<{ useDetailedCatalog: () => { data: CatalogSnapshot } }>('@/hooks/use-detailed-catalog').useDetailedCatalog().data))
@@ -1108,7 +1108,7 @@ describe('M2 song query screens', () => {
     mockVideoHead.mockClear();
     const utage = await render(<SongDetailScreen />);
     expect(utage.getByText('两人协力')).toBeTruthy();
-    expect(utage.queryByTestId(/maimai-difficulty-radar/)).toBeNull();
+    expect(utage.queryByTestId(/simai-difficulty-radar/)).toBeNull();
     expect(mockVideoHead.mock.calls.some(([url]) => String(url).includes('/DXTag/'))).toBe(false);
   });
 

@@ -18,8 +18,9 @@ let mockDark = false;
 let mockSongState = 'success';
 let mockNotesState = 'success';
 let mockDownloadRunning = false;
+let mockScoresByLevel: Record<number, readonly number[] | null> = {};
 const mockParsed = jest.fn((song: MajdataSong | undefined, _level: number) => ({
-  data: song && mockNotesState === 'success' ? { statistics: { counts: { tap: 11, hold: 22, slide: 33, touch: 44, break: 55, mine: 66 } } } : undefined,
+  data: song && mockNotesState === 'success' ? { statistics: { counts: { tap: 11, hold: 22, slide: 33, touch: 44, break: 55, mine: 66 } }, difficultyScores: mockScoresByLevel[_level] ?? null } : undefined,
   isError: !!song && mockNotesState === 'error', refetch: mockRefetch,
 }));
 const mockLibrary = {
@@ -30,6 +31,11 @@ const mockLibrary = {
 
 jest.mock('expo-router', () => ({ router: { push: (href: unknown) => mockPush(href), replace: jest.fn() }, useNavigation: () => ({ canGoBack: () => true, goBack: mockBack }) }));
 jest.mock('expo-status-bar', () => ({ StatusBar: () => null }));
+jest.mock('react-native-svg', () => ({
+  __esModule: true,
+  ...jest.requireActual<typeof import('react-native-svg')>('react-native-svg'),
+  Text: jest.requireActual<typeof import('react-native')>('react-native').Text,
+}));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 47, bottom: 34, left: 0, right: 0 }) }));
 jest.mock('react-native-gesture-handler', () => {
@@ -55,6 +61,7 @@ jest.mock('@/components/RemoteImage', () => {
 
 beforeEach(() => {
   jest.clearAllMocks(); mockDark = false; mockSongState = 'success'; mockNotesState = 'success';
+  mockScoresByLevel = {};
   Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
   mockLibrary.isUpdating = false; mockDownloadRunning = false;
   jest.spyOn(Animated, 'loop').mockReturnValue({ start: jest.fn(), stop: jest.fn(), reset: jest.fn() } as unknown as ReturnType<typeof Animated.loop>);
@@ -99,6 +106,41 @@ it('renders real seven-difficulty carousel in order and only parses the visible 
   mockParsed.mockClear();
   await fireEvent(carousel, 'momentumScrollEnd', { nativeEvent: { contentOffset: { x: 6 * carousel.props.snapToInterval } } });
   expect(mockParsed.mock.calls.filter(([song]) => song).map(([, level]) => level)).toEqual([6]);
+  await screen.unmount();
+});
+
+it.each([0, 4, 6])('renders the shared five-axis scores for difficulty %s', async level => {
+  mockScoresByLevel[level] = [5.5, 0, 6.4, 0.4, 1.2];
+  const screen = await render(<MajdataSongDetail songId={mockSong.id} initialLevelIndex={level} />);
+  const radar = within(screen.getByTestId(`simai-difficulty-radar-${level}`));
+  for (const value of ['键盘', '星星', '技巧', '体力', '爆发', '5.5', '0.0', '6.4', '0.4', '1.2']) {
+    expect(radar.getByText(value)).toBeTruthy();
+  }
+  expect(within(screen.getByTestId(`majdata-chart-card-${level}`)).getByText('TAP')).toBeTruthy();
+  await screen.unmount();
+});
+
+it('switches to the selected difficulty scores without retaining the previous radar', async () => {
+  mockScoresByLevel = { 5: [5.5, 0, 6.4, 0.4, 1.2], 4: [10, 0, 10, 1.3, 4.4] };
+  const screen = await render(<MajdataSongDetail songId={mockSong.id} />);
+  expect(within(screen.getByTestId('simai-difficulty-radar-5')).getByText('5.5')).toBeTruthy();
+  const carousel = screen.getByTestId('majdata-chart-carousel');
+  await fireEvent(carousel, 'momentumScrollEnd', { nativeEvent: { contentOffset: { x: carousel.props.snapToInterval } } });
+  expect(within(screen.getByTestId('simai-difficulty-radar-4')).getByText('4.4')).toBeTruthy();
+  expect(screen.queryByTestId('simai-difficulty-radar-5')).toBeNull();
+  await screen.unmount();
+});
+
+it.each(['success', 'loading', 'error'])('hides unavailable analysis silently while notes are %s', async state => {
+  mockNotesState = state;
+  const screen = await render(<MajdataSongDetail songId={mockSong.id} />);
+  expect(screen.queryByTestId('simai-difficulty-radar-5')).toBeNull();
+  expect(screen.queryByText('暂无数据')).toBeNull();
+  expect(screen.queryByText(/难点|分析失败|重试分析/)).toBeNull();
+  if (state === 'success') {
+    expect(within(screen.getByTestId('majdata-chart-card-5')).getByText('TAP')).toBeTruthy();
+    expect(screen.queryByText('重试')).toBeNull();
+  }
   await screen.unmount();
 });
 

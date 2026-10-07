@@ -7,7 +7,7 @@ import { Card } from '@/components/Card';
 import { QueryStateView } from '@/components/QueryStateView';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { ScoreCardArtworkScope } from '@/components/game-content/GameScoreCard';
-import { MaimaiDifficultyRadar } from '@/components/maimai/MaimaiDifficultyRadar';
+import { SimaiDifficultyRadar } from '@/components/game-content/SimaiDifficultyRadar';
 import { chartVersionKey } from '@/domain/catalog';
 import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import type { Chart } from '@/domain/models';
@@ -38,7 +38,7 @@ export function MaimaiStrengthAnalysisScreen() {
         ) : <>
           <Card style={styles.radarCard}>
             <Text style={[styles.analysisTitle, { color: theme.text }]}>分析：{analysis.conclusion}</Text>
-            <MaimaiDifficultyRadar scores={analysis.axes.map(axis => axis.value)} color={theme.accent}
+            <SimaiDifficultyRadar scores={analysis.axes.map(axis => axis.value)} color={theme.accent}
               difficulty="strength" onAxisPress={setSelectedAxis} />
           </Card>
           <ScoreCardArtworkScope>

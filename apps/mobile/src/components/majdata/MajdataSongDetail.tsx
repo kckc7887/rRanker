@@ -9,6 +9,7 @@ import { TagEditor } from '@/components/TagEditor';
 import { AchievementValue, ScoreStatusBadges } from '@/components/ScoreVisuals';
 import { ChartCarousel } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
+import { SimaiDifficultyRadar } from '@/components/game-content/SimaiDifficultyRadar';
 import { DetailPressable } from '@/components/game-content/DetailPressable';
 import {
   SimaiSongHero, SimaiSongChrome, SimaiSongMetadata, SimaiChartResultLayout, SimaiNoteTable, SimaiNoteStatus,
@@ -130,6 +131,7 @@ function MajdataChartCard({ song, level, width, library, best, active }: {
     <SimaiChartResultLayout identity={<MajdataDifficultyBadge level={level} />} level={song.levels[level]}
       result={<AchievementValue value={best?.acc.dx} />}
       badges={<ScoreStatusBadges flowing achievements={best?.acc.dx} fc={best ? ['', 'fc', 'fcp', 'ap', 'app'][best.comboState] : undefined} />} />
+    {parsed.data?.difficultyScores ? <SimaiDifficultyRadar scores={parsed.data.difficultyScores} color={visual.color} difficulty={String(level)} /> : null}
     {notes ? <SimaiNoteTable group={notes} accessibilityLabel="使用此谱面物量计算容错"
       onPress={() => router.push({ pathname: '/tools/tolerance', params: { gameId: 'majdata-net', songId: song.id, hash: song.hash, levelIndex: String(level) } })} />
       : <SimaiNoteStatus loading={!parsed.isError} onRetry={parsed.isError ? () => void parsed.refetch() : undefined} />}

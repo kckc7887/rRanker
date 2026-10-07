@@ -349,3 +349,36 @@ The independently maintained resource publisher records its own code references
 and installed dependencies in
 [`rizline_publisher-publish/THIRD_PARTY_NOTICES.md`](https://github.com/kckc7887/rizline_publisher-publish/blob/main/THIRD_PARTY_NOTICES.md).
 Its references do not transfer third-party code licenses to game metadata or images.
+
+## DXTag five-axis analysis
+
+`apps/mobile/src/features/simai-difficulty` contains the scoring dependencies,
+Simai parser, geometry, timing and fixed scale from
+[kckc7887/DXTag](https://github.com/kckc7887/DXTag/tree/cbea1ff20d69c3eaa163c7d967b708bd076e5d96),
+commit `cbea1ff20d69c3eaa163c7d967b708bd076e5d96`. The scoring entry accepts
+Simai slots 1–7 and returns nullable scores. These portions retain the following
+MIT license and copyright notice:
+
+```text
+MIT License
+
+Copyright (c) 2026 尘言
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
+```
