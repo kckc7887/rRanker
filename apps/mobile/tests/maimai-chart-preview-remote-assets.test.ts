@@ -226,8 +226,8 @@ describe('maimai chart preview remote assets', () => {
         'C'+flags+'/A1', 'Ch'+flags+'[4:2]', 'A2'+flags+'/A2'+flags+'/A2'+flags,
       ].join(',') + ',';
       const prepared = prepareChart(parseSimaiBody(body));
-      for (let time = 0; time < prepared.chart.durationMs; time += 25) for (const command of buildFrame(prepared, time, { ...DEFAULT_RENDERER_CONFIG, highlightExNotes: true })) {
-        for (const path of [command.path, command.exPath]) if (path && !runtime.has(resolveSkinObject(path))) missing.add(path);
+      for (let time = 0; time < prepared.chart.durationMs; time += 25) for (const command of buildFrame(prepared, time, DEFAULT_RENDERER_CONFIG)) {
+        if (command.path && !runtime.has(resolveSkinObject(command.path))) missing.add(command.path);
       }
     }
     expect([...missing]).toEqual([]);

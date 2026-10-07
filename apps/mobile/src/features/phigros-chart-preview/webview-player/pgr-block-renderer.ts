@@ -48,12 +48,20 @@ void main() {
 const EFFECT = `precision highp float;
 uniform sampler2D regions;
 uniform sampler2D scene;
+uniform sampler2D bounds;
 uniform vec2 resolution;
+uniform vec2 boundsPixel;
 uniform float time;
+uniform bool showEffect;
+uniform bool showBounds;
 varying vec2 uv;
 vec2 field(vec2 p) { return texture2D(regions, p).rg; }
 float fleck(vec2 p) { return fract(sin(dot(p, vec2(71.7, 163.3))) * 31973.7); }
-void main() {
+float boundaryField(vec2 p) {
+  vec2 m = texture2D(bounds, (p + .06) / 1.12).rg;
+  return step(.5, abs(m.r - m.g));
+}
+vec4 effect() {
   vec2 pixel = 1. / resolution;
   vec2 center = field(uv);
   vec2 smallMin = center, smallMax = center, wideMin = center, wideMax = center;
@@ -86,8 +94,23 @@ void main() {
   vec3 sparks = vec3(.25, .035, .07) * speck * max(active, waiting * .4);
 
   float coverage = clamp(step(.001, max(active, waiting)) + outline + halo, 0., 1.);
-  gl_FragColor = vec4((mix(base, colour, alpha) + scattered * .7 + sparks) * coverage, coverage);
+  return vec4((mix(base, colour, alpha) + scattered * .7 + sparks) * coverage, coverage);
+}
+void main() {
+  vec4 colour = showEffect ? effect() : vec4(0.);
+  if (showBounds) {
+    float low = boundaryField(uv), high = low;
+    for (int i = 0; i < 8; i++) {
+      float angle = float(i) * .7853981634;
+      float value = boundaryField(uv + vec2(cos(angle), sin(angle)) * boundsPixel);
+      low = min(low, value); high = max(high, value);
+    }
+    float edge = high - low;
+    colour = vec4(vec3(0., 1., 1.) * edge + colour.rgb * (1. - edge), edge + colour.a * (1. - edge));
+  }
+  gl_FragColor = colour;
 }`;
+const QUAD = new Float32Array([-1,-1,0,0,0,0, 1,-1,0,0,0,0, -1,1,0,0,0,0, 1,1,0,0,0,0]);
 
 /** 四通道分别记录启用/禁用区域及减区；MAX 使重叠区域取并集。 */
 export class PgrBlockRenderer {
@@ -104,6 +127,7 @@ export class PgrBlockRenderer {
   private readonly framebuffer: WebGLFramebuffer;
   private vertices = new Float32Array(6 * 6 * 64);
   private candidates: (time: number) => PgrBlock[];
+  private enabledCandidates: (time: number) => PgrBlock[];
   private width = 0;
   private height = 0;
   private disposed = false;
@@ -112,6 +136,7 @@ export class PgrBlockRenderer {
 
   constructor(blocks: readonly PgrBlock[]) {
     this.candidates = indexPgrBlocks(blocks);
+    this.enabledCandidates = indexPgrBlocks(blocks, true);
     const gl = this.canvas.getContext('webgl', { alpha: true, premultipliedAlpha: true,
       antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false });
     if (!gl) throw new Error('谱面区域特效需要 WebGL');
@@ -168,15 +193,15 @@ export class PgrBlockRenderer {
     if (coverage >= 0) { gl.enableVertexAttribArray(coverage); gl.vertexAttribPointer(coverage, 4, gl.FLOAT, false, 24, 8); }
   }
 
-  private geometry(time: number, aspect: number): number {
-    const candidates = this.candidates(time);
+  private geometry(time: number, aspect: number, enabledOnly = false): number {
+    const candidates = (enabledOnly ? this.enabledCandidates : this.candidates)(time);
     this.lastCandidateCount = candidates.length;
     this.lastDrawnCount = 0;
     const capacity = Math.max(36, candidates.length * 36);
     if (this.vertices.length < capacity) this.vertices = new Float32Array(2 ** Math.ceil(Math.log2(capacity)));
     let cursor = 0;
     for (const block of candidates) {
-      const sample = samplePgrBlock(block, time, aspect);
+      const sample = samplePgrBlock(block, time, aspect, enabledOnly);
       if (!sample || sample.corners.some(point => !point.every(Number.isFinite))) continue;
       if (sample.corners.every(p => p[0] < -.05) || sample.corners.every(p => p[0] > 1.05)
         || sample.corners.every(p => p[1] < -.05) || sample.corners.every(p => p[1] > 1.05)) continue;
@@ -192,15 +217,28 @@ export class PgrBlockRenderer {
     return cursor;
   }
 
-  draw(context: CanvasRenderingContext2D, time: number, width: number, height: number, pixelWidth: number, pixelHeight: number): void {
-    if (this.disposed) return;
+  private mask(cursor: number): void {
+    const gl = this.gl;
+    gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
+    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.texture, 0);
+    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
+    this.bind(this.programs[0]!);
+    gl.bufferData(gl.ARRAY_BUFFER, this.vertices.subarray(0, cursor), gl.DYNAMIC_DRAW);
+    gl.enable(gl.BLEND); gl.blendEquation(this.maxBlend); gl.blendFunc(gl.ONE, gl.ONE);
+    gl.drawArrays(gl.TRIANGLES, 0, cursor / 6);
+    gl.disable(gl.BLEND);
+  }
+
+  draw(context: CanvasRenderingContext2D, time: number, width: number, height: number, pixelWidth: number, pixelHeight: number,
+    showEffect = true, showBounds = false): void {
+    if (this.disposed || (!showEffect && !showBounds)) return;
     const gl = this.gl;
     if (gl.isContextLost()) throw new Error('谱面区域图形上下文已丢失，请重新加载');
     if (pixelWidth > this.textureLimit || pixelHeight > this.textureLimit) {
       throw new Error('谱面区域画面尺寸超出图形设备限制');
     }
-    const cursor = this.geometry(time, width / height);
-    if (!cursor) return;
+    const cursor = showEffect ? this.geometry(time, width / height) : 0;
+    if (!cursor && (!showBounds || !this.enabledCandidates(time).some(block => time >= block.enable && time < block.disable))) return;
 
     const scale = Math.min(1, Math.sqrt(1_048_576 / (pixelWidth * pixelHeight)));
     const w = Math.max(1, Math.round(pixelWidth * scale)), h = Math.max(1, Math.round(pixelHeight * scale));
@@ -215,27 +253,25 @@ export class PgrBlockRenderer {
       }
     }
     gl.viewport(0, 0, w, h);
-    gl.bindFramebuffer(gl.FRAMEBUFFER, this.framebuffer);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.texture, 0);
-    gl.clearColor(0, 0, 0, 0); gl.clear(gl.COLOR_BUFFER_BIT);
-    this.bind(this.programs[0]!);
-    gl.bufferData(gl.ARRAY_BUFFER, this.vertices.subarray(0, cursor), gl.DYNAMIC_DRAW);
-    gl.enable(gl.BLEND); gl.blendEquation(this.maxBlend); gl.blendFunc(gl.ONE, gl.ONE);
-    gl.drawArrays(gl.TRIANGLES, 0, cursor / 6);
-    gl.disable(gl.BLEND);
-    gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.warped, 0);
-    const warp = this.programs[1]!;
-    this.bind(warp);
-    gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1,0,0,0,0, 1,-1,0,0,0,0, -1,1,0,0,0,0, 1,1,0,0,0,0]), gl.STREAM_DRAW);
-    gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    gl.uniform1i(gl.getUniformLocation(warp, 'regions'), 0);
-    gl.uniform2f(gl.getUniformLocation(warp, 'resolution'), w, h);
-    gl.uniform1f(gl.getUniformLocation(warp, 'time'), time);
-    gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    if (cursor) {
+      this.mask(cursor);
+      gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, this.warped, 0);
+      const warp = this.programs[1]!;
+      this.bind(warp);
+      gl.bufferData(gl.ARRAY_BUFFER, QUAD, gl.STREAM_DRAW);
+      gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, this.texture);
+      gl.uniform1i(gl.getUniformLocation(warp, 'regions'), 0);
+      gl.uniform2f(gl.getUniformLocation(warp, 'resolution'), w, h);
+      gl.uniform1f(gl.getUniformLocation(warp, 'time'), time);
+      gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
+    }
+    if (showBounds) this.mask(this.geometry(time, width / height, true));
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     gl.clear(gl.COLOR_BUFFER_BIT);
     const effect = this.programs[2]!;
     this.bind(effect);
+    gl.bufferData(gl.ARRAY_BUFFER, QUAD, gl.STREAM_DRAW);
+    gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.warped);
     gl.uniform1i(gl.getUniformLocation(effect, 'regions'), 0);
     gl.activeTexture(gl.TEXTURE1); gl.bindTexture(gl.TEXTURE_2D, this.scene);
@@ -243,9 +279,14 @@ export class PgrBlockRenderer {
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, context.canvas);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, false);
     gl.uniform1i(gl.getUniformLocation(effect, 'scene'), 1);
+    gl.activeTexture(gl.TEXTURE2); gl.bindTexture(gl.TEXTURE_2D, this.texture);
+    gl.uniform1i(gl.getUniformLocation(effect, 'bounds'), 2);
     gl.activeTexture(gl.TEXTURE0);
     gl.uniform2f(gl.getUniformLocation(effect, 'resolution'), w, h);
+    gl.uniform2f(gl.getUniformLocation(effect, 'boundsPixel'), 1 / width, 1 / height);
     gl.uniform1f(gl.getUniformLocation(effect, 'time'), time);
+    gl.uniform1i(gl.getUniformLocation(effect, 'showEffect'), cursor ? 1 : 0);
+    gl.uniform1i(gl.getUniformLocation(effect, 'showBounds'), showBounds ? 1 : 0);
     gl.drawArrays(gl.TRIANGLE_STRIP, 0, 4);
     context.save(); context.globalAlpha = 1;
     context.drawImage(this.canvas, 0, 0, width, height); context.restore();
@@ -264,5 +305,6 @@ export class PgrBlockRenderer {
     this.canvas.width = this.canvas.height = 0;
     this.vertices = new Float32Array(0);
     this.candidates = () => [];
+    this.enabledCandidates = () => [];
   }
 }

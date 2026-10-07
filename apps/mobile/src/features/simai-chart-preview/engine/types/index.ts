@@ -38,7 +38,7 @@ export const DIFFICULTY_NAMES: Record<ChartDifficulty, string> = { 1: 'EASY', 2:
 export const DIFFICULTY_COLORS: Record<ChartDifficulty, string> = { 1: '#1E3A8A', 2: '#22C55E', 3: '#EAB308', 4: '#EF4444', 5: '#A855F7', 6: '#F8FAFC', 7: '#EC4899' };
 export interface RendererConfig {
   hiSpeed: number; alwaysKeepHiSpeed: boolean; playbackSpeed: number; mirrorMode: MirrorMode;
-  highlightExNotes: boolean; normalColorBreakSlide: boolean; pinkSlideStart: boolean; slideRotation: boolean;
+  pinkSlideStart: boolean; slideRotation: boolean;
   judgmentLineDesign: JudgmentLineDesign; showBpm: boolean; showNoteTotal: boolean; showBreakCount: boolean;
   showBreakIndex: boolean; rainbowBpm: boolean; ddrColorMode: boolean; ddrColorExtended: boolean;
   showFireworks: boolean; showHitEffect: boolean; judgeHint: JudgeHintMode;

@@ -41,6 +41,8 @@ const DEFAULT_SETTINGS: Required<PhigrosChartPreviewSettings> = Object.freeze({
   volume: 1,
   backgroundDim: 0.55,
   multiHint: true,
+  showBlockArea: true,
+  showBlockAreaBounds: false,
   lineColor: 'white',
   hitSoundVolume: 1,
   aspectRatio: null,
@@ -81,6 +83,8 @@ function loadSettings(raw: PhigrosChartPreviewSettings | null | undefined): Requ
     volume: bounded(source.volume, 0, 1, DEFAULT_SETTINGS.volume),
     backgroundDim: bounded(source.backgroundDim, 0.2, 0.85, DEFAULT_SETTINGS.backgroundDim),
     multiHint: typeof source.multiHint === 'boolean' ? source.multiHint : DEFAULT_SETTINGS.multiHint,
+    showBlockArea: typeof source.showBlockArea === 'boolean' ? source.showBlockArea : DEFAULT_SETTINGS.showBlockArea,
+    showBlockAreaBounds: typeof source.showBlockAreaBounds === 'boolean' ? source.showBlockAreaBounds : DEFAULT_SETTINGS.showBlockAreaBounds,
     lineColor: LINE_COLORS.includes(source.lineColor ?? '') ? source.lineColor! : DEFAULT_SETTINGS.lineColor,
     hitSoundVolume: bounded(source.hitSoundVolume, 0, 1, DEFAULT_SETTINGS.hitSoundVolume),
     aspectRatio: typeof source.aspectRatio === 'number' && Number.isFinite(source.aspectRatio) ? source.aspectRatio : null,
@@ -139,6 +143,8 @@ function start(): void {
     timelineBadge: $('timeline-badge'),
     timeLabel: $('time-label'),
     multiHint: $('multi-hint') as HTMLButtonElement,
+    blockArea: $('show-block-area') as HTMLButtonElement,
+    blockAreaBounds: $('show-block-area-bounds') as HTMLButtonElement,
     gameProgress: $('game-progress-fill'),
     progressBar: document.querySelector('.game-progress') as HTMLElement,
     scoreBlock: document.querySelector('.score-block') as HTMLElement,
@@ -157,6 +163,8 @@ function start(): void {
   const config: Partial<PhigrosChartPreviewConfig> = window.__PHIGROS_CHART_PREVIEW__ ?? {};
   events.own(installPreviewControls({ sections: ['播放设置', '辅助选项'] }));
   const isRpe = config.format === 'rpe';
+  elements.blockArea.hidden = isRpe;
+  elements.blockAreaBounds.hidden = isRpe;
   type PreviewRenderer = PgrRenderer | RpeRenderer;
   const renderer: PreviewRenderer = isRpe ? new RpeRenderer(elements.canvas) : new PgrRenderer(elements.canvas);
   events.own(() => renderer.dispose());
@@ -441,6 +449,8 @@ function start(): void {
 
   function applySettings(): void {
     elements.multiHint.setAttribute('aria-pressed', String(settings.multiHint));
+    elements.blockArea.setAttribute('aria-pressed', String(settings.showBlockArea));
+    elements.blockAreaBounds.setAttribute('aria-pressed', String(settings.showBlockAreaBounds));
     session.applyAudioSettings();
     renderer.setSettings({ ...settings, lineColor: settings.lineColor as LineColorKey });
   }
@@ -820,6 +830,22 @@ function start(): void {
   events.listen(elements.multiHint, 'click', () => {
     if (!ready) return;
     settings.multiHint = !settings.multiHint;
+    applySettings();
+    persistSettings();
+    if (!session.playing) renderFrame(session.chartTime);
+  });
+
+  events.listen(elements.blockArea, 'click', () => {
+    if (!ready) return;
+    settings.showBlockArea = !settings.showBlockArea;
+    applySettings();
+    persistSettings();
+    if (!session.playing) renderFrame(session.chartTime);
+  });
+
+  events.listen(elements.blockAreaBounds, 'click', () => {
+    if (!ready) return;
+    settings.showBlockAreaBounds = !settings.showBlockAreaBounds;
     applySettings();
     persistSettings();
     if (!session.playing) renderFrame(session.chartTime);

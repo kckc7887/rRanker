@@ -33,6 +33,8 @@ export interface RendererSettings {
   multiHint: boolean;
   backgroundDim: number;
   lineColor: LineColorKey;
+  showBlockArea: boolean;
+  showBlockAreaBounds: boolean;
 }
 
 interface LineRenderCache {
@@ -187,7 +189,8 @@ export class PgrRenderer {
   private renderCaches: LineRenderCache[] = [];
   private hitEvents: HitEffectEvent[] = [];
   private lastTime = Number.NaN;
-  private settings: RendererSettings = { noteScale: 1, multiHint: true, backgroundDim: 0.55, lineColor: 'white' };
+  private settings: RendererSettings = { noteScale: 1, multiHint: true, backgroundDim: 0.55, lineColor: 'white',
+    showBlockArea: true, showBlockAreaBounds: false };
   private fullscreen = false;
   private disposed = false;
   lastRenderedTime = 0;
@@ -347,7 +350,8 @@ export class PgrRenderer {
         }
       }
     }
-    this.blocks?.draw(context, time, width, height, pixelWidth, pixelHeight);
+    this.blocks?.draw(context, time, width, height, pixelWidth, pixelHeight,
+      this.settings.showBlockArea, this.settings.showBlockAreaBounds);
     this.drawHitEffects(context, time, width, height);
     context.globalAlpha = 1;
     this.lastTime = time;

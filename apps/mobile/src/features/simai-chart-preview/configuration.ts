@@ -9,8 +9,6 @@ export type ChartPreviewSettings = {
   judgmentLineDesign?: string;
   pinkSlideStart?: boolean;
   slideRotation?: boolean;
-  highlightExNotes?: boolean;
-  normalColorBreakSlide?: boolean;
   showHitEffect?: boolean;
   judgeHint?: 'distinguish' | 'unified' | 'hidden';
   showFireworks?: boolean;

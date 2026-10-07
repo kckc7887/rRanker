@@ -5,6 +5,8 @@ export type PgrPreviewSettings = {
   volume?: number;
   backgroundDim?: number;
   multiHint?: boolean;
+  showBlockArea?: boolean;
+  showBlockAreaBounds?: boolean;
   lineColor?: string;
   hitSoundVolume?: number;
   aspectRatio?: number | null;

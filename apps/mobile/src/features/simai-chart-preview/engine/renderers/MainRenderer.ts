@@ -18,8 +18,8 @@ export function mirrorHint(command: DrawCommand, mx: number, my: number): DrawCo
   return { ...command, path, x: command.x * mx, y: command.y * my, angle: command.angle * mx * my + (my < 0 ? Math.PI : 0) };
 }
 export const DEFAULT_RENDERER_CONFIG: RendererConfig = {
-    hiSpeed: 6, alwaysKeepHiSpeed: false, playbackSpeed: 1, mirrorMode: 'none', highlightExNotes: false,
-    normalColorBreakSlide: false, pinkSlideStart: false, slideRotation: true, judgmentLineDesign: 'simple',
+    hiSpeed: 6, alwaysKeepHiSpeed: false, playbackSpeed: 1, mirrorMode: 'none',
+    pinkSlideStart: false, slideRotation: true, judgmentLineDesign: 'simple',
     showBpm: true, showNoteTotal: true, showBreakCount: true, showBreakIndex: false, rainbowBpm: false,
     ddrColorMode: false, ddrColorExtended: false, showFireworks: true, showHitEffect: true, judgeHint: 'distinguish',
   };
@@ -35,7 +35,6 @@ export class MainRenderer {
   private video: HTMLVideoElement | null = null;
   private background: HTMLImageElement | null = null;
   private backgroundCache: HTMLCanvasElement | null = null;
-  private tinted = new Map<string, HTMLCanvasElement>();
   private fps = 0;
   frameOverlay: FrameOverlayInfo | null = null;
   readonly config: RendererConfig = { ...DEFAULT_RENDERER_CONFIG };
@@ -100,10 +99,6 @@ export class MainRenderer {
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, Math.hypot(width, height), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * command.cutoff); ctx.closePath(); ctx.clip();
     }
     this.drawSliced(image, image.naturalWidth, image.naturalHeight, width, height, command.stretch !== undefined, command.scale);
-    if (command.exPath) {
-      const overlay = this.tint(command.exPath, command.tint ?? '#ffffff');
-      if (overlay) this.drawSliced(overlay, overlay.width, overlay.height, width, height, command.stretch !== undefined, command.scale);
-    }
     ctx.restore();
   }
   private drawSliced(image: CanvasImageSource, sourceW: number, sourceH: number, width: number, height: number, sliced: boolean, scale: number) {
@@ -114,13 +109,6 @@ export class MainRenderer {
     ctx.drawImage(image, 0, 0, sourceW, sourceCap, -width / 2, -height / 2, width, cap);
     if (body > 0) ctx.drawImage(image, 0, sourceCap, sourceW, sourceH - sourceCap * 2, -width / 2, -height / 2 + cap, width, body);
     ctx.drawImage(image, 0, sourceH - sourceCap, sourceW, sourceCap, -width / 2, height / 2 - cap, width, cap);
-  }
-  private tint(path: string, color: string) {
-    const key = `${path}:${color}`, cached = this.tinted.get(key); if (cached) return cached;
-    const image = this.skin.get(path); if (!image) return null;
-    const canvas = document.createElement('canvas'); canvas.width = image.naturalWidth; canvas.height = image.naturalHeight;
-    const ctx = canvas.getContext('2d')!; ctx.drawImage(image, 0, 0); ctx.globalCompositeOperation = 'source-in'; ctx.fillStyle = color; ctx.fillRect(0, 0, canvas.width, canvas.height);
-    this.tinted.set(key, canvas); return canvas;
   }
   clear() {
     const ctx = this.ctx, size = this.canvas.width;
@@ -167,8 +155,6 @@ export class MainRenderer {
   setAlwaysKeepHiSpeed(value: boolean) { this.config.alwaysKeepHiSpeed = value; }
   setPlaybackSpeed(value: number) { this.config.playbackSpeed = value; }
   setFps(value: number) { this.fps = value; }
-  setHighlightExNotes(value: boolean) { this.config.highlightExNotes = value; }
-  setNormalColorBreakSlide(value: boolean) { this.config.normalColorBreakSlide = value; }
   setPinkSlideStart(value: boolean) { this.config.pinkSlideStart = value; }
   setSlideRotation(value: boolean) { this.config.slideRotation = value; }
   setMirrorMode(value: string) { this.config.mirrorMode = ['horizontal', 'vertical', 'rotate180'].includes(value) ? value as RendererConfig['mirrorMode'] : 'none'; }

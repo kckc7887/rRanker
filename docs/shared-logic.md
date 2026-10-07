@@ -96,6 +96,8 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。HTTP 
 
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。
 
+舞萌与 Majdata 共用 Simai 播放器，保护套不额外高亮，绝赞滑轨使用绝赞配色。PGR 的 `pgr-preview-config.ts` 提供 `showBlockArea`（默认开）和 `showBlockAreaBounds`（默认关），通过现有设置桥接保存。`pgr-blocks.ts` 共用区域变换，判定范围仅按 enable/disable 取样；`pgr-block-renderer.ts` 用未扭曲区域合成后的边界绘制青色框，两个显示开关独立。RPE 不显示这两个选项。
+
 `loadMajdataParsedChart(song, level, signal)` 返回预览模型、物量与 `difficultyScores`。难点值由 `features/simai-difficulty` 的 `simaiDifficultyScores(text, slot)` 使用同一份原始文本计算，按键盘、星星、技巧、体力、爆发排列，范围 0–10，保留一位小数；七个槽位均可分析。分析失败或滑轨不完整返回 `null`，不影响已有物量。结果复用按歌曲修订与难度隔离的解析缓存，缺少难点字段的缓存只重建对应条目，I/O 失败不清缓存。详情仅为当前可见难度启用查询，并只在有完整难点值时显示雷达。
 
 `components/game-content/SimaiDifficultyRadar` 为舞萌详情、舞萌实力分析和 Majdata 详情共用雷达，使用相同轴序、刻度与一位小数展示，颜色由调用方传入。
