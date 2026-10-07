@@ -4,7 +4,7 @@ import {
   maimaiDxTagChartId,
   maimaiDxTagScoresForDifficulty,
   type MaimaiDxTagScores,
-} from '@/providers/maimai-dxtag';
+} from '@/domain/maimai-dxtag';
 import { loadCachedMaimaiDxTag } from '@/services/maimai-dxtag-cache';
 
 export function useMaimaiDxTagScores(

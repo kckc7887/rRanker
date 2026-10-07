@@ -103,6 +103,8 @@ Simai 的解析、时间轴、几何与渲染位于 `simai-chart-preview/engine`
 
 KALEIDXSCOPE 的日程、课题和手工进度位于 `domain/kaleidx-scope.ts`、`state/kaleidx-scope-progress.ts` 与工具页面；进度按账号保存，课题跳转使用实际舞萌详情目标。
 
+实力分析路由按当前游戏装配舞萌或 Phigros 页面，账号切换重新挂载。舞萌使用当前账号全部普通谱面成绩、当前曲库与 DXTag 特征，默认以 SSS 为掌握目标，可切换 SS、SSS+；逐维取达标谱面最高 10 个正值求平均，并从适级曲库推荐能提升薄弱维度的谱面。计算位于 `domain/maimai-strength-analysis.ts`，页面会话保存目标选择，不单独持久化分析结果。`useMaimaiStrength` 复用成绩和曲库查询，按文件 ID 去重并四路加载 DXTag，已玩谱面排在推荐候选之前；沿用资源缓存和前后台生命周期，失焦停止追加任务。页面分别显示加载进度、缺失谱面与失败文件，部分结果可展示并重试失败请求。
+
 ## 验证与构建
 
 以下命令在 `apps/mobile` 运行：

@@ -1,8 +1,8 @@
+import type { MaimaiDxTagChart } from '@/domain/maimai-dxtag';
 import { z } from 'zod';
 import {
   loadMaimaiDxTag,
   maimaiDxTagChartsSchema,
-  type MaimaiDxTagChart,
 } from '@/providers/maimai-dxtag';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
