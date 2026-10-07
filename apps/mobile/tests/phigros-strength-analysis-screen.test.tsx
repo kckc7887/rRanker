@@ -150,9 +150,12 @@ describe('Phigros strength analysis screen', () => {
     expect(screen.queryByText('差速')).toBeNull();
     expect(screen.queryByLabelText('展开分析池说明')).toBeNull();
     expect(screen.queryByText(/针对 /)).toBeNull();
+    const axisSpan = Math.max(analysis.radarDomain.max - analysis.radarDomain.min, 0.1);
     const axisValueCounts = new Map<string, number>();
     for (const tag of analysis.mainTags) {
-      const value = tag.averageRks == null ? '—' : tag.averageRks.toFixed(4);
+      const value = tag.averageRks == null
+        ? '—'
+        : (Math.min(10, Math.max(0, (tag.averageRks - analysis.radarDomain.min) / axisSpan * 10))).toFixed(1);
       axisValueCounts.set(value, (axisValueCounts.get(value) ?? 0) + 1);
     }
     for (const [value, count] of axisValueCounts) {

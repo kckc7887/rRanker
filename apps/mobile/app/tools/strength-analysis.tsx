@@ -3,6 +3,7 @@ import { useMemo, useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, Stack } from 'expo-router';
 import { AppModal } from '@/components/AppModal';
+import { Card } from '@/components/Card';
 import { RandomUnplayedChartCard } from '@/components/RandomChartsPage';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { ScoreCardArtworkScope } from '@/components/game-content/GameScoreCard';
@@ -278,13 +279,15 @@ export default function PhigrosStrengthAnalysisScreen() {
         <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无达标谱面</Text>
       ) : (
         <>
-          <Text style={[styles.analysisTitle, { color: theme.text }]}>分析：{analysis.mainTagProfileLabel}</Text>
-          <PhigrosStrengthRadar
-            tags={analysis.mainTags}
-            min={analysis.radarDomain.min}
-            max={analysis.radarDomain.max}
-            onTagPress={setSelectedTag}
-          />
+          <Card style={styles.radarCard}>
+            <Text style={[styles.analysisTitle, { color: theme.text }]}>分析：{analysis.mainTagProfileLabel}</Text>
+            <PhigrosStrengthRadar
+              tags={analysis.mainTags}
+              min={analysis.radarDomain.min}
+              max={analysis.radarDomain.max}
+              onTagPress={setSelectedTag}
+            />
+          </Card>
           <ScoreCardArtworkScope>
           <View style={styles.practiceSection}>
             <Text style={[styles.sectionTitle, { color: theme.text }]}>薄弱项练习</Text>
@@ -335,6 +338,7 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   staleBanner: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
   staleText: { fontSize: 12, lineHeight: 17 },
+  radarCard: { paddingBottom: 8, gap: 2 },
   analysisTitle: { fontSize: 17, lineHeight: 23, fontWeight: '800', textAlign: 'center' },
   sectionTitle: { fontSize: 17, lineHeight: 23, fontWeight: '800' },
   practiceSection: { gap: 10 },
