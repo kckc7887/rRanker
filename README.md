@@ -65,6 +65,7 @@ Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict
 - [MajdataPlay](https://github.com/TeamMajdata/MajdataPlay)
 - [nonebot-plugin-maimaidx](https://github.com/Yuri-YuzuChaN/nonebot-plugin-maimaidx)
 - [maimaiDX](https://github.com/Yuri-YuzuChaN/maimaiDX)
+- [DXTag](https://github.com/kckc7887/DXTag)
 - [DXRating](https://github.com/gekichumai/dxrating)
 - [nearcade](https://nearcade.phizone.cn/)
 - [PhiZone Player](https://github.com/PhiZone/player)

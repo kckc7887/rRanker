@@ -89,7 +89,7 @@ it('opens from the toolbox, shows recommendations and navigates from supporting 
   await fireEvent.press(screen.getByText('Song 4'));
   expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '4', gameId: 'maimai', chartType: 'DX', levelIndex: '3' } });
   expect(screen.getByText('分析：爆发倾向型')).toBeTruthy();
-  await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
+  await fireEvent.press(screen.getByTestId('simai-difficulty-radar-axis-strength-0'));
   expect(screen.getByText('完成')).toBeTruthy();
   expect(screen.getByText('Song 2')).toBeTruthy();
   expect(screen.getByText('Song 3')).toBeTruthy();
@@ -110,8 +110,8 @@ it('retries a library failure and excludes missing charts and difficulties from 
   }), { status: 200 }));
   await fireEvent.press(screen.getByText('部分数据加载失败，点击重试'));
   await waitFor(() => expect(screen.queryByText('部分数据加载失败，点击重试')).toBeNull());
-  expect(screen.getByTestId('maimai-difficulty-radar-shape-strength')).toBeTruthy();
-  await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
+  expect(screen.getByTestId('simai-difficulty-radar-shape-strength')).toBeTruthy();
+  await fireEvent.press(screen.getByTestId('simai-difficulty-radar-axis-strength-0'));
   expect(screen.getByText('Song 1')).toBeTruthy();
   expect(screen.queryByText('Song 2')).toBeNull();
   expect(screen.queryByText('Song 3')).toBeNull();
@@ -124,13 +124,13 @@ it('retries a library failure and excludes missing charts and difficulties from 
 it('closes the old account sheet and never shows its strengths for a newly selected account', async () => {
   const { screen, tree } = await mount();
   await waitFor(() => expect(screen.getByText('Song 4')).toBeTruthy());
-  await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
+  await fireEvent.press(screen.getByTestId('simai-difficulty-radar-axis-strength-0'));
   mockSession = { ...mockSession, activeAccountId: 'second' };
   mockScoreQuery = { ...mockScoreQuery, data: { records: [] } };
   await screen.rerender(tree());
   expect(screen.queryByText('完成')).toBeNull();
   expect(screen.queryByText('分析：爆发倾向型')).toBeNull();
-  expect(screen.queryByTestId('maimai-difficulty-radar-shape-strength')).toBeNull();
+  expect(screen.queryByTestId('simai-difficulty-radar-shape-strength')).toBeNull();
   expect(screen.queryByText('Song 1')).toBeNull();
 });
 
@@ -141,7 +141,7 @@ it('waits for focus and loads every chart with one library request', async () =>
   mockFocused = true;
   await screen.rerender(tree());
   await waitFor(() => expect(screen.getByText('Song 4')).toBeTruthy());
-  await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
+  await fireEvent.press(screen.getByTestId('simai-difficulty-radar-axis-strength-0'));
   expect(screen.getByText('Song 1')).toBeTruthy();
   expect(screen.getByText('Song 2')).toBeTruthy();
   expect(screen.getByText('Song 3')).toBeTruthy();
@@ -160,17 +160,17 @@ it('checks library coverage again when the LXNS catalog updates while open', asy
   mockCatalogQuery = { ...mockCatalogQuery, data: mockCatalog };
   mockScoreQuery = { ...mockScoreQuery, data: { records: [...mockRecords, record(5)] } };
   await screen.rerender(tree());
-  await waitFor(() => expect(screen.getByTestId('maimai-difficulty-radar-axis-strength-0')).toBeTruthy());
+  await waitFor(() => expect(screen.getByTestId('simai-difficulty-radar-axis-strength-0')).toBeTruthy());
   expect(mockFetch).toHaveBeenCalledTimes(2);
-  await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
+  await fireEvent.press(screen.getByTestId('simai-difficulty-radar-axis-strength-0'));
   await waitFor(() => expect(screen.getByText('Song 5')).toBeTruthy());
 });
 
 it('only includes scores at or above 100.5% without offering a target selector', async () => {
   mockRecords[0].achievements = 100.4999;
   const { screen } = await mount();
-  await waitFor(() => expect(screen.getByTestId('maimai-difficulty-radar-axis-strength-0')).toBeTruthy());
-  await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
+  await waitFor(() => expect(screen.getByTestId('simai-difficulty-radar-axis-strength-0')).toBeTruthy());
+  await fireEvent.press(screen.getByTestId('simai-difficulty-radar-axis-strength-0'));
   await waitFor(() => expect(screen.getByText('Song 3')).toBeTruthy());
   expect(screen.getByText('Song 2')).toBeTruthy();
   expect(screen.queryByText('Song 1')).toBeNull();

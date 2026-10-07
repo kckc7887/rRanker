@@ -8,10 +8,14 @@ import type { HttpCookieSession } from '@/providers/http-cookies';
 const mock = vi.hoisted(() => ({ getSong: vi.fn(), getChart: vi.fn(), getPlayer: vi.fn(), getRecords: vi.fn(), getRecent: vi.fn() }));
 const database = new DatabaseSync(':memory:');
 const repository = new SqliteSnapshotRepository();
+let resourceReadError: Error | undefined;
 vi.mock('expo-sqlite', () => ({ openDatabaseAsync: async () => ({
   execAsync: async (sql: string) => database.exec(sql),
   runAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).run(...args),
-  getFirstAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).get(...args) ?? null,
+  getFirstAsync: async (sql: string, ...args: (string | number)[]) => {
+    if (resourceReadError && sql.includes('FROM resource_snapshots')) throw resourceReadError;
+    return database.prepare(sql).get(...args) ?? null;
+  },
   getAllAsync: async (sql: string, ...args: (string | number)[]) => database.prepare(sql).all(...args),
   withTransactionAsync: async (task: () => Promise<void>) => {
     database.exec('BEGIN'); try { await task(); database.exec('COMMIT'); }
@@ -29,7 +33,7 @@ const song = MajdataSongSchema.parse({ id: 'uuid-full-001', title: 'song', hash:
 const cachedSource = { kind: 'majdata-net', label: 'Majdata Net', updatedAt: '2026-09-01T00:00:00.000Z', isStale: false };
 const session: HttpCookieSession = { mode: 'http-cookies', origin: 'https://majdata.net', cookies: [{ name: 'auth', value: 'value', secure: true, path: '/' }], persistable: true };
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
-beforeEach(async () => { await repository.initialize(); await repository.clearResources((await repository.listResourceSizes()).map(item => item.key)); vi.clearAllMocks(); mock.getSong.mockResolvedValue(song); mock.getChart.mockResolvedValue('&inote_5=(120)1,\n&inote_7=(120)2m,'); mock.getPlayer.mockResolvedValue({ username: 'player' }); mock.getRecords.mockResolvedValue([]); mock.getRecent.mockResolvedValue([]); });
+beforeEach(async () => { resourceReadError = undefined; await repository.initialize(); await repository.clearResources((await repository.listResourceSizes()).map(item => item.key)); vi.clearAllMocks(); mock.getSong.mockResolvedValue(song); mock.getChart.mockResolvedValue('&inote_5=(120)1,\n&inote_7=(120)2m,'); mock.getPlayer.mockResolvedValue({ username: 'player' }); mock.getRecords.mockResolvedValue([]); mock.getRecent.mockResolvedValue([]); });
 describe('Majdata revision and account cache', () => {
   it('does not reuse an unsupported song snapshot when offline', async () => {
     await repository.saveResource(majdataSongKey(song.id), 1, 'now', { song });
@@ -103,6 +107,83 @@ describe('Majdata revision and account cache', () => {
     const [first, second] = await Promise.all([loadMajdataParsedChart(song, 4), loadMajdataParsedChart(song, 4)]);
     expect(first).toBe(second);
     expect(mock.getChart).toHaveBeenCalledTimes(1);
+  });
+  /** 数值来自 kckc7887/DXTag cbea1ff20d69c3eaa163c7d967b708bd076e5d96 的独立执行结果。 */
+  it.each([
+    { name: 'keyboard', body: '(180){16}' + '1,2,3,4,5,6,7,8,'.repeat(8) + 'E', scores: [10, 0, 10, 1.3, 4.4] },
+    { name: 'BPM changes and connected slides', body: '(180){8}1-3[8:1]-5[8:1],2/6,3h[4:1],A1/B2,(240){16}4,5,6,7,8w4[4:1],1,2,3,4,5,6,7,8,Ch[4:1],E', scores: [5.9, 1.3, 10, 0.7, 4.4] },
+    { name: 'holds and touches', body: '(150){8}1h[4:2]/5,6,A1,B2,Ch[4:1]/3,4,5,6,7/8,E', scores: [5.5, 0, 6.4, 0.4, 1.2] },
+  ])('matches upstream five-axis scores for $name', async ({ body, scores }) => {
+    mock.getChart.mockResolvedValue(`&inote_5=${body}`);
+    expect((await loadMajdataParsedChart(song, 4)).difficultyScores).toEqual(scores);
+  });
+  it('scores all seven slots and reuses their persisted results offline', async () => {
+    const body = '(150){8}1h[4:2]/5,6,A1,B2,Ch[4:1]/3,4,5,6,7/8,E';
+    mock.getChart.mockResolvedValue(Array.from({ length: 7 }, (_, level) => `&inote_${level + 1}=${body}`).join('\n'));
+    for (let level = 0; level < 7; level++) {
+      expect((await loadMajdataParsedChart(song, level)).difficultyScores).toEqual([5.5, 0, 6.4, 0.4, 1.2]);
+    }
+    mock.getChart.mockRejectedValue(new Error('offline'));
+    mock.getSong.mockRejectedValue(new Error('offline'));
+    for (let level = 0; level < 7; level++) {
+      expect((await loadMajdataParsedChart(song, level)).difficultyScores).toEqual([5.5, 0, 6.4, 0.4, 1.2]);
+    }
+  });
+  it.each(['1-1[4:1]', '1-3[4:0]'])('keeps note counts and caches null when slide analysis fails: %s', async body => {
+    mock.getChart.mockResolvedValue(`&inote_5=(120)${body},E`);
+    const parsed = await loadMajdataParsedChart(song, 4);
+    expect(parsed.difficultyScores).toBeNull();
+    expect(parsed.statistics.counts).toMatchObject({ tap: 1, slide: 1 });
+    mock.getChart.mockRejectedValue(new Error('offline'));
+    expect((await loadMajdataParsedChart(song, 4)).difficultyScores).toBeNull();
+  });
+  it('does not turn malformed chart text or network errors into valid parsed charts', async () => {
+    mock.getChart.mockResolvedValue('&inote_5=(120)BAD,E');
+    await expect(loadMajdataParsedChart(song, 4)).rejects.toThrow();
+    expect(await repository.getResource(`majdata-net:parsed:${song.id}:${song.hash}:4`, 1)).toBeNull();
+    mock.getChart.mockRejectedValue(new Error('offline'));
+    await expect(loadMajdataParsedChart({ ...song, hash: 'unavailable' }, 4)).rejects.toThrow('offline');
+  });
+  it('rebuilds only an unsupported parsed cache from the retained text', async () => {
+    const parsed = await loadMajdataParsedChart(song, 4);
+    const key = `majdata-net:parsed:${song.id}:${song.hash}:4`;
+    await repository.saveResource(key, 1, 'now', { chart: parsed.chart, statistics: parsed.statistics });
+    await repository.saveResource('majdata-net:unrelated', 1, 'now', 'retained');
+    mock.getChart.mockRejectedValue(new Error('offline'));
+    mock.getSong.mockRejectedValue(new Error('offline'));
+    expect((await loadMajdataParsedChart(song, 4)).difficultyScores).toEqual(parsed.difficultyScores);
+    expect(await repository.getResource('majdata-net:unrelated', 1)).toBe('retained');
+    expect(await repository.getResource(key, 1)).toMatchObject({ difficultyScores: parsed.difficultyScores });
+  });
+  it('propagates storage read failures without deleting a parsed result', async () => {
+    const parsed = await loadMajdataParsedChart(song, 4);
+    resourceReadError = new Error('storage unavailable');
+    await expect(loadMajdataParsedChart(song, 4)).rejects.toThrow('storage unavailable');
+    resourceReadError = undefined;
+    expect(await loadMajdataParsedChart(song, 4)).toEqual(parsed);
+  });
+  it('isolates scores by difficulty and chart revision', async () => {
+    const keyboard = '(180){16}' + '1,2,3,4,5,6,7,8,'.repeat(8) + 'E';
+    const holds = '(150){8}1h[4:2]/5,6,A1,B2,Ch[4:1]/3,4,5,6,7/8,E';
+    mock.getChart.mockResolvedValue(`&inote_5=${keyboard}\n&inote_7=${holds}`);
+    expect((await loadMajdataParsedChart(song, 4)).difficultyScores).toEqual([10, 0, 10, 1.3, 4.4]);
+    expect((await loadMajdataParsedChart(song, 6)).difficultyScores).toEqual([5.5, 0, 6.4, 0.4, 1.2]);
+    const revised = { ...song, hash: 'hash2' };
+    mock.getSong.mockResolvedValue(revised);
+    mock.getChart.mockResolvedValue(`&inote_5=${holds}`);
+    expect((await loadMajdataParsedChart(revised, 4)).difficultyScores).toEqual([5.5, 0, 6.4, 0.4, 1.2]);
+    expect((await loadMajdataParsedChart(song, 4)).difficultyScores).toEqual([10, 0, 10, 1.3, 4.4]);
+  });
+  it('does not write parsed scores after the cache generation is cleared', async () => {
+    const remote = deferred<string>();
+    mock.getChart.mockReturnValue(remote.promise);
+    const pending = loadMajdataParsedChart(song, 4);
+    const rejected = expect(pending).rejects.toThrow('缓存请求已失效');
+    await vi.waitFor(() => expect(mock.getChart).toHaveBeenCalled());
+    invalidateResourceWrites('majdata-net');
+    remote.resolve('&inote_5=(120)1,');
+    await rejected;
+    expect(await repository.getResource(`majdata-net:parsed:${song.id}:${song.hash}:4`, 1)).toBeNull();
   });
   it('does not label new text as an old revision', async () => {
     mock.getSong.mockResolvedValue({ ...song, hash: 'hash2' }); await expect(loadMajdataChart(song)).rejects.toThrow('谱面已更新');

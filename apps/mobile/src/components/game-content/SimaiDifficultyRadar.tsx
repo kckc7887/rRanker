@@ -46,7 +46,7 @@ function pointsString(points: readonly { x: number; y: number }[]): string {
   return points.map((point) => `${point.x},${point.y}`).join(' ');
 }
 
-export function MaimaiDifficultyRadar({
+export function SimaiDifficultyRadar({
   scores,
   color,
   difficulty,
@@ -61,7 +61,7 @@ export function MaimaiDifficultyRadar({
   const axes = SLOT_SCORE.map((_, slot) => pointAt(slot, CHART_RADIUS));
   const complete = scores.every(score => score !== null);
   const dataPoints = SLOT_SCORE.map((scoreIndex, slot) => pointAt(slot, CHART_RADIUS * ((scores[scoreIndex] ?? 0) / 10)));
-  return <View style={styles.wrap} testID={`maimai-difficulty-radar-${difficulty}`}>
+  return <View style={styles.wrap} testID={`simai-difficulty-radar-${difficulty}`}>
     <Svg width="100%" height="100%" viewBox={`0 0 ${SIZE} ${SIZE}`}>
       {RING_RATIOS.map((ratio) => <Polygon
         key={ratio}
@@ -80,7 +80,7 @@ export function MaimaiDifficultyRadar({
         strokeWidth={1}
       />)}
       {complete ? <Polygon
-        testID={`maimai-difficulty-radar-shape-${difficulty}`}
+        testID={`simai-difficulty-radar-shape-${difficulty}`}
         points={pointsString(dataPoints)}
         fill={color}
         fillOpacity={FILL_OPACITY}
@@ -101,7 +101,7 @@ export function MaimaiDifficultyRadar({
         const nameY = anchor === 'middle' ? pointAt(0, CHART_RADIUS).y - LABEL_GAP - VALUE_OFFSET : placed.y;
         return <Fragment key={axis}>
           <SvgText
-            testID={`maimai-difficulty-radar-axis-${difficulty}-${scoreIndex}`}
+            testID={`simai-difficulty-radar-axis-${difficulty}-${scoreIndex}`}
             onPress={onAxisPress ? () => onAxisPress(scoreIndex) : undefined}
             x={x}
             y={nameY}

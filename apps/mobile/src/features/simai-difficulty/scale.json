@@ -1,0 +1,21 @@
+{
+  "version": "five-axis-standalone-v1",
+  "sourceProjection": "728aeadbe280c6b9",
+  "scaleDate": "2026-10-01",
+  "population": "Valid ordinary charts, deduplicated by Simai fingerprint; no level, version, constant, fitting value or tag used.",
+  "chartCount": 7011,
+  "normalization": "max(all p99.5, positive p99)",
+  "baseline": {
+    "键盘": 100.07579192161403,
+    "星星": 96.01729591685351,
+    "技巧": 62.42835191293171,
+    "体力": 23.02031527874421,
+    "爆发": 55.952189168537394
+  },
+  "star": 129.2398804700811,
+  "starTechnique": 84.61633871295246,
+  "starBurst": 36.053922198520475,
+  "rhythm": 4.831614877974868,
+  "touch": 26.809017831959324,
+  "holdLock": 13.057057014833532
+}

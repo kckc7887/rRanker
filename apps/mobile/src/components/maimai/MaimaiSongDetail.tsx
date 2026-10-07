@@ -12,7 +12,7 @@ import {
   DxRatingChartTagSheet,
   type DxRatingChartTagSheetData,
 } from '@/components/maimai/DxRatingChartTagSheet';
-import { MaimaiDifficultyRadar } from '@/components/maimai/MaimaiDifficultyRadar';
+import { SimaiDifficultyRadar } from '@/components/game-content/SimaiDifficultyRadar';
 import { QueryStateView } from '@/components/QueryStateView';
 import { AchievementValue, ChartTypeBadge, DIFFICULTY_VISUAL, DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
@@ -554,7 +554,7 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     <DxRatingTags tags={dxratingTags}
       onTagPress={showDxRatingTagDescription}
       onShowAll={() => onShowAllDxRatingTags({ songTitle: song.title, chartLabel, tags: dxratingTags })} />
-    {dxTagScores ? <MaimaiDifficultyRadar scores={dxTagScores} color={visual.color} difficulty={chart.difficulty} /> : null}
+    {dxTagScores ? <SimaiDifficultyRadar scores={dxTagScores} color={visual.color} difficulty={chart.difficulty} /> : null}
     <ChartNotesTables chart={chart} loading={notesLoading} error={notesError} onRetry={onRetryNotes} />
     <DetailPressable accessibilityRole="button" accessibilityLabel={practice ? '已加入练习清单' : '加入练习清单'}
       disabled={library.isUpdating}

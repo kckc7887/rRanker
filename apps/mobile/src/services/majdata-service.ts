@@ -12,6 +12,7 @@ import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 import { createBoundedLoadQueue } from './offset-pagination';
 import { parseSimaiChart } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import { simaiStatistics } from '@/features/simai-chart-preview/statistics';
+import { simaiDifficultyScores } from '@/features/simai-difficulty';
 import { cacheFirstLoad } from './cache-first';
 import {
   cachedSnapshotSource,
@@ -207,18 +208,25 @@ export async function loadMajdataChart(song: MajdataSong, signal?: AbortSignal):
   }, signal);
 }
 
+const difficultyScoreSchema = z.number().finite().min(0).max(10);
+const parsedChartSchema = z.object({
+  chart: z.custom<ReturnType<typeof parseSimaiChart>>(value => typeof value === 'object' && value !== null && 'notes' in value && Array.isArray(value.notes)),
+  statistics: z.custom<ReturnType<typeof simaiStatistics>>(value => typeof value === 'object' && value !== null && 'counts' in value && 'units' in value && Array.isArray(value.units)),
+  difficultyScores: z.tuple([difficultyScoreSchema, difficultyScoreSchema, difficultyScoreSchema, difficultyScoreSchema, difficultyScoreSchema]).nullable(),
+});
+
 export async function loadMajdataParsedChart(song: MajdataSong, level: number, signal?: AbortSignal) {
   if (!Number.isInteger(level) || level < 0 || level > 6) throw new Error('所选难度不存在');
   const key = `majdata-net:parsed:${song.id}:${song.hash}:${level}`;
   const assertCurrent = captureResourceWrites('majdata-net');
   return resourceLoads.share(requestKey(key), async requestSignal => {
-    type Parsed = { chart: ReturnType<typeof parseSimaiChart>; statistics: ReturnType<typeof simaiStatistics> };
-    const cached = await repository.getResource<Parsed>(key, 1);
+    const cached = await repository.getResource(key, 1, parsedChartSchema);
     if (requestSignal.aborted) throw requestSignal.reason;
     assertCurrent();
     if (cached) return cached;
-    const chart = parseSimaiChart(await loadMajdataChart(song, requestSignal), level + 1);
-    const parsed = { chart, statistics: simaiStatistics(chart) };
+    const text = await loadMajdataChart(song, requestSignal);
+    const chart = parseSimaiChart(text, level + 1);
+    const parsed = { chart, statistics: simaiStatistics(chart), difficultyScores: simaiDifficultyScores(text, level + 1) };
     if (requestSignal.aborted) throw requestSignal.reason;
     assertCurrent();
     await repository.saveResource(key, 1, new Date().toISOString(), parsed, () => { assertCurrent(); if (requestSignal.aborted) throw new Error('已取消'); });
