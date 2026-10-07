@@ -27,8 +27,10 @@ function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
 }
 
-function formatAxisRks(tag: PhigrosTagRksStat): string {
-  return tag.averageRks == null ? '—' : tag.averageRks.toFixed(4);
+function formatAxisScore(averageRks: number | null, min: number, max: number): string {
+  if (averageRks == null) return '—';
+  const span = Math.max(max - min, 0.1);
+  return (clamp((averageRks - min) / span, 0, 1) * 10).toFixed(1);
 }
 
 export function PhigrosStrengthRadar({
@@ -101,7 +103,7 @@ export function PhigrosStrengthRadar({
               cx={point.x}
               cy={point.y}
               r={4}
-              fill={theme.background}
+              fill={theme.surface}
               stroke={theme.accent}
               strokeWidth={2}
             />
@@ -127,7 +129,7 @@ export function PhigrosStrengthRadar({
             ]}
           >
             <Text style={[styles.labelName, { color: theme.text }]}>{tag.name}</Text>
-            <Text style={[styles.labelValue, { color: theme.accent }]}>{formatAxisRks(tag)}</Text>
+            <Text style={[styles.labelValue, { color: theme.accent }]}>{formatAxisScore(tag.averageRks, min, max)}</Text>
           </Pressable>
         );
       })}
