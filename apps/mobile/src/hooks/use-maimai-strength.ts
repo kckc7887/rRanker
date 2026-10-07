@@ -38,7 +38,6 @@ export function useMaimaiStrength(enabled: boolean) {
     pending: charts.length > 0 && dxTag.isFetching,
     isLoading: scores.isLoading || catalog.isLoading,
     isError: scores.isError || catalog.isError,
-    isStale: scores.isDataStale || catalog.data?.source.isStale || dxTag.data?.source.isStale,
     retry: () => { void scores.refetch(); void catalog.refetch(); },
   };
 }

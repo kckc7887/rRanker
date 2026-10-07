@@ -5,9 +5,7 @@ import { Stack, router } from 'expo-router';
 import { AppModal } from '@/components/AppModal';
 import { Card } from '@/components/Card';
 import { QueryStateView } from '@/components/QueryStateView';
-import { RandomUnplayedChartCard } from '@/components/RandomChartsPage';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
-import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
 import { ScoreCardArtworkScope } from '@/components/game-content/GameScoreCard';
 import { MaimaiDifficultyRadar } from '@/components/maimai/MaimaiDifficultyRadar';
 import { chartVersionKey } from '@/domain/catalog';
@@ -31,7 +29,6 @@ export function MaimaiStrengthAnalysisScreen() {
     <QueryStateView isLoading={query.isLoading} isError={query.isError} isEmpty={false}
       data={query.analysis} onRetry={query.retry} renderData={analysis => <ScrollView
         contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        {query.isStale ? <Text style={{ color: theme.textSecondary }}>当前使用缓存数据，联网同步后结果会自动更新。</Text> : null}
         {query.hasFeatureError ? <Pressable onPress={query.retryFailed}>
           <Text style={{ color: theme.accent }}>部分数据加载失败，点击重试</Text>
         </Pressable> : null}
@@ -47,17 +44,11 @@ export function MaimaiStrengthAnalysisScreen() {
           <ScoreCardArtworkScope>
             <View style={styles.practiceSection}>
               <Text style={[styles.title, { color: theme.text }]}>薄弱项练习</Text>
-              {analysis.recommendations.map(item => item.record ? (
+              {analysis.recommendations.map(item => (
                 <Pressable key={chartVersionKey(item.chart.songId, item.chart.type, item.chart.levelIndex)} onPress={() => openChart(item.chart)}>
-                  <ScoreRecordCard record={item.record} interactive={false} />
+                  <ScoreRecordCard record={item.record ?? item.chart} interactive={false} />
                 </Pressable>
-              ) : <RandomUnplayedChartCard
-                key={chartVersionKey(item.chart.songId, item.chart.type, item.chart.levelIndex)}
-                title={item.chart.title} onPress={() => openChart(item.chart)}
-                badge={<View style={styles.badges}>
-                  <DifficultyBadge difficulty={item.chart.difficulty} constant={item.chart.difficultyConstant} />
-                  <ChartTypeBadge type={item.chart.type} />
-                </View>} />)}
+              ))}
               {!analysis.recommendations.length && !query.pending ? <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无可提升推荐</Text> : null}
             </View>
           </ScoreCardArtworkScope>
@@ -92,7 +83,6 @@ const styles = StyleSheet.create({
   title: { fontSize: 17, lineHeight: 23, fontWeight: '800' },
   emptyTitle: { fontSize: 15, lineHeight: 21, fontWeight: '700' },
   practiceSection: { gap: 10 },
-  badges: { flexDirection: 'row', alignItems: 'center', gap: 6 },
   sheetGrabber: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, marginTop: 8, marginBottom: 4 },
   sheetHeader: { minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
   sheetHeaderSpacer: { width: 56 },

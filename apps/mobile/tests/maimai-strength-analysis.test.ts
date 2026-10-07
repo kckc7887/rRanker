@@ -55,9 +55,9 @@ describe('Maimai strength analysis', () => {
   it('requires three samples per axis and includes equality at the balanced boundary', () => {
     const records = [record(1), record(2), record(3)];
     const result = analyzeMaimaiStrength(catalog(records), records, features(records, [5, 5.3, 5, 5.3, 5]));
-    expect(result.conclusion).toBe('五维较均衡');
+    expect(result.conclusion).toBe('五维均衡型');
     const uneven = analyzeMaimaiStrength(catalog(records), records, features(records, [4, 4, 6, 8, 8]));
-    expect(uneven.conclusion).toBe('相对擅长：体力、爆发 · 相对薄弱：键盘、星星');
+    expect(uneven.conclusion).toBe('体力·爆发倾向型');
     expect(analyzeMaimaiStrength(catalog(records), records.slice(0, 2), features(records)).sufficient).toBe(false);
   });
 
