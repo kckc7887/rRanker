@@ -20,6 +20,10 @@ let mockGameQuery: Record<string, unknown>;
 let mockCatalogQuery: Record<string, unknown>;
 let mockTagsQuery: Record<string, unknown>;
 
+jest.mock('@/state/session-store', () => ({
+  useSession: (select: (state: { activeGameId: string; activeAccountId: string }) => unknown) =>
+    select({ activeGameId: 'phigros', activeAccountId: 'phigros-player' }),
+}));
 jest.mock('expo-router', () => ({
   router: { push: (...args: unknown[]) => mockPush(...args) },
   Stack: { Screen: () => null },

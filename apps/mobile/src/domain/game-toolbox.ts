@@ -44,6 +44,10 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
   maimai: {
     tools: [
       {
+        id: 'strength-analysis', href: '/tools/strength-analysis', title: '实力分析',
+        detail: '查看五维能力、支撑成绩与薄弱项练习', summaryLabel: '实力分析',
+      },
+      {
         id: 'rating',
         href: '/tools/rating',
         title: 'DX Rating 计算器',

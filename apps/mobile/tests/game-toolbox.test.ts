@@ -6,6 +6,7 @@ describe('per-game toolbox registry', () => {
   it('keeps the maimai tools in its own toolbox', () => {
     const toolbox = getGameToolbox('maimai');
     expect(toolbox.tools.map((tool) => tool.id)).toEqual([
+      'strength-analysis',
       'rating',
       'tolerance',
       'plates',
@@ -15,7 +16,7 @@ describe('per-game toolbox registry', () => {
       'arcade-finder',
       'best-image',
     ]);
-    expect(summarizeGameTools('maimai')).toBe('Rating · 达成率/容错 · 牌子进度 · 版本对照 · 万花筒 · 随机歌曲 · 机厅查找 · 成绩图片');
+    expect(summarizeGameTools('maimai')).toBe('实力分析 · Rating · 达成率/容错 · 牌子进度 · 版本对照 · 万花筒 · 随机歌曲 · 机厅查找 · 成绩图片');
   });
 
   it('gives Phigros push-rks and strength-analysis toolbox entries', () => {

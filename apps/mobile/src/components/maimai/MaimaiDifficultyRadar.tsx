@@ -1,7 +1,7 @@
 import { Fragment } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Svg, { Line, Polygon, Text as SvgText } from 'react-native-svg';
-import { MAIMAI_DXTAG_AXES, type MaimaiDxTagScores } from '@/providers/maimai-dxtag';
+import { MAIMAI_DXTAG_AXES } from '@/domain/maimai-dxtag';
 import { useAppTheme } from '@/theme/app-theme';
 
 const SIZE = 320;
@@ -50,14 +50,17 @@ export function MaimaiDifficultyRadar({
   scores,
   color,
   difficulty,
+  onAxisPress,
 }: {
-  scores: MaimaiDxTagScores;
+  scores: readonly (number | null)[];
   color: string;
   difficulty: string;
+  onAxisPress?: (index: number) => void;
 }) {
   const theme = useAppTheme();
   const axes = SLOT_SCORE.map((_, slot) => pointAt(slot, CHART_RADIUS));
-  const dataPoints = SLOT_SCORE.map((scoreIndex, slot) => pointAt(slot, CHART_RADIUS * (scores[scoreIndex] / 10)));
+  const complete = scores.every(score => score !== null);
+  const dataPoints = SLOT_SCORE.map((scoreIndex, slot) => pointAt(slot, CHART_RADIUS * ((scores[scoreIndex] ?? 0) / 10)));
   return <View style={styles.wrap} testID={`maimai-difficulty-radar-${difficulty}`}>
     <Svg width="100%" height="100%" viewBox={`0 0 ${SIZE} ${SIZE}`}>
       {RING_RATIOS.map((ratio) => <Polygon
@@ -76,7 +79,7 @@ export function MaimaiDifficultyRadar({
         stroke={theme.border}
         strokeWidth={1}
       />)}
-      <Polygon
+      {complete ? <Polygon
         testID={`maimai-difficulty-radar-shape-${difficulty}`}
         points={pointsString(dataPoints)}
         fill={color}
@@ -84,7 +87,7 @@ export function MaimaiDifficultyRadar({
         stroke={color}
         strokeWidth={2.4}
         strokeLinejoin="round"
-      />
+      /> : null}
       {SLOT_SCORE.map((scoreIndex, slot) => {
         const axis = MAIMAI_DXTAG_AXES[scoreIndex];
         const placed = pointAt(slot, LABEL_RADIUS);
@@ -98,6 +101,7 @@ export function MaimaiDifficultyRadar({
         const nameY = anchor === 'middle' ? pointAt(0, CHART_RADIUS).y - LABEL_GAP - VALUE_OFFSET : placed.y;
         return <Fragment key={axis}>
           <SvgText
+            onPress={onAxisPress ? () => onAxisPress(scoreIndex) : undefined}
             x={x}
             y={nameY}
             fill={theme.text}
@@ -106,13 +110,14 @@ export function MaimaiDifficultyRadar({
             textAnchor={anchor}
           >{axis}</SvgText>
           <SvgText
+            onPress={onAxisPress ? () => onAxisPress(scoreIndex) : undefined}
             x={x}
             y={nameY + VALUE_OFFSET}
             fill={color}
             fontSize={14}
             fontWeight="700"
             textAnchor={anchor}
-          >{scores[scoreIndex].toFixed(1)}</SvgText>
+          >{scores[scoreIndex]?.toFixed(1) ?? '暂无数据'}</SvgText>
         </Fragment>;
       })}
     </Svg>
