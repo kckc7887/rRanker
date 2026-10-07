@@ -4,6 +4,7 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import StrengthAnalysisToolScreen from '../app/tools/strength-analysis';
 import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
+import { useThemeStore } from '@/state/theme-store';
 import { getGameToolbox } from '@/domain/game-toolbox';
 
 const mockPush = jest.fn();
@@ -23,6 +24,10 @@ jest.mock('@/state/session-store', () => ({ useSession: (select: (state: typeof 
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => mockScoreQuery }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => mockCatalogQuery }));
 jest.mock('expo/fetch', () => ({ fetch: (url: string, init?: RequestInit) => mockFetch(url, init) }));
+jest.mock('expo-image', () => {
+  const { Image } = jest.requireActual<typeof import('react-native')>('react-native');
+  return { Image: (props: React.ComponentProps<typeof Image>) => <Image {...props} /> };
+});
 jest.mock('@/storage/sqlite-snapshot-repository', () => {
   const values = new Map<string, unknown>();
   return { values, SqliteSnapshotRepository: class {
@@ -56,11 +61,13 @@ async function mount() {
 beforeEach(() => {
   jest.clearAllMocks();
   mockFocused = true;
+  useThemeStore.setState({ scoreCardArtworkEnabled: false });
   mockSession = { activeGameId: 'maimai', activeAccountId: 'first' };
   mockRecords = [record(1), record(2), record(3)];
   mockCatalog = { currentVersion: { id: 1, title: 'current' }, versions: [], chartVersionIndex: {},
     source: { kind: 'lxns', label: 'LXNS', updatedAt: '', isStale: false },
-    songs: [...mockRecords, record(4)].map(item => ({ id: item.songId, title: item.title, version: 'current', charts: [item] })) };
+    songs: [...mockRecords, record(4)].map(item => ({ id: item.songId, title: item.title, version: 'current', charts: [{ songId: item.songId, type: item.type, levelIndex: item.levelIndex, level: item.level,
+      difficulty: item.difficulty, difficultyConstant: item.difficultyConstant }] })) };
   mockScoreQuery = { data: { records: mockRecords }, isLoading: false, isError: false, refetch: jest.fn() };
   mockCatalogQuery = { data: mockCatalog, isLoading: false, isError: false, refetch: jest.fn() };
   (jest.requireMock('@/storage/sqlite-snapshot-repository') as { values: Map<string, unknown> }).values.clear();
@@ -69,11 +76,19 @@ beforeEach(() => {
 afterEach(() => { for (const client of clients.splice(0)) client.clear(); });
 
 it('opens from the toolbox, shows recommendations and navigates from supporting scores with chart identity', async () => {
+  useThemeStore.setState({ scoreCardArtworkEnabled: true });
+  mockScoreQuery = { ...mockScoreQuery, isDataStale: true };
   expect(getGameToolbox('maimai').tools.find(tool => tool.title === '实力分析')?.href).toBe('/tools/strength-analysis');
   const { screen } = await mount();
   await waitFor(() => expect(screen.getByText('Song 4')).toBeTruthy());
-  expect(screen.getByText('未游玩')).toBeTruthy();
-  expect(screen.getByText('分析：相对擅长：爆发 · 相对薄弱：键盘')).toBeTruthy();
+  expect(screen.getAllByText('-')).toHaveLength(2);
+  expect(screen.queryByText('未游玩')).toBeNull();
+  expect(screen.queryByText(/缓存数据/)).toBeNull();
+  await waitFor(() => expect(screen.getByTestId('score-card-artwork').props.source)
+    .toBe('https://assets2.lxns.net/maimai/jacket/4.png'));
+  await fireEvent.press(screen.getByText('Song 4'));
+  expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '4', gameId: 'maimai', chartType: 'DX', levelIndex: '3' } });
+  expect(screen.getByText('分析：爆发倾向型')).toBeTruthy();
   await fireEvent.press(screen.getByTestId('maimai-difficulty-radar-axis-strength-0'));
   expect(screen.getByText('完成')).toBeTruthy();
   expect(screen.getByText('Song 2')).toBeTruthy();
@@ -114,7 +129,7 @@ it('closes the old account sheet and never shows its strengths for a newly selec
   mockScoreQuery = { ...mockScoreQuery, data: { records: [] } };
   await screen.rerender(tree());
   expect(screen.queryByText('完成')).toBeNull();
-  expect(screen.queryByText('分析：相对擅长：爆发 · 相对薄弱：键盘')).toBeNull();
+  expect(screen.queryByText('分析：爆发倾向型')).toBeNull();
   expect(screen.queryByTestId('maimai-difficulty-radar-shape-strength')).toBeNull();
   expect(screen.queryByText('Song 1')).toBeNull();
 });

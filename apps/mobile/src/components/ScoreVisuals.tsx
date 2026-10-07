@@ -131,7 +131,7 @@ export function AchievementValue({ value, compact = false }: { value?: number; c
   const theme = useAppTheme();
   const textStyle = [styles.achievement, compact && styles.achievementCompact];
   if (value === undefined) {
-    return <Text accessibilityLabel="未游玩" style={[...textStyle, { color: theme.text }]}>—</Text>;
+    return <Text accessibilityLabel="未游玩" style={[...textStyle, { color: theme.text }]}>-</Text>;
   }
   const text = formatAchievement(value);
   if (value >= 100.5) return <GradientAchievement text={text} flowing compact={compact} />;

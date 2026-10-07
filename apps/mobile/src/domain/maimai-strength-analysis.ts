@@ -66,9 +66,8 @@ export function analyzeMaimaiStrength(
   const max = Math.max(...values);
   const balanced = sufficient && max - min <= 0.3 + EPSILON;
   const strongest = sufficient ? axes.filter(axis => Math.abs(axis.value! - max) <= EPSILON).map(axis => axis.name) : [];
-  const weakest = sufficient ? axes.filter(axis => Math.abs(axis.value! - min) <= EPSILON).map(axis => axis.name) : [];
   const conclusion = !sufficient ? '暂无足够成绩'
-    : balanced ? '五维较均衡' : `相对擅长：${strongest.join('、')} · 相对薄弱：${weakest.join('、')}`;
+    : balanced ? '五维均衡型' : `${strongest.join('·')}倾向型`;
   const cutoff = [...values].sort((a, b) => a - b)[1];
   const trainingAxes = axes.flatMap((axis, index) => balanced || axis.value! <= cutoff + EPSILON ? [index] : []);
   const recommendations: MaimaiStrengthRecommendation[] = [];

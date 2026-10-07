@@ -37,8 +37,8 @@ export const ScoreRecordCard = memo(function ScoreRecordCard({
     presentation={presentation}
     interactive={interactive}
     achievements={record.achievements}
-    sideMetric={record.type === 'UTAGE' ? undefined : { label: 'Rating', value: record.rating, emptyText: '—' }}
-    supplementalMetric={record.type === 'UTAGE' ? <>DX分数 {record.dxScore ?? '—'}</> : undefined}
+    sideMetric={record.type === 'UTAGE' ? undefined : { label: 'Rating', value: record.rating, emptyText: '-' }}
+    supplementalMetric={record.type === 'UTAGE' ? <>DX分数 {record.dxScore ?? '-'}</> : undefined}
     difficultyBadge={<DifficultyBadge difficulty={record.difficulty} constant={record.difficultyConstant} compact />}
     chartTypeBadge={record.type === 'UTAGE' ? null : <ChartTypeBadge type={record.type} />}
     rate={record.rate} fc={record.fc} fs={record.fs}
