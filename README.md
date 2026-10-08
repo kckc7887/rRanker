@@ -20,7 +20,7 @@ rRanker 是一个多音游数据管理应用。你可以在一个应用中查看
 - **个人曲库**：收藏歌曲、标记练习谱面，并为歌曲和谱面添加本地标签。
 - **成绩图片**：为舞萌 DX、中二节奏和 Phigros 生成并导出预设或自定义成绩图片。
 - **谱面功能**：查看舞萌 DX、Majdata Net、Phigros、Phira、osu! 和 Rizline 的谱面确认；下载舞萌 DX、Majdata Net、Phigros、Phira 和 osu! 的谱面文件。
-- **游戏工具**：提供随机歌曲、附近机厅查找，以及 Rating 计算、推分计算、实力分析、牌子与收藏品进度、版本对照、模组百科等游戏专属工具。
+- **游戏工具**：提供随机歌曲、音游地图，以及 Rating 计算、推分计算、实力分析、牌子与收藏品进度、版本对照、模组百科等游戏专属工具。
 - **个性化与存储**：切换深浅色模式和主题色，调整成绩卡片曲绘效果，并查看或清理应用内存储。
 
 ## 支持游戏
@@ -68,6 +68,9 @@ Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict
 - [DXTag](https://github.com/kckc7887/DXTag)
 - [DXRating](https://github.com/gekichumai/dxrating)
 - [nearcade](https://nearcade.phizone.cn/)
+- [react-native-maps](https://github.com/react-native-maps/react-native-maps)
+- [expo-gaode-map](https://github.com/TomWq/expo-gaode-map)
+- [gcoord](https://github.com/hujiulong/gcoord)
 - [PhiZone Player](https://github.com/PhiZone/player)
 - [phira](https://github.com/TeamFlos/phira)
 - [PhiVideo](https://github.com/phigrostl/PhiVideo/tree/361e000f5eefc803bdd4ec3c86c402197ea7d30c)

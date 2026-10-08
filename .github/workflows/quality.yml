@@ -80,6 +80,7 @@ jobs:
       NODE_ENV: production
       BUILD_SOURCE_COMMIT: ${{ needs.changed-scope.outputs.sha }}
       OSU_OAUTH_CLIENT_SECRET: ${{ secrets.OSU_OAUTH_CLIENT_SECRET }}
+      AMAP_ANDROID_KEY: ${{ secrets.AMAP_ANDROID_KEY }}
       PRODUCTION_SIGNING_READY: ${{ secrets.PRODUCTION_SIGNING_READY }}
     steps:
       - uses: actions/checkout@v6

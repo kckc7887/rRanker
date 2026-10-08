@@ -47,8 +47,8 @@ describe('nearcade client parsing', () => {
         comment: '备注',
         addressDetailed: '某某路 1 号',
         addressGeneral: ['中国', '上海市'],
-        latitude: 31.23,
-        longitude: 121.47,
+        latitude: expect.closeTo(31.23194, 4),
+        longitude: expect.closeTo(121.46547, 4),
         distanceKm: 1.25,
         games: [
           {
@@ -102,9 +102,9 @@ describe('nearcade client parsing', () => {
       comment: '有空调',
       addressDetailed: '测试路 2 号',
       addressGeneral: ['中国', '上海市'],
-      latitude: 31.2,
-      longitude: 121.5,
-      distanceKm: 0,
+      latitude: expect.closeTo(31.20203, 4),
+      longitude: expect.closeTo(121.49557, 4),
+      distanceKm: null,
       games: [
         {
           gameId: 1,
@@ -161,6 +161,16 @@ describe('nearcade client parsing', () => {
       { id: 1, key: 'maimai_dx', name: '舞萌DX', seats: 2 },
       { id: 3, key: 'chunithm', name: '中二节奏', seats: 1 },
     ]);
+  });
+
+  it('keeps overseas WGS84 coordinates and accepts next-day closing times', () => {
+    const result = parseDiscoverResponse({ shops: [{ id: 9, name: '海外店',
+      address: { region: [{ id: 'JP' }], general: ['Japan'] },
+      location: { coordinates: [130.4, 33.6] },
+      openingHours: [[{ hour: 10, minute: 0 }, { hour: 47, minute: 30 }]],
+    }] });
+    expect(result[0]).toMatchObject({ longitude: 130.4, latitude: 33.6, distanceKm: null,
+      openingHours: [[{ hour: 10, minute: 0 }, { hour: 47, minute: 30 }]] });
   });
 });
 

@@ -22,6 +22,7 @@ function fixture(options = {}) {
       if (recorded && !logging) add('分享日志，最新记录，测试');
       if (options.storageFailure && logging) add('', { text: '保存失败' });
     } else if (route === 'game-management') add('', { text: '游戏管理' });
+    else if (route === 'tools/arcade-finder' && !options.missingArcade) add('', { text: '当前使用机厅列表' });
     return '<hierarchy>' + current.map(n => '<node ' + Object.entries(n).map(([k,v]) => `${k}="${v}"`).join(' ') + ' />').join('') + '</hierarchy>';
   };
   const execute = (binary, args) => {
@@ -31,6 +32,8 @@ function fixture(options = {}) {
     if (args[0] === 'install') return 'Success';
     if (args[0] === 'logcat') return options.crash && args[1] === '-d' ? 'FATAL EXCEPTION' : '';
     assert.equal(args.shift(), 'shell');
+    if (args[0] === 'getprop') return 'x86_64';
+    if (args[0] === 'pm' && args[1] === 'grant') return '';
     if (args[0] === 'rm') return '';
     if (args[0] === 'am' && args[1] === 'force-stop') {
       running = false; frame = 0;
@@ -72,9 +75,10 @@ for (const options of [{}, { nullRoot: true }, { throwNullRoot: true }, { missin
     assert.deepEqual(device.launches, ['personalization','personalization','diagnostics']);
     assert.deepEqual(device.trace, ['share','back','share','back']);
     assert(result.checks.some(check => check.name === 'account-startup-restoration'));
+    assert(result.checks.some(check => check.name === 'arcade-map-list-fallback'));
   });
 }
-for (const options of [{ empty: true }, { stale: true }, { lostLaunchRoute: true }, { loseSavedTheme: true }]) {
+for (const options of [{ empty: true }, { stale: true }, { lostLaunchRoute: true }, { loseSavedTheme: true }, { missingArcade: true }]) {
   test(`production smoke rejects missing UI or persistence: ${JSON.stringify(options)}`, async () => {
     const result = await fixture(options).run();
     assert.equal(result.status, 'fail'); assert.equal(result.failureCategory, 'timeout');

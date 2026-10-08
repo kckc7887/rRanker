@@ -102,7 +102,7 @@ describe('overview capability contract', () => {
     const withTools = await render(<OverviewScreen />);
     expect(withTools.getByText('工具箱')).toBeTruthy();
     expect(withTools.getByText('打开工具箱 →')).toBeTruthy();
-    expect(withTools.getByText('随机歌曲 · 机厅查找')).toBeTruthy();
+    expect(withTools.getByText('随机歌曲 · 音游地图')).toBeTruthy();
     await withTools.unmount();
 
     mockHasTools = false;
