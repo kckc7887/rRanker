@@ -119,7 +119,7 @@ describe('ChartPreviewScreenShell 交互', () => {
     log.mockClear(); installRuntimeLogRecorder(log);
     mockInjectJavaScript.mockClear();
     mockLoadSettings.mockReset().mockResolvedValue(null);
-    mockSaveSettings.mockClear();
+    mockSaveSettings.mockReset().mockResolvedValue(undefined);
     latestWebViewProps = {};
     mockScreenOptions = {};
     mockLifecycle = {
@@ -282,6 +282,36 @@ describe('ChartPreviewScreenShell 交互', () => {
       maimaiSettingsKey,
       JSON.stringify({ speed: 2 }),
     ));
+  });
+
+  it('设置读取失败保留原值，重新加载后修改单项不丢失其它设置', async () => {
+    let stored = JSON.stringify({ speed: 1, volume: 0.6 });
+    mockLoadSettings.mockRejectedValueOnce(new Error('storage unavailable')).mockImplementation(async () => stored);
+    mockSaveSettings.mockImplementation(async (_key, value) => { stored = value; });
+    const prepare = jest.fn(async (_signal: AbortSignal, _settings: unknown) => maimaiSource);
+    await renderMaimaiShell({ kind: 'ready', payload: { chartId: 834, difficulty: 4 }, prepare });
+
+    await waitFor(() => expect(screen.getByText(maimaiPrepareErrorFallback)).toBeTruthy());
+    expect(prepare).not.toHaveBeenCalled();
+    expect(mockSaveSettings).not.toHaveBeenCalled();
+    expect(JSON.parse(stored)).toEqual({ speed: 1, volume: 0.6 });
+
+    await fireEvent.press(screen.getByText('重新加载'));
+    await waitFor(() => expect(screen.getByTestId(maimaiTestID)).toBeTruthy());
+    expect(prepare).toHaveBeenCalledWith(expect.anything(), { speed: 1, volume: 0.6 }, expect.anything());
+    await fireEvent(screen.getByTestId(maimaiTestID), 'message', {
+      nativeEvent: { data: JSON.stringify({ type: 'settings', settings: { speed: 2 } }) },
+    });
+    await waitFor(() => expect(JSON.parse(stored)).toEqual({ speed: 2, volume: 0.6 }));
+  });
+
+  it.each(['{broken', 'null', '[]'])('成功读到不支持的设置 %s 时只重建当前键', async raw => {
+    mockLoadSettings.mockResolvedValue(raw);
+    const prepare = jest.fn(async (_signal: AbortSignal, _settings: unknown) => maimaiSource);
+    await renderMaimaiShell({ kind: 'ready', payload: { chartId: 834, difficulty: 4 }, prepare });
+    await waitFor(() => expect(screen.getByTestId(maimaiTestID)).toBeTruthy());
+    expect(mockSaveSettings.mock.calls).toEqual([[maimaiSettingsKey, '{}']]);
+    expect(prepare).toHaveBeenCalledWith(expect.anything(), {}, expect.anything());
   });
 
   it.each(['inactive', 'background', 'unmount'] as const)('预览设置只保留最新值，%s前提交且隔离释放后回执', async (exit) => {

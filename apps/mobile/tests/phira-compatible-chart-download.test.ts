@@ -3,7 +3,7 @@ import JSZip from 'jszip';
 
 import type { PhiraChart } from '@/domain/phira';
 
-import { ChartPackageDownloadError } from '@/features/chart-download-shared/chart-download-shared';
+import { ChartPackageDownloadCancelledError, ChartPackageDownloadError } from '@/features/chart-download-shared/chart-download-shared';
 
 import { downloadPhigrosChartAsPhiraPackage, phiraCompatiblePackageName } from '@/features/phigros-chart-download/chart-package-download';
 import { downloadPhiraChartPackage } from '@/features/phira-chart-download/chart-package-download';
@@ -272,6 +272,30 @@ describe('Phira compatible chart download', () => {
     );
     await expect(downloadPhiraChartPackage(phiraChart)).resolves.toBe(false);
     expect(native.writes).toEqual([]);
+  });
+
+  it.each([
+    ['Phira', 'file:///exports'], ['Phira', 'content://exports'],
+    ['Phigros', 'file:///exports'], ['Phigros', 'content://exports'],
+  ])('%s 在目录选择期间取消后不向 %s 保存谱包', async (game, uri) => {
+    let chooseDirectory!: (directory: ReturnType<typeof pickedDirectoryMock>) => void;
+    native.pickDirectoryAsync.mockImplementationOnce(() => new Promise(resolve => { chooseDirectory = resolve; }));
+    const controller = new AbortController();
+    const options = { signal: controller.signal };
+    const pending = game === 'Phira'
+      ? downloadPhiraChartPackage(phiraChart, options)
+      : downloadPhigrosChartAsPhiraPackage({ songId: 'Song.A', levelIndex: 2 }, options);
+    const result = expect(pending).rejects.toBeInstanceOf(ChartPackageDownloadCancelledError);
+    await vi.waitFor(() => expect(native.pickDirectoryAsync).toHaveBeenCalled());
+
+    controller.abort();
+    chooseDirectory(pickedDirectoryMock(uri));
+    await result;
+
+    expect(native.createFileCalls).toEqual([]);
+    expect(native.writes).toEqual([]);
+    expect(native.bytes.size).toBe(0);
+    expect(native.deleted).toEqual(native.createdDirs);
   });
 
   it('rejects a Phira chart without a downloadable file', async () => {

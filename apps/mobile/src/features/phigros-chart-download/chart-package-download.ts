@@ -81,6 +81,7 @@ export async function downloadPhigrosChartAsPhiraPackage(
     return saveChartPackage(
       phiraCompatiblePackageName(request.title ?? bundle.song.title, level),
       { kind: 'bytes', bytes: zipBytes },
+      signal,
     );
   } finally {
     cleanupChartDownloadSessionDirectory(staging);
