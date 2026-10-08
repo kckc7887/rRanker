@@ -52,7 +52,7 @@ describe('game-aware toolbox screen', () => {
     const screen = await render(<ToolsScreen />);
     await fireEvent.press(screen.getByText('随机歌曲'));
     expect(mockRouterPush).toHaveBeenCalledWith('/tools/random-charts');
-    await fireEvent.press(screen.getByText('机厅查找'));
+    await fireEvent.press(screen.getByText('音游地图'));
     expect(mockRouterPush).toHaveBeenCalledWith('/tools/arcade-finder');
     expect(screen.queryByText('我的曲库')).toBeNull();
   });
@@ -87,7 +87,7 @@ describe('game-aware toolbox screen', () => {
     expect(screen.getByText('Rating / OVER POWER 计算器')).toBeTruthy();
     expect(screen.getByText('收藏品进度')).toBeTruthy();
     expect(screen.getByText('随机歌曲')).toBeTruthy();
-    expect(screen.getByText('机厅查找')).toBeTruthy();
+    expect(screen.getByText('音游地图')).toBeTruthy();
     expect(screen.getByText('生成成绩图片')).toBeTruthy();
     expect(screen.queryByText('中二节奏工具正在准备中。')).toBeNull();
   });

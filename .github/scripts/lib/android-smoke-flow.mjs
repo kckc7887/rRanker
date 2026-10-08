@@ -214,6 +214,15 @@ try {
     assert(!current.some((node) => /无法读取本机登录状态|恢复失败|部分本机账号暂时无法读取/.test(node.text)), 'Account restoration succeeds');
     assert(!find(current, '重试读取账号'), 'All optional account sources restore successfully');
     evidence.checks.push({ name: 'account-startup-restoration', status: 'pass', scope: 'storage-read-only; authenticated accounts require separate verification' });
+    if (/^x86/.test(shell('getprop', 'ro.product.cpu.abi').trim())) {
+      phase = 'arcade-map-list-fallback';
+      shell('pm', 'grant', 'com.rranker.app', 'android.permission.ACCESS_COARSE_LOCATION');
+      shell('pm', 'grant', 'com.rranker.app', 'android.permission.ACCESS_FINE_LOCATION');
+      route('tools/arcade-finder');
+      await waitFor(list => ownNodes(list).some(node => node.text === '当前使用机厅列表'), 'arcade list fallback');
+      assertNoCrash();
+      evidence.checks.push({ name: 'arcade-map-list-fallback', status: 'pass' });
+    }
   }
   phase = 'native-crash-check';
   assertNoCrash();

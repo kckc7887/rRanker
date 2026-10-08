@@ -24,7 +24,7 @@ export type ArcadeShop = {
   addressGeneral: string[];
   latitude: number;
   longitude: number;
-  distanceKm: number;
+  distanceKm: number | null;
   games: ArcadeShopGame[];
   openingHours: ArcadeOpeningDay[];
 };
@@ -112,8 +112,8 @@ export function formatArcadeAddress(shop: Pick<ArcadeShop, 'addressDetailed' | '
   return shop.addressGeneral.filter(Boolean).join(' ');
 }
 
-export function formatArcadeDistanceKm(distanceKm: number): string {
-  if (!Number.isFinite(distanceKm) || distanceKm < 0) return '—';
+export function formatArcadeDistanceKm(distanceKm: number | null): string {
+  if (distanceKm === null || !Number.isFinite(distanceKm) || distanceKm < 0) return '—';
   if (distanceKm < 1) return `${Math.round(distanceKm * 1000)} m`;
   return `${distanceKm.toFixed(distanceKm < 10 ? 1 : 0)} km`;
 }
@@ -128,8 +128,7 @@ export function formatArcadeGamesSummary(games: readonly ArcadeShopGame[]): stri
     .join(' · ');
 }
 
-/** 与 Date.getDay() 一致，周日为 0。 */
-const WEEKDAY_LABELS = ['周日', '周一', '周二', '周三', '周四', '周五', '周六'] as const;
+const WEEKDAY_LABELS = ['周一', '周二', '周三', '周四', '周五', '周六', '周日'] as const;
 
 function pad2(value: number): string {
   return String(value).padStart(2, '0');
@@ -140,7 +139,7 @@ function minutesOfDay(time: ArcadeOpeningTime): number {
 }
 
 export function formatArcadeClock(time: ArcadeOpeningTime): string {
-  return `${pad2(time.hour)}:${pad2(time.minute)}`;
+  return `${time.hour >= 24 ? '次日 ' : ''}${pad2(time.hour % 24)}:${pad2(time.minute)}`;
 }
 
 export function formatArcadeOpeningSlot(day: ArcadeOpeningDay): string {
@@ -160,39 +159,24 @@ export function formatArcadeBusinessStatus(status: ArcadeBusinessStatus): string
   }
 }
 
-/** 关门时间早于开门时间表示跨夜营业。 */
+/** 上游以 24–47 时表示次日，周营业表从周一开始。 */
 export function resolveArcadeBusinessStatus(
   openingHours: readonly ArcadeOpeningDay[],
   now: Date = new Date(),
   closingSoonMinutes: number = ARCADE_CLOSING_SOON_MINUTES,
 ): ArcadeBusinessStatus {
-  if (openingHours.length === 0) return 'unknown';
-  const slot = openingHours.length === 1
-    ? openingHours[0]
-    : openingHours[now.getDay()] ?? openingHours[0];
-  if (!slot) return 'unknown';
-
-  const openMin = minutesOfDay(slot[0]);
-  const closeMin = minutesOfDay(slot[1]);
+  if (openingHours.length !== 1 && openingHours.length !== 7) return 'unknown';
+  const weekday = (now.getDay() + 6) % 7;
   const nowMin = now.getHours() * 60 + now.getMinutes();
-  const dayMinutes = 24 * 60;
-
-  let isOpen: boolean;
-  let minutesToClose: number;
-  if (closeMin > openMin) {
-    isOpen = nowMin >= openMin && nowMin < closeMin;
-    minutesToClose = closeMin - nowMin;
-  } else if (closeMin < openMin) {
-    isOpen = nowMin >= openMin || nowMin < closeMin;
-    minutesToClose = nowMin >= openMin
-      ? dayMinutes - nowMin + closeMin
-      : closeMin - nowMin;
-  } else {
-    /** 起止时间相同不视为全天营业。 */
-    return 'unknown';
+  let minutesToClose = 0;
+  for (const offset of [0, 1]) {
+    const slot = openingHours[openingHours.length === 1 ? 0 : (weekday - offset + 7) % 7];
+    const minute = nowMin + offset * 1440;
+    const open = minutesOfDay(slot[0]);
+    const close = minutesOfDay(slot[1]);
+    if (minute >= open && minute < close) minutesToClose = Math.max(minutesToClose, close - minute);
   }
-
-  if (!isOpen) return 'closed';
+  if (minutesToClose === 0) return 'closed';
   if (minutesToClose <= closingSoonMinutes) return 'closing_soon';
   return 'open';
 }
@@ -237,7 +221,7 @@ export function filterArcadeShops(
     .filter((shop) => shopMatchesNameKeyword(shop, options.keyword))
     .filter((shop) => shopMatchesGameTitles(shop, options.titleIds))
     .slice()
-    .sort((a, b) => a.distanceKm - b.distanceKm || a.name.localeCompare(b.name, 'zh'));
+    .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity) || a.name.localeCompare(b.name, 'zh'));
 }
 
 export type ArcadeOriginSource = 'gps' | 'custom';

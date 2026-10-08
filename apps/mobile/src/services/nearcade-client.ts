@@ -9,7 +9,9 @@ import {
   type ArcadeShopGame,
 } from '@/domain/arcade-shops';
 import { providerErrorFromStatus } from '@/providers/errors';
+import { arcadeDistanceKm, fromGcj02, toGcj02 } from '@/domain/arcade-coordinates';
 import { requestJson } from '@/providers/http-json';
+import { bytesToBase64 } from '@/utils/crypto-subset';
 import { fetch as expoFetch } from 'expo/fetch';
 import { z } from 'zod';
 
@@ -30,7 +32,10 @@ const openingTimeSchema = z.object({
   minute: z.number().int().min(0).max(59),
 });
 
-const openingDaySchema = z.tuple([openingTimeSchema, openingTimeSchema]);
+const openingDaySchema = z.tuple([
+  openingTimeSchema,
+  openingTimeSchema.extend({ hour: z.number().int().min(0).max(47) }),
+]);
 
 const shopSchema = z.object({
   id: z.number(),
@@ -39,13 +44,14 @@ const shopSchema = z.object({
   address: z.object({
     general: z.array(z.string()).optional().default([]),
     detailed: z.string().optional().default(''),
+    region: z.array(z.object({ id: z.string() })).optional().default([]),
   }),
   location: z.object({
     type: z.literal('Point').optional(),
-    coordinates: z.tuple([z.number(), z.number()]),
+    coordinates: z.tuple([z.number().min(-180).max(180), z.number().min(-90).max(90)]),
   }),
   games: z.array(shopGameSchema).optional().default([]),
-  distance: z.number().optional().default(0),
+  distance: z.number().nonnegative().nullable().optional().default(null),
   openingHours: z.array(openingDaySchema).optional().default([]),
   isOpen: z.boolean().nullable().optional().default(null),
 });
@@ -76,6 +82,7 @@ export type DiscoverQuery = {
   longitude: number;
   radiusKm: number;
   limit?: number;
+  titleIds?: readonly number[];
   signal?: AbortSignal;
 };
 
@@ -100,14 +107,16 @@ function mapOpeningHours(hours: z.infer<typeof openingDaySchema>[]): ArcadeOpeni
 
 function mapShop(shop: z.infer<typeof shopSchema>): ArcadeShop {
   const [longitude, latitude] = shop.location.coordinates;
+  const country = shop.address.region[0]?.id;
+  const domestic = country ? country === 'CN' : shop.address.general.some(part => /^(China|中国|中國)$/i.test(part));
+  const coordinate = domestic ? fromGcj02({ latitude, longitude }) : { latitude, longitude };
   return {
     id: shop.id,
     name: stripArcadeHtml(shop.name),
     comment: stripArcadeHtml(shop.comment),
     addressDetailed: stripArcadeHtml(shop.address.detailed),
     addressGeneral: shop.address.general.map((part) => stripArcadeHtml(part)).filter(Boolean),
-    latitude,
-    longitude,
+    ...coordinate,
     distanceKm: shop.distance,
     games: shop.games.map(mapShopGame),
     openingHours: mapOpeningHours(shop.openingHours),
@@ -131,16 +140,27 @@ function requestNearcade<T>(path: string, schema: z.ZodType<T>, signal?: AbortSi
   });
 }
 
+function setGameFilter(params: URLSearchParams, titleIds: readonly number[] = []): void {
+  if (!titleIds.length) return;
+  const filter = { v: 1, games: { op: 'and', children: titleIds.map(id => ({ titleIds: [id] })) } };
+  params.set('f', bytesToBase64(new TextEncoder().encode(JSON.stringify(filter)))
+    .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''));
+}
+
 export async function fetchNearcadeDiscover(query: DiscoverQuery): Promise<ArcadeShop[]> {
+  const center = toGcj02(query);
   const params = new URLSearchParams({
-    latitude: String(query.latitude),
-    longitude: String(query.longitude),
+    latitude: String(center.latitude),
+    longitude: String(center.longitude),
     radius: String(query.radiusKm),
     limit: String(query.limit ?? 150),
     fetchAttendance: 'false',
     includeTimeInfo: 'false',
   });
-  return requestNearcade(`/discover?${params.toString()}`, z.unknown().transform(parseDiscoverResponse), query.signal);
+  setGameFilter(params, query.titleIds);
+  const shops = await requestNearcade(`/discover?${params.toString()}`, z.unknown().transform(parseDiscoverResponse), query.signal);
+  return shops.map(shop => ({ ...shop, distanceKm: arcadeDistanceKm(query, shop) }))
+    .filter(shop => shop.distanceKm <= query.radiusKm);
 }
 
 export async function fetchNearcadeShop(shopId: number, signal?: AbortSignal): Promise<ArcadeShopDetail> {

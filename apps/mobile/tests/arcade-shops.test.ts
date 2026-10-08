@@ -82,7 +82,7 @@ describe('arcade shop filters', () => {
   it('filters and sorts by distance then name', () => {
     const filtered = filterArcadeShops(shops, { keyword: '', titleIds: [1] });
     expect(filtered.map((item) => item.id)).toEqual([1, 3]);
-    expect(filtered[0].distanceKm).toBeLessThanOrEqual(filtered[1].distanceKm);
+    expect(filtered[0].distanceKm).toBeLessThanOrEqual(filtered[1].distanceKm!);
   });
 
   it('keeps all shops in range when no game titles selected', () => {
@@ -115,6 +115,7 @@ describe('arcade shop formatting', () => {
   it('formats distance and games summary', () => {
     expect(formatArcadeDistanceKm(0.35)).toBe('350 m');
     expect(formatArcadeDistanceKm(2.4)).toBe('2.4 km');
+    expect(formatArcadeDistanceKm(null)).toBe('—');
     expect(formatArcadeGamesSummary([
       { gameId: 1, titleId: 1, name: '舞萌DX', version: '', comment: '', quantity: 4, cost: '' },
       { gameId: 2, titleId: 3, name: '中二节奏', version: '', comment: '', quantity: 0, cost: '' },
@@ -140,7 +141,6 @@ describe('arcade opening hours formatting', () => {
     expect(formatArcadeOpeningHoursLines([
       [{ hour: 10, minute: 0 }, { hour: 22, minute: 30 }],
     ])).toEqual(['每日 10:00–22:30']);
-    /** Date#getDay 的 0 为周日。 */
     expect(formatArcadeOpeningHoursLines([
       [{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }],
       [{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }],
@@ -149,7 +149,7 @@ describe('arcade opening hours formatting', () => {
       [{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }],
       [{ hour: 10, minute: 0 }, { hour: 22, minute: 0 }],
       [{ hour: 12, minute: 0 }, { hour: 23, minute: 0 }],
-    ])[6]).toBe('周六 12:00–23:00');
+    ])[6]).toBe('周日 12:00–23:00');
   });
 
   it('resolves open / closing_soon / closed from local clock', () => {
@@ -162,10 +162,22 @@ describe('arcade opening hours formatting', () => {
   });
 
   it('supports overnight opening hours', () => {
-    const hours = [[{ hour: 18, minute: 0 }, { hour: 2, minute: 0 }]] as const;
+    const hours = [[{ hour: 18, minute: 0 }, { hour: 26, minute: 0 }]] as const;
     expect(resolveArcadeBusinessStatus(hours, new Date(2026, 6, 26, 20, 0))).toBe('open');
     expect(resolveArcadeBusinessStatus(hours, new Date(2026, 6, 26, 1, 55))).toBe('closing_soon');
     expect(resolveArcadeBusinessStatus(hours, new Date(2026, 6, 26, 3, 0))).toBe('closed');
+    expect(formatArcadeOpeningHoursLines(hours)).toEqual(['每日 18:00–次日 02:00']);
+  });
+
+  it('uses Monday-first hours and the previous weekday after midnight', () => {
+    const ordinary = [{ hour: 10, minute: 0 }, { hour: 20, minute: 0 }] as const;
+    const friday = [{ hour: 18, minute: 0 }, { hour: 26, minute: 0 }] as const;
+    const hours = [ordinary, ordinary, ordinary, ordinary, friday, ordinary, ordinary];
+    expect(resolveArcadeBusinessStatus(hours, new Date(2026, 9, 9, 21))).toBe('open');
+    expect(resolveArcadeBusinessStatus(hours, new Date(2026, 9, 10, 1, 55))).toBe('closing_soon');
+    expect(resolveArcadeBusinessStatus(hours, new Date(2026, 9, 10, 2))).toBe('closed');
+    expect(resolveArcadeBusinessStatus(hours, new Date(2026, 9, 11, 1))).toBe('closed');
+    expect(resolveArcadeBusinessStatus([[{ hour: 0, minute: 0 }, { hour: 24, minute: 0 }]], new Date(2026, 9, 10, 0))).toBe('open');
   });
 });
 

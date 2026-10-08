@@ -16,6 +16,7 @@
 | `apps/mobile/src/components`、`screens` | 共享组件和游戏页面 |
 | `apps/mobile/src/features` | 成绩图、谱面预览、下载及工具功能 |
 | `apps/mobile/scripts` | 播放器生成、素材生成与依赖功能补丁 |
+| `apps/mobile/modules` | 应用专用 Expo 原生模块 |
 | `.github` | CI、原生构建和手动设备诊断 |
 
 ## 启动与导航
@@ -79,6 +80,14 @@ HTTP 请求使用 `totalAttempts` 表示总尝试次数。认证、轮询、取�
 
 诊断记录由 `runtime-diagnostics.ts`、`runtime-diagnostics-recorder.ts` 与日志仓库管理。记录默认关闭，开启后按容量保留；诊断文件的 pending/previous 替换是当前写入协议。分享副本写入临时缓存，正文保存在文档目录。生产诊断页面使用现有的记录、读取、清理和分享入口。
 
+## 音游地图
+
+音游地图沿用 `/tools/arcade-finder` 路由，上方地图、下方搜索与独立机厅列表。iOS 使用 `react-native-maps@1.20.1` 的 MapKit；Android ARM 使用 `expo-gaode-map@2.3.1`，x86、x86_64、Web 以及未配置地图的客户端使用列表。平台自动链接排除 Android 的 React Native Maps 和 iOS 的高德模块。`modules/arcade-map-support` 提供 Android 架构与原生 Key 配置状态，并保留高德 SDK 所需的 R8 规则；安装依赖时的高德补丁阻止不支持架构在 Expo 模块启动期间恢复 SDK。
+
+正式 Android 构建将仓库 Secret `AMAP_ANDROID_KEY` 传给 `app.config.js`，由高德插件写入原生配置。Key 不通过日志或客户端 `extra` 传递。高德服务说明经用户同意后才装配地图，同意状态由 SDK 持久化；拒绝仍可使用列表。定位沿用系统定位入口，地图操作不依赖定位授权。拖图停止 500 毫秒后查询中心附近机厅，卡片移动地图不重新查询；页面离开与后台状态取消请求，迟到结果不提交。
+
+Nearcade 机厅由 `services/nearcade-client.ts` 读取；内部与 MapKit 坐标使用 WGS84，高德和 Nearcade 国内坐标边界通过 `gcoord@1.0.7` 转换。上游地区标识用于保留海外 WGS84 坐标。距离按查询中心计算，缺失距离显示“—”；营业时间按周一开始、关门小时可达 47 的格式解释，并包含前一日延续的营业时段。Android 生产路由设备检查包含 x86 列表降级；ARM 地图鉴权与 iOS 原生手势、定位仍须设备验证。
+
 ## 资源、图片与成绩图
 
 Phigros、Rizline 和 Kyou 分别读取所属资源组的 `latest.json`，校验 schemaVersion 2 指针、清单 SHA-256 和对象摘要。清单位于 `manifests/<sha256>.json`，媒体按固定分类目录和内容哈希存放。Phigros 保留逻辑 `path`，通过 `objectKey` 定位实际资源；Rizline 曲库直接保存对象路径；Kyou 清单将表名映射到对象路径、大小和摘要。发布流程由 [rRankerResourcePublisher](https://github.com/kckc7887/rRankerResourcePublisher) 管理。
@@ -130,7 +139,7 @@ KALEIDXSCOPE 的日程、课题和手工进度位于 `domain/kaleidx-scope.ts`�
 
 测试验证实际输入输出、交互、取消、存储往返和 I/O 失败。外部 HTTP、原生 SDK、文件系统和浏览器环境可模拟；生产代码不提供测试替换、统计或 reset 接口。
 
-postinstall 按实际源码调用点应用 decode-uri-component、Metro image-size、Xiaomi WebView 和 Expo FileHandle 的运行/构建补丁。
+postinstall 按实际源码调用点应用 decode-uri-component、Metro image-size、Xiaomi WebView、Expo FileHandle 和高德架构隔离的运行/构建补丁。高德原生构建沿用宿主 NDK 版本。
 
 ### CI 与发布
 

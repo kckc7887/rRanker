@@ -114,6 +114,10 @@ Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图�
 
 ## 工具与诊断
 
+`components/ArcadeMap` 是音游地图的公共 UI 入口，接收 WGS84 相机目标、机厅与选中 ID；平台视图通过 `NativeArcadeMap` 装配 MapKit 或高德。公共层管理高德首次说明、加载失败重试和手势来源，程序移动相机不发出用户选址事件。`ArcadeFilterBar`、`ArcadeBusinessStatusLabel`、`arcadeFinderPreferencesStore` 与外部导航入口继续共用；距离与机型偏好按游戏保存，默认收起筛选。
+
+`fetchNearcadeDiscover` 接受 WGS84 中心、距离、机型与取消信号，返回当前范围内的机厅。`domain/arcade-coordinates.ts` 提供坐标边界转换与球面距离，`arcade-shops.ts` 共用筛选、展示和营业时间判断；缺失距离为 `null`。跨夜营业以次日小时表达，周表从周一开始，凌晨同时检查前一日。页面按焦点和前台生命周期取消取数，GPS 意图与地图中心分别防止旧定位、旧查询覆盖；图钉和列表共用选中 ID。行为测试覆盖拒绝定位、快速拖图、选中联动、页面退出、迟到响应及跨夜营业。
+
 实力分析共用 `app/tools/strength-analysis.tsx` 路由，分别装配 `MaimaiStrengthAnalysisScreen` 与 `PhigrosStrengthAnalysisScreen`。舞萌的 DXTag 维度、类型、文件 ID 与难度匹配函数由 `domain/maimai-dxtag.ts` 提供，详情与分析复用 `useMaimaiDxTag`，查询键为 `['maimai-dxtag', 'all', catalog.source.updatedAt]`；曲库快照更新后重新核对覆盖，多个谱面共用整库请求。持久化数据与账号无关，由舞萌资源缓存统一计量和清理；缺少歌曲或难度时不追加单曲请求，也不填零。`SimaiDifficultyRadar` 接受空维度并支持维度点击；空维度显示暂无数据，不绘制完整多边形。
 
 `buildMaimaiStrengthPool` 使用 `buildBestRecordMap`、`chartVersionKey` 去重，排除宴谱与不完整成绩；达标成绩中定数最高 10 张的均值确定推荐范围 −0.5 至 +0.3。`analyzeMaimaiStrength` 接收曲库、成绩、按谱面身份索引的 DXTag 五维，统一按 100.5% 筛选达标成绩，输出逐维 Top 10 正值均值、支撑成绩、强弱结论及最多三张推荐。每维至少三张才判断强弱，极差不超过 0.3 视为均衡；推荐模拟达到目标后的维度均值增益，最低两维的边界并列项全部纳入，均衡时考虑全部维度。缺失特征不当作零值，分析结果不持久化。分析文案采用简短的能力倾向标签。推荐与支撑成绩统一使用 `ScoreRecordCard`，无成绩时仅传入谱面信息，达成率和 Rating 显示 `-`，曲绘沿用公共成绩卡设置。弹层复用当前公共组件，谱面跳转使用 `encodeDetailTarget` 和 `detailTargetHref`。

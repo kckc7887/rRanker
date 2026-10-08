@@ -17,9 +17,9 @@ const OSU_TOOLS: readonly GameToolDefinition[] = [
   {
     id: 'arcade-finder',
     href: '/tools/arcade-finder',
-    title: '机厅查找',
+    title: '音游地图',
     detail: '按定位查看附近机厅，搜索店名与跳转导航',
-    summaryLabel: '机厅查找',
+    summaryLabel: '音游地图',
   },
   {
     id: 'osu-mods',
@@ -34,11 +34,11 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
   rizline: { tools: [
     { id: 'random-charts', href: '/tools/random-charts', title: '随机歌曲',
       detail: '按难度、曲包和定数抽取谱面', summaryLabel: '随机歌曲' },
-    { id: 'arcade-finder', href: '/tools/arcade-finder', title: '机厅查找',
-      detail: '按定位查看附近机厅，搜索店名与跳转导航', summaryLabel: '机厅查找' },
+    { id: 'arcade-finder', href: '/tools/arcade-finder', title: '音游地图',
+      detail: '按定位查看附近机厅，搜索店名与跳转导航', summaryLabel: '音游地图' },
   ], emptyDetail: '' },
   'majdata-net': { tools: [
-    { id: 'arcade-finder', href: '/tools/arcade-finder', title: '机厅查找', detail: '查找附近机厅', summaryLabel: '机厅查找' },
+    { id: 'arcade-finder', href: '/tools/arcade-finder', title: '音游地图', detail: '查找附近机厅', summaryLabel: '音游地图' },
     { id: 'tolerance', href: '/tools/tolerance?gameId=majdata-net', title: '达成率与容错', detail: '计算 DX、Classic 达成率与容错', summaryLabel: '达成率/容错' },
   ], emptyDetail: '' },
   maimai: {
@@ -92,9 +92,9 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
       {
         id: 'arcade-finder',
         href: '/tools/arcade-finder',
-        title: '机厅查找',
+        title: '音游地图',
         detail: '按定位查看附近机厅，搜索店名与跳转导航',
-        summaryLabel: '机厅查找',
+        summaryLabel: '音游地图',
       },
       {
         id: 'best-image',
@@ -132,9 +132,9 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
       {
         id: 'arcade-finder',
         href: '/tools/arcade-finder',
-        title: '机厅查找',
+        title: '音游地图',
         detail: '按定位查看附近机厅，搜索店名与跳转导航',
-        summaryLabel: '机厅查找',
+        summaryLabel: '音游地图',
       },
       {
         id: 'best-image',
@@ -153,8 +153,8 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
         detail: '从成绩页已缓存的最佳成绩中随机抽取谱面', summaryLabel: '随机歌曲',
       },
       {
-        id: 'arcade-finder', href: '/tools/arcade-finder', title: '机厅查找',
-        detail: '按定位查看附近机厅，搜索店名与跳转导航', summaryLabel: '机厅查找',
+        id: 'arcade-finder', href: '/tools/arcade-finder', title: '音游地图',
+        detail: '按定位查看附近机厅，搜索店名与跳转导航', summaryLabel: '音游地图',
       },
     ],
     emptyDetail: 'Phira 暂无可用工具。',
@@ -185,9 +185,9 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
       {
         id: 'arcade-finder',
         href: '/tools/arcade-finder',
-        title: '机厅查找',
+        title: '音游地图',
         detail: '按定位查看附近机厅，搜索店名与跳转导航',
-        summaryLabel: '机厅查找',
+        summaryLabel: '音游地图',
       },
       {
         id: 'best-image',
@@ -211,9 +211,9 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
       {
         id: 'arcade-finder',
         href: '/tools/arcade-finder',
-        title: '机厅查找',
+        title: '音游地图',
         detail: '按定位查看附近机厅，搜索店名与跳转导航',
-        summaryLabel: '机厅查找',
+        summaryLabel: '音游地图',
       },
     ],
     emptyDetail: '冰与火之舞首版暂无可用工具。',
@@ -230,9 +230,9 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
       {
         id: 'arcade-finder',
         href: '/tools/arcade-finder',
-        title: '机厅查找',
+        title: '音游地图',
         detail: '按定位查看附近机厅，搜索店名与跳转导航',
-        summaryLabel: '机厅查找',
+        summaryLabel: '音游地图',
       },
     ],
     emptyDetail: '喵斯快跑首版暂无可用工具。',

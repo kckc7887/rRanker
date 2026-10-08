@@ -16,7 +16,7 @@ describe('per-game toolbox registry', () => {
       'arcade-finder',
       'best-image',
     ]);
-    expect(summarizeGameTools('maimai')).toBe('实力分析 · Rating · 达成率/容错 · 牌子进度 · 版本对照 · 万花筒 · 随机歌曲 · 机厅查找 · 成绩图片');
+    expect(summarizeGameTools('maimai')).toBe('实力分析 · Rating · 达成率/容错 · 牌子进度 · 版本对照 · 万花筒 · 随机歌曲 · 音游地图 · 成绩图片');
   });
 
   it('gives Phigros push-rks and strength-analysis toolbox entries', () => {
@@ -28,7 +28,7 @@ describe('per-game toolbox registry', () => {
       'arcade-finder',
       'best-image',
     ]);
-    expect(summarizeGameTools('phigros')).toBe('推分计算 · 实力分析 · 随机歌曲 · 机厅查找 · 成绩图片');
+    expect(summarizeGameTools('phigros')).toBe('推分计算 · 实力分析 · 随机歌曲 · 音游地图 · 成绩图片');
   });
 
   it('registers rating, collections, random songs, arcade finder and best-image for Chunithm', () => {
@@ -40,14 +40,14 @@ describe('per-game toolbox registry', () => {
       'arcade-finder',
       'best-image',
     ]);
-    expect(summarizeGameTools('chunithm')).toBe('Rating 计算器 · 收藏品进度 · 随机歌曲 · 机厅查找 · 成绩图片');
+    expect(summarizeGameTools('chunithm')).toBe('Rating 计算器 · 收藏品进度 · 随机歌曲 · 音游地图 · 成绩图片');
   });
 
   it.each([
-    ['rizline', '随机歌曲 · 机厅查找'],
-    ['phira', '随机歌曲 · 机厅查找'],
-    ['adofai', '随机歌曲 · 机厅查找'],
-    ['musedash', '随机歌曲 · 机厅查找'],
+    ['rizline', '随机歌曲 · 音游地图'],
+    ['phira', '随机歌曲 · 音游地图'],
+    ['adofai', '随机歌曲 · 音游地图'],
+    ['musedash', '随机歌曲 · 音游地图'],
   ] as const)('registers the shared toolbox order for %s', (gameId, summary) => {
     expect(getGameToolbox(gameId).tools.map((tool) => tool.id)).toEqual([
       'random-charts', 'arcade-finder',
