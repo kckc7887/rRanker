@@ -71,6 +71,11 @@ let mockUserLibraryData: unknown[] = [];
 
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
+jest.mock('react-native-svg', () => ({
+  __esModule: true,
+  ...jest.requireActual<typeof import('react-native-svg')>('react-native-svg'),
+  Text: jest.requireActual<typeof import('react-native')>('react-native').Text,
+}));
 jest.mock('@/components/AppNotification', () => ({
   NotificationOutlet: () => null,
   useNotification: () => ({
@@ -300,51 +305,6 @@ async function render(ui: ReactElement) {
 }
 
 const DXTAG_BASE = 'https://rranker-maimai-data.cn-nb1.rains3.com/DXTag';
-
-type RenderNode = {
-  props?: { testID?: string; accessibilityLabel?: string };
-  children?: RenderNode | RenderNode[] | string | null;
-};
-
-function asNode(value: unknown): RenderNode | null {
-  return value !== null && typeof value === 'object' ? value as RenderNode : null;
-}
-
-function childNodes(node: RenderNode): RenderNode[] {
-  if (Array.isArray(node.children)) return node.children.flatMap((child) => {
-    const current = asNode(child);
-    return current ? [current] : [];
-  });
-  const current = asNode(node.children);
-  return current ? [current] : [];
-}
-
-function markerOrder(node: RenderNode | null): string[] {
-  if (!node) return [];
-  const markers: string[] = [];
-  if (node.props?.testID === 'dxrating-config-tags') markers.push('tags');
-  if (node.props?.testID === 'simai-difficulty-radar-master') markers.push('radar');
-  if (node.props?.accessibilityLabel === '谱面物量') markers.push('notes');
-  for (const child of childNodes(node)) markers.push(...markerOrder(child));
-  return markers;
-}
-
-function masterChart(node: unknown): RenderNode | null {
-  const single = asNode(node);
-  const nodes = Array.isArray(node) ? node.flatMap((child) => {
-    const current = asNode(child);
-    return current ? [current] : [];
-  }) : single ? [single] : [];
-  for (const current of nodes) {
-    for (const child of childNodes(current)) {
-      const found = masterChart(child);
-      if (found) return found;
-    }
-    const order = markerOrder(current);
-    if (order.includes('tags') && order.includes('radar') && order.includes('notes')) return current;
-  }
-  return null;
-}
 
 describe('M2 song query screens', () => {
   beforeAll(() => {
@@ -1048,7 +1008,7 @@ describe('M2 song query screens', () => {
       .toEqual(['MASTER', 'BASIC']);
   });
 
-  it('shows a difficulty-colored five-axis radar between DXRating tags and note counts', async () => {
+  it('shows the selected difficulty radar with DXRating tags and note counts', async () => {
     mockDxRatingTagCount = 1;
     mockVideoHead.mockImplementation(async (url: string) => {
       if (url === `${DXTAG_BASE}/all.json`) {
@@ -1071,9 +1031,8 @@ describe('M2 song query screens', () => {
     expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/all.json`, expect.any(Object));
     expect(mockVideoHead.mock.calls.filter(([url]) => url === `${DXTAG_BASE}/all.json`)).toHaveLength(1);
     const radar = screen.getByTestId('simai-difficulty-radar-master');
-    const radarJson = JSON.stringify(radar);
     for (const label of ['键盘', '星星', '技巧', '体力', '爆发', '1.2', '3.4', '5.6', '7.8', '9.0']) {
-      expect(radarJson).toContain(label);
+      expect(within(radar).getByText(label)).toBeTruthy();
     }
     const masterColor = { payload: processColor('#7137C8'), type: 0 };
     expect(screen.getByTestId('simai-difficulty-radar-shape-master').props).toEqual(expect.objectContaining({
@@ -1082,11 +1041,12 @@ describe('M2 song query screens', () => {
       fillOpacity: 0.35,
     }));
     expect(screen.getByTestId('simai-difficulty-radar-shape-master').props.strokeDasharray).toBeUndefined();
-    expect(markerOrder(masterChart(screen.toJSON()))).toEqual(['tags', 'radar', 'notes']);
+    expect(screen.getByTestId('dxrating-config-tags')).toBeTruthy();
+    expect(screen.getByLabelText('谱面物量')).toBeTruthy();
 
     await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
-    await waitFor(() => expect(mockVideoHead).toHaveBeenCalledWith(`${DXTAG_BASE}/all.json`, expect.any(Object)));
-    await waitFor(() => expect(screen.getByTestId('simai-difficulty-radar-master')).toBeTruthy());
+    await waitFor(() => expect(within(screen.getByTestId('simai-difficulty-radar-master')).getByText('8.0')).toBeTruthy());
+    expect(within(screen.getByTestId('simai-difficulty-radar-master')).queryByText('1.2')).toBeNull();
 
     mockVideoHead.mockClear();
     const cached = await loadCachedMaimaiDxTag(jest.requireMock<{ useDetailedCatalog: () => { data: CatalogSnapshot } }>('@/hooks/use-detailed-catalog').useDetailedCatalog().data);

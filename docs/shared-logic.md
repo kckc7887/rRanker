@@ -23,6 +23,10 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。HTTP 
 
 `createInflightGuard.share` 共享同键工作并独立取消消费者。`useBoundedQueries` 管理实际批量明细；服务的实际网络请求使用现有队列。清缓存先失效对应资源代次，真实异步结果在最终提交处检查资格。
 
+ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路有界查询复用 `useTufLevel` 的查询定义与 `['tuf', 'level', levelId]` 缓存。单项详情失败不删除收藏或标签。`TufRandomChartsScreen` 按当前前台和页面焦点取消补页，恢复后只加载尚未完成的页；`prefetchTufPassPage` 在提交前检查取消信号与资源代次。
+
+舞萌、中二、Phigros、Muse Dash 随机页沿用 `RandomChartsPage` 的状态与重试入口。有缓存时继续使用；没有成绩时允许普通抽取并显示缺失值，启用成绩筛选则暂停抽取。`RandomUnplayedChartCard.scoreAvailable` 区分未知成绩与确认未游玩。Muse Dash 的专辑和定数是随机池必需数据，角色与精灵资料仅用于可选展示。
+
 ## 会话与账号
 
 | 内容 | 公共入口 |
@@ -41,11 +45,11 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。HTTP 
 
 `LargeSecureValueStore` 使用当前清单与分片保存长值，遵守 SecureStore 单值字节限制。写入以 SDK 返回结果为准，不在正常路径再次读回自证。提交失败后的回滚检查用于保护当前引用，属于实际故障处理。
 
-可选账号目录成功读到不支持的数据时重建所属键；读取失败不覆盖。账号变更通过 `enqueueKeyMutation` 按存储实例和键串行，前一个失败不阻塞后续操作。示例账号的当前开关与显示保留。
+可选账号目录成功读到不支持的数据时重建所属键；读取失败不覆盖。`key-value-storage.ts` 的 `enqueueKeyMutation` 按存储实例和键串行执行完整的读取、失效重建、保存与删除，账号目录、示例账号、临时账号和偏好共用；队列内读取不重复入队，前一个失败不阻塞后续操作。示例账号的当前开关与显示保留。
 
 ## 存储、偏好与个人曲库
 
-`rranker-database.ts` 提供数据库连接和 `runDatabaseWrite`。业务 schema、事务与写入共用队列；日志数据库单独串行。任务内不可再次进入同一队列。
+`rranker-database.ts` 提供数据库连接和 `runDatabaseWrite`。业务 schema、事务、写入与个人曲库外部读取共用队列；日志数据库单独串行。任务内不可再次进入同一队列。
 
 `SqliteSnapshotRepository` 提供当前成绩与资源缓存。版本不符或正文损坏仅删除受影响条目；等待写队列后的删除使用读到的值作为条件，保留后来写入的有效缓存。I/O 错误传播，不按失效内容处理。
 
@@ -53,7 +57,7 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。HTTP 
 
 `UserLibraryService` 是收藏、练习、标签、预设、导入导出的业务入口；`SqliteUserLibraryRepository` 在真实事务内读写。单项动作只改对应行；清游戏保留其他游戏和全局预设。当前库 schema 为 4，不支持的表结构只重建个人库所属表。
 
-备份只支持版本 3，`gameId` 必须存在。`parseUserDataBackup` 在导入前拒绝旧格式；`mergeBackup` 在同一事务内合并/替换条目与预设，条目或预设上限失败不会留下部分写入。`user-data-file-service.ts` 通过系统文件选择与分享读写当前备份，临时副本使用后删除。
+备份只支持版本 3，`gameId` 必须存在。`createBackup` 通过仓库的 `readBackup` 在同一次队列任务内读取条目与标签预设。`parseUserDataBackup` 在导入前拒绝旧格式；`mergeBackup` 在同一事务内合并/替换条目与预设，条目或预设上限失败不会留下部分写入。`user-data-file-service.ts` 通过系统文件选择与分享读写当前备份，临时副本使用后删除。
 
 存储管理通过 `features/storage-management/game-storage-adapters.ts` 统计和清理各游戏当前缓存。用户数据、凭据、日志与可重新下载的资源按实际归属处理；清理释放量以实际前后统计为准。
 
@@ -61,7 +65,7 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。HTTP 
 
 `upload-maimai-from-friend-code.ts` 执行好友码上传，`upload-task-controller.ts` 保存唯一任务。任务持有自己的取消信号、前台等待和曲库等待；关闭弹层保留任务，显式取消终止。迟到阶段、回调、刷新和通知不能进入下一任务。
 
-`UploadPrefsStore` 按好友码保存选择，UI 的 `selectedAccountIds` 从当前好友码派生。`ScoreHubAccountStore` 保存 v3 索引与安全令牌，只有当前结构。删除先提交索引再清理引用；附属清理失败不能假装账号仍存在。
+`UploadPrefsStore` 按好友码保存选择，UI 的 `selectedAccountIds` 从当前好友码派生。`ScoreHubAccountStore` 保存 v3 索引与安全令牌，只有当前结构。成功读取到失效令牌时仅移除其账号索引，保留健康账号；I/O 失败不提交部分清理。删除先提交索引再清理引用；附属清理失败不能假装账号仍存在。正常凭据写入以 SDK 结果为准，提交异常时保留引用检查与回滚保护。
 
 `AppLifecycleProvider`、`useAppRuntime` 与 `CachedTabScreen` 管理前后台和页面活动。后台取消前台工作；内存警告释放非活动查询、图片内存和必要的 WebView。前台仅恢复仍活动的未完成工作，不额外刷新已有缓存。
 
@@ -92,7 +96,7 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。HTTP 
 
 `fullscreen-controls.ts` 的 `bindFullscreenControls` 共用整页非控件区域点击与 5 秒隐藏计时；拖动不切换显隐，操作期间暂停计时，结束后重新计时。游戏入口保留方向与锁定状态，方形锁定按钮与全屏控制器右侧对齐，位于控制器上方 16px，锁定时只唤出解锁入口。行为由 `chart-preview-loop-controls.test.ts`、各播放会话测试和浏览器交互验证，浏览器结果不替代真机验收。
 
-设置采用当前信封格式，暂停和 seek 使用当前命令；释放只清理所属会话的帧、音源、监听器和临时资源。共享播放器源变更后重建四套生成物并运行 `check:generated`。
+设置采用当前信封格式。宿主读取设置失败时进入现有重新加载流程并保留原偏好；成功读到损坏内容时只重建对应设置键。暂停和 seek 使用当前命令；释放只清理所属会话的帧、音源、监听器和临时资源。共享播放器源变更后重建四套生成物并运行 `check:generated`。
 
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。
 
@@ -110,7 +114,7 @@ Phigros/Rizline 预览和下载共用 `phigrosResources`、`rizlineResources`、
 
 Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图读取时校验 Phigros 头像属于当前哈希地址结构，失效缓存通过所属仓库入口重建；头像同步会重新解析结构失效的地址，其他游戏头像缓存格式保持各自合同。
 
-`features/chart-download-shared` 提供原生下载、进度和取消；各游戏负责组装谱面包。
+`features/chart-download-shared` 提供原生下载、进度和取消；各游戏负责组装谱面包。`saveChartPackage(fileName, output, signal?)` 在目录选择前、目录选择后及写出前检查取消，保持 `ChartPackageDownloadCancelledError`。舞萌、Majdata、Phigros、Phira、osu! 将下载任务的信号传到保存入口。
 
 ## 工具与诊断
 
