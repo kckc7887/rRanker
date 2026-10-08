@@ -139,7 +139,7 @@ KALEIDXSCOPE 的日程、课题和手工进度位于 `domain/kaleidx-scope.ts`�
 
 测试验证实际输入输出、交互、取消、存储往返和 I/O 失败。外部 HTTP、原生 SDK、文件系统和浏览器环境可模拟；生产代码不提供测试替换、统计或 reset 接口。
 
-postinstall 按实际源码调用点应用 decode-uri-component、Metro image-size、Xiaomi WebView、Expo FileHandle 和高德架构隔离的运行/构建补丁。高德原生构建沿用宿主 NDK 版本。
+postinstall 按实际源码调用点应用 decode-uri-component、Metro image-size、Xiaomi WebView、Expo FileHandle 和高德架构隔离的运行/构建补丁。高德原生构建沿用宿主 NDK 版本；R8 按官方配置保留 SDK，并对合包未提供的 `GnssSoftLocator`、`FastMath` 忽略缺失类告警。
 
 ### CI 与发布
 

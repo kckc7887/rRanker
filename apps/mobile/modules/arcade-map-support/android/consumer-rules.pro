@@ -6,3 +6,5 @@
 -keep class com.amap.api.fence.** { *; }
 -keep class com.loc.** { *; }
 -keep class com.amap.api.services.** { *; }
+-dontwarn com.amap.ams.gnss.GnssSoftLocator
+-dontwarn net.jafama.FastMath
