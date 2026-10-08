@@ -163,10 +163,12 @@ export function RandomUnplayedChartCard({
   title,
   badge,
   onPress,
+  scoreAvailable = true,
 }: {
   title: string;
   badge: ReactNode;
   onPress: () => void;
+  scoreAvailable?: boolean;
 }) {
   const theme = useAppTheme();
   return (
@@ -181,7 +183,7 @@ export function RandomUnplayedChartCard({
       </Text>
       <View style={styles.unplayedTags}>
         {badge}
-        <Text style={[styles.unplayedHint, { color: theme.textMuted }]}>未游玩</Text>
+        <Text style={[styles.unplayedHint, { color: theme.textMuted }]}>{scoreAvailable ? '未游玩' : '-'}</Text>
       </View>
     </Pressable>
   );

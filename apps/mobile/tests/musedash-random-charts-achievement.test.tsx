@@ -5,6 +5,7 @@ import type {
   MuseDashAlbumsResponse,
   MuseDashAchievementFilter,
   MuseDashCeResponse,
+  MuseDashDifficultySlot,
   MuseDashMissDetailValue,
   MuseDashPlayer,
 } from '@/domain/muse-dash';
@@ -14,8 +15,9 @@ const mockRefetch = jest.fn(async () => ({ data: undefined }));
 const mockRetryFailedDetails = jest.fn();
 let mockMissMap: ReadonlyMap<string, MuseDashMissDetailValue> = new Map();
 let mockFailedDetailCount = 0;
+let mockQueryStates: Partial<Record<'player' | 'albums' | 'ce' | 'diffdiff', Record<string, unknown>>> = {};
 let mockFilters = {
-  count: 1 as RandomChartsCount, collapsed: true, difficultySlot: 'all' as const, dlc: 'all' as const,
+  count: 1 as RandomChartsCount, collapsed: true, difficultySlot: 'all' as MuseDashDifficultySlot, dlc: 'all' as const,
   constantMin: '', constantMax: '', accMin: '', accMax: '',
   achievement: 'ap' as MuseDashAchievementFilter,
 };
@@ -85,16 +87,17 @@ jest.mock('@/state/musedash-random-charts-filter', () => ({
   useMuseDashRandomChartsFilter: () => ({ ...mockFilters, ...mockFilterActions }),
 }));
 jest.mock('@/hooks/use-muse-dash', () => {
-  const query = (data: unknown) => ({
+  const query = (data: unknown, name?: keyof typeof mockQueryStates) => ({
     data,
     source: { kind: 'musedash', label: 'MuseDash.moe', updatedAt: '2026-08-10T00:00:00.000Z', isStale: false },
     isLoading: false, isError: false, error: null, isFetching: false, refetch: mockRefetch,
+    ...(name ? mockQueryStates[name] : {}),
   });
   return {
-    useMuseDashPlayer: () => query(player),
-    useMuseDashAlbums: () => query(albums),
-    useMuseDashCe: () => query(ce),
-    useMuseDashDiffdiff: () => query(diffdiff),
+    useMuseDashPlayer: () => query(player, 'player'),
+    useMuseDashAlbums: () => query(albums, 'albums'),
+    useMuseDashCe: () => query(ce, 'ce'),
+    useMuseDashDiffdiff: () => query(diffdiff, 'diffdiff'),
     useMuseDashPlayDetail: () => query(undefined),
     useMuseDashPlayDetails: () => ({
       missByChart: mockMissMap,
@@ -109,7 +112,8 @@ describe('Muse Dash random charts achievement gating', () => {
     jest.clearAllMocks();
     mockMissMap = new Map();
     mockFailedDetailCount = 0;
-    mockFilters = { ...mockFilters, achievement: 'ap' };
+    mockQueryStates = {};
+    mockFilters = { ...mockFilters, count: 1, difficultySlot: 'all', accMin: '', accMax: '', achievement: 'ap' };
   });
 
   it('只把已确认 miss 的候选算进候选池，pending 明细期间不交付抽取结果', async () => {
@@ -178,6 +182,74 @@ describe('Muse Dash random charts achievement gating', () => {
     await fireEvent.press(screen.getByTestId('random-charts-draw'));
     expect(screen.getByTestId('musedash-score-0-47-4')).toBeTruthy();
     expect(screen.getByTestId('musedash-score-0-48-0')).toBeTruthy();
+    await screen.unmount();
+  });
+
+  it.each(['albums', 'diffdiff'] as const)('%s 无缓存时等待并展示失败，重试恢复后才允许抽取', async (requiredQuery) => {
+    const retry = jest.fn(async () => undefined);
+    mockFilters.achievement = 'all';
+    mockQueryStates[requiredQuery] = { data: undefined, isLoading: true, refetch: retry };
+    const screen = await render(<MuseDashRandomChartsScreen />);
+    expect(screen.queryByTestId('random-charts-draw')).toBeNull();
+    expect(screen.queryByText('当前曲库没有可抽取谱面')).toBeNull();
+
+    mockQueryStates[requiredQuery] = { data: undefined, isError: true, error: new Error('offline'), refetch: retry };
+    await screen.rerender(<MuseDashRandomChartsScreen />);
+    expect(screen.getByText('加载失败，请重试')).toBeTruthy();
+    await fireEvent.press(screen.getByText('重试'));
+    expect(retry).toHaveBeenCalledTimes(1);
+    expect(mockRefetch).not.toHaveBeenCalled();
+
+    mockQueryStates = {};
+    await screen.rerender(<MuseDashRandomChartsScreen />);
+    await fireEvent.press(screen.getByTestId('random-charts-draw'));
+    expect(screen.getByTestId('random-charts-results')).toBeTruthy();
+    await screen.unmount();
+  });
+
+  it('角色资料失败不会阻止抽取，有缓存的曲库和成绩刷新失败仍可使用', async () => {
+    const retryCe = jest.fn(async () => undefined);
+    mockFilters.achievement = 'all';
+    mockFilters.difficultySlot = 4;
+    mockQueryStates = {
+      ce: { data: undefined, isError: true, error: new Error('offline'), refetch: retryCe },
+      albums: { isError: true, error: new Error('offline') },
+      diffdiff: { isError: true, error: new Error('offline') },
+      player: { isError: true, error: new Error('offline') },
+    };
+    const screen = await render(<MuseDashRandomChartsScreen />);
+    expect(screen.getByText(/角色与精灵资料读取失败/)).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('random-charts-draw'));
+    expect(screen.getByTestId(/musedash-score-/)).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('重试加载随机池'));
+    expect(retryCe).toHaveBeenCalledTimes(1);
+    await screen.unmount();
+  });
+
+  it('未知成绩允许无成绩筛选的抽取，恢复后更新已抽结果，成绩筛选期间暂停', async () => {
+    mockFilters.achievement = 'all';
+    mockFilters.difficultySlot = 4;
+    mockQueryStates.player = { data: undefined, isLoading: true };
+    const screen = await render(<MuseDashRandomChartsScreen />);
+    expect(screen.getByText('正在读取成绩…')).toBeTruthy();
+    await fireEvent.press(screen.getByTestId('random-charts-draw'));
+    expect(screen.getByText('-')).toBeTruthy();
+    expect(screen.queryByText('未游玩')).toBeNull();
+
+    const retry = jest.fn(async () => undefined);
+    mockFilters.accMin = '90';
+    mockQueryStates.player = { data: undefined, isError: true, error: new Error('offline'), refetch: retry };
+    await screen.rerender(<MuseDashRandomChartsScreen />);
+    expect(screen.getByTestId('random-charts-draw').props.accessibilityState).toMatchObject({ disabled: true });
+    expect(screen.getByText('成绩读取失败，请重试。')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('重试加载随机池'));
+    expect(retry).toHaveBeenCalledTimes(1);
+
+    mockQueryStates = {};
+    await screen.rerender(<MuseDashRandomChartsScreen />);
+    expect(screen.getByTestId('random-charts-draw').props.accessibilityState).toMatchObject({ disabled: false });
+    expect(screen.getByTestId(/musedash-score-/)).toBeTruthy();
+    expect(screen.queryByText('未游玩')).toBeNull();
     await screen.unmount();
   });
 });
