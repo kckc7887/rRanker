@@ -1,11 +1,32 @@
 import NativeStorage from 'expo-sqlite/kv-store';
 
-export type KeyValueStorage = {
+export type KeyValueStore = {
   getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<void>;
+  setItem(key: string, value: string): Promise<unknown>;
   removeItem(key: string): Promise<unknown>;
-  getAllKeys(): Promise<string[]>;
 };
+
+export interface KeyValueStorage extends KeyValueStore {
+  setItem(key: string, value: string): Promise<void>;
+  getAllKeys(): Promise<string[]>;
+}
+
+const mutationTails = new WeakMap<KeyValueStore, Map<string, Promise<void>>>();
+
+export function enqueueKeyMutation<T>(storage: KeyValueStore, key: string, mutation: () => Promise<T>): Promise<T> {
+  let tails = mutationTails.get(storage);
+  if (!tails) {
+    tails = new Map();
+    mutationTails.set(storage, tails);
+  }
+  const previous = tails.get(key) ?? Promise.resolve();
+  const result = previous.then(mutation, mutation);
+  const tail = result.then(() => undefined, () => undefined);
+  tails.set(key, tail);
+  return result.finally(() => {
+    if (tails.get(key) === tail) tails.delete(key);
+  });
+}
 
 const instances = new WeakMap<KeyValueStorage, KeyValueStorage>();
 

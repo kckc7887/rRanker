@@ -1,6 +1,6 @@
 import { z } from 'zod';
-import Storage from '@/storage/key-value-storage';
-import { createPreferencesStore, type KeyValueStore } from '@/storage/create-preferences-store';
+import Storage, { type KeyValueStore } from '@/storage/key-value-storage';
+import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { CollectionItem } from '@/domain/models';
 
 export type BestImageCollectionKind = 'icon' | 'plate' | 'trophy' | 'frame';

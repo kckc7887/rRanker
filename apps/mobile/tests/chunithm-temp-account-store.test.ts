@@ -1,12 +1,25 @@
 import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
+import { createSerializedKeyValueStorage } from '@/storage/key-value-storage';
 class MemoryStore {
   values = new Map<string, string>();
   async getItem(key: string) { return this.values.get(key) ?? null; }
   async setItem(key: string, value: string) { this.values.set(key, value); }
   async removeItem(key: string) { this.values.delete(key); }
+  async getAllKeys() { return [...this.values.keys()]; }
 }
 
 describe('ChunithmTempAccountStore', () => {
+  it('重建失效设置时保留随后启用的临时账号', async () => {
+    const memory = new MemoryStore();
+    memory.values.set('rranker.chunithm-temp-account.v1', JSON.stringify({ version: 0 }));
+    const storage = createSerializedKeyValueStorage(memory);
+    const reading = new ChunithmTempAccountStore(storage).load();
+    const enabling = new ChunithmTempAccountStore(storage).enable();
+    await expect(reading).resolves.toBe(false);
+    await enabling;
+    await expect(new ChunithmTempAccountStore(storage).load()).resolves.toBe(true);
+  });
+
   it('persists and removes the no-score temporary account flag', async () => {
     const memory = new Map<string, string>();
     const store = new ChunithmTempAccountStore({

@@ -138,12 +138,21 @@ export class SqliteUserLibraryRepository {
 
   async list(gameId?: GameId): Promise<UserLibraryItem[]> {
     await this.initialize();
-    return this.readFrom(await getRrankerDatabase(), gameId);
+    return runDatabaseWrite(async () => this.readFrom(await getRrankerDatabase(), gameId));
   }
 
   async listTagPresets(): Promise<string[]> {
     await this.initialize();
-    return readTagPresets(await getRrankerDatabase());
+    return runDatabaseWrite(async () => readTagPresets(await getRrankerDatabase()));
+  }
+
+  async readBackup(): Promise<{ items: UserLibraryItem[]; tagPresets: string[] }> {
+    await this.initialize();
+    return runDatabaseWrite(async () => {
+      const db = await getRrankerDatabase();
+      const [items, tagPresets] = await Promise.all([this.readFrom(db), readTagPresets(db)]);
+      return { items, tagPresets };
+    });
   }
 
   async setTagPresets(values: readonly string[]): Promise<string[]> {
@@ -238,28 +247,30 @@ export class SqliteUserLibraryRepository {
   /** 文本按 UTF-8 字节估算，不含索引开销。 */
   async measureBytes(): Promise<number> {
     await this.initialize();
-    const db = await getRrankerDatabase();
-    const [items, tags, presets, itemTags] = await Promise.all([
-      db.getFirstAsync<{ bytes: number }>(
-        `SELECT COALESCE(SUM(
-          LENGTH(CAST(item_key AS BLOB)) + LENGTH(CAST(game_id AS BLOB)) + LENGTH(CAST(kind AS BLOB)) + LENGTH(CAST(song_id AS BLOB))
-          + IFNULL(LENGTH(CAST(chart_type AS BLOB)), 0) + LENGTH(CAST(created_at AS BLOB)) + LENGTH(CAST(updated_at AS BLOB)) + 8
-        ), 0) AS bytes FROM user_library_items`,
-      ),
-      db.getFirstAsync<{ bytes: number }>(
-        `SELECT COALESCE(SUM(LENGTH(CAST(normalized_name AS BLOB)) + LENGTH(CAST(display_name AS BLOB)) + LENGTH(CAST(created_at AS BLOB))), 0) AS bytes
-         FROM user_library_tags`,
-      ),
-      db.getFirstAsync<{ bytes: number }>(
-        `SELECT COALESCE(SUM(
-          LENGTH(CAST(normalized_name AS BLOB)) + LENGTH(CAST(display_name AS BLOB)) + LENGTH(CAST(created_at AS BLOB)) + 4
-        ), 0) AS bytes FROM user_library_tag_presets`,
-      ),
-      db.getFirstAsync<{ bytes: number }>(
-        `SELECT COALESCE(SUM(LENGTH(CAST(item_key AS BLOB)) + 8), 0) AS bytes FROM user_library_item_tags`,
-      ),
-    ]);
-    return (items?.bytes ?? 0) + (tags?.bytes ?? 0) + (presets?.bytes ?? 0) + (itemTags?.bytes ?? 0);
+    return runDatabaseWrite(async () => {
+      const db = await getRrankerDatabase();
+      const [items, tags, presets, itemTags] = await Promise.all([
+        db.getFirstAsync<{ bytes: number }>(
+          `SELECT COALESCE(SUM(
+            LENGTH(CAST(item_key AS BLOB)) + LENGTH(CAST(game_id AS BLOB)) + LENGTH(CAST(kind AS BLOB)) + LENGTH(CAST(song_id AS BLOB))
+            + IFNULL(LENGTH(CAST(chart_type AS BLOB)), 0) + LENGTH(CAST(created_at AS BLOB)) + LENGTH(CAST(updated_at AS BLOB)) + 8
+          ), 0) AS bytes FROM user_library_items`,
+        ),
+        db.getFirstAsync<{ bytes: number }>(
+          `SELECT COALESCE(SUM(LENGTH(CAST(normalized_name AS BLOB)) + LENGTH(CAST(display_name AS BLOB)) + LENGTH(CAST(created_at AS BLOB))), 0) AS bytes
+           FROM user_library_tags`,
+        ),
+        db.getFirstAsync<{ bytes: number }>(
+          `SELECT COALESCE(SUM(
+            LENGTH(CAST(normalized_name AS BLOB)) + LENGTH(CAST(display_name AS BLOB)) + LENGTH(CAST(created_at AS BLOB)) + 4
+          ), 0) AS bytes FROM user_library_tag_presets`,
+        ),
+        db.getFirstAsync<{ bytes: number }>(
+          `SELECT COALESCE(SUM(LENGTH(CAST(item_key AS BLOB)) + 8), 0) AS bytes FROM user_library_item_tags`,
+        ),
+      ]);
+      return (items?.bytes ?? 0) + (tags?.bytes ?? 0) + (presets?.bytes ?? 0) + (itemTags?.bytes ?? 0);
+    });
   }
 
   private async readFrom(db: DatabaseAccess, gameId?: GameId): Promise<UserLibraryItem[]> {

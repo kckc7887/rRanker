@@ -1,10 +1,4 @@
-import Storage from '@/storage/key-value-storage';
-
-export type KeyValueStore = {
-  getItem(key: string): Promise<string | null>;
-  setItem(key: string, value: string): Promise<unknown>;
-  removeItem(key: string): Promise<unknown>;
-};
+import Storage, { enqueueKeyMutation, type KeyValueStore } from '@/storage/key-value-storage';
 
 export function assertAccountListEnvelope(value: unknown): { version: 1; accounts: unknown[] } {
   if (!value || typeof value !== 'object' || Array.isArray(value)) throw new TypeError('不支持的账号目录');
@@ -58,7 +52,7 @@ export function createDemoAccountStore(input: {
     constructor(private readonly storage: KeyValueStore = Storage) {}
 
     load(): Promise<DemoAccountProfile | null> {
-      return loadAccountDirectory(this.storage, storeKey, parse, null);
+      return enqueueKeyMutation(this.storage, storeKey, () => loadAccountDirectory(this.storage, storeKey, parse, null));
     }
 
     async save(profile: DemoAccountProfile): Promise<void> {
@@ -70,11 +64,11 @@ export function createDemoAccountStore(input: {
         version: 1,
         account: { id: profile.id, displayName },
       };
-      await this.storage.setItem(storeKey, JSON.stringify(value));
+      await enqueueKeyMutation(this.storage, storeKey, () => this.storage.setItem(storeKey, JSON.stringify(value)));
     }
 
     async remove(): Promise<void> {
-      await this.storage.removeItem(storeKey);
+      await enqueueKeyMutation(this.storage, storeKey, () => this.storage.removeItem(storeKey));
     }
   };
 

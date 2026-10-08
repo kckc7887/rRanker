@@ -1,6 +1,5 @@
-import Storage from '@/storage/key-value-storage';
+import Storage, { enqueueKeyMutation } from '@/storage/key-value-storage';
 import { LargeSecureValueStore } from '@/storage/large-secure-value-store';
-import { enqueueKeyMutation } from '@/storage/create-account-list-store';
 import { SessionPersistenceError } from '@/domain/session-vault';
 
 const ACCOUNT_INDEX_KEY = 'rranker.scorehub.accounts.v3';
@@ -137,9 +136,13 @@ export class ScoreHubAccountStore {
 
   private async loadIndexedState(index: ScoreHubAccountIndex): Promise<ScoreHubAccountsState> {
     const accounts: Record<string, ScoreHubAccountEntry> = {};
+    const unsupported = new Set<string>();
     for (const item of Object.values(index.accounts)) {
       const token = await this.credentialIo.read(item.tokenRef);
-      if (!token) throw new SessionPersistenceError('credential_storage');
+      if (!token) {
+        unsupported.add(item.friendCode);
+        continue;
+      }
       accounts[item.friendCode] = {
         friendCode: item.friendCode,
         token,
@@ -147,8 +150,18 @@ export class ScoreHubAccountStore {
         updatedAt: item.updatedAt,
       };
     }
+    const activeFriendCode = resolveActiveFriendCode(index.activeFriendCode, accounts, !unsupported.has(index.activeFriendCode));
+    if (unsupported.size) {
+      const retained = Object.fromEntries(Object.entries(index.accounts).filter(([code]) => !unsupported.has(code)));
+      await this.indexIo.setItem(ACCOUNT_INDEX_KEY, JSON.stringify({ ...index, activeFriendCode, accounts: retained }));
+      const retainedRefs = new Set(Object.values(retained).map(item => item.tokenRef));
+      for (const code of unsupported) {
+        const reference = index.accounts[code]!.tokenRef;
+        if (!retainedRefs.has(reference)) await this.credentialIo.delete(reference).catch(() => undefined);
+      }
+    }
     return {
-      activeFriendCode: resolveActiveFriendCode(index.activeFriendCode, accounts, true),
+      activeFriendCode,
       accounts,
     };
   }
@@ -176,7 +189,6 @@ export class ScoreHubAccountStore {
           tokenRef = this.credentialIo.createReference('scorehub-token');
           newSecretRefs.push(tokenRef);
           await this.credentialIo.write(tokenRef, entry.token);
-          if (await this.credentialIo.read(tokenRef) !== entry.token) throw new SessionPersistenceError('credential_storage');
         }
         accounts[entry.friendCode] = {
           friendCode: entry.friendCode,

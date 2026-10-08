@@ -1,8 +1,25 @@
 import { createAppTheme, resolveAccentHex, resolveAppearance } from '@/theme/theme-tokens';
 import { DEFAULT_THEME_PREFERENCES, parseThemePreferences, ThemePreferencesStore } from '@/storage/theme-preferences-store';
 import { hslToHex, normalizeAccentHex } from '@/theme/accent-color';
+import { createSerializedKeyValueStorage } from '@/storage/key-value-storage';
 
 describe('theme preferences', () => {
+  it('does not overwrite a new preference while rebuilding unsupported data', async () => {
+    const values = new Map([['rranker.theme-preferences.v1', '{}']]);
+    const storage = createSerializedKeyValueStorage({
+      getItem: async (key) => values.get(key) ?? null,
+      setItem: async (key, value) => { values.set(key, value); },
+      removeItem: async (key) => { values.delete(key); },
+      getAllKeys: async () => [...values.keys()],
+    });
+    const reading = new ThemePreferencesStore(storage).load();
+    const preferences = { ...DEFAULT_THEME_PREFERENCES, appearance: 'dark' as const };
+    const saving = new ThemePreferencesStore(storage).save(preferences);
+    await expect(reading).resolves.toEqual(DEFAULT_THEME_PREFERENCES);
+    await saving;
+    await expect(new ThemePreferencesStore(storage).load()).resolves.toEqual(preferences);
+  });
+
   it('parses supported values and falls back per field', () => {
     expect(parseThemePreferences({ appearance: 'dark', accent: 'violet' })).toMatchObject({
       version: 3, appearance: 'dark', accent: 'violet', customHex: '#246BFD',

@@ -67,15 +67,14 @@ describe('账号凭据与上传偏好持久化', () => {
     expect([...secure.values.keys()].some((key) => key.startsWith(removedRef))).toBe(false);
   });
 
-  it.each(['null', 'throw'] as const)('ScoreHub 凭据读取 %s 时完整目录失败且原地重试保留账号', async failure => {
+  it('ScoreHub 凭据读取 I/O 失败时原地重试保留账号', async () => {
     const kv = createKvStore(), secrets = new LargeSecureValueStore(), store = new ScoreHubAccountStore(kv, secrets);
     await store.upsert({ friendCode: 'A', token: 'a', hasCabinetBound: true });
     await store.upsert({ friendCode: 'B', token: 'b', hasCabinetBound: true });
     const before = kv.values.get('rranker.scorehub.accounts.v3');
     const secretKeys = [...secure.values.keys()];
     const read = vi.spyOn(secrets, 'read');
-    if (failure === 'null') read.mockResolvedValueOnce(null);
-    else read.mockRejectedValueOnce(new Error('temporary secret read failure'));
+    read.mockRejectedValueOnce(new Error('temporary secret read failure'));
     await expect(store.select('A')).rejects.toMatchObject({ code: 'credential_storage' });
     expect(kv.values.get('rranker.scorehub.accounts.v3')).toBe(before);
     expect([...secure.values.keys()]).toEqual(secretKeys);
@@ -83,20 +82,53 @@ describe('账号凭据与上传偏好持久化', () => {
     expect(Object.keys((await store.loadAll()).accounts)).toEqual(['A', 'B']);
   });
 
-  it.each(['load', 'loadAll', 'listWithToken', 'getByFriendCode', 'upsert'] as const)(
-    'ScoreHub %s 不接受缺失凭据的部分目录', async operation => {
+  it.each(['missing-chunk', 'invalid-manifest'] as const)(
+    'ScoreHub 隔离 %s 对应账号并保留健康账号和重新绑定能力', async damage => {
       const kv = createKvStore(), secrets = new LargeSecureValueStore(), store = new ScoreHubAccountStore(kv, secrets);
-      await store.upsert({ friendCode: 'A', token: 'a', hasCabinetBound: true });
-      const before = kv.values.get('rranker.scorehub.accounts.v3');
-      vi.spyOn(secrets, 'read').mockResolvedValueOnce(null);
-      const call = operation === 'getByFriendCode' ? store.getByFriendCode('A')
-        : operation === 'upsert' ? store.upsert({ friendCode: 'B', token: 'b' })
-          : store[operation]();
-      await expect(call).rejects.toMatchObject({ code: 'credential_storage' });
-      expect(kv.values.get('rranker.scorehub.accounts.v3')).toBe(before);
-      await expect(store.load()).resolves.toMatchObject({ friendCode: 'A', token: 'a' });
+      await store.upsert({ friendCode: 'A', token: 'a'.repeat(3000), hasCabinetBound: true });
+      await store.upsert({ friendCode: 'B', token: 'b', hasCabinetBound: true });
+      await store.select('A');
+      const index = JSON.parse(kv.values.get('rranker.scorehub.accounts.v3')!) as { accounts: Record<string, { tokenRef: string }> };
+      const reference = index.accounts.A!.tokenRef;
+      if (damage === 'missing-chunk') {
+        secure.values.delete([...secure.values.keys()].find(key => key.startsWith(reference + '.chunk.'))!);
+      } else {
+        secure.values.set(reference + '.manifest', '{}');
+      }
+      await expect(store.load()).resolves.toMatchObject({ friendCode: 'B', token: 'b' });
+      await expect(store.getByFriendCode('A')).resolves.toBeNull();
+      expect(Object.keys((await store.loadAll()).accounts)).toEqual(['B']);
+      await expect(store.listWithToken()).resolves.toEqual([expect.objectContaining({ friendCode: 'B', token: 'b' })]);
+      await store.upsert({ friendCode: 'A', token: 'new-a' });
+      await expect(new ScoreHubAccountStore(kv, secrets).load()).resolves.toMatchObject({ friendCode: 'A', token: 'new-a' });
     },
   );
+
+  it('ScoreHub 扫描失效令牌后遇到 I/O 失败不提交部分目录', async () => {
+    const kv = createKvStore(), secrets = new LargeSecureValueStore(), store = new ScoreHubAccountStore(kv, secrets);
+    await store.upsert({ friendCode: 'A', token: 'a' });
+    await store.upsert({ friendCode: 'B', token: 'b' });
+    const before = kv.values.get('rranker.scorehub.accounts.v3');
+    const keys = [...secure.values.keys()];
+    vi.spyOn(secrets, 'read').mockResolvedValueOnce(null).mockRejectedValueOnce(new Error('locked'));
+    await expect(store.loadAll()).rejects.toMatchObject({ code: 'credential_storage' });
+    expect(kv.values.get('rranker.scorehub.accounts.v3')).toBe(before);
+    expect([...secure.values.keys()]).toEqual(keys);
+  });
+
+  it('ScoreHub 隔离失效账号时先提交索引，提交失败保留凭据供重试', async () => {
+    const kv = createKvStore(), secrets = new LargeSecureValueStore(), store = new ScoreHubAccountStore(kv, secrets);
+    await store.upsert({ friendCode: 'A', token: 'a' });
+    await store.upsert({ friendCode: 'B', token: 'b' });
+    const before = kv.values.get('rranker.scorehub.accounts.v3');
+    const keys = [...secure.values.keys()];
+    vi.spyOn(secrets, 'read').mockResolvedValueOnce(null);
+    kv.setItem.mockRejectedValueOnce(new Error('write failed'));
+    await expect(store.loadAll()).rejects.toMatchObject({ code: 'local_commit' });
+    expect(kv.values.get('rranker.scorehub.accounts.v3')).toBe(before);
+    expect([...secure.values.keys()]).toEqual(keys);
+    expect(Object.keys((await store.loadAll()).accounts)).toEqual(['A', 'B']);
+  });
 
   it.each(['remove', 'clear'] as const)('ScoreHub %s 依据有效索引删除，无需读取损坏密钥', async operation => {
     const kv = createKvStore(), secrets = new LargeSecureValueStore(), store = new ScoreHubAccountStore(kv, secrets);
@@ -190,13 +222,11 @@ describe('账号凭据与上传偏好持久化', () => {
     await expect(store.getByFriendCode('A')).resolves.toMatchObject({ token: 'a' });
   });
 
-  it('ScoreHub 新凭据写后验证失败不提交索引且下次保存仍可继续', async () => {
+  it('ScoreHub 新凭据写入成功时不受后续读取暂时不可用影响', async () => {
     const kv = createKvStore(), secrets = new LargeSecureValueStore(), store = new ScoreHubAccountStore(kv, secrets);
-    vi.spyOn(secrets, 'read').mockResolvedValueOnce(null);
-    await expect(store.upsert({ friendCode: 'A', token: 'a', hasCabinetBound: false })).rejects.toMatchObject({ code: 'credential_storage' });
-    expect(kv.values.has('rranker.scorehub.accounts.v3')).toBe(false);
-    expect(secure.values.size).toBe(0);
-    await store.upsert({ friendCode: 'A', token: 'a', hasCabinetBound: false });
+    const read = vi.spyOn(secrets, 'read').mockRejectedValue(new Error('temporarily locked'));
+    await expect(store.upsert({ friendCode: 'A', token: 'a', hasCabinetBound: false })).resolves.toMatchObject({ friendCode: 'A', token: 'a' });
+    read.mockRestore();
     await expect(store.load()).resolves.toMatchObject({ friendCode: 'A', token: 'a' });
   });
 
