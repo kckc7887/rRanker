@@ -82,11 +82,13 @@ HTTP 请求使用 `totalAttempts` 表示总尝试次数。认证、轮询、取�
 
 ## 音游地图
 
-音游地图沿用 `/tools/arcade-finder` 路由，上方地图、下方搜索与独立机厅列表。iOS 使用 `react-native-maps@1.20.1` 的 MapKit；Android ARM 使用 `expo-gaode-map@2.3.1`，x86、x86_64、Web 以及未配置地图的客户端使用列表。平台自动链接排除 Android 的 React Native Maps 和 iOS 的高德模块。`modules/arcade-map-support` 提供 Android 架构与原生 Key 配置状态，并保留高德 SDK 所需的 R8 规则；安装依赖时的高德补丁阻止不支持架构在 Expo 模块启动期间恢复 SDK。
+音游地图沿用 `/tools/arcade-finder` 路由，上方地图、下方统一搜索、默认折叠筛选与独立列表。iOS 使用 `react-native-maps@1.20.1` 的 MapKit；Android ARM 使用 `expo-gaode-map@2.3.1`，x86、x86_64、Web 以及未配置地图的客户端使用列表。平台自动链接排除 Android 的 React Native Maps 和 iOS 的高德模块。`modules/arcade-map-support` 提供原生地点搜索、Android 架构与 Key 配置状态，并保留高德 SDK 所需的 R8 规则；安装依赖时的高德补丁阻止不支持架构在 Expo 模块启动期间恢复 SDK。
 
 正式 Android 构建将仓库 Secret `AMAP_ANDROID_KEY` 传给 `app.config.js`，由高德插件写入原生配置。Key 不通过日志或客户端 `extra` 传递。高德服务说明经用户同意后才装配地图，同意状态由 SDK 持久化；拒绝仍可使用列表。定位沿用系统定位入口，地图操作不依赖定位授权。拖图停止 500 毫秒后查询中心附近机厅，卡片移动地图不重新查询；页面离开与后台状态取消请求，迟到结果不提交。
 
 Nearcade 机厅由 `services/nearcade-client.ts` 读取；内部与 MapKit 坐标使用 WGS84，高德和 Nearcade 国内坐标边界通过 `gcoord@1.0.7` 转换。上游地区标识用于保留海外 WGS84 坐标。距离按查询中心计算，缺失距离显示“—”；营业时间按周一开始、关门小时可达 47 的格式解释，并包含前一日延续的营业时段。Android 生产路由设备检查包含 x86 列表降级；ARM 地图鉴权与 iOS 原生手势、定位仍须设备验证。
+
+输入停止 350 毫秒后，`useArcadeSearch` 独立加载 Nearcade `/shops` 的跨城机厅和原生地点候选。机厅每页 20 条，地点最多 10 条；机型过滤传入附近与跨城查询，距离仅限制附近查询。iOS 地点搜索通过 `MKLocalSearch`，Android 通过高德输入提示，缺少坐标的地点选中后调用原生地理编码。两类结果分别显示失败和重试，选择后清空输入、收起键盘并查询新中心附近机厅；选中机厅保留为图钉和卡片。取消会中止 MapKit 搜索，高德回调释放后忽略迟到结果；原生查询超时为 12 秒。系统定位授权产生的短暂失活保留 GPS 意图，退到后台或离开页面则使其失效。
 
 ## 资源、图片与成绩图
 

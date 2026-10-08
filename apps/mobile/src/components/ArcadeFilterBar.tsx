@@ -70,7 +70,7 @@ export function ArcadeFilterBar({
         showsVerticalScrollIndicator
       >
         <View style={[filterShellStyles.filterRow, styles.filterRowTop]}>
-          <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>原点</Text>
+          <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>中心</Text>
           <View style={styles.originBlock}>
             <Text numberOfLines={2} style={[styles.originLabel, { color: theme.text }]}>
               {originLabel}
@@ -83,7 +83,7 @@ export function ArcadeFilterBar({
                 accessibilityLabel="使用当前定位作为搜索原点"
               />
               <NeutralChip
-                label="搜索地址"
+                label="搜索地点"
                 active={origin?.source === 'custom'}
                 onPress={onEditOrigin}
                 accessibilityLabel="搜索地址设为搜索原点"
