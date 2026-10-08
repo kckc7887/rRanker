@@ -98,13 +98,15 @@ function disposeSource(source?: ChartPreviewShellSource): void {
 }
 
 async function loadSettings(settingsKey: string): Promise<Record<string, unknown>> {
+  const raw = await Storage.getItem(settingsKey);
+  if (raw === null) return {};
+  let parsed: unknown;
   try {
-    const raw = await Storage.getItem(settingsKey);
-    if (!raw) return {};
-    return JSON.parse(raw) as Record<string, unknown>;
-  } catch {
-    return {};
-  }
+    parsed = JSON.parse(raw);
+  } catch {}
+  if (typeof parsed === 'object' && parsed !== null && !Array.isArray(parsed)) return parsed as Record<string, unknown>;
+  await Storage.setItem(settingsKey, '{}');
+  return {};
 }
 
 function ChartPreviewLoadProgressBar({

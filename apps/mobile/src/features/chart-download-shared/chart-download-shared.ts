@@ -152,9 +152,12 @@ function isDirectoryPickerCancellation(error: unknown): boolean {
 export async function saveChartPackage(
   fileName: string,
   output: ChartPackageOutput,
+  signal?: AbortSignal,
 ): Promise<boolean> {
+  throwIfChartDownloadCancelled(signal);
   try {
     const picked = await Directory.pickDirectoryAsync();
+    throwIfChartDownloadCancelled(signal);
     if (output.kind === 'file' && picked.uri.startsWith('file://')) {
       /** iOS 复制不允许目标文件已存在。 */
       output.file.copy(new File(picked.uri, fileName));
@@ -165,6 +168,8 @@ export async function saveChartPackage(
     }
     return true;
   } catch (error) {
+    if (error instanceof ChartPackageDownloadCancelledError) throw error;
+    throwIfChartDownloadCancelled(signal);
     if (isDirectoryPickerCancellation(error)) return false;
     throw new ChartPackageDownloadError('无法打开保存位置选择', { cause: error });
   }
