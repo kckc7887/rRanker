@@ -10,6 +10,7 @@ import { PhigrosDifficultyBadge } from '@/components/phigros/PhigrosDifficultyBa
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { chartVersionKey } from '@/domain/catalog';
+import { parseAchievementBound } from '@/domain/maimai-filters';
 import type { CatalogSnapshot } from '@/domain/models';
 import { buildPhigrosKyouChartTagIndex } from '@/domain/phigros-kyou';
 import {
@@ -59,6 +60,8 @@ export function PhigrosRandomChartsScreen() {
   }, [kyouChartTags.data, kyouChartTags.isError, selectedKyouTagIds, setSelectedKyouTagIds]);
   const payload = gameData.data?.payload.kind === 'phigros' ? gameData.data.payload : null;
   const records = useMemo(() => payload?.records ?? [], [payload?.records]);
+  const scoreFilterActive = parseAchievementBound(accuracyMin) !== undefined
+    || parseAchievementBound(accuracyMax) !== undefined || rank !== null || xing !== null;
   const bestByChart = useMemo(() => buildBestRecordMap(records), [records]);
   const noteTotalByKey = useMemo(
     () => buildPhigrosNoteTotalByKey(catalog?.songs ?? []),
@@ -137,6 +140,13 @@ export function PhigrosRandomChartsScreen() {
           hasDrawn={results !== null}
           onCountChange={setCount}
           onDraw={draw}
+          drawDisabled={!payload && scoreFilterActive}
+          poolStatus={!payload ? gameData.isLoading ? '正在读取成绩…' : `候选谱面 ${pool.length} 条 · 成绩暂不可用` : undefined}
+          poolError={catalogQuery.isError ? '曲库刷新失败，请重试。' : gameData.isError ? '成绩读取失败，请重试。' : null}
+          onRetryPool={() => {
+            if (catalogQuery.isError) void catalogQuery.refetch();
+            if (gameData.isError) void gameData.refetch();
+          }}
           poolSize={pool.length}
           resultCount={results?.length ?? 0}
           results={results?.map((pick) => {
@@ -155,6 +165,7 @@ export function PhigrosRandomChartsScreen() {
               />
             ) : (
               <RandomUnplayedChartCard
+                scoreAvailable={payload !== null}
                 badge={(
                   <PhigrosDifficultyBadge
                     constant={pick.difficultyConstant}

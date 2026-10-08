@@ -80,8 +80,16 @@ export function MuseDashRandomChartsScreen() {
   const dlcOptions = useMemo(() => albums.data
     ? [...new Set(museDashSongsFromAlbums(albums.data).map((item) => item.albumTitle))]
     : [], [albums.data]);
-  const loading = albums.isLoading || diffdiff.isLoading || ce.isLoading || (userId !== null && player.isLoading);
-  const error = albums.error ?? diffdiff.error ?? ce.error ?? player.error;
+  const catalog = albums.data && diffdiff.data ? albums.data : undefined;
+  const loading = (!albums.data && albums.isLoading) || (!diffdiff.data && diffdiff.isLoading);
+  const error = (!albums.data && albums.error) || (!diffdiff.data && diffdiff.error);
+  const scoreFilterActive = accMin.trim() !== '' || accMax.trim() !== '' || achievement !== 'all';
+  const poolError = [
+    albums.isError || diffdiff.isError ? '曲库刷新失败，请重试。' : null,
+    player.isError ? '成绩读取失败，请重试。' : null,
+    ce.isError ? '角色与精灵资料读取失败。' : null,
+    achievementDetailsFailed > 0 ? `${achievementDetailsFailed} 条成就明细读取失败，抽取只使用已确认的结果。` : null,
+  ].filter(Boolean).join('\n') || null;
 
   const draw = () => {
     const seed = `${Date.now()}-${Math.random()}`;
@@ -91,13 +99,16 @@ export function MuseDashRandomChartsScreen() {
   const openDetail = (chart: MuseDashRandomChart) => router.push(detailTargetHref(encodeDetailTarget({ game: 'musedash', songId: chart.song.uid, levelIndex: chart.difficultyIndex })));
 
   return <QueryStateView<MuseDashAlbumsResponse>
-    data={albums.data}
+    data={catalog}
     error={error}
     isEmpty={!loading && charts.length === 0}
     isError={!!error}
     isLoading={loading}
     emptyText="当前曲库没有可抽取谱面"
-    onRetry={() => { void albums.refetch(); void diffdiff.refetch(); void ce.refetch(); void player.refetch(); }}
+    onRetry={() => {
+      if (!albums.data || albums.isError) void albums.refetch();
+      if (!diffdiff.data || diffdiff.isError) void diffdiff.refetch();
+    }}
     renderData={() => <RandomChartsPage
       count={count}
       emptyMessage="没有符合条件的喵斯快跑谱面，请放宽筛选后再试。"
@@ -112,24 +123,32 @@ export function MuseDashRandomChartsScreen() {
       hasDrawn={results !== null}
       onCountChange={setCount}
       onDraw={draw}
-      drawDisabled={achievementDetailsPending || achievementDetailsFailed > 0}
+      drawDisabled={(!player.data && scoreFilterActive) || achievementDetailsPending || achievementDetailsFailed > 0}
       poolSize={pool.length}
-      poolStatus={achievementDetailsPending
+      poolStatus={!player.data ? player.isLoading ? '正在读取成绩…' : `候选谱面 ${pool.length} 条 · 成绩暂不可用` : achievementDetailsPending
         ? '正在核对成就明细…'
         : achievementDetailsFailed > 0 ? '成就明细读取失败，候选不完整。' : undefined}
-      poolError={achievementDetailsFailed > 0
-        ? `${achievementDetailsFailed} 条成就明细读取失败，抽取只使用已确认的结果。`
-        : null}
-      onRetryPool={missMap.retryFailed}
+      poolError={poolError}
+      onRetryPool={() => {
+        if (albums.isError) void albums.refetch();
+        if (diffdiff.isError) void diffdiff.refetch();
+        if (player.isError && userId !== null) void player.refetch();
+        if (ce.isError) void ce.refetch();
+        if (achievementDetailsFailed > 0) missMap.retryFailed();
+      }}
       resultCount={results?.length ?? 0}
-      results={results?.map((chart) => chart.score
-        ? <MuseDashScoreCard key={`${lastSeed}-${chart.key}`} score={chart.score} />
-        : <RandomUnplayedChartCard
-          badge={<MuseDashDifficultyBadge constant={chart.constant} display="label-and-value"
-            level={chart.officialLevel} levelIndex={chart.difficultyIndex} />}
-          key={`${lastSeed}-${chart.key}`}
-          onPress={() => openDetail(chart)}
-          title={museDashSongTitle(chart.song)} />)}
+      results={results?.map((chart) => {
+        const score = charts.find(item => item.key === chart.key)?.score;
+        return score
+          ? <MuseDashScoreCard key={`${lastSeed}-${chart.key}`} score={score} />
+          : <RandomUnplayedChartCard
+            scoreAvailable={player.data !== undefined}
+            badge={<MuseDashDifficultyBadge constant={chart.constant} display="label-and-value"
+              level={chart.officialLevel} levelIndex={chart.difficultyIndex} />}
+            key={`${lastSeed}-${chart.key}`}
+            onPress={() => openDetail(chart)}
+            title={museDashSongTitle(chart.song)} />;
+      })}
     />}
   />;
 }

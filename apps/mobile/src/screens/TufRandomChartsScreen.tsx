@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
+import { useIsFocused } from '@react-navigation/native';
 import { TufRandomFilterBar } from '@/components/adofai/TufFilterBar';
 import { TufScoreCard } from '@/components/adofai/TufScoreCard';
 import { QueryStateView } from '@/components/QueryStateView';
@@ -10,12 +11,15 @@ import { prefetchTufPassPage, useTufPasses } from '@/hooks/use-tuf';
 import { loadOffsetPagesBounded, offsetPageStarts } from '@/services/offset-pagination';
 import { useTufRandomChartsFilter } from '@/state/tuf-random-charts-filter';
 import { useSession } from '@/state/session-store';
+import { getForegroundAbortSignal, useAppLifecycle } from '@/state/app-lifecycle';
 
 export function TufRandomChartsScreen() {
+  const focused = useIsFocused();
+  const { foregroundReady, foregroundGeneration } = useAppLifecycle();
   const accountId = useSession((state) => state.activeAccountId);
   const playerId = tufPlayerIdFromAccountId(accountId);
   const queryOptions = useMemo(() => ({ sortBy: 'impact' as const, order: 'DESC' as const, bestPerLevel: true }), []);
-  const query = useTufPasses(playerId, queryOptions);
+  const query = useTufPasses(playerId, queryOptions, focused && foregroundReady);
   const {
     count, collapsed, difficultyBand, difficultyMin, difficultyMax, includeSpecial,
     achievement, hydrate, setCount, setCollapsed, setDifficultyBand, setDifficultyMin,
@@ -32,10 +36,14 @@ export function TufRandomChartsScreen() {
 
   const firstPage = query.data?.pages[0];
   useEffect(() => {
-    if (playerId === null || !firstPage) return;
+    if (!focused || !foregroundReady || playerId === null || !firstPage) return;
     const controller = new AbortController();
+    const foreground = getForegroundAbortSignal();
+    const cancel = () => controller.abort();
+    foreground.addEventListener('abort', cancel, { once: true });
+    if (foreground.aborted) cancel();
     const loadedOffsets = new Set((query.data?.pages ?? []).map((page) => page.offset));
-    const offsets = (failedOffsets.length > 0 ? failedOffsets : offsetPageStarts(firstPage.total, firstPage.limit))
+    const offsets = offsetPageStarts(firstPage.total, firstPage.limit)
       .filter((offset) => !loadedOffsets.has(offset));
     setFailedOffsets([]);
     void loadOffsetPagesBounded({
@@ -46,9 +54,12 @@ export function TufRandomChartsScreen() {
     }).then((failures) => {
       if (!controller.signal.aborted) setFailedOffsets(failures.map((failure) => failure.offset));
     });
-    return () => controller.abort();
+    return () => {
+      cancel();
+      foreground.removeEventListener('abort', cancel);
+    };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- retryVersion 触发失败页重试，不随分页结果重启。
-  }, [firstPage?.limit, firstPage?.total, playerId, queryOptions, retryVersion]);
+  }, [firstPage?.limit, firstPage?.total, focused, foregroundGeneration, foregroundReady, playerId, queryOptions, retryVersion]);
 
   const loaded = useMemo(() => uniqueTufPassesByLevel(
     query.data?.pages.flatMap((page) => page.passes) ?? [],

@@ -43,6 +43,8 @@ export function ChunithmRandomChartsScreen() {
     () => buildChunithmScoreCards(payload?.scores ?? [], catalogQuery.data),
     [catalogQuery.data, payload?.scores],
   );
+  const scoreByChart = useMemo(() => new Map(scoreCards.map(record => [record.key, record])), [scoreCards]);
+  const scoreFilterActive = rankMin !== null || rankMax !== null;
   const filters = useMemo(() => ({
     difficulty,
     version,
@@ -103,12 +105,20 @@ export function ChunithmRandomChartsScreen() {
           hasDrawn={results !== null}
           onCountChange={setCount}
           onDraw={draw}
+          drawDisabled={!payload && scoreFilterActive}
+          poolStatus={!payload ? gameData.isLoading ? '正在读取成绩…' : `候选谱面 ${pool.length} 条 · 成绩暂不可用` : undefined}
+          poolError={catalogQuery.isError ? '曲库刷新失败，请重试。' : gameData.isError ? '成绩读取失败，请重试。' : null}
+          onRetryPool={() => {
+            if (catalogQuery.isError) void catalogQuery.refetch();
+            if (gameData.isError) void gameData.refetch();
+          }}
           poolSize={pool.length}
           resultCount={results?.length ?? 0}
           results={results?.map((pick) => {
             const key = `${lastSeed}-${chunithmRandomChartKey(pick)}`;
-            return pick.record ? (
-              <ChunithmScoreCard key={key} record={pick.record} />
+            const record = scoreByChart.get(chunithmRandomChartKey(pick));
+            return record ? (
+              <ChunithmScoreCard key={key} record={record} />
             ) : (
               <RandomUnplayedChartCard
                 badge={(
@@ -120,6 +130,7 @@ export function ChunithmRandomChartsScreen() {
                   />
                 )}
                 key={key}
+                scoreAvailable={payload !== null}
                 onPress={() => openDetail(pick)}
                 title={pick.title}
               />
