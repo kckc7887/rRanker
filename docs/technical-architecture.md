@@ -55,6 +55,10 @@ HTTP 请求使用 `totalAttempts` 表示总尝试次数。认证、轮询、取�
 
 清理缓存或解绑先使对应写入代次失效，随后取消查询并删除缓存。SQL 提交和会话提交前检查请求是否仍有效，迟到结果不能重新填回已清理的数据。
 
+ADOFAI 个人曲库按收藏关卡 ID 加载详情，复用单关卡查询缓存与三路有界加载，单项失败保留收藏及标签。ADOFAI 随机池补页随前后台和页面焦点取消，迟到结果不提交；恢复后仅补未完成页。
+
+舞萌、中二、Phigros、Muse Dash 随机页分别展示曲库和成绩失败并提供重试，有缓存时继续使用。无成绩缓存时仍可普通抽取，成绩显示缺失；启用成绩筛选则暂停抽取。Muse Dash 的专辑和定数缺失时等待或重试，角色与精灵资料失败不阻断随机池。
+
 ## 状态与持久化
 
 `session-store.ts` 保存当前游戏、账号、会话映射和派生的活动视图。`session-provider-resolver.ts` 缓存实际 Provider，`session-providers.ts` 构造游戏所需依赖。绑定和轮换由 `session-credential-service.ts` 提交；共享凭据变化同步到关联账号。异步取消、重新绑定和凭据轮换均在最终提交处检查当前身份。
@@ -64,7 +68,7 @@ HTTP 请求使用 `totalAttempts` 表示总尝试次数。认证、轮询、取�
 | 会话 | SecureStore 凭据、KV v4 账号索引；恢复失败不冒充空账号 |
 | ScoreHub | v3 账号索引、分片安全令牌 |
 | 可选账号档案 | 所属账号 Store 的当前目录格式 |
-| 偏好 | `createPreferencesStore` 或所属 Store，按键串行写入 |
+| 偏好 | `createPreferencesStore` 或所属 Store，按键串行读写与失效重建 |
 | 成绩、资源 | `SqliteSnapshotRepository`；成绩 schema 5，资源使用所属模块版本 |
 | 个人曲库 | `SqliteUserLibraryRepository`，schema 4，条目、标签与预设 |
 | 运行日志 | 独立日志数据库及当前诊断文件 |
@@ -72,9 +76,11 @@ HTTP 请求使用 `totalAttempts` 表示总尝试次数。认证、轮询、取�
 
 所有应用数据只支持当前版本和结构。成功读取后发现不支持的内容，重建对应键或表；存储 I/O 失败继续报错，不触发清空。会话索引失效重建为空账号，单个失效凭据只移除关联账号。个人曲库只重建所属表；快照和资源缓存只删除失效条目，条件删除避免误删等待期间的新缓存。
 
-个人曲库备份格式为 `rranker-user-data`、版本 3，条目必须包含 `gameId`。导入先解析当前格式，旧备份直接拒绝；合并或替换在同一 SQLite 事务内提交条目和预设，失败回滚。备份不包含登录凭据和成绩缓存。
+`key-value-storage.ts` 提供按存储实例和键串行的完整操作队列，账号目录、示例账号、临时账号和偏好共用。ScoreHub 成功读取到失效令牌后仅移除对应账号索引；所有读取与索引提交完成后才清理无用引用，I/O 失败保留目录。正常安全写入采用 SDK 返回结果，提交异常保留回滚保护。
 
-业务数据库的 schema 初始化、事务和写入共用 `runDatabaseWrite`。日志使用独立连接与队列，业务回滚不影响日志。队列任务不能再次进入同一队列。
+个人曲库备份格式为 `rranker-user-data`、版本 3，条目必须包含 `gameId`。导出通过仓库的 `readBackup` 在同一次队列任务读取条目和预设。导入先解析当前格式，旧备份直接拒绝；合并或替换在同一 SQLite 事务内提交条目和预设，失败回滚。备份不包含登录凭据和成绩缓存。
+
+业务数据库的 schema 初始化、事务、写入和个人曲库外部读取共用 `runDatabaseWrite`。日志使用独立连接与队列，业务回滚不影响日志。队列任务不能再次进入同一队列。
 
 主题与展示偏好使用 `preferences-write-coordinator.ts` 合并当前选择和串行落盘，失败保留待写内容。上传好友码的选择通过 `UploadPrefsStore` 按好友码保存；UI 的 `selectedAccountIds` 是派生视图。
 
@@ -107,6 +113,8 @@ Phigros 物量读取发布资源 `metadata/note_counts.tsv`，按歌曲与 EZ、
 四套生成播放器为 maimai、Phigros、osu!、Rizline。生成源位于各自 `webview-player`，生成物供宿主注入；共享 UI 与手势位于 `chart-preview-shared/webview-player`。
 
 `chart-preview-screen-shell.tsx` 管理资源准备、WebView、前后台暂停、取消、seek 和释放。`chart-preview-bridge.ts` 只解析当前事件和设置信封，宿主命令由公共 serializer 生成。控制设置、播放状态和时间回传通过同一桥接路径。
+
+播放器设置的存储读取失败进入重新加载流程并保留原偏好，成功读到损坏内容才重建对应键。舞萌、Majdata、Phigros、Phira、osu! 谱面包通过 `saveChartPackage` 保存，取消信号贯穿目录选择与最终写出检查。
 
 Simai 的解析、时间轴、几何与渲染位于 `simai-chart-preview/engine`，预览与统计共用。Phigros/Phira 共用 PGR、RPE 配置与资源路径；osu! 使用当前谱面、皮肤和回放解析；Rizline 使用发布清单定位的谱面与音频。不可见或释放的播放器撤销帧、音源、监听器和所属临时资源。
 
