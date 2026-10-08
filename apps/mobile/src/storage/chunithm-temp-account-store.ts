@@ -1,5 +1,5 @@
-import Storage from '@/storage/key-value-storage';
-import { loadAccountDirectory, type KeyValueStore } from '@/storage/create-demo-account-store';
+import Storage, { enqueueKeyMutation, type KeyValueStore } from '@/storage/key-value-storage';
+import { loadAccountDirectory } from '@/storage/create-demo-account-store';
 
 type StoredChunithmTempAccountV1 = {
   version: 1;
@@ -23,15 +23,15 @@ export class ChunithmTempAccountStore {
   constructor(private readonly storage: KeyValueStore = Storage) {}
 
   load(): Promise<boolean> {
-    return loadAccountDirectory(this.storage, STORE_KEY, parseChunithmTempAccount, false);
+    return enqueueKeyMutation(this.storage, STORE_KEY, () => loadAccountDirectory(this.storage, STORE_KEY, parseChunithmTempAccount, false));
   }
 
   async enable(): Promise<void> {
     const value: StoredChunithmTempAccountV1 = { version: 1, enabled: true };
-    await this.storage.setItem(STORE_KEY, JSON.stringify(value));
+    await enqueueKeyMutation(this.storage, STORE_KEY, () => this.storage.setItem(STORE_KEY, JSON.stringify(value)));
   }
 
   async remove(): Promise<void> {
-    await this.storage.removeItem(STORE_KEY);
+    await enqueueKeyMutation(this.storage, STORE_KEY, () => this.storage.removeItem(STORE_KEY));
   }
 }
