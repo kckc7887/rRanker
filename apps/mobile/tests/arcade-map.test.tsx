@@ -2,15 +2,18 @@ import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { View } from 'react-native';
 import { ArcadeMap } from '@/components/ArcadeMap';
-import type { ArcadeMapAvailability, NativeArcadeMapProps } from '@/components/ArcadeMap.types';
+import type { NativeArcadeMapProps } from '@/components/ArcadeMap.types';
+import type { ArcadeMapAvailability } from '@/services/arcade-map-platform';
 
 let mockAvailability: ArcadeMapAvailability = 'available';
 let mockNative: NativeArcadeMapProps;
 const mockAgree = jest.fn();
 const MockView = View;
-jest.mock('@/components/NativeArcadeMap', () => ({
+jest.mock('@/services/arcade-map-platform', () => ({
   getArcadeMapAvailability: () => mockAvailability,
-  acceptArcadeMapPrivacy: () => mockAgree(),
+  acceptArcadeMapPrivacy: () => { mockAgree(); mockAvailability = 'available'; },
+}));
+jest.mock('@/components/NativeArcadeMap', () => ({
   NativeArcadeMap: (props: NativeArcadeMapProps) => { mockNative = props; return <MockView testID="native-map" />; },
 }));
 jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({}) }));

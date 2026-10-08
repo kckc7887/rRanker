@@ -19,9 +19,9 @@ import { useNotification } from '@/components/AppNotification';
 import { ArcadeBusinessStatusLabel } from '@/components/ArcadeBusinessStatusLabel';
 import { ArcadeMap } from '@/components/ArcadeMap';
 import type { ArcadeMapCamera } from '@/components/ArcadeMap.types';
-import type { ArcadeCoordinate } from '@/domain/arcade-coordinates';
+import { arcadeDistanceKm, type ArcadeCoordinate } from '@/domain/arcade-coordinates';
 import { ArcadeFilterBar } from '@/components/ArcadeFilterBar';
-import { ArcadeOriginPickerSheet } from '@/components/ArcadeOriginPickerSheet';
+import { ArcadeSearchResults } from '@/components/ArcadeSearchResults';
 import { Card } from '@/components/Card';
 import {
   FALLBACK_ARCADE_GAME_TITLES,
@@ -38,8 +38,9 @@ import {
   arcadeFinderPreferencesStore,
   defaultArcadeFinderPreferences,
 } from '@/features/toolbox/arcade-finder-preferences';
-import { useDebouncedValue } from '@/hooks/use-debounced-value';
+import { useArcadeSearch } from '@/hooks/use-arcade-search';
 import { fetchNearcadeDiscover, fetchNearcadeGameTitles } from '@/services/nearcade-client';
+import { resolveArcadePlace, type ArcadePlace } from '@/services/arcade-place-search';
 import { useSession } from '@/state/session-store';
 import { getForegroundAbortSignal, useAppLifecycle } from '@/state/app-lifecycle';
 import { useAppTheme } from '@/theme/app-theme';
@@ -118,17 +119,33 @@ export default function ArcadeFinderScreen() {
   const [titleIds, setTitleIds] = useState<number[]>([]);
   const [filtersCollapsed, setFiltersCollapsed] = useState(true);
   const [origin, setOrigin] = useState<ArcadeOrigin | null>(null);
-  const [originPickerVisible, setOriginPickerVisible] = useState(false);
   const [locatingOrigin, setLocatingOrigin] = useState(false);
   const [gameTitles, setGameTitles] = useState<readonly ArcadeGameTitle[]>(FALLBACK_ARCADE_GAME_TITLES);
   const [shops, setShops] = useState<ArcadeShop[] | null>(null);
   const [isLoading, setIsLoading] = useState(false);
   const [errorKind, setErrorKind] = useState<LoadErrorKind>(null);
   const [camera, setCamera] = useState<ArcadeMapCamera>(null);
-  const [selectedShopId, setSelectedShopId] = useState<number | null>(null);
+  const [selectedShop, setSelectedShop] = useState<ArcadeShop | null>(null);
+  const selectedShopId = selectedShop?.id ?? null;
+  const [placeGeneration, setPlaceGeneration] = useState(0);
+  const [selectingPlace, setSelectingPlace] = useState<ArcadePlace | null>(null);
+  const [placeError, setPlaceError] = useState('');
+  const selectionRequest = useRef<AbortController | null>(null);
   const dragging = useRef(false);
+  const screenActive = useRef(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const debouncedKeyword = useDebouncedValue(keyword);
+  const searchInput = useRef<TextInput>(null);
+  const search = useArcadeSearch({ keyword, titleIds, active: focused && foregroundReady && hydrated,
+    generation: foregroundGeneration, placeGeneration });
+  const cancelSearch = search.cancel;
+  const clearSearch = useCallback(() => {
+    cancelSearch();
+    selectionRequest.current?.abort();
+    setKeyword('');
+    setSelectingPlace(null);
+    setPlaceError('');
+    Keyboard.dismiss();
+  }, [cancelSearch]);
   const originIntent = useRef(0);
   const autoLocated = useRef(false);
   const request = useRef<AbortController | null>(null);
@@ -140,25 +157,31 @@ export default function ArcadeFinderScreen() {
     dragTimer.current = null;
   }, []);
   useEffect(() => {
-    if (!focused) { setLocatingOrigin(false); dragging.current = false; }
-    return () => { originIntent.current += 1; cancelPending(); };
-  }, [cancelPending, focused]);
+    const foreground = getForegroundAbortSignal();
+    screenActive.current = focused && !foreground.aborted;
+    if (!screenActive.current) { setLocatingOrigin(false); dragging.current = false; setSelectingPlace(null); }
+    const cancel = () => { screenActive.current = false; originIntent.current += 1; cancelPending(); selectionRequest.current?.abort(); };
+    const background = () => { cancel(); setLocatingOrigin(false); dragging.current = false; setSelectingPlace(null); };
+    foreground.addEventListener('abort', background, { once: true });
+    return () => { cancel(); foreground.removeEventListener('abort', background); };
+  }, [cancelPending, focused, foregroundGeneration]);
   useEffect(() => {
     const show = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
     const hide = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
     return () => { show.remove(); hide.remove(); };
   }, []);
 
-  const selectOrigin = useCallback((next: ArcadeOrigin) => {
+  const selectOrigin = useCallback((next: ArcadeOrigin, shop: ArcadeShop | null = null) => {
     originIntent.current += 1;
+    clearSearch();
     cancelPending();
     dragging.current = false;
     setLocatingOrigin(false);
     setErrorKind(null);
-    setSelectedShopId(null);
+    setSelectedShop(shop);
     setOrigin(next);
     setCamera({ center: next, radiusKm });
-  }, [cancelPending, radiusKm]);
+  }, [cancelPending, clearSearch, radiusKm]);
 
   useEffect(() => {
     let cancelled = false;
@@ -191,6 +214,7 @@ export default function ArcadeFinderScreen() {
 
   const acquireOriginFromGps = useCallback(async () => {
     const intent = ++originIntent.current;
+    clearSearch();
     cancelPending();
     dragging.current = false;
     setLocatingOrigin(true);
@@ -207,13 +231,13 @@ export default function ArcadeFinderScreen() {
     } finally {
       if (intent === originIntent.current) setLocatingOrigin(false);
     }
-  }, [cancelPending, origin, selectOrigin]);
+  }, [cancelPending, clearSearch, origin, selectOrigin]);
 
   useEffect(() => {
-    if (!hydrated || !focused || autoLocated.current) return;
+    if (!hydrated || !focused || !foregroundReady || autoLocated.current) return;
     autoLocated.current = true;
     void acquireOriginFromGps();
-  }, [acquireOriginFromGps, focused, hydrated]);
+  }, [acquireOriginFromGps, focused, foregroundReady, hydrated]);
 
   useEffect(() => {
     if (!hydrated || !origin || !focused || !foregroundReady || dragging.current) return;
@@ -253,29 +277,64 @@ export default function ArcadeFinderScreen() {
   }, [focused, foregroundGeneration, foregroundReady, hydrated, origin, radiusKm, titleIds]);
 
   const filtered = useMemo(() => {
-    if (!shops) return [];
-    return filterArcadeShops(shops, { keyword: debouncedKeyword, titleIds });
-  }, [debouncedKeyword, shops, titleIds]);
+    const items = [...(shops ?? [])];
+    if (selectedShop && origin && !items.some(shop => shop.id === selectedShop.id)) {
+      const distanceKm = arcadeDistanceKm(origin, selectedShop);
+      if (distanceKm <= radiusKm) items.push({ ...selectedShop, distanceKm });
+    }
+    return filterArcadeShops(items, { keyword: '', titleIds });
+  }, [origin, radiusKm, selectedShop, shops, titleIds]);
+
+  const choosePlace = async (place: ArcadePlace) => {
+    originIntent.current += 1;
+    clearSearch();
+    cancelPending();
+    dragging.current = false;
+    setLocatingOrigin(false);
+    setIsLoading(false);
+    const controller = new AbortController();
+    selectionRequest.current = controller;
+    setSelectingPlace(place);
+    try {
+      const coordinate = await resolveArcadePlace(place, controller.signal);
+      if (!controller.signal.aborted) selectOrigin({ ...coordinate, source: 'custom', label: place.name });
+    } catch {
+      if (!controller.signal.aborted) setPlaceError('地点定位失败，请重试');
+    }
+  };
 
   const selectShop = useCallback((shop: ArcadeShop) => {
     originIntent.current += 1;
     cancelPending();
     dragging.current = false;
     setLocatingOrigin(false);
-    setSelectedShopId(shop.id);
+    setSelectedShop(shop);
     setCamera({ center: shop, radiusKm: Math.min(radiusKm, 2) });
     Keyboard.dismiss();
   }, [cancelPending, radiusKm]);
 
   const moveMap = () => {
+    if (!screenActive.current) return;
     originIntent.current += 1;
+    clearSearch();
     cancelPending();
     setLocatingOrigin(false);
     dragging.current = true;
     setIsLoading(false);
-    setSelectedShopId(null);
+    setSelectedShop(null);
+    setCamera(null);
   };
+
+  const mapAvailabilityChanged = useCallback(() => {
+    if (dragging.current) {
+      cancelPending();
+      dragging.current = false;
+      setOrigin(previous => previous ? { ...previous } : null);
+    }
+    setPlaceGeneration(value => value + 1);
+  }, [cancelPending]);
   const settleMap = (center: ArcadeCoordinate) => {
+    if (!screenActive.current) return;
     if (dragTimer.current) clearTimeout(dragTimer.current);
     dragTimer.current = setTimeout(() => {
       dragTimer.current = null;
@@ -331,6 +390,8 @@ export default function ArcadeFinderScreen() {
       style={[styles.page, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ title: '音游地图' }} />
       {focused ? <ArcadeMap camera={camera} shops={filtered} selectedShopId={selectedShopId}
+        initialCamera={origin ? { center: origin, radiusKm } : null}
+        onAvailabilityChange={mapAvailabilityChanged}
         compact={keyboardVisible} locating={locatingOrigin} onLocate={() => { void acquireOriginFromGps(); }}
         onGestureStart={moveMap} onCenterChange={settleMap}
         onSelectShop={shop => {
@@ -338,17 +399,23 @@ export default function ArcadeFinderScreen() {
           cancelPending();
           dragging.current = false;
           setLocatingOrigin(false);
-          setSelectedShopId(shop.id);
+          clearSearch();
+          setSelectedShop(shop);
           const index = filtered.findIndex(item => item.id === shop.id);
           if (index >= 0) list.current?.scrollToIndex({ index, animated: true, viewPosition: 0.5 });
         }} /> : null}
       <View style={styles.resultsPanel}>
       <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
         <TextInput
+          ref={searchInput}
           accessibilityLabel="机厅搜索"
           value={keyword}
-          onChangeText={setKeyword}
-          placeholder="搜索范围内的机厅"
+          onChangeText={value => {
+            if (value.trim() !== keyword.trim()) search.cancel();
+            selectionRequest.current?.abort();
+            setSelectingPlace(null); setPlaceError(''); setKeyword(value);
+          }}
+          placeholder="搜索机厅或地点"
           placeholderTextColor={theme.textMuted}
           style={[
             styles.searchBox,
@@ -372,21 +439,32 @@ export default function ArcadeFinderScreen() {
         titleIds={titleIds}
         gameTitles={gameTitles}
         onUseGpsOrigin={() => { void acquireOriginFromGps(); }}
-        onEditOrigin={() => setOriginPickerVisible(true)}
+        onEditOrigin={() => { setFiltersCollapsed(true); searchInput.current?.focus(); }}
         onRadiusChange={value => { cancelPending(); setRadiusKm(value); }}
         onTitleIdsChange={setTitleIds}
         onReset={resetFilters}
       />
 
       <View style={styles.resultsArea}>
-      {((isLoading || locatingOrigin) && !shops) ? (
+      {keyword.trim() ? <ArcadeSearchResults search={search}
+        onSelectShop={shop => selectOrigin({ latitude: shop.latitude, longitude: shop.longitude, source: 'custom', label: shop.name }, shop)}
+        onSelectPlace={place => { void choosePlace(place); }} /> : selectingPlace ? (
+        <View style={styles.center}>
+          {placeError ? <>
+            <Text style={[styles.statusText, { color: theme.textMuted }]}>{placeError}</Text>
+            <Pressable style={[styles.retryButton, { backgroundColor: theme.accent }]} onPress={() => { void choosePlace(selectingPlace); }}>
+              <Text style={[styles.retryText, { color: theme.onAccent }]}>重试地点定位</Text>
+            </Pressable>
+          </> : <><ActivityIndicator color={theme.accent} /><Text style={{ color: theme.textMuted }}>正在定位{selectingPlace.name}…</Text></>}
+        </View>
+      ) : ((isLoading || locatingOrigin) && !filtered.length) ? (
         <View style={styles.center}>
           <ActivityIndicator color={theme.accent} />
           <Text style={[styles.statusText, { color: theme.textMuted }]}>
             {locatingOrigin ? '正在定位…' : '正在加载附近机厅…'}
           </Text>
         </View>
-      ) : errorText && !shops ? (
+      ) : errorText && !filtered.length ? (
         <View style={styles.center}>
           <Text style={[styles.statusText, { color: theme.textMuted }]}>{errorText}</Text>
           <Pressable
@@ -419,17 +497,14 @@ export default function ArcadeFinderScreen() {
                 {locatingOrigin ? '定位中…' : '刷新中…'}
               </Text>
             </View>
-          ) : null}
+          ) : errorKind === 'network' ? <Pressable onPress={retryLoad} style={styles.refreshRow}>
+            <Text style={{ color: theme.accent }}>附近机厅加载失败，点击重试</Text>
+          </Pressable> : null}
         />
       )}
       </View>
       </View>
 
-      <ArcadeOriginPickerSheet
-        visible={originPickerVisible}
-        onClose={() => setOriginPickerVisible(false)}
-        onSelect={selectOrigin}
-      />
     </KeyboardAvoidingView>
   );
 }

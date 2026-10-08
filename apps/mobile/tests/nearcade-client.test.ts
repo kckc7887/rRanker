@@ -2,6 +2,7 @@ import { afterEach, vi } from 'vitest';
 import {
   fetchNearcadeDiscover,
   fetchNearcadeGameTitles,
+  searchNearcadeShops,
   parseDiscoverResponse,
   parseGameTitlesResponse,
   parseShopDetailResponse,
@@ -177,6 +178,22 @@ describe('nearcade client parsing', () => {
 
 describe('nearcade shared transport', () => {
   afterEach(() => { vi.unstubAllGlobals(); vi.useRealTimers(); });
+  it('searches across cities with game filters and twenty results per page, without a radius', async () => {
+    const fetcher = vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      shops: [{ id: 7, name: '跨城机厅', address: { region: [{ id: 'JP' }] }, location: { coordinates: [130.4, 33.6] } }],
+      totalCount: 41, currentPage: 2, hasNextPage: true,
+    })));
+    vi.stubGlobal('fetch', fetcher);
+    const result = await searchNearcadeShops({ keyword: ' 福冈 ', page: 2, titleIds: [1, 3] });
+    const url = new URL(String(fetcher.mock.calls[0][0]));
+    expect(url.pathname).toBe('/api/shops');
+    expect(url.searchParams.get('q')).toBe('福冈');
+    expect(url.searchParams.get('limit')).toBe('20');
+    expect(url.searchParams.get('page')).toBe('2');
+    expect(url.searchParams.has('radius')).toBe(false);
+    expect(JSON.parse(Buffer.from(url.searchParams.get('f')!, 'base64url').toString())).toEqual({ v: 1, games: { op: 'and', children: [{ titleIds: [1] }, { titleIds: [3] }] } });
+    expect(result).toMatchObject({ totalCount: 41, page: 2, hasNextPage: true, shops: [{ id: 7, longitude: 130.4, latitude: 33.6, distanceKm: null }] });
+  });
   it('classifies HTTP and schema failures through the common provider errors', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(new Response('{}', { status: 429 })).mockResolvedValueOnce(new Response('{"shops":"bad"}'));
     vi.stubGlobal('fetch', fetcher);

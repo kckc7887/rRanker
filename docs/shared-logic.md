@@ -114,9 +114,11 @@ Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图�
 
 ## 工具与诊断
 
-`components/ArcadeMap` 是音游地图的公共 UI 入口，接收 WGS84 相机目标、机厅与选中 ID；平台视图通过 `NativeArcadeMap` 装配 MapKit 或高德。公共层管理高德首次说明、加载失败重试和手势来源，程序移动相机不发出用户选址事件。`ArcadeFilterBar`、`ArcadeBusinessStatusLabel`、`arcadeFinderPreferencesStore` 与外部导航入口继续共用；距离与机型偏好按游戏保存，默认收起筛选。
+`components/ArcadeMap` 是音游地图的公共 UI 入口，接收 WGS84 相机目标、恢复中心、机厅与选中 ID；平台视图通过 `NativeArcadeMap` 装配 MapKit 或高德。公共层管理高德首次说明、加载失败重试和手势来源，程序移动相机不发出用户选址事件。`services/arcade-map-platform.ts` 共用地图与地点搜索的架构、配置和同意状态；读取失败转为地图重试状态。`ArcadeFilterBar`、`ArcadeBusinessStatusLabel`、`arcadeFinderPreferencesStore` 与外部导航入口继续共用；距离与机型偏好按游戏保存，默认收起筛选。
 
 `fetchNearcadeDiscover` 接受 WGS84 中心、距离、机型与取消信号，返回当前范围内的机厅。`domain/arcade-coordinates.ts` 提供坐标边界转换与球面距离，`arcade-shops.ts` 共用筛选、展示和营业时间判断；缺失距离为 `null`。跨夜营业以次日小时表达，周表从周一开始，凌晨同时检查前一日。页面按焦点和前台生命周期取消取数，GPS 意图与地图中心分别防止旧定位、旧查询覆盖；图钉和列表共用选中 ID。行为测试覆盖拒绝定位、快速拖图、选中联动、页面退出、迟到响应及跨夜营业。
+
+`searchNearcadeShops` 接受关键词、页码、机型和取消信号，返回 20 条分页机厅及总数、当前页和下一页状态，不接收距离。`searchArcadePlaces` 返回至多 10 条 WGS84 地点候选；`resolveArcadePlace` 为无坐标候选调用原生地理编码。两者通过 `ArcadeMapSupport` 调用原生模块，复用地图服务同意状态并处理取消、超时；服务不可用不阻断机厅查询。`useArcadeSearch` 管理 350 毫秒防抖、独立请求及分页，`ArcadeSearchResults` 展示两类候选与各自重试。页面选择候选后恢复附近列表，选中机厅在附近响应中缺席时仍按当前距离与机型保留。交互测试验证跨城选择、筛选分页、部分失败、迟到地理编码和定位授权期间的短暂失活。
 
 实力分析共用 `app/tools/strength-analysis.tsx` 路由，分别装配 `MaimaiStrengthAnalysisScreen` 与 `PhigrosStrengthAnalysisScreen`。舞萌的 DXTag 维度、类型、文件 ID 与难度匹配函数由 `domain/maimai-dxtag.ts` 提供，详情与分析复用 `useMaimaiDxTag`，查询键为 `['maimai-dxtag', 'all', catalog.source.updatedAt]`；曲库快照更新后重新核对覆盖，多个谱面共用整库请求。持久化数据与账号无关，由舞萌资源缓存统一计量和清理；缺少歌曲或难度时不追加单曲请求，也不填零。`SimaiDifficultyRadar` 接受空维度并支持维度点击；空维度显示暂无数据，不绘制完整多边形。
 

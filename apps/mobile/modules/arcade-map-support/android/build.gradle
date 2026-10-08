@@ -3,6 +3,11 @@ plugins {
   id 'expo-module-gradle-plugin'
 }
 
+dependencies {
+  implementation project(':expo-gaode-map')
+  implementation 'com.amap.api:3dmap-location-search:11.2.000_loc11.2.000_sea9.8.0'
+}
+
 group = 'expo.modules.arcademap'
 version = '1.0.0'
 

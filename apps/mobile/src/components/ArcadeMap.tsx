@@ -2,7 +2,8 @@ import { Component, useCallback, useEffect, useRef, useState, type ReactNode } f
 import { Linking, Pressable, StyleSheet, Text, View } from 'react-native';
 import { AppModal } from '@/components/AppModal';
 import { useAppTheme } from '@/theme/app-theme';
-import { acceptArcadeMapPrivacy, getArcadeMapAvailability, NativeArcadeMap } from './NativeArcadeMap';
+import { NativeArcadeMap } from './NativeArcadeMap';
+import { acceptArcadeMapPrivacy, getArcadeMapAvailability } from '@/services/arcade-map-platform';
 import type { NativeArcadeMapProps } from './ArcadeMap.types';
 
 class MapBoundary extends Component<{ children: ReactNode; onError: () => void }, { failed: boolean }> {
@@ -12,8 +13,9 @@ class MapBoundary extends Component<{ children: ReactNode; onError: () => void }
   render() { return this.state.failed ? null : this.props.children; }
 }
 
-export function ArcadeMap({ onGestureStart, locating, onLocate, compact, ...props }: Omit<NativeArcadeMapProps, 'onReady' | 'onError'> & {
+export function ArcadeMap({ onGestureStart, onAvailabilityChange, locating, onLocate, compact, ...props }: Omit<NativeArcadeMapProps, 'onReady' | 'onError'> & {
   onGestureStart: () => void;
+  onAvailabilityChange?: () => void;
   locating: boolean;
   onLocate: () => void;
   compact: boolean;
@@ -25,9 +27,9 @@ export function ArcadeMap({ onGestureStart, locating, onLocate, compact, ...prop
   const [ready, setReady] = useState(false);
   const [attempt, setAttempt] = useState(0);
   const gesture = useRef(false);
-  const onError = useCallback(() => setFailed(true), []);
+  const onError = useCallback(() => { setFailed(true); gesture.current = false; onAvailabilityChange?.(); }, [onAvailabilityChange]);
   const onReady = useCallback(() => setReady(true), []);
-  useEffect(() => { gesture.current = false; }, [props.camera]);
+  useEffect(() => { if (props.camera) gesture.current = false; }, [props.camera]);
   useEffect(() => {
     if (availability !== 'available' || ready || failed) return;
     const timeout = setTimeout(onError, 20_000);
@@ -37,11 +39,12 @@ export function ArcadeMap({ onGestureStart, locating, onLocate, compact, ...prop
     style={[styles.button, { backgroundColor: theme.surface, borderColor: theme.border }]}>
     <Text style={{ color: theme.accent, fontWeight: '600' }}>{label}</Text>
   </Pressable>;
-  const showMap = availability === 'available' && !failed;
+  const mapFailed = failed || availability === 'failed';
+  const showMap = availability === 'available' && !mapFailed;
   return <>
-    <View style={showMap ? [styles.map, { flex: compact ? 0.25 : 1 }] : [styles.fallback, { backgroundColor: theme.surface }]}
-      onTouchMove={() => { if (!gesture.current) { gesture.current = true; onGestureStart(); } }}>
+    <View style={showMap ? [styles.map, { flex: compact ? 0.25 : 1 }] : [styles.fallback, { backgroundColor: theme.surface }]}>
       {showMap ? <>
+        <View style={StyleSheet.absoluteFill} onTouchMove={() => { if (!gesture.current) { gesture.current = true; onGestureStart(); } }}>
         <MapBoundary key={attempt} onError={onError}>
           <NativeArcadeMap {...props} onReady={onReady} onError={onError}
             onSelectShop={shop => { gesture.current = false; props.onSelectShop(shop); }}
@@ -51,13 +54,14 @@ export function ArcadeMap({ onGestureStart, locating, onLocate, compact, ...prop
               props.onCenterChange(center);
             }} />
         </MapBoundary>
+        </View>
         <View pointerEvents="none" style={styles.centerPin}><Text style={{ color: theme.accent, fontSize: 24 }}>＋</Text></View>
         <View style={styles.locate}>{button(locating ? '定位中…' : '定位', onLocate)}</View>
       </> : <>
         <Text style={{ color: theme.textMuted, flex: 1 }}>
-          {failed ? '地图加载失败' : availability === 'consent' ? '地图未启用' : '当前使用机厅列表'}
+          {mapFailed ? '地图加载失败' : availability === 'consent' ? '地图未启用' : '当前使用机厅列表'}
         </Text>
-        {failed ? button('重试地图', () => { setReady(false); setFailed(false); setAttempt(value => value + 1); }) : null}
+        {mapFailed ? button('重试地图', () => { setAvailability(getArcadeMapAvailability()); setReady(false); setFailed(false); setAttempt(value => value + 1); onAvailabilityChange?.(); }) : null}
         {availability === 'consent' ? button('启用地图', () => setConsentVisible(true)) : null}
         {button(locating ? '定位中…' : '定位', onLocate)}
       </>}
@@ -73,7 +77,7 @@ export function ArcadeMap({ onGestureStart, locating, onLocate, compact, ...prop
         <View style={styles.links}>
           {button('使用列表', () => setConsentVisible(false))}
           {button('同意并启用', () => {
-            try { acceptArcadeMapPrivacy(); setAvailability('available'); } catch { setFailed(true); }
+            try { acceptArcadeMapPrivacy(); setAvailability(getArcadeMapAvailability()); onAvailabilityChange?.(); } catch { onError(); }
             setConsentVisible(false);
           })}
         </View>

@@ -62,6 +62,15 @@ const discoverResponseSchema = z.object({
   limit: z.number().optional(),
 });
 
+const searchResponseSchema = z.object({
+  shops: z.array(shopSchema),
+  totalCount: z.number().int().nonnegative(),
+  currentPage: z.number().int().positive(),
+  hasNextPage: z.boolean(),
+});
+
+export type ArcadeShopPage = { shops: ArcadeShop[]; totalCount: number; page: number; hasNextPage: boolean };
+
 const shopDetailResponseSchema = z.object({
   shop: shopSchema,
 });
@@ -166,6 +175,15 @@ export async function fetchNearcadeDiscover(query: DiscoverQuery): Promise<Arcad
 export async function fetchNearcadeShop(shopId: number, signal?: AbortSignal): Promise<ArcadeShopDetail> {
   const params = new URLSearchParams({ includeTimeInfo: 'true' });
   return requestNearcade(`/shops/${shopId}?${params.toString()}`, z.unknown().transform(parseShopDetailResponse), signal);
+}
+
+export async function searchNearcadeShops(query: {
+  keyword: string; page?: number; titleIds?: readonly number[]; signal?: AbortSignal;
+}): Promise<ArcadeShopPage> {
+  const params = new URLSearchParams({ q: query.keyword.trim(), page: String(query.page ?? 1), limit: '20', includeTimeInfo: 'false' });
+  setGameFilter(params, query.titleIds);
+  const result = await requestNearcade(`/shops?${params}`, searchResponseSchema, query.signal);
+  return { shops: result.shops.map(mapShop), totalCount: result.totalCount, page: result.currentPage, hasNextPage: result.hasNextPage };
 }
 
 export async function fetchNearcadeGameTitles(signal?: AbortSignal): Promise<ArcadeGameTitle[]> {
