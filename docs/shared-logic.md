@@ -104,6 +104,8 @@ Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 
 
 Phigros/Rizline 预览和下载共用 `phigrosResources`、`rizlineResources`、`VerifiedReleaseSession` 与 `verifyResourceBytes`；调用方提供实际进度或落盘回调。`resourceObjectPathSchema` 限定资源组、分类与哈希文件名。Phigros 曲绘、头像、成绩图和预览通过清单逻辑路径查找对象，实际 URL 来自 `objectKey`；默认谱、里谱和共用音乐选择仍由 `phigros-chart-preview.ts` 处理。哈希 URL 不附加全局发布版本，未变化资源可以继续命中缓存。
 
+`domain/phigros.ts` 的 `loadNoteCountsTable` 解析每难度四项或五项非负整数数组，第五项为谱面 `blockAreaList` 数量，正值写入 `PhigrosChartNotes.block`，零值省略。`PhigrosCatalogProvider` 按难度装配物量；详情复用 `GameNoteTable`，有正 BLOCK 时放在 FLICK 与总计之间，缺失或零值不显示整列。`total` 只包含 Tap、Hold、Drag、Flick。解析、已验证资源刷新及详情交互由现有 Phigros 测试覆盖。
+
 `PhigrosKyouProvider` 在一次调用中固定已验证的清单，再按表名读取并校验字节；别名、标签、引用关系和完整性检查共用现有 Provider 入口。Rizline 曲库缓存使用格式 2，并沿用 `SqliteSnapshotRepository` 对结构失效与 I/O 失败的区分。
 
 Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图读取时校验 Phigros 头像属于当前哈希地址结构，失效缓存通过所属仓库入口重建；头像同步会重新解析结构失效的地址，其他游戏头像缓存格式保持各自合同。

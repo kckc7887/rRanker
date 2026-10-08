@@ -607,9 +607,9 @@ export function normalizePhigrosSongId(chartSongId: string): string {
 function parseNoteCountsCell(raw: string): PhigrosChartNotes | null {
   try {
     const parsed: unknown = JSON.parse(raw);
-    if (!Array.isArray(parsed) || parsed.length !== 4) return null;
-    const [tap, hold, drag, flick] = parsed;
-    if (![tap, hold, drag, flick].every((n) => Number.isInteger(n) && (n as number) >= 0)) {
+    if (!Array.isArray(parsed) || (parsed.length !== 4 && parsed.length !== 5)) return null;
+    const [tap, hold, drag, flick, block] = parsed;
+    if (!parsed.every((n) => Number.isInteger(n) && (n as number) >= 0)) {
       return null;
     }
     return {
@@ -617,6 +617,7 @@ function parseNoteCountsCell(raw: string): PhigrosChartNotes | null {
       hold: hold as number,
       drag: drag as number,
       flick: flick as number,
+      ...(block > 0 ? { block: block as number } : {}),
       total: (tap as number) + (hold as number) + (drag as number) + (flick as number),
     };
   } catch {
@@ -624,7 +625,7 @@ function parseNoteCountsCell(raw: string): PhigrosChartNotes | null {
   }
 }
 
-/** note_counts.tsv 列为 songId、EZ、HD、IN、可选 AT；每格为 [Tap,Hold,Drag,Flick]。 */
+/** note_counts.tsv 各难度为 [Tap,Hold,Drag,Flick]，有区域时追加 BLOCK。 */
 export function loadNoteCountsTable(raw: string): Record<string, PhigrosChartNotes[]> {
   const table: Record<string, PhigrosChartNotes[]> = {};
   for (const line of raw.trim().split('\n')) {

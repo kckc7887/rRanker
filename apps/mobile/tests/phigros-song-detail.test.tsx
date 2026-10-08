@@ -114,6 +114,7 @@ jest.mock('@/features/chart-download-shared/use-chart-package-download', () => (
 }));
 let mockCatalogSongVersion = '3.8.0';
 let mockAliases = ['测试别名一', '测试别名二'];
+let mockBlockCounts: Record<number, number | undefined> = {};
 jest.mock('@/hooks/use-phigros-catalog', () => ({
   usePhigrosCatalog: () => ({
     data: {
@@ -129,17 +130,17 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
             {
               songId: 'Song.A', type: 'SD', levelIndex: 0, level: 'EZ', difficulty: 'basic',
               difficultyConstant: 5.5, charter: 'EZ谱师',
-              notes: { tap: 10, hold: 20, drag: 30, flick: 40, total: 100 },
+              notes: { tap: 10, hold: 20, drag: 30, flick: 40, block: mockBlockCounts[0], total: 100 },
             },
             {
               songId: 'Song.A', type: 'SD', levelIndex: 1, level: 'HD', difficulty: 'advanced',
               difficultyConstant: 10.2, charter: 'HD谱师',
-              notes: { tap: 50, hold: 60, drag: 70, flick: 80, total: 260 },
+              notes: { tap: 50, hold: 60, drag: 70, flick: 80, block: mockBlockCounts[1], total: 260 },
             },
             {
               songId: 'Song.A', type: 'SD', levelIndex: 2, level: 'IN', difficulty: 'expert',
               difficultyConstant: 14.8, charter: 'IN谱师',
-              notes: { tap: 100, hold: 110, drag: 120, flick: 130, total: 460 },
+              notes: { tap: 100, hold: 110, drag: 120, flick: 130, block: mockBlockCounts[2], total: 460 },
             },
             {
               songId: 'Song.A', type: 'SD', levelIndex: 3, level: 'AT', difficulty: 'master',
@@ -293,6 +294,7 @@ describe('Phigros song detail', () => {
     mockSongRouteParams = { songId: 'Song.A', gameId: 'phigros' };
     mockCatalogSongVersion = '3.8.0';
     mockAliases = ['测试别名一', '测试别名二'];
+    mockBlockCounts = {};
     libraryMock.__libraryMockState.data = [];
     mockCanGoBack.mockReturnValue(true);
     jest.clearAllMocks();
@@ -411,6 +413,35 @@ describe('Phigros song detail', () => {
     const atCard = screen.getByLabelText('AT 难度卡片');
     expect(within(atCard).getByText('物量未提供')).toBeTruthy();
     expect(screen.queryByText('点击物量表，前往达成率与容错计算')).toBeNull();
+  });
+
+  it('shows BLOCK only for the chart with positive areas while changing difficulties', async () => {
+    mockBlockCounts = { 0: 0, 2: 6 };
+    const screen = await render(<SongDetailScreen />);
+    await waitFor(() => expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy());
+
+    const headers = /^(TAP|HOLD|DRAG|FLICK|BLOCK|总计)$/;
+    const inTable = within(screen.getByLabelText('IN 难度卡片')).getByLabelText('谱面物量');
+    expect(within(inTable).getAllByText(headers).map((cell) => cell.props.children))
+      .toEqual(['TAP', 'HOLD', 'DRAG', 'FLICK', 'BLOCK', '总计']);
+    expect(within(inTable).getByText('6')).toBeTruthy();
+    expect(within(inTable).getByText('460')).toBeTruthy();
+
+    const carousel = screen.getByTestId('phigros-chart-carousel');
+    await fireEvent(carousel, 'momentumScrollEnd', {
+      nativeEvent: { contentOffset: { x: 2 * carousel.props.snapToInterval, y: 0 } },
+    });
+    const hdTable = within(screen.getByLabelText('HD 难度卡片')).getByLabelText('谱面物量');
+    expect(within(hdTable).getAllByText(headers).map((cell) => cell.props.children))
+      .toEqual(['TAP', 'HOLD', 'DRAG', 'FLICK', '总计']);
+
+    await fireEvent(carousel, 'momentumScrollEnd', {
+      nativeEvent: { contentOffset: { x: 3 * carousel.props.snapToInterval, y: 0 } },
+    });
+    const ezTable = within(screen.getByLabelText('EZ 难度卡片')).getByLabelText('谱面物量');
+    expect(within(ezTable).getAllByText(headers).map((cell) => cell.props.children))
+      .toEqual(['TAP', 'HOLD', 'DRAG', 'FLICK', '总计']);
+    expect(within(ezTable).queryByText('0')).toBeNull();
   });
 
   it('shows em dash for charts without scores', async () => {

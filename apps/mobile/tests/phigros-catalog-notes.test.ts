@@ -14,10 +14,14 @@ it('maps verified note counts and refreshes same-version resources without mixin
   const first = await provider.getCatalog();
   expect(first.songs[0]?.charts[0]?.notes).toEqual({ tap: 1, hold: 2, drag: 3, flick: 4, total: 10 });
   expect(await provider.getCatalog()).toBe(first);
-  fixture = releaseFixture('r2', ['Song.A', 'Song.New']);
+  fixture = releaseFixture('r2', ['Song.A', 'Song.New'], {
+    noteCounts: 'Song.A.0\t[1,2,3,4,7]\nSong.New.0\t[1,2,3,4,0]',
+  });
   await resources.load(undefined, true);
   const second = await provider.getCatalog();
   expect(second.songs).toHaveLength(2);
+  expect(second.songs[0]?.charts[0]?.notes).toEqual({ tap: 1, hold: 2, drag: 3, flick: 4, block: 7, total: 10 });
+  expect(second.songs[1]?.charts[0]?.notes).toEqual({ tap: 1, hold: 2, drag: 3, flick: 4, total: 10 });
   expect(provider.getIllustrationUrl('Song.New')).toContain(fixture.objectKeys['illustrations/Song.New.png']);
   expect(await provider.getGameVersion()).toBe('9.9.9');
 });

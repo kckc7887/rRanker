@@ -3,7 +3,7 @@ import { createHash } from 'node:crypto';
 export function releaseFixture(
   revision = 'r1',
   songIds = ['Song.A'],
-  options: { music?: boolean; variants?: number[]; variantMusic?: boolean; avatars?: Record<string, string> } = {},
+  options: { music?: boolean; variants?: number[]; variantMusic?: boolean; avatars?: Record<string, string>; noteCounts?: string } = {},
 ) {
   const encode = (value: string) => new TextEncoder().encode(value);
   const hash = (value: Uint8Array) => createHash('sha256').update(value).digest('hex');
@@ -11,7 +11,7 @@ export function releaseFixture(
     'catalog.json': encode(JSON.stringify({ songCount: songIds.length, songs: songIds.map((id) => ({
       id, title: id, composer: 'Artist', illustrator: 'I', charters: ['e'], difficulties: [1],
     })) })),
-    'metadata/note_counts.tsv': encode(songIds.map((id) => `${id}.0\t[1,2,3,4]`).join('\n')),
+    'metadata/note_counts.tsv': encode(options.noteCounts ?? songIds.map((id) => `${id}.0\t[1,2,3,4]`).join('\n')),
     'metadata/difficulty.tsv': encode(songIds.map((id) => `${id}\t1`).join('\n')),
     'metadata/tmp.tsv': encode(Object.entries(options.avatars ?? { Glaciaxion: 'Glaciaxion' }).map(([name, file]) => `${name}\t${file}`).join('\n')),
   };

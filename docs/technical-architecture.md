@@ -83,6 +83,8 @@ HTTP 请求使用 `totalAttempts` 表示总尝试次数。认证、轮询、取�
 
 Phigros、Rizline 和 Kyou 分别读取所属资源组的 `latest.json`，校验 schemaVersion 2 指针、清单 SHA-256 和对象摘要。清单位于 `manifests/<sha256>.json`，媒体按固定分类目录和内容哈希存放。Phigros 保留逻辑 `path`，通过 `objectKey` 定位实际资源；Rizline 曲库直接保存对象路径；Kyou 清单将表名映射到对象路径、大小和摘要。发布流程由 [rRankerResourcePublisher](https://github.com/kckc7887/rRankerResourcePublisher) 管理。
 
+Phigros 物量读取发布资源 `metadata/note_counts.tsv`，按歌曲与 EZ、HD、IN、AT 难度装配 `chart.notes`。每格为 `[Tap,Hold,Drag,Flick]`，谱面根节点 `blockAreaList` 非空时追加数组长度作为 BLOCK。详情只在 BLOCK 大于零时显示该列，总计只累加四种音符。
+
 下载取消后不提交临时文件，缓存命中复用当前资源。预览与谱面下载调用同一资源读取入口。Rizline 曲库缓存格式为 2；读取到其他格式时仅重建该曲库缓存，I/O 失败保留现有数据。
 
 `RemoteImage` 使用显式 `cacheProfile`：thumbnail、artwork、native 或 none。在线图显示成功后才生成压缩缓存；不可见页面不开始新落盘，缓存解码失败时移除该压缩条目。Web 使用平台支持的图片路径。

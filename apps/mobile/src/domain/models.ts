@@ -74,12 +74,12 @@ export interface UtageChartMetadata {
   isBuddy: boolean;
 }
 
-/** 物量顺序为 Tap、Hold、Drag、Flick。 */
 export interface PhigrosChartNotes {
   tap: number;
   hold: number;
   drag: number;
   flick: number;
+  block?: number;
   total: number;
 }
 

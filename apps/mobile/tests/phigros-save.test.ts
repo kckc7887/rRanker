@@ -351,4 +351,22 @@ describe('phigros save parsing', () => {
     expect(table['Bad.Row']).toBeUndefined();
     expect(table['Short.Row']).toBeUndefined();
   });
+
+  it('loads per-difficulty BLOCK counts without adding them to the note total', () => {
+    const table = loadNoteCountsTable('Song.A.0\t[1,2,3,4]\t[5,6,7,8,1]\t[9,10,11,12,6]\t[13,14,15,16,0]');
+    expect(table['Song.A']).toEqual([
+      { tap: 1, hold: 2, drag: 3, flick: 4, total: 10 },
+      { tap: 5, hold: 6, drag: 7, flick: 8, block: 1, total: 26 },
+      { tap: 9, hold: 10, drag: 11, flick: 12, block: 6, total: 42 },
+      { tap: 13, hold: 14, drag: 15, flick: 16, total: 58 },
+    ]);
+  });
+
+  it.each([
+    '[1,2,3,4,-1]', '[1,2,3,4,1.5]', '[1,2,3,4,"1"]',
+    '[1,2,3,4,null]', '[1,2,3,4,true]', '[1,2,3,4,{}]',
+    '[1,2,3,4,1,2]', '[1,-2,3,4,1]', '[1,2,3.5,4,1]',
+  ])('rejects invalid note or BLOCK counts in %s', (cell) => {
+    expect(loadNoteCountsTable(`Song.A.0\t${cell}`)['Song.A']).toBeUndefined();
+  });
 });
