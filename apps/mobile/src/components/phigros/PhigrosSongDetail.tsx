@@ -603,6 +603,7 @@ const NOTE_COLUMNS: readonly { label: string; key: keyof PhigrosChartNotes }[] =
   { label: 'HOLD', key: 'hold' },
   { label: 'DRAG', key: 'drag' },
   { label: 'FLICK', key: 'flick' },
+  { label: 'BLOCK', key: 'block' },
   { label: '总计', key: 'total' },
 ];
 
@@ -622,10 +623,10 @@ function NotesTable({ notes, pending }: { notes?: PhigrosChartNotes; pending?: b
   }
   const noteGroup = {
     key: 'notes',
-    values: NOTE_COLUMNS.map((column) => ({
+    values: NOTE_COLUMNS.filter((column) => column.key !== 'block' || (notes.block ?? 0) > 0).map((column) => ({
       key: column.key,
       label: column.label,
-      value: notes[column.key],
+      value: notes[column.key]!,
     })),
   };
   return (
