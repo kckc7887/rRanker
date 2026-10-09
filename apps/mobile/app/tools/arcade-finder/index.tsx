@@ -131,7 +131,6 @@ export default function ArcadeFinderScreen() {
   const [selectingPlace, setSelectingPlace] = useState<ArcadePlace | null>(null);
   const [placeError, setPlaceError] = useState('');
   const selectionRequest = useRef<AbortController | null>(null);
-  const dragging = useRef(false);
   const screenActive = useRef(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const searchInput = useRef<TextInput>(null);
@@ -159,9 +158,9 @@ export default function ArcadeFinderScreen() {
   useEffect(() => {
     const foreground = getForegroundAbortSignal();
     screenActive.current = focused && !foreground.aborted;
-    if (!screenActive.current) { setLocatingOrigin(false); dragging.current = false; setSelectingPlace(null); }
+    if (!screenActive.current) { setLocatingOrigin(false); setSelectingPlace(null); }
     const cancel = () => { screenActive.current = false; originIntent.current += 1; cancelPending(); selectionRequest.current?.abort(); };
-    const background = () => { cancel(); setLocatingOrigin(false); dragging.current = false; setSelectingPlace(null); };
+    const background = () => { cancel(); setLocatingOrigin(false); setSelectingPlace(null); };
     foreground.addEventListener('abort', background, { once: true });
     return () => { cancel(); foreground.removeEventListener('abort', background); };
   }, [cancelPending, focused, foregroundGeneration]);
@@ -171,17 +170,16 @@ export default function ArcadeFinderScreen() {
     return () => { show.remove(); hide.remove(); };
   }, []);
 
-  const selectOrigin = useCallback((next: ArcadeOrigin, shop: ArcadeShop | null = null) => {
+  const selectOrigin = useCallback((next: ArcadeOrigin, shop: ArcadeShop | null = null, keepZoom = false) => {
     originIntent.current += 1;
     clearSearch();
     cancelPending();
-    dragging.current = false;
     setLocatingOrigin(false);
     setErrorKind(null);
     setSelectedShop(shop);
     setOrigin(next);
-    setCamera({ center: next, radiusKm });
-  }, [cancelPending, clearSearch, radiusKm]);
+    setCamera(keepZoom ? { center: next } : { center: next, radiusKm: 2 });
+  }, [cancelPending, clearSearch]);
 
   useEffect(() => {
     let cancelled = false;
@@ -216,13 +214,12 @@ export default function ArcadeFinderScreen() {
     const intent = ++originIntent.current;
     clearSearch();
     cancelPending();
-    dragging.current = false;
     setLocatingOrigin(true);
     setErrorKind(null);
     try {
       const next = await acquireArcadeGpsOrigin();
       if (intent !== originIntent.current) return;
-      selectOrigin(next);
+      selectOrigin(next, null, origin !== null);
     } catch (error) {
       if (intent !== originIntent.current) return;
       const message = error instanceof Error ? error.message : String(error);
@@ -240,7 +237,7 @@ export default function ArcadeFinderScreen() {
   }, [acquireOriginFromGps, focused, foregroundReady, hydrated]);
 
   useEffect(() => {
-    if (!hydrated || !origin || !focused || !foregroundReady || dragging.current) return;
+    if (!hydrated || !origin || !focused || !foregroundReady) return;
     const controller = new AbortController();
     request.current = controller;
     const foreground = getForegroundAbortSignal();
@@ -249,7 +246,6 @@ export default function ArcadeFinderScreen() {
     if (foreground.aborted) abort();
     void (async () => {
       setIsLoading(true);
-      setShops(null);
       setErrorKind(null);
       try {
         const next = await fetchNearcadeDiscover({
@@ -264,7 +260,6 @@ export default function ArcadeFinderScreen() {
         setErrorKind(null);
       } catch {
         if (controller.signal.aborted) return;
-        setShops(null);
         setErrorKind('network');
       } finally {
         if (!controller.signal.aborted) setIsLoading(false);
@@ -277,7 +272,8 @@ export default function ArcadeFinderScreen() {
   }, [focused, foregroundGeneration, foregroundReady, hydrated, origin, radiusKm, titleIds]);
 
   const filtered = useMemo(() => {
-    const items = [...(shops ?? [])];
+    const items = (shops ?? []).map(shop => origin ? { ...shop, distanceKm: arcadeDistanceKm(origin, shop) } : shop)
+      .filter(shop => shop.distanceKm === null || shop.distanceKm <= radiusKm);
     if (selectedShop && origin && !items.some(shop => shop.id === selectedShop.id)) {
       const distanceKm = arcadeDistanceKm(origin, selectedShop);
       if (distanceKm <= radiusKm) items.push({ ...selectedShop, distanceKm });
@@ -289,7 +285,6 @@ export default function ArcadeFinderScreen() {
     originIntent.current += 1;
     clearSearch();
     cancelPending();
-    dragging.current = false;
     setLocatingOrigin(false);
     setIsLoading(false);
     const controller = new AbortController();
@@ -305,42 +300,39 @@ export default function ArcadeFinderScreen() {
 
   const selectShop = useCallback((shop: ArcadeShop) => {
     originIntent.current += 1;
-    cancelPending();
-    dragging.current = false;
+    if (dragTimer.current) clearTimeout(dragTimer.current);
+    dragTimer.current = null;
     setLocatingOrigin(false);
     setSelectedShop(shop);
     setCamera({ center: shop, radiusKm: Math.min(radiusKm, 2) });
     Keyboard.dismiss();
-  }, [cancelPending, radiusKm]);
+  }, [radiusKm]);
 
   const moveMap = () => {
     if (!screenActive.current) return;
     originIntent.current += 1;
     clearSearch();
-    cancelPending();
+    if (dragTimer.current) clearTimeout(dragTimer.current);
+    dragTimer.current = null;
     setLocatingOrigin(false);
-    dragging.current = true;
-    setIsLoading(false);
-    setSelectedShop(null);
     setCamera(null);
   };
 
   const mapAvailabilityChanged = useCallback(() => {
-    if (dragging.current) {
-      cancelPending();
-      dragging.current = false;
-      setOrigin(previous => previous ? { ...previous } : null);
-    }
+    if (dragTimer.current) clearTimeout(dragTimer.current);
+    dragTimer.current = null;
     setPlaceGeneration(value => value + 1);
-  }, [cancelPending]);
+  }, []);
   const settleMap = (center: ArcadeCoordinate) => {
     if (!screenActive.current) return;
     if (dragTimer.current) clearTimeout(dragTimer.current);
     dragTimer.current = setTimeout(() => {
       dragTimer.current = null;
+      if (origin && arcadeDistanceKm(origin, center) < Math.max(0.3, radiusKm * 0.1)) return;
+      request.current?.abort();
       setErrorKind(null);
+      setSelectedShop(null);
       setOrigin({ ...center, source: 'custom', label: '地图中心' });
-      dragging.current = false;
     }, 500);
   };
 
@@ -390,14 +382,14 @@ export default function ArcadeFinderScreen() {
       style={[styles.page, { backgroundColor: theme.background }]}>
       <Stack.Screen options={{ title: '音游地图' }} />
       {focused ? <ArcadeMap camera={camera} shops={filtered} selectedShopId={selectedShopId}
-        initialCamera={origin ? { center: origin, radiusKm } : null}
+        initialCamera={origin ? { center: origin, radiusKm: 2 } : null}
         onAvailabilityChange={mapAvailabilityChanged}
         compact={keyboardVisible} locating={locatingOrigin} onLocate={() => { void acquireOriginFromGps(); }}
         onGestureStart={moveMap} onCenterChange={settleMap}
         onSelectShop={shop => {
           originIntent.current += 1;
-          cancelPending();
-          dragging.current = false;
+          if (dragTimer.current) clearTimeout(dragTimer.current);
+          dragTimer.current = null;
           setLocatingOrigin(false);
           clearSearch();
           setSelectedShop(shop);

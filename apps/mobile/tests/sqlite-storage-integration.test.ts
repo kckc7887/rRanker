@@ -411,6 +411,69 @@ describe('SQLite storage and current backups', () => {
     expect(await service.listTagPresets()).toEqual(['原预设']);
   });
 
+  it.each(['commit', 'rollback'] as const)('reads only the final library state after an overlapping import %s', async outcome => {
+    const service = new UserLibraryService();
+    const library = new SqliteUserLibraryRepository();
+    await service.setSongFavorite('maimai', '1', true);
+    await service.setTagPresets(['原预设']);
+    const before = await service.createBackup();
+    const beforeBytes = await library.measureBytes();
+    const imported = createUserDataBackup([], before.exportedAt, ['新预设']);
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    run.mockImplementation(async (sql, ...args) => {
+      const result = database.prepare(sql).run(...args);
+      if (sql === 'DELETE FROM user_library_items') {
+        entered.resolve();
+        await release.promise;
+        if (outcome === 'rollback') throw new Error('disk failure');
+      }
+      return result;
+    });
+    const importing = service.restore(imported, 'replace').then(() => null, (error: Error) => error);
+    await entered.promise;
+    const reading = service.list();
+    const presets = service.listTagPresets();
+    const exporting = service.createBackup();
+    const measuring = library.measureBytes();
+    await new Promise<void>(resolve => { setTimeout(resolve, 0); });
+    release.resolve();
+    if (outcome === 'rollback') expect(await importing).toMatchObject({ message: 'disk failure' });
+    else expect(await importing).toBeNull();
+    const expected = outcome === 'rollback' ? before : imported;
+    await expect(reading).resolves.toEqual(expected.items);
+    await expect(presets).resolves.toEqual(expected.tagPresets);
+    await expect(exporting).resolves.toMatchObject({ items: expected.items, tagPresets: expected.tagPresets });
+    await expect(measuring).resolves.toBe(outcome === 'rollback' ? beforeBytes : await library.measureBytes());
+  });
+
+  it('exports items and presets from the same state while another import is pending', async () => {
+    const service = new UserLibraryService();
+    await service.setSongFavorite('maimai', '1', true);
+    await service.setTagPresets(['原预设']);
+    const before = await service.createBackup();
+    const entered = Promise.withResolvers<void>();
+    const release = Promise.withResolvers<void>();
+    let blocked = false;
+    reads.mockImplementation(async (sql, ...args) => {
+      if (!blocked && sql === 'SELECT display_name FROM user_library_tag_presets ORDER BY sort_order, normalized_name') {
+        blocked = true;
+        entered.resolve();
+        await release.promise;
+      }
+      return database.prepare(sql).all(...args);
+    });
+    const exporting = service.createBackup();
+    await entered.promise;
+    const imported = createUserDataBackup([], before.exportedAt, ['新预设']);
+    const importing = service.restore(imported, 'replace');
+    await new Promise<void>(resolve => { setTimeout(resolve, 0); });
+    release.resolve();
+    await expect(exporting).resolves.toMatchObject({ items: before.items, tagPresets: before.tagPresets });
+    await importing;
+    await expect(service.createBackup()).resolves.toMatchObject({ items: imported.items, tagPresets: imported.tagPresets });
+  });
+
   it('rejects overflowing preset merges without modifying existing items or presets', async () => {
     const service = new UserLibraryService();
     await service.setSongFavorite('maimai', '1', true);

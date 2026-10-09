@@ -1,6 +1,8 @@
 import { TUF_QUERY_OPTIONS, TUF_SESSION_RESOURCE_QUERY_OPTIONS, tufPlayerQueryOptions } from '@/services/tuf-query';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
+import { useMemo } from 'react';
+import { useBoundedQueries } from '@/hooks/use-bounded-queries';
 import type { InfiniteData } from '@tanstack/react-query';
 import { TUF_PAGE_SIZE, selectBestTufLevelPass, tufHttpsUrl, type TufLevelDetailResponse, type TufLevelPass, type TufLevelPage, type TufLevelQuery, type TufPassPage, type TufPassQuery, type TufPlayerSnapshot } from '@/domain/tuf';
 import { tufProvider } from '@/providers/tuf-provider';
@@ -159,14 +161,24 @@ export function useTufLevelBestPass(levelId: number | null, playerId: number | n
   return { ...query, data: selectBestTufLevelPass(query.data ?? [], playerId) };
 }
 
+function tufLevelQueryOptions(levelId: number | null) {
+  return {
+    queryKey: ['tuf', 'level', levelId] as const,
+    queryFn: ({ signal }: { signal: AbortSignal }): Promise<TufLevelDetailResponse> => tufProvider.getLevel(levelId!, signal),
+    ...TUF_QUERY_OPTIONS,
+  };
+}
+
 export function useTufLevel(levelId: number | null) {
   const active = useCachedTabActive();
-  const queryKey = ['tuf', 'level', levelId] as const;
   return useQuery({
-    queryKey,
-    queryFn: ({ signal }): Promise<TufLevelDetailResponse> => tufProvider.getLevel(levelId!, signal),
+    ...tufLevelQueryOptions(levelId),
     notifyOnChangeProps: active ? undefined : [],
     enabled: active && levelId !== null,
-    ...TUF_QUERY_OPTIONS,
   });
+}
+
+export function useTufLibraryLevels(levelIds: readonly number[]) {
+  const definitions = useMemo(() => [...new Set(levelIds)].map(tufLevelQueryOptions), [levelIds]);
+  return useBoundedQueries(definitions, 3).queries;
 }

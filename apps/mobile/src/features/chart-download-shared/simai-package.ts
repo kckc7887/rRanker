@@ -36,7 +36,7 @@ export async function downloadSimaiPackage({ title, suffix, extension = '.zip', 
     options.onProgress?.({ phase: 'organizing', progress: 1 });
     await options.onReadyToSave?.();
     throwIfChartDownloadCancelled(options.signal);
-    return await saveChartPackage(`${packageName}${extension}`, { kind: 'file', file: archive });
+    return await saveChartPackage(`${packageName}${extension}`, { kind: 'file', file: archive }, options.signal);
   } finally {
     cleanupChartDownloadSessionDirectory(staging);
   }

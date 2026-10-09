@@ -1,7 +1,4 @@
-import Storage from '@/storage/key-value-storage';
-import type { KeyValueStore } from './create-demo-account-store';
-
-export type { KeyValueStore };
+import Storage, { enqueueKeyMutation, type KeyValueStore } from '@/storage/key-value-storage';
 
 export type PreferencesStoreInstance<P, S> = {
   load: [S] extends [void] ? () => Promise<P> : (scope: S) => Promise<P>;
@@ -26,7 +23,7 @@ export function createPreferencesStore<P, S = void>(options: CreatePreferencesSt
     options.toStored ? options.toStored(value, scope) : value
   );
 
-  const loadPreferences = async (storage: KeyValueStore, scope: S): Promise<P> => {
+  const loadPreferences = (storage: KeyValueStore, scope: S): Promise<P> => enqueueKeyMutation(storage, keyOf(scope), async () => {
     const key = keyOf(scope);
     const raw = await storage.getItem(key);
     if (raw === null) return options.defaults(scope);
@@ -36,17 +33,21 @@ export function createPreferencesStore<P, S = void>(options: CreatePreferencesSt
     } catch {
       value = options.defaults(scope);
     }
-    await savePreferences(storage, scope, value);
+    await writePreferences(storage, scope, value);
     return value;
-  };
+  });
 
-  const savePreferences = async (
+  const writePreferences = async (
     storage: KeyValueStore,
     scope: S,
     value: P,
   ): Promise<void> => {
     await storage.setItem(keyOf(scope), JSON.stringify(toStored(value, scope)));
   };
+
+  const savePreferences = (storage: KeyValueStore, scope: S, value: P): Promise<void> => (
+    enqueueKeyMutation(storage, keyOf(scope), () => writePreferences(storage, scope, value))
+  );
 
   class PreferencesStore {
     constructor(private readonly storage: KeyValueStore = Storage) {}

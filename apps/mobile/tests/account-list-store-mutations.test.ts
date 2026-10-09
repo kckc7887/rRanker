@@ -115,16 +115,16 @@ describe('account list store mutations', () => {
     expect(storage.value).toBeNull();
   });
 
-  it('leaves reads unqueued so a load does not wait for a pending mutation', async () => {
+  it('reads the committed account after a pending mutation', async () => {
     const storage = new MemoryStore();
     const store = new Store(storage);
     storage.blockedReads = 1;
 
     const pending = store.upsert(profile('a'));
     await Promise.resolve();
-    await expect(store.load()).resolves.toEqual([]);
+    const reading = store.load();
     storage.unblockReads();
     await pending;
-    await expect(store.load()).resolves.toEqual([profile('a')]);
+    await expect(reading).resolves.toEqual([profile('a')]);
   });
 });

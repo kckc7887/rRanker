@@ -32,7 +32,7 @@ import { useOsuBeatmapsetsByIds } from '@/hooks/use-osu-beatmapsets-by-ids';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhiraChartsByIds } from '@/hooks/use-phira';
 import { useRizlineCatalog } from '@/hooks/use-rizline-catalog';
-import { useTufLevelSearch } from '@/hooks/use-tuf';
+import { useTufLibraryLevels } from '@/hooks/use-tuf';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
@@ -169,16 +169,15 @@ function MajdataLibraryScreen() {
 }
 
 function AdofaiLibraryScreen() {
-  const items = useUserLibrary().data ?? [];
-  const tufLevelSearch = useTufLevelSearch('', { sort: 'RECENT' });
-  const songsById = useMemo(() => {
-    const map = new Map<string, LibrarySong>();
-    for (const level of tufLevelSearch.data?.pages.flatMap((page) => page.results) ?? []) {
-      map.set(String(level.id), level);
-    }
-    return map;
-  }, [tufLevelSearch.data?.pages]);
-  return <LibraryList items={items} songsById={songsById} />;
+  const library = useUserLibrary();
+  const levelIds = useMemo(() => [...new Set((library.data ?? []).map(item => Number(item.songId)))]
+    .filter(id => Number.isSafeInteger(id) && id > 0), [library.data]);
+  const levels = useTufLibraryLevels(levelIds);
+  const songsById = new Map<string, LibrarySong>();
+  for (const query of levels) {
+    if (query.data) songsById.set(String(query.data.level.id), query.data.level);
+  }
+  return <LibraryList items={library.data ?? []} songsById={songsById} />;
 }
 
 function MuseDashLibraryScreen() {

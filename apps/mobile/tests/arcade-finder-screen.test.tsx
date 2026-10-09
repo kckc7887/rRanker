@@ -83,6 +83,68 @@ it('后发 GPS 优先，卸载后结果不启动查询', async () => {
 const shop: ArcadeShop = { id: 1, name: '测试机厅', latitude: 31, longitude: 120,
   distanceKm: 1, addressDetailed: '测试路', addressGeneral: [], comment: '', games: [], openingHours: [] };
 
+it('small map movements keep the pending discovery usable', async () => {
+  mockGps.mockResolvedValue(origin(31));
+  let finish!: (shops: ArcadeShop[]) => void;
+  mockDiscover.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+  const view = await render(<ArcadeFinderScreen />);
+  await waitFor(() => expect(mockDiscover).toHaveBeenCalled());
+  const signal = (mockDiscover.mock.calls[0][0] as { signal: AbortSignal }).signal;
+  jest.useFakeTimers();
+  for (const latitude of [31, 31.0001, 31.001]) {
+    await act(async () => { mockMap.onGestureStart(); mockMap.onCenterChange(origin(latitude)); });
+    await act(async () => { jest.advanceTimersByTime(500); });
+  }
+  expect(signal.aborted).toBe(false);
+  expect(mockDiscover).toHaveBeenCalledTimes(1);
+  await act(async () => { finish([shop]); });
+  expect(view.getByText(shop.name)).toBeTruthy();
+});
+
+it.each([
+  { radius: 1 as const, small: [31.001, 31.002], far: 31.003 },
+  { radius: 10 as const, small: [31.003, 31.006], far: 31.01 },
+])('refreshes after accumulated movement at radius $radius while preserving nearby results on failure', async ({ radius, small, far }) => {
+  mockGps.mockResolvedValue(origin(31)); mockDiscover.mockResolvedValue([shop]);
+  const view = await render(<ArcadeFinderScreen />);
+  await waitFor(() => expect(view.getByText(shop.name)).toBeTruthy());
+  await act(async () => { mockFilter.onRadiusChange(radius); });
+  await fireEvent.press(view.getByText(shop.name));
+  const count = mockDiscover.mock.calls.length;
+  jest.useFakeTimers();
+  for (const latitude of small) {
+    await act(async () => { mockMap.onGestureStart(); mockMap.onCenterChange(origin(latitude)); });
+    await act(async () => { jest.advanceTimersByTime(500); });
+    expect(mockDiscover).toHaveBeenCalledTimes(count);
+    expect(mockMap.selectedShopId).toBe(shop.id);
+  }
+  let fail!: (error: Error) => void;
+  mockDiscover.mockImplementationOnce(() => new Promise((_, reject) => { fail = reject; }));
+  await act(async () => { mockMap.onGestureStart(); mockMap.onCenterChange(origin(far)); });
+  await act(async () => { jest.advanceTimersByTime(500); });
+  expect(mockDiscover).toHaveBeenCalledTimes(count + 1);
+  expect(mockDiscover).toHaveBeenLastCalledWith(expect.objectContaining({ latitude: far, radiusKm: radius }));
+  expect(view.getByText(shop.name)).toBeTruthy();
+  expect(mockMap.selectedShopId).toBeNull();
+  expect(view.getByText('刷新中…')).toBeTruthy();
+  await act(async () => { fail(new Error('network')); });
+  expect(view.getByText(shop.name)).toBeTruthy();
+  expect(view.getByText('附近机厅加载失败，点击重试')).toBeTruthy();
+});
+
+it('starts at a nearby map scale and preserves the chosen scale on subsequent GPS locations', async () => {
+  mockGps.mockResolvedValue(origin(31));
+  await render(<ArcadeFinderScreen />);
+  await waitFor(() => expect(mockDiscover).toHaveBeenCalled());
+  expect(mockMap.camera?.radiusKm).toBe(2);
+  await act(async () => { mockFilter.onRadiusChange(30); });
+  mockGps.mockResolvedValueOnce(origin(32));
+  await act(async () => { mockMap.onLocate(); });
+  expect(mockMap.camera?.center.latitude).toBe(32);
+  expect(mockMap.camera?.radiusKm).toBeUndefined();
+  expect(mockDiscover).toHaveBeenLastCalledWith(expect.objectContaining({ latitude: 32, radiusKm: 30 }));
+});
+
 it('card and pin selection stay linked without starting another nearby request', async () => {
   mockGps.mockResolvedValue(origin(31)); mockDiscover.mockResolvedValue([shop]);
   const view = await render(<ArcadeFinderScreen />);

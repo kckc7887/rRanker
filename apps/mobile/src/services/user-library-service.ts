@@ -44,7 +44,7 @@ export class UserLibraryService {
   }
 
   async createBackup(): Promise<UserDataBackup> {
-    const [items, tagPresets] = await Promise.all([this.repository.list(), this.listTagPresets()]);
+    const { items, tagPresets } = await this.repository.readBackup();
     return createUserDataBackup(items, new Date().toISOString(), tagPresets);
   }
 

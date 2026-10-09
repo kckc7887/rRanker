@@ -4,6 +4,7 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { RandomChartsPage } from '@/components/RandomChartsPage';
 import { ScoreRecordCard, type ScoreRecordCardData } from '@/components/ScoreRecordCard';
 import { chartVersionKey, normalizeSongId } from '@/domain/catalog';
+import { parseAchievementBound } from '@/domain/maimai-filters';
 import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
 import {
   buildBestRecordMap,
@@ -77,6 +78,8 @@ export function MaimaiRandomChartsScreen() {
   }, [dxRatingChartTags.data, selectedDxRatingTagIds, setSelectedDxRatingTagIds]);
 
   const records = useMemo(() => scores.data?.records ?? [], [scores.data?.records]);
+  const scoreFilterActive = parseAchievementBound(achievementMin) !== undefined
+    || parseAchievementBound(achievementMax) !== undefined || soloAchievement !== null || multiAchievement !== null;
   const bestByChart = useMemo(() => buildBestRecordMap(records), [records]);
   const versions = useMemo<VersionFilterOption[]>(() => (
     catalog.data?.versions ?? []
@@ -171,6 +174,13 @@ export function MaimaiRandomChartsScreen() {
           hasDrawn={results !== null}
           onCountChange={setCount}
           onDraw={draw}
+          drawDisabled={!scores.data && scoreFilterActive}
+          poolStatus={!scores.data ? scores.isLoading ? '正在读取成绩…' : `候选谱面 ${pool.length} 条 · 成绩暂不可用` : undefined}
+          poolError={catalog.isError ? '曲库刷新失败，请重试。' : scores.isError ? '成绩读取失败，请重试。' : null}
+          onRetryPool={() => {
+            if (catalog.isError) void catalog.refetch();
+            if (scores.isError) void scores.refetch();
+          }}
           poolSize={pool.length}
           resultCount={results?.length ?? 0}
           results={results?.map((pick) => (
