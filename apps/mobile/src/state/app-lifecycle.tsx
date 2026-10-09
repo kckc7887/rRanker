@@ -9,7 +9,6 @@ import {
 } from 'react';
 import {
   AppState,
-  InteractionManager,
   type AppStateStatus,
 } from 'react-native';
 import {
@@ -24,6 +23,17 @@ import {
 } from '@/state/app-lifecycle-core';
 export type { AppLifecyclePhase, AppLifecycleSnapshot } from '@/state/app-lifecycle-core';
 export { getAppLifecycleSnapshot, getForegroundAbortSignal, waitForForeground };
+
+export function scheduleIdleTask(task: () => void): () => void {
+  let cancelled = false;
+  const run = () => { if (!cancelled) task(); };
+  if (typeof requestIdleCallback === 'function') {
+    const handle = requestIdleCallback(run, { timeout: 1000 });
+    return () => { cancelled = true; cancelIdleCallback(handle); };
+  }
+  const handle = setTimeout(run, 0);
+  return () => { cancelled = true; clearTimeout(handle); };
+}
 
 const readyFallback: AppLifecycleSnapshot = {
   appState: 'active',
@@ -47,7 +57,7 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
     memoryWarningGeneration: 0,
   }));
   const snapshotRef = useRef(snapshot);
-  const readyTaskRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
+  const readyTaskRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     let readyGeneration = 0;
@@ -58,7 +68,7 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
     };
     const cancelReadyTask = () => {
       readyGeneration += 1;
-      readyTaskRef.current?.cancel();
+      readyTaskRef.current?.();
       readyTaskRef.current = null;
     };
     const enterInactive = (appState: AppStateStatus | null | undefined) => {
@@ -96,7 +106,7 @@ export function AppLifecycleProvider({ children }: { children: ReactNode }) {
       });
       const expectedGeneration = previous.foregroundGeneration + (startsForegroundGeneration ? 1 : 0);
       const scheduledGeneration = readyGeneration;
-      readyTaskRef.current = InteractionManager.runAfterInteractions(() => {
+      readyTaskRef.current = scheduleIdleTask(() => {
         if (scheduledGeneration !== readyGeneration) return;
         readyGeneration += 1;
         readyTaskRef.current = null;

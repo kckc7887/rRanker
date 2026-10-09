@@ -1,5 +1,6 @@
-import { useEffect, useMemo, useState } from 'react';
-import { InteractionManager, ScrollView, Text, View, useWindowDimensions } from 'react-native';
+import { useStackScreenReady } from '@/components/CachedTabScreen';
+import { useMemo, useState } from 'react';
+import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { Card } from '@/components/Card';
@@ -7,7 +8,7 @@ import { GameSongCover } from '@/components/game-content/GameSongCover';
 import { QueryStateView } from '@/components/QueryStateView';
 import { TagEditor } from '@/components/TagEditor';
 import { AchievementValue, ScoreStatusBadges } from '@/components/ScoreVisuals';
-import { ChartCarousel } from '@/components/game-content/ChartCarousel';
+import { ChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { SimaiDifficultyRadar } from '@/components/game-content/SimaiDifficultyRadar';
 import { DetailPressable } from '@/components/game-content/DetailPressable';
@@ -64,11 +65,7 @@ function MajdataDetailContent({ song, initialLevelIndex, library }: { song: Majd
   const initial = majdataDefaultDifficulty(song, initialLevelIndex);
   const initialIndex = Math.max(0, levels.findIndex(level => level === initial));
   const [visibleIndex, setVisibleIndex] = useState(initialIndex);
-  const [deferredReady, setDeferredReady] = useState(false);
-  useEffect(() => {
-    const task = InteractionManager.runAfterInteractions(() => setDeferredReady(true));
-    return () => task.cancel();
-  }, []);
+  const deferredReady = useStackScreenReady();
   const local = library.data?.find(item => item.key === library.songKey(song.id));
   const requestedMissing = initialLevelIndex !== undefined && !song.levels[initialLevelIndex]?.trim();
   const cardWidth = Math.max(280, width - 40);
@@ -83,11 +80,10 @@ function MajdataDetailContent({ song, initialLevelIndex, library }: { song: Majd
       {requestedMissing ? <View style={styles.noCharts}><Text style={[styles.meta, { color: theme.textMuted }]}>所选难度不可用</Text></View>
         : <ChartCarousel items={levels} cardWidth={cardWidth} gap={SIMAI_CHART_GAP} initialIndex={visibleIndex}
           accessibilityLabel="难度卡片" testID="majdata-chart-carousel" rootStyle={styles.carouselRoot} scrollStyle={styles.carouselScroll}
-          contentContainerStyle={styles.carousel} keyExtractor={String} onIndexChange={setVisibleIndex}
+          contentContainerStyle={styles.carousel} keyExtractor={level => library.chartKey(song.id, 'SD', level)} onIndexChange={setVisibleIndex}
           empty={<View style={styles.noCharts}><Text style={styles.meta}>暂无可用难度</Text></View>}
-          renderItem={level => <MajdataChartCard song={song} level={level} width={cardWidth} library={library}
-            best={records.find(score => score.chartInfo.id === song.id && score.chartLevel === level && score.hash === song.hash)}
-            active={levels[visibleIndex] === level} />} />}
+          renderItem={(level, carouselState) => <MajdataChartCard carouselState={carouselState} song={song} level={level} width={cardWidth} library={library}
+            best={records.find(score => score.chartInfo.id === song.id && score.chartLevel === level && score.hash === song.hash)} />} />}
       <View style={styles.details}>
         <Card><Text style={[styles.section, { color: theme.text }]}>歌曲信息</Text>
           <Text style={[styles.body, { color: theme.textSecondary }]}>简介：{song.description || '未提供'}</Text>
@@ -95,7 +91,7 @@ function MajdataDetailContent({ song, initialLevelIndex, library }: { song: Majd
           <Text selectable style={[styles.body, { color: theme.textSecondary }]}>HASH：{song.hash}</Text>
         </Card>
         <Card><TagEditor tags={local?.tags ?? []} presets={library.tagPresets ?? []}
-          historyTags={buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
+          historyTags={() => buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
           disabled={library.isUpdating} onPresetsChange={library.setTagPresets} testID="majdata-song-local-tags"
           onChange={tags => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card>
       </View>
@@ -103,12 +99,12 @@ function MajdataDetailContent({ song, initialLevelIndex, library }: { song: Majd
   </ScrollView>;
 }
 
-function MajdataChartCard({ song, level, width, library, best, active }: {
-  song: MajdataSong; level: number; width: number; library: Library; best?: MajdataScore; active: boolean;
+function MajdataChartCard({ song, level, width, library, best, carouselState }: {
+  song: MajdataSong; level: number; width: number; library: Library; best?: MajdataScore; carouselState: ChartCarouselItemState;
 }) {
   const theme = useAppTheme();
   const visual = majdataVisual(level);
-  const parsed = useMajdataParsedChart(active ? song : undefined, level);
+  const parsed = useMajdataParsedChart(song, level);
   const download = useChartPackageDownload({ successMessage: '谱面文件已保存。' });
   const item = library.data?.find(entry => entry.key === library.chartKey(song.id, 'SD', level));
   const practice = item?.kind === 'chart' && item.practice;
@@ -117,14 +113,18 @@ function MajdataChartCard({ song, level, width, library, best, active }: {
   const title = `${song.title} ${MAJDATA_NAMES[level]}`;
   const actions = simaiChartActionStyle(theme.dark, visual, false, level === 5);
   const actionText = simaiChartActionTextStyle(theme.dark, visual, false, level === 5);
-  const startDownload = () => void download.start((options, includeVideo) => downloadSimaiPackage({
-    title: song.title, suffix: MAJDATA_NAMES[level], resources: [
-      { fileName: 'maidata.txt', url: majdataAsset(song.id, 'chart') },
-      { fileName: 'track.mp3', url: majdataAsset(song.id, 'track') },
-      { fileName: 'bg.auto', url: majdataAsset(song.id, 'image', true) },
-      ...(includeVideo ? [{ fileName: 'pv.mp4', url: majdataAsset(song.id, 'video') }] : []),
-    ],
-  }, options), { optionalVideoUrl: majdataAsset(song.id, 'video') });
+  const startDownload = () => {
+    carouselState.onDownloadRunningChange(true);
+    void download.start((options, includeVideo) => downloadSimaiPackage({
+      title: song.title, suffix: MAJDATA_NAMES[level], resources: [
+        { fileName: 'maidata.txt', url: majdataAsset(song.id, 'chart') },
+        { fileName: 'track.mp3', url: majdataAsset(song.id, 'track') },
+        { fileName: 'bg.auto', url: majdataAsset(song.id, 'image', true) },
+        ...(includeVideo ? [{ fileName: 'pv.mp4', url: majdataAsset(song.id, 'video') }] : []),
+      ],
+    }, options), { optionalVideoUrl: majdataAsset(song.id, 'video') })
+      .finally(() => carouselState.onDownloadRunningChange(false));
+  };
   return <GameChartResultCard testID={`majdata-chart-card-${level}`} style={[styles.chartCard, {
     width, backgroundColor: theme.dark ? theme.surface : visual.tint, borderColor: visual.color,
   }]}>
@@ -146,8 +146,8 @@ function MajdataChartCard({ song, level, width, library, best, active }: {
     <DetailPressable accessibilityRole="button" accessibilityLabel={`下载谱面文件：${title}`} disabled={download.isRunning}
       accessibilityState={{ disabled: download.isRunning }} onPress={startDownload}
       style={[styles.action, styles.chartSearchAction, actions]}><Text style={[styles.actionText, actionText]}>下载谱面文件</Text></DetailPressable>
-    <TagEditor tags={item?.tags ?? []} presets={library.tagPresets ?? []} disabled={library.isUpdating}
-      historyTags={buildTagHistory(library.data ?? [], library.chartKey(song.id, 'SD', level), library.tagPresets ?? [])}
+    <TagEditor {...carouselState.tagEditor} tags={item?.tags ?? []} presets={library.tagPresets ?? []} disabled={library.isUpdating}
+      historyTags={() => buildTagHistory(library.data ?? [], library.chartKey(song.id, 'SD', level), library.tagPresets ?? [])}
       onPresetsChange={library.setTagPresets} testID={`majdata-chart-local-tags-${level}`}
       onChange={tags => library.setTags({ kind: 'chart', songId: song.id, type: 'SD', levelIndex: level }, tags)} />
   </GameChartResultCard>;

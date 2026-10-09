@@ -6,7 +6,9 @@ import { NotificationProvider } from '@/components/AppNotification';
 import { PhiraRecordsScreen } from '@/screens/PhiraScreens';
 import { phiraProvider } from '@/providers/phira-provider';
 import { phiraBestCacheKey, PhiraChartSchema, PhiraRecordSchema, PhiraUserSchema, PhiraUserStatsSchema, type PhiraBestSnapshot, type PhiraQueriedBest } from '@/domain/phira';
-import { useRefreshAllPhiraBests } from '@/hooks/use-phira';
+import { useRefreshAllPhiraBests, usePhiraChart, usePhiraChartBest, usePhiraNotes, usePhiraUploader } from '@/hooks/use-phira';
+import { CachedContentActivityScope } from '@/components/CachedTabScreen';
+import { Text } from 'react-native';
 import { queryClient } from '@/state/query-client';
 import { abortForegroundWork, beginForegroundWork } from '@/state/app-lifecycle-core';
 
@@ -156,6 +158,41 @@ describe('Phira 成绩刷新操作结果（真实 Hook 到记录页链路）', (
     memory().failReads = false;
     beginForegroundWork();
     jest.restoreAllMocks();
+  });
+
+  it('pauses detail requests and cache notifications while covered, then exposes the latest cached title', async () => {
+    const detail = { ...chart(303), name: '已显示谱面', file: 'https://phira.example/chart.zip' };
+    seedBests([queriedBest(303, 950_000)]);
+    const loadChart = jest.spyOn(phiraProvider, 'getChart').mockResolvedValue(detail);
+    const loadUploader = jest.spyOn(phiraProvider, 'getUploader').mockResolvedValue(PhiraUserSchema.parse({ id: 9, name: '作者' }));
+    const loadNotes = jest.spyOn(phiraProvider, 'downloadChart').mockResolvedValue(new ArrayBuffer(0));
+    function Detail() {
+      const chartQuery = usePhiraChart(303);
+      usePhiraChartBest(PLAYER_ID, detail);
+      usePhiraNotes(detail);
+      usePhiraUploader(9);
+      return <Text>{chartQuery.data?.name ?? '等待详情'}</Text>;
+    }
+    const tree = (active: boolean) => <QueryClientProvider client={queryClient}>
+      <CachedContentActivityScope active={active}><Detail /></CachedContentActivityScope>
+    </QueryClientProvider>;
+    const screen = await render(tree(false));
+    expect(loadChart).not.toHaveBeenCalled();
+    expect(loadUploader).not.toHaveBeenCalled();
+    expect(loadNotes).not.toHaveBeenCalled();
+    await screen.rerender(tree(true));
+    await waitFor(() => expect(screen.getByText('已显示谱面')).toBeTruthy());
+    expect(loadUploader).toHaveBeenCalled();
+    expect(loadNotes).toHaveBeenCalled();
+    await screen.rerender(tree(false));
+    await act(async () => {
+      queryClient.setQueryData(['phira', 'chart', 303], { ...detail, name: '最新谱面' });
+      await new Promise(resolve => setTimeout(resolve, 0));
+    });
+    expect(screen.getByText('已显示谱面')).toBeTruthy();
+    await screen.rerender(tree(true));
+    expect(screen.getByText('最新谱面')).toBeTruthy();
+    await screen.unmount();
   });
 
   it('没有需要刷新的谱面时是 noop：不请求、不写入', async () => {

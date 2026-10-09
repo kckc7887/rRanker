@@ -13,7 +13,8 @@ const mockSong: MajdataSong = {
 };
 const mockPush = jest.fn(); const mockBack = jest.fn(); const mockRefetch = jest.fn();
 const mockPractice = jest.fn(async () => undefined); const mockFavorite = jest.fn(async () => undefined);
-const mockTags = jest.fn(async () => undefined); const mockStart = jest.fn();
+const mockTags = jest.fn(async () => undefined); const mockStart = jest.fn(async () => undefined);
+let mockReady = true;
 let mockDark = false;
 let mockSongState = 'success';
 let mockNotesState = 'success';
@@ -45,7 +46,10 @@ jest.mock('react-native-gesture-handler', () => {
 jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => jest.requireActual<typeof import('@/theme/theme-tokens')>('@/theme/theme-tokens').createAppTheme(mockDark ? 'dark' : 'light', '#246BFD') }));
 jest.mock('@/hooks/use-majdata', () => ({
   useMajdataSong: () => ({ data: mockSongState === 'success' ? mockSong : undefined, isLoading: mockSongState === 'loading', isError: mockSongState === 'error', error: null, refetch: mockRefetch }),
-  useMajdataParsedChart: (song: MajdataSong | undefined, level: number) => mockParsed(song, level), useMajdataRanking: () => ({}),
+  useMajdataParsedChart: (song: MajdataSong | undefined, level: number) => {
+    const { useCachedTabActive } = jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen');
+    return mockParsed(useCachedTabActive() ? song : undefined, level);
+  }, useMajdataRanking: () => ({}),
 }));
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ data: { payload: { kind: 'majdata-net', snapshot: { records: [{ chartInfo: mockSong, chartLevel: 4, hash: mockSong.hash, acc: { dx: 99.1234, classic: 98.5678 }, comboState: 1 }] } } } }) }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => mockLibrary }));
@@ -60,7 +64,7 @@ jest.mock('@/components/RemoteImage', () => {
 });
 
 beforeEach(() => {
-  jest.clearAllMocks(); mockDark = false; mockSongState = 'success'; mockNotesState = 'success';
+  jest.clearAllMocks(); mockReady = true; mockDark = false; mockSongState = 'success'; mockNotesState = 'success';
   mockScoresByLevel = {};
   Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
   mockLibrary.isUpdating = false; mockDownloadRunning = false;
@@ -84,12 +88,14 @@ it.each([false, true])('uses the actual hero, metadata, buttons and one tag head
   expect(StyleSheet.flatten(screen.getByLabelText(`收藏 ${mockSong.title}`).props.style)).toMatchObject({ width: 40, height: 40, top: 47, right: 8 });
   await fireEvent.press(screen.getByLabelText('返回')); expect(mockBack).toHaveBeenCalledTimes(1);
   await fireEvent.press(screen.getByLabelText(`收藏 ${mockSong.title}`)); expect(mockFavorite).toHaveBeenCalledWith(mockSong.id, true);
-  for (const level of [5, 4, 3, 2, 1, 0, 6]) {
+  const carousel = screen.getByTestId('majdata-chart-carousel');
+  for (const [index, level] of [5, 4, 3, 2, 1, 0, 6].entries()) {
+    await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: index * carousel.props.snapToInterval } } });
     const card = within(screen.getByTestId(`majdata-chart-card-${level}`));
     expect(card.getAllByText('本地标签')).toHaveLength(1);
   }
   expect(within(screen.getByTestId('majdata-song-local-tags')).getAllByText('本地标签')).toHaveLength(1);
-  expect(screen.getAllByText('本地标签')).toHaveLength(8);
+  expect(screen.getAllByText('本地标签')).toHaveLength(3);
   const easyStyle = StyleSheet.flatten(screen.getByTestId('majdata-chart-card-0').props.style);
   expect(easyStyle.borderColor).toBe('#3B82F6');
   expect(easyStyle.backgroundColor).toBe(dark ? createAppTheme('dark', '#246BFD').surface : '#E8F0FE');
@@ -100,7 +106,7 @@ it('renders real seven-difficulty carousel in order and only parses the visible 
   const screen = await render(<MajdataSongDetail songId={mockSong.id} initialLevelIndex={0} />);
   const carousel = screen.getByTestId('majdata-chart-carousel');
   const cards = screen.getAllByTestId(/^majdata-chart-card-/);
-  expect(cards.map(card => card.props.testID)).toEqual([5, 4, 3, 2, 1, 0, 6].map(i => `majdata-chart-card-${i}`));
+  expect(cards.map(card => card.props.testID)).toEqual([1, 0, 6].map(i => `majdata-chart-card-${i}`));
   expect(carousel.props.contentOffset.x).toBe(5 * carousel.props.snapToInterval);
   expect(mockParsed.mock.calls.filter(([song]) => song).map(([, level]) => level)).toEqual([0]);
   mockParsed.mockClear();
@@ -144,14 +150,14 @@ it.each(['success', 'loading', 'error'])('hides unavailable analysis silently wh
   await screen.unmount();
 });
 
-it('defers notes and cards until existing transition scheduling finishes', async () => {
-  let ready: (() => void) | undefined;
-  jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation(callback => {
-    ready = callback as () => void; return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-  });
+it('defers notes and cards until the route transition is ready', async () => {
+  mockReady = false;
   const screen = await render(<MajdataSongDetail songId={mockSong.id} />);
-  expect(screen.getByTestId('song-detail-deferred-placeholder')).toBeTruthy(); expect(mockParsed).not.toHaveBeenCalled();
-  await act(async () => ready?.()); expect(screen.getByTestId('majdata-chart-carousel')).toBeTruthy();
+  expect(screen.getByTestId('song-detail-deferred-placeholder')).toBeTruthy();
+  expect(screen.queryByTestId('majdata-chart-carousel')).toBeNull();
+  mockReady = true;
+  await screen.rerender(<MajdataSongDetail songId={mockSong.id} />);
+  expect(screen.getByTestId('majdata-chart-carousel')).toBeTruthy();
   await screen.unmount();
 });
 
@@ -231,3 +237,8 @@ it('saves chart tags and song tags through separate existing library identities'
   expect(mockTags).toHaveBeenLastCalledWith({ kind: 'song', songId: mockSong.id }, ['喜欢']);
   await screen.unmount();
 });
+
+jest.mock('@/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+  useStackScreenReady: () => mockReady,
+}));

@@ -1,7 +1,10 @@
 import { Directory, File } from 'expo-file-system';
+import { copyAsync, deleteAsync, getInfoAsync, moveAsync, writeAsStringAsync } from 'expo-file-system/legacy';
 import { loadItemsBounded } from '@/services/offset-pagination';
 import { createInflightGuard, captureResourceWrites, resourceWriteGeneration } from '@/services/snapshot-cache-utils';
 import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
+import { runSharedCacheFileOperation } from '@/features/storage-management/fs-storage';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import {
   createChartPreviewSessionDirectory,
   disposeChartPreviewSessionDirectory,
@@ -48,7 +51,7 @@ export type ChartPreviewWebviewPlan = {
 export type ChartPreviewWebviewPlanResult = {
   uri: string;
   allowingReadAccessToURL: string;
-  dispose: () => void;
+  dispose: () => Promise<void>;
 };
 
 const REMOTE_STAGE_CONCURRENCY = 4;
@@ -86,9 +89,10 @@ async function downloadRemoteAsset(
   onFraction?: (fraction: number) => void,
 ): Promise<File> {
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
-  const assertCurrent = captureResourceWrites('shared');
+  const assertCurrent = captureResourceWrites('shared', signal);
   const target = new File(directory, fileName);
-  if (target.exists && target.size > 0) {
+  const info = await getInfoAsync(target.uri);
+  if (info.exists && info.size > 0) {
     onFraction?.(1);
     return target;
   }
@@ -99,14 +103,22 @@ async function downloadRemoteAsset(
     await downloadChartResource(directory, partName, url, signal, ({ totalBytesWritten, totalBytesExpectedToWrite }) => {
       onFraction?.(chartPreviewDownloadFraction(totalBytesWritten, totalBytesExpectedToWrite, bytes));
     });
-    if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
-    assertCurrent();
-    if (target.exists) target.delete();
-    part.move(target);
-    published = true;
+    await runSharedCacheFileOperation(async () => {
+      assertCurrent();
+      await deleteAsync(target.uri, { idempotent: true });
+      assertCurrent();
+      await moveAsync({ from: part.uri, to: target.uri });
+      published = true;
+      assertCurrent();
+    });
     onFraction?.(1);
     return target;
-  } finally { if (!published && part.exists) part.delete(); }
+  } finally {
+    if (!published) {
+      try { await deleteAsync(part.uri, { idempotent: true }); }
+      catch (error) { recordRuntimeError('chart-preview-cleanup', error, false, { phase: 'cleanup' }); }
+    }
+  }
 }
 
 async function stageRemoteAsset(
@@ -135,9 +147,12 @@ async function stageRemoteAsset(
 
   ensureParentDirectory(sessionDirectory, fileName);
   const target = new File(sessionDirectory, fileName);
-  if (target.exists && target.size === source.size) return target;
-  if (target.exists) target.delete();
-  source.copy(target);
+  const [targetInfo, sourceInfo] = await Promise.all([getInfoAsync(target.uri), getInfoAsync(source.uri)]);
+  if (targetInfo.exists && sourceInfo.exists && targetInfo.size === sourceInfo.size) return target;
+  await deleteAsync(target.uri, { idempotent: true });
+  if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
+  assertGeneration();
+  await copyAsync({ from: source.uri, to: target.uri });
   return target;
 }
 
@@ -156,7 +171,7 @@ export async function prepareChartPreviewWebviewFromPlan(
 ): Promise<ChartPreviewWebviewPlanResult> {
   const assertCurrent = captureResourceWrites('shared', signal);
   assertCurrent();
-  const directory = plan.directory ?? createChartPreviewSessionDirectory(plan.directoryName);
+  const directory = plan.directory ?? await createChartPreviewSessionDirectory(plan.directoryName);
   const remotes = [...plan.stagedAssets, ...(plan.dataUrlAssets ?? [])].filter(isRemoteAsset);
   const fractions = new Map(remotes.map((asset) => [remoteKey(asset), 0]));
   const downloadEnd = remotes.length > 0 ? DOWNLOAD_END : 0;
@@ -241,8 +256,8 @@ export async function prepareChartPreviewWebviewFromPlan(
     assertCurrent();
     const html = plan.buildHtml(template, dataUrls, directory);
     const htmlFile = new File(directory, 'index.html');
-    htmlFile.create({ overwrite: true });
-    htmlFile.write(html);
+    await writeAsStringAsync(htmlFile.uri, html);
+    assertCurrent();
     emitFinish();
 
     return {
@@ -251,7 +266,7 @@ export async function prepareChartPreviewWebviewFromPlan(
       dispose: () => disposeChartPreviewSessionDirectory(directory),
     };
   } catch (error) {
-    disposeChartPreviewSessionDirectory(directory);
+    await disposeChartPreviewSessionDirectory(directory);
     throw error;
   }
 }

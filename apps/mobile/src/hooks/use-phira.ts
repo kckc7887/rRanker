@@ -134,15 +134,19 @@ export function usePhiraChartsByIds(ids: readonly number[]) {
 }
 
 export function usePhiraChart(chartId: number | null) {
+  const active = useCachedTabActive();
   return useQuery({
-    queryKey: ['phira', 'chart', chartId], enabled: chartId !== null,
+    queryKey: ['phira', 'chart', chartId], enabled: active && chartId !== null,
+    notifyOnChangeProps: active ? undefined : [],
     queryFn: ({ signal }): Promise<PhiraChart> => phiraProvider.getChart(chartId!, signal), ...PHIRA_QUERY_OPTIONS,
   });
 }
 
 export function usePhiraChartBest(playerId: number | null, chart: PhiraChart | undefined) {
+  const active = useCachedTabActive();
   return useQuery({
-    queryKey: ['phira', 'best', playerId, chart?.id], enabled: playerId !== null && !!chart,
+    queryKey: ['phira', 'best', playerId, chart?.id], enabled: active && playerId !== null && !!chart,
+    notifyOnChangeProps: active ? undefined : [],
     queryFn: async ({ signal }) => {
       const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
       const cached = await phiraCache.loadBests(playerId!);
@@ -159,13 +163,17 @@ export function usePhiraChartBest(playerId: number | null, chart: PhiraChart | u
 }
 
 export function usePhiraUploader(userId: number | null) {
-  return useQuery({ queryKey: ['phira', 'uploader', userId], enabled: userId !== null,
+  const active = useCachedTabActive();
+  return useQuery({ queryKey: ['phira', 'uploader', userId], enabled: active && userId !== null,
+    notifyOnChangeProps: active ? undefined : [],
     queryFn: ({ signal }) => phiraProvider.getUploader(userId!, signal), ...PHIRA_QUERY_OPTIONS });
 }
 
 export function usePhiraNotes(chart: PhiraChart | undefined, enabled = true) {
+  const active = useCachedTabActive();
   return useQuery({
-    queryKey: ['phira', 'notes', chart?.id, chart?.chartUpdated], enabled: enabled && !!chart?.file,
+    queryKey: ['phira', 'notes', chart?.id, chart?.chartUpdated], enabled: active && enabled && !!chart?.file,
+    notifyOnChangeProps: active ? undefined : [],
     queryFn: async ({ signal }) => {
       try {
         const data = await phiraProvider.downloadChart(chart!.file!, signal, CHART_PREVIEW_MAX_DOWNLOAD_BYTES);

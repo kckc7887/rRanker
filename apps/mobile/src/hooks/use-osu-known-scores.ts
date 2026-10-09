@@ -74,6 +74,7 @@ export function useOsuBeatmapsetUserScores(
   gameId: OsuGameId,
   song: OsuBeatmapsetDetail | null,
 ) {
+  const active = useCachedTabActive();
   const session = useSession((state) => state.session);
   const activeProviderId = useSession((state) => state.activeProviderId);
   const activeAccountId = useSession((state) => state.activeAccountId);
@@ -137,7 +138,8 @@ export function useOsuBeatmapsetUserScores(
       if (failures.length) throw failures[0].error;
       return scores;
     },
-    enabled: bound && song !== null && song.beatmaps.length > 0,
+    enabled: active && bound && song !== null && song.beatmaps.length > 0,
+    notifyOnChangeProps: active ? undefined : [],
     staleTime: 60_000,
   });
 }

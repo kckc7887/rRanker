@@ -3,7 +3,8 @@ import { RemoteImage as Image } from '@/components/RemoteImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { InteractionManager, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useStackScreenReady } from '@/components/CachedTabScreen';
 import { QueryStateView } from '@/components/QueryStateView';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
@@ -261,12 +262,7 @@ function PhiraSongDetailContent({
   const navigation = useNavigation();
   const cancelPreviewNavigation = useRef<(() => void) | null>(null);
   useEffect(() => () => cancelPreviewNavigation.current?.(), []);
-  const [deferredReady, setDeferredReady] = useState(false); const [coverFailed, setCoverFailed] = useState(false);
-  useEffect(() => {
-    setDeferredReady(false);
-    const task = InteractionManager.runAfterInteractions(() => setDeferredReady(true));
-    return () => task.cancel();
-  }, [chart.id]);
+  const deferredReady = useStackScreenReady(); const [coverFailed, setCoverFailed] = useState(false);
   const score = usePhiraChartBest(playerId, deferredReady ? chart : undefined);
   const notes = usePhiraNotes(chart, deferredReady);
   const uploader = usePhiraUploader(deferredReady ? chart.uploader : null);
@@ -339,7 +335,7 @@ function PhiraSongDetailContent({
       </GameChartResultCard></View>
       <View style={detailStyles.details}>
         <Card><View style={detailStyles.songInformation}><Text style={[detailStyles.informationTitle, { color: theme.text }]}>歌曲信息</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>标签：{chart.tags.join('、') || '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>更新于：{chart.updated ? new Date(chart.updated).toLocaleString() : '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>上传于：{chart.created ? new Date(chart.created).toLocaleString() : '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>简介：{chart.description || '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>评分：{formatPhiraRating(chart.rating)}（{chart.ratingCount} 票）</Text></View></Card>
-        <Card><TagEditor tags={item?.kind === 'song' ? item.tags : []} presets={library.tagPresets ?? []} historyTags={buildTagHistory(library.data ?? [], library.songKey(String(chart.id)), library.tagPresets ?? [])} disabled={library.isUpdating} onPresetsChange={library.setTagPresets} onChange={(tags) => library.setTags({ kind: 'song', songId: String(chart.id) }, tags)} /></Card>
+        <Card><TagEditor tags={item?.kind === 'song' ? item.tags : []} presets={library.tagPresets ?? []} historyTags={() => buildTagHistory(library.data ?? [], library.songKey(String(chart.id)), library.tagPresets ?? [])} disabled={library.isUpdating} onPresetsChange={library.setTagPresets} onChange={(tags) => library.setTags({ kind: 'song', songId: String(chart.id) }, tags)} /></Card>
       </View>
       </> : null}
     </ScrollView>;

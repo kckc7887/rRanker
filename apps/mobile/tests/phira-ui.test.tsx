@@ -1,6 +1,6 @@
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { InteractionManager, Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import { router as mockRouter } from 'expo-router';
 import { PhiraRandomChartsScreen } from '@/screens/PhiraRandomChartsScreen';
 import { PhiraBestScreen, PhiraCatalogScreen, PhiraRecordsScreen, PhiraSongDetailScreen } from '@/screens/PhiraScreens';
@@ -45,6 +45,12 @@ let mockChromeProps: {
   backStyle: (pressed: boolean) => object[];
   favoriteStyle?: (pressed: boolean) => object[];
 } | null = null;
+
+let mockStackReady = true;
+jest.mock('@/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+  useStackScreenReady: () => mockStackReady,
+}));
 
 jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
@@ -151,6 +157,7 @@ describe('Phira page contracts', () => {
     mockCatalogFetchingNextPage = false;
     mockCatalogFetchNextPageError = false;
     mockNotesEnabled = [];
+    mockStackReady = true;
     mockChromeProps = null;
     jest.clearAllMocks();
   });
@@ -273,17 +280,12 @@ describe('Phira page contracts', () => {
     await screen.unmount();
   });
 
-  it('cancels deferred detail work when leaving during the navigation transition', async () => {
-    const cancel = jest.fn();
-    const interaction = jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation(() => ({
-      cancel,
-    }) as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>);
+  it('keeps deferred detail work disabled until stack readiness', async () => {
+    mockStackReady = false;
     const screen = await render(<PhiraSongDetailScreen chartId="38294" />);
-    expect(mockNotesEnabled).toEqual([false]);
-    await screen.unmount();
-    expect(cancel).toHaveBeenCalledTimes(1);
     expect(mockNotesEnabled).not.toContain(true);
-    interaction.mockRestore();
+    await screen.unmount();
+    expect(mockNotesEnabled).not.toContain(true);
   });
 });
 

@@ -282,7 +282,9 @@ jest.mock('@/components/TagEditor', () => ({
   },
 }));
 jest.mock('@/components/CachedTabScreen', () => ({
-  useCachedTabActive: () => true,
+  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+  StackScreenActivityScope: ({ children }: { children: import('react').ReactNode }) => children,
+  useStackScreenReady: () => true,
 }));
 
 describe('Phigros song detail', () => {
@@ -322,15 +324,13 @@ describe('Phigros song detail', () => {
     expect(screen.getByLabelText('AT 难度卡片')).toBeTruthy();
     expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy();
     expect(screen.getByLabelText('HD 难度卡片')).toBeTruthy();
-    expect(screen.getByLabelText('EZ 难度卡片')).toBeTruthy();
-
-    const cards = ['3', '2', '1', '0'].map((level) => screen.getByTestId(`phigros-chart-card-${level}`));
-    expect(cards[0].props.accessibilityLabel).toBe('AT 难度卡片');
-    expect(cards[1].props.accessibilityLabel).toBe('IN 难度卡片');
-    expect(cards[2].props.accessibilityLabel).toBe('HD 难度卡片');
-    expect(cards[3].props.accessibilityLabel).toBe('EZ 难度卡片');
-
+    expect(screen.queryByLabelText('EZ 难度卡片')).toBeNull();
     const carousel = screen.getByTestId('phigros-chart-carousel');
+    for (const [index, label] of ['AT', 'IN', 'HD', 'EZ'].entries()) {
+      await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: index * carousel.props.snapToInterval } } });
+      expect(screen.getByTestId(`phigros-chart-card-${3 - index}`).props.accessibilityLabel).toBe(`${label} 难度卡片`);
+    }
+
     expect(carousel.props.contentOffset.x).toBeGreaterThan(0);
   });
 
@@ -395,12 +395,12 @@ describe('Phigros song detail', () => {
     await waitFor(() => expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy());
 
     const tables = screen.getAllByLabelText('谱面物量');
-    expect(tables.length).toBe(3);
-    expect(screen.getAllByText('TAP').length).toBe(3);
-    expect(screen.getAllByText('HOLD').length).toBe(3);
-    expect(screen.getAllByText('DRAG').length).toBe(3);
-    expect(screen.getAllByText('FLICK').length).toBe(3);
-    expect(screen.getAllByText('总计').length).toBe(3);
+    expect(tables.length).toBe(2);
+    expect(screen.getAllByText('TAP').length).toBe(2);
+    expect(screen.getAllByText('HOLD').length).toBe(2);
+    expect(screen.getAllByText('DRAG').length).toBe(2);
+    expect(screen.getAllByText('FLICK').length).toBe(2);
+    expect(screen.getAllByText('总计').length).toBe(2);
 
     const inCard = screen.getByLabelText('IN 难度卡片');
     const inTable = within(inCard).getByLabelText('谱面物量');

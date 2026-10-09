@@ -1,7 +1,7 @@
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { isBoundedCacheEntry } from './cache-policy';
 import { isExpoSystemCacheEntry } from './expo-system-cache';
-import { clearDirectoryContentsStrict, measureDirectoryBytesAsync, APP_CACHE_ROOT } from './fs-storage';
+import { clearDirectoryContentsStrict, measureDirectoryBytesAsync, APP_CACHE_ROOT, runSharedCacheFileOperation } from './fs-storage';
 import { reloadUiIconFonts } from './ui-icon-fonts';
 import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
@@ -15,7 +15,7 @@ export async function measureSharedCacheBytes(): Promise<number> {
 
 export async function clearSharedCache(): Promise<{ imageCacheCleared: boolean; failures: string[] }> {
   invalidateResourceWrites('shared');
-  clearDirectoryContentsStrict(APP_CACHE_ROOT(), { skip: keepSharedCacheEntry });
+  await runSharedCacheFileOperation(() => clearDirectoryContentsStrict(APP_CACHE_ROOT(), { skip: keepSharedCacheEntry }));
   const { Image } = await import('expo-image');
   const failures: string[] = [];
   const clearImageCache = async (load: () => Promise<boolean>, title: string, phase: string) => {

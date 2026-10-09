@@ -1,9 +1,9 @@
+import { useCachedTabActive, useStackScreenReady } from '@/components/CachedTabScreen';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
-  InteractionManager,
   ScrollView,
   StyleSheet,
   Text,
@@ -14,7 +14,7 @@ import { Card } from '@/components/Card';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { DetailPressable } from '@/components/game-content/DetailPressable';
 import { ExpandableTextLine } from '@/components/game-content/ExpandableTextLine';
-import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
+import { ChartCarousel as SharedChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
@@ -155,6 +155,7 @@ function Detail({
 }) {
   const theme = useAppTheme();
   const { width } = useWindowDimensions();
+  const active = useCachedTabActive();
   const songItem = library.data?.find((item) => item.key === library.songKey(song.id));
   const sortedCharts = useMemo(
     () => [...song.charts].sort((a, b) => b.levelIndex - a.levelIndex),
@@ -169,10 +170,10 @@ function Detail({
     setTriedNotesRefresh(false);
   }, [song.id]);
   useEffect(() => {
-    if (hasAnyNotes || triedNotesRefresh) return;
+    if (!active || hasAnyNotes || triedNotesRefresh) return;
     setTriedNotesRefresh(true);
     onEnsureLatestNoteCounts();
-  }, [hasAnyNotes, triedNotesRefresh, onEnsureLatestNoteCounts]);
+  }, [active, hasAnyNotes, triedNotesRefresh, onEnsureLatestNoteCounts]);
   const notesPending = !hasAnyNotes && (!triedNotesRefresh || catalogFetching);
   const defaultIndex = Math.max(0, sortedCharts.findIndex((c) => c.levelIndex === IN_LEVEL_INDEX));
   const requestedIndex = initialLevelIndex === undefined
@@ -180,7 +181,7 @@ function Detail({
     : sortedCharts.findIndex((c) => c.levelIndex === initialLevelIndex);
   const initialIndex = requestedIndex >= 0 ? requestedIndex : defaultIndex;
   const cardWidth = Math.max(280, width - 40);
-  const [deferredReady, setDeferredReady] = useState(false);
+  const deferredReady = useStackScreenReady();
   const [coverFailed, setCoverFailed] = useState(false);
   const [coverStage, setCoverStage] = useState<'full' | 'lowres' | 'blur'>('full');
   const { isRunning: downloadRunning, start: startChartDownload } = useChartPackageDownload({
@@ -188,11 +189,8 @@ function Detail({
   });
 
   useEffect(() => {
-    setDeferredReady(false);
     setCoverFailed(false);
     setCoverStage('full');
-    const task = InteractionManager.runAfterInteractions(() => setDeferredReady(true));
-    return () => task.cancel();
   }, [song.id]);
 
   const coverSource = coverStage === 'full'
@@ -289,7 +287,7 @@ function Detail({
             <TagEditor
               tags={songItem?.kind === 'song' ? songItem.tags : []}
               presets={library.tagPresets ?? []}
-              historyTags={buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
+              historyTags={() => buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
               disabled={library.isUpdating}
               onPresetsChange={library.setTagPresets}
               onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)}
@@ -339,13 +337,14 @@ function ChartCarousel({
         gap={CARD_GAP}
         initialIndex={initialIndex}
         items={charts}
-        keyExtractor={(chart) => `${chart.songId}:${chart.levelIndex}`}
-        renderItem={(chart) => {
+        keyExtractor={(chart) => library.chartKey(song.id, PHIGROS_CHART_TYPE, chart.levelIndex)}
+        renderItem={(chart, carouselState) => {
           const best = records
             .filter((record) => record.songId === song.id && record.levelIndex === chart.levelIndex)
             .sort((left, right) => (right.dxScore ?? 0) - (left.dxScore ?? 0))[0];
           return (
             <ChartCard
+              carouselState={carouselState}
               chart={chart}
               best={best}
               song={song}
@@ -373,6 +372,7 @@ function ChartCarousel({
 }
 
 function ChartCard({
+  carouselState,
   chart,
   best,
   song,
@@ -384,6 +384,7 @@ function ChartCard({
   downloadRunning,
   onDownloadChart,
 }: {
+  carouselState: ChartCarouselItemState;
   chart: Chart;
   best?: ScoreRecord;
   song: Song;
@@ -557,9 +558,10 @@ function ChartCard({
         </Text>
       </DetailPressable>
       <TagEditor
+        {...carouselState.tagEditor}
         tags={chartItem?.tags ?? []}
         presets={library.tagPresets ?? []}
-        historyTags={buildTagHistory(
+        historyTags={() => buildTagHistory(
           library.data ?? [],
           library.chartKey(song.id, PHIGROS_CHART_TYPE, chart.levelIndex),
           library.tagPresets ?? [],

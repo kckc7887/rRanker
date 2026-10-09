@@ -441,7 +441,7 @@ describe('Chunithm song detail', () => {
         }],
       }],
     };
-    const screen = await render(<ChunithmSongDetail songId="3" />);
+    const screen = await render(<ChunithmSongDetail songId="3" initialLevelIndex={5} />);
     const card = within(screen.getByTestId('chunithm-detail-difficulty-5'));
     expect(card.getByLabelText("WORLD'S END 不参与 Rating 计算")).toBeTruthy();
     expect(card.getByLabelText("WORLD'S END 不参与 OVER POWER 计算")).toBeTruthy();

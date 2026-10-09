@@ -97,19 +97,22 @@ describe('Rizline UI', () => {
     const carousel = screen.getByTestId('rizline-chart-carousel');
     expect(carousel.props.contentOffset.x).toBe(carousel.props.snapToInterval);
     expect(screen.getAllByTestId(/^rizline-chart-(AT|IN|HD|EZ)$/).map((card) => card.props.testID))
-      .toEqual(['rizline-chart-AT', 'rizline-chart-IN', 'rizline-chart-HD', 'rizline-chart-EZ']);
+      .toEqual(['rizline-chart-AT', 'rizline-chart-IN', 'rizline-chart-HD']);
     expect(screen.getAllByText('2:05').length).toBeGreaterThan(0);
     expect(screen.queryByText('歌曲信息')).toBeNull(); expect(screen.queryByText('相关成就')).toBeNull();
     expect(screen.queryByText('初见成就')).toBeNull(); expect(screen.queryByText(/更新时间/)).toBeNull();
-    const chart = within(screen.getByTestId('rizline-chart-IN'));
+    let chart = within(screen.getByTestId('rizline-chart-IN'));
     expect(chart.getByText('HIT')).toBeTruthy(); expect(chart.getByText('COMBO')).toBeTruthy(); expect(chart.getByText('Max Score')).toBeTruthy();
-    for (const difficulty of ['AT', 'IN', 'HD', 'EZ'] as const) {
+    for (const [index, difficulty] of (['AT', 'IN', 'HD', 'EZ'] as const).entries()) {
+      await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: index * carousel.props.snapToInterval } } });
       const difficultyCard = within(screen.getByTestId(`rizline-chart-${difficulty}`));
       expect(difficultyCard.getByLabelText('加入练习清单')).toHaveStyle({
         backgroundColor: rizlineDifficultyColors(difficulty).bg, borderColor: rizlineDifficultyColors(difficulty).bg,
       });
       expect(difficultyCard.getByText('加入练习清单')).toHaveStyle({ color: '#FFFFFF' });
     }
+    await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: carousel.props.snapToInterval } } });
+    chart = within(screen.getByTestId('rizline-chart-IN'));
     await fireEvent.press(chart.getByLabelText('加入练习清单'));
     expect(mockSetPractice).toHaveBeenCalledWith('song.a', 'SD', 2, true);
     const preview = chart.getByLabelText('查看谱面确认：测试歌曲 IN');

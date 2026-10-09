@@ -107,7 +107,7 @@ export async function prepareRizlineChartPreviewWebViewSource(
 ) {
   const assertCurrent = captureResourceWrites('shared', signal);
   assertCurrent();
-  const directory = createChartPreviewSessionDirectory(DIRECTORY_NAME);
+  const directory = await createChartPreviewSessionDirectory(DIRECTORY_NAME);
   try {
     const bundle = await loadRizlineChartPreviewResources(
       target,
@@ -147,7 +147,7 @@ export async function prepareRizlineChartPreviewWebViewSource(
     assertCurrent();
     return prepared;
   } catch (error) {
-    disposeChartPreviewSessionDirectory(directory);
+    await disposeChartPreviewSessionDirectory(directory);
     throw error;
   }
 }

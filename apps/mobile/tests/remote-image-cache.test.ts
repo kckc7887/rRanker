@@ -81,6 +81,22 @@ vi.mock('expo-file-system', () => ({
   Paths: mocks.paths,
 }));
 
+vi.mock('expo-file-system/legacy', () => ({
+  getInfoAsync: async (uri: string) => {
+    const file = mocks.files.get(uri);
+    return file ? { exists: true, isDirectory: false, size: file.size, modificationTime: file.modified / 1000 }
+      : { exists: mocks.directories.has(uri), isDirectory: true, size: 0, modificationTime: 0 };
+  },
+  makeDirectoryAsync: async (uri: string) => { mocks.directories.add(uri); },
+  readDirectoryAsync: async (uri: string) => new mocks.MockDirectory(uri).list().map(file => file.name),
+  deleteAsync: async (uri: string) => {
+    new mocks.MockDirectory(uri).delete();
+    mocks.files.delete(uri);
+  },
+  writeAsStringAsync: async (uri: string, content: string) => new mocks.MockFile(uri).write(content),
+  moveAsync: async ({ from, to }: { from: string; to: string }) => new mocks.MockFile(from).move(new mocks.MockFile(to)),
+}));
+
 vi.mock('expo-crypto', () => ({
   CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
   digestStringAsync: vi.fn(async (_algorithm: string, value: string) => {
@@ -487,6 +503,38 @@ describe('remote image cache', () => {
     await expect(pending).resolves.toBeNull();
     expect(await cache.measureGameRemoteImageCacheBytes('maimai')).toBe(0);
     expect([...mocks.files.keys()].filter((path) => path.endsWith('.webp') || path.endsWith('.part'))).toEqual([]);
+  });
+
+  it.each(['game', 'all'] as const)('orders %s clearing after an in-flight publish and preserves the next request', async (scope) => {
+    const fileSystem = await import('expo-file-system/legacy');
+    const moveFile = fileSystem.moveAsync;
+    const entered = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    let held = false;
+    const move = vi.spyOn(fileSystem, 'moveAsync').mockImplementation(async options => {
+      if (!held && options.to.endsWith('.webp')) {
+        held = true;
+        entered.resolve();
+        await resume.promise;
+      }
+      await moveFile(options);
+    });
+    const source = 'https://example.test/publishing.png';
+    const options = { gameId: 'maimai', profile: 'thumbnail' as const };
+    try {
+      const previous = cache.cacheCompressedRemoteImage(source, options);
+      await entered.promise;
+      const clearing = scope === 'all' ? cache.clearCompressedRemoteImageCache() : cache.clearGameRemoteImageCache('maimai');
+      const next = cache.cacheCompressedRemoteImage(source, options);
+      resume.resolve();
+      await expect(previous).resolves.toBeNull();
+      await clearing;
+      const result = await next;
+      expect(result).not.toBeNull();
+      await expect(cache.findCompressedRemoteImage(source, options)).resolves.toEqual(result);
+      expect([...mocks.files.keys()].filter(path => path.endsWith('.webp'))).toEqual([result!.fileUri]);
+      expect([...mocks.files.keys()].filter(path => path.endsWith('.part'))).toEqual([]);
+    } finally { resume.resolve(); move.mockRestore(); }
   });
 
 });

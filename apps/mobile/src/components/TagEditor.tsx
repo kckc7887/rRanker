@@ -30,29 +30,53 @@ export function TagEditor({
   testID,
   onChange,
   onPresetsChange,
+  draft,
+  onDraftChange,
+  onBusyChange,
 }: {
   tags: string[];
   presets?: string[];
-  historyTags?: string[];
+  historyTags?: string[] | (() => string[]);
   presetsEditable?: boolean;
   disabled?: boolean;
   testID?: string;
   onChange: (tags: string[]) => Promise<unknown>;
   onPresetsChange?: (tags: string[]) => Promise<unknown>;
+  draft?: string;
+  onDraftChange?: (draft: string) => void;
+  onBusyChange?: (busy: boolean) => void;
 }) {
   const theme = useAppTheme();
   const GestureRoot = Platform.OS === 'android' ? View : GestureHandlerRootView;
   const TagPressable = Platform.OS === 'android' ? Pressable : GesturePressable;
-  const [input, setInput] = useState('');
+  const [localInput, setLocalInput] = useState('');
+  const input = draft ?? localInput;
+  const setInput = onDraftChange ?? setLocalInput;
   const [error, setError] = useState('');
   const [pickerVisible, setPickerVisible] = useState(false);
+  const pickerVisibleRef = useRef(false);
+  const pendingCommits = useRef(0);
+  const setPickerOpen = (visible: boolean) => {
+    pickerVisibleRef.current = visible;
+    setPickerVisible(visible);
+    onBusyChange?.(visible || pendingCommits.current > 0);
+  };
+  const visibleHistory = useMemo(() => pickerVisible
+    ? (typeof historyTags === 'function' ? historyTags() : historyTags)
+    : [], [pickerVisible, historyTags]);
 
   const commit = async (values: string[]): Promise<TagCommitResult> => {
+    pendingCommits.current += 1;
+    onBusyChange?.(true);
     try { setError(''); await onChange(normalizeTags(values)); return { ok: true }; }
     catch {
       const message = '标签保存失败，请重试。';
       setError(message);
       return { ok: false, error: message };
+    }
+    finally {
+      pendingCommits.current -= 1;
+      onBusyChange?.(pickerVisibleRef.current || pendingCommits.current > 0);
     }
   };
 
@@ -77,7 +101,7 @@ export function TagEditor({
           value={input} onChangeText={setInput} onSubmitEditing={() => void add()}
           style={[styles.input, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
         <TagPressable accessibilityRole="button" accessibilityLabel="打开标签预设" disabled={disabled}
-          onPress={() => setPickerVisible(true)} style={[styles.presetButton, { borderColor: theme.accent }]}>
+          onPress={() => setPickerOpen(true)} style={[styles.presetButton, { borderColor: theme.accent }]}>
           <Text style={[styles.presetText, { color: theme.accent }]}>预设</Text>
         </TagPressable>
         <TagPressable accessibilityRole="button" accessibilityLabel="添加标签" disabled={disabled}
@@ -87,13 +111,21 @@ export function TagEditor({
       </View>
       {error ? <Text style={[styles.error, { color: theme.danger }]}>{error}</Text> : null}
     </GestureRoot>
-    <TagPresetSheet visible={pickerVisible} tags={tags} presets={presets} historyTags={historyTags}
+    {pickerVisible ? <TagPresetSheet visible tags={tags} presets={presets} historyTags={visibleHistory}
       presetsEditable={presetsEditable}
-      onClose={() => setPickerVisible(false)} onSave={async (values) => {
+      onClose={() => setPickerOpen(false)} onSave={async (values) => {
         const result = await commit(values);
-        if (result.ok) setPickerVisible(false);
+        if (result.ok) setPickerOpen(false);
         return result;
-      }} onPresetsChange={onPresetsChange} />
+      }} onPresetsChange={onPresetsChange ? async (values) => {
+        pendingCommits.current += 1;
+        onBusyChange?.(true);
+        try { await onPresetsChange(values); }
+        finally {
+          pendingCommits.current -= 1;
+          onBusyChange?.(pickerVisibleRef.current || pendingCommits.current > 0);
+        }
+      } : undefined} /> : null}
   </>;
 }
 

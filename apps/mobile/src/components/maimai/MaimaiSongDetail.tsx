@@ -1,7 +1,8 @@
+import { useStackScreenReady } from '@/components/CachedTabScreen';
 import { useNotification } from '@/components/AppNotification';
 import { Card } from '@/components/Card';
 import { CollectionImage } from '@/components/CollectionImage';
-import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
+import { ChartCarousel as SharedChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
 import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { simaiChartActionStyle, simaiChartActionTextStyle, SimaiChartResultLayout, SimaiNoteTable, SimaiSongChrome, SimaiSongHero, SimaiSongMetadata } from '@/components/game-content/SimaiSongDetailLayout';
@@ -63,7 +64,6 @@ import { router, type Href } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { useEffect, useMemo, useState } from 'react';
 import {
-  InteractionManager,
   Linking,
   Platform,
   ScrollView,
@@ -220,12 +220,7 @@ function Detail({ song, versions, records, dxratingTags, library, notesLoading, 
   const visibleVersionId = visibleChart?.versionId ?? song.versionId;
   const visibleVersionTitle = versions.find((version) => version.id === visibleVersionId)?.title ?? song.version;
   const versionName = localizedVersionName(visibleVersionId, visibleVersionTitle, versionLocale);
-  const [deferredReady, setDeferredReady] = useState(false);
-  useEffect(() => {
-    setDeferredReady(false);
-    const task = InteractionManager.runAfterInteractions(() => setDeferredReady(true));
-    return () => task.cancel();
-  }, [song.id]);
+  const deferredReady = useStackScreenReady();
   const metadataItems: SongMetadataItem[] = [
     { key: 'genre', label: '分类', value: song.genre ?? '未知', flex: 1 },
     { key: 'bpm', label: 'BPM', value: song.bpm?.toString() ?? '未知', flex: 0.65 },
@@ -280,7 +275,7 @@ function Detail({ song, versions, records, dxratingTags, library, notesLoading, 
           <Text style={[styles.body, { color: theme.textSecondary }]}>版权：{song.rights || '未提供'}</Text>
           <Text style={[styles.body, { color: theme.textSecondary }]}>状态：{song.disabled ? '禁用' : song.locked ? '锁定' : '可用'}</Text></Card>
         <Card><TagEditor tags={songItem?.tags ?? []} presets={library.tagPresets ?? []}
-          historyTags={buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
+          historyTags={() => buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
           disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
           onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card>
       </View>
@@ -400,12 +395,12 @@ function ChartCarousel({ charts, records, song, library, cardWidth, initialIndex
     gap={CARD_GAP}
     initialIndex={initialIndex}
     items={charts}
-    keyExtractor={(chart) => `${chart.type}:${chart.levelIndex}`}
+    keyExtractor={(chart) => library.chartKey(song.id, chart.type, chart.levelIndex)}
     onIndexChange={onVisibleIndexChange}
-    renderItem={(chart) => {
+    renderItem={(chart, carouselState) => {
       const best = recordsByChart.get(`${chart.type}:${chart.levelIndex}`);
       const chartTags = dxRatingTagsForChart(dxratingTags, song, chart);
-      return <ChartCard chart={chart} best={best} song={song}
+      return <ChartCard carouselState={carouselState} chart={chart} best={best} song={song}
         library={library} width={cardWidth} canSwitchChartType={canSwitchChartType}
         nextChartType={nextChartType} dxratingTags={chartTags}
         notesLoading={notesLoading} notesError={notesError} onRetryNotes={onRetryNotes}
@@ -451,7 +446,8 @@ function ChartScoreSummary({ chart, best, canSwitchChartType, nextChartType, onT
     </DetailPressable>} />;
 }
 
-function ChartCard({ chart, best, song, library, width, canSwitchChartType, nextChartType, dxratingTags, notesLoading, notesError, onRetryNotes, onShowAllDxRatingTags, onToggleChartType }: {
+function ChartCard({ carouselState, chart, best, song, library, width, canSwitchChartType, nextChartType, dxratingTags, notesLoading, notesError, onRetryNotes, onShowAllDxRatingTags, onToggleChartType }: {
+  carouselState: ChartCarouselItemState;
   chart: Chart;
   best?: ScoreRecord;
   song: Song;
@@ -532,10 +528,12 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
     : chart.level;
 
   const handleDownloadChart = () => {
+    carouselState.onDownloadRunningChange(true);
     void startChartDownload((options, includeVideo) => downloadMaimaiChartPackage({
       songId: song.id, chartType: chart.type, levelIndex: chart.levelIndex,
       levelLabel: downloadLevelLabel, title: song.title, includeVideo,
-    }, options), { optionalVideoUrl: maimaiChartPreviewVideoUrl(maimaiChartPreviewChartId(song.id, chart.type)) });
+    }, options), { optionalVideoUrl: maimaiChartPreviewVideoUrl(maimaiChartPreviewChartId(song.id, chart.type)) })
+      .finally(() => carouselState.onDownloadRunningChange(false));
   };
 
   return <GameChartResultCard
@@ -582,8 +580,8 @@ function ChartCard({ chart, best, song, library, width, canSwitchChartType, next
         下载谱面文件
       </Text>
     </DetailPressable>
-    <TagEditor tags={chartItem?.tags ?? []} presets={chartTagPresets} presetsEditable={false}
-      historyTags={buildTagHistory(library.data ?? [], library.chartKey(song.id, chart.type, chart.levelIndex), chartTagPresets)}
+    <TagEditor {...carouselState.tagEditor} tags={chartItem?.tags ?? []} presets={chartTagPresets} presetsEditable={false}
+      historyTags={() => buildTagHistory(library.data ?? [], library.chartKey(song.id, chart.type, chart.levelIndex), chartTagPresets)}
       disabled={library.isUpdating} testID={`maimai-chart-local-tags-${chart.type}-${chart.levelIndex}`}
       onChange={(tags) => library.setTags({ kind: 'chart', songId: song.id, type: chart.type, levelIndex: chart.levelIndex }, tags)} />
   </GameChartResultCard>;

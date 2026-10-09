@@ -710,7 +710,7 @@ describe('M2 song query screens', () => {
     expect(screen.getByLabelText('难度卡片').props.contentOffset.x).toBeGreaterThan(0);
     const difficulties = screen.getAllByText(/Re:MASTER|MASTER|EXPERT|ADVANCED|BASIC/).map((node) =>
       Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children);
-    expect(difficulties).toEqual(['Re:MASTER', 'MASTER', 'EXPERT', 'ADVANCED', 'BASIC']);
+    expect(difficulties).toEqual(['Re:MASTER', 'MASTER', 'EXPERT']);
     expect(screen.getByLabelText('100.5000%')).toBeTruthy();
     expect(screen.getByTestId('flowing-achievement')).toBeTruthy();
     expect(screen.getByTestId('rainbow-achievement')).toBeTruthy();
@@ -720,21 +720,15 @@ describe('M2 song query screens', () => {
       .toEqual(['#FF8A96', '#78E8A0', '#78C8FF', '#A89CF8', '#F08ADE'].map(processColor));
     expect(screen.getByLabelText('99.9999%')).toBeTruthy();
     expect(screen.getByLabelText('99.5000%')).toBeTruthy();
-    expect(screen.getByLabelText('99.0000%')).toBeTruthy();
     expect(screen.getByText('AP+')).toBeTruthy();
     expect(screen.getByText('FDX+')).toBeTruthy();
     expect(screen.getByTestId('flowing-status-AP+')).toBeTruthy();
     expect(screen.getByTestId('flowing-status-FDX+')).toBeTruthy();
-    expect(screen.getByText('FC')).toBeTruthy();
-    expect(screen.getAllByText('FS').length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId('flowing-status-FS').length).toBeGreaterThan(0);
     expect(screen.queryByText('SYNC')).toBeNull();
     expect(screen.queryByTestId('flowing-status-SYNC')).toBeNull();
     expect(screen.getByText('SSS+')).toBeTruthy();
     expect(screen.getByText('SSS')).toBeTruthy();
     expect(screen.getByText('SS+')).toBeTruthy();
-    expect(screen.getByText('SS')).toBeTruthy();
-    expect(screen.getByText('S+')).toBeTruthy();
     expect(screen.getByTestId('flowing-rate-SSS+')).toBeTruthy();
     expect(screen.getByTestId('rainbow-rate-SSS')).toBeTruthy();
     expect(screen.getByTestId('flowing-rate-SS+')).toBeTruthy();
@@ -742,6 +736,17 @@ describe('M2 song query screens', () => {
       .toEqual(['#8E2437', '#984D19', '#796515', '#256B39', '#205E7A', '#384181', '#692C7C'].map(processColor));
     expect(screen.getByTestId('flowing-rate-SS+').props.colors)
       .toEqual(['#84530A', '#A46E12', '#765006', '#A46E12', '#84530A'].map(processColor));
+    const chartScroller = screen.getByLabelText('难度卡片');
+    await fireEvent.scroll(chartScroller, { nativeEvent: { contentOffset: { x: 3 * chartScroller.props.snapToInterval } } });
+    expect(screen.getByText('ADVANCED')).toBeTruthy();
+    expect(screen.getByText('BASIC')).toBeTruthy();
+    expect(screen.getByLabelText('99.0000%')).toBeTruthy();
+    expect(screen.getByText('FC')).toBeTruthy();
+    expect(screen.getAllByText('FS').length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('flowing-status-FS').length).toBeGreaterThan(0);
+    expect(screen.getByText('SS')).toBeTruthy();
+    expect(screen.getByText('S+')).toBeTruthy();
+    await fireEvent.scroll(chartScroller, { nativeEvent: { contentOffset: { x: chartScroller.props.snapToInterval } } });
     expect(screen.getByTestId('near-miss-badge')).toBeTruthy();
     expect(screen.queryByText(/定数 13\.6/)).toBeNull();
     expect(screen.getByText('13.6')).toBeTruthy();
@@ -801,7 +806,7 @@ describe('M2 song query screens', () => {
       title: '谱面已保存',
     })));
 
-    expect(screen.getAllByText('·点击切换·')).toHaveLength(5);
+    expect(screen.getAllByText('·点击切换·')).toHaveLength(3);
     await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
     expect(screen.queryByText('谱师：DX主谱师')).toBeNull();
     expect(screen.getByText('谱师：SD主谱师')).toBeTruthy();
@@ -1081,3 +1086,9 @@ describe('M2 song query screens', () => {
     expect(screen.getByTestId('metadata-value-版本').props.children).toBe('舞萌DX 2026');
   });
 });
+
+jest.mock('@/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+  StackScreenActivityScope: ({ children }: { children: import('react').ReactNode }) => children,
+  useStackScreenReady: () => true,
+}));

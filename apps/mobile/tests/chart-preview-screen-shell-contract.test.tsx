@@ -151,7 +151,7 @@ describe('ChartPreviewScreenShell 交互', () => {
 
   it('后台取消只记录一次，迟到的准备结果不会记录成功', async () => {
     let resolve!: (source: ChartPreviewShellSource) => void;
-    const dispose = jest.fn();
+    const dispose = jest.fn<() => void>();
     const request: ChartPreviewShellRequest<MaimaiPayload> = { kind: 'ready', payload: { chartId: 834, difficulty: 4, title: 'secret' }, prepare: () => new Promise((done) => { resolve = done; }) };
     const view = await renderMaimaiShell(request);
     mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
@@ -404,7 +404,7 @@ describe('ChartPreviewScreenShell 交互', () => {
   });
 
   it('页面卸载时由公共壳统一释放会话 stage', async () => {
-    const dispose = jest.fn();
+    const dispose = jest.fn<() => void>();
     const view = await renderMaimaiShell({
       kind: 'ready',
       payload: { chartId: 834, difficulty: 4, title: '示例舞萌谱面' },
@@ -509,7 +509,7 @@ describe('ChartPreviewScreenShell 交互', () => {
   });
 
   it('内容进程终止与后台释放下发释放命令，而不是生命周期暂停', async () => {
-    const dispose = jest.fn();
+    const dispose = jest.fn<() => void>();
     const request: ChartPreviewShellRequest<MaimaiPayload> = {
       kind: 'ready', payload: { chartId: 834, difficulty: 4, title: '示例舞萌谱面' }, prepare: async () => ({ ...maimaiSource, dispose }),
     };
@@ -591,7 +591,7 @@ describe('ChartPreviewScreenShell 交互', () => {
   });
 
   it('ready 后内存警告显示手动重载，前后台切换不绕过用户操作', async () => {
-    const dispose = jest.fn();
+    const dispose = jest.fn<() => void>();
     const prepare = jest.fn(async () => ({
       ...maimaiSource,
       uri: `file://maimai/session-${prepare.mock.calls.length}/index.html`,
@@ -636,7 +636,7 @@ describe('ChartPreviewScreenShell 交互', () => {
 
   it.each(['onContentProcessDidTerminate', 'onRenderProcessGone'])(
     '%s 后只手动重载，旧实例重复终止事件不重新准备', async (eventName) => {
-      const dispose = jest.fn();
+      const dispose = jest.fn<() => void>();
       const prepare = jest.fn(async () => ({ ...maimaiSource, dispose }));
       await renderMaimaiShell({ kind: 'ready', payload: { chartId: 834, difficulty: 4, title: '示例舞萌谱面' }, prepare });
       const old = latestWebViewProps;
@@ -715,7 +715,7 @@ describe('ChartPreviewScreenShell 交互', () => {
     expect(screen.getByText('准备谱面确认资源超时，请重新加载。')).toBeTruthy();
     await act(() => { fireEvent.press(screen.getByRole('button', { name: '重新加载' })); });
     expect(attempts).toHaveLength(2);
-    const dispose = jest.fn();
+    const dispose = jest.fn<() => void>();
     const logCount = log.mock.calls.length;
     await act(() => {
       attempts[0]!.progress?.({ label: '超时旧结果', value: 1 });
@@ -767,7 +767,7 @@ describe('ChartPreviewScreenShell 交互', () => {
   });
 
   it('外部错误移除播放器时释放会话并屏蔽旧事件', async () => {
-    const dispose = jest.fn();
+    const dispose = jest.fn<() => void>();
     const request: ChartPreviewShellRequest<MaimaiPayload> = {
       kind: 'ready', payload: { chartId: 834, difficulty: 4, title: '示例舞萌谱面' }, prepare: async () => ({ ...maimaiSource, dispose }),
     };
@@ -788,7 +788,7 @@ describe('ChartPreviewScreenShell 交互', () => {
 
   it.each([undefined, 75])('播放器始终不发 ready 时按 %s 毫秒配置结束等待并允许重载', async (readyTimeoutMs) => {
     jest.useFakeTimers();
-    const dispose = jest.fn();
+    const dispose = jest.fn<() => void>();
     await renderMaimaiShell({
       kind: 'ready', payload: { chartId: 834, difficulty: 4, title: '示例舞萌谱面' }, readyTimeoutMs,
       prepare: async () => ({ ...maimaiSource, dispose }),

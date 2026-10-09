@@ -22,8 +22,13 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { useNotification } from '@/components/AppNotification';
 import { findGame, type GameId } from '@/domain/game-bind-options';
 import { switchBoundAccount, notifyAccountSwitchError } from '@/services/switch-bound-account';
+import { StackScreenActivityScope } from '@/components/CachedTabScreen';
 
 export default function SongDetailScreen() {
+  return <StackScreenActivityScope><SongDetailContent /></StackScreenActivityScope>;
+}
+
+function SongDetailContent() {
   const theme = useAppTheme();
   const activeGameId = useSession((s) => s.activeGameId);
   const params = useLocalSearchParams<DetailTargetParams>();

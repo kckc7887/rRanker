@@ -406,3 +406,9 @@ describe('M3A personal library screens', () => {
     }
   });
 });
+
+jest.mock('@/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+  StackScreenActivityScope: ({ children }: { children: import('react').ReactNode }) => children,
+  useStackScreenReady: () => true,
+}));

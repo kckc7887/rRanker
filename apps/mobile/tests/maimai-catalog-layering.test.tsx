@@ -21,10 +21,11 @@ const mockCatalogProvider = {
   getSong: mockGetSong,
 };
 let mockActiveAccountId = 'maimai:lxns:first';
+let mockActive = true;
 
 jest.mock('@/components/CachedTabScreen', () => ({
   ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
-  useCachedTabActive: () => true,
+  useCachedTabActive: () => mockActive,
 }));
 jest.mock('@/hooks/use-game-data', () => ({
   useGameData: (enabled?: boolean) => mockUseGameData(enabled),
@@ -56,6 +57,7 @@ describe('舞萌曲库分层', () => {
     queryClient.clear();
     jest.clearAllMocks();
     mockActiveAccountId = 'maimai:lxns:first';
+    mockActive = true;
     mockGetCatalog.mockResolvedValue(structuredClone(fixtureCatalog));
     mockGetDetailedCatalog.mockResolvedValue(structuredClone(fixtureCatalog));
     mockGetAliases.mockResolvedValue({ aliases: [], source: fixtureCatalog.source });
@@ -72,6 +74,21 @@ describe('舞萌曲库分层', () => {
   afterEach(async () => {
     await cleanup();
     queryClient.clear();
+  });
+
+  it('waits for the detail to become active and preserves its data when covered', async () => {
+    mockActive = false;
+    const hook = await renderHook(() => useMaimaiSongDetail('1', fixtureCatalog), { wrapper });
+    expect(hook.result.current.fetchStatus).toBe('idle');
+    expect(mockGetSong).not.toHaveBeenCalled();
+    mockActive = true;
+    await hook.rerender({});
+    await waitFor(() => expect(hook.result.current.data?.id).toBe(fixtureCatalog.songs[0].id));
+    const displayed = hook.result.current.data;
+    mockActive = false;
+    await hook.rerender({});
+    expect(hook.result.current.data).toBe(displayed);
+    expect(hook.result.current.fetchStatus).toBe('idle');
   });
 
   it('切换舞萌账号复用同一份轻量索引', async () => {

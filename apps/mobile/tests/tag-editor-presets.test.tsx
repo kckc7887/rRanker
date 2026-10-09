@@ -19,6 +19,25 @@ jest.mock('react-native-gesture-handler', () => {
 });
 
 describe('标签预设编辑器', () => {
+  it('reads history only while the sheet is open and shows updated library tags', async () => {
+    let libraryTags = ['旧标签'];
+    let historyRead = false;
+    const history = () => { historyRead = true; return libraryTags; };
+    const onChange = async () => undefined;
+    const screen = await render(<TagEditor tags={[]} historyTags={history} onChange={onChange} />);
+    expect(historyRead).toBe(false);
+    await fireEvent.press(screen.getByLabelText('打开标签预设'));
+    expect(screen.getByLabelText('选择标签 旧标签')).toBeTruthy();
+    libraryTags = ['新标签'];
+    await screen.rerender(<TagEditor tags={[]} historyTags={() => libraryTags} onChange={onChange} />);
+    expect(screen.queryByLabelText('选择标签 旧标签')).toBeNull();
+    expect(screen.getByLabelText('选择标签 新标签')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('完成标签选择'));
+    historyRead = false;
+    await screen.rerender(<TagEditor tags={[]} historyTags={history} onChange={onChange} />);
+    expect(historyRead).toBe(false);
+  });
+
   it('preserves all thirty selected tags on overflow and allows replacing one', async () => {
     const tags = Array.from({ length: 30 }, (_, index) => `标签${index}`);
     const onChange = jest.fn(async () => undefined);

@@ -16,7 +16,7 @@ import { useNotification } from '@/components/AppNotification';
 import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
 import { downloadOsuBeatmapsetPackage } from '@/features/osu-beatmapset-download/osu-beatmapset-download';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
-import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
+import { ChartCarousel as SharedChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome as SharedSongDetailChrome } from '@/components/game-content/SongDetailChrome';
@@ -299,9 +299,10 @@ function OsuDetailBody({
         gap={CARD_GAP}
         initialIndex={initialIndex}
         items={song.beatmaps}
-        keyExtractor={(beatmap) => String(beatmap.id)}
-        renderItem={(beatmap) => (
+        keyExtractor={(beatmap) => library.chartKey(String(song.beatmapSetId), OSU_CHART_TYPE, beatmap.id)}
+        renderItem={(beatmap, carouselState) => (
           <DifficultyCard
+            carouselState={carouselState}
             beatmap={beatmap}
             gameId={gameId}
             library={library}
@@ -348,7 +349,7 @@ function OsuDetailBody({
         <Card>
           <TagEditor
             disabled={library.isUpdating}
-            historyTags={buildTagHistory(
+            historyTags={() => buildTagHistory(
               library.data ?? [],
               library.songKey(String(song.beatmapSetId)),
               library.tagPresets ?? [],
@@ -400,6 +401,7 @@ function Hero({ gameId, song, width }: { gameId: OsuGameId; song: OsuBeatmapsetD
 }
 
 function DifficultyCard({
+  carouselState,
   beatmap,
   gameId,
   song,
@@ -409,6 +411,7 @@ function DifficultyCard({
   onDownload,
   width,
 }: {
+  carouselState: ChartCarouselItemState;
   beatmap: OsuBeatmapDetail;
   gameId: OsuGameId;
   song: OsuBeatmapsetDetail;
@@ -578,8 +581,9 @@ function DifficultyCard({
         <Text style={[styles.practiceButtonText, { color: starTheme.background }]}>下载谱面文件</Text>
       </DetailPressable>
       <TagEditor
+        {...carouselState.tagEditor}
         disabled={library.isUpdating}
-        historyTags={buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
+        historyTags={() => buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
         onChange={(tags) => library.setTags({
           kind: 'chart',
           songId: String(song.beatmapSetId),

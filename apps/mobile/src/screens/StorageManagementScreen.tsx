@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  InteractionManager,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -10,6 +9,7 @@ import {
 } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { StorageDonutChart } from '@/components/StorageDonutChart';
+import { StackScreenActivityScope, useCachedTabActive } from '@/components/CachedTabScreen';
 import { useNotification } from '@/components/AppNotification';
 import { clearStorageByCategories } from '@/features/storage-management/clear-storage-cache';
 import { formatStorageBytes } from '@/features/storage-management/fs-storage';
@@ -52,9 +52,15 @@ function requestStorageScreenData(): Promise<StorageScreenData> {
 }
 
 export function StorageManagementScreen() {
+  return <StackScreenActivityScope><StorageManagementContent /></StackScreenActivityScope>;
+}
+
+function StorageManagementContent() {
   const theme = useAppTheme();
+  const active = useCachedTabActive();
   const { showNotification } = useNotification();
   const mountedRef = useRef(true);
+  const initialRefreshStarted = useRef(false);
   const [report, setReport] = useState<StorageUsageReport | null>(lastStorageReport);
   const [selectedIds, setSelectedIds] = useState<StorageClearCategoryId[]>([]);
   const [expanded, setExpanded] = useState<ExpandedGroups>({ basic: false, cache: false });
@@ -81,14 +87,16 @@ export function StorageManagementScreen() {
 
   useEffect(() => {
     mountedRef.current = true;
-    const task = InteractionManager.runAfterInteractions(() => {
-      void refresh();
-    });
     return () => {
       mountedRef.current = false;
-      task.cancel();
     };
-  }, [refresh]);
+  }, []);
+
+  useEffect(() => {
+    if (!active || initialRefreshStarted.current) return;
+    initialRefreshStarted.current = true;
+    void refresh();
+  }, [active, refresh]);
 
   const saveSelectedIds = useCallback(async (next: StorageClearCategoryId[]) => {
     const allowed = listClearableCategoryIds();

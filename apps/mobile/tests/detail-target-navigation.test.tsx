@@ -48,6 +48,10 @@ jest.mock('expo-router', () => ({
   useSegments: () => [],
   Stack: { Screen: () => null },
 }));
+jest.mock('@/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+  StackScreenActivityScope: ({ children }: { children: ReactElement }) => children,
+}));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-image', () => ({ Image: () => null }));

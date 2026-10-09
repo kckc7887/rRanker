@@ -45,7 +45,7 @@ const HIT_SOUND_ASSETS: readonly { kind: 'click' | 'drag' | 'flick'; fileName: s
 export type PhigrosChartPreviewWebViewSource = {
   uri: string;
   allowingReadAccessToURL: string;
-  dispose: () => void;
+  dispose: () => Promise<void>;
 };
 
 const STAGE_DIRECTORY_NAME = 'rranker-phigros-chart-preview';
@@ -131,7 +131,7 @@ export async function preparePhigrosChartPreviewWebViewSource(
   return prepareChartPreviewWebviewFromPlan({
     directoryName: STAGE_DIRECTORY_NAME,
     directory,
-    remoteCacheDirectory: chartPreviewStageDirectory('rranker-phigros-chart-preview-remote'),
+    remoteCacheDirectory: await chartPreviewStageDirectory('rranker-phigros-chart-preview-remote'),
     stagedAssets: [
       { fileName: 'player.js', moduleId: PLAYER_MODULE },
       ...SKIN_ASSETS.map(({ fileName, url, bytes }) => ({
@@ -165,9 +165,11 @@ export async function preparePhigrosChartPreviewWebViewSource(
 export async function stagePhiraChartMusic(
   bytes: Uint8Array,
   fileName: string,
-  directory = chartPreviewStageDirectory(STAGE_DIRECTORY_NAME),
+  directory?: Directory,
   signal?: AbortSignal,
 ): Promise<{ uri: string; base64: string }> {
+  if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
+  directory ??= await chartPreviewStageDirectory(STAGE_DIRECTORY_NAME);
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   const file = new File(directory, fileName);
   if (file.exists) file.delete();
@@ -181,9 +183,11 @@ export async function stagePhiraChartMusic(
 export async function stagePhiraRpeBundle(
   chartId: number,
   files: readonly { name: string; bytes: Uint8Array }[],
-  root = chartPreviewStageDirectory(STAGE_DIRECTORY_NAME),
+  root?: Directory,
   signal?: AbortSignal,
 ): Promise<{ basePath: string }> {
+  if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
+  root ??= await chartPreviewStageDirectory(STAGE_DIRECTORY_NAME);
   if (signal?.aborted) throw signal.reason ?? new Error('操作已取消');
   const directory = new Directory(root, `rpe/${chartId}`);
   directory.create({ intermediates: true, idempotent: true });

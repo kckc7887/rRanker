@@ -1,27 +1,35 @@
 import { Asset } from 'expo-asset';
 import { Directory, File, Paths } from 'expo-file-system';
+import { copyAsync, deleteAsync, makeDirectoryAsync } from 'expo-file-system/legacy';
 import { Platform } from 'react-native';
 import { resolveChartPreviewAssetUri } from './chart-preview-asset-uri';
 import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
+import { runSharedCacheFileOperation } from '@/features/storage-management/fs-storage';
 
 let sessionCounter = 0;
+const usedStageDirectories = new Set<string>();
 
-export function chartPreviewStageDirectory(name: string): Directory {
+export async function chartPreviewStageDirectory(name: string): Promise<Directory> {
   const directory = new Directory(Paths.cache, name);
-  directory.create({ intermediates: true, idempotent: true });
+  usedStageDirectories.add(directory.uri.replace(/\/+$/u, ''));
+  await runSharedCacheFileOperation(() => makeDirectoryAsync(directory.uri, { intermediates: true }));
   return directory;
 }
 
-export function createChartPreviewSessionDirectory(name: string): Directory {
+export function isChartPreviewStageDirectoryInUse(uri: string): boolean {
+  return usedStageDirectories.has(uri.replace(/\/+$/u, ''));
+}
+
+export async function createChartPreviewSessionDirectory(name: string): Promise<Directory> {
   sessionCounter += 1;
   const directory = new Directory(Paths.cache, `${name}-session-${Date.now()}-${sessionCounter}`);
-  directory.create({ intermediates: true, idempotent: true });
+  await runSharedCacheFileOperation(() => makeDirectoryAsync(directory.uri, { intermediates: true }));
   return directory;
 }
 
-export function disposeChartPreviewSessionDirectory(directory: Directory): void {
-  try { if (directory.exists) directory.delete(); }
+export async function disposeChartPreviewSessionDirectory(directory: Directory): Promise<void> {
+  try { await deleteAsync(directory.uri, { idempotent: true }); }
   catch (error) { recordRuntimeError('chart-preview-cleanup', error, false, { phase: 'cleanup' }); }
 }
 
@@ -31,9 +39,9 @@ export async function stageAsset(moduleId: number, fileName: string, directory: 
   const sourceUri = await loadAssetFileUri(moduleId, fileName);
   assertCurrent();
   const target = new File(directory, fileName);
-  const source = new File(sourceUri);
-  if (target.exists) target.delete();
-  source.copy(target);
+  await deleteAsync(target.uri, { idempotent: true });
+  await copyAsync({ from: sourceUri, to: target.uri });
+  assertCurrent();
   return target;
 }
 

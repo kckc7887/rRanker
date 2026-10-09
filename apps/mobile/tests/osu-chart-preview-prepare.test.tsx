@@ -53,6 +53,15 @@ jest.mock('expo-file-system', () => {
   }
   return { Directory, File };
 });
+jest.mock('expo-file-system/legacy', () => ({
+  getInfoAsync: async (uri: string) => ({ exists: mockFiles.has(uri), size: mockFiles.get(uri)?.length ?? 0 }),
+  deleteAsync: async (uri: string) => { mockFiles.delete(uri); },
+  writeAsStringAsync: async (uri: string, content: string) => {
+    mockFiles.set(uri, content);
+    mockWrites.push(uri);
+    mockAfterWrite(uri);
+  },
+}));
 jest.mock('@/features/chart-preview-shared/chart-preview-assets', () => ({
   createChartPreviewSessionDirectory: (name: string) => {
     const { Directory } = jest.requireMock<typeof import('expo-file-system')>('expo-file-system');

@@ -102,7 +102,11 @@ jest.mock('@/hooks/use-user-library', () => {
 jest.mock('@/components/TagEditor', () => ({ TagEditor: () => null }));
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
 jest.mock('@/components/CollectionImage', () => ({ CollectionImage: () => null }));
-jest.mock('@/components/CachedTabScreen', () => ({ useCachedTabActive: () => true }));
+jest.mock('@/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+  StackScreenActivityScope: ({ children }: { children: import('react').ReactNode }) => children,
+  useStackScreenReady: () => true,
+}));
 
 const carouselOffset = (screen: Awaited<ReturnType<typeof render>>): number => {
   const carousel = screen.getByTestId('musedash-chart-carousel');

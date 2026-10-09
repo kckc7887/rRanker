@@ -1,5 +1,6 @@
+import { useStackScreenReady } from '@/components/CachedTabScreen';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { InteractionManager, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { LinearGradient } from 'expo-linear-gradient';
 import { StatusBar } from 'expo-status-bar';
 import { router, useNavigation } from 'expo-router';
@@ -8,7 +9,7 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { RemoteImage } from '@/components/RemoteImage';
 import { TagEditor } from '@/components/TagEditor';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
-import { ChartCarousel } from '@/components/game-content/ChartCarousel';
+import { ChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
 import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
 import { FloatingSongDetailChrome } from '@/components/game-content/FloatingSongDetailChrome';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
@@ -46,8 +47,7 @@ export function RizlineSongDetail({ songId, initialLevelIndex }: { songId: strin
 
 function RizlineSongDetailContent({ song, library, initialLevelIndex }: { song: RizlineSong; library: Library; initialLevelIndex?: number }) {
   const theme = useAppTheme(); const { width } = useWindowDimensions(); const query = useGameData();
-  const [coverFailed, setCoverFailed] = useState(false); const [ready, setReady] = useState(false);
-  useEffect(() => { const task = InteractionManager.runAfterInteractions(() => setReady(true)); return () => task.cancel(); }, []);
+  const [coverFailed, setCoverFailed] = useState(false); const ready = useStackScreenReady();
   const charts = useMemo(() => sortedRizlineCharts(song.charts), [song.charts]);
   const records = query.data?.payload.kind === 'rizline' ? query.data.payload.records : [];
   const recordsByChart = new Map(records.map((record) => [record.chartId, record]));
@@ -75,18 +75,18 @@ function RizlineSongDetailContent({ song, library, initialLevelIndex }: { song: 
       testIDPrefix="rizline-metadata" valueBlockStyle={styles.metadataValueBlock} valueStyle={styles.metadataValue} />
     {ready ? <><ChartCarousel items={charts} initialIndex={initialIndex} cardWidth={cardWidth} gap={12} resetKey={song.id}
       accessibilityLabel="谱面难度卡片" testID="rizline-chart-carousel" rootStyle={styles.carouselRoot} scrollStyle={styles.carouselScroll}
-      contentContainerStyle={styles.carousel} keyExtractor={(chart) => chart.id}
+      contentContainerStyle={styles.carousel} keyExtractor={(chart) => library.chartKey(chart.songId, 'SD', rizlineDifficultyIndex(chart.difficulty))}
       empty={<Text style={[styles.noCharts, { color: theme.textMuted }]}>暂无谱面</Text>}
-      renderItem={(chart) => <RizlineChartCard chart={chart} record={recordsByChart.get(chart.id)} library={library} cardWidth={cardWidth} songTitle={song.title} />} />
+      renderItem={(chart, carouselState) => <RizlineChartCard carouselState={carouselState} chart={chart} record={recordsByChart.get(chart.id)} library={library} cardWidth={cardWidth} songTitle={song.title} />} />
       <View style={styles.details}><Card><TagEditor testID="rizline-song-tags" tags={songItem?.kind === 'song' ? songItem.tags : []}
-        presets={library.tagPresets} historyTags={buildTagHistory(library.data ?? [], songKey, library.tagPresets)} disabled={library.isUpdating || library.isLoading}
+        presets={library.tagPresets} historyTags={() => buildTagHistory(library.data ?? [], songKey, library.tagPresets)} disabled={library.isUpdating || library.isLoading}
         onPresetsChange={library.setTagPresets} onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card></View>
     </> : <View style={styles.deferredPlaceholder} />}
   </ScrollView>;
 }
 
-function RizlineChartCard({ chart, record, library, cardWidth, songTitle }: {
-  chart: RizlineChart; record?: RizlineRecord; library: Library; cardWidth: number; songTitle: string;
+function RizlineChartCard({ chart, record, library, cardWidth, songTitle, carouselState }: {
+  chart: RizlineChart; record?: RizlineRecord; library: Library; cardWidth: number; songTitle: string; carouselState: ChartCarouselItemState;
 }) {
   const theme = useAppTheme(); const { showNotification } = useNotification();
   const navigation = useNavigation();
@@ -140,8 +140,8 @@ function RizlineChartCard({ chart, record, library, cardWidth, songTitle }: {
       }} style={[styles.action, styles.chartSearchAction, { borderColor: colors.bg, backgroundColor: colors.bg }]}>
       <Text style={[styles.actionText, { color: colors.fg }]}>查看谱面确认</Text>
     </DetailPressable></DetailGestureRoot>
-    <TagEditor testID={`rizline-chart-tags-${chart.difficulty}`} tags={item?.kind === 'chart' ? item.tags : []} presets={library.tagPresets}
-      historyTags={buildTagHistory(library.data ?? [], key, library.tagPresets)} disabled={library.isUpdating || library.isLoading}
+    <TagEditor {...carouselState.tagEditor} testID={`rizline-chart-tags-${chart.difficulty}`} tags={item?.kind === 'chart' ? item.tags : []} presets={library.tagPresets}
+      historyTags={() => buildTagHistory(library.data ?? [], key, library.tagPresets)} disabled={library.isUpdating || library.isLoading}
       onPresetsChange={library.setTagPresets} onChange={(tags) => library.setTags({ kind: 'chart', songId: chart.songId, type: 'SD', levelIndex }, tags)} />
   </GameChartResultCard>;
 }
