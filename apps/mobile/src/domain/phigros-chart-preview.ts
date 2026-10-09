@@ -27,7 +27,7 @@ export type PhigrosChartPreviewBundle = {
 export type PhigrosChartPreviewResourceRead = (
   asset: PhigrosChartPreviewAsset,
   index: number,
-) => Promise<Uint8Array>;
+) => Promise<Uint8Array | { uri: string; size: number; bytes: () => Promise<Uint8Array> }>;
 
 function escapeRegExp(value: string): string {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');

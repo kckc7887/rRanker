@@ -1,8 +1,8 @@
+import { loadRemoteImageFile } from '@/features/best-image/load-best-image-session';
 import { useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   Image,
-  Platform,
   Pressable,
   StyleSheet,
   Text,
@@ -34,7 +34,6 @@ import type { ChunithmBestImageCollectionItem } from '@/features/chunithm-best-i
 import { loadChunithmBestImageCharacters } from '@/features/chunithm-best-image/load-chunithm-best-image-collections';
 import {
   loadChunithmBestImageJackets,
-  loadChunithmRemoteImageDataUri,
   resolveChunithmBestImageJacketId,
 } from '@/features/chunithm-best-image/load-chunithm-best-image-jackets';
 import { buildChunithmBestImageHtml } from '@/features/chunithm-best-image/build-chunithm-best-image-html';
@@ -82,11 +81,13 @@ export function ChunithmBestImageScreen() {
   const [coverUrls, setCoverUrls] = useState<Record<string, string | null> | null>(null);
   const [characterDataUri, setCharacterDataUri] = useState<string | null>(null);
   const [assetProgress, setAssetProgress] = useState({ done: 0, total: 0 });
+  const jacketAssetKeyRef = useRef<string | null>(null);
   const styleAssetKeyRef = useRef<string | null>(null);
   const randomizedRef = useRef(new Set<string>());
 
   const controller = useBestImageScreenController<ChunithmBestImageType, typeof DEFAULT_CHUNITHM_BEST_IMAGE_STYLES, 'character' | 'background'>({
     accountId: gameData.activeAccountId,
+    game: 'chunithm',
     defaultType: 'best50',
     defaultWidth: 1080,
     defaultQuantityText: String(DEFAULT_CUSTOM_CHUNITHM_BEST_IMAGE_FILTERS.quantity),
@@ -120,9 +121,11 @@ export function ChunithmBestImageScreen() {
     handleExportMessage,
     handlePreviewMessage,
   } = controller;
+  const { assetSession } = controller;
 
   useEffect(() => {
     randomizedRef.current.clear();
+    styleAssetKeyRef.current = null;
   }, [gameData.activeAccountId]);
 
   useEffect(() => {
@@ -252,24 +255,29 @@ export function ChunithmBestImageScreen() {
     ])],
     [backgroundJacketId, jacketIdsByKey],
   );
-  const jacketKey = jacketIds.join('|');
+  const jacketKey = JSON.stringify([assetSession.directory.uri, jacketIds]);
 
   useEffect(() => {
     const controller = new AbortController();
     const signal = controller.signal;
     let cancelled = false;
     if (!payload || !lifecycle.foregroundReady) return;
+    if (jacketAssetKeyRef.current === jacketKey) return;
+    jacketAssetKeyRef.current = null;
     setCoverUrls(null);
     setAssetProgress({ done: 0, total: jacketIds.length });
-    void loadChunithmBestImageJackets(jacketIds, (done, total) => {
+    void loadChunithmBestImageJackets(assetSession, jacketIds, (done, total) => {
       if (!cancelled) setAssetProgress({ done, total });
     }, signal).then((loaded) => {
-      if (!cancelled) setCoverUrls(loaded);
+      if (!cancelled) {
+        jacketAssetKeyRef.current = jacketKey;
+        setCoverUrls(loaded);
+      }
     });
     return () => {
       cancelled = true; controller.abort();
     };
-  }, [jacketKey, jacketIds, lifecycle.foregroundGeneration, lifecycle.foregroundReady, payload]);
+  }, [assetSession, jacketKey, jacketIds, lifecycle.foregroundGeneration, lifecycle.foregroundReady, payload]);
 
   const characterId = useMemo(
     () => resolveChunithmBestImageStyleId(stylePrefs.character, payload?.player?.character?.id),
@@ -277,7 +285,7 @@ export function ChunithmBestImageScreen() {
   );
   const hideCharacter = stylePrefs.character.mode === 'off'
     || ((stylePrefs.character.mode === 'item' || stylePrefs.character.mode === 'random') && characterId === null);
-  const styleAssetKey = [stylePrefs.character.mode, characterId ?? ''].join('|');
+  const styleAssetKey = [assetSession.directory.uri, stylePrefs.character.mode, characterId ?? ''].join('|');
 
   useEffect(() => {
     const controller = new AbortController();
@@ -287,7 +295,7 @@ export function ChunithmBestImageScreen() {
     if (styleAssetKeyRef.current === styleAssetKey) return;
     const pending = hideCharacter || characterId === null
       ? Promise.resolve(null)
-      : loadChunithmRemoteImageDataUri(buildChunithmCharacterUrl(characterId), signal);
+      : loadRemoteImageFile(assetSession, buildChunithmCharacterUrl(characterId), signal);
     void pending.then((nextCharacter) => {
       if (cancelled) return;
       styleAssetKeyRef.current = styleAssetKey;
@@ -297,6 +305,7 @@ export function ChunithmBestImageScreen() {
       cancelled = true; controller.abort();
     };
   }, [
+    assetSession,
     characterId,
     hideCharacter,
     payload,
@@ -336,7 +345,7 @@ export function ChunithmBestImageScreen() {
     width,
   ]);
 
-  const { sources, setSources } = usePreparedBestImageSources(htmlPages, undefined, Platform.OS !== 'android');
+  const { sources } = usePreparedBestImageSources(htmlPages, assetSession.directory, cancelExportRequest);
   useEffect(() => {
     setPageHeights({}); setPageIndex(0); setPreviewStates({});
   }, [sources, setPageHeights, setPageIndex, setPreviewStates]);
@@ -577,8 +586,8 @@ export function ChunithmBestImageScreen() {
         onPageIndexChange: setPageIndex,
         onPreviewStatesChange: setPreviewStates,
         onPreviewMessage: handlePreviewMessage,
-        fileAccessFromFileURLs: false,
-        allowingReadAccessToUrl: undefined,
+        fileAccessFromFileURLs: true,
+        allowingReadAccessToUrl: assetSession.directory.uri,
       }}
       exportSession={{
         exportDisabled: !sources || !!exportStatus || !formValid,
@@ -594,12 +603,6 @@ export function ChunithmBestImageScreen() {
         captureAccessibilityLabel: exportIndex !== null ? `导出画布 第${exportIndex + 1}页` : undefined,
         onExportMessage: handleExportMessage,
         onRequestCloseExport: cancelExportRequest,
-        onReleaseHeavySources: () => {
-        setSources(null);
-        setCoverUrls(null);
-        setCharacterDataUri(null);
-        styleAssetKeyRef.current = null;
-      },
       }}
     />
   );

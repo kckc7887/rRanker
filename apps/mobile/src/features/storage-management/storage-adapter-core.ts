@@ -24,7 +24,7 @@ export type GameStorageAdapter = {
   resetMemory?: () => void;
   fileResources: readonly {
     root: () => Directory;
-    clear: () => void;
+    clear: () => void | Promise<void>;
   }[];
   measure: (inventory: StorageMeasurementInventory) => Promise<number>;
   clear: (snapshots: SqliteSnapshotRepository) => Promise<void>;
@@ -74,7 +74,7 @@ export function createGameStorageAdapter(
       await snapshots.clearAccountScores(selected.accountIds);
       /** 头像等资源可能没有对应的成绩记录。 */
       await snapshots.clearResources(selected.resourceKeys);
-      for (const resource of adapter.fileResources) resource.clear();
+      for (const resource of adapter.fileResources) await resource.clear();
     },
   };
 }

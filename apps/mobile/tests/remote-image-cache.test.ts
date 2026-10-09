@@ -18,10 +18,6 @@ const mocks = vi.hoisted(() => {
   class MockFile {
     uri: string;
     constructor(...parts: unknown[]) { this.uri = normalizePath(parts); }
-    static async downloadFileAsync(_url: string, destination: MockFile) {
-      files.set(destination.uri, { content: '', size: 128, modified: Date.now() });
-      return destination;
-    }
     get name() { return this.uri.split('/').at(-1) ?? ''; }
     get exists() { return files.has(this.uri); }
     get size() { return files.get(this.uri)?.size ?? 0; }
@@ -72,6 +68,8 @@ const mocks = vi.hoisted(() => {
     loadAsync: vi.fn(),
     manipulate: vi.fn(),
     saveAsync: vi.fn(),
+    download: vi.fn<(url: string, uri: string, options: { headers?: Record<string, string> }) => Promise<{ uri: string; status: number } | undefined>>(),
+    cancelDownload: vi.fn<() => Promise<void>>(),
   };
 });
 
@@ -82,6 +80,10 @@ vi.mock('expo-file-system', () => ({
 }));
 
 vi.mock('expo-file-system/legacy', () => ({
+  createDownloadResumable: (url: string, uri: string, options: { headers?: Record<string, string> }) => ({
+    downloadAsync: () => mocks.download(url, uri, options),
+    cancelAsync: () => mocks.cancelDownload(),
+  }),
   getInfoAsync: async (uri: string) => {
     const file = mocks.files.get(uri);
     return file ? { exists: true, isDirectory: false, size: file.size, modificationTime: file.modified / 1000 }
@@ -151,6 +153,11 @@ describe('remote image cache', () => {
     mocks.imageSequence = 0;
     mocks.imageBytes = 64;
     mocks.animated = false;
+    mocks.download.mockReset().mockImplementation(async (_url, uri) => {
+      mocks.files.set(uri, { content: 'original bytes', size: 128, modified: Date.now() });
+      return { uri, status: 200 };
+    });
+    mocks.cancelDownload.mockReset().mockResolvedValue();
     mocks.loadAsync.mockReset().mockImplementation(async () => ({
       isAnimated: mocks.animated,
       release: vi.fn(),
@@ -178,6 +185,23 @@ describe('remote image cache', () => {
     await cache.flushRemoteImageCacheManifest();
   });
 
+  it('rejects native cache path failures and allows the next request to recover', async () => {
+    const descriptor = Object.getOwnPropertyDescriptor(mocks.paths, 'cache')!;
+    Object.defineProperty(mocks.paths, 'cache', {
+      configurable: true,
+      get() { throw new Error('cache directory unavailable'); },
+    });
+    try {
+      await expect(cache.acquireRemoteImageOriginal('https://example.test/cover.png', 'maimai'))
+        .rejects.toThrow('cache directory unavailable');
+    } finally {
+      Object.defineProperty(mocks.paths, 'cache', descriptor);
+    }
+    const original = await cache.acquireRemoteImageOriginal('https://example.test/cover.png', 'maimai');
+    expect(mocks.files.get(original.fileUri)?.content).toBe('original bytes');
+    await original.release();
+  });
+
   it('normalizes headers and rejects local or array sources', () => {
     expect(cache.normalizeRemoteImageSource({
       uri: 'https://example.test/cover.png',
@@ -189,20 +213,15 @@ describe('remote image cache', () => {
 
   it('leaves bundled module IDs outside remote download and compression', async () => {
     const source = 73;
-    const download = vi.spyOn(mocks.MockFile, 'downloadFileAsync');
-    try {
       expect(cache.normalizeRemoteImageSource(source)).toBeNull();
       await expect(cache.findCompressedRemoteImage(source, { gameId: 'adofai', profile: 'thumbnail' }))
         .resolves.toBeNull();
       await expect(cache.cacheCompressedRemoteImage(source, { gameId: 'adofai', profile: 'thumbnail' }))
         .resolves.toBeNull();
-      expect(download).not.toHaveBeenCalled();
+      expect(mocks.download).not.toHaveBeenCalled();
       expect(mocks.loadAsync).not.toHaveBeenCalled();
       expect(mocks.manipulate).not.toHaveBeenCalled();
       expect(mocks.files.size).toBe(0);
-    } finally {
-      download.mockRestore();
-    }
   });
 
   it('builds stable keys from URL, headers, cache key, profile and cache version', async () => {
@@ -246,6 +265,177 @@ describe('remote image cache', () => {
     const cached = await cache.findCompressedRemoteImage(source, { gameId: 'maimai', profile: 'thumbnail' });
     expect(cached?.source).toEqual(first?.source);
     expect(mocks.loadAsync).toHaveBeenCalledTimes(1);
+  });
+
+  it('shares original bytes between display consumers and both compression profiles until the last release', async () => {
+    const source = { uri: 'https://example.test/shared-original.png', headers: { Z: 'last', Authorization: 'token' }, cacheKey: 'revision-1' };
+    const first = await cache.acquireRemoteImageOriginal(source, 'maimai');
+    const second = await cache.acquireRemoteImageOriginal({ ...source, headers: { Authorization: 'token', Z: 'last' } }, 'maimai');
+    expect(second.fileUri).toBe(first.fileUri);
+    expect(mocks.files.get(first.fileUri)?.content).toBe('original bytes');
+    await cache.pruneRemoteImageCache();
+    expect(mocks.files.has(first.fileUri)).toBe(true);
+    const compressed = await Promise.all([
+      cache.cacheCompressedRemoteImage(source, { gameId: 'maimai', profile: 'thumbnail' }),
+      cache.cacheCompressedRemoteImage(source, { gameId: 'maimai', profile: 'artwork' }),
+    ]);
+    expect(compressed.every(Boolean)).toBe(true);
+    expect(mocks.download).toHaveBeenCalledTimes(1);
+    expect(mocks.download).toHaveBeenCalledWith(source.uri, first.fileUri, { headers: source.headers });
+    for (const [loadedSource] of mocks.loadAsync.mock.calls) expect(loadedSource).toEqual({ uri: first.fileUri });
+    await first.release();
+    expect(mocks.files.has(first.fileUri)).toBe(true);
+    await second.release();
+    expect(mocks.files.has(first.fileUri)).toBe(false);
+  });
+
+  it('separates original downloads by game, URL, headers and cache identity', async () => {
+    const source = { uri: 'https://example.test/original.png', headers: { Authorization: 'one' }, cacheKey: 'v1' };
+    const results = await Promise.all([
+      cache.acquireRemoteImageOriginal(source, 'maimai'),
+      cache.acquireRemoteImageOriginal(source, 'phigros'),
+      cache.acquireRemoteImageOriginal({ ...source, uri: `${source.uri}?second` }, 'maimai'),
+      cache.acquireRemoteImageOriginal({ ...source, headers: { Authorization: 'two' } }, 'maimai'),
+      cache.acquireRemoteImageOriginal({ ...source, cacheKey: 'v2' }, 'maimai'),
+    ]);
+    expect(new Set(results.map(result => result.fileUri)).size).toBe(5);
+    expect(mocks.download).toHaveBeenCalledTimes(5);
+    await Promise.all(results.map(result => result.release()));
+    expect([...mocks.files.keys()].filter(uri => uri.endsWith('.source.part'))).toEqual([]);
+  });
+
+  it('cancels one waiting display consumer without cancelling the other', async () => {
+    const gate = Promise.withResolvers<void>();
+    const download = mocks.download.getMockImplementation()!;
+    mocks.download.mockImplementationOnce(async (...args) => { await gate.promise; return download(...args); });
+    const controller = new AbortController();
+    const first = cache.acquireRemoteImageOriginal('https://example.test/shared-wait.png', 'maimai', controller.signal);
+    const rejected = expect(first).rejects.toThrow();
+    const second = cache.acquireRemoteImageOriginal({ uri: 'https://example.test/shared-wait.png' }, 'maimai');
+    await vi.waitFor(() => expect(mocks.download).toHaveBeenCalledTimes(1));
+    controller.abort();
+    await rejected;
+    expect(mocks.cancelDownload).not.toHaveBeenCalled();
+    gate.resolve();
+    const original = await second;
+    expect(mocks.files.has(original.fileUri)).toBe(true);
+    await original.release();
+    expect(mocks.files.has(original.fileUri)).toBe(false);
+  });
+
+  it('cancels the last waiting consumer and removes its late file without deleting a newer request', async () => {
+    const gate = Promise.withResolvers<void>();
+    const written = Promise.withResolvers<void>();
+    const download = mocks.download.getMockImplementation()!;
+    mocks.download.mockImplementationOnce(async (...args) => {
+      await gate.promise;
+      const result = await download(...args);
+      written.resolve();
+      return result;
+    });
+    const controller = new AbortController();
+    const source = 'https://example.test/late-original.png';
+    const first = cache.acquireRemoteImageOriginal(source, 'maimai', controller.signal);
+    const rejected = expect(first).rejects.toThrow();
+    await vi.waitFor(() => expect(mocks.download).toHaveBeenCalledTimes(1));
+    const oldUri = mocks.download.mock.calls[0][1];
+    controller.abort();
+    await rejected;
+    expect(mocks.cancelDownload).toHaveBeenCalledTimes(1);
+    const next = await cache.acquireRemoteImageOriginal(source, 'maimai');
+    expect(next.fileUri).not.toBe(oldUri);
+    gate.resolve();
+    await written.promise;
+    await vi.waitFor(() => expect(mocks.files.has(oldUri)).toBe(false));
+    await cache.listRemoteImageCacheUsage();
+    expect(mocks.files.has(next.fileUri)).toBe(true);
+    await next.release();
+  });
+
+  it('keeps the source alive until native decoding finishes after the compressor is cancelled', async () => {
+    const gate = Promise.withResolvers<void>();
+    let decodingUri = '';
+    mocks.loadAsync.mockImplementationOnce(async ({ uri }: { uri: string }) => {
+      decodingUri = uri;
+      await gate.promise;
+      expect(mocks.files.has(uri)).toBe(true);
+      return { isAnimated: false, release: vi.fn() };
+    });
+    const controller = new AbortController();
+    const pending = cache.cacheCompressedRemoteImage('https://example.test/decoding.png', { gameId: 'maimai', profile: 'thumbnail' }, controller.signal);
+    await vi.waitFor(() => expect(decodingUri).not.toBe(''));
+    controller.abort();
+    await expect(pending).resolves.toBeNull();
+    expect(mocks.files.has(decodingUri)).toBe(true);
+    gate.resolve();
+    await vi.waitFor(() => expect(mocks.files.has(decodingUri)).toBe(false));
+    expect(mocks.manipulate).not.toHaveBeenCalled();
+  });
+
+  it.each(['game', 'all'] as const)('preserves a displayed original during %s clearing while rejecting the old compression', async scope => {
+    const source = 'https://example.test/visible-during-clear.png';
+    const options = { gameId: 'maimai', profile: 'thumbnail' as const };
+    const original = await cache.acquireRemoteImageOriginal(source, 'maimai');
+    const gate = Promise.withResolvers<void>();
+    mocks.manipulate.mockImplementationOnce(() => ({
+      release: vi.fn(), renderAsync: async () => {
+        await gate.promise; return { release: vi.fn(), saveAsync: mocks.saveAsync };
+      },
+    }));
+    const pending = cache.cacheCompressedRemoteImage(source, options);
+    await vi.waitFor(() => expect(mocks.manipulate).toHaveBeenCalledTimes(1));
+    await (scope === 'game' ? cache.clearGameRemoteImageCache('maimai') : cache.clearCompressedRemoteImageCache());
+    expect(mocks.files.get(original.fileUri)?.content).toBe('original bytes');
+    gate.resolve();
+    await expect(pending).resolves.toBeNull();
+    await expect(cache.measureGameRemoteImageCacheBytes('maimai')).resolves.toBe(0);
+    expect(mocks.files.has(original.fileUri)).toBe(true);
+    await expect(cache.cacheCompressedRemoteImage(source, options)).resolves.not.toBeNull();
+    expect(mocks.download).toHaveBeenCalledTimes(2);
+    await original.release();
+    expect(mocks.files.has(original.fileUri)).toBe(false);
+  });
+
+  it.each(['game', 'all'] as const)('uses newly downloaded bytes after %s clearing instead of a late original from the previous generation', async scope => {
+    const gate = Promise.withResolvers<void>();
+    mocks.download.mockImplementationOnce(async (_url, uri) => {
+      await gate.promise;
+      mocks.files.set(uri, { content: 'old bytes', size: 9, modified: Date.now() });
+      return { uri, status: 200 };
+    });
+    const source = 'https://example.test/changed-after-clear.png';
+    const previous = cache.acquireRemoteImageOriginal(source, 'maimai');
+    await vi.waitFor(() => expect(mocks.download).toHaveBeenCalledTimes(1));
+    await (scope === 'game' ? cache.clearGameRemoteImageCache('maimai') : cache.clearCompressedRemoteImageCache());
+    const next = await cache.acquireRemoteImageOriginal(source, 'maimai');
+    const decoded: string[] = [];
+    mocks.loadAsync.mockImplementation(async ({ uri }: { uri: string }) => {
+      decoded.push(mocks.files.get(uri)!.content);
+      return { isAnimated: false, release: vi.fn() };
+    });
+    const compressed = await cache.cacheCompressedRemoteImage(source, { gameId: 'maimai', profile: 'thumbnail' });
+    expect(compressed).not.toBeNull();
+    expect(decoded).toEqual(['original bytes']);
+    gate.resolve();
+    const old = await previous;
+    expect(mocks.files.get(old.fileUri)?.content).toBe('old bytes');
+    expect(mocks.files.get(next.fileUri)?.content).toBe('original bytes');
+    await old.release();
+    expect(mocks.files.has(next.fileUri)).toBe(true);
+    await expect(cache.findCompressedRemoteImage(source, { gameId: 'maimai', profile: 'thumbnail' })).resolves.toEqual(compressed);
+    await next.release();
+  });
+
+  it('releases a failed original download and allows retry without retaining the response body', async () => {
+    mocks.download.mockImplementationOnce(async (_url, uri) => {
+      mocks.files.set(uri, { content: 'denied', size: 6, modified: Date.now() });
+      return { uri, status: 403 };
+    });
+    const source = 'https://example.test/denied.png';
+    await expect(cache.acquireRemoteImageOriginal(source, 'maimai')).rejects.toThrow('403');
+    const next = await cache.acquireRemoteImageOriginal(source, 'maimai');
+    expect([...mocks.files.keys()].filter(uri => uri.endsWith('.source.part'))).toEqual([next.fileUri]);
+    await next.release();
   });
 
   it('checks for an existing fallback without downloading or transforming', async () => {

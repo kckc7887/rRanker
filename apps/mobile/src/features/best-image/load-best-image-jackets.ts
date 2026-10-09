@@ -1,5 +1,5 @@
 import { mapCoverId } from '@/domain/rating';
-import { loadImageDataUris } from './load-remote-image-data-uri';
+import { loadImageFiles, type BestImageAssetSession } from './load-best-image-session';
 
 const JACKET_ROOT = 'https://assets2.lxns.net/maimai/jacket';
 
@@ -11,6 +11,6 @@ function bestImageJacketUrl(songId: string): string {
   return `${JACKET_ROOT}/${encodeURIComponent(coverId)}.png`;
 }
 
-export function loadBestImageJackets(songIds: readonly string[], onProgress?: (completed: number, total: number) => void, signal?: AbortSignal): Promise<Record<string, string | null>> {
-  return loadImageDataUris(songIds, bestImageJacketUrl, onProgress, signal);
+export function loadBestImageJackets(session: BestImageAssetSession, songIds: readonly string[], onProgress?: (completed: number, total: number) => void, signal?: AbortSignal): Promise<Record<string, string | null>> {
+  return loadImageFiles(session, songIds, bestImageJacketUrl, onProgress, signal);
 }

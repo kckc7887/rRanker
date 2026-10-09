@@ -1,65 +1,48 @@
+import { JSDOM } from 'jsdom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
+import { prepareBestImageWebViewSources } from '@/features/best-image/prepare-best-image-webview-sources';
 
-import {
-  inlineBestImageWebViewSources,
-  prepareBestImageWebViewSources,
-} from '@/features/best-image/prepare-best-image-webview-sources';
-
-const storedFiles = new Map<string, { content: string; exists: boolean }>();
-
+const files = vi.hoisted(() => new Map<string, string>());
+const write = vi.hoisted(() => vi.fn(async (uri: string, content: string) => { files.set(uri, content); }));
 vi.mock('expo-file-system', () => ({
-  Paths: { cache: 'file:///cache' },
-  File: class MockFile {
-    readonly uri: string;
-
-    constructor(base: string | { uri: string }, name: string) {
-      this.uri = `${typeof base === 'string' ? base : base.uri}/${name}`;
-    }
-
-    get exists() {
-      return storedFiles.get(this.uri)?.exists ?? false;
-    }
-
-    create() {
-      storedFiles.set(this.uri, { content: '', exists: true });
-    }
-
-    write(content: string) {
-      storedFiles.set(this.uri, { content, exists: true });
-    }
-
-    delete() {
-      const file = storedFiles.get(this.uri);
-      if (file) file.exists = false;
-    }
+  File: class {
+    uri: string;
+    constructor(directory: { uri: string }, name: string) { this.uri = `${directory.uri}/${name}`; }
   },
 }));
+vi.mock('expo-file-system/legacy', () => ({
+  makeDirectoryAsync: async () => undefined,
+  writeAsStringAsync: write,
+  deleteAsync: async (uri: string) => { files.delete(uri); },
+}));
+const directory = { uri: 'file:///document/rranker/phigros-illustration-stage/session' } as never;
 
-describe('best image WebView sources', () => {
-  beforeEach(() => storedFiles.clear());
+describe('best image WebView source files', () => {
+  beforeEach(() => { files.clear(); write.mockClear(); });
 
-  it('keeps inline HTML sources outside the Android file workaround', () => {
-    expect(inlineBestImageWebViewSources(['<p>preview</p>'])).toEqual([
-      { html: '<p>preview</p>', baseUrl: 'https://assets2.lxns.net/' },
-    ]);
+  it('writes session HTML and removes only the owned generation', async () => {
+    const first = await prepareBestImageWebViewSources(['<p>one</p>', '<p>two</p>'], directory);
+    const next = await prepareBestImageWebViewSources(['<p>next</p>'], directory);
+    expect(first.sources.map((source) => files.get(source.uri))).toEqual(['<p>one</p>', '<p>two</p>']);
+    expect(first.sources[0]!.uri.startsWith('file:///document/rranker/phigros-illustration-stage/session/')).toBe(true);
+    await first.dispose();
+    expect(files.size).toBe(1);
+    expect(files.get(next.sources[0]!.uri)).toBe('<p>next</p>');
+    await next.dispose();
+    expect(files.size).toBe(0);
   });
 
-  it('writes cross-platform HTML pages to cache files and removes them after use', () => {
-    const prepared = prepareBestImageWebViewSources(['<p>one</p>', '<p>two</p>']);
-    expect(prepared.sources).toHaveLength(2);
-    expect(prepared.sources.every((source) => 'uri' in source && source.uri.startsWith('file:///cache/'))).toBe(true);
-    expect([...storedFiles.values()].map((file) => file.content)).toEqual(['<p>one</p>', '<p>two</p>']);
-
-    prepared.dispose();
-    expect([...storedFiles.values()].every((file) => !file.exists)).toBe(true);
+  it('resolves relative font and UI files inside the same session', async () => {
+    const prepared = await prepareBestImageWebViewSources(['<html><head></head><body><img src="./font/phi.ttf"></body></html>'], directory);
+    const dom = new JSDOM(files.get(prepared.sources[0]!.uri), { url: prepared.sources[0]!.uri });
+    expect(dom.window.document.querySelector('img')!.src).toBe('file:///document/rranker/phigros-illustration-stage/session/font/phi.ttf');
+    dom.window.close();
+    await prepared.dispose();
   });
 
-  it('can place HTML beside persistent Phigros fonts for WebView read access', () => {
-    const directory = { uri: 'file:///document/rranker/phigros-fonts/v1' };
-    const prepared = prepareBestImageWebViewSources(['<p>font preview</p>'], directory as never);
-    expect(prepared.sources[0]).toEqual(expect.objectContaining({
-      uri: expect.stringMatching(/^file:\/\/\/document\/rranker\/phigros-fonts\/v1\/rranker-best-image-/u),
-    }));
-    prepared.dispose();
+  it('removes a partially written batch if file preparation fails', async () => {
+    write.mockRejectedValueOnce(new Error('disk full'));
+    await expect(prepareBestImageWebViewSources(['<p>page</p>'], directory)).rejects.toThrow('disk full');
+    expect(files.size).toBe(0);
   });
 });

@@ -28,6 +28,17 @@ vi.mock('expo-crypto', () => ({
   )).buffer,
 }));
 
+vi.mock('expo-modules-core', () => ({
+  requireNativeModule: () => ({
+    sha256FileAsync: async (uri: string) => {
+      const bytes = mockUiFs.files.get(uri);
+      if (!bytes) throw new Error('file not found');
+      return mockUiFs.digests.get(`${bytes.byteLength}:${Buffer.from(bytes.subarray(0, 64)).toString('hex')}`)
+        ?? createHash('sha256').update(bytes).digest('hex');
+    },
+  }),
+}));
+
 vi.mock('expo-file-system', () => {
   const joinUri = (base: string | { uri: string }, parts: string[]) => {
     const root = typeof base === 'string' ? base : base.uri;

@@ -1,7 +1,9 @@
+import type { BestImageGame } from './load-best-image-session';
 import type { BestImageWebViewSource } from './prepare-best-image-webview-sources';
 
 export type BestImageScreenControllerConfig<TType extends string, TPrefs> = {
   accountId: string;
+  game: BestImageGame;
   defaultType: TType;
   defaultWidth: number;
   defaultQuantityText: string;

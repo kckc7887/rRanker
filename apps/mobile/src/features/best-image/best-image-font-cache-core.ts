@@ -1,7 +1,7 @@
-import { sha256 } from '@/utils/resource-integrity';
+import { sha256FileAsync } from '@/utils/resource-integrity';
 import { Directory, File, Paths } from 'expo-file-system';
 import { captureResourceWrites, createInflightGuard, resourceWriteGeneration } from '@/services/snapshot-cache-utils';
-export { sha256, bytesToHex } from '@/utils/resource-integrity';
+export { sha256, sha256FileAsync, bytesToHex } from '@/utils/resource-integrity';
 
 export type FontCacheManifestEntry = {
 
@@ -62,7 +62,7 @@ export function createFontCacheGuard<Entry extends FontCacheManifestEntry>(optio
 
   async function isValidFont(file: File, entry: Entry): Promise<boolean> {
     if (!file.exists || file.size !== entry.fontBytes) return false;
-    return await sha256(await file.bytes()) === entry.fontSha256;
+    return await sha256FileAsync(file.uri) === entry.fontSha256;
   }
 
   async function ensureFont(

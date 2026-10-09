@@ -14,7 +14,7 @@ import {
   APP_DOCUMENT_ROOT,
   MAIMAI_ASSETS_ROOT,
   PHIGROS_FONT_ROOT,
-  PHIGROS_ILLUSTRATION_ROOT,
+  BEST_IMAGE_STAGE_ROOT,
   measureDirectoryBytesAsync,
   measureDirectoryBytesStrictAsync,
 } from '@/features/storage-management/fs-storage';
@@ -213,7 +213,9 @@ export async function measureManagedStorageBytes(): Promise<number> {
     measureDirectoryBytesStrictAsync(APP_CACHE_ROOT(), { skip: isExpoSystemCacheEntry }),
     measureDirectoryBytesStrictAsync(MAIMAI_ASSETS_ROOT()),
     measureDirectoryBytesStrictAsync(PHIGROS_FONT_ROOT()),
-    measureDirectoryBytesStrictAsync(PHIGROS_ILLUSTRATION_ROOT()),
+    measureDirectoryBytesStrictAsync(BEST_IMAGE_STAGE_ROOT('maimai')),
+    measureDirectoryBytesStrictAsync(BEST_IMAGE_STAGE_ROOT('chunithm')),
+    measureDirectoryBytesStrictAsync(BEST_IMAGE_STAGE_ROOT('phigros')),
   ]);
   return sqlite.allocatedBytes + directoryBytes.reduce((sum, bytes) => sum + bytes, 0);
 }

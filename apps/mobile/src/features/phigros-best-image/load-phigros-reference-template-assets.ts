@@ -1,6 +1,6 @@
-import { Asset } from 'expo-asset';
 import { File } from 'expo-file-system';
-import { Image } from 'react-native';
+import { loadBundledBestImageAssetUri, loadBundledBestImageFile } from '@/features/best-image/load-best-image-assets';
+import { loadRemoteImageFile, type BestImageAssetSession } from '@/features/best-image/load-best-image-session';
 
 export type PhigrosReferenceTemplateAssets = {
   css: string;
@@ -44,57 +44,10 @@ const RATING_SOURCES: Readonly<Record<string, number>> = {
 
 const DATA_ICON_SOURCE = require('../../../assets/phigros-b30-reference/otherimg/data.png') as number;
 const BACKGROUND_SOURCE = require('../../../assets/phigros-b30-reference/otherimg/phigros.webp') as number;
-const assetUriCache = new Map<number, Promise<string>>();
-const assetDataUriCache = new Map<string, Promise<string>>();
-let templatePromise: Promise<PhigrosReferenceTemplateAssets> | null = null;
-
-export async function loadPhigrosReferenceAssetUri(moduleId: number): Promise<string> {
-  const cached = assetUriCache.get(moduleId);
-  if (cached) return cached;
-  const pending = (async () => {
-    let initialError: unknown;
-    try {
-      const [asset] = await Asset.loadAsync(moduleId);
-      const uri = asset?.localUri ?? asset?.uri;
-      if (uri?.startsWith('file://')) return uri;
-    } catch (error) {
-      initialError = error;
-    }
-    const resourceUri = Image.resolveAssetSource(moduleId)?.uri;
-    if (resourceUri) {
-      const [cachedAsset] = await Asset.loadAsync(resourceUri);
-      const uri = cachedAsset?.localUri ?? cachedAsset?.uri;
-      if (uri?.startsWith('file://')) return uri;
-    }
-    if (initialError instanceof Error) throw initialError;
-    throw new Error('Phigros 参考模板素材没有可读取的本地文件');
-  })();
-  assetUriCache.set(moduleId, pending);
-  try {
-    return await pending;
-  } catch (error) {
-    assetUriCache.delete(moduleId);
-    throw error;
-  }
-}
-
-async function loadPhigrosReferenceAssetDataUri(moduleId: number, mimeType: string): Promise<string> {
-  const cacheKey = `${moduleId}:${mimeType}`;
-  const cached = assetDataUriCache.get(cacheKey);
-  if (cached) return cached;
-  const pending = new File(await loadPhigrosReferenceAssetUri(moduleId)).base64()
-    .then((base64) => `data:${mimeType};base64,${base64}`);
-  assetDataUriCache.set(cacheKey, pending);
-  try {
-    return await pending;
-  } catch (error) {
-    assetDataUriCache.delete(cacheKey);
-    throw error;
-  }
-}
+let cssPromise: Promise<readonly [string, string, string]> | null = null;
 
 async function loadAssetText(moduleId: number): Promise<string> {
-  return new File(await loadPhigrosReferenceAssetUri(moduleId)).text();
+  return new File(await loadBundledBestImageAssetUri(moduleId)).text();
 }
 
 function withoutImport(css: string, importPath: string): string {
@@ -102,35 +55,25 @@ function withoutImport(css: string, importPath: string): string {
 }
 
 export async function loadPhigrosReferenceTemplateAssets(
-  allowingReadAccessToUrl: string,
-  fallbackAvatarUrl: string,
+  session: BestImageAssetSession, fallbackAvatarUrl: string, signal?: AbortSignal,
 ): Promise<PhigrosReferenceTemplateAssets> {
-  const base = await (templatePromise ??= (async () => {
-    const [b19Css, commonCssSource, snowCss, challengeIconUrls, ratingEntries, dataIconUrl, fallbackBackgroundUrl] = await Promise.all([
-      loadAssetText(CSS_SOURCES.b19),
-      loadAssetText(CSS_SOURCES.common),
-      loadAssetText(CSS_SOURCES.snow),
-      Promise.all(CHALLENGE_SOURCES.map((source) => loadPhigrosReferenceAssetDataUri(source, 'image/png'))),
-      Promise.all(Object.entries(RATING_SOURCES).map(async ([name, source]) => [name, await loadPhigrosReferenceAssetDataUri(source, 'image/png')] as const)),
-      loadPhigrosReferenceAssetDataUri(DATA_ICON_SOURCE, 'image/png'),
-      loadPhigrosReferenceAssetDataUri(BACKGROUND_SOURCE, 'image/webp'),
-    ]);
-
-    let commonCss = withoutImport(commonCssSource, './theme/snow/snow.css');
-    commonCss = commonCss.replace('../otherimg/phigros.png', fallbackBackgroundUrl);
-
-    return {
-      css: `${snowCss}\n${commonCss}\n${withoutImport(b19Css, '../common/common.css')}`,
-      dataIconUrl,
-      fallbackBackgroundUrl,
-      fallbackAvatarUrl,
-      challengeIconUrls,
-      ratingIconUrls: Object.fromEntries(ratingEntries),
-      allowingReadAccessToUrl,
-    };
-  })().catch((error) => {
-    templatePromise = null;
-    throw error;
-  }));
-  return { ...base, fallbackAvatarUrl };
+  const [css, challengeIconUrls, ratingEntries, dataIconUrl, fallbackBackgroundUrl, avatarUrl] = await Promise.all([
+    cssPromise ??= Promise.all([
+      loadAssetText(CSS_SOURCES.b19), loadAssetText(CSS_SOURCES.common), loadAssetText(CSS_SOURCES.snow),
+    ]).catch((error) => { cssPromise = null; throw error; }),
+    Promise.all(CHALLENGE_SOURCES.map((source) => loadBundledBestImageFile(session, source, 'png', signal))),
+    Promise.all(Object.entries(RATING_SOURCES).map(async ([name, source]) => [name, await loadBundledBestImageFile(session, source, 'png', signal)] as const)),
+    loadBundledBestImageFile(session, DATA_ICON_SOURCE, 'png', signal),
+    loadBundledBestImageFile(session, BACKGROUND_SOURCE, 'webp', signal),
+    loadRemoteImageFile(session, fallbackAvatarUrl, signal),
+  ]);
+  const [b19Css, commonCssSource, snowCss] = css;
+  const commonCss = withoutImport(commonCssSource, './theme/snow/snow.css')
+    .replace('../otherimg/phigros.png', fallbackBackgroundUrl);
+  return {
+    css: `${snowCss}\n${commonCss}\n${withoutImport(b19Css, '../common/common.css')}`,
+    dataIconUrl, fallbackBackgroundUrl, fallbackAvatarUrl: avatarUrl ?? '', challengeIconUrls,
+    ratingIconUrls: Object.fromEntries(ratingEntries),
+    allowingReadAccessToUrl: session.directory.uri,
+  };
 }

@@ -1,3 +1,4 @@
+import { imageDownloads } from './remote-image-native-mock';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { QueryClientProvider, type InfiniteData } from '@tanstack/react-query';
@@ -74,6 +75,8 @@ jest.mock('expo-sqlite/kv-store', () => ({
   },
 }));
 jest.mock('@expo/vector-icons', () => ({ Ionicons: () => null }));
+jest.mock('expo-file-system', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').fileSystem);
+jest.mock('expo-file-system/legacy', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').legacyFileSystem);
 jest.mock('expo-image', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
@@ -388,9 +391,9 @@ describe('TUF screens', () => {
     };
     const screen = await render(<TufLevelDetailScreen levelId="11372" />);
     const heroImage = screen.getByLabelText('关卡头图 关卡 A');
-    expect(heroImage.props.source).toBe(`https://api.tuforums.com/v2/media/image-proxy?url=${encodeURIComponent(image)}`);
+    expect(imageDownloads.get(heroImage.props.source?.uri)).toBe(`https://api.tuforums.com/v2/media/image-proxy?url=${encodeURIComponent(image)}`);
     await fireEvent(heroImage, 'error');
-    expect(screen.getByLabelText('关卡头图 关卡 A').props.source).toBe(image);
+    expect(imageDownloads.get(screen.getByLabelText('关卡头图 关卡 A').props.source?.uri)).toBe(image);
   });
 
   it('uses the difficulty icon while media is loading and the local icon after remote failures', async () => {
@@ -398,7 +401,7 @@ describe('TUF screens', () => {
     mockUseTufLevelSearch.mockReturnValue(infinite([{ ...level, difficulty: { ...level.difficulty!, icon } }], 'results'));
     const screen = await render(<TufSearchScreen />);
     const cover = screen.getByLabelText('关卡封面 关卡 A');
-    expect(cover.props.source).toBe(icon);
+    expect(imageDownloads.get(cover.props.source?.uri)).toBe(icon);
     await fireEvent(cover, 'error');
     expect(screen.getByLabelText('关卡封面 关卡 A').props.source).not.toEqual(icon);
   });
@@ -412,7 +415,10 @@ describe('TUF screens', () => {
     };
     mockUseTufLevelSearch.mockReturnValue(infinite([{ ...level, videoLink: 'https://www.youtube.com/watch?v=PUvyMb-qPVs', difficulty: { ...level.difficulty!, icon } }], 'results'));
     const screen = await render(<TufSearchScreen />);
-    const readSource = () => screen.getByLabelText('关卡封面 关卡 A').props.source;
+    const readSource = () => {
+      const source = screen.getByLabelText('关卡封面 关卡 A').props.source;
+      return imageDownloads.get(source?.uri) ?? source;
+    };
     expect(readSource()).toBe(`https://api.tuforums.com/v2/media/image-proxy?url=${encodeURIComponent(image)}`);
     await fireEvent(screen.getByLabelText('关卡封面 关卡 A'), 'error');
     expect(readSource()).toBe(image);

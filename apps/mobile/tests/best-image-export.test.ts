@@ -31,6 +31,15 @@ vi.mock('expo-file-system', () => {
   return { File, Paths: { cache: 'file:///cache' }, __fileStates: fileStates };
 });
 
+vi.mock('expo-file-system/legacy', async () => {
+  const { File } = await import('expo-file-system');
+  return {
+    getInfoAsync: async (uri: string) => ({ exists: new File(uri).exists }),
+    copyAsync: async ({ from, to }: { from: string; to: string }) => { new File(from).copy(new File(to)); },
+    deleteAsync: async (uri: string) => { new File(uri).delete(); },
+  };
+});
+
 import * as MediaLibrary from 'expo-media-library';
 import * as FileSystem from 'expo-file-system';
 import {
@@ -83,7 +92,7 @@ describe('best image export', () => {
     expect(MediaLibrary.saveToLibraryAsync).toHaveBeenCalledWith('file:///cache/result.png');
     expect(states.get('file:///cache/result.png')).toBe(false);
 
-    deleteBestImageCapture('file:///capture.png');
+    await deleteBestImageCapture('file:///capture.png');
     expect(states.get('file:///capture.png')).toBe(false);
   });
 });

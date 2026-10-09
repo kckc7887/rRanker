@@ -1,3 +1,4 @@
+import { imageDownloads } from './remote-image-native-mock';
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import UserLibraryScreen from '../app/library/index';
@@ -26,11 +27,13 @@ const mockSong = {
 jest.mock('expo-router', () => ({
   router: { push: (...args: unknown[]) => mockPush(...args) },
 }));
+jest.mock('expo-file-system', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').fileSystem);
+jest.mock('expo-file-system/legacy', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').legacyFileSystem);
 jest.mock('expo-image', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return {
     Image: ({ source: imageSource, ...props }: { source?: unknown }) => (
-      <RN.Image {...props} source={{ uri: String(imageSource) }} />
+      <RN.Image {...props} source={typeof imageSource === 'string' ? { uri: imageSource } : imageSource as React.ComponentProps<typeof RN.Image>['source']} />
     ),
   };
 });
@@ -105,7 +108,7 @@ describe('Chunithm personal library', () => {
     expect(screen.getByText('已收藏歌曲')).toBeTruthy();
     expect(screen.getByText('练习谱面 · MASTER')).toBeTruthy();
     expect(screen.queryByText(/SD MASTER/)).toBeNull();
-    expect(screen.getAllByLabelText('曲绘')[0]?.props.source.uri)
+    expect(imageDownloads.get(screen.getAllByLabelText('曲绘')[0]?.props.source?.uri))
       .toBe('https://assets2.lxns.net/chunithm/jacket/3.png');
 
     await fireEvent.press(screen.getByText('练习谱面 · MASTER'));

@@ -10,6 +10,7 @@ import {
 import { Image, type ImageProps } from 'expo-image';
 import { scheduleIdleTask } from '@/state/app-lifecycle';
 import {
+  acquireRemoteImageOriginal,
   cacheCompressedRemoteImage,
   findCompressedRemoteImage,
   invalidateCompressedRemoteImage,
@@ -17,6 +18,7 @@ import {
   supportsCompressedRemoteImageCache,
   type CompressedRemoteImageResult,
   type RemoteImageCacheProfile,
+  type RemoteImageOriginal,
 } from '@/services/remote-image-cache';
 
 export type RemoteImageCacheMode = RemoteImageCacheProfile | 'native' | 'none';
@@ -82,10 +84,14 @@ export function RemoteImage({
     return JSON.parse(sourceIdentity) as { uri: string; cacheKey?: string; headers?: Record<string, string> };
   }, [sourceIdentity]);
   const releaseRef = useRef<(() => void) | undefined>(undefined);
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
   const activeRequestKeyRef = useRef<string | null>(null);
   const [resolved, setResolved] = useState<CompressedRemoteImageResult | null>(null);
-  const [phase, setPhase] = useState<'checking' | 'cached' | 'remote' | 'cached-fallback'>('checking');
+  const [phase, setPhase] = useState<'checking' | 'cached' | 'remote' | 'cached-fallback' | 'failed'>('checking');
   const [remoteDisplayed, setRemoteDisplayed] = useState(false);
+  const [originalRequestKey, setOriginalRequestKey] = useState<string | null>(null);
+  const [original, setOriginal] = useState<RemoteImageOriginal | null>(null);
 
   useEffect(() => {
     if (!requestKey || (mode !== 'thumbnail' && mode !== 'artwork')) return undefined;
@@ -95,6 +101,8 @@ export function RemoteImage({
     setResolved(null);
     setPhase('checking');
     setRemoteDisplayed(false);
+    setOriginalRequestKey(null);
+    setOriginal(null);
     let cancelled = false;
     void findCompressedRemoteImage(requestSource, { gameId: gameId!, profile: mode })
       .then((result) => {
@@ -103,6 +111,7 @@ export function RemoteImage({
           return;
         }
         if (!result) {
+          setOriginalRequestKey(requestKey);
           setPhase('remote');
           return;
         }
@@ -111,14 +120,37 @@ export function RemoteImage({
         setPhase('cached');
       })
       .catch(() => {
-        if (!cancelled) setPhase('remote');
+        if (!cancelled) {
+          setOriginalRequestKey(requestKey);
+          setPhase('remote');
+        }
       });
     return () => {
       cancelled = true;
+      activeRequestKeyRef.current = null;
       releaseRef.current?.();
       releaseRef.current = undefined;
     };
   }, [gameId, mode, requestKey, requestSource]);
+
+  useEffect(() => {
+    if (!supportsCompressedCache || !requestKey || originalRequestKey !== requestKey) return;
+    const controller = new AbortController();
+    let acquired: RemoteImageOriginal | null = null;
+    void acquireRemoteImageOriginal(requestSource, gameId!, controller.signal).then(result => {
+      if (controller.signal.aborted) { void result.release().catch(() => undefined); return; }
+      acquired = result;
+      setOriginal(result);
+    }).catch(error => {
+      if (controller.signal.aborted) return;
+      setPhase('failed');
+      onErrorRef.current?.({ error: error instanceof Error ? error.message : String(error) });
+    });
+    return () => {
+      controller.abort();
+      void acquired?.release().catch(() => undefined);
+    };
+  }, [gameId, originalRequestKey, requestKey, requestSource]);
 
   useEffect(() => {
     if (!requestKey
@@ -181,7 +213,10 @@ export function RemoteImage({
           releaseRef.current?.();
           releaseRef.current = undefined;
           setResolved(null);
-          if (phase === 'cached') setPhase('remote');
+          if (phase === 'cached') {
+            setOriginalRequestKey(requestKey);
+            setPhase('remote');
+          }
           else onError?.(event);
           return;
         }
@@ -191,11 +226,13 @@ export function RemoteImage({
         }
         onError?.(event);
       }}
-      source={!requestReady || phase === 'checking'
+      source={!requestReady || phase === 'checking' || phase === 'failed'
         ? null
         : showingCached
           ? resolved?.source ?? null
-          : source}
+          : originalRequestKey === requestKey
+            ? original ? { ...normalized?.source, uri: original.fileUri } : null
+            : source}
     />
   );
 }

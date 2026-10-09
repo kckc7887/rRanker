@@ -1,4 +1,5 @@
 import { releaseFixture } from './fixtures/phigros-release';
+import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import type { PhigrosResourceAsset } from '@/services/phigros-resources';
 import { PHIGROS_OSS_BASE } from '@/domain/account-avatar';
@@ -9,6 +10,21 @@ import {
 } from '@/domain/phigros-chart-preview';
 import { loadPhigrosChartPreviewResources } from '@/services/phigros-chart-preview-resources';
 import { phigrosResources } from '@/services/phigros-resources';
+
+const native = vi.hoisted(() => ({
+  files: new Map<string, Uint8Array>(),
+  beforeHash: undefined as (() => Promise<void>) | undefined,
+}));
+vi.mock('expo-modules-core', () => ({
+  requireNativeModule: () => ({
+    sha256FileAsync: async (uri: string) => {
+      const bytes = native.files.get(uri);
+      if (!bytes) throw new Error('file not found');
+      await native.beforeHash?.();
+      return createHash('sha256').update(bytes).digest('hex');
+    },
+  }),
+}));
 
 function asset(path: string, size = 1, contentType = 'application/json'): PhigrosResourceAsset {
   return { path, objectKey: `phigros/${path.split('/')[0]}/${'a'.repeat(64)}.${path.split('.').at(-1)}`, size, contentType, sha256: 'a'.repeat(64) };
@@ -167,9 +183,40 @@ describe('phigros chart preview resource resolution', () => {
     expect(requests).toContain(`${PHIGROS_OSS_BASE}/${fixture.objectKeys['charts/DistortedFate.Sakuzyo.0/EZ.json']}`);
   });
 
+  it.each(['valid', 'corrupt', 'io failure', 'cancel', 'clear'] as const)('handles %s local files without publishing invalid preview resources', async outcome => {
+    const fixture = releaseFixture('r1', ['Song.A']);
+    vi.spyOn(globalThis, 'fetch').mockImplementation(async input => fixture.respond(input));
+    const controller = new AbortController();
+    const reason = new Error('cancelled');
+    const read = async (asset: { path: string }) => {
+      const bytes = Uint8Array.from(fixture.files[asset.path]!);
+      if (outcome === 'corrupt') bytes[0] ^= 0xff;
+      const uri = `file:///preview/${asset.path}`;
+      native.files.set(uri, bytes);
+      return { uri, size: bytes.byteLength, bytes: async () => {
+        if (outcome !== 'valid') throw new Error('unverified file exposed to player');
+        return bytes;
+      } };
+    };
+    if (outcome === 'io failure') native.beforeHash = async () => { throw new Error('file read failed'); };
+    if (outcome === 'cancel') native.beforeHash = async () => { controller.abort(reason); };
+    if (outcome === 'clear') native.beforeHash = async () => { phigrosResources.clear(); };
+    const result = loadPhigrosChartPreviewResources({ songId: 'Song.A', difficulty: 'EZ' }, controller.signal, read);
+    if (outcome === 'valid') {
+      await expect(result).resolves.toMatchObject({
+        chart: fixture.files['charts/Song.A.0/EZ.json'],
+        music: fixture.files['music/Song.A.ogg'],
+        illustration: fixture.files['illustrations/Song.A.png'],
+      });
+    } else if (outcome === 'cancel') await expect(result).rejects.toBe(reason);
+    else await expect(result).rejects.toThrow(outcome === 'corrupt' ? '资源校验失败' : outcome === 'clear' ? 'Resource generation changed' : 'file read failed');
+  });
+
 });
 
 afterEach(() => {
   phigrosResources.clear();
   vi.restoreAllMocks();
+  native.files.clear();
+  native.beforeHash = undefined;
 });

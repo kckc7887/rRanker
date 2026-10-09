@@ -1,3 +1,4 @@
+import { imageDownloads } from './remote-image-native-mock';
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import UserLibraryScreen from '../app/library/index';
@@ -16,11 +17,13 @@ const phiraFavorite: UserLibraryItem = {
 jest.mock('expo-router', () => ({
   router: { push: (...args: unknown[]) => mockPush(...args) },
 }));
+jest.mock('expo-file-system', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').fileSystem);
+jest.mock('expo-file-system/legacy', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').legacyFileSystem);
 jest.mock('expo-image', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return {
     Image: ({ source: imageSource, ...props }: { source?: unknown }) => (
-      <RN.Image {...props} source={{ uri: String(imageSource) }} />
+      <RN.Image {...props} source={typeof imageSource === 'string' ? { uri: imageSource } : imageSource as React.ComponentProps<typeof RN.Image>['source']} />
     ),
   };
 });
@@ -62,7 +65,7 @@ describe('Phira personal library', () => {
     expect(screen.getByText('已收藏歌曲')).toBeTruthy();
     expect(screen.getAllByText('交互').length).toBeGreaterThanOrEqual(1);
     expect(screen.queryByText(/曲库暂不可用/)).toBeNull();
-    expect(screen.getAllByLabelText('曲绘')[0]?.props.source.uri).toBe('https://example.com/cover.png');
+    expect(imageDownloads.get(screen.getAllByLabelText('曲绘')[0]?.props.source?.uri)).toBe('https://example.com/cover.png');
   });
 
   it('opens the phira song detail with the full chart id', async () => {

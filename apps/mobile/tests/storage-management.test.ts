@@ -27,7 +27,7 @@ import { measureRrankerDatabaseAllocation } from '@/storage/rranker-database';
 const mocks = vi.hoisted(() => ({
   execAsync: vi.fn(async () => undefined),
   getFirstAsync: vi.fn(async (_sql: string) => null as Record<string, number> | null),
-  measureDirectoryBytes: vi.fn(async () => 0),
+  measureDirectoryBytes: vi.fn(async (_directory?: { uri: string } | null) => 0),
   clearMaimaiUiCache: vi.fn(),
   resetPhigrosKyouAliasesCache: vi.fn(),
   clearGameRemoteImageCache: vi.fn(async (): Promise<void> => undefined),
@@ -77,10 +77,10 @@ vi.mock('@/features/storage-management/fs-storage', () => ({
   measureDirectoryBytesStrictAsync: mocks.measureDirectoryBytes,
   clearDirectoryContentsStrict: mocks.clearDirectoryContentsStrict,
   runSharedCacheFileOperation: async <T>(operation: () => Promise<T>) => operation(),
-  APP_CACHE_ROOT: () => null,
+  APP_CACHE_ROOT: () => ({ uri: 'file:///cache' }),
   APP_DOCUMENT_ROOT: () => null,
   PHIGROS_FONT_ROOT: () => null,
-  PHIGROS_ILLUSTRATION_ROOT: () => null,
+  BEST_IMAGE_STAGE_ROOT: (game: string) => ({ uri: `file:///document/${game}-illustration-stage` }),
   MAIMAI_ASSETS_ROOT: () => null,
 }));
 
@@ -91,11 +91,6 @@ vi.mock('@/services/remote-image-cache', () => ({
 
 vi.mock('@/features/storage-management/ui-icon-fonts', () => ({
   reloadUiIconFonts: async () => undefined,
-}));
-
-vi.mock('@/features/phigros-best-image/load-phigros-image-assets', () => ({
-  clearPhigrosIllustrationStage: () => undefined,
-  phigrosIllustrationStageDirectory: () => null,
 }));
 
 vi.mock('@/features/phigros-best-image/phigros-font-cache', () => ({
@@ -499,8 +494,8 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     mocks.clearGameRemoteImageCache.mockClear();
     mocks.clearGameRemoteImageCache.mockReturnValueOnce(images.promise);
     mocks.measureDirectoryBytes.mockClear();
-    for (let index = 0; index < 4; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(20);
-    for (let index = 0; index < 4; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(10);
+    let cacheBytes = 80;
+    mocks.measureDirectoryBytes.mockImplementation(async (directory) => directory?.uri === 'file:///cache' ? cacheBytes : 0);
     let settled = false;
     const pending = clearStorageByCategories(['phira'], {
       cancelQueries: vi.fn(async () => undefined), removeQueries: vi.fn(),
@@ -509,11 +504,10 @@ describe('clearing storage compacts the database and resets in-memory caches', (
       await vi.waitFor(() => expect(mocks.clearGameRemoteImageCache).toHaveBeenCalledWith('phira'));
       await Promise.resolve(); await Promise.resolve();
       expect(settled).toBe(false);
-      expect(mocks.measureDirectoryBytes).toHaveBeenCalledTimes(4);
+      cacheBytes = 40;
       images.resolve();
       await expect(pending).resolves.toEqual({ clearedIds: [], failures: ['phira'], reclaimedBytes: 40 });
-      expect(mocks.measureDirectoryBytes).toHaveBeenCalledTimes(8);
-    } finally { images.resolve(); await pending; clear.mockRestore(); }
+    } finally { images.resolve(); await pending; clear.mockRestore(); mocks.measureDirectoryBytes.mockResolvedValue(0); }
   });
 
   it('runs wal checkpoint and VACUUM after clearing', async () => {
@@ -587,11 +581,14 @@ describe('clearing storage compacts the database and resets in-memory caches', (
 
   it('preserves reclaimed bytes when disk clear fails but memory and files succeed', async () => {
     mocks.clearDiskCache.mockRejectedValueOnce(new Error('disk unavailable'));
-    for (let index = 0; index < 4; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(20);
-    for (let index = 0; index < 4; index++) mocks.measureDirectoryBytes.mockResolvedValueOnce(10);
-    await expect(clearStorageByCategories(['shared'], { cancelQueries: vi.fn(), removeQueries: vi.fn() } as never)).resolves.toMatchObject({
-      clearedIds: ['shared'], failures: ['图片磁盘缓存'], reclaimedBytes: 40,
-    });
+    let cacheBytes = 80;
+    mocks.measureDirectoryBytes.mockImplementation(async (directory) => directory?.uri === 'file:///cache' ? cacheBytes : 0);
+    mocks.clearDirectoryContentsStrict.mockImplementationOnce(async () => { cacheBytes = 40; });
+    try {
+      await expect(clearStorageByCategories(['shared'], { cancelQueries: vi.fn(), removeQueries: vi.fn() } as never)).resolves.toMatchObject({
+        clearedIds: ['shared'], failures: ['图片磁盘缓存'], reclaimedBytes: 40,
+      });
+    } finally { mocks.measureDirectoryBytes.mockResolvedValue(0); }
   });
 });
 
@@ -626,3 +623,7 @@ describe('Majdata storage segment', () => {
     expect(await adapter.measure(await collectStorageMeasurementInventory(snapshots as never))).toBe(40); await adapter.clear(snapshots as never); expect(snapshots.clearResources).toHaveBeenCalledWith(resources);
   });
 });
+
+vi.mock('expo-file-system/legacy', () => ({ deleteAsync: async () => undefined }));
+
+vi.mock('@/features/best-image/load-best-image-session', () => ({ clearUnusedBestImageAssets: async () => undefined }));

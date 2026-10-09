@@ -53,7 +53,7 @@ function Harness() {
     }}
     preview={{
       previewTestIdPrefix: 'best-image',
-      sources: [{ html: '<p>preview</p>', baseUrl: 'https://assets.example/' }],
+      sources: [{ uri: 'file:///session/preview.html' }],
       pages: [{ id: 'page-1' }],
       pageIndex: 0,
       onPageIndexChange: () => undefined,

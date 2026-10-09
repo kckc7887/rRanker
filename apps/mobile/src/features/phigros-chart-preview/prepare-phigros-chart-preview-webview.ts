@@ -1,7 +1,7 @@
 import { Directory, File } from 'expo-file-system';
 import { Platform } from 'react-native';
 import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
-import type { PhigrosChartPreviewAsset } from '@/domain/phigros-chart-preview';
+import type { PhigrosChartPreviewResourceRead } from '@/domain/phigros-chart-preview';
 import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
 import {
   CHART_PREVIEW_RESOURCE_LABEL,
@@ -55,7 +55,7 @@ export function createPhigrosPreviewResourceRead(
   directory: Directory,
   signal: AbortSignal,
   onProgress?: (progress: ChartPreviewLoadProgress) => void,
-): (asset: PhigrosChartPreviewAsset, index: number) => Promise<Uint8Array> {
+): PhigrosChartPreviewResourceRead {
   const fractions = [0, 0, 0];
   const weights = [1, 1, 1];
   const emit = () => {
@@ -92,7 +92,7 @@ export function createPhigrosPreviewResourceRead(
     );
     fractions[index] = 1;
     emit();
-    return await file.bytes();
+    return file;
   };
 }
 

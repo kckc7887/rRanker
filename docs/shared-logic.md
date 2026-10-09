@@ -79,7 +79,7 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 ## 图片与共享 UI
 
-`RemoteImage` 是远程图片入口，使用 `cacheProfile` 明确 thumbnail、artwork、native 或 none。`remote-image-cache.ts` 管理压缩图片、缓存身份和文件清理。先显示已落盘缩略图，在线图成功显示后才开始新落盘；失活或清理取消待写任务。
+`RemoteImage` 是远程图片入口，使用 `cacheProfile` 明确 thumbnail、artwork、native 或 none。`remote-image-cache.ts` 管理压缩图片、缓存身份和文件清理；`acquireRemoteImageOriginal(source, gameId, signal)` 返回临时原图文件及异步 `release`，展示和压缩共用下载，消费者独立取消。身份包含 URL、请求头、缓存键、游戏及清理代次，不跨清理复用旧请求；最后一个消费者释放后等待原生下载结束并删除文件。原图不受可见性等待限制，压缩在成功显示且页面活动时开始；压缩缓存命中时先显示缩略图，再加载原图。清理跳过正在使用的原图，待消费者释放后回收。
 
 通用行、卡片和封面位于 `components/game-content`，游戏组件只提供实际展示差异。`GameDifficultyBadge` 使用普通样式覆盖，保留尺寸、渐变和文本。列表的页面活动、可见性与图片落盘通过现有共享组件传递。
 
@@ -89,7 +89,7 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 ## 成绩图与谱面功能
 
-成绩图公共入口位于 `features/best-image`：`useBestImagePreview`、`useBestImageExport` 与共享页面壳。各游戏负责当前素材、字体和布局。预览、导出、取消和资源释放消费同一真实控制路径，不提供测试 reset 或统计快照。
+成绩图公共入口位于 `features/best-image`：`useBestImageScreenController`、`useBestImagePreview`、`useBestImageExport` 与共享页面壳。`load-best-image-session.ts` 为舞萌、中二和 Phigros 提供账号独立的素材会话，`loadRemoteImageFile`、`loadImageFiles` 与 `copyBestImageAsset` 返回原字节文件 URL，共享下载并复用已准备文件。游戏入口只提供素材地址、当前所需字体和布局；`prepareBestImageWebViewSources` 在同一会话目录异步写出 HTML，返回异步 `dispose`。改样式、分页与后台恢复沿用当前会话，已就绪素材与 HTML 保留身份，未完成工作恢复，WebView 只读取该目录。真正进入后台取消当前导出，恢复后可重新导出。离开或换账号先失效会话，`cancelExportRequest` 等待未结束截图及临时截图清理，再回收会话文件；后台等待截图可取消。清缓存跳过活跃会话，启动维护回收上次会话目录。
 
 谱面公共入口位于 `features/chart-preview-shared`：
 
@@ -118,7 +118,7 @@ Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 
 
 `components/game-content/SimaiDifficultyRadar` 为舞萌详情、舞萌实力分析和 Majdata 详情共用雷达，使用相同轴序、刻度与一位小数展示，颜色由调用方传入。
 
-Phigros/Rizline 预览和下载共用 `phigrosResources`、`rizlineResources`、`VerifiedReleaseSession` 与 `verifyResourceBytes`；调用方提供实际进度或落盘回调。`resourceObjectPathSchema` 限定资源组、分类与哈希文件名。Phigros 在验证发布清单时建立 `assetsByPath`，曲绘、头像、成绩图和预览共用该索引，索引随发布对象释放；实际 URL 来自 `objectKey`。默认谱、里谱和共用音乐选择仍由 `phigros-chart-preview.ts` 处理。哈希 URL 不附加全局发布版本，未变化资源可以继续命中缓存。
+Phigros/Rizline 预览和下载共用 `phigrosResources`、`rizlineResources`、`VerifiedReleaseSession` 与 `verifyResourceBytes`；调用方提供实际进度或落盘回调。`utils/resource-integrity.ts` 的 `sha256FileAsync(uri): Promise<string>` 经 `modules/resource-integrity` 在原生后台分块读取已落盘文件；字节形式的响应继续使用 `sha256`。字体、素材包和谱面资源共用该文件校验入口，取消与代次检查仍在结果发布前执行。`resourceObjectPathSchema` 限定资源组、分类与哈希文件名。Phigros 在验证发布清单时建立 `assetsByPath`，曲绘、头像、成绩图和预览共用该索引，索引随发布对象释放；实际 URL 来自 `objectKey`。默认谱、里谱和共用音乐选择仍由 `phigros-chart-preview.ts` 处理。哈希 URL 不附加全局发布版本，未变化资源可以继续命中缓存。
 
 `domain/phigros.ts` 的 `loadNoteCountsTable` 解析每难度四项或五项非负整数数组，第五项为谱面 `blockAreaList` 数量，正值写入 `PhigrosChartNotes.block`，零值省略。`PhigrosCatalogProvider` 按难度装配物量；详情复用 `GameNoteTable`，有正 BLOCK 时放在 FLICK 与总计之间，缺失或零值不显示整列。`total` 只包含 Tap、Hold、Drag、Flick。解析、已验证资源刷新及详情交互由现有 Phigros 测试覆盖。
 

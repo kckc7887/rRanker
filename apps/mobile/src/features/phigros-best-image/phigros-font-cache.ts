@@ -8,6 +8,7 @@ import {
   createFontCacheGuard,
   errorMessage,
   sha256,
+  sha256FileAsync,
 } from '@/features/best-image/best-image-font-cache-core';
 
 const FONT_BASE_URL = 'https://rranker-phigros-data.cn-nb1.rains3.com/fonts';
@@ -114,10 +115,11 @@ async function downloadFont(
     if (archiveFile.size !== entry.archiveBytes) {
       throw new Error(`${entry.name} 压缩包大小不匹配`);
     }
-    const archiveBytes = await archiveFile.bytes();
-    if (await sha256(archiveBytes) !== entry.archiveSha256) {
+    if (await sha256FileAsync(archiveFile.uri) !== entry.archiveSha256) {
       throw new Error(`${entry.name} 压缩包校验失败`);
     }
+    assertCurrent();
+    const archiveBytes = await archiveFile.bytes();
     const zip = await JSZip.loadAsync(archiveBytes);
     const files = Object.values(zip.files).filter((file) => !file.dir);
     if (files.length !== 1 || files[0]?.name !== entry.archiveEntryName) {

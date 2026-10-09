@@ -1,0 +1,5 @@
+{
+  "platforms": ["android", "apple"],
+  "apple": { "modules": ["ResourceIntegrityModule"] },
+  "android": { "modules": ["expo.modules.resourceintegrity.ResourceIntegrityModule"] }
+}

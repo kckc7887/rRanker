@@ -5,7 +5,8 @@ import { MaimaiBestImageScreen } from '@/screens/maimai/MaimaiBestImageScreen';
 
 export default function BestImageScreen() {
   const activeGameId = useSession((state) => state.activeGameId);
-  if (activeGameId === 'chunithm') return <ChunithmBestImageScreen />;
-  if (activeGameId === 'phigros') return <PhigrosBestImageScreen />;
-  return <MaimaiBestImageScreen />;
+  const activeAccountId = useSession((state) => state.activeAccountId);
+  if (activeGameId === 'chunithm') return <ChunithmBestImageScreen key={activeAccountId} />;
+  if (activeGameId === 'phigros') return <PhigrosBestImageScreen key={activeAccountId} />;
+  return <MaimaiBestImageScreen key={activeAccountId} />;
 }

@@ -1,10 +1,12 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { PixelRatio, Platform, StyleSheet } from 'react-native';
+import { AppState, PixelRatio, Platform, StyleSheet, type AppStateStatus } from 'react-native';
+import { AppLifecycleProvider } from '@/state/app-lifecycle';
 import BestImageScreen from '../app/best-image';
 
 const mockShowNotification = jest.fn();
 let mockDetailedCatalogReady = true;
+let mockPageSequence = 0;
 
 jest.mock('@/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
@@ -27,7 +29,7 @@ jest.mock('@/features/best-image/best-image-export', () => ({
     ? { width: width / pixelRatio, height: height / pixelRatio }
     : { width, height },
   bestImageExportFilename: jest.fn(() => 'image.png'),
-  deleteBestImageCapture: jest.fn(),
+  deleteBestImageCapture: jest.fn(async () => undefined),
   isDrawViewHierarchyError: (error: unknown) => error instanceof Error && error.message.includes('drawViewHierarchyInRect'),
   requestBestImageExportPermission: jest.fn(async () => undefined),
   saveBestImageCapture: jest.fn(async () => undefined),
@@ -82,19 +84,19 @@ jest.mock('@/hooks/use-game-data', () => ({
 }));
 jest.mock('@/features/best-image/load-best-image-assets', () => ({
   loadBestImageAssets: async () => ({
-    fontUrl: 'data:font/ttf;base64,dGVzdA==',
-    ratingFrameUrl: 'data:image/png;base64,dGVzdA==',
+    fontUrl: 'file:///session/dGVzdA==',
+    ratingFrameUrl: 'file:///session/dGVzdA==',
   }),
 }));
 jest.mock('@/features/best-image/load-best-image-jackets', () => ({
-  loadBestImageJackets: async (songIds: string[]) => Object.fromEntries(
-    songIds.map((songId) => [songId, `data:image/png;base64,jacket-${songId}`]),
+  loadBestImageJackets: async (_session: unknown, songIds: string[]) => Object.fromEntries(
+    songIds.map((songId) => [songId, `file:///session/jacket-${songId}`]),
   ),
 }));
 jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
-  prepareBestImageWebViewSources: (htmlPages: string[]) => ({
-    sources: htmlPages.map((html) => ({ html, baseUrl: 'file:///fonts/' })),
-    dispose: jest.fn(),
+  prepareBestImageWebViewSources: async (htmlPages: string[]) => ({
+    sources: htmlPages.map((html) => ({ html, uri: `file:///session/page-${++mockPageSequence}.html` })),
+    dispose: jest.fn(async () => undefined),
   }),
 }));
 jest.mock('@/features/best-image/maimai-font-cache', () => ({
@@ -144,6 +146,32 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({
 }));
 
 describe('best image preview', () => {
+  const originalState = AppState.currentState;
+  const originalIdle = globalThis.requestIdleCallback;
+  const originalCancelIdle = globalThis.cancelIdleCallback;
+  const listenForAppState = () => {
+    let listener: ((state: AppStateStatus) => void) | undefined;
+    AppState.currentState = 'active';
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((type, next) => {
+      if (type === 'change') listener = next;
+      return { remove: () => undefined };
+    });
+    globalThis.requestIdleCallback = (callback) => setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 50 }), 0) as unknown as number;
+    globalThis.cancelIdleCallback = (handle) => clearTimeout(handle);
+    return async (state: AppStateStatus) => {
+      await act(async () => {
+        AppState.currentState = state;
+        listener?.(state);
+      });
+      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
+    };
+  };
+  afterEach(() => {
+    jest.restoreAllMocks();
+    AppState.currentState = originalState;
+    globalThis.requestIdleCallback = originalIdle;
+    globalThis.cancelIdleCallback = originalCancelIdle;
+  });
   beforeEach(() => {
     mockDetailedCatalogReady = true;
     mockShowNotification.mockClear();
@@ -442,4 +470,78 @@ describe('best image preview', () => {
     await waitFor(() => expect(prepareMaimaiFonts).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: false }));
   });
+
+  it.each(['inactive', 'background'] as const)('reuses ready session files after %s and exports at the selected dimensions', async (state) => {
+    const changeState = listenForAppState();
+    const { requestBestImageExportPermission, saveBestImageCapture } = jest.requireMock('@/features/best-image/best-image-export') as {
+      requestBestImageExportPermission: jest.Mock<() => Promise<void>>;
+      saveBestImageCapture: jest.Mock;
+    };
+    const { captureRef } = jest.requireMock('react-native-view-shot') as { captureRef: jest.Mock };
+    captureRef.mockClear();
+    saveBestImageCapture.mockClear();
+    let grant!: () => void;
+    requestBestImageExportPermission.mockImplementationOnce(() => new Promise<void>((resolve) => { grant = resolve; }));
+    const screen = await render(<AppLifecycleProvider><BestImageScreen /></AppLifecycleProvider>);
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
+    await fireEvent.press(screen.getByLabelText('宽度 2160 像素'));
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('width:2160px'));
+    const source = screen.getByTestId('best-image-html-preview-0').props.source.uri;
+    await fireEvent.press(screen.getByLabelText('导出成绩图片'));
+    await changeState(state);
+    if (state === 'background') expect(screen.queryByTestId('best-image-html-preview-0')).toBeNull();
+    else expect(screen.getByTestId('best-image-html-preview-0').props.source.uri).toBe(source);
+    await changeState('active');
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.uri).toBe(source));
+    await act(async () => { grant(); });
+    if (state === 'background') {
+      expect(captureRef).not.toHaveBeenCalled();
+      expect(saveBestImageCapture).not.toHaveBeenCalled();
+      await fireEvent.press(screen.getByLabelText('导出成绩图片'));
+    }
+    const renderer = await screen.findByLabelText('导出渲染 第1页');
+    await fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 2160, height: 2880 }) } });
+    await waitFor(() => expect(captureRef).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
+      width: Platform.OS === 'ios' ? 2160 / PixelRatio.get() : 2160,
+      height: Platform.OS === 'ios' ? 2880 / PixelRatio.get() : 2880,
+      format: 'png',
+    })));
+    await waitFor(() => expect(saveBestImageCapture).toHaveBeenCalled());
+    await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '导出完成' })));
+  });
+
+  it('resumes unfinished session assets after returning from background', async () => {
+    const changeState = listenForAppState();
+    const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
+    let finish!: () => void;
+    prepareMaimaiFonts.mockImplementationOnce(async () => ({
+      directory: { uri: 'file:///assets/' },
+      fullReady: new Promise<void>((resolve) => { finish = resolve; }),
+    }));
+    const screen = await render(<AppLifecycleProvider><BestImageScreen /></AppLifecycleProvider>);
+    await waitFor(() => expect(finish).toBeDefined());
+    expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
+    await changeState('background');
+    await act(async () => { finish(); });
+    await changeState('active');
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
+    expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: false });
+  });
 });
+
+jest.mock('expo-file-system', () => {
+  class Entry {
+    uri: string;
+    constructor(...parts: (string | { uri: string })[]) {
+      this.uri = parts.map((part) => (typeof part === 'string' ? part : part.uri).replace(/\/$/u, '')).join('/');
+    }
+  }
+  return { File: Entry, Directory: Entry, Paths: { cache: 'file:///cache', document: 'file:///document' } };
+});
+jest.mock('expo-file-system/legacy', () => ({
+  getInfoAsync: async () => ({ exists: false }),
+  makeDirectoryAsync: async () => undefined,
+  copyAsync: async () => undefined,
+  moveAsync: async () => undefined,
+  deleteAsync: async () => undefined,
+}));

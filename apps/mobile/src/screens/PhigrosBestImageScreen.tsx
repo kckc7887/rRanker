@@ -1,5 +1,6 @@
 import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
-import type { Directory } from 'expo-file-system';
+import { File, type Directory } from 'expo-file-system';
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import {
   ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
@@ -37,10 +38,7 @@ import {
   appendPhigrosOverflowRecords, paginatePhigrosBestImageSections,
   type PhigrosBestImageOverflowCount, type PhigrosBestImageType,
 } from '@/features/phigros-best-image/phigros-best-image';
-import {
-  createPhigrosIllustrationSessionDirectory, disposePhigrosIllustrationSession,
-  loadPhigrosIllustrations, loadRemoteImageDataUri, phigrosReadableRootDirectory,
-} from '@/features/phigros-best-image/load-phigros-image-assets';
+import { copyBestImageAsset, loadImageFiles, loadRemoteImageFile } from '@/features/best-image/load-best-image-session';
 import { partitionPhigrosIllustrationCache } from '@/features/phigros-best-image/phigros-illustration-cache';
 import {
   loadPhigrosReferenceTemplateAssets,
@@ -122,15 +120,6 @@ function fontProgressLabel(progress: PhigrosFontProgress): string {
 }
 
 export function PhigrosBestImageScreen() {
-  const illustrationStageRef = useRef<Directory | null>(null);
-  if (illustrationStageRef.current === null) {
-    illustrationStageRef.current = createPhigrosIllustrationSessionDirectory();
-  }
-  const illustrationStage = illustrationStageRef.current;
-
-  useEffect(() => () => {
-    disposePhigrosIllustrationSession(illustrationStage);
-  }, [illustrationStage]);
   const theme = useAppTheme();
   const lifecycle = useAppLifecycle();
   const gameData = useGameData();
@@ -158,10 +147,13 @@ export function PhigrosBestImageScreen() {
   const [assetProgress, setAssetProgress] = useState({ done: 0, total: 0 });
   const illustrationCacheRef = useRef<Record<string, string | null>>({});
   const neededFontEntriesRef = useRef<ReturnType<typeof resolveNeededPhigrosFonts>>([]);
+  const fontAssetKeyRef = useRef<string | null>(null);
+  const illustrationAssetKeyRef = useRef<string | null>(null);
   const styleAssetKeyRef = useRef<string | null>(null);
 
   const controller = useBestImageScreenController<PhigrosBestImageType, PhigrosBestImageStylePreferences, PhigrosBestImagePickerKind>({
     accountId: gameData.activeAccountId,
+    game: 'phigros',
     defaultType: 'best30',
     defaultWidth: 1080,
     defaultQuantityText: String(DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS.quantity),
@@ -195,6 +187,7 @@ export function PhigrosBestImageScreen() {
     handleExportMessage,
     handlePreviewMessage,
   } = controller;
+  const { assetSession } = controller;
 
   useEffect(() => {
     if (!provider) { setAvatarItems([]); return; }
@@ -239,13 +232,18 @@ export function PhigrosBestImageScreen() {
   }, [pages, payload, titles, type]);
   neededFontEntriesRef.current = neededFontEntries;
   const neededFontKey = neededFontEntries.map((entry) => entry.name).join('|');
+  const fontAssetKey = JSON.stringify([assetSession.directory.uri, neededFontKey, fontAttempt, provider?.getAvatarUrl('Introduction') ?? '']);
 
   useEffect(() => {
     let cancelled = false;
     const controller = new AbortController();
     if (!lifecycle.foregroundReady) return;
+    if (fontAssetKeyRef.current === fontAssetKey) return;
+    fontAssetKeyRef.current = null;
+    const assertCurrent = captureResourceWrites('phigros', controller.signal);
     setTemplateAssetError(null);
     setFontsReady(false);
+    const neededEntries = neededFontEntriesRef.current;
     const neededNames = neededFontKey ? neededFontKey.split('|').filter(Boolean) : [];
     void (async () => {
       const prepared = await preparePhigrosFonts((progress) => {
@@ -255,21 +253,34 @@ export function PhigrosBestImageScreen() {
         () => ({ ok: true as const }),
         (error: unknown) => ({ ok: false as const, error }),
       );
+      assertCurrent();
+      for (const entry of neededEntries.filter((font) => font.core)) {
+        const path = `font/${entry.cssFileName}`;
+        assertCurrent();
+        await copyBestImageAsset(assetSession, new File(prepared.directory, path).uri, path, controller.signal);
+      }
       const assets = await loadPhigrosReferenceTemplateAssets(
-        phigrosReadableRootDirectory().uri,
-        provider?.getAvatarUrl('Introduction') ?? '',
+        assetSession,
+        provider?.getAvatarUrl('Introduction') ?? '', controller.signal,
       );
       const trimmedAssets = {
         ...assets,
         css: trimPhigrosBestImageCss(assets.css, neededFontEntriesRef.current),
       };
       if (!cancelled) {
-        setFontDirectory(prepared.directory);
+        setFontDirectory(assetSession.directory);
         setTemplateAssets(trimmedAssets);
       }
       const result = await fullResult;
       if (!result.ok) throw result.error;
+      assertCurrent();
+      for (const entry of neededEntries.filter((font) => !font.core)) {
+        const path = `font/${entry.cssFileName}`;
+        assertCurrent();
+        await copyBestImageAsset(assetSession, new File(prepared.directory, path).uri, path, controller.signal);
+      }
       if (!cancelled) {
+        fontAssetKeyRef.current = fontAssetKey;
         setFontsReady(true);
         /** 重建 HTML，让补齐的扩展字体进入 WebView。 */
         setTemplateAssets({ ...trimmedAssets });
@@ -278,7 +289,7 @@ export function PhigrosBestImageScreen() {
       if (!cancelled) setTemplateAssetError(providerErrorToUserMessage(error, '无法准备成绩图片，请重试。'));
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [fontAttempt, lifecycle.foregroundGeneration, lifecycle.foregroundReady, neededFontKey, provider]);
+  }, [assetSession, fontAssetKey, lifecycle.foregroundGeneration, lifecycle.foregroundReady, neededFontKey, provider]);
   const selectedSongIds = useMemo(() => sections.flatMap((section) => section.records.map((record) => record.songId)), [sections]);
   const selectedSongKey = selectedSongIds.join('|');
   const averageRecords = useMemo(() => type === 'best30'
@@ -290,17 +301,24 @@ export function PhigrosBestImageScreen() {
     const bestRecords = sections.filter((section) => !section.id.toLowerCase().includes('phi')).flatMap((section) => section.records).slice(0, 27);
     return [...phiRecords, ...bestRecords].reduce((sum, record) => sum + record.rating, 0) / 30;
   }, [payload?.playerScore.value, sections, type]);
+  const averageRequest = useMemo(() => ({ records: averageRecords, referenceRks: averageReferenceRks }), [averageRecords, averageReferenceRks]);
+  const completedAverageRequest = useRef<typeof averageRequest | null>(null);
 
   useEffect(() => {
     const controller = new AbortController();
     const signal = controller.signal;
     let cancelled = false;
     if (!payload || !lifecycle.foregroundReady) return;
-    void loadPhigrosAccAverages(averageRecords, averageReferenceRks, signal).then((averages) => {
-      if (!cancelled) setAccAverages(averages);
+    if (completedAverageRequest.current === averageRequest) return;
+    completedAverageRequest.current = null;
+    void loadPhigrosAccAverages(averageRequest.records, averageRequest.referenceRks, signal).then((averages) => {
+      if (!cancelled) {
+        completedAverageRequest.current = averageRequest;
+        setAccAverages(averages);
+      }
     });
     return () => { cancelled = true; controller.abort(); };
-  }, [averageRecords, averageReferenceRks, lifecycle.foregroundGeneration, lifecycle.foregroundReady, payload]);
+  }, [averageRequest, lifecycle.foregroundGeneration, lifecycle.foregroundReady, payload]);
 
   const selectStyleKey = (kind: PhigrosBestImagePickerKind, choice: PhigrosImageStyleChoice): string | null => {
     const available = kind === 'avatar' ? avatarItems : songs.map((song) => song.id);
@@ -314,33 +332,40 @@ export function PhigrosBestImageScreen() {
   const backgroundKey = selectStyleKey('background', stylePrefs.background);
   const backgroundFallbackSongId = selectedSongIds[0] ?? null;
   const styleAssetKey = [
-    stylePrefs.avatar.mode, avatarKey ?? '', stylePrefs.background.mode, backgroundKey ?? '', backgroundFallbackSongId ?? '', payload?.avatarUrl ?? '',
+    assetSession.directory.uri, stylePrefs.avatar.mode, avatarKey ?? '', stylePrefs.background.mode, backgroundKey ?? '', backgroundFallbackSongId ?? '', payload?.avatarUrl ?? '',
   ].join('|');
+  const illustrationAssetKey = JSON.stringify([assetSession.directory.uri, selectedSongKey]);
 
   useEffect(() => {
     const controller = new AbortController();
     const signal = controller.signal;
     let cancelled = false;
     if (!provider || !lifecycle.foregroundReady) return;
+    if (illustrationAssetKeyRef.current === illustrationAssetKey) return;
+    illustrationAssetKeyRef.current = null;
     const uniqueIds = [...new Set(selectedSongIds)];
     const { next, missing } = partitionPhigrosIllustrationCache(uniqueIds, illustrationCacheRef.current);
     /** 只缓存当前曲目，避免切换筛选后内存持续增长。 */
-    illustrationCacheRef.current = next;
     setIllustrations(next);
     setAssetProgress({ done: uniqueIds.length - missing.length, total: uniqueIds.length });
-    if (!missing.length) return;
-    void loadPhigrosIllustrations(missing, (id) => provider.getIllustrationLowresUrl(id), (done) => {
+    if (!missing.length) {
+      illustrationCacheRef.current = next;
+      illustrationAssetKeyRef.current = illustrationAssetKey;
+      return;
+    }
+    void loadImageFiles(assetSession, missing, (id) => provider.getIllustrationLowresUrl(id), (done) => {
       if (!cancelled) setAssetProgress({ done: uniqueIds.length - missing.length + done, total: uniqueIds.length });
-    }, illustrationStage, signal).then((loaded) => {
+    }, signal).then((loaded) => {
       if (cancelled) return;
       const merged = Object.fromEntries(uniqueIds.map((id) => [id, loaded[id] ?? illustrationCacheRef.current[id] ?? null]));
       illustrationCacheRef.current = merged;
+      illustrationAssetKeyRef.current = illustrationAssetKey;
       setIllustrations(merged);
       setAssetProgress({ done: uniqueIds.length, total: uniqueIds.length });
     });
     return () => { cancelled = true; controller.abort(); };
     // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedSongKey 覆盖曲目数组内容变化。
-  }, [illustrationStage, lifecycle.foregroundGeneration, lifecycle.foregroundReady, provider, selectedSongKey]);
+  }, [assetSession, illustrationAssetKey, lifecycle.foregroundGeneration, lifecycle.foregroundReady, provider, selectedSongKey]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -350,12 +375,12 @@ export function PhigrosBestImageScreen() {
     if (styleAssetKeyRef.current === styleAssetKey) return;
     void Promise.all([
       stylePrefs.avatar.mode === 'off' ? Promise.resolve(null) : (async () => (
-        await loadRemoteImageDataUri(avatarKey ? provider.getAvatarUrl(avatarKey) : payload?.avatarUrl, illustrationStage, signal)
-        ?? await loadRemoteImageDataUri(payload?.avatarUrl, illustrationStage, signal)
+        await loadRemoteImageFile(assetSession, avatarKey ? provider.getAvatarUrl(avatarKey) : payload?.avatarUrl, signal)
+        ?? await loadRemoteImageFile(assetSession, payload?.avatarUrl, signal)
       ))(),
       stylePrefs.background.mode === 'off' ? Promise.resolve(null) : (async () => (
-        await loadRemoteImageDataUri(backgroundKey ? provider.getIllustrationBlurUrl(backgroundKey) : null, illustrationStage, signal)
-        ?? await loadRemoteImageDataUri(backgroundFallbackSongId ? provider.getIllustrationBlurUrl(backgroundFallbackSongId) : null, illustrationStage, signal)
+        await loadRemoteImageFile(assetSession, backgroundKey ? provider.getIllustrationBlurUrl(backgroundKey) : null, signal)
+        ?? await loadRemoteImageFile(assetSession, backgroundFallbackSongId ? provider.getIllustrationBlurUrl(backgroundFallbackSongId) : null, signal)
       ))(),
     ]).then(([nextAvatar, nextBackground]) => {
       if (cancelled) return;
@@ -365,7 +390,7 @@ export function PhigrosBestImageScreen() {
     });
     return () => { cancelled = true; controller.abort(); };
   }, [
-    avatarKey, backgroundFallbackSongId, backgroundKey, illustrationStage, lifecycle.foregroundGeneration,
+    avatarKey, backgroundFallbackSongId, backgroundKey, assetSession, lifecycle.foregroundGeneration,
     lifecycle.foregroundReady, payload?.avatarUrl, provider,
     styleAssetKey, stylePrefs.avatar.mode, stylePrefs.background.mode,
   ]);
@@ -385,7 +410,7 @@ export function PhigrosBestImageScreen() {
       : buildPhigrosBestImageHtml(input);
   }) : null, [accAverages, avatarData, backgroundData, illustrations, pages, payload, stylePrefs.ratingStyle, templateAssets, titles, type, width]);
 
-  const { sources, setSources, error: sourceError } = usePreparedBestImageSources(htmlPages, fontDirectory);
+  const { sources, error: sourceError } = usePreparedBestImageSources(htmlPages, fontDirectory, cancelExportRequest);
   useEffect(() => {
     setPageHeights({}); setPageIndex(0); setPreviewStates({});
   }, [fontDirectory, htmlPages, setPageHeights, setPageIndex, setPreviewStates]);
@@ -565,16 +590,6 @@ export function PhigrosBestImageScreen() {
       captureAccessibilityLabel: exportIndex !== null ? `导出画布 第${exportIndex + 1}页` : undefined,
       onExportMessage: handleExportMessage,
       onRequestCloseExport: cancelExportRequest,
-      onReleaseHeavySources: () => {
-      setSources(null);
-      setIllustrations(null);
-      setAccAverages(null);
-      setAvatarData(null);
-      setBackgroundData(null);
-      setTemplateAssets(null);
-      illustrationCacheRef.current = {};
-      styleAssetKeyRef.current = null;
-    },
     }}
   />;
 }

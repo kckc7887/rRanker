@@ -21,6 +21,25 @@ import type { RizlineRelease } from '@/services/rizline-resources';
 
 vi.mock('@/storage/sqlite-snapshot-repository', () => ({ SqliteSnapshotRepository: class {} }));
 
+const nativeFiles = vi.hoisted(() => new Map<string, Uint8Array>());
+const nativeHash = vi.hoisted(() => ({ beforeHash: undefined as (() => Promise<void>) | undefined }));
+vi.mock('expo-modules-core', () => ({
+  requireNativeModule: () => ({
+    sha256FileAsync: async (uri: string) => {
+      const bytes = nativeFiles.get(uri);
+      if (!bytes) throw new Error('file not found');
+      await nativeHash.beforeHash?.();
+      return createHash('sha256').update(bytes).digest('hex');
+    },
+  }),
+}));
+
+function localFile(bytes: Uint8Array) {
+  const uri = `file:///preview-${nativeFiles.size}`;
+  nativeFiles.set(uri, bytes);
+  return { uri, size: bytes.byteLength };
+}
+
 const hash = 'a'.repeat(64);
 
 function release(bytes: Record<string, Uint8Array> = {}): RizlineRelease {
@@ -39,7 +58,7 @@ function release(bytes: Record<string, Uint8Array> = {}): RizlineRelease {
   };
 }
 
-afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); });
+afterEach(() => { vi.restoreAllMocks(); vi.unstubAllGlobals(); nativeFiles.clear(); nativeHash.beforeHash = undefined; });
 
 describe('Rizline chart preview resource resolution', () => {
   it('locates the unique chart JSON and shared m4a from the current release', () => {
@@ -80,7 +99,7 @@ describe('Rizline chart preview resource resolution', () => {
     });
     vi.spyOn(rizlineResources, 'withRelease').mockImplementation(async action => action(current));
     vi.stubGlobal('fetch', vi.fn(async url => new Response(String(url).includes('/charts/') ? chartBytes : musicBytes)));
-    const read = async (asset: { path: string }) => asset.path.endsWith('.json') ? chartBytes : musicBytes;
+    const read = async (asset: { path: string }) => localFile(asset.path.endsWith('.json') ? chartBytes : musicBytes);
     await expect(loadRizlineChartPreviewResources(
       { songId: 'Song.A.0', levelIndex: 2 }, new AbortController().signal,
       source === 'native file' ? read : undefined,
@@ -93,7 +112,7 @@ describe('Rizline chart preview resource resolution', () => {
   it('rejects corrupt chart bytes', async () => {
     vi.spyOn(rizlineResources, 'withRelease').mockImplementation(async action => action(release()));
     await expect(loadRizlineChartPreviewResources(
-      { songId: 'Song.A.0', levelIndex: 2 }, new AbortController().signal, async () => Uint8Array.from([9]),
+      { songId: 'Song.A.0', levelIndex: 2 }, new AbortController().signal, async () => localFile(Uint8Array.from([9])),
     )).rejects.toThrow('Rizline 谱面校验失败');
   });
 
@@ -106,8 +125,23 @@ describe('Rizline chart preview resource resolution', () => {
     await expect(loadRizlineChartPreviewResources(
       { songId: 'Song.A.0', levelIndex: 2 }, controller.signal, async () => {
         controller.abort(reason);
-        return chartBytes;
+        return localFile(chartBytes);
       },
+    )).rejects.toBe(reason);
+  });
+
+  it.each(['io failure', 'cancel'] as const)('does not finish resource preparation after %s during native hashing', async outcome => {
+    const chartBytes = Uint8Array.from([1, 2, 3]);
+    const current = release({ 'rizline/releases/r1/charts/Song.A.0.IN.json': chartBytes });
+    vi.spyOn(rizlineResources, 'withRelease').mockImplementation(async action => action(current));
+    const controller = new AbortController();
+    const reason = new Error(outcome);
+    nativeHash.beforeHash = async () => {
+      if (outcome === 'cancel') controller.abort(reason);
+      else throw reason;
+    };
+    await expect(loadRizlineChartPreviewResources(
+      { songId: 'Song.A.0', levelIndex: 2 }, controller.signal, async () => localFile(chartBytes),
     )).rejects.toBe(reason);
   });
 });

@@ -10,6 +10,8 @@ import {
 import { useThemeStore } from '@/state/theme-store';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
+jest.mock('expo-file-system', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').fileSystem);
+jest.mock('expo-file-system/legacy', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').legacyFileSystem);
 jest.mock('expo-image', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   const MockImage = (props: React.ComponentProps<typeof RN.Image>) => <RN.Image {...props} />;
