@@ -520,6 +520,7 @@ describe('M2 song query screens', () => {
       }));
     }
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '協 U·TA·GE');
+    await screen.findByText('共 1 首');
     await waitFor(() => expect(screen.getByTestId('song-chart-badges-100123')).toBeTruthy());
     const utageBadges = within(screen.getByTestId('song-chart-badges-100123'));
     expect(utageBadges.getByText('協 14+?')).toBeTruthy();
@@ -645,6 +646,7 @@ describe('M2 song query screens', () => {
     expect(ready.getByLabelText('谱面标签 标签1，未选中')).toBeTruthy();
     await fireEvent.press(ready.getByLabelText('完成谱面标签筛选'));
     expect(ready.getByLabelText('谱面标签筛选，当前 全部')).toBeTruthy();
+    await ready.findByText('共 10 首');
   });
 
   it('keeps the tag entry visible and disabled while loading', async () => {
@@ -655,6 +657,7 @@ describe('M2 song query screens', () => {
     expect(loading.getByLabelText('谱面标签筛选，加载中').props.accessibilityState)
       .toEqual(expect.objectContaining({ disabled: true }));
     expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]);
+    await loading.findByText('共 10 首');
   });
 
   it('reports a disabled tag query as loading instead of unavailable', async () => {
@@ -665,6 +668,7 @@ describe('M2 song query screens', () => {
     expect(idle.getByLabelText('谱面标签筛选，加载中').props.accessibilityState)
       .toEqual(expect.objectContaining({ disabled: true }));
     expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]);
+    await idle.findByText('共 10 首');
   });
 
   it('keeps the tag entry disabled without rendering an unavailable source bar', async () => {
@@ -676,13 +680,15 @@ describe('M2 song query screens', () => {
       .toEqual(expect.objectContaining({ disabled: true }));
     expect(unavailable.queryByText('DXRating 标签不可用')).toBeNull();
     await waitFor(() => expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]));
+    await unavailable.findByText('共 10 首');
   });
 
   it('removes tag selections that disappeared from a newer DXRating snapshot', async () => {
     mockDxRatingTagCount = 1;
     useCatalogFilter.getState().setSelectedDxRatingTagIds([1, 999]);
-    await render(<SearchScreen />);
+    const screen = await render(<SearchScreen />);
     await waitFor(() => expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]));
+    await screen.findByText('共 2 首');
   });
   it('renders song metadata, chart status and source status', async () => {
     const screen = await render(<SongDetailScreen />);

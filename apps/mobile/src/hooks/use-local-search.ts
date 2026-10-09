@@ -19,6 +19,8 @@ export function useLocalSearch<T, F, R>(
 
   useEffect(() => {
     if (!active || !foregroundReady) return;
+    if (result && result.items === items && result.snapshot === snapshot
+      && result.filter === filter && result.select === select) return;
     let cancelled = false;
     let offset = 0;
     const data: R[] = [];
@@ -36,7 +38,7 @@ export function useLocalSearch<T, F, R>(
     };
     cancelIdle = scheduleIdleTask(run);
     return () => { cancelled = true; cancelIdle(); };
-  }, [active, filter, foregroundReady, items, select, snapshot]);
+  }, [active, filter, foregroundReady, items, result, select, snapshot]);
 
   const current = result?.items === items && result?.snapshot === snapshot ? result : undefined;
   return {

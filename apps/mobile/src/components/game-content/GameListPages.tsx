@@ -22,18 +22,28 @@ type ViewabilityChange<TItem> = Parameters<
   NonNullable<FlatListProps<TItem>['onViewableItemsChanged']>
 >[0];
 
-function createViewabilityStore<TItem>() {
-  let visible = new Set<TItem>();
-  const listeners = new Map<TItem, Set<() => void>>();
+function listItemKey(item: unknown, index: number): string {
+  if (typeof item === 'object' && item !== null) {
+    if ('key' in item && item.key != null) return String(item.key);
+    if ('id' in item && item.id != null) return String(item.id);
+  }
+  return String(index);
+}
+
+const viewTokenKey = (token: { key: string }) => token.key;
+
+function createViewabilityStore() {
+  let visible = new Set<string>();
+  const listeners = new Map<string, Set<() => void>>();
   return {
-    has: (item: TItem) => visible.has(item),
-    subscribe(item: TItem, listener: () => void) {
+    has: (item: string) => visible.has(item),
+    subscribe(item: string, listener: () => void) {
       let group = listeners.get(item);
       if (!group) listeners.set(item, group = new Set());
       group.add(listener);
       return () => { group.delete(listener); if (!group.size) listeners.delete(item); };
     },
-    update(next: Set<TItem>) {
+    update(next: Set<string>) {
       const previous = visible;
       visible = next;
       for (const item of previous) if (!next.has(item)) listeners.get(item)?.forEach((notify) => notify());
@@ -42,28 +52,32 @@ function createViewabilityStore<TItem>() {
   };
 }
 
-function VisibleItemScope<TItem>({ store, item, children }: {
-  store: ReturnType<typeof createViewabilityStore<TItem>>; item: TItem; children: ReactNode;
+function VisibleItemScope({ store, itemKey, children }: {
+  store: ReturnType<typeof createViewabilityStore>; itemKey: string; children: ReactNode;
 }) {
-  const subscribe = useCallback((notify: () => void) => store.subscribe(item, notify), [store, item]);
-  const snapshot = useCallback(() => store.has(item), [store, item]);
+  const subscribe = useCallback((notify: () => void) => store.subscribe(itemKey, notify), [store, itemKey]);
+  const snapshot = useCallback(() => store.has(itemKey), [store, itemKey]);
   const visible = useSyncExternalStore(subscribe, snapshot, snapshot);
   return <CachedContentActivityScope active={visible}>
     <RemoteImagePersistenceScope enabled={visible}>{children}</RemoteImagePersistenceScope>
   </CachedContentActivityScope>;
 }
 
-function useRemoteImageViewability<TItem>(onViewableItemsChanged: FlatListProps<TItem>['onViewableItemsChanged']) {
-  const [store] = useState(() => createViewabilityStore<TItem>());
+function useRemoteImageViewability<TItem>(
+  onViewableItemsChanged: FlatListProps<TItem>['onViewableItemsChanged'],
+  getKey: (token: ViewabilityChange<TItem>['viewableItems'][number]) => string = viewTokenKey,
+) {
+  const [store] = useState(createViewabilityStore);
   const handleViewableItemsChanged = useCallback((info: ViewabilityChange<TItem>) => {
-    store.update(new Set(info.viewableItems.map((token) => token.item)));
+    store.update(new Set(info.viewableItems.map(getKey)));
     onViewableItemsChanged?.(info);
-  }, [onViewableItemsChanged, store]);
+  }, [getKey, onViewableItemsChanged, store]);
   return { store, handleViewableItemsChanged };
 }
 
 export function RemoteImageFlatList<TItem>({
   extraData,
+  keyExtractor = listItemKey,
   onViewableItemsChanged,
   renderItem,
   viewabilityConfig,
@@ -73,11 +87,11 @@ export function RemoteImageFlatList<TItem>({
   const scopedRenderItem = useCallback<NonNullable<FlatListProps<TItem>['renderItem']>>((info) => {
     const content = renderItem?.(info) ?? null;
     return (
-      <VisibleItemScope store={store} item={info.item}>
+      <VisibleItemScope store={store} itemKey={keyExtractor(info.item, info.index)}>
         {content}
       </VisibleItemScope>
     );
-  }, [renderItem, store]);
+  }, [keyExtractor, renderItem, store]);
   const mergedViewabilityConfig = useMemo(() => ({
     ...viewabilityConfig,
     ...REMOTE_IMAGE_VIEWABILITY_CONFIG,
@@ -88,6 +102,7 @@ export function RemoteImageFlatList<TItem>({
       {...props}
       {...TAB_LIST_CACHE_PROPS}
       extraData={extraData}
+      keyExtractor={keyExtractor}
       onViewableItemsChanged={handleViewableItemsChanged}
       renderItem={scopedRenderItem}
       viewabilityConfig={mergedViewabilityConfig}
@@ -131,7 +146,10 @@ function RemoteImageSectionList<
     });
     return hasSectionExtractor ? guarded : sections;
   }, [protectKeyExtractor, sectionKeys, sections]);
-  const { store, handleViewableItemsChanged } = useRemoteImageViewability(onViewableItemsChanged);
+  const getViewableKey = useCallback((token: ViewabilityChange<TItem>['viewableItems'][number]) => (
+    `${sectionKey(token.section)}:${token.key}`
+  ), [sectionKey]);
+  const { store, handleViewableItemsChanged } = useRemoteImageViewability(onViewableItemsChanged, getViewableKey);
   const handleRowViewability = useCallback((info: ViewabilityChange<TItem>) => {
     const isRow = (token: ViewabilityChange<TItem>['viewableItems'][number]) => (
       token.index != null && sectionKey(token.item) === undefined
@@ -145,11 +163,13 @@ function RemoteImageSectionList<
   const scopedRenderItem = useCallback<NonNullable<SectionListProps<TItem, TSection>['renderItem']>>((info) => {
     const content = renderItem?.(info) ?? null;
     return (
-      <VisibleItemScope store={store} item={info.item}>
+      <VisibleItemScope store={store} itemKey={`${sectionKey(info.section)}:${
+        (info.section.keyExtractor ?? keyExtractor ?? listItemKey)(info.item, info.index)
+      }`}>
         {content}
       </VisibleItemScope>
     );
-  }, [renderItem, store]);
+  }, [keyExtractor, renderItem, sectionKey, store]);
   const mergedViewabilityConfig = useMemo(() => ({
     ...viewabilityConfig,
     ...REMOTE_IMAGE_VIEWABILITY_CONFIG,

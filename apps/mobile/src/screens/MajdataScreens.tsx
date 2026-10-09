@@ -102,7 +102,9 @@ export function MajdataRecordsScreen() {
   const sortedRecords = useMemo(() => filterMajdataRecords(snapshot?.records ?? [], {
     difficulties: [], tags: [], min: '', max: '', keyword: '', sort: '',
   }), [snapshot?.records]);
-  const searchFilter = useMemo(() => ({ ...filter, keyword }), [filter, keyword]);
+  const searchFilter = useMemo(() => ({
+    difficulties: filter.difficulties, tags: filter.tags, min: filter.min, max: filter.max, keyword, sort: '',
+  }), [filter.difficulties, filter.tags, filter.min, filter.max, keyword]);
   const selectRecord = useCallback((record: typeof sortedRecords[number], filters: typeof searchFilter) =>
     filterMajdataRecords([record], filters).length ? majdataRecordCard(record) : undefined, []);
   const { data: cards, isFiltering } = useLocalSearch(sortedRecords, searchFilter, selectRecord);
