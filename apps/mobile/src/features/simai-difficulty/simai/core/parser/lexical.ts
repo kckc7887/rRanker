@@ -11,8 +11,14 @@ export class SimaiParseError extends Error {
 }
 export class SourceMap {
   private readonly lines = [0];
-  constructor(readonly text: string) {
-    for (let i = 0; i < text.length; i++) if (text[i] === '\n') this.lines.push(i + 1);
+  private constructor(readonly text: string) {}
+  static* create(shouldYield: () => boolean, text: string): Generator<void, SourceMap, void> {
+    const map = new SourceMap(text);
+    for (let i = 0; i < text.length; i++) {
+      if (text[i] === '\n') map.lines.push(i + 1);
+      if ((i & 63) === 63 && shouldYield()) yield;
+    }
+    return map;
   }
   at(offset: number, text: string): SourceLocation {
     let lo = 0, hi = this.lines.length;
@@ -35,14 +41,15 @@ export function numberValue(text: string, source: SourceLocation, positive = fal
 export type Lexeme = {kind: 'notes' | 'comma' | 'bpm' | 'division' | 'speed' | 'signature'; value: string; offsets: number[]};
 
 /** Whitespace and comments do not advance the notation clock. */
-export function* scan(body: string, map: SourceMap, origin: number): Generator<Lexeme> {
+export function* scan(shouldYield: () => boolean, body: string, map: SourceMap, origin: number): Generator<Lexeme | void, void, void> {
   let value = '', offsets: number[] = [];
   const drain = (): Lexeme => {
     const token: Lexeme = {kind: 'notes', value, offsets};
     value = ''; offsets = [];
     return token;
   };
-  for (let cursor = 0; cursor < body.length;) {
+  for (let cursor = 0, iteration = 0; cursor < body.length; iteration++) {
+    if ((iteration & 63) === 63 && shouldYield()) yield;
     const char = body[cursor]!;
     if (/\s/.test(char)) {cursor++; continue;}
     if (body.startsWith('||', cursor)) {

@@ -36,10 +36,10 @@ export type RhythmComplexityEvidence = {
  * proxy reduces only the extra mismatch term, never the unequal-rhythm term.
  * "surprise" is a motif residual proxy, not measured player reaction time.
  */
-export function rhythmComplexity(onsetBeats: readonly number[]): RhythmComplexityEvidence {
+export function* rhythmComplexity(shouldYield: () => boolean, onsetBeats: readonly number[]): Generator<void, RhythmComplexityEvidence, void> {
   if (!onsetBeats.every(Number.isFinite)) throw new Error('Non-finite rhythm onset beat');
   const ordered = [...onsetBeats].sort((a, b) => a - b), unique: number[] = [];
-  for (const beat of ordered) if (!unique.length || !sameNumber(beat, unique.at(-1)!)) unique.push(beat);
+  for (const beat of ordered) { if (shouldYield()) yield; if (!unique.length || !sameNumber(beat, unique.at(-1)!)) unique.push(beat); }
   const iois = unique.slice(1).map((beat, index) => beat - unique[index]!);
   if (iois.some(ioi => ioi <= 0 || !Number.isFinite(ioi))) throw new Error('Invalid rhythm IOI');
   // Centre logs before taking differences: tempo/division scaling is removed,
@@ -52,7 +52,7 @@ export function rhythmComplexity(onsetBeats: readonly number[]): RhythmComplexit
   let period: number | null = null, error = 0, objective = Infinity;
   // At least two complete cycles and four intervals before claiming a motif.
   if (logs.length >= 4) for (let candidate = 1; candidate <= Math.min(
-    RHYTHM_COMPLEXITY_PARAMETERS.maximumMotifPeriod, Math.floor(logs.length / 2)); candidate++) {
+    RHYTHM_COMPLEXITY_PARAMETERS.maximumMotifPeriod, Math.floor(logs.length / 2)); candidate++) { if (shouldYield()) yield;
     const mismatch = mean(logs.slice(candidate).map((value, index) => Math.abs(value - logs[index]!)));
     const cost = mismatch + RHYTHM_COMPLEXITY_PARAMETERS.motifPeriodPenalty * (candidate - 1) / logs.length;
     if (cost < objective) { objective = cost; period = candidate; error = mismatch; }
@@ -71,22 +71,11 @@ export function rhythmComplexity(onsetBeats: readonly number[]): RhythmComplexit
 
 export type KeyboardRhythmOnset = {
   ms: number; beat: number; noteIds: number[]; positions: Note['position'][]; kinds: Note['type'][];
-  source: { noteId: number; line: number; column: number; text: string; division: number | null }[];
 };
-export type KeyboardRhythmWindow = {
-  startMs: number; endMs: number; startBeat: number; endBeat: number; raw: number; noteIds: number[];
-  rhythm: RhythmComplexityEvidence; onsets: KeyboardRhythmOnset[];
-  movementSteps: number[]; movementMean: number; onsetRate: number;
-  recoveryWeights: number[]; executionRhythmRaw: number;
-  components: { rhythm: number; execution: number; movementCoupling: number };
-};
-export type KeyboardRhythmResult = {
-  version: typeof KEYBOARD_RHYTHM_VERSION; research_only: true; raw: number;
-  windows: KeyboardRhythmWindow[]; onsetCount: number;
-  parameters: typeof RHYTHM_COMPLEXITY_PARAMETERS; policy: Record<string, string>;
-};
+type KeyboardRhythmWindow = { raw: number; ioiCount: number };
+export type KeyboardRhythmResult = { raw: number };
 
-export function inputOnsets(chart: Chart, includeSlideHeads = false, physicalTimes = false): KeyboardRhythmOnset[] {
+export function* inputOnsets(shouldYield: () => boolean, chart: Chart, includeSlideHeads = false, physicalTimes = false): Generator<void, KeyboardRhythmOnset[], void> {
   const timeline = TimingTimeline.fromChart(chart), onsets: KeyboardRhythmOnset[] = [];
   const sources = chart.notes.filter(note => !note.isMine &&
     (note.type !== 'slide' || (includeSlideHeads && !note.isHeadless)))
@@ -94,19 +83,17 @@ export function inputOnsets(chart: Chart, includeSlideHeads = false, physicalTim
     .sort((a, b) => (physicalTimes ? a.note.timingMs - b.note.timingMs : a.chartMs - b.chartMs) || String(a.note.position).localeCompare(String(b.note.position)) ||
       a.note.type.localeCompare(b.note.type) || a.note.id - b.note.id);
   const seen = new Set<number>();
-  for (const { note, chartMs } of sources) {
+  for (const { note, chartMs } of sources) { if (shouldYield()) yield;
     if (seen.has(note.id)) continue;
     seen.add(note.id);
     const beat = timeline.scoreBeatFromChartMs(chartMs), ms = physicalTimes ?
       note.timingMs - timeline.msFromBeat(4) + chart.firstMs : timeline.audioMsFromScoreBeat(beat, chart.firstMs);
     if (!Number.isFinite(beat) || !Number.isFinite(ms)) throw new Error('Non-finite keyboard source timing');
-    const source = { noteId: note.id, line: note.source.line, column: note.source.column,
-      text: note.source.text, division: note.declaredDivisor ?? null };
     const previous = onsets.at(-1);
     if (previous && sameNumber(previous.ms, ms)) {
       previous.noteIds.push(note.id); previous.positions.push(note.position);
-      previous.kinds.push(note.type); previous.source.push(source);
-    } else onsets.push({ ms, beat, noteIds: [note.id], positions: [note.position], kinds: [note.type], source: [source] });
+      previous.kinds.push(note.type);
+    } else onsets.push({ ms, beat, noteIds: [note.id], positions: [note.position], kinds: [note.type] });
   }
   return onsets;
 }
@@ -128,12 +115,12 @@ export function chordMovement(a: KeyboardRhythmOnset, b: KeyboardRhythmOnset): n
     mean(after.map(y => Math.min(...before.map(x => inputDistance(x, y))))));
 }
 
-function weightedQuantile(windows: readonly KeyboardRhythmWindow[], fraction: number): number {
+function* weightedQuantile(shouldYield: () => boolean, windows: readonly KeyboardRhythmWindow[], fraction: number): Generator<void, number, void> {
   const ordered = [...windows].sort((a, b) => a.raw - b.raw);
-  const total = sum(ordered.map(window => window.rhythm.iois.length));
+  const total = sum(ordered.map(window => window.ioiCount));
   let cumulative = 0;
-  for (const window of ordered) {
-    cumulative += window.rhythm.iois.length;
+  for (const window of ordered) { if (shouldYield()) yield;
+    cumulative += window.ioiCount;
     if (cumulative >= total * fraction) return window.raw;
   }
   return 0;
@@ -145,12 +132,12 @@ function weightedQuantile(windows: readonly KeyboardRhythmWindow[], fraction: nu
  * Unequal rhythm is amplified by actual speed and simultaneous displacement.
  * A regular high-speed/wide stream stays zero in this rhythm-only measurement.
  */
-export function keyboardRhythmComplexity(chart: Chart): KeyboardRhythmResult {
-  const onsets = inputOnsets(chart), windows: KeyboardRhythmWindow[] = [];
+export function* keyboardRhythmComplexity(shouldYield: () => boolean, chart: Chart): Generator<void, KeyboardRhythmResult, void> {
+  const onsets = (yield* inputOnsets(shouldYield, chart)), windows: KeyboardRhythmWindow[] = [];
   const stride = RHYTHM_COMPLEXITY_PARAMETERS.keyboardWindowOnsets - 1;
-  for (let index = 0; index < onsets.length - 1; index += stride) {
+  for (let index = 0; index < onsets.length - 1; index += stride) { if (shouldYield()) yield;
     const group = onsets.slice(index, index + stride + 1), first = group[0]!, last = group.at(-1)!;
-    const rhythm = rhythmComplexity(group.map(onset => onset.beat));
+    const rhythm = (yield* rhythmComplexity(shouldYield, group.map(onset => onset.beat)));
     const movementSteps = group.slice(1).map((onset, i) => chordMovement(group[i]!, onset));
     const movementMean = mean(movementSteps), durationMs = last.ms - first.ms;
     if (durationMs <= 0) throw new Error('Non-increasing keyboard onset time');
@@ -164,25 +151,12 @@ export function keyboardRhythmComplexity(chart: Chart): KeyboardRhythmResult {
     const executableContrast = mean(rhythm.adjacentRatioLogs.map((contrast, i) => contrast * recoveryWeights[i]!));
     const executionRhythmRaw = executableContrast * (1 + .5 * (1 - rhythm.repeatedMotif.adaptation));
     const rhythmCost = executionRhythmRaw * onsetRate, movementCoupling = rhythmCost * movementMean / 4;
-    windows.push({ startMs: first.ms, endMs: last.ms, startBeat: first.beat, endBeat: last.beat,
-      raw: rhythmCost + movementCoupling, noteIds: group.flatMap(onset => onset.noteIds), rhythm,
-      onsets: group, movementSteps, movementMean, onsetRate, recoveryWeights, executionRhythmRaw,
-      components: { rhythm: rhythmCost, execution: onsetRate, movementCoupling } });
+    windows.push({ raw: rhythmCost + movementCoupling, ioiCount: rhythm.iois.length });
   }
   const iois = Math.max(1, onsets.length - 1);
-  const average = sum(windows.map(window => window.raw * window.rhythm.iois.length)) / iois;
+  const average = sum(windows.map(window => window.raw * window.ioiCount)) / iois;
   const raw = RHYTHM_COMPLEXITY_PARAMETERS.chartMeanWeight * average +
-    (1 - RHYTHM_COMPLEXITY_PARAMETERS.chartMeanWeight) * weightedQuantile(windows, RHYTHM_COMPLEXITY_PARAMETERS.chartPeakQuantile);
+    (1 - RHYTHM_COMPLEXITY_PARAMETERS.chartMeanWeight) * (yield* weightedQuantile(shouldYield, windows, RHYTHM_COMPLEXITY_PARAMETERS.chartPeakQuantile));
   if (!Number.isFinite(raw)) throw new Error('Non-finite keyboard rhythm result');
-  return { version: KEYBOARD_RHYTHM_VERSION, research_only: true, raw, windows, onsetCount: onsets.length,
-    parameters: RHYTHM_COMPLEXITY_PARAMETERS, policy: {
-      inputs: 'TAP, BREAK, HOLD, Touch and Touch HOLD heads use the same rhythm path; star TAP included; Slide heads and mines excluded.',
-      timing: 'Score-beat IOI ratios via TimingTimeline; pseudo-EACH visual offsets removed; real audio time only for execution rate.',
-      rhythm: 'Unequal beat IOIs retain execution burden even when repeated; repeated-motif adaptation reduces only the extra mismatch proxy.',
-      recovery: 'Every adjacent IOI contrast is weighted by 2*min(IOIs)/sum(IOIs); phrase-ending rests lose execution cost smoothly, without an absolute time gate.',
-      movement: 'Original ring-step displacement for button pairs; actual sensor coordinates for Touch / mixed pairs. Nominal context, not an optimum hand path.',
-      windows: '17 consecutive attack groups, sharing one boundary attack; every adjacent IOI belongs to one window.',
-      aggregate: 'Equal blend of IOI-weighted mean and IOI-weighted 90th-percentile window burden.',
-      limitation: 'Independent uncalibrated rhythm-technique observation; no difficulty label, official constant, feedback fit or player reaction claim.',
-    } };
+  return { raw };
 }

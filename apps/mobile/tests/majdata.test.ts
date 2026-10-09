@@ -104,18 +104,18 @@ describe('Majdata integration contracts', () => {
 describe('Simai statistics against original MajSimai output', () => {
   for (const [name, body] of Object.entries({ ...cases, ...majdataCases })) it(name, () => {
     const expected = { tap: 0, hold: 0, slide: 0, touch: 0, break: 0, mine: 0 };
-    const scoring = { tap: 0, hold: 0, slide: 0, touch: 0, break: 0 };
-    const add = (kind: 'tap' | 'hold' | 'slide' | 'touch', isBreak: boolean, mine: boolean) => { scoring[isBreak ? 'break' : kind]++; expected[mine ? 'mine' : isBreak ? 'break' : kind]++; };
+    const mines = { tap: 0, hold: 0, slide: 0, touch: 0, break: 0 };
+    const add = (kind: 'tap' | 'hold' | 'slide' | 'touch', isBreak: boolean, mine: boolean) => { if (mine) mines[isBreak ? 'break' : kind]++; expected[mine ? 'mine' : isBreak ? 'break' : kind]++; };
     for (const timing of ({ ...reference, ...majdataReference })[name as keyof (typeof reference & typeof majdataReference)].notes) for (const n of timing.notes) {
       if (n.type === 1) { if (!n.IsSlideNoHead) add('tap', n.IsBreak, n.IsMine); add('slide', n.IsSlideBreak, n.IsMineSlide); }
       else add(n.type === 2 || n.type === 4 ? 'hold' : n.type === 3 ? 'touch' : 'tap', n.IsBreak, n.IsMine);
     }
-    const actual = simaiStatistics(parseSimaiBody(body)); expect(actual.counts).toEqual(expected); expect(actual.scoring).toEqual(scoring);
+    const actual = simaiStatistics(parseSimaiBody(body)); expect(actual.counts).toEqual(expected); expect(actual.mines).toEqual(mines);
   });
   it('distinguishes mixed mine weights and Classic caps, zero Break and empty charts', () => {
     const stats = simaiStatistics(parseSimaiBody('(120)1m,2hm[4:1],3?-7m[4:1],4bm,Chm[4:1],'));
     expect(stats.counts.mine).toBe(5); expect(stats.mines).toEqual({ tap: 1, hold: 2, slide: 1, touch: 0, break: 1 });
-    expect(singleNoteLoss(stats.scoring, 'tap', 'miss', 'classic')).not.toBe(singleNoteLoss(stats.scoring, 'hold', 'miss', 'classic'));
+    expect(singleNoteLoss(stats.mines, 'tap', 'miss', 'classic')).not.toBe(singleNoteLoss(stats.mines, 'hold', 'miss', 'classic'));
     expect(calculateAchievement({ tap: 0, hold: 0, slide: 0, touch: 0, break: 1 }, {}, 'classic')).toBe(104);
     const noBreak = { tap: 100, hold: 0, slide: 0, touch: 0, break: 0 };
     expect(calculateAchievement(noBreak, {})).toBe(100); expect(maximumSameErrors(noBreak, 99, 'tap', 'miss')).toBe(1);

@@ -1,7 +1,7 @@
 import type { Song } from '@/domain/models';
 import { vi } from 'vitest';
 import * as wanakana from 'wanakana';
-import { buildSearchDocument, buildSongSearchIndex, EMPTY_SONG_FILTERS, findMatchedAlias, normalizeSearchText, searchDocumentMatches, searchSongs } from '@/utils/search';
+import { buildSearchDocument, buildSongSearchIndex, EMPTY_SONG_FILTERS, findMatchedAlias, normalizeSearchText, searchDocumentMatches, searchSongs, songSearchDocument } from '@/utils/search';
 
 vi.mock('wanakana', async (importOriginal) => {
   const actual = await importOriginal<typeof import('wanakana')>();
@@ -19,6 +19,19 @@ const songs: Song[] = [{
   }],
 }];
 describe('advanced song search', () => {
+  it('reuses catalog text for a record lookup and replaces revised aliases', () => {
+    const snapshot = [{ ...songs[0], aliases: ['しゅうまつ'] }];
+    expect(searchSongs(buildSongSearchIndex(snapshot), { ...EMPTY_SONG_FILTERS, keyword: 'syuumatu' })).toEqual(snapshot);
+    const convert = vi.mocked(wanakana.toRomaji);
+    convert.mockClear();
+    const recordSong = new Map(snapshot.map(song => [song.id, song])).get('1806')!;
+    expect(searchDocumentMatches(songSearchDocument(recordSong), 'syuumatu')).toBe(true);
+    expect(convert).not.toHaveBeenCalled();
+    const revised = [{ ...recordSong, aliases: ['テスト'] }];
+    expect(searchSongs(buildSongSearchIndex(revised), { ...EMPTY_SONG_FILTERS, keyword: 'syuumatu' })).toEqual([]);
+    expect(searchSongs(buildSongSearchIndex(revised), { ...EMPTY_SONG_FILTERS, keyword: 'tesuto' })).toEqual(revised);
+    expect(findMatchedAlias(revised[0], 'tesuto')).toBe('テスト');
+  });
   it('skips transliteration when opening and filtering a catalog without a search keyword', () => {
     const convert = vi.mocked(wanakana.toRomaji);
     convert.mockClear();

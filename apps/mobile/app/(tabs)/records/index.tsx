@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { EmptyDataView } from '@/components/EmptyDataView';
@@ -19,13 +19,14 @@ import {
 import { matchesChunithmConstantRange, matchesChunithmRankRange } from '@/domain/chunithm-filters';
 import { isOsuGameId } from '@/domain/game-mode-family';
 import { matchesAchievementRange, matchesConstantRange } from '@/domain/maimai-filters';
-import type { ScoreRecord } from '@/domain/models';
+import type { ScoreRecord, Song } from '@/domain/models';
 import { matchesPhigrosLevel, matchesPhigrosRankFilter } from '@/domain/phigros-filters';
 import { buildPhigrosKyouChartTagIndex, phigrosKyouChartHasAllTags } from '@/domain/phigros-kyou';
 import { matchesPhigrosXingFilter, phigrosChartNoteKey } from '@/domain/phigros-xing';
 import { canReadChunithmScores, canReadPhigrosScores } from '@/domain/provider-capabilities';
 import { buildPhigrosNoteTotalByKey } from '@/features/phigros-best-image/phigros-best-image-custom';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
+import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
@@ -42,7 +43,7 @@ import { useChunithmRecordsFilter } from '@/state/chunithm-records-filter';
 import { usePhigrosRecordsFilter } from '@/state/phigros-records-filter';
 import { useSession, UNBOUND_ACCOUNT_ID } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
-import { buildSearchDocument, searchDocumentMatches } from '@/utils/search';
+import { searchDocumentFor, searchDocumentMatches } from '@/utils/search';
 
 export default function RecordsTabScreen() {
   return <CachedTabScreen><RecordsScreen /></CachedTabScreen>;
@@ -85,6 +86,10 @@ export function RecordsScreen() {
   return <EmptyDataView title="暂无成绩" detail="当前游戏暂未接入成绩数据" />;
 }
 
+const chunithmRecordSearchValues = (card: ChunithmScoreCardData) => [card.title, card.songId, card.artist ?? '', card.noteDesigner ?? ''];
+const phigrosRecordSongValues = (song: Song) => [song.id, song.title, ...(song.aliases ?? [])];
+const phigrosRecordValues = (record: ScoreRecord) => [record.songId];
+
 function ChunithmRecordsScreen() {
   const gameData = useGameData();
   const catalogQuery = useChunithmCatalog();
@@ -121,17 +126,6 @@ function ChunithmRecordsScreen() {
     constantMax,
     `${activeAccountId}:${catalogQuery.data?.source.updatedAt ?? 'loading'}`,
   );
-  const searchDocuments = useMemo(() => new Map(
-    cards.map((card) => [
-      card.key,
-      buildSearchDocument([
-        card.title,
-        card.songId,
-        card.artist ?? '',
-        card.noteDesigner ?? '',
-      ]),
-    ]),
-  ), [cards]);
   const filterSpec = useMemo(() => ({
     keyword: debouncedKeyword,
     difficulty,
@@ -141,29 +135,15 @@ function ChunithmRecordsScreen() {
     rankMin,
     rankMax,
   }), [constantMax, constantMin, debouncedKeyword, difficulty, rankMax, rankMin, version]);
-  const deferredFilterSpec = useDeferredValue(filterSpec);
-  const filtered = useMemo(() => {
-    return cards.filter((card) => {
-      if (deferredFilterSpec.keyword.trim()) {
-        const document = searchDocuments.get(card.key);
-        if (!document || !searchDocumentMatches(document, deferredFilterSpec.keyword)) return false;
-      }
-      if (deferredFilterSpec.difficulty !== 'all' && card.levelIndex !== deferredFilterSpec.difficulty) {
-        return false;
-      }
-      if (deferredFilterSpec.version !== 'all' && String(card.versionId) !== deferredFilterSpec.version) {
-        return false;
-      }
-      if (!matchesChunithmConstantRange(
-        card.difficultyConstant,
-        deferredFilterSpec.constantMin,
-        deferredFilterSpec.constantMax,
-      )) {
-        return false;
-      }
-      return matchesChunithmRankRange(card.rank, deferredFilterSpec.rankMin, deferredFilterSpec.rankMax);
-    });
-  }, [cards, deferredFilterSpec, searchDocuments]);
+  const selectCard = useCallback((card: ChunithmScoreCardData, filters: typeof filterSpec) => {
+    if (!searchDocumentMatches(searchDocumentFor(card, chunithmRecordSearchValues), filters.keyword)) return undefined;
+    if (filters.difficulty !== 'all' && card.levelIndex !== filters.difficulty) return undefined;
+    if (filters.version !== 'all' && String(card.versionId) !== filters.version) return undefined;
+    if (!matchesChunithmConstantRange(card.difficultyConstant, filters.constantMin, filters.constantMax)
+      || !matchesChunithmRankRange(card.rank, filters.rankMin, filters.rankMax)) return undefined;
+    return card;
+  }, []);
+  const { data: filtered, isFiltering } = useLocalSearch(cards, filterSpec, selectCard);
   const hasActiveFilters = !!(
     keyword.trim()
     || difficulty !== 'all'
@@ -231,7 +211,7 @@ function ChunithmRecordsScreen() {
         error={error}
         isEmpty={!isLoading && filtered.length === 0}
         isError={isError}
-        isLoading={isLoading}
+        isLoading={isLoading || (isFiltering && filtered.length === 0)}
         onRetry={retry}
         flatListProps={{
           ...TAB_LIST_CACHE_PROPS,
@@ -325,62 +305,28 @@ function PhigrosRecordsScreen() {
   );
 
   const catalogSongIndex = useMemo(() => indexSongsById(catalogSongs), [catalogSongs]);
-  const searchDocs = useMemo(() => new Map(
-    records.map((r) => {
-      const title = titleMap.get(r.songId) ?? r.songId;
-      const song = catalogSongIndex.get(r.songId);
-      return [recordKey(r), {
-        document: buildSearchDocument([r.songId, title, ...(song?.aliases ?? [])]),
-        title,
-      }] as const;
-    }),
-  ), [catalogSongIndex, records, titleMap]);
-
   const filterSpec = useMemo(() => ({
     keyword: debouncedKeyword, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing, chapter,
     selectedKyouTagIds,
   }), [accuracyMax, accuracyMin, chapter, constantMax, constantMin, debouncedKeyword, level, rank,
     selectedKyouTagIds, xing]);
-  const deferredFilterSpec = useDeferredValue(filterSpec);
-  const filtered = useMemo<{ record: ScoreRecord; title: string }[]>(() => {
-    if (!records.length) return [];
-    let list = records.map((r) => {
-      const doc = searchDocs.get(recordKey(r));
-      return { record: r, title: doc?.title ?? r.songId };
-    });
-    if (deferredFilterSpec.keyword.trim()) {
-      list = list.filter((item) => {
-        const doc = searchDocs.get(recordKey(item.record));
-        return doc ? searchDocumentMatches(doc.document, deferredFilterSpec.keyword) : false;
-      });
-    }
-    if (deferredFilterSpec.chapter !== 'all') {
-      const chapterId = Number(deferredFilterSpec.chapter);
-      list = list.filter((item) => chapterIdBySong.get(item.record.songId) === chapterId);
-    }
-    if (deferredFilterSpec.level !== 'all') {
-      list = list.filter((item) => matchesPhigrosLevel(item.record.levelIndex, deferredFilterSpec.level));
-    }
-    list = list.filter((item) => matchesConstantRange(
-      item.record.difficultyConstant, deferredFilterSpec.constantMin, deferredFilterSpec.constantMax,
-    ));
-    list = list.filter((item) => matchesAchievementRange(
-      item.record.achievements, deferredFilterSpec.accuracyMin, deferredFilterSpec.accuracyMax,
-    ));
-    list = list.filter((item) => matchesPhigrosRankFilter(item.record, deferredFilterSpec.rank));
-    list = list.filter((item) => matchesPhigrosXingFilter(
-      item.record, deferredFilterSpec.xing, noteTotalByKey,
-    ));
-    if (kyouChartTags.data && deferredFilterSpec.selectedKyouTagIds.length > 0) {
-      list = list.filter((item) => phigrosKyouChartHasAllTags(
-        kyouTagIndex,
-        item.record.songId,
-        item.record.levelIndex,
-        deferredFilterSpec.selectedKyouTagIds,
-      ));
-    }
-    return list;
-  }, [chapterIdBySong, deferredFilterSpec, kyouChartTags.data, kyouTagIndex, noteTotalByKey, records, searchDocs]);
+  const selectRecord = useCallback((record: ScoreRecord, filters: typeof filterSpec) => {
+    const song = catalogSongIndex.get(record.songId);
+    const document = song
+      ? searchDocumentFor(song, phigrosRecordSongValues)
+      : searchDocumentFor(record, phigrosRecordValues);
+    if (!searchDocumentMatches(document, filters.keyword)) return undefined;
+    if (filters.chapter !== 'all' && chapterIdBySong.get(record.songId) !== Number(filters.chapter)) return undefined;
+    if (filters.level !== 'all' && !matchesPhigrosLevel(record.levelIndex, filters.level)) return undefined;
+    if (!matchesConstantRange(record.difficultyConstant, filters.constantMin, filters.constantMax)
+      || !matchesAchievementRange(record.achievements, filters.accuracyMin, filters.accuracyMax)
+      || !matchesPhigrosRankFilter(record, filters.rank)
+      || !matchesPhigrosXingFilter(record, filters.xing, noteTotalByKey)) return undefined;
+    if (kyouChartTags.data && filters.selectedKyouTagIds.length > 0
+      && !phigrosKyouChartHasAllTags(kyouTagIndex, record.songId, record.levelIndex, filters.selectedKyouTagIds)) return undefined;
+    return { record, title: titleMap.get(record.songId) ?? record.songId };
+  }, [catalogSongIndex, chapterIdBySong, kyouChartTags.data, kyouTagIndex, noteTotalByKey, titleMap]);
+  const { data: filtered, isFiltering } = useLocalSearch(records, filterSpec, selectRecord, catalogSongs);
 
   const isGameLoading = gameData.isLoading || catalogQuery.isLoading;
   const isGameError = gameData.isError || catalogQuery.isError;
@@ -436,7 +382,7 @@ function PhigrosRecordsScreen() {
         onReset={clearFilters}
       />
       <RecordsListPage<{ record: ScoreRecord; title: string }>
-        isLoading={isGameLoading}
+        isLoading={isGameLoading || (isFiltering && filtered.length === 0)}
         isError={isGameError}
         isEmpty={!isGameLoading && filtered.length === 0}
         error={error}

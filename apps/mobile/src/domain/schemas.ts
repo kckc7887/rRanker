@@ -84,8 +84,7 @@ const DIFFICULTIES: Record<string, Difficulty> = {
   're:master': 'remaster', remaster: 'remaster',
 };
 
-export function mapDivingFishRecord(input: unknown, verifiedVersion?: string): ScoreRecord {
-  const raw = DivingFishRecordSchema.parse(input);
+export function mapDivingFishRecord(raw: z.infer<typeof DivingFishRecordSchema>, verifiedVersion?: string): ScoreRecord {
   const rawDifficulty = raw.level_label?.toLowerCase() ?? '';
   const difficulty = DIFFICULTIES[rawDifficulty] ?? 'unknown';
   const fc = mapKnownFc(raw.fc);
@@ -153,8 +152,7 @@ function mapLxnsSongType(type: string): ChartType {
   throw new TypeError(`不支持的舞萌谱面类型：${type}`);
 }
 
-export function mapLxnsScore(input: unknown): ScoreRecord {
-  const raw = LxnsScoreSchema.parse(input);
+export function mapLxnsScore(raw: z.infer<typeof LxnsScoreSchema>): ScoreRecord {
   const difficulty = raw.type === 'utage'
     ? 'utage'
     : LEVEL_INDEX_DIFFICULTY[raw.level_index] ?? 'unknown';

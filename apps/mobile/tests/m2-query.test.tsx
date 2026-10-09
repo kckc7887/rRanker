@@ -146,7 +146,6 @@ jest.mock('@/state/session-store', () => ({
 }));
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
 jest.mock('@/hooks/use-detailed-catalog', () => {
-  const useDetailedCatalog = () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
   const utageSong = {
     id: '100123',
@@ -208,6 +207,7 @@ jest.mock('@/hooks/use-detailed-catalog', () => {
         charter: 'SD主谱师', versionId: 1 },
     ],
   } : song), crossVersionSong, utageSong] };
+  const useDetailedCatalog = () => {
   return {
     data: mockDetailedCatalogAvailable ? data : undefined,
     isLoading: !mockDetailedCatalogAvailable,
@@ -246,23 +246,30 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   return { data: { records: [...fixtures.fixtureRecords, ...visualRecords], source: fixtures.fixtureSource }, isLoading: false, isError: false, error: null, refetch: jest.fn() };
 } }));
 jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => {
-  if (mockDxRatingTagState === 'error') {
+  const { useMemo } = jest.requireActual<typeof import('react')>('react');
+  const currentDxRatingTagState = mockDxRatingTagState;
+  const currentDxRatingTagCount = mockDxRatingTagCount;
+  const currentDxRatingTagSongTitle = mockDxRatingTagSongTitle;
+  const currentDxRatingTagSheetType = mockDxRatingTagSheetType;
+  const currentDxRatingTagDifficulty = mockDxRatingTagDifficulty;
+  return useMemo(() => {
+  if (currentDxRatingTagState === 'error') {
     return { data: undefined, isLoading: false, isError: true, error: new Error('offline') };
   }
-  if (mockDxRatingTagState === 'loading') {
+  if (currentDxRatingTagState === 'loading') {
     return { data: undefined, isLoading: true, isError: false, error: null };
   }
-  if (mockDxRatingTagState === 'idle') {
+  if (currentDxRatingTagState === 'idle') {
     return { data: undefined, isLoading: false, isError: false, error: null };
   }
-  const tags = mockDxRatingTags.slice(0, mockDxRatingTagCount);
+  const tags = mockDxRatingTags.slice(0, currentDxRatingTagCount);
   return {
     data: {
       tags,
       relations: tags.flatMap((tag) => [{
-        songTitle: mockDxRatingTagSongTitle,
-        sheetType: mockDxRatingTagSheetType,
-        sheetDifficulty: mockDxRatingTagDifficulty,
+        songTitle: currentDxRatingTagSongTitle,
+        sheetType: currentDxRatingTagSheetType,
+        sheetDifficulty: currentDxRatingTagDifficulty,
         tagId: tag.id,
       }, ...(tag.id === 1 ? [{
         songTitle: '跨版本双谱面',
@@ -271,17 +278,18 @@ jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () =
         tagId: tag.id,
       }] : [])]),
       source: {
-        kind: mockDxRatingTagState === 'cache' ? 'cache' : 'dxrating',
-        label: mockDxRatingTagState === 'cache' ? 'DXRating 谱面标签缓存' : 'DXRating 谱面标签',
+        kind: currentDxRatingTagState === 'cache' ? 'cache' : 'dxrating',
+        label: currentDxRatingTagState === 'cache' ? 'DXRating 谱面标签缓存' : 'DXRating 谱面标签',
         updatedAt: new Date(0).toISOString(),
-        isStale: mockDxRatingTagState === 'cache',
+        isStale: currentDxRatingTagState === 'cache',
       },
     },
     isLoading: false,
     isError: false,
     error: null,
   };
-} }));
+
+  }, [currentDxRatingTagState, currentDxRatingTagCount, currentDxRatingTagSongTitle, currentDxRatingTagSheetType, currentDxRatingTagDifficulty]); } }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
   data: mockUserLibraryData, isLoading: false, isUpdating: false, setSongFavorite: mockSetSongFavorite, setChartPractice: jest.fn(), setTags: jest.fn(),
   songKey: (songId: string | number) => `maimai:song:${songId}`,
@@ -488,12 +496,12 @@ describe('M2 song query screens', () => {
     mockDxRatingTagState = 'cache';
     const screen = await render(<SearchScreen />);
     expect(screen.queryByText(/DXRating 谱面标签缓存/)).toBeNull();
-    expect(screen.getByTestId('catalog-results-list')).toBeTruthy();
+    expect(await screen.findByTestId('catalog-results-list')).toBeTruthy();
   });
 
   it('searches aliases after debounce and supports empty filter state', async () => {
     const screen = await render(<SearchScreen />);
-    expect(screen.getByTestId('catalog-results-list').props).toEqual(expect.objectContaining({
+    expect((await screen.findByTestId('catalog-results-list')).props).toEqual(expect.objectContaining({
       contentInsetAdjustmentBehavior: 'automatic',
       initialNumToRender: 8,
       maxToRenderPerBatch: 4,
@@ -565,6 +573,7 @@ describe('M2 song query screens', () => {
     await fireEvent.press(screen.getByLabelText('选择版本 maimai でらっくす PRiSM PLUS'));
     expect(screen.getByLabelText('版本筛选，当前 maimai でらっくす PRiSM PLUS')).toBeTruthy();
     expect(screen.getAllByText('正常曲目 A').length).toBeGreaterThan(0);
+    await screen.findByText('版本测试曲师 · maimai でらっくす PRiSM PLUS');
     const currentVersionBadges = within(screen.getByTestId('song-chart-badges-7'));
     expect(currentVersionBadges.getByText('DX')).toBeTruthy();
     expect(currentVersionBadges.queryByText('SD')).toBeNull();
@@ -574,6 +583,7 @@ describe('M2 song query screens', () => {
 
     await fireEvent.press(screen.getByLabelText('版本筛选，当前 maimai でらっくす PRiSM PLUS'));
     await fireEvent.press(screen.getByLabelText('选择版本 脱敏过往版本'));
+    await screen.findByText('版本测试曲师 · 脱敏过往版本');
     const pastVersionBadges = within(screen.getByTestId('song-chart-badges-7'));
     expect(pastVersionBadges.getByText('SD')).toBeTruthy();
     expect(pastVersionBadges.queryByText('DX')).toBeNull();

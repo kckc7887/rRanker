@@ -114,20 +114,20 @@ test('difficulty chips retain raw indices, union matching and selection across c
   useMajdataRecordsFilter.setState({ collapsed: false });
   const screen = await render(<MajdataRecordsScreen />);
   await fireEvent.press(screen.getByLabelText('筛选难度 Easy'));
-  expect(screen.getByText('共 1 条成绩')).toBeTruthy();
+  expect(await screen.findByText('共 1 条成绩')).toBeTruthy();
   expect(screen.getByText('90.0000%')).toBeTruthy();
   expect(screen.queryByText('97.0000%')).toBeNull();
   await fireEvent.press(screen.getByLabelText('筛选难度 Master'));
-  expect(screen.getByText('共 2 条成绩')).toBeTruthy();
+  expect(await screen.findByText('共 2 条成绩')).toBeTruthy();
   await fireEvent.press(screen.getByLabelText('收起筛选'));
   expect(screen.queryByLabelText('筛选难度 Master')).toBeNull();
   await fireEvent.press(screen.getByLabelText('展开筛选，当前 Easy · Master'));
   expect(screen.getByLabelText('筛选难度 Master').props.accessibilityState.selected).toBe(true);
   await fireEvent.press(screen.getByLabelText('筛选难度 Easy'));
-  expect(screen.getByText('共 1 条成绩')).toBeTruthy();
+  expect(await screen.findByText('共 1 条成绩')).toBeTruthy();
   expect(screen.getByText('97.0000%')).toBeTruthy();
   await fireEvent.press(screen.getByLabelText('重置筛选'));
-  expect(screen.getByText('共 2 条成绩')).toBeTruthy();
+  expect(await screen.findByText('共 2 条成绩')).toBeTruthy();
   expect(useMajdataRecordsFilter.getState().difficulties).toEqual([]);
 });
 
@@ -170,7 +170,7 @@ test('catalog favorites use the shared local library and records show DX with th
   expect(mockFavorite).toHaveBeenCalledWith(mockSong.id, true);
   await catalog.unmount();
   const records = await render(<MajdataRecordsScreen />);
-  expect(records.getByText('共 1 条成绩')).toBeTruthy();
+  expect(await records.findByText('共 1 条成绩')).toBeTruthy();
   expect(records.queryByText(/Classic/)).toBeNull();
 });
 

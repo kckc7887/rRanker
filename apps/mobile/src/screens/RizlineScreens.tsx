@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
@@ -6,16 +6,19 @@ import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
 import { RizlineFilterBar } from '@/components/rizline/RizlineFilterBar';
 import { RizlineScoreCard } from '@/components/rizline/RizlineScoreCard';
 import { RizlineSongRow } from '@/components/rizline/RizlineSongRow';
-import { filterRizlineSongs, rizlinePackOptions } from '@/domain/rizline-filters';
-import { rizlineCoverUrl, sortRizlineRecords, type RizlineRecord } from '@/domain/rizline';
+import { matchesRizlineSong, rizlineSongSearchDocument, rizlinePackOptions } from '@/domain/rizline-filters';
+import { rizlineCoverUrl, sortRizlineRecords, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
 import { useGameData } from '@/hooks/use-game-data';
 import { useRizlineCatalog } from '@/hooks/use-rizline-catalog';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
+import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useRizlineCatalogFilter } from '@/state/rizline-catalog-filter';
 import { useAppTheme } from '@/theme/app-theme';
-import { buildSearchDocument, searchDocumentMatches } from '@/utils/search';
+import { searchDocumentFor, searchDocumentMatches } from '@/utils/search';
+
+const recordSearchValues = (record: RizlineRecord) => [record.title, record.songId];
 
 export function RizlineBestScreen() {
   const theme = useAppTheme(); const inset = useNativeTabBottomInset();
@@ -45,15 +48,15 @@ export function RizlineRecordsScreen() {
   const payload = query.data?.payload.kind === 'rizline' ? query.data.payload : undefined;
   const songs = useMemo(() => new Map(catalogQuery.data?.snapshot.songs.map((song) => [song.id, song])), [catalogQuery.data?.snapshot.songs]);
   const sortedRecords = useMemo(() => sortRizlineRecords(payload?.records ?? []), [payload?.records]);
-  const searchIndex = useMemo(() => sortedRecords.map(record => {
+  const selectRecord = useCallback((record: RizlineRecord, keyword: string) => {
     const song = songs.get(record.songId);
-    return { record, document: buildSearchDocument([song?.title ?? record.title, record.songId, song?.artist ?? '']) };
-  }), [sortedRecords, songs]);
-  const records = useMemo(() => searchIndex.filter(({ document }) => searchDocumentMatches(document, debounced))
-    .map(({ record }) => record), [debounced, searchIndex]);
+    const document = song ? rizlineSongSearchDocument(song) : searchDocumentFor(record, recordSearchValues);
+    return searchDocumentMatches(document, keyword) ? record : undefined;
+  }, [songs]);
+  const { data: records, isFiltering: recordsFiltering } = useLocalSearch(sortedRecords, debounced, selectRecord, catalogQuery.data?.snapshot.songs);
   return <View style={[styles.page, { backgroundColor: theme.background }]}><RecordsListPage
     beforeList={<GameSearchHeader value={keyword} onChangeText={setKeyword} placeholder="搜索 Rizline 成绩" wrapStyle={styles.searchWrap} inputStyle={styles.search} />}
-    data={records.length ? records : undefined} isLoading={query.isLoading} isError={query.isError} error={query.error}
+    data={records.length ? records : undefined} isLoading={query.isLoading || (recordsFiltering && records.length === 0)} isError={query.isError} error={query.error}
     isEmpty={!query.isLoading && records.length === 0} emptyText={keyword ? '没有符合条件的成绩' : '同步数据后，成绩会显示在这里'}
     emptyActionLabel={keyword ? '清除筛选' : undefined} onEmptyAction={keyword ? () => setKeyword('') : undefined}
     onRetry={() => void query.refetch()} flatListProps={{ testID: 'rizline-records-list', style: styles.list, contentInsetAdjustmentBehavior: 'automatic',
@@ -68,7 +71,10 @@ export function RizlineCatalogScreen() {
   const library = useUserLibrary(); const filter = useRizlineCatalogFilter();
   const keyword = useDebouncedValue(filter.keyword);
   const songs = useMemo(() => query.data?.snapshot.songs ?? [], [query.data]);
-  const filtered = useMemo(() => filterRizlineSongs(songs, filter, keyword), [filter, keyword, songs]);
+  const searchFilter = useMemo(() => ({ ...filter, keyword }), [filter, keyword]);
+  const selectSong = useCallback((song: RizlineSong, filters: typeof searchFilter) =>
+    matchesRizlineSong(song, filters, filters.keyword) ? song : undefined, []);
+  const { data: filtered, isFiltering } = useLocalSearch(songs, searchFilter, selectSong);
   const packs = useMemo(() => rizlinePackOptions(songs), [songs]);
   const constants = useMemo(() => songs.flatMap((song) => song.charts.flatMap((chart) => chart.constant === null ? [] : [chart.constant])), [songs]);
   const bounds = useStableRangeBounds(constants, { minimum: 1, maximum: 16 }, filter.constantMin, filter.constantMax, query.data?.snapshot.resourceVersion ?? 'loading');
@@ -76,7 +82,7 @@ export function RizlineCatalogScreen() {
   return <View style={[styles.page, { backgroundColor: theme.background }]}><CatalogListPage
     beforeList={<><GameSearchHeader value={filter.keyword} onChangeText={filter.setKeyword} placeholder="搜索 Rizline 曲库" wrapStyle={styles.searchWrap} inputStyle={styles.search} />
       <RizlineFilterBar filter={filter} packs={packs} constantBounds={bounds} /></>}
-    data={filtered.length ? filtered : undefined} isLoading={query.isLoading} isError={query.isError} error={query.error}
+    data={filtered.length ? filtered : undefined} isLoading={query.isLoading || (isFiltering && filtered.length === 0)} isError={query.isError} error={query.error}
     isEmpty={!query.isLoading && filtered.length === 0} emptyText="没有符合条件的歌曲" onRetry={() => void query.refetch()}
     emptyActionLabel={filter.keyword || filter.difficulty !== 'all' || filter.packId !== 'all' || filter.constantMin || filter.constantMax ? '清除筛选' : undefined}
     onEmptyAction={filter.keyword || filter.difficulty !== 'all' || filter.packId !== 'all' || filter.constantMin || filter.constantMax ? () => filter.clearFilters() : undefined}

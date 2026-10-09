@@ -11,6 +11,14 @@ import {
   parseSimaiChart,
 } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 
+const defaultParams = { songId: '834', chartType: 'DX', levelIndex: '3', title: '测试曲', constant: '14.7' };
+let mockParams: Record<string, string> = defaultParams;
+const mockMajdataSong = jest.fn(async () => ({ id: 'chart-id', hash: 'hash-1', title: '自制曲', levels: ['', '', '', '', '14'], designers: [] }));
+const mockMajdataChart = jest.fn(async () => '&inote_5=(120)1,');
+jest.mock('@/services/majdata-service', () => ({
+  loadMajdataSong: () => mockMajdataSong(), loadMajdataChart: () => mockMajdataChart(),
+}));
+
 const mockInjectJavaScript = jest.fn();
 const mockSaveSettings = jest.fn(async (_key: string, _value: string) => undefined);
 const mockPrepareChartPreview = jest.fn(async (_input: unknown) => ({
@@ -29,13 +37,7 @@ jest.mock('expo-router', () => ({
       return null;
     },
   },
-  useLocalSearchParams: () => ({
-    songId: '834',
-    chartType: 'DX',
-    levelIndex: '3',
-    title: '测试曲',
-    constant: '14.7',
-  }),
+  useLocalSearchParams: () => mockParams,
 }));
 
 jest.mock('react-native-webview', () => {
@@ -85,6 +87,9 @@ jest.mock('@/features/simai-chart-preview/prepare-chart-preview-webview', () => 
 
 describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
   beforeEach(() => {
+    mockParams = defaultParams;
+    mockMajdataSong.mockClear();
+    mockMajdataChart.mockClear();
     latestScreenOptions = undefined;
     latestWebViewProps = {};
     hardwareBackHandler = undefined;
@@ -100,6 +105,22 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
 
   afterEach(() => {
     jest.restoreAllMocks();
+  });
+
+  it('opens a Majdata preview from its revision-checked text without a detail analysis', async () => {
+    mockParams = { songId: 'chart-id', gameId: 'majdata-net', hash: 'hash-1', levelIndex: '4' };
+    await render(<MaimaiChartPreviewScreen />);
+    await waitFor(() => expect(screen.getByTestId('maimai-chart-preview-webview')).toBeTruthy());
+    expect(mockPrepareChartPreview).toHaveBeenCalledWith(expect.objectContaining({
+      simaiText: '&inote_5=(120)1,', difficulty: 5,
+    }));
+  });
+
+  it('rejects a replaced Majdata revision before preparing the player', async () => {
+    mockParams = { songId: 'chart-id', gameId: 'majdata-net', hash: 'previous-hash', levelIndex: '4' };
+    await render(<MaimaiChartPreviewScreen />);
+    await waitFor(() => expect(screen.getByText('无法准备谱面预览资源')).toBeTruthy());
+    expect(mockPrepareChartPreview).not.toHaveBeenCalled();
   });
 
   it('switches the native screen to immersive landscape and restores portrait on exit', async () => {

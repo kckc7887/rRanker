@@ -1,4 +1,4 @@
-import { memo, useCallback, useDeferredValue, useEffect, useMemo } from 'react';
+import { memo, useCallback, useEffect, useMemo } from 'react';
 import { View, type ListRenderItem } from 'react-native';
 import { CatalogListPage } from '@/components/game-content/GameListPages';
 import { FavoriteSongRow } from '@/components/game-content/FavoriteSongRow';
@@ -12,6 +12,7 @@ import { parseConstantBound } from '@/domain/maimai-filters';
 import type { Chart, ChartType, Song } from '@/domain/models';
 import { localizedVersionName } from '@/domain/version-names';
 import { presentStandardSong } from '@/features/game-content/adapters';
+import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
@@ -21,9 +22,8 @@ import { useCatalogFilter } from '@/state/catalog-filter';
 import { useAppTheme } from '@/theme/app-theme';
 import {
   EMPTY_SONG_FILTERS,
-  buildSongSearchIndex,
   findMatchedAlias,
-  searchSongs,
+  matchesSongSearch,
 } from '@/utils/search';
 
 const TYPES: ChartType[] = ['SD', 'DX', 'UTAGE'];
@@ -40,7 +40,6 @@ export function MaimaiCatalogScreen() {
     setSelectedDxRatingTagIds, clearFilters,
   } = useCatalogFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
-  const index = useMemo(() => buildSongSearchIndex(query.data?.songs ?? []), [query.data?.songs]);
   const dxRatingTagIndex = useMemo(() => buildDxRatingChartTagIndex(
     dxRatingChartTags.data,
     query.data?.songs ?? [],
@@ -67,21 +66,16 @@ export function MaimaiCatalogScreen() {
     chartVersionIds: version === 'all' ? [] : [Number(version)],
     selectedDxRatingTagIds,
   }), [constantMax, constantMin, debouncedKeyword, difficulty, selectedDxRatingTagIds, type, version]);
-  const deferredFilterSpec = useDeferredValue(filterSpec);
-  const filtered = useMemo(() => searchSongs(
-    index,
-    deferredFilterSpec,
-    dxRatingChartTags.data && deferredFilterSpec.selectedDxRatingTagIds.length > 0
-      ? (song, chart) => dxRatingChartHasAllTags(
-          dxRatingTagIndex,
-          song.id,
-          chart.type,
-          chart.levelIndex,
-          deferredFilterSpec.selectedDxRatingTagIds,
-        )
-      : undefined,
-  ), [deferredFilterSpec, dxRatingChartTags.data, dxRatingTagIndex, index]);
-  const isFiltering = filterSpec !== deferredFilterSpec;
+  const selectSong = useCallback((song: Song, filters: typeof filterSpec) => {
+    if (!matchesSongSearch(song, filters,
+      dxRatingChartTags.data && filters.selectedDxRatingTagIds.length > 0
+        ? (candidate, chart) => dxRatingChartHasAllTags(
+            dxRatingTagIndex, candidate.id, chart.type, chart.levelIndex, filters.selectedDxRatingTagIds,
+          )
+        : undefined)) return undefined;
+    return { song, matchedAlias: findMatchedAlias(song, filters.keyword) };
+  }, [dxRatingChartTags.data, dxRatingTagIndex]);
+  const { data: filtered, filter: deferredFilterSpec, isFiltering } = useLocalSearch(query.data?.songs, filterSpec, selectSong);
   const versionLabelsById = useMemo(() => new Map(versions.flatMap((option) =>
     option.versionId === undefined
       ? []
@@ -95,35 +89,25 @@ export function MaimaiCatalogScreen() {
     () => new Set((library.data ?? []).filter((item) => item.kind === 'song' && item.favorite).map((item) => item.songId)),
     [library.data],
   );
-  const matchedAliasById = useMemo(() => {
-    if (!debouncedKeyword.trim()) return null;
-    const map = new Map<string, string>();
-    for (const song of filtered) {
-      const alias = findMatchedAlias(song, debouncedKeyword);
-      if (alias) map.set(song.id, alias);
-    }
-    return map;
-  }, [debouncedKeyword, filtered]);
   const setSongFavorite = library.setSongFavorite;
   const toggleFavorite = useCallback((songId: string, favorite: boolean) => {
     void setSongFavorite(songId, favorite);
   }, [setSongFavorite]);
-  const renderCatalogItem = useCallback<ListRenderItem<Song>>(({ item }) => (
+  const renderCatalogItem = useCallback<ListRenderItem<typeof filtered[number]>>(({ item: { song, matchedAlias } }) => (
     <CatalogSongRow
-      song={item}
-      favorite={favoriteSongIds.has(item.id)}
+      song={song}
+      favorite={favoriteSongIds.has(song.id)}
       favoritePending={library.isLoading || library.isUpdating}
       onFavoriteChange={toggleFavorite}
       selectedChartVersionId={selectedChartVersionId}
       selectedVersionLabel={selectedVersionLabel}
       versionLabelsById={versionLabelsById}
-      matchedAlias={matchedAliasById?.get(item.id)}
+      matchedAlias={matchedAlias}
     />
   ), [
     favoriteSongIds,
     library.isLoading,
     library.isUpdating,
-    matchedAliasById,
     selectedChartVersionId,
     selectedVersionLabel,
     toggleFavorite,
@@ -145,14 +129,14 @@ export function MaimaiCatalogScreen() {
         onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
         onVersionLocaleChange={setVersionLocale} onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
         onReset={clearFilters} />
-      <CatalogListPage<Song> isLoading={query.isLoading} isError={query.isError}
+      <CatalogListPage<typeof filtered[number]> isLoading={query.isLoading || (isFiltering && filtered.length === 0)} isError={query.isError}
         isEmpty={!!query.data && filtered.length === 0}
         error={query.error} onRetry={() => void query.refetch()} emptyText={keyword.trim() ? '筛选结果为空' : '暂无曲库数据'}
         data={query.data && filtered.length > 0 ? filtered : undefined}
         flatListProps={{
           testID: 'catalog-results-list',
           contentInsetAdjustmentBehavior: 'automatic',
-          keyExtractor: songKey,
+          keyExtractor: (item) => item.song.id,
           contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
           scrollIndicatorInsets: { bottom: tabBottomInset },
           renderItem: renderCatalogItem,
@@ -231,5 +215,3 @@ const SongChartBadges = memo(function SongChartBadges({ songId, charts }: { song
     })}
   </View>;
 });
-
-function songKey(song: Song): string { return song.id; }

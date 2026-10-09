@@ -13,21 +13,38 @@ import scale from './scale.json';
 const support = (raw: number, anchor: number) => Math.round(Math.max(0, Math.min(100, raw / anchor * 100)) * 10) / 10;
 const score = (value: number) => Math.round(value) / 10;
 
-export function simaiDifficultyScores(text: string, slot: number): MaimaiDxTagScores | null {
+function* difficultyScores(shouldYield: () => boolean, text: string, slot: number): Generator<void, MaimaiDxTagScores | null, void> {
+  const chart = yield* parseSimaiChart(shouldYield, text, slot);
+  const base = yield* baseBurden(shouldYield, chart), star = yield* starComplexity(shouldYield, chart, base.slideEvents);
+  if (!star.coverage.complete || star.raw === null || star.techniqueRaw === null || star.burstRaw === null) return null;
+  const rhythm = yield* keyboardRhythmComplexity(shouldYield, chart), input = yield* inputComplexity(shouldYield, chart);
+  const result = complexityRadar(legacyRadar(base.features, scale.baseline), support(star.raw, scale.star), {
+    star_technique: support(star.techniqueRaw, scale.starTechnique),
+    star_burst: support(star.burstRaw, scale.starBurst),
+    keyboard_rhythm: support(rhythm.raw, scale.rhythm),
+    touch_input: support(input.touchRaw, scale.touch),
+    hold_lock: support(input.raw, scale.holdLock),
+  });
+  return [score(result.键盘), score(result.星星), score(result.技巧), score(result.体力), score(result.爆发)];
+}
+
+export async function simaiDifficultyScores(text: string, slot: number, signal?: AbortSignal): Promise<MaimaiDxTagScores | null> {
+  let deadline = performance.now();
+  const steps = difficultyScores(() => performance.now() >= deadline, text, slot);
   try {
-    const chart = parseSimaiChart(text, slot);
-    const base = baseBurden(chart), star = starComplexity(chart, base.slideEvents);
-    if (!star.coverage.complete || star.raw === null || star.techniqueRaw === null || star.burstRaw === null) return null;
-    const rhythm = keyboardRhythmComplexity(chart), input = inputComplexity(chart);
-    const result = complexityRadar(legacyRadar(base.features, scale.baseline), support(star.raw, scale.star), {
-      star_technique: support(star.techniqueRaw, scale.starTechnique),
-      star_burst: support(star.burstRaw, scale.starBurst),
-      keyboard_rhythm: support(rhythm.raw, scale.rhythm),
-      touch_input: support(input.touchRaw, scale.touch),
-      hold_lock: support(input.raw, scale.holdLock),
-    });
-    return [score(result.键盘), score(result.星星), score(result.技巧), score(result.体力), score(result.爆发)];
+    while (true) {
+      if (signal?.aborted) throw signal.reason;
+      const next = steps.next();
+      if (next.done) return next.value;
+      if (performance.now() >= deadline) {
+        await new Promise<void>(resolve => setTimeout(resolve, 0));
+        deadline = performance.now() + 4;
+      }
+    }
   } catch {
+    if (signal?.aborted) throw signal.reason;
     return null;
+  } finally {
+    steps.return(null);
   }
 }

@@ -17,7 +17,7 @@ export function useMaimaiDxTag(enabled = true) {
     notifyOnChangeProps: active ? undefined : [],
     queryKey: ['maimai-dxtag', 'all', catalog.data?.source.updatedAt],
     queryFn: ({ signal }) => loadCachedMaimaiDxTag(catalog.data!, signal),
-    staleTime: 0,
+    staleTime: query => query.state.data?.coversCatalog ? Infinity : 0,
     retry: false,
   });
 }

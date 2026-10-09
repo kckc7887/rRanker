@@ -1,9 +1,9 @@
-import { describe, expect, it } from 'vitest';
+import { describe, expect, it, vi } from 'vitest';
 import cases from './fixtures/maimai-simai-cases.json';
 import reference from './fixtures/maimai-simai-reference.json';
 import customReference from './fixtures/maimai-custom-reference.json';
 import connectedReference from './fixtures/maimai-connected-reference.json';
-import { parseSimaiBody, SimaiParseError } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { parseSimaiBody, parseSimaiChartAsync, SimaiParseError } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import { ScrollTimeline } from '@/features/simai-chart-preview/engine/core/timing/ScrollTimeline';
 import { geometryFor, prepareBranch, joinGeometries } from '@/features/simai-chart-preview/engine/core/geometry/slidePath';
 import { prepareAudioEvents } from '@/features/simai-chart-preview/engine/core/audio/AudioManager';
@@ -47,8 +47,9 @@ describe('MajSimai 2.2.2 reference output', () => {
     actual.arrows.forEach((pose, i) => { compare(pose, expected.ArrowPoses[i]); expect(pose.length).toBeCloseTo(expected.ArrowPoses[i].L, 4); });
     expect(actual.areas).toEqual(expected.JudgeAreaQueue.map(a => [a.ArrowProgressPush, a.ArrowProgressFinish, a.SensorA, a.SensorB]));
   });
-  for (const [name, body] of Object.entries(cases)) it(name, () => {
-    const chart = parseSimaiBody(body), lead = 240000 / chart.bpm;
+  for (const [name, body] of Object.entries(cases)) it.each(['sync', 'async'] as const)(`${name} %s`, async (mode) => {
+    const chart = mode === 'sync' ? parseSimaiBody(body) : await parseSimaiChartAsync(`&inote_5=${body}`, 5);
+    const lead = 240000 / chart.bpm;
     const expected = reference[name as keyof typeof reference];
     const actual = chart.notes.flatMap(n => {
       const base = {
@@ -88,6 +89,48 @@ describe('MajSimai 2.2.2 reference output', () => {
   it('rejects unknown notes with line and column rather than dropping them', () => {
     expect(() => parseSimaiBody('(120)\n1j,')).toThrow(SimaiParseError);
     try { parseSimaiBody('(120)\n1j,'); } catch (error) { expect((error as SimaiParseError).source).toMatchObject({ line: 2, column: 1, text: '1j' }); }
+  });
+  it('preserves slot metadata and source positions in asynchronous parsing', async () => {
+    const text = '&title=Sample\n&artist=Artist\n&bpm=120\n&first=-0.25\n&des=Designer\n&lv_5=12+\n&inote_5=\n1/2h[4:1],\n&inote_7=(150)3,';
+    const chart = await parseSimaiChartAsync(text, 5);
+    expect(chart).toMatchObject({
+      title: 'Sample', artist: 'Artist', designer: 'Designer', difficulty: 5,
+      firstMs: -250, bpm: 120, level: { lv_5: '12+' }, availableDifficulties: { 5: true, 7: true },
+      notes: [
+        { type: 'tap', position: 1, timingMs: 2000, isEach: true, source: { line: 8, column: 1, text: '1' } },
+        { type: 'hold-start', position: 2, timingMs: 2000, endTimeMs: 2500, isEach: true, source: { line: 8, column: 3, text: '2h[4:1]' } },
+      ],
+    });
+    await expect(parseSimaiChartAsync('&inote_5=(120)\n1j,', 5)).rejects.toMatchObject({
+      name: 'SimaiParseError', source: { line: 2, column: 1, text: '1j' },
+    });
+  });
+  it('lets queued work run while parsing and completes all notes', async () => {
+    let elapsed = 0, completed = false;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => elapsed++);
+    try {
+      const pending = parseSimaiChartAsync(`&inote_5=(120){4}${'1/2,'.repeat(16)}`, 5).then(chart => {
+        completed = true;
+        return chart;
+      });
+      await new Promise<void>(resolve => { setTimeout(resolve, 0); });
+      expect(completed).toBe(false);
+      const chart = await pending;
+      expect(chart.notes).toHaveLength(32);
+      expect(chart.notes[31]).toMatchObject({ position: 2, timingMs: 9500, isEach: true });
+    } finally { now.mockRestore(); }
+  });
+  it('stops parsing when its consumer cancels between slices', async () => {
+    let elapsed = 0;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => elapsed++);
+    const controller = new AbortController(), reason = new Error('closed chart');
+    try {
+      const pending = parseSimaiChartAsync(`&inote_5=(120)${'1/2,'.repeat(16)}`, 5, controller.signal);
+      const rejection = expect(pending).rejects.toBe(reason);
+      setTimeout(() => { controller.abort(reason); }, 0);
+      await rejection;
+      await expect(parseSimaiChartAsync('invalid', 5, controller.signal)).rejects.toBe(reason);
+    } finally { now.mockRestore(); }
   });
   it('prepares every custom path in the reference cases', () => {
     for (const note of parseSimaiBody(cases.custom).notes) if (note.type === 'slide') for (const branch of note.branches) {

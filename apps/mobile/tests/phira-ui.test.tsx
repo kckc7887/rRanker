@@ -178,7 +178,7 @@ describe('Phira page contracts', () => {
     expect(best.getByTestId('phira-best-results-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
     await best.unmount();
     const records = await render(<PhiraRecordsScreen />);
-    expect(records.getByTestId('phira-records-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
+    expect((await records.findByTestId('phira-records-list')).props.contentInsetAdjustmentBehavior).toBe('automatic');
     await records.unmount();
     const catalog = await render(<PhiraCatalogScreen />);
     expect(catalog.getByTestId('phira-catalog-results-list').props.contentInsetAdjustmentBehavior).toBe('automatic');

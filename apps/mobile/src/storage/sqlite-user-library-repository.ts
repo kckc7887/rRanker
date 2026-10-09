@@ -207,7 +207,7 @@ export class SqliteUserLibraryRepository {
           await this.deleteOne(db, key);
         }
         await this.pruneOrphanTags(db);
-        result = await this.readFrom(db);
+        result = await this.readFrom(db, target.gameId);
       });
       return result;
     });

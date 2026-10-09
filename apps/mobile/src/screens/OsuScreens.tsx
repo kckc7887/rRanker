@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import {
   BestListPage,
@@ -22,6 +22,7 @@ import {
   type OsuGeneralFlag,
   type OsuSearchStatus,
 } from '@/domain/osu';
+import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
@@ -108,7 +109,7 @@ export function OsuRecordsScreen() {
     `${gameId ?? 'none'}:${activeAccountId ?? 'none'}`,
   );
   const debouncedKeyword = useDebouncedValue(filter.keyword, 350);
-  const scores = useMemo(() => filterOsuBestScores(allScores, {
+  const searchFilter = useMemo(() => ({
     keyword: debouncedKeyword,
     mods: filter.mods,
     accuracyMin: filter.accuracyMin,
@@ -117,8 +118,10 @@ export function OsuRecordsScreen() {
     starMax: filter.starMax,
     ppMin: filter.ppMin,
     ppMax: filter.ppMax,
-  }), [allScores, debouncedKeyword, filter.mods, filter.accuracyMin, filter.accuracyMax,
+  }), [debouncedKeyword, filter.mods, filter.accuracyMin, filter.accuracyMax,
     filter.starMin, filter.starMax, filter.ppMin, filter.ppMax]);
+  const selectScore = useCallback((score: OsuBestScore, filters: typeof searchFilter) => filterOsuBestScores([score], filters)[0], []);
+  const { data: scores, isFiltering } = useLocalSearch(allScores, searchFilter, selectScore);
   const hasActiveFilter = debouncedKeyword.trim() !== '' || filter.mods.length > 0
     || filter.accuracyMin !== '' || filter.accuracyMax !== ''
     || filter.starMin !== '' || filter.starMax !== ''
@@ -159,7 +162,7 @@ export function OsuRecordsScreen() {
             />
           </>
         }
-        isLoading={(gameData.isLoading || known.isLoading) && known.bound}
+        isLoading={(gameData.isLoading || known.isLoading || (isFiltering && scores.length === 0)) && known.bound}
         isError={gameData.isError || known.isError}
         isEmpty={!known.bound || (!gameData.isLoading && !known.isLoading && scores.length === 0)}
         error={gameData.error ?? known.error}

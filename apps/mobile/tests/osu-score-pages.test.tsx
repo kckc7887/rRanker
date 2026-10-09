@@ -337,8 +337,8 @@ describe('OsuRecordsScreen 成绩页', () => {
     expect(screen.getByLabelText('展开 osu! 成绩筛选，当前 全部')).toBeTruthy();
     expect(screen.queryByText('已知成绩')).toBeNull();
     expect(screen.queryByText('打开曲库歌曲后，会自动补充查询到的成绩')).toBeNull();
-    expect(screen.getByText('已加载 1 / 1 条')).toBeTruthy();
-    expect(screen.getByText('Tori no Uta')).toBeTruthy();
+    expect(await screen.findByText('已加载 1 / 1 条')).toBeTruthy();
+    expect(await screen.findByText('Tori no Uta')).toBeTruthy();
   });
 
   it('筛选为空结果时切换空态文案，重置后恢复', async () => {
@@ -348,18 +348,18 @@ describe('OsuRecordsScreen 成绩页', () => {
     const noneOption = await screen.findByLabelText('NM 无模组，未选中');
     await fireEvent.press(noneOption);
     await fireEvent.press(screen.getByLabelText('完成 osu! 模组筛选'));
-    expect(screen.getByText('没有找到符合条件的已知成绩')).toBeTruthy();
+    expect(await screen.findByText('没有找到符合条件的已知成绩')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('重置 osu! 成绩筛选'));
-    expect(screen.getByText('Tori no Uta')).toBeTruthy();
+    expect(await screen.findByText('Tori no Uta')).toBeTruthy();
   });
 
   it('PP 下限筛选收窄列表', async () => {
     const screen = await render(<OsuRecordsScreen />);
     await fireEvent.press(screen.getByLabelText('展开 osu! 成绩筛选，当前 全部'));
     await fireEvent.changeText(screen.getByLabelText('最低 PP'), '100');
-    expect(screen.getByText('没有找到符合条件的已知成绩')).toBeTruthy();
+    expect(await screen.findByText('没有找到符合条件的已知成绩')).toBeTruthy();
     await fireEvent.changeText(screen.getByLabelText('最低 PP'), '50');
-    expect(screen.getByText('Tori no Uta')).toBeTruthy();
+    expect(await screen.findByText('Tori no Uta')).toBeTruthy();
   });
 });
 
@@ -368,8 +368,8 @@ describe('OsuCatalogScreen 曲库页', () => {
     const screen = await render(<OsuCatalogScreen />);
     expect(screen.getByLabelText('搜索 osu! 谱面')).toBeTruthy();
     expect(screen.getByPlaceholderText('搜索标题、艺术家、谱师或标签')).toBeTruthy();
-    expect(screen.getByText('已加载 1 / 1 条')).toBeTruthy();
-    expect(screen.getByText('Tori no Uta')).toBeTruthy();
+    expect(await screen.findByText('已加载 1 / 1 条')).toBeTruthy();
+    expect(await screen.findByText('Tori no Uta')).toBeTruthy();
     expect(screen.getAllByTestId('osu-catalog-difficulty-badge')).toHaveLength(2);
   });
 

@@ -72,7 +72,7 @@ it('keeps cached data and its fetch time after a failed update, then retries suc
   const saved = await loadCachedMaimaiDxTag(catalog());
   const updated = catalog([['1', 'SD', 3], ['2', 'SD', 3]]);
   fetcher.mockImplementation(async () => new Response('', { status: 503 }));
-  expect(await loadCachedMaimaiDxTag(updated)).toEqual({ ...saved, source: { ...saved.source, isStale: true } });
+  expect(await loadCachedMaimaiDxTag(updated)).toEqual({ ...saved, coversCatalog: false, source: { ...saved.source, isStale: true } });
   expect(await loadCachedMaimaiDxTag(catalog())).toEqual(saved);
   respond({ '1': [row], '2': [row] });
   const fresh = await loadCachedMaimaiDxTag(updated);

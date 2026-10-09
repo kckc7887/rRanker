@@ -274,7 +274,7 @@ describe('SQLite storage and current backups', () => {
     expect(await library.listTagPresets()).toEqual(['旧预设', '新预设']);
   });
 
-  it('removes the emptied row and prunes orphan tags on a single-target write', async () => {
+  it('returns only the edited game while pruning its empty row and preserving other games', async () => {
     const library = new SqliteUserLibraryRepository();
     const at = '2026-09-24T00:00:00.000Z';
     await library.mergeBackup({
@@ -284,6 +284,9 @@ describe('SQLite storage and current backups', () => {
       }, {
         key: 'song:maimai:B', gameId: 'maimai', kind: 'song', songId: 'B',
         favorite: true, tags: ['共有'], createdAt: at, updatedAt: at,
+      }, {
+        key: 'song:phigros:A', gameId: 'phigros', kind: 'song', songId: 'A',
+        favorite: true, tags: ['其它游戏'], createdAt: at, updatedAt: at,
       }],
       presets: [],
     }, 'replace');
@@ -297,8 +300,9 @@ describe('SQLite storage and current backups', () => {
     );
     expect(result.map((item) => item.key)).toEqual(['song:maimai:B']);
     expect(result[0]).toMatchObject({ createdAt: at, tags: ['共有'] });
+    expect(await library.list('phigros')).toEqual([expect.objectContaining({ key: 'song:phigros:A', favorite: true, tags: ['其它游戏'] })]);
     expect(database.prepare('SELECT normalized_name AS name FROM user_library_tags ORDER BY name').all())
-      .toEqual([{ name: '共有' }]);
+      .toEqual([{ name: '共有' }, { name: '其它游戏' }]);
   });
 
   it('keeps both charts when two best merges of one account overlap', async () => {

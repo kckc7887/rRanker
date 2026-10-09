@@ -33,6 +33,7 @@ export type PhigrosResourceAsset = z.infer<typeof AssetSchema>;
 export type PhigrosRelease = {
   current: z.infer<typeof CurrentSchema>;
   manifest: z.infer<typeof ManifestSchema>;
+  assetsByPath: ReadonlyMap<string, PhigrosResourceAsset>;
   catalog: z.infer<typeof CatalogSchema>;
   noteCounts: string;
   difficulty: string;
@@ -67,9 +68,9 @@ export class PhigrosResourceService {
   }
 
   asset(release: PhigrosRelease, path: string): PhigrosResourceAsset {
-    const matches = release.manifest.assets.filter((asset) => asset.path === path);
-    if (matches.length !== 1) throw new ProviderError('upstream_schema', `Phigros 资源缺失或重复：${path}`, true);
-    return matches[0]!;
+    const asset = release.assetsByPath.get(path);
+    if (!asset) throw new ProviderError('upstream_schema', `Phigros 资源缺失或重复：${path}`, true);
+    return asset;
   }
 
   assetUrl(release: PhigrosRelease, asset: PhigrosResourceAsset): string {
@@ -108,17 +109,23 @@ export class PhigrosResourceService {
     if (candidate.manifest.gameVersion !== current.gameVersion
       || candidate.manifest.resourceVersion !== current.resourceVersion
       || candidate.manifest.generatedAt !== current.publishedAt
-      || current.manifest !== `phigros/manifests/${current.manifestSha256}.json`
-      || new Set(candidate.manifest.assets.map(asset => asset.path)).size !== candidate.manifest.assets.length
-      || candidate.manifest.assets.some(asset => !asset.objectKey.split('/')[2]!.startsWith(`${asset.sha256}.`))) {
+      || current.manifest !== `phigros/manifests/${current.manifestSha256}.json`) {
       throw new ProviderError('upstream_schema', 'Phigros 发布内容不一致', true);
     }
+    const assetsByPath = new Map<string, PhigrosResourceAsset>();
+    for (const asset of candidate.manifest.assets) {
+      if (assetsByPath.has(asset.path) || !asset.objectKey.split('/')[2]!.startsWith(`${asset.sha256}.`)) {
+        throw new ProviderError('upstream_schema', 'Phigros 发布内容不一致', true);
+      }
+      assetsByPath.set(asset.path, asset);
+    }
+    candidate.assetsByPath = assetsByPath;
     const catalogAsset = this.asset(candidate, 'catalog.json');
     const notesAsset = this.asset(candidate, 'metadata/note_counts.tsv');
     if (catalogAsset.objectKey !== current.catalog || notesAsset.objectKey !== current.noteCounts) {
       throw new ProviderError('upstream_schema', 'Phigros 发布路径不一致', true);
     }
-    const avatarAsset = candidate.manifest.assets.find((asset) => asset.path === 'metadata/tmp.tsv');
+    const avatarAsset = candidate.assetsByPath.get('metadata/tmp.tsv');
     const [catalog, notes, difficulty, avatars] = await Promise.all([
       this.readAsset(candidate, catalogAsset, signal, 'catalog'),
       this.readAsset(candidate, notesAsset, signal),

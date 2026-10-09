@@ -15,55 +15,17 @@ export type LaunchHandoverRelation={
   waitPhase:number;headDistance:number;resetDistance:number;resetGapBeats:number;resetGapMs:number;
   previousEndPosition:number;nextHeadPosition:number;
 };
-type Travel={fromSlideId:number;toSlideId:number;distance:number;availableMs:number;availableBeats:number};
-export type HandoverStrategy={
-  name:'fixed-slide-hand'|'alternating-slide-hands';travels:Travel[];
-  headTravelDistance:number;resetTravelDistance:number;travelCost:number;unavailableTransitions:number;
-  limitation:string;
-};
-export type LaunchHandoverCandidate={
-  kind:'launch-reset-chain'|'launch-overlap-chain'|'shared-stroke-chain';candidateAxis:'星星·技巧'|null;
-  startMs:number;endMs:number;startBeat:number;endBeat:number;
-  slideIds:number[];relations:LaunchHandoverRelation[];strategies:HandoverStrategy[];
-  evidenceKind:'interval';status:'requires_player_review';reason:string;
-};
-function strategy(paths:SlideEvent[],alternate:boolean):HandoverStrategy {
-  const travels:Travel[]=[];let headTravelDistance=0,headCost=0;
-  if(alternate){
-    for(let i=2;i<paths.length;i++){
-      const from=paths[i-2]!,to=paths[i]!;
-      travels.push({fromSlideId:from.slideId,toSlideId:to.slideId,distance:ringDistance(endPosition(from),to.headPosition),
-        availableMs:to.headMs-from.endMs,availableBeats:to.headBeat-from.endBeat});
-    }
-  }else{
-    for(let i=1;i<paths.length;i++){
-      const from=paths[i-1]!,to=paths[i]!;
-      travels.push({fromSlideId:from.slideId,toSlideId:to.slideId,distance:ringDistance(endPosition(from),to.headPosition),
-        availableMs:to.startMs-from.endMs,availableBeats:to.startBeat-from.endBeat});
-      const distance=ringDistance(from.headPosition,to.headPosition);headTravelDistance+=distance;
-      headCost+=distance*distance/Math.max(.000001,(to.headMs-from.headMs)/1000);
-    }
-  }
-  let travelCost=headCost,unavailableTransitions=0;
-  for(const travel of travels){
-    if(travel.availableMs < -1e-6 || (travel.distance>0 && travel.availableMs<=1e-6))unavailableTransitions++;
-    else if(travel.distance>0)travelCost+=travel.distance*travel.distance/(travel.availableMs/1000);
-  }
-  return {name:alternate?'alternating-slide-hands':'fixed-slide-hand',travels,headTravelDistance,
-    resetTravelDistance:travels.reduce((sum,t)=>sum+t.distance,0),travelCost,unavailableTransitions,
-    limitation:'Only this Slide/head chain is scheduled. Other TAP, HOLD, Touch, contact width and judgement tolerances are not solved.'};
-}
+type LaunchHandoverCandidate={candidateAxis:'星星·技巧'|null;relations:LaunchHandoverRelation[]};
 
-export function slideLaunchHandover(events:readonly SlideEvent[]):{
-  schemaVersion:string;relations:LaunchHandoverRelation[];candidates:LaunchHandoverCandidate[];
-  features:Record<string,number>;excludedMultiBranchHeads:number;
-} {
+export function* slideLaunchHandover(shouldYield: () => boolean, events:readonly SlideEvent[]):Generator<void, {
+  candidates:LaunchHandoverCandidate[];
+}, void> {
   const byId=new Map<number,SlideEvent[]>();
-  for(const event of events){const group=byId.get(event.slideId)??[];group.push(event);byId.set(event.slideId,group);}
+  for(const event of events){ if (shouldYield()) yield;const group=byId.get(event.slideId)??[];group.push(event);byId.set(event.slideId,group);}
   const paths=[...byId.values()].filter(g=>g.length===1&&!g[0]!.headless).map(g=>g[0]!).sort((a,b)=>a.headBeat-b.headBeat||a.slideId-b.slideId);
   const allHeadTimes=[...byId.values()].filter(g=>!g[0]!.headless).map(g=>g[0]!.headBeat);
   const relations:LaunchHandoverRelation[]=[];
-  for(let i=0;i<paths.length;i++){
+  for(let i=0;i<paths.length;i++){ if (shouldYield()) yield;
     const prior=paths[i]!,span=prior.startBeat-prior.headBeat;
     if(span<=1e-9)continue;
     if(allHeadTimes.filter(beat=>Math.abs(beat-prior.headBeat)<=span*.025).length!==1)continue;
@@ -83,24 +45,12 @@ export function slideLaunchHandover(events:readonly SlideEvent[]):{
   const byPrevious=new Map(relations.map(r=>[r.previousSlideId,r]));
   const previousIds=new Set(relations.map(r=>r.nextSlideId));
   const candidates:LaunchHandoverCandidate[]=[];
-  for(const first of relations.filter(r=>!previousIds.has(r.previousSlideId))){
+  for(const first of relations.filter(r=>!previousIds.has(r.previousSlideId))){ if (shouldYield()) yield;
     const edges:LaunchHandoverRelation[]=[];let current:LaunchHandoverRelation|undefined=first;
-    while(current){edges.push(current);current=byPrevious.get(current.nextSlideId);}
+    while(current){ if (shouldYield()) yield;edges.push(current);current=byPrevious.get(current.nextSlideId);}
     if(edges.length<3)continue;
-    const ids=[first.previousSlideId,...edges.map(r=>r.nextSlideId)],chain=ids.map(id=>byId.get(id)![0]!);
     const needsReset=edges.some(r=>r.resetDistance>0),overlap=edges.some(r=>r.resetGapMs < -1e-6);
-    candidates.push({kind:needsReset?'launch-reset-chain':overlap?'launch-overlap-chain':'shared-stroke-chain',candidateAxis:needsReset||overlap?'星星·技巧':null,
-      startMs:chain[0]!.startMs,endMs:Math.max(...chain.map(p=>p.endMs)),startBeat:chain[0]!.startBeat,endBeat:Math.max(...chain.map(p=>p.endBeat)),
-      slideIds:ids,relations:edges,strategies:[strategy(chain,false),strategy(chain,true)],evidenceKind:'interval',status:'requires_player_review',
-      reason:needsReset?'连续下一星头落在上一滑动启动拍；滑动终点与后续起点不同，比较固定划手与交替划手的复位。':overlap?'连续下一星头落在上一启动拍，前次划动尚未结束时下一次已启动，需要另行复核双手分配。':'连续下一星头落在上一启动拍且路径首尾衔接；不因连续星头单独判技巧。'});
+    candidates.push({candidateAxis:needsReset||overlap?'星星·技巧':null,relations:edges});
   }
-  const positive=relations.filter(r=>r.resetGapMs>1e-6);
-  return {schemaVersion:SLIDE_HANDOVER_SCHEMA,relations,candidates,
-    excludedMultiBranchHeads:[...byId.values()].filter(g=>g.length>1).length,
-    features:{event_launch_handover_pairs:relations.length,event_launch_handover_head_distance_sum:relations.reduce((s,r)=>s+r.headDistance,0),
-      event_launch_handover_reset_distance_sum:relations.reduce((s,r)=>s+r.resetDistance,0),
-      event_launch_handover_reset_cost:positive.reduce((s,r)=>s+r.resetDistance*r.resetDistance/(r.resetGapMs/1000),0),
-      event_launch_handover_motion_overlap_ms:relations.reduce((s,r)=>s+Math.max(0,-r.resetGapMs),0),
-      event_launch_handover_unavailable_resets:relations.filter(r=>r.resetDistance>0&&r.resetGapMs<=1e-6).length,
-      event_launch_handover_phase_error_mean:relations.reduce((s,r)=>s+Math.abs(r.waitPhase-1),0)/Math.max(1,relations.length)}};
+  return {candidates};
 }

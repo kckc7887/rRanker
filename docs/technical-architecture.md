@@ -49,11 +49,13 @@
 
 舞萌、CHUNITHM、Phigros、Muse Dash 的示例账号是可开关的产品功能，与真实账号使用相同展示路径。
 
-Majdata 详情在当前可见难度的物量计算中，复用已下载的 Simai 文本，通过 `features/simai-difficulty` 在端内计算 DXTag 五维难点。该模块保留 DXTag 的解析、时值、几何与固定标尺，支持七个谱面槽位。结果与预览解析模型、物量一起按歌曲 ID、谱面 hash 和难度缓存；无法分析时保存 `null`，详情不显示雷达或分析提示。解析缓存必须包含 `difficultyScores`，结构不支持时只重建对应条目，并复用原始文本缓存；I/O 失败继续报错。请求共享、取消及清缓存后的写入保护沿用 Majdata 资源入口。
+Majdata 详情在当前可见难度的物量计算中，复用已下载的 Simai 文本，通过 `features/simai-difficulty` 在端内计算 DXTag 五维难点，支持七个谱面槽位。解析和分析在内部循环按 4 ms 预算让出执行权并检查取消，保持遍历与浮点累计顺序。派生缓存格式 2 只保存物量、地雷数与 `difficultyScores`，按歌曲 ID、谱面 hash 和难度隔离；无法分析时难点值为 `null`。不支持的派生条目单独重建，原始文本继续复用，I/O 失败继续报错。预览通过 `simaiText` 将缓存原文交给播放器解析，详情不保留播放模型。请求共享、取消及清缓存后的写入保护沿用 Majdata 资源入口。
 
 HTTP 请求使用 `totalAttempts` 表示总尝试次数。认证、轮询、取消和有副作用的 POST 按各自实际请求规则执行。QueryClient 默认最多重试一次，`ProviderError.retryable` 为假时直接结束。落雪 OAuth 按响应错误码区分登录失效、授权配置错误与服务故障，诊断请求场景分别记录换码和令牌刷新。上游现行 API、谱面和回放格式由对应 Provider 或引擎解析。
 
-查询通常先显示当前本地缓存，再后台刷新。失败回退保留原提供方和抓取时间，不能标成刷新成功。`cache-first.ts` 提供这条公共路径；共享请求独立取消消费者，最后一个消费者离开才取消底层工作。需要批量明细的页面使用现有有界查询，Majdata 实际歌曲请求共用四路队列。舞萌五维难点整库写入 `maimai:dxtag:all` 资源缓存，与当前 LXNS 曲库逐项核对歌曲、SD/DX 类型及难度，排除宴谱。覆盖完整则持续复用，不设时间有效期；覆盖不足时读取 `DXTag/all.json`，更新失败保留缓存及原抓取时间并标记暂存结果。
+查询通常先显示当前本地缓存，再后台刷新。失败回退保留原提供方和抓取时间，不能标成刷新成功。`cache-first.ts` 提供这条公共路径；共享请求独立取消消费者，最后一个消费者离开才取消底层工作。需要批量明细的页面使用现有有界查询，Majdata 实际歌曲请求共用四路队列。Majdata 搜索、歌曲、派生结果及排行榜查询在没有使用者后 5 分钟回收，重进已回收的搜索或排行榜重新联网。舞萌五维难点整库写入 `maimai:dxtag:all` 资源缓存，与当前 LXNS 曲库逐项核对歌曲、SD/DX 类型及难度，排除宴谱；Query 结果携带覆盖状态，同一曲库修订且覆盖完整时持续复用已验证结果。覆盖不足时读取 `DXTag/all.json`，更新失败保留缓存及原抓取时间并标记暂存结果，后续进入仍可重试。
+
+本地曲库与成绩搜索通过 `useLocalSearch` 在空闲时分片准备和匹配，每片预算 4 ms。搜索文档按原始歌曲及别名快照弱引用复用，匹配字段保持各游戏语义；新快照自然重新准备。输入、快照或页面活动变化取消未完成工作，命中别名与筛选结果一起发布。成绩映射直接消费 Provider 已校验的类型，上游响应与磁盘读取仍保留边界校验。
 
 清理缓存或解绑先使对应写入代次失效，随后取消查询并删除缓存。SQL 提交和会话提交前检查请求是否仍有效，迟到结果不能重新填回已清理的数据。
 
@@ -82,7 +84,7 @@ ADOFAI 个人曲库按收藏关卡 ID 加载详情，复用单关卡查询缓存
 
 个人曲库备份格式为 `rranker-user-data`、版本 3，条目必须包含 `gameId`。导出通过仓库的 `readBackup` 在同一次队列任务读取条目和预设。导入先解析当前格式，旧备份直接拒绝；合并或替换在同一 SQLite 事务内提交条目和预设，失败回滚。备份不包含登录凭据和成绩缓存。
 
-业务数据库的 schema 初始化、事务、写入和个人曲库外部读取共用 `runDatabaseWrite`。日志使用独立连接与队列，业务回滚不影响日志。队列任务不能再次进入同一队列。
+业务数据库的 schema 初始化、事务、写入和个人曲库外部读取共用 `runDatabaseWrite`。单项收藏、练习与标签修改在原事务中只读回所属游戏，完整备份仍读取同一快照中的全部条目和预设。日志使用独立连接与队列，业务回滚不影响日志。队列任务不能再次进入同一队列。
 
 主题与展示偏好使用 `preferences-write-coordinator.ts` 合并当前选择和串行落盘，失败保留待写内容。上传好友码的选择通过 `UploadPrefsStore` 按好友码保存；UI 的 `selectedAccountIds` 是派生视图。
 
@@ -104,7 +106,7 @@ Nearcade 机厅由 `services/nearcade-client.ts` 读取；GPS、内部地点、�
 
 ## 资源、图片与成绩图
 
-Phigros、Rizline 和 Kyou 分别读取所属资源组的 `latest.json`，校验 schemaVersion 2 指针、清单 SHA-256 和对象摘要。清单位于 `manifests/<sha256>.json`，媒体按固定分类目录和内容哈希存放。Phigros 保留逻辑 `path`，通过 `objectKey` 定位实际资源；Rizline 曲库直接保存对象路径；Kyou 清单将表名映射到对象路径、大小和摘要。发布流程由 [rRankerResourcePublisher](https://github.com/kckc7887/rRankerResourcePublisher) 管理。
+Phigros、Rizline 和 Kyou 分别读取所属资源组的 `latest.json`，校验 schemaVersion 2 指针、清单 SHA-256 和对象摘要。清单位于 `manifests/<sha256>.json`，媒体按固定分类目录和内容哈希存放。Phigros 在验证清单时建立一次逻辑 `path` 索引，由发布对象持有，曲绘、头像和资源读取共用索引，通过 `objectKey` 定位实际资源；Rizline 曲库直接保存对象路径；Kyou 清单将表名映射到对象路径、大小和摘要。发布流程由 [rRankerResourcePublisher](https://github.com/kckc7887/rRankerResourcePublisher) 管理。
 
 Phigros 物量读取发布资源 `metadata/note_counts.tsv`，按歌曲与 EZ、HD、IN、AT 难度装配 `chart.notes`。每格为 `[Tap,Hold,Drag,Flick]`，谱面根节点 `blockAreaList` 非空时追加数组长度作为 BLOCK。详情只在 BLOCK 大于零时显示该列，总计只累加四种音符。
 

@@ -1,4 +1,4 @@
-import { useMemo, useState } from 'react';
+import { useCallback, useMemo, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import MaskedView from '@react-native-masked-view/masked-view';
@@ -54,6 +54,7 @@ import {
 import { museDashLevelTheme } from '@/domain/musedash-level-theme';
 import { buildTagHistory } from '@/domain/user-library';
 import { presentMuseDashChart } from '@/features/game-content/adapters';
+import { useLocalSearch } from '@/hooks/use-local-search';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import {
   useMuseDashAlbums,
@@ -162,24 +163,23 @@ export function MuseDashRecordsScreen() {
   const dlcOptions = useMemo(() => albums.data
     ? [...new Set(museDashSongsFromAlbums(albums.data).map((item) => item.albumTitle))]
     : [], [albums.data]);
-  const baseFiltered = useMemo(() => {
+  const selectRecord = useCallback((item: MuseDashRawScore, keyword: string) => {
     const normalized = keyword.trim().toLowerCase();
-    return rawScores.filter((item) => {
-      if (!matchesMuseDashDifficultySlotFilter([], item.play.difficulty, difficultySlot)) return false;
-      if (!matchesMuseDashDlcFilter(item.albumTitle, dlc)) return false;
-      if (item.constant === undefined) {
-        if (constantMin !== '' || constantMax !== '') return false;
-      } else if (!matchesMuseDashConstantRange(item.constant, constantMin, constantMax)) {
-        return false;
-      }
-      if (!matchesMuseDashAccRange(item.play.acc, accMin, accMax)) return false;
-      if (!normalized) return true;
+    if (!matchesMuseDashDifficultySlotFilter([], item.play.difficulty, difficultySlot)) return undefined;
+    if (!matchesMuseDashDlcFilter(item.albumTitle, dlc)) return undefined;
+    if (item.constant === undefined) {
+      if (constantMin !== '' || constantMax !== '') return undefined;
+    } else if (!matchesMuseDashConstantRange(item.constant, constantMin, constantMax)) return undefined;
+    if (!matchesMuseDashAccRange(item.play.acc, accMin, accMax)) return undefined;
+    if (normalized) {
       const title = item.song ? museDashSongTitle(item.song) : item.play.uid;
-      return title.toLowerCase().includes(normalized)
-        || (item.song ? museDashSongAuthor(item.song).toLowerCase().includes(normalized) : false)
-        || item.play.uid.includes(normalized);
-    });
-  }, [rawScores, keyword, difficultySlot, dlc, constantMin, constantMax, accMin, accMax]);
+      if (!title.toLowerCase().includes(normalized)
+        && !(item.song && museDashSongAuthor(item.song).toLowerCase().includes(normalized))
+        && !item.play.uid.includes(normalized)) return undefined;
+    }
+    return item;
+  }, [difficultySlot, dlc, constantMin, constantMax, accMin, accMax]);
+  const { data: baseFiltered, isFiltering: recordsFiltering } = useLocalSearch(rawScores, keyword, selectRecord);
   const missItems = useMemo(() => baseFiltered.map((item) => ({
     uid: item.play.uid, difficulty: item.play.difficulty, platform: item.play.platform ?? 'mobile',
   })), [baseFiltered]);
@@ -225,7 +225,7 @@ export function MuseDashRecordsScreen() {
     </View> : null}
   </>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
-    <RecordsListPage beforeList={controls} isLoading={loading} isError={!!error}
+    <RecordsListPage beforeList={controls} isLoading={loading || (recordsFiltering && records.length === 0)} isError={!!error}
       isEmpty={!loading && records.length === 0} error={error} onRetry={() => { void gameData.refetch(); void albums.refetch(); void ce.refetch(); void diffdiff.refetch(); }}
       emptyText={userId === null ? '请先绑定喵斯快跑玩家' : detailsFailed > 0 ? '成就明细读取失败，可重试' : detailsPending ? '正在核对成就…' : '没有公开成绩'} data={records.length ? records : undefined} flatListProps={{
         testID: 'musedash-records-results-list', style: styles.list,
@@ -251,27 +251,25 @@ export function MuseDashCatalogScreen() {
   const dlcOptions = useMemo(() => albums.data
     ? [...new Set(museDashSongsFromAlbums(albums.data).map((item) => item.albumTitle))]
     : [], [albums.data]);
-  const songs = useMemo(() => {
-    const all = albums.data ? museDashSongsFromAlbums(albums.data) : [];
+  const allSongs = useMemo(() => albums.data ? museDashSongsFromAlbums(albums.data) : [], [albums.data]);
+  const selectSong = useCallback((item: typeof allSongs[number], keyword: string) => {
+    const { song, albumTitle } = item;
     const normalized = keyword.trim().toLowerCase();
-    return all.filter(({ song, albumTitle }) => {
-      const availableSlots = song.difficulty.map((level) => level !== '0');
-      if (!matchesMuseDashDifficultySlotFilter(availableSlots, difficultySlot === 'all' ? 0 : difficultySlot, difficultySlot)) return false;
-      if (!matchesMuseDashDlcFilter(albumTitle, dlc)) return false;
-      if (normalized && !museDashSongTitle(song).toLowerCase().includes(normalized)
-        && !museDashSongAuthor(song).toLowerCase().includes(normalized)) return false;
-      if (constantMin !== '' || constantMax !== '') {
-        const inRange = constants
-          ? song.difficulty.some((_, index) => {
-            const constant = constants.get(`${song.uid}:${index}`)?.[4];
-            return constant !== undefined && matchesMuseDashConstantRange(constant, constantMin, constantMax);
-          })
-          : false;
-        if (!inRange) return false;
-      }
-      return true;
-    });
-  }, [albums.data, keyword, difficultySlot, dlc, constantMin, constantMax, constants]);
+    const availableSlots = song.difficulty.map((level) => level !== '0');
+    if (!matchesMuseDashDifficultySlotFilter(availableSlots, difficultySlot === 'all' ? 0 : difficultySlot, difficultySlot)) return undefined;
+    if (!matchesMuseDashDlcFilter(albumTitle, dlc)) return undefined;
+    if (normalized && !museDashSongTitle(song).toLowerCase().includes(normalized)
+      && !museDashSongAuthor(song).toLowerCase().includes(normalized)) return undefined;
+    if (constantMin !== '' || constantMax !== '') {
+      const inRange = constants && song.difficulty.some((_, index) => {
+        const constant = constants.get(`${song.uid}:${index}`)?.[4];
+        return constant !== undefined && matchesMuseDashConstantRange(constant, constantMin, constantMax);
+      });
+      if (!inRange) return undefined;
+    }
+    return item;
+  }, [difficultySlot, dlc, constantMin, constantMax, constants]);
+  const { data: songs, isFiltering } = useLocalSearch(allSongs, keyword, selectSong);
   const songConstants = useMemo(() => (item: { song: { uid: string } }) => {
     if (!constants) return undefined;
     const values: (number | undefined)[] = [];
@@ -291,7 +289,7 @@ export function MuseDashCatalogScreen() {
       onReset={clearFilters} />
   </>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
-    <CatalogListPage beforeList={search} isLoading={albums.isLoading} isError={albums.isError}
+    <CatalogListPage beforeList={search} isLoading={albums.isLoading || (isFiltering && songs.length === 0)} isError={albums.isError}
       isEmpty={!albums.isLoading && songs.length === 0} error={albums.error}
       onRetry={() => void albums.refetch()} emptyText="没有找到喵斯快跑歌曲"
       data={songs.length ? songs : undefined} flatListProps={{

@@ -1,5 +1,5 @@
 import type { RizlineChart, RizlineDifficulty, RizlineSong } from './rizline';
-import { buildSearchDocument, searchDocumentMatches, type SearchDocument } from '@/utils/search';
+import { searchDocumentFor, searchDocumentMatches } from '@/utils/search';
 
 export type RizlineFilters = {
   difficulty: RizlineDifficulty | 'all';
@@ -22,21 +22,20 @@ export function matchesRizlineChart(chart: RizlineChart, filter: RizlineFilters)
   return true;
 }
 
-const searchDocuments = new WeakMap<RizlineSong, SearchDocument>();
-function songSearchDocument(song: RizlineSong): SearchDocument {
-  let document = searchDocuments.get(song);
-  if (!document) {
-    document = buildSearchDocument([song.id, song.title, song.artist ?? '']);
-    searchDocuments.set(song, document);
-  }
-  return document;
+const songSearchValues = (song: RizlineSong) => [song.id, song.title, song.artist ?? ''];
+
+export function rizlineSongSearchDocument(song: RizlineSong) {
+  return searchDocumentFor(song, songSearchValues);
+}
+
+export function matchesRizlineSong(song: RizlineSong, filter: RizlineFilters, keyword = '') {
+  return (filter.packId === 'all' || song.packId === filter.packId)
+    && searchDocumentMatches(rizlineSongSearchDocument(song), keyword)
+    && song.charts.some((chart) => matchesRizlineChart(chart, filter));
 }
 
 export function filterRizlineSongs(songs: readonly RizlineSong[], filter: RizlineFilters, keyword = '') {
-  return songs.filter((song) =>
-    (filter.packId === 'all' || song.packId === filter.packId)
-    && searchDocumentMatches(songSearchDocument(song), keyword)
-    && song.charts.some((chart) => matchesRizlineChart(chart, filter)));
+  return songs.filter((song) => matchesRizlineSong(song, filter, keyword));
 }
 
 export function rizlinePackOptions(songs: readonly RizlineSong[]) {

@@ -1,4 +1,5 @@
 import {
+  DivingFishRecordSchema,
   DivingFishRecordsResponseSchema,
   LxnsPlayerSchema,
   LxnsScoreSchema,
@@ -25,9 +26,9 @@ describe('provider schema mapping', () => {
     expect(mapDivingFishRecord({ ...unknownEnumRawRecord, fs: '   ' }).fs).toBeNull();
   });
   it('rejects missing required fields and malformed input', () => {
-    expect(() => mapDivingFishRecord({ title: '缺字段样例' })).toThrow();
-    expect(() => mapDivingFishRecord('not-json')).toThrow();
-    expect(() => mapDivingFishRecord({ ...unknownEnumRawRecord, dxScore: undefined })).toThrow();
+    expect(() => DivingFishRecordSchema.parse({ title: '缺字段样例' })).toThrow();
+    expect(() => DivingFishRecordSchema.parse('not-json')).toThrow();
+    expect(() => DivingFishRecordSchema.parse({ ...unknownEnumRawRecord, dxScore: undefined })).toThrow();
     expect(() => LxnsScoreSchema.parse({
       id: 1, level_index: 3, achievements: 100, type: 'dx',
     })).toThrow();

@@ -357,7 +357,7 @@ describe('M3A personal library screens', () => {
 
   it('toggles a song favorite from search without opening the row', async () => {
     const screen = await render(<SearchScreen />);
-    await fireEvent.press(screen.getByLabelText('取消收藏 正常曲目 A'));
+    await fireEvent.press(await screen.findByLabelText('取消收藏 正常曲目 A'));
     expect(mockSetFavorite).toHaveBeenCalledWith('1', false);
     expect(mockPush).not.toHaveBeenCalled();
   });
@@ -370,7 +370,7 @@ describe('M3A personal library screens', () => {
       const screen = await render(<SongDetailScreen />);
       await fireEvent.press(screen.getByLabelText('返回'));
       expect(mockBack).toHaveBeenCalledTimes(1);
-      await fireEvent.press(screen.getByLabelText('取消收藏 正常曲目 A'));
+      await fireEvent.press(await screen.findByLabelText('取消收藏 正常曲目 A'));
       expect(mockSetFavorite).toHaveBeenCalledWith('1', false);
       await fireEvent.press(screen.getByText('已加入练习清单'));
       expect(mockSetPractice).toHaveBeenCalledWith('1', 'DX', 3, false);

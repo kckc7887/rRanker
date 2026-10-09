@@ -16,6 +16,7 @@ import { majdataRecentCard, majdataRecordCard, type MajdataCard } from '@/featur
 import { useGameData } from '@/hooks/use-game-data';
 import { useMajdataSongs } from '@/hooks/use-majdata';
 import { useUserLibrary } from '@/hooks/use-user-library';
+import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useMajdataCatalogFilter, useMajdataRecordsFilter } from '@/state/majdata-filters';
@@ -98,13 +99,19 @@ export function MajdataRecordsScreen() {
   const filter = useMajdataRecordsFilter();
   const keyword = useDebouncedValue(filter.keyword);
   const snapshot = query.data?.payload.kind === 'majdata-net' ? query.data.payload.snapshot : undefined;
-  const cards = useMemo(() => filterMajdataRecords(snapshot?.records ?? [], { ...filter, keyword }).map(majdataRecordCard), [snapshot?.records, filter, keyword]);
+  const sortedRecords = useMemo(() => filterMajdataRecords(snapshot?.records ?? [], {
+    difficulties: [], tags: [], min: '', max: '', keyword: '', sort: '',
+  }), [snapshot?.records]);
+  const searchFilter = useMemo(() => ({ ...filter, keyword }), [filter, keyword]);
+  const selectRecord = useCallback((record: typeof sortedRecords[number], filters: typeof searchFilter) =>
+    filterMajdataRecords([record], filters).length ? majdataRecordCard(record) : undefined, []);
+  const { data: cards, isFiltering } = useLocalSearch(sortedRecords, searchFilter, selectRecord);
   const tags = useMemo(() => [...new Set(snapshot?.records.flatMap(score => majdataTags(score.chartInfo)) ?? [])], [snapshot?.records]);
   return <View style={[recordsStyles.page, { backgroundColor: theme.background }]}>
     <GameSearchHeader layout="records" value={filter.keyword} onChangeText={filter.setKeyword}
       placeholder="曲名 / 曲师 / 谱师" accessibilityLabel="成绩搜索" />
     <MajdataFilter catalog={false} tags={tags} />
-    <RecordsListPage data={cards.length ? cards : undefined} isLoading={query.isLoading}
+    <RecordsListPage data={cards.length ? cards : undefined} isLoading={query.isLoading || (isFiltering && cards.length === 0)}
       isError={query.isError && !snapshot} error={query.error} isEmpty={!cards.length}
       emptyText="当前筛选条件下没有成绩" onRetry={() => void query.refetch()}
       emptyActionLabel={filter.keyword || filter.difficulties.length || filter.tags.length || filter.min || filter.max ? '清除筛选' : undefined}

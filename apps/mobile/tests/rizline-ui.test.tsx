@@ -17,7 +17,7 @@ import { rizlineChart, rizlineRecord, rizlineSong } from './rizline-ui-fixtures'
 const mockPush = jest.fn(); const mockSetPractice = jest.fn<(...args: unknown[]) => Promise<void>>(async () => undefined);
 const mockSetTags = jest.fn<(...args: unknown[]) => Promise<void>>(async () => undefined);
 const mockSetFavorite = jest.fn<(...args: unknown[]) => Promise<void>>(async () => undefined);
-let mockSong = rizlineSong(); let mockRecords = [rizlineRecord()];
+let mockSong = rizlineSong(); let mockSongs = [mockSong]; let mockRecords = [rizlineRecord()];
 let mockUnknownCandidates = false;
 let mockLibraryItems: UserLibraryItem[] = [];
 let mockGameDataState = { hasData: true, isLoading: false, isError: false };
@@ -37,10 +37,12 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
 jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({ activeGameId: 'rizline', activeAccountId: 'rizline:1' }) }));
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn() }), useNotificationModalRequestClose: () => () => false }));
-jest.mock('@/hooks/use-rizline-catalog', () => ({ useRizlineCatalog: () => ({
-  data: { snapshot: { schemaVersion: 1, resourceVersion: 'v1', gameVersion: '2.7.1', songs: [mockSong] } },
+jest.mock('@/hooks/use-rizline-catalog', () => ({ useRizlineCatalog: () => {
+  if (mockSongs[0] !== mockSong) mockSongs = [mockSong];
+  return {
+  data: { snapshot: { schemaVersion: 1, resourceVersion: 'v1', gameVersion: '2.7.1', songs: mockSongs } },
   isLoading: false, isError: false, error: null, refetch: jest.fn(),
-}) }));
+} } }));
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({
   data: mockGameDataState.hasData ? { payload: { kind: 'rizline', records: mockRecords, best: { ah5: mockRecords, b35: mockRecords, ah5Contribution: 1, b35Contribution: 2, hasUnknownCandidates: mockUnknownCandidates } } } : undefined,
   isLoading: mockGameDataState.isLoading, isError: mockGameDataState.isError, isFetching: false, error: null, refetch: jest.fn(),
@@ -60,7 +62,7 @@ jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
 
 describe('Rizline UI', () => {
   beforeEach(() => {
-    jest.clearAllMocks(); mockSong = rizlineSong(); mockRecords = [rizlineRecord()]; mockUnknownCandidates = false; mockLibraryItems = [];
+    jest.clearAllMocks(); mockSong = rizlineSong(); mockSongs = [mockSong]; mockRecords = [rizlineRecord()]; mockUnknownCandidates = false; mockLibraryItems = [];
     mockGameDataState = { hasData: true, isLoading: false, isError: false };
     jest.spyOn(Animated, 'loop').mockReturnValue({ start: jest.fn(), stop: jest.fn(), reset: jest.fn() });
     jest.spyOn(Animated, 'timing');
@@ -88,7 +90,7 @@ describe('Rizline UI', () => {
     await cleanup();
     mockRecords = [rizlineRecord(rizlineChart('HD'), { rks: 120 }), rizlineRecord(rizlineChart('IN'), { rks: 140 })];
     const records = await render(<RizlineRecordsScreen />);
-    const cards = records.getAllByTestId(/^rizline-score-/);
+    const cards = await records.findAllByTestId(/^rizline-score-/);
     expect(cards.map((card) => card.props.testID)).toEqual(['rizline-score-song.a.IN', 'rizline-score-song.a.HD']);
   });
 
