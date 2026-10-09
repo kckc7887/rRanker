@@ -15,12 +15,22 @@ const place: ArcadePlace = { id: '1', name: '测试地点', address: '测试路'
 beforeEach(() => { jest.clearAllMocks(); mockAvailability = 'available'; Platform.OS = platform; });
 afterEach(() => { Platform.OS = platform; jest.useRealTimers(); });
 
-it('limits MapKit results and converts AMap coordinates at the native boundary', async () => {
+it.each(['ios', 'android'] as const)('limits %s results and converts native coordinates to WGS84', async os => {
   mockSearch.mockResolvedValue(Array.from({ length: 12 }, (_, index) => ({ ...place, id: String(index) })));
+  Platform.OS = os;
+  const results = await searchArcadePlaces('上海');
+  expect(results).toEqual(Array.from({ length: 10 }, (_, index) => ({ ...place, id: String(index),
+    coordinate: { latitude: expect.closeTo(31.23194, 4), longitude: expect.closeTo(121.46547, 4) },
+  })));
+  expect(await resolveArcadePlace(results[0])).toEqual(results[0].coordinate);
+  expect(mockResolve).not.toHaveBeenCalled();
+});
+
+it('preserves MapKit coordinates outside the GCJ-02 region', async () => {
   Platform.OS = 'ios';
-  expect(await searchArcadePlaces('上海')).toEqual(Array.from({ length: 10 }, (_, index) => ({ ...place, id: String(index) })));
-  Platform.OS = 'android';
-  expect((await searchArcadePlaces('上海'))[0].coordinate).toEqual({ latitude: expect.closeTo(31.23194, 4), longitude: expect.closeTo(121.46547, 4) });
+  const tokyo = { ...place, name: '东京', coordinate: { latitude: 35.68, longitude: 139.76 } };
+  mockSearch.mockResolvedValue([tokyo]);
+  expect(await searchArcadePlaces('东京')).toEqual([tokyo]);
 });
 
 it.each(['unsupported', 'unconfigured', 'consent'] as const)('does not call native search when %s', async availability => {

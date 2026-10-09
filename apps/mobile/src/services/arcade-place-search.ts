@@ -1,4 +1,3 @@
-import { Platform } from 'react-native';
 import { requireOptionalNativeModule } from 'expo-modules-core';
 import { fromGcj02, type ArcadeCoordinate } from '@/domain/arcade-coordinates';
 import { getArcadeMapAvailability } from './arcade-map-platform';
@@ -43,7 +42,7 @@ function nativeRequest<T>(run: (module: PlaceModule, id: string) => Promise<T>, 
 export async function searchArcadePlaces(keyword: string, signal?: AbortSignal): Promise<ArcadePlace[]> {
   const places = await nativeRequest((module, id) => module.searchPlaces(id, keyword.trim()), signal);
   return places.slice(0, 10).map(place => ({ ...place,
-    coordinate: place.coordinate && Platform.OS === 'android' ? fromGcj02(place.coordinate) : place.coordinate,
+    coordinate: place.coordinate ? fromGcj02(place.coordinate) : null,
   }));
 }
 
@@ -52,5 +51,5 @@ export async function resolveArcadePlace(place: ArcadePlace, signal?: AbortSigna
   if (place.coordinate) return place.coordinate;
   const coordinate = await nativeRequest((module, id) => module.resolvePlace(id, place.name, place.city), signal);
   if (!coordinate) throw new Error('未找到该地点的位置，请换一个候选');
-  return Platform.OS === 'android' ? fromGcj02(coordinate) : coordinate;
+  return fromGcj02(coordinate);
 }
