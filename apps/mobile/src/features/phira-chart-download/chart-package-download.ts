@@ -41,6 +41,7 @@ export async function downloadPhiraChartPackage(
     return await saveChartPackage(
       phiraCompatiblePackageName(chart.name, chart.level),
       { kind: 'file', file },
+      options.signal,
     );
   } finally {
     cleanupChartDownloadSessionDirectory(staging);

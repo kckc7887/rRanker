@@ -109,7 +109,7 @@ describe('Phigros strength analysis', () => {
   });
 
   it('names the stronger axes and does not label the lowest axis as the profile', () => {
-    const profile = (values: ReadonlyArray<number | null>) => resolvePhigrosStrengthProfileLabel(
+    const profile = (values: readonly (number | null)[]) => resolvePhigrosStrengthProfileLabel(
       primaryTags.map((tag, index) => ({
         tagId: tag.id,
         name: tag.name,

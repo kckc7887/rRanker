@@ -1,5 +1,4 @@
-import Storage from '@/storage/key-value-storage';
-import { enqueueKeyMutation } from '@/storage/create-account-list-store';
+import Storage, { enqueueKeyMutation } from '@/storage/key-value-storage';
 import { z } from 'zod';
 
 const PREFS_KEY = 'rranker.upload.prefs.v3';

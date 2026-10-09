@@ -37,7 +37,7 @@ live('谱面确认传入阶段 live 演示', () => {
       expect(JSON.parse(prepared.config.chartText!).judgeLineList.length).toBeGreaterThan(0);
       expect(Buffer.from(prepared.musicDataBase64!, 'base64').subarray(0, 4).toString()).toBe('OggS');
       expect(prepared.config.illustrationUrl).toMatch(/^data:image\/png;base64,/);
-      expect(prepared.config.title).toContain(`里谱 ${variantIndex}`);
+      expect(prepared.config.previewDifficulty?.identity).toBe(`里谱 ${variantIndex}`);
     }
   }, 300_000);
 

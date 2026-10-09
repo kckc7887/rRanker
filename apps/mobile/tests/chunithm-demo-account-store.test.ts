@@ -1,13 +1,27 @@
 import { ChunithmDemoAccountStore } from '@/storage/chunithm-demo-account-store';
+import { createSerializedKeyValueStorage } from '@/storage/key-value-storage';
 
 class MemoryStore {
   values = new Map<string, string>();
   async getItem(key: string) { return this.values.get(key) ?? null; }
   async setItem(key: string, value: string) { this.values.set(key, value); }
   async removeItem(key: string) { this.values.delete(key); }
+  async getAllKeys() { return [...this.values.keys()]; }
 }
 
 describe('ChunithmDemoAccountStore', () => {
+  it('重建失效目录时保留另一实例随后保存的账号', async () => {
+    const memory = new MemoryStore();
+    memory.values.set('rranker.chunithm-demo-account.v1', JSON.stringify({ version: 0 }));
+    const storage = createSerializedKeyValueStorage(memory);
+    const reading = new ChunithmDemoAccountStore(storage).load();
+    const account = { id: 'chunithm:test', displayName: '新账号' };
+    const saving = new ChunithmDemoAccountStore(storage).save(account);
+    await expect(reading).resolves.toBeNull();
+    await saving;
+    await expect(new ChunithmDemoAccountStore(storage).load()).resolves.toEqual(account);
+  });
+
   it('保存、恢复并删除固定示例账号', async () => {
     const memory = new Map<string, string>();
     const store = new ChunithmDemoAccountStore({

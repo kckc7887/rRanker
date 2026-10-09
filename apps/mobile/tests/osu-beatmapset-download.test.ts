@@ -12,7 +12,7 @@ import { readOsuChartPreviewArchive } from '@/features/osu-chart-preview/chart-p
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 
 const mocks = vi.hoisted(() => ({
-  cleanup: vi.fn(), download: vi.fn(), save: vi.fn(async (_name?: unknown, _output?: unknown) => true),
+  cleanup: vi.fn(), download: vi.fn(), save: vi.fn(async (_name?: unknown, _output?: unknown, _signal?: AbortSignal) => true),
   files: new Map<string, Uint8Array>(),
   sizes: new Map<string, number>(),
 }));
@@ -33,7 +33,7 @@ vi.mock('@/features/chart-download-shared/chart-download-shared', () => ({
   cleanupChartDownloadSessionDirectory: (directory: unknown) => mocks.cleanup(directory),
   createChartDownloadSessionDirectory: () => ({ uri: 'file:///stage' }),
   downloadChartResource: (...args: unknown[]) => mocks.download(...args),
-  saveChartPackage: (name: string, output: unknown) => mocks.save(name, output),
+  saveChartPackage: (name: string, output: unknown, signal?: AbortSignal) => mocks.save(name, output, signal),
   throwIfChartDownloadCancelled: (signal?: AbortSignal) => { if (signal?.aborted) throw signal.reason; },
 }));
 
@@ -77,7 +77,7 @@ describe('osu! beatmapset 下载编排', () => {
     expect(progress).toHaveBeenNthCalledWith(1, { phase: 'downloading', progress: 0.25 });
     expect(progress).toHaveBeenNthCalledWith(2, { phase: 'organizing', progress: 1 });
     expect(ready).toHaveBeenCalledOnce();
-    expect(mocks.save).toHaveBeenCalledWith('鳥の詩 3720.osz', { kind: 'file', file: expect.any(File) });
+    expect(mocks.save).toHaveBeenCalledWith('鳥の詩 3720.osz', { kind: 'file', file: expect.any(File) }, expect.any(AbortSignal));
     expect(mocks.cleanup).toHaveBeenCalledWith({ uri: 'file:///stage' });
   });
 

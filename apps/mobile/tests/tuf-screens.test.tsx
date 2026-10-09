@@ -1,10 +1,12 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { QueryClientProvider, type InfiniteData } from '@tanstack/react-query';
 import { Dimensions, Linking, processColor, StyleSheet } from 'react-native';
-import type { TufLevel, TufLevelPass, TufPass, TufPlayer, TufVideoDetails } from '@/domain/tuf';
+import type { TufLevel, TufLevelPass, TufPass, TufPassPage, TufPlayer, TufVideoDetails } from '@/domain/tuf';
 import { BADGE_GOLD_BORDER_COLORS } from '@/features/best-image/best-image-badge-theme';
 import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen } from '@/screens/TufScreens';
 import { TufRandomChartsScreen } from '@/screens/TufRandomChartsScreen';
+import { queryClient } from '@/state/query-client';
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
@@ -15,6 +17,11 @@ const mockRefetch = jest.fn();
 const mockUseTufPasses = jest.fn();
 const mockUseTufLevelSearch = jest.fn();
 const mockUseTufDifficulties = jest.fn();
+const mockGetPasses = jest.fn<typeof import('@/providers/tuf-provider').tufProvider.getPasses>();
+let mockActualPassQueries = false;
+let mockFocused = true;
+let mockForeground = new AbortController();
+let mockLifecycle = { foregroundReady: true, foregroundGeneration: 1 };
 const mockPrefetchTufPassPage = jest.fn(async (_playerId: number, _options: unknown, offset: number, _signal?: AbortSignal) => ({
   passes: [], total: 61, offset, limit: 30,
 }));
@@ -47,6 +54,17 @@ jest.mock('expo-router', () => ({
   Stack: { Screen: () => null },
   useNavigation: () => ({ canGoBack: () => mockCanGoBack(), goBack: () => mockBack() }),
 }));
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual<typeof import('@react-navigation/native')>('@react-navigation/native'),
+  useIsFocused: () => mockFocused,
+}));
+jest.mock('@/state/app-lifecycle', () => ({
+  useAppLifecycle: () => mockLifecycle,
+  getForegroundAbortSignal: () => mockForeground.signal,
+}));
+jest.mock('@/providers/tuf-provider', () => ({ tufProvider: {
+  getPasses: (...args: Parameters<typeof mockGetPasses>) => mockGetPasses(...args),
+} }));
 jest.mock('expo-sqlite/kv-store', () => ({
   __esModule: true,
   default: {
@@ -100,16 +118,21 @@ jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
 jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({
   activeAccountId: 'adofai:tuf:25', activeGameId: 'adofai',
 }) }));
-jest.mock('@/hooks/use-tuf', () => ({
-  prefetchTufPassPage: (...args: Parameters<typeof mockPrefetchTufPassPage>) => mockPrefetchTufPassPage(...args),
-  useTufProfile: () => ({ data: mockProfile, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
-  useTufPasses: (...args: unknown[]) => mockUseTufPasses(...args),
-  useTufLevelSearch: (...args: unknown[]) => mockUseTufLevelSearch(...args),
-  useTufDifficulties: () => mockUseTufDifficulties(),
-  useTufLevel: () => ({ data: mockLevelDetail ? { level: mockLevelDetail, rerateHistory: [] } : undefined, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
-  useTufLevelBestPass: () => ({ data: mockLevelBestPass, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
-  useTufVideoDetails: () => ({ data: mockVideoDetails, isLoading: !mockVideoDetails, isError: false, error: null, refetch: mockRefetch }),
-}));
+jest.mock('@/hooks/use-tuf', () => {
+  const actual = jest.requireActual<typeof import('@/hooks/use-tuf')>('@/hooks/use-tuf');
+  return {
+    prefetchTufPassPage: (...args: Parameters<typeof actual.prefetchTufPassPage>) => mockActualPassQueries
+      ? actual.prefetchTufPassPage(...args) : mockPrefetchTufPassPage(...args),
+    useTufProfile: () => ({ data: mockProfile, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
+    useTufPasses: (...args: Parameters<typeof actual.useTufPasses>) => mockActualPassQueries
+      ? actual.useTufPasses(...args) : mockUseTufPasses(...args),
+    useTufLevelSearch: (...args: unknown[]) => mockUseTufLevelSearch(...args),
+    useTufDifficulties: () => mockUseTufDifficulties(),
+    useTufLevel: () => ({ data: mockLevelDetail ? { level: mockLevelDetail, rerateHistory: [] } : undefined, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
+    useTufLevelBestPass: () => ({ data: mockLevelBestPass, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
+    useTufVideoDetails: () => ({ data: mockVideoDetails, isLoading: !mockVideoDetails, isError: false, error: null, refetch: mockRefetch }),
+  };
+});
 jest.mock('@/hooks/use-game-data', () => ({
   useGameData: () => ({
     data: mockProfile ? { payload: { kind: 'adofai', player: mockProfile } } : undefined,
@@ -150,6 +173,12 @@ function infinite<T>(
 describe('TUF screens', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    queryClient.clear();
+    mockGetPasses.mockReset();
+    mockActualPassQueries = false;
+    mockFocused = true;
+    mockForeground = new AbortController();
+    mockLifecycle = { foregroundReady: true, foregroundGeneration: 1 };
     Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
     mockProfile = {
       id: 25, name: '公开玩家', rankedScore: 1824.52, generalScore: 1900, ppScore: 300,
@@ -194,6 +223,48 @@ describe('TUF screens', () => {
     expect(signal?.aborted).toBe(false);
     await screen.unmount();
     expect(signal?.aborted).toBe(true);
+  });
+
+  it.each(['background', 'blur'])('cancels random-pool loading on %s and resumes only missing pages', async (reason) => {
+    mockActualPassQueries = true;
+    const options = { sortBy: 'impact' as const, order: 'DESC' as const, bestPerLevel: true };
+    const key = ['tuf', 'player', 25, 'passes', options];
+    const page = (offset: number): TufPassPage => ({
+      passes: [pass(offset + 1, `分页 ${offset}`)], total: 61, offset, limit: 30,
+    });
+    queryClient.setQueryData<InfiniteData<TufPassPage>>(key, { pages: [page(0)], pageParams: [0] });
+    const pending: { offset: number; signal?: AbortSignal; resolve: (page: TufPassPage) => void }[] = [];
+    mockGetPasses.mockImplementation((_playerId, query, signal) => new Promise((resolve) => {
+      pending.push({ offset: query.offset ?? 0, signal, resolve });
+    }));
+    const content = () => <QueryClientProvider client={queryClient}><TufRandomChartsScreen /></QueryClientProvider>;
+    const screen = await render(content());
+    await waitFor(() => expect(pending.map(request => request.offset)).toEqual([30, 60]));
+    await act(async () => pending[0]!.resolve(page(30)));
+    await waitFor(() => expect(screen.getByText('正在加载完整随机池 · 已加载 2/61')).toBeTruthy());
+
+    if (reason === 'background') {
+      mockForeground.abort();
+      mockLifecycle = { ...mockLifecycle, foregroundReady: false };
+    } else mockFocused = false;
+    await screen.rerender(content());
+    expect(pending[1]!.signal?.aborted).toBe(true);
+    await act(async () => pending[1]!.resolve(page(60)));
+    expect(queryClient.getQueryData<InfiniteData<TufPassPage>>(key)?.pages.map(item => item.offset)).toEqual([0, 30]);
+    expect(screen.getByTestId('random-charts-draw').props.accessibilityState).toEqual({ disabled: true });
+
+    if (reason === 'background') {
+      mockForeground = new AbortController();
+      mockLifecycle = { foregroundReady: true, foregroundGeneration: 2 };
+    } else mockFocused = true;
+    await screen.rerender(content());
+    await waitFor(() => expect(pending.map(request => request.offset)).toEqual([30, 60, 60]));
+    expect(pending[2]!.signal?.aborted).toBe(false);
+    await act(async () => pending[2]!.resolve(page(60)));
+    await waitFor(() => expect(screen.getByText('候选谱面 3 条')).toBeTruthy());
+    expect(screen.getByTestId('random-charts-draw').props.accessibilityState).toEqual({ disabled: false });
+    await screen.unmount();
+    queryClient.clear();
   });
 
   it('changes server-side record sorting and requests the next page once', async () => {

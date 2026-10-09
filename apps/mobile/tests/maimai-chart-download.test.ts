@@ -289,6 +289,35 @@ describe('maimai chart download', () => {
     expect(native.bytes.get('file:///exports/bytes.zip')).toEqual(bytes);
   });
 
+  it('已取消的保存不打开目录选择器', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    await expect(saveChartPackage('bytes.zip', { kind: 'bytes', bytes: new Uint8Array([1]) }, controller.signal))
+      .rejects.toBeInstanceOf(MaimaiChartDownloadCancelledError);
+    expect(native.pickDirectoryAsync).not.toHaveBeenCalled();
+    expect(native.createFileCalls).toEqual([]);
+    expect(native.writes).toEqual([]);
+  });
+
+  it('Simai 谱包在目录选择期间取消后不保存并清理临时文件', async () => {
+    let chooseDirectory!: (directory: Directory) => void;
+    native.pickDirectoryAsync.mockImplementationOnce(() => new Promise(resolve => { chooseDirectory = resolve; }));
+    const controller = new AbortController();
+    const pending = downloadSimaiPackage({ title: 'Majdata', suffix: 'Master', resources: [
+      { fileName: 'maidata.txt', url: 'https://majdata.net/chart' },
+    ] }, { signal: controller.signal });
+    const result = expect(pending).rejects.toBeInstanceOf(MaimaiChartDownloadCancelledError);
+    await vi.waitFor(() => expect(native.pickDirectoryAsync).toHaveBeenCalled());
+
+    controller.abort();
+    chooseDirectory(new Directory('file:///exports'));
+    await result;
+
+    expect([...native.bytes.keys()].filter(uri => uri.startsWith('file:///exports/'))).toEqual([]);
+    expect(native.createFileCalls).toEqual([]);
+    expect(native.deleted).toContain(native.createdDirs[0]);
+  });
+
   it('reports download and organizing progress before opening the save location', async () => {
     const events: string[] = [];
     native.pickDirectoryAsync.mockImplementationOnce(async () => {

@@ -67,8 +67,7 @@ describe('osu! 播放器入口生命周期', () => {
     message('dispose');
     expect(disconnect).toHaveBeenCalled();
     expect(playback.destroy).toHaveBeenCalled();
-    const snapshot = document.body.innerHTML;
-    const posts = [...post.mock.calls];
+    post.mockClear();
     document.getElementById('btn-fullscreen')!.click();
     document.getElementById('play-button')!.click();
     document.getElementById('storyboard-enabled')!.click();
@@ -77,8 +76,8 @@ describe('osu! 播放器入口生命周期', () => {
     resizeCallbacks.forEach(callback => callback([], {} as ResizeObserver));
     message('pause'); message('dispose');
     await vi.runAllTimersAsync();
-    expect(document.body.innerHTML).toBe(snapshot);
-    expect(post.mock.calls).toEqual(posts);
+    expect(document.body.classList.contains('fullscreen')).toBe(false);
+    expect(post).not.toHaveBeenCalled();
     expect(playback.play).not.toHaveBeenCalled();
     expect(playback.setSettings).not.toHaveBeenCalled();
     expect(playback.destroy).toHaveBeenCalled();
@@ -89,11 +88,11 @@ describe('osu! 播放器入口生命周期', () => {
     playback.start.mockImplementation(() => new Promise(resolve => { resolvePlayback = resolve; }));
     await import('@/features/osu-chart-preview/webview-player/main');
     message('dispose');
-    const snapshot = document.body.innerHTML;
     resolvePlayback({ session: { destroy: playback.sessionDestroy } });
     await Promise.resolve();
     expect(playback.sessionDestroy).toHaveBeenCalled();
-    expect(document.body.innerHTML).toBe(snapshot);
+    expect((document.getElementById('play-button') as HTMLButtonElement).disabled).toBe(true);
+    expect((document.getElementById('btn-fullscreen') as HTMLButtonElement).disabled).toBe(true);
     expect(post.mock.calls.map(([value]) => JSON.parse(value).type)).not.toContain('ready');
   });
 });

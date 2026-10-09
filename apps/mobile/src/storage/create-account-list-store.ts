@@ -1,23 +1,5 @@
-import Storage from '@/storage/key-value-storage';
-import { loadAccountDirectory, type KeyValueStore } from '@/storage/create-demo-account-store';
-
-export type { KeyValueStore };
-const mutationTails = new WeakMap<KeyValueStore, Map<string, Promise<void>>>();
-
-export function enqueueKeyMutation<T>(storage: KeyValueStore, key: string, mutation: () => Promise<T>): Promise<T> {
-  let tails = mutationTails.get(storage);
-  if (!tails) {
-    tails = new Map();
-    mutationTails.set(storage, tails);
-  }
-  const previous = tails.get(key) ?? Promise.resolve();
-  const result = previous.then(mutation, mutation);
-  const tail = result.then(() => undefined, () => undefined);
-  tails.set(key, tail);
-  return result.finally(() => {
-    if (tails.get(key) === tail) tails.delete(key);
-  });
-}
+import Storage, { enqueueKeyMutation, type KeyValueStore } from '@/storage/key-value-storage';
+import { loadAccountDirectory } from '@/storage/create-demo-account-store';
 
 export function createAccountListStore<TProfile>(input: {
   storeKey: string;
@@ -31,6 +13,10 @@ export function createAccountListStore<TProfile>(input: {
     constructor(private readonly storage: KeyValueStore = Storage) {}
 
     load(): Promise<TProfile[]> {
+      return this.mutate(() => this.read());
+    }
+
+    private read(): Promise<TProfile[]> {
       return loadAccountDirectory(this.storage, storeKey, parse, []);
     }
 
@@ -45,7 +31,7 @@ export function createAccountListStore<TProfile>(input: {
     upsert(profile: TProfile): Promise<TProfile[]> {
       return this.mutate(async () => {
         const next = normalize ? normalize(profile) : profile;
-        const accounts = [...(await this.load()).filter((item) => keyOf(item) !== keyOf(next)), next];
+        const accounts = [...(await this.read()).filter((item) => keyOf(item) !== keyOf(next)), next];
         await this.save(accounts);
         return accounts;
       });
@@ -53,7 +39,7 @@ export function createAccountListStore<TProfile>(input: {
 
     remove(key: unknown): Promise<TProfile[]> {
       return this.mutate(async () => {
-        const accounts = (await this.load()).filter((item) => keyOf(item) !== key);
+        const accounts = (await this.read()).filter((item) => keyOf(item) !== key);
         if (accounts.length === 0) await this.storage.removeItem(storeKey);
         else await this.save(accounts);
         return accounts;
