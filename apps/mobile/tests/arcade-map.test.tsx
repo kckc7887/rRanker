@@ -1,9 +1,10 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { View } from 'react-native';
-import type { Camera, MapViewProps } from 'react-native-maps';
+import type { Camera, MapMarkerProps, MapViewProps, Region } from 'react-native-maps';
 import { ArcadeMap } from '@/components/ArcadeMap';
 import type { NativeArcadeMapProps } from '@/components/ArcadeMap.types';
+import type { ArcadeShop } from '@/domain/arcade-shops';
 import type { ArcadeMapAvailability } from '@/services/arcade-map-platform';
 
 let mockAvailability: ArcadeMapAvailability = 'available';
@@ -11,19 +12,22 @@ let mockNative: NativeArcadeMapProps;
 const mockAgree = jest.fn();
 const MockView = View;
 let mockCamera: Camera;
+let mockMapKit: MapViewProps;
+let mockRegion: Region | undefined;
 const mockAnimateCamera = jest.fn((camera: Partial<Camera>) => { mockCamera = { ...mockCamera, ...camera }; });
 jest.mock('react-native-maps', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   return { __esModule: true,
     default: React.forwardRef(function MockMapKit(props: MapViewProps, ref) {
+      mockMapKit = props;
       React.useImperativeHandle(ref, () => ({
         getCamera: async () => mockCamera,
         animateCamera: mockAnimateCamera,
-        animateToRegion: jest.fn(),
+        animateToRegion: (region: Region) => { mockRegion = region; },
       }));
-      return <MockView testID="native-map" onLayout={props.onMapReady} />;
+      return <MockView testID="native-map" onLayout={props.onMapReady}>{props.children}</MockView>;
     }),
-    Marker: () => null,
+    Marker: (props: MapMarkerProps) => <MockView testID={`marker-${props.identifier}`} {...props} />,
   };
 });
 jest.mock('@/services/arcade-map-platform', () => ({
@@ -43,6 +47,7 @@ jest.mock('@/components/AppModal', () => ({ AppModal: ({ visible, children }: { 
 beforeEach(() => {
   mockAvailability = 'available'; jest.clearAllMocks(); jest.useFakeTimers();
   mockCamera = { center: { latitude: 31, longitude: 120 }, altitude: 1600, heading: 0, pitch: 0 };
+  mockRegion = undefined;
 });
 afterEach(() => { jest.useRealTimers(); });
 const props = () => ({ camera: null, shops: [], selectedShopId: null, compact: false, locating: false,
@@ -95,9 +100,32 @@ it('zooms the current MapKit view without changing its center or querying nearby
   expect(mockCamera.center).toEqual({ latitude: 31, longitude: 120 });
   await act(async () => { mockNative.onCenterChange(mockCamera.center); });
   expect(events.onCenterChange).not.toHaveBeenCalled();
-  await view.rerender(<ArcadeMap {...events} camera={{ center: { latitude: 32, longitude: 121 } }} />);
-  expect(mockCamera.center).toEqual({ latitude: 32, longitude: 121 });
+  await view.rerender(<ArcadeMap {...events} camera={{ center: { latitude: 31.2304, longitude: 121.4737 } }} />);
+  expect(mockCamera.center).toEqual({ latitude: expect.closeTo(31.2284577, 6), longitude: expect.closeTo(121.4782231, 6) });
   expect(mockCamera.altitude).toBe(800);
+});
+
+it.each([
+  ['上海', { latitude: 31.2304, longitude: 121.4737 }, { latitude: 31.2284577, longitude: 121.4782231 }],
+  ['北京', { latitude: 39.908823, longitude: 116.39747 }, { latitude: 39.9102265, longitude: 116.4037136 }],
+  ['深圳', { latitude: 22.543096, longitude: 114.057865 }, { latitude: 22.5403788, longitude: 114.0629790 }],
+  ['东京', { latitude: 35.68, longitude: 139.76 }, { latitude: 35.68, longitude: 139.76 }],
+] as const)('aligns the %s camera and shop pin and returns WGS84 after dragging', async (name, center, nativeCenter) => {
+  const events = props();
+  const shop: ArcadeShop = { id: 42, name, ...center, addressDetailed: '', addressGeneral: [],
+    comment: '', games: [], openingHours: [], distanceKm: 0 };
+  const camera = { center, radiusKm: 2 };
+  const view = await render(<ArcadeMap {...events} camera={camera} initialCamera={camera} shops={[shop]} />);
+  const expected = { latitude: expect.closeTo(nativeCenter.latitude, 6), longitude: expect.closeTo(nativeCenter.longitude, 6) };
+  expect(mockMapKit.initialRegion).toMatchObject(expected);
+  expect(view.getByTestId('marker-42').props.coordinate).toMatchObject(expected);
+  await fireEvent(view.getByTestId('native-map'), 'layout');
+  expect(mockRegion).toMatchObject(expected);
+  await fireEvent.press(view.getByTestId('marker-42'));
+  expect(events.onSelectShop).toHaveBeenCalledWith(shop);
+  await fireEvent(view.getByTestId('native-map'), 'touchMove');
+  await act(async () => { mockMapKit.onRegionChangeComplete?.({ ...nativeCenter, latitudeDelta: 0.04, longitudeDelta: 0.04 }, {}); });
+  expect(events.onCenterChange).toHaveBeenCalledWith({ latitude: expect.closeTo(center.latitude, 5), longitude: expect.closeTo(center.longitude, 5) });
 });
 
 it('locates from the icon control and disables it while waiting for GPS', async () => {
