@@ -27,6 +27,7 @@ export const RUNTIME_REQUEST_SCENARIOS = [
   'catalog', 'player-search', 'player-profile', 'scores', 'score-detail', 'chart-detail',
   'chart-search', 'video-details', 'difficulty', 'characters', 'release', 'manifest',
   'chart', 'music', 'illustration', 'metadata', 'resource',
+  'authorization-code', 'token-refresh',
 ] as const;
 export type RuntimeRequestScenario = typeof RUNTIME_REQUEST_SCENARIOS[number];
 export const RUNTIME_ERROR_CODES = [

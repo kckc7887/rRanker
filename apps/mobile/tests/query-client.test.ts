@@ -1,6 +1,7 @@
-import { afterEach, beforeEach, describe, expect, it } from 'vitest';
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { QueryClient, QueryObserver, focusManager, type QueryFunctionContext, type QueryObserverOptions } from '@tanstack/react-query';
-import { resumeInterruptedActiveQueries } from '@/state/query-client';
+import { queryClient, resumeInterruptedActiveQueries } from '@/state/query-client';
+import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
 
 const clients: QueryClient[] = [];
 const observers: (() => void)[] = [];
@@ -38,7 +39,45 @@ beforeEach(() => { focusManager.setFocused(true); });
 afterEach(() => {
   for (const unsubscribe of observers.splice(0)) unsubscribe();
   for (const value of clients.splice(0)) { value.unmount(); value.clear(); }
+  queryClient.clear();
+  vi.unstubAllGlobals();
   focusManager.setFocused(undefined);
+});
+
+describe('query failure retry', () => {
+  function playerQuery(refreshToken: string) {
+    const provider = new LxnsScoreProvider({ mode: 'lxns-oauth', accessToken: 'expired-access', refreshToken,
+      expiresAt: 0, persistable: true });
+    return queryClient.fetchQuery({ queryKey: ['player', refreshToken], retryDelay: 0,
+      queryFn: ({ signal }) => provider.getPlayer(signal) });
+  }
+
+  it('stops after the server rejects the refresh token', async () => {
+    const fetcher = vi.fn(async () => new Response('{"error":"invalid_grant"}', { status: 400 }));
+    vi.stubGlobal('fetch', fetcher);
+
+    await expect(playerQuery('rejected-refresh')).rejects.toMatchObject({ code: 'authentication', retryable: false });
+    expect(fetcher).toHaveBeenCalledTimes(1);
+  });
+
+  it('recovers from a temporary token service failure', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(new Response('{"error":"server_error"}', { status: 503 }))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ access_token: 'fresh-access', refresh_token: 'fresh-refresh', expires_in: 900 })))
+      .mockResolvedValueOnce(new Response(JSON.stringify({ success: true, code: 200,
+        data: { name: '玩家', rating: 15000, friend_code: 123 } })));
+    vi.stubGlobal('fetch', fetcher);
+
+    await expect(playerQuery('temporary-failure')).resolves.toMatchObject({ displayName: '玩家', rating: 15000 });
+  });
+
+  it('stops after one retry when the token service remains unavailable', async () => {
+    const fetcher = vi.fn(async () => new Response('{"error":"server_error"}', { status: 503 }));
+    vi.stubGlobal('fetch', fetcher);
+
+    await expect(playerQuery('unavailable-refresh')).rejects.toMatchObject({ code: 'network', retryable: true });
+    expect(fetcher).toHaveBeenCalledTimes(2);
+  });
 });
 
 describe('active first query recovery', () => {

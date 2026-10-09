@@ -117,6 +117,25 @@ describe('rotateLxnsTokens', () => {
     vi.restoreAllMocks();
   });
 
+  it.each(['invalid_request', 'invalid_client', 'unsupported_grant_type'])
+    ('reports %s as a configuration error instead of expired login', async error => {
+      const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error, error_description: 'private upstream detail' }), { status: 400 }));
+      const { rotateLxnsTokens } = await loadLxnsOAuthModule({ fetchImpl: fetchMock });
+      await expect(rotateLxnsTokens('refresh')).rejects.toMatchObject({ code: 'configuration', retryable: false });
+    });
+
+  it('records the failed refresh stage without credentials or the server description', async () => {
+    const fetchMock = vi.fn(async () => new Response(JSON.stringify({ error: 'invalid_grant', error_description: 'private upstream detail' }), { status: 400 }));
+    const { rotateLxnsTokens } = await loadLxnsOAuthModule({ fetchImpl: fetchMock });
+    const { snapshotEmergencyRuntimeDiagnostics } = await import('@/services/runtime-diagnostics-recorder');
+
+    await expect(rotateLxnsTokens('private-refresh-token')).rejects.toMatchObject({ code: 'authentication', retryable: false });
+    const events = snapshotEmergencyRuntimeDiagnostics();
+    expect(events).toEqual(expect.arrayContaining([expect.objectContaining({ type: 'request',
+      fields: expect.objectContaining({ scenario: 'token-refresh', status: 400, errorCode: 'authentication' }) })]));
+    expect(JSON.stringify(events)).not.toMatch(/private-refresh-token|private upstream detail/);
+  });
+
   it('deduplicates concurrent refreshes for the same refresh token', async () => {
     const fetchMock = tokenResponse({
       access_token: 'a1',
