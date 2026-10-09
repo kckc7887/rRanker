@@ -143,13 +143,20 @@ async function postToken(body: Record<string, string>, signal?: AbortSignal): Pr
     baseUrl: LXNS_OAUTH_TOKEN_URL, path: '', schema: TokenResponseSchema,
     fetcher: expoFetch as unknown as typeof fetch, label: '落雪 OAuth',
     totalAttempts: 1, signal, authenticated: true, maxResponseBytes: 256 * 1024,
+    diagnosticScenario: body.grant_type === 'refresh_token' ? 'token-refresh' : 'authorization-code',
     error: status => new ProviderError(status === 400 || status === 401 ? 'authentication' : 'network', '落雪授权失败，请重新发起授权', status >= 500),
     onHttpError: async response => {
       let payload: unknown = null;
       try { payload = await response.json(); } catch (error) { if (!(error instanceof SyntaxError)) throw error; }
       const parsed = OAuthErrorSchema.safeParse(payload);
+      if (parsed.success && ['invalid_request', 'invalid_client', 'unsupported_grant_type'].includes(parsed.data.error)) {
+        return new ProviderError('configuration', '落雪授权配置有误', false);
+      }
+      if (parsed.success && parsed.data.error === 'server_error') {
+        return new ProviderError('network', '落雪授权服务暂时不可用', true);
+      }
       const authentication = response.status === 400 || response.status === 401 || (parsed.success && parsed.data.error === 'invalid_grant');
-      return new ProviderError(authentication ? 'authentication' : 'network', '落雪授权失败，请重新发起授权', response.status >= 500);
+      return new ProviderError(authentication ? 'authentication' : 'network', '落雪授权失败，请重新发起授权', !authentication && response.status >= 500);
     },
     messages: { schema: '落雪 OAuth token 响应与已验证契约不一致', timeout: '落雪 OAuth 超时', network: '无法连接落雪 OAuth' },
     init: {

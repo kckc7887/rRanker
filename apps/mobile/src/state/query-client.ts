@@ -1,6 +1,7 @@
 import { MutationCache, QueryCache, QueryClient } from '@tanstack/react-query';
 import { registerGameDataBackground } from '@/services/game-data-query';
 import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
+import { ProviderError } from '@/providers/errors';
 
 export function releaseInactiveQueries(client: QueryClient): void {
   client.removeQueries({ predicate: (query) => !query.isActive() });
@@ -21,7 +22,7 @@ export const queryClient = new QueryClient({
   defaultOptions: {
     queries: {
       staleTime: 5 * 60 * 1000,
-      retry: 1,
+      retry: (failureCount, error) => failureCount < 1 && (!(error instanceof ProviderError) || error.retryable),
       refetchOnWindowFocus: false,
     },
   },
