@@ -145,17 +145,20 @@ it('starts at a nearby map scale and preserves the chosen scale on subsequent GP
   expect(mockDiscover).toHaveBeenLastCalledWith(expect.objectContaining({ latitude: 32, radiusKm: 30 }));
 });
 
-it('card and pin selection stay linked without starting another nearby request', async () => {
+it.each([1, 30] as const)('card and pin selection preserve map scale with a %s km search radius without another nearby request', async radius => {
   mockGps.mockResolvedValue(origin(31)); mockDiscover.mockResolvedValue([shop]);
   const view = await render(<ArcadeFinderScreen />);
   await waitFor(() => expect(view.getByText(shop.name)).toBeTruthy());
+  await act(async () => { mockFilter.onRadiusChange(radius); });
+  const count = mockDiscover.mock.calls.length;
   jest.useFakeTimers();
   await act(async () => { mockMap.onGestureStart(); mockMap.onCenterChange(origin(32)); });
   await fireEvent.press(view.getByText(shop.name));
   await act(async () => { jest.advanceTimersByTime(500); });
   expect(mockMap.selectedShopId).toBe(shop.id);
   expect(mockMap.camera?.center).toMatchObject({ latitude: shop.latitude, longitude: shop.longitude });
-  const count = mockDiscover.mock.calls.length;
+  expect(mockMap.camera?.radiusKm).toBeUndefined();
+  expect(mockDiscover.mock.calls.length).toBe(count);
   await act(async () => { mockMap.onSelectShop(shop); });
   expect(mockMap.selectedShopId).toBe(shop.id);
   expect(mockDiscover.mock.calls.length).toBe(count);

@@ -304,9 +304,9 @@ export default function ArcadeFinderScreen() {
     dragTimer.current = null;
     setLocatingOrigin(false);
     setSelectedShop(shop);
-    setCamera({ center: shop, radiusKm: Math.min(radiusKm, 2) });
+    setCamera({ center: shop });
     Keyboard.dismiss();
-  }, [radiusKm]);
+  }, []);
 
   const moveMap = () => {
     if (!screenActive.current) return;
