@@ -71,7 +71,10 @@ export function RizlineCatalogScreen() {
   const library = useUserLibrary(); const filter = useRizlineCatalogFilter();
   const keyword = useDebouncedValue(filter.keyword);
   const songs = useMemo(() => query.data?.snapshot.songs ?? [], [query.data]);
-  const searchFilter = useMemo(() => ({ ...filter, keyword }), [filter, keyword]);
+  const searchFilter = useMemo(() => ({
+    difficulty: filter.difficulty, packId: filter.packId,
+    constantMin: filter.constantMin, constantMax: filter.constantMax, keyword,
+  }), [filter.difficulty, filter.packId, filter.constantMin, filter.constantMax, keyword]);
   const selectSong = useCallback((song: RizlineSong, filters: typeof searchFilter) =>
     matchesRizlineSong(song, filters, filters.keyword) ? song : undefined, []);
   const { data: filtered, isFiltering } = useLocalSearch(songs, searchFilter, selectSong);

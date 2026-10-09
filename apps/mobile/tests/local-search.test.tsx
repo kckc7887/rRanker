@@ -1,9 +1,11 @@
-import { act, render } from '@testing-library/react-native';
+import { act, render, renderHook } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Text } from 'react-native';
+import type { ReactNode } from 'react';
+import { AppState, type AppStateStatus, Text } from 'react-native';
 import { CachedContentActivityScope } from '@/components/CachedTabScreen';
 import type { Song } from '@/domain/models';
 import { useLocalSearch } from '@/hooks/use-local-search';
+import { AppLifecycleProvider } from '@/state/app-lifecycle';
 import { EMPTY_SONG_FILTERS, findMatchedAlias, matchesSongSearch } from '@/utils/search';
 
 const originalIdle = globalThis.requestIdleCallback;
@@ -106,4 +108,36 @@ it('pauses a hidden page and resumes its latest input on focus', async () => {
   await view.rerender(<Search songs={catalog} keyword="tesuto" />);
   await finishIdle();
   expect(view.getByTestId('results').props.children).toBe('2:テスト');
+});
+
+it('keeps the completed search result when the page and app become active again', async () => {
+  let active = true;
+  let changeAppState: ((state: AppStateStatus) => void) | undefined;
+  jest.spyOn(AppState, 'addEventListener').mockImplementation((type, listener) => {
+    if (type === 'change') changeAppState = listener;
+    return { remove: jest.fn() };
+  });
+  const hook = await renderHook(() => useLocalSearch(catalog, 'tesuto', selectSong), {
+    wrapper: ({ children }: { children: ReactNode }) => <AppLifecycleProvider>
+      <CachedContentActivityScope active={active}>{children}</CachedContentActivityScope>
+    </AppLifecycleProvider>,
+  });
+  await finishIdle();
+  const completed = hook.result.current.data;
+  expect(completed).toEqual(['2:テスト']);
+
+  active = false;
+  await hook.rerender(undefined);
+  active = true;
+  await hook.rerender(undefined);
+  await finishIdle();
+  expect(hook.result.current.data).toBe(completed);
+  expect(hook.result.current.isFiltering).toBe(false);
+
+  await act(() => changeAppState?.('background'));
+  await act(() => changeAppState?.('active'));
+  await finishIdle();
+  expect(hook.result.current.data).toBe(completed);
+  expect(hook.result.current.isFiltering).toBe(false);
+  await hook.unmount();
 });

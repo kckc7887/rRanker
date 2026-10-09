@@ -1,4 +1,4 @@
-import { fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { MajdataBestScreen, MajdataCatalogScreen, MajdataFilter, MajdataRecordsScreen } from '@/screens/MajdataScreens';
 import { MajdataScoreCard, MajdataSongRow } from '@/components/majdata/MajdataCards';
@@ -27,7 +27,6 @@ let mockFavorites: { kind: 'song'; favorite: boolean; songId: string; tags: stri
 jest.mock('expo-router', () => ({ router: { push: (href: unknown) => mockPush(href) } }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 34 }));
-jest.mock('@/hooks/use-debounced-value', () => ({ useDebouncedValue: (value: string) => value }));
 jest.mock('@/components/CachedTabScreen', () => ({
   ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
   useCachedTabActive: () => mockTabActive,
@@ -172,6 +171,42 @@ test('catalog favorites use the shared local library and records show DX with th
   const records = await render(<MajdataRecordsScreen />);
   expect(await records.findByText('共 1 条成绩')).toBeTruthy();
   expect(records.queryByText(/Classic/)).toBeNull();
+});
+
+test('keeps the empty records result during typing and filter expansion until the keyword settles', async () => {
+  jest.useFakeTimers();
+  const originalIdle = globalThis.requestIdleCallback;
+  const originalCancelIdle = globalThis.cancelIdleCallback;
+  const idle = new Map<number, IdleRequestCallback>();
+  let nextHandle = 0;
+  globalThis.requestIdleCallback = callback => { idle.set(++nextHandle, callback); return nextHandle; };
+  globalThis.cancelIdleCallback = handle => { idle.delete(handle); };
+  const finishIdle = async () => {
+    while (idle.size) {
+      const [handle, callback] = idle.entries().next().value!;
+      idle.delete(handle);
+      await act(() => callback({ didTimeout: false, timeRemaining: () => 50 }));
+    }
+  };
+  useMajdataRecordsFilter.setState({ keyword: 'no-match' });
+  const screen = await render(<MajdataRecordsScreen />);
+  try {
+    await finishIdle();
+    expect(screen.getByText('当前筛选条件下没有成绩')).toBeTruthy();
+    await fireEvent.changeText(screen.getByLabelText('成绩搜索'), mockSong.title);
+    expect(screen.getByText('当前筛选条件下没有成绩')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText(/^展开筛选/));
+    expect(screen.getByText('当前筛选条件下没有成绩')).toBeTruthy();
+    await act(() => jest.advanceTimersByTime(180));
+    await finishIdle();
+    expect(screen.getByText(mockSong.title)).toBeTruthy();
+    expect(screen.getByText('共 1 条成绩')).toBeTruthy();
+  } finally {
+    await screen.unmount();
+    globalThis.requestIdleCallback = originalIdle;
+    globalThis.cancelIdleCallback = originalCancelIdle;
+    jest.useRealTimers();
+  }
 });
 
 test('an inactive catalog does not continue fetching pages after local filtering', async () => {

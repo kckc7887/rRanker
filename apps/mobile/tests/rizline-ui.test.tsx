@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, within } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Animated, InteractionManager, processColor } from 'react-native';
 import { RizlineScoreCard } from '@/components/rizline/RizlineScoreCard';
@@ -8,8 +8,9 @@ import { RizlineDifficultyBadge } from '@/components/rizline/RizlineScoreVisuals
 import { BADGE_GOLD_BORDER_COLORS } from '@/domain/badge-theme';
 import { RIZLINE_DIFFICULTIES, rizlineDifficultyColors, type RizlineRecord } from '@/domain/rizline';
 import { METRIC_GRADIENT_THEMES } from '@/domain/metric-gradient-theme';
-import { RizlineBestScreen, RizlineRecordsScreen } from '@/screens/RizlineScreens';
+import { RizlineBestScreen, RizlineCatalogScreen, RizlineRecordsScreen } from '@/screens/RizlineScreens';
 import { RizlineRandomChartsScreen } from '@/screens/RizlineRandomChartsScreen';
+import { useRizlineCatalogFilter } from '@/state/rizline-catalog-filter';
 import UserLibraryScreen from '../app/library/index';
 import type { UserLibraryItem } from '@/domain/user-library';
 import { rizlineChart, rizlineRecord, rizlineSong } from './rizline-ui-fixtures';
@@ -63,6 +64,7 @@ jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
 describe('Rizline UI', () => {
   beforeEach(() => {
     jest.clearAllMocks(); mockSong = rizlineSong(); mockSongs = [mockSong]; mockRecords = [rizlineRecord()]; mockUnknownCandidates = false; mockLibraryItems = [];
+    useRizlineCatalogFilter.getState().reset();
     mockGameDataState = { hasData: true, isLoading: false, isError: false };
     jest.spyOn(Animated, 'loop').mockReturnValue({ start: jest.fn(), stop: jest.fn(), reset: jest.fn() });
     jest.spyOn(Animated, 'timing');
@@ -92,6 +94,42 @@ describe('Rizline UI', () => {
     const records = await render(<RizlineRecordsScreen />);
     const cards = await records.findAllByTestId(/^rizline-score-/);
     expect(cards.map((card) => card.props.testID)).toEqual(['rizline-score-song.a.IN', 'rizline-score-song.a.HD']);
+  });
+
+  it('keeps the empty catalog result during typing and filter expansion until the keyword settles', async () => {
+    jest.useFakeTimers();
+    const originalIdle = globalThis.requestIdleCallback;
+    const originalCancelIdle = globalThis.cancelIdleCallback;
+    const idle = new Map<number, IdleRequestCallback>();
+    let nextHandle = 0;
+    globalThis.requestIdleCallback = callback => { idle.set(++nextHandle, callback); return nextHandle; };
+    globalThis.cancelIdleCallback = handle => { idle.delete(handle); };
+    const finishIdle = async () => {
+      while (idle.size) {
+        const [handle, callback] = idle.entries().next().value!;
+        idle.delete(handle);
+        await act(() => callback({ didTimeout: false, timeRemaining: () => 50 }));
+      }
+    };
+    useRizlineCatalogFilter.setState({ keyword: 'no-match' });
+    const screen = await render(<RizlineCatalogScreen />);
+    try {
+      await finishIdle();
+      expect(screen.getByText('没有符合条件的歌曲')).toBeTruthy();
+      await fireEvent.changeText(screen.getByPlaceholderText('搜索 Rizline 曲库'), mockSong.title);
+      expect(screen.getByText('没有符合条件的歌曲')).toBeTruthy();
+      await fireEvent.press(screen.getByLabelText(/^展开筛选/));
+      expect(screen.getByText('没有符合条件的歌曲')).toBeTruthy();
+      await act(() => jest.advanceTimersByTime(180));
+      await finishIdle();
+      expect(screen.getByText(mockSong.title)).toBeTruthy();
+      expect(screen.queryByText('没有符合条件的歌曲')).toBeNull();
+    } finally {
+      await screen.unmount();
+      globalThis.requestIdleCallback = originalIdle;
+      globalThis.cancelIdleCallback = originalCancelIdle;
+      jest.useRealTimers();
+    }
   });
 
   it('defaults to IN in reversed difficulty order and keeps metadata below the cover', async () => {
