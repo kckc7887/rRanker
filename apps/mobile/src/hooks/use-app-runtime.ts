@@ -3,11 +3,10 @@ import { useEffect, useRef } from 'react';
 import { focusManager } from '@tanstack/react-query';
 import { Image as ExpoImage } from 'expo-image';
 import { useSegments } from 'expo-router';
-import { InteractionManager } from 'react-native';
 import { useGameResourceSync } from './use-game-resource-sync';
 import { queryClient, releaseInactiveQueries, resumeInterruptedActiveQueries } from '@/state/query-client';
 import { retryPendingRotationWrites, useSession } from '@/state/session-store';
-import { getForegroundAbortSignal, useAppLifecycle } from '@/state/app-lifecycle';
+import { getForegroundAbortSignal, scheduleIdleTask, useAppLifecycle } from '@/state/app-lifecycle';
 import { runStorageCacheMaintenance } from '@/features/storage-management/storage-cache-maintenance';
 import { markRemoteImageCacheGameActive } from '@/services/remote-image-cache';
 import { hydrateAccountDisplayData } from '@/services/account-thumbnail';
@@ -32,10 +31,10 @@ export function useAppRuntime(ready: boolean) {
 
   useEffect(() => {
     if (restoreStatus !== 'ready') return;
-    const task = InteractionManager.runAfterInteractions(() => {
+    const cancel = scheduleIdleTask(() => {
       void markRemoteImageCacheGameActive(activeGameId).catch(() => undefined);
     });
-    return () => task.cancel();
+    return cancel;
   }, [activeAccountId, activeGameId, restoreStatus]);
 
   useEffect(() => {
@@ -97,23 +96,23 @@ export function useAppRuntime(ready: boolean) {
     if (localHydrationGenerationRef.current === lifecycle.foregroundGeneration) return;
     const signal = getForegroundAbortSignal();
     let cancelled = false;
-    const task = InteractionManager.runAfterInteractions(() => {
+    const cancel = scheduleIdleTask(() => {
       if (cancelled || signal.aborted || localHydrationGenerationRef.current === lifecycle.foregroundGeneration) return;
       localHydrationGenerationRef.current = lifecycle.foregroundGeneration;
       void hydrateAccountDisplayData(signal).catch(() => undefined);
     });
-    return () => { cancelled = true; task.cancel(); };
+    return () => { cancelled = true; cancel(); };
   }, [lifecycle.foregroundGeneration, lifecycle.foregroundReady, restoreStatus]);
 
   useEffect(() => {
     if (!ready || restoreStatus !== 'ready' || !lifecycle.foregroundReady) return;
     if (storageMaintenanceStartedRef.current) return;
-    const task = InteractionManager.runAfterInteractions(() => {
+    const cancel = scheduleIdleTask(() => {
       if (storageMaintenanceStartedRef.current) return;
       storageMaintenanceStartedRef.current = true;
       void runStorageCacheMaintenance().catch(() => undefined);
     });
-    return () => task.cancel();
+    return cancel;
   }, [ready, restoreStatus, lifecycle.foregroundReady]);
 
   return lifecycle;

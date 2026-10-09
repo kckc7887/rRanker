@@ -1,153 +1,227 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { useState } from 'react';
-import { InteractionManager, Pressable, Text } from 'react-native';
-import { CachedTabScreen, useCachedTabActive } from '@/components/CachedTabScreen';
+import { useEffect, useState } from 'react';
+import { Platform, Pressable, Text } from 'react-native';
+import { create } from 'zustand';
+import { CachedTabScreen, StackScreenActivityScope, useCachedTabActive, useStackScreenReady } from '@/components/CachedTabScreen';
 import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
 
-let mockLifecycle: AppLifecycleSnapshot = {
-  appState: 'active',
-  phase: 'foreground-ready',
-  foregroundReady: true,
-  foregroundGeneration: 1,
-  memoryWarningGeneration: 0,
+let mockLifecycle: AppLifecycleSnapshot;
+let mockFocused = true;
+let mockFocusEffect: (() => void | (() => void)) | null = null;
+const mockEvents = new Map<string, (event: { data: { closing: boolean } }) => void>();
+const mockNavigation = {
+  isFocused: () => mockFocused,
+  addListener: (event: string, listener: (event: { data: { closing: boolean } }) => void) => {
+    mockEvents.set(event, listener);
+    return () => { mockEvents.delete(event); };
+  },
 };
-
 jest.mock('@/state/app-lifecycle', () => ({
+  ...jest.requireActual<typeof import('@/state/app-lifecycle')>('@/state/app-lifecycle'),
   useAppLifecycle: () => mockLifecycle,
 }));
-
-let mockFocusEffect: (() => void | (() => void)) | null = null;
-
 jest.mock('expo-router', () => ({
   useFocusEffect: (effect: () => void | (() => void)) => { mockFocusEffect = effect; },
+  useNavigation: () => mockNavigation,
 }));
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual<typeof import('@react-navigation/native')>('@react-navigation/native'),
+  useIsFocused: () => mockFocused,
+}));
+const useAccount = create(() => ({ name: 'A' }));
+const observedAccounts: string[] = [];
+const activityChanges: boolean[] = [];
+const originalIdle = globalThis.requestIdleCallback;
+const originalCancelIdle = globalThis.cancelIdleCallback;
+let idleTasks: Map<number, () => void>;
+let nextIdleId = 0;
 
-function ActivityLabel() {
-  const active = useCachedTabActive();
-  return <Text>{active ? '前台' : '后台'}</Text>;
-}
-
-function StatefulHeavyPage() {
+function StatefulPage() {
   const [count, setCount] = useState(0);
-  return <Pressable accessibilityLabel="修改页面状态" onPress={() => setCount((value) => value + 1)}>
-    <Text>页面状态 {count}</Text>
-    <ActivityLabel />
+  const account = useAccount(state => state.name);
+  const active = useCachedTabActive();
+  useEffect(() => { observedAccounts.push(account); }, [account]);
+  useEffect(() => { activityChanges.push(active); }, [active]);
+  return <Pressable testID="increment" onPress={() => setCount(value => value + 1)}>
+    <Text>页面状态 {count}</Text><Text>账号 {account}</Text><Text>{active ? '前台' : '后台'}</Text>
   </Pressable>;
 }
+function DeferredContent() {
+  const ready = useStackScreenReady();
+  return ready ? <StatefulPage /> : <Text>等待转场</Text>;
+}
+function StackPage({ loaded = true }: { loaded?: boolean }) {
+  return <StackScreenActivityScope>{loaded ? <DeferredContent /> : <Text>加载中</Text>}</StackScreenActivityScope>;
+}
+async function flushIdle() {
+  const tasks = [...idleTasks.values()];
+  idleTasks.clear();
+  await act(() => { tasks.forEach(task => task()); });
+}
+async function emit(event: string, closing = false) {
+  await act(() => { mockEvents.get(event)?.({ data: { closing } }); });
+}
+beforeEach(() => {
+  jest.useFakeTimers();
+  mockLifecycle = { appState: 'active', phase: 'foreground-ready', foregroundReady: true,
+    foregroundGeneration: 1, memoryWarningGeneration: 0 };
+  mockFocused = true;
+  mockFocusEffect = null;
+  mockEvents.clear();
+  useAccount.setState({ name: 'A' });
+  observedAccounts.length = 0;
+  activityChanges.length = 0;
+  idleTasks = new Map();
+  globalThis.requestIdleCallback = callback => {
+    const id = ++nextIdleId;
+    idleTasks.set(id, () => callback({ didTimeout: false, timeRemaining: () => 50 }));
+    return id;
+  };
+  globalThis.cancelIdleCallback = id => { idleTasks.delete(id); };
+});
+afterEach(() => {
+  jest.useRealTimers();
+  jest.restoreAllMocks();
+  globalThis.requestIdleCallback = originalIdle;
+  globalThis.cancelIdleCallback = originalCancelIdle;
+});
 
 describe('cached native-tab content', () => {
-  beforeEach(() => {
-    mockLifecycle = {
-      appState: 'active', phase: 'foreground-ready', foregroundReady: true,
-      foregroundGeneration: 1, memoryWarningGeneration: 0,
-    };
-  });
-  afterEach(() => jest.restoreAllMocks());
-
-  it('keeps mounted state and resumes activity only after every focus transition', async () => {
-    const pendingTasks: { callback: () => void; cancel: jest.Mock }[] = [];
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      const task = {
-        callback: callback as () => void,
-        cancel: jest.fn(),
-      };
-      pendingTasks.push(task);
-      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-    });
-
-    const screen = await render(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
-    expect(screen.getByTestId('cached-tab-placeholder')).toBeTruthy();
-
+  it('stops activity before freezing account updates and restores current data with local state', async () => {
+    const view = await render(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    expect(view.getByTestId('cached-tab-placeholder')).toBeTruthy();
     let cleanup: void | (() => void);
     await act(() => { cleanup = mockFocusEffect?.(); });
-    expect(screen.queryByText('前台')).toBeNull();
-    await act(() => { pendingTasks[0]?.callback(); });
-    await fireEvent.press(screen.getByLabelText('修改页面状态'));
-    expect(screen.getByText('页面状态 1')).toBeTruthy();
-    expect(screen.getByText('前台')).toBeTruthy();
-
+    await flushIdle();
+    await fireEvent.press(view.getByTestId('increment'));
+    expect(view.getByText('页面状态 1')).toBeTruthy();
+    mockFocused = false;
     await act(() => { cleanup?.(); });
-    expect(pendingTasks[0]?.cancel).toHaveBeenCalled();
-    expect(screen.getByText('页面状态 1')).toBeTruthy();
-    expect(screen.getByText('后台')).toBeTruthy();
-
-    let secondCleanup: void | (() => void);
-    await act(() => { secondCleanup = mockFocusEffect?.(); });
-    expect(screen.queryByText('前台')).toBeNull();
-    expect(screen.getByText('后台')).toBeTruthy();
-    expect(screen.getByText('页面状态 1')).toBeTruthy();
-
-    await act(() => { secondCleanup?.(); });
-    expect(pendingTasks[1]?.cancel).toHaveBeenCalled();
-    expect(screen.queryByText('前台')).toBeNull();
-    expect(screen.getByText('页面状态 1')).toBeTruthy();
-
-    let thirdCleanup: void | (() => void);
-    await act(() => { thirdCleanup = mockFocusEffect?.(); });
-    await act(() => { pendingTasks[2]?.callback(); });
-    expect(screen.getByText('前台')).toBeTruthy();
-    expect(screen.getByText('页面状态 1')).toBeTruthy();
-
-    await act(() => { thirdCleanup?.(); });
-    expect(pendingTasks[2]?.cancel).toHaveBeenCalled();
+    await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    expect(activityChanges.at(-1)).toBe(false);
+    await act(() => { jest.runOnlyPendingTimers(); });
+    await act(() => { useAccount.setState({ name: 'B' }); });
+    expect(observedAccounts).toEqual(['A']);
+    mockFocused = true;
+    await act(() => { cleanup = mockFocusEffect?.(); });
+    expect(view.getByText('账号 B')).toBeTruthy();
+    expect(view.getByText('页面状态 1')).toBeTruthy();
+    expect(view.getByText('后台')).toBeTruthy();
+    await flushIdle();
+    expect(view.getByText('前台')).toBeTruthy();
+    await view.unmount();
   });
 
-  it('keeps the focused page mounted in background and cancels a superseded resume task', async () => {
-    const pendingTasks: { callback: () => void; cancel: jest.Mock }[] = [];
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      const task = { callback: callback as () => void, cancel: jest.fn() };
-      pendingTasks.push(task);
-      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-    });
-
-    const screen = await render(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
-    await act(() => { mockFocusEffect?.(); });
-    await act(() => { pendingTasks[0]?.callback(); });
-    expect(screen.getByText('前台')).toBeTruthy();
-
-    mockLifecycle = {
-      ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false,
-    };
-    await screen.rerender(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
-    expect(screen.getByText('后台')).toBeTruthy();
-    expect(screen.getByText('页面状态 0')).toBeTruthy();
-    expect(screen.queryByTestId('cached-tab-placeholder')).toBeNull();
-    mockLifecycle = {
-      ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true,
-      foregroundGeneration: 2,
-    };
-    await screen.rerender(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
-    expect(screen.getByText('后台')).toBeTruthy();
-    expect(screen.queryByTestId('cached-tab-placeholder')).toBeNull();
-
-    mockLifecycle = {
-      ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false,
-    };
-    await screen.rerender(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
-    expect(pendingTasks[1]?.cancel).toHaveBeenCalled();
-    await act(() => { pendingTasks[1]?.callback(); });
-    expect(screen.getByText('后台')).toBeTruthy();
-    expect(screen.queryByTestId('cached-tab-placeholder')).toBeNull();
-  });
-
-  it('evicts only an unfocused page after a memory warning', async () => {
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      (callback as () => void)();
-      return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-    });
-    const screen = await render(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
+  it('cancels rapid refocus activation and freezes a page blurred again before idle', async () => {
+    const view = await render(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
     let cleanup: void | (() => void);
     await act(() => { cleanup = mockFocusEffect?.(); });
-    expect(screen.getByText('前台')).toBeTruthy();
-
-    mockLifecycle = { ...mockLifecycle, memoryWarningGeneration: 1 };
-    await screen.rerender(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
-    expect(screen.getByText('前台')).toBeTruthy();
-
+    await flushIdle();
+    mockFocused = false;
     await act(() => { cleanup?.(); });
+    await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    mockFocused = true;
+    await act(() => { cleanup = mockFocusEffect?.(); });
+    await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    mockFocused = false;
+    await act(() => { cleanup?.(); });
+    await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    await flushIdle();
+    expect(activityChanges.at(-1)).toBe(false);
+    await act(() => { jest.runOnlyPendingTimers(); });
+    await act(() => { useAccount.setState({ name: 'B' }); });
+    expect(observedAccounts).toEqual(['A']);
+    await view.unmount();
+  });
+
+  it('preserves a focused page in background and evicts a frozen unfocused page on memory warning', async () => {
+    const view = await render(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    let cleanup: void | (() => void);
+    await act(() => { cleanup = mockFocusEffect?.(); });
+    await flushIdle();
+    await fireEvent.press(view.getByTestId('increment'));
+    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false, memoryWarningGeneration: 1 };
+    await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    expect(activityChanges.at(-1)).toBe(false);
+    await act(() => { jest.runOnlyPendingTimers(); });
+    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
+    await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    await flushIdle();
+    expect(view.getByText('页面状态 1')).toBeTruthy();
+    mockFocused = false;
+    await act(() => { cleanup?.(); });
+    await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    await act(() => { jest.runOnlyPendingTimers(); });
     mockLifecycle = { ...mockLifecycle, memoryWarningGeneration: 2 };
-    await screen.rerender(<CachedTabScreen><StatefulHeavyPage /></CachedTabScreen>);
-    expect(screen.getByTestId('cached-tab-placeholder')).toBeTruthy();
+    await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    expect(view.getByTestId('cached-tab-placeholder')).toBeTruthy();
+    mockFocused = true;
+    await act(() => { cleanup = mockFocusEffect?.(); });
+    await flushIdle();
+    expect(view.getByText('页面状态 0')).toBeTruthy();
+    await view.unmount();
+  });
+});
+
+describe('stack detail activity', () => {
+  it('remembers completed appearance before data arrives and keeps state through cancelled gestures and return', async () => {
+    const view = await render(<StackPage loaded={false} />);
+    await emit('transitionEnd');
+    await view.rerender(<StackPage />);
+    expect(view.getByText('前台')).toBeTruthy();
+    await fireEvent.press(view.getByTestId('increment'));
+    await emit('transitionStart', true);
+    expect(view.getByText('后台')).toBeTruthy();
+    await emit('gestureCancel');
+    expect(view.getByText('前台')).toBeTruthy();
+    mockFocused = false;
+    await view.rerender(<StackPage />);
+    await emit('transitionStart', true);
+    await emit('transitionEnd', true);
+    expect(view.getByText('后台')).toBeTruthy();
+    mockFocused = true;
+    await view.rerender(<StackPage />);
+    expect(view.getByText('页面状态 1')).toBeTruthy();
+    expect(view.getByText('后台')).toBeTruthy();
+    await emit('transitionEnd');
+    expect(view.getByText('前台')).toBeTruthy();
+    await view.unmount();
+  });
+
+  it('accepts appearance without animation start and resumes background state without another navigation event', async () => {
+    const view = await render(<StackPage />);
+    expect(view.getByText('等待转场')).toBeTruthy();
+    await emit('transitionEnd');
+    await fireEvent.press(view.getByTestId('increment'));
+    mockLifecycle = { ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false };
+    await view.rerender(<StackPage />);
+    expect(view.getByText('后台')).toBeTruthy();
+    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true };
+    await view.rerender(<StackPage />);
+    expect(view.getByText('页面状态 1')).toBeTruthy();
+    expect(view.getByText('前台')).toBeTruthy();
+    await view.unmount();
+  });
+
+  it('uses cancellable idle readiness on web without native transition events', async () => {
+    jest.replaceProperty(Platform, 'OS', 'web');
+    const view = await render(<StackPage />);
+    mockFocused = false;
+    await view.rerender(<StackPage />);
+    await flushIdle();
+    expect(view.getByText('等待转场')).toBeTruthy();
+    mockFocused = true;
+    await view.rerender(<StackPage />);
+    await flushIdle();
+    expect(view.getByText('前台')).toBeTruthy();
+    mockFocused = false;
+    await view.rerender(<StackPage />);
+    mockFocused = true;
+    await view.rerender(<StackPage />);
+    expect(view.getByText('后台')).toBeTruthy();
+    await flushIdle();
+    expect(view.getByText('前台')).toBeTruthy();
+    await view.unmount();
   });
 });

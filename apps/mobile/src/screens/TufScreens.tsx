@@ -501,7 +501,7 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
           <Card testID="tuf-level-personal-tags">
             <TagEditor testID="tuf-level-local-tags" tags={localTags}
               presets={library.tagPresets ?? []}
-              historyTags={buildTagHistory(library.data ?? [], library.songKey(level!.id), library.tagPresets ?? [])}
+              historyTags={() => buildTagHistory(library.data ?? [], library.songKey(level!.id), library.tagPresets ?? [])}
               disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
               onChange={(tags) => library.setTags({ kind: 'song', songId: String(level!.id) }, tags)} />
           </Card>

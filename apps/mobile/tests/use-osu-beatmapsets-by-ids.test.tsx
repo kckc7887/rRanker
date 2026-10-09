@@ -4,6 +4,7 @@ import type { ReactNode } from 'react';
 import { afterEach, jest } from '@jest/globals';
 import { normalizeOsuBeatmapsetDetail, type OsuBeatmapsetLookupRaw, type OsuBestScore, type OsuBestScoreRaw } from '@/domain/osu';
 import { useOsuBeatmapsetUserScores } from '@/hooks/use-osu-known-scores';
+import { useOsuBeatmapsetDetail } from '@/hooks/use-osu-beatmapset-detail';
 import { queryClient as publishedQueryClient } from '@/state/query-client';
 import { useOsuBeatmapsetsByIds } from '@/hooks/use-osu-beatmapsets-by-ids';
 
@@ -170,9 +171,30 @@ describe('osu detail score batch', () => {
   let client: QueryClient;
   beforeEach(() => {
     jest.clearAllMocks(); mockProviderId = 'osu'; mockSession = { mode: 'osu-oauth' };
+    mockTabActive = true;
     client = new QueryClient({ defaultOptions: { queries: { retry: false, gcTime: Infinity } } });
   });
   afterEach(() => { cleanup(); client.clear(); publishedQueryClient.clear(); });
+  it('waits for route activity before fetching details and scores without dropping cached data on blur', async () => {
+    mockTabActive = false;
+    mockGetBeatmapset.mockResolvedValue(rawBeatmapset(3720));
+    mockGetUserScore.mockResolvedValue(null);
+    const song = scoreSong();
+    const screen = await renderHook(() => ({
+      detail: useOsuBeatmapsetDetail('osu-standard', '3720'),
+      scores: useOsuBeatmapsetUserScores('osu-standard', song),
+    }), { wrapper: createWrapper(client) });
+    expect(mockGetBeatmapset).not.toHaveBeenCalled();
+    expect(mockGetUserScore).not.toHaveBeenCalled();
+    mockTabActive = true;
+    await screen.rerender({});
+    await waitFor(() => expect(screen.result.current.detail.data?.title).toBe('Title 3720'));
+    await waitFor(() => expect(screen.result.current.scores.data).toEqual([]));
+    mockTabActive = false;
+    await screen.rerender({});
+    expect(screen.result.current.detail.data?.title).toBe('Title 3720');
+    expect(screen.result.current.scores.data).toEqual([]);
+  });
   it('最多四路请求并保留歌曲难度顺序', async () => {
     let inFlight = 0; let maximum = 0; const releases: (() => void)[] = [];
     mockGetUserScore.mockImplementation((_user, beatmap) => new Promise(resolve => {

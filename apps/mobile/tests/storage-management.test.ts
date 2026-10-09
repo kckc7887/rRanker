@@ -76,6 +76,7 @@ vi.mock('@/features/storage-management/fs-storage', () => ({
   measureDirectoryBytesAsync: mocks.measureDirectoryBytes,
   measureDirectoryBytesStrictAsync: mocks.measureDirectoryBytes,
   clearDirectoryContentsStrict: mocks.clearDirectoryContentsStrict,
+  runSharedCacheFileOperation: async <T>(operation: () => Promise<T>) => operation(),
   APP_CACHE_ROOT: () => null,
   APP_DOCUMENT_ROOT: () => null,
   PHIGROS_FONT_ROOT: () => null,

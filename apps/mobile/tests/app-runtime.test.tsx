@@ -1,6 +1,6 @@
 import { jest } from '@jest/globals';
 import { act, renderHook } from '@testing-library/react-native';
-import { AppState, InteractionManager } from 'react-native';
+import { AppState } from 'react-native';
 import { AppLifecycleProvider } from '@/state/app-lifecycle';
 import type { AppLifecycleSnapshot } from '@/state/app-lifecycle-core';
 import { useAppRuntime } from '@/hooks/use-app-runtime';
@@ -56,10 +56,14 @@ jest.mock('@/services/runtime-logs', () => ({ recordRuntimeRoute: (segments: unk
 
 type Task = { callback: () => void; cancelled: boolean };
 let tasks: Task[];
-async function flushInteractions() {
-  const pending = tasks.splice(0);
-  await act(() => { for (const task of pending) if (!task.cancelled) task.callback(); });
+async function flushIdle() {
+  const pending = tasks.filter(task => !task.cancelled);
+  pending.forEach(task => { task.cancelled = true; });
+  await act(() => { for (const task of pending) task.callback(); });
 }
+
+const originalIdle = globalThis.requestIdleCallback;
+const originalCancelIdle = globalThis.cancelIdleCallback;
 
 describe('app runtime lifecycle', () => {
   beforeEach(() => {
@@ -70,13 +74,18 @@ describe('app runtime lifecycle', () => {
     mockState.restoreStatus = 'ready'; mockState.activeAccountId = 'maimai:local'; mockState.activeGameId = 'maimai';
     mockController = new AbortController();
     mockLifecycle = { appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 1, memoryWarningGeneration: 0 };
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      const task: Task = { callback: callback as () => void, cancelled: false };
+    globalThis.requestIdleCallback = callback => {
+      const task: Task = { callback: () => callback({ didTimeout: false, timeRemaining: () => 50 }), cancelled: false };
       tasks.push(task);
-      return { cancel: () => { task.cancelled = true; } } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-    });
+      return tasks.length;
+    };
+    globalThis.cancelIdleCallback = handle => { const task = tasks[handle - 1]; if (task) task.cancelled = true; };
   });
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    globalThis.requestIdleCallback = originalIdle;
+    globalThis.cancelIdleCallback = originalCancelIdle;
+  });
 
   it('rehydrates through the actual provider after background then inactive, but not a brief inactive', async () => {
     mockRealLifecycle = true;
@@ -86,16 +95,16 @@ describe('app runtime lifecycle', () => {
       return { remove: jest.fn() };
     }) as typeof AppState.addEventListener);
     const hook = await renderHook(() => useAppRuntime(true), { wrapper: AppLifecycleProvider });
-    await flushInteractions();
-    await flushInteractions();
+    await flushIdle();
+    await flushIdle();
     expect(mockHydrate).toHaveBeenCalled();
     const original = mockHydrate.mock.calls[0]![0]!;
     await act(() => { change?.('background'); });
     expect(original.aborted).toBe(true);
     await act(() => { change?.('inactive'); });
     await act(() => { change?.('active'); });
-    await flushInteractions();
-    await flushInteractions();
+    await flushIdle();
+    await flushIdle();
     expect(mockHydrate).toHaveBeenCalled();
     const restored = mockHydrate.mock.calls.at(-1)![0]!;
     expect(restored.aborted).toBe(false);
@@ -103,8 +112,8 @@ describe('app runtime lifecycle', () => {
     mockHydrate.mockClear();
     await act(() => { change?.('inactive'); });
     await act(() => { change?.('active'); });
-    await flushInteractions();
-    await flushInteractions();
+    await flushIdle();
+    await flushIdle();
     expect(mockHydrate).not.toHaveBeenCalled();
     expect(restored.aborted).toBe(false);
     await hook.unmount();
@@ -114,7 +123,7 @@ describe('app runtime lifecycle', () => {
 
   it('resumes pending credential writes only while the app is in the foreground', async () => {
     const hook = await renderHook(() => useAppRuntime(true));
-    await flushInteractions();
+    await flushIdle();
     expect(mockRetryPendingRotationWrites).toHaveBeenCalled();
     expect(mockRetryAccountSources).toHaveBeenCalled();
     expect(mockThemeForeground).toHaveBeenLastCalledWith(true);
@@ -128,7 +137,7 @@ describe('app runtime lifecycle', () => {
 
     mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
     await hook.rerender(undefined);
-    await flushInteractions();
+    await flushIdle();
     expect(mockRetryPendingRotationWrites).toHaveBeenCalled();
     expect(mockRetryAccountSources).toHaveBeenCalled();
     expect(mockThemeForeground).toHaveBeenLastCalledWith(true);
@@ -139,12 +148,12 @@ describe('app runtime lifecycle', () => {
     const hook = await renderHook(() => useAppRuntime(true));
     mockLifecycle = { ...mockLifecycle, appState: 'inactive', phase: 'inactive', foregroundReady: false };
     await hook.rerender(undefined);
-    await flushInteractions();
+    await flushIdle();
     expect(mockHydrate).not.toHaveBeenCalled();
     expect(mockMaintenance).not.toHaveBeenCalled();
     mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true };
     await hook.rerender(undefined);
-    await flushInteractions();
+    await flushIdle();
     expect(mockHydrate).toHaveBeenCalled();
     expect(mockMaintenance).toHaveBeenCalled();
     await hook.unmount();
@@ -152,7 +161,7 @@ describe('app runtime lifecycle', () => {
 
   it('keeps inactive, background cancellation and memory pressure as separate events', async () => {
     const hook = await renderHook(() => useAppRuntime(true));
-    await flushInteractions();
+    await flushIdle();
     mockLifecycle = { ...mockLifecycle, appState: 'inactive', phase: 'inactive', foregroundReady: false };
     await hook.rerender(undefined);
     expect(mockFocus).toHaveBeenLastCalledWith(false);
@@ -181,7 +190,7 @@ describe('app runtime lifecycle', () => {
 
   it('waits for the preceding background cancellation before resuming first queries', async () => {
     const hook = await renderHook(() => useAppRuntime(true));
-    await flushInteractions();
+    await flushIdle();
     mockResumeQueries.mockClear();
     let settleCancellation!: () => void;
     mockCancelQueries.mockImplementationOnce(() => new Promise<void>(done => { settleCancellation = done; }));
@@ -189,7 +198,7 @@ describe('app runtime lifecycle', () => {
     await hook.rerender(undefined);
     mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
     await hook.rerender(undefined);
-    await flushInteractions();
+    await flushIdle();
     expect(mockResumeQueries).not.toHaveBeenCalled();
     await act(() => { settleCancellation(); });
     expect(mockResumeQueries).toHaveBeenCalled();
@@ -198,7 +207,7 @@ describe('app runtime lifecycle', () => {
 
   it('does not resume an obsolete foreground continuation after returning to background', async () => {
     const hook = await renderHook(() => useAppRuntime(true));
-    await flushInteractions();
+    await flushIdle();
     mockResumeQueries.mockClear();
     let settleCancellation!: () => void;
     mockCancelQueries.mockImplementationOnce(() => new Promise<void>(done => { settleCancellation = done; }));
@@ -212,7 +221,7 @@ describe('app runtime lifecycle', () => {
     expect(mockResumeQueries).not.toHaveBeenCalled();
     mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 3 };
     await hook.rerender(undefined);
-    await flushInteractions();
+    await flushIdle();
     expect(mockResumeQueries).toHaveBeenCalled();
     await hook.unmount();
   });
@@ -221,16 +230,16 @@ describe('app runtime lifecycle', () => {
     mockState.restoreStatus = 'restoring';
     mockLifecycle = { ...mockLifecycle, phase: 'foreground-waiting', foregroundReady: false };
     const hook = await renderHook(() => useAppRuntime(false));
-    await flushInteractions();
+    await flushIdle();
     expect(mockHydrate).not.toHaveBeenCalled();
     expect(mockMaintenance).not.toHaveBeenCalled();
     mockState.restoreStatus = 'ready';
     await hook.rerender(undefined);
-    await flushInteractions();
+    await flushIdle();
     expect(mockHydrate).not.toHaveBeenCalled();
     mockLifecycle = { ...mockLifecycle, phase: 'foreground-ready', foregroundReady: true };
     await hook.rerender(undefined);
-    await flushInteractions();
+    await flushIdle();
     expect(mockHydrate).toHaveBeenCalled();
     expect(mockMaintenance).not.toHaveBeenCalled();
     await hook.unmount();
@@ -239,12 +248,12 @@ describe('app runtime lifecycle', () => {
   it('does not maintain storage when the startup recovery UI is ready after a restore error', async () => {
     mockState.restoreStatus = 'error';
     const hook = await renderHook(() => useAppRuntime(true));
-    await flushInteractions();
+    await flushIdle();
     expect(mockMaintenance).not.toHaveBeenCalled();
     expect(mockHydrate).not.toHaveBeenCalled();
     mockState.restoreStatus = 'ready';
     await hook.rerender(undefined);
-    await flushInteractions();
+    await flushIdle();
     expect(mockMaintenance).toHaveBeenCalled();
     expect(mockHydrate).toHaveBeenCalled();
     await hook.unmount();

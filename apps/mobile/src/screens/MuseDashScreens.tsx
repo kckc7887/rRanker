@@ -16,7 +16,7 @@ import {
 } from 'react-native-svg';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
-import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
+import { ChartCarousel as SharedChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
@@ -308,8 +308,9 @@ export function MuseDashCatalogScreen() {
 type MuseDashChartSlot = { difficultyIndex: number; level: string };
 
 function MuseDashChartCard({
-  songId, song, albumTitle, constant, slot, score, library, width,
+  songId, song, albumTitle, constant, slot, score, library, width, carouselState,
 }: {
+  carouselState: ChartCarouselItemState;
   songId: string;
   song: MuseDashSong;
   albumTitle: string;
@@ -394,9 +395,10 @@ function MuseDashChartCard({
         </Text>
       </Pressable>
       <TagEditor
+        {...carouselState.tagEditor}
         tags={chartItem?.tags ?? []}
         presets={library.tagPresets ?? []}
-        historyTags={buildTagHistory(library.data ?? [], library.chartKey(songId, MUSE_DASH_CHART_TYPE, slot.difficultyIndex), library.tagPresets ?? [])}
+        historyTags={() => buildTagHistory(library.data ?? [], library.chartKey(songId, MUSE_DASH_CHART_TYPE, slot.difficultyIndex), library.tagPresets ?? [])}
         disabled={library.isUpdating}
         onPresetsChange={library.setTagPresets}
         testID={`musedash-chart-local-tags-${slot.difficultyIndex}`}
@@ -509,8 +511,8 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
         gap={CARD_GAP}
         initialIndex={initialIndex}
         items={chartSlots}
-        keyExtractor={(slot) => `${songId}:${slot.difficultyIndex}`}
-        renderItem={(slot) => <MuseDashChartCard songId={songId} song={joined!.song} albumTitle={joined!.albumTitle}
+        keyExtractor={(slot) => library.chartKey(songId, MUSE_DASH_CHART_TYPE, slot.difficultyIndex)}
+        renderItem={(slot, carouselState) => <MuseDashChartCard carouselState={carouselState} songId={songId} song={joined!.song} albumTitle={joined!.albumTitle}
           constant={constants?.get(`${songId}:${slot.difficultyIndex}`)?.[4]} slot={slot}
           score={scoreByDifficulty.get(slot.difficultyIndex)} library={library} width={cardWidth} />}
         rootStyle={styles.carouselRoot}

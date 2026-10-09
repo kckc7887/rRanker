@@ -1,6 +1,6 @@
 import { act, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { AppState, InteractionManager, Text } from 'react-native';
+import { AppState, Text } from 'react-native';
 import type { RuntimeLogCapacity, RuntimeLogEntry, RuntimeLogStatus } from '@/domain/runtime-log';
 import { AppLifecycleProvider } from '@/state/app-lifecycle';
 import { subscribeAppLifecycleSnapshot } from '@/state/app-lifecycle-core';
@@ -37,8 +37,15 @@ jest.mock('@/storage/runtime-log-repository', () => ({
   },
 }));
 
+const originalIdle = globalThis.requestIdleCallback;
+const originalCancelIdle = globalThis.cancelIdleCallback;
+
 describe('runtime log AppState boundary', () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    globalThis.requestIdleCallback = originalIdle;
+    globalThis.cancelIdleCallback = originalCancelIdle;
+  });
 
   it('saves pending entries before the real background handler returns and deduplicates notifications', async () => {
     let change!: (state: 'active' | 'background') => void;
@@ -49,10 +56,11 @@ describe('runtime log AppState boundary', () => {
       if (type === 'memoryWarning') memoryWarning = listener as typeof memoryWarning;
       return { remove: jest.fn() };
     }) as typeof AppState.addEventListener);
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation(callback => {
-      tasks.push(callback as () => void);
-      return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-    });
+    globalThis.requestIdleCallback = callback => {
+      tasks.push(() => callback({ didTimeout: false, timeRemaining: () => 50 }));
+      return tasks.length;
+    };
+    globalThis.cancelIdleCallback = handle => { tasks[handle - 1] = () => undefined; };
     await initializeRuntimeLogs();
     await initializeRuntimeLogs();
     const view = await render(<AppLifecycleProvider><Text>content</Text></AppLifecycleProvider>);

@@ -14,6 +14,7 @@ export function useMaimaiDxTag(enabled = true) {
   const catalog = useDetailedCatalog(enabled);
   return useQuery({
     enabled: enabled && active && foregroundReady && !!catalog.data,
+    notifyOnChangeProps: active ? undefined : [],
     queryKey: ['maimai-dxtag', 'all', catalog.data?.source.updatedAt],
     queryFn: ({ signal }) => loadCachedMaimaiDxTag(catalog.data!, signal),
     staleTime: 0,

@@ -1,6 +1,7 @@
 import { createInflightGuard } from '@/services/snapshot-cache-utils';
 import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Directory, File } from 'expo-file-system';
+import { deleteAsync, getInfoAsync, makeDirectoryAsync, moveAsync, readDirectoryAsync, writeAsStringAsync } from 'expo-file-system/legacy';
 import { Image, type ImageRef, type ImageSource } from 'expo-image';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Platform } from 'react-native';
@@ -85,6 +86,7 @@ export type NormalizedRemoteSource = {
 let manifestPromise: Promise<CacheState> | null = null;
 let manifestWriteTimer: ReturnType<typeof setTimeout> | null = null;
 let manifestWriteQueue: Promise<void> = Promise.resolve();
+let fileOperations: Promise<unknown> = Promise.resolve();
 let activeTransforms = 0;
 let cacheGeneration = 0;
 const gameGenerations = new Map<string, number>();
@@ -135,9 +137,15 @@ export async function remoteImageCacheKey(
   );
 }
 
-function ensureCacheRoot(): Directory {
+function runFileOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const pending = fileOperations.then(operation, operation);
+  fileOperations = pending.catch(() => undefined);
+  return pending;
+}
+
+async function ensureCacheRoot(): Promise<Directory> {
   const root = COMPRESSED_IMAGE_CACHE_ROOT();
-  if (!root.exists) root.create({ intermediates: true, idempotent: true });
+  await makeDirectoryAsync(root.uri, { intermediates: true });
   return root;
 }
 
@@ -162,12 +170,12 @@ function validLastUsed(value: unknown): value is number {
 }
 
 async function loadManifest(): Promise<CacheState> {
-  const root = ensureCacheRoot();
+  const root = await ensureCacheRoot();
   const manifestFile = new File(root, MANIFEST_FILE_NAME);
   let parsedEntries = new Map<string, CacheEntry>();
   let activeGameId: string | null = null;
   let gameLastUsed = new Map<string, number>();
-  if (manifestFile.exists) {
+  if ((await getInfoAsync(manifestFile.uri)).exists) {
     /** 读取失败时保留缓存文件。 */
     const text = await manifestFile.text();
     try {
@@ -187,28 +195,30 @@ async function loadManifest(): Promise<CacheState> {
   }
 
   const reconciled = new Map<string, CacheEntry>();
-  for (const item of root.list()) {
-    if (!(item instanceof File)) continue;
-    if (item.name.endsWith('.part')) {
-      item.delete();
+  for (const name of await readDirectoryAsync(root.uri)) {
+    const item = new File(root, name);
+    if (name.endsWith('.part')) {
+      await deleteAsync(item.uri, { idempotent: true });
       continue;
     }
-    if (!item.name.endsWith('.webp')) continue;
-    const cacheKey = item.name.slice(0, -'.webp'.length);
+    if (!name.endsWith('.webp')) continue;
+    const cacheKey = name.slice(0, -'.webp'.length);
     const stored = parsedEntries.get(cacheKey);
     if (!stored) {
-      item.delete();
+      await deleteAsync(item.uri, { idempotent: true });
       continue;
     }
-    const bytes = item.size ?? stored.bytes;
+    const info = await getInfoAsync(item.uri);
+    if (!info.exists || info.isDirectory) continue;
+    const bytes = info.size;
     if (bytes > REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES) {
-      item.delete();
+      await deleteAsync(item.uri, { idempotent: true });
       continue;
     }
     reconciled.set(cacheKey, { ...stored, bytes });
   }
   const state = { activeGameId, gameLastUsed, entries: reconciled };
-  pruneCacheState(state, REMOTE_IMAGE_CACHE_BUDGET_BYTES, root);
+  await pruneCacheState(state, REMOTE_IMAGE_CACHE_BUDGET_BYTES, root);
   return state;
 }
 
@@ -231,20 +241,19 @@ async function persistManifest(): Promise<void> {
     gameLastUsed: Object.fromEntries(state.gameLastUsed),
     entries: Object.fromEntries(state.entries),
   };
-  const root = ensureCacheRoot();
+  const root = await ensureCacheRoot();
   const part = new File(root, `${MANIFEST_FILE_NAME}.part`);
   const finalFile = new File(root, MANIFEST_FILE_NAME);
-  if (part.exists) part.delete();
-  await part.write(JSON.stringify(payload));
-  if (finalFile.exists) finalFile.delete();
-  part.move(finalFile);
+  await writeAsStringAsync(part.uri, JSON.stringify(payload));
+  await deleteAsync(finalFile.uri, { idempotent: true });
+  await moveAsync({ from: part.uri, to: finalFile.uri });
 }
 
 function queueManifestWrite(): void {
   if (manifestWriteTimer) return;
   manifestWriteTimer = setTimeout(() => {
     manifestWriteTimer = null;
-    manifestWriteQueue = manifestWriteQueue.then(persistManifest, persistManifest);
+    manifestWriteQueue = runFileOperation(persistManifest);
     /** 定时写入先接住拒绝；flush 仍返回原失败。 */
     void manifestWriteQueue.catch(() => undefined);
   }, 1000);
@@ -254,7 +263,7 @@ export async function flushRemoteImageCacheManifest(): Promise<void> {
   if (manifestWriteTimer) {
     clearTimeout(manifestWriteTimer);
     manifestWriteTimer = null;
-    manifestWriteQueue = manifestWriteQueue.then(persistManifest, persistManifest);
+    manifestWriteQueue = runFileOperation(persistManifest);
   }
   await manifestWriteQueue;
 }
@@ -363,7 +372,7 @@ function usageByGame(state: CacheState): RemoteImageCacheQuotaInput[] {
   }));
 }
 
-function pruneCacheState(state: CacheState, budgetBytes: number, root: Directory): boolean {
+async function pruneCacheState(state: CacheState, budgetBytes: number, root: Directory): Promise<boolean> {
   const usages = usageByGame(state);
   const total = usages.reduce((sum, usage) => sum + usage.bytes, 0);
   if (total <= budgetBytes) return false;
@@ -378,7 +387,7 @@ function pruneCacheState(state: CacheState, budgetBytes: number, root: Directory
     for (const [cacheKey, entry] of candidates) {
       if (gameBytes <= quota) break;
       const file = entryFile(root, cacheKey);
-      if (file.exists) file.delete();
+      await deleteAsync(file.uri, { idempotent: true });
       state.entries.delete(cacheKey);
       gameBytes -= entry.bytes;
       changed = true;
@@ -390,64 +399,71 @@ function pruneCacheState(state: CacheState, budgetBytes: number, root: Directory
 export async function pruneRemoteImageCache(
   budgetBytes = REMOTE_IMAGE_CACHE_BUDGET_BYTES,
 ): Promise<void> {
-  const state = await manifest();
-  const root = ensureCacheRoot();
-  if (pruneCacheState(state, budgetBytes, root)) await persistManifest();
+  await runFileOperation(async () => {
+    const state = await manifest();
+    const root = await ensureCacheRoot();
+    if (await pruneCacheState(state, budgetBytes, root)) await persistManifest();
+  });
 }
 
 export async function markRemoteImageCacheGameActive(gameId: string): Promise<void> {
   if (!gameId) return;
-  const state = await manifest();
-  const now = Date.now();
-  state.activeGameId = gameId;
-  state.gameLastUsed.set(gameId, now);
-  queueManifestWrite();
-  await pruneRemoteImageCache();
+  await runFileOperation(async () => {
+    const state = await manifest();
+    const now = Date.now();
+    state.activeGameId = gameId;
+    state.gameLastUsed.set(gameId, now);
+    queueManifestWrite();
+    await pruneCacheState(state, REMOTE_IMAGE_CACHE_BUDGET_BYTES, await ensureCacheRoot());
+  });
 }
 
 export async function listRemoteImageCacheUsage(): Promise<RemoteImageCacheUsage[]> {
-  const state = await manifest();
-  return usageByGame(state).map((usage) => ({
-    ...usage,
-    active: usage.gameId === state.activeGameId,
-  }));
+  return runFileOperation(async () => {
+    const state = await manifest();
+    return usageByGame(state).map((usage) => ({ ...usage, active: usage.gameId === state.activeGameId }));
+  });
 }
 
 export async function measureGameRemoteImageCacheBytes(gameId: string): Promise<number> {
-  const state = await manifest();
-  let total = 0;
-  for (const entry of state.entries.values()) {
-    if (entry.gameId === gameId) total += entry.bytes;
-  }
-  return total;
+  return runFileOperation(async () => {
+    const state = await manifest();
+    let total = 0;
+    for (const entry of state.entries.values()) {
+      if (entry.gameId === gameId) total += entry.bytes;
+    }
+    return total;
+  });
 }
 
 export async function clearGameRemoteImageCache(gameId: string): Promise<void> {
   gameGenerations.set(gameId, (gameGenerations.get(gameId) ?? 0) + 1);
-  const state = await manifest();
-  const root = ensureCacheRoot();
-  for (const [cacheKey, entry] of Array.from(state.entries.entries())) {
-    if (entry.gameId !== gameId) continue;
-    const file = entryFile(root, cacheKey);
-    if (file.exists) file.delete();
-    state.entries.delete(cacheKey);
-  }
-  await persistManifest();
+  await runFileOperation(async () => {
+    const state = await manifest();
+    const root = await ensureCacheRoot();
+    for (const [cacheKey, entry] of state.entries) {
+      if (entry.gameId !== gameId) continue;
+      await deleteAsync(entryFile(root, cacheKey).uri, { idempotent: true });
+      state.entries.delete(cacheKey);
+    }
+    await persistManifest();
+  });
 }
 
 async function findCached(cacheKey: string): Promise<CompressedRemoteImageResult | null> {
   const state = await manifest();
-  const root = ensureCacheRoot();
+  const root = await ensureCacheRoot();
   const file = entryFile(root, cacheKey);
-  if (!file.exists) {
+  const info = await getInfoAsync(file.uri);
+  if (!info.exists) {
     if (state.entries.delete(cacheKey)) queueManifestWrite();
     return null;
   }
   const stored = state.entries.get(cacheKey);
   if (!stored) return null;
-  const bytes = file.size ?? stored.bytes;
+  const bytes = info.size;
   if (bytes > REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES) {
-    file.delete();
+    await deleteAsync(file.uri, { idempotent: true });
     state.entries.delete(cacheKey);
     queueManifestWrite();
     return null;
@@ -478,20 +494,20 @@ async function createCompressed(
   signal?: AbortSignal,
 ): Promise<CompressedRemoteImageResult | null> {
   const candidates = PROFILE_OPTIONS[options.profile];
-  const root = ensureCacheRoot();
+  const root = await ensureCacheRoot();
   const sequence = ++temporarySequence;
   const sourceFile = new File(root, `${cacheKey}.${sequence}.source.part`);
   let loaded: Awaited<ReturnType<typeof Image.loadAsync>> | null = null;
   let context: ReturnType<typeof ImageManipulator.manipulate> | null = null;
   let rendered: Awaited<ReturnType<ReturnType<typeof ImageManipulator.manipulate>['renderAsync']>> | null = null;
-  let part: File | null = null;
+  let partUri: string | null = null;
   let selected: File | null = null;
   const current = () => !signal?.aborted
     && generation === cacheGeneration
     && gameGeneration === (gameGenerations.get(options.gameId) ?? 0);
   try {
     if (!current()) return null;
-    if (sourceFile.exists) sourceFile.delete();
+    await deleteAsync(sourceFile.uri, { idempotent: true });
     await File.downloadFileAsync(normalized.source.uri!, sourceFile, {
       headers: normalized.source.headers,
       idempotent: true,
@@ -520,10 +536,11 @@ async function createCompressed(
       rendered = await context.renderAsync();
       const saved = await rendered.saveAsync({ format: SaveFormat.WEBP, compress: candidate.compress });
       const savedFile = new File(saved.uri);
-      if ((savedFile.size ?? Number.POSITIVE_INFINITY) <= REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES) {
+      const savedInfo = await getInfoAsync(savedFile.uri);
+      if (savedInfo.exists && savedInfo.size <= REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES) {
         selected = savedFile;
-      } else if (savedFile.exists) {
-        savedFile.delete();
+      } else {
+        await deleteAsync(savedFile.uri, { idempotent: true });
       }
       releaseSharedObject(rendered);
       releaseSharedObject(context);
@@ -532,34 +549,38 @@ async function createCompressed(
       if (selected) break;
     }
     if (!selected || !current()) return null;
-    const state = await manifest();
-    if (!current()) return null;
-    const finalFile = entryFile(root, cacheKey);
-    part = new File(root, `${cacheKey}.${sequence}.part`);
-    if (part.exists) part.delete();
-    selected.move(part);
-    selected = null;
-    if (finalFile.exists) finalFile.delete();
-    part.move(finalFile);
-    part = null;
-    const now = Date.now();
-    state.entries.set(cacheKey, {
-      bytes: finalFile.size ?? REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES,
-      gameId: options.gameId,
-      lastAccess: now,
+    return await runFileOperation(async () => {
+      if (!current()) return null;
+      const state = await manifest();
+      if (!current()) return null;
+      const finalFile = entryFile(root, cacheKey);
+      partUri = new File(root, `${cacheKey}.${sequence}.part`).uri;
+      await moveAsync({ from: selected!.uri, to: partUri });
+      selected = null;
+      await deleteAsync(finalFile.uri, { idempotent: true });
+      await moveAsync({ from: partUri, to: finalFile.uri });
+      partUri = null;
+      if (!current()) {
+        await deleteAsync(finalFile.uri, { idempotent: true });
+        return null;
+      }
+      const info = await getInfoAsync(finalFile.uri);
+      if (!info.exists) return null;
+      const now = Date.now();
+      state.entries.set(cacheKey, { bytes: info.size, gameId: options.gameId, lastAccess: now });
+      state.gameLastUsed.set(options.gameId, Math.max(state.gameLastUsed.get(options.gameId) ?? 0, now));
+      await pruneCacheState(state, REMOTE_IMAGE_CACHE_BUDGET_BYTES, root);
+      queueManifestWrite();
+      if (!current() || !state.entries.has(cacheKey)) return null;
+      return { cacheKey, fileUri: finalFile.uri, source: { uri: finalFile.uri } };
     });
-    state.gameLastUsed.set(options.gameId, Math.max(state.gameLastUsed.get(options.gameId) ?? 0, now));
-    await pruneRemoteImageCache();
-    queueManifestWrite();
-    if (!current() || !finalFile.exists) return null;
-    return { cacheKey, fileUri: finalFile.uri, source: { uri: finalFile.uri } };
   } finally {
-    if (sourceFile.exists) sourceFile.delete();
-    if (part?.exists) part.delete();
-    if (selected?.exists) selected.delete();
     releaseSharedObject(rendered);
     releaseSharedObject(context);
     releaseSharedObject(loaded);
+    await deleteAsync(sourceFile.uri, { idempotent: true });
+    if (partUri) await deleteAsync(partUri, { idempotent: true });
+    if (selected) await deleteAsync(selected.uri, { idempotent: true });
   }
 }
 
@@ -570,7 +591,7 @@ export async function findCompressedRemoteImage(
   const normalized = normalizeRemoteImageSource(source);
   if (!normalized || !options.gameId) return null;
   const cacheKey = await remoteImageCacheKey(normalized, options);
-  return findCached(cacheKey);
+  return runFileOperation(() => findCached(cacheKey));
 }
 
 export async function cacheCompressedRemoteImage(
@@ -586,7 +607,7 @@ export async function cacheCompressedRemoteImage(
     && gameGeneration === (gameGenerations.get(options.gameId) ?? 0);
   const cacheKey = await remoteImageCacheKey(normalized, options);
   if (!current()) return null;
-  const cached = await findCached(cacheKey);
+  const cached = await runFileOperation(() => findCached(cacheKey));
   if (!current()) return null;
   if (cached) return cached;
   try {
@@ -600,11 +621,12 @@ export async function cacheCompressedRemoteImage(
 }
 
 export async function invalidateCompressedRemoteImage(cacheKey: string): Promise<void> {
-  const state = await manifest();
-  state.entries.delete(cacheKey);
-  const file = entryFile(ensureCacheRoot(), cacheKey);
-  if (file.exists) file.delete();
-  queueManifestWrite();
+  await runFileOperation(async () => {
+    const state = await manifest();
+    await deleteAsync(entryFile(await ensureCacheRoot(), cacheKey).uri, { idempotent: true });
+    state.entries.delete(cacheKey);
+    queueManifestWrite();
+  });
 }
 
 export async function clearCompressedRemoteImageCache(): Promise<void> {
@@ -612,8 +634,8 @@ export async function clearCompressedRemoteImageCache(): Promise<void> {
   gameGenerations.clear();
   if (manifestWriteTimer) clearTimeout(manifestWriteTimer);
   manifestWriteTimer = null;
-  await manifestWriteQueue.catch(() => undefined);
-  const root = COMPRESSED_IMAGE_CACHE_ROOT();
-  if (root.exists) root.delete();
-  manifestPromise = null;
+  await runFileOperation(async () => {
+    await deleteAsync(COMPRESSED_IMAGE_CACHE_ROOT().uri, { idempotent: true });
+    manifestPromise = null;
+  });
 }

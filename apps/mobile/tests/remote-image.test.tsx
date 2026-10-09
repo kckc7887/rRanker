@@ -1,6 +1,5 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { InteractionManager } from 'react-native';
 import {
   RemoteImage,
   RemoteImageActivityScope,
@@ -41,13 +40,16 @@ const cachedResult = {
 };
 
 describe('RemoteImage 压缩垫图', () => {
-  it('等待交互结束再落盘，离开可见区域时取消排队任务', async () => {
+  it('等待空闲再落盘，离开可见区域时取消排队任务', async () => {
     const callbacks: (() => void)[] = [];
     const cancel = jest.fn();
-    const schedule = jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      if (typeof callback === 'function') callbacks.push(callback);
-      return { cancel, then: jest.fn(), done: jest.fn() } as ReturnType<typeof InteractionManager.runAfterInteractions>;
-    });
+    const originalIdle = globalThis.requestIdleCallback;
+    const originalCancelIdle = globalThis.cancelIdleCallback;
+    globalThis.requestIdleCallback = callback => {
+      callbacks.push(() => callback({ didTimeout: false, timeRemaining: () => 4 }));
+      return callbacks.length;
+    };
+    globalThis.cancelIdleCallback = cancel;
     mockFind.mockResolvedValue(null);
     const tree = (enabled: boolean) => <RemoteImagePersistenceScope enabled={enabled}>
       <RemoteImage cacheProfile="thumbnail" gameId="maimai" source={remoteSource} testID="cover" />
@@ -64,7 +66,8 @@ describe('RemoteImage 压缩垫图', () => {
       expect(mockCache).not.toHaveBeenCalled();
       await screen.unmount();
     } finally {
-      schedule.mockRestore();
+      globalThis.requestIdleCallback = originalIdle;
+      globalThis.cancelIdleCallback = originalCancelIdle;
     }
   });
   it('keeps an equal source object stable and rechecks changed headers or cache identity', async () => {

@@ -1,6 +1,6 @@
 import { act, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { AccessibilityInfo, Animated, InteractionManager, View } from 'react-native';
+import { AccessibilityInfo, Animated, View } from 'react-native';
 import { CachedContentActivityScope, CachedTabScreen } from '@/components/CachedTabScreen';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { fixtureRecords } from '@/fixtures/sanitized';
@@ -12,8 +12,17 @@ jest.mock('expo-router', () => ({
   useFocusEffect: (effect: () => void | (() => void)) => { mockFocusEffect = effect; },
 }));
 
+const originalIdle = globalThis.requestIdleCallback;
+const originalCancelIdle = globalThis.cancelIdleCallback;
+
+jest.mock('@react-navigation/native', () => ({ useIsFocused: () => true }));
+
 describe('cached tab animation lifecycle', () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    globalThis.requestIdleCallback = originalIdle;
+    globalThis.cancelIdleCallback = originalCancelIdle;
+  });
 
   it('shares one native motion preference read and subscription across all mounted cards', async () => {
     const read = jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
@@ -52,11 +61,12 @@ describe('cached tab animation lifecycle', () => {
 
   it('stops native looping animations on blur and restarts them after refocus settles', async () => {
     const pendingTasks: { callback: () => void; cancel: jest.Mock }[] = [];
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      const task = { callback: callback as () => void, cancel: jest.fn() };
+    globalThis.requestIdleCallback = callback => {
+      const task = { callback: () => callback({ didTimeout: false, timeRemaining: () => 50 }), cancel: jest.fn() };
       pendingTasks.push(task);
-      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-    });
+      return pendingTasks.length;
+    };
+    globalThis.cancelIdleCallback = handle => { pendingTasks[handle - 1]?.cancel(); };
 
     const animations: { start: jest.Mock; stop: jest.Mock }[] = [];
     jest.spyOn(Animated, 'loop').mockImplementation(() => {

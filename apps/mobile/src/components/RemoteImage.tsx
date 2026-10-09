@@ -8,7 +8,7 @@ import {
   useState,
 } from 'react';
 import { Image, type ImageProps } from 'expo-image';
-import { InteractionManager } from 'react-native';
+import { scheduleIdleTask } from '@/state/app-lifecycle';
 import {
   cacheCompressedRemoteImage,
   findCompressedRemoteImage,
@@ -128,7 +128,7 @@ export function RemoteImage({
       || !remoteDisplayed
       || resolved) return undefined;
     const controller = new AbortController();
-    const task = InteractionManager.runAfterInteractions(() => {
+    const cancelTask = scheduleIdleTask(() => {
       if (controller.signal.aborted) return;
       void cacheCompressedRemoteImage(requestSource, { gameId: gameId!, profile: mode }, controller.signal)
         .then((result) => {
@@ -139,7 +139,7 @@ export function RemoteImage({
         })
         .catch(() => undefined);
     });
-    return () => { task.cancel(); controller.abort(); };
+    return () => { cancelTask(); controller.abort(); };
   }, [active, gameId, mode, persistenceEnabled, remoteDisplayed, requestKey, resolved, requestSource]);
 
   if (!supportsCompressedCache && (mode === 'thumbnail' || mode === 'artwork')) {

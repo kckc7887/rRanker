@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Animated, InteractionManager, StyleSheet } from 'react-native';
+import { Animated, StyleSheet } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import SettingsTabScreen, { SettingsScreen } from '../app/(tabs)/settings';
 import PersonalizationScreen from '../app/personalization';
@@ -14,6 +14,10 @@ const mockLoadPrefs = jest.fn(async () => ({ version: 1 as const, selectedIds: [
 const mockExportDiagnostics = jest.fn(async () => undefined);
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
+jest.mock('@react-navigation/native', () => ({
+  ...jest.requireActual<typeof import('@react-navigation/native')>('@react-navigation/native'),
+  useIsFocused: () => true,
+}));
 jest.mock('expo-image', () => {
   const React = jest.requireActual('react') as typeof import('react');
   const RN = jest.requireActual('react-native') as typeof import('react-native');
@@ -137,15 +141,9 @@ describe('settings navigation', () => {
   });
 
   it('uses the shared cached-tab lifecycle for the settings route', async () => {
-    let resume: (() => void) | null = null;
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      resume = callback as () => void;
-      return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-    });
-
     const screen = await renderSettings(<SettingsTabScreen />);
     expect(screen.getByTestId('cached-tab-placeholder')).toBeTruthy();
-    await act(() => { resume?.(); });
+    await act(() => { jest.advanceTimersByTime(0); });
     expect(screen.getByText('查看占用并清理缓存')).toBeTruthy();
   });
 

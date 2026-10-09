@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { StyleSheet, View } from 'react-native';
 import { MuseDashAccValue } from '@/components/musedash/MuseDashAccValue';
@@ -361,8 +361,8 @@ describe('Muse Dash screens', () => {
 
   it('renders detail hero, metadata, difficulty carousel with practice and tags', async () => {
     const screen = await render(<MuseDashSongDetailScreen songId="0-47" />);
-    expect(screen.getByTestId('musedash-chart-0')).toBeTruthy();
-    expect(screen.getByTestId('musedash-chart-4')).toBeTruthy();
+    expect(screen.queryByTestId('musedash-chart-0')).toBeNull();
+    expect(screen.getByTestId('musedash-chart-2')).toBeTruthy();
     expect(screen.getByTestId('musedash-song-title-scroll').props.horizontal).toBe(true);
     expect(screen.getByText('DLC 来源')).toBeTruthy();
     expect(screen.getByTestId('musedash-song-metadata-value-DLC 来源').props.children).toBe('Default Music');
@@ -371,13 +371,17 @@ describe('Muse Dash screens', () => {
     expect(screen.getAllByText('95.48%').length).toBeGreaterThan(0);
     expect(screen.getAllByText('HIDDEN').length).toBeGreaterThan(0);
     expect(screen.getAllByText('谱师：Mapper A').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('加入练习清单').length).toBe(5);
-    expect(screen.getAllByLabelText(/.+难度卡片$/).map((node) => node.props.accessibilityLabel)).toEqual([
-      'EX 难度卡片', 'HIDDEN 难度卡片', 'MASTER 难度卡片', 'HARD 难度卡片', 'EASY 难度卡片',
-    ]);
-    await fireEvent.press(screen.getAllByLabelText('加入练习清单')[1]);
+    const carousel = screen.getByTestId('musedash-chart-carousel');
+    for (const [index, label] of ['EX', 'HIDDEN', 'MASTER', 'HARD', 'EASY'].entries()) {
+      await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: index * carousel.props.snapToInterval } } });
+      expect(screen.getByTestId(`musedash-chart-${4 - index}`).props.accessibilityLabel).toBe(`${label} 难度卡片`);
+    }
+    expect(screen.getByTestId('musedash-chart-0')).toBeTruthy();
+    await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: carousel.props.snapToInterval } } });
+    const hidden = within(screen.getByTestId('musedash-chart-3'));
+    await fireEvent.press(hidden.getByLabelText('加入练习清单'));
     expect(mockSetChartPractice).toHaveBeenCalledWith('0-47', 'SD', 3, true);
-    await fireEvent.press(screen.getAllByLabelText('编辑标签')[1]);
+    await fireEvent.press(hidden.getByLabelText('编辑标签'));
     expect(mockSetTags).toHaveBeenCalledWith(
       { kind: 'chart', songId: '0-47', type: 'SD', levelIndex: 3 },
       ['测试标签'],
