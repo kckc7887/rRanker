@@ -88,4 +88,12 @@ describe('DivingFishProvider native cookie session', () => {
 
     await expect(provider.getRecords()).resolves.toMatchObject([{ dxScore: 1836 }]);
   });
+
+  it('rejects malformed records at the response boundary before mapping', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      records: [{ achievements: 100, title: 'missing required score fields' }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    const provider = new DivingFishProvider({ mode: 'import-token', value: 'fake-token', persistable: true });
+    await expect(provider.getRecords()).rejects.toMatchObject({ code: 'upstream_schema' });
+  });
 });

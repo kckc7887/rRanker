@@ -1,3 +1,4 @@
+import { simaiDifficultyScores } from '@/features/simai-difficulty';
 import { DatabaseSync } from 'node:sqlite';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -97,7 +98,7 @@ describe('Majdata revision and account cache', () => {
     mock.getSong.mockResolvedValue({ ...song, hash: 'hash2' }); await loadMajdataSong(song.id);
     old.resolve(song); await expect(pending).rejects.toBeDefined(); expect(await repository.getResource(majdataSongKey(song.id), 1)).toMatchObject({ song: { hash: 'hash2' } });
   });
-  it('shares full chart text and caches parsed models per revision and difficulty', async () => {
+  it('shares full chart text and caches summaries per revision and difficulty', async () => {
     const [master, utage] = await Promise.all([loadMajdataParsedChart(song, 4), loadMajdataParsedChart(song, 6)]);
     expect(mock.getChart).toHaveBeenCalledTimes(1); expect(master.statistics.counts.tap).toBe(1); expect(utage.statistics.counts.mine).toBe(1);
     expect(await loadMajdataParsedChart(song, 6)).toEqual(utage);
@@ -140,20 +141,20 @@ describe('Majdata revision and account cache', () => {
   it('does not turn malformed chart text or network errors into valid parsed charts', async () => {
     mock.getChart.mockResolvedValue('&inote_5=(120)BAD,E');
     await expect(loadMajdataParsedChart(song, 4)).rejects.toThrow();
-    expect(await repository.getResource(`majdata-net:parsed:${song.id}:${song.hash}:4`, 1)).toBeNull();
+    expect(await repository.getResource(`majdata-net:parsed:${song.id}:${song.hash}:4`, 2)).toBeNull();
     mock.getChart.mockRejectedValue(new Error('offline'));
     await expect(loadMajdataParsedChart({ ...song, hash: 'unavailable' }, 4)).rejects.toThrow('offline');
   });
   it('rebuilds only an unsupported parsed cache from the retained text', async () => {
     const parsed = await loadMajdataParsedChart(song, 4);
     const key = `majdata-net:parsed:${song.id}:${song.hash}:4`;
-    await repository.saveResource(key, 1, 'now', { chart: parsed.chart, statistics: parsed.statistics });
+    await repository.saveResource(key, 1, 'now', { statistics: parsed.statistics });
     await repository.saveResource('majdata-net:unrelated', 1, 'now', 'retained');
     mock.getChart.mockRejectedValue(new Error('offline'));
     mock.getSong.mockRejectedValue(new Error('offline'));
     expect((await loadMajdataParsedChart(song, 4)).difficultyScores).toEqual(parsed.difficultyScores);
     expect(await repository.getResource('majdata-net:unrelated', 1)).toBe('retained');
-    expect(await repository.getResource(key, 1)).toMatchObject({ difficultyScores: parsed.difficultyScores });
+    expect(await repository.getResource(key, 2)).toMatchObject({ difficultyScores: parsed.difficultyScores });
   });
   it('propagates storage read failures without deleting a parsed result', async () => {
     const parsed = await loadMajdataParsedChart(song, 4);
@@ -183,7 +184,34 @@ describe('Majdata revision and account cache', () => {
     invalidateResourceWrites('majdata-net');
     remote.resolve('&inote_5=(120)1,');
     await rejected;
-    expect(await repository.getResource(`majdata-net:parsed:${song.id}:${song.hash}:4`, 1)).toBeNull();
+    expect(await repository.getResource(`majdata-net:parsed:${song.id}:${song.hash}:4`, 2)).toBeNull();
+  });
+  it('lets queued work run during difficulty analysis and retains the numerical result', async () => {
+    let elapsed = 0, complete = false;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => elapsed++);
+    try {
+      const pending = simaiDifficultyScores('&inote_5=(150){8}1h[4:2]/5,6,A1,B2,Ch[4:1]/3,4,5,6,7/8,E', 5)
+        .then(scores => { complete = true; return scores; });
+      await new Promise<void>(resolve => { setTimeout(resolve, 0); });
+      expect(complete).toBe(false);
+      expect(await pending).toEqual([5.5, 0, 6.4, 0.4, 1.2]);
+    } finally { now.mockRestore(); }
+  });
+  it('cancels an in-progress analysis without caching a partial summary', async () => {
+    await loadMajdataChart(song);
+    let elapsed = 0;
+    const now = vi.spyOn(performance, 'now').mockImplementation(() => elapsed++);
+    const controller = new AbortController(), reason = new Error('closed detail');
+    try {
+      const pending = loadMajdataParsedChart(song, 4, controller.signal);
+      const rejection = expect(pending).rejects.toBe(reason);
+      await new Promise<void>(resolve => { setTimeout(resolve, 0); });
+      controller.abort(reason);
+      await rejection;
+      expect(await repository.getResource(`majdata-net:parsed:${song.id}:${song.hash}:4`, 2)).toBeNull();
+      expect(await loadMajdataChart(song)).toBe('&inote_5=(120)1,\n&inote_7=(120)2m,');
+      await expect(simaiDifficultyScores('invalid', 5, controller.signal)).rejects.toBe(reason);
+    } finally { now.mockRestore(); }
   });
   it('does not label new text as an old revision', async () => {
     mock.getSong.mockResolvedValue({ ...song, hash: 'hash2' }); await expect(loadMajdataChart(song)).rejects.toThrow('谱面已更新');
@@ -231,7 +259,7 @@ describe('Majdata revision and account cache', () => {
     firstController.abort(); await cancelled;
     remote.resolve('&inote_5=(120)1,\n&inote_7=(120)2m,');
     expect((await second).statistics.counts.mine).toBe(1);
-    expect(await repository.getResource(`majdata-net:parsed:${song.id}:${song.hash}:4`, 1)).toBeNull();
+    expect(await repository.getResource(`majdata-net:parsed:${song.id}:${song.hash}:4`, 2)).toBeNull();
   });
   it('starts a new cache generation without joining an invalidated chart request', async () => {
     const oldText = deferred<string>(); mock.getChart.mockReturnValueOnce(oldText.promise);

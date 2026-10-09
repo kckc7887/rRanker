@@ -10,9 +10,20 @@ export class SimaiParseError extends Error {
     this.name = 'SimaiParseError';
   }
 }
-function sourceLocator(text: string): (offset: number, token: string) => SourceLocation {
+type ParseSteps<T> = Generator<void, T, void>;
+
+function finish<T>(steps: ParseSteps<T>): T {
+  let result = steps.next();
+  while (!result.done) result = steps.next();
+  return result.value;
+}
+
+function* sourceLocator(shouldYield: () => boolean, text: string): ParseSteps<(offset: number, token: string) => SourceLocation> {
   const starts = [0];
-  for (let i = 0; i < text.length; i++) if (text.charCodeAt(i) === 10) starts.push(i + 1);
+  for (let i = 0; i < text.length; i++) {
+    if (text.charCodeAt(i) === 10) starts.push(i + 1);
+    if ((i & 127) === 127 && shouldYield()) yield;
+  }
   return (offset, token) => {
     let low = 0, high = starts.length;
     while (low + 1 < high) {
@@ -63,7 +74,7 @@ export function parseDuration(value: string, bpm: number, slide: boolean, source
   if (durationMs < 0 || (delayMs !== undefined && delayMs < 0)) fail('Negative duration', source);
   return { durationMs, delayMs };
 }
-function branch(raw: string, start: ButtonPosition, bpm: number, source: SourceLocation): SlideBranch {
+function* branch(shouldYield: () => boolean, raw: string, start: ButtonPosition, bpm: number, source: SourceLocation): ParseSteps<SlideBranch> {
   const path = raw.slice(raw.search(/[-<>^vpqszwVABCPQK]/));
   let isBreak = false, isMine = false;
   const clean = path.replace(/[bm]/g, (flag: string, index: number) => {
@@ -73,7 +84,7 @@ function branch(raw: string, start: ButtonPosition, bpm: number, source: SourceL
     return '';
   }).replace(/[xc!?@$]/g, '');
   const segments: SlideSegment[] = [];
-  let pos = 0, previous = start, totalDuration = 0;
+  let pos = 0, previous = start, totalDuration = 0, durations = 0, hasWifi = false;
   let delayMs: number | undefined;
   while (pos < clean.length) {
     const rest = clean.slice(pos), custom = /^[ABCPQK]/.test(rest);
@@ -95,19 +106,27 @@ function branch(raw: string, start: ButtonPosition, bpm: number, source: SourceL
       if (closing < 0) fail('Unclosed duration', source);
       const parsed = parseDuration(clean.slice(pos + 1, closing), bpm, true, source);
       durationMs = parsed.durationMs; delayMs ??= parsed.delayMs;
-      totalDuration += durationMs; pos = closing + 1;
+      totalDuration += durationMs; pos = closing + 1; durations++;
     }
     segments.push({ type: custom ? 'custom' : match[1] as SlideSegment['type'], startPos: previous, endPos: end, midPos: mid, code, durationMs });
+    if (!custom && match[1] === 'w') hasWifi = true;
     previous = end;
+    if (shouldYield()) yield;
   }
-  const durations = segments.filter(s => s.durationMs !== null);
-  if (!segments.length || !durations.length) fail('Missing slide duration', source);
-  if (!(durations.length === 1 && segments[segments.length - 1].durationMs !== null) && durations.length !== segments.length) fail('Mixed connected-slide durations', source);
-  if (segments.length > 1 && segments.some(s => s.type === 'w')) fail('Wifi cannot be connected', source);
+  if (!segments.length || !durations) fail('Missing slide duration', source);
+  if (!(durations === 1 && segments[segments.length - 1].durationMs !== null) && durations !== segments.length) fail('Mixed connected-slide durations', source);
+  if (segments.length > 1 && hasWifi) fail('Wifi cannot be connected', source);
   return { segments, durationMs: totalDuration, delayMs: delayMs ?? 60000 / bpm, isBreak, isMine };
 }
-function parseNote(raw: string, base: BaseNote): Note[] {
-  if (/^[1-8]{2,}$/.test(raw)) return [...raw].flatMap(digit => parseNote(digit, base));
+function* parseNote(shouldYield: () => boolean, raw: string, base: BaseNote): ParseSteps<Note[]> {
+  if (/^[1-8]{2,}$/.test(raw)) {
+    const notes: Note[] = [];
+    for (const digit of raw) {
+      notes.push(...yield* parseNote(shouldYield, digit, base));
+      if (shouldYield()) yield;
+    }
+    return notes;
+  }
   const touch = raw.match(/^([ABCDE])([1-8])?/);
   let position: ButtonPosition | TouchPosition, rest: string;
   if (touch) {
@@ -126,8 +145,14 @@ function parseNote(raw: string, base: BaseNote): Note[] {
   if (pathStart >= 0) {
     if (flags.includes('h')) fail('Hold cannot have slide paths', base.source);
     const paths = raw.split('*');
-    const branches = paths.map((part, i) => branch(i ? `${position}${part}` : part, position as ButtonPosition, base.bpm, base.source));
-    const endTimeMs = Math.max(...branches.map(b => base.timingMs + b.delayMs + b.durationMs));
+    const branches: SlideBranch[] = [];
+    let endTimeMs = -Infinity;
+    for (let i = 0; i < paths.length; i++) {
+      const parsed = yield* branch(shouldYield, i ? `${position}${paths[i]}` : paths[i], position as ButtonPosition, base.bpm, base.source);
+      branches.push(parsed);
+      endTimeMs = Math.max(endTimeMs, base.timingMs + parsed.delayMs + parsed.durationMs);
+      if (shouldYield()) yield;
+    }
     return [{ ...common, position: position as ButtonPosition, type: 'slide', isStartBreak: common.isBreak, isHeadless: /[!?]/.test(allFlags), headlessMode: allFlags.includes('!') ? 'pop' : 'fade', isTapHead: allFlags.includes('@'), branches, endTimeMs }];
   }
   const duration = rest.match(/\[([^\]]*)\]/);
@@ -141,67 +166,103 @@ function parseNote(raw: string, base: BaseNote): Note[] {
   if (touch) return [{ ...common, type: 'touch', position: position as TouchPosition, hasFirework: flags.includes('f') }];
   return [{ ...common, type: common.isBreak ? 'break' : 'tap', position: position as ButtonPosition, isStar: flags.includes('$'), isSpinningStar: flags.includes('$$') }];
 }
-function metadata(text: string) {
+function* metadata(shouldYield: () => boolean, text: string): ParseSteps<Record<string, { value: string; offset: number }>> {
   const fields: Record<string, { value: string; offset: number }> = {};
-  const markers = [...text.matchAll(/^\s*&([\w]+)\s*=/gm)];
+  const markers: RegExpMatchArray[] = [];
+  for (const marker of text.matchAll(/^\s*&([\w]+)\s*=/gm)) { markers.push(marker); if (shouldYield()) yield; }
   for (let i = 0; i < markers.length; i++) {
     const m = markers[i], start = m.index! + m[0].length;
     fields[m[1].toLowerCase()] = { value: text.slice(start, markers[i + 1]?.index ?? text.length), offset: start };
+    if (shouldYield()) yield;
   }
   return fields;
 }
 export function getAvailableDifficulties(text: string): AvailableDifficulties {
-  const fields = metadata(text), result: AvailableDifficulties = {};
+  const fields = finish(metadata(() => false, text)), result: AvailableDifficulties = {};
   for (let i = 1; i <= 7; i++) if (fields[`inote_${i}`]) result[i as ChartDifficulty] = true;
   return result;
 }
 export function parseSimaiChart(text: string, difficulty?: ChartDifficulty | number): Chart {
-  const fields = metadata(text);
+  return finish(parseChart(() => false, text, difficulty));
+}
+
+export async function parseSimaiChartAsync(text: string, difficulty?: ChartDifficulty | number, signal?: AbortSignal): Promise<Chart> {
+  let deadline = performance.now() + 4;
+  const steps = parseChart(() => performance.now() >= deadline, text, difficulty);
+  while (true) {
+    if (signal?.aborted) {
+      const error = signal.reason instanceof Error ? signal.reason : new Error('谱面解析已取消');
+      if (!(signal.reason instanceof Error)) error.name = 'AbortError';
+      throw error;
+    }
+    const result = steps.next();
+    if (result.done) return result.value;
+    await new Promise<void>(resolve => { setTimeout(resolve, 0); });
+    deadline = performance.now() + 4;
+  }
+}
+
+function* parseChart(shouldYield: () => boolean, text: string, difficulty?: ChartDifficulty | number): ParseSteps<Chart> {
+  const fields = yield* metadata(shouldYield, text);
   const slots = Object.keys(fields).filter(k => /^inote_\d+$/.test(k)).map(k => Number(k.slice(6)));
   const slot = difficulty ?? Math.max(0, ...slots.filter(n => n <= 7));
   const body = fields[`inote_${slot}`];
   if (!body) throw new Error(`Difficulty ${slot} not found in chart. Available: ${slots.join(', ')}`);
-  const chart = parseSimaiBody(body.value, Number(fields.bpm?.value.trim()) || undefined, text, body.offset);
+  const chart = yield* parseBody(shouldYield, body.value, Number(fields.bpm?.value.trim()) || undefined, text, body.offset);
   chart.title = fields.title?.value.trim() ?? ''; chart.artist = fields.artist?.value.trim() ?? '';
   chart.designer = fields[`des_${slot}`]?.value.trim() ?? fields.des?.value.trim() ?? '';
-  chart.difficulty = slot; chart.availableDifficulties = getAvailableDifficulties(text);
-  chart.firstMs = fields.first ? number(fields.first.value.trim(), sourceLocator(text)(fields.first.offset, fields.first.value)) * 1000 : 0;
+  chart.difficulty = slot;
+  for (let i = 1; i <= 7; i++) if (fields[`inote_${i}`]) chart.availableDifficulties[i as ChartDifficulty] = true;
+  chart.firstMs = fields.first ? number(fields.first.value.trim(), (yield* sourceLocator(shouldYield, text))(fields.first.offset, fields.first.value)) * 1000 : 0;
   for (const [key, field] of Object.entries(fields)) {
     if (key.startsWith('lv_')) chart.level[key] = field.value.trim();
     if (key.startsWith('des_')) chart.designers[key] = field.value.trim();
+    if (shouldYield()) yield;
   }
   return chart;
 }
 export function parseSimaiBody(body: string, defaultBpm?: number, sourceText = body, sourceOffset = 0): Chart {
+  return finish(parseBody(() => false, body, defaultBpm, sourceText, sourceOffset));
+}
+
+function* parseBody(shouldYield: () => boolean, body: string, defaultBpm?: number, sourceText = body, sourceOffset = 0): ParseSteps<Chart> {
   let bpm = defaultBpm ?? 0, initialBpm = 0, beat = 0, timeMs = 0, division = 4, hs = 1, sv = 1, group = 0;
   const chart: Chart = { title: '', artist: '', designer: '', bpm: 0, level: {}, designers: {}, availableDifficulties: {}, notes: [], bpmEvents: [], divisorEvents: [], scrollEvents: [], signatures: [], firstMs: 0, measures: 0, durationMs: 0 };
   let token = '', tokenStart = 0, tokenOffsets: number[] = [];
-  const locate = sourceLocator(sourceText);
+  const locate = yield* sourceLocator(shouldYield, sourceText);
   const src = (i: number, value: string) => locate(sourceOffset + i, value);
   const commandPattern = /(\([^)]*\)|\{[^}]*\}|<(?:HS|SV)\*[^>]*>)/iy;
-  const flush = () => {
+  const flush = function* (): ParseSteps<void> {
     if (!initialBpm && bpm > 0) initialBpm = bpm;
     if (!(bpm > 0)) fail('Missing BPM', src(tokenStart, token));
     if (chart.scrollEvents[chart.scrollEvents.length - 1]?.velocity !== sv) chart.scrollEvents.push({ timeMs, velocity: sv });
     let fake = 0, eachOffset = 0;
     for (const each of token.split('`')) {
+      if (shouldYield()) yield;
       if (!each) { eachOffset++; continue; }
       const timingMs = timeMs + fake * 1875 / bpm;
       const base: BaseNote = { id: 0, position: 1, timing: beat + fake / 32, timingMs, endTimeMs: timingMs, bpm, hiSpeed: hs, usingSV: true, isBreak: false, isEx: false, isMine: false, isEach: false, isSlideEach: false, isForceStar: false, isFakeRotate: false, group: group++, source: src(tokenOffsets[eachOffset] ?? tokenStart, each) };
       let partOffset = eachOffset;
-      const notes = each.split('/').flatMap(part => {
+      const notes: Note[] = [];
+      let heads = 0, slides = 0;
+      for (const part of each.split('/')) {
         if (!part) fail('Empty each note', base.source);
-        const parsed = parseNote(part, { ...base, source: src(tokenOffsets[partOffset] ?? tokenStart, part) });
-        partOffset += part.length + 1; return parsed;
-      });
-      const heads = notes.filter(n => !n.isMine && !(n.type === 'slide' && n.isHeadless)).length;
-      const slides = notes.flatMap(n => n.type === 'slide' ? n.branches : []).filter(b => !b.isMine).length;
-      for (const note of notes) { note.id = chart.notes.length; note.isEach = heads > 1; note.isSlideEach = slides > 1; chart.notes.push(note); }
+        const parsed = yield* parseNote(shouldYield, part, { ...base, source: src(tokenOffsets[partOffset] ?? tokenStart, part) });
+        for (const note of parsed) {
+          notes.push(note);
+          if (!note.isMine && !(note.type === 'slide' && note.isHeadless)) heads++;
+          if (note.type === 'slide') for (const branch of note.branches) { if (!branch.isMine) slides++; if (shouldYield()) yield; }
+          if (shouldYield()) yield;
+        }
+        partOffset += part.length + 1;
+      }
+      for (const note of notes) { note.id = chart.notes.length; note.isEach = heads > 1; note.isSlideEach = slides > 1; chart.notes.push(note); if (shouldYield()) yield; }
       fake++; eachOffset += each.length + 1;
     }
     token = ''; tokenOffsets = [];
   };
-  for (let i = 0; i < body.length;) {
+  for (let i = 0, iteration = 0; i < body.length; iteration++) {
+    if ((iteration & 127) === 127 && shouldYield()) yield;
     const c = body[i];
     if (/\s/.test(c)) { i++; continue; }
     if (body.startsWith('||', i)) {
@@ -227,29 +288,31 @@ export function parseSimaiBody(body: string, defaultBpm?: number, sourceText = b
       else sv = number(value.slice(4, -1), origin);
       i += value.length; continue;
     }
-    if (c === ',') { flush(); timeMs += 240000 / bpm / division; beat += 4 / division; i++; continue; }
+    if (c === ',') { yield* flush(); timeMs += 240000 / bpm / division; beat += 4 / division; i++; continue; }
     if (c === 'E' && !token && (i + 1 === body.length || /[\s,]/.test(body[i + 1]))) { i++; continue; }
     if (!token) tokenStart = i;
     token += c; tokenOffsets.push(i); i++;
   }
-  if (token) flush();
+  if (token) yield* flush();
   if (!(initialBpm > 0)) initialBpm = bpm;
   if (!(initialBpm > 0)) fail('Missing BPM', src(0, body.slice(0, 30)));
   const lead = 240000 / initialBpm;
-  for (const n of chart.notes) { n.timing += 4; n.timingMs += lead; n.endTimeMs += lead; }
-  for (const e of chart.bpmEvents) e.timing += 4;
-  for (const e of chart.divisorEvents) e.timing += 4;
-  for (const e of chart.scrollEvents) e.timeMs += lead;
-  for (const e of chart.signatures) e.timeMs += lead;
+  for (const n of chart.notes) { n.timing += 4; n.timingMs += lead; n.endTimeMs += lead; if (shouldYield()) yield; }
+  for (const e of chart.bpmEvents) { e.timing += 4; if (shouldYield()) yield; }
+  for (const e of chart.divisorEvents) { e.timing += 4; if (shouldYield()) yield; }
+  for (const e of chart.scrollEvents) { e.timeMs += lead; if (shouldYield()) yield; }
+  for (const e of chart.signatures) { e.timeMs += lead; if (shouldYield()) yield; }
   chart.bpm = initialBpm;
-  chart.durationMs = chart.notes.reduce((end, n) => Math.max(end, n.endTimeMs), timeMs + lead) + lead;
+  let end = timeMs + lead;
+  for (const note of chart.notes) { end = Math.max(end, note.endTimeMs); if (shouldYield()) yield; }
+  chart.durationMs = end + lead;
   chart.measures = Math.ceil(beat / 4) + 2;
   return chart;
 }
 export interface BuddyCharts { side1: Chart; side2: Chart }
 export function parseSimaiSideChart(text: string, side: 0 | 1): Chart {
   const slot = side ? 102 : 2;
-  if (!metadata(text)[`inote_${slot}`]) throw new Error(`Buddy 谱面缺少 ${side ? '2P' : '1P'} 段（&inote_${slot}）`);
+  if (!finish(metadata(() => false, text))[`inote_${slot}`]) throw new Error(`Buddy 谱面缺少 ${side ? '2P' : '1P'} 段（&inote_${slot}）`);
   return parseSimaiChart(text, slot);
 }
 export function parseSimaiBuddyCharts(text: string): BuddyCharts { return { side1: parseSimaiSideChart(text, 0), side2: parseSimaiSideChart(text, 1) }; }

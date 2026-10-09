@@ -1,4 +1,5 @@
 import type { PhigrosChartPreviewAsset } from '@/domain/phigros-chart-preview';
+import { createHash } from 'node:crypto';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { PhigrosResourceService, phigrosResources } from '@/services/phigros-resources';
 import {
@@ -78,6 +79,30 @@ describe('Phigros release transactions', () => {
     expect(second).not.toBe(first);
     expect(second.catalog.songs).toHaveLength(2);
     expect(second.current.resourceVersion).toBe('r2');
+    expect(service.asset(second, 'illustrations/Song.New.png').objectKey).toBe(fixture.objectKeys['illustrations/Song.New.png']);
+    expect(() => service.asset(first, 'illustrations/Song.New.png')).toThrow('缺失');
+    expect(service.asset(first, 'illustrations/Song.A.png').path).toBe('illustrations/Song.A.png');
+  });
+
+  it('rejects duplicate logical paths in a verified manifest and keeps the previous release usable', async () => {
+    const fixture = releaseFixture();
+    let duplicateManifest: Uint8Array<ArrayBuffer> | undefined;
+    vi.stubGlobal('fetch', vi.fn(async input => {
+      const path = new URL(String(input)).pathname;
+      return duplicateManifest && path === `/${fixture.current.manifest}`
+        ? new Response(duplicateManifest)
+        : fixture.respond(input);
+    }));
+    const service = new PhigrosResourceService();
+    const previous = await service.load();
+    duplicateManifest = new TextEncoder().encode(JSON.stringify({
+      ...fixture.manifest, assets: [...fixture.manifest.assets, fixture.manifest.assets[0]],
+    }));
+    fixture.current.manifestSha256 = createHash('sha256').update(duplicateManifest).digest('hex');
+    fixture.current.manifest = `phigros/manifests/${fixture.current.manifestSha256}.json`;
+    await expect(service.load(undefined, true)).rejects.toThrow('发布内容不一致');
+    expect(service.peek()).toBe(previous);
+    expect(service.asset(previous, 'illustrations/Song.A.png').objectKey).toBe(fixture.objectKeys['illustrations/Song.A.png']);
   });
 
   it('rejects same-size corruption, bypasses caches once and retains the last valid release', async () => {

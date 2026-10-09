@@ -171,7 +171,7 @@ export class PhigrosCatalogProvider implements CatalogProvider {
   private releaseFileUrl(relative: string): string | null {
     const release = this.release;
     if (!release) return null;
-    const asset = release.manifest.assets.find(item => item.path === relative);
+    const asset = release.assetsByPath.get(relative);
     return asset ? phigrosResources.assetUrl(release, asset) : null;
   }
 

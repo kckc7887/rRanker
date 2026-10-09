@@ -36,6 +36,8 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
+  const { useMemo } = jest.requireActual<typeof import('react')>('react');
+  return useMemo(() => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
   const base = fixtures.fixtureRecords[0];
   const b35Low = { ...base, songId: '351', title: 'B35低', type: 'DX' as const, levelIndex: 2,
@@ -61,8 +63,11 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
     },
     isLoading: false, isError: false, isDataStale: false, error: null, refetch: jest.fn(),
   };
-} }));
+
+  }, []); } }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
+  const { useMemo } = jest.requireActual<typeof import('react')>('react');
+  return useMemo(() => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
   const charts = [
     { id: '351', title: 'B35低', type: 'DX' as const, levelIndex: 2, difficulty: 'expert' as const, difficultyConstant: 12.4 },
@@ -86,12 +91,16 @@ jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => {
       }],
     }))],
   }, isLoading: false, isError: false, error: null };
-} }));
+
+  }, []); } }));
 jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => {
-  if (mockRecordsDxRatingState === 'loading') {
+  const { useMemo } = jest.requireActual<typeof import('react')>('react');
+  const currentRecordsDxRatingState = mockRecordsDxRatingState;
+  return useMemo(() => {
+  if (currentRecordsDxRatingState === 'loading') {
     return { data: undefined, isLoading: true, isError: false, error: null };
   }
-  if (mockRecordsDxRatingState === 'error') {
+  if (currentRecordsDxRatingState === 'error') {
     return { data: undefined, isLoading: false, isError: true, error: new Error('offline') };
   }
   return { data: {
@@ -105,16 +114,17 @@ jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () =
       { songTitle: 'B15高', sheetType: 'dx', sheetDifficulty: 'remaster', tagId: 2 },
     ],
     source: {
-      kind: mockRecordsDxRatingState === 'cache' ? 'cache' : 'dxrating',
-      label: mockRecordsDxRatingState === 'cache' ? 'DXRating 谱面标签缓存' : 'DXRating 谱面标签',
+      kind: currentRecordsDxRatingState === 'cache' ? 'cache' : 'dxrating',
+      label: currentRecordsDxRatingState === 'cache' ? 'DXRating 谱面标签缓存' : 'DXRating 谱面标签',
       updatedAt: new Date(0).toISOString(),
-      isStale: mockRecordsDxRatingState === 'cache',
+      isStale: currentRecordsDxRatingState === 'cache',
     },
   },
   isLoading: false,
   isError: false,
   error: null,
-}; } }));
+};
+  }, [currentRecordsDxRatingState]); } }));
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
   const profile = jest.requireActual<typeof import('../src/domain/game-profile')>('../src/domain/game-profile')
@@ -218,6 +228,7 @@ describe('M4 score list cards', () => {
   it('always sorts filtered records by Rating and opens the exact chart', async () => {
     useRecordsFilter.getState().setSortBy('title');
     const screen = await render(<RecordsScreen />);
+    await screen.findByTestId('records-results-list');
     expect(screen.getByTestId('records-results-list').props).toEqual(expect.objectContaining({
       contentInsetAdjustmentBehavior: 'automatic',
       initialNumToRender: 8,
@@ -242,6 +253,7 @@ describe('M4 score list cards', () => {
 
   it('filters records by inclusive constants and localizes the expandable version picker', async () => {
     const screen = await render(<RecordsScreen />);
+    await screen.findByTestId('records-results-list');
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
     expect(screen.getByLabelText('舞萌定数范围下限 5.0')).toBeTruthy();
     expect(screen.getByLabelText('舞萌定数范围上限 14.8')).toBeTruthy();
@@ -251,10 +263,10 @@ describe('M4 score list cards', () => {
     }
 
     await act(() => useRecordsFilter.getState().setConstantMin('14.8'));
-    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
-    expect(screen.queryByLabelText('查看谱面 B35高 SD master')).toBeNull();
+    expect(await screen.findByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByLabelText('查看谱面 B35高 SD master')).toBeNull());
     await act(() => useRecordsFilter.getState().setConstantMax('14.8'));
-    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(await screen.findByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText('版本筛选，当前 全部'));
     await waitFor(() => {
@@ -265,115 +277,122 @@ describe('M4 score list cards', () => {
     expect(screen.getByLabelText('选择版本 maimai でらっくす PRiSM PLUS')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('选择版本 maimai でらっくす PRiSM PLUS'));
     expect(screen.getByLabelText('版本筛选，当前 maimai でらっくす PRiSM PLUS')).toBeTruthy();
-    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(await screen.findByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText('收起筛选'));
     expect(screen.getByLabelText(/展开筛选，当前.*PRiSM PLUS.*定数 14.8~14.8/)).toBeTruthy();
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
 
     await act(() => useRecordsFilter.getState().setConstantMin('15'));
-    expect(screen.getByText('当前筛选条件下没有成绩')).toBeTruthy();
+    expect(await screen.findByText('当前筛选条件下没有成绩')).toBeTruthy();
   });
 
   it('filters records by inclusive achievement range', async () => {
     const screen = await render(<RecordsScreen />);
+    await screen.findByTestId('records-results-list');
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
 
     await act(() => useRecordsFilter.getState().setAchievementMin('100'));
-    expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
-    expect(screen.queryByLabelText('查看谱面 B15高 DX remaster')).toBeNull();
-    expect(screen.queryByLabelText('查看谱面 B35低 DX expert')).toBeNull();
+    expect(await screen.findByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByLabelText('查看谱面 B15高 DX remaster')).toBeNull());
+    await waitFor(() => expect(screen.queryByLabelText('查看谱面 B35低 DX expert')).toBeNull());
 
     await act(() => useRecordsFilter.getState().setAchievementMax('100.5'));
-    expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
-    expect(screen.queryByLabelText('查看谱面 B15高 DX remaster')).toBeNull();
+    expect(await screen.findByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByLabelText('查看谱面 B15高 DX remaster')).toBeNull());
   });
 
   it('filters records by solo and multi achievements independently', async () => {
     const screen = await render(<RecordsScreen />);
+    await screen.findByTestId('records-results-list');
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
     await fireEvent.press(screen.getByLabelText('多人成就筛选，当前 全部'));
     await waitFor(() => {
       expect(screen.getByLabelText('选择多人成就 FS')).toBeTruthy();
     });
     await fireEvent.press(screen.getByLabelText('选择多人成就 FS'));
-    expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
-    expect(screen.getByLabelText('查看谱面 B15低 SD advanced')).toBeTruthy();
-    expect(screen.queryByLabelText('查看谱面 B15高 DX remaster')).toBeNull();
-    expect(screen.queryByLabelText('查看谱面 B35低 DX expert')).toBeNull();
+    expect(await screen.findByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
+    expect(await screen.findByLabelText('查看谱面 B15低 SD advanced')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByLabelText('查看谱面 B15高 DX remaster')).toBeNull());
+    await waitFor(() => expect(screen.queryByLabelText('查看谱面 B35低 DX expert')).toBeNull());
     await fireEvent.press(screen.getByLabelText('收起筛选'));
     expect(screen.getByLabelText(/展开筛选，当前.*多人 FS/)).toBeTruthy();
   });
 
   it('filters records by every selected DXRating tag on the exact score chart', async () => {
     const screen = await render(<RecordsScreen />);
+    await screen.findByTestId('records-results-list');
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
     await fireEvent.press(screen.getByLabelText('谱面标签筛选，当前 全部'));
     await fireEvent.press(screen.getByLabelText('谱面标签 错位，未选中'));
     await fireEvent.press(screen.getByLabelText('完成谱面标签筛选'));
-    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
-    expect(screen.getByLabelText('查看谱面 B35低 DX expert')).toBeTruthy();
-    expect(screen.queryByLabelText('查看谱面 B35高 SD master')).toBeNull();
-    expect(screen.queryByLabelText('查看谱面 B15低 SD advanced')).toBeNull();
+    expect(await screen.findByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(await screen.findByLabelText('查看谱面 B35低 DX expert')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByLabelText('查看谱面 B35高 SD master')).toBeNull());
+    await waitFor(() => expect(screen.queryByLabelText('查看谱面 B15低 SD advanced')).toBeNull());
 
     await fireEvent.press(screen.getByLabelText('谱面标签筛选，当前 错位'));
     await fireEvent.press(screen.getByLabelText('谱面标签 高难，未选中'));
     await fireEvent.press(screen.getByLabelText('完成谱面标签筛选'));
-    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
-    expect(screen.queryByLabelText('查看谱面 B35低 DX expert')).toBeNull();
+    expect(await screen.findByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByLabelText('查看谱面 B35低 DX expert')).toBeNull());
 
     await fireEvent.press(screen.getByLabelText('筛选类型 SD'));
-    expect(screen.getByText('当前筛选条件下没有成绩')).toBeTruthy();
+    expect(await screen.findByText('当前筛选条件下没有成绩')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('重置筛选'));
-    expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
-    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(await screen.findByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
+    expect(await screen.findByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
     expect(screen.getByLabelText('谱面标签筛选，当前 全部')).toBeTruthy();
   });
 
   it('does not render a cached DXRating source bar and keeps records available', async () => {
     mockRecordsDxRatingState = 'cache';
     const screen = await render(<RecordsScreen />);
+    await screen.findByTestId('records-results-list');
     expect(screen.queryByText(/DXRating 谱面标签缓存/)).toBeNull();
-    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(await screen.findByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
   });
 
   it('keeps DXRating selections and records visible while tags are loading', async () => {
     mockRecordsDxRatingState = 'loading';
     useRecordsFilter.getState().setSelectedDxRatingTagIds([1]);
     const screen = await render(<RecordsScreen />);
+    await screen.findByTestId('records-results-list');
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
     expect(screen.getByLabelText('谱面标签筛选，加载中').props.accessibilityState)
       .toEqual(expect.objectContaining({ disabled: true }));
     expect(useRecordsFilter.getState().selectedDxRatingTagIds).toEqual([1]);
-    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
-    expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
+    expect(await screen.findByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(await screen.findByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
   });
 
   it('disables unavailable DXRating filtering and keeps stale selections', async () => {
     mockRecordsDxRatingState = 'error';
     useRecordsFilter.getState().setSelectedDxRatingTagIds([1]);
     const screen = await render(<RecordsScreen />);
+    await screen.findByTestId('records-results-list');
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
     expect(screen.getByLabelText('谱面标签筛选，不可用').props.accessibilityState)
       .toEqual(expect.objectContaining({ disabled: true }));
     expect(screen.queryByText('DXRating 标签不可用')).toBeNull();
     await waitFor(() => expect(useRecordsFilter.getState().selectedDxRatingTagIds).toEqual([1]));
-    expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
+    expect(await screen.findByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
   });
 
   it('resets records filters from the shared filter bar', async () => {
     const screen = await render(<RecordsScreen />);
+    await screen.findByTestId('records-results-list');
     await fireEvent.press(screen.getByLabelText(/展开筛选/));
     await act(() => {
       useRecordsFilter.getState().setConstantMin('14.8');
       useRecordsFilter.getState().setConstantMax('14.8');
     });
-    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
-    expect(screen.queryByLabelText('查看谱面 B35高 SD master')).toBeNull();
+    expect(await screen.findByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    await waitFor(() => expect(screen.queryByLabelText('查看谱面 B35高 SD master')).toBeNull());
 
     await fireEvent.press(screen.getByLabelText('重置筛选'));
-    expect(screen.getByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
-    expect(screen.getByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
+    expect(await screen.findByLabelText('查看谱面 B35高 SD master')).toBeTruthy();
+    expect(await screen.findByLabelText('查看谱面 B15高 DX remaster')).toBeTruthy();
     expect(useRecordsFilter.getState().constantMin).toBe('');
     expect(useRecordsFilter.getState().constantMax).toBe('');
   });

@@ -1,4 +1,4 @@
-import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { StyleSheet, View } from 'react-native';
 import { MuseDashAccValue } from '@/components/musedash/MuseDashAccValue';
@@ -232,22 +232,22 @@ describe('Muse Dash screens', () => {
 
   it('filters records by difficulty chips, DLC and constant range with fixed Rating order', async () => {
     const screen = await render(<MuseDashRecordsScreen />);
-    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3);
+    await waitFor(() => expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3));
     await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
     expect(screen.getByLabelText('Muse Dash 定数范围下限 11.50')).toBeTruthy();
     expect(screen.getByLabelText('Muse Dash 定数范围上限 12.50')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('筛选难度 HIDDEN'));
-    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
-    expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
+    await waitFor(() => expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1));
+    await waitFor(() => expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1));
     await fireEvent.press(screen.getByLabelText('筛选难度 全部'));
     await fireEvent.press(screen.getByLabelText('DLC筛选，当前 全部'));
     await fireEvent.press(screen.getByLabelText('选择DLC Second Album'));
-    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
+    await waitFor(() => expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1));
     await fireEvent.press(screen.getByLabelText('DLC筛选，当前 Second Album'));
     await fireEvent.press(screen.getByLabelText('选择DLC 全部'));
     await act(() => useMuseDashRecordsFilter.getState().setConstantMin('9'));
-    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
-    expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
+    await waitFor(() => expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1));
+    await waitFor(() => expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1));
     expect(screen.queryAllByTestId('musedash-score-0-47-1')).toHaveLength(0);
     const labels = screen.getAllByLabelText(/^查看谱面/).map((node) => node.props.accessibilityLabel);
     expect(labels[0]).toContain('ACC 95.48%');
@@ -257,7 +257,7 @@ describe('Muse Dash screens', () => {
     const screen = await render(<MuseDashRecordsScreen />);
     await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
     await act(() => useMuseDashRecordsFilter.getState().setAccMin('97'));
-    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
+    await waitFor(() => expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1));
     expect(screen.getAllByTestId('musedash-score-0-47-1').length).toBe(1);
   });
 
@@ -271,13 +271,13 @@ describe('Muse Dash screens', () => {
     const screen = await render(<MuseDashRecordsScreen />);
     await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
     await fireEvent.press(screen.getByLabelText('筛选成就 FC'));
-    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(2));
     expect(screen.queryAllByTestId('musedash-score-0-47-1')).toHaveLength(0);
     await fireEvent.press(screen.getByLabelText('筛选成就 AP'));
-    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
-    expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
+    await waitFor(() => expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1));
+    await waitFor(() => expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1));
     await fireEvent.press(screen.getByLabelText('筛选成就 全部'));
-    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3);
+    await waitFor(() => expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3));
   });
 
   it('does not count records whose miss detail is still pending as FC/AP', async () => {
@@ -290,7 +290,7 @@ describe('Muse Dash screens', () => {
     const screen = await render(<MuseDashRecordsScreen />);
     await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
     await fireEvent.press(screen.getByLabelText('筛选成就 FC'));
-    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(2));
     expect(screen.queryAllByTestId('musedash-score-0-47-1')).toHaveLength(0);
     expect(screen.getAllByTestId('musedash-score-1-1-2').length).toBe(1);
   });
@@ -316,7 +316,7 @@ describe('Muse Dash screens', () => {
     await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
     await fireEvent.press(screen.getByLabelText('筛选成就 FC'));
 
-    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(2));
     expect(screen.queryAllByTestId('musedash-score-0-47-3')).toHaveLength(0);
     expect(screen.getByText('1 条成绩的成就明细读取失败，筛选只使用已确认的结果。')).toBeTruthy();
 
@@ -327,36 +327,36 @@ describe('Muse Dash screens', () => {
     mockFailedDetailCount = 0;
     await act(async () => { screen.rerender(<MuseDashRecordsScreen />); });
     expect(screen.queryByText(/成就明细读取失败/)).toBeNull();
-    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3);
-    expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1);
+    await waitFor(() => expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(3));
+    await waitFor(() => expect(screen.getAllByTestId('musedash-score-0-47-3').length).toBe(1));
   });
 
   it('searches records by song title and uid', async () => {
     const screen = await render(<MuseDashRecordsScreen />);
     await fireEvent.changeText(screen.getByLabelText('筛选喵斯快跑成绩'), '示例');
-    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(2);
+    await waitFor(() => expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(2));
     await fireEvent.changeText(screen.getByLabelText('筛选喵斯快跑成绩'), '1-1');
-    expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1);
+    await waitFor(() => expect(screen.getAllByTestId(/^musedash-score-/)).toHaveLength(1));
   });
 
   it('filters the catalog by difficulty chips, DLC and constant range and searches songs', async () => {
     const screen = await render(<MuseDashCatalogScreen />);
-    expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(3);
+    await waitFor(() => expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(3));
     expect(screen.getAllByText('11.50').length).toBeGreaterThan(0);
     await fireEvent.press(screen.getByLabelText('展开筛选，当前 全部'));
     await fireEvent.press(screen.getByLabelText('筛选难度 HIDDEN'));
-    expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
+    await waitFor(() => expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1));
     await fireEvent.press(screen.getByLabelText('筛选难度 全部'));
     await fireEvent.press(screen.getByLabelText('DLC筛选，当前 全部'));
     await fireEvent.press(screen.getByLabelText('选择DLC Second Album'));
-    expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
+    await waitFor(() => expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1));
     await fireEvent.press(screen.getByLabelText('DLC筛选，当前 Second Album'));
     await fireEvent.press(screen.getByLabelText('选择DLC 全部'));
     await act(() => useMuseDashCatalogFilter.getState().setConstantMin('12'));
-    expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
+    await waitFor(() => expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1));
     await act(() => useMuseDashCatalogFilter.getState().setConstantMin(''));
     await fireEvent.changeText(screen.getByLabelText('搜索喵斯快跑歌曲'), 'Another');
-    expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1);
+    await waitFor(() => expect(screen.getAllByLabelText(/^打开歌曲/)).toHaveLength(1));
   });
 
   it('renders detail hero, metadata, difficulty carousel with practice and tags', async () => {

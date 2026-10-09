@@ -1,4 +1,4 @@
-import { useDeferredValue, useEffect, useMemo } from 'react';
+import { useCallback, useEffect, useMemo } from 'react';
 import { Text, View, type ListRenderItem } from 'react-native';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { RecordsListPage } from '@/components/game-content/GameListPages';
@@ -15,6 +15,7 @@ import {
   matchesSoloAchievementFilter,
 } from '@/domain/maimai-filters';
 import type { ScoreRecord } from '@/domain/models';
+import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
@@ -23,7 +24,9 @@ import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useRecordsFilter } from '@/state/records-filter';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
-import { buildSearchDocument, buildSongSearchIndex, searchDocumentMatches } from '@/utils/search';
+import { searchDocumentFor, songSearchDocument, searchDocumentMatches } from '@/utils/search';
+
+const recordSearchValues = (record: ScoreRecord) => [record.songId, record.title];
 
 export function MaimaiRecordsScreen() {
   const activeAccountId = useSession((state) => state.activeAccountId);
@@ -40,8 +43,7 @@ export function MaimaiRecordsScreen() {
     setSoloAchievement, setMultiAchievement, setVersionLocale, setSelectedDxRatingTagIds, clearFilters,
   } = useRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
-  const searchBySongId = useMemo(() => new Map(buildSongSearchIndex(catalog.data?.songs ?? [])
-    .map((entry) => [entry.song.id, entry] as const)), [catalog.data?.songs]);
+  const searchBySongId = useMemo(() => new Map(catalog.data?.songs.map((song) => [song.id, song])), [catalog.data?.songs]);
   const dxRatingTagIndex = useMemo(() => buildDxRatingChartTagIndex(
     dxRatingChartTags.data,
     catalog.data?.songs ?? [],
@@ -75,47 +77,26 @@ export function MaimaiRecordsScreen() {
     keyword: debouncedKeyword, difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
     soloAchievement, multiAchievement, selectedDxRatingTagIds,
   }), [achievementMax, achievementMin, soloAchievement, multiAchievement, constantMax, constantMin, debouncedKeyword, difficulty, selectedDxRatingTagIds, type, version]);
-  const deferredFilterSpec = useDeferredValue(filterSpec);
-  const filtered = useMemo<ScoreRecord[]>(() => {
-    if (!data) return [];
-    let list = data.records.slice();
-    if (deferredFilterSpec.keyword.trim()) list = list.filter((record) => searchDocumentMatches(
-      searchBySongId.get(record.songId) ?? buildSearchDocument([record.songId, record.title]),
-      deferredFilterSpec.keyword,
-    ));
-    if (deferredFilterSpec.difficulty !== 'all') {
-      list = list.filter((record) => record.difficulty === deferredFilterSpec.difficulty);
+  const sortedRecords = useMemo(() => data?.records.slice().sort((a, b) =>
+    Number(a.type === 'UTAGE') - Number(b.type === 'UTAGE') || b.rating - a.rating || b.achievements - a.achievements), [data?.records]);
+  const selectRecord = useCallback((record: ScoreRecord, filters: typeof filterSpec) => {
+    if (filters.keyword.trim()) {
+      const song = searchBySongId.get(record.songId);
+      if (!searchDocumentMatches(song ? songSearchDocument(song) : searchDocumentFor(record, recordSearchValues), filters.keyword)) return undefined;
     }
-    if (deferredFilterSpec.version !== 'all') {
-      list = list.filter((record) => record.version === deferredFilterSpec.version);
-    }
-    if (deferredFilterSpec.type !== 'all') {
-      list = list.filter((record) => record.type === deferredFilterSpec.type);
-    }
-    const hasConstantFilter = !!(deferredFilterSpec.constantMin || deferredFilterSpec.constantMax);
-    list = list.filter((record) => !(record.type === 'UTAGE' && hasConstantFilter) &&
-      matchesConstantRange(
-        record.difficultyConstant, deferredFilterSpec.constantMin, deferredFilterSpec.constantMax,
-      ));
-    list = list.filter((record) => matchesAchievementRange(
-      record.achievements, deferredFilterSpec.achievementMin, deferredFilterSpec.achievementMax,
-    ));
-    list = list.filter((record) => matchesSoloAchievementFilter(record, deferredFilterSpec.soloAchievement));
-    list = list.filter((record) => matchesMultiAchievementFilter(record, deferredFilterSpec.multiAchievement));
-    if (dxRatingChartTags.data && deferredFilterSpec.selectedDxRatingTagIds.length > 0) {
-      list = list.filter((record) => dxRatingChartHasAllTags(
-        dxRatingTagIndex,
-        record.songId,
-        record.type,
-        record.levelIndex,
-        deferredFilterSpec.selectedDxRatingTagIds,
-      ));
-    }
-    return list.sort((a, b) =>
-      Number(a.type === 'UTAGE') - Number(b.type === 'UTAGE') ||
-      b.rating - a.rating ||
-      b.achievements - a.achievements);
-  }, [data, deferredFilterSpec, dxRatingChartTags.data, dxRatingTagIndex, searchBySongId]);
+    if (filters.difficulty !== 'all' && record.difficulty !== filters.difficulty) return undefined;
+    if (filters.version !== 'all' && record.version !== filters.version) return undefined;
+    if (filters.type !== 'all' && record.type !== filters.type) return undefined;
+    if (record.type === 'UTAGE' && (filters.constantMin || filters.constantMax)) return undefined;
+    if (!matchesConstantRange(record.difficultyConstant, filters.constantMin, filters.constantMax)
+      || !matchesAchievementRange(record.achievements, filters.achievementMin, filters.achievementMax)
+      || !matchesSoloAchievementFilter(record, filters.soloAchievement)
+      || !matchesMultiAchievementFilter(record, filters.multiAchievement)) return undefined;
+    if (dxRatingChartTags.data && filters.selectedDxRatingTagIds.length > 0
+      && !dxRatingChartHasAllTags(dxRatingTagIndex, record.songId, record.type, record.levelIndex, filters.selectedDxRatingTagIds)) return undefined;
+    return record;
+  }, [dxRatingChartTags.data, dxRatingTagIndex, searchBySongId]);
+  const { data: filtered, isFiltering } = useLocalSearch(sortedRecords, filterSpec, selectRecord, catalog.data?.songs);
 
   const isEmpty = !!data && filtered.length === 0;
 
@@ -140,7 +121,7 @@ export function MaimaiRecordsScreen() {
         onVersionLocaleChange={setVersionLocale} onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
         onReset={clearFilters} />
       <RecordsListPage<ScoreRecord>
-        isLoading={isLoading}
+        isLoading={isLoading || (isFiltering && filtered.length === 0)}
         isError={isError}
         isEmpty={isEmpty}
         error={error}

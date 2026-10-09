@@ -154,27 +154,50 @@ export function searchDocumentMatches(document: SearchDocument, keyword: string)
   return variants.some((variant) => document.text.includes(variant) || document.compact.includes(variant));
 }
 
-export function findMatchedAlias(song: Song, keyword: string): string | undefined {
-  const variants = keywordVariants(keyword);
-  if (variants.length === 0) return undefined;
-  const titleDocument = buildSearchDocument([song.title]);
-  const titleMatched = variants.some((variant) =>
-    titleDocument.text.includes(variant) || titleDocument.compact.includes(variant));
-  if (titleMatched) return undefined;
-  for (const alias of song.aliases ?? []) {
-    const document = buildSearchDocument([alias]);
-    if (variants.some((variant) =>
-      document.text.includes(variant) || document.compact.includes(variant))) return alias;
+const documentsByFields = new WeakMap<object, WeakMap<object, SearchDocument>>();
+
+export function searchDocumentFor<T extends object>(item: T, fields: (item: T) => readonly string[]): SearchDocument {
+  let documents = documentsByFields.get(fields);
+  if (!documents) {
+    documents = new WeakMap();
+    documentsByFields.set(fields, documents);
   }
-  return undefined;
+  let document = documents.get(item);
+  if (!document) {
+    document = buildSearchDocument(fields(item));
+    documents.set(item, document);
+  }
+  return document;
+}
+
+const aliasDocuments = new WeakMap<object, { title: SearchDocument; aliases: { value: string; document: SearchDocument }[] }>();
+
+export function findMatchedAlias(song: { title: string; aliases?: string[] }, keyword: string): string | undefined {
+  if (!keyword.trim()) return undefined;
+  let documents = aliasDocuments.get(song);
+  if (!documents) {
+    documents = {
+      title: buildSearchDocument([song.title]),
+      aliases: (song.aliases ?? []).map((value) => ({ value, document: buildSearchDocument([value]) })),
+    };
+    aliasDocuments.set(song, documents);
+  }
+  if (searchDocumentMatches(documents.title, keyword)) return undefined;
+  return documents.aliases.find(({ document }) => searchDocumentMatches(document, keyword))?.value;
+}
+
+const songSearchValues = (song: Song) => [
+  song.id, song.title, song.artist ?? '', ...(song.aliases ?? []),
+  ...song.charts.map((chart) => chart.charter ?? ''),
+];
+
+export function songSearchDocument(song: Song): SearchDocument {
+  return searchDocumentFor(song, songSearchValues);
 }
 
 export function buildSongSearchIndex(songs: readonly Song[]): SongSearchEntry[] {
   return songs.map((song) => {
-    const document = buildSearchDocument([
-      song.id, song.title, song.artist ?? '', ...(song.aliases ?? []),
-      ...song.charts.map((chart) => chart.charter ?? ''),
-    ]);
+    const document = songSearchDocument(song);
     return { song, get text() { return document.text; }, get compact() { return document.compact; } };
   });
 }
@@ -188,24 +211,26 @@ export function searchSongs(
   filters: SongSearchFilters,
   chartPredicate?: SongChartPredicate,
 ): Song[] {
-  const keyword = normalizeSearchText(filters.keyword);
-  const variants = keywordVariants(keyword);
+  return index.filter((document) => matchesSongDocument(document.song, document, filters, chartPredicate)).map(({ song }) => song);
+}
+
+export function matchesSongSearch(song: Song, filters: SongSearchFilters, chartPredicate?: SongChartPredicate): boolean {
+  return matchesSongDocument(song, songSearchDocument(song), filters, chartPredicate);
+}
+
+function matchesSongDocument(song: Song, document: SearchDocument, filters: SongSearchFilters, chartPredicate?: SongChartPredicate): boolean {
+  if (!searchDocumentMatches(document, filters.keyword)) return false;
+  if (!includesNumber(filters.songVersionIds, song.versionId)) return false;
   const min = filters.constantMin ?? Number.NEGATIVE_INFINITY;
   const max = filters.constantMax ?? Number.POSITIVE_INFINITY;
   const hasConstantFilter = filters.constantMin !== undefined || filters.constantMax !== undefined;
-  return index.filter((document) => {
-    const { song } = document;
-    if (variants.length && !variants.some((variant) => document.text.includes(variant) || document.compact.includes(variant))) return false;
-    if (!includesNumber(filters.songVersionIds, song.versionId)) return false;
-    const chartMatch = song.charts.some((chart) =>
-      (filters.types.length === 0 || filters.types.includes(chart.type)) &&
-      (filters.difficulties.length === 0 || filters.difficulties.includes(chart.difficulty)) &&
-      !(chart.type === 'UTAGE' && hasConstantFilter) &&
-      chart.difficultyConstant >= min && chart.difficultyConstant <= max &&
-      includesNumber(filters.chartVersionIds, chart.versionId) &&
-      (!chartPredicate || chartPredicate(song, chart)));
-    return chartMatch;
-  }).map(({ song }) => song);
+  return song.charts.some((chart) =>
+    (filters.types.length === 0 || filters.types.includes(chart.type)) &&
+    (filters.difficulties.length === 0 || filters.difficulties.includes(chart.difficulty)) &&
+    !(chart.type === 'UTAGE' && hasConstantFilter) &&
+    chart.difficultyConstant >= min && chart.difficultyConstant <= max &&
+    includesNumber(filters.chartVersionIds, chart.versionId) &&
+    (!chartPredicate || chartPredicate(song, chart)));
 }
 
 export function filterSongs(songs: Song[], keyword: string): Song[] {

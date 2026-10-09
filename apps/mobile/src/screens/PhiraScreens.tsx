@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useNavigation } from 'expo-router';
@@ -34,6 +34,7 @@ import { formatPhiraAccuracy, formatPhiraRating, phiraCatalogListView, phiraCata
 import { buildTagHistory } from '@/domain/user-library';
 import { presentPhiraBestSection, presentPhiraChart } from '@/features/game-content/adapters';
 import { providerErrorToUserMessage } from '@/providers/errors';
+import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { usePhiraBests, usePhiraChart, usePhiraChartBest, usePhiraCharts, usePhiraNotes, usePhiraUploader, useRefreshAllPhiraBests, type PhiraBestRefreshOutcome } from '@/hooks/use-phira';
@@ -89,7 +90,11 @@ export function PhiraRecordsScreen() {
     filter.constantMax,
     `${id ?? 'none'}:${query.data?.source.updatedAt ?? 'loading'}`,
   );
-  const items = useMemo(() => filterPhiraBests(unfilteredItems, filter), [filter, unfilteredItems]);
+  const sortedItems = useMemo(() => filterPhiraBests(unfilteredItems, {
+    keyword: '', constantMin: '', constantMax: '', accuracyMin: '', accuracyMax: '', rank: null, xing: null, sort: filter.sort,
+  }), [filter.sort, unfilteredItems]);
+  const selectBest = useCallback((item: PhiraQueriedBest, filters: typeof filter) => filterPhiraBests([item], filters)[0], []);
+  const { data: items, isFiltering } = useLocalSearch(sortedItems, filter, selectBest);
   const runRefresh = async (task: () => Promise<PhiraBestRefreshOutcome>) => {
     let outcome: PhiraBestRefreshOutcome;
     try {
@@ -127,7 +132,7 @@ export function PhiraRecordsScreen() {
         onChange: (value) => filter.setSort(value as PhiraScoreSort),
       }]} onReset={filter.clearFilters} /></>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}><RecordsListPage beforeList={controls}
-    isLoading={query.isLoading} isError={query.isError} error={query.error} onRetry={() => void retry()} isEmpty={!query.isLoading && items.length === 0}
+    isLoading={query.isLoading || (isFiltering && items.length === 0)} isError={query.isError} error={query.error} onRetry={() => void retry()} isEmpty={!query.isLoading && items.length === 0}
     emptyText="查询过歌曲后，最佳成绩会显示在这里" data={items.length ? items : undefined}
     flatListProps={{ testID: 'phira-records-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
       contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,

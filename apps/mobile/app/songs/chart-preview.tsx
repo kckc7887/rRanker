@@ -3,7 +3,7 @@ import { majdataVisual } from '@/components/majdata/MajdataCards';
 import { difficultyFromIndex } from '@/domain/catalog';
 import type { PreviewDifficulty } from '@/features/chart-preview-shared/webview-player/heading';
 import { majdataAsset } from '@/domain/majdata';
-import { loadMajdataSong, loadMajdataParsedChart } from '@/services/majdata-service';
+import { loadMajdataSong, loadMajdataChart } from '@/services/majdata-service';
 import { useCallback, useMemo } from 'react';
 import { useLocalSearchParams } from 'expo-router';
 import type { ChartType } from '@/domain/models';
@@ -123,11 +123,11 @@ export default function MaimaiChartPreviewScreen() {
           prepare: async (signal: AbortSignal, settings: unknown, onProgress?: (progress: ChartPreviewLoadProgress) => void) => {
             const song = typeof mapped.chartId === 'string' ? await loadMajdataSong(mapped.chartId, signal) : undefined;
             if (mapped.hash && song?.hash !== mapped.hash) throw new Error('谱面已更新，请返回歌曲详情重试');
-            const parsed = song ? await loadMajdataParsedChart(song, mapped.difficulty - 1, signal) : undefined;
+            const simaiText = song ? await loadMajdataChart(song, signal) : undefined;
             if (signal.aborted) throw signal.reason;
             const visual = song ? majdataVisual(mapped.difficulty - 1) : undefined;
             return prepareChartPreviewWebViewSource({
-              parsedChart: parsed?.chart,
+              simaiText,
               ...mapped,
               ...(song && visual ? { title: song.title, previewDifficulty: {
                 label: visual.label, value: song.levels[mapped.difficulty - 1]?.trim() || '—',
