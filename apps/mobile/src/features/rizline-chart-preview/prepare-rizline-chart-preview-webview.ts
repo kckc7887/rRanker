@@ -15,7 +15,7 @@ import {
   weightedChartPreviewProgress,
   type ChartPreviewLoadProgress,
 } from '@/features/chart-preview-shared/chart-preview-progress';
-import type { RizlineChartPreviewAsset } from '@/domain/rizline-chart-preview';
+import type { RizlineChartPreviewResourceRead } from '@/domain/rizline-chart-preview';
 import { loadRizlineChartPreviewResources } from '@/services/rizline-chart-preview-resources';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import {
@@ -38,7 +38,7 @@ function createRizlinePreviewResourceRead(
   directory: Directory,
   signal: AbortSignal,
   onProgress?: (progress: ChartPreviewLoadProgress) => void,
-): (asset: RizlineChartPreviewAsset, index: number) => Promise<Uint8Array> {
+): RizlineChartPreviewResourceRead {
   const fractions = [0, 0];
   const weights = [1, 1];
   const emit = () => {
@@ -71,7 +71,7 @@ function createRizlinePreviewResourceRead(
     );
     fractions[index] = 1;
     emit();
-    return await file.bytes();
+    return file;
   };
 }
 

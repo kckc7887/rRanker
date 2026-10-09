@@ -1,3 +1,4 @@
+import { imageDownloads } from './remote-image-native-mock';
 import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Linking, StyleSheet } from 'react-native';
@@ -131,11 +132,13 @@ jest.mock('expo-router', () => ({
     goBack: mockBack,
   }),
 }));
+jest.mock('expo-file-system', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').fileSystem);
+jest.mock('expo-file-system/legacy', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').legacyFileSystem);
 jest.mock('expo-image', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return {
     Image: ({ source: imageSource, ...props }: { source?: unknown }) => (
-      <RN.Image {...props} source={{ uri: String(imageSource) }} />
+      <RN.Image {...props} source={typeof imageSource === 'string' ? { uri: imageSource } : imageSource as React.ComponentProps<typeof RN.Image>['source']} />
     ),
   };
 });
@@ -340,7 +343,7 @@ describe('Chunithm song detail', () => {
   it("uses WORLD'S END attributes and never treats level_value as a constant", async () => {
     const screen = await render(<ChunithmSongDetail songId="3" initialLevelIndex={5} />);
     expect(screen.getByLabelText('中二难度卡片').props.contentOffset.x).toBe(0);
-    expect(screen.getByLabelText('歌曲封面 B.B.K.K.B.K.K.').props.source.uri)
+    expect(imageDownloads.get(screen.getByLabelText('歌曲封面 B.B.K.K.B.K.K.').props.source?.uri))
       .toBe('https://assets2.lxns.net/chunithm/jacket/163.png');
     const worldsEnd = within(screen.getByTestId('chunithm-detail-difficulty-5'));
     expect(screen.getByTestId('chunithm-detail-difficulty-5').props.colors)

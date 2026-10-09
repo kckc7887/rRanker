@@ -42,7 +42,7 @@ export async function downloadPhigrosChartAsPhiraPackage(
           phase: 'downloading',
           progress: (index + (totalBytesExpectedToWrite > 0 ? Math.min(1, totalBytesWritten / totalBytesExpectedToWrite) : 0)) / 3,
         }));
-      return file.bytes();
+      return file;
     });
     const { bundle } = resources;
 

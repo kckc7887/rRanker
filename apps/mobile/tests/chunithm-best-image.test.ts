@@ -20,9 +20,6 @@ vi.mock('expo-image', () => ({
     prefetch: vi.fn(),
   },
 }));
-vi.mock('@/features/best-image/load-remote-best-image-asset', () => ({
-  loadRemoteBestImageAssetDataUri: vi.fn(async () => null),
-}));
 vi.mock('expo-file-system', () => ({
   File: class MockFile {
     constructor(public readonly uri: string) {}
@@ -301,4 +298,4 @@ describe('filterChunithmBestImageBackgroundSongs', () => {
   });
 });
 
-vi.mock('@/features/best-image/load-remote-image-data-uri', () => ({ loadImageDataUris: vi.fn(async () => ({})) }));
+vi.mock('@/features/best-image/load-best-image-session', () => ({ loadImageFiles: vi.fn(async () => ({})) }));

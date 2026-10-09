@@ -6,7 +6,7 @@ import {
   APP_CACHE_ROOT,
   MAIMAI_ASSETS_ROOT,
   PHIGROS_FONT_ROOT,
-  PHIGROS_ILLUSTRATION_ROOT,
+  BEST_IMAGE_STAGE_ROOT,
   clearDirectoryContentsStrict,
   pruneVersionedAssetRoot,
   runSharedCacheFileOperation,
@@ -27,7 +27,9 @@ export async function cleanupOrphanedTemporaryStorage(): Promise<void> {
       || isChartPreviewStageDirectoryInUse(Paths.join(cacheRoot.uri, name)),
     modifiedBefore: sessionStartedAt,
   }));
-  await clearDirectoryContentsStrict(PHIGROS_ILLUSTRATION_ROOT(), { modifiedBefore: sessionStartedAt });
+  for (const game of ['maimai', 'chunithm', 'phigros'] as const) {
+    await runSharedCacheFileOperation(() => clearDirectoryContentsStrict(BEST_IMAGE_STAGE_ROOT(game), { modifiedBefore: sessionStartedAt }));
+  }
   await pruneVersionedAssetRoot(MAIMAI_ASSETS_ROOT(), [MAIMAI_UI_CACHE_VERSION, MAIMAI_FONT_CACHE_VERSION], sessionStartedAt);
   await pruneVersionedAssetRoot(PHIGROS_FONT_ROOT(), [PHIGROS_FONT_CACHE_VERSION], sessionStartedAt);
 }

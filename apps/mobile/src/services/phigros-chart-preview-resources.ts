@@ -6,6 +6,8 @@ import {
   type PhigrosChartPreviewTarget,
 } from '@/domain/phigros-chart-preview';
 import { phigrosResources, verifyPhigrosResource } from '@/services/phigros-resources';
+import { ProviderError } from '@/providers/errors';
+import { sha256FileAsync } from '@/utils/resource-integrity';
 
 export type PhigrosChartPreviewResources = {
   bundle: PhigrosChartPreviewBundle;
@@ -32,8 +34,15 @@ export function loadPhigrosChartPreviewResources(
     const bytes: Uint8Array[] = [];
     for (const [index, resource] of [bundle.chart, bundle.music, bundle.illustration].entries()) {
       const asset = { ...resource, url: phigrosResources.assetUrl(release, resource) };
-      const data = await read(asset, index);
-      await verifyPhigrosResource(data, asset);
+      const source = await read(asset, index);
+      if (signal.aborted) throw signal.reason;
+      if (source instanceof Uint8Array) {
+        await verifyPhigrosResource(source, asset);
+      } else if (source.size !== asset.size || await sha256FileAsync(source.uri) !== asset.sha256.toLowerCase()) {
+        throw new ProviderError('upstream_schema', 'Phigros 资源校验失败', true);
+      }
+      if (signal.aborted) throw signal.reason;
+      const data = source instanceof Uint8Array ? source : await source.bytes();
       if (signal.aborted) throw signal.reason;
       bytes.push(data);
     }

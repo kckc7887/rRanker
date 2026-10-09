@@ -1,3 +1,4 @@
+import { imageDownloads } from './remote-image-native-mock';
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { OsuBeatmapsetDetail } from '@/domain/osu';
@@ -39,11 +40,13 @@ const beatmapset: OsuBeatmapsetDetail = {
 jest.mock('expo-router', () => ({
   router: { push: (...args: unknown[]) => mockPush(...args) },
 }));
+jest.mock('expo-file-system', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').fileSystem);
+jest.mock('expo-file-system/legacy', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').legacyFileSystem);
 jest.mock('expo-image', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return {
     Image: ({ source, ...props }: { source?: unknown }) => (
-      <RN.Image {...props} source={{ uri: String(source) }} />
+      <RN.Image {...props} source={typeof source === 'string' ? { uri: source } : source as React.ComponentProps<typeof RN.Image>['source']} />
     ),
   };
 });
@@ -103,7 +106,7 @@ describe('osu personal library', () => {
     expect(screen.getByText('练习谱面 · Hard · 5.50★')).toBeTruthy();
     expect(screen.getByText('歌曲 ID 9999')).toBeTruthy();
     expect(screen.getByText('曲库暂不可用，个人数据已保留')).toBeTruthy();
-    expect(screen.getAllByLabelText('曲绘')[0]?.props.source.uri).toBe(beatmapset.cover);
+    expect(imageDownloads.get(screen.getAllByLabelText('曲绘')[0]?.props.source?.uri)).toBe(beatmapset.cover);
 
     await fireEvent.press(screen.getByText('练习谱面 · Hard · 5.50★'));
     expect(mockPush).toHaveBeenCalledWith({

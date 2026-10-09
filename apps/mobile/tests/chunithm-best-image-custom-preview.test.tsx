@@ -1,5 +1,7 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { AppState, type AppStateStatus } from 'react-native';
+import { AppLifecycleProvider } from '@/state/app-lifecycle';
 import { ChunithmBestImageScreen } from '@/screens/ChunithmBestImageScreen';
 import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
 import type { ChunithmScore } from '@/domain/chunithm-personal';
@@ -120,10 +122,9 @@ jest.mock('@/features/chunithm-best-image/load-chunithm-best-image-jackets', () 
   resolveChunithmBestImageJacketId: (songId: string, levelIndex: number) => (
     levelIndex === 5 ? `we-${songId}` : songId
   ),
-  loadChunithmBestImageJackets: jest.fn(async (jacketIds: string[]) => Object.fromEntries(
-    jacketIds.map((id) => [id, `data:image/png;base64,jacket-${id}`]),
+  loadChunithmBestImageJackets: jest.fn(async (_session: unknown, jacketIds: string[]) => Object.fromEntries(
+    jacketIds.map((id) => [id, `file:///session/jacket-${id}`]),
   )),
-  loadChunithmRemoteImageDataUri: jest.fn(async () => null),
 }));
 
 jest.mock('@/features/chunithm-best-image/chunithm-best-image-preferences', () => ({
@@ -156,19 +157,22 @@ jest.mock('@/features/best-image/best-image-export', () => ({
     ? { width: width / pixelRatio, height: height / pixelRatio }
     : { width, height },
   bestImageExportFilename: jest.fn(() => 'image.png'),
-  deleteBestImageCapture: jest.fn(),
+  deleteBestImageCapture: jest.fn(async () => undefined),
   isDrawViewHierarchyError: (error: unknown) => error instanceof Error && error.message.includes('drawViewHierarchyInRect'),
   requestBestImageExportPermission: jest.fn(async () => undefined),
   saveBestImageCapture: jest.fn(async () => undefined),
   shouldUseBestImageRenderInContext: (platform: string, width: number, height: number) => platform === 'ios' && (width >= 1440 || height >= width * 4),
 }));
 
-jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
-  inlineBestImageWebViewSources: (htmlPages: readonly string[]) => htmlPages.map((html) => ({
-    html,
-    baseUrl: 'https://assets2.lxns.net/',
-  })),
-}));
+jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => {
+  let batch = 0;
+  return {
+    prepareBestImageWebViewSources: async (htmlPages: readonly string[]) => {
+      batch += 1;
+      return { sources: htmlPages.map((html, index) => ({ html, uri: `file:///session/page-${batch}-${index}.html` })), dispose: async () => undefined };
+    },
+  };
+});
 
 type RenderedScreen = Awaited<ReturnType<typeof render>>;
 
@@ -178,6 +182,30 @@ const previewHtml = (screen: RenderedScreen) => (
 
 describe('chunithm best image custom', () => {
   beforeEach(() => mockShowNotification.mockClear());
+  afterEach(() => jest.restoreAllMocks());
+
+  it('后台恢复复用已就绪图片页面并可导出', async () => {
+    let change: ((state: AppStateStatus) => void) | undefined;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((event: string, listener: unknown) => {
+      if (event === 'change') change = listener as typeof change;
+      return { remove: jest.fn() };
+    }) as typeof AppState.addEventListener);
+    const { saveBestImageCapture } = jest.requireMock('@/features/best-image/best-image-export') as { saveBestImageCapture: jest.Mock };
+    saveBestImageCapture.mockClear();
+    const screen = await render(<AppLifecycleProvider><ChunithmBestImageScreen /></AppLifecycleProvider>);
+    const before = await screen.findByTestId('chunithm-best-image-html-preview-0');
+    const uri = before.props.source.uri;
+    await act(() => { change?.('background'); });
+    await waitFor(() => expect(screen.queryByTestId('chunithm-best-image-html-preview-0')).toBeNull());
+    await act(() => { change?.('active'); });
+    await waitFor(() => expect(screen.getByTestId('chunithm-best-image-html-preview-0').props.source.uri).toBe(uri));
+    expect(previewHtml(screen)).toContain('file:///session/jacket-101');
+    await fireEvent.press(screen.getByLabelText('导出成绩图片'));
+    const renderer = await screen.findByLabelText('导出渲染 第1页');
+    await fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 1080, height: 1500 }) } });
+    await waitFor(() => expect(saveBestImageCapture).toHaveBeenCalledWith('file:///capture.png', 'image.png'));
+    expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '导出完成', message: '已保存 1 张成绩图片到相册' }));
+  });
 
   it('shows the Best50 and 自定义 tabs with the Best50 content by default', async () => {
     const screen = await render(<ChunithmBestImageScreen />);
@@ -251,4 +279,20 @@ describe('chunithm best image custom', () => {
       expect(previewHtml(screen)).toContain('<div class="section-divider"><span>STAR3</span></div>');
     });
   });
+});
+
+jest.mock('expo-file-system', () => {
+  class Entry {
+    uri: string;
+    constructor(...parts: (string | { uri: string })[]) {
+      this.uri = parts.map((part) => (typeof part === 'string' ? part : part.uri).replace(/\/$/u, '')).join('/');
+    }
+  }
+  return { File: Entry, Directory: Entry, Paths: { cache: 'file:///cache', document: 'file:///document' } };
+});
+jest.mock('expo-file-system/legacy', () => ({ deleteAsync: async () => undefined }));
+
+jest.mock('@/features/best-image/load-best-image-session', () => {
+  const actual = jest.requireActual<typeof import('@/features/best-image/load-best-image-session')>('@/features/best-image/load-best-image-session');
+  return { ...actual, loadRemoteImageFile: async () => null };
 });

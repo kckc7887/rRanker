@@ -1,7 +1,7 @@
 import { createInflightGuard } from '@/services/snapshot-cache-utils';
 import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Directory, File } from 'expo-file-system';
-import { deleteAsync, getInfoAsync, makeDirectoryAsync, moveAsync, readDirectoryAsync, writeAsStringAsync } from 'expo-file-system/legacy';
+import { createDownloadResumable, deleteAsync, getInfoAsync, makeDirectoryAsync, moveAsync, readDirectoryAsync, writeAsStringAsync } from 'expo-file-system/legacy';
 import { Image, type ImageRef, type ImageSource } from 'expo-image';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Platform } from 'react-native';
@@ -65,6 +65,11 @@ export type CompressedRemoteImageResult = {
   release?: () => void;
 };
 
+export type RemoteImageOriginal = {
+  fileUri: string;
+  release: () => Promise<void>;
+};
+
 export type RemoteImageCacheUsage = {
   gameId: string;
   bytes: number;
@@ -98,6 +103,15 @@ type TransformWaiter = {
 const transformWaiters: TransformWaiter[] = [];
 const inflight = createInflightGuard<string>();
 let temporarySequence = 0;
+type OriginalDownload = {
+  fileUri: string;
+  promise: Promise<void>;
+  task?: ReturnType<typeof createDownloadResumable>;
+  users: number;
+  settled: boolean;
+};
+const originals = new Map<string, OriginalDownload>();
+const activeOriginalFiles = new Set<string>();
 
 export function supportsCompressedRemoteImageCache(): boolean {
   return Platform.OS !== 'web';
@@ -149,6 +163,74 @@ async function ensureCacheRoot(): Promise<Directory> {
   return root;
 }
 
+export async function acquireRemoteImageOriginal(
+  source: unknown,
+  gameId: string,
+  signal?: AbortSignal,
+): Promise<RemoteImageOriginal> {
+  const normalized = normalizeRemoteImageSource(source);
+  if (!normalized || !gameId || signal?.aborted) {
+    return Promise.reject(signal?.reason ?? new Error('图片请求无效'));
+  }
+  const identity = JSON.stringify({ gameId, uri: normalized.source.uri,
+    headers: normalized.source.headers, cacheKey: normalized.source.cacheKey,
+    generation: cacheGeneration, gameGeneration: gameGenerations.get(gameId) ?? 0 });
+  let entry = originals.get(identity);
+  if (!entry) {
+    const fileUri = new File(COMPRESSED_IMAGE_CACHE_ROOT(), `${Date.now()}.${++temporarySequence}.source.part`).uri;
+    const download: OriginalDownload = { fileUri, users: 0, settled: false, promise: Promise.resolve() };
+    activeOriginalFiles.add(fileUri);
+    download.promise = (async () => {
+      await runFileOperation(ensureCacheRoot);
+      if (download.users === 0) throw new Error('图片下载已取消');
+      download.task = createDownloadResumable(normalized.source.uri!, fileUri, { headers: normalized.source.headers });
+      const result = await download.task.downloadAsync();
+      if (!result || result.status < 200 || result.status >= 300) {
+        throw new Error(result ? `图片下载返回 HTTP ${result.status}` : '图片下载已取消');
+      }
+    })().finally(() => { download.settled = true; });
+    entry = download;
+    originals.set(identity, entry);
+  }
+  const current = entry;
+  current.users += 1;
+  return new Promise((resolve, reject) => {
+    let released = false;
+    let cleanup: Promise<void> | undefined;
+    const release = (): Promise<void> => {
+      if (released) return cleanup ?? Promise.resolve();
+      released = true;
+      signal?.removeEventListener('abort', cancel);
+      current.users -= 1;
+      if (current.users === 0) {
+        if (originals.get(identity) === current) originals.delete(identity);
+        if (!current.settled) void current.task?.cancelAsync().catch(() => undefined);
+        /** 原生取消可能迟到，下载结束后才删除本次文件。 */
+        cleanup = current.promise.catch(() => undefined).then(() => runFileOperation(async () => {
+          try { await deleteAsync(current.fileUri, { idempotent: true }); }
+          finally { activeOriginalFiles.delete(current.fileUri); }
+        }));
+      }
+      return cleanup ?? Promise.resolve();
+    };
+    const cancel = () => {
+      void release().catch(() => undefined);
+      reject(signal?.reason ?? new Error('图片下载已取消'));
+    };
+    signal?.addEventListener('abort', cancel, { once: true });
+    current.promise.then(() => {
+      if (!released) {
+        signal?.removeEventListener('abort', cancel);
+        resolve({ fileUri: current.fileUri, release });
+      }
+    }, error => {
+      void release().catch(() => undefined);
+      reject(error);
+    });
+    if (signal?.aborted) cancel();
+  });
+}
+
 function entryFile(root: Directory, cacheKey: string): File {
   return new File(root, `${cacheKey}.webp`);
 }
@@ -197,7 +279,7 @@ async function loadManifest(): Promise<CacheState> {
   const reconciled = new Map<string, CacheEntry>();
   for (const name of await readDirectoryAsync(root.uri)) {
     const item = new File(root, name);
-    if (name.endsWith('.part')) {
+    if (name.endsWith('.part') && !activeOriginalFiles.has(item.uri)) {
       await deleteAsync(item.uri, { idempotent: true });
       continue;
     }
@@ -494,9 +576,9 @@ async function createCompressed(
   signal?: AbortSignal,
 ): Promise<CompressedRemoteImageResult | null> {
   const candidates = PROFILE_OPTIONS[options.profile];
-  const root = await ensureCacheRoot();
+  const root = COMPRESSED_IMAGE_CACHE_ROOT();
   const sequence = ++temporarySequence;
-  const sourceFile = new File(root, `${cacheKey}.${sequence}.source.part`);
+  let original: RemoteImageOriginal | null = null;
   let loaded: Awaited<ReturnType<typeof Image.loadAsync>> | null = null;
   let context: ReturnType<typeof ImageManipulator.manipulate> | null = null;
   let rendered: Awaited<ReturnType<ReturnType<typeof ImageManipulator.manipulate>['renderAsync']>> | null = null;
@@ -507,14 +589,10 @@ async function createCompressed(
     && gameGeneration === (gameGenerations.get(options.gameId) ?? 0);
   try {
     if (!current()) return null;
-    await deleteAsync(sourceFile.uri, { idempotent: true });
-    await File.downloadFileAsync(normalized.source.uri!, sourceFile, {
-      headers: normalized.source.headers,
-      idempotent: true,
-    });
+    original = await acquireRemoteImageOriginal(normalized.source, options.gameId, signal);
     if (!current()) return null;
     const largest = candidates[0].maxSize;
-    loaded = await Image.loadAsync({ uri: sourceFile.uri }, {
+    loaded = await Image.loadAsync({ uri: original.fileUri }, {
       maxWidth: largest,
       maxHeight: largest,
     });
@@ -578,7 +656,7 @@ async function createCompressed(
     releaseSharedObject(rendered);
     releaseSharedObject(context);
     releaseSharedObject(loaded);
-    await deleteAsync(sourceFile.uri, { idempotent: true });
+    await original?.release();
     if (partUri) await deleteAsync(partUri, { idempotent: true });
     if (selected) await deleteAsync(selected.uri, { idempotent: true });
   }
@@ -635,7 +713,15 @@ export async function clearCompressedRemoteImageCache(): Promise<void> {
   if (manifestWriteTimer) clearTimeout(manifestWriteTimer);
   manifestWriteTimer = null;
   await runFileOperation(async () => {
-    await deleteAsync(COMPRESSED_IMAGE_CACHE_ROOT().uri, { idempotent: true });
+    const root = COMPRESSED_IMAGE_CACHE_ROOT();
+    if (activeOriginalFiles.size === 0) {
+      await deleteAsync(root.uri, { idempotent: true });
+    } else if ((await getInfoAsync(root.uri)).exists) {
+      for (const name of await readDirectoryAsync(root.uri)) {
+        const file = new File(root, name);
+        if (!activeOriginalFiles.has(file.uri)) await deleteAsync(file.uri, { idempotent: true });
+      }
+    }
     manifestPromise = null;
   });
 }

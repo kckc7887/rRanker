@@ -16,6 +16,7 @@ const mockFontFs = vi.hoisted(() => ({
   remotes: new Map<string, Uint8Array | Error | (() => Promise<Uint8Array>)>(),
   downloadCalls: [] as string[],
   deletes: [] as string[],
+  hashGate: undefined as (() => Promise<void>) | undefined,
 }));
 
 vi.mock('expo-crypto', () => ({
@@ -23,6 +24,18 @@ vi.mock('expo-crypto', () => ({
   digest: async (_algorithm: string, bytes: Uint8Array) => Uint8Array.from(Buffer.from(
     mockFontFs.digests.get(`${bytes.byteLength}:${Buffer.from(bytes.subarray(0, 64)).toString('hex')}`) ?? createHash('sha256').update(bytes).digest('hex'), 'hex',
   )).buffer,
+}));
+
+vi.mock('expo-modules-core', () => ({
+  requireNativeModule: () => ({
+    sha256FileAsync: async (uri: string) => {
+      const bytes = mockFontFs.files.get(uri);
+      if (!bytes) throw new Error('file not found');
+      await mockFontFs.hashGate?.();
+      return mockFontFs.digests.get(`${bytes.byteLength}:${Buffer.from(bytes.subarray(0, 64)).toString('hex')}`)
+        ?? createHash('sha256').update(bytes).digest('hex');
+    },
+  }),
 }));
 
 vi.mock('expo-file-system', () => {
@@ -50,7 +63,7 @@ vi.mock('expo-file-system', () => {
       const metadata = mockFontFs.metadata.get(name);
       return metadata?.length === bytes.byteLength ? metadata.size : bytes.byteLength;
     }
-    async bytes() { return Uint8Array.from(mockFontFs.files.get(this.uri) ?? []); }
+    async bytes(): Promise<Uint8Array> { throw new Error('font bytes are not available in JS'); }
     create() { mockFontFs.files.set(this.uri, new Uint8Array()); }
     write(content: Uint8Array) { mockFontFs.files.set(this.uri, Uint8Array.from(content)); }
     delete() { mockFontFs.files.delete(this.uri); }
@@ -94,6 +107,7 @@ describe('maimai remote font cache', () => {
     mockFontFs.remotes.clear();
     mockFontFs.downloadCalls.length = 0;
     mockFontFs.deletes.length = 0;
+    mockFontFs.hashGate = undefined;
   });
 
   it('downloads, verifies and caches the font with progress events, then reuses the cache', async () => {
@@ -176,6 +190,34 @@ describe('maimai remote font cache', () => {
   it('clears the local font cache directory', () => {
     clearMaimaiFontCache();
     expect(mockFontFs.deletes.some((uri) => uri.endsWith('/rranker/maimai-assets'))).toBe(true);
+  });
+
+  it('preserves a cached font when native file reading fails', async () => {
+    const entry = await fixtureEntry('maimai');
+    await (await prepareMaimaiFonts()).fullReady;
+    const uri = [...mockFontFs.files.keys()].find(value => value.endsWith(`/font/${entry.cssFileName}`))!;
+    const valid = mockFontFs.files.get(uri);
+    mockFontFs.hashGate = async () => { throw new Error('file read failed'); };
+    await expect((await prepareMaimaiFonts()).fullReady).rejects.toThrow('file read failed');
+    expect(mockFontFs.files.get(uri)).toEqual(valid);
+  });
+
+  it.each(['clear', 'cancel'] as const)('does not publish a font after %s during native hashing', async action => {
+    await fixtureEntry('maimai');
+    let started!: () => void;
+    let release!: () => void;
+    const entered = new Promise<void>(resolve => { started = resolve; });
+    const pending = new Promise<void>(resolve => { release = resolve; });
+    mockFontFs.hashGate = async () => { started(); await pending; };
+    const controller = new AbortController();
+    const prepared = await prepareMaimaiFonts(undefined, controller.signal);
+    const rejected = expect(prepared.fullReady).rejects.toThrow(action === 'clear' ? '缓存请求已失效' : 'cancelled');
+    await entered;
+    if (action === 'clear') clearMaimaiFontCache();
+    else controller.abort(new Error('cancelled'));
+    release();
+    await rejected;
+    await vi.waitFor(() => expect(mockFontFs.files.size).toBe(0));
   });
 });
 

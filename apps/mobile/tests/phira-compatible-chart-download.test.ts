@@ -82,9 +82,9 @@ vi.mock('expo-file-system/legacy', () => ({
 }));
 
 vi.mock('@/services/phigros-chart-preview-resources', () => ({
-  loadPhigrosChartPreviewResources: async (target: unknown, signal: unknown, read: (asset: { url: string }, index: number) => Promise<Uint8Array>) => {
+  loadPhigrosChartPreviewResources: async (target: unknown, signal: unknown, read: (asset: { url: string }, index: number) => Promise<{ bytes: () => Promise<Uint8Array> }>) => {
     const bundle = await resources.loadBundle(target, signal);
-    return { bundle, chart: await read(bundle.chart, 0), music: await read(bundle.music, 1), illustration: await read(bundle.illustration, 2) };
+    return { bundle, chart: await (await read(bundle.chart, 0)).bytes(), music: await (await read(bundle.music, 1)).bytes(), illustration: await (await read(bundle.illustration, 2)).bytes() };
   },
 }));
 

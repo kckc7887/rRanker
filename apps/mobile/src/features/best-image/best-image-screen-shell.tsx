@@ -228,7 +228,6 @@ export type BestImageScreenExportSession = {
   captureBackgroundColor?: string;
   onExportMessage: (data: string) => void;
   onRequestCloseExport: () => void;
-  onReleaseHeavySources?: () => void;
 };
 
 export function BestImageScreenShell<TType extends string>({
@@ -283,7 +282,6 @@ export function BestImageScreenShell<TType extends string>({
     captureBackgroundColor,
     onExportMessage,
     onRequestCloseExport,
-    onReleaseHeavySources,
   } = exportSession;
   const theme = useAppTheme();
   const lifecycle = useAppLifecycle();
@@ -343,13 +341,12 @@ export function BestImageScreenShell<TType extends string>({
     }
     setHeavyContentBlocked(true);
     onRequestCloseExport();
-    onReleaseHeavySources?.();
     void recordRuntimeDiagnostic('web-content', {
       source: 'best-image',
       lifecyclePhase: lifecycle.phase,
       webContentState: 'released',
     });
-  }, [lifecycle.memoryWarningGeneration, lifecycle.phase, onReleaseHeavySources, onRequestCloseExport]);
+  }, [lifecycle.memoryWarningGeneration, lifecycle.phase, onRequestCloseExport]);
 
   useEffect(() => {
     if (!lifecycle.foregroundReady || memoryRecoveryPendingRef.current) return;
@@ -418,7 +415,7 @@ export function BestImageScreenShell<TType extends string>({
                 {...(allowingReadAccessToUrl ? { allowingReadAccessToURL: allowingReadAccessToUrl } : {})}
                 onShouldStartLoadWithRequest={(request) => request.isTopFrame === false
                   || request.url === 'about:blank'
-                  || ('uri' in item ? request.url === item.uri : request.url === item.baseUrl)}
+                  || request.url === item.uri}
                 onError={(event) => {
                   recordPreview('load-error', { result: 'error', error: event?.nativeEvent, pageIndex: index + 1 });
                   updateBestImageWebViewState(onPreviewStatesChange, pageId, 'error');
@@ -498,7 +495,7 @@ export function BestImageScreenShell<TType extends string>({
             onMessage={(event) => onExportMessage(event.nativeEvent.data)}
             onShouldStartLoadWithRequest={(request) => request.isTopFrame === false
               || request.url === 'about:blank'
-              || ('uri' in exportSource ? request.url === exportSource.uri : request.url === exportSource.baseUrl)}
+              || request.url === exportSource.uri}
             onError={(event) => recordRuntimeError('best-image-export', event?.nativeEvent)}
             onContentProcessDidTerminate={() => {
               recordRuntimeError('best-image-export-terminated', undefined);
