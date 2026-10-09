@@ -3,7 +3,6 @@ import { jest } from '@jest/globals';
 import type { ArcadeOrigin, ArcadeShop } from '@/domain/arcade-shops';
 import type { ComponentProps } from 'react';
 import type { ArcadeMap } from '@/components/ArcadeMap';
-import type { ArcadeFilterBar } from '@/components/ArcadeFilterBar';
 import type { searchNearcadeShops } from '@/services/nearcade-client';
 import type { searchArcadePlaces, resolveArcadePlace } from '@/services/arcade-place-search';
 import ArcadeFinderScreen from '../app/tools/arcade-finder';
@@ -11,8 +10,6 @@ import ArcadeFinderScreen from '../app/tools/arcade-finder';
 const mockGps = jest.fn<() => Promise<ArcadeOrigin>>();
 const mockDiscover = jest.fn<(_input: unknown) => Promise<ArcadeShop[]>>(async () => []);
 let mockMap: ComponentProps<typeof ArcadeMap>;
-let mockGpsPress: () => void;
-let mockFilter: ComponentProps<typeof ArcadeFilterBar>;
 const mockShopSearch = jest.fn<typeof searchNearcadeShops>();
 const mockPlaceSearch = jest.fn<typeof searchArcadePlaces>();
 const mockResolvePlace = jest.fn<typeof resolveArcadePlace>();
@@ -21,15 +18,17 @@ let mockForeground = new AbortController();
 jest.mock('expo-router', () => ({ router: { push: jest.fn() }, Stack: { Screen: () => null } }));
 jest.mock('@react-navigation/native', () => ({ useIsFocused: () => true }));
 jest.mock('@react-navigation/elements', () => ({ useHeaderHeight: () => 0 }));
+jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('@/components/ArcadeMap', () => ({ ArcadeMap: (props: typeof mockMap) => { mockMap = props; return null; } }));
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }) }));
 jest.mock('@/components/ArcadeBusinessStatusLabel', () => ({ ArcadeBusinessStatusLabel: () => null }));
-jest.mock('@/components/ArcadeFilterBar', () => ({ ArcadeFilterBar: (props: typeof mockFilter) => { mockFilter = props; mockGpsPress = props.onUseGpsOrigin; return null; } }));
 jest.mock('@/features/toolbox/arcade-finder-preferences', () => ({
-  arcadeFinderPreferencesStore: { load: async () => ({ radiusKm: 10, titleIds: [] }), save: async () => undefined },
-  defaultArcadeFinderPreferences: () => ({ radiusKm: 10, titleIds: [] }),
+  arcadeFinderPreferencesStore: { load: async () => ({ minDistanceKm: 0, radiusKm: 10, titleIds: [] }), save: async () => undefined },
+  defaultArcadeFinderPreferences: () => ({ minDistanceKm: 0, radiusKm: 10, titleIds: [] }),
 }));
-jest.mock('@/services/nearcade-client', () => ({ fetchNearcadeDiscover: (input: unknown) => mockDiscover(input), fetchNearcadeGameTitles: async () => [], searchNearcadeShops: (...args: Parameters<typeof searchNearcadeShops>) => mockShopSearch(...args) }));
+jest.mock('@/services/nearcade-client', () => ({ fetchNearcadeDiscover: (input: unknown) => mockDiscover(input),
+  fetchNearcadeGameTitles: async () => [{ id: 1, key: 'maimai_dx', name: '舞萌DX', seats: 2 }, { id: 3, key: 'chunithm', name: '中二节奏', seats: 1 }],
+  searchNearcadeShops: (...args: Parameters<typeof searchNearcadeShops>) => mockShopSearch(...args) }));
 jest.mock('@/services/arcade-place-search', () => ({ searchArcadePlaces: (...args: Parameters<typeof searchArcadePlaces>) => mockPlaceSearch(...args), resolveArcadePlace: (...args: Parameters<typeof resolveArcadePlace>) => mockResolvePlace(...args) }));
 jest.mock('@/state/session-store', () => ({ useSession: (select: (state: unknown) => unknown) => select({ activeGameId: 'maimai' }) }));
 jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle, getForegroundAbortSignal: () => mockForeground.signal }));
@@ -53,6 +52,21 @@ async function chooseOrigin(view: Awaited<ReturnType<typeof render>>, latitude: 
   await waitFor(() => expect(view.getByText(candidate.name)).toBeTruthy());
   await fireEvent.press(view.getByText(candidate.name));
 }
+
+async function dragDistance(view: Awaited<ReturnType<typeof render>>, thumb: 'lower' | 'upper', from: number, to: number) {
+  if (!view.queryByTestId('arcade-distance')) await fireEvent.press(view.getByText('筛选'));
+  await fireEvent(view.getByTestId('arcade-distance-track'), 'layout', {
+    nativeEvent: { layout: { x: 0, y: 0, width: 300, height: 36 } },
+  });
+  const touch = { touchActive: true, currentPageX: from * 10, currentPageY: 0,
+    previousPageX: from * 10, previousPageY: 0, currentTimeStamp: 1 };
+  const touchHistory = { touchBank: [touch], numberActiveTouches: 1, indexOfSingleActiveTouch: 0, mostRecentTimeStamp: 1 };
+  const handle = view.getByTestId(`arcade-distance-${thumb}-thumb`);
+  await fireEvent(handle, 'responderGrant', { touchHistory });
+  await fireEvent(handle, 'responderMove', { touchHistory: { ...touchHistory, mostRecentTimeStamp: 2,
+    touchBank: [{ ...touch, currentPageX: to * 10, currentTimeStamp: 2 }] } });
+  await fireEvent(handle, 'responderRelease', { touchHistory });
+}
 afterEach(() => { jest.useRealTimers(); });
 it.each(['resolve', 'reject'] as const)('手动选址后旧 GPS %s 不改变新原点或显示错误', async outcome => {
   let resolve!: (value: ArcadeOrigin) => void, reject!: (error: Error) => void;
@@ -70,11 +84,11 @@ it('后发 GPS 优先，卸载后结果不启动查询', async () => {
   mockGps.mockImplementation(() => new Promise(resolve => { pending.push(resolve); }));
   const view = await render(<ArcadeFinderScreen />);
   await waitFor(() => expect(pending).toHaveLength(1));
-  await act(async () => { mockGpsPress(); });
+  await act(async () => { mockMap.onLocate(); });
   await act(async () => { pending[1]!(origin(31)); pending[0]!(origin(22)); });
   await waitFor(() => expect(mockDiscover).toHaveBeenCalledTimes(1));
   expect(mockDiscover).toHaveBeenLastCalledWith(expect.objectContaining({ latitude: 31 }));
-  await act(async () => { mockGpsPress(); });
+  await act(async () => { mockMap.onLocate(); });
   await view.unmount();
   await act(async () => { pending[2]!(origin(40)); });
   expect(mockDiscover).toHaveBeenCalledTimes(1);
@@ -83,6 +97,46 @@ it('后发 GPS 优先，卸载后结果不启动查询', async () => {
 const shop: ArcadeShop = { id: 1, name: '测试机厅', latitude: 31, longitude: 120,
   distanceKm: 1, addressDetailed: '测试路', addressGeneral: [], comment: '', games: [], openingHours: [] };
 
+it('filters the map and list with both distance handles, supports any machine, and resets without moving the center', async () => {
+  mockGps.mockResolvedValue(origin(31));
+  const middle = { ...shop, id: 2, name: '五公里机厅', latitude: 31.05 };
+  const far = { ...shop, id: 3, name: '二十公里机厅', latitude: 31.18 };
+  const outside = { ...shop, id: 4, name: '三十公里外机厅', latitude: 31.28 };
+  mockDiscover.mockResolvedValue([shop, middle, far, outside]);
+  const view = await render(<ArcadeFinderScreen />);
+  await waitFor(() => expect(view.getByText(middle.name)).toBeTruthy());
+  expect(view.getByText('0–10 km · 任意机型')).toBeTruthy();
+  await fireEvent.press(view.getByText('筛选'));
+  expect(view.queryByText('中心')).toBeNull();
+  expect(view.queryByText('当前位置')).toBeNull();
+  expect(view.queryByText('搜索地点')).toBeNull();
+
+  await fireEvent.press(view.getByText(shop.name));
+  await dragDistance(view, 'upper', 10, 30);
+  await dragDistance(view, 'lower', 0, 3);
+  expect(view.queryByText(shop.name)).toBeNull();
+  expect(view.getByText(middle.name)).toBeTruthy();
+  expect(view.getByText(far.name)).toBeTruthy();
+  expect(view.queryByText(outside.name)).toBeNull();
+  expect(mockMap.shops.map(item => item.id)).toEqual([middle.id, far.id]);
+  expect(mockDiscover).toHaveBeenLastCalledWith(expect.objectContaining({ minDistanceKm: 3, radiusKm: 30, titleIds: [] }));
+
+  await fireEvent.press(view.getByText('舞萌DX'));
+  expect(view.queryByText(middle.name)).toBeNull();
+  await fireEvent.press(view.getByText('任意'));
+  expect(view.getByText(middle.name)).toBeTruthy();
+  await fireEvent.press(view.getByText('重置'));
+  expect(view.getByText('0 km')).toBeTruthy();
+  expect(view.getByText('10 km')).toBeTruthy();
+  expect(mockMap.shops.map(item => item.id)).toEqual([shop.id, middle.id]);
+  expect(mockMap.camera?.center).toMatchObject({ latitude: 31, longitude: 120 });
+  expect(mockGps).toHaveBeenCalledTimes(1);
+
+  await dragDistance(view, 'upper', 10, 0);
+  expect(mockMap.shops.map(item => item.id)).toEqual([shop.id]);
+  expect(mockDiscover).toHaveBeenLastCalledWith(expect.objectContaining({ minDistanceKm: 0, radiusKm: 0 }));
+});
+
 it('small map movements keep the pending discovery usable', async () => {
   mockGps.mockResolvedValue(origin(31));
   let finish!: (shops: ArcadeShop[]) => void;
@@ -90,6 +144,7 @@ it('small map movements keep the pending discovery usable', async () => {
   const view = await render(<ArcadeFinderScreen />);
   await waitFor(() => expect(mockDiscover).toHaveBeenCalled());
   const signal = (mockDiscover.mock.calls[0][0] as { signal: AbortSignal }).signal;
+  await dragDistance(view, 'upper', 10, 10);
   jest.useFakeTimers();
   for (const latitude of [31, 31.0001, 31.001]) {
     await act(async () => { mockMap.onGestureStart(); mockMap.onCenterChange(origin(latitude)); });
@@ -108,7 +163,7 @@ it.each([
   mockGps.mockResolvedValue(origin(31)); mockDiscover.mockResolvedValue([shop]);
   const view = await render(<ArcadeFinderScreen />);
   await waitFor(() => expect(view.getByText(shop.name)).toBeTruthy());
-  await act(async () => { mockFilter.onRadiusChange(radius); });
+  await dragDistance(view, 'upper', 10, radius);
   await fireEvent.press(view.getByText(shop.name));
   const count = mockDiscover.mock.calls.length;
   jest.useFakeTimers();
@@ -134,10 +189,10 @@ it.each([
 
 it('starts at a nearby map scale and preserves the chosen scale on subsequent GPS locations', async () => {
   mockGps.mockResolvedValue(origin(31));
-  await render(<ArcadeFinderScreen />);
+  const view = await render(<ArcadeFinderScreen />);
   await waitFor(() => expect(mockDiscover).toHaveBeenCalled());
   expect(mockMap.camera?.radiusKm).toBe(2);
-  await act(async () => { mockFilter.onRadiusChange(30); });
+  await dragDistance(view, 'upper', 10, 30);
   mockGps.mockResolvedValueOnce(origin(32));
   await act(async () => { mockMap.onLocate(); });
   expect(mockMap.camera?.center.latitude).toBe(32);
@@ -149,7 +204,7 @@ it.each([1, 30] as const)('card and pin selection preserve map scale with a %s k
   mockGps.mockResolvedValue(origin(31)); mockDiscover.mockResolvedValue([shop]);
   const view = await render(<ArcadeFinderScreen />);
   await waitFor(() => expect(view.getByText(shop.name)).toBeTruthy());
-  await act(async () => { mockFilter.onRadiusChange(radius); });
+  await dragDistance(view, 'upper', 10, radius);
   const count = mockDiscover.mock.calls.length;
   jest.useFakeTimers();
   await act(async () => { mockMap.onGestureStart(); mockMap.onCenterChange(origin(32)); });
@@ -204,7 +259,7 @@ it('accepts GPS after the permission dialog briefly deactivates the app, but ign
   mockLifecycle = { foregroundReady: true, foregroundGeneration: 1 };
   await view.rerender(<ArcadeFinderScreen />);
   await waitFor(() => expect(mockDiscover).toHaveBeenCalledWith(expect.objectContaining({ latitude: 31 })));
-  await act(async () => { mockGpsPress(); });
+  await act(async () => { mockMap.onLocate(); });
   await act(async () => { mockForeground.abort(); pending[1](origin(40)); });
   expect(mockMap.camera?.center.latitude).toBe(31);
   expect(mockDiscover).toHaveBeenCalledTimes(1);
@@ -251,7 +306,8 @@ it('paginates shops and rejects a late page after changing game filters', async 
   expect(view.getByText(shop.name)).toBeTruthy();
   await fireEvent.press(view.getByText('继续加载机厅'));
   const oldSignal = mockShopSearch.mock.calls.at(-1)![0].signal!;
-  await act(async () => { mockFilter.onTitleIdsChange([3]); });
+  await fireEvent.press(view.getByText('筛选'));
+  await fireEvent.press(view.getByText('中二节奏'));
   await waitFor(() => expect(view.getByText('筛选后的机厅')).toBeTruthy());
   expect(oldSignal.aborted).toBe(true);
   expect(mockShopSearch).toHaveBeenLastCalledWith(expect.objectContaining({ keyword: '上海', titleIds: [3] }));
@@ -259,7 +315,7 @@ it('paginates shops and rejects a late page after changing game filters', async 
   expect(view.queryByText('迟到分页')).toBeNull();
   expect(mockPlaceSearch).toHaveBeenCalledTimes(1);
   const searchCount = mockShopSearch.mock.calls.length;
-  await act(async () => { mockFilter.onRadiusChange(20); });
+  await dragDistance(view, 'upper', 10, 20);
   expect(mockShopSearch.mock.calls.length).toBe(searchCount);
 });
 

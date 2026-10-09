@@ -1,11 +1,10 @@
 import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
 import { NeutralChip, FilterShell, filterShellStyles } from '@/components/game-content/FilterShell';
+import { RangeSelector } from '@/components/game-content/RangeSelector';
 import {
-  ARCADE_RADIUS_OPTIONS,
+  ARCADE_MAX_DISTANCE_KM,
   buildArcadeFilterSummary,
   type ArcadeGameTitle,
-  type ArcadeOrigin,
-  type ArcadeRadiusKm,
 } from '@/domain/arcade-shops';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -13,29 +12,25 @@ const EXPANDED_BODY_MAX_RATIO = 0.52;
 
 export type ArcadeFilterBarProps = {
   collapsed: boolean;
-  origin: ArcadeOrigin | null;
-  radiusKm: ArcadeRadiusKm;
+  minDistanceKm: number;
+  radiusKm: number;
   titleIds: readonly number[];
   gameTitles: readonly ArcadeGameTitle[];
-  locatingOrigin?: boolean;
   onCollapsedChange: (collapsed: boolean) => void;
-  onUseGpsOrigin: () => void;
-  onEditOrigin: () => void;
-  onRadiusChange: (radiusKm: ArcadeRadiusKm) => void;
+  onMinDistanceChange: (minDistanceKm: number) => void;
+  onRadiusChange: (radiusKm: number) => void;
   onTitleIdsChange: (titleIds: number[]) => void;
   onReset: () => void;
 };
 
 export function ArcadeFilterBar({
   collapsed,
-  origin,
+  minDistanceKm,
   radiusKm,
   titleIds,
   gameTitles,
-  locatingOrigin = false,
   onCollapsedChange,
-  onUseGpsOrigin,
-  onEditOrigin,
+  onMinDistanceChange,
   onRadiusChange,
   onTitleIdsChange,
   onReset,
@@ -43,12 +38,11 @@ export function ArcadeFilterBar({
   const theme = useAppTheme();
   const { height: windowHeight } = useWindowDimensions();
   const expandedBodyMaxHeight = Math.round(windowHeight * EXPANDED_BODY_MAX_RATIO);
-  const originLabel = origin?.label?.trim() || (locatingOrigin ? '定位中…' : '未设置');
   const summary = buildArcadeFilterSummary({
+    minDistanceKm,
     radiusKm,
     titleIds,
     gameTitles,
-    originLabel: origin?.source === 'custom' ? originLabel : undefined,
   });
 
   const toggleTitleId = (titleId: number) => {
@@ -69,47 +63,26 @@ export function ArcadeFilterBar({
         keyboardShouldPersistTaps="handled"
         showsVerticalScrollIndicator
       >
-        <View style={[filterShellStyles.filterRow, styles.filterRowTop]}>
-          <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>中心</Text>
-          <View style={styles.originBlock}>
-            <Text numberOfLines={2} style={[styles.originLabel, { color: theme.text }]}>
-              {originLabel}
-            </Text>
-            <View style={styles.chipWrap}>
-              <NeutralChip
-                label={locatingOrigin && origin?.source !== 'custom' ? '定位中…' : '当前位置'}
-                active={origin?.source === 'gps'}
-                onPress={onUseGpsOrigin}
-                accessibilityLabel="使用当前定位作为搜索原点"
-              />
-              <NeutralChip
-                label="搜索地点"
-                active={origin?.source === 'custom'}
-                onPress={onEditOrigin}
-                accessibilityLabel="搜索地址设为搜索原点"
-              />
-            </View>
-          </View>
-        </View>
-
         <View style={filterShellStyles.filterRow}>
           <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>距离</Text>
-          <View style={styles.chipWrap}>
-            {ARCADE_RADIUS_OPTIONS.map((radius) => (
-              <NeutralChip
-                key={radius}
-                label={`${radius} km`}
-                active={radiusKm === radius}
-                onPress={() => onRadiusChange(radius)}
-                accessibilityLabel={`筛选距离 ${radius} 公里`}
-              />
-            ))}
-          </View>
+          <RangeSelector
+            minimum={0}
+            maximum={ARCADE_MAX_DISTANCE_KM}
+            step={1}
+            lowerValue={String(minDistanceKm)}
+            upperValue={String(radiusKm)}
+            onLowerValueChange={value => onMinDistanceChange(Number(value || 0))}
+            onUpperValueChange={value => onRadiusChange(Number(value || ARCADE_MAX_DISTANCE_KM))}
+            formatValue={value => `${value} km`}
+            accessibilityLabel="机厅距离范围"
+            testID="arcade-distance"
+          />
         </View>
 
         <View style={[filterShellStyles.filterRow, styles.filterRowTop]}>
           <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>机型</Text>
           <View style={styles.chipWrap}>
+            <NeutralChip label="任意" active={titleIds.length === 0} onPress={() => onTitleIdsChange([])} />
             {gameTitles.map((title) => (
               <NeutralChip
                 key={title.id}
@@ -131,6 +104,4 @@ const styles = StyleSheet.create({
   expandedBody: { gap: 10, paddingBottom: 4 },
   filterRowTop: { alignItems: 'flex-start' },
   chipWrap: { flex: 1, minWidth: 0, flexDirection: 'row', flexWrap: 'wrap', gap: 6, alignItems: 'center' },
-  originBlock: { flex: 1, minWidth: 0, gap: 8 },
-  originLabel: { fontSize: 13, fontWeight: '600', lineHeight: 18 },
 });

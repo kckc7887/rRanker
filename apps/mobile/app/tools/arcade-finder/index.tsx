@@ -31,7 +31,6 @@ import {
   filterArcadeShops,
   type ArcadeGameTitle,
   type ArcadeOrigin,
-  type ArcadeRadiusKm,
   type ArcadeShop,
 } from '@/domain/arcade-shops';
 import {
@@ -115,7 +114,8 @@ export default function ArcadeFinderScreen() {
   const { foregroundReady, foregroundGeneration } = useAppLifecycle();
   const [hydrated, setHydrated] = useState(false);
   const [keyword, setKeyword] = useState('');
-  const [radiusKm, setRadiusKm] = useState<ArcadeRadiusKm>(10);
+  const [minDistanceKm, setMinDistanceKm] = useState(0);
+  const [radiusKm, setRadiusKm] = useState(10);
   const [titleIds, setTitleIds] = useState<number[]>([]);
   const [filtersCollapsed, setFiltersCollapsed] = useState(true);
   const [origin, setOrigin] = useState<ArcadeOrigin | null>(null);
@@ -133,7 +133,6 @@ export default function ArcadeFinderScreen() {
   const selectionRequest = useRef<AbortController | null>(null);
   const screenActive = useRef(true);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const searchInput = useRef<TextInput>(null);
   const search = useArcadeSearch({ keyword, titleIds, active: focused && foregroundReady && hydrated,
     generation: foregroundGeneration, placeGeneration });
   const cancelSearch = search.cancel;
@@ -187,6 +186,7 @@ export default function ArcadeFinderScreen() {
     void (async () => {
       const prefs = await arcadeFinderPreferencesStore.load(activeGameId);
       if (cancelled) return;
+      setMinDistanceKm(prefs.minDistanceKm);
       setRadiusKm(prefs.radiusKm);
       setTitleIds(prefs.titleIds);
       setHydrated(true);
@@ -198,8 +198,8 @@ export default function ArcadeFinderScreen() {
 
   useEffect(() => {
     if (!hydrated) return;
-    void arcadeFinderPreferencesStore.save(activeGameId, { radiusKm, titleIds });
-  }, [activeGameId, hydrated, radiusKm, titleIds]);
+    void arcadeFinderPreferencesStore.save(activeGameId, { minDistanceKm, radiusKm, titleIds });
+  }, [activeGameId, hydrated, minDistanceKm, radiusKm, titleIds]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -251,6 +251,7 @@ export default function ArcadeFinderScreen() {
         const next = await fetchNearcadeDiscover({
           latitude: origin.latitude,
           longitude: origin.longitude,
+          minDistanceKm,
           radiusKm,
           titleIds,
           signal: controller.signal,
@@ -269,17 +270,17 @@ export default function ArcadeFinderScreen() {
       controller.abort();
       foreground.removeEventListener('abort', abort);
     };
-  }, [focused, foregroundGeneration, foregroundReady, hydrated, origin, radiusKm, titleIds]);
+  }, [focused, foregroundGeneration, foregroundReady, hydrated, minDistanceKm, origin, radiusKm, titleIds]);
 
   const filtered = useMemo(() => {
-    const items = (shops ?? []).map(shop => origin ? { ...shop, distanceKm: arcadeDistanceKm(origin, shop) } : shop)
-      .filter(shop => shop.distanceKm === null || shop.distanceKm <= radiusKm);
+    const items = (shops ?? []).map(shop => origin ? { ...shop, distanceKm: arcadeDistanceKm(origin, shop) } : shop);
     if (selectedShop && origin && !items.some(shop => shop.id === selectedShop.id)) {
       const distanceKm = arcadeDistanceKm(origin, selectedShop);
-      if (distanceKm <= radiusKm) items.push({ ...selectedShop, distanceKm });
+      items.push({ ...selectedShop, distanceKm });
     }
-    return filterArcadeShops(items, { keyword: '', titleIds });
-  }, [origin, radiusKm, selectedShop, shops, titleIds]);
+    return filterArcadeShops(items.filter(shop => shop.distanceKm !== null
+      && shop.distanceKm >= minDistanceKm && shop.distanceKm <= radiusKm), { keyword: '', titleIds });
+  }, [minDistanceKm, origin, radiusKm, selectedShop, shops, titleIds]);
 
   const choosePlace = async (place: ArcadePlace) => {
     originIntent.current += 1;
@@ -337,10 +338,10 @@ export default function ArcadeFinderScreen() {
   };
 
   const resetFilters = () => {
-    const defaults = defaultArcadeFinderPreferences(activeGameId);
+    const defaults = defaultArcadeFinderPreferences();
+    setMinDistanceKm(defaults.minDistanceKm);
     setRadiusKm(defaults.radiusKm);
     setTitleIds(defaults.titleIds);
-    void acquireOriginFromGps();
   };
 
   const retryLoad = () => {
@@ -399,7 +400,6 @@ export default function ArcadeFinderScreen() {
       <View style={styles.resultsPanel}>
       <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
         <TextInput
-          ref={searchInput}
           accessibilityLabel="机厅搜索"
           value={keyword}
           onChangeText={value => {
@@ -425,14 +425,12 @@ export default function ArcadeFinderScreen() {
       <ArcadeFilterBar
         collapsed={filtersCollapsed}
         onCollapsedChange={setFiltersCollapsed}
-        origin={origin}
-        locatingOrigin={locatingOrigin}
+        minDistanceKm={minDistanceKm}
         radiusKm={radiusKm}
         titleIds={titleIds}
         gameTitles={gameTitles}
-        onUseGpsOrigin={() => { void acquireOriginFromGps(); }}
-        onEditOrigin={() => { setFiltersCollapsed(true); searchInput.current?.focus(); }}
-        onRadiusChange={value => { cancelPending(); setRadiusKm(value); }}
+        onMinDistanceChange={setMinDistanceKm}
+        onRadiusChange={value => { if (value !== radiusKm) { cancelPending(); setRadiusKm(value); } }}
         onTitleIdsChange={setTitleIds}
         onReset={resetFilters}
       />

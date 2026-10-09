@@ -198,33 +198,27 @@ describe('arcade geocoded origin label', () => {
 });
 
 describe('arcade filter summary', () => {
-  it('summarizes radius and selected game titles', () => {
+  it('summarizes the distance range and selected game titles', () => {
     expect(buildArcadeFilterSummary({
+      minDistanceKm: 0,
       radiusKm: 10,
       titleIds: [1],
       gameTitles: FALLBACK_ARCADE_GAME_TITLES,
-    })).toBe('10 km · 舞萌DX');
+    })).toBe('0–10 km · 舞萌DX');
 
     expect(buildArcadeFilterSummary({
+      minDistanceKm: 2,
       radiusKm: 5,
       titleIds: [1, 3, 4],
       gameTitles: FALLBACK_ARCADE_GAME_TITLES,
-    })).toBe('5 km · 舞萌DX、中二节奏 等3种');
+    })).toBe('2–5 km · 舞萌DX、中二节奏 等3种');
 
     expect(buildArcadeFilterSummary({
-      radiusKm: 15,
+      minDistanceKm: 0,
+      radiusKm: 30,
       titleIds: [],
       gameTitles: FALLBACK_ARCADE_GAME_TITLES,
-    })).toBe('15 km · 全部机型');
-  });
-
-  it('prefixes origin label when provided', () => {
-    expect(buildArcadeFilterSummary({
-      radiusKm: 10,
-      titleIds: [1],
-      gameTitles: FALLBACK_ARCADE_GAME_TITLES,
-      originLabel: '徐家汇',
-    })).toBe('徐家汇 · 10 km · 舞萌DX');
+    })).toBe('0–30 km · 任意机型');
   });
 });
 

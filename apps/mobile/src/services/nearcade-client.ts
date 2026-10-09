@@ -56,12 +56,6 @@ const shopSchema = z.object({
   isOpen: z.boolean().nullable().optional().default(null),
 });
 
-const discoverResponseSchema = z.object({
-  shops: z.array(shopSchema),
-  radius: z.number().optional(),
-  limit: z.number().optional(),
-});
-
 const searchResponseSchema = z.object({
   shops: z.array(shopSchema),
   totalCount: z.number().int().nonnegative(),
@@ -89,6 +83,7 @@ const gameTitlesResponseSchema = z.object({
 export type DiscoverQuery = {
   latitude: number;
   longitude: number;
+  minDistanceKm: number;
   radiusKm: number;
   limit?: number;
   titleIds?: readonly number[];
@@ -149,27 +144,39 @@ function requestNearcade<T>(path: string, schema: z.ZodType<T>, signal?: AbortSi
   });
 }
 
-function setGameFilter(params: URLSearchParams, titleIds: readonly number[] = []): void {
-  if (!titleIds.length) return;
-  const filter = { v: 1, games: { op: 'and', children: titleIds.map(id => ({ titleIds: [id] })) } };
+function setShopFilter(params: URLSearchParams, titleIds: readonly number[] = [], geo?: {
+  mode: 'near'; lat: number; lng: number; radiusKm: number;
+}): void {
+  if (!titleIds.length && !geo) return;
+  const filter = { v: 1, geo,
+    ...(titleIds.length ? { games: { op: 'and', children: titleIds.map(id => ({ titleIds: [id] })) } } : {}) };
   params.set('f', bytesToBase64(new TextEncoder().encode(JSON.stringify(filter)))
     .replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, ''));
 }
 
 export async function fetchNearcadeDiscover(query: DiscoverQuery): Promise<ArcadeShop[]> {
   const center = toGcj02(query);
+  const limit = query.limit ?? 150;
   const params = new URLSearchParams({
-    latitude: String(center.latitude),
-    longitude: String(center.longitude),
-    radius: String(query.radiusKm),
-    limit: String(query.limit ?? 150),
-    fetchAttendance: 'false',
+    sort: 'distance',
+    limit: String(Math.min(limit, 100)),
     includeTimeInfo: 'false',
   });
-  setGameFilter(params, query.titleIds);
-  const shops = await requestNearcade(`/discover?${params.toString()}`, z.unknown().transform(parseDiscoverResponse), query.signal);
-  return shops.map(shop => ({ ...shop, distanceKm: arcadeDistanceKm(query, shop) }))
-    .filter(shop => shop.distanceKm <= query.radiusKm);
+  setShopFilter(params, query.titleIds, {
+    mode: 'near', lat: center.latitude, lng: center.longitude, radiusKm: Math.max(1, query.radiusKm),
+  });
+  const shops: ArcadeShop[] = [];
+  for (let page = 1; shops.length < limit; page += 1) {
+    params.set('page', String(page));
+    const result = await requestNearcade(`/shops?${params}`, searchResponseSchema, query.signal);
+    for (const item of result.shops) {
+      const shop = mapShop(item);
+      const distanceKm = arcadeDistanceKm(query, shop);
+      if (distanceKm >= query.minDistanceKm && distanceKm <= query.radiusKm) shops.push({ ...shop, distanceKm });
+    }
+    if (!result.hasNextPage || result.shops.length === 0) break;
+  }
+  return shops.slice(0, limit);
 }
 
 export async function fetchNearcadeShop(shopId: number, signal?: AbortSignal): Promise<ArcadeShopDetail> {
@@ -181,7 +188,7 @@ export async function searchNearcadeShops(query: {
   keyword: string; page?: number; titleIds?: readonly number[]; signal?: AbortSignal;
 }): Promise<ArcadeShopPage> {
   const params = new URLSearchParams({ q: query.keyword.trim(), page: String(query.page ?? 1), limit: '20', includeTimeInfo: 'false' });
-  setGameFilter(params, query.titleIds);
+  setShopFilter(params, query.titleIds);
   const result = await requestNearcade(`/shops?${params}`, searchResponseSchema, query.signal);
   return { shops: result.shops.map(mapShop), totalCount: result.totalCount, page: result.currentPage, hasNextPage: result.hasNextPage };
 }
@@ -193,10 +200,6 @@ export async function fetchNearcadeGameTitles(signal?: AbortSignal): Promise<Arc
     if (signal?.aborted) throw error;
     return [...FALLBACK_ARCADE_GAME_TITLES];
   }
-}
-
-export function parseDiscoverResponse(json: unknown): ArcadeShop[] {
-  return discoverResponseSchema.parse(json).shops.map(mapShop);
 }
 
 export function parseShopDetailResponse(json: unknown): ArcadeShopDetail {

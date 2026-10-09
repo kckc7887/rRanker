@@ -45,11 +45,7 @@ export type ArcadeGameTitle = {
   seats: number;
 };
 
-export const MAIMAI_DX_TITLE_ID = 1;
-export const CHUNITHM_TITLE_ID = 3;
-
-export const ARCADE_RADIUS_OPTIONS = [1, 2, 5, 10, 15, 20, 30] as const;
-export type ArcadeRadiusKm = (typeof ARCADE_RADIUS_OPTIONS)[number];
+export const ARCADE_MAX_DISTANCE_KM = 30;
 
 /** /game-titles 不可用时使用静态名称。 */
 export const FALLBACK_ARCADE_GAME_TITLES: readonly ArcadeGameTitle[] = [
@@ -254,22 +250,20 @@ export function formatArcadeGeocodedLabel(parts: {
 }
 
 export function buildArcadeFilterSummary(options: {
-  radiusKm: ArcadeRadiusKm;
+  minDistanceKm: number;
+  radiusKm: number;
   titleIds: readonly number[];
   gameTitles: readonly ArcadeGameTitle[];
-  originLabel?: string;
 }): string {
   const selectedNames = options.gameTitles
     .filter((title) => options.titleIds.includes(title.id))
     .map((title) => title.name);
   const gamesLabel = selectedNames.length === 0
-    ? '全部机型'
+    ? '任意机型'
     : selectedNames.length <= 2
       ? selectedNames.join('、')
       : `${selectedNames.slice(0, 2).join('、')} 等${selectedNames.length}种`;
-  const origin = options.originLabel?.trim();
-  if (origin) return `${origin} · ${options.radiusKm} km · ${gamesLabel}`;
-  return `${options.radiusKm} km · ${gamesLabel}`;
+  return `${options.minDistanceKm}–${options.radiusKm} km · ${gamesLabel}`;
 }
 
 export type ArcadeNavigateTarget = Pick<ArcadeShop, 'name' | 'addressDetailed' | 'addressGeneral'>;
