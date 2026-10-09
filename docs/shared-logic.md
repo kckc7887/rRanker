@@ -118,7 +118,7 @@ Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图�
 
 ## 工具与诊断
 
-`components/ArcadeMap` 是音游地图的公共 UI 入口，接收 WGS84 相机目标、恢复中心、机厅与选中 ID；平台视图通过 `NativeArcadeMap` 装配 MapKit 或高德。`ArcadeMapCamera.radiusKm` 仅用于设置视野，省略时保留当前缩放并移动中心；首次定位和搜索选址使用 2 公里，再次定位省略视野。公共层提供放大、缩小和定位图标控件，通过 `zoomRequest` 将逐级缩放交给原生相机；Android 分别调用 `setZoom`、`setCenter`，iOS 分别更新相机高度、中心。公共层管理高德首次说明、加载失败重试和手势来源，程序移动与缩放不发出用户选址事件。`services/arcade-map-platform.ts` 共用地图与地点搜索的架构、配置和同意状态；读取失败转为地图重试状态。`ArcadeFilterBar`、`ArcadeBusinessStatusLabel`、`arcadeFinderPreferencesStore` 与外部导航入口继续共用；距离与机型偏好按游戏保存，默认收起筛选。
+`components/ArcadeMap` 是音游地图的公共 UI 入口，接收 WGS84 相机目标、恢复中心、机厅与选中 ID；平台视图通过 `NativeArcadeMap` 装配 MapKit 或高德。`ArcadeMapCamera.radiusKm` 仅用于设置视野，省略时保留当前缩放并移动中心；首次定位和搜索选址使用 2 公里，再次定位和点击附近列表机厅省略视野。公共层提供放大、缩小和定位图标控件，通过 `zoomRequest` 将逐级缩放交给原生相机；Android 分别调用 `setZoom`、`setCenter`，iOS 分别更新相机高度、中心。公共层管理高德首次说明、加载失败重试和手势来源，程序移动与缩放不发出用户选址事件。`services/arcade-map-platform.ts` 共用地图与地点搜索的架构、配置和同意状态；读取失败转为地图重试状态。`ArcadeFilterBar`、`ArcadeBusinessStatusLabel`、`arcadeFinderPreferencesStore` 与外部导航入口继续共用；距离与机型偏好按游戏保存，默认收起筛选。
 
 `fetchNearcadeDiscover` 接受 WGS84 中心、距离、机型与取消信号，返回当前范围内的机厅。`domain/arcade-coordinates.ts` 提供坐标边界转换与球面距离；MapKit 和高德的初始相机、移动中心与机厅图钉共用 `toGcj02`，拖图回传及原生地点搜索结果共用 `fromGcj02`，页面和距离计算只消费 WGS84。`arcade-shops.ts` 共用筛选、展示和营业时间判断；缺失距离为 `null`。拖图停下 500 毫秒后，页面用 `arcadeDistanceKm` 比较当前查询中心；累计移动达到查询半径的 10%（最少 300 米）才更换查询中心，没有中心时直接查询。轻微移动不取消已有请求，刷新及失败时保留新范围内的旧结果并更新距离。跨夜营业以次日小时表达，周表从周一开始，凌晨同时检查前一日。页面按焦点和前台生命周期取消取数，GPS 意图与地图中心分别防止旧定位、旧查询覆盖；图钉和列表共用选中 ID。行为测试覆盖坐标转换后的相机、图钉、拖图与地点选址，以及轻微及累计拖图、刷新失败保留结果、原生缩放与定位、拒绝定位、选中联动、页面退出、迟到响应及跨夜营业。
 
