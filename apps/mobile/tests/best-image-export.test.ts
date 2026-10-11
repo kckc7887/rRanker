@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('expo-media-library', () => ({
   isAvailableAsync: vi.fn(async () => true),
+  getPermissionsAsync: vi.fn(async () => ({ granted: false })),
   requestPermissionsAsync: vi.fn(async () => ({ granted: true })),
   saveToLibraryAsync: vi.fn(async () => undefined),
 }));
@@ -84,6 +85,25 @@ describe('best image export', () => {
   it('reports denied gallery permission clearly', async () => {
     vi.mocked(MediaLibrary.requestPermissionsAsync).mockResolvedValueOnce({ granted: false } as never);
     await expect(requestBestImageExportPermission()).rejects.toThrow('没有相册写入权限');
+  });
+
+  it('exports with an existing grant without opening another permission request', async () => {
+    vi.mocked(MediaLibrary.getPermissionsAsync).mockResolvedValueOnce({ granted: true } as never);
+    await expect(requestBestImageExportPermission()).resolves.toBeUndefined();
+    expect(MediaLibrary.getPermissionsAsync).toHaveBeenCalledWith(true, ['photo']);
+    expect(MediaLibrary.requestPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it('requests photo write access when it has not been granted', async () => {
+    await expect(requestBestImageExportPermission()).resolves.toBeUndefined();
+    expect(MediaLibrary.requestPermissionsAsync).toHaveBeenCalledWith(true, ['photo']);
+  });
+
+  it('does not open a permission request after permission lookup fails', async () => {
+    const error = new Error('permission lookup failed');
+    vi.mocked(MediaLibrary.getPermissionsAsync).mockRejectedValueOnce(error);
+    await expect(requestBestImageExportPermission()).rejects.toBe(error);
+    expect(MediaLibrary.requestPermissionsAsync).not.toHaveBeenCalled();
   });
 
   it('copies a capture to a named cache file, saves it, and cleans both files', async () => {

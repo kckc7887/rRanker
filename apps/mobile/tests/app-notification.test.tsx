@@ -6,10 +6,14 @@ import { snapshotEmergencyRuntimeDiagnostics } from '@/services/runtime-diagnost
 import {
   NotificationProvider,
   useNotification,
+  useNotificationModalRequestClose,
 } from '@/components/AppNotification';
 
 const mockCancel = jest.fn(() => undefined);
 const mockDelete = jest.fn(() => undefined);
+const mockFirstDownloadCancel = jest.fn(() => undefined);
+const mockSecondDownloadCancel = jest.fn(() => undefined);
+const mockPageBack = jest.fn(() => undefined);
 let hardwareBackHandler: (() => boolean) | undefined;
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
@@ -24,6 +28,7 @@ function Harness() {
     showNotification,
     updateNotification,
   } = useNotification();
+  const requestCloseNotification = useNotificationModalRequestClose();
   const progressNotificationIdRef = useRef<number | null>(null);
   return (
     <View>
@@ -81,6 +86,21 @@ function Harness() {
       }}>
         <Text>关闭进度</Text>
       </Pressable>
+      <Pressable onPress={() => {
+        progressNotificationIdRef.current = showActionNotification({
+          title: '甲谱面下载', blocking: false,
+          progress: { label: '下载进度', value: 0.2 },
+          actions: [{ label: '取消甲', tone: 'cancel', onPress: mockFirstDownloadCancel }],
+        });
+      }}><Text>下载甲谱面</Text></Pressable>
+      <Pressable onPress={() => showActionNotification({
+        title: '乙谱面下载', blocking: false,
+        progress: { label: '下载进度', value: 0.4 },
+        actions: [{ label: '取消乙', tone: 'cancel', onPress: mockSecondDownloadCancel }],
+      })}><Text>下载乙谱面</Text></Pressable>
+      <Pressable onPress={() => {
+        if (!requestCloseNotification()) mockPageBack();
+      }}><Text>返回弹层</Text></Pressable>
     </View>
   );
 }
@@ -97,14 +117,16 @@ describe('全局顶部通知', () => {
   beforeEach(() => {
     jest.useFakeTimers();
     jest.clearAllMocks();
+    hardwareBackHandler = undefined;
     jest.spyOn(Animated, 'parallel').mockReturnValue({
       start: (callback?: (result: { finished: boolean }) => void) => callback?.({ finished: true }),
       stop: jest.fn(),
       reset: jest.fn(),
     } as ReturnType<typeof Animated.parallel>);
     jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
-      hardwareBackHandler = () => handler() === true;
-      return { remove: jest.fn() };
+      const current = () => handler() === true;
+      hardwareBackHandler = current;
+      return { remove: jest.fn(() => { if (hardwareBackHandler === current) hardwareBackHandler = undefined; }) };
     });
   });
 
@@ -219,5 +241,75 @@ describe('全局顶部通知', () => {
 
     await fireEvent.press(screen.getByText('关闭进度'));
     expect(screen.queryByText('正在准备文件')).toBeNull();
+  });
+
+  it('并行进度持续显示并分别取消各自任务', async () => {
+    const screen = await renderNotifications();
+    await fireEvent.press(screen.getByText('下载甲谱面'));
+    await fireEvent.press(screen.getByText('下载乙谱面'));
+    await act(async () => jest.advanceTimersByTime(10000));
+    expect(screen.getByText('甲谱面下载')).toBeTruthy();
+    expect(screen.getByText('乙谱面下载')).toBeTruthy();
+    expect(screen.queryByTestId('app-notification-backdrop', { includeHiddenElements: true })).toBeNull();
+    await fireEvent.press(screen.getByText('取消乙'));
+    expect(mockSecondDownloadCancel).toHaveBeenCalled();
+    expect(mockFirstDownloadCancel).not.toHaveBeenCalled();
+    expect(screen.queryByText('乙谱面下载')).toBeNull();
+    expect(screen.getByText('甲谱面下载')).toBeTruthy();
+    await fireEvent.press(screen.getByText('取消甲'));
+    expect(mockFirstDownloadCancel).toHaveBeenCalled();
+    expect(screen.queryByText('甲谱面下载')).toBeNull();
+  });
+
+  it('待选择操作优先显示并在结束后继续显示已更新的进度', async () => {
+    const screen = await renderNotifications();
+    await fireEvent.press(screen.getByText('下载甲谱面'));
+    await fireEvent.press(screen.getByText('显示确认'));
+    expect(screen.getByText('删除本地玩家')).toBeTruthy();
+    expect(screen.queryByText('甲谱面下载')).toBeNull();
+    await fireEvent.press(screen.getByText('更新进度'));
+    await fireEvent.press(screen.getByText('取消'));
+    expect(mockCancel).toHaveBeenCalled();
+    expect(mockFirstDownloadCancel).not.toHaveBeenCalled();
+    expect(screen.getByText('甲谱面下载')).toBeTruthy();
+    expect(screen.getByText('整理进度')).toBeTruthy();
+    expect(screen.getByText('64%')).toBeTruthy();
+  });
+
+  it('非阻挡进度允许页面及弹层接收返回操作', async () => {
+    const screen = await renderNotifications();
+    await fireEvent.press(screen.getByText('下载甲谱面'));
+    await act(async () => { if (!hardwareBackHandler?.()) mockPageBack(); });
+    expect(mockPageBack).toHaveBeenCalled();
+    mockPageBack.mockClear();
+    await fireEvent.press(screen.getByText('返回弹层'));
+    expect(mockPageBack).toHaveBeenCalled();
+    expect(mockFirstDownloadCancel).not.toHaveBeenCalled();
+    expect(screen.getByText('甲谱面下载')).toBeTruthy();
+
+    mockPageBack.mockClear();
+    await fireEvent.press(screen.getByText('显示确认'));
+    await fireEvent.press(screen.getByText('返回弹层'));
+    expect(mockPageBack).not.toHaveBeenCalled();
+    expect(mockCancel).toHaveBeenCalled();
+    expect(screen.queryByText('删除本地玩家')).toBeNull();
+    expect(screen.getByText('甲谱面下载')).toBeTruthy();
+  });
+
+  it('普通消息与持续进度并存且保持消息先后顺序和关闭动作', async () => {
+    const screen = await renderNotifications();
+    await fireEvent.press(screen.getByText('下载甲谱面'));
+    await fireEvent.press(screen.getByText('显示成功'));
+    await fireEvent.press(screen.getByText('显示警告'));
+    expect(screen.getByText('甲谱面下载')).toBeTruthy();
+    expect(screen.getByText('第一条')).toBeTruthy();
+    expect(screen.queryByText('第二条')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('关闭通知'));
+    expect(screen.queryByText('第一条')).toBeNull();
+    expect(screen.getByText('第二条')).toBeTruthy();
+    await act(async () => jest.advanceTimersByTime(5000));
+    expect(screen.queryByText('第二条')).toBeNull();
+    expect(screen.getByText('甲谱面下载')).toBeTruthy();
+    expect(mockFirstDownloadCancel).not.toHaveBeenCalled();
   });
 });
