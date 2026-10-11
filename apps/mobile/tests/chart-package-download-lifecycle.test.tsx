@@ -111,6 +111,7 @@ describe('chart package download lifecycle', () => {
     expect(mockShowActionNotification).toHaveBeenCalledTimes(1);
     const choice = mockShowActionNotification.mock.calls[0][0];
     expect(choice.progress).toBeUndefined();
+    expect(choice.blocking).not.toBe(false);
     expect(mockFetch).toHaveBeenCalledWith('https://example.test/video', expect.objectContaining({ method: 'HEAD', signal: expect.anything() }));
     await act(async () => {
       choice.actions[includeVideo ? 0 : 1].onPress?.();
@@ -118,6 +119,7 @@ describe('chart package download lifecycle', () => {
     });
     expect(runner).toHaveBeenCalledWith(expect.objectContaining({ signal: expect.anything() }), includeVideo);
     expect(mockShowActionNotification.mock.calls[1][0].progress).toEqual({ label: '下载进度', value: 0 });
+    expect(mockShowActionNotification.mock.calls[1][0].blocking).toBe(false);
     expect(mockDismissNotification.mock.invocationCallOrder[0]).toBeLessThan(mockShowActionNotification.mock.invocationCallOrder[1]);
     expect(result.current.isRunning).toBe(false);
   });
@@ -195,5 +197,40 @@ describe('chart package download lifecycle', () => {
     });
     expect(mockDismissNotification).toHaveBeenCalledWith(7);
     expect(result.current.isRunning).toBe(false);
+  });
+
+  it('keeps parallel download cancellation independent while both report progress', async () => {
+    const { result } = await renderHook(() => ({
+      first: useChartPackageDownload({ successMessage: '甲已保存' }),
+      second: useChartPackageDownload({ successMessage: '乙已保存' }),
+    }));
+    const signals: AbortSignal[] = [];
+    const run: Parameters<typeof result.current.first.start>[0] = async (options) => {
+      signals.push(options.signal!);
+      options.onProgress?.({ phase: 'downloading', progress: 0.5 });
+      return new Promise<boolean>((resolve) => {
+        options.signal!.addEventListener('abort', () => resolve(false), { once: true });
+      });
+    };
+    let first!: Promise<void>;
+    let second!: Promise<void>;
+    await act(async () => {
+      first = result.current.first.start(run);
+      second = result.current.second.start(run);
+    });
+    expect(result.current.first.isRunning).toBe(true);
+    expect(result.current.second.isRunning).toBe(true);
+    const firstProgress = mockShowActionNotification.mock.calls[0][0];
+    const secondProgress = mockShowActionNotification.mock.calls[1][0];
+    expect(firstProgress.blocking).toBe(false);
+    expect(secondProgress.blocking).toBe(false);
+    await act(async () => { secondProgress.actions[0].onPress?.(); await second; });
+    expect(signals[1].aborted).toBe(true);
+    expect(signals[0].aborted).toBe(false);
+    expect(result.current.second.isRunning).toBe(false);
+    expect(result.current.first.isRunning).toBe(true);
+    await act(async () => { firstProgress.actions[0].onPress?.(); await first; });
+    expect(signals[0].aborted).toBe(true);
+    expect(result.current.first.isRunning).toBe(false);
   });
 });

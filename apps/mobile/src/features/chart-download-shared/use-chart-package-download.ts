@@ -144,6 +144,7 @@ export function useChartPackageDownload({
       notificationIdRef.current = showActionNotification({
         title: '下载谱面文件',
         variant: 'info',
+        blocking: false,
         progress: { label: '下载进度', value: 0 },
         actions: [{ label: '取消', tone: 'cancel', onPress: cancelRun }],
       });

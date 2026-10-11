@@ -53,7 +53,8 @@ export function bestImageExportFilename(
 
 export async function requestBestImageExportPermission(): Promise<void> {
   if (!await MediaLibrary.isAvailableAsync()) throw new BestImageExportError('当前设备不支持保存到相册');
-  const permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
+  let permission = await MediaLibrary.getPermissionsAsync(true, ['photo']);
+  if (!permission.granted) permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
   if (!permission.granted) throw new BestImageExportError('没有相册写入权限，无法导出图片');
 }
 

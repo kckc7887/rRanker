@@ -3,6 +3,7 @@ import {
   Animated,
   BackHandler,
   Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   View,
@@ -48,11 +49,13 @@ export type NotificationInput = {
 
 export type ActionNotificationInput = Omit<NotificationInput, 'duration'> & {
   actions: readonly NotificationAction[];
+  blocking?: boolean;
 };
 
 type QueuedNotification = NotificationInput & {
   id: number;
   actions?: readonly NotificationAction[];
+  blocking?: boolean;
 };
 
 type NotificationContextValue = {
@@ -65,7 +68,7 @@ type NotificationContextValue = {
 type NotificationRenderContextValue = {
   activeOutletId: string | null;
   claimAction: (id: number) => boolean;
-  current: QueuedNotification | null;
+  visible: readonly QueuedNotification[];
   registerOutlet: (id: string) => () => void;
   removeNotification: (id: number) => void;
   requestCloseCurrent: () => boolean;
@@ -91,11 +94,20 @@ function defaultDuration(variant: NotificationVariant): number {
   return variant === 'warning' || variant === 'error' ? 5000 : 3000;
 }
 
+function isBlockingNotification(notification: QueuedNotification): boolean {
+  return Boolean(notification.actions?.length) && notification.blocking !== false;
+}
+
 export function NotificationProvider({ children }: { children: ReactNode }) {
   const [notifications, setNotifications] = useState<QueuedNotification[]>([]);
   const [outletIds, setOutletIds] = useState<string[]>([]);
   const nextIdRef = useRef(1);
   const handledActionIdsRef = useRef(new Set<number>());
+  const currentNotification = useMemo(() => notifications.find(isBlockingNotification)
+    ?? notifications.find((item) => item.blocking !== false) ?? notifications[0] ?? null, [notifications]);
+  const visibleNotifications = useMemo(() => currentNotification && isBlockingNotification(currentNotification)
+    ? [currentNotification]
+    : notifications.filter((item) => item === currentNotification || item.blocking === false), [currentNotification, notifications]);
 
   const enqueue = useCallback((input: NotificationInput, actions?: readonly NotificationAction[]) => {
     const id = nextIdRef.current;
@@ -133,8 +145,8 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     return () => setOutletIds((current) => current.filter((item) => item !== id));
   }, []);
   const requestCloseCurrent = useCallback(() => {
-    const current = notifications[0];
-    if (!current) return false;
+    const current = currentNotification;
+    if (!current || !isBlockingNotification(current)) return false;
     const cancelAction = current.actions?.find((action) => action.tone === 'cancel');
     if (cancelAction && claimAction(current.id)) {
       try {
@@ -146,7 +158,7 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
     }
     removeNotification(current.id);
     return true;
-  }, [claimAction, notifications, removeNotification]);
+  }, [claimAction, currentNotification, removeNotification]);
 
   const value = useMemo(
     () => ({
@@ -161,20 +173,19 @@ export function NotificationProvider({ children }: { children: ReactNode }) {
   const renderValue = useMemo<NotificationRenderContextValue>(() => ({
     activeOutletId,
     claimAction,
-    current: notifications[0] ?? null,
+    visible: visibleNotifications,
     registerOutlet,
     removeNotification,
     requestCloseCurrent,
-  }), [activeOutletId, claimAction, notifications, registerOutlet, removeNotification, requestCloseCurrent]);
+  }), [activeOutletId, claimAction, visibleNotifications, registerOutlet, removeNotification, requestCloseCurrent]);
 
   return (
     <NotificationContext.Provider value={value}>
       <NotificationRenderContext.Provider value={renderValue}>
         {children}
-        {!activeOutletId && notifications[0] ? (
+        {!activeOutletId && visibleNotifications.length ? (
           <NotificationHost
-            key={notifications[0].id}
-            notification={notifications[0]}
+            notifications={visibleNotifications}
             onRemoved={removeNotification}
             claimAction={claimAction}
             location="root"
@@ -198,11 +209,10 @@ export function NotificationOutlet() {
 
   useEffect(() => registerOutlet?.(id), [id, registerOutlet]);
 
-  if (!context || context.activeOutletId !== id || !context.current) return null;
+  if (!context || context.activeOutletId !== id || !context.visible.length) return null;
   return (
     <NotificationHost
-      key={context.current.id}
-      notification={context.current}
+      notifications={context.visible}
       onRemoved={context.removeNotification}
       claimAction={context.claimAction}
       location="outlet"
@@ -215,6 +225,34 @@ export function useNotificationModalRequestClose(): () => boolean {
 }
 
 function NotificationHost({
+  notifications,
+  onRemoved,
+  claimAction,
+  location,
+}: {
+  notifications: readonly QueuedNotification[];
+  onRemoved: (id: number) => void;
+  claimAction: (id: number) => boolean;
+  location: 'root' | 'outlet';
+}) {
+  const theme = useAppTheme();
+  const insets = useSafeAreaInsets();
+  const blocking = notifications.some(isBlockingNotification);
+  return <View pointerEvents={blocking ? 'auto' : 'box-none'}
+    style={[styles.overlay, { paddingTop: insets.top + 8, paddingBottom: insets.bottom + 8 }]}
+    testID={`app-notification-${location}-overlay`}>
+    {blocking ? <Pressable accessibilityElementsHidden importantForAccessibility="no-hide-descendants"
+      onPress={() => undefined} style={[styles.backdrop, { backgroundColor: theme.overlay }]}
+      testID="app-notification-backdrop" /> : null}
+    <ScrollView style={styles.notificationList} contentContainerStyle={styles.notificationCards}
+      keyboardShouldPersistTaps="handled" showsVerticalScrollIndicator={false}>
+      {notifications.map((notification) => <NotificationCard key={notification.id}
+        notification={notification} onRemoved={onRemoved} claimAction={claimAction} location={location} />)}
+    </ScrollView>
+  </View>;
+}
+
+function NotificationCard({
   notification,
   onRemoved,
   claimAction,
@@ -226,7 +264,6 @@ function NotificationHost({
   location: 'root' | 'outlet';
 }) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const translateY = useRef(new Animated.Value(-120)).current;
   const opacity = useRef(new Animated.Value(0)).current;
   const exitingRef = useRef(false);
@@ -234,6 +271,7 @@ function NotificationHost({
   const variant = notification.variant ?? 'info';
   const actions = notification.actions;
   const isAction = Boolean(actions?.length);
+  const blocking = isBlockingNotification(notification);
   const progressPercent = notification.progress
     ? Math.round(Math.min(1, Math.max(0, notification.progress.value)) * 100)
     : 0;
@@ -296,7 +334,7 @@ function NotificationHost({
   }, [dismiss, isAction, notification.duration, opacity, translateY, variant]);
 
   useEffect(() => {
-    if (!isAction || location !== 'root') return undefined;
+    if (!blocking || location !== 'root') return undefined;
     const subscription = BackHandler.addEventListener('hardwareBackPress', () => {
       const cancelAction = actions?.find((action) => action.tone === 'cancel');
       if (cancelAction) performAction(cancelAction);
@@ -304,24 +342,10 @@ function NotificationHost({
       return true;
     });
     return () => subscription.remove();
-  }, [actions, dismiss, isAction, location, performAction]);
+  }, [actions, blocking, dismiss, location, performAction]);
 
   const meta = VARIANT_META[variant];
   return (
-    <View
-      pointerEvents={isAction ? 'auto' : 'box-none'}
-      style={[styles.overlay, { paddingTop: insets.top + 8 }]}
-      testID={`app-notification-${location}-overlay`}
-    >
-      {isAction ? (
-        <Pressable
-          accessibilityElementsHidden
-          importantForAccessibility="no-hide-descendants"
-          onPress={() => undefined}
-          style={[styles.backdrop, { backgroundColor: theme.overlay }]}
-          testID="app-notification-backdrop"
-        />
-      ) : null}
       <Animated.View
           accessibilityLiveRegion={variant === 'error' ? 'assertive' : 'polite'}
           accessibilityRole="alert"
@@ -403,7 +427,6 @@ function NotificationHost({
             </Pressable>
           ) : null}
       </Animated.View>
-    </View>
   );
 }
 
@@ -416,6 +439,8 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingHorizontal: 16,
   },
+  notificationList: { flexGrow: 0, width: '100%', maxWidth: 520 },
+  notificationCards: { gap: 8 },
   backdrop: {
     ...StyleSheet.absoluteFillObject,
     backgroundColor: 'rgba(17, 24, 39, 0.18)',
