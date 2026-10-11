@@ -1,9 +1,10 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { PixelRatio, Platform, StyleSheet } from 'react-native';
+import { AppState, PixelRatio, Platform, StyleSheet, type AppStateStatus } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PhigrosBestImageScreen } from '@/screens/PhigrosBestImageScreen';
 import { installRuntimeLogRecorder } from '@/services/runtime-diagnostics-recorder';
+import { AppLifecycleProvider } from '@/state/app-lifecycle';
 
 const mockShowNotification = jest.fn();
 
@@ -22,29 +23,29 @@ jest.mock('@/features/best-image/best-image-export', () => {
     ...actual,
     requestBestImageExportPermission: jest.fn(async () => undefined),
     saveBestImageCapture: jest.fn(async () => undefined),
-    deleteBestImageCapture: jest.fn(),
+    deleteBestImageCapture: jest.fn(async () => undefined),
   };
 });
-jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
-  prepareBestImageWebViewSources: (htmlPages: string[]) => ({
-    sources: htmlPages.map((html) => ({ html, baseUrl: 'file:///reference/' })),
-    dispose: jest.fn(),
-  }),
-}));
+jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => {
+  let batch = 0;
+  return {
+    prepareBestImageWebViewSources: async (htmlPages: string[]) => {
+      batch += 1;
+      return { sources: htmlPages.map((html, index) => ({ html, uri: `file:///reference/page-${batch}-${index}.html` })), dispose: jest.fn(async () => undefined) };
+    },
+  };
+});
 jest.mock('@/services/phigros-avatar-resolver', () => ({
   loadPhigrosAvatarCatalog: jest.fn(async () => ['avatar.test']),
 }));
-jest.mock('@/features/phigros-best-image/load-phigros-image-assets', () => {
-  const actual = jest.requireActual<typeof import('@/features/phigros-best-image/load-phigros-image-assets')>(
-    '@/features/phigros-best-image/load-phigros-image-assets',
+jest.mock('@/features/best-image/load-best-image-session', () => {
+  const actual = jest.requireActual<typeof import('@/features/best-image/load-best-image-session')>(
+    '@/features/best-image/load-best-image-session',
   );
   return {
     ...actual,
-    phigrosReadableRootDirectory: () => ({ uri: 'file:///reference/' }),
-    createPhigrosIllustrationSessionDirectory: () => ({ uri: 'file:///illustration-session/' }),
-    disposePhigrosIllustrationSession: jest.fn(),
-    loadPhigrosIllustrations: jest.fn(async (ids: string[]) => Object.fromEntries(ids.map((id) => [id, `data:image/png;base64,${id}`]))),
-    loadRemoteImageDataUri: jest.fn(async () => 'data:image/png;base64,style'),
+    loadImageFiles: jest.fn(async (_session: unknown, ids: string[]) => Object.fromEntries(ids.map((id) => [id, `file:///session/${id}`]))),
+    loadRemoteImageFile: jest.fn(async () => 'file:///session/style'),
   };
 });
 jest.mock('@/features/phigros-best-image/load-phigros-acc-averages', () => ({
@@ -53,18 +54,18 @@ jest.mock('@/features/phigros-best-image/load-phigros-acc-averages', () => ({
 }));
 jest.mock('@/features/phigros-best-image/phigros-font-cache', () => ({
   PHIGROS_FONT_MANIFEST: [
-    { name: 'phi', core: true },
-    { name: 'Aldrich-Regular', core: true },
-    { name: 'NotoSansJP', core: false },
+    { name: 'phi', cssFileName: 'phi.ttf', core: true },
+    { name: 'Aldrich-Regular', cssFileName: 'Aldrich-Regular.ttf', core: true },
+    { name: 'NotoSansJP', cssFileName: 'NotoSansJP.ttf', core: false },
   ],
   preparePhigrosFonts: jest.fn(),
 }));
 jest.mock('@/features/phigros-best-image/load-phigros-reference-template-assets', () => ({
   loadPhigrosReferenceTemplateAssets: jest.fn(async () => ({
     css: '@font-face{font-family:"PHI";src:url("./font/phi.ttf")} .song{width:360px}.Rating img{width:100%}',
-    dataIconUrl: 'data:image/png;base64,data', fallbackBackgroundUrl: 'data:image/png;base64,background', fallbackAvatarUrl: 'data:image/png;base64,avatar',
-    challengeIconUrls: Array.from({ length: 6 }, (_, index) => `data:image/png;base64,challenge-${index}`),
-    ratingIconUrls: { F: 'data:image/png;base64,F', FC: 'data:image/png;base64,FC', V: 'data:image/png;base64,V', phi: 'data:image/png;base64,phi' },
+    dataIconUrl: 'file:///session/data', fallbackBackgroundUrl: 'file:///session/background', fallbackAvatarUrl: 'file:///session/avatar',
+    challengeIconUrls: Array.from({ length: 6 }, (_, index) => `file:///session/challenge-${index}`),
+    ratingIconUrls: { F: 'file:///session/F', FC: 'file:///session/FC', V: 'file:///session/V', phi: 'file:///session/phi' },
     allowingReadAccessToUrl: 'file:///reference/',
   })),
 }));
@@ -116,7 +117,7 @@ jest.mock('@/hooks/use-game-data', () => ({
 }));
 
 describe('Phigros 生成图片页', () => {
-  afterEach(() => installRuntimeLogRecorder(undefined));
+  afterEach(() => { installRuntimeLogRecorder(undefined); jest.restoreAllMocks(); });
   it('只记录一次预览就绪，不记录页面内容', async () => {
     const log = jest.fn<(type: string, fields: Readonly<Record<string, unknown>>) => void>(); installRuntimeLogRecorder(log);
     const screen = await render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><PhigrosBestImageScreen /></SafeAreaProvider>);
@@ -140,6 +141,60 @@ describe('Phigros 生成图片页', () => {
         fullReady: Promise.resolve().then(() => onProgress({ phase: 'ready', completed: total, total, currentFont: null })),
       };
     });
+  });
+
+  it('后台恢复复用已就绪素材，权限失活恢复后继续导出', async () => {
+    let change: ((state: AppStateStatus) => void) | undefined;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((event: string, listener: unknown) => {
+      if (event === 'change') change = listener as typeof change;
+      return { remove: jest.fn() };
+    }) as typeof AppState.addEventListener);
+    const { requestBestImageExportPermission, saveBestImageCapture } = jest.requireMock('@/features/best-image/best-image-export') as { requestBestImageExportPermission: jest.Mock; saveBestImageCapture: jest.Mock };
+    saveBestImageCapture.mockClear();
+    mockShowNotification.mockClear();
+    const screen = await render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><AppLifecycleProvider><PhigrosBestImageScreen /></AppLifecycleProvider></SafeAreaProvider>);
+    await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(false));
+    const uri = screen.getByTestId('phigros-best-image-html-preview-0').props.source.uri;
+    await act(() => { change?.('background'); });
+    await waitFor(() => expect(screen.queryByTestId('phigros-best-image-html-preview-0')).toBeNull());
+    await act(() => { change?.('active'); });
+    await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0').props.source.uri).toBe(uri));
+    expect(screen.getByTestId('phigros-best-image-html-preview-0').props.source.html).toContain('file:///session/song-1');
+    let allow!: () => void;
+    requestBestImageExportPermission.mockImplementationOnce(() => new Promise<void>(resolve => { allow = resolve; }));
+    await fireEvent.press(screen.getByLabelText('导出成绩图片'));
+    await act(() => { change?.('inactive'); });
+    await act(() => { change?.('active'); });
+    await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0').props.source.uri).toBe(uri));
+    await act(() => { allow(); });
+    const renderer = await screen.findByLabelText('导出渲染 第1页');
+    await fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 1080, height: 1500 }) } });
+    await waitFor(() => expect(saveBestImageCapture).toHaveBeenCalledWith('file:///capture.png', expect.stringMatching(/\.png$/u)));
+    expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '导出完成', message: '已保存 1 张成绩图片到相册' }));
+  });
+
+  it('后台中断未完成曲绘后重新准备，迟到曲绘不覆盖恢复结果', async () => {
+    let change: ((state: AppStateStatus) => void) | undefined;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation(((event: string, listener: unknown) => {
+      if (event === 'change') change = listener as typeof change;
+      return { remove: jest.fn() };
+    }) as typeof AppState.addEventListener);
+    const { loadImageFiles } = jest.requireMock('@/features/best-image/load-best-image-session') as { loadImageFiles: jest.Mock };
+    let complete!: (value: Record<string, string>) => void;
+    let signal: AbortSignal | undefined;
+    loadImageFiles.mockImplementationOnce((...args: unknown[]) => {
+      signal = args[4] as AbortSignal;
+      return new Promise<Record<string, string>>(resolve => { complete = resolve; });
+    });
+    const screen = await render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><AppLifecycleProvider><PhigrosBestImageScreen /></AppLifecycleProvider></SafeAreaProvider>);
+    await waitFor(() => expect(signal).toBeDefined());
+    await act(() => { change?.('background'); });
+    expect(signal?.aborted).toBe(true);
+    await act(() => { change?.('active'); });
+    await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0').props.source.html).toContain('file:///session/song-1'));
+    await act(() => { complete({ 'song-1': 'file:///session/late-song' }); });
+    expect(screen.getByTestId('phigros-best-image-html-preview-0').props.source.html).not.toContain('file:///session/late-song');
+    expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(false);
   });
 
   it('shows the core preview while needed extensions download and enables export only after they are ready', async () => {
@@ -210,11 +265,11 @@ describe('Phigros 生成图片页', () => {
     const preview = await screen.findByTestId('phigros-best-image-html-preview-0');
     expect(preview.props.source.html).toContain('class="playerInfo"');
     expect(preview.props.source.html).toContain('class="song phi_song"');
-    expect(preview.props.source.html).toContain('data:image/png;base64,style');
-    expect(preview.props.source.html).toContain('data:image/png;base64,FC');
+    expect(preview.props.source.html).toContain('file:///session/style');
+    expect(preview.props.source.html).toContain('file:///session/FC');
     expect(preview.props.source.html).toContain('./font/phi.ttf');
     expect(preview.props.source.html).not.toContain('file:///reference/avatar.png');
-    expect(preview.props.source.baseUrl).toBe('file:///reference/');
+    expect(preview.props.source.uri).toMatch(/^file:\/\/\/reference\/page-\d+-0\.html$/u);
     expect(preview.props.allowingReadAccessToURL).toBe('file:///reference/');
     expect(screen.getByLabelText('导出成绩图片')).toBeTruthy();
     expect(screen.queryByTestId('phigros-best-image-webview-status')).toBeNull();
@@ -255,16 +310,16 @@ describe('Phigros 生成图片页', () => {
     await waitFor(() => expect(screen.getByText('导出到相册')).toBeTruthy());
 
     mockShowNotification.mockClear();
-    const { loadPhigrosIllustrations } = jest.requireMock('@/features/phigros-best-image/load-phigros-image-assets') as {
-      loadPhigrosIllustrations: jest.Mock;
+    const { loadImageFiles } = jest.requireMock('@/features/best-image/load-best-image-session') as {
+      loadImageFiles: jest.Mock;
     };
-    loadPhigrosIllustrations.mockClear();
+    loadImageFiles.mockClear();
     await fireEvent.press(screen.getByLabelText('自定义'));
     await waitFor(() => {
       expect(screen.getByLabelText('自定义').props.accessibilityState.selected).toBe(true);
     });
     expect(mockShowNotification).not.toHaveBeenCalled();
-    expect(loadPhigrosIllustrations).not.toHaveBeenCalled();
+    expect(loadImageFiles).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Best30').props.accessibilityState.selected).toBe(false);
     expect(screen.getByText('自定义 BestN')).toBeTruthy();
     expect(screen.getByLabelText('自定义数量')).toBeTruthy();
@@ -287,3 +342,20 @@ describe('Phigros 生成图片页', () => {
     expect(screen.getByLabelText('关闭头像')).toBeTruthy();
   });
 });
+
+jest.mock('expo-file-system', () => {
+  class Entry {
+    uri: string;
+    constructor(...parts: (string | { uri: string })[]) {
+      this.uri = parts.map((part) => (typeof part === 'string' ? part : part.uri).replace(/\/$/u, '')).join('/');
+    }
+  }
+  return { File: Entry, Directory: Entry, Paths: { cache: 'file:///cache', document: 'file:///document' } };
+});
+jest.mock('expo-file-system/legacy', () => ({
+  getInfoAsync: async () => ({ exists: false }),
+  makeDirectoryAsync: async () => undefined,
+  copyAsync: async () => undefined,
+  moveAsync: async () => undefined,
+  deleteAsync: async () => undefined,
+}));

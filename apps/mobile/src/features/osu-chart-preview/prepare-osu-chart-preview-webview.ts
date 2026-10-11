@@ -39,8 +39,9 @@ export async function prepareOsuChartPreviewWebViewSource(
   const includeVideo = previewSettings.videoEnabled;
   const assertCurrent = captureResourceWrites('shared', signal);
   assertCurrent();
-  const directory = createChartPreviewSessionDirectory(DIRECTORY_NAME);
+  const directory = await createChartPreviewSessionDirectory(DIRECTORY_NAME);
   try {
+    assertCurrent();
     let resources: OsuChartPreviewResources | undefined;
     let candidateSequence = 0;
     const archive = await downloadOsuBeatmapsetArchive(directory, { beatmapsetId: target.beatmapsetId, includeVideo }, {
@@ -77,7 +78,7 @@ export async function prepareOsuChartPreviewWebViewSource(
           assertAttempt();
           resources = candidateResources;
         } catch (error) {
-          disposeChartPreviewSessionDirectory(candidateDirectory);
+          await disposeChartPreviewSessionDirectory(candidateDirectory);
           throw error;
         }
       },
@@ -119,7 +120,7 @@ export async function prepareOsuChartPreviewWebViewSource(
     assertCurrent();
     return prepared;
   } catch (error) {
-    disposeChartPreviewSessionDirectory(directory);
+    await disposeChartPreviewSessionDirectory(directory);
     throw error;
   }
 }

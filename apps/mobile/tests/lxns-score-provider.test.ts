@@ -65,6 +65,38 @@ describe('LXNS player presentation', () => {
     await expect(provider.getRecords()).resolves.toMatchObject([{ dxScore: 1836 }]);
   });
 
+  it.each(['getRecords', 'getOptionalRecords'] as const)('preserves blank song titles from %s and distinguishes missing titles', async method => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true,
+      code: 200,
+      data: ['\u3000', '', undefined].map(song_name => ({
+        id: 1422, song_name, level: '14', level_index: 3,
+        achievements: 100, dx_score: 1000, dx_rating: 298, rate: 'sss', type: 'dx',
+      })),
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    const provider = new LxnsScoreProvider({
+      mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh',
+      expiresAt: Date.now() + 120_000, persistable: true,
+    });
+
+    const records = await provider[method]();
+    expect(records.map(({ title, incomplete }) => ({ title, incomplete }))).toEqual([
+      { title: '\u3000', incomplete: undefined },
+      { title: '', incomplete: undefined },
+      { title: '曲名缺失', incomplete: true },
+    ]);
+  });
+
+  it.each(['getRecords', 'getOptionalRecords'] as const)('rejects malformed %s entries before mapping', async method => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify({
+      success: true, code: 200, data: [{ id: 1, level_index: 3, achievements: 100, type: 'dx' }],
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })));
+    const provider = new LxnsScoreProvider({
+      mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 120_000, persistable: true,
+    });
+    await expect(provider[method]()).rejects.toMatchObject({ code: 'upstream_schema' });
+  });
+
   it('does not issue the read when the caller aborted during the token refresh', async () => {
     const controller = new AbortController();
     const requestedUrls: string[] = [];

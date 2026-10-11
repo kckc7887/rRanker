@@ -38,6 +38,6 @@ export async function downloadSimaiPackage({ title, suffix, extension = '.zip', 
     throwIfChartDownloadCancelled(options.signal);
     return await saveChartPackage(`${packageName}${extension}`, { kind: 'file', file: archive }, options.signal);
   } finally {
-    cleanupChartDownloadSessionDirectory(staging);
+    await cleanupChartDownloadSessionDirectory(staging);
   }
 }

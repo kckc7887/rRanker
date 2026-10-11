@@ -38,11 +38,11 @@ function zoneOf(n: Note): number | null {
         return null;
     return Number(match[2]) - 1 + ({ A: 0, B: 8, D: 17, E: 25 }[match[1] as 'A' | 'B' | 'D' | 'E']);
 }
-function windowCounts(notes: Note[], width: number, step: number): {
+function* windowCounts(shouldYield: () => boolean, notes: Note[], width: number, step: number): Generator<void, {
     start: number;
     end: number;
     count: number;
-}[] {
+}[], void> {
     const result: {
         start: number;
         end: number;
@@ -51,19 +51,19 @@ function windowCounts(notes: Note[], width: number, step: number): {
     if (!notes.length)
         return result;
     let left = 0, right = 0;
-    for (let start = notes[0]!.timingMs; start <= notes.at(-1)!.timingMs; start += step) {
+    for (let start = notes[0]!.timingMs; start <= notes.at(-1)!.timingMs; start += step) { if (shouldYield()) yield;
         while (left < notes.length && notes[left]!.timingMs < start)
-            left++;
+            { if (shouldYield()) yield; left++; }
         while (right < notes.length && notes[right]!.timingMs < start + width)
-            right++;
+            { if (shouldYield()) yield; right++; }
         result.push({ start, end: start + width, count: right - left });
     }
     return result;
 }
-export function baseBurden(chart: Chart): {
+export function* baseBurden(shouldYield: () => boolean, chart: Chart): Generator<void, {
     features: Record<string, number>;
     slideEvents: SlideEvent[];
-} {
+}, void> {
     const notes = [...chart.notes].filter(n => !n.isMine).sort((a, b) => a.timingMs - b.timingMs || a.id - b.id);
     if (!notes.length)
         throw new Error('Empty chart');
@@ -76,14 +76,14 @@ export function baseBurden(chart: Chart): {
     const duration = Math.max(1, (Math.max(...notes.map(n => n.endTimeMs)) - notes[0]!.timingMs) / 1000);
     const timelineOffset = timeline.msFromBeat(4) - chart.firstMs;
     const audioTime = (chartMs: number) => chartMs - timelineOffset;
-    const two = windowCounts(buttons, 2000, 500), four = windowCounts(buttons, 4000, 1000);
-    const sixteen = windowCounts(buttons, 16000, 4000), thirtyTwo = windowCounts(buttons, 32000, 8000);
+    const two = (yield* windowCounts(shouldYield, buttons, 2000, 500)), four = (yield* windowCounts(shouldYield, buttons, 4000, 1000));
+    const sixteen = (yield* windowCounts(shouldYield, buttons, 16000, 4000)), thirtyTwo = (yield* windowCounts(shouldYield, buttons, 32000, 8000));
     let jacks = 0, wideMoves = 0, alternating = 0, sweeps = 0, rhythmChanges = 0, holdConflicts = 0;
     let holdHandSequences = 0, dottedMovePatterns = 0;
     let dottedSpatialEvents = 0, chordRepositions = 0;
     let dottedChordQualified8s = 0;
     let holdOneHandBurden = 0;
-    for (let i = 1; i < keyboardNotes.length; i++) {
+    for (let i = 1; i < keyboardNotes.length; i++) { if (shouldYield()) yield;
         const a = keyboardNotes[i - 1]!, b = keyboardNotes[i]!;
         const dt = b.timingMs - a.timingMs;
         if (dt > 0 && 1000 / dt >= 3 && a.position === b.position) {
@@ -103,7 +103,7 @@ export function baseBurden(chart: Chart): {
                 rhythmChanges++;
         }
     }
-    for (let i = 3; i < keyboardNotes.length; i++) {
+    for (let i = 3; i < keyboardNotes.length; i++) { if (shouldYield()) yield;
         const group = keyboardNotes.slice(i - 3, i + 1);
         if (3 / Math.max(.001, (group[3]!.timingMs - group[0]!.timingMs) / 1000) < 4)
             continue;
@@ -112,7 +112,7 @@ export function baseBurden(chart: Chart): {
             sweeps++;
         }
     }
-    for (let i = 3; i < keyboardNotes.length; i++) {
+    for (let i = 3; i < keyboardNotes.length; i++) { if (shouldYield()) yield;
         const group = keyboardNotes.slice(i - 3, i + 1);
         const gaps = group.slice(1).map((note, j) => note.timingMs - group[j]!.timingMs);
         if (gaps.some(gap => gap <= 0) || Math.max(...gaps) / Math.min(...gaps) > 1.3)
@@ -128,7 +128,7 @@ export function baseBurden(chart: Chart): {
         time: number;
         notes: typeof buttons;
     }[] = [];
-    for (const note of buttons.filter(n => n.type !== 'slide')) {
+    for (const note of buttons.filter(n => n.type !== 'slide')) { if (shouldYield()) yield;
         const last = onsets.at(-1);
         if (last && (last.notes[0]!.group === note.group || Math.abs(last.time - note.timingMs) < 1e-6))
             last.notes.push(note);
@@ -147,7 +147,7 @@ export function baseBurden(chart: Chart): {
     }[] = [];
     const onsetBeatGaps = onsets.slice(1).map((onset, i) => scoreBeat(onset.time) - scoreBeat(onsets[i]!.time));
     const dottedOnsetGaps = dottedBeatGapFlags(onsetBeatGaps);
-    for (let i = 1; i < onsets.length; i++) {
+    for (let i = 1; i < onsets.length; i++) { if (shouldYield()) yield;
         const prior = onsets[i - 1]!, current = onsets[i]!;
         const gapBeats = onsetBeatGaps[i - 1]!;
         const localGaps = onsetBeatGaps.slice(Math.max(0, i - 2), i + 1).filter(gap => gap > 1e-6);
@@ -159,12 +159,12 @@ export function baseBurden(chart: Chart): {
         let chordCost = Infinity;
         if (before.length >= 2 && after.length >= 2 && gapBeats <= localPulse * 4.1) {
             for (let a = 0; a < before.length; a++)
-                for (let b = a + 1; b < before.length; b++) {
+                { if (shouldYield()) yield; for (let b = a + 1; b < before.length; b++) { if (shouldYield()) yield;
                     for (let c = 0; c < after.length; c++)
-                        for (let d = c + 1; d < after.length; d++) {
+                        { if (shouldYield()) yield; for (let d = c + 1; d < after.length; d++) { if (shouldYield()) yield;
                             chordCost = Math.min(chordCost, distance(before[a]!, after[c]!) + distance(before[b]!, after[d]!), distance(before[a]!, after[d]!) + distance(before[b]!, after[c]!));
-                        }
-                }
+                        } }
+                } }
         }
         const chordShift = chordCost >= 3 && Number.isFinite(chordCost);
         if (!dotted && !chordShift)
@@ -180,7 +180,7 @@ export function baseBurden(chart: Chart): {
         start: number;
         end: number;
     }[] = [];
-    for (let start = onsets[0]?.time ?? 0; start <= (onsets.at(-1)?.time ?? 0); start += 2000) {
+    for (let start = onsets[0]?.time ?? 0; start <= (onsets.at(-1)?.time ?? 0); start += 2000) { if (shouldYield()) yield;
         const matching = dottedChordEvents.filter(event => event.time >= start && event.time < start + 8000);
         const dotted = matching.filter(event => event.dotted).length;
         const chords = matching.filter(event => event.chordShift).length;
@@ -188,7 +188,7 @@ export function baseBurden(chart: Chart): {
             dottedChordWindows.push({ start, end: start + 8000 });
     }
     dottedChordQualified8s = dottedChordWindows.length;
-    for (let i = 3; i < onsets.length; i++) {
+    for (let i = 3; i < onsets.length; i++) { if (shouldYield()) yield;
         const group = onsets.slice(i - 3, i + 1);
         const gapsBeats = group.slice(1).map((onset, j) => scoreBeat(onset.time) - scoreBeat(group[j]!.time));
         // Keep an unrelated long rest out of a four-onset rhythm relation. This
@@ -196,7 +196,7 @@ export function baseBurden(chart: Chart): {
         if (!dottedBeatGapFlags(gapsBeats).some(Boolean) || gapsBeats.some(gap => gap <= 1e-6) || Math.max(...gapsBeats) > Math.min(...gapsBeats) * 4.1)
             continue;
         let shifts = 0;
-        for (let j = 1; j < group.length; j++) {
+        for (let j = 1; j < group.length; j++) { if (shouldYield()) yield;
             if (group[j]!.notes.some(n => group[j - 1]!.notes.every(prior => distance(Number(n.position), Number(prior.position)) >= 2)))
                 shifts++;
         }
@@ -205,13 +205,13 @@ export function baseBurden(chart: Chart): {
         dottedMovePatterns++;
     }
     const holds = notes.filter(n => n.type === 'hold-start' || n.type === 'touch-hold-start');
-    for (const h of holds) {
+    for (const h of holds) { if (shouldYield()) yield;
         const heldPoint = pointOf(h);
         if (!heldPoint || h.endTimeMs <= h.timingMs)
             continue;
         const inside = buttons.filter(n => n.id !== h.id && n.timingMs > h.timingMs + 1e-6 && n.timingMs < h.endTimeMs - 1e-6);
         let changes = 0, constrained = 0;
-        for (let i = 0; i < inside.length; i++) {
+        for (let i = 0; i < inside.length; i++) { if (shouldYield()) yield;
             const p = pointOf(inside[i]!);
             if (p && Math.hypot(p.x - heldPoint.x, p.y - heldPoint.y) <= 4.1)
                 constrained++;
@@ -223,7 +223,7 @@ export function baseBurden(chart: Chart): {
         // The head TAP is a keyboard action even when its later movement also creates Slide burden.
         const accompaniment = inside;
         const runs: typeof accompaniment[] = [];
-        for (const note of accompaniment) {
+        for (const note of accompaniment) { if (shouldYield()) yield;
             const run = runs.at(-1);
             if (run && note.timingMs - run.at(-1)!.timingMs <= rhythmUnit * 4.1)
                 run.push(note);
@@ -231,7 +231,7 @@ export function baseBurden(chart: Chart): {
                 runs.push([note]);
         }
         let busy = false;
-        for (const run of runs) {
+        for (const run of runs) { if (shouldYield()) yield;
             if (run.length < 4)
                 continue;
             // The occupied-hand phrase can use eighths even when unrelated earlier
@@ -239,7 +239,7 @@ export function baseBurden(chart: Chart): {
             // determines adjacency; the physical action-rate requirement stays real.
             const runPulse = inferRhythmUnit(run);
             let fast = 0, adjacent = 0, moved = 0;
-            for (let i = 1; i < run.length; i++) {
+            for (let i = 1; i < run.length; i++) { if (shouldYield()) yield;
                 const prior = run[i - 1]!, note = run[i]!;
                 if (note.timingMs - prior.timingMs > runPulse * 2.1 || 1000 / (note.timingMs - prior.timingMs) < 3)
                     continue;
@@ -303,19 +303,19 @@ export function baseBurden(chart: Chart): {
     const motions: Motion[] = [];
     const slideEvents: SlideEvent[] = [];
     let slideBurstBurden = 0, slideStaminaBurden = 0, slideTechniqueBurden = 0;
-    for (const slide of slides) {
-        slide.branches.forEach((branch, branchIndex) => {
+    for (const slide of slides) { if (shouldYield()) yield;
+        for (const [branchIndex, branch] of slide.branches.entries()) { if (shouldYield()) yield;
             let pieces: ReturnType<typeof prepareBranch>;
             try {
                 pieces = prepareBranch(branch);
             }
             catch {
-                return;
+                continue;
             }
             const length = pieces.reduce((sum, part) => sum + part.geometry.length, 0);
             const speed = length / Math.max(.001, branch.durationMs / 1000);
             const turns: Turn[] = [];
-            for (let i = 1; i < pieces.length; i++) {
+            for (let i = 1; i < pieces.length; i++) { if (shouldYield()) yield;
                 const before = pathPose(pieces[i - 1]!.geometry, .95).angle;
                 const after = pathPose(pieces[i]!.geometry, .05).angle;
                 const angle = angleDifference(after, before);
@@ -323,7 +323,7 @@ export function baseBurden(chart: Chart): {
                     turns.push({ atMs: slide.timingMs + pieces[i]!.startMs,
                         position: branch.segments[i - 1]!.endPos, angleDeg: Math.round(angle * 180 / Math.PI), kind: 'join' });
             }
-            for (let i = 0; i < pieces.length; i++) {
+            for (let i = 0; i < pieces.length; i++) { if (shouldYield()) yield;
                 const segment = branch.segments[i]!;
                 const piece = pieces[i]!;
                 if (segment.type !== 'V' || segment.midPos === undefined)
@@ -331,7 +331,7 @@ export function baseBurden(chart: Chart): {
                 const waypoint = buttonPoint(segment.midPos);
                 const arrows = piece.geometry.arrows;
                 let index = 1, nearest = Number.POSITIVE_INFINITY;
-                for (let j = 1; j < arrows.length - 1; j++) {
+                for (let j = 1; j < arrows.length - 1; j++) { if (shouldYield()) yield;
                     const d = Math.hypot(arrows[j]!.x - waypoint.x, arrows[j]!.y - waypoint.y);
                     if (d < nearest) {
                         nearest = d;
@@ -360,7 +360,7 @@ export function baseBurden(chart: Chart): {
                 for (const [lane, sidePosition, dPosition] of [
                     ['left', ((endpoint + 6) % 8) + 1, endpoint],
                     ['right', (endpoint % 8) + 1, (endpoint % 8) + 1],
-                ] as const) {
+                ] as const) { if (shouldYield()) yield;
                     const side = geometryFor({ type: '-', startPos: slide.position,
                         endPos: sidePosition as typeof slide.position, code: `${slide.position}-${sidePosition}`, durationMs: branch.durationMs });
                     sidePaths.push({ lane, geometry: side });
@@ -376,26 +376,21 @@ export function baseBurden(chart: Chart): {
                 headBeat: scoreBeat(slide.timingMs), startBeat: scoreBeat(slide.timingMs + branch.delayMs),
                 endBeat: scoreBeat(slide.timingMs + branch.delayMs + branch.durationMs),
                 declaredWaitBeats: branch.waitSpec?.mode === 'default-beat' ? 1 : branch.delayMs * slide.bpm / 60000,
-                headPosition: slide.position, headless: slide.isHeadless, code: branch.segments.map(s => s.code).join('→'), speed,
+                headPosition: slide.position, headless: slide.isHeadless,
                 segments: pieces.map((piece, i) => ({ code: branch.segments[i]!.code,
                     startMs: audioTime(slide.timingMs + piece.startMs), endMs: audioTime(slide.timingMs + piece.startMs + piece.durationMs),
-                    startBeat: scoreBeat(slide.timingMs + piece.startMs), endBeat: scoreBeat(slide.timingMs + piece.startMs + piece.durationMs),
-                    durationSpec: branch.segments[i]!.durationSpec,
-                    length: piece.geometry.length, speed: piece.geometry.length / Math.max(.001, piece.durationMs / 1000) })),
-                turns: turns.map(turn => ({ ...turn, atMs: audioTime(turn.atMs), atBeat: scoreBeat(turn.atMs) })),
-                zones: zones.map(zone => ({ ...zone, enterMs: audioTime(zone.enterMs), exitMs: audioTime(zone.exitMs),
-                    enterBeat: scoreBeat(zone.enterMs), exitBeat: scoreBeat(zone.exitMs) })) });
-        });
+                    length: piece.geometry.length })) });
+        }
     }
     motions.sort((a, b) => a.start - b.start);
-    const localRhythms = localMotionRhythm(slideEvents);
-    const pulseOf = (motion: Motion) => localRhythms.get(motionRhythmKey(motion.slide.id, motion.branchIndex))!.pulseMs;
+    const localRhythms = (yield* localMotionRhythm(shouldYield, slideEvents));
+    const pulseOf = (motion: Motion) => localRhythms.get(motionRhythmKey(motion.slide.id, motion.branchIndex))!;
     const handoffs: {
         first: Motion;
         next: Motion;
         gapMs: number;
     }[] = [];
-    for (let i = 1; i < motions.length; i++) {
+    for (let i = 1; i < motions.length; i++) { if (shouldYield()) yield;
         const previous = motions[i - 1]!, motion = motions[i]!;
         const gapMs = motion.start - previous.end;
         const previousEnd = previous.slide.branches[previous.branchIndex]!.segments.at(-1)!.endPos;
@@ -405,7 +400,7 @@ export function baseBurden(chart: Chart): {
     }
     // Independent actions are connected by their waiting/movement phase, never by a
     // minimum overlap in milliseconds. Physical speed contributes to strength below.
-    const actionGroups = slideActionGroupsCandidate(chart, slideEvents);
+    const actionGroups = (yield* slideActionGroupsCandidate(shouldYield, chart, slideEvents));
     const representativeBranches = new Set(actionGroups.groups.flatMap(group => group.actions.map(action => action.representative)));
     const actionCountByHead = new Map(actionGroups.groups.map(group => [group.slideId, group.effectiveActionCount]));
     // Keep all scored branches/events. Only independent motion candidates enter
@@ -413,7 +408,7 @@ export function baseBurden(chart: Chart): {
     // Unsupported/fan routes remain conservative singletons.
     const burstMotions = motions.filter(m => representativeBranches.has(`${m.slide.id}:${m.branchIndex}`));
     let lastBurstEnd = Number.NEGATIVE_INFINITY;
-    for (let i = 0; i < burstMotions.length; i++) {
+    for (let i = 0; i < burstMotions.length; i++) { if (shouldYield()) yield;
         const first = burstMotions[i]!;
         if (first.start < lastBurstEnd - 1e-6)
             continue;
@@ -466,15 +461,15 @@ export function baseBurden(chart: Chart): {
         pulse: number;
     };
     const motionsBySource = new Map<number, typeof motions>();
-    for (const motion of motions) {
+    for (const motion of motions) { if (shouldYield()) yield;
         const list = motionsBySource.get(motion.slide.id) ?? [];
         list.push(motion);
         motionsBySource.set(motion.slide.id, list);
     }
     const operations: Operation[] = [];
-    for (const [id, sourceMotions] of motionsBySource) {
+    for (const [id, sourceMotions] of motionsBySource) { if (shouldYield()) yield;
         const components: Operation[] = [];
-        for (const motion of [...sourceMotions].sort((a, b) => a.start - b.start)) {
+        for (const motion of [...sourceMotions].sort((a, b) => a.start - b.start)) { if (shouldYield()) yield;
             const prior = components.at(-1), wait = motion.slide.branches[motion.branchIndex]!.delayMs;
             if (prior && motion.start <= prior.end + 1e-6) {
                 prior.end = Math.max(prior.end, motion.end);
@@ -490,17 +485,17 @@ export function baseBurden(chart: Chart): {
     operations.sort((a, b) => a.start - b.start);
     let run: typeof operations = [], runEnd = Number.NEGATIVE_INFINITY;
     const operationGroups: (typeof operations)[] = [];
-    const finishRun = () => {
+    const finishRun = function* (shouldYield: () => boolean)  {
         if (run.length)
             operationGroups.push([...run]);
         if (run.length < 4)
             return;
         let busy = 0, cursor = run[0]!.start;
         for (const motion of run)
-            if (motion.end > cursor) {
+            { if (shouldYield()) yield; if (motion.end > cursor) {
                 busy += motion.end - Math.max(cursor, motion.start);
                 cursor = motion.end;
-            }
+            } }
         const span = runEnd - run[0]!.start, coverage = busy / Math.max(1e-6, span);
         // Four tightly occupied operations or a repeated multi-group sequence.
         const physicalWork = run.reduce((sum, m) => sum + m.length, 0);
@@ -509,27 +504,27 @@ export function baseBurden(chart: Chart): {
         const continuousBurden = run.length * coverage * Math.sqrt(Math.max(.01, busy / 1000));
         slideStaminaBurden += continuousBurden;
     };
-    for (const motion of operations) {
+    for (const motion of operations) { if (shouldYield()) yield;
         const prior = run.at(-1);
         const scale = prior ? Math.max(prior.pulse, motion.pulse) : motion.pulse;
         if (prior && motion.start - runEnd > scale * 1.1 + 1e-6) {
-            finishRun();
+            (yield* finishRun(shouldYield));
             run = [];
             runEnd = Number.NEGATIVE_INFINITY;
         }
         run.push(motion);
         runEnd = Math.max(runEnd, motion.end);
     }
-    finishRun();
+    (yield* finishRun(shouldYield));
     // A repeated short group can have a real recovery gap and still form a long
     // stamina passage. Connect by the group's own cycle, not the last tiny slide.
     let groupRun: typeof operationGroups = [];
-    const flushGroupRun = () => {
+    const flushGroupRun = function* (shouldYield: () => boolean)  {
         if (groupRun.length < 2 || groupRun.reduce((sum, g) => sum + g.length, 0) < 8)
             return;
         const all = groupRun.flat(), start = all[0]!.start, end = Math.max(...all.map(m => m.end));
         let busy = 0, cursor = start;
-        for (const op of all) {
+        for (const op of all) { if (shouldYield()) yield;
             busy += Math.max(0, op.end - Math.max(cursor, op.start));
             cursor = Math.max(cursor, op.end);
         }
@@ -538,7 +533,7 @@ export function baseBurden(chart: Chart): {
             return;
         slideStaminaBurden += all.length * coverage * Math.sqrt(busy / 1000);
     };
-    for (const group of operationGroups) {
+    for (const group of operationGroups) { if (shouldYield()) yield;
         const prior = groupRun.at(-1);
         if (prior) {
             const span = Math.max(...prior.map(m => m.end)) - prior[0]!.start;
@@ -546,19 +541,19 @@ export function baseBurden(chart: Chart): {
             const groupScale = percentile(prior.map(op => Math.max(op.pulse, op.end - op.start)).sort((a, b) => a - b), .5);
             const comparable = group.length >= 3 && prior.length >= 3 && Math.max(group.length, prior.length) / Math.min(group.length, prior.length) <= 1.5;
             if (!comparable || gap > span * 1.5 + 1e-6 || gap > groupScale * 5 + 1e-6) {
-                flushGroupRun();
+                (yield* flushGroupRun(shouldYield));
                 groupRun = [];
             }
         }
         groupRun.push(group);
     }
-    flushGroupRun();
+    (yield* flushGroupRun(shouldYield));
     let lastHandoffStart = Number.NEGATIVE_INFINITY;
-    for (let i = 0; i < handoffs.length; i++) {
+    for (let i = 0; i < handoffs.length; i++) { if (shouldYield()) yield;
         if (handoffs[i]!.first.start < lastHandoffStart + pulseOf(handoffs[i]!.first) * 8)
             continue;
         const chain = [handoffs[i]!];
-        for (let j = i + 1; j < handoffs.length; j++) {
+        for (let j = i + 1; j < handoffs.length; j++) { if (shouldYield()) yield;
             const last = chain.at(-1)!;
             const next = handoffs[j]!;
             if (next.first.start >= chain[0]!.first.start + pulseOf(chain[0]!.first) * 8)
@@ -583,7 +578,7 @@ export function baseBurden(chart: Chart): {
         end: number;
         noteIds: number[];
     }[] = [];
-    for (const motion of motions) {
+    for (const motion of motions) { if (shouldYield()) yield;
         const branch = motion.slide.branches[motion.branchIndex]!;
         const head = buttonPoint(motion.slide.position);
         if (motion.turns.length && (branch.segments.length >= 2 || branch.segments.some(s => s.type === 'V')) &&
@@ -619,7 +614,7 @@ export function baseBurden(chart: Chart): {
         }
         const nearby = notes.filter(n => n.id !== motion.slide.id && (n.type !== 'slide' || !n.isHeadless) &&
             n.timingMs >= motion.start && n.timingMs <= motion.end + CONTACT_POLICY.earlyContactMs);
-        for (const note of nearby) {
+        for (const note of nearby) { if (shouldYield()) yield;
             const p = pointOf(note);
             if (!p)
                 continue;
@@ -632,8 +627,8 @@ export function baseBurden(chart: Chart): {
             const firstContactMs = Math.max(motion.start, note.timingMs - CONTACT_POLICY.earlyContactMs);
             const lastContactMs = Math.min(motion.end, note.timingMs - CONTACT_POLICY.minimumLeadMs);
             const lanes = matchingPass ? [matchingPass.lane] : ['center', ...motion.sidePaths.map(path => path.lane)] as Zone['lane'][];
-            for (let atMs = firstContactMs; atMs <= lastContactMs; atMs += CONTACT_POLICY.sampleMs) {
-                for (const lane of lanes) {
+            for (let atMs = firstContactMs; atMs <= lastContactMs; atMs += CONTACT_POLICY.sampleMs) { if (shouldYield()) yield;
+                for (const lane of lanes) { if (shouldYield()) yield;
                     const pose = poseAt(motion, atMs, lane);
                     const distanceToNote = Math.hypot(p.x - pose.x, p.y - pose.y);
                     if (distanceToNote < separation) {
@@ -653,7 +648,7 @@ export function baseBurden(chart: Chart): {
             collisionSeen.add(collisionKey);
             slideTechniqueBurden += 2;
         }
-        for (const hold of notes.filter(n => n.type === 'hold-start' || n.type === 'touch-hold-start')) {
+        for (const hold of notes.filter(n => n.type === 'hold-start' || n.type === 'touch-hold-start')) { if (shouldYield()) yield;
             const occupied = Math.min(hold.endTimeMs, motion.end) - Math.max(hold.timingMs, motion.start);
             if (occupied <= 1e-6 || hold.id === motion.slide.id)
                 continue;
@@ -680,7 +675,7 @@ export function baseBurden(chart: Chart): {
             return;
         slideTechniqueBurden += returnRun.length * 2;
     };
-    for (const motif of headReturnMotifs) {
+    for (const motif of headReturnMotifs) { if (shouldYield()) yield;
         if (returnRun.length && (motif.start - returnRun.at(-1)!.end > (returnRun.at(-1)!.end - returnRun.at(-1)!.start) * 2 ||
             returnRun.length >= 16)) {
             finishReturnRun();
@@ -690,18 +685,18 @@ export function baseBurden(chart: Chart): {
     }
     finishReturnRun();
     const slideSensorSeen = new Set<string>();
-    for (let i = 0; i < motions.length; i++) {
+    for (let i = 0; i < motions.length; i++) { if (shouldYield()) yield;
         const first = motions[i]!;
-        for (let j = i + 1; j < motions.length && motions[j]!.start <= first.end; j++) {
+        for (let j = i + 1; j < motions.length && motions[j]!.start <= first.end; j++) { if (shouldYield()) yield;
             const second = motions[j]!;
             if (first.slide.id === second.slide.id)
                 continue;
             const overlapStart = Math.max(first.start, second.start), overlapEnd = Math.min(first.end, second.end);
             if (overlapEnd <= overlapStart + 1e-6)
                 continue;
-            for (const [source, target] of [[first, second], [second, first]] as const) {
+            for (const [source, target] of [[first, second], [second, first]] as const) { if (shouldYield()) yield;
                 const ordered = [...target.zones].sort((a, b) => a.enterMs - b.enterMs);
-                for (let zoneIndex = 1; zoneIndex < ordered.length; zoneIndex++) {
+                for (let zoneIndex = 1; zoneIndex < ordered.length; zoneIndex++) { if (shouldYield()) yield;
                     const zone = ordered[zoneIndex]!;
                     const previous = ordered.slice(0, zoneIndex).filter(other => other.enterMs < zone.enterMs - 1e-6).at(-1);
                     if (!previous)
@@ -728,16 +723,16 @@ export function baseBurden(chart: Chart): {
     // Sequential launch relations are distinct from nearby-head or sensor
     // conflicts. Keep the two explicit hand strategies as hypotheses, not a
     // minimum-hand or optimal-solution claim. Shared one-stroke chains emit none.
-    const launchHandover = slideLaunchHandover(slideEvents);
-    for (const candidate of launchHandover.candidates) {
+    const launchHandover = (yield* slideLaunchHandover(shouldYield, slideEvents));
+    for (const candidate of launchHandover.candidates) { if (shouldYield()) yield;
         if (!candidate.candidateAxis)
             continue;
         const resets = candidate.relations.reduce((sum, relation) => sum + relation.resetDistance, 0);
         slideTechniqueBurden += candidate.relations.length + resets / 8;
     }
-    const launchTap = repeatedLaunchTapCandidate(chart, slideEvents);
-    for (const candidate of launchTap.candidates) {
-        for (let index = 0; index < candidate.relations.length; index++) {
+    const launchTap = (yield* repeatedLaunchTapCandidate(shouldYield, chart, slideEvents));
+    for (const candidate of launchTap.candidates) { if (shouldYield()) yield;
+        for (let index = 0; index < candidate.relations.length; index++) { if (shouldYield()) yield;
             const relation = candidate.relations[index]!;
             slideTechniqueBurden += 1 + relation.tapMovement / 4;
         }
@@ -745,9 +740,9 @@ export function baseBurden(chart: Chart): {
     // A shortest point-contact route does not measure the reading and action
     // continuity of two synchronous sweeps transitioning into delayed Slides.
     // Keep source-matched mixed evidence, bounded to the synchronous launch.
-    const sweepSlideContext = doubleSweepSlideContext(chart);
-    for (let i = 0; i < sweepSlideContext.relations.length; i++)
-        slideTechniqueBurden += 1;
+    const sweepSlideContext = (yield* doubleSweepSlideContext(shouldYield, chart));
+    for (let i = 0; i < sweepSlideContext; i++)
+        { if (shouldYield()) yield; slideTechniqueBurden += 1; }
     const peak = (windows: {
         count: number;
     }[]) => Math.max(0, ...windows.map(x => x.count));
@@ -756,7 +751,7 @@ export function baseBurden(chart: Chart): {
             axis_keyboard_stamina: peak(thirtyTwo) / 32 + percentile(sixteen.map(x => x.count).sort((a, b) => a - b), .75) / 16,
             axis_keyboard_technique: (jacks + wideMoves + 2 * alternating + sweeps + .5 * rhythmChanges + .25 * holdConflicts +
                 3 * holdHandSequences + .5 * holdOneHandBurden + 3 * dottedMovePatterns + 2 * dottedSpatialEvents +
-                1.5 * chordRepositions + 1.2 * dottedChordQualified8s + sweepSlideContext.relations.length) / duration * 10,
+                1.5 * chordRepositions + 1.2 * dottedChordQualified8s + sweepSlideContext) / duration * 10,
             axis_star_burst: slideBurstBurden / duration * 10,
             axis_star_stamina: slideStaminaBurden / duration * 10,
             axis_star_technique: slideTechniqueBurden / duration * 10,

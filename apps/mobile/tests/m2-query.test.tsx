@@ -146,7 +146,6 @@ jest.mock('@/state/session-store', () => ({
 }));
 jest.mock('@/components/SongCover', () => ({ SongCover: () => null }));
 jest.mock('@/hooks/use-detailed-catalog', () => {
-  const useDetailedCatalog = () => {
   const fixtures = jest.requireActual<typeof import('../src/fixtures/sanitized')>('../src/fixtures/sanitized');
   const utageSong = {
     id: '100123',
@@ -208,6 +207,7 @@ jest.mock('@/hooks/use-detailed-catalog', () => {
         charter: 'SD主谱师', versionId: 1 },
     ],
   } : song), crossVersionSong, utageSong] };
+  const useDetailedCatalog = () => {
   return {
     data: mockDetailedCatalogAvailable ? data : undefined,
     isLoading: !mockDetailedCatalogAvailable,
@@ -246,23 +246,30 @@ jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => {
   return { data: { records: [...fixtures.fixtureRecords, ...visualRecords], source: fixtures.fixtureSource }, isLoading: false, isError: false, error: null, refetch: jest.fn() };
 } }));
 jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () => {
-  if (mockDxRatingTagState === 'error') {
+  const { useMemo } = jest.requireActual<typeof import('react')>('react');
+  const currentDxRatingTagState = mockDxRatingTagState;
+  const currentDxRatingTagCount = mockDxRatingTagCount;
+  const currentDxRatingTagSongTitle = mockDxRatingTagSongTitle;
+  const currentDxRatingTagSheetType = mockDxRatingTagSheetType;
+  const currentDxRatingTagDifficulty = mockDxRatingTagDifficulty;
+  return useMemo(() => {
+  if (currentDxRatingTagState === 'error') {
     return { data: undefined, isLoading: false, isError: true, error: new Error('offline') };
   }
-  if (mockDxRatingTagState === 'loading') {
+  if (currentDxRatingTagState === 'loading') {
     return { data: undefined, isLoading: true, isError: false, error: null };
   }
-  if (mockDxRatingTagState === 'idle') {
+  if (currentDxRatingTagState === 'idle') {
     return { data: undefined, isLoading: false, isError: false, error: null };
   }
-  const tags = mockDxRatingTags.slice(0, mockDxRatingTagCount);
+  const tags = mockDxRatingTags.slice(0, currentDxRatingTagCount);
   return {
     data: {
       tags,
       relations: tags.flatMap((tag) => [{
-        songTitle: mockDxRatingTagSongTitle,
-        sheetType: mockDxRatingTagSheetType,
-        sheetDifficulty: mockDxRatingTagDifficulty,
+        songTitle: currentDxRatingTagSongTitle,
+        sheetType: currentDxRatingTagSheetType,
+        sheetDifficulty: currentDxRatingTagDifficulty,
         tagId: tag.id,
       }, ...(tag.id === 1 ? [{
         songTitle: '跨版本双谱面',
@@ -271,17 +278,18 @@ jest.mock('@/hooks/use-dxrating-chart-tags', () => ({ useDxRatingChartTags: () =
         tagId: tag.id,
       }] : [])]),
       source: {
-        kind: mockDxRatingTagState === 'cache' ? 'cache' : 'dxrating',
-        label: mockDxRatingTagState === 'cache' ? 'DXRating 谱面标签缓存' : 'DXRating 谱面标签',
+        kind: currentDxRatingTagState === 'cache' ? 'cache' : 'dxrating',
+        label: currentDxRatingTagState === 'cache' ? 'DXRating 谱面标签缓存' : 'DXRating 谱面标签',
         updatedAt: new Date(0).toISOString(),
-        isStale: mockDxRatingTagState === 'cache',
+        isStale: currentDxRatingTagState === 'cache',
       },
     },
     isLoading: false,
     isError: false,
     error: null,
   };
-} }));
+
+  }, [currentDxRatingTagState, currentDxRatingTagCount, currentDxRatingTagSongTitle, currentDxRatingTagSheetType, currentDxRatingTagDifficulty]); } }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
   data: mockUserLibraryData, isLoading: false, isUpdating: false, setSongFavorite: mockSetSongFavorite, setChartPractice: jest.fn(), setTags: jest.fn(),
   songKey: (songId: string | number) => `maimai:song:${songId}`,
@@ -488,12 +496,12 @@ describe('M2 song query screens', () => {
     mockDxRatingTagState = 'cache';
     const screen = await render(<SearchScreen />);
     expect(screen.queryByText(/DXRating 谱面标签缓存/)).toBeNull();
-    expect(screen.getByTestId('catalog-results-list')).toBeTruthy();
+    expect(await screen.findByTestId('catalog-results-list')).toBeTruthy();
   });
 
   it('searches aliases after debounce and supports empty filter state', async () => {
     const screen = await render(<SearchScreen />);
-    expect(screen.getByTestId('catalog-results-list').props).toEqual(expect.objectContaining({
+    expect((await screen.findByTestId('catalog-results-list')).props).toEqual(expect.objectContaining({
       contentInsetAdjustmentBehavior: 'automatic',
       initialNumToRender: 8,
       maxToRenderPerBatch: 4,
@@ -512,6 +520,7 @@ describe('M2 song query screens', () => {
       }));
     }
     await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '協 U·TA·GE');
+    await screen.findByText('共 1 首');
     await waitFor(() => expect(screen.getByTestId('song-chart-badges-100123')).toBeTruthy());
     const utageBadges = within(screen.getByTestId('song-chart-badges-100123'));
     expect(utageBadges.getByText('協 14+?')).toBeTruthy();
@@ -565,6 +574,7 @@ describe('M2 song query screens', () => {
     await fireEvent.press(screen.getByLabelText('选择版本 maimai でらっくす PRiSM PLUS'));
     expect(screen.getByLabelText('版本筛选，当前 maimai でらっくす PRiSM PLUS')).toBeTruthy();
     expect(screen.getAllByText('正常曲目 A').length).toBeGreaterThan(0);
+    await screen.findByText('版本测试曲师 · maimai でらっくす PRiSM PLUS');
     const currentVersionBadges = within(screen.getByTestId('song-chart-badges-7'));
     expect(currentVersionBadges.getByText('DX')).toBeTruthy();
     expect(currentVersionBadges.queryByText('SD')).toBeNull();
@@ -574,6 +584,7 @@ describe('M2 song query screens', () => {
 
     await fireEvent.press(screen.getByLabelText('版本筛选，当前 maimai でらっくす PRiSM PLUS'));
     await fireEvent.press(screen.getByLabelText('选择版本 脱敏过往版本'));
+    await screen.findByText('版本测试曲师 · 脱敏过往版本');
     const pastVersionBadges = within(screen.getByTestId('song-chart-badges-7'));
     expect(pastVersionBadges.getByText('SD')).toBeTruthy();
     expect(pastVersionBadges.queryByText('DX')).toBeNull();
@@ -635,6 +646,7 @@ describe('M2 song query screens', () => {
     expect(ready.getByLabelText('谱面标签 标签1，未选中')).toBeTruthy();
     await fireEvent.press(ready.getByLabelText('完成谱面标签筛选'));
     expect(ready.getByLabelText('谱面标签筛选，当前 全部')).toBeTruthy();
+    await ready.findByText('共 10 首');
   });
 
   it('keeps the tag entry visible and disabled while loading', async () => {
@@ -645,6 +657,7 @@ describe('M2 song query screens', () => {
     expect(loading.getByLabelText('谱面标签筛选，加载中').props.accessibilityState)
       .toEqual(expect.objectContaining({ disabled: true }));
     expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]);
+    await loading.findByText('共 10 首');
   });
 
   it('reports a disabled tag query as loading instead of unavailable', async () => {
@@ -655,6 +668,7 @@ describe('M2 song query screens', () => {
     expect(idle.getByLabelText('谱面标签筛选，加载中').props.accessibilityState)
       .toEqual(expect.objectContaining({ disabled: true }));
     expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]);
+    await idle.findByText('共 10 首');
   });
 
   it('keeps the tag entry disabled without rendering an unavailable source bar', async () => {
@@ -666,13 +680,15 @@ describe('M2 song query screens', () => {
       .toEqual(expect.objectContaining({ disabled: true }));
     expect(unavailable.queryByText('DXRating 标签不可用')).toBeNull();
     await waitFor(() => expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]));
+    await unavailable.findByText('共 10 首');
   });
 
   it('removes tag selections that disappeared from a newer DXRating snapshot', async () => {
     mockDxRatingTagCount = 1;
     useCatalogFilter.getState().setSelectedDxRatingTagIds([1, 999]);
-    await render(<SearchScreen />);
+    const screen = await render(<SearchScreen />);
     await waitFor(() => expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]));
+    await screen.findByText('共 2 首');
   });
   it('renders song metadata, chart status and source status', async () => {
     const screen = await render(<SongDetailScreen />);
@@ -710,7 +726,7 @@ describe('M2 song query screens', () => {
     expect(screen.getByLabelText('难度卡片').props.contentOffset.x).toBeGreaterThan(0);
     const difficulties = screen.getAllByText(/Re:MASTER|MASTER|EXPERT|ADVANCED|BASIC/).map((node) =>
       Array.isArray(node.props.children) ? node.props.children.join('') : node.props.children);
-    expect(difficulties).toEqual(['Re:MASTER', 'MASTER', 'EXPERT', 'ADVANCED', 'BASIC']);
+    expect(difficulties).toEqual(['Re:MASTER', 'MASTER', 'EXPERT']);
     expect(screen.getByLabelText('100.5000%')).toBeTruthy();
     expect(screen.getByTestId('flowing-achievement')).toBeTruthy();
     expect(screen.getByTestId('rainbow-achievement')).toBeTruthy();
@@ -720,21 +736,15 @@ describe('M2 song query screens', () => {
       .toEqual(['#FF8A96', '#78E8A0', '#78C8FF', '#A89CF8', '#F08ADE'].map(processColor));
     expect(screen.getByLabelText('99.9999%')).toBeTruthy();
     expect(screen.getByLabelText('99.5000%')).toBeTruthy();
-    expect(screen.getByLabelText('99.0000%')).toBeTruthy();
     expect(screen.getByText('AP+')).toBeTruthy();
     expect(screen.getByText('FDX+')).toBeTruthy();
     expect(screen.getByTestId('flowing-status-AP+')).toBeTruthy();
     expect(screen.getByTestId('flowing-status-FDX+')).toBeTruthy();
-    expect(screen.getByText('FC')).toBeTruthy();
-    expect(screen.getAllByText('FS').length).toBeGreaterThan(0);
-    expect(screen.getAllByTestId('flowing-status-FS').length).toBeGreaterThan(0);
     expect(screen.queryByText('SYNC')).toBeNull();
     expect(screen.queryByTestId('flowing-status-SYNC')).toBeNull();
     expect(screen.getByText('SSS+')).toBeTruthy();
     expect(screen.getByText('SSS')).toBeTruthy();
     expect(screen.getByText('SS+')).toBeTruthy();
-    expect(screen.getByText('SS')).toBeTruthy();
-    expect(screen.getByText('S+')).toBeTruthy();
     expect(screen.getByTestId('flowing-rate-SSS+')).toBeTruthy();
     expect(screen.getByTestId('rainbow-rate-SSS')).toBeTruthy();
     expect(screen.getByTestId('flowing-rate-SS+')).toBeTruthy();
@@ -742,6 +752,17 @@ describe('M2 song query screens', () => {
       .toEqual(['#8E2437', '#984D19', '#796515', '#256B39', '#205E7A', '#384181', '#692C7C'].map(processColor));
     expect(screen.getByTestId('flowing-rate-SS+').props.colors)
       .toEqual(['#84530A', '#A46E12', '#765006', '#A46E12', '#84530A'].map(processColor));
+    const chartScroller = screen.getByLabelText('难度卡片');
+    await fireEvent.scroll(chartScroller, { nativeEvent: { contentOffset: { x: 3 * chartScroller.props.snapToInterval } } });
+    expect(screen.getByText('ADVANCED')).toBeTruthy();
+    expect(screen.getByText('BASIC')).toBeTruthy();
+    expect(screen.getByLabelText('99.0000%')).toBeTruthy();
+    expect(screen.getByText('FC')).toBeTruthy();
+    expect(screen.getAllByText('FS').length).toBeGreaterThan(0);
+    expect(screen.getAllByTestId('flowing-status-FS').length).toBeGreaterThan(0);
+    expect(screen.getByText('SS')).toBeTruthy();
+    expect(screen.getByText('S+')).toBeTruthy();
+    await fireEvent.scroll(chartScroller, { nativeEvent: { contentOffset: { x: chartScroller.props.snapToInterval } } });
     expect(screen.getByTestId('near-miss-badge')).toBeTruthy();
     expect(screen.queryByText(/定数 13\.6/)).toBeNull();
     expect(screen.getByText('13.6')).toBeTruthy();
@@ -801,7 +822,7 @@ describe('M2 song query screens', () => {
       title: '谱面已保存',
     })));
 
-    expect(screen.getAllByText('·点击切换·')).toHaveLength(5);
+    expect(screen.getAllByText('·点击切换·')).toHaveLength(3);
     await fireEvent.press(screen.getAllByLabelText('切换为SD谱面')[0]);
     expect(screen.queryByText('谱师：DX主谱师')).toBeNull();
     expect(screen.getByText('谱师：SD主谱师')).toBeTruthy();
@@ -1081,3 +1102,9 @@ describe('M2 song query screens', () => {
     expect(screen.getByTestId('metadata-value-版本').props.children).toBe('舞萌DX 2026');
   });
 });
+
+jest.mock('@/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+  StackScreenActivityScope: ({ children }: { children: import('react').ReactNode }) => children,
+  useStackScreenReady: () => true,
+}));

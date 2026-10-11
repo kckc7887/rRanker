@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prepareChartPreviewWebviewFromPlan } from '@/features/chart-preview-shared/prepare-chart-preview-webview-from-plan';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+import { clearSharedCache } from '@/features/storage-management/shared-storage-cache';
 import {
   MAIMAI_CHART_PREVIEW_ANSWER_SOUND,
   MAIMAI_CHART_PREVIEW_ASSET_BASE,
@@ -31,7 +32,7 @@ const mockFs = vi.hoisted(() => ({
 vi.mock('expo-file-system', () => {
   const joinUri = (base: string | { uri: string }, parts: string[]) => {
     const root = typeof base === 'string' ? base : base.uri;
-    return `${root.replace(/\/+$/u, '')}/${parts.map((part) => part.replace(/^\/+|\/+$/gu, '')).join('/')}`;
+    return [root.replace(/\/+$/u, ''), ...parts.map((part) => part.replace(/^\/+|\/+$/gu, ''))].join('/');
   };
   class Directory {
     readonly uri: string;
@@ -84,8 +85,35 @@ vi.mock('expo-file-system', () => {
     }
   }
   mockFs.makeStageDirectory = (name: string) => new Directory('file://cache', name);
-  return { Directory, File, Paths: { cache: new Directory('file://', 'cache') } };
+  return { Directory, File, Paths: { cache: new Directory('file://cache'), join: (base: string, ...parts: string[]) => joinUri(base, parts) } };
 });
+
+vi.mock('expo-file-system/legacy', () => ({
+  getInfoAsync: async (uri: string) => ({ exists: mockFs.files.has(uri) || [...mockFs.files.keys()].some(path => path.startsWith(`${uri}/`)), size: mockFs.files.get(uri)?.byteLength ?? 0 }),
+  readDirectoryAsync: async (uri: string) => [...new Set([...mockFs.files.keys()]
+    .filter(path => path.startsWith(`${uri}/`)).map(path => path.slice(uri.length + 1).split('/')[0]))],
+  deleteAsync: async (uri: string) => {
+    for (const path of mockFs.files.keys()) if (path === uri || path.startsWith(`${uri}/`)) mockFs.files.delete(path);
+  },
+  writeAsStringAsync: async (uri: string, content: string) => {
+    mockFs.writes.push(uri);
+    mockFs.files.set(uri, Uint8Array.from(Buffer.from(content)));
+  },
+  copyAsync: async ({ from, to }: { from: string; to: string }) => {
+    const bytes = mockFs.files.get(from);
+    if (!bytes) throw new Error('source does not exist');
+    mockFs.files.set(to, Uint8Array.from(bytes));
+  },
+  moveAsync: async ({ from, to }: { from: string; to: string }) => {
+    const bytes = mockFs.files.get(from);
+    if (!bytes) throw new Error('source does not exist');
+    mockFs.files.set(to, bytes);
+    mockFs.files.delete(from);
+  },
+}));
+
+vi.mock('expo-image', () => ({ Image: { clearDiskCache: async () => true, clearMemoryCache: async () => true } }));
+vi.mock('@/features/storage-management/ui-icon-fonts', () => ({ reloadUiIconFonts: async () => undefined }));
 
 vi.mock('@/features/chart-download-shared/chart-download-shared', () => ({
   downloadChartResource: async (
@@ -269,6 +297,34 @@ describe('maimai chart preview remote assets', () => {
     })).rejects.toThrow('缓存请求已失效');
     expect(mockFs.writes).toEqual([]);
     expect(mockFs.files.size).toBe(0);
+  });
+
+  it('finishes shared cache clearing after a pending native publish and permits a fresh preview', async () => {
+    const fileSystem = await import('expo-file-system/legacy');
+    const moveFile = fileSystem.moveAsync;
+    const entered = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    const move = vi.spyOn(fileSystem, 'moveAsync').mockImplementationOnce(async options => {
+      entered.resolve();
+      await resume.promise;
+      await moveFile(options);
+    });
+    mockFs.remotes.set(TAP.url, TAP_BYTES);
+    const plan = {
+      remoteCacheDirectory: mockFs.makeStageDirectory('rranker-chart-preview-remote') as never,
+      stagedAssets: [{ fileName: TAP.path, url: TAP.url, bytes: TAP.bytes }],
+    };
+    try {
+      const previous = expect(runPlan(plan)).rejects.toThrow('缓存请求已失效');
+      await entered.promise;
+      const clearing = clearSharedCache();
+      resume.resolve();
+      await previous;
+      await clearing;
+      expect(mockFs.files.size).toBe(0);
+      await runPlan(plan);
+      expect(mockFs.files.get(stageUri(TAP.path))).toEqual(TAP_BYTES);
+    } finally { resume.resolve(); move.mockRestore(); }
   });
 
   it('encodes skins as a data-url script for file:// playback', () => {

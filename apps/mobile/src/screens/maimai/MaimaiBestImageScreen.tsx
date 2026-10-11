@@ -114,11 +114,11 @@ export function MaimaiBestImageScreen() {
   const collections = useBestImageCollections();
   const { maimai, player, basePlayer, rating } = maimaiImageData(data);
   const [assetsDirectory, setAssetsDirectory] = useState<Directory | null>(null);
-  const { embeddedAssets, setEmbeddedAssets, assetError } = useMaimaiEmbeddedAssets(rating, lifecycle);
 
   const controller = useBestImageScreenController<BestImageType, MaimaiBestImagePrefs, BestImageCollectionKind>(
     {
       accountId: activeAccountId,
+      game: 'maimai',
       defaultType: 'best50',
       defaultWidth: 1080,
       defaultQuantityText: String(DEFAULT_CUSTOM_BEST_IMAGE_FILTERS.quantity),
@@ -155,6 +155,8 @@ export function MaimaiBestImageScreen() {
     handleExportMessage,
     handlePreviewMessage,
   } = controller;
+  const { assetSession } = controller;
+  const { embeddedAssets, assetError } = useMaimaiEmbeddedAssets(assetSession, rating, lifecycle);
   const { setQuantity, versions, splitVersions, setSplitVersions, difficulty, setDifficulty, type, setType, constantMin, setConstantMin, constantMax, setConstantMax, achievementMin, setAchievementMin, achievementMax, setAchievementMax, soloAchievement, multiAchievement, strictAchievement, setStrictAchievement, nearMiss, setNearMiss, versionLocale, setVersionLocale, selectedDxRatingTagIds, setSelectedDxRatingTagIds, quantityError, customInputValid, hasAchievementFilter, dxRatingChartTags, versionOptions, detailedCatalog, scoreSections, maximumRowsPerPage, pages, pageStructureKey, handleSoloAchievementChange, handleMultiAchievementChange, handleVersionsChange, resetCustomFilters } = useMaimaiBestImageFilters({ maimai, activeAccountId, imageType, outputWidth, quantityText });
   const { selections: styleSelections, ratingStyle } = prefs;
   const setRatingStyle = (nextRatingStyle: BestImageRatingStyle) => {
@@ -208,7 +210,7 @@ export function MaimaiBestImageScreen() {
   }, [imageType, pageStructureKey, setCurrentPageIndex, setPageHeights]);
 
   const coverRequestKey = JSON.stringify(scoreSections.flatMap((section) => section.records.map((record) => record.songId)));
-  const { coverUrls, setCoverUrls, coverProgress } = useMaimaiImageCovers(coverRequestKey, lifecycle);
+  const { coverUrls, coverProgress } = useMaimaiImageCovers(assetSession, coverRequestKey, lifecycle);
 
   const htmlPages = useMemo(() => embeddedAssets && coverUrls && detailedCatalog.data ? pages.map((page) => buildBestImageHtml({
     type: imageType,
@@ -227,8 +229,8 @@ export function MaimaiBestImageScreen() {
   })) : null, [coverUrls, detailedCatalog.data, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle, player?.source?.label]);
   const htmlGenerationKey = JSON.stringify([imageType, outputWidth, previewPlayer, rating, ratingStyle, hiddenStyles, pages]);
   const sourceGeneration = useMemo(() => [coverUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data], [coverUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data]);
-  const { sources: webViewSources, setSources: setWebViewSources, error: webViewSourceError } = usePreparedBestImageSources(htmlPages, assetsDirectory, false, sourceGeneration);
-  const { assetsReady, fontProgress, uiProgress, exportAssetError, setFontAttempt } = useMaimaiExportAssets(lifecycle, setAssetsDirectory, setWebViewSources);
+  const { sources: webViewSources, error: webViewSourceError } = usePreparedBestImageSources(htmlPages, assetsDirectory, cancelExportRequest, sourceGeneration);
+  const { assetsReady, fontProgress, uiProgress, exportAssetError, setFontAttempt } = useMaimaiExportAssets(assetSession, lifecycle, setAssetsDirectory);
   const outputHeight = pageHeights[pages[Math.min(currentPageIndex, pages.length - 1)]!.id] ?? minimumBestImageHeight(outputWidth);
   const currentWebViewState = webViewStates[pages[Math.min(currentPageIndex, pages.length - 1)]!.id];
   const assetStatusText = maimaiAssetStatus(fontProgress, uiProgress);
@@ -364,7 +366,7 @@ export function MaimaiBestImageScreen() {
       onPreviewStatesChange: setWebViewStates,
       onPreviewMessage: handlePreviewMessage,
       fileAccessFromFileURLs: true,
-      allowingReadAccessToUrl: assetsDirectory?.uri,
+      allowingReadAccessToUrl: assetSession.directory.uri,
     }}
     exportSession={{
       exportDisabled: exportState.disabled,
@@ -380,11 +382,6 @@ export function MaimaiBestImageScreen() {
       captureBackgroundColor: "#E7EDF5",
       onExportMessage: handleExportMessage,
       onRequestCloseExport: cancelExportRequest,
-      onReleaseHeavySources: () => {
-        setWebViewSources(null);
-        setEmbeddedAssets(null);
-        setCoverUrls(null);
-      },
     }}
   />;
 }

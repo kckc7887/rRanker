@@ -14,7 +14,7 @@ import { useSession } from '@/state/session-store';
 import { queryClient } from '@/state/query-client';
 import { invalidateMajdataCatalog } from '@/services/infinite-query-refresh';
 
-const options = { staleTime: Infinity, gcTime: Infinity, retry: false, refetchOnMount: false } as const;
+const options = { staleTime: Infinity, gcTime: 5 * 60_000, retry: false, refetchOnMount: false } as const;
 
 const majdataSongKey = (id: string) => ['majdata-net', 'song', id] as const;
 

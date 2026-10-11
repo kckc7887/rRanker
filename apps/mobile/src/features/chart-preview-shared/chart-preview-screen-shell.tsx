@@ -29,7 +29,7 @@ import { chartPreviewAppearanceScript } from './chart-preview-inject-factory';
 export type ChartPreviewShellSource = {
   uri: string;
   allowingReadAccessToURL: string;
-  dispose?: () => void;
+  dispose?: () => void | Promise<void>;
 };
 
 export type ChartPreviewShellRequest<TPayload> =
@@ -93,7 +93,7 @@ const EXIT_FULLSCREEN_SCRIPT = chartPreviewHostCommandScript({ type: 'exit-fulls
 const DISPOSE_SCRIPT = chartPreviewHostCommandScript({ type: 'dispose' });
 
 function disposeSource(source?: ChartPreviewShellSource): void {
-  try { source?.dispose?.(); }
+  try { void Promise.resolve(source?.dispose?.()).catch(error => recordRuntimeError('chart-preview-release', error, false, { phase: 'cleanup' })); }
   catch (error) { recordRuntimeError('chart-preview-release', error, false, { phase: 'cleanup' }); }
 }
 

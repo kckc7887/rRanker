@@ -37,7 +37,7 @@ export type RizlineChartPreviewRelease = {
 export type RizlineChartPreviewResourceRead = (
   asset: RizlineChartPreviewAsset,
   index: number,
-) => Promise<Uint8Array>;
+) => Promise<Uint8Array | { uri: string; size: number }>;
 
 function requiredFile(
   files: ReadonlyMap<string, RizlineChartPreviewReleaseFile>,

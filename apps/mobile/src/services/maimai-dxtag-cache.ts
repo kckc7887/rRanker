@@ -12,20 +12,21 @@ const SCHEMA_VERSION = 1;
 const repository = new SqliteSnapshotRepository();
 const cachedSchema = z.object({ library: maimaiDxTagLibrarySchema, source: cacheSourceSchema('generated') });
 
-export async function loadCachedMaimaiDxTag(catalog: CatalogSnapshot, signal?: AbortSignal): Promise<MaimaiDxTagSnapshot> {
+export async function loadCachedMaimaiDxTag(catalog: CatalogSnapshot, signal?: AbortSignal): Promise<MaimaiDxTagSnapshot & { coversCatalog: boolean }> {
   const assertCurrent = captureResourceWrites('maimai', signal);
   const cached = await repository.getResource(RESOURCE_KEY, SCHEMA_VERSION, cachedSchema);
   assertCurrent();
-  if (cached && catalog.songs.every(song => song.charts.every(chart => {
+  const coversCatalog = (library: MaimaiDxTagLibrary) => catalog.songs.every(song => song.charts.every(chart => {
     const id = maimaiDxTagChartId(song.id, chart.type);
-    return id === null || cached.library[id]?.some(row => row.difficulty === chart.levelIndex);
-  }))) return cached;
+    return id === null || library[id]?.some(row => row.difficulty === chart.levelIndex);
+  }));
+  if (cached && coversCatalog(cached.library)) return { ...cached, coversCatalog: true };
   let library: MaimaiDxTagLibrary;
   try {
     library = await loadMaimaiDxTag(signal);
   } catch (error) {
     assertCurrent();
-    if (cached) return staleCached(cached);
+    if (cached) return { ...staleCached(cached), coversCatalog: false };
     throw error;
   }
   assertCurrent();
@@ -34,5 +35,5 @@ export async function loadCachedMaimaiDxTag(catalog: CatalogSnapshot, signal?: A
     source: { kind: 'generated', label: 'DXTag', updatedAt: new Date().toISOString(), isStale: false },
   };
   await repository.saveResource(RESOURCE_KEY, SCHEMA_VERSION, fresh.source.updatedAt, fresh, assertCurrent);
-  return fresh;
+  return { ...fresh, coversCatalog: coversCatalog(library) };
 }

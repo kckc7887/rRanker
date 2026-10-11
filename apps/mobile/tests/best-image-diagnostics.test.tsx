@@ -16,7 +16,7 @@ jest.mock('@/features/best-image/best-image-export', () => ({
     }
   },
   bestImageCaptureDimensions: () => ({ width: 1080, height: 1440 }),
-  deleteBestImageCapture: jest.fn(),
+  deleteBestImageCapture: jest.fn(async () => undefined),
   isDrawViewHierarchyError: () => false,
   requestBestImageExportPermission: async () => undefined,
   saveBestImageCapture: () => mockSave(),
@@ -24,12 +24,13 @@ jest.mock('@/features/best-image/best-image-export', () => ({
 }));
 
 const config = {
+  game: 'maimai' as const,
   accountId: 'secret-account', defaultType: 'best', defaultWidth: 1080, defaultQuantityText: '50',
   defaultPreferences: {}, preferences: { load: async () => ({}), save: async () => undefined },
   defaultExportHeight: () => 1440,
 };
 const runtime = {
-  pages: [{ id: 'secret-page' }], htmlPages: ['secret-html'], sources: [{ html: 'secret-html', baseUrl: 'file:///private/' }],
+  pages: [{ id: 'secret-page' }], htmlPages: ['secret-html'], sources: [{ uri: 'file:///private/page.html' }],
   canExport: true, buildExportFilename: () => 'secret-name.png',
 };
 
@@ -82,3 +83,14 @@ describe('best image shared export diagnostics', () => {
     expect(mockCapture).not.toHaveBeenCalled();
   });
 });
+
+jest.mock('expo-file-system', () => {
+  class Entry {
+    uri: string;
+    constructor(...parts: (string | { uri: string })[]) {
+      this.uri = parts.map((part) => (typeof part === 'string' ? part : part.uri).replace(/\/$/u, '')).join('/');
+    }
+  }
+  return { File: Entry, Directory: Entry, Paths: { cache: 'file:///cache', document: 'file:///document' } };
+});
+jest.mock('expo-file-system/legacy', () => ({ deleteAsync: async () => undefined }));

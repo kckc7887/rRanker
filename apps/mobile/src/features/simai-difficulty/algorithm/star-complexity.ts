@@ -27,18 +27,8 @@ export const STAR_COMPLEXITY_POLICY=Object.freeze({version:STAR_COMPLEXITY_VERSI
 });
 export type StarComponents={motion:number;rhythm:number;coordination:number;context:number};
 export type StarWaiting={noteCount:number;onsetCount:number;rate:number;irregularity:number;raw:number;noteIds:number[];durationMs:number;onsetBeats:number[]};
-export type StarHeadReturn={noteId:number;kind:Note['type'];position:Note['position'];slideIds:number[];branchKeys:string[];
-  atMs:number;endMs:number;atBeat:number;endBeat:number;holdOverlapMs:number;remainingMs:number;pathDistance:number;originAffinity:number;raw:number;
-  source:Note['source']};
-export type StarOccupancy={movingDurationMs:number;trackingRaw:number;headReturnRaw:number;headReturnCount:number};
-export type StarWindow={id:string;startMs:number;endMs:number;startBeat:number;endBeat:number;raw:number;
-  components:StarComponents;slideIds:number[];branchCount:number;contextNoteIds:number[];waiting:StarWaiting;
-  occupancy:StarOccupancy&{events:StarHeadReturn[]}};
-export type StarProfile={startMs:number;endMs:number;startBeat:number;endBeat:number;raw:number;techniqueRaw:number;riseRaw:number;slideIds:number[];contextNoteIds:number[]};
-/** Full costs of one geometrically deduplicated timed trajectory, before sqrt(N). */
-export type StarActionWorkload={branchKeys:string[];slideIds:number[];hasHead:boolean;headMs:number;startMs:number;endMs:number;components:StarComponents};
-export type StarComplexityResult={schemaVersion:typeof STAR_COMPLEXITY_VERSION;raw:number|null;techniqueRaw:number|null;burstRaw:number|null;windows:StarWindow[];profile:StarProfile[];
-  actions:StarActionWorkload[];components:StarComponents|null;occupancy:StarOccupancy|null;coverage:{expectedBranches:number;observedBranches:number;complete:boolean};policy:typeof STAR_COMPLEXITY_POLICY};
+type StarHeadReturn={noteId:number;atBeat:number;endBeat:number;raw:number};
+export type StarComplexityResult={raw:number|null;techniqueRaw:number|null;burstRaw:number|null;coverage:{expectedBranches:number;observedBranches:number;complete:boolean}};
 type Point={x:number;y:number};
 type Piece={start:number;end:number;geometry:Geometry};
 type Contact={note:Note;ms:number;end:number;beat:number;endBeat:number;point:Point};
@@ -54,7 +44,6 @@ const angle=(a:Point,b:Point)=>norm(a)*norm(b)>EPS?Math.acos(Math.max(-1,Math.mi
 const total=(c:StarComponents)=>Object.entries(STAR_COMPLEXITY_POLICY.weights).reduce((s,[k,w])=>s+w*c[k as keyof StarComponents],0);
 const technique=(c:StarComponents)=>Object.entries(STAR_COMPLEXITY_POLICY.techniqueWeights).reduce((s,[k,w])=>s+w*c[k as keyof StarComponents],0);
 const emptyWaiting=():StarWaiting=>({noteCount:0,onsetCount:0,rate:0,irregularity:0,raw:0,noteIds:[],durationMs:0,onsetBeats:[]});
-const emptyOccupancy=():StarOccupancy=>({movingDurationMs:0,trackingRaw:0,headReturnRaw:0,headReturnCount:0});
 function pose(action:Action,ms:number):Point{
   let lo=0,hi=action.pieces.length-1;
   while(lo<hi){const mid=(lo+hi)>>1;if(action.pieces[mid]!.end<ms)lo=mid+1;else hi=mid;}
@@ -63,16 +52,16 @@ function pose(action:Action,ms:number):Point{
 function firstAt(contacts:Contact[],beat:number){let lo=0,hi=contacts.length;
   while(lo<hi){const m=(lo+hi)>>1;if(contacts[m]!.beat<beat)lo=m+1;else hi=m;}return lo;}
 
-export function starComplexity(chart:Chart,events:readonly SlideEvent[]):StarComplexityResult{
+export function* starComplexity(shouldYield: () => boolean, chart:Chart,events:readonly SlideEvent[]):Generator<void, StarComplexityResult, void>{
   const policy=STAR_COMPLEXITY_POLICY,timeline=TimingTimeline.fromChart(chart),diameter=policy.rendererDiameter,
     beat=(ms:number)=>timeline.scoreBeatFromAudioMs(ms,chart.firstMs),audio=(n:Note)=>n.timingMs-timeline.msFromBeat(4)+chart.firstMs,
     structural=(n:Note)=>timeline.scoreBeatFromChartMs(n.timingMs-(n.pseudoEachOffsetMs??0));
   const slides=chart.notes.filter((n):n is SlideNote=>n.type==='slide'&&!n.isMine),
     expectedBranches=slides.reduce((s,n)=>s+n.branches.length,0),cache=new Map<string,SlideEvent>();
   let complete=true,observedBranches=0;
-  for(const e of events){const key=`${e.slideId}:${e.branchIndex}`;if(cache.has(key))complete=false;cache.set(key,e);}
+  for(const e of events){ if (shouldYield()) yield;const key=`${e.slideId}:${e.branchIndex}`;if(cache.has(key))complete=false;cache.set(key,e);}
   const actions:Action[]=[],buckets=new Map<string,Action[]>();
-  for(const note of slides)for(const [index,branch] of note.branches.entries()){
+  for(const note of slides){ if (shouldYield()) yield; for(const [index,branch] of note.branches.entries()){ if (shouldYield()) yield;
     const key=`${note.id}:${index}`,event=cache.get(key),head=audio(note),start=head+branch.delayMs,end=start+branch.durationMs;
     let prepared:ReturnType<typeof prepareBranch>;
     try{prepared=prepareBranch(branch);}catch{complete=false;continue;}
@@ -88,7 +77,7 @@ export function starComplexity(chart:Chart,events:readonly SlideEvent[]):StarCom
       fanSpan=fanSegments.reduce((sum,s)=>sum+norm(sub(buttonPoint((s.endPos+6)%8+1),buttonPoint(s.endPos%8+1)))/diameter,0),
       pulseBeat=Math.max(EPS,beat(head-pseudo+(branch.delayMs>0?branch.delayMs:branch.durationMs))-headBeat);
     const action:Action={keys:[key],ids:[note.id],head,headPosition:note.position,hasHead:!note.isHeadless,start,end,headBeat,startBeat,endBeat,pulseBeat,pieces,sample:[],length,fanSpan,parts:zero(),context:[],contextCouplings:new Map(),waiting:emptyWaiting(),waitingRhythm:0,headReturns:[]};
-    for(let i=0;i<=policy.trajectorySamples;i++)action.sample.push(pose(action,start+(end-start)*i/policy.trajectorySamples));
+    for(let i=0;i<=policy.trajectorySamples;i++){ if (shouldYield()) yield; action.sample.push(pose(action,start+(end-start)*i/policy.trajectorySamples)); }
     if(action.sample.some(p=>!Number.isFinite(p.x)||!Number.isFinite(p.y))){complete=false;continue;}
     // Cross-source duplicates are geometric coincidences, not two independent
     // human paths. Complete timed trajectories only; prefixes remain separate.
@@ -103,15 +92,15 @@ export function starComplexity(chart:Chart,events:readonly SlideEvent[]):StarCom
       speedVariation=pieces.reduce((s,p,j)=>s+Math.abs(speedLogs[j]!-speedMean)*(p.end-p.start)/(end-start),0);
     action.parts.motion=(length/diameter)*(1+Math.log1p(speed))*(1+.35*curvature+.4*fanSpan);
     action.parts.rhythm=.3*speedVariation;
-  }
+  } }
   if(cache.size!==expectedBranches||observedBranches!==expectedBranches)complete=false;
   const coverage={expectedBranches,observedBranches,complete};
-  if(!complete)return {schemaVersion:STAR_COMPLEXITY_VERSION,raw:null,techniqueRaw:null,burstRaw:null,windows:[],profile:[],actions:[],components:null,occupancy:null,coverage,policy};
-  if(!actions.length)return {schemaVersion:STAR_COMPLEXITY_VERSION,raw:0,techniqueRaw:0,burstRaw:0,windows:[],profile:[],actions:[],components:zero(),occupancy:emptyOccupancy(),coverage,policy};
+  if(!complete)return {raw:null,techniqueRaw:null,burstRaw:null,coverage};
+  if(!actions.length)return {raw:0,techniqueRaw:0,burstRaw:0,coverage};
   actions.sort((a,b)=>a.start-b.start||a.end-b.end);
   const launches=[...new Set(actions.map(a=>a.startBeat))].sort((a,b)=>a-b),
     launchGaps=launches.slice(1).map((v,i)=>v-launches[i]!);
-  for(const action of actions){
+  for(const action of actions){ if (shouldYield()) yield;
     const i=launches.indexOf(action.startBeat),near=launchGaps.slice(Math.max(0,i-2),Math.min(launchGaps.length,i+2)),unit=median(near)||action.pulseBeat,
       phase=(action.startBeat-action.headBeat)/unit;
     action.parts.rhythm+=Math.abs(Math.sin(Math.PI*phase))*.35+
@@ -119,10 +108,10 @@ export function starComplexity(chart:Chart,events:readonly SlideEvent[]):StarCom
   }
   // Interval sweep examines actual moving overlaps only; no minimum ms gate.
   let active:Action[]=[];
-  for(const a of actions){active=active.filter(b=>b.end>a.start);
-    for(const b of active){const from=Math.max(a.start,b.start),to=Math.min(a.end,b.end);if(to<=from)continue;
+  for(const a of actions){ if (shouldYield()) yield;active=active.filter(b=>b.end>a.start);
+    for(const b of active){ if (shouldYield()) yield;const from=Math.max(a.start,b.start),to=Math.min(a.end,b.end);if(to<=from)continue;
       let independence=0;
-      for(let j=0;j<policy.pairSamples;j++){
+      for(let j=0;j<policy.pairSamples;j++){ if (shouldYield()) yield;
         const t=from+(to-from)*(j+.5)/policy.pairSamples,dt=(to-from)/policy.pairSamples/4,
           ap=pose(a,t),bp=pose(b,t),av=sub(pose(a,t+dt),pose(a,t-dt)),bv=sub(pose(b,t+dt),pose(b,t-dt));
         independence+=norm(sub(ap,bp))/diameter+.35*angle(av,bv)/Math.PI;
@@ -161,47 +150,40 @@ export function starComplexity(chart:Chart,events:readonly SlideEvent[]):StarCom
       remainingMs=Math.max(0,a.end-(from+to)/2),
       raw=3*affinity*distance*(1+Math.log1p(remainingMs/1000))*(1+Math.log1p(overlap/1000));
     if(raw<=EPS)return null;
-    return {noteId:c.note.id,kind:c.note.type,position:c.note.position,slideIds:a.ids,branchKeys:a.keys,
-      atMs:from,endMs:to,atBeat:held?beat(from-pseudo):c.beat,endBeat:held?beat(to-pseudo):c.beat,
-      holdOverlapMs:overlap,remainingMs,pathDistance:distance,originAffinity:affinity,raw,source:{...c.note.source}};
+    return {noteId:c.note.id,atBeat:held?beat(from-pseudo):c.beat,endBeat:held?beat(to-pseudo):c.beat,raw};
   };
   const returnsIn=(a:Action,bounds?:[number,number])=>!bounds?a.headReturns:a.headReturns
     .filter(e=>e.endBeat>=bounds[0]&&e.atBeat<=bounds[1])
     .flatMap(e=>{const clipped=headReturn(a,a.context.find(c=>c.note.id===e.noteId)!,bounds);return clipped?[clipped]:[];});
-  const occupancy=(sourceActions:Action[],bounds?:[number,number])=>{
-    const events=sourceActions.flatMap(a=>returnsIn(a,bounds));
-    return {movingDurationMs:sourceActions.reduce((s,a)=>s+moving(a,bounds),0),trackingRaw:sourceActions.reduce((s,a)=>s+tracking(a,bounds),0),
-      headReturnRaw:events.reduce((s,e)=>s+e.raw,0),headReturnCount:new Set(events.map(e=>e.noteId)).size,events};
-  };
-  const waitingMetrics=(sourceActions:Action[],bounds?:[number,number]):StarWaiting=>{
+  const waitingMetrics=function* (shouldYield: () => boolean, sourceActions:Action[],bounds?:[number,number]):Generator<void, StarWaiting, void>{
     const notes=new Map<number,Contact>(),intervals:[number,number][]=[],irregularities:{value:number;count:number}[]=[];
-    for(const a of sourceActions){
+    for(const a of sourceActions){ if (shouldYield()) yield;
       const from=Math.max(a.head,bounds?timeline.audioMsFromScoreBeat(bounds[0],chart.firstMs):-Infinity),
         to=Math.min(a.start,bounds?timeline.audioMsFromScoreBeat(bounds[1],chart.firstMs):Infinity);
       if(to<=from+EPS)continue;
       intervals.push([from,to]);
       const waiting=a.context.filter(c=>c.ms>=from-EPS&&c.ms<=to+EPS&&(!bounds||c.beat>=bounds[0]-EPS&&c.beat<=bounds[1]+EPS));
-      for(const c of waiting)notes.set(c.note.id,c);
+      for(const c of waiting){ if (shouldYield()) yield; notes.set(c.note.id,c); }
       if(waiting.length){const pseudo=a.head-timeline.audioMsFromScoreBeat(a.headBeat,chart.firstMs),
-        evidence=rhythmComplexity([beat(from-pseudo),...waiting.map(c=>c.beat),beat(to-pseudo)]);
+        evidence=(yield* rhythmComplexity(shouldYield, [beat(from-pseudo),...waiting.map(c=>c.beat),beat(to-pseudo)]));
         irregularities.push({value:evidence.raw,count:waiting.length});}
     }
     intervals.sort((a,b)=>a[0]-b[0]);let durationMs=0,from=0,to=0,initialized=false;
-    for(const [start,end] of intervals){if(!initialized){from=start;to=end;initialized=true;}
+    for(const [start,end] of intervals){ if (shouldYield()) yield;if(!initialized){from=start;to=end;initialized=true;}
       else if(start>to){durationMs+=Math.max(0,to-from);from=start;to=end;}else to=Math.max(to,end);}
     durationMs+=Math.max(0,to-from);
-    const onsetBeats=notes.size?rhythmComplexity([...notes.values()].map(c=>c.beat)).onsetBeats:[],onsetCount=onsetBeats.length,
+    const onsetBeats=notes.size?(yield* rhythmComplexity(shouldYield, [...notes.values()].map(c=>c.beat))).onsetBeats:[],onsetCount=onsetBeats.length,
       rate=durationMs>EPS?onsetCount/(durationMs/1000):0,
       irregularity=irregularities.length?irregularities.reduce((s,v)=>s+v.value*v.count,0)/irregularities.reduce((s,v)=>s+v.count,0):0,
       base=Math.log1p(notes.size)*Math.log1p(rate);
     return {noteCount:notes.size,onsetCount,rate,irregularity,raw:base*(1+irregularity),noteIds:[...notes.keys()].sort((a,b)=>a-b),durationMs,onsetBeats};
   };
-  for(const a of actions){
+  for(const a of actions){ if (shouldYield()) yield;
     const own=new Set(a.ids),lo=a.headBeat-policy.contextBeats,hi=a.endBeat+policy.contextBeats,candidates:Contact[]=[];
-    for(let j=firstAt(contacts,lo);j<contacts.length&&contacts[j]!.beat<=hi;j++)if(!own.has(contacts[j]!.note.id))candidates.push(contacts[j]!);
-    for(const hold of holds)if(hold.beat<lo&&hold.endBeat>=a.headBeat&&!own.has(hold.note.id))candidates.push(hold);
+    for(let j=firstAt(contacts,lo);j<contacts.length&&contacts[j]!.beat<=hi;j++){ if (shouldYield()) yield; if(!own.has(contacts[j]!.note.id))candidates.push(contacts[j]!); }
+    for(const hold of holds){ if (shouldYield()) yield; if(hold.beat<lo&&hold.endBeat>=a.headBeat&&!own.has(hold.note.id))candidates.push(hold); }
     a.context=candidates;let coupling=0;
-    for(const c of candidates){
+    for(const c of candidates){ if (shouldYield()) yield;
       const within=c.beat>=a.headBeat&&c.beat<=a.endBeat,
         gap=within?0:Math.min(Math.abs(c.beat-a.headBeat),Math.abs(c.beat-a.endBeat))/a.pulseBeat,
         point=c.ms<a.start?buttonPoint(a.headPosition):pose(a,Math.min(a.end,c.ms)),
@@ -217,50 +199,36 @@ export function starComplexity(chart:Chart,events:readonly SlideEvent[]):StarCom
       coupling+=value;a.contextCouplings.set(c.note.id,value);
       const returned=headReturn(a,c);if(returned)a.headReturns.push(returned);
     }
-    a.waiting=waitingMetrics([a]);const waitingBase=Math.log1p(a.waiting.noteCount)*Math.log1p(a.waiting.rate);
+    a.waiting=(yield* waitingMetrics(shouldYield, [a]));const waitingBase=Math.log1p(a.waiting.noteCount)*Math.log1p(a.waiting.rate);
     a.waitingRhythm=.5*waitingBase*a.waiting.irregularity;
     a.parts.context=Math.log1p(coupling)+.5*waitingBase+tracking(a)+a.headReturns.reduce((s,e)=>s+e.raw,0);a.parts.rhythm+=a.waitingRhythm;
   }
-  const combine=(items:{a:Action;weight:number}[],bounds?:[number,number])=>{const parts=zero(),mass=items.reduce((s,v)=>s+v.weight,0);
-    for(const {a,weight} of items){const waiting=bounds?waitingMetrics([a],bounds):a.waiting,
+  const combine=function* (shouldYield: () => boolean, items:{a:Action;weight:number}[],bounds?:[number,number]){const parts=zero(),mass=items.reduce((s,v)=>s+v.weight,0);
+    for(const {a,weight} of items){ if (shouldYield()) yield;const waiting=bounds?(yield* waitingMetrics(shouldYield, [a],bounds)):a.waiting,
       base=Math.log1p(waiting.noteCount)*Math.log1p(waiting.rate);
-      for(const k of Object.keys(parts) as (keyof StarComponents)[]){
+      for(const k of Object.keys(parts) as (keyof StarComponents)[]){ if (shouldYield()) yield;
         const value=k==='context'&&bounds?Math.log1p(a.context.reduce((s,c)=>s+(c.endBeat>=bounds[0]&&c.beat<=bounds[1]?a.contextCouplings.get(c.note.id)??0:0),0))+.5*base+tracking(a,bounds)+returnsIn(a,bounds).reduce((s,e)=>s+e.raw,0):
           k==='rhythm'&&bounds?a.parts.rhythm-a.waitingRhythm+.5*base*waiting.irregularity:a.parts[k];
         parts[k]+=value*weight;
       }
     }
-    for(const k of Object.keys(parts) as (keyof StarComponents)[])parts[k]/=Math.sqrt(Math.max(EPS,mass));return parts;};
-  const actionWindows=(width:number)=>{const mapped=new Map<number,{a:Action;weight:number}[]>();
-  for(const a of actions){const from=Math.max(0,Math.floor((a.headBeat-width)/policy.stepBeats)+1),
+    for(const k of Object.keys(parts) as (keyof StarComponents)[]){ if (shouldYield()) yield; parts[k]/=Math.sqrt(Math.max(EPS,mass)); }return parts;};
+  const actionWindows=function* (shouldYield: () => boolean, width:number){const mapped=new Map<number,{a:Action;weight:number}[]>();
+  for(const a of actions){ if (shouldYield()) yield;const from=Math.max(0,Math.floor((a.headBeat-width)/policy.stepBeats)+1),
     until=Math.floor(a.endBeat/policy.stepBeats);
-    for(let index=from;index<=until;index++){
+    for(let index=from;index<=until;index++){ if (shouldYield()) yield;
       const start=index*policy.stepBeats,end=start+width,
         overlap=Math.max(0,Math.min(end,a.endBeat)-Math.max(start,a.headBeat));
       if(overlap<=EPS)continue;
       const values=mapped.get(start)??[];values.push({a,weight:overlap/Math.max(EPS,a.endBeat-a.headBeat)});mapped.set(start,values);
     }
   }return mapped;};
-  const windowActions=actionWindows(policy.coreBeats);
-  const windows:StarWindow[]=[...windowActions].sort(([a],[b])=>a-b).map(([startBeat,items])=>{
-    const endBeat=startBeat+policy.coreBeats,components=combine(items,[startBeat-policy.contextBeats,endBeat+policy.contextBeats]),
-      contextNoteIds=[...new Set(items.flatMap(({a})=>a.context.filter(c=>c.endBeat>=startBeat-policy.contextBeats&&c.beat<=endBeat+policy.contextBeats).map(c=>c.note.id)))].sort((a,b)=>a-b);
-    return {id:`star:${startBeat}:${endBeat}`,startBeat,endBeat,startMs:timeline.audioMsFromScoreBeat(startBeat,chart.firstMs),
-      endMs:timeline.audioMsFromScoreBeat(endBeat,chart.firstMs),raw:total(components),components,
-      slideIds:[...new Set(items.flatMap(({a})=>a.ids))].sort((a,b)=>a-b),branchCount:items.reduce((s,{a})=>s+a.keys.length,0),contextNoteIds,
-      waiting:waitingMetrics(items.map(v=>v.a),[startBeat-policy.contextBeats,endBeat+policy.contextBeats]),
-      occupancy:occupancy(items.map(v=>v.a),[startBeat-policy.contextBeats,endBeat+policy.contextBeats])};
-  });
-  const blocks=actionWindows(policy.stepBeats),profile:StarProfile[]=[];let previous=0;
-  for(let startBeat=0;startBeat<=Math.max(...blocks.keys());startBeat+=policy.stepBeats){
-    const endBeat=startBeat+policy.stepBeats,items=blocks.get(startBeat)??[],parts=items.length?combine(items,[startBeat-policy.contextBeats,endBeat+policy.contextBeats]):zero(),raw=total(parts);
-    profile.push({startBeat,endBeat,startMs:timeline.audioMsFromScoreBeat(startBeat,chart.firstMs),endMs:timeline.audioMsFromScoreBeat(endBeat,chart.firstMs),
-      raw,techniqueRaw:technique(parts),riseRaw:Math.max(0,raw-previous),slideIds:[...new Set(items.flatMap(v=>v.a.ids))].sort((a,b)=>a-b),
-      contextNoteIds:[...new Set(items.flatMap(v=>v.a.context.filter(c=>c.endBeat>=startBeat-policy.contextBeats&&c.beat<=endBeat+policy.contextBeats).map(c=>c.note.id)))].sort((a,b)=>a-b)});
+  const blocks=(yield* actionWindows(shouldYield, policy.stepBeats));let previous=0,burstRaw=0;
+  for(let startBeat=0;startBeat<=Math.max(...blocks.keys());startBeat+=policy.stepBeats){ if (shouldYield()) yield;
+    const endBeat=startBeat+policy.stepBeats,items=blocks.get(startBeat)??[],parts=items.length?(yield* combine(shouldYield, items,[startBeat-policy.contextBeats,endBeat+policy.contextBeats])):zero(),raw=total(parts);
+    burstRaw=Math.max(burstRaw,Math.max(0,raw-previous));
     previous=raw;
   }
-  const components=combine(actions.map(a=>({a,weight:1}))),raw=total(components),techniqueRaw=technique(components),burstRaw=Math.max(0,...profile.map(p=>p.riseRaw));
-  const {events:_events,...summary}=occupancy(actions);
-  return {schemaVersion:STAR_COMPLEXITY_VERSION,raw,techniqueRaw,burstRaw,windows,profile,components,occupancy:summary,coverage,policy,
-    actions:actions.map(a=>({branchKeys:[...a.keys],slideIds:[...a.ids],hasHead:a.hasHead,headMs:a.head,startMs:a.start,endMs:a.end,components:{...a.parts}}))};
+  const components=(yield* combine(shouldYield, actions.map(a=>({a,weight:1})))),raw=total(components),techniqueRaw=technique(components);
+  return {raw,techniqueRaw,burstRaw,coverage};
 }

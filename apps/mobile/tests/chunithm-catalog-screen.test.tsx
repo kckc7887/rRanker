@@ -208,7 +208,7 @@ describe('Chunithm catalog screen', () => {
   it('keeps the existing rows and metadata search with the filter bar collapsed by default', async () => {
     const screen = await render(<SearchScreen />);
 
-    expect(screen.getByText('共 2 首')).toBeTruthy();
+    expect(await screen.findByText('共 2 首')).toBeTruthy();
     expect(screen.getByText('B.B.K.K.B.K.K.')).toBeTruthy();
     expect(screen.getByText('Only My Railgun')).toBeTruthy();
     expect(screen.getByText('13.7')).toBeTruthy();
@@ -251,7 +251,7 @@ describe('Chunithm catalog screen', () => {
 
     const screen = await render(<SearchScreen />);
 
-    expect(screen.getByText('共 1 首')).toBeTruthy();
+    expect(await screen.findByText('共 1 首')).toBeTruthy();
     expect(screen.getByText('B.B.K.K.B.K.K.')).toBeTruthy();
     expect(screen.queryByText('Only My Railgun')).toBeNull();
     expect(screen.getByText('12.8')).toBeTruthy();
@@ -277,7 +277,7 @@ describe('Chunithm catalog screen', () => {
     await waitFor(() => expect(screen.getByText('筛选结果为空')).toBeTruthy());
 
     await fireEvent.press(screen.getByLabelText('重置中二筛选'));
-    expect(screen.getByText('共 2 首')).toBeTruthy();
+    expect(await screen.findByText('共 2 首')).toBeTruthy();
     expect(screen.getByLabelText('中二节奏歌曲搜索').props.value).toBe('');
   });
 

@@ -372,7 +372,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
   });
 
   it('未游玩难度：得分/准确率/连击/判定六列/PP 为 —，时长与 BPM 正常，不渲染评价标签', async () => {
-    const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
+    const screen = await render(<OsuSongDetail beatmapsetId="3720" initialBeatmapId={22425} />);
     const easy = within(screen.getByTestId('osu-detail-difficulty-22425'));
     expect(easy.getAllByText('—')).toHaveLength(10);
     expect(easy.getByText('达成时间：—')).toBeTruthy();
@@ -413,6 +413,8 @@ describe('OsuSongDetail 歌曲详情页', () => {
       .toBeLessThan(badgeRowChildren.indexOf(hd));
     const normal = within(screen.getByTestId('osu-detail-difficulty-22427'));
     expect(normal.queryAllByTestId(/osu-mod-badge-/)).toHaveLength(0);
+    const carousel = screen.getByLabelText('osu 难度卡片');
+    await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: 3 * carousel.props.snapToInterval } } });
     const easy = within(screen.getByTestId('osu-detail-difficulty-22425'));
     expect(easy.queryAllByTestId(/osu-mod-badge-/)).toHaveLength(0);
   });
@@ -487,7 +489,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
   it('iOS：滚动区 TagEditor 按钮走 gesture-handler 按压体系', async () => {
     const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
     const addButtons = screen.getAllByLabelText('添加标签');
-    expect(addButtons.length).toBe(5);
+    expect(addButtons.length).toBe(4);
     for (const button of addButtons) {
       expect(button.props.testID).toBe('gesture-handler-pressable');
     }
@@ -628,7 +630,7 @@ describe('OsuSongDetail 歌曲详情页', () => {
       const screen = await render(<OsuSongDetail beatmapsetId="3720" />);
       expect(screen.queryAllByTestId('gesture-handler-pressable')).toHaveLength(0);
       const addButtons = screen.getAllByLabelText('添加标签');
-      expect(addButtons.length).toBe(5);
+      expect(addButtons.length).toBe(4);
       for (const button of addButtons) {
         expect(button.props.testID).not.toBe('gesture-handler-pressable');
       }

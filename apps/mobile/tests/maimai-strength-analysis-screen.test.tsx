@@ -1,3 +1,4 @@
+import { imageDownloads } from './remote-image-native-mock';
 import type { ReactNode } from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
@@ -24,6 +25,8 @@ jest.mock('@/state/session-store', () => ({ useSession: (select: (state: typeof 
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => mockScoreQuery }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => mockCatalogQuery }));
 jest.mock('expo/fetch', () => ({ fetch: (url: string, init?: RequestInit) => mockFetch(url, init) }));
+jest.mock('expo-file-system', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').fileSystem);
+jest.mock('expo-file-system/legacy', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').legacyFileSystem);
 jest.mock('expo-image', () => {
   const { Image } = jest.requireActual<typeof import('react-native')>('react-native');
   return { Image: (props: React.ComponentProps<typeof Image>) => <Image {...props} /> };
@@ -84,7 +87,7 @@ it('opens from the toolbox, shows recommendations and navigates from supporting 
   expect(screen.getAllByText('-')).toHaveLength(2);
   expect(screen.queryByText('未游玩')).toBeNull();
   expect(screen.queryByText(/缓存数据/)).toBeNull();
-  await waitFor(() => expect(screen.getByTestId('score-card-artwork').props.source)
+  await waitFor(() => expect(imageDownloads.get(screen.getByTestId('score-card-artwork').props.source?.uri))
     .toBe('https://assets2.lxns.net/maimai/jacket/4.png'));
   await fireEvent.press(screen.getByText('Song 4'));
   expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '4', gameId: 'maimai', chartType: 'DX', levelIndex: '3' } });

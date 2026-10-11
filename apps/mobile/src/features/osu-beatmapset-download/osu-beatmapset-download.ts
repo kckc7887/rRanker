@@ -1,5 +1,5 @@
 import { File, type Directory } from 'expo-file-system';
-import type { DownloadProgressData } from 'expo-file-system/legacy';
+import { deleteAsync, type DownloadProgressData } from 'expo-file-system/legacy';
 import JSZip from 'jszip';
 import {
   chartPackageNameWithSuffix,
@@ -75,8 +75,8 @@ export async function downloadOsuBeatmapsetArchive(
     let receivedBytes = 0;
     let discarded = false;
     let budgetExceeded: ChartPreviewBudgetExceededError | undefined;
-    const cleanup = () => {
-      try { if (attemptFile.exists) attemptFile.delete(); } catch {  }
+    const cleanup = async () => {
+      try { await deleteAsync(attemptFile.uri, { idempotent: true }); } catch {  }
     };
     const onExternalAbort = () => controller.abort(signal?.reason);
     signal?.addEventListener('abort', onExternalAbort, { once: true });
@@ -139,7 +139,7 @@ export async function downloadOsuBeatmapsetArchive(
       assertAttempt();
       return file;
     })();
-    void pending.then(() => { if (discarded) cleanup(); }, () => { if (discarded) cleanup(); });
+    void pending.then(() => { if (discarded) return cleanup(); }, () => { if (discarded) return cleanup(); });
     try {
       const file = await Promise.race([pending, aborted]);
       assertCurrent();
@@ -147,7 +147,7 @@ export async function downloadOsuBeatmapsetArchive(
     } catch (error) {
       discarded = true;
       controller.abort(error);
-      cleanup();
+      await cleanup();
       /** 仅当前来源的传输或内容错误才切源；取消或超限结束下载。 */
 
       assertCurrent();
@@ -195,6 +195,6 @@ export async function downloadOsuBeatmapsetPackage(
       signal,
     );
   } finally {
-    cleanupChartDownloadSessionDirectory(staging);
+    await cleanupChartDownloadSessionDirectory(staging);
   }
 }

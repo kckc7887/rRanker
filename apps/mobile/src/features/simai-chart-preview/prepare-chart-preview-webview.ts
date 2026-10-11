@@ -50,10 +50,10 @@ export const MAIMAI_CHART_PREVIEW_MUSIC_DATA_GLOBAL = '__CHART_PREVIEW_MUSIC_DAT
 export type ChartPreviewWebViewSource = {
   uri: string;
   allowingReadAccessToURL: string;
-  dispose: () => void;
+  dispose: () => Promise<void>;
 };
 
-export function chartPreviewStageDirectory(name = 'rranker-chart-preview'): Directory {
+export function chartPreviewStageDirectory(name = 'rranker-chart-preview'): Promise<Directory> {
   return chartPreviewStageDirectoryBase(name);
 }
 
@@ -84,7 +84,7 @@ export async function prepareChartPreviewWebViewSource(
   signal?: AbortSignal,
   onProgress?: (progress: ChartPreviewLoadProgress) => void,
 ): Promise<ChartPreviewWebViewSource> {
-  const directory = createChartPreviewSessionDirectory('rranker-chart-preview');
+  const directory = await createChartPreviewSessionDirectory('rranker-chart-preview');
   const needChart = !config.parsedChart && config.simaiText === undefined && Boolean(config.chartUrl);
   const needMusic = Boolean(config.musicUrl);
   const resourceCount = Number(needChart) + Number(needMusic);
@@ -129,7 +129,7 @@ export async function prepareChartPreviewWebViewSource(
     return await prepareChartPreviewWebviewFromPlan({
       directoryName: 'rranker-chart-preview',
       directory,
-      remoteCacheDirectory: chartPreviewStageDirectoryBase('rranker-chart-preview-remote'),
+      remoteCacheDirectory: await chartPreviewStageDirectoryBase('rranker-chart-preview-remote'),
       stagedAssets: [
         { fileName: 'player.js', moduleId: PLAYER_MODULE },
         { fileName: MAIMAI_CHART_PREVIEW_SENSOR.path, moduleId: SENSOR_MODULE },
@@ -179,7 +179,7 @@ export async function prepareChartPreviewWebViewSource(
       report(progress.label, mapChartPreviewProgress(progress.value, resourceEnd, 1));
     });
   } catch (error) {
-    disposeChartPreviewSessionDirectory(directory);
+    await disposeChartPreviewSessionDirectory(directory);
     throw error;
   }
 }

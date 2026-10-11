@@ -1,26 +1,32 @@
+import { AppState } from 'react-native';
+import { AppLifecycleProvider } from '@/state/app-lifecycle';
+import { clearUnusedBestImageAssets } from '@/features/best-image/load-best-image-session';
 import { jest } from '@jest/globals';
-import { act, renderHook } from '@testing-library/react-native';
-import { useBestImageScreenController } from '@/features/best-image/use-best-image-screen-controller';
+import { act, renderHook, waitFor } from '@testing-library/react-native';
+import { useBestImageScreenController, usePreparedBestImageSources } from '@/features/best-image/use-best-image-screen-controller';
 
 const mockPermission = jest.fn<() => Promise<void>>();
 const mockCapture = jest.fn<() => Promise<string>>();
 const mockSave = jest.fn<(uri: string, name: string) => Promise<void>>();
 const mockDelete = jest.fn();
 const mockNotify = jest.fn();
+const mockFiles = new Map<string, string>();
+const mockDeletedDirectories = new Set<string>();
 jest.mock('react-native-view-shot', () => ({ captureRef: () => mockCapture() }));
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotify }) }));
 jest.mock('@/features/best-image/best-image-export', () => ({
-  bestImageCaptureDimensions: () => ({ width: 1080, height: 1440 }), deleteBestImageCapture: (uri: string) => mockDelete(uri),
+  bestImageCaptureDimensions: () => ({ width: 1080, height: 1440 }), deleteBestImageCapture: async (uri: string) => mockDelete(uri),
   isDrawViewHierarchyError: () => false, requestBestImageExportPermission: () => mockPermission(),
   saveBestImageCapture: (uri: string, name: string) => mockSave(uri, name), shouldUseBestImageRenderInContext: () => false,
 }));
 const config = {
+  game: 'maimai' as const,
   accountId: 'account-a', defaultType: 'best', defaultWidth: 1080, defaultQuantityText: '50', defaultPreferences: {},
   preferences: { load: async () => ({}), save: async () => undefined }, defaultExportHeight: () => 1440,
 };
 const runtime = (count = 1) => ({
   pages: Array.from({ length: count }, (_, i) => ({ id: String(i) })), htmlPages: Array(count).fill('<html/>') as string[],
-  sources: Array.from({ length: count }, () => ({ html: '<html/>', baseUrl: 'file:///' })),
+  sources: Array.from({ length: count }, () => ({ uri: 'file:///page.html' })),
   canExport: true, buildExportFilename: (index: number) => `${index}.png`,
 });
 const ready = '{"type":"best-image-ready","width":1080,"height":1440}';
@@ -32,7 +38,7 @@ const deferred = <T,>() => {
 
 describe('best image export lifecycle', () => {
   beforeEach(() => {
-    jest.useFakeTimers(); jest.clearAllMocks();
+    jest.useFakeTimers(); jest.clearAllMocks(); mockFiles.clear(); mockDeletedDirectories.clear();
     mockPermission.mockResolvedValue(undefined); mockSave.mockResolvedValue(undefined);
     mockCapture.mockResolvedValue('file:///capture.png');
   });
@@ -100,6 +106,63 @@ describe('best image export lifecycle', () => {
     expect(mockCapture).not.toHaveBeenCalled(); expect(mockSave).not.toHaveBeenCalled(); expect(mockNotify).not.toHaveBeenCalled();
   });
 
+  it('retains the page session until a cancelled native capture returns after unmount', async () => {
+    const capture = deferred<string>(); mockCapture.mockReturnValueOnce(capture.promise);
+    const { result, unmount } = await renderHook(() => useBestImageScreenController(config));
+    const directory = result.current.assetSession.directory.uri;
+    mockFiles.set(`${directory}/cover.png`, 'original cover');
+    let pending!: Promise<void>;
+    await act(async () => { pending = result.current.exportImages(runtime()); });
+    await act(async () => { result.current.handleExportMessage(ready); await jest.advanceTimersByTimeAsync(320); });
+    await unmount();
+    expect(mockDeletedDirectories.has(directory)).toBe(false);
+    await clearUnusedBestImageAssets('maimai');
+    expect(mockFiles.get(`${directory}/cover.png`)).toBe('original cover');
+    await act(async () => { capture.resolve('file:///late.png'); await pending; });
+    await waitFor(() => expect(mockDeletedDirectories.has(directory)).toBe(true));
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockDelete).toHaveBeenCalledWith('file:///late.png');
+  });
+
+  it('releases replaced HTML only after the old native capture finishes', async () => {
+    const capture = deferred<string>(); mockCapture.mockReturnValueOnce(capture.promise);
+    const { result, rerender } = await renderHook(({ htmlPages }: { htmlPages: string[] }) => {
+      const controller = useBestImageScreenController(config);
+      const prepared = usePreparedBestImageSources(htmlPages, controller.assetSession.directory, controller.cancelExportRequest);
+      return { ...controller, sources: prepared.sources };
+    }, { initialProps: { htmlPages: ['<p>old</p>'] } });
+    await waitFor(() => expect(result.current.sources).not.toBeNull());
+    const oldUri = result.current.sources![0]!.uri;
+    let pending!: Promise<void>;
+    await act(async () => { pending = result.current.exportImages({ ...runtime(), sources: result.current.sources }); });
+    await act(async () => { result.current.handleExportMessage(ready); await jest.advanceTimersByTimeAsync(320); });
+    await rerender({ htmlPages: ['<p>next</p>'] });
+    await waitFor(() => expect(result.current.sources?.[0]?.uri).not.toBe(oldUri));
+    expect(mockFiles.get(oldUri)).toBe('<p>old</p>');
+    await act(async () => { capture.resolve('file:///late.png'); await pending; });
+    await waitFor(() => expect(mockFiles.has(oldUri)).toBe(false));
+    expect(mockFiles.get(result.current.sources![0]!.uri)).toBe('<p>next</p>');
+    expect(mockSave).not.toHaveBeenCalled();
+  });
+
+  it('cancels a foreground wait without requiring the app to return from background', async () => {
+    const originalState = AppState.currentState;
+    AppState.currentState = 'background';
+    try {
+      const { result, unmount } = await renderHook(() => useBestImageScreenController(config), { wrapper: AppLifecycleProvider });
+      const directory = result.current.assetSession.directory.uri;
+      let pending!: Promise<void>;
+      await act(async () => { pending = result.current.exportImages(runtime()); });
+      await act(async () => { result.current.handleExportMessage(ready); await jest.advanceTimersByTimeAsync(320); });
+      expect(mockCapture).not.toHaveBeenCalled();
+      await unmount();
+      await act(async () => { await pending; });
+      await waitFor(() => expect(mockDeletedDirectories.has(directory)).toBe(true));
+      expect(mockCapture).not.toHaveBeenCalled();
+      expect(mockSave).not.toHaveBeenCalled();
+    } finally { AppState.currentState = originalState; }
+  });
+
   it('does not persist the previous account preferences during account hydration', async () => {
     const second = deferred<{ value: string }>();
     const save = jest.fn<(_id: string, _prefs: { value: string }) => Promise<void>>(async () => undefined);
@@ -116,3 +179,23 @@ describe('best image export lifecycle', () => {
     expect(save).not.toHaveBeenCalledWith('account-b', { value: 'a' });
   });
 });
+
+jest.mock('expo-file-system', () => {
+  class Entry {
+    uri: string;
+    constructor(...parts: (string | { uri: string })[]) {
+      this.uri = parts.map((part) => (typeof part === 'string' ? part : part.uri).replace(/\/$/u, '')).join('/');
+    }
+  }
+  return { File: Entry, Directory: Entry, Paths: { cache: 'file:///cache', document: 'file:///document' } };
+});
+jest.mock('expo-file-system/legacy', () => ({
+  makeDirectoryAsync: async () => undefined,
+  getInfoAsync: async (uri: string) => ({ exists: [...mockFiles.keys()].some((key) => key === uri || key.startsWith(uri + '/')) }),
+  readDirectoryAsync: async (uri: string) => [...new Set([...mockFiles.keys()].filter((key) => key.startsWith(uri + '/')).map((key) => key.slice(uri.length + 1).split('/')[0]))],
+  writeAsStringAsync: async (uri: string, content: string) => { mockFiles.set(uri, content); },
+  deleteAsync: async (uri: string) => {
+    mockDeletedDirectories.add(uri);
+    for (const key of mockFiles.keys()) if (key === uri || key.startsWith(uri + '/')) mockFiles.delete(key);
+  },
+}));

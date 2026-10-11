@@ -1,6 +1,5 @@
 import { act, fireEvent, render, screen, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { InteractionManager } from 'react-native';
 import * as React from 'react';
 import type { StorageUsageReport } from '@/features/storage-management/storage-usage';
 const mockReactNative = jest.requireActual<typeof import('react-native')>('react-native');
@@ -13,7 +12,17 @@ const mockClear = jest.fn(async (_ids: unknown) => ({
 const mockSave = jest.fn(async (_value: unknown) => undefined);
 const mockLoad = jest.fn(async () => ({ version: 1 as const, selectedIds: ['shared' as const] }));
 const mockCollect = jest.fn<() => Promise<StorageUsageReport>>();
-let pendingInteraction: (() => void) | null = null;
+let mockFocused = true;
+const mockNavigationListeners = new Map<string, (event: { data: { closing: boolean } }) => void>();
+const mockNavigation = {
+  isFocused: () => mockFocused,
+  addListener: (name: string, callback: (event: { data: { closing: boolean } }) => void) => {
+    mockNavigationListeners.set(name, callback);
+    return () => { mockNavigationListeners.delete(name); };
+  },
+};
+jest.mock('expo-router', () => ({ useNavigation: () => mockNavigation }));
+jest.mock('@react-navigation/native', () => ({ useIsFocused: () => mockFocused }));
 
 const usage: StorageUsageReport = {
   totalBytes: 4096,
@@ -76,11 +85,8 @@ describe('StorageManagementScreen', () => {
     mockSave.mockClear();
     mockLoad.mockClear();
     mockCollect.mockReset().mockResolvedValue(usage);
-    pendingInteraction = null;
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((task) => {
-      pendingInteraction = task as () => void;
-      return { cancel: jest.fn(), then: jest.fn() } as never;
-    });
+    mockFocused = true;
+    mockNavigationListeners.clear();
   });
 
   afterEach(() => jest.restoreAllMocks());
@@ -88,22 +94,31 @@ describe('StorageManagementScreen', () => {
   async function renderStorageScreen() {
     const view = await render(<StorageManagementScreen />);
     await act(async () => {
-      pendingInteraction?.();
+      mockNavigationListeners.get('transitionEnd')?.({ data: { closing: false } });
       await Promise.resolve();
       await Promise.resolve();
     });
     return view;
   }
 
-  it('starts the exact scan only after navigation interactions finish', async () => {
+  it('starts the exact scan only after the native appearance finishes', async () => {
     await render(<StorageManagementScreen />);
     expect(mockCollect).not.toHaveBeenCalled();
     await act(async () => {
-      pendingInteraction?.();
+      mockNavigationListeners.get('transitionEnd')?.({ data: { closing: false } });
       await Promise.resolve();
       await Promise.resolve();
     });
     expect(mockCollect).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not start a scan after leaving before appearance finishes', async () => {
+    const view = await render(<StorageManagementScreen />);
+    mockFocused = false;
+    await view.rerender(<StorageManagementScreen />);
+    await act(() => { mockNavigationListeners.get('transitionEnd')?.({ data: { closing: true } }); });
+    expect(mockCollect).not.toHaveBeenCalled();
+    await view.unmount();
   });
 
   it('shows the previous exact report immediately when the screen is reopened', async () => {

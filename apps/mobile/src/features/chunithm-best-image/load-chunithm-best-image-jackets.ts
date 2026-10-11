@@ -1,6 +1,5 @@
-import { loadImageDataUris } from '@/features/best-image/load-remote-image-data-uri';
+import { loadImageFiles, type BestImageAssetSession } from '@/features/best-image/load-best-image-session';
 import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
-import { loadRemoteBestImageAssetDataUri } from '@/features/best-image/load-remote-best-image-asset';
 
 export const CHUNITHM_BEST_IMAGE_JACKET_ROOT = 'https://assets2.lxns.net/chunithm/jacket';
 
@@ -24,9 +23,6 @@ export function chunithmBestImageJacketUrl(jacketId: string): string {
   return `${CHUNITHM_BEST_IMAGE_JACKET_ROOT}/${encodeURIComponent(jacketId)}.png`;
 }
 
-export function loadChunithmBestImageJackets(jacketIds: readonly string[], onProgress?: (completed: number, total: number) => void, signal?: AbortSignal): Promise<Record<string, string | null>> {
-  return loadImageDataUris(jacketIds, chunithmBestImageJacketUrl, onProgress, signal);
-}
-export function loadChunithmRemoteImageDataUri(url: string | null | undefined, signal?: AbortSignal): Promise<string | null> {
-  return loadRemoteBestImageAssetDataUri(url, signal);
+export function loadChunithmBestImageJackets(session: BestImageAssetSession, jacketIds: readonly string[], onProgress?: (completed: number, total: number) => void, signal?: AbortSignal): Promise<Record<string, string | null>> {
+  return loadImageFiles(session, jacketIds, chunithmBestImageJacketUrl, onProgress, signal);
 }

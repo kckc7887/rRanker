@@ -18,7 +18,7 @@ import { Card } from '@/components/Card';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { DetailPressable } from '@/components/game-content/DetailPressable';
 import { ExpandableTextLine } from '@/components/game-content/ExpandableTextLine';
-import { ChartCarousel as SharedChartCarousel } from '@/components/game-content/ChartCarousel';
+import { ChartCarousel as SharedChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameNoteTable } from '@/components/game-content/GameNoteTable';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
@@ -306,7 +306,7 @@ function ChunithmDetailBody({
         <Card>
           <TagEditor
             disabled={library.isUpdating}
-            historyTags={buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
+            historyTags={() => buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
             onChange={(tags) => library.setTags({ kind: 'song', songId: String(song.id) }, tags)}
             onPresetsChange={library.setTagPresets}
             presets={library.tagPresets ?? []}
@@ -396,9 +396,10 @@ function DifficultyCarousel({
       gap={CARD_GAP}
       initialIndex={initialIndex}
       items={difficulties}
-      keyExtractor={(difficulty) => String(difficulty.difficulty)}
-      renderItem={(difficulty) => (
+      keyExtractor={(difficulty) => library.chartKey(String(song.id), CHUNITHM_CHART_TYPE, difficulty.difficulty)}
+      renderItem={(difficulty, carouselState) => (
         <DifficultyCard
+          carouselState={carouselState}
           detailError={detailError}
           difficulty={difficulty}
           library={library}
@@ -448,6 +449,7 @@ function formatOptionalValue(value: number | undefined): string {
 }
 
 function DifficultyCard({
+  carouselState,
   difficulty,
   song,
   score,
@@ -456,6 +458,7 @@ function DifficultyCard({
   detailError,
   onRetryDetail,
 }: {
+  carouselState: ChartCarouselItemState;
   difficulty: ChunithmDifficulty;
   song: ChunithmSong;
   score?: ChunithmScore;
@@ -672,8 +675,9 @@ function DifficultyCard({
           : undefined}
       >
         <TagEditor
+          {...carouselState.tagEditor}
           disabled={library.isUpdating}
-          historyTags={buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
+          historyTags={() => buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}
           onChange={(tags) => library.setTags({
             kind: 'chart',
             songId: String(song.id),

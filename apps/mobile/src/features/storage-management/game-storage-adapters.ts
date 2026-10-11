@@ -1,3 +1,4 @@
+import { clearUnusedBestImageAssets } from '@/features/best-image/load-best-image-session';
 import { phigrosResources } from '@/services/phigros-resources';
 import { rizlineResources } from '@/services/rizline-resources';
 import type { GameId } from '@/domain/game-bind-options';
@@ -13,11 +14,10 @@ import {
   CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX,
 } from '@/domain/chunithm';
 import { CHUNITHM_COLLECTION_LIST_RESOURCE_KEY } from '@/domain/chunithm-collections';
-import { clearPhigrosIllustrationStage, phigrosIllustrationStageDirectory } from '@/features/phigros-best-image/load-phigros-image-assets';
 import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-font-cache';
 import { clearMaimaiUiCache } from '@/features/best-image/maimai-ui-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
-import { MAIMAI_ASSETS_ROOT, PHIGROS_FONT_ROOT } from '@/features/storage-management/fs-storage';
+import { BEST_IMAGE_STAGE_ROOT, MAIMAI_ASSETS_ROOT, PHIGROS_FONT_ROOT } from '@/features/storage-management/fs-storage';
 import { resetPhigrosKyouAliasesCache } from '@/services/phigros-kyou-cache';
 import {
   createGameStorageAdapter,
@@ -57,9 +57,10 @@ export function measureDurableLocalMaimaiBytes(inventory: StorageMeasurementInve
   return selectStorageInventory(inventory, { ownsAccount: isDurableMaimaiAccountId }).bytes;
 }
 
-const maimaiFileResources: GameStorageAdapter['fileResources'] = [{
-  root: MAIMAI_ASSETS_ROOT, clear: clearMaimaiUiCache,
-}];
+const maimaiFileResources: GameStorageAdapter['fileResources'] = [
+  { root: MAIMAI_ASSETS_ROOT, clear: clearMaimaiUiCache },
+  { root: () => BEST_IMAGE_STAGE_ROOT('maimai'), clear: () => clearUnusedBestImageAssets('maimai') },
+];
 const maimaiAdapter = createGameStorageAdapter({
   gameId: 'maimai',
   title: findGame('maimai')?.title ?? '舞萌 DX',
@@ -79,7 +80,7 @@ const maimaiAdapter = createGameStorageAdapter({
 
 const phigrosFileResources: GameStorageAdapter['fileResources'] = [
   { root: PHIGROS_FONT_ROOT, clear: clearPhigrosFontCache },
-  { root: phigrosIllustrationStageDirectory, clear: clearPhigrosIllustrationStage },
+  { root: () => BEST_IMAGE_STAGE_ROOT('phigros'), clear: () => clearUnusedBestImageAssets('phigros') },
 ];
 const phigrosAdapter = createGameStorageAdapter({
   gameId: 'phigros',
@@ -98,7 +99,7 @@ const chunithmAdapter = createGameStorageAdapter({
   color: '#27A7E7',
   note: '账号成绩快照；公开曲库仅保留在会话内，SQLite 为估算值',
   queryKeys: [['score-snapshot'], ['game-data'], ['chunithm-catalog'], ['chunithm-song-detail'], ['chunithm-collections']],
-  fileResources: [],
+  fileResources: [{ root: () => BEST_IMAGE_STAGE_ROOT('chunithm'), clear: () => clearUnusedBestImageAssets('chunithm') }],
   ownership: { ownsAccount: accountOwnership('chunithm'), resourceKeys: CHUNITHM_CATALOG_RESOURCE_KEYS, resourcePrefixes: [CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX, `${CHUNITHM_COLLECTION_LIST_RESOURCE_KEY}:`] },
 });
 
