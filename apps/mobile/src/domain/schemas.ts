@@ -157,10 +157,10 @@ export function mapLxnsScore(raw: z.infer<typeof LxnsScoreSchema>): ScoreRecord 
     ? 'utage'
     : LEVEL_INDEX_DIFFICULTY[raw.level_index] ?? 'unknown';
   const level = raw.level ?? String(raw.level_index);
-  const title = raw.song_name?.trim();
+  const title = raw.song_name;
   const ratingKnown = raw.type === 'utage' || raw.dx_rating !== undefined;
   const rateKnown = raw.rate !== undefined;
-  const incomplete = !title || !ratingKnown || !rateKnown;
+  const incomplete = title === undefined || !ratingKnown || !rateKnown;
   const rating = raw.type === 'utage'
     ? 0
     : raw.dx_rating !== undefined
@@ -170,7 +170,7 @@ export function mapLxnsScore(raw: z.infer<typeof LxnsScoreSchema>): ScoreRecord 
   const fs = mapKnownFs(raw.fs);
   return {
     songId: String(raw.id),
-    title: title || '曲名缺失',
+    title: title ?? '曲名缺失',
     incomplete: incomplete || undefined,
     type: mapLxnsSongType(raw.type),
     levelIndex: raw.level_index,

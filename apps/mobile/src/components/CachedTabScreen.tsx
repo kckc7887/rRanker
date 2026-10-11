@@ -11,7 +11,6 @@ import {
 import { useFocusEffect, useNavigation } from 'expo-router';
 import { useIsFocused, type NavigationProp, type NavigationState, type ParamListBase } from '@react-navigation/native';
 import { Platform, StyleSheet, View } from 'react-native';
-import { Freeze } from 'react-freeze';
 import { scheduleIdleTask, useAppLifecycle } from '@/state/app-lifecycle';
 import { useAppTheme } from '@/theme/app-theme';
 import { RemoteImageActivityScope } from '@/components/RemoteImage';
@@ -80,17 +79,14 @@ export function StackScreenActivityScope({ children }: { children: ReactNode }) 
 export function CachedTabScreen({ children }: { children: ReactNode }) {
   const theme = useAppTheme();
   const lifecycle = useAppLifecycle();
-  const focused = useIsFocused();
   const activatedRef = useRef(false);
   const cachedChildrenRef = useRef(children);
   const focusedRef = useRef(false);
   const foregroundReadyRef = useRef(lifecycle.foregroundReady);
   const memoryWarningRef = useRef(lifecycle.memoryWarningGeneration);
   const activationTaskRef = useRef<(() => void) | null>(null);
-  const freezeTaskRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [activated, setActivated] = useState(false);
   const [active, setActive] = useState(false);
-  const [frozen, setFrozen] = useState(false);
 
   const stopActivation = useCallback(() => {
     activationTaskRef.current?.();
@@ -102,9 +98,6 @@ export function CachedTabScreen({ children }: { children: ReactNode }) {
     activationTaskRef.current?.();
     activationTaskRef.current = null;
     if (!focusedRef.current || !foregroundReadyRef.current) return;
-    if (freezeTaskRef.current !== null) clearTimeout(freezeTaskRef.current);
-    freezeTaskRef.current = null;
-    setFrozen(false);
     activationTaskRef.current = scheduleIdleTask(() => {
       if (!focusedRef.current || !foregroundReadyRef.current) return;
       if (!activatedRef.current) {
@@ -145,19 +138,6 @@ export function CachedTabScreen({ children }: { children: ReactNode }) {
     return undefined;
   }, [lifecycle.foregroundGeneration, lifecycle.foregroundReady, lifecycle.memoryWarningGeneration, scheduleActivation, stopActivation]);
 
-  useEffect(() => {
-    if (active || !activated) return;
-    /** 先提交失活状态，让后代停止工作，再冻结订阅更新。 */
-    freezeTaskRef.current = setTimeout(() => {
-      freezeTaskRef.current = null;
-      if (!focusedRef.current || !foregroundReadyRef.current) setFrozen(true);
-    }, 0);
-    return () => {
-      if (freezeTaskRef.current !== null) clearTimeout(freezeTaskRef.current);
-      freezeTaskRef.current = null;
-    };
-  }, [active, activated, focused, lifecycle.foregroundReady]);
-
   if (!activated) {
     return <View testID="cached-tab-placeholder" style={[styles.page, { backgroundColor: theme.background }]} />;
   }
@@ -165,7 +145,7 @@ export function CachedTabScreen({ children }: { children: ReactNode }) {
   return (
     <RemoteImageActivityScope active={active}>
       <CachedTabActiveContext.Provider value={active}>
-        <Freeze freeze={frozen}>{cachedChildrenRef.current}</Freeze>
+        {cachedChildrenRef.current}
       </CachedTabActiveContext.Provider>
     </RemoteImageActivityScope>
   );

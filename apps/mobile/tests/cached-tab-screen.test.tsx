@@ -1,7 +1,7 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { useEffect, useState } from 'react';
-import { Platform, Pressable, Text } from 'react-native';
+import { Platform, Pressable, Text, TextInput } from 'react-native';
 import { create } from 'zustand';
 import { CachedTabScreen, StackScreenActivityScope, useCachedTabActive, useStackScreenReady } from '@/components/CachedTabScreen';
 import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
@@ -30,7 +30,6 @@ jest.mock('@react-navigation/native', () => ({
   useIsFocused: () => mockFocused,
 }));
 const useAccount = create(() => ({ name: 'A' }));
-const observedAccounts: string[] = [];
 const activityChanges: boolean[] = [];
 const originalIdle = globalThis.requestIdleCallback;
 const originalCancelIdle = globalThis.cancelIdleCallback;
@@ -39,12 +38,13 @@ let nextIdleId = 0;
 
 function StatefulPage() {
   const [count, setCount] = useState(0);
+  const [draft, setDraft] = useState('');
   const account = useAccount(state => state.name);
   const active = useCachedTabActive();
-  useEffect(() => { observedAccounts.push(account); }, [account]);
   useEffect(() => { activityChanges.push(active); }, [active]);
   return <Pressable testID="increment" onPress={() => setCount(value => value + 1)}>
     <Text>页面状态 {count}</Text><Text>账号 {account}</Text><Text>{active ? '前台' : '后台'}</Text>
+    <TextInput testID="draft" value={draft} onChangeText={setDraft} />
   </Pressable>;
 }
 function DeferredContent() {
@@ -70,7 +70,6 @@ beforeEach(() => {
   mockFocusEffect = null;
   mockEvents.clear();
   useAccount.setState({ name: 'A' });
-  observedAccounts.length = 0;
   activityChanges.length = 0;
   idleTasks = new Map();
   globalThis.requestIdleCallback = callback => {
@@ -88,32 +87,35 @@ afterEach(() => {
 });
 
 describe('cached native-tab content', () => {
-  it('stops activity before freezing account updates and restores current data with local state', async () => {
+  it('keeps the page and input visible while blurred by a parent stack, including before focus idle', async () => {
     const view = await render(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
     expect(view.getByTestId('cached-tab-placeholder')).toBeTruthy();
     let cleanup: void | (() => void);
     await act(() => { cleanup = mockFocusEffect?.(); });
     await flushIdle();
     await fireEvent.press(view.getByTestId('increment'));
-    expect(view.getByText('页面状态 1')).toBeTruthy();
+    await fireEvent.changeText(view.getByTestId('draft'), '保留草稿');
     mockFocused = false;
     await act(() => { cleanup?.(); });
     await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
     expect(activityChanges.at(-1)).toBe(false);
     await act(() => { jest.runOnlyPendingTimers(); });
     await act(() => { useAccount.setState({ name: 'B' }); });
-    expect(observedAccounts).toEqual(['A']);
+    expect(view.getByText('页面状态 1')).toBeVisible();
+    expect(view.getByText('账号 B')).toBeVisible();
+    expect(view.getByTestId('draft')).toBeVisible();
+    expect(view.getByTestId('draft')).toHaveProp('value', '保留草稿');
     mockFocused = true;
     await act(() => { cleanup = mockFocusEffect?.(); });
-    expect(view.getByText('账号 B')).toBeTruthy();
-    expect(view.getByText('页面状态 1')).toBeTruthy();
-    expect(view.getByText('后台')).toBeTruthy();
+    expect(view.getByText('页面状态 1')).toBeVisible();
+    expect(view.getByTestId('draft')).toHaveProp('value', '保留草稿');
+    expect(view.getByText('后台')).toBeVisible();
     await flushIdle();
     expect(view.getByText('前台')).toBeTruthy();
     await view.unmount();
   });
 
-  it('cancels rapid refocus activation and freezes a page blurred again before idle', async () => {
+  it('cancels rapid refocus activation without blanking the retained page', async () => {
     const view = await render(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
     let cleanup: void | (() => void);
     await act(() => { cleanup = mockFocusEffect?.(); });
@@ -131,11 +133,42 @@ describe('cached native-tab content', () => {
     expect(activityChanges.at(-1)).toBe(false);
     await act(() => { jest.runOnlyPendingTimers(); });
     await act(() => { useAccount.setState({ name: 'B' }); });
-    expect(observedAccounts).toEqual(['A']);
+    expect(view.getByText('页面状态 0')).toBeVisible();
+    expect(view.getByText('账号 B')).toBeVisible();
+    expect(view.getByText('后台')).toBeVisible();
     await view.unmount();
   });
 
-  it('preserves a focused page in background and evicts a frozen unfocused page on memory warning', async () => {
+  it.each(['inactive', 'background'] as const)('preserves visible content and input during %s and foreground readiness', async phase => {
+    const view = await render(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    await act(() => { mockFocusEffect?.(); });
+    await flushIdle();
+    await fireEvent.press(view.getByTestId('increment'));
+    await fireEvent.changeText(view.getByTestId('draft'), '未提交输入');
+    mockLifecycle = { ...mockLifecycle, appState: phase, phase, foregroundReady: false };
+    await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    await act(() => { jest.runOnlyPendingTimers(); });
+    expect(view.getByText('页面状态 1')).toBeVisible();
+    expect(view.getByText('后台')).toBeVisible();
+    expect(view.getByTestId('draft')).toBeVisible();
+    expect(view.getByTestId('draft')).toHaveProp('value', '未提交输入');
+
+    mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-waiting' };
+    await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    expect(view.getByText('页面状态 1')).toBeVisible();
+    expect(view.getByTestId('draft')).toHaveProp('value', '未提交输入');
+    expect(view.getByText('后台')).toBeVisible();
+    mockLifecycle = { ...mockLifecycle, phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
+    await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
+    expect(view.getByText('页面状态 1')).toBeVisible();
+    expect(view.getByText('后台')).toBeVisible();
+    await flushIdle();
+    expect(view.getByText('前台')).toBeVisible();
+    expect(view.getByTestId('draft')).toHaveProp('value', '未提交输入');
+    await view.unmount();
+  });
+
+  it('preserves a focused page on memory warning and evicts an unfocused page', async () => {
     const view = await render(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
     let cleanup: void | (() => void);
     await act(() => { cleanup = mockFocusEffect?.(); });
@@ -145,6 +178,7 @@ describe('cached native-tab content', () => {
     await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
     expect(activityChanges.at(-1)).toBe(false);
     await act(() => { jest.runOnlyPendingTimers(); });
+    expect(view.getByText('页面状态 1')).toBeVisible();
     mockLifecycle = { ...mockLifecycle, appState: 'active', phase: 'foreground-ready', foregroundReady: true, foregroundGeneration: 2 };
     await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
     await flushIdle();
@@ -156,6 +190,7 @@ describe('cached native-tab content', () => {
     mockLifecycle = { ...mockLifecycle, memoryWarningGeneration: 2 };
     await view.rerender(<CachedTabScreen><StatefulPage /></CachedTabScreen>);
     expect(view.getByTestId('cached-tab-placeholder')).toBeTruthy();
+    expect(view.queryByText('页面状态 1')).toBeNull();
     mockFocused = true;
     await act(() => { cleanup = mockFocusEffect?.(); });
     await flushIdle();

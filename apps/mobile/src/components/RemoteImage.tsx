@@ -87,6 +87,8 @@ export function RemoteImage({
   const onErrorRef = useRef(onError);
   onErrorRef.current = onError;
   const activeRequestKeyRef = useRef<string | null>(null);
+  const resolvedRef = useRef<CompressedRemoteImageResult | null>(null);
+  const displayedRequestKeyRef = useRef<string | null>(null);
   const [resolved, setResolved] = useState<CompressedRemoteImageResult | null>(null);
   const [phase, setPhase] = useState<'checking' | 'cached' | 'remote' | 'cached-fallback' | 'failed'>('checking');
   const [remoteDisplayed, setRemoteDisplayed] = useState(false);
@@ -98,6 +100,8 @@ export function RemoteImage({
     activeRequestKeyRef.current = requestKey;
     releaseRef.current?.();
     releaseRef.current = undefined;
+    resolvedRef.current = null;
+    displayedRequestKeyRef.current = null;
     setResolved(null);
     setPhase('checking');
     setRemoteDisplayed(false);
@@ -116,6 +120,7 @@ export function RemoteImage({
           return;
         }
         releaseRef.current = result.release;
+        resolvedRef.current = result;
         setResolved(result);
         setPhase('cached');
       })
@@ -141,8 +146,13 @@ export function RemoteImage({
       if (controller.signal.aborted) { void result.release().catch(() => undefined); return; }
       acquired = result;
       setOriginal(result);
+      setPhase('remote');
     }).catch(error => {
       if (controller.signal.aborted) return;
+      if (resolvedRef.current) {
+        setPhase('cached-fallback');
+        return;
+      }
       setPhase('failed');
       onErrorRef.current?.({ error: error instanceof Error ? error.message : String(error) });
     });
@@ -167,6 +177,7 @@ export function RemoteImage({
           if (controller.signal.aborted) { result?.release?.(); return; }
           if (!result) return;
           releaseRef.current = result.release;
+          resolvedRef.current = result;
           setResolved(result);
         })
         .catch(() => undefined);
@@ -198,11 +209,13 @@ export function RemoteImage({
       {...props}
       cachePolicy={showingRemote ? 'memory' : 'none'}
       onDisplay={() => {
+        if (activeRequestKeyRef.current !== requestKey) return;
         if (phase === 'cached') {
-          setPhase('remote');
+          setOriginalRequestKey(requestKey);
           return;
         }
-        if (phase === 'remote') {
+        if (phase === 'remote' && original && displayedRequestKeyRef.current !== requestKey) {
+          displayedRequestKeyRef.current = requestKey;
           setRemoteDisplayed(true);
           onDisplay?.();
         }
@@ -212,6 +225,7 @@ export function RemoteImage({
           void invalidateCompressedRemoteImage(resolved.cacheKey);
           releaseRef.current?.();
           releaseRef.current = undefined;
+          resolvedRef.current = null;
           setResolved(null);
           if (phase === 'cached') {
             setOriginalRequestKey(requestKey);
@@ -230,9 +244,9 @@ export function RemoteImage({
         ? null
         : showingCached
           ? resolved?.source ?? null
-          : originalRequestKey === requestKey
-            ? original ? { ...normalized?.source, uri: original.fileUri } : null
-            : source}
+          : originalRequestKey === requestKey && original
+            ? { ...normalized?.source, uri: original.fileUri }
+            : null}
     />
   );
 }

@@ -17,7 +17,7 @@
 
 展示模型使用实际 `GameId`。`DetailTarget` 描述游戏内真实目标，URL 必须携带 `gameId`；osu! 谱面使用 `beatmapId`，舞萌谱面带类型和难度索引。行、卡片、随机工具和个人曲库都通过 `detailTargetHref` 跳转。
 
-Provider 负责上游请求与响应转换，页面不拼接认证请求。水鱼与 LXNS 成绩映射直接接收 Provider 已校验的类型；上游响应与磁盘读取保留校验。HTTP 使用 `totalAttempts`，有副作用的请求按实际规则限制重试；取消在公共请求入口处理。QueryClient 默认最多重试一次，并遵守 `ProviderError.retryable`。上游当前格式中的字段和平台必需的 SDK 适配继续由所属模块处理。
+Provider 负责上游请求与响应转换，页面不拼接认证请求。水鱼与 LXNS 成绩映射直接接收 Provider 已校验的类型；上游响应与磁盘读取保留校验。LXNS 成绩曲名按上游字符串原样保留，包括空字符串和空白字符；仅缺少 `song_name` 字段时使用缺失占位并标记不完整。HTTP 使用 `totalAttempts`，有副作用的请求按实际规则限制重试；取消在公共请求入口处理。QueryClient 默认最多重试一次，并遵守 `ProviderError.retryable`。上游当前格式中的字段和平台必需的 SDK 适配继续由所属模块处理。
 
 `useLocalSearch` 在实际逐项准备、匹配循环中按 4 ms 预算分片，通过 `scheduleIdleTask` 继续；输入、快照与活动状态变化取消旧工作。页面恢复时复用相同条目、快照、筛选条件和选择函数的完整结果；调用方只将防抖关键词和有效筛选字段纳入条件身份。`searchDocumentFor` 按字段提取函数和原始对象弱引用复用搜索文档，`songSearchDocument` 为同一歌曲及别名快照的曲库与成绩页提供共同入口。匹配字段保持游戏原有语义，命中别名随筛选结果发布。
 
@@ -75,11 +75,11 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 `AppLifecycleProvider`、`useAppRuntime` 与 `CachedTabScreen` 管理前后台和页面活动。后台取消前台工作；内存警告释放非活动查询、图片内存和必要的 WebView。前台仅恢复仍活动的未完成工作，不额外刷新已有缓存。
 
-`scheduleIdleTask` 提供可取消的空闲调度。`CachedTabScreen` 在失活状态完成提交后冻结子内容，恢复时先解冻；外层持续监听焦点、前后台和内存警告。`StackScreenActivityScope` 在栈页外层监听原生转场，`useStackScreenReady` 保留首次入场完成状态，活动上下文同时受焦点、转场和前后台约束。
+`scheduleIdleTask` 提供可取消的空闲调度。`CachedTabScreen` 持续监听焦点、前后台和内存警告；普通失活仅暂停工作，已挂载内容及局部状态持续保留，重获焦点时已有画面不等待空闲任务。真正的内存警告可卸载非焦点页面。`StackScreenActivityScope` 在栈页外层监听原生转场，`useStackScreenReady` 保留首次入场完成状态，活动上下文同时受焦点、转场和前后台约束。
 
 ## 图片与共享 UI
 
-`RemoteImage` 是远程图片入口，使用 `cacheProfile` 明确 thumbnail、artwork、native 或 none。`remote-image-cache.ts` 管理压缩图片、缓存身份和文件清理；`acquireRemoteImageOriginal(source, gameId, signal)` 返回临时原图文件及异步 `release`，展示和压缩共用下载，消费者独立取消。身份包含 URL、请求头、缓存键、游戏及清理代次，不跨清理复用旧请求；最后一个消费者释放后等待原生下载结束并删除文件。原图不受可见性等待限制，压缩在成功显示且页面活动时开始；压缩缓存命中时先显示缩略图，再加载原图。清理跳过正在使用的原图，待消费者释放后回收。
+`RemoteImage` 是远程图片入口，使用 `cacheProfile` 明确 thumbnail、artwork、native 或 none。`remote-image-cache.ts` 管理压缩图片、缓存身份和文件清理；`acquireRemoteImageOriginal(source, gameId, signal)` 返回临时原图文件及异步 `release`，展示和压缩共用下载，消费者独立取消。身份包含 URL、请求头、缓存键、游戏及清理代次，不跨清理复用旧请求；最后一个消费者释放后等待原生下载结束并删除文件。原图不受可见性等待限制，压缩在成功显示且页面活动时开始；压缩缓存命中后持续显示缩略图，取得同一入口的原图文件后替换，原图失败时保留有效缓存。普通页面失活不释放已取得的原图；原图成功显示才通知调用方。清理跳过正在使用的原图，待消费者释放后回收。
 
 通用行、卡片和封面位于 `components/game-content`，游戏组件只提供实际展示差异。`GameDifficultyBadge` 使用普通样式覆盖，保留尺寸、渐变和文本。列表的页面活动、可见性与图片落盘通过现有共享组件传递；可见性使用列表的稳定条目键，分组列表额外按分组键隔离，同键数据更新保留当前活动状态。
 
