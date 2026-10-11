@@ -10,6 +10,8 @@ import { downloadPhiraChartPackage } from '@/features/phira-chart-download/chart
 
 const native = vi.hoisted(() => ({
   bytes: new Map<string, Uint8Array>(),
+  documents: new Map<string, Uint8Array>(),
+  copyFileToContentUriAsync: vi.fn<(fromUri: string, toUri: string) => Promise<void>>(),
   cancelDownload: vi.fn(),
   createFileCalls: [] as { name: string; mime: string | null }[],
   createdDirs: [] as string[],
@@ -35,11 +37,13 @@ vi.mock('expo-file-system', () => {
     async bytes() { return native.bytes.get(this.uri) ?? new Uint8Array(0); }
     write(content: string | Uint8Array) { native.writes.push({ uri: this.uri, content }); }
     copy(destination: MockFile) {
+      if (destination.uri.startsWith('content://')) throw new Error('File.copy does not support content URIs');
       if (native.copyError) throw native.copyError;
       const content = native.bytes.get(this.uri);
       if (!content) throw new Error('Source file does not exist');
       native.writes.push({ uri: destination.uri, content });
     }
+    delete() { native.deleted.push(this.uri); native.bytes.delete(this.uri); native.documents.delete(this.uri); }
   }
   class MockDirectory {
     uri: string;
@@ -49,7 +53,7 @@ vi.mock('expo-file-system', () => {
     create() { native.createdDirs.push(this.uri); }
     createFile(name: string, mime: string | null) {
       native.createFileCalls.push({ name, mime });
-      return new MockFile(`picked://${name}`);
+      return new MockFile(`content://exports/${name}`);
     }
     get exists() { return this.uri.startsWith('file:///cache/'); }
     delete() {
@@ -78,6 +82,12 @@ vi.mock('expo-file-system/legacy', () => ({
       return { uri, status: 200, headers: {} };
     },
     cancelAsync: () => native.cancelDownload(),
+  }),
+}));
+
+vi.mock('expo-modules-core', () => ({
+  requireNativeModule: () => ({
+    copyFileToContentUriAsync: (fromUri: string, toUri: string) => native.copyFileToContentUriAsync(fromUri, toUri),
   }),
 }));
 
@@ -111,15 +121,21 @@ const phiraChart: PhiraChart = {
   chartUpdated: null,
 };
 
-function pickedDirectoryMock(uri = 'picked://') {
+function pickedDirectoryMock(uri = 'content://exports') {
   const prefix = uri.endsWith('/') ? uri : `${uri}/`;
   return {
     uri,
     createFile: (name: string, mime: string | null) => {
       native.createFileCalls.push({ name, mime });
+      const fileUri = `${prefix}${name}`;
+      native.documents.set(fileUri, new Uint8Array());
       return {
-        uri: `${prefix}${name}`,
-        write: (content: string | Uint8Array) => native.writes.push({ uri: `${prefix}${name}`, content }),
+        uri: fileUri,
+        write: (content: string | Uint8Array) => {
+          native.writes.push({ uri: fileUri, content });
+          native.documents.set(fileUri, typeof content === 'string' ? new TextEncoder().encode(content) : content);
+        },
+        delete: () => { native.deleted.push(fileUri); native.documents.delete(fileUri); },
       };
     },
   };
@@ -129,6 +145,7 @@ describe('Phira compatible chart download', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     native.bytes.clear();
+    native.documents.clear();
     native.createFileCalls.length = 0;
     native.createdDirs.length = 0;
     native.deleted.length = 0;
@@ -136,6 +153,13 @@ describe('Phira compatible chart download', () => {
     native.writes.length = 0;
     native.copyError = undefined;
     native.pickDirectoryAsync.mockResolvedValue(pickedDirectoryMock());
+    native.copyFileToContentUriAsync.mockReset().mockImplementation(async (fromUri, toUri) => {
+      if (native.copyError) throw native.copyError;
+      const content = native.bytes.get(fromUri);
+      if (!content) throw new Error('Source file does not exist');
+      native.documents.set(toUri, content);
+      native.writes.push({ uri: toUri, content });
+    });
     native.cancelDownload.mockResolvedValue(undefined);
     resources.loadBundle.mockResolvedValue({
       target: { songId: 'Song.A', difficulty: 'IN' },
@@ -177,7 +201,7 @@ describe('Phira compatible chart download', () => {
       'https://assets.example/illustration.png',
     ]);
     expect(native.createFileCalls).toEqual([{ name: '测试曲 IN.zip', mime: 'application/zip' }]);
-    const written = native.writes.find((item) => item.uri === 'picked://测试曲 IN.zip');
+    const written = native.writes.find((item) => item.uri === 'content://exports/测试曲 IN.zip');
     const zip = await JSZip.loadAsync(written!.content as Uint8Array);
     expect(Object.keys(zip.files).sort()).toEqual([
       'chart.json',
@@ -207,7 +231,7 @@ describe('Phira compatible chart download', () => {
     expect(native.downloaded.map((item) => item.url)).toEqual(['https://phira.example/chart.zip']);
     expect(native.createFileCalls).toEqual([{ name: '初音未来的消失 AT Lv.16.zip', mime: 'application/zip' }]);
     const source = new TextEncoder().encode(`resource:${phiraChart.file}`);
-    const written = native.writes.find((item) => item.uri === 'picked://初音未来的消失 AT Lv.16.zip');
+    const written = native.writes.find((item) => item.uri === 'content://exports/初音未来的消失 AT Lv.16.zip');
     expect(written?.content).toEqual(source);
     expect(native.bytes.size).toBe(0);
     expect(native.deleted).toEqual(native.createdDirs);
@@ -263,7 +287,8 @@ describe('Phira compatible chart download', () => {
     expect(deletedBeforeSave).toEqual([]);
     expect(native.writes).toEqual([]);
     expect(native.bytes.size).toBe(0);
-    expect(native.deleted).toEqual(native.createdDirs);
+    expect(native.deleted.filter(uri => uri.startsWith('file://'))).toEqual(native.createdDirs);
+    expect(native.documents.size).toBe(0);
   });
 
   it('treats closing the system directory picker as cancellation', async () => {

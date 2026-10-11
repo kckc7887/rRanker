@@ -98,7 +98,7 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 - `chart-preview-navigation.ts` 交接当前预览请求。
 - `webview-player` 提供四套播放器共用的设置 UI 与手势。
 
-预览准备结果的 `dispose` 返回 `Promise<void>`，宿主先失效会话和释放视图，再异步清理；迟到准备结果同样回收。`fs-storage.ts` 的目录统计、清理和版本裁剪使用异步文件入口，`runSharedCacheFileOperation` 串行提交共享素材文件发布与共享目录清理，排队后重新检查代次。启动维护保留当前会话文件及已使用的固定预览素材目录。压缩图片索引、发布和清理在 `remote-image-cache.ts` 内串行提交，取消与代次检查仍控制结果发布。
+预览准备结果的 `dispose` 返回 `Promise<void>`，宿主先失效会话和释放视图，再异步清理；迟到准备结果同样回收。`fs-storage.ts` 的目录统计、清理和版本裁剪使用异步文件入口，`runSharedCacheFileOperation` 串行提交共享素材文件发布与共享目录清理，排队后重新检查代次。启动维护保留当前会话文件及已使用的固定预览素材目录。图片索引、发布和清理在 `remote-image-cache.ts` 内串行提交；命中读取与正常释放复用已初始化目录，原图核验合并 LRU 更新，临时文件只在未命中时准备。最后释放更新使用时间，仅有超额待回收时继续裁剪，取消与代次检查仍控制结果发布。
 
 `webview-player/controls.ts` 的 `installPreviewControls` 复用原按钮与监听，固定标题和画面，下方控制与参数独立滚动；`stageAspectRatio` 保留各游戏比例，画面高度不超过标题下方可用空间的 55%。舞萌实时信息固定两行，首行为 BPM、拍位置和 FPS，次行为 COMBO、BREAK；每行高度固定、数字等宽，超宽时横向滚动。所有谱面确认页隐藏 WebView 与页面内部滚动条，保留滑动。`setPreviewFullscreen` 保存、恢复普通模式滚动位置。
 
@@ -126,7 +126,7 @@ Phigros/Rizline 预览和下载共用 `phigrosResources`、`rizlineResources`、
 
 Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图读取时校验 Phigros 头像属于当前哈希地址结构，失效缓存通过所属仓库入口重建；头像同步会重新解析结构失效的地址，其他游戏头像缓存格式保持各自合同。
 
-`features/chart-download-shared` 提供原生下载、进度和取消；各游戏负责组装谱面包。下载进度通过 `ActionNotificationInput.blocking: false` 显示，多个任务各自保留取消操作；其他操作通知默认阻挡，选择通知优先显示。`AppNotification` 的根返回监听与 `useNotificationModalRequestClose` 仅处理阻挡通知，普通提示仍按队列依次显示。`saveChartPackage(fileName, output, signal?)` 串行保存，轮到任务时等待前台并检查取消；`isChartPackageDirectoryPickerActive()` 标记原生目录选择至前台恢复的窗口，下载 hook 在该窗口保留并行任务。选择器实际结束前不放行下一项，即使当前任务已取消；恢复后再次检查取消再写盘。取消目录选择返回 `false`，请求取消保持 `ChartPackageDownloadCancelledError`，失败不阻塞后续保存。普通后台与页面卸载继续取消下载。Android 在目录选择器内再按 Home 时任务保留至选择器返回及应用恢复。舞萌、Majdata、Phigros、Phira、osu! 将下载任务的信号传到保存入口。
+`features/chart-download-shared` 提供原生下载、进度和取消；各游戏负责组装谱面包。下载进度通过 `ActionNotificationInput.blocking: false` 显示，多个任务各自保留取消操作；其他操作通知默认阻挡，选择通知优先显示。`AppNotification` 的根返回监听与 `useNotificationModalRequestClose` 仅处理阻挡通知，普通提示仍按队列依次显示。`saveChartPackage(fileName, output, signal?)` 串行保存，轮到任务时等待前台并检查取消；`isChartPackageDirectoryPickerActive()` 标记原生目录选择至前台恢复的窗口，下载 hook 在该窗口保留并行任务。选择器实际结束前不放行下一项，即使当前任务已取消；恢复后再次检查取消再写盘。Android 文件输出通过 `utils/resource-integrity.ts` 的 `copyFileToContentUriAsync(fromUri, toUri)` 调用原生 64 KiB 后台复制，避免整份读入 JS；复制结束前源目录保持有效，返回后检查取消。失败或取消只删除本次新建目标，清理错误记录后保留原异常；iOS 普通文件复制不删除已存在目标。取消目录选择返回 `false`，请求取消保持 `ChartPackageDownloadCancelledError`，失败不阻塞后续保存。普通后台与页面卸载继续取消下载。Android 在目录选择器内再按 Home 时任务保留至选择器返回及应用恢复。舞萌、Majdata、Phigros、Phira、osu! 将下载任务的信号传到保存入口。
 
 ## 工具与诊断
 

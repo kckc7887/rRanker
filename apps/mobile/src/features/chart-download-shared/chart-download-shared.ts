@@ -6,6 +6,7 @@ import {
 import { ProviderError, providerErrorFromStatus, type ProviderErrorCode } from '@/providers/errors';
 import { nextRuntimeOperationId, recordRuntimeDiagnostic, recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import { waitForForeground } from '@/state/app-lifecycle-core';
+import { copyFileToContentUriAsync } from '@/utils/resource-integrity';
 
 export class ChartPackageDownloadError extends ProviderError {
   constructor(message: string, options?: ErrorOptions, code: ProviderErrorCode = 'unknown', retryable = false) {
@@ -182,9 +183,16 @@ export async function saveChartPackage(
         output.file.copy(new File(picked.uri, fileName));
       } else {
         const destination = picked.createFile(fileName, 'application/zip');
-        throwIfChartDownloadCancelled(signal);
-        if (output.kind === 'file') output.file.copy(destination);
-        else destination.write(output.bytes);
+        try {
+          throwIfChartDownloadCancelled(signal);
+          if (output.kind === 'file') await copyFileToContentUriAsync(output.file.uri, destination.uri);
+          else destination.write(output.bytes);
+          throwIfChartDownloadCancelled(signal);
+        } catch (error) {
+          try { destination.delete(); }
+          catch (cleanupError) { recordRuntimeError('chart-package-save-cleanup', cleanupError, false, { phase: 'cleanup' }); }
+          throw error;
+        }
       }
       return true;
     } catch (error) {

@@ -309,6 +309,81 @@ describe('remote image cache', () => {
     expect([...mocks.files.keys()].filter(uri => uri.endsWith('.source.part'))).toEqual([]);
   });
 
+  it('serves initialized original and compressed caches when directory writes are unavailable', async () => {
+    const source = 'https://example.test/read-only-cache.png';
+    const options = { gameId: 'maimai', profile: 'thumbnail' as const };
+    const compressed = await cache.cacheCompressedRemoteImage(source, options);
+    const first = await cache.acquireRemoteImageOriginal(source, 'maimai');
+    await first.release();
+    await cache.flushRemoteImageCacheManifest();
+    const fileSystem = await import('expo-file-system/legacy');
+    const directory = vi.spyOn(fileSystem, 'makeDirectoryAsync').mockRejectedValue(new Error('directory writes unavailable'));
+    mocks.download.mockRejectedValue(new Error('offline'));
+    try {
+      await expect(cache.findCompressedRemoteImage(source, options)).resolves.toEqual(compressed);
+      const reopened = await cache.acquireRemoteImageOriginal(source, 'maimai');
+      expect(reopened.fileUri).toBe(first.fileUri);
+      expect(mocks.files.get(reopened.fileUri)?.content).toBe('original bytes');
+      await expect(reopened.release()).resolves.toBeUndefined();
+    } finally { directory.mockRestore(); }
+  });
+
+  it('keeps a long-held original recent when the next download exceeds capacity', async () => {
+    const now = vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const bytes = 20 * 1024 * 1024;
+    mocks.download.mockImplementation(async (url, uri) => {
+      mocks.files.set(uri, { content: url, size: bytes, modified: Date.now() });
+      return { uri, status: 200 };
+    });
+    try {
+      const held = await cache.acquireRemoteImageOriginal('https://example.test/long-held.png', 'maimai');
+      now.mockReturnValue(2000);
+      const other = await cache.acquireRemoteImageOriginal('https://example.test/other.png', 'maimai');
+      await other.release();
+      now.mockReturnValue(3000);
+      await held.release();
+      now.mockReturnValue(4000);
+      const newest = await cache.acquireRemoteImageOriginal('https://example.test/newest.png', 'maimai');
+      expect(mocks.files.get(held.fileUri)?.content).toBe('https://example.test/long-held.png');
+      expect(mocks.files.has(other.fileUri)).toBe(false);
+      expect(mocks.files.get(newest.fileUri)?.content).toBe('https://example.test/newest.png');
+      await expect(cache.measureGameRemoteImageCacheBytes('maimai')).resolves.toBe(2 * bytes);
+      await newest.release();
+    } finally { now.mockRestore(); }
+  });
+
+  it('retries after the last consumer cancels while the download directory is being prepared', async () => {
+    await cache.listRemoteImageCacheUsage();
+    const fileSystem = await import('expo-file-system/legacy');
+    const makeDirectory = fileSystem.makeDirectoryAsync;
+    const entered = Promise.withResolvers<void>();
+    const resume = Promise.withResolvers<void>();
+    const directory = vi.spyOn(fileSystem, 'makeDirectoryAsync').mockImplementationOnce(async (...args) => {
+      entered.resolve();
+      await resume.promise;
+      await makeDirectory(...args);
+    });
+    const source = 'https://example.test/cancel-before-download.png';
+    const controller = new AbortController();
+    try {
+      const pending = cache.acquireRemoteImageOriginal(source, 'maimai', controller.signal);
+      const rejected = expect(pending).rejects.toThrow();
+      await entered.promise;
+      controller.abort();
+      await rejected;
+      const reopening = cache.acquireRemoteImageOriginal(source, 'maimai');
+      resume.resolve();
+      const original = await reopening;
+      expect(mocks.files.get(original.fileUri)?.content).toBe('original bytes');
+      await expect(cache.measureGameRemoteImageCacheBytes('maimai')).resolves.toBe(128);
+      await original.release();
+      mocks.download.mockRejectedValue(new Error('offline'));
+      const restored = await cache.acquireRemoteImageOriginal(source, 'maimai');
+      expect(restored.fileUri).toBe(original.fileUri);
+      await restored.release();
+    } finally { resume.resolve(); directory.mockRestore(); }
+  });
+
   it('cancels one waiting display consumer without cancelling the other', async () => {
     const gate = Promise.withResolvers<void>();
     const download = mocks.download.getMockImplementation()!;
