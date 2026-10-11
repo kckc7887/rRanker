@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 import {
   type ChunithmSongDetailSnapshot,
 } from '@/domain/chunithm';
@@ -9,11 +10,13 @@ const CHUNITHM_SONG_DETAIL_SCHEMA_VERSION = 1;
 const provider = new ChunithmCatalogProvider();
 
 export function useChunithmSongDetail(songId: string | undefined) {
+  const active = useCachedTabActive();
   const activeGameId = useSession((state) => state.activeGameId);
   const normalizedSongId = songId?.trim();
   const queryKey = ['chunithm-song-detail', CHUNITHM_SONG_DETAIL_SCHEMA_VERSION, normalizedSongId];
   return useQuery({
-    enabled: activeGameId === 'chunithm' && !!normalizedSongId,
+    enabled: active && activeGameId === 'chunithm' && !!normalizedSongId,
+    notifyOnChangeProps: active ? undefined : [],
     queryKey,
     queryFn: (): Promise<ChunithmSongDetailSnapshot> => provider.getSongDetail(normalizedSongId!),
   });

@@ -1,5 +1,6 @@
 import * as MediaLibrary from 'expo-media-library';
 import { File, Paths } from 'expo-file-system';
+import { copyAsync, deleteAsync, getInfoAsync } from 'expo-file-system/legacy';
 
 export class BestImageExportError extends Error {
   constructor(message: string) {
@@ -52,24 +53,24 @@ export function bestImageExportFilename(
 
 export async function requestBestImageExportPermission(): Promise<void> {
   if (!await MediaLibrary.isAvailableAsync()) throw new BestImageExportError('当前设备不支持保存到相册');
-  const permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
+  let permission = await MediaLibrary.getPermissionsAsync(true, ['photo']);
+  if (!permission.granted) permission = await MediaLibrary.requestPermissionsAsync(true, ['photo']);
   if (!permission.granted) throw new BestImageExportError('没有相册写入权限，无法导出图片');
 }
 
 export async function saveBestImageCapture(captureUri: string, filename: string): Promise<void> {
   const source = new File(captureUri);
-  if (!source.exists) throw new BestImageExportError('没有读取到导出的临时图片');
+  if (!(await getInfoAsync(source.uri)).exists) throw new BestImageExportError('没有读取到导出的临时图片');
   const output = new File(Paths.cache, filename);
   try {
-    if (output.exists) output.delete();
-    source.copy(output);
+    await deleteAsync(output.uri, { idempotent: true });
+    await copyAsync({ from: source.uri, to: output.uri });
     await MediaLibrary.saveToLibraryAsync(output.uri);
   } finally {
-    if (output.exists) output.delete();
+    await deleteAsync(output.uri, { idempotent: true });
   }
 }
 
-export function deleteBestImageCapture(uri: string): void {
-  const file = new File(uri);
-  if (file.exists) file.delete();
+export function deleteBestImageCapture(uri: string): Promise<void> {
+  return deleteAsync(uri, { idempotent: true });
 }

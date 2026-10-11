@@ -1,6 +1,7 @@
 import { createInflightGuard } from '@/services/snapshot-cache-utils';
 import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Directory, File } from 'expo-file-system';
+import { createDownloadResumable, deleteAsync, getInfoAsync, makeDirectoryAsync, moveAsync, readDirectoryAsync, writeAsStringAsync } from 'expo-file-system/legacy';
 import { Image, type ImageRef, type ImageSource } from 'expo-image';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Platform } from 'react-native';
@@ -13,10 +14,10 @@ export type RemoteImageCacheOptions = {
   profile: RemoteImageCacheProfile;
 };
 
-export const REMOTE_IMAGE_CACHE_BUDGET_BYTES = 10 * 1024 * 1024;
+export const REMOTE_IMAGE_CACHE_BUDGET_BYTES = 50 * 1024 * 1024;
 export const REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES = 10 * 1024;
 export const REMOTE_IMAGE_CACHE_ACTIVE_SHARE = 0.7;
-export const REMOTE_IMAGE_CACHE_VERSION = 3;
+export const REMOTE_IMAGE_CACHE_VERSION = 4;
 
 const PROFILE_OPTIONS = {
   thumbnail: [
@@ -39,6 +40,8 @@ const MANIFEST_FILE_NAME = 'index.json';
 const MAX_CONCURRENT_TRANSFORMS = 1;
 
 type CacheEntry = {
+  kind: 'compressed' | 'original';
+  fileName: string;
   bytes: number;
   gameId: string;
   lastAccess: number;
@@ -55,6 +58,7 @@ type CacheState = {
   activeGameId: string | null;
   gameLastUsed: Map<string, number>;
   entries: Map<string, CacheEntry>;
+  pendingPrune: boolean;
 };
 
 export type CompressedRemoteImageResult = {
@@ -62,6 +66,12 @@ export type CompressedRemoteImageResult = {
   fileUri: string;
   source: ImageSource | ImageRef;
   release?: () => void;
+};
+
+export type RemoteImageOriginal = {
+  fileUri: string;
+  release: () => Promise<void>;
+  invalidate: () => Promise<void>;
 };
 
 export type RemoteImageCacheUsage = {
@@ -85,6 +95,7 @@ export type NormalizedRemoteSource = {
 let manifestPromise: Promise<CacheState> | null = null;
 let manifestWriteTimer: ReturnType<typeof setTimeout> | null = null;
 let manifestWriteQueue: Promise<void> = Promise.resolve();
+let fileOperations: Promise<unknown> = Promise.resolve();
 let activeTransforms = 0;
 let cacheGeneration = 0;
 const gameGenerations = new Map<string, number>();
@@ -96,6 +107,29 @@ type TransformWaiter = {
 const transformWaiters: TransformWaiter[] = [];
 const inflight = createInflightGuard<string>();
 let temporarySequence = 0;
+type OriginalDownload = {
+  cacheKey: string;
+  fileUri: string;
+  promise: Promise<void>;
+  task?: ReturnType<typeof createDownloadResumable>;
+  users: number;
+  settled: boolean;
+  cached: boolean;
+  invalidated: boolean;
+  held: boolean;
+};
+const originals = new Map<string, OriginalDownload>();
+const activeOriginalFiles = new Map<string, number>();
+
+function retainOriginalFile(uri: string): void {
+  activeOriginalFiles.set(uri, (activeOriginalFiles.get(uri) ?? 0) + 1);
+}
+
+function releaseOriginalFile(uri: string): void {
+  const remaining = (activeOriginalFiles.get(uri) ?? 0) - 1;
+  if (remaining > 0) activeOriginalFiles.set(uri, remaining);
+  else activeOriginalFiles.delete(uri);
+}
 
 export function supportsCompressedRemoteImageCache(): boolean {
   return Platform.OS !== 'web';
@@ -135,20 +169,202 @@ export async function remoteImageCacheKey(
   );
 }
 
-function ensureCacheRoot(): Directory {
+function runFileOperation<T>(operation: () => Promise<T>): Promise<T> {
+  const pending = fileOperations.then(operation, operation);
+  fileOperations = pending.catch(() => undefined);
+  return pending;
+}
+
+async function ensureCacheRoot(): Promise<Directory> {
   const root = COMPRESSED_IMAGE_CACHE_ROOT();
-  if (!root.exists) root.create({ intermediates: true, idempotent: true });
+  await makeDirectoryAsync(root.uri, { intermediates: true });
   return root;
 }
 
-function entryFile(root: Directory, cacheKey: string): File {
-  return new File(root, `${cacheKey}.webp`);
+export async function acquireRemoteImageOriginal(
+  source: unknown,
+  gameId: string,
+  signal?: AbortSignal,
+): Promise<RemoteImageOriginal> {
+  const normalized = normalizeRemoteImageSource(source);
+  if (!normalized || !gameId || signal?.aborted) {
+    return Promise.reject(signal?.reason ?? new Error('图片请求无效'));
+  }
+  const generation = cacheGeneration;
+  const gameGeneration = gameGenerations.get(gameId) ?? 0;
+  const sourceIdentity = JSON.stringify({ gameId, uri: normalized.source.uri,
+    headers: normalized.source.headers, cacheKey: normalized.source.cacheKey });
+  const identity = `${sourceIdentity}|${generation}|${gameGeneration}`;
+  const generationCurrent = () => generation === cacheGeneration
+    && gameGeneration === (gameGenerations.get(gameId) ?? 0);
+  let entry = originals.get(identity);
+  if (!entry) {
+    const download: OriginalDownload = { cacheKey: '', fileUri: '', users: 0, settled: false, cached: false,
+      invalidated: false, held: false, promise: Promise.resolve() };
+    download.promise = (async () => {
+      const cacheKey = await digestStringAsync(CryptoDigestAlgorithm.SHA256,
+        `${REMOTE_IMAGE_CACHE_VERSION}|original|${sourceIdentity}`);
+      download.cacheKey = cacheKey;
+      const cached = await runFileOperation(async () => {
+        const state = await manifest();
+        if (download.users === 0) throw new Error('图片下载已取消');
+        if (!generationCurrent()) throw new Error('图片请求已失效');
+        const stored = state.entries.get(cacheKey);
+        if (stored?.kind === 'original') {
+          const file = entryFile(COMPRESSED_IMAGE_CACHE_ROOT(), cacheKey, stored);
+          const info = await getInfoAsync(file.uri);
+          if (!generationCurrent()) throw new Error('图片请求已失效');
+          if (download.users === 0) throw new Error('图片下载已取消');
+          if (!info.exists || info.isDirectory || info.size <= 0) {
+            await deleteAsync(file.uri, { idempotent: true });
+            state.entries.delete(cacheKey);
+            queueManifestWrite();
+          } else {
+            download.fileUri = file.uri;
+            retainOriginalFile(file.uri);
+            download.held = true;
+            download.cached = true;
+            const now = Date.now();
+            state.entries.set(cacheKey, { ...stored, lastAccess: now });
+            state.gameLastUsed.set(gameId, Math.max(state.gameLastUsed.get(gameId) ?? 0, now));
+            queueManifestWrite();
+            return true;
+          }
+        }
+        const root = await ensureCacheRoot();
+        if (!generationCurrent()) throw new Error('图片请求已失效');
+        if (download.users === 0) throw new Error('图片下载已取消');
+        download.fileUri = new File(root, `${Date.now()}.${++temporarySequence}.source.part`).uri;
+        retainOriginalFile(download.fileUri);
+        download.held = true;
+        return false;
+      });
+      if (cached) return;
+      if (download.users === 0) throw new Error('图片下载已取消');
+      const fileUri = download.fileUri;
+      download.task = createDownloadResumable(normalized.source.uri!, fileUri, { headers: normalized.source.headers });
+      const result = await download.task.downloadAsync();
+      if (!result || result.status < 200 || result.status >= 300) {
+        throw new Error(result ? `图片下载返回 HTTP ${result.status}` : '图片下载已取消');
+      }
+      const info = await getInfoAsync(fileUri);
+      if (!info.exists || info.isDirectory || info.size <= 0) throw new Error('图片下载内容为空');
+      await runFileOperation(async () => {
+        if (!generationCurrent() || download.invalidated || download.users === 0) return;
+        const state = await manifest();
+        const root = await ensureCacheRoot();
+        const finalFile = new File(root, `${cacheKey}.${Date.now()}.${++temporarySequence}.source`);
+        await moveAsync({ from: fileUri, to: finalFile.uri });
+        releaseOriginalFile(download.fileUri);
+        download.fileUri = finalFile.uri;
+        retainOriginalFile(finalFile.uri);
+        if (!generationCurrent() || download.invalidated || download.users === 0) return;
+        const now = Date.now();
+        state.entries.set(cacheKey, { kind: 'original', fileName: finalFile.name,
+          bytes: info.size, gameId, lastAccess: now });
+        state.gameLastUsed.set(gameId, Math.max(state.gameLastUsed.get(gameId) ?? 0, now));
+        download.cached = true;
+        queueManifestWrite();
+        await pruneCacheState(state, REMOTE_IMAGE_CACHE_BUDGET_BYTES, root);
+      });
+    })().finally(() => { download.settled = true; });
+    entry = download;
+    originals.set(identity, entry);
+  }
+  const current = entry;
+  current.users += 1;
+  return new Promise((resolve, reject) => {
+    let released = false;
+    let cleanup: Promise<void> | undefined;
+    const release = (): Promise<void> => {
+      if (released) return cleanup ?? Promise.resolve();
+      released = true;
+      signal?.removeEventListener('abort', cancel);
+      current.users -= 1;
+      if (current.users === 0) {
+        if (!current.cached) {
+          current.invalidated = true;
+          if (originals.get(identity) === current) originals.delete(identity);
+          if (!current.settled) void current.task?.cancelAsync().catch(() => undefined);
+        }
+        /** 原生取消可能迟到，下载结束后才删除本次文件。 */
+        cleanup = current.promise.catch(() => undefined).then(() => runFileOperation(async () => {
+          if (current.users > 0) return;
+          if (originals.get(identity) === current) originals.delete(identity);
+          if (!current.held) return;
+          current.held = false;
+          releaseOriginalFile(current.fileUri);
+          if (activeOriginalFiles.has(current.fileUri)) return;
+          if (!current.cached || current.invalidated || !generationCurrent()) {
+            if (current.cached) {
+              const state = await manifest();
+              const stored = state.entries.get(current.cacheKey);
+              if (stored && current.fileUri.endsWith(`/${stored.fileName}`)) {
+                state.entries.delete(current.cacheKey);
+                queueManifestWrite();
+              }
+            }
+            await deleteAsync(current.fileUri, { idempotent: true });
+            return;
+          }
+          const state = await manifest();
+          const stored = state.entries.get(current.cacheKey);
+          if (stored && current.fileUri.endsWith(`/${stored.fileName}`)) {
+            const now = Date.now();
+            state.entries.set(current.cacheKey, { ...stored, lastAccess: now });
+            state.gameLastUsed.set(gameId, Math.max(state.gameLastUsed.get(gameId) ?? 0, now));
+            queueManifestWrite();
+          }
+          if (state.pendingPrune
+            && await pruneCacheState(state, REMOTE_IMAGE_CACHE_BUDGET_BYTES, COMPRESSED_IMAGE_CACHE_ROOT())) queueManifestWrite();
+        }));
+      }
+      return cleanup ?? Promise.resolve();
+    };
+    const cancel = () => {
+      void release().catch(() => undefined);
+      reject(signal?.reason ?? new Error('图片下载已取消'));
+    };
+    signal?.addEventListener('abort', cancel, { once: true });
+    current.promise.then(() => {
+      if (!released) {
+        signal?.removeEventListener('abort', cancel);
+        resolve({ fileUri: current.fileUri, release, invalidate: () => {
+          current.invalidated = true;
+          for (const [key, download] of originals) {
+            if (download.fileUri === current.fileUri) { download.invalidated = true; originals.delete(key); }
+          }
+          return runFileOperation(async () => {
+            const state = await manifest();
+            const stored = state.entries.get(current.cacheKey);
+            if (stored && current.fileUri.endsWith(`/${stored.fileName}`)) {
+              state.entries.delete(current.cacheKey);
+              queueManifestWrite();
+            }
+            if (!activeOriginalFiles.has(current.fileUri)) await deleteAsync(current.fileUri, { idempotent: true });
+          });
+        } });
+      }
+    }).catch(error => {
+      void release().catch(() => undefined);
+      reject(error);
+    });
+    if (signal?.aborted) cancel();
+  });
+}
+
+function entryFile(root: Directory, cacheKey: string, entry?: CacheEntry): File {
+  return new File(root, entry?.fileName ?? `${cacheKey}.webp`);
 }
 
 function validEntry(value: unknown): value is CacheEntry {
   if (!value || typeof value !== 'object') return false;
   const entry = value as Partial<CacheEntry>;
-  return typeof entry.bytes === 'number'
+  return (entry.kind === 'compressed' || entry.kind === 'original')
+    && typeof entry.fileName === 'string'
+    && /^[a-z0-9_-]+(?:\.[0-9]+)*\.(?:webp|source)$/iu.test(entry.fileName)
+    && entry.fileName.endsWith(entry.kind === 'compressed' ? '.webp' : '.source')
+    && typeof entry.bytes === 'number'
     && Number.isFinite(entry.bytes)
     && entry.bytes >= 0
     && typeof entry.gameId === 'string'
@@ -162,12 +378,12 @@ function validLastUsed(value: unknown): value is number {
 }
 
 async function loadManifest(): Promise<CacheState> {
-  const root = ensureCacheRoot();
+  const root = await ensureCacheRoot();
   const manifestFile = new File(root, MANIFEST_FILE_NAME);
   let parsedEntries = new Map<string, CacheEntry>();
   let activeGameId: string | null = null;
   let gameLastUsed = new Map<string, number>();
-  if (manifestFile.exists) {
+  if ((await getInfoAsync(manifestFile.uri)).exists) {
     /** 读取失败时保留缓存文件。 */
     const text = await manifestFile.text();
     try {
@@ -187,28 +403,32 @@ async function loadManifest(): Promise<CacheState> {
   }
 
   const reconciled = new Map<string, CacheEntry>();
-  for (const item of root.list()) {
-    if (!(item instanceof File)) continue;
-    if (item.name.endsWith('.part')) {
-      item.delete();
+  const storedFiles = new Map([...parsedEntries].map(([key, entry]) => [entry.fileName, { key, entry }]));
+  for (const name of await readDirectoryAsync(root.uri)) {
+    const item = new File(root, name);
+    if (name.endsWith('.part') && !activeOriginalFiles.has(item.uri)) {
+      await deleteAsync(item.uri, { idempotent: true });
       continue;
     }
-    if (!item.name.endsWith('.webp')) continue;
-    const cacheKey = item.name.slice(0, -'.webp'.length);
-    const stored = parsedEntries.get(cacheKey);
+    if (!name.endsWith('.webp') && !name.endsWith('.source')) continue;
+    const storedFile = storedFiles.get(name);
+    const stored = storedFile?.entry;
     if (!stored) {
-      item.delete();
+      if (!activeOriginalFiles.has(item.uri)) await deleteAsync(item.uri, { idempotent: true });
       continue;
     }
-    const bytes = item.size ?? stored.bytes;
-    if (bytes > REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES) {
-      item.delete();
+    const info = await getInfoAsync(item.uri);
+    if (!info.exists || info.isDirectory) continue;
+    const bytes = info.size;
+    if ((stored.kind === 'compressed' && bytes > REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES)
+      || (stored.kind === 'original' && bytes <= 0)) {
+      await deleteAsync(item.uri, { idempotent: true });
       continue;
     }
-    reconciled.set(cacheKey, { ...stored, bytes });
+    reconciled.set(storedFile!.key, { ...stored, bytes });
   }
-  const state = { activeGameId, gameLastUsed, entries: reconciled };
-  pruneCacheState(state, REMOTE_IMAGE_CACHE_BUDGET_BYTES, root);
+  const state = { activeGameId, gameLastUsed, entries: reconciled, pendingPrune: false };
+  await pruneCacheState(state, REMOTE_IMAGE_CACHE_BUDGET_BYTES, root);
   return state;
 }
 
@@ -231,20 +451,19 @@ async function persistManifest(): Promise<void> {
     gameLastUsed: Object.fromEntries(state.gameLastUsed),
     entries: Object.fromEntries(state.entries),
   };
-  const root = ensureCacheRoot();
+  const root = await ensureCacheRoot();
   const part = new File(root, `${MANIFEST_FILE_NAME}.part`);
   const finalFile = new File(root, MANIFEST_FILE_NAME);
-  if (part.exists) part.delete();
-  await part.write(JSON.stringify(payload));
-  if (finalFile.exists) finalFile.delete();
-  part.move(finalFile);
+  await writeAsStringAsync(part.uri, JSON.stringify(payload));
+  await deleteAsync(finalFile.uri, { idempotent: true });
+  await moveAsync({ from: part.uri, to: finalFile.uri });
 }
 
 function queueManifestWrite(): void {
   if (manifestWriteTimer) return;
   manifestWriteTimer = setTimeout(() => {
     manifestWriteTimer = null;
-    manifestWriteQueue = manifestWriteQueue.then(persistManifest, persistManifest);
+    manifestWriteQueue = runFileOperation(persistManifest);
     /** 定时写入先接住拒绝；flush 仍返回原失败。 */
     void manifestWriteQueue.catch(() => undefined);
   }, 1000);
@@ -254,7 +473,7 @@ export async function flushRemoteImageCacheManifest(): Promise<void> {
   if (manifestWriteTimer) {
     clearTimeout(manifestWriteTimer);
     manifestWriteTimer = null;
-    manifestWriteQueue = manifestWriteQueue.then(persistManifest, persistManifest);
+    manifestWriteQueue = runFileOperation(persistManifest);
   }
   await manifestWriteQueue;
 }
@@ -363,91 +582,115 @@ function usageByGame(state: CacheState): RemoteImageCacheQuotaInput[] {
   }));
 }
 
-function pruneCacheState(state: CacheState, budgetBytes: number, root: Directory): boolean {
+async function pruneCacheState(state: CacheState, budgetBytes: number, root: Directory): Promise<boolean> {
   const usages = usageByGame(state);
   const total = usages.reduce((sum, usage) => sum + usage.bytes, 0);
+  state.pendingPrune = total > budgetBytes;
   if (total <= budgetBytes) return false;
   const quotas = calculateRemoteImageCacheQuotas(usages, state.activeGameId, budgetBytes);
   let changed = false;
   for (const usage of usages) {
     let gameBytes = usage.bytes;
     const quota = quotas.get(usage.gameId) ?? 0;
+    if (gameBytes <= quota) continue;
     const candidates = Array.from(state.entries.entries())
-      .filter(([, entry]) => entry.gameId === usage.gameId)
+      .filter(([cacheKey, entry]) => entry.gameId === usage.gameId
+        && !activeOriginalFiles.has(entryFile(root, cacheKey, entry).uri))
       .sort((left, right) => left[1].lastAccess - right[1].lastAccess);
     for (const [cacheKey, entry] of candidates) {
       if (gameBytes <= quota) break;
-      const file = entryFile(root, cacheKey);
-      if (file.exists) file.delete();
+      const file = entryFile(root, cacheKey, entry);
+      await deleteAsync(file.uri, { idempotent: true });
       state.entries.delete(cacheKey);
       gameBytes -= entry.bytes;
       changed = true;
     }
   }
+  let remaining = [...state.entries.values()].reduce((sum, entry) => sum + entry.bytes, 0);
+  if (remaining > budgetBytes) {
+    const candidates = [...state.entries.entries()]
+      .filter(([cacheKey, entry]) => !activeOriginalFiles.has(entryFile(root, cacheKey, entry).uri))
+      .sort((left, right) => left[1].lastAccess - right[1].lastAccess);
+    for (const [cacheKey, entry] of candidates) {
+      if (remaining <= budgetBytes) break;
+      await deleteAsync(entryFile(root, cacheKey, entry).uri, { idempotent: true });
+      state.entries.delete(cacheKey);
+      remaining -= entry.bytes;
+      changed = true;
+    }
+  }
+  state.pendingPrune = remaining > budgetBytes;
   return changed;
 }
 
 export async function pruneRemoteImageCache(
   budgetBytes = REMOTE_IMAGE_CACHE_BUDGET_BYTES,
 ): Promise<void> {
-  const state = await manifest();
-  const root = ensureCacheRoot();
-  if (pruneCacheState(state, budgetBytes, root)) await persistManifest();
+  await runFileOperation(async () => {
+    const state = await manifest();
+    const root = await ensureCacheRoot();
+    if (await pruneCacheState(state, budgetBytes, root)) await persistManifest();
+  });
 }
 
 export async function markRemoteImageCacheGameActive(gameId: string): Promise<void> {
   if (!gameId) return;
-  const state = await manifest();
-  const now = Date.now();
-  state.activeGameId = gameId;
-  state.gameLastUsed.set(gameId, now);
-  queueManifestWrite();
-  await pruneRemoteImageCache();
+  await runFileOperation(async () => {
+    const state = await manifest();
+    const now = Date.now();
+    state.activeGameId = gameId;
+    state.gameLastUsed.set(gameId, now);
+    queueManifestWrite();
+    await pruneCacheState(state, REMOTE_IMAGE_CACHE_BUDGET_BYTES, await ensureCacheRoot());
+  });
 }
 
 export async function listRemoteImageCacheUsage(): Promise<RemoteImageCacheUsage[]> {
-  const state = await manifest();
-  return usageByGame(state).map((usage) => ({
-    ...usage,
-    active: usage.gameId === state.activeGameId,
-  }));
+  return runFileOperation(async () => {
+    const state = await manifest();
+    return usageByGame(state).map((usage) => ({ ...usage, active: usage.gameId === state.activeGameId }));
+  });
 }
 
 export async function measureGameRemoteImageCacheBytes(gameId: string): Promise<number> {
-  const state = await manifest();
-  let total = 0;
-  for (const entry of state.entries.values()) {
-    if (entry.gameId === gameId) total += entry.bytes;
-  }
-  return total;
+  return runFileOperation(async () => {
+    const state = await manifest();
+    let total = 0;
+    for (const entry of state.entries.values()) {
+      if (entry.gameId === gameId) total += entry.bytes;
+    }
+    return total;
+  });
 }
 
 export async function clearGameRemoteImageCache(gameId: string): Promise<void> {
   gameGenerations.set(gameId, (gameGenerations.get(gameId) ?? 0) + 1);
-  const state = await manifest();
-  const root = ensureCacheRoot();
-  for (const [cacheKey, entry] of Array.from(state.entries.entries())) {
-    if (entry.gameId !== gameId) continue;
-    const file = entryFile(root, cacheKey);
-    if (file.exists) file.delete();
-    state.entries.delete(cacheKey);
-  }
-  await persistManifest();
+  await runFileOperation(async () => {
+    const state = await manifest();
+    const root = await ensureCacheRoot();
+    for (const [cacheKey, entry] of state.entries) {
+      if (entry.gameId !== gameId) continue;
+      const file = entryFile(root, cacheKey, entry);
+      if (!activeOriginalFiles.has(file.uri)) await deleteAsync(file.uri, { idempotent: true });
+      state.entries.delete(cacheKey);
+    }
+    await persistManifest();
+  });
 }
 
 async function findCached(cacheKey: string): Promise<CompressedRemoteImageResult | null> {
   const state = await manifest();
-  const root = ensureCacheRoot();
-  const file = entryFile(root, cacheKey);
-  if (!file.exists) {
+  const stored = state.entries.get(cacheKey);
+  if (!stored || stored.kind !== 'compressed') return null;
+  const file = entryFile(COMPRESSED_IMAGE_CACHE_ROOT(), cacheKey, stored);
+  const info = await getInfoAsync(file.uri);
+  if (!info.exists) {
     if (state.entries.delete(cacheKey)) queueManifestWrite();
     return null;
   }
-  const stored = state.entries.get(cacheKey);
-  if (!stored) return null;
-  const bytes = file.size ?? stored.bytes;
+  const bytes = info.size;
   if (bytes > REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES) {
-    file.delete();
+    await deleteAsync(file.uri, { idempotent: true });
     state.entries.delete(cacheKey);
     queueManifestWrite();
     return null;
@@ -478,30 +721,31 @@ async function createCompressed(
   signal?: AbortSignal,
 ): Promise<CompressedRemoteImageResult | null> {
   const candidates = PROFILE_OPTIONS[options.profile];
-  const root = ensureCacheRoot();
+  const root = COMPRESSED_IMAGE_CACHE_ROOT();
   const sequence = ++temporarySequence;
-  const sourceFile = new File(root, `${cacheKey}.${sequence}.source.part`);
+  let original: RemoteImageOriginal | null = null;
   let loaded: Awaited<ReturnType<typeof Image.loadAsync>> | null = null;
   let context: ReturnType<typeof ImageManipulator.manipulate> | null = null;
   let rendered: Awaited<ReturnType<ReturnType<typeof ImageManipulator.manipulate>['renderAsync']>> | null = null;
-  let part: File | null = null;
+  let partUri: string | null = null;
   let selected: File | null = null;
   const current = () => !signal?.aborted
     && generation === cacheGeneration
     && gameGeneration === (gameGenerations.get(options.gameId) ?? 0);
   try {
     if (!current()) return null;
-    if (sourceFile.exists) sourceFile.delete();
-    await File.downloadFileAsync(normalized.source.uri!, sourceFile, {
-      headers: normalized.source.headers,
-      idempotent: true,
-    });
+    original = await acquireRemoteImageOriginal(normalized.source, options.gameId, signal);
     if (!current()) return null;
     const largest = candidates[0].maxSize;
-    loaded = await Image.loadAsync({ uri: sourceFile.uri }, {
-      maxWidth: largest,
-      maxHeight: largest,
-    });
+    try {
+      loaded = await Image.loadAsync({ uri: original.fileUri }, {
+        maxWidth: largest,
+        maxHeight: largest,
+      });
+    } catch (error) {
+      await original.invalidate();
+      throw error;
+    }
     if (loaded.isAnimated) return null;
 
     for (const candidate of candidates) {
@@ -520,10 +764,11 @@ async function createCompressed(
       rendered = await context.renderAsync();
       const saved = await rendered.saveAsync({ format: SaveFormat.WEBP, compress: candidate.compress });
       const savedFile = new File(saved.uri);
-      if ((savedFile.size ?? Number.POSITIVE_INFINITY) <= REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES) {
+      const savedInfo = await getInfoAsync(savedFile.uri);
+      if (savedInfo.exists && savedInfo.size <= REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES) {
         selected = savedFile;
-      } else if (savedFile.exists) {
-        savedFile.delete();
+      } else {
+        await deleteAsync(savedFile.uri, { idempotent: true });
       }
       releaseSharedObject(rendered);
       releaseSharedObject(context);
@@ -532,34 +777,39 @@ async function createCompressed(
       if (selected) break;
     }
     if (!selected || !current()) return null;
-    const state = await manifest();
-    if (!current()) return null;
-    const finalFile = entryFile(root, cacheKey);
-    part = new File(root, `${cacheKey}.${sequence}.part`);
-    if (part.exists) part.delete();
-    selected.move(part);
-    selected = null;
-    if (finalFile.exists) finalFile.delete();
-    part.move(finalFile);
-    part = null;
-    const now = Date.now();
-    state.entries.set(cacheKey, {
-      bytes: finalFile.size ?? REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES,
-      gameId: options.gameId,
-      lastAccess: now,
+    return await runFileOperation(async () => {
+      if (!current()) return null;
+      const state = await manifest();
+      if (!current()) return null;
+      const finalFile = entryFile(root, cacheKey);
+      partUri = new File(root, `${cacheKey}.${sequence}.part`).uri;
+      await moveAsync({ from: selected!.uri, to: partUri });
+      selected = null;
+      await deleteAsync(finalFile.uri, { idempotent: true });
+      await moveAsync({ from: partUri, to: finalFile.uri });
+      partUri = null;
+      if (!current()) {
+        await deleteAsync(finalFile.uri, { idempotent: true });
+        return null;
+      }
+      const info = await getInfoAsync(finalFile.uri);
+      if (!info.exists) return null;
+      const now = Date.now();
+      state.entries.set(cacheKey, { kind: 'compressed', fileName: finalFile.name,
+        bytes: info.size, gameId: options.gameId, lastAccess: now });
+      state.gameLastUsed.set(options.gameId, Math.max(state.gameLastUsed.get(options.gameId) ?? 0, now));
+      await pruneCacheState(state, REMOTE_IMAGE_CACHE_BUDGET_BYTES, root);
+      queueManifestWrite();
+      if (!current() || !state.entries.has(cacheKey)) return null;
+      return { cacheKey, fileUri: finalFile.uri, source: { uri: finalFile.uri } };
     });
-    state.gameLastUsed.set(options.gameId, Math.max(state.gameLastUsed.get(options.gameId) ?? 0, now));
-    await pruneRemoteImageCache();
-    queueManifestWrite();
-    if (!current() || !finalFile.exists) return null;
-    return { cacheKey, fileUri: finalFile.uri, source: { uri: finalFile.uri } };
   } finally {
-    if (sourceFile.exists) sourceFile.delete();
-    if (part?.exists) part.delete();
-    if (selected?.exists) selected.delete();
     releaseSharedObject(rendered);
     releaseSharedObject(context);
     releaseSharedObject(loaded);
+    await original?.release();
+    if (partUri) await deleteAsync(partUri, { idempotent: true });
+    if (selected) await deleteAsync(selected.uri, { idempotent: true });
   }
 }
 
@@ -570,7 +820,7 @@ export async function findCompressedRemoteImage(
   const normalized = normalizeRemoteImageSource(source);
   if (!normalized || !options.gameId) return null;
   const cacheKey = await remoteImageCacheKey(normalized, options);
-  return findCached(cacheKey);
+  return runFileOperation(() => findCached(cacheKey));
 }
 
 export async function cacheCompressedRemoteImage(
@@ -586,7 +836,7 @@ export async function cacheCompressedRemoteImage(
     && gameGeneration === (gameGenerations.get(options.gameId) ?? 0);
   const cacheKey = await remoteImageCacheKey(normalized, options);
   if (!current()) return null;
-  const cached = await findCached(cacheKey);
+  const cached = await runFileOperation(() => findCached(cacheKey));
   if (!current()) return null;
   if (cached) return cached;
   try {
@@ -600,11 +850,14 @@ export async function cacheCompressedRemoteImage(
 }
 
 export async function invalidateCompressedRemoteImage(cacheKey: string): Promise<void> {
-  const state = await manifest();
-  state.entries.delete(cacheKey);
-  const file = entryFile(ensureCacheRoot(), cacheKey);
-  if (file.exists) file.delete();
-  queueManifestWrite();
+  await runFileOperation(async () => {
+    const state = await manifest();
+    const stored = state.entries.get(cacheKey);
+    if (!stored || stored.kind !== 'compressed') return;
+    await deleteAsync(entryFile(await ensureCacheRoot(), cacheKey, stored).uri, { idempotent: true });
+    state.entries.delete(cacheKey);
+    queueManifestWrite();
+  });
 }
 
 export async function clearCompressedRemoteImageCache(): Promise<void> {
@@ -612,8 +865,16 @@ export async function clearCompressedRemoteImageCache(): Promise<void> {
   gameGenerations.clear();
   if (manifestWriteTimer) clearTimeout(manifestWriteTimer);
   manifestWriteTimer = null;
-  await manifestWriteQueue.catch(() => undefined);
-  const root = COMPRESSED_IMAGE_CACHE_ROOT();
-  if (root.exists) root.delete();
-  manifestPromise = null;
+  await runFileOperation(async () => {
+    const root = COMPRESSED_IMAGE_CACHE_ROOT();
+    if (activeOriginalFiles.size === 0) {
+      await deleteAsync(root.uri, { idempotent: true });
+    } else if ((await getInfoAsync(root.uri)).exists) {
+      for (const name of await readDirectoryAsync(root.uri)) {
+        const file = new File(root, name);
+        if (!activeOriginalFiles.has(file.uri)) await deleteAsync(file.uri, { idempotent: true });
+      }
+    }
+    manifestPromise = null;
+  });
 }

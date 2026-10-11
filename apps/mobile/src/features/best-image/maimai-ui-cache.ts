@@ -1,6 +1,6 @@
 import { captureResourceWrites, createInflightGuard, resourceWriteGeneration, invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
-import { sha256 } from '@/utils/resource-integrity';
+import { sha256, sha256FileAsync } from '@/utils/resource-integrity';
 import { errorMessage } from './best-image-font-cache-core';
 import { Directory, File, Paths } from 'expo-file-system';
 import JSZip from 'jszip';
@@ -52,7 +52,7 @@ async function isValidUi(uiDirectory: Directory): Promise<boolean> {
   for (const entry of MAIMAI_UI_MANIFEST_ENTRIES) {
     const file = new File(uiDirectory, finalPathOf(entry.path));
     if (!file.exists || file.size !== entry.bytes) return false;
-    if (await sha256(await file.bytes()) !== entry.sha256) return false;
+    if (await sha256FileAsync(file.uri) !== entry.sha256) return false;
   }
   return true;
 }
@@ -108,11 +108,11 @@ async function downloadAndUnpack(
     if (archiveFile.size !== MAIMAI_UI_ZIP.bytes) {
       throw new Error('素材压缩包大小不匹配');
     }
-    const archiveBytes = await archiveFile.bytes();
-    if (await sha256(archiveBytes) !== MAIMAI_UI_ZIP.sha256) {
+    if (await sha256FileAsync(archiveFile.uri) !== MAIMAI_UI_ZIP.sha256) {
       throw new Error('素材压缩包校验失败');
     }
     assertCurrent();
+    const archiveBytes = await archiveFile.bytes();
     let done = 0;
     onProgress({ phase: 'unpacking', completed: 0, total: MAIMAI_UI_MANIFEST_ENTRIES.length, currentEntry: null });
     await unpack(archiveBytes, uiDirectory, temporaryDirectory, (path) => {

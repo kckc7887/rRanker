@@ -12,14 +12,18 @@
 | 页面取数 | `src/hooks/use-game-data.ts`、各游戏查询 hook |
 | 展示模型 | `src/features/game-content/adapters` |
 | 详情身份与 URL | `src/domain/detail-target.ts` |
-| 筛选与搜索 | `src/components/game-content/FilterShell.tsx`、`src/utils/search.ts` 与所属游戏模型 |
+| 筛选与搜索 | `src/components/game-content/FilterShell.tsx`、`src/hooks/use-local-search.ts`、`src/utils/search.ts` 与所属游戏模型 |
 | 难度标记 | `src/components/game-content/GameDifficultyBadge.tsx` |
 
 展示模型使用实际 `GameId`。`DetailTarget` 描述游戏内真实目标，URL 必须携带 `gameId`；osu! 谱面使用 `beatmapId`，舞萌谱面带类型和难度索引。行、卡片、随机工具和个人曲库都通过 `detailTargetHref` 跳转。
 
-Provider 负责上游请求与响应转换，页面不拼接认证请求。HTTP 使用 `totalAttempts`，有副作用的请求按实际规则限制重试；取消在公共请求入口处理。QueryClient 默认最多重试一次，并遵守 `ProviderError.retryable`。上游当前格式中的字段和平台必需的 SDK 适配继续由所属模块处理。
+Provider 负责上游请求与响应转换，页面不拼接认证请求。水鱼与 LXNS 成绩映射直接接收 Provider 已校验的类型；上游响应与磁盘读取保留校验。LXNS 成绩曲名按上游字符串原样保留，包括空字符串和空白字符；仅缺少 `song_name` 字段时使用缺失占位并标记不完整。HTTP 使用 `totalAttempts`，有副作用的请求按实际规则限制重试；取消在公共请求入口处理。QueryClient 默认最多重试一次，并遵守 `ProviderError.retryable`。上游当前格式中的字段和平台必需的 SDK 适配继续由所属模块处理。
 
-`cacheFirstLoad` 提供本地首屏和后台刷新，返回缓存必须保留抓取时间与来源。`refresh-result.ts` 定义当前刷新结果和快照元数据，`useGameData` 发布实际状态；调用方不再读内部字段或复制轮询器推断刷新是否成功。舞萌五维难点整库写入 `maimai:dxtag:all` 资源缓存，不设时间有效期。`loadCachedMaimaiDxTag(catalog, signal)` 对照当前 LXNS 曲库中的普通谱面及难度，完整则直接复用，缺失则读取 `DXTag/all.json`；更新失败返回保留原来源和抓取时间的暂存结果，取消或清理后禁止迟到写入。
+`useLocalSearch` 在实际逐项准备、匹配循环中按 4 ms 预算分片，通过 `scheduleIdleTask` 继续；输入、快照与活动状态变化取消旧工作。页面恢复时复用相同条目、快照、筛选条件和选择函数的完整结果；调用方只将防抖关键词和有效筛选字段纳入条件身份。`searchDocumentFor` 按字段提取函数和原始对象弱引用复用搜索文档，`songSearchDocument` 为同一歌曲及别名快照的曲库与成绩页提供共同入口。匹配字段保持游戏原有语义，命中别名随筛选结果发布。
+
+`cacheFirstLoad` 提供本地首屏和后台刷新，返回缓存必须保留抓取时间与来源。`refresh-result.ts` 定义当前刷新结果和快照元数据，`useGameData` 发布实际状态；调用方不再读内部字段或复制轮询器推断刷新是否成功。舞萌五维难点整库写入 `maimai:dxtag:all` 资源缓存，不设时间有效期。`loadCachedMaimaiDxTag(catalog, signal)` 对照当前 LXNS 曲库中的普通谱面及难度，返回 `coversCatalog` 供 `useMaimaiDxTag` 决定当前修订的 Query 是否持续复用。缺失则读取 `DXTag/all.json`；更新失败返回保留原来源和抓取时间的暂存结果，后续进入保留重试，取消或清理后禁止迟到写入。
+
+`useMajdataSongs`、歌曲及个人库详情、派生结果与排行榜共用 5 分钟无使用者回收时间。搜索和排行榜被回收后重新请求，上游歌曲详情继续沿现有磁盘缓存与刷新路径读取。
 
 `createInflightGuard.share` 共享同键工作并独立取消消费者。`useBoundedQueries` 管理实际批量明细；服务的实际网络请求使用现有队列。清缓存先失效对应资源代次，真实异步结果在最终提交处检查资格。
 
@@ -57,7 +61,7 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 `createPreferencesStore` 读取并校验当前格式，成功读到不支持的结构才写当前默认值。`preferences-write-coordinator.ts` 管理真实页面选择、串行保存和失败补写，恢复未完成时不把占位默认值覆盖到磁盘。
 
-`UserLibraryService` 是收藏、练习、标签、预设、导入导出的业务入口；`SqliteUserLibraryRepository` 在真实事务内读写。单项动作只改对应行；清游戏保留其他游戏和全局预设。当前库 schema 为 4，不支持的表结构只重建个人库所属表。
+`UserLibraryService` 是收藏、练习、标签、预设、导入导出的业务入口；`SqliteUserLibraryRepository` 在真实事务内读写。单项动作只改对应行，并在原事务中只读回所属游戏；清游戏保留其他游戏和全局预设。当前库 schema 为 4，不支持的表结构只重建个人库所属表。
 
 备份只支持版本 3，`gameId` 必须存在。`createBackup` 通过仓库的 `readBackup` 在同一次队列任务内读取条目与标签预设。`parseUserDataBackup` 在导入前拒绝旧格式；`mergeBackup` 在同一事务内合并/替换条目与预设，条目或预设上限失败不会留下部分写入。`user-data-file-service.ts` 通过系统文件选择与分享读写当前备份，临时副本使用后删除。
 
@@ -71,17 +75,21 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 `AppLifecycleProvider`、`useAppRuntime` 与 `CachedTabScreen` 管理前后台和页面活动。后台取消前台工作；内存警告释放非活动查询、图片内存和必要的 WebView。前台仅恢复仍活动的未完成工作，不额外刷新已有缓存。
 
+`scheduleIdleTask` 提供可取消的空闲调度。`CachedTabScreen` 持续监听焦点、前后台和内存警告；普通失活仅暂停工作，已挂载内容及局部状态持续保留，重获焦点时已有画面不等待空闲任务。真正的内存警告可卸载非焦点页面。`StackScreenActivityScope` 在栈页外层监听原生转场，`useStackScreenReady` 保留首次入场完成状态，活动上下文同时受焦点、转场和前后台约束。
+
 ## 图片与共享 UI
 
-`RemoteImage` 是远程图片入口，使用 `cacheProfile` 明确 thumbnail、artwork、native 或 none。`remote-image-cache.ts` 管理压缩图片、缓存身份和文件清理。先显示已落盘缩略图，在线图成功显示后才开始新落盘；失活或清理取消待写任务。
+`RemoteImage` 是远程图片入口，使用 `cacheProfile` 明确 thumbnail、artwork、native 或 none。`remote-image-cache.ts` 管理原图、压缩图、缓存身份和文件清理；`acquireRemoteImageOriginal(source, gameId, signal)` 返回原字节文件及异步 `release`、`invalidate`，展示和压缩共用下载，消费者独立取消。文件身份包含 URL、请求头、缓存键及游戏，共享请求按清理代次隔离；原生展示使用文件 URI 作为缓存键。两类文件共用格式 4 的索引、50 MiB 总容量、游戏配额和 LRU，压缩图单项上限为 10 KiB。原图发布后保留稳定路径，最后一个消费者释放时解除占用并裁剪，使用中的文件可暂时超额。`invalidate` 只使取得的文件失效，保留后来发布的替换文件；解码失败、缺失和空原图通过所属入口重建。原图不受可见性等待限制，压缩在成功显示且页面活动时开始；压缩缓存命中后持续显示缩略图，取得同一入口的原图文件后替换，原图失败时保留有效缓存。普通页面失活不释放已取得的原图；原图成功显示才通知调用方。清理先失效代次并移除所属索引，正在使用的原图待消费者释放后回收。
 
-通用行、卡片和封面位于 `components/game-content`，游戏组件只提供实际展示差异。`GameDifficultyBadge` 使用普通样式覆盖，保留尺寸、渐变和文本。列表的页面活动、可见性与图片落盘通过现有共享组件传递。
+通用行、卡片和封面位于 `components/game-content`，游戏组件只提供实际展示差异。`GameDifficultyBadge` 使用普通样式覆盖，保留尺寸、渐变和文本。列表的页面活动、可见性与图片落盘通过现有共享组件传递；可见性使用列表的稳定条目键，分组列表额外按分组键隔离，同键数据更新保留当前活动状态。
+
+`ChartCarousel` 按谱面键保存标签草稿，只装配当前及相邻卡片，下载与标签操作分别保留离窗卡片；`renderItem` 传递当前卡活动状态、受控标签草稿和任务保留回调。`TagEditor` 的 `historyTags` 可传入惰性读取函数，仅在预设弹层打开时计算，保存失败保留输入与弹层。
 
 绑定弹层复用当前输入、按钮、扫码和 `useAccountBindingRequest`。公共错误文案隐藏无助于用户决策的底层异常；实际错误进入诊断记录。
 
 ## 成绩图与谱面功能
 
-成绩图公共入口位于 `features/best-image`：`useBestImagePreview`、`useBestImageExport` 与共享页面壳。各游戏负责当前素材、字体和布局。预览、导出、取消和资源释放消费同一真实控制路径，不提供测试 reset 或统计快照。
+成绩图公共入口位于 `features/best-image`：`useBestImageScreenController`、`useBestImagePreview`、`useBestImageExport` 与共享页面壳。`load-best-image-session.ts` 为舞萌、中二和 Phigros 提供账号独立的素材会话，`loadRemoteImageFile`、`loadImageFiles` 与 `copyBestImageAsset` 返回原字节文件 URL，共享下载并复用已准备文件。游戏入口只提供素材地址、当前所需字体和布局；`prepareBestImageWebViewSources` 在同一会话目录异步写出 HTML，返回异步 `dispose`。改样式、分页与后台恢复沿用当前会话，已就绪素材与 HTML 保留身份，未完成工作恢复，WebView 只读取该目录。`requestBestImageExportPermission` 先读取相册权限，未授权时才申请，拒绝和读取失败沿用导出错误路径。真正进入后台取消当前导出，恢复后可重新导出。离开或换账号先失效会话，`cancelExportRequest` 等待未结束截图及临时截图清理，再回收会话文件；后台等待截图可取消。清缓存跳过活跃会话，启动维护回收上次会话目录。
 
 谱面公共入口位于 `features/chart-preview-shared`：
 
@@ -89,6 +97,8 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 - `chart-preview-bridge.ts` 解析当前播放器事件、设置信封和宿主命令。
 - `chart-preview-navigation.ts` 交接当前预览请求。
 - `webview-player` 提供四套播放器共用的设置 UI 与手势。
+
+预览准备结果的 `dispose` 返回 `Promise<void>`，宿主先失效会话和释放视图，再异步清理；迟到准备结果同样回收。`fs-storage.ts` 的目录统计、清理和版本裁剪使用异步文件入口，`runSharedCacheFileOperation` 串行提交共享素材文件发布与共享目录清理，排队后重新检查代次。启动维护保留当前会话文件及已使用的固定预览素材目录。图片索引、发布和清理在 `remote-image-cache.ts` 内串行提交；命中读取与正常释放复用已初始化目录，原图核验合并 LRU 更新，临时文件只在未命中时准备。最后释放更新使用时间，仅有超额待回收时继续裁剪，取消与代次检查仍控制结果发布。
 
 `webview-player/controls.ts` 的 `installPreviewControls` 复用原按钮与监听，固定标题和画面，下方控制与参数独立滚动；`stageAspectRatio` 保留各游戏比例，画面高度不超过标题下方可用空间的 55%。舞萌实时信息固定两行，首行为 BPM、拍位置和 FPS，次行为 COMBO、BREAK；每行高度固定、数字等宽，超宽时横向滚动。所有谱面确认页隐藏 WebView 与页面内部滚动条，保留滑动。`setPreviewFullscreen` 保存、恢复普通模式滚动位置。
 
@@ -104,11 +114,11 @@ Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 
 
 舞萌与 Majdata 共用 Simai 播放器，保护套不额外高亮，绝赞滑轨使用绝赞配色。PGR 的 `pgr-preview-config.ts` 提供 `showBlockArea`（默认开）和 `showBlockAreaBounds`（默认关），通过现有设置桥接保存。`pgr-blocks.ts` 共用区域变换，判定范围仅按 enable/disable 取样；`pgr-block-renderer.ts` 用未扭曲区域合成后的边界绘制青色框，两个显示开关独立。RPE 不显示这两个选项。
 
-`loadMajdataParsedChart(song, level, signal)` 返回预览模型、物量与 `difficultyScores`。难点值由 `features/simai-difficulty` 的 `simaiDifficultyScores(text, slot)` 使用同一份原始文本计算，按键盘、星星、技巧、体力、爆发排列，范围 0–10，保留一位小数；七个槽位均可分析。分析失败或滑轨不完整返回 `null`，不影响已有物量。结果复用按歌曲修订与难度隔离的解析缓存，缺少难点字段的缓存只重建对应条目，I/O 失败不清缓存。详情仅为当前可见难度启用查询，并只在有完整难点值时显示雷达。
+`loadMajdataParsedChart(song, level, signal)` 只返回物量、地雷数与 `difficultyScores`，派生缓存格式为 2。`parseSimaiChartAsync(text, difficulty, signal)` 与播放器同步入口共用解析核心；`simaiDifficultyScores(text, slot, signal)` 在解析及分析内部循环按 4 ms 预算让出并检查取消，保持计算顺序，不构造不参与结果的诊断明细。难点值按键盘、星星、技巧、体力、爆发排列，范围 0–10，保留一位小数，七个槽位均可分析；分析失败或滑轨不完整返回 `null`。结果按歌曲修订与难度隔离，不支持的派生缓存只重建对应条目，I/O 失败不清缓存。详情仅为当前可见难度启用查询；预览调用 `loadMajdataChart` 取得缓存原文，通过已有 `simaiText` 入口交给播放器解析。
 
 `components/game-content/SimaiDifficultyRadar` 为舞萌详情、舞萌实力分析和 Majdata 详情共用雷达，使用相同轴序、刻度与一位小数展示，颜色由调用方传入。
 
-Phigros/Rizline 预览和下载共用 `phigrosResources`、`rizlineResources`、`VerifiedReleaseSession` 与 `verifyResourceBytes`；调用方提供实际进度或落盘回调。`resourceObjectPathSchema` 限定资源组、分类与哈希文件名。Phigros 曲绘、头像、成绩图和预览通过清单逻辑路径查找对象，实际 URL 来自 `objectKey`；默认谱、里谱和共用音乐选择仍由 `phigros-chart-preview.ts` 处理。哈希 URL 不附加全局发布版本，未变化资源可以继续命中缓存。
+Phigros/Rizline 预览和下载共用 `phigrosResources`、`rizlineResources`、`VerifiedReleaseSession` 与 `verifyResourceBytes`；调用方提供实际进度或落盘回调。`utils/resource-integrity.ts` 的 `sha256FileAsync(uri): Promise<string>` 经 `modules/resource-integrity` 在原生后台分块读取已落盘文件；字节形式的响应继续使用 `sha256`。字体、素材包和谱面资源共用该文件校验入口，取消与代次检查仍在结果发布前执行。`resourceObjectPathSchema` 限定资源组、分类与哈希文件名。Phigros 在验证发布清单时建立 `assetsByPath`，曲绘、头像、成绩图和预览共用该索引，索引随发布对象释放；实际 URL 来自 `objectKey`。默认谱、里谱和共用音乐选择仍由 `phigros-chart-preview.ts` 处理。哈希 URL 不附加全局发布版本，未变化资源可以继续命中缓存。
 
 `domain/phigros.ts` 的 `loadNoteCountsTable` 解析每难度四项或五项非负整数数组，第五项为谱面 `blockAreaList` 数量，正值写入 `PhigrosChartNotes.block`，零值省略。`PhigrosCatalogProvider` 按难度装配物量；详情复用 `GameNoteTable`，有正 BLOCK 时放在 FLICK 与总计之间，缺失或零值不显示整列。`total` 只包含 Tap、Hold、Drag、Flick。解析、已验证资源刷新及详情交互由现有 Phigros 测试覆盖。
 
@@ -116,7 +126,9 @@ Phigros/Rizline 预览和下载共用 `phigrosResources`、`rizlineResources`、
 
 Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图读取时校验 Phigros 头像属于当前哈希地址结构，失效缓存通过所属仓库入口重建；头像同步会重新解析结构失效的地址，其他游戏头像缓存格式保持各自合同。
 
-`features/chart-download-shared` 提供原生下载、进度和取消；各游戏负责组装谱面包。`saveChartPackage(fileName, output, signal?)` 在目录选择前、目录选择后及写出前检查取消，保持 `ChartPackageDownloadCancelledError`。舞萌、Majdata、Phigros、Phira、osu! 将下载任务的信号传到保存入口。
+`features/chart-download-shared` 提供原生下载、进度和取消；各游戏负责组装谱面包。下载进度通过 `ActionNotificationInput.blocking: false` 显示，多个任务各自保留取消操作；其他操作通知默认阻挡，选择通知优先显示。`AppNotification` 的根返回监听与 `useNotificationModalRequestClose` 仅处理阻挡通知，普通提示仍按队列依次显示。`saveChartPackage(fileName, output, signal?)` 串行保存，轮到任务时等待前台并检查取消；`isChartPackageDirectoryPickerActive()` 标记原生目录选择至前台恢复的窗口，下载 hook 在该窗口保留并行任务。选择器实际结束前不放行下一项，即使当前任务已取消；恢复后再次检查取消再写盘。Android 文件输出通过 `utils/resource-integrity.ts` 的 `copyFileToContentUriAsync(fromUri, toUri)` 调用原生 64 KiB 后台复制，避免整份读入 JS；复制结束前源目录保持有效，返回后检查取消。失败或取消只删除本次新建目标，清理错误记录后保留原异常；iOS 普通文件复制不删除已存在目标。取消目录选择返回 `false`，请求取消保持 `ChartPackageDownloadCancelledError`，失败不阻塞后续保存。普通后台与页面卸载继续取消下载。Android 在目录选择器内再按 Home 时任务保留至选择器返回及应用恢复。舞萌、Majdata、Phigros、Phira、osu! 将下载任务的信号传到保存入口。
+
+`cleanupChartDownloadSessionDirectory(directory): Promise<void>` 异步删除所属下载目录，Simai、Phigros、Phira 与 osu! 下载在保存结束后等待回收；取消及原生迟到文件使用异步删除，失败记录诊断但不覆盖原请求结果。Phigros 的 `resolvePhigrosChartPreviewAssetBundle` 直接消费发布对象的 `assetsByPath` 定位精确资源，默认目标缺失时保留目录归属和变体歧义判定；变体枚举消费该索引的路径，不重复构造清单数组。
 
 ## 工具与诊断
 
@@ -132,7 +144,7 @@ Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图�
 
 KALEIDXSCOPE 的课题、日程和进度通过 `domain/kaleidx-scope.ts`、`state/kaleidx-scope-progress.ts` 与当前工具页面读取。进度按账号保存，独立补记关卡和课题；估计日程不能冒充已确认状态。
 
-`runtime-diagnostics-recorder.ts` 是运行日志入口；日志数据库独立于业务事务。页面通过 `runtime-diagnostics.ts` 和日志服务读取、清理、分享，不直接拼接数据库操作。文件 pending/previous 是当前替换协议，临时分享副本可清理。
+`runtime-diagnostics-recorder.ts` 是运行日志入口；日志数据库独立于业务事务。页面通过 `runtime-diagnostics.ts` 和日志服务读取、清理、分享，不直接拼接数据库操作。普通诊断保留已提交的内存状态，按文件队列异步执行 pending/previous 替换；写入失败丢弃内存副本并重新读取磁盘。快照等待先前记录完成，返回独立数据；致命日志仍即时落盘，临时分享副本可清理。
 
 ## 修改与验证
 

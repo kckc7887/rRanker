@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { LinearGradient } from 'expo-linear-gradient';
 import { router, useNavigation } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
-import { InteractionManager, ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { ScrollView, StyleSheet, Text, useWindowDimensions, View } from 'react-native';
+import { useStackScreenReady } from '@/components/CachedTabScreen';
 import { QueryStateView } from '@/components/QueryStateView';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { AutoScrollText } from '@/components/game-content/AutoScrollText';
@@ -33,6 +34,7 @@ import { formatPhiraAccuracy, formatPhiraRating, phiraCatalogListView, phiraCata
 import { buildTagHistory } from '@/domain/user-library';
 import { presentPhiraBestSection, presentPhiraChart } from '@/features/game-content/adapters';
 import { providerErrorToUserMessage } from '@/providers/errors';
+import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { usePhiraBests, usePhiraChart, usePhiraChartBest, usePhiraCharts, usePhiraNotes, usePhiraUploader, useRefreshAllPhiraBests, type PhiraBestRefreshOutcome } from '@/hooks/use-phira';
@@ -88,7 +90,11 @@ export function PhiraRecordsScreen() {
     filter.constantMax,
     `${id ?? 'none'}:${query.data?.source.updatedAt ?? 'loading'}`,
   );
-  const items = useMemo(() => filterPhiraBests(unfilteredItems, filter), [filter, unfilteredItems]);
+  const sortedItems = useMemo(() => filterPhiraBests(unfilteredItems, {
+    keyword: '', constantMin: '', constantMax: '', accuracyMin: '', accuracyMax: '', rank: null, xing: null, sort: filter.sort,
+  }), [filter.sort, unfilteredItems]);
+  const selectBest = useCallback((item: PhiraQueriedBest, filters: typeof filter) => filterPhiraBests([item], filters)[0], []);
+  const { data: items, isFiltering } = useLocalSearch(sortedItems, filter, selectBest);
   const runRefresh = async (task: () => Promise<PhiraBestRefreshOutcome>) => {
     let outcome: PhiraBestRefreshOutcome;
     try {
@@ -126,7 +132,7 @@ export function PhiraRecordsScreen() {
         onChange: (value) => filter.setSort(value as PhiraScoreSort),
       }]} onReset={filter.clearFilters} /></>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}><RecordsListPage beforeList={controls}
-    isLoading={query.isLoading} isError={query.isError} error={query.error} onRetry={() => void retry()} isEmpty={!query.isLoading && items.length === 0}
+    isLoading={query.isLoading || (isFiltering && items.length === 0)} isError={query.isError} error={query.error} onRetry={() => void retry()} isEmpty={!query.isLoading && items.length === 0}
     emptyText="查询过歌曲后，最佳成绩会显示在这里" data={items.length ? items : undefined}
     flatListProps={{ testID: 'phira-records-list', contentInsetAdjustmentBehavior: 'automatic', style: styles.list,
       contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }], scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
@@ -261,12 +267,7 @@ function PhiraSongDetailContent({
   const navigation = useNavigation();
   const cancelPreviewNavigation = useRef<(() => void) | null>(null);
   useEffect(() => () => cancelPreviewNavigation.current?.(), []);
-  const [deferredReady, setDeferredReady] = useState(false); const [coverFailed, setCoverFailed] = useState(false);
-  useEffect(() => {
-    setDeferredReady(false);
-    const task = InteractionManager.runAfterInteractions(() => setDeferredReady(true));
-    return () => task.cancel();
-  }, [chart.id]);
+  const deferredReady = useStackScreenReady(); const [coverFailed, setCoverFailed] = useState(false);
   const score = usePhiraChartBest(playerId, deferredReady ? chart : undefined);
   const notes = usePhiraNotes(chart, deferredReady);
   const uploader = usePhiraUploader(deferredReady ? chart.uploader : null);
@@ -339,7 +340,7 @@ function PhiraSongDetailContent({
       </GameChartResultCard></View>
       <View style={detailStyles.details}>
         <Card><View style={detailStyles.songInformation}><Text style={[detailStyles.informationTitle, { color: theme.text }]}>歌曲信息</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>标签：{chart.tags.join('、') || '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>更新于：{chart.updated ? new Date(chart.updated).toLocaleString() : '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>上传于：{chart.created ? new Date(chart.created).toLocaleString() : '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>简介：{chart.description || '—'}</Text><Text style={[detailStyles.informationValue, { color: theme.text }]}>评分：{formatPhiraRating(chart.rating)}（{chart.ratingCount} 票）</Text></View></Card>
-        <Card><TagEditor tags={item?.kind === 'song' ? item.tags : []} presets={library.tagPresets ?? []} historyTags={buildTagHistory(library.data ?? [], library.songKey(String(chart.id)), library.tagPresets ?? [])} disabled={library.isUpdating} onPresetsChange={library.setTagPresets} onChange={(tags) => library.setTags({ kind: 'song', songId: String(chart.id) }, tags)} /></Card>
+        <Card><TagEditor tags={item?.kind === 'song' ? item.tags : []} presets={library.tagPresets ?? []} historyTags={() => buildTagHistory(library.data ?? [], library.songKey(String(chart.id)), library.tagPresets ?? [])} disabled={library.isUpdating} onPresetsChange={library.setTagPresets} onChange={(tags) => library.setTags({ kind: 'song', songId: String(chart.id) }, tags)} /></Card>
       </View>
       </> : null}
     </ScrollView>;

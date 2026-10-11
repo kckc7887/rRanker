@@ -1,6 +1,6 @@
 import { act, render, screen } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { AppState, InteractionManager, Text } from 'react-native';
+import { AppState, Text } from 'react-native';
 import {
   AppLifecycleProvider,
   getForegroundAbortSignal,
@@ -12,8 +12,15 @@ function LifecycleProbe() {
   return <Text>{lifecycle.phase}</Text>;
 }
 
+const originalIdle = globalThis.requestIdleCallback;
+const originalCancelIdle = globalThis.cancelIdleCallback;
+
 describe('AppLifecycleProvider', () => {
-  afterEach(() => jest.restoreAllMocks());
+  afterEach(() => {
+    jest.restoreAllMocks();
+    globalThis.requestIdleCallback = originalIdle;
+    globalThis.cancelIdleCallback = originalCancelIdle;
+  });
 
   it('cancels an expired foreground recovery and releases native listeners', async () => {
     let changeListener: ((state: 'active' | 'inactive' | 'background') => void) | null = null;
@@ -26,11 +33,12 @@ describe('AppLifecycleProvider', () => {
     }) as typeof AppState.addEventListener);
 
     const tasks: { callback: () => void; cancel: jest.Mock }[] = [];
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      const task = { callback: callback as () => void, cancel: jest.fn() };
+    globalThis.requestIdleCallback = callback => {
+      const task = { callback: () => callback({ didTimeout: false, timeRemaining: () => 50 }), cancel: jest.fn() };
       tasks.push(task);
-      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-    });
+      return tasks.length;
+    };
+    globalThis.cancelIdleCallback = handle => { tasks[handle - 1]?.cancel(); };
 
     const view = await render(<AppLifecycleProvider><LifecycleProbe /></AppLifecycleProvider>);
     expect(screen.getByText('foreground-waiting')).toBeTruthy();
@@ -83,11 +91,12 @@ describe('AppLifecycleProvider', () => {
     }) as typeof AppState.addEventListener);
 
     const tasks: { callback: () => void; cancel: jest.Mock }[] = [];
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      const task = { callback: callback as () => void, cancel: jest.fn() };
+    globalThis.requestIdleCallback = callback => {
+      const task = { callback: () => callback({ didTimeout: false, timeRemaining: () => 50 }), cancel: jest.fn() };
       tasks.push(task);
-      return { cancel: task.cancel } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-    });
+      return tasks.length;
+    };
+    globalThis.cancelIdleCallback = handle => { tasks[handle - 1]?.cancel(); };
 
     const view = await render(<AppLifecycleProvider><LifecycleProbe /></AppLifecycleProvider>);
     await act(() => { tasks[0]?.callback(); });

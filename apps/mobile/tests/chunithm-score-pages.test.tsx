@@ -124,8 +124,7 @@ jest.mock('@/hooks/use-game-data', () => ({
     refetch: mockRefetchGame,
   }),
 }));
-jest.mock('@/hooks/use-chunithm-catalog', () => ({
-  useChunithmCatalog: () => ({
+const mockChunithmCatalogQuery = {
     data: {
       currentVersion: { id: 23000, title: 'CHUNITHM VERSE' },
       versions: [
@@ -201,8 +200,8 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
     isError: false,
     error: null,
     refetch: mockRefetchCatalog,
-  }),
-}));
+};
+jest.mock('@/hooks/use-chunithm-catalog', () => ({ useChunithmCatalog: () => mockChunithmCatalogQuery }));
 
 describe('Chunithm records and B50 screens', () => {
   beforeEach(() => {
@@ -217,7 +216,7 @@ describe('Chunithm records and B50 screens', () => {
     mockSessionState.session = null;
 
     const records = await render(<RecordsScreen />);
-    expect(records.getByTestId('chunithm-records-list')).toBeTruthy();
+    expect(await records.findByTestId('chunithm-records-list')).toBeTruthy();
     expect(records.queryByText('尚未绑定落雪账号')).toBeNull();
   });
 
@@ -233,6 +232,7 @@ describe('Chunithm records and B50 screens', () => {
 
   it('shows all scores ordered by Rating, supports local metadata search and keeps filters collapsed', async () => {
     const screen = await render(<RecordsScreen />);
+    await screen.findByTestId('chunithm-records-list');
     expect(screen.getByTestId('chunithm-records-list')).toBeTruthy();
     expect(screen.getByLabelText('展开中二筛选，当前 全部')).toBeTruthy();
     const cards = screen.getAllByTestId(/^chunithm-score-card-/);
@@ -249,11 +249,12 @@ describe('Chunithm records and B50 screens', () => {
 
     await fireEvent.changeText(screen.getByLabelText('中二成绩搜索'), '目标艺术家');
     expect(screen.getByText('第一首歌')).toBeTruthy();
-    expect(screen.queryByText('第二首歌')).toBeNull();
+    await waitFor(() => expect(screen.queryByText('第二首歌')).toBeNull());
   });
 
   it('shows two evaluation dropdowns containing every rank label', async () => {
     const screen = await render(<RecordsScreen />);
+    await screen.findByTestId('chunithm-records-list');
     await fireEvent.press(screen.getByLabelText('展开中二筛选，当前 全部'));
     expect(screen.getByLabelText('中二定数范围下限 13.4')).toBeTruthy();
     expect(screen.getByLabelText('中二定数范围上限 14.8')).toBeTruthy();
@@ -272,6 +273,7 @@ describe('Chunithm records and B50 screens', () => {
 
   it("combines chart version, difficulty and rank filters and excludes WORLD'S END from constant ranges", async () => {
     const screen = await render(<RecordsScreen />);
+    await screen.findByTestId('chunithm-records-list');
 
     await act(() => {
       const state = useChunithmRecordsFilter.getState();
@@ -308,6 +310,7 @@ describe('Chunithm records and B50 screens', () => {
 
   it('uses fixed primary/achievement rows and the correct static/flowing score styles', async () => {
     const screen = await render(<RecordsScreen />);
+    await screen.findByTestId('chunithm-records-list');
     expect(screen.getByTestId('chunithm-primary-tags-1-2')).toBeTruthy();
     expect(screen.getByTestId('chunithm-achievement-tags-1-2')).toBeTruthy();
     expect(screen.getByTestId('flowing-chunithm-score')).toBeTruthy();

@@ -1,4 +1,4 @@
-import { cleanup, fireEvent, render, within } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Animated, InteractionManager, processColor } from 'react-native';
 import { RizlineScoreCard } from '@/components/rizline/RizlineScoreCard';
@@ -8,8 +8,9 @@ import { RizlineDifficultyBadge } from '@/components/rizline/RizlineScoreVisuals
 import { BADGE_GOLD_BORDER_COLORS } from '@/domain/badge-theme';
 import { RIZLINE_DIFFICULTIES, rizlineDifficultyColors, type RizlineRecord } from '@/domain/rizline';
 import { METRIC_GRADIENT_THEMES } from '@/domain/metric-gradient-theme';
-import { RizlineBestScreen, RizlineRecordsScreen } from '@/screens/RizlineScreens';
+import { RizlineBestScreen, RizlineCatalogScreen, RizlineRecordsScreen } from '@/screens/RizlineScreens';
 import { RizlineRandomChartsScreen } from '@/screens/RizlineRandomChartsScreen';
+import { useRizlineCatalogFilter } from '@/state/rizline-catalog-filter';
 import UserLibraryScreen from '../app/library/index';
 import type { UserLibraryItem } from '@/domain/user-library';
 import { rizlineChart, rizlineRecord, rizlineSong } from './rizline-ui-fixtures';
@@ -17,7 +18,7 @@ import { rizlineChart, rizlineRecord, rizlineSong } from './rizline-ui-fixtures'
 const mockPush = jest.fn(); const mockSetPractice = jest.fn<(...args: unknown[]) => Promise<void>>(async () => undefined);
 const mockSetTags = jest.fn<(...args: unknown[]) => Promise<void>>(async () => undefined);
 const mockSetFavorite = jest.fn<(...args: unknown[]) => Promise<void>>(async () => undefined);
-let mockSong = rizlineSong(); let mockRecords = [rizlineRecord()];
+let mockSong = rizlineSong(); let mockSongs = [mockSong]; let mockRecords = [rizlineRecord()];
 let mockUnknownCandidates = false;
 let mockLibraryItems: UserLibraryItem[] = [];
 let mockGameDataState = { hasData: true, isLoading: false, isError: false };
@@ -37,10 +38,12 @@ jest.mock('react-native-safe-area-context', () => ({
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 0 }));
 jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({ activeGameId: 'rizline', activeAccountId: 'rizline:1' }) }));
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn() }), useNotificationModalRequestClose: () => () => false }));
-jest.mock('@/hooks/use-rizline-catalog', () => ({ useRizlineCatalog: () => ({
-  data: { snapshot: { schemaVersion: 1, resourceVersion: 'v1', gameVersion: '2.7.1', songs: [mockSong] } },
+jest.mock('@/hooks/use-rizline-catalog', () => ({ useRizlineCatalog: () => {
+  if (mockSongs[0] !== mockSong) mockSongs = [mockSong];
+  return {
+  data: { snapshot: { schemaVersion: 1, resourceVersion: 'v1', gameVersion: '2.7.1', songs: mockSongs } },
   isLoading: false, isError: false, error: null, refetch: jest.fn(),
-}) }));
+} } }));
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({
   data: mockGameDataState.hasData ? { payload: { kind: 'rizline', records: mockRecords, best: { ah5: mockRecords, b35: mockRecords, ah5Contribution: 1, b35Contribution: 2, hasUnknownCandidates: mockUnknownCandidates } } } : undefined,
   isLoading: mockGameDataState.isLoading, isError: mockGameDataState.isError, isFetching: false, error: null, refetch: jest.fn(),
@@ -60,7 +63,8 @@ jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
 
 describe('Rizline UI', () => {
   beforeEach(() => {
-    jest.clearAllMocks(); mockSong = rizlineSong(); mockRecords = [rizlineRecord()]; mockUnknownCandidates = false; mockLibraryItems = [];
+    jest.clearAllMocks(); mockSong = rizlineSong(); mockSongs = [mockSong]; mockRecords = [rizlineRecord()]; mockUnknownCandidates = false; mockLibraryItems = [];
+    useRizlineCatalogFilter.getState().reset();
     mockGameDataState = { hasData: true, isLoading: false, isError: false };
     jest.spyOn(Animated, 'loop').mockReturnValue({ start: jest.fn(), stop: jest.fn(), reset: jest.fn() });
     jest.spyOn(Animated, 'timing');
@@ -88,8 +92,44 @@ describe('Rizline UI', () => {
     await cleanup();
     mockRecords = [rizlineRecord(rizlineChart('HD'), { rks: 120 }), rizlineRecord(rizlineChart('IN'), { rks: 140 })];
     const records = await render(<RizlineRecordsScreen />);
-    const cards = records.getAllByTestId(/^rizline-score-/);
+    const cards = await records.findAllByTestId(/^rizline-score-/);
     expect(cards.map((card) => card.props.testID)).toEqual(['rizline-score-song.a.IN', 'rizline-score-song.a.HD']);
+  });
+
+  it('keeps the empty catalog result during typing and filter expansion until the keyword settles', async () => {
+    jest.useFakeTimers();
+    const originalIdle = globalThis.requestIdleCallback;
+    const originalCancelIdle = globalThis.cancelIdleCallback;
+    const idle = new Map<number, IdleRequestCallback>();
+    let nextHandle = 0;
+    globalThis.requestIdleCallback = callback => { idle.set(++nextHandle, callback); return nextHandle; };
+    globalThis.cancelIdleCallback = handle => { idle.delete(handle); };
+    const finishIdle = async () => {
+      while (idle.size) {
+        const [handle, callback] = idle.entries().next().value!;
+        idle.delete(handle);
+        await act(() => callback({ didTimeout: false, timeRemaining: () => 50 }));
+      }
+    };
+    useRizlineCatalogFilter.setState({ keyword: 'no-match' });
+    const screen = await render(<RizlineCatalogScreen />);
+    try {
+      await finishIdle();
+      expect(screen.getByText('没有符合条件的歌曲')).toBeTruthy();
+      await fireEvent.changeText(screen.getByPlaceholderText('搜索 Rizline 曲库'), mockSong.title);
+      expect(screen.getByText('没有符合条件的歌曲')).toBeTruthy();
+      await fireEvent.press(screen.getByLabelText(/^展开筛选/));
+      expect(screen.getByText('没有符合条件的歌曲')).toBeTruthy();
+      await act(() => jest.advanceTimersByTime(180));
+      await finishIdle();
+      expect(screen.getByText(mockSong.title)).toBeTruthy();
+      expect(screen.queryByText('没有符合条件的歌曲')).toBeNull();
+    } finally {
+      await screen.unmount();
+      globalThis.requestIdleCallback = originalIdle;
+      globalThis.cancelIdleCallback = originalCancelIdle;
+      jest.useRealTimers();
+    }
   });
 
   it('defaults to IN in reversed difficulty order and keeps metadata below the cover', async () => {
@@ -97,19 +137,22 @@ describe('Rizline UI', () => {
     const carousel = screen.getByTestId('rizline-chart-carousel');
     expect(carousel.props.contentOffset.x).toBe(carousel.props.snapToInterval);
     expect(screen.getAllByTestId(/^rizline-chart-(AT|IN|HD|EZ)$/).map((card) => card.props.testID))
-      .toEqual(['rizline-chart-AT', 'rizline-chart-IN', 'rizline-chart-HD', 'rizline-chart-EZ']);
+      .toEqual(['rizline-chart-AT', 'rizline-chart-IN', 'rizline-chart-HD']);
     expect(screen.getAllByText('2:05').length).toBeGreaterThan(0);
     expect(screen.queryByText('歌曲信息')).toBeNull(); expect(screen.queryByText('相关成就')).toBeNull();
     expect(screen.queryByText('初见成就')).toBeNull(); expect(screen.queryByText(/更新时间/)).toBeNull();
-    const chart = within(screen.getByTestId('rizline-chart-IN'));
+    let chart = within(screen.getByTestId('rizline-chart-IN'));
     expect(chart.getByText('HIT')).toBeTruthy(); expect(chart.getByText('COMBO')).toBeTruthy(); expect(chart.getByText('Max Score')).toBeTruthy();
-    for (const difficulty of ['AT', 'IN', 'HD', 'EZ'] as const) {
+    for (const [index, difficulty] of (['AT', 'IN', 'HD', 'EZ'] as const).entries()) {
+      await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: index * carousel.props.snapToInterval } } });
       const difficultyCard = within(screen.getByTestId(`rizline-chart-${difficulty}`));
       expect(difficultyCard.getByLabelText('加入练习清单')).toHaveStyle({
         backgroundColor: rizlineDifficultyColors(difficulty).bg, borderColor: rizlineDifficultyColors(difficulty).bg,
       });
       expect(difficultyCard.getByText('加入练习清单')).toHaveStyle({ color: '#FFFFFF' });
     }
+    await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: carousel.props.snapToInterval } } });
+    chart = within(screen.getByTestId('rizline-chart-IN'));
     await fireEvent.press(chart.getByLabelText('加入练习清单'));
     expect(mockSetPractice).toHaveBeenCalledWith('song.a', 'SD', 2, true);
     const preview = chart.getByLabelText('查看谱面确认：测试歌曲 IN');

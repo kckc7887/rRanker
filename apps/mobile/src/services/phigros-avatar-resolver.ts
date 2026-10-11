@@ -35,7 +35,7 @@ export async function resolvePhigrosAvatarUrl(
     const release = await phigrosResources.load(signal);
     if (signal?.aborted) throw signal.reason;
     const fileName = avatarAliases(release).get(key) ?? key;
-    const asset = release.manifest.assets.find(item => item.path === `avatars/${fileName}.png`);
+    const asset = release.assetsByPath.get(`avatars/${fileName}.png`);
     return asset ? phigrosResources.assetUrl(release, asset) : null;
   } catch (error) {
     if (signal?.aborted) throw error;

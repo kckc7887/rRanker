@@ -6,7 +6,7 @@ import {
   ensureFontCacheDirectories,
   createFontCacheGuard,
   errorMessage,
-  sha256,
+  sha256FileAsync,
 } from './best-image-font-cache-core';
 
 const FONT_BASE_URL = 'https://rranker-maimai-data.cn-nb1.rains3.com/fonts';
@@ -73,8 +73,7 @@ async function downloadFont(
     if (fontPartFile.size !== entry.fontBytes) {
       throw new Error(`${entry.name} 字体大小不匹配`);
     }
-    const fontBytes = await fontPartFile.bytes();
-    if (await sha256(fontBytes) !== entry.fontSha256) {
+    if (await sha256FileAsync(fontPartFile.uri) !== entry.fontSha256) {
       throw new Error(`${entry.name} 字体校验失败`);
     }
     assertCurrent();

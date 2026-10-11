@@ -1,4 +1,5 @@
 import { useQuery } from '@tanstack/react-query';
+import { useCachedTabActive } from '@/components/CachedTabScreen';
 import { osuUserIdFromAccountId } from '@/domain/bound-account';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import { normalizeOsuBeatmapsetDetail, type OsuBeatmapsetDetail } from '@/domain/osu';
@@ -7,6 +8,7 @@ import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import { applyOsuTokenRotation, useSession } from '@/state/session-store';
 
 export function useOsuBeatmapsetDetail(gameId: OsuGameId | null, beatmapsetId: string | null) {
+  const active = useCachedTabActive();
   const session = useSession((s) => s.session);
   const activeProviderId = useSession((s) => s.activeProviderId);
   const activeAccountId = useSession((s) => s.activeAccountId);
@@ -23,7 +25,8 @@ export function useOsuBeatmapsetDetail(gameId: OsuGameId | null, beatmapsetId: s
       const raw = await provider.getBeatmapset(beatmapsetId as string, signal);
       return normalizeOsuBeatmapsetDetail(raw, gameId as OsuGameId);
     },
-    enabled: bound && beatmapsetId !== null,
+    enabled: active && bound && beatmapsetId !== null,
+    notifyOnChangeProps: active ? undefined : [],
     staleTime: 60_000,
   });
 

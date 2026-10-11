@@ -8,8 +8,9 @@ import {
   useState,
 } from 'react';
 import { Image, type ImageProps } from 'expo-image';
-import { InteractionManager } from 'react-native';
+import { scheduleIdleTask } from '@/state/app-lifecycle';
 import {
+  acquireRemoteImageOriginal,
   cacheCompressedRemoteImage,
   findCompressedRemoteImage,
   invalidateCompressedRemoteImage,
@@ -17,6 +18,7 @@ import {
   supportsCompressedRemoteImageCache,
   type CompressedRemoteImageResult,
   type RemoteImageCacheProfile,
+  type RemoteImageOriginal,
 } from '@/services/remote-image-cache';
 
 export type RemoteImageCacheMode = RemoteImageCacheProfile | 'native' | 'none';
@@ -82,19 +84,29 @@ export function RemoteImage({
     return JSON.parse(sourceIdentity) as { uri: string; cacheKey?: string; headers?: Record<string, string> };
   }, [sourceIdentity]);
   const releaseRef = useRef<(() => void) | undefined>(undefined);
+  const onErrorRef = useRef(onError);
+  onErrorRef.current = onError;
   const activeRequestKeyRef = useRef<string | null>(null);
+  const resolvedRef = useRef<CompressedRemoteImageResult | null>(null);
+  const displayedRequestKeyRef = useRef<string | null>(null);
   const [resolved, setResolved] = useState<CompressedRemoteImageResult | null>(null);
-  const [phase, setPhase] = useState<'checking' | 'cached' | 'remote' | 'cached-fallback'>('checking');
+  const [phase, setPhase] = useState<'checking' | 'cached' | 'remote' | 'cached-fallback' | 'failed'>('checking');
   const [remoteDisplayed, setRemoteDisplayed] = useState(false);
+  const [originalRequestKey, setOriginalRequestKey] = useState<string | null>(null);
+  const [original, setOriginal] = useState<RemoteImageOriginal | null>(null);
 
   useEffect(() => {
     if (!requestKey || (mode !== 'thumbnail' && mode !== 'artwork')) return undefined;
     activeRequestKeyRef.current = requestKey;
     releaseRef.current?.();
     releaseRef.current = undefined;
+    resolvedRef.current = null;
+    displayedRequestKeyRef.current = null;
     setResolved(null);
     setPhase('checking');
     setRemoteDisplayed(false);
+    setOriginalRequestKey(null);
+    setOriginal(null);
     let cancelled = false;
     void findCompressedRemoteImage(requestSource, { gameId: gameId!, profile: mode })
       .then((result) => {
@@ -103,22 +115,52 @@ export function RemoteImage({
           return;
         }
         if (!result) {
+          setOriginalRequestKey(requestKey);
           setPhase('remote');
           return;
         }
         releaseRef.current = result.release;
+        resolvedRef.current = result;
         setResolved(result);
         setPhase('cached');
       })
       .catch(() => {
-        if (!cancelled) setPhase('remote');
+        if (!cancelled) {
+          setOriginalRequestKey(requestKey);
+          setPhase('remote');
+        }
       });
     return () => {
       cancelled = true;
+      activeRequestKeyRef.current = null;
       releaseRef.current?.();
       releaseRef.current = undefined;
     };
   }, [gameId, mode, requestKey, requestSource]);
+
+  useEffect(() => {
+    if (!supportsCompressedCache || !requestKey || originalRequestKey !== requestKey) return;
+    const controller = new AbortController();
+    let acquired: RemoteImageOriginal | null = null;
+    void acquireRemoteImageOriginal(requestSource, gameId!, controller.signal).then(result => {
+      if (controller.signal.aborted) { void result.release().catch(() => undefined); return; }
+      acquired = result;
+      setOriginal(result);
+      setPhase('remote');
+    }).catch(error => {
+      if (controller.signal.aborted) return;
+      if (resolvedRef.current) {
+        setPhase('cached-fallback');
+        return;
+      }
+      setPhase('failed');
+      onErrorRef.current?.({ error: error instanceof Error ? error.message : String(error) });
+    });
+    return () => {
+      controller.abort();
+      void acquired?.release().catch(() => undefined);
+    };
+  }, [gameId, originalRequestKey, requestKey, requestSource]);
 
   useEffect(() => {
     if (!requestKey
@@ -128,18 +170,19 @@ export function RemoteImage({
       || !remoteDisplayed
       || resolved) return undefined;
     const controller = new AbortController();
-    const task = InteractionManager.runAfterInteractions(() => {
+    const cancelTask = scheduleIdleTask(() => {
       if (controller.signal.aborted) return;
       void cacheCompressedRemoteImage(requestSource, { gameId: gameId!, profile: mode }, controller.signal)
         .then((result) => {
           if (controller.signal.aborted) { result?.release?.(); return; }
           if (!result) return;
           releaseRef.current = result.release;
+          resolvedRef.current = result;
           setResolved(result);
         })
         .catch(() => undefined);
     });
-    return () => { task.cancel(); controller.abort(); };
+    return () => { cancelTask(); controller.abort(); };
   }, [active, gameId, mode, persistenceEnabled, remoteDisplayed, requestKey, resolved, requestSource]);
 
   if (!supportsCompressedCache && (mode === 'thumbnail' || mode === 'artwork')) {
@@ -166,22 +209,30 @@ export function RemoteImage({
       {...props}
       cachePolicy={showingRemote ? 'memory' : 'none'}
       onDisplay={() => {
+        if (activeRequestKeyRef.current !== requestKey) return;
         if (phase === 'cached') {
-          setPhase('remote');
+          setOriginalRequestKey(requestKey);
           return;
         }
-        if (phase === 'remote') {
+        if (phase === 'remote' && original && displayedRequestKeyRef.current !== requestKey) {
+          displayedRequestKeyRef.current = requestKey;
           setRemoteDisplayed(true);
           onDisplay?.();
         }
       }}
       onError={(event) => {
+        if (activeRequestKeyRef.current !== requestKey) return;
+        if (showingRemote && original) void original.invalidate().catch(() => undefined);
         if (showingCached && resolved) {
           void invalidateCompressedRemoteImage(resolved.cacheKey);
           releaseRef.current?.();
           releaseRef.current = undefined;
+          resolvedRef.current = null;
           setResolved(null);
-          if (phase === 'cached') setPhase('remote');
+          if (phase === 'cached') {
+            setOriginalRequestKey(requestKey);
+            setPhase('remote');
+          }
           else onError?.(event);
           return;
         }
@@ -191,11 +242,13 @@ export function RemoteImage({
         }
         onError?.(event);
       }}
-      source={!requestReady || phase === 'checking'
+      source={!requestReady || phase === 'checking' || phase === 'failed'
         ? null
         : showingCached
           ? resolved?.source ?? null
-          : source}
+          : originalRequestKey === requestKey && original
+            ? { ...normalized?.source, uri: original.fileUri, cacheKey: original.fileUri }
+            : null}
     />
   );
 }

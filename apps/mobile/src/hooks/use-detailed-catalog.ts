@@ -24,11 +24,13 @@ export function useMaimaiSongDetail(
   catalog: CatalogSnapshot | undefined,
   enabled = true,
 ) {
+  const active = useCachedTabActive();
   const activeGameId = useSession((state) => state.activeGameId);
   const provider = useSession((state) => state.catalogProvider);
   const normalizedSongId = songId?.trim();
   return useQuery<Song>({
-    enabled: enabled && activeGameId === 'maimai' && !!normalizedSongId && provider !== null,
+    enabled: enabled && active && activeGameId === 'maimai' && !!normalizedSongId && provider !== null,
+    notifyOnChangeProps: active ? undefined : [],
     queryKey: ['maimai-song-detail', normalizedSongId],
     queryFn: ({ signal }) => requireDetailedCatalogProvider(provider).getSong(normalizedSongId!, catalog, signal),
     staleTime: Infinity,

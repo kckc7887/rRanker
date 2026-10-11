@@ -1,7 +1,6 @@
-import { render } from '@testing-library/react-native';
+import { render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { RecordsScreen } from '../app/(tabs)/records';
-import * as search from '@/utils/search';
 
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -23,6 +22,7 @@ let mockGameQuery: Record<string, unknown>;
 let mockCatalogQuery: Record<string, unknown>;
 let mockTagsQuery: Record<string, unknown>;
 let mockKeyword = '';
+const mockSelectedTags: string[] = [];
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => mockGameQuery }));
 jest.mock('@/hooks/use-phigros-catalog', () => ({ usePhigrosCatalog: () => mockCatalogQuery }));
 jest.mock('@/hooks/use-phigros-kyou', () => ({ usePhigrosKyouChartTags: () => mockTagsQuery }));
@@ -53,7 +53,7 @@ jest.mock('@/state/phigros-records-filter', () => ({
   usePhigrosRecordsFilter: () => ({
     keyword: mockKeyword, collapsed: false, level: 'all', constantMin: '', constantMax: '',
     accuracyMin: '', accuracyMax: '', rank: null, xing: null, chapter: 'all',
-    selectedKyouTagIds: [],
+    selectedKyouTagIds: mockSelectedTags,
     setKeyword: jest.fn(), setCollapsed: jest.fn(), setLevel: jest.fn(), setConstantMin: jest.fn(),
     setConstantMax: jest.fn(), setAccuracyMin: jest.fn(), setAccuracyMax: jest.fn(), setRank: jest.fn(),
     setXing: jest.fn(), setChapter: jest.fn(), setSelectedKyouTagIds: jest.fn(), clearFilters: jest.fn(),
@@ -114,29 +114,16 @@ describe('Phigros records screen', () => {
     setSuccessfulQueries();
   });
 
-  it('leaves search text uncomputed until a keyword is entered and still matches romanized aliases', async () => {
+  it('matches romanized aliases and replaces the result when the input changes', async () => {
     mockSessionState = { activeGameId: 'phigros', activeAccountId: 'phigros:test', activeProviderId: 'phigros-test', session: null };
-    const build = search.buildSearchDocument;
-    const reads = jest.fn();
-    const spy = jest.spyOn(search, 'buildSearchDocument').mockImplementation(values => {
-      const document = build(values);
-      return {
-        get text() { reads(); return document.text; },
-        get compact() { reads(); return document.compact; },
-      };
-    });
-    try {
-      const screen = await render(<RecordsScreen />);
-      expect(screen.getByTestId('phigros-records-list')).toBeTruthy();
-      expect(reads).not.toHaveBeenCalled();
-      mockKeyword = 'tesuto';
-      await screen.rerender(<RecordsScreen />);
-      expect(reads).toHaveBeenCalled();
-      expect(screen.getByText('测试曲')).toBeTruthy();
-      mockKeyword = 'absent-title';
-      await screen.rerender(<RecordsScreen />);
-      expect(screen.queryByText('测试曲')).toBeNull();
-    } finally { spy.mockRestore(); }
+    const screen = await render(<RecordsScreen />);
+    await screen.findByText('测试曲');
+    mockKeyword = 'tesuto';
+    await screen.rerender(<RecordsScreen />);
+    await waitFor(() => expect(screen.getByText('共 1 条成绩')).toBeTruthy());
+    mockKeyword = 'absent-title';
+    await screen.rerender(<RecordsScreen />);
+    await waitFor(() => expect(screen.queryByText('测试曲')).toBeNull());
   });
 
   it('renders the records list for the sample account without a session', async () => {
@@ -147,7 +134,7 @@ describe('Phigros records screen', () => {
       session: null,
     };
     const screen = await render(<RecordsScreen />);
-    expect(screen.getByTestId('phigros-records-list')).toBeTruthy();
+    expect(await screen.findByTestId('phigros-records-list')).toBeTruthy();
     expect(screen.getByText('测试曲')).toBeTruthy();
     expect(screen.getByText('共 1 条成绩')).toBeTruthy();
     expect(screen.getByLabelText('Phigros 定数范围下限 15.2')).toBeTruthy();

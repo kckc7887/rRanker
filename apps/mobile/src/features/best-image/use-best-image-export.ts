@@ -25,6 +25,9 @@ type ExportSession = {
   captures: { uri: string; filename: string }[];
   width: number;
   messageScale?: number;
+  controller: AbortController;
+  settled: Promise<void>;
+  finish: () => void;
 };
 
 function clearWait(session: ExportSession) {
@@ -46,9 +49,9 @@ function prefersRenderInContext(error: unknown, usedRenderInContext: boolean): b
   return !usedRenderInContext && /drawViewHierarchyInRect|view cannot be captured|unable to snapshot|snapshot failed|not attached/iu.test(captureFailureText(error));
 }
 
-async function waitForCaptureSurface(): Promise<void> {
+async function waitForCaptureSurface(signal: AbortSignal): Promise<void> {
   if (AppState.currentState !== 'inactive' && AppState.currentState !== 'background') return;
-  await waitForForeground();
+  await waitForForeground(signal);
 }
 
 function exportFailureMessage(error: unknown, savedCount: number): string {
@@ -81,11 +84,14 @@ export function useBestImageExport(config: {
   const mounted = useRef(true);
   const cancelExportRequest = useCallback(() => {
     const session = active.current;
-    if (!session || session.cancelled) return;
+    if (!session) return Promise.resolve();
+    if (session.cancelled) return session.settled;
     session.cancelled = true;
+    session.controller.abort();
     session.wait?.reject(new Error('导出已取消'));
     clearWait(session);
     if (mounted.current) { setExportIndex(null); setExportStatus(null); }
+    return session.settled;
   }, []);
   useEffect(() => {
     mounted.current = true;
@@ -124,9 +130,11 @@ export function useBestImageExport(config: {
 
   const exportImages = async (runtime: BestImageScreenControllerRuntime) => {
     if (!runtime.htmlPages || !runtime.sources || !runtime.canExport || active.current || !mounted.current) return;
+    let finish!: () => void;
+    const settled = new Promise<void>((resolve) => { finish = resolve; });
     const session: ExportSession = {
       generation: ++generation.current, operation: createRuntimeOperation('best-image-export'), phase: 'permission',
-      cancelled: false, timedOut: false, wait: null, captures: [], width: config.width, messageScale: config.messageScale,
+      cancelled: false, timedOut: false, wait: null, captures: [], width: config.width, messageScale: config.messageScale, controller: new AbortController(), settled, finish,
     };
     active.current = session;
     session.operation.record('export', { result: 'start' });
@@ -153,7 +161,7 @@ export function useBestImageExport(config: {
       let uri: string | undefined;
       let attempt = 0;
       while (uri === undefined) {
-        await waitForCaptureSurface();
+        await waitForCaptureSurface(session.controller.signal);
         assertCurrent(session);
         try {
           uri = await captureRef(exportCaptureRef, {
@@ -222,11 +230,12 @@ export function useBestImageExport(config: {
       }
     } finally {
       clearWait(session);
-      session.captures.forEach((capture) => deleteBestImageCapture(capture.uri));
+      await Promise.all(session.captures.map((capture) => deleteBestImageCapture(capture.uri).catch(() => {})));
       if (active.current === session) {
         active.current = null;
         if (mounted.current) { setExportIndex(null); setExportStatus(null); }
       }
+      session.finish();
     }
   };
   return { exportIndex, exportHeight, exportStatus, exportCaptureRef, exportImages, cancelExportRequest, handleExportMessage };

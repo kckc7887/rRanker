@@ -1,6 +1,6 @@
 import { phigrosLevelColors, phigrosLevelLabel } from '@/domain/phigros-level-theme';
 import { bytesToBase64 } from '@/utils/crypto-subset';
-import { phigrosChartPreviewLevelLabel, type PhigrosChartPreviewAsset } from '@/domain/phigros-chart-preview';
+import { phigrosChartPreviewLevelLabel, type PhigrosChartPreviewResourceRead } from '@/domain/phigros-chart-preview';
 import { loadPhigrosChartPreviewResources } from '@/services/phigros-chart-preview-resources';
 import type { PgrPreviewSettings, PreparedPgrPreviewInput } from '@/features/chart-preview-shared/pgr-preview-config';
 
@@ -15,7 +15,7 @@ export async function buildPhigrosChartPreviewInput(
   input: PhigrosChartPreviewInput,
   settings: PgrPreviewSettings,
   signal: AbortSignal,
-  read: (asset: PhigrosChartPreviewAsset, index: number) => Promise<Uint8Array>,
+  read: PhigrosChartPreviewResourceRead,
 ): Promise<PreparedPgrPreviewInput> {
   const resources = await loadPhigrosChartPreviewResources({
     songId: input.songId,

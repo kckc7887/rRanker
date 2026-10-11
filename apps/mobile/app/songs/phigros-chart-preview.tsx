@@ -103,7 +103,7 @@ export default function PhigrosChartPreviewScreen() {
       payload: mapped,
       timeoutMs: mapped.game === 'phigros' ? PHIGROS_PREPARE_TIMEOUT_MS : PHIRA_PREPARE_TIMEOUT_MS,
       prepare: async (signal: AbortSignal, settings: unknown, onProgress?: (progress: ChartPreviewLoadProgress) => void) => {
-        const directory = createChartPreviewSessionDirectory('rranker-phigros-chart-preview');
+        const directory = await createChartPreviewSessionDirectory('rranker-phigros-chart-preview');
         const resourceEnd = 0.7;
         try {
           const prepared = mapped.game === 'phigros'
@@ -147,7 +147,7 @@ export default function PhigrosChartPreviewScreen() {
             },
           );
         } catch (error) {
-          disposeChartPreviewSessionDirectory(directory);
+          await disposeChartPreviewSessionDirectory(directory);
           throw error;
         }
       },

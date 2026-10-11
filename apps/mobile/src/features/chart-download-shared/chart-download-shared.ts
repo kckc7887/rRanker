@@ -1,10 +1,13 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import {
   createDownloadResumable,
+  deleteAsync,
   type DownloadProgressData,
 } from 'expo-file-system/legacy';
 import { ProviderError, providerErrorFromStatus, type ProviderErrorCode } from '@/providers/errors';
 import { nextRuntimeOperationId, recordRuntimeDiagnostic, recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
+import { waitForForeground } from '@/state/app-lifecycle-core';
+import { copyFileToContentUriAsync } from '@/utils/resource-integrity';
 
 export class ChartPackageDownloadError extends ProviderError {
   constructor(message: string, options?: ErrorOptions, code: ProviderErrorCode = 'unknown', retryable = false) {
@@ -30,6 +33,12 @@ export type ChartPackageOutput =
 
 const SAFE_NAME_MAX_LENGTH = 40;
 let sessionSequence = 0;
+let saveQueue: Promise<void> = Promise.resolve();
+let directoryPickerActive = false;
+
+export function isChartPackageDirectoryPickerActive(): boolean {
+  return directoryPickerActive;
+}
 
 export function sanitizeChartPackageName(value: string): string {
   const normalized = value.normalize('NFKC').trim()
@@ -58,8 +67,8 @@ export function createChartDownloadSessionDirectory(): Directory {
   return directory;
 }
 
-export function cleanupChartDownloadSessionDirectory(directory: Directory): void {
-  try { if (directory.exists) directory.delete(); }
+export async function cleanupChartDownloadSessionDirectory(directory: Directory): Promise<void> {
+  try { await deleteAsync(directory.uri, { idempotent: true }); }
   catch (error) { recordRuntimeError('chart-download-cleanup', error, false, { phase: 'cleanup' }); }
 }
 
@@ -79,8 +88,8 @@ export async function downloadChartResource(
   let diagnosticError: unknown;
   void recordRuntimeDiagnostic('request-start', diagnostic);
   let discarded = false;
-  const cleanup = () => {
-    try { if (file.exists) file.delete(); }
+  const cleanup = async () => {
+    try { await deleteAsync(file.uri, { idempotent: true }); }
     catch (error) { recordRuntimeError('chart-resource-cleanup', error, false, { phase: 'cleanup', operationId: diagnostic.operationId }); }
   };
   const task = createDownloadResumable(url, file.uri, {}, (progress) => {
@@ -92,7 +101,7 @@ export async function downloadChartResource(
     discarded = true;
     rejectCancelled(new ChartPackageDownloadCancelledError('谱面下载已取消', { cause: signal?.reason }));
     void Promise.resolve().then(() => task.cancelAsync()).catch(() => undefined);
-    cleanup();
+    void cleanup();
   };
   signal?.addEventListener('abort', cancelDownload, { once: true });
   try {
@@ -103,7 +112,7 @@ export async function downloadChartResource(
     });
     /** 原生取消可能迟到，再清理本次下载文件。 */
 
-    void pending.then(() => { if (discarded) cleanup(); }, () => { if (discarded) cleanup(); });
+    void pending.then(() => { if (discarded) return cleanup(); }, () => { if (discarded) return cleanup(); });
     const result = await Promise.race([pending, cancelled]);
     throwIfChartDownloadCancelled(signal);
     if (!result) throw new ChartPackageDownloadCancelledError('谱面下载已取消');
@@ -122,7 +131,7 @@ export async function downloadChartResource(
     return file;
   } catch (error) {
     discarded = true;
-    cleanup();
+    await cleanup();
     if (signal?.aborted || error instanceof ChartPackageDownloadCancelledError) {
       resultState = 'cancelled';
       throw new ChartPackageDownloadCancelledError('谱面下载已取消', { cause: error });
@@ -155,22 +164,45 @@ export async function saveChartPackage(
   signal?: AbortSignal,
 ): Promise<boolean> {
   throwIfChartDownloadCancelled(signal);
-  try {
-    const picked = await Directory.pickDirectoryAsync();
+  const pending = saveQueue.then(async () => {
     throwIfChartDownloadCancelled(signal);
-    if (output.kind === 'file' && picked.uri.startsWith('file://')) {
-      /** iOS 复制不允许目标文件已存在。 */
-      output.file.copy(new File(picked.uri, fileName));
-    } else {
-      const destination = picked.createFile(fileName, 'application/zip');
-      if (output.kind === 'file') output.file.copy(destination);
-      else destination.write(output.bytes);
+    try {
+      await waitForForeground(signal);
+      throwIfChartDownloadCancelled(signal);
+      let picked: Awaited<ReturnType<typeof Directory.pickDirectoryAsync>>;
+      directoryPickerActive = true;
+      try {
+        picked = await Directory.pickDirectoryAsync();
+      } finally {
+        /** 原生选择器返回和应用恢复完成前不放行下一项保存。 */
+        await waitForForeground();
+        directoryPickerActive = false;
+      }
+      throwIfChartDownloadCancelled(signal);
+      if (output.kind === 'file' && picked.uri.startsWith('file://')) {
+        /** iOS 复制不允许目标文件已存在。 */
+        output.file.copy(new File(picked.uri, fileName));
+      } else {
+        const destination = picked.createFile(fileName, 'application/zip');
+        try {
+          throwIfChartDownloadCancelled(signal);
+          if (output.kind === 'file') await copyFileToContentUriAsync(output.file.uri, destination.uri);
+          else destination.write(output.bytes);
+          throwIfChartDownloadCancelled(signal);
+        } catch (error) {
+          try { await deleteAsync(destination.uri, { idempotent: true }); }
+          catch (cleanupError) { recordRuntimeError('chart-package-save-cleanup', cleanupError, false, { phase: 'cleanup' }); }
+          throw error;
+        }
+      }
+      return true;
+    } catch (error) {
+      if (error instanceof ChartPackageDownloadCancelledError) throw error;
+      throwIfChartDownloadCancelled(signal);
+      if (isDirectoryPickerCancellation(error)) return false;
+      throw new ChartPackageDownloadError('无法打开保存位置选择', { cause: error });
     }
-    return true;
-  } catch (error) {
-    if (error instanceof ChartPackageDownloadCancelledError) throw error;
-    throwIfChartDownloadCancelled(signal);
-    if (isDirectoryPickerCancellation(error)) return false;
-    throw new ChartPackageDownloadError('无法打开保存位置选择', { cause: error });
-  }
+  });
+  saveQueue = pending.then(() => undefined, () => undefined);
+  return pending;
 }

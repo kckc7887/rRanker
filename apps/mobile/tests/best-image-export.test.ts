@@ -3,6 +3,7 @@ import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 vi.mock('expo-media-library', () => ({
   isAvailableAsync: vi.fn(async () => true),
+  getPermissionsAsync: vi.fn(async () => ({ granted: false })),
   requestPermissionsAsync: vi.fn(async () => ({ granted: true })),
   saveToLibraryAsync: vi.fn(async () => undefined),
 }));
@@ -29,6 +30,15 @@ vi.mock('expo-file-system', () => {
     }
   }
   return { File, Paths: { cache: 'file:///cache' }, __fileStates: fileStates };
+});
+
+vi.mock('expo-file-system/legacy', async () => {
+  const { File } = await import('expo-file-system');
+  return {
+    getInfoAsync: async (uri: string) => ({ exists: new File(uri).exists }),
+    copyAsync: async ({ from, to }: { from: string; to: string }) => { new File(from).copy(new File(to)); },
+    deleteAsync: async (uri: string) => { new File(uri).delete(); },
+  };
 });
 
 import * as MediaLibrary from 'expo-media-library';
@@ -77,13 +87,32 @@ describe('best image export', () => {
     await expect(requestBestImageExportPermission()).rejects.toThrow('没有相册写入权限');
   });
 
+  it('exports with an existing grant without opening another permission request', async () => {
+    vi.mocked(MediaLibrary.getPermissionsAsync).mockResolvedValueOnce({ granted: true } as never);
+    await expect(requestBestImageExportPermission()).resolves.toBeUndefined();
+    expect(MediaLibrary.getPermissionsAsync).toHaveBeenCalledWith(true, ['photo']);
+    expect(MediaLibrary.requestPermissionsAsync).not.toHaveBeenCalled();
+  });
+
+  it('requests photo write access when it has not been granted', async () => {
+    await expect(requestBestImageExportPermission()).resolves.toBeUndefined();
+    expect(MediaLibrary.requestPermissionsAsync).toHaveBeenCalledWith(true, ['photo']);
+  });
+
+  it('does not open a permission request after permission lookup fails', async () => {
+    const error = new Error('permission lookup failed');
+    vi.mocked(MediaLibrary.getPermissionsAsync).mockRejectedValueOnce(error);
+    await expect(requestBestImageExportPermission()).rejects.toBe(error);
+    expect(MediaLibrary.requestPermissionsAsync).not.toHaveBeenCalled();
+  });
+
   it('copies a capture to a named cache file, saves it, and cleans both files', async () => {
     const states = (FileSystem as unknown as { __fileStates: Map<string, boolean> }).__fileStates;
     await saveBestImageCapture('file:///capture.png', 'result.png');
     expect(MediaLibrary.saveToLibraryAsync).toHaveBeenCalledWith('file:///cache/result.png');
     expect(states.get('file:///cache/result.png')).toBe(false);
 
-    deleteBestImageCapture('file:///capture.png');
+    await deleteBestImageCapture('file:///capture.png');
     expect(states.get('file:///capture.png')).toBe(false);
   });
 });

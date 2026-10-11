@@ -1,16 +1,10 @@
 import { jest } from '@jest/globals';
 import { Share } from 'react-native';
-import { recordRuntimeError, snapshotEmergencyRuntimeDiagnostics } from '@/services/runtime-diagnostics-recorder';
 import { cleanupOrphanedTemporaryStorage } from '@/features/storage-management/storage-cache-maintenance';
-import {
-  initializeRuntimeDiagnostics,
-  recordRuntimeDiagnostic,
-  sanitizeRuntimeDiagnosticEvent,
-  trimRuntimeDiagnosticStore,
-  snapshotRuntimeDiagnostics,
-  exportRuntimeDiagnostics,
-  type RuntimeDiagnosticEvent,
-} from '@/services/runtime-diagnostics';
+import type { RuntimeDiagnosticEvent } from '@/services/runtime-diagnostics';
+
+let runtime: typeof import('@/services/runtime-diagnostics');
+let recorder: typeof import('@/services/runtime-diagnostics-recorder');
 
 const mockFiles = new Map<string, string>();
 const mockWriteState = { active: 0, maximum: 0 };
@@ -88,9 +82,40 @@ jest.mock('expo-file-system', () => {
           .map((path) => new File(path));
       }
     },
-    Paths: { cache: 'cache', document: 'document' },
+    Paths: { cache: 'cache', document: 'document', join: (...parts: string[]) => parts.join('/') },
   };
 });
+jest.mock('expo-file-system/legacy', () => ({
+  getInfoAsync: async (uri: string) => ({
+    exists: mockFiles.has(uri) || [...mockFiles.keys()].some(path => path.startsWith(`${uri}/`)),
+    isDirectory: !mockFiles.has(uri),
+    modificationTime: 0,
+  }),
+  readDirectoryAsync: async (uri: string) => [...new Set([...mockFiles.keys()]
+    .filter(path => path.startsWith(`${uri}/`)).map(path => path.slice(uri.length + 1).split('/')[0]))],
+  readAsStringAsync: async (uri: string) => {
+    await mockRead(uri);
+    return mockFiles.get(uri) ?? '';
+  },
+  writeAsStringAsync: async (uri: string, value: string) => {
+    mockWriteState.active += 1;
+    mockWriteState.maximum = Math.max(mockWriteState.maximum, mockWriteState.active);
+    try {
+      await mockWrite(uri, value);
+      mockFiles.set(uri, value);
+    } finally { mockWriteState.active -= 1; }
+  },
+  deleteAsync: async (uri: string) => {
+    mockDelete(uri);
+    for (const path of mockFiles.keys()) if (path === uri || path.startsWith(`${uri}/`)) mockFiles.delete(path);
+  },
+  moveAsync: async ({ from, to }: { from: string; to: string }) => {
+    mockMove(from, to);
+    if (!mockFiles.has(from) || mockFiles.has(to)) throw new Error('invalid move');
+    mockFiles.set(to, mockFiles.get(from)!);
+    mockFiles.delete(from);
+  },
+}));
 jest.mock('expo-sharing', () => ({
   isAvailableAsync: () => mockAvailable(),
   shareAsync: (uri: string, options: unknown) => mockShare(uri, options),
@@ -115,11 +140,14 @@ describe('本地运行诊断', () => {
     mockFiles.clear();
     mockWriteState.active = 0;
     mockWriteState.maximum = 0;
-
+    jest.isolateModules(() => {
+      runtime = jest.requireActual<typeof runtime>('@/services/runtime-diagnostics');
+      recorder = jest.requireActual<typeof recorder>('@/services/runtime-diagnostics-recorder');
+    });
   });
 
   it('只保留允许的字段并拒绝敏感值', () => {
-    const result = sanitizeRuntimeDiagnosticEvent('task', {
+    const result = runtime.sanitizeRuntimeDiagnosticEvent('task', {
       gameType: 'maimai',
       providerType: 'https://example.com/token',
       taskPhase: 'raw error text with spaces',
@@ -143,7 +171,7 @@ describe('本地运行诊断', () => {
   });
 
   it('只保留最近三次会话和最多 256 条事件', () => {
-    const trimmed = trimRuntimeDiagnosticStore({
+    const trimmed = runtime.trimRuntimeDiagnosticStore({
       sessions: Array.from({ length: 4 }, (_, sessionIndex) => ({
         startedAt: `session-${sessionIndex}`,
         events: Array.from({ length: 100 }, (_, eventIndex) => event(`${sessionIndex}-${eventIndex}`)),
@@ -156,9 +184,9 @@ describe('本地运行诊断', () => {
   });
 
   it('并发记录时串行写入且不丢失事件', async () => {
-    await initializeRuntimeDiagnostics();
+    await runtime.initializeRuntimeDiagnostics();
     mockWrite.mockClear();
-    await Promise.all(Array.from({ length: 20 }, (_, index) => recordRuntimeDiagnostic('task', {
+    await Promise.all(Array.from({ length: 20 }, (_, index) => runtime.recordRuntimeDiagnostic('task', {
       taskPhase: `phase-${index}`,
     })));
 
@@ -171,35 +199,35 @@ describe('本地运行诊断', () => {
   });
 
   it('将快照排在已提交事件之后并隔离后续事件和读取方修改', async () => {
-    const before = recordRuntimeDiagnostic('task', { taskPhase: 'before' });
-    const pending = snapshotRuntimeDiagnostics();
-    const after = recordRuntimeDiagnostic('task', { taskPhase: 'after' });
+    const before = runtime.recordRuntimeDiagnostic('task', { taskPhase: 'before' });
+    const pending = runtime.snapshotRuntimeDiagnostics();
+    const after = runtime.recordRuntimeDiagnostic('task', { taskPhase: 'after' });
     const snapshot = await pending;
     await Promise.all([before, after]);
     expect(snapshot.sessions.at(-1)?.events.map((item) => item.taskPhase)).toEqual(['before']);
     snapshot.sessions[0]!.events.length = 0;
-    const next = await snapshotRuntimeDiagnostics();
+    const next = await runtime.snapshotRuntimeDiagnostics();
     expect(next.sessions.at(-1)?.events.map((item) => item.taskPhase)).toEqual(['before', 'after']);
   });
 
   it('没有诊断文件时返回空记录', async () => {
-    expect(await snapshotRuntimeDiagnostics()).toEqual({ sessions: [] });
+    expect(await runtime.snapshotRuntimeDiagnostics()).toEqual({ sessions: [] });
   });
 
   it('分享诊断信息时固定内容并防止重复打开分享面板', async () => {
-    await recordRuntimeDiagnostic('task', { taskPhase: 'before-share' });
+    await runtime.recordRuntimeDiagnostic('task', { taskPhase: 'before-share' });
     let complete = () => {};
     let entered = () => {};
     const panelOpened = new Promise<void>((resolve) => { entered = resolve; });
     mockShare.mockImplementationOnce(async () => {
-      await recordRuntimeDiagnostic('task', { taskPhase: 'share-panel' });
+      await runtime.recordRuntimeDiagnostic('task', { taskPhase: 'share-panel' });
       return new Promise<undefined>((resolve) => {
         complete = () => resolve(undefined);
         entered();
       });
     });
-    const pending = exportRuntimeDiagnostics();
-    await exportRuntimeDiagnostics();
+    const pending = runtime.exportRuntimeDiagnostics();
+    await runtime.exportRuntimeDiagnostics();
     await panelOpened;
     expect(mockShare).toHaveBeenCalledTimes(1);
     expect(mockShare).toHaveBeenCalledWith('cache/rranker-runtime-diagnostics.txt', expect.objectContaining({ dialogTitle: '分享诊断信息' }));
@@ -211,23 +239,23 @@ describe('本地运行诊断', () => {
 
   it('分享文件不可用或失败时退回原生文本分享并可重试', async () => {
     mockAvailable.mockResolvedValueOnce(false);
-    await expect(exportRuntimeDiagnostics()).resolves.toBeUndefined();
+    await expect(runtime.exportRuntimeDiagnostics()).resolves.toBeUndefined();
     expect(mockTextShare).toHaveBeenCalledTimes(1);
     mockShare.mockRejectedValueOnce(new Error('share failed'));
-    await expect(exportRuntimeDiagnostics()).resolves.toBeUndefined();
+    await expect(runtime.exportRuntimeDiagnostics()).resolves.toBeUndefined();
     expect(mockTextShare).toHaveBeenCalledTimes(2);
-    await exportRuntimeDiagnostics();
+    await runtime.exportRuntimeDiagnostics();
     expect(mockShare).toHaveBeenCalledTimes(2);
   });
   it('存储不可用时保留有界脱敏错误且诊断导出仍可使用', async () => {
     mockFiles.set('document/rranker-runtime-diagnostics.json', '{}');
     mockRead.mockRejectedValue(new Error('locked'));
     mockWrite.mockRejectedValue(new Error('locked'));
-    for (let index = 0; index < 100; index++) recordRuntimeError('theme-preferences', new Error('private-token player Alice'), false, { phase: 'write' });
-    const events = snapshotEmergencyRuntimeDiagnostics();
+    for (let index = 0; index < 100; index++) recorder.recordRuntimeError('theme-preferences', new Error('private-token player Alice'), false, { phase: 'write' });
+    const events = recorder.snapshotEmergencyRuntimeDiagnostics();
     expect(events).toHaveLength(64);
     expect(JSON.stringify(events)).not.toMatch(/private-token|Alice/u);
-    await exportRuntimeDiagnostics();
+    await runtime.exportRuntimeDiagnostics();
     expect(mockTextShare).toHaveBeenCalled();
     expect(JSON.parse(mockTextShare.mock.calls.at(-1)![0].message!).storageAvailable).toBe(false);
     mockRead.mockReset().mockResolvedValue(undefined);
@@ -295,7 +323,7 @@ describe('诊断正文持久化与替换', () => {
     expect(snapshot.sessions).toHaveLength(1);
     expect(snapshot.sessions[0]?.events).toEqual([]);
     expect(mockRead.mock.calls.map(([uri]) => uri)).not.toContain(path);
-    cleanupOrphanedTemporaryStorage();
+    await cleanupOrphanedTemporaryStorage();
     expect(mockFiles.has(path)).toBe(false);
     expect(mockFiles.has(documentPath)).toBe(true);
   });

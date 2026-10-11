@@ -10,7 +10,7 @@ import { applyMajdataSessionRotation, useSession } from '@/state/session-store';
 import { cacheSourceSchema, snapshotSource, captureResourceWrites, createInflightGuard, resourceWriteGeneration, subscribeResourceWrites } from './snapshot-cache-utils';
 import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 import { createBoundedLoadQueue } from './offset-pagination';
-import { parseSimaiChart } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { parseSimaiChartAsync } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import { simaiStatistics } from '@/features/simai-chart-preview/statistics';
 import { simaiDifficultyScores } from '@/features/simai-difficulty';
 import { cacheFirstLoad } from './cache-first';
@@ -209,9 +209,12 @@ export async function loadMajdataChart(song: MajdataSong, signal?: AbortSignal):
 }
 
 const difficultyScoreSchema = z.number().finite().min(0).max(10);
+const noteCountSchema = z.object({
+  tap: z.number().int().nonnegative(), hold: z.number().int().nonnegative(),
+  slide: z.number().int().nonnegative(), touch: z.number().int().nonnegative(), break: z.number().int().nonnegative(),
+});
 const parsedChartSchema = z.object({
-  chart: z.custom<ReturnType<typeof parseSimaiChart>>(value => typeof value === 'object' && value !== null && 'notes' in value && Array.isArray(value.notes)),
-  statistics: z.custom<ReturnType<typeof simaiStatistics>>(value => typeof value === 'object' && value !== null && 'counts' in value && 'units' in value && Array.isArray(value.units)),
+  statistics: z.object({ counts: noteCountSchema.extend({ mine: z.number().int().nonnegative() }), mines: noteCountSchema }),
   difficultyScores: z.tuple([difficultyScoreSchema, difficultyScoreSchema, difficultyScoreSchema, difficultyScoreSchema, difficultyScoreSchema]).nullable(),
 });
 
@@ -220,16 +223,16 @@ export async function loadMajdataParsedChart(song: MajdataSong, level: number, s
   const key = `majdata-net:parsed:${song.id}:${song.hash}:${level}`;
   const assertCurrent = captureResourceWrites('majdata-net');
   return resourceLoads.share(requestKey(key), async requestSignal => {
-    const cached = await repository.getResource(key, 1, parsedChartSchema);
+    const cached = await repository.getResource(key, 2, parsedChartSchema);
     if (requestSignal.aborted) throw requestSignal.reason;
     assertCurrent();
     if (cached) return cached;
     const text = await loadMajdataChart(song, requestSignal);
-    const chart = parseSimaiChart(text, level + 1);
-    const parsed = { chart, statistics: simaiStatistics(chart), difficultyScores: simaiDifficultyScores(text, level + 1) };
+    const statistics = simaiStatistics(await parseSimaiChartAsync(text, level + 1, requestSignal));
+    const parsed = { statistics, difficultyScores: await simaiDifficultyScores(text, level + 1, requestSignal) };
     if (requestSignal.aborted) throw requestSignal.reason;
     assertCurrent();
-    await repository.saveResource(key, 1, new Date().toISOString(), parsed, () => { assertCurrent(); if (requestSignal.aborted) throw new Error('已取消'); });
+    await repository.saveResource(key, 2, new Date().toISOString(), parsed, () => { assertCurrent(); if (requestSignal.aborted) throw new Error('已取消'); });
     if (requestSignal.aborted) throw requestSignal.reason;
     assertCurrent();
     return parsed;

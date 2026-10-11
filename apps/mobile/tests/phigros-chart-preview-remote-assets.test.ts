@@ -62,6 +62,25 @@ vi.mock('expo-file-system', () => {
   return { Directory, File, Paths: { cache: new Directory('file://', 'cache') } };
 });
 
+vi.mock('expo-file-system/legacy', () => ({
+  getInfoAsync: async (uri: string) => ({ exists: mockFs.files.has(uri), size: mockFs.files.get(uri)?.byteLength ?? 0 }),
+  deleteAsync: async (uri: string) => { mockFs.files.delete(uri); },
+  writeAsStringAsync: async (uri: string, content: string) => {
+    mockFs.files.set(uri, Uint8Array.from(Buffer.from(content)));
+  },
+  copyAsync: async ({ from, to }: { from: string; to: string }) => {
+    const bytes = mockFs.files.get(from);
+    if (!bytes) throw new Error('source does not exist');
+    mockFs.files.set(to, Uint8Array.from(bytes));
+  },
+  moveAsync: async ({ from, to }: { from: string; to: string }) => {
+    const bytes = mockFs.files.get(from);
+    if (!bytes) throw new Error('source does not exist');
+    mockFs.files.set(to, bytes);
+    mockFs.files.delete(from);
+  },
+}));
+
 vi.mock('@/features/chart-download-shared/chart-download-shared', () => ({
   downloadChartResource: async (
     directory: unknown,
