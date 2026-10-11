@@ -124,7 +124,7 @@ Phigros 物量读取发布资源 `metadata/note_counts.tsv`，按歌曲与 EZ、
 
 `chart-preview-screen-shell.tsx` 管理资源准备、WebView、前后台暂停、取消、seek 和释放。`chart-preview-bridge.ts` 只解析当前事件和设置信封，宿主命令由公共 serializer 生成。控制设置、播放状态和时间回传通过同一桥接路径。
 
-播放器设置的存储读取失败进入重新加载流程并保留原偏好，成功读到损坏内容才重建对应键。舞萌、Majdata、Phigros、Phira、osu! 谱面包通过 `saveChartPackage` 保存，取消信号贯穿目录选择与最终写出检查。
+播放器设置的存储读取失败进入重新加载流程并保留原偏好，成功读到损坏内容才重建对应键。舞萌、Majdata、Phigros、Phira、osu! 谱面包通过 `saveChartPackage` 串行选择目录并保存，下载与打包仍可并行。目录选择窗口内保留各卡下载，原生选择器返回且应用恢复前台后才检查取消并写盘；排队取消不打开选择器，当前任务取消也等待原生选择结束后才放行下一项。普通后台和页面卸载继续取消下载。Android 在目录选择器内再按 Home 不产生新的 MainActivity 状态变化，任务保留到选择器返回及应用恢复。
 
 Simai 的解析、时间轴、几何与渲染位于 `simai-chart-preview/engine`，预览与统计共用。Phigros/Phira 共用 PGR、RPE 配置与资源路径；osu! 使用当前谱面、皮肤和回放解析；Rizline 使用发布清单定位的谱面与音频。不可见或释放的播放器撤销帧、音源、监听器和所属临时资源。
 
