@@ -780,15 +780,24 @@ describe('remote image cache', () => {
 
   it('prunes least recently used files to the requested budget and clears the cache', async () => {
     expect(cache.REMOTE_IMAGE_CACHE_BUDGET_BYTES).toBe(50 * 1024 * 1024);
-    await cache.cacheCompressedRemoteImage('https://example.test/1.png', { gameId: 'maimai', profile: 'thumbnail' });
-    await cache.cacheCompressedRemoteImage('https://example.test/2.png', { gameId: 'maimai', profile: 'thumbnail' });
-    await cache.cacheCompressedRemoteImage('https://example.test/3.png', { gameId: 'maimai', profile: 'thumbnail' });
-    await cache.pruneRemoteImageCache(100);
-    const cachedWebps = Array.from(mocks.files.keys()).filter((path) => path.includes('rranker-remote-image-cache-v2') && path.endsWith('.webp'));
-    expect(cachedWebps).toHaveLength(1);
+    const clock = vi.spyOn(Date, 'now').mockReturnValue(1000);
+    const options = { gameId: 'maimai', profile: 'thumbnail' } as const;
+    try {
+      await cache.cacheCompressedRemoteImage('https://example.test/1.png', options);
+      clock.mockReturnValue(2000);
+      await cache.cacheCompressedRemoteImage('https://example.test/2.png', options);
+      clock.mockReturnValue(3000);
+      await cache.cacheCompressedRemoteImage('https://example.test/3.png', options);
+      await cache.pruneRemoteImageCache(192);
 
-    await cache.clearCompressedRemoteImageCache();
-    expect(Array.from(mocks.files.keys()).some((path) => path.includes('rranker-remote-image-cache-v2'))).toBe(false);
+      await expect(cache.findCompressedRemoteImage('https://example.test/1.png', options)).resolves.toBeNull();
+      await expect(cache.findCompressedRemoteImage('https://example.test/2.png', options)).resolves.toBeNull();
+      await expect(cache.findCompressedRemoteImage('https://example.test/3.png', options)).resolves.not.toBeNull();
+      await expect(cache.measureGameRemoteImageCacheBytes('maimai')).resolves.toBe(192);
+
+      await cache.clearCompressedRemoteImageCache();
+      expect(Array.from(mocks.files.keys()).some((path) => path.includes('rranker-remote-image-cache-v2'))).toBe(false);
+    } finally { clock.mockRestore(); }
   });
 
   it('allocates 70 percent to the active game and linearly weights the remainder', () => {
