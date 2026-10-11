@@ -5,6 +5,7 @@ import { ProviderError } from '@/providers/errors';
 
 const native = vi.hoisted(() => ({
   files: new Map<string, Uint8Array>(), download: vi.fn(), cancel: vi.fn(), diagnostic: vi.fn(),
+  remove: vi.fn<(uri: string) => Promise<void>>(),
 }));
 vi.mock('expo-file-system', () => {
   class Directory { constructor(readonly uri: string) {} }
@@ -18,12 +19,14 @@ vi.mock('expo-file-system', () => {
   return { Directory, File, Paths: { cache: 'file:///cache' } };
 });
 vi.mock('expo-file-system/legacy', () => ({
+  deleteAsync: (uri: string) => native.remove(uri),
   createDownloadResumable: (url: string, uri: string, _options: unknown, onProgress: unknown) => ({
     downloadAsync: () => native.download(url, uri, onProgress), cancelAsync: () => native.cancel(),
   }),
 }));
 vi.mock('@/services/runtime-diagnostics-recorder', () => ({
   nextRuntimeOperationId: () => 1, recordRuntimeDiagnostic: (...args: unknown[]) => native.diagnostic(...args),
+  recordRuntimeError: vi.fn(),
 }));
 
 const directory = new Directory('file:///session');
@@ -31,6 +34,7 @@ const uri = 'file:///session/resource.bin';
 beforeEach(() => {
   native.files.clear(); vi.clearAllMocks();
   native.cancel.mockResolvedValue(undefined);
+  native.remove.mockImplementation(async uri => { native.files.delete(uri); });
   native.download.mockImplementation(async () => {
     native.files.set(uri, new Uint8Array([1, 2, 3]));
     return { uri, status: 200, headers: {} };
@@ -99,5 +103,32 @@ describe('公共资源下载响应与取消', () => {
     await expect(downloadChartResource(directory, 'resource.bin', 'https://download.test', controller.signal))
       .rejects.toBeInstanceOf(ChartPackageDownloadCancelledError);
     expect(native.download).not.toHaveBeenCalled();
+  });
+
+  it('等待异步回收错误响应文件后返回，回收失败仍保留原请求错误', async () => {
+    let finish!: () => void;
+    native.remove.mockImplementationOnce(async path => {
+      await new Promise<void>(resolve => { finish = resolve; });
+      native.files.delete(path);
+    });
+    native.download.mockImplementation(async () => {
+      native.files.set(uri, new Uint8Array([1]));
+      return { uri, status: 404, headers: {} };
+    });
+    let finished = false;
+    const request = downloadChartResource(directory, 'resource.bin', 'https://download.test');
+    const rejection = expect(request).rejects.toMatchObject({ code: 'no_data' });
+    void request.catch(() => { finished = true; });
+    await vi.waitFor(() => expect(finish).toBeTypeOf('function'));
+    expect(native.files.has(uri)).toBe(true);
+    expect(finished).toBe(false);
+    finish();
+    await rejection;
+    expect(native.files.has(uri)).toBe(false);
+
+    native.remove.mockRejectedValueOnce(new Error('I/O failure'));
+    await expect(downloadChartResource(directory, 'resource.bin', 'https://download.test'))
+      .rejects.toMatchObject({ code: 'no_data' });
+    expect(native.files.has(uri)).toBe(true);
   });
 });

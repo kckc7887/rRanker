@@ -84,8 +84,8 @@ describe('Phigros release transactions', () => {
     expect(service.asset(first, 'illustrations/Song.A.png').path).toBe('illustrations/Song.A.png');
   });
 
-  it('rejects duplicate logical paths in a verified manifest and keeps the previous release usable', async () => {
-    const fixture = releaseFixture();
+  it.each(['catalog.json', 'music/Song.A.7.ogg'])('rejects duplicate %s paths in a verified manifest and keeps the previous release usable', async path => {
+    const fixture = releaseFixture('r1', ['Song.A'], { variants: [7] });
     let duplicateManifest: Uint8Array<ArrayBuffer> | undefined;
     vi.stubGlobal('fetch', vi.fn(async input => {
       const path = new URL(String(input)).pathname;
@@ -96,7 +96,7 @@ describe('Phigros release transactions', () => {
     const service = new PhigrosResourceService();
     const previous = await service.load();
     duplicateManifest = new TextEncoder().encode(JSON.stringify({
-      ...fixture.manifest, assets: [...fixture.manifest.assets, fixture.manifest.assets[0]],
+      ...fixture.manifest, assets: [...fixture.manifest.assets, fixture.manifest.assets.find(asset => asset.path === path)],
     }));
     fixture.current.manifestSha256 = createHash('sha256').update(duplicateManifest).digest('hex');
     fixture.current.manifest = `phigros/manifests/${fixture.current.manifestSha256}.json`;
