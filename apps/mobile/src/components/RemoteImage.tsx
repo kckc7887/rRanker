@@ -221,6 +221,8 @@ export function RemoteImage({
         }
       }}
       onError={(event) => {
+        if (activeRequestKeyRef.current !== requestKey) return;
+        if (showingRemote && original) void original.invalidate().catch(() => undefined);
         if (showingCached && resolved) {
           void invalidateCompressedRemoteImage(resolved.cacheKey);
           releaseRef.current?.();
@@ -245,7 +247,7 @@ export function RemoteImage({
         : showingCached
           ? resolved?.source ?? null
           : originalRequestKey === requestKey && original
-            ? { ...normalized?.source, uri: original.fileUri }
+            ? { ...normalized?.source, uri: original.fileUri, cacheKey: original.fileUri }
             : null}
     />
   );
