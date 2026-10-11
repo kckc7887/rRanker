@@ -1,5 +1,6 @@
 package expo.modules.resourceintegrity
 
+import android.net.Uri
 import expo.modules.kotlin.functions.Coroutine
 import expo.modules.kotlin.modules.Module
 import expo.modules.kotlin.modules.ModuleDefinition
@@ -28,6 +29,23 @@ class ResourceIntegrityModule : Module() {
           }
         }
         digest.digest().joinToString("") { byte -> (byte.toInt() and 0xff).toString(16).padStart(2, '0') }
+      }
+    }
+
+    AsyncFunction("copyFileToContentUriAsync") Coroutine { fromUri: String, toUri: String ->
+      withContext(Dispatchers.IO) {
+        val source = File(URI(fromUri))
+        require(source.isFile) { "Expected a regular local file" }
+        val destination = Uri.parse(toUri)
+        require(destination.scheme == "content") { "Expected a content URI" }
+        val resolver = appContext.reactContext?.contentResolver
+          ?: throw IllegalStateException("React context is unavailable")
+        FileInputStream(source).use { input ->
+          val output = resolver.openOutputStream(destination, "w")
+            ?: throw IllegalStateException("Unable to open destination stream")
+          output.use { input.copyTo(it, 64 * 1024) }
+        }
+        Unit
       }
     }
   }

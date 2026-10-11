@@ -6,9 +6,11 @@ import { Directory } from 'expo-file-system';
 const native = vi.hoisted(() => ({
   downloadFileAsync: vi.fn(),
   pickDirectoryAsync: vi.fn(),
+  copyFileToContentUriAsync: vi.fn<(fromUri: string, toUri: string) => Promise<void>>(),
   downloaded: [] as { url: string; uri: string }[],
   texts: new Map<string, string>(),
   bytes: new Map<string, Uint8Array>(),
+  documents: new Map<string, Uint8Array>(),
   resourceBytes: new Map<string, Uint8Array>(),
   writes: [] as { uri: string; content: string | Uint8Array }[],
   createFileCalls: [] as { name: string; mime: string | null }[],
@@ -42,6 +44,7 @@ vi.mock('expo-file-system', () => {
     async bytes() { throw new Error('whole-file reads are forbidden'); }
     create() { native.bytes.set(this.uri, new Uint8Array()); }
     copy(destination: { uri: string; write: (bytes: Uint8Array) => void }) {
+      if (destination.uri.startsWith('content://')) throw new Error('File.copy does not support content URIs');
       if (destination.uri.startsWith('file://') && native.bytes.has(destination.uri)) {
         throw new Error('The destination file already exists');
       }
@@ -123,6 +126,12 @@ vi.mock('expo-file-system/legacy', () => ({
   }),
 }));
 
+vi.mock('expo-modules-core', () => ({
+  requireNativeModule: () => ({
+    copyFileToContentUriAsync: (fromUri: string, toUri: string) => native.copyFileToContentUriAsync(fromUri, toUri),
+  }),
+}));
+
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import JSZip from 'jszip';
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
@@ -135,12 +144,18 @@ import {
 
 function pickedDirectoryMock() {
   return {
-    uri: 'picked://',
+    uri: 'content://exports',
     createFile: (name: string, mime: string | null) => {
       native.createFileCalls.push({ name, mime });
+      const uri = `content://exports/${name}`;
+      native.documents.set(uri, new Uint8Array());
       return {
-        uri: `picked://${name}`,
-        write: (content: string | Uint8Array) => native.writes.push({ uri: `picked://${name}`, content }),
+        uri,
+        write: (content: string | Uint8Array) => {
+          native.writes.push({ uri, content });
+          native.documents.set(uri, typeof content === 'string' ? new TextEncoder().encode(content) : content);
+        },
+        delete: () => { native.deleted.push(uri); native.documents.delete(uri); },
       };
     },
   };
@@ -152,6 +167,7 @@ describe('maimai chart download', () => {
     native.downloaded.length = 0;
     native.texts.clear();
     native.bytes.clear();
+    native.documents.clear();
     native.resourceBytes.clear();
     native.writes.length = 0;
     native.createFileCalls.length = 0;
@@ -168,6 +184,12 @@ describe('maimai chart download', () => {
       native.downloaded.push({ url, uri });
     });
     native.pickDirectoryAsync.mockResolvedValue(pickedDirectoryMock());
+    native.copyFileToContentUriAsync.mockReset().mockImplementation(async (fromUri, toUri) => {
+      const content = native.bytes.get(fromUri);
+      if (!content) throw new Error('Source file does not exist');
+      native.documents.set(toUri, content);
+      native.writes.push({ uri: toUri, content });
+    });
     native.cancelDownload.mockResolvedValue(undefined);
   });
 
@@ -201,7 +223,7 @@ describe('maimai chart download', () => {
     ]);
 
     expect(native.createFileCalls).toEqual([{ name: '测试曲目 DX 12+.adx.zip', mime: 'application/zip' }]);
-    const written = native.writes.find((entry) => entry.uri.startsWith('picked://'));
+    const written = native.writes.find((entry) => entry.uri.startsWith('content://'));
     expect(written).toBeTruthy();
     const zip = await JSZip.loadAsync(written!.content as Uint8Array);
     const fileNames = Object.keys(zip.files).filter((name) => !zip.files[name]!.dir).sort();
@@ -230,7 +252,7 @@ describe('maimai chart download', () => {
     });
     expect(saved).toBe(true);
     expect(native.downloaded.map((entry) => entry.url)).not.toContain('https://maimai-video.lxns.net/123.mp4');
-    const written = native.writes.find((entry) => entry.uri.startsWith('picked://'));
+    const written = native.writes.find((entry) => entry.uri.startsWith('content://'));
     const zip = await JSZip.loadAsync(written!.content as Uint8Array);
     const fileNames = Object.keys(zip.files).filter((name) => !zip.files[name]!.dir).sort();
     expect(fileNames).toEqual([
@@ -238,6 +260,57 @@ describe('maimai chart download', () => {
       '测试曲目 SD 5/maidata.txt',
       '测试曲目 SD 5/track.mp3',
     ]);
+  });
+
+  it('将 Majdata 完整谱包原字节保存到 SAF 目录', async () => {
+    let originalBytes!: Uint8Array;
+    native.copyFileToContentUriAsync.mockImplementationOnce(async (fromUri, toUri) => {
+      originalBytes = native.bytes.get(fromUri)!.slice();
+      native.documents.set(toUri, originalBytes);
+    });
+    await expect(downloadSimaiPackage({ title: 'Majdata', suffix: 'Master', resources: [
+      { fileName: 'maidata.txt', url: 'https://majdata.net/chart' },
+    ] })).resolves.toBe(true);
+    const copied = native.documents.get('content://exports/Majdata Master.zip')!;
+    expect(copied).toEqual(originalBytes);
+    const zip = await JSZip.loadAsync(copied, { checkCRC32: true });
+    expect(await zip.file('Majdata Master/maidata.txt')!.async('string')).toBe('https://majdata.net/chart\n谱面内容');
+  });
+
+  it.each(['cancel', 'copy failure'] as const)('SAF 复制中 %s 只回收新目标并保留源至复制结束', async outcome => {
+    const entered = Promise.withResolvers<{ fromUri: string; toUri: string }>();
+    const resume = Promise.withResolvers<void>();
+    const copyError = new Error('destination write failed');
+    const existingUri = 'content://exports/previous.zip';
+    const existingBytes = new Uint8Array([7, 8, 9]);
+    native.documents.set(existingUri, existingBytes);
+    native.copyFileToContentUriAsync.mockImplementationOnce(async (fromUri, toUri) => {
+      native.documents.set(toUri, new Uint8Array([1, 2]));
+      entered.resolve({ fromUri, toUri });
+      await resume.promise;
+      if (outcome === 'copy failure') throw copyError;
+      native.documents.set(toUri, native.bytes.get(fromUri)!);
+    });
+    const controller = new AbortController();
+    const pending = downloadSimaiPackage({ title: 'Majdata', suffix: 'Master', resources: [
+      { fileName: 'maidata.txt', url: 'https://majdata.net/chart' },
+    ] }, { signal: controller.signal });
+    const rejected = outcome === 'cancel'
+      ? expect(pending).rejects.toBeInstanceOf(MaimaiChartDownloadCancelledError)
+      : expect(pending).rejects.toMatchObject({ cause: copyError });
+    const { fromUri, toUri } = await entered.promise;
+    expect(native.bytes.has(fromUri)).toBe(true);
+    expect(native.documents.get(toUri)).toEqual(new Uint8Array([1, 2]));
+    if (outcome === 'cancel') controller.abort();
+    expect(native.bytes.has(fromUri)).toBe(true);
+    expect(native.deleted).not.toContain(native.createdDirs[0]);
+    resume.resolve();
+    await rejected;
+    expect(native.documents.has(toUri)).toBe(false);
+    expect(native.documents.get(existingUri)).toEqual(existingBytes);
+    expect(native.bytes.has(fromUri)).toBe(false);
+    expect(native.deleted).toContain(toUri);
+    expect(native.deleted).toContain(native.createdDirs[0]);
   });
 
   it.each([
@@ -311,7 +384,7 @@ describe('maimai chart download', () => {
     await failed;
     await expect(second).resolves.toBe(true);
     expect(native.createFileCalls).toEqual([{ name: 'second.zip', mime: 'application/zip' }]);
-    expect(native.writes).toEqual([{ uri: 'picked://second.zip', content: new Uint8Array([2]) }]);
+    expect(native.writes).toEqual([{ uri: 'content://exports/second.zip', content: new Uint8Array([2]) }]);
   });
 
   it('排队保存取消后不打开选择器并继续处理下一项', async () => {
