@@ -1,5 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import type { RemoteImageOriginal } from '@/services/remote-image-cache';
 import {
   RemoteImage,
   RemoteImageActivityScope,
@@ -8,8 +9,9 @@ import {
 
 const mockFind = jest.fn<() => Promise<unknown>>();
 const mockCache = jest.fn<(_source: unknown, _options: unknown, signal?: AbortSignal) => Promise<unknown>>();
-const mockAcquire = jest.fn<(_source: unknown, _gameId: string, signal?: AbortSignal) => Promise<{ fileUri: string; release: () => Promise<void> }>>();
+const mockAcquire = jest.fn<(_source: unknown, _gameId: string, signal?: AbortSignal) => Promise<RemoteImageOriginal>>();
 const mockReleaseOriginal = jest.fn<() => Promise<void>>();
+const mockInvalidateOriginal = jest.fn<() => Promise<void>>();
 const mockInvalidate = jest.fn<() => Promise<void>>();
 
 jest.mock('@/services/remote-image-cache', () => ({
@@ -36,7 +38,7 @@ jest.mock('expo-image', () => {
 });
 
 const remoteSource = 'https://example.test/cover.jpg';
-const originalSource = { uri: 'file:///original.jpg' };
+const originalSource = { uri: 'file:///original.jpg', cacheKey: 'file:///original.jpg' };
 const cachedResult = {
   cacheKey: 'cached-cover',
   fileUri: 'file:///cached.webp',
@@ -68,7 +70,7 @@ describe('RemoteImage 压缩垫图', () => {
 
   it('releases an obsolete original and never replaces the current cached source with a late result', async () => {
     mockFind.mockResolvedValue(cachedResult);
-    const old = Promise.withResolvers<{ fileUri: string; release: () => Promise<void> }>();
+    const old = Promise.withResolvers<RemoteImageOriginal>();
     mockAcquire.mockReturnValueOnce(old.promise);
     const screen = await render(<RemoteImage cacheProfile="thumbnail" gameId="maimai" source={remoteSource} testID="cover" />);
     await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source));
@@ -79,7 +81,7 @@ describe('RemoteImage 压缩垫图', () => {
     await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source));
     expect(signal?.aborted).toBe(true);
     const releaseOld = jest.fn<() => Promise<void>>().mockResolvedValue();
-    old.resolve({ fileUri: 'file:///old.jpg', release: releaseOld });
+    old.resolve({ fileUri: 'file:///old.jpg', release: releaseOld, invalidate: mockInvalidateOriginal });
     await waitFor(() => expect(releaseOld).toHaveBeenCalled());
     expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source);
     await fireEvent(screen.getByTestId('cover'), 'display');
@@ -155,7 +157,7 @@ describe('RemoteImage 压缩垫图', () => {
     await waitFor(() => expect(mockFind).toHaveBeenCalledTimes(3));
     await fireEvent(screen.getByTestId('cover'), 'display');
     await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual({
-      ...originalSource, headers: { Authorization: 'second' }, cacheKey: 'other',
+      ...originalSource, headers: { Authorization: 'second' },
     }));
     expect(mockAcquire).toHaveBeenCalledWith({
       uri: remoteSource, headers: { Authorization: 'second' }, cacheKey: 'other',
@@ -164,8 +166,10 @@ describe('RemoteImage 压缩垫图', () => {
   });
   beforeEach(() => {
     jest.clearAllMocks();
-    mockAcquire.mockReset().mockResolvedValue({ fileUri: originalSource.uri, release: mockReleaseOriginal });
+    mockAcquire.mockReset().mockResolvedValue({ fileUri: originalSource.uri,
+      release: mockReleaseOriginal, invalidate: mockInvalidateOriginal });
     mockReleaseOriginal.mockReset().mockResolvedValue();
+    mockInvalidateOriginal.mockReset().mockResolvedValue();
     mockCache.mockResolvedValue(null);
     mockInvalidate.mockResolvedValue();
   });
@@ -184,7 +188,7 @@ describe('RemoteImage 压缩垫图', () => {
 
   it('等待原图期间和标签往返持续显示缓存，原图文件成功显示后只通知一次', async () => {
     mockFind.mockResolvedValue(cachedResult);
-    const pending = Promise.withResolvers<{ fileUri: string; release: () => Promise<void> }>();
+    const pending = Promise.withResolvers<RemoteImageOriginal>();
     mockAcquire.mockReturnValueOnce(pending.promise);
     const onDisplay = jest.fn();
     const tree = (active: boolean) => <RemoteImageActivityScope active={active}>
@@ -209,7 +213,7 @@ describe('RemoteImage 压缩垫图', () => {
     expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source);
     await fireEvent(screen.getByTestId('cover'), 'display');
     expect(onDisplay).not.toHaveBeenCalled();
-    pending.resolve({ fileUri: originalSource.uri, release: mockReleaseOriginal });
+    pending.resolve({ fileUri: originalSource.uri, release: mockReleaseOriginal, invalidate: mockInvalidateOriginal });
     await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(originalSource));
     expect(screen.getByTestId('cover').props.cachePolicy).toBe('memory');
     await fireEvent(screen.getByTestId('cover'), 'display');
@@ -221,7 +225,7 @@ describe('RemoteImage 压缩垫图', () => {
 
   it.each(['thumbnail', 'artwork'] as const)('原图下载失败时 %s 缓存保持可见且不触发卡片失败回退', async cacheProfile => {
     mockFind.mockResolvedValue(cachedResult);
-    const pending = Promise.withResolvers<{ fileUri: string; release: () => Promise<void> }>();
+    const pending = Promise.withResolvers<RemoteImageOriginal>();
     mockAcquire.mockReturnValueOnce(pending.promise);
     const onError = jest.fn();
     const onDisplay = jest.fn();
@@ -247,7 +251,7 @@ describe('RemoteImage 压缩垫图', () => {
 
   it('等待原图期间缓存解码失败后不再把损坏缓存作为下载失败回退', async () => {
     mockFind.mockResolvedValue(cachedResult);
-    const pending = Promise.withResolvers<{ fileUri: string; release: () => Promise<void> }>();
+    const pending = Promise.withResolvers<RemoteImageOriginal>();
     mockAcquire.mockReturnValueOnce(pending.promise);
     const onError = jest.fn();
     const screen = await render(<RemoteImage cacheProfile="thumbnail" gameId="maimai"
@@ -290,6 +294,7 @@ describe('RemoteImage 压缩垫图', () => {
     await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(originalSource));
     await fireEvent(screen.getByTestId('cover'), 'error', {});
     expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source);
+    expect(mockInvalidateOriginal).toHaveBeenCalled();
     expect(onError).not.toHaveBeenCalled();
     await screen.unmount();
   });
@@ -303,6 +308,26 @@ describe('RemoteImage 压缩垫图', () => {
     await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(originalSource));
     await fireEvent(screen.getByTestId('cover'), 'error', {});
     expect(onError).toHaveBeenCalledTimes(1);
+    expect(mockInvalidateOriginal).toHaveBeenCalled();
+    await screen.unmount();
+  });
+
+  it('旧图片的迟到解码失败不使当前图片失效', async () => {
+    mockFind.mockResolvedValue(cachedResult);
+    const screen = await render(<RemoteImage cacheProfile="artwork" gameId="maimai"
+      source={remoteSource} testID="cover" />);
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source));
+    await fireEvent(screen.getByTestId('cover'), 'display');
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(originalSource));
+    const obsoleteFailure = screen.getByTestId('cover').props.onError;
+    await screen.rerender(<RemoteImage cacheProfile="artwork" gameId="maimai"
+      source="https://example.test/another.jpg" testID="cover" />);
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source));
+    await fireEvent(screen.getByTestId('cover'), 'display');
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(originalSource));
+    await act(async () => { obsoleteFailure({ error: 'late decode failure' }); });
+    expect(mockInvalidateOriginal).not.toHaveBeenCalled();
+    expect(screen.getByTestId('cover').props.source).toEqual(originalSource);
     await screen.unmount();
   });
 
