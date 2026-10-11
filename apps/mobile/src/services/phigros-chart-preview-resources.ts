@@ -21,7 +21,7 @@ export function loadPhigrosChartPreviewVariants(
   signal: AbortSignal,
 ): Promise<number[]> {
   return phigrosResources.withRelease(async release =>
-    resolvePhigrosChartPreviewVariants(release.manifest.assets, target), signal);
+    resolvePhigrosChartPreviewVariants(release.assetsByPath.keys(), target), signal);
 }
 
 export function loadPhigrosChartPreviewResources(

@@ -44,6 +44,6 @@ export async function downloadPhiraChartPackage(
       options.signal,
     );
   } finally {
-    cleanupChartDownloadSessionDirectory(staging);
+    await cleanupChartDownloadSessionDirectory(staging);
   }
 }

@@ -1,6 +1,7 @@
 import { Directory, File, Paths } from 'expo-file-system';
 import {
   createDownloadResumable,
+  deleteAsync,
   type DownloadProgressData,
 } from 'expo-file-system/legacy';
 import { ProviderError, providerErrorFromStatus, type ProviderErrorCode } from '@/providers/errors';
@@ -66,8 +67,8 @@ export function createChartDownloadSessionDirectory(): Directory {
   return directory;
 }
 
-export function cleanupChartDownloadSessionDirectory(directory: Directory): void {
-  try { if (directory.exists) directory.delete(); }
+export async function cleanupChartDownloadSessionDirectory(directory: Directory): Promise<void> {
+  try { await deleteAsync(directory.uri, { idempotent: true }); }
   catch (error) { recordRuntimeError('chart-download-cleanup', error, false, { phase: 'cleanup' }); }
 }
 
@@ -87,8 +88,8 @@ export async function downloadChartResource(
   let diagnosticError: unknown;
   void recordRuntimeDiagnostic('request-start', diagnostic);
   let discarded = false;
-  const cleanup = () => {
-    try { if (file.exists) file.delete(); }
+  const cleanup = async () => {
+    try { await deleteAsync(file.uri, { idempotent: true }); }
     catch (error) { recordRuntimeError('chart-resource-cleanup', error, false, { phase: 'cleanup', operationId: diagnostic.operationId }); }
   };
   const task = createDownloadResumable(url, file.uri, {}, (progress) => {
@@ -100,7 +101,7 @@ export async function downloadChartResource(
     discarded = true;
     rejectCancelled(new ChartPackageDownloadCancelledError('谱面下载已取消', { cause: signal?.reason }));
     void Promise.resolve().then(() => task.cancelAsync()).catch(() => undefined);
-    cleanup();
+    void cleanup();
   };
   signal?.addEventListener('abort', cancelDownload, { once: true });
   try {
@@ -111,7 +112,7 @@ export async function downloadChartResource(
     });
     /** 原生取消可能迟到，再清理本次下载文件。 */
 
-    void pending.then(() => { if (discarded) cleanup(); }, () => { if (discarded) cleanup(); });
+    void pending.then(() => { if (discarded) return cleanup(); }, () => { if (discarded) return cleanup(); });
     const result = await Promise.race([pending, cancelled]);
     throwIfChartDownloadCancelled(signal);
     if (!result) throw new ChartPackageDownloadCancelledError('谱面下载已取消');
@@ -130,7 +131,7 @@ export async function downloadChartResource(
     return file;
   } catch (error) {
     discarded = true;
-    cleanup();
+    await cleanup();
     if (signal?.aborted || error instanceof ChartPackageDownloadCancelledError) {
       resultState = 'cancelled';
       throw new ChartPackageDownloadCancelledError('谱面下载已取消', { cause: error });
@@ -189,7 +190,7 @@ export async function saveChartPackage(
           else destination.write(output.bytes);
           throwIfChartDownloadCancelled(signal);
         } catch (error) {
-          try { destination.delete(); }
+          try { await deleteAsync(destination.uri, { idempotent: true }); }
           catch (cleanupError) { recordRuntimeError('chart-package-save-cleanup', cleanupError, false, { phase: 'cleanup' }); }
           throw error;
         }

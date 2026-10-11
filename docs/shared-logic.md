@@ -128,6 +128,8 @@ Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图�
 
 `features/chart-download-shared` 提供原生下载、进度和取消；各游戏负责组装谱面包。下载进度通过 `ActionNotificationInput.blocking: false` 显示，多个任务各自保留取消操作；其他操作通知默认阻挡，选择通知优先显示。`AppNotification` 的根返回监听与 `useNotificationModalRequestClose` 仅处理阻挡通知，普通提示仍按队列依次显示。`saveChartPackage(fileName, output, signal?)` 串行保存，轮到任务时等待前台并检查取消；`isChartPackageDirectoryPickerActive()` 标记原生目录选择至前台恢复的窗口，下载 hook 在该窗口保留并行任务。选择器实际结束前不放行下一项，即使当前任务已取消；恢复后再次检查取消再写盘。Android 文件输出通过 `utils/resource-integrity.ts` 的 `copyFileToContentUriAsync(fromUri, toUri)` 调用原生 64 KiB 后台复制，避免整份读入 JS；复制结束前源目录保持有效，返回后检查取消。失败或取消只删除本次新建目标，清理错误记录后保留原异常；iOS 普通文件复制不删除已存在目标。取消目录选择返回 `false`，请求取消保持 `ChartPackageDownloadCancelledError`，失败不阻塞后续保存。普通后台与页面卸载继续取消下载。Android 在目录选择器内再按 Home 时任务保留至选择器返回及应用恢复。舞萌、Majdata、Phigros、Phira、osu! 将下载任务的信号传到保存入口。
 
+`cleanupChartDownloadSessionDirectory(directory): Promise<void>` 异步删除所属下载目录，Simai、Phigros、Phira 与 osu! 下载在保存结束后等待回收；取消及原生迟到文件使用异步删除，失败记录诊断但不覆盖原请求结果。Phigros 的 `resolvePhigrosChartPreviewAssetBundle` 直接消费发布对象的 `assetsByPath` 定位精确资源，默认目标缺失时保留目录归属和变体歧义判定；变体枚举消费该索引的路径，不重复构造清单数组。
+
 ## 工具与诊断
 
 `components/ArcadeMap` 是音游地图的公共 UI 入口，接收 WGS84 相机目标、恢复中心、机厅与选中 ID；平台视图通过 `NativeArcadeMap` 装配 MapKit 或高德。`ArcadeMapCamera.radiusKm` 仅用于设置视野，省略时保留当前缩放并移动中心；首次定位和搜索选址使用 2 公里，再次定位和点击附近列表机厅省略视野。公共层提供放大、缩小和定位图标控件，通过 `zoomRequest` 将逐级缩放交给原生相机；Android 分别调用 `setZoom`、`setCenter`，iOS 分别更新相机高度、中心。公共层管理高德首次说明、加载失败重试和手势来源，程序移动与缩放不发出用户选址事件。`services/arcade-map-platform.ts` 共用地图与地点搜索的架构、配置和同意状态；读取失败转为地图重试状态。`ArcadeFilterBar`、`ArcadeBusinessStatusLabel`、`arcadeFinderPreferencesStore` 与外部导航入口继续共用。筛选器只提供距离与机型，距离复用 `RangeSelector`，范围 0–30 公里、步长 1 公里；`minDistanceKm`、`radiusKm` 与机型按游戏保存，默认 0–10 公里、任意机型并收起筛选。重置保留地图中心；存储只接受当前范围结构，结构失效重建所属游戏键，I/O 失败不重建。

@@ -84,6 +84,6 @@ export async function downloadPhigrosChartAsPhiraPackage(
       signal,
     );
   } finally {
-    cleanupChartDownloadSessionDirectory(staging);
+    await cleanupChartDownloadSessionDirectory(staging);
   }
 }

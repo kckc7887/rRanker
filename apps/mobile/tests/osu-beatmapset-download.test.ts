@@ -28,6 +28,9 @@ vi.mock('expo-file-system', () => {
   }
   return { Directory, File };
 });
+vi.mock('expo-file-system/legacy', () => ({
+  deleteAsync: async (uri: string) => { mocks.files.delete(uri); mocks.sizes.delete(uri); },
+}));
 vi.mock('@/features/chart-download-shared/chart-download-shared', () => ({
   chartPackageNameWithSuffix: (title: string, suffix: string) => `${title} ${suffix}`,
   cleanupChartDownloadSessionDirectory: (directory: unknown) => mocks.cleanup(directory),

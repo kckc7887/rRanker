@@ -109,6 +109,13 @@ vi.mock('expo-file-system', () => {
 });
 
 vi.mock('expo-file-system/legacy', () => ({
+  deleteAsync: async (uri: string) => {
+    if (native.deleteError) throw native.deleteError;
+    native.deleted.push(uri);
+    for (const entries of [native.bytes, native.documents]) {
+      for (const key of entries.keys()) if (key === uri || key.startsWith(`${uri}/`)) entries.delete(key);
+    }
+  },
   createDownloadResumable: (
     url: string,
     uri: string,
