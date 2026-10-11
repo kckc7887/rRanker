@@ -7,6 +7,7 @@ import { providerErrorFromStatus, providerErrorToUserMessage } from '@/providers
 import { requestProviderResponse } from '@/providers/http-json';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import {
+  isChartPackageDirectoryPickerActive,
   type ChartPackageDownloadOptions,
 } from './chart-download-shared';
 
@@ -75,6 +76,7 @@ export function useChartPackageDownload({
 
   useEffect(() => {
     if (lifecycle.phase === 'background') {
+      if (isChartPackageDirectoryPickerActive()) return;
       if (controllerRef.current) {
         backgroundCanceledRef.current = true;
         controllerRef.current.abort();

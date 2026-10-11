@@ -126,7 +126,7 @@ Phigros/Rizline 预览和下载共用 `phigrosResources`、`rizlineResources`、
 
 Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图读取时校验 Phigros 头像属于当前哈希地址结构，失效缓存通过所属仓库入口重建；头像同步会重新解析结构失效的地址，其他游戏头像缓存格式保持各自合同。
 
-`features/chart-download-shared` 提供原生下载、进度和取消；各游戏负责组装谱面包。下载进度通过 `ActionNotificationInput.blocking: false` 显示，多个任务各自保留取消操作；其他操作通知默认阻挡，选择通知优先显示。`AppNotification` 的根返回监听与 `useNotificationModalRequestClose` 仅处理阻挡通知，普通提示仍按队列依次显示。`saveChartPackage(fileName, output, signal?)` 在目录选择前、目录选择后及写出前检查取消，保持 `ChartPackageDownloadCancelledError`。舞萌、Majdata、Phigros、Phira、osu! 将下载任务的信号传到保存入口。
+`features/chart-download-shared` 提供原生下载、进度和取消；各游戏负责组装谱面包。下载进度通过 `ActionNotificationInput.blocking: false` 显示，多个任务各自保留取消操作；其他操作通知默认阻挡，选择通知优先显示。`AppNotification` 的根返回监听与 `useNotificationModalRequestClose` 仅处理阻挡通知，普通提示仍按队列依次显示。`saveChartPackage(fileName, output, signal?)` 串行保存，轮到任务时等待前台并检查取消；`isChartPackageDirectoryPickerActive()` 标记原生目录选择至前台恢复的窗口，下载 hook 在该窗口保留并行任务。选择器实际结束前不放行下一项，即使当前任务已取消；恢复后再次检查取消再写盘。取消目录选择返回 `false`，请求取消保持 `ChartPackageDownloadCancelledError`，失败不阻塞后续保存。普通后台与页面卸载继续取消下载。Android 在目录选择器内再按 Home 时任务保留至选择器返回及应用恢复。舞萌、Majdata、Phigros、Phira、osu! 将下载任务的信号传到保存入口。
 
 ## 工具与诊断
 

@@ -5,6 +5,7 @@ import {
 } from 'expo-file-system/legacy';
 import { ProviderError, providerErrorFromStatus, type ProviderErrorCode } from '@/providers/errors';
 import { nextRuntimeOperationId, recordRuntimeDiagnostic, recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
+import { waitForForeground } from '@/state/app-lifecycle-core';
 
 export class ChartPackageDownloadError extends ProviderError {
   constructor(message: string, options?: ErrorOptions, code: ProviderErrorCode = 'unknown', retryable = false) {
@@ -30,6 +31,12 @@ export type ChartPackageOutput =
 
 const SAFE_NAME_MAX_LENGTH = 40;
 let sessionSequence = 0;
+let saveQueue: Promise<void> = Promise.resolve();
+let directoryPickerActive = false;
+
+export function isChartPackageDirectoryPickerActive(): boolean {
+  return directoryPickerActive;
+}
 
 export function sanitizeChartPackageName(value: string): string {
   const normalized = value.normalize('NFKC').trim()
@@ -155,22 +162,38 @@ export async function saveChartPackage(
   signal?: AbortSignal,
 ): Promise<boolean> {
   throwIfChartDownloadCancelled(signal);
-  try {
-    const picked = await Directory.pickDirectoryAsync();
+  const pending = saveQueue.then(async () => {
     throwIfChartDownloadCancelled(signal);
-    if (output.kind === 'file' && picked.uri.startsWith('file://')) {
-      /** iOS 复制不允许目标文件已存在。 */
-      output.file.copy(new File(picked.uri, fileName));
-    } else {
-      const destination = picked.createFile(fileName, 'application/zip');
-      if (output.kind === 'file') output.file.copy(destination);
-      else destination.write(output.bytes);
+    try {
+      await waitForForeground(signal);
+      throwIfChartDownloadCancelled(signal);
+      let picked: Awaited<ReturnType<typeof Directory.pickDirectoryAsync>>;
+      directoryPickerActive = true;
+      try {
+        picked = await Directory.pickDirectoryAsync();
+      } finally {
+        /** 原生选择器返回和应用恢复完成前不放行下一项保存。 */
+        await waitForForeground();
+        directoryPickerActive = false;
+      }
+      throwIfChartDownloadCancelled(signal);
+      if (output.kind === 'file' && picked.uri.startsWith('file://')) {
+        /** iOS 复制不允许目标文件已存在。 */
+        output.file.copy(new File(picked.uri, fileName));
+      } else {
+        const destination = picked.createFile(fileName, 'application/zip');
+        throwIfChartDownloadCancelled(signal);
+        if (output.kind === 'file') output.file.copy(destination);
+        else destination.write(output.bytes);
+      }
+      return true;
+    } catch (error) {
+      if (error instanceof ChartPackageDownloadCancelledError) throw error;
+      throwIfChartDownloadCancelled(signal);
+      if (isDirectoryPickerCancellation(error)) return false;
+      throw new ChartPackageDownloadError('无法打开保存位置选择', { cause: error });
     }
-    return true;
-  } catch (error) {
-    if (error instanceof ChartPackageDownloadCancelledError) throw error;
-    throwIfChartDownloadCancelled(signal);
-    if (isDirectoryPickerCancellation(error)) return false;
-    throw new ChartPackageDownloadError('无法打开保存位置选择', { cause: error });
-  }
+  });
+  saveQueue = pending.then(() => undefined, () => undefined);
+  return pending;
 }

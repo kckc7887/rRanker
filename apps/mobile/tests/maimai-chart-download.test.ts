@@ -299,6 +299,56 @@ describe('maimai chart download', () => {
     expect(native.writes).toEqual([]);
   });
 
+  it('串行选择保存位置且首项失败后仍能保存下一项', async () => {
+    const picker = Promise.withResolvers<Directory>();
+    native.pickDirectoryAsync.mockReturnValueOnce(picker.promise);
+    const first = saveChartPackage('first.zip', { kind: 'bytes', bytes: new Uint8Array([1]) });
+    const failed = expect(first).rejects.toBeInstanceOf(MaimaiChartDownloadError);
+    const second = saveChartPackage('second.zip', { kind: 'bytes', bytes: new Uint8Array([2]) });
+    await vi.waitFor(() => expect(native.pickDirectoryAsync).toHaveBeenCalledTimes(1));
+    expect(native.writes).toEqual([]);
+    picker.reject(new Error('picker unavailable'));
+    await failed;
+    await expect(second).resolves.toBe(true);
+    expect(native.createFileCalls).toEqual([{ name: 'second.zip', mime: 'application/zip' }]);
+    expect(native.writes).toEqual([{ uri: 'picked://second.zip', content: new Uint8Array([2]) }]);
+  });
+
+  it('排队保存取消后不打开选择器并继续处理下一项', async () => {
+    const picker = Promise.withResolvers<Directory>();
+    native.pickDirectoryAsync.mockReturnValueOnce(picker.promise);
+    const first = saveChartPackage('first.zip', { kind: 'bytes', bytes: new Uint8Array([1]) });
+    const controller = new AbortController();
+    const second = saveChartPackage('cancelled.zip', { kind: 'bytes', bytes: new Uint8Array([2]) }, controller.signal);
+    const cancelled = expect(second).rejects.toBeInstanceOf(MaimaiChartDownloadCancelledError);
+    const third = saveChartPackage('third.zip', { kind: 'bytes', bytes: new Uint8Array([3]) });
+    await vi.waitFor(() => expect(native.pickDirectoryAsync).toHaveBeenCalledTimes(1));
+    controller.abort();
+    picker.resolve(new Directory('file:///exports'));
+    await expect(first).resolves.toBe(true);
+    await cancelled;
+    await expect(third).resolves.toBe(true);
+    expect(native.createFileCalls.map(item => item.name)).toEqual(['first.zip', 'third.zip']);
+  });
+
+  it('取消当前保存仍等待原生选择器结束再打开下一项', async () => {
+    const picker = Promise.withResolvers<Directory>();
+    native.pickDirectoryAsync.mockReturnValueOnce(picker.promise);
+    const controller = new AbortController();
+    const first = saveChartPackage('cancelled.zip', { kind: 'bytes', bytes: new Uint8Array([1]) }, controller.signal);
+    const cancelled = expect(first).rejects.toBeInstanceOf(MaimaiChartDownloadCancelledError);
+    const second = saveChartPackage('second.zip', { kind: 'bytes', bytes: new Uint8Array([2]) });
+    await vi.waitFor(() => expect(native.pickDirectoryAsync).toHaveBeenCalledTimes(1));
+    controller.abort();
+    await Promise.resolve();
+    expect(native.pickDirectoryAsync).toHaveBeenCalledTimes(1);
+    expect(native.writes).toEqual([]);
+    picker.resolve(new Directory('file:///exports'));
+    await cancelled;
+    await expect(second).resolves.toBe(true);
+    expect(native.createFileCalls.map(item => item.name)).toEqual(['second.zip']);
+  });
+
   it('Simai 谱包在目录选择期间取消后不保存并清理临时文件', async () => {
     let chooseDirectory!: (directory: Directory) => void;
     native.pickDirectoryAsync.mockImplementationOnce(() => new Promise(resolve => { chooseDirectory = resolve; }));
