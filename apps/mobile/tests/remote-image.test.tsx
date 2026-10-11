@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import {
   RemoteImage,
@@ -66,20 +66,24 @@ describe('RemoteImage 压缩垫图', () => {
     expect(mockReleaseOriginal).toHaveBeenCalledTimes(1);
   });
 
-  it('releases an obsolete original and never replaces the current source with a late result', async () => {
-    mockFind.mockResolvedValue(null);
+  it('releases an obsolete original and never replaces the current cached source with a late result', async () => {
+    mockFind.mockResolvedValue(cachedResult);
     const old = Promise.withResolvers<{ fileUri: string; release: () => Promise<void> }>();
     mockAcquire.mockReturnValueOnce(old.promise);
     const screen = await render(<RemoteImage cacheProfile="thumbnail" gameId="maimai" source={remoteSource} testID="cover" />);
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source));
+    await fireEvent(screen.getByTestId('cover'), 'display');
     await waitFor(() => expect(mockAcquire).toHaveBeenCalled());
     const signal = mockAcquire.mock.calls[0][2];
     await screen.rerender(<RemoteImage cacheProfile="thumbnail" gameId="maimai" source="https://example.test/new.jpg" testID="cover" />);
-    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(originalSource));
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source));
     expect(signal?.aborted).toBe(true);
     const releaseOld = jest.fn<() => Promise<void>>().mockResolvedValue();
     old.resolve({ fileUri: 'file:///old.jpg', release: releaseOld });
     await waitFor(() => expect(releaseOld).toHaveBeenCalled());
-    expect(screen.getByTestId('cover').props.source).toEqual(originalSource);
+    expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source);
+    await fireEvent(screen.getByTestId('cover'), 'display');
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(originalSource));
     await screen.unmount();
   });
 
@@ -149,6 +153,13 @@ describe('RemoteImage 压缩垫图', () => {
     await waitFor(() => expect(mockFind).toHaveBeenCalledTimes(2));
     await screen.rerender(tree('second', 'other'));
     await waitFor(() => expect(mockFind).toHaveBeenCalledTimes(3));
+    await fireEvent(screen.getByTestId('cover'), 'display');
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual({
+      ...originalSource, headers: { Authorization: 'second' }, cacheKey: 'other',
+    }));
+    expect(mockAcquire).toHaveBeenCalledWith({
+      uri: remoteSource, headers: { Authorization: 'second' }, cacheKey: 'other',
+    }, 'maimai', expect.any(AbortSignal));
     await screen.unmount();
   });
   beforeEach(() => {
@@ -171,27 +182,84 @@ describe('RemoteImage 压缩垫图', () => {
     await screen.unmount();
   });
 
-  it('先显示本地压缩图，再以内存在线图替换且不重复创建缓存', async () => {
+  it('等待原图期间和标签往返持续显示缓存，原图文件成功显示后只通知一次', async () => {
     mockFind.mockResolvedValue(cachedResult);
+    const pending = Promise.withResolvers<{ fileUri: string; release: () => Promise<void> }>();
+    mockAcquire.mockReturnValueOnce(pending.promise);
     const onDisplay = jest.fn();
-    const screen = await render(
+    const tree = (active: boolean) => <RemoteImageActivityScope active={active}>
       <RemoteImage
         cacheProfile="thumbnail"
         gameId="maimai"
         onDisplay={onDisplay}
         source={remoteSource}
         testID="cover"
-      />,
-    );
+      />
+    </RemoteImageActivityScope>;
+    const screen = await render(tree(true));
 
     await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source));
     expect(screen.getByTestId('cover').props.cachePolicy).toBe('none');
     await fireEvent(screen.getByTestId('cover'), 'display');
-    await waitFor(() => expect(screen.getByTestId('cover').props.source).toBe(remoteSource));
+    await waitFor(() => expect(mockAcquire).toHaveBeenCalled());
+    expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source);
+    await screen.rerender(tree(false));
+    expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source);
+    await screen.rerender(tree(true));
+    expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source);
+    await fireEvent(screen.getByTestId('cover'), 'display');
+    expect(onDisplay).not.toHaveBeenCalled();
+    pending.resolve({ fileUri: originalSource.uri, release: mockReleaseOriginal });
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(originalSource));
     expect(screen.getByTestId('cover').props.cachePolicy).toBe('memory');
+    await fireEvent(screen.getByTestId('cover'), 'display');
     await fireEvent(screen.getByTestId('cover'), 'display');
     await waitFor(() => expect(onDisplay).toHaveBeenCalledTimes(1));
     expect(mockCache).not.toHaveBeenCalled();
+    await screen.unmount();
+  });
+
+  it.each(['thumbnail', 'artwork'] as const)('原图下载失败时 %s 缓存保持可见且不触发卡片失败回退', async cacheProfile => {
+    mockFind.mockResolvedValue(cachedResult);
+    const pending = Promise.withResolvers<{ fileUri: string; release: () => Promise<void> }>();
+    mockAcquire.mockReturnValueOnce(pending.promise);
+    const onError = jest.fn();
+    const onDisplay = jest.fn();
+    const tree = (active: boolean) => <RemoteImageActivityScope active={active}>
+      <RemoteImage cacheProfile={cacheProfile} gameId="maimai" source={remoteSource}
+        onError={onError} onDisplay={onDisplay} testID="cover" />
+    </RemoteImageActivityScope>;
+    const screen = await render(tree(true));
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source));
+    await fireEvent(screen.getByTestId('cover'), 'display');
+    await waitFor(() => expect(mockAcquire).toHaveBeenCalled());
+    await act(async () => { pending.reject(new Error('offline')); });
+    expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source);
+    await screen.rerender(tree(false));
+    await screen.rerender(tree(true));
+    await fireEvent(screen.getByTestId('cover'), 'display');
+    expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source);
+    expect(onError).not.toHaveBeenCalled();
+    expect(onDisplay).not.toHaveBeenCalled();
+    expect(mockCache).not.toHaveBeenCalled();
+    await screen.unmount();
+  });
+
+  it('等待原图期间缓存解码失败后不再把损坏缓存作为下载失败回退', async () => {
+    mockFind.mockResolvedValue(cachedResult);
+    const pending = Promise.withResolvers<{ fileUri: string; release: () => Promise<void> }>();
+    mockAcquire.mockReturnValueOnce(pending.promise);
+    const onError = jest.fn();
+    const screen = await render(<RemoteImage cacheProfile="thumbnail" gameId="maimai"
+      source={remoteSource} onError={onError} testID="cover" />);
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source));
+    await fireEvent(screen.getByTestId('cover'), 'display');
+    await waitFor(() => expect(mockAcquire).toHaveBeenCalled());
+    await fireEvent(screen.getByTestId('cover'), 'error', { error: 'decode failed' });
+    pending.reject(new Error('offline'));
+    await waitFor(() => expect(onError).toHaveBeenCalledWith({ error: 'offline' }));
+    expect(screen.getByTestId('cover').props.source).toBeNull();
+    expect(mockInvalidate).toHaveBeenCalled();
     await screen.unmount();
   });
 
@@ -219,6 +287,7 @@ describe('RemoteImage 压缩垫图', () => {
     );
     await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source));
     await fireEvent(screen.getByTestId('cover'), 'display');
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(originalSource));
     await fireEvent(screen.getByTestId('cover'), 'error', {});
     expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source);
     expect(onError).not.toHaveBeenCalled();
