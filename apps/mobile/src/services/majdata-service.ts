@@ -226,7 +226,8 @@ export async function loadMajdataDemoScoresPage(page: number, signal: AbortSigna
           continue;
         }
         const statistics = simaiStatistics(chart);
-        records[index].push(buildMaxedMajdataScore(song, level, statistics.counts));
+        const record = buildMaxedMajdataScore(song, level, statistics.counts);
+        if (record.dxScore !== 0) records[index].push(record);
       }
     },
   });
