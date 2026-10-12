@@ -4,7 +4,7 @@
   "version": "0.4.0",
   "license": "AGPL-3.0-only",
   "scripts": {
-    "postinstall": "node scripts/patch-decode-uri-component.cjs && node scripts/patch-metro-image-size.cjs && node scripts/patch-react-native-webview-xiaomi-bridge.cjs && node scripts/patch-expo-file-handle.cjs && node scripts/patch-gaode-architecture.cjs",
+    "postinstall": "node scripts/patch-decode-uri-component.cjs && node scripts/patch-metro-image-size.cjs && node scripts/patch-react-native-webview-xiaomi-bridge.cjs && node scripts/patch-expo-file-handle.cjs",
     "start": "expo start",
     "android": "expo run:android",
     "ios": "expo run:ios",
@@ -49,7 +49,6 @@
     "expo-document-picker": "~14.0.8",
     "expo-file-system": "~19.0.24",
     "expo-font": "~14.0.11",
-    "expo-gaode-map": "2.3.1",
     "expo-image": "~3.0.11",
     "expo-image-manipulator": "~14.0.8",
     "expo-image-picker": "~17.0.11",
@@ -116,8 +115,7 @@
       "android": {
         "buildFromSource": ["expo-file-system"],
         "exclude": ["react-native-maps"]
-      },
-      "ios": { "exclude": ["expo-gaode-map"] }
+      }
     }
   }
 }
