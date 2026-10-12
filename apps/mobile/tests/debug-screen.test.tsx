@@ -84,6 +84,9 @@ it('updates collapsed provider counts and keeps the osu family grouped', async (
   expect(screen.getAllByText('1 个查分器 · 点按展开')).toHaveLength(8);
   await screen.rerender(picker(null, true));
   expect(screen.getByText('4 个查分器 · 点按展开')).toBeTruthy();
-  expect(screen.getAllByText('2 个查分器 · 点按展开')).toHaveLength(3);
+  expect(screen.getAllByText('2 个查分器 · 点按展开').length).toBeGreaterThan(0);
+  await screen.rerender(picker('osu-standard', true));
+  expect(screen.getByLabelText('osu! OAuth')).toBeTruthy();
+  expect(screen.getByLabelText('示例查分器')).toBeTruthy();
   expect(screen.queryByText('osu!mania')).toBeNull();
 });

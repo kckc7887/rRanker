@@ -75,6 +75,11 @@ import type { PhiraBestSnapshot, PhiraPlayerSnapshot } from '@/domain/phira';
 import { phiraBestsEntityKey, phiraPlayerEntityKey } from '@/services/phira-query';
 import { museDashPlayerEntityKey } from '@/services/muse-dash-query';
 import { tufPlayerEntityKey } from '@/services/tuf-query';
+import { buildMaxedRizlineSnapshot } from '@/providers/maxed-rizline-test-provider';
+import { maxedMajdataSnapshot } from '@/providers/maxed-majdata-test-provider';
+import { maxedPhiraPlayerSnapshot } from '@/providers/maxed-phira-test-provider';
+import { maxedTufPlayerSnapshot } from '@/providers/maxed-tuf-test-provider';
+import { maxedOsuPlayerSnapshot } from '@/providers/maxed-osu-test-provider';
 
 const repository = new SqliteSnapshotRepository();
 const tufCache = new TufCache();
@@ -112,6 +117,12 @@ export type GameDataLoader = (context: GameDataLoaderContext) => Promise<GameDat
 async function loadRizlineGameDataBundle(context: GameDataLoaderContext): Promise<GameDataLoadResult> {
   const { activeAccountId, hasSessionData, session, signal, assertCurrent, publish, readEntityValue } = context;
   const profile = getGameProfile('rizline');
+  if (context.activeProviderId === 'rizline-test') {
+    const catalog = await context.catalogQueries.rizline();
+    assertCurrent();
+    const snapshot = buildMaxedRizlineSnapshot(catalog.snapshot, context.activeAccount?.displayName ?? '示例账号');
+    return { bundle: { gameId: 'rizline', providerId: 'rizline-test', profile, payload: rizlinePayloadFromSnapshot(snapshot, catalog) } };
+  }
   const catalog = await context.catalogQueries.rizline().catch(() => undefined);
   assertCurrent();
   const toBundle = (snapshot: RizlineSnapshot): GameDataBundle => ({
@@ -143,6 +154,12 @@ async function loadRizlineGameDataBundle(context: GameDataLoaderContext): Promis
 async function loadMajdataGameDataBundle(context: GameDataLoaderContext): Promise<GameDataLoadResult> {
   const { activeAccountId, hasSessionData, session, signal, assertCurrent, publish, invalidateEntityValue } = context;
   const profile = getGameProfile('majdata-net');
+  if (context.activeProviderId === 'majdata-net-test') {
+    const snapshot = maxedMajdataSnapshot(context.activeAccount?.displayName ?? '示例账号');
+    return { bundle: { gameId: 'majdata-net', providerId: 'majdata-net-test', profile,
+      payload: { kind: 'majdata-net', snapshot, source: snapshot.source,
+        playerScore: { label: 'DX · Classic', value: 114514, display: '114514.0000%' } } } };
+  }
   const toBundle = (snapshot: MajdataSnapshot): GameDataBundle => ({ gameId: 'majdata-net', providerId: 'majdata-net', profile,
     payload: { kind: 'majdata-net', snapshot, source: snapshot.source,
       playerScore: { label: 'DX · Classic', value: majdataTotal(snapshot.records), display: majdataTotalText(snapshot) } } });
@@ -174,6 +191,12 @@ async function loadMajdataGameDataBundle(context: GameDataLoaderContext): Promis
 
 async function loadPhiraGameDataBundle(context: GameDataLoaderContext): Promise<GameDataLoadResult> {
   const { activeAccountId, activeProviderId, signal, assertCurrent, hasSessionData, readEntityValue, publishEntityValue } = context;
+  if (activeProviderId === 'phira-test') {
+    const snapshot = maxedPhiraPlayerSnapshot(context.activeAccount?.displayName);
+    return { bundle: { gameId: 'phira', providerId: 'phira-test', profile: getGameProfile('phira'),
+      payload: { kind: 'phira', snapshot, bests: null,
+        playerScore: { label: 'Ranking Score', value: 19, display: '19.00' }, source: snapshot.source } } };
+  }
   const playerId = phiraPlayerIdFromAccountId(activeAccountId);
   if (activeProviderId !== 'phira-community' || playerId === null) {
     return { bundle: ({ gameId: 'phira', providerId: null, profile: getGameProfile('phira'), payload: emptyGamePayload('phira', '未绑定 Phira 玩家') }) };
@@ -204,6 +227,12 @@ async function loadPhiraGameDataBundle(context: GameDataLoaderContext): Promise<
 
 async function loadAdofaiGameDataBundle(context: GameDataLoaderContext): Promise<GameDataLoadResult> {
   const { activeAccountId, activeProviderId, signal, assertCurrent, hasSessionData, readEntityValue, publishEntityValue } = context;
+  if (activeProviderId === 'adofai-test') {
+    const snapshot = maxedTufPlayerSnapshot(context.activeAccount?.displayName);
+    return { bundle: { gameId: 'adofai', providerId: 'adofai-test', profile: getGameProfile('adofai'),
+      payload: { kind: 'adofai', player: snapshot.data, source: snapshot.source,
+        playerScore: { label: 'RANKED SCORE', value: 114514, display: '114514' } } } };
+  }
   const playerId = tufPlayerIdFromAccountId(activeAccountId);
   if (activeProviderId !== 'tuf' || playerId === null) {
     return { bundle: ({
@@ -383,6 +412,15 @@ async function loadOsuGameDataBundle(context: GameDataLoaderContext): Promise<Ga
   const { activeAccountId, activeProviderId, session, signal, assertCurrent, hasSessionData } = context;
   const activeGameId = context.activeGameId;
   if (!isOsuGameId(activeGameId)) throw new Error('osu 加载器收到非 osu 游戏');
+  if (activeProviderId === 'osu-test') {
+    const snapshot = maxedOsuPlayerSnapshot(context.activeAccount?.displayName);
+    switch (activeGameId) {
+      case 'osu-standard': return { bundle: { gameId: activeGameId, providerId: 'osu-test', profile: getGameProfile(activeGameId), payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)) } };
+      case 'osu-mania': return { bundle: { gameId: activeGameId, providerId: 'osu-test', profile: getGameProfile(activeGameId), payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)) } };
+      case 'osu-catch': return { bundle: { gameId: activeGameId, providerId: 'osu-test', profile: getGameProfile(activeGameId), payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)) } };
+      case 'osu-taiko': return { bundle: { gameId: activeGameId, providerId: 'osu-test', profile: getGameProfile(activeGameId), payload: osuPayloadFromSnapshot(snapshot, getGameProfile(activeGameId)) } };
+    }
+  }
   const userId = osuUserIdFromAccountId(activeAccountId);
   if (activeProviderId === 'osu' && session?.mode === 'osu-oauth' && userId !== null && context.protocolScoreProvider instanceof OsuScoreProvider) {
     const provider = context.protocolScoreProvider;

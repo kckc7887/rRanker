@@ -5,8 +5,30 @@ import { rizlinePayloadFromSnapshot } from '@/domain/game-data';
 import { RizlineCatalogSchema } from '@/providers/rizline-catalog-schema';
 import { normalizeLibrarySongId } from '@/domain/user-library';
 import { rizlineCatalog, rizlineChart, rizlineSave, rizlineSong } from './fixtures/rizline';
+import { buildMaxedRizlineSnapshot } from '@/providers/maxed-rizline-test-provider';
 
 describe('Rizline identities and score semantics', () => {
+  it('generates full-catalog AP saves and computes the current AH5 and Best35 contribution', () => {
+    const catalog = rizlineCatalog();
+    catalog.songs = Array.from({ length: 41 }, (_, index) => rizlineSong({
+      id: `song.${index}`, charts: [rizlineChart({ id: `chart.${index}`, songId: `song.${index}`, constant: 10 })],
+    }));
+    catalog.songs.push(rizlineSong({ id: 'special', charts: [rizlineChart({
+      id: 'special.SP', songId: 'special', difficulty: 'SP', constant: null, maxScore: null,
+    })] }));
+    const snapshot = buildMaxedRizlineSnapshot(catalog, '示例玩家');
+    const records = buildRizlineRecords(snapshot.save, catalog);
+    expect(snapshot.save.username).toBe('示例玩家');
+    expect(snapshot.save.totalRks).toBe(120.5);
+    expect(records).toHaveLength(42);
+    expect(records.every(record => record.ap && record.achievements === 120)).toBe(true);
+    expect(snapshot.save.myBest.every(score => score.isFullCombo && score.isClear)).toBe(true);
+    expect(records.find(record => record.songId === 'special')).toMatchObject({ score: 1_000_000, rks: null });
+    expect(records.find(record => record.songId === 'song.0')).toMatchObject({ score: 1_002_000, rks: 120.5 });
+    const best = selectRizlineBest(records);
+    expect(best.ah5).toHaveLength(5); expect(best.b35).toHaveLength(35);
+    expect((best.ah5Contribution ?? 0) + (best.b35Contribution ?? 0)).toBe(snapshot.save.totalRks);
+  });
   it('keeps full official IDs and separates special tracks sharing music', () => {
     expect(rizlineTrackId('track.Song.A.1')).toBe('Song.A.1');
     expect(normalizeLibrarySongId('rizline', '012345')).toBe('012345');

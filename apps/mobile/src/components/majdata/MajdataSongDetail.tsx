@@ -27,6 +27,7 @@ import { ProviderError } from '@/providers/errors';
 import { downloadSimaiPackage } from '@/features/chart-download-shared/simai-package';
 import { useChartPackageDownload } from '@/features/chart-download-shared/use-chart-package-download';
 import { MajdataDifficultyBadge, majdataVisual } from './MajdataCards';
+import { buildMaxedMajdataScore } from '@/providers/maxed-majdata-test-provider';
 
 type Library = ReturnType<typeof useUserLibrary>;
 
@@ -82,6 +83,7 @@ function MajdataDetailContent({ song, initialLevelIndex, library }: { song: Majd
           contentContainerStyle={styles.carousel} keyExtractor={level => library.chartKey(song.id, 'SD', level)}
           empty={<View style={styles.noCharts}><Text style={styles.meta}>暂无可用难度</Text></View>}
           renderItem={(level, carouselState) => <MajdataChartCard carouselState={carouselState} song={song} level={level} width={cardWidth} library={library}
+            example={game.data?.providerId === 'majdata-net-test'}
             best={records.find(score => score.chartInfo.id === song.id && score.chartLevel === level && score.hash === song.hash)} />} />}
       <View style={styles.details}>
         <Card><Text style={[styles.section, { color: theme.text }]}>歌曲信息</Text>
@@ -98,8 +100,8 @@ function MajdataDetailContent({ song, initialLevelIndex, library }: { song: Majd
   </ScrollView>;
 }
 
-function MajdataChartCard({ song, level, width, library, best, carouselState }: {
-  song: MajdataSong; level: number; width: number; library: Library; best?: MajdataScore; carouselState: ChartCarouselItemState;
+function MajdataChartCard({ song, level, width, library, best, carouselState, example }: {
+  song: MajdataSong; level: number; width: number; library: Library; best?: MajdataScore; carouselState: ChartCarouselItemState; example: boolean;
 }) {
   const theme = useAppTheme();
   const visual = majdataVisual(level);
@@ -108,6 +110,8 @@ function MajdataChartCard({ song, level, width, library, best, carouselState }: 
   const item = library.data?.find(entry => entry.key === library.chartKey(song.id, 'SD', level));
   const practice = item?.kind === 'chart' && item.practice;
   const counts = parsed.data?.statistics?.counts;
+  const result = example
+    ? counts ? buildMaxedMajdataScore(song, level, counts) : undefined : best;
   const notes = useMemo(() => majdataNoteGroup(counts), [counts]);
   const title = `${song.title} ${MAJDATA_NAMES[level]}`;
   const actions = simaiChartActionStyle(theme.dark, visual, false, level === 5);
@@ -128,8 +132,8 @@ function MajdataChartCard({ song, level, width, library, best, carouselState }: 
     width, backgroundColor: theme.dark ? theme.surface : visual.tint, borderColor: visual.color,
   }]}>
     <SimaiChartResultLayout identity={<MajdataDifficultyBadge level={level} />} level={song.levels[level]}
-      result={<AchievementValue value={best?.acc.dx} />}
-      badges={<ScoreStatusBadges flowing achievements={best?.acc.dx} fc={best ? ['', 'fc', 'fcp', 'ap', 'app'][best.comboState] : undefined} />} />
+      result={<AchievementValue value={result?.acc.dx} />}
+      badges={<ScoreStatusBadges flowing achievements={result?.acc.dx} fc={result ? ['', 'fc', 'fcp', 'ap', 'app'][result.comboState] : undefined} />} />
     {parsed.data?.difficultyScores ? <SimaiDifficultyRadar scores={parsed.data.difficultyScores} color={visual.color} difficulty={String(level)} /> : null}
     {notes ? <SimaiNoteTable group={notes} accessibilityLabel="使用此谱面物量计算容错"
       onPress={() => router.push({ pathname: '/tools/tolerance', params: { gameId: 'majdata-net', songId: song.id, hash: song.hash, levelIndex: String(level) } })} />

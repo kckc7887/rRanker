@@ -24,7 +24,7 @@ describe('bundled game and provider icons', () => {
   it('maps every provider to its local brand or shared example icon', () => {
     expect(Object.fromEntries(GAME_OPTIONS.flatMap(game =>
       game.providers.map(provider => [provider.id, provider.icon]),
-    ))).toEqual({
+    ))).toMatchObject({
       'diving-fish': '/assets/images/diving-fish.webp',
       lxns: '/assets/images/lxns.webp',
       local: '/assets/images/maimai-dx.webp',

@@ -7,9 +7,20 @@ import { useOsuBeatmapsetUserScores } from '@/hooks/use-osu-known-scores';
 import { useOsuBeatmapsetDetail } from '@/hooks/use-osu-beatmapset-detail';
 import { queryClient as publishedQueryClient } from '@/state/query-client';
 import { useOsuBeatmapsetsByIds } from '@/hooks/use-osu-beatmapsets-by-ids';
+import { useOsuCatalogSearch } from '@/hooks/use-osu-catalog';
 
 const mockGetBeatmapset = jest.fn<(id: string) => Promise<OsuBeatmapsetLookupRaw>>();
 const mockGetUserScore = jest.fn<(user: number, beatmap: number, game: string, signal: AbortSignal) => Promise<OsuBestScoreRaw | null>>();
+const mockGetPublicBeatmapset = jest.fn(async (id: string, gameId: Parameters<typeof normalizeOsuBeatmapsetDetail>[1]) =>
+  normalizeOsuBeatmapsetDetail(rawBeatmapset(Number(id)), gameId));
+const mockPublicSearch = jest.fn(async (params: { gameId: Parameters<typeof normalizeOsuBeatmapsetDetail>[1]; page: number; q?: string }) => ({
+  songs: [normalizeOsuBeatmapsetDetail(rawBeatmapset(3720 + params.page), params.gameId)],
+  nextPage: params.page === 0 ? 1 : undefined,
+}));
+jest.mock('@/providers/osu-public-catalog-provider', () => ({ OsuPublicCatalogProvider: class {
+  getBeatmapset(id: string, gameId: Parameters<typeof normalizeOsuBeatmapsetDetail>[1]) { return mockGetPublicBeatmapset(id, gameId); }
+  searchBeatmapsets(params: { gameId: Parameters<typeof normalizeOsuBeatmapsetDetail>[1]; page: number; q?: string }) { return mockPublicSearch(params); }
+} }));
 const mockMergeKnownScores = jest.fn(async (_game: string, _user: number, scores: readonly OsuBestScore[]) => ({
   items: Object.fromEntries(scores.map(score => [String(score.beatmap.id), score])),
   source: { kind: 'osu', label: 'osu.ppy.sh', updatedAt: '2026-09-30T00:00:00Z', isStale: false },
@@ -156,6 +167,26 @@ describe('useOsuBeatmapsetsByIds', () => {
 
     await waitFor(() => expect(result.current.data.get('3720')?.title).toBe('详情页缓存'));
     expect(mockGetBeatmapset).not.toHaveBeenCalled();
+  });
+
+  it('示例账号无 OAuth 也能读取曲库、详情和个人曲库歌曲，不读取或缓存玩家分数', async () => {
+    mockProviderId = 'osu-test'; mockSession = null;
+    const input = { q: '歌曲', general: [], status: 'any' as const, genre: 0, language: 0, nsfw: false, extras: [] };
+    const screen = await renderHook(() => ({
+      detail: useOsuBeatmapsetDetail('osu-standard', '3720'),
+      library: useOsuBeatmapsetsByIds('osu-standard', ['3720']),
+      catalog: useOsuCatalogSearch('osu-standard', input),
+      scores: useOsuBeatmapsetUserScores('osu-standard', scoreSong()),
+    }), { wrapper: createWrapper(queryClient) });
+    await waitFor(() => expect(screen.result.current.detail.data?.title).toBe('Title 3720'));
+    await waitFor(() => expect(screen.result.current.catalog.songs[0]?.title).toBe('Title 3720'));
+    expect(screen.result.current.library.data.get('3720')?.title).toBe('Title 3720');
+    expect(mockPublicSearch).toHaveBeenCalledWith({ gameId: 'osu-standard', page: 0, q: '歌曲' });
+    expect(mockGetBeatmapset).not.toHaveBeenCalled();
+    expect(mockGetUserScore).not.toHaveBeenCalled();
+    expect(mockMergeKnownScores).not.toHaveBeenCalled();
+    await act(async () => { await screen.result.current.catalog.fetchNextPage(); });
+    await waitFor(() => expect(screen.result.current.catalog.songs.map((song) => song.beatmapSetId)).toEqual([3720, 3721]));
   });
 });
 

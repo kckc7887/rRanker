@@ -72,6 +72,21 @@ const score: OsuBestScore = {
   achievedAt: '2026-01-01T00:00:00.000Z',
 };
 
+let mockDemo = false;
+let mockDemoScores: OsuBestScore[] = [];
+let mockDemoPageFailed = false;
+let mockDemoHasNextPage = true;
+const mockFetchDemoNext = jest.fn(async () => undefined);
+jest.mock('@/hooks/use-osu-demo-scores', () => ({
+  useOsuDemoScores: () => ({ bound: mockDemo, scores: mockDemoScores, isPending: false, isError: false,
+    error: null, isRefetching: false, refetch: jest.fn(), hasNextPage: mockDemoHasNextPage, isFetchingNextPage: false,
+    isFetchNextPageError: mockDemoPageFailed, fetchNextPage: mockFetchDemoNext }),
+}));
+beforeEach(() => {
+  mockDemo = false; mockDemoScores = []; mockDemoPageFailed = false; mockDemoHasNextPage = true;
+  mockFetchDemoNext.mockReset().mockResolvedValue(undefined);
+});
+
 jest.mock('@/hooks/use-osu-known-scores', () => ({ useOsuKnownScores: jest.fn() }));
 const { useOsuKnownScores } = jest.requireMock<typeof import('@/hooks/use-osu-known-scores')>(
   '@/hooks/use-osu-known-scores',
@@ -323,11 +338,64 @@ describe('OsuBestScreen 最佳页', () => {
     expect(screen.getByText('1 条成绩')).toBeTruthy();
     expect(screen.getByText('1. Tori no Uta')).toBeTruthy();
   });
+
+  it('示例最佳页显示全部已加载成绩及后页重试，不截取 Top 100', async () => {
+    mockDemo = true;
+    mockDemoScores = Array.from({ length: 101 }, (_, index) => ({ ...score, id: index + 1,
+      beatmapset: { ...score.beatmapset, title: `示例歌曲 ${index + 1}` } }));
+    mockDemoPageFailed = true;
+    const screen = await render(<OsuBestScreen />);
+    expect(screen.getByText('最佳成绩')).toBeTruthy();
+    expect(screen.getByText('101 条成绩')).toBeTruthy();
+    expect(screen.queryByText('Top 100')).toBeNull();
+    expect(screen.getByText('1. 示例歌曲 1')).toBeTruthy();
+    await fireEvent.press(screen.getByText('后页加载失败，点此重试'));
+    expect(mockFetchDemoNext).toHaveBeenCalled();
+  });
+
+  it('示例首页没有可用成绩时仍可继续加载后页', async () => {
+    mockDemo = true;
+    mockFetchDemoNext.mockImplementation(async () => {
+      mockDemoScores = [score]; mockDemoHasNextPage = false;
+    });
+    const screen = await render(<OsuBestScreen />);
+    expect(screen.getByText('当前账号暂无最佳成绩')).toBeTruthy();
+    await fireEvent.press(screen.getByText('继续加载'));
+    await screen.rerender(<OsuBestScreen />);
+    expect(await screen.findByText('1. Tori no Uta')).toBeTruthy();
+    expect(screen.queryByText('继续加载')).toBeNull();
+  });
 });
 
 describe('OsuRecordsScreen 成绩页', () => {
   beforeEach(() => {
     useOsuRecordsFilter.getState().reset();
+  });
+
+  it('示例成绩使用同一分页来源，滚到底部继续读取', async () => {
+    mockDemo = true;
+    mockDemoScores = [{ ...score, beatmapset: { ...score.beatmapset, title: '示例歌曲' } }];
+    const screen = await render(<OsuRecordsScreen />);
+    expect(await screen.findByText('示例歌曲')).toBeTruthy();
+    expect(screen.queryByText('Tori no Uta')).toBeNull();
+    await fireEvent(screen.getByTestId('osu-records-results-list'), 'endReached');
+    expect(mockFetchDemoNext).toHaveBeenCalled();
+  });
+
+  it('示例当前页筛选无匹配时可继续后页取得目标成绩', async () => {
+    mockDemo = true; mockDemoScores = [score];
+    const target = { ...score, id: score.id + 1, beatmapset: { ...score.beatmapset, title: '后页目标曲' } };
+    mockFetchDemoNext.mockImplementation(async () => {
+      mockDemoScores = [score, target]; mockDemoHasNextPage = false;
+    });
+    const screen = await render(<OsuRecordsScreen />);
+    await fireEvent.changeText(screen.getByPlaceholderText('搜索歌名、艺术家或谱面名'), '后页目标曲');
+    expect(await screen.findByText('没有找到符合条件的已知成绩')).toBeTruthy();
+    await fireEvent.press(screen.getByText('继续加载'));
+    await screen.rerender(<OsuRecordsScreen />);
+    expect(await screen.findByText('后页目标曲')).toBeTruthy();
+    expect(screen.queryByText('Tori no Uta')).toBeNull();
+    expect(screen.queryByText('继续加载')).toBeNull();
   });
 
   it('渲染搜索框、收起态筛选栏与全部成绩', async () => {

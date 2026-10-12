@@ -36,6 +36,11 @@ export const PROVIDER_IDS = [
   'phira-community',
   'musedash-test',
   'osu',
+  'rizline-test',
+  'phira-test',
+  'adofai-test',
+  'majdata-net-test',
+  'osu-test',
 ] as const;
 export type ProviderId = (typeof PROVIDER_IDS)[number];
 export type RemoteProviderId = Extract<ProviderId, 'rizline-official' | 'majdata-net' | 'diving-fish' | 'lxns' | 'phi-taptap' | 'osu'>;
@@ -171,6 +176,9 @@ const GAME_OPTION_DEFINITIONS = [
       detail: '搜索公开玩家 · 无需登录',
       icon: tufIcon,
       available: true,
+    }, {
+      id: 'adofai-test', bindingKind: 'fixture', title: '示例查分器',
+      detail: '普通难度满成绩 · 可删除后重新添加', icon: exampleAccountIcon, available: true,
     }],
   },
   {
@@ -213,6 +221,9 @@ const GAME_OPTION_DEFINITIONS = [
       detail: '公开玩家 ID 或用户名 · 无需登录',
       icon: phiraIcon,
       available: true,
+    }, {
+      id: 'phira-test', bindingKind: 'fixture', title: '示例查分器',
+      detail: '满成绩 · 可删除后重新添加', icon: exampleAccountIcon, available: true,
     }],
   },
   {
@@ -258,6 +269,10 @@ const GAME_OPTION_DEFINITIONS = [
         detail: 'OAuth 授权（授权后选择模式绑定）',
         icon: osuIcon,
         available: true,
+      },
+      {
+        id: 'osu-test', bindingKind: 'fixture', title: '示例查分器',
+        detail: '四模式满成绩 · 可删除后重新添加', icon: exampleAccountIcon, available: true,
       },
     ],
   },
@@ -308,6 +323,9 @@ const GAME_OPTION_DEFINITIONS = [
       icon: majdataIcon,
       available: true,
       bindingKind: 'credentials',
+    }, {
+      id: 'majdata-net-test', bindingKind: 'fixture', title: '示例查分器',
+      detail: '全谱面满成绩 · 可删除后重新添加', icon: exampleAccountIcon, available: true,
     }],
   },
   {
@@ -324,6 +342,9 @@ const GAME_OPTION_DEFINITIONS = [
       icon: rizlineIcon,
       available: true,
       bindingKind: 'sms-code',
+    }, {
+      id: 'rizline-test', bindingKind: 'fixture', title: '示例查分器',
+      detail: '全曲全谱面满成绩 · 可删除后重新添加', icon: exampleAccountIcon, available: true,
     }],
   },
 ] satisfies GameOption[];
@@ -365,4 +386,8 @@ export function findProvider(id: ProviderId): ProviderOption | undefined {
 export function isCredentialProvider(id: ProviderId | null): boolean {
   const kind = id ? findProvider(id)?.bindingKind : undefined;
   return kind === 'credentials' || kind === 'sms-code' || kind === 'oauth-code' || kind === 'device-code';
+}
+
+export function isTestProvider(id: ProviderId | null): boolean {
+  return id !== null && findProvider(id)?.bindingKind === 'fixture';
 }

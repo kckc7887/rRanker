@@ -2,11 +2,11 @@ import { simaiDifficultyScores } from '@/features/simai-difficulty';
 import { DatabaseSync } from 'node:sqlite';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
-import { loadMajdataCached, loadMajdataFresh, loadMajdataSong, loadMajdataSongSnapshot, loadMajdataChart, loadMajdataParsedChart, clearMajdataAccount, majdataSongKey } from '@/services/majdata-service';
+import { loadMajdataCached, loadMajdataFresh, loadMajdataSong, loadMajdataSongSnapshot, loadMajdataChart, loadMajdataParsedChart, loadMajdataDemoScoresPage, clearMajdataAccount, majdataSongKey } from '@/services/majdata-service';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { MajdataSongSchema } from '@/domain/majdata';
 import type { HttpCookieSession } from '@/providers/http-cookies';
-const mock = vi.hoisted(() => ({ getSong: vi.fn(), getChart: vi.fn(), getPlayer: vi.fn(), getRecords: vi.fn(), getRecent: vi.fn() }));
+const mock = vi.hoisted(() => ({ getSong: vi.fn(), getChart: vi.fn(), getSongs: vi.fn(), getPlayer: vi.fn(), getRecords: vi.fn(), getRecent: vi.fn() }));
 const database = new DatabaseSync(':memory:');
 const repository = new SqliteSnapshotRepository();
 let resourceReadError: Error | undefined;
@@ -36,6 +36,30 @@ const session: HttpCookieSession = { mode: 'http-cookies', origin: 'https://majd
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(r => { resolve = r; }); return { promise, resolve }; }
 beforeEach(async () => { resourceReadError = undefined; await repository.initialize(); await repository.clearResources((await repository.listResourceSizes()).map(item => item.key)); vi.clearAllMocks(); mock.getSong.mockResolvedValue(song); mock.getChart.mockResolvedValue('&inote_5=(120)1,\n&inote_7=(120)2m,'); mock.getPlayer.mockResolvedValue({ username: 'player' }); mock.getRecords.mockResolvedValue([]); mock.getRecent.mockResolvedValue([]); });
 describe('Majdata revision and account cache', () => {
+  it('loads full scores in catalog and raw difficulty order without persisting player records', async () => {
+    const second = { ...song, id: 'uuid-second', levels: ['1', '', '', '', '', '', ''] };
+    mock.getSongs.mockResolvedValue([song, second]);
+    mock.getSong.mockImplementation(async (id: string) => id === second.id ? second : song);
+    mock.getChart.mockImplementation(async (id: string) => id === second.id
+      ? '&inote_1=(120)1,' : '&inote_5=(120)1,2b,3m,\n&inote_7=(120)1,2,');
+    const result = await loadMajdataDemoScoresPage(0, new AbortController().signal);
+    expect(result.songCount).toBe(2);
+    expect(result.records.map(record => [record.chartInfo.id, record.chartLevel])).toEqual([
+      [song.id, 4], [song.id, 6], [second.id, 0],
+    ]);
+    expect(result.records.map(record => record.acc.dx)).toEqual([101, 100, 100]);
+    expect(result.records.map(record => record.dxScore)).toEqual([6, 6, 3]);
+    expect(result.records.every(record => record.comboState === 4)).toBe(true);
+    expect(await loadMajdataCached('majdata-net:test')).toBeNull();
+  });
+  it('rejects incomplete pages and cancellation rather than substituting full scores', async () => {
+    mock.getSongs.mockResolvedValue([song]);
+    mock.getChart.mockRejectedValueOnce(new Error('offline'));
+    await expect(loadMajdataDemoScoresPage(1, new AbortController().signal)).rejects.toThrow('offline');
+    const controller = new AbortController();
+    controller.abort(new Error('已取消'));
+    await expect(loadMajdataDemoScoresPage(1, controller.signal)).rejects.toThrow('已取消');
+  });
   it('does not reuse an unsupported song snapshot when offline', async () => {
     await repository.saveResource(majdataSongKey(song.id), 1, 'now', { song });
     mock.getSong.mockRejectedValue(new Error('offline'));

@@ -4,6 +4,7 @@ import { MajdataBestScreen, MajdataCatalogScreen, MajdataFilter, MajdataRecordsS
 import { MajdataScoreCard, MajdataSongRow } from '@/components/majdata/MajdataCards';
 import type { MajdataSong } from '@/domain/majdata';
 import { majdataRecordCard } from '@/features/game-content/adapters/majdata';
+import { buildMaxedMajdataScore } from '@/providers/maxed-majdata-test-provider';
 import { useMajdataCatalogFilter, useMajdataRecordsFilter } from '@/state/majdata-filters';
 
 const mockPush = jest.fn();
@@ -22,6 +23,9 @@ let mockSongs = [mockSong];
 let mockHasNextPage = true;
 let mockTabActive = true;
 let mockRecords = [mockScore];
+let mockExample = false;
+let mockDemoNextError = false;
+let mockDemoRecords = [buildMaxedMajdataScore(mockSong, 4, { tap: 1, hold: 0, slide: 0, touch: 0, break: 1 })];
 let mockFavorites: { kind: 'song'; favorite: boolean; songId: string; tags: string[] }[] = [];
 
 jest.mock('expo-router', () => ({ router: { push: (href: unknown) => mockPush(href) } }));
@@ -37,6 +41,10 @@ jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ isLoading: fal
     recent: [mockRecent, { ...mockRecent, timestamp: '2026-09-02T00:00:00Z', acc: 97 }] } },
 } }) }));
 jest.mock('@/hooks/use-majdata', () => ({
+  useMajdataDemoScores: () => ({ bound: mockExample, records: mockDemoRecords,
+    hasNextPage: mockHasNextPage, isPending: false, isFetching: false, isError: mockDemoNextError,
+    isFetchNextPageError: mockDemoNextError, isRefetching: false, isFetchingNextPage: false,
+    fetchNextPage: mockMore, refetch: jest.fn() }),
   useMajdataSongs: () => ({ data: { pages: [mockSongs] }, hasNextPage: mockHasNextPage, isLoading: false, isFetching: false,
     isError: false, isRefetching: false, isFetchingNextPage: false, fetchNextPage: mockMore, refetch: jest.fn() }),
   useMajdataRanking: () => ({ data: { hash: 'revision', scores: [[], [], [], [{ player: { username: 'player' } }], []] } }),
@@ -51,6 +59,8 @@ jest.mock('@/components/RemoteImage', () => {
 beforeEach(() => {
   jest.clearAllMocks();
   mockSongs = [mockSong]; mockRecords = [mockScore]; mockHasNextPage = true; mockTabActive = true; mockFavorites = [];
+  mockExample = false; mockDemoNextError = false;
+  mockDemoRecords = [buildMaxedMajdataScore(mockSong, 4, { tap: 1, hold: 0, slide: 0, touch: 0, break: 1 })];
   useMajdataCatalogFilter.getState().clearFilters(); useMajdataCatalogFilter.setState({ collapsed: true });
   useMajdataRecordsFilter.getState().clearFilters(); useMajdataRecordsFilter.setState({ collapsed: true });
 });
@@ -148,6 +158,39 @@ test('Recent keeps repeated plays newest first', async () => {
   expect(screen.getByText('1. 歌曲名称')).toBeTruthy(); expect(screen.getByText('2. 歌曲名称')).toBeTruthy();
   expect(screen.queryByText(/Classic/)).toBeNull();
   expect(screen.getAllByText('排名')).toHaveLength(2);
+});
+
+test('example best and records retain catalog order and use the same paginated full scores', async () => {
+  mockExample = true;
+  const first = { ...mockSong, id: 'song-a', title: '第一首' };
+  const second = { ...mockSong, id: 'song-b', title: '第二首' };
+  mockDemoRecords = [
+    buildMaxedMajdataScore(first, 4, { tap: 1, hold: 0, slide: 0, touch: 0, break: 0 }),
+    buildMaxedMajdataScore(second, 4, { tap: 1, hold: 0, slide: 0, touch: 0, break: 1 }),
+  ];
+  const best = await render(<MajdataBestScreen />);
+  expect(best.getByText('最佳成绩')).toBeTruthy();
+  expect(best.getByText('1. 第一首')).toBeTruthy(); expect(best.getByText('2. 第二首')).toBeTruthy();
+  await fireEvent(best.getByTestId('majdata-recent-results-list'), 'onEndReached');
+  expect(mockMore).toHaveBeenCalled();
+  await best.unmount();
+  const records = await render(<MajdataRecordsScreen />);
+  expect(await records.findByText('共 2 条成绩')).toBeTruthy();
+  expect(records.getAllByRole('button').filter(button => button.props.accessibilityLabel?.startsWith('第一首')
+    || button.props.accessibilityLabel?.startsWith('第二首')).map(button => button.props.accessibilityLabel))
+    .toEqual(expect.arrayContaining([expect.stringContaining('第一首'), expect.stringContaining('第二首')]));
+  await act(() => useMajdataRecordsFilter.setState({ difficulties: [0] }));
+  await records.rerender(<MajdataRecordsScreen />);
+  expect(records.queryByText('当前筛选条件下没有成绩')).toBeNull();
+  await records.unmount();
+});
+
+test('example next-page failures keep loaded cards and expose the shared retry action', async () => {
+  mockExample = true; mockDemoNextError = true;
+  const best = await render(<MajdataBestScreen />);
+  expect(best.getByText('101.0000%')).toBeTruthy();
+  await fireEvent.press(best.getByLabelText('重试加载后页'));
+  expect(mockMore).toHaveBeenCalled();
 });
 
 test('a filtered empty page continues the upstream cursor, while exhaustion shows the shared empty state', async () => {

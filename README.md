@@ -61,6 +61,7 @@ Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict
 - [Phi-plugin](https://github.com/Catrong/phi-plugin)
 - [maimai-prober-frontend](https://github.com/Lxns-Network/maimai-prober-frontend)
 - [MajdataViewX](https://github.com/re-poem/MajdataViewX)
+- [MajdataViewAlpha](https://github.com/Jian04/MajdataViewAlpha)
 - [MajSimai](https://github.com/LingFeng-bbben/MajSimai)
 - [MajdataPlay](https://github.com/TeamMajdata/MajdataPlay)
 - [nonebot-plugin-maimaidx](https://github.com/Yuri-YuzuChaN/nonebot-plugin-maimaidx)

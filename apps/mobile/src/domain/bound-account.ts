@@ -65,7 +65,28 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   'phira-community': 'Phira社区',
   'musedash-test': '示例查分器',
   osu: 'osu! 官方',
+  'rizline-test': '示例查分器',
+  'phira-test': '示例查分器',
+  'adofai-test': '示例查分器',
+  'majdata-net-test': '示例查分器',
+  'osu-test': '示例查分器',
 };
+
+export type CatalogTestGameId = 'rizline' | 'phira' | 'adofai' | 'majdata-net' | OsuGameId;
+
+export function createCatalogTestAccount(gameId: CatalogTestGameId, displayName = '示例账号'): BoundAccount {
+  const profile = getGameProfile(gameId);
+  const providerId = isOsuGameId(gameId) ? 'osu-test'
+    : gameId === 'rizline' ? 'rizline-test'
+      : gameId === 'phira' ? 'phira-test'
+        : gameId === 'adofai' ? 'adofai-test' : 'majdata-net-test';
+  const scoreDisplay = isOsuGameId(gameId) ? '40000'
+    : gameId === 'phira' ? '19.00'
+      : gameId === 'adofai' ? '114514'
+        : gameId === 'majdata-net' ? '114514.0000%' : '0.0000';
+  return { id: `${gameId}:test`, gameId, providerId, displayName,
+    scoreLabel: profile.ratingLabel, scoreDisplay, providerTitle: PROVIDER_TITLES[providerId] };
+}
 
 export function createRizlineBoundAccount(input: {
   userId: string; username: string; totalRks?: number | null;

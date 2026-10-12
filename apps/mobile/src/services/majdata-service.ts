@@ -1,7 +1,7 @@
 import { z } from 'zod';
 import { MajdataSongSchema, MajdataScoreSchema, MajdataRecentSchema } from '@/domain/majdata';
 import { DataSourceSchema } from '@/domain/schemas';
-import type { MajdataSnapshot, MajdataSong } from '@/domain/majdata';
+import { MAJDATA_ORDER, type MajdataSnapshot, type MajdataSong, type MajdataScore } from '@/domain/majdata';
 import type { DataSource } from '@/domain/models';
 import type { HttpCookieSession } from '@/providers/http-cookies';
 import { MajdataProvider, majdataProvider } from '@/providers/majdata-provider';
@@ -9,7 +9,8 @@ import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { applyMajdataSessionRotation, useSession } from '@/state/session-store';
 import { cacheSourceSchema, snapshotSource, captureResourceWrites, createInflightGuard, resourceWriteGeneration, subscribeResourceWrites } from './snapshot-cache-utils';
 import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
-import { createBoundedLoadQueue } from './offset-pagination';
+import { createBoundedLoadQueue, loadItemsBounded } from './offset-pagination';
+import { buildMaxedMajdataScore } from '@/providers/maxed-majdata-test-provider';
 import { parseSimaiChartAsync } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import { simaiStatistics } from '@/features/simai-chart-preview/statistics';
 import { simaiDifficultyScores } from '@/features/simai-difficulty';
@@ -206,6 +207,24 @@ export async function loadMajdataChart(song: MajdataSong, signal?: AbortSignal):
     assertCurrent();
     return text;
   }, signal);
+}
+
+export async function loadMajdataDemoScoresPage(page: number, signal: AbortSignal) {
+  const songs = await majdataProvider.getSongs(page, 'timep', '', signal);
+  const records: MajdataScore[][] = Array.from({ length: songs.length }, () => []);
+  await loadItemsBounded({
+    items: songs.map((song, index) => ({ song, index })), concurrency: 4, signal, failureMode: 'throw',
+    load: async ({ song, index }) => {
+      const levels = MAJDATA_ORDER.filter(level => song.levels[level]?.trim());
+      if (!levels.length) return;
+      const text = await loadMajdataChart(song, signal);
+      for (const level of levels) {
+        const statistics = simaiStatistics(await parseSimaiChartAsync(text, level + 1, signal));
+        records[index].push(buildMaxedMajdataScore(song, level, statistics.counts));
+      }
+    },
+  });
+  return { records: records.flat(), songCount: songs.length };
 }
 
 const difficultyScoreSchema = z.number().finite().min(0).max(10);

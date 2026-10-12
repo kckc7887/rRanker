@@ -8,11 +8,12 @@ import { MajdataProvider } from '@/providers/majdata-provider';
 import { cookieHeader, responseCookies, isHttpCookieSession, type HttpCookieSession } from '@/providers/http-cookies';
 import { chartLibraryKey, songLibraryKey } from '@/domain/user-library';
 import { majdataRecentCard } from '@/features/game-content/adapters/majdata';
-import { parseSimaiChart, parseSimaiBody, getAvailableDifficulties } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { parseSimaiChart, parseSimaiChartAsync, parseSimaiBody, getAvailableDifficulties } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import { simaiStatistics } from '@/features/simai-chart-preview/statistics';
 import { calculateAchievement, maximumSameErrors, singleNoteLoss, type BreakJudgment, type NormalJudgment } from '@/domain/tolerance';
 import cases from './fixtures/maimai-simai-cases.json';
 import reference from './fixtures/maimai-simai-reference.json';
+import { buildMaxedMajdataScore } from '@/providers/maxed-majdata-test-provider';
 
 const song = MajdataSongSchema.parse({ id: '0dff2974-9419-4290-bea9-307caa5825b7', title: 'Song', timestamp: '2026-09-01T00:00:00Z', hash: 'revision', levels: ['1', '3', '', '13+', '14.5', '15', '宴'], tags: ['A', 'B'], publicTags: ['B', 'C'] });
 const record = (level: number, dx = 100, classic = 99): MajdataScore => ({ chartInfo: song, chartLevel: level, acc: { dx, classic }, dxScore: 200, hash: song.hash, timestamp: song.timestamp, comboState: 4 });
@@ -20,6 +21,27 @@ const session = (value: string): HttpCookieSession => ({ mode: 'http-cookies', p
 const json = (value: unknown) => new Response(JSON.stringify(value));
 
 describe('Majdata integration contracts', () => {
+  it('keeps note counts and timing across bounce movement and reset commands', async () => {
+    const text = '&inote_5=(120){4}1,<BOUNCE*4:1><SV*0.5>2b,<SV*0><BOUNCE*NULL>3h[4:1],4-6[4:1],';
+    for (const chart of [parseSimaiChart(text, 5), await parseSimaiChartAsync(text, 5)]) {
+      expect(simaiStatistics(chart).counts).toEqual({ tap: 2, hold: 1, slide: 1, touch: 0, break: 1, mine: 0 });
+      expect(chart.notes.map(note => note.timingMs)).toEqual([2000, 2500, 3000, 3500]);
+      const score = buildMaxedMajdataScore(song, 4, simaiStatistics(chart).counts);
+      expect(score.acc.dx).toBe(101); expect(score.dxScore).toBe(15);
+    }
+    expect(() => parseSimaiBody('(120)<BOUNCE*0:1>1,')).toThrow();
+    expect(() => parseSimaiBody('(120)<BOUNCE*unknown>1,')).toThrow();
+    expect(() => parseSimaiBody('(120)<UNKNOWN*4:1>1,')).toThrow();
+  });
+  it('generates AP+ with chart-specific DX and Classic caps while excluding mines from DX Score', () => {
+    const score = buildMaxedMajdataScore(song, 4, simaiStatistics(parseSimaiBody('(120)1,2b,3m,')).counts);
+    expect(score).toMatchObject({ chartInfo: song, chartLevel: 4, hash: song.hash, comboState: 4,
+      acc: { dx: 101 }, dxScore: 6 });
+    expect(score.acc.classic).toBeCloseTo(103.3333333333, 8);
+    const noBreak = buildMaxedMajdataScore(song, 0, { tap: 2, hold: 1, slide: 1, touch: 1, break: 0 });
+    expect(noBreak.acc).toEqual({ dx: 100, classic: 100 });
+    expect(noBreak.dxScore).toBe(15);
+  });
   it('uses form MD5 authentication and an explicit isolated Cookie header', async () => {
     const fetcher = vi.fn().mockResolvedValueOnce(new Response('', { headers: { 'set-cookie': 'auth=one; Path=/; Secure; HttpOnly' } })).mockResolvedValue(json({ username: 'player' }));
     const provider = new MajdataProvider(undefined, undefined, fetcher);

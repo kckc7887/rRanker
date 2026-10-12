@@ -4,8 +4,9 @@ import { useInfiniteQuery, useQuery } from '@tanstack/react-query';
 import { useMemo } from 'react';
 import { useBoundedQueries } from '@/hooks/use-bounded-queries';
 import type { InfiniteData } from '@tanstack/react-query';
-import { TUF_PAGE_SIZE, selectBestTufLevelPass, tufHttpsUrl, type TufLevelDetailResponse, type TufLevelPass, type TufLevelPage, type TufLevelQuery, type TufPassPage, type TufPassQuery, type TufPlayerSnapshot } from '@/domain/tuf';
+import { TUF_PAGE_SIZE, selectBestTufLevelPass, tufHttpsUrl, uniqueTufPassesByLevel, type TufLevelDetailResponse, type TufLevelPass, type TufLevelPage, type TufLevelQuery, type TufPassPage, type TufPassQuery, type TufPlayerSnapshot } from '@/domain/tuf';
 import { tufProvider } from '@/providers/tuf-provider';
+import { buildMaxedTufPass } from '@/providers/maxed-tuf-test-provider';
 
 
 import { queryClient } from '@/state/query-client';
@@ -99,21 +100,40 @@ export function useTufLevelSearch(
   query: string,
   options: Omit<TufLevelQuery, 'query' | 'offset' | 'limit'> = {},
   enabled = true,
+  accountId?: string,
 ) {
   const tabActive = useCachedTabActive();
   const normalized = query.trim();
-  const queryKey = ['tuf', 'levels', normalized, options] as const;
+  const queryKey = accountId === undefined ? ['tuf', 'levels', normalized, options] as const
+    : ['tuf', 'example-scores', accountId, normalized, options] as const;
   return useInfiniteQuery({
     queryKey,
-    queryFn: ({ pageParam, signal }): Promise<TufLevelPage> => tufProvider.searchLevels({
-      ...options, query: normalized || undefined, offset: pageParam, limit: TUF_PAGE_SIZE,
-    }, signal),
+    queryFn: async ({ pageParam, signal }): Promise<TufLevelPage> => {
+      const assertCurrent = captureResourceWrites('adofai', signal, accountId);
+      const page = await tufProvider.searchLevels({
+        ...options, query: normalized || undefined, offset: pageParam, limit: TUF_PAGE_SIZE,
+      }, signal);
+      assertCurrent();
+      return page;
+    },
     initialPageParam: 0,
     getNextPageParam: (last) => last.hasMore ? last.offset + last.limit : undefined,
     enabled: enabled && tabActive,
     notifyOnChangeProps: tabActive ? undefined : [],
     ...TUF_QUERY_OPTIONS,
   });
+}
+
+export function useTufDemoPasses(accountId: string, enabled = true) {
+  const query = useTufLevelSearch('', { sort: 'DIFF', order: 'DESC', pguRange: 'P1,U20' }, enabled, accountId);
+  const items = useMemo(() => uniqueTufPassesByLevel(
+    query.data?.pages.flatMap((page) => page.results.flatMap((level) => {
+      if (level.difficulty?.type !== 'PGU') return [];
+      const pass = buildMaxedTufPass(level);
+      return pass ? [pass] : [];
+    })) ?? [],
+  ), [query.data?.pages]);
+  return { ...query, items };
 }
 
 export async function refreshTufDifficulties(): Promise<void> {

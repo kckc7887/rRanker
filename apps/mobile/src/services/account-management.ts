@@ -11,6 +11,8 @@ import {
   createMuseDashBoundAccount,
   createTufBoundAccount,
   createPhiraBoundAccount,
+  createCatalogTestAccount,
+  type CatalogTestGameId,
   phiraPlayerIdFromAccountId,
   museDashUserIdFromAccountId,
   osuUserIdFromAccountId,
@@ -39,6 +41,7 @@ import { MuseDashCache } from '@/services/muse-dash-cache';
 import { resolveTufAvatarUrl } from '@/domain/tuf';
 import { PhiraAccountStore } from '@/storage/phira-account-store';
 import { PhiraCache } from '@/services/phira-cache';
+import { catalogDemoAccountStore } from '@/storage/catalog-demo-account-store';
 
 const sessions = new SecureSessionStore();
 const snapshots = new SqliteSnapshotRepository();
@@ -78,7 +81,17 @@ const demoBindings: Partial<Record<ProviderId, DemoAccountBinding>> = {
     'musedash-test': { create: createMaxedMuseDashTestAccount, persist: (account: BoundAccount) => museDashDemoAccount.save({ id: account.id, displayName: account.displayName }), label: '喵斯快跑' },
 };
 
-export function demoAccountBinding(providerId: ProviderId | null): DemoAccountBinding | undefined {
+export function demoAccountBinding(providerId: ProviderId | null, gameId?: import('@/domain/game-bind-options').GameId): DemoAccountBinding | undefined {
+  const testGame: CatalogTestGameId | undefined = providerId === 'rizline-test' ? 'rizline'
+    : providerId === 'phira-test' ? 'phira'
+      : providerId === 'adofai-test' ? 'adofai'
+        : providerId === 'majdata-net-test' ? 'majdata-net'
+          : providerId === 'osu-test' ? (gameId && isOsuGameId(gameId) ? gameId : 'osu-standard') : undefined;
+  if (testGame) return {
+    create: () => createCatalogTestAccount(testGame),
+    persist: account => catalogDemoAccountStore(testGame).save({ id: account.id, displayName: account.displayName }),
+    label: testGame.startsWith('osu-') ? ' osu! ' : testGame === 'adofai' ? '冰与火之舞' : ` ${testGame === 'majdata-net' ? 'Majdata' : testGame} `,
+  };
   return providerId ? demoBindings[providerId] : undefined;
 }
 
@@ -129,7 +142,8 @@ export async function clearBoundAccountData(account: BoundAccount, plan: Account
       if (account.providerId === 'chunithm-test') await chunithmDemoAccount.remove();
       else if (account.providerId === 'phigros-test') await phigrosDemoAccount.remove();
       else if (account.providerId === 'musedash-test') await museDashDemoAccount.remove();
-      else await demoAccounts.remove(account.id);
+      else if (account.providerId === 'maimai-test') await demoAccounts.remove(account.id);
+      else await catalogDemoAccountStore(account.gameId as CatalogTestGameId).remove();
     });
     if (account.providerId === 'musedash-test') {
       await cleanup('缓存', () => museDashCache.clearPlayer(MUSEDASH_TEST_USER_ID));

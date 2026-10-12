@@ -40,6 +40,7 @@ import { resolveOsuStarTheme } from '@/domain/osu-star-theme';
 import { osuModDescription, resolveOsuModMetadata } from '@/domain/osu-mods';
 import { buildTagHistory } from '@/domain/user-library';
 import { ProviderError } from '@/providers/errors';
+import { buildMaxedOsuBeatmapsetScores } from '@/providers/maxed-osu-test-provider';
 import { useGameData } from '@/hooks/use-game-data';
 import { useOsuBeatmapsetDetail } from '@/hooks/use-osu-beatmapset-detail';
 import {
@@ -92,6 +93,7 @@ function OsuSongDetailContent({
   initialScoreId?: number;
 }) {
   const theme = useAppTheme();
+  const activeProviderId = useSession((s) => s.activeProviderId);
   const detail = useOsuBeatmapsetDetail(gameId, beatmapsetId ?? null);
   const gameData = useGameData(false);
   const library = useUserLibrary();
@@ -100,6 +102,8 @@ function OsuSongDetailContent({
     ? gameData.data.payload
     : undefined;
   const known = useOsuKnownScores(gameId, payload?.bestScores);
+  const knownScores = useMemo(() => activeProviderId === 'osu-test' && song
+    ? buildMaxedOsuBeatmapsetScores(song) : known.data, [activeProviderId, song, known.data]);
   useOsuBeatmapsetUserScores(gameId, song ?? null);
   const songItem = song
     ? library.data?.find((item) => item.key === library.songKey(String(song.beatmapSetId)))
@@ -133,7 +137,7 @@ function OsuSongDetailContent({
               initialScoreId={initialScoreId}
               library={library}
               payload={payload}
-              knownScores={known.data}
+              knownScores={knownScores}
               song={item}
             />
           )}

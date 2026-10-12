@@ -4,6 +4,7 @@ import { captureResourceWrites } from './snapshot-cache-utils';
 import { rizlineResources } from './rizline-resources';
 import type { RizlineCatalogData } from '@/domain/rizline';
 import { rizlinePayloadFromSnapshot, type GameDataBundle } from '@/domain/game-data';
+import { buildMaxedRizlineSnapshot } from '@/providers/maxed-rizline-test-provider';
 
 
 export const RIZLINE_CATALOG_QUERY_KEY = ['rizline', 'catalog'] as const;
@@ -15,7 +16,8 @@ export function applyRizlineCatalog(queryClient: QueryClient, data: RizlineCatal
   try { assertCurrent?.(); } catch { return; }
   queryClient.setQueriesData<GameDataBundle>({ predicate: query => query.queryKey[0] === 'game-data' && query.queryKey[3] === 'rizline' }, old =>
     old?.gameId === 'rizline' && old.payload.kind === 'rizline'
-      ? { ...old, payload: rizlinePayloadFromSnapshot(old.payload.snapshot, data) }
+      ? { ...old, payload: rizlinePayloadFromSnapshot(old.providerId === 'rizline-test'
+        ? buildMaxedRizlineSnapshot(data.snapshot, old.payload.player.username) : old.payload.snapshot, data) }
       : old);
   });
 }

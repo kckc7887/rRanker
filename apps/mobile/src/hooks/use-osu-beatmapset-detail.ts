@@ -4,6 +4,7 @@ import { osuUserIdFromAccountId } from '@/domain/bound-account';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import { normalizeOsuBeatmapsetDetail, type OsuBeatmapsetDetail } from '@/domain/osu';
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
+import { OsuPublicCatalogProvider } from '@/providers/osu-public-catalog-provider';
 import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import { applyOsuTokenRotation, useSession } from '@/state/session-store';
 
@@ -13,11 +14,13 @@ export function useOsuBeatmapsetDetail(gameId: OsuGameId | null, beatmapsetId: s
   const activeProviderId = useSession((s) => s.activeProviderId);
   const activeAccountId = useSession((s) => s.activeAccountId);
   const userId = gameId === null ? null : osuUserIdFromAccountId(activeAccountId);
-  const bound = activeProviderId === 'osu' && session?.mode === 'osu-oauth' && userId !== null;
+  const demo = activeProviderId === 'osu-test' && gameId !== null;
+  const bound = demo || (activeProviderId === 'osu' && session?.mode === 'osu-oauth' && userId !== null);
 
   const query = useQuery({
-    queryKey: ['osu-beatmapset-detail', gameId, userId, beatmapsetId] as const,
+    queryKey: ['osu-beatmapset-detail', gameId, demo ? activeAccountId : userId, beatmapsetId] as const,
     queryFn: async ({ signal }): Promise<OsuBeatmapsetDetail> => {
+      if (demo) return new OsuPublicCatalogProvider().getBeatmapset(beatmapsetId as string, gameId as OsuGameId, signal);
       const provider = new OsuScoreProvider(
         session as OsuOAuthSession,
         (next, expected) => applyOsuTokenRotation(activeAccountId, next, expected),
