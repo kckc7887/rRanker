@@ -9,7 +9,8 @@ const [mode, apk, serial, output] = process.argv.slice(2);
 assert(['native', 'production'].includes(mode) && apk && serial && output, 'Expected mode, APK, explicit device serial and output directory');
 mkdirSync(output, { recursive: true });
 const apkSha256 = createHash('sha256').update(readFileSync(apk)).digest('hex');
-const evidence = await runAndroidSmoke({ mode, apk, device: createAndroidDevice(serial), sourceSha: process.env.BUILD_SOURCE_COMMIT });
+const evidence = await runAndroidSmoke({ mode, apk, device: createAndroidDevice(serial), sourceSha: process.env.BUILD_SOURCE_COMMIT,
+  amapConfigured: Boolean(process.env.AMAP_ANDROID_KEY?.trim()) });
 evidence.apkSha256 = apkSha256;
 /** 保存证据失败时保留设备检查的原始错误。 */
 try {
