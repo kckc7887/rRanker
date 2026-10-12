@@ -11,7 +11,7 @@ import { cacheSourceSchema, snapshotSource, captureResourceWrites, createInfligh
 import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 import { createBoundedLoadQueue, loadItemsBounded } from './offset-pagination';
 import { buildMaxedMajdataScore } from '@/providers/maxed-majdata-test-provider';
-import { parseSimaiChartAsync } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
+import { parseSimaiChartAsync, SimaiParseError } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import { simaiStatistics } from '@/features/simai-chart-preview/statistics';
 import { simaiDifficultyScores } from '@/features/simai-difficulty';
 import { cacheFirstLoad } from './cache-first';
@@ -219,7 +219,13 @@ export async function loadMajdataDemoScoresPage(page: number, signal: AbortSigna
       if (!levels.length) return;
       const text = await loadMajdataChart(song, signal);
       for (const level of levels) {
-        const statistics = simaiStatistics(await parseSimaiChartAsync(text, level + 1, signal));
+        let chart: Awaited<ReturnType<typeof parseSimaiChartAsync>>;
+        try { chart = await parseSimaiChartAsync(text, level + 1, signal); }
+        catch (error) {
+          if (!(error instanceof SimaiParseError)) throw error;
+          continue;
+        }
+        const statistics = simaiStatistics(chart);
         records[index].push(buildMaxedMajdataScore(song, level, statistics.counts));
       }
     },

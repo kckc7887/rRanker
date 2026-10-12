@@ -60,6 +60,29 @@ describe('Majdata revision and account cache', () => {
     controller.abort(new Error('已取消'));
     await expect(loadMajdataDemoScoresPage(1, controller.signal)).rejects.toThrow('已取消');
   });
+  it('skips only an invalid difficulty while preserving full scores and catalog order', async () => {
+    const mixed = { ...song, levels: ['1', '', '', '8', '14', '15', ''] };
+    const second = { ...song, id: 'uuid-second', levels: ['1', '', '', '', '', '', ''] };
+    mock.getSongs.mockResolvedValue([mixed, second]);
+    mock.getSong.mockImplementation(async (id: string) => id === second.id ? second : mixed);
+    mock.getChart.mockImplementation(async (id: string) => id === second.id ? '&inote_1=(120)1,' : [
+      '&inote_6=(120)1,2b,3m,',
+      '&inote_5=(120)5^2[8:1][8:1],',
+      '&inote_4=(120)1h[4:1],2,',
+      '&inote_1=(120)1,',
+    ].join('\n'));
+    const result = await loadMajdataDemoScoresPage(1, new AbortController().signal);
+    expect(result.songCount).toBe(2);
+    expect(result.records.map(record => [record.chartInfo.id, record.chartLevel])).toEqual([
+      [mixed.id, 5], [mixed.id, 3], [mixed.id, 0], [second.id, 0],
+    ]);
+    expect(result.records.map(record => record.acc.dx)).toEqual([101, 100, 100, 100]);
+    expect(result.records[0].acc.classic).toBeCloseTo(103.33333333333333);
+    expect(result.records.slice(1).map(record => record.acc.classic)).toEqual([100, 100, 100]);
+    expect(result.records.map(record => record.dxScore)).toEqual([6, 6, 3, 3]);
+    expect(result.records.every(record => record.comboState === 4)).toBe(true);
+    expect(await loadMajdataCached('majdata-net:test')).toBeNull();
+  });
   it('does not reuse an unsupported song snapshot when offline', async () => {
     await repository.saveResource(majdataSongKey(song.id), 1, 'now', { song });
     mock.getSong.mockRejectedValue(new Error('offline'));
