@@ -6,6 +6,7 @@ import { runAndroidSmoke } from './lib/android-smoke-flow.mjs';
 function fixture(options = {}) {
   let clock = 0, frame = 0, dumps = 0, selected = 0, logging = false, recorded = false, running = false, chooser = false;
   let route = '', snapshot = '', current = [], chooserFrames = 0, failed = false;
+  let consentVisible = true, mapEnabled = false;
   const launches = [], paths = [], trace = [];
   const node = (label, extra = {}) => ({ package: 'com.rranker.app', text: '', 'content-desc': label, enabled: 'true', bounds: `[0,${current.length * 100}][80,${current.length * 100 + 80}]`, ...extra });
   const add = (label, extra) => current.push(node(label, extra));
@@ -22,7 +23,12 @@ function fixture(options = {}) {
       if (recorded && !logging) add('分享日志，最新记录，测试');
       if (options.storageFailure && logging) add('', { text: '保存失败' });
     } else if (route === 'game-management') add('', { text: '游戏管理' });
-    else if (route === 'tools/arcade-finder' && !options.missingArcade) add('', { text: '当前使用机厅列表' });
+    else if (route === 'tools/arcade-finder' && !options.missingArcade) {
+      if (!options.amapConfigured) add('', { text: '当前使用机厅列表' });
+      else if (mapEnabled) add('', { 'resource-id': 'arcade-map-zoom-in', enabled: String(!options.mapNotReady) });
+      else if (consentVisible) { add('', { text: '使用列表' }); add('', { text: '同意并启用' }); }
+      else { add('', { text: '地图未启用' }); add('', { text: '启用地图' }); }
+    }
     return '<hierarchy>' + current.map(n => '<node ' + Object.entries(n).map(([k,v]) => `${k}="${v}"`).join(' ') + ' />').join('') + '</hierarchy>';
   };
   const execute = (binary, args) => {
@@ -59,14 +65,28 @@ function fixture(options = {}) {
       const tapped = current[Math.floor(Number(args[3]) / 100)]; assert(tapped);
       if (route === 'personalization') selected = ['主题色 蓝','主题色 紫','主题色 绿'].indexOf(tapped['content-desc']);
       else if (tapped['content-desc'] === '记录日志') { logging = !logging; recorded = true; }
+      else if (route === 'tools/arcade-finder') {
+        if (tapped.text === '使用列表') consentVisible = false;
+        else if (tapped.text === '启用地图') consentVisible = true;
+        else if (tapped.text === '同意并启用') mapEnabled = true;
+      }
       else { chooser = true; chooserFrames = 0; trace.push('share'); }
     } else if (args[0] === 'input' && args[1] === 'keyevent') {
       assert(chooser && chooserFrames >= 2, 'BACK must await interactive chooser'); chooser = false; trace.push('back');
     } else assert.fail(`Unexpected operation: ${args}`);
     return '';
   };
-  return { launches, paths, trace, run: () => runAndroidSmoke({ mode: 'production', apk: 'test.apk', sourceSha: 'a'.repeat(40), device: createAndroidDevice('test-device', execute), now: () => clock, pause: async ms => { clock += ms; } }) };
+  return { launches, paths, trace, run: () => runAndroidSmoke({ mode: 'production', apk: 'test.apk', sourceSha: 'a'.repeat(40),
+    amapConfigured: Boolean(options.amapConfigured), device: createAndroidDevice('test-device', execute), now: () => clock, pause: async ms => { clock += ms; } }) };
 }
+test('configured maps require consent and a ready renderer', async () => {
+  const result = await fixture({ amapConfigured: true }).run();
+  assert.equal(result.status, 'pass');
+  assert(result.checks.some(check => check.name === 'arcade-map-consent-and-ready'));
+  const pending = await fixture({ amapConfigured: true, mapNotReady: true }).run();
+  assert.equal(pending.status, 'fail');
+  assert.equal(pending.failureCategory, 'timeout');
+});
 
 for (const options of [{}, { nullRoot: true }, { throwNullRoot: true }, { missing: true }]) {
   test(`production routes recover transient snapshots: ${JSON.stringify(options)}`, async () => {

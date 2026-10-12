@@ -18,7 +18,7 @@ module.exports = {
     plugins: [
       ...base.expo.plugins.map(plugin => plugin === './plugins/with-android-abi-splits.js'
         ? [plugin, optimizationModes[optimizationMode]] : plugin),
-      ['expo-gaode-map', { androidKey: process.env.AMAP_ANDROID_KEY ?? '', enableLocation: false }],
+      './plugins/with-arcade-map.js',
     ],
     /** extra 随客户端打包，不能作为服务端秘密。 */
     extra: {

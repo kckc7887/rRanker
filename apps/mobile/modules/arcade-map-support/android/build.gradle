@@ -4,8 +4,8 @@ plugins {
 }
 
 dependencies {
-  implementation project(':expo-gaode-map')
-  implementation 'com.amap.api:3dmap-location-search:11.2.000_loc11.2.000_sea9.8.0'
+  implementation 'com.facebook.react:react-android'
+  implementation files('libs/Lite3DMap_1.3.2_AMapSearch_9.7.4_AMapLocation_6.4.9_20250521.jar')
 }
 
 group = 'expo.modules.arcademap'
