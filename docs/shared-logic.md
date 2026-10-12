@@ -114,7 +114,7 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。
 
-Simai 解析支持 `BOUNCE` 的拍长比和 `NULL` 复位指令，按原谱面时间消费，不改变判定物量；无效拍长及未知指令继续拒绝。
+Simai 解析支持 `BOUNCE` 的拍长比和 `NULL` 复位指令，以及分类 HS/SV 的数值和 `NULL` 参数，按原谱面时间消费，不改变判定物量；无效拍长、未知类别、非法数值及未知指令继续拒绝。
 
 舞萌与 Majdata 共用 Simai 播放器，保护套不额外高亮，绝赞滑轨使用绝赞配色。PGR 的 `pgr-preview-config.ts` 提供 `showBlockArea`（默认开）和 `showBlockAreaBounds`（默认关），通过现有设置桥接保存。`pgr-blocks.ts` 共用区域变换，判定范围仅按 enable/disable 取样；`pgr-block-renderer.ts` 用未扭曲区域合成后的边界绘制青色框，两个显示开关独立。RPE 不显示这两个选项。
 

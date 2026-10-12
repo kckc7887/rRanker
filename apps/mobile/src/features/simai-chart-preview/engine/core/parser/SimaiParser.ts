@@ -289,6 +289,15 @@ function* parseBody(shouldYield: () => boolean, body: string, defaultBpm?: numbe
         /** https://github.com/Jian04/MajdataViewAlpha/blob/3ffc0f6dfb16574245b76763b52eb8754515677a/README.md */
         const duration = value.slice(8, -1).trim();
         if (duration.toUpperCase() !== 'NULL' && !(ratio(duration, bpm, origin) > 0)) fail('Invalid bounce duration', origin);
+      } else if (value.includes('=')) {
+        /** 分类 HS/SV 仅控制视觉速度，不改变判定物量与时间。 */
+        /** https://github.com/Jian04/MajdataViewAlpha/blob/3ffc0f6dfb16574245b76763b52eb8754515677a/MajdataEdit/SimaiProcess.cs */
+        for (const pair of value.slice(4, -1).split(',')) {
+          const [kind, speed, extra] = pair.split('=').map(part => part.trim());
+          if (extra !== undefined || !/^(tap|each|hold|slide|star|break|mine|touch|touchhold)$/i.test(kind) || speed === undefined) fail('Invalid speed category', origin);
+          if (speed.toUpperCase() !== 'NULL') number(speed, origin);
+          if (shouldYield()) yield;
+        }
       } else if (value.slice(1, 3).toUpperCase() === 'HS') hs = number(value.slice(4, -1), origin);
       else sv = number(value.slice(4, -1), origin);
       i += value.length; continue;
