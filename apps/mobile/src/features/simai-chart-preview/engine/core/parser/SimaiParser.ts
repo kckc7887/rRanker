@@ -231,7 +231,7 @@ function* parseBody(shouldYield: () => boolean, body: string, defaultBpm?: numbe
   let token = '', tokenStart = 0, tokenOffsets: number[] = [];
   const locate = yield* sourceLocator(shouldYield, sourceText);
   const src = (i: number, value: string) => locate(sourceOffset + i, value);
-  const commandPattern = /(\([^)]*\)|\{[^}]*\}|<(?:HS|SV)\*[^>]*>)/iy;
+  const commandPattern = /(\([^)]*\)|\{[^}]*\}|<(?:HS|SV|BOUNCE)\*[^>]*>)/iy;
   const flush = function* (): ParseSteps<void> {
     if (!initialBpm && bpm > 0) initialBpm = bpm;
     if (!(bpm > 0)) fail('Missing BPM', src(tokenStart, token));
@@ -284,6 +284,11 @@ function* parseBody(shouldYield: () => boolean, body: string, defaultBpm?: numbe
         division = value[1] === '#' ? 240000 / bpm / (number(value.slice(2, -1), origin, true) * 1000) : number(value.slice(1, -1), origin, true);
         if (!Number.isFinite(division)) fail('Missing BPM', origin);
         chart.divisorEvents.push({ timing: beat, divisor: division });
+      } else if (value.slice(1, 8).toUpperCase() === 'BOUNCE*') {
+        /** BOUNCE 仅控制往返运动，不改变判定物量与时间。 */
+        /** https://github.com/Jian04/MajdataViewAlpha/blob/3ffc0f6dfb16574245b76763b52eb8754515677a/README.md */
+        const duration = value.slice(8, -1).trim();
+        if (duration.toUpperCase() !== 'NULL' && !(ratio(duration, bpm, origin) > 0)) fail('Invalid bounce duration', origin);
       } else if (value.slice(1, 3).toUpperCase() === 'HS') hs = number(value.slice(4, -1), origin);
       else sv = number(value.slice(4, -1), origin);
       i += value.length; continue;

@@ -9,7 +9,8 @@ import { phiraProvider } from '@/providers/phira-provider';
 import { countPhiraChartZip } from '@/services/phira-chart-notes';
 import { CHART_PREVIEW_MAX_DOWNLOAD_BYTES } from '@/features/chart-preview-shared/chart-preview-resource-budget';
 import { phiraCache, phiraSource } from '@/services/phira-cache';
-import { phiraCatalogNextPage } from '@/domain/phira-filters';
+import { dedupePhiraCharts, phiraCatalogNextPage } from '@/domain/phira-filters';
+import { buildMaxedPhiraBest } from '@/providers/maxed-phira-test-provider';
 import { loadPhiraPlayerFresh, queryPhiraChartBest, refreshAllPhiraBests, refreshPhiraBestTargets, type PhiraBestRefreshResult, type PhiraBestRefreshStatus, type PhiraBestRefreshTarget } from '@/services/phira-service';
 import { publishEntityValue } from '@/services/game-data-query';
 import { queryClient } from '@/state/query-client';
@@ -107,21 +108,31 @@ export function useRefreshAllPhiraBests(playerId: number | null) {
   return { refreshAll, retryFailed };
 }
 
-export function usePhiraCharts(status: PhiraChartStatus, search: string, enabled = true) {
+export function usePhiraCharts(status: PhiraChartStatus, search: string, enabled = true, accountId?: string) {
   const tabActive = useCachedTabActive();
   const normalized = search.trim();
   return useInfiniteQuery({
-    queryKey: ['phira', 'charts', status, normalized], initialPageParam: 0,
-    queryFn: ({ pageParam, signal }): Promise<PhiraChartPage> => phiraProvider.getCharts(
-      { status, page: pageParam, search: normalized || undefined },
-      signal,
-    ),
+    queryKey: accountId === undefined ? ['phira', 'charts', status, normalized] : ['phira', 'example-scores', accountId, status, normalized], initialPageParam: 0,
+    queryFn: async ({ pageParam, signal }): Promise<PhiraChartPage> => {
+      const assertCurrent = captureResourceWrites('phira', signal, accountId);
+      const page = await phiraProvider.getCharts({ status, page: pageParam, search: normalized || undefined }, signal);
+      assertCurrent();
+      return page;
+    },
     /** Phira 的 page=1 与首页相同，翻页顺序为 0、2、3… */
     getNextPageParam: (last, pages) => phiraCatalogNextPage(pages, last),
     enabled: enabled && tabActive,
     notifyOnChangeProps: tabActive ? undefined : [],
     ...PHIRA_QUERY_OPTIONS,
   });
+}
+
+export function usePhiraDemoBests(accountId: string, enabled = true) {
+  const query = usePhiraCharts('ranked', '', enabled, accountId);
+  const items = useMemo(() => dedupePhiraCharts(
+    query.data?.pages.flatMap((page) => page.results) ?? [],
+  ).map((chart) => buildMaxedPhiraBest(chart)), [query.data?.pages]);
+  return { ...query, items };
 }
 
 export function usePhiraChartsByIds(ids: readonly number[]) {

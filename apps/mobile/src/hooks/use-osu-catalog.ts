@@ -11,6 +11,7 @@ import {
   type OsuSearchStatus,
 } from '@/domain/osu';
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
+import { OsuPublicCatalogProvider } from '@/providers/osu-public-catalog-provider';
 import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import { applyOsuTokenRotation, useSession } from '@/state/session-store';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
@@ -27,7 +28,7 @@ export type OsuCatalogSearchInput = {
 
 export type OsuCatalogPage = {
   songs: OsuCatalogSong[];
-  total: number;
+  total?: number;
   recommendedDifficulty: number | null;
   cursor: string | null;
 };
@@ -38,7 +39,8 @@ export function useOsuCatalogSearch(gameId: OsuGameId | null, input: OsuCatalogS
   const activeProviderId = useSession((s) => s.activeProviderId);
   const activeAccountId = useSession((s) => s.activeAccountId);
   const userId = gameId === null ? null : osuUserIdFromAccountId(activeAccountId);
-  const bound = activeProviderId === 'osu' && session?.mode === 'osu-oauth' && userId !== null;
+  const demo = activeProviderId === 'osu-test' && gameId !== null;
+  const bound = demo || (activeProviderId === 'osu' && session?.mode === 'osu-oauth' && userId !== null);
 
   const params = useMemo<OsuBeatmapsetSearchParams | null>(
     () => (gameId === null ? null : { gameId, ...input }),
@@ -46,8 +48,27 @@ export function useOsuCatalogSearch(gameId: OsuGameId | null, input: OsuCatalogS
   );
 
   const query = useInfiniteQuery({
-    queryKey: ['osu-catalog-search', gameId, userId, params] as const,
+    queryKey: ['osu-catalog-search', gameId, demo ? activeAccountId : userId, params] as const,
     queryFn: async ({ pageParam, signal }): Promise<OsuCatalogPage> => {
+      if (demo) {
+        const page = await new OsuPublicCatalogProvider().searchBeatmapsets({
+          gameId: gameId as OsuGameId,
+          page: Number(pageParam ?? 0),
+          q: params?.q,
+        }, signal);
+        return {
+          songs: page.songs.map((song) => ({
+            beatmapSetId: song.beatmapSetId,
+            title: song.title,
+            artist: song.artist,
+            creator: song.creator,
+            listCover: song.cover,
+            difficultyRatings: song.beatmaps.map((beatmap) => beatmap.difficultyRating).sort((a, b) => a - b),
+          })),
+          cursor: page.nextPage === undefined ? null : String(page.nextPage),
+          recommendedDifficulty: null,
+        };
+      }
       const provider = new OsuScoreProvider(
         session as OsuOAuthSession,
         (next, expected) => applyOsuTokenRotation(activeAccountId, next, expected),
@@ -89,6 +110,7 @@ export function useOsuCatalogSearch(gameId: OsuGameId | null, input: OsuCatalogS
   return {
     ...query,
     bound,
+    demo,
     songs,
     total,
     recommendedDifficulty,

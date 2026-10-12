@@ -4,6 +4,7 @@ import { osuUserIdFromAccountId } from '@/domain/bound-account';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import { normalizeOsuBeatmapsetDetail, type OsuBeatmapsetDetail } from '@/domain/osu';
 import { OsuScoreProvider } from '@/providers/osu-score-provider';
+import { OsuPublicCatalogProvider } from '@/providers/osu-public-catalog-provider';
 import type { OsuOAuthSession } from '@/providers/osu-oauth';
 import { applyOsuTokenRotation, useSession } from '@/state/session-store';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
@@ -17,7 +18,8 @@ export function useOsuBeatmapsetsByIds(
   const activeProviderId = useSession((state) => state.activeProviderId);
   const activeAccountId = useSession((state) => state.activeAccountId);
   const userId = osuUserIdFromAccountId(activeAccountId);
-  const bound = activeProviderId === 'osu' && session?.mode === 'osu-oauth' && userId !== null;
+  const demo = activeProviderId === 'osu-test';
+  const bound = demo || (activeProviderId === 'osu' && session?.mode === 'osu-oauth' && userId !== null);
   const uniqueIds = useMemo(
     () => [...new Set(beatmapsetIds.map(String).filter(Boolean))],
     [beatmapsetIds],
@@ -25,8 +27,9 @@ export function useOsuBeatmapsetsByIds(
 
   const queries = useQueries({
     queries: uniqueIds.map((beatmapsetId) => ({
-      queryKey: ['osu-beatmapset-detail', gameId, userId, beatmapsetId] as const,
+      queryKey: ['osu-beatmapset-detail', gameId, demo ? activeAccountId : userId, beatmapsetId] as const,
       queryFn: async ({ signal }: { signal: AbortSignal }): Promise<OsuBeatmapsetDetail> => {
+        if (demo) return new OsuPublicCatalogProvider().getBeatmapset(beatmapsetId, gameId, signal);
         const provider = new OsuScoreProvider(
           session as OsuOAuthSession,
           (next, expected) => applyOsuTokenRotation(activeAccountId, next, expected),
@@ -35,7 +38,7 @@ export function useOsuBeatmapsetsByIds(
         return normalizeOsuBeatmapsetDetail(raw, gameId);
       },
       enabled: bound && tabActive,
-    notifyOnChangeProps: tabActive ? undefined : [],
+      notifyOnChangeProps: tabActive ? undefined : [],
       staleTime: 60_000,
     })),
   });

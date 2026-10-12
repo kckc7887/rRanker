@@ -10,6 +10,7 @@ const mockSong: MajdataSong = { id: '0dff2974-9419-4290-bea9-307caa5825b7', titl
 let mockSongs = [mockSong];
 const mockScore = { chartInfo: mockSong, chartLevel: 4, acc: { dx: 100.1234, classic: 99.5678 }, dxScore: 500, comboState: 2, hash: 'revision', timestamp: mockSong.timestamp };
 const mockRecords = [mockScore];
+const mockDemoRecords: typeof mockRecords = [];
 const mockRecent = { chartId: mockSong.id, title: mockSong.title, artist: '', uploader: '', designer: '', level: 4, difficulty: '14.5', acc: 98.1234, comboState: 1, timestamp: mockSong.timestamp };
 jest.mock('expo-router', () => ({ router: { push: (href: unknown) => mockPush(href) }, Stack: { Screen: () => null } }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
@@ -20,6 +21,7 @@ jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({ dark: false, backg
 jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({ activeAccountId: 'a', activeGameId: 'majdata-net' }) }));
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ isLoading: false, isError: false, isRefetching: false, refetch: mockRefetch, data: { payload: { kind: 'majdata-net', snapshot: { player: { username: 'player' }, records: mockRecords, recent: [mockRecent, { ...mockRecent, timestamp: '2026-09-02T00:00:00Z' }] } } } }) }));
 jest.mock('@/hooks/use-majdata', () => ({
+  useMajdataDemoScores: () => ({ bound: false, records: mockDemoRecords }),
   useMajdataSong: () => ({ data: mockSong, isLoading: false, isError: false, isRefetching: false, refetch: mockRefetch }),
   useMajdataSongs: () => ({ data: { pages: [mockSongs] }, hasNextPage: true, isLoading: false, isError: false, isRefetching: false, isFetchingNextPage: false, fetchNextPage: mockMore }),
   useMajdataRanking: () => ({ data: { hash: 'revision', scores: [[], [], [], [{ player: { username: 'player' } }], []] } }),

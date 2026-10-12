@@ -25,6 +25,8 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。水�
 
 `useMajdataSongs`、歌曲及个人库详情、派生结果与排行榜共用 5 分钟无使用者回收时间。搜索和排行榜被回收后重新请求，上游歌曲详情继续沿现有磁盘缓存与刷新路径读取。
 
+示例成绩生成由各游戏的 `maxed-*-test-provider` 提供。`usePhiraDemoBests`、`useTufDemoPasses` 复用所属曲库分页 hook 的可选账号身份；`useOsuDemoScores` 使用 `OsuPublicCatalogProvider` 的搜索与详情读取，响应复用当前 osu! 谱面模型；`useMajdataDemoScores` 使用 `loadMajdataDemoScoresPage` 读取曲库及已缓存文本，再复用 Simai 解析、物量和满分计算。最佳与成绩页共享查询，生成成绩与详情复用同一入口，查询身份包含示例账号，各游戏清缓存及解绑同时取消所属查询。Rizline 的 `applyRizlineCatalog` 对示例账号按新曲库重新生成存档与 RKS。生成成绩不写玩家成绩快照，单谱 PP、连击或判定缺失沿现有空值语义显示。
+
 `createInflightGuard.share` 共享同键工作并独立取消消费者。`useBoundedQueries` 管理实际批量明细；服务的实际网络请求使用现有队列。清缓存先失效对应资源代次，真实异步结果在最终提交处检查资格。
 
 ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路有界查询复用 `useTufLevel` 的查询定义与 `['tuf', 'level', levelId]` 缓存。单项详情失败不删除收藏或标签。`TufRandomChartsScreen` 按当前前台和页面焦点取消补页，恢复后只加载尚未完成的页；`prefetchTufPassPage` 在提交前检查取消信号与资源代次。
@@ -51,7 +53,7 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 `LargeSecureValueStore` 使用当前清单与分片保存长值，遵守 SecureStore 单值字节限制。写入以 SDK 返回结果为准，不在正常路径再次读回自证。提交失败后的回滚检查用于保护当前引用，属于实际故障处理。
 
-可选账号目录成功读到不支持的数据时重建所属键；读取失败不覆盖。`key-value-storage.ts` 的 `enqueueKeyMutation` 按存储实例和键串行执行完整的读取、失效重建、保存与删除，账号目录、示例账号、临时账号和偏好共用；队列内读取不重复入队，前一个失败不阻塞后续操作。示例账号的当前开关与显示保留。
+可选账号目录成功读到不支持的数据时重建所属键；读取失败不覆盖。`key-value-storage.ts` 的 `enqueueKeyMutation` 按存储实例和键串行执行完整的读取、失效重建、保存与删除，账号目录、示例账号、临时账号和偏好共用；队列内读取不重复入队，前一个失败不阻塞后续操作。`catalog-demo-account-store.ts` 通过现有 `createDemoAccountStore` 保存 Rizline、Phira、冰与火之舞、Majdata 和 osu! 各模式的独立示例账号。osu! 同 Provider 的恢复来源按游戏隔离，单模式读取失败及重试保留其它模式。示例账号的当前开关与显示保留。
 
 ## 存储、偏好与个人曲库
 
@@ -111,6 +113,8 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 设置采用当前信封格式。宿主读取设置失败时进入现有重新加载流程并保留原偏好；成功读到损坏内容时只重建对应设置键。暂停和 seek 使用当前命令；释放只清理所属会话的帧、音源、监听器和临时资源。共享播放器源变更后重建四套生成物并运行 `check:generated`。
 
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。
+
+Simai 解析支持 `BOUNCE` 的拍长比和 `NULL` 复位指令，按原谱面时间消费，不改变判定物量；无效拍长及未知指令继续拒绝。
 
 舞萌与 Majdata 共用 Simai 播放器，保护套不额外高亮，绝赞滑轨使用绝赞配色。PGR 的 `pgr-preview-config.ts` 提供 `showBlockArea`（默认开）和 `showBlockAreaBounds`（默认关），通过现有设置桥接保存。`pgr-blocks.ts` 共用区域变换，判定范围仅按 enable/disable 取样；`pgr-block-renderer.ts` 用未扭曲区域合成后的边界绘制青色框，两个显示开关独立。RPE 不显示这两个选项。
 

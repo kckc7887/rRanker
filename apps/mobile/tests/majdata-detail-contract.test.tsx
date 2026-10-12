@@ -22,6 +22,7 @@ let mockNativeOffset = 0;
 const mockNoDataError = new ProviderError('no_data', '未找到歌曲', false);
 let mockNotesState = 'success';
 let mockDownloadRunning = false;
+let mockExample = false;
 let mockScoresByLevel: Record<number, readonly number[] | null> = {};
 const mockParsed = jest.fn((song: MajdataSong | undefined, _level: number) => ({
   data: song && mockNotesState === 'success' ? { statistics: { counts: { tap: 11, hold: 22, slide: 33, touch: 44, break: 55, mine: 66 } }, difficultyScores: mockScoresByLevel[_level] ?? null } : undefined,
@@ -73,7 +74,7 @@ jest.mock('@/hooks/use-majdata', () => ({
     return mockParsed(useCachedTabActive() ? song : undefined, level);
   }, useMajdataRanking: () => ({}),
 }));
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ data: { payload: { kind: 'majdata-net', snapshot: { records: [{ chartInfo: mockSong, chartLevel: 4, hash: mockSong.hash, acc: { dx: 99.1234, classic: 98.5678 }, comboState: 1 }] } } } }) }));
+jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ data: { providerId: mockExample ? 'majdata-net-test' : 'majdata-net', payload: { kind: 'majdata-net', snapshot: { records: [{ chartInfo: mockSong, chartLevel: 4, hash: mockSong.hash, acc: { dx: 99.1234, classic: 98.5678 }, comboState: 1 }] } } } }) }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => mockLibrary }));
 jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({ useChartPackageDownload: () => ({ isRunning: mockDownloadRunning, start: mockStart }) }));
 jest.mock('@/features/chart-download-shared/simai-package', () => ({ downloadSimaiPackage: jest.fn() }));
@@ -90,12 +91,21 @@ beforeEach(() => {
   mockScoresByLevel = {};
   Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
   mockLibrary.isUpdating = false; mockDownloadRunning = false;
+  mockExample = false;
   jest.spyOn(Animated, 'loop').mockReturnValue({ start: jest.fn(), stop: jest.fn(), reset: jest.fn() } as unknown as ReturnType<typeof Animated.loop>);
   jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation(callback => {
     (callback as () => void)(); return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
   });
 });
 afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); });
+
+it('example detail renders a full score from the current difficulty statistics', async () => {
+  mockExample = true;
+  const screen = await render(<MajdataSongDetail songId={mockSong.id} initialLevelIndex={4} />);
+  const master = within(screen.getByTestId('majdata-chart-card-4'));
+  expect(master.getByText('101.0000%')).toBeTruthy();
+  expect(master.queryByText('99.1234%')).toBeNull();
+});
 
 it('waits while the detail query is pending before fetching and never flashes a missing song', async () => {
   mockSongState = 'pending'; mockReady = false;

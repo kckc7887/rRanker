@@ -132,6 +132,7 @@ let mockGameData: { data?: ReturnType<typeof osuGameData> } = { data: osuGameDat
 let mockActiveGameId = 'osu-standard';
 let mockActualDetailQuery = false;
 let mockBoundAccount = true;
+let mockDemoAccount = false;
 let mockLibraryItems: UserLibraryItem[] = [];
 
 jest.mock('expo-router', () => ({
@@ -198,7 +199,7 @@ jest.mock('@/state/session-store', () => ({
   useSession: (selector: (state: Record<string, unknown>) => unknown) => selector({
     activeGameId: mockActiveGameId,
     activeAccountId: `${mockActiveGameId}:osu:2`,
-    activeProviderId: mockBoundAccount ? 'osu' : null,
+    activeProviderId: mockDemoAccount ? 'osu-test' : mockBoundAccount ? 'osu' : null,
     session: mockBoundAccount ? { mode: 'osu-oauth', accessToken: 'test-access', refreshToken: 'test-refresh', expiresAt: Number.MAX_SAFE_INTEGER, persistable: true } : null,
   }),
 }));
@@ -263,7 +264,23 @@ describe('OsuSongDetail 歌曲详情页', () => {
     mockActiveGameId = 'osu-standard';
     mockActualDetailQuery = false;
     mockBoundAccount = true;
+    mockDemoAccount = false;
     mockLibraryItems = [];
+  });
+
+  it('示例详情各难度直接显示满成绩及实际最大连击，PP 和判定保留空值', async () => {
+    mockDemoAccount = true;
+    const screen = await render(<OsuSongDetail beatmapsetId="3720" initialBeatmapId={22425} />);
+    const easy = within(screen.getByTestId('osu-detail-difficulty-22425'));
+    expect(easy.getByText('1,000,000')).toBeTruthy();
+    expect(easy.getByText('100.00%')).toBeTruthy();
+    expect(easy.getByText('250x')).toBeTruthy();
+    expect(easy.getByText('SS')).toBeTruthy();
+    expect(easy.queryByLabelText(/^模组 /)).toBeNull();
+    expect(easy.getAllByText('—').length).toBeGreaterThanOrEqual(7);
+    const normal = within(screen.getByTestId('osu-detail-difficulty-22427'));
+    expect(normal.getByText('1,000,000')).toBeTruthy();
+    expect(normal.getByText('350x')).toBeTruthy();
   });
 
   it('等待详情活动和首个请求时不闪空态，刷新保留已有歌曲', async () => {

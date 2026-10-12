@@ -228,7 +228,8 @@ export function gameAccountMetadata(bundle: GameDataBundle): ({
   const { providerId, profile } = bundle;
   const p: GamePayload = bundle.payload;
   switch (p.kind) {
-    case 'rizline': return { scoreDisplay: p.playerScore.display, displayName: p.player.username, storedDisplayName: p.player.username };
+    case 'rizline': return { scoreDisplay: p.playerScore.display, displayName: p.player.username,
+      storedDisplayName: providerId === 'rizline-official' ? p.player.username : undefined };
     case 'maimai': return { scoreDisplay: formatPlayerScore(p.playerScore.value, profile.ratingDigits),
       displayName: p.player.displayName,
       avatarUrl: providerId === 'lxns' ? buildLxnsIconUrl(p.player.presentation?.iconId) : undefined };
@@ -242,7 +243,8 @@ export function gameAccountMetadata(bundle: GameDataBundle): ({
     case 'adofai': return { scoreDisplay: p.playerScore.display, displayName: p.player.name, avatarUrl: resolveTufAvatarUrl(p.player) ?? undefined };
     case 'musedash': return { scoreDisplay: p.playerScore.display, displayName: p.player.user.nickname };
     case 'majdata-net': return { scoreDisplay: p.playerScore.display, displayName: p.snapshot.player.username,
-      avatarUrl: majdataAvatarUrl(p.snapshot.player.username), storedDisplayName: p.snapshot.player.username };
+      avatarUrl: providerId === 'majdata-net' ? majdataAvatarUrl(p.snapshot.player.username) : undefined,
+      storedDisplayName: providerId === 'majdata-net' ? p.snapshot.player.username : undefined };
     case 'phira': return { scoreDisplay: p.playerScore.display, displayName: p.snapshot.player.name, avatarUrl: p.snapshot.player.avatar ?? undefined };
     case 'osu': return { scoreDisplay: p.playerScore.display, displayName: p.player.username, avatarUrl: p.player.avatarUrl ?? undefined };
     default: return null;

@@ -48,6 +48,7 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import {
   useTufDifficulties,
+  useTufDemoPasses,
   useTufLevel,
   useTufLevelBestPass,
   useTufLevelSearch,
@@ -58,6 +59,7 @@ import { useGameData } from '@/hooks/use-game-data';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
+import { buildMaxedTufPass } from '@/providers/maxed-tuf-test-provider';
 
 const ADOFAI_ICON = findGame('adofai')!.icon;
 
@@ -76,9 +78,12 @@ export function TufBestScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
   const playerId = useActiveTufPlayerId();
+  const accountId = useSession((state) => state.activeAccountId);
+  const example = accountId === 'adofai:test';
   const gameData = useGameData();
   const player = gameData.data?.payload?.kind === 'adofai' ? gameData.data.payload.player : undefined;
   const passes = useTufPasses(playerId, { sortBy: 'impact', order: 'DESC', bestPerLevel: true });
+  const demo = useTufDemoPasses(accountId, example);
   const allPasses = useMemo(
     () => passes.data?.pages.flatMap((page) => page.passes) ?? [],
     [passes.data?.pages],
@@ -87,17 +92,19 @@ export function TufBestScreen() {
     () => selectTufTopPasses(player?.topScores ?? [], allPasses),
     [allPasses, player?.topScores],
   );
-  const ordered = top.passes;
-  const missing = top.missing;
-  const sections: TufBestSection[] = [{ id: 'top20', title: 'Top 20 Impact', data: ordered }];
-  const loading = gameData.isLoading || passes.isLoading;
-  const error = gameData.error ?? passes.error;
+  const ordered = example ? demo.items : top.passes;
+  const missing = example ? 0 : top.missing;
+  const sections: TufBestSection[] = [{ id: 'top20', title: example ? '最佳成绩' : 'Top 20 Impact', data: ordered }];
+  const loading = example ? demo.isLoading : gameData.isLoading || passes.isLoading;
+  const error = example ? demo.error : gameData.error ?? passes.error;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <BestListPage<TufPass, TufBestSection>
       isLoading={loading} isError={!!error} isEmpty={!loading && ordered.length === 0}
-      error={error} onRetry={() => { void gameData.refetch(); void passes.refetch(); }}
-      emptyText={playerId === null ? '请先在游戏管理中绑定 TUF 玩家' : '当前公开资料没有 Top 20 成绩'}
-      data={!loading && ordered.length ? sections : undefined}
+      error={error} onRetry={() => { if (example) void demo.refetch(); else { void gameData.refetch(); void passes.refetch(); } }}
+      emptyText={example ? '当前没有最佳成绩' : playerId === null ? '请先在游戏管理中绑定 TUF 玩家' : '当前公开资料没有 Top 20 成绩'}
+      emptyActionLabel={example && demo.hasNextPage ? '继续加载' : undefined}
+      onEmptyAction={example && demo.hasNextPage ? () => { if (!demo.isFetchingNextPage) void demo.fetchNextPage(); } : undefined}
+      data={ordered.length ? sections : undefined}
       sectionListProps={{
         testID: 'tuf-best-results-list', style: styles.list,
         contentInsetAdjustmentBehavior: 'automatic', stickySectionHeadersEnabled: false,
@@ -112,6 +119,8 @@ export function TufBestScreen() {
           ? <Text style={[styles.notice, { color: theme.textMuted }]}>有 {missing} 条 Top 记录未公开，已跳过。</Text>
           : null,
         renderItem: ({ item, index }) => <TufScoreCard pass={item} position={index + 1} />,
+        onEndReached: () => { if (example && demo.hasNextPage && !demo.isFetchingNextPage) void demo.fetchNextPage(); },
+        ListFooterComponent: example ? <InfinitePageFooter loading={demo.isFetchingNextPage} failed={demo.isFetchNextPageError} hasNextPage={demo.hasNextPage === true} onRetry={() => void demo.fetchNextPage()} /> : undefined,
       }} />
   </View>;
 }
@@ -120,6 +129,8 @@ export function TufRecordsScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
   const playerId = useActiveTufPlayerId();
+  const accountId = useSession((state) => state.activeAccountId);
+  const example = accountId === 'adofai:test';
   const [sortBy, setSortBy] = useState<TufPassSort>('date');
   const [order, setOrder] = useState<TufSortOrder>('DESC');
   const [bestPerLevel, setBestPerLevel] = useState(false);
@@ -135,7 +146,9 @@ export function TufRecordsScreen() {
     () => ({ sortBy, order, bestPerLevel, query: debounced.trim() || undefined }),
     [bestPerLevel, debounced, order, sortBy],
   );
-  const query = useTufPasses(playerId, queryOptions);
+  const realQuery = useTufPasses(playerId, queryOptions);
+  const demo = useTufDemoPasses(accountId, example);
+  const query = example ? demo : realQuery;
   const difficultyBounds = useMemo(
     () => tufDifficultyBounds(difficultyMin, difficultyMax),
     [difficultyMax, difficultyMin],
@@ -147,18 +160,22 @@ export function TufRecordsScreen() {
   const recordsFetchingNextPage = query.isFetchingNextPage;
   const recordsNextPageFailed = query.isFetchNextPageError;
   useEffect(() => {
-    if (localFilterActive && recordsHaveNextPage && !recordsFetchingNextPage && !recordsNextPageFailed) {
+    if (!example && localFilterActive && recordsHaveNextPage && !recordsFetchingNextPage && !recordsNextPageFailed) {
       void fetchNextRecordsPage();
     }
-  }, [fetchNextRecordsPage, localFilterActive, recordsFetchingNextPage, recordsHaveNextPage, recordsNextPageFailed]);
+  }, [example, fetchNextRecordsPage, localFilterActive, recordsFetchingNextPage, recordsHaveNextPage, recordsNextPageFailed]);
   const loadedRecords = useMemo(
-    () => uniqueById(query.data?.pages.flatMap((page) => page.passes) ?? []),
-    [query.data?.pages],
+    () => example ? demo.items : uniqueById(realQuery.data?.pages.flatMap((page) => page.passes) ?? []),
+    [demo.items, example, realQuery.data?.pages],
   );
-  const records = useMemo(() => filterTufPasses(loadedRecords, {
+  const records = useMemo(() => example ? loadedRecords.filter((pass) => {
+    const search = debounced.trim().toLocaleLowerCase();
+    return !search || [pass.level.song, pass.level.artist, ...pass.level.levelCredits.map((credit) => credit.creator.name)]
+      .some((text) => text.toLocaleLowerCase().includes(search));
+  }) : filterTufPasses(loadedRecords, {
     band: difficultyBand, ...difficultyBounds, includeSpecial,
-  }, achievement), [achievement, difficultyBand, difficultyBounds, includeSpecial, loadedRecords]);
-  const total = localFilterActive && !query.hasNextPage ? records.length : query.data?.pages[0]?.total;
+  }, achievement), [achievement, debounced, difficultyBand, difficultyBounds, example, includeSpecial, loadedRecords]);
+  const total = !example && localFilterActive && !query.hasNextPage ? records.length : query.data?.pages[0]?.total;
   const controls = <>
     <GameSearchHeader accessibilityLabel="筛选 TUF 成绩" placeholder="搜索关卡、歌曲或作者" value={keyword}
       onChangeText={setKeyword} loaded={records.length} total={total} />
@@ -174,9 +191,11 @@ export function TufRecordsScreen() {
       }} />
   </>;
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
-    <RecordsListPage<TufPass> beforeList={controls} isLoading={query.isLoading} isError={query.isError}
+    <RecordsListPage<TufPass> beforeList={example ? <GameSearchHeader placeholder="搜索关卡、歌曲或作者" value={keyword} onChangeText={setKeyword} loaded={records.length} total={total} /> : controls} isLoading={query.isLoading} isError={query.isError}
       isEmpty={!query.isLoading && records.length === 0} error={query.error}
-      onRetry={() => void query.refetch()} emptyText={playerId === null ? '请先绑定 TUF 玩家' : '没有公开成绩'}
+      onRetry={() => void query.refetch()} emptyText={example ? '没有符合条件的成绩' : playerId === null ? '请先绑定 TUF 玩家' : '没有公开成绩'}
+      emptyActionLabel={example && query.hasNextPage ? '继续加载' : undefined}
+      onEmptyAction={example && query.hasNextPage ? () => { if (!query.isFetchingNextPage) void query.fetchNextPage(); } : undefined}
       data={records.length ? records : undefined} flatListProps={{
         testID: 'tuf-records-results-list', style: styles.list,
         contentInsetAdjustmentBehavior: 'automatic', contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
@@ -343,12 +362,13 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   const playerId = useActiveTufPlayerId();
+  const example = useSession((state) => state.activeAccountId) === 'adofai:test';
   const numericId = /^\d+$/.test(levelId) ? Number(levelId) : null;
   const query = useTufLevel(numericId);
   const level = query.data?.level;
   const loading = !level && numericId !== null && query.isPending;
   const scoreQuery = useTufLevelBestPass(level?.id ?? null, playerId);
-  const bestPass = scoreQuery.data;
+  const bestPass = example && level ? buildMaxedTufPass(level) : scoreQuery.data;
   const chart = level ? presentTufChart(level) : null;
   const library = useUserLibrary();
   const songItem = level ? library.data?.find((item) => item.key === library.songKey(level.id)) : undefined;

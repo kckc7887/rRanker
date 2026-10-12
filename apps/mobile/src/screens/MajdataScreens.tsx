@@ -3,6 +3,7 @@ import { ActivityIndicator, ScrollView, Text, View } from 'react-native';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { SongListSectionHeader } from '@/components/game-content/SongListSectionHeader';
+import { InfinitePageFooter } from '@/components/game-content/InfinitePageFooter';
 import { SIMAI_BEST_LIST_STYLES as bestStyles, SIMAI_RECORDS_LIST_STYLES as recordsStyles, SIMAI_CATALOG_LIST_STYLES as catalogStyles } from '@/components/game-content/SimaiListStyles';
 import { FilterChipFrame, FilterShell, NeutralChip, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
 import { FilterCheckboxList } from '@/components/game-content/FilterCheckboxList';
@@ -14,7 +15,7 @@ import { MajdataDifficultyBadge, MajdataScoreCard, MajdataSongRow } from '@/comp
 import { MAJDATA_NAMES, MAJDATA_SORTS, filterMajdataRecords, majdataTags, majdataTime, matchesMajdataSong } from '@/domain/majdata';
 import { majdataRecentCard, majdataRecordCard, type MajdataCard } from '@/features/game-content/adapters/majdata';
 import { useGameData } from '@/hooks/use-game-data';
-import { useMajdataSongs } from '@/hooks/use-majdata';
+import { useMajdataSongs, useMajdataDemoScores } from '@/hooks/use-majdata';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
@@ -72,20 +73,33 @@ export function MajdataFilter({ catalog, tags }: { catalog: boolean; tags: strin
 
 export function MajdataBestScreen() {
   const query = useGameData();
+  const active = useCachedTabActive();
+  const demo = useMajdataDemoScores();
   const theme = useAppTheme();
   const bottom = useNativeTabBottomInset();
   const snapshot = query.data?.payload.kind === 'majdata-net' ? query.data.payload.snapshot : undefined;
-  const cards = useMemo(() => [...(snapshot?.recent ?? [])]
-    .sort((a, b) => majdataTime(b.timestamp) - majdataTime(a.timestamp)).map(majdataRecentCard), [snapshot?.recent]);
-  const sections = useMemo(() => [{ title: 'Recent', data: cards }], [cards]);
+  const cards = useMemo(() => demo.bound ? demo.records.map(majdataRecordCard) : [...(snapshot?.recent ?? [])]
+    .sort((a, b) => majdataTime(b.timestamp) - majdataTime(a.timestamp)).map(majdataRecentCard), [demo.bound, demo.records, snapshot?.recent]);
+  const sections = useMemo(() => [{ title: demo.bound ? '最佳成绩' : 'Recent', data: cards }], [cards, demo.bound]);
+  const displayQuery = demo.bound ? demo : query;
+  const fetchNextPage = demo.fetchNextPage;
+  useEffect(() => {
+    if (active && demo.bound && !cards.length && demo.hasNextPage && !demo.isFetching && !demo.isError) void fetchNextPage();
+  }, [active, cards.length, demo.bound, demo.hasNextPage, demo.isFetching, demo.isError, fetchNextPage]);
   return <View style={[bestStyles.page, { backgroundColor: theme.background }]}>
-    <BestListPage<MajdataCard, typeof sections[number]> data={cards.length ? sections : undefined} isLoading={query.isLoading}
-      isError={query.isError && !snapshot} error={query.error} isEmpty={!cards.length}
-      emptyText="暂无最近游玩" onRetry={() => void query.refetch()}
+    <BestListPage<MajdataCard, typeof sections[number]> data={cards.length || (demo.bound && demo.hasNextPage) ? sections : undefined}
+      isLoading={demo.bound ? demo.isPending : query.isLoading}
+      isError={demo.bound ? demo.isError && !cards.length : query.isError && !snapshot}
+      error={displayQuery.error} isEmpty={!cards.length && !(demo.bound && demo.hasNextPage)}
+      emptyText={demo.bound ? '暂无最佳成绩' : '暂无最近游玩'} onRetry={() => void displayQuery.refetch()}
       sectionListProps={{ testID: 'majdata-recent-results-list', contentInsetAdjustmentBehavior: 'automatic',
         style: bestStyles.list, contentContainerStyle: [bestStyles.listContent, { paddingBottom: bottom + 16 }],
         scrollIndicatorInsets: { bottom }, stickySectionHeadersEnabled: false, keyExtractor: item => item.key,
-        refreshing: query.isRefetching, onRefresh: () => void query.refetch(),
+        refreshing: displayQuery.isRefetching && !demo.isFetchingNextPage, onRefresh: () => void displayQuery.refetch(),
+        onEndReached: () => { if (active && demo.bound && demo.hasNextPage && !demo.isFetching && !demo.isError) void fetchNextPage(); },
+        onEndReachedThreshold: 0.4,
+        ListFooterComponent: demo.bound ? <InfinitePageFooter loading={demo.isFetchingNextPage} failed={demo.isFetchNextPageError}
+          hasNextPage={demo.hasNextPage === true} onRetry={() => void fetchNextPage()} /> : undefined,
         renderSectionHeader: ({ section }) => <SongListSectionHeader title={section.title} count={section.data.length} />,
         renderItem: ({ item, index }) => <MajdataScoreCard card={item} username={snapshot?.player.username ?? ''}
           position={index + 1} /> }} />
@@ -94,35 +108,49 @@ export function MajdataBestScreen() {
 
 export function MajdataRecordsScreen() {
   const query = useGameData();
+  const active = useCachedTabActive();
+  const demo = useMajdataDemoScores();
   const theme = useAppTheme();
   const bottom = useNativeTabBottomInset();
   const filter = useMajdataRecordsFilter();
   const keyword = useDebouncedValue(filter.keyword);
   const snapshot = query.data?.payload.kind === 'majdata-net' ? query.data.payload.snapshot : undefined;
-  const sortedRecords = useMemo(() => filterMajdataRecords(snapshot?.records ?? [], {
+  const sourceRecords = demo.bound ? demo.records : snapshot?.records;
+  const sortedRecords = useMemo(() => demo.bound ? demo.records : filterMajdataRecords(snapshot?.records ?? [], {
     difficulties: [], tags: [], min: '', max: '', keyword: '', sort: '',
-  }), [snapshot?.records]);
+  }), [demo.bound, demo.records, snapshot?.records]);
   const searchFilter = useMemo(() => ({
     difficulties: filter.difficulties, tags: filter.tags, min: filter.min, max: filter.max, keyword, sort: '',
   }), [filter.difficulties, filter.tags, filter.min, filter.max, keyword]);
   const selectRecord = useCallback((record: typeof sortedRecords[number], filters: typeof searchFilter) =>
     filterMajdataRecords([record], filters).length ? majdataRecordCard(record) : undefined, []);
   const { data: cards, isFiltering } = useLocalSearch(sortedRecords, searchFilter, selectRecord);
-  const tags = useMemo(() => [...new Set(snapshot?.records.flatMap(score => majdataTags(score.chartInfo)) ?? [])], [snapshot?.records]);
+  const tags = useMemo(() => [...new Set(sourceRecords?.flatMap(score => majdataTags(score.chartInfo)) ?? [])], [sourceRecords]);
+  const displayQuery = demo.bound ? demo : query;
+  const fetchNextPage = demo.fetchNextPage;
+  useEffect(() => {
+    if (active && demo.bound && !cards.length && demo.hasNextPage && !demo.isFetching && !demo.isError) void fetchNextPage();
+  }, [active, cards.length, demo.bound, demo.hasNextPage, demo.isFetching, demo.isError, fetchNextPage]);
   return <View style={[recordsStyles.page, { backgroundColor: theme.background }]}>
     <GameSearchHeader layout="records" value={filter.keyword} onChangeText={filter.setKeyword}
       placeholder="曲名 / 曲师 / 谱师" accessibilityLabel="成绩搜索" />
     <MajdataFilter catalog={false} tags={tags} />
-    <RecordsListPage data={cards.length ? cards : undefined} isLoading={query.isLoading || (isFiltering && cards.length === 0)}
-      isError={query.isError && !snapshot} error={query.error} isEmpty={!cards.length}
-      emptyText="当前筛选条件下没有成绩" onRetry={() => void query.refetch()}
+    <RecordsListPage data={cards.length || (demo.bound && demo.hasNextPage) ? cards : undefined}
+      isLoading={(demo.bound ? demo.isPending : query.isLoading) || (isFiltering && cards.length === 0)}
+      isError={demo.bound ? demo.isError && !sourceRecords?.length : query.isError && !snapshot}
+      error={displayQuery.error} isEmpty={!cards.length && !(demo.bound && demo.hasNextPage)}
+      emptyText="当前筛选条件下没有成绩" onRetry={() => void displayQuery.refetch()}
       emptyActionLabel={filter.keyword || filter.difficulties.length || filter.tags.length || filter.min || filter.max ? '清除筛选' : undefined}
       onEmptyAction={filter.keyword || filter.difficulties.length || filter.tags.length || filter.min || filter.max ? () => filter.clearFilters() : undefined}
       flatListProps={{ testID: 'majdata-records-results-list', contentInsetAdjustmentBehavior: 'automatic',
         style: recordsStyles.list, contentContainerStyle: [recordsStyles.listContent, { paddingBottom: bottom + 16 }],
         scrollIndicatorInsets: { bottom }, keyExtractor: item => item.key,
         ListHeaderComponent: snapshot ? <View style={recordsStyles.header}><Text style={recordsStyles.note}>共 {cards.length} 条成绩</Text></View> : null,
-        refreshing: query.isRefetching, onRefresh: () => void query.refetch(),
+        refreshing: displayQuery.isRefetching && !demo.isFetchingNextPage, onRefresh: () => void displayQuery.refetch(),
+        onEndReached: () => { if (active && demo.bound && demo.hasNextPage && !demo.isFetching && !demo.isError) void fetchNextPage(); },
+        onEndReachedThreshold: 0.4,
+        ListFooterComponent: demo.bound ? <InfinitePageFooter loading={demo.isFetchingNextPage} failed={demo.isFetchNextPageError}
+          hasNextPage={demo.hasNextPage === true} onRetry={() => void fetchNextPage()} /> : undefined,
         renderItem: ({ item }) => <MajdataScoreCard card={item} username={snapshot?.player.username ?? ''} /> }} />
   </View>;
 }

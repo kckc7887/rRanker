@@ -1,7 +1,8 @@
 import { useState } from 'react';
 import { useNotification } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
-import type { ProviderId } from '@/domain/game-bind-options';
+import type { GameId, ProviderId } from '@/domain/game-bind-options';
+import type { OsuGameId } from '@/domain/game-mode-family';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { useSession } from '@/state/session-store';
 import { queryClient } from '@/state/query-client';
@@ -41,11 +42,11 @@ export function useManagedAccountOperations(flow: ReturnType<typeof useAccountBi
       showNotification({ title: '添加失败', message: providerErrorToUserMessage(error, '无法添加本地玩家，请重试。'), variant: 'error' });
     } finally { setBusy(false); }
   };
-  const addDemoAccount = (providerId: ProviderId) => {
-    const binding = demoAccountBinding(providerId);
+  const addDemoAccount = (providerId: ProviderId, gameId?: GameId) => {
+    const binding = demoAccountBinding(providerId, gameId);
     if (!binding) return false;
     void addOrSwitchDemoAccount({
-      ...binding, existing: accounts.find(account => account.providerId === providerId),
+      ...binding, existing: accounts.find(account => account.providerId === providerId && (!gameId || account.gameId === gameId)),
       existingMessage: account => `示例账号「${account.displayName}」已在列表中，已切换到该账号`,
       successMessage: account => `已添加${binding.label}示例账号「${account.displayName}」`,
       errorFallback: `无法添加${binding.label}示例账号，请重试。`,
@@ -53,6 +54,25 @@ export function useManagedAccountOperations(flow: ReturnType<typeof useAccountBi
       onSelectExisting: onSelectAccount, upsertBoundAccount, showNotification,
     });
     return true;
+  };
+  const addOsuDemoModes = async (modes: readonly OsuGameId[]) => {
+    setBusy(true);
+    try {
+      let selected: BoundAccount | undefined;
+      for (const gameId of modes) {
+        const existing = accounts.find(account => account.providerId === 'osu-test' && account.gameId === gameId);
+        const binding = demoAccountBinding('osu-test', gameId)!;
+        const account = existing ?? binding.create();
+        if (!existing) { await binding.persist(account); upsertBoundAccount(account); }
+        selected ??= account;
+      }
+      if (selected) {
+        flow.close();
+        if (await onSelectAccount(selected)) setMessage('已添加 osu! 示例账号');
+      }
+    } catch (error) {
+      showNotification({ title: '添加失败', message: providerErrorToUserMessage(error, '无法添加 osu! 示例账号，请重试。'), variant: 'error' });
+    } finally { setBusy(false); }
   };
   const bindTufPlayer = (player: import('@/domain/tuf').TufPlayer) => {
     const binding = tufPlayerBinding(player);
@@ -117,7 +137,7 @@ export function useManagedAccountOperations(flow: ReturnType<typeof useAccountBi
       onClearPersonal: () => void removeAccount(account, true), showActionNotification,
     });
   };
-  return { busy, message, onSelectAccount, addLocalAccount, addDemoAccount, bindTufPlayer, bindPhiraPlayer, bindMuseDashPlayer, promptRemoveAccount,
+  return { busy, message, onSelectAccount, addLocalAccount, addDemoAccount, addOsuDemoModes, bindTufPlayer, bindPhiraPlayer, bindMuseDashPlayer, promptRemoveAccount,
     saveLocalAccountName: async (account: BoundAccount, displayName: string) => {
       await saveLocalAccountName(account, displayName);
       setMessage(`已将本地玩家改名为「${displayName}」`);

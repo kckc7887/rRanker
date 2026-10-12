@@ -8,6 +8,7 @@ import {
   loadMajdataParsedChart,
   loadMajdataSong,
   loadMajdataSongSnapshot,
+  loadMajdataDemoScoresPage,
 } from '@/services/majdata-service';
 import type { MajdataSong } from '@/domain/majdata';
 import { useSession } from '@/state/session-store';
@@ -62,5 +63,29 @@ export function useMajdataParsedChart(song: MajdataSong | undefined, level: numb
 }
 export function useMajdataRanking(id: string, enabled: boolean) {
   const active = useCachedTabActive(); const accountId = useSession(s => s.activeAccountId);
-  return useQuery({ queryKey: ['majdata-net', 'ranking', accountId, id], queryFn: ({ signal }) => majdataProvider.getRanking(id, signal), enabled: enabled && active, notifyOnChangeProps: active ? undefined : [], ...options });
+  const providerId = useSession(s => s.activeProviderId);
+  return useQuery({ queryKey: ['majdata-net', 'ranking', accountId, id], queryFn: ({ signal }) => majdataProvider.getRanking(id, signal), enabled: enabled && active && providerId !== 'majdata-net-test', notifyOnChangeProps: active ? undefined : [], ...options });
+}
+
+export function useMajdataDemoScores() {
+  const active = useCachedTabActive();
+  const accountId = useSession(s => s.activeAccountId);
+  const providerId = useSession(s => s.activeProviderId);
+  const bound = providerId === 'majdata-net-test';
+  const query = useInfiniteQuery({
+    queryKey: ['majdata-net', 'demo-scores', accountId], initialPageParam: 0,
+    queryFn: ({ pageParam, signal }) => loadMajdataDemoScoresPage(pageParam, signal),
+    getNextPageParam: (last, pages) => last.songCount < 30 ? undefined : pages.length,
+    enabled: active && bound, notifyOnChangeProps: active ? undefined : [], ...options,
+  });
+  const records = useMemo(() => {
+    const seen = new Set<string>();
+    return (query.data?.pages.flatMap(page => page.records) ?? []).filter(record => {
+      const key = `${record.chartInfo.id}:${record.chartLevel}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  }, [query.data?.pages]);
+  return { ...query, bound, records };
 }

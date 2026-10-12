@@ -11,8 +11,9 @@ import { MuseDashPlayerPickerSheet } from '@/components/MuseDashPlayerPickerShee
 import { RenameLocalAccountSheet } from '@/components/RenameLocalAccountSheet';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
 import { OsuRatingTag } from '@/components/osu/OsuRatingTag';
+import { OsuModeSelectSheet } from '@/components/osu/OsuModeSelectSheet';
 import type { BoundAccount } from '@/domain/bound-account';
-import { canBindProvider, isCredentialProvider, type GameId, type ProviderOption } from '@/domain/game-bind-options';
+import { canBindProvider, isCredentialProvider, isTestProvider, type GameId, type ProviderOption } from '@/domain/game-bind-options';
 import { isOsuGameId } from '@/domain/game-mode-family';
 import { useSession } from '@/state/session-store';
 import { useDebugStore } from '@/state/debug-store';
@@ -41,7 +42,8 @@ export function GameAccountsScreen() {
     loginProvider, loginGame, tufPickerVisible, museDashPickerVisible, phiraPickerVisible,
     renameAccount, setRenameAccount, openPicker } = flow;
   const { busy, message, onSelectAccount, addLocalAccount, addDemoAccount, bindTufPlayer,
-    bindPhiraPlayer, bindMuseDashPlayer, promptRemoveAccount, saveLocalAccountName } = useManagedAccountOperations(flow);
+    addOsuDemoModes, bindPhiraPlayer, bindMuseDashPlayer, promptRemoveAccount, saveLocalAccountName } = useManagedAccountOperations(flow);
+  const [osuDemoVisible, setOsuDemoVisible] = useState(false);
   const [collapsedManagedGameIds, setCollapsedManagedGameIds] = useState<Set<GameId>>(() => new Set());
   const [recovering, setRecovering] = useState(false);
   const recoveryLock = useRef(false);
@@ -109,7 +111,8 @@ export function GameAccountsScreen() {
     const debug = useDebugStore.getState();
     if (!canBindProvider(provider, debug.hydrated && debug.testAccountsEnabled)) return;
     if (provider.id === 'local') { void addLocalAccount(); return; }
-    if (addDemoAccount(provider.id)) return;
+    if (provider.id === 'osu-test') { flow.afterClose(() => setOsuDemoVisible(true)); return; }
+    if (addDemoAccount(provider.id, gameId)) return;
     if (provider.bindingKind === 'public-player') { flow.openPublicPlayer(provider.id); return; }
     flow.openLogin(gameId, provider.id);
   };
@@ -124,10 +127,7 @@ export function GameAccountsScreen() {
   const renderAccountActions = (account: BoundAccount) => {
     const isActive = account.id === activeAccountId;
     const isLocal = account.providerId === 'local';
-    const isGeneratedTest = account.providerId === 'maimai-test'
-      || account.providerId === 'chunithm-test'
-      || account.providerId === 'phigros-test'
-      || account.providerId === 'musedash-test';
+    const isGeneratedTest = isTestProvider(account.providerId);
     const isChunithmTemp = account.providerId === 'chunithm-temp';
     const isRemote = isCredentialProvider(account.providerId);
     const isTuf = account.providerId === 'tuf';
@@ -219,12 +219,19 @@ export function GameAccountsScreen() {
           activeAccountId={activeAccountId} onToggleGame={toggleGame} onSelectAccount={onSelectAccount}
           renderActions={renderAccountActions}
           renderRatingTag={(account) => (
-            account.providerId === 'osu' && isOsuGameId(account.gameId)
+            (account.providerId === 'osu' || account.providerId === 'osu-test') && isOsuGameId(account.gameId)
               ? <OsuRatingTag display={account.scoreDisplay} />
               : null
           )}
           emptyText="暂无已绑定账号。点击右下角添加，展开游戏后选择查分器绑定。" />
       </ScrollView>
+
+      <OsuModeSelectSheet visible={osuDemoVisible}
+        alreadyBound={boundAccounts.filter(account => account.providerId === 'osu-test').map(account => account.gameId).filter(isOsuGameId)}
+        busy={busy} submitLabel="添加选中模式" onClose={() => setOsuDemoVisible(false)}
+        onSubmit={modes => void addOsuDemoModes(modes).then(() => {
+          if (modes.every(gameId => useSession.getState().boundAccounts.some(account => account.providerId === 'osu-test' && account.gameId === gameId))) setOsuDemoVisible(false);
+        })} />
 
       <Pressable accessibilityRole="button" accessibilityLabel="添加游戏账号" disabled={busy} onPress={openPicker}
         style={({ pressed }) => [styles.fab, { bottom: Math.max(safeAreaInsets.bottom, 12) + 16, backgroundColor: theme.accent }, pressed && styles.fabPressed]}>

@@ -11,6 +11,8 @@ import {
   createTufBoundAccount,
   createMuseDashBoundAccount,
   createPhiraBoundAccount,
+  createCatalogTestAccount,
+  type CatalogTestGameId,
   type BoundAccount,
 } from '@/domain/bound-account';
 import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store';
@@ -21,6 +23,8 @@ import { MuseDashDemoAccountStore } from '@/storage/musedash-demo-account-store'
 import { TufAccountStore } from '@/storage/tuf-account-store';
 import { MuseDashAccountStore } from '@/storage/musedash-account-store';
 import { PhiraAccountStore } from '@/storage/phira-account-store';
+import { catalogDemoAccountStore } from '@/storage/catalog-demo-account-store';
+import { OSU_MODE_GAME_IDS } from '@/domain/game-bind-options';
 
 import { restoreSession, useSession, replaceRestoredOptionalAccounts } from '@/state/session-store';
 import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
@@ -80,12 +84,21 @@ async function loadMuseDashDemoBoundAccount() {
 }
 
 const single = (account: BoundAccount | null): BoundAccount[] => account ? [account] : [];
+async function loadCatalogDemoAccount(gameId: CatalogTestGameId): Promise<BoundAccount[]> {
+  const stored = await catalogDemoAccountStore(gameId).load();
+  return stored ? [createCatalogTestAccount(gameId, stored.displayName)] : [];
+}
 const sources = [
   { id: 'local', provider: 'local', load: loadLocalBoundAccounts },
   { id: 'demo', provider: 'maimai-test', load: loadDemoBoundAccounts },
   { id: 'chunithm-demo', provider: 'chunithm-test', load: async () => single(await loadChunithmDemoBoundAccount()) },
   { id: 'phigros-demo', provider: 'phigros-test', load: async () => single(await loadPhigrosDemoBoundAccount()) },
   { id: 'musedash-demo', provider: 'musedash-test', load: async () => single(await loadMuseDashDemoBoundAccount()) },
+  { id: 'rizline-demo', provider: 'rizline-test', load: () => loadCatalogDemoAccount('rizline') },
+  { id: 'phira-demo', provider: 'phira-test', load: () => loadCatalogDemoAccount('phira') },
+  { id: 'adofai-demo', provider: 'adofai-test', load: () => loadCatalogDemoAccount('adofai') },
+  { id: 'majdata-demo', provider: 'majdata-net-test', load: () => loadCatalogDemoAccount('majdata-net') },
+  ...OSU_MODE_GAME_IDS.map(gameId => ({ id: `${gameId}-demo` as const, provider: 'osu-test' as const, gameId, load: () => loadCatalogDemoAccount(gameId) })),
   { id: 'chunithm-temp', provider: 'chunithm-temp', load: async () => await chunithmTempAccount.load() ? [createChunithmTempAccount()] : [] },
   { id: 'tuf', provider: 'tuf', load: async () => (await tufAccounts.load()).map(createTufBoundAccount) },
   { id: 'musedash', provider: 'musedash-moe', load: async () => (await museDashAccounts.load()).map(createMuseDashBoundAccount) },
@@ -111,7 +124,8 @@ async function readAccountSource(source: typeof sources[number]): Promise<BoundA
   } catch (error) {
     publishSource({ source: source.id, status: 'failed', errorCode: 'storage_unavailable' });
     recordRuntimeError('account-restoration', error, false, { phase: source.id });
-    return useSession.getState().boundAccounts.filter((account) => account.providerId === source.provider);
+    return useSession.getState().boundAccounts.filter((account) => account.providerId === source.provider
+      && (!('gameId' in source) || account.gameId === source.gameId));
   }
 }
 export async function loadOptionalBoundAccounts(): Promise<BoundAccount[]> {
@@ -123,9 +137,9 @@ export function retryFailedAccountSources(): Promise<void> {
     const failed = sources.filter((source) => sourceStatuses.some((status) => status.source === source.id && status.status === 'failed'));
     const previous = new Map(useSession.getState().boundAccounts.map((account) => [account.id, account]));
     const accounts = (await Promise.all(failed.map(readAccountSource))).flat();
-    const providers = new Set(failed.map((source) => source.provider));
     const current = new Map(useSession.getState().boundAccounts.map((account) => [account.id, account]));
-    replaceRestoredOptionalAccounts((account) => providers.has(account.providerId as typeof sources[number]['provider']) && previous.get(account.id) === account,
+    replaceRestoredOptionalAccounts((account) => failed.some(source => account.providerId === source.provider
+      && (!('gameId' in source) || account.gameId === source.gameId)) && previous.get(account.id) === account,
       accounts.filter((account) => previous.has(account.id) ? current.get(account.id) === previous.get(account.id) : !current.has(account.id)));
   })().finally(() => { retryingSources = null; });
   return retryingSources;

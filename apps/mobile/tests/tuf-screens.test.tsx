@@ -1,5 +1,5 @@
 import { imageDownloads } from './remote-image-native-mock';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { QueryClient, QueryClientProvider, type InfiniteData } from '@tanstack/react-query';
 import { Dimensions, Linking, processColor, StyleSheet } from 'react-native';
@@ -9,6 +9,7 @@ import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen 
 import { TufRandomChartsScreen } from '@/screens/TufRandomChartsScreen';
 import { queryClient } from '@/state/query-client';
 import { CachedContentActivityScope } from '@/components/CachedTabScreen';
+import { useTufDemoPasses } from '@/hooks/use-tuf';
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
@@ -21,8 +22,12 @@ const mockUseTufLevelSearch = jest.fn();
 const mockUseTufDifficulties = jest.fn();
 const mockGetPasses = jest.fn<typeof import('@/providers/tuf-provider').tufProvider.getPasses>();
 const mockGetLevel = jest.fn<typeof import('@/providers/tuf-provider').tufProvider.getLevel>();
+const mockSearchLevels = jest.fn<typeof import('@/providers/tuf-provider').tufProvider.searchLevels>();
+const mockGetLevelPasses = jest.fn<typeof import('@/providers/tuf-provider').tufProvider.getLevelPasses>();
 let mockActualPassQueries = false;
 let mockActualLevelQuery = false;
+let mockActualDemoQueries = false;
+let mockAccountId = 'adofai:tuf:25';
 let mockFocused = true;
 let mockForeground = new AbortController();
 let mockLifecycle = { foregroundReady: true, foregroundGeneration: 1 };
@@ -69,6 +74,8 @@ jest.mock('@/state/app-lifecycle', () => ({
 jest.mock('@/providers/tuf-provider', () => ({ tufProvider: {
   getPasses: (...args: Parameters<typeof mockGetPasses>) => mockGetPasses(...args),
   getLevel: (...args: Parameters<typeof mockGetLevel>) => mockGetLevel(...args),
+  searchLevels: (...args: Parameters<typeof mockSearchLevels>) => mockSearchLevels(...args),
+  getLevelPasses: (...args: Parameters<typeof mockGetLevelPasses>) => mockGetLevelPasses(...args),
 } }));
 jest.mock('expo-sqlite/kv-store', () => ({
   __esModule: true,
@@ -123,7 +130,7 @@ jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
   textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', accentSoft: '#E8F0FF',
 }) }));
 jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: unknown) => unknown) => selector({
-  activeAccountId: 'adofai:tuf:25', activeGameId: 'adofai',
+  activeAccountId: mockAccountId, activeGameId: 'adofai',
 }) }));
 jest.mock('@/hooks/use-tuf', () => {
   const actual = jest.requireActual<typeof import('@/hooks/use-tuf')>('@/hooks/use-tuf');
@@ -133,12 +140,17 @@ jest.mock('@/hooks/use-tuf', () => {
     useTufProfile: () => ({ data: mockProfile, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
     useTufPasses: (...args: Parameters<typeof actual.useTufPasses>) => mockActualPassQueries
       ? actual.useTufPasses(...args) : mockUseTufPasses(...args),
+    useTufDemoPasses: (...args: Parameters<typeof actual.useTufDemoPasses>) => mockActualDemoQueries
+      ? actual.useTufDemoPasses(...args)
+      : ({ items: [], isLoading: false, isError: false, error: null, refetch: mockRefetch, hasNextPage: false, isFetchingNextPage: false, isFetchNextPageError: false, fetchNextPage: mockFetchNextPage }),
     useTufLevelSearch: (...args: unknown[]) => mockUseTufLevelSearch(...args),
     useTufDifficulties: () => mockUseTufDifficulties(),
     useTufLevel: (...args: Parameters<typeof actual.useTufLevel>) => mockActualLevelQuery
       ? actual.useTufLevel(...args)
       : ({ data: mockLevelDetail ? { level: mockLevelDetail, rerateHistory: [] } : undefined, isPending: false, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
-    useTufLevelBestPass: () => ({ data: mockLevelBestPass, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
+    useTufLevelBestPass: (...args: Parameters<typeof actual.useTufLevelBestPass>) => mockActualDemoQueries
+      ? actual.useTufLevelBestPass(...args)
+      : ({ data: mockLevelBestPass, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
     useTufVideoDetails: () => ({ data: mockVideoDetails, isLoading: !mockVideoDetails, isError: false, error: null, refetch: mockRefetch }),
   };
 });
@@ -186,6 +198,10 @@ describe('TUF screens', () => {
     mockGetPasses.mockReset();
     mockActualPassQueries = false;
     mockActualLevelQuery = false;
+    mockActualDemoQueries = false;
+    mockAccountId = 'adofai:tuf:25';
+    mockSearchLevels.mockReset();
+    mockGetLevelPasses.mockReset();
     mockGetLevel.mockReset();
     mockFocused = true;
     mockForeground = new AbortController();
@@ -210,6 +226,65 @@ describe('TUF screens', () => {
     mockLevelBestPass = undefined;
     mockVideoDetails = undefined;
     mockDark = false;
+  });
+
+  it('示例最佳和成绩共享普通难度降序分页，去重、满分并保留后页失败前的列表', async () => {
+    mockActualDemoQueries = true;
+    mockAccountId = 'adofai:test';
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const ordinary = { ...level, baseScore: 32000, difficulty: { ...level.difficulty!, name: 'U20', type: 'PGU' } };
+    const extra = { ...ordinary, id: 11373, song: '后页普通关卡', baseScore: 13500, difficulty: { ...ordinary.difficulty, name: 'U19' } };
+    mockSearchLevels.mockResolvedValueOnce({ results: [ordinary, level], total: 31, offset: 0, limit: 30, hasMore: true })
+      .mockRejectedValueOnce(new Error('后页暂不可用'))
+      .mockResolvedValueOnce({ results: [ordinary, extra], total: 31, offset: 30, limit: 30, hasMore: false });
+    const wrap = (children: React.ReactNode) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    const best = await render(wrap(<TufBestScreen />));
+    expect(await best.findByText('最佳成绩')).toBeTruthy();
+    expect(best.getByText('1 条')).toBeTruthy();
+    await fireEvent(best.getByTestId('tuf-best-results-list'), 'endReached');
+    expect(await best.findByText('后页加载失败，点此重试')).toBeTruthy();
+    expect(best.getByText('1 条')).toBeTruthy();
+    await fireEvent.press(best.getByLabelText('重试加载后页'));
+    expect(await best.findByText('2 条')).toBeTruthy();
+    expect(best.getAllByLabelText(/^查看关卡/).map((node) => node.props.accessibilityLabel))
+      .toEqual([expect.stringContaining(ordinary.song), expect.stringContaining(extra.song)]);
+    await best.unmount();
+    const records = await render(wrap(<TufRecordsScreen />));
+    expect(records.getByTestId('tuf-records-results-list')).toBeTruthy();
+    const loaded = await renderHook(() => useTufDemoPasses('adofai:test'), {
+      wrapper: ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    });
+    const data = loaded.result.current.items;
+    expect(data.map((pass) => [pass.scoreV2, pass.accuracy, pass.speed])).toEqual([[32000, 100, 1], [13500, 100, 1]]);
+    expect(mockSearchLevels.mock.calls.map(([query]) => query)).toEqual([
+      { sort: 'DIFF', order: 'DESC', pguRange: 'P1,U20', offset: 0, limit: 30 },
+      { sort: 'DIFF', order: 'DESC', pguRange: 'P1,U20', offset: 30, limit: 30 },
+      { sort: 'DIFF', order: 'DESC', pguRange: 'P1,U20', offset: 30, limit: 30 },
+    ]);
+    expect(mockGetPasses).not.toHaveBeenCalled();
+    await loaded.unmount();
+    await records.unmount();
+    mockLevelDetail = ordinary;
+    const detail = await render(wrap(<TufLevelDetailScreen levelId="11372" />));
+    expect(detail.getAllByText('32000.00').length).toBeGreaterThan(0);
+    expect(detail.getByText('100.00%')).toBeTruthy();
+    expect(detail.getByText('1.00×')).toBeTruthy();
+    expect(mockGetLevelPasses).not.toHaveBeenCalled();
+    await detail.unmount();
+    client.clear();
+  });
+
+  it('取消示例分页后不接受迟到结果', async () => {
+    mockActualDemoQueries = true;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let finish!: (page: Awaited<ReturnType<typeof mockSearchLevels>>) => void;
+    mockSearchLevels.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    const hook = await renderHook(() => useTufDemoPasses('adofai:test'), { wrapper });
+    await hook.unmount();
+    await act(async () => finish({ results: [{ ...level, difficulty: { ...level.difficulty!, type: 'PGU' } }], total: 1, offset: 0, limit: 30, hasMore: false }));
+    expect(client.getQueriesData({ queryKey: ['tuf', 'example-scores'] }).every(([, data]) => data === undefined)).toBe(true);
+    client.clear();
   });
 
   it('等待关卡详情活动和首个请求时不显示空态，刷新保留已有内容', async () => {

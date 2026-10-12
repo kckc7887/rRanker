@@ -18,6 +18,10 @@ import { PhiraUserSchema, PhiraUserStatsSchema, PhiraChartSchema, PhiraRecordSch
 import { tufProvider } from '@/providers/tuf-provider';
 import { museDashProvider } from '@/providers/muse-dash-provider';
 import { phiraProvider } from '@/providers/phira-provider';
+import { createCatalogTestAccount, type CatalogTestGameId } from '@/domain/bound-account';
+import { applyRizlineCatalog, RIZLINE_CATALOG_QUERY_KEY } from '@/services/rizline-catalog-query';
+import { fixtureSource } from '@/fixtures/sanitized';
+import { rizlineCatalog, rizlineChart } from './fixtures/rizline';
 
 jest.mock('@/storage/sqlite-snapshot-repository', () => {
   class MemorySnapshotRepository {
@@ -187,4 +191,61 @@ it('中二没有可用快照的认证失败保持authentication而不是no_data'
     },
   });
   expect(result).toMatchObject({ status: 'failed', failures: [{ code: 'authentication' }] });
+});
+
+it.each<{ gameId: CatalogTestGameId; value: number; display: string }>([
+  { gameId: 'phira', value: 19, display: '19.00' },
+  { gameId: 'adofai', value: 114514, display: '114514' },
+  { gameId: 'majdata-net', value: 114514, display: '114514.0000%' },
+  { gameId: 'osu-standard', value: 40000, display: '40,000' },
+  { gameId: 'osu-mania', value: 40000, display: '40,000' },
+  { gameId: 'osu-catch', value: 40000, display: '40,000' },
+  { gameId: 'osu-taiko', value: 40000, display: '40,000' },
+])('$gameId 示例总览无需登录即可显示固定数值和已保存名称', async ({ gameId, value, display }) => {
+  const client = createClient();
+  const account = createCatalogTestAccount(gameId, `${gameId} 玩家`);
+  const input = context({ gameId, providerId: account.providerId!, accountId: account.id, client });
+  input.activeAccount = account;
+  const { bundle } = await loadGameDataBundle(input);
+  expect(bundle.gameId).toBe(gameId);
+  expect(bundle.payload).toMatchObject({ playerScore: { value, display }, source: { kind: 'generated', isStale: false } });
+  switch (bundle.payload.kind) {
+    case 'phira':
+      expect(bundle.payload.snapshot).toMatchObject({ player: { name: account.displayName, rks: 19 },
+        stats: { avgAccuracy: 1, numRecords: 114514 } });
+      break;
+    case 'adofai':
+      expect(bundle.payload.player).toMatchObject({ name: account.displayName, rankedScore: 114514, globalRank: 1, averageXacc: 100 });
+      break;
+    case 'majdata-net':
+      expect(bundle.payload.snapshot.player.username).toBe(account.displayName);
+      break;
+    case 'osu':
+      expect(bundle.payload.player).toMatchObject({ username: account.displayName, pp: 40000, accuracy: 100 });
+      break;
+    default: throw new Error('示例总览缺少游戏数据');
+  }
+});
+
+it('Rizline 示例总览随曲库更新重建所有满成绩和总 RKS，SP 不计算 RKS', async () => {
+  const client = createClient();
+  const catalog = { snapshot: rizlineCatalog(), source: fixtureSource };
+  client.setQueryData(RIZLINE_CATALOG_QUERY_KEY, catalog);
+  const account = createCatalogTestAccount('rizline', 'Rizline 示例玩家');
+  const input = context({ gameId: 'rizline', providerId: account.providerId!, accountId: account.id, client });
+  input.activeAccount = account;
+  const { bundle } = await loadGameDataBundle(input);
+  expect(bundle.payload).toMatchObject({ kind: 'rizline', player: { username: account.displayName },
+    playerScore: { value: 3.5625 }, records: [{ score: 1002000, achievements: 120, ap: true, rks: 142.5 }] });
+  client.setQueryData(input.queryKey, bundle);
+
+  const nextCatalog = rizlineCatalog('r2');
+  nextCatalog.songs[0].charts = [rizlineChart({ constant: 13, maxScore: 1003000 }),
+    rizlineChart({ id: 'chart.Song.A.0.SP', difficulty: 'SP', constant: null, maxScore: null })];
+  await applyRizlineCatalog(client, { snapshot: nextCatalog, source: fixtureSource });
+  const current = client.getQueryData<typeof bundle>(input.queryKey)!;
+  expect(current.payload).toMatchObject({ kind: 'rizline', playerScore: { value: 3.8375 }, records: [
+    { difficulty: 'IN', score: 1003000, achievements: 120, ap: true, rks: 153.5 },
+    { difficulty: 'SP', score: 1000000, achievements: 120, ap: true, rks: null },
+  ] });
 });

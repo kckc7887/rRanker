@@ -71,6 +71,8 @@ function formatChunithmBestMeta(
 }
 
 export function syncProviderHint(providerId: ProviderId | null): string {
+  if (providerId === 'rizline-test' || providerId === 'phira-test' || providerId === 'adofai-test'
+    || providerId === 'majdata-net-test' || providerId === 'osu-test') return '示例查分器';
   if (providerId === 'rizline-official') return '官方账号';
   if (providerId === 'lxns') return '落雪咖啡屋';
   if (providerId === 'diving-fish') return '水鱼查分器';

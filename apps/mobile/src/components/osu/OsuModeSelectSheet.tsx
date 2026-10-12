@@ -11,12 +11,13 @@ import type { OsuGameId } from '@/domain/game-mode-family';
 import { useAppTheme } from '@/theme/app-theme';
 import { OsuModeSelectContent } from './OsuModeSelectContent';
 
-export function OsuModeSelectSheet({ visible, alreadyBound, busy, onClose, onSubmit }: {
+export function OsuModeSelectSheet({ visible, alreadyBound, busy, onClose, onSubmit, submitLabel = '绑定选中模式' }: {
   visible: boolean;
   alreadyBound: readonly OsuGameId[];
   busy: boolean;
   onClose: () => void;
   onSubmit: (selected: readonly OsuGameId[]) => void;
+  submitLabel?: string;
 }) {
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
@@ -47,7 +48,7 @@ export function OsuModeSelectSheet({ visible, alreadyBound, busy, onClose, onSub
           <OsuModeSelectContent
             alreadyBound={alreadyBound}
             busy={busy}
-            submitLabel="绑定选中模式"
+            submitLabel={submitLabel}
             onSubmit={onSubmit}
           />
         </ScrollView>

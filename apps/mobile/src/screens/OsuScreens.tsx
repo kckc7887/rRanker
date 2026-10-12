@@ -27,12 +27,13 @@ import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useGameData } from '@/hooks/use-game-data';
 import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useOsuCatalogSearch } from '@/hooks/use-osu-catalog';
+import { useOsuDemoScores } from '@/hooks/use-osu-demo-scores';
 import { useOsuKnownScores } from '@/hooks/use-osu-known-scores';
 import { useOsuRecordsFilter } from '@/state/osu-records-filter';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 
-type OsuBestSection = { id: 'top100'; title: 'Top 100'; scores: OsuBestScore[] } & {
+type OsuBestSection = { id: 'top100' | 'best'; title: string; scores: OsuBestScore[] } & {
   data: OsuBestScore[];
 };
 
@@ -45,17 +46,23 @@ export function OsuBestScreen() {
   const theme = useAppTheme();
   const inset = useNativeTabBottomInset();
   const gameId = useActiveOsuGameId();
-  const { data, isLoading, isError, error, refetch } = useGameData();
-  const payload = data?.payload.kind === 'osu' ? data.payload : null;
+  const gameData = useGameData();
+  const demo = useOsuDemoScores(gameId);
+  const payload = gameData.data?.payload.kind === 'osu' ? gameData.data.payload : null;
+  const isLoading = demo.bound ? demo.isPending : gameData.isLoading;
+  const isError = demo.bound ? demo.isError : gameData.isError;
+  const error = demo.bound ? demo.error : gameData.error;
+  const refetch = demo.bound ? demo.refetch : gameData.refetch;
   const sections = useMemo<OsuBestSection[]>(() => {
-    if (!payload || payload.bestScores.length === 0) return [];
+    const scores = demo.bound ? demo.scores : payload?.bestScores;
+    if (!scores?.length) return [];
     return [{
-      id: 'top100',
-      title: 'Top 100',
-      scores: payload.bestScores,
-      data: payload.bestScores,
+      id: demo.bound ? 'best' : 'top100',
+      title: demo.bound ? '最佳成绩' : 'Top 100',
+      scores,
+      data: scores,
     }];
-  }, [payload]);
+  }, [demo.bound, demo.scores, payload]);
   return (
     <View style={[styles.page, { backgroundColor: theme.background }]}>
       <BestListPage<OsuBestScore, OsuBestSection>
@@ -65,6 +72,10 @@ export function OsuBestScreen() {
         error={error}
         onRetry={refetch ? () => void refetch() : undefined}
         emptyText="当前账号暂无最佳成绩"
+        emptyActionLabel={demo.bound && demo.hasNextPage ? '继续加载' : undefined}
+        onEmptyAction={demo.bound && demo.hasNextPage ? () => {
+          if (!demo.isFetchingNextPage) void demo.fetchNextPage();
+        } : undefined}
         data={sections.length ? sections : undefined}
         sectionListProps={{
           testID: 'osu-best-results-list',
@@ -74,6 +85,20 @@ export function OsuBestScreen() {
           contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
           scrollIndicatorInsets: { bottom: inset },
           ...TAB_LIST_CACHE_PROPS,
+          refreshing: demo.bound && demo.isRefetching,
+          onRefresh: demo.bound ? () => void demo.refetch() : undefined,
+          onEndReachedThreshold: 0.35,
+          onEndReached: () => {
+            if (demo.bound && demo.hasNextPage && !demo.isFetchingNextPage) void demo.fetchNextPage();
+          },
+          ListFooterComponent: demo.bound ? (
+            <InfinitePageFooter
+              loading={demo.isFetchingNextPage}
+              failed={demo.isFetchNextPageError}
+              hasNextPage={demo.hasNextPage === true}
+              onRetry={() => void demo.fetchNextPage()}
+            />
+          ) : undefined,
           keyExtractor: (item) => String(item.id),
           renderSectionHeader: ({ section }) => (
             <View style={styles.sectionHeader}>
@@ -97,8 +122,20 @@ export function OsuRecordsScreen() {
   const activeAccountId = useSession((state) => state.activeAccountId);
   const gameData = useGameData();
   const payload = gameData.data?.payload.kind === 'osu' ? gameData.data.payload : null;
-  const known = useOsuKnownScores(gameId, payload?.bestScores);
-  const allScores = useMemo(() => known.data ?? [], [known.data]);
+  const demo = useOsuDemoScores(gameId);
+  const known = useOsuKnownScores(gameId, payload?.bestScores, !demo.bound);
+  const allScores = useMemo(() => demo.bound ? demo.scores : known.data ?? [], [demo.bound, demo.scores, known.data]);
+  const bound = demo.bound || known.bound;
+  const isLoading = demo.bound ? demo.isPending : gameData.isLoading || known.isLoading;
+  const isError = demo.bound ? demo.isError : gameData.isError || known.isError;
+  const error = demo.bound ? demo.error : gameData.error ?? known.error;
+  const refresh = () => {
+    if (demo.bound) void demo.refetch();
+    else {
+      void gameData.refetch();
+      void known.refetch();
+    }
+  };
   const starValues = useMemo(() => allScores.map((score) => score.beatmap.difficultyRating), [allScores]);
   const filter = useOsuRecordsFilter();
   const starBounds = useStableRangeBounds(
@@ -137,7 +174,7 @@ export function OsuRecordsScreen() {
               value={filter.keyword}
               onChangeText={filter.setKeyword}
               loaded={scores.length}
-              total={allScores.length}
+              total={demo.bound && demo.hasNextPage ? undefined : allScores.length}
             />
             <OsuRecordsFilterBar
               gameId={gameId}
@@ -162,16 +199,18 @@ export function OsuRecordsScreen() {
             />
           </>
         }
-        isLoading={(gameData.isLoading || known.isLoading || (isFiltering && scores.length === 0)) && known.bound}
-        isError={gameData.isError || known.isError}
-        isEmpty={!known.bound || (!gameData.isLoading && !known.isLoading && scores.length === 0)}
-        error={gameData.error ?? known.error}
-        onRetry={() => {
-          void gameData.refetch();
-          void known.refetch();
-        }}
-        emptyText={!known.bound ? '请先在游戏管理中绑定 osu! 账号'
-          : hasActiveFilter ? '没有找到符合条件的已知成绩' : '打开曲库歌曲后，成绩会显示在这里'}
+        isLoading={(isLoading || (isFiltering && scores.length === 0)) && bound}
+        isError={isError}
+        isEmpty={!bound || (!isLoading && scores.length === 0)}
+        error={error}
+        onRetry={refresh}
+        emptyText={!bound ? '请先在游戏管理中绑定 osu! 账号'
+          : hasActiveFilter ? '没有找到符合条件的已知成绩'
+            : demo.bound ? '当前账号暂无成绩' : '打开曲库歌曲后，成绩会显示在这里'}
+        emptyActionLabel={demo.bound && demo.hasNextPage ? '继续加载' : undefined}
+        onEmptyAction={demo.bound && demo.hasNextPage ? () => {
+          if (!demo.isFetchingNextPage) void demo.fetchNextPage();
+        } : undefined}
         data={scores.length ? scores : undefined}
         flatListProps={{
           testID: 'osu-records-results-list',
@@ -180,11 +219,20 @@ export function OsuRecordsScreen() {
           contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
           scrollIndicatorInsets: { bottom: inset },
           ...TAB_LIST_CACHE_PROPS,
-          refreshing: gameData.isRefetching || known.isRefetching,
-          onRefresh: () => {
-            void gameData.refetch();
-            void known.refetch();
+          refreshing: demo.bound ? demo.isRefetching : gameData.isRefetching || known.isRefetching,
+          onRefresh: refresh,
+          onEndReachedThreshold: 0.35,
+          onEndReached: () => {
+            if (demo.bound && demo.hasNextPage && !demo.isFetchingNextPage) void demo.fetchNextPage();
           },
+          ListFooterComponent: demo.bound ? (
+            <InfinitePageFooter
+              loading={demo.isFetchingNextPage}
+              failed={demo.isFetchNextPageError}
+              hasNextPage={demo.hasNextPage === true}
+              onRetry={() => void demo.fetchNextPage()}
+            />
+          ) : undefined,
           keyExtractor: (item) => String(item.id),
           renderItem: ({ item }) => (
             gameId ? <OsuScoreCard gameId={gameId} score={item} detailScoreId={item.id} /> : null
@@ -228,7 +276,7 @@ export function OsuCatalogScreen() {
         loaded={query.songs.length}
         total={query.total}
       />
-      <OsuCatalogFilterBar
+      {!query.demo ? <OsuCatalogFilterBar
         collapsed={!filterExpanded}
         general={general}
         status={status}
@@ -252,7 +300,7 @@ export function OsuCatalogScreen() {
           setNsfw(false);
           setExtras([]);
         }}
-      />
+      /> : null}
     </>
   ) : null;
   return (

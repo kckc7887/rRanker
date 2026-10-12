@@ -1,4 +1,4 @@
-import { act, fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Platform, StyleSheet } from 'react-native';
@@ -6,7 +6,8 @@ import { CachedContentActivityScope } from '@/components/CachedTabScreen';
 import { router as mockRouter } from 'expo-router';
 import { PhiraRandomChartsScreen } from '@/screens/PhiraRandomChartsScreen';
 import { PhiraBestScreen, PhiraCatalogScreen, PhiraRecordsScreen, PhiraSongDetailScreen } from '@/screens/PhiraScreens';
-import { PHIRA_CATALOG_PAGE_SCAN_BUDGET, type PhiraChart } from '@/domain/phira';
+import { PHIRA_CATALOG_PAGE_SCAN_BUDGET, type PhiraChart, type PhiraChartPage } from '@/domain/phira';
+import { usePhiraDemoBests } from '@/hooks/use-phira';
 import { phiraProvider } from '@/providers/phira-provider';
 import { resolveChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-navigation';
 
@@ -51,6 +52,8 @@ let mockChromeProps: {
 
 let mockStackReady = true;
 let mockActualDetailQuery = false;
+let mockActualDemoQueries = false;
+let mockAccountId = 'phira:community:323528';
 jest.mock('@/components/CachedTabScreen', () => ({
   ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
   useStackScreenReady: () => mockStackReady,
@@ -83,7 +86,7 @@ jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({
   dark: false, background: '#F7F8FA', surface: '#FFF', surfaceMuted: '#EEF2F7', input: '#F1F3F5',
   border: '#DDD', text: '#111', textSecondary: '#4B5563', textMuted: '#666', accent: '#246BFD', danger: '#B42318',
 }) }));
-jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({ activeAccountId: 'phira:community:323528' }) }));
+jest.mock('@/state/session-store', () => ({ useSession: (selector: (state: object) => unknown) => selector({ activeAccountId: mockAccountId }) }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
   data: [], tagPresets: [], isUpdating: false, songKey: (id: string) => `song:${id}`,
   setTagPresets: jest.fn(), setTags: jest.fn(), setSongFavorite: jest.fn(),
@@ -91,6 +94,9 @@ jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
 jest.mock('@/hooks/use-phira', () => ({
   usePhiraPlayer: () => ({ data: { pool: { bestPool: mockBests['38294'] ? [{ chart: mockChart, record: mockBest.record, rks: 12 }] : [], recentPool: [] } }, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
   usePhiraBests: () => ({ data: { items: mockBests, source: { kind: 'phira', label: 'Phira', updatedAt: 'now', isStale: false } }, isLoading: false, isFetching: false, isError: false, error: null, refetch: mockRefetch }),
+  usePhiraDemoBests: (...args: Parameters<typeof import('@/hooks/use-phira').usePhiraDemoBests>) => mockActualDemoQueries
+    ? jest.requireActual<typeof import('@/hooks/use-phira')>('@/hooks/use-phira').usePhiraDemoBests(...args)
+    : ({ items: [], dataUpdatedAt: 0, isLoading: false, isError: false, error: null, refetch: mockRefetch, hasNextPage: false, isFetchingNextPage: false, isFetchNextPageError: false, fetchNextPage: mockFetchCatalogNextPage }),
   useRefreshAllPhiraBests: () => ({ refreshAll: mockRefreshAll, retryFailed: mockRetryFailedBests }),
   usePhiraCharts: () => ({
     data: { pages: mockCatalogPages ?? [{ results: mockCatalogCharts }] },
@@ -103,7 +109,9 @@ jest.mock('@/hooks/use-phira', () => ({
   usePhiraChart: (...args: Parameters<typeof import('@/hooks/use-phira').usePhiraChart>) => mockActualDetailQuery
     ? jest.requireActual<typeof import('@/hooks/use-phira')>('@/hooks/use-phira').usePhiraChart(...args)
     : ({ data: mockChart, isPending: false, isLoading: false, isError: false, error: null }),
-  usePhiraChartBest: () => ({ data: mockBest, isLoading: false, isError: false, error: null }),
+  usePhiraChartBest: (...args: Parameters<typeof import('@/hooks/use-phira').usePhiraChartBest>) => mockActualDemoQueries
+    ? jest.requireActual<typeof import('@/hooks/use-phira')>('@/hooks/use-phira').usePhiraChartBest(...args)
+    : ({ data: mockBest, isLoading: false, isError: false, error: null }),
   usePhiraNotes: (_chart: unknown, enabled = true) => { mockNotesEnabled.push(enabled); return { data: { counts: { click: 40, hold: 20, flick: 20, drag: 20 } }, isLoading: false, isError: false }; },
   usePhiraUploader: () => ({ data: undefined, isLoading: false, isError: true }),
 }));
@@ -165,8 +173,71 @@ describe('Phira page contracts', () => {
     mockNotesEnabled = [];
     mockStackReady = true;
     mockActualDetailQuery = false;
+    mockActualDemoQueries = false;
+    mockAccountId = 'phira:community:323528';
     mockChromeProps = null;
     jest.clearAllMocks();
+  });
+
+  it('示例最佳与成绩共用上架分页，追加去重且保留失败前的满成绩', async () => {
+    mockActualDemoQueries = true;
+    mockAccountId = 'phira:test';
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const charts = Array.from({ length: 30 }, (_, index) => ({ ...mockChart, id: 100 + index, name: `示例谱面${index}`, ranked: true, stable: true }));
+    const extra = { ...mockChart, id: 200, name: '后页谱面', ranked: true, stable: true };
+    const getCharts = jest.spyOn(phiraProvider, 'getCharts')
+      .mockResolvedValueOnce({ results: charts, total: 31 })
+      .mockRejectedValueOnce(new Error('后页暂不可用'))
+      .mockResolvedValueOnce({ results: [charts[29], extra], total: 31 });
+    const getBest = jest.spyOn(phiraProvider, 'getChartBest');
+    const wrap = (content: React.ReactNode) => <QueryClientProvider client={client}>{content}</QueryClientProvider>;
+    const best = await render(wrap(<PhiraBestScreen />));
+    expect(await best.findByText('最佳成绩')).toBeTruthy();
+    expect(best.getByText('30 条')).toBeTruthy();
+    await fireEvent(best.getByTestId('phira-best-results-list'), 'endReached');
+    expect(await best.findByText('后页加载失败，点此重试')).toBeTruthy();
+    expect(best.getByText('30 条')).toBeTruthy();
+    await fireEvent.press(best.getByLabelText('重试加载后页'));
+    expect(await best.findByText('31 条')).toBeTruthy();
+    await best.unmount();
+    const records = await render(wrap(<PhiraRecordsScreen />));
+    expect(records.getByTestId('phira-records-list')).toBeTruthy();
+    const loaded = await renderHook(() => usePhiraDemoBests('phira:test'), {
+      wrapper: ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>,
+    });
+    expect(loaded.result.current.items.map((item) => item.chart.id)).toEqual([...charts.map((chart) => chart.id), extra.id]);
+    expect(loaded.result.current.items.every((item) => item.record!.score === 1_000_000 && item.record!.accuracy === 1 && item.record!.fullCombo)).toBe(true);
+    expect(getCharts.mock.calls.map(([input]) => input.page)).toEqual([0, 2, 2]);
+    expect(getBest).not.toHaveBeenCalled();
+    await loaded.unmount();
+    await records.unmount();
+    const detail = await render(wrap(<PhiraSongDetailScreen chartId="38294" />));
+    expect(detail.getByText('1000000')).toBeTruthy();
+    expect(detail.getByText('100.00%')).toBeTruthy();
+    expect(detail.getAllByText('100')).toHaveLength(2);
+    expect(getBest).not.toHaveBeenCalled();
+    await detail.unmount();
+    client.clear();
+    getCharts.mockRestore();
+    getBest.mockRestore();
+  });
+
+  it('示例账号切换或取消后不追加迟到页', async () => {
+    mockActualDemoQueries = true;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let finish!: (page: PhiraChartPage) => void;
+    const getCharts = jest.spyOn(phiraProvider, 'getCharts')
+      .mockReturnValueOnce(new Promise(resolve => { finish = resolve; }))
+      .mockResolvedValueOnce({ results: [{ ...mockChart, id: 2, name: '当前账号谱面' }], total: 1 });
+    const wrapper = ({ children }: { children: React.ReactNode }) => <QueryClientProvider client={client}>{children}</QueryClientProvider>;
+    const hook = await renderHook<ReturnType<typeof usePhiraDemoBests>, { accountId: string }>(({ accountId }) => usePhiraDemoBests(accountId), { wrapper, initialProps: { accountId: 'phira:test-old' } });
+    await hook.rerender({ accountId: 'phira:test' });
+    await waitFor(() => expect(hook.result.current.items[0]?.chart.name).toBe('当前账号谱面'));
+    await act(async () => finish({ results: [mockChart], total: 1 }));
+    expect(hook.result.current.items.map((item) => item.chart.id)).toEqual([2]);
+    await hook.unmount();
+    client.clear();
+    getCharts.mockRestore();
   });
 
   it('等待详情活动和首个请求期间保留等待界面，刷新沿用已有谱面', async () => {
