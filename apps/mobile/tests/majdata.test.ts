@@ -21,6 +21,28 @@ const session = (value: string): HttpCookieSession => ({ mode: 'http-cookies', p
 const json = (value: unknown) => new Response(JSON.stringify(value));
 
 describe('Majdata integration contracts', () => {
+  it('preserves full scores and timing with typed SV in connected-slide phrases', async () => {
+    const text = '&inote_5=(120){32}<SV*0.8><SV*tap=0.5>8V26[8:1],,6,,6,,6,,8V24[8:1],,7,,7,,7,,8V63[8:1],,6,,6,,6,,<SV*tap=1>8/4V61[8:1],3,2,1,,,,,';
+    for (const chart of [parseSimaiChart(text, 5), await parseSimaiChartAsync(text, 5)]) {
+      const statistics = simaiStatistics(chart);
+      expect(statistics.counts).toEqual({ tap: 17, hold: 0, slide: 4, touch: 0, break: 0, mine: 0 });
+      expect(chart.notes.map(note => note.timingMs)).toEqual([2000, 2125, 2250, 2375, 2500, 2625, 2750, 2875, 3000, 3125, 3250, 3375, 3500, 3500, 3562.5, 3625, 3687.5]);
+      expect(chart.durationMs).toBe(6250);
+      expect(buildMaxedMajdataScore(song, 4, statistics.counts)).toMatchObject({ acc: { dx: 100, classic: 100 }, dxScore: 63 });
+    }
+  });
+  it.each(['HS', 'SV'])('consumes valid typed %s without changing judgement notes or their timing', async command => {
+    const values = 'tap=0.5, each=-1, hold=NULL, slide=2e-1, star=1, break=0, mine=NULL, touch=1, TOUCHHOLD=null';
+    const text = `&inote_5=(120){4}<${command}*${values}>1/2h[4:1],3b/C,4-6[4:1],`;
+    for (const chart of [parseSimaiChart(text, 5), await parseSimaiChartAsync(text, 5)]) {
+      expect(simaiStatistics(chart).counts).toEqual({ tap: 2, hold: 1, slide: 1, touch: 1, break: 1, mine: 0 });
+      expect(chart.notes.map(note => note.timingMs)).toEqual([2000, 2000, 2500, 2500, 3000]);
+      expect(chart.durationMs).toBe(6000);
+    }
+    for (const value of ['unknown=1', 'tap=unknown', 'tap=Infinity', 'tap=', 'tap=1,', 'tap=1=2']) {
+      expect(() => parseSimaiBody(`(120)<${command}*${value}>1,`)).toThrow();
+    }
+  });
   it('keeps note counts and timing across bounce movement and reset commands', async () => {
     const text = '&inote_5=(120){4}1,<BOUNCE*4:1><SV*0.5>2b,<SV*0><BOUNCE*NULL>3h[4:1],4-6[4:1],';
     for (const chart of [parseSimaiChart(text, 5), await parseSimaiChartAsync(text, 5)]) {
