@@ -4,7 +4,7 @@ import { jest } from '@jest/globals';
 import { MajdataSongDetail } from '@/components/majdata/MajdataSongDetail';
 import { simaiSongDetailStyles } from '@/components/game-content/SimaiSongDetailStyles';
 import { createAppTheme } from '@/theme/theme-tokens';
-import type { MajdataSong } from '@/domain/majdata';
+import type { MajdataSong, MajdataScore } from '@/domain/majdata';
 import { ProviderError } from '@/providers/errors';
 
 const mockSong: MajdataSong = {
@@ -23,9 +23,13 @@ const mockNoDataError = new ProviderError('no_data', '未找到歌曲', false);
 let mockNotesState = 'success';
 let mockDownloadRunning = false;
 let mockExample = false;
+let mockEmptyLevel: number | undefined;
+let mockRecords: MajdataScore[] = [];
 let mockScoresByLevel: Record<number, readonly number[] | null> = {};
 const mockParsed = jest.fn((song: MajdataSong | undefined, _level: number) => ({
-  data: song && mockNotesState === 'success' ? { statistics: { counts: { tap: 11, hold: 22, slide: 33, touch: 44, break: 55, mine: 66 } }, difficultyScores: mockScoresByLevel[_level] ?? null } : undefined,
+  data: song && mockNotesState === 'success' ? { statistics: { counts: _level === mockEmptyLevel
+    ? { tap: 0, hold: 0, slide: 0, touch: 0, break: 0, mine: 0 }
+    : { tap: 11, hold: 22, slide: 33, touch: 44, break: 55, mine: 66 } }, difficultyScores: mockScoresByLevel[_level] ?? null } : undefined,
   isError: !!song && mockNotesState === 'error', refetch: mockRefetch,
 }));
 const mockLibrary = {
@@ -74,7 +78,7 @@ jest.mock('@/hooks/use-majdata', () => ({
     return mockParsed(useCachedTabActive() ? song : undefined, level);
   }, useMajdataRanking: () => ({}),
 }));
-jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ data: { providerId: mockExample ? 'majdata-net-test' : 'majdata-net', payload: { kind: 'majdata-net', snapshot: { records: [{ chartInfo: mockSong, chartLevel: 4, hash: mockSong.hash, acc: { dx: 99.1234, classic: 98.5678 }, comboState: 1 }] } } } }) }));
+jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ data: { providerId: mockExample ? 'majdata-net-test' : 'majdata-net', payload: { kind: 'majdata-net', snapshot: { records: mockRecords } } } }) }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => mockLibrary }));
 jest.mock('@/features/chart-download-shared/use-chart-package-download', () => ({ useChartPackageDownload: () => ({ isRunning: mockDownloadRunning, start: mockStart }) }));
 jest.mock('@/features/chart-download-shared/simai-package', () => ({ downloadSimaiPackage: jest.fn() }));
@@ -92,6 +96,9 @@ beforeEach(() => {
   Dimensions.set({ window: { width: 390, height: 844, scale: 1, fontScale: 1 } });
   mockLibrary.isUpdating = false; mockDownloadRunning = false;
   mockExample = false;
+  mockEmptyLevel = undefined;
+  mockRecords = [{ chartInfo: mockSong, chartLevel: 4, hash: mockSong.hash, timestamp: mockSong.timestamp,
+    acc: { dx: 99.1234, classic: 98.5678 }, comboState: 1, dxScore: 480 }];
   jest.spyOn(Animated, 'loop').mockReturnValue({ start: jest.fn(), stop: jest.fn(), reset: jest.fn() } as unknown as ReturnType<typeof Animated.loop>);
   jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation(callback => {
     (callback as () => void)(); return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
@@ -105,6 +112,32 @@ it('example detail renders a full score from the current difficulty statistics',
   const master = within(screen.getByTestId('majdata-chart-card-4'));
   expect(master.getByText('101.0000%')).toBeTruthy();
   expect(master.queryByText('99.1234%')).toBeNull();
+});
+
+it('leaves an empty example difficulty unplayed while the next difficulty stays maxed', async () => {
+  mockExample = true; mockEmptyLevel = 4;
+  const screen = await render(<MajdataSongDetail songId={mockSong.id} initialLevelIndex={4} />);
+  const master = within(screen.getByTestId('majdata-chart-card-4'));
+  expect(master.getByLabelText('未游玩')).toBeTruthy();
+  expect(master.queryByText('0.0000%')).toBeNull();
+  expect(master.queryByText('AP+')).toBeNull();
+  const carousel = screen.getByTestId('majdata-chart-carousel');
+  await fireEvent(carousel, 'momentumScrollEnd', { nativeEvent: { contentOffset: { x: 0 } } });
+  const remaster = within(screen.getByTestId('majdata-chart-card-5'));
+  expect(remaster.getByText('101.0000%')).toBeTruthy();
+  expect(remaster.getByText('AP+')).toBeTruthy();
+  await screen.unmount();
+});
+
+it('keeps a real account zero score visible even when the chart has no scorable notes', async () => {
+  mockEmptyLevel = 4;
+  mockRecords[0] = { ...mockRecords[0], acc: { dx: 0, classic: 0 }, dxScore: 0 };
+  const screen = await render(<MajdataSongDetail songId={mockSong.id} initialLevelIndex={4} />);
+  const master = within(screen.getByTestId('majdata-chart-card-4'));
+  expect(master.getByText('0.0000%')).toBeTruthy();
+  expect(master.getByText('FC')).toBeTruthy();
+  expect(master.queryByLabelText('未游玩')).toBeNull();
+  await screen.unmount();
 });
 
 it('waits while the detail query is pending before fetching and never flashes a missing song', async () => {

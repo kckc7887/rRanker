@@ -110,8 +110,8 @@ function MajdataChartCard({ song, level, width, library, best, carouselState, ex
   const item = library.data?.find(entry => entry.key === library.chartKey(song.id, 'SD', level));
   const practice = item?.kind === 'chart' && item.practice;
   const counts = parsed.data?.statistics?.counts;
-  const result = example
-    ? counts ? buildMaxedMajdataScore(song, level, counts) : undefined : best;
+  const generated = example && counts ? buildMaxedMajdataScore(song, level, counts) : undefined;
+  const result = example ? generated?.dxScore === 0 ? undefined : generated : best;
   const notes = useMemo(() => majdataNoteGroup(counts), [counts]);
   const title = `${song.title} ${MAJDATA_NAMES[level]}`;
   const actions = simaiChartActionStyle(theme.dark, visual, false, level === 5);
