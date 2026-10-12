@@ -25,7 +25,7 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。水�
 
 `useMajdataSongs`、歌曲及个人库详情、派生结果与排行榜共用 5 分钟无使用者回收时间。搜索和排行榜被回收后重新请求，上游歌曲详情继续沿现有磁盘缓存与刷新路径读取。
 
-示例成绩生成由各游戏的 `maxed-*-test-provider` 提供。`usePhiraDemoBests`、`useTufDemoPasses` 复用所属曲库分页 hook 的可选账号身份；`useOsuDemoScores` 使用 `OsuPublicCatalogProvider` 的搜索与详情读取，响应复用当前 osu! 谱面模型；`useMajdataDemoScores` 使用 `loadMajdataDemoScoresPage` 读取曲库及已缓存文本，再复用 Simai 解析、物量和满分计算。最佳与成绩页共享查询，生成成绩与详情复用同一入口，查询身份包含示例账号，各游戏清缓存及解绑同时取消所属查询。Rizline 的 `applyRizlineCatalog` 对示例账号按新曲库重新生成存档与 RKS。生成成绩不写玩家成绩快照，单谱 PP、连击或判定缺失沿现有空值语义显示。
+示例成绩生成由各游戏的 `maxed-*-test-provider` 提供。`usePhiraDemoBests`、`useTufDemoPasses` 复用所属曲库分页 hook 的可选账号身份；`useOsuDemoScores` 使用 `OsuPublicCatalogProvider` 的搜索与详情读取，响应复用当前 osu! 谱面模型；`useMajdataDemoScores` 使用 `loadMajdataDemoScoresPage` 读取曲库及已缓存文本，再复用 Simai 解析、物量和满分计算。解析失败仅跳过所属难度，其它读取失败继续整页重试。最佳与成绩页共享查询，生成成绩与详情复用同一入口，查询身份包含示例账号，各游戏清缓存及解绑同时取消所属查询。Rizline 的 `applyRizlineCatalog` 对示例账号按新曲库重新生成存档与 RKS。生成成绩不写玩家成绩快照，单谱 PP、连击或判定缺失沿现有空值语义显示。
 
 `createInflightGuard.share` 共享同键工作并独立取消消费者。`useBoundedQueries` 管理实际批量明细；服务的实际网络请求使用现有队列。清缓存先失效对应资源代次，真实异步结果在最终提交处检查资格。
 
