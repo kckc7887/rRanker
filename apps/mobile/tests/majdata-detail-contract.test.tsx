@@ -1,10 +1,11 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
-import { Animated, Dimensions, InteractionManager, StyleSheet } from 'react-native';
+import { Animated, Dimensions, InteractionManager, StyleSheet, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewProps } from 'react-native';
 import { jest } from '@jest/globals';
 import { MajdataSongDetail } from '@/components/majdata/MajdataSongDetail';
 import { simaiSongDetailStyles } from '@/components/game-content/SimaiSongDetailStyles';
 import { createAppTheme } from '@/theme/theme-tokens';
 import type { MajdataSong } from '@/domain/majdata';
+import { ProviderError } from '@/providers/errors';
 
 const mockSong: MajdataSong = {
   id: '0dff2974-9419-4290-bea9-307caa5825b7', title: '长歌曲名称 '.repeat(8), artist: '真实曲师', designer: '真实谱师', uploader: '不应展示的上传者',
@@ -17,6 +18,8 @@ const mockTags = jest.fn(async () => undefined); const mockStart = jest.fn(async
 let mockReady = true;
 let mockDark = false;
 let mockSongState = 'success';
+let mockNativeOffset = 0;
+const mockNoDataError = new ProviderError('no_data', '未找到歌曲', false);
 let mockNotesState = 'success';
 let mockDownloadRunning = false;
 let mockScoresByLevel: Record<number, readonly number[] | null> = {};
@@ -40,12 +43,31 @@ jest.mock('react-native-svg', () => ({
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 47, bottom: 34, left: 0, right: 0 }) }));
 jest.mock('react-native-gesture-handler', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
-  return { GestureHandlerRootView: RN.View, ScrollView: RN.ScrollView, Pressable: RN.Pressable };
+  const ScrollView = React.forwardRef<{ scrollTo: (options: { x?: number }) => void }, ScrollViewProps>(function NativeScrollView(
+    { onScroll, onScrollEndDrag, onMomentumScrollEnd, ...props }, ref,
+  ) {
+    React.useLayoutEffect(() => { mockNativeOffset = props.contentOffset?.x ?? 0; }, [props.contentOffset?.x]);
+    React.useImperativeHandle(ref, () => ({ scrollTo: ({ x = 0 }) => { mockNativeOffset = x; } }));
+    const move = (event: NativeSyntheticEvent<NativeScrollEvent>, handler?: ScrollViewProps['onScroll']) => {
+      mockNativeOffset = event.nativeEvent.contentOffset.x;
+      handler?.(event);
+    };
+    return <RN.ScrollView {...props} onScroll={event => move(event, onScroll)}
+      onScrollEndDrag={event => move(event, onScrollEndDrag)} onMomentumScrollEnd={event => move(event, onMomentumScrollEnd)} />;
+  });
+  return { GestureHandlerRootView: RN.View, ScrollView, Pressable: RN.Pressable };
 });
 jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => jest.requireActual<typeof import('@/theme/theme-tokens')>('@/theme/theme-tokens').createAppTheme(mockDark ? 'dark' : 'light', '#246BFD') }));
 jest.mock('@/hooks/use-majdata', () => ({
-  useMajdataSong: () => ({ data: mockSongState === 'success' ? mockSong : undefined, isLoading: mockSongState === 'loading', isError: mockSongState === 'error', error: null, refetch: mockRefetch }),
+  useMajdataSong: () => ({
+    data: mockSongState === 'success' ? mockSong : undefined,
+    isPending: mockSongState === 'pending' || mockSongState === 'loading',
+    isLoading: mockSongState === 'loading', isSuccess: mockSongState === 'success',
+    isError: mockSongState === 'error' || mockSongState === 'missing',
+    error: mockSongState === 'missing' ? mockNoDataError : null, refetch: mockRefetch,
+  }),
   useMajdataParsedChart: (song: MajdataSong | undefined, level: number) => {
     const { useCachedTabActive } = jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen');
     return mockParsed(useCachedTabActive() ? song : undefined, level);
@@ -73,7 +95,51 @@ beforeEach(() => {
     (callback as () => void)(); return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
   });
 });
-afterEach(() => { jest.restoreAllMocks(); });
+afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); });
+
+it('waits while the detail query is pending before fetching and never flashes a missing song', async () => {
+  mockSongState = 'pending'; mockReady = false;
+  const screen = await render(<MajdataSongDetail songId={mockSong.id} />);
+  expect(screen.queryByText('找不到这首歌曲')).toBeNull();
+  expect(screen.queryByText('加载失败，请重试')).toBeNull();
+  expect(screen.queryByTestId('majdata-chart-carousel')).toBeNull();
+  mockSongState = 'loading'; mockReady = true;
+  await screen.rerender(<MajdataSongDetail songId={mockSong.id} />);
+  expect(screen.queryByText('找不到这首歌曲')).toBeNull();
+  mockSongState = 'success';
+  await screen.rerender(<MajdataSongDetail songId={mockSong.id} />);
+  expect(screen.getByText('作者')).toBeTruthy();
+  expect(screen.getByTestId('majdata-chart-card-5')).toBeTruthy();
+  expect(screen.queryByText('找不到这首歌曲')).toBeNull();
+  await screen.unmount();
+});
+
+it('shows a missing song only after the provider confirms no data', async () => {
+  mockSongState = 'missing';
+  const screen = await render(<MajdataSongDetail songId={mockSong.id} />);
+  expect(screen.getByText('找不到这首歌曲')).toBeTruthy();
+  expect(screen.queryByText('加载失败，请重试')).toBeNull();
+  expect(screen.queryByTestId('majdata-chart-carousel')).toBeNull();
+  await screen.unmount();
+});
+
+it('keeps native half-drag and light-swipe positions without resetting the initial difficulty', async () => {
+  jest.useFakeTimers();
+  const screen = await render(<MajdataSongDetail songId={mockSong.id} />);
+  const carousel = screen.getByTestId('majdata-chart-carousel');
+  const interval = carousel.props.snapToInterval;
+  await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: interval * 0.6, y: 0 } } });
+  await act(async () => { jest.advanceTimersByTime(100); });
+  expect(mockNativeOffset).toBe(interval * 0.6);
+  await fireEvent(carousel, 'scrollEndDrag', { nativeEvent: { contentOffset: { x: interval * 0.6, y: 0 } } });
+  await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: interval * 0.85, y: 0 } } });
+  await act(async () => { jest.advanceTimersByTime(100); });
+  expect(mockNativeOffset).toBe(interval * 0.85);
+  await fireEvent(carousel, 'momentumScrollEnd', { nativeEvent: { contentOffset: { x: interval, y: 0 } } });
+  expect(mockNativeOffset).toBe(interval);
+  expect(screen.getByTestId('majdata-chart-card-4')).toBeTruthy();
+  await screen.unmount();
+});
 
 it.each([false, true])('uses the actual hero, metadata, buttons and one tag heading per section (dark=%s)', async dark => {
   mockDark = dark;
@@ -170,7 +236,7 @@ it('keeps the visible difficulty and notes aligned when a narrow window changes 
   mockParsed.mockClear();
   await act(async () => Dimensions.set({ window: { width: 720, height: 320, scale: 2, fontScale: 1 } }));
   const resized = screen.getByTestId('majdata-chart-carousel');
-  expect(resized.props.contentOffset.x).toBe(5 * resized.props.snapToInterval);
+  expect(mockNativeOffset).toBe(5 * resized.props.snapToInterval);
   expect(mockParsed.mock.calls.filter(([song]) => song).map(([, level]) => level)).toEqual([0]);
   await screen.unmount();
 });

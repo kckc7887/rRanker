@@ -1,10 +1,13 @@
-import { fireEvent, render } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Platform, StyleSheet } from 'react-native';
+import { CachedContentActivityScope } from '@/components/CachedTabScreen';
 import { router as mockRouter } from 'expo-router';
 import { PhiraRandomChartsScreen } from '@/screens/PhiraRandomChartsScreen';
 import { PhiraBestScreen, PhiraCatalogScreen, PhiraRecordsScreen, PhiraSongDetailScreen } from '@/screens/PhiraScreens';
-import { PHIRA_CATALOG_PAGE_SCAN_BUDGET } from '@/domain/phira';
+import { PHIRA_CATALOG_PAGE_SCAN_BUDGET, type PhiraChart } from '@/domain/phira';
+import { phiraProvider } from '@/providers/phira-provider';
 import { resolveChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-navigation';
 
 const mockRefetch = jest.fn(async () => ({ data: undefined }));
@@ -47,6 +50,7 @@ let mockChromeProps: {
 } | null = null;
 
 let mockStackReady = true;
+let mockActualDetailQuery = false;
 jest.mock('@/components/CachedTabScreen', () => ({
   ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
   useStackScreenReady: () => mockStackReady,
@@ -96,7 +100,9 @@ jest.mock('@/hooks/use-phira', () => ({
     isFetchNextPageError: mockCatalogFetchNextPageError,
     fetchNextPage: mockFetchCatalogNextPage,
   }),
-  usePhiraChart: () => ({ data: mockChart, isLoading: false, isError: false, error: null }),
+  usePhiraChart: (...args: Parameters<typeof import('@/hooks/use-phira').usePhiraChart>) => mockActualDetailQuery
+    ? jest.requireActual<typeof import('@/hooks/use-phira')>('@/hooks/use-phira').usePhiraChart(...args)
+    : ({ data: mockChart, isPending: false, isLoading: false, isError: false, error: null }),
   usePhiraChartBest: () => ({ data: mockBest, isLoading: false, isError: false, error: null }),
   usePhiraNotes: (_chart: unknown, enabled = true) => { mockNotesEnabled.push(enabled); return { data: { counts: { click: 40, hold: 20, flick: 20, drag: 20 } }, isLoading: false, isError: false }; },
   usePhiraUploader: () => ({ data: undefined, isLoading: false, isError: true }),
@@ -158,8 +164,48 @@ describe('Phira page contracts', () => {
     mockCatalogFetchNextPageError = false;
     mockNotesEnabled = [];
     mockStackReady = true;
+    mockActualDetailQuery = false;
     mockChromeProps = null;
     jest.clearAllMocks();
+  });
+
+  it('等待详情活动和首个请求期间保留等待界面，刷新沿用已有谱面', async () => {
+    mockActualDetailQuery = true;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let finish!: (chart: PhiraChart) => void;
+    const request = new Promise<PhiraChart>(resolve => { finish = resolve; });
+    const getChart = jest.spyOn(phiraProvider, 'getChart').mockReturnValue(request);
+    const tree = (active: boolean) => <QueryClientProvider client={client}>
+      <CachedContentActivityScope active={active}><PhiraSongDetailScreen chartId="38294" /></CachedContentActivityScope>
+    </QueryClientProvider>;
+    const screen = await render(tree(false));
+    expect(screen.queryByText('找不到这首谱面')).toBeNull();
+    expect(screen.queryByTestId('phira-song-detail-scroll')).toBeNull();
+    await screen.rerender(tree(true));
+    expect(screen.queryByText('找不到这首谱面')).toBeNull();
+    await act(async () => finish(mockChart));
+    expect(await screen.findByText(mockChart.name)).toBeTruthy();
+    let finishRefresh!: (chart: PhiraChart) => void;
+    getChart.mockReturnValue(new Promise(resolve => { finishRefresh = resolve; }));
+    await act(async () => { void client.invalidateQueries({ queryKey: ['phira', 'chart', 38294] }); });
+    expect(screen.getByText(mockChart.name)).toBeTruthy();
+    expect(screen.queryByText('找不到这首谱面')).toBeNull();
+    await act(async () => finishRefresh({ ...mockChart, name: '更新后的谱面' }));
+    expect(await screen.findByText('更新后的谱面')).toBeTruthy();
+    await screen.unmount();
+    client.clear();
+    getChart.mockRestore();
+  });
+
+  it('无效详情目标直接显示空态', async () => {
+    mockActualDetailQuery = true;
+    const client = new QueryClient();
+    const screen = await render(<QueryClientProvider client={client}>
+      <CachedContentActivityScope active={false}><PhiraSongDetailScreen chartId="invalid" /></CachedContentActivityScope>
+    </QueryClientProvider>);
+    expect(screen.getByText('找不到这首谱面')).toBeTruthy();
+    await screen.unmount();
+    client.clear();
   });
 
   it('shows Best20 and uses the upstream full difficulty name', async () => {

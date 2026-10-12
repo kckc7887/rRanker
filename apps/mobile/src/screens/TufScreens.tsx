@@ -346,6 +346,7 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
   const numericId = /^\d+$/.test(levelId) ? Number(levelId) : null;
   const query = useTufLevel(numericId);
   const level = query.data?.level;
+  const loading = !level && numericId !== null && query.isPending;
   const scoreQuery = useTufLevelBestPass(level?.id ?? null, playerId);
   const bestPass = scoreQuery.data;
   const chart = level ? presentTufChart(level) : null;
@@ -401,7 +402,7 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
         pressed && { opacity: 0.7 },
       ]}
     />
-    <QueryStateView isLoading={query.isLoading} isError={query.isError} isEmpty={!level}
+    <QueryStateView isLoading={loading} isError={query.isError} isEmpty={!level}
       error={query.error} onRetry={() => void query.refetch()} emptyText="未找到该 TUF 关卡" data={level}
       renderData={() => <ScrollView automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never"
         testID="tuf-level-detail-scroll" style={[styles.page, { backgroundColor: theme.background }]}
