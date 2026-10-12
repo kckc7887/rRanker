@@ -2,8 +2,9 @@ import { resolve } from 'node:path';
 import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import type { ExportedConfig, Mod } from 'expo/config-plugins';
-import { describe, expect, it } from 'vitest';
+import { afterEach, describe, expect, it, vi } from 'vitest';
 import withAndroidAbiSplits from '../plugins/with-android-abi-splits.js';
+import withArcadeMap from '../plugins/with-arcade-map.js';
 
 const app = { name: 'rRanker', slug: 'rranker' };
 const template = `android {
@@ -32,6 +33,33 @@ async function runMod<T>(mod: Mod<T>, modResults: NoInfer<T>) {
 function mods(options?: { minify: boolean; shrink: boolean; optimize: boolean }) {
   return (withAndroidAbiSplits({ ...app }, options) as ExportedConfig).mods!.android!;
 }
+
+describe('Android map configuration', () => {
+  afterEach(() => vi.unstubAllEnvs());
+
+  it.each(['test-map-key', ''])('configures the native map key without altering other metadata', async key => {
+    vi.stubEnv('AMAP_ANDROID_KEY', key);
+    const configured = (withArcadeMap({ ...app }) as ExportedConfig).mods!.android!;
+    const manifest = { manifest: { $: { 'xmlns:android': 'http://schemas.android.com/apk/res/android' }, queries: [], application: [{
+      $: { 'android:name': '.MainApplication' },
+      'meta-data': [
+        { $: { 'android:name': 'existing.setting', 'android:value': 'keep' } },
+        { $: { 'android:name': 'com.amap.api.v2.apikey', 'android:value': 'previous-key' } },
+      ],
+      service: [
+        { $: { 'android:name': 'existing.Service' } },
+        { $: { 'android:name': 'com.amap.api.location.APSService' } },
+      ],
+    }] } };
+    const result = await runMod(configured.manifest!, manifest);
+    expect(result.manifest.application?.[0]['meta-data']).toEqual([
+      { $: { 'android:name': 'existing.setting', 'android:value': 'keep' } },
+      ...(key ? [{ $: { 'android:name': 'com.amap.api.v2.apikey', 'android:value': key } }] : []),
+    ]);
+    expect(result.manifest.application?.[0].service).toEqual([{ $: { 'android:name': 'existing.Service' } }]);
+    expect(await runMod(configured.manifest!, result)).toEqual(result);
+  });
+});
 
 describe('Android release size config plugin', () => {
   it('retains reflective Expo Record annotations without disabling optimization', async () => {
