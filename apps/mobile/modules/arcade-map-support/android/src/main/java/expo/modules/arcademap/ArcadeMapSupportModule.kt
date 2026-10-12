@@ -1,7 +1,5 @@
 package expo.modules.arcademap
 
-import android.content.pm.PackageManager
-import android.os.Build
 import com.amap.api.services.core.ServiceSettings
 import com.amap.api.services.geocoder.GeocodeQuery
 import com.amap.api.services.geocoder.GeocodeResult
@@ -9,7 +7,6 @@ import com.amap.api.services.geocoder.GeocodeSearch
 import com.amap.api.services.geocoder.RegeocodeResult
 import com.amap.api.services.help.Inputtips
 import com.amap.api.services.help.InputtipsQuery
-import expo.modules.gaodemap.modules.SDKInitializer
 import expo.modules.kotlin.Promise
 import expo.modules.kotlin.functions.Queues
 import expo.modules.kotlin.modules.Module
@@ -18,29 +15,41 @@ import java.util.concurrent.ConcurrentHashMap
 
 class ArcadeMapSupportModule : Module() {
   private val requests = ConcurrentHashMap<String, Promise>()
-  private fun supported() = Build.SUPPORTED_ABIS.firstOrNull() in listOf("arm64-v8a", "armeabi-v7a")
-  private fun apiKey(): String? {
-    val context = appContext.reactContext!!
-    return context.packageManager.getApplicationInfo(context.packageName, PackageManager.GET_META_DATA)
-      .metaData?.getString("com.amap.api.v2.apikey")
-  }
   private fun prepareSearch() {
-    check(supported()) { "当前无法使用地点搜索" }
-    val key = apiKey()
-    check(!key.isNullOrBlank() && SDKInitializer.isPrivacyReady()) { "启用地图后可搜索地点" }
     val context = appContext.reactContext!!
+    prepareArcadeMap(context)
     ServiceSettings.updatePrivacyShow(context, true, true)
     ServiceSettings.updatePrivacyAgree(context, true)
-    ServiceSettings.getInstance().setApiKey(key)
+    ServiceSettings.getInstance().apply {
+      setApiKey(arcadeMapKey(context))
+      setProtocol(ServiceSettings.HTTPS)
+    }
   }
 
   override fun definition() = ModuleDefinition {
     Name("ArcadeMapSupport")
     Constants {
-      mapOf(
-        "amapSupported" to supported(),
-        "amapConfigured" to !apiKey().isNullOrBlank()
-      )
+      mapOf("amapConfigured" to !arcadeMapKey(appContext.reactContext!!).isNullOrBlank())
+    }
+
+    Function("isPrivacyReady") { arcadeMapAgreed(appContext.reactContext!!) }
+    Function("acceptPrivacy") {
+      check(arcadeMapPreferences(appContext.reactContext!!).edit().putBoolean("agreed", true).commit()) {
+        "地图启用失败，请重试"
+      }
+    }
+
+    View(ArcadeMapView::class) {
+      Events("onReady", "onError", "onCenterChange", "onMarkerPress")
+      Prop("initialCamera") { view: ArcadeMapView, camera: ArcadeCamera -> view.initialCamera = camera }
+      Prop("shops") { view: ArcadeMapView, shops: List<ArcadeMarker> -> view.shops = shops }
+      Prop("selectedShopId") { view: ArcadeMapView, id: Int? -> view.selectedShopId = id }
+      OnViewDidUpdateProps { view: ArcadeMapView -> view.updateMap() }
+      AsyncFunction("setCamera") { view: ArcadeMapView, target: ArcadeMapCoordinate, zoom: Double? ->
+        view.setCamera(target, zoom)
+      }
+      AsyncFunction("zoomBy") { view: ArcadeMapView, delta: Int -> view.zoomBy(delta) }
+      OnViewDestroys { view: ArcadeMapView -> view.destroy() }
     }
 
     AsyncFunction("searchPlaces") { id: String, keyword: String, promise: Promise ->

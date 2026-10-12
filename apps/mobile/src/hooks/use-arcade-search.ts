@@ -54,8 +54,8 @@ export function useArcadeSearch({ keyword, titleIds, active, generation, placeGe
     setPlaces({ ...emptyPlaces, loading: true });
     void searchArcadePlaces(query, controller.signal).then(items => {
       if (!controller.signal.aborted) setPlaces({ items, loading: false, error: '' });
-    }, error => {
-      if (!controller.signal.aborted) setPlaces({ ...emptyPlaces, error: error instanceof Error ? error.message : '地点搜索失败，请重试' });
+    }, () => {
+      if (!controller.signal.aborted) setPlaces({ ...emptyPlaces, error: '地点搜索失败，请重试' });
     });
     return () => controller.abort();
   }, [generation, placeGeneration, placeRetry, query, ready]);

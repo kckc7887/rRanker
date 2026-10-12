@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { DeviceCheckError } from './android-device.mjs';
 
-export async function runAndroidSmoke({ mode, apk, device, sourceSha, now = Date.now, pause = (ms) => new Promise(resolve => setTimeout(resolve, ms)) }) {
+export async function runAndroidSmoke({ mode, apk, device, sourceSha, amapConfigured = false, now = Date.now, pause = (ms) => new Promise(resolve => setTimeout(resolve, ms)) }) {
 const { command, shell } = device;
 const evidence = { mode, sourceSha: sourceSha, status: 'running', checks: [] };
 const applicationPackage = 'com.rranker.app';
@@ -214,14 +214,28 @@ try {
     assert(!current.some((node) => /无法读取本机登录状态|恢复失败|部分本机账号暂时无法读取/.test(node.text)), 'Account restoration succeeds');
     assert(!find(current, '重试读取账号'), 'All optional account sources restore successfully');
     evidence.checks.push({ name: 'account-startup-restoration', status: 'pass', scope: 'storage-read-only; authenticated accounts require separate verification' });
-    if (/^x86/.test(shell('getprop', 'ro.product.cpu.abi').trim())) {
-      phase = 'arcade-map-list-fallback';
+    {
+      phase = 'arcade-map';
       shell('pm', 'grant', 'com.rranker.app', 'android.permission.ACCESS_COARSE_LOCATION');
       shell('pm', 'grant', 'com.rranker.app', 'android.permission.ACCESS_FINE_LOCATION');
       route('tools/arcade-finder');
-      await waitFor(list => ownNodes(list).some(node => node.text === '当前使用机厅列表'), 'arcade list fallback');
+      if (amapConfigured) {
+        current = await waitFor(list => ownNodes(list).some(node => node.text === '使用列表'), 'arcade consent');
+        tap(ownNodes(current).find(node => node.text === '使用列表'));
+        current = await waitFor(list => ownNodes(list).some(node => node.text === '地图未启用'), 'arcade consent declined');
+        tap(ownNodes(current).find(node => node.text === '启用地图'));
+        current = await waitFor(list => ownNodes(list).some(node => node.text === '同意并启用'), 'arcade consent reopened');
+        tap(ownNodes(current).find(node => node.text === '同意并启用'));
+        await waitFor(list => ownNodes(list).some(node => node['resource-id']?.endsWith('arcade-map-zoom-in') && node.enabled === 'true'),
+          'arcade map ready', list => {
+            if (ownNodes(list).some(node => node.text === '地图加载失败')) throw new DeviceCheckError('arcade-map', 'Map failed to load');
+          });
+        evidence.checks.push({ name: 'arcade-map-consent-and-ready', status: 'pass' });
+      } else {
+        await waitFor(list => ownNodes(list).some(node => node.text === '当前使用机厅列表'), 'arcade list fallback');
+        evidence.checks.push({ name: 'arcade-map-list-fallback', status: 'pass' });
+      }
       assertNoCrash();
-      evidence.checks.push({ name: 'arcade-map-list-fallback', status: 'pass' });
     }
   }
   phase = 'native-crash-check';
