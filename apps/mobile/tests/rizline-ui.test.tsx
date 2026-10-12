@@ -21,7 +21,11 @@ const mockSetFavorite = jest.fn<(...args: unknown[]) => Promise<void>>(async () 
 let mockSong = rizlineSong(); let mockSongs = [mockSong]; let mockRecords = [rizlineRecord()];
 let mockUnknownCandidates = false;
 let mockLibraryItems: UserLibraryItem[] = [];
-let mockGameDataState = { hasData: true, isLoading: false, isError: false };
+type MockQueryState = { hasData: boolean; isLoading: boolean; isError: boolean; isPending?: boolean; isFetching?: boolean };
+let mockGameDataState: MockQueryState = { hasData: true, isLoading: false, isError: false };
+let mockCatalogState: MockQueryState = { hasData: true, isLoading: false, isError: false };
+const mockGameDataRefetch = jest.fn<() => Promise<void>>(async () => undefined);
+const mockCatalogRefetch = jest.fn<() => Promise<void>>(async () => undefined);
 
 jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { push: (...args: unknown[]) => mockPush(...args), replace: jest.fn() },
   useNavigation: () => ({ canGoBack: () => true, goBack: jest.fn(), getState: () => ({ index: 0, routes: [] }) }) }));
@@ -41,12 +45,14 @@ jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ sho
 jest.mock('@/hooks/use-rizline-catalog', () => ({ useRizlineCatalog: () => {
   if (mockSongs[0] !== mockSong) mockSongs = [mockSong];
   return {
-  data: { snapshot: { schemaVersion: 1, resourceVersion: 'v1', gameVersion: '2.7.1', songs: mockSongs } },
-  isLoading: false, isError: false, error: null, refetch: jest.fn(),
+  data: mockCatalogState.hasData ? { snapshot: { schemaVersion: 1, resourceVersion: 'v1', gameVersion: '2.7.1', songs: mockSongs } } : undefined,
+  isLoading: mockCatalogState.isLoading, isPending: mockCatalogState.isPending ?? mockCatalogState.isLoading,
+  isError: mockCatalogState.isError, isFetching: mockCatalogState.isFetching ?? false, error: null, refetch: mockCatalogRefetch,
 } } }));
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({
   data: mockGameDataState.hasData ? { payload: { kind: 'rizline', records: mockRecords, best: { ah5: mockRecords, b35: mockRecords, ah5Contribution: 1, b35Contribution: 2, hasUnknownCandidates: mockUnknownCandidates } } } : undefined,
-  isLoading: mockGameDataState.isLoading, isError: mockGameDataState.isError, isFetching: false, error: null, refetch: jest.fn(),
+  isLoading: mockGameDataState.isLoading, isPending: mockGameDataState.isPending ?? mockGameDataState.isLoading,
+  isError: mockGameDataState.isError, isFetching: mockGameDataState.isFetching ?? false, error: null, refetch: mockGameDataRefetch,
 }) }));
 jest.mock('@/state/rizline-random-charts-filter', () => ({ useRizlineRandomChartsFilter: () => ({
   count: 1, difficulty: 'IN', packId: 'all', constantMin: '12', constantMax: '12', collapsed: true,
@@ -66,6 +72,7 @@ describe('Rizline UI', () => {
     jest.clearAllMocks(); mockSong = rizlineSong(); mockSongs = [mockSong]; mockRecords = [rizlineRecord()]; mockUnknownCandidates = false; mockLibraryItems = [];
     useRizlineCatalogFilter.getState().reset();
     mockGameDataState = { hasData: true, isLoading: false, isError: false };
+    mockCatalogState = { hasData: true, isLoading: false, isError: false };
     jest.spyOn(Animated, 'loop').mockReturnValue({ start: jest.fn(), stop: jest.fn(), reset: jest.fn() });
     jest.spyOn(Animated, 'timing');
     jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
@@ -94,6 +101,76 @@ describe('Rizline UI', () => {
     const records = await render(<RizlineRecordsScreen />);
     const cards = await records.findAllByTestId(/^rizline-score-/);
     expect(cards.map((card) => card.props.testID)).toEqual(['rizline-score-song.a.IN', 'rizline-score-song.a.HD']);
+  });
+
+  it.each(['scores', 'catalog'] as const)('waits for both best queries when %s arrives first', async (first) => {
+    mockSong = rizlineSong({ title: '曲库中的歌曲' });
+    mockGameDataState = { hasData: false, isLoading: false, isPending: true, isError: false };
+    mockCatalogState = { hasData: false, isLoading: false, isPending: true, isError: false };
+    const screen = await render(<RizlineBestScreen />);
+    expect(screen.queryByText('AH5（推定）')).toBeNull();
+    expect(screen.queryByText('Best35（推定）')).toBeNull();
+    expect(screen.queryByText('同步数据后，最佳成绩会显示在这里')).toBeNull();
+
+    if (first === 'scores') mockGameDataState = { hasData: true, isLoading: false, isError: false };
+    else mockCatalogState = { hasData: true, isLoading: false, isError: false };
+    await screen.rerender(<RizlineBestScreen />);
+    expect(screen.queryByText('AH5（推定）')).toBeNull();
+    expect(screen.queryByText('Best35（推定）')).toBeNull();
+    expect(screen.queryAllByTestId(/^rizline-score-/)).toHaveLength(0);
+    expect(screen.queryByText('同步数据后，最佳成绩会显示在这里')).toBeNull();
+
+    mockGameDataState = { hasData: true, isLoading: false, isError: false };
+    mockCatalogState = { hasData: true, isLoading: false, isError: false };
+    await screen.rerender(<RizlineBestScreen />);
+    expect(screen.getByText('AH5（推定）')).toBeTruthy();
+    expect(screen.getByText('Best35（推定）')).toBeTruthy();
+    expect(screen.getAllByText('1. 曲库中的歌曲')).toHaveLength(2);
+    expect(screen.getAllByText('119.1235%')).toHaveLength(2);
+  });
+
+  it('shows the best empty state after both queries finish without records', async () => {
+    mockRecords = [];
+    const screen = await render(<RizlineBestScreen />);
+    expect(screen.getByText('同步数据后，最佳成绩会显示在这里')).toBeTruthy();
+    expect(screen.queryByText('AH5（推定）')).toBeNull();
+    expect(screen.queryByText('Best35（推定）')).toBeNull();
+    expect(screen.queryAllByTestId(/^rizline-score-/)).toHaveLength(0);
+  });
+
+  it('retries both best queries after the initial catalog read fails', async () => {
+    mockCatalogState = { hasData: false, isLoading: false, isError: true };
+    const screen = await render(<RizlineBestScreen />);
+    expect(screen.getByText('加载失败，请重试')).toBeTruthy();
+    expect(screen.queryByText('AH5（推定）')).toBeNull();
+    expect(screen.queryAllByTestId(/^rizline-score-/)).toHaveLength(0);
+    await fireEvent.press(screen.getByText('重试'));
+    expect(mockGameDataRefetch).toHaveBeenCalled();
+    expect(mockCatalogRefetch).toHaveBeenCalled();
+
+    mockCatalogState = { hasData: false, isLoading: true, isError: false };
+    await screen.rerender(<RizlineBestScreen />);
+    expect(screen.queryByText('加载失败，请重试')).toBeNull();
+    expect(screen.queryByText('AH5（推定）')).toBeNull();
+    mockCatalogState = { hasData: true, isLoading: false, isError: false };
+    await screen.rerender(<RizlineBestScreen />);
+    expect(screen.getByText('AH5（推定）')).toBeTruthy();
+    expect(screen.getAllByText('119.1235%')).toHaveLength(2);
+  });
+
+  it('preserves cached best rows during background refresh and refresh failure', async () => {
+    const screen = await render(<RizlineBestScreen />);
+    mockGameDataState = { hasData: true, isLoading: false, isFetching: true, isError: false };
+    mockCatalogState = { hasData: true, isLoading: false, isFetching: true, isError: false };
+    await screen.rerender(<RizlineBestScreen />);
+    expect(screen.getByText('AH5（推定）')).toBeTruthy();
+    expect(screen.getAllByText('119.1235%')).toHaveLength(2);
+    mockGameDataState = { hasData: true, isLoading: false, isError: true };
+    mockCatalogState = { hasData: true, isLoading: false, isError: true };
+    await screen.rerender(<RizlineBestScreen />);
+    expect(screen.getByText('AH5（推定）')).toBeTruthy();
+    expect(screen.getAllByText('119.1235%')).toHaveLength(2);
+    expect(screen.queryByText('加载失败，请重试')).toBeNull();
   });
 
   it('keeps the empty catalog result during typing and filter expansion until the keyword settles', async () => {

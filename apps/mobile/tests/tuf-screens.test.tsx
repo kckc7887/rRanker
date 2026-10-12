@@ -1,13 +1,14 @@
 import { imageDownloads } from './remote-image-native-mock';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { QueryClientProvider, type InfiniteData } from '@tanstack/react-query';
+import { QueryClient, QueryClientProvider, type InfiniteData } from '@tanstack/react-query';
 import { Dimensions, Linking, processColor, StyleSheet } from 'react-native';
 import type { TufLevel, TufLevelPass, TufPass, TufPassPage, TufPlayer, TufVideoDetails } from '@/domain/tuf';
 import { BADGE_GOLD_BORDER_COLORS } from '@/features/best-image/best-image-badge-theme';
 import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen } from '@/screens/TufScreens';
 import { TufRandomChartsScreen } from '@/screens/TufRandomChartsScreen';
 import { queryClient } from '@/state/query-client';
+import { CachedContentActivityScope } from '@/components/CachedTabScreen';
 
 const mockPush = jest.fn();
 const mockBack = jest.fn();
@@ -19,7 +20,9 @@ const mockUseTufPasses = jest.fn();
 const mockUseTufLevelSearch = jest.fn();
 const mockUseTufDifficulties = jest.fn();
 const mockGetPasses = jest.fn<typeof import('@/providers/tuf-provider').tufProvider.getPasses>();
+const mockGetLevel = jest.fn<typeof import('@/providers/tuf-provider').tufProvider.getLevel>();
 let mockActualPassQueries = false;
+let mockActualLevelQuery = false;
 let mockFocused = true;
 let mockForeground = new AbortController();
 let mockLifecycle = { foregroundReady: true, foregroundGeneration: 1 };
@@ -65,6 +68,7 @@ jest.mock('@/state/app-lifecycle', () => ({
 }));
 jest.mock('@/providers/tuf-provider', () => ({ tufProvider: {
   getPasses: (...args: Parameters<typeof mockGetPasses>) => mockGetPasses(...args),
+  getLevel: (...args: Parameters<typeof mockGetLevel>) => mockGetLevel(...args),
 } }));
 jest.mock('expo-sqlite/kv-store', () => ({
   __esModule: true,
@@ -131,7 +135,9 @@ jest.mock('@/hooks/use-tuf', () => {
       ? actual.useTufPasses(...args) : mockUseTufPasses(...args),
     useTufLevelSearch: (...args: unknown[]) => mockUseTufLevelSearch(...args),
     useTufDifficulties: () => mockUseTufDifficulties(),
-    useTufLevel: () => ({ data: mockLevelDetail ? { level: mockLevelDetail, rerateHistory: [] } : undefined, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
+    useTufLevel: (...args: Parameters<typeof actual.useTufLevel>) => mockActualLevelQuery
+      ? actual.useTufLevel(...args)
+      : ({ data: mockLevelDetail ? { level: mockLevelDetail, rerateHistory: [] } : undefined, isPending: false, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
     useTufLevelBestPass: () => ({ data: mockLevelBestPass, isLoading: false, isError: false, error: null, refetch: mockRefetch }),
     useTufVideoDetails: () => ({ data: mockVideoDetails, isLoading: !mockVideoDetails, isError: false, error: null, refetch: mockRefetch }),
   };
@@ -179,6 +185,8 @@ describe('TUF screens', () => {
     queryClient.clear();
     mockGetPasses.mockReset();
     mockActualPassQueries = false;
+    mockActualLevelQuery = false;
+    mockGetLevel.mockReset();
     mockFocused = true;
     mockForeground = new AbortController();
     mockLifecycle = { foregroundReady: true, foregroundGeneration: 1 };
@@ -202,6 +210,42 @@ describe('TUF screens', () => {
     mockLevelBestPass = undefined;
     mockVideoDetails = undefined;
     mockDark = false;
+  });
+
+  it('等待关卡详情活动和首个请求时不显示空态，刷新保留已有内容', async () => {
+    mockActualLevelQuery = true;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    let finish!: (value: Awaited<ReturnType<typeof mockGetLevel>>) => void;
+    mockGetLevel.mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const tree = (active: boolean) => <QueryClientProvider client={client}>
+      <CachedContentActivityScope active={active}><TufLevelDetailScreen levelId="11372" /></CachedContentActivityScope>
+    </QueryClientProvider>;
+    const screen = await render(tree(false));
+    expect(screen.queryByText('未找到该 TUF 关卡')).toBeNull();
+    expect(screen.queryByTestId('tuf-level-detail-scroll')).toBeNull();
+    await screen.rerender(tree(true));
+    expect(screen.queryByText('未找到该 TUF 关卡')).toBeNull();
+    await act(async () => finish({ level, rerateHistory: [] }));
+    expect(await screen.findByText(level.song)).toBeTruthy();
+    let finishRefresh!: (value: Awaited<ReturnType<typeof mockGetLevel>>) => void;
+    mockGetLevel.mockReturnValue(new Promise(resolve => { finishRefresh = resolve; }));
+    await act(async () => { void client.invalidateQueries({ queryKey: ['tuf', 'level', 11372] }); });
+    expect(screen.getByText(level.song)).toBeTruthy();
+    await act(async () => finishRefresh({ level: { ...level, song: '更新后的关卡' }, rerateHistory: [] }));
+    expect(await screen.findByText('更新后的关卡')).toBeTruthy();
+    await screen.unmount();
+    client.clear();
+  });
+
+  it('无效关卡目标保留空态', async () => {
+    mockActualLevelQuery = true;
+    const client = new QueryClient();
+    const screen = await render(<QueryClientProvider client={client}>
+      <CachedContentActivityScope active={false}><TufLevelDetailScreen levelId="invalid" /></CachedContentActivityScope>
+    </QueryClientProvider>);
+    expect(screen.getByText('未找到该 TUF 关卡')).toBeTruthy();
+    await screen.unmount();
+    client.clear();
   });
 
   it('keeps the profile Top 20 order instead of pass response order', async () => {

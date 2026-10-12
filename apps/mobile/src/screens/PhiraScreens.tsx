@@ -215,6 +215,7 @@ export function PhiraCatalogScreen() {
 export function PhiraSongDetailScreen({ chartId }: { chartId: string }) {
   const theme = useAppTheme(); const playerId = usePlayerId();
   const numericId = /^\d+$/.test(chartId) ? Number(chartId) : null; const chartQuery = usePhiraChart(numericId); const chart = chartQuery.data;
+  const loading = !chart && numericId !== null && chartQuery.isPending;
   const library = useUserLibrary();
   const item = chart ? library.data?.find((entry) => entry.key === library.songKey(String(chart.id))) : undefined;
   const favorite = item?.kind === 'song' ? item.favorite : false;
@@ -222,9 +223,9 @@ export function PhiraSongDetailScreen({ chartId }: { chartId: string }) {
     <StatusBar style="light" />
     <View style={[detailStyles.page, { backgroundColor: theme.background }]}>
       <QueryStateView<PhiraChart>
-        isLoading={chartQuery.isLoading}
+        isLoading={loading}
         isError={chartQuery.isError}
-        isEmpty={numericId === null || (!chartQuery.isLoading && !chartQuery.isError && !chart)}
+        isEmpty={numericId === null || (!loading && !chartQuery.isError && !chart)}
         error={chartQuery.error}
         onRetry={() => void chartQuery.refetch()}
         emptyText="找不到这首谱面"

@@ -29,10 +29,13 @@ export function RizlineBestScreen() {
     { key: 'ah5', title: 'AH5（推定）', data: payload.best.ah5 },
     { key: 'b35', title: 'Best35（推定）', data: payload.best.b35 },
   ] : [], [payload]);
+  const isLoading = query.isPending || catalogQuery.isPending;
+  const hasRecords = sections.some((section) => section.data.length > 0);
   return <View style={[styles.page, { backgroundColor: theme.background }]}><BestListPage<RizlineRecord, typeof sections[number]>
-    data={sections.length ? sections : undefined} isLoading={query.isLoading} isError={query.isError} error={query.error}
-    isEmpty={!query.isLoading && !sections.some((section) => section.data.length)} emptyText="同步数据后，最佳成绩会显示在这里"
-    onRetry={() => void query.refetch()} sectionListProps={{ testID: 'rizline-best-list', style: styles.list,
+    data={catalogQuery.data && hasRecords ? sections : undefined} isLoading={isLoading}
+    isError={query.isError || catalogQuery.isError} error={query.error ?? catalogQuery.error}
+    isEmpty={!isLoading && !hasRecords} emptyText="同步数据后，最佳成绩会显示在这里"
+    onRetry={() => void Promise.all([query.refetch(), catalogQuery.refetch()])} sectionListProps={{ testID: 'rizline-best-list', style: styles.list,
       contentInsetAdjustmentBehavior: 'automatic', contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
       ListHeaderComponent: payload?.best.hasUnknownCandidates
         ? <Text style={[styles.inferenceNote, { color: theme.textMuted }]}>部分谱面的数据不足，AH5 与 Best35 的分组尚不能完整推定，贡献值暂显示为 —。</Text> : null,

@@ -1,5 +1,5 @@
 import { type ReactNode } from 'react';
-import { Button, Text, View } from 'react-native';
+import { Button, Text, View, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewProps } from 'react-native';
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { ChartCarousel, type ChartCarouselItemState } from '@/components/game-content/ChartCarousel';
@@ -11,6 +11,7 @@ const mockNotifications = {
   dismissNotification: jest.fn(), showActionNotification: jest.fn(() => 1),
   showNotification: jest.fn(), updateNotification: jest.fn(),
 };
+let mockNativeOffset = 0;
 jest.mock('@/components/AppNotification', () => ({
   useNotification: () => mockNotifications,
   useNotificationModalRequestClose: () => () => false,
@@ -21,8 +22,21 @@ jest.mock('react-native-safe-area-context', () => ({
 }));
 
 jest.mock('react-native-gesture-handler', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
-  return { GestureHandlerRootView: RN.View, ScrollView: RN.ScrollView, Pressable: RN.Pressable };
+  const ScrollView = React.forwardRef<{ scrollTo: (options: { x?: number }) => void }, ScrollViewProps>(function NativeScrollView(
+    { onScroll, onScrollEndDrag, onMomentumScrollEnd, ...props }, ref,
+  ) {
+    React.useLayoutEffect(() => { mockNativeOffset = props.contentOffset?.x ?? 0; }, [props.contentOffset?.x]);
+    React.useImperativeHandle(ref, () => ({ scrollTo: ({ x = 0 }) => { mockNativeOffset = x; } }));
+    const move = (event: NativeSyntheticEvent<NativeScrollEvent>, handler?: ScrollViewProps['onScroll']) => {
+      mockNativeOffset = event.nativeEvent.contentOffset.x;
+      handler?.(event);
+    };
+    return <RN.ScrollView {...props} onScroll={event => move(event, onScroll)}
+      onScrollEndDrag={event => move(event, onScrollEndDrag)} onMomentumScrollEnd={event => move(event, onMomentumScrollEnd)} />;
+  });
+  return { GestureHandlerRootView: RN.View, ScrollView, Pressable: RN.Pressable };
 });
 
 const items = Array.from({ length: 30 }, (_, index) => `card-${index}`);
@@ -54,6 +68,53 @@ function carousel(overrides: Partial<{
 }
 
 describe('ChartCarousel window', () => {
+  afterEach(() => { jest.useRealTimers(); });
+
+  it('leaves half drags and short swipes at the native position until snapping ends', async () => {
+    jest.useFakeTimers();
+    const screen = await render(carousel({ renderItem: (item, state) => <Text>{`${item}:${state.active ? 'active' : 'paused'}`}</Text> }));
+    const scroll = screen.getByLabelText('难度卡片');
+    await fireEvent.scroll(scroll, { nativeEvent: { contentOffset: { x: 66, y: 0 } } });
+    await act(async () => { jest.advanceTimersByTime(100); });
+    expect(mockNativeOffset).toBe(66);
+    expect(screen.getByText('card-1:active')).toBeTruthy();
+    await fireEvent(scroll, 'scrollEndDrag', { nativeEvent: { contentOffset: { x: 66, y: 0 } } });
+    await fireEvent.scroll(scroll, { nativeEvent: { contentOffset: { x: 94, y: 0 } } });
+    await act(async () => { jest.advanceTimersByTime(100); });
+    expect(mockNativeOffset).toBe(94);
+    await fireEvent(scroll, 'momentumScrollEnd', { nativeEvent: { contentOffset: { x: 110, y: 0 } } });
+    expect(mockNativeOffset).toBe(110);
+    expect(screen.getByText('card-1:active')).toBeTruthy();
+    await screen.unmount();
+  });
+
+  it('preserves the scrolled card when width changes and clamps only after the list shrinks', async () => {
+    const renderItem = (item: string, state: ChartCarouselItemState) => <Text>{`${item}:${state.active ? 'active' : 'paused'}`}</Text>;
+    const screen = await render(carousel({ renderItem }));
+    await fireEvent.scroll(screen.getByLabelText('难度卡片'), { nativeEvent: { contentOffset: { x: 28 * 110, y: 0 } } });
+    await screen.rerender(carousel({ cardWidth: 120, renderItem }));
+    expect(mockNativeOffset).toBe(28 * 130);
+    expect(screen.getByText('card-28:active')).toBeTruthy();
+    await screen.rerender(carousel({ cardWidth: 120, items: items.slice(0, 26), renderItem }));
+    expect(mockNativeOffset).toBe(25 * 130);
+    expect(screen.getByText('card-25:active')).toBeTruthy();
+    await screen.rerender(carousel({ cardWidth: 120, items: items.slice(0, 24), initialIndex: 8, resetKey: 'next', renderItem }));
+    expect(mockNativeOffset).toBe(8 * 130);
+    expect(screen.getByText('card-8:active')).toBeTruthy();
+    await screen.unmount();
+  });
+
+  it('returns to the initial card when the target changes with the same initial offset', async () => {
+    const renderItem = (item: string, state: ChartCarouselItemState) => <Text>{`${item}:${state.active ? 'active' : 'paused'}`}</Text>;
+    const screen = await render(carousel({ renderItem }));
+    await fireEvent.scroll(screen.getByLabelText('难度卡片'), { nativeEvent: { contentOffset: { x: 220, y: 0 } } });
+    expect(mockNativeOffset).toBe(220);
+    await screen.rerender(carousel({ renderItem, resetKey: 'another-song' }));
+    expect(mockNativeOffset).toBe(0);
+    expect(screen.getByText('card-0:active')).toBeTruthy();
+    await screen.unmount();
+  });
+
   it('windows short lists and keeps independent drafts through fast scrolling', async () => {
     const screen = await render(carousel({ items: items.slice(0, 7), renderItem: (item, state) => (
       <TagEditor {...state.tagEditor} testID={item} tags={[]} onChange={async () => undefined} />

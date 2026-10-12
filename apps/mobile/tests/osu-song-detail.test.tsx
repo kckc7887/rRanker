@@ -1,12 +1,15 @@
-import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import { Platform, StyleSheet } from 'react-native';
+import { CachedContentActivityScope } from '@/components/CachedTabScreen';
 import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
 import { buildOsuBeatmapMetricRows, OsuSongDetail } from '@/components/osu/OsuSongDetail';
 import { OsuSongRow } from '@/components/osu/OsuSongRow';
-import type { OsuBeatmapsetDetail, OsuBestScore } from '@/domain/osu';
+import type { OsuBeatmapsetDetail, OsuBeatmapsetLookupRaw, OsuBestScore } from '@/domain/osu';
 import type { UserLibraryItem } from '@/domain/user-library';
 import { ProviderError } from '@/providers/errors';
+import { OsuScoreProvider } from '@/providers/osu-score-provider';
 
 const mockBack = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
@@ -127,6 +130,8 @@ let mockDetailState: {
 } = { data: detail, isLoading: false, isError: false, error: null };
 let mockGameData: { data?: ReturnType<typeof osuGameData> } = { data: osuGameData(5000) };
 let mockActiveGameId = 'osu-standard';
+let mockActualDetailQuery = false;
+let mockBoundAccount = true;
 let mockLibraryItems: UserLibraryItem[] = [];
 
 jest.mock('expo-router', () => ({
@@ -193,13 +198,14 @@ jest.mock('@/state/session-store', () => ({
   useSession: (selector: (state: Record<string, unknown>) => unknown) => selector({
     activeGameId: mockActiveGameId,
     activeAccountId: `${mockActiveGameId}:osu:2`,
+    activeProviderId: mockBoundAccount ? 'osu' : null,
+    session: mockBoundAccount ? { mode: 'osu-oauth', accessToken: 'test-access', refreshToken: 'test-refresh', expiresAt: Number.MAX_SAFE_INTEGER, persistable: true } : null,
   }),
 }));
 jest.mock('@/hooks/use-osu-beatmapset-detail', () => ({
-  useOsuBeatmapsetDetail: () => ({
-    ...mockDetailState,
-    refetch: mockDetailRefetch,
-  }),
+  useOsuBeatmapsetDetail: (...args: Parameters<typeof import('@/hooks/use-osu-beatmapset-detail').useOsuBeatmapsetDetail>) => mockActualDetailQuery
+    ? jest.requireActual<typeof import('@/hooks/use-osu-beatmapset-detail')>('@/hooks/use-osu-beatmapset-detail').useOsuBeatmapsetDetail(...args)
+    : ({ ...mockDetailState, bound: true, isPending: mockDetailState.isLoading, refetch: mockDetailRefetch }),
 }));
 jest.mock('@/components/AppNotification', () => ({
   ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'),
@@ -255,7 +261,56 @@ describe('OsuSongDetail 歌曲详情页', () => {
     mockDetailState = { data: detail, isLoading: false, isError: false, error: null };
     mockGameData = { data: osuGameData(5000) };
     mockActiveGameId = 'osu-standard';
+    mockActualDetailQuery = false;
+    mockBoundAccount = true;
     mockLibraryItems = [];
+  });
+
+  it('等待详情活动和首个请求时不闪空态，刷新保留已有歌曲', async () => {
+    mockActualDetailQuery = true;
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const raw: OsuBeatmapsetLookupRaw = {
+      id: detail.beatmapSetId, title: detail.title, artist: detail.artist, creator: detail.creator,
+      covers: {}, status: 'ranked', beatmaps: detail.beatmaps.map(beatmap => ({
+        id: beatmap.id, beatmapset_id: detail.beatmapSetId, difficulty_rating: beatmap.difficultyRating,
+        version: beatmap.version, mode: beatmap.mode ?? 'osu',
+      })),
+    };
+    let finish!: (value: OsuBeatmapsetLookupRaw) => void;
+    const getBeatmapset = jest.spyOn(OsuScoreProvider.prototype, 'getBeatmapset')
+      .mockReturnValue(new Promise(resolve => { finish = resolve; }));
+    const tree = (active: boolean) => <QueryClientProvider client={client}>
+      <CachedContentActivityScope active={active}><OsuSongDetail beatmapsetId="3720" /></CachedContentActivityScope>
+    </QueryClientProvider>;
+    const screen = await render(tree(false));
+    expect(screen.queryByText('找不到这首歌曲')).toBeNull();
+    expect(screen.queryByTestId('osu-song-detail-scroll')).toBeNull();
+    await screen.rerender(tree(true));
+    expect(screen.queryByText('找不到这首歌曲')).toBeNull();
+    await act(async () => finish(raw));
+    expect(await screen.findByText(detail.title)).toBeTruthy();
+    let finishRefresh!: (value: OsuBeatmapsetLookupRaw) => void;
+    getBeatmapset.mockReturnValue(new Promise(resolve => { finishRefresh = resolve; }));
+    await act(async () => { void client.invalidateQueries({ queryKey: ['osu-beatmapset-detail'] }); });
+    expect(screen.getByText(detail.title)).toBeTruthy();
+    await act(async () => finishRefresh({ ...raw, title: '更新后的歌曲' }));
+    expect(await screen.findByText('更新后的歌曲')).toBeTruthy();
+    await screen.unmount();
+    client.clear();
+    getBeatmapset.mockRestore();
+  });
+
+  it('未绑定账号或缺失详情目标保留空态', async () => {
+    mockActualDetailQuery = true;
+    mockBoundAccount = false;
+    const client = new QueryClient();
+    const screen = await render(<QueryClientProvider client={client}><OsuSongDetail beatmapsetId="3720" /></QueryClientProvider>);
+    expect(screen.getByText('找不到这首歌曲')).toBeTruthy();
+    mockBoundAccount = true;
+    await screen.rerender(<QueryClientProvider client={client}><OsuSongDetail /></QueryClientProvider>);
+    expect(screen.getByText('找不到这首歌曲')).toBeTruthy();
+    await screen.unmount();
+    client.clear();
   });
 
   it('渲染 Hero/简要信息栏/歌曲信息卡与 Hard 难度卡完整内容', async () => {

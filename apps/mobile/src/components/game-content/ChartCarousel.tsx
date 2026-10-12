@@ -1,4 +1,4 @@
-import { Fragment, type ComponentRef, type ReactNode, useEffect, useState, useRef } from 'react';
+import { Fragment, type ComponentRef, type ReactNode, useLayoutEffect, useRef, useState } from 'react';
 import { View, type StyleProp, type ViewStyle } from 'react-native';
 import {
   GestureHandlerRootView,
@@ -63,7 +63,10 @@ export function ChartCarousel<TItem>({
 }: ChartCarouselProps<TItem>) {
   const interval = cardWidth + gap;
   const scrollRef = useRef<ComponentRef<typeof GestureScrollView>>(null);
-  const [index, setIndex] = useState(() => clampCarouselIndex(initialIndex, items.length));
+  const [selection, setSelection] = useState(() => {
+    const index = clampCarouselIndex(initialIndex, items.length);
+    return { index, initialIndex, resetKey, interval, length: items.length, contentOffset: { x: index * interval, y: 0 } };
+  });
   const [drafts, setDrafts] = useState<Record<string, string>>({});
   const [tagEditorKeys, setTagEditorKeys] = useState<ReadonlySet<string>>(() => new Set());
   const [downloadKeys, setDownloadKeys] = useState<ReadonlySet<string>>(() => new Set());
@@ -75,29 +78,22 @@ export function ChartCarousel<TItem>({
     else next.delete(key);
     return next;
   };
-  const syncKey = `${resetKey ?? ''}|${initialIndex}|${interval}`;
-  const syncRef = useRef(syncKey);
-  let windowIndex = clampCarouselIndex(index, items.length);
-  if (syncRef.current !== syncKey) {
-    syncRef.current = syncKey;
-    windowIndex = clampCarouselIndex(initialIndex, items.length);
+  let currentSelection = selection;
+  if (selection.initialIndex !== initialIndex || selection.resetKey !== resetKey
+    || selection.interval !== interval || selection.length !== items.length) {
+    const reset = selection.initialIndex !== initialIndex || selection.resetKey !== resetKey
+      || (selection.length === 0 && items.length > 0);
+    const index = clampCarouselIndex(reset ? initialIndex : selection.index, items.length);
+    const reposition = reset || selection.interval !== interval || index !== selection.index;
+    currentSelection = { index, initialIndex, resetKey, interval, length: items.length,
+      contentOffset: reposition ? { x: index * interval, y: 0 } : selection.contentOffset };
+    setSelection(currentSelection);
   }
-  if (windowIndex !== index) setIndex(windowIndex);
-  useEffect(() => {
-    const next = clampCarouselIndex(initialIndex, items.length);
-    const timer = setTimeout(() => {
-      scrollRef.current?.scrollTo({ x: next * interval, animated: false });
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [initialIndex, interval, items.length, resetKey]);
-  useEffect(() => {
-    const next = clampCarouselIndex(index, items.length);
-    if (next === index) return;
-    const timer = setTimeout(() => {
-      scrollRef.current?.scrollTo({ x: next * interval, animated: false });
-    }, 50);
-    return () => clearTimeout(timer);
-  }, [index, items.length, interval]);
+  const windowIndex = currentSelection.index;
+  const setIndex = (index: number) => setSelection((current) => current.index === index ? current : { ...current, index });
+  useLayoutEffect(() => {
+    scrollRef.current?.scrollTo({ x: currentSelection.contentOffset.x, animated: false });
+  }, [currentSelection.contentOffset]);
 
   if (items.length === 0) return empty;
 
@@ -106,7 +102,7 @@ export function ChartCarousel<TItem>({
       <GestureScrollView
         accessibilityLabel={accessibilityLabel}
         contentContainerStyle={contentContainerStyle}
-        contentOffset={{ x: clampCarouselIndex(initialIndex, items.length) * interval, y: 0 }}
+        contentOffset={currentSelection.contentOffset}
         decelerationRate="fast"
         disableIntervalMomentum
         directionalLockEnabled
@@ -115,17 +111,17 @@ export function ChartCarousel<TItem>({
         onMomentumScrollEnd={(event) => {
           const nextIndex = indexFromOffset(event.nativeEvent.contentOffset.x, interval, items.length);
           onIndexChange?.(nextIndex);
-          setIndex((current) => (current === nextIndex ? current : nextIndex));
+          setIndex(nextIndex);
         }}
         onScroll={(event) => {
           const nextIndex = indexFromOffset(event.nativeEvent.contentOffset.x, interval, items.length);
           if (nextIndex !== windowIndex) onIndexChange?.(nextIndex);
-          setIndex((current) => (current === nextIndex ? current : nextIndex));
+          setIndex(nextIndex);
         }}
         onScrollEndDrag={(event) => {
           const nextIndex = indexFromOffset(event.nativeEvent.contentOffset.x, interval, items.length);
           onIndexChange?.(nextIndex);
-          setIndex((current) => (current === nextIndex ? current : nextIndex));
+          setIndex(nextIndex);
         }}
         ref={scrollRef}
         removeClippedSubviews={false}

@@ -1,5 +1,5 @@
 import { useStackScreenReady } from '@/components/CachedTabScreen';
-import { useMemo, useState } from 'react';
+import { useMemo } from 'react';
 import { ScrollView, Text, View, useWindowDimensions } from 'react-native';
 import { router } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
@@ -41,9 +41,9 @@ export function MajdataSongDetail({ songId, initialLevelIndex }: { songId: strin
   return <>
     <StatusBar style="light" />
     <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <QueryStateView data={song} isLoading={!song && query.isLoading}
+      <QueryStateView data={song} isLoading={!song && query.isPending}
         isError={!song && query.isError && !noData} error={query.error}
-        isEmpty={!song && !query.isLoading && (noData || !query.isError)} emptyText="找不到这首歌曲"
+        isEmpty={!song && (noData || query.isSuccess)} emptyText="找不到这首歌曲"
         onRetry={() => void query.refetch()}
         renderData={value => <MajdataDetailContent key={`${value.id}:${value.hash}:${initialLevelIndex ?? ''}`} song={value}
           initialLevelIndex={initialLevelIndex} library={library} />} />
@@ -64,7 +64,6 @@ function MajdataDetailContent({ song, initialLevelIndex, library }: { song: Majd
   const levels = useMemo(() => MAJDATA_ORDER.filter(level => song.levels[level]?.trim()), [song.levels]);
   const initial = majdataDefaultDifficulty(song, initialLevelIndex);
   const initialIndex = Math.max(0, levels.findIndex(level => level === initial));
-  const [visibleIndex, setVisibleIndex] = useState(initialIndex);
   const deferredReady = useStackScreenReady();
   const local = library.data?.find(item => item.key === library.songKey(song.id));
   const requestedMissing = initialLevelIndex !== undefined && !song.levels[initialLevelIndex]?.trim();
@@ -78,9 +77,9 @@ function MajdataDetailContent({ song, initialLevelIndex, library }: { song: Majd
     ]} />
     {deferredReady ? <>
       {requestedMissing ? <View style={styles.noCharts}><Text style={[styles.meta, { color: theme.textMuted }]}>所选难度不可用</Text></View>
-        : <ChartCarousel items={levels} cardWidth={cardWidth} gap={SIMAI_CHART_GAP} initialIndex={visibleIndex}
+        : <ChartCarousel items={levels} cardWidth={cardWidth} gap={SIMAI_CHART_GAP} initialIndex={initialIndex}
           accessibilityLabel="难度卡片" testID="majdata-chart-carousel" rootStyle={styles.carouselRoot} scrollStyle={styles.carouselScroll}
-          contentContainerStyle={styles.carousel} keyExtractor={level => library.chartKey(song.id, 'SD', level)} onIndexChange={setVisibleIndex}
+          contentContainerStyle={styles.carousel} keyExtractor={level => library.chartKey(song.id, 'SD', level)}
           empty={<View style={styles.noCharts}><Text style={styles.meta}>暂无可用难度</Text></View>}
           renderItem={(level, carouselState) => <MajdataChartCard carouselState={carouselState} song={song} level={level} width={cardWidth} library={library}
             best={records.find(score => score.chartInfo.id === song.id && score.chartLevel === level && score.hash === song.hash)} />} />}
