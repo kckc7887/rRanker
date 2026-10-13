@@ -80,7 +80,7 @@ async function unpack(
     if (part.exists) part.delete();
     part.create({ overwrite: true });
     part.write(bytes);
-    /** iOS File.move 要求目标目录已存在。 */
+    /** iOS 文件移动要求目标目录已存在。 */
     const slash = finalPath.lastIndexOf('/');
     if (slash > 0) {
       const parent = new Directory(uiDirectory, finalPath.slice(0, slash));
@@ -88,7 +88,7 @@ async function unpack(
     }
     const finalFile = new File(uiDirectory, finalPath);
     if (finalFile.exists) finalFile.delete();
-    part.move(finalFile);
+    part.moveSync(finalFile);
   }
 }
 

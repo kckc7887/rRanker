@@ -78,7 +78,7 @@ async function downloadFont(
     }
     assertCurrent();
     if (finalFile.exists) finalFile.delete();
-    fontPartFile.move(finalFile);
+    fontPartFile.moveSync(finalFile);
     fontPartMoved = true;
     return finalFile;
   } finally {

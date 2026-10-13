@@ -36,7 +36,7 @@ vi.mock('expo-file-system', () => {
     get size() { return native.bytes.get(this.uri)?.length ?? 0; }
     async bytes() { return native.bytes.get(this.uri) ?? new Uint8Array(0); }
     write(content: string | Uint8Array) { native.writes.push({ uri: this.uri, content }); }
-    copy(destination: MockFile) {
+    copySync(destination: MockFile) {
       if (destination.uri.startsWith('content://')) throw new Error('File.copy does not support content URIs');
       if (native.copyError) throw native.copyError;
       const content = native.bytes.get(this.uri);

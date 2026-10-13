@@ -12,9 +12,8 @@ import {
   View,
   type ListRenderItem,
 } from 'react-native';
-import { router, Stack, type Href } from 'expo-router';
-import { useIsFocused } from '@react-navigation/native';
-import { useHeaderHeight } from '@react-navigation/elements';
+import { router, Stack, useIsFocused, type Href } from 'expo-router';
+import { useHeaderHeight } from 'expo-router/react-navigation';
 import { useNotification } from '@/components/AppNotification';
 import { ArcadeBusinessStatusLabel } from '@/components/ArcadeBusinessStatusLabel';
 import { ArcadeMap } from '@/components/ArcadeMap';

@@ -226,7 +226,7 @@ function Detail({
               setCoverFailed(true);
             }}
             source={coverSource}
-            style={StyleSheet.absoluteFillObject}
+            style={StyleSheet.absoluteFill}
             transition={120}
           />
         )}

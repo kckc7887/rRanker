@@ -25,7 +25,7 @@ export const VERTICAL_SONG_DETAIL_STYLES = StyleSheet.create({
   content: { paddingBottom: 48 },
   deferredPlaceholder: { minHeight: 180 },
   hero: { position: 'relative', backgroundColor: '#D9DEE7', overflow: 'hidden' },
-  heroPlaceholder: { ...StyleSheet.absoluteFillObject, alignItems: 'center', justifyContent: 'center' },
+  heroPlaceholder: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center' },
   heroPlaceholderNote: { color: '#6B7280', fontSize: 64 },
   heroShade: { position: 'absolute', left: 0, right: 0, bottom: 0, height: '48%' },
   heroCopy: { position: 'absolute', left: 18, right: 18, bottom: 20, gap: 2 },

@@ -24,9 +24,6 @@ jest.mock('@/state/app-lifecycle', () => ({
 jest.mock('expo-router', () => ({
   useFocusEffect: (effect: () => void | (() => void)) => { mockFocusEffect = effect; },
   useNavigation: () => mockNavigation,
-}));
-jest.mock('@react-navigation/native', () => ({
-  ...jest.requireActual<typeof import('@react-navigation/native')>('@react-navigation/native'),
   useIsFocused: () => mockFocused,
 }));
 const useAccount = create(() => ({ name: 'A' }));

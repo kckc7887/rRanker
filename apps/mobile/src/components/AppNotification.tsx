@@ -432,7 +432,7 @@ function NotificationCard({
 
 const styles = StyleSheet.create({
   overlay: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 1000,
     /** 通知层需高于原生弹层，空白区域仍允许触摸穿透。 */
     elevation: 1000,
@@ -442,7 +442,7 @@ const styles = StyleSheet.create({
   notificationList: { flexGrow: 0, width: '100%', maxWidth: 520 },
   notificationCards: { gap: 8 },
   backdrop: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: 'rgba(17, 24, 39, 0.18)',
   },
   card: {
