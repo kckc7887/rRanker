@@ -181,7 +181,7 @@ export async function saveChartPackage(
       throwIfChartDownloadCancelled(signal);
       if (output.kind === 'file' && picked.uri.startsWith('file://')) {
         /** iOS 复制不允许目标文件已存在。 */
-        output.file.copy(new File(picked.uri, fileName));
+        output.file.copySync(new File(picked.uri, fileName));
       } else {
         const destination = picked.createFile(fileName, 'application/zip');
         try {

@@ -68,7 +68,7 @@ vi.mock('expo-file-system', () => {
     create() { mockUiFs.files.set(this.uri, new Uint8Array()); }
     write(content: Uint8Array) { mockUiFs.files.set(this.uri, Uint8Array.from(content)); }
     delete() { mockUiFs.files.delete(this.uri); }
-    move(destination: File) {
+    moveSync(destination: File) {
       const bytes = mockUiFs.files.get(this.uri);
       if (!bytes) throw new Error('source does not exist');
       mockUiFs.files.set(destination.uri, bytes);

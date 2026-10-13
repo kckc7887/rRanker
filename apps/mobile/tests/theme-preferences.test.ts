@@ -59,6 +59,7 @@ describe('theme preferences', () => {
 
   it('resolves system mode and creates distinct semantic palettes', () => {
     expect(resolveAppearance('system', 'dark')).toBe('dark');
+    expect(resolveAppearance('system', 'unspecified')).toBe('light');
     expect(resolveAppearance('light', 'dark')).toBe('light');
     expect(createAppTheme('dark', '#0E7490').background).not.toBe(createAppTheme('light', '#0E7490').background);
     expect(createAppTheme('dark', '#0E7490').accent).toBe('#0E7490');

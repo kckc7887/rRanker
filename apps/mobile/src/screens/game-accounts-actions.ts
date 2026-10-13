@@ -1,4 +1,4 @@
-import { InteractionManager } from 'react-native';
+import { scheduleIdleTask } from '@/state/app-lifecycle';
 import type { ActionNotificationInput, NotificationInput } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
 import { providerErrorToUserMessage } from '@/providers/errors';
@@ -153,7 +153,7 @@ export async function addOrSwitchDemoAccount(input: {
     const existing = input.existing;
     if (existing) {
       input.setPickerVisible(false);
-      InteractionManager.runAfterInteractions(() => {
+      scheduleIdleTask(() => {
         void input.onSelectExisting(existing).then(saved => {
           if (saved) input.setMessage(input.existingMessage(existing));
         }).catch(error => notifyAccountSwitchError(error, input.showNotification));
@@ -164,7 +164,7 @@ export async function addOrSwitchDemoAccount(input: {
     await input.persist(account);
     input.upsertBoundAccount(account);
     input.setPickerVisible(false);
-    InteractionManager.runAfterInteractions(() => {
+    scheduleIdleTask(() => {
       void switchBoundAccount(account.id, { navigateToOverview: false }).then(saved => {
         if (saved) input.setMessage(input.successMessage(account));
       }).catch(error => notifyAccountSwitchError(error, input.showNotification));

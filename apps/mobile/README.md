@@ -1,6 +1,6 @@
 # rRanker Mobile
 
-Expo SDK 54 + Expo Router + TypeScript strict。需要 Node.js 22.13 或更高版本。
+Expo SDK 57 + Expo Router + TypeScript strict。需要 Node.js 22.13 或更高版本。
 
 ## 开发命令
 

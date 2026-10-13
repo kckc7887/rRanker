@@ -1,4 +1,4 @@
-import * as MediaLibrary from 'expo-media-library';
+import * as MediaLibrary from 'expo-media-library/legacy';
 import { File, Paths } from 'expo-file-system';
 import { copyAsync, deleteAsync, getInfoAsync } from 'expo-file-system/legacy';
 

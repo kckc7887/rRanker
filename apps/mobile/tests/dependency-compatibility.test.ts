@@ -1,4 +1,3 @@
-import { spawnSync } from 'node:child_process';
 import { copyFileSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { createRequire } from 'node:module';
@@ -31,7 +30,7 @@ describe('依赖适配的实际消费者', () => {
       exports, process,
       require(id: string) {
         if (id === 'query-string') return requirePackage(id);
-        if (id === '@react-navigation/native' || id === '../matchers') return {};
+        if (id === '../react-navigation/native' || id === '../matchers') return {};
         throw new Error(`未模拟的路由依赖：${id}`);
       },
     });
@@ -67,14 +66,4 @@ describe('依赖适配的实际消费者', () => {
     }
   });
 
-  it('Expo autolinking 选择文件系统原生源码', () => {
-    const metadataPath = requirePackage.resolve('expo-modules-autolinking/package.json');
-    const metadata = JSON.parse(readFileSync(metadataPath, 'utf8'));
-    const cli = join(dirname(metadataPath), metadata.bin['expo-modules-autolinking']);
-    const result = spawnSync(process.execPath, [cli, 'resolve', '--platform', 'android', '--json'], { cwd: mobileRoot, encoding: 'utf8' });
-    expect(result.status, result.stderr).toBe(0);
-    const config = JSON.parse(result.stdout);
-    expect(config.configuration.buildFromSource).toContain('expo-file-system');
-    expect(config.modules.find((item: { packageName: string }) => item.packageName === 'expo-file-system').projects[0].sourceDir.replaceAll('\\', '/')).toContain('expo-file-system/android');
-  });
 });

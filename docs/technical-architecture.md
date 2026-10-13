@@ -2,7 +2,11 @@
 
 ## 工程与入口
 
-移动应用位于 `apps/mobile`，使用 Expo 54、React Native 0.81、React 19、Expo Router 6、TypeScript 5.9。入口是 `expo-router/entry`，启用 New Architecture。Node 最低版本为 22.13。
+移动应用位于 `apps/mobile`，使用 Expo 57、React Native 0.86、React 19.2、Expo Router 57、TypeScript 6。入口是 `expo-router/entry`，启用 New Architecture。Node 最低版本为 22.13。
+
+`app.config.js` 从 Expo 传入的静态配置装配原生插件和构建参数。Android 最低版本为 7，compile/target SDK 为 36；iOS 最低版本为 16.4，构建要求 Xcode 26.4 或更新版本。
+
+Android 原生库与 Hermes 字节码压缩打包，原生库在安装时解压，四 ABI 分包由 `plugins/with-android-abi-splits.js` 装配。iOS 通过 `expo.autolinking.ios.buildFromSource` 从已安装依赖源码构建 Expo 模块，React Native 与 Hermes 使用预编译产物。
 
 | 目录 | 内容 |
 |---|---|
@@ -53,7 +57,7 @@
 
 Rizline 示例按当前发布曲库生成全部谱面的 AP、120% 与最高分，SP 缺少最高分时示例取 1000000 且不计算 RKS；普通谱面沿现有规则计算 RKS，曲库更新重新生成成绩及总值。Phira 示例的 RKS、平均准确率、游玩次数分别为 19、100%、114514；冰与火之舞的 Ranked Score 为 114514、世界排名为 1；osu! 四模式 PP 均为 40000；Majdata 的 DX · Classic 为 114514.0000%。这些固定总览值不随分页成绩数量变化。
 
-Phira、冰与火之舞、osu!、Majdata 的示例最佳与成绩页共用各自的内存分页查询，随滚动追加，详情通过相同生成函数取得满成绩，不请求示例玩家的上游成绩，也不保存生成成绩快照。Phira 沿上架曲库顺序；冰与火之舞仅取普通 PGU 难度并降序排列；osu! 仅取 Ranked、Approved，每集选择当前模式最高星数的一张并保留获取顺序，详情各难度均无模组满成绩。osu! 示例曲库保留关键词搜索。Majdata 每页读取 30 首，最多四首并行，一首共用一次谱面文本，按现有难度顺序解析物量并计算 DX、Classic 与 DX Score 满分，不为列表计算五维难点。Majdata 跳过不可解析及无可计分物量的难度，其它有效谱面继续生成，详情的空谱保留未游玩状态；网络、读取和修订失败保留已加载页并整页重试，账号切换和页面失活沿用取消入口。
+Phira、冰与火之舞、osu!、Majdata 的示例最佳与成绩页共用各自的内存分页查询，随滚动追加，详情通过相同生成函数取得满成绩，不请求示例玩家的上游成绩，也不保存生成成绩快照。Phira 沿上架曲库顺序；冰与火之舞仅取普通 PGU 难度并降序排列；osu! 仅取 Ranked、Approved，每集选择当前模式最高星数的一张并保留获取顺序，详情各难度均无模组满成绩。osu! 示例曲库保留关键词搜索。Majdata 每页读取 30 首，最多四首并行，一首共用一次谱面文本，按现有难度顺序解析物量并计算 DX、Classic 与 DX Score 满分，不为列表计算五维难点。Majdata 跳过文本中缺失、不支持语法及无可计分物量的难度，其它有效谱面继续生成，详情的空谱保留未游玩状态；网络、读取和修订失败保留已加载页并整页重试，账号切换和页面失活沿用取消入口。
 
 Rizline 最佳页首次等待成绩与曲库共同就绪，实际有成绩时才显示 AH5、Best35 分组；已有完整数据在刷新期间保留，成绩或曲库初次失败沿用重试入口。
 
@@ -100,7 +104,7 @@ ADOFAI 个人曲库按收藏关卡 ID 加载详情，复用单关卡查询缓存
 
 ## 音游地图
 
-音游地图沿用 `/tools/arcade-finder` 路由，上方地图、下方统一搜索、默认折叠筛选与独立列表。iOS 使用 `react-native-maps@1.20.1` 的 MapKit；Android 四种 ABI 使用高德轻量地图 1.3.2、搜索 9.7.4 和定位 6.4.9 官方合包，固定 JAR 位于 `modules/arcade-map-support/android/libs`。`ArcadeMapSupport` 的原生视图通过系统 WebView、`IAMapWebView` 和 `AMapWrapper` 装配地图，转发 SDK 资源加载和 JS 桥接，按宿主生命周期暂停、恢复并在卸载时销毁；地图和图钉复用 SDK 内置资源及原生绘制的蓝色、橙色图钉。模块同时提供地点搜索、Key 状态和服务同意状态，R8 保留地图、搜索及 WebView JS 桥。Android 自动链接排除 React Native Maps；Web、原生模块缺失或未配置 Key 时使用列表。
+音游地图沿用 `/tools/arcade-finder` 路由，上方地图、下方统一搜索、默认折叠筛选与独立列表。iOS 使用 `react-native-maps@1.27.2` 的 MapKit；Android 四种 ABI 使用高德轻量地图 1.3.2、搜索 9.7.4 和定位 6.4.9 官方合包，固定 JAR 位于 `modules/arcade-map-support/android/libs`。`ArcadeMapSupport` 的原生视图通过系统 WebView、`IAMapWebView` 和 `AMapWrapper` 装配地图，转发 SDK 资源加载和 JS 桥接，按宿主生命周期暂停、恢复并在卸载时销毁；地图和图钉复用 SDK 内置资源及原生绘制的蓝色、橙色图钉。模块同时提供地点搜索、Key 状态和服务同意状态，R8 保留地图、搜索及 WebView JS 桥。Android 自动链接排除 React Native Maps；Web、原生模块缺失或未配置 Key 时使用列表。
 
 正式 Android 构建将仓库 Secret `AMAP_ANDROID_KEY` 传给 `plugins/with-arcade-map.js`，写入 Manifest 的高德元数据，并配置网络权限和 Jetifier。Key 不通过插件参数、日志或客户端 `extra` 传递。高德服务说明经用户同意后才装配地图，同意状态由原生模块持久化；确认后才初始化轻量地图与搜索服务，拒绝仍可使用列表。定位沿用系统定位入口，地图操作不依赖定位授权。拖图停止 500 毫秒后，与当前查询中心的累计距离达到查询半径的 10%（最少 300 米）才查询；没有查询中心时直接查询。轻微移动保留当前请求和选中机厅，刷新及失败期间保留新范围内已有结果，并按新中心更新距离。卡片移动地图不重新查询；页面离开与后台状态取消请求，迟到结果不提交。
 
@@ -165,11 +169,13 @@ KALEIDXSCOPE 的日程、课题和手工进度位于 `domain/kaleidx-scope.ts`�
 | `npm run build:phigros-chart-preview` | 生成 Phigros 播放器 |
 | `npm run build:osu-chart-preview` | 生成 osu! 播放器 |
 | `npm run build:rizline-chart-preview` | 生成 Rizline 播放器 |
-| `npm run prebuild:android` | 生成 Android 工程配置 |
+| `npm run prebuild:android` | 重建 Android 工程配置 |
 
 测试验证实际输入输出、交互、取消、存储往返和 I/O 失败。外部 HTTP、原生 SDK、文件系统和浏览器环境可模拟；生产代码不提供测试替换、统计或 reset 接口。
 
-postinstall 按实际源码调用点应用 decode-uri-component、Metro image-size、Xiaomi WebView 和 Expo FileHandle 的运行/构建补丁。高德轻量地图依赖由 `arcade-map-support` 原生模块装配，地图、搜索和 JS 桥的混淆配置随模块提供。
+lint 保留 Hooks 的调用与依赖检查，组件编译器诊断的启用范围由 `eslint.config.js` 配置。Jest 转译 Router 所需的 `standard-navigation`，原生模块测试只替换所属业务入口，保留 Expo Core 的默认环境。
+
+postinstall 按实际源码调用点应用 decode-uri-component 和 Xiaomi WebView 的运行补丁。高德轻量地图依赖由 `arcade-map-support` 原生模块装配，地图、搜索和 JS 桥的混淆配置随模块提供。
 
 ### CI 与发布
 
@@ -177,7 +183,7 @@ postinstall 按实际源码调用点应用 decode-uri-component、Metro image-si
 
 四个原生构建作业互斥：正式仓库分支 push/手动触发走 Android/iOS 正式构建；向 master 提交的 fork PR 走双端测试构建。保留当前签名与发布条件，fork 作业不取得发布凭据。
 
-Android 在同一作业内构建四个 ABI，校验 Manifest、签名和产物，安装 x86_64 APK 走生产路由冒烟，再上传最终产物。手动原生诊断入口位于 `android-recovery.yml`。
+Android 在同一作业内以 4 GiB Gradle 堆和两个工作线程构建四个 ABI，校验 Manifest、签名和产物，安装 x86_64 APK 走生产路由冒烟，再上传最终产物。手动原生诊断入口位于 `android-recovery.yml`。
 
 对外 APK 名为 `rRanker-arm64.apk`、`rRanker-armeabi.apk`、`rRanker-x86.apk`、`rRanker-x86_64.apk`；构建归档名保留版本、提交与运行标识。`resource-release.yml` 仅处理正式 Release 的 published 事件，通过 `RESOURCE_PUBLISHER_TOKEN` 向发布仓库的 `apk.yml` 发送 Release ID，并查询该次运行结果。令牌仅需发布仓库 Actions 读写权限，S3 凭据由发布仓库持有。发布仓库验证全部附件后更新 rranker 桶的四个 `release/rRanker-<ABI>.apk` 固定地址。
 

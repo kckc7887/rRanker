@@ -33,9 +33,14 @@ function withAndroidAbiSplits(config, options = {}) {
     return config;
   }]);
   config = withGradleProperties(config, (config) => {
-    for (const key of ['android.enableMinifyInReleaseBuilds', 'android.enableShrinkResourcesInReleaseBuilds']) {
+    for (const [key, value] of [
+      ['android.enableMinifyInReleaseBuilds', String(minify)],
+      ['android.enableShrinkResourcesInReleaseBuilds', String(shrink)],
+      ['expo.useLegacyPackaging', 'true'],
+      ['android.enableBundleCompression', 'true'],
+    ]) {
       config.modResults = config.modResults.filter(entry => entry.type !== 'property' || entry.key !== key);
-      config.modResults.push({ type: 'property', key, value: String(key.includes('Minify') ? minify : shrink) });
+      config.modResults.push({ type: 'property', key, value });
     }
     return config;
   });

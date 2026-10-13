@@ -71,6 +71,7 @@ runs:
           )
         fi
         ./gradlew :app:assembleRelease --no-daemon --stacktrace --max-workers=2 \
+          '-Dorg.gradle.jvmargs=-Xmx4g -XX:MaxMetaspaceSize=1g' \
           -PreactNativeArchitectures=armeabi-v7a,arm64-v8a,x86,x86_64 \
           "${SIGNING_ARGS[@]}"
       shell: bash

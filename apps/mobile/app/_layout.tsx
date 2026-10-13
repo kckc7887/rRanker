@@ -1,7 +1,6 @@
 import { memo, useEffect, useMemo } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { DarkTheme, DefaultTheme, ThemeProvider } from '@react-navigation/native';
-import { Stack, type ErrorBoundaryProps } from 'expo-router';
+import { DarkTheme, DefaultTheme, ThemeProvider, Stack, type ErrorBoundaryProps } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
 import { useSyncAccountMetadata } from '@/hooks/use-sync-account-metadata';

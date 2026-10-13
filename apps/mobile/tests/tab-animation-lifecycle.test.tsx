@@ -10,12 +10,11 @@ let mockFocusEffect: (() => void | (() => void)) | null = null;
 jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
   useFocusEffect: (effect: () => void | (() => void)) => { mockFocusEffect = effect; },
+  useIsFocused: () => true,
 }));
 
 const originalIdle = globalThis.requestIdleCallback;
 const originalCancelIdle = globalThis.cancelIdleCallback;
-
-jest.mock('@react-navigation/native', () => ({ useIsFocused: () => true }));
 
 describe('cached tab animation lifecycle', () => {
   afterEach(() => {

@@ -47,7 +47,7 @@ export function useAppStartup(): boolean {
     const stop = startTimer('root.themeHydrate');
     void hydrateTheme().finally(stop);
   }, [hydrateTheme]);
-  useEffect(() => { Appearance.setColorScheme(appearance === 'system' ? null : appearance); }, [appearance]);
+  useEffect(() => { Appearance.setColorScheme(appearance === 'system' ? 'unspecified' : appearance); }, [appearance]);
 
   useEffect(() => { void hydrateDebug().catch(() => undefined); }, [hydrateDebug]);
 

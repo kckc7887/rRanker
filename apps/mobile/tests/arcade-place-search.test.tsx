@@ -8,7 +8,10 @@ const mockSearch = jest.fn<() => Promise<ArcadePlace[]>>();
 const mockResolve = jest.fn<() => Promise<{ latitude: number; longitude: number } | null>>();
 const mockCancel = jest.fn<() => Promise<void>>(async () => {});
 jest.mock('@/services/arcade-map-platform', () => ({ getArcadeMapAvailability: () => mockAvailability }));
-jest.mock('expo-modules-core', () => ({ requireOptionalNativeModule: () => ({ searchPlaces: mockSearch, resolvePlace: mockResolve, cancelPlaceSearch: mockCancel }) }));
+jest.mock('expo-modules-core', () => ({
+  ...jest.requireActual<typeof import('expo-modules-core')>('expo-modules-core'),
+  requireOptionalNativeModule: () => ({ searchPlaces: mockSearch, resolvePlace: mockResolve, cancelPlaceSearch: mockCancel }),
+}));
 
 const platform = Platform.OS;
 const place: ArcadePlace = { id: '1', name: '测试地点', address: '测试路', city: '上海', coordinate: { latitude: 31.23, longitude: 121.47 } };

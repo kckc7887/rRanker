@@ -41,6 +41,6 @@ export function GameDifficultyBadge({ text, theme, accessibilityLabel, special, 
 
 const styles = StyleSheet.create({
   badge: { minWidth: 32, height: 24, borderWidth: 1, borderRadius: 999, paddingHorizontal: 8, alignItems: 'center', justifyContent: 'center' },
-  specialOverlay: { ...StyleSheet.absoluteFillObject, backgroundColor: 'rgba(20,14,38,0.24)' },
+  specialOverlay: { ...StyleSheet.absoluteFill, backgroundColor: 'rgba(20,14,38,0.24)' },
   text: { fontSize: 9, fontWeight: '900', letterSpacing: 0.25 },
 });

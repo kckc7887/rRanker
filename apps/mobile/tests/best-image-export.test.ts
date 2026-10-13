@@ -1,7 +1,7 @@
 /* eslint-disable import/first -- Vitest native-module mocks must be registered before imports. */
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
-vi.mock('expo-media-library', () => ({
+vi.mock('expo-media-library/legacy', () => ({
   isAvailableAsync: vi.fn(async () => true),
   getPermissionsAsync: vi.fn(async () => ({ granted: false })),
   requestPermissionsAsync: vi.fn(async () => ({ granted: true })),
@@ -41,7 +41,7 @@ vi.mock('expo-file-system/legacy', async () => {
   };
 });
 
-import * as MediaLibrary from 'expo-media-library';
+import * as MediaLibrary from 'expo-media-library/legacy';
 import * as FileSystem from 'expo-file-system';
 import {
   bestImageCaptureDimensions,

@@ -25,7 +25,7 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。水�
 
 `useMajdataSongs`、歌曲及个人库详情、派生结果与排行榜共用 5 分钟无使用者回收时间。搜索和排行榜被回收后重新请求，上游歌曲详情继续沿现有磁盘缓存与刷新路径读取。
 
-示例成绩生成由各游戏的 `maxed-*-test-provider` 提供。`usePhiraDemoBests`、`useTufDemoPasses` 复用所属曲库分页 hook 的可选账号身份；`useOsuDemoScores` 使用 `OsuPublicCatalogProvider` 的搜索与详情读取，响应复用当前 osu! 谱面模型；`useMajdataDemoScores` 使用 `loadMajdataDemoScoresPage` 读取曲库及已缓存文本，再复用 Simai 解析、物量和满分计算。解析失败或无可计分物量时跳过所属难度，详情的空谱保留未游玩状态，其它读取失败继续整页重试。最佳与成绩页共享查询，生成成绩与详情复用同一入口，查询身份包含示例账号，各游戏清缓存及解绑同时取消所属查询。Rizline 的 `applyRizlineCatalog` 对示例账号按新曲库重新生成存档与 RKS。生成成绩不写玩家成绩快照，单谱 PP、连击或判定缺失沿现有空值语义显示。
+示例成绩生成由各游戏的 `maxed-*-test-provider` 提供。`usePhiraDemoBests`、`useTufDemoPasses` 复用所属曲库分页 hook 的可选账号身份；`useOsuDemoScores` 使用 `OsuPublicCatalogProvider` 的搜索与详情读取，响应复用当前 osu! 谱面模型；`useMajdataDemoScores` 使用 `loadMajdataDemoScoresPage` 读取曲库及已缓存文本，再复用 Simai 解析、物量和满分计算。Majdata 通过 `getAvailableDifficulties` 跳过文本中缺失的难度；不支持的谱面语法或无可计分物量同样跳过所属难度，详情的空谱保留未游玩状态，其它读取失败继续整页重试。最佳与成绩页共享查询，生成成绩与详情复用同一入口，查询身份包含示例账号，各游戏清缓存及解绑同时取消所属查询。Rizline 的 `applyRizlineCatalog` 对示例账号按新曲库重新生成存档与 RKS。生成成绩不写玩家成绩快照，单谱 PP、连击或判定缺失沿现有空值语义显示。
 
 中二示例加载通过 `loadChunithmNewVersionTitles(signal)` 调用 `ChunithmCatalogProvider.getNewVersionTitles`，校验水鱼 `/latest_version` 返回的非空版本名称数组。`buildMaxedChunithmSnapshot(catalog, newVersionTitles, displayName?)` 与 `buildMaxedChunithmBests` 使用曲库版本表匹配整个新曲集合，按谱面版本划分 N20 与 B30，未进入 N20 的新曲不进入 B30 或备选。
 
@@ -65,6 +65,8 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 `createPreferencesStore` 读取并校验当前格式，成功读到不支持的结构才写当前默认值。`preferences-write-coordinator.ts` 管理真实页面选择、串行保存和失败补写，恢复未完成时不把占位默认值覆盖到磁盘。
 
+`resolveAppearance` 根据用户偏好和系统模式生成当前主题；跟随系统时仅 `dark` 使用深色，`unspecified` 使用浅色。系统主题通过 `Appearance.setColorScheme('unspecified')` 恢复跟随。
+
 `UserLibraryService` 是收藏、练习、标签、预设、导入导出的业务入口；`SqliteUserLibraryRepository` 在真实事务内读写。单项动作只改对应行，并在原事务中只读回所属游戏；清游戏保留其他游戏和全局预设。当前库 schema 为 4，不支持的表结构只重建个人库所属表。
 
 备份只支持版本 3，`gameId` 必须存在。`createBackup` 通过仓库的 `readBackup` 在同一次队列任务内读取条目与标签预设。`parseUserDataBackup` 在导入前拒绝旧格式；`mergeBackup` 在同一事务内合并/替换条目与预设，条目或预设上限失败不会留下部分写入。`user-data-file-service.ts` 通过系统文件选择与分享读写当前备份，临时副本使用后删除。
@@ -79,7 +81,9 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 `AppLifecycleProvider`、`useAppRuntime` 与 `CachedTabScreen` 管理前后台和页面活动。后台取消前台工作；内存警告释放非活动查询、图片内存和必要的 WebView。前台仅恢复仍活动的未完成工作，不额外刷新已有缓存。
 
-`scheduleIdleTask` 提供可取消的空闲调度。`CachedTabScreen` 持续监听焦点、前后台和内存警告；普通失活仅暂停工作，已挂载内容及局部状态持续保留，重获焦点时已有画面不等待空闲任务。真正的内存警告可卸载非焦点页面。`StackScreenActivityScope` 在栈页外层监听原生转场，`useStackScreenReady` 保留首次入场完成状态，活动上下文同时受焦点、转场和前后台约束。
+导航主题和焦点状态通过 `expo-router` 公共入口读取，标题高度与导航类型使用 `expo-router/react-navigation`；栈页与标签页沿用同一导航上下文。
+
+`scheduleIdleTask` 提供可取消的空闲调度，账号切换与绑定弹层的延后动作共用该入口；重命名输入在 `AppModal` 的原生 `onShow` 后聚焦。`CachedTabScreen` 持续监听焦点、前后台和内存警告；普通失活仅暂停工作，已挂载内容及局部状态持续保留，重获焦点时已有画面不等待空闲任务。真正的内存警告可卸载非焦点页面。`StackScreenActivityScope` 在栈页外层监听原生转场，`useStackScreenReady` 保留首次入场完成状态，活动上下文同时受焦点、转场和前后台约束。
 
 ## 图片与共享 UI
 
@@ -94,6 +98,8 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 ## 成绩图与谱面功能
 
 成绩图公共入口位于 `features/best-image`：`useBestImageScreenController`、`useBestImagePreview`、`useBestImageExport` 与共享页面壳。`load-best-image-session.ts` 为舞萌、中二和 Phigros 提供账号独立的素材会话，`loadRemoteImageFile`、`loadImageFiles` 与 `copyBestImageAsset` 返回原字节文件 URL，共享下载并复用已准备文件。游戏入口只提供素材地址、当前所需字体和布局；`prepareBestImageWebViewSources` 在同一会话目录异步写出 HTML，返回异步 `dispose`。改样式、分页与后台恢复沿用当前会话，已就绪素材与 HTML 保留身份，未完成工作恢复，WebView 只读取该目录。`requestBestImageExportPermission` 先读取相册权限，未授权时才申请，拒绝和读取失败沿用导出错误路径。真正进入后台取消当前导出，恢复后可重新导出。离开或换账号先失效会话，`cancelExportRequest` 等待未结束截图及临时截图清理，再回收会话文件；后台等待截图可取消。清缓存跳过活跃会话，启动维护回收上次会话目录。
+
+相册权限和保存使用 `expo-media-library/legacy`。字体及舞萌 UI 素材通过 `File.moveSync` 完成文件发布，iOS 谱面包通过 `File.copySync` 完成复制后才结束保存；临时来源的清理沿用所属任务时序。
 
 谱面公共入口位于 `features/chart-preview-shared`：
 

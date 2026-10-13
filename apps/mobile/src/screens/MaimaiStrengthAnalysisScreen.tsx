@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import { useIsFocused } from '@react-navigation/native';
-import { Stack, router } from 'expo-router';
+import { Stack, router, useIsFocused } from 'expo-router';
 import { AppModal } from '@/components/AppModal';
 import { Card } from '@/components/Card';
 import { QueryStateView } from '@/components/QueryStateView';

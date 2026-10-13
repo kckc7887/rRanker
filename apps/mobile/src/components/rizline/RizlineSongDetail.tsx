@@ -61,7 +61,7 @@ function RizlineSongDetailContent({ song, library, initialLevelIndex }: { song: 
   return <ScrollView testID="rizline-song-detail-scroll" contentContainerStyle={styles.content}>
     <View style={[styles.hero, { width, height: width }]}>
       {cover && !coverFailed ? <RemoteImage accessibilityLabel="曲绘" source={cover} cacheProfile="artwork" gameId="rizline"
-        contentFit="cover" onError={() => setCoverFailed(true)} style={StyleSheet.absoluteFillObject} transition={120} />
+        contentFit="cover" onError={() => setCoverFailed(true)} style={StyleSheet.absoluteFill} transition={120} />
         : <View style={[styles.heroPlaceholder, { backgroundColor: theme.input }]}><Text style={styles.heroPlaceholderNote}>♪</Text></View>}
       <LinearGradient pointerEvents="none" colors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.40)']} locations={[0, 1]} style={styles.heroShade} />
       <View style={styles.heroCopy}><Text numberOfLines={1} style={styles.songId}>#{song.id}</Text>

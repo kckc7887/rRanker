@@ -98,7 +98,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     mockPrepareChartPreview.mockClear();
     mockShowActionNotification.mockClear();
     jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
-      hardwareBackHandler = handler;
+      hardwareBackHandler = () => handler({ type: 'hardwareBackPress', timeStamp: Date.now() });
       return { remove: jest.fn() };
     });
   });

@@ -1,7 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import {
   ActivityIndicator,
-  InteractionManager,
   Pressable,
   StyleSheet,
   Text,
@@ -38,11 +37,6 @@ export function RenameLocalAccountSheet({
     if (!visible) return;
     setDraft(initialName);
     setError('');
-    /** 等 pageSheet 展开后再聚焦，避免 iOS 键盘与转场冲突。 */
-    const handle = InteractionManager.runAfterInteractions(() => {
-      inputRef.current?.focus();
-    });
-    return () => handle.cancel();
   }, [initialName, visible]);
 
   const save = async () => {
@@ -68,6 +62,7 @@ export function RenameLocalAccountSheet({
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
+      onShow={() => { if (visible) inputRef.current?.focus(); }}
       onRequestClose={saving ? undefined : onClose}
     >
       {/* pageSheet already lifts for the keyboard — do not wrap in KeyboardAvoidingView,
