@@ -51,7 +51,7 @@ npm start
 
 游戏资源由 [rRankerResourcePublisher](https://github.com/kckc7887/rRankerResourcePublisher) 统一发布。Rizline、Kyou 每天北京时间 08:00 更新，Phigros 每天 12:00 更新；客户端通过清单校验并读取变化的资源。正式 Release 的四个 APK 同步到固定下载地址，文件名为 `rRanker-arm64.apk`、`rRanker-armeabi.apk`、`rRanker-x86.apk`、`rRanker-x86_64.apk`。
 
-Expo SDK 54 · Expo Router · React Native 0.81 · React 19 · TypeScript strict · Zustand · TanStack Query · Expo SQLite · Expo SecureStore
+Expo SDK 55 · Expo Router · React Native 0.83 · React 19.2 · TypeScript strict · Zustand · TanStack Query · Expo SQLite · Expo SecureStore
 
 ## 🙏 致谢
 
