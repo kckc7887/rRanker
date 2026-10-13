@@ -30,7 +30,7 @@ describe('依赖适配的实际消费者', () => {
       exports, process,
       require(id: string) {
         if (id === 'query-string') return requirePackage(id);
-        if (id === '@react-navigation/native' || id === '../matchers') return {};
+        if (id === '../react-navigation/native' || id === '../matchers') return {};
         throw new Error(`未模拟的路由依赖：${id}`);
       },
     });

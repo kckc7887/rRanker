@@ -43,7 +43,7 @@ vi.mock('expo-file-system', () => {
     async text() { return native.texts.get(this.uri) ?? ''; }
     async bytes() { throw new Error('whole-file reads are forbidden'); }
     create() { native.bytes.set(this.uri, new Uint8Array()); }
-    copy(destination: { uri: string; write: (bytes: Uint8Array) => void }) {
+    copySync(destination: { uri: string; write: (bytes: Uint8Array) => void }) {
       if (destination.uri.startsWith('content://')) throw new Error('File.copy does not support content URIs');
       if (destination.uri.startsWith('file://') && native.bytes.has(destination.uri)) {
         throw new Error('The destination file already exists');

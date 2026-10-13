@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useIsFocused } from '@react-navigation/native';
+import { useIsFocused } from 'expo-router';
 import { TufRandomFilterBar } from '@/components/adofai/TufFilterBar';
 import { TufScoreCard } from '@/components/adofai/TufScoreCard';
 import { QueryStateView } from '@/components/QueryStateView';

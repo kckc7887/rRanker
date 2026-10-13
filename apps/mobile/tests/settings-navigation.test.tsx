@@ -14,10 +14,6 @@ const mockLoadPrefs = jest.fn(async () => ({ version: 1 as const, selectedIds: [
 const mockExportDiagnostics = jest.fn(async () => undefined);
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
-jest.mock('@react-navigation/native', () => ({
-  ...jest.requireActual<typeof import('@react-navigation/native')>('@react-navigation/native'),
-  useIsFocused: () => true,
-}));
 jest.mock('expo-image', () => {
   const React = jest.requireActual('react') as typeof import('react');
   const RN = jest.requireActual('react-native') as typeof import('react-native');
@@ -30,6 +26,7 @@ jest.mock('expo-router', () => {
   return {
     router: { push: (href: unknown) => mockPush(href) },
     Stack: { Screen: () => null },
+    useIsFocused: () => true,
     useFocusEffect: (effect: () => void | (() => void)) => {
       React.useEffect(() => {
         const cleanup = effect();

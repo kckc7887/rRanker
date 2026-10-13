@@ -21,8 +21,7 @@ const mockNavigation = {
     return () => { mockNavigationListeners.delete(name); };
   },
 };
-jest.mock('expo-router', () => ({ useNavigation: () => mockNavigation }));
-jest.mock('@react-navigation/native', () => ({ useIsFocused: () => mockFocused }));
+jest.mock('expo-router', () => ({ useNavigation: () => mockNavigation, useIsFocused: () => mockFocused }));
 
 const usage: StorageUsageReport = {
   totalBytes: 4096,

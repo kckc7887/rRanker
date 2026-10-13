@@ -62,9 +62,6 @@ jest.mock('expo-router', () => ({
   },
   Stack: { Screen: () => null },
   useNavigation: () => ({ canGoBack: () => mockCanGoBack(), goBack: () => mockBack() }),
-}));
-jest.mock('@react-navigation/native', () => ({
-  ...jest.requireActual<typeof import('@react-navigation/native')>('@react-navigation/native'),
   useIsFocused: () => mockFocused,
 }));
 jest.mock('@/state/app-lifecycle', () => ({

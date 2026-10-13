@@ -2,9 +2,9 @@
 
 ## 工程与入口
 
-移动应用位于 `apps/mobile`，使用 Expo 55、React Native 0.83、React 19.2、Expo Router 55、TypeScript 5.9。入口是 `expo-router/entry`，启用 New Architecture。Node 最低版本为 22.13。
+移动应用位于 `apps/mobile`，使用 Expo 56、React Native 0.85、React 19.2、Expo Router 56、TypeScript 6。入口是 `expo-router/entry`，启用 New Architecture。Node 最低版本为 22.13。
 
-`app.config.js` 从 Expo 传入的静态配置装配原生插件和构建参数。Android 最低版本为 7，compile/target SDK 为 36；iOS 最低版本为 15.1，构建要求 Xcode 26.2 或更新版本。
+`app.config.js` 从 Expo 传入的静态配置装配原生插件和构建参数。Android 最低版本为 7，compile/target SDK 为 36；iOS 最低版本为 16.4，构建要求 Xcode 26.4 或更新版本。
 
 | 目录 | 内容 |
 |---|---|
@@ -170,6 +170,8 @@ KALEIDXSCOPE 的日程、课题和手工进度位于 `domain/kaleidx-scope.ts`�
 | `npm run prebuild:android` | 生成 Android 工程配置 |
 
 测试验证实际输入输出、交互、取消、存储往返和 I/O 失败。外部 HTTP、原生 SDK、文件系统和浏览器环境可模拟；生产代码不提供测试替换、统计或 reset 接口。
+
+lint 保留 Hooks 的调用与依赖检查，组件编译器诊断的启用范围由 `eslint.config.js` 配置。Jest 转译 Router 所需的 `standard-navigation`，原生模块测试只替换所属业务入口，保留 Expo Core 的默认环境。
 
 postinstall 按实际源码调用点应用 decode-uri-component 和 Xiaomi WebView 的运行补丁。高德轻量地图依赖由 `arcade-map-support` 原生模块装配，地图、搜索和 JS 桥的混淆配置随模块提供。
 

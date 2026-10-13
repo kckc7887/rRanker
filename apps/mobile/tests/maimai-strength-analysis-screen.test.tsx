@@ -17,10 +17,7 @@ let mockCatalog: CatalogSnapshot;
 let mockScoreQuery: Record<string, unknown>;
 let mockCatalogQuery: Record<string, unknown>;
 
-jest.mock('expo-router', () => ({ router: { push: (...args: unknown[]) => mockPush(...args) }, Stack: { Screen: () => null } }));
-jest.mock('@react-navigation/native', () => ({
-  ...jest.requireActual<object>('@react-navigation/native'), useIsFocused: () => mockFocused,
-}));
+jest.mock('expo-router', () => ({ router: { push: (...args: unknown[]) => mockPush(...args) }, Stack: { Screen: () => null }, useIsFocused: () => mockFocused }));
 jest.mock('@/state/session-store', () => ({ useSession: (select: (state: typeof mockSession) => unknown) => select(mockSession) }));
 jest.mock('@/hooks/use-score-snapshot', () => ({ useScoreSnapshot: () => mockScoreQuery }));
 jest.mock('@/hooks/use-detailed-catalog', () => ({ useDetailedCatalog: () => mockCatalogQuery }));

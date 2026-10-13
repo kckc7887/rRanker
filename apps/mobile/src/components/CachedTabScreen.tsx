@@ -8,8 +8,8 @@ import {
   useRef,
   useState,
 } from 'react';
-import { useFocusEffect, useNavigation } from 'expo-router';
-import { useIsFocused, type NavigationProp, type NavigationState, type ParamListBase } from '@react-navigation/native';
+import { useFocusEffect, useIsFocused, useNavigation } from 'expo-router';
+import type { NavigationProp, NavigationState, ParamListBase } from 'expo-router/react-navigation';
 import { Platform, StyleSheet, View } from 'react-native';
 import { scheduleIdleTask, useAppLifecycle } from '@/state/app-lifecycle';
 import { useAppTheme } from '@/theme/app-theme';

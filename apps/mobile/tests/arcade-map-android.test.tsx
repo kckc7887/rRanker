@@ -23,6 +23,7 @@ const MockView = View;
 jest.mock('expo-modules-core', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   return {
+    ...jest.requireActual<typeof import('expo-modules-core')>('expo-modules-core'),
     requireOptionalNativeModule: () => mockSupport,
     requireNativeViewManager: () => React.forwardRef(function MockAMap(props: NativeMapProps, ref) {
       mockProps = props;

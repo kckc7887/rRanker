@@ -721,7 +721,7 @@ const styles = {
     versionToggle: { width: 16, height: 16, marginTop: 1, alignItems: 'center', justifyContent: 'center' },
     chartTypeRow: { minHeight: 44, flexDirection: 'row', alignItems: 'center', gap: 4 },
     chartTypeHint: { color: '#8A93A3', fontSize: 9, fontWeight: '600' },
-    gradientFill: { ...StyleSheet.absoluteFillObject },
+    gradientFill: { ...StyleSheet.absoluteFill },
     rating: { color: '#667085', fontSize: 12, fontWeight: '700', marginTop: 10 },
     ratingValue: { color: '#172033', fontSize: 17, fontWeight: '900' },
     utageDescription: { fontSize: 12, lineHeight: 18, marginTop: 4 },

@@ -60,7 +60,7 @@ vi.mock('expo-file-system', () => {
     create() { mockFontFs.files.set(this.uri, new Uint8Array()); }
     write(content: Uint8Array) { mockFontFs.files.set(this.uri, Uint8Array.from(content)); }
     delete() { mockFontFs.files.delete(this.uri); }
-    move(destination: File) {
+    moveSync(destination: File) {
       const bytes = mockFontFs.files.get(this.uri);
       if (!bytes) throw new Error('source does not exist');
       mockFontFs.files.set(destination.uri, bytes);
