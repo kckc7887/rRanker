@@ -87,29 +87,44 @@ describe('Android release size config plugin', () => {
     { minify: true, shrink: false, optimize: true },
   ])('applies controlled diagnostic settings %j', async (options) => {
     const configured = mods(options);
-    const properties = await runMod(configured.gradleProperties!, []);
-    expect(properties).toEqual([
-      { type: 'property', key: 'android.enableMinifyInReleaseBuilds', value: String(options.minify) },
-      { type: 'property', key: 'android.enableShrinkResourcesInReleaseBuilds', value: String(options.shrink) },
+    const properties = await runMod(configured.gradleProperties!, [
+      { type: 'property', key: 'hermesEnabled', value: 'true' },
     ]);
+    for (const [key, value] of [
+      ['android.enableMinifyInReleaseBuilds', String(options.minify)],
+      ['android.enableShrinkResourcesInReleaseBuilds', String(options.shrink)],
+      ['expo.useLegacyPackaging', 'true'],
+      ['android.enableBundleCompression', 'true'],
+      ['hermesEnabled', 'true'],
+    ]) {
+      expect(properties.flatMap(entry => entry.type === 'property' && entry.key === key ? [entry.value] : [])).toEqual([value]);
+    }
     const result = await runMod(configured.appBuildGradle!, { path: 'app/build.gradle', language: 'groovy', contents: template });
     expect(result.contents).toContain(`getDefaultProguardFile("proguard-android${options.optimize ? '-optimize' : ''}.txt")`);
     expect(await runMod(configured.appBuildGradle!, result)).toEqual(result);
   });
-  it('enables both shrinkers idempotently and preserves unrelated properties', async () => {
+  it('enables shrinkers and compression idempotently and preserves unrelated properties', async () => {
     const mod = mods().gradleProperties!;
     const input: Parameters<typeof mod>[0]['modResults'] = [
       { type: 'property', key: 'hermesEnabled', value: 'true' },
       { type: 'property', key: 'android.enableMinifyInReleaseBuilds', value: 'false' },
       { type: 'property', key: 'android.enableMinifyInReleaseBuilds', value: 'false' },
+      { type: 'property', key: 'expo.useLegacyPackaging', value: 'false' },
+      { type: 'property', key: 'android.enableBundleCompression', value: 'false' },
     ];
     const first = await runMod(mod, input);
-    expect(await runMod(mod, first)).toEqual(first);
-    expect(first).toEqual([
-      { type: 'property', key: 'hermesEnabled', value: 'true' },
-      { type: 'property', key: 'android.enableMinifyInReleaseBuilds', value: 'true' },
-      { type: 'property', key: 'android.enableShrinkResourcesInReleaseBuilds', value: 'true' },
-    ]);
+    const second = await runMod(mod, first);
+    for (const properties of [first, second]) {
+      for (const key of [
+        'hermesEnabled',
+        'android.enableMinifyInReleaseBuilds',
+        'android.enableShrinkResourcesInReleaseBuilds',
+        'expo.useLegacyPackaging',
+        'android.enableBundleCompression',
+      ]) {
+        expect(properties.flatMap(entry => entry.type === 'property' && entry.key === key ? [entry.value] : [])).toEqual(['true']);
+      }
+    }
   });
 
   it('preserves ABI splits and custom rules while using the optimized ProGuard default', async () => {
