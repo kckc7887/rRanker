@@ -6,6 +6,8 @@
 
 `app.config.js` 从 Expo 传入的静态配置装配原生插件和构建参数。Android 最低版本为 7，compile/target SDK 为 36；iOS 最低版本为 16.4，构建要求 Xcode 26.4 或更新版本。
 
+Android 原生库与 Hermes 字节码压缩打包，原生库在安装时解压，四 ABI 分包由 `plugins/with-android-abi-splits.js` 装配。iOS 通过 `expo.autolinking.ios.buildFromSource` 从已安装依赖源码构建 Expo 模块，React Native 与 Hermes 使用预编译产物。
+
 | 目录 | 内容 |
 |---|---|
 | `apps/mobile/app` | 文件路由、根布局与标签页 |
