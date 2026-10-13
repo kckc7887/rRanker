@@ -60,8 +60,8 @@ describe('Majdata revision and account cache', () => {
     controller.abort(new Error('已取消'));
     await expect(loadMajdataDemoScoresPage(1, controller.signal)).rejects.toThrow('已取消');
   });
-  it('skips invalid and empty difficulties while preserving full scores and catalog order', async () => {
-    const mixed = { ...song, levels: ['1', '', '', '8', '14', '15', '宴'] };
+  it('skips missing, invalid and empty difficulties while preserving full scores and catalog order', async () => {
+    const mixed = { ...song, levels: ['1', '5', '', '8', '14', '15', '宴'] };
     const second = { ...song, id: 'uuid-second', levels: ['1', '', '', '', '', '', ''] };
     mock.getSongs.mockResolvedValue([mixed, second]);
     mock.getSong.mockImplementation(async (id: string) => id === second.id ? second : mixed);
