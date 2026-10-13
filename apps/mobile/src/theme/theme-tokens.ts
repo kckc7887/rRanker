@@ -34,7 +34,7 @@ export interface AppThemeTokens {
   warning: string; statusBar: 'light' | 'dark';
 }
 
-export function resolveAppearance(appearance: AppAppearance, system: 'light' | 'dark' | null | undefined): 'light' | 'dark' {
+export function resolveAppearance(appearance: AppAppearance, system: 'light' | 'dark' | 'unspecified' | null | undefined): 'light' | 'dark' {
   return appearance === 'system' ? (system === 'dark' ? 'dark' : 'light') : appearance;
 }
 

@@ -1,15 +1,14 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { ReactNode } from 'react';
-import { InteractionManager } from 'react-native';
+import * as appLifecycle from '@/state/app-lifecycle';
 import { OverviewScreen } from '../app/(tabs)/(overview)/index';
 import { createMuseDashBoundAccount } from '@/domain/bound-account';
 
 const mockRefetch = jest.fn<() => Promise<{ data: unknown }>>();
 const mockSwitchBoundAccount = jest.fn();
-const mockCancelInteraction = jest.fn();
-const mockRunAfterInteractions = jest.spyOn(InteractionManager, 'runAfterInteractions');
-let pendingInteraction: (() => void) | null = null;
+const mockScheduleIdleTask = jest.spyOn(appLifecycle, 'scheduleIdleTask');
+let pendingSwitches: (() => void)[] = [];
 let mockAccountSelect: ((account: typeof mockFirstAccount) => void) | null = null;
 let mockNullPayload = false;
 const mockFirstAccount = createMuseDashBoundAccount({
@@ -129,19 +128,12 @@ jest.mock('@/domain/chunithm-maintenance', () => ({
 describe('Muse Dash public overview', () => {
   beforeEach(() => {
     jest.clearAllMocks();
-    pendingInteraction = null;
+    pendingSwitches = [];
     mockAccountSelect = null;
-    mockRunAfterInteractions.mockImplementation((task) => {
-      pendingInteraction = typeof task === 'function'
-        ? task
-        : task
-          ? () => { void task.gen(); }
-          : null;
-      return {
-        then: jest.fn(),
-        done: jest.fn(),
-        cancel: mockCancelInteraction,
-      } as never;
+    mockScheduleIdleTask.mockImplementation((task) => {
+      let cancelled = false;
+      pendingSwitches.push(() => { if (!cancelled) task(); });
+      return () => { cancelled = true; };
     });
     mockNullPayload = false;
     mockRefetch.mockResolvedValue({ data: mockBundle });
@@ -163,7 +155,7 @@ describe('Muse Dash public overview', () => {
     await fireEvent.press(screen.getByLabelText('选择喵斯二号'));
     expect(screen.queryByText('账号切换已打开')).toBeNull();
     expect(mockSwitchBoundAccount).not.toHaveBeenCalled();
-    await act(async () => { pendingInteraction?.(); });
+    await act(async () => { pendingSwitches.forEach(task => task()); });
     expect(mockSwitchBoundAccount).toHaveBeenCalledWith(mockSecondAccount.id, { navigateToOverview: false });
 
     await fireEvent.press(screen.getByLabelText('同步数据，当前 MuseDash.moe'));
@@ -182,11 +174,15 @@ describe('Muse Dash public overview', () => {
       selectAccount?.(mockSecondAccount);
       selectAccount?.(mockFirstAccount);
     });
-    expect(mockCancelInteraction).toHaveBeenCalledTimes(1);
     expect(mockSwitchBoundAccount).not.toHaveBeenCalled();
+    await act(async () => { pendingSwitches.forEach(task => task()); });
+    expect(mockSwitchBoundAccount.mock.calls).toEqual([[mockFirstAccount.id, { navigateToOverview: false }]]);
+    pendingSwitches = [];
+    await act(async () => { selectAccount?.(mockSecondAccount); });
 
     await act(async () => { screen.unmount(); });
-    expect(mockCancelInteraction).toHaveBeenCalledTimes(2);
+    await act(async () => { pendingSwitches.forEach(task => task()); });
+    expect(mockSwitchBoundAccount.mock.calls).toEqual([[mockFirstAccount.id, { navigateToOverview: false }]]);
   });
 
   it('rejects a stale null payload before the public shell reads player fields', async () => {

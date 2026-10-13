@@ -1,9 +1,8 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { InteractionManager } from 'react-native';
 import type { BoundAccount } from '@/domain/bound-account';
 import { findGame, findProvider, type GameId, type ProviderId } from '@/domain/game-bind-options';
 import { useGamePickerUi } from '@/state/game-picker-ui';
-import { useAppLifecycle } from '@/state/app-lifecycle';
+import { scheduleIdleTask, useAppLifecycle } from '@/state/app-lifecycle';
 
 export function useAccountBindingRequest(visible: boolean, cancelOnBackground = true) {
   const lifecycle = useAppLifecycle();
@@ -56,20 +55,20 @@ type AccountDialog =
 
 export function useAccountBindingFlow() {
   const [dialog, setDialog] = useState<AccountDialog>({ kind: 'closed' });
-  const pendingRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
+  const pendingRef = useRef<(() => void) | null>(null);
   const expandedPickerGameId = useGamePickerUi(s => s.expandedGameId);
   const setExpandedPickerGameId = useGamePickerUi(s => s.setExpandedGameId);
   const toggleExpandedPickerGameId = useGamePickerUi(s => s.toggleExpandedGameId);
-  useEffect(() => () => pendingRef.current?.cancel(), []);
+  useEffect(() => () => pendingRef.current?.(), []);
 
   const close = () => {
-    pendingRef.current?.cancel();
+    pendingRef.current?.();
     pendingRef.current = null;
     setDialog({ kind: 'closed' });
   };
   const afterClose = (action: () => void) => {
     close();
-    pendingRef.current = InteractionManager.runAfterInteractions(() => {
+    pendingRef.current = scheduleIdleTask(() => {
       pendingRef.current = null;
       action();
     });

@@ -25,7 +25,7 @@ jest.mock('react-native-maps', () => {
         animateCamera: mockAnimateCamera,
         animateToRegion: (region: Region) => { mockRegion = region; },
       }));
-      return <MockView testID="native-map" onLayout={props.onMapReady}>{props.children}</MockView>;
+      return <MockView testID="native-map" onLayout={() => props.onMapReady?.()}>{props.children}</MockView>;
     }),
     Marker: (props: MapMarkerProps) => <MockView testID={`marker-${props.identifier}`} {...props} />,
   };

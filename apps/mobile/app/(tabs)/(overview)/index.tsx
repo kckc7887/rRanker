@@ -19,7 +19,8 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
 import { router,type Href } from 'expo-router';
 import { useCallback,useEffect,useMemo,useRef,useState } from 'react';
-import { InteractionManager,Pressable,RefreshControl,ScrollView,Text,View } from 'react-native';
+import { Pressable,RefreshControl,ScrollView,Text,View } from 'react-native';
+import { scheduleIdleTask } from '@/state/app-lifecycle';
 
 import type { BoundAccount } from '@/domain/bound-account';
 
@@ -80,7 +81,7 @@ function PublicOverviewScreen() {
   const setExpandedGameId = useGamePickerUi((s) => s.setExpandedGameId);
   const toggleExpandedGameId = useGamePickerUi((s) => s.toggleExpandedGameId);
   const [pickerVisible, setPickerVisible] = useState(false);
-  const accountSwitchTaskRef = useRef<ReturnType<typeof InteractionManager.runAfterInteractions> | null>(null);
+  const accountSwitchTaskRef = useRef<(() => void) | null>(null);
   const renderableData = data?.payload && typeof data.payload === 'object' ? data : undefined;
   const favorites = library.data?.filter((item) => item.kind === 'song' && item.favorite).length ?? 0;
   const practice = library.data?.filter((item) => item.kind === 'chart' && item.practice).length ?? 0;
@@ -99,7 +100,7 @@ function PublicOverviewScreen() {
   }, [hydratePins]);
 
   useEffect(() => () => {
-    accountSwitchTaskRef.current?.cancel();
+    accountSwitchTaskRef.current?.();
     accountSwitchTaskRef.current = null;
   }, []);
 
@@ -111,8 +112,8 @@ function PublicOverviewScreen() {
 
   const onSelectAccount = (account: BoundAccount) => {
     setPickerVisible(false);
-    accountSwitchTaskRef.current?.cancel();
-    accountSwitchTaskRef.current = InteractionManager.runAfterInteractions(() => {
+    accountSwitchTaskRef.current?.();
+    accountSwitchTaskRef.current = scheduleIdleTask(() => {
       accountSwitchTaskRef.current = null;
       void Promise.resolve(switchBoundAccount(account.id, { navigateToOverview: false }))
         .catch(error => notifyAccountSwitchError(error, showNotification));
