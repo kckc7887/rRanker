@@ -17,6 +17,10 @@ export function loadChunithmCatalog(): Promise<ChunithmCatalogSnapshot> {
   return provider.getCatalog();
 }
 
+export function loadChunithmNewVersionTitles(signal?: AbortSignal): Promise<string[]> {
+  return provider.getNewVersionTitles(signal);
+}
+
 export function loadChunithmAliases(): Promise<ChunithmAliasSnapshot> {
   return provider.getAliases();
 }

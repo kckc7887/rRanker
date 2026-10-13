@@ -27,6 +27,8 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。水�
 
 示例成绩生成由各游戏的 `maxed-*-test-provider` 提供。`usePhiraDemoBests`、`useTufDemoPasses` 复用所属曲库分页 hook 的可选账号身份；`useOsuDemoScores` 使用 `OsuPublicCatalogProvider` 的搜索与详情读取，响应复用当前 osu! 谱面模型；`useMajdataDemoScores` 使用 `loadMajdataDemoScoresPage` 读取曲库及已缓存文本，再复用 Simai 解析、物量和满分计算。解析失败或无可计分物量时跳过所属难度，详情的空谱保留未游玩状态，其它读取失败继续整页重试。最佳与成绩页共享查询，生成成绩与详情复用同一入口，查询身份包含示例账号，各游戏清缓存及解绑同时取消所属查询。Rizline 的 `applyRizlineCatalog` 对示例账号按新曲库重新生成存档与 RKS。生成成绩不写玩家成绩快照，单谱 PP、连击或判定缺失沿现有空值语义显示。
 
+中二示例加载通过 `loadChunithmNewVersionTitles(signal)` 调用 `ChunithmCatalogProvider.getNewVersionTitles`，校验水鱼 `/latest_version` 返回的非空版本名称数组。`buildMaxedChunithmSnapshot(catalog, newVersionTitles, displayName?)` 与 `buildMaxedChunithmBests` 使用曲库版本表匹配整个新曲集合，按谱面版本划分 N20 与 B30，未进入 N20 的新曲不进入 B30 或备选。
+
 `createInflightGuard.share` 共享同键工作并独立取消消费者。`useBoundedQueries` 管理实际批量明细；服务的实际网络请求使用现有队列。清缓存先失效对应资源代次，真实异步结果在最终提交处检查资格。
 
 ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路有界查询复用 `useTufLevel` 的查询定义与 `['tuf', 'level', levelId]` 缓存。单项详情失败不删除收藏或标签。`TufRandomChartsScreen` 按当前前台和页面焦点取消补页，恢复后只加载尚未完成的页；`prefetchTufPassPage` 在提交前检查取消信号与资源代次。

@@ -8,6 +8,7 @@ import { gameDataCatalogQueries } from '@/services/game-data-loader-queries';
 import { gameDataQueryKey, registerGameDataBackground, refreshGameDataBundle } from '@/services/game-data-query';
 import { ChunithmPersonalService } from '@/services/chunithm-personal-service';
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
+import { ChunithmCatalogProvider, mapChunithmCatalog } from '@/providers/chunithm-catalog-provider';
 import { emptyChunithmBests } from '@/domain/chunithm-personal';
 import { ProviderError } from '@/providers/errors';
 import { getGameProfile } from '@/domain/game-profile';
@@ -191,6 +192,49 @@ it('中二没有可用快照的认证失败保持authentication而不是no_data'
     },
   });
   expect(result).toMatchObject({ status: 'failed', failures: [{ code: 'authentication' }] });
+});
+
+it('中二示例加载按上游新曲集合展示 N20 和玩家 Rating', async () => {
+  const client = createClient();
+  const input = context({ gameId: 'chunithm', providerId: 'chunithm-test', accountId: 'chunithm:test', client });
+  input.catalogQueries.chunithm = async () => mapChunithmCatalog({
+    versions: [
+      { id: 18, version: 23000, title: 'CHUNITHM VERSE' },
+      { id: 19, version: 24000, title: 'CHUNITHM X-VERSE' },
+      { id: 20, version: 24500, title: 'CHUNITHM X-VERSE-X' },
+    ],
+    genres: [],
+    songs: [
+      { id: 1, title: '旧曲', version: 23001,
+        difficulties: [{ difficulty: 3, level: '16', level_value: 16, version: 23001 }] },
+      { id: 2, title: '新曲', version: 24001,
+        difficulties: [{ difficulty: 3, level: '15', level_value: 15, version: 24001 }] },
+    ],
+  });
+  jest.spyOn(ChunithmCatalogProvider.prototype, 'getNewVersionTitles')
+    .mockResolvedValue(['CHUNITHM X-VERSE', 'CHUNITHM X-VERSE-X']);
+
+  const { bundle } = await loadGameDataBundle(input);
+
+  expect(bundle.payload).toMatchObject({ kind: 'chunithm', player: { name: '玩家', rating: 0.7 },
+    playerScore: { value: 0.7, display: '0.70' },
+    bestSections: [
+      { id: 'b30', scores: [{ id: 1 }] },
+      { id: 'new20', scores: [{ id: 2 }] },
+    ],
+  });
+});
+
+it('中二新曲版本读取失败时沿用加载失败入口', async () => {
+  const client = createClient();
+  const input = context({ gameId: 'chunithm', providerId: 'chunithm-test', accountId: 'chunithm:test', client });
+  input.catalogQueries.chunithm = async () => mapChunithmCatalog({
+    versions: [{ id: 19, version: 24000, title: 'CHUNITHM X-VERSE' }], genres: [], songs: [],
+  });
+  jest.spyOn(ChunithmCatalogProvider.prototype, 'getNewVersionTitles')
+    .mockRejectedValue(new ProviderError('network', 'network unavailable', true));
+
+  await expect(loadGameDataBundle(input)).rejects.toMatchObject({ code: 'network' });
 });
 
 it.each<{ gameId: CatalogTestGameId; value: number; display: string }>([

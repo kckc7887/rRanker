@@ -64,6 +64,7 @@ import {
 import { type TufPlayer, type TufPlayerSnapshot } from '@/domain/tuf';
 import type { MuseDashPlayer } from '@/domain/muse-dash';
 import { buildMaxedChunithmSnapshot } from '@/providers/maxed-chunithm-test-provider';
+import { loadChunithmNewVersionTitles } from '@/services/chunithm-catalog-loader';
 import {
   buildMaxedPhigrosSnapshot,
   MaxedPhigrosTestProvider,
@@ -329,9 +330,14 @@ async function loadMuseDashGameDataBundle(context: GameDataLoaderContext): Promi
 async function loadChunithmGameDataBundle(context: GameDataLoaderContext): Promise<GameDataLoadResult> {
   const { activeAccountId, activeProviderId, activeAccount, session, signal, hasSessionData } = context;
   if (activeProviderId === 'chunithm-test') {
+    const [catalog, newVersionTitles] = await Promise.all([
+      context.catalogQueries.chunithm(),
+      loadChunithmNewVersionTitles(signal),
+    ]);
     const toBundle = (catalog: ChunithmCatalogSnapshot): GameDataBundle => {
       const snapshot = buildMaxedChunithmSnapshot(
         catalog,
+        newVersionTitles,
         activeAccount?.displayName ?? '示例账号',
       );
       return ({
@@ -357,7 +363,7 @@ async function loadChunithmGameDataBundle(context: GameDataLoaderContext): Promi
         },
       });
     };
-    return { bundle: toBundle(await context.catalogQueries.chunithm()) };
+    return { bundle: toBundle(catalog) };
   }
   if (activeProviderId === 'lxns' && session?.mode === 'lxns-oauth' && context.protocolScoreProvider instanceof ChunithmScoreProvider) {
     const provider = context.protocolScoreProvider;
