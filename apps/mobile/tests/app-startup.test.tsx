@@ -41,7 +41,7 @@ describe('app startup gates', () => {
     mockHydrateDebug.mockReturnValue(new Promise<void>(() => undefined));
     const hook = await renderHook(() => useAppStartup());
     expect(hook.result.current).toBe(false);
-    expect(Appearance.setColorScheme).toHaveBeenCalledWith(null);
+    expect(Appearance.setColorScheme).toHaveBeenCalledWith('unspecified');
     mockRestoreStatus = 'ready';
     await hook.rerender(undefined);
     expect(hook.result.current).toBe(false);

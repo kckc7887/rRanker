@@ -19,13 +19,13 @@ jest.mock('expo-router/unstable-native-tabs', () => {
   function NativeTabTrigger({ children }: { children?: React.ReactNode }) {
     return React.createElement(RN.View, null, children);
   }
+  NativeTabTrigger.Icon = function Icon(props: unknown) { mockIcons.push(props); return React.createElement(RN.View); };
+  NativeTabTrigger.Label = function Label({ children }: { children?: React.ReactNode }) { return React.createElement(RN.Text, null, children); };
+  NativeTabTrigger.VectorIcon = function VectorIcon() { return null; };
   NativeTabs.Trigger = NativeTabTrigger;
   NativeTabs.mockNativeTabsProps = mockNativeTabsProps;
   return {
     NativeTabs,
-    Icon: (props: unknown) => { mockIcons.push(props); return React.createElement(RN.View); },
-    Label: ({ children }: { children?: React.ReactNode }) => React.createElement(RN.Text, null, children),
-    VectorIcon: () => null,
   };
 });
 
@@ -56,13 +56,13 @@ describe('catalog navigation', () => {
     expect(screen.getByText('曲库')).toBeTruthy();
     expect(mockIcons).toContainEqual(expect.objectContaining({
       sf: 'music.note.list',
-      androidSrc: expect.objectContaining({
+      src: expect.objectContaining({
         props: expect.objectContaining({ name: 'musical-notes-outline' }),
       }),
     }));
     expect(mockIcons).toContainEqual(expect.objectContaining({
       sf: 'chart.bar.xaxis',
-      androidSrc: expect.objectContaining({
+      src: expect.objectContaining({
         props: expect.objectContaining({ name: 'stats-chart-outline' }),
       }),
     }));
