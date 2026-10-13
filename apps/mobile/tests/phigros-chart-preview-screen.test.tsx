@@ -168,7 +168,7 @@ describe('PhigrosChartPreviewScreen', () => {
       file: 'https://phira.example/chart.zip',
     }));
     jest.spyOn(BackHandler, 'addEventListener').mockImplementation((_event, handler) => {
-      hardwareBackHandler = handler;
+      hardwareBackHandler = () => handler({ type: 'hardwareBackPress', timeStamp: Date.now() });
       return { remove: jest.fn() };
     });
   });

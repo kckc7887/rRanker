@@ -2,7 +2,7 @@
 
 ## 工程与入口
 
-移动应用位于 `apps/mobile`，使用 Expo 56、React Native 0.85、React 19.2、Expo Router 56、TypeScript 6。入口是 `expo-router/entry`，启用 New Architecture。Node 最低版本为 22.13。
+移动应用位于 `apps/mobile`，使用 Expo 57、React Native 0.86、React 19.2、Expo Router 57、TypeScript 6。入口是 `expo-router/entry`，启用 New Architecture。Node 最低版本为 22.13。
 
 `app.config.js` 从 Expo 传入的静态配置装配原生插件和构建参数。Android 最低版本为 7，compile/target SDK 为 36；iOS 最低版本为 16.4，构建要求 Xcode 26.4 或更新版本。
 
@@ -167,7 +167,7 @@ KALEIDXSCOPE 的日程、课题和手工进度位于 `domain/kaleidx-scope.ts`�
 | `npm run build:phigros-chart-preview` | 生成 Phigros 播放器 |
 | `npm run build:osu-chart-preview` | 生成 osu! 播放器 |
 | `npm run build:rizline-chart-preview` | 生成 Rizline 播放器 |
-| `npm run prebuild:android` | 生成 Android 工程配置 |
+| `npm run prebuild:android` | 重建 Android 工程配置 |
 
 测试验证实际输入输出、交互、取消、存储往返和 I/O 失败。外部 HTTP、原生 SDK、文件系统和浏览器环境可模拟；生产代码不提供测试替换、统计或 reset 接口。
 
