@@ -14,14 +14,19 @@ const source = {
   isStale: false,
 };
 
-function song(id: number, versionId: number, levelValue: number): ChunithmSong {
+function song(
+  id: number,
+  versionId: number,
+  levelValue: number,
+  versionTitle = versionId === 2 ? '当前版本' : '旧版本',
+): ChunithmSong {
   return {
     id,
     title: `歌曲 ${id}`,
     genre: 'POPS',
     bpm: 180,
     versionId,
-    versionTitle: versionId === 2 ? '当前版本' : '旧版本',
+    versionTitle,
     locked: id === 1,
     disabled: false,
     difficulties: [{
@@ -29,7 +34,7 @@ function song(id: number, versionId: number, levelValue: number): ChunithmSong {
       level: '14',
       levelValue,
       versionId,
-      versionTitle: versionId === 2 ? '当前版本' : '旧版本',
+      versionTitle,
     }],
   };
 }
@@ -70,7 +75,7 @@ describe('中二节奏全满示例账号', () => {
   });
 
   it('生成所有未禁用谱面满成绩，并保留 WORLD’S END', () => {
-    const snapshot = buildMaxedChunithmSnapshot(catalog);
+    const snapshot = buildMaxedChunithmSnapshot(catalog, ['当前版本']);
     expect(snapshot.scores).toHaveLength(66);
     expect(snapshot.scores.some((score) => score.id === 999)).toBe(false);
     expect(snapshot.scores.every((score) => score.score === 1_010_000)).toBe(true);
@@ -88,7 +93,7 @@ describe('中二节奏全满示例账号', () => {
   });
 
   it('构造唯一的 New20 与 Best30，并按 50 张计算玩家 Rating', () => {
-    const snapshot = buildMaxedChunithmSnapshot(catalog);
+    const snapshot = buildMaxedChunithmSnapshot(catalog, ['当前版本']);
     expect(snapshot.bests.new_bests).toHaveLength(20);
     expect(snapshot.bests.bests).toHaveLength(30);
     expect(snapshot.bests.selections).toHaveLength(10);
@@ -116,6 +121,42 @@ describe('中二节奏全满示例账号', () => {
       .reduce((sum, value) => sum + value, 0);
     expect(snapshot.player.over_power).toBe(expectedOverPower);
     expect(snapshot.source).toMatchObject({ kind: 'generated', isStale: false });
+  });
+
+  it.each([false, true])('按新曲版本集合构造 N20，最新次版本有谱面：%s', (hasLatestCharts) => {
+    const nextVersion = { id: 3, title: '当前次版本' };
+    const latestSong = song(201, 3, 16, nextVersion.title);
+    const snapshot = buildMaxedChunithmSnapshot({
+      ...catalog,
+      currentVersion: nextVersion,
+      versions: [...catalog.versions, nextVersion],
+      songs: [...catalog.songs, ...(hasLatestCharts ? [latestSong] : [])],
+    }, ['当前版本', nextVersion.title]);
+
+    expect(snapshot.bests.new_bests.map((score) => score.id)).toEqual([
+      ...(hasLatestCharts ? [201] : []),
+      ...Array.from({ length: hasLatestCharts ? 19 : 20 }, (_, index) => 125 - index),
+    ]);
+    expect(snapshot.bests.bests.map((score) => score.id)).toEqual(
+      Array.from({ length: 30 }, (_, index) => 40 - index),
+    );
+    expect(snapshot.bests.selections.map((score) => score.id)).toEqual(
+      Array.from({ length: 10 }, (_, index) => 10 - index),
+    );
+  });
+
+  it('新曲版本换代后将上一期谱面归入 B30', () => {
+    const nextVersion = { id: 3, title: '下一期版本' };
+    const snapshot = buildMaxedChunithmSnapshot({
+      ...catalog,
+      currentVersion: nextVersion,
+      versions: [...catalog.versions, nextVersion],
+      songs: [...catalog.songs, song(201, 3, 16, nextVersion.title)],
+    }, [nextVersion.title]);
+
+    expect(snapshot.bests.new_bests.map((score) => score.id)).toEqual([201]);
+    expect(snapshot.bests.bests[0]?.id).toBe(125);
+    expect(snapshot.bests.bests.some((score) => score.id === 201)).toBe(false);
   });
 
   it('实现 CatalogDrivenScoreProvider，统一成绩覆盖全部启用谱面', async () => {

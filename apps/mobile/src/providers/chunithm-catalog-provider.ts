@@ -19,6 +19,11 @@ import { ProviderError } from './errors';
 import { fetchProviderJson } from './http-json';
 
 const API_ROOT = 'https://maimai.lxns.net/api/v0/chunithm';
+const NEW_VERSIONS_API_ROOT = 'https://www.diving-fish.com/api/chunithmprober';
+
+const NewVersionsResponseSchema = z.object({
+  version: z.array(z.string().min(1)).min(1),
+});
 
 const VersionSchema = z.object({
   id: z.number().int(),
@@ -367,6 +372,23 @@ export function mapChunithmCollections(
 export class ChunithmCatalogProvider {
   async getCatalog(): Promise<ChunithmCatalogSnapshot> {
     return mapChunithmCatalog(await getJson('/song/list'));
+  }
+
+  async getNewVersionTitles(signal?: AbortSignal): Promise<string[]> {
+    const input = await fetchProviderJson({
+      diagnosticScenario: 'catalog',
+      baseUrl: NEW_VERSIONS_API_ROOT,
+      path: '/latest_version',
+      invalidJsonMessage: '水鱼中二新曲版本返回了无效 JSON',
+      timeoutMessage: '水鱼中二新曲版本读取超时',
+      networkMessage: '无法连接水鱼中二新曲版本服务',
+      signal,
+    });
+    const parsed = NewVersionsResponseSchema.safeParse(input);
+    if (!parsed.success) {
+      throw new ProviderError('upstream_schema', '水鱼中二新曲版本响应结构无效', true);
+    }
+    return parsed.data.version;
   }
 
   async getAliases(): Promise<ChunithmAliasSnapshot> {

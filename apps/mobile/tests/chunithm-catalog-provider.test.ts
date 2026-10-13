@@ -133,6 +133,40 @@ describe('ChunithmCatalogProvider', () => {
     ]);
   });
 
+  it('reads the current new-song version set from the public Diving Fish endpoint', async () => {
+    const versions = ['CHUNITHM X-VERSE', 'CHUNITHM X-VERSE-X'];
+    const fetchMock = vi.fn().mockResolvedValue(new Response(
+      JSON.stringify({ version: versions }),
+      { status: 200, headers: { 'Content-Type': 'application/json' } },
+    ));
+    vi.stubGlobal('fetch', fetchMock);
+
+    await expect(new ChunithmCatalogProvider().getNewVersionTitles()).resolves.toEqual(versions);
+    expect(String(fetchMock.mock.calls[0]?.[0])).toBe(
+      'https://www.diving-fish.com/api/chunithmprober/latest_version',
+    );
+    expect(fetchMock.mock.calls[0]?.[1]?.headers).not.toHaveProperty('Authorization');
+  });
+
+  it.each([{ version: [] }, { version: [''] }, { version: 'CHUNITHM X-VERSE' }])(
+    'rejects malformed new-song version metadata: %j',
+    async (payload) => {
+      vi.stubGlobal('fetch', vi.fn().mockResolvedValue(new Response(JSON.stringify(payload))));
+
+      await expect(new ChunithmCatalogProvider().getNewVersionTitles()).rejects.toMatchObject({
+        code: 'upstream_schema',
+      });
+    },
+  );
+
+  it('cancels new-song version loading through the request signal', async () => {
+    const controller = new AbortController();
+    controller.abort(new Error('cancelled'));
+
+    await expect(new ChunithmCatalogProvider().getNewVersionTitles(controller.signal))
+      .rejects.toThrow('cancelled');
+  });
+
   it("keeps WORLD'S END charts with their dedicated display metadata", () => {
     const catalog = mapChunithmCatalog(responsePayload);
     expect(catalog.songs.map((song) => song.id)).toEqual([3, 90001]);

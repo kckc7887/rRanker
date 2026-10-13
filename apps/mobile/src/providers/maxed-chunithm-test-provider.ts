@@ -106,7 +106,11 @@ export function buildMaxedChunithmScores(
 export function buildMaxedChunithmBests(
   catalog: ChunithmCatalogSnapshot,
   scores: readonly ChunithmScore[],
+  newVersionTitles: readonly string[],
 ): ChunithmBests {
+  const newVersionIds = new Set(catalog.versions
+    .filter((version) => newVersionTitles.includes(version.title))
+    .map((version) => version.id));
   const scoreByKey = new Map(scores.map((score) => [scoreKey(score), score] as const));
   const rated = catalog.songs.flatMap((song): RatedGeneratedScore[] => (
     song.disabled
@@ -119,12 +123,11 @@ export function buildMaxedChunithmBests(
   ));
 
   const current = rated
-    .filter((entry) => entry.versionId === catalog.currentVersion.id)
+    .filter((entry) => newVersionIds.has(entry.versionId))
     .sort((left, right) => compareGeneratedScores(left.score, right.score));
   const newBests = current.slice(0, 20).map((entry) => entry.score);
-  const used = new Set(newBests.map(scoreKey));
   const remaining = rated
-    .filter((entry) => !used.has(scoreKey(entry.score)))
+    .filter((entry) => !newVersionIds.has(entry.versionId))
     .sort((left, right) => compareGeneratedScores(left.score, right.score));
   const bests = remaining.slice(0, 30).map((entry) => entry.score);
   const bestKeys = new Set(bests.map(scoreKey));
@@ -138,10 +141,11 @@ export function buildMaxedChunithmBests(
 
 export function buildMaxedChunithmSnapshot(
   catalog: ChunithmCatalogSnapshot,
+  newVersionTitles: readonly string[],
   displayName = '示例账号',
 ): MaxedChunithmSnapshot {
   const scores = buildMaxedChunithmScores(catalog);
-  const bests = buildMaxedChunithmBests(catalog, scores);
+  const bests = buildMaxedChunithmBests(catalog, scores, newVersionTitles);
   const ratingTotal = [...bests.bests, ...bests.new_bests]
     .reduce((sum, score) => sum + (score.rating ?? 0), 0);
   const rating = truncateToTwo(ratingTotal / 50);
