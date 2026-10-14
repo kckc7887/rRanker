@@ -345,7 +345,7 @@ export function ChunithmBestImageScreen() {
     width,
   ]);
 
-  const { sources } = usePreparedBestImageSources(htmlPages, assetSession.directory, cancelExportRequest);
+  const { sources, error: sourceError } = usePreparedBestImageSources(htmlPages, assetSession, assetSession.directory, cancelExportRequest);
   useEffect(() => {
     setPageHeights({}); setPageIndex(0); setPreviewStates({});
   }, [sources, setPageHeights, setPageIndex, setPreviewStates]);
@@ -548,10 +548,10 @@ export function ChunithmBestImageScreen() {
         loadingPreview: (
         <View style={styles.loadingContent}>
           <ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" />
-          <Text style={[styles.loadingText, { color: theme.textMuted }]}>
-            {assetProgress.total > 0
+          <Text style={[styles.loadingText, { color: sourceError ? theme.danger : theme.textMuted }]}>
+            {sourceError ?? (assetProgress.total > 0
               ? `正在准备歌曲封面 ${assetProgress.done}/${assetProgress.total}`
-              : '正在准备预览'}
+              : '正在准备预览')}
           </Text>
         </View>
       ),

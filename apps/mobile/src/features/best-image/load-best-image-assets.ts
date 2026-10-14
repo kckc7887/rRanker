@@ -1,7 +1,7 @@
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { Asset } from 'expo-asset';
 import { Image } from 'react-native';
-import { copyBestImageAsset, type BestImageAssetSession } from './load-best-image-session';
+import { copyBestImageAsset, retryBestImagePreparation, type BestImageAssetSession } from './load-best-image-session';
 
 export type BestImageEmbeddedAssets = {
   fontUrl: string;
@@ -32,11 +32,11 @@ export function loadBundledBestImageFile(
   session: BestImageAssetSession, moduleId: number, extension: string, signal?: AbortSignal,
 ): Promise<string> {
   const assertCurrent = captureResourceWrites(session.game);
-  return session.requests.share(`bundled:${moduleId}`, async (requestSignal) => {
+  return session.requests.share(`bundled:${moduleId}`, (requestSignal) => retryBestImagePreparation(session, requestSignal, async () => {
     const uri = await loadBundledBestImageAssetUri(moduleId);
     assertCurrent();
     return copyBestImageAsset(session, uri, `bundled-${moduleId}.${extension}`, requestSignal);
-  }, signal);
+  }), signal);
 }
 
 export async function loadBestImageAssets(

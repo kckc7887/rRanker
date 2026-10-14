@@ -6,6 +6,7 @@ import { Image, type ImageRef, type ImageSource } from 'expo-image';
 import { ImageManipulator, SaveFormat } from 'expo-image-manipulator';
 import { Platform } from 'react-native';
 import { COMPRESSED_IMAGE_CACHE_ROOT } from '@/features/storage-management/fs-storage';
+import { ProviderError } from '@/providers/errors';
 
 export type RemoteImageCacheProfile = 'thumbnail' | 'artwork';
 
@@ -244,6 +245,7 @@ export async function acquireRemoteImageOriginal(
       const fileUri = download.fileUri;
       download.task = createDownloadResumable(normalized.source.uri!, fileUri, { headers: normalized.source.headers });
       const result = await download.task.downloadAsync();
+      if (result?.status === 404) throw new ProviderError('no_data', '未找到图片', false);
       if (!result || result.status < 200 || result.status >= 300) {
         throw new Error(result ? `图片下载返回 HTTP ${result.status}` : '图片下载已取消');
       }

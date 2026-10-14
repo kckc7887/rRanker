@@ -393,6 +393,30 @@ describe('best image preview', () => {
     });
   });
 
+  it('keeps unread plate and frame choices when editing the icon before preferences arrive', async () => {
+    const { bestImageStylePreferencesStore } = jest.requireMock('@/features/best-image/best-image-style-preferences') as {
+      bestImageStylePreferencesStore: { load: jest.Mock; save: jest.Mock };
+    };
+    let finish!: (value: unknown) => void;
+    bestImageStylePreferencesStore.load.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    bestImageStylePreferencesStore.save.mockClear();
+    const screen = await render(<BestImageScreen />);
+    await fireEvent.press(screen.getByLabelText('选择头像'));
+    await fireEvent.press(screen.getByLabelText('关闭头像'));
+    expect(bestImageStylePreferencesStore.save).not.toHaveBeenCalled();
+    await act(async () => { finish({ version: 3, ratingStyle: 'app', selections: {
+      plate: { mode: 'item', item: { id: 9002, kind: 'plate', name: '示例姓名框', requirements: [] } },
+      frame: { mode: 'item', item: { id: 9004, kind: 'frame', name: '示例背景', requirements: [] } },
+    } }); });
+    await waitFor(() => expect(bestImageStylePreferencesStore.save).toHaveBeenLastCalledWith('test-account', {
+      icon: { mode: 'off' },
+      plate: { mode: 'item', item: expect.objectContaining({ id: 9002 }) },
+      frame: { mode: 'item', item: expect.objectContaining({ id: 9004 }) },
+    }, 'app'));
+    expect(screen.getByText('示例姓名框')).toBeTruthy();
+    expect(screen.getByText('示例背景')).toBeTruthy();
+  });
+
   it('keeps the last valid custom preview and disables export for invalid input', async () => {
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy(), { timeout: 3000 });
@@ -457,17 +481,15 @@ describe('best image preview', () => {
     expect(screen.getByText('导出到相册')).toBeTruthy();
   });
 
-  it('shows a retry action when the remote assets fail to prepare', async () => {
+  it('automatically recovers failed remote assets without another press', async () => {
     const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
     prepareMaimaiFonts.mockImplementationOnce(async () => ({
       directory: { uri: 'file:///assets/' },
       fullReady: Promise.reject(new Error('字体准备失败：字体校验失败')),
     }));
     const screen = await render(<BestImageScreen />);
-    await waitFor(() => expect(screen.getByText('无法准备成绩图片，请重试。')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('素材准备失败，正在自动重试。')).toBeTruthy());
     expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
-    await fireEvent.press(screen.getByLabelText('重试字体下载'));
-    await waitFor(() => expect(prepareMaimaiFonts).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: false }));
   });
 

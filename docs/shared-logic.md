@@ -111,7 +111,11 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 ## 成绩图与谱面功能
 
+`useBestImagePreferences` 按账号使用 `createPreferencesWriteCoordinator`，保留 `setPrefs` 更新方式，以实际变化字段合并读取中的选择与已存偏好。舞萌图标、姓名框、背景框和 Rating 样式独立合并，落盘仍使用原有选择结构。读取失败保留待保存选择，写入失败保留当前值，前台按协调器退避自动补读、补写；失败通过现有通知和诊断入口反馈。
+
 成绩图公共入口位于 `features/best-image`：`useBestImageScreenController`、`useBestImagePreview`、`useBestImageExport` 与共享页面壳。`load-best-image-session.ts` 为舞萌、中二和 Phigros 提供账号独立的素材会话，`loadRemoteImageFile`、`loadImageFiles` 与 `copyBestImageAsset` 返回原字节文件 URL。远程素材先复用会话中的非空文件，缺失时经 `acquireRemoteImageOriginal` 取得所属游戏、同 URL 的公共原图缓存或共享下载结果，由 `copyBestImageAsset` 复制进会话目录，复制结束或失败均释放原图引用。压缩垫图及不同 URL 的曲绘版本不参与素材替换。游戏入口只提供素材地址、当前所需字体和布局；`prepareBestImageWebViewSources` 在同一会话目录异步写出 HTML，返回异步 `dispose`。改样式、分页与后台恢复沿用当前会话，已就绪素材与 HTML 保留身份，未完成工作恢复，WebView 只读取该目录。`requestBestImageExportPermission` 先读取相册权限，未授权时才申请，拒绝和读取失败沿用导出错误路径。真正进入后台取消当前导出，恢复后可重新导出。离开或换账号先失效会话，`cancelExportRequest` 等待未结束截图及临时截图清理，再回收会话文件；后台等待截图可取消。清缓存跳过活跃会话，启动维护回收上次会话目录。
+
+`retryBestImagePreparation` 对素材准备与 HTML 写盘的实际失败依次等待 0.5、2、10、30 秒，之后保持 30 秒间隔。未结束的操作持续等待，空素材沿用各入口的可选回退；原图 HTTP 404 由下载入口映射为 `no_data`，成绩图返回空素材。取消信号、会话失效和资源代次变化结束旧尝试；后台停止未完成准备，恢复复用成功素材和 HTML。
 
 相册权限和保存使用 `expo-media-library/legacy`。字体及舞萌 UI 素材通过 `File.moveSync` 完成文件发布，iOS 谱面包通过 `File.copySync` 完成复制后才结束保存；临时来源的清理沿用所属任务时序。
 

@@ -1,4 +1,4 @@
-import { copyBestImageAsset, type BestImageAssetSession } from '@/features/best-image/load-best-image-session';
+import { copyBestImageAsset, retryBestImagePreparation, type BestImageAssetSession } from '@/features/best-image/load-best-image-session';
 import {
   loadBestImageAssets,
   type BestImageEmbeddedAssets,
@@ -58,10 +58,11 @@ export function useMaimaiEmbeddedAssets(session: BestImageAssetSession, rating: 
     const controller = new AbortController();
     setEmbeddedAssets(null);
     setAssetError(null);
-    loadBestImageAssets(session, FONT_SOURCE, frameSource, controller.signal).then(
+    void loadBestImageAssets(session, FONT_SOURCE, frameSource, controller.signal).then(
       (assets) => {
         if (cancelled) return;
         readyRef.current = { session, frameSource };
+        setAssetError(null);
         setEmbeddedAssets(assets);
       },
       () => { if (!cancelled) setAssetError('字体或 Rating 框加载失败'); },
@@ -86,13 +87,13 @@ export function useMaimaiImageCovers(session: BestImageAssetSession, coverReques
     setCoverUrls(null);
     setCoverProgress({ completed: 0, total: 0 });
     const songIds = JSON.parse(coverRequestKey) as string[];
-    loadBestImageJackets(session, songIds, (completed, total) => {
+    void loadBestImageJackets(session, songIds, (completed, total) => {
       if (!cancelled) setCoverProgress({ completed, total });
     }, signal).then((nextCoverUrls) => {
       if (cancelled) return;
       readyRef.current = { session, key: coverRequestKey };
       setCoverUrls(nextCoverUrls);
-    });
+    }).catch(() => undefined);
     return () => { cancelled = true; controller.abort(); };
   }, [session, coverRequestKey, lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
 
@@ -115,7 +116,7 @@ export function useMaimaiExportAssets(session: BestImageAssetSession, lifecycle:
     const assertCurrent = captureResourceWrites('maimai', controller.signal);
     setExportAssetError(null);
     setAssetsReady(false);
-    void (async () => {
+    void retryBestImagePreparation(session, controller.signal, async () => {
       const [font, ui] = await Promise.all([
         prepareMaimaiFonts((progress) => { if (!cancelled) setFontProgress(progress); }, controller.signal),
         prepareMaimaiUi((progress) => { if (!cancelled) setUiProgress(progress); }, controller.signal),
@@ -131,12 +132,13 @@ export function useMaimaiExportAssets(session: BestImageAssetSession, lifecycle:
       }
       if (!cancelled) {
         readyRef.current = { session, attempt: fontAttempt };
+        setExportAssetError(null);
         setAssetsDirectory(session.directory);
         setAssetsReady(true);
       }
-    })().catch((error) => {
-      if (!cancelled) setExportAssetError(providerErrorToUserMessage(error, '无法准备成绩图片，请重试。'));
-    });
+    }, (error) => {
+      if (!cancelled) setExportAssetError(providerErrorToUserMessage(error, '素材准备失败，正在自动重试。'));
+    }).catch(() => undefined);
     return () => { cancelled = true; controller.abort(); };
   }, [session, fontAttempt, lifecycle.foregroundGeneration, lifecycle.foregroundReady, setAssetsDirectory]);
   return { assetsReady, fontProgress, uiProgress, exportAssetError, setFontAttempt };

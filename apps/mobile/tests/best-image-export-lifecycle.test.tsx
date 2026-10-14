@@ -1,9 +1,10 @@
-import { AppState } from 'react-native';
+import { AppState, type AppStateStatus } from 'react-native';
 import { AppLifecycleProvider } from '@/state/app-lifecycle';
 import { clearUnusedBestImageAssets } from '@/features/best-image/load-best-image-session';
 import { jest } from '@jest/globals';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { useBestImageScreenController, usePreparedBestImageSources } from '@/features/best-image/use-best-image-screen-controller';
+import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 
 const mockPermission = jest.fn<() => Promise<void>>();
 const mockCapture = jest.fn<() => Promise<string>>();
@@ -11,6 +12,7 @@ const mockSave = jest.fn<(uri: string, name: string) => Promise<void>>();
 const mockDelete = jest.fn();
 const mockNotify = jest.fn();
 const mockFiles = new Map<string, string>();
+const mockWrite = jest.fn<(uri: string, content: string) => Promise<void>>();
 const mockDeletedDirectories = new Set<string>();
 jest.mock('react-native-view-shot', () => ({ captureRef: () => mockCapture() }));
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotify }) }));
@@ -41,8 +43,9 @@ describe('best image export lifecycle', () => {
     jest.useFakeTimers(); jest.clearAllMocks(); mockFiles.clear(); mockDeletedDirectories.clear();
     mockPermission.mockResolvedValue(undefined); mockSave.mockResolvedValue(undefined);
     mockCapture.mockResolvedValue('file:///capture.png');
+    mockWrite.mockReset().mockImplementation(async (uri, content) => { mockFiles.set(uri, content); });
   });
-  afterEach(() => jest.useRealTimers());
+  afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
 
   it('locks synchronously before permissions and cancels before mounting a canvas', async () => {
     const permission = deferred<void>(); mockPermission.mockReturnValueOnce(permission.promise);
@@ -128,7 +131,7 @@ describe('best image export lifecycle', () => {
     const capture = deferred<string>(); mockCapture.mockReturnValueOnce(capture.promise);
     const { result, rerender } = await renderHook(({ htmlPages }: { htmlPages: string[] }) => {
       const controller = useBestImageScreenController(config);
-      const prepared = usePreparedBestImageSources(htmlPages, controller.assetSession.directory, controller.cancelExportRequest);
+      const prepared = usePreparedBestImageSources(htmlPages, controller.assetSession, controller.assetSession.directory, controller.cancelExportRequest);
       return { ...controller, sources: prepared.sources };
     }, { initialProps: { htmlPages: ['<p>old</p>'] } });
     await waitFor(() => expect(result.current.sources).not.toBeNull());
@@ -175,8 +178,153 @@ describe('best image export lifecycle', () => {
     await rerender({ accountId: 'account-b' });
     expect(result.current.prefsReady).toBe(false); expect(save).not.toHaveBeenCalled();
     await act(async () => { second.resolve({ value: 'b' }); });
-    expect(save).toHaveBeenCalledWith('account-b', { value: 'b' });
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => { result.current.setPrefs(current => ({ ...current, value: current.value + '-edited' })); });
+    expect(save).toHaveBeenCalledWith('account-b', { value: 'b-edited' });
     expect(save).not.toHaveBeenCalledWith('account-b', { value: 'a' });
+  });
+
+  it('preserves unread fields and the latest updater after a failed native read', async () => {
+    const reading = deferred<{ value: string; unchanged: number }>();
+    const load = jest.fn<() => Promise<{ value: string; unchanged: number }>>()
+      .mockRejectedValueOnce(new Error('locked')).mockImplementation(() => reading.promise);
+    const save = jest.fn<(_id: string, _value: { value: string; unchanged: number }) => Promise<void>>(async () => undefined);
+    const { result } = await renderHook(() => useBestImageScreenController({
+      ...config, defaultPreferences: { value: '', unchanged: 0 }, preferences: { load, save },
+    }));
+    await act(async () => { result.current.setPrefs(current => ({ ...current, value: 'first' })); });
+    await act(async () => { await jest.advanceTimersByTimeAsync(300_000); });
+    expect(save).not.toHaveBeenCalled();
+    expect(result.current.prefsReady).toBe(false);
+    await act(async () => { result.current.setPrefs(current => ({ ...current, value: current.value + '-latest' })); });
+    await act(async () => { reading.resolve({ value: 'stored', unchanged: 14 }); });
+    expect(result.current.prefs).toEqual({ value: 'first-latest', unchanged: 14 });
+    expect(save).toHaveBeenLastCalledWith('account-a', { value: 'first-latest', unchanged: 14 });
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: '样式读取失败' }));
+  });
+
+  it('automatically saves the current selection after a native write failure', async () => {
+    let stored = { value: 'stored' };
+    const save = jest.fn<(_id: string, value: typeof stored) => Promise<void>>()
+      .mockRejectedValueOnce(new Error('locked')).mockImplementation(async (_id, value) => { stored = value; });
+    const { result } = await renderHook(() => useBestImageScreenController({
+      ...config, defaultPreferences: stored, preferences: { load: async () => stored, save },
+    }));
+    await act(async () => { result.current.setPrefs(current => ({ ...current, value: 'chosen' })); });
+    expect(stored.value).toBe('stored');
+    expect(result.current.prefs.value).toBe('chosen');
+    await act(async () => { await jest.advanceTimersByTimeAsync(500); });
+    expect(stored.value).toBe('chosen');
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: '样式保存失败' }));
+  });
+
+  it('ignores an old account read that finishes after switching accounts', async () => {
+    const first = deferred<{ value: string }>();
+    const save = jest.fn<(_id: string, _value: { value: string }) => Promise<void>>(async () => undefined);
+    const preferences = { load: (id: string) => id === 'account-a' ? first.promise : Promise.resolve({ value: 'b' }), save };
+    const { result, rerender } = await renderHook(({ accountId }: { accountId: string }) => useBestImageScreenController({
+      ...config, accountId, defaultPreferences: { value: '' }, preferences,
+    }), { initialProps: { accountId: 'account-a' } });
+    await rerender({ accountId: 'account-b' });
+    await act(async () => { first.resolve({ value: 'a' }); });
+    expect(result.current.prefs).toEqual({ value: 'b' });
+    await act(async () => { result.current.setPrefs(current => ({ ...current, value: 'chosen' })); });
+    expect(save).toHaveBeenCalledWith('account-b', { value: 'chosen' });
+    expect(save).not.toHaveBeenCalledWith('account-a', expect.anything());
+  });
+
+  it('hydrates a revisited account independently from its previous ready view', async () => {
+    const second = deferred<{ ratingStyle: string; unchanged: number }>();
+    const returned = deferred<{ ratingStyle: string; unchanged: number }>();
+    let stored = { ratingStyle: 'app', unchanged: 7 };
+    const save = jest.fn<(_id: string, value: typeof stored) => Promise<void>>(async (_id, value) => { stored = value; });
+    const load = jest.fn<(_id: string) => Promise<typeof stored>>()
+      .mockResolvedValueOnce(stored).mockImplementationOnce(() => second.promise).mockImplementationOnce(() => returned.promise);
+    const { result, rerender } = await renderHook(({ accountId }: { accountId: string }) => useBestImageScreenController({
+      ...config, accountId, defaultPreferences: { ratingStyle: 'game', unchanged: 0 }, preferences: { load, save },
+    }), { initialProps: { accountId: 'account-a' } });
+    expect(result.current.prefs.ratingStyle).toBe('app');
+    expect(result.current.prefsReady).toBe(true);
+    await rerender({ accountId: 'account-b' });
+    await rerender({ accountId: 'account-a' });
+    expect(result.current.prefsReady).toBe(false);
+    expect(result.current.prefs).toEqual({ ratingStyle: 'game', unchanged: 0 });
+    await act(async () => { result.current.setPrefs(current => ({ ...current, ratingStyle: 'app' })); });
+    expect(save).not.toHaveBeenCalled();
+    await act(async () => { returned.resolve({ ratingStyle: 'game', unchanged: 14 }); });
+    expect(result.current.prefsReady).toBe(true);
+    expect(result.current.prefs).toEqual({ ratingStyle: 'app', unchanged: 14 });
+    expect(stored).toEqual({ ratingStyle: 'app', unchanged: 14 });
+    expect(save).toHaveBeenCalledWith('account-a', stored);
+    expect(save).not.toHaveBeenCalledWith('account-b', expect.anything());
+  });
+
+  it('retries real HTML write failure and waits for a slow successful write', async () => {
+    const writing = deferred<void>();
+    mockWrite.mockRejectedValueOnce(new Error('disk full')).mockImplementationOnce(async (uri, content) => {
+      await writing.promise; mockFiles.set(uri, content);
+    });
+    const pages = ['<p>content</p>'];
+    const { result } = await renderHook(() => {
+      const controller = useBestImageScreenController(config);
+      return usePreparedBestImageSources(pages, controller.assetSession, controller.assetSession.directory, controller.cancelExportRequest);
+    });
+    expect(result.current.sources).toBeNull();
+    expect(result.current.error).toBe('成绩图片准备失败，正在自动重试。');
+    await act(async () => { await jest.advanceTimersByTimeAsync(500); });
+    await act(async () => { await jest.advanceTimersByTimeAsync(300_000); });
+    expect(result.current.sources).toBeNull();
+    await act(async () => { writing.resolve(); });
+    expect(result.current.error).toBeNull();
+    expect(mockFiles.get(result.current.sources![0]!.uri)).toBe('<p>content</p>');
+  });
+
+  it.each(['inactive', 'background'] as const)('pauses HTML recovery while %s and retains completed files', async state => {
+    const originalState = AppState.currentState;
+    AppState.currentState = 'active';
+    let change: ((state: AppStateStatus) => void) | undefined;
+    jest.spyOn(AppState, 'addEventListener').mockImplementation((event, listener) => {
+      if (event === 'change') change = listener;
+      return { remove: () => undefined };
+    });
+    try {
+      mockWrite.mockRejectedValueOnce(new Error('disk full'));
+      const pages = ['<p>retained</p>'];
+      const { result } = await renderHook(() => {
+        const controller = useBestImageScreenController(config);
+        return usePreparedBestImageSources(pages, controller.assetSession, controller.assetSession.directory, controller.cancelExportRequest);
+      }, { wrapper: AppLifecycleProvider });
+      await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+      expect(result.current.error).toBe('成绩图片准备失败，正在自动重试。');
+      await act(async () => { change?.(state); });
+      await act(async () => { await jest.advanceTimersByTimeAsync(300_000); });
+      expect(result.current.sources).toBeNull();
+      expect([...mockFiles.values()]).not.toContain('<p>retained</p>');
+      await act(async () => { change?.('active'); });
+      await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+      const uri = result.current.sources![0]!.uri;
+      expect(mockFiles.get(uri)).toBe('<p>retained</p>');
+      await act(async () => { change?.(state); });
+      await act(async () => { change?.('active'); });
+      await act(async () => { await jest.advanceTimersByTimeAsync(0); });
+      expect(result.current.sources![0]!.uri).toBe(uri);
+      expect(mockFiles.get(uri)).toBe('<p>retained</p>');
+    } finally { AppState.currentState = originalState; }
+  });
+
+  it('discards HTML whose native write finishes after resource clearing', async () => {
+    const writing = deferred<void>();
+    mockWrite.mockImplementationOnce(async (uri, content) => {
+      await writing.promise; mockFiles.set(uri, content);
+    });
+    const pages = ['<p>invalidated</p>'];
+    const { result } = await renderHook(() => {
+      const controller = useBestImageScreenController(config);
+      return usePreparedBestImageSources(pages, controller.assetSession, controller.assetSession.directory, controller.cancelExportRequest);
+    });
+    await act(async () => { invalidateResourceWrites('maimai'); writing.resolve(); });
+    expect(result.current.sources).toBeNull();
+    expect([...mockFiles.values()]).not.toContain('<p>invalidated</p>');
   });
 });
 
@@ -193,7 +341,7 @@ jest.mock('expo-file-system/legacy', () => ({
   makeDirectoryAsync: async () => undefined,
   getInfoAsync: async (uri: string) => ({ exists: [...mockFiles.keys()].some((key) => key === uri || key.startsWith(uri + '/')) }),
   readDirectoryAsync: async (uri: string) => [...new Set([...mockFiles.keys()].filter((key) => key.startsWith(uri + '/')).map((key) => key.slice(uri.length + 1).split('/')[0]))],
-  writeAsStringAsync: async (uri: string, content: string) => { mockFiles.set(uri, content); },
+  writeAsStringAsync: (uri: string, content: string) => mockWrite(uri, content),
   deleteAsync: async (uri: string) => {
     mockDeletedDirectories.add(uri);
     for (const key of mockFiles.keys()) if (key === uri || key.startsWith(uri + '/')) mockFiles.delete(key);

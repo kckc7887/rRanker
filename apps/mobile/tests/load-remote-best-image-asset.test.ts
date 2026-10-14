@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { createBestImageAssetSession, disposeBestImageAssetSession, loadRemoteImageFile } from '@/features/best-image/load-best-image-session';
+import { copyBestImageAsset, createBestImageAssetSession, disposeBestImageAssetSession, loadRemoteImageFile } from '@/features/best-image/load-best-image-session';
 import { loadBestImageJackets } from '@/features/best-image/load-best-image-jackets';
 import { acquireRemoteImageOriginal, clearCompressedRemoteImageCache, clearGameRemoteImageCache, pruneRemoteImageCache } from '@/services/remote-image-cache';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
@@ -34,9 +34,9 @@ vi.mock('expo-file-system/legacy', () => ({
   },
   createDownloadResumable: (url: string, uri: string) => ({
     downloadAsync: async () => {
-      await mocks.download(url);
+      const status = await mocks.download(url);
       mocks.files.set(uri, `original-bytes:${url}`);
-      return { uri, status: 200 };
+      return { uri, status: status ?? 200 };
     },
     cancelAsync: async () => undefined,
   }),
@@ -128,7 +128,6 @@ describe('best image session files', () => {
     const session = createBestImageAssetSession('phigros');
     mocks.download.mockRejectedValueOnce(new Error('offline'));
     await expect(loadRemoteImageFile(session, null)).resolves.toBeNull();
-    await expect(loadRemoteImageFile(session, 'https://example.test/retry.png')).resolves.toBeNull();
     const uri = await loadRemoteImageFile(session, 'https://example.test/retry.png');
     expect(mocks.files.get(uri!)).toBe('original-bytes:https://example.test/retry.png');
     await disposeBestImageAssetSession(session);
@@ -157,8 +156,13 @@ describe('best image session files', () => {
     mocks.download.mockRejectedValue(new Error('offline'));
     const sameGame = createBestImageAssetSession('phigros');
     const otherGame = createBestImageAssetSession('chunithm');
-    await expect(loadRemoteImageFile(sameGame, 'https://example.test/lowres.png')).resolves.toBeNull();
-    await expect(loadRemoteImageFile(otherGame, url)).resolves.toBeNull();
+    for (const [session, address] of [[sameGame, 'https://example.test/lowres.png'], [otherGame, url]] as const) {
+      const controller = new AbortController();
+      const pending = loadRemoteImageFile(session, address, controller.signal);
+      await vi.waitFor(() => expect(mocks.download).toHaveBeenCalledWith(address));
+      controller.abort();
+      await expect(pending).resolves.toBeNull();
+    }
     await disposeBestImageAssetSession(sameGame);
     await disposeBestImageAssetSession(otherGame);
   });
@@ -207,18 +211,41 @@ describe('best image session files', () => {
     await disposeBestImageAssetSession(session);
   });
 
-  it('releases the original on copy failure and allows a later request to recover', async () => {
+  it('releases a failed copy before retrying and lets other file work finish during backoff', async () => {
     const url = 'https://example.test/copy.png';
     const original = await acquireRemoteImageOriginal(url, 'maimai');
     await original.release();
     const session = createBestImageAssetSession('maimai');
     mocks.copy.mockRejectedValueOnce(new Error('copy failed'));
-    await expect(loadRemoteImageFile(session, url)).resolves.toBeNull();
+    const pending = loadRemoteImageFile(session, url);
+    await vi.waitFor(() => expect(mocks.copy).toHaveBeenCalled());
     expect(mocks.files.get(original.fileUri)).toBe(`original-bytes:${url}`);
     await pruneRemoteImageCache(0);
     expect(mocks.files.has(original.fileUri)).toBe(false);
-    const uri = await loadRemoteImageFile(session, url);
+    mocks.files.set('file:///other', 'unrelated bytes');
+    const otherUri = await copyBestImageAsset(session, 'file:///other', 'other.png');
+    expect(mocks.files.get(otherUri)).toBe('unrelated bytes');
+    const uri = await pending;
     expect(mocks.files.get(uri!)).toBe(`original-bytes:${url}`);
+    await disposeBestImageAssetSession(session);
+  });
+
+  it('finishes a missing optional image as null after a native HTTP 404 response', async () => {
+    const session = createBestImageAssetSession('chunithm');
+    mocks.download.mockResolvedValueOnce(404);
+    await expect(loadRemoteImageFile(session, 'https://example.test/missing.png')).resolves.toBeNull();
+    expect([...mocks.files.keys()].some(path => path.startsWith(session.directory.uri + '/'))).toBe(false);
+    await disposeBestImageAssetSession(session);
+  });
+
+  it('stops a failed image backoff when the game cache generation changes', async () => {
+    const session = createBestImageAssetSession('maimai');
+    mocks.download.mockRejectedValue(new Error('offline'));
+    const pending = loadRemoteImageFile(session, 'https://example.test/cleared.png');
+    await vi.waitFor(() => expect(mocks.download).toHaveBeenCalled());
+    invalidateResourceWrites('maimai');
+    await expect(pending).resolves.toBeNull();
+    expect([...mocks.files.keys()].some(path => path.startsWith(session.directory.uri + '/'))).toBe(false);
     await disposeBestImageAssetSession(session);
   });
 });

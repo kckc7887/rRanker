@@ -38,7 +38,7 @@ import {
   appendPhigrosOverflowRecords, paginatePhigrosBestImageSections,
   type PhigrosBestImageOverflowCount, type PhigrosBestImageType,
 } from '@/features/phigros-best-image/phigros-best-image';
-import { copyBestImageAsset, loadImageFiles, loadRemoteImageFile } from '@/features/best-image/load-best-image-session';
+import { copyBestImageAsset, loadImageFiles, loadRemoteImageFile, retryBestImagePreparation } from '@/features/best-image/load-best-image-session';
 import { partitionPhigrosIllustrationCache } from '@/features/phigros-best-image/phigros-illustration-cache';
 import {
   loadPhigrosReferenceTemplateAssets,
@@ -245,7 +245,8 @@ export function PhigrosBestImageScreen() {
     setFontsReady(false);
     const neededEntries = neededFontEntriesRef.current;
     const neededNames = neededFontKey ? neededFontKey.split('|').filter(Boolean) : [];
-    void (async () => {
+    let trimmedAssets: Awaited<ReturnType<typeof loadPhigrosReferenceTemplateAssets>> | null = null;
+    void retryBestImagePreparation(assetSession, controller.signal, async () => {
       const prepared = await preparePhigrosFonts((progress) => {
         if (!cancelled) setFontProgress(progress);
       }, { neededNames, signal: controller.signal });
@@ -254,22 +255,21 @@ export function PhigrosBestImageScreen() {
         (error: unknown) => ({ ok: false as const, error }),
       );
       assertCurrent();
-      for (const entry of neededEntries.filter((font) => font.core)) {
-        const path = `font/${entry.cssFileName}`;
-        assertCurrent();
-        await copyBestImageAsset(assetSession, new File(prepared.directory, path).uri, path, controller.signal);
-      }
-      const assets = await loadPhigrosReferenceTemplateAssets(
-        assetSession,
-        provider?.getAvatarUrl('Introduction') ?? '', controller.signal,
-      );
-      const trimmedAssets = {
-        ...assets,
-        css: trimPhigrosBestImageCss(assets.css, neededFontEntriesRef.current),
-      };
-      if (!cancelled) {
-        setFontDirectory(assetSession.directory);
-        setTemplateAssets(trimmedAssets);
+      if (!trimmedAssets) {
+        for (const entry of neededEntries.filter((font) => font.core)) {
+          const path = `font/${entry.cssFileName}`;
+          assertCurrent();
+          await copyBestImageAsset(assetSession, new File(prepared.directory, path).uri, path, controller.signal);
+        }
+        const assets = await loadPhigrosReferenceTemplateAssets(
+          assetSession,
+          provider?.getAvatarUrl('Introduction') ?? '', controller.signal,
+        );
+        trimmedAssets = { ...assets, css: trimPhigrosBestImageCss(assets.css, neededFontEntriesRef.current) };
+        if (!cancelled) {
+          setFontDirectory(assetSession.directory);
+          setTemplateAssets(trimmedAssets);
+        }
       }
       const result = await fullResult;
       if (!result.ok) throw result.error;
@@ -281,13 +281,14 @@ export function PhigrosBestImageScreen() {
       }
       if (!cancelled) {
         fontAssetKeyRef.current = fontAssetKey;
+        setTemplateAssetError(null);
         setFontsReady(true);
         /** 重建 HTML，让补齐的扩展字体进入 WebView。 */
         setTemplateAssets({ ...trimmedAssets });
       }
-    })().catch((error) => {
-      if (!cancelled) setTemplateAssetError(providerErrorToUserMessage(error, '无法准备成绩图片，请重试。'));
-    });
+    }, (error) => {
+      if (!cancelled) setTemplateAssetError(providerErrorToUserMessage(error, '素材准备失败，正在自动重试。'));
+    }).catch(() => undefined);
     return () => { cancelled = true; controller.abort(); };
   }, [assetSession, fontAssetKey, lifecycle.foregroundGeneration, lifecycle.foregroundReady, neededFontKey, provider]);
   const selectedSongIds = useMemo(() => sections.flatMap((section) => section.records.map((record) => record.songId)), [sections]);
@@ -410,11 +411,11 @@ export function PhigrosBestImageScreen() {
       : buildPhigrosBestImageHtml(input);
   }) : null, [accAverages, avatarData, backgroundData, illustrations, pages, payload, stylePrefs.ratingStyle, templateAssets, titles, type, width]);
 
-  const { sources, error: sourceError } = usePreparedBestImageSources(htmlPages, fontDirectory, cancelExportRequest);
+  const { sources, error: sourceError } = usePreparedBestImageSources(htmlPages, assetSession, fontDirectory, cancelExportRequest);
+  const preparationError = templateAssetError ?? sourceError;
   useEffect(() => {
     setPageHeights({}); setPageIndex(0); setPreviewStates({});
   }, [fontDirectory, htmlPages, setPageHeights, setPageIndex, setPreviewStates]);
-  useEffect(() => { if (sourceError) setTemplateAssetError(sourceError); }, [sourceError]);
 
   const currentPage = pages[Math.min(pageIndex, pages.length - 1)]!;
   const outputHeight = pageHeights[currentPage.id] ?? Math.ceil(width * .75);
@@ -559,7 +560,7 @@ export function PhigrosBestImageScreen() {
       activeWidth: width,
       onChooseWidth: setWidth,
       dimensionMeta: `${width} × ${outputHeight} px · 每页最多 ${type === 'best30' ? 30 + stylePrefs.overflowCount : 30} 张 · 第 ${pageIndex + 1}/${pages.length} 页`,
-      loadingPreview: templateAssetError ? <View style={styles.loadingContent}><Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></View> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在准备预览" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? fontProgressLabel(fontProgress) : assetProgress.total > 0 ? `正在准备歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在准备预览'}</Text></View>,
+      loadingPreview: preparationError ? <View style={styles.loadingContent}><Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{preparationError}</Text>{templateAssetError ? <Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable> : null}</View> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在准备预览" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? fontProgressLabel(fontProgress) : assetProgress.total > 0 ? `正在准备歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在准备预览'}</Text></View>,
       fontStatus: sources && !fontsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: templateAssetError ? theme.danger : theme.border }]}>{templateAssetError ? <><Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></> : <><ActivityIndicator color={theme.accent} size="small" /><Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{fontProgressLabel(fontProgress)}；所需字体完成后可导出</Text></>}</View> : null,
       fontStatusAboveDots: true,
       pickers: <PhigrosBestImageStylePicker visible={picker !== null} kind={picker} items={pickerItems} selection={picker ? stylePrefs[picker] : null} onClose={() => setPicker(null)} onSelect={chooseStyle} />,
