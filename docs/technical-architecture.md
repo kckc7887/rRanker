@@ -112,7 +112,7 @@ Phigros 账号摘要优先消费当前游戏查询和已保存存档，磁盘读
 
 ## 音游地图
 
-音游地图沿用 `/tools/arcade-finder` 路由，上方地图、下方统一搜索、默认折叠筛选与独立列表。iOS 使用 `react-native-maps@1.27.2` 的 MapKit；Android 四种 ABI 使用高德轻量地图 1.3.2、搜索 9.7.4 和定位 6.4.9 官方合包，固定 JAR 位于 `modules/arcade-map-support/android/libs`。`ArcadeMapSupport` 的原生视图通过系统 WebView、`IAMapWebView` 和 `AMapWrapper` 装配地图，转发 SDK 资源加载和 JS 桥接，按宿主生命周期暂停、恢复；卸载时先将 WebView 移出父视图，再停止和销毁。地图和图钉复用 SDK 内置资源及原生绘制的蓝色、橙色图钉。模块同时提供地点搜索、Key 状态和服务同意状态，R8 保留地图、搜索及 WebView JS 桥。Android 自动链接排除 React Native Maps；Web、原生模块缺失或未配置 Key 时使用列表。
+音游地图沿用 `/tools/arcade-finder` 路由，上方地图、下方统一搜索、默认折叠筛选与独立列表。iOS 使用 `react-native-maps@1.27.2` 的 MapKit；Android 四种 ABI 使用高德轻量地图 1.3.2、搜索 9.7.4 和定位 6.4.9 官方合包，固定 JAR 位于 `modules/arcade-map-support/android/libs`。`ArcadeMapSupport` 的原生视图通过系统 WebView、`IAMapWebView` 和 `AMapWrapper` 装配地图，转发 SDK 资源加载和 JS 桥接，按宿主生命周期暂停、恢复；卸载时先将 WebView 移出父视图并结束该视图的转场保留，再停止和销毁。地图和图钉复用 SDK 内置资源及原生绘制的蓝色、橙色图钉。模块同时提供地点搜索、Key 状态和服务同意状态，R8 保留地图、搜索及 WebView JS 桥。Android 自动链接排除 React Native Maps；Web、原生模块缺失或未配置 Key 时使用列表。
 
 正式 Android 构建将仓库 Secret `AMAP_ANDROID_KEY` 传给 `plugins/with-arcade-map.js`，写入 Manifest 的高德元数据，并配置网络权限和 Jetifier。Key 不通过插件参数、日志或客户端 `extra` 传递。高德服务说明经用户同意后才装配地图，同意状态由原生模块持久化；确认后才初始化轻量地图与搜索服务，拒绝仍可使用列表。定位沿用系统定位入口，地图操作不依赖定位授权。拖图停止 500 毫秒后，与当前查询中心的累计距离达到查询半径的 10%（最少 300 米）才查询；没有查询中心时直接查询。轻微移动保留当前请求和选中机厅，刷新及失败期间保留新范围内已有结果，并按新中心更新距离。卡片移动地图不重新查询；页面离开与后台状态取消请求，迟到结果不提交。
 
@@ -185,7 +185,7 @@ KALEIDXSCOPE 的日程、课题和手工进度位于 `domain/kaleidx-scope.ts`�
 
 lint 保留 Hooks 的调用与依赖检查，组件编译器诊断的启用范围由 `eslint.config.js` 配置。Jest 转译 Router 所需的 `standard-navigation`，原生模块测试只替换所属业务入口，保留 Expo Core 的默认环境。
 
-postinstall 按实际源码调用点应用 decode-uri-component 和 Xiaomi WebView 的运行补丁。高德轻量地图依赖由 `arcade-map-support` 原生模块装配，地图、搜索和 JS 桥的混淆配置随模块提供。
+postinstall 按实际源码调用点应用 decode-uri-component 和 WebView 的运行补丁。WebView 补丁处理 Xiaomi 消息桥兼容，并在 Android 公共销毁入口先移出父视图、结束该视图的转场保留，再销毁。高德轻量地图依赖由 `arcade-map-support` 原生模块装配，地图、搜索和 JS 桥的混淆配置随模块提供。
 
 ### CI 与发布
 

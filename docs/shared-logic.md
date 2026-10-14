@@ -111,6 +111,8 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 ## 成绩图与谱面功能
 
+成绩图与谱面预览共用 `react-native-webview`。`scripts/patch-react-native-webview-xiaomi-bridge.cjs` 在 Android 公共 `destroy` 入口移出所属父视图并调用 `endViewTransition`，随后执行原生销毁；页面卸载和宿主销毁共用该入口。
+
 `useBestImagePreferences` 按账号使用 `createPreferencesWriteCoordinator`，保留 `setPrefs` 更新方式，以实际变化字段合并读取中的选择与已存偏好。舞萌图标、姓名框、背景框和 Rating 样式独立合并，落盘仍使用原有选择结构。读取失败保留待保存选择，写入失败保留当前值，前台按协调器退避自动补读、补写；失败通过现有通知和诊断入口反馈。
 
 成绩图公共入口位于 `features/best-image`：`useBestImageScreenController`、`useBestImagePreview`、`useBestImageExport` 与共享页面壳。`load-best-image-session.ts` 为舞萌、中二和 Phigros 提供账号独立的素材会话，`loadRemoteImageFile`、`loadImageFiles` 与 `copyBestImageAsset` 返回原字节文件 URL。远程素材先复用会话中的非空文件，缺失时经 `acquireRemoteImageOriginal` 取得所属游戏、同 URL 的公共原图缓存或共享下载结果，由 `copyBestImageAsset` 复制进会话目录，复制结束或失败均释放原图引用。压缩垫图及不同 URL 的曲绘版本不参与素材替换。游戏入口只提供素材地址、当前所需字体和布局；`prepareBestImageWebViewSources` 在同一会话目录异步写出 HTML，返回异步 `dispose`。改样式、分页与后台恢复沿用当前会话，已就绪素材与 HTML 保留身份，未完成工作恢复，WebView 只读取该目录。`requestBestImageExportPermission` 先读取相册权限，未授权时才申请，拒绝和读取失败沿用导出错误路径。真正进入后台取消当前导出，恢复后可重新导出。离开或换账号先失效会话，`cancelExportRequest` 等待未结束截图及临时截图清理，再回收会话文件；后台等待截图可取消。清缓存跳过活跃会话，启动维护回收上次会话目录。

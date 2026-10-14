@@ -258,6 +258,7 @@ class ArcadeMapView(context: Context, appContext: AppContext) : ExpoView(context
     selectedIcon = null
     webView?.apply {
       this@ArcadeMapView.removeView(this)
+      this@ArcadeMapView.endViewTransition(this)
       stopLoading()
       removeAllViews()
       destroy()
