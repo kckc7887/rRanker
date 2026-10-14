@@ -4,6 +4,8 @@ import type { ReactNode } from 'react';
 import { jest } from '@jest/globals';
 import type { ChunithmAliasSnapshot, ChunithmCatalogSnapshot } from '@/domain/chunithm';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
+import { useChunithmSongDetail } from '@/hooks/use-chunithm-song-detail';
+import { useChunithmCollections } from '@/hooks/use-chunithm-collections';
 import { queryClient } from '@/state/query-client';
 import {
   CHUNITHM_ALIAS_SCHEMA_VERSION,
@@ -167,5 +169,35 @@ describe('useChunithmCatalog 会话缓存', () => {
     await waitFor(() => expect(second.result.current?.data).toBeDefined());
     expect(loadChunithmCatalog).toHaveBeenCalledTimes(1);
     await second.unmount();
+  });
+
+  it('取消详情和收藏品查询时中止真实 HTTP 请求', async () => {
+    const originalFetch = globalThis.fetch;
+    const signals = new Map<string, AbortSignal>();
+    globalThis.fetch = jest.fn((_input: string | URL | Request, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      const signal = init?.signal;
+      if (!signal) throw new Error('Missing request cancellation');
+      signals.set(new URL(String(_input)).pathname, signal);
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    try {
+      const screen = await renderHook(() => ({
+        detail: useChunithmSongDetail('3'),
+        collections: useChunithmCollections('trophy'),
+      }), { wrapper });
+      await waitFor(() => expect([...signals.keys()].sort()).toEqual([
+        '/api/v0/chunithm/song/3', '/api/v0/chunithm/trophy/list',
+      ]));
+      await act(async () => {
+        await queryClient.cancelQueries({ queryKey: ['chunithm-song-detail'] });
+        await queryClient.cancelQueries({ queryKey: ['chunithm-collections'] });
+      });
+      expect([...signals.values()].every(signal => signal.aborted)).toBe(true);
+      expect(screen.result.current.detail.data).toBeUndefined();
+      expect(screen.result.current.collections.data).toBeUndefined();
+      await screen.unmount();
+    } finally {
+      globalThis.fetch = originalFetch;
+    }
   });
 });

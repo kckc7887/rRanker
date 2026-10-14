@@ -35,8 +35,8 @@ export function RizlineSongDetail({ songId, initialLevelIndex }: { songId: strin
   const item = library.data?.find((entry) => entry.key === library.songKey(songId));
   const favorite = item?.kind === 'song' && item.favorite;
   return <><StatusBar style="light" /><View style={[styles.page, { backgroundColor: theme.background }]}>
-    <QueryStateView<RizlineSong> isLoading={query.isLoading} isError={query.isError} error={query.error}
-      isEmpty={!query.isLoading && !query.isError && !song} data={song} emptyText="找不到这首歌曲" onRetry={() => void query.refetch()}
+    <QueryStateView<RizlineSong> isLoading={query.isPending} isError={query.isError} error={query.error}
+      isEmpty={!query.isPending && !query.isError && !song} data={song} emptyText="找不到这首歌曲" onRetry={() => void query.refetch()}
       renderData={(data) => <RizlineSongDetailContent key={data.id} song={data} library={library} initialLevelIndex={initialLevelIndex} />} />
     <FloatingSongDetailChrome songTitle={song?.title} favorite={favorite} favoriteDisabled={library.isLoading || library.isUpdating}
       onToggleFavorite={song ? () => {

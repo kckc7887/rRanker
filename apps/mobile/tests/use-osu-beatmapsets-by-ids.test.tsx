@@ -9,7 +9,7 @@ import { queryClient as publishedQueryClient } from '@/state/query-client';
 import { useOsuBeatmapsetsByIds } from '@/hooks/use-osu-beatmapsets-by-ids';
 import { useOsuCatalogSearch } from '@/hooks/use-osu-catalog';
 
-const mockGetBeatmapset = jest.fn<(id: string) => Promise<OsuBeatmapsetLookupRaw>>();
+const mockGetBeatmapset = jest.fn<(id: string, signal: AbortSignal) => Promise<OsuBeatmapsetLookupRaw>>();
 const mockGetUserScore = jest.fn<(user: number, beatmap: number, game: string, signal: AbortSignal) => Promise<OsuBestScoreRaw | null>>();
 const mockGetPublicBeatmapset = jest.fn(async (id: string, gameId: Parameters<typeof normalizeOsuBeatmapsetDetail>[1]) =>
   normalizeOsuBeatmapsetDetail(rawBeatmapset(Number(id)), gameId));
@@ -35,7 +35,7 @@ let mockTabActive = true;
 
 jest.mock('@/providers/osu-score-provider', () => ({
   OsuScoreProvider: class {
-    getBeatmapset(id: string) { return mockGetBeatmapset(id); }
+    getBeatmapset(id: string, signal: AbortSignal) { return mockGetBeatmapset(id, signal); }
     getUserBeatmapScore(user: number, beatmap: number, game: string, signal: AbortSignal) { return mockGetUserScore(user, beatmap, game, signal); }
   },
 }));
@@ -99,8 +99,7 @@ describe('useOsuBeatmapsetsByIds', () => {
 
     await waitFor(() => expect(result.current.data.size).toBe(2));
     expect(mockGetBeatmapset).toHaveBeenCalledTimes(2);
-    expect(mockGetBeatmapset).toHaveBeenNthCalledWith(1, '3720');
-    expect(mockGetBeatmapset).toHaveBeenNthCalledWith(2, '9999');
+    expect(mockGetBeatmapset.mock.calls.map(([id]) => id)).toEqual(['3720', '9999']);
     expect(result.current.data.get('3720')?.title).toBe('Title 3720');
   });
 
@@ -114,6 +113,54 @@ describe('useOsuBeatmapsetsByIds', () => {
 
     expect(result.current.bound).toBe(false);
     expect(mockGetBeatmapset).not.toHaveBeenCalled();
+  });
+
+  it('分四路补齐个人曲库，并在等值 ID 重渲染时继续当前请求', async () => {
+    let inFlight = 0;
+    let maximum = 0;
+    const releases: (() => void)[] = [];
+    const signals: AbortSignal[] = [];
+    mockGetBeatmapset.mockImplementation((id, signal) => new Promise(resolve => {
+      signals.push(signal);
+      inFlight++;
+      maximum = Math.max(maximum, inFlight);
+      releases.push(() => { inFlight--; resolve(rawBeatmapset(Number(id))); });
+    }));
+    const ids = Array.from({ length: 9 }, (_, index) => String(index + 1));
+    const screen = await renderHook(() => useOsuBeatmapsetsByIds('osu-standard', [...ids]), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(inFlight).toBe(4));
+    await screen.rerender({});
+    expect(signals.every(signal => !signal.aborted)).toBe(true);
+    for (let batch = 0; batch < 3; batch++) {
+      await act(async () => {
+        releases.splice(0).reverse().forEach(release => release());
+        await new Promise(resolve => setTimeout(resolve, 0));
+      });
+    }
+    await waitFor(() => expect(screen.result.current.data.size).toBe(ids.length));
+    expect(maximum).toBe(4);
+    expect(ids.map(id => screen.result.current.data.get(id)?.title)).toEqual(ids.map(id => `Title ${id}`));
+  });
+
+  it('卸载后取消在途详情，不再补取其余收藏', async () => {
+    const signals: AbortSignal[] = [];
+    const requested: string[] = [];
+    mockGetBeatmapset.mockImplementation((id, signal) => new Promise((_resolve, reject) => {
+      requested.push(id);
+      signals.push(signal);
+      signal.addEventListener('abort', () => reject(signal.reason), { once: true });
+    }));
+    const ids = Array.from({ length: 8 }, (_, index) => String(index + 1));
+    const screen = await renderHook(() => useOsuBeatmapsetsByIds('osu-standard', ids), {
+      wrapper: createWrapper(queryClient),
+    });
+    await waitFor(() => expect(signals).toHaveLength(4));
+    await screen.unmount();
+    await act(async () => { await new Promise(resolve => setTimeout(resolve, 0)); });
+    expect(signals.every(signal => signal.aborted)).toBe(true);
+    expect(requested).toEqual(ids.slice(0, 4));
   });
 
   it('标签失焦时保留绑定状态但不发请求', async () => {

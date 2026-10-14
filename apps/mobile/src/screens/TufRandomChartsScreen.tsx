@@ -85,10 +85,10 @@ export function TufRandomChartsScreen() {
   return <QueryStateView<TufPass[]>
     data={!loading && loaded.length ? loaded : undefined}
     error={query.error}
-    isEmpty={!loading && playerId !== null && loaded.length === 0}
+    isEmpty={!loading && (playerId === null || loaded.length === 0)}
     isError={query.isError || query.isFetchNextPageError}
     isLoading={loading}
-    emptyText={playerId === null ? '请先绑定 TUF 玩家' : '当前没有公开成绩'}
+    emptyText={accountId === 'adofai:test' ? '当前示例账号暂不支持随机抽取' : playerId === null ? '请先绑定 TUF 玩家' : '当前没有公开成绩'}
     onRetry={() => void query.refetch()}
     renderData={() => <RandomChartsPage
       count={count}

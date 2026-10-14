@@ -1,6 +1,8 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { RemoteImageOriginal } from '@/services/remote-image-cache';
+import { GameSongCover } from '@/components/game-content/GameSongCover';
+import { GameSongRow } from '@/components/game-content/GameSongRow';
 import {
   RemoteImage,
   RemoteImageActivityScope,
@@ -13,6 +15,7 @@ const mockAcquire = jest.fn<(_source: unknown, _gameId: string, signal?: AbortSi
 const mockReleaseOriginal = jest.fn<() => Promise<void>>();
 const mockInvalidateOriginal = jest.fn<() => Promise<void>>();
 const mockInvalidate = jest.fn<() => Promise<void>>();
+jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 
 jest.mock('@/services/remote-image-cache', () => ({
   acquireRemoteImageOriginal: (...args: [unknown, string, AbortSignal?]) => mockAcquire(...args),
@@ -44,6 +47,28 @@ const cachedResult = {
   fileUri: 'file:///cached.webp',
   source: { uri: 'file:///cached.webp' },
 };
+
+describe('歌曲封面来源更新', () => {
+  it.each(['cover', 'row'] as const)('recovers %s after its failed source is replaced', async (kind) => {
+    mockFind.mockResolvedValue(null);
+    mockReleaseOriginal.mockResolvedValue(undefined);
+    mockInvalidateOriginal.mockResolvedValue(undefined);
+    mockAcquire.mockResolvedValue({ fileUri: 'file:///original.jpg', release: mockReleaseOriginal, invalidate: mockInvalidateOriginal });
+    const content = (source: string) => kind === 'cover' ? <GameSongCover source={source} gameId="phigros" /> : <GameSongRow
+      presentation={{ key: 'song', gameId: 'phigros', route: { songId: 'song', params: { gameId: 'phigros' } }, title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
+      cover={null} badges={null} coverImage={{ source, accessibilityLabel: '歌曲封面', imageStyle: null, placeholderStyle: null, noteStyle: null }}
+      rowStyle={null} mainStyle={null} titleStyle={null} subtitleStyle={null} />;
+    const screen = await render(content('https://example.test/old.jpg'));
+    await waitFor(() => expect(screen.getByLabelText('歌曲封面').props.source).not.toBeNull());
+    const oldError = screen.getByLabelText('歌曲封面').props.onError as () => void;
+    await fireEvent(screen.getByLabelText('歌曲封面'), 'error');
+    expect(screen.queryByLabelText('歌曲封面')).toBeNull();
+    await screen.rerender(content('https://example.test/new.jpg'));
+    await waitFor(() => expect(screen.getByLabelText('歌曲封面').props.source).not.toBeNull());
+    await act(async () => { oldError(); });
+    expect(screen.getByLabelText('歌曲封面').props.source).not.toBeNull();
+  });
+});
 
 describe('RemoteImage 压缩垫图', () => {
   it('starts the original without visibility and retains it across hidden tabs while preserving artwork props', async () => {

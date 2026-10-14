@@ -13,14 +13,14 @@ export const CHUNITHM_CATALOG_QUERY_KEY = [
 
 const provider = new ChunithmCatalogProvider();
 
-export function loadChunithmCatalog(): Promise<ChunithmCatalogSnapshot> {
-  return provider.getCatalog();
+export function loadChunithmCatalog(signal?: AbortSignal): Promise<ChunithmCatalogSnapshot> {
+  return provider.getCatalog(signal);
 }
 
 export function loadChunithmNewVersionTitles(signal?: AbortSignal): Promise<string[]> {
   return provider.getNewVersionTitles(signal);
 }
 
-export function loadChunithmAliases(): Promise<ChunithmAliasSnapshot> {
-  return provider.getAliases();
+export function loadChunithmAliases(signal?: AbortSignal): Promise<ChunithmAliasSnapshot> {
+  return provider.getAliases(signal);
 }

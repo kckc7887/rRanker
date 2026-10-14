@@ -111,6 +111,7 @@ const mockScores = [{
 let mockDetailState: {
   data?: ChunithmSongDetailSnapshot;
   isLoading: boolean;
+  isPending?: boolean;
   isError: boolean;
   error: Error | null;
 } = {
@@ -183,6 +184,7 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
 jest.mock('@/hooks/use-chunithm-song-detail', () => ({
   useChunithmSongDetail: () => ({
     ...mockDetailState,
+    isPending: mockDetailState.isPending ?? mockDetailState.isLoading,
     refetch: mockDetailRefetch,
   }),
 }));
@@ -247,6 +249,19 @@ describe('Chunithm song detail', () => {
       isError: false,
       error: null,
     };
+  });
+
+  it('waits for an idle first result before deciding whether a song is missing', async () => {
+    mockCatalogState = { ...mockCatalog, songs: [] };
+    mockDetailState = { data: undefined, isPending: true, isLoading: false, isError: false, error: null };
+    const screen = await render(<ChunithmSongDetail songId="3" />);
+    expect(screen.queryByText('找不到这首歌曲')).toBeNull();
+    mockDetailState = { data: mockDetail, isPending: false, isLoading: false, isError: false, error: null };
+    await screen.rerender(<ChunithmSongDetail songId="3" />);
+    expect(screen.getByText('#3')).toBeTruthy();
+    mockDetailState = { data: undefined, isPending: false, isLoading: false, isError: false, error: null };
+    await screen.rerender(<ChunithmSongDetail songId="3" />);
+    expect(screen.getByText('找不到这首歌曲')).toBeTruthy();
   });
 
   it('defaults to MASTER and renders score, notes, actions and song tags', async () => {

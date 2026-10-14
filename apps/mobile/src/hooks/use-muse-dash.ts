@@ -21,6 +21,7 @@ export type MuseDashQuery<T> = {
   data: T | undefined;
   source: DataSource | undefined;
   isLoading: boolean;
+  isPending: boolean;
   isError: boolean;
   error: Error | null;
   isFetching: boolean;
@@ -51,6 +52,7 @@ function useMuseDashSnapshot<T>(
     data: snapshot?.data,
     source: snapshot?.source,
     isLoading: query.isLoading,
+    isPending: query.isPending,
     isError: query.isError,
     error: query.error as Error | null,
     isFetching: query.isFetching,
@@ -80,6 +82,7 @@ export function useMuseDashPlayer(userId: string | null, enabled = true) {
     data: snapshot?.data,
     source: snapshot?.source,
     isLoading: query.isLoading,
+    isPending: query.isPending,
     isError: query.isError,
     error: query.error as Error | null,
     isFetching: query.isFetching,

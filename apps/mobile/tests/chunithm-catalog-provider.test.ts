@@ -5,6 +5,8 @@ import {
   mapChunithmCollections,
   mapChunithmSongDetail,
 } from '@/providers/chunithm-catalog-provider';
+import { loadChunithmAliases, loadChunithmCatalog } from '@/services/chunithm-catalog-loader';
+import { loadChunithmCollections } from '@/services/chunithm-collection-loader';
 
 const responsePayload = {
   versions: [
@@ -105,6 +107,31 @@ describe('ChunithmCatalogProvider', () => {
       headers: { Accept: 'application/json' },
     });
     expect(catalog.currentVersion).toEqual({ id: 23000, title: 'CHUNITHM VERSE' });
+  });
+
+  it.each([
+    ['catalog', (signal: AbortSignal) => new ChunithmCatalogProvider().getCatalog(signal)],
+    ['aliases', (signal: AbortSignal) => new ChunithmCatalogProvider().getAliases(signal)],
+    ['song detail', (signal: AbortSignal) => new ChunithmCatalogProvider().getSongDetail(3, signal)],
+    ['collections', (signal: AbortSignal) => new ChunithmCatalogProvider().getCollections('trophy', signal)],
+    ['catalog loader', loadChunithmCatalog],
+    ['alias loader', loadChunithmAliases],
+    ['collection loader', (signal: AbortSignal) => loadChunithmCollections('trophy', signal)],
+  ] as const)('cancels an in-flight %s HTTP request', async (_name, load) => {
+    const controller = new AbortController();
+    let requestSignal: AbortSignal | undefined;
+    let start: () => void = () => undefined;
+    const started = new Promise<void>(resolve => { start = resolve; });
+    vi.stubGlobal('fetch', vi.fn((_url: string, init?: RequestInit) => new Promise<Response>((_resolve, reject) => {
+      requestSignal = init?.signal ?? undefined;
+      requestSignal?.addEventListener('abort', () => reject(requestSignal?.reason), { once: true });
+      start();
+    })));
+    const failure = expect(load(controller.signal)).rejects.toThrow('cancelled catalog request');
+    await started;
+    controller.abort(new Error('cancelled catalog request'));
+    await failure;
+    expect(requestSignal?.aborted).toBe(true);
   });
 
   it('keeps flat Chunithm difficulties and maps minor versions down', () => {

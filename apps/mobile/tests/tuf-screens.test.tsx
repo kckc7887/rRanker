@@ -327,6 +327,17 @@ describe('TUF screens', () => {
     expect(labels[1]).toContain('第一条');
   });
 
+  it.each([
+    ['adofai:test', '当前示例账号暂不支持随机抽取'],
+    ['', '请先绑定 TUF 玩家'],
+  ])('shows an accurate idle random-tool state for %s', async (accountId, message) => {
+    mockAccountId = accountId;
+    mockUseTufPasses.mockReturnValue({ ...infinite([], 'passes'), data: undefined, isLoading: false });
+    const screen = await render(<TufRandomChartsScreen />);
+    expect(screen.getByText(message)).toBeTruthy();
+    expect(screen.queryByTestId('random-charts-draw')).toBeNull();
+  });
+
   it('shows and disables the random page after the first pass page while the complete pool warms in background', async () => {
     mockUseTufPasses.mockReturnValue({
       ...infinite([pass(1, '首批成绩')], 'passes'),

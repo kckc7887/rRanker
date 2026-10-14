@@ -14,9 +14,20 @@ const phiraFavorite: UserLibraryItem = {
   tags: ['交互'], createdAt: timestamp, updatedAt: timestamp,
 };
 
-jest.mock('expo-router', () => ({
-  router: { push: (...args: unknown[]) => mockPush(...args) },
-}));
+jest.mock('expo-router', () => {
+  const navigation = {
+    isFocused: () => true,
+    addListener: (event: string, listener: (event: { data: { closing: boolean } }) => void) => {
+      if (event === 'transitionEnd') listener({ data: { closing: false } });
+      return () => undefined;
+    },
+  };
+  return {
+    router: { push: (...args: unknown[]) => mockPush(...args) },
+    useNavigation: () => navigation,
+    useIsFocused: () => true,
+  };
+});
 jest.mock('expo-file-system', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').fileSystem);
 jest.mock('expo-file-system/legacy', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').legacyFileSystem);
 jest.mock('expo-image', () => {

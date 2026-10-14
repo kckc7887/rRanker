@@ -139,7 +139,7 @@ export function ChunithmSongDetail({
   const favorite = songItem?.kind === 'song' && songItem.favorite;
   const favoriteDisabled = library.isLoading || library.isUpdating;
   const isNoData = detail.error instanceof ProviderError && detail.error.code === 'no_data';
-  const isLoading = !song && detail.isLoading;
+  const isLoading = !song && detail.isPending;
   const isError = !song && detail.isError && !isNoData;
   const isEmpty = !song && !isLoading && (isNoData || !detail.isError);
   const retry = () => {

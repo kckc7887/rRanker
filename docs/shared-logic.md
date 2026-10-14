@@ -17,6 +17,8 @@
 
 展示模型使用实际 `GameId`。`DetailTarget` 描述游戏内真实目标，URL 必须携带 `gameId`；osu! 谱面使用 `beatmapId`，舞萌谱面带类型和难度索引。行、卡片、随机工具和个人曲库都通过 `detailTargetHref` 跳转。详情初始等待以有效目标的查询 `isPending` 判断，包含页面转场期间尚未启用的查询；非法目标及明确未绑定的空态继续独立处理，已有内容不被刷新状态替换。
 
+`MuseDashQuery` 透传 `isPending`，详情等待相册首个结果后判断歌曲是否存在。`ChunithmCatalogProvider` 的曲库、别名、收藏品与单曲方法，以及对应 loader 接受可选 `AbortSignal`，沿当前 Query 传到公共 HTTP 入口。
+
 Provider 负责上游请求与响应转换，页面不拼接认证请求。水鱼与 LXNS 成绩映射直接接收 Provider 已校验的类型；上游响应与磁盘读取保留校验。LXNS 成绩曲名按上游字符串原样保留，包括空字符串和空白字符；仅缺少 `song_name` 字段时使用缺失占位并标记不完整。HTTP 使用 `totalAttempts`，有副作用的请求按实际规则限制重试；取消在公共请求入口处理。QueryClient 默认最多重试一次，并遵守 `ProviderError.retryable`。上游当前格式中的字段和平台必需的 SDK 适配继续由所属模块处理。
 
 `useLocalSearch` 在实际逐项准备、匹配循环中按 4 ms 预算分片，通过 `scheduleIdleTask` 继续；输入、快照与活动状态变化取消旧工作。页面恢复时复用相同条目、快照、筛选条件和选择函数的完整结果；调用方只将防抖关键词和有效筛选字段纳入条件身份。`searchDocumentFor` 按字段提取函数和原始对象弱引用复用搜索文档，`songSearchDocument` 为同一歌曲及别名快照的曲库与成绩页提供共同入口。匹配字段保持游戏原有语义，命中别名随筛选结果发布。
@@ -32,6 +34,8 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。水�
 `createInflightGuard.share` 共享同键工作并独立取消消费者。`useBoundedQueries` 管理实际批量明细；服务的实际网络请求使用现有队列。清缓存先失效对应资源代次，真实异步结果在最终提交处检查资格。
 
 ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路有界查询复用 `useTufLevel` 的查询定义与 `['tuf', 'level', levelId]` 缓存。单项详情失败不删除收藏或标签。`TufRandomChartsScreen` 按当前前台和页面焦点取消补页，恢复后只加载尚未完成的页；`prefetchTufPassPage` 在提交前检查取消信号与资源代次。
+
+`useOsuBeatmapsetsByIds` 以四路 `useBoundedQueries` 加载个人曲库明细，去重后的等值 ID 序列复用查询定义，与单曲详情保持同一查询键和 60 秒新鲜期。个人曲库路由通过 `StackScreenActivityScope` 控制所有游戏的页面活动，失焦暂停后续领取并保留局部筛选与成功结果。
 
 舞萌、中二、Phigros、Muse Dash 随机页沿用 `RandomChartsPage` 的状态与重试入口。有缓存时继续使用；没有成绩时允许普通抽取并显示缺失值，启用成绩筛选则暂停抽取。`RandomUnplayedChartCard.scoreAvailable` 区分未知成绩与确认未游玩。Muse Dash 的专辑和定数是随机池必需数据，角色与精灵资料仅用于可选展示。
 
@@ -98,6 +102,8 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 `RemoteImage` 是远程图片入口，使用 `cacheProfile` 明确 thumbnail、artwork、native 或 none。`remote-image-cache.ts` 管理原图、压缩图、缓存身份和文件清理；`acquireRemoteImageOriginal(source, gameId, signal)` 返回原字节文件及异步 `release`、`invalidate`，展示和压缩共用下载，消费者独立取消。文件身份包含 URL、请求头、缓存键及游戏，共享请求按清理代次隔离；原生展示使用文件 URI 作为缓存键。两类文件共用格式 4 的索引、50 MiB 总容量、游戏配额和 LRU，压缩图单项上限为 10 KiB。原图发布后保留稳定路径，最后一个消费者释放时解除占用并裁剪，使用中的文件可暂时超额。`invalidate` 只使取得的文件失效，保留后来发布的替换文件；解码失败、缺失和空原图通过所属入口重建。原图不受可见性等待限制，压缩在成功显示且页面活动时开始；压缩缓存命中后持续显示缩略图，取得同一入口的原图文件后替换，原图失败时保留有效缓存。普通页面失活不释放已取得的原图；原图成功显示才通知调用方。清理先失效代次并移除所属索引，正在使用的原图待消费者释放后回收。
 
 通用行、卡片和封面位于 `components/game-content`，游戏组件只提供实际展示差异。成绩卡曲绘、个性化卡片示例以及中二、Phigros 的成绩图歌曲背景选择器统一使用所属游戏的 thumbnail 缓存；Phigros 头像选择沿用 native 缓存。`GameDifficultyBadge` 使用普通样式覆盖，保留尺寸、渐变和文本。列表的页面活动、可见性与图片落盘通过现有共享组件传递；可见性使用列表的稳定条目键，分组列表额外按分组键隔离，同键数据更新保留当前活动状态。
+
+`GameSongRow` 与 `GameSongCover` 将封面失败关联当前游戏和图片来源，来源变化允许新图片加载，旧来源的迟到错误不改变当前图片状态。
 
 `ChartCarousel` 按谱面键保存标签草稿，只装配当前及相邻卡片，下载与标签操作分别保留离窗卡片；`renderItem` 传递当前卡活动状态、受控标签草稿和任务保留回调。滚动只更新活动卡，初始目标及 `resetKey` 变化重置定位，宽度变化保留当前卡，列表缩短时钳制索引；Majdata 传入实际初始难度，不将滚动索引回写初始目标。`TagEditor` 的 `historyTags` 可传入惰性读取函数，仅在预设弹层打开时计算，保存失败保留输入与弹层。
 

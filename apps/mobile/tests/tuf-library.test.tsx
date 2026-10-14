@@ -31,10 +31,18 @@ jest.mock('@/state/app-lifecycle', () => ({
   useAppLifecycle: () => ({ foregroundReady: true, foregroundGeneration: 1 }),
   getForegroundAbortSignal: () => mockForeground.signal,
 }));
-jest.mock('expo-router', () => ({
-  router: { replace: jest.fn() },
-  useNavigation: () => ({ canGoBack: () => true, goBack: jest.fn() }),
-}));
+jest.mock('expo-router', () => {
+  const navigation = {
+    canGoBack: () => true,
+    goBack: jest.fn(),
+    isFocused: () => true,
+    addListener: (event: string, listener: (event: { data: { closing: boolean } }) => void) => {
+      if (event === 'transitionEnd') listener({ data: { closing: false } });
+      return () => undefined;
+    },
+  };
+  return { router: { replace: jest.fn() }, useNavigation: () => navigation, useIsFocused: () => true };
+});
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 47, right: 0, bottom: 34, left: 0 }),
 }));

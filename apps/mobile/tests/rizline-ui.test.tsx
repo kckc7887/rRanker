@@ -31,6 +31,10 @@ jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { push:
   useNavigation: () => ({ canGoBack: () => true, goBack: jest.fn(), getState: () => ({ index: 0, routes: [] }) }) }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-image', () => ({ Image: () => null }));
+jest.mock('@/components/CachedTabScreen', () => ({
+  ...jest.requireActual<typeof import('@/components/CachedTabScreen')>('@/components/CachedTabScreen'),
+  StackScreenActivityScope: ({ children }: { children: import('react').ReactNode }) => children,
+}));
 jest.mock('react-native-gesture-handler', () => {
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   return { GestureHandlerRootView: RN.View, Pressable: RN.Pressable, ScrollView: RN.ScrollView };
@@ -81,6 +85,18 @@ describe('Rizline UI', () => {
     });
   });
   afterEach(async () => { await cleanup(); jest.restoreAllMocks(); });
+
+  it('waits for the catalog first result and preserves a loaded detail during refresh', async () => {
+    mockCatalogState = { hasData: false, isPending: true, isLoading: false, isError: false };
+    const screen = await render(<RizlineSongDetail songId="song.a" />);
+    expect(screen.queryByText('找不到这首歌曲')).toBeNull();
+    mockCatalogState = { hasData: true, isPending: false, isLoading: false, isError: false, isFetching: true };
+    await screen.rerender(<RizlineSongDetail songId="song.a" />);
+    expect(screen.getAllByText('测试歌曲').length).toBeGreaterThan(0);
+    mockCatalogState = { hasData: true, isPending: false, isLoading: false, isError: false };
+    await screen.rerender(<RizlineSongDetail songId="missing" />);
+    expect(screen.getByText('找不到这首歌曲')).toBeTruthy();
+  });
 
   it('renders score metrics and opens the actual chart difficulty', async () => {
     const screen = await render(<RizlineScoreCard record={mockRecords[0]!} />);

@@ -397,6 +397,13 @@ describe('Phira page contracts', () => {
     await screen.unmount();
   });
 
+  it('explains that the example account does not support random draws', async () => {
+    mockAccountId = 'phira:test';
+    const screen = await render(<PhiraRandomChartsScreen />);
+    expect(screen.getByText('当前示例账号暂不支持随机抽取')).toBeTruthy();
+    expect(screen.getByTestId('random-charts-draw').props.accessibilityState.disabled).toBe(true);
+  });
+
   it('keeps deferred detail work disabled until stack readiness', async () => {
     mockStackReady = false;
     const screen = await render(<PhiraSongDetailScreen chartId="38294" />);

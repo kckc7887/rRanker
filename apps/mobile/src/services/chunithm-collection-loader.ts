@@ -7,6 +7,7 @@ const provider = new ChunithmCatalogProvider();
 
 export function loadChunithmCollections(
   kind: ChunithmCollectionKind,
+  signal?: AbortSignal,
 ): Promise<ChunithmCollectionListSnapshot> {
-  return provider.getCollections(kind);
+  return provider.getCollections(kind, signal);
 }

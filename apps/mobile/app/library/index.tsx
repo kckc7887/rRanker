@@ -36,6 +36,7 @@ import { useTufLibraryLevels } from '@/hooks/use-tuf';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
+import { StackScreenActivityScope } from '@/components/CachedTabScreen';
 
 type Mode = 'all' | 'favorite' | 'practice';
 type MuseDashLibrarySong = { id: string; title: string; artist?: string; cover?: string };
@@ -67,6 +68,10 @@ function isPhiraLibrarySong(song: LibrarySong): song is PhiraLibrarySong {
 }
 
 export default function UserLibraryScreen() {
+  return <StackScreenActivityScope><UserLibraryContent /></StackScreenActivityScope>;
+}
+
+function UserLibraryContent() {
   const activeGameId = useSession((state) => state.activeGameId);
   if (activeGameId === 'majdata-net') return <MajdataLibraryScreen />;
   if (activeGameId === 'adofai') return <AdofaiLibraryScreen />;
