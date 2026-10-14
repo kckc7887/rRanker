@@ -1,0 +1,37 @@
+name: Mobile quality
+description: 执行移动应用质量检查
+runs:
+  using: composite
+  steps:
+    - uses: actions/setup-node@v6
+      with:
+        node-version: "22"
+        cache: npm
+        cache-dependency-path: apps/mobile/package-lock.json
+    - name: Install dependencies
+      shell: bash
+      working-directory: apps/mobile
+      run: npm ci --no-audit --no-fund
+    - name: Lint
+      shell: bash
+      working-directory: apps/mobile
+      run: npm run lint
+    - name: Typecheck
+      shell: bash
+      working-directory: apps/mobile
+      run: npm run typecheck
+    - name: Unit and UI tests
+      shell: bash
+      working-directory: apps/mobile
+      run: npm test
+    - name: Generated player consistency
+      shell: bash
+      working-directory: apps/mobile
+      run: npm run check:generated
+    - name: CI script behavior tests
+      shell: bash
+      working-directory: .
+      run: |
+        node --test .github/scripts/*.test.mjs
+        python3 -B .github/scripts/verify-ios-archive.test.py
+        python3 -B .github/scripts/android_signing.test.py

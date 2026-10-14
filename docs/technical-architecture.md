@@ -189,9 +189,11 @@ postinstall 按实际源码调用点应用 decode-uri-component 和 WebView 的�
 
 ### CI 与发布
 
-`.github/workflows/quality.yml` 的 `changed-scope` 区分文档与功能变更。功能变更执行 lint、五组类型检查、单元/UI、生成物和 CI 脚本行为测试。`quality-gate` 汇总结果：必要作业失败、取消或意外跳过会失败，文档快速路径允许预期跳过。
+`.github/workflows/pull-request.yml` 处理 PR 创建、更新、重开和编辑。同仓库 PR 只执行变更分类、质量检查与 `quality-gate`；外部 fork PR 通过 `fork-quality` 调用 `.github/workflows/quality.yml`。
 
-四个原生构建作业互斥：正式仓库分支 push/手动触发走 Android/iOS 正式构建；向 master 提交的 fork PR 走双端测试构建。保留当前签名与发布条件，fork 作业不取得发布凭据。
+`quality.yml` 接受所有分支 push、手动触发及 fork PR 的复用调用。两个入口共用 `.github/actions/changed-scope` 区分文档与功能变更，通过 `.github/actions/mobile-quality` 执行 lint、五组类型检查、单元/UI、生成物和 CI 脚本行为测试。`quality-gate` 汇总结果：必要作业失败、取消或意外跳过会失败，文档快速路径允许预期跳过。
+
+正式仓库分支 push/手动触发走 Android/iOS 正式构建；向 master 提交的 fork PR 走双端测试构建。正式构建与 fork 测试构建按事件互斥，fork 作业不取得发布凭据。
 
 Android 在同一作业内以 4 GiB Gradle 堆和两个工作线程构建四个 ABI，校验 Manifest、签名和产物，安装 x86_64 APK 走生产路由冒烟，再上传最终产物。手动原生诊断入口位于 `android-recovery.yml`。
 

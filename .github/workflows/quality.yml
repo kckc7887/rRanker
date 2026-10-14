@@ -3,13 +3,8 @@ on:
   push:
     branches:
       - "**"
-  pull_request:
-    types:
-      - opened
-      - synchronize
-      - reopened
-      - edited
   workflow_dispatch:
+  workflow_call:
 permissions:
   contents: read
 jobs:
@@ -42,34 +37,12 @@ jobs:
     if: needs.changed-scope.outputs.functional == 'true'
     runs-on: ubuntu-latest
     timeout-minutes: 45
-    defaults:
-      run:
-        working-directory: apps/mobile
     steps:
       - uses: actions/checkout@v6
         with:
           ref: ${{ needs.changed-scope.outputs.sha }}
           persist-credentials: false
-      - uses: actions/setup-node@v6
-        with:
-          node-version: "22"
-          cache: npm
-          cache-dependency-path: apps/mobile/package-lock.json
-      - run: npm ci --no-audit --no-fund
-      - name: Lint
-        run: npm run lint
-      - name: Typecheck
-        run: npm run typecheck
-      - name: Unit and UI tests
-        run: npm test
-      - name: Generated player consistency
-        run: npm run check:generated
-      - name: CI script behavior tests
-        working-directory: .
-        run: |
-          node --test .github/scripts/*.test.mjs
-          python3 -B .github/scripts/verify-ios-archive.test.py
-          python3 -B .github/scripts/android_signing.test.py
+      - uses: ./.github/actions/mobile-quality
   android-release:
     needs: [changed-scope, quality]
     if: needs.quality.result == 'success' && needs.changed-scope.outputs.build == 'true' && needs.changed-scope.outputs.production == 'true' && github.repository == 'kckc7887/rRanker' && startsWith(github.ref, 'refs/heads/') && (github.event_name == 'push' || github.event_name == 'workflow_dispatch') && !github.event.deleted

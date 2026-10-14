@@ -1,0 +1,68 @@
+name: PR Quality
+on:
+  pull_request:
+    types:
+      - opened
+      - synchronize
+      - reopened
+      - edited
+permissions:
+  contents: read
+jobs:
+  changed-scope:
+    if: github.event.pull_request.head.repo.full_name == github.repository
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    outputs:
+      functional: ${{ steps.classify.outputs.functional }}
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - name: Classify changed paths
+        id: classify
+        uses: ./.github/actions/changed-scope
+        with:
+          head-sha: ${{ github.event.pull_request.head.sha }}
+  quality:
+    needs: changed-scope
+    if: needs.changed-scope.outputs.functional == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+        with:
+          ref: ${{ github.event.pull_request.head.sha }}
+          persist-credentials: false
+      - uses: ./.github/actions/mobile-quality
+  fork-quality:
+    if: github.event.pull_request.head.repo.full_name != github.repository
+    permissions:
+      contents: read
+      actions: read
+    uses: ./.github/workflows/quality.yml
+  quality-gate:
+    needs: [changed-scope, quality, fork-quality]
+    if: always()
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Require expected job results
+        env:
+          NEEDS_JSON: ${{ toJSON(needs) }}
+        run: |
+          node <<'NODE'
+          const needs = JSON.parse(process.env.NEEDS_JSON);
+          const fork = needs['fork-quality'];
+          if (fork.result === 'skipped') {
+            const scope = needs['changed-scope'];
+            if (scope.result !== 'success') throw new Error('Changed scope failed or was cancelled');
+            const { functional } = scope.outputs;
+            if (functional !== 'true' && functional !== 'false') throw new Error('Changed scope output is missing');
+            const expected = functional === 'true' ? 'success' : 'skipped';
+            if (needs.quality.result !== expected) throw new Error(`quality: ${needs.quality.result}`);
+          } else if (fork.result !== 'success') {
+            throw new Error(`fork-quality: ${fork.result}`);
+          }
+          NODE
