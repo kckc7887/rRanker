@@ -14,6 +14,8 @@ const mockLoadPrefs = jest.fn(async () => ({ version: 1 as const, selectedIds: [
 const mockExportDiagnostics = jest.fn(async () => undefined);
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
+jest.mock('expo-file-system', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').fileSystem);
+jest.mock('expo-file-system/legacy', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').legacyFileSystem);
 jest.mock('expo-image', () => {
   const React = jest.requireActual('react') as typeof import('react');
   const RN = jest.requireActual('react-native') as typeof import('react-native');
@@ -247,6 +249,7 @@ describe('settings navigation', () => {
     const screen = await renderSettings(<PersonalizationScreen />);
     await fireEvent(screen.getByLabelText('启用成绩卡片显示曲绘'), 'valueChange', true);
     await waitFor(() => expect(screen.getByText('PANDORA PARADOXXX')).toBeTruthy());
+    await waitFor(() => expect(screen.getByTestId('score-card-artwork').props.source?.uri).toMatch(/^file:/u));
     mockSaveTheme.mockClear();
 
     const transparencySlider = screen.getByLabelText('成绩卡片曲绘透明度');
