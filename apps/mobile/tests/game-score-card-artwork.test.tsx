@@ -8,6 +8,7 @@ import {
   ScoreCardArtworkScope,
 } from '@/components/game-content/GameScoreCard';
 import { useThemeStore } from '@/state/theme-store';
+import { legacyFileSystem } from './remote-image-native-mock';
 
 jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('expo-file-system', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').fileSystem);
@@ -33,16 +34,14 @@ const presentation = {
 
 function Card({
   source = 'https://example.com/cover.jpg',
-  cachePolicy,
 }: {
   source?: string | null;
-  cachePolicy?: 'none';
 }) {
   return (
     <AppThemeProvider>
       <ScoreCardArtworkScope>
         <GameScoreCard
-          artwork={{ source, scale: 1.08, ...(cachePolicy ? { cachePolicy } : {}) }}
+          artwork={{ source, scale: 1.08 }}
           cardStyle={{ borderRadius: 14, padding: 14 }}
           mainStyle={{ flex: 1 }}
           presentation={presentation}
@@ -105,16 +104,21 @@ describe('GameScoreCard 曲绘背景', () => {
     ]));
   });
 
-  it('默认曲绘只进入内存缓存', async () => {
+  it('缓存原图后断网重新打开仍显示同一曲绘', async () => {
     useThemeStore.setState({ scoreCardArtworkEnabled: true });
     const screen = await render(<Card />);
-    expect(screen.getByTestId('score-card-artwork').props.cachePolicy).toBe('memory');
-  });
-
-  it('曲绘显式声明 none 时完全跳过缓存', async () => {
-    useThemeStore.setState({ scoreCardArtworkEnabled: true });
-    const screen = await render(<Card cachePolicy="none" />);
-    expect(screen.getByTestId('score-card-artwork').props.cachePolicy).toBe('none');
+    await waitFor(() => expect(screen.getByTestId('score-card-artwork').props.source?.uri).toMatch(/^file:/u));
+    const uri = screen.getByTestId('score-card-artwork').props.source.uri;
+    await screen.unmount();
+    const offline = jest.spyOn(legacyFileSystem, 'createDownloadResumable').mockImplementation(() => ({
+      downloadAsync: async () => { throw new Error('offline'); },
+      cancelAsync: async () => undefined,
+    }));
+    try {
+      const reopened = await render(<Card />);
+      await waitFor(() => expect(reopened.getByTestId('score-card-artwork').props.source?.uri).toBe(uri));
+      await reopened.unmount();
+    } finally { offline.mockRestore(); }
   });
 
   it('pressable=false 渲染非交互预览卡且按压不导航', async () => {

@@ -178,7 +178,6 @@ export default function PersonalizationScreen() {
                   artworkTransparency={artworkTransparencyDraft}
                 >
                   <ScoreRecordCard
-                    artworkCachePolicy="none"
                     interactive={false}
                     record={SCORE_CARD_ARTWORK_PREVIEW_RECORD}
                   />

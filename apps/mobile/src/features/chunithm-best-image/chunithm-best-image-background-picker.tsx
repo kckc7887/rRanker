@@ -88,7 +88,8 @@ export function ChunithmBestImageBackgroundPicker({
             >
               <View style={[styles.preview, { backgroundColor: theme.surfaceMuted }]}>
                 <Image
-                  cacheProfile="none"
+                  cacheProfile="thumbnail"
+                  gameId="chunithm"
                   source={{ uri: chunithmBestImageJacketUrl(String(item.id)) }}
                   style={styles.previewImage}
                   resizeMode="cover"

@@ -4,8 +4,9 @@ import { copyBestImageAsset, createBestImageAssetSession, disposeBestImageAssetS
 
 const mocks = vi.hoisted(() => ({ loadAsync: vi.fn(), resolveAssetSource: vi.fn(), files: new Map<string, string>() }));
 vi.mock('expo-asset', () => ({ Asset: { loadAsync: mocks.loadAsync } }));
-vi.mock('react-native', () => ({ Image: { resolveAssetSource: mocks.resolveAssetSource } }));
-vi.mock('@/features/chart-download-shared/chart-download-shared', () => ({ downloadChartResource: vi.fn() }));
+vi.mock('react-native', () => ({ Image: { resolveAssetSource: mocks.resolveAssetSource }, Platform: { OS: 'android' } }));
+vi.mock('expo-image', () => ({ Image: {} }));
+vi.mock('expo-image-manipulator', () => ({ ImageManipulator: {}, SaveFormat: { WEBP: 'webp' } }));
 vi.mock('expo-file-system', () => {
   class Entry {
     uri: string;
@@ -16,7 +17,7 @@ vi.mock('expo-file-system', () => {
   return { File: Entry, Directory: Entry, Paths: { cache: 'file:///cache', document: 'file:///document' } };
 });
 vi.mock('expo-file-system/legacy', () => ({
-  getInfoAsync: async (uri: string) => ({ exists: mocks.files.has(uri) }),
+  getInfoAsync: async (uri: string) => ({ exists: mocks.files.has(uri), size: mocks.files.get(uri)?.length ?? 0 }),
   makeDirectoryAsync: async () => undefined,
   moveAsync: async ({ from, to }: { from: string; to: string }) => { mocks.files.set(to, mocks.files.get(from)!); mocks.files.delete(from); },
   copyAsync: async ({ from, to }: { from: string; to: string }) => { mocks.files.set(to, mocks.files.get(from)!); },

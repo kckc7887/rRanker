@@ -24,16 +24,14 @@ export const ScoreRecordCard = memo(function ScoreRecordCard({
   record,
   rank,
   interactive = true,
-  artworkCachePolicy,
 }: {
   record: ScoreRecord | ScoreRecordCardData;
   rank?: number;
   interactive?: boolean;
-  artworkCachePolicy?: 'none';
 }) {
   const presentation = presentMaimaiScore(record, rank);
   return <SimaiScoreCard
-    artwork={{ source: maimaiJacketUrl(record.songId), ...(artworkCachePolicy ? { cachePolicy: artworkCachePolicy } : {}) }}
+    artwork={{ source: maimaiJacketUrl(record.songId) }}
     presentation={presentation}
     interactive={interactive}
     achievements={record.achievements}

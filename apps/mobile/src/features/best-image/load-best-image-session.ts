@@ -1,9 +1,9 @@
 import { loadItemsBounded } from '@/services/offset-pagination';
 import { createInflightGuard, captureResourceWrites, resourceWriteGeneration } from '@/services/snapshot-cache-utils';
-import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
+import { acquireRemoteImageOriginal } from '@/services/remote-image-cache';
 import { BEST_IMAGE_STAGE_ROOT, clearDirectoryContentsStrict, runSharedCacheFileOperation } from '@/features/storage-management/fs-storage';
 import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
-import { Directory, File, Paths } from 'expo-file-system';
+import { Directory, File } from 'expo-file-system';
 import { copyAsync, deleteAsync, getInfoAsync, makeDirectoryAsync, moveAsync } from 'expo-file-system/legacy';
 
 export type BestImageGame = 'maimai' | 'chunithm' | 'phigros';
@@ -62,7 +62,8 @@ export function copyBestImageAsset(
   return runSharedCacheFileOperation(async () => {
     assertSession(session, assertCurrent);
     const file = new File(session.directory, filename);
-    if (!(await getInfoAsync(file.uri)).exists) {
+    const info = await getInfoAsync(file.uri);
+    if (!info.exists || info.size <= 0) {
       const slash = filename.lastIndexOf('/');
       const parent = slash < 0 ? session.directory : new Directory(session.directory, filename.slice(0, slash));
       await makeDirectoryAsync(parent.uri, { intermediates: true });
@@ -70,6 +71,8 @@ export function copyBestImageAsset(
       try {
         assertSession(session, assertCurrent);
         await copyAsync({ from: sourceUri, to: temporary.uri });
+        assertSession(session, assertCurrent);
+        await deleteAsync(file.uri, { idempotent: true });
         assertSession(session, assertCurrent);
         await moveAsync({ from: temporary.uri, to: file.uri });
       } finally { await deleteAsync(temporary.uri, { idempotent: true }); }
@@ -89,25 +92,17 @@ export function loadRemoteImageFile(
     assertSession(session, assertGeneration);
     const hash = (await digestStringAsync(CryptoDigestAlgorithm.SHA256, url)).slice(0, 32);
     const extension = /\.([a-z0-9]{2,5})(?:[?#]|$)/iu.exec(url)?.[1]?.toLowerCase() ?? 'png';
-    const staged = new File(session.directory, `${hash}.${extension}`);
+    const filename = `${hash}.${extension}`;
+    const staged = new File(session.directory, filename);
     const info = await getInfoAsync(staged.uri);
     assertSession(session, assertCurrent);
     if (info.exists && info.size > 0) return staged.uri;
-    const name = `rranker-best-image-session-${Date.now()}-${++imageSequence}.tmp`;
-    const temporary = new File(Paths.cache, name);
+    const original = await acquireRemoteImageOriginal(url, session.game, requestSignal);
     try {
-      await downloadChartResource(Paths.cache, name, url, requestSignal);
       assertSession(session, assertCurrent);
-      return await runSharedCacheFileOperation(async () => {
-        assertSession(session, assertCurrent);
-        await makeDirectoryAsync(session.directory.uri, { intermediates: true });
-        assertSession(session, assertCurrent);
-        await moveAsync({ from: temporary.uri, to: staged.uri });
-        assertSession(session, assertCurrent);
-        return staged.uri;
-      });
+      return await copyBestImageAsset(session, original.fileUri, filename, requestSignal);
     } finally {
-      await deleteAsync(temporary.uri, { idempotent: true });
+      await original.release();
     }
   }, signal).catch(() => null);
 }

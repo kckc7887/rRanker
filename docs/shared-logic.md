@@ -89,7 +89,7 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 `RemoteImage` 是远程图片入口，使用 `cacheProfile` 明确 thumbnail、artwork、native 或 none。`remote-image-cache.ts` 管理原图、压缩图、缓存身份和文件清理；`acquireRemoteImageOriginal(source, gameId, signal)` 返回原字节文件及异步 `release`、`invalidate`，展示和压缩共用下载，消费者独立取消。文件身份包含 URL、请求头、缓存键及游戏，共享请求按清理代次隔离；原生展示使用文件 URI 作为缓存键。两类文件共用格式 4 的索引、50 MiB 总容量、游戏配额和 LRU，压缩图单项上限为 10 KiB。原图发布后保留稳定路径，最后一个消费者释放时解除占用并裁剪，使用中的文件可暂时超额。`invalidate` 只使取得的文件失效，保留后来发布的替换文件；解码失败、缺失和空原图通过所属入口重建。原图不受可见性等待限制，压缩在成功显示且页面活动时开始；压缩缓存命中后持续显示缩略图，取得同一入口的原图文件后替换，原图失败时保留有效缓存。普通页面失活不释放已取得的原图；原图成功显示才通知调用方。清理先失效代次并移除所属索引，正在使用的原图待消费者释放后回收。
 
-通用行、卡片和封面位于 `components/game-content`，游戏组件只提供实际展示差异。`GameDifficultyBadge` 使用普通样式覆盖，保留尺寸、渐变和文本。列表的页面活动、可见性与图片落盘通过现有共享组件传递；可见性使用列表的稳定条目键，分组列表额外按分组键隔离，同键数据更新保留当前活动状态。
+通用行、卡片和封面位于 `components/game-content`，游戏组件只提供实际展示差异。成绩卡曲绘、个性化卡片示例以及中二、Phigros 的成绩图歌曲背景选择器统一使用所属游戏的 thumbnail 缓存；Phigros 头像选择沿用 native 缓存。`GameDifficultyBadge` 使用普通样式覆盖，保留尺寸、渐变和文本。列表的页面活动、可见性与图片落盘通过现有共享组件传递；可见性使用列表的稳定条目键，分组列表额外按分组键隔离，同键数据更新保留当前活动状态。
 
 `ChartCarousel` 按谱面键保存标签草稿，只装配当前及相邻卡片，下载与标签操作分别保留离窗卡片；`renderItem` 传递当前卡活动状态、受控标签草稿和任务保留回调。滚动只更新活动卡，初始目标及 `resetKey` 变化重置定位，宽度变化保留当前卡，列表缩短时钳制索引；Majdata 传入实际初始难度，不将滚动索引回写初始目标。`TagEditor` 的 `historyTags` 可传入惰性读取函数，仅在预设弹层打开时计算，保存失败保留输入与弹层。
 
@@ -97,7 +97,7 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 ## 成绩图与谱面功能
 
-成绩图公共入口位于 `features/best-image`：`useBestImageScreenController`、`useBestImagePreview`、`useBestImageExport` 与共享页面壳。`load-best-image-session.ts` 为舞萌、中二和 Phigros 提供账号独立的素材会话，`loadRemoteImageFile`、`loadImageFiles` 与 `copyBestImageAsset` 返回原字节文件 URL，共享下载并复用已准备文件。游戏入口只提供素材地址、当前所需字体和布局；`prepareBestImageWebViewSources` 在同一会话目录异步写出 HTML，返回异步 `dispose`。改样式、分页与后台恢复沿用当前会话，已就绪素材与 HTML 保留身份，未完成工作恢复，WebView 只读取该目录。`requestBestImageExportPermission` 先读取相册权限，未授权时才申请，拒绝和读取失败沿用导出错误路径。真正进入后台取消当前导出，恢复后可重新导出。离开或换账号先失效会话，`cancelExportRequest` 等待未结束截图及临时截图清理，再回收会话文件；后台等待截图可取消。清缓存跳过活跃会话，启动维护回收上次会话目录。
+成绩图公共入口位于 `features/best-image`：`useBestImageScreenController`、`useBestImagePreview`、`useBestImageExport` 与共享页面壳。`load-best-image-session.ts` 为舞萌、中二和 Phigros 提供账号独立的素材会话，`loadRemoteImageFile`、`loadImageFiles` 与 `copyBestImageAsset` 返回原字节文件 URL。远程素材先复用会话中的非空文件，缺失时经 `acquireRemoteImageOriginal` 取得所属游戏、同 URL 的公共原图缓存或共享下载结果，由 `copyBestImageAsset` 复制进会话目录，复制结束或失败均释放原图引用。压缩垫图及不同 URL 的曲绘版本不参与素材替换。游戏入口只提供素材地址、当前所需字体和布局；`prepareBestImageWebViewSources` 在同一会话目录异步写出 HTML，返回异步 `dispose`。改样式、分页与后台恢复沿用当前会话，已就绪素材与 HTML 保留身份，未完成工作恢复，WebView 只读取该目录。`requestBestImageExportPermission` 先读取相册权限，未授权时才申请，拒绝和读取失败沿用导出错误路径。真正进入后台取消当前导出，恢复后可重新导出。离开或换账号先失效会话，`cancelExportRequest` 等待未结束截图及临时截图清理，再回收会话文件；后台等待截图可取消。清缓存跳过活跃会话，启动维护回收上次会话目录。
 
 相册权限和保存使用 `expo-media-library/legacy`。字体及舞萌 UI 素材通过 `File.moveSync` 完成文件发布，iOS 谱面包通过 `File.copySync` 完成复制后才结束保存；临时来源的清理沿用所属任务时序。
 

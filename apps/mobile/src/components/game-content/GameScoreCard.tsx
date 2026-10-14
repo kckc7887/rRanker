@@ -47,7 +47,6 @@ export function useScoreCardArtworkActive(): boolean {
 export type ScoreCardArtwork = {
   source: string | null | undefined;
   scale?: number;
-  cachePolicy?: 'none';
 };
 
 export type ScoreCardMetricSide = {
@@ -137,10 +136,9 @@ export function GameScoreCard({
           <RemoteImage
             accessibilityIgnoresInvertColors
             blurRadius={artworkBlur}
-            {...(artwork?.cachePolicy === 'none'
-              ? { cacheProfile: 'none' as const }
-              : { cacheProfile: 'thumbnail' as const, gameId: presentation.gameId })}
+            cacheProfile="thumbnail"
             contentFit="cover"
+            gameId={presentation.gameId}
             onError={() => setFailedArtworkSource(artworkSource)}
             pointerEvents="none"
             source={artworkSource}
