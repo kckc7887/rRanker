@@ -28,7 +28,7 @@ jest.mock('@/providers/diving-fish-auth', () => ({ DivingFishAuthProvider: class
   loginWithPassword = (...args: Parameters<typeof mockLogin>) => mockLogin(...args);
   useImportToken = () => session;
 } }));
-jest.mock('@/screens/game-accounts-actions', () => ({ cancelBoundAccountQueries: jest.fn(async () => undefined) }));
+jest.mock('@/services/invalidate-account-data', () => ({ cancelBoundAccountQueries: jest.fn(async () => undefined) }));
 
 beforeEach(() => {
   jest.clearAllMocks();

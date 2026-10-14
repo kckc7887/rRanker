@@ -14,7 +14,7 @@ import { useAppTheme } from '@/theme/app-theme';
 import { providerLoginSheetStyles as styles } from '@/components/provider-login-sheet-styles';
 import { useAccountBindingRequest } from '@/hooks/use-account-binding-flow';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
-import { cancelBoundAccountQueries } from '@/screens/game-accounts-actions';
+import { cancelBoundAccountQueries } from '@/services/invalidate-account-data';
 import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 
 const auth = new DivingFishAuthProvider();

@@ -79,6 +79,8 @@ ADOFAI 个人曲库按收藏关卡 ID 加载详情，复用单关卡查询缓存
 
 `session-store.ts` 保存当前游戏、账号、会话映射和派生的活动视图。`session-provider-resolver.ts` 缓存实际 Provider，`session-providers.ts` 构造游戏所需依赖。绑定和轮换由 `session-credential-service.ts` 提交；共享凭据变化同步到关联账号。异步取消、重新绑定和凭据轮换均在最终提交处检查当前身份。
 
+Phigros 账号摘要优先消费当前游戏查询和已保存存档，磁盘读取后复核查询；无完整载荷时复用账号实际 Provider 的摘要及云存档时间。头像和摘要补全从任务开始保存账号、游戏写入代次及凭据归属，状态和存储提交均检查资格；正常令牌轮换及活动账号切换不使任务失效。
+
 | 数据 | 当前存储 |
 |---|---|
 | 会话 | SecureStore 凭据、KV v4 账号索引；恢复失败不冒充空账号 |
@@ -99,6 +101,8 @@ ADOFAI 个人曲库按收藏关卡 ID 加载详情，复用单关卡查询缓存
 业务数据库的 schema 初始化、事务、写入和个人曲库外部读取共用 `runDatabaseWrite`。单项收藏、练习与标签修改在原事务中只读回所属游戏，完整备份仍读取同一快照中的全部条目和预设。日志使用独立连接与队列，业务回滚不影响日志。队列任务不能再次进入同一队列。
 
 主题与展示偏好使用 `preferences-write-coordinator.ts` 合并当前选择和串行落盘，失败保留待写内容。上传好友码的选择通过 `UploadPrefsStore` 按好友码保存；UI 的 `selectedAccountIds` 是派生视图。
+
+随机选曲偏好通过 `createPersistedRandomChartsFilterStore` 按字段合并恢复期间的编辑与磁盘偏好，串行写入使用合并后的当前值。读取失败保留编辑，重新恢复后继续保存。
 
 诊断记录由 `runtime-diagnostics.ts`、`runtime-diagnostics-recorder.ts` 与日志仓库管理。记录默认关闭，开启后按容量保留。普通诊断在进程内保留一份已提交状态，文件队列以异步 pending/previous 替换写出，失败后从磁盘恢复；导出按队列顺序取得独立快照。致命日志保留独立的即时落盘路径。分享副本写入临时缓存，正文保存在文档目录。生产诊断页面使用现有的记录、读取、清理和分享入口。
 

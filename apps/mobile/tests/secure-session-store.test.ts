@@ -191,6 +191,38 @@ describe('SecureSessionStore 当前账号', () => {
     expect(index.activeAccountId).toBe('phira:community:323528');
   });
 
+  it('keeps stored metadata when its account work expires during an index read', async () => {
+    let holdRead = false;
+    let started!: () => void;
+    let finishRead!: () => void;
+    const reading = new Promise<void>((resolve) => { started = resolve; });
+    const gate = new Promise<void>((resolve) => { finishRead = resolve; });
+    const storage = {
+      ...kvStore,
+      getItem: async (key: string) => {
+        const value = await kvStore.getItem(key);
+        if (holdRead) { holdRead = false; started(); await gate; }
+        return value;
+      },
+    };
+    const store = new SecureSessionStore(storage);
+    const input = account('maimai:diving-fish:metadata');
+    await store.upsertAccount(input);
+    let eligible = true;
+    holdRead = true;
+    const update = store.updateAccountMetadata(input.id, { displayName: '迟到名称', scoreDisplay: '15000' }, () => {
+      if (!eligible) throw new Error('account work expired');
+    });
+    const rejected = expect(update).rejects.toThrow('account work expired');
+    await reading;
+    eligible = false;
+    finishRead();
+    await rejected;
+    expect((await store.loadVault()).accounts.find((item) => item.id === input.id)).toMatchObject({
+      displayName: input.displayName, scoreDisplay: input.scoreDisplay,
+    });
+  });
+
   it('跨实例串行化元数据、令牌与快速切换，最后一次账号选择获胜', async () => {
     const indexKey = 'rranker.provider.sessions.index.v4';
     let delayNextIndexRead = false;

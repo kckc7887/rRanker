@@ -51,6 +51,12 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 凭据轮换提交检查当前账号、期望会话与取消信号。共用凭据的账号一起更新；解绑、重新绑定或较新轮换发生后，旧结果不能覆盖新凭据。实际持久化失败保留待保存会话，前台恢复时重试。Provider 通过模块函数接线，不提供运行时替换或空 setter。
 
+`hydratePhigrosAccount` 优先读取当前账号的游戏查询载荷，再读取 `PhigrosSaveCache` 并复核最新查询；没有载荷时复用账号的实际 `PhigrosScoreProvider` 摘要。补全结果包含 RKS、课题等级、头像、显示名与原来源，不另存已完成摘要。
+
+头像与摘要补全在开始时通过 `captureAccountAvatarWrites` 捕获游戏、账号写入代次和凭据归属，更新状态与存储提交前复核。正常令牌轮换和活动账号切换保留资格，清理、解绑或重新绑定使旧结果失效。并发消费者通过现有共享请求独立取消。`cancelBoundAccountQueries` 位于 `services/invalidate-account-data.ts`，先失效账号写入，再取消并删除所属查询。
+
+`SecureSessionStore.updateAccountMetadata` 接收可选的提交资格检查，在队列执行和索引读取后复核，再写入当前账号元数据。
+
 `lxns-oauth.ts` 共用授权码兑换与令牌刷新请求。`invalid_grant` 表示登录失效；`invalid_request`、`invalid_client`、`unsupported_grant_type` 表示授权配置错误；`server_error` 表示可重试的服务故障。请求通过现有诊断入口记录 `authorization-code` 或 `token-refresh` 场景，不记录令牌和上游错误正文。
 
 `LargeSecureValueStore` 使用当前清单与分片保存长值，遵守 SecureStore 单值字节限制。写入以 SDK 返回结果为准，不在正常路径再次读回自证。提交失败后的回滚检查用于保护当前引用，属于实际故障处理。
@@ -64,6 +70,8 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 `SqliteSnapshotRepository` 提供当前成绩与资源缓存。版本不符或正文损坏仅删除受影响条目；等待写队列后的删除使用读到的值作为条件，保留后来写入的有效缓存。I/O 错误传播，不按失效内容处理。
 
 `createPreferencesStore` 读取并校验当前格式，成功读到不支持的结构才写当前默认值。`preferences-write-coordinator.ts` 管理真实页面选择、串行保存和失败补写，恢复未完成时不把占位默认值覆盖到磁盘。
+
+`createPersistedRandomChartsFilterStore` 按字段保留恢复期间的编辑，读取完成后合并已保存偏好，未编辑字段沿用磁盘值。串行写入读取合并后的当前偏好；读取失败保留编辑，恢复成功后继续保存。
 
 `resolveAppearance` 根据用户偏好和系统模式生成当前主题；跟随系统时仅 `dark` 使用深色，`unspecified` 使用浅色。系统主题通过 `Appearance.setColorScheme('unspecified')` 恢复跟随。
 

@@ -76,6 +76,43 @@ describe('maimai random charts preferences', () => {
       });
     });
   });
+
+  it('merges edits made during restoration with untouched stored filters', async () => {
+    const storage = new MemoryStore();
+    const preferences = new RandomChartsPreferencesStore(storage);
+    await preferences.save({ ...defaultRandomChartsPreferences(), count: 4, difficulty: 'master', version: '保存版本', selectedDxRatingTagIds: [3] });
+    let finishRead!: () => void;
+    const readGate = new Promise<void>((resolve) => { finishRead = resolve; });
+    const read = storage.getItem.bind(storage);
+    storage.getItem = async (key) => { await readGate; return read(key); };
+    const useStore = createRandomChartsFilterStore(preferences);
+    const hydration = useStore.getState().hydrate();
+    useStore.getState().setCount(2);
+    useStore.getState().setAchievementMin('98');
+    useStore.getState().setCount(3);
+    finishRead();
+    await hydration;
+    expect(useStore.getState()).toMatchObject({ hydrated: true, count: 3, difficulty: 'master', version: '保存版本', achievementMin: '98', selectedDxRatingTagIds: [3] });
+    await vi.waitFor(async () => {
+      await expect(preferences.load()).resolves.toMatchObject({ count: 3, difficulty: 'master', version: '保存版本', achievementMin: '98', selectedDxRatingTagIds: [3] });
+    });
+  });
+
+  it('retains pending edits after a read failure and saves them when restoration succeeds', async () => {
+    const storage = new MemoryStore();
+    const preferences = new RandomChartsPreferencesStore(storage);
+    await preferences.save({ ...defaultRandomChartsPreferences(), count: 4, difficulty: 'master', constantMin: '12' });
+    vi.spyOn(storage, 'getItem').mockRejectedValueOnce(new Error('read failed'));
+    const useStore = createRandomChartsFilterStore(preferences);
+    const hydration = useStore.getState().hydrate();
+    useStore.getState().setCount(2);
+    await expect(hydration).rejects.toThrow('read failed');
+    await useStore.getState().hydrate();
+    expect(useStore.getState()).toMatchObject({ count: 2, difficulty: 'master', constantMin: '12', hydrated: true });
+    await vi.waitFor(async () => {
+      await expect(preferences.load()).resolves.toMatchObject({ count: 2, difficulty: 'master', constantMin: '12' });
+    });
+  });
   it.each([1, 2])('rebuilds old version %s with current defaults', async version => {
     const storage = new MemoryStore();
     storage.values.set('rranker.toolbox.random-charts.v1', JSON.stringify({ schemaVersion: version, count: 3, difficulties: ['master'] }));

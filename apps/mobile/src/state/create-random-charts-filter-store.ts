@@ -26,7 +26,9 @@ export function createPersistedRandomChartsFilterStore<Preferences extends objec
   const { preferences, defaults, clearKeys } = input;
   let hydrationPromise: Promise<void> | null = null;
   let saveQueue: Promise<void> = Promise.resolve();
-  let dirtyBeforeHydrate = false;
+  let pendingBeforeHydrate: Partial<Preferences> = {};
+  let dirty = false;
+  let revision = 0;
 
   return create<RandomChartsFilterStore<Preferences>>((set, get) => {
     const preferenceKeys = Object.keys(defaults()) as (keyof Preferences & string)[];
@@ -35,15 +37,19 @@ export function createPersistedRandomChartsFilterStore<Preferences extends objec
       return Object.fromEntries(preferenceKeys.map((key) => [key, state[key]])) as Preferences;
     };
     const persist = () => {
-      const snapshot = pickPreferences();
       const operation = saveQueue.then(async () => {
         await get().hydrate();
-        await preferences.save(snapshot);
+        if (!dirty) return;
+        const writingRevision = revision;
+        await preferences.save(pickPreferences());
+        if (writingRevision === revision) dirty = false;
       });
       saveQueue = operation.catch(() => undefined);
     };
     const update = (patch: Partial<Preferences>) => {
-      if (!get().hydrated) dirtyBeforeHydrate = true;
+      if (!get().hydrated) pendingBeforeHydrate = { ...pendingBeforeHydrate, ...patch };
+      dirty = true;
+      revision += 1;
       set(patch as Partial<RandomChartsFilterStore<Preferences>>);
       persist();
     };
@@ -66,7 +72,9 @@ export function createPersistedRandomChartsFilterStore<Preferences extends objec
         if (get().hydrated) return;
         hydrationPromise ??= preferences.load().then((stored) => {
           if (get().hydrated) return;
-          set((dirtyBeforeHydrate ? { hydrated: true } : { hydrated: true, ...stored }) as Partial<RandomChartsFilterStore<Preferences>>);
+          set({ ...stored, ...pendingBeforeHydrate, hydrated: true } as Partial<RandomChartsFilterStore<Preferences>>);
+          pendingBeforeHydrate = {};
+          if (dirty) persist();
         }).finally(() => {
           hydrationPromise = null;
         });
