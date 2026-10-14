@@ -13,11 +13,12 @@ import {
   saveLocalAccountName, tufPlayerBinding,
 } from '@/services/account-management';
 import {
-  addOrSwitchDemoAccount, bindOrSwitchPublicPlayer, cancelBoundAccountQueries,
+  addOrSwitchDemoAccount, bindOrSwitchPublicPlayer,
   DEMO_REMOVE_COPY, LOCAL_REMOVE_COPY, PHIRA_UNBIND_COPY, REMOTE_UNBIND_COPY,
   formatPhiraRemovalMessage, formatPublicPlayerRemovalMessage,
   promptAccountRemoval, removeBoundPlayerAccount,
 } from '@/screens/game-accounts-actions';
+import { cancelBoundAccountQueries } from '@/services/invalidate-account-data';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import type { useAccountBindingFlow } from '@/hooks/use-account-binding-flow';
 

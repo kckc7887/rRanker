@@ -35,6 +35,8 @@ Android 原生库与 Hermes 字节码压缩打包，原生库在安装时解压�
 
 详情的 `StackScreenActivityScope` 根据原生栈转场完成、焦点和前后台状态控制活动，首次重内容等待实际入场完成，后台恢复保留已完成的转场状态。有效详情目标在查询等待启用或首次结果期间显示加载状态，已有内容在刷新时保留。`ChartCarousel` 默认只挂载当前难度及相邻两张卡，按谱面身份保存标签输入；下载、标签弹层及保存中的卡额外保留，只有当前卡开展活动查询。普通滑动由原生吸附，显式目标变化才重置定位，宽度变化保留当前难度。历史标签在打开预设弹层时计算。
 
+个人曲库栈页也使用 `StackScreenActivityScope`，批量明细与图片等待入场完成后工作，打开详情后暂停后续批量领取，返回时保留筛选与已加载内容。osu! 收藏明细通过四路有界查询补齐，与歌曲详情共用查询键及 60 秒新鲜缓存。
+
 ## 游戏取数
 
 `hooks/use-game-data.ts` 通过 `services/game-data-query.ts` 与 `services/game-data-loaders.ts` 取得各游戏的实际载荷。QueryClient 保存在 `state/query-client.ts`，展示转换位于 `features/game-content/adapters`。
@@ -65,6 +67,8 @@ Majdata 详情在当前可见难度的物量计算中，复用已下载的 Simai
 
 HTTP 请求使用 `totalAttempts` 表示总尝试次数。认证、轮询、取消和有副作用的 POST 按各自实际请求规则执行。QueryClient 默认最多重试一次，`ProviderError.retryable` 为假时直接结束。落雪 OAuth 按响应错误码区分登录失效、授权配置错误与服务故障，诊断请求场景分别记录换码和令牌刷新。上游现行 API、谱面和回放格式由对应 Provider 或引擎解析。
 
+中二曲库、别名、收藏品及歌曲详情从 Query、loader 到 Provider 共用当前请求的取消信号。Phira 示例成绩同步筛选，真实成绩使用分片搜索。Phira、冰与火之舞示例账号的随机工具显示不支持状态，未绑定真实玩家时显示绑定提示；真实玩家仍使用原随机池。
+
 查询通常先显示当前本地缓存，再后台刷新。失败回退保留原提供方和抓取时间，不能标成刷新成功。`cache-first.ts` 提供这条公共路径；共享请求独立取消消费者，最后一个消费者离开才取消底层工作。需要批量明细的页面使用现有有界查询，Majdata 实际歌曲请求共用四路队列。Majdata 搜索、歌曲、派生结果及排行榜查询在没有使用者后 5 分钟回收，重进已回收的搜索或排行榜重新联网。舞萌五维难点整库写入 `maimai:dxtag:all` 资源缓存，与当前 LXNS 曲库逐项核对歌曲、SD/DX 类型及难度，排除宴谱；Query 结果携带覆盖状态，同一曲库修订且覆盖完整时持续复用已验证结果。覆盖不足时读取 `DXTag/all.json`，更新失败保留缓存及原抓取时间并标记暂存结果，后续进入仍可重试。
 
 本地曲库与成绩搜索通过 `useLocalSearch` 在空闲时分片准备和匹配，每片预算 4 ms。搜索文档按原始歌曲及别名快照弱引用复用，匹配字段保持各游戏语义；新快照自然重新准备。输入、快照或页面活动变化取消未完成工作，命中别名与筛选结果一起发布；页面恢复复用相同条件的完整结果，防抖输入与有效筛选条件决定重新匹配。成绩映射直接消费 Provider 已校验的类型，上游响应与磁盘读取仍保留边界校验。
@@ -78,6 +82,8 @@ ADOFAI 个人曲库按收藏关卡 ID 加载详情，复用单关卡查询缓存
 ## 状态与持久化
 
 `session-store.ts` 保存当前游戏、账号、会话映射和派生的活动视图。`session-provider-resolver.ts` 缓存实际 Provider，`session-providers.ts` 构造游戏所需依赖。绑定和轮换由 `session-credential-service.ts` 提交；共享凭据变化同步到关联账号。异步取消、重新绑定和凭据轮换均在最终提交处检查当前身份。
+
+Phigros 账号摘要优先消费当前游戏查询和已保存存档，磁盘读取后复核查询；无完整载荷时复用账号实际 Provider 的摘要及云存档时间。头像和摘要补全从任务开始保存账号、游戏写入代次及凭据归属，状态和存储提交均检查资格；正常令牌轮换及活动账号切换不使任务失效。
 
 | 数据 | 当前存储 |
 |---|---|
@@ -100,11 +106,13 @@ ADOFAI 个人曲库按收藏关卡 ID 加载详情，复用单关卡查询缓存
 
 主题与展示偏好使用 `preferences-write-coordinator.ts` 合并当前选择和串行落盘，失败保留待写内容。上传好友码的选择通过 `UploadPrefsStore` 按好友码保存；UI 的 `selectedAccountIds` 是派生视图。
 
+随机选曲偏好通过 `createPersistedRandomChartsFilterStore` 按字段合并恢复期间的编辑与磁盘偏好，串行写入使用合并后的当前值。读取失败保留编辑，重新恢复后继续保存。
+
 诊断记录由 `runtime-diagnostics.ts`、`runtime-diagnostics-recorder.ts` 与日志仓库管理。记录默认关闭，开启后按容量保留。普通诊断在进程内保留一份已提交状态，文件队列以异步 pending/previous 替换写出，失败后从磁盘恢复；导出按队列顺序取得独立快照。致命日志保留独立的即时落盘路径。分享副本写入临时缓存，正文保存在文档目录。生产诊断页面使用现有的记录、读取、清理和分享入口。
 
 ## 音游地图
 
-音游地图沿用 `/tools/arcade-finder` 路由，上方地图、下方统一搜索、默认折叠筛选与独立列表。iOS 使用 `react-native-maps@1.27.2` 的 MapKit；Android 四种 ABI 使用高德轻量地图 1.3.2、搜索 9.7.4 和定位 6.4.9 官方合包，固定 JAR 位于 `modules/arcade-map-support/android/libs`。`ArcadeMapSupport` 的原生视图通过系统 WebView、`IAMapWebView` 和 `AMapWrapper` 装配地图，转发 SDK 资源加载和 JS 桥接，按宿主生命周期暂停、恢复并在卸载时销毁；地图和图钉复用 SDK 内置资源及原生绘制的蓝色、橙色图钉。模块同时提供地点搜索、Key 状态和服务同意状态，R8 保留地图、搜索及 WebView JS 桥。Android 自动链接排除 React Native Maps；Web、原生模块缺失或未配置 Key 时使用列表。
+音游地图沿用 `/tools/arcade-finder` 路由，上方地图、下方统一搜索、默认折叠筛选与独立列表。iOS 使用 `react-native-maps@1.27.2` 的 MapKit；Android 四种 ABI 使用高德轻量地图 1.3.2、搜索 9.7.4 和定位 6.4.9 官方合包，固定 JAR 位于 `modules/arcade-map-support/android/libs`。`ArcadeMapSupport` 的原生视图通过系统 WebView、`IAMapWebView` 和 `AMapWrapper` 装配地图，转发 SDK 资源加载和 JS 桥接，按宿主生命周期暂停、恢复；卸载时先将 WebView 移出父视图并结束该视图的转场保留，再停止和销毁。地图和图钉复用 SDK 内置资源及原生绘制的蓝色、橙色图钉。模块同时提供地点搜索、Key 状态和服务同意状态，R8 保留地图、搜索及 WebView JS 桥。Android 自动链接排除 React Native Maps；Web、原生模块缺失或未配置 Key 时使用列表。
 
 正式 Android 构建将仓库 Secret `AMAP_ANDROID_KEY` 传给 `plugins/with-arcade-map.js`，写入 Manifest 的高德元数据，并配置网络权限和 Jetifier。Key 不通过插件参数、日志或客户端 `extra` 传递。高德服务说明经用户同意后才装配地图，同意状态由原生模块持久化；确认后才初始化轻量地图与搜索服务，拒绝仍可使用列表。定位沿用系统定位入口，地图操作不依赖定位授权。拖图停止 500 毫秒后，与当前查询中心的累计距离达到查询半径的 10%（最少 300 米）才查询；没有查询中心时直接查询。轻微移动保留当前请求和选中机厅，刷新及失败期间保留新范围内已有结果，并按新中心更新距离。卡片移动地图不重新查询；页面离开与后台状态取消请求，迟到结果不提交。
 
@@ -132,9 +140,11 @@ Phigros 物量读取发布资源 `metadata/note_counts.tsv`，按歌曲与 EZ、
 
 舞萌、中二和 Phigros 成绩图由 `useBestImageScreenController` 持有账号独立的文件会话。曲绘、头像、角色和模板图片保留原始字节，先复用会话内已有文件；远程图片缺失时取得所属游戏、同 URL 的公共原图缓存，未命中再下载，并在持有原图引用期间复制进会话目录，复制结束或失败均释放引用。已准备的会话副本可在原图缓存清理后继续读取。所需字体与 UI 素材按原相对路径复制一次，HTML 异步写入同一会话目录，WebView 读取范围限定该目录。改样式、分页复用已准备文件；前后台恢复保留同一素材身份的文件与 HTML，未完成准备继续恢复，真正进入后台时取消当前导出。相册导出先读取写入权限，未授权时才申请。离开或换账号先使会话失效并释放视图，等待已发出的原生截图结束，再异步清理 HTML、截图和素材；清缓存跳过仍在使用的会话目录。捕获、保存或分享失败通过公共错误文案反馈。内存警告可卸载预览，再由用户降低分辨率后重新加载。
 
+成绩图偏好按账号复用写入协调器，慢读取期间只覆盖用户实际修改的字段；读取与写入失败保留当前选择并在前台自动恢复。素材准备与 HTML 写盘仅在实际失败后按 0.5、2、10、30 秒退避，随后每 30 秒重试，不对仍在执行的操作设置总时限；可选图片的 HTTP 404 沿用空素材回退。后台、账号切换与任务失效停止未完成尝试，已成功文件继续复用。
+
 ## 谱面与下载
 
-四套生成播放器为 maimai、Phigros、osu!、Rizline。生成源位于各自 `webview-player`，生成物供宿主注入；共享 UI 与手势位于 `chart-preview-shared/webview-player`。
+四套生成播放器为 maimai、Phigros、osu!、Rizline。生成源位于各自 `webview-player`，各自维护 `player.bundle` 和 `index.html`；宿主会话将 bundle 以 `player.js` 暂存并沿用 HTML 引用。共享 UI 与手势位于 `chart-preview-shared/webview-player`。
 
 `chart-preview-screen-shell.tsx` 管理资源准备、WebView、前后台暂停、取消、seek 和释放。`chart-preview-bridge.ts` 只解析当前事件和设置信封，宿主命令由公共 serializer 生成。控制设置、播放状态和时间回传通过同一桥接路径。
 
@@ -175,7 +185,7 @@ KALEIDXSCOPE 的日程、课题和手工进度位于 `domain/kaleidx-scope.ts`�
 
 lint 保留 Hooks 的调用与依赖检查，组件编译器诊断的启用范围由 `eslint.config.js` 配置。Jest 转译 Router 所需的 `standard-navigation`，原生模块测试只替换所属业务入口，保留 Expo Core 的默认环境。
 
-postinstall 按实际源码调用点应用 decode-uri-component 和 Xiaomi WebView 的运行补丁。高德轻量地图依赖由 `arcade-map-support` 原生模块装配，地图、搜索和 JS 桥的混淆配置随模块提供。
+postinstall 按实际源码调用点应用 decode-uri-component 和 WebView 的运行补丁。WebView 补丁处理 Xiaomi 消息桥兼容，并在 Android 公共销毁入口先移出父视图、结束该视图的转场保留，再销毁。高德轻量地图依赖由 `arcade-map-support` 原生模块装配，地图、搜索和 JS 桥的混淆配置随模块提供。
 
 ### CI 与发布
 

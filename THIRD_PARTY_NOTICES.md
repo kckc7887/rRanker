@@ -6,8 +6,8 @@
 
 The Phigros score-image renderer in
 `apps/mobile/src/features/phigros-best-image/build-phigros-best-image-html.ts`
-uses the `resources/html/b19` DOM/CSS contract from **phi-plugin**. The non-font
-files from `b19`, `common` and `otherimg` are copied
+uses the `resources/html/b19` DOM/CSS contract from **phi-plugin**. The required
+CSS and image files from `b19`, `common` and `otherimg` are copied
 without content changes into `apps/mobile/assets/phigros-b30-reference`.
 
 phi-plugin 仓库采用双层许可证：仓库根 `LICENSE` 为 GPL-3.0，而 `resources/`
@@ -385,7 +385,7 @@ SOFTWARE.
 
 ## Native maps and coordinate conversion
 
-[react-native-maps](https://github.com/react-native-maps/react-native-maps/tree/21fb20fef78030705a138f1f77a3eb7bb7c08e40), 1.20.1.
+[react-native-maps](https://github.com/react-native-maps/react-native-maps/tree/99183afdd8c4d814cc05e324c9e8c60fd812c2da), 1.27.2.
 
 ```text
 The MIT License (MIT)

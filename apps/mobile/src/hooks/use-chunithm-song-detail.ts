@@ -18,6 +18,6 @@ export function useChunithmSongDetail(songId: string | undefined) {
     enabled: active && activeGameId === 'chunithm' && !!normalizedSongId,
     notifyOnChangeProps: active ? undefined : [],
     queryKey,
-    queryFn: (): Promise<ChunithmSongDetailSnapshot> => provider.getSongDetail(normalizedSongId!),
+    queryFn: ({ signal }): Promise<ChunithmSongDetailSnapshot> => provider.getSongDetail(normalizedSongId!, signal),
   });
 }

@@ -5,6 +5,8 @@ import { MuseDashSongDetailScreen } from '@/screens/MuseDashScreens';
 import type { MuseDashAlbumsResponse, MuseDashCeResponse, MuseDashPlayer } from '@/domain/muse-dash';
 
 let mockRouteParams: Record<string, string> = { songId: '0-47', gameId: 'musedash' };
+let mockAlbumsPending = false;
+let mockAlbumsAvailable = true;
 const mockDiffdiff = [
   ['0-47', 3, '11', 640.1, 11.5],
   ['0-47', 4, '12', 739.7, 12.5],
@@ -81,7 +83,7 @@ jest.mock('@/hooks/use-muse-dash', () => {
   });
   return {
     useMuseDashPlayer: () => query(mockPlayer),
-    useMuseDashAlbums: () => query(mockAlbums),
+    useMuseDashAlbums: () => ({ ...query(mockAlbumsAvailable ? mockAlbums : undefined), isPending: mockAlbumsPending }),
     useMuseDashCe: () => query(mockCe),
     useMuseDashDiffdiff: () => query(mockDiffdiff),
     useMuseDashPlayDetail: () => query(undefined),
@@ -115,9 +117,25 @@ const carouselOffset = (screen: Awaited<ReturnType<typeof render>>): number => {
 
 beforeEach(() => {
   mockRouteParams = { songId: '0-47', gameId: 'musedash' };
+  mockAlbumsPending = false;
+  mockAlbumsAvailable = true;
 });
 
 describe('Muse Dash 歌曲详情真实路由', () => {
+  it('waits for albums before reporting a missing song', async () => {
+    mockAlbumsPending = true;
+    mockAlbumsAvailable = false;
+    const screen = await render(<SongDetailScreen />);
+    expect(screen.queryByText('未找到该喵斯快跑歌曲')).toBeNull();
+    mockAlbumsPending = false;
+    mockAlbumsAvailable = true;
+    await screen.rerender(<SongDetailScreen />);
+    expect(screen.getAllByText('示例歌曲').length).toBeGreaterThan(0);
+    mockAlbumsAvailable = false;
+    await screen.rerender(<SongDetailScreen />);
+    expect(screen.getByText('未找到该喵斯快跑歌曲')).toBeTruthy();
+  });
+
   it('路由带 levelIndex 时定位到与直接渲染组件一致的难度', async () => {
     const direct = await render(<MuseDashSongDetailScreen songId="0-47" levelIndex={3} />);
     const directOffset = carouselOffset(direct);

@@ -227,7 +227,7 @@ describe('Phigros 生成图片页', () => {
     expect(screen.getByText('导出到相册')).toBeTruthy();
   });
 
-  it('keeps the core preview, blocks export, and retries a failed extension download', async () => {
+  it('keeps the core preview and automatically recovers a failed extension download', async () => {
     const { preparePhigrosFonts } = jest.requireMock('@/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
     preparePhigrosFonts.mockImplementationOnce(async () => ({
       directory: { uri: 'file:///reference/' },
@@ -238,10 +238,8 @@ describe('Phigros 生成图片页', () => {
       insets: { top: 0, left: 0, right: 0, bottom: 0 },
     }}><PhigrosBestImageScreen /></SafeAreaProvider>);
     await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0')).toBeTruthy());
-    await waitFor(() => expect(screen.getByText('无法准备成绩图片，请重试。')).toBeTruthy());
+    await waitFor(() => expect(screen.getByText('素材准备失败，正在自动重试。')).toBeTruthy());
     expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(true);
-    await fireEvent.press(screen.getByLabelText('重试字体下载'));
-    await waitFor(() => expect(preparePhigrosFonts).toHaveBeenCalledTimes(2));
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(false));
   });
 

@@ -1,5 +1,7 @@
 import { loadItemsBounded } from '@/services/offset-pagination';
-import { createInflightGuard, captureResourceWrites, resourceWriteGeneration } from '@/services/snapshot-cache-utils';
+import { createInflightGuard, captureResourceWrites, resourceWriteGeneration, subscribeResourceWrites } from '@/services/snapshot-cache-utils';
+import { ProviderError } from '@/providers/errors';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import { acquireRemoteImageOriginal } from '@/services/remote-image-cache';
 import { BEST_IMAGE_STAGE_ROOT, clearDirectoryContentsStrict, runSharedCacheFileOperation } from '@/features/storage-management/fs-storage';
 import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
@@ -55,6 +57,41 @@ function assertSession(session: BestImageAssetSession, assertCurrent: () => void
   if (session.disposed) throw new Error('成绩图会话已结束');
 }
 
+export async function retryBestImagePreparation<T>(
+  session: BestImageAssetSession, signal: AbortSignal, prepare: () => Promise<T>,
+  onFailure?: (error: unknown) => void,
+): Promise<T> {
+  const assertCurrent = captureResourceWrites(session.game, signal);
+  const delays = [500, 2_000, 10_000, 30_000];
+  let failures = 0;
+  for (;;) {
+    assertSession(session, assertCurrent);
+    try { return await prepare(); }
+    catch (error) {
+      assertSession(session, assertCurrent);
+      failures += 1;
+      if (failures === 1 || (failures & (failures - 1)) === 0) recordRuntimeError('best-image-prepare', error, false, { phase: 'retry' });
+      onFailure?.(error);
+      await new Promise<void>((resolve, reject) => {
+        const cancel = () => {
+          clearTimeout(timer);
+          signal.removeEventListener('abort', cancel);
+          unsubscribe();
+          reject(signal.reason ?? new Error('成绩图准备已取消'));
+        };
+        const unsubscribe = subscribeResourceWrites(session.game, cancel);
+        const timer = setTimeout(() => {
+          signal.removeEventListener('abort', cancel);
+          unsubscribe();
+          resolve();
+        }, delays[Math.min(failures - 1, delays.length - 1)]);
+        signal.addEventListener('abort', cancel, { once: true });
+        if (signal.aborted) cancel();
+      });
+    }
+  }
+}
+
 export function copyBestImageAsset(
   session: BestImageAssetSession, sourceUri: string, filename: string, signal?: AbortSignal,
 ): Promise<string> {
@@ -87,7 +124,7 @@ export function loadRemoteImageFile(
 ): Promise<string | null> {
   if (!url || signal?.aborted || session.disposed) return Promise.resolve(null);
   const assertGeneration = captureResourceWrites(session.game);
-  return session.requests.share(resourceWriteGeneration(session.game) + ':' + url, async (requestSignal) => {
+  return session.requests.share(resourceWriteGeneration(session.game) + ':' + url, (requestSignal) => retryBestImagePreparation(session, requestSignal, async () => {
     const assertCurrent = captureResourceWrites(session.game, requestSignal);
     assertSession(session, assertGeneration);
     const hash = (await digestStringAsync(CryptoDigestAlgorithm.SHA256, url)).slice(0, 32);
@@ -97,14 +134,19 @@ export function loadRemoteImageFile(
     const info = await getInfoAsync(staged.uri);
     assertSession(session, assertCurrent);
     if (info.exists && info.size > 0) return staged.uri;
-    const original = await acquireRemoteImageOriginal(url, session.game, requestSignal);
+    let original;
+    try { original = await acquireRemoteImageOriginal(url, session.game, requestSignal); }
+    catch (error) {
+      if (error instanceof ProviderError && error.code === 'no_data') return null;
+      throw error;
+    }
     try {
       assertSession(session, assertCurrent);
       return await copyBestImageAsset(session, original.fileUri, filename, requestSignal);
     } finally {
       await original.release();
     }
-  }, signal).catch(() => null);
+  }), signal).catch(() => null);
 }
 
 /** 同 URL 只下载一次，结果仍按调用方 ID 返回。 */

@@ -107,9 +107,9 @@ export function PhiraRecordsScreen() {
     filter.constantMax,
     `${accountId}:${example ? demo.dataUpdatedAt : realQuery.data?.source.updatedAt ?? 'loading'}`,
   );
-  const sortedItems = useMemo(() => filterPhiraBests(unfilteredItems, {
+  const sortedItems = useMemo(() => example ? undefined : filterPhiraBests(unfilteredItems, {
     keyword: '', constantMin: '', constantMax: '', accuracyMin: '', accuracyMax: '', rank: null, xing: null, sort: filter.sort,
-  }), [filter.sort, unfilteredItems]);
+  }), [example, filter.sort, unfilteredItems]);
   const selectBest = useCallback((item: PhiraQueriedBest, filters: typeof filter) => filterPhiraBests([item], filters)[0], []);
   const search = useLocalSearch(sortedItems, filter, selectBest);
   const demoFiltered = useMemo(() => example ? filterPhiraBests(unfilteredItems, filter) : [], [example, filter, unfilteredItems]);

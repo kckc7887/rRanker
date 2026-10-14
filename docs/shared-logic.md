@@ -17,6 +17,8 @@
 
 展示模型使用实际 `GameId`。`DetailTarget` 描述游戏内真实目标，URL 必须携带 `gameId`；osu! 谱面使用 `beatmapId`，舞萌谱面带类型和难度索引。行、卡片、随机工具和个人曲库都通过 `detailTargetHref` 跳转。详情初始等待以有效目标的查询 `isPending` 判断，包含页面转场期间尚未启用的查询；非法目标及明确未绑定的空态继续独立处理，已有内容不被刷新状态替换。
 
+`MuseDashQuery` 透传 `isPending`，详情等待相册首个结果后判断歌曲是否存在。`ChunithmCatalogProvider` 的曲库、别名、收藏品与单曲方法，以及对应 loader 接受可选 `AbortSignal`，沿当前 Query 传到公共 HTTP 入口。
+
 Provider 负责上游请求与响应转换，页面不拼接认证请求。水鱼与 LXNS 成绩映射直接接收 Provider 已校验的类型；上游响应与磁盘读取保留校验。LXNS 成绩曲名按上游字符串原样保留，包括空字符串和空白字符；仅缺少 `song_name` 字段时使用缺失占位并标记不完整。HTTP 使用 `totalAttempts`，有副作用的请求按实际规则限制重试；取消在公共请求入口处理。QueryClient 默认最多重试一次，并遵守 `ProviderError.retryable`。上游当前格式中的字段和平台必需的 SDK 适配继续由所属模块处理。
 
 `useLocalSearch` 在实际逐项准备、匹配循环中按 4 ms 预算分片，通过 `scheduleIdleTask` 继续；输入、快照与活动状态变化取消旧工作。页面恢复时复用相同条目、快照、筛选条件和选择函数的完整结果；调用方只将防抖关键词和有效筛选字段纳入条件身份。`searchDocumentFor` 按字段提取函数和原始对象弱引用复用搜索文档，`songSearchDocument` 为同一歌曲及别名快照的曲库与成绩页提供共同入口。匹配字段保持游戏原有语义，命中别名随筛选结果发布。
@@ -32,6 +34,8 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。水�
 `createInflightGuard.share` 共享同键工作并独立取消消费者。`useBoundedQueries` 管理实际批量明细；服务的实际网络请求使用现有队列。清缓存先失效对应资源代次，真实异步结果在最终提交处检查资格。
 
 ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路有界查询复用 `useTufLevel` 的查询定义与 `['tuf', 'level', levelId]` 缓存。单项详情失败不删除收藏或标签。`TufRandomChartsScreen` 按当前前台和页面焦点取消补页，恢复后只加载尚未完成的页；`prefetchTufPassPage` 在提交前检查取消信号与资源代次。
+
+`useOsuBeatmapsetsByIds` 以四路 `useBoundedQueries` 加载个人曲库明细，去重后的等值 ID 序列复用查询定义，与单曲详情保持同一查询键和 60 秒新鲜期。个人曲库路由通过 `StackScreenActivityScope` 控制所有游戏的页面活动，失焦暂停后续领取并保留局部筛选与成功结果。
 
 舞萌、中二、Phigros、Muse Dash 随机页沿用 `RandomChartsPage` 的状态与重试入口。有缓存时继续使用；没有成绩时允许普通抽取并显示缺失值，启用成绩筛选则暂停抽取。`RandomUnplayedChartCard.scoreAvailable` 区分未知成绩与确认未游玩。Muse Dash 的专辑和定数是随机池必需数据，角色与精灵资料仅用于可选展示。
 
@@ -51,6 +55,12 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 凭据轮换提交检查当前账号、期望会话与取消信号。共用凭据的账号一起更新；解绑、重新绑定或较新轮换发生后，旧结果不能覆盖新凭据。实际持久化失败保留待保存会话，前台恢复时重试。Provider 通过模块函数接线，不提供运行时替换或空 setter。
 
+`hydratePhigrosAccount` 优先读取当前账号的游戏查询载荷，再读取 `PhigrosSaveCache` 并复核最新查询；没有载荷时复用账号的实际 `PhigrosScoreProvider` 摘要。补全结果包含 RKS、课题等级、头像、显示名与原来源，不另存已完成摘要。
+
+头像与摘要补全在开始时通过 `captureAccountAvatarWrites` 捕获游戏、账号写入代次和凭据归属，更新状态与存储提交前复核。正常令牌轮换和活动账号切换保留资格，清理、解绑或重新绑定使旧结果失效。并发消费者通过现有共享请求独立取消。`cancelBoundAccountQueries` 位于 `services/invalidate-account-data.ts`，先失效账号写入，再取消并删除所属查询。
+
+`SecureSessionStore.updateAccountMetadata` 接收可选的提交资格检查，在队列执行和索引读取后复核，再写入当前账号元数据。
+
 `lxns-oauth.ts` 共用授权码兑换与令牌刷新请求。`invalid_grant` 表示登录失效；`invalid_request`、`invalid_client`、`unsupported_grant_type` 表示授权配置错误；`server_error` 表示可重试的服务故障。请求通过现有诊断入口记录 `authorization-code` 或 `token-refresh` 场景，不记录令牌和上游错误正文。
 
 `LargeSecureValueStore` 使用当前清单与分片保存长值，遵守 SecureStore 单值字节限制。写入以 SDK 返回结果为准，不在正常路径再次读回自证。提交失败后的回滚检查用于保护当前引用，属于实际故障处理。
@@ -64,6 +74,8 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 `SqliteSnapshotRepository` 提供当前成绩与资源缓存。版本不符或正文损坏仅删除受影响条目；等待写队列后的删除使用读到的值作为条件，保留后来写入的有效缓存。I/O 错误传播，不按失效内容处理。
 
 `createPreferencesStore` 读取并校验当前格式，成功读到不支持的结构才写当前默认值。`preferences-write-coordinator.ts` 管理真实页面选择、串行保存和失败补写，恢复未完成时不把占位默认值覆盖到磁盘。
+
+`createPersistedRandomChartsFilterStore` 按字段保留恢复期间的编辑，读取完成后合并已保存偏好，未编辑字段沿用磁盘值。串行写入读取合并后的当前偏好；读取失败保留编辑，恢复成功后继续保存。
 
 `resolveAppearance` 根据用户偏好和系统模式生成当前主题；跟随系统时仅 `dark` 使用深色，`unspecified` 使用浅色。系统主题通过 `Appearance.setColorScheme('unspecified')` 恢复跟随。
 
@@ -91,13 +103,21 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 通用行、卡片和封面位于 `components/game-content`，游戏组件只提供实际展示差异。成绩卡曲绘、个性化卡片示例以及中二、Phigros 的成绩图歌曲背景选择器统一使用所属游戏的 thumbnail 缓存；Phigros 头像选择沿用 native 缓存。`GameDifficultyBadge` 使用普通样式覆盖，保留尺寸、渐变和文本。列表的页面活动、可见性与图片落盘通过现有共享组件传递；可见性使用列表的稳定条目键，分组列表额外按分组键隔离，同键数据更新保留当前活动状态。
 
+`GameSongRow` 与 `GameSongCover` 将封面失败关联当前游戏和图片来源，来源变化允许新图片加载，旧来源的迟到错误不改变当前图片状态。
+
 `ChartCarousel` 按谱面键保存标签草稿，只装配当前及相邻卡片，下载与标签操作分别保留离窗卡片；`renderItem` 传递当前卡活动状态、受控标签草稿和任务保留回调。滚动只更新活动卡，初始目标及 `resetKey` 变化重置定位，宽度变化保留当前卡，列表缩短时钳制索引；Majdata 传入实际初始难度，不将滚动索引回写初始目标。`TagEditor` 的 `historyTags` 可传入惰性读取函数，仅在预设弹层打开时计算，保存失败保留输入与弹层。
 
 绑定弹层复用当前输入、按钮、扫码和 `useAccountBindingRequest`。公共错误文案隐藏无助于用户决策的底层异常；实际错误进入诊断记录。
 
 ## 成绩图与谱面功能
 
+成绩图与谱面预览共用 `react-native-webview`。`scripts/patch-react-native-webview-xiaomi-bridge.cjs` 在 Android 公共 `destroy` 入口移出所属父视图并调用 `endViewTransition`，随后执行原生销毁；页面卸载和宿主销毁共用该入口。
+
+`useBestImagePreferences` 按账号使用 `createPreferencesWriteCoordinator`，保留 `setPrefs` 更新方式，以实际变化字段合并读取中的选择与已存偏好。舞萌图标、姓名框、背景框和 Rating 样式独立合并，落盘仍使用原有选择结构。读取失败保留待保存选择，写入失败保留当前值，前台按协调器退避自动补读、补写；失败通过现有通知和诊断入口反馈。
+
 成绩图公共入口位于 `features/best-image`：`useBestImageScreenController`、`useBestImagePreview`、`useBestImageExport` 与共享页面壳。`load-best-image-session.ts` 为舞萌、中二和 Phigros 提供账号独立的素材会话，`loadRemoteImageFile`、`loadImageFiles` 与 `copyBestImageAsset` 返回原字节文件 URL。远程素材先复用会话中的非空文件，缺失时经 `acquireRemoteImageOriginal` 取得所属游戏、同 URL 的公共原图缓存或共享下载结果，由 `copyBestImageAsset` 复制进会话目录，复制结束或失败均释放原图引用。压缩垫图及不同 URL 的曲绘版本不参与素材替换。游戏入口只提供素材地址、当前所需字体和布局；`prepareBestImageWebViewSources` 在同一会话目录异步写出 HTML，返回异步 `dispose`。改样式、分页与后台恢复沿用当前会话，已就绪素材与 HTML 保留身份，未完成工作恢复，WebView 只读取该目录。`requestBestImageExportPermission` 先读取相册权限，未授权时才申请，拒绝和读取失败沿用导出错误路径。真正进入后台取消当前导出，恢复后可重新导出。离开或换账号先失效会话，`cancelExportRequest` 等待未结束截图及临时截图清理，再回收会话文件；后台等待截图可取消。清缓存跳过活跃会话，启动维护回收上次会话目录。
+
+`retryBestImagePreparation` 对素材准备与 HTML 写盘的实际失败依次等待 0.5、2、10、30 秒，之后保持 30 秒间隔。未结束的操作持续等待，空素材沿用各入口的可选回退；原图 HTTP 404 由下载入口映射为 `no_data`，成绩图返回空素材。取消信号、会话失效和资源代次变化结束旧尝试；后台停止未完成准备，恢复复用成功素材和 HTML。
 
 相册权限和保存使用 `expo-media-library/legacy`。字体及舞萌 UI 素材通过 `File.moveSync` 完成文件发布，iOS 谱面包通过 `File.copySync` 完成复制后才结束保存；临时来源的清理沿用所属任务时序。
 
@@ -107,6 +127,8 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 - `chart-preview-bridge.ts` 解析当前播放器事件、设置信封和宿主命令。
 - `chart-preview-navigation.ts` 交接当前预览请求。
 - `webview-player` 提供四套播放器共用的设置 UI 与手势。
+
+播放器生成器输出 `player.bundle` 与 `index.html`，宿主准备入口将 bundle 写为会话内的 `player.js`，HTML 沿用该脚本引用。
 
 预览准备结果的 `dispose` 返回 `Promise<void>`，宿主先失效会话和释放视图，再异步清理；迟到准备结果同样回收。`fs-storage.ts` 的目录统计、清理和版本裁剪使用异步文件入口，`runSharedCacheFileOperation` 串行提交共享素材文件发布与共享目录清理，排队后重新检查代次。启动维护保留当前会话文件及已使用的固定预览素材目录。图片索引、发布和清理在 `remote-image-cache.ts` 内串行提交；命中读取与正常释放复用已初始化目录，原图核验合并 LRU 更新，临时文件只在未命中时准备。最后释放更新使用时间，仅有超额待回收时继续裁剪，取消与代次检查仍控制结果发布。
 

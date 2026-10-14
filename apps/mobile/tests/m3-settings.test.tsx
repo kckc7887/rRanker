@@ -185,6 +185,7 @@ jest.mock('@/state/session-store', () => {
   const state = () => ({
     session: mockSession,
     sessionsByAccountId: { [mockAccount.id]: mockSession },
+    credentialIdsByAccountId: { [mockAccount.id]: `credential:${mockAccount.id}` },
     boundAccounts: mockBoundAccounts,
     activeAccountId: mockAccount.id,
     selectBoundAccount: mockSelectBoundAccount,

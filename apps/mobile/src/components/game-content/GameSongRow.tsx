@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useRef, useState, type ReactNode } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { router } from 'expo-router';
 import {
@@ -83,20 +83,23 @@ export function GameSongRow({
   matchNoteStyle,
 }: GameSongRowProps) {
   const theme = useAppTheme();
-  const [coverFailed, setCoverFailed] = useState(false);
+  const imageKey = coverImage?.source ? `${presentation.gameId}|${coverImage.source}` : null;
+  const currentImage = useRef(imageKey);
+  currentImage.current = imageKey;
+  const [failedImage, setFailedImage] = useState<string | null>(null);
   const openDetail = () => router.push(detailTargetHref(presentation.route));
   const title = (
     <Text numberOfLines={2} style={[titleStyle, { color: theme.text }]}>
       {presentation.title}
     </Text>
   );
-  const coverImageNode = coverImage && coverImage.source != null && !coverFailed ? (
+  const coverImageNode = coverImage && coverImage.source != null && failedImage !== imageKey ? (
     <Image
       accessibilityLabel={coverImage.accessibilityLabel}
       cacheProfile="thumbnail"
       gameId={presentation.gameId}
       contentFit="cover"
-      onError={() => setCoverFailed(true)}
+      onError={() => { if (currentImage.current === imageKey) setFailedImage(imageKey); }}
       source={coverImage.source}
       style={coverImage.imageStyle}
       transition={120}

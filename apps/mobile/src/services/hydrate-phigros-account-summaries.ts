@@ -3,6 +3,7 @@ import { SecureSessionStore } from '@/storage/secure-session-store';
 import { getForegroundAbortSignal } from '@/state/app-lifecycle-core';
 import { hydratePhigrosAccount } from '@/services/resolve-account-avatar';
 import { loadItemsBounded } from '@/services/offset-pagination';
+import { captureAccountAvatarWrites } from '@/services/resolve-account-avatar-persist';
 
 export async function hydratePhigrosAccountSummaries(
   signal: AbortSignal = getForegroundAbortSignal(),
@@ -12,30 +13,31 @@ export async function hydratePhigrosAccountSummaries(
   const secureStore = new SecureSessionStore();
 
   await loadItemsBounded({
-    items: accounts,
+    items: accounts.map(account => ({ account, assertCurrent: captureAccountAvatarWrites(account.id, signal) })),
     concurrency: 4,
     signal,
-    load: async (account) => {
+    load: async ({ account, assertCurrent }) => {
       const session = snapshot.sessionsByAccountId[account.id];
       if (session?.mode !== 'phi-session') return;
       try {
-        const { summary, avatarUrl } = await hydratePhigrosAccount(account, session, signal);
-        if (signal.aborted) return;
+        assertCurrent();
+        const { summary, avatarUrl, displayName } = await hydratePhigrosAccount(account, session, signal);
+        assertCurrent();
         const scoreDisplay = summary.rankingScore.toFixed(4);
         useSession.getState().updateBoundAccountScore(
           account.id,
           scoreDisplay,
-          session.playerId,
+          displayName,
           avatarUrl ?? undefined,
           summary.challengeModeRank,
         );
-        if (signal.aborted) return;
+        assertCurrent();
         await secureStore.updateAccountMetadata(account.id, {
-          displayName: session.playerId,
+          displayName,
           scoreDisplay,
           ...(avatarUrl ? { avatarUrl } : {}),
           challengeModeRank: summary.challengeModeRank,
-        });
+        }, assertCurrent);
       } catch {
       }
     },

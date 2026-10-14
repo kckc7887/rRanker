@@ -8,7 +8,7 @@
 [![platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-green?style=flat-square)]()
 [![release](https://img.shields.io/github/v/release/kckc7887/rRanker?style=flat-square)](https://github.com/kckc7887/rRanker/releases)
 [![last-commit](https://img.shields.io/github/last-commit/kckc7887/rRanker?style=flat-square)](https://github.com/kckc7887/rRanker/commits)
-[![tech](https://img.shields.io/badge/React%20Native-Expo%20SDK%2054%20%7C%20TypeScript-blue?style=flat-square)]()
+[![tech](https://img.shields.io/badge/React%20Native-Expo%20SDK%2057%20%7C%20TypeScript-blue?style=flat-square)]()
 
 </div>
 rRanker 是一个多音游数据管理应用。你可以在一个应用中查看不同游戏和账号的玩家数据、最佳成绩、完整成绩、曲库与歌曲详情，并使用针对各游戏提供的实用工具。

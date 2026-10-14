@@ -91,14 +91,6 @@
       "copy": "Effects/Sprites/Effect/Circle.png.meta"
     },
     {
-      "upstream": "Assets/Sprites/Effect/CircleMask.png",
-      "copy": "Effects/Sprites/Effect/CircleMask.png"
-    },
-    {
-      "upstream": "Assets/Sprites/Effect/CircleMask.png.meta",
-      "copy": "Effects/Sprites/Effect/CircleMask.png.meta"
-    },
-    {
       "upstream": "Assets/Sprites/Effect/ColorBall.png",
       "copy": "Effects/Sprites/Effect/ColorBall.png"
     },
@@ -115,22 +107,6 @@
       "copy": "Effects/Sprites/Effect/Firework.png.meta"
     },
     {
-      "upstream": "Assets/Sprites/Effect/Hex_Good.png",
-      "copy": "Effects/Sprites/Effect/Hex_Good.png"
-    },
-    {
-      "upstream": "Assets/Sprites/Effect/Hex_Good.png.meta",
-      "copy": "Effects/Sprites/Effect/Hex_Good.png.meta"
-    },
-    {
-      "upstream": "Assets/Sprites/Effect/Hex_Great.png",
-      "copy": "Effects/Sprites/Effect/Hex_Great.png"
-    },
-    {
-      "upstream": "Assets/Sprites/Effect/Hex_Great.png.meta",
-      "copy": "Effects/Sprites/Effect/Hex_Great.png.meta"
-    },
-    {
       "upstream": "Assets/Sprites/Effect/Hex_Perfect.png",
       "copy": "Effects/Sprites/Effect/Hex_Perfect.png"
     },
@@ -139,36 +115,12 @@
       "copy": "Effects/Sprites/Effect/Hex_Perfect.png.meta"
     },
     {
-      "upstream": "Assets/Sprites/Effect/Star_Good.png",
-      "copy": "Effects/Sprites/Effect/Star_Good.png"
-    },
-    {
-      "upstream": "Assets/Sprites/Effect/Star_Good.png.meta",
-      "copy": "Effects/Sprites/Effect/Star_Good.png.meta"
-    },
-    {
-      "upstream": "Assets/Sprites/Effect/Star_Great.png",
-      "copy": "Effects/Sprites/Effect/Star_Great.png"
-    },
-    {
-      "upstream": "Assets/Sprites/Effect/Star_Great.png.meta",
-      "copy": "Effects/Sprites/Effect/Star_Great.png.meta"
-    },
-    {
       "upstream": "Assets/Sprites/Effect/Star_Perfect.png",
       "copy": "Effects/Sprites/Effect/Star_Perfect.png"
     },
     {
       "upstream": "Assets/Sprites/Effect/Star_Perfect.png.meta",
       "copy": "Effects/Sprites/Effect/Star_Perfect.png.meta"
-    },
-    {
-      "upstream": "Assets/Sprites/Effect/StarWhite.png",
-      "copy": "Effects/Sprites/Effect/StarWhite.png"
-    },
-    {
-      "upstream": "Assets/Sprites/Effect/StarWhite.png.meta",
-      "copy": "Effects/Sprites/Effect/StarWhite.png.meta"
     },
     {
       "upstream": "Assets/Sprites/Effect/TouchEffectCircle.png",

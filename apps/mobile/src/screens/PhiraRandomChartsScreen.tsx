@@ -11,7 +11,8 @@ import { useSession } from '@/state/session-store';
 import { usePhiraRecordsFilter } from '@/state/phira-records-filter';
 
 export function PhiraRandomChartsScreen() {
-  const id = phiraPlayerIdFromAccountId(useSession((state) => state.activeAccountId));
+  const accountId = useSession((state) => state.activeAccountId);
+  const id = phiraPlayerIdFromAccountId(accountId);
   const query = usePhiraBests(id); const [count, setCount] = useState<RandomChartsCount>(1); const [results, setResults] = useState<PhiraQueriedBest[]>([]); const [drawn, setDrawn] = useState(false);
   const filter = usePhiraRecordsFilter();
   const pool = useMemo(() => filterPhiraBests(Object.values(query.data?.items ?? {}), filter), [filter, query.data?.items]);
@@ -26,5 +27,7 @@ export function PhiraRandomChartsScreen() {
       onAccuracyMaxChange={filter.setAccuracyMax} onRankChange={filter.setRank}
       onXingChange={filter.setXing} onReset={filter.clearFilters} />}
     poolSize={pool.length} onDraw={draw} hasDrawn={drawn} resultCount={results.length} results={results.map((item) => <PhiraScoreCard key={item.chart.id} item={item} />)}
-    emptyMessage="没有可抽取的歌曲" drawDisabled={!pool.length} poolError={query.error ? '无法读取成绩，请重试。' : null} onRetryPool={() => void query.refetch()} />;
+    emptyMessage="没有可抽取的歌曲" drawDisabled={id === null || !pool.length}
+    poolStatus={accountId === 'phira:test' ? '当前示例账号暂不支持随机抽取' : id === null ? '请先绑定 Phira 玩家' : undefined}
+    poolError={query.error ? '无法读取成绩，请重试。' : null} onRetryPool={() => void query.refetch()} />;
 }

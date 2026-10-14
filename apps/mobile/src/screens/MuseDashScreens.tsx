@@ -452,7 +452,7 @@ export function MuseDashSongDetailScreen({ songId, levelIndex }: { songId: strin
     { key: 'bpm', label: 'BPM', value: joined.song.bpm || '—', flex: 1 },
     { key: 'album', label: 'DLC 来源', value: joined.albumTitle, flex: 2 },
   ] : [];
-  const loading = albums.isLoading;
+  const loading = albums.isPending;
   const error = albums.error;
   const cardWidth = Math.max(280, width - 40);
   const songItem = joined ? library.data?.find((item) => item.key === library.songKey(songId)) : undefined;

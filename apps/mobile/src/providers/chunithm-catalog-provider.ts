@@ -168,7 +168,7 @@ function versionAtOrBefore(
   );
 }
 
-function getJson(path: string): Promise<unknown> {
+function getJson(path: string, signal?: AbortSignal): Promise<unknown> {
   return fetchProviderJson({
     diagnosticScenario: 'catalog',
     baseUrl: API_ROOT,
@@ -176,6 +176,7 @@ function getJson(path: string): Promise<unknown> {
     invalidJsonMessage: 'LXNS 中二曲库返回了无效 JSON',
     timeoutMessage: 'LXNS 中二曲库读取超时',
     networkMessage: '无法连接 LXNS 中二曲库',
+    signal,
   });
 }
 
@@ -370,8 +371,8 @@ export function mapChunithmCollections(
 }
 
 export class ChunithmCatalogProvider {
-  async getCatalog(): Promise<ChunithmCatalogSnapshot> {
-    return mapChunithmCatalog(await getJson('/song/list'));
+  async getCatalog(signal?: AbortSignal): Promise<ChunithmCatalogSnapshot> {
+    return mapChunithmCatalog(await getJson('/song/list', signal));
   }
 
   async getNewVersionTitles(signal?: AbortSignal): Promise<string[]> {
@@ -391,15 +392,15 @@ export class ChunithmCatalogProvider {
     return parsed.data.version;
   }
 
-  async getAliases(): Promise<ChunithmAliasSnapshot> {
-    return mapChunithmAliases(await getJson('/alias/list'));
+  async getAliases(signal?: AbortSignal): Promise<ChunithmAliasSnapshot> {
+    return mapChunithmAliases(await getJson('/alias/list', signal));
   }
 
-  async getSongDetail(songId: string | number): Promise<ChunithmSongDetailSnapshot> {
-    return mapChunithmSongDetail(await getJson(`/song/${encodeURIComponent(String(songId))}`));
+  async getSongDetail(songId: string | number, signal?: AbortSignal): Promise<ChunithmSongDetailSnapshot> {
+    return mapChunithmSongDetail(await getJson(`/song/${encodeURIComponent(String(songId))}`, signal));
   }
 
-  async getCollections(kind: ChunithmCollectionKind): Promise<ChunithmCollectionListSnapshot> {
-    return mapChunithmCollections(kind, await getJson(`/${kind}/list`));
+  async getCollections(kind: ChunithmCollectionKind, signal?: AbortSignal): Promise<ChunithmCollectionListSnapshot> {
+    return mapChunithmCollections(kind, await getJson(`/${kind}/list`, signal));
   }
 }

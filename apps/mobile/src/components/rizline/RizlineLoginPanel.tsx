@@ -10,7 +10,7 @@ import { isRizlineNeedsSmsError, RizlineProvider } from '@/providers/rizline-pro
 import { persistBoundAccountThumbnail } from '@/services/account-thumbnail';
 import { cacheRizlineSave } from '@/services/rizline-service';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
-import { cancelBoundAccountQueries } from '@/screens/game-accounts-actions';
+import { cancelBoundAccountQueries } from '@/services/invalidate-account-data';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { deleteRizlinePassword, writeRizlinePassword } from '@/storage/rizline-password-store';

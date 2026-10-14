@@ -7,46 +7,66 @@ import type { BestImageScreenControllerConfig } from './best-image-controller-ty
 import { useBestImagePreferences } from './use-best-image-preferences';
 import { useBestImagePreview } from './use-best-image-preview';
 import { useBestImageExport } from './use-best-image-export';
-import { createBestImageAssetSession, disposeBestImageAssetSession, invalidateBestImageAssetSession, retainBestImageAssetSession } from './load-best-image-session';
+import { createBestImageAssetSession, disposeBestImageAssetSession, invalidateBestImageAssetSession, retainBestImageAssetSession, retryBestImagePreparation, type BestImageAssetSession } from './load-best-image-session';
+import { useAppLifecycle } from '@/state/app-lifecycle';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 export type { BestImageScreenControllerConfig, BestImageScreenControllerRuntime } from './best-image-controller-types';
 
 export function usePreparedBestImageSources(
   htmlPages: readonly string[] | null,
+  session: BestImageAssetSession,
   directory: Directory | null,
   cancelExportRequest: () => Promise<void>,
   generation: unknown = htmlPages,
 ) {
   const pagesRef = useRef(htmlPages);
   pagesRef.current = htmlPages;
+  const { foregroundReady } = useAppLifecycle();
+  const preparedRef = useRef<{
+    generation: unknown; directory: Directory;
+    value: Awaited<ReturnType<typeof prepareBestImageWebViewSources>>;
+  } | null>(null);
   const [result, setResult] = useState<{
     generation: unknown; directory: Directory; sources: BestImageWebViewSource[] | null;
   } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  useEffect(() => {
-    setError(null);
-    const pages = pagesRef.current;
-    if (!pages || !directory) return;
-    const controller = new AbortController();
-    let cancelled = false;
-    let release: Promise<void> | null = null;
-    let prepared: Awaited<ReturnType<typeof prepareBestImageWebViewSources>> | null = null;
-    void prepareBestImageWebViewSources(pages, directory, controller.signal).then(async (next) => {
-      prepared = next;
-      if (cancelled) { await release; await next.dispose(); return; }
-      setResult({ generation, directory, sources: next.sources });
-    }).catch(() => { if (!cancelled) setError('无法准备成绩图片，请重试。'); });
-    return () => {
-      cancelled = true;
-      controller.abort();
-      release = cancelExportRequest();
-      if (prepared) void release.then(() => prepared!.dispose()).catch(() => {});
-    };
+  useEffect(() => () => {
+    const prepared = preparedRef.current;
+    if (!prepared || prepared.generation !== generation || prepared.directory !== directory) return;
+    preparedRef.current = null;
+    void cancelExportRequest().then(() => prepared.value.dispose())
+      .catch(error => recordRuntimeError('best-image-release', error, false, { phase: 'cleanup' }));
   }, [directory, generation, cancelExportRequest]);
+  useEffect(() => {
+    const pages = pagesRef.current;
+    if (!foregroundReady || !pages || !directory) return;
+    const retained = preparedRef.current;
+    if (retained && retained.generation === generation && retained.directory === directory) return;
+    setError(null);
+    const controller = new AbortController();
+    const assertCurrent = captureResourceWrites(session.game, controller.signal);
+    let cancelled = false;
+    void retryBestImagePreparation(session, controller.signal,
+      async () => {
+        const next = await prepareBestImageWebViewSources(pages, directory, controller.signal);
+        try { assertCurrent(); return next; }
+        catch (error) { await next.dispose(); throw error; }
+      },
+      () => { if (!cancelled) setError('成绩图片准备失败，正在自动重试。'); },
+    ).then(async (next) => {
+      if (cancelled || session.disposed) { await next.dispose(); return; }
+      preparedRef.current = { generation, directory, value: next };
+      setError(null);
+      setResult({ generation, directory, sources: next.sources });
+    }).catch(error => { if (!cancelled) recordRuntimeError('best-image-prepare', error); });
+    return () => { cancelled = true; controller.abort(); };
+  }, [directory, generation, foregroundReady, session]);
   const sources = result && result.generation === generation && result.directory === directory ? result.sources : null;
   return { sources, error };
 }
 
-export function useBestImageScreenController<TType extends string, TPrefs, TPicker>(
+export function useBestImageScreenController<TType extends string, TPrefs extends object, TPicker>(
   config: BestImageScreenControllerConfig<TType, TPrefs>,
 ) {
   const [width, setWidth] = useState(config.defaultWidth);

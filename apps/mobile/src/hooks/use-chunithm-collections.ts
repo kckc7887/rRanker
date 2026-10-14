@@ -16,7 +16,7 @@ export function useChunithmCollections(kind: ChunithmCollectionKind, enabled = t
   return useQuery({
     enabled: enabled && activeGameId === 'chunithm',
     queryKey,
-    queryFn: (): Promise<ChunithmCollectionListSnapshot> => loadChunithmCollections(kind),
+    queryFn: ({ signal }): Promise<ChunithmCollectionListSnapshot> => loadChunithmCollections(kind, signal),
     staleTime: 30 * 60_000,
   });
 }

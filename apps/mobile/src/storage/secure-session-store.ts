@@ -223,9 +223,12 @@ export class SecureSessionStore {
     accountId: string,
     metadata: Pick<StoredProviderAccount, 'displayName' | 'scoreDisplay'>
       & Partial<Pick<StoredProviderAccount, 'challengeModeRank' | 'ratingPossession'>>,
+    assertCurrent?: () => void,
   ): Promise<void> {
     await this.enqueueMutation(async () => {
+      assertCurrent?.();
       const index = await this.loadOrCreateIndexUnlocked();
+      assertCurrent?.();
       const current = index.accounts.find((account) => account.id === accountId);
       if (!current || Object.entries(metadata).every(([key, value]) => current[key as keyof StoredProviderAccount] === value)) return;
       await this.indexIo.setItem(INDEX_KEY, JSON.stringify({
