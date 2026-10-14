@@ -256,7 +256,12 @@ class ArcadeMapView(context: Context, appContext: AppContext) : ExpoView(context
     selectedIcon?.recycle()
     normalIcon = null
     selectedIcon = null
-    webView?.apply { stopLoading(); removeAllViews(); destroy() }
+    webView?.apply {
+      this@ArcadeMapView.removeView(this)
+      stopLoading()
+      removeAllViews()
+      destroy()
+    }
     webView = null
     removeAllViews()
   }

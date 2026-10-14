@@ -27,7 +27,6 @@ export async function buildPreview(sourceName, assetName, marker, scripts, optio
     throw new Error('index.html template missing config/player markers');
   }
   const files = new Map([
-    ['player.js', result.outputFiles[0].contents],
     ['player.bundle', result.outputFiles[0].contents],
     ['index.html', Buffer.from(template.replace('<!--PLAYER_SCRIPT-->', scripts))],
   ]);
