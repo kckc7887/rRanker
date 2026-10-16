@@ -14,20 +14,13 @@ export type KaleidxSchedulePhase = {
   endsAt: string | null;
   difficulty: KaleidxDifficulty;
   life: number;
-  dxLife?: number | null;
-};
-
-export type KaleidxReference = {
-  label: string;
-  url: string;
-  checkedAt: string;
+  dxLife?: number;
 };
 
 export type KaleidxSchedule = {
   label: string;
   switchLabel: string;
   phases: readonly KaleidxSchedulePhase[];
-  evidence?: { status: 'estimated'; source: KaleidxReference };
 };
 
 export type KaleidxGate = {
@@ -43,7 +36,6 @@ export type KaleidxGate = {
   openedAt: string;
   trackerKind: KaleidxTrackerKind;
   requirements: readonly string[];
-  trackerNote: string;
   keySongs: readonly KaleidxSong[];
   track1: readonly KaleidxSong[];
   track2: readonly KaleidxSong[];
@@ -59,12 +51,13 @@ const songs = (entries: readonly (readonly [string, string])[]): readonly Kaleid
 
 const phases = (
   resetHour: '00' | '04',
-  entries: readonly (readonly [string, string | null, KaleidxDifficulty, number])[],
-): readonly KaleidxSchedulePhase[] => entries.map(([start, end, difficulty, life]) => ({
+  entries: readonly (readonly [string, string | null, KaleidxDifficulty, number, number?])[],
+): readonly KaleidxSchedulePhase[] => entries.map(([start, end, difficulty, life, dxLife]) => ({
   startsAt: `2026-${start}T${resetHour}:00:00+08:00`,
   endsAt: end ? `2026-${end}T${resetHour}:00:00+08:00` : null,
   difficulty,
   life,
+  dxLife,
 }));
 
 const blueKey = songs([
@@ -123,8 +116,8 @@ export const KALEIDX_GATES: readonly KaleidxGate[] = [
   {
     id: 'blue', order: 1, label: '蓝色之门', shortLabel: '蓝', color: '#2878D0', onColor: '#FFFFFF',
     area: '青春区域', openedAt: '2026-01-23T10:00:00+08:00', trackerKind: 'all',
-    requirements: ['完成青春区域收录的全部 29 首钥匙曲目', '须在国服门更新后至少游玩一次；难度不限', '宴谱与段位模式不计入'],
-    trackerNote: '29 首全部勾选后，仅代表手动记录已满足钥匙曲条件。', keySongs: blueKey,
+    requirements: ['青春区域 29 首各游玩 1 次', '门开放后 · 任意难度 · 非宴谱／段位'],
+    keySongs: blueKey,
     track1: songs([
       ['11008', 'Crazy Circle'], ['11009', 'STEREOSCAPE'], ['11100', 'シエルブルーマルシェ'],
       ['11097', 'ブレインジャックシンドローム'], ['11098', '共鳴'], ['11099', 'Ututu'],
@@ -152,8 +145,8 @@ export const KALEIDX_GATES: readonly KaleidxGate[] = [
   {
     id: 'white', order: 2, label: '白色之门', shortLabel: '白', color: '#E8EDF4', onColor: '#1F2937',
     area: '天界区域 8', openedAt: '2026-02-10T07:00:00+08:00', trackerKind: 'run',
-    requirements: ['先将背景设置为「Latent Kingdom」', '一局通常模式内只游玩作曲家含「奏音」或「大国奏音」的不重复曲目', '单人连续 3 首或多人连续 4 首，难度不限', '通常模式 SKIP 计入；宴谱与段位模式不计入'],
-    trackerNote: '单人与多人计划分别保存；切换人数不会覆盖另一套计划。', keySongs: whiteKey,
+    requirements: ['背景：Latent Kingdom', '同局仅游玩奏音／大国奏音曲目，不重复', '单人 3 首／多人 4 首 · 任意难度 · 通常模式 · 可 SKIP'],
+    keySongs: whiteKey,
     track1: songs([
       ['11027', 'アポカリプスに反逆の焔を焚べろ'], ['11101', 'GRÄNDIR'], ['11103', '渦状銀河のシンフォニエッタ'],
       ['11166', 'ワンダーシャッフェンの法則'], ['11167', 'BIRTH'], ['11236', 'Last Samurai'],
@@ -180,8 +173,8 @@ export const KALEIDX_GATES: readonly KaleidxGate[] = [
   {
     id: 'purple', order: 3, label: '紫色之门', shortLabel: '紫', color: '#8A55C6', onColor: '#FFFFFF',
     area: 'BLACK ROSE 区域 10', openedAt: '2026-03-25T10:00:00+08:00', trackerKind: 'run',
-    requirements: ['将旅行伙伴队长设置为 BLACK ROSE 区域的「アウル」或任意变种', '单人连续游玩 3 首或双人连续游玩 4 首不重复的言ノ葉Project 曲目', '难度不限；宴谱与段位模式不计入'],
-    trackerNote: '单人与多人计划分别保存；请在同一局内按计划完成。', keySongs: purpleKey,
+    requirements: ['队长：アウル或其变种', '同局仅游玩言ノ葉Project 曲目，不重复', '单人 3 首／双人 4 首 · 任意难度 · 非宴谱／段位'],
+    keySongs: purpleKey,
     track1: purpleKey.slice(0, 11), track2: purpleKey.slice(11),
     track3: { id: '11749', title: '有明/Ariake' },
     gateSchedule: { label: '紫门', switchLabel: '北京时间 04:00 切换', phases: phases('04', [
@@ -193,8 +186,8 @@ export const KALEIDX_GATES: readonly KaleidxGate[] = [
     id: 'black', order: 4, label: '黑色之门', shortLabel: '黑', color: '#475569', onColor: '#FFFFFF',
     darkColor: '#CBD5E1', darkOnColor: '#182130',
     area: '大都会区域 9', openedAt: '2026-04-28T10:00:00+08:00', trackerKind: 'all',
-    requirements: ['先完成大都会区域 9，使黑色之门出现', '在门更新后至少游玩一次全部 11 首 KOP6 及以前的钥匙曲目', '难度不限；宴谱不计入'],
-    trackerNote: '11 首全部勾选后，仅代表手动记录已满足钥匙曲条件。', keySongs: blackKey,
+    requirements: ['完成大都会区域 9', '门开放后，11 首 KOP 钥匙曲各游玩 1 次', '任意难度 · 非宴谱'],
+    keySongs: blackKey,
     track1: songs([
       ['11019', 'Scarlet Wings'], ['11020', 'Technicians High'], ['11021', '魔ジョ狩リ'], ['11022', 'TwisteD! XD'],
       ['11090', 'Flashkick'], ['11091', 'Stardust Memories'], ['11092', 'My My My'], ['11157', 'Aetheric Energy'],
@@ -223,8 +216,8 @@ export const KALEIDX_GATES: readonly KaleidxGate[] = [
   {
     id: 'yellow', order: 5, label: '黄色之门', shortLabel: '黄', color: '#E5B824', onColor: '#332B11',
     area: '七彩区域', openedAt: '2026-06-10T10:00:00+08:00', trackerKind: 'random-one',
-    requirements: ['使用游戏内「随机选曲」选中钥匙曲池中的任意一首', '可先将钥匙曲加入收藏夹，再使用「随机收藏夹」', '只需随机命中并游玩一首；难度不限', '宴谱与段位模式不计入'],
-    trackerNote: '这里仅记录机台随机命中的歌曲，不代替游戏内「随机选曲」。', keySongs: yellowKey,
+    requirements: ['完成七彩区域', '机台随机选曲／随机收藏夹：命中并游玩 1 首钥匙曲', '任意难度 · 非宴谱／段位'],
+    keySongs: yellowKey,
     track1: songs([
       ['11003', 'でらっくmaimai♪てんてこまい!'], ['11007', '超常マイマイン'], ['11006', 'P-qoq'],
       ['11005', 'バーチャルダム　ネーション'], ['11094', 'ここからはじまるプロローグ。'],
@@ -256,8 +249,8 @@ export const KALEIDX_GATES: readonly KaleidxGate[] = [
   {
     id: 'red', order: 6, label: '红色之门', shortLabel: '红', color: '#D94A4A', onColor: '#FFFFFF',
     area: '龙之区域 4', openedAt: '2026-08-05T10:00:00+08:00', trackerKind: 'all',
-    requirements: ['完成龙之区域 4，使红色之门出现', '在门更新后至少游玩一次全部 10 首钥匙曲目', '难度不限，可以 SKIP；宴谱与段位模式不计入'],
-    trackerNote: '10 首全部勾选后，仅代表手动记录已满足钥匙曲条件。', keySongs: redKey,
+    requirements: ['完成龙之区域 4', '门开放后，10 首钥匙曲各游玩 1 次', '任意难度 · 可 SKIP · 非宴谱／段位'],
+    keySongs: redKey,
     track1: songs([
       ['11016', 'キリキリ舞Mine'], ['11017', '福宿音屋魂音泉'], ['11018', 'Now or Never'], ['11015', '一か罰'],
       ['11545', '隠密あんみつDX'], ['11546', '地球'], ['11547', 'Churros Parlor'],
@@ -292,9 +285,9 @@ export type KaleidxStageId = typeof KALEIDX_STAGE_IDS[number];
 
 export type KaleidxChallenge =
   | { kind: 'random-three'; track1: readonly KaleidxSong[]; track2: readonly KaleidxSong[]; track3: KaleidxSong }
-  | { kind: 'error'; track1: readonly KaleidxSong[]; track2: readonly KaleidxSong[]; story: string }
+  | { kind: 'error'; track1: readonly KaleidxSong[]; track2: readonly KaleidxSong[] }
   | { kind: 'fixed-three'; tracks: readonly [KaleidxSong, KaleidxSong, KaleidxSong] }
-  | { kind: 'final-single'; song: KaleidxSong; endingSong: KaleidxSong; partner: string; mechanics: readonly string[] };
+  | { kind: 'final-single'; song: KaleidxSong; endingSong: KaleidxSong; partner: string };
 
 export type KaleidxFinale = Omit<KaleidxGate,
   'id' | 'trackerKind' | 'keySongs' | 'track1' | 'track2' | 'track3' | 'gateSchedule'
@@ -305,30 +298,19 @@ export type KaleidxFinale = Omit<KaleidxGate,
   completionLabel: string;
   challenge: KaleidxChallenge;
   gateSchedule?: KaleidxSchedule;
-  references: readonly KaleidxReference[];
 };
 export type KaleidxStage = KaleidxGate | KaleidxFinale;
 
-const awmcReference = (section: string): KaleidxReference => ({
-  label: 'AWMC 活动资料',
-  url: `https://github.com/AWMC-TEAM/KALEIDXSCOPE/blob/master/${section}KALEIDXSCOPE/index.html`,
-  checkedAt: '2026-10-03',
-});
-const finaleGuide: KaleidxReference = {
-  label: '国服棱镜塔与 ERROR 攻略',
-  url: 'https://bearstaryellowbear.cn/archives/kaleidxscopeleng-jing-ta-he-errormen-jie-suo-gong-lue',
-  checkedAt: '2026-10-03',
-};
-const estimatedSchedule = (label: string, section: string): KaleidxSchedule => ({
-  label,
-  switchLabel: '推算按北京时间 04:00 切换',
-  evidence: { status: 'estimated', source: awmcReference(section) },
+/** 国服日程：https://github.com/AWMC-TEAM/KALEIDXSCOPE */
+const prismSchedule: KaleidxSchedule = {
+  label: '棱镜塔',
+  switchLabel: '北京时间 04:00',
   phases: phases('04', [
     ['10-01', '10-04', 'MASTER', 1], ['10-04', '10-07', 'MASTER', 10],
     ['10-07', '10-10', 'MASTER', 30], ['10-10', '10-14', 'MASTER', 50],
     ['10-14', '10-21', 'EXPERT', 100], ['10-21', null, 'BASIC', 999],
   ]),
-});
+};
 const dxSongs = (entries: readonly (readonly [string, string])[]): readonly KaleidxSong[] => (
   songs(entries).map((song) => ({ ...song, chartType: 'DX' }))
 );
@@ -340,8 +322,7 @@ export const KALEIDX_FINALES: readonly KaleidxFinale[] = [
     id: 'prism', order: 7, label: '棱镜塔', shortLabel: '棱镜塔', color: '#367E9A', onColor: '#FFFFFF',
     area: '7sRef 区域 4 · 2000 km', openedAt: '2026-10-01T10:00:00+08:00', trackerKind: 'completion',
     prerequisites: KALEIDX_GATE_IDS, completionLabel: '棱镜塔已通关',
-    requirements: ['通关蓝、白、紫、黑、黄、红六扇门，取得万能钥匙', '完成 7sRef 区域 4（2000 km），使棱镜塔出现', '完成塔内三首课题后进入 ERROR 阶段'],
-    trackerNote: '手动记录本账号的通关情况；区域跑图进度请在机台确认。',
+    requirements: ['六色门通关 · 万能钥匙', '完成 7sRef 区域 4 · 2000 km'],
     perfectChallenge: amereistr,
     challenge: {
       kind: 'random-three',
@@ -355,29 +336,24 @@ export const KALEIDX_FINALES: readonly KaleidxFinale[] = [
       ]), amereistr],
       track3: blackbox,
     },
-    gateSchedule: estimatedSchedule('棱镜塔', 'PRISM'),
-    references: [awmcReference('PRISM'), finaleGuide],
+    gateSchedule: prismSchedule,
   },
   {
     id: 'error', order: 8, label: 'ERROR 阶段', shortLabel: 'ERROR', color: '#67557D', onColor: '#FFFFFF',
-    area: 'KALEIDXSCOPE · 乱码课题', openedAt: '2026-10-01T10:00:00+08:00', trackerKind: 'completion',
+    area: 'KALEIDXSCOPE', openedAt: '2026-10-01T10:00:00+08:00', trackerKind: 'completion',
     prerequisites: ['prism'], completionLabel: 'ERROR 阶段已完成',
-    requirements: ['通关棱镜塔后出现，无需另取钥匙', '完成前两首随机课题，再挑战第三首乱码课题', '推进至剧情蓝屏与重建演出后，继续前往希望之门'],
-    trackerNote: '到达剧情结束后手动标记；剧情蓝屏属于活动演出。',
+    requirements: ['通关棱镜塔', '完成三首课题 · 存活至倒计时结束'],
     challenge: {
       kind: 'error',
       track1: [...KALEIDX_GATES.flatMap((gate) => gate.perfectChallenge ? [{ ...gate.perfectChallenge, chartType: 'DX' as const }] : []), amereistr],
       track2: [...KALEIDX_GATES.map((gate) => ({ ...gate.track3, chartType: 'DX' as const })), blackbox],
-      story: '第三首显示为乱码课题。计时结束后会出现异常谱面、冻结与剧情蓝屏，随后提示寻找最后的希望。此课题不作为普通曲库歌曲展示。',
     },
-    references: [awmcReference('ERROR'), finaleGuide],
   },
   {
     id: 'hope', order: 9, label: '希望之门', shortLabel: '希望', color: '#98751F', onColor: '#FFFFFF',
-    area: '希望の扉', openedAt: '2026-10-01T10:00:00+08:00', trackerKind: 'completion',
+    area: '希望の扉', openedAt: '2026-10-02T04:00:00+08:00', trackerKind: 'completion',
     prerequisites: ['error'], completionLabel: '希望之门已通关',
-    requirements: ['完成 ERROR 阶段后，希望之门出现', '国服无需实体 DX PASS，按机台提示进入', '连续完成三首固定课题，开启最终挑战'],
-    trackerNote: '手动记录本账号的通关情况。',
+    requirements: ['完成 ERROR 阶段', '连续完成三首固定课题'],
     challenge: {
       kind: 'fixed-three',
       tracks: [
@@ -386,39 +362,33 @@ export const KALEIDX_FINALES: readonly KaleidxFinale[] = [
         { id: '1819', title: 'AFTER PANDORA', chartType: 'SD' },
       ],
     },
-    gateSchedule: estimatedSchedule('希望之门', 'HOP'),
-    references: [awmcReference('HOP')],
+    gateSchedule: { label: '希望之门', switchLabel: '北京时间 04:00', phases: phases('04', [
+      ['10-02', '10-05', 'MASTER', 1], ['10-05', '10-08', 'MASTER', 10],
+      ['10-08', '10-11', 'MASTER', 30], ['10-11', '10-15', 'MASTER', 50],
+      ['10-15', '10-22', 'EXPERT', 100], ['10-22', null, 'BASIC', 999],
+    ]) },
   },
   {
     id: 'final', order: 10, label: '最终挑战', shortLabel: '最终', color: '#AE496F', onColor: '#FFFFFF',
-    area: 'KALEIDXSCOPE · FINAL SEQUENCE', openedAt: '2026-10-01T10:00:00+08:00', trackerKind: 'completion',
+    area: 'FINAL SEQUENCE', openedAt: '2026-10-02T04:00:00+08:00', trackerKind: 'completion',
     prerequisites: ['hope'], completionLabel: '最终挑战已完成',
-    requirements: ['通关希望之门后，国服直接开启最终挑战', '完成 Xaleid◆scopiX 的两段挑战，迎来 ALL COMPLETE'],
-    trackerNote: '完成最终挑战后手动标记，不会自动改写其他阶段的记录。',
+    requirements: ['通关希望之门', 'Xaleid◆scopiX · LIFE → DX LIFE'],
     challenge: {
       kind: 'final-single',
       song: { id: '11820', title: 'Xaleid◆scopiX', chartType: 'DX' },
       endingSong: { id: '11821', title: 'Ref:rain (for 7th Heaven)', chartType: 'DX' },
       partner: 'Ris（リズ）',
-      mechanics: [
-        '本次挑战只有一首课题曲，包含前半 LIFE 与后半 DX LIFE 两段。',
-        '前半采用通常扣血规则；到达中途演出后恢复生命，继续后半段。',
-        '后半段除 Critical Perfect 外的判定均会扣血。国服各档 DX LIFE 与具体扣血值未完整核实，待确认。',
-        '开放时最低要求 Re:MASTER，后续降难度与 LIFE 缓和见推算参考；实际条件以机台为准。',
-      ],
     },
     gateSchedule: {
-      label: '最终挑战', switchLabel: '推算按北京时间 04:00 切换',
-      evidence: { status: 'estimated', source: awmcReference('FINAL') },
+      label: '最终挑战', switchLabel: '北京时间 04:00',
       phases: phases('04', [
-        ['10-01', '10-03', 'Re:MASTER', 1], ['10-03', '10-05', 'Re:MASTER', 5],
-        ['10-05', '10-06', 'Re:MASTER', 10], ['10-06', '10-07', 'Re:MASTER', 30],
-        ['10-07', '10-11', 'MASTER', 30], ['10-11', '10-13', 'MASTER', 50],
-        ['10-13', '10-15', 'MASTER', 100], ['10-15', '10-22', 'EXPERT', 100],
-        ['10-22', null, 'BASIC', 999],
-      ]).map((phase) => ({ ...phase, dxLife: phase.difficulty === 'EXPERT' ? 999 : null })),
+        ['10-02', '10-04', 'Re:MASTER', 1], ['10-04', '10-06', 'Re:MASTER', 5],
+        ['10-06', '10-07', 'Re:MASTER', 10], ['10-07', '10-08', 'Re:MASTER', 30],
+        ['10-08', '10-12', 'MASTER', 30], ['10-12', '10-14', 'MASTER', 50],
+        ['10-14', '10-16', 'MASTER', 100], ['10-16', '10-23', 'EXPERT', 100, 999],
+        ['10-23', null, 'BASIC', 999],
+      ]),
     },
-    references: [awmcReference('FINAL')],
   },
 ];
 
@@ -437,7 +407,6 @@ export function resolveKaleidxSchedulePhase(
   schedule: KaleidxSchedule,
   at: Date = new Date(),
 ): KaleidxSchedulePhase | null {
-  if (schedule.evidence?.status === 'estimated') return null;
   const time = at.getTime();
   return schedule.phases.find((phase) => {
     const start = Date.parse(phase.startsAt);

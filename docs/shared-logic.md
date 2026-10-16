@@ -176,7 +176,7 @@ Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图�
 
 `buildMaimaiStrengthPool` 使用 `buildBestRecordMap`、`chartVersionKey` 去重，排除宴谱与不完整成绩；达标成绩中定数最高 10 张的均值确定推荐范围 −0.5 至 +0.3。`analyzeMaimaiStrength` 接收曲库、成绩、按谱面身份索引的 DXTag 五维，统一按 100.5% 筛选达标成绩，输出逐维 Top 10 正值均值、支撑成绩、强弱结论及最多三张推荐。每维至少三张才判断强弱，极差不超过 0.3 视为均衡；推荐模拟达到目标后的维度均值增益，最低两维的边界并列项全部纳入，均衡时考虑全部维度。缺失特征不当作零值，分析结果不持久化。分析文案采用简短的能力倾向标签。推荐与支撑成绩统一使用 `ScoreRecordCard`，无成绩时仅传入谱面信息，达成率和 Rating 显示 `-`，曲绘沿用公共成绩卡设置。弹层复用当前公共组件，谱面跳转使用 `encodeDetailTarget` 和 `detailTargetHref`。
 
-KALEIDXSCOPE 的课题、日程和进度通过 `domain/kaleidx-scope.ts`、`state/kaleidx-scope-progress.ts` 与当前工具页面读取。进度按账号保存，独立补记关卡和课题；估计日程不能冒充已确认状态。
+KALEIDXSCOPE 的课题、国服日程和进度通过 `domain/kaleidx-scope.ts`、`state/kaleidx-scope-progress.ts` 与当前工具页面读取。`resolveKaleidxSchedulePhase` 按各日程的北京时间边界返回当前难度、LIFE 与可用的 DX LIFE；希望之门从 10 月 2 日起计时，最终挑战从 10 月 16 日起进入 EXPERT。进度按账号保存，支持记录课题、钥匙与关卡完成状态；曲目通过 `SongCover` 展示，详情跳转校验当前曲库与谱面类型。
 
 `runtime-diagnostics-recorder.ts` 是运行日志入口；日志数据库独立于业务事务。页面通过 `runtime-diagnostics.ts` 和日志服务读取、清理、分享，不直接拼接数据库操作。普通诊断保留已提交的内存状态，按文件队列异步执行 pending/previous 替换；写入失败丢弃内存副本并重新读取磁盘。快照等待先前记录完成，返回独立数据；致命日志仍即时落盘，临时分享副本可清理。
 

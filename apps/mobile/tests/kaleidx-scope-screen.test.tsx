@@ -57,8 +57,12 @@ jest.mock('@/state/kaleidx-scope-progress', () => ({
 describe('KALEIDX◈SCOPE tool screen', () => {
   beforeEach(() => {
     jest.clearAllMocks();
+    jest.useFakeTimers();
+    jest.setSystemTime(new Date('2026-10-16T12:00:00+08:00'));
     mockCatalogSongs = initialCatalogSongs;
   });
+
+  afterEach(() => { jest.useRealTimers(); });
 
   it('offers all ten stages and completion-only tracking without prerequisite locks', async () => {
     const screen = await render(<KaleidxScopeToolScreen />);
@@ -68,10 +72,9 @@ describe('KALEIDX◈SCOPE tool screen', () => {
       ['希望之门', 'hope', '希望之门已通关'], ['最终挑战', 'final', '最终挑战已完成'],
     ]) {
       await fireEvent.press(screen.getByLabelText(label));
-      expect(screen.queryByText('钥匙进度')).toBeNull();
+      expect(screen.queryByText('钥匙曲')).toBeNull();
       expect(screen.queryByText('0/0')).toBeNull();
       expect(screen.queryByLabelText('钥匙已取得')).toBeNull();
-      expect(screen.getAllByText(/尚未记录完成/).length).toBeGreaterThan(0);
       await fireEvent.press(screen.getByLabelText(completion));
       expect(mockSetGateCleared).toHaveBeenLastCalledWith('maimai:local:test', id, true);
     }
@@ -87,7 +90,7 @@ describe('KALEIDX◈SCOPE tool screen', () => {
     expect(screen.getByText('IMBRUED:FLUX')).toBeTruthy();
     await fireEvent.press(screen.getByLabelText('ERROR 阶段'));
     const errorChallenge = within(screen.getByTestId('kaleidx-challenge-error'));
-    expect(errorChallenge.getByText('TRACK 3 · 乱码课题')).toBeTruthy();
+    expect(errorChallenge.getByText('乱码课题')).toBeTruthy();
     expect(errorChallenge.queryByText('Xaleid◆scopiX')).toBeNull();
     expect(errorChallenge.queryByRole('link')).toBeNull();
     expect(screen.queryByTestId('kaleidx-schedule-error')).toBeNull();
@@ -101,25 +104,26 @@ describe('KALEIDX◈SCOPE tool screen', () => {
     }
   });
 
-  it('shows estimated dual LIFE separately from current conditions and includes rewards and sources', async () => {
+  it('shows current final conditions, rewards, and the updated schedule', async () => {
     const screen = await render(<KaleidxScopeToolScreen />);
     await fireEvent.press(screen.getByLabelText('最终挑战'));
     expect(screen.getByText('Xaleid◆scopiX')).toBeTruthy();
     expect(screen.getByText('Ref:rain (for 7th Heaven)')).toBeTruthy();
-    expect(screen.getByText('通关奖励 · 搭档 Ris（リズ）')).toBeTruthy();
-    expect(screen.queryByText('TRACK 3 · 固定门曲')).toBeNull();
-    expect(screen.queryByText(/EXPERT · LIFE 100/)).toBeNull();
-    await fireEvent.press(screen.getByLabelText('展开 缓和参考（推算）'));
-    expect(screen.getByText('EXPERT · LIFE 100 / DX LIFE 999')).toBeTruthy();
-    expect(screen.getByText('Re:MASTER · LIFE 5 / DX LIFE 待确认')).toBeTruthy();
-    expect(screen.getByText('推算按北京时间 04:00 切换')).toBeTruthy();
-    expect(screen.getByText('AWMC 活动资料 · 核对 2026-10-03')).toBeTruthy();
-    expect(screen.queryAllByLabelText(/当前阶段/)).toHaveLength(0);
-    expect(screen.queryByText(/ · 当前/)).toBeNull();
-    await fireEvent.press(screen.getByLabelText('收起 缓和参考（推算）'));
-    expect(screen.queryByText('EXPERT · LIFE 100 / DX LIFE 999')).toBeNull();
-    await fireEvent.press(screen.getByLabelText('展开 资料来源'));
-    expect(screen.getByText(/https:\/\/github.com\/AWMC-TEAM/)).toBeTruthy();
+    expect(screen.getByText('Ris（リズ）')).toBeTruthy();
+    const overview = within(screen.getByTestId('kaleidx-gate-final'));
+    expect(overview.getByText('EXPERT')).toBeTruthy();
+    expect(overview.getByText('100')).toBeTruthy();
+    expect(overview.getByText('999')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('展开 开放日程'));
+    expect(screen.getByLabelText('最终挑战 2026.10.16起 EXPERT LIFE 100 DX LIFE 999，当前阶段')).toBeTruthy();
+    expect(screen.getByLabelText('最终挑战 2026.10.23起 BASIC LIFE 999')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('收起 开放日程'));
+    expect(screen.queryByLabelText(/当前阶段/)).toBeNull();
+    expect(overview.getByText('EXPERT')).toBeTruthy();
+
+    await fireEvent.press(screen.getByLabelText('希望之门'));
+    await fireEvent.press(screen.getByLabelText('展开 开放日程'));
+    expect(screen.getByLabelText('希望之门 2026.10.15起 EXPERT LIFE 100，当前阶段')).toBeTruthy();
   });
 
   it('disables a known song when the required chart type is missing', async () => {
@@ -146,54 +150,46 @@ describe('KALEIDX◈SCOPE tool screen', () => {
     for (const label of ['蓝色之门', '白色之门', '紫色之门', '黑色之门', '黄色之门', '红色之门']) {
       expect(screen.getByLabelText(label)).toBeTruthy();
     }
-    expect(screen.getByText('完成青春区域收录的全部 29 首钥匙曲目')).toBeTruthy();
+    expect(screen.getByText('青春区域 29 首各游玩 1 次')).toBeTruthy();
     expect(screen.getByText('果ての空、僕らが見た光。')).toBeTruthy();
-    expect(screen.getByText('钥匙进度')).toBeTruthy();
-    expect(screen.queryByText('29 首全部勾选后，仅代表手动记录已满足钥匙曲条件。')).toBeNull();
-    expect(within(screen.getByTestId('kaleidx-unlock-blue')).getByText('区域完美挑战')).toBeTruthy();
-    expect(within(screen.getByTestId('kaleidx-challenge-blue')).queryByText('区域完美挑战')).toBeNull();
+    expect(screen.getByText('钥匙曲')).toBeTruthy();
+    expect(within(screen.getByTestId('kaleidx-unlock-blue')).getByText('完美挑战')).toBeTruthy();
 
-    await fireEvent.press(screen.getByLabelText('展开 钥匙进度'));
-    expect(screen.getByText('29 首全部勾选后，仅代表手动记录已满足钥匙曲条件。')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('展开 钥匙曲'));
+    expect(screen.getByLabelText('标记完成 STEREOSCAPE')).toBeTruthy();
 
     expect(screen.queryByLabelText('蓝门 2026.02.12起 BASIC LIFE 999，当前阶段')).toBeNull();
-    await fireEvent.press(screen.getByLabelText('展开 难度与 LIFE'));
+    await fireEvent.press(screen.getByLabelText('展开 开放日程'));
     expect(screen.getByLabelText('蓝门 2026.02.12起 BASIC LIFE 999，当前阶段')).toBeTruthy();
-    await fireEvent.press(screen.getByLabelText('收起 难度与 LIFE'));
+    await fireEvent.press(screen.getByLabelText('收起 开放日程'));
     expect(screen.queryByLabelText('蓝门 2026.02.12起 BASIC LIFE 999，当前阶段')).toBeNull();
 
     await fireEvent.press(screen.getByLabelText('白色之门'));
-    expect(screen.getByText('先将背景设置为「Latent Kingdom」')).toBeTruthy();
+    expect(screen.getByText('背景：Latent Kingdom')).toBeTruthy();
     expect(screen.getByLabelText('单人 3 首计划')).toBeTruthy();
     expect(screen.getByLabelText('多人 4 首计划')).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText('黄色之门'));
-    expect(screen.getByText('这里仅记录机台随机命中的歌曲，不代替游戏内「随机选曲」。')).toBeTruthy();
+    expect(screen.getByText('机台随机选曲／随机收藏夹：命中并游玩 1 首钥匙曲')).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText('红色之门'));
     expect(screen.getByText('FLΛME/FRΦST')).toBeTruthy();
-    expect(screen.getByText('开放 2026.08.05')).toBeTruthy();
-    expect(screen.queryByText('国服 · 六色门')).toBeNull();
-    expect(screen.queryByText(/资料核对于/)).toBeNull();
-    expect(screen.queryByText('资料来源')).toBeNull();
-    expect(screen.queryByText('钥匙条件、单局计划、挑战曲池和 LIFE 缓和阶段集中查询')).toBeNull();
+    expect(screen.getByText('2026.08.05')).toBeTruthy();
   });
 
   it('records progress, status, and routes only catalog-known songs', async () => {
     const screen = await render(<KaleidxScopeToolScreen />);
-    await fireEvent.press(screen.getByLabelText('展开 钥匙进度'));
-    await fireEvent.press(screen.getByLabelText('标记完成 STEREOSCAPE'));
-    expect(mockToggleSong).toHaveBeenCalledWith('maimai:local:test', 'blue', '11009', undefined);
-
     await fireEvent.press(screen.getByLabelText('钥匙已取得'));
     await fireEvent.press(screen.getByLabelText('门曲已通关'));
     expect(mockSetKeyObtained).toHaveBeenCalledWith('maimai:local:test', 'blue', true);
     expect(mockSetGateCleared).toHaveBeenCalledWith('maimai:local:test', 'blue', true);
 
+    await fireEvent.press(screen.getByLabelText('展开 钥匙曲'));
+    await fireEvent.press(screen.getByLabelText('标记完成 STEREOSCAPE'));
+    expect(mockToggleSong).toHaveBeenCalledWith('maimai:local:test', 'blue', '11009', undefined);
+
     await fireEvent.press(screen.getByLabelText('查看歌曲 果ての空、僕らが見た光。'));
     expect(mockRouterPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: '1740', gameId: 'maimai' } });
-    expect(screen.queryByText('#11740 · 门曲 · 曲库尚未同步')).toBeNull();
     expect(screen.queryByLabelText('查看歌曲 STEREOSCAPE')).toBeNull();
-    expect(screen.getAllByText(/曲库尚未同步/).length).toBeGreaterThan(0);
   });
 });

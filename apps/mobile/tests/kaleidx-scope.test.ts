@@ -26,23 +26,25 @@ class MemoryPreferences {
 
 describe('KALEIDX◈SCOPE static data', () => {
 
-  it('keeps estimated CN dates out of current conditions and leaves unverified DX LIFE unknown', () => {
-    const schedule = KALEIDX_FINALES.find((stage) => stage.id === 'final')!.gateSchedule!;
-    expect(schedule.evidence).toMatchObject({ status: 'estimated', source: { checkedAt: '2026-10-03' } });
-    expect(schedule.phases.map((phase) => [phase.startsAt.slice(5, 10), phase.difficulty, phase.life, phase.dxLife])).toEqual([
-      ['10-01', 'Re:MASTER', 1, null], ['10-03', 'Re:MASTER', 5, null],
-      ['10-05', 'Re:MASTER', 10, null], ['10-06', 'Re:MASTER', 30, null],
-      ['10-07', 'MASTER', 30, null], ['10-11', 'MASTER', 50, null],
-      ['10-13', 'MASTER', 100, null], ['10-15', 'EXPERT', 100, 999], ['10-22', 'BASIC', 999, null],
-    ]);
-    for (const phase of schedule.phases) {
-      for (const offset of [-1, 0, 1]) {
-        expect(resolveKaleidxSchedulePhase(schedule, new Date(Date.parse(phase.startsAt) + offset))).toBeNull();
-      }
-    }
-    const red = KALEIDX_GATES_BY_ID.red.gateSchedule;
-    expect(resolveKaleidxSchedulePhase(red, new Date('2026-08-18T03:59:59.999+08:00'))?.life).toBe(50);
-    expect(resolveKaleidxSchedulePhase(red, new Date('2026-08-18T04:00:00+08:00'))?.difficulty).toBe('EXPERT');
+  it('resolves the finale schedules at their Beijing time boundaries', () => {
+    const prism = KALEIDX_FINALES.find((stage) => stage.id === 'prism')!.gateSchedule!;
+    const hope = KALEIDX_FINALES.find((stage) => stage.id === 'hope')!.gateSchedule!;
+    const final = KALEIDX_FINALES.find((stage) => stage.id === 'final')!.gateSchedule!;
+    expect(resolveKaleidxSchedulePhase(hope, new Date('2026-10-01T12:00:00+08:00'))).toBeNull();
+    expect(resolveKaleidxSchedulePhase(prism, new Date('2026-10-14T04:00:00+08:00')))
+      .toMatchObject({ difficulty: 'EXPERT', life: 100 });
+    expect(resolveKaleidxSchedulePhase(hope, new Date('2026-10-15T03:59:59.999+08:00')))
+      .toMatchObject({ difficulty: 'MASTER', life: 50 });
+    expect(resolveKaleidxSchedulePhase(hope, new Date('2026-10-15T04:00:00+08:00')))
+      .toMatchObject({ difficulty: 'EXPERT', life: 100 });
+    expect(resolveKaleidxSchedulePhase(final, new Date('2026-10-16T03:59:59.999+08:00')))
+      .toMatchObject({ difficulty: 'MASTER', life: 100 });
+    expect(resolveKaleidxSchedulePhase(final, new Date('2026-10-16T04:00:00+08:00')))
+      .toMatchObject({ difficulty: 'EXPERT', life: 100, dxLife: 999 });
+    expect(resolveKaleidxSchedulePhase(hope, new Date('2026-10-22T04:00:00+08:00')))
+      .toMatchObject({ difficulty: 'BASIC', life: 999 });
+    expect(resolveKaleidxSchedulePhase(final, new Date('2026-10-23T04:00:00+08:00')))
+      .toMatchObject({ difficulty: 'BASIC', life: 999 });
   });
 
   it('resolves the red gate and perfect-challenge phases at key dates', () => {
