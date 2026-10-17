@@ -197,7 +197,7 @@ postinstall 按实际源码调用点应用 decode-uri-component 和 WebView 的�
 
 Android 在同一作业内以 4 GiB Gradle 堆和两个工作线程构建四个 ABI，校验 Manifest、签名和产物，安装 x86_64 APK 走生产路由冒烟，再上传最终产物。手动原生诊断入口位于 `android-recovery.yml`。
 
-对外 APK 名为 `rRanker-arm64.apk`、`rRanker-armeabi.apk`、`rRanker-x86.apk`、`rRanker-x86_64.apk`；构建归档名保留版本、提交与运行标识。`resource-release.yml` 仅处理正式 Release 的 published 事件，通过 `RESOURCE_PUBLISHER_TOKEN` 向发布仓库的 `apk.yml` 发送 Release ID，并查询该次运行结果。令牌仅需发布仓库 Actions 读写权限，S3 凭据由发布仓库持有。发布仓库验证全部附件后更新 rranker 桶的四个 `release/rRanker-<ABI>.apk` 固定地址。
+对外 APK 名为 `rRanker-arm64.apk`、`rRanker-armeabi.apk`、`rRanker-x86.apk`、`rRanker-x86_64.apk`；构建归档名保留版本、提交与运行标识。`resource-release.yml` 仅处理正式 Release 的 published 事件，通过 `RESOURCE_PUBLISHER_TOKEN` 向发布仓库的 `apk.yml` 发送 Release ID，并查询该次运行结果。令牌仅需发布仓库 Actions 读写权限。发布仓库通过仅限运行实例读写的 `YUNXIAO_TOKEN` 启动云效 APK 流水线，传入 Release ID、发布代码提交和 GitHub 运行 ID，等待实际结果，并在取消或超时时请求停止云效运行。云效用流水线私密变量中的 S3 凭据，在全部附件完成大小、摘要、ABI、包名、版本和签名校验后，更新 rranker 桶的四个 `release/rRanker-<ABI>.apk` 固定地址。
 
 iOS 正式构建在同一 TestFlight 队列串行分配编号、签名、校验 IPA 并上传 App Store Connect。平台最低版本、Android 优化模式和原生插件以 Expo 配置为准。
 
