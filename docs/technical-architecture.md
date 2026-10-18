@@ -31,7 +31,7 @@ Android 原生库与 Hermes 字节码压缩打包，原生库在安装时解压�
 
 主标签为总览、最佳、成绩、曲库、设置。`CachedTabScreen` 保留已挂载页面及其局部状态，失焦、短暂失活和后台期间保留原生显示内容，通过活动上下文停止查询通知、图片处理和页面任务；内存警告允许卸载隐藏页。标签重获焦点时立即沿用已有画面，活动任务与启动维护使用可取消的空闲调度。账号元数据由根部 `AccountMetadataObserver` 同步。
 
-设置页的“关于”进入根栈 `/about`，其中“隐私政策”入口进入独立路由 `/privacy-policy`，通过原生滚动页面展示随应用内置的隐私政策全文，支持离线阅读。
+设置页的“关于”进入根栈 `/about`，展示当前应用版本并提供 GitHub 仓库入口。“隐私政策”入口进入独立路由 `/privacy-policy`，通过原生滚动页面展示随应用内置的隐私政策全文，支持离线阅读。
 
 详情路由统一为 `/songs/[songId]`。`domain/detail-target.ts` 的 `decodeDetailTarget(params)` 要求显式 `gameId`；舞萌使用 `chartType`、`levelIndex`，osu! 使用模式和 `beatmapId`，其他游戏使用自己的当前目标字段。跨游戏跳转先选择账号，再显示目标；无效参数显示空态。链接通过 `detailTargetHref` 生成。
 

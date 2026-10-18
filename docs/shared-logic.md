@@ -99,7 +99,7 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 导航主题和焦点状态通过 `expo-router` 公共入口读取，标题高度与导航类型使用 `expo-router/react-navigation`；栈页与标签页沿用同一导航上下文。
 
-`app/about.tsx` 由设置页进入，复用 `DetailGestureRoot`、`DetailPressable` 展示隐私政策入口，通过应用内路由打开 `app/privacy-policy.tsx`。正文页复用应用主题与原生 `ScrollView`、`Text`，保留日期、章节、段落、列表及联系方式。
+`app/about.tsx` 由设置页进入，从 `Constants.expoConfig?.version` 读取当前版本，复用 `DetailGestureRoot`、`DetailPressable` 展示隐私政策与 GitHub 仓库入口。仓库通过 `Linking.openURL` 打开，失败沿用 `useNotification` 与 `recordRuntimeError`。隐私政策通过应用内路由打开 `app/privacy-policy.tsx`，正文页复用应用主题与原生 `ScrollView`、`Text`，保留日期、章节、段落、列表及联系方式。
 
 `scheduleIdleTask` 提供可取消的空闲调度，账号切换与绑定弹层的延后动作共用该入口；重命名输入在 `AppModal` 的原生 `onShow` 后聚焦。`CachedTabScreen` 持续监听焦点、前后台和内存警告；普通失活仅暂停工作，已挂载内容及局部状态持续保留，重获焦点时已有画面不等待空闲任务。真正的内存警告可卸载非焦点页面。`StackScreenActivityScope` 在栈页外层监听原生转场，`useStackScreenReady` 保留首次入场完成状态，活动上下文同时受焦点、转场和前后台约束。
 
