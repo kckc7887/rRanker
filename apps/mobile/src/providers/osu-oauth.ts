@@ -303,8 +303,7 @@ export async function rotateOsuTokens(refreshToken: string): Promise<OsuOAuthSes
 export type OsuOAuthOutcome =
   | { status: 'success'; accountName: string }
   | { status: 'error'; message: string }
-  /** 模式选择前关闭登录弹层，避免遮住回调页。 */
-  | { status: 'awaiting-mode-selection' };
+  | { status: 'callback-received' };
 
 const outcomeListeners = new Set<(outcome: OsuOAuthOutcome) => void>();
 

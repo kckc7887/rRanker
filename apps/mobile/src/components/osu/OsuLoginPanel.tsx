@@ -156,7 +156,7 @@ export function OsuLoginPanel({
   useEffect(() => {
     if (!visible) return;
     return subscribeOsuOAuthOutcome((outcome) => {
-      if (outcome.status === 'success' || outcome.status === 'awaiting-mode-selection') {
+      if (outcome.status === 'success' || outcome.status === 'callback-received') {
         reset();
         onSuccessRef.current();
         return;

@@ -12,6 +12,7 @@ import {
 } from '@/providers/osu-oauth';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
+import { useAppLifecycle } from '@/state/app-lifecycle';
 import { useAppTheme } from '@/theme/app-theme';
 import { providerErrorToUserMessage, runProviderOperation } from '@/providers/errors';
 import { useAccountBindingRequest } from '@/hooks/use-account-binding-flow';
@@ -41,11 +42,13 @@ export default function OsuOAuthCallbackScreen() {
   const [status, setStatus] = useState<CallbackStatus>({ kind: 'processing' });
   const processedRef = useRef(false);
   const focused = useRef(true);
+  const lifecycle = useAppLifecycle();
   const { begin, cancel } = useAccountBindingRequest(true);
   useFocusEffect(useCallback(() => {
     focused.current = true;
     return () => {
       focused.current = false;
+      processedRef.current = true;
       cancel();
       setStatus(current => current.kind === 'processing' || current.kind === 'binding'
         ? { kind: 'error', message: '操作已取消，请重新发起授权。' } : current);
@@ -53,10 +56,17 @@ export default function OsuOAuthCallbackScreen() {
   }, [cancel]));
 
   useEffect(() => {
-    if (processedRef.current) return;
-    processedRef.current = true;
+    if (lifecycle.phase !== 'background' || !processedRef.current) return;
+    setStatus(current => current.kind === 'processing' || current.kind === 'binding'
+      ? { kind: 'error', message: '操作已取消，请重新发起授权。' } : current);
+  }, [lifecycle.phase]);
+
+  useFocusEffect(useCallback(() => {
+    if (!lifecycle.foregroundReady || processedRef.current) return;
     const request = begin();
     if (!request) return;
+    processedRef.current = true;
+    notifyOsuOAuthOutcome({ status: 'callback-received' });
 
     const fail = (message: string) => {
       if (!request.isCurrent()) return;
@@ -85,17 +95,13 @@ export default function OsuOAuthCallbackScreen() {
         const session = await runProviderOperation('authorization_callback', () => exchangeOsuAuthorizationCode(code, state, request.signal));
         if (!request.isCurrent()) return;
         setStatus({ kind: 'selecting', session });
-        /** 深链页面被登录弹层遮挡，需先关闭弹层。 */
-        notifyOsuOAuthOutcome({ status: 'awaiting-mode-selection' });
       } catch (error) {
         fail(messageFor(error));
       }
     };
 
     void run().finally(request.finish);
-    return cancel;
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- 挂载时只消费一次授权回调。
-  }, []);
+  }, [begin, lifecycle.foregroundReady, params.code, params.error, params.state]));
 
   const bindWith = async (modeGameIds: Parameters<typeof bindOsuModes>[0]['modeGameIds'], session: OsuOAuthSession) => {
     if (!focused.current) return;

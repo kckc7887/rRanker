@@ -108,7 +108,7 @@ describe('ProviderLoginSheet osu! OAuth', () => {
     expect(mockSetOsuBinding).not.toHaveBeenCalled(); expect(success).not.toHaveBeenCalled();
   });
 
-  it('回调页进入模式选择时自动关闭绑定页（awaiting-mode-selection）', async () => {
+  it('收到授权回调后自动关闭绑定页', async () => {
     const onSuccess = jest.fn();
     const provider = findGame('osu-standard')?.providers[0] ?? null;
     await act(async () => {
@@ -127,7 +127,7 @@ describe('ProviderLoginSheet osu! OAuth', () => {
     expect(screen.getByText('前往 osu! 授权')).toBeTruthy();
     expect(screen.getByLabelText('使用已有osu账号')).toBeTruthy();
 
-    await act(async () => { oauthListener?.({ status: 'awaiting-mode-selection' }); });
+    await act(async () => { oauthListener?.({ status: 'callback-received' }); });
     expect(onSuccess).toHaveBeenCalledTimes(1);
   });
 });
