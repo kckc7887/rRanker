@@ -1,5 +1,6 @@
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { create } from 'zustand';
+import { useDebugStore } from './debug-store';
 import {
   boundAccountFromStored,
   createMajdataBoundAccount,
@@ -9,7 +10,7 @@ import {
   createPhigrosBoundAccount,
   type BoundAccount,
 } from '@/domain/bound-account';
-import type { GameId, ProviderId, RemoteProviderId } from '@/domain/game-bind-options';
+import { isTestProvider, type GameId, type ProviderId, type RemoteProviderId } from '@/domain/game-bind-options';
 import type { ProviderSession } from '@/providers/contracts';
 import type { SessionProviders } from '@/services/session-providers';
 import { resolveSessionProviders, releaseResolvedProviders } from '@/state/session-provider-resolver';
@@ -145,6 +146,7 @@ function pickActiveAccount(
   sessionsByAccountId: SessionsByAccountId,
   preferredId: string | null | undefined,
 ): BoundAccount | undefined {
+  accounts = accounts.filter(accountIsVisible);
   if (preferredId) {
     const preferred = accounts.find((account) => account.id === preferredId);
     if (preferred) return preferred;
@@ -327,7 +329,7 @@ export const useSession = create<SessionState>((set, get) => ({
   selectBoundAccount: (accountId) => {
     const state = get();
     const account = state.boundAccounts.find((item) => item.id === accountId);
-    if (!account) return;
+    if (!account || !accountIsVisible(account)) return;
     set(activeAccountFields(account, state.sessionsByAccountId, state.credentialIdsByAccountId));
   },
   removeBoundAccount: (accountId) => {
@@ -377,15 +379,7 @@ export const useSession = create<SessionState>((set, get) => ({
     clearOsuRotationCache();
     const kept = get().boundAccounts.filter(
       (account) => account.providerId === 'local'
-        || account.providerId === 'maimai-test'
-        || account.providerId === 'chunithm-test'
-        || account.providerId === 'phigros-test'
-        || account.providerId === 'musedash-test'
-        || account.providerId === 'rizline-test'
-        || account.providerId === 'phira-test'
-        || account.providerId === 'adofai-test'
-        || account.providerId === 'majdata-net-test'
-        || account.providerId === 'osu-test'
+        || isTestProvider(account.providerId)
         || account.providerId === 'chunithm-temp'
         || account.providerId === 'tuf'
         || account.providerId === 'phira-community'
@@ -425,6 +419,19 @@ export const useSession = create<SessionState>((set, get) => ({
     });
   },
 }));
+
+function accountIsVisible(account: BoundAccount): boolean {
+  const debug = useDebugStore.getState();
+  return !isTestProvider(account.providerId) || (debug.hydrated && debug.testAccountsEnabled);
+}
+
+useDebugStore.subscribe((next, previous) => {
+  if ((next.hydrated && next.testAccountsEnabled) === (previous.hydrated && previous.testAccountsEnabled)) return;
+  const state = useSession.getState();
+  if (state.restoreStatus !== 'ready') return;
+  useSession.setState(activateAccount(state.boundAccounts, state.sessionsByAccountId,
+    state.credentialIdsByAccountId, state.activeAccountId));
+});
 
 export async function restoreSession(
   load: () => Promise<SessionVault | null>,

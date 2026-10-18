@@ -86,6 +86,7 @@ export function GameScoreCard({
   titleStyle,
   pressedStyle,
   pressable = true,
+  onPress,
   artwork,
   testID,
 }: {
@@ -99,6 +100,7 @@ export function GameScoreCard({
   titleStyle: StyleProp<TextStyle>;
   pressedStyle?: StyleProp<ViewStyle>;
   pressable?: boolean;
+  onPress?: () => void;
   artwork?: ScoreCardArtwork;
   testID?: string;
 }) {
@@ -117,7 +119,7 @@ export function GameScoreCard({
   const resolvedCardStyle = showArtwork
     ? [cardStyle, cardBackground, styles.artworkClip]
     : [cardStyle, cardBackground];
-  const openDetail = () => router.push(detailTargetHref(presentation.route) as Href);
+  const openDetail = onPress ?? (() => router.push(detailTargetHref(presentation.route) as Href));
   const sideNode = side !== undefined
     ? side
     : metricSide

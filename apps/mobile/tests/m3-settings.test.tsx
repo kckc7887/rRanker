@@ -1,5 +1,5 @@
 import { useDebugStore } from '@/state/debug-store';
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { queryClient } from '@/state/query-client';
 import { StyleSheet } from 'react-native';
@@ -534,12 +534,14 @@ describe('M3A game account management', () => {
     expect(screen.getByLabelText('添加游戏账号').props.accessibilityState.disabled).toBe(false);
   });
 
-  it('keeps existing demo accounts manageable when adding test accounts is disabled', async () => {
+  it('hides existing demo accounts and their add option while disabled, then restores them', async () => {
     useDebugStore.setState({ hydrated: true, testAccountsEnabled: false });
     const screen = await renderScreen();
-    expect(screen.getByLabelText('删除示例账号 示例账号')).toBeTruthy();
+    expect(screen.queryByLabelText('删除示例账号 示例账号')).toBeNull();
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));
     expect(screen.queryByLabelText('示例查分器')).toBeNull();
     expect(screen.getByLabelText('本地查分器')).toBeTruthy();
+    await act(() => useDebugStore.setState({ testAccountsEnabled: true }));
+    expect(screen.getByLabelText('删除示例账号 示例账号')).toBeTruthy();
   });
 });

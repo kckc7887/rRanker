@@ -18,7 +18,7 @@ const GameIdSchema = z.enum(GAME_IDS);
 
 /** ADOFAI、Muse Dash、Phira 和 osu! 保留完整 ID；只有舞萌适用宴谱 ID 截断。 */
 export function normalizeLibrarySongId(gameId: GameId, songId: string | number): string {
-  return gameId === 'rizline' || gameId === 'majdata-net' || gameId === 'adofai' || gameId === 'musedash' || gameId === 'phira' || isOsuGameId(gameId)
+  return gameId === 'example' || gameId === 'rizline' || gameId === 'majdata-net' || gameId === 'adofai' || gameId === 'musedash' || gameId === 'phira' || isOsuGameId(gameId)
     ? String(songId)
     : normalizeSongId(songId);
 }
@@ -49,7 +49,7 @@ export function libraryDetailTarget(item: LibraryTarget): DetailTarget | null {
     case 'osu-standard': case 'osu-mania': case 'osu-catch': case 'osu-taiko':
       return { game: item.gameId, beatmapsetId: item.songId,
         ...(levelIndex === undefined ? {} : { beatmapId: levelIndex }) };
-    case 'phigros': case 'chunithm': case 'majdata-net': case 'rizline': case 'musedash':
+    case 'example': case 'phigros': case 'chunithm': case 'majdata-net': case 'rizline': case 'musedash':
       return { game: item.gameId, songId: item.songId,
         ...(levelIndex === undefined ? {} : { levelIndex }) };
     default: return null;

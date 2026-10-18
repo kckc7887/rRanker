@@ -72,6 +72,19 @@ function context(input: { gameId: GameId; providerId: ProviderId; accountId: str
 
 const clients = new Set<QueryClient>();
 const backgroundKeys: (readonly unknown[])[] = [];
+
+it('loads and refreshes the example account through the shared game data entry', async () => {
+  const client = createClient(); const account = createCatalogTestAccount('example');
+  const input = context({ gameId: 'example', providerId: 'example-test', accountId: account.id, client });
+  input.activeAccount = account;
+  const { bundle } = await loadGameDataBundle(input);
+  expect(bundle.payload).toMatchObject({ kind: 'example', displayName: '示例账号', playerScore: { value: 19000 }, source: { kind: 'generated', isStale: false } });
+  client.setQueryData(input.queryKey, bundle);
+  const result = await refreshGameDataBundle({ client, params: { accountId: account.id, gameId: 'example', providerId: 'example-test', mode: null },
+    refetch: async () => ({ data: (await loadGameDataBundle(input)).bundle, isError: false }) });
+  expect(result.status).toBe('success');
+  expect(result.value?.payload).toMatchObject({ kind: 'example', playerScore: { value: 19000 } });
+});
 function createClient() { const client = new QueryClient(); clients.add(client); return client; }
 beforeEach(() => { jest.restoreAllMocks(); });
 afterEach(() => {

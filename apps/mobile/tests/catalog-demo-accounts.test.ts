@@ -19,6 +19,7 @@ vi.mock('expo-sqlite/kv-store', () => ({ default: {
 } }));
 
 const games: { gameId: CatalogTestGameId; providerId: ProviderId; scoreDisplay: string }[] = [
+  { gameId: 'example', providerId: 'example-test', scoreDisplay: '19000' },
   { gameId: 'rizline', providerId: 'rizline-test', scoreDisplay: '0.0000' },
   { gameId: 'phira', providerId: 'phira-test', scoreDisplay: '19.00' },
   { gameId: 'adofai', providerId: 'adofai-test', scoreDisplay: '114514' },
@@ -43,7 +44,7 @@ async function saveDemo(gameId: CatalogTestGameId, providerId: ProviderId) {
 beforeEach(() => {
   storage.values.clear(); storage.unreadable.clear();
   useSession.getState().finishRestore(null);
-  useDebugStore.setState({ testAccountsEnabled: false, hydrated: true });
+  useDebugStore.setState({ testAccountsEnabled: true, hydrated: true });
 });
 afterEach(() => { useSession.getState().finishRestore(null); });
 

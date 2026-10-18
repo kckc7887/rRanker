@@ -32,11 +32,11 @@ beforeEach(() => {
 
 it('opens the unchanged diagnostic route and persists the themed switch', async () => {
   const screen = await render(<DebugScreen />);
-  expect(screen.getByLabelText('启用测试账号').props.value).toBe(false);
-  expect(screen.getByLabelText('启用测试账号').props.onTintColor).toBe(mockTheme.accentSoft);
-  await fireEvent(screen.getByLabelText('启用测试账号'), 'valueChange', true);
+  expect(screen.getByLabelText('启用示例账号与示例游戏').props.value).toBe(false);
+  expect(screen.getByLabelText('启用示例账号与示例游戏').props.onTintColor).toBe(mockTheme.accentSoft);
+  await fireEvent(screen.getByLabelText('启用示例账号与示例游戏'), 'valueChange', true);
   expect(mockSave).toHaveBeenCalledWith({ testAccountsEnabled: true });
-  expect(screen.getByLabelText('启用测试账号').props.value).toBe(true);
+  expect(screen.getByLabelText('启用示例账号与示例游戏').props.value).toBe(true);
   await fireEvent.press(screen.getByLabelText('诊断'));
   expect(mockPush).toHaveBeenCalledWith('/diagnostics');
 });
@@ -44,20 +44,20 @@ it('opens the unchanged diagnostic route and persists the themed switch', async 
 it('keeps the saved value and allows retry after a failed write', async () => {
   mockSave.mockRejectedValueOnce(new Error('storage failed'));
   const screen = await render(<DebugScreen />);
-  await fireEvent(screen.getByLabelText('启用测试账号'), 'valueChange', true);
-  expect(screen.getByLabelText('启用测试账号').props.value).toBe(false);
+  await fireEvent(screen.getByLabelText('启用示例账号与示例游戏'), 'valueChange', true);
+  expect(screen.getByLabelText('启用示例账号与示例游戏').props.value).toBe(false);
   expect(mockNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '保存失败' }));
-  await fireEvent(screen.getByLabelText('启用测试账号'), 'valueChange', true);
-  expect(screen.getByLabelText('启用测试账号').props.value).toBe(true);
+  await fireEvent(screen.getByLabelText('启用示例账号与示例游戏'), 'valueChange', true);
+  expect(screen.getByLabelText('启用示例账号与示例游戏').props.value).toBe(true);
 });
 
 it('does not expose a stale enabled value before initialization', async () => {
   useDebugStore.setState({ hydrated: false, testAccountsEnabled: true });
   const screen = await render(<DebugScreen />);
-  expect(screen.getByLabelText('启用测试账号').props.value).toBe(false);
-  expect(screen.getByLabelText('启用测试账号').props.disabled).toBe(true);
+  expect(screen.getByLabelText('启用示例账号与示例游戏').props.value).toBe(false);
+  expect(screen.getByLabelText('启用示例账号与示例游戏').props.disabled).toBe(true);
   await act(() => { useDebugStore.setState({ hydrated: true }); });
-  expect(screen.getByLabelText('启用测试账号').props.value).toBe(true);
+  expect(screen.getByLabelText('启用示例账号与示例游戏').props.value).toBe(true);
 });
 
 function picker(gameId: GameId | null, enabled = false) {

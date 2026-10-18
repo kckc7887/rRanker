@@ -1,4 +1,5 @@
 import { buildLxnsIconUrl } from './account-avatar';
+import type { ExampleRecord } from './example';
 import { buildChunithmMapIconUrl } from './chunithm-personal';
 import { resolveTufAvatarUrl } from './tuf';
 import { majdataAvatarUrl } from './majdata';
@@ -31,6 +32,9 @@ export type ChunithmBestListSection = {
 };
 
 export type GamePayload =
+  | { kind: 'example'; displayName: string; records: ExampleRecord[];
+      bestSections: { id: string; title: string; data: ExampleRecord[] }[];
+      playerScore: PlayerScoreSummary; source: DataSource }
   | ReturnType<typeof rizlinePayloadFromSnapshot>
   | { kind: 'majdata-net'; snapshot: import('./majdata').MajdataSnapshot; playerScore: PlayerScoreSummary; source: DataSource }
   | {
@@ -228,6 +232,7 @@ export function gameAccountMetadata(bundle: GameDataBundle): ({
   const { providerId, profile } = bundle;
   const p: GamePayload = bundle.payload;
   switch (p.kind) {
+    case 'example': return { scoreDisplay: p.playerScore.display, displayName: p.displayName };
     case 'rizline': return { scoreDisplay: p.playerScore.display, displayName: p.player.username,
       storedDisplayName: providerId === 'rizline-official' ? p.player.username : undefined };
     case 'maimai': return { scoreDisplay: formatPlayerScore(p.playerScore.value, profile.ratingDigits),

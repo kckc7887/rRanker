@@ -1,3 +1,4 @@
+import { useVisibleBoundAccounts } from '@/hooks/use-visible-bound-accounts';
 import { PinnedChunithmCollectionCards } from '@/components/chunithm/ChunithmOverviewPins';
 import { PinnedPlateCards } from '@/components/maimai/MaimaiOverviewPins';
 import { overviewDisplayName,overviewRatingCard,syncProviderHint } from '@/features/game-content/adapters/overview-presentation';
@@ -63,7 +64,7 @@ function PublicOverviewScreen() {
     catalogData ?? (await refetchCatalog()).data
   ), [catalogData, refetchCatalog]);
   const tabBottomInset = useNativeTabBottomInset();
-  const boundAccounts = useSession((s) => s.boundAccounts);
+  const boundAccounts = useVisibleBoundAccounts();
   const activeAccountId = useSession((s) => s.activeAccountId);
   const activeGameId = useSession((s) => s.activeGameId);
   const activeSession = useSession((s) => s.session);

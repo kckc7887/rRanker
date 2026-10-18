@@ -1,3 +1,6 @@
+import { useVisibleBoundAccounts } from '@/hooks/use-visible-bound-accounts';
+import { ExampleSongDetail } from '@/components/example/ExampleSongDetail';
+import { useDebugStore } from '@/state/debug-store';
 import { ChunithmSongDetail } from '@/components/chunithm/ChunithmSongDetail';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { MaimaiSongDetailScreen } from '@/components/maimai/MaimaiSongDetail';
@@ -31,6 +34,7 @@ export default function SongDetailScreen() {
 function SongDetailContent() {
   const theme = useAppTheme();
   const activeGameId = useSession((s) => s.activeGameId);
+  const examplesEnabled = useDebugStore(state => state.hydrated && state.testAccountsEnabled);
   const params = useLocalSearchParams<DetailTargetParams>();
   const resolution = decodeDetailTarget(params);
 
@@ -41,12 +45,13 @@ function SongDetailContent() {
     />;
   }
 
+  if (resolution.target.game === 'example' && !examplesEnabled) return <EmptyDataView title="示例游戏未启用" detail="请在调试页启用示例账号与示例游戏。" />;
   if (resolution.target.game !== activeGameId) return <DetailGameSwitch gameId={resolution.target.game} />;
   return <SongDetailTargetScreen target={resolution.target} themeBackground={theme.background} />;
 }
 
 function DetailGameSwitch({ gameId }: { gameId: GameId }) {
-  const accounts = useSession(state => state.boundAccounts).filter(account => account.gameId === gameId);
+  const accounts = useVisibleBoundAccounts().filter(account => account.gameId === gameId);
   const activeAccountId = useSession(state => state.activeAccountId);
   const [visible, setVisible] = useState(false);
   const [expanded, setExpanded] = useState<GameId | null>(gameId);
@@ -72,6 +77,7 @@ function SongDetailTargetScreen({ target, themeBackground }: {
   themeBackground: string;
 }) {
   switch (target.game) {
+    case 'example': return <ExampleSongDetail songId={target.songId} />;
     case 'phigros':
       return <PhigrosSongDetail songId={target.songId} levelIndex={target.levelIndex} />;
     case 'chunithm':

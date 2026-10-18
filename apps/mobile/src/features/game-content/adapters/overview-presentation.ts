@@ -1,4 +1,5 @@
 import { formatRizlineRks, RIZLINE_RATING_THEME } from '@/domain/rizline';
+import { EXAMPLE_RATING_THEME } from '@/domain/example';
 
 import { DxRatingCard } from '@/components/DxRatingCard';
 import { OSU_PP_RATING_THEME } from '@/components/osu/OsuRatingTag';
@@ -71,6 +72,7 @@ function formatChunithmBestMeta(
 }
 
 export function syncProviderHint(providerId: ProviderId | null): string {
+  if (providerId === 'example-test') return '示例查分器';
   if (providerId === 'rizline-test' || providerId === 'phira-test' || providerId === 'adofai-test'
     || providerId === 'majdata-net-test' || providerId === 'osu-test') return '示例查分器';
   if (providerId === 'rizline-official') return '官方账号';
@@ -95,6 +97,7 @@ type RatedPayload = Exclude<GameDataBundle['payload'], { kind: 'empty'; }>;
 
 function overviewRatingMeta(payload: RatedPayload, gameId: GameDataBundle['gameId']): string {
   switch (payload.kind) {
+    case 'example': return payload.bestSections.map(section => `${section.title} ${section.data.reduce((sum, record) => sum + record.rating, 0)}`).join(' · ');
     case 'rizline': return `AH5（推定） ${formatRizlineRks(payload.best.ah5Contribution)} · B35（推定） ${formatRizlineRks(payload.best.b35Contribution)}`;
     case 'majdata-net': return '';
     case 'adofai': return formatTufOverviewRatingMeta(payload.player);
@@ -107,6 +110,7 @@ function overviewRatingMeta(payload: RatedPayload, gameId: GameDataBundle['gameI
 }
 function overviewRatingTheme(payload: RatedPayload): RatingCardProps['themeOverride'] {
   switch (payload.kind) {
+    case 'example': return EXAMPLE_RATING_THEME;
     case 'rizline': return RIZLINE_RATING_THEME;
     case 'adofai': return TUF_RATING_THEME;
     case 'musedash': return MUSE_DASH_RATING_THEME;
@@ -119,6 +123,7 @@ function overviewRatingTheme(payload: RatedPayload): RatingCardProps['themeOverr
 function overviewSideBadge(bundle: GameDataBundle): RatingCardProps['sideBadge'] {
   const payload = bundle.payload;
   switch (payload.kind) {
+    case 'example': return { title: 'EX RANK', value: 'ʐ' };
     case 'adofai': return { title: '世界排名', value: formatTufRankBadge(payload.player) };
     case 'phira': return { title: '平均准确率', value: `${(payload.snapshot.stats.avgAccuracy * 100).toFixed(2)}%` };
     case 'phigros': return { title: '课题模式', value: formatPhigrosChallengeBadge(payload.challengeModeRank) };

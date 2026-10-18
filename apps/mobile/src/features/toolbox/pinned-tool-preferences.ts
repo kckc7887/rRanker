@@ -29,15 +29,15 @@ const STORE_KEY = 'rranker.toolbox.pinned-tools.v1';
 const COLLECTION_KINDS: readonly ChunithmCollectionKind[] = ['trophy', 'character', 'plate', 'icon'];
 
 export function emptyPinnedToolIdsByGame(): PinnedToolIdsByGame {
-  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
+  return { example: [], rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
 }
 
 export function emptyPinnedPlateIdsByGame(): PinnedPlateIdsByGame {
-  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
+  return { example: [], rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
 }
 
 export function emptyPinnedCollectionIdsByGame(): PinnedCollectionIdsByGame {
-  return { rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
+  return { example: [], rizline: [], 'majdata-net': [], maimai: [], chunithm: [], phigros: [], phira: [], adofai: [], musedash: [], 'osu-standard': [], 'osu-mania': [], 'osu-catch': [], 'osu-taiko': [] };
 }
 
 export function emptyHomePinPreferences(): HomePinPreferences {

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { DatabaseSync } from 'node:sqlite';
 import type { PhiraQueriedBest } from '@/domain/phira';
 import type { MajdataSong } from '@/domain/majdata';
-import { createUserDataBackup, DEFAULT_TAG_PRESETS, parseUserDataBackup } from '@/domain/user-library';
+import { createUserDataBackup, DEFAULT_TAG_PRESETS, libraryDetailTarget, parseUserDataBackup } from '@/domain/user-library';
 import type { ScoreSnapshot } from '@/domain/models';
 import { normalizeOsuSnapshot, osuKnownScoresCacheKey, osuSnapshotCacheKey, OSU_KNOWN_SCORES_SCHEMA_VERSION } from '@/domain/osu';
 import { TufPlayerSchema, tufPlayerCacheKey } from '@/domain/tuf';
@@ -103,6 +103,33 @@ describe('SQLite storage and current backups', () => {
     await repository.initialize();
   });
   afterEach(() => database.close());
+
+  it('keeps favorites, practice and two tag scopes independent through storage and backup restore', async () => {
+    const library = new UserLibraryService();
+    await library.setSongFavorite('example', '0001', true);
+    await library.setSongFavorite('example', '0002', true);
+    await library.setChartPractice('example', '0001', 'SD', 0, true);
+    await library.setTags({ gameId: 'example', kind: 'song', songId: '0001' }, ['歌曲标签']);
+    await library.setTags({ gameId: 'example', kind: 'chart', songId: '0001', type: 'SD', levelIndex: 0 }, ['谱面标签']);
+    const before = await library.list('example');
+    expect(before).toHaveLength(3);
+    expect(before).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'song:example:0001', favorite: true, tags: ['歌曲标签'] }),
+      expect.objectContaining({ key: 'chart:example:0001:SD:0', practice: true, tags: ['谱面标签'] }),
+      expect.objectContaining({ key: 'song:example:0002', favorite: true, tags: [] }),
+    ]));
+    const backup = parseUserDataBackup(JSON.parse(JSON.stringify(await library.createBackup())));
+    await library.clear();
+    await library.restore(backup, 'replace');
+    expect(await library.list('example')).toEqual(before);
+    expect(libraryDetailTarget(before.find(item => item.kind === 'chart')!)).toEqual({ game: 'example', songId: '0001', levelIndex: 0 });
+    await library.setSongFavorite('example', '0001', false);
+    expect(await library.list('example')).toEqual(expect.arrayContaining([
+      expect.objectContaining({ key: 'chart:example:0001:SD:0', practice: true, tags: ['谱面标签'] }),
+      expect.objectContaining({ key: 'song:example:0002', favorite: true }),
+    ]));
+  });
+
 
   const majdataSong = (id: string): MajdataSong => ({
     id, title: id, artist: '', designer: '', hash: 'cached', timestamp: '2026-09-01',

@@ -340,7 +340,7 @@ const styles = StyleSheet.create({
   wrap: { gap: 7, marginTop: 9 }, label: { fontSize: 12, fontWeight: '600' },
   tags: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 }, tag: { borderRadius: 14, paddingHorizontal: 9, paddingVertical: 5 },
   tagText: { fontSize: 11 }, empty: { fontSize: 11 }, inputRow: { flexDirection: 'row', gap: 7 },
-  input: { flex: 1, minHeight: 40, borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 7 },
+  input: { flex: 1, minWidth: 0, minHeight: 40, borderWidth: 1, borderRadius: 8, paddingHorizontal: 9, paddingVertical: 7 },
   add: { borderRadius: 8, paddingHorizontal: 13, justifyContent: 'center' }, addText: { color: '#FFF', fontWeight: '700', fontSize: 12 },
   presetButton: { borderWidth: 1, borderRadius: 8, paddingHorizontal: 11, justifyContent: 'center' }, presetText: { fontWeight: '700', fontSize: 12 },
   error: { fontSize: 11 },

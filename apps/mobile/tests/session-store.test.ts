@@ -1,3 +1,4 @@
+import { useDebugStore } from '@/state/debug-store';
 import {
   CHUNITHM_TEST_ACCOUNT_ID,
   CHUNITHM_TEMP_ACCOUNT_ID,
@@ -79,6 +80,7 @@ const tokenSessionA: ProviderSession = { mode: 'import-token', value: 'token-a',
 const tokenSessionB: ProviderSession = { mode: 'import-token', value: 'token-b', persistable: true };
 
 beforeEach(() => {
+  useDebugStore.setState({ hydrated: true, testAccountsEnabled: true });
   updateAccountSession.mockReset().mockResolvedValue('applied');
   updateCredentialSession.mockReset().mockResolvedValue('applied');
   useSession.getState().finishRestore(null);

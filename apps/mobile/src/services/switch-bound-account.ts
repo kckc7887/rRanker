@@ -49,6 +49,7 @@ export async function switchBoundAccount(
   if (activeAccountId !== accountId) {
     selectBoundAccount(accountId);
   }
+  if (useSession.getState().activeAccountId !== accountId) return false;
   const persist = sessions.setActiveAccountId(accountId);
 
   if (navigateToOverview) {

@@ -1,3 +1,4 @@
+import { ExampleRecordsScreen } from '@/screens/ExampleScreens';
 import { useCallback, useEffect, useMemo } from 'react';
 import { Text, TextInput, View } from 'react-native';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
@@ -71,6 +72,7 @@ export function RecordsScreen() {
 
   if (activeGameId === 'majdata-net') return <MajdataRecordsScreen />;
   if (activeGameId === 'phira') return <PhiraRecordsScreen />;
+  if (activeGameId === 'example') return <ExampleRecordsScreen />;
   if (activeGameId === 'rizline') return <RizlineRecordsScreen />;
 
   if (isOsuGameId(activeGameId)) return <OsuRecordsScreen />;

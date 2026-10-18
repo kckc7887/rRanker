@@ -1,3 +1,5 @@
+import { BEST_IMAGE_RAINBOW_COLORS } from './badge-theme';
+
 type GradientColors = readonly [string, string, ...string[]];
 
 const GOLD: GradientColors = [
@@ -13,6 +15,7 @@ function flowingColors(base: GradientColors): GradientColors {
 }
 
 export const METRIC_GRADIENT_THEMES = {
+  rainbow: { baseColors: BEST_IMAGE_RAINBOW_COLORS, colors: flowingColors(BEST_IMAGE_RAINBOW_COLORS), duration: 3600 },
   gold: { baseColors: GOLD, colors: flowingColors(GOLD), duration: 3000 },
   mint: { baseColors: MINT, colors: flowingColors(MINT), duration: 2400 },
 };

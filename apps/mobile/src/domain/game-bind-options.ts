@@ -1,6 +1,8 @@
 import type { ImageSourcePropType } from 'react-native';
 import { NEUTRAL_RATING_THEME, type DxRatingTheme } from './dx-rating-theme';
 import { RIZLINE_RATING_THEME } from './rizline';
+import { EXAMPLE_RATING_THEME } from './example';
+import appIcon from '../../assets/images/icon.png';
 import maimaiIcon from '../../assets/images/maimai-dx.webp';
 import divingFishIcon from '../../assets/images/diving-fish.webp';
 import lxnsIcon from '../../assets/images/lxns.webp';
@@ -21,6 +23,7 @@ import osuCatchIcon from '../../assets/images/osu-catch.webp';
 import osuTaikoIcon from '../../assets/images/osu-taiko.webp';
 
 export const PROVIDER_IDS = [
+  'example-test',
   'rizline-official',
   'majdata-net',
   'diving-fish',
@@ -48,6 +51,7 @@ export type RemoteProviderId = Extract<ProviderId, 'rizline-official' | 'majdata
 export const INTERNAL_PROVIDER_GAMES = { 'chunithm-temp': 'chunithm' } as const satisfies Partial<Record<ProviderId, GameId>>;
 
 export const SUPPORTED_GAME_IDS = [
+  'example',
   'maimai',
   'chunithm',
   'phigros',
@@ -94,6 +98,12 @@ export type GameOption = {
 };
 
 const GAME_OPTION_DEFINITIONS = [
+  {
+    id: 'example', title: '示例游戏', icon: appIcon, available: true, pendingDetail: '',
+    accountScoreTheme: EXAMPLE_RATING_THEME,
+    providers: [{ id: 'example-test', bindingKind: 'fixture', title: '示例查分器',
+      detail: '40 首示例歌曲与固定成绩', icon: exampleAccountIcon, available: true }],
+  },
   {
     id: 'maimai',
     accountOrder: 0,

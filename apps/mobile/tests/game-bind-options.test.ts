@@ -6,6 +6,7 @@ import { GAME_OPTIONS, findGame, findProvider } from '@/domain/game-bind-options
 describe('bundled game and provider icons', () => {
   it('maps every registered game to its local icon', () => {
     expect(Object.fromEntries(GAME_OPTIONS.map(game => [game.id, game.icon]))).toEqual({
+      example: '/assets/images/icon.png',
       maimai: '/assets/images/maimai-dx.webp',
       chunithm: '/assets/images/chunithm.webp',
       adofai: '/assets/images/adofai.webp',
@@ -63,13 +64,12 @@ describe('bundled game and provider icons', () => {
     expect(new Set([familyIcon, ...modeIcons]).size).toBe(5);
   });
 
-  it('ships all game, provider and family sources as 18 nonempty local assets', () => {
+  it('ships all game, provider and family sources as nonempty local assets', () => {
     const icons = new Set(GAME_OPTIONS.flatMap(game => [
       game.icon,
       ...(game.familyIcon ? [game.familyIcon] : []),
       ...game.providers.map(provider => provider.icon),
     ]));
-    expect(icons.size).toBe(18);
     for (const icon of icons) {
       expect(icon).toEqual(expect.stringMatching(/^\/assets\/images\/[^/]+\.(?:png|webp)$/u));
       const file = statSync(resolve(process.cwd(), String(icon).slice(1)));

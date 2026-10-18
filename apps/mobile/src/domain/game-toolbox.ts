@@ -31,6 +31,14 @@ const OSU_TOOLS: readonly GameToolDefinition[] = [
 ];
 
 export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
+  example: { tools: [
+    { id: 'strength-analysis', href: '/tools/strength-analysis', title: '实力分析',
+      detail: '查看五维能力、支撑成绩与耐力练习', summaryLabel: '实力分析' },
+    { id: 'random-charts', href: '/tools/random-charts', title: '随机歌曲',
+      detail: '随机抽取 1–4 首示例歌曲', summaryLabel: '随机歌曲' },
+    { id: 'arcade-finder', href: '/tools/arcade-finder', title: '音游地图',
+      detail: '查找附近机厅', summaryLabel: '音游地图' },
+  ], emptyDetail: '' },
   rizline: { tools: [
     { id: 'random-charts', href: '/tools/random-charts', title: '随机歌曲',
       detail: '按难度、曲包和定数抽取谱面', summaryLabel: '随机歌曲' },

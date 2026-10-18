@@ -25,6 +25,9 @@ const capabilitiesFor = (id: GameId): GameCapabilities => ({
 });
 
 export const GAME_PROFILES: { [G in GameId]: GameProfile<G> } = {
+  example: { id: 'example', title: '示例游戏', ratingLabel: 'EXAMPLE RATING', ratingDigits: 0,
+    bestSections: [{ id: 'best30', title: 'Best 30', size: 30 }, { id: 'ranked10', title: 'Ranked 10', size: 10 }],
+    capabilities: capabilitiesFor('example') },
   rizline: { id: 'rizline', title: 'Rizline', ratingLabel: 'Ranking Score', ratingDigits: 4,
     bestSections: [{ id: 'ah5', title: 'AH5（推定）', size: 5 }, { id: 'b35', title: 'Best35（推定）', size: 35 }],
     capabilities: capabilitiesFor('rizline') },

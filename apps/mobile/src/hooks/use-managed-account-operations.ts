@@ -5,6 +5,7 @@ import type { GameId, ProviderId } from '@/domain/game-bind-options';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import { useSession } from '@/state/session-store';
+import { useDebugStore } from '@/state/debug-store';
 import { queryClient } from '@/state/query-client';
 import { notifyAccountSwitchError, switchBoundAccount } from '@/services/switch-bound-account';
 import {
@@ -46,6 +47,8 @@ export function useManagedAccountOperations(flow: ReturnType<typeof useAccountBi
   const addDemoAccount = (providerId: ProviderId, gameId?: GameId) => {
     const binding = demoAccountBinding(providerId, gameId);
     if (!binding) return false;
+    const debug = useDebugStore.getState();
+    if (!debug.hydrated || !debug.testAccountsEnabled) return true;
     void addOrSwitchDemoAccount({
       ...binding, existing: accounts.find(account => account.providerId === providerId && (!gameId || account.gameId === gameId)),
       existingMessage: account => `示例账号「${account.displayName}」已在列表中，已切换到该账号`,
@@ -57,6 +60,8 @@ export function useManagedAccountOperations(flow: ReturnType<typeof useAccountBi
     return true;
   };
   const addOsuDemoModes = async (modes: readonly OsuGameId[]) => {
+    const debug = useDebugStore.getState();
+    if (!debug.hydrated || !debug.testAccountsEnabled) return;
     setBusy(true);
     try {
       let selected: BoundAccount | undefined;

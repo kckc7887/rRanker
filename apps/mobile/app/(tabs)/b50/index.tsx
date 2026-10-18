@@ -1,3 +1,4 @@
+import { ExampleBestScreen } from '@/screens/ExampleScreens';
 import { SongListSectionHeader } from '@/components/game-content/SongListSectionHeader';
 import { SIMAI_BEST_LIST_STYLES as styles } from '@/components/game-content/SimaiListStyles';
 import { MajdataBestScreen } from '@/screens/MajdataScreens';
@@ -67,6 +68,7 @@ export function Best50Screen() {
   }
   if (activeGameId === 'majdata-net') return <MajdataBestScreen />;
   if (activeGameId === 'phira') return <PhiraBestScreen />;
+  if (activeGameId === 'example') return <ExampleBestScreen />;
   if (activeGameId === 'rizline') return <RizlineBestScreen />;
   if (isOsuGameId(activeGameId)) return <OsuBestScreen />;
   if (activeGameId === 'adofai') {

@@ -1,3 +1,4 @@
+import { useDebugStore } from '@/state/debug-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
 import { LocalAccountStore } from '@/storage/local-account-store';
 import { DemoAccountStore } from '@/storage/demo-account-store';
@@ -94,6 +95,7 @@ const sources = [
   { id: 'chunithm-demo', provider: 'chunithm-test', load: async () => single(await loadChunithmDemoBoundAccount()) },
   { id: 'phigros-demo', provider: 'phigros-test', load: async () => single(await loadPhigrosDemoBoundAccount()) },
   { id: 'musedash-demo', provider: 'musedash-test', load: async () => single(await loadMuseDashDemoBoundAccount()) },
+  { id: 'example-demo', provider: 'example-test', load: () => loadCatalogDemoAccount('example') },
   { id: 'rizline-demo', provider: 'rizline-test', load: () => loadCatalogDemoAccount('rizline') },
   { id: 'phira-demo', provider: 'phira-test', load: () => loadCatalogDemoAccount('phira') },
   { id: 'adofai-demo', provider: 'adofai-test', load: () => loadCatalogDemoAccount('adofai') },
@@ -145,7 +147,10 @@ export function retryFailedAccountSources(): Promise<void> {
   return retryingSources;
 }
 
-export function restoreAppAccounts(): Promise<void> {
+export async function restoreAppAccounts(): Promise<void> {
+  if (!useDebugStore.getState().hydrated) await useDebugStore.getState().hydrate().catch(error => {
+    recordRuntimeError('account-restoration', error, false, { phase: 'debug-preferences' });
+  });
   return restoreSession(async () => {
     try { return await sessions.loadVault(); }
     catch (error) {

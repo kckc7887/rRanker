@@ -100,12 +100,12 @@ export function RandomChartsPage({
           </View>
         </Card>
 
-        <View
+        {filter != null ? <View
           style={[styles.filterContainer, { borderColor: theme.border }]}
           testID="random-charts-filter"
         >
           {filter}
-        </View>
+        </View> : null}
 
         <Card>
           <Text style={[styles.poolHint, { color: theme.textMuted }]}>

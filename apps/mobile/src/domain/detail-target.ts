@@ -27,7 +27,7 @@ export type MaimaiDetailTarget = {
 };
 
 export type ChartIndexDetailTarget = {
-  game: 'phigros' | 'chunithm' | 'majdata-net' | 'rizline' | 'musedash';
+  game: 'example' | 'phigros' | 'chunithm' | 'majdata-net' | 'rizline' | 'musedash';
   songId: string;
   levelIndex?: number;
 };
@@ -65,7 +65,7 @@ export type DetailTargetResolution = { ok: true; target: DetailTarget } | Detail
 
 const CHART_TYPES: readonly ChartType[] = ['SD', 'DX', 'UTAGE'];
 
-const INDEX_GAMES: readonly GameId[] = ['phigros', 'chunithm', 'majdata-net', 'rizline', 'musedash'];
+const INDEX_GAMES: readonly GameId[] = ['example', 'phigros', 'chunithm', 'majdata-net', 'rizline', 'musedash'];
 
 export function encodeDetailTarget(target: DetailTarget): DetailTargetRoute {
   const params = { gameId: target.game };

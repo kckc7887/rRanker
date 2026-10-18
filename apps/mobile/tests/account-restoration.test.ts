@@ -10,7 +10,7 @@ import { TufAccountStore } from '@/storage/tuf-account-store';
 import { MuseDashAccountStore } from '@/storage/musedash-account-store';
 import { PhiraAccountStore } from '@/storage/phira-account-store';
 import { SecureSessionStore } from '@/storage/secure-session-store';
-import { useSession } from '@/state/session-store';
+import { UNBOUND_ACCOUNT_ID, useSession } from '@/state/session-store';
 import { useDebugStore } from '@/state/debug-store';
 import { SessionPersistenceError } from '@/domain/session-vault';
 import { snapshotEmergencyRuntimeDiagnostics } from '@/services/runtime-diagnostics-recorder';
@@ -91,7 +91,7 @@ describe('startup account restoration', () => {
     expect(LocalAccountStore.prototype.upsert).not.toHaveBeenCalled();
   });
 
-  it('restores all four saved demo games and the selected demo while the debug switch is off', async () => {
+  it('retains all saved demo games without activating them while the debug switch is off', async () => {
     vi.mocked(DemoAccountStore.prototype.load).mockResolvedValue([{ id: MAIMAI_TEST_ACCOUNT_ID, displayName: '舞萌示例' }]);
     vi.mocked(ChunithmDemoAccountStore.prototype.load).mockResolvedValue({ id: CHUNITHM_TEST_ACCOUNT_ID, displayName: '中二示例' });
     vi.mocked(PhigrosDemoAccountStore.prototype.load).mockResolvedValue({ id: PHIGROS_TEST_ACCOUNT_ID, displayName: 'Phigros 示例' });
@@ -102,7 +102,7 @@ describe('startup account restoration', () => {
     const state = useSession.getState();
     expect(state.restoreStatus).toBe('ready');
     expect(state.boundAccounts.map((account) => account.id)).toEqual([MAIMAI_TEST_ACCOUNT_ID, CHUNITHM_TEST_ACCOUNT_ID, PHIGROS_TEST_ACCOUNT_ID, MUSEDASH_TEST_ACCOUNT_ID]);
-    expect(state.activeAccountId).toBe(PHIGROS_TEST_ACCOUNT_ID);
+    expect(state.activeAccountId).toBe(UNBOUND_ACCOUNT_ID);
   });
 
   it('keeps public accounts in the established restoration order and removes the temporary account only when a formal one exists', async () => {

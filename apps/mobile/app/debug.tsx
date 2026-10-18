@@ -22,17 +22,17 @@ export default function DebugScreen() {
     <ScrollView contentInsetAdjustmentBehavior="automatic" contentContainerStyle={styles.content}>
       <View style={[styles.row, { backgroundColor: theme.surface }]}>
         <View style={styles.copy}>
-          <Text style={[styles.title, { color: theme.text }]}>启用测试账号</Text>
-          <Text style={[styles.detail, { color: theme.textMuted }]}>开启后可添加示例查分器，关闭不影响已添加的账号</Text>
+          <Text style={[styles.title, { color: theme.text }]}>启用示例账号与示例游戏</Text>
+          <Text style={[styles.detail, { color: theme.textMuted }]}>开启后可添加和使用示例账号与示例游戏，关闭后隐藏，已有数据保留</Text>
         </View>
         <Switch
-          accessibilityLabel="启用测试账号"
+          accessibilityLabel="启用示例账号与示例游戏"
           value={hydrated && enabled}
           disabled={!hydrated || saving}
           trackColor={{ false: theme.border, true: theme.accentSoft }}
           thumbColor={enabled ? theme.accent : theme.surface}
           onValueChange={(value) => void setEnabled(value).catch(() => showNotification({
-            title: '保存失败', message: '暂时无法更改测试账号设置，请重试。', variant: 'error',
+            title: '保存失败', message: '暂时无法更改示例设置，请重试。', variant: 'error',
           }))}
         />
       </View>

@@ -1,3 +1,4 @@
+import { EXAMPLE_SONGS, type ExampleSong } from '@/domain/example';
 import { MAJDATA_NAMES, majdataAsset, type MajdataSong } from '@/domain/majdata';
 import { GameSongCover } from '@/components/game-content/GameSongCover';
 import { useMajdataLibrarySongs } from '@/hooks/use-majdata';
@@ -41,7 +42,9 @@ import { StackScreenActivityScope } from '@/components/CachedTabScreen';
 type Mode = 'all' | 'favorite' | 'practice';
 type MuseDashLibrarySong = { id: string; title: string; artist?: string; cover?: string };
 type PhiraLibrarySong = { id: string; title: string; illustration: string | null };
-type LibrarySong = MajdataSong | Song | ChunithmSong | TufLevel | MuseDashLibrarySong | PhiraLibrarySong | OsuBeatmapsetDetail | RizlineSong;
+type LibrarySong = ExampleSong | MajdataSong | Song | ChunithmSong | TufLevel | MuseDashLibrarySong | PhiraLibrarySong | OsuBeatmapsetDetail | RizlineSong;
+
+function isExampleSong(song: LibrarySong): song is ExampleSong { return 'game' in song && song.game === 'example'; }
 
 function isRizlineLibrarySong(song: LibrarySong): song is RizlineSong { return 'packId' in song; }
 
@@ -73,6 +76,7 @@ export default function UserLibraryScreen() {
 
 function UserLibraryContent() {
   const activeGameId = useSession((state) => state.activeGameId);
+  if (activeGameId === 'example') return <ExampleLibraryScreen />;
   if (activeGameId === 'majdata-net') return <MajdataLibraryScreen />;
   if (activeGameId === 'adofai') return <AdofaiLibraryScreen />;
   if (activeGameId === 'musedash') return <MuseDashLibraryScreen />;
@@ -126,6 +130,12 @@ function LibraryList({
           />
         )} />}
   </View>;
+}
+
+const exampleSongsById = new Map(EXAMPLE_SONGS.map(song => [song.id, song]));
+function ExampleLibraryScreen() {
+  const library = useUserLibrary();
+  return <LibraryList items={library.data ?? []} songsById={exampleSongsById} />;
 }
 
 function SharedLibraryScreen() {
@@ -252,7 +262,7 @@ function LibraryRow({
   const theme = useAppTheme();
   const chunithmSong = song && isChunithmSong(song) ? song : undefined;
   const osuSong = song && isOsuLibrarySong(song) ? song : undefined;
-  const standardSong = song && !isMajdataLibrarySong(song) && !isChunithmSong(song) && !isTufLevel(song) && !isMuseDashSong(song) && !isPhiraLibrarySong(song) && !isOsuLibrarySong(song) && !isRizlineLibrarySong(song) ? song : undefined;
+  const standardSong = song && !isExampleSong(song) && !isMajdataLibrarySong(song) && !isChunithmSong(song) && !isTufLevel(song) && !isMuseDashSong(song) && !isPhiraLibrarySong(song) && !isOsuLibrarySong(song) && !isRizlineLibrarySong(song) ? song : undefined;
   const rizlineSong = song && isRizlineLibrarySong(song) ? song : undefined;
   const rizlineChart = item.kind === 'chart' ? rizlineSong?.charts.find((value) => rizlineDifficultyIndex(value.difficulty) === item.levelIndex) : undefined;
   const tufLevel = song && isTufLevel(song) ? song : undefined;
@@ -270,7 +280,8 @@ function LibraryRow({
     ?? (song && !isTufLevel(song) ? song.title : undefined)
     ?? `歌曲 ID ${item.songId}`;
   const chartLabel = item.kind === 'chart'
-    ? item.gameId === 'rizline' ? rizlineChart ? `${rizlineChart.difficulty} ${rizlineChart.level}` : RIZLINE_DIFFICULTIES[item.levelIndex] ?? '—'
+    ? item.gameId === 'example' ? 'Insane 27.5'
+    : item.gameId === 'rizline' ? rizlineChart ? `${rizlineChart.difficulty} ${rizlineChart.level}` : RIZLINE_DIFFICULTIES[item.levelIndex] ?? '—'
     : item.gameId === 'majdata-net' ? `${MAJDATA_NAMES[item.levelIndex]} ${song && isMajdataLibrarySong(song) ? song.levels[item.levelIndex] : ''}` : chunithmDifficulty
       ? CHUNITHM_DIFFICULTY_LABELS[chunithmDifficulty.difficulty]
       : chart
@@ -305,6 +316,7 @@ function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: stri
   if (!song || isTufLevel(song)) {
     return <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
   }
+  if (isExampleSong(song)) return <GameSongCover source={song.coverUrl} gameId={gameId} />;
   if (isMajdataLibrarySong(song)) return <GameSongCover source={majdataAsset(song.id, 'image')} gameId={gameId} />;
   if (isRizlineLibrarySong(song)) return <GameSongCover source={rizlineCoverUrl(song)} gameId={gameId} />;
   if (isMuseDashSong(song)) {

@@ -1,3 +1,4 @@
+import { ExampleCatalogScreen } from '@/screens/ExampleScreens';
 import { useCallback, useEffect, useMemo } from 'react';
 import { Text, TextInput, View, type ListRenderItem } from 'react-native';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
@@ -62,6 +63,7 @@ export function SearchScreen() {
   }
   if (activeGameId === 'majdata-net') return <MajdataCatalogScreen />;
   if (activeGameId === 'phira') return <PhiraCatalogScreen />;
+  if (activeGameId === 'example') return <ExampleCatalogScreen />;
   if (activeGameId === 'rizline') return <RizlineCatalogScreen />;
 
   if (isOsuGameId(activeGameId)) return <OsuCatalogScreen />;

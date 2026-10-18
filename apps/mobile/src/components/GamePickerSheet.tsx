@@ -71,6 +71,7 @@ export function GamePickerSheet({
     const result: { key: string; game: GameOption; familyTitle?: string; modeGames: GameOption[] }[] = [];
     const seenFamilies = new Set<string>();
     for (const registeredGame of GAME_OPTIONS) {
+      if (registeredGame.id === 'example' && !testAccountsEnabled) continue;
       const game = mode === 'bind' ? {
         ...registeredGame,
         providers: registeredGame.providers.filter((provider) => canBindProvider(provider, testAccountsEnabled)),

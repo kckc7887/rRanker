@@ -50,6 +50,7 @@ export function createAdditionalLocalMaimaiAccountId(
 }
 
 const PROVIDER_TITLES: Record<ProviderId, string> = {
+  'example-test': '示例查分器',
   'rizline-official': '官方账号',
   'majdata-net': 'Majdata Net',
   'diving-fish': '水鱼查分器',
@@ -72,15 +73,15 @@ const PROVIDER_TITLES: Record<ProviderId, string> = {
   'osu-test': '示例查分器',
 };
 
-export type CatalogTestGameId = 'rizline' | 'phira' | 'adofai' | 'majdata-net' | OsuGameId;
+export type CatalogTestGameId = 'example' | 'rizline' | 'phira' | 'adofai' | 'majdata-net' | OsuGameId;
 
 export function createCatalogTestAccount(gameId: CatalogTestGameId, displayName = '示例账号'): BoundAccount {
   const profile = getGameProfile(gameId);
-  const providerId = isOsuGameId(gameId) ? 'osu-test'
+  const providerId = gameId === 'example' ? 'example-test' : isOsuGameId(gameId) ? 'osu-test'
     : gameId === 'rizline' ? 'rizline-test'
       : gameId === 'phira' ? 'phira-test'
         : gameId === 'adofai' ? 'adofai-test' : 'majdata-net-test';
-  const scoreDisplay = isOsuGameId(gameId) ? '40000'
+  const scoreDisplay = gameId === 'example' ? '19000' : isOsuGameId(gameId) ? '40000'
     : gameId === 'phira' ? '19.00'
       : gameId === 'adofai' ? '114514'
         : gameId === 'majdata-net' ? '114514.0000%' : '0.0000';

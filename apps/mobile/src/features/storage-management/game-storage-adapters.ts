@@ -183,6 +183,9 @@ const osuTaikoAdapter = createGameStorageAdapter({
 });
 
 export const GAME_STORAGE_ADAPTERS: readonly GameStorageAdapter[] = [
+  createGameStorageAdapter({ gameId: 'example', title: '示例游戏', color: '#008CFF', note: '示例歌曲与成绩',
+    queryKeys: [['game-data']], fileResources: [],
+    ownership: { ownsAccount: accountOwnership('example'), resourcePrefixes: [] } }),
   maimaiAdapter,
   chunithmAdapter,
   phigrosAdapter,

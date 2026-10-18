@@ -164,6 +164,8 @@ export function gameDataBundleStale(bundle: GameDataBundle | undefined): boolean
   const payload = bundle?.payload;
   if (!payload) return false;
   switch (payload.kind) {
+    case 'example':
+      return payload.source.isStale;
     case 'rizline':
       return payload.source.isStale || payload.catalogSource?.isStale === true;
     case 'chunithm':

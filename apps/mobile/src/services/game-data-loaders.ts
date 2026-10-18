@@ -1,4 +1,5 @@
 import type { GameDataCatalogQueries } from './game-data-loader-queries';
+import { exampleTestPayload } from '@/providers/example-test-provider';
 import { loadRizlineCached, loadRizlineWithFallback } from '@/services/rizline-service';
 import { RIZLINE_CATALOG_QUERY_KEY } from '@/services/rizline-catalog-query';
 import type { RizlineCatalogData, RizlineSnapshot } from '@/domain/rizline';
@@ -543,6 +544,10 @@ async function loadMaimaiGameDataBundle(context: GameDataLoaderContext): Promise
 }
 
 const GAME_DATA_LOADERS: Record<GameId, GameDataLoader> = {
+  example: async (context) => ({ bundle: {
+    gameId: 'example', providerId: 'example-test', profile: getGameProfile('example'),
+    payload: exampleTestPayload(context.activeAccount?.displayName),
+  } }),
   maimai: loadMaimaiGameDataBundle,
   chunithm: loadChunithmGameDataBundle,
   phigros: loadPhigrosGameDataBundle,

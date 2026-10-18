@@ -31,6 +31,8 @@ Provider 负责上游请求与响应转换，页面不拼接认证请求。水�
 
 中二示例加载通过 `loadChunithmNewVersionTitles(signal)` 调用 `ChunithmCatalogProvider.getNewVersionTitles`，校验水鱼 `/latest_version` 返回的非空版本名称数组。`buildMaxedChunithmSnapshot(catalog, newVersionTitles, displayName?)` 与 `buildMaxedChunithmBests` 使用曲库版本表匹配整个新曲集合，按谱面版本划分 N20 与 B30，未进入 N20 的新曲不进入 B30 或备选。
 
+示例游戏由 `domain/example.ts` 提供固定歌曲、主题和五维数据，`providers/example-test-provider.ts` 的 `exampleTestPayload` 生成成绩与最佳分组，经 `loadGameDataBundle`、`useGameData` 和公共刷新入口装配。展示适配器为 `features/game-content/adapters/example.ts`，页面复用公共列表、成绩卡、难度标签、详情头部、两级 `TagEditor` 和图片缓存。`GameScoreCard.onPress` 允许支撑成绩先关闭弹层再导航；未传时沿用详情目标。`METRIC_GRADIENT_THEMES.rainbow` 使用既有彩虹配色与公共流动生命周期。随机页复用 `pickRandomItems`，`RandomChartsPage` 在 `filter` 为空时省略筛选区域。工具固定与缓存计量通过既有游戏注册入口接入。
+
 `createInflightGuard.share` 共享同键工作并独立取消消费者。`useBoundedQueries` 管理实际批量明细；服务的实际网络请求使用现有队列。清缓存先失效对应资源代次，真实异步结果在最终提交处检查资格。
 
 ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路有界查询复用 `useTufLevel` 的查询定义与 `['tuf', 'level', levelId]` 缓存。单项详情失败不删除收藏或标签。`TufRandomChartsScreen` 按当前前台和页面焦点取消补页，恢复后只加载尚未完成的页；`prefetchTufPassPage` 在提交前检查取消信号与资源代次。
@@ -65,7 +67,9 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 `LargeSecureValueStore` 使用当前清单与分片保存长值，遵守 SecureStore 单值字节限制。写入以 SDK 返回结果为准，不在正常路径再次读回自证。提交失败后的回滚检查用于保护当前引用，属于实际故障处理。
 
-可选账号目录成功读到不支持的数据时重建所属键；读取失败不覆盖。`key-value-storage.ts` 的 `enqueueKeyMutation` 按存储实例和键串行执行完整的读取、失效重建、保存与删除，账号目录、示例账号、临时账号和偏好共用；队列内读取不重复入队，前一个失败不阻塞后续操作。`catalog-demo-account-store.ts` 通过现有 `createDemoAccountStore` 保存 Rizline、Phira、冰与火之舞、Majdata 和 osu! 各模式的独立示例账号。osu! 同 Provider 的恢复来源按游戏隔离，单模式读取失败及重试保留其它模式。示例账号的当前开关与显示保留。
+可选账号目录成功读到不支持的数据时重建所属键；读取失败不覆盖。`key-value-storage.ts` 的 `enqueueKeyMutation` 按存储实例和键串行执行完整的读取、失效重建、保存与删除，账号目录、示例账号、临时账号和偏好共用；队列内读取不重复入队，前一个失败不阻塞后续操作。`catalog-demo-account-store.ts` 通过现有 `createDemoAccountStore` 保存示例游戏、Rizline、Phira、冰与火之舞、Majdata 和 osu! 各模式的独立示例账号。osu! 同 Provider 的恢复来源按游戏隔离，单模式读取失败及重试保留其它模式。
+
+`session-store` 保留完整账号集合，选择与回退仅允许当前可见账号；`useVisibleBoundAccounts` 为总览、账号管理和详情切换提供同一可见列表。`isTestProvider` 按绑定类型识别全部示例账号，只有调试偏好已恢复且开启时才可见。`restoreAppAccounts` 先读取偏好，再恢复选中账号；`useDebugStore` 保存成功后才发布开关，状态订阅同步更新活动账号。关闭示例功能不删除账号或个人数据，显式切换被拒绝时不写入活动账号偏好。示例游戏详情及游戏选择器同样遵守开关。
 
 ## 存储、偏好与个人曲库
 
@@ -107,7 +111,7 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 `GameSongRow` 与 `GameSongCover` 将封面失败关联当前游戏和图片来源，来源变化允许新图片加载，旧来源的迟到错误不改变当前图片状态。
 
-`ChartCarousel` 按谱面键保存标签草稿，只装配当前及相邻卡片，下载与标签操作分别保留离窗卡片；`renderItem` 传递当前卡活动状态、受控标签草稿和任务保留回调。滚动只更新活动卡，初始目标及 `resetKey` 变化重置定位，宽度变化保留当前卡，列表缩短时钳制索引；Majdata 传入实际初始难度，不将滚动索引回写初始目标。`TagEditor` 的 `historyTags` 可传入惰性读取函数，仅在预设弹层打开时计算，保存失败保留输入与弹层。
+`ChartCarousel` 按谱面键保存标签草稿，只装配当前及相邻卡片，下载与标签操作分别保留离窗卡片；`renderItem` 传递当前卡活动状态、受控标签草稿和任务保留回调。滚动只更新活动卡，初始目标及 `resetKey` 变化重置定位，宽度变化保留当前卡，列表缩短时钳制索引；Majdata 传入实际初始难度，不将滚动索引回写初始目标。`TagEditor` 的 `historyTags` 可传入惰性读取函数，仅在预设弹层打开时计算，保存失败保留输入与弹层；输入框可收缩，窄屏保持预设与添加按钮在卡片内。
 
 绑定弹层复用当前输入、按钮、扫码和 `useAccountBindingRequest`。公共错误文案隐藏无助于用户决策的底层异常；实际错误进入诊断记录。
 
@@ -152,7 +156,7 @@ Simai 解析支持 `BOUNCE` 的拍长比和 `NULL` 复位指令，以及分类 H
 
 `loadMajdataParsedChart(song, level, signal)` 只返回物量、地雷数与 `difficultyScores`，派生缓存格式为 2。`parseSimaiChartAsync(text, difficulty, signal)` 与播放器同步入口共用解析核心；`simaiDifficultyScores(text, slot, signal)` 在解析及分析内部循环按 4 ms 预算让出并检查取消，保持计算顺序，不构造不参与结果的诊断明细。难点值按键盘、星星、技巧、体力、爆发排列，范围 0–10，保留一位小数，七个槽位均可分析；分析失败或滑轨不完整返回 `null`。结果按歌曲修订与难度隔离，不支持的派生缓存只重建对应条目，I/O 失败不清缓存。详情仅为当前可见难度启用查询；预览调用 `loadMajdataChart` 取得缓存原文，通过已有 `simaiText` 入口交给播放器解析。
 
-`components/game-content/SimaiDifficultyRadar` 为舞萌详情、舞萌实力分析和 Majdata 详情共用雷达，使用相同轴序、刻度与一位小数展示，颜色由调用方传入。
+`components/game-content/SimaiDifficultyRadar` 为舞萌详情、舞萌实力分析、Majdata 详情和示例实力分析共用雷达，使用相同轴序、刻度与一位小数展示，颜色由调用方传入；可选 `axisNames` 指定五维名称，默认使用舞萌轴名。
 
 Phigros/Rizline 预览和下载共用 `phigrosResources`、`rizlineResources`、`VerifiedReleaseSession` 与 `verifyResourceBytes`；调用方提供实际进度或落盘回调。`utils/resource-integrity.ts` 的 `sha256FileAsync(uri): Promise<string>` 经 `modules/resource-integrity` 在原生后台分块读取已落盘文件；字节形式的响应继续使用 `sha256`。字体、素材包和谱面资源共用该文件校验入口，取消与代次检查仍在结果发布前执行。`resourceObjectPathSchema` 限定资源组、分类与哈希文件名。Phigros 在验证发布清单时建立 `assetsByPath`，曲绘、头像、成绩图和预览共用该索引，索引随发布对象释放；实际 URL 来自 `objectKey`。默认谱、里谱和共用音乐选择仍由 `phigros-chart-preview.ts` 处理。哈希 URL 不附加全局发布版本，未变化资源可以继续命中缓存。
 
@@ -174,7 +178,7 @@ Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图�
 
 `searchNearcadeShops` 接受关键词、页码、机型和取消信号，返回 20 条分页机厅及总数、当前页和下一页状态，不接收距离。`searchArcadePlaces` 返回至多 10 条 WGS84 地点候选；`resolveArcadePlace` 为无坐标候选调用原生地理编码。两者通过 `ArcadeMapSupport` 调用原生模块，Android 使用轻量合包的输入提示与地理编码，iOS 使用 MapKit；复用地图服务同意状态并处理取消、超时，SDK 异常使用通用错误文案；服务不可用不阻断机厅查询。`useArcadeSearch` 管理 350 毫秒防抖、独立请求及分页，`ArcadeSearchResults` 展示两类候选与各自重试。页面选择候选后恢复附近列表，选中机厅在附近响应中缺席时仍按当前距离与机型保留。交互测试验证跨城选择、筛选分页、部分失败、迟到地理编码和定位授权期间的短暂失活。
 
-实力分析共用 `app/tools/strength-analysis.tsx` 路由，分别装配 `MaimaiStrengthAnalysisScreen` 与 `PhigrosStrengthAnalysisScreen`。舞萌的 DXTag 维度、类型、文件 ID 与难度匹配函数由 `domain/maimai-dxtag.ts` 提供，详情与分析复用 `useMaimaiDxTag`，查询键为 `['maimai-dxtag', 'all', catalog.source.updatedAt]`；曲库快照更新后重新核对覆盖，多个谱面共用整库请求。持久化数据与账号无关，由舞萌资源缓存统一计量和清理；缺少歌曲或难度时不追加单曲请求，也不填零。`SimaiDifficultyRadar` 接受空维度并支持维度点击；空维度显示暂无数据，不绘制完整多边形。
+实力分析共用 `app/tools/strength-analysis.tsx` 路由，分别装配 `MaimaiStrengthAnalysisScreen`、`PhigrosStrengthAnalysisScreen` 与 `ExampleStrengthAnalysisScreen`。舞萌的 DXTag 维度、类型、文件 ID 与难度匹配函数由 `domain/maimai-dxtag.ts` 提供，详情与分析复用 `useMaimaiDxTag`，查询键为 `['maimai-dxtag', 'all', catalog.source.updatedAt]`；曲库快照更新后重新核对覆盖，多个谱面共用整库请求。持久化数据与账号无关，由舞萌资源缓存统一计量和清理；缺少歌曲或难度时不追加单曲请求，也不填零。`SimaiDifficultyRadar` 接受空维度并支持维度点击；空维度显示暂无数据，不绘制完整多边形。
 
 `buildMaimaiStrengthPool` 使用 `buildBestRecordMap`、`chartVersionKey` 去重，排除宴谱与不完整成绩；达标成绩中定数最高 10 张的均值确定推荐范围 −0.5 至 +0.3。`analyzeMaimaiStrength` 接收曲库、成绩、按谱面身份索引的 DXTag 五维，统一按 100.5% 筛选达标成绩，输出逐维 Top 10 正值均值、支撑成绩、强弱结论及最多三张推荐。每维至少三张才判断强弱，极差不超过 0.3 视为均衡；推荐模拟达到目标后的维度均值增益，最低两维的边界并列项全部纳入，均衡时考虑全部维度。缺失特征不当作零值，分析结果不持久化。分析文案采用简短的能力倾向标签。推荐与支撑成绩统一使用 `ScoreRecordCard`，无成绩时仅传入谱面信息，达成率和 Rating 显示 `-`，曲绘沿用公共成绩卡设置。弹层复用当前公共组件，谱面跳转使用 `encodeDetailTarget` 和 `detailTargetHref`。
 

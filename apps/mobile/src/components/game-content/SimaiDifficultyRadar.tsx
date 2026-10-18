@@ -51,11 +51,13 @@ export function SimaiDifficultyRadar({
   color,
   difficulty,
   onAxisPress,
+  axisNames = MAIMAI_DXTAG_AXES,
 }: {
   scores: readonly (number | null)[];
   color: string;
   difficulty: string;
   onAxisPress?: (index: number) => void;
+  axisNames?: readonly string[];
 }) {
   const theme = useAppTheme();
   const axes = SLOT_SCORE.map((_, slot) => pointAt(slot, CHART_RADIUS));
@@ -71,7 +73,7 @@ export function SimaiDifficultyRadar({
         strokeWidth={ratio === 1 ? 1.4 : 1}
       />)}
       {axes.map((point, slot) => <Line
-        key={MAIMAI_DXTAG_AXES[SLOT_SCORE[slot]]}
+        key={axisNames[SLOT_SCORE[slot]]}
         x1={CENTER}
         y1={CENTER}
         x2={point.x}
@@ -89,7 +91,7 @@ export function SimaiDifficultyRadar({
         strokeLinejoin="round"
       /> : null}
       {SLOT_SCORE.map((scoreIndex, slot) => {
-        const axis = MAIMAI_DXTAG_AXES[scoreIndex];
+        const axis = axisNames[scoreIndex];
         const placed = pointAt(slot, LABEL_RADIUS);
         const valueY = placed.y + VALUE_OFFSET;
         const anchor = Math.abs(placed.x - CENTER) < 8 ? 'middle' : placed.x < CENTER ? 'end' : 'start';

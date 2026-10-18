@@ -82,7 +82,7 @@ const demoBindings: Partial<Record<ProviderId, DemoAccountBinding>> = {
 };
 
 export function demoAccountBinding(providerId: ProviderId | null, gameId?: import('@/domain/game-bind-options').GameId): DemoAccountBinding | undefined {
-  const testGame: CatalogTestGameId | undefined = providerId === 'rizline-test' ? 'rizline'
+  const testGame: CatalogTestGameId | undefined = providerId === 'example-test' ? 'example' : providerId === 'rizline-test' ? 'rizline'
     : providerId === 'phira-test' ? 'phira'
       : providerId === 'adofai-test' ? 'adofai'
         : providerId === 'majdata-net-test' ? 'majdata-net'
@@ -90,7 +90,7 @@ export function demoAccountBinding(providerId: ProviderId | null, gameId?: impor
   if (testGame) return {
     create: () => createCatalogTestAccount(testGame),
     persist: account => catalogDemoAccountStore(testGame).save({ id: account.id, displayName: account.displayName }),
-    label: testGame.startsWith('osu-') ? ' osu! ' : testGame === 'adofai' ? '冰与火之舞' : ` ${testGame === 'majdata-net' ? 'Majdata' : testGame} `,
+    label: testGame === 'example' ? '示例游戏' : testGame.startsWith('osu-') ? ' osu! ' : testGame === 'adofai' ? '冰与火之舞' : ` ${testGame === 'majdata-net' ? 'Majdata' : testGame} `,
   };
   return providerId ? demoBindings[providerId] : undefined;
 }

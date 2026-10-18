@@ -1,3 +1,4 @@
+import { ExampleRandomChartsScreen } from '@/screens/ExampleToolScreens';
 import type { ComponentType } from 'react';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import type { GameId } from '@/domain/game-bind-options';
@@ -11,6 +12,7 @@ import { RizlineRandomChartsScreen } from '@/screens/RizlineRandomChartsScreen';
 import { useSession } from '@/state/session-store';
 
 const RANDOM_CHARTS_SCREENS: Partial<Record<GameId, ComponentType>> = {
+  example: ExampleRandomChartsScreen,
   maimai: MaimaiRandomChartsScreen,
   phigros: PhigrosRandomChartsScreen,
   chunithm: ChunithmRandomChartsScreen,

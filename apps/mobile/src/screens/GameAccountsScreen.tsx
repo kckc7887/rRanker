@@ -1,3 +1,4 @@
+import { useVisibleBoundAccounts } from '@/hooks/use-visible-bound-accounts';
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
@@ -30,7 +31,7 @@ import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 export function GameAccountsScreen() {
   const theme = useAppTheme();
   const { showNotification, showActionNotification } = useNotification();
-  const boundAccounts = useSession(s => s.boundAccounts);
+  const boundAccounts = useVisibleBoundAccounts();
   const activeAccountId = useSession(s => s.activeAccountId);
   const restoreError = useSession(s => s.restoreError);
   const sourceStatuses = useSyncExternalStore(subscribeAccountSourceStatuses, getAccountSourceStatuses);
