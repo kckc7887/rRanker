@@ -141,6 +141,16 @@ export function SettingsScreen() {
         </View>
         <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
       </Pressable>
+      <Pressable
+        onPress={() => router.push('/about' as Href)}
+        style={[styles.row, { backgroundColor: theme.surface }]}
+      >
+        <View style={styles.rowText}>
+          <Text style={[styles.title, { color: theme.text }]}>关于</Text>
+          <Text style={[styles.detail, { color: theme.textMuted }]}>隐私政策</Text>
+        </View>
+        <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
+      </Pressable>
     </ScrollView>
   );
 }
