@@ -1,4 +1,4 @@
-import { copyBestImageAsset, retryBestImagePreparation, type BestImageAssetSession } from '@/features/best-image/load-best-image-session';
+import { loadRemoteImageFile, copyBestImageAsset, retryBestImagePreparation, type BestImageAssetSession } from '@/features/best-image/load-best-image-session';
 import {
   loadBestImageAssets,
   type BestImageEmbeddedAssets,
@@ -7,6 +7,7 @@ import { loadBestImageJackets } from '@/features/best-image/load-best-image-jack
 import {
   prepareMaimaiFonts,
   type MaimaiFontProgress,
+  MAIMAI_FONT_MANIFEST,
 } from '@/features/best-image/maimai-font-cache';
 import {
   prepareMaimaiUi,
@@ -19,7 +20,7 @@ import { providerErrorToUserMessage } from '@/providers/errors';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { File, type Directory } from 'expo-file-system';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
-import { MAIMAI_UI_MANIFEST_ENTRIES } from '@/features/best-image/maimai-ui-manifest.generated';
+import type { BestImageRatingStyle } from '@/features/best-image/best-image-style-preferences';
 import { useEffect, useRef, useState } from 'react';
 
 import type { Dispatch, SetStateAction } from 'react';
@@ -100,46 +101,70 @@ export function useMaimaiImageCovers(session: BestImageAssetSession, coverReques
   return { coverUrls, coverProgress };
 }
 
-export function useMaimaiExportAssets(session: BestImageAssetSession, lifecycle: ReturnType<typeof useAppLifecycle>, setAssetsDirectory: Dispatch<SetStateAction<Directory | null>>) {
+export function useMaimaiCollectionAssets(session: BestImageAssetSession, requestKey: string, lifecycle: ReturnType<typeof useAppLifecycle>) {
+  const [ready, setReady] = useState<{ session: BestImageAssetSession; key: string; urls: Record<'icon' | 'plate' | 'frame', string | null> } | null>(null);
+  useEffect(() => {
+    if (!lifecycle.foregroundReady) return;
+    if (ready?.session === session && ready.key === requestKey) return;
+    const controller = new AbortController();
+    let cancelled = false;
+    const requests = JSON.parse(requestKey) as [string | null, string | null, string | null];
+    void Promise.all(requests.map(url => loadRemoteImageFile(session, url, controller.signal))).then(([icon, plate, frame]) => {
+      if (!cancelled) setReady({ session, key: requestKey, urls: { icon, plate, frame } });
+    }).catch(() => undefined);
+    return () => { cancelled = true; controller.abort(); };
+  }, [session, requestKey, lifecycle.foregroundReady, lifecycle.foregroundGeneration, ready]);
+  return ready?.session === session && ready.key === requestKey ? ready.urls : null;
+}
+
+export function useMaimaiExportAssets(session: BestImageAssetSession, ratingStyle: BestImageRatingStyle, lifecycle: ReturnType<typeof useAppLifecycle>, setAssetsDirectory: Dispatch<SetStateAction<Directory | null>>) {
   const [fontAttempt, setFontAttempt] = useState(0);
-  const [assetsReady, setAssetsReady] = useState(false);
+  const [ready, setReady] = useState<{ session: BestImageAssetSession; style: BestImageRatingStyle; attempt: number } | null>(null);
   const [fontProgress, setFontProgress] = useState<MaimaiFontProgress>({ phase: 'checking', completed: 0, total: 1, currentFont: null });
   const [uiProgress, setUiProgress] = useState<MaimaiUiProgress>({ phase: 'checking', completed: 0, total: 1, currentEntry: null });
   const [exportAssetError, setExportAssetError] = useState<string | null>(null);
-  const readyRef = useRef<{ session: BestImageAssetSession; attempt: number } | null>(null);
+  const readyRef = useRef<{ session: BestImageAssetSession; style: BestImageRatingStyle; attempt: number } | null>(null);
   useEffect(() => {
     let cancelled = false;
     if (!lifecycle.foregroundReady) return;
-    if (readyRef.current?.session === session && readyRef.current.attempt === fontAttempt) return;
+    if (readyRef.current?.session === session && readyRef.current.attempt === fontAttempt && readyRef.current.style === ratingStyle) return;
     readyRef.current = null;
     const controller = new AbortController();
     const assertCurrent = captureResourceWrites('maimai', controller.signal);
     setExportAssetError(null);
-    setAssetsReady(false);
+    setReady(null);
+    setAssetsDirectory(null);
+    setFontProgress({ phase: 'checking', completed: 0, total: 1, currentFont: null });
+    setUiProgress({ phase: 'checking', completed: 0, total: 1, currentEntry: null });
     void retryBestImagePreparation(session, controller.signal, async () => {
       const [font, ui] = await Promise.all([
-        prepareMaimaiFonts((progress) => { if (!cancelled) setFontProgress(progress); }, controller.signal),
-        prepareMaimaiUi((progress) => { if (!cancelled) setUiProgress(progress); }, controller.signal),
+        ratingStyle === 'game' ? prepareMaimaiFonts((progress) => { if (!cancelled) setFontProgress(progress); }, controller.signal) : Promise.resolve(null),
+        prepareMaimaiUi(ratingStyle, (progress) => { if (!cancelled) setUiProgress(progress); }, controller.signal),
       ]);
-      const results = await Promise.allSettled([font.fullReady, ui.fullReady]);
+      const results = await Promise.allSettled([font?.fullReady, ui.fullReady]);
       const failed = results.find((result): result is PromiseRejectedResult => result.status === 'rejected');
       if (failed) throw failed.reason;
       assertCurrent();
-      for (const entry of MAIMAI_UI_MANIFEST_ENTRIES) {
-        const path = entry.path.replace(/^maimai-ui\//u, 'ui/');
+      for (const path of ui.files) {
         assertCurrent();
         await copyBestImageAsset(session, new File(ui.directory, path).uri, path, controller.signal);
       }
+      if (font) {
+        for (const entry of MAIMAI_FONT_MANIFEST) {
+          await copyBestImageAsset(session, new File(font.directory, 'font', entry.cssFileName).uri, entry.cssFileName, controller.signal);
+        }
+      }
       if (!cancelled) {
-        readyRef.current = { session, attempt: fontAttempt };
+        readyRef.current = { session, style: ratingStyle, attempt: fontAttempt };
         setExportAssetError(null);
         setAssetsDirectory(session.directory);
-        setAssetsReady(true);
+        setReady(readyRef.current);
+        if (ratingStyle === 'app') setFontProgress({ phase: 'ready', completed: 1, total: 1, currentFont: null });
       }
     }, (error) => {
       if (!cancelled) setExportAssetError(providerErrorToUserMessage(error, '素材准备失败，正在自动重试。'));
     }).catch(() => undefined);
     return () => { cancelled = true; controller.abort(); };
-  }, [session, fontAttempt, lifecycle.foregroundGeneration, lifecycle.foregroundReady, setAssetsDirectory]);
-  return { assetsReady, fontProgress, uiProgress, exportAssetError, setFontAttempt };
+  }, [session, ratingStyle, fontAttempt, lifecycle.foregroundGeneration, lifecycle.foregroundReady, setAssetsDirectory]);
+  return { assetsReady: ready?.session === session && ready.style === ratingStyle && ready.attempt === fontAttempt, fontProgress, uiProgress, exportAssetError, setFontAttempt };
 }

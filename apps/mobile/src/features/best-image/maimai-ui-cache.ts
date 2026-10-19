@@ -1,3 +1,4 @@
+import type { BestImageRatingStyle } from './best-image-style-preferences';
 import { captureResourceWrites, createInflightGuard, resourceWriteGeneration, invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import { downloadChartResource } from '@/features/chart-download-shared/chart-download-shared';
 import { sha256, sha256FileAsync } from '@/utils/resource-integrity';
@@ -7,6 +8,9 @@ import JSZip from 'jszip';
 import {
   MAIMAI_UI_MANIFEST_ENTRIES,
   MAIMAI_UI_ZIP,
+  MAIMAI_APP_UI_ZIP,
+  MAIMAI_APP_UI_MANIFEST_ENTRIES,
+  type MaimaiUiManifestEntry,
 } from './maimai-ui-manifest.generated';
 
 export const MAIMAI_UI_CACHE_VERSION = 'v1';
@@ -29,6 +33,7 @@ export type MaimaiUiProgress = {
 export type PreparedMaimaiUi = {
   directory: Directory;
   fullReady: Promise<void>;
+  files: readonly string[];
 };
 
 type ProgressListener = (progress: MaimaiUiProgress) => void;
@@ -37,19 +42,17 @@ let uiDownloadSequence = 0;
 
 const inFlight = createInflightGuard<string>();
 
-const directories = () => {
-  const directory = new Directory(Paths.document, 'rranker', 'maimai-assets', MAIMAI_UI_CACHE_VERSION);
-  const uiDirectory = new Directory(directory, 'ui');
+const directories = (style: BestImageRatingStyle) => {
+  const directory = new Directory(Paths.document, 'rranker', 'maimai-assets', MAIMAI_UI_CACHE_VERSION, ...(style === 'app' ? ['app'] : []));
   directory.create({ intermediates: true, idempotent: true });
-  uiDirectory.create({ intermediates: true, idempotent: true });
-  return { directory, uiDirectory };
+  return directory;
 };
 
-/** 去掉压缩包根目录，使 HTML 按 ui/ 相对路径读素材。 */
-const finalPathOf = (path: string) => path.replace(/^maimai-ui\//u, '');
+/** 两套素材保留各自的会话相对路径。 */
+const finalPathOf = (path: string) => path.replace(/^maimai-ui\//u, 'ui/');
 
-async function isValidUi(uiDirectory: Directory): Promise<boolean> {
-  for (const entry of MAIMAI_UI_MANIFEST_ENTRIES) {
+async function isValidUi(uiDirectory: Directory, entries: readonly MaimaiUiManifestEntry[]): Promise<boolean> {
+  for (const entry of entries) {
     const file = new File(uiDirectory, finalPathOf(entry.path));
     if (!file.exists || file.size !== entry.bytes) return false;
     if (await sha256FileAsync(file.uri) !== entry.sha256) return false;
@@ -63,9 +66,10 @@ async function unpack(
   temporaryDirectory: Directory,
   onEntry: (path: string) => void,
   assertCurrent: () => void,
+  entries: readonly MaimaiUiManifestEntry[],
 ): Promise<void> {
   const zip = await JSZip.loadAsync(zipBytes);
-  for (const entry of MAIMAI_UI_MANIFEST_ENTRIES) {
+  for (const entry of entries) {
     assertCurrent();
     onEntry(entry.path);
     const zipFile = zip.file(entry.path);
@@ -98,60 +102,65 @@ async function downloadAndUnpack(
   onProgress: ProgressListener,
   signal: AbortSignal,
   assertCurrent: () => void,
+  entries: readonly MaimaiUiManifestEntry[],
+  archive: typeof MAIMAI_UI_ZIP | typeof MAIMAI_APP_UI_ZIP,
 ): Promise<void> {
   const archiveFile = new File(temporaryDirectory, 'maimai-ui.zip.part');
   try {
     if (archiveFile.exists) archiveFile.delete();
-    onProgress({ phase: 'downloading', completed: 0, total: MAIMAI_UI_MANIFEST_ENTRIES.length, currentEntry: null });
-    await downloadChartResource(temporaryDirectory, 'maimai-ui.zip.part', MAIMAI_UI_ZIP.url, signal);
+    onProgress({ phase: 'downloading', completed: 0, total: entries.length, currentEntry: null });
+    await downloadChartResource(temporaryDirectory, 'maimai-ui.zip.part', archive.url, signal);
     assertCurrent();
-    if (archiveFile.size !== MAIMAI_UI_ZIP.bytes) {
+    if (archiveFile.size !== archive.bytes) {
       throw new Error('素材压缩包大小不匹配');
     }
-    if (await sha256FileAsync(archiveFile.uri) !== MAIMAI_UI_ZIP.sha256) {
+    if (await sha256FileAsync(archiveFile.uri) !== archive.sha256) {
       throw new Error('素材压缩包校验失败');
     }
     assertCurrent();
     const archiveBytes = await archiveFile.bytes();
     let done = 0;
-    onProgress({ phase: 'unpacking', completed: 0, total: MAIMAI_UI_MANIFEST_ENTRIES.length, currentEntry: null });
+    onProgress({ phase: 'unpacking', completed: 0, total: entries.length, currentEntry: null });
     await unpack(archiveBytes, uiDirectory, temporaryDirectory, (path) => {
       done += 1;
-      onProgress({ phase: 'unpacking', completed: done, total: MAIMAI_UI_MANIFEST_ENTRIES.length, currentEntry: path });
-    }, assertCurrent);
+      onProgress({ phase: 'unpacking', completed: done, total: entries.length, currentEntry: path });
+    }, assertCurrent, entries);
   } finally {
     if (archiveFile.exists) archiveFile.delete();
   }
 }
 
 export async function prepareMaimaiUi(
+  style: BestImageRatingStyle,
   onProgress?: ProgressListener,
   signal?: AbortSignal,
 ): Promise<PreparedMaimaiUi> {
-  const { directory, uiDirectory } = directories();
+  const directory = directories(style);
+  const entries = style === 'app' ? MAIMAI_APP_UI_MANIFEST_ENTRIES : MAIMAI_UI_MANIFEST_ENTRIES;
+  const archive = style === 'app' ? MAIMAI_APP_UI_ZIP : MAIMAI_UI_ZIP;
   const emit: ProgressListener = (progress) => { if (!signal?.aborted) onProgress?.(progress); };
-  emit({ phase: 'checking', completed: 0, total: MAIMAI_UI_MANIFEST_ENTRIES.length, currentEntry: null });
+  emit({ phase: 'checking', completed: 0, total: entries.length, currentEntry: null });
   const assertGeneration = captureResourceWrites('maimai');
-  const pending = inFlight.share(String(resourceWriteGeneration('maimai')), async (requestSignal) => {
+  const pending = inFlight.share(style + ':' + resourceWriteGeneration('maimai'), async (requestSignal) => {
     assertGeneration();
     const assertCurrent = captureResourceWrites('maimai', requestSignal);
-    const valid = await isValidUi(uiDirectory);
+    const valid = await isValidUi(directory, entries);
     assertCurrent();
     if (valid) return;
     const temporary = new Directory(Paths.cache, 'rranker-ui-' + Date.now() + '-' + (++uiDownloadSequence));
     temporary.create({ intermediates: true, idempotent: true });
-    try { await downloadAndUnpack(uiDirectory, temporary, emit, requestSignal, assertCurrent); }
+    try { await downloadAndUnpack(directory, temporary, emit, requestSignal, assertCurrent, entries, archive); }
     finally { if (temporary.exists) temporary.delete(); }
   }, signal);
   const fullReady = pending.then(
-    () => { emit({ phase: 'ready', completed: MAIMAI_UI_MANIFEST_ENTRIES.length, total: MAIMAI_UI_MANIFEST_ENTRIES.length, currentEntry: null }); },
+    () => { emit({ phase: 'ready', completed: entries.length, total: entries.length, currentEntry: null }); },
     (error: unknown) => {
       const message = errorMessage(error);
-      emit({ phase: 'error', completed: 0, total: MAIMAI_UI_MANIFEST_ENTRIES.length, currentEntry: null, error: message });
+      emit({ phase: 'error', completed: 0, total: entries.length, currentEntry: null, error: message });
       throw new Error(`素材准备失败：${message}`, { cause: error });
     },
   );
-  return { directory, fullReady };
+  return { directory, fullReady, files: entries.map(entry => finalPathOf(entry.path)) };
 }
 
 

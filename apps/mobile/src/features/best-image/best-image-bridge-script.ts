@@ -6,6 +6,7 @@ export type BestImageBridgeMeasureOptions = {
 export type BestImageBridgeReadyOptions = {
 
   assetReadyExpression?: string;
+  waitForAssets?: boolean;
 };
 
 export function bestImageBridgeRuntimeScript(): string {
@@ -96,8 +97,8 @@ export function bestImageBridgeReadyScript(options: BestImageBridgeReadyOptions 
             image.addEventListener('load', settle);
             image.addEventListener('error', settle);
           }));
-${assetReadyLine}      const assetTimeout = new Promise((resolve) => window.setTimeout(resolve, 5000));
-      Promise.race([${raceAssetExpression}, assetTimeout]).then(() => {
+${assetReadyLine}      ${options.waitForAssets ? '' : 'const assetTimeout = new Promise((resolve) => window.setTimeout(resolve, 5000));'}
+      ${options.waitForAssets ? raceAssetExpression : `Promise.race([${raceAssetExpression}, assetTimeout])`}.then(() => {
         window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
           measureAndFit();
           if (!readySent) {

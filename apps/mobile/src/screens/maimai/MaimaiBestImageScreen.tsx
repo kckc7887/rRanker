@@ -36,7 +36,7 @@ import {
   type BestImageType
 } from '@/features/maimai-best-image/build-maimai-best-image-html';
 import { useMaimaiBestImageFilters } from '@/features/maimai-best-image/use-maimai-best-image-filters';
-import { FONT_PROGRESS_LABELS, useMaimaiEmbeddedAssets, useMaimaiExportAssets, useMaimaiImageCovers } from '@/features/maimai-best-image/use-maimai-best-image-resources';
+import { FONT_PROGRESS_LABELS, useMaimaiEmbeddedAssets, useMaimaiExportAssets, useMaimaiCollectionAssets, useMaimaiImageCovers } from '@/features/maimai-best-image/use-maimai-best-image-resources';
 import type { useTransientDetailedMaimaiCatalog } from '@/hooks/use-detailed-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useAppLifecycle } from '@/state/app-lifecycle';
@@ -218,25 +218,31 @@ export function MaimaiBestImageScreen() {
   const coverRequestKey = JSON.stringify(scoreSections.flatMap((section) => section.records.map((record) => record.songId)));
   const { coverUrls, coverProgress } = useMaimaiImageCovers(assetSession, coverRequestKey, lifecycle);
 
-  const htmlPages = useMemo(() => embeddedAssets && coverUrls && detailedCatalog.data ? pages.map((page) => buildBestImageHtml({
+  const { assetsReady, fontProgress, uiProgress, exportAssetError, setFontAttempt } = useMaimaiExportAssets(assetSession, ratingStyle, lifecycle, setAssetsDirectory);
+  const collectionRequestKey = JSON.stringify((['icon', 'plate', 'frame'] as const).map(kind => {
+    const id = kind === 'icon' ? previewPlayer.presentation?.iconId : kind === 'plate' ? previewPlayer.presentation?.namePlateId : previewPlayer.presentation?.frameId;
+    return hiddenStyles.includes(kind) || !Number.isSafeInteger(id) || (id ?? -1) < 0 ? null : `https://assets2.lxns.net/maimai/${kind}/${id}.png`;
+  }));
+  const collectionUrls = useMaimaiCollectionAssets(assetSession, collectionRequestKey, lifecycle);
+  const htmlPages = useMemo(() => assetsReady && embeddedAssets && coverUrls && collectionUrls && detailedCatalog.data ? pages.map((page) => buildBestImageHtml({
     type: imageType,
     width: outputWidth,
     player: previewPlayer,
     rating,
     scoreSections: page.sections,
     coverUrls,
+    collectionUrls,
     hiddenStyles,
     ratingStyle,
     pageIndex: page.pageIndex,
     pageCount: page.pageCount,
     ...embeddedAssets,
-    cnFontUrl: 'maimai-noto.ttf',
+    cnFontUrl: ratingStyle === 'app' ? 'fonts/SourceHanSansCN-Bold.otf' : 'maimai-noto.ttf',
     dataSource: player?.source?.label ?? '',
-  })) : null, [coverUrls, detailedCatalog.data, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle, player?.source?.label]);
+  })) : null, [assetsReady, coverUrls, collectionUrls, detailedCatalog.data, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle, player?.source?.label]);
   const htmlGenerationKey = JSON.stringify([imageType, outputWidth, previewPlayer, rating, ratingStyle, hiddenStyles, pages]);
-  const sourceGeneration = useMemo(() => [coverUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data], [coverUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data]);
+  const sourceGeneration = useMemo(() => [coverUrls, collectionUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data], [coverUrls, collectionUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data]);
   const { sources: webViewSources, error: webViewSourceError } = usePreparedBestImageSources(htmlPages, assetSession, assetsDirectory, cancelExportRequest, sourceGeneration);
-  const { assetsReady, fontProgress, uiProgress, exportAssetError, setFontAttempt } = useMaimaiExportAssets(assetSession, lifecycle, setAssetsDirectory);
   const outputHeight = pageHeights[pages[Math.min(currentPageIndex, pages.length - 1)]!.id] ?? minimumBestImageHeight(outputWidth);
   const currentWebViewState = webViewStates[pages[Math.min(currentPageIndex, pages.length - 1)]!.id];
   const assetStatusText = maimaiAssetStatus(fontProgress, uiProgress);

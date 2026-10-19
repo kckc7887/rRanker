@@ -1,4 +1,4 @@
-// 自动生成：B50 game 样式拆包素材清单（来源 Resource CN1.55，上传 rranker-maimai-data/maimai-ui/）。
+/** 舞萌成绩图发布素材清单。 */
 // 自动生成，请勿手动修改。
 
 export type MaimaiUiManifestEntry = {
@@ -100,4 +100,403 @@ export const MAIMAI_UI_MANIFEST_ENTRIES: readonly MaimaiUiManifestEntry[] = [
   { path: "maimai-ui/Star_03.png", bytes: 2202, sha256: "87a8f4b9e1fb8997b4a8bad7859d34ff73a3c08b7bffa69662ed348b7245562f" },
   { path: "maimai-ui/Star_04.png", bytes: 2756, sha256: "df8ef050b4a41a230a14390cc70da9948d259c50c58f035ac06c6554626983a7" },
   { path: "maimai-ui/Star_05.png", bytes: 2829, sha256: "48e40ee46a960ce5ef548c2466fb72e28600761cbc03bc6550e646b17a82c0b1" },
+];
+
+export const MAIMAI_APP_UI_ZIP = {
+  "url": "https://rranker-maimai-data.cn-nb1.rains3.com/maimai-ui/maimai-ui-morden.zip",
+  "bytes": 7617473,
+  "sha256": "840144feef1159b39817aff16f40e0f5afc4a6a56174836ebeac882d54e6eef9"
+} as const;
+
+export const MAIMAI_APP_UI_MANIFEST_ENTRIES: readonly MaimaiUiManifestEntry[] = [
+  {
+    "path": "fonts/SourceHanSansCN-Bold.otf",
+    "bytes": 8543504,
+    "sha256": "997dd673efde3a7cc7410da3ccde2a729f26dc9e1a81ad659a2d6666d36b7974"
+  },
+  {
+    "path": "ui/card/DX.svg",
+    "bytes": 10600,
+    "sha256": "98eeeb6cb73215ce7a63dc1ec5d344e3fb30bccfd3ec0def2c082863835c6cee"
+  },
+  {
+    "path": "ui/card/Icon_AP.svg",
+    "bytes": 3067,
+    "sha256": "50eb963fc94df7a6f4b68708e1cbda1b0ab8338d1582ca871880702c260e3421"
+  },
+  {
+    "path": "ui/card/Icon_APp.svg",
+    "bytes": 3067,
+    "sha256": "877b45ea69e65128f7ffb177d40eedcb72ac6f3056502244ca85f502e10e2df7"
+  },
+  {
+    "path": "ui/card/Icon_FC.svg",
+    "bytes": 3065,
+    "sha256": "9b03bbb7eea06da7c2b2ffdd01f480deed967eedee735bd98e487da4354ebc9f"
+  },
+  {
+    "path": "ui/card/Icon_FCp.svg",
+    "bytes": 3066,
+    "sha256": "2d4769e76b3687ecd0cb8d010161763c35f62da065784f8f50d19dc0274385e4"
+  },
+  {
+    "path": "ui/card/Icon_FS.svg",
+    "bytes": 4460,
+    "sha256": "d9044fc255d821d70793aaa9644ba62a7b497323e4c0b902f1cad715cfe0c63c"
+  },
+  {
+    "path": "ui/card/Icon_FSD.svg",
+    "bytes": 4461,
+    "sha256": "f66936ddd7973d4e993de88de10c7f4ced754b5209d9ca7bc95f839f6eb4fd4c"
+  },
+  {
+    "path": "ui/card/Icon_FSDp.svg",
+    "bytes": 4461,
+    "sha256": "85e2f2155fa6518f16a0d5dfabcb0ba030176208e595d6b6b778a88962f56caf"
+  },
+  {
+    "path": "ui/card/Icon_FSp.svg",
+    "bytes": 4461,
+    "sha256": "9453f3301ae81fa115714d86e52ffe96a894cd07a873aec26d590dc14abe1580"
+  },
+  {
+    "path": "ui/card/Icon_Sync.svg",
+    "bytes": 4459,
+    "sha256": "7eabcc65c5fb09cc1654e8ade466cd04cf6e5c9a631b9cb209fae4d085692629"
+  },
+  {
+    "path": "ui/card/Panel_ADVANCED.svg",
+    "bytes": 3643,
+    "sha256": "5273d5c4c79c32781c01b10be65d717763c4164c1590aaf6af20f1fa0158144d"
+  },
+  {
+    "path": "ui/card/Panel_BASIC.svg",
+    "bytes": 3641,
+    "sha256": "02acbc32306a29200ac4fbe77b7356631896ca72abc943daa3fa0765a12ac9a9"
+  },
+  {
+    "path": "ui/card/Panel_EXPERT.svg",
+    "bytes": 3644,
+    "sha256": "410355a9648794aae39d4be5a27cb7f40337a4832f3b77b096cea9d53403a50e"
+  },
+  {
+    "path": "ui/card/Panel_MASTER.svg",
+    "bytes": 3643,
+    "sha256": "2654430691f26f541251398e38388ccd49bb164099a834ecd50119b71e8159a3"
+  },
+  {
+    "path": "ui/card/Panel_REMASTER.svg",
+    "bytes": 387,
+    "sha256": "9c88509c5b79fce9c9a2d74b7b008d300cc7ae34743ff8385e74125b339101b8"
+  },
+  {
+    "path": "ui/card/Panel_UTAGE.svg",
+    "bytes": 3646,
+    "sha256": "cfb93d22e997788c94ff30e5682719990865e3c27eb024bab64cb5af57a1e382"
+  },
+  {
+    "path": "ui/card/Rank_A.svg",
+    "bytes": 14514,
+    "sha256": "bbea84129038b7214492cde694b7f71fd049c7a203253d07e83124769c5f88c4"
+  },
+  {
+    "path": "ui/card/Rank_AA.svg",
+    "bytes": 14514,
+    "sha256": "aa7cdd653cbd24a7d0091f0632503677e0f2c83aee9155c1a066fb3da51c0228"
+  },
+  {
+    "path": "ui/card/Rank_AAA.svg",
+    "bytes": 14516,
+    "sha256": "af890f5c3dc34f39dea4aceb1bee161f52babab2b2684df469f94c76743e2a19"
+  },
+  {
+    "path": "ui/card/Rank_B.svg",
+    "bytes": 14514,
+    "sha256": "78780b16a58f7edd6d77f0c7216caff6d25d8c50989f7b6db3107a2b57cd7030"
+  },
+  {
+    "path": "ui/card/Rank_BB.svg",
+    "bytes": 14514,
+    "sha256": "6ba9a2504ab4119879986be436c0a51f924802032773ef487226817fe0f08ea9"
+  },
+  {
+    "path": "ui/card/Rank_BBB.svg",
+    "bytes": 14516,
+    "sha256": "dd5d9356419aea4cc5bfd8649b2ae2acc96c4050c354e606396bfe65d20259f3"
+  },
+  {
+    "path": "ui/card/Rank_C.svg",
+    "bytes": 14514,
+    "sha256": "3fbc81d52f5039d687913c241add0ee62add1e9989f41a71c9e6389e46dc627f"
+  },
+  {
+    "path": "ui/card/Rank_D.svg",
+    "bytes": 14514,
+    "sha256": "739ca23952a40920f2589325e8b32243665cb420eb6566869f371fd2563b62a9"
+  },
+  {
+    "path": "ui/card/Rank_S.svg",
+    "bytes": 14514,
+    "sha256": "3490f57a8630700a17e8331723f003174bf3685160694a9de1688fafdc176c6b"
+  },
+  {
+    "path": "ui/card/Rank_Sp.svg",
+    "bytes": 14514,
+    "sha256": "ee054242f2f07fc5d7da99a7b56318621f6fb4f75914089870a2c623cc7fad35"
+  },
+  {
+    "path": "ui/card/Rank_SS.svg",
+    "bytes": 14514,
+    "sha256": "7903b03b8adbb9c061856db5f329fc81ab2dae08ba43f9b5f0a2eb6343470604"
+  },
+  {
+    "path": "ui/card/Rank_SSp.svg",
+    "bytes": 14516,
+    "sha256": "47848864c07508165e0611f3d601b23ce6f8922cc31ebca392fdeaa22c7b7c91"
+  },
+  {
+    "path": "ui/card/Rank_SSS.svg",
+    "bytes": 14515,
+    "sha256": "c09ec0632b67dfeb7ef6fcfbf36437e5abac8603db25a0aae9345869813f324f"
+  },
+  {
+    "path": "ui/card/Rank_SSSp.svg",
+    "bytes": 14514,
+    "sha256": "0f4165f333fa17d99e2f3767cdf3772023f7a8dcffbfca9ad085e5ae919bcfb6"
+  },
+  {
+    "path": "ui/card/SD.svg",
+    "bytes": 10599,
+    "sha256": "db7621c9c05dd7e2e0df8a414ca849395c9d27411984126714d5924ca26e8589"
+  },
+  {
+    "path": "ui/card/Star_01.svg",
+    "bytes": 4042,
+    "sha256": "6b7a6cdf46b18f54813de61a8a916f1549b86979ab3c6dd3227d0809614ae45a"
+  },
+  {
+    "path": "ui/card/Star_02.svg",
+    "bytes": 4043,
+    "sha256": "d966d627793634e0b190218ca56c5fe4a5cb753839112584be284c625cb939f0"
+  },
+  {
+    "path": "ui/card/Star_03.svg",
+    "bytes": 4044,
+    "sha256": "cd387663c9539745152d70d7dd470b4c537ec644dccece5d8cf2b15044064cab"
+  },
+  {
+    "path": "ui/card/Star_04.svg",
+    "bytes": 4043,
+    "sha256": "e8643a92a78e3f776b77b180511f2c176a69b7d81b1b38511b7dadf24fbef0fa"
+  },
+  {
+    "path": "ui/card/Star_05.svg",
+    "bytes": 4043,
+    "sha256": "c95c042785e238f6ab51460dd123248355d04bd051273a2bf2ee2143e9bfca94"
+  },
+  {
+    "path": "ui/header/DaniPlate_00.svg",
+    "bytes": 5359,
+    "sha256": "61aad83f105d82422cade26203a1d10bd7709ff7c9114327598137a3c841eca2"
+  },
+  {
+    "path": "ui/header/DaniPlate_01.svg",
+    "bytes": 8807,
+    "sha256": "26132bca55dd8a0e00ede5e8f3aab78dc8da1f22939cf4193f3e91b55ca714dd"
+  },
+  {
+    "path": "ui/header/DaniPlate_02.svg",
+    "bytes": 6029,
+    "sha256": "a99c4137b0bacb2bb279df6142d4b1597c1aa2847e8c0ff31ca9c1f4254f1701"
+  },
+  {
+    "path": "ui/header/DaniPlate_03.svg",
+    "bytes": 6127,
+    "sha256": "3d81b623344fbf53e38e4f55b861edbf46f0ef13d3151d56eb586c9b8c7e1aae"
+  },
+  {
+    "path": "ui/header/DaniPlate_04.svg",
+    "bytes": 7469,
+    "sha256": "dfc5d7b19edb532faf8aa591dd5daa54a2b3ccaf208c3388e71261a65fb275eb"
+  },
+  {
+    "path": "ui/header/DaniPlate_05.svg",
+    "bytes": 6321,
+    "sha256": "2cd5085460c458edd56ab8113c0cee29e681aaad7cf92592bab4c9db28a24d43"
+  },
+  {
+    "path": "ui/header/DaniPlate_06.svg",
+    "bytes": 15626,
+    "sha256": "14288dc9af89ae2f38b7a362d93d76e6aa90494867f1e34d1e67e3e95686e78f"
+  },
+  {
+    "path": "ui/header/DaniPlate_07.svg",
+    "bytes": 16619,
+    "sha256": "b230408a8a22cfc8b7655c7d6ad0e8594c244911b90276da64662b548bab8175"
+  },
+  {
+    "path": "ui/header/DaniPlate_08.svg",
+    "bytes": 15722,
+    "sha256": "93ba70ae6bd29b42c47a42d9467812df9d10e0c2076dfa623f7431e9babb48c9"
+  },
+  {
+    "path": "ui/header/DaniPlate_09.svg",
+    "bytes": 17006,
+    "sha256": "bd3c1ae3684def07a6f09e95a77c79be5519be16b67231f4e6ecac0f69084665"
+  },
+  {
+    "path": "ui/header/DaniPlate_10.svg",
+    "bytes": 14120,
+    "sha256": "1066666e095999a9777315b165cb889a14bcf1ede180f92a6310226b05dc9f83"
+  },
+  {
+    "path": "ui/header/DaniPlate_11.svg",
+    "bytes": 14084,
+    "sha256": "1d0132eed55bc0cff83869a38d43f62cb21936767265d2017b53db1ea68ca1b8"
+  },
+  {
+    "path": "ui/header/DaniPlate_12.svg",
+    "bytes": 14760,
+    "sha256": "15056a49e5d7ae280ea41ab388d47a53f5c3098ade344faccd7afb3cd2741100"
+  },
+  {
+    "path": "ui/header/DaniPlate_13.svg",
+    "bytes": 10551,
+    "sha256": "fc07e706afa27636b863d3718491fb1f8c6a84068ce5f295c4c46860e83ca932"
+  },
+  {
+    "path": "ui/header/DaniPlate_14.svg",
+    "bytes": 10710,
+    "sha256": "cc9df93b66b9fca9a413a281a9aa42ebcf44b9a35f75ec44f7dda4ac2798f446"
+  },
+  {
+    "path": "ui/header/DaniPlate_15.svg",
+    "bytes": 12801,
+    "sha256": "7ffde97ea4a662da3366463324c9cbb39a1172703e3d77b063eabbe0ce6526b1"
+  },
+  {
+    "path": "ui/header/DaniPlate_16.svg",
+    "bytes": 11034,
+    "sha256": "5fce71dace910c25f0ff5e020cde9b6ef2ffe6c9ee3bcf447b95885e78540157"
+  },
+  {
+    "path": "ui/header/DaniPlate_17.svg",
+    "bytes": 12413,
+    "sha256": "3b4006db8ef09242e86bf155bf8eafc916af6d1e5994a6f37f63ef86883920f9"
+  },
+  {
+    "path": "ui/header/DaniPlate_18.svg",
+    "bytes": 13430,
+    "sha256": "1a2ef510dcacad4208b5e84da30585e642162c8b6bacae553f34ad95a4b2c477"
+  },
+  {
+    "path": "ui/header/DaniPlate_19.svg",
+    "bytes": 12497,
+    "sha256": "6aafea1a08f9d4052c81d33fcb4db30908d0a630391ccfcb474b9378aabbb45d"
+  },
+  {
+    "path": "ui/header/DaniPlate_20.svg",
+    "bytes": 13781,
+    "sha256": "caf86533d5ec4613e6c02ce7fcce0749a3888ae15048b25dac9674ba151cd94d"
+  },
+  {
+    "path": "ui/header/DaniPlate_21.svg",
+    "bytes": 10862,
+    "sha256": "ddd98f7720895466fd644a86bf77e29fce1f1d3cd5381a2d201842c8e18d064f"
+  },
+  {
+    "path": "ui/header/DaniPlate_22.svg",
+    "bytes": 13430,
+    "sha256": "a4ef357924d548ad004a59df67c56b7243ed9065572a3e4f444ddaa400d8c401"
+  },
+  {
+    "path": "ui/header/DaniPlate_23.svg",
+    "bytes": 15579,
+    "sha256": "00df2e2b80b3e2106a540ed060f233b6c57f587f0e9312156d12969c5fa8d72f"
+  },
+  {
+    "path": "ui/header/DXRating_01.svg",
+    "bytes": 17641,
+    "sha256": "2771332b37e08178ee874f3fad287843ac7dfc1dc5672192ff4c09630233b52d"
+  },
+  {
+    "path": "ui/header/DXRating_02.svg",
+    "bytes": 17594,
+    "sha256": "39d317c6dbcc931bdad71988e22649e5f19a01ad88c91d7c4ba5d0755967d8ee"
+  },
+  {
+    "path": "ui/header/DXRating_03.svg",
+    "bytes": 17594,
+    "sha256": "3acb1fbd619dde235cb000b290e55b0323f47d65e4d5dabec49794ddcf70e1a5"
+  },
+  {
+    "path": "ui/header/DXRating_04.svg",
+    "bytes": 17594,
+    "sha256": "fba89928c67fc07f5433c11a273da3edabbd6acfbb6b0c9eb7de042dfa730b78"
+  },
+  {
+    "path": "ui/header/DXRating_05.svg",
+    "bytes": 17594,
+    "sha256": "292af96979909d413c6d165797a46a640918354db540be9fd9fd9f2bb0219109"
+  },
+  {
+    "path": "ui/header/DXRating_06.svg",
+    "bytes": 17594,
+    "sha256": "405e5d337e69cf70f1e6de2a00ef556d2ef10f82b542582337dc95b8d4fe329e"
+  },
+  {
+    "path": "ui/header/DXRating_07.svg",
+    "bytes": 17594,
+    "sha256": "ee3a2515bec97c3ce00d8c59b1a2a38a77027ed5d101de54f11e1e4bc380cbb2"
+  },
+  {
+    "path": "ui/header/DXRating_08.svg",
+    "bytes": 17594,
+    "sha256": "000d6a333a6be432d4b5739987c121d1b130acc502e2f8c6d5bc4ec69eccb5a9"
+  },
+  {
+    "path": "ui/header/DXRating_09.svg",
+    "bytes": 17594,
+    "sha256": "75aa67ed83cd89e260681cfdc0347bd9c0b4cbd39e447a1b0c315d5ebe15fe1f"
+  },
+  {
+    "path": "ui/header/DXRating_10.svg",
+    "bytes": 17594,
+    "sha256": "0392eaed056c6b394d57e3e8a6c9eac7d43fcb5c9bf5edf96492b5f44dcb7cfc"
+  },
+  {
+    "path": "ui/header/DXRating_11.svg",
+    "bytes": 17895,
+    "sha256": "ae62a158d29a0d0caf930ed4c4c90d8a1bff5d2315b00f6e60f78d4d6c6d2dce"
+  },
+  {
+    "path": "ui/header/Name.svg",
+    "bytes": 367,
+    "sha256": "efd3f8623ec20c76bbdf521b8c8e4486874116870f805d5bba7c2508e1bc5d62"
+  },
+  {
+    "path": "ui/header/Shougou_Bronze.svg",
+    "bytes": 414,
+    "sha256": "2054294aba8558b6086c51270aaead82d94026911df83a4b15a0f9612caf9a22"
+  },
+  {
+    "path": "ui/header/Shougou_Gold.svg",
+    "bytes": 408,
+    "sha256": "591b393785d67f7946dac3d4d129568e0cd424b4fca4e448f98bce9c84284a52"
+  },
+  {
+    "path": "ui/header/Shougou_Normal.svg",
+    "bytes": 414,
+    "sha256": "905faaaad06b86d3217e06997cc07769dd16d0b73d8c59171f8b21959ba708e1"
+  },
+  {
+    "path": "ui/header/Shougou_Rainbow.svg",
+    "bytes": 896,
+    "sha256": "00a29181cbdd76e5d009f2b2fba2636d6a4fe09ab8aaff429abbb84e6912d5dd"
+  },
+  {
+    "path": "ui/header/Shougou_Silver.svg",
+    "bytes": 414,
+    "sha256": "afab16e5e5847b8d5f18692f9af2c0e2bca478ba2c25c5a4b389d3ea64c90dba"
+  }
 ];

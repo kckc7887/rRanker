@@ -7,6 +7,7 @@ import BestImageScreen from '../app/best-image';
 const mockShowNotification = jest.fn();
 let mockDetailedCatalogReady = true;
 let mockPageSequence = 0;
+const mockStagedFiles = new Map<string, string>();
 
 jest.mock('@/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
@@ -88,6 +89,10 @@ jest.mock('@/features/best-image/load-best-image-assets', () => ({
     ratingFrameUrl: 'file:///session/dGVzdA==',
   }),
 }));
+jest.mock('@/services/remote-image-cache', () => ({
+  ...jest.requireActual<typeof import('@/services/remote-image-cache')>('@/services/remote-image-cache'),
+  acquireRemoteImageOriginal: async (url: string) => ({ fileUri: url, release: async () => undefined }),
+}));
 jest.mock('@/features/best-image/load-best-image-jackets', () => ({
   loadBestImageJackets: async (_session: unknown, songIds: string[]) => Object.fromEntries(
     songIds.map((songId) => [songId, `file:///session/jacket-${songId}`]),
@@ -100,6 +105,7 @@ jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => ({
   }),
 }));
 jest.mock('@/features/best-image/maimai-font-cache', () => ({
+  MAIMAI_FONT_MANIFEST: [{ cssFileName: 'maimai-noto.ttf' }],
   prepareMaimaiFonts: jest.fn(async () => ({
     directory: { uri: 'file:///assets/' },
     fullReady: Promise.resolve(),
@@ -107,6 +113,7 @@ jest.mock('@/features/best-image/maimai-font-cache', () => ({
 }));
 jest.mock('@/features/best-image/maimai-ui-cache', () => ({
   prepareMaimaiUi: jest.fn(async () => ({
+    files: ['ui/Name.png'],
     directory: { uri: 'file:///assets/' },
     fullReady: Promise.resolve(),
   })),
@@ -182,6 +189,7 @@ describe('best image preview', () => {
     }));
     const { prepareMaimaiUi } = jest.requireMock('@/features/best-image/maimai-ui-cache') as { prepareMaimaiUi: jest.Mock };
     prepareMaimaiUi.mockReset().mockImplementation(async () => ({
+      files: ['ui/Name.png'],
       directory: { uri: 'file:///assets/' },
       fullReady: Promise.resolve(),
     }));
@@ -230,10 +238,32 @@ describe('best image preview', () => {
 
     await fireEvent.press(screen.getByLabelText('应用风格'));
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
-      .toContain('class="profile-app"'));
+      .toContain('class="app-head"'));
     expect(screen.getByLabelText('应用风格').props.accessibilityState).toMatchObject({ selected: true });
     expect(screen.queryByLabelText('胶囊')).toBeNull();
     expect(screen.queryByLabelText('圆角矩形')).toBeNull();
+  });
+
+  it('keeps the chosen style ready when an abandoned package finishes late', async () => {
+    const { prepareMaimaiUi } = jest.requireMock('@/features/best-image/maimai-ui-cache') as { prepareMaimaiUi: jest.Mock };
+    const view = await render(<BestImageScreen />);
+    await waitFor(() => expect(view.getByTestId('best-image-html-preview-0')).toBeTruthy());
+    let finish!: () => void;
+    prepareMaimaiUi.mockImplementationOnce(async () => ({
+      directory: { uri: 'file:///app-assets/' }, files: ['ui/header/Name.svg'],
+      fullReady: new Promise<void>(resolve => { finish = resolve; }),
+    }));
+    await fireEvent.press(view.getByLabelText('应用风格'));
+    await waitFor(() => expect(finish).toBeDefined());
+    expect(view.queryByTestId('best-image-html-preview-0')).toBeNull();
+    expect(view.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
+    await fireEvent.press(view.getByLabelText('游戏风格'));
+    await waitFor(() => expect(view.getByTestId('best-image-html-preview-0').props.source.html).toContain('data-rating-style="game"'));
+    const source = view.getByTestId('best-image-html-preview-0').props.source.uri;
+    await act(async () => { finish(); });
+    expect(view.getByTestId('best-image-html-preview-0').props.source.uri).toBe(source);
+    await fireEvent.press(view.getByLabelText('应用风格'));
+    await waitFor(() => expect(view.getByTestId('best-image-html-preview-0').props.source.html).toContain('data-rating-style="app"'));
   });
 
   it('uses the independent near-miss chip in custom image titles', async () => {
@@ -339,13 +369,13 @@ describe('best image preview', () => {
     await waitFor(() => expect(screen.getByLabelText('示例头像，#9001')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('示例头像，#9001'));
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
-      .toContain('https://assets2.lxns.net/maimai/icon/9001.png'));
+      .toContain(mockStagedFiles.get('https://assets2.lxns.net/maimai/icon/9001.png')!));
 
     await fireEvent.press(screen.getByLabelText('选择姓名框'));
     await waitFor(() => expect(screen.getByLabelText('示例姓名框，#9002')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('示例姓名框，#9002'));
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
-      .toContain('https://assets2.lxns.net/maimai/plate/9002.png'));
+      .toContain(mockStagedFiles.get('https://assets2.lxns.net/maimai/plate/9002.png')!));
 
     await fireEvent.press(screen.getByLabelText('选择称号'));
     await waitFor(() => expect(screen.getByLabelText('示例称号，#9003')).toBeTruthy());
@@ -360,7 +390,7 @@ describe('best image preview', () => {
     await waitFor(() => expect(screen.getByLabelText('示例背景，#9004')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('示例背景，#9004'));
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
-      .toContain('https://assets2.lxns.net/maimai/frame/9004.png'));
+      .toContain(mockStagedFiles.get('https://assets2.lxns.net/maimai/frame/9004.png')!));
   });
 
   it('filters trophy levels and supports random or disabled styles', async () => {
@@ -493,7 +523,7 @@ describe('best image preview', () => {
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: false }));
   });
 
-  it.each(['inactive', 'background'] as const)('reuses ready session files after %s and exports at the selected dimensions', async (state) => {
+  it.each([['inactive', 'game'], ['background', 'game'], ['background', 'app']] as const)('reuses ready session files after %s in %s style and exports at the selected dimensions', async (state, style) => {
     const changeState = listenForAppState();
     const { requestBestImageExportPermission, saveBestImageCapture } = jest.requireMock('@/features/best-image/best-image-export') as {
       requestBestImageExportPermission: jest.Mock<() => Promise<void>>;
@@ -506,6 +536,10 @@ describe('best image preview', () => {
     requestBestImageExportPermission.mockImplementationOnce(() => new Promise<void>((resolve) => { grant = resolve; }));
     const screen = await render(<AppLifecycleProvider><BestImageScreen /></AppLifecycleProvider>);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
+    if (style === 'app') {
+      await fireEvent.press(screen.getByLabelText('应用风格'));
+      await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('data-rating-style="app"'));
+    }
     await fireEvent.press(screen.getByLabelText('宽度 2160 像素'));
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('width:2160px'));
     const source = screen.getByTestId('best-image-html-preview-0').props.source.uri;
@@ -563,7 +597,9 @@ jest.mock('expo-file-system', () => {
 jest.mock('expo-file-system/legacy', () => ({
   getInfoAsync: async () => ({ exists: false }),
   makeDirectoryAsync: async () => undefined,
-  copyAsync: async () => undefined,
-  moveAsync: async () => undefined,
+  copyAsync: async ({ from, to }: { from: string; to: string }) => { mockStagedFiles.set(from, to); },
+  moveAsync: async ({ from, to }: { from: string; to: string }) => {
+    for (const [source, target] of mockStagedFiles) if (target === from) mockStagedFiles.set(source, to);
+  },
   deleteAsync: async () => undefined,
 }));

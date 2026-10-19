@@ -9,6 +9,8 @@ import {
 import {
   MAIMAI_UI_MANIFEST_ENTRIES,
   MAIMAI_UI_ZIP,
+  MAIMAI_APP_UI_ZIP,
+  MAIMAI_APP_UI_MANIFEST_ENTRIES,
 } from '@/features/best-image/maimai-ui-manifest.generated';
 
 const mockUiFs = vi.hoisted(() => ({
@@ -61,7 +63,7 @@ vi.mock('expo-file-system', () => {
       const bytes = mockUiFs.files.get(this.uri);
       if (!bytes) return 0;
       const name = this.uri.split('/').at(-1)!.replace(/\.part$/u, '');
-      const metadata = mockUiFs.metadata.get(name);
+      const metadata = mockUiFs.metadata.get(`${bytes.byteLength}:${Buffer.from(bytes.subarray(0, 64)).toString('hex')}`) ?? mockUiFs.metadata.get(name);
       return metadata?.length === bytes.byteLength ? metadata.size : bytes.byteLength;
     }
     async bytes() { return Uint8Array.from(mockUiFs.files.get(this.uri) ?? []); }
@@ -91,9 +93,11 @@ vi.mock('expo-file-system', () => {
   return { Directory, File, Paths: { document: new Directory('file://', 'document'), cache: new Directory('file://', 'cache') } };
 });
 
-async function fixture(omit?: string): Promise<Uint8Array> {
+async function fixture(omit?: string, style: 'game' | 'app' = 'game'): Promise<Uint8Array> {
+  const entries = style === 'app' ? MAIMAI_APP_UI_MANIFEST_ENTRIES : MAIMAI_UI_MANIFEST_ENTRIES;
+  const pack = style === 'app' ? MAIMAI_APP_UI_ZIP : MAIMAI_UI_ZIP;
   const zip = new JSZip();
-  for (const entry of MAIMAI_UI_MANIFEST_ENTRIES) {
+  for (const entry of entries) {
     const bytes = new Uint8Array(entry.bytes); bytes.set(Buffer.from(`asset:${entry.path}`).subarray(0, bytes.length));
     if (entry.path !== omit) zip.file(entry.path, bytes);
     const name = entry.path.split('/').at(-1)!;
@@ -101,9 +105,9 @@ async function fixture(omit?: string): Promise<Uint8Array> {
     mockUiFs.digests.set(`${bytes.byteLength}:${Buffer.from(bytes.subarray(0, 64)).toString('hex')}`, entry.sha256);
   }
   const archive = await zip.generateAsync({ type: 'uint8array' });
-  mockUiFs.remotes.set(MAIMAI_UI_ZIP.url, archive);
-  mockUiFs.metadata.set('maimai-ui.zip', { length: archive.byteLength, size: MAIMAI_UI_ZIP.bytes });
-  mockUiFs.digests.set(`${archive.byteLength}:${Buffer.from(archive.subarray(0, 64)).toString('hex')}`, MAIMAI_UI_ZIP.sha256);
+  mockUiFs.remotes.set(pack.url, archive);
+  mockUiFs.metadata.set(`${archive.byteLength}:${Buffer.from(archive.subarray(0, 64)).toString('hex')}`, { length: archive.byteLength, size: pack.bytes });
+  mockUiFs.digests.set(`${archive.byteLength}:${Buffer.from(archive.subarray(0, 64)).toString('hex')}`, pack.sha256);
   return archive;
 }
 
@@ -119,50 +123,106 @@ describe('maimai ui asset cache', () => {
 
   it('publishes current assets, reports completion, and reuses intact files', async () => {
     const progress: MaimaiUiProgress[] = [];
-    await (await prepareMaimaiUi(value => progress.push(value))).fullReady;
+    await (await prepareMaimaiUi('game', value => progress.push(value))).fullReady;
     expect(progress.at(-1)?.phase).toBe('ready');
     expect(cached()).toBeTruthy();
     expect([...mockUiFs.files.keys()].filter(uri => uri.includes('/ui/'))).toHaveLength(MAIMAI_UI_MANIFEST_ENTRIES.length);
     mockUiFs.remotes.clear();
-    await (await prepareMaimaiUi()).fullReady;
+    await (await prepareMaimaiUi('game')).fullReady;
     expect(mockUiFs.files.get(cached()!)?.byteLength).toBe(firstEntry.bytes);
+  });
+
+  it('keeps app SVGs and its font separate from game assets when switching styles', async () => {
+    const game = await prepareMaimaiUi('game');
+    await game.fullReady;
+    const gameAsset = cached()!;
+    const original = mockUiFs.files.get(gameAsset);
+    await fixture(undefined, 'app');
+    const app = await prepareMaimaiUi('app');
+    await app.fullReady;
+    expect(app.files).toContain('ui/card/Icon_AP.svg');
+    expect(app.files).toContain('fonts/SourceHanSansCN-Bold.otf');
+    expect(mockUiFs.files.get(`${app.directory.uri}/fonts/SourceHanSansCN-Bold.otf`)?.byteLength).toBeGreaterThan(0);
+    expect(mockUiFs.files.get(gameAsset)).toEqual(original);
+    mockUiFs.remotes.clear();
+    await (await prepareMaimaiUi('game')).fullReady;
+    await (await prepareMaimaiUi('app')).fullReady;
+  });
+
+  it('prepares both styles concurrently and cancels only the abandoned consumer', async () => {
+    await fixture(undefined, 'app');
+    let finish!: (bytes: Uint8Array) => void;
+    const archive = mockUiFs.remotes.get(MAIMAI_APP_UI_ZIP.url) as Uint8Array;
+    mockUiFs.remotes.set(MAIMAI_APP_UI_ZIP.url, () => new Promise(resolve => { finish = resolve; }));
+    const controller = new AbortController();
+    const abandoned = await prepareMaimaiUi('app', undefined, controller.signal);
+    const cancelled = expect(abandoned.fullReady).rejects.toThrow('素材准备失败');
+    const retained = await prepareMaimaiUi('app');
+    const game = await prepareMaimaiUi('game');
+    await game.fullReady;
+    expect(cached()).toBeTruthy();
+    controller.abort();
+    await cancelled;
+    finish(archive);
+    await retained.fullReady;
+    expect(mockUiFs.files.get(`${retained.directory.uri}/fonts/SourceHanSansCN-Bold.otf`)?.byteLength).toBeGreaterThan(0);
+    clearMaimaiUiCache();
+    expect(mockUiFs.files.size).toBe(0);
+  });
+
+  it('does not publish an app download cancelled before completion', async () => {
+    const archive = await fixture(undefined, 'app');
+    let finish!: (bytes: Uint8Array) => void;
+    mockUiFs.remotes.set(MAIMAI_APP_UI_ZIP.url, () => new Promise(resolve => { finish = resolve; }));
+    const controller = new AbortController();
+    const app = await prepareMaimaiUi('app', undefined, controller.signal);
+    const cancelled = expect(app.fullReady).rejects.toThrow('素材准备失败');
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    controller.abort();
+    await cancelled;
+    finish(archive);
+    await vi.waitFor(() => expect(mockUiFs.files.size).toBe(0));
+    mockUiFs.remotes.set(MAIMAI_APP_UI_ZIP.url, archive);
+    await (await prepareMaimaiUi('app')).fullReady;
+    expect(mockUiFs.files.get(`${app.directory.uri}/fonts/SourceHanSansCN-Bold.otf`)?.byteLength).toBeGreaterThan(0);
   });
 
   it('rejects a truncated archive before publishing assets', async () => {
     mockUiFs.remotes.set(MAIMAI_UI_ZIP.url, new Uint8Array([1]));
-    await expect((await prepareMaimaiUi()).fullReady).rejects.toThrow('素材压缩包大小不匹配');
+    await expect((await prepareMaimaiUi('game')).fullReady).rejects.toThrow('素材压缩包大小不匹配');
     expect(cached()).toBeUndefined();
   });
 
   it('rejects a same-size corrupt archive before publishing assets', async () => {
     const archive = Uint8Array.from(mockUiFs.remotes.get(MAIMAI_UI_ZIP.url) as Uint8Array);
     archive[0] ^= 0xff;
+    mockUiFs.metadata.set('maimai-ui.zip', { length: archive.byteLength, size: MAIMAI_UI_ZIP.bytes });
     mockUiFs.remotes.set(MAIMAI_UI_ZIP.url, archive);
-    await expect((await prepareMaimaiUi()).fullReady).rejects.toThrow('素材压缩包校验失败');
+    await expect((await prepareMaimaiUi('game')).fullReady).rejects.toThrow('素材压缩包校验失败');
     expect(cached()).toBeUndefined();
   });
 
   it('rejects a missing required asset', async () => {
     await fixture(firstEntry.path);
-    await expect((await prepareMaimaiUi()).fullReady).rejects.toThrow('压缩包缺少');
+    await expect((await prepareMaimaiUi('game')).fullReady).rejects.toThrow('压缩包缺少');
     expect(cached()).toBeUndefined();
   });
 
   it('replaces a corrupted cached asset', async () => {
-    await (await prepareMaimaiUi()).fullReady;
+    await (await prepareMaimaiUi('game')).fullReady;
     const uri = cached()!, valid = mockUiFs.files.get(uri)!;
     const corrupt = Uint8Array.from(valid); corrupt[0] ^= 0xff; mockUiFs.files.set(uri, corrupt);
-    await (await prepareMaimaiUi()).fullReady;
+    await (await prepareMaimaiUi('game')).fullReady;
     expect(mockUiFs.files.get(uri)).toEqual(valid);
   });
 
   it('reports network failure, retries, and clears cached files', async () => {
     const archive = mockUiFs.remotes.get(MAIMAI_UI_ZIP.url)!;
     mockUiFs.remotes.set(MAIMAI_UI_ZIP.url, new Error('network down'));
-    await expect((await prepareMaimaiUi()).fullReady).rejects.toThrow('素材准备失败');
+    await expect((await prepareMaimaiUi('game')).fullReady).rejects.toThrow('素材准备失败');
     expect(cached()).toBeUndefined();
     mockUiFs.remotes.set(MAIMAI_UI_ZIP.url, archive);
-    await (await prepareMaimaiUi()).fullReady;
+    await (await prepareMaimaiUi('game')).fullReady;
     expect(cached()).toBeTruthy();
     clearMaimaiUiCache();
     expect(cached()).toBeUndefined();
