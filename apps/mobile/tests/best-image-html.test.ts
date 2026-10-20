@@ -218,13 +218,58 @@ describe('best image html', () => {
     expect(html).toContain('src="ui/Rank_SSS.png"');
     expect(html).toContain('src="ui/Icon_FCp.png"');
     expect(html).toContain('src="ui/Icon_FSD.png"');
-    expect(html).toContain('src="ui/Star_03.png"');
+    expect(html).toContain('src="ui/Star_01.png"');
     expect(html).toContain('src="ui/b50_score_master.png"');
     expect(html).toContain('aria-label="第 1 名 示例歌曲"');
     expect(html).toContain('&lt;另一首歌&gt;');
     expect(html).not.toContain('<测试玩家>');
     expect(html).not.toContain('<另一首歌>');
     expect(html).not.toContain('ID11447');
+  });
+
+  describe.each(['app', 'game'] as const)('%s DX stars', (ratingStyle) => {
+    it('renders stars at the exact score thresholds', () => {
+      const cases = [
+        { dxScore: 0, total: 1000, stars: 0 },
+        { dxScore: 2549, total: 1000, stars: 0 },
+        { dxScore: 2550, total: 1000, stars: 1 },
+        { dxScore: 2699, total: 1000, stars: 1 },
+        { dxScore: 2700, total: 1000, stars: 2 },
+        { dxScore: 2789, total: 1000, stars: 2 },
+        { dxScore: 2790, total: 1000, stars: 3 },
+        { dxScore: 2849, total: 1000, stars: 3 },
+        { dxScore: 2850, total: 1000, stars: 4 },
+        { dxScore: 2909, total: 1000, stars: 4 },
+        { dxScore: 2910, total: 1000, stars: 5 },
+        { dxScore: 3000, total: 1000, stars: 5 },
+        { dxScore: 2007, total: 690, stars: 4 },
+        { dxScore: 2008, total: 690, stars: 5 },
+      ];
+      const dom = new JSDOM(buildBestImageHtml({
+        type: 'best50', width: 1080, rating: 0, ratingStyle,
+        scoreSections: [{
+          id: 'scores', title: '成绩', records: cases.map(({ dxScore, total }, index) => ({
+            ...score, songId: String(index), dxScore,
+            notes: { tap: total, hold: 0, slide: 0, touch: 0, break: 0, total },
+          })),
+        }],
+        fontUrl: '', ratingFrameUrl: '', player: { displayName: '玩家' },
+      }));
+      try {
+        const cards = [...dom.window.document.querySelectorAll('article')];
+        expect(cards).toHaveLength(cases.length);
+        cases.forEach(({ stars }, index) => {
+          const icons = [...cards[index]!.querySelectorAll('img, image')]
+            .map(node => node.getAttribute('src') ?? node.getAttribute('href'))
+            .filter(url => url?.includes('/Star_'));
+          expect(icons).toEqual(stars === 0 ? [] : [
+            ratingStyle === 'app' ? `ui/card/Star_0${stars}.svg` : `ui/Star_0${stars}.png`,
+          ]);
+        });
+      } finally {
+        dom.window.close();
+      }
+    });
   });
 
   it('renders custom scores with their generated BestN divider', () => {

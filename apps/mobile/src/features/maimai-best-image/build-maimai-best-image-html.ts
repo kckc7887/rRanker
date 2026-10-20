@@ -165,11 +165,12 @@ function gameDxStar(record: ScoreRecord): number {
   const theoretical = record.notes && typeof record.notes.total === 'number' ? record.notes.total * 3 : null;
   if (theoretical === null || theoretical <= 0 || record.dxScore === null || !Number.isFinite(record.dxScore)) return 0;
   const ratio = record.dxScore / theoretical;
-  if (ratio >= 1) return 5;
-  if (ratio >= 0.9) return 4;
-  if (ratio >= 0.8) return 3;
-  if (ratio >= 0.7) return 2;
-  return 1;
+  if (ratio >= 0.97) return 5;
+  if (ratio >= 0.95) return 4;
+  if (ratio >= 0.93) return 3;
+  if (ratio >= 0.9) return 2;
+  if (ratio >= 0.85) return 1;
+  return 0;
 }
 
 function renderGameScoreCard(
