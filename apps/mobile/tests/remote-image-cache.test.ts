@@ -267,6 +267,79 @@ describe('remote image cache', () => {
     expect(mocks.loadAsync).toHaveBeenCalledTimes(1);
   });
 
+  it.each(['findCompressedRemoteImage', 'cacheCompressedRemoteImage'] as const)(
+    'lets the next cover load before an abandoned %s file read completes', async method => {
+      const options = { gameId: 'maimai', profile: 'thumbnail' } as const;
+      const sources = ['https://example.test/first.png', 'https://example.test/abandoned.png', 'https://example.test/visible.png'];
+      const covers: Awaited<ReturnType<typeof cache.cacheCompressedRemoteImage>>[] = [];
+      for (const source of sources) covers.push(await cache.cacheCompressedRemoteImage(source, options));
+      await cache.flushRemoteImageCacheManifest();
+      const entered = Promise.withResolvers<void>();
+      const resumeFirst = Promise.withResolvers<void>();
+      const resumeAbandoned = Promise.withResolvers<void>();
+      const fileSystem = await import('expo-file-system/legacy');
+      const readInfo = fileSystem.getInfoAsync;
+      const read = vi.spyOn(fileSystem, 'getInfoAsync').mockImplementation(async (uri, settings) => {
+        if (uri === covers[0]!.fileUri) { entered.resolve(); await resumeFirst.promise; }
+        if (uri === covers[1]!.fileUri) await resumeAbandoned.promise;
+        return readInfo(uri, settings);
+      });
+      const pending: Promise<unknown>[] = [];
+      try {
+        pending.push(cache.findCompressedRemoteImage(sources[0], options));
+        await entered.promise;
+        const controller = new AbortController();
+        const abandoned = cache[method](sources[1], options, controller.signal);
+        let visible: Awaited<ReturnType<typeof cache.findCompressedRemoteImage>> = null;
+        const current = cache.findCompressedRemoteImage(sources[2], options).then(result => { visible = result; });
+        pending.push(abandoned, current);
+        await new Promise(resolve => setImmediate(resolve));
+        controller.abort();
+        resumeFirst.resolve();
+        await vi.waitFor(() => expect(visible).toEqual(covers[2]));
+        await expect(abandoned).resolves.toBeNull();
+        expect(mocks.files.has(covers[1]!.fileUri)).toBe(true);
+      } finally {
+        resumeFirst.resolve();
+        resumeAbandoned.resolve();
+        await Promise.allSettled(pending);
+        read.mockRestore();
+      }
+    },
+  );
+
+  it.each(['findCompressedRemoteImage', 'cacheCompressedRemoteImage'] as const)(
+    'preserves cached files when %s is cancelled before or during a read', async method => {
+      const source = 'https://example.test/cancelled-read.png';
+      const options = { gameId: 'maimai', profile: 'thumbnail' } as const;
+      const cached = await cache.cacheCompressedRemoteImage(source, options);
+      const cancelled = new AbortController();
+      cancelled.abort();
+      await expect(cache[method](source, options, cancelled.signal)).resolves.toBeNull();
+      const entered = Promise.withResolvers<void>();
+      const resume = Promise.withResolvers<void>();
+      const fileSystem = await import('expo-file-system/legacy');
+      const readInfo = fileSystem.getInfoAsync;
+      const read = vi.spyOn(fileSystem, 'getInfoAsync').mockImplementationOnce(async (uri, settings) => {
+        entered.resolve();
+        await resume.promise;
+        return readInfo(uri, settings);
+      });
+      try {
+        const controller = new AbortController();
+        const pending = cache[method](source, options, controller.signal);
+        await entered.promise;
+        controller.abort();
+        resume.resolve();
+        await expect(pending).resolves.toBeNull();
+        read.mockRejectedValueOnce(new Error('storage unavailable'));
+        await expect(cache[method](source, options)).rejects.toThrow('storage unavailable');
+        await expect(cache[method](source, options)).resolves.toEqual(cached);
+        await expect(cache.measureGameRemoteImageCacheBytes('maimai')).resolves.toBe(192);
+      } finally { resume.resolve(); read.mockRestore(); }
+    },
+  );
+
   it('shares original bytes between display and compression and reuses the file after release', async () => {
     const source = { uri: 'https://example.test/shared-original.png', headers: { Z: 'last', Authorization: 'token' }, cacheKey: 'revision-1' };
     const first = await cache.acquireRemoteImageOriginal(source, 'maimai');
@@ -683,6 +756,50 @@ describe('remote image cache', () => {
     )).resolves.toBeNull();
     expect(mocks.loadAsync).not.toHaveBeenCalled();
     expect(mocks.manipulate).not.toHaveBeenCalled();
+  });
+
+  it('restores actual cache sizes when a rebuilt cover outlives its pending index write', async () => {
+    vi.useFakeTimers();
+    const source = 'https://example.test/rebuilt-cover.png';
+    const options = { gameId: 'maimai', profile: 'thumbnail' } as const;
+    try {
+      const first = await cache.cacheCompressedRemoteImage(source, options);
+      await cache.flushRemoteImageCacheManifest();
+      await cache.invalidateCompressedRemoteImage(first!.cacheKey);
+      mocks.imageBytes = 1024;
+      await cache.cacheCompressedRemoteImage(source, options);
+      vi.clearAllTimers();
+      await reloadCache();
+
+      await expect(cache.measureGameRemoteImageCacheBytes('maimai')).resolves.toBe(1152);
+      await cache.pruneRemoteImageCache(500);
+      const storedBytes = [...mocks.files].reduce((total, [uri, file]) => (
+        total + (/\.(webp|source)$/.test(uri) ? file.size : 0)
+      ), 0);
+      expect(storedBytes).toBeLessThanOrEqual(500);
+    } finally {
+      await cache.flushRemoteImageCacheManifest();
+      vi.useRealTimers();
+    }
+  });
+
+  it.each(['empty', 'directory', 'oversized'] as const)('rejects a %s compressed file when restoring its cover', async kind => {
+    const source = 'https://example.test/damaged-cover.png';
+    const options = { gameId: 'maimai', profile: 'thumbnail' } as const;
+    const cached = await cache.cacheCompressedRemoteImage(source, options);
+    await cache.flushRemoteImageCacheManifest();
+    if (kind === 'directory') {
+      mocks.files.delete(cached!.fileUri);
+      mocks.directories.add(cached!.fileUri);
+    } else {
+      mocks.files.set(cached!.fileUri, { content: '',
+        size: kind === 'empty' ? 0 : cache.REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES + 1, modified: Date.now() });
+    }
+    await reloadCache();
+    await expect(cache.findCompressedRemoteImage(source, options)).resolves.toBeNull();
+    const rebuilt = await cache.cacheCompressedRemoteImage(source, options);
+    expect(rebuilt?.source).toEqual({ uri: rebuilt?.fileUri });
+    expect(mocks.files.get(rebuilt!.fileUri)?.size).toBeGreaterThan(0);
   });
 
   it('keeps animated images native without writing a static first frame', async () => {

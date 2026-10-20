@@ -108,7 +108,8 @@ export function RemoteImage({
     setOriginalRequestKey(null);
     setOriginal(null);
     let cancelled = false;
-    void findCompressedRemoteImage(requestSource, { gameId: gameId!, profile: mode })
+    const controller = new AbortController();
+    void findCompressedRemoteImage(requestSource, { gameId: gameId!, profile: mode }, controller.signal)
       .then((result) => {
         if (cancelled) {
           result?.release?.();
@@ -132,6 +133,7 @@ export function RemoteImage({
       });
     return () => {
       cancelled = true;
+      controller.abort();
       activeRequestKeyRef.current = null;
       releaseRef.current?.();
       releaseRef.current = undefined;
@@ -204,12 +206,20 @@ export function RemoteImage({
   const requestReady = activeRequestKeyRef.current === requestKey;
   const showingRemote = phase === 'remote';
   const showingCached = phase === 'cached' || phase === 'cached-fallback';
+  const displaySource = !requestReady || phase === 'checking' || phase === 'failed'
+    ? null
+    : showingCached
+      ? resolved?.source ?? null
+      : originalRequestKey === requestKey && original
+        ? { ...normalized?.source, uri: original.fileUri, cacheKey: original.fileUri }
+        : null;
   return (
     <Image
       {...props}
+      key={requestKey}
       cachePolicy={showingRemote ? 'memory' : 'none'}
       onDisplay={() => {
-        if (activeRequestKeyRef.current !== requestKey) return;
+        if (activeRequestKeyRef.current !== requestKey || !displaySource) return;
         if (phase === 'cached') {
           setOriginalRequestKey(requestKey);
           return;
@@ -221,7 +231,7 @@ export function RemoteImage({
         }
       }}
       onError={(event) => {
-        if (activeRequestKeyRef.current !== requestKey) return;
+        if (activeRequestKeyRef.current !== requestKey || !displaySource) return;
         if (showingRemote && original) void original.invalidate().catch(() => undefined);
         if (showingCached && resolved) {
           void invalidateCompressedRemoteImage(resolved.cacheKey);
@@ -242,13 +252,7 @@ export function RemoteImage({
         }
         onError?.(event);
       }}
-      source={!requestReady || phase === 'checking' || phase === 'failed'
-        ? null
-        : showingCached
-          ? resolved?.source ?? null
-          : originalRequestKey === requestKey && original
-            ? { ...normalized?.source, uri: original.fileUri, cacheKey: original.fileUri }
-            : null}
+      source={displaySource}
     />
   );
 }

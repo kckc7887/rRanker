@@ -1,9 +1,11 @@
 import { Animated } from 'react-native';
 import type { PropsWithChildren } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render, waitFor } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { router } from 'expo-router';
 import type { GameId } from '@/domain/game-bind-options';
+import type { ScoreRecord } from '@/domain/models';
 import { fixtureRecords, fixtureSource } from '@/fixtures/sanitized';
 import { queryClient } from '@/state/query-client';
 import { RecordsScreen } from '../app/(tabs)/records';
@@ -209,6 +211,64 @@ describe('舞萌列表内容与共同路由的分层', () => {
     expect(actualRecordsFilter.getState().keyword).toBe('脱敏曲目 1');
     await waitFor(() => expect(listData(screen, 'records-results-list').length).toBe(filteredCount));
     expect(mockGetCatalog).toHaveBeenCalledTimes(catalogCalls);
+  });
+
+  it('成绩页普通难度与宴谱来回筛选时显示对应成绩并打开正确谱面', async () => {
+    const normal: ScoreRecord = {
+      ...fixtureRecords[0]!, songId: '123', title: '普通成绩', type: 'DX',
+      difficulty: 'master', levelIndex: 3, level: '14+', difficultyConstant: 14.7, rating: 300,
+    };
+    const utage: ScoreRecord = {
+      ...normal, songId: '100123', title: '宴谱成绩', type: 'UTAGE', difficulty: 'utage',
+      levelIndex: 0, level: '14+?', difficultyConstant: 0, rating: 0, dxScore: 1234,
+      utage: { kanji: '協', isBuddy: true },
+    };
+    const records = [normal, utage];
+    mockUseScoreSnapshot.mockReturnValue({
+      data: { records, source: fixtureSource, catalogSource: fixtureSource },
+      isLoading: false, isError: false, isDataStale: false, error: null, refetch: jest.fn(),
+    });
+    const screen = await render(<RecordsScreen />, { wrapper });
+    await screen.findByTestId('records-results-list');
+    await fireEvent.press(screen.getByLabelText(/展开筛选/));
+    await fireEvent.press(screen.getByLabelText('筛选难度 MASTER'));
+    await waitFor(() => {
+      expect(screen.getByText('普通成绩')).toBeTruthy();
+      expect(screen.queryByText('宴谱成绩')).toBeNull();
+    });
+
+    await fireEvent.press(screen.getByLabelText('筛选难度 U·TA·GE'));
+    await waitFor(() => {
+      expect(screen.getByText('宴谱成绩')).toBeTruthy();
+      expect(screen.queryByText('普通成绩')).toBeNull();
+    });
+    const utageCard = screen.getByLabelText('查看谱面 宴谱成绩 UTAGE utage');
+    expect(within(utageCard).getByText('協 14+?')).toBeTruthy();
+    expect(within(utageCard).queryByText(/DX分数/)).toBeNull();
+    expect(within(utageCard).queryByText('1234')).toBeNull();
+    expect(within(utageCard).queryByText('Rating')).toBeNull();
+    await fireEvent.press(utageCard);
+    expect(router.push).toHaveBeenLastCalledWith({
+      pathname: '/songs/[songId]',
+      params: { gameId: 'maimai', songId: '100123', chartType: 'UTAGE', levelIndex: '0' },
+    });
+
+    await fireEvent.press(screen.getByLabelText('筛选难度 MASTER'));
+    await waitFor(() => {
+      expect(screen.getByText('普通成绩')).toBeTruthy();
+      expect(screen.queryByText('宴谱成绩')).toBeNull();
+      expect(screen.queryByText('協 14+?')).toBeNull();
+    });
+    const normalCard = screen.getByLabelText('查看谱面 普通成绩 DX master');
+    expect(within(normalCard).getByText('MASTER (14.7)')).toBeTruthy();
+    expect(within(normalCard).getByText('Rating')).toBeTruthy();
+    expect(within(normalCard).getByText('300')).toBeTruthy();
+    expect(within(normalCard).queryByText('DX分数')).toBeNull();
+    await fireEvent.press(normalCard);
+    expect(router.push).toHaveBeenLastCalledWith({
+      pathname: '/songs/[songId]',
+      params: { gameId: 'maimai', songId: '123', chartType: 'DX', levelIndex: '3' },
+    });
   });
 
   it('曲库页 A→B→A 切换后保留舞萌筛选与曲库缓存', async () => {

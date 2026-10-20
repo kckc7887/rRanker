@@ -121,7 +121,7 @@ describe('cached tab animation lifecycle', () => {
     expect(animations).toHaveLength(foregroundAnimations.length * 2);
   });
 
-  it('shows U·TA·GE score data without a Rating block', async () => {
+  it('shows the UTAGE chart label without DX score, Rating or a fabricated constant', async () => {
     const record = {
       ...fixtureRecords[0]!,
       songId: '100123',
@@ -130,6 +130,8 @@ describe('cached tab animation lifecycle', () => {
       levelIndex: 0,
       difficulty: 'utage' as const,
       difficultyConstant: 0,
+      level: '14+?',
+      utage: { kanji: '協', isBuddy: true },
       achievements: 100.5,
       dxScore: 1234,
       rating: 0,
@@ -138,7 +140,23 @@ describe('cached tab animation lifecycle', () => {
     const screen = await render(<ScoreRecordCard record={record} />);
     const card = within(screen.getByLabelText('查看谱面 原曲标题 UTAGE utage'));
 
-    expect(card.getByText('DX分数 1234')).toBeTruthy();
+    expect(card.queryByText('DX分数')).toBeNull();
+    expect(card.queryByText('1234')).toBeNull();
+    expect(card.getByText('協 14+?')).toBeTruthy();
+    expect(card.queryByText(/0\.0/)).toBeNull();
     expect(card.queryByText('Rating')).toBeNull();
+  });
+
+  it('keeps the UTAGE label and level when the chart metadata is missing', async () => {
+    const record = {
+      ...fixtureRecords[0]!, songId: '100123', type: 'UTAGE' as const, difficulty: 'utage' as const,
+      difficultyConstant: 0, level: '14?', dxScore: 0, achievements: 98,
+    };
+    const screen = await render(<ScoreRecordCard record={record} />);
+    expect(screen.getByText('U·TA·GE 14?')).toBeTruthy();
+    expect(screen.queryByText('DX分数')).toBeNull();
+    expect(screen.queryByText('0')).toBeNull();
+    await screen.rerender(<ScoreRecordCard record={{ ...record, level: undefined }} />);
+    expect(screen.getByText('U·TA·GE')).toBeTruthy();
   });
 });

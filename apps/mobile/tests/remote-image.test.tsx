@@ -9,7 +9,7 @@ import {
   RemoteImagePersistenceScope,
 } from '@/components/RemoteImage';
 
-const mockFind = jest.fn<() => Promise<unknown>>();
+const mockFind = jest.fn<(_source: unknown, _options: unknown, signal?: AbortSignal) => Promise<unknown>>();
 const mockCache = jest.fn<(_source: unknown, _options: unknown, signal?: AbortSignal) => Promise<unknown>>();
 const mockAcquire = jest.fn<(_source: unknown, _gameId: string, signal?: AbortSignal) => Promise<RemoteImageOriginal>>();
 const mockReleaseOriginal = jest.fn<() => Promise<void>>();
@@ -20,7 +20,7 @@ jest.mock('expo-router', () => ({ router: { push: jest.fn() } }));
 jest.mock('@/services/remote-image-cache', () => ({
   acquireRemoteImageOriginal: (...args: [unknown, string, AbortSignal?]) => mockAcquire(...args),
   cacheCompressedRemoteImage: (...args: [unknown, unknown, AbortSignal?]) => mockCache(...args),
-  findCompressedRemoteImage: () => mockFind(),
+  findCompressedRemoteImage: (...args: [unknown, unknown, AbortSignal?]) => mockFind(...args),
   invalidateCompressedRemoteImage: () => mockInvalidate(),
   normalizeRemoteImageSource: jest.requireActual<typeof import('@/services/remote-image-cache')>(
     '@/services/remote-image-cache',
@@ -29,9 +29,15 @@ jest.mock('@/services/remote-image-cache', () => ({
 }));
 
 jest.mock('expo-image', () => {
+  const React = jest.requireActual<typeof import('react')>('react');
   const RN = jest.requireActual<typeof import('react-native')>('react-native');
   function MockImage(props: React.ComponentProps<typeof RN.Image>) {
-    return <RN.Image {...props} />;
+    const current = React.useRef(props);
+    current.current = props;
+    const onError = React.useCallback<NonNullable<typeof props.onError>>(
+      (event) => current.current.onError?.(event), [],
+    );
+    return <RN.Image {...props} onError={onError} />;
   }
   Object.assign(MockImage, {
     clearDiskCache: () => true,
@@ -71,6 +77,57 @@ describe('歌曲封面来源更新', () => {
 });
 
 describe('RemoteImage 压缩垫图', () => {
+  it.each(['checking', 'cached', 'original'] as const)('keeps the replacement cover after a late native error during %s', async (phase) => {
+    mockFind.mockResolvedValue(cachedResult);
+    const screen = await render(<GameSongCover source={remoteSource} gameId="maimai" />);
+    await waitFor(() => expect(screen.getByLabelText('歌曲封面').props.source).toEqual(cachedResult.source));
+    const oldNativeError = screen.getByLabelText('歌曲封面').props.onError as (event: { error: string }) => void;
+    const pending = Promise.withResolvers<unknown>();
+    const replacement = { ...cachedResult, source: { uri: 'file:///replacement.webp' } };
+    mockFind.mockReturnValueOnce(pending.promise);
+    await screen.rerender(<GameSongCover source="https://example.test/replacement.jpg" gameId="maimai" />);
+    expect(screen.getByLabelText('歌曲封面').props.source).toBeNull();
+    if (phase === 'cached') await act(async () => { pending.resolve(replacement); });
+    if (phase === 'original') {
+      await act(async () => { pending.resolve(null); });
+      await waitFor(() => expect(screen.getByLabelText('歌曲封面').props.source).toEqual(originalSource));
+    }
+    await act(async () => { oldNativeError({ error: 'late native decode failed' }); });
+    if (phase === 'checking') await act(async () => { pending.resolve(replacement); });
+    expect(screen.queryByText('♪')).toBeNull();
+    expect(screen.getByLabelText('歌曲封面').props.source).toEqual(phase === 'original' ? originalSource : replacement.source);
+    await screen.unmount();
+  });
+
+  it('ignores native events while the current image has no display source', async () => {
+    const pending = Promise.withResolvers<unknown>();
+    mockFind.mockReturnValueOnce(pending.promise);
+    const screen = await render(<GameSongCover source={remoteSource} gameId="maimai" />);
+    expect(screen.getByLabelText('歌曲封面').props.source).toBeNull();
+    await fireEvent(screen.getByLabelText('歌曲封面'), 'display');
+    await fireEvent(screen.getByLabelText('歌曲封面'), 'error', { error: 'late native decode failed' });
+    await act(async () => { pending.resolve(cachedResult); });
+    expect(screen.queryByText('♪')).toBeNull();
+    expect(screen.getByLabelText('歌曲封面').props.source).toEqual(cachedResult.source);
+    await screen.unmount();
+  });
+
+  it('cancels the previous lookup when switching covers and keeps the replacement visible', async () => {
+    const pending = Promise.withResolvers<unknown>();
+    let cancelled = false;
+    mockFind.mockImplementationOnce((_source, _options, signal) => {
+      signal?.addEventListener('abort', () => { cancelled = true; pending.resolve(null); }, { once: true });
+      return pending.promise;
+    }).mockResolvedValue(cachedResult);
+    const screen = await render(<GameSongCover source={remoteSource} gameId="maimai" />);
+    expect(screen.getByLabelText('歌曲封面').props.source).toBeNull();
+    await screen.rerender(<GameSongCover source="https://example.test/replacement.jpg" gameId="maimai" />);
+    await waitFor(() => expect(screen.getByLabelText('歌曲封面').props.source).toEqual(cachedResult.source));
+    expect(cancelled).toBe(true);
+    expect(screen.queryByText('♪')).toBeNull();
+    await screen.unmount();
+  });
+
   it('starts the original without visibility and retains it across hidden tabs while preserving artwork props', async () => {
     mockFind.mockResolvedValue(null);
     const tree = (active: boolean) => <RemoteImageActivityScope active={active}>

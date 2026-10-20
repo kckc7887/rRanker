@@ -7,7 +7,7 @@ import { GameScoreCard, type ScoreCardArtwork } from './GameScoreCard';
 import { simaiScoreCardStyles as styles } from './SimaiScoreCardStyles';
 
 export function SimaiScoreCard({ presentation, artwork, achievements, sideMetric, difficultyBadge, chartTypeBadge,
-  supplementalMetric, rate, fc, fs, badgesTestID, interactive = true,
+  rate, fc, fs, badgesTestID, interactive = true,
 }: {
   presentation: ScoreCardPresentation;
   artwork: ScoreCardArtwork;
@@ -15,7 +15,6 @@ export function SimaiScoreCard({ presentation, artwork, achievements, sideMetric
   sideMetric?: { label: string; value?: number; emptyText: string };
   difficultyBadge: ReactNode;
   chartTypeBadge?: ReactNode;
-  supplementalMetric?: ReactNode;
   rate?: string | null;
   fc?: string | null;
   fs?: string | null;
@@ -32,7 +31,6 @@ export function SimaiScoreCard({ presentation, artwork, achievements, sideMetric
       </Text>
     </View> : null}>
     <AchievementValue value={achievements} compact />
-    {supplementalMetric === undefined ? null : <Text style={[styles.dxScore, { color: theme.textSecondary }]}>{supplementalMetric}</Text>}
     <View testID={badgesTestID} style={styles.tags}>
       {difficultyBadge}
       {chartTypeBadge}

@@ -691,7 +691,7 @@ async function findCached(cacheKey: string): Promise<CompressedRemoteImageResult
     return null;
   }
   const bytes = info.size;
-  if (bytes > REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES) {
+  if (info.isDirectory || bytes <= 0 || bytes > REMOTE_IMAGE_CACHE_ENTRY_BUDGET_BYTES) {
     await deleteAsync(file.uri, { idempotent: true });
     state.entries.delete(cacheKey);
     queueManifestWrite();
@@ -818,11 +818,14 @@ async function createCompressed(
 export async function findCompressedRemoteImage(
   source: unknown,
   options: RemoteImageCacheOptions,
+  signal?: AbortSignal,
 ): Promise<CompressedRemoteImageResult | null> {
   const normalized = normalizeRemoteImageSource(source);
-  if (!normalized || !options.gameId) return null;
+  if (!normalized || !options.gameId || signal?.aborted) return null;
   const cacheKey = await remoteImageCacheKey(normalized, options);
-  return runFileOperation(() => findCached(cacheKey));
+  if (signal?.aborted) return null;
+  const cached = await runFileOperation(() => signal?.aborted ? Promise.resolve(null) : findCached(cacheKey));
+  return signal?.aborted ? null : cached;
 }
 
 export async function cacheCompressedRemoteImage(
@@ -838,7 +841,7 @@ export async function cacheCompressedRemoteImage(
     && gameGeneration === (gameGenerations.get(options.gameId) ?? 0);
   const cacheKey = await remoteImageCacheKey(normalized, options);
   if (!current()) return null;
-  const cached = await runFileOperation(() => findCached(cacheKey));
+  const cached = await runFileOperation(() => current() ? findCached(cacheKey) : Promise.resolve(null));
   if (!current()) return null;
   if (cached) return cached;
   try {

@@ -109,7 +109,11 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `RemoteImage` 是远程图片入口，使用 `cacheProfile` 明确 thumbnail、artwork、native 或 none。`remote-image-cache.ts` 管理原图、压缩图、缓存身份和文件清理；`acquireRemoteImageOriginal(source, gameId, signal)` 返回原字节文件及异步 `release`、`invalidate`，展示和压缩共用下载，消费者独立取消。文件身份包含 URL、请求头、缓存键及游戏，共享请求按清理代次隔离；原生展示使用文件 URI 作为缓存键。两类文件共用格式 4 的索引、50 MiB 总容量、游戏配额和 LRU，压缩图单项上限为 10 KiB。原图发布后保留稳定路径，最后一个消费者释放时解除占用并裁剪，使用中的文件可暂时超额。`invalidate` 只使取得的文件失效，保留后来发布的替换文件；解码失败、缺失和空原图通过所属入口重建。原图不受可见性等待限制，压缩在成功显示且页面活动时开始；压缩缓存命中后持续显示缩略图，取得同一入口的原图文件后替换，原图失败时保留有效缓存。普通页面失活不释放已取得的原图；原图成功显示才通知调用方。清理先失效代次并移除所属索引，正在使用的原图待消费者释放后回收。
 
-通用行、卡片和封面位于 `components/game-content`，游戏组件只提供实际展示差异。成绩卡曲绘、个性化卡片示例以及中二、Phigros 的成绩图歌曲背景选择器统一使用所属游戏的 thumbnail 缓存；Phigros 头像选择沿用 native 缓存。`GameDifficultyBadge` 使用普通样式覆盖，保留尺寸、渐变和文本。列表的页面活动、可见性与图片落盘通过现有共享组件传递；可见性使用列表的稳定条目键，分组列表额外按分组键隔离，同键数据更新保留当前活动状态。
+`findCompressedRemoteImage(source, options, signal)` 支持取消，来源切换或组件卸载时取消所属查询；压缩入口也在领取排队任务时检查取消与清理代次。已取消的排队任务不启动文件读取，已开始的索引恢复与文件核验完整执行。图片索引恢复读取文件实际大小后执行容量裁剪；读取压缩缓存时拒绝缺失、空文件、目录及超限文件。
+
+`RemoteImage` 的原生图片实例按游戏、缓存类型和来源身份隔离，压缩图切换到同来源原图时复用实例；没有当前显示源时忽略原生显示与失败事件。
+
+通用行、卡片和封面位于 `components/game-content`，游戏组件只提供实际展示差异。成绩卡曲绘、个性化卡片示例以及中二、Phigros 的成绩图歌曲背景选择器统一使用所属游戏的 thumbnail 缓存；Phigros 头像选择沿用 native 缓存。`ScoreRecordCard` 通过 `SimaiScoreCard` 显示曲名、达成率和状态徽章；UTAGE 使用全宽主列，不显示 Rating 或 DX 分数，难度标签消费成绩的 `utage.kanji` 与 `level`，缺少宴字时显示 `U·TA·GE`。`GameDifficultyBadge` 使用普通样式覆盖，保留尺寸、渐变和文本。列表的页面活动、可见性与图片落盘通过现有共享组件传递；可见性使用列表的稳定条目键，分组列表额外按分组键隔离，同键数据更新保留当前活动状态。
 
 `GameSongRow` 与 `GameSongCover` 将封面失败关联当前游戏和图片来源，来源变化允许新图片加载，旧来源的迟到错误不改变当前图片状态。
 
