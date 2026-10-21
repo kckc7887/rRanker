@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import {
@@ -94,17 +94,6 @@ describe('OsuCatalogFilterBar 筛选栏', () => {
     expect(screen.getByText('不良内容')).toBeTruthy();
     expect(screen.getByText('其他')).toBeTruthy();
     expect(screen.queryByText('模式')).toBeNull();
-  });
-
-  it('布局合同：三行各两个控件，且每个控件都位于横向行容器内（防纵向 flex 塌陷叠压）', async () => {
-    const screen = await render(<OsuCatalogFilterBar {...baseProps} />);
-    const pairRows = screen.getAllByTestId('osu-catalog-filter-pair-row');
-    expect(pairRows).toHaveLength(3);
-    expect(screen.queryAllByTestId('osu-catalog-filter-full-row')).toHaveLength(0);
-    for (const row of pairRows) {
-      expect(StyleSheet.flatten(row.props.style).flexDirection).toBe('row');
-      expect(row.children.filter((child) => typeof child !== 'string')).toHaveLength(2);
-    }
   });
 
   it('单选分类：选择后回调且触发器值标签更新', async () => {

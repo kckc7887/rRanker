@@ -35,13 +35,19 @@ function wrapper({ children }: PropsWithChildren) { return <QueryClientProvider 
 function deferred<T>() { let resolve!: (value: T) => void; const promise = new Promise<T>(done => { resolve = done; }); return { promise, resolve }; }
 
 beforeEach(() => {
-  jest.clearAllMocks(); queryClient.clear(); queryClient.setDefaultOptions({ queries: { retry: false } });
+  jest.useFakeTimers();
+  jest.clearAllMocks(); queryClient.clear(); queryClient.setDefaultOptions({ queries: { retry: false, gcTime: Infinity } });
   invalidateResourceWrites('rizline');
   useSession.setState({ ...initial, boundAccounts: [account], activeAccountId: account.id,
     activeGameId: 'rizline', activeProviderId: 'rizline-official', session });
   mockCached.mockResolvedValue(snapshot()); mockFresh.mockResolvedValue(snapshot()); mockCatalog.mockResolvedValue(catalog());
 });
-afterEach(async () => { await cleanup(); queryClient.clear(); useSession.setState(initial, true); });
+afterEach(async () => {
+  await cleanup();
+  queryClient.clear();
+  useSession.setState(initial, true);
+  jest.useRealTimers();
+});
 
 it('renders cached scores immediately and publishes an expired-login fallback without losing those scores', async () => {
   const fresh = deferred<RizlineSnapshot>(); mockFresh.mockReturnValue(fresh.promise);
@@ -50,7 +56,7 @@ it('renders cached scores immediately and publishes an expired-login fallback wi
   expect(hook.result.current.data?.payload).not.toMatchObject({ requiresLogin: true });
   await act(() => { fresh.resolve({ ...snapshot(), source: { ...fixtureSource, kind: 'cache', isStale: true }, requiresLogin: true }); });
   await waitFor(() => expect(hook.result.current.data?.payload).toMatchObject({ requiresLogin: true, playerScore: { value: 99.1234 } }));
-  expect(useSession.getState().session).toBe(session);
+  expect(useSession.getState().session).toEqual(session);
 });
 
 it('uses a newer catalog that arrives while official score loading is pending', async () => {
@@ -80,5 +86,5 @@ it('does not publish a late refresh after the same account was rebound', async (
     queryClient.setQueryData(key, { ...current, payload: { ...current.payload, playerScore: { value: 200, display: '200.0000' } } });
     fresh.resolve({ save: rizlineSave({ totalRks: 1 }), source: fixtureSource });
   });
-  expect(queryClient.getQueryData<GameDataBundle>(key)?.payload).toMatchObject({ playerScore: { value: 200 } });
+  await waitFor(() => expect(hook.result.current.data?.payload).toMatchObject({ playerScore: { value: 200 } }));
 });

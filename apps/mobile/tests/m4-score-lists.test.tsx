@@ -1,5 +1,7 @@
+import { ScoreRecordCard } from '@/components/ScoreRecordCard';
+import { fixtureRecords } from '@/fixtures/sanitized';
 import { Animated } from 'react-native';
-import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, cleanup, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Best50Screen } from '../app/(tabs)/b50';
 import { RecordsScreen } from '../app/(tabs)/records';
@@ -194,12 +196,6 @@ describe('M4 score list cards', () => {
 
   it('renders Best35 above Best15 and sorts each section by Rating', async () => {
     const screen = await render(<Best50Screen />);
-    expect(screen.getByTestId('best50-results-list').props).toEqual(expect.objectContaining({
-      initialNumToRender: 8,
-      maxToRenderPerBatch: 4,
-      updateCellsBatchingPeriod: 50,
-      windowSize: 3,
-    }));
     await fireEvent.press(screen.getByLabelText('生成B50图片'));
     expect(mockPush).toHaveBeenCalledWith('/best-image');
     expect(screen.getByText('过往版本 Best35')).toBeTruthy();
@@ -210,13 +206,10 @@ describe('M4 score list cards', () => {
       '查看谱面 B35高 SD master', '查看谱面 B35低 DX expert',
       '查看谱面 B15高 DX remaster', '查看谱面 B15低 SD advanced',
     ]);
-    const collectText = (node: unknown): string[] => {
-      if (typeof node === 'string' || typeof node === 'number') return [String(node)];
-      if (!node || typeof node !== 'object' || !('children' in node)) return [];
-      return (node as { children: unknown[] }).children.flatMap(collectText);
-    };
-    const badgeTexts = collectText(screen.getByTestId('score-card-badges-152'));
-    expect(badgeTexts.slice(0, 3)).toEqual(['Re:MASTER (14.8)', 'DX', '寸']);
+    const badges = within(screen.getByTestId('score-card-badges-152'));
+    expect(badges.getByText('Re:MASTER (14.8)')).toBeTruthy();
+    expect(badges.getByText('DX')).toBeTruthy();
+    expect(badges.getByText('寸')).toBeTruthy();
 
     await fireEvent.press(screen.getByLabelText('查看谱面 B35高 SD master'));
     expect(mockPush).toHaveBeenCalledWith({
@@ -229,13 +222,6 @@ describe('M4 score list cards', () => {
     useRecordsFilter.getState().setSortBy('title');
     const screen = await render(<RecordsScreen />);
     await screen.findByTestId('records-results-list');
-    expect(screen.getByTestId('records-results-list').props).toEqual(expect.objectContaining({
-      contentInsetAdjustmentBehavior: 'automatic',
-      initialNumToRender: 8,
-      maxToRenderPerBatch: 4,
-      updateCellsBatchingPeriod: 50,
-      windowSize: 3,
-    }));
     expect(screen.queryByText('排序')).toBeNull();
     expect(screen.getByLabelText('成绩搜索')).toBeTruthy();
     const labels = screen.getAllByLabelText(/^查看谱面/).map((node) => node.props.accessibilityLabel);
@@ -397,3 +383,33 @@ describe('M4 score list cards', () => {
     expect(useRecordsFilter.getState().constantMax).toBe('');
   });
 });
+
+  it('shows the UTAGE chart label without DX score, Rating or a fabricated constant', async () => {
+    const record = {
+      ...fixtureRecords[0]!,
+      songId: '100123',
+      title: '原曲标题',
+      type: 'UTAGE' as const,
+      levelIndex: 0,
+      difficulty: 'utage' as const,
+      difficultyConstant: 0,
+      level: '14+?',
+      utage: { kanji: '協', isBuddy: true },
+      achievements: 100.5,
+      dxScore: 1234,
+      rating: 0,
+      rate: 'sssp',
+    };
+    const screen = await render(<ScoreRecordCard record={record} />);
+    const card = within(screen.getByLabelText('查看谱面 原曲标题 UTAGE utage'));
+
+    expect(card.queryByText('DX分数')).toBeNull();
+    expect(card.queryByText('1234')).toBeNull();
+    expect(card.getByText('協 14+?')).toBeTruthy();
+    expect(card.queryByText(/0\.0/)).toBeNull();
+    expect(card.queryByText('Rating')).toBeNull();
+    await screen.rerender(<ScoreRecordCard record={{ ...record, utage: undefined }} />);
+    expect(screen.getByText('U·TA·GE 14+?')).toBeTruthy();
+    await screen.rerender(<ScoreRecordCard record={{ ...record, utage: undefined, level: undefined }} />);
+    expect(screen.getByText('U·TA·GE')).toBeTruthy();
+  });

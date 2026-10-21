@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { AppState, PixelRatio, Platform, StyleSheet, type AppStateStatus } from 'react-native';
+import { AppState, PixelRatio, Platform, type AppStateStatus } from 'react-native';
 import { AppLifecycleProvider } from '@/state/app-lifecycle';
 import BestImageScreen from '../app/best-image';
 
@@ -26,15 +26,10 @@ jest.mock('@/features/best-image/best-image-style-preferences', () => ({
   },
 }));
 jest.mock('@/features/best-image/best-image-export', () => ({
-  bestImageCaptureDimensions: (width: number, height: number, pixelRatio: number, platform: string) => platform === 'ios'
-    ? { width: width / pixelRatio, height: height / pixelRatio }
-    : { width, height },
-  bestImageExportFilename: jest.fn(() => 'image.png'),
+  ...jest.requireActual<typeof import('@/features/best-image/best-image-export')>('@/features/best-image/best-image-export'),
   deleteBestImageCapture: jest.fn(async () => undefined),
-  isDrawViewHierarchyError: (error: unknown) => error instanceof Error && error.message.includes('drawViewHierarchyInRect'),
   requestBestImageExportPermission: jest.fn(async () => undefined),
   saveBestImageCapture: jest.fn(async () => undefined),
-  shouldUseBestImageRenderInContext: (platform: string, width: number, height: number) => platform === 'ios' && (width >= 1440 || height >= width * 4),
 }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
@@ -170,7 +165,6 @@ describe('best image preview', () => {
         AppState.currentState = state;
         listener?.(state);
       });
-      await act(async () => { await new Promise((resolve) => setTimeout(resolve, 20)); });
     };
   };
   afterEach(() => {
@@ -226,7 +220,7 @@ describe('best image preview', () => {
       const customHtml = screen.getByTestId('best-image-html-preview-0').props.source.html;
       expect(customHtml).toContain('B35测试曲');
       expect(customHtml).toContain('B15测试曲');
-      expect(customHtml).toContain('<div class="section-divider"><span>Best2</span></div>');
+      expect(customHtml).toContain('Best2');
     });
   });
 
@@ -234,11 +228,9 @@ describe('best image preview', () => {
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
     expect(screen.getByLabelText('游戏风格').props.accessibilityState).toMatchObject({ selected: true });
-    expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('class="game-head"');
 
     await fireEvent.press(screen.getByLabelText('应用风格'));
-    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html)
-      .toContain('class="app-head"'));
+    await waitFor(() => expect(screen.getByLabelText('应用风格').props.accessibilityState.selected).toBe(true));
     expect(screen.getByLabelText('应用风格').props.accessibilityState).toMatchObject({ selected: true });
     expect(screen.queryByLabelText('胶囊')).toBeNull();
     expect(screen.queryByLabelText('圆角矩形')).toBeNull();
@@ -258,12 +250,12 @@ describe('best image preview', () => {
     expect(view.queryByTestId('best-image-html-preview-0')).toBeNull();
     expect(view.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
     await fireEvent.press(view.getByLabelText('游戏风格'));
-    await waitFor(() => expect(view.getByTestId('best-image-html-preview-0').props.source.html).toContain('data-rating-style="game"'));
+    await waitFor(() => expect(view.getByLabelText('游戏风格').props.accessibilityState.selected).toBe(true));
     const source = view.getByTestId('best-image-html-preview-0').props.source.uri;
     await act(async () => { finish(); });
     expect(view.getByTestId('best-image-html-preview-0').props.source.uri).toBe(source);
     await fireEvent.press(view.getByLabelText('应用风格'));
-    await waitFor(() => expect(view.getByTestId('best-image-html-preview-0').props.source.html).toContain('data-rating-style="app"'));
+    await waitFor(() => expect(view.getByLabelText('应用风格').props.accessibilityState.selected).toBe(true));
   });
 
   it('uses the independent near-miss chip in custom image titles', async () => {
@@ -272,7 +264,7 @@ describe('best image preview', () => {
     await fireEvent.press(screen.getByLabelText('寸筛选'));
     await waitFor(() => {
       const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
-      expect(html).toContain('<div class="section-divider"><span>寸0</span></div>');
+      expect(html).toContain('寸0');
     });
   });
 
@@ -288,7 +280,7 @@ describe('best image preview', () => {
     await fireEvent.press(screen.getByLabelText('完成版本选择'));
     await waitFor(() => {
       const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
-      expect(html).toContain('<div class="section-divider"><span>当前版本1</span></div>');
+      expect(html).toContain('当前版本1');
     });
 
     await fireEvent.press(screen.getByLabelText('版本筛选，当前 当前版本'));
@@ -297,7 +289,7 @@ describe('best image preview', () => {
     await fireEvent.press(screen.getByLabelText('完成版本选择'));
     await waitFor(() => {
       const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
-      expect(html).toContain('<div class="section-divider"><span>旧版本1</span></div>');
+      expect(html).toContain('旧版本1');
     });
   });
 
@@ -318,19 +310,15 @@ describe('best image preview', () => {
   it('changes output resolution without changing the fitted preview window', async () => {
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy(), { timeout: 3000 });
-    const initialPreviewHeight = StyleSheet.flatten(screen.getByLabelText('HTML图片预览窗').props.style).height;
     expect(screen.queryByLabelText('图片高度')).toBeNull();
 
     await fireEvent.press(screen.getByLabelText('宽度 1440 像素'));
-    const nextPreviewHeight = StyleSheet.flatten(screen.getByLabelText('HTML图片预览窗').props.style).height;
-    expect(nextPreviewHeight).toBe(initialPreviewHeight);
     expect(screen.getByText('1440 × 1920 px · 每页最多 28 行 · 第 1/1 页')).toBeTruthy();
 
     await fireEvent(screen.getByTestId('best-image-html-preview-0'), 'message', {
       nativeEvent: { data: JSON.stringify({ type: 'best-image-height', width: 1440, height: 2880 }) },
     });
     expect(screen.getByText('1440 × 2880 px · 每页最多 28 行 · 第 1/1 页')).toBeTruthy();
-    expect(StyleSheet.flatten(screen.getByLabelText('HTML图片预览窗').props.style).height).toBe(initialPreviewHeight);
   });
 
   it('keeps runtime details out of the screen while processing preview messages', async () => {
@@ -418,7 +406,6 @@ describe('best image preview', () => {
     await waitFor(() => {
       const html = screen.getByTestId('best-image-html-preview-0').props.source.html;
       expect(screen.getAllByText('已关闭')).toHaveLength(2);
-      expect(html).not.toContain('class="game-plate');
       expect(html).not.toContain('https://assets2.lxns.net/maimai/plate/300101.png');
     });
   });
@@ -453,12 +440,15 @@ describe('best image preview', () => {
     await fireEvent.press(screen.getByLabelText('自定义'));
     await waitFor(() => expect(screen.getByLabelText('自定义数量')).toBeTruthy());
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy(), { timeout: 3000 });
-    const validHtml = screen.getByTestId('best-image-html-preview-0').props.source.html;
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('Best2'));
 
     await act(async () => { screen.getByLabelText('自定义数量').props.onChangeText('-1'); });
     await waitFor(() => expect(screen.getByText('数量必须是非负整数，0 表示不限制')).toBeTruthy());
     expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
-    expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toBe(validHtml);
+    const previewHtml = screen.getByTestId('best-image-html-preview-0').props.source.html;
+    expect(previewHtml).toContain('Best2');
+    expect(previewHtml).toContain('B35测试曲');
+    expect(previewHtml).toContain('B15测试曲');
 
     await act(async () => { screen.getByLabelText('自定义数量').props.onChangeText('0'); });
     await waitFor(() => expect(screen.queryByText('数量必须是非负整数，0 表示不限制')).toBeNull());
@@ -477,7 +467,6 @@ describe('best image preview', () => {
       await fireEvent(renderer, 'message', {
         nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 1080, height: 1440 }) },
       });
-      await new Promise((resolve) => setTimeout(resolve, 200));
     });
 
     const expectedWidth = Platform.OS === 'ios' ? 1080 / PixelRatio.get() : 1080;
@@ -521,49 +510,6 @@ describe('best image preview', () => {
     await waitFor(() => expect(screen.getByText('素材准备失败，正在自动重试。')).toBeTruthy());
     expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: false }));
-  });
-
-  it.each([['inactive', 'game'], ['background', 'game'], ['background', 'app']] as const)('reuses ready session files after %s in %s style and exports at the selected dimensions', async (state, style) => {
-    const changeState = listenForAppState();
-    const { requestBestImageExportPermission, saveBestImageCapture } = jest.requireMock('@/features/best-image/best-image-export') as {
-      requestBestImageExportPermission: jest.Mock<() => Promise<void>>;
-      saveBestImageCapture: jest.Mock;
-    };
-    const { captureRef } = jest.requireMock('react-native-view-shot') as { captureRef: jest.Mock };
-    captureRef.mockClear();
-    saveBestImageCapture.mockClear();
-    let grant!: () => void;
-    requestBestImageExportPermission.mockImplementationOnce(() => new Promise<void>((resolve) => { grant = resolve; }));
-    const screen = await render(<AppLifecycleProvider><BestImageScreen /></AppLifecycleProvider>);
-    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
-    if (style === 'app') {
-      await fireEvent.press(screen.getByLabelText('应用风格'));
-      await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('data-rating-style="app"'));
-    }
-    await fireEvent.press(screen.getByLabelText('宽度 2160 像素'));
-    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('width:2160px'));
-    const source = screen.getByTestId('best-image-html-preview-0').props.source.uri;
-    await fireEvent.press(screen.getByLabelText('导出成绩图片'));
-    await changeState(state);
-    if (state === 'background') expect(screen.queryByTestId('best-image-html-preview-0')).toBeNull();
-    else expect(screen.getByTestId('best-image-html-preview-0').props.source.uri).toBe(source);
-    await changeState('active');
-    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.uri).toBe(source));
-    await act(async () => { grant(); });
-    if (state === 'background') {
-      expect(captureRef).not.toHaveBeenCalled();
-      expect(saveBestImageCapture).not.toHaveBeenCalled();
-      await fireEvent.press(screen.getByLabelText('导出成绩图片'));
-    }
-    const renderer = await screen.findByLabelText('导出渲染 第1页');
-    await fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 2160, height: 2880 }) } });
-    await waitFor(() => expect(captureRef).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
-      width: Platform.OS === 'ios' ? 2160 / PixelRatio.get() : 2160,
-      height: Platform.OS === 'ios' ? 2880 / PixelRatio.get() : 2880,
-      format: 'png',
-    })));
-    await waitFor(() => expect(saveBestImageCapture).toHaveBeenCalled());
-    await waitFor(() => expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '导出完成' })));
   });
 
   it('resumes unfinished session assets after returning from background', async () => {

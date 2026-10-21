@@ -11,20 +11,26 @@ describe('bounded offset pagination', () => {
     let active = 0;
     let maximum = 0;
     const seen: number[] = [];
+    const batchStarted = Promise.withResolvers<void>();
+    const releaseBatch = Promise.withResolvers<void>();
     const loadPage = vi.fn(async (offset: number) => {
       active += 1;
       maximum = Math.max(maximum, active);
-      await new Promise((resolve) => setTimeout(resolve, 4));
+      if (active === 3) batchStarted.resolve();
+      await releaseBatch.promise;
       active -= 1;
       if (offset === 60) throw new Error('failed page');
       return { offset };
     });
-    const failures = await loadOffsetPagesBounded({
+    const pending = loadOffsetPagesBounded({
       offsets: [0, 30, 60, 90, 120],
       concurrency: 3,
       loadPage,
       onPage: (page) => seen.push(page.offset),
     });
+    await batchStarted.promise;
+    releaseBatch.resolve();
+    const failures = await pending;
     expect(maximum).toBe(3);
     expect(seen.sort((left, right) => left - right)).toEqual([0, 30, 90, 120]);
     expect(failures.map((failure) => failure.offset)).toEqual([60]);

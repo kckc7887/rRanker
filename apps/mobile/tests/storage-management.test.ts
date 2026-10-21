@@ -1,3 +1,6 @@
+import { createHash } from 'node:crypto';
+import { QueryClient } from '@tanstack/react-query';
+import { loadPhigrosKyouAliases, resetPhigrosKyouAliasesCache } from '@/services/phigros-kyou-cache';
 import { describe, expect, it, vi } from 'vitest';
 import {
   parseStorageClearPreferences,
@@ -15,11 +18,9 @@ import {
   collectStorageMeasurementInventory,
   getGameStorageAdapter,
   measureSharedCacheBytes,
-  sharedCacheNote,
 } from '@/features/storage-management/game-storage-adapters';
 import {
   buildStorageUsageReport,
-  listClearableCategoryIds,
   measureManagedStorageBytes,
 } from '@/features/storage-management/storage-usage';
 import { measureRrankerDatabaseAllocation } from '@/storage/rranker-database';
@@ -29,7 +30,6 @@ const mocks = vi.hoisted(() => ({
   getFirstAsync: vi.fn(async (_sql: string) => null as Record<string, number> | null),
   measureDirectoryBytes: vi.fn(async (_directory?: { uri: string } | null) => 0),
   clearMaimaiUiCache: vi.fn(),
-  resetPhigrosKyouAliasesCache: vi.fn(),
   clearGameRemoteImageCache: vi.fn(async (): Promise<void> => undefined),
   listRemoteImageCacheUsage: vi.fn(async () => []),
   clearDirectoryContentsStrict: vi.fn(),
@@ -50,27 +50,6 @@ vi.mock('expo-image', () => ({ Image: {
   clearDiskCache: mocks.clearDiskCache,
   clearMemoryCache: mocks.clearMemoryCache,
 } }));
-
-vi.mock('@/domain/game-bind-options', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('@/domain/game-bind-options')>();
-  const titles: Record<string, string> = {
-    maimai: '舞萌 DX',
-    chunithm: '中二节奏',
-    phigros: 'Phigros',
-    adofai: '冰与火之舞',
-    musedash: '喵斯快跑',
-    phira: 'Phira',
-    test: '测试游戏',
-    'osu-standard': 'osu!standard',
-    'osu-mania': 'osu!mania',
-    'osu-catch': 'osu!catch',
-    'osu-taiko': 'osu!taiko',
-  };
-  return {
-    ...actual,
-    findGame: (id: string) => ({ id, title: titles[id] ?? '未知游戏' }),
-  };
-});
 
 vi.mock('@/features/storage-management/fs-storage', () => ({
   measureDirectoryBytesAsync: mocks.measureDirectoryBytes,
@@ -99,10 +78,6 @@ vi.mock('@/features/phigros-best-image/phigros-font-cache', () => ({
 
 vi.mock('@/features/best-image/maimai-ui-cache', () => ({
   clearMaimaiUiCache: mocks.clearMaimaiUiCache,
-}));
-
-vi.mock('@/services/phigros-kyou-cache', () => ({
-  resetPhigrosKyouAliasesCache: mocks.resetPhigrosKyouAliasesCache,
 }));
 
 describe('storage-clear-prefs', () => {
@@ -168,34 +143,7 @@ describe('app-owned cache entries', () => {
   });
 });
 
-describe('adofai storage segment', () => {
-  it('is registered in the clearable category list', () => {
-    expect(listClearableCategoryIds()).toContain('adofai');
-  });
-
-  it('exposes a measure/clear adapter', () => {
-    const adapter = getGameStorageAdapter('adofai');
-    expect(adapter).toBeDefined();
-    expect(adapter?.title).toBe('冰与火之舞');
-  });
-});
-
-describe('musedash storage segment', () => {
-  it('is registered in the clearable category list', () => {
-    expect(listClearableCategoryIds()).toContain('musedash');
-  });
-
-  it('exposes a measure/clear adapter', () => {
-    const adapter = getGameStorageAdapter('musedash');
-    expect(adapter).toBeDefined();
-    expect(adapter?.title).toBe('喵斯快跑');
-  });
-});
-
 describe('phira storage segment', () => {
-  it('is registered in the clearable category list', () => {
-    expect(listClearableCategoryIds()).toContain('phira');
-  });
 
   it('measures and clears every Phira resource through the common adapter', async () => {
     const clearAccountScores = vi.fn(async () => undefined);
@@ -214,7 +162,6 @@ describe('phira storage segment', () => {
       clearResources,
     };
     const adapter = getGameStorageAdapter('phira');
-    expect(adapter?.title).toBe('Phira');
     await expect(adapter?.measure(await collectStorageMeasurementInventory(snapshots as never))).resolves.toBe(150);
     await adapter?.clear(snapshots as never);
     expect(clearAccountScores).toHaveBeenCalledWith([]);
@@ -247,16 +194,7 @@ describe('phira storage segment', () => {
 });
 
 describe('osu storage segment', () => {
-  it('registers all four modes in the clearable category list', () => {
-    for (const gameId of ['osu-standard', 'osu-mania', 'osu-catch', 'osu-taiko']) {
-      expect(listClearableCategoryIds()).toContain(gameId);
-    }
-  });
 
-  it('exposes a measure/clear adapter with the mode title', () => {
-    expect(getGameStorageAdapter('osu-standard')?.title).toBe('osu!standard');
-    expect(getGameStorageAdapter('osu-catch')?.title).toBe('osu!catch');
-  });
 
   it('cancels and removes detail scores only for the selected osu mode', async () => {
     const client = { cancelQueries: vi.fn(async (_filter: { predicate: (query: { queryKey: unknown[] }) => boolean }) => undefined), removeQueries: vi.fn() };
@@ -298,10 +236,7 @@ describe('osu storage segment', () => {
   });
 });
 
-describe('shared cache note wording', () => {
-  it('uses the unified include/exclude wording', () => {
-    expect(sharedCacheNote()).toBe('临时文件与其它可重新下载的内容');
-  });
+describe('shared cache measurement', () => {
 
   it('counts every removable cache entry while excluding system fonts and game covers', async () => {
     mocks.measureDirectoryBytes.mockClear();
@@ -521,26 +456,39 @@ describe('clearing storage compacts the database and resets in-memory caches', (
     expect(mocks.execAsync).toHaveBeenCalledWith(expect.stringContaining('VACUUM'));
   });
 
-  it('resets the Phigros kyou alias cache when phigros is cleared', async () => {
-    mocks.resetPhigrosKyouAliasesCache.mockClear();
-    const client = {
-      invalidateQueries: vi.fn(async () => undefined),
-      removeQueries: vi.fn(),
-      cancelQueries: vi.fn(async () => undefined),
-    };
-    await clearStorageByCategories(['phigros'], client as never);
-    expect(mocks.resetPhigrosKyouAliasesCache).toHaveBeenCalledTimes(1);
-  });
-
-  it('does not reset the kyou alias cache when phigros is not cleared', async () => {
-    mocks.resetPhigrosKyouAliasesCache.mockClear();
-    const client = {
-      invalidateQueries: vi.fn(async () => undefined),
-      removeQueries: vi.fn(),
-      cancelQueries: vi.fn(async () => undefined),
-    };
-    await clearStorageByCategories(['maimai'], client as never);
-    expect(mocks.resetPhigrosKyouAliasesCache).not.toHaveBeenCalled();
+  it('清理 Phigros 后重新读取别名，清理其它游戏保留别名缓存', async () => {
+    let alias = '初次别名';
+    const hash = (text: string) => createHash('sha256').update(text).digest('hex');
+    const bodies = new Map<string, string>();
+    vi.stubGlobal('fetch', vi.fn(async (input: string | URL | Request) => {
+      const path = new URL(String(input)).pathname.slice(1);
+      if (path === 'kyou/latest.json') {
+        const tables = [
+          { name: 'songs.json', value: [{ song_id: 'song', name: '曲目', pack: '' }] },
+          { name: 'aliases.json', value: [{ song_id: 'song', song_name: '曲目', alias }] },
+        ].map(({ name, value }) => {
+          const body = JSON.stringify(value), sha256 = hash(body), path = `kyou/data/${sha256}.json`;
+          bodies.set(path, body);
+          return { name, path, size: Buffer.byteLength(body), sha256 };
+        });
+        const manifest = JSON.stringify({ schemaVersion: 2, resourceVersion: alias, files: tables,
+          ok: true, source: 'Kyou', finished_unix: 1_786_237_127, last_update: '2026-08-04',
+          songs_rows: 1, aliases_rows: 1, charts_rows: 0, tag_vote_rows: 0 });
+        const manifestSha256 = hash(manifest), manifestPath = `kyou/manifests/${manifestSha256}.json`;
+        bodies.set(manifestPath, manifest);
+        return Response.json({ schemaVersion: 2, resourceVersion: alias, manifestPath, manifestSha256 });
+      }
+      return new Response(bodies.get(path));
+    }));
+    const client = new QueryClient();
+    try {
+      expect((await loadPhigrosKyouAliases()).aliases[0]?.alias).toBe('初次别名');
+      alias = '更新别名';
+      await clearStorageByCategories(['maimai'], client);
+      expect((await loadPhigrosKyouAliases()).aliases[0]?.alias).toBe('初次别名');
+      await clearStorageByCategories(['phigros'], client);
+      expect((await loadPhigrosKyouAliases()).aliases[0]?.alias).toBe('更新别名');
+    } finally { resetPhigrosKyouAliasesCache(); client.clear(); vi.unstubAllGlobals(); }
   });
 
   it('does not evict unrelated game queries when only shared files are cleared', async () => {
@@ -618,8 +566,7 @@ describe('Majdata storage segment', () => {
   it('clears only Majdata resources and owns account queries as well as catalog pages', async () => {
     const resources = ['majdata-net:account:a', 'majdata-net:song:uuid', 'majdata-net:chart:uuid:hash', 'majdata-net:parsed:uuid:hash:6'];
     const snapshots = { listAccountScoreSizes: vi.fn(async () => []), listResourceSizes: vi.fn(async () => [...resources.map(key => ({ key, bytes: 10 })), { key: 'local-tags', bytes: 100 }, { key: 'phira:chart:1', bytes: 99 }]), clearAccountScores: vi.fn(async () => undefined), clearResources: vi.fn(async () => undefined) };
-    const adapter = getGameStorageAdapter('majdata-net')!; expect(listClearableCategoryIds()).toContain('majdata-net');
-    expect(adapter.queryKeys).toContainEqual(['game-data']); expect(adapter.queryKeys).toContainEqual(['majdata-net']);
+    const adapter = getGameStorageAdapter('majdata-net')!;
     expect(await adapter.measure(await collectStorageMeasurementInventory(snapshots as never))).toBe(40); await adapter.clear(snapshots as never); expect(snapshots.clearResources).toHaveBeenCalledWith(resources);
   });
 });

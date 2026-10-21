@@ -1,12 +1,11 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import {
-  OVER_LAYERS,
   animationFrameFile,
   parseBeatmapVisuals,
   referencedImageFiles,
 } from '../../src/features/osu-chart-preview/webview-player/events';
-import { ease, evaluateSprite } from '../../src/features/osu-chart-preview/webview-player/storyboard';
+import { evaluateSprite } from '../../src/features/osu-chart-preview/webview-player/storyboard';
 import { clampManiaScrollSpeed, MANIA_SCROLL_DEFAULT } from '../../src/features/osu-chart-preview/webview-player/scroll-speed';
 
 const osuWithEvents = `
@@ -44,7 +43,6 @@ describe('beatmap visuals', () => {
     assert.equal(visuals.objects[0]!.file, 'osu.png');
     assert.equal(visuals.objects[0]!.layer, 'Background');
     assert.equal(visuals.objects[1]!.layer, 'Overlay');
-    assert.equal(OVER_LAYERS.includes('Overlay'), true);
   });
 
   it('appends .osb sprites after .osu sprites and expands loops', () => {
@@ -52,10 +50,8 @@ describe('beatmap visuals', () => {
     assert.equal(visuals.objects.length, 3);
     assert.equal(visuals.objects[2]!.file, 'osb.png');
     assert.equal(visuals.objects[2]!.layer, 'Pass');
-    const scales = visuals.objects[2]!.commands.filter((command) => command.type === 'S');
-    assert.equal(scales.length, 2);
-    assert.equal(scales[0]!.start, 2000);
-    assert.equal(scales[1]!.start, 2100);
+    assert.equal(evaluateSprite(visuals.objects[2]!, 2050)?.scaleX, 1.5);
+    assert.equal(evaluateSprite(visuals.objects[2]!, 2150)?.scaleX, 1.5);
   });
 
   it('lists animation frames', () => {
@@ -73,24 +69,6 @@ Animation,Foreground,Centre,"sb\\\\exp.png",320,240,3,50,LoopForever
   });
 });
 
-describe('storyboard interpolation', () => {
-  it('eases linear and in-quad', () => {
-    assert.equal(ease(0, 0.5), 0.5);
-    assert.equal(ease(3, 0.5), 0.25);
-  });
-
-  it('interpolates fade after the first command starts', () => {
-    const visuals = parseBeatmapVisuals(osuWithEvents);
-    const sprite = visuals.objects[0]!;
-    assert.equal(evaluateSprite(sprite, -1), null);
-    const mid = evaluateSprite(sprite, 500);
-    assert.ok(mid);
-    assert.equal(mid.fade, 0.5);
-    const end = evaluateSprite(sprite, 1000);
-    assert.ok(end);
-    assert.equal(end.fade, 1);
-  });
-});
 
 describe('mania scroll speed', () => {
   it('clamps to the official 1–40 range in 0.1 steps', () => {

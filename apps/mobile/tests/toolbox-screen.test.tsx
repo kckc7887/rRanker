@@ -62,6 +62,15 @@ describe('game-aware toolbox screen', () => {
     jest.clearAllMocks();
   });
 
+  it('opens the osu mod encyclopedia and arcade finder', async () => {
+    mockActiveGameId = 'osu-standard';
+    const screen = await render(<ToolsScreen />);
+    await fireEvent.press(screen.getByText('模组百科'));
+    expect(mockRouterPush).toHaveBeenCalledWith('/tools/osu-mods');
+    await fireEvent.press(screen.getByText('音游地图'));
+    expect(mockRouterPush).toHaveBeenCalledWith('/tools/arcade-finder');
+  });
+
   it('renders tools registered for the active game', async () => {
     mockActiveGameId = 'maimai';
     const screen = await render(<ToolsScreen />);

@@ -131,8 +131,6 @@ export class PgrBlockRenderer {
   private width = 0;
   private height = 0;
   private disposed = false;
-  lastCandidateCount = 0;
-  lastDrawnCount = 0;
 
   constructor(blocks: readonly PgrBlock[]) {
     this.candidates = indexPgrBlocks(blocks);
@@ -195,8 +193,6 @@ export class PgrBlockRenderer {
 
   private geometry(time: number, aspect: number, enabledOnly = false): number {
     const candidates = (enabledOnly ? this.enabledCandidates : this.candidates)(time);
-    this.lastCandidateCount = candidates.length;
-    this.lastDrawnCount = 0;
     const capacity = Math.max(36, candidates.length * 36);
     if (this.vertices.length < capacity) this.vertices = new Float32Array(2 ** Math.ceil(Math.log2(capacity)));
     let cursor = 0;
@@ -212,7 +208,6 @@ export class PgrBlockRenderer {
         this.vertices[cursor++] = (point[1] + .06) / 1.12 * 2 - 1;
         for (let c = 0; c < 4; c++) this.vertices[cursor++] = c === channel ? sample.opacity : 0;
       }
-      this.lastDrawnCount++;
     }
     return cursor;
   }

@@ -67,7 +67,7 @@ describe('Rizline overview', () => {
     expect(screen.getByRole('button', { name: '当前玩家 Rizline 玩家，点击切换账号' })).toBeTruthy();
     const rating = within(screen.getByTestId('dx-rating-card'));
     expect(rating.getByText('Ranking Score')).toBeTruthy();
-    expect(rating.getByTestId('dx-rating-card-value').props.children).toBe('136.1235');
+    expect(rating.getByTestId('dx-rating-card-value')).toHaveTextContent('136.1235');
     expect(rating.getByText('AH5（推定） 3.5625 · B35（推定） 2.2222')).toBeTruthy();
     expect(screen.queryByTestId('dx-rating-card-stars')).toBeNull();
   });
@@ -104,7 +104,7 @@ describe('Rizline overview', () => {
   it('keeps the official total visible with missing contribution values and an expired-login message', async () => {
     mockBundle = createBundle(true, true);
     const screen = await render(<OverviewScreen />);
-    expect(screen.getByTestId('dx-rating-card-value').props.children).toBe('136.1235');
+    expect(screen.getByTestId('dx-rating-card-value')).toHaveTextContent('136.1235');
     expect(screen.getByText('AH5（推定） — · B35（推定） —')).toBeTruthy();
     expect(screen.getByText('登录已失效，请在游戏管理中重新绑定账号。')).toBeTruthy();
   });

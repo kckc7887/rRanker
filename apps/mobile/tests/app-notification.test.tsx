@@ -1,6 +1,6 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Animated, BackHandler, Pressable, StyleSheet, Text, View } from 'react-native';
+import { Animated, BackHandler, Pressable, Text, View } from 'react-native';
 import { useRef } from 'react';
 import { snapshotEmergencyRuntimeDiagnostics } from '@/services/runtime-diagnostics-recorder';
 import {
@@ -154,8 +154,6 @@ describe('全局顶部通知', () => {
     await fireEvent.press(screen.getByText('显示成功'));
     expect(screen.getByText('第一条')).toBeTruthy();
     expect(screen.queryByTestId('app-notification-modal')).toBeNull();
-    expect(StyleSheet.flatten(screen.getByTestId('app-notification-root-overlay').props.style))
-      .toMatchObject({ paddingTop: 32 });
     await fireEvent.press(screen.getByLabelText('关闭通知'));
     expect(screen.queryByText('第一条')).toBeNull();
   });
@@ -190,14 +188,6 @@ describe('全局顶部通知', () => {
     await fireEvent.press(screen.getByText('显示持续消息'));
     await act(async () => jest.advanceTimersByTime(10000));
     expect(screen.getByText('持续消息')).toBeTruthy();
-  });
-
-  it('消息片段可以保留删除线效果', async () => {
-    const screen = await renderNotifications();
-    await fireEvent.press(screen.getByText('显示删除线消息'));
-    expect(screen.getByText('普通内容')).toBeTruthy();
-    expect(StyleSheet.flatten(screen.getByTestId('app-notification-message-strikethrough-1').props.style))
-      .toMatchObject({ textDecorationLine: 'line-through' });
   });
 
   it('确认卡阻断背景、保持显示，并只执行一次危险操作', async () => {
@@ -236,8 +226,6 @@ describe('全局顶部通知', () => {
     await fireEvent.press(screen.getByText('更新进度'));
     expect(within(card).getByText('整理进度')).toBeTruthy();
     expect(within(card).getByText('64%')).toBeTruthy();
-    expect(StyleSheet.flatten(within(card).getByTestId('app-notification-progress').props.style))
-      .toMatchObject({ marginTop: 8 });
 
     await fireEvent.press(screen.getByText('关闭进度'));
     expect(screen.queryByText('正在准备文件')).toBeNull();

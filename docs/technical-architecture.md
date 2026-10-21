@@ -190,7 +190,9 @@ KALEIDXSCOPE 的国服日程、课题和手工进度位于 `domain/kaleidx-scope
 | `npm run build:rizline-chart-preview` | 生成 Rizline 播放器 |
 | `npm run prebuild:android` | 重建 Android 工程配置 |
 
-测试验证实际输入输出、交互、取消、存储往返和 I/O 失败。外部 HTTP、原生 SDK、文件系统和浏览器环境可模拟；生产代码不提供测试替换、统计或 reset 接口。
+Vitest 执行 `tests/**/*.test.ts` 的业务与播放器行为测试，Jest 执行 `tests/**/*.test.tsx` 的组件和页面交互测试；`npm test` 依次运行两组。局部验证使用 `npm run test:unit -- <测试路径>` 或 `npm run test:ui -- <测试路径>`。
+
+测试通过实际入口验证输入输出、交互、取消、存储往返和 I/O 失败。外部 HTTP、原生 SDK、文件系统和浏览器环境可模拟；SQLite 集成测试使用内存数据库，摘要替身使用 Node Crypto。异步结果通过任务 Promise 或假时钟结算，结束时释放查询、订阅和计时器。
 
 lint 保留 Hooks 的调用与依赖检查，组件编译器诊断的启用范围由 `eslint.config.js` 配置。Jest 转译 Router 所需的 `standard-navigation`，原生模块测试只替换所属业务入口，保留 Expo Core 的默认环境。
 

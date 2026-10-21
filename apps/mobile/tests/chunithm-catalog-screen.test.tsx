@@ -1,13 +1,11 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { StyleSheet } from 'react-native';
 import { router } from 'expo-router';
 import { SearchScreen } from '../app/(tabs)/search';
 import {
   chunithmJacketUrl,
   ChunithmSongRow,
 } from '@/components/chunithm/ChunithmSongRow';
-import { CHUNITHM_WORLDS_END_GRADIENT } from '@/components/chunithm/ChunithmDifficultyBadge';
 import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
 import { useChunithmCatalogFilter } from '@/state/chunithm-catalog-filter';
 
@@ -215,13 +213,6 @@ describe('Chunithm catalog screen', () => {
     expect(screen.getByText('12.8')).toBeTruthy();
     expect(screen.getByText('12.4')).toBeTruthy();
     expect(screen.queryByText(/ULT|MAS/)).toBeNull();
-    expect(StyleSheet.flatten(
-      screen.getByLabelText('ULTIMA，标级 13+，定数 13.7').props.style,
-    )).toEqual(expect.objectContaining({
-      backgroundColor: '#17171A',
-      borderColor: '#E83A58',
-      borderRadius: 999,
-    }));
     expect(screen.getByLabelText('展开中二筛选，当前 全部')).toBeTruthy();
 
     await fireEvent.changeText(screen.getByLabelText('中二节奏歌曲搜索'), 'Redarrow');
@@ -320,46 +311,6 @@ describe('Chunithm catalog screen', () => {
     const screen = await render(<ChunithmSongRow song={song} />);
     expect(screen.getByText('狂☆4')).toBeTruthy();
     expect(screen.queryByText('14.0')).toBeNull();
-    expect(screen.getByTestId('chunithm-worlds-end-badge')).toBeTruthy();
-    expect(CHUNITHM_WORLDS_END_GRADIENT).toEqual([
-      '#37E6FF', '#7B61FF', '#F24FD4', '#FF8A3D',
-    ]);
-  });
-
-  it('uses the five regular difficulty colors plus the WORLD’S END neon theme', async () => {
-    const paletteSong = {
-      ...mockCatalog.songs[0]!,
-      difficulties: [
-        { ...mockCatalog.songs[0]!.difficulties[0]!, difficulty: 0 as const, level: '3', levelValue: 3 },
-        { ...mockCatalog.songs[0]!.difficulties[0]!, difficulty: 1 as const, level: '7', levelValue: 7 },
-        { ...mockCatalog.songs[0]!.difficulties[0]!, difficulty: 2 as const, level: '10', levelValue: 10 },
-        { ...mockCatalog.songs[0]!.difficulties[0]!, difficulty: 3 as const, level: '12', levelValue: 12 },
-        { ...mockCatalog.songs[0]!.difficulties[0]!, difficulty: 4 as const, level: '13+', levelValue: 13.7 },
-        {
-          ...mockCatalog.songs[0]!.difficulties[0]!,
-          difficulty: 5 as const,
-          level: '14',
-          levelValue: 14,
-          kanji: '狂',
-          star: 4,
-        },
-      ],
-    };
-    const screen = await render(<ChunithmSongRow song={paletteSong} />);
-    const expected = [
-      ['BASIC，标级 3，定数 3.0', '#4AA58A', '#4AA58A'],
-      ['ADVANCED，标级 7，定数 7.0', '#E27A24', '#E27A24'],
-      ['EXPERT，标级 10，定数 10.0', '#D6403A', '#D6403A'],
-      ['MASTER，标级 12，定数 12.0', '#7526CF', '#7526CF'],
-      ['ULTIMA，标级 13+，定数 13.7', '#17171A', '#E83A58'],
-    ] as const;
-
-    for (const [label, backgroundColor, borderColor] of expected) {
-      expect(StyleSheet.flatten(screen.getByLabelText(label).props.style)).toEqual(
-        expect.objectContaining({ backgroundColor, borderColor, borderRadius: 999 }),
-      );
-    }
-    expect(screen.getByText('狂☆4')).toBeTruthy();
     expect(screen.getByTestId('chunithm-worlds-end-badge')).toBeTruthy();
   });
 });

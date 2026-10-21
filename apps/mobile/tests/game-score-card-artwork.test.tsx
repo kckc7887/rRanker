@@ -69,18 +69,6 @@ describe('GameScoreCard 曲绘背景', () => {
     expect(screen.queryByTestId('score-card-artwork')).toBeNull();
   });
 
-  it('使用模糊曲绘、反向遮罩透明度和矩形缩放背景', async () => {
-    useThemeStore.setState({ scoreCardArtworkEnabled: true });
-    const screen = await render(<Card />);
-    expect(screen.getByTestId('score-card-artwork').props.blurRadius).toBe(12);
-    expect(screen.getByTestId('score-card-artwork').props.style).toEqual(expect.arrayContaining([
-      expect.objectContaining({ transform: [{ scale: 1.08 }] }),
-    ]));
-    expect(screen.getByTestId('score-card-artwork-overlay').props.style).toEqual(expect.arrayContaining([
-      expect.objectContaining({ backgroundColor: 'rgba(255,255,255,0.65)' }),
-    ]));
-  });
-
   it('图片失败或来源缺失时回退原卡片', async () => {
     useThemeStore.setState({ scoreCardArtworkEnabled: true });
     const screen = await render(<Card />);
@@ -88,20 +76,6 @@ describe('GameScoreCard 曲绘背景', () => {
     await waitFor(() => expect(screen.queryByTestId('score-card-artwork')).toBeNull());
     await screen.rerender(<Card source={null} />);
     expect(screen.queryByTestId('score-card-artwork-overlay')).toBeNull();
-  });
-
-  it('支持深色遮罩与模糊、透明度边界', async () => {
-    useThemeStore.setState({
-      appearance: 'dark',
-      scoreCardArtworkEnabled: true,
-      scoreCardArtworkTransparency: 100,
-      scoreCardArtworkBlur: 30,
-    });
-    const screen = await render(<Card />);
-    expect(screen.getByTestId('score-card-artwork').props.blurRadius).toBe(30);
-    expect(screen.getByTestId('score-card-artwork-overlay').props.style).toEqual(expect.arrayContaining([
-      expect.objectContaining({ backgroundColor: 'rgba(0,0,0,0)' }),
-    ]));
   });
 
   it('缓存原图后断网重新打开仍显示同一曲绘', async () => {

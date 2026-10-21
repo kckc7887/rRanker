@@ -1,7 +1,6 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { ReactNode } from 'react';
-import { StyleSheet } from 'react-native';
 import {
   MAIMAI_OFFLINE_SYNC_URL,
   MAIMAI_PROXY_ADDRESS,
@@ -75,7 +74,7 @@ describe('Maimai sync guide', () => {
     mockMaintenance = false;
   });
 
-  it('uses an independent native page sheet without a top safe-area spacer', async () => {
+  it('shows the upload title and account binding requirement', async () => {
     const screen = await render(
       <MaimaiSyncGuideSheet
         visible
@@ -85,13 +84,6 @@ describe('Maimai sync guide', () => {
       />,
     );
 
-    expect(screen.getByTestId('mock-app-modal').props.accessibilityLabel).toBe('pageSheet');
-    expect(StyleSheet.flatten(screen.getByTestId('maimai-sync-guide-root').props.style))
-      .toEqual(expect.objectContaining({
-        flex: 1,
-        backgroundColor: '#F7F8FA',
-        paddingBottom: 34,
-      }));
     expect(screen.getByText('上传舞萌数据')).toBeTruthy();
     expect(screen.getByText(/离线同步仅更新已经与落雪账号绑定/)).toBeTruthy();
   });

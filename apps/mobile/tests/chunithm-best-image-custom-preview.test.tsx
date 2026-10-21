@@ -1,7 +1,5 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { AppState, type AppStateStatus } from 'react-native';
-import { AppLifecycleProvider } from '@/state/app-lifecycle';
 import { ChunithmBestImageScreen } from '@/screens/ChunithmBestImageScreen';
 import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
 import type { ChunithmScore } from '@/domain/chunithm-personal';
@@ -153,15 +151,10 @@ jest.mock('@/features/chunithm-best-image/chunithm-best-image-preferences', () =
 }));
 
 jest.mock('@/features/best-image/best-image-export', () => ({
-  bestImageCaptureDimensions: (width: number, height: number, pixelRatio: number, platform: string) => platform === 'ios'
-    ? { width: width / pixelRatio, height: height / pixelRatio }
-    : { width, height },
-  bestImageExportFilename: jest.fn(() => 'image.png'),
+  ...jest.requireActual<typeof import('@/features/best-image/best-image-export')>('@/features/best-image/best-image-export'),
   deleteBestImageCapture: jest.fn(async () => undefined),
-  isDrawViewHierarchyError: (error: unknown) => error instanceof Error && error.message.includes('drawViewHierarchyInRect'),
   requestBestImageExportPermission: jest.fn(async () => undefined),
   saveBestImageCapture: jest.fn(async () => undefined),
-  shouldUseBestImageRenderInContext: (platform: string, width: number, height: number) => platform === 'ios' && (width >= 1440 || height >= width * 4),
 }));
 
 jest.mock('@/features/best-image/prepare-best-image-webview-sources', () => {
@@ -184,26 +177,16 @@ describe('chunithm best image custom', () => {
   beforeEach(() => mockShowNotification.mockClear());
   afterEach(() => jest.restoreAllMocks());
 
-  it('后台恢复复用已就绪图片页面并可导出', async () => {
-    let change: ((state: AppStateStatus) => void) | undefined;
-    jest.spyOn(AppState, 'addEventListener').mockImplementation(((event: string, listener: unknown) => {
-      if (event === 'change') change = listener as typeof change;
-      return { remove: jest.fn() };
-    }) as typeof AppState.addEventListener);
+  it('exports the prepared Chunithm artwork and reports a saved image', async () => {
     const { saveBestImageCapture } = jest.requireMock('@/features/best-image/best-image-export') as { saveBestImageCapture: jest.Mock };
     saveBestImageCapture.mockClear();
-    const screen = await render(<AppLifecycleProvider><ChunithmBestImageScreen /></AppLifecycleProvider>);
-    const before = await screen.findByTestId('chunithm-best-image-html-preview-0');
-    const uri = before.props.source.uri;
-    await act(() => { change?.('background'); });
-    await waitFor(() => expect(screen.queryByTestId('chunithm-best-image-html-preview-0')).toBeNull());
-    await act(() => { change?.('active'); });
-    await waitFor(() => expect(screen.getByTestId('chunithm-best-image-html-preview-0').props.source.uri).toBe(uri));
+    const screen = await render(<ChunithmBestImageScreen />);
+    await screen.findByTestId('chunithm-best-image-html-preview-0');
     expect(previewHtml(screen)).toContain('file:///session/jacket-101');
     await fireEvent.press(screen.getByLabelText('导出成绩图片'));
     const renderer = await screen.findByLabelText('导出渲染 第1页');
     await fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 1080, height: 1500 }) } });
-    await waitFor(() => expect(saveBestImageCapture).toHaveBeenCalledWith('file:///capture.png', 'image.png'));
+    await waitFor(() => expect(saveBestImageCapture).toHaveBeenCalledWith('file:///capture.png', expect.stringMatching(/\.png$/)));
     expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '导出完成', message: '已保存 1 张成绩图片到相册' }));
   });
 
@@ -213,8 +196,8 @@ describe('chunithm best image custom', () => {
     expect(screen.getByLabelText('自定义').props.accessibilityState).toEqual({ selected: false });
     await waitFor(() => expect(screen.getByTestId('chunithm-best-image-html-preview-0')).toBeTruthy());
     const html = previewHtml(screen);
-    expect(html).toContain('<div class="section-divider"><span>Best 30</span></div>');
-    expect(html).toContain('<div class="section-divider"><span>New 20</span></div>');
+    expect(html).toContain('Best 30');
+    expect(html).toContain('New 20');
     expect(html).not.toContain('Selection');
   });
 
@@ -226,7 +209,7 @@ describe('chunithm best image custom', () => {
     expect(screen.getByLabelText('中二版本筛选，当前 全部')).toBeTruthy();
     await waitFor(() => {
       expect(screen.getByTestId('chunithm-best-image-html-preview-0')).toBeTruthy();
-      expect(previewHtml(screen)).toContain('<div class="section-divider"><span>Best5</span></div>');
+      expect(previewHtml(screen)).toContain('Best5');
     });
     expect(screen.getByText('1080 × 810 px · 每页最多 50 行 · 第 1/1 页')).toBeTruthy();
   });
@@ -252,7 +235,7 @@ describe('chunithm best image custom', () => {
     await waitFor(() => expect(screen.getByLabelText('筛选难度 MASTER')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('筛选难度 MASTER'));
     await waitFor(() => {
-      expect(previewHtml(screen)).toContain('<div class="section-divider"><span>MASTER3</span></div>');
+      expect(previewHtml(screen)).toContain('MASTER3');
     });
   });
 
@@ -264,7 +247,7 @@ describe('chunithm best image custom', () => {
     await waitFor(() => expect(screen.getByLabelText('选择中二评价下限 SSS')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('选择中二评价下限 SSS'));
     await waitFor(() => {
-      expect(previewHtml(screen)).toContain('<div class="section-divider"><span>评价 SSS~不限2</span></div>');
+      expect(previewHtml(screen)).toContain('评价 SSS~不限2');
     });
   });
 
@@ -276,7 +259,7 @@ describe('chunithm best image custom', () => {
     await waitFor(() => expect(screen.getByLabelText('选择中二版本 STAR')).toBeTruthy());
     await fireEvent.press(screen.getByLabelText('选择中二版本 STAR'));
     await waitFor(() => {
-      expect(previewHtml(screen)).toContain('<div class="section-divider"><span>STAR3</span></div>');
+      expect(previewHtml(screen)).toContain('STAR3');
     });
   });
 });

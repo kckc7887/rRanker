@@ -44,27 +44,19 @@ describe('账号凭据与上传偏好持久化', () => {
     expect(vi.mocked(secureStore.setItemAsync).mock.calls.every(([, value]) => Buffer.byteLength(value, 'utf8') < 2048)).toBe(true);
   });
 
-  it('ScoreHub 更新和删除只替换目标账号的安全引用', async () => {
+  it('ScoreHub 更新和删除只影响目标账号', async () => {
     const kv = createKvStore();
     const store = new ScoreHubAccountStore(kv);
     await store.upsert({ friendCode: '10001', token: 'token-a', hasCabinetBound: true });
     await store.upsert({ friendCode: '10002', token: 'token-b', hasCabinetBound: false });
-    const before = JSON.parse(kv.values.get('rranker.scorehub.accounts.v3')!) as {
-      accounts: Record<string, { tokenRef: string }>;
-    };
-
     await store.upsert({ friendCode: '10001', token: 'token-a-next' });
-    const afterUpdate = JSON.parse(kv.values.get('rranker.scorehub.accounts.v3')!) as {
-      accounts: Record<string, { tokenRef: string }>;
-    };
-    expect(afterUpdate.accounts['10001']?.tokenRef).not.toBe(before.accounts['10001']?.tokenRef);
-    expect(afterUpdate.accounts['10002']?.tokenRef).toBe(before.accounts['10002']?.tokenRef);
     expect(await store.getByFriendCode('10001')).toMatchObject({ token: 'token-a-next' });
-
-    const removedRef = afterUpdate.accounts['10001']!.tokenRef;
+    expect(await store.getByFriendCode('10002')).toMatchObject({ token: 'token-b' });
     await store.remove('10001');
     expect(await store.getByFriendCode('10001')).toBeNull();
-    expect([...secure.values.keys()].some((key) => key.startsWith(removedRef))).toBe(false);
+    expect(await new ScoreHubAccountStore(kv).getByFriendCode('10002')).toMatchObject({ token: 'token-b' });
+    await store.clear();
+    expect(secure.values.size).toBe(0);
   });
 
   it('ScoreHub 凭据读取 I/O 失败时原地重试保留账号', async () => {

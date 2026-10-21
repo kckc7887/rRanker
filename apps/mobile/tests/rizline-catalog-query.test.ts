@@ -46,12 +46,11 @@ describe('Rizline catalog and account query coordination', () => {
     await ensureRizlineCatalog(queryClient);
     await onFresh({ snapshot: rizlineCatalog(), source });
     const payload = queryClient.getQueryData<GameDataBundle>(key)!.payload;
-    expect(payload.kind).toBe('rizline');
     if (payload.kind !== 'rizline') throw new Error('Wrong payload');
     expect(payload.best.ah5).toHaveLength(1);
     expect(payload.best.hasUnknownCandidates).toBe(false);
     expect(payload.player.totalRks).toBe(snapshot.save.totalRks);
-    expect(payload.snapshot).toBe(snapshot);
+    expect(payload.snapshot).toEqual(snapshot);
   });
   it('retains valid account data after a failed catalog update', async () => {
     const bundle: GameDataBundle = { gameId: 'rizline', providerId: 'rizline-official', profile: getGameProfile('rizline'),
@@ -59,6 +58,6 @@ describe('Rizline catalog and account query coordination', () => {
     queryClient.setQueryData(key, bundle);
     vi.mocked(rizlineResources.loadFresh).mockRejectedValue(new Error('corrupt release'));
     await expect(refreshRizlineCatalog(queryClient)).rejects.toThrow('corrupt release');
-    expect(queryClient.getQueryData(key)).toBe(bundle);
+    expect(queryClient.getQueryData(key)).toEqual(bundle);
   });
 });

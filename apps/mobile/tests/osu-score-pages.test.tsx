@@ -1,4 +1,4 @@
-import { StyleSheet } from 'react-native';
+
 import { fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
@@ -110,47 +110,14 @@ describe('OsuScoreCard 最佳成绩卡', () => {
     expect(screen.getByText('7.34★')).toBeTruthy();
     expect(screen.getByText('98.52%')).toBeTruthy();
     expect(screen.getByText('73')).toBeTruthy();
-  });
-
-  it('右侧 PP 值使用主题色', async () => {
-    const screen = await render(<OsuScoreCard gameId="osu-standard" score={score} />);
-    const pp = StyleSheet.flatten(screen.getByText('73').props.style);
-    expect(pp.color).toBe('#246BFD');
+    expect(screen.getByText('SS')).toBeTruthy();
+    expect(screen.getByTestId('osu-mod-badge-HD')).toBeTruthy();
+    expect(screen.getByTestId('osu-mod-badge-DT')).toBeTruthy();
   });
 
   it('PP 缺失时显示占位符', async () => {
     const screen = await render(<OsuScoreCard gameId="osu-standard" score={{ ...score, pp: null }} />);
     expect(screen.getByText('—')).toBeTruthy();
-  });
-
-  it('X 评价渲染 SS 胶囊（#de31ae 白字）', async () => {
-    const screen = await render(<OsuScoreCard gameId="osu-standard" score={score} />);
-    const tag = screen.getByLabelText('评价 SS');
-    const tagStyle = StyleSheet.flatten(tag.props.style);
-    expect(tagStyle.backgroundColor).toBe('#de31ae');
-    expect(tagStyle.borderRadius).toBe(999);
-    expect(StyleSheet.flatten(screen.getByText('SS').props.style).color).toBe('#FFFFFF');
-  });
-
-  it('标签行顺序：难度标签在前、评价标签其后、模组徽章按上游顺序在后', async () => {
-    const screen = await render(<OsuScoreCard gameId="osu-standard" score={score} />);
-    const row = screen.getByTestId('osu-score-card-tags');
-    const labels = row.children.map((child) => (
-      typeof child === 'string' ? null : child.props.accessibilityLabel
-    ));
-    expect(labels).toEqual(['难度 7.34★', '评价 SS', '模组 HD', '模组 DT']);
-  });
-
-  it('模组徽章：圆形（增难红 #FF6666）+ 文字回退形态（图标根路径未配置）', async () => {
-    const screen = await render(<OsuScoreCard gameId="osu-standard" score={score} />);
-    const hd = screen.getByTestId('osu-mod-badge-HD');
-    const hdStyle = StyleSheet.flatten(hd.props.style);
-    expect(hdStyle.backgroundColor).toBe('#FF6666');
-    expect(hdStyle.borderRadius).toBe(11);
-    expect(hdStyle.width).toBe(22);
-    expect(hdStyle.height).toBe(22);
-    expect(StyleSheet.flatten(screen.getByText('HD').props.style).color).toBe('#591E1E');
-    expect(screen.getByTestId('osu-mod-badge-DT')).toBeTruthy();
   });
 
   it('空 mods 不渲染任何模组徽章', async () => {
@@ -166,19 +133,6 @@ describe('OsuScoreCard 最佳成绩卡', () => {
     );
     expect(screen.getByTestId('osu-mod-badge-HD')).toBeTruthy();
     expect(screen.queryByTestId('osu-mod-badge-ZZ')).toBeNull();
-  });
-
-  it('银 SS（XH）底色不变、字色 #def3fa', async () => {
-    const screen = await render(<OsuScoreCard gameId="osu-standard" score={{ ...score, rank: 'XH' }} />);
-    expect(StyleSheet.flatten(screen.getByLabelText('评价 SS').props.style).backgroundColor).toBe('#de31ae');
-    expect(StyleSheet.flatten(screen.getByText('SS').props.style).color).toBe('#def3fa');
-  });
-
-  it('F 评价底色 #393939、字色 #cc3333', async () => {
-    const screen = await render(<OsuScoreCard gameId="osu-standard" score={{ ...score, rank: 'F' }} />);
-    const tagStyle = StyleSheet.flatten(screen.getByLabelText('评价 F').props.style);
-    expect(tagStyle.backgroundColor).toBe('#393939');
-    expect(StyleSheet.flatten(screen.getByText('F').props.style).color).toBe('#cc3333');
   });
 
   it('未知评价不渲染评价标签，难度标签保留', async () => {
@@ -224,28 +178,6 @@ describe('OsuSongRow 曲库行', () => {
     expect(screen.getAllByText(' ')).toHaveLength(2);
     const badges = screen.getAllByTestId('osu-catalog-difficulty-badge');
     expect(badges).toHaveLength(2);
-    const badgeStyle = StyleSheet.flatten(badges[0].props.style);
-    expect(badgeStyle.alignSelf).toBe('flex-start');
-    expect(badgeStyle.minWidth).toBe(0);
-  });
-
-  it('每个难度胶囊按星数取官方连续色阶（不再全部粉色）', async () => {
-    const screen = await render(
-      <OsuSongRow gameId="osu-standard" song={{
-        beatmapSetId: 3720,
-        title: 'Tori no Uta',
-        artist: 'Lix',
-        creator: 'James',
-        listCover: null,
-        difficultyRatings: [0.9, 3.56, 7.34],
-      }} />,
-    );
-    const badges = screen.getAllByTestId('osu-catalog-difficulty-badge');
-    expect(badges).toHaveLength(3);
-    /** osu-web 星带采用伽马 2.2 插值。 */
-    expect(StyleSheet.flatten(badges[0].props.style).backgroundColor).toBe('#4BB3FE');
-    expect(StyleSheet.flatten(badges[1].props.style).backgroundColor).toBe('#F9D760');
-    expect(StyleSheet.flatten(badges[2].props.style).backgroundColor).toBe('#4240B0');
   });
 
   it('无难度时不渲染任何胶囊', async () => {

@@ -2,7 +2,7 @@ import { jest } from '@jest/globals';
 import { QueryClient } from '@tanstack/react-query';
 import { loadGameDataBundle, type GameDataLoaderContext } from '@/services/game-data-loaders';
 import { tufPlayerQueryOptions, tufPlayerEntityKey } from '@/services/tuf-query';
-import { museDashPlayerQueryOptions, museDashPlayerEntityKey } from '@/services/muse-dash-query';
+import { museDashPlayerQueryOptions } from '@/services/muse-dash-query';
 import { phiraPlayerQueryOptions, phiraPlayerEntityKey } from '@/services/phira-query';
 import { gameDataCatalogQueries } from '@/services/game-data-loader-queries';
 import { gameDataQueryKey, registerGameDataBackground, refreshGameDataBundle } from '@/services/game-data-query';
@@ -104,8 +104,8 @@ describe('总览与详情读取同一个实体', () => {
     expect(result.bundle.payload).toMatchObject({ kind: 'adofai', player: { rankedScore: 1824.52 } });
 
     const entity = await client.ensureQueryData(tufPlayerQueryOptions(client, 25));
-    expect(entity.data).toBe(tufPlayer);
-    expect(client.getQueryData(tufPlayerEntityKey(25))).toBe(entity);
+    expect(entity.data).toMatchObject({ rankedScore: 1824.52 });
+
     expect(profileSpy).toHaveBeenCalledTimes(1);
     expect(result.bundle.payload).toMatchObject({ source: { kind: 'tuf', isStale: false } });
   });
@@ -120,8 +120,8 @@ describe('总览与详情读取同一个实体', () => {
     expect(result.bundle.payload).toMatchObject({ kind: 'musedash', player: { rl: 3.45 }, source: { isStale: false } });
 
     const entity = await client.ensureQueryData(museDashPlayerQueryOptions(client, 'u-1'));
-    expect(entity?.data).toBe(museDashPlayer);
-    expect(client.getQueryData(museDashPlayerEntityKey('u-1'))).toBe(entity);
+    expect(entity?.data).toMatchObject({ rl: 3.45 });
+
     expect(playerSpy).toHaveBeenCalledTimes(1);
   });
 

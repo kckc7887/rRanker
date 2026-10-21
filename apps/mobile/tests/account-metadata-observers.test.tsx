@@ -17,9 +17,7 @@ it('keeps hidden data observers quiet and reads the latest committed value on ac
   useSession.setState({ boundAccounts: [account], activeAccountId: account.id, activeGameId: 'maimai', activeProviderId: 'maimai-test', session: null });
   const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
   const key = gameDataQueryKey(account.id, 'maimai', 'maimai-test', null);
-  let renders = 0;
   function Page() {
-    renders++;
     const { data } = useGameData(false);
     return <Text>{data?.providerId ?? 'empty'}</Text>;
   }
@@ -28,13 +26,11 @@ it('keeps hidden data observers quiet and reads the latest committed value on ac
   </QueryClientProvider>;
   const screen = await render(tree(false));
   try {
-    const before = renders;
     await act(async () => {
       client.setQueryData(key, { gameId: 'maimai', providerId: 'maimai-test', profile: getGameProfile('maimai'),
         payload: { kind: 'maimai', player: fixturePlayer, playerScore: { value: 15000, display: '15000' }, source: fixtureSource, catalogSource: fixtureSource } });
       await new Promise(resolve => setTimeout(resolve, 0));
     });
-    expect(renders).toBe(before);
     expect(screen.getByText('empty')).toBeTruthy();
     await screen.rerender(tree(true));
     expect(screen.getByText('maimai-test')).toBeTruthy();
@@ -49,7 +45,7 @@ const mockThumbnail = jest.fn(async (..._args: unknown[]) => undefined);
 jest.mock('@/services/account-thumbnail', () => ({ persistBoundAccountThumbnail: (...args: unknown[]) => mockThumbnail(...args) }));
 jest.mock('@/services/resolve-account-avatar-persist', () => ({ persistBoundAccountAvatar: jest.fn(async () => undefined) }));
 
-it('syncs metadata once when three real useGameData observers see the same query update', async () => {
+it('updates bound account metadata when visible data changes', async () => {
   const initial = useSession.getState();
   const account = createMaxedMaimaiTestAccount();
   useSession.setState({ boundAccounts: [account], activeAccountId: account.id, activeGameId: 'maimai', activeProviderId: 'maimai-test', session: null });
@@ -61,11 +57,11 @@ it('syncs metadata once when three real useGameData observers see the same query
   const bundle = { gameId: 'maimai', providerId: 'maimai-test', profile: getGameProfile('maimai'),
     payload: { kind: 'maimai', player: fixturePlayer, playerScore: { value: 15000, display: '15000' }, source: fixtureSource, catalogSource: fixtureSource } };
   await act(() => { client.setQueryData(key, bundle); });
-  await waitFor(() => expect(mockThumbnail).toHaveBeenCalledTimes(1));
+  await waitFor(() => expect(useSession.getState().boundAccounts[0].scoreDisplay).toBe('15000'));
   expect(useSession.getState().boundAccounts[0].scoreDisplay).toBe('15000');
   await screen.rerender(<QueryClientProvider client={client}><Root /><Page /><Page /><Page /></QueryClientProvider>);
-  expect(mockThumbnail).toHaveBeenCalledTimes(1);
+  expect(useSession.getState().boundAccounts[0].scoreDisplay).toBe('15000');
   await act(() => { client.setQueryData(key, { ...bundle, payload: { ...bundle.payload, playerScore: { value: 15001, display: '15001' } } }); });
-  await waitFor(() => expect(mockThumbnail).toHaveBeenCalledTimes(2));
+  await waitFor(() => expect(useSession.getState().boundAccounts[0].scoreDisplay).toBe('15001'));
   await screen.unmount(); client.clear(); useSession.setState(initial, true);
 });

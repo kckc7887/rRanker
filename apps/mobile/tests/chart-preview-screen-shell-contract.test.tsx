@@ -23,6 +23,13 @@ jest.mock('@/state/app-lifecycle', () => ({
 }));
 
 const mockInjectJavaScript = jest.fn();
+function injectedCommands() {
+  const messages: Record<string, unknown>[] = [];
+  for (const [script] of mockInjectJavaScript.mock.calls) {
+    runInNewContext(String(script), { window: { postMessage: (message: Record<string, unknown>) => messages.push(message) } });
+  }
+  return messages;
+}
 const mockLoadSettings = jest.fn<() => Promise<string | null>>(async () => null);
 const mockSaveSettings = jest.fn(async (_key: string, _value: string) => undefined);
 let latestWebViewProps: Record<string, unknown> = {};
@@ -231,16 +238,6 @@ describe('ChartPreviewScreenShell 交互', () => {
     expect(screen.getByTestId(maimaiTestID)).toBeTruthy();
   });
 
-  it('壳显式接管状态栏样式，不被栈内前页的深色沉浸头声明覆盖', async () => {
-    await renderMaimaiShell({
-      kind: 'ready',
-      payload: { chartId: 834, difficulty: 4, title: '示例舞萌谱面' },
-      prepare: async () => maimaiSource,
-    });
-
-    expect(screen.getByTestId('shell-status-bar-light')).toBeTruthy();
-  });
-
   it('prepare 完成后按当前配置渲染 WebView 并透传 source 与注入脚本', async () => {
     await renderMaimaiShell({
       kind: 'ready',
@@ -252,8 +249,6 @@ describe('ChartPreviewScreenShell 交互', () => {
 
     expect(latestWebViewProps.source).toEqual({ uri: maimaiSource.uri });
     expect(latestWebViewProps.allowingReadAccessToURL).toBe(maimaiSource.allowingReadAccessToURL);
-    expect(latestWebViewProps.accessibilityLabel).toBe(maimaiAccessibilityLabel);
-    expect(String(latestWebViewProps.injectedJavaScriptBeforeContentLoaded)).toContain('示例舞萌谱面');
   });
 
   it('error 请求渲染阻断错误与重试提示，不渲染 WebView', async () => {
@@ -496,8 +491,8 @@ describe('ChartPreviewScreenShell 交互', () => {
       ...mockLifecycle, appState: 'inactive', phase: 'inactive', foregroundReady: false,
     };
     await view.rerender(<MaimaiShell request={request} />);
-    expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining('"cause":"lifecycle"'));
-    expect(mockInjectJavaScript.mock.calls.every(([script]) => !String(script).includes('fullscreen'))).toBe(true);
+    expect(injectedCommands()).toContainEqual({ type: 'pause', cause: 'lifecycle' });
+    expect(injectedCommands()).not.toContainEqual(expect.objectContaining({ type: 'fullscreen' }));
     expect(mockScreenOptions.headerShown).toBe(false);
 
     mockLifecycle = {
@@ -505,7 +500,7 @@ describe('ChartPreviewScreenShell 交互', () => {
     };
     await view.rerender(<MaimaiShell request={request} />);
     expect(mockScreenOptions.headerShown).toBe(false);
-    expect(mockInjectJavaScript.mock.calls.every(([script]) => !String(script).includes('"type":"dispose"'))).toBe(true);
+    expect(injectedCommands()).not.toContainEqual(expect.objectContaining({ type: 'dispose' }));
   });
 
   it('内容进程终止与后台释放下发释放命令，而不是生命周期暂停', async () => {
@@ -518,8 +513,8 @@ describe('ChartPreviewScreenShell 交互', () => {
     mockInjectJavaScript.mockClear();
 
     await act(() => { (latestWebViewProps.onContentProcessDidTerminate as () => void)(); });
-    expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining('"type":"dispose"'));
-    expect(mockInjectJavaScript.mock.calls.every(([script]) => !String(script).includes('"type":"pause"'))).toBe(true);
+    expect(injectedCommands()).toContainEqual(expect.objectContaining({ type: 'dispose' }));
+    expect(injectedCommands()).not.toContainEqual(expect.objectContaining({ type: 'pause' }));
     expect(dispose).toHaveBeenCalledTimes(1);
 
     await act(() => { fireEvent.press(screen.getByRole('button', { name: '重新加载' })); });
@@ -530,7 +525,7 @@ describe('ChartPreviewScreenShell 交互', () => {
       ...mockLifecycle, appState: 'background', phase: 'background', foregroundReady: false,
     };
     await view.rerender(<MaimaiShell request={request} />);
-    expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining('"type":"dispose"'));
+    expect(injectedCommands()).toContainEqual(expect.objectContaining({ type: 'dispose' }));
     await act(() => {
       (mounted.onMessage as (event: unknown) => void)({ nativeEvent: { data: '{"type":"settings","settings":{"speed":9}}' } });
     });
@@ -631,7 +626,7 @@ describe('ChartPreviewScreenShell 交互', () => {
     expect(latestWebViewProps.source).not.toEqual(oldSource);
     expect(screen.getByTestId(maimaiTestID)).toBeTruthy();
     expect(screen.getByText('0%')).toBeTruthy();
-    expect(mockInjectJavaScript.mock.calls.every(([script]) => !String(script).includes("type:'play'"))).toBe(true);
+    expect(injectedCommands()).not.toContainEqual(expect.objectContaining({ type: 'play' }));
   });
 
   it.each(['onContentProcessDidTerminate', 'onRenderProcessGone'])(

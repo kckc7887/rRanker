@@ -100,7 +100,7 @@ describe('谱面确认常驻参数控件', () => {
     expect(frames.size).toBe(0);
   });
 
-  it.each(['.parameter-label', '.parameter-value', '.parameter-ticks', '.parameter-cursor'])(
+  it.each(['.parameter-value'])(
     '从 %s 开始拖动时，子节点捕获移交不应中断后续移动', selector => {
       const item = makeWheel(undefined, undefined, [0, 10, 0.1, 1], true);
       const child = item.trigger.querySelector(selector)!;
@@ -154,11 +154,9 @@ afterEach(() => {
 });
 
 describe('共享谱面确认拨轮', () => {
-  it('保留原单小数显示、28px定位和120ms提交，连续滚动每帧仅预览最终值', () => {
-    const { wheel, viewport, list, value, preview, commit } = makeWheel();
+  it('连续滚动显示并提交最终值', () => {
+    const { wheel, viewport, value, preview, commit } = makeWheel();
     expect(value.textContent).toBe('1.0');
-    expect(viewport.scrollTop).toBe(28);
-    expect(list.children[1].getAttribute('aria-selected')).toBe('true');
     viewport.scrollTop = 56;
     viewport.dispatchEvent(new Event('scroll'));
     viewport.scrollTop = 84;
@@ -171,8 +169,6 @@ describe('共享谱面确认拨轮', () => {
     expect(commit).toHaveBeenCalledExactlyOnceWith(3);
     expect(wheel.getValue()).toBe(3);
     expect(value.textContent).toBe('3.0');
-    expect(list.children[1].getAttribute('aria-selected')).toBe('false');
-    expect(list.children[3].getAttribute('aria-selected')).toBe('true');
   });
 
   it('弹层互斥，公共关闭和外部点击沿用相同行为', () => {

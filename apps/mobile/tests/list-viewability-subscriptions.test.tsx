@@ -13,7 +13,7 @@ jest.mock('@/components/RemoteImage', () => ({
 }));
 jest.mock('@/components/game-content/GameScoreCard', () => ({ ScoreCardArtworkScope: ({ children }: { children: ReactNode }) => children }));
 
-type Result = { id: string; song: { id: string; title: string } };
+type Result = { id: string; song: { id: string; title: string; rowKey?: string } };
 
 function SongResult({ item }: { item: Result }) {
   const active = useCachedTabActive();
@@ -68,9 +68,9 @@ it.each([songKey, undefined])('keeps visible song work enabled when search repla
 });
 
 it('keeps identical row keys in different score sections independent after data replacement', async () => {
-  const keyExtractor = (item: Result) => item.id;
+  const keyExtractor = (item: Result) => item.song.rowKey!;
   const sections = (title: string) => ['best', 'recent'].map(key => ({
-    key, keyExtractor, data: [{ id: 'same-chart', song: { id: key, title: `${key} ${title}` } }],
+    key, keyExtractor, data: [{ id: 'same-chart', song: { id: key, rowKey: 'same-chart', title: `${key} ${title}` } }],
   }));
   const page = (title: string) => <BestListPage
     isLoading={false} isError={false} isEmpty={false} emptyText="空" data={sections(title)}

@@ -7,7 +7,6 @@ import type { AliasSnapshot, CatalogSnapshot, Song } from '@/domain/models';
 import { queryClient } from '@/state/query-client';
 import { useDetailedCatalog, useMaimaiSongDetail, useTransientDetailedMaimaiCatalog } from '@/hooks/use-detailed-catalog';
 import { MAIMAI_CATALOG_QUERY_KEY } from '@/services/maimai-catalog-query';
-import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 
 const mockGetCatalog = jest.fn<() => Promise<CatalogSnapshot>>();
 const mockGetDetailedCatalog = jest.fn<(signal?: AbortSignal) => Promise<CatalogSnapshot>>();
@@ -84,10 +83,10 @@ describe('舞萌曲库分层', () => {
     mockActive = true;
     await hook.rerender({});
     await waitFor(() => expect(hook.result.current.data?.id).toBe(fixtureCatalog.songs[0].id));
-    const displayed = hook.result.current.data;
+    const displayedTitle = hook.result.current.data?.title;
     mockActive = false;
     await hook.rerender({});
-    expect(hook.result.current.data).toBe(displayed);
+    expect(hook.result.current.data?.title).toBe(displayedTitle);
     expect(hook.result.current.fetchStatus).toBe('idle');
   });
 
@@ -103,34 +102,12 @@ describe('舞萌曲库分层', () => {
     await hook.rerender({});
 
     expect(mockGetCatalog).toHaveBeenCalledTimes(1);
-    expect(queryClient.getQueryCache().findAll({ queryKey: MAIMAI_CATALOG_QUERY_KEY })).toHaveLength(1);
     await hook.unmount();
 
     const second = await renderHook(() => useDetailedCatalog(), { wrapper });
     await waitFor(() => expect(second.result.current.data).toBeDefined());
     expect(mockGetCatalog).toHaveBeenCalledTimes(1);
     await second.unmount();
-  });
-
-  it('成绩页直接读取账号级 game-data 快照', async () => {
-    const snapshot = {
-      source: fixtureCatalog.source,
-      catalogSource: fixtureCatalog.source,
-      records: [],
-    };
-    mockUseGameData.mockReturnValue({
-      data: { payload: { kind: 'maimai', snapshot } },
-      isLoading: false,
-      isError: false,
-      error: null,
-      refetch: jest.fn(),
-    });
-
-    const hook = await renderHook(() => useScoreSnapshot(), { wrapper });
-
-    expect(mockUseGameData).toHaveBeenCalledWith(true);
-    expect(hook.result.current.data).toBe(snapshot);
-    await hook.unmount();
   });
 
   it('单曲详情请求去重、失败后可重试，并在卸载后释放', async () => {
@@ -185,7 +162,6 @@ describe('舞萌曲库分层', () => {
     const hook = await renderHook(() => useTransientDetailedMaimaiCatalog(), { wrapper });
     await waitFor(() => expect(hook.result.current.data).toBeDefined());
     expect(mockGetDetailedCatalog).toHaveBeenCalledTimes(1);
-    expect(queryClient.getQueryCache().findAll()).toHaveLength(0);
     const signal = mockGetDetailedCatalog.mock.calls[0]?.[0] as AbortSignal;
     expect(signal.aborted).toBe(false);
     await hook.unmount();

@@ -226,12 +226,15 @@ describe('SecureSessionStore 当前账号', () => {
   it('跨实例串行化元数据、令牌与快速切换，最后一次账号选择获胜', async () => {
     const indexKey = 'rranker.provider.sessions.index.v4';
     let delayNextIndexRead = false;
+    let readStarted = Promise.withResolvers<void>();
+    let releaseRead = Promise.withResolvers<void>();
     const delayedKv = {
       getItem: async (key: string) => {
         const value = sqlite.values.get(key) ?? null;
         if (key === indexKey && delayNextIndexRead) {
           delayNextIndexRead = false;
-          await new Promise((resolve) => setTimeout(resolve, 20));
+          readStarted.resolve();
+          await releaseRead.promise;
         }
         return value;
       },
@@ -251,8 +254,9 @@ describe('SecureSessionStore 当前账号', () => {
       displayName: '更新后的玩家 A',
       scoreDisplay: '15000',
     });
-    await Promise.resolve();
+    await readStarted.promise;
     const metadataSwitch = switchStore.setActiveAccountId(accountB.id);
+    releaseRead.resolve();
     await Promise.all([metadataUpdate, metadataSwitch]);
 
     await switchStore.setActiveAccountId(accountA.id);
@@ -261,10 +265,13 @@ describe('SecureSessionStore 当前账号', () => {
       value: 'rotated-token-a',
       persistable: true as const,
     };
+    readStarted = Promise.withResolvers<void>();
+    releaseRead = Promise.withResolvers<void>();
     delayNextIndexRead = true;
     const tokenUpdate = backgroundStore.updateAccountSession(accountA.id, rotated);
-    await Promise.resolve();
+    await readStarted.promise;
     const tokenSwitch = switchStore.setActiveAccountId(accountB.id);
+    releaseRead.resolve();
     await Promise.all([tokenUpdate, tokenSwitch]);
 
     const vault = await switchStore.loadVault();

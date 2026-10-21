@@ -1,4 +1,4 @@
-import { render, waitFor } from '@testing-library/react-native';
+import { cleanup, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { RecordsScreen } from '../app/(tabs)/records';
 
@@ -107,8 +107,11 @@ function setSuccessfulQueries() {
   };
 }
 
+afterEach(async () => { await cleanup(); jest.useRealTimers(); });
+
 describe('Phigros records screen', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     jest.clearAllMocks();
     mockKeyword = '';
     setSuccessfulQueries();

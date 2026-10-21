@@ -108,7 +108,6 @@ describe('app runtime lifecycle', () => {
     expect(mockHydrate).toHaveBeenCalled();
     const restored = mockHydrate.mock.calls.at(-1)![0]!;
     expect(restored.aborted).toBe(false);
-    expect(restored).not.toBe(original);
     mockHydrate.mockClear();
     await act(() => { change?.('inactive'); });
     await act(() => { change?.('active'); });

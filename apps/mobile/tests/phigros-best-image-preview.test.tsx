@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { AppState, PixelRatio, Platform, StyleSheet, type AppStateStatus } from 'react-native';
+import { AppState, PixelRatio, Platform, type AppStateStatus } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { PhigrosBestImageScreen } from '@/screens/PhigrosBestImageScreen';
 import { installRuntimeLogRecorder } from '@/services/runtime-diagnostics-recorder';
@@ -143,36 +143,6 @@ describe('Phigros 生成图片页', () => {
     });
   });
 
-  it('后台恢复复用已就绪素材，权限失活恢复后继续导出', async () => {
-    let change: ((state: AppStateStatus) => void) | undefined;
-    jest.spyOn(AppState, 'addEventListener').mockImplementation(((event: string, listener: unknown) => {
-      if (event === 'change') change = listener as typeof change;
-      return { remove: jest.fn() };
-    }) as typeof AppState.addEventListener);
-    const { requestBestImageExportPermission, saveBestImageCapture } = jest.requireMock('@/features/best-image/best-image-export') as { requestBestImageExportPermission: jest.Mock; saveBestImageCapture: jest.Mock };
-    saveBestImageCapture.mockClear();
-    mockShowNotification.mockClear();
-    const screen = await render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><AppLifecycleProvider><PhigrosBestImageScreen /></AppLifecycleProvider></SafeAreaProvider>);
-    await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(false));
-    const uri = screen.getByTestId('phigros-best-image-html-preview-0').props.source.uri;
-    await act(() => { change?.('background'); });
-    await waitFor(() => expect(screen.queryByTestId('phigros-best-image-html-preview-0')).toBeNull());
-    await act(() => { change?.('active'); });
-    await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0').props.source.uri).toBe(uri));
-    expect(screen.getByTestId('phigros-best-image-html-preview-0').props.source.html).toContain('file:///session/song-1');
-    let allow!: () => void;
-    requestBestImageExportPermission.mockImplementationOnce(() => new Promise<void>(resolve => { allow = resolve; }));
-    await fireEvent.press(screen.getByLabelText('导出成绩图片'));
-    await act(() => { change?.('inactive'); });
-    await act(() => { change?.('active'); });
-    await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0').props.source.uri).toBe(uri));
-    await act(() => { allow(); });
-    const renderer = await screen.findByLabelText('导出渲染 第1页');
-    await fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 1080, height: 1500 }) } });
-    await waitFor(() => expect(saveBestImageCapture).toHaveBeenCalledWith('file:///capture.png', expect.stringMatching(/\.png$/u)));
-    expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '导出完成', message: '已保存 1 张成绩图片到相册' }));
-  });
-
   it('后台中断未完成曲绘后重新准备，迟到曲绘不覆盖恢复结果', async () => {
     let change: ((state: AppStateStatus) => void) | undefined;
     jest.spyOn(AppState, 'addEventListener').mockImplementation(((event: string, listener: unknown) => {
@@ -243,7 +213,7 @@ describe('Phigros 生成图片页', () => {
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(false));
   });
 
-  it('keeps the page controls and preview export layout', async () => {
+  it('updates preview dimensions and exports the measured image', async () => {
     const { captureRef } = jest.requireMock('react-native-view-shot') as { captureRef: jest.Mock };
     const { requestBestImageExportPermission } = jest.requireMock('@/features/best-image/best-image-export') as { requestBestImageExportPermission: jest.Mock };
     captureRef.mockClear();
@@ -261,8 +231,6 @@ describe('Phigros 生成图片页', () => {
     expect(screen.getByLabelText('宽度 1080 像素').props.accessibilityState).toEqual({ selected: true });
 
     const preview = await screen.findByTestId('phigros-best-image-html-preview-0');
-    expect(preview.props.source.html).toContain('class="playerInfo"');
-    expect(preview.props.source.html).toContain('class="song phi_song"');
     expect(preview.props.source.html).toContain('file:///session/style');
     expect(preview.props.source.html).toContain('file:///session/FC');
     expect(preview.props.source.html).toContain('./font/phi.ttf');
@@ -276,8 +244,6 @@ describe('Phigros 生成图片页', () => {
       type: 'best-image-height', width: 1080, height: 1215,
     }) } });
     await waitFor(() => expect(screen.getByText(/1080 × 1215 px/u)).toBeTruthy());
-    const previewFrameStyle = screen.getByLabelText('HTML图片预览窗').props.style[1];
-    expect(previewFrameStyle.height).toBeCloseTo(previewFrameStyle.width * 4 / 3);
     await fireEvent(preview, 'message', { nativeEvent: { data: JSON.stringify({
       type: 'best-image-height', width: 1080, height: 1400,
     }) } });
@@ -295,9 +261,6 @@ describe('Phigros 生成图片页', () => {
         type: 'best-image-ready', width: 1080, height: 1666,
       }) } });
     });
-
-    await waitFor(() => expect(StyleSheet.flatten(screen.getByLabelText('导出画布 第1页').props.style).height).toBeCloseTo(1666 / PixelRatio.get()));
-    await act(async () => { await new Promise((resolve) => setTimeout(resolve, 360)); });
     const expectedWidth = Platform.OS === 'ios' ? 1080 / PixelRatio.get() : 1080;
     const expectedHeight = Platform.OS === 'ios' ? 1666 / PixelRatio.get() : 1666;
     await waitFor(() => expect(captureRef).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({

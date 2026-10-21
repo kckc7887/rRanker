@@ -88,13 +88,17 @@ describe('公共请求执行器的尝试次数合同', () => {
   });
 
   it('不会为已经没有后续尝试的 429 等待退避时间', async () => {
-    const fetcher = failingFetcher(429, { 'Retry-After': '1' });
-    const started = Date.now();
-    await expect(requestJson(options({
-      fetcher: fetcher as typeof fetch, totalAttempts: 1, error: (status: number) => providerErrorFromStatus(status),
-    }))).rejects.toMatchObject({ code: 'rate_limit' });
-    expect(fetcher).toHaveBeenCalledTimes(1);
-    expect(Date.now() - started).toBeLessThan(800);
+    vi.useFakeTimers();
+    try {
+      const fetcher = failingFetcher(429, { 'Retry-After': '1' });
+      let failure: unknown;
+      void requestJson(options({
+        fetcher: fetcher as typeof fetch, totalAttempts: 1, error: (status: number) => providerErrorFromStatus(status),
+      })).catch(error => { failure = error; });
+      await vi.advanceTimersByTimeAsync(0);
+      expect(failure).toMatchObject({ code: 'rate_limit' });
+      expect(fetcher).toHaveBeenCalledTimes(1);
+    } finally { vi.useRealTimers(); }
   });
 
   it('仍有后续尝试时按 Retry-After 退避后重试', async () => {

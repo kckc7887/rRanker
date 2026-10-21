@@ -1,16 +1,10 @@
 import { cleanup, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { InteractionManager } from 'react-native';
 import SongDetailScreen from '../app/songs/[songId]';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
 import type { Song } from '@/domain/models';
 import { resolveChartPreviewNavigation } from '@/features/chart-preview-shared/chart-preview-navigation';
-
-jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-  (callback as () => void)();
-  return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-});
 
 const mockBack = jest.fn();
 const mockCanGoBack = jest.fn(() => true);
@@ -305,10 +299,7 @@ describe('Phigros song detail', () => {
   it('renders title, illustrator and AT→EZ chart cards defaulting to IN', async () => {
     const screen = await render(<SongDetailScreen />);
     await waitFor(() => expect(screen.getByText('测试曲')).toBeTruthy());
-    expect(screen.getByTestId('phigros-song-title-scroll').props.horizontal).toBe(true);
-    expect(screen.getByText('测试曲').props.numberOfLines).toBe(1);
     expect(screen.getAllByText('测试曲绘师').length).toBeGreaterThan(0);
-    expect(screen.getByTestId('phigros-metadata-value-曲绘画师').props.numberOfLines).toBe(2);
     await fireEvent(screen.getByTestId('phigros-metadata-measure-曲绘画师'), 'textLayout', {
       nativeEvent: { lines: [{}, {}, {}] },
     });
@@ -316,11 +307,7 @@ describe('Phigros song detail', () => {
       nativeEvent: { lines: [{}, {}, {}] },
     });
     await fireEvent.press(screen.getByLabelText('展开曲绘画师'));
-    expect(screen.getByTestId('phigros-metadata-value-曲绘画师').props.numberOfLines).toBeUndefined();
-    expect(screen.getByTestId('phigros-metadata-value-章节').props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByLabelText('收起曲绘画师'));
-    expect(screen.getByTestId('phigros-metadata-value-曲绘画师').props.numberOfLines).toBe(2);
-    expect(screen.getByTestId('phigros-metadata-value-章节').props.numberOfLines).toBe(2);
     expect(screen.getByLabelText('AT 难度卡片')).toBeTruthy();
     expect(screen.getByLabelText('IN 难度卡片')).toBeTruthy();
     expect(screen.getByLabelText('HD 难度卡片')).toBeTruthy();
@@ -338,16 +325,13 @@ describe('Phigros song detail', () => {
     const screen = await render(<SongDetailScreen />);
     await waitFor(() => expect(screen.getByText('歌曲信息')).toBeTruthy());
     const aliases = screen.getByTestId('phigros-alias-text');
-    expect(aliases.props.children).toBe('别名：测试别名一、测试别名二');
-    expect(aliases.props.numberOfLines).toBe(1);
+    expect(aliases).toHaveTextContent('别名：测试别名一、测试别名二');
     expect(screen.queryByLabelText('展开别名')).toBeNull();
     await fireEvent(screen.getByTestId('phigros-alias-overflow-measure'), 'textLayout', {
       nativeEvent: { lines: [{}, {}] },
     });
     await fireEvent.press(screen.getByLabelText('展开别名'));
-    expect(screen.getByTestId('phigros-alias-text').props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByLabelText('收起别名'));
-    expect(screen.getByTestId('phigros-alias-text').props.numberOfLines).toBe(1);
     expect(screen.getByLabelText('谱面标签 综合，50 票，点击查看说明')).toBeTruthy();
     expect(screen.getByLabelText('谱面标签 差速，10 票，点击查看说明')).toBeTruthy();
     expect(screen.getAllByText('主').length).toBeGreaterThan(0);
@@ -366,7 +350,7 @@ describe('Phigros song detail', () => {
     mockAliases = [];
     const screen = await render(<SongDetailScreen />);
     await waitFor(() => expect(screen.getByText('歌曲信息')).toBeTruthy());
-    expect(screen.getByTestId('phigros-alias-text').props.children).toBe('别名：无');
+    expect(screen.getByTestId('phigros-alias-text')).toHaveTextContent('别名：无');
     expect(screen.queryByLabelText('展开别名')).toBeNull();
   });
 
@@ -512,11 +496,6 @@ describe('Phigros song detail', () => {
 
     await fireEvent.press(screen.getAllByLabelText('加入练习清单')[0]!);
     expect(mockSetChartPractice).toHaveBeenCalledWith('Song.A', 'SD', 3, true);
-
-    /** iOS 滚动区需原生手势识别器，避免滚动竞争取消点击。 */
-    expect(screen.getAllByLabelText(/查看谱面确认：/)[0]!.props.testID).toBe('gesture-handler-pressable');
-    expect(screen.getAllByLabelText(/下载谱面文件：/)[0]!.props.testID).toBe('gesture-handler-pressable');
-    expect(screen.getAllByLabelText('加入练习清单')[0]!.props.testID).toBe('gesture-handler-pressable');
     const atActions = within(screen.getByLabelText('AT 难度卡片')).getAllByRole('button')
       .map((button) => button.props.accessibilityLabel);
     expect(atActions.indexOf('下载谱面文件：测试曲 AT'))

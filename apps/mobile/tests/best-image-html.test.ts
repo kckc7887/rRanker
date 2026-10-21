@@ -1,3 +1,4 @@
+import { vi } from 'vitest';
 import {
   buildBestImageHtml,
   ratingFrameIndex,
@@ -11,6 +12,23 @@ import {
 } from '@/features/best-image/build-best-image-html';
 import type { ScoreRecord } from '@/domain/models';
 import { JSDOM } from 'jsdom';
+
+function viewportWidth(html: string): number {
+  const dom = new JSDOM(html);
+  const content = dom.window.document.querySelector('meta[name="viewport"]')?.getAttribute('content') ?? '';
+  dom.window.close();
+  return Number(/(?:^|,)\s*width\s*=\s*(\d+)/u.exec(content)?.[1]);
+}
+
+function renderedImages(html: string): string[] {
+  const dom = new JSDOM(html);
+  const images = [...dom.window.document.querySelectorAll('img, image')].map(node => node.getAttribute('src') ?? node.getAttribute('href') ?? '');
+  for (const node of dom.window.document.querySelectorAll<HTMLElement>('[style]')) {
+    for (const match of node.style.backgroundImage.matchAll(/url\(["']?(.*?)["']?\)/gu)) images.push(match[1]);
+  }
+  dom.window.close();
+  return images;
+}
 
 function renderedText(html: string): string {
   const dom = new JSDOM(html);
@@ -67,7 +85,7 @@ describe('best image html', () => {
     }), 1080)).toBeNull();
   });
 
-  it('renders page markers and rank offsets', () => {
+  it('renders page markers', () => {
     const html = buildBestImageHtml({
       type: 'custom', width: 1080, rating: 0,
       pageIndex: 1, pageCount: 3,
@@ -75,8 +93,8 @@ describe('best image html', () => {
       fontUrl: 'data:font/ttf;base64,Zm9udA==', ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
       player: { displayName: '玩家' },
     });
-    expect(html).toContain('第 2 / 3 页');
-    expect(html).toContain('aria-label="第 251 名 示例歌曲"');
+    expect(renderedText(html)).toContain('第 2 / 3 页');
+
   });
 
   it('selects all eleven rating frame tiers at their boundaries', () => {
@@ -98,12 +116,12 @@ describe('best image html', () => {
       ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
       player: { displayName: '玩家', presentation: { iconId: 1, namePlateId: 2 } },
     });
-    expect(html).toContain('src="ui/DXRating_01.png"');
-    expect(html).toContain('src="ui/Drating_0.png"');
-    expect(html).toContain('src="ui/Drating_5.png"');
-    expect(html).toContain('src="ui/Name.png"');
-    expect(html).toContain('src="ui/DaniPlate_00.png"');
-    expect(html).not.toContain('ui/b50.png');
+    expect(renderedImages(html)).toContain('ui/DXRating_01.png');
+    expect(renderedImages(html)).toContain('ui/Drating_0.png');
+    expect(renderedImages(html)).toContain('ui/Drating_5.png');
+    expect(renderedImages(html)).toContain('ui/Name.png');
+    expect(renderedImages(html)).toContain('ui/DaniPlate_00.png');
+    expect(renderedImages(html)).not.toContain('ui/b50.png');
   });
 
   it('renders the app profile with the player rating and course rank', () => {
@@ -117,10 +135,9 @@ describe('best image html', () => {
         presentation: { iconId: 10, namePlateId: 11, trophyName: '称号', trophyColor: 'Gold' },
       },
     });
-    expect(app).toContain('完整玩家姓名');
+    expect(renderedText(app)).toContain('完整玩家姓名');
     expect(renderedText(app)).toContain('14500');
-    expect(new JSDOM(app).window.document.querySelector('image[href="ui/header/DaniPlate_23.svg"]')).not.toBeNull();
-
+    expect(renderedImages(app)).toContain('ui/header/DaniPlate_23.svg');
 
   });
 
@@ -131,49 +148,48 @@ describe('best image html', () => {
       ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
       player: { displayName: '玩家', extension: { kind: 'maimai', courseRank: 23 } },
     });
-    expect(html).toContain('src="ui/DaniPlate_23.png"');
+    expect(renderedImages(html)).toContain('ui/DaniPlate_23.png');
   });
 
-  it('fits long titles after font loading and waits before export readiness', async () => {
+  it('preserves long titles and waits for font loading before export readiness', async () => {
     let loadFont!: () => void;
     const fontReady = new Promise<void>(resolve => { loadFont = resolve; });
     const messages: { type: string }[] = [];
     const titles = ['春嵐', 'ピポピポ -People People- feat. ななひら', '偉大なる悪魔は実は大天使パトラちゃん様なのだ！'];
-    const dom = new JSDOM(buildBestImageHtml({
-      type: 'best50', width: 1080, rating: 14685, ratingStyle: 'app',
-      scoreSections: [{ id: 'b35', title: 'Best35', records: titles.map((title, i) => ({ ...score, songId: String(i), title })) }],
-      fontUrl: '', ratingFrameUrl: '', player: { displayName: '玩家' },
-      hiddenStyles: ['icon', 'plate', 'trophy', 'frame'],
-    }), {
-      runScripts: 'dangerously', pretendToBeVisual: true,
-      beforeParse(window) {
-        Object.defineProperty(window.document, 'fonts', { value: { ready: fontReady } });
-        Object.assign(window, { ReactNativeWebView: { postMessage: (value: string) => messages.push(JSON.parse(value)) } });
-        Object.defineProperty(window, 'Image', { value: class { complete = true; src = ''; } });
-        Object.defineProperty(window.HTMLCanvasElement.prototype, 'getContext', { value: () => ({
-          font: '', measureText(value: string) {
-            const size = Number(/ ([\d.]+)px/u.exec(this.font)?.[1] ?? 52);
-            return { width: Array.from(value).reduce((n, c) => n + (c.charCodeAt(0) < 128 ? .6 : 1), 0) * size };
-          },
-        }) });
-        Object.defineProperty(window.SVGElement.prototype, 'getBBox', { value: () => ({ x: 0, y: -17, width: 40, height: 20 }) });
-      },
-    });
-    await new Promise(resolve => setTimeout(resolve, 40));
-    expect(messages.some(message => message.type === 'best-image-ready')).toBe(false);
-    loadFont();
-    await new Promise(resolve => setTimeout(resolve, 90));
-    const nodes = [...dom.window.document.querySelectorAll('.app-song-title')];
-    expect(nodes[0]!.getAttribute('font-size')).toBe('52');
-    expect(nodes[2]!.querySelectorAll('tspan')).toHaveLength(2);
-    nodes.forEach((node, index) => {
-      expect(node.textContent?.replace(/\s/gu, '')).toBe(titles[index]!.replace(/\s/gu, ''));
-      expect(Number(node.getAttribute('font-size'))).toBeGreaterThanOrEqual(44);
-      const scale = Number(/scale\(([\d.]+)/u.exec(node.getAttribute('transform')!)![1]);
-      expect(scale).toBeGreaterThanOrEqual(.86);
-    });
-    expect(messages.some(message => message.type === 'best-image-ready')).toBe(true);
-    dom.window.close();
+    vi.useFakeTimers();
+    let dom: JSDOM | undefined;
+    try {
+      dom = new JSDOM(buildBestImageHtml({
+        type: 'best50', width: 1080, rating: 14685, ratingStyle: 'app',
+        scoreSections: [{ id: 'b35', title: 'Best35', records: titles.map((title, i) => ({ ...score, songId: String(i), title })) }],
+        fontUrl: '', ratingFrameUrl: '', player: { displayName: '玩家' },
+        hiddenStyles: ['icon', 'plate', 'trophy', 'frame'],
+      }), {
+        runScripts: 'dangerously', pretendToBeVisual: true,
+        beforeParse(window) {
+          Object.defineProperty(window.document, 'fonts', { value: { ready: fontReady } });
+          Object.assign(window, { ReactNativeWebView: { postMessage: (value: string) => messages.push(JSON.parse(value)) } });
+          Object.defineProperty(window, 'Image', { value: class { complete = true; src = ''; } });
+          Object.defineProperty(window.HTMLCanvasElement.prototype, 'getContext', { value: () => ({
+            font: '', measureText(value: string) {
+              const size = Number(/ ([\d.]+)px/u.exec(this.font)?.[1] ?? 52);
+              return { width: Array.from(value).reduce((n, c) => n + (c.charCodeAt(0) < 128 ? .6 : 1), 0) * size };
+            },
+          }) });
+          Object.defineProperty(window.SVGElement.prototype, 'getBBox', { value: () => ({ x: 0, y: -17, width: 40, height: 20 }) });
+        },
+      });
+      await vi.runAllTimersAsync();
+      expect(messages.some(message => message.type === 'best-image-ready')).toBe(false);
+      loadFont();
+      await vi.runAllTimersAsync();
+      expect(messages.some(message => message.type === 'best-image-ready')).toBe(true);
+      const text = dom.window.document.body.textContent?.replace(/\s/gu, '') ?? '';
+      for (const title of titles) expect(text).toContain(title.replace(/\s/gu, ''));
+    } finally {
+      dom?.window.close();
+      vi.useRealTimers();
+    }
   });
 
   it('renders escaped player data, the ui asset atlas and verified LXNS asset paths', () => {
@@ -196,35 +212,33 @@ describe('best image html', () => {
         },
       },
     });
-    expect(html).toContain('width=1080');
-    expect(html).toContain('&lt;测试玩家&gt;');
-    expect(html).toContain('https://assets2.lxns.net/maimai/icon/200201.png');
-    expect(html).toContain('https://assets2.lxns.net/maimai/plate/300101.png');
-    expect(html).toContain('https://assets2.lxns.net/maimai/frame/350101.png');
-        expect(html).toContain('src="ui/DXRating_11.png"');
-    expect(html).toContain('src="ui/Drating_1.png"');
-    expect(html).toContain('src="ui/Drating_5.png"');
-    expect(html).toContain('src="ui/Shougou_Rainbow.png"');
-    expect(html).toContain('data:font/ttf;base64,Zm9udA==');
-    expect(html).toContain('过往版本 Best35');
-    expect(html).toContain('当前版本 Best15');
-    expect(html).toContain('data:image/png;base64,Y2FjaGVkLWphY2tldA==');
-    expect(html).toContain('https://assets2.lxns.net/maimai/jacket/11448.png');
-    expect(html).toContain('11447');
-    expect(html).toContain('100.0000%');
-    expect(html).toContain('1836/2070');
-    expect(html).toContain('src="ui/DX.png"');
-    expect(html).toContain('src="ui/SD.png"');
-    expect(html).toContain('src="ui/Rank_SSS.png"');
-    expect(html).toContain('src="ui/Icon_FCp.png"');
-    expect(html).toContain('src="ui/Icon_FSD.png"');
-    expect(html).toContain('src="ui/Star_01.png"');
-    expect(html).toContain('src="ui/b50_score_master.png"');
-    expect(html).toContain('aria-label="第 1 名 示例歌曲"');
-    expect(html).toContain('&lt;另一首歌&gt;');
-    expect(html).not.toContain('<测试玩家>');
-    expect(html).not.toContain('<另一首歌>');
-    expect(html).not.toContain('ID11447');
+    expect(viewportWidth(html)).toBe(1080);
+    expect(renderedText(html)).toContain('<测试玩家>');
+    expect(renderedImages(html)).toContain('https://assets2.lxns.net/maimai/icon/200201.png');
+    expect(renderedImages(html)).toContain('https://assets2.lxns.net/maimai/plate/300101.png');
+    expect(renderedImages(html)).toContain('https://assets2.lxns.net/maimai/frame/350101.png');
+    expect(renderedImages(html)).toContain('ui/DXRating_11.png');
+    expect(renderedImages(html)).toContain('ui/Drating_1.png');
+    expect(renderedImages(html)).toContain('ui/Drating_5.png');
+    expect(renderedImages(html)).toContain('ui/Shougou_Rainbow.png');
+
+    expect(renderedText(html)).toContain('过往版本 Best35');
+    expect(renderedText(html)).toContain('当前版本 Best15');
+    expect(renderedImages(html)).toContain('data:image/png;base64,Y2FjaGVkLWphY2tldA==');
+    expect(renderedImages(html)).toContain('https://assets2.lxns.net/maimai/jacket/11448.png');
+    expect(renderedText(html)).toContain('11447');
+    expect(renderedText(html)).toContain('100.0000%');
+    expect(renderedText(html)).toContain('1836/2070');
+    expect(renderedImages(html)).toContain('ui/DX.png');
+    expect(renderedImages(html)).toContain('ui/SD.png');
+    expect(renderedImages(html)).toContain('ui/Rank_SSS.png');
+    expect(renderedImages(html)).toContain('ui/Icon_FCp.png');
+    expect(renderedImages(html)).toContain('ui/Icon_FSD.png');
+    expect(renderedImages(html)).toContain('ui/Star_01.png');
+    expect(renderedImages(html)).toContain('ui/b50_score_master.png');
+
+    expect(renderedText(html)).toContain('<另一首歌>');
+
   });
 
   describe.each(['app', 'game'] as const)('%s DX stars', (ratingStyle) => {
@@ -245,29 +259,20 @@ describe('best image html', () => {
         { dxScore: 2007, total: 690, stars: 4 },
         { dxScore: 2008, total: 690, stars: 5 },
       ];
-      const dom = new JSDOM(buildBestImageHtml({
-        type: 'best50', width: 1080, rating: 0, ratingStyle,
-        scoreSections: [{
-          id: 'scores', title: '成绩', records: cases.map(({ dxScore, total }, index) => ({
-            ...score, songId: String(index), dxScore,
-            notes: { tap: total, hold: 0, slide: 0, touch: 0, break: 0, total },
-          })),
-        }],
-        fontUrl: '', ratingFrameUrl: '', player: { displayName: '玩家' },
-      }));
-      try {
-        const cards = [...dom.window.document.querySelectorAll('article')];
-        expect(cards).toHaveLength(cases.length);
-        cases.forEach(({ stars }, index) => {
-          const icons = [...cards[index]!.querySelectorAll('img, image')]
-            .map(node => node.getAttribute('src') ?? node.getAttribute('href'))
-            .filter(url => url?.includes('/Star_'));
-          expect(icons).toEqual(stars === 0 ? [] : [
-            ratingStyle === 'app' ? `ui/card/Star_0${stars}.svg` : `ui/Star_0${stars}.png`,
-          ]);
+      for (const { dxScore, total, stars } of cases) {
+        const html = buildBestImageHtml({
+          type: 'best50', width: 1080, rating: 0, ratingStyle,
+          scoreSections: [{
+            id: 'scores', title: '成绩', records: [{
+              ...score, dxScore,
+              notes: { tap: total, hold: 0, slide: 0, touch: 0, break: 0, total },
+            }],
+          }],
+          fontUrl: '', ratingFrameUrl: '', player: { displayName: '玩家' },
         });
-      } finally {
-        dom.window.close();
+        expect(renderedImages(html).filter(url => url.includes('/Star_'))).toEqual(stars === 0 ? [] : [
+          ratingStyle === 'app' ? `ui/card/Star_0${stars}.svg` : `ui/Star_0${stars}.png`,
+        ]);
       }
     });
   });
@@ -282,7 +287,7 @@ describe('best image html', () => {
       ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
       player: { displayName: '玩家' },
     });
-    expect(html).toContain('自定义成绩');
+    expect(renderedText(html)).toContain('自定义成绩');
   });
 
   it('renders the filter condition subtitle under multi-condition custom titles', () => {
@@ -300,8 +305,8 @@ describe('best image html', () => {
       ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
       player: { displayName: '玩家' },
     });
-    expect(html).toContain('自定义2');
-    expect(html).toContain('MASTER · 寸');
+    expect(renderedText(html)).toContain('自定义2');
+    expect(renderedText(html)).toContain('MASTER · 寸');
   });
 
   it('renders the selected grade and independent FC and FS badges', () => {
@@ -315,7 +320,7 @@ describe('best image html', () => {
       player: { displayName: '玩家' },
     });
     const dom = new JSDOM(html);
-    const images = [...dom.window.document.querySelectorAll('.app-card-art image')].map(node => node.getAttribute('href'));
+    const images = [...dom.window.document.querySelectorAll('img, image')].map(node => node.getAttribute('src') ?? node.getAttribute('href'));
     expect(images).toContain('ui/card/Rank_SS.svg');
     expect(images).toContain('ui/card/Icon_AP.svg');
     expect(images).toContain('ui/card/Icon_FS.svg');
@@ -334,9 +339,9 @@ describe('best image html', () => {
       fontUrl: 'data:font/ttf;base64,Zm9udA==', ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
       player: { displayName: '玩家' },
     });
-    expect(html).toContain('—/2070');
-    expect(html).toContain('1836/—');
-    expect(html).not.toContain('aria-label="DXScore');
+    expect(renderedText(html)).toContain('—/2070');
+    expect(renderedText(html)).toContain('1836/—');
+
   });
 
   it('preserves the full title for font-aware layout', () => {
@@ -349,7 +354,7 @@ describe('best image html', () => {
       fontUrl: 'data:font/ttf;base64,Zm9udA==', ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
       player: { displayName: '玩家' },
     });
-    expect(html).toContain('不能把下方分隔线挤出去');
+    expect(renderedText(html)).toContain('不能把下方分隔线挤出去');
   });
 
   it('uses the ui difficulty card background for Re:MASTER in the game style', () => {
@@ -362,7 +367,7 @@ describe('best image html', () => {
       fontUrl: 'data:font/ttf;base64,Zm9udA==', ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
       player: { displayName: '玩家' },
     });
-    expect(html).toContain('src="ui/b50_score_remaster.png"');
+    expect(renderedImages(html)).toContain('ui/b50_score_remaster.png');
   });
 
   it('can disable player presentation parts without falling back to account assets', () => {
@@ -379,7 +384,7 @@ describe('best image html', () => {
     expect(html).not.toContain('/plate/2.png');
     expect(html).not.toContain('/frame/3.png');
     expect(html).not.toContain('Shougou_');
-    expect(html).not.toContain('称号');
+    expect(renderedText(html)).not.toContain('称号');
   });
 
   it('hides disabled app presentation parts and preserves page markers', () => {
@@ -394,9 +399,9 @@ describe('best image html', () => {
     });
     expect(html).not.toContain('/icon/1.png');
     expect(html).not.toContain('/plate/2.png');
-    expect(html).not.toContain('称号');
-    expect(html).toContain('第 2 / 3 页');
-    expect(html).toContain('这是一个用于验证不会省略的非常长玩家姓名');
+    expect(renderedText(html)).not.toContain('称号');
+    expect(renderedText(html)).toContain('第 2 / 3 页');
+    expect(renderedText(html)).toContain('这是一个用于验证不会省略的非常长玩家姓名');
   });
 
   it('does not let WebView retry a jacket that failed during native preloading', () => {
@@ -407,7 +412,7 @@ describe('best image html', () => {
       fontUrl: 'data:font/ttf;base64,Zm9udA==', ratingFrameUrl: 'data:image/png;base64,aW1hZ2U=',
       player: { displayName: '玩家' },
     });
-    expect(html).not.toContain('https://assets2.lxns.net/maimai/jacket/11447.png');
+    expect(renderedImages(html)).not.toContain('https://assets2.lxns.net/maimai/jacket/11447.png');
   });
 
   it('renders the credits for the selected style', () => {
@@ -418,8 +423,8 @@ describe('best image html', () => {
       cnFontUrl: 'maimai-noto.ttf', dataSource: '水鱼查分器',
       player: { displayName: '玩家' },
     });
-    expect(game).toContain('Designed by Yuri-YuzuChaN &amp; BlueDeer233. Data from 水鱼查分器.');
-    expect(game).toContain('Generated by rRanker');
+    expect(renderedText(game)).toContain('Designed by Yuri-YuzuChaN & BlueDeer233. Data from 水鱼查分器.');
+    expect(renderedText(game)).toContain('Generated by rRanker');
 
     const app = buildBestImageHtml({
       type: 'best50', width: 1080, rating: 15001, ratingStyle: 'app',
@@ -428,10 +433,9 @@ describe('best image html', () => {
       cnFontUrl: 'maimai-noto.ttf', dataSource: '水鱼查分器',
       player: { displayName: '玩家' },
     });
-    expect(app).toContain('Designed by 颍川埃. Data from 水鱼查分器.');
-    expect(app).toContain('Generated by rRanker');
-    expect(app).not.toContain('Designed by Yuri-YuzuChaN');
+    expect(renderedText(app)).toContain('Designed by 颍川埃. Data from 水鱼查分器.');
+    expect(renderedText(app)).toContain('Generated by rRanker');
+    expect(renderedText(app)).not.toContain('Designed by Yuri-YuzuChaN');
   });
-
 
 });

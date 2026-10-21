@@ -29,27 +29,19 @@ export function randomUUID(): string {
 }
 
 export async function digestStringAsync(
-  _algorithm: string,
+  algorithm: string,
   data: string,
   options?: { encoding?: string },
 ): Promise<string> {
-  // Deterministic fake digest for unit tests; not cryptographic.
-  const hex = Array.from(data)
-    .reduce((sum, char) => (sum + char.charCodeAt(0)) % 255, 0)
-    .toString(16)
-    .padStart(2, '0')
-    .repeat(32)
-    .slice(0, 64);
-  if (options?.encoding === 'base64') {
-    return Buffer.from(hex, 'hex').toString('base64');
-  }
-  return hex;
+  return createHash(algorithm.toLowerCase().replace('-', ''))
+    .update(data)
+    .digest(options?.encoding === CryptoEncoding.BASE64 ? 'base64' : 'hex');
 }
 
-export async function digest(_algorithm: string, data: BufferSource): Promise<ArrayBuffer> {
+export async function digest(algorithm: string, data: BufferSource): Promise<ArrayBuffer> {
   const bytes = ArrayBuffer.isView(data)
     ? new Uint8Array(data.buffer, data.byteOffset, data.byteLength)
     : new Uint8Array(data);
-  const hash = createHash('sha256').update(bytes).digest();
+  const hash = createHash(algorithm.toLowerCase().replace('-', '')).update(bytes).digest();
   return Uint8Array.from(hash).buffer;
 }

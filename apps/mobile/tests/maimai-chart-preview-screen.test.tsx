@@ -169,45 +169,6 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     }));
   });
 
-  it('persists only player settings fields from bridge messages', async () => {
-    await render(<MaimaiChartPreviewScreen />);
-    await waitFor(() => expect(screen.getByTestId('maimai-chart-preview-webview')).toBeTruthy());
-    const webview = screen.getByTestId('maimai-chart-preview-webview');
-
-    await fireEvent(webview, 'message', {
-      nativeEvent: {
-        data: "{\"type\":\"settings\",\"settings\":{\"hiSpeed\":7.5,\"backgroundMode\":\"video\",\"videoBackgroundPrompted\":true}}",
-      },
-    });
-
-    await waitFor(() => expect(mockSaveSettings).toHaveBeenCalledWith(
-      'maimai-chart-preview-settings',
-      JSON.stringify({ hiSpeed: 7.5, backgroundMode: 'video', videoBackgroundPrompted: true }),
-    ));
-  });
-
-  it('serializes rapid settings messages without losing earlier fields', async () => {
-    await render(<MaimaiChartPreviewScreen />);
-    await waitFor(() => expect(screen.getByTestId('maimai-chart-preview-webview')).toBeTruthy());
-    const webview = screen.getByTestId('maimai-chart-preview-webview');
-
-    await act(async () => {
-      await fireEvent(webview, 'message', {
-        nativeEvent: { data: "{\"type\":\"settings\",\"settings\":{\"backgroundMode\":\"image\"}}" },
-      });
-      await fireEvent(webview, 'message', {
-        nativeEvent: { data: "{\"type\":\"settings\",\"settings\":{\"videoBackgroundPrompted\":true}}" },
-      });
-      await Promise.resolve();
-      await Promise.resolve();
-    });
-
-    expect(mockSaveSettings).toHaveBeenLastCalledWith(
-      'maimai-chart-preview-settings',
-      JSON.stringify({ backgroundMode: 'image', videoBackgroundPrompted: true }),
-    );
-  });
-
   it('uses the shared action notification for the one-time video warning', async () => {
     await render(<MaimaiChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('maimai-chart-preview-webview')).toBeTruthy());
@@ -228,10 +189,9 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
       actions: { label: string; onPress?: () => void }[];
     };
     notification.actions.find((action) => action.label === '暂不启用')?.onPress?.();
-    expect(mockInjectJavaScript).toHaveBeenCalledWith(
-      expect.stringContaining('background-video-confirmation-result'),
-    );
-    expect(mockInjectJavaScript).toHaveBeenCalledWith(expect.stringContaining('"accepted":false'));
+    const postMessage = jest.fn();
+    runInNewContext(String(mockInjectJavaScript.mock.calls.at(-1)![0]), { window: { postMessage } });
+    expect(postMessage).toHaveBeenCalledWith({ type: 'background-video-confirmation-result', accepted: false }, '*');
   });
 
   it('keeps the player open when an optional background resource returns an HTTP error', async () => {

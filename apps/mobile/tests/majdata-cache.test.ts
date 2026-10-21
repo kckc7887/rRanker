@@ -113,9 +113,9 @@ describe('Majdata revision and account cache', () => {
     await repository.saveResource(majdataSongKey(song.id), 1, 'now', { song, source: cachedSource });
     mock.getSong.mockRejectedValue(new Error('offline'));
     const onFresh = vi.fn();
-    expect(await loadMajdataSong(song.id, undefined, onFresh)).toEqual(song);
-    await vi.waitFor(() => expect(mock.getSong).toHaveBeenCalled());
-    await new Promise((resolve) => setTimeout(resolve, 20));
+    const fallback = Promise.withResolvers<typeof song>();
+    expect(await loadMajdataSong(song.id, undefined, onFresh, fallback.resolve)).toEqual(song);
+    expect(await fallback.promise).toEqual(song);
     expect(onFresh).not.toHaveBeenCalled();
   });
   it('reads cached song metadata without rewriting its provider or fetch time', async () => {

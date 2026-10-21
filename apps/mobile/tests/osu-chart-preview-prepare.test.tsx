@@ -3,6 +3,7 @@ import JSZip from 'jszip';
 import { TextDecoder, TextEncoder } from 'node:util';
 import { AbortController as NativeAbortController } from 'abort-controller';
 import { prepareOsuChartPreviewWebViewSource } from '@/features/osu-chart-preview/prepare-osu-chart-preview-webview';
+import type { OsuChartPreviewConfig } from '@/features/osu-chart-preview/configuration';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 
 const mockFiles = new Map<string, string | Uint8Array>();
@@ -103,6 +104,12 @@ const target = { gameId: 'osu-catch' as const, beatmapsetId: 10, beatmapId: 21 }
 const originalDecoder = globalThis.TextDecoder;
 const originalEncoder = globalThis.TextEncoder;
 
+function readPlayerConfig(uri: string): OsuChartPreviewConfig {
+  const window = { __OSU_CHART_PREVIEW_CONFIG__: undefined as OsuChartPreviewConfig | undefined };
+  new Function('window', /<script>(.*?)<\/script>/su.exec(String(mockFiles.get(uri)))![1])(window);
+  return window.__OSU_CHART_PREVIEW_CONFIG__!;
+}
+
 beforeAll(() => { Object.assign(globalThis, { TextDecoder, TextEncoder }); });
 afterAll(() => { Object.assign(globalThis, { TextDecoder: originalDecoder, TextEncoder: originalEncoder }); });
 beforeEach(async () => {
@@ -127,11 +134,13 @@ describe('osu 原生资源准备生命周期', () => {
     expect([...mockFiles.keys()].some(path => /beatmapset-\d+\.osz$/u.test(path))).toBe(false);
     expect([...mockFiles.keys()].filter(path => path.includes('/media/'))).toHaveLength(2);
     const audio = [...mockFiles.entries()].find(([path]) => path.endsWith('audio-data.js'))?.[1];
-    expect(audio).toContain('"song.ogg":"AQID"');
-    expect(audio).not.toContain('movie.mp4');
-    const html = mockFiles.get(result.uri);
-    expect(html).toContain('"requestedMode":2');
-    expect(html).toContain('"uri":"file:///cache/');
+    const window = { __OSU_PREVIEW_AUDIO__: {} };
+    new Function('window', String(audio))(window);
+    expect(window.__OSU_PREVIEW_AUDIO__).toEqual({ 'song.ogg': 'AQID' });
+    const config = readPlayerConfig(result.uri);
+    expect(config.requestedMode).toBe(2);
+    const background = config.files.find(file => file.path === 'bg.png');
+    expect(mockFiles.get(background?.uri ?? '')).toEqual(Uint8Array.from([4, 5]));
     expect(progress).toHaveBeenLastCalledWith(expect.objectContaining({ value: 1 }));
     result.dispose();
     expect(mockFiles.size).toBe(0);
@@ -139,9 +148,8 @@ describe('osu 原生资源准备生命周期', () => {
 
   it('原生AbortController没有throwIfAborted时仍可完成准备', async () => {
     const controller = new NativeAbortController();
-    expect('throwIfAborted' in controller.signal).toBe(false);
     const result = await prepareOsuChartPreviewWebViewSource(target, 'dark', {}, controller.signal as unknown as AbortSignal);
-    expect(mockFiles.get(result.uri)).toContain('"requestedMode":2');
+    expect(readPlayerConfig(result.uri).requestedMode).toBe(2);
     result.dispose();
     expect(mockFiles.size).toBe(0);
   });

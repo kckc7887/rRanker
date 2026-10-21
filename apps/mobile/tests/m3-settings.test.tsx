@@ -1,8 +1,7 @@
 import { useDebugStore } from '@/state/debug-store';
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { cleanup, act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { queryClient } from '@/state/query-client';
-import { StyleSheet } from 'react-native';
 import { GameAccountsScreen } from '@/screens/GameAccountsScreen';
 import {
   createLocalMaimaiAccount,
@@ -220,8 +219,11 @@ jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
 }) }));
 jest.mock('@/hooks/use-native-tab-bottom-inset', () => ({ useNativeTabBottomInset: () => 34 }));
 
+afterEach(async () => { await cleanup(); jest.useRealTimers(); });
+
 describe('M3A game account management', () => {
   beforeEach(() => {
+    jest.useFakeTimers();
     useDebugStore.setState({ hydrated: true, testAccountsEnabled: true });
     jest.clearAllMocks();
     mockClearOrder.length = 0;
@@ -242,12 +244,6 @@ describe('M3A game account management', () => {
     expect(screen.getByText('水鱼查分器')).toBeTruthy();
     expect(screen.getByText('测试水鱼')).toBeTruthy();
     expect(screen.getByLabelText('添加游戏账号')).toBeTruthy();
-    expect(StyleSheet.flatten(screen.getByTestId(`account-card-${mockAccount.id}`).props.style)).toEqual(expect.objectContaining({
-      backgroundColor: '#FFFFFF', borderRadius: 12, borderWidth: 1, borderColor: '#246BFD',
-    }));
-    expect(StyleSheet.flatten(screen.getByLabelText('添加游戏账号').props.style)).toEqual(expect.objectContaining({
-      right: 20, width: 56, height: 56, borderRadius: 28, backgroundColor: '#246BFD',
-    }));
     expect(screen.queryByText('Phigros')).toBeNull();
 
     await fireEvent.press(screen.getByLabelText('添加游戏账号'));

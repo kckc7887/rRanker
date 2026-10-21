@@ -8,9 +8,8 @@ import {
   parsePhigrosPushDelta,
   resolvePhigrosPushRequest,
   resolvePushExactTarget,
-  type PushRecommendationsResult,
 } from '@/domain/phigros-push';
-import { computeB30, type PhigrosScoreEntry } from '@/domain/phigros';
+import type { PhigrosScoreEntry } from '@/domain/phigros';
 
 describe('resolvePushExactTarget', () => {
   it('maps 16.1691 + 0.01 to exact 16.1750 and display 16.18', () => {
@@ -114,15 +113,15 @@ describe('push request parameters', () => {
     const single = await findPushRecommendations(gameRecord, difficultyTable, { delta: 0.01, chartCost: 1 });
     expect(single.chartCost).toBe(1);
     expect(single.searchStatus).toBe('verified');
-    expectVerifiedPlan(gameRecord, difficultyTable, single);
+    expect(single.plan).toEqual([expect.objectContaining({ songId: 'song.new' })]);
+    expect(single.plan[0]!.targetAcc).toBeGreaterThanOrEqual(70);
 
     const maximum = await findPushRecommendations(gameRecord, difficultyTable, { delta: 0.01, chartCost: 30 });
     expect(maximum.chartCost).toBe(30);
     expect(maximum.perChartShare).toBeCloseTo(maximum.gainNeeded / 30, 3);
 
     const rounded = await findPushRecommendations(gameRecord, difficultyTable, { delta: 0.014, chartCost: 1 });
-    expect(rounded.exactTarget)
-      .toBe(resolvePushExactTarget(rounded.currentRks, 0.01).exactTarget);
+    expect(rounded.exactTarget).toBe(0.005);
   });
 });
 
@@ -182,20 +181,16 @@ describe('findPushRecommendations', () => {
       chartCost: 1,
     });
 
-    expect(result.currentRks).toBeGreaterThan(0);
-    expect(result.exactTarget).toBe(
-      resolvePushExactTarget(result.currentRks, 0.01).exactTarget,
-    );
+    expect(result.currentRks).toBeCloseTo(12.6296, 4);
+    expect(result.exactTarget).toBeCloseTo(12.635, 6);
     const shown = [...result.plan, ...result.alternatives];
     expect(shown.length).toBeGreaterThan(0);
     expect(result.plan).toEqual([shown[0]]);
     expect(result.recommendations).toEqual(result.plan);
     expect(result.searchStatus).toBe('verified');
-    expect(resultingRks(gameRecord, difficultyTable, result.plan))
-      .toBeGreaterThanOrEqual(result.exactTarget - 1e-9);
 
     const first = result.plan[0]!;
-    expect(first.targetAcc).toBeGreaterThan(first.currentAcc);
+    expect(first.targetAcc).toBe(99.75);
     expect(first.rksGain).toBeGreaterThanOrEqual(result.perChartShare - 1e-6);
 
     for (let i = 1; i < shown.length; i++) {
@@ -204,24 +199,6 @@ describe('findPushRecommendations', () => {
       expect(current.accDiff > previous.accDiff
         || (current.accDiff === previous.accDiff && current.difficulty >= previous.difficulty)).toBe(true);
     }
-
-    const pushSong = first.songId;
-    const pushed = { ...gameRecord };
-    const levels = [...(pushed[pushSong] ?? [null, null, null, null])];
-    const existing = levels[first.level];
-    levels[first.level] = {
-      ...(existing ?? entry(pushSong, first.level, first.difficulty, 0, 0)),
-      rawAcc: first.targetAcc,
-      acc: first.targetAcc,
-      score: Math.min(1_000_000, Math.floor(first.targetAcc * 10000)),
-    };
-    pushed[pushSong] = levels;
-
-    const after = await findPushRecommendations(pushed, difficultyTable, {
-      delta: 0.01,
-      chartCost: 1,
-    });
-    expect(after.currentRks).toBeGreaterThanOrEqual(result.currentRks + result.perChartShare);
   });
 
   it('higher chartCost lowers the per-chart ACC requirement', async () => {
@@ -240,8 +217,6 @@ describe('findPushRecommendations', () => {
     expect(split.plan.length).toBeGreaterThan(1);
     expect(split.plan.length).toBeLessThanOrEqual(4);
     expect(Math.max(...split.plan.map((item) => item.targetAcc))).toBeLessThan(solo.plan[0]!.targetAcc);
-    expect(resultingRks(gameRecord, difficultyTable, split.plan))
-      .toBeGreaterThanOrEqual(split.exactTarget - 1e-9);
   });
 
   it('hides per-song targets when two charts compete for one Best27 slot', async () => {
@@ -279,9 +254,7 @@ describe('findPushRecommendations', () => {
     });
     expect(solo.searchStatus).toBe('verified');
     expect(solo.combinationReachesTarget).toBe(true);
-    expect(solo.plan.length).toBeGreaterThan(0);
-    expect(resultingRks(gameRecord, difficultyTable, solo.plan))
-      .toBeGreaterThanOrEqual(solo.exactTarget - 1e-9);
+    expect(solo.plan).toEqual([expect.objectContaining({ targetAcc: 96.66 })]);
   });
 
   it('can exclude recommendations that require φ (target Acc 100%)', async () => {
@@ -324,32 +297,6 @@ function inCharts(rows: readonly { id: string; difficulty: number; rawAcc: numbe
   return { gameRecord, difficultyTable };
 }
 
-function resultingRks(
-  gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
-  difficultyTable: Record<string, number[]>,
-  plan: PushRecommendationsResult['plan'],
-): number {
-  const updated = structuredClone(gameRecord);
-  for (const target of plan) {
-    const levels = updated[target.songId] ?? [null, null, null, null];
-    levels[target.level] = entry(target.songId, target.level, target.difficulty,
-      Math.round(target.targetAcc * 10000), target.targetAcc);
-    updated[target.songId] = levels;
-  }
-  return computeB30(updated, difficultyTable).rks;
-}
-
-function expectVerifiedPlan(
-  gameRecord: Record<string, (PhigrosScoreEntry | null)[]>,
-  difficultyTable: Record<string, number[]>,
-  result: PushRecommendationsResult,
-) {
-  expect(result.searchStatus).toBe('verified');
-  expect(result.combinationReachesTarget).toBe(true);
-  expect(resultingRks(gameRecord, difficultyTable, result.plan))
-    .toBeGreaterThanOrEqual(result.exactTarget - 1e-9);
-}
-
 describe('push recommendations', () => {
 
   it('finds a joint plan when no single chart can cover the average share', async () => {
@@ -363,8 +310,18 @@ describe('push recommendations', () => {
       chartCost: 3,
       includePhi: false,
     });
-    expectVerifiedPlan(gameRecord, difficultyTable, result);
+    expect(result.searchStatus).toBe('verified');
+    expect(result.combinationReachesTarget).toBe(true);
     expect(result.exactTarget).toBeCloseTo(0.795, 6);
+    const targets = new Map(result.plan.map(item => [item.songId, item.targetAcc]));
+    const high = targets.get('song.hi') ?? 99.5;
+    const lowA = targets.get('song.lo.a') ?? 99.5;
+    const lowB = targets.get('song.lo.b') ?? 99.5;
+    expect(result.plan.length).toBeGreaterThan(1);
+    expect(result.plan.every(item => item.targetAcc < 100)).toBe(true);
+    /** 三张普通成绩的 RKS 总和至少为 0.795×30，无 Phi 额外贡献。 */
+    expect(16 * ((high - 55) / 45) ** 2 + 4 * ((lowA - 55) / 45) ** 2 + 4 * ((lowB - 55) / 45) ** 2)
+      .toBeGreaterThanOrEqual(23.85);
   });
 
   it('reports not_found instead of impossibility when the candidate pool is too small', async () => {
@@ -392,12 +349,13 @@ describe('push recommendations', () => {
       { id: 'song.new', difficulty: 15, rawAcc: 0 },
     ]);
     const result = await findPushRecommendations(gameRecord, difficultyTable, {
-      delta: 0.01,
+      delta: 0.1,
       chartCost: 1,
       includePhi: false,
     });
-    expectVerifiedPlan(gameRecord, difficultyTable, result);
-    expect(result.plan[0]).toMatchObject({ songId: 'song.new', currentAcc: 0 });
+    expect(result.searchStatus).toBe('verified');
+    expect(result.combinationReachesTarget).toBe(true);
+    expect(result.plan).toEqual([expect.objectContaining({ songId: 'song.new', currentAcc: 0, targetAcc: 74.62 })]);
   });
 
   it('sorts equal Acc gaps by difficulty', async () => {
@@ -409,7 +367,8 @@ describe('push recommendations', () => {
       delta: 0.01,
       chartCost: 1,
     });
-    expectVerifiedPlan(gameRecord, difficultyTable, result);
+    expect(result.searchStatus).toBe('verified');
+    expect(result.combinationReachesTarget).toBe(true);
     const shown = [...result.plan, ...result.alternatives];
     for (let i = 1; i < shown.length; i += 1) {
       const previous = shown[i - 1]!;

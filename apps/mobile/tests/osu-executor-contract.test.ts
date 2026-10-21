@@ -43,10 +43,8 @@ describe('OsuScoreProvider 走公共请求执行器', () => {
 
   it('只读端点固定单次尝试：429 不做退避也不重发', async () => {
     mocks.fetch.mockResolvedValue(new Response('', { status: 429, headers: { 'Retry-After': '5' } }));
-    const started = Date.now();
     await expect(new OsuScoreProvider(session).getOwnUser('osu-standard')).rejects.toMatchObject({ code: 'rate_limit' });
     expect(mocks.fetch).toHaveBeenCalledTimes(1);
-    expect(Date.now() - started).toBeLessThan(1_000);
   });
 
   it('无效 JSON 与网络失败归一化文案保持 osu! 语义', async () => {

@@ -56,9 +56,7 @@ test('Majdata overview uses the original single value card with the combined tot
   const screen = await render(<OverviewScreen />);
   expect(screen.getByText('Majdata Net · 玩家概览')).toBeTruthy();
   expect(screen.getByText('DX · Classic')).toBeTruthy();
-  expect(screen.getByTestId('dx-rating-card-value').props.children).toBe('395.6788%');
-  expect(screen.getByTestId('dx-rating-card-value').props.numberOfLines).toBe(1);
-  expect(screen.getByTestId('dx-rating-card-value').props.adjustsFontSizeToFit).toBe(true);
+  expect(screen.getByTestId('dx-rating-card-value')).toHaveTextContent('395.6788%');
   expect(screen.queryByTestId('dx-rating-card-stars')).toBeNull();
   expect(screen.queryByText('DX')).toBeNull();
   expect(screen.queryByText('Classic')).toBeNull();

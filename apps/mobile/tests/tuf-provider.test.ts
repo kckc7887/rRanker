@@ -28,16 +28,23 @@ describe('TufProvider', () => {
     expect(resolveTufAvatarUrl({ avatarUrl: 'https://example.test/legacy.png' })).toBe('https://example.test/legacy.png');
     expect(resolveTufAvatarUrl({})).toBeNull();
   });
-  it('parses sanitized player, pass and paged level snapshots without credentials', async () => {
+  it('parses public player, scores, level details and difficulties without credentials', async () => {
     const fetcher = vi.fn()
       .mockResolvedValueOnce(response(playerProfile))
       .mockResolvedValueOnce(response(passPage))
-      .mockResolvedValueOnce(response(levelPage));
+      .mockResolvedValueOnce(response(levelPage))
+      .mockResolvedValueOnce(response({ level: levelPage.results[0] }))
+      .mockResolvedValueOnce(response([{ id: 12, name: 'G12', type: 'PGU', baseScore: 50, color: '#F2A700' }]));
     const provider = new TufProvider(fetcher as typeof fetch, 'https://tuf.test');
     await expect(provider.getPlayerProfile(25)).resolves.toMatchObject({ id: 25, rankedScore: 1824.52 });
     await expect(provider.getPasses(25, { offset: 0, limit: 30, sortBy: 'impact', order: 'DESC', bestPerLevel: true }))
       .resolves.toMatchObject({ total: 1, passes: [{ id: 9001, accuracy: 100 }] });
     await expect(provider.searchLevels({ offset: 0, limit: 30 })).resolves.toMatchObject({ hasMore: false });
+    await expect(provider.getLevel(11372)).resolves.toMatchObject({ level: { id: 11372, song: '脱敏测试关卡' } });
+    await expect(provider.getDifficulties()).resolves.toMatchObject([{ id: 12, name: 'G12', type: 'PGU', baseScore: 50 }]);
+    expect(fetcher.mock.calls.map(([url]) => new URL(url).pathname)).toEqual(expect.arrayContaining([
+      '/v2/database/levels/11372', '/v2/database/difficulties',
+    ]));
     for (const call of fetcher.mock.calls) expect(call[1]?.headers).toEqual({ Accept: 'application/json', 'Cache-Control': 'no-store' });
     expect(JSON.stringify(fetcher.mock.calls)).not.toMatch(/authorization|token|cookie/i);
   });

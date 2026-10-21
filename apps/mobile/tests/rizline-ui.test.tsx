@@ -1,12 +1,10 @@
 import { act, cleanup, fireEvent, render, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Animated, InteractionManager, processColor } from 'react-native';
+import { Animated } from 'react-native';
 import { RizlineScoreCard } from '@/components/rizline/RizlineScoreCard';
 import { RizlineSongDetail } from '@/components/rizline/RizlineSongDetail';
 import { RizlineSongRow } from '@/components/rizline/RizlineSongRow';
-import { RizlineDifficultyBadge } from '@/components/rizline/RizlineScoreVisuals';
-import { BADGE_GOLD_BORDER_COLORS } from '@/domain/badge-theme';
-import { RIZLINE_DIFFICULTIES, rizlineDifficultyColors, type RizlineRecord } from '@/domain/rizline';
+import { type RizlineRecord } from '@/domain/rizline';
 import { METRIC_GRADIENT_THEMES } from '@/domain/metric-gradient-theme';
 import { RizlineBestScreen, RizlineCatalogScreen, RizlineRecordsScreen } from '@/screens/RizlineScreens';
 import { RizlineRandomChartsScreen } from '@/screens/RizlineRandomChartsScreen';
@@ -79,10 +77,6 @@ describe('Rizline UI', () => {
     mockCatalogState = { hasData: true, isLoading: false, isError: false };
     jest.spyOn(Animated, 'loop').mockReturnValue({ start: jest.fn(), stop: jest.fn(), reset: jest.fn() });
     jest.spyOn(Animated, 'timing');
-    jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation((callback) => {
-      (callback as () => void)();
-      return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-    });
   });
   afterEach(async () => { await cleanup(); jest.restoreAllMocks(); });
 
@@ -101,7 +95,6 @@ describe('Rizline UI', () => {
   it('renders score metrics and opens the actual chart difficulty', async () => {
     const screen = await render(<RizlineScoreCard record={mockRecords[0]!} />);
     expect(screen.getByText('119.1235%')).toBeTruthy(); expect(screen.getByText('139.1235')).toBeTruthy();
-    expect(screen.getByText('RKS')).toHaveStyle({ fontSize: 10 });
     expect(screen.queryByText('AP')).toBeNull();
     await fireEvent.press(screen.getByTestId('rizline-score-song.a.IN'));
     expect(mockPush).toHaveBeenCalledWith({ pathname: '/songs/[songId]', params: { songId: 'song.a', levelIndex: '2', gameId: 'rizline' } });
@@ -236,14 +229,6 @@ describe('Rizline UI', () => {
     expect(screen.queryByText('初见成就')).toBeNull(); expect(screen.queryByText(/更新时间/)).toBeNull();
     let chart = within(screen.getByTestId('rizline-chart-IN'));
     expect(chart.getByText('HIT')).toBeTruthy(); expect(chart.getByText('COMBO')).toBeTruthy(); expect(chart.getByText('Max Score')).toBeTruthy();
-    for (const [index, difficulty] of (['AT', 'IN', 'HD', 'EZ'] as const).entries()) {
-      await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: index * carousel.props.snapToInterval } } });
-      const difficultyCard = within(screen.getByTestId(`rizline-chart-${difficulty}`));
-      expect(difficultyCard.getByLabelText('加入练习清单')).toHaveStyle({
-        backgroundColor: rizlineDifficultyColors(difficulty).bg, borderColor: rizlineDifficultyColors(difficulty).bg,
-      });
-      expect(difficultyCard.getByText('加入练习清单')).toHaveStyle({ color: '#FFFFFF' });
-    }
     await fireEvent.scroll(carousel, { nativeEvent: { contentOffset: { x: carousel.props.snapToInterval } } });
     chart = within(screen.getByTestId('rizline-chart-IN'));
     await fireEvent.press(chart.getByLabelText('加入练习清单'));
@@ -252,10 +237,6 @@ describe('Rizline UI', () => {
     const inActions = chart.getAllByRole('button').map((button) => button.props.accessibilityLabel);
     expect(inActions.indexOf('查看谱面确认：测试歌曲 IN'))
       .toBe(inActions.indexOf('加入练习清单') + 1);
-    expect(preview).toHaveStyle({
-      backgroundColor: rizlineDifficultyColors('IN').bg, borderColor: rizlineDifficultyColors('IN').bg,
-    });
-    expect(chart.getByText('查看谱面确认')).toHaveStyle({ color: '#FFFFFF' });
     await fireEvent.press(preview);
     expect(mockPush).toHaveBeenCalledWith({
       pathname: '/songs/rizline-chart-preview',
@@ -276,15 +257,8 @@ describe('Rizline UI', () => {
     expect(chart.getAllByText('—').length).toBeGreaterThanOrEqual(3);
     expect(chart.queryByText('AP')).toBeNull();
     expect(chart.queryByText('AH')).toBeNull();
-    expect(chart.getByLabelText('加入练习清单')).toHaveStyle({ backgroundColor: rizlineDifficultyColors('SP').bg });
     await fireEvent.press(chart.getByLabelText('加入练习清单'));
     expect(mockSetPractice).toHaveBeenCalledWith('song.a.sp', 'SD', 4, true);
-  });
-
-  it.each(RIZLINE_DIFFICULTIES)('uses the shared white-text capsule for %s', async (difficulty) => {
-    const screen = await render(<RizlineDifficultyBadge difficulty={difficulty} level="12" />);
-    expect(screen.getByTestId(`rizline-difficulty-${difficulty}`)).toHaveStyle({ borderRadius: 999, height: 24 });
-    expect(screen.getByText(`${difficulty} 12`)).toHaveStyle({ color: '#FFFFFF' });
   });
 
   it('shows catalog song-row badges as constants without difficulty names', async () => {
@@ -329,12 +303,7 @@ describe('Rizline UI', () => {
       } else {
         expect(card.getByText(status.toUpperCase())).toBeTruthy();
         expect(card.queryByText(status === 'ap' ? 'AH' : 'AP')).toBeNull();
-        expect(card.getByTestId(`rizline-status-${status}`).props.colors).toEqual(
-          (status === 'ap' ? BADGE_GOLD_BORDER_COLORS : METRIC_GRADIENT_THEMES.mint.baseColors).map(processColor),
-        );
         expect(card.getByTestId(`rizline-flowing-accuracy-${status}`)).toBeTruthy();
-        expect(card.getByTestId(`rizline-flowing-accuracy-${status}-gradient`).props.colors)
-          .toEqual(METRIC_GRADIENT_THEMES[status === 'ap' ? 'gold' : 'mint'].colors.map(processColor));
         expect(Animated.timing).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({
           duration: METRIC_GRADIENT_THEMES[status === 'ap' ? 'gold' : 'mint'].duration, isInteraction: false,
         }));

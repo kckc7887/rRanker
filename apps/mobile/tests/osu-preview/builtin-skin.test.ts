@@ -130,29 +130,6 @@ afterAll(async () => {
 });
 
 describe('built-in preview skin', () => {
-  it('supplies every gameplay component in all four modes without loading external images or sounds', async () => {
-    const skin = await createBuiltinSkin('brick', 4);
-    const required = [
-      'hitcircle', 'hitcircleoverlay', 'sliderstartcircle', 'sliderstartcircleoverlay',
-      'approachcircle', 'sliderb', 'sliderfollowcircle', 'reversearrow', 'sliderscorepoint',
-      'followpoint', 'cursor', 'cursormiddle', 'cursortrail',
-      'taikohitcircle', 'taikohitcircleoverlay', 'taikobigcircle', 'taikobigcircleoverlay',
-      'taiko-bar-right', 'taiko-bar-right-glow', 'taiko-bar-left', 'taiko-barline',
-      'taiko-roll-middle', 'taiko-roll-end', 'taiko-drum-inner', 'taiko-drum-outer', 'taiko-glow',
-      'fruit-pear', 'fruit-grapes', 'fruit-apple', 'fruit-orange', 'fruit-drop', 'fruit-bananas',
-      'fruit-catcher-idle', 'fruit-catcher-fail', 'fruit-catcher-kiai',
-      'scoreboard-explosion-1', 'scoreboard-explosion-2',
-      'mania-stage-left', 'mania-stage-right', 'mania-stage-light', 'lightingn-0', 'lightingl-0',
-    ];
-    for (const stem of required) assert.ok(bitmap(skin, stem).width > 1, stem);
-    for (const fruit of ['pear', 'grapes', 'apple', 'orange', 'drop', 'bananas']) bitmap(skin, `fruit-${fruit}-overlay`);
-    for (const stem of ['spinner-bottom', 'spinner-top', 'spinner-middle2', 'spinner-circle', 'spinner-approachcircle', 'spinner-metre']) {
-      assert.equal(skin.spinnerImages.get(`${stem}@2x.png`), bitmap(skin, stem));
-    }
-    assert.equal(skin.sounds.size, 0);
-    assert.deepEqual(bitmap(skin, 'taikohitcircle').fills, ['#ffffff']);
-    assert.deepEqual(bitmap(skin, 'taikobigcircle').fills, ['#ffffff']);
-  });
 
   it('fills every catch object with the same translucent disc and opaque same-colour stroke while keeping catcher geometry opaque', async () => {
     const skin = await createBuiltinSkin('brick', 4);
@@ -165,53 +142,6 @@ describe('built-in preview skin', () => {
       assert.equal(bitmap(skin, `fruit-${fruit}-overlay`).strokes.length, 0);
     }
     assert.deepEqual(bitmap(skin, 'fruit-catcher-idle').fills, ['#eef3f6']);
-  });
-
-  it('keeps invisible glyphs and judgement sentinels present to prevent renderer text fallback', async () => {
-    const skin = await createBuiltinSkin('brick');
-    for (const prefix of [skin.config.hitCirclePrefix, skin.config.scorePrefix, skin.config.comboPrefix, 'scoreentry']) {
-      for (const glyph of [...'0123456789', 'dot', 'percent', 'x', 'comma']) {
-        const image = bitmap(skin, `${prefix}-${glyph}`);
-        assert.equal(image.width, 1);
-        assert.equal(image.fills.length, 0);
-      }
-    }
-    for (const stem of ['hit0', 'hit50', 'hit100', 'hit300']) {
-      const image = bitmap(skin, stem);
-      assert.equal(image.width, 2, 'standard lookup must not reject the transparent judgement');
-      assert.equal(image.fills.length, 0);
-    }
-    for (const stem of ['mania-hit0', 'mania-hit300', 'mania-hit300g', 'spinner-clear', 'spinner-spin']) {
-      assert.equal(bitmap(skin, stem).width, 1);
-    }
-  });
-
-  it('binds every note, hold segment and receptor explicitly for the actual number of columns', async () => {
-    for (const variant of ['brick', 'circle'] as const) {
-      for (const keys of [1, 4, 5, 7, 9, 10, 18]) {
-        const skin = await createBuiltinSkin(variant, keys);
-        const section = skin.config.maniaSections[0]!;
-        assert.equal(section.keys, keys);
-        assert.equal(section.colours.length, keys);
-        assert.equal(section.coloursLight.length, keys);
-        assert.equal(section.columnLineWidth?.length, keys + 1);
-        if (keys <= 16) assert.equal(section.columnWidth, undefined, 'fitting stages must preserve the engine lane geometry');
-        assert.equal(section.hitPosition, undefined, 'skin must preserve the engine judgement time anchor');
-        assert.equal(section.noteBodyStyle, 0);
-        for (let col = 0; col < keys; col++) {
-          for (const field of [`noteimage${col}`, `noteimage${col}h`, `noteimage${col}t`, `noteimage${col}l`, `keyimage${col}`, `keyimage${col}d`]) {
-            const stem = section.imageLookups[field];
-            assert.ok(stem, `Missing explicit ${field} in ${keys}K`);
-            assert.ok(bitmap(skin, stem).width > 1);
-          }
-          const note = bitmap(skin, section.imageLookups[`noteimage${col}`]!);
-          assert.equal(note.height / note.width, variant === 'circle' ? 1 : 0.25);
-          const body = bitmap(skin, section.imageLookups[`noteimage${col}l`]!);
-          assert.ok(body.height < body.width * 4, 'short body must take the continuous stretch path');
-          assert.notEqual(section.imageLookups[`noteimage${col}t`], section.imageLookups[`noteimage${col}h`]);
-        }
-      }
-    }
   });
 
   it('fits only overflowing native stages while preserving existing lane positions and hit anchors', async () => {

@@ -169,17 +169,23 @@ describe('Simai statistics against original MajSimai output', () => {
 
 
 describe('MajdataPlay original judgment method', () => {
-  for (const sample of scoreReference) it(`${sample.kind} ${sample.isBreak ? 'Break' : 'normal'} ${sample.grade}`, () => {
+  const covered = new Set<string>();
+  for (const sample of scoreReference) {
     const kind = sample.isBreak ? 'break' : sample.kind === 'touch-hold' ? 'hold' : sample.kind as 'tap' | 'hold' | 'touch' | 'slide';
-    const notes = { tap: 0, hold: 0, slide: 0, touch: 0, break: 0, [kind]: 1 };
     let judgment: NormalJudgment | BreakJudgment = 'perfect';
     if (sample.grade === 'Miss' || sample.grade === 'TooFast') judgment = 'miss';
     else if (sample.grade.endsWith('Good')) judgment = 'good';
     else if (sample.grade.includes('Great')) judgment = !sample.isBreak ? 'great' : sample.grade.endsWith('3rd') ? 'great3' : sample.grade.endsWith('2nd') ? 'great2' : 'great1';
     else if (sample.isBreak) judgment = sample.grade === 'Perfect' ? 'criticalPerfect' : sample.grade.endsWith('2nd') ? 'perfect1' : 'perfect2';
-    expect(calculateAchievement(notes, { [kind]: { [judgment]: 1 } }, 'dx')).toBeCloseTo(sample.dx, 8);
-    expect(calculateAchievement(notes, { [kind]: { [judgment]: 1 } }, 'classic')).toBeCloseTo(sample.classic, 8);
-  });
+    const key = `${kind}:${judgment}:${sample.dx}:${sample.classic}`;
+    if (covered.has(key)) continue;
+    covered.add(key);
+    it(`${kind} ${judgment}`, () => {
+      const notes = { tap: 0, hold: 0, slide: 0, touch: 0, break: 0, [kind]: 1 };
+      expect(calculateAchievement(notes, { [kind]: { [judgment]: 1 } }, 'dx')).toBeCloseTo(sample.dx, 8);
+      expect(calculateAchievement(notes, { [kind]: { [judgment]: 1 } }, 'classic')).toBeCloseTo(sample.classic, 8);
+    });
+  }
 });
 
 

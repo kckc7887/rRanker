@@ -333,14 +333,6 @@ describe('总览上传和同步操作', () => {
     expect(screen.getByLabelText('打开置顶工具 DX Rating 计算器')).toBeTruthy();
   });
 
-  it('工具箱入口描述超过一行时单行省略', async () => {
-    mockProviderId = 'local';
-    const screen = await render(<OverviewScreen />);
-    const summary = screen.getByText('实力分析 · Rating · 达成率/容错 · 牌子进度 · 版本对照 · 万花筒 · 随机歌曲 · 音游地图 · 成绩图片');
-    expect(summary.props.numberOfLines).toBe(1);
-    expect(summary.props.ellipsizeMode).toBe('tail');
-  });
-
   it('在置顶工具上方展示牌子进度，并携带牌子参数跳转', async () => {
     mockPinnedPlateIds = [6102];
     mockPinnedToolIds = ['rating'];

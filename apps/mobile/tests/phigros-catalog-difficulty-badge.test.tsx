@@ -1,6 +1,5 @@
 import { render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { StyleSheet } from 'react-native';
 import { PhigrosSongRow } from '@/components/phigros/PhigrosSongRow';
 import type { Song } from '@/domain/models';
 
@@ -39,8 +38,5 @@ describe('Phigros catalog difficulty badge', () => {
 
     expect(screen.getByText('14.8')).toBeTruthy();
     expect(screen.queryByText('IN')).toBeNull();
-    expect(StyleSheet.flatten(
-      screen.getByLabelText('IN，定数 14.8').props.style,
-    )).toEqual(expect.objectContaining({ borderRadius: 6 }));
   });
 });

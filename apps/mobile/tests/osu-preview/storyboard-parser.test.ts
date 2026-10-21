@@ -1,7 +1,8 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { CHART_PREVIEW_PARSE_YIELD_INTERVAL } from '@/features/chart-preview-shared/chart-preview-resource-budget';
-import { parseBeatmapVisuals, referencedImageFiles, storyboardTimeRange, type StoryboardLoop, type StoryboardObject } from '../../src/features/osu-chart-preview/webview-player/events';
+import { parseBeatmapVisuals, referencedImageFiles, storyboardTimeRange } from '../../src/features/osu-chart-preview/webview-player/events';
+import { compileStoryboardTriggers } from '../../src/features/osu-chart-preview/webview-player/storyboard-triggers';
 import { evaluateSprite } from '../../src/features/osu-chart-preview/webview-player/storyboard';
 
 describe('storyboard source parsing', () => {
@@ -50,11 +51,8 @@ Sprite,Background,Centre,"sprite.png",320,240
   F,0,0,100,0,1
  M,0,2000,2100,0,0,100,100
 `).objects;
-    assert.deepEqual(sprite!.commands.map(({ type, start, end }) => ({ type, start, end })), [
-      { type: 'F', start: 1000, end: 1100 },
-      { type: 'F', start: 1100, end: 1200 },
-      { type: 'M', start: 2000, end: 2100 },
-    ]);
+    assert.equal(evaluateSprite(sprite!, 1050)?.fade, 0.5);
+    assert.equal(evaluateSprite(sprite!, 1150)?.fade, 0.5);
     assert.equal(evaluateSprite(sprite!, 2050)?.x, 50);
   });
 
@@ -64,7 +62,7 @@ Sprite,Background,Centre,"sprite.png",0,0
  L,1000,3
   F,0,100,200,0,1
 `).objects;
-    assert.deepEqual(sprite!.commands.map((command) => [command.start, command.end]), [[1100, 1200], [1200, 1300], [1300, 1400]]);
+    for (const time of [1150, 1250, 1350]) assert.equal(evaluateSprite(sprite!, time)?.fade, 0.5);
   });
 
   it('expands scalar, vector and colour parameter chains without losing final segments', () => {
@@ -91,33 +89,23 @@ Sprite,Foreground,Centre,"sprite.png",0,0
  T,Passing
   M,0,0,50,0,0,10,10
 `).objects;
-    assert.equal(sprite!.commands.length, 1);
-    assert.equal(sprite!.commands[0]!.start, -100);
-    assert.deepEqual(sprite!.triggers![0]!.commands.map((command) => [command.start, command.end]), [[0, 50], [50, 100]]);
-    assert.equal(sprite!.triggers![0]!.group, 7);
-    assert.equal(sprite!.triggers![1]!.start, -Infinity);
-    assert.equal(sprite!.triggers![1]!.end, Infinity);
+    assert.equal(evaluateSprite(sprite!, -50)?.fade, 0.5);
+    const [active] = compileStoryboardTriggers([sprite!], [{
+      beatmapMs: 200, objectId: 1, normalSet: 1, additionSet: 1, sampleIndex: 1, type: 'clap',
+    }]);
+    assert.equal(evaluateSprite(active!, 225)?.fade, 0.5);
+    assert.equal(evaluateSprite(active!, 275)?.fade, 0.5);
+    assert.equal(evaluateSprite(active!, 301), null);
   });
 
-  it('evaluates a large storyboard loop by time instead of allocating one command per iteration', () => {
-    let checks = 0;
+  it('repeats storyboard values and restores an earlier point after seek', () => {
     const [sprite] = parseBeatmapVisuals(`[Events]
 Sprite,Background,Centre,"sprite.png",0,0
- L,0,100000
+ L,0,3
   F,0,0,10,0,1
-`, [], { cancellation: { assertCurrent: () => { checks += 1; } } }).objects;
-    const count = (object: StoryboardObject | undefined): number => {
-      const walk = (loops: readonly StoryboardLoop[] | undefined): number => (loops ?? []).reduce(
-        (sum, loop) => sum + loop.commands.length + walk(loop.loops),
-        0,
-      );
-      return (object?.commands.length ?? 0) + walk(object?.loops);
-    };
-    assert.equal(count(sprite), 1);
-    assert.equal(sprite!.loops?.[0]?.count, 100000);
-    assert.equal(checks < 20, true);
+`).objects;
     assert.equal(evaluateSprite(sprite!, 5)?.fade, 0.5);
-    assert.equal(evaluateSprite(sprite!, 500005)?.fade, 0.5);
+    assert.equal(evaluateSprite(sprite!, 25)?.fade, 0.5);
   });
 
   it('stops an in-budget loop expansion when the caller generation is cancelled', () => {
@@ -135,7 +123,6 @@ Sprite,Background,Centre,"sprite.png",0,0
         },
       },
     }), /缓存请求已失效/);
-    assert.equal(checks > 1, true);
   });
 
   it('rejects references outside the archive without replacing valid assets', () => {

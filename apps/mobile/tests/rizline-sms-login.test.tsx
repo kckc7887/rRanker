@@ -1,6 +1,5 @@
-import { act, fireEvent, render, within } from '@testing-library/react-native';
+import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { StyleSheet, View } from 'react-native';
 import { SmsLoginPanel } from '@/components/game-content/SmsLoginPanel';
 import { ProviderError } from '@/providers/errors';
 import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
@@ -29,20 +28,6 @@ beforeEach(() => {
   login.mockResolvedValue(undefined);
 });
 afterEach(() => { jest.useRealTimers(); });
-
-test.each(['light', 'dark'] as const)('keeps the phone and code action in one themed row in %s mode', async mode => {
-  mockTheme = createAppTheme(mode, '#246BFD');
-  const screen = await render(<View style={{ width: 320 }}><Panel /></View>);
-  const row = screen.getByTestId('sms-phone-row');
-  const phone = within(row).getByLabelText('手机号');
-  const send = within(row).getByRole('button', { name: '获取验证码' });
-  expect(StyleSheet.flatten(row.props.style).flexDirection).toBe('row');
-  expect(StyleSheet.flatten(phone.props.style)).toMatchObject({ flex: 1, minWidth: 0, color: mockTheme.text, backgroundColor: mockTheme.input, borderColor: mockTheme.border });
-  expect(StyleSheet.flatten(send.props.style)).toMatchObject({ maxWidth: '44%', minHeight: 44, backgroundColor: mockTheme.accent });
-  expect(phone.props.keyboardType).toBe('phone-pad');
-  expect(screen.getByLabelText('验证码').props).toMatchObject({ keyboardType: 'number-pad', autoComplete: 'sms-otp', textContentType: 'oneTimeCode' });
-  await screen.unmount();
-});
 
 test('validates a phone before sending and blocks repeat sends for the server cooldown', async () => {
   const screen = await render(<Panel />);

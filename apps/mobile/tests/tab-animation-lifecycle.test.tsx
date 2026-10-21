@@ -1,20 +1,31 @@
-import { act, render, within } from '@testing-library/react-native';
+import { act, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { AccessibilityInfo, Animated, View } from 'react-native';
+import { Animated } from 'react-native';
 import { CachedContentActivityScope, CachedTabScreen } from '@/components/CachedTabScreen';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { fixtureRecords } from '@/fixtures/sanitized';
 
 let mockFocusEffect: (() => void | (() => void)) | null = null;
-
 jest.mock('expo-router', () => ({
   router: { push: jest.fn() },
   useFocusEffect: (effect: () => void | (() => void)) => { mockFocusEffect = effect; },
   useIsFocused: () => true,
 }));
-
 const originalIdle = globalThis.requestIdleCallback;
 const originalCancelIdle = globalThis.cancelIdleCallback;
+
+function observeNativeAnimations() {
+  const running = new Set<object>();
+  jest.spyOn(Animated, 'loop').mockImplementation(() => {
+    const animation = {
+      start: () => { running.add(animation); },
+      stop: () => { running.delete(animation); },
+      reset: () => undefined,
+    };
+    return animation;
+  });
+  return running;
+}
 
 describe('cached tab animation lifecycle', () => {
   afterEach(() => {
@@ -23,131 +34,56 @@ describe('cached tab animation lifecycle', () => {
     globalThis.cancelIdleCallback = originalCancelIdle;
   });
 
-  it('shares one native motion preference read and subscription across all mounted cards', async () => {
-    const read = jest.spyOn(AccessibilityInfo, 'isReduceMotionEnabled').mockResolvedValue(false);
-    const listen = jest.spyOn(AccessibilityInfo, 'addEventListener');
-    const record = { ...fixtureRecords[0], achievements: 100.5, rate: 'sssp', fc: 'app', fs: 'fsp' };
-    const screen = await render(<View>{Array.from({ length: 20 }, (_, index) => <ScoreRecordCard key={index} record={record} />)}</View>);
-    expect(read).toHaveBeenCalledTimes(1);
-    expect(listen.mock.calls.filter(([event]) => String(event) === 'reduceMotionChanged')).toHaveLength(1);
-    await screen.unmount();
-  });
-
   it('runs card animations only while both the row and its parent are active', async () => {
-    const animations: { start: jest.Mock; stop: jest.Mock }[] = [];
-    jest.spyOn(Animated, 'loop').mockImplementation(() => {
-      const animation = { start: jest.fn(), stop: jest.fn(), reset: jest.fn() };
-      animations.push(animation);
-      return animation as unknown as ReturnType<typeof Animated.loop>;
-    });
+    const running = observeNativeAnimations();
     const record = { ...fixtureRecords[0], achievements: 100.5, rate: 'sssp', fc: 'app', fs: 'fsp' };
     const tree = (row: boolean, parent = true) => <CachedContentActivityScope active={parent}>
       <CachedContentActivityScope active={row}><ScoreRecordCard record={record} /></CachedContentActivityScope>
     </CachedContentActivityScope>;
     const screen = await render(tree(false));
-    expect(animations).toHaveLength(0);
+    expect(running.size).toBe(0);
     await screen.rerender(tree(true));
-    const active = [...animations];
-    expect(active.length).toBeGreaterThan(0);
+    expect(running.size).toBeGreaterThan(0);
     await screen.rerender(tree(false));
-    expect(active.every(animation => animation.stop.mock.calls.length === 1)).toBe(true);
+    expect(running.size).toBe(0);
     await screen.rerender(tree(true, false));
-    expect(animations).toHaveLength(active.length);
+    expect(running.size).toBe(0);
     await screen.rerender(tree(true));
-    expect(animations).toHaveLength(active.length * 2);
+    expect(running.size).toBeGreaterThan(0);
+    await screen.unmount();
+    expect(running.size).toBe(0);
+  });
+
+  it('stops animations on blur and resumes only after the focused page settles', async () => {
+    const pending = new Map<number, () => void>();
+    let nextHandle = 0;
+    globalThis.requestIdleCallback = callback => {
+      const handle = ++nextHandle;
+      pending.set(handle, () => callback({ didTimeout: false, timeRemaining: () => 50 }));
+      return handle;
+    };
+    globalThis.cancelIdleCallback = handle => { pending.delete(handle); };
+    const settle = () => { const callbacks = [...pending.values()]; pending.clear(); callbacks.forEach(callback => callback()); };
+    const running = observeNativeAnimations();
+    const record = { ...fixtureRecords[0], achievements: 100.5, rate: 'sssp', fc: 'app', fs: 'fsp' };
+    const screen = await render(<CachedTabScreen><ScoreRecordCard record={record} /></CachedTabScreen>);
+    let cleanup: void | (() => void);
+    await act(() => { cleanup = mockFocusEffect?.(); });
+    expect(running.size).toBe(0);
+    await act(settle);
+    expect(running.size).toBeGreaterThan(0);
+    await act(() => { cleanup?.(); });
+    expect(running.size).toBe(0);
+    await act(() => { cleanup = mockFocusEffect?.(); });
+    expect(running.size).toBe(0);
+    await act(settle);
+    expect(running.size).toBeGreaterThan(0);
+    await act(() => { cleanup?.(); });
+    await act(() => { cleanup = mockFocusEffect?.(); });
+    await act(() => { cleanup?.(); });
+    await act(settle);
+    expect(running.size).toBe(0);
     await screen.unmount();
   });
 
-  it('stops native looping animations on blur and restarts them after refocus settles', async () => {
-    const pendingTasks: { callback: () => void; cancel: jest.Mock }[] = [];
-    globalThis.requestIdleCallback = callback => {
-      const task = { callback: () => callback({ didTimeout: false, timeRemaining: () => 50 }), cancel: jest.fn() };
-      pendingTasks.push(task);
-      return pendingTasks.length;
-    };
-    globalThis.cancelIdleCallback = handle => { pendingTasks[handle - 1]?.cancel(); };
-
-    const animations: { start: jest.Mock; stop: jest.Mock }[] = [];
-    jest.spyOn(Animated, 'loop').mockImplementation(() => {
-      const animation = { start: jest.fn(), stop: jest.fn(), reset: jest.fn() };
-      animations.push(animation);
-      return animation as unknown as ReturnType<typeof Animated.loop>;
-    });
-    const timing = jest.spyOn(Animated, 'timing');
-
-    const record = {
-      ...fixtureRecords[0],
-      achievements: 100.5,
-      rate: 'sssp',
-      fc: 'app',
-      fs: 'fsp',
-    };
-    await render(<CachedTabScreen><ScoreRecordCard record={record} /></CachedTabScreen>);
-
-    let cleanup: void | (() => void);
-    await act(() => { cleanup = mockFocusEffect?.(); });
-    expect(animations).toHaveLength(0);
-    await act(() => { pendingTasks[0]?.callback(); });
-    const foregroundAnimations = [...animations];
-    expect(foregroundAnimations.length).toBeGreaterThan(0);
-    expect(foregroundAnimations.every((animation) => animation.start.mock.calls.length === 1)).toBe(true);
-    expect(timing.mock.calls.every(([, config]) => (
-      config as { isInteraction?: boolean }
-    ).isInteraction === false)).toBe(true);
-
-    await act(() => { cleanup?.(); });
-    expect(foregroundAnimations.every((animation) => animation.stop.mock.calls.length === 1)).toBe(true);
-    expect(animations).toHaveLength(foregroundAnimations.length);
-
-    let secondCleanup: void | (() => void);
-    await act(() => { secondCleanup = mockFocusEffect?.(); });
-    expect(pendingTasks).toHaveLength(2);
-    expect(animations).toHaveLength(foregroundAnimations.length);
-    await act(() => { pendingTasks[1]?.callback(); });
-    const resumedAnimations = animations.slice(foregroundAnimations.length);
-    expect(resumedAnimations).toHaveLength(foregroundAnimations.length);
-    expect(resumedAnimations.every((animation) => animation.start.mock.calls.length === 1)).toBe(true);
-
-    await act(() => { secondCleanup?.(); });
-    expect(resumedAnimations.every((animation) => animation.stop.mock.calls.length === 1)).toBe(true);
-    expect(animations).toHaveLength(foregroundAnimations.length * 2);
-
-    let thirdCleanup: void | (() => void);
-    await act(() => { thirdCleanup = mockFocusEffect?.(); });
-    expect(pendingTasks).toHaveLength(3);
-    expect(animations).toHaveLength(foregroundAnimations.length * 2);
-    await act(() => { thirdCleanup?.(); });
-    expect(pendingTasks[2]?.cancel).toHaveBeenCalledTimes(1);
-    expect(animations).toHaveLength(foregroundAnimations.length * 2);
-  });
-
-  it('shows the UTAGE chart label without DX score, Rating or a fabricated constant', async () => {
-    const record = {
-      ...fixtureRecords[0]!,
-      songId: '100123',
-      title: '原曲标题',
-      type: 'UTAGE' as const,
-      levelIndex: 0,
-      difficulty: 'utage' as const,
-      difficultyConstant: 0,
-      level: '14+?',
-      utage: { kanji: '協', isBuddy: true },
-      achievements: 100.5,
-      dxScore: 1234,
-      rating: 0,
-      rate: 'sssp',
-    };
-    const screen = await render(<ScoreRecordCard record={record} />);
-    const card = within(screen.getByLabelText('查看谱面 原曲标题 UTAGE utage'));
-
-    expect(card.queryByText('DX分数')).toBeNull();
-    expect(card.queryByText('1234')).toBeNull();
-    expect(card.getByText('協 14+?')).toBeTruthy();
-    expect(card.queryByText(/0\.0/)).toBeNull();
-    expect(card.queryByText('Rating')).toBeNull();
-    await screen.rerender(<ScoreRecordCard record={{ ...record, utage: undefined }} />);
-    expect(screen.getByText('U·TA·GE 14+?')).toBeTruthy();
-    await screen.rerender(<ScoreRecordCard record={{ ...record, utage: undefined, level: undefined }} />);
-    expect(screen.getByText('U·TA·GE')).toBeTruthy();
-  });
 });

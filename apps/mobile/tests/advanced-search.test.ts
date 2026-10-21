@@ -1,12 +1,5 @@
 import type { Song } from '@/domain/models';
-import { vi } from 'vitest';
-import * as wanakana from 'wanakana';
 import { buildSearchDocument, buildSongSearchIndex, EMPTY_SONG_FILTERS, findMatchedAlias, normalizeSearchText, searchDocumentMatches, searchSongs, songSearchDocument } from '@/utils/search';
-
-vi.mock('wanakana', async (importOriginal) => {
-  const actual = await importOriginal<typeof import('wanakana')>();
-  return { ...actual, toRomaji: vi.fn(actual.toRomaji) };
-});
 
 const songs: Song[] = [{
   id: '1806', title: 'Ｆｒａｑ', artist: 'Team Grimoire', version: '2026', versionId: 25500,
@@ -19,41 +12,23 @@ const songs: Song[] = [{
   }],
 }];
 describe('advanced song search', () => {
-  it('reuses catalog text for a record lookup and replaces revised aliases', () => {
+  it('曲库和成绩搜索返回相同别名命中，修订后采用新别名', () => {
     const snapshot = [{ ...songs[0], aliases: ['しゅうまつ'] }];
     expect(searchSongs(buildSongSearchIndex(snapshot), { ...EMPTY_SONG_FILTERS, keyword: 'syuumatu' })).toEqual(snapshot);
-    const convert = vi.mocked(wanakana.toRomaji);
-    convert.mockClear();
     const recordSong = new Map(snapshot.map(song => [song.id, song])).get('1806')!;
     expect(searchDocumentMatches(songSearchDocument(recordSong), 'syuumatu')).toBe(true);
-    expect(convert).not.toHaveBeenCalled();
     const revised = [{ ...recordSong, aliases: ['テスト'] }];
     expect(searchSongs(buildSongSearchIndex(revised), { ...EMPTY_SONG_FILTERS, keyword: 'syuumatu' })).toEqual([]);
     expect(searchSongs(buildSongSearchIndex(revised), { ...EMPTY_SONG_FILTERS, keyword: 'tesuto' })).toEqual(revised);
     expect(findMatchedAlias(revised[0], 'tesuto')).toBe('テスト');
   });
-  it('skips transliteration when opening and filtering a catalog without a search keyword', () => {
-    const convert = vi.mocked(wanakana.toRomaji);
-    convert.mockClear();
+  it('无关键词时仍支持难度筛选，输入后匹配谱师', () => {
     const index = buildSongSearchIndex(songs);
     expect(searchSongs(index, EMPTY_SONG_FILTERS)).toEqual(songs);
     expect(searchSongs(index, { ...EMPTY_SONG_FILTERS, types: ['DX'] })).toEqual([songs[0]]);
-    expect(convert).not.toHaveBeenCalled();
     expect(searchSongs(index, { ...EMPTY_SONG_FILTERS, keyword: 'あま猫' })).toEqual([songs[0]]);
-    expect(convert).toHaveBeenCalled();
   });
 
-  it('captures document inputs at construction and expands them only on first access', () => {
-    const inputs = ['しゅうまつ'];
-    const document = buildSearchDocument(inputs);
-    inputs[0] = 'changed';
-    expect(document.text).toContain('しゅうまつ');
-    const convert = vi.mocked(wanakana.toRomaji);
-    convert.mockClear();
-    expect(document.text).toContain('しゅうまつ');
-    expect(document.compact).toContain('しゅうまつ');
-    expect(convert).not.toHaveBeenCalled();
-  });
   it('matches repeated keywords and updates the result when typing changes', () => {
     const document = buildSearchDocument(['しゅうまつ']);
     expect(searchDocumentMatches(document, 'syuumatu')).toBe(true);

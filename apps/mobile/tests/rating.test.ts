@@ -10,10 +10,8 @@ describe('rating and B50', () => {
   it('covers low achievement tiers and reverses at 0.0001%', () => {
     expect(calculateChartRating(10, 5)).toBe(0);
     expect(calculateChartRating(10, 10)).toBe(1);
-    const achievement = minimumAchievementForRating(13.4, 301);
-    expect(achievement).not.toBeNull();
-    expect(calculateChartRating(13.4, achievement!)).toBeGreaterThanOrEqual(301);
-    expect(calculateChartRating(13.4, achievement! - 0.0001)).toBeLessThan(301);
+    expect(minimumAchievementForRating(13.4, 301)).toBe(100.5);
+    expect(calculateChartRating(13.4, 100.4999)).toBe(298);
     expect(minimumAchievementForRating(1, 999)).toBeNull();
   });
   it('shows the achievement-to-Rating table in descending order', () => {
@@ -22,9 +20,14 @@ describe('rating and B50', () => {
     expect(rows).toEqual([...rows].sort((left, right) => right.achievement - left.achievement));
   });
   it('selects exactly B35 and B15 and sums their ratings', () => {
-    const best50 = buildBest50(fixturePlayer, fixtureRecords, fixtureCatalog, fixtureSource, fixtureSource.updatedAt);
+    const records = fixtureRecords.map((record, index) => ({ ...record, rating: index + 1 }));
+    const best50 = buildBest50(fixturePlayer, records, fixtureCatalog, fixtureSource, fixtureSource.updatedAt);
     expect(best50.b35).toHaveLength(35); expect(best50.b15).toHaveLength(15);
-    expect(best50.rating).toBe([...best50.b35, ...best50.b15].reduce((total, record) => total + record.rating, 0));
+    expect(best50.rating).toBe(1405);
+    expect(best50.b35[0]?.songId).toBe('37');
+    expect(best50.b35.at(-1)?.songId).toBe('3');
+    expect(best50.b15[0]?.songId).toBe('10054');
+    expect(best50.b15.at(-1)?.songId).toBe('10040');
     expect(best50.b35.every((record) => record.version !== FIXTURE_CURRENT_VERSION)).toBe(true);
     expect(best50.b15.every((record) => record.version === FIXTURE_CURRENT_VERSION)).toBe(true);
     expect(best50.unmatchedRecordCount).toBe(0);
@@ -36,7 +39,7 @@ describe('rating and B50', () => {
     expect(best50.b15).toHaveLength(0);
     expect(best50.unmatchedRecordCount).toBe(fixtureRecords.length);
   });
-  it('keeps historical cover id mapping behavior explicit', () => {
+  it('maps current song identifiers to cover identifiers', () => {
     expect(mapCoverId(110123)).toBe(123); expect(mapCoverId(100123)).toBe(123);
     expect(mapCoverId(10123)).toBe(123); expect(mapCoverId(123)).toBe(123);
     expect(mapCoverId(120227)).toBe(227);

@@ -1,3 +1,4 @@
+import { maimaiChartPreviewSkinDataScript } from '@/features/simai-chart-preview/maimai-chart-preview-skin-files';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import {
   applyChartPreviewConfigToHtml,
@@ -10,11 +11,15 @@ import {
   createLatestFrameScheduler,
   resolveInitialBackgroundState,
 } from '@/features/simai-chart-preview/webview-player/interactionScheduler';
-import { parseChartPreviewBridgeMessage } from '@/features/chart-preview-shared/chart-preview-bridge';
 
 afterEach(() => vi.unstubAllGlobals());
 
 describe('chart preview webview helpers', () => {
+  it('loads native skin data URLs into the browser configuration', () => {
+    const window = { __MAIMAI_CHART_PREVIEW_SKINS__: {} };
+    new Function('window', maimaiChartPreviewSkinDataScript({ 'TapSkins/tap.png': 'data:image/png;base64,abc' }))(window);
+    expect(window.__MAIMAI_CHART_PREVIEW_SKINS__).toEqual({ 'TapSkins/tap.png': 'data:image/png;base64,abc' });
+  });
 
   it('injects chart settings and merges subsequent native updates', () => {
     const window = { __CHART_PREVIEW__: { answerSoundUrl: 'data:audio/wav;base64,UklGRg==' } };
@@ -28,15 +33,6 @@ describe('chart preview webview helpers', () => {
     const window = { __CHART_PREVIEW__: {} };
     new Function('window', script)(window);
     expect(window.__CHART_PREVIEW__).toMatchObject({ chartId: 834, difficulty: 4, title, theme: 'dark' });
-  });
-
-  it('parses native bridge messages and rejects non-object payloads', () => {
-    expect(parseChartPreviewBridgeMessage('{"type":"fullscreen","active":true}')).toEqual({
-      type: 'fullscreen',
-      active: true,
-    });
-    expect(parseChartPreviewBridgeMessage('"fullscreen"')).toBeNull();
-    expect(parseChartPreviewBridgeMessage('{')).toBeNull();
   });
 
   it('caps the canvas to the short viewport edge in and after fullscreen', () => {

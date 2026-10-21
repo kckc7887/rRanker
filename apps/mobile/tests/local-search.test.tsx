@@ -62,16 +62,16 @@ afterEach(() => {
 it('yields while matching real romanized text and publishes only a complete ordered result', async () => {
   const view = await render(<Search songs={catalog} keyword="" />);
   await nextIdle();
-  expect(view.getByTestId('pending').props.children).toBe('true');
-  expect(view.getByTestId('results').props.children).toBe('');
+  expect(view.getByTestId('pending')).toHaveTextContent('true');
+  expect(view.getByTestId('results')).toHaveTextContent('');
   await finishIdle();
-  expect(view.getByTestId('results').props.children).toBe('1:しゅうまつ|2:Second|3:Third');
+  expect(view.getByTestId('results')).toHaveTextContent('1:しゅうまつ|2:Second|3:Third');
   await view.rerender(<Search songs={catalog} keyword="syuumatu" />);
   await finishIdle();
-  expect(view.getByTestId('results').props.children).toBe('1:しゅうまつ');
+  expect(view.getByTestId('results')).toHaveTextContent('1:しゅうまつ');
   await view.rerender(<Search songs={catalog} keyword="tesuto" />);
   await finishIdle();
-  expect(view.getByTestId('results').props.children).toBe('2:テスト');
+  expect(view.getByTestId('results')).toHaveTextContent('2:テスト');
 });
 
 it('discards an unfinished input and cancels its already queued callback', async () => {
@@ -80,23 +80,23 @@ it('discards an unfinished input and cancels its already queued callback', async
   const obsolete = [...callbacks.values()];
   await view.rerender(<Search songs={catalog} keyword="tesuto" />);
   await act(() => { obsolete.forEach(callback => callback({ didTimeout: false, timeRemaining: () => 50 })); });
-  expect(view.getByTestId('results').props.children).toBe('');
+  expect(view.getByTestId('results')).toHaveTextContent('');
   await finishIdle();
-  expect(view.getByTestId('results').props.children).toBe('2:テスト');
+  expect(view.getByTestId('results')).toHaveTextContent('2:テスト');
 });
 
 it('replaces a catalog and its aliases without displaying an old snapshot', async () => {
   const view = await render(<Search songs={catalog} keyword="tesuto" />);
   await finishIdle();
-  expect(view.getByTestId('results').props.children).toBe('2:テスト');
+  expect(view.getByTestId('results')).toHaveTextContent('2:テスト');
   const replacement = [song('2', 'Second', '新别名')];
   await view.rerender(<Search songs={replacement} keyword="tesuto" />);
-  expect(view.getByTestId('results').props.children).toBe('');
+  expect(view.getByTestId('results')).toHaveTextContent('');
   await finishIdle();
-  expect(view.getByTestId('results').props.children).toBe('');
+  expect(view.getByTestId('results')).toHaveTextContent('');
   await view.rerender(<Search songs={replacement} keyword="新别名" />);
   await finishIdle();
-  expect(view.getByTestId('results').props.children).toBe('2:新别名');
+  expect(view.getByTestId('results')).toHaveTextContent('2:新别名');
 });
 
 it('pauses a hidden page and resumes its latest input on focus', async () => {
@@ -104,10 +104,10 @@ it('pauses a hidden page and resumes its latest input on focus', async () => {
   await nextIdle();
   await view.rerender(<Search songs={catalog} keyword="tesuto" active={false} />);
   await finishIdle();
-  expect(view.getByTestId('results').props.children).toBe('');
+  expect(view.getByTestId('results')).toHaveTextContent('');
   await view.rerender(<Search songs={catalog} keyword="tesuto" />);
   await finishIdle();
-  expect(view.getByTestId('results').props.children).toBe('2:テスト');
+  expect(view.getByTestId('results')).toHaveTextContent('2:テスト');
 });
 
 it('keeps the completed search result when the page and app become active again', async () => {
@@ -131,13 +131,13 @@ it('keeps the completed search result when the page and app become active again'
   active = true;
   await hook.rerender(undefined);
   await finishIdle();
-  expect(hook.result.current.data).toBe(completed);
+  expect(hook.result.current.data).toEqual(completed);
   expect(hook.result.current.isFiltering).toBe(false);
 
   await act(() => changeAppState?.('background'));
   await act(() => changeAppState?.('active'));
   await finishIdle();
-  expect(hook.result.current.data).toBe(completed);
+  expect(hook.result.current.data).toEqual(completed);
   expect(hook.result.current.isFiltering).toBe(false);
   await hook.unmount();
 });

@@ -1,9 +1,7 @@
 import { act, fireEvent, render, within } from '@testing-library/react-native';
-import { Animated, Dimensions, InteractionManager, StyleSheet, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewProps } from 'react-native';
+import { Animated, Dimensions, type NativeScrollEvent, type NativeSyntheticEvent, type ScrollViewProps } from 'react-native';
 import { jest } from '@jest/globals';
 import { MajdataSongDetail } from '@/components/majdata/MajdataSongDetail';
-import { simaiSongDetailStyles } from '@/components/game-content/SimaiSongDetailStyles';
-import { createAppTheme } from '@/theme/theme-tokens';
 import type { MajdataSong, MajdataScore } from '@/domain/majdata';
 import { ProviderError } from '@/providers/errors';
 
@@ -100,9 +98,6 @@ beforeEach(() => {
   mockRecords = [{ chartInfo: mockSong, chartLevel: 4, hash: mockSong.hash, timestamp: mockSong.timestamp,
     acc: { dx: 99.1234, classic: 98.5678 }, comboState: 1, dxScore: 480 }];
   jest.spyOn(Animated, 'loop').mockReturnValue({ start: jest.fn(), stop: jest.fn(), reset: jest.fn() } as unknown as ReturnType<typeof Animated.loop>);
-  jest.spyOn(InteractionManager, 'runAfterInteractions').mockImplementation(callback => {
-    (callback as () => void)(); return { cancel: jest.fn() } as unknown as ReturnType<typeof InteractionManager.runAfterInteractions>;
-  });
 });
 afterEach(() => { jest.useRealTimers(); jest.restoreAllMocks(); });
 
@@ -187,14 +182,9 @@ it('keeps native half-drag and light-swipe positions without resetting the initi
 it.each([false, true])('uses the actual hero, metadata, buttons and one tag heading per section (dark=%s)', async dark => {
   mockDark = dark;
   const screen = await render(<MajdataSongDetail songId={mockSong.id} />);
-  expect(StyleSheet.flatten(screen.getAllByText(`#${mockSong.id}`)[0].props.style)).toMatchObject({ fontSize: 12 });
-  const title = screen.getAllByText(mockSong.title)[0];
-  expect(StyleSheet.flatten(title.props.style)).toMatchObject(StyleSheet.flatten(simaiSongDetailStyles.title));
   expect(screen.getByText('作者')).toBeTruthy(); expect(screen.getAllByText('真实谱师').length).toBeGreaterThan(0);
   expect(screen.getByText('发布时间')).toBeTruthy(); expect(screen.getByText('简介：真实简介')).toBeTruthy();
   expect(screen.queryByText('不应展示的上传者')).toBeNull(); expect(screen.queryByText(/Classic/)).toBeNull();
-  expect(StyleSheet.flatten(screen.getByLabelText('返回').props.style)).toMatchObject({ width: 40, height: 40, top: 47, left: 8, zIndex: 30 });
-  expect(StyleSheet.flatten(screen.getByLabelText(`收藏 ${mockSong.title}`).props.style)).toMatchObject({ width: 40, height: 40, top: 47, right: 8 });
   await fireEvent.press(screen.getByLabelText('返回')); expect(mockBack).toHaveBeenCalledTimes(1);
   await fireEvent.press(screen.getByLabelText(`收藏 ${mockSong.title}`)); expect(mockFavorite).toHaveBeenCalledWith(mockSong.id, true);
   const carousel = screen.getByTestId('majdata-chart-carousel');
@@ -205,9 +195,6 @@ it.each([false, true])('uses the actual hero, metadata, buttons and one tag head
   }
   expect(within(screen.getByTestId('majdata-song-local-tags')).getAllByText('本地标签')).toHaveLength(1);
   expect(screen.getAllByText('本地标签')).toHaveLength(3);
-  const easyStyle = StyleSheet.flatten(screen.getByTestId('majdata-chart-card-0').props.style);
-  expect(easyStyle.borderColor).toBe('#3B82F6');
-  expect(easyStyle.backgroundColor).toBe(dark ? createAppTheme('dark', '#246BFD').surface : '#E8F0FE');
   await screen.unmount();
 });
 
@@ -273,7 +260,6 @@ it('defers notes and cards until the route transition is ready', async () => {
 it('keeps the visible difficulty and notes aligned when a narrow window changes width', async () => {
   Dimensions.set({ window: { width: 320, height: 720, scale: 2, fontScale: 1 } });
   const screen = await render(<MajdataSongDetail songId={mockSong.id} />);
-  expect(StyleSheet.flatten(screen.getByTestId('majdata-chart-card-5').props.style).width).toBe(280);
   const carousel = screen.getByTestId('majdata-chart-carousel');
   await fireEvent(carousel, 'momentumScrollEnd', { nativeEvent: { contentOffset: { x: 5 * carousel.props.snapToInterval } } });
   mockParsed.mockClear();
@@ -323,8 +309,6 @@ it.each(['loading', 'error'])('uses text-only notes state with no fabricated tab
 it('keeps six grid columns and full UUID/index for tolerance, practice, preview and video-aware download', async () => {
   const screen = await render(<MajdataSongDetail songId={mockSong.id} />);
   const current = within(screen.getByTestId('majdata-chart-card-5'));
-  const grid = current.getByLabelText('谱面物量');
-  expect(StyleSheet.flatten(grid.props.style)).toMatchObject({ borderRadius: 9, overflow: 'hidden' });
   for (const text of ['TAP', 'HOLD', 'SLIDE', 'TOUCH', 'BREAK', 'MINE']) expect(current.getByText(text)).toBeTruthy();
   await fireEvent.press(current.getByLabelText('使用此谱面物量计算容错'));
   expect(mockPush).toHaveBeenLastCalledWith({ pathname: '/tools/tolerance', params: { gameId: 'majdata-net', songId: mockSong.id, hash: 'revision', levelIndex: '5' } });

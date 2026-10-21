@@ -1,3 +1,4 @@
+import { runInNewContext } from 'node:vm';
 import { jest } from '@jest/globals';
 import { prepareRizlineChartPreviewWebViewSource } from '@/features/rizline-chart-preview/prepare-rizline-chart-preview-webview';
 
@@ -9,7 +10,6 @@ let mockSequence = 0;
 const mockChartJson = '{"fileVersion":0}';
 const mockChartBytes = Uint8Array.from(Buffer.from(mockChartJson));
 const mockMusicBytes = new Uint8Array([4, 5, 6, 7]);
-const mockMusicBase64 = Buffer.from(mockMusicBytes).toString('base64');
 
 jest.mock('../assets/rizline-chart-preview/player.bundle', () => 1);
 jest.mock('../assets/rizline-chart-preview/index.html', () => 2);
@@ -138,14 +138,18 @@ describe('Rizline chart preview prepare', () => {
     const files = [...mockFiles.entries()];
     const chartScript = files.find(([uri]) => uri.endsWith('/chart-data.js'))?.[1];
     const musicScript = files.find(([uri]) => uri.endsWith('/music-data.js'))?.[1];
-    expect(chartScript).toBe(`window.__RIZLINE_CHART_PREVIEW_CHART__=${mockChartJson};`);
-    expect(musicScript).toBe(`window.__RIZLINE_CHART_PREVIEW_MUSIC__=${JSON.stringify(mockMusicBase64)};`);
+    const runtime: Record<string, unknown> = {};
+    runInNewContext(String(chartScript), { window: runtime });
+    runInNewContext(String(musicScript), { window: runtime });
+    for (const script of htmlWrites[0]!.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/gu)) {
+      runInNewContext(script[1]!, { window: runtime });
+    }
+    expect(runtime.__RIZLINE_CHART_PREVIEW_CHART__).toEqual({ fileVersion: 0 });
+    expect(Buffer.from(String(runtime.__RIZLINE_CHART_PREVIEW_MUSIC__), 'base64')).toEqual(Buffer.from(mockMusicBytes));
+    expect(runtime.__RIZLINE_CHART_PREVIEW_CONFIG__).toMatchObject({ title: 'Song IN', theme: 'dark', settings: { userSpeed: 4 } });
     expect(files.some(([uri]) => uri.endsWith('/preview-chart.json'))).toBe(false);
     expect(files.some(([uri]) => uri.endsWith('/preview-music.m4a'))).toBe(false);
-    expect(htmlWrites[0]).toContain('window.__RIZLINE_CHART_PREVIEW_CONFIG__=');
-    expect(htmlWrites[0]).not.toContain('preview-chart.json');
-    expect(htmlWrites[0]).not.toContain('preview-music.m4a');
-    expect(htmlWrites[0]).not.toContain(mockChartJson);
-    expect(prepared.uri).toContain('rranker-rizline-chart-preview');
+    expect(prepared.uri).toMatch(/^file:/);
+
   });
 });

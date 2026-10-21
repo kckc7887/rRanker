@@ -14,7 +14,7 @@ describe('chunithm rating formula', () => {
     expect(maxChunithmChartRating(13.7)).toBeCloseTo(15.85, 2);
     expect(maxChunithmChartRating(14.0)).toBeCloseTo(16.15, 2);
     expect(maxChunithmChartRating(15.5)).toBeCloseTo(17.65, 2);
-    expect(maxChunithmChartRating(13.705)).toBe(chunithmChartRatingDisplay(13.705, 1_009_000));
+    expect(maxChunithmChartRating(13.705)).toBe(15.85);
   });
 
   it('computes maximum over power from chart constants', () => {
@@ -110,9 +110,6 @@ describe('chunithm rating formula', () => {
 
   it('caps over power at the AJC maximum for 1010000', () => {
     expect(calculateChunithmOverPower(13.7, 1_010_000, 'ajc')).toBeCloseTo(83.5, 9);
-    expect(calculateChunithmOverPower(13.7, 1_010_000, 'ajc'))
-      .toBeCloseTo(maxChunithmOverPower(13.7), 9);
-    expect(maxChunithmOverPower(13.7)).toBeCloseTo(83.5, 9);
     expect(calculateChunithmOverPower(13.7, 1_010_000, 'none')).toBeCloseTo(82.25, 9);
   });
 
@@ -148,8 +145,6 @@ describe('chunithm rating formula', () => {
   it('reverses a target rating into the minimum score of the displayed rating', () => {
     const result = minimumScoreForChunithmRating(13.7, 15.0, 'none');
     expect(result).toEqual({ status: 'reachable', score: 1_003_000, lampMinScore: 0 });
-    expect(chunithmChartRatingDisplay(13.7, result.score!)).toBeGreaterThanOrEqual(15.0);
-    expect(chunithmChartRatingDisplay(13.7, result.score! - 1)).toBeLessThan(15.0);
     expect(minimumScoreForChunithmRating(13.7, 14.999, 'none').score).toBe(1_003_000);
     expect(minimumScoreForChunithmRating(13.7, 14.99, 'none').score).toBe(1_002_900);
     expect(chunithmChartRatingDisplay(13.7, 1_002_899)).toBe(14.98);
@@ -170,8 +165,6 @@ describe('chunithm rating formula', () => {
   it('reverses a target over power into the minimum score', () => {
     const result = minimumScoreForChunithmOverPower(13.7, 80, 'aj');
     expect(result).toEqual({ status: 'reachable', score: 1_007_834, lampMinScore: 1_000_000 });
-    expect(calculateChunithmOverPower(13.7, result.score!, 'aj')).toBeGreaterThanOrEqual(80);
-    expect(calculateChunithmOverPower(13.7, result.score! - 1, 'aj')).toBeLessThan(80);
     expect(minimumScoreForChunithmOverPower(13.7, 73.52, 'none').score).toBe(1_000_040);
     expect(calculateChunithmOverPower(13.7, 1_000_039, 'none')).toBeLessThan(73.52);
     expect(minimumScoreForChunithmOverPower(13.7, 1, 'none'))

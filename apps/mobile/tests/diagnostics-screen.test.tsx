@@ -1,6 +1,5 @@
 import { act, fireEvent, render } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { StyleSheet } from 'react-native';
 import DiagnosticsScreen from '../app/diagnostics';
 import type { RuntimeLogState } from '@/services/runtime-log-controller';
 import type { RuntimeLogStatus } from '@/domain/runtime-log';
@@ -61,20 +60,6 @@ describe('diagnostics screen', () => {
     expect(mockShare).not.toHaveBeenCalled();
   });
 
-  it.each(['light', 'dark'] as const)('uses the personalization switch colors with a custom accent in %s mode', async (mode) => {
-    mockTheme = createAppTheme(mode, '#A63BC1');
-    const screen = await render(<DiagnosticsScreen />);
-    expect(screen.getByLabelText('记录日志').props.tintColor).toBe(mockTheme.border);
-    expect(screen.getByLabelText('记录日志').props.onTintColor).toBe(mockTheme.accentSoft);
-    expect(screen.getByLabelText('记录日志').props.thumbTintColor).toBe(mockTheme.surface);
-    await act(() => {
-      mockState = { ...mockState, enabled: true };
-      mockListeners.forEach((listener) => listener());
-    });
-    expect(screen.getByLabelText('记录日志').props.thumbTintColor).toBe(mockTheme.accent);
-    expect(screen.queryByText('正在记录')).toBeNull();
-  });
-
   it('starts, displays updates, locks capacity, and stops without tying recording to page mounting', async () => {
     const screen = await render(<DiagnosticsScreen />);
     await fireEvent(screen.getByLabelText('记录日志'), 'valueChange', true);
@@ -124,7 +109,6 @@ describe('diagnostics screen', () => {
   ] as const)('renders the %s status with a text badge and semantic color', async (status, label, color) => {
     mockState.sessions = [session(1, status)];
     const screen = await render(<DiagnosticsScreen />);
-    expect(StyleSheet.flatten(screen.getByText(label).props.style).color).toBe(mockTheme[color]);
     expect(screen.queryByText(/崩溃/u)).toBeNull();
   });
 

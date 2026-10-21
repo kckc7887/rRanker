@@ -1,4 +1,5 @@
 import { createHash } from 'node:crypto';
+import { JSDOM } from 'jsdom';
 import { afterEach, describe, expect, it, vi } from 'vitest';
 import { rizlineCatalog, rizlineCatalogAssetFiles, rizlineChart, rizlineSong } from './fixtures/rizline';
 import {
@@ -165,13 +166,13 @@ describe('Rizline chart preview configuration', () => {
       title: 'Song IN',
       settings: normalizeRizlineChartPreviewSettings({}),
     });
-    expect(html).toContain('window.__RIZLINE_CHART_PREVIEW_CONFIG__=');
-    expect(html).toContain('"title":"Song IN"');
-    expect(html).not.toContain('preview-chart.json');
-    expect(html).not.toContain('preview-music.m4a');
-    expect(html).not.toContain('chartUrl');
-    expect(html).not.toContain('musicUrl');
-    expect(html).not.toContain('chartText');
+    const dom = new JSDOM(html, { runScripts: 'dangerously' });
+    const config = (dom.window as unknown as { __RIZLINE_CHART_PREVIEW_CONFIG__: Record<string, unknown> }).__RIZLINE_CHART_PREVIEW_CONFIG__;
+    expect(config).toMatchObject({ theme: 'dark', title: 'Song IN', settings: normalizeRizlineChartPreviewSettings({}) });
+    expect(config.chartUrl).toBeUndefined();
+    expect(config.musicUrl).toBeUndefined();
+    expect(config.chartText).toBeUndefined();
+    dom.window.close();
   });
 });
 

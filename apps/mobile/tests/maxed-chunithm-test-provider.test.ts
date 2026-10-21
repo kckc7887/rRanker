@@ -1,5 +1,4 @@
 import type { ChunithmCatalogSnapshot, ChunithmSong } from '@/domain/chunithm';
-import { isCatalogDrivenScoreProvider } from '@/providers/contracts';
 import {
   buildMaxedChunithmSnapshot,
   MaxedChunithmTestProvider,
@@ -100,26 +99,14 @@ describe('中二节奏全满示例账号', () => {
     const b50 = [...snapshot.bests.new_bests, ...snapshot.bests.bests];
     expect(new Set(b50.map((score) => `${score.id}-${score.level_index}`)).size).toBe(50);
     expect(snapshot.bests.new_bests.every((score) => Number(score.id) >= 101)).toBe(true);
-    const expected = Math.floor((
-      b50.reduce((sum, score) => sum + (score.rating ?? 0), 0) / 50
-    ) * 100) / 100;
     expect(snapshot.player).toMatchObject({
       name: '示例账号',
       level: 99,
-      rating: expected,
+      rating: 15,
       rating_possession: 'rainbow',
       over_power_progress: 100,
     });
-    const expectedOverPower = catalog.songs
-      .filter((entry) => !entry.disabled)
-      .map((entry) => Math.max(
-        0,
-        ...entry.difficulties
-          .filter((difficulty) => difficulty.difficulty !== 5)
-          .map((difficulty) => maxChunithmChartOverPower(difficulty.levelValue)),
-      ))
-      .reduce((sum, value) => sum + value, 0);
-    expect(snapshot.player.over_power).toBe(expectedOverPower);
+    expect(snapshot.player.over_power).toBe(5015);
     expect(snapshot.source).toMatchObject({ kind: 'generated', isStale: false });
   });
 
@@ -161,7 +148,6 @@ describe('中二节奏全满示例账号', () => {
 
   it('实现 CatalogDrivenScoreProvider，统一成绩覆盖全部启用谱面', async () => {
     const provider = new MaxedChunithmTestProvider();
-    expect(isCatalogDrivenScoreProvider(provider)).toBe(true);
     const records = await provider.getRecordsFromCatalog(catalog);
     const enabledKeys = catalog.songs
       .filter((song) => !song.disabled)

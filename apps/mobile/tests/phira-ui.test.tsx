@@ -1,7 +1,6 @@
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { Platform, StyleSheet } from 'react-native';
 import { CachedContentActivityScope } from '@/components/CachedTabScreen';
 import { router as mockRouter } from 'expo-router';
 import { PhiraRandomChartsScreen } from '@/screens/PhiraRandomChartsScreen';
@@ -43,12 +42,7 @@ let mockCatalogHasNextPage = false;
 let mockCatalogFetchingNextPage = false;
 let mockCatalogFetchNextPageError = false;
 const mockFetchCatalogNextPage = jest.fn(async () => undefined);
-let mockNotesEnabled: boolean[] = [];
-let mockChromeProps: {
-  topInset: number;
-  backStyle: (pressed: boolean) => object[];
-  favoriteStyle?: (pressed: boolean) => object[];
-} | null = null;
+let mockActualNotes = false;
 
 let mockStackReady = true;
 let mockActualDetailQuery = false;
@@ -112,7 +106,9 @@ jest.mock('@/hooks/use-phira', () => ({
   usePhiraChartBest: (...args: Parameters<typeof import('@/hooks/use-phira').usePhiraChartBest>) => mockActualDemoQueries
     ? jest.requireActual<typeof import('@/hooks/use-phira')>('@/hooks/use-phira').usePhiraChartBest(...args)
     : ({ data: mockBest, isLoading: false, isError: false, error: null }),
-  usePhiraNotes: (_chart: unknown, enabled = true) => { mockNotesEnabled.push(enabled); return { data: { counts: { click: 40, hold: 20, flick: 20, drag: 20 } }, isLoading: false, isError: false }; },
+  usePhiraNotes: (...args: Parameters<typeof import('@/hooks/use-phira').usePhiraNotes>) => mockActualNotes
+    ? jest.requireActual<typeof import('@/hooks/use-phira')>('@/hooks/use-phira').usePhiraNotes(...args)
+    : { data: { counts: { click: 40, hold: 20, flick: 20, drag: 20 } }, isLoading: false, isError: false },
   usePhiraUploader: () => ({ data: undefined, isLoading: false, isError: true }),
 }));
 jest.mock('@/components/AppNotification', () => ({
@@ -153,7 +149,7 @@ jest.mock('@/features/chart-download-shared/use-chart-package-download', () => (
   useChartPackageDownload: () => ({ isRunning: false, start: mockStartChartDownload }),
 }));
 jest.mock('@/components/TagEditor', () => ({ TagEditor: () => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>本地标签</RN.Text>; } }));
-jest.mock('@/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: (props: typeof mockChromeProps) => { mockChromeProps = props; return null; } }));
+jest.mock('@/components/game-content/SongDetailChrome', () => ({ SongDetailChrome: () => null }));
 jest.mock('@/components/phira/PhiraScoreVisuals', () => ({
   ...jest.requireActual<typeof import('@/components/phira/PhiraScoreVisuals')>('@/components/phira/PhiraScoreVisuals'),
   PhiraScoreValue: ({ score }: { score: number }) => { const RN = jest.requireActual<typeof import('react-native')>('react-native'); return <RN.Text>{score}</RN.Text>; },
@@ -170,12 +166,11 @@ describe('Phira page contracts', () => {
     mockCatalogHasNextPage = false;
     mockCatalogFetchingNextPage = false;
     mockCatalogFetchNextPageError = false;
-    mockNotesEnabled = [];
+    mockActualNotes = false;
     mockStackReady = true;
     mockActualDetailQuery = false;
     mockActualDemoQueries = false;
     mockAccountId = 'phira:community:323528';
-    mockChromeProps = null;
     jest.clearAllMocks();
   });
 
@@ -288,20 +283,6 @@ describe('Phira page contracts', () => {
     await screen.unmount();
   });
 
-  it('applies the shared tab-bar inset contract to the best, records and catalog lists', async () => {
-    mockBests = { '38294': mockBest };
-    mockCatalogCharts = [mockChart];
-    const best = await render(<PhiraBestScreen />);
-    expect(best.getByTestId('phira-best-results-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
-    await best.unmount();
-    const records = await render(<PhiraRecordsScreen />);
-    expect((await records.findByTestId('phira-records-list')).props.contentInsetAdjustmentBehavior).toBe('automatic');
-    await records.unmount();
-    const catalog = await render(<PhiraCatalogScreen />);
-    expect(catalog.getByTestId('phira-catalog-results-list').props.contentInsetAdjustmentBehavior).toBe('automatic');
-    await catalog.unmount();
-  });
-
   it('puts records sorting and catalog category/sorting into expanded filter dropdowns', async () => {
     mockBests = { '38294': mockBest };
     const records = await render(<PhiraRecordsScreen />);
@@ -338,23 +319,19 @@ describe('Phira page contracts', () => {
   it('renders detail visibility, note/judgement tables and five-point rating without removed sections', async () => {
     const screen = await render(<PhiraSongDetailScreen chartId="38294" />);
     expect(screen.queryByText('曲绘画师')).toBeNull();
-    expect(screen.getByTestId('phira-metadata-value-作者').props.children).toBe('#1252389');
+    expect(screen.getByTestId('phira-metadata-value-作者')).toHaveTextContent('#1252389');
     expect(screen.getAllByText('未上架')).toHaveLength(2);
     expect(screen.getByText('Click')).toBeTruthy();
     expect(screen.getAllByText('总计')).toHaveLength(1);
     expect(screen.getByText('Perfect')).toBeTruthy();
     expect(screen.getByText('XING-GOOD')).toBeTruthy();
     expect(screen.getByTestId('phira-song-title-scroll')).toBeTruthy();
-    expect(StyleSheet.flatten(mockChromeProps?.backStyle(false))).toMatchObject({ left: 8, top: 0 });
-    expect(StyleSheet.flatten(mockChromeProps?.favoriteStyle?.(false))).toMatchObject({ right: 8, top: 0 });
     expect(screen.getByText('评分：4.50 / 5（10 票）')).toBeTruthy();
     expect(screen.getByText('本地标签')).toBeTruthy();
     expect(screen.queryByText(/练习清单/)).toBeNull();
     expect(screen.queryByText(/难度标签/)).toBeNull();
     const previewButton = screen.getByLabelText('查看谱面确认：初音未来的消失');
     const downloadButton = screen.getByLabelText('下载谱面文件：初音未来的消失');
-    expect(previewButton.props.testID).toBe('gesture-handler-pressable');
-    expect(downloadButton.props.testID).toBe('gesture-handler-pressable');
     const detailActions = screen.getAllByRole('button').map((button) => button.props.accessibilityLabel);
     expect(detailActions.indexOf('下载谱面文件：初音未来的消失'))
       .toBe(detailActions.indexOf('查看谱面确认：初音未来的消失') + 1);
@@ -371,19 +348,6 @@ describe('Phira page contracts', () => {
       expect.objectContaining({ signal: expect.any(AbortSignal) }),
     );
     await screen.unmount();
-  });
-
-  it('uses a native RN pressable for the detail preview button on Android', async () => {
-    const originalOS = Platform.OS;
-    Object.defineProperty(Platform, 'OS', { configurable: true, value: 'android' });
-    try {
-      const screen = await render(<PhiraSongDetailScreen chartId="38294" />);
-      expect(screen.getByLabelText('查看谱面确认：初音未来的消失').props.testID).toBeUndefined();
-      expect(screen.getByLabelText('下载谱面文件：初音未来的消失').props.testID).toBeUndefined();
-      await screen.unmount();
-    } finally {
-      Object.defineProperty(Platform, 'OS', { configurable: true, value: originalOS });
-    }
   });
 
   it('keeps the random-song filter expanded without hint or collapse controls', async () => {
@@ -404,12 +368,18 @@ describe('Phira page contracts', () => {
     expect(screen.getByTestId('random-charts-draw').props.accessibilityState.disabled).toBe(true);
   });
 
-  it('keeps deferred detail work disabled until stack readiness', async () => {
-    mockStackReady = false;
-    const screen = await render(<PhiraSongDetailScreen chartId="38294" />);
-    expect(mockNotesEnabled).not.toContain(true);
-    await screen.unmount();
-    expect(mockNotesEnabled).not.toContain(true);
+  it('waits for stack readiness before downloading note data', async () => {
+    mockStackReady = false; mockActualNotes = true;
+    const download = jest.spyOn(phiraProvider, 'downloadChart').mockRejectedValue(new Error('unavailable'));
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const page = () => <QueryClientProvider client={client}><PhiraSongDetailScreen chartId="38294" /></QueryClientProvider>;
+    const screen = await render(page());
+    expect(download).not.toHaveBeenCalled();
+    mockStackReady = true;
+    await screen.rerender(page());
+    await screen.findByText('物量不可用：请稍后重试');
+    expect(download).toHaveBeenCalledWith(mockChart.file, expect.any(AbortSignal), expect.any(Number));
+    await screen.unmount(); client.clear(); download.mockRestore();
   });
 });
 

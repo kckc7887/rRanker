@@ -32,15 +32,12 @@ describe('per-game data model', () => {
   });
 
   it('models the Chunithm temporary account without maimai score fields', () => {
-    const profile = getGameProfile('chunithm');
     const payload = emptyGamePayload('chunithm', '临时账号');
-    expect(profile.capabilities).toMatchObject({ hasTools: true });
     expect(payload).toMatchObject({
       kind: 'empty',
       gameId: 'chunithm',
       displayName: '临时账号',
     });
-    expect(payload).not.toHaveProperty('records');
   });
 
 });

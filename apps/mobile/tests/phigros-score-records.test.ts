@@ -53,13 +53,6 @@ describe('Phigros 领域成绩记录', () => {
       rks: 15.2,
       fullCombo: true,
     });
-    expect(Object.keys(record).sort()).toEqual([
-      'acc', 'difficultyConstant', 'fullCombo', 'level', 'rawAcc', 'rks', 'score', 'songId',
-    ]);
-    expect(record).not.toHaveProperty('type');
-    expect(record).not.toHaveProperty('dxScore');
-    expect(record).not.toHaveProperty('fs');
-    expect(record).not.toHaveProperty('fc');
   });
 
   it('全谱成绩映射为真实记录并按成绩 RKS 降序', () => {
@@ -94,7 +87,6 @@ describe('Phigros 领域成绩记录', () => {
     });
     expect(records[1]?.fullCombo).toBe(false);
     expect(records[1]?.rks).toBeGreaterThan(0);
-    expect(records.some((record) => 'dxScore' in record)).toBe(false);
   });
 
   it('共享成绩卡视图保持既定分数、FC 与路由', () => {

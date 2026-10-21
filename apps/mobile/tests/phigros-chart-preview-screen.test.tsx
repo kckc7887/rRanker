@@ -373,21 +373,4 @@ describe('PhigrosChartPreviewScreen', () => {
       autoHideHomeIndicator: false,
     }));
   });
-
-  it('仅持久化播放器设置字段到 KV', async () => {
-    await render(<PhigrosChartPreviewScreen />);
-    await waitFor(() => expect(screen.getByTestId('phigros-chart-preview-webview')).toBeTruthy());
-    const webview = screen.getByTestId('phigros-chart-preview-webview');
-
-    await fireEvent(webview, 'message', {
-      nativeEvent: {
-        data: "{\"type\":\"settings\",\"settings\":{\"playbackSpeed\":2,\"noteScale\":0.8}}",
-      },
-    });
-
-    await waitFor(() => expect(mockSaveSettings).toHaveBeenCalledWith(
-      'phigros-chart-preview-settings',
-      JSON.stringify({ playbackSpeed: 2, noteScale: 0.8 }),
-    ));
-  });
 });

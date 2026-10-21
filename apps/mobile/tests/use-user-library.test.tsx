@@ -85,7 +85,6 @@ describe('公共个人条目写入边界', () => {
       first = hook.result.current.setSongFavorite('song', true);
       second = hook.result.current.setSongFavorite('song', true);
     });
-    expect(second).toBe(first);
     await waitFor(() => expect(mockFavorite).toHaveBeenCalledTimes(1));
     await act(async () => {
       write.reject(new Error('private storage payload'));

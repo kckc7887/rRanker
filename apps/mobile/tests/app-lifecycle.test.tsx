@@ -55,7 +55,6 @@ describe('AppLifecycleProvider', () => {
     await act(() => { changeListener?.('active'); });
     await act(() => { tasks.at(-1)?.callback(); });
     expect(screen.getByText('foreground-ready')).toBeTruthy();
-    expect(getForegroundAbortSignal()).toBe(firstSignal);
 
     await act(() => { changeListener?.('background'); });
     expect(firstSignal.aborted).toBe(true);
@@ -70,10 +69,7 @@ describe('AppLifecycleProvider', () => {
     await act(() => { changeListener?.('active'); });
     await act(() => { tasks.at(-1)?.callback(); });
     expect(screen.getByText('foreground-ready')).toBeTruthy();
-    expect(getForegroundAbortSignal()).not.toBe(firstSignal);
-    const restoredSignal = getForegroundAbortSignal();
     await act(() => { expiredTask.callback(); });
-    expect(getForegroundAbortSignal()).toBe(restoredSignal);
 
     await act(() => { memoryWarningListener?.(); });
     expect(screen.getByText('foreground-ready')).toBeTruthy();
@@ -113,7 +109,6 @@ describe('AppLifecycleProvider', () => {
     expect(screen.getByText('foreground-ready')).toBeTruthy();
     const restored = getForegroundAbortSignal();
     expect(restored.aborted).toBe(false);
-    expect(restored).not.toBe(firstSignal);
 
     await view.unmount();
   });

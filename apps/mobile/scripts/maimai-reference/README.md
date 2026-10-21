@@ -25,7 +25,7 @@ node scripts/maimai-reference/bootstrap.mjs
 
 对照原始 C# 输出和 `tests/fixtures/maimai-*-reference.json`，不要用 TypeScript
 生成预期结果。新增用例时才通过原始 C# 输出扩充对应 fixture，并审查差异。
-`maimai-chart-preview-reference.test.ts` 比较每个音符的时间和属性，以及自定义、连接路径。
+`maimai-chart-preview-reference.test.ts` 对照音符时间；`majdata.test.ts` 对照物量统计和判定计分。
 
 `Effects/` 保存原始动画、Prefab、Shader、材质和特效 PNG/导入参数，
 来源记录在 `sources.json`，沿用 MajdataViewX 的 GPL 许可。

@@ -176,8 +176,10 @@ describe('osu! OAuth 授权与轮换', () => {
     let resolveFirst: ((value: unknown) => void) | null = null;
     const first = new Promise((resolve) => { resolveFirst = resolve; });
     let calls = 0;
+    const requestStarted = Promise.withResolvers<void>();
     vi.stubGlobal('fetch', vi.fn(async () => {
       calls += 1;
+      requestStarted.resolve();
       const payload = await (calls === 1 ? first : Promise.resolve({
         access_token: 'access-2', expires_in: 86400, refresh_token: 'refresh-2',
       }));
@@ -187,7 +189,7 @@ describe('osu! OAuth 授权与轮换', () => {
       rotateOsuTokens('refresh-1'),
       rotateOsuTokens('refresh-1'),
     ]);
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await requestStarted.promise;
     expect(calls).toBe(1);
     resolveFirst!({ access_token: 'access-2', expires_in: 86400, refresh_token: 'refresh-2' });
     const [left, right] = await rotating;
@@ -211,9 +213,13 @@ describe('osu! OAuth 授权与轮换', () => {
   it('并发刷新期间保留进行中的令牌，清空后旧会话不能覆盖新登录', async () => {
     let resolveFirst: ((value: unknown) => void) | null = null;
     const first = new Promise((resolve) => { resolveFirst = resolve; });
-    vi.stubGlobal('fetch', vi.fn(async () => new Response(JSON.stringify(await first))));
+    const requestStarted = Promise.withResolvers<void>();
+    vi.stubGlobal('fetch', vi.fn(async () => {
+      requestStarted.resolve();
+      return new Response(JSON.stringify(await first));
+    }));
     const pending = rotateOsuTokens('refresh-live');
-    await new Promise((resolve) => setTimeout(resolve, 10));
+    await requestStarted.promise;
 
     resolveFirst!({ access_token: 'access-live', expires_in: 86400, refresh_token: 'refresh-next' });
     await pending;

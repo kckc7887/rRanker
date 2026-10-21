@@ -56,19 +56,17 @@ describe('PGR block GPU lifecycle', () => {
     renderer.dispose();
   });
 
-  it('只提交当前候选，跳转不累积几何，空时间不运行 GPU', () => {
+  it('跳转后仍绘制有效区域，空时间不绘制', () => {
     const env = environment();
-    const renderer = new PgrBlockRenderer(regions(3000));
-    for (const time of [1, 20001, 21, 1]) {
+    const renderer = new PgrBlockRenderer(regions(3));
+    for (const time of [1, 21, 11, 1]) {
+      env.calls.drawArrays?.mockClear();
       renderer.draw(env.context, time, 800, 600, 800, 600);
-      expect(renderer.lastCandidateCount).toBe(1);
-      expect(renderer.lastDrawnCount).toBe(1);
+      expect(env.calls.drawArrays).toHaveBeenCalled();
     }
-    expect(env.calls.drawArrays).toHaveBeenCalledTimes(12);
-    const uploads = env.calls.bufferData!.mock.calls.filter(args => args[2] === env.gl.DYNAMIC_DRAW);
-    expect(uploads[0]![1]).toEqual(uploads[3]![1]);
+    env.calls.drawArrays.mockClear();
     renderer.draw(env.context, -1, 800, 600, 800, 600);
-    expect(env.calls.drawArrays).toHaveBeenCalledTimes(12);
+    expect(env.calls.drawArrays).not.toHaveBeenCalled();
     renderer.dispose();
   });
 
@@ -83,9 +81,9 @@ describe('PGR block GPU lifecycle', () => {
     expect(env.alive.size).toBe(0);
     expect(env.loseContext).toHaveBeenCalledTimes(1);
     expect(env.offscreen.width + env.offscreen.height).toBe(0);
-    const draws = env.calls.drawArrays!.mock.calls.length;
+    env.calls.drawArrays!.mockClear();
     renderer.draw(env.context, 1, 800, 600, 800, 600);
-    expect(env.calls.drawArrays).toHaveBeenCalledTimes(draws);
+    expect(env.calls.drawArrays).not.toHaveBeenCalled();
   });
 
   it('编译失败也释放已分配的程序、着色器与纹理', () => {

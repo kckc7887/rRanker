@@ -1,6 +1,6 @@
 import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { StyleSheet, View } from 'react-native';
+import { View } from 'react-native';
 import { MuseDashAccValue } from '@/components/musedash/MuseDashAccValue';
 import { buildMuseDashFilterSummary } from '@/components/musedash/MuseDashFilterBar';
 import { useMuseDashCatalogFilter } from '@/state/musedash-catalog-filter';
@@ -166,31 +166,6 @@ const player: MuseDashPlayer = {
   user: { user_id: '6ea4f986ffd211e8aa980242ac110011', nickname: 'SiMOOOOOON' },
 };
 
-function collectLeafTexts(node: unknown): string[] {
-  const result: string[] = [];
-  const walk = (value: unknown): void => {
-    if (typeof value === 'string') {
-      result.push(value);
-      return;
-    }
-    if (Array.isArray(value)) {
-      value.forEach(walk);
-      return;
-    }
-    if (value && typeof value === 'object') {
-      const element = value as { props?: { children?: unknown }; children?: unknown };
-      const children = element.children ?? element.props?.children;
-      if (typeof children === 'string') {
-        result.push(children);
-        return;
-      }
-      if (children) walk(children);
-    }
-  };
-  walk(node);
-  return result;
-}
-
 describe('Muse Dash screens', () => {
   beforeEach(() => {
     jest.clearAllMocks();
@@ -213,7 +188,7 @@ describe('Muse Dash screens', () => {
     expect(screen.getAllByTestId('musedash-card-tags-0-47-3').length).toBe(1);
   });
 
-  it('lays out card tags in two rows: difficulty/grade/achievement/rank then character/elfin/platform', async () => {
+  it('shows difficulty, rank, character, elfin and platform on the score card', async () => {
     mockPlayer = {
       ...player,
       plays: player.plays.map((play) =>
@@ -221,13 +196,11 @@ describe('Muse Dash screens', () => {
     };
     const screen = await render(<MuseDashBestScreen />);
     const tags = screen.getByTestId('musedash-card-tags-0-47-3');
-    expect(tags.children).toHaveLength(2);
-    const row1 = collectLeafTexts(tags.children[0]).join(' ');
-    const row2 = collectLeafTexts(tags.children[1]).join(' ');
-    expect(row1).toContain('HIDDEN');
-    expect(row1.indexOf('S')).toBeGreaterThan(row1.indexOf('HIDDEN'));
-    expect(row1.indexOf('#9')).toBeGreaterThan(row1.indexOf('S'));
-    expect(row2).toBe('凛·治愈者 未命名 PC 端');
+    expect(tags).toHaveTextContent(/HIDDEN/);
+    expect(tags).toHaveTextContent(/#9/);
+    expect(tags).toHaveTextContent(/凛·治愈者/);
+    expect(tags).toHaveTextContent(/未命名/);
+    expect(tags).toHaveTextContent(/PC 端/);
   });
 
   it('filters records by difficulty chips, DLC and constant range with fixed Rating order', async () => {
@@ -363,9 +336,8 @@ describe('Muse Dash screens', () => {
     const screen = await render(<MuseDashSongDetailScreen songId="0-47" />);
     expect(screen.queryByTestId('musedash-chart-0')).toBeNull();
     expect(screen.getByTestId('musedash-chart-2')).toBeTruthy();
-    expect(screen.getByTestId('musedash-song-title-scroll').props.horizontal).toBe(true);
     expect(screen.getByText('DLC 来源')).toBeTruthy();
-    expect(screen.getByTestId('musedash-song-metadata-value-DLC 来源').props.children).toBe('Default Music');
+    expect(screen.getByTestId('musedash-song-metadata-value-DLC 来源')).toHaveTextContent('Default Music');
     expect(screen.getByText('BPM')).toBeTruthy();
     expect(screen.queryByText('MuseDash.moe', { exact: false })).toBeNull();
     expect(screen.getAllByText('95.48%').length).toBeGreaterThan(0);
@@ -402,8 +374,6 @@ describe('Muse Dash screens', () => {
       <MuseDashAccValue acc={95} />
       <MuseDashAccValue acc={100} />
     </View>);
-    const white = screen.getByLabelText('88.00%');
-    expect(StyleSheet.flatten(white.props.style)).toMatchObject({ color: '#FFFFFF', fontSize: 28 });
     expect(screen.getByTestId('musedash-acc-gradient-red').props.accessibilityLabel).toBe('90.00%');
     expect(screen.getByTestId('musedash-acc-gradient-silver').props.accessibilityLabel).toBe('95.00%');
     expect(screen.getByTestId('musedash-acc-gradient-gold').props.accessibilityLabel).toBe('100.00%');

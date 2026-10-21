@@ -1,4 +1,5 @@
-import { beforeAll, describe, expect, it, vi } from 'vitest';
+import { JSDOM } from 'jsdom';
+import { describe, expect, it, vi } from 'vitest';
 vi.mock('@/features/chart-download-shared/chart-download-shared', () => ({ downloadChartResource: vi.fn() }));
 
 vi.mock('expo-file-system', () => {
@@ -28,10 +29,6 @@ const { PHIGROS_FONT_MANIFEST } = await import('@/features/phigros-best-image/ph
 const { collectPhigrosBestImageVisibleStrings } = await import('@/features/phigros-best-image/collect-phigros-best-image-visible-strings');
 
 describe('Phigros font coverage selection', () => {
-  beforeAll(() => {
-    expect(PHIGROS_FONT_MANIFEST.length).toBeGreaterThan(0);
-  });
-
   it('keeps only core fonts for CJK and basic Latin text', () => {
     const needed = resolveNeededPhigrosFonts(['Phi 测试玩家', '光', 'rRanker', '15.4321']);
     expect(needed.map((entry) => entry.name)).toEqual(['phi', 'Aldrich-Regular']);
@@ -78,10 +75,15 @@ body {
 }`;
     const needed = PHIGROS_FONT_MANIFEST.filter((entry) => entry.core);
     const trimmed = trimPhigrosBestImageCss(css, needed);
-    expect(trimmed).toContain('font-family: "PHI"');
-    expect(trimmed).toContain('font-family: "Aldrich"');
-    expect(trimmed).not.toContain('NotoSansJP');
-    expect(trimmed).toMatch(/body \{\s*font-family:\s*"PHI";/u);
+    const dom = new JSDOM(`<style>${trimmed}</style><body>Phi 测试玩家</body>`);
+    const fonts = [...dom.window.document.styleSheets[0].cssRules]
+      .filter(rule => rule.type === dom.window.CSSRule.FONT_FACE_RULE)
+      .map(rule => (rule as CSSFontFaceRule).style.getPropertyValue('src'));
+    expect(fonts.some(src => src.includes('./font/phi.ttf'))).toBe(true);
+    expect(fonts.some(src => src.includes('./font/Aldrich-Regular.ttf'))).toBe(true);
+    expect(fonts.some(src => src.includes('NotoSansJP'))).toBe(false);
+    expect(dom.window.getComputedStyle(dom.window.document.body).fontFamily.replaceAll('"', '')).toBe('PHI');
+    dom.window.close();
   });
 
   it('collects player name and song titles from best-image pages', () => {

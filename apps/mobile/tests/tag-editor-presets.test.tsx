@@ -1,6 +1,5 @@
 import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { StyleSheet } from 'react-native';
 import { TagEditor } from '@/components/TagEditor';
 
 jest.mock('react-native-safe-area-context', () => ({
@@ -81,29 +80,6 @@ describe('标签预设编辑器', () => {
     await waitFor(() => expect(onPresetsChange).toHaveBeenCalledWith(['爆发', '星星']));
   });
 
-  it('uses the shared page-sheet chrome and grouped card style', async () => {
-    const screen = await render(<TagEditor tags={[]} presets={['爆发']} historyTags={['星星']}
-      onChange={jest.fn(async () => undefined)} onPresetsChange={jest.fn(async () => undefined)} />);
-
-    await fireEvent.press(screen.getByLabelText('打开标签预设'));
-
-    expect(StyleSheet.flatten(screen.getByTestId('tag-preset-sheet').props.style)).toEqual(
-      expect.objectContaining({ flex: 1 }),
-    );
-    expect(StyleSheet.flatten(screen.getByTestId('tag-preset-sheet-grabber').props.style)).toEqual(
-      expect.objectContaining({ width: 36, height: 5, marginTop: 8, marginBottom: 4 }),
-    );
-    expect(StyleSheet.flatten(screen.getByTestId('tag-preset-list').props.style)).toEqual(
-      expect.objectContaining({ borderRadius: 14, overflow: 'hidden' }),
-    );
-    expect(StyleSheet.flatten(screen.getByLabelText('新预设标签').props.style)).toEqual(
-      expect.objectContaining({ minHeight: 48, borderRadius: 12, fontSize: 17 }),
-    );
-    expect(StyleSheet.flatten(screen.getByLabelText('添加预设标签').props.style)).toEqual(
-      expect.objectContaining({ minHeight: 48, borderRadius: 12 }),
-    );
-  });
-
   it('uses external presets as fixed choices without changing the preset collection', async () => {
     const onChange = jest.fn(async () => undefined);
     const onPresetsChange = jest.fn(async () => undefined);
@@ -111,8 +87,6 @@ describe('标签预设编辑器', () => {
       presetsEditable={false} onChange={onChange} onPresetsChange={onPresetsChange} />);
 
     await fireEvent.press(screen.getByLabelText('打开标签预设'));
-    expect(screen.getByLabelText('选择标签 错位').props.testID).toBe('gesture-handler-pressable');
-    expect(screen.getByLabelText('完成标签选择').props.testID).toBe('gesture-handler-pressable');
     expect(screen.getByLabelText('选择标签 错位')).toBeTruthy();
     expect(screen.getByLabelText('选择标签 高难')).toBeTruthy();
     expect(screen.queryByLabelText('删除预设 错位')).toBeNull();

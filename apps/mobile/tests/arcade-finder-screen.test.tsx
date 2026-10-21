@@ -1,4 +1,4 @@
-import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
+import { cleanup, act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { ArcadeOrigin, ArcadeShop } from '@/domain/arcade-shops';
 import type { ComponentProps } from 'react';
@@ -37,6 +37,7 @@ jest.mock('@/utils/open-arcade-navigation', () => ({ openArcadeNavigation: jest.
 
 const origin = (latitude: number): ArcadeOrigin => ({ latitude, longitude: 120, source: 'custom', label: String(latitude) });
 beforeEach(() => {
+  jest.useFakeTimers();
   jest.resetAllMocks(); mockDiscover.mockResolvedValue([]);
   mockLifecycle = { foregroundReady: true, foregroundGeneration: 1 }; mockForeground = new AbortController();
   mockShopSearch.mockResolvedValue({ shops: [], totalCount: 0, page: 1, hasNextPage: false });
@@ -66,7 +67,7 @@ async function dragDistance(view: Awaited<ReturnType<typeof render>>, thumb: 'lo
     touchBank: [{ ...touch, currentPageX: to * 10, currentTimeStamp: 2 }] } });
   await fireEvent(handle, 'responderRelease', { touchHistory });
 }
-afterEach(() => { jest.useRealTimers(); });
+afterEach(async () => { await cleanup(); jest.useRealTimers(); });
 it.each(['resolve', 'reject'] as const)('手动选址后旧 GPS %s 不改变新原点或显示错误', async outcome => {
   let resolve!: (value: ArcadeOrigin) => void, reject!: (error: Error) => void;
   mockGps.mockImplementationOnce(() => new Promise((yes, no) => { resolve = yes; reject = no; }));
@@ -144,7 +145,7 @@ it('small map movements keep the pending discovery usable', async () => {
   await waitFor(() => expect(mockDiscover).toHaveBeenCalled());
   const signal = (mockDiscover.mock.calls[0][0] as { signal: AbortSignal }).signal;
   await dragDistance(view, 'upper', 10, 10);
-  jest.useFakeTimers();
+
   for (const latitude of [31, 31.0001, 31.001]) {
     await act(async () => { mockMap.onGestureStart(); mockMap.onCenterChange(origin(latitude)); });
     await act(async () => { jest.advanceTimersByTime(500); });
@@ -165,7 +166,7 @@ it.each([
   await dragDistance(view, 'upper', 10, radius);
   await fireEvent.press(view.getByText(shop.name));
   const count = mockDiscover.mock.calls.length;
-  jest.useFakeTimers();
+
   for (const latitude of small) {
     await act(async () => { mockMap.onGestureStart(); mockMap.onCenterChange(origin(latitude)); });
     await act(async () => { jest.advanceTimersByTime(500); });
@@ -205,7 +206,7 @@ it.each([1, 30] as const)('card and pin selection preserve map scale with a %s k
   await waitFor(() => expect(view.getByText(shop.name)).toBeTruthy());
   await dragDistance(view, 'upper', 10, radius);
   const count = mockDiscover.mock.calls.length;
-  jest.useFakeTimers();
+
   await act(async () => { mockMap.onGestureStart(); mockMap.onCenterChange(origin(32)); });
   await fireEvent.press(view.getByText(shop.name));
   await act(async () => { jest.advanceTimersByTime(500); });
@@ -223,7 +224,7 @@ it('denied location keeps map selection usable; only the final settled center is
   const view = await render(<ArcadeFinderScreen />);
   await waitFor(() => expect(view.getByText('定位未获授权，可拖动地图或设置搜索位置')).toBeTruthy());
   expect(mockMap.camera).toBeNull();
-  jest.useFakeTimers();
+
   await act(async () => { mockMap.onGestureStart(); mockMap.onCenterChange(origin(30)); });
   await act(async () => { jest.advanceTimersByTime(300); mockMap.onGestureStart(); mockMap.onCenterChange(origin(32)); });
   await act(async () => { jest.advanceTimersByTime(499); });
@@ -271,7 +272,7 @@ it('debounces candidates, keeps shop results on place failure, and preserves a c
   mockPlaceSearch.mockRejectedValue(new Error('地点搜索失败，请重试'));
   const view = await render(<ArcadeFinderScreen />);
   await waitFor(() => expect(view.getByText('定位未获授权，可拖动地图或设置搜索位置')).toBeTruthy());
-  jest.useFakeTimers();
+
   await fireEvent.changeText(view.getByLabelText('机厅搜索'), '深圳');
   await act(async () => { jest.advanceTimersByTime(349); });
   expect(mockShopSearch).not.toHaveBeenCalled();

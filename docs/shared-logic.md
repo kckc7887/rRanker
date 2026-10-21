@@ -196,6 +196,8 @@ KALEIDXSCOPE 的课题、国服日程和进度通过 `domain/kaleidx-scope.ts`�
 
 先读实际导出和调用方，再修改当前入口；不维护额外模块登记、结构基线或检查器。真实行为测试覆盖输入输出、交互、取消、缓存清理后的迟到写入、账号轮换、当前备份往返和 I/O 失败。
 
+缓存刷新、示例账号存储、列表可见性、播放器宿主和成绩图导出分别集中覆盖公共行为；游戏入口测试覆盖所属身份、评分、资源、路由和错误差异。评分预期使用独立可计算的输入与结果，HTML 和注入脚本验证展示内容及实际消息，渲染验证播放状态下的输出和资源释放。请求、保存与上传次数仅用于验证外部副作用。
+
 `.github/actions/mobile-quality` 为 push 和同仓库 PR 共用依赖安装、lint、类型检查、单元/UI、生成物与 CI 脚本测试。调用方先检出目标提交；PR 入口位于 `.github/workflows/pull-request.yml`，外部 fork PR 复用 `.github/workflows/quality.yml` 的完整验证路径。
 
 在 `apps/mobile` 运行 `npm run lint`、`npm run typecheck`、`npm test` 和 `npm run check:generated`。CI 脚本测试位于 `.github/scripts`。原生 APK、iOS、真实账号和云端 CI 的结果分别验证和报告。

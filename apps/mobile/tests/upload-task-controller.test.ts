@@ -47,11 +47,11 @@ describe('upload task ownership', () => {
 
   it('ignores old progress, completion and cancellation settlement after an immediate restart', () => {
     const first = controller.begin(); controller.cancel();
-    const second = controller.begin(); const snapshot = controller.getSnapshot();
+    const second = controller.begin();
     controller.setPhase({ kind: 'error', message: 'old' }, first);
     controller.complete({ uploaded: 1, skipped: 0, refreshedAccounts: [], failedAccountNames: [], targetResults: [] }, first);
     controller.finishCanceled(first);
-    expect(controller.getSnapshot()).toBe(snapshot);
+    expect(controller.getSnapshot()).toMatchObject({ status: 'running', phase: { kind: 'logging_in' }, result: null });
     expect(controller.isCurrent(first)).toBe(false);
     expect(controller.isCurrent(second)).toBe(true);
   });

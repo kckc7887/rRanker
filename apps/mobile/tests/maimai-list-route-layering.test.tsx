@@ -1,7 +1,7 @@
 import { Animated } from 'react-native';
 import type { PropsWithChildren } from 'react';
 import { QueryClientProvider } from '@tanstack/react-query';
-import { act, cleanup, render, waitFor } from '@testing-library/react-native';
+import { cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import type { GameId } from '@/domain/game-bind-options';
 import { fixtureRecords, fixtureSource } from '@/fixtures/sanitized';
@@ -125,6 +125,7 @@ function wrapper({ children }: PropsWithChildren) {
 }
 
 beforeEach(() => {
+  jest.useFakeTimers();
   queryClient.clear();
   jest.clearAllMocks();
   mockActiveGameId = 'maimai';
@@ -152,11 +153,8 @@ beforeEach(() => {
 afterEach(async () => {
   await cleanup();
   queryClient.clear();
+  jest.useRealTimers();
 });
-
-function listData(screen: Awaited<ReturnType<typeof render>>, testID: string): unknown[] {
-  return screen.getByTestId(testID).props.data as unknown[];
-}
 
 describe('舞萌列表内容与共同路由的分层', () => {
   it('非舞萌游戏进入成绩页时不挂载舞萌曲库、成绩、标签与筛选链', async () => {
@@ -164,10 +162,6 @@ describe('舞萌列表内容与共同路由的分层', () => {
     const screen = await render(<RecordsScreen />, { wrapper });
 
     expect(screen.getByText('phira-records')).toBeTruthy();
-    expect(mockUseDetailedCatalog).not.toHaveBeenCalled();
-    expect(mockUseScoreSnapshot).not.toHaveBeenCalled();
-    expect(mockUseDxRatingChartTags).not.toHaveBeenCalled();
-    expect(mockUseRecordsFilter).not.toHaveBeenCalled();
     expect(mockGetCatalog).not.toHaveBeenCalled();
     expect(mockGetAliases).not.toHaveBeenCalled();
     expect(screen.queryByTestId('records-results-list')).toBeNull();
@@ -178,26 +172,17 @@ describe('舞萌列表内容与共同路由的分层', () => {
     const screen = await render(<SearchScreen />, { wrapper });
 
     expect(screen.getByText('phira-catalog')).toBeTruthy();
-    expect(mockUseDetailedCatalog).not.toHaveBeenCalled();
-    expect(mockUseDxRatingChartTags).not.toHaveBeenCalled();
-    expect(mockUseCatalogFilter).not.toHaveBeenCalled();
     expect(mockGetCatalog).not.toHaveBeenCalled();
     expect(screen.queryByTestId('catalog-results-list')).toBeNull();
   });
 
   it('成绩页 A→B→A 切换后保留舞萌筛选与曲库缓存', async () => {
     const screen = await render(<RecordsScreen />, { wrapper });
-    await waitFor(() => expect(listData(screen, 'records-results-list').length).toBe(fixtureRecords.length));
+    await screen.findByText(`共 ${fixtureRecords.length} 条成绩`);
 
-    await act(async () => {
-      actualRecordsFilter.getState().setKeyword('脱敏曲目 1');
-    });
-    await waitFor(() => {
-      const filtered = listData(screen, 'records-results-list').length;
-      expect(filtered).toBeGreaterThan(0);
-      expect(filtered).toBeLessThan(fixtureRecords.length);
-    });
-    const filteredCount = listData(screen, 'records-results-list').length;
+    await fireEvent.changeText(screen.getByLabelText('成绩搜索'), '脱敏曲目 1');
+    await waitFor(() => expect(screen.queryByText(`共 ${fixtureRecords.length} 条成绩`)).toBeNull());
+    expect(screen.getByText(/共 \d+ 条成绩/)).toBeTruthy();
     const catalogCalls = mockGetCatalog.mock.calls.length;
 
     mockActiveGameId = 'phira';
@@ -207,24 +192,19 @@ describe('舞萌列表内容与共同路由的分层', () => {
     mockActiveGameId = 'maimai';
     await screen.rerender(<RecordsScreen />);
     expect(actualRecordsFilter.getState().keyword).toBe('脱敏曲目 1');
-    await waitFor(() => expect(listData(screen, 'records-results-list').length).toBe(filteredCount));
+    expect(screen.getByDisplayValue('脱敏曲目 1')).toBeTruthy();
+    expect(screen.queryByText(`共 ${fixtureRecords.length} 条成绩`)).toBeNull();
     expect(mockGetCatalog).toHaveBeenCalledTimes(catalogCalls);
   });
 
   it('曲库页 A→B→A 切换后保留舞萌筛选与曲库缓存', async () => {
     const screen = await render(<SearchScreen />, { wrapper });
     const catalogSongs = fixtureCatalog().songs.length;
-    await waitFor(() => expect(listData(screen, 'catalog-results-list').length).toBe(catalogSongs));
+    await screen.findByText(`共 ${catalogSongs} 首`);
 
-    await act(async () => {
-      actualCatalogFilter.getState().setKeyword('正常曲目 A');
-    });
-    await waitFor(() => {
-      const filtered = listData(screen, 'catalog-results-list').length;
-      expect(filtered).toBeGreaterThan(0);
-      expect(filtered).toBeLessThan(catalogSongs);
-    });
-    const filteredCount = listData(screen, 'catalog-results-list').length;
+    await fireEvent.changeText(screen.getByLabelText('歌曲搜索'), '正常曲目 A');
+    await waitFor(() => expect(screen.queryByText(`共 ${catalogSongs} 首`)).toBeNull());
+    await waitFor(() => expect(screen.getAllByText('正常曲目 A').length).toBeGreaterThan(0));
     const catalogCalls = mockGetCatalog.mock.calls.length;
 
     mockActiveGameId = 'phira';
@@ -234,7 +214,9 @@ describe('舞萌列表内容与共同路由的分层', () => {
     mockActiveGameId = 'maimai';
     await screen.rerender(<SearchScreen />);
     expect(actualCatalogFilter.getState().keyword).toBe('正常曲目 A');
-    await waitFor(() => expect(listData(screen, 'catalog-results-list').length).toBe(filteredCount));
+    await waitFor(() => expect(screen.queryByText(`共 ${catalogSongs} 首`)).toBeNull());
+    await waitFor(() => expect(screen.getAllByText('正常曲目 A').length).toBeGreaterThan(0));
+    expect(screen.getByDisplayValue('正常曲目 A')).toBeTruthy();
     expect(mockGetCatalog).toHaveBeenCalledTimes(catalogCalls);
   });
 });

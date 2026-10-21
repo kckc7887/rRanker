@@ -1,34 +1,21 @@
-import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { museDashProvider } from '@/providers/muse-dash-provider';
+import { afterEach, expect, it, vi } from 'vitest';
 import { loadMuseDashPlayerFresh } from '@/services/muse-dash-cache';
-const player = { rl: 3.45, plays: [], user: { user_id: 'a', nickname: '公开玩家' } };
 
-describe('muse dash player inflight dedupe', () => {
-  let spy: ReturnType<typeof vi.spyOn>;
+afterEach(() => vi.unstubAllGlobals());
 
-  beforeEach(() => {
-    spy = vi.spyOn(museDashProvider, 'getPlayer').mockImplementation(
-      async (userId) => ({ ...player, user: { ...player.user, user_id: userId } }),
-    );
-  });
-
-  afterEach(() => {
-    spy.mockRestore();
-  });
-
-  it('shares one network request across concurrent loads', async () => {
-    const [first, second] = await Promise.all([
-      loadMuseDashPlayerFresh('a'),
-      loadMuseDashPlayerFresh('a'),
-    ]);
-    expect(first.user.user_id).toBe('a');
-    expect(second.user.user_id).toBe('a');
-    expect(spy).toHaveBeenCalledTimes(1);
-  });
-
-  it('allows a fresh request after the previous settled', async () => {
-    await loadMuseDashPlayerFresh('a');
-    await loadMuseDashPlayerFresh('a');
-    expect(spy).toHaveBeenCalledTimes(2);
-  });
+it('并发玩家读取共享请求，完成后的刷新取得新成绩', async () => {
+  const pending = Promise.withResolvers<Response>();
+  let score = 100;
+  const fetcher = vi.fn().mockReturnValueOnce(pending.promise).mockImplementation(async () => Response.json({ rl: score, plays: [], user: { user_id: 'a', nickname: '公开玩家' } }));
+  vi.stubGlobal('fetch', fetcher);
+  const first = loadMuseDashPlayerFresh('a');
+  const second = loadMuseDashPlayerFresh('a');
+  pending.resolve(Response.json({ rl: score, plays: [], user: { user_id: 'a', nickname: '公开玩家' } }));
+  const players = await Promise.all([first, second]);
+  expect(players).toMatchObject([{ rl: 100, user: { user_id: 'a' } }, { rl: 100, user: { user_id: 'a' } }]);
+  expect(fetcher).toHaveBeenCalledTimes(1);
+  expect(String(fetcher.mock.calls[0]?.[0])).toBe('https://api.musedash.moe/player/a');
+  score = 200;
+  await expect(loadMuseDashPlayerFresh('a')).resolves.toMatchObject({ rl: 200 });
+  expect(fetcher).toHaveBeenCalledTimes(2);
 });

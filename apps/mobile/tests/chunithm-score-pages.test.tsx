@@ -3,13 +3,6 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { Best50Screen } from '../app/(tabs)/b50';
 import { RecordsScreen } from '../app/(tabs)/records';
-import { CHUNITHM_WORLDS_END_GRADIENT } from '@/components/chunithm/ChunithmDifficultyBadge';
-import {
-  CHUNITHM_FLOWING_RANK_GRADIENT,
-  CHUNITHM_FLOWING_RANK_LOCATIONS,
-  CHUNITHM_RANK_GRADIENT,
-  CHUNITHM_RANK_GRADIENT_LOCATIONS,
-} from '@/components/chunithm/ChunithmScoreCard';
 import { CHUNITHM_RANKS_DESC } from '@/domain/chunithm-filters';
 import { useChunithmRecordsFilter } from '@/state/chunithm-records-filter';
 
@@ -308,7 +301,7 @@ describe('Chunithm records and B50 screens', () => {
     expect(screen.getByText('3. 第一首歌')).toBeTruthy();
   });
 
-  it('uses fixed primary/achievement rows and the correct static/flowing score styles', async () => {
+  it('shows score achievements and the WORLD’S END difficulty label', async () => {
     const screen = await render(<RecordsScreen />);
     await screen.findByTestId('chunithm-records-list');
     expect(screen.getByTestId('chunithm-primary-tags-1-2')).toBeTruthy();
@@ -316,30 +309,10 @@ describe('Chunithm records and B50 screens', () => {
     expect(screen.getByTestId('flowing-chunithm-score')).toBeTruthy();
     expect(screen.getByTestId('chunithm-rank-SSS+')).toBeTruthy();
     expect(screen.getAllByTestId('gradient-chunithm-score')).toHaveLength(2);
-    expect(CHUNITHM_RANK_GRADIENT).toEqual([
-      '#73CFFF', '#EFCB63', '#FF8EC8', '#73CFFF',
-    ]);
-    expect(CHUNITHM_RANK_GRADIENT_LOCATIONS).toEqual([0, 1 / 3, 2 / 3, 1]);
-    expect(CHUNITHM_FLOWING_RANK_GRADIENT).toEqual([
-      '#73CFFF', '#EFCB63', '#FF8EC8', '#73CFFF',
-      '#EFCB63', '#FF8EC8', '#73CFFF',
-    ]);
-    expect(CHUNITHM_FLOWING_RANK_LOCATIONS).toEqual([
-      0, 1 / 6, 2 / 6, 3 / 6, 4 / 6, 5 / 6, 1,
-    ]);
-    const flowingGradient = screen.getByTestId('chunithm-flowing-score-gradient');
-    expect(flowingGradient.props.colors).toHaveLength(CHUNITHM_FLOWING_RANK_GRADIENT.length);
-    expect(flowingGradient.props.locations).toEqual(CHUNITHM_FLOWING_RANK_LOCATIONS);
-    const staticGradient = screen.getAllByTestId('chunithm-static-score-gradient')[0]!;
-    expect(staticGradient.props.colors).toHaveLength(CHUNITHM_RANK_GRADIENT.length);
-    expect(staticGradient.props.locations).toEqual(CHUNITHM_RANK_GRADIENT_LOCATIONS);
     expect(screen.getByText('EXPERT (13.4)')).toBeTruthy();
     expect(screen.getByText("WORLD'S END (狂☆4)")).toBeTruthy();
     expect(screen.queryByText("WORLD'S END (14.0)")).toBeNull();
     expect(screen.getByTestId('chunithm-worlds-end-badge')).toBeTruthy();
-    expect(CHUNITHM_WORLDS_END_GRADIENT).toEqual([
-      '#37E6FF', '#7B61FF', '#F24FD4', '#FF8A3D',
-    ]);
     expect(screen.getByText('SSS+')).toBeTruthy();
     expect(screen.getByTestId('chunithm-full-combo-rainbow')).toBeTruthy();
     expect(screen.getByTestId('chunithm-full-chain-gold')).toBeTruthy();

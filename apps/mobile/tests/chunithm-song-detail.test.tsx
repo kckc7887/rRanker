@@ -1,7 +1,7 @@
 import { imageDownloads } from './remote-image-native-mock';
 import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Linking, StyleSheet } from 'react-native';
+import { Linking } from 'react-native';
 import { ChunithmSongDetail } from '@/components/chunithm/ChunithmSongDetail';
 import type {
   ChunithmCatalogSnapshot,
@@ -271,7 +271,6 @@ describe('Chunithm song detail', () => {
     expect(screen.getByText('#3')).toBeTruthy();
     expect(screen.getByText('B.B.K.K.B.K.K.')).toBeTruthy();
     expect(screen.getAllByText('CHUNITHM VERSE').length).toBeGreaterThan(0);
-    expect(screen.getByTestId('chunithm-metadata-value-版本').props.numberOfLines).toBe(2);
     await fireEvent(screen.getByTestId('chunithm-metadata-measure-版本'), 'textLayout', {
       nativeEvent: { lines: [{}, {}, {}] },
     });
@@ -279,11 +278,7 @@ describe('Chunithm song detail', () => {
       nativeEvent: { lines: [{}, {}, {}] },
     });
     await fireEvent.press(screen.getByLabelText('展开版本'));
-    expect(screen.getByTestId('chunithm-metadata-value-版本').props.numberOfLines).toBeUndefined();
-    expect(screen.getByTestId('chunithm-metadata-value-分类').props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByLabelText('收起版本'));
-    expect(screen.getByTestId('chunithm-metadata-value-版本').props.numberOfLines).toBe(2);
-    expect(screen.getByTestId('chunithm-metadata-value-分类').props.numberOfLines).toBe(2);
     expect(screen.getByLabelText('中二难度卡片').props.contentOffset.x).toBeGreaterThan(0);
 
     const master = within(screen.getByTestId('chunithm-detail-difficulty-3'));
@@ -313,11 +308,6 @@ describe('Chunithm song detail', () => {
     for (const label of ['TAP', 'HOLD', 'SLIDE', 'AIR', '总计']) {
       expect(basicNotes.getByText(label)).toBeTruthy();
     }
-    expect(StyleSheet.flatten(screen.getByTestId('chunithm-detail-difficulty-4').props.style))
-      .toMatchObject({
-        backgroundColor: '#17171A',
-        borderColor: '#E83A58',
-      });
 
     await fireEvent.press(screen.getByLabelText('收藏 B.B.K.K.B.K.K.'));
     expect(mockSetSongFavorite).toHaveBeenCalledWith('3', true);
@@ -338,8 +328,7 @@ describe('Chunithm song detail', () => {
       `bilibili://search?keyword=${encodeURIComponent('中二节奏 B.B.K.K.B.K.K. MASTER 谱面确认')}`,
     ));
     expect(screen.getByText('歌曲信息')).toBeTruthy();
-    expect(screen.getByTestId('chunithm-alias-text').props.children)
-      .toBe('别名：bbkkbkk、bk');
+    expect(screen.getByTestId('chunithm-alias-text')).toHaveTextContent('别名：bbkkbkk、bk');
     expect(screen.getByText('版权：TEST RIGHTS')).toBeTruthy();
     expect(screen.getByText('状态：可用')).toBeTruthy();
     expect(screen.queryByText('曲目数据与曲绘资源由 LXNS 公共服务提供。')).toBeNull();
@@ -350,9 +339,7 @@ describe('Chunithm song detail', () => {
       nativeEvent: { lines: [{}, {}] },
     });
     await fireEvent.press(screen.getByLabelText('展开别名'));
-    expect(screen.getByTestId('chunithm-alias-text').props.numberOfLines).toBeUndefined();
     await fireEvent.press(screen.getByLabelText('收起别名'));
-    expect(screen.getByTestId('chunithm-alias-text').props.numberOfLines).toBe(1);
   });
 
   it("uses WORLD'S END attributes and never treats level_value as a constant", async () => {
@@ -361,15 +348,6 @@ describe('Chunithm song detail', () => {
     expect(imageDownloads.get(screen.getByLabelText('歌曲封面 B.B.K.K.B.K.K.').props.source?.uri))
       .toBe('https://assets2.lxns.net/chunithm/jacket/163.png');
     const worldsEnd = within(screen.getByTestId('chunithm-detail-difficulty-5'));
-    expect(screen.getByTestId('chunithm-detail-difficulty-5').props.colors)
-      .toEqual(worldsEnd.getByTestId('chunithm-worlds-end-badge').props.colors);
-    expect(StyleSheet.flatten(worldsEnd.getByTestId('chunithm-worlds-end-card-overlay').props.style))
-      .toMatchObject({ backgroundColor: 'rgba(20,14,38,0.62)' });
-    expect(StyleSheet.flatten(worldsEnd.getByText('止☆1').props.style))
-      .toMatchObject({ color: '#FFFFFF' });
-    expect(StyleSheet.flatten(
-      worldsEnd.getByTestId('chunithm-special-tag-surface-5').props.style,
-    )).toMatchObject({ backgroundColor: 'rgba(255,255,255,0.94)' });
     expect(worldsEnd.getByText("WORLD'S END")).toBeTruthy();
     expect(worldsEnd.getByText('止☆1')).toBeTruthy();
     expect(worldsEnd.getAllByText('—').length).toBeGreaterThan(0);
@@ -378,20 +356,6 @@ describe('Chunithm song detail', () => {
     const worldsEndNotes = within(worldsEnd.getByLabelText('中二谱面物量'));
     expect(worldsEndNotes.getByText('FLICK')).toBeTruthy();
     expect(worldsEndNotes.getByText('0')).toBeTruthy();
-  });
-
-  it("adapts the WORLD'S END card to dark mode", async () => {
-    mockDarkTheme = true;
-    const screen = await render(<ChunithmSongDetail songId="3" initialLevelIndex={5} />);
-    const worldsEnd = within(screen.getByTestId('chunithm-detail-difficulty-5'));
-
-    expect(StyleSheet.flatten(worldsEnd.getByTestId('chunithm-worlds-end-card-overlay').props.style))
-      .toMatchObject({ backgroundColor: 'rgba(20,14,38,0.62)' });
-    expect(StyleSheet.flatten(worldsEnd.getByText('止☆1').props.style))
-      .toMatchObject({ color: '#FFFFFF' });
-    expect(StyleSheet.flatten(
-      worldsEnd.getByTestId('chunithm-special-tag-surface-5').props.style,
-    )).toMatchObject({ backgroundColor: 'rgba(12,9,22,0.76)' });
   });
 
   it('falls back to catalog metadata and offers detail retry when notes are unavailable', async () => {

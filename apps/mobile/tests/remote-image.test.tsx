@@ -71,7 +71,7 @@ describe('歌曲封面来源更新', () => {
 });
 
 describe('RemoteImage 压缩垫图', () => {
-  it('starts the original without visibility and retains it across hidden tabs while preserving artwork props', async () => {
+  it('starts the original without visibility and retains it across hidden tabs', async () => {
     mockFind.mockResolvedValue(null);
     const tree = (active: boolean) => <RemoteImageActivityScope active={active}>
       <RemoteImagePersistenceScope enabled={active}>
@@ -83,7 +83,6 @@ describe('RemoteImage 压缩垫图', () => {
     await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(originalSource));
     await fireEvent(screen.getByTestId('cover'), 'display');
     expect(mockCache).not.toHaveBeenCalled();
-    expect(screen.getByTestId('cover').props).toMatchObject({ blurRadius: 12, style: { opacity: 0.65 }, contentFit: 'cover' });
     await screen.rerender(tree(true));
     await waitFor(() => expect(mockCache).toHaveBeenCalled());
     await screen.rerender(tree(false));
@@ -167,19 +166,21 @@ describe('RemoteImage 压缩垫图', () => {
       globalThis.cancelIdleCallback = originalCancelIdle;
     }
   });
-  it('keeps an equal source object stable and rechecks changed headers or cache identity', async () => {
+  it('keeps an unchanged image visible and reloads changed headers or cache identity', async () => {
     mockFind.mockResolvedValue(cachedResult);
     const tree = (token = 'first', cacheKey = 'cover') => <RemoteImage cacheProfile="thumbnail" gameId="maimai" testID="cover"
       source={{ uri: remoteSource, headers: { Authorization: token }, cacheKey }} />;
     const screen = await render(tree());
-    await waitFor(() => expect(mockFind).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source));
     await screen.rerender(tree());
-    expect(mockFind).toHaveBeenCalledTimes(1);
     expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source);
+    const changedSource = { uri: 'file:///changed.webp' };
+    mockFind.mockResolvedValue({ ...cachedResult, source: changedSource });
     await screen.rerender(tree('second'));
-    await waitFor(() => expect(mockFind).toHaveBeenCalledTimes(2));
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(changedSource));
+    mockFind.mockResolvedValue(cachedResult);
     await screen.rerender(tree('second', 'other'));
-    await waitFor(() => expect(mockFind).toHaveBeenCalledTimes(3));
+    await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual(cachedResult.source));
     await fireEvent(screen.getByTestId('cover'), 'display');
     await waitFor(() => expect(screen.getByTestId('cover').props.source).toEqual({
       ...originalSource, headers: { Authorization: 'second' },

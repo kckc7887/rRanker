@@ -263,10 +263,13 @@ describe('resolveAccountAvatarUrl', () => {
   it('limits account hydration to three concurrent requests', async () => {
     let active = 0;
     let maximum = 0;
+    const batchStarted = Promise.withResolvers<void>();
+    const releaseBatch = Promise.withResolvers<void>();
     vi.spyOn(tufProvider, 'getPlayerProfile').mockImplementation(async (playerId) => {
       active += 1;
       maximum = Math.max(maximum, active);
-      await new Promise((resolve) => setTimeout(resolve, 1));
+      if (active === 3) batchStarted.resolve();
+      await releaseBatch.promise;
       active -= 1;
       return {
         id: playerId, name: `TUF ${playerId}`, rankedScore: 1, generalScore: 0, ppScore: 0,
@@ -281,7 +284,10 @@ describe('resolveAccountAvatarUrl', () => {
     for (const account of accounts) useSession.getState().upsertBoundAccount(account);
 
     const updates: Record<string, string> = {};
-    await syncAllAccountAvatars(accounts, {}, (id, url) => { updates[id] = url; }, new AbortController().signal);
+    const pending = syncAllAccountAvatars(accounts, {}, (id, url) => { updates[id] = url; }, new AbortController().signal);
+    await batchStarted.promise;
+    releaseBatch.resolve();
+    await pending;
 
     expect(maximum).toBe(3);
     expect(updates).toEqual(Object.fromEntries(accounts.map((account, index) => [account.id, `https://example.test/${100 + index}.png`])));

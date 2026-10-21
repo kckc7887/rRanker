@@ -99,15 +99,6 @@ vi.mock('expo-file-system/legacy', () => ({
   moveAsync: async ({ from, to }: { from: string; to: string }) => new mocks.MockFile(from).move(new mocks.MockFile(to)),
 }));
 
-vi.mock('expo-crypto', () => ({
-  CryptoDigestAlgorithm: { SHA256: 'SHA-256' },
-  digestStringAsync: vi.fn(async (_algorithm: string, value: string) => {
-    let hash = 2166136261;
-    for (const character of value) hash = Math.imul(hash ^ character.charCodeAt(0), 16777619);
-    return Math.abs(hash >>> 0).toString(16).padStart(64, '0');
-  }),
-}));
-
 vi.mock('expo-image', () => ({ Image: {
   loadAsync: (...args: unknown[]) => mocks.loadAsync(...args),
 } }));

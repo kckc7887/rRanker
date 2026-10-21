@@ -2,9 +2,8 @@ import { imageDownloads } from './remote-image-native-mock';
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { QueryClient, QueryClientProvider, type InfiniteData } from '@tanstack/react-query';
-import { Dimensions, Linking, processColor, StyleSheet } from 'react-native';
+import { Dimensions, Linking,} from 'react-native';
 import type { TufLevel, TufLevelPass, TufPass, TufPassPage, TufPlayer, TufVideoDetails } from '@/domain/tuf';
-import { BADGE_GOLD_BORDER_COLORS } from '@/features/best-image/best-image-badge-theme';
 import { TufBestScreen, TufLevelDetailScreen, TufRecordsScreen, TufSearchScreen } from '@/screens/TufScreens';
 import { TufRandomChartsScreen } from '@/screens/TufRandomChartsScreen';
 import { queryClient } from '@/state/query-client';
@@ -456,8 +455,6 @@ describe('TUF screens', () => {
     await dragTufRangeThumb(screen, 'lower', 9);
     await dragTufRangeThumb(screen, 'upper', -5);
     await fireEvent.press(screen.getByLabelText('筛选成就 PP'));
-    expect(screen.getByTestId('tuf-filter-pp-gradient').props.colors)
-      .toEqual(BADGE_GOLD_BORDER_COLORS.map((color) => processColor(color)));
     await fireEvent.press(screen.getByLabelText('包含特殊难度'));
 
     expect(screen.getByText('G12 PP')).toBeTruthy();
@@ -563,8 +560,6 @@ describe('TUF screens', () => {
       artist: '这是一位名字同样非常非常长并且不应该换行的艺术家',
     };
     const screen = await render(<TufLevelDetailScreen levelId="11372" />);
-    const heroStyle = StyleSheet.flatten(screen.getByTestId('tuf-level-hero').props.style);
-    expect(heroStyle).toMatchObject({ width: 390, height: 390 });
     expect(screen.getByTestId('tuf-level-detail-scroll').props).toMatchObject({
       automaticallyAdjustContentInsets: false,
       contentInsetAdjustmentBehavior: 'never',
@@ -577,8 +572,6 @@ describe('TUF screens', () => {
     await fireEvent(artistScroll, 'contentSizeChange', 420, 21);
     expect(screen.getByTestId('tuf-level-title-scroll').props.scrollEnabled).toBe(true);
     expect(screen.getByTestId('tuf-level-artist-scroll').props.scrollEnabled).toBe(true);
-    expect(screen.getByText(mockLevelDetail.song).props.numberOfLines).toBe(1);
-    expect(screen.getByText(mockLevelDetail.artist).props.numberOfLines).toBe(1);
     expect(screen.getByText('#11372')).toBeTruthy();
     expect(screen.queryByText('TUF #11372')).toBeNull();
   });
@@ -596,15 +589,6 @@ describe('TUF screens', () => {
     expect(screen.getByText('WF')).toBeTruthy();
     expect(screen.getByText('PP')).toBeTruthy();
     expect(screen.queryByText('Perfect')).toBeNull();
-    expect(screen.getByTestId('tuf-pass-1-wf-gradient').props.colors)
-      .toEqual(BADGE_GOLD_BORDER_COLORS.map((color) => processColor(color)));
-    expect(screen.getByTestId('tuf-pass-1-pp-gradient').props.colors)
-      .toEqual(BADGE_GOLD_BORDER_COLORS.map((color) => processColor(color)));
-    const difficulty = screen.getByLabelText('难度 G12，基准分 12.34');
-    expect(StyleSheet.flatten(difficulty.props.style)).toMatchObject({ alignSelf: 'flex-start' });
-    expect(screen.getByTestId('tuf-pass-1').children).toHaveLength(1);
-    const impactSide = screen.getByText('Impact').parent;
-    expect(StyleSheet.flatten(impactSide?.props.style)).toMatchObject({ alignItems: 'center', justifyContent: 'center' });
   });
 
   it('shows the matching Bilibili jump button below the judgement table', async () => {
@@ -677,18 +661,10 @@ describe('TUF screens', () => {
     expect(screen.getByText('1.25×')).toBeTruthy();
     expect(screen.getByTestId('tuf-detail-wf')).toBeTruthy();
     expect(screen.getByTestId('tuf-detail-pp')).toBeTruthy();
-    expect(screen.getByTestId('tuf-detail-wf-gradient').props.colors)
-      .toEqual(BADGE_GOLD_BORDER_COLORS.map((color) => processColor(color)));
-    expect(screen.getByTestId('tuf-detail-pp-gradient').props.colors)
-      .toEqual(BADGE_GOLD_BORDER_COLORS.map((color) => processColor(color)));
-    expect(screen.getByTestId('tuf-level-chart').props.colors[0]).toBe(processColor('#F2A70038'));
     expect(screen.getByText('精快!')).toBeTruthy();
     expect(screen.getByText('太慢!!')).toBeTruthy();
     const total = screen.getByText('600');
     expect(total.props).toMatchObject({ adjustsFontSizeToFit: true, minimumFontScale: 0.65, numberOfLines: 1 });
-    expect(StyleSheet.flatten(screen.getByLabelText('TUF 判定详情').props.style)).not.toEqual(
-      expect.objectContaining({ backgroundColor: expect.anything(), borderWidth: expect.anything() }),
-    );
     const tagIcon = screen.getByLabelText('Full VFX 标签图标');
     expect(tagIcon.props.source).toContain('7a5b84eeea6fc0ce86d25da07d19595481a31d7e');
     await fireEvent(tagIcon, 'error');

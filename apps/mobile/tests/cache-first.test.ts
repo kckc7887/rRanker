@@ -1,269 +1,313 @@
-import { afterEach, vi } from 'vitest';
-import { fixtureSource } from '@/fixtures/sanitized';
-import { ProviderError } from '@/providers/errors';
+import { describe, expect, it } from 'vitest';
+import type { DataSource } from '@/domain/models';
 import { cacheFirstLoad, cacheFirstLoadWithBackground, isCacheFallback, staleCached } from '@/services/cache-first';
-import { installRuntimeLogRecorder } from '@/services/runtime-diagnostics-recorder';
+import { ProviderError } from '@/providers/errors';
 import { loadAliasedCatalog } from '@/services/aliased-catalog-query';
+import { createInflightGuard } from '@/services/snapshot-cache-utils';
+import { fixtureSource } from '@/fixtures/sanitized';
+import { QueryClient } from '@tanstack/react-query';
+import { publishEntityValue } from '@/services/game-data-query';
 
-vi.mock('@/state/app-lifecycle-core', () => ({
-  getForegroundAbortSignal: () => new AbortController().signal,
-}));
+type Sourced = { source: DataSource };
+const freshSource: DataSource = { ...fixtureSource, isStale: false };
+const staleSource: DataSource = { ...fixtureSource, isStale: true, kind: 'cache' };
 
-type Sample = { value: number; source: typeof fixtureSource };
-afterEach(() => installRuntimeLogRecorder(undefined));
-
-it('starts independent catalog and alias reads together while keeping alias failure optional', async () => {
-  let finishCatalog!: (value: Sample) => void;
-  const catalog = new Promise<Sample>(resolve => { finishCatalog = resolve; });
-  const loadCatalog = vi.fn(() => catalog);
-  const loadAliases = vi.fn(async (): Promise<Sample> => { throw new Error('aliases unavailable'); });
-  const mergeAliases = vi.fn((value: Sample, aliases: Sample | undefined) => ({ ...value, value: value.value + (aliases?.value ?? 0) }));
-  const pending = loadAliasedCatalog({
-    queryKey: ['catalog-test'], loadCached: async () => null, loadCatalog, loadAliases, mergeAliases,
-    composeSource: value => value.source, onFresh: vi.fn(),
-  });
-  await vi.waitFor(() => expect(loadAliases).toHaveBeenCalledTimes(1));
-  expect(loadCatalog).toHaveBeenCalledTimes(1);
-  finishCatalog({ value: 42, source: fixtureSource });
-  expect((await pending).value).toBe(42);
-  expect(mergeAliases).toHaveBeenCalledWith({ value: 42, source: fixtureSource }, undefined);
+it('真实 QueryClient 首屏提交后再发布快响应后台新值', async () => {
+  const client = new QueryClient();
+  const queryKey = ['publication-race'];
+  let background: Promise<unknown> | undefined;
+  try {
+    const first = await client.fetchQuery({ queryKey, queryFn: async ({ signal }) => {
+      const load = await cacheFirstLoadWithBackground({
+        loadCached: async () => ({ value: 1, source: freshSource }),
+        loadFresh: async () => ({ value: 2, source: freshSource }),
+        onFresh: fresh => publishEntityValue(client, queryKey, fresh), signal,
+      });
+      background = load.background;
+      return load.value;
+    } });
+    expect(first.value).toBe(1);
+    await background;
+    expect(client.getQueryData(queryKey)).toMatchObject({ value: 2, source: { isStale: false } });
+  } finally { client.clear(); }
 });
 
-function makeSample(value: number, source = fixtureSource): Sample {
-  return { value, source };
+it('失败订阅抛错也以RefreshResult结算，不产生拒绝', async () => {
+  const load = await cacheFirstLoadWithBackground({
+    loadCached: async () => ({ source: freshSource }),
+    loadFresh: async () => { throw new Error('offline'); },
+    onFresh: () => undefined,
+    onRefreshFailed: () => { throw new Error('observer'); },
+  });
+  await expect(load.background).resolves.toMatchObject({ status: 'failed', failures: [{ target: 'data' }] });
+});
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((done, fail) => { resolve = done; reject = fail; });
+  return { promise, resolve, reject };
 }
 
-describe('cacheFirstLoad', () => {
-  it('records cache hits and publication stages under one parent operation without copying data', async () => {
-    const log = vi.fn(); installRuntimeLogRecorder(log);
-    const load = await cacheFirstLoadWithBackground({
-      loadCached: async () => makeSample(1), loadFresh: async () => makeSample(2), onFresh: vi.fn(),
-      diagnosticParentOperationId: 41,
-    });
-    expect((await load.background).status).toBe('success');
-    const fields = log.mock.calls.map(call => call[1]);
-    expect(fields.map(field => field.phase)).toEqual(['cache-read', 'cache-read-complete', 'refresh', 'refresh-complete', 'cache-publish', 'cache-publish-complete', 'settled']);
-    expect(fields[1]).toMatchObject({ cacheCount: 1, result: 'hit' });
-    expect(fields.every(field => field.parentOperationId === 41)).toBe(true);
-    expect(new Set(fields.map(field => field.operationId)).size).toBe(1);
-    expect(fields.at(-1)).toMatchObject({ result: 'success' });
-    expect(JSON.stringify(fields)).not.toContain(fixtureSource.label);
-  });
-  it('serves the stale-marked cache first and refreshes in background', async () => {
-    const cached = makeSample(1);
-    const fresh = makeSample(2);
-    let notifyFresh: ((value: Sample) => void) | null = null;
-    const freshNotified = new Promise<Sample>((resolve) => { notifyFresh = resolve; });
-
-    const result = await cacheFirstLoad({
+describe('缓存优先的后台刷新句柄', () => {
+  it('缓存命中时先返回打标缓存，句柄在后台刷新落定后给出成功终态', async () => {
+    const cached = { source: staleSource, value: 'cached' };
+    const load = await cacheFirstLoadWithBackground<Sourced & { value: string }>({
       loadCached: async () => cached,
-      loadFresh: async () => fresh,
-      onFresh: (value) => notifyFresh?.(value),
-    });
-
-    expect(result.value).toBe(1);
-    expect(result.source.kind).toBe(fixtureSource.kind);
-    expect(result.source.isStale).toBe(true);
-    expect(result.source.label).toBe(fixtureSource.label);
-    const refreshed = await freshNotified;
-    expect(refreshed.value).toBe(2);
-    expect(refreshed.source.kind).not.toBe('cache');
-  });
-
-  it('does not rewrite the query when the background refresh fails', async () => {
-    let onFreshCalled = false;
-    const result = await cacheFirstLoad({
-      loadCached: async () => makeSample(1),
-      loadFresh: async () => { throw new Error('network'); },
-      onFresh: () => { onFreshCalled = true; },
-    });
-
-    expect(result.value).toBe(1);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(onFreshCalled).toBe(false);
-  });
-
-  it('does not rewrite the query after the foreground signal is aborted', async () => {
-    const controller = new AbortController();
-    let resolveFresh!: (value: Sample) => void;
-    const fresh = new Promise<Sample>((resolve) => { resolveFresh = resolve; });
-    let onFreshCalled = false;
-
-    const result = await cacheFirstLoad({
-      loadCached: async () => makeSample(1),
-      loadFresh: async () => fresh,
-      onFresh: () => { onFreshCalled = true; },
-      signal: controller.signal,
-    });
-    controller.abort();
-    resolveFresh(makeSample(2));
-    await new Promise((resolve) => setTimeout(resolve, 0));
-
-    expect(result.value).toBe(1);
-    expect(onFreshCalled).toBe(false);
-  });
-
-  it('rejects a cache miss whose request finishes after cancellation', async () => {
-    const controller = new AbortController();
-    let resolveFresh!: (value: Sample) => void;
-    const fresh = new Promise<Sample>((resolve) => { resolveFresh = resolve; });
-    const pending = cacheFirstLoad({
-      loadCached: async () => null,
-      loadFresh: async () => fresh,
+      loadFresh: async () => ({ source: freshSource, value: 'fresh' }),
       onFresh: () => undefined,
-      signal: controller.signal,
     });
-    await Promise.resolve();
-    controller.abort();
-    resolveFresh(makeSample(2));
 
-    await expect(pending).rejects.toThrow('cache first load aborted');
+    expect(load.value).toMatchObject({ value: 'cached', source: { isStale: true } });
+    const settled = await load.background;
+    expect(settled.status).toBe('success');
+    expect(settled.value).toMatchObject({ value: 'fresh' });
+    expect(settled.metadata).toMatchObject({ provider: fixtureSource.kind, fetchedAt: fixtureSource.updatedAt });
   });
 
-  it('does not rewrite the query when the refresh returns a fallback cache', async () => {
-    const fallback = makeSample(1, {
-      ...fixtureSource,
-      kind: 'cache',
-      isStale: true,
-      label: '兜底缓存',
+  it('后台刷新抛错时句柄给出失败终态，且不发布任何数据', async () => {
+    const published: unknown[] = [];
+    const load = await cacheFirstLoadWithBackground<Sourced & { value: string }>({
+      loadCached: async () => ({ source: staleSource, value: 'cached' }),
+      loadFresh: async () => { throw new Error('offline'); },
+      onFresh: (value) => { published.push(value); },
+      onRefreshFailed: (failure) => { published.push(failure); },
     });
-    let onFreshCalled = false;
-    const result = await cacheFirstLoad({
-      loadCached: async () => makeSample(0),
+
+    const settled = await load.background;
+    expect(settled.status).toBe('failed');
+    expect(settled.value).toBeNull();
+    expect(settled.failures[0]).toMatchObject({ code: 'unknown' });
+    expect(published).toHaveLength(1);
+    expect(published[0]).toMatchObject({ code: 'unknown' });
+  });
+
+  it('后台返回兜底缓存时句柄给出失败终态并保留可继续使用的旧值', async () => {
+    const fallback: Sourced & { value: string } = { source: staleSource, value: 'cached' };
+    const load = await cacheFirstLoadWithBackground<Sourced & { value: string }>({
+      loadCached: async () => fallback,
       loadFresh: async () => fallback,
-      onFresh: () => { onFreshCalled = true; },
-    });
-
-    expect(result.value).toBe(0);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(onFreshCalled).toBe(false);
-  });
-
-  it('loads from the network when no cache exists', async () => {
-    let onFreshCalled = false;
-    const result = await cacheFirstLoad({
-      loadCached: async () => null,
-      loadFresh: async () => makeSample(2),
-      onFresh: () => { onFreshCalled = true; },
-    });
-
-    expect(result.value).toBe(2);
-    expect(result.source.kind).not.toBe('cache');
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(onFreshCalled).toBe(false);
-  });
-
-  it('reports fallback status separately and suppresses it after cancellation', async () => {
-    for (const cancel of [false, true]) {
-      const controller = new AbortController();
-      let finish!: (value: Sample) => void;
-      const pending = new Promise<Sample>(resolve => { finish = resolve; });
-      const onFresh = vi.fn(); const onFallback = vi.fn();
-      await cacheFirstLoad({ loadCached: async () => makeSample(1), loadFresh: () => pending,
-        signal: controller.signal, onFresh, onFallback });
-      if (cancel) controller.abort();
-      const fallback = staleCached(makeSample(1)); finish(fallback);
-      await new Promise(resolve => setTimeout(resolve, 0));
-      expect(onFresh).not.toHaveBeenCalled();
-      if (cancel) expect(onFallback).not.toHaveBeenCalled();
-      else expect(onFallback).toHaveBeenCalledWith(fallback, null);
-    }
-  });
-
-  it('routes a refresh the service declares as a fallback away from onFresh', async () => {
-    const fallback = makeSample(1);
-    const onFresh = vi.fn(); const onFallback = vi.fn();
-    const result = await cacheFirstLoad({
-      loadCached: async () => makeSample(0),
-      loadFresh: async () => fallback,
-      onFresh,
-      onFallback,
-      isFallback: (value) => value === fallback,
-    });
-
-    expect(result.value).toBe(0);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(onFresh).not.toHaveBeenCalled();
-    expect(onFallback).toHaveBeenCalledWith(fallback, null);
-  });
-
-  it('reports a failed refresh with its machine error code instead of its text', async () => {
-    const onFresh = vi.fn(); const onRefreshFailed = vi.fn();
-    const result = await cacheFirstLoad({
-      loadCached: async () => makeSample(1),
-      loadFresh: async () => { throw new ProviderError('authentication', '登录状态已变化', false); },
-      onFresh,
-      onRefreshFailed,
-    });
-
-    expect(result.value).toBe(1);
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(onFresh).not.toHaveBeenCalled();
-    expect(onRefreshFailed).toHaveBeenCalledWith({
-      code: 'authentication', target: null, diagnostic: '登录状态已变化', retryable: false,
-    });
-  });
-
-  it('does not report a failed refresh after the foreground signal is aborted', async () => {
-    const controller = new AbortController();
-    const onRefreshFailed = vi.fn();
-    let reject!: (error: unknown) => void;
-    await cacheFirstLoad({
-      loadCached: async () => makeSample(1),
-      loadFresh: () => new Promise<Sample>((_resolve, fail) => { reject = fail; }),
       onFresh: () => undefined,
-      onRefreshFailed,
+    });
+
+    const settled = await load.background;
+    expect(settled.status).toBe('failed');
+    expect(settled.value).toMatchObject({ value: 'cached' });
+    expect(settled.metadata).toBeNull();
+  });
+
+  it('取消整个消费者操作时句柄给出取消终态，不发布过期数据', async () => {
+    const controller = new AbortController();
+    const pending = deferred<Sourced & { value: string }>();
+    const load = await cacheFirstLoadWithBackground<Sourced & { value: string }>({
+      loadCached: async () => ({ source: staleSource, value: 'cached' }),
+      loadFresh: () => pending.promise,
+      onFresh: () => { throw new Error('取消后不得发布'); },
       signal: controller.signal,
     });
-    controller.abort();
-    reject(new ProviderError('network', 'offline', true));
-    await new Promise((resolve) => setTimeout(resolve, 10));
-    expect(onRefreshFailed).not.toHaveBeenCalled();
+
+    controller.abort(new Error('后台刷新已取消'));
+    pending.resolve({ source: freshSource, value: 'fresh' });
+    const settled = await load.background;
+    expect(settled.status).toBe('cancelled');
+    expect(settled.value).toBeNull();
   });
 
-  it('supports a custom stale marker for payloads with multiple sources', async () => {
-    const payload = { source: fixtureSource, catalogSource: fixtureSource };
-    const markStale = (value: typeof payload) => ({
-      ...value,
-      source: staleCached(value.source),
-      catalogSource: staleCached(value.catalogSource),
-    });
-
-    const result = await cacheFirstLoad({
-      loadCached: async () => payload,
-      loadFresh: async () => payload,
+  it('cacheFirstLoad 返回带暂存标记的缓存', async () => {
+    const value = await cacheFirstLoad<Sourced & { value: string }>({
+      loadCached: async () => ({ source: staleSource, value: 'cached' }),
+      loadFresh: async () => ({ source: freshSource, value: 'fresh' }),
       onFresh: () => undefined,
-      markStale,
     });
-
-    expect(result.source.kind).toBe(fixtureSource.kind);
-    expect(result.catalogSource.kind).toBe(payload.catalogSource.kind);
-    expect(result.catalogSource.isStale).toBe(true);
-  });
-
-  it('overrides the source label when requested', () => {
-    const marked = staleCached(makeSample(1), { label: '落雪咖啡屋（缓存）' });
-    expect(marked.source.label).toBe('落雪咖啡屋（缓存）');
-    expect(marked.source.kind).toBe(fixtureSource.kind);
-    expect(marked.source.isStale).toBe(true);
-  });
-
-  it('keeps already-stale values untouched', () => {
-    const already = makeSample(1, { ...fixtureSource, kind: 'cache', isStale: true });
-    expect(staleCached(already)).toBe(already);
+    expect(value).toMatchObject({ value: 'cached', source: { isStale: true } });
   });
 });
 
-describe('isCacheFallback', () => {
-  it('treats cache-kind sources as fallbacks', () => {
-    expect(isCacheFallback(makeSample(1, { ...fixtureSource, kind: 'cache', isStale: true }))).toBe(true);
+describe('消费者取消与整个操作取消的区别', () => {
+  it('取消一个消费者不会停止仍需要同一数据的另一个消费者', async () => {
+    const guard = createInflightGuard<string>();
+    const transport = deferred<Sourced & { value: string }>();
+    const published: string[] = [];
+    let requests = 0;
+    const loadShared = (signal: AbortSignal) => guard.share<Sourced & { value: string }>('player:25', async () => {
+      requests += 1;
+      return transport.promise;
+    }, signal);
+    const consumerA = new AbortController();
+    const consumerB = new AbortController();
+    const cached = () => ({ source: staleSource, value: 'cached' });
+
+    const first = await cacheFirstLoadWithBackground<Sourced & { value: string }>({
+      loadCached: async () => cached(), loadFresh: loadShared, onFresh: () => published.push('A'), signal: consumerA.signal,
+    });
+    const second = await cacheFirstLoadWithBackground<Sourced & { value: string }>({
+      loadCached: async () => cached(), loadFresh: loadShared, onFresh: () => published.push('B'), signal: consumerB.signal,
+    });
+    consumerA.abort(new Error('消费者 A 离开'));
+    transport.resolve({ source: freshSource, value: 'shared' });
+
+    expect((await first.background).status).toBe('cancelled');
+    expect((await second.background).status).toBe('success');
+    expect(published).toEqual(['B']);
+    expect(requests).toBe(1);
   });
 
-  it('treats stale-flagged sources as fallbacks even when the kind is unchanged', () => {
-    expect(isCacheFallback(makeSample(1, { ...fixtureSource, isStale: true }))).toBe(true);
-  });
+  it('取消整个操作时所有消费者都停止提交', async () => {
+    const guard = createInflightGuard<string>();
+    const transport = deferred<Sourced & { value: string }>();
+    const published: string[] = [];
+    const loadShared = (signal: AbortSignal) => guard.share<Sourced & { value: string }>('player:26', async (requestSignal) => {
+      const cancel = () => transport.reject(requestSignal.reason ?? new Error('操作已取消'));
+      requestSignal.addEventListener('abort', cancel, { once: true });
+      try {
+        return await transport.promise;
+      } finally {
+        requestSignal.removeEventListener('abort', cancel);
+      }
+    }, signal);
+    const cached = () => ({ source: staleSource, value: 'cached' });
 
-  it('treats live sources as non-fallbacks', () => {
-    expect(isCacheFallback(makeSample(1, fixtureSource))).toBe(false);
+    const first = await cacheFirstLoadWithBackground<Sourced & { value: string }>({
+      loadCached: async () => cached(), loadFresh: loadShared, onFresh: () => published.push('A'),
+    });
+    const second = await cacheFirstLoadWithBackground<Sourced & { value: string }>({
+      loadCached: async () => cached(), loadFresh: loadShared, onFresh: () => published.push('B'),
+    });
+    guard.clear();
+
+    expect((await first.background).status).not.toBe('success');
+    expect((await second.background).status).not.toBe('success');
+    expect(published).toEqual([]);
   });
+});
+
+it('查询已移除时等待发布结算，迟到新值不重建查询', async () => {
+  const client = new QueryClient();
+  const key = ['removed-publication'];
+  const pending = deferred<number>();
+  const query = client.fetchQuery({ queryKey: key, queryFn: async ({ signal }) => { void signal; return pending.promise; } }).catch(() => undefined);
+  const publishing = publishEntityValue(client, key, 2);
+  client.clear();
+  await publishing;
+  pending.resolve(1);
+  await query;
+  expect(client.getQueryData(key)).toBeUndefined();
+});
+
+it('后台提交抛错返回失败终态，终态仍保留已取回的新值', async () => {
+  const load = await cacheFirstLoadWithBackground({
+    loadCached: async () => ({ source: freshSource, value: 1 }),
+    loadFresh: async () => ({ source: freshSource, value: 2 }),
+    onFresh: async () => { throw new Error('commit failed'); },
+  });
+  await expect(load.background).resolves.toMatchObject({ status: 'failed', value: { value: 2 }, failures: [{ diagnostic: 'commit failed' }] });
+});
+
+it('异步发布期间取消也按取消终态结算', async () => {
+  const controller = new AbortController();
+  const publication = deferred<void>();
+  const started = deferred<void>();
+  const load = await cacheFirstLoadWithBackground({
+    loadCached: async () => ({ source: freshSource }),
+    loadFresh: async () => ({ source: freshSource }),
+    onFresh: () => { started.resolve(); return publication.promise; },
+    signal: controller.signal,
+  });
+  await started.promise;
+  controller.abort();
+  publication.reject(new DOMException('aborted', 'AbortError'));
+  await expect(load.background).resolves.toMatchObject({ status: 'cancelled' });
+});
+
+
+it('曲库与别名并行读取，别名失败仍返回曲库', async () => {
+  const catalog = deferred<{ source: DataSource; value: number }>();
+  const aliasesStarted = deferred<void>();
+  const pending = loadAliasedCatalog({
+    queryKey: ['catalog-test'], loadCached: async () => null,
+    loadCatalog: () => catalog.promise,
+    loadAliases: async (): Promise<{ source: DataSource; value: number }> => {
+      aliasesStarted.resolve(); throw new Error('aliases unavailable');
+    },
+    mergeAliases: (value, aliases) => ({ ...value, value: value.value + (aliases?.value ?? 0) }),
+    composeSource: value => value.source, onFresh: () => undefined,
+  });
+  await aliasesStarted.promise;
+  catalog.resolve({ value: 42, source: freshSource });
+  await expect(pending).resolves.toMatchObject({ value: 42 });
+});
+
+it.each([false, true])('没有缓存时等待联网结果，并拒绝取消后的迟到结果：%s', async cancel => {
+  const controller = new AbortController();
+  const fresh = deferred<Sourced & { value: number }>();
+  const started = deferred<void>();
+  const published: unknown[] = [];
+  const pending = cacheFirstLoad({
+    loadCached: async () => null,
+    loadFresh: () => { started.resolve(); return fresh.promise; },
+    onFresh: value => { published.push(value); }, signal: controller.signal,
+  });
+  await started.promise;
+  if (cancel) controller.abort();
+  fresh.resolve({ value: 2, source: freshSource });
+  if (cancel) await expect(pending).rejects.toThrow();
+  else await expect(pending).resolves.toMatchObject({ value: 2, source: { isStale: false } });
+  expect(published).toEqual([]);
+});
+
+it.each([false, true])('服务声明回退时保留旧值，只通知仍活动的消费者：%s', async cancel => {
+  const controller = new AbortController();
+  const fresh = deferred<Sourced & { value: number }>();
+  const fallback = { value: 1, source: freshSource };
+  const published: unknown[] = [];
+  const fallbackEvents: unknown[] = [];
+  const load = await cacheFirstLoadWithBackground({
+    loadCached: async () => fallback, loadFresh: () => fresh.promise,
+    isFallback: value => value === fallback,
+    onFresh: value => { published.push(value); },
+    onFallback: (value, failure) => { fallbackEvents.push([value, failure]); },
+    signal: controller.signal,
+  });
+  if (cancel) controller.abort();
+  fresh.resolve(fallback);
+  await load.background;
+  expect(load.value.value).toBe(1);
+  expect(published).toEqual([]);
+  expect(fallbackEvents).toEqual(cancel ? [] : [[fallback, null]]);
+});
+
+it.each([false, true])('刷新失败保留错误码，取消后不再通知：%s', async cancel => {
+  const controller = new AbortController();
+  const fresh = deferred<Sourced>();
+  const failures: unknown[] = [];
+  const load = await cacheFirstLoadWithBackground({
+    loadCached: async () => ({ source: freshSource }), loadFresh: () => fresh.promise,
+    onFresh: () => { throw new Error('失败响应不得发布'); },
+    onRefreshFailed: failure => { failures.push(failure); }, signal: controller.signal,
+  });
+  if (cancel) controller.abort();
+  fresh.reject(new ProviderError('authentication', '登录状态已变化', false));
+  await load.background;
+  expect(failures).toEqual(cancel ? [] : [{ code: 'authentication', target: null, diagnostic: '登录状态已变化', retryable: false }]);
+});
+
+it('多来源暂存标记保留原提供方与抓取时间', async () => {
+  const payload = { source: freshSource, catalogSource: freshSource };
+  const load = await cacheFirstLoadWithBackground({
+    loadCached: async () => payload, loadFresh: async () => payload, onFresh: () => undefined,
+    markStale: value => ({ source: staleCached(value.source), catalogSource: staleCached(value.catalogSource) }),
+  });
+  await load.background;
+  expect(load.value.source).toEqual({ ...freshSource, isStale: true });
+  expect(load.value.catalogSource).toEqual({ ...freshSource, isStale: true });
+  expect(staleCached({ source: freshSource }, { label: '暂存资料' }).source)
+    .toEqual({ ...freshSource, isStale: true, label: '暂存资料' });
+});
+
+it.each([
+  [{ ...freshSource, kind: 'cache' as const }, true],
+  [{ ...freshSource, isStale: true }, true],
+  [freshSource, false],
+])('按来源与暂存标记识别回退数据', (source, expected) => {
+  expect(isCacheFallback({ source })).toBe(expected);
 });

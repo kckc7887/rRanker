@@ -23,14 +23,6 @@ import type { SecureSessionStore } from '@/storage/secure-session-store';
 import {
   clearOsuRotationCache,
 } from '@/providers/osu-oauth';
-import { DivingFishProvider } from '@/providers/diving-fish-provider';
-import { EmptyScoreProvider } from '@/providers/empty-provider';
-import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
-import { LxnsScoreProvider } from '@/providers/lxns-score-provider';
-import { LocalMaimaiScoreProvider } from '@/providers/local-score-provider';
-import { MaxedMaimaiTestProvider } from '@/providers/maxed-maimai-test-provider';
-import { MaxedPhigrosTestProvider } from '@/providers/maxed-phigros-test-provider';
-import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import {
   applyLxnsTokenRotation,
   applyMajdataSessionRotation,
@@ -224,7 +216,6 @@ describe('useSession store', () => {
     expect(state.boundAccounts).toEqual([]);
     expect(state.activeAccountId).toBe(UNBOUND_ACCOUNT_ID);
     expect(state.activeProviderId).toBeNull();
-    expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
     expect(state.catalogProvider).toBeNull();
   });
 
@@ -237,8 +228,8 @@ describe('useSession store', () => {
     });
     const state = useSession.getState();
     expect(state.session).toEqual(jwtSession);
-    expect(state.scoreProvider).toBeInstanceOf(DivingFishProvider);
-    expect(state.catalogProvider).toBeInstanceOf(LxnsCatalogProvider);
+
+
     const maimai = state.boundAccounts.find((account) => account.id === state.activeAccountId);
     expect(maimai?.displayName).toBe('尘言');
     expect(maimai?.scoreLabel).toBe('DX RATING');
@@ -256,8 +247,7 @@ describe('useSession store', () => {
     const state = useSession.getState();
     expect(state.session).toEqual(lxnsSession);
     expect(state.activeProviderId).toBe('lxns');
-    expect(state.scoreProvider).toBeInstanceOf(LxnsScoreProvider);
-    expect(state.catalogProvider).toBeInstanceOf(LxnsCatalogProvider);
+
     expect(state.activeAccountId).toBe('maimai:lxns:123456789000000');
     expect(state.boundAccounts.find((account) => account.id === state.activeAccountId)?.providerTitle)
       .toBe('落雪查分器');
@@ -322,13 +312,12 @@ describe('useSession store', () => {
   it('switches between Phigros and the no-score Chunithm account', () => {
     useSession.getState().selectBoundAccount(PHIGROS_TEST_ACCOUNT_ID);
     expect(useSession.getState().activeGameId).toBe('phigros');
-    expect(useSession.getState().scoreProvider).toBeInstanceOf(MaxedPhigrosTestProvider);
+
     useSession.getState().upsertBoundAccount(createChunithmTempAccount());
     useSession.getState().selectBoundAccount(CHUNITHM_TEMP_ACCOUNT_ID);
     const state = useSession.getState();
     expect(state.activeAccountId).toBe(CHUNITHM_TEMP_ACCOUNT_ID);
     expect(state.activeGameId).toBe('chunithm');
-    expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
     expect(state.catalogProvider).toBeNull();
   });
 
@@ -339,7 +328,6 @@ describe('useSession store', () => {
     expect(state.activeAccountId).toBe(CHUNITHM_TEMP_ACCOUNT_ID);
     expect(state.activeGameId).toBe('chunithm');
     expect(state.activeProviderId).toBe('chunithm-temp');
-    expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
     expect(state.catalogProvider).toBeNull();
     expect(state.session).toBeNull();
   });
@@ -350,8 +338,8 @@ describe('useSession store', () => {
     expect(state.activeAccountId).toBe(MAIMAI_TEST_ACCOUNT_ID);
     expect(state.activeGameId).toBe('maimai');
     expect(state.activeProviderId).toBe('maimai-test');
-    expect(state.scoreProvider).toBeInstanceOf(MaxedMaimaiTestProvider);
-    expect(state.catalogProvider).toBeInstanceOf(LxnsCatalogProvider);
+
+
   });
 
   it('switches to the generated maxed Chunithm demo account', () => {
@@ -361,7 +349,6 @@ describe('useSession store', () => {
     expect(state.activeAccountId).toBe(CHUNITHM_TEST_ACCOUNT_ID);
     expect(state.activeGameId).toBe('chunithm');
     expect(state.activeProviderId).toBe('chunithm-test');
-    expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
     expect(state.catalogProvider).toBeNull();
     expect(state.session).toBeNull();
   });
@@ -373,7 +360,6 @@ describe('useSession store', () => {
     expect(state.activeAccountId).toBe(PHIGROS_TEST_ACCOUNT_ID);
     expect(state.activeGameId).toBe('phigros');
     expect(state.activeProviderId).toBe('phigros-test');
-    expect(state.scoreProvider).toBeInstanceOf(MaxedPhigrosTestProvider);
     expect(state.catalogProvider).toBeNull();
     expect(state.session).toBeNull();
   });
@@ -414,7 +400,6 @@ describe('useSession store', () => {
     useSession.getState().clearSession();
     const state = useSession.getState();
     expect(state.session).toBeNull();
-    expect(state.scoreProvider).toBeInstanceOf(LocalMaimaiScoreProvider);
     expect(state.boundAccounts.some((account) => account.id === LOCAL_MAIMAI_ACCOUNT_ID)).toBe(true);
     expect(state.boundAccounts.some((account) => account.id === MAIMAI_TEST_ACCOUNT_ID)).toBe(true);
     expect(state.boundAccounts.some((account) => account.id === CHUNITHM_TEMP_ACCOUNT_ID)).toBe(true);
@@ -469,7 +454,7 @@ describe('useSession store', () => {
         scoreDisplay: '15.4321', challengeModeRank: 523,
       }],
     });
-    expect(useSession.getState().scoreProvider).toBeInstanceOf(PhigrosScoreProvider);
+
   });
 
   it('restores a multi-account vault', async () => {
@@ -546,7 +531,6 @@ describe('useSession store', () => {
     };
 
     await applyLxnsTokenRotation('chunithm:lxns:2', { previous: lxnsSession, next: rotated });
-
     expect(useSession.getState().sessionsByAccountId).toMatchObject({
       'maimai:lxns:1': rotated,
       'chunithm:lxns:2': rotated,
@@ -557,12 +541,12 @@ describe('useSession store', () => {
     expect(useSession.getState().session).toEqual(rotated);
   });
 
-  it('replaces the active maimai provider when a linked account rotates LXNS tokens', async () => {
+  it('uses rotated LXNS tokens for the active maimai account after linked-account refresh', async () => {
     const initial = {
       mode: 'lxns-oauth',
       accessToken: 'access-a',
       refreshToken: 'refresh-a',
-      expiresAt: Date.now() + 60_000,
+      expiresAt: Date.now() + 600_000,
       persistable: true,
     } as const;
     useSession.getState().finishRestore({
@@ -580,7 +564,6 @@ describe('useSession store', () => {
         },
       ],
     });
-    const previousProvider = useSession.getState().scoreProvider;
     const rotated = {
       ...initial,
       accessToken: 'access-b',
@@ -590,9 +573,13 @@ describe('useSession store', () => {
     await applyLxnsTokenRotation('chunithm:lxns:2', { previous: initial, next: rotated });
 
     const state = useSession.getState();
-    expect(state.scoreProvider).toBeInstanceOf(LxnsScoreProvider);
-    expect(state.scoreProvider).not.toBe(previousProvider);
-    expect((state.scoreProvider as LxnsScoreProvider).getSession()).toEqual(rotated);
+    let authorization: string | null = null;
+    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+      authorization = new Headers(init.headers).get('Authorization');
+      return Response.json({ success: true, code: 200, data: { name: '舞萌玩家', rating: 15000, friend_code: 1 } });
+    });
+    await expect(state.scoreProvider.getPlayer()).resolves.toMatchObject({ displayName: '舞萌玩家', rating: 15000 });
+    expect(authorization).toBe('Bearer access-b');
     expect(state.sessionsByAccountId).toMatchObject({
       'maimai:lxns:1': rotated,
       'chunithm:lxns:2': rotated,
@@ -617,7 +604,13 @@ describe('useSession store', () => {
     const state = useSession.getState();
     expect(state.session).toEqual(rotated);
     expect(state.sessionsByAccountId[accountId]).toEqual(rotated);
-    expect((state.scoreProvider as LxnsScoreProvider).getSession()).toEqual(rotated);
+    let authorization: string | null = null;
+    vi.stubGlobal('fetch', async (_url: string, init: RequestInit) => {
+      authorization = new Headers(init.headers).get('Authorization');
+      return Response.json({ success: true, code: 200, data: { name: '舞萌玩家', rating: 15000, friend_code: 1 } });
+    });
+    await expect(state.scoreProvider.getPlayer()).resolves.toMatchObject({ displayName: '舞萌玩家', rating: 15000 });
+    expect(authorization).toBe('Bearer access-b');
     updateCredentialSession.mockResolvedValue('applied');
     await expect(retryPendingRotationWrites()).resolves.toBe(1);
     await expect(retryPendingRotationWrites()).resolves.toBe(0);
@@ -775,7 +768,6 @@ describe('useSession store', () => {
 
     await expect(applyOsuTokenRotation(account.id, { ...stale, refreshToken: 'refresh-b' }, stale))
       .resolves.toBe('stale');
-
     expect(useSession.getState().sessionsByAccountId[account.id]).toEqual(reAuthorized);
     expect(updateCredentialSession).not.toHaveBeenCalled();
   });
@@ -868,7 +860,6 @@ describe('useSession store', () => {
       previous: lxnsSession,
       next: { ...lxnsSession, accessToken: 'access-b', refreshToken: 'refresh-b' },
     })).resolves.toBe('removed');
-
     expect(updateCredentialSession).not.toHaveBeenCalled();
     expect(useSession.getState().sessionsByAccountId).toEqual({});
   });
@@ -908,7 +899,6 @@ describe('useSession store', () => {
       providerId: 'lxns',
       gameId: 'chunithm',
     });
-
     expect(useSession.getState().sessionsByAccountId).toMatchObject({
       'maimai:lxns:1': refreshedSession,
       'chunithm:lxns:2': refreshedSession,
@@ -928,7 +918,7 @@ describe('useSession store', () => {
     const state = useSession.getState();
     expect(state.activeAccountId).toBe(MAIMAI_TEST_ACCOUNT_ID);
     expect(state.session).toBeNull();
-    expect(state.scoreProvider).toBeInstanceOf(MaxedMaimaiTestProvider);
+
   });
 
   it('falls back to unbound empty when demo is not among optional accounts', async () => {
@@ -941,7 +931,7 @@ describe('useSession store', () => {
     const state = useSession.getState();
     expect(state.activeAccountId).toBe(UNBOUND_ACCOUNT_ID);
     expect(state.boundAccounts).toEqual([]);
-    expect(state.scoreProvider).toBeInstanceOf(EmptyScoreProvider);
+
   });
 
   it('restores an additional local player as the active account', async () => {

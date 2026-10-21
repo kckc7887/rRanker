@@ -294,7 +294,7 @@ describe('osu 谱面确认配置边界', () => {
     expect(parseOsuChartPreviewTarget({ gameId: 'maimai', beatmapsetId: '10', beatmapId: '21' })).toBeNull();
   });
 
-  it('旧设置及无效值恢复默认，数字限制于支持范围', () => {
+  it('无效设置恢复默认，数字限制于支持范围', () => {
     expect(normalizeOsuChartPreviewSettings({
       holdWidth: -1, maniaScrollSpeed: 9.26, backgroundBrightness: NaN,
       backgroundBlur: 999, maniaSkin: 'other', videoEnabled: 'false', storyboardEnabled: false,
@@ -306,14 +306,16 @@ describe('osu 谱面确认配置边界', () => {
   });
 
   it('谱面文字和资源名称不能终止注入脚本', () => {
+    const chartText = '</script><script>$&\u2028';
     const html = applyOsuChartPreviewConfigToHtml('<!--OSU_CHART_PREVIEW_CONFIG-->', {
       theme: 'dark', requestedMode: 2, chartPath: 'a.osu',
-      files: [{ path: 'a.osu', mime: 'text/plain', text: '</script><script>$&\u2028' }],
+      files: [{ path: 'a.osu', mime: 'text/plain', text: chartText }],
       settings: normalizeOsuChartPreviewSettings(null),
     });
-    expect(html).not.toContain('</script><script>');
-    expect(html).toContain('\\u003c/script>');
-    expect(html).toContain('$&');
-    expect(buildOsuChartPreviewAudioScript({ '</script>.ogg': 'AQID' })).not.toContain('</script>');
+    const window = { __OSU_CHART_PREVIEW_CONFIG__: { files: [] as { text?: string }[] }, __OSU_PREVIEW_AUDIO__: {} };
+    new Function('window', /<script>(.*?)<\/script>/su.exec(html)![1])(window);
+    expect(window.__OSU_CHART_PREVIEW_CONFIG__.files[0]?.text).toBe(chartText);
+    new Function('window', buildOsuChartPreviewAudioScript({ '</script>.ogg': 'AQID' }))(window);
+    expect(window.__OSU_PREVIEW_AUDIO__).toEqual({ '</script>.ogg': 'AQID' });
   });
 });

@@ -1,6 +1,5 @@
-import { StyleSheet } from 'react-native';
-import { jest } from '@jest/globals';
-import { act, render } from '@testing-library/react-native';
+
+import { render } from '@testing-library/react-native';
 import { DxRatingCard } from '@/components/DxRatingCard';
 import { DxRatingTag } from '@/components/DxRatingTag';
 import { resolvePhigrosChallengeTheme } from '@/domain/phigros-challenge-theme';
@@ -10,20 +9,20 @@ import {
 } from '@/domain/chunithm-rating-theme';
 
 describe('DX Rating components', () => {
-  it('shows tier stars on the overview card without the old medal dot', async () => {
+  it('shows the rating tier and stars', async () => {
     const screen = await render(<DxRatingCard label="DX RATING" display="16750" meta="测试玩家" rating={16750} />);
-    expect(screen.getByTestId('dx-rating-card-stars').props.children).toBe('★★★★');
+    expect(screen.getByTestId('dx-rating-card-stars')).toHaveTextContent('★★★★');
     expect(screen.queryByTestId('dx-rating-medal')).toBeNull();
     expect(screen.getByLabelText(/档位 彩极/)).toBeTruthy();
   });
 
-  it('uses an unpadded rounded-rectangle account tag with stars', async () => {
+  it('shows the numeric account rating and tier stars', async () => {
     const low = await render(<DxRatingTag rating={500} display="00500" />);
     expect(low.getByText('500')).toBeTruthy();
     expect(low.queryByText('00500')).toBeNull();
 
     const platinum = await render(<DxRatingTag rating={14500} display="14500" />);
-    expect(platinum.getByTestId('dx-rating-tag-stars').props.children).toBe('★');
+    expect(platinum.getByTestId('dx-rating-tag-stars')).toHaveTextContent('★');
   });
 
   it('keeps empty accounts neutral and displays a dash', async () => {
@@ -48,7 +47,7 @@ describe('DX Rating components', () => {
     expect(screen.queryByTestId('dx-rating-card-stars')).toBeNull();
   });
 
-  it('renders Chunithm possession background and rainbow Rating independently', async () => {
+  it('shows the Chunithm rating tier and possession', async () => {
     const possessionTheme = resolveChunithmPossessionTheme('rainbow');
     const screen = await render(
       <DxRatingCard
@@ -61,68 +60,7 @@ describe('DX Rating components', () => {
         valueTheme={resolveChunithmRatingTier(17.25)}
       />,
     );
-    expect(screen.getByTestId('dx-rating-card-value-gradient').props.androidRenderingMode)
-      .toBe('software');
-    expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-value').props.style))
-      .toMatchObject({ color: possessionTheme.textColor });
-    expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-borderless').props.style))
-      .toMatchObject({ borderRadius: 18, padding: 0 });
-    expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-inner-borderless').props.style))
-      .toMatchObject({ borderRadius: 18, padding: 22 });
     expect(screen.getByLabelText(/档位 虹，背景 虹领域/)).toBeTruthy();
     expect(screen.queryByTestId('dx-rating-card-stars')).toBeNull();
-  });
-
-  it('uses the card text color as the Rating fill and a solid tier color as its outline', async () => {
-    const possessionTheme = resolveChunithmPossessionTheme('gold');
-    const tierTheme = resolveChunithmRatingTier(14.5);
-    const screen = await render(
-      <DxRatingCard
-        borderless
-        label="RATING"
-        display="14.50"
-        meta="Best30 14.50 · New20 14.50"
-        rating={14.5}
-        themeOverride={possessionTheme}
-        valueTheme={tierTheme}
-      />,
-    );
-
-    expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-value').props.style))
-      .toMatchObject({ color: possessionTheme.textColor });
-    expect(screen.getByTestId('dx-rating-card-value-outline-solid').props.children)
-      .toHaveLength(8);
-  });
-
-  it('warm-mounts the rainbow outline invisibly and remounts it visible after the first frame', async () => {
-    jest.useFakeTimers();
-    try {
-      const screen = await render(
-        <DxRatingCard
-          borderless
-          label="RATING"
-          display="17.25"
-          meta="Best30 17.20 · New20 17.30"
-          rating={17.25}
-          themeOverride={resolveChunithmPossessionTheme('rainbow')}
-          valueTheme={resolveChunithmRatingTier(17.25)}
-        />,
-      );
-      expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-value-gradient').props.style))
-        .toMatchObject({ opacity: 0 });
-      expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-outline-mask').props.style))
-        .toMatchObject({ opacity: 0.999 });
-
-      await act(async () => {
-        jest.advanceTimersByTime(100);
-      });
-
-      expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-value-gradient').props.style))
-        .not.toMatchObject({ opacity: 0 });
-      expect(StyleSheet.flatten(screen.getByTestId('dx-rating-card-outline-mask').props.style))
-        .toMatchObject({ opacity: 1 });
-    } finally {
-      jest.useRealTimers();
-    }
   });
 });

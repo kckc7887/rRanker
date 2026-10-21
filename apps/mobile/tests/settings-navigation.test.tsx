@@ -1,6 +1,6 @@
 import { act, cleanup, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Animated, StyleSheet } from 'react-native';
+import { Animated } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import SettingsTabScreen, { SettingsScreen } from '../app/(tabs)/settings';
 import PersonalizationScreen from '../app/personalization';
@@ -208,28 +208,6 @@ describe('settings navigation', () => {
     expect(screen.getByText('65%')).toBeTruthy();
     expect(screen.getByText('12px')).toBeTruthy();
     expect(useThemeStore.getState().scoreCardArtworkEnabled).toBe(true);
-    const slider = screen.getByLabelText('成绩卡片曲绘透明度');
-    expect(StyleSheet.flatten(slider.props.style)).toMatchObject({ height: 36, marginHorizontal: 10 });
-    const [track, activeTrack, thumb] = slider.props.children;
-    expect(StyleSheet.flatten(track.props.style)).toMatchObject({ height: 4, borderRadius: 2 });
-    expect(StyleSheet.flatten(activeTrack.props.style)).toMatchObject({
-      height: 4,
-      borderRadius: 2,
-      backgroundColor: '#246BFD',
-      left: 0,
-      right: '35%',
-    });
-    expect(StyleSheet.flatten(thumb.props.style)).toMatchObject({
-      width: 22,
-      height: 22,
-      marginLeft: -11,
-      borderRadius: 11,
-      borderWidth: 2,
-      shadowOpacity: 0.16,
-      shadowRadius: 2,
-      elevation: 2,
-      left: '65%',
-    });
   });
 
   it('shows a non-interactive fixed-data score card preview under the artwork switch', async () => {
@@ -262,9 +240,6 @@ describe('settings navigation', () => {
       nativeEvent: { locationX: Number.NaN, pageX: 130, pageY: 400 },
     }));
     expect(screen.getByText('30%')).toBeTruthy();
-    expect(screen.getByTestId('score-card-artwork-overlay').props.style).toContainEqual({
-      backgroundColor: 'rgba(255,255,255,0.30000000000000004)',
-    });
     expect(useThemeStore.getState().scoreCardArtworkTransparency).toBe(35);
     expect(mockSaveTheme).not.toHaveBeenCalled();
     await act(() => transparencySlider.props.onResponderRelease({

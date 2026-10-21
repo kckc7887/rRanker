@@ -91,7 +91,7 @@ it('跨游戏详情取消选择不加载错误游戏，切换成功后继续同�
   await fireEvent.press(view.getByText('使用目标账号'));
   expect(mockSwitch).toHaveBeenCalledWith(mockCrossAccount.id, { navigateToOverview: false });
   await view.rerender(<SongDetailScreen />);
-  expect(view.getByTestId('phigros-detail').props.children).toBe(JSON.stringify({ songId: 'target-song', levelIndex: 2 }));
+  expect(view.getByTestId('phigros-detail')).toHaveTextContent(JSON.stringify({ songId: 'target-song', levelIndex: 2 }));
 });
 jest.mock('@/hooks/use-detailed-catalog', () => ({
   useDetailedCatalog: () => ({ data: undefined, isLoading: false, isError: false, error: null, refetch: jest.fn() }),

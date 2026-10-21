@@ -1,4 +1,3 @@
-import { JSDOM } from 'jsdom';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 import { prepareBestImageWebViewSources } from '@/features/best-image/prepare-best-image-webview-sources';
 
@@ -30,14 +29,6 @@ describe('best image WebView source files', () => {
     expect(files.get(next.sources[0]!.uri)).toBe('<p>next</p>');
     await next.dispose();
     expect(files.size).toBe(0);
-  });
-
-  it('resolves relative font and UI files inside the same session', async () => {
-    const prepared = await prepareBestImageWebViewSources(['<html><head></head><body><img src="./font/phi.ttf"></body></html>'], directory);
-    const dom = new JSDOM(files.get(prepared.sources[0]!.uri), { url: prepared.sources[0]!.uri });
-    expect(dom.window.document.querySelector('img')!.src).toBe('file:///document/rranker/phigros-illustration-stage/session/font/phi.ttf');
-    dom.window.close();
-    await prepared.dispose();
   });
 
   it('removes a partially written batch if file preparation fails', async () => {
