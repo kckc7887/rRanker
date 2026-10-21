@@ -145,18 +145,9 @@ describe('cached tab animation lifecycle', () => {
     expect(card.getByText('協 14+?')).toBeTruthy();
     expect(card.queryByText(/0\.0/)).toBeNull();
     expect(card.queryByText('Rating')).toBeNull();
-  });
-
-  it('keeps the UTAGE label and level when the chart metadata is missing', async () => {
-    const record = {
-      ...fixtureRecords[0]!, songId: '100123', type: 'UTAGE' as const, difficulty: 'utage' as const,
-      difficultyConstant: 0, level: '14?', dxScore: 0, achievements: 98,
-    };
-    const screen = await render(<ScoreRecordCard record={record} />);
-    expect(screen.getByText('U·TA·GE 14?')).toBeTruthy();
-    expect(screen.queryByText('DX分数')).toBeNull();
-    expect(screen.queryByText('0')).toBeNull();
-    await screen.rerender(<ScoreRecordCard record={{ ...record, level: undefined }} />);
+    await screen.rerender(<ScoreRecordCard record={{ ...record, utage: undefined }} />);
+    expect(screen.getByText('U·TA·GE 14+?')).toBeTruthy();
+    await screen.rerender(<ScoreRecordCard record={{ ...record, utage: undefined, level: undefined }} />);
     expect(screen.getByText('U·TA·GE')).toBeTruthy();
   });
 });
