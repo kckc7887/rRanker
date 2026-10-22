@@ -117,6 +117,7 @@ export async function pruneVersionedAssetRoot(root: Directory, currentVersions: 
 }
 
 export const PHIGROS_FONT_ROOT = () => new Directory(Paths.document, 'rranker', 'phigros-fonts');
+export const CHUNITHM_ASSETS_ROOT = () => new Directory(Paths.document, 'rranker', 'chunithm-assets');
 export const MAIMAI_ASSETS_ROOT = () => new Directory(Paths.document, 'rranker', 'maimai-assets');
 export const BEST_IMAGE_STAGE_ROOT = (game: 'maimai' | 'chunithm' | 'phigros') => new Directory(Paths.document, 'rranker', `${game}-illustration-stage`);
 export const COMPRESSED_IMAGE_CACHE_ROOT = () => new Directory(Paths.cache, COMPRESSED_IMAGE_CACHE_DIRECTORY_NAME);

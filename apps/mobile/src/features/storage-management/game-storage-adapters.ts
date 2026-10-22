@@ -1,3 +1,4 @@
+import { clearChunithmUiCache } from '@/features/chunithm-best-image/chunithm-ui-cache';
 import { clearUnusedBestImageAssets } from '@/features/best-image/load-best-image-session';
 import { phigrosResources } from '@/services/phigros-resources';
 import { rizlineResources } from '@/services/rizline-resources';
@@ -17,7 +18,7 @@ import { CHUNITHM_COLLECTION_LIST_RESOURCE_KEY } from '@/domain/chunithm-collect
 import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-font-cache';
 import { clearMaimaiUiCache } from '@/features/best-image/maimai-ui-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
-import { BEST_IMAGE_STAGE_ROOT, MAIMAI_ASSETS_ROOT, PHIGROS_FONT_ROOT } from '@/features/storage-management/fs-storage';
+import { BEST_IMAGE_STAGE_ROOT, CHUNITHM_ASSETS_ROOT, MAIMAI_ASSETS_ROOT, PHIGROS_FONT_ROOT } from '@/features/storage-management/fs-storage';
 import { resetPhigrosKyouAliasesCache } from '@/services/phigros-kyou-cache';
 import {
   createGameStorageAdapter,
@@ -99,7 +100,7 @@ const chunithmAdapter = createGameStorageAdapter({
   color: '#27A7E7',
   note: '账号成绩快照；公开曲库仅保留在会话内，SQLite 为估算值',
   queryKeys: [['score-snapshot'], ['game-data'], ['chunithm-catalog'], ['chunithm-song-detail'], ['chunithm-collections']],
-  fileResources: [{ root: () => BEST_IMAGE_STAGE_ROOT('chunithm'), clear: () => clearUnusedBestImageAssets('chunithm') }],
+  fileResources: [{ root: CHUNITHM_ASSETS_ROOT, clear: clearChunithmUiCache }, { root: () => BEST_IMAGE_STAGE_ROOT('chunithm'), clear: () => clearUnusedBestImageAssets('chunithm') }],
   ownership: { ownsAccount: accountOwnership('chunithm'), resourceKeys: CHUNITHM_CATALOG_RESOURCE_KEYS, resourcePrefixes: [CHUNITHM_SONG_DETAIL_RESOURCE_PREFIX, `${CHUNITHM_COLLECTION_LIST_RESOURCE_KEY}:`] },
 });
 

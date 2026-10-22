@@ -30,7 +30,8 @@ export function appendChunithmSelectionScores(
   if (count === 0) return copied;
   const picked = selections.slice(0, count);
   if (!picked.length) return copied;
-  copied.push({
+  const nextGroup = copied.findIndex(section => section.id === 'new20');
+  copied.splice(nextGroup < 0 ? copied.length : nextGroup, 0, {
     id: 'selection',
     title: 'Selection',
     records: picked,
@@ -57,6 +58,7 @@ export function paginateChunithmBestImageSections(
         pageSections.push({
           id: section.id,
           title: section.title,
+          subtitle: section.subtitle,
           records: [record],
         });
       }

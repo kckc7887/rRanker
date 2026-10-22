@@ -129,9 +129,13 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `prepareMaimaiUi(style, onProgress?, signal?)` 按 `BestImageRatingStyle` 选择发布清单，返回缓存目录、`fullReady` 和待复制的相对路径 `files`。应用风格包包含 SVG 与字体，游戏风格沿用 PNG 包及 `prepareMaimaiFonts`；两套 UI 缓存路径和共享请求键包含样式身份，统一沿用包及文件校验、取消和清理入口。`useMaimaiExportAssets` 将所需 UI 和字体通过 `copyBestImageAsset` 复制进账号会话，以会话、样式和重试代次判断就绪。`useMaimaiCollectionAssets` 通过 `loadRemoteImageFile` 准备头像、姓名框和背景，`buildBestImageHtml` 接收 `collectionUrls`，其中空值表示缺失素材。应用风格在字体加载后测量标题及资料文字，`bestImageBridgeReadyScript` 的 `waitForAssets` 使其等待字体、SVG 图片和排版完成才发送就绪消息；其他调用方保留原等待规则。
 
+`prepareBestImageUi` 接收游戏作用域、缓存目录、文件清单与压缩包信息，供 `prepareMaimaiUi` 和 `prepareChunithmUi` 共用校验、下载、解包及取消流程；请求按目录、包摘要和资源代次共享。中二包包含 UI 与字体，`clearChunithmUiCache` 使所属资源代次失效并清理缓存，所属存储适配器负责统计和清理，启动维护保留当前缓存版本。
+
+`useChunithmBestImageAssets` 将 UI 与字体复制进账号会话，并通过 `loadRemoteImageFile` 准备角色、名牌和图片称号。静态素材按会话复用，装扮结果同时匹配会话和当前 URL 组合才可参与生成与导出。`loadChunithmBestImageCollections(kind, signal?)` 复用 `loadChunithmCollections` 的角色与名牌资料；名牌选择写入 `chunithmBestImagePreferencesStore`，支持当前、指定、随机和默认板。`buildChunithmBestImageHtml` 接收名牌、角色和称号文件 URL，按固定槽位组装玩家信息；B50、自定义及分页使用同一成绩卡与字体测量流程，等待字体、图片和排版后发送就绪消息。
+
 舞萌 `buildBestImageHtml` 的应用风格与游戏风格共用 DX 星级计算，B50 和自定义成绩均按 `DX Score / (总物量 × 3)` 判定：达到 85%、90%、93%、95%、97% 分别显示 1–5 星，低于 85% 或缺少有效分数、物量时不显示星标。
 
-相册权限和保存使用 `expo-media-library/legacy`。字体及舞萌 UI 素材通过 `File.moveSync` 完成文件发布，iOS 谱面包通过 `File.copySync` 完成复制后才结束保存；临时来源的清理沿用所属任务时序。
+相册权限和保存使用 `expo-media-library/legacy`。字体及成绩图 UI 素材通过 `File.moveSync` 完成文件发布，iOS 谱面包通过 `File.copySync` 完成复制后才结束保存；临时来源的清理沿用所属任务时序。
 
 谱面公共入口位于 `features/chart-preview-shared`：
 

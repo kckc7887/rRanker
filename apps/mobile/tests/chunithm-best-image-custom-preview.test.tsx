@@ -1,10 +1,11 @@
-import { fireEvent, render, waitFor } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { ChunithmBestImageScreen } from '@/screens/ChunithmBestImageScreen';
 import type { ChunithmCatalogSnapshot } from '@/domain/chunithm';
 import type { ChunithmScore } from '@/domain/chunithm-personal';
 
 const mockShowNotification = jest.fn();
+const mockLoadRemoteImage = jest.fn(async (_session: unknown, url: string | null): Promise<string | null> => url);
 
 jest.mock('@/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
@@ -112,7 +113,7 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
 }));
 
 jest.mock('@/features/chunithm-best-image/load-chunithm-best-image-collections', () => ({
-  loadChunithmBestImageCharacters: jest.fn(async () => []),
+  loadChunithmBestImageCollections: jest.fn(async (kind: string) => kind === 'plate' ? [{ id: 42, name: '测试名牌', kind: 'plate' }] : []),
 }));
 
 jest.mock('@/features/chunithm-best-image/load-chunithm-best-image-jackets', () => ({
@@ -131,6 +132,7 @@ jest.mock('@/features/chunithm-best-image/chunithm-best-image-preferences', () =
       version: 3,
       selectionCount: 0,
       character: { mode: 'current' },
+      plate: { mode: 'current' },
       background: { mode: 'default' },
     })),
     save: jest.fn(async () => undefined),
@@ -139,10 +141,12 @@ jest.mock('@/features/chunithm-best-image/chunithm-best-image-preferences', () =
     version: 3,
     selectionCount: 0,
     character: { mode: 'current' },
+      plate: { mode: 'current' },
     background: { mode: 'default' },
   },
   resolveChunithmBestImageStyleId: (choice: { mode: string; id?: number }, currentId: number | null | undefined) => {
     if (choice.mode === 'off') return null;
+    if (choice.mode === 'default') return 1;
     if (choice.mode === 'item' || choice.mode === 'random') {
       return typeof choice.id === 'number' ? choice.id : null;
     }
@@ -174,8 +178,38 @@ const previewHtml = (screen: RenderedScreen) => (
 );
 
 describe('chunithm best image custom', () => {
-  beforeEach(() => mockShowNotification.mockClear());
+  beforeEach(() => { mockShowNotification.mockClear(); mockLoadRemoteImage.mockReset().mockImplementation(async (_session, url) => url); });
   afterEach(() => jest.restoreAllMocks());
+
+  it('selects a plate, saves it for the account, and restores the default board', async () => {
+    const { chunithmBestImagePreferencesStore } = jest.requireMock('@/features/chunithm-best-image/chunithm-best-image-preferences') as { chunithmBestImagePreferencesStore: { save: jest.Mock } };
+    const screen = await render(<ChunithmBestImageScreen />);
+    await screen.findByTestId('chunithm-best-image-html-preview-0');
+    await fireEvent.press(screen.getByText('名牌'));
+    await fireEvent.press(await screen.findByText('测试名牌'));
+    await waitFor(() => expect(previewHtml(screen)).toContain('/plate/42.png'));
+    await waitFor(() => expect(chunithmBestImagePreferencesStore.save).toHaveBeenCalledWith('test-account', expect.objectContaining({ plate: { mode: 'item', id: 42, name: '测试名牌' } })));
+    await fireEvent.press(screen.getByText('名牌'));
+    await fireEvent.press(screen.getAllByText('默认板').at(-1)!);
+    await waitFor(() => expect(previewHtml(screen)).toContain('/plate/1.png'));
+  });
+
+  it('discards a late plate load after another plate was selected', async () => {
+    const screen = await render(<ChunithmBestImageScreen />);
+    await screen.findByTestId('chunithm-best-image-html-preview-0');
+    let finish!: (url: string) => void;
+    mockLoadRemoteImage.mockImplementation(async (_session, url) => url?.endsWith('/plate/42.png')
+      ? new Promise<string>(resolve => { finish = resolve; }) : url);
+    await fireEvent.press(screen.getByText('名牌'));
+    await fireEvent.press(await screen.findByText('测试名牌'));
+    await waitFor(() => expect(finish).toBeDefined());
+    expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
+    await fireEvent.press(screen.getByText('名牌'));
+    await fireEvent.press(screen.getAllByText('默认板').at(-1)!);
+    await waitFor(() => expect(previewHtml(screen)).toContain('/plate/1.png'));
+    await act(async () => finish('https://assets2.lxns.net/chunithm/plate/42.png'));
+    await waitFor(() => expect(previewHtml(screen)).not.toContain('/plate/42.png'));
+  });
 
   it('exports the prepared Chunithm artwork and reports a saved image', async () => {
     const { saveBestImageCapture } = jest.requireMock('@/features/best-image/best-image-export') as { saveBestImageCapture: jest.Mock };
@@ -277,5 +311,9 @@ jest.mock('expo-file-system/legacy', () => ({ deleteAsync: async () => undefined
 
 jest.mock('@/features/best-image/load-best-image-session', () => {
   const actual = jest.requireActual<typeof import('@/features/best-image/load-best-image-session')>('@/features/best-image/load-best-image-session');
-  return { ...actual, loadRemoteImageFile: async () => null };
+  return { ...actual, loadRemoteImageFile: (session: unknown, url: string | null) => mockLoadRemoteImage(session, url) };
 });
+
+jest.mock('@/features/chunithm-best-image/chunithm-ui-cache', () => ({
+  prepareChunithmUi: async () => ({ directory: { uri: 'file:///ui' }, files: [], fullReady: Promise.resolve() }),
+}));

@@ -2,7 +2,7 @@ import { z } from 'zod';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { ChunithmBestImageSelectionCount } from './chunithm-best-image';
 
-export type ChunithmBestImageStyleMode = 'current' | 'item' | 'random' | 'off';
+export type ChunithmBestImageStyleMode = 'current' | 'item' | 'random' | 'off' | 'default';
 export type ChunithmBestImageStyleChoice = {
   mode: ChunithmBestImageStyleMode;
   id?: number;
@@ -17,6 +17,7 @@ export type ChunithmBestImageStylePreferences = {
   version: 3;
   selectionCount: ChunithmBestImageSelectionCount;
   character: ChunithmBestImageStyleChoice;
+  plate: ChunithmBestImageStyleChoice;
   background: ChunithmBestImageBackgroundChoice;
 };
 
@@ -26,13 +27,14 @@ export const DEFAULT_CHUNITHM_BEST_IMAGE_STYLES: ChunithmBestImageStylePreferenc
   version: 3,
   selectionCount: 0,
   character: { mode: 'current' },
+  plate: { mode: 'current' },
   background: { mode: 'default' },
 };
 
 function parseChoice(value: unknown): ChunithmBestImageStyleChoice {
   if (!value || typeof value !== 'object') return { mode: 'current' };
   const raw = value as { mode?: unknown; id?: unknown; name?: unknown };
-  if (raw.mode === 'off' || raw.mode === 'current') return { mode: raw.mode };
+  if (raw.mode === 'off' || raw.mode === 'current' || raw.mode === 'default') return { mode: raw.mode };
   if (
     (raw.mode === 'item' || raw.mode === 'random')
     && typeof raw.id === 'number'
@@ -71,6 +73,7 @@ export function parseChunithmBestImageStylePreferences(
     version?: unknown;
     selectionCount?: unknown;
     character?: unknown;
+    plate?: unknown;
     background?: unknown;
   };
   const selectionCount = raw.selectionCount === 5 || raw.selectionCount === 10
@@ -81,6 +84,7 @@ export function parseChunithmBestImageStylePreferences(
     version: 3,
     selectionCount,
     character: parseChoice(raw.character),
+    plate: parseChoice(raw.plate),
     background: parseBackground(raw.background),
   };
 }
@@ -90,6 +94,7 @@ export function resolveChunithmBestImageStyleId(
   currentId: number | null | undefined,
 ): number | null {
   if (choice.mode === 'off') return null;
+  if (choice.mode === 'default') return 1;
   if (choice.mode === 'item' || choice.mode === 'random') {
     return typeof choice.id === 'number' ? choice.id : null;
   }
@@ -104,6 +109,7 @@ const { Store } = createPreferencesStore<ChunithmBestImageStylePreferences, stri
     version: z.literal(3),
     selectionCount: z.number(),
     character: z.union([z.object({ mode: z.enum(['current', 'off']) }), z.object({ mode: z.enum(['item', 'random']), id: z.number().int().nonnegative(), name: z.string().optional() })]),
+    plate: z.union([z.object({ mode: z.enum(['current', 'default']) }), z.object({ mode: z.enum(['item', 'random']), id: z.number().int().nonnegative(), name: z.string().optional() })]),
     background: z.union([z.object({ mode: z.literal('default') }), z.object({ mode: z.literal('song'), songId: z.number().int().nonnegative() })]),
   }).parse(value)),
 });

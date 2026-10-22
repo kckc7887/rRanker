@@ -1,3 +1,5 @@
+import { prepareChunithmUi, clearChunithmUiCache } from '@/features/chunithm-best-image/chunithm-ui-cache';
+import { CHUNITHM_UI_ENTRIES, CHUNITHM_UI_ZIP } from '@/features/chunithm-best-image/chunithm-ui-manifest';
 import { createHash } from 'node:crypto';
 import JSZip from 'jszip';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
@@ -93,9 +95,9 @@ vi.mock('expo-file-system', () => {
   return { Directory, File, Paths: { document: new Directory('file://', 'document'), cache: new Directory('file://', 'cache') } };
 });
 
-async function fixture(omit?: string, style: 'game' | 'app' = 'game'): Promise<Uint8Array> {
-  const entries = style === 'app' ? MAIMAI_APP_UI_MANIFEST_ENTRIES : MAIMAI_UI_MANIFEST_ENTRIES;
-  const pack = style === 'app' ? MAIMAI_APP_UI_ZIP : MAIMAI_UI_ZIP;
+async function fixture(omit?: string, style: 'game' | 'app' | 'chunithm' = 'game'): Promise<Uint8Array> {
+  const entries = style === 'chunithm' ? CHUNITHM_UI_ENTRIES : style === 'app' ? MAIMAI_APP_UI_MANIFEST_ENTRIES : MAIMAI_UI_MANIFEST_ENTRIES;
+  const pack = style === 'chunithm' ? CHUNITHM_UI_ZIP : style === 'app' ? MAIMAI_APP_UI_ZIP : MAIMAI_UI_ZIP;
   const zip = new JSZip();
   for (const entry of entries) {
     const bytes = new Uint8Array(entry.bytes); bytes.set(Buffer.from(`asset:${entry.path}`).subarray(0, bytes.length));
@@ -119,6 +121,20 @@ describe('maimai ui asset cache', () => {
     mockUiFs.files.clear(); mockUiFs.metadata.clear(); mockUiFs.digests.clear(); mockUiFs.remotes.clear();
     mockUiFs.downloadCalls.length = 0; mockUiFs.deletes.length = 0; mockUiFs.createdDirectories.length = 0;
     await fixture();
+  });
+
+  it('prepares Chunithm UI and font together and clears only that game', async () => {
+    const maimai = await prepareMaimaiUi('game'); await maimai.fullReady;
+    await fixture(undefined, 'chunithm');
+    const chunithm = await prepareChunithmUi(); await chunithm.fullReady;
+    expect(chunithm.files).toContain('fonts/SourceHanSansCN-Bold.otf');
+    expect(chunithm.files).toContain('card/worldsend.svg');
+    mockUiFs.remotes.clear();
+    await (await prepareChunithmUi()).fullReady;
+    expect(mockUiFs.downloadCalls).toEqual([MAIMAI_UI_ZIP.url, CHUNITHM_UI_ZIP.url]);
+    clearChunithmUiCache();
+    expect(mockUiFs.files.has(`${chunithm.directory.uri}/card/worldsend.svg`)).toBe(false);
+    expect(cached()).toBeTruthy();
   });
 
   it('publishes current assets, reports completion, and reuses intact files', async () => {
@@ -196,7 +212,7 @@ describe('maimai ui asset cache', () => {
   it('rejects a same-size corrupt archive before publishing assets', async () => {
     const archive = Uint8Array.from(mockUiFs.remotes.get(MAIMAI_UI_ZIP.url) as Uint8Array);
     archive[0] ^= 0xff;
-    mockUiFs.metadata.set('maimai-ui.zip', { length: archive.byteLength, size: MAIMAI_UI_ZIP.bytes });
+    mockUiFs.metadata.set(`${archive.byteLength}:${Buffer.from(archive.subarray(0, 64)).toString('hex')}`, { length: archive.byteLength, size: MAIMAI_UI_ZIP.bytes });
     mockUiFs.remotes.set(MAIMAI_UI_ZIP.url, archive);
     await expect((await prepareMaimaiUi('game')).fullReady).rejects.toThrow('素材压缩包校验失败');
     expect(cached()).toBeUndefined();

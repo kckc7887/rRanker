@@ -5,7 +5,7 @@ import {
   Text,
   View,
 } from 'react-native';
-import { buildChunithmCharacterUrl } from '@/domain/chunithm-personal';
+import { buildChunithmCharacterUrl, buildChunithmPlateUrl } from '@/domain/chunithm-personal';
 import { useAppTheme } from '@/theme/app-theme';
 import { BestImagePickerShell, compactBestImagePickerStyles } from '@/features/best-image/best-image-picker-shell';
 import { RemoteNativeImage as Image } from '@/components/RemoteNativeImage';
@@ -15,12 +15,14 @@ import type {
 } from './chunithm-best-image-preferences';
 
 export function ChunithmBestImageStylePicker({
+  kind = 'character',
   visible,
   items,
   selection,
   onClose,
   onSelect,
 }: {
+  kind?: 'character' | 'plate';
   visible: boolean;
   items: readonly ChunithmBestImageCollectionItem[];
   selection: ChunithmBestImageStyleChoice | null;
@@ -29,7 +31,8 @@ export function ChunithmBestImageStylePicker({
 }) {
   const theme = useAppTheme();
   const [query, setQuery] = useState('');
-  const label = '角色';
+  const label = kind === 'plate' ? '名牌' : '角色';
+  const defaultMode = kind === 'plate' ? 'default' : 'off';
 
   useEffect(() => {
     if (visible) setQuery('');
@@ -81,10 +84,10 @@ export function ChunithmBestImageStylePicker({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel={`关闭${label}`}
-            onPress={() => onSelect({ mode: 'off' })}
-            style={[styles.modeChip, { borderColor: theme.border, backgroundColor: theme.surface }, selection?.mode === 'off' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}
+            onPress={() => onSelect({ mode: defaultMode })}
+            style={[styles.modeChip, { borderColor: theme.border, backgroundColor: theme.surface }, selection?.mode === defaultMode && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}
           >
-            <Text style={[styles.modeText, { color: theme.textSecondary }, selection?.mode === 'off' && { color: theme.accent }]}>关闭</Text>
+            <Text style={[styles.modeText, { color: theme.textSecondary }, selection?.mode === defaultMode && { color: theme.accent }]}>{kind === 'plate' ? '默认板' : '关闭'}</Text>
           </Pressable>
         </View>
       )}
@@ -94,7 +97,7 @@ export function ChunithmBestImageStylePicker({
         renderItem: ({ item }) => {
           const selected = (selection?.mode === 'item' || selection?.mode === 'random')
             && selection.id === item.id;
-          const uri = buildChunithmCharacterUrl(item.id);
+          const uri = kind === 'plate' ? buildChunithmPlateUrl(item.id) : buildChunithmCharacterUrl(item.id);
           return (
             <Pressable
               accessibilityRole="button"
@@ -103,9 +106,9 @@ export function ChunithmBestImageStylePicker({
               onPress={() => onSelect({ mode: 'item', id: item.id, name: item.name })}
               style={[styles.item, { backgroundColor: theme.surface, borderColor: theme.border }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}
             >
-              <View style={styles.preview}>
+              <View style={[styles.preview, kind === 'plate' && { width: 116, height: 46, borderRadius: 0 }]}>
                 {uri ? (
-                  <Image cacheProfile="native" source={{ uri }} style={styles.previewImage} resizeMode="contain" />
+                  <Image cacheProfile="native" source={{ uri }} style={[styles.previewImage, kind === 'plate' && { width: 116, height: 46 }]} resizeMode="contain" />
                 ) : (
                   <Text style={[styles.noPreview, { color: theme.textMuted }]}>无预览</Text>
                 )}

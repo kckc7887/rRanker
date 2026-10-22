@@ -1,28 +1,8 @@
 import type { ChunithmPlayer } from '@/domain/chunithm-personal';
-import {
-  resolveChunithmPossessionTheme,
-  resolveChunithmRatingTier,
-} from '@/domain/chunithm-rating-theme';
-import {
-  chunithmAchievementBadges,
-  chunithmRankUsesGradient,
-  formatChunithmRating,
-  formatChunithmScore,
-  type ChunithmAchievementTone,
-  type ChunithmScoreCardData,
-} from '@/domain/chunithm-score-presentation';
-import {
-  BEST_IMAGE_RAINBOW_TEXT,
-  layeredBadgeCssBackground,
-  STATUS_BADGE_THEMES,
-} from '@/features/best-image/best-image-badge-theme';
+import { normalizeChunithmPossession, resolveChunithmRatingTier } from '@/domain/chunithm-rating-theme';
+import { formatChunithmRating, formatChunithmScore, type ChunithmScoreCardData } from '@/domain/chunithm-score-presentation';
 import { minimumBestImageHeight } from '@/features/best-image/best-image-messages';
-import {
-  bestImageBridgeMeasureScript,
-  bestImageBridgeReadyScript,
-  bestImageBridgeRuntimeScript,
-} from '@/features/best-image/best-image-bridge-script';
-import { CHUNITHM_DIFFICULTY_COLORS } from '@/domain/chunithm-level-theme';
+import { bestImageBridgeMeasureScript, bestImageBridgeReadyScript, bestImageBridgeRuntimeScript } from '@/features/best-image/best-image-bridge-script';
 import { chunithmBestImageJacketUrl } from './load-chunithm-best-image-jackets';
 import type { ChunithmBestImagePage, ChunithmBestImageType } from './chunithm-best-image';
 
@@ -33,329 +13,155 @@ export type ChunithmBestImageHtmlInput = {
   ratingDisplay: string;
   page: ChunithmBestImagePage;
   coverUrls?: Readonly<Record<string, string | null>>;
-  /** 按成绩卡 key 索引。 */
   jacketIds?: Readonly<Record<string, string>>;
   characterDataUri?: string | null;
+  plateDataUri?: string | null;
+  trophyDataUri?: string | null;
   backgroundDataUri?: string | null;
   hideCharacter?: boolean;
-
   dataSource?: string;
 };
 
-function escapeHtml(value: string): string {
-  return value
-    .replaceAll('&', '&amp;')
-    .replaceAll('<', '&lt;')
-    .replaceAll('>', '&gt;')
-    .replaceAll('"', '&quot;')
-    .replaceAll("'", '&#39;');
+const escape = (value: unknown) => String(value ?? '').replaceAll('&', '&amp;').replaceAll('<', '&lt;').replaceAll('>', '&gt;').replaceAll('"', '&quot;').replaceAll("'", '&#39;');
+const image = (url: string | null | undefined, x: number, y: number, width: number, height: number, extra = '') => url ? `<image href="${escape(url)}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid meet" ${extra}/>` : '';
+const gradient = (id: string, colors: readonly string[]) => `<linearGradient id="${id}" x2="1" y2=".6">${colors.map((color, i) => `<stop offset="${i / Math.max(1, colors.length - 1)}" stop-color="${color}"/>`).join('')}</linearGradient>`;
+const text = (value: unknown, x: number, y: number, size: number, width: number, extra = '') => `<text x="${x}" y="${y}" font-size="${size}" data-fit-width="${width}" ${extra}>${escape(value)}</text>`;
+const difficulties = ['basic', 'advanced', 'expert', 'master', 'ultima', 'worldsend'] as const;
+const ratingColors = {
+  green: ['#267B56', '#58AA67'], orange: ['#C77026', '#EBA558'], red: ['#B5374C', '#E66B72'],
+  purple: ['#843FA7', '#AF70D0'], bronze: ['#A35934', '#D4945F'], silver: ['#66778D', '#A4B2C5'],
+  gold: ['#A57418', '#DBAB42'], platinum: ['#E5CE8C', '#FFFDDD', '#DEC27B'],
+  rainbow: ['#CA368A', '#C48A30', '#40986B', '#348FA4', '#7565B6', '#B04E99'],
+};
+function scoreColors(rank: ChunithmScoreCardData['rank']): string[] {
+  if (rank === 'D') return ['#C9CED1', '#E4E7E9'];
+  if (rank === 'C') return ['#FF9829', '#FFC45B'];
+  if (rank.startsWith('B')) return ['#7DE9EF', '#C0F9FA'];
+  if (rank.startsWith('A')) return ['#FFD65A', '#FFF0A1'];
+  return rank === 'SSS+' ? ['#9CE6F9', '#BFD2FF', '#E5BEF0', '#F8EFB2', '#B6EFCB'] : ['#9BEAE9', '#C9B6F1', '#F4B8D0', '#F9E88F', '#BFEACB'];
+}
+function achievement(record: ChunithmScoreCardData): string | null {
+  if (record.fullCombo === 'alljusticecritical') return 'AJC';
+  if (record.fullCombo === 'alljustice') return 'AJ';
+  if (record.clear === 'catastrophy') return 'CATASTROPHY';
+  if (record.clear === 'absolute') return 'ABSOLUTE';
+  if (record.clear === 'brave') return 'BRAVE';
+  if (record.clear === 'hard') return 'HARD';
+  if (record.fullCombo === 'fullcombo') return 'FC';
+  return record.clear === 'clear' ? 'CLEAR' : null;
 }
 
-function px(value: number): number {
-  return Math.max(1, Math.round(value));
+function renderCard(record: ChunithmScoreCardData, index: number, id: string, input: ChunithmBestImageHtmlInput): string {
+  const jacketId = input.jacketIds?.[record.key] ?? record.songId;
+  const jacket = input.coverUrls && Object.hasOwn(input.coverUrls, jacketId) ? input.coverUrls[jacketId] : chunithmBestImageJacketUrl(jacketId);
+  const difficulty = difficulties[record.levelIndex];
+  const attained = achievement(record);
+  const constant = record.difficultyConstant?.toFixed(1) ?? record.level ?? '—';
+  const detail = record.levelIndex === 5 ? escape(record.worldsEndLabel ?? '—') : `${escape(constant)}<tspan dx="13" font-size="27">→</tspan><tspan dx="13">${escape(formatChunithmRating(record.rating))}</tspan>`;
+  return `<article class="score-card"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 756 320">
+    <defs>
+      <clipPath id="${id}-clip"><rect width="756" height="320" rx="10"/></clipPath>
+      ${jacket ? `<image id="${id}-art" href="${escape(jacket)}" width="320" height="320" preserveAspectRatio="xMidYMid slice"/>` : ''}
+      <g id="${id}-wide"><use href="#${id}-art"/><use href="#${id}-art" transform="translate(640 0) scale(-1 1)"/></g>
+      <filter id="${id}-soft" x="-30%" y="-30%" width="160%" height="160%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="6"/></filter>
+      <filter id="${id}-blur" x="-40%" y="-40%" width="180%" height="180%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="23"/></filter>
+      <linearGradient id="${id}-clear"><stop stop-color="white"/><stop offset=".36" stop-color="white"/><stop offset=".76" stop-color="white" stop-opacity=".55"/><stop offset="1" stop-color="white" stop-opacity="0"/></linearGradient>
+      <linearGradient id="${id}-fade"><stop stop-color="white"/><stop offset=".5" stop-color="white" stop-opacity=".8"/><stop offset="1" stop-color="white" stop-opacity="0"/></linearGradient>
+      <mask id="${id}-clear-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="320" height="320"><rect width="320" height="320" fill="url(#${id}-clear)"/></mask>
+      <mask id="${id}-soft-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="390" height="320"><rect width="390" height="320" fill="url(#${id}-fade)"/></mask>
+      <mask id="${id}-blur-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="465" height="320"><rect width="465" height="320" fill="url(#${id}-fade)"/></mask>
+      ${gradient(id + '-score', scoreColors(record.rank))}
+    </defs>
+    <g clip-path="url(#${id}-clip)">
+      ${image('card/' + difficulty + '.svg', 0, 0, 756, 320)}
+      ${jacket ? `<g mask="url(#${id}-blur-mask)"><use href="#${id}-wide" filter="url(#${id}-blur)" opacity=".7"/></g><g mask="url(#${id}-soft-mask)"><use href="#${id}-wide" filter="url(#${id}-soft)"/></g><use href="#${id}-art" mask="url(#${id}-clear-mask)"/>` : ''}
+      <text class="song-title" x="730" y="74" font-size="46" text-anchor="end" fill="white" data-title="${escape(record.title)}">${escape(record.title)}</text>
+      ${text(formatChunithmScore(record.score), 732, 192, 96, 440, `class="score" letter-spacing="-2.8" fill="url(#${id}-score)" text-anchor="end"`)}
+      <text x="414" y="241" font-size="29" fill="white" text-anchor="end" class="rank">#${index}</text>
+      <text x="732" y="241" font-size="32" fill="white" text-anchor="end" data-fit-width="292" class="detail">${detail}</text>
+      ${attained ? image('achievement/' + attained + '.svg', 320, 272, 244, 34, 'data-achievement="' + attained + '"') : ''}
+      ${image('grade/' + record.rank.replace('+', 'plus') + '.svg', 578, 272, 154, 34, 'data-grade="' + record.rank + '"')}
+    </g>
+  </svg></article>`;
 }
 
-function cssLinearGradient(colors: readonly string[], locations: readonly number[]): string {
-  const stops = colors.map((color, index) => (
-    `${color} ${Math.round((locations[index] ?? index / Math.max(1, colors.length - 1)) * 100)}%`
-  ));
-  return `linear-gradient(90deg,${stops.join(',')})`;
-}
-
-function hexColorWithAlpha(color: string, alpha: number): string {
-  const normalized = color.trim();
-  const match = /^#([\da-f]{2})([\da-f]{2})([\da-f]{2})$/i.exec(normalized);
-  if (!match) return normalized;
-  const red = Number.parseInt(match[1]!, 16);
-  const green = Number.parseInt(match[2]!, 16);
-  const blue = Number.parseInt(match[3]!, 16);
-  return `rgba(${red},${green},${blue},${alpha})`;
-}
-
-function cssTextOutline(colors: readonly string[], stroke: number): string {
-  const directions = [
-    [-1, -1], [0, -1], [1, -1], [1, 0],
-    [1, 1], [0, 1], [-1, 1], [-1, 0],
-  ] as const;
-  return directions.map(([x, y], index) => (
-    `${x * stroke}px ${y * stroke}px 0 ${colors[index % colors.length]}`
-  )).join(',');
-}
-
-function badgeToneClass(tone: ChunithmAchievementTone): string {
-  if (tone === 'rainbow') return 'tone-rainbow';
-  if (tone === 'platinum') return 'tone-platinum';
-  if (tone === 'gold') return 'tone-gold';
-  return 'tone-neutral';
-}
-
-function renderScoreCard(
-  record: ChunithmScoreCardData,
-  rank: number,
-  coverUrls: Readonly<Record<string, string | null>> | undefined,
-  jacketIds: Readonly<Record<string, string>> | undefined,
-): string {
-  const jacketId = jacketIds?.[record.key] ?? record.songId;
-  const hasPreparedJacket = coverUrls && Object.hasOwn(coverUrls, jacketId);
-  const jacketUrl = hasPreparedJacket
-    ? coverUrls[jacketId]
-    : chunithmBestImageJacketUrl(jacketId);
-  const difficultyColor = CHUNITHM_DIFFICULTY_COLORS[record.levelIndex];
-  const isUltima = record.levelIndex === 4;
-  const isWorldsEnd = record.levelIndex === 5;
-  const cardClass = isWorldsEnd
-    ? 'difficulty-worlds-end'
-    : isUltima
-      ? 'difficulty-ultima'
-      : 'difficulty-solid';
-  const cardBackground = isUltima
-    ? '#2A2A2E'
-    : isWorldsEnd
-      ? '#F3E8FE'
-      : difficultyColor;
-  const constantLabel = isWorldsEnd
-    ? (record.worldsEndLabel ?? '—')
-    : record.difficultyConstant !== undefined
-      ? record.difficultyConstant.toFixed(1)
-      : (record.level ?? '—');
-  const rankClass = chunithmRankUsesGradient(record.rank) ? 'rank-gradient' : 'rank-solid';
-  const badges = chunithmAchievementBadges(record)
-    .map((badge) => (
-      `<span class="score-badge ${badgeToneClass(badge.tone)}">${escapeHtml(badge.label)}</span>`
-    ))
-    .join('');
-
-  return `<article class="score-card ${cardClass}" style="--difficulty-color:${difficultyColor};--card-background:${cardBackground}" aria-label="第 ${rank} 名 ${escapeHtml(record.title)}">
-    <div class="score-card-head">
-      <div class="jacket-shell">
-        <span class="jacket-fallback">♪</span>
-        ${jacketUrl ? `<img class="song-jacket" alt="" src="${escapeHtml(jacketUrl)}" onerror="this.style.display='none'">` : ''}
-      </div>
-      <div class="song-copy">
-        <span class="song-id">ID${escapeHtml(record.songId)}</span>
-        <strong class="song-title">${escapeHtml(record.title)}</strong>
-      </div>
-    </div>
-    <div class="score-separator"></div>
-    <div class="achievement-row">
-      <span class="achievement-with-rate">
-        <strong class="achievement">${escapeHtml(formatChunithmScore(record.score))}</strong>
-        <span class="rank-badge ${rankClass}">${escapeHtml(record.rank)}</span>
-      </span>
-      <span class="rank">#${rank}</span>
-    </div>
-    <div class="rating-row">
-      <span class="song-rating"><span>${escapeHtml(constantLabel)}</span><span class="rating-arrow">→</span><strong>${escapeHtml(formatChunithmRating(record.rating))}</strong></span>
-    </div>
-    <div class="score-card-foot"><span class="score-badges">${badges}</span></div>
-  </article>`;
-}
-
-function renderScoreSection(
-  title: string,
-  subtitle: string | undefined,
-  records: readonly ChunithmScoreCardData[],
-  coverUrls: Readonly<Record<string, string | null>> | undefined,
-  jacketIds: Readonly<Record<string, string>> | undefined,
-): string {
-  const divider = `<div class="section-divider"><span>${escapeHtml(title)}</span></div>`;
-  const note = subtitle
-    ? `<div class="section-subtitle">${escapeHtml(subtitle)}</div>`
-    : '';
-  const cards = records.map((record, index) => renderScoreCard(record, index + 1, coverUrls, jacketIds)).join('');
-  const content = cards || '<div class="empty-section">暂无符合条件的成绩</div>';
-  return `<section class="score-section" aria-label="${escapeHtml(title)}">${divider}${note}<div class="score-grid">${content}</div></section>`;
+function renderProfile(input: ChunithmBestImageHtmlInput): string {
+  const player = input.player;
+  const tier = resolveChunithmRatingTier(player?.rating ?? 0).id;
+  const possession = normalizeChunithmPossession(player?.rating_possession);
+  const trophy = player?.trophy;
+  const tone = trophy?.color === 'platinum' ? 'platina' : trophy?.color ?? 'normal';
+  const trophyTone = ['normal', 'silver', 'gold', 'platina', 'rainbow', 'ultima'].includes(tone) ? tone : 'normal';
+  const base = player?.class_emblem.base ?? 0, medal = player?.class_emblem.medal ?? 0;
+  const star = player?.reborn_count ?? 0;
+  return `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1400 240"><g transform="translate(14 8)" fill="#26323C">
+    <defs>${gradient('player-rating', ratingColors[tier])}<clipPath id="character-clip"><rect x="470" y="90" width="86" height="86" rx="4"/></clipPath></defs>
+    ${input.plateDataUri ? image(input.plateDataUri, 0, 0, 576, 228, 'class="name-plate"') : '<rect x="70" y="2" width="486" height="174" fill="#F5F6F7" stroke="#D5DADF"/>'}
+    ${tone === 'image' && input.trophyDataUri ? image(input.trophyDataUri, 143, 48, 413, 34) : image('trophy/' + trophyTone + '.svg', 143, 48, 413, 34) + text(trophy?.name ?? '', 349.5, 72, 18, 391, `text-anchor="middle" fill="${tone === 'ultima' ? '#FFF' : '#29333A'}"`)}
+    ${image('field/' + possession + '.svg', 143, 90, 323, 86)}
+    <rect x="470" y="90" width="86" height="86" rx="4" fill="white"/>
+    ${input.hideCharacter ? '' : image(input.characterDataUri, 470, 90, 86, 86, 'clip-path="url(#character-clip)"')}
+    ${star ? image('star/reborn.svg', 147, 93, 25, 25) + text(star, 159.5, 109, 9, 14, 'text-anchor="middle" fill="#6D5319"') : ''}
+    <text x="151" y="130" font-size="17" fill="#59636B">Lv.</text>
+    ${text(player?.level ?? '—', 179, 130, 23, 39)}
+    ${text(player?.name?.trim() || '未读取玩家资料', 225, 130, 30, 222, 'class="player-name"')}
+    ${image('rating/wordmark.svg', 152, 154.3, 51, 10)}
+    ${text(input.ratingDisplay, 209, 168, 24, 78, `fill="url(#player-rating)" stroke="${tier === 'platinum' ? '#927329' : '#FFF'}" stroke-width=".65" paint-order="stroke fill" class="player-rating"`)}
+    <g transform="translate(365 159) scale(.8)">
+      ${base >= 1 && base <= 6 ? image('class/base-' + base + '.svg', -43, -13, 86, 26) : ''}
+      ${medal >= 1 && medal <= 6 ? `<g transform="scale(.85)">${image('class/medal-' + medal + '.svg', -35, -25, 70, 50)}</g>` : ''}
+    </g>
+  </g></svg>`;
 }
 
 export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): string {
   const width = Math.max(1, Math.round(input.width));
+  const unit = (n: number) => n * width / 1080;
   const minimumHeight = minimumBestImageHeight(width);
-  const player = input.player;
-  const name = player?.name?.trim() || '未读取玩家资料';
-  const initial = Array.from(name)[0] ?? '?';
-  const possessionTheme = resolveChunithmPossessionTheme(player?.rating_possession);
-  const ratingTier = resolveChunithmRatingTier(player?.rating ?? 0);
-  const pageCount = Math.max(1, Math.floor(input.page.pageCount));
-  const pageIndex = Math.min(pageCount - 1, Math.max(0, Math.floor(input.page.pageIndex)));
-  const hideCharacter = input.hideCharacter ?? false;
-
-  const pageInset = px(width * 0.04);
-  const profileScale = width / 1080;
-  const profileWidth = px((hideCharacter ? 252 : 360) * profileScale);
-  const profileHeight = px(112 * profileScale);
-  const profilePadding = px(16 * profileScale);
-  const avatarSize = px(80 * profileScale);
-  const profileGap = px(14 * profileScale);
-  const profileRadius = px(16 * profileScale);
-  const nameFontSize = px(28 * profileScale);
-  const nameMinimumFontSize = px(17 * profileScale);
-  const ratingLabelSize = px(9 * profileScale);
-  const ratingValueSize = px(19 * profileScale);
-  const scoresGap = px(width * 0.035);
-  const scoresTop = pageInset + profileHeight + scoresGap;
-  const gridGap = px(width * 0.009);
-  const scoreCardPadding = px(width * 0.0065);
-  const jacketSize = px(width * 0.058);
-
-  const fill = cssLinearGradient(possessionTheme.fillColors, possessionTheme.fillLocations);
-  const outline = hexColorWithAlpha(possessionTheme.borderColors[0], 0.68);
-  const ratingOutline = cssTextOutline(ratingTier.colors, Math.max(1, px(1.2 * profileScale)));
-  const identityStyle = [
-    `--tag-fill:${fill}`,
-    `--tag-outline:${outline}`,
-    `--tag-text:${possessionTheme.textColor}`,
-    `--rating-outline:${ratingOutline}`,
-  ].join(';');
-
-  const avatarMarkup = input.characterDataUri
-    ? `<img class="avatar-image" alt="" src="${escapeHtml(input.characterDataUri)}">`
-    : `<div class="avatar-fallback">${escapeHtml(initial)}</div>`;
-  const backgroundImage = input.backgroundDataUri
-    ? `<img class="background-image" alt="" src="${escapeHtml(input.backgroundDataUri)}" onerror="this.style.display='none'">`
-    : '';
-
-  const pageMarkerLabel = `第 ${pageIndex + 1} / ${pageCount} 页`;
-  const pageMarker = pageCount > 1
-    ? `<div class="page-marker">${pageMarkerLabel}</div>`
-    : '';
-
-  const scoreSections = input.page.sections
-    .map((section) => renderScoreSection(section.title, section.subtitle, section.records, input.coverUrls, input.jacketIds))
-    .join('');
-  const scoreContent = scoreSections || '<div class="empty-scores">暂无可用于图片的成绩</div>';
-  const imageFooter = `<div class="image-footer" aria-label="图片署名">
-    <div>Designed by EgawaHokori. Data from ${escapeHtml(input.dataSource?.trim() || '')}.</div>
-    <div>Generated by rRanker</div>
-  </div>`;
-
-  const rainbowLayeredBackground = layeredBadgeCssBackground('rainbow');
-  const goldStatus = STATUS_BADGE_THEMES.gold;
-  const neutralStatus = STATUS_BADGE_THEMES.neutral;
-  const platinumBorder = '#7D8795';
-  const platinumBackground = 'linear-gradient(90deg,#DCE3EC,#FFFFFF,#C8D1DD,#FFFFFF)';
-
-  return `<!doctype html>
-<html lang="zh-CN">
-<head>
-  <meta charset="utf-8">
-  <meta name="viewport" content="width=${width}, initial-scale=1, maximum-scale=1, user-scalable=no">
-  <style>
-    *{box-sizing:border-box}
-    html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#DDE3EC}
-    body{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision}
-    .preview-stage{position:fixed;top:0;right:0;bottom:0;left:0;inset:0;overflow:hidden;background:#DDE3EC}
-    .canvas{position:absolute;left:0;top:0;width:${width}px;min-height:${minimumHeight}px;overflow:hidden;transform-origin:top left;background:#E7EDF5}
-    .canvas-background{position:absolute;inset:0;overflow:hidden;background:linear-gradient(145deg,#EEF2F8 0%,#E7EDF5 52%,#F5F7FA 100%)}
-    .background-image{position:absolute;inset:0;display:block;width:100%;height:100%;object-fit:cover;object-position:center;filter:blur(${px(12 * profileScale)}px);transform:scale(1.04)}
-    .background-veil{position:absolute;inset:0;background:rgba(238,242,248,.52)}
-    .profile-card{position:absolute;z-index:2;left:${pageInset}px;top:${pageInset}px;display:grid;width:${profileWidth}px;height:${profileHeight}px;min-width:0;grid-template-columns:${avatarSize}px 1px minmax(0,1fr);column-gap:${profileGap}px;align-items:center;isolation:isolate;overflow:hidden;padding:${profilePadding}px;border:1px solid var(--tag-outline);border-radius:${profileRadius}px;background:transparent;box-shadow:0 ${px(5 * profileScale)}px ${px(18 * profileScale)}px rgba(35,48,70,.18);color:var(--tag-text)}
-    .profile-card::before{position:absolute;z-index:0;inset:0;background:var(--tag-fill);content:"";opacity:.28}
-    .profile-card>*{position:relative;z-index:1}
-    .profile-card.no-avatar{grid-template-columns:minmax(0,1fr)}
-    .avatar{display:flex;width:${avatarSize}px;height:${avatarSize}px;align-items:center;justify-content:center;overflow:visible}
-    .avatar-image{display:block;width:100%;height:100%;object-fit:contain;object-position:center}
-    .avatar-fallback{display:flex;width:100%;height:100%;align-items:center;justify-content:center;border-radius:${px(12 * profileScale)}px;background:rgba(255,255,255,.45);color:var(--tag-text);font:900 ${px(38 * profileScale)}px/1 system-ui,sans-serif}
-    .profile-divider{width:1px;height:${avatarSize}px;background:var(--tag-text);opacity:.25}
-    .profile-copy{display:flex;width:100%;min-width:0;height:100%;flex-direction:column;justify-content:center;overflow:hidden}
-    .player-name-row{display:flex;width:100%;min-width:0;align-items:flex-end;overflow:hidden}
-    .player-name{display:block;width:max-content;min-width:0;flex:0 0 auto;overflow:visible;color:var(--tag-text);font:900 ${nameFontSize}px/1.08 system-ui,-apple-system,"Segoe UI",sans-serif;letter-spacing:.055em;white-space:nowrap;transform-origin:left center}
-    .rating-value-row{display:flex;width:100%;align-items:baseline;gap:${px(8 * profileScale)}px;margin-top:${px(12 * profileScale)}px;color:var(--tag-text);font:750 ${ratingLabelSize}px/1 system-ui,sans-serif;letter-spacing:.12em;white-space:nowrap}
-    .rating-value-row span{opacity:.7}
-    .rating-value-row strong{font-size:${ratingValueSize}px;font-weight:900;font-variant-numeric:tabular-nums;letter-spacing:.02em;text-shadow:var(--rating-outline)}
-    .page-marker{position:absolute;z-index:2;right:${pageInset}px;top:${pageInset}px;display:flex;height:${px(width * 0.025)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.01)}px;border:1px solid rgba(255,255,255,.75);border-radius:999px;background:rgba(255,255,255,.72);color:#4B5563;font:700 ${px(width * 0.009)}px/1 system-ui,sans-serif}
-    .scores-content{position:absolute;z-index:1;left:${pageInset}px;right:${pageInset}px;top:${scoresTop}px;padding-bottom:${pageInset}px}
-    .score-section+.score-section{margin-top:${px(width * 0.024)}px}
-    .section-divider{display:flex;align-items:center;gap:${px(width * 0.012)}px;margin:0 0 ${px(width * 0.012)}px;color:rgba(22,29,43,.78);font:800 ${px(width * 0.016)}px/1.2 system-ui,sans-serif;letter-spacing:${Math.max(1, px(width * 0.0008))}px;white-space:nowrap}
-    .section-divider::before,.section-divider::after{content:"";height:${Math.max(1, px(width * 0.0012))}px;flex:1;background:linear-gradient(90deg,transparent,rgba(28,38,57,.55))}
-    .section-divider::after{background:linear-gradient(90deg,rgba(28,38,57,.55),transparent)}
-    .section-subtitle{margin:-${px(width * 0.003)}px 0 ${px(width * 0.012)}px;text-align:center;color:rgba(22,29,43,.55);font:600 ${px(width * 0.0105)}px/1.2 system-ui,sans-serif;letter-spacing:${Math.max(1, px(width * 0.0006))}px;white-space:nowrap}
-    .score-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:${gridGap}px}
-    .score-card{--card-foreground:#FFFFFF;--card-muted:rgba(255,255,255,.78);--separator-color:rgba(255,255,255,.72);display:flex;min-width:0;flex-direction:column;overflow:hidden;padding:${scoreCardPadding}px;border:1px solid rgba(255,255,255,.82);border-radius:${px(width * 0.012)}px;background:var(--card-background);box-shadow:0 ${px(width * 0.004)}px ${px(width * 0.014)}px rgba(25,38,60,.22);color:var(--card-foreground)}
-    .score-card.difficulty-ultima{--card-foreground:#F8FAFC;--card-muted:rgba(248,250,252,.78);border-color:rgba(232,58,88,.55)}
-    .score-card.difficulty-worlds-end{--card-foreground:#5F2C78;--card-muted:#8B5AA2;--separator-color:rgba(166,93,185,.52);border-color:rgba(166,93,185,.42)}
-    .score-card-head{display:flex;min-width:0;height:${jacketSize}px;align-items:stretch;gap:${px(width * 0.006)}px}
-    .jacket-shell{position:relative;width:${jacketSize}px;height:${jacketSize}px;flex:0 0 ${jacketSize}px;overflow:hidden;border:${Math.max(2, px(width * 0.003))}px solid #FFFFFF;border-radius:${px(width * 0.007)}px;background:rgba(255,255,255,.24)}
-    .song-jacket{position:absolute;inset:0;z-index:1;display:block;width:100%;height:100%;object-fit:cover}
-    .jacket-fallback{position:absolute;inset:0;display:flex;align-items:center;justify-content:center;color:var(--card-muted);font:700 ${px(width * 0.022)}px/1 system-ui,sans-serif}
-    .song-copy{position:relative;display:flex;min-width:0;height:100%;flex:1;flex-direction:column;gap:${px(width * 0.004)}px;overflow:hidden;padding:${px(width * 0.002)}px 0}
-    .song-id{overflow:hidden;color:var(--card-muted);font:700 ${px(width * 0.008)}px/1 system-ui,sans-serif;text-overflow:ellipsis;white-space:nowrap}
-    .song-title{display:-webkit-box;overflow:hidden;color:var(--card-foreground);font:800 ${px(width * 0.011)}px/1.18 system-ui,sans-serif;overflow-wrap:anywhere;-webkit-box-orient:vertical;-webkit-line-clamp:3}
-    .score-separator{height:1px;margin:${px(width * 0.006)}px 0;background:linear-gradient(90deg,transparent,var(--separator-color),transparent)}
-    .achievement-row{display:flex;min-width:0;align-items:center;gap:${px(width * 0.004)}px}
-    .achievement-with-rate{display:flex;min-width:0;align-items:center;gap:${px(width * 0.003)}px}
-    .achievement{min-width:0;overflow:hidden;color:var(--card-foreground);font:900 ${px(width * 0.015)}px/1.06 system-ui,sans-serif;font-variant-numeric:tabular-nums;text-overflow:ellipsis;white-space:nowrap}
-    .rank-badge{display:inline-flex;min-width:${px(width * 0.022)}px;height:${px(width * 0.015)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.0035)}px;border-radius:999px;font:900 ${px(width * 0.0075)}px/1 system-ui,sans-serif;white-space:nowrap}
-    .rank-badge.rank-solid{border:1px solid rgba(255,255,255,.55);background:rgba(255,255,255,.22);color:var(--card-foreground)}
-    .rank-badge.rank-gradient{border:1px solid rgba(40,125,168,.45);background:linear-gradient(90deg,#73CFFF,#EFCB63,#FF8EC8,#73CFFF);color:#303136}
-    .rank{margin-left:auto;flex:0 0 auto;color:var(--card-muted);font:800 ${px(width * 0.009)}px/1 system-ui,sans-serif}
-    .rating-row{display:flex;min-width:0;align-items:center;margin-top:${px(width * 0.003)}px;color:var(--card-muted);font:700 ${px(width * 0.009)}px/1.15 system-ui,sans-serif}
-    .song-rating{display:inline-flex;min-width:0;align-items:center;gap:${px(width * 0.003)}px;white-space:nowrap}.song-rating strong{color:var(--card-foreground);font-weight:900}.rating-arrow{color:var(--card-muted)}
-    .score-card-foot{display:flex;min-width:0;align-items:center;justify-content:flex-start;padding-top:${px(width * 0.004)}px}
-    .score-badges{display:flex;min-width:0;align-items:center;justify-content:flex-start;gap:${px(width * 0.002)}px;flex-wrap:wrap}
-    .score-badge{display:inline-flex;min-width:${px(width * 0.02)}px;height:${px(width * 0.015)}px;align-items:center;justify-content:center;padding:0 ${px(width * 0.0035)}px;border:1px solid ${goldStatus.border};border-radius:999px;background:${goldStatus.background};color:${goldStatus.text};font:900 ${px(width * 0.0065)}px/1 system-ui,sans-serif;white-space:nowrap}
-    .score-badge.tone-rainbow{border:${Math.max(1, px(width * 0.0015))}px solid transparent;background:${rainbowLayeredBackground};color:${BEST_IMAGE_RAINBOW_TEXT}}
-    .score-badge.tone-platinum{border-color:${platinumBorder};background:${platinumBackground};color:#394454}
-    .score-badge.tone-gold{border-color:${goldStatus.border};background:${goldStatus.background};color:${goldStatus.text}}
-    .score-badge.tone-neutral{border-color:${neutralStatus.border};background:${neutralStatus.background};color:${neutralStatus.text}}
-    .empty-section{grid-column:1/-1;display:flex;min-height:${px(width * 0.08)}px;align-items:center;justify-content:center;color:#697586;font:700 ${px(width * 0.012)}px/1.4 system-ui,sans-serif}
-    .empty-scores{display:flex;min-height:${px(width * 0.15)}px;align-items:center;justify-content:center;border:1px dashed rgba(91,105,126,.45);border-radius:${px(width * 0.012)}px;background:rgba(255,255,255,.64);color:#697586;font:700 ${px(width * 0.013)}px/1.4 system-ui,sans-serif}
-    .image-footer{margin-top:${px(width * 0.044)}px;text-align:center;color:rgba(60,70,90,.85);font-weight:600;font-size:${px(width * 0.013)}px;line-height:1.5;font-family:system-ui,-apple-system,"Segoe UI",sans-serif}
-    .image-footer>div{white-space:nowrap}
-  </style>
-</head>
-<body>
-  <div class="preview-stage">
-    <main class="canvas" data-image-type="${input.type}" aria-label="成绩图片预览">
-      <div class="canvas-background">${backgroundImage}<div class="background-veil"></div></div>
-      ${pageMarker}
-      <section class="profile-card${hideCharacter ? ' no-avatar' : ''}" data-layout-content style="${escapeHtml(identityStyle)}" aria-label="Rating ${escapeHtml(input.ratingDisplay)}，${escapeHtml(possessionTheme.label)}">
-        ${hideCharacter ? '' : `<div class="avatar">${avatarMarkup}</div><div class="profile-divider" aria-hidden="true"></div>`}
-        <div class="profile-copy">
-          <div class="player-name-row" id="player-name-row"><span class="player-name" id="player-name">${escapeHtml(name)}</span></div>
-          <div class="rating-value-row"><span>RATING</span><strong>${escapeHtml(input.ratingDisplay)}</strong></div>
-        </div>
-      </section>
-      <div class="scores-content" data-layout-content aria-label="成绩列表">${scoreContent}${imageFooter}</div>
-    </main>
-  </div>
-  <script>
-    (() => {
-      const OUTPUT_WIDTH = ${width};
-      const MINIMUM_HEIGHT = ${minimumHeight};
-      const APP_NAME_MAX_SIZE = ${nameFontSize};
-      const APP_NAME_MIN_SIZE = ${nameMinimumFontSize};
-      const canvas = document.querySelector('.canvas');
-      let lastHeight = 0;
-      let pending = false;
-      let readySent = false;
-
-      const fitPlayerName = () => {
-        const row = document.getElementById('player-name-row');
-        const playerName = document.getElementById('player-name');
-        if (!row || !playerName) return;
-        playerName.style.fontSize = APP_NAME_MAX_SIZE + 'px';
-        playerName.style.transform = 'none';
-        const rowStyle = window.getComputedStyle(row);
-        const horizontalInset = parseFloat(rowStyle.paddingLeft || '0') + parseFloat(rowStyle.paddingRight || '0');
-        const availableWidth = Math.max(1, row.clientWidth - horizontalInset);
-        const naturalWidth = playerName.scrollWidth;
-        if (naturalWidth <= availableWidth) return;
-        const fittedSize = Math.max(APP_NAME_MIN_SIZE, Math.floor(APP_NAME_MAX_SIZE * availableWidth / naturalWidth));
-        playerName.style.fontSize = fittedSize + 'px';
-        const fittedWidth = playerName.scrollWidth;
-        if (fittedWidth > availableWidth) {
-          playerName.style.transform = 'scaleX(' + (availableWidth / fittedWidth).toFixed(4) + ')';
+  const sections = input.page.sections.map((section, group) => `<section class="score-section"><div class="section-divider"><span>${escape(section.title)}</span></div>${section.subtitle ? `<div class="section-subtitle">${escape(section.subtitle)}</div>` : ''}<div class="score-grid">${section.records.map((record, i) => renderCard(record, i + 1, 'card-' + group + '-' + i, input)).join('') || '<div class="empty-section">暂无符合条件的成绩</div>'}</div></section>`).join('');
+  return `<!doctype html><html lang="zh-CN"><head><meta charset="utf-8"><meta name="viewport" content="width=${width}, initial-scale=1, maximum-scale=1, user-scalable=no"><style>
+    @font-face{font-family:ChuniSans;src:url("fonts/SourceHanSansCN-Bold.otf") format("opentype");font-weight:100 900;font-display:block}
+    *{box-sizing:border-box}html,body{margin:0;width:100%;height:100%;overflow:hidden;background:#DDE3EC}body{-webkit-font-smoothing:antialiased;text-rendering:geometricPrecision;font-family:ChuniSans,sans-serif;font-weight:700}
+    .preview-stage{position:fixed;inset:0;overflow:hidden}.canvas{position:absolute;left:0;top:0;width:${width}px;min-height:${minimumHeight}px;overflow:hidden;transform-origin:top left;background:#E7EDF5}
+    .canvas-background{position:absolute;inset:-${width * .04}px;filter:blur(${width * .02}px);transform:scale(1.08)}.background-image{width:100%;height:100%;object-fit:cover;object-position:center}.canvas-background-fallback{position:absolute;inset:0;background:linear-gradient(145deg,#EEF2F8 0%,#E7EDF5 52%,#F5F7FA 100%)}.canvas-tone{position:absolute;inset:0;background:rgba(238,242,248,.18)}
+    .profile{position:relative;width:100%}svg{display:block;width:100%;height:auto;font-family:ChuniSans,sans-serif;font-weight:700}.scores-content{position:relative;padding-top:${unit(16)}px;padding-bottom:${unit(20)}px}
+    .score-grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:${unit(5)}px ${unit(12)}px;padding:0 ${unit(16)}px}.score-card{min-width:0;aspect-ratio:756/320}.score-section+.score-section{margin-top:${unit(30)}px}
+    .section-divider{display:flex;align-items:center;gap:${width * .012}px;margin:0 0 ${width * .012}px;color:rgba(22,29,43,.78);font-size:${width * .016}px;line-height:1.2;letter-spacing:${Math.max(1, width * .0008)}px;white-space:nowrap}
+    .section-divider::before,.section-divider::after{content:"";height:${Math.max(1, width * .0012)}px;flex:1;background:linear-gradient(90deg,transparent,rgba(28,38,57,.55))}.section-divider::after{background:linear-gradient(90deg,rgba(28,38,57,.55),transparent)}
+    .section-subtitle{text-align:center;margin:0 0 ${width * .012}px;color:#59636B;font-size:${width * .0105}px}.empty-section{grid-column:1/-1;text-align:center;padding:${unit(40)}px;color:#697586}.image-footer{margin-top:${unit(44)}px;text-align:center;color:rgba(60,70,90,.85);font-size:${unit(13)}px;line-height:1.5}.image-footer>div{white-space:nowrap}
+  </style></head><body><div class="preview-stage"><main class="canvas" data-image-type="${input.type}">
+    ${input.backgroundDataUri ? `<div class="canvas-background"><img class="background-image" src="${escape(input.backgroundDataUri)}"></div>` : '<div class="canvas-background-fallback"></div>'}<div class="canvas-tone"></div>
+    <div class="profile" data-layout-content>${renderProfile(input)}</div>
+    <div class="scores-content" data-layout-content>${sections || '<div class="empty-section">暂无可用于图片的成绩</div>'}<footer class="image-footer"><div>Designed by EgawaHokori. Data from ${escape(input.dataSource ?? '')}.</div><div>Generated by rRanker</div>${input.page.pageCount > 1 ? `<div>第 ${input.page.pageIndex + 1} / ${input.page.pageCount} 页</div>` : ''}</footer></div>
+  </main></div><script>(()=>{
+    const OUTPUT_WIDTH=${width}, MINIMUM_HEIGHT=${minimumHeight};
+    const canvas=document.querySelector('.canvas');let lastHeight=0,pending=false,readySent=false;
+    ${bestImageBridgeRuntimeScript()}
+    ${bestImageBridgeMeasureScript({ layoutCall: '' })}
+    const fitText=()=>{
+      const context=document.createElement('canvas').getContext('2d');
+      const measure=(value,size)=>{context.font='700 '+size+'px ChuniSans';return context.measureText(value).width;};
+      document.querySelectorAll('.song-title').forEach(node=>{
+        const value=node.dataset.title;let lines=[value];
+        if(measure(value,38)>446){
+          const tokens=typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter('ja',{granularity:'word'}).segment(value),p=>p.segment):value.match(/[A-Za-z0-9]+|[^A-Za-z0-9]/gu)||[];
+          let best=Infinity;
+          for(let split=1;split<tokens.length;split++){
+            const pair=[tokens.slice(0,split).join('').trim(),tokens.slice(split).join('').trim()];
+            if(!pair[0]||!pair[1]||/^[!！?？、。，．)）ー]/u.test(pair[1])||/[(（]$/u.test(pair[0]))continue;
+            const lengths=pair.map(v=>measure(v,37));const cost=Math.max(...lengths)+Math.abs(lengths[0]-lengths[1])*.18;
+            if(cost<best){best=cost;lines=pair;}
+          }
         }
-      };
-
-${bestImageBridgeRuntimeScript()}
-
-${bestImageBridgeMeasureScript({ layoutCall: 'fitPlayerName();' })}
-      schedule();
-
-${bestImageBridgeReadyScript()}
-    })();
-  </script>
-</body>
-</html>`;
+        const size=Math.min(lines.length===1?46:37,446/Math.max(...lines.map(v=>measure(v,1))));
+        node.setAttribute('font-size',size);
+        node.replaceChildren(...lines.map((line,index)=>{const span=document.createElementNS('http://www.w3.org/2000/svg','tspan');span.setAttribute('x','730');span.setAttribute('y',lines.length===1?'74':String(48+index*44));span.textContent=line;return span;}));
+      });
+      document.querySelectorAll('[data-fit-width]').forEach(node=>{const limit=Number(node.dataset.fitWidth);if(node.getComputedTextLength()>limit){node.setAttribute('textLength',limit);node.setAttribute('lengthAdjust','spacingAndGlyphs');}});
+    };
+    const fontReady=document.fonts.load('700 30px ChuniSans').then(()=>document.fonts.ready);
+    const svgReady=Array.from(new Set(Array.from(document.querySelectorAll('svg image')).map(node=>node.getAttribute('href')).filter(Boolean))).map(url=>new Promise(resolve=>{const img=new Image();img.onload=img.onerror=resolve;img.src=url;if(img.complete)resolve();}));
+    const layoutReady=Promise.all([fontReady,...svgReady]).then(fitText);layoutReady.then(schedule);schedule();
+    ${bestImageBridgeReadyScript({ assetReadyExpression: 'Promise.all([layoutReady, ...imageReady])', waitForAssets: true })}
+  })();</script></body></html>`;
 }
