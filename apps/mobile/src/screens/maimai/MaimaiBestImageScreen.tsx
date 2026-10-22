@@ -149,6 +149,7 @@ export function MaimaiBestImageScreen() {
     exportImages: runExportImages,
     cancelExportRequest,
     handleExportMessage,
+    handleExportLayout,
     handlePreviewMessage,
   } = controller;
   const { assetSession } = controller;
@@ -215,6 +216,7 @@ export function MaimaiBestImageScreen() {
     return hiddenStyles.includes(kind) || !Number.isSafeInteger(id) || (id ?? -1) < 0 ? null : `https://assets2.lxns.net/maimai/${kind}/${id}.png`;
   }));
   const { collectionUrls, collectionError, retry: retryCollections } = useMaimaiCollectionAssets(assetSession, collectionRequestKey);
+  const dataSource = player?.source?.label ?? '';
   const htmlPages = useMemo(() => assetsReady && embeddedAssets && coverUrls && collectionUrls && detailedCatalog.data ? pages.map((page) => buildBestImageHtml({
     type: imageType,
     width: outputWidth,
@@ -229,9 +231,9 @@ export function MaimaiBestImageScreen() {
     pageCount: page.pageCount,
     ...embeddedAssets,
     cnFontUrl: ratingStyle === 'app' ? 'fonts/SourceHanSansCN-Bold.otf' : 'maimai-noto.ttf',
-    dataSource: player?.source?.label ?? '',
-  })) : null, [assetsReady, coverUrls, collectionUrls, detailedCatalog.data, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle, player?.source?.label]);
-  const htmlGenerationKey = JSON.stringify([imageType, outputWidth, previewPlayer, rating, ratingStyle, hiddenStyles, pages]);
+    dataSource,
+  })) : null, [assetsReady, coverUrls, collectionUrls, dataSource, detailedCatalog.data, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle]);
+  const htmlGenerationKey = JSON.stringify([imageType, outputWidth, previewPlayer, rating, ratingStyle, hiddenStyles, pages, dataSource]);
   const sourceGeneration = useMemo(() => [coverUrls, collectionUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data], [coverUrls, collectionUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data]);
   const { sources: webViewSources, error: webViewSourceError } = usePreparedBestImageSources(htmlPages, assetSession, assetsDirectory, cancelExportRequest, sourceGeneration);
   const outputHeight = pageHeights[pages[Math.min(currentPageIndex, pages.length - 1)]!.id] ?? minimumBestImageHeight(outputWidth);
@@ -378,6 +380,7 @@ export function MaimaiBestImageScreen() {
       captureRef: exportCaptureRef,
       captureBackgroundColor: "#E7EDF5",
       onExportMessage: handleExportMessage,
+      onExportLayout: handleExportLayout,
       onRequestCloseExport: cancelExportRequest,
     }}
   />;

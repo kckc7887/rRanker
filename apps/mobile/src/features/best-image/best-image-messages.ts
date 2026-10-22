@@ -36,6 +36,19 @@ export function parseBestImageReadyMessage(
   }
 }
 
+export function parseBestImageErrorMessage(data: string, expectedWidth: number): string | null {
+  try {
+    const value: unknown = JSON.parse(data);
+    if (!value || typeof value !== 'object') return null;
+    const message = value as { type?: unknown; width?: unknown; message?: unknown };
+    if (message.type !== 'best-image-error' || message.width !== expectedWidth) return null;
+    return typeof message.message === 'string' && message.message.trim()
+      ? message.message : '图片资源加载失败，请重试。';
+  } catch {
+    return null;
+  }
+}
+
 export type BestImageRuntimeMessage = {
   userAgent: string;
   version: string | null;

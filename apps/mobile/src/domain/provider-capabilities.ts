@@ -1,4 +1,4 @@
-import type { ProviderId } from './game-bind-options';
+import { isTestProvider, type ProviderId } from './game-bind-options';
 
 export function canReadChunithmScores(
   providerId: ProviderId | null,
@@ -18,6 +18,6 @@ export function canReadPhigrosScores(
 
 export function shouldPersistScoreSnapshot(providerId: ProviderId | null): boolean {
   return providerId !== null
-    && providerId !== 'chunithm-test'
+    && !isTestProvider(providerId)
     && providerId !== 'phi-taptap';
 }

@@ -7,6 +7,7 @@ import BestImageScreen from '../app/best-image';
 
 const mockShowNotification = jest.fn();
 let mockDetailedCatalogReady = true;
+let mockSourceLabel = '示例账号';
 let mockPageSequence = 0;
 const mockStagedFiles = new Map<string, string>();
 
@@ -43,7 +44,7 @@ jest.mock('@/hooks/use-game-data', () => ({
         kind: 'maimai',
         player: {
           displayName: '测试玩家',
-          source: { kind: 'generated', label: '示例账号', updatedAt: '2026-07-22T08:00:00.000Z', isStale: false },
+          source: { kind: 'generated', label: mockSourceLabel, updatedAt: '2026-07-22T08:00:00.000Z', isStale: false },
           presentation: { iconId: 200201, namePlateId: 300101, frameId: 350101, trophyName: '测试称号', trophyColor: 'Gold' },
         },
         playerScore: { value: 15001 },
@@ -177,6 +178,7 @@ describe('best image preview', () => {
   });
   beforeEach(() => {
     mockDetailedCatalogReady = true;
+    mockSourceLabel = '示例账号';
     mockShowNotification.mockClear();
     const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
     prepareMaimaiFonts.mockReset().mockImplementation(async () => ({
@@ -200,6 +202,9 @@ describe('best image preview', () => {
     await screen.rerender(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('B35测试曲'));
     expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('Data from 示例账号.');
+    mockSourceLabel = '水鱼查分器';
+    await screen.rerender(<BestImageScreen />);
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('Data from 水鱼查分器.'));
   });
 
   it('switches image type and renders the HTML preview', async () => {
@@ -466,10 +471,12 @@ describe('best image preview', () => {
 
     await act(async () => { await fireEvent.press(screen.getByLabelText('导出成绩图片')); });
     const renderer = await screen.findByLabelText('导出渲染 第1页');
+    expect(screen.queryByTestId('best-image-html-preview-0')).toBeNull();
     await act(async () => {
       await fireEvent(renderer, 'message', {
         nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 1080, height: 1440 }) },
       });
+      await fireEvent(renderer, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 1080 / PixelRatio.get(), height: 1440 / PixelRatio.get() } } });
     });
 
     const expectedWidth = Platform.OS === 'ios' ? 1080 / PixelRatio.get() : 1080;

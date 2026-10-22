@@ -19,10 +19,14 @@ import { PhiraUserSchema, PhiraUserStatsSchema, PhiraChartSchema, PhiraRecordSch
 import { tufProvider } from '@/providers/tuf-provider';
 import { museDashProvider } from '@/providers/muse-dash-provider';
 import { phiraProvider } from '@/providers/phira-provider';
-import { createCatalogTestAccount, type CatalogTestGameId } from '@/domain/bound-account';
+import { createCatalogTestAccount, createMaxedMaimaiTestAccount, type CatalogTestGameId } from '@/domain/bound-account';
 import { applyRizlineCatalog, RIZLINE_CATALOG_QUERY_KEY } from '@/services/rizline-catalog-query';
-import { fixtureSource } from '@/fixtures/sanitized';
+import { fixtureCatalog, fixturePlayer, fixtureSource } from '@/fixtures/sanitized';
 import { rizlineCatalog, rizlineChart } from './fixtures/rizline';
+import { buildScoreSnapshot } from '@/services/score-service';
+import { createSessionProviders } from '@/services/session-providers';
+import { LxnsCatalogProvider } from '@/providers/lxns-catalog-provider';
+import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 
 jest.mock('@/storage/sqlite-snapshot-repository', () => {
   class MemorySnapshotRepository {
@@ -30,6 +34,7 @@ jest.mock('@/storage/sqlite-snapshot-repository', () => {
     async saveResource() { return undefined; }
     async updateResource() { return undefined; }
     async getLatest() { return null; }
+    async save() { return undefined; }
     async clearResources() { return undefined; }
     async listResourceSizes() { return []; }
   }
@@ -84,6 +89,31 @@ it('loads and refreshes the example account through the shared game data entry',
     refetch: async () => ({ data: (await loadGameDataBundle(input)).bundle, isError: false }) });
   expect(result.status).toBe('success');
   expect(result.value?.payload).toMatchObject({ kind: 'example', playerScore: { value: 19000 } });
+});
+
+it('舞萌示例从曲库生成成绩并保留已有的持久化内容', async () => {
+  const client = createClient();
+  const account = createMaxedMaimaiTestAccount();
+  const input = context({ gameId: 'maimai', providerId: 'maimai-test', accountId: account.id, client });
+  input.activeAccount = account;
+  Object.assign(input, createSessionProviders(account, null));
+  let stored = buildScoreSnapshot({
+    ...fixturePlayer, source: { ...fixtureSource, kind: 'generated', label: '示例查分器（全谱面满成绩）' },
+  }, [], fixtureCatalog);
+  jest.spyOn(SqliteSnapshotRepository.prototype, 'getLatest').mockImplementation(async () => stored);
+  jest.spyOn(SqliteSnapshotRepository.prototype, 'save').mockImplementation(async (_accountId, snapshot) => { stored = snapshot; });
+  jest.spyOn(LxnsCatalogProvider.prototype, 'getDetailedCatalog').mockResolvedValue(fixtureCatalog);
+
+  const { bundle } = await loadGameDataBundle(input);
+
+  expect(bundle.payload).toMatchObject({
+    kind: 'maimai', player: { source: { label: '示例账号' } }, source: { label: '示例账号' },
+  });
+  if (bundle.payload.kind !== 'maimai') throw new Error('舞萌载荷缺失');
+  expect(bundle.payload.records.length).toBeGreaterThan(0);
+  expect(await new SqliteSnapshotRepository().getLatest(account.id)).toMatchObject({
+    records: [], player: { source: { label: '示例查分器（全谱面满成绩）' } },
+  });
 });
 function createClient() { const client = new QueryClient(); clients.add(client); return client; }
 beforeEach(() => { jest.restoreAllMocks(); });

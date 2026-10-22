@@ -1,4 +1,4 @@
-import { AppState, type AppStateStatus } from 'react-native';
+import { AppState, PixelRatio, Platform, type AppStateStatus, type LayoutChangeEvent } from 'react-native';
 import { AppLifecycleProvider } from '@/state/app-lifecycle';
 import { clearUnusedBestImageAssets } from '@/features/best-image/load-best-image-session';
 import { jest } from '@jest/globals';
@@ -7,19 +7,20 @@ import { useBestImageScreenController, usePreparedBestImageSources } from '@/fea
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 
 const mockPermission = jest.fn<() => Promise<void>>();
-const mockCapture = jest.fn<() => Promise<string>>();
+const mockCapture = jest.fn<(...args: unknown[]) => Promise<string>>();
 const mockSave = jest.fn<(uri: string, name: string) => Promise<void>>();
 const mockDelete = jest.fn();
 const mockNotify = jest.fn();
 const mockFiles = new Map<string, string>();
 const mockWrite = jest.fn<(uri: string, content: string) => Promise<void>>();
 const mockDeletedDirectories = new Set<string>();
-jest.mock('react-native-view-shot', () => ({ captureRef: () => mockCapture() }));
+jest.mock('react-native-view-shot', () => ({ captureRef: (...args: unknown[]) => mockCapture(...args) }));
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotify }) }));
 jest.mock('@/features/best-image/best-image-export', () => ({
-  bestImageCaptureDimensions: () => ({ width: 1080, height: 1440 }), deleteBestImageCapture: async (uri: string) => mockDelete(uri),
-  isDrawViewHierarchyError: () => false, requestBestImageExportPermission: () => mockPermission(),
-  saveBestImageCapture: (uri: string, name: string) => mockSave(uri, name), shouldUseBestImageRenderInContext: () => false,
+  BestImageExportError: class BestImageExportError extends Error {},
+  bestImageCaptureDimensions: (width: number, height: number) => ({ width, height }), deleteBestImageCapture: async (uri: string) => mockDelete(uri),
+  requestBestImageExportPermission: () => mockPermission(),
+  saveBestImageCapture: (uri: string, name: string) => mockSave(uri, name),
 }));
 const config = {
   game: 'maimai' as const,
@@ -32,6 +33,7 @@ const runtime = (count = 1) => ({
   canExport: true, buildExportFilename: (index: number) => `${index}.png`,
 });
 const ready = '{"type":"best-image-ready","width":1080,"height":1440}';
+const layout = (height = 1440) => ({ nativeEvent: { layout: { x: 0, y: 0, width: 1080 / PixelRatio.get(), height: height / PixelRatio.get() } } }) as LayoutChangeEvent;
 const deferred = <T,>() => {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((done) => { resolve = done; });
@@ -57,18 +59,77 @@ describe('best image export lifecycle', () => {
     expect(result.current.exportIndex).toBeNull(); expect(mockCapture).not.toHaveBeenCalled(); expect(mockNotify).not.toHaveBeenCalled();
   });
 
-  it('cancels the native-layout delay and rejects callbacks from a previous canvas', async () => {
+  it('cancels layout waiting and rejects callbacks from a previous canvas', async () => {
     const { result } = await renderHook(() => useBestImageScreenController(config));
     let pending!: Promise<void>;
     await act(async () => { pending = result.current.exportImages(runtime()); });
     const oldMessage = result.current.handleExportMessage;
-    await act(async () => { result.current.handleExportMessage(ready); result.current.cancelExportRequest(); await pending; });
+    await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); result.current.cancelExportRequest(); await pending; });
     expect(mockCapture).not.toHaveBeenCalled();
     await act(async () => { pending = result.current.exportImages(runtime()); });
     await act(async () => { oldMessage(ready); await jest.advanceTimersByTimeAsync(320); });
     expect(mockCapture).not.toHaveBeenCalled();
-    await act(async () => { result.current.handleExportMessage(ready); await jest.advanceTimersByTimeAsync(320); await pending; });
+    await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); await pending; });
     expect(mockCapture).toHaveBeenCalledTimes(1); expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: '导出完成' }));
+  });
+
+  it('waits for the final native layout and a fresh ready message after the height changes', async () => {
+    const { result } = await renderHook(() => useBestImageScreenController(config));
+    let pending!: Promise<void>;
+    await act(async () => { pending = result.current.exportImages(runtime()); });
+    await act(async () => {
+      result.current.handleExportMessage('{"type":"best-image-ready","width":1080,"height":3200}');
+      await jest.advanceTimersByTimeAsync(500);
+    });
+    expect(mockCapture).not.toHaveBeenCalled();
+    await act(async () => {
+      result.current.handleExportLayout(layout(3200));
+      await jest.advanceTimersByTimeAsync(250);
+      result.current.handleExportMessage('{"type":"best-image-height","width":1080,"height":4000}');
+      result.current.handleExportLayout(layout(4000));
+      await jest.advanceTimersByTimeAsync(500);
+    });
+    expect(mockCapture).not.toHaveBeenCalled();
+    await act(async () => {
+      result.current.handleExportMessage('{"type":"best-image-ready","width":1080,"height":4000}');
+      await jest.advanceTimersByTimeAsync(320);
+      await pending;
+    });
+    expect(mockCapture).toHaveBeenCalledWith(expect.anything(), expect.objectContaining({ width: 1080, height: 4000 }));
+    expect(mockSave).toHaveBeenCalled();
+  });
+
+  it('rejects a renderer image error immediately without capturing or saving', async () => {
+    const { result } = await renderHook(() => useBestImageScreenController(config));
+    let pending!: Promise<void>;
+    await act(async () => { pending = result.current.exportImages(runtime()); });
+    await act(async () => {
+      result.current.handleExportMessage('{"type":"best-image-error","width":1080,"message":"图片加载失败，请重试。"}');
+      await pending;
+    });
+    expect(mockCapture).not.toHaveBeenCalled();
+    expect(mockSave).not.toHaveBeenCalled();
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: '导出失败', message: '图片加载失败，请重试。' }));
+  });
+
+  it('retries a transient iOS capture failure with the same snapshot strategy and saves the result', async () => {
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    mockCapture.mockRejectedValueOnce(new Error('snapshot failed'));
+    const { result } = await renderHook(() => useBestImageScreenController({ ...config, defaultWidth: 1440 }));
+    let pending!: Promise<void>;
+    await act(async () => { pending = result.current.exportImages(runtime()); });
+    await act(async () => {
+      result.current.handleExportMessage('{"type":"best-image-ready","width":1440,"height":1920}');
+      result.current.handleExportLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 1440 / PixelRatio.get(), height: 1920 / PixelRatio.get() } } } as LayoutChangeEvent);
+      await jest.advanceTimersByTimeAsync(320 + 250);
+      await pending;
+    });
+    expect(mockCapture.mock.calls.map(call => call[1])).toEqual([
+      { width: 1440, height: 1920, format: 'png', quality: 1, result: 'tmpfile' },
+      { width: 1440, height: 1920, format: 'png', quality: 1, result: 'tmpfile' },
+    ]);
+    expect(mockSave).toHaveBeenCalledWith('file:///capture.png', '0.png');
+    expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: '导出完成' }));
   });
 
   it('cleans up a cancelled in-flight capture without saving or starting another export', async () => {
@@ -76,7 +137,7 @@ describe('best image export lifecycle', () => {
     const { result } = await renderHook(() => useBestImageScreenController(config));
     let pending!: Promise<void>;
     await act(async () => { pending = result.current.exportImages(runtime(2)); });
-    await act(async () => { result.current.handleExportMessage(ready); await jest.advanceTimersByTimeAsync(320); });
+    await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); });
     await act(async () => { result.current.cancelExportRequest(); await result.current.exportImages(runtime()); });
     expect(mockPermission).toHaveBeenCalledTimes(1);
     await act(async () => { capture.resolve('file:///late.png'); await pending; });
@@ -89,9 +150,9 @@ describe('best image export lifecycle', () => {
     const { result } = await renderHook(() => useBestImageScreenController(config));
     let pending!: Promise<void>;
     await act(async () => { pending = result.current.exportImages(runtime(2)); });
-    await act(async () => { result.current.handleExportMessage(ready); await jest.advanceTimersByTimeAsync(320); });
+    await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); });
     expect(result.current.exportIndex).toBe(1);
-    await act(async () => { result.current.handleExportMessage(ready); await jest.advanceTimersByTimeAsync(320); });
+    await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); });
     expect(mockSave).toHaveBeenCalledTimes(1);
     await act(async () => { result.current.cancelExportRequest(); });
     expect(mockDelete).not.toHaveBeenCalled();
@@ -116,7 +177,7 @@ describe('best image export lifecycle', () => {
     mockFiles.set(`${directory}/cover.png`, 'original cover');
     let pending!: Promise<void>;
     await act(async () => { pending = result.current.exportImages(runtime()); });
-    await act(async () => { result.current.handleExportMessage(ready); await jest.advanceTimersByTimeAsync(320); });
+    await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); });
     await unmount();
     expect(mockDeletedDirectories.has(directory)).toBe(false);
     await clearUnusedBestImageAssets('maimai');
@@ -138,7 +199,7 @@ describe('best image export lifecycle', () => {
     const oldUri = result.current.sources![0]!.uri;
     let pending!: Promise<void>;
     await act(async () => { pending = result.current.exportImages({ ...runtime(), sources: result.current.sources }); });
-    await act(async () => { result.current.handleExportMessage(ready); await jest.advanceTimersByTimeAsync(320); });
+    await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); });
     await rerender({ htmlPages: ['<p>next</p>'] });
     await waitFor(() => expect(result.current.sources?.[0]?.uri).not.toBe(oldUri));
     expect(mockFiles.get(oldUri)).toBe('<p>old</p>');
@@ -156,7 +217,7 @@ describe('best image export lifecycle', () => {
       const directory = result.current.assetSession.directory.uri;
       let pending!: Promise<void>;
       await act(async () => { pending = result.current.exportImages(runtime()); });
-      await act(async () => { result.current.handleExportMessage(ready); await jest.advanceTimersByTimeAsync(320); });
+      await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); });
       expect(mockCapture).not.toHaveBeenCalled();
       await unmount();
       await act(async () => { await pending; });

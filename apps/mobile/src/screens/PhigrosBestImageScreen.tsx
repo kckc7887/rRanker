@@ -5,7 +5,6 @@ import {
 } from 'react-native';
 import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
 import { formatPhigrosChallengeBadge } from '@/domain/phigros-challenge-theme';
-import { isTestProvider } from '@/domain/game-bind-options';
 import {
   PHIGROS_LEVELS, PHIGROS_RANK_FILTERS, phigrosLevelLabel, phigrosRankFilterLabel,
   type PhigrosRankFilter,
@@ -106,7 +105,7 @@ export function PhigrosBestImageScreen() {
   const gameData = useGameData();
   const catalog = usePhigrosCatalog();
   const payload = gameData.data?.payload.kind === 'phigros' ? gameData.data.payload : null;
-  const dataSource = isTestProvider(gameData.data?.providerId ?? null) ? payload?.source.label : 'TapTap';
+  const dataSource = payload?.source.label ?? '';
   const provider = catalog.data?.provider;
   const songs = useMemo(() => catalog.data?.snapshot.songs ?? [], [catalog.data?.snapshot.songs]);
   const [scoreMinText, setScoreMinText] = useState('');
@@ -152,6 +151,7 @@ export function PhigrosBestImageScreen() {
     exportImages: runExportImages,
     cancelExportRequest,
     handleExportMessage,
+    handleExportLayout,
     handlePreviewMessage,
   } = controller;
   const { assetSession } = controller;
@@ -466,6 +466,7 @@ export function PhigrosBestImageScreen() {
       captureRef: exportCaptureRef,
       captureAccessibilityLabel: exportIndex !== null ? `导出画布 第${exportIndex + 1}页` : undefined,
       onExportMessage: handleExportMessage,
+      onExportLayout: handleExportLayout,
       onRequestCloseExport: cancelExportRequest,
     }}
   />;

@@ -1,3 +1,4 @@
+import { PixelRatio } from 'react-native';
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { ChunithmBestImageScreen } from '@/screens/ChunithmBestImageScreen';
@@ -251,6 +252,7 @@ describe('chunithm best image custom', () => {
     await fireEvent.press(screen.getByLabelText('导出成绩图片'));
     const renderer = await screen.findByLabelText('导出渲染 第1页');
     await fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 1080, height: 1500 }) } });
+    await fireEvent(renderer, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 1080 / PixelRatio.get(), height: 1500 / PixelRatio.get() } } });
     await waitFor(() => expect(saveBestImageCapture).toHaveBeenCalledWith('file:///capture.png', expect.stringMatching(/\.png$/)));
     expect(mockShowNotification).toHaveBeenCalledWith(expect.objectContaining({ title: '导出完成', message: '已保存 1 张成绩图片到相册' }));
   });

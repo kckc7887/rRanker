@@ -6,23 +6,28 @@ export type BestImageBridgeMeasureOptions = {
 export type BestImageBridgeReadyOptions = {
 
   assetReadyExpression?: string;
-  waitForAssets?: boolean;
 };
 
 export function bestImageAssetsReadyScript(): string {
   return `(() => {
-    const decodeImage = image => typeof image.decode === 'function'
-      ? image.decode().catch(() => undefined) : Promise.resolve();
-    const waitImage = image => image.complete ? decodeImage(image) : new Promise(resolve => {
-      const settle = () => {
-        image.removeEventListener('load', settle);
-        image.removeEventListener('error', settle);
-        decodeImage(image).then(resolve);
-      };
-      image.addEventListener('load', settle);
-      image.addEventListener('error', settle);
-    });
-    const images = Array.from(document.images);
+    const decodeImage = async image => {
+      if (!image.naturalWidth) throw new Error('图片资源加载失败');
+      if (typeof image.decode === 'function') await image.decode();
+    };
+    const waitImage = async image => {
+      if (!image.complete) await new Promise((resolve, reject) => {
+        const cleanup = () => {
+          image.removeEventListener('load', loaded);
+          image.removeEventListener('error', failed);
+        };
+        const loaded = () => { cleanup(); resolve(); };
+        const failed = () => { cleanup(); reject(new Error('图片资源加载失败')); };
+        image.addEventListener('load', loaded);
+        image.addEventListener('error', failed);
+      });
+      await decodeImage(image);
+    };
+    const images = Array.from(document.images).filter(image => image.currentSrc || image.getAttribute('src'));
     const anchor = document.createElement('a');
     const absoluteUrl = path => { anchor.href = path; return anchor.href; };
     const present = new Set(images.map(image => absoluteUrl(image.currentSrc || image.src)));
@@ -30,16 +35,23 @@ export function bestImageAssetsReadyScript(): string {
     const addUrl = path => {
       if (!path) return;
       const url = absoluteUrl(path);
+      if (url.includes('#') && url.split('#')[0] === absoluteUrl(document.baseURI).split('#')[0]) return;
       if (!present.has(url)) urls.add(url);
     };
-    document.querySelectorAll('svg image').forEach(node => addUrl(node.getAttribute('href') || node.getAttribute('xlink:href')));
-    document.querySelectorAll('*').forEach(node => {
-      const style = getComputedStyle(node);
+    document.querySelectorAll('svg image, svg use').forEach(node => addUrl(node.getAttribute('href') || node.getAttribute('xlink:href')));
+    const addStyle = style => {
       for (const value of [style.backgroundImage, style.borderImageSource, style.maskImage, style.webkitMaskImage, style.content]) {
         for (const match of (value || '').matchAll(/url\\(\\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\\s*\\)/giu)) {
           const path = match[1] || match[2] || match[3];
-          if (/\\.(?:svg|png|webp)(?:[?#]|$)/iu.test(path)) addUrl(path);
+          addUrl(path);
         }
+      }
+    };
+    document.querySelectorAll('*').forEach(node => {
+      addStyle(getComputedStyle(node));
+      for (const pseudo of ['::before', '::after']) {
+        const style = getComputedStyle(node, pseudo);
+        if (style.content && style.content !== 'none' && style.content !== 'normal') addStyle(style);
       }
     });
     return Promise.all([
@@ -98,6 +110,9 @@ export function bestImageBridgeMeasureScript(options: BestImageBridgeMeasureOpti
           lastHeight = logicalHeight;
           postToNative({ type: 'best-image-height', width: OUTPUT_WIDTH, height: logicalHeight });
         }
+        if (assetsReady) window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
+          if (!pending) postToNative({ type: 'best-image-ready', width: OUTPUT_WIDTH, height: lastHeight || MINIMUM_HEIGHT });
+        }));
       };
       const schedule = () => {
         if (pending) return;
@@ -126,28 +141,10 @@ export function bestImageBridgeReadyScript(options: BestImageBridgeReadyOptions 
   const assetReadyLine = options.assetReadyExpression
     ? `      const assetReady = ${options.assetReadyExpression};\n`
     : '';
-  const raceAssetExpression = options.assetReadyExpression ? 'assetReady' : 'Promise.all(imageReady)';
-  return `      const imageReady = ${options.waitForAssets ? `[${bestImageAssetsReadyScript()}];` : `Array.from(document.images).map((image) => image.complete
-        ? Promise.resolve()
-        : new Promise((resolve) => {
-            const settle = () => {
-              image.removeEventListener('load', settle);
-              image.removeEventListener('error', settle);
-              resolve();
-            };
-            image.addEventListener('load', settle);
-            image.addEventListener('error', settle);
-          }));`}
-${assetReadyLine}      ${options.waitForAssets ? '' : 'const assetTimeout = new Promise((resolve) => window.setTimeout(resolve, 5000));'}
-      ${options.waitForAssets ? raceAssetExpression : `Promise.race([${raceAssetExpression}, assetTimeout])`}.then(() => {
-        window.requestAnimationFrame(() => window.requestAnimationFrame(() => {
-          measureAndFit();
-          if (!readySent) {
-            readySent = true;
-            const readyMessage = { type: 'best-image-ready', width: OUTPUT_WIDTH, height: lastHeight || MINIMUM_HEIGHT };
-            postToNative(readyMessage);
-            window.setTimeout(() => postToNative(readyMessage), 250);
-          }
-        }));
-      });`;
+  const readyExpression = options.assetReadyExpression ? 'assetReady' : 'Promise.all(imageReady)';
+  return `      const imageReady = [${bestImageAssetsReadyScript()}];
+${assetReadyLine}      ${readyExpression}.then(() => {
+        assetsReady = true;
+        schedule();
+      }).catch(() => postToNative({ type: 'best-image-error', width: OUTPUT_WIDTH, message: '图片资源加载失败，请重试。' }));`;
 }

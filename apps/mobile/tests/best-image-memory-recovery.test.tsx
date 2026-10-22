@@ -30,7 +30,7 @@ jest.mock('react-native-webview', () => {
 const widths = [1080, 1440, 2160] as const;
 const chosenWidths: number[] = [];
 
-function Harness({ drawingReady = true, gameReady = true, sourceUri = 'file:///session/preview.html', showSource = true, pageCount = 1, pageIndex = 0 } = {}) {
+function Harness({ drawingReady = true, gameReady = true, sourceUri = 'file:///session/preview.html', showSource = true, pageCount = 1, pageIndex = 0, exporting = false } = {}) {
   const [width, setWidth] = useState<number>(2160);
   const preview = useBestImagePreview(width, undefined, true);
   const sources = useMemo(() => showSource ? Array.from({ length: pageCount }, (_, index) => ({ uri: `${sourceUri}?page=${index}` })) : null, [sourceUri, showSource, pageCount]);
@@ -68,12 +68,13 @@ function Harness({ drawingReady = true, gameReady = true, sourceUri = 'file:///s
       exportIdleLabel: '导出',
       exportStatus: null,
       onExport: () => undefined,
-      exportIndex: null,
+      exportIndex: exporting ? 0 : null,
       exportHeight: 2880,
-      exportSource: null,
+      exportSource: exporting ? sources?.[0] ?? null : null,
       exportWebViewKeyPrefix: 'export',
       captureRef: { current: null },
       onExportMessage: () => undefined,
+      onExportLayout: () => undefined,
       onRequestCloseExport: () => undefined,
     }}
   />;
@@ -137,6 +138,21 @@ describe('best image memory recovery', () => {
     await view.rerender(<Harness pageCount={2} pageIndex={1} />);
     await view.rerender(<Harness pageCount={2} />);
     await act(async () => abandonedMessage({ nativeEvent: { data: '{"type":"best-image-ready","width":2160,"height":2880}' } }));
+    expect(screen.getByText('图片加载中')).toBeTruthy();
+    await fireEvent(screen.getByTestId('best-image-html-preview-0'), 'message', {
+      nativeEvent: { data: '{"type":"best-image-ready","width":2160,"height":2880}' },
+    });
+    expect(screen.queryByText('图片加载中')).toBeNull();
+  });
+
+  it('pauses the preview during export and waits for the restored preview to report readiness', async () => {
+    const view = await render(<Harness />);
+    const oldMessage = screen.getByTestId('best-image-html-preview-0').props.onMessage;
+    await view.rerender(<Harness exporting />);
+    expect(screen.queryByTestId('best-image-html-preview-0')).toBeNull();
+    expect(screen.getByLabelText('导出渲染 第1页')).toBeTruthy();
+    await view.rerender(<Harness />);
+    await act(async () => oldMessage({ nativeEvent: { data: '{"type":"best-image-ready","width":2160,"height":2880}' } }));
     expect(screen.getByText('图片加载中')).toBeTruthy();
     await fireEvent(screen.getByTestId('best-image-html-preview-0'), 'message', {
       nativeEvent: { data: '{"type":"best-image-ready","width":2160,"height":2880}' },

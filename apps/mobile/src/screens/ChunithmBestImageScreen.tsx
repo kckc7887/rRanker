@@ -114,6 +114,7 @@ export function ChunithmBestImageScreen() {
     exportImages: runExportImages,
     cancelExportRequest,
     handleExportMessage,
+    handleExportLayout,
     handlePreviewMessage,
   } = controller;
   const { assetSession } = controller;
@@ -245,6 +246,7 @@ export function ChunithmBestImageScreen() {
   const backgroundDataUri = backgroundJacketId
     ? coverUrls?.[backgroundJacketId] ?? null
     : null;
+  const dataSource = payload?.source.label ?? '';
 
   const htmlPages = useMemo(() => {
     if (!payload || !controller.prefsReady || !coverUrls || !assets) return null;
@@ -262,11 +264,12 @@ export function ChunithmBestImageScreen() {
       backgroundDataUri,
       hideCharacter,
       hideTrophy: stylePrefs.trophy.mode === 'off',
-      dataSource: payload.source.label,
+      dataSource,
     }));
   }, [
     assets,
     controller.prefsReady,
+    dataSource,
     selectedTrophy,
     stylePrefs.trophy.mode,
     backgroundDataUri,
@@ -571,6 +574,7 @@ export function ChunithmBestImageScreen() {
         captureRef: exportCaptureRef,
         captureAccessibilityLabel: exportIndex !== null ? `导出画布 第${exportIndex + 1}页` : undefined,
         onExportMessage: handleExportMessage,
+        onExportLayout: handleExportLayout,
         onRequestCloseExport: cancelExportRequest,
       }}
     />

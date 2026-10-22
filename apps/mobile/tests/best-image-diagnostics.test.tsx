@@ -1,3 +1,4 @@
+import { PixelRatio, type LayoutChangeEvent } from 'react-native';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { useBestImageScreenController } from '@/features/best-image/use-best-image-screen-controller';
@@ -17,10 +18,8 @@ jest.mock('@/features/best-image/best-image-export', () => ({
   },
   bestImageCaptureDimensions: () => ({ width: 1080, height: 1440 }),
   deleteBestImageCapture: jest.fn(async () => undefined),
-  isDrawViewHierarchyError: () => false,
   requestBestImageExportPermission: async () => undefined,
   saveBestImageCapture: () => mockSave(),
-  shouldUseBestImageRenderInContext: () => false,
 }));
 
 const config = {
@@ -56,6 +55,7 @@ describe('best image shared export diagnostics', () => {
     await waitFor(() => expect(result.current.exportIndex).toBe(0));
     await act(async () => {
       result.current.handleExportMessage('{"type":"best-image-ready","width":1080,"height":1440}');
+      result.current.handleExportLayout({ nativeEvent: { layout: { x: 0, y: 0, width: 1080 / PixelRatio.get(), height: 1440 / PixelRatio.get() } } } as LayoutChangeEvent);
       await jest.advanceTimersByTimeAsync(320);
       await jest.advanceTimersByTimeAsync(300);
       await pending;

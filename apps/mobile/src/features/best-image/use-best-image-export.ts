@@ -1,18 +1,21 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { AppState, PixelRatio, Platform, type View } from 'react-native';
+import { AppState, PixelRatio, Platform, type LayoutChangeEvent, type View } from 'react-native';
 import { captureRef } from 'react-native-view-shot';
 import { useNotification } from '@/components/AppNotification';
 import { createRuntimeOperation } from '@/services/runtime-diagnostics-recorder';
 import { waitForForeground } from '@/state/app-lifecycle-core';
-import { parseBestImageHeightMessage, parseBestImageReadyMessage } from './best-image-messages';
-import { bestImageCaptureDimensions, BestImageExportError, deleteBestImageCapture, requestBestImageExportPermission, saveBestImageCapture, shouldUseBestImageRenderInContext } from './best-image-export';
+import { parseBestImageErrorMessage, parseBestImageHeightMessage, parseBestImageReadyMessage } from './best-image-messages';
+import { bestImageCaptureDimensions, BestImageExportError, deleteBestImageCapture, requestBestImageExportPermission, saveBestImageCapture } from './best-image-export';
 import type { BestImageScreenControllerRuntime } from './best-image-controller-types';
 
 type CanvasWait = {
   resolve: (height: number) => void;
   reject: (error: Error) => void;
   timer: ReturnType<typeof setTimeout> | null;
-  ready: boolean;
+  settleTimer: ReturnType<typeof setTimeout> | null;
+  height: number;
+  readyHeight: number | null;
+  layout: { width: number; height: number } | null;
 };
 type ExportSession = {
   generation: number;
@@ -32,21 +35,12 @@ type ExportSession = {
 
 function clearWait(session: ExportSession) {
   if (session.wait?.timer) clearTimeout(session.wait.timer);
+  if (session.wait?.settleTimer) clearTimeout(session.wait.settleTimer);
   session.wait = null;
-}
-
-function captureFailureText(error: unknown): string {
-  if (typeof error === 'string') return error;
-  if (error instanceof Error) return error.message;
-  return '';
 }
 
 function iosSnapshotNeedsAnotherAttempt(attempt: number): boolean {
   return Platform.OS === 'ios' && attempt < 1;
-}
-
-function prefersRenderInContext(error: unknown, usedRenderInContext: boolean): boolean {
-  return !usedRenderInContext && /drawViewHierarchyInRect|view cannot be captured|unable to snapshot|snapshot failed|not attached/iu.test(captureFailureText(error));
 }
 
 async function waitForCaptureSurface(signal: AbortSignal): Promise<void> {
@@ -109,23 +103,57 @@ export function useBestImageExport(config: {
   /** 每页独立等待，旧消息不能结束其它页。 */
   const renderedSession = active.current;
   const renderedWait = renderedSession?.wait;
+  const settleCanvas = (session: ExportSession, wait: CanvasWait) => {
+    const ratio = PixelRatio.get();
+    const matchesLayout = wait.layout
+      && Math.abs(wait.layout.width * ratio - session.width) <= 1
+      && Math.abs(wait.layout.height * ratio - wait.height) <= 1;
+    if (wait.readyHeight !== wait.height || !matchesLayout) {
+      if (wait.settleTimer) clearTimeout(wait.settleTimer);
+      wait.settleTimer = null;
+      return;
+    }
+    if (wait.settleTimer) return;
+    wait.settleTimer = setTimeout(() => {
+      if (session.cancelled || active.current !== session || session.wait !== wait) return;
+      const height = wait.height;
+      clearWait(session);
+      session.operation.record('canvas', { pageIndex: session.pageIndex, result: 'success' });
+      wait.resolve(height);
+    }, 320);
+  };
+  const handleExportLayout = (event: LayoutChangeEvent) => {
+    const session = renderedSession;
+    const wait = renderedWait;
+    if (!session || !wait || active.current !== session || session.cancelled || session.wait !== wait) return;
+    wait.layout = event.nativeEvent.layout;
+    settleCanvas(session, wait);
+  };
   const handleExportMessage = (data: string) => {
     const session = renderedSession;
     const wait = renderedWait;
     if (!session || !wait || active.current !== session || session.cancelled || session.wait !== wait) return;
-    const height = parseBestImageHeightMessage(data, session.width, session.messageScale);
-    if (height !== null) setExportHeight(height);
-    const readyHeight = parseBestImageReadyMessage(data, session.width, session.messageScale);
-    if (readyHeight === null || wait.ready) return;
-    wait.ready = true;
-    session.operation.record('canvas', { pageIndex: session.pageIndex, result: 'success' });
-    setExportHeight(readyHeight);
-    if (wait.timer) clearTimeout(wait.timer);
-    wait.timer = setTimeout(() => {
-      if (session.cancelled || active.current !== session || session.wait !== wait) return;
+    const error = parseBestImageErrorMessage(data, session.width);
+    if (error !== null) {
       clearWait(session);
-      wait.resolve(readyHeight);
-    }, 320);
+      wait.reject(new BestImageExportError(error));
+      return;
+    }
+    const height = parseBestImageHeightMessage(data, session.width, session.messageScale);
+    if (height !== null) {
+      if (wait.height !== height) {
+        wait.height = height;
+        wait.readyHeight = null;
+      }
+      setExportHeight(height);
+    }
+    const readyHeight = parseBestImageReadyMessage(data, session.width, session.messageScale);
+    if (readyHeight !== null) {
+      wait.height = readyHeight;
+      wait.readyHeight = readyHeight;
+      setExportHeight(readyHeight);
+    }
+    settleCanvas(session, wait);
   };
 
   const exportImages = async (runtime: BestImageScreenControllerRuntime) => {
@@ -144,35 +172,30 @@ export function useBestImageExport(config: {
       stage(session, 'canvas', index + 1);
       const height = await new Promise<number>((resolve, reject) => {
         const pageId = runtime.pages[index]?.id;
-        session.wait = { resolve, reject, ready: false, timer: setTimeout(() => {
+        const initialHeight = (pageId ? config.pageHeights[pageId] : undefined) ?? config.defaultHeight;
+        session.wait = { resolve, reject, height: initialHeight, readyHeight: null, layout: null, settleTimer: null, timer: setTimeout(() => {
           session.timedOut = true;
           clearWait(session);
           reject(new Error('图片渲染超时'));
         }, 30_000) };
-        setExportHeight((pageId ? config.pageHeights[pageId] : undefined) ?? config.defaultHeight);
+        setExportHeight(initialHeight);
         setExportIndex(index);
       });
       assertCurrent(session);
       stage(session, 'capture', index + 1);
-      const useRenderInContext = shouldUseBestImageRenderInContext(Platform.OS, session.width, height);
       const options = { format: 'png', quality: 1, result: 'tmpfile',
         ...bestImageCaptureDimensions(session.width, height, PixelRatio.get(), Platform.OS) } as const;
-      let renderInContext = useRenderInContext;
       let uri: string | undefined;
       let attempt = 0;
       while (uri === undefined) {
         await waitForCaptureSurface(session.controller.signal);
         assertCurrent(session);
         try {
-          uri = await captureRef(exportCaptureRef, {
-            ...options,
-            ...(renderInContext ? { useRenderInContext: true } : {}),
-          });
+          uri = await captureRef(exportCaptureRef, options);
         } catch (error) {
           assertCurrent(session);
           if (!iosSnapshotNeedsAnotherAttempt(attempt)) throw error;
           attempt += 1;
-          if (prefersRenderInContext(error, renderInContext)) renderInContext = true;
           await new Promise((resolve) => setTimeout(resolve, 250));
           assertCurrent(session);
         }
@@ -238,5 +261,5 @@ export function useBestImageExport(config: {
       session.finish();
     }
   };
-  return { exportIndex, exportHeight, exportStatus, exportCaptureRef, exportImages, cancelExportRequest, handleExportMessage };
+  return { exportIndex, exportHeight, exportStatus, exportCaptureRef, exportImages, cancelExportRequest, handleExportMessage, handleExportLayout };
 }

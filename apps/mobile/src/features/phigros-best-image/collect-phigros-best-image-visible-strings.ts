@@ -33,7 +33,7 @@ export function collectPhigrosBestImageVisibleStrings(input: PhigrosBestImageFon
     input.dataAmount,
     input.challenge,
     input.syncedAt,
-    input.dataSource?.trim() || 'TapTap',
+    input.dataSource?.trim() || '',
   ];
   for (const page of input.pages) {
     for (const section of page.sections) {

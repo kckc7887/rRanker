@@ -47,10 +47,8 @@ import {
   bestImageCaptureDimensions,
   bestImageExportFilename,
   deleteBestImageCapture,
-  isDrawViewHierarchyError,
   requestBestImageExportPermission,
   saveBestImageCapture,
-  shouldUseBestImageRenderInContext,
 } from '@/features/best-image/best-image-export';
 
 describe('best image export', () => {
@@ -72,14 +70,6 @@ describe('best image export', () => {
     expect(bestImageCaptureDimensions(2160, 8640, 3, 'ios')).toEqual({ width: 720, height: 2880 });
     expect(bestImageCaptureDimensions(2160, 8640, 3, 'android')).toEqual({ width: 2160, height: 8640 });
     expect(bestImageCaptureDimensions(1080, 1440, 0, 'ios')).toEqual({ width: 1080, height: 1440 });
-  });
-
-  it('selects the large-view iOS renderer and recognizes its native error', () => {
-    expect(shouldUseBestImageRenderInContext('ios', 1440, 1920)).toBe(true);
-    expect(shouldUseBestImageRenderInContext('ios', 1080, 5000)).toBe(true);
-    expect(shouldUseBestImageRenderInContext('ios', 1080, 1440)).toBe(false);
-    expect(shouldUseBestImageRenderInContext('android', 2160, 10000)).toBe(false);
-    expect(isDrawViewHierarchyError(new Error('The view cannot be captured. drawViewHierarchyInRect was not successful.'))).toBe(true);
   });
 
   it('reports denied gallery permission clearly', async () => {

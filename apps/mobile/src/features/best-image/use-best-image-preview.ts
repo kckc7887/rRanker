@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { parseBestImageHeightMessage, parseBestImageReadyMessage, parseBestImageRuntimeMessage } from './best-image-messages';
+import { parseBestImageErrorMessage, parseBestImageHeightMessage, parseBestImageReadyMessage, parseBestImageRuntimeMessage } from './best-image-messages';
+import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import { updateBestImageWebViewRenderingState, updateBestImageWebViewState, type BestImageWebViewState } from './best-image-webview-state';
 
 export function useBestImagePreview(width: number, messageScale: number | undefined, guard: boolean | undefined) {
@@ -7,6 +8,12 @@ export function useBestImagePreview(width: number, messageScale: number | undefi
   const [pageIndex, setPageIndex] = useState(0);
   const [previewStates, setPreviewStates] = useState<Record<string, BestImageWebViewState>>({});
   const handlePreviewMessage = (data: string, pageId: string) => {
+    const error = parseBestImageErrorMessage(data, width);
+    if (error !== null) {
+      recordRuntimeError('best-image-preview', new Error(error));
+      updateBestImageWebViewState(setPreviewStates, pageId, 'error');
+      return;
+    }
     const runtime = parseBestImageRuntimeMessage(data, width);
     if (runtime) {
       if (guard) updateBestImageWebViewRenderingState(setPreviewStates, pageId, runtime.version);

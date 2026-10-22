@@ -154,7 +154,7 @@ describe('best image html', () => {
   it('preserves long titles and waits for font loading before export readiness', async () => {
     let loadFont!: () => void;
     const fontReady = new Promise<void>(resolve => { loadFont = resolve; });
-    const messages: { type: string }[] = [];
+    const messages: { type: string; height?: number }[] = [];
     const titles = ['春嵐', 'ピポピポ -People People- feat. ななひら', '偉大なる悪魔は実は大天使パトラちゃん様なのだ！'];
     vi.useFakeTimers();
     let dom: JSDOM | undefined;
@@ -169,7 +169,9 @@ describe('best image html', () => {
         beforeParse(window) {
           Object.defineProperty(window.document, 'fonts', { value: { ready: fontReady } });
           Object.assign(window, { ReactNativeWebView: { postMessage: (value: string) => messages.push(JSON.parse(value)) } });
-          Object.defineProperty(window, 'Image', { value: class { complete = true; src = ''; } });
+          Object.defineProperty(window, 'Image', { value: class { complete = true; naturalWidth = 1; src = ''; } });
+          const getStyle = window.getComputedStyle.bind(window);
+          window.getComputedStyle = node => getStyle(node);
           Object.defineProperty(window.HTMLCanvasElement.prototype, 'getContext', { value: () => ({
             font: '', measureText(value: string) {
               const size = Number(/ ([\d.]+)px/u.exec(this.font)?.[1] ?? 52);
@@ -186,13 +188,20 @@ describe('best image html', () => {
       expect(messages.some(message => message.type === 'best-image-ready')).toBe(true);
       const text = dom.window.document.body.textContent?.replace(/\s/gu, '') ?? '';
       for (const title of titles) expect(text).toContain(title.replace(/\s/gu, ''));
+      Object.defineProperty(dom.window.document.querySelector('.scores-content'), 'scrollHeight', { value: 2160 });
+      dom.window.dispatchEvent(new dom.window.Event('resize'));
+      await vi.runAllTimersAsync();
+      expect(messages.filter(message => message.type === 'best-image-ready').at(-1)?.height).toBe(2160);
     } finally {
       dom?.window.close();
       vi.useRealTimers();
     }
   });
 
-  it('waits for used CSS images and image decoding before reporting readiness', async () => {
+  it.each([
+    ['app', 'background.jpg'], ['game', 'background'],
+    ['app', 'data:image/png;base64,eA=='],
+  ] as const)('waits for %s CSS images and image decoding before reporting readiness', async (ratingStyle, backgroundUrl) => {
     let finishFont!: () => void, finishCover!: () => void, finishBackground!: () => void;
     const font = new Promise<void>(resolve => { finishFont = resolve; });
     const cover = new Promise<void>(resolve => { finishCover = resolve; });
@@ -201,9 +210,9 @@ describe('best image html', () => {
     const messages: { type: string }[] = [];
     vi.useFakeTimers();
     const dom = new JSDOM(buildBestImageHtml({
-      type: 'best50', width: 1080, rating: 14685, ratingStyle: 'app',
+      type: 'best50', width: 1080, rating: 14685, ratingStyle,
       scoreSections: [{ id: 'b35', title: 'Best35', records: [score] }],
-      coverUrls: { [score.songId]: 'cover.png' }, collectionUrls: { frame: 'background.svg' },
+      coverUrls: { [score.songId]: 'cover.png' }, collectionUrls: { frame: backgroundUrl },
       fontUrl: '', ratingFrameUrl: '', player: { displayName: '玩家' },
       hiddenStyles: ['icon', 'plate', 'trophy'],
     }), {
@@ -212,9 +221,12 @@ describe('best image html', () => {
         Object.defineProperty(window.document, 'fonts', { value: { ready: font } });
         Object.assign(window, { ReactNativeWebView: { postMessage: (value: string) => messages.push(JSON.parse(value)) } });
         Object.defineProperty(window.HTMLImageElement.prototype, 'complete', { get: () => true });
+        Object.defineProperty(window.HTMLImageElement.prototype, 'naturalWidth', { get: () => 1 });
         Object.defineProperty(window.HTMLImageElement.prototype, 'decode', { value(this: HTMLImageElement) {
-          return this.src.endsWith('cover.png') ? cover : this.src.endsWith('background.svg') ? background : Promise.resolve();
+          return this.src.endsWith('cover.png') ? cover : this.src.endsWith(backgroundUrl) ? background : Promise.resolve();
         } });
+        const getStyle = window.getComputedStyle.bind(window);
+        window.getComputedStyle = node => getStyle(node);
         Object.defineProperty(window, 'Image', { value: function () {
           const image = window.document.createElement('img');
           requested.push(image as unknown as HTMLImageElement);
@@ -227,14 +239,50 @@ describe('best image html', () => {
     try {
       await vi.advanceTimersByTimeAsync(15_000);
       expect(messages.some(message => message.type === 'best-image-ready')).toBe(false);
-      expect(requested.some(image => image.src === 'https://example.test/background.svg')).toBe(true);
-      expect(requested.some(image => image.src === 'https://example.test/cover.png')).toBe(true);
+      expect(requested.some(image => image.src === new URL(backgroundUrl, 'https://example.test/').href)).toBe(true);
       finishFont(); finishCover();
       await vi.runAllTimersAsync();
       expect(messages.some(message => message.type === 'best-image-ready')).toBe(false);
       finishBackground();
       await vi.runAllTimersAsync();
       expect(messages.some(message => message.type === 'best-image-ready')).toBe(true);
+    } finally {
+      dom.window.close(); vi.useRealTimers();
+    }
+  });
+
+  it.each(['load', 'decode', 'empty'] as const)('reports an image %s failure without reporting readiness', async failure => {
+    const messages: { type: string; width?: number; message?: string }[] = [];
+    vi.useFakeTimers();
+    const dom = new JSDOM(buildBestImageHtml({
+      type: 'best50', width: 1080, rating: 14685,
+      scoreSections: [{ id: 'b35', title: 'Best35', records: [score] }],
+      coverUrls: { [score.songId]: 'cover.png' },
+      fontUrl: '', ratingFrameUrl: '', player: { displayName: '玩家' },
+      hiddenStyles: ['icon', 'plate', 'trophy', 'frame'],
+    }), {
+      url: 'https://example.test/', runScripts: 'dangerously', pretendToBeVisual: true,
+      beforeParse(window) {
+        Object.assign(window, { ReactNativeWebView: { postMessage: (value: string) => messages.push(JSON.parse(value)) } });
+        Object.defineProperty(window.HTMLImageElement.prototype, 'complete', { get(this: HTMLImageElement) {
+          return failure !== 'load' || !this.src.endsWith('cover.png');
+        } });
+        Object.defineProperty(window.HTMLImageElement.prototype, 'naturalWidth', { get(this: HTMLImageElement) {
+          return failure === 'empty' && this.src.endsWith('cover.png') ? 0 : 1;
+        } });
+        Object.defineProperty(window.HTMLImageElement.prototype, 'decode', { value(this: HTMLImageElement) {
+          return this.src.endsWith('cover.png') ? Promise.reject(new Error('decode failed')) : Promise.resolve();
+        } });
+        Object.defineProperty(window, 'Image', { value: function () { return window.document.createElement('img'); } });
+        const getStyle = window.getComputedStyle.bind(window);
+        window.getComputedStyle = node => getStyle(node);
+      },
+    });
+    try {
+      if (failure === 'load') dom.window.document.querySelector('img[src="cover.png"]')!.dispatchEvent(new dom.window.Event('error'));
+      await vi.runAllTimersAsync();
+      expect(messages).toContainEqual({ type: 'best-image-error', width: 1080, message: '图片资源加载失败，请重试。' });
+      expect(messages.some(message => message.type === 'best-image-ready')).toBe(false);
     } finally {
       dom.window.close(); vi.useRealTimers();
     }

@@ -22,18 +22,6 @@ export function bestImageCaptureDimensions(
   return { width: outputWidth, height: outputHeight };
 }
 
-export function shouldUseBestImageRenderInContext(
-  platform: string,
-  outputWidth: number,
-  outputHeight: number,
-): boolean {
-  return platform === 'ios' && (outputWidth >= 1440 || outputHeight >= outputWidth * 4);
-}
-
-export function isDrawViewHierarchyError(error: unknown): boolean {
-  return error instanceof Error && /drawViewHierarchyInRect|view cannot be captured/iu.test(error.message);
-}
-
 function safeFilePart(value: string): string {
   const normalized = value.normalize('NFKC').trim().replace(/[<>:"/\\|?*\u0000-\u001F]/gu, '_');
   return normalized.slice(0, 40) || 'player';

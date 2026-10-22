@@ -1,6 +1,7 @@
 export {
   bestImageWebViewVersion,
   minimumBestImageHeight,
+  parseBestImageErrorMessage,
   parseBestImageHeightMessage,
   parseBestImageReadyMessage,
   parseBestImageRuntimeMessage,

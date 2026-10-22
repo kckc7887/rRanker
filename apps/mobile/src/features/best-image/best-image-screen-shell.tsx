@@ -13,6 +13,7 @@ import {
   useWindowDimensions,
   type TextStyle,
   type ViewStyle,
+  type LayoutChangeEvent,
 } from 'react-native';
 import { WebView } from 'react-native-webview';
 import { useAppLifecycle } from '@/state/app-lifecycle';
@@ -231,6 +232,7 @@ export type BestImageScreenExportSession = {
 
   captureBackgroundColor?: string;
   onExportMessage: (data: string) => void;
+  onExportLayout: (event: LayoutChangeEvent) => void;
   onRequestCloseExport: () => void;
 };
 
@@ -284,6 +286,7 @@ export function BestImageScreenShell<TType extends string>({
     captureAccessibilityLabel,
     captureBackgroundColor,
     onExportMessage,
+    onExportLayout,
     onRequestCloseExport,
   } = exportSession;
   const theme = useAppTheme();
@@ -300,6 +303,7 @@ export function BestImageScreenShell<TType extends string>({
   }
   const memoryRecoveryPendingNow = memoryRecoveryPending || lifecycle.memoryWarningGeneration > seenMemoryWarning;
   const heavyContentMounted = !heavyContentBlocked && !memoryRecoveryPendingNow;
+  const previewMounted = heavyContentMounted && exportIndex === null;
   const memoryRecoveryWidth = widths.reduce<number | null>((selected, width) => (
     width < activeWidth && (selected === null || width > selected) ? width : selected
   ), null);
@@ -327,7 +331,7 @@ export function BestImageScreenShell<TType extends string>({
   </View>;
   /** 仅换源或换页建立新预览。 */
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 源和代次决定本次预览
-  const previewOperation = useMemo(() => createRuntimeOperation('best-image-preview'), [sources, pageIndex, webViewGeneration, heavyContentMounted]);
+  const previewOperation = useMemo(() => createRuntimeOperation('best-image-preview'), [sources, pageIndex, webViewGeneration, previewMounted]);
   const activePreviewOperation = useRef<typeof previewOperation | null>(previewOperation);
   activePreviewOperation.current = previewOperation;
   useEffect(() => {
@@ -335,7 +339,7 @@ export function BestImageScreenShell<TType extends string>({
     return () => { if (activePreviewOperation.current === previewOperation) activePreviewOperation.current = null; };
   }, [previewOperation]);
   const activePageId = pages[Math.min(pageIndex, pages.length - 1)]?.id ?? '';
-  useBestImageWebViewTimeout(heavyContentMounted && !!sources, activePageId, previewStates[activePageId]?.phase, onPreviewStatesChange);
+  useBestImageWebViewTimeout(previewMounted && !!sources, activePageId, previewStates[activePageId]?.phase, onPreviewStatesChange);
   const releasedMarkerRef = useRef('');
   const memoryWarningRef = useRef(lifecycle.memoryWarningGeneration);
   const window = useWindowDimensions();
@@ -376,13 +380,13 @@ export function BestImageScreenShell<TType extends string>({
   }, [lifecycle.foregroundGeneration, lifecycle.foregroundReady]);
 
   useEffect(() => {
-    if (!heavyContentMounted || !sources) return;
+    if (!previewMounted || !sources) return;
     void recordRuntimeDiagnostic('web-content', {
       source: 'best-image',
       lifecyclePhase: lifecycle.phase,
       webContentState: 'mounted',
     });
-  }, [heavyContentMounted, lifecycle.phase, sources]);
+  }, [previewMounted, lifecycle.phase, sources]);
 
   return <>
     <ScrollView style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
@@ -436,7 +440,7 @@ export function BestImageScreenShell<TType extends string>({
             const failed = phase === 'error' || phase === 'timeout';
             return <View style={{ width: previewWidth, height: previewHeight }}>
               {/** 多页同时挂载 WebView 可能触发 iOS 内存终止。 */}
-              {heavyContentMounted && index === pageIndex ? <><WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} key={`${pageId}-${item.uri}-${webViewGeneration}`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['about:blank', 'file://*', 'https://*']} scrollEnabled={false} showsHorizontalScrollIndicator={false} showsVerticalScrollIndicator={false} source={item} style={styles.webview} testID={`${previewTestIdPrefix}-html-preview-${index}`}
+              {previewMounted && index === pageIndex ? <><WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} key={`${pageId}-${item.uri}-${webViewGeneration}`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['about:blank', 'file://*', 'https://*']} scrollEnabled={false} showsHorizontalScrollIndicator={false} showsVerticalScrollIndicator={false} source={item} style={styles.webview} testID={`${previewTestIdPrefix}-html-preview-${index}`}
                 {...(fileAccessFromFileURLs ? { allowFileAccessFromFileURLs: fileAccessFromFileURLs } : {})}
                 {...(allowingReadAccessToUrl ? { allowingReadAccessToURL: allowingReadAccessToUrl } : {})}
                 onShouldStartLoadWithRequest={(request) => request.isTopFrame === false
@@ -510,8 +514,10 @@ export function BestImageScreenShell<TType extends string>({
     <Modal visible={heavyContentMounted && exportIndex !== null} animationType="none" transparent={false} onRequestClose={onRequestCloseExport}>
       {heavyContentMounted && exportIndex !== null && exportSource ? <View style={styles.exportRoot}>
         <View
+          key={`${exportWebViewKeyPrefix}-${exportIndex}-${activeWidth}`}
           ref={captureRef}
           collapsable={false}
+          onLayout={onExportLayout}
           style={{
             width: activeWidth / PixelRatio.get(),
             height: exportHeight / PixelRatio.get(),

@@ -71,7 +71,7 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 可选账号目录成功读到不支持的数据时重建所属键；读取失败不覆盖。`key-value-storage.ts` 的 `enqueueKeyMutation` 按存储实例和键串行执行完整的读取、失效重建、保存与删除，账号目录、示例账号、临时账号和偏好共用；队列内读取不重复入队，前一个失败不阻塞后续操作。`catalog-demo-account-store.ts` 通过现有 `createDemoAccountStore` 保存示例游戏、Rizline、Phira、冰与火之舞、Majdata 和 osu! 各模式的独立示例账号。osu! 同 Provider 的恢复来源按游戏隔离，单模式读取失败及重试保留其它模式。
 
-`session-store` 保留完整账号集合，选择与回退仅允许当前可见账号；`useVisibleBoundAccounts` 为总览、账号管理和详情切换提供同一可见列表。`isTestProvider` 按绑定类型识别全部示例账号，只有调试偏好已恢复且开启时才可见。示例账号描述和 `generatedSource()` 的来源标签统一为“示例账号”，成绩图沿用该标签。`restoreAppAccounts` 先读取偏好，再恢复选中账号；`useDebugStore` 保存成功后才发布开关，状态订阅同步更新活动账号。关闭示例功能不删除账号或个人数据，显式切换被拒绝时不写入活动账号偏好。示例游戏详情及游戏选择器同样遵守开关。
+`session-store` 保留完整账号集合，选择与回退仅允许当前可见账号；`useVisibleBoundAccounts` 为总览、账号管理和详情切换提供同一可见列表。`isTestProvider` 按绑定类型识别全部示例账号，只有调试偏好已恢复且开启时才可见。示例账号描述和 `generatedSource()` 的来源标签统一为“示例账号”，`shouldPersistScoreSnapshot` 跳过全部示例 Provider 的成绩快照读写。`restoreAppAccounts` 先读取偏好，再恢复选中账号；`useDebugStore` 保存成功后才发布开关，状态订阅同步更新活动账号。关闭示例功能不删除账号或个人数据，显式切换被拒绝时不写入活动账号偏好。示例游戏详情及游戏选择器同样遵守开关。
 
 ## 存储、偏好与个人曲库
 
@@ -127,17 +127,21 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `useBestImageAssets<T>({ session, key, prepare })` 返回 `data`、`ready`、`error` 和 `retry`，`prepare(signal)` 提供实际资源准备，空键暂停准备。结果同时匹配会话、请求键、重试与缓存代次才有效；前后台切换保留已完成结果，未完成准备取消后恢复。`retryBestImagePreparation` 对素材准备与 HTML 写盘的实际失败依次等待 0.5、2、10、30 秒，之后保持 30 秒间隔。未结束的操作持续等待，空素材沿用各入口的可选回退；原图 HTTP 404 由下载入口映射为 `no_data`，成绩图返回空素材。
 
-`BestImageScreenShell` 的 `appearance.preparation` 接收绘图、游戏资源就绪状态和错误、重试入口，`preview.previewStates` 提供当前预览状态。加载提示统一为“下载绘图资源中”“下载游戏资源中”“图片加载中”；字体和素材齐全后才建立预览，加载层等待当前页、来源及挂载代次的就绪消息，旧事件不更新新预览。WebView 超时与失败提供公共重试入口。`bestImageAssetsReadyScript` 等待字体、图片解码、SVG 图片及实际 CSS 图片引用，再完成排版并发送就绪消息。
+`BestImageScreenShell` 的 `appearance.preparation` 接收绘图、游戏资源就绪状态和错误、重试入口，`preview.previewStates` 提供当前预览状态。加载提示统一为“下载绘图资源中”“下载游戏资源中”“图片加载中”；字体和素材齐全后才建立预览，加载层等待当前页、来源及挂载代次的就绪消息，旧事件不更新新预览。WebView 超时与失败提供公共重试入口。`bestImageAssetsReadyScript` 等待字体、HTML 图片、SVG 图片及包含伪元素的 CSS 图片引用；图片加载、有效尺寸和解码均成功后才就绪，图片地址不依赖扩展名，同文档 SVG fragment 不参与外部加载。失败发送 `best-image-error`，预览显示重试，导出立即结束。排版及尺寸变化后发送当前高度的 `best-image-ready`。
+
+`useBestImageExport.handleExportLayout` 由 `BestImageScreenShell.exportSession.onExportLayout` 接收每页捕获视图的真实布局；只有当前页就绪高度与布局宽高按像素比例匹配后才截图。后续高度变化取消之前的就绪等待，每页独立挂载捕获视图并隔离旧消息。导出 WebView 挂载期间暂停预览 WebView，结束后恢复。`captureRef` 通过 `scripts/patch-react-native-view-shot.cjs` 接入 WebView 原生绘制：iOS 使用 `WKWebView.takeSnapshot(afterScreenUpdates: true)`，Android 等待 `postVisualStateCallback` 后绘制；原有编码、临时文件、取消与保存路径共用。iOS 截图参数为输出像素除以设备比例，Android 直接使用输出像素；iOS 瞬态失败沿相同截图方式重试一次。
+
+三款成绩图直接使用当前载荷的 `source.label`。示例数据生成入口提供“示例账号”，真实账号保留实际来源标签。舞萌来源参与现有 HTML 生成身份，来源单独变化也重新写盘。
 
 `BestImageResourcePicker` 复用 `best-image-picker-shell.tsx` 的弹层、搜索、当前资源行、随机与关闭快捷区、预览列和选中标记；各游戏传入条目、预览和回调，称号等级筛选及默认板、默认背景保留所属游戏语义。
 
-`prepareMaimaiUi(style, onProgress?, signal?)` 按 `BestImageRatingStyle` 选择发布清单，返回缓存目录、`fullReady` 和待复制的相对路径 `files`。应用风格包包含 SVG 与字体，游戏风格沿用 PNG 包及 `prepareMaimaiFonts`；两套 UI 缓存路径和共享请求键包含样式身份，统一沿用包及文件校验、取消和清理入口。`useMaimaiExportAssets` 将所需 UI 和字体通过 `copyBestImageAsset` 复制进账号会话，以会话、样式和重试代次判断就绪。`useMaimaiCollectionAssets` 通过 `loadRemoteImageFile` 准备头像、姓名框和背景，`buildBestImageHtml` 接收 `collectionUrls`，其中空值表示缺失素材。应用风格在字体加载后测量标题及资料文字，`bestImageBridgeReadyScript` 的 `waitForAssets` 使其等待字体、SVG 图片和排版完成才发送就绪消息；其他调用方保留原等待规则。
+`prepareMaimaiUi(style, onProgress?, signal?)` 按 `BestImageRatingStyle` 选择发布清单，返回缓存目录、`fullReady` 和待复制的相对路径 `files`。应用风格包包含 SVG 与字体，游戏风格沿用 PNG 包及 `prepareMaimaiFonts`；两套 UI 缓存路径和共享请求键包含样式身份，统一沿用包及文件校验、取消和清理入口。`useMaimaiExportAssets` 将所需 UI 和字体通过 `copyBestImageAsset` 复制进账号会话，以会话、样式和重试代次判断就绪。`useMaimaiCollectionAssets` 通过 `loadRemoteImageFile` 准备头像、姓名框和背景，`buildBestImageHtml` 接收 `collectionUrls`，其中空值表示缺失素材。应用风格在字体加载后测量标题及资料文字，两种风格通过 `bestImageBridgeReadyScript` 等待字体、图片解码和排版完成后发送就绪消息。
 
 `prepareBestImageUi` 接收游戏作用域、缓存目录、文件清单与压缩包信息，供 `prepareMaimaiUi`、`prepareChunithmUi` 和 `preparePhigrosUi` 共用校验、下载、解包及取消流程；请求按目录、包摘要和资源代次共享。中二包包含 UI 与字体；Phigros 的 `phigros-ui.zip` 包含模板、SVG 和固定图片，字体继续按文字选择。各游戏清理入口使所属资源代次失效并清理缓存，存储适配器负责统计和清理，启动维护保留当前缓存版本。
 
 `useChunithmBestImageAssets` 经公共 hook 将 UI 与字体复制进账号会话，并通过 `loadRemoteImageFile` 准备角色、名牌和图片称号。页面复用 `useChunithmCollections` 读取角色、名牌与称号；选择写入 `chunithmBestImagePreferencesStore`。名牌支持当前、指定、随机和默认板，角色与称号支持当前、指定、随机和关闭；称号保存 `id/name/color/level`。`buildChunithmBestImageHtml` 接收名牌、角色和称号文件 URL，`hideTrophy` 隐藏整个称号槽位；B50、自定义及分页使用同一成绩卡与字体测量流程。
 
-Phigros 的 `loadPhigrosReferenceTemplateAssets` 从账号会话读取素材包中的模板与图标。页面经公共 hook 分别准备绘图资源、曲绘装扮和均值；绘图资源包括 UI 包与全部所需字体，均值按成绩集合复用。当前资源全部就绪后构建游戏风格 HTML，预览与导出共用同一组文件。`dataSource` 同时参与署名和可见文字字体收集；普通账号显示 TapTap，示例账号显示“示例账号”。
+Phigros 的 `loadPhigrosReferenceTemplateAssets` 从账号会话读取素材包中的模板与图标。页面经公共 hook 分别准备绘图资源、曲绘装扮和均值；绘图资源包括 UI 包与全部所需字体，均值按成绩集合复用。当前资源全部就绪后构建游戏风格 HTML，预览与导出共用同一组文件。`dataSource` 同时参与署名和可见文字字体收集，真实账号沿用载荷来源，示例账号显示“示例账号”。
 
 舞萌 `buildBestImageHtml` 的应用风格与游戏风格共用 DX 星级计算，B50 和自定义成绩均按 `DX Score / (总物量 × 3)` 判定：达到 85%、90%、93%、95%、97% 分别显示 1–5 星，低于 85% 或缺少有效分数、物量时不显示星标。
 

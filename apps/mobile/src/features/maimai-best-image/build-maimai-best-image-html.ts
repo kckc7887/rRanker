@@ -424,7 +424,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
       const canvas = document.querySelector('.canvas');
       let lastHeight = 0;
       let pending = false;
-      let readySent = false;
+      let assetsReady = false;
 ${bestImageBridgeRuntimeScript()}
 
 ${bestImageBridgeMeasureScript({
@@ -538,19 +538,11 @@ ${bestImageBridgeMeasureScript({
           node.setAttribute('font-size', String(size));
         });
       };
-      const svgImageReady = Array.from(new Set(Array.from(document.querySelectorAll('svg image')).map(node => node.getAttribute('href')).concat(${JSON.stringify(frameUrl ? [frameUrl] : [])}).filter(Boolean))).map(url => new Promise(resolve => {
-        const image = new Image();
-        image.onload = image.onerror = resolve;
-        image.src = url;
-        if (image.complete) resolve();
-      }));
-      const appLayoutReady = Promise.all([fontReady, ...svgImageReady]).then(fitAppTitles);
-      appLayoutReady.then(schedule);
       ` : ''}
       fontReady.then(schedule);
       schedule();
 
-${bestImageBridgeReadyScript({ assetReadyExpression: isAppStyle ? 'Promise.all([appLayoutReady, ...imageReady])' : 'Promise.all([fontReady, ...imageReady])', waitForAssets: isAppStyle })}
+${bestImageBridgeReadyScript({ assetReadyExpression: `Promise.all([fontReady, ...imageReady])${isAppStyle ? '.then(fitAppTitles)' : ''}` })}
     })();
   </script>
 </body>

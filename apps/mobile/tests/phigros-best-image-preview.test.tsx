@@ -122,11 +122,24 @@ jest.mock('@/hooks/use-game-data', () => ({
 
 describe('Phigros 生成图片页', () => {
   afterEach(() => { installRuntimeLogRecorder(undefined); jest.restoreAllMocks(); });
-  it('只记录一次预览就绪，不记录页面内容', async () => {
+  it.each([
+    { accountId: 'phigros:test', providerId: 'phigros-test', label: '示例账号', displayedLabel: '示例账号' },
+    { accountId: 'phigros:player', providerId: 'phi-taptap', label: 'TapTap云存档', displayedLabel: 'TapTap云存档' },
+  ])('显示 $displayedLabel 来源且只记录一次预览就绪', async ({ accountId, providerId, label, displayedLabel }) => {
+    const gameData = jest.requireMock<{ useGameData: () => {
+      activeAccountId: string;
+      data: { providerId: string; payload: { source: { label: string } } };
+    } }>('@/hooks/use-game-data');
+    const current = gameData.useGameData();
+    jest.spyOn(gameData, 'useGameData').mockReturnValue({
+      ...current, activeAccountId: accountId,
+      data: { ...current.data, providerId,
+        payload: { ...current.data.payload, source: { ...current.data.payload.source, label } } },
+    });
     const log = jest.fn<(type: string, fields: Readonly<Record<string, unknown>>) => void>(); installRuntimeLogRecorder(log);
     const screen = await render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><PhigrosBestImageScreen /></SafeAreaProvider>);
     const preview = await screen.findByTestId('phigros-best-image-html-preview-0');
-    expect(preview.props.source.html).toContain('Data from 示例账号.');
+    expect(preview.props.source.html).toContain(`Data from ${displayedLabel}.`);
     await fireEvent(preview, 'message', { nativeEvent: { data: '{"type":"best-image-ready","width":1080,"height":1500,"secret":"player"}' } });
     await fireEvent(preview, 'message', { nativeEvent: { data: '{"type":"best-image-ready","width":1080,"height":1500}' } });
     const ready = log.mock.calls.filter(([type, fields]) => type === 'operation' && fields.source === 'best-image-preview' && fields.phase === 'ready');
@@ -266,6 +279,7 @@ describe('Phigros 生成图片页', () => {
       await fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({
         type: 'best-image-ready', width: 1080, height: 1666,
       }) } });
+      await fireEvent(renderer, 'layout', { nativeEvent: { layout: { x: 0, y: 0, width: 1080 / PixelRatio.get(), height: 1666 / PixelRatio.get() } } });
     });
     const expectedWidth = Platform.OS === 'ios' ? 1080 / PixelRatio.get() : 1080;
     const expectedHeight = Platform.OS === 'ios' ? 1666 / PixelRatio.get() : 1666;

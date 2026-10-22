@@ -37,9 +37,10 @@ describe('canReadChunithmScores', () => {
 describe('快照持久化能力', () => {
   it('示例账号与 Phigros 云存档不写成绩快照', () => {
     expect(shouldPersistScoreSnapshot(null)).toBe(false);
+    expect(shouldPersistScoreSnapshot('maimai-test')).toBe(false);
     expect(shouldPersistScoreSnapshot('chunithm-test')).toBe(false);
     expect(shouldPersistScoreSnapshot('phi-taptap')).toBe(false);
-    expect(shouldPersistScoreSnapshot('phigros-test')).toBe(true);
+    expect(shouldPersistScoreSnapshot('phigros-test')).toBe(false);
     expect(shouldPersistScoreSnapshot('diving-fish')).toBe(true);
   });
 
