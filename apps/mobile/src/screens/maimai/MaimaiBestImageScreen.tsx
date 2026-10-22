@@ -27,13 +27,13 @@ import {
 import { minimumBestImageHeight } from '@/features/best-image/build-best-image-html';
 import type { BestImageWebViewSource } from '@/features/best-image/prepare-best-image-webview-sources';
 import { useBestImageCollections } from '@/features/best-image/use-best-image-collections';
-import { useBestImageScreenController, usePreparedBestImageSources } from '@/features/best-image/use-best-image-screen-controller';
+import { useBestImageScreenController, usePreparedBestImageSources, type BestImageTemplate } from '@/features/best-image/use-best-image-screen-controller';
 import {
   buildBestImageHtml,
   type BestImageType
 } from '@/features/maimai-best-image/build-maimai-best-image-html';
 import { useMaimaiBestImageFilters } from '@/features/maimai-best-image/use-maimai-best-image-filters';
-import { useMaimaiEmbeddedAssets, useMaimaiExportAssets, useMaimaiCollectionAssets, useMaimaiImageCovers } from '@/features/maimai-best-image/use-maimai-best-image-resources';
+import { useMaimaiEmbeddedAssets, useMaimaiExportAssets, useMaimaiCollectionAssets, useMaimaiImageCovers, buildMaimaiCardBackgroundAssets } from '@/features/maimai-best-image/use-maimai-best-image-resources';
 import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
 import { useEffect, useMemo, useRef } from 'react';
@@ -217,25 +217,29 @@ export function MaimaiBestImageScreen() {
   }));
   const { collectionUrls, collectionError, retry: retryCollections } = useMaimaiCollectionAssets(assetSession, collectionRequestKey);
   const dataSource = player?.source?.label ?? '';
-  const htmlPages = useMemo(() => assetsReady && embeddedAssets && coverUrls && collectionUrls && detailedCatalog.data ? pages.map((page) => buildBestImageHtml({
-    type: imageType,
-    width: outputWidth,
-    player: previewPlayer,
-    rating,
-    scoreSections: page.sections,
-    coverUrls,
-    collectionUrls,
-    hiddenStyles,
-    ratingStyle,
-    pageIndex: page.pageIndex,
-    pageCount: page.pageCount,
-    ...embeddedAssets,
-    cnFontUrl: ratingStyle === 'app' ? 'fonts/SourceHanSansCN-Bold.otf' : 'maimai-noto.ttf',
-    dataSource,
-  })) : null, [assetsReady, coverUrls, collectionUrls, dataSource, detailedCatalog.data, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle]);
+  const template = useMemo<BestImageTemplate | null>(() => assetsReady && embeddedAssets && coverUrls && collectionUrls && detailedCatalog.data ? {
+    assets: ratingStyle === 'app' ? buildMaimaiCardBackgroundAssets(scoreSections.flatMap(section => section.records), coverUrls) : [],
+    build: cardBackgroundUrls => pages.map((page) => buildBestImageHtml({
+      type: imageType,
+      width: outputWidth,
+      player: previewPlayer,
+      rating,
+      scoreSections: page.sections,
+      coverUrls,
+      cardBackgroundUrls,
+      collectionUrls,
+      hiddenStyles,
+      ratingStyle,
+      pageIndex: page.pageIndex,
+      pageCount: page.pageCount,
+      ...embeddedAssets,
+      cnFontUrl: ratingStyle === 'app' ? 'fonts/SourceHanSansCN-Bold.otf' : 'maimai-noto.ttf',
+      dataSource,
+    })),
+  } : null, [assetsReady, coverUrls, collectionUrls, dataSource, detailedCatalog.data, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle, scoreSections]);
   const htmlGenerationKey = JSON.stringify([imageType, outputWidth, previewPlayer, rating, ratingStyle, hiddenStyles, pages, dataSource]);
   const sourceGeneration = useMemo(() => [coverUrls, collectionUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data], [coverUrls, collectionUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data]);
-  const { sources: webViewSources, error: webViewSourceError } = usePreparedBestImageSources(htmlPages, assetSession, assetsDirectory, cancelExportRequest, sourceGeneration);
+  const { htmlPages, sources: webViewSources, ready: templateReady, error: webViewSourceError, retry: retryTemplate } = usePreparedBestImageSources(template, assetSession, assetsDirectory, cancelExportRequest, sourceGeneration);
   const outputHeight = pageHeights[pages[Math.min(currentPageIndex, pages.length - 1)]!.id] ?? minimumBestImageHeight(outputWidth);
   const exportBusy = exportPageIndex !== null || exportStatus !== null;
   const formValid = imageType !== 'custom' || customInputValid;
@@ -344,11 +348,11 @@ export function MaimaiBestImageScreen() {
       dimensionMeta: `${outputWidth} × ${outputHeight} px · 每页最多 ${maximumRowsPerPage} 行 · 第 ${currentPageIndex + 1}/${pages.length} 页`,
       preparation: {
         drawingReady: assetsReady && !!embeddedAssets,
-        gameReady: !!coverUrls && !!collectionUrls && !!detailedCatalog.data,
+        gameReady: templateReady && !!coverUrls && !!collectionUrls && !!detailedCatalog.data,
         error: exportAssetError ?? assetError ?? coverError ?? collectionError ?? webViewSourceError
           ?? (detailedCatalog.error ? '暂时无法读取谱面物量，请重试。' : null),
         retry: () => {
-          retryDrawing(); retryEmbedded(); retryCovers(); retryCollections();
+          retryDrawing(); retryEmbedded(); retryCovers(); retryCollections(); retryTemplate();
           if (detailedCatalog.error) void detailedCatalog.refetch();
         },
       },
@@ -414,7 +418,7 @@ function maimaiPickerSelection(kind: BestImageCollectionKind | null, selections:
   const selection = kind ? selections[kind] : undefined;
   return { selectedId: selectedStyleItem(selection)?.id ?? null, selectedMode: selection?.mode ?? 'current' as const };
 }
-function maimaiExportState(ready: boolean, valid: boolean, busy: boolean, pages: string[] | null, sources: BestImageWebViewSource[] | null, index: number | null) {
+function maimaiExportState(ready: boolean, valid: boolean, busy: boolean, pages: readonly string[] | null, sources: BestImageWebViewSource[] | null, index: number | null) {
   return {
     disabled: !sources || !ready || !valid || busy,
     label: ready ? '导出到相册' : '所需素材准备完成后可导出',

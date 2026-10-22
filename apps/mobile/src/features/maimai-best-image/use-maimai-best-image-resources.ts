@@ -4,9 +4,11 @@ import { loadBestImageJackets } from '@/features/best-image/load-best-image-jack
 import { prepareMaimaiFonts, MAIMAI_FONT_MANIFEST } from '@/features/best-image/maimai-font-cache';
 import { prepareMaimaiUi } from '@/features/best-image/maimai-ui-cache';
 import { useBestImageAssets } from '@/features/best-image/use-best-image-assets';
-import { ratingFrameIndex } from '@/features/maimai-best-image/build-maimai-best-image-html';
+import type { BestImageTemplateAsset } from '@/features/best-image/use-best-image-screen-controller';
+import { buildMaimaiBestImageCardBackground, ratingFrameIndex } from '@/features/maimai-best-image/build-maimai-best-image-html';
 import { File } from 'expo-file-system';
 import type { BestImageRatingStyle } from '@/features/best-image/best-image-style-preferences';
+import type { ScoreRecord } from '@/domain/models';
 
 const FONT_SOURCE = require('../../../assets/rating/ariblk.ttf') as number;
 const RATING_FRAME_SOURCES: number[] = [
@@ -34,6 +36,21 @@ export function useMaimaiImageCovers(session: BestImageAssetSession, key: string
   const assets = useBestImageAssets({ session, key,
     prepare: (signal) => loadBestImageJackets(session, JSON.parse(key) as string[], undefined, signal) });
   return { coverUrls: assets.data, coverError: assets.error, retry: assets.retry };
+}
+
+export function buildMaimaiCardBackgroundAssets(
+  records: readonly Pick<ScoreRecord, 'songId' | 'difficulty'>[],
+  coverUrls: Readonly<Record<string, string | null>>,
+): BestImageTemplateAsset[] {
+  return records.map(record => {
+    const jacket = coverUrls[record.songId];
+    return {
+      id: `${record.songId}:${record.difficulty}`,
+      key: record.difficulty,
+      sources: jacket ? [jacket] : [],
+      build: dataUrls => buildMaimaiBestImageCardBackground(dataUrls[0] ?? null, record.difficulty),
+    };
+  });
 }
 
 export function useMaimaiCollectionAssets(session: BestImageAssetSession, key: string) {

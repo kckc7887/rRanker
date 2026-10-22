@@ -1,4 +1,4 @@
-import { useChunithmBestImageAssets } from '@/features/chunithm-best-image/use-chunithm-best-image-assets';
+import { buildChunithmCardBackgroundAssets, useChunithmBestImageAssets } from '@/features/chunithm-best-image/use-chunithm-best-image-assets';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Image,
@@ -51,7 +51,7 @@ import {
   BestImageScreenShell,
   bestImageScreenSharedStyles,
 } from '@/features/best-image/best-image-screen-shell';
-import { useBestImageScreenController, usePreparedBestImageSources } from '@/features/best-image/use-best-image-screen-controller';
+import { useBestImageScreenController, usePreparedBestImageSources, type BestImageTemplate } from '@/features/best-image/use-best-image-screen-controller';
 
 const WIDTHS = [1080, 1440, 2160] as const;
 const SELECTION_COUNTS: readonly ChunithmBestImageSelectionCount[] = [0, 5, 10];
@@ -248,25 +248,29 @@ export function ChunithmBestImageScreen() {
     : null;
   const dataSource = payload?.source.label ?? '';
 
-  const htmlPages = useMemo(() => {
+  const template = useMemo<BestImageTemplate | null>(() => {
     if (!payload || !controller.prefsReady || !coverUrls || !assets) return null;
-    return pages.map((page) => buildChunithmBestImageHtml({
-      type,
-      width,
-      player: payload.player ? { ...payload.player, trophy: selectedTrophy } : null,
-      ratingDisplay: payload.playerScore.display,
-      page,
-      coverUrls,
-      jacketIds: jacketIdsByKey,
-      characterDataUri,
-      plateDataUri: assets.plate,
-      trophyDataUri: assets.trophy,
-      backgroundDataUri,
-      hideCharacter,
-      hideTrophy: stylePrefs.trophy.mode === 'off',
-      dataSource,
-    }));
+    return {
+      assets: buildChunithmCardBackgroundAssets(assetSession, sections.flatMap(section => section.records.map(record => ({ jacketId: jacketIdsByKey[record.key]!, levelIndex: record.levelIndex }))), coverUrls),
+      build: cardBackgroundUrls => pages.map((page) => buildChunithmBestImageHtml({
+        type,
+        width,
+        player: payload.player ? { ...payload.player, trophy: selectedTrophy } : null,
+        ratingDisplay: payload.playerScore.display,
+        page,
+        cardBackgroundUrls,
+        jacketIds: jacketIdsByKey,
+        characterDataUri,
+        plateDataUri: assets.plate,
+        trophyDataUri: assets.trophy,
+        backgroundDataUri,
+        hideCharacter,
+        hideTrophy: stylePrefs.trophy.mode === 'off',
+        dataSource,
+      })),
+    };
   }, [
+    assetSession,
     assets,
     controller.prefsReady,
     dataSource,
@@ -279,11 +283,12 @@ export function ChunithmBestImageScreen() {
     jacketIdsByKey,
     pages,
     payload,
+    sections,
     type,
     width,
   ]);
 
-  const { sources, error: sourceError } = usePreparedBestImageSources(htmlPages, assetSession, assetSession.directory, cancelExportRequest);
+  const { htmlPages, sources, ready: templateReady, error: sourceError, retry: retryTemplate } = usePreparedBestImageSources(template, assetSession, assetSession.directory, cancelExportRequest);
   useEffect(() => {
     setPageHeights({}); setPageIndex(0); setPreviewStates({});
   }, [sources, setPageHeights, setPageIndex, setPreviewStates]);
@@ -502,7 +507,7 @@ export function ChunithmBestImageScreen() {
         activeWidth: width,
         onChooseWidth: setWidth,
         dimensionMeta: `${width} × ${outputHeight} px · 每页最多 ${type === 'custom' ? `${CUSTOM_MAX_ROWS_PER_PAGE} 行` : `${50 + stylePrefs.selectionCount} 张`} · 第 ${pageIndex + 1}/${pages.length} 页`,
-        preparation: { drawingReady, gameReady: gameReady && jackets.ready && controller.prefsReady, error: sourceError ?? assetError ?? jackets.error, retry: () => { retryAssets(); jackets.retry(); } },
+        preparation: { drawingReady, gameReady: gameReady && jackets.ready && controller.prefsReady && templateReady, error: sourceError ?? assetError ?? jackets.error, retry: () => { retryAssets(); jackets.retry(); retryTemplate(); } },
         pickers: <>
         <ChunithmBestImageStylePicker
           visible={picker === 'character'}

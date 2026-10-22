@@ -1,4 +1,5 @@
 import { AppState, PixelRatio, Platform, type AppStateStatus, type LayoutChangeEvent } from 'react-native';
+import { useMemo } from 'react';
 import { AppLifecycleProvider } from '@/state/app-lifecycle';
 import { clearUnusedBestImageAssets } from '@/features/best-image/load-best-image-session';
 import { jest } from '@jest/globals';
@@ -13,6 +14,7 @@ const mockDelete = jest.fn();
 const mockNotify = jest.fn();
 const mockFiles = new Map<string, string>();
 const mockWrite = jest.fn<(uri: string, content: string) => Promise<void>>();
+const mockBase64 = jest.fn<() => Promise<string>>();
 const mockDeletedDirectories = new Set<string>();
 jest.mock('react-native-view-shot', () => ({ captureRef: (...args: unknown[]) => mockCapture(...args) }));
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotify }) }));
@@ -46,6 +48,7 @@ describe('best image export lifecycle', () => {
     mockPermission.mockResolvedValue(undefined); mockSave.mockResolvedValue(undefined);
     mockCapture.mockResolvedValue('file:///capture.png');
     mockWrite.mockReset().mockImplementation(async (uri, content) => { mockFiles.set(uri, content); });
+    mockBase64.mockReset().mockResolvedValue('Y292ZXI=');
   });
   afterEach(() => { jest.restoreAllMocks(); jest.useRealTimers(); });
 
@@ -192,7 +195,8 @@ describe('best image export lifecycle', () => {
     const capture = deferred<string>(); mockCapture.mockReturnValueOnce(capture.promise);
     const { result, rerender } = await renderHook(({ htmlPages }: { htmlPages: string[] }) => {
       const controller = useBestImageScreenController(config);
-      const prepared = usePreparedBestImageSources(htmlPages, controller.assetSession, controller.assetSession.directory, controller.cancelExportRequest);
+      const template = useMemo(() => ({ assets: [], build: () => htmlPages }), [htmlPages]);
+      const prepared = usePreparedBestImageSources(template, controller.assetSession, controller.assetSession.directory, controller.cancelExportRequest);
       return { ...controller, sources: prepared.sources };
     }, { initialProps: { htmlPages: ['<p>old</p>'] } });
     await waitFor(() => expect(result.current.sources).not.toBeNull());
@@ -326,9 +330,10 @@ describe('best image export lifecycle', () => {
       await writing.promise; mockFiles.set(uri, content);
     });
     const pages = ['<p>content</p>'];
+    const template = { assets: [], build: () => pages };
     const { result } = await renderHook(() => {
       const controller = useBestImageScreenController(config);
-      return usePreparedBestImageSources(pages, controller.assetSession, controller.assetSession.directory, controller.cancelExportRequest);
+      return usePreparedBestImageSources(template, controller.assetSession, controller.assetSession.directory, controller.cancelExportRequest);
     });
     expect(result.current.sources).toBeNull();
     expect(result.current.error).toBe('成绩图片准备失败，正在自动重试。');
@@ -338,6 +343,31 @@ describe('best image export lifecycle', () => {
     await act(async () => { writing.resolve(); });
     expect(result.current.error).toBeNull();
     expect(mockFiles.get(result.current.sources![0]!.uri)).toBe('<p>content</p>');
+  });
+
+  it('waits for declared template assets and reuses them across output changes', async () => {
+    const reading = deferred<string>(); mockBase64.mockReturnValueOnce(reading.promise);
+    const { result, rerender } = await renderHook(({ width }: { width: number }) => {
+      const controller = useBestImageScreenController(config);
+      const template = useMemo(() => ({
+        assets: [{ id: 'card', key: 'master', sources: ['file:///cover.png'],
+          build: (images: readonly string[]) => `<svg><image href="${images[0]}"/></svg>` }],
+        build: (urls: Readonly<Record<string, string>>) => [`<img width="${width}" src="${urls.card}">`],
+      }), [width]);
+      return usePreparedBestImageSources(template, controller.assetSession, controller.assetSession.directory, controller.cancelExportRequest);
+    }, { initialProps: { width: 1080 } });
+    expect(result.current.htmlPages).toBeNull();
+    expect(result.current.sources).toBeNull();
+    await act(async () => { reading.resolve('Y292ZXI='); });
+    await waitFor(() => expect(result.current.sources).not.toBeNull());
+    const html = mockFiles.get(result.current.sources![0]!.uri)!;
+    const background = /src="([^"]+)"/u.exec(html)![1]!;
+    expect(mockFiles.get(background)).toBe('<svg><image href="data:image/png;base64,Y292ZXI="/></svg>');
+    expect(html).toContain('width="1080"');
+    mockBase64.mockRejectedValue(new Error('source unavailable'));
+    await rerender({ width: 2160 });
+    await waitFor(() => expect(mockFiles.get(result.current.sources?.[0]?.uri ?? '')).toBe(`<img width="2160" src="${background}">`));
+    expect(mockFiles.get(background)).toBe('<svg><image href="data:image/png;base64,Y292ZXI="/></svg>');
   });
 
   it.each(['inactive', 'background'] as const)('pauses HTML recovery while %s and retains completed files', async state => {
@@ -351,9 +381,10 @@ describe('best image export lifecycle', () => {
     try {
       mockWrite.mockRejectedValueOnce(new Error('disk full'));
       const pages = ['<p>retained</p>'];
+      const template = { assets: [], build: () => pages };
       const { result } = await renderHook(() => {
         const controller = useBestImageScreenController(config);
-        return usePreparedBestImageSources(pages, controller.assetSession, controller.assetSession.directory, controller.cancelExportRequest);
+        return usePreparedBestImageSources(template, controller.assetSession, controller.assetSession.directory, controller.cancelExportRequest);
       }, { wrapper: AppLifecycleProvider });
       await act(async () => { await jest.advanceTimersByTimeAsync(0); });
       expect(result.current.error).toBe('成绩图片准备失败，正在自动重试。');
@@ -373,19 +404,25 @@ describe('best image export lifecycle', () => {
     } finally { AppState.currentState = originalState; }
   });
 
-  it('discards HTML whose native write finishes after resource clearing', async () => {
+  it('discards late HTML after resource clearing and prepares a current source', async () => {
     const writing = deferred<void>();
+    let oldUri = '';
     mockWrite.mockImplementationOnce(async (uri, content) => {
+      oldUri = uri;
       await writing.promise; mockFiles.set(uri, content);
     });
     const pages = ['<p>invalidated</p>'];
+    const template = { assets: [], build: () => pages };
     const { result } = await renderHook(() => {
       const controller = useBestImageScreenController(config);
-      return usePreparedBestImageSources(pages, controller.assetSession, controller.assetSession.directory, controller.cancelExportRequest);
+      return usePreparedBestImageSources(template, controller.assetSession, controller.assetSession.directory, controller.cancelExportRequest);
     });
+    await waitFor(() => expect(oldUri).not.toBe(''));
     await act(async () => { invalidateResourceWrites('maimai'); writing.resolve(); });
-    expect(result.current.sources).toBeNull();
-    expect([...mockFiles.values()]).not.toContain('<p>invalidated</p>');
+    await waitFor(() => expect(result.current.sources).not.toBeNull());
+    expect(result.current.sources![0]!.uri).not.toBe(oldUri);
+    expect(mockFiles.has(oldUri)).toBe(false);
+    expect(mockFiles.get(result.current.sources![0]!.uri)).toBe('<p>invalidated</p>');
   });
 });
 
@@ -395,14 +432,17 @@ jest.mock('expo-file-system', () => {
     constructor(...parts: (string | { uri: string })[]) {
       this.uri = parts.map((part) => (typeof part === 'string' ? part : part.uri).replace(/\/$/u, '')).join('/');
     }
+    get type() { return 'image/png'; }
+    base64() { return mockBase64(); }
   }
   return { File: Entry, Directory: Entry, Paths: { cache: 'file:///cache', document: 'file:///document' } };
 });
 jest.mock('expo-file-system/legacy', () => ({
   makeDirectoryAsync: async () => undefined,
-  getInfoAsync: async (uri: string) => ({ exists: [...mockFiles.keys()].some((key) => key === uri || key.startsWith(uri + '/')) }),
+  getInfoAsync: async (uri: string) => ({ exists: [...mockFiles.keys()].some((key) => key === uri || key.startsWith(uri + '/')), size: mockFiles.get(uri)?.length ?? 0 }),
   readDirectoryAsync: async (uri: string) => [...new Set([...mockFiles.keys()].filter((key) => key.startsWith(uri + '/')).map((key) => key.slice(uri.length + 1).split('/')[0]))],
   writeAsStringAsync: (uri: string, content: string) => mockWrite(uri, content),
+  moveAsync: async ({ from, to }: { from: string; to: string }) => { mockFiles.set(to, mockFiles.get(from)!); mockFiles.delete(from); },
   deleteAsync: async (uri: string) => {
     mockDeletedDirectories.add(uri);
     for (const key of mockFiles.keys()) if (key === uri || key.startsWith(uri + '/')) mockFiles.delete(key);

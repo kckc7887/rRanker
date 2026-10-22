@@ -7,19 +7,46 @@ import type { BestImageScreenControllerConfig } from './best-image-controller-ty
 import { useBestImagePreferences } from './use-best-image-preferences';
 import { useBestImagePreview } from './use-best-image-preview';
 import { useBestImageExport } from './use-best-image-export';
-import { createBestImageAssetSession, disposeBestImageAssetSession, invalidateBestImageAssetSession, retainBestImageAssetSession, retryBestImagePreparation, type BestImageAssetSession } from './load-best-image-session';
+import { createBestImageAssetSession, disposeBestImageAssetSession, invalidateBestImageAssetSession, prepareBestImageCardBackground, retainBestImageAssetSession, retryBestImagePreparation, type BestImageAssetSession } from './load-best-image-session';
+import { useBestImageAssets } from './use-best-image-assets';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 export type { BestImageScreenControllerConfig, BestImageScreenControllerRuntime } from './best-image-controller-types';
 
+export type BestImageTemplateAsset = {
+  id: string;
+  key: string;
+  sources: readonly string[];
+  build: (dataUrls: readonly string[]) => string;
+};
+
+export type BestImageTemplate = {
+  assets: readonly BestImageTemplateAsset[];
+  build: (urls: Readonly<Record<string, string>>) => readonly string[];
+};
+
 export function usePreparedBestImageSources(
-  htmlPages: readonly string[] | null,
+  template: BestImageTemplate | null,
   session: BestImageAssetSession,
   directory: Directory | null,
   cancelExportRequest: () => Promise<void>,
-  generation: unknown = htmlPages,
+  generation: unknown = template,
 ) {
+  const entries = useMemo(() => [...new Map(template?.assets.map(asset => [asset.id, asset])).values()]
+    .sort((a, b) => a.id.localeCompare(b.id)), [template]);
+  const assets = useBestImageAssets({ session,
+    key: template ? JSON.stringify(entries.map(({ id, key, sources }) => [id, key, sources])) : null,
+    prepare: async (signal) => {
+      const urls: Record<string, string> = {};
+      for (const entry of entries) {
+        urls[entry.id] = await prepareBestImageCardBackground(session, entry.key, entry.sources, entry.build, signal);
+      }
+      return urls;
+    },
+  });
+  const htmlPages = useMemo(() => template && assets.data ? template.build(assets.data) : null, [template, assets.data]);
+  const sourceGeneration = useMemo(() => ({ generation, assets: assets.data }), [generation, assets.data]);
   const pagesRef = useRef(htmlPages);
   pagesRef.current = htmlPages;
   const { foregroundReady } = useAppLifecycle();
@@ -33,16 +60,16 @@ export function usePreparedBestImageSources(
   const [error, setError] = useState<string | null>(null);
   useEffect(() => () => {
     const prepared = preparedRef.current;
-    if (!prepared || prepared.generation !== generation || prepared.directory !== directory) return;
+    if (!prepared || prepared.generation !== sourceGeneration || prepared.directory !== directory) return;
     preparedRef.current = null;
     void cancelExportRequest().then(() => prepared.value.dispose())
       .catch(error => recordRuntimeError('best-image-release', error, false, { phase: 'cleanup' }));
-  }, [directory, generation, cancelExportRequest]);
+  }, [directory, sourceGeneration, cancelExportRequest]);
   useEffect(() => {
     const pages = pagesRef.current;
     if (!foregroundReady || !pages || !directory) return;
     const retained = preparedRef.current;
-    if (retained && retained.generation === generation && retained.directory === directory) return;
+    if (retained && retained.generation === sourceGeneration && retained.directory === directory) return;
     setError(null);
     const controller = new AbortController();
     const assertCurrent = captureResourceWrites(session.game, controller.signal);
@@ -56,14 +83,14 @@ export function usePreparedBestImageSources(
       () => { if (!cancelled) setError('成绩图片准备失败，正在自动重试。'); },
     ).then(async (next) => {
       if (cancelled || session.disposed) { await next.dispose(); return; }
-      preparedRef.current = { generation, directory, value: next };
+      preparedRef.current = { generation: sourceGeneration, directory, value: next };
       setError(null);
-      setResult({ generation, directory, sources: next.sources });
+      setResult({ generation: sourceGeneration, directory, sources: next.sources });
     }).catch(error => { if (!cancelled) recordRuntimeError('best-image-prepare', error); });
     return () => { cancelled = true; controller.abort(); };
-  }, [directory, generation, foregroundReady, session]);
-  const sources = result && result.generation === generation && result.directory === directory ? result.sources : null;
-  return { sources, error };
+  }, [directory, sourceGeneration, foregroundReady, session]);
+  const sources = htmlPages && result && result.generation === sourceGeneration && result.directory === directory ? result.sources : null;
+  return { htmlPages, sources, ready: assets.ready, error: assets.error ?? error, retry: assets.retry };
 }
 
 export function useBestImageScreenController<TType extends string, TPrefs extends object, TPicker>(

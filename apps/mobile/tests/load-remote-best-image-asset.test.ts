@@ -1,10 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
-import { copyBestImageAsset, createBestImageAssetSession, disposeBestImageAssetSession, loadRemoteImageFile } from '@/features/best-image/load-best-image-session';
+import { copyBestImageAsset, createBestImageAssetSession, disposeBestImageAssetSession, loadRemoteImageFile, prepareBestImageCardBackground } from '@/features/best-image/load-best-image-session';
 import { loadBestImageJackets } from '@/features/best-image/load-best-image-jackets';
 import { acquireRemoteImageOriginal, clearCompressedRemoteImageCache, clearGameRemoteImageCache, pruneRemoteImageCache } from '@/services/remote-image-cache';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 
-const mocks = vi.hoisted(() => ({ files: new Map<string, string>(), directories: new Set<string>(), download: vi.fn(), copy: vi.fn() }));
+const mocks = vi.hoisted(() => ({ files: new Map<string, string>(), directories: new Set<string>(), download: vi.fn(), copy: vi.fn(), write: vi.fn() }));
 vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
 vi.mock('expo-image', () => ({ Image: {} }));
 vi.mock('expo-image-manipulator', () => ({ ImageManipulator: {}, SaveFormat: { WEBP: 'webp' } }));
@@ -15,7 +15,13 @@ vi.mock('expo-file-system', () => {
       this.uri = parts.map((part) => (typeof part === 'string' ? part : part.uri).replace(/\/$/u, '')).join('/');
     }
     get name() { return this.uri.split('/').at(-1) ?? ''; }
+    get type() { return this.uri.endsWith('.svg') ? 'image/svg+xml' : ''; }
     async text() { return mocks.files.get(this.uri) ?? ''; }
+    async base64() {
+      const content = mocks.files.get(this.uri);
+      if (content === undefined) throw new Error('source missing');
+      return Buffer.from(content).toString('base64');
+    }
   }
   return { File: Entry, Directory: Entry, Paths: { cache: 'file:///cache', document: 'file:///document' } };
 });
@@ -23,7 +29,7 @@ vi.mock('expo-file-system/legacy', () => ({
   getInfoAsync: async (uri: string) => ({ exists: mocks.files.has(uri) || mocks.directories.has(uri), isDirectory: mocks.directories.has(uri), size: mocks.files.get(uri)?.length ?? 0 }),
   makeDirectoryAsync: async (uri: string) => { mocks.directories.add(uri); },
   readDirectoryAsync: async (uri: string) => [...mocks.files.keys()].filter(path => path.startsWith(uri + '/') && !path.slice(uri.length + 1).includes('/')).map(path => path.slice(uri.length + 1)),
-  writeAsStringAsync: async (uri: string, content: string) => { mocks.files.set(uri, content); },
+  writeAsStringAsync: async (uri: string, content: string) => { await mocks.write(uri, content); mocks.files.set(uri, content); },
   deleteAsync: async (uri: string) => { for (const key of mocks.files.keys()) if (key === uri || key.startsWith(uri + '/')) mocks.files.delete(key); },
   moveAsync: async ({ from, to }: { from: string; to: string }) => { mocks.files.set(to, mocks.files.get(from)!); mocks.files.delete(from); },
   copyAsync: async (options: { from: string; to: string }) => {
@@ -54,6 +60,7 @@ describe('best image session files', () => {
     mocks.files.clear(); mocks.directories.clear();
     mocks.download.mockReset().mockResolvedValue(undefined);
     mocks.copy.mockReset().mockResolvedValue(undefined);
+    mocks.write.mockReset().mockResolvedValue(undefined);
   });
   afterEach(() => clearCompressedRemoteImageCache());
 
@@ -83,6 +90,39 @@ describe('best image session files', () => {
     expect(result['1447']).toBe(result['11447']);
     expect(mocks.files.get(result['1447']!)).toBe('original-bytes:https://assets2.lxns.net/maimai/jacket/1447.png');
     expect(progress).toEqual(['0/2', '2/2']);
+    await disposeBestImageAssetSession(session);
+  });
+
+  it('embeds original images in reusable card backgrounds and removes a cancelled write', async () => {
+    const session = createBestImageAssetSession('chunithm');
+    const jacket = 'file:///jacket.png', plate = 'file:///plate.svg';
+    mocks.files.set(jacket, 'original jacket bytes');
+    mocks.files.set(plate, '<svg xmlns="http://www.w3.org/2000/svg"/>');
+    const build = (images: readonly string[]) => `<svg xmlns="http://www.w3.org/2000/svg"><image href="${images[1]}"/><image href="${images[0]}"/></svg>`;
+    const background = await prepareBestImageCardBackground(session, 'master', [jacket, plate], build);
+    const svg = mocks.files.get(background);
+    expect(svg).toContain(`data:image/png;base64,${Buffer.from(mocks.files.get(jacket)!).toString('base64')}`);
+    expect(svg).toContain(`data:image/svg+xml;base64,${Buffer.from(mocks.files.get(plate)!).toString('base64')}`);
+    mocks.files.delete(jacket); mocks.files.delete(plate);
+    await expect(prepareBestImageCardBackground(session, 'master', [jacket, plate], build)).resolves.toBe(background);
+    expect(mocks.files.get(background)).toBe(svg);
+
+    mocks.files.set(jacket, 'original jacket bytes');
+    const gate = deferred(), controller = new AbortController();
+    mocks.write.mockReturnValueOnce(gate.promise);
+    const pending = prepareBestImageCardBackground(session, 'expert', [jacket], () => '<svg id="cancelled-background"/>', controller.signal);
+    await vi.waitFor(() => expect(mocks.write).toHaveBeenCalledWith(expect.any(String), '<svg id="cancelled-background"/>'));
+    controller.abort(new Error('cancelled'));
+    await expect(pending).rejects.toThrow('cancelled');
+    gate.resolve();
+    await copyBestImageAsset(session, jacket, 'after.png');
+    expect([...mocks.files.values()]).not.toContain('<svg id="cancelled-background"/>');
+    expect(mocks.files.get(background)).toBe(svg);
+    mocks.write.mockRejectedValueOnce(new Error('disk full'));
+    await expect(prepareBestImageCardBackground(session, 'basic', [jacket], build)).rejects.toThrow('disk full');
+    expect(mocks.files.get(background)).toBe(svg);
+    const recovered = await prepareBestImageCardBackground(session, 'basic', [jacket], build);
+    expect(mocks.files.get(recovered)).toContain('data:image/png;base64,');
     await disposeBestImageAssetSession(session);
   });
 

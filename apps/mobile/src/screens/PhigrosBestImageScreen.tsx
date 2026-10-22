@@ -19,7 +19,7 @@ import {
   BestImageScreenShell,
   bestImageScreenSharedStyles,
 } from '@/features/best-image/best-image-screen-shell';
-import { useBestImageScreenController, usePreparedBestImageSources } from '@/features/best-image/use-best-image-screen-controller';
+import { useBestImageScreenController, usePreparedBestImageSources, type BestImageTemplate } from '@/features/best-image/use-best-image-screen-controller';
 import { useBestImageAssets } from '@/features/best-image/use-best-image-assets';
 import { buildPhigrosBestImageHtml } from '@/features/phigros-best-image/build-phigros-best-image-html';
 import { collectPhigrosBestImageVisibleStrings } from '@/features/phigros-best-image/collect-phigros-best-image-visible-strings';
@@ -281,21 +281,24 @@ export function PhigrosBestImageScreen() {
   const gameReady = gameAssets.ready && averages.ready;
   const assetsReady = drawingAssets.ready && gameReady;
 
-  const htmlPages = useMemo(() => payload && illustrations && accAverages && templateAssets ? pages.map((page) => {
-    const outputWidth = width as (typeof WIDTHS)[number];
-    const input = {
-      type, width: outputWidth, page, playerName: payload.player.displayName, rks: payload.playerScore.display,
-      dataAmount: payload.dataAmount,
-      challenge: formatPhigrosChallengeBadge(payload.challengeModeRank), challengeModeRank: payload.challengeModeRank,
-      syncedAt: formatSyncTime(payload.saveUpdatedAt),
-      dataSource,
-      progress: payload.progress, titles, illustrations, accAverages, avatarDataUri: avatarData, backgroundDataUri: backgroundData,
-      templateAssets,
-    };
-    return buildPhigrosBestImageHtml(input);
-  }) : null, [accAverages, avatarData, backgroundData, dataSource, illustrations, pages, payload, templateAssets, titles, type, width]);
+  const template = useMemo<BestImageTemplate | null>(() => payload && illustrations && accAverages && templateAssets ? {
+    assets: [],
+    build: () => pages.map((page) => {
+      const outputWidth = width as (typeof WIDTHS)[number];
+      const input = {
+        type, width: outputWidth, page, playerName: payload.player.displayName, rks: payload.playerScore.display,
+        dataAmount: payload.dataAmount,
+        challenge: formatPhigrosChallengeBadge(payload.challengeModeRank), challengeModeRank: payload.challengeModeRank,
+        syncedAt: formatSyncTime(payload.saveUpdatedAt),
+        dataSource,
+        progress: payload.progress, titles, illustrations, accAverages, avatarDataUri: avatarData, backgroundDataUri: backgroundData,
+        templateAssets,
+      };
+      return buildPhigrosBestImageHtml(input);
+    }),
+  } : null, [accAverages, avatarData, backgroundData, dataSource, illustrations, pages, payload, templateAssets, titles, type, width]);
 
-  const { sources, error: sourceError } = usePreparedBestImageSources(htmlPages, assetSession, assetsReady ? assetSession.directory : null, cancelExportRequest);
+  const { htmlPages, sources, ready: templateReady, error: sourceError, retry: retryTemplate } = usePreparedBestImageSources(template, assetSession, assetsReady ? assetSession.directory : null, cancelExportRequest);
   const preparationError = drawingAssets.error ?? gameAssets.error ?? averages.error ?? sourceError;
   useEffect(() => {
     setPageHeights({}); setPageIndex(0); setPreviewStates({});
@@ -434,9 +437,9 @@ export function PhigrosBestImageScreen() {
       dimensionMeta: `${width} × ${outputHeight} px · 每页最多 ${type === 'best30' ? 30 + stylePrefs.overflowCount : 30} 张 · 第 ${pageIndex + 1}/${pages.length} 页`,
       preparation: {
         drawingReady: drawingAssets.ready,
-        gameReady,
+        gameReady: gameReady && templateReady,
         error: preparationError,
-        retry: () => { drawingAssets.retry(); gameAssets.retry(); averages.retry(); },
+        retry: () => { drawingAssets.retry(); gameAssets.retry(); averages.retry(); retryTemplate(); },
       },
       pickers: <PhigrosBestImageStylePicker visible={picker !== null} kind={picker} items={pickerItems} selection={picker ? stylePrefs[picker] : null} onClose={() => setPicker(null)} onSelect={chooseStyle} />,
       styles: styles,

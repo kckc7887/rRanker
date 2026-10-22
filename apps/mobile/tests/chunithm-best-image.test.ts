@@ -171,7 +171,7 @@ describe('buildChunithmBestImageHtml', () => {
           { id: 'selection', title: 'Selection', records: [card(3)] },
         ],
       },
-      coverUrls: { '1': null, '2': null, '3': null },
+      cardBackgroundUrls: { '1:3': 'card-1.svg', '2:3': 'card-2.svg', '3:3': 'card-3.svg' },
       jacketIds: { '1-3': '1', '2-3': '2', '3-3': '3' },
       characterDataUri: 'data:image/png;base64,character',
       backgroundDataUri: 'data:image/png;base64,background',
@@ -184,6 +184,7 @@ describe('buildChunithmBestImageHtml', () => {
     expect(renderedText(html)).toContain('16.50');
     expect(renderedText(html)).toContain('1,009,000');
     expect(renderedImages(html)).toContain('grade/SSSplus.svg');
+    expect(renderedImages(html)).toContain('card-1.svg');
     expect(renderedText(html)).toContain('Song 1');
     expect(renderedImages(html)).toContain('data:image/png;base64,background');
     expect(renderedImages(html)).toContain('data:image/png;base64,character');
@@ -248,10 +249,10 @@ describe('chunithm card achievements', () => {
   it('renders WORLD’S END properties without a chart rating', () => {
     const html = buildChunithmBestImageHtml({ type: 'custom', width: 1080, player: null, ratingDisplay: '0.00', page: {
       id: 'page', pageIndex: 0, pageCount: 1, sections: [{ id: 'custom', title: 'Best1', records: [card(1, { levelIndex: 5, worldsEndLabel: '狂☆5', rating: 99.99 })] }],
-    } });
+    }, cardBackgroundUrls: { '1:5': 'worldsend-card.svg' } });
     expect(renderedText(html)).toContain('狂☆5');
     expect(renderedText(html)).not.toContain('99.99');
-    expect(renderedImages(html)).toContain('card/worldsend.svg');
+    expect(renderedImages(html)).toContain('worldsend-card.svg');
   });
 });
 

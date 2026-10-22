@@ -31,6 +31,7 @@ export type BestImageHtmlInput = {
   ratingStyle?: BestImageRatingStyle;
   scoreSections: readonly BestImageScoreSection[];
   coverUrls?: Readonly<Record<string, string | null>>;
+  cardBackgroundUrls?: Readonly<Record<string, string>>;
   hiddenStyles?: readonly BestImageHiddenStyle[];
   collectionUrls?: Partial<Record<'icon' | 'plate' | 'frame', string | null>>;
   fontUrl: string;
@@ -92,14 +93,40 @@ function escapeCssUrl(value: string): string {
   return value.replaceAll('\\', '\\\\').replaceAll('"', '\\"').replace(/[\r\n]/gu, '');
 }
 
-function renderAppScoreCard(
-  record: ScoreRecord, rank: number, coverUrls: BestImageHtmlInput['coverUrls'], id: string,
-): string {
-  const jacket = coverUrls && Object.hasOwn(coverUrls, record.songId)
-    ? coverUrls[record.songId] : `${LXNS_ASSET_ROOT}/jacket/${encodeURIComponent(record.songId)}.png`;
-  const color = DIFFICULTY_COLORS[record.difficulty];
-  const remaster = record.difficulty === 'remaster';
+export function buildMaimaiBestImageCardBackground(jacket: string | null, difficulty: ScoreRecord['difficulty']): string {
+  const id = 'card';
+  const color = DIFFICULTY_COLORS[difficulty];
+  const remaster = difficulty === 'remaster';
   const background = remaster ? `url(#${id}-theme)` : color;
+  const fades = [
+    ['clear', 132, 224, true], ['soft', 150, 282, true],
+    ['medium', 196, 370, true], ['panel', 108, 382, false],
+  ] as const;
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="756" height="360" viewBox="0 0 756 360" fill="white">
+    <defs>
+      <clipPath id="${id}-clip"><rect width="756" height="360" rx="26"/></clipPath>
+      <linearGradient id="${id}-theme" gradientUnits="userSpaceOnUse" x1="174" y1="0" x2="756" y2="360"><stop stop-color="#9B50D1"/><stop offset=".5" stop-color="#BB57C5"/><stop offset="1" stop-color="#DD63A9"/></linearGradient>
+      <linearGradient id="${id}-footer" x1="0" y1="0" x2="0" y2="1"><stop stop-color="white" stop-opacity="0"/><stop offset=".35" stop-color="white" stop-opacity=".96"/><stop offset="1" stop-color="white"/></linearGradient>
+      <mask id="${id}-footer-mask" maskUnits="userSpaceOnUse" x="0" y="254" width="756" height="106"><rect y="254" width="756" height="106" fill="url(#${id}-footer)"/></mask>
+      ${jacket ? `<image id="${id}-jacket" width="286" height="286" preserveAspectRatio="xMidYMid slice" href="${escapeHtml(jacket)}"/><g id="${id}-art"><use href="#${id}-jacket"/><use href="#${id}-jacket" transform="translate(572 0) scale(-1 1)"/></g>` : ''}
+      ${[['soft', 8.1], ['medium', 22.5], ['heavy', 45]].map(([name, radius]) => `<filter id="${id}-${name}" filterUnits="userSpaceOnUse" x="-100" y="-100" width="956" height="560" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${radius}"/></filter>`).join('')}
+      ${fades.map(([name, start, end, reverse]) => `<linearGradient id="${id}-${name}-fade" gradientUnits="userSpaceOnUse" x1="${start}" y1="0" x2="${end}" y2="0">${Array.from({ length: 17 }, (_, i) => {
+        const opacity = (1 - Math.cos(i / 16 * Math.PI)) / 2;
+        return `<stop offset="${i / 16}" stop-color="white" stop-opacity="${reverse ? 1 - opacity : opacity}"/>`;
+      }).join('')}</linearGradient><mask id="${id}-${name}-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="756" height="360"><rect width="756" height="360" fill="url(#${id}-${name}-fade)"/></mask>`).join('')}
+    </defs>
+    <g clip-path="url(#${id}-clip)">
+      <rect width="756" height="360" fill="${background}"/>
+      ${jacket ? `<use href="#${id}-art" filter="url(#${id}-heavy)"/><g mask="url(#${id}-medium-mask)"><use href="#${id}-art" filter="url(#${id}-medium)"/></g><g mask="url(#${id}-soft-mask)"><use href="#${id}-art" filter="url(#${id}-soft)"/></g><use href="#${id}-jacket" mask="url(#${id}-clear-mask)"/>` : ''}
+      <rect width="756" height="360" fill="${background}" mask="url(#${id}-panel-mask)"/>
+      <rect y="254" width="756" height="106" fill="${background}" mask="url(#${id}-footer-mask)"/>
+    </g>
+  </svg>`;
+}
+
+function renderAppScoreCard(
+  record: ScoreRecord, rank: number, cardBackgroundUrls: BestImageHtmlInput['cardBackgroundUrls'], id: string,
+): string {
   const achievement = record.achievements;
   const [integer, fraction] = achievement.toFixed(4).split('.');
   const colors = achievement >= 100 ? ['#FFF0B0', '#C8FFF0', '#FBD9EC']
@@ -114,30 +141,15 @@ function renderAppScoreCard(
     ? `<image x="${x}" y="${y}" width="${w}" height="${h}" href="ui/card/${file}.svg"/>` : '';
   const maximum = record.notes?.total == null ? '—' : (record.notes.total * 3).toLocaleString('en-US');
   const actual = record.dxScore == null ? '—' : record.dxScore.toLocaleString('en-US');
-  const fades = [
-    ['clear', 132, 224, true], ['soft', 150, 282, true],
-    ['medium', 196, 370, true], ['panel', 108, 382, false],
-  ] as const;
+  const backgroundUrl = cardBackgroundUrls?.[`${record.songId}:${record.difficulty}`];
   return `<article class="app-score-card" data-rank="${rank}"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 756 360" class="app-card-art" fill="white">
     <defs>
       <clipPath id="${id}-clip"><rect width="756" height="360" rx="26"/></clipPath>
-      <linearGradient id="${id}-theme" gradientUnits="userSpaceOnUse" x1="174" y1="0" x2="756" y2="360"><stop stop-color="#9B50D1"/><stop offset=".5" stop-color="#BB57C5"/><stop offset="1" stop-color="#DD63A9"/></linearGradient>
       <linearGradient id="${id}-number" x1="0" x2="1" y1=".15" y2=".9"><stop stop-color="${colors[0]}"/><stop offset=".52" stop-color="${colors[1]}"/><stop offset="1" stop-color="${colors[2]}"/></linearGradient>
-      <linearGradient id="${id}-footer" x1="0" y1="0" x2="0" y2="1"><stop stop-color="white" stop-opacity="0"/><stop offset=".35" stop-color="white" stop-opacity=".96"/><stop offset="1" stop-color="white"/></linearGradient>
-      <mask id="${id}-footer-mask" maskUnits="userSpaceOnUse" x="0" y="254" width="756" height="106"><rect y="254" width="756" height="106" fill="url(#${id}-footer)"/></mask>
-      ${jacket ? `<image id="${id}-jacket" width="286" height="286" preserveAspectRatio="xMidYMid slice" href="${escapeHtml(jacket)}"/><g id="${id}-art"><use href="#${id}-jacket"/><use href="#${id}-jacket" transform="translate(572 0) scale(-1 1)"/></g>` : ''}
-      ${[['soft', 8.1], ['medium', 22.5], ['heavy', 45]].map(([name, radius]) => `<filter id="${id}-${name}" filterUnits="userSpaceOnUse" x="-100" y="-100" width="956" height="560" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="${radius}"/></filter>`).join('')}
       <filter id="${id}-ink" x="-8%" y="-8%" width="116%" height="120%" color-interpolation-filters="sRGB"><feDropShadow dx="0" dy="2.2" stdDeviation="1.1" flood-color="#4A285F" flood-opacity=".6"/></filter>
-      ${fades.map(([name, start, end, reverse]) => `<linearGradient id="${id}-${name}-fade" gradientUnits="userSpaceOnUse" x1="${start}" y1="0" x2="${end}" y2="0">${Array.from({ length: 17 }, (_, i) => {
-        const opacity = (1 - Math.cos(i / 16 * Math.PI)) / 2;
-        return `<stop offset="${i / 16}" stop-color="white" stop-opacity="${reverse ? 1 - opacity : opacity}"/>`;
-      }).join('')}</linearGradient><mask id="${id}-${name}-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="756" height="360"><rect width="756" height="360" fill="url(#${id}-${name}-fade)"/></mask>`).join('')}
     </defs>
+    ${backgroundUrl ? `<image href="${escapeHtml(backgroundUrl)}" width="756" height="360"/>` : ''}
     <g clip-path="url(#${id}-clip)">
-      <rect width="756" height="360" fill="${background}"/>
-      ${jacket ? `<use href="#${id}-art" filter="url(#${id}-heavy)"/><g mask="url(#${id}-medium-mask)"><use href="#${id}-art" filter="url(#${id}-medium)"/></g><g mask="url(#${id}-soft-mask)"><use href="#${id}-art" filter="url(#${id}-soft)"/></g><use href="#${id}-jacket" mask="url(#${id}-clear-mask)"/>` : ''}
-      <rect width="756" height="360" fill="${background}" mask="url(#${id}-panel-mask)"/>
-      <rect y="254" width="756" height="106" fill="${background}" mask="url(#${id}-footer-mask)"/>
       <path d="M24 284H732" stroke="white" stroke-opacity=".26"/>
       <g filter="url(#${id}-ink)">
         ${icon(record.type === 'DX' ? 'DX' : 'SD', 18, 224, 108, 40)}
@@ -156,8 +168,8 @@ function renderAppScoreCard(
   </svg></article>`;
 }
 
-function renderAppScoreSection(section: BestImageScoreSection, coverUrls: BestImageHtmlInput['coverUrls'], sectionIndex: number): string {
-  const cards = section.records.map((record, index) => renderAppScoreCard(record, (section.rankOffset ?? 0) + index + 1, coverUrls, `app-${sectionIndex}-${index}`)).join('');
+function renderAppScoreSection(section: BestImageScoreSection, cardBackgroundUrls: BestImageHtmlInput['cardBackgroundUrls'], sectionIndex: number): string {
+  const cards = section.records.map((record, index) => renderAppScoreCard(record, (section.rankOffset ?? 0) + index + 1, cardBackgroundUrls, `app-${sectionIndex}-${index}`)).join('');
   return `<section class="app-score-section"><div class="section-divider"><span>${escapeHtml(section.title)}</span></div>${section.subtitle ? `<div class="section-subtitle">${escapeHtml(section.subtitle)}</div>` : ''}<div class="app-score-grid">${cards || '<div class="empty-section">暂无符合条件的成绩</div>'}</div></section>`;
 }
 
@@ -295,7 +307,7 @@ export function buildBestImageHtml(input: BestImageHtmlInput): string {
   const courseRank = resolveMaimaiCourseRank(input.player);
   const backgroundBlur = px(width * 0.02);
   const scoreSections = input.scoreSections
-    .map((section, index) => isAppStyle ? renderAppScoreSection(section, input.coverUrls, index) : renderGameScoreSection(section, input.coverUrls, u))
+    .map((section, index) => isAppStyle ? renderAppScoreSection(section, input.cardBackgroundUrls, index) : renderGameScoreSection(section, input.coverUrls, u))
     .join('');
   const scoreContent = scoreSections || '<div class="empty-scores">暂无可用于图片的成绩</div>';
   const canvasBackground = frameUrl

@@ -129,6 +129,10 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `BestImageScreenShell` 的 `appearance.preparation` 接收绘图、游戏资源就绪状态和错误、重试入口，`preview.previewStates` 提供当前预览状态。加载提示统一为“下载绘图资源中”“下载游戏资源中”“图片加载中”；字体和素材齐全后才建立预览，加载层等待当前页、来源及挂载代次的就绪消息，旧事件不更新新预览。WebView 超时与失败提供公共重试入口。`bestImageAssetsReadyScript` 等待字体、HTML 图片、SVG 图片及包含伪元素的 CSS 图片引用；图片加载、有效尺寸和解码均成功后才就绪，图片地址不依赖扩展名，同文档 SVG fragment 不参与外部加载。失败发送 `best-image-error`，预览显示重试，导出立即结束。排版及尺寸变化后发送当前高度的 `best-image-ready`。
 
+三款游戏的模板生成统一调用 `usePreparedBestImageSources(template, session, directory, cancelExportRequest, generation?)`，返回 `htmlPages`、`sources`、`ready`、`error` 和 `retry`。`BestImageTemplate.assets` 声明附加 SVG 素材，`build(urls)` 构建 HTML；无需附加素材的模板声明空数组。素材声明包含输出映射 `id`、模板素材身份 `key`、原文件 `sources` 与 SVG 构建函数。公共入口按声明去重、准备素材，随后生成 HTML 并写入会话；素材错误、重试、前后台恢复及缓存代次共用 `useBestImageAssets`。写盘身份包含当前模板及已准备素材，过期结果不进入预览。
+
+`prepareBestImageCardBackground` 将声明的原始文件以自包含 data URL 嵌入 SVG，按模板素材身份、源文件地址和缓存代次生成会话文件，非空文件直接复用。读取与构建逐张完成，临时写入和原子发布沿用共享文件队列，I/O 失败由模板入口显示错误并重试。舞萌应用风格与中二声明完整卡片背景，保留底板、镜像、各层高斯模糊、渐变遮罩与透明度；HTML 通过 `cardBackgroundUrls` 引用背景文件，动态文字与图标独立排版。分辨率、成绩文字及分页不参与背景素材身份；背景图片与其余图片共用加载、解码及导出就绪流程。
+
 `useBestImageExport.handleExportLayout` 由 `BestImageScreenShell.exportSession.onExportLayout` 接收每页捕获视图的真实布局；只有当前页就绪高度与布局宽高按像素比例匹配后才截图。后续高度变化取消之前的就绪等待，每页独立挂载捕获视图并隔离旧消息。导出 WebView 挂载期间暂停预览 WebView，结束后恢复。`captureRef` 通过 `scripts/patch-react-native-view-shot.cjs` 接入 WebView 原生绘制：iOS 使用 `WKWebView.takeSnapshot(afterScreenUpdates: true)`，Android 等待 `postVisualStateCallback` 后绘制；原有编码、临时文件、取消与保存路径共用。iOS 截图参数为输出像素除以设备比例，Android 直接使用输出像素；iOS 瞬态失败沿相同截图方式重试一次。
 
 三款成绩图直接使用当前载荷的 `source.label`。示例数据生成入口提供“示例账号”，真实账号保留实际来源标签。舞萌来源参与现有 HTML 生成身份，来源单独变化也重新写盘。

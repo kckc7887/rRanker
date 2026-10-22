@@ -7,6 +7,7 @@ import type { ChunithmScore } from '@/domain/chunithm-personal';
 
 const mockShowNotification = jest.fn();
 const mockLoadRemoteImage = jest.fn(async (_session: unknown, url: string | null): Promise<string | null> => url);
+const mockFiles = new Map<string, string>();
 
 jest.mock('@/components/AppNotification', () => ({
   useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
@@ -129,7 +130,11 @@ jest.mock('@/features/chunithm-best-image/load-chunithm-best-image-jackets', () 
     levelIndex === 5 ? `we-${songId}` : songId
   ),
   loadChunithmBestImageJackets: jest.fn(async (_session: unknown, jacketIds: string[]) => Object.fromEntries(
-    jacketIds.map((id) => [id, `file:///session/jacket-${id}`]),
+    jacketIds.map((id) => {
+      const uri = `file:///session/jacket-${id}`;
+      mockFiles.set(uri, `jacket-${id}`);
+      return [id, uri];
+    }),
   )),
 }));
 
@@ -187,7 +192,7 @@ const previewHtml = (screen: RenderedScreen) => (
 );
 
 describe('chunithm best image custom', () => {
-  beforeEach(() => { mockShowNotification.mockClear(); mockLoadRemoteImage.mockReset().mockImplementation(async (_session, url) => url); });
+  beforeEach(() => { mockFiles.clear(); mockShowNotification.mockClear(); mockLoadRemoteImage.mockReset().mockImplementation(async (_session, url) => url); });
   afterEach(() => jest.restoreAllMocks());
 
   it('selects a plate, saves it for the account, and restores the default board', async () => {
@@ -248,7 +253,8 @@ describe('chunithm best image custom', () => {
     saveBestImageCapture.mockClear();
     const screen = await render(<ChunithmBestImageScreen />);
     await screen.findByTestId('chunithm-best-image-html-preview-0');
-    expect(previewHtml(screen)).toContain('file:///session/jacket-101');
+    const backgrounds = [...previewHtml(screen).matchAll(/href="(file:[^"]+)"/gu)].map(match => mockFiles.get(match[1]!));
+    expect(backgrounds.some(svg => svg?.includes(`data:image/png;base64,${Buffer.from('jacket-101').toString('base64')}`))).toBe(true);
     await fireEvent.press(screen.getByLabelText('导出成绩图片'));
     const renderer = await screen.findByLabelText('导出渲染 第1页');
     await fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 1080, height: 1500 }) } });
@@ -337,10 +343,33 @@ jest.mock('expo-file-system', () => {
     constructor(...parts: (string | { uri: string })[]) {
       this.uri = parts.map((part) => (typeof part === 'string' ? part : part.uri).replace(/\/$/u, '')).join('/');
     }
+    get type() { return this.uri.endsWith('.svg') ? 'image/svg+xml' : 'image/png'; }
+    async base64() {
+      const content = mockFiles.get(this.uri);
+      if (content === undefined) throw new Error('source missing');
+      return Buffer.from(content).toString('base64');
+    }
   }
   return { File: Entry, Directory: Entry, Paths: { cache: 'file:///cache', document: 'file:///document' } };
 });
-jest.mock('expo-file-system/legacy', () => ({ deleteAsync: async () => undefined }));
+jest.mock('expo-file-system/legacy', () => ({
+  getInfoAsync: async (uri: string) => ({ exists: mockFiles.has(uri), isDirectory: false, size: mockFiles.get(uri)?.length ?? 0 }),
+  makeDirectoryAsync: async () => undefined,
+  writeAsStringAsync: async (uri: string, content: string) => { mockFiles.set(uri, content); },
+  copyAsync: async ({ from, to }: { from: string; to: string }) => {
+    const content = mockFiles.get(from);
+    if (content === undefined) throw new Error('source missing');
+    mockFiles.set(to, content);
+  },
+  moveAsync: async ({ from, to }: { from: string; to: string }) => {
+    const content = mockFiles.get(from);
+    if (content === undefined) throw new Error('source missing');
+    mockFiles.set(to, content); mockFiles.delete(from);
+  },
+  deleteAsync: async (uri: string) => {
+    for (const file of mockFiles.keys()) if (file === uri || file.startsWith(uri + '/')) mockFiles.delete(file);
+  },
+}));
 
 jest.mock('@/features/best-image/load-best-image-session', () => {
   const actual = jest.requireActual<typeof import('@/features/best-image/load-best-image-session')>('@/features/best-image/load-best-image-session');
@@ -348,5 +377,9 @@ jest.mock('@/features/best-image/load-best-image-session', () => {
 });
 
 jest.mock('@/features/chunithm-best-image/chunithm-ui-cache', () => ({
-  prepareChunithmUi: async () => ({ directory: { uri: 'file:///ui' }, files: [], fullReady: Promise.resolve() }),
+  prepareChunithmUi: async () => {
+    const files = ['basic', 'advanced', 'expert', 'master', 'ultima', 'worldsend'].map(difficulty => `card/${difficulty}.svg`);
+    for (const file of files) mockFiles.set(`file:///ui/${file}`, '<svg xmlns="http://www.w3.org/2000/svg" width="756" height="320"/>');
+    return { directory: { uri: 'file:///ui' }, files, fullReady: Promise.resolve() };
+  },
 }));

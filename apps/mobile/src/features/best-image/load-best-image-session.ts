@@ -6,7 +6,7 @@ import { acquireRemoteImageOriginal } from '@/services/remote-image-cache';
 import { BEST_IMAGE_STAGE_ROOT, clearDirectoryContentsStrict, runSharedCacheFileOperation } from '@/features/storage-management/fs-storage';
 import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Directory, File } from 'expo-file-system';
-import { copyAsync, deleteAsync, getInfoAsync, makeDirectoryAsync, moveAsync } from 'expo-file-system/legacy';
+import { copyAsync, deleteAsync, getInfoAsync, makeDirectoryAsync, moveAsync, writeAsStringAsync } from 'expo-file-system/legacy';
 
 export type BestImageGame = 'maimai' | 'chunithm' | 'phigros';
 export type BestImageAssetSession = {
@@ -117,6 +117,49 @@ export function copyBestImageAsset(
     assertSession(session, assertCurrent);
     return file.uri;
   });
+}
+
+export function prepareBestImageCardBackground(
+  session: BestImageAssetSession, key: string, sources: readonly string[],
+  build: (dataUrls: readonly string[]) => string, signal?: AbortSignal,
+): Promise<string> {
+  const assertGeneration = captureResourceWrites(session.game);
+  const identity = JSON.stringify([resourceWriteGeneration(session.game), key, sources]);
+  return session.requests.share('card:' + identity, async (requestSignal) => {
+    const assertCurrent = captureResourceWrites(session.game, requestSignal);
+    assertSession(session, assertGeneration);
+    const hash = (await digestStringAsync(CryptoDigestAlgorithm.SHA256, identity)).slice(0, 32);
+    const file = new File(session.directory, `card-${hash}.svg`);
+    const info = await getInfoAsync(file.uri);
+    assertSession(session, assertCurrent);
+    if (info.exists && info.size > 0) return file.uri;
+    const dataUrls: string[] = [];
+    for (const source of sources) {
+      const image = new File(source);
+      const base64 = await image.base64();
+      assertSession(session, assertCurrent);
+      dataUrls.push(`data:${image.type || 'image/png'};base64,${base64}`);
+    }
+    const svg = build(dataUrls);
+    return runSharedCacheFileOperation(async () => {
+      assertSession(session, assertCurrent);
+      const current = await getInfoAsync(file.uri);
+      if (!current.exists || current.size <= 0) {
+        await makeDirectoryAsync(session.directory.uri, { intermediates: true });
+        const temporary = new File(session.directory, `asset-${++imageSequence}.tmp`);
+        try {
+          assertSession(session, assertCurrent);
+          await writeAsStringAsync(temporary.uri, svg);
+          assertSession(session, assertCurrent);
+          await deleteAsync(file.uri, { idempotent: true });
+          assertSession(session, assertCurrent);
+          await moveAsync({ from: temporary.uri, to: file.uri });
+        } finally { await deleteAsync(temporary.uri, { idempotent: true }); }
+      }
+      assertSession(session, assertCurrent);
+      return file.uri;
+    });
+  }, signal);
 }
 
 export function loadRemoteImageFile(

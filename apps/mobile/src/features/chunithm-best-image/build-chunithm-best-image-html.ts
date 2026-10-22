@@ -3,7 +3,6 @@ import { normalizeChunithmPossession, resolveChunithmRatingTier } from '@/domain
 import { formatChunithmRating, formatChunithmScore, type ChunithmScoreCardData } from '@/domain/chunithm-score-presentation';
 import { minimumBestImageHeight } from '@/features/best-image/best-image-messages';
 import { bestImageBridgeMeasureScript, bestImageBridgeReadyScript, bestImageBridgeRuntimeScript } from '@/features/best-image/best-image-bridge-script';
-import { chunithmBestImageJacketUrl } from './load-chunithm-best-image-jackets';
 import type { ChunithmBestImagePage, ChunithmBestImageType } from './chunithm-best-image';
 
 export type ChunithmBestImageHtmlInput = {
@@ -12,7 +11,7 @@ export type ChunithmBestImageHtmlInput = {
   player: ChunithmPlayer | null;
   ratingDisplay: string;
   page: ChunithmBestImagePage;
-  coverUrls?: Readonly<Record<string, string | null>>;
+  cardBackgroundUrls?: Readonly<Record<string, string>>;
   jacketIds?: Readonly<Record<string, string>>;
   characterDataUri?: string | null;
   plateDataUri?: string | null;
@@ -27,7 +26,6 @@ const escape = (value: unknown) => String(value ?? '').replaceAll('&', '&amp;').
 const image = (url: string | null | undefined, x: number, y: number, width: number, height: number, extra = '') => url ? `<image href="${escape(url)}" x="${x}" y="${y}" width="${width}" height="${height}" preserveAspectRatio="xMidYMid meet" ${extra}/>` : '';
 const gradient = (id: string, colors: readonly string[]) => `<linearGradient id="${id}" x2="1" y2=".6">${colors.map((color, i) => `<stop offset="${i / Math.max(1, colors.length - 1)}" stop-color="${color}"/>`).join('')}</linearGradient>`;
 const text = (value: unknown, x: number, y: number, size: number, width: number, extra = '') => `<text x="${x}" y="${y}" font-size="${size}" data-fit-width="${width}" ${extra}>${escape(value)}</text>`;
-const difficulties = ['basic', 'advanced', 'expert', 'master', 'ultima', 'worldsend'] as const;
 const ratingColors = {
   green: ['#267B56', '#58AA67'], orange: ['#C77026', '#EBA558'], red: ['#B5374C', '#E66B72'],
   purple: ['#843FA7', '#AF70D0'], bronze: ['#A35934', '#D4945F'], silver: ['#66778D', '#A4B2C5'],
@@ -52,14 +50,9 @@ function achievement(record: ChunithmScoreCardData): string | null {
   return record.clear === 'clear' ? 'CLEAR' : null;
 }
 
-function renderCard(record: ChunithmScoreCardData, index: number, id: string, input: ChunithmBestImageHtmlInput): string {
-  const jacketId = input.jacketIds?.[record.key] ?? record.songId;
-  const jacket = input.coverUrls && Object.hasOwn(input.coverUrls, jacketId) ? input.coverUrls[jacketId] : chunithmBestImageJacketUrl(jacketId);
-  const difficulty = difficulties[record.levelIndex];
-  const attained = achievement(record);
-  const constant = record.difficultyConstant?.toFixed(1) ?? record.level ?? '—';
-  const detail = record.levelIndex === 5 ? escape(record.worldsEndLabel ?? '—') : `${escape(constant)}<tspan dx="13" font-size="27">→</tspan><tspan dx="13">${escape(formatChunithmRating(record.rating))}</tspan>`;
-  return `<article class="score-card"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 756 320">
+export function buildChunithmBestImageCardBackground(jacket: string | null, card: string): string {
+  const id = 'card';
+  return `<svg xmlns="http://www.w3.org/2000/svg" width="756" height="320" viewBox="0 0 756 320">
     <defs>
       <clipPath id="${id}-clip"><rect width="756" height="320" rx="10"/></clipPath>
       ${jacket ? `<image id="${id}-art" href="${escape(jacket)}" width="320" height="320" preserveAspectRatio="xMidYMid slice"/>` : ''}
@@ -71,11 +64,27 @@ function renderCard(record: ChunithmScoreCardData, index: number, id: string, in
       <mask id="${id}-clear-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="320" height="320"><rect width="320" height="320" fill="url(#${id}-clear)"/></mask>
       <mask id="${id}-soft-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="390" height="320"><rect width="390" height="320" fill="url(#${id}-fade)"/></mask>
       <mask id="${id}-blur-mask" maskUnits="userSpaceOnUse" x="0" y="0" width="465" height="320"><rect width="465" height="320" fill="url(#${id}-fade)"/></mask>
-      ${gradient(id + '-score', scoreColors(record.rank))}
     </defs>
     <g clip-path="url(#${id}-clip)">
-      ${image('card/' + difficulty + '.svg', 0, 0, 756, 320)}
+      ${image(card, 0, 0, 756, 320)}
       ${jacket ? `<g mask="url(#${id}-blur-mask)"><use href="#${id}-wide" filter="url(#${id}-blur)" opacity=".7"/></g><g mask="url(#${id}-soft-mask)"><use href="#${id}-wide" filter="url(#${id}-soft)"/></g><use href="#${id}-art" mask="url(#${id}-clear-mask)"/>` : ''}
+    </g>
+  </svg>`;
+}
+
+function renderCard(record: ChunithmScoreCardData, index: number, id: string, input: ChunithmBestImageHtmlInput): string {
+  const jacketId = input.jacketIds?.[record.key] ?? record.songId;
+  const backgroundUrl = input.cardBackgroundUrls?.[`${jacketId}:${record.levelIndex}`];
+  const attained = achievement(record);
+  const constant = record.difficultyConstant?.toFixed(1) ?? record.level ?? '—';
+  const detail = record.levelIndex === 5 ? escape(record.worldsEndLabel ?? '—') : `${escape(constant)}<tspan dx="13" font-size="27">→</tspan><tspan dx="13">${escape(formatChunithmRating(record.rating))}</tspan>`;
+  return `<article class="score-card"><svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 756 320">
+    <defs>
+      <clipPath id="${id}-clip"><rect width="756" height="320" rx="10"/></clipPath>
+      ${gradient(id + '-score', scoreColors(record.rank))}
+    </defs>
+    ${image(backgroundUrl, 0, 0, 756, 320)}
+    <g clip-path="url(#${id}-clip)">
       <text class="song-title" x="730" y="74" font-size="46" text-anchor="end" fill="white" data-title="${escape(record.title)}">${escape(record.title)}</text>
       ${text(formatChunithmScore(record.score), 732, 192, 96, 440, `class="score" letter-spacing="-2.8" fill="url(#${id}-score)" text-anchor="end"`)}
       <text x="414" y="241" font-size="29" fill="white" text-anchor="end" class="rank">#${index}</text>

@@ -202,6 +202,7 @@ describe('best image html', () => {
     ['app', 'background.jpg'], ['game', 'background'],
     ['app', 'data:image/png;base64,eA=='],
   ] as const)('waits for %s CSS images and image decoding before reporting readiness', async (ratingStyle, backgroundUrl) => {
+    const cardUrl = ratingStyle === 'app' ? 'card.svg' : 'cover.png';
     let finishFont!: () => void, finishCover!: () => void, finishBackground!: () => void;
     const font = new Promise<void>(resolve => { finishFont = resolve; });
     const cover = new Promise<void>(resolve => { finishCover = resolve; });
@@ -213,6 +214,7 @@ describe('best image html', () => {
       type: 'best50', width: 1080, rating: 14685, ratingStyle,
       scoreSections: [{ id: 'b35', title: 'Best35', records: [score] }],
       coverUrls: { [score.songId]: 'cover.png' }, collectionUrls: { frame: backgroundUrl },
+      cardBackgroundUrls: { [`${score.songId}:${score.difficulty}`]: cardUrl },
       fontUrl: '', ratingFrameUrl: '', player: { displayName: '玩家' },
       hiddenStyles: ['icon', 'plate', 'trophy'],
     }), {
@@ -223,7 +225,7 @@ describe('best image html', () => {
         Object.defineProperty(window.HTMLImageElement.prototype, 'complete', { get: () => true });
         Object.defineProperty(window.HTMLImageElement.prototype, 'naturalWidth', { get: () => 1 });
         Object.defineProperty(window.HTMLImageElement.prototype, 'decode', { value(this: HTMLImageElement) {
-          return this.src.endsWith('cover.png') ? cover : this.src.endsWith(backgroundUrl) ? background : Promise.resolve();
+          return this.src.endsWith(cardUrl) ? cover : this.src.endsWith(backgroundUrl) ? background : Promise.resolve();
         } });
         const getStyle = window.getComputedStyle.bind(window);
         window.getComputedStyle = node => getStyle(node);
@@ -240,6 +242,7 @@ describe('best image html', () => {
       await vi.advanceTimersByTimeAsync(15_000);
       expect(messages.some(message => message.type === 'best-image-ready')).toBe(false);
       expect(requested.some(image => image.src === new URL(backgroundUrl, 'https://example.test/').href)).toBe(true);
+      if (ratingStyle === 'app') expect(requested.some(image => image.src === new URL(cardUrl, 'https://example.test/').href)).toBe(true);
       finishFont(); finishCover();
       await vi.runAllTimersAsync();
       expect(messages.some(message => message.type === 'best-image-ready')).toBe(false);

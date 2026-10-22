@@ -1,9 +1,19 @@
 import { File } from 'expo-file-system';
 import { copyBestImageAsset, loadRemoteImageFile, type BestImageAssetSession } from '@/features/best-image/load-best-image-session';
 import { useBestImageAssets } from '@/features/best-image/use-best-image-assets';
+import type { BestImageTemplateAsset } from '@/features/best-image/use-best-image-screen-controller';
 import { prepareChunithmUi } from './chunithm-ui-cache';
+import { buildChunithmBestImageCardBackground } from './build-chunithm-best-image-html';
+import type { ChunithmLevelIndex } from '@/domain/chunithm';
 
-export function useChunithmBestImageAssets(session: BestImageAssetSession, character: string | null, plate: string | null, trophy: string | null) {
+const CARD_DIFFICULTIES = ['basic', 'advanced', 'expert', 'master', 'ultima', 'worldsend'] as const;
+
+export function useChunithmBestImageAssets(
+  session: BestImageAssetSession,
+  character: string | null,
+  plate: string | null,
+  trophy: string | null,
+) {
   const drawing = useBestImageAssets({
     session,
     key: 'ui',
@@ -29,4 +39,22 @@ export function useChunithmBestImageAssets(session: BestImageAssetSession, chara
     error: drawing.error ?? game.error,
     retry: () => { drawing.retry(); game.retry(); },
   };
+}
+
+export function buildChunithmCardBackgroundAssets(
+  session: BestImageAssetSession,
+  records: readonly { jacketId: string; levelIndex: ChunithmLevelIndex }[],
+  coverUrls: Readonly<Record<string, string | null>>,
+): BestImageTemplateAsset[] {
+  return records.map(record => {
+    const jacket = coverUrls[record.jacketId];
+    const difficulty = CARD_DIFFICULTIES[record.levelIndex];
+    const card = new File(session.directory, `card/${difficulty}.svg`).uri;
+    return {
+      id: `${record.jacketId}:${record.levelIndex}`,
+      key: difficulty,
+      sources: jacket ? [card, jacket] : [card],
+      build: dataUrls => buildChunithmBestImageCardBackground(dataUrls[1] ?? null, dataUrls[0]!),
+    };
+  });
 }
