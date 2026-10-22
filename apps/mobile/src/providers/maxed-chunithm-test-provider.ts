@@ -167,7 +167,7 @@ export function buildMaxedChunithmSnapshot(
     rating,
     rating_possession: 'rainbow',
     friend_code: CHUNITHM_TEST_ACCOUNT_ID,
-    class_emblem: { base: 0, medal: 0 },
+    class_emblem: { base: 6, medal: 6 },
     reborn_count: 0,
     over_power: overPower,
     over_power_progress: 100,

@@ -104,6 +104,7 @@ describe('中二节奏全满示例账号', () => {
       level: 99,
       rating: 15,
       rating_possession: 'rainbow',
+      class_emblem: { base: 6, medal: 6 },
       over_power_progress: 100,
     });
     expect(snapshot.player.over_power).toBe(5015);
