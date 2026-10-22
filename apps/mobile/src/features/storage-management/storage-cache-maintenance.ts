@@ -2,12 +2,14 @@ import { CHUNITHM_UI_CACHE_VERSION } from '@/features/chunithm-best-image/chunit
 import { MAIMAI_FONT_CACHE_VERSION } from '@/features/best-image/maimai-font-cache';
 import { MAIMAI_UI_CACHE_VERSION } from '@/features/best-image/maimai-ui-cache';
 import { PHIGROS_FONT_CACHE_VERSION } from '@/features/phigros-best-image/phigros-font-cache';
+import { PHIGROS_UI_CACHE_VERSION } from '@/features/phigros-best-image/phigros-ui-cache';
 import { isTemporaryCacheEntry } from './cache-policy';
 import {
   APP_CACHE_ROOT,
   MAIMAI_ASSETS_ROOT,
   CHUNITHM_ASSETS_ROOT,
   PHIGROS_FONT_ROOT,
+  PHIGROS_UI_ROOT,
   BEST_IMAGE_STAGE_ROOT,
   clearDirectoryContentsStrict,
   pruneVersionedAssetRoot,
@@ -35,6 +37,7 @@ export async function cleanupOrphanedTemporaryStorage(): Promise<void> {
   await pruneVersionedAssetRoot(CHUNITHM_ASSETS_ROOT(), [CHUNITHM_UI_CACHE_VERSION], sessionStartedAt);
   await pruneVersionedAssetRoot(MAIMAI_ASSETS_ROOT(), [MAIMAI_UI_CACHE_VERSION, MAIMAI_FONT_CACHE_VERSION], sessionStartedAt);
   await pruneVersionedAssetRoot(PHIGROS_FONT_ROOT(), [PHIGROS_FONT_CACHE_VERSION], sessionStartedAt);
+  await pruneVersionedAssetRoot(PHIGROS_UI_ROOT(), [PHIGROS_UI_CACHE_VERSION], sessionStartedAt);
 }
 
 export function runStorageCacheMaintenance(): Promise<void> {

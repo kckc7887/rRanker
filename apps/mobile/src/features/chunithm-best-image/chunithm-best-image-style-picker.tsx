@@ -1,151 +1,71 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
+import { StyleSheet, Text, View } from 'react-native';
 import { buildChunithmCharacterUrl, buildChunithmPlateUrl } from '@/domain/chunithm-personal';
 import { useAppTheme } from '@/theme/app-theme';
-import { BestImagePickerShell, compactBestImagePickerStyles } from '@/features/best-image/best-image-picker-shell';
+import { BestImageResourcePicker } from '@/features/best-image/best-image-picker-shell';
+import { TrophyPreview } from '@/features/best-image/best-image-collection-picker';
+import { ChunithmCollectionImage } from '@/components/chunithm/ChunithmCollectionImage';
 import { RemoteNativeImage as Image } from '@/components/RemoteNativeImage';
-import type { ChunithmBestImageCollectionItem } from './load-chunithm-best-image-collections';
-import type {
-  ChunithmBestImageStyleChoice,
-} from './chunithm-best-image-preferences';
+import type { ChunithmCollection } from '@/domain/chunithm-collections';
+import type { ChunithmBestImageStyleChoice } from './chunithm-best-image-preferences';
 
-export function ChunithmBestImageStylePicker({
-  kind = 'character',
-  visible,
-  items,
-  selection,
-  onClose,
-  onSelect,
-}: {
-  kind?: 'character' | 'plate';
+export function ChunithmBestImageStylePicker({ kind = 'character', visible, items, selection, onClose, onSelect, isLoading, isError, onRetry }: {
+  kind?: 'character' | 'plate' | 'trophy';
   visible: boolean;
-  items: readonly ChunithmBestImageCollectionItem[];
+  items: readonly ChunithmCollection[];
   selection: ChunithmBestImageStyleChoice | null;
   onClose: () => void;
   onSelect: (choice: ChunithmBestImageStyleChoice) => void;
+  isLoading?: boolean;
+  isError?: boolean;
+  onRetry?: () => void;
 }) {
   const theme = useAppTheme();
-  const [query, setQuery] = useState('');
-  const label = kind === 'plate' ? '名牌' : '角色';
+  const label = kind === 'plate' ? '名牌' : kind === 'trophy' ? '称号' : '角色';
   const defaultMode = kind === 'plate' ? 'default' : 'off';
+  const choice = (mode: 'item' | 'random', item: ChunithmCollection): ChunithmBestImageStyleChoice => ({ mode, id: item.id, name: item.name, color: item.color, level: item.level });
+  return <BestImageResourcePicker
+    visible={visible}
+    label={label}
+    items={items}
+    getKey={item => String(item.id)}
+    getName={item => item.name || `#${item.id}`}
+    getMeta={item => `#${item.id}`}
+    itemLabel={item => `选择${item.name}`}
+    renderPreview={item => {
+      if (kind === 'trophy') return <ChunithmBestImageTrophyPreview trophy={item} />;
+      const uri = kind === 'plate' ? buildChunithmPlateUrl(item.id) : buildChunithmCharacterUrl(item.id);
+      return uri ? <Image cacheProfile="native" source={{ uri }} style={kind === 'plate' ? styles.plate : styles.character} resizeMode="contain" />
+        : <Text style={{ color: theme.textMuted }}>无预览</Text>;
+    }}
+    isSelected={item => selection?.mode === 'item' && selection.id === item.id}
+    onSelect={item => onSelect(choice('item', item))}
+    onClose={onClose}
+    currentChoice={{ label: `使用玩家当前${label}`, selected: selection?.mode === 'current', onPress: () => onSelect({ mode: 'current' }) }}
+    quickChoices={[
+      { label: '随机', actionLabel: `随机${label}`, icon: '↻', selected: selection?.mode === 'random', disabled: !items.length, onPress: () => {
+        const item = items[Math.floor(Math.random() * items.length)];
+        if (item) onSelect(choice('random', item));
+      } },
+      { label: kind === 'plate' ? '默认板' : '关闭', actionLabel: kind === 'plate' ? '使用默认板' : `关闭${label}`, icon: '×', selected: selection?.mode === defaultMode, onPress: () => onSelect({ mode: defaultMode }) },
+    ]}
+    isLoading={isLoading}
+    isError={isError}
+    onRetry={onRetry}
+  />;
+}
 
-  useEffect(() => {
-    if (visible) setQuery('');
-  }, [visible]);
-
-  const filteredItems = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase();
-    if (!normalized) return items;
-    return items.filter((item) => (
-      item.name.toLocaleLowerCase().includes(normalized)
-      || String(item.id).includes(normalized)
-    ));
-  }, [items, query]);
-
-  const selectRandom = () => {
-    const item = items[Math.floor(Math.random() * items.length)];
-    if (item) onSelect({ mode: 'random', id: item.id, name: item.name });
-  };
-
-  return (
-    <BestImagePickerShell
-      visible={visible}
-      onClose={onClose}
-      title={['选择', label]}
-      countText={[filteredItems.length, ' 项']}
-      closeLabel="关闭素材选择"
-      searchLabel={`搜索${label}`}
-      searchPlaceholder={`搜索${label}`}
-      query={query}
-      onQueryChange={setQuery}
-      aboveList={(
-        <View style={styles.modeRow}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`使用当前${label}`}
-            onPress={() => onSelect({ mode: 'current' })}
-            style={[styles.modeChip, { borderColor: theme.border, backgroundColor: theme.surface }, selection?.mode === 'current' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}
-          >
-            <Text style={[styles.modeText, { color: theme.textSecondary }, selection?.mode === 'current' && { color: theme.accent }]}>玩家当前</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`随机${label}`}
-            onPress={selectRandom}
-            style={[styles.modeChip, { borderColor: theme.border, backgroundColor: theme.surface }, selection?.mode === 'random' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}
-          >
-            <Text style={[styles.modeText, { color: theme.textSecondary }, selection?.mode === 'random' && { color: theme.accent }]}>随机</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel={`关闭${label}`}
-            onPress={() => onSelect({ mode: defaultMode })}
-            style={[styles.modeChip, { borderColor: theme.border, backgroundColor: theme.surface }, selection?.mode === defaultMode && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}
-          >
-            <Text style={[styles.modeText, { color: theme.textSecondary }, selection?.mode === defaultMode && { color: theme.accent }]}>{kind === 'plate' ? '默认板' : '关闭'}</Text>
-          </Pressable>
-        </View>
-      )}
-      data={filteredItems}
-      keyExtractor={(item) => `${item.kind}-${item.id}`}
-      flatListProps={{
-        renderItem: ({ item }) => {
-          const selected = (selection?.mode === 'item' || selection?.mode === 'random')
-            && selection.id === item.id;
-          const uri = kind === 'plate' ? buildChunithmPlateUrl(item.id) : buildChunithmCharacterUrl(item.id);
-          return (
-            <Pressable
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              accessibilityLabel={`选择${item.name}`}
-              onPress={() => onSelect({ mode: 'item', id: item.id, name: item.name })}
-              style={[styles.item, { backgroundColor: theme.surface, borderColor: theme.border }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}
-            >
-              <View style={[styles.preview, kind === 'plate' && { width: 116, height: 46, borderRadius: 0 }]}>
-                {uri ? (
-                  <Image cacheProfile="native" source={{ uri }} style={[styles.previewImage, kind === 'plate' && { width: 116, height: 46 }]} resizeMode="contain" />
-                ) : (
-                  <Text style={[styles.noPreview, { color: theme.textMuted }]}>无预览</Text>
-                )}
-              </View>
-              <View style={styles.copy}>
-                <Text numberOfLines={2} style={[styles.itemName, { color: theme.text }]}>{item.name}</Text>
-                <Text style={[styles.itemId, { color: theme.textMuted }]}>#{item.id}</Text>
-              </View>
-            </Pressable>
-          );
-        },
-      }}
-      styles={{
-        root: styles.root,
-        grabber: styles.grabber,
-        header: styles.header,
-        title: styles.title,
-        count: styles.count,
-        done: styles.close,
-        search: styles.search,
-        listContent: styles.list,
-      }}
-    />
-  );
+export function ChunithmBestImageTrophyPreview({ trophy }: { trophy?: { id: number; name?: string; color?: string | null } | null }) {
+  if (trophy?.color === 'image') return <ChunithmCollectionImage kind="trophy-image" collectionId={trophy.id} height={15} borderRadius={0} />;
+  if (trophy?.color === 'platina' || trophy?.color === 'platinum' || trophy?.color === 'ultima') {
+    const ultima = trophy.color === 'ultima';
+    return <View style={[styles.trophy, { backgroundColor: ultima ? '#512D67' : '#FFFDDD', borderColor: ultima ? '#A071B9' : '#DEC27B' }]}><Text numberOfLines={1} style={[styles.trophyText, { color: ultima ? '#FFF' : '#29333A' }]}>{trophy.name || `#${trophy.id}`}</Text></View>;
+  }
+  return <TrophyPreview item={trophy ? { ...trophy, name: trophy.name ?? `#${trophy.id}`, kind: 'trophy', requirements: [] } : undefined} fallback="未设置" />;
 }
 
 const styles = StyleSheet.create({
-  ...compactBestImagePickerStyles,
-  modeRow: { flexDirection: 'row', gap: 8, paddingHorizontal: 16, paddingVertical: 12 },
-  modeChip: { minHeight: 34, paddingHorizontal: 12, borderWidth: 1, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  modeText: { fontSize: 12, fontWeight: '700' },
-  list: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 },
-  item: { flexDirection: 'row', alignItems: 'center', gap: 12, minHeight: 72, paddingHorizontal: 12, paddingVertical: 10, borderWidth: 1, borderRadius: 14 },
-  preview: { width: 54, height: 54, borderRadius: 10, overflow: 'hidden', alignItems: 'center', justifyContent: 'center' },
-  previewImage: { width: '100%', height: '100%' },
-  noPreview: { fontSize: 11, fontWeight: '600' },
-  copy: { flex: 1, minWidth: 0 },
-  itemName: { fontSize: 14, fontWeight: '700' },
-  itemId: { marginTop: 3, fontSize: 12 },
+  plate: { width: 116, height: 46 },
+  character: { width: 48, height: 48 },
+  trophy: { maxWidth: 128, minWidth: 96, height: 28, borderRadius: 999, paddingHorizontal: 10, borderWidth: 1, alignItems: 'center', justifyContent: 'center' },
+  trophyText: { fontSize: 12, lineHeight: 16, fontWeight: '400' },
 });

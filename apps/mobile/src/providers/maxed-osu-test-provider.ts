@@ -21,7 +21,7 @@ export function maxedOsuPlayerSnapshot(displayName = '示例账号'): OsuSnapsho
       },
       bestScores: [],
     },
-    source: generatedSource('示例查分器'),
+    source: generatedSource(),
   };
 }
 

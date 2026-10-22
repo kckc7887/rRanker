@@ -1,7 +1,6 @@
 import { useChunithmBestImageAssets } from '@/features/chunithm-best-image/use-chunithm-best-image-assets';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Image,
   Pressable,
   StyleSheet,
@@ -29,9 +28,9 @@ import {
   type ChunithmBestImageStyleChoice,
 } from '@/features/chunithm-best-image/chunithm-best-image-preferences';
 import { ChunithmBestImageBackgroundPicker } from '@/features/chunithm-best-image/chunithm-best-image-background-picker';
-import { ChunithmBestImageStylePicker } from '@/features/chunithm-best-image/chunithm-best-image-style-picker';
-import type { ChunithmBestImageCollectionItem } from '@/features/chunithm-best-image/load-chunithm-best-image-collections';
-import { loadChunithmBestImageCollections } from '@/features/chunithm-best-image/load-chunithm-best-image-collections';
+import { ChunithmBestImageStylePicker, ChunithmBestImageTrophyPreview } from '@/features/chunithm-best-image/chunithm-best-image-style-picker';
+import { useChunithmCollections } from '@/hooks/use-chunithm-collections';
+import { useBestImageAssets } from '@/features/best-image/use-best-image-assets';
 import {
   loadChunithmBestImageJackets,
   resolveChunithmBestImageJacketId,
@@ -42,11 +41,10 @@ import {
   compareChunithmScores,
 } from '@/domain/chunithm-score-presentation';
 import { CHUNITHM_DIFFICULTY_LABELS } from '@/domain/chunithm';
-import { buildChunithmCharacterUrl, buildChunithmPlateUrl, buildChunithmTrophyUrl } from '@/domain/chunithm-personal';
+import { buildChunithmCharacterUrl, buildChunithmPlateUrl, buildChunithmTrophyUrl, type ChunithmPlayer } from '@/domain/chunithm-personal';
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
-import { useAppLifecycle } from '@/state/app-lifecycle';
 import { bestImageExportFilename } from '@/features/best-image/best-image-export';
 import {
   BestImageChoiceChip,
@@ -70,23 +68,17 @@ const chunithmPreferencesAdapter = {
 
 export function ChunithmBestImageScreen() {
   const theme = useAppTheme();
-  const lifecycle = useAppLifecycle();
   const gameData = useGameData();
   const catalogQuery = useChunithmCatalog();
   const payload = gameData.data?.payload.kind === 'chunithm' ? gameData.data.payload : null;
   const catalog = catalogQuery.data;
 
   const [customFilters, setCustomFilters] = useState<CustomChunithmBestImageFilters>(DEFAULT_CUSTOM_CHUNITHM_BEST_IMAGE_FILTERS);
-  const [characters, setCharacters] = useState<ChunithmBestImageCollectionItem[] | null>(null);
-  const [coverUrls, setCoverUrls] = useState<Record<string, string | null> | null>(null);
-  const [plates, setPlates] = useState<ChunithmBestImageCollectionItem[] | null>(null);
-  const [collectionError, setCollectionError] = useState<string | null>(null);
-  const [collectionAttempt, setCollectionAttempt] = useState(0);
-  const [assetProgress, setAssetProgress] = useState({ done: 0, total: 0 });
-  const jacketAssetKeyRef = useRef<string | null>(null);
-  const randomizedRef = useRef(new Set<string>());
+  const characters = useChunithmCollections('character');
+  const plates = useChunithmCollections('plate');
+  const trophies = useChunithmCollections('trophy');
 
-  const controller = useBestImageScreenController<ChunithmBestImageType, typeof DEFAULT_CHUNITHM_BEST_IMAGE_STYLES, 'character' | 'plate' | 'background'>({
+  const controller = useBestImageScreenController<ChunithmBestImageType, typeof DEFAULT_CHUNITHM_BEST_IMAGE_STYLES, 'character' | 'plate' | 'trophy' | 'background'>({
     accountId: gameData.activeAccountId,
     game: 'chunithm',
     defaultType: 'best50',
@@ -95,6 +87,7 @@ export function ChunithmBestImageScreen() {
     defaultPreferences: DEFAULT_CHUNITHM_BEST_IMAGE_STYLES,
     preferences: chunithmPreferencesAdapter,
     defaultExportHeight: (width) => Math.ceil(width * 0.75),
+    previewRenderingGuard: true,
     messageScale: 1,
   });
   const {
@@ -112,6 +105,7 @@ export function ChunithmBestImageScreen() {
     setPageHeights,
     pageIndex,
     setPageIndex,
+    previewStates,
     setPreviewStates,
     exportIndex,
     exportHeight,
@@ -123,41 +117,6 @@ export function ChunithmBestImageScreen() {
     handlePreviewMessage,
   } = controller;
   const { assetSession } = controller;
-
-  useEffect(() => {
-    randomizedRef.current.clear();
-  }, [gameData.activeAccountId]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    setCollectionError(null);
-    void Promise.all([loadChunithmBestImageCollections('character', controller.signal), loadChunithmBestImageCollections('plate', controller.signal)]).then(([characters, plates]) => {
-      if (controller.signal.aborted) return;
-      setCharacters(characters); setPlates(plates);
-    }).catch(() => {
-      if (!controller.signal.aborted) setCollectionError('装扮列表加载失败');
-    });
-    return () => controller.abort();
-  }, [collectionAttempt]);
-
-  useEffect(() => {
-    if (!controller.prefsReady || !characters) return;
-    const accountKey = gameData.activeAccountId;
-    const choice = stylePrefs.character;
-    const randomKey = `${accountKey}:character`;
-    const needsUpdate = choice.mode === 'random'
-      && typeof choice.id !== 'number'
-      && !randomizedRef.current.has(randomKey);
-    if (!needsUpdate) return;
-    setStylePrefs((current) => {
-      if (current.character.mode !== 'random' || typeof current.character.id === 'number') return current;
-      randomizedRef.current.add(randomKey);
-      const item = characters[Math.floor(Math.random() * characters.length)];
-      return item
-        ? { ...current, character: { mode: 'random', id: item.id, name: item.name } }
-        : current;
-    });
-  }, [characters, controller.prefsReady, gameData.activeAccountId, setStylePrefs, stylePrefs.character]);
 
   const allCards = useMemo(
     () => buildChunithmScoreCards(payload?.scores ?? [], catalog).sort(compareChunithmScores),
@@ -255,29 +214,12 @@ export function ChunithmBestImageScreen() {
     ])],
     [backgroundJacketId, jacketIdsByKey],
   );
-  const jacketKey = JSON.stringify([assetSession.directory.uri, jacketIds]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const signal = controller.signal;
-    let cancelled = false;
-    if (!payload || !lifecycle.foregroundReady) return;
-    if (jacketAssetKeyRef.current === jacketKey) return;
-    jacketAssetKeyRef.current = null;
-    setCoverUrls(null);
-    setAssetProgress({ done: 0, total: jacketIds.length });
-    void loadChunithmBestImageJackets(assetSession, jacketIds, (done, total) => {
-      if (!cancelled) setAssetProgress({ done, total });
-    }, signal).then((loaded) => {
-      if (!cancelled) {
-        jacketAssetKeyRef.current = jacketKey;
-        setCoverUrls(loaded);
-      }
-    }).catch(() => undefined);
-    return () => {
-      cancelled = true; controller.abort();
-    };
-  }, [assetSession, jacketKey, jacketIds, lifecycle.foregroundGeneration, lifecycle.foregroundReady, payload]);
+  const jackets = useBestImageAssets({
+    session: assetSession,
+    key: payload && controller.prefsReady ? JSON.stringify(jacketIds) : null,
+    prepare: signal => loadChunithmBestImageJackets(assetSession, jacketIds, undefined, signal),
+  });
+  const coverUrls = jackets.data;
 
   const characterId = useMemo(
     () => resolveChunithmBestImageStyleId(stylePrefs.character, payload?.player?.character?.id),
@@ -286,11 +228,17 @@ export function ChunithmBestImageScreen() {
   const hideCharacter = stylePrefs.character.mode === 'off'
     || ((stylePrefs.character.mode === 'item' || stylePrefs.character.mode === 'random') && characterId === null);
   const plateId = Math.max(1, resolveChunithmBestImageStyleId(stylePrefs.plate, payload?.player?.name_plate?.id) ?? 1);
-  const { assets, error: assetError } = useChunithmBestImageAssets(
+  const selectedTrophy = useMemo<ChunithmPlayer['trophy']>(() => {
+    const choice = stylePrefs.trophy;
+    if (choice.mode === 'current') return payload?.player?.trophy;
+    if (choice.mode === 'off' || choice.id === undefined) return null;
+    return { id: choice.id, name: choice.name, color: choice.color, level: choice.level };
+  }, [payload?.player?.trophy, stylePrefs.trophy]);
+  const { assets, drawingReady, gameReady, error: assetError, retry: retryAssets } = useChunithmBestImageAssets(
     assetSession,
     hideCharacter ? null : buildChunithmCharacterUrl(characterId ?? 0),
     buildChunithmPlateUrl(plateId),
-    payload?.player?.trophy?.color === 'image' ? buildChunithmTrophyUrl(payload.player.trophy.id) : null,
+    selectedTrophy?.color === 'image' ? buildChunithmTrophyUrl(selectedTrophy.id) : null,
   );
   const characterDataUri = assets?.character ?? null;
 
@@ -299,11 +247,11 @@ export function ChunithmBestImageScreen() {
     : null;
 
   const htmlPages = useMemo(() => {
-    if (!payload || !coverUrls || !assets || jacketAssetKeyRef.current !== jacketKey) return null;
+    if (!payload || !controller.prefsReady || !coverUrls || !assets) return null;
     return pages.map((page) => buildChunithmBestImageHtml({
       type,
       width,
-      player: payload.player,
+      player: payload.player ? { ...payload.player, trophy: selectedTrophy } : null,
       ratingDisplay: payload.playerScore.display,
       page,
       coverUrls,
@@ -313,11 +261,14 @@ export function ChunithmBestImageScreen() {
       trophyDataUri: assets.trophy,
       backgroundDataUri,
       hideCharacter,
+      hideTrophy: stylePrefs.trophy.mode === 'off',
       dataSource: payload.source.label,
     }));
   }, [
     assets,
-    jacketKey,
+    controller.prefsReady,
+    selectedTrophy,
+    stylePrefs.trophy.mode,
     backgroundDataUri,
     characterDataUri,
     coverUrls,
@@ -338,10 +289,7 @@ export function ChunithmBestImageScreen() {
   const outputHeight = pageHeights[currentPage.id] ?? Math.ceil(width * 0.75);
   const webViewSources = sources;
 
-  const chooseStyle = (kind: 'character' | 'plate', choice: ChunithmBestImageStyleChoice) => {
-    if (choice.mode === 'random') {
-      randomizedRef.current.add(`${gameData.activeAccountId}:${kind}`);
-    }
+  const chooseStyle = (kind: 'character' | 'plate' | 'trophy', choice: ChunithmBestImageStyleChoice) => {
     setStylePrefs((current) => ({ ...current, [kind]: choice }));
     setPicker(null);
   };
@@ -513,7 +461,14 @@ export function ChunithmBestImageScreen() {
           </View>
           <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
         </Pressable>
-        {collectionError ? <Pressable onPress={() => setCollectionAttempt(value => value + 1)}><Text style={{ color: theme.danger }}>{collectionError} · 重试</Text></Pressable> : null}
+        <Pressable accessibilityRole="button" accessibilityLabel="选择称号" onPress={() => setPicker('trophy')} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
+          <View style={styles.stylePreview}>{stylePrefs.trophy.mode === 'off' ? <Text style={[styles.noAsset, { color: theme.textMuted }]}>已关闭</Text> : <ChunithmBestImageTrophyPreview trophy={selectedTrophy ? { ...selectedTrophy, name: selectedTrophy.name ?? '' } : null} />}</View>
+          <View style={styles.styleCopy}>
+            <Text style={[styles.styleName, { color: theme.text }]}>称号</Text>
+            <Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{stylePrefs.trophy.mode === 'current' ? '玩家当前称号' : stylePrefs.trophy.mode === 'off' ? '已关闭' : `${stylePrefs.trophy.mode === 'random' ? '随机 · ' : ''}${selectedTrophy?.name ?? '未设置'}`}</Text>
+          </View>
+          <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
+        </Pressable>
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="选择歌曲背景"
@@ -544,22 +499,14 @@ export function ChunithmBestImageScreen() {
         activeWidth: width,
         onChooseWidth: setWidth,
         dimensionMeta: `${width} × ${outputHeight} px · 每页最多 ${type === 'custom' ? `${CUSTOM_MAX_ROWS_PER_PAGE} 行` : `${50 + stylePrefs.selectionCount} 张`} · 第 ${pageIndex + 1}/${pages.length} 页`,
-        loadingPreview: (
-        <View style={styles.loadingContent}>
-          <ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" />
-          <Text style={[styles.loadingText, { color: (sourceError || assetError) ? theme.danger : theme.textMuted }]}>
-            {sourceError ?? assetError ?? (assetProgress.total > 0
-              ? `正在准备歌曲封面 ${assetProgress.done}/${assetProgress.total}`
-              : '正在准备预览')}
-          </Text>
-        </View>
-      ),
-        fontStatus: null,
-        fontStatusAboveDots: false,
+        preparation: { drawingReady, gameReady: gameReady && jackets.ready && controller.prefsReady, error: sourceError ?? assetError ?? jackets.error, retry: () => { retryAssets(); jackets.retry(); } },
         pickers: <>
         <ChunithmBestImageStylePicker
           visible={picker === 'character'}
-          items={characters ?? []}
+          items={characters.data?.items ?? []}
+          isLoading={characters.isPending}
+          isError={characters.isError}
+          onRetry={() => { void characters.refetch(); }}
           selection={stylePrefs.character}
           onClose={() => setPicker(null)}
           onSelect={(choice) => chooseStyle('character', choice)}
@@ -567,10 +514,24 @@ export function ChunithmBestImageScreen() {
         <ChunithmBestImageStylePicker
           kind="plate"
           visible={picker === 'plate'}
-          items={plates ?? []}
+          items={plates.data?.items ?? []}
+          isLoading={plates.isPending}
+          isError={plates.isError}
+          onRetry={() => { void plates.refetch(); }}
           selection={stylePrefs.plate}
           onClose={() => setPicker(null)}
           onSelect={(choice) => chooseStyle('plate', choice)}
+        />
+        <ChunithmBestImageStylePicker
+          kind="trophy"
+          visible={picker === 'trophy'}
+          items={trophies.data?.items ?? []}
+          isLoading={trophies.isPending}
+          isError={trophies.isError}
+          onRetry={() => { void trophies.refetch(); }}
+          selection={stylePrefs.trophy}
+          onClose={() => setPicker(null)}
+          onSelect={(choice) => chooseStyle('trophy', choice)}
         />
         <ChunithmBestImageBackgroundPicker
           visible={picker === 'background'}
@@ -588,6 +549,7 @@ export function ChunithmBestImageScreen() {
       preview={{
         previewTestIdPrefix: "chunithm-best-image",
         sources: sources,
+        previewStates,
         pages: pages,
         pageIndex: pageIndex,
         onPageIndexChange: setPageIndex,

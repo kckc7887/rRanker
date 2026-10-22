@@ -192,6 +192,54 @@ describe('best image html', () => {
     }
   });
 
+  it('waits for used CSS images and image decoding before reporting readiness', async () => {
+    let finishFont!: () => void, finishCover!: () => void, finishBackground!: () => void;
+    const font = new Promise<void>(resolve => { finishFont = resolve; });
+    const cover = new Promise<void>(resolve => { finishCover = resolve; });
+    const background = new Promise<void>(resolve => { finishBackground = resolve; });
+    const requested: HTMLImageElement[] = [];
+    const messages: { type: string }[] = [];
+    vi.useFakeTimers();
+    const dom = new JSDOM(buildBestImageHtml({
+      type: 'best50', width: 1080, rating: 14685, ratingStyle: 'app',
+      scoreSections: [{ id: 'b35', title: 'Best35', records: [score] }],
+      coverUrls: { [score.songId]: 'cover.png' }, collectionUrls: { frame: 'background.svg' },
+      fontUrl: '', ratingFrameUrl: '', player: { displayName: '玩家' },
+      hiddenStyles: ['icon', 'plate', 'trophy'],
+    }), {
+      url: 'https://example.test/', runScripts: 'dangerously', pretendToBeVisual: true,
+      beforeParse(window) {
+        Object.defineProperty(window.document, 'fonts', { value: { ready: font } });
+        Object.assign(window, { ReactNativeWebView: { postMessage: (value: string) => messages.push(JSON.parse(value)) } });
+        Object.defineProperty(window.HTMLImageElement.prototype, 'complete', { get: () => true });
+        Object.defineProperty(window.HTMLImageElement.prototype, 'decode', { value(this: HTMLImageElement) {
+          return this.src.endsWith('cover.png') ? cover : this.src.endsWith('background.svg') ? background : Promise.resolve();
+        } });
+        Object.defineProperty(window, 'Image', { value: function () {
+          const image = window.document.createElement('img');
+          requested.push(image as unknown as HTMLImageElement);
+          return image;
+        } });
+        Object.defineProperty(window.HTMLCanvasElement.prototype, 'getContext', { value: () => ({ measureText: () => ({ width: 40 }) }) });
+        Object.defineProperty(window.SVGElement.prototype, 'getBBox', { value: () => ({ x: 0, y: -17, width: 40, height: 20 }) });
+      },
+    });
+    try {
+      await vi.advanceTimersByTimeAsync(15_000);
+      expect(messages.some(message => message.type === 'best-image-ready')).toBe(false);
+      expect(requested.some(image => image.src === 'https://example.test/background.svg')).toBe(true);
+      expect(requested.some(image => image.src === 'https://example.test/cover.png')).toBe(true);
+      finishFont(); finishCover();
+      await vi.runAllTimersAsync();
+      expect(messages.some(message => message.type === 'best-image-ready')).toBe(false);
+      finishBackground();
+      await vi.runAllTimersAsync();
+      expect(messages.some(message => message.type === 'best-image-ready')).toBe(true);
+    } finally {
+      dom.window.close(); vi.useRealTimers();
+    }
+  });
+
   it('renders escaped player data, the ui asset atlas and verified LXNS asset paths', () => {
     const html = buildBestImageHtml({
       type: 'best50', width: 1080, rating: 15001,

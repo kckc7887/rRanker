@@ -102,7 +102,7 @@ const GAME_OPTION_DEFINITIONS = [
     id: 'example', title: '示例游戏', icon: appIcon, available: true, pendingDetail: '',
     accountScoreTheme: EXAMPLE_RATING_THEME,
     providers: [{ id: 'example-test', bindingKind: 'fixture', title: '示例查分器',
-      detail: '40 首示例歌曲与固定成绩', icon: exampleAccountIcon, available: true }],
+      detail: '示例账号', icon: exampleAccountIcon, available: true }],
   },
   {
     id: 'maimai',
@@ -140,7 +140,7 @@ const GAME_OPTION_DEFINITIONS = [
         id: 'maimai-test',
         bindingKind: 'fixture',
         title: '示例查分器',
-        detail: '全曲全谱面满成绩 · 可删除后重新添加',
+        detail: '示例账号',
         icon: exampleAccountIcon,
         available: true,
       },
@@ -166,7 +166,7 @@ const GAME_OPTION_DEFINITIONS = [
         id: 'chunithm-test',
         bindingKind: 'fixture',
         title: '示例查分器',
-        detail: '全曲全谱面满成绩 · 可删除后重新添加',
+        detail: '示例账号',
         icon: exampleAccountIcon,
         available: true,
       },
@@ -188,7 +188,7 @@ const GAME_OPTION_DEFINITIONS = [
       available: true,
     }, {
       id: 'adofai-test', bindingKind: 'fixture', title: '示例查分器',
-      detail: '普通难度满成绩 · 可删除后重新添加', icon: exampleAccountIcon, available: true,
+      detail: '示例账号', icon: exampleAccountIcon, available: true,
     }],
   },
   {
@@ -211,7 +211,7 @@ const GAME_OPTION_DEFINITIONS = [
         id: 'musedash-test',
         bindingKind: 'fixture',
         title: '示例查分器',
-        detail: '全曲全谱面满成绩 · 可删除后重新添加',
+        detail: '示例账号',
         icon: exampleAccountIcon,
         available: true,
       },
@@ -233,7 +233,7 @@ const GAME_OPTION_DEFINITIONS = [
       available: true,
     }, {
       id: 'phira-test', bindingKind: 'fixture', title: '示例查分器',
-      detail: '满成绩 · 可删除后重新添加', icon: exampleAccountIcon, available: true,
+      detail: '示例账号', icon: exampleAccountIcon, available: true,
     }],
   },
   {
@@ -256,7 +256,7 @@ const GAME_OPTION_DEFINITIONS = [
         id: 'phigros-test',
         bindingKind: 'fixture',
         title: '示例查分器',
-        detail: '全曲全谱面满成绩 · 可删除后重新添加',
+        detail: '示例账号',
         icon: exampleAccountIcon,
         available: true,
       },
@@ -282,7 +282,7 @@ const GAME_OPTION_DEFINITIONS = [
       },
       {
         id: 'osu-test', bindingKind: 'fixture', title: '示例查分器',
-        detail: '四模式满成绩 · 可删除后重新添加', icon: exampleAccountIcon, available: true,
+        detail: '示例账号', icon: exampleAccountIcon, available: true,
       },
     ],
   },
@@ -335,7 +335,7 @@ const GAME_OPTION_DEFINITIONS = [
       bindingKind: 'credentials',
     }, {
       id: 'majdata-net-test', bindingKind: 'fixture', title: '示例查分器',
-      detail: '全谱面满成绩 · 可删除后重新添加', icon: exampleAccountIcon, available: true,
+      detail: '示例账号', icon: exampleAccountIcon, available: true,
     }],
   },
   {
@@ -354,7 +354,7 @@ const GAME_OPTION_DEFINITIONS = [
       bindingKind: 'sms-code',
     }, {
       id: 'rizline-test', bindingKind: 'fixture', title: '示例查分器',
-      detail: '全曲全谱面满成绩 · 可删除后重新添加', icon: exampleAccountIcon, available: true,
+      detail: '示例账号', icon: exampleAccountIcon, available: true,
     }],
   },
 ] satisfies GameOption[];

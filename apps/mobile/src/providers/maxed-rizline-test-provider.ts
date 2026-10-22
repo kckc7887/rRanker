@@ -18,5 +18,5 @@ export function buildMaxedRizlineSnapshot(catalog: RizlineCatalog, displayName: 
   };
   const best = selectRizlineBest(buildRizlineRecords(save, catalog));
   save.totalRks = [...best.ah5, ...best.b35].reduce((sum, record) => sum + (record.rks ?? 0), 0) / 40;
-  return { save, source: generatedSource('示例查分器') };
+  return { save, source: generatedSource() };
 }

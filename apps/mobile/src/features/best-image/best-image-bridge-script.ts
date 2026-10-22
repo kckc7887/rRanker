@@ -9,6 +9,47 @@ export type BestImageBridgeReadyOptions = {
   waitForAssets?: boolean;
 };
 
+export function bestImageAssetsReadyScript(): string {
+  return `(() => {
+    const decodeImage = image => typeof image.decode === 'function'
+      ? image.decode().catch(() => undefined) : Promise.resolve();
+    const waitImage = image => image.complete ? decodeImage(image) : new Promise(resolve => {
+      const settle = () => {
+        image.removeEventListener('load', settle);
+        image.removeEventListener('error', settle);
+        decodeImage(image).then(resolve);
+      };
+      image.addEventListener('load', settle);
+      image.addEventListener('error', settle);
+    });
+    const images = Array.from(document.images);
+    const anchor = document.createElement('a');
+    const absoluteUrl = path => { anchor.href = path; return anchor.href; };
+    const present = new Set(images.map(image => absoluteUrl(image.currentSrc || image.src)));
+    const urls = new Set();
+    const addUrl = path => {
+      if (!path) return;
+      const url = absoluteUrl(path);
+      if (!present.has(url)) urls.add(url);
+    };
+    document.querySelectorAll('svg image').forEach(node => addUrl(node.getAttribute('href') || node.getAttribute('xlink:href')));
+    document.querySelectorAll('*').forEach(node => {
+      const style = getComputedStyle(node);
+      for (const value of [style.backgroundImage, style.borderImageSource, style.maskImage, style.webkitMaskImage, style.content]) {
+        for (const match of (value || '').matchAll(/url\\(\\s*(?:"([^"]*)"|'([^']*)'|([^)]*?))\\s*\\)/giu)) {
+          const path = match[1] || match[2] || match[3];
+          if (/\\.(?:svg|png|webp)(?:[?#]|$)/iu.test(path)) addUrl(path);
+        }
+      }
+    });
+    return Promise.all([
+      document.fonts ? document.fonts.ready : Promise.resolve(),
+      ...images.map(waitImage),
+      ...Array.from(urls, url => { const image = new Image(); image.src = url; return waitImage(image); }),
+    ]);
+  })()`;
+}
+
 export function bestImageBridgeRuntimeScript(): string {
   return `      const postToNative = (message) => {
         const bridge = window.ReactNativeWebView;
@@ -86,7 +127,7 @@ export function bestImageBridgeReadyScript(options: BestImageBridgeReadyOptions 
     ? `      const assetReady = ${options.assetReadyExpression};\n`
     : '';
   const raceAssetExpression = options.assetReadyExpression ? 'assetReady' : 'Promise.all(imageReady)';
-  return `      const imageReady = Array.from(document.images).map((image) => image.complete
+  return `      const imageReady = ${options.waitForAssets ? `[${bestImageAssetsReadyScript()}];` : `Array.from(document.images).map((image) => image.complete
         ? Promise.resolve()
         : new Promise((resolve) => {
             const settle = () => {
@@ -96,7 +137,7 @@ export function bestImageBridgeReadyScript(options: BestImageBridgeReadyOptions 
             };
             image.addEventListener('load', settle);
             image.addEventListener('error', settle);
-          }));
+          }));`}
 ${assetReadyLine}      ${options.waitForAssets ? '' : 'const assetTimeout = new Promise((resolve) => window.setTimeout(resolve, 5000));'}
       ${options.waitForAssets ? raceAssetExpression : `Promise.race([${raceAssetExpression}, assetTimeout])`}.then(() => {
         window.requestAnimationFrame(() => window.requestAnimationFrame(() => {

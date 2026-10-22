@@ -68,6 +68,7 @@ describe('Phigros 全满示例账号', () => {
     expect(snapshot.player).toMatchObject({
       id: 'phigros:test',
       displayName: '示例账号',
+      source: { label: '示例账号' },
       rating: expectedRks,
     });
     const expectedChallengeScore = phi3.reduce(

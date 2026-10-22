@@ -268,7 +268,7 @@ describe('M3A game account management', () => {
   it('shows local and generated test accounts in account management', async () => {
     const screen = await renderScreen();
     expect(screen.getByText('本地玩家')).toBeTruthy();
-    expect(screen.getByText('示例账号')).toBeTruthy();
+    expect(screen.getAllByText('示例账号').length).toBeGreaterThan(0);
     expect(screen.queryByText('数据位置：仅本机 SQLite')).toBeNull();
     expect(screen.queryByText('数据来源：曲库动态生成')).toBeNull();
     expect(screen.queryByText('当前使用中')).toBeNull();

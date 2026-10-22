@@ -96,7 +96,7 @@ describe('喵斯快跑全满示例账号', () => {
     const snapshot = maxedMuseDashPlayerSnapshot(parsedAlbums, parsedDiffdiff);
     expect(snapshot.source).toMatchObject({
       kind: 'generated',
-      label: '示例查分器（全曲全谱面满成绩）',
+      label: '示例账号',
       isStale: false,
     });
   });

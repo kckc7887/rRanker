@@ -59,7 +59,7 @@ describe('曲库示例账号', () => {
     expect(useSession.getState()).toMatchObject({ restoreStatus: 'ready', activeAccountId: account.id,
       activeGameId: spec.gameId, activeProviderId: spec.providerId, session: null });
     expect(useSession.getState().boundAccounts.find(item => item.id === account.id)).toMatchObject({
-      gameId: spec.gameId, displayName: account.displayName, scoreDisplay: spec.scoreDisplay,
+      gameId: spec.gameId, displayName: account.displayName, scoreDisplay: spec.scoreDisplay, providerTitle: '示例账号',
     });
     useSession.getState().selectBoundAccount(other.id);
     expect(useSession.getState().activeAccountId).toBe(other.id);

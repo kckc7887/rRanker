@@ -53,10 +53,10 @@ function filters(overrides: Partial<typeof DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FIL
 }
 
 describe('Phigros 成绩图', () => {
-  it('保存合法的 OVER FLOW 数量与风格', () => {
+  it('保存合法的 OVER FLOW 数量与装扮', () => {
     expect(parsePhigrosBestImageStylePreferences({
       version: 2, avatar: { mode: 'current' }, background: { mode: 'off' },
-    })).toMatchObject({ version: 2, ratingStyle: 'game', overflowCount: 0 });
+    })).toMatchObject({ version: 2, overflowCount: 0 });
     expect(parsePhigrosBestImageStylePreferences({
       version: 2, avatar: { mode: 'current' }, background: { mode: 'off' }, overflowCount: 9,
     }).overflowCount).toBe(9);
@@ -64,9 +64,9 @@ describe('Phigros 成绩图', () => {
       version: 2, avatar: { mode: 'current' }, background: { mode: 'off' }, overflowCount: 4,
     }).overflowCount).toBe(0);
     expect(parsePhigrosBestImageStylePreferences({
-      version: 2, ratingStyle: 'app', avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 3,
-    })).toMatchObject({ version: 2, ratingStyle: 'app', overflowCount: 3 });
-    expect(parsePhigrosBestImageStylePreferences(null)).toMatchObject({ version: 2, ratingStyle: 'game' });
+      version: 2, avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 3,
+    })).toMatchObject({ version: 2, overflowCount: 3 });
+    expect(parsePhigrosBestImageStylePreferences(null)).toMatchObject({ version: 2 });
   });
 
   it('从用户存档读取当前头像与背景曲目', () => {

@@ -39,6 +39,7 @@ vi.mock('react-native', () => ({ Platform: { OS: 'android' } }));
 vi.mock('@/features/best-image/maimai-font-cache', () => ({ MAIMAI_FONT_CACHE_VERSION: 'v1' }));
 vi.mock('@/features/best-image/maimai-ui-cache', () => ({ MAIMAI_UI_CACHE_VERSION: 'v1' }));
 vi.mock('@/features/phigros-best-image/phigros-font-cache', () => ({ PHIGROS_FONT_CACHE_VERSION: 'v1' }));
+vi.mock('@/features/phigros-best-image/phigros-ui-cache', () => ({ PHIGROS_UI_CACHE_VERSION: 'v1' }));
 vi.mock('@/services/remote-image-cache', () => ({ pruneRemoteImageCache: vi.fn(async () => undefined) }));
 
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
@@ -112,12 +113,14 @@ describe('startup cache cleanup', () => {
     expect(mocks.entries.has(`${directory.uri}/current.part`)).toBe(true);
   });
 
-  it('removes old illustration sessions and obsolete fonts while keeping current files and shared roots', async () => {
+  it('removes old image sessions and obsolete drawing resources while keeping current files', async () => {
     const root = '/document/rranker/phigros-illustration-stage';
     const fonts = '/document/rranker/phigros-fonts';
-    for (const path of [root, `${root}/session-old`, fonts, `${fonts}/v0`, `${fonts}/v1`, `${fonts}/v1/tmp`]) {
+    const ui = '/document/rranker/phigros-ui';
+    for (const path of [root, `${root}/session-old`, fonts, `${fonts}/v0`, `${fonts}/v1`, `${fonts}/v1/tmp`, ui, `${ui}/v0`, `${ui}/v1`]) {
       mocks.entries.set(path, { isDirectory: true, modificationTime: 1 });
     }
+    mocks.entries.set(`${ui}/v1/card.svg`, { isDirectory: false, modificationTime: 1 });
     mocks.entries.set(`${fonts}/v1/font.ttf`, { isDirectory: false, modificationTime: 1 });
     mocks.entries.set(`${fonts}/v1/tmp/old.part`, { isDirectory: false, modificationTime: 1 });
     const recent = Math.floor(Date.now() / 1000);
@@ -128,5 +131,6 @@ describe('startup cache cleanup', () => {
     expect([...mocks.entries.keys()].filter(path => path.startsWith(fonts))).toEqual([
       fonts, `${fonts}/v1`, `${fonts}/v1/tmp`, `${fonts}/v1/font.ttf`, `${fonts}/v1/tmp/current.part`,
     ]);
+    expect([...mocks.entries.keys()].filter(path => path.startsWith(ui))).toEqual([ui, `${ui}/v1`, `${ui}/v1/card.svg`]);
   });
 });

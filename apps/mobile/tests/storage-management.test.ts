@@ -61,6 +61,7 @@ vi.mock('@/features/storage-management/fs-storage', () => ({
   APP_CACHE_ROOT: () => ({ uri: 'file:///cache' }),
   APP_DOCUMENT_ROOT: () => null,
   PHIGROS_FONT_ROOT: () => null,
+  PHIGROS_UI_ROOT: () => null,
   BEST_IMAGE_STAGE_ROOT: (game: string) => ({ uri: `file:///document/${game}-illustration-stage` }),
   MAIMAI_ASSETS_ROOT: () => null,
   CHUNITHM_ASSETS_ROOT: () => null,
@@ -78,6 +79,7 @@ vi.mock('@/features/storage-management/ui-icon-fonts', () => ({
 vi.mock('@/features/phigros-best-image/phigros-font-cache', () => ({
   clearPhigrosFontCache: () => undefined,
 }));
+vi.mock('@/features/phigros-best-image/phigros-ui-cache', () => ({ clearPhigrosUiCache: () => undefined }));
 
 vi.mock('@/features/best-image/maimai-ui-cache', () => ({
   clearMaimaiUiCache: mocks.clearMaimaiUiCache,

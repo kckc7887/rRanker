@@ -1,11 +1,11 @@
-import { startTransition, useEffect, useMemo, useRef, useState } from 'react';
-import { File, type Directory } from 'expo-file-system';
-import { captureResourceWrites } from '@/services/snapshot-cache-utils';
+import { startTransition, useEffect, useMemo, useState } from 'react';
+import { File } from 'expo-file-system';
 import {
-  ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
 import { formatPhigrosChallengeBadge } from '@/domain/phigros-challenge-theme';
+import { isTestProvider } from '@/domain/game-bind-options';
 import {
   PHIGROS_LEVELS, PHIGROS_RANK_FILTERS, phigrosLevelLabel, phigrosRankFilterLabel,
   type PhigrosRankFilter,
@@ -21,12 +21,10 @@ import {
   bestImageScreenSharedStyles,
 } from '@/features/best-image/best-image-screen-shell';
 import { useBestImageScreenController, usePreparedBestImageSources } from '@/features/best-image/use-best-image-screen-controller';
+import { useBestImageAssets } from '@/features/best-image/use-best-image-assets';
 import { buildPhigrosBestImageHtml } from '@/features/phigros-best-image/build-phigros-best-image-html';
-import { buildPhigrosBestImageAppHtml } from '@/features/phigros-best-image/build-phigros-best-image-app-html';
 import { collectPhigrosBestImageVisibleStrings } from '@/features/phigros-best-image/collect-phigros-best-image-visible-strings';
-import {
-  loadPhigrosAccAverages, type PhigrosAccAverage,
-} from '@/features/phigros-best-image/load-phigros-acc-averages';
+import { loadPhigrosAccAverages } from '@/features/phigros-best-image/load-phigros-acc-averages';
 import {
   buildCustomPhigrosBestImageSections, buildPhigrosNoteTotalByKey,
   DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS,
@@ -38,15 +36,10 @@ import {
   appendPhigrosOverflowRecords, paginatePhigrosBestImageSections,
   type PhigrosBestImageOverflowCount, type PhigrosBestImageType,
 } from '@/features/phigros-best-image/phigros-best-image';
-import { copyBestImageAsset, loadImageFiles, loadRemoteImageFile, retryBestImagePreparation } from '@/features/best-image/load-best-image-session';
-import { partitionPhigrosIllustrationCache } from '@/features/phigros-best-image/phigros-illustration-cache';
-import {
-  loadPhigrosReferenceTemplateAssets,
-  type PhigrosReferenceTemplateAssets,
-} from '@/features/phigros-best-image/load-phigros-reference-template-assets';
-import {
-  preparePhigrosFonts, type PhigrosFontProgress,
-} from '@/features/phigros-best-image/phigros-font-cache';
+import { copyBestImageAsset, loadImageFiles, loadRemoteImageFile } from '@/features/best-image/load-best-image-session';
+import { loadPhigrosReferenceTemplateAssets } from '@/features/phigros-best-image/load-phigros-reference-template-assets';
+import { preparePhigrosUi } from '@/features/phigros-best-image/phigros-ui-cache';
+import { preparePhigrosFonts } from '@/features/phigros-best-image/phigros-font-cache';
 import {
   resolveNeededPhigrosFonts, trimPhigrosBestImageCss,
 } from '@/features/phigros-best-image/phigros-font-coverage';
@@ -61,14 +54,12 @@ import {
 import { useGameData } from '@/hooks/use-game-data';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { useAppTheme } from '@/theme/app-theme';
-import { useAppLifecycle } from '@/state/app-lifecycle';
-import { providerErrorToUserMessage } from '@/providers/errors';
 import { RangeSelector } from '@/components/game-content/RangeSelector';
 
 const WIDTHS = [1080, 1440, 2160] as const;
 const OVERFLOW_COUNTS: readonly PhigrosBestImageOverflowCount[] = [0, 3, 6, 9];
 const DEFAULT_STYLES: PhigrosBestImageStylePreferences = {
-  version: 2, ratingStyle: 'game', avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0,
+  version: 2, avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0,
 };
 
 const phigrosPreferencesAdapter = {
@@ -110,21 +101,12 @@ function resolvedRandom<T>(items: readonly T[], seed: string): T | undefined {
   return items[Math.abs(hash) % items.length];
 }
 
-function fontProgressLabel(progress: PhigrosFontProgress): string {
-  const count = `已完成 ${progress.completed}/${progress.total}`;
-  if (progress.phase === 'ready') return `所需字体已准备 · ${count}`;
-  if (progress.phase === 'core-ready') return `核心字体已准备 · ${count}`;
-  if (progress.phase === 'downloading-core') return `正在准备核心字体${progress.currentFont ? ` · ${progress.currentFont}` : ''} · ${count}`;
-  if (progress.phase === 'downloading-extensions') return `正在下载所需扩展字体${progress.currentFont ? ` · ${progress.currentFont}` : ''} · ${count}`;
-  return `正在检查字体缓存${progress.currentFont ? ` · ${progress.currentFont}` : ''} · ${count}`;
-}
-
 export function PhigrosBestImageScreen() {
   const theme = useAppTheme();
-  const lifecycle = useAppLifecycle();
   const gameData = useGameData();
   const catalog = usePhigrosCatalog();
   const payload = gameData.data?.payload.kind === 'phigros' ? gameData.data.payload : null;
+  const dataSource = isTestProvider(gameData.data?.providerId ?? null) ? payload?.source.label : 'TapTap';
   const provider = catalog.data?.provider;
   const songs = useMemo(() => catalog.data?.snapshot.songs ?? [], [catalog.data?.snapshot.songs]);
   const [scoreMinText, setScoreMinText] = useState('');
@@ -133,23 +115,6 @@ export function PhigrosBestImageScreen() {
   const [accuracyMaxText, setAccuracyMaxText] = useState('');
   const [customFilters, setCustomFilters] = useState<CustomPhigrosBestImageFilters>(DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FILTERS);
   const [avatarItems, setAvatarItems] = useState<string[]>([]);
-  const [illustrations, setIllustrations] = useState<Record<string, string | null> | null>(null);
-  const [accAverages, setAccAverages] = useState<Record<string, PhigrosAccAverage> | null>(null);
-  const [avatarData, setAvatarData] = useState<string | null>(null); const [backgroundData, setBackgroundData] = useState<string | null>(null);
-  const [templateAssets, setTemplateAssets] = useState<PhigrosReferenceTemplateAssets | null>(null);
-  const [templateAssetError, setTemplateAssetError] = useState<string | null>(null);
-  const [fontDirectory, setFontDirectory] = useState<Directory | null>(null);
-  const [fontsReady, setFontsReady] = useState(false);
-  const [fontAttempt, setFontAttempt] = useState(0);
-  const [fontProgress, setFontProgress] = useState<PhigrosFontProgress>({
-    phase: 'checking', completed: 0, total: 2, currentFont: null,
-  });
-  const [assetProgress, setAssetProgress] = useState({ done: 0, total: 0 });
-  const illustrationCacheRef = useRef<Record<string, string | null>>({});
-  const neededFontEntriesRef = useRef<ReturnType<typeof resolveNeededPhigrosFonts>>([]);
-  const fontAssetKeyRef = useRef<string | null>(null);
-  const illustrationAssetKeyRef = useRef<string | null>(null);
-  const styleAssetKeyRef = useRef<string | null>(null);
 
   const controller = useBestImageScreenController<PhigrosBestImageType, PhigrosBestImageStylePreferences, PhigrosBestImagePickerKind>({
     accountId: gameData.activeAccountId,
@@ -161,6 +126,7 @@ export function PhigrosBestImageScreen() {
     preferences: phigrosPreferencesAdapter,
     defaultExportHeight: (width) => Math.ceil(width * 0.75),
     messageScale: 1,
+    previewRenderingGuard: true,
   });
   const {
     width,
@@ -177,6 +143,7 @@ export function PhigrosBestImageScreen() {
     setPageHeights,
     pageIndex,
     setPageIndex,
+    previewStates,
     setPreviewStates,
     exportIndex,
     exportHeight,
@@ -226,73 +193,32 @@ export function PhigrosBestImageScreen() {
       dataAmount: payload.dataAmount,
       challenge: formatPhigrosChallengeBadge(payload.challengeModeRank),
       syncedAt: formatSyncTime(payload.saveUpdatedAt),
+      dataSource,
       titles,
       pages,
     }));
-  }, [pages, payload, titles, type]);
-  neededFontEntriesRef.current = neededFontEntries;
+  }, [dataSource, pages, payload, titles, type]);
   const neededFontKey = neededFontEntries.map((entry) => entry.name).join('|');
-  const fontAssetKey = JSON.stringify([assetSession.directory.uri, neededFontKey, fontAttempt, provider?.getAvatarUrl('Introduction') ?? '']);
-
-  useEffect(() => {
-    let cancelled = false;
-    const controller = new AbortController();
-    if (!lifecycle.foregroundReady) return;
-    if (fontAssetKeyRef.current === fontAssetKey) return;
-    fontAssetKeyRef.current = null;
-    const assertCurrent = captureResourceWrites('phigros', controller.signal);
-    setTemplateAssetError(null);
-    setFontsReady(false);
-    const neededEntries = neededFontEntriesRef.current;
-    const neededNames = neededFontKey ? neededFontKey.split('|').filter(Boolean) : [];
-    let trimmedAssets: Awaited<ReturnType<typeof loadPhigrosReferenceTemplateAssets>> | null = null;
-    void retryBestImagePreparation(assetSession, controller.signal, async () => {
-      const prepared = await preparePhigrosFonts((progress) => {
-        if (!cancelled) setFontProgress(progress);
-      }, { neededNames, signal: controller.signal });
-      const fullResult = prepared.fullReady.then(
-        () => ({ ok: true as const }),
-        (error: unknown) => ({ ok: false as const, error }),
-      );
-      assertCurrent();
-      if (!trimmedAssets) {
-        for (const entry of neededEntries.filter((font) => font.core)) {
-          const path = `font/${entry.cssFileName}`;
-          assertCurrent();
-          await copyBestImageAsset(assetSession, new File(prepared.directory, path).uri, path, controller.signal);
-        }
-        const assets = await loadPhigrosReferenceTemplateAssets(
-          assetSession,
-          provider?.getAvatarUrl('Introduction') ?? '', controller.signal,
-        );
-        trimmedAssets = { ...assets, css: trimPhigrosBestImageCss(assets.css, neededFontEntriesRef.current) };
-        if (!cancelled) {
-          setFontDirectory(assetSession.directory);
-          setTemplateAssets(trimmedAssets);
-        }
+  const drawingAssets = useBestImageAssets({
+    session: assetSession,
+    key: payload ? neededFontKey : null,
+    prepare: async (signal) => {
+      const ui = await preparePhigrosUi(undefined, signal);
+      await ui.fullReady;
+      for (const path of ui.files) {
+        await copyBestImageAsset(assetSession, new File(ui.directory, path).uri, path, signal);
       }
-      const result = await fullResult;
-      if (!result.ok) throw result.error;
-      assertCurrent();
-      for (const entry of neededEntries.filter((font) => !font.core)) {
+      const fonts = await preparePhigrosFonts(undefined, { neededNames: neededFontEntries.map(entry => entry.name), signal });
+      await fonts.fullReady;
+      for (const entry of neededFontEntries) {
         const path = `font/${entry.cssFileName}`;
-        assertCurrent();
-        await copyBestImageAsset(assetSession, new File(prepared.directory, path).uri, path, controller.signal);
+        await copyBestImageAsset(assetSession, new File(fonts.directory, path).uri, path, signal);
       }
-      if (!cancelled) {
-        fontAssetKeyRef.current = fontAssetKey;
-        setTemplateAssetError(null);
-        setFontsReady(true);
-        /** 重建 HTML，让补齐的扩展字体进入 WebView。 */
-        setTemplateAssets({ ...trimmedAssets });
-      }
-    }, (error) => {
-      if (!cancelled) setTemplateAssetError(providerErrorToUserMessage(error, '素材准备失败，正在自动重试。'));
-    }).catch(() => undefined);
-    return () => { cancelled = true; controller.abort(); };
-  }, [assetSession, fontAssetKey, lifecycle.foregroundGeneration, lifecycle.foregroundReady, neededFontKey, provider]);
-  const selectedSongIds = useMemo(() => sections.flatMap((section) => section.records.map((record) => record.songId)), [sections]);
-  const selectedSongKey = selectedSongIds.join('|');
+      const assets = await loadPhigrosReferenceTemplateAssets(assetSession);
+      return { ...assets, css: trimPhigrosBestImageCss(assets.css, neededFontEntries) };
+    },
+  });
+  const selectedSongIds = useMemo(() => [...new Set(sections.flatMap((section) => section.records.map((record) => record.songId)))], [sections]);
   const averageRecords = useMemo(() => type === 'best30'
     ? sections.filter((section) => !section.id.toLowerCase().includes('phi')).flatMap((section) => section.records)
     : sections.flatMap((section) => section.records), [sections, type]);
@@ -302,25 +228,11 @@ export function PhigrosBestImageScreen() {
     const bestRecords = sections.filter((section) => !section.id.toLowerCase().includes('phi')).flatMap((section) => section.records).slice(0, 27);
     return [...phiRecords, ...bestRecords].reduce((sum, record) => sum + record.rating, 0) / 30;
   }, [payload?.playerScore.value, sections, type]);
-  const averageRequest = useMemo(() => ({ records: averageRecords, referenceRks: averageReferenceRks }), [averageRecords, averageReferenceRks]);
-  const completedAverageRequest = useRef<typeof averageRequest | null>(null);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const signal = controller.signal;
-    let cancelled = false;
-    if (!payload || !lifecycle.foregroundReady) return;
-    if (completedAverageRequest.current === averageRequest) return;
-    completedAverageRequest.current = null;
-    void loadPhigrosAccAverages(averageRequest.records, averageRequest.referenceRks, signal).then((averages) => {
-      if (!cancelled) {
-        completedAverageRequest.current = averageRequest;
-        setAccAverages(averages);
-      }
-    });
-    return () => { cancelled = true; controller.abort(); };
-  }, [averageRequest, lifecycle.foregroundGeneration, lifecycle.foregroundReady, payload]);
-
+  const averages = useBestImageAssets({
+    session: assetSession,
+    key: payload ? JSON.stringify([averageRecords, averageReferenceRks]) : null,
+    prepare: signal => loadPhigrosAccAverages(averageRecords, averageReferenceRks, signal),
+  });
   const selectStyleKey = (kind: PhigrosBestImagePickerKind, choice: PhigrosImageStyleChoice): string | null => {
     const available = kind === 'avatar' ? avatarItems : songs.map((song) => song.id);
     if (choice.mode === 'off') return null;
@@ -332,69 +244,42 @@ export function PhigrosBestImageScreen() {
   const avatarKey = selectStyleKey('avatar', stylePrefs.avatar);
   const backgroundKey = selectStyleKey('background', stylePrefs.background);
   const backgroundFallbackSongId = selectedSongIds[0] ?? null;
-  const styleAssetKey = [
-    assetSession.directory.uri, stylePrefs.avatar.mode, avatarKey ?? '', stylePrefs.background.mode, backgroundKey ?? '', backgroundFallbackSongId ?? '', payload?.avatarUrl ?? '',
-  ].join('|');
-  const illustrationAssetKey = JSON.stringify([assetSession.directory.uri, selectedSongKey]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const signal = controller.signal;
-    let cancelled = false;
-    if (!provider || !lifecycle.foregroundReady) return;
-    if (illustrationAssetKeyRef.current === illustrationAssetKey) return;
-    illustrationAssetKeyRef.current = null;
-    const uniqueIds = [...new Set(selectedSongIds)];
-    const { next, missing } = partitionPhigrosIllustrationCache(uniqueIds, illustrationCacheRef.current);
-    /** 只缓存当前曲目，避免切换筛选后内存持续增长。 */
-    setIllustrations(next);
-    setAssetProgress({ done: uniqueIds.length - missing.length, total: uniqueIds.length });
-    if (!missing.length) {
-      illustrationCacheRef.current = next;
-      illustrationAssetKeyRef.current = illustrationAssetKey;
-      return;
-    }
-    void loadImageFiles(assetSession, missing, (id) => provider.getIllustrationLowresUrl(id), (done) => {
-      if (!cancelled) setAssetProgress({ done: uniqueIds.length - missing.length + done, total: uniqueIds.length });
-    }, signal).then((loaded) => {
-      if (cancelled) return;
-      const merged = Object.fromEntries(uniqueIds.map((id) => [id, loaded[id] ?? illustrationCacheRef.current[id] ?? null]));
-      illustrationCacheRef.current = merged;
-      illustrationAssetKeyRef.current = illustrationAssetKey;
-      setIllustrations(merged);
-      setAssetProgress({ done: uniqueIds.length, total: uniqueIds.length });
-    });
-    return () => { cancelled = true; controller.abort(); };
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- selectedSongKey 覆盖曲目数组内容变化。
-  }, [assetSession, illustrationAssetKey, lifecycle.foregroundGeneration, lifecycle.foregroundReady, provider, selectedSongKey]);
-
-  useEffect(() => {
-    const controller = new AbortController();
-    const signal = controller.signal;
-    let cancelled = false;
-    if (!provider || !lifecycle.foregroundReady) return;
-    if (styleAssetKeyRef.current === styleAssetKey) return;
-    void Promise.all([
-      stylePrefs.avatar.mode === 'off' ? Promise.resolve(null) : (async () => (
-        await loadRemoteImageFile(assetSession, avatarKey ? provider.getAvatarUrl(avatarKey) : payload?.avatarUrl, signal)
-        ?? await loadRemoteImageFile(assetSession, payload?.avatarUrl, signal)
-      ))(),
-      stylePrefs.background.mode === 'off' ? Promise.resolve(null) : (async () => (
-        await loadRemoteImageFile(assetSession, backgroundKey ? provider.getIllustrationBlurUrl(backgroundKey) : null, signal)
-        ?? await loadRemoteImageFile(assetSession, backgroundFallbackSongId ? provider.getIllustrationBlurUrl(backgroundFallbackSongId) : null, signal)
-      ))(),
-    ]).then(([nextAvatar, nextBackground]) => {
-      if (cancelled) return;
-      styleAssetKeyRef.current = styleAssetKey;
-      setAvatarData(nextAvatar ?? null);
-      setBackgroundData(nextBackground ?? null);
-    });
-    return () => { cancelled = true; controller.abort(); };
-  }, [
-    avatarKey, backgroundFallbackSongId, backgroundKey, assetSession, lifecycle.foregroundGeneration,
-    lifecycle.foregroundReady, payload?.avatarUrl, provider,
-    styleAssetKey, stylePrefs.avatar.mode, stylePrefs.background.mode,
-  ]);
+  const avatarUrl = avatarKey ? provider?.getAvatarUrl(avatarKey) : payload?.avatarUrl;
+  const backgroundUrl = backgroundKey ? provider?.getIllustrationBlurUrl(backgroundKey) : null;
+  const fallbackBackgroundUrl = backgroundFallbackSongId ? provider?.getIllustrationBlurUrl(backgroundFallbackSongId) : null;
+  const defaultAvatarUrl = provider?.getAvatarUrl('Introduction');
+  const illustrationUrls = Object.fromEntries(selectedSongIds.map(id => [id, provider?.getIllustrationLowresUrl(id) ?? null]));
+  const gameAssets = useBestImageAssets({
+    session: assetSession,
+    key: payload && provider ? JSON.stringify([
+      illustrationUrls, avatarUrl, backgroundUrl, fallbackBackgroundUrl, defaultAvatarUrl, payload.avatarUrl,
+      stylePrefs.avatar.mode, stylePrefs.background.mode,
+    ]) : null,
+    prepare: async (signal) => {
+      const [illustrations, avatar, background, defaultAvatar] = await Promise.all([
+        loadImageFiles(assetSession, selectedSongIds, id => illustrationUrls[id] ?? null, undefined, signal),
+        stylePrefs.avatar.mode === 'off' ? Promise.resolve(null) : (async () => (
+          await loadRemoteImageFile(assetSession, avatarUrl, signal)
+          ?? await loadRemoteImageFile(assetSession, payload?.avatarUrl, signal)
+        ))(),
+        stylePrefs.background.mode === 'off' ? Promise.resolve(null) : (async () => (
+          await loadRemoteImageFile(assetSession, backgroundUrl, signal)
+          ?? await loadRemoteImageFile(assetSession, fallbackBackgroundUrl, signal)
+        ))(),
+        loadRemoteImageFile(assetSession, defaultAvatarUrl, signal),
+      ]);
+      return { illustrations, avatar, background, defaultAvatar };
+    },
+  });
+  const avatarData = gameAssets.data?.avatar ?? null;
+  const backgroundData = gameAssets.data?.background ?? null;
+  const illustrations = gameAssets.data?.illustrations;
+  const accAverages = averages.data;
+  const templateAssets = useMemo(() => drawingAssets.data && gameAssets.data ? {
+    ...drawingAssets.data, fallbackAvatarUrl: gameAssets.data.defaultAvatar ?? '',
+  } : null, [drawingAssets.data, gameAssets.data]);
+  const gameReady = gameAssets.ready && averages.ready;
+  const assetsReady = drawingAssets.ready && gameReady;
 
   const htmlPages = useMemo(() => payload && illustrations && accAverages && templateAssets ? pages.map((page) => {
     const outputWidth = width as (typeof WIDTHS)[number];
@@ -403,19 +288,18 @@ export function PhigrosBestImageScreen() {
       dataAmount: payload.dataAmount,
       challenge: formatPhigrosChallengeBadge(payload.challengeModeRank), challengeModeRank: payload.challengeModeRank,
       syncedAt: formatSyncTime(payload.saveUpdatedAt),
+      dataSource,
       progress: payload.progress, titles, illustrations, accAverages, avatarDataUri: avatarData, backgroundDataUri: backgroundData,
       templateAssets,
     };
-    return stylePrefs.ratingStyle === 'app'
-      ? buildPhigrosBestImageAppHtml(input)
-      : buildPhigrosBestImageHtml(input);
-  }) : null, [accAverages, avatarData, backgroundData, illustrations, pages, payload, stylePrefs.ratingStyle, templateAssets, titles, type, width]);
+    return buildPhigrosBestImageHtml(input);
+  }) : null, [accAverages, avatarData, backgroundData, dataSource, illustrations, pages, payload, templateAssets, titles, type, width]);
 
-  const { sources, error: sourceError } = usePreparedBestImageSources(htmlPages, assetSession, fontDirectory, cancelExportRequest);
-  const preparationError = templateAssetError ?? sourceError;
+  const { sources, error: sourceError } = usePreparedBestImageSources(htmlPages, assetSession, assetsReady ? assetSession.directory : null, cancelExportRequest);
+  const preparationError = drawingAssets.error ?? gameAssets.error ?? averages.error ?? sourceError;
   useEffect(() => {
     setPageHeights({}); setPageIndex(0); setPreviewStates({});
-  }, [fontDirectory, htmlPages, setPageHeights, setPageIndex, setPreviewStates]);
+  }, [htmlPages, setPageHeights, setPageIndex, setPreviewStates]);
 
   const currentPage = pages[Math.min(pageIndex, pages.length - 1)]!;
   const outputHeight = pageHeights[currentPage.id] ?? Math.ceil(width * .75);
@@ -444,7 +328,7 @@ export function PhigrosBestImageScreen() {
     pages,
     htmlPages,
     sources,
-    canExport: !!payload && fontsReady && formValid,
+    canExport: !!payload && assetsReady && formValid,
     buildExportFilename: (index, pageCount) => bestImageExportFilename(payload!.player.displayName, type, index, pageCount),
   });
 
@@ -535,22 +419,10 @@ export function PhigrosBestImageScreen() {
         ))}
       </View>
     </> : null,
-      styleListHeader: <>
-      <View style={[styles.ratingStyleRow, { borderBottomColor: theme.border }]}>
-        <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
-          {([{ id: 'game', label: '游戏风格' }, { id: 'app', label: '应用风格' }] as const).map(({ id, label }) => {
-            const selected = stylePrefs.ratingStyle === id;
-            return <Pressable key={id} accessibilityLabel={label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setStylePrefs((current) => ({ ...current, ratingStyle: id }))} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
-              <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{label}</Text>
-            </Pressable>;
-          })}
-        </View>
-      </View>
-      {type === 'best30' ? <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
+      styleListHeader: type === 'best30' ? <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
         <View style={styles.overflowCopy}><Text style={[styles.styleName, { color: theme.text }]}>OVER FLOW</Text><Text style={[styles.styleValue, { color: theme.textMuted }]}>追加成绩数量</Text></View>
         <View style={styles.overflowChoices}>{OVERFLOW_COUNTS.map((count) => <BestImageChoiceChip key={count} label={`${count} 个`} selected={stylePrefs.overflowCount === count} onPress={() => setStylePrefs((current) => ({ ...current, overflowCount: count }))} styles={{ chip: styles.chip, chipText: styles.chipText }} />)}</View>
-      </View> : null}
-    </>,
+      </View> : null,
       styleRows: (['avatar', 'background'] as const).map((kind) => <Pressable key={kind} accessibilityRole="button" accessibilityLabel={`选择${kind === 'avatar' ? '头像' : '背景'}`} onPress={() => setPicker(kind)} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
       <View style={styles.stylePreview}>{kind === 'avatar' ? (avatarData ? <Image source={{ uri: avatarData }} style={styles.avatarPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>) : (backgroundData ? <Image source={{ uri: backgroundData }} style={styles.backgroundPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>)}</View>
       <View style={styles.styleCopy}><Text style={[styles.styleName, { color: theme.text }]}>{kind === 'avatar' ? '头像' : '背景'}</Text><Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{styleValue(kind)}</Text></View>
@@ -560,15 +432,19 @@ export function PhigrosBestImageScreen() {
       activeWidth: width,
       onChooseWidth: setWidth,
       dimensionMeta: `${width} × ${outputHeight} px · 每页最多 ${type === 'best30' ? 30 + stylePrefs.overflowCount : 30} 张 · 第 ${pageIndex + 1}/${pages.length} 页`,
-      loadingPreview: preparationError ? <View style={styles.loadingContent}><Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{preparationError}</Text>{templateAssetError ? <Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable> : null}</View> : <View style={styles.loadingContent}><ActivityIndicator accessibilityLabel="正在准备预览" color={theme.accent} size="large" /><Text style={[styles.loadingText, { color: theme.textMuted }]}>{!templateAssets ? fontProgressLabel(fontProgress) : assetProgress.total > 0 ? `正在准备歌曲封面 ${assetProgress.done}/${assetProgress.total}` : '正在准备预览'}</Text></View>,
-      fontStatus: sources && !fontsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: templateAssetError ? theme.danger : theme.border }]}>{templateAssetError ? <><Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{templateAssetError}</Text><Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => setFontAttempt((value) => value + 1)} style={[styles.retryButton, { borderColor: theme.accent }]}><Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text></Pressable></> : <><ActivityIndicator color={theme.accent} size="small" /><Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{fontProgressLabel(fontProgress)}；所需字体完成后可导出</Text></>}</View> : null,
-      fontStatusAboveDots: true,
+      preparation: {
+        drawingReady: drawingAssets.ready,
+        gameReady,
+        error: preparationError,
+        retry: () => { drawingAssets.retry(); gameAssets.retry(); averages.retry(); },
+      },
       pickers: <PhigrosBestImageStylePicker visible={picker !== null} kind={picker} items={pickerItems} selection={picker ? stylePrefs[picker] : null} onClose={() => setPicker(null)} onSelect={chooseStyle} />,
       styles: styles,
     }}
     preview={{
       previewTestIdPrefix: "phigros-best-image",
       sources: sources,
+      previewStates,
       pages: pages,
       pageIndex: pageIndex,
       onPageIndexChange: setPageIndex,
@@ -578,9 +454,9 @@ export function PhigrosBestImageScreen() {
       allowingReadAccessToUrl: templateAssets?.allowingReadAccessToUrl,
     }}
     exportSession={{
-      exportDisabled: !sources || !fontsReady || !formValid || !!exportStatus,
+      exportDisabled: !sources || !assetsReady || !formValid || !!exportStatus,
       exportSpinner: exportStatus !== null,
-      exportIdleLabel: fontsReady ? '导出到相册' : '所需字体准备完成后可导出',
+      exportIdleLabel: '导出到相册',
       exportStatus: exportStatus,
       onExport: () => void exportImages(),
       exportIndex: exportIndex,
@@ -608,11 +484,6 @@ const phigrosStyles = StyleSheet.create({
   rankChipWrap: { borderWidth: 2, borderColor: 'transparent', borderRadius: 10, padding: 2 },
   avatarPreview: { width: 46, height: 46, borderRadius: 10 },
   backgroundPreview: { width: 132, height: 46, borderRadius: 8 },
-  assetError: { paddingHorizontal: 20, fontSize: 14, fontWeight: '700', textAlign: 'center' },
-  fontStatus: { minHeight: 44, marginTop: 10, paddingHorizontal: 12, paddingVertical: 9, borderWidth: 1, borderRadius: 12, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8 },
-  fontStatusText: { flexShrink: 1, fontSize: 12, lineHeight: 17, fontWeight: '600', textAlign: 'center' },
-  retryButton: { minHeight: 32, minWidth: 68, paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderRadius: 999 },
-  retryButtonText: { fontSize: 12, fontWeight: '800' },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 10 },
 });
 

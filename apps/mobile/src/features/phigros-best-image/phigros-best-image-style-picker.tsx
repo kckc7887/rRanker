@@ -1,14 +1,7 @@
-import { useEffect, useMemo, useState } from 'react';
-import {
-  type ImageSourcePropType,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-} from 'react-native';
-import { useAppTheme } from '@/theme/app-theme';
-import { BestImagePickerShell, standardBestImagePickerStyles } from '@/features/best-image/best-image-picker-shell';
+import { StyleSheet } from 'react-native';
+import { BestImageResourcePicker } from '@/features/best-image/best-image-picker-shell';
 import { RemoteNativeImage as Image } from '@/components/RemoteNativeImage';
+import type { ImageSourcePropType } from 'react-native';
 import type { PhigrosImageStyleChoice } from './phigros-best-image-preferences';
 
 export type PhigrosBestImagePickerKind = 'avatar' | 'background';
@@ -19,19 +12,7 @@ export type PhigrosBestImagePickerItem = {
   source: ImageSourcePropType;
 };
 
-const LABELS: Record<PhigrosBestImagePickerKind, string> = {
-  avatar: '头像',
-  background: '背景',
-};
-
-export function PhigrosBestImageStylePicker({
-  visible,
-  kind,
-  items,
-  selection,
-  onClose,
-  onSelect,
-}: {
+export function PhigrosBestImageStylePicker({ visible, kind, items, selection, onClose, onSelect }: {
   visible: boolean;
   kind: PhigrosBestImagePickerKind | null;
   items: readonly PhigrosBestImagePickerItem[];
@@ -39,140 +20,32 @@ export function PhigrosBestImageStylePicker({
   onClose: () => void;
   onSelect: (choice: PhigrosImageStyleChoice) => void;
 }) {
-  const theme = useAppTheme();
-  const [query, setQuery] = useState('');
-  const label = kind ? LABELS[kind] : '';
-
-  useEffect(() => {
-    if (visible) setQuery('');
-  }, [kind, visible]);
-
-  const filteredItems = useMemo(() => {
-    const normalized = query.trim().toLocaleLowerCase();
-    if (!normalized) return items;
-    return items.filter((item) => item.label.toLocaleLowerCase().includes(normalized)
-      || item.key.toLocaleLowerCase().includes(normalized));
-  }, [items, query]);
-
-  const selectRandom = () => {
-    const item = items[Math.floor(Math.random() * items.length)];
-    if (item) onSelect({ mode: 'random', key: item.key });
-  };
-
-  return (
-    <BestImagePickerShell
-      visible={visible && kind !== null}
-      onClose={onClose}
-      title={['选择', label]}
-      countText={[filteredItems.length, ' 项']}
-      closeLabel="关闭素材选择"
-      searchLabel={`搜索${label}`}
-      searchPlaceholder={`搜索${label}名称或 ID`}
-      searchProps={{ autoCorrect: false, clearButtonMode: 'while-editing' }}
-      query={query}
-      onQueryChange={setQuery}
-      data={filteredItems}
-      keyExtractor={(item) => item.key}
-      flatListProps={{
-        initialNumToRender: 16,
-        keyboardShouldPersistTaps: 'handled',
-        maxToRenderPerBatch: 16,
-        windowSize: 7,
-        ListHeaderComponent: (
-          <View style={styles.quickChoices}>
-            <Pressable
-              accessibilityLabel={`使用玩家当前${label}`}
-              accessibilityRole="button"
-              accessibilityState={{ selected: selection?.mode === 'current' }}
-              onPress={() => onSelect({ mode: 'current' })}
-              style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, styles.currentItem, pressed && styles.pressed]}
-            >
-              <View style={[styles.currentBadge, { backgroundColor: theme.accentSoft }]}><Text style={[styles.currentBadgeText, { color: theme.accent }]}>当前</Text></View>
-              <View style={styles.itemCopy}><Text style={[styles.itemName, { color: theme.text }]}>使用玩家当前{label}</Text></View>
-              {selection?.mode === 'current' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-            </Pressable>
-            <View style={styles.quickChoiceRow}>
-              <Pressable
-                accessibilityLabel={`随机${label}`}
-                accessibilityRole="button"
-                accessibilityState={{ selected: selection?.mode === 'random' }}
-                disabled={items.length === 0}
-                onPress={selectRandom}
-                style={({ pressed }) => [styles.quickChoice, { backgroundColor: theme.surface }, selection?.mode === 'random' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
-              >
-                <Text style={[styles.quickChoiceIcon, { color: theme.textMuted }]}>↻</Text><Text style={[styles.quickChoiceText, { color: theme.text }]}>随机</Text>
-                {selection?.mode === 'random' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-              </Pressable>
-              <Pressable
-                accessibilityLabel={`关闭${label}`}
-                accessibilityRole="button"
-                accessibilityState={{ selected: selection?.mode === 'off' }}
-                onPress={() => onSelect({ mode: 'off' })}
-                style={({ pressed }) => [styles.quickChoice, { backgroundColor: theme.surface }, selection?.mode === 'off' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
-              >
-                <Text style={[styles.quickChoiceIcon, { color: theme.textMuted }]}>×</Text><Text style={[styles.quickChoiceText, { color: theme.text }]}>关闭</Text>
-                {selection?.mode === 'off' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-              </Pressable>
-            </View>
-          </View>
-        ),
-        ListEmptyComponent: <Text style={[styles.empty, { color: theme.textMuted }]}>没有符合条件的{label}</Text>,
-        renderItem: ({ item }) => {
-          const selected = selection?.mode === 'item' && selection.key === item.key;
-          return (
-            <Pressable
-              accessibilityLabel={`${item.label}，${item.meta}`}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              onPress={() => onSelect({ mode: 'item', key: item.key })}
-              style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
-            >
-              <View style={styles.imagePreview}>
-                {kind === 'avatar' ? (
-                  <Image cacheProfile="native" source={item.source} resizeMode="cover" style={styles.avatarImage} />
-                ) : (
-                  <Image cacheProfile="thumbnail" gameId="phigros" source={item.source} resizeMode="cover" style={styles.backgroundImage} />
-                )}
-              </View>
-              <View style={styles.itemCopy}><Text numberOfLines={2} style={[styles.itemName, { color: theme.text }]}>{item.label}</Text><Text numberOfLines={1} style={[styles.itemMeta, { color: theme.textMuted }]}>{item.meta}</Text></View>
-              {selected ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-            </Pressable>
-          );
-        },
-      }}
-      styles={{
-        root: styles.root,
-        grabber: styles.grabber,
-        header: styles.header,
-        title: styles.title,
-        count: styles.count,
-        done: styles.done,
-        search: styles.search,
-        listContent: styles.listContent,
-      }}
-    />
-  );
+  const label = kind === 'avatar' ? '头像' : '背景';
+  return <BestImageResourcePicker
+    visible={visible && kind !== null}
+    label={label}
+    items={items}
+    getKey={item => item.key}
+    getName={item => item.label}
+    getMeta={item => item.meta}
+    renderPreview={item => kind === 'avatar'
+      ? <Image cacheProfile="native" source={item.source} resizeMode="cover" style={styles.avatarImage} />
+      : <Image cacheProfile="thumbnail" gameId="phigros" source={item.source} resizeMode="cover" style={styles.backgroundImage} />}
+    isSelected={item => selection?.mode === 'item' && selection.key === item.key}
+    onSelect={item => onSelect({ mode: 'item', key: item.key })}
+    onClose={onClose}
+    currentChoice={{ label: `使用玩家当前${label}`, selected: selection?.mode === 'current', onPress: () => onSelect({ mode: 'current' }) }}
+    quickChoices={[
+      { label: '随机', actionLabel: `随机${label}`, icon: '↻', selected: selection?.mode === 'random', disabled: !items.length, onPress: () => {
+        const item = items[Math.floor(Math.random() * items.length)];
+        if (item) onSelect({ mode: 'random', key: item.key });
+      } },
+      { label: '关闭', actionLabel: `关闭${label}`, icon: '×', selected: selection?.mode === 'off', onPress: () => onSelect({ mode: 'off' }) },
+    ]}
+  />;
 }
 
 const styles = StyleSheet.create({
-  ...standardBestImagePickerStyles,
-  listContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 },
-  quickChoices: { gap: 8, marginBottom: 4 },
-  quickChoiceRow: { flexDirection: 'row', gap: 8 },
-  quickChoice: { flex: 1, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' },
-  quickChoiceIcon: { fontSize: 18, fontWeight: '800' },
-  quickChoiceText: { fontSize: 14, fontWeight: '800' },
-  item: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' },
-  currentItem: { marginBottom: 4 },
-  pressed: { opacity: 0.72 },
-  imagePreview: { width: 128, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   avatarImage: { width: 48, height: 48, borderRadius: 10 },
   backgroundImage: { width: 128, height: 48, borderRadius: 10 },
-  itemCopy: { flex: 1, minWidth: 0 },
-  itemName: { fontSize: 14, fontWeight: '700' },
-  itemMeta: { fontSize: 11, marginTop: 3 },
-  check: { fontSize: 18, fontWeight: '900' },
-  currentBadge: { width: 48, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
-  currentBadgeText: { fontSize: 11, fontWeight: '800' },
-  empty: { paddingVertical: 40, fontSize: 14, textAlign: 'center' },
 });

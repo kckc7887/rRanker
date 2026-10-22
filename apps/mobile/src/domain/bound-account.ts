@@ -50,27 +50,27 @@ export function createAdditionalLocalMaimaiAccountId(
 }
 
 const PROVIDER_TITLES: Record<ProviderId, string> = {
-  'example-test': '示例查分器',
+  'example-test': '示例账号',
   'rizline-official': '官方账号',
   'majdata-net': 'Majdata Net',
   'diving-fish': '水鱼查分器',
   lxns: '落雪查分器',
   local: '本地查分器',
-  'maimai-test': '示例查分器',
-  'chunithm-test': '示例查分器',
-  'phigros-test': '示例查分器',
+  'maimai-test': '示例账号',
+  'chunithm-test': '示例账号',
+  'phigros-test': '示例账号',
   'phi-taptap': 'TapTap 云存档',
   'chunithm-temp': '无成绩临时账号',
   tuf: 'TUF 社区',
   'musedash-moe': 'MuseDash.moe',
   'phira-community': 'Phira社区',
-  'musedash-test': '示例查分器',
+  'musedash-test': '示例账号',
   osu: 'osu! 官方',
-  'rizline-test': '示例查分器',
-  'phira-test': '示例查分器',
-  'adofai-test': '示例查分器',
-  'majdata-net-test': '示例查分器',
-  'osu-test': '示例查分器',
+  'rizline-test': '示例账号',
+  'phira-test': '示例账号',
+  'adofai-test': '示例账号',
+  'majdata-net-test': '示例账号',
+  'osu-test': '示例账号',
 };
 
 export type CatalogTestGameId = 'example' | 'rizline' | 'phira' | 'adofai' | 'majdata-net' | OsuGameId;

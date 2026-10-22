@@ -112,8 +112,14 @@ jest.mock('@/hooks/use-chunithm-catalog', () => ({
   }),
 }));
 
-jest.mock('@/features/chunithm-best-image/load-chunithm-best-image-collections', () => ({
-  loadChunithmBestImageCollections: jest.fn(async (kind: string) => kind === 'plate' ? [{ id: 42, name: '测试名牌', kind: 'plate' }] : []),
+jest.mock('@/hooks/use-chunithm-collections', () => ({
+  useChunithmCollections: (kind: string) => ({
+    data: { items: kind === 'plate' ? [{ id: 42, name: '测试名牌' }] : kind === 'trophy' ? [
+      { id: 7, name: '金色称号', color: 'gold', level: 2 },
+      { id: 8, name: '图片称号', color: 'image' },
+    ] : [] },
+    isPending: false, isError: false, refetch: jest.fn(),
+  }),
 }));
 
 jest.mock('@/features/chunithm-best-image/load-chunithm-best-image-jackets', () => ({
@@ -133,6 +139,7 @@ jest.mock('@/features/chunithm-best-image/chunithm-best-image-preferences', () =
       selectionCount: 0,
       character: { mode: 'current' },
       plate: { mode: 'current' },
+      trophy: { mode: 'current' },
       background: { mode: 'default' },
     })),
     save: jest.fn(async () => undefined),
@@ -142,6 +149,7 @@ jest.mock('@/features/chunithm-best-image/chunithm-best-image-preferences', () =
     selectionCount: 0,
     character: { mode: 'current' },
       plate: { mode: 'current' },
+      trophy: { mode: 'current' },
     background: { mode: 'default' },
   },
   resolveChunithmBestImageStyleId: (choice: { mode: string; id?: number }, currentId: number | null | undefined) => {
@@ -192,6 +200,29 @@ describe('chunithm best image custom', () => {
     await fireEvent.press(screen.getByText('名牌'));
     await fireEvent.press(screen.getAllByText('默认板').at(-1)!);
     await waitFor(() => expect(previewHtml(screen)).toContain('/plate/1.png'));
+  });
+
+  it('selects text and image trophies, saves their appearance, and can hide or restore the current trophy', async () => {
+    const { chunithmBestImagePreferencesStore } = jest.requireMock('@/features/chunithm-best-image/chunithm-best-image-preferences') as { chunithmBestImagePreferencesStore: { save: jest.Mock } };
+    const screen = await render(<ChunithmBestImageScreen />);
+    await screen.findByTestId('chunithm-best-image-html-preview-0');
+    await fireEvent.press(screen.getByLabelText('选择称号'));
+    await fireEvent.press(await screen.findByLabelText('选择金色称号'));
+    await waitFor(() => expect(previewHtml(screen)).toContain('金色称号'));
+    expect(previewHtml(screen)).toContain('trophy/gold.svg');
+    await waitFor(() => expect(chunithmBestImagePreferencesStore.save).toHaveBeenCalledWith('test-account', expect.objectContaining({ trophy: { mode: 'item', id: 7, name: '金色称号', color: 'gold', level: 2 } })));
+    await fireEvent.press(screen.getByLabelText('选择称号'));
+    await fireEvent.press(await screen.findByLabelText('选择图片称号'));
+    await waitFor(() => expect(previewHtml(screen)).toContain('/trophy/8.png'));
+    await fireEvent.press(screen.getByLabelText('选择称号'));
+    await fireEvent.press(screen.getByLabelText('关闭称号'));
+    await waitFor(() => {
+      expect(previewHtml(screen)).not.toContain('/trophy/');
+      expect(previewHtml(screen)).not.toContain('trophy/normal.svg');
+    });
+    await fireEvent.press(screen.getByLabelText('选择称号'));
+    await fireEvent.press(screen.getByLabelText('使用玩家当前称号'));
+    await waitFor(() => expect(previewHtml(screen)).toContain('trophy/normal.svg'));
   });
 
   it('discards a late plate load after another plate was selected', async () => {

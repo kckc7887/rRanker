@@ -123,6 +123,7 @@ jest.mock('expo-sharing', () => ({
 jest.mock('@/features/best-image/maimai-font-cache', () => ({ MAIMAI_FONT_CACHE_VERSION: 'test' }));
 jest.mock('@/features/best-image/maimai-ui-cache', () => ({ MAIMAI_UI_CACHE_VERSION: 'test' }));
 jest.mock('@/features/phigros-best-image/phigros-font-cache', () => ({ PHIGROS_FONT_CACHE_VERSION: 'test' }));
+jest.mock('@/features/phigros-best-image/phigros-ui-cache', () => ({ PHIGROS_UI_CACHE_VERSION: 'test' }));
 jest.mock('@/services/remote-image-cache', () => ({ pruneRemoteImageCache: jest.fn() }));
 
 function event(at: string): RuntimeDiagnosticEvent {

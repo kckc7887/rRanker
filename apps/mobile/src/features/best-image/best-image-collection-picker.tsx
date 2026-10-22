@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -14,7 +13,7 @@ import {
   normalizeTrophyTone,
   TROPHY_BADGE_THEMES,
 } from './best-image-badge-theme';
-import { BestImagePickerShell, standardBestImagePickerStyles } from './best-image-picker-shell';
+import { BestImageResourcePicker } from './best-image-picker-shell';
 import type {
   BestImageCollectionChoice,
   BestImageCollectionKind,
@@ -87,18 +86,7 @@ function ItemPreview({ item }: { item: CollectionItem }) {
   );
 }
 
-export function BestImageCollectionPicker({
-  visible,
-  kind,
-  items,
-  selectedId,
-  selectedMode,
-  isLoading,
-  isError,
-  onRetry,
-  onClose,
-  onSelect,
-}: {
+export function BestImageCollectionPicker({ visible, kind, items, selectedId, selectedMode, isLoading, isError, onRetry, onClose, onSelect }: {
   visible: boolean;
   kind: BestImageCollectionKind | null;
   items: readonly CollectionItem[];
@@ -111,185 +99,56 @@ export function BestImageCollectionPicker({
   onSelect: (choice: BestImageCollectionChoice) => void;
 }) {
   const theme = useAppTheme();
-  const [query, setQuery] = useState('');
   const [selectedTrophyLevel, setSelectedTrophyLevel] = useState<TrophyLevel>('all');
+  useEffect(() => { if (visible) setSelectedTrophyLevel('all'); }, [kind, visible]);
   const label = kind ? LABELS[kind] : '';
-
-  useEffect(() => {
-    if (visible) {
-      setQuery('');
-      setSelectedTrophyLevel('all');
-    }
-  }, [kind, visible]);
-
-  const kindItems = useMemo(() => items.filter((item) => item.kind === kind), [items, kind]);
-  const filteredItems = useMemo(() => {
-    if (!kind) return [];
-    const normalized = query.trim().toLocaleLowerCase();
-    return kindItems.filter((item) => (
-      kind !== 'trophy' || selectedTrophyLevel === 'all' || trophyLevel(item.color) === selectedTrophyLevel
-    ) && (
-      normalized.length === 0
-        || item.name.toLocaleLowerCase().includes(normalized)
-        || String(item.id).includes(normalized)
-    ));
-  }, [kind, kindItems, query, selectedTrophyLevel]);
-
-  const selectRandom = () => {
-    if (kindItems.length === 0) return;
-    const item = kindItems[Math.floor(Math.random() * kindItems.length)];
-    if (item) onSelect({ mode: 'random', item });
-  };
-
-  return (
-    <BestImagePickerShell
-      visible={visible && kind !== null}
-      onClose={onClose}
-      title={['选择', label]}
-      countText={isLoading ? '正在读取落雪收藏品…' : `${filteredItems.length} 项`}
-      closeLabel="关闭收藏品选择器"
-      searchLabel={`搜索${label}`}
-      searchPlaceholder={`搜索${label}名称或 ID`}
-      searchProps={{ autoCorrect: false, clearButtonMode: 'while-editing' }}
-      query={query}
-      onQueryChange={setQuery}
-      aboveList={kind === 'trophy' ? (
-        <View style={styles.levelSection}>
-          <Text style={[styles.levelLabel, { color: theme.textSecondary }]}>称号等级</Text>
-          <View style={styles.levelFilters}>
-            {TROPHY_LEVELS.map((level) => {
-              const selected = selectedTrophyLevel === level.id;
-              return (
-                <Pressable
-                  key={level.id}
-                  accessibilityLabel={`筛选称号等级 ${level.label}`}
-                  accessibilityRole="button"
-                  accessibilityState={{ selected }}
-                  onPress={() => setSelectedTrophyLevel(level.id)}
-                  style={[styles.levelFilter, { borderColor: theme.border, backgroundColor: theme.surface }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}
-                >
-                  <Text style={[styles.levelFilterText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{level.label}</Text>
-                </Pressable>
-              );
-            })}
-          </View>
-        </View>
-      ) : null}
-      listNode={isLoading && items.length === 0 ? (
-        <View style={styles.center}><ActivityIndicator color={theme.accent} /><Text style={[styles.status, { color: theme.textMuted }]}>正在从落雪读取完整列表</Text></View>
-      ) : isError && items.length === 0 ? (
-        <View style={styles.center}>
-          <Text style={[styles.status, { color: theme.textMuted }]}>落雪收藏品加载失败</Text>
-          <Pressable accessibilityRole="button" onPress={onRetry} style={[styles.retry, { backgroundColor: theme.accent }]}><Text style={styles.retryText}>重试</Text></Pressable>
-        </View>
-      ) : undefined}
-      data={filteredItems}
-      keyExtractor={(item) => `${item.kind}-${item.id}`}
-      flatListProps={{
-        initialNumToRender: 16,
-        keyboardShouldPersistTaps: 'handled',
-        maxToRenderPerBatch: 16,
-        windowSize: 7,
-        ListHeaderComponent: (
-          <View style={styles.quickChoices}>
-            <Pressable
-              accessibilityLabel={`使用玩家当前${label}`}
-              accessibilityRole="button"
-              accessibilityState={{ selected: selectedMode === 'current' }}
-              onPress={() => onSelect({ mode: 'current' })}
-              style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, styles.currentItem, pressed && styles.pressed]}
-            >
-              <View style={[styles.currentBadge, { backgroundColor: theme.accentSoft }]}><Text style={[styles.currentBadgeText, { color: theme.accent }]}>当前</Text></View>
-              <View style={styles.itemCopy}><Text style={[styles.itemName, { color: theme.text }]}>使用玩家当前{label}</Text></View>
-              {selectedMode === 'current' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-            </Pressable>
-            <View style={styles.quickChoiceRow}>
-              <Pressable
-                accessibilityLabel={`随机${label}`}
-                accessibilityRole="button"
-                accessibilityState={{ selected: selectedMode === 'random' }}
-                disabled={kindItems.length === 0}
-                onPress={selectRandom}
-                style={({ pressed }) => [styles.quickChoice, { backgroundColor: theme.surface }, selectedMode === 'random' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
-              >
-                <Text style={[styles.quickChoiceIcon, { color: theme.textMuted }]}>↻</Text><Text style={[styles.quickChoiceText, { color: theme.text }]}>随机</Text>
-                {selectedMode === 'random' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-              </Pressable>
-              <Pressable
-                accessibilityLabel={`关闭${label}`}
-                accessibilityRole="button"
-                accessibilityState={{ selected: selectedMode === 'off' }}
-                onPress={() => onSelect({ mode: 'off' })}
-                style={({ pressed }) => [styles.quickChoice, { backgroundColor: theme.surface }, selectedMode === 'off' && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
-              >
-                <Text style={[styles.quickChoiceIcon, { color: theme.textMuted }]}>×</Text><Text style={[styles.quickChoiceText, { color: theme.text }]}>关闭</Text>
-                {selectedMode === 'off' ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-              </Pressable>
-            </View>
-          </View>
-        ),
-        ListEmptyComponent: <Text style={[styles.empty, { color: theme.textMuted }]}>没有符合条件的{label}</Text>,
-        renderItem: ({ item }) => {
-          const selected = selectedMode === 'item' && item.id === selectedId;
-          return (
-            <Pressable
-              accessibilityLabel={`${item.name}，#${item.id}`}
-              accessibilityRole="button"
-              accessibilityState={{ selected }}
-              onPress={() => onSelect({ mode: 'item', item })}
-              style={({ pressed }) => [styles.item, { backgroundColor: theme.surface }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }, pressed && styles.pressed]}
-            >
-              <ItemPreview item={item} />
-              <View style={styles.itemCopy}><Text numberOfLines={2} style={[styles.itemName, { color: theme.text }]}>{item.name}</Text><Text style={[styles.itemId, { color: theme.textMuted }]}>#{item.id}{item.kind === 'trophy' ? ` · ${trophyLevelLabel(item.color)}` : ''}</Text></View>
-              {selected ? <Text style={[styles.check, { color: theme.accent }]}>✓</Text> : null}
-            </Pressable>
-          );
-        },
-      }}
-      styles={{
-        root: styles.root,
-        grabber: styles.grabber,
-        header: styles.header,
-        title: styles.title,
-        count: styles.count,
-        done: styles.done,
-        search: styles.search,
-        listContent: styles.listContent,
-      }}
-    />
-  );
+  const kindItems = useMemo(() => items.filter(item => item.kind === kind), [items, kind]);
+  const filteredItems = useMemo(() => kind === 'trophy' && selectedTrophyLevel !== 'all'
+    ? kindItems.filter(item => trophyLevel(item.color) === selectedTrophyLevel) : kindItems, [kind, kindItems, selectedTrophyLevel]);
+  return <BestImageResourcePicker
+    visible={visible && kind !== null}
+    label={label}
+    items={filteredItems}
+    getKey={item => String(item.id)}
+    getName={item => item.name}
+    getMeta={item => `#${item.id}${item.kind === 'trophy' ? ` · ${trophyLevelLabel(item.color)}` : ''}`}
+    itemLabel={item => `${item.name}，#${item.id}`}
+    renderPreview={item => <ItemPreview item={item} />}
+    isSelected={item => selectedMode === 'item' && item.id === selectedId}
+    onSelect={item => onSelect({ mode: 'item', item })}
+    onClose={onClose}
+    currentChoice={{ label: `使用玩家当前${label}`, selected: selectedMode === 'current', onPress: () => onSelect({ mode: 'current' }) }}
+    quickChoices={[
+      { label: '随机', actionLabel: `随机${label}`, icon: '↻', selected: selectedMode === 'random', disabled: !kindItems.length, onPress: () => {
+        const item = kindItems[Math.floor(Math.random() * kindItems.length)];
+        if (item) onSelect({ mode: 'random', item });
+      } },
+      { label: '关闭', actionLabel: `关闭${label}`, icon: '×', selected: selectedMode === 'off', onPress: () => onSelect({ mode: 'off' }) },
+    ]}
+    aboveList={kind === 'trophy' ? <View style={styles.levelSection}>
+      <Text style={[styles.levelLabel, { color: theme.textSecondary }]}>称号等级</Text>
+      <View style={styles.levelFilters}>{TROPHY_LEVELS.map(level => {
+        const selected = selectedTrophyLevel === level.id;
+        return <Pressable key={level.id} accessibilityLabel={`筛选称号等级 ${level.label}`} accessibilityRole="button" accessibilityState={{ selected }} onPress={() => setSelectedTrophyLevel(level.id)} style={[styles.levelFilter, { borderColor: theme.border, backgroundColor: theme.surface }, selected && { borderColor: theme.accent, backgroundColor: theme.accentSoft }]}>
+          <Text style={[styles.levelFilterText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{level.label}</Text>
+        </Pressable>;
+      })}</View>
+    </View> : null}
+    isLoading={isLoading}
+    isError={isError}
+    onRetry={onRetry}
+  />;
 }
 
 const styles = StyleSheet.create({
-  ...standardBestImagePickerStyles,
   levelSection: { paddingHorizontal: 16, paddingBottom: 10 },
   levelLabel: { fontSize: 12, fontWeight: '700', marginBottom: 7 },
   levelFilters: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   levelFilter: { minHeight: 30, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1 },
   levelFilterText: { fontSize: 12, fontWeight: '700' },
-  center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 12 },
-  status: { fontSize: 14 },
-  retry: { borderRadius: 10, paddingHorizontal: 18, paddingVertical: 10 },
-  retryText: { color: '#FFFFFF', fontWeight: '700' },
-  listContent: { paddingHorizontal: 16, paddingBottom: 24, gap: 8 },
-  quickChoices: { gap: 8, marginBottom: 4 },
-  quickChoiceRow: { flexDirection: 'row', gap: 8 },
-  quickChoice: { flex: 1, minHeight: 48, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, paddingHorizontal: 12, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' },
-  quickChoiceIcon: { fontSize: 18, fontWeight: '800' },
-  quickChoiceText: { fontSize: 14, fontWeight: '800' },
-  item: { minHeight: 68, flexDirection: 'row', alignItems: 'center', gap: 12, paddingHorizontal: 12, paddingVertical: 9, borderRadius: 14, borderWidth: 1, borderColor: 'transparent' },
-  currentItem: { marginBottom: 4 },
-  pressed: { opacity: 0.72 },
   imagePreview: { width: 128, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
   trophyPreview: { maxWidth: 150, minWidth: 96, height: 28, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
   solidTrophyPreview: { paddingHorizontal: 12, borderWidth: 1 },
   rainbowTrophyPreviewContent: { paddingHorizontal: 10 },
   trophyPreviewText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textAlign: 'center', includeFontPadding: false },
-  itemCopy: { flex: 1, minWidth: 0 },
-  itemName: { fontSize: 14, fontWeight: '700' },
-  itemId: { fontSize: 11, marginTop: 3 },
-  check: { fontSize: 18, fontWeight: '900' },
-  currentBadge: { width: 48, height: 28, alignItems: 'center', justifyContent: 'center', borderRadius: 8 },
-  currentBadgeText: { fontSize: 11, fontWeight: '800' },
-  empty: { paddingVertical: 40, fontSize: 14, textAlign: 'center' },
 });

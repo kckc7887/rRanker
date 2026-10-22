@@ -24,10 +24,7 @@ import {
   type BestImageRatingStyle,
   type BestImageStyleSelections,
 } from '@/features/best-image/best-image-style-preferences';
-import { useBestImageWebViewTimeout } from '@/features/best-image/best-image-webview-state';
 import { minimumBestImageHeight } from '@/features/best-image/build-best-image-html';
-import type { MaimaiFontProgress } from '@/features/best-image/maimai-font-cache';
-import type { MaimaiUiProgress } from '@/features/best-image/maimai-ui-cache';
 import type { BestImageWebViewSource } from '@/features/best-image/prepare-best-image-webview-sources';
 import { useBestImageCollections } from '@/features/best-image/use-best-image-collections';
 import { useBestImageScreenController, usePreparedBestImageSources } from '@/features/best-image/use-best-image-screen-controller';
@@ -36,15 +33,11 @@ import {
   type BestImageType
 } from '@/features/maimai-best-image/build-maimai-best-image-html';
 import { useMaimaiBestImageFilters } from '@/features/maimai-best-image/use-maimai-best-image-filters';
-import { FONT_PROGRESS_LABELS, useMaimaiEmbeddedAssets, useMaimaiExportAssets, useMaimaiCollectionAssets, useMaimaiImageCovers } from '@/features/maimai-best-image/use-maimai-best-image-resources';
-import type { useTransientDetailedMaimaiCatalog } from '@/hooks/use-detailed-catalog';
+import { useMaimaiEmbeddedAssets, useMaimaiExportAssets, useMaimaiCollectionAssets, useMaimaiImageCovers } from '@/features/maimai-best-image/use-maimai-best-image-resources';
 import { useGameData } from '@/hooks/use-game-data';
-import { useAppLifecycle } from '@/state/app-lifecycle';
 import { useAppTheme } from '@/theme/app-theme';
-import type { Directory } from 'expo-file-system';
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef } from 'react';
 import {
-  ActivityIndicator,
   Pressable,
   StyleSheet,
   Text,
@@ -113,12 +106,10 @@ function StylePreview({
 
 export function MaimaiBestImageScreen() {
   const theme = useAppTheme();
-  const lifecycle = useAppLifecycle();
   const { data, activeAccountId } = useGameData();
   const randomizedSelections = useRef(new Set<string>());
   const collections = useBestImageCollections();
   const { maimai, player, basePlayer, rating } = maimaiImageData(data);
-  const [assetsDirectory, setAssetsDirectory] = useState<Directory | null>(null);
 
   const controller = useBestImageScreenController<BestImageType, MaimaiBestImagePrefs, BestImageCollectionKind>(
     {
@@ -161,7 +152,7 @@ export function MaimaiBestImageScreen() {
     handlePreviewMessage,
   } = controller;
   const { assetSession } = controller;
-  const { embeddedAssets, assetError } = useMaimaiEmbeddedAssets(assetSession, rating, lifecycle);
+  const { embeddedAssets, assetError, retry: retryEmbedded } = useMaimaiEmbeddedAssets(assetSession, rating);
   const { setQuantity, versions, splitVersions, setSplitVersions, difficulty, setDifficulty, type, setType, constantMin, setConstantMin, constantMax, setConstantMax, achievementMin, setAchievementMin, achievementMax, setAchievementMax, soloAchievement, multiAchievement, strictAchievement, setStrictAchievement, nearMiss, setNearMiss, versionLocale, setVersionLocale, selectedDxRatingTagIds, setSelectedDxRatingTagIds, quantityError, customInputValid, hasAchievementFilter, dxRatingChartTags, versionOptions, detailedCatalog, scoreSections, maximumRowsPerPage, pages, pageStructureKey, handleSoloAchievementChange, handleMultiAchievementChange, handleVersionsChange, resetCustomFilters } = useMaimaiBestImageFilters({ maimai, activeAccountId, imageType, outputWidth, quantityText });
   const { ratingStyle } = prefs;
   const styleSelections = useMemo(() => maimaiPreferenceSelections(prefs), [prefs]);
@@ -216,14 +207,14 @@ export function MaimaiBestImageScreen() {
   }, [imageType, pageStructureKey, setCurrentPageIndex, setPageHeights]);
 
   const coverRequestKey = JSON.stringify(scoreSections.flatMap((section) => section.records.map((record) => record.songId)));
-  const { coverUrls, coverProgress } = useMaimaiImageCovers(assetSession, coverRequestKey, lifecycle);
+  const { coverUrls, coverError, retry: retryCovers } = useMaimaiImageCovers(assetSession, coverRequestKey);
 
-  const { assetsReady, fontProgress, uiProgress, exportAssetError, setFontAttempt } = useMaimaiExportAssets(assetSession, ratingStyle, lifecycle, setAssetsDirectory);
+  const { assetsReady, assetsDirectory, exportAssetError, retry: retryDrawing } = useMaimaiExportAssets(assetSession, ratingStyle);
   const collectionRequestKey = JSON.stringify((['icon', 'plate', 'frame'] as const).map(kind => {
     const id = kind === 'icon' ? previewPlayer.presentation?.iconId : kind === 'plate' ? previewPlayer.presentation?.namePlateId : previewPlayer.presentation?.frameId;
     return hiddenStyles.includes(kind) || !Number.isSafeInteger(id) || (id ?? -1) < 0 ? null : `https://assets2.lxns.net/maimai/${kind}/${id}.png`;
   }));
-  const collectionUrls = useMaimaiCollectionAssets(assetSession, collectionRequestKey, lifecycle);
+  const { collectionUrls, collectionError, retry: retryCollections } = useMaimaiCollectionAssets(assetSession, collectionRequestKey);
   const htmlPages = useMemo(() => assetsReady && embeddedAssets && coverUrls && collectionUrls && detailedCatalog.data ? pages.map((page) => buildBestImageHtml({
     type: imageType,
     width: outputWidth,
@@ -244,17 +235,8 @@ export function MaimaiBestImageScreen() {
   const sourceGeneration = useMemo(() => [coverUrls, collectionUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data], [coverUrls, collectionUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data]);
   const { sources: webViewSources, error: webViewSourceError } = usePreparedBestImageSources(htmlPages, assetSession, assetsDirectory, cancelExportRequest, sourceGeneration);
   const outputHeight = pageHeights[pages[Math.min(currentPageIndex, pages.length - 1)]!.id] ?? minimumBestImageHeight(outputWidth);
-  const currentWebViewState = webViewStates[pages[Math.min(currentPageIndex, pages.length - 1)]!.id];
-  const assetStatusText = maimaiAssetStatus(fontProgress, uiProgress);
   const exportBusy = exportPageIndex !== null || exportStatus !== null;
   const formValid = imageType !== 'custom' || customInputValid;
-
-  useBestImageWebViewTimeout(
-    !!webViewSources,
-    pages[Math.min(currentPageIndex, pages.length - 1)]!.id,
-    currentWebViewState?.phase,
-    setWebViewStates,
-  );
 
   const selectCollection = (choice: BestImageCollectionChoice) => {
     if (!activePicker) return;
@@ -358,9 +340,16 @@ export function MaimaiBestImageScreen() {
         setPageHeights({});
       },
       dimensionMeta: `${outputWidth} × ${outputHeight} px · 每页最多 ${maximumRowsPerPage} 行 · 第 ${currentPageIndex + 1}/${pages.length} 页`,
-      loadingPreview: <MaimaiAssetLoading exportAssetError={exportAssetError} assetError={assetError} webViewSourceError={webViewSourceError} detailedCatalog={detailedCatalog} assetsDirectory={assetsDirectory} assetStatusText={assetStatusText} coverProgress={coverProgress} coverUrls={coverUrls} retryAssets={() => setFontAttempt(value => value + 1)} />,
-      fontStatus: <MaimaiFontStatus webViewSources={webViewSources} assetsReady={assetsReady} exportAssetError={exportAssetError} assetStatusText={assetStatusText} retryAssets={() => setFontAttempt(value => value + 1)} />,
-      fontStatusAboveDots: false,
+      preparation: {
+        drawingReady: assetsReady && !!embeddedAssets,
+        gameReady: !!coverUrls && !!collectionUrls && !!detailedCatalog.data,
+        error: exportAssetError ?? assetError ?? coverError ?? collectionError ?? webViewSourceError
+          ?? (detailedCatalog.error ? '暂时无法读取谱面物量，请重试。' : null),
+        retry: () => {
+          retryDrawing(); retryEmbedded(); retryCovers(); retryCollections();
+          if (detailedCatalog.error) void detailedCatalog.refetch();
+        },
+      },
       pickers: <BestImageCollectionPicker visible={activePicker !== null} kind={activePicker} items={collections.data?.items ?? []} {...maimaiPickerSelection(activePicker, styleSelections)} isLoading={collections.isLoading} isError={collections.isError} onRetry={() => { void collections.refetch(); }} onClose={() => setActivePicker(null)} onSelect={selectCollection} />,
       styles: styles,
     }}
@@ -369,6 +358,7 @@ export function MaimaiBestImageScreen() {
       sources: webViewSources,
       pages: pages,
       pageIndex: currentPageIndex,
+      previewStates: webViewStates,
       onPageIndexChange: setCurrentPageIndex,
       onPreviewStatesChange: setWebViewStates,
       onPreviewMessage: handlePreviewMessage,
@@ -421,56 +411,12 @@ function maimaiPickerSelection(kind: BestImageCollectionKind | null, selections:
   const selection = kind ? selections[kind] : undefined;
   return { selectedId: selectedStyleItem(selection)?.id ?? null, selectedMode: selection?.mode ?? 'current' as const };
 }
-function maimaiAssetStatus(fontProgress: MaimaiFontProgress, uiProgress: MaimaiUiProgress) {
-  return fontProgress.phase === 'checking' || fontProgress.phase === 'downloading'
-    ? `${FONT_PROGRESS_LABELS[fontProgress.phase]}${fontProgress.currentFont ? ` ${fontProgress.currentFont}` : ''}`
-    : uiProgress.phase === 'checking' || uiProgress.phase === 'downloading' || uiProgress.phase === 'unpacking'
-      ? `正在准备导出素材 ${uiProgress.completed}/${uiProgress.total}`
-      : '导出素材准备完成';
-}
 function maimaiExportState(ready: boolean, valid: boolean, busy: boolean, pages: string[] | null, sources: BestImageWebViewSource[] | null, index: number | null) {
   return {
     disabled: !sources || !ready || !valid || busy,
     label: ready ? '导出到相册' : '所需素材准备完成后可导出',
     source: index !== null && pages?.[index] && sources?.[index] ? sources[index]! : null
   };
-}
-type MaimaiAssetLoadingProps = {
-  exportAssetError: string | null; assetError: string | null; webViewSourceError: string | null;
-  detailedCatalog: ReturnType<typeof useTransientDetailedMaimaiCatalog>; assetsDirectory: Directory | null;
-  assetStatusText: string; coverProgress: { completed: number; total: number; }; coverUrls: Record<string, string | null> | null;
-  retryAssets: () => void;
-};
-function MaimaiAssetLoading({ exportAssetError, assetError, webViewSourceError, detailedCatalog, assetsDirectory, assetStatusText, coverProgress, coverUrls, retryAssets }: MaimaiAssetLoadingProps) {
-  const theme = useAppTheme();
-  return exportAssetError || assetError || webViewSourceError || detailedCatalog.error ? <View style={styles.loadingContent}>
-    <Text accessibilityRole="alert" style={[styles.assetError, { color: theme.danger }]}>{exportAssetError ?? assetError ?? webViewSourceError ?? '暂时无法读取谱面物量，请重试。'}</Text>
-    {exportAssetError ? <Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={() => retryAssets()} style={[styles.retryButton, { borderColor: theme.accent }]}>
-      <Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text>
-    </Pressable> : null}
-    {detailedCatalog.error ? <Pressable accessibilityRole="button" accessibilityLabel="重试谱面物量" onPress={detailedCatalog.refetch} style={[styles.retryButton, { borderColor: theme.accent }]}>
-      <Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text>
-    </Pressable> : null}
-  </View> : <View style={styles.loadingContent}>
-    <ActivityIndicator accessibilityLabel="正在加载预览素材" color={theme.accent} size="large" />
-    <Text style={[styles.loadingText, { color: theme.textMuted }]}>{detailedCatalog.isLoading ? '正在准备谱面物量' : !assetsDirectory ? assetStatusText : coverProgress.total > 0 && coverUrls === null ? `正在准备歌曲封面 ${coverProgress.completed}/${coverProgress.total}` : '正在准备预览'}</Text>
-  </View>;
-}
-function MaimaiFontStatus({ webViewSources, assetsReady, exportAssetError, assetStatusText, retryAssets }: {
-  webViewSources: BestImageWebViewSource[] | null; assetsReady: boolean; exportAssetError: string | null; assetStatusText: string; retryAssets: () => void;
-}) {
-  const theme = useAppTheme();
-  return webViewSources && !assetsReady ? <View accessibilityLiveRegion="polite" style={[styles.fontStatus, { backgroundColor: theme.surface, borderColor: exportAssetError ? theme.danger : theme.border }]}>
-        {exportAssetError ? <>
-          <Text accessibilityRole="alert" style={[styles.fontStatusText, { color: theme.danger }]}>{exportAssetError}</Text>
-          <Pressable accessibilityRole="button" accessibilityLabel="重试字体下载" onPress={retryAssets} style={[styles.retryButton, { borderColor: theme.accent }]}>
-            <Text style={[styles.retryButtonText, { color: theme.accent }]}>重试</Text>
-          </Pressable>
-        </> : <>
-          <ActivityIndicator color={theme.accent} size="small" />
-          <Text style={[styles.fontStatusText, { color: theme.textMuted }]}>{assetStatusText}；所需素材准备完成后可导出</Text>
-        </>}
-      </View> : null;
 }
 
 const maimaiStyles = StyleSheet.create({
@@ -480,11 +426,6 @@ const maimaiStyles = StyleSheet.create({
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   chipDisabled: { opacity: 0.42 },
   chipTextDisabled: { color: '#9CA3AF' },
-  assetError: { fontSize: 14, fontWeight: '700' },
-  retryButton: { minHeight: 34, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 16, borderRadius: 999, borderWidth: 1 },
-  retryButtonText: { fontSize: 13, fontWeight: '700' },
-  fontStatus: { minHeight: 38, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, marginTop: 14, borderRadius: 12, borderWidth: StyleSheet.hairlineWidth, paddingHorizontal: 12 },
-  fontStatusText: { fontSize: 12, fontWeight: '600' },
   exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#E7EDF5' },
 });
 

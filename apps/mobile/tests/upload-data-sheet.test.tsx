@@ -942,7 +942,7 @@ describe('好友码统一上传弹窗', () => {
     const screen = await renderSheet([testAccount.id], [local, water, testAccount]);
     const localBox = await waitFor(() => screen.getByLabelText('上传到 本地玩家（本地查分器）'));
     const waterBox = screen.getByLabelText('上传到 水鱼玩家（水鱼查分器）');
-    const testBox = screen.getByLabelText(/上传到 .*示例查分器/);
+    const testBox = screen.getByLabelText('上传到 示例账号（示例账号）');
     expect(localBox.props.accessibilityState).toMatchObject({ checked: false });
     expect(waterBox.props.accessibilityState).toMatchObject({ checked: false });
     expect(testBox.props.accessibilityState).toMatchObject({ checked: false, disabled: true });

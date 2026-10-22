@@ -2,6 +2,7 @@ import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { AppState, PixelRatio, Platform, type AppStateStatus } from 'react-native';
 import { AppLifecycleProvider } from '@/state/app-lifecycle';
+import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import BestImageScreen from '../app/best-image';
 
 const mockShowNotification = jest.fn();
@@ -42,6 +43,7 @@ jest.mock('@/hooks/use-game-data', () => ({
         kind: 'maimai',
         player: {
           displayName: '测试玩家',
+          source: { kind: 'generated', label: '示例账号', updatedAt: '2026-07-22T08:00:00.000Z', isStale: false },
           presentation: { iconId: 200201, namePlateId: 300101, frameId: 350101, trophyName: '测试称号', trophyColor: 'Gold' },
         },
         playerScore: { value: 15001 },
@@ -197,6 +199,7 @@ describe('best image preview', () => {
     mockDetailedCatalogReady = true;
     await screen.rerender(<BestImageScreen />);
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('B35测试曲'));
+    expect(screen.getByTestId('best-image-html-preview-0').props.source.html).toContain('Data from 示例账号.');
   });
 
   it('switches image type and renders the HTML preview', async () => {
@@ -493,11 +496,29 @@ describe('best image preview', () => {
     const screen = await render(<BestImageScreen />);
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true }));
     expect(screen.getByText(/所需素材准备完成后可导出/u)).toBeTruthy();
+    expect(screen.getByText('下载绘图资源中')).toBeTruthy();
 
     await act(async () => finish());
     await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: false }));
     expect(screen.getByText('导出到相册')).toBeTruthy();
+  });
+
+  it('prepares resources again after their game cache is cleared', async () => {
+    const { prepareMaimaiFonts } = jest.requireMock('@/features/best-image/maimai-font-cache') as { prepareMaimaiFonts: jest.Mock };
+    const screen = await render(<BestImageScreen />);
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
+    let finish!: () => void;
+    prepareMaimaiFonts.mockImplementationOnce(async () => ({
+      directory: { uri: 'file:///assets/' },
+      fullReady: new Promise<void>((resolve) => { finish = resolve; }),
+    }));
+    await act(async () => invalidateResourceWrites('maimai'));
+    expect(screen.getByText('下载绘图资源中')).toBeTruthy();
+    expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: true });
+    await act(async () => finish());
+    await waitFor(() => expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy());
+    expect(screen.getByLabelText('导出成绩图片').props.accessibilityState).toEqual({ disabled: false });
   });
 
   it('automatically recovers failed remote assets without another press', async () => {

@@ -3,7 +3,7 @@ import { calculateAchievement, type NoteCounts } from '@/domain/tolerance';
 import { generatedSource } from './generated-source';
 
 export function maxedMajdataSnapshot(displayName: string): MajdataSnapshot {
-  return { player: { username: displayName }, records: [], recent: [], source: generatedSource('示例查分器') };
+  return { player: { username: displayName }, records: [], recent: [], source: generatedSource() };
 }
 
 export function buildMaxedMajdataScore(song: MajdataSong, level: number, counts: NoteCounts): MajdataScore {

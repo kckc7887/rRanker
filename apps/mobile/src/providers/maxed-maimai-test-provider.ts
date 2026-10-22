@@ -30,7 +30,7 @@ export class MaxedMaimaiTestProvider implements CatalogDrivenScoreProvider {
       displayName: this.displayName,
       rating: 0,
       extension: { kind: 'maimai', courseRank: 23 },
-      source: generatedSource('示例查分器（全谱面满成绩）'),
+      source: generatedSource(),
     };
   }
 

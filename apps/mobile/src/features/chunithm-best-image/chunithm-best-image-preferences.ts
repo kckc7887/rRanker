@@ -7,6 +7,8 @@ export type ChunithmBestImageStyleChoice = {
   mode: ChunithmBestImageStyleMode;
   id?: number;
   name?: string;
+  color?: string;
+  level?: number;
 };
 
 export type ChunithmBestImageBackgroundChoice =
@@ -18,6 +20,7 @@ export type ChunithmBestImageStylePreferences = {
   selectionCount: ChunithmBestImageSelectionCount;
   character: ChunithmBestImageStyleChoice;
   plate: ChunithmBestImageStyleChoice;
+  trophy: ChunithmBestImageStyleChoice;
   background: ChunithmBestImageBackgroundChoice;
 };
 
@@ -28,12 +31,13 @@ export const DEFAULT_CHUNITHM_BEST_IMAGE_STYLES: ChunithmBestImageStylePreferenc
   selectionCount: 0,
   character: { mode: 'current' },
   plate: { mode: 'current' },
+  trophy: { mode: 'current' },
   background: { mode: 'default' },
 };
 
 function parseChoice(value: unknown): ChunithmBestImageStyleChoice {
   if (!value || typeof value !== 'object') return { mode: 'current' };
-  const raw = value as { mode?: unknown; id?: unknown; name?: unknown };
+  const raw = value as { mode?: unknown; id?: unknown; name?: unknown; color?: unknown; level?: unknown };
   if (raw.mode === 'off' || raw.mode === 'current' || raw.mode === 'default') return { mode: raw.mode };
   if (
     (raw.mode === 'item' || raw.mode === 'random')
@@ -45,6 +49,8 @@ function parseChoice(value: unknown): ChunithmBestImageStyleChoice {
       mode: raw.mode,
       id: raw.id,
       name: typeof raw.name === 'string' ? raw.name : `#${raw.id}`,
+      color: typeof raw.color === 'string' ? raw.color : undefined,
+      level: typeof raw.level === 'number' ? raw.level : undefined,
     };
   }
   return { mode: 'current' };
@@ -74,6 +80,7 @@ export function parseChunithmBestImageStylePreferences(
     selectionCount?: unknown;
     character?: unknown;
     plate?: unknown;
+    trophy?: unknown;
     background?: unknown;
   };
   const selectionCount = raw.selectionCount === 5 || raw.selectionCount === 10
@@ -85,6 +92,7 @@ export function parseChunithmBestImageStylePreferences(
     selectionCount,
     character: parseChoice(raw.character),
     plate: parseChoice(raw.plate),
+    trophy: parseChoice(raw.trophy),
     background: parseBackground(raw.background),
   };
 }
@@ -110,6 +118,7 @@ const { Store } = createPreferencesStore<ChunithmBestImageStylePreferences, stri
     selectionCount: z.number(),
     character: z.union([z.object({ mode: z.enum(['current', 'off']) }), z.object({ mode: z.enum(['item', 'random']), id: z.number().int().nonnegative(), name: z.string().optional() })]),
     plate: z.union([z.object({ mode: z.enum(['current', 'default']) }), z.object({ mode: z.enum(['item', 'random']), id: z.number().int().nonnegative(), name: z.string().optional() })]),
+    trophy: z.union([z.object({ mode: z.enum(['current', 'off']) }), z.object({ mode: z.enum(['item', 'random']), id: z.number().int().nonnegative(), name: z.string().optional(), color: z.string().optional(), level: z.number().int().optional() })]),
     background: z.union([z.object({ mode: z.literal('default') }), z.object({ mode: z.literal('song'), songId: z.number().int().nonnegative() })]),
   }).parse(value)),
 });

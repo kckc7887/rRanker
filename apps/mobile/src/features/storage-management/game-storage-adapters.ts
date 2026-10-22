@@ -16,9 +16,10 @@ import {
 } from '@/domain/chunithm';
 import { CHUNITHM_COLLECTION_LIST_RESOURCE_KEY } from '@/domain/chunithm-collections';
 import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-font-cache';
+import { clearPhigrosUiCache } from '@/features/phigros-best-image/phigros-ui-cache';
 import { clearMaimaiUiCache } from '@/features/best-image/maimai-ui-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
-import { BEST_IMAGE_STAGE_ROOT, CHUNITHM_ASSETS_ROOT, MAIMAI_ASSETS_ROOT, PHIGROS_FONT_ROOT } from '@/features/storage-management/fs-storage';
+import { BEST_IMAGE_STAGE_ROOT, CHUNITHM_ASSETS_ROOT, MAIMAI_ASSETS_ROOT, PHIGROS_FONT_ROOT, PHIGROS_UI_ROOT } from '@/features/storage-management/fs-storage';
 import { resetPhigrosKyouAliasesCache } from '@/services/phigros-kyou-cache';
 import {
   createGameStorageAdapter,
@@ -81,13 +82,14 @@ const maimaiAdapter = createGameStorageAdapter({
 
 const phigrosFileResources: GameStorageAdapter['fileResources'] = [
   { root: PHIGROS_FONT_ROOT, clear: clearPhigrosFontCache },
+  { root: PHIGROS_UI_ROOT, clear: clearPhigrosUiCache },
   { root: () => BEST_IMAGE_STAGE_ROOT('phigros'), clear: () => clearUnusedBestImageAssets('phigros') },
 ];
 const phigrosAdapter = createGameStorageAdapter({
   gameId: 'phigros',
   title: findGame('phigros')?.title ?? 'Phigros',
   color: '#8B5CF6',
-  note: '账号存档与当前版本字体；SQLite 为估算值',
+  note: '账号存档与当前版本导出素材；SQLite 为估算值',
   queryKeys: [['score-snapshot'], ['game-data'], ['phigros-catalog'], ['phigros-kyou-chart-tags']],
   resetMemory: () => { resetPhigrosKyouAliasesCache(); phigrosResources.clear(); },
   fileResources: phigrosFileResources,

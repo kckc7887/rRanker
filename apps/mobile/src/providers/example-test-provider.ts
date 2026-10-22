@@ -11,6 +11,6 @@ export function exampleTestPayload(displayName = '示例账号') {
   return {
     kind: 'example' as const, displayName, records, bestSections,
     playerScore: { label: 'EXAMPLE RATING', value: rating, display: String(rating) },
-    source: generatedSource('示例查分器'),
+    source: generatedSource(),
   };
 }

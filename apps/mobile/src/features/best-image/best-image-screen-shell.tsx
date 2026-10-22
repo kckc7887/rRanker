@@ -24,6 +24,8 @@ import type { BestImageWebViewSource } from './prepare-best-image-webview-source
 import {
   markBestImageWebViewLoaded,
   updateBestImageWebViewState,
+  useBestImageWebViewTimeout,
+  type BestImageWebViewState,
 } from './best-image-webview-state';
 import type {
   BestImagePreviewStatesSetter,
@@ -185,11 +187,12 @@ export type BestImageScreenAppearance<TType extends string> = {
   onChooseWidth: (width: number) => void;
   dimensionMeta: ReactNode;
 
-  loadingPreview: ReactNode;
-
-  fontStatus: ReactNode;
-
-  fontStatusAboveDots: boolean;
+  preparation: {
+    drawingReady: boolean;
+    gameReady: boolean;
+    error: string | null;
+    retry?: () => void;
+  };
 
   pickers: ReactNode;
   styles: BestImageScreenShellStyles;
@@ -201,6 +204,7 @@ export type BestImageScreenPreview = {
   sources: readonly BestImageWebViewSource[] | null;
   pages: readonly { id: string }[];
   pageIndex: number;
+  previewStates: Readonly<Record<string, BestImageWebViewState>>;
   onPageIndexChange: (index: number) => void;
   onPreviewStatesChange: BestImagePreviewStatesSetter;
   onPreviewMessage: (data: string, pageId: string) => void;
@@ -250,9 +254,7 @@ export function BestImageScreenShell<TType extends string>({
     activeWidth,
     onChooseWidth,
     dimensionMeta,
-    loadingPreview,
-    fontStatus,
-    fontStatusAboveDots,
+    preparation,
     pickers,
     styles,
   } = appearance;
@@ -261,6 +263,7 @@ export function BestImageScreenShell<TType extends string>({
     sources,
     pages,
     pageIndex,
+    previewStates,
     onPageIndexChange,
     onPreviewStatesChange,
     onPreviewMessage,
@@ -302,6 +305,26 @@ export function BestImageScreenShell<TType extends string>({
   ), null);
   const [webViewRetryGeneration, setWebViewGeneration] = useState(0);
   const webViewGeneration = `${lifecycle.foregroundGeneration}-${webViewRetryGeneration}`;
+  const [readyPreview, setReadyPreview] = useState<{
+    source: BestImageWebViewSource; generation: string; pageId: string;
+    operation: ReturnType<typeof createRuntimeOperation>;
+  } | null>(null);
+  useEffect(() => {
+    onPreviewStatesChange({});
+  }, [sources, webViewGeneration, onPreviewStatesChange]);
+  const loadingText = !preparation.drawingReady ? '下载绘图资源中'
+    : !preparation.gameReady ? '下载游戏资源中' : '图片加载中';
+  const loadingContent = (error = preparation.error, retry = preparation.retry) => <View style={[bestImageScreenSharedStyles.loadingContent, { padding: 20 }]}>
+    {error ? <>
+      <Text style={[bestImageScreenSharedStyles.loadingText, { color: theme.danger, textAlign: 'center' }]}>{error}</Text>
+      {retry ? <Pressable onPress={retry} style={{ paddingHorizontal: 16, paddingVertical: 8, borderWidth: 1, borderRadius: 10, borderColor: theme.accent }}>
+        <Text style={[bestImageScreenSharedStyles.loadingText, { color: theme.accent }]}>重试</Text>
+      </Pressable> : null}
+    </> : <>
+      <ActivityIndicator color={theme.accent} size="large" />
+      <Text style={[bestImageScreenSharedStyles.loadingText, { color: theme.textMuted }]}>{loadingText}</Text>
+    </>}
+  </View>;
   /** 仅换源或换页建立新预览。 */
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 源和代次决定本次预览
   const previewOperation = useMemo(() => createRuntimeOperation('best-image-preview'), [sources, pageIndex, webViewGeneration, heavyContentMounted]);
@@ -311,9 +334,8 @@ export function BestImageScreenShell<TType extends string>({
     activePreviewOperation.current = previewOperation;
     return () => { if (activePreviewOperation.current === previewOperation) activePreviewOperation.current = null; };
   }, [previewOperation]);
-  const recordPreview = (phase: string, fields: Readonly<Record<string, unknown>>) => {
-    if (activePreviewOperation.current === previewOperation) previewOperation.record(phase, fields);
-  };
+  const activePageId = pages[Math.min(pageIndex, pages.length - 1)]?.id ?? '';
+  useBestImageWebViewTimeout(heavyContentMounted && !!sources, activePageId, previewStates[activePageId]?.phase, onPreviewStatesChange);
   const releasedMarkerRef = useRef('');
   const memoryWarningRef = useRef(lifecycle.memoryWarningGeneration);
   const window = useWindowDimensions();
@@ -408,41 +430,57 @@ export function BestImageScreenShell<TType extends string>({
           pagingEnabled
           renderItem={({ item, index }) => {
             const pageId = pages[index]!.id;
+            const phase = previewStates[pageId]?.phase;
+            const ready = readyPreview?.source === item && readyPreview.generation === webViewGeneration
+              && readyPreview.pageId === pageId && readyPreview.operation === previewOperation && phase === 'ready';
+            const failed = phase === 'error' || phase === 'timeout';
             return <View style={{ width: previewWidth, height: previewHeight }}>
               {/** 多页同时挂载 WebView 可能触发 iOS 内存终止。 */}
-              {heavyContentMounted && index === pageIndex ? <WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} key={`${pageId}-${webViewGeneration}`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['about:blank', 'file://*', 'https://*']} scrollEnabled={false} showsHorizontalScrollIndicator={false} showsVerticalScrollIndicator={false} source={item} style={styles.webview} testID={`${previewTestIdPrefix}-html-preview-${index}`}
+              {heavyContentMounted && index === pageIndex ? <><WebView accessibilityLabel={`HTML图片预览 第${index + 1}页`} key={`${pageId}-${item.uri}-${webViewGeneration}`} allowFileAccess={Platform.OS === 'android'} bounces={false} javaScriptEnabled mixedContentMode="never" originWhitelist={['about:blank', 'file://*', 'https://*']} scrollEnabled={false} showsHorizontalScrollIndicator={false} showsVerticalScrollIndicator={false} source={item} style={styles.webview} testID={`${previewTestIdPrefix}-html-preview-${index}`}
                 {...(fileAccessFromFileURLs ? { allowFileAccessFromFileURLs: fileAccessFromFileURLs } : {})}
                 {...(allowingReadAccessToUrl ? { allowingReadAccessToURL: allowingReadAccessToUrl } : {})}
                 onShouldStartLoadWithRequest={(request) => request.isTopFrame === false
                   || request.url === 'about:blank'
                   || request.url === item.uri}
                 onError={(event) => {
-                  recordPreview('load-error', { result: 'error', error: event?.nativeEvent, pageIndex: index + 1 });
+                  if (activePreviewOperation.current !== previewOperation) return;
+                  previewOperation.record('load-error', { result: 'error', error: event?.nativeEvent, pageIndex: index + 1 });
                   updateBestImageWebViewState(onPreviewStatesChange, pageId, 'error');
                 }}
                 onLoadEnd={() => {
-                  recordPreview('loaded', { pageIndex: index + 1 });
+                  if (activePreviewOperation.current !== previewOperation) return;
+                  previewOperation.record('loaded', { pageIndex: index + 1 });
                   markBestImageWebViewLoaded(onPreviewStatesChange, pageId);
                 }}
                 onLoadStart={() => {
-                  recordPreview('loading', { pageIndex: index + 1 });
+                  if (activePreviewOperation.current !== previewOperation) return;
+                  setReadyPreview(null);
+                  previewOperation.record('loading', { pageIndex: index + 1 });
                   updateBestImageWebViewState(onPreviewStatesChange, pageId, 'loading');
                 }}
                 onMessage={(event) => {
-                  if (parseBestImageReadyMessage(event.nativeEvent.data, activeWidth) !== null) recordPreview('ready', { pageIndex: index + 1 });
+                  if (activePreviewOperation.current !== previewOperation) return;
+                  if (parseBestImageReadyMessage(event.nativeEvent.data, activeWidth) !== null) {
+                    previewOperation.record('ready', { pageIndex: index + 1 });
+                    setReadyPreview({ source: item, generation: webViewGeneration, pageId, operation: previewOperation });
+                  }
                   onPreviewMessage(event.nativeEvent.data, pageId);
                 }}
                 onContentProcessDidTerminate={() => {
-                  recordPreview('terminated', { pageIndex: index + 1 });
+                  if (activePreviewOperation.current !== previewOperation) return;
+                  previewOperation.record('terminated', { pageIndex: index + 1 });
                   updateBestImageWebViewState(onPreviewStatesChange, pageId, 'terminated');
                   setWebViewGeneration((value) => value + 1);
                 }}
                 onRenderProcessGone={(event) => {
-                  recordPreview('process-gone', { pageIndex: index + 1, fatal: event.nativeEvent.didCrash });
+                  if (activePreviewOperation.current !== previewOperation) return;
+                  previewOperation.record('process-gone', { pageIndex: index + 1, fatal: event.nativeEvent.didCrash });
                   updateBestImageWebViewState(onPreviewStatesChange, pageId, event.nativeEvent.didCrash ? 'crashed' : 'terminated');
                   setWebViewGeneration((value) => value + 1);
                 }}
-              /> : memoryRecoveryPendingNow && lifecycle.foregroundReady && index === pageIndex ? <View accessibilityLabel={`HTML图片预览 第${index + 1}页`} style={styles.loadingPreview}>
+              />{!ready ? <View style={[StyleSheet.absoluteFill, styles.loadingPreview, { backgroundColor: theme.surface }]}>
+                {failed ? loadingContent('图片加载失败，请重试。', () => setWebViewGeneration((value) => value + 1)) : loadingContent()}
+              </View> : null}</> : memoryRecoveryPendingNow && lifecycle.foregroundReady && index === pageIndex ? <View accessibilityLabel={`HTML图片预览 第${index + 1}页`} style={styles.loadingPreview}>
                 <Text style={[styles.dimensionMeta, { color: theme.text, textAlign: 'center' }]}>内存不足，预览已暂停</Text>
                 <Pressable accessibilityLabel={memoryRecoveryWidth === null ? '重新加载预览' : '降低分辨率并重新加载'} accessibilityRole="button" onPress={recoverFromMemoryPressure} style={[styles.exportButton, { backgroundColor: theme.accent }]}>
                   <Text style={styles.exportButtonText}>{memoryRecoveryWidth === null ? '重新加载预览' : `以 ${memoryRecoveryWidth} 像素重新加载`}</Text>
@@ -457,12 +495,10 @@ export function BestImageScreenShell<TType extends string>({
           style={styles.previewPager}
           windowSize={3}
         /> : <View style={styles.loadingPreview}>
-          {loadingPreview}
+          {loadingContent()}
         </View>}
       </View>
-      {fontStatusAboveDots ? fontStatus : null}
       {pages.length > 1 ? <View style={styles.pageDots}>{pages.map((page, index) => <View key={page.id} style={[styles.pageDot, { backgroundColor: theme.border }, index === pageIndex && { backgroundColor: theme.accent, width: 18 }]} />)}</View> : null}
-      {fontStatusAboveDots ? null : fontStatus}
       <Pressable accessibilityLabel="导出成绩图片" accessibilityRole="button" disabled={exportDisabled} onPress={() => void onExport()} style={[styles.exportButton, { backgroundColor: theme.accent }, exportDisabled && styles.exportButtonDisabled]}>
         {exportSpinner ? <ActivityIndicator color="#FFFFFF" size="small" /> : null}
         <Text style={styles.exportButtonText}>{exportStatus ?? exportIdleLabel}</Text>

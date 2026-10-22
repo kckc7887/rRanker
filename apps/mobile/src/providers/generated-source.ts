@@ -1,9 +1,9 @@
 import type { DataSource } from '@/domain/models';
 
-export function generatedSource(label = '示例查分器（全曲全谱面满成绩）'): DataSource {
+export function generatedSource(): DataSource {
   return {
     kind: 'generated',
-    label,
+    label: '示例账号',
     updatedAt: new Date().toISOString(),
     isStale: false,
   };

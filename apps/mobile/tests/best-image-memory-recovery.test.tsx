@@ -1,11 +1,12 @@
-import { useState } from 'react';
-import { fireEvent, render, screen } from '@testing-library/react-native';
+import { useMemo, useState } from 'react';
+import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import {
   BestImageScreenShell,
   bestImageScreenSharedStyles,
 } from '@/features/best-image/best-image-screen-shell';
 import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
+import { useBestImagePreview } from '@/features/best-image/use-best-image-preview';
 
 let mockLifecycle: AppLifecycleSnapshot = {
   appState: 'active', phase: 'foreground-ready', foregroundReady: true,
@@ -29,8 +30,10 @@ jest.mock('react-native-webview', () => {
 const widths = [1080, 1440, 2160] as const;
 const chosenWidths: number[] = [];
 
-function Harness() {
+function Harness({ drawingReady = true, gameReady = true, sourceUri = 'file:///session/preview.html', showSource = true, pageCount = 1, pageIndex = 0 } = {}) {
   const [width, setWidth] = useState<number>(2160);
+  const preview = useBestImagePreview(width, undefined, true);
+  const sources = useMemo(() => showSource ? Array.from({ length: pageCount }, (_, index) => ({ uri: `${sourceUri}?page=${index}` })) : null, [sourceUri, showSource, pageCount]);
   return <BestImageScreenShell
     appearance={{
       imageTypes: [{ id: 'best', label: 'Best50' }],
@@ -43,20 +46,19 @@ function Harness() {
       activeWidth: width,
       onChooseWidth: (next) => { chosenWidths.push(next); setWidth(next); },
       dimensionMeta: '2160 × 2880',
-      loadingPreview: null,
-      fontStatus: null,
-      fontStatusAboveDots: false,
+      preparation: { drawingReady, gameReady, error: null },
       pickers: null,
       styles: bestImageScreenSharedStyles,
     }}
     preview={{
       previewTestIdPrefix: 'best-image',
-      sources: [{ uri: 'file:///session/preview.html' }],
-      pages: [{ id: 'page-1' }],
-      pageIndex: 0,
+      sources,
+      pages: Array.from({ length: pageCount }, (_, index) => ({ id: `page-${index + 1}` })),
+      pageIndex,
+      previewStates: preview.previewStates,
       onPageIndexChange: () => undefined,
-      onPreviewStatesChange: () => undefined,
-      onPreviewMessage: () => undefined,
+      onPreviewStatesChange: preview.setPreviewStates,
+      onPreviewMessage: preview.handlePreviewMessage,
       fileAccessFromFileURLs: false,
       allowingReadAccessToUrl: null,
     }}
@@ -105,5 +107,55 @@ describe('best image memory recovery', () => {
     expect(chosenWidths).toEqual([1440]);
     expect(screen.getByLabelText('宽度 1440 像素').props.accessibilityState).toEqual({ selected: true });
     expect(screen.getByTestId('best-image-html-preview-0')).toBeTruthy();
+  });
+
+  it('shows the shared preparation steps and waits for each new image to be ready', async () => {
+    const view = await render(<Harness drawingReady={false} gameReady={false} showSource={false} />);
+    expect(screen.getByText('下载绘图资源中')).toBeTruthy();
+    await view.rerender(<Harness gameReady={false} showSource={false} />);
+    expect(screen.getByText('下载游戏资源中')).toBeTruthy();
+    await view.rerender(<Harness />);
+    expect(screen.getByText('图片加载中')).toBeTruthy();
+    await fireEvent(screen.getByTestId('best-image-html-preview-0'), 'message', {
+      nativeEvent: { data: '{"type":"best-image-ready","width":2160,"height":2880}' },
+    });
+    expect(screen.queryByText('图片加载中')).toBeNull();
+    await view.rerender(<Harness sourceUri="file:///session/next.html" />);
+    expect(screen.getByText('图片加载中')).toBeTruthy();
+    await fireEvent(screen.getByTestId('best-image-html-preview-0'), 'message', {
+      nativeEvent: { data: '{"type":"best-image-ready","width":2160,"height":2880}' },
+    });
+    expect(screen.queryByText('图片加载中')).toBeNull();
+    mockLifecycle = { ...mockLifecycle, foregroundGeneration: 2 };
+    await view.rerender(<Harness sourceUri="file:///session/next.html" />);
+    expect(screen.getByText('图片加载中')).toBeTruthy();
+  });
+
+  it('ignores a late ready message after returning to the same page', async () => {
+    const view = await render(<Harness pageCount={2} />);
+    const abandonedMessage = screen.getByTestId('best-image-html-preview-0').props.onMessage;
+    await view.rerender(<Harness pageCount={2} pageIndex={1} />);
+    await view.rerender(<Harness pageCount={2} />);
+    await act(async () => abandonedMessage({ nativeEvent: { data: '{"type":"best-image-ready","width":2160,"height":2880}' } }));
+    expect(screen.getByText('图片加载中')).toBeTruthy();
+    await fireEvent(screen.getByTestId('best-image-html-preview-0'), 'message', {
+      nativeEvent: { data: '{"type":"best-image-ready","width":2160,"height":2880}' },
+    });
+    expect(screen.queryByText('图片加载中')).toBeNull();
+  });
+
+  it('offers a retry when the image renderer does not report readiness', async () => {
+    jest.useFakeTimers();
+    try {
+      await render(<Harness />);
+      await fireEvent(screen.getByTestId('best-image-html-preview-0'), 'loadStart');
+      await act(async () => jest.advanceTimersByTime(12_000));
+      expect(screen.getByText('图片加载失败，请重试。')).toBeTruthy();
+      await fireEvent.press(screen.getByText('重试'));
+      expect(screen.queryByText('图片加载失败，请重试。')).toBeNull();
+      expect(screen.getByText('图片加载中')).toBeTruthy();
+    } finally {
+      jest.useRealTimers();
+    }
   });
 });

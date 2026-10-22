@@ -60,6 +60,9 @@ jest.mock('@/features/phigros-best-image/phigros-font-cache', () => ({
   ],
   preparePhigrosFonts: jest.fn(),
 }));
+jest.mock('@/features/phigros-best-image/phigros-ui-cache', () => ({
+  preparePhigrosUi: jest.fn(async () => ({ directory: { uri: 'file:///ui/' }, fullReady: Promise.resolve(), files: [] })),
+}));
 jest.mock('@/features/phigros-best-image/load-phigros-reference-template-assets', () => ({
   loadPhigrosReferenceTemplateAssets: jest.fn(async () => ({
     css: '@font-face{font-family:"PHI";src:url("./font/phi.ttf")} .song{width:360px}.Rating img{width:100%}',
@@ -93,15 +96,16 @@ jest.mock('@/hooks/use-phigros-catalog', () => ({
 jest.mock('@/hooks/use-game-data', () => ({
   useGameData: (() => {
     const result = {
-    activeAccountId: 'phi-account',
+    activeAccountId: 'phigros:test',
     isLoading: false,
     data: {
+      providerId: 'phigros-test',
       payload: {
         kind: 'phigros',
         player: { displayName: 'Phi テスト' },
         playerScore: { value: 15.4321, display: '15.4321' },
         challengeModeRank: 23,
-        source: { updatedAt: '2026-07-22T08:00:00.000Z' },
+        source: { kind: 'generated', label: '示例账号', updatedAt: '2026-07-22T08:00:00.000Z' },
         saveUpdatedAt: '2026-07-22T08:00:00.000Z',
         dataAmount: '386MiB 289KiB',
         progress: { cleared: [1, 2, 3, 4], fullCombo: [1, 1, 1, 1], phi: [0, 0, 1, 1] },
@@ -122,6 +126,7 @@ describe('Phigros 生成图片页', () => {
     const log = jest.fn<(type: string, fields: Readonly<Record<string, unknown>>) => void>(); installRuntimeLogRecorder(log);
     const screen = await render(<SafeAreaProvider initialMetrics={{ frame: { x: 0, y: 0, width: 390, height: 844 }, insets: { top: 0, left: 0, right: 0, bottom: 0 } }}><PhigrosBestImageScreen /></SafeAreaProvider>);
     const preview = await screen.findByTestId('phigros-best-image-html-preview-0');
+    expect(preview.props.source.html).toContain('Data from 示例账号.');
     await fireEvent(preview, 'message', { nativeEvent: { data: '{"type":"best-image-ready","width":1080,"height":1500,"secret":"player"}' } });
     await fireEvent(preview, 'message', { nativeEvent: { data: '{"type":"best-image-ready","width":1080,"height":1500}' } });
     const ready = log.mock.calls.filter(([type, fields]) => type === 'operation' && fields.source === 'best-image-preview' && fields.phase === 'ready');
@@ -132,13 +137,13 @@ describe('Phigros 生成图片页', () => {
   beforeEach(() => {
     const { preparePhigrosFonts } = jest.requireMock('@/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
     preparePhigrosFonts.mockReset().mockImplementation(async (...args: unknown[]) => {
-      const onProgress = args[0] as (value: Record<string, unknown>) => void;
+      const onProgress = args[0] as ((value: Record<string, unknown>) => void) | undefined;
       const options = args[1] as { neededNames?: string[] } | undefined;
       const total = options?.neededNames?.length ?? 3;
-      onProgress({ phase: 'core-ready', completed: 2, total, currentFont: null });
+      onProgress?.({ phase: 'core-ready', completed: 2, total, currentFont: null });
       return {
         directory: { uri: 'file:///reference/' },
-        fullReady: Promise.resolve().then(() => onProgress({ phase: 'ready', completed: total, total, currentFont: null })),
+        fullReady: Promise.resolve().then(() => onProgress?.({ phase: 'ready', completed: total, total, currentFont: null })),
       };
     });
   });
@@ -167,11 +172,10 @@ describe('Phigros 生成图片页', () => {
     expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(false);
   });
 
-  it('shows the core preview while needed extensions download and enables export only after they are ready', async () => {
+  it('waits for all needed drawing resources before showing the preview and enabling export', async () => {
     const { preparePhigrosFonts } = jest.requireMock('@/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
     let finish!: () => void;
     preparePhigrosFonts.mockImplementationOnce(async (...args: unknown[]) => {
-      const onProgress = args[0] as (value: Record<string, unknown>) => void;
       const options = args[1] as { neededNames?: string[] } | undefined;
       expect(options?.neededNames).toEqual(expect.arrayContaining(['phi', 'Aldrich-Regular', 'NotoSansJP']));
       expect(options?.neededNames).toHaveLength(3);
@@ -179,7 +183,6 @@ describe('Phigros 生成图片页', () => {
         directory: { uri: 'file:///reference/' },
         fullReady: new Promise<void>((resolve) => {
           finish = () => {
-            onProgress({ phase: 'ready', completed: 3, total: 3, currentFont: null });
             resolve();
           };
         }),
@@ -189,15 +192,17 @@ describe('Phigros 生成图片页', () => {
       frame: { x: 0, y: 0, width: 390, height: 844 },
       insets: { top: 0, left: 0, right: 0, bottom: 0 },
     }}><PhigrosBestImageScreen /></SafeAreaProvider>);
-    await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0')).toBeTruthy());
+    await waitFor(() => expect(finish).toBeDefined());
+    expect(screen.queryByTestId('phigros-best-image-html-preview-0')).toBeNull();
     expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(true);
-    expect(screen.getByText(/所需字体完成后可导出/u)).toBeTruthy();
+    expect(screen.getByText('下载绘图资源中')).toBeTruthy();
     await act(async () => finish());
+    await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0')).toBeTruthy());
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(false));
     expect(screen.getByText('导出到相册')).toBeTruthy();
   });
 
-  it('keeps the core preview and automatically recovers a failed extension download', async () => {
+  it('automatically recovers a failed drawing resource download before showing the preview', async () => {
     const { preparePhigrosFonts } = jest.requireMock('@/features/phigros-best-image/phigros-font-cache') as { preparePhigrosFonts: jest.Mock };
     preparePhigrosFonts.mockImplementationOnce(async () => ({
       directory: { uri: 'file:///reference/' },
@@ -207,10 +212,11 @@ describe('Phigros 生成图片页', () => {
       frame: { x: 0, y: 0, width: 390, height: 844 },
       insets: { top: 0, left: 0, right: 0, bottom: 0 },
     }}><PhigrosBestImageScreen /></SafeAreaProvider>);
-    await waitFor(() => expect(screen.getByTestId('phigros-best-image-html-preview-0')).toBeTruthy());
     await waitFor(() => expect(screen.getByText('素材准备失败，正在自动重试。')).toBeTruthy());
+    expect(screen.queryByTestId('phigros-best-image-html-preview-0')).toBeNull();
     expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(true);
     await waitFor(() => expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(false));
+    expect(screen.getByTestId('phigros-best-image-html-preview-0')).toBeTruthy();
   });
 
   it('updates preview dimensions and exports the measured image', async () => {
@@ -271,16 +277,11 @@ describe('Phigros 生成图片页', () => {
     await waitFor(() => expect(screen.getByText('导出到相册')).toBeTruthy());
 
     mockShowNotification.mockClear();
-    const { loadImageFiles } = jest.requireMock('@/features/best-image/load-best-image-session') as {
-      loadImageFiles: jest.Mock;
-    };
-    loadImageFiles.mockClear();
     await fireEvent.press(screen.getByLabelText('自定义'));
     await waitFor(() => {
       expect(screen.getByLabelText('自定义').props.accessibilityState.selected).toBe(true);
     });
     expect(mockShowNotification).not.toHaveBeenCalled();
-    expect(loadImageFiles).not.toHaveBeenCalled();
     expect(screen.getByLabelText('Best30').props.accessibilityState.selected).toBe(false);
     expect(screen.getByText('自定义 BestN')).toBeTruthy();
     expect(screen.getByLabelText('自定义数量')).toBeTruthy();

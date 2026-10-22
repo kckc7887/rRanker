@@ -107,7 +107,7 @@ describe('中二节奏全满示例账号', () => {
       over_power_progress: 100,
     });
     expect(snapshot.player.over_power).toBe(5015);
-    expect(snapshot.source).toMatchObject({ kind: 'generated', isStale: false });
+    expect(snapshot.source).toMatchObject({ kind: 'generated', label: '示例账号', isStale: false });
   });
 
   it.each([false, true])('按新曲版本集合构造 N20，最新次版本有谱面：%s', (hasLatestCharts) => {
