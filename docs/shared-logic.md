@@ -127,6 +127,8 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `useBestImageAssets<T>({ session, key, prepare })` 返回 `data`、`ready`、`error` 和 `retry`，`prepare(signal)` 提供实际资源准备，空键暂停准备。结果同时匹配会话、请求键、重试与缓存代次才有效；前后台切换保留已完成结果，未完成准备取消后恢复。`retryBestImagePreparation` 对素材准备与 HTML 写盘的实际失败依次等待 0.5、2、10、30 秒，之后保持 30 秒间隔。未结束的操作持续等待，空素材沿用各入口的可选回退；原图 HTTP 404 由下载入口映射为 `no_data`，成绩图返回空素材。
 
+`BestImageStyleSwitch({ value, onChange })` 位于 `best-image-screen-shell.tsx`，统一舞萌与 Phigros 的游戏风格／应用风格分段切换器，包含等宽选项、容器间距和主题选中态；账号偏好仍由页面传入当前值和写入回调。
+
 `BestImageScreenShell` 的 `appearance.preparation` 接收绘图、游戏资源就绪状态和错误、重试入口，`preview.previewStates` 提供当前预览状态。加载提示统一为“下载绘图资源中”“下载游戏资源中”“图片加载中”；字体和素材齐全后才建立预览，加载层等待当前页、来源及挂载代次的就绪消息，旧事件不更新新预览。WebView 超时与失败提供公共重试入口。`bestImageAssetsReadyScript` 等待字体、HTML 图片、SVG 图片及包含伪元素的 CSS 图片引用；图片加载、有效尺寸和解码均成功后才就绪，图片地址不依赖扩展名，同文档 SVG fragment 不参与外部加载。失败发送 `best-image-error`，预览显示重试，导出立即结束。排版及尺寸变化后发送当前高度的 `best-image-ready`。
 
 三款游戏的模板生成统一调用 `usePreparedBestImageSources(template, session, directory, cancelExportRequest, generation?)`，返回 `htmlPages`、`sources`、`ready`、`error` 和 `retry`。`BestImageTemplate.assets` 声明附加 SVG 素材，`build(urls)` 构建 HTML；无需附加素材的模板声明空数组。素材声明包含输出映射 `id`、模板素材身份 `key`、原文件 `sources` 与 SVG 构建函数。公共入口按声明去重、准备素材，随后生成 HTML 并写入会话；素材错误、重试、前后台恢复及缓存代次共用 `useBestImageAssets`。写盘身份包含当前模板及已准备素材，过期结果不进入预览。

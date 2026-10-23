@@ -13,6 +13,7 @@ import {
 import { bestImageExportFilename } from '@/features/best-image/best-image-export';
 import {
   BestImageChoiceChip,
+  BestImageStyleSwitch,
   BestImageScreenShell,
   bestImageScreenSharedStyles,
 } from '@/features/best-image/best-image-screen-shell';
@@ -48,10 +49,6 @@ import {
 const IMAGE_TYPES: { id: BestImageType; label: string; }[] = [
   { id: 'best50', label: 'Best50' },
   { id: 'custom', label: '自定义' },
-];
-const RATING_STYLES: { id: BestImageRatingStyle; label: string; }[] = [
-  { id: 'game', label: '游戏风格' },
-  { id: 'app', label: '应用风格' },
 ];
 const OUTPUT_WIDTHS = [1080, 1440, 2160] as const;
 const STYLE_ITEMS: { kind: BestImageCollectionKind; label: string; }[] = [
@@ -318,16 +315,7 @@ export function MaimaiBestImageScreen() {
           <BestImageChoiceChip accessibilityLabel="严格筛选" label="严格筛选" disabled={!hasAchievementFilter} reportDisabledState selected={strictAchievement} onPress={() => setStrictAchievement((value) => !value)} styles={{ chip: styles.chip, chipText: styles.chipText, chipDisabled: styles.chipDisabled, chipTextDisabled: styles.chipTextDisabled }} />
         </View>
       </> : null,
-      styleListHeader: <View style={[styles.ratingStyleRow, { borderBottomColor: theme.border }]}>
-        <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
-          {RATING_STYLES.map(({ id, label }) => {
-            const selected = ratingStyle === id;
-            return <Pressable key={id} accessibilityLabel={label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => setRatingStyle(id)} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
-              <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{label}</Text>
-            </Pressable>;
-          })}
-        </View>
-      </View>,
+      styleListHeader: <BestImageStyleSwitch value={ratingStyle} onChange={setRatingStyle} />,
       styleRows: STYLE_ITEMS.map(({ kind, label }) => {
         const selection = styleSelections[kind];
         const selectedItem = selection?.mode === 'item' || selection?.mode === 'random' ? selection.item : undefined;

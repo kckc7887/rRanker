@@ -16,6 +16,7 @@ import { loadPhigrosAvatarCatalog } from '@/services/phigros-avatar-resolver';
 import { bestImageExportFilename } from '@/features/best-image/best-image-export';
 import {
   BestImageChoiceChip,
+  BestImageStyleSwitch,
   BestImageScreenShell,
   bestImageScreenSharedStyles,
 } from '@/features/best-image/best-image-screen-shell';
@@ -438,9 +439,7 @@ export function PhigrosBestImageScreen() {
       </View>
     </> : null,
       styleListHeader: <>
-      <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
-        <View style={styles.overflowChoices}>{([{ id: 'game', label: '游戏风格' }, { id: 'app', label: '应用风格' }] as const).map(({ id, label }) => <BestImageChoiceChip key={id} label={label} selected={ratingStyle === id} onPress={() => setStylePrefs(current => ({ ...current, ratingStyle: id }))} styles={{ chip: styles.chip, chipText: styles.chipText }} />)}</View>
-      </View>
+      <BestImageStyleSwitch value={ratingStyle} onChange={ratingStyle => setStylePrefs(current => ({ ...current, ratingStyle }))} />
       {type === 'best30' ? <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
         <View style={styles.overflowCopy}><Text style={[styles.styleName, { color: theme.text }]}>OVER FLOW</Text><Text style={[styles.styleValue, { color: theme.textMuted }]}>追加成绩数量</Text></View>
         <View style={styles.overflowChoices}>{OVERFLOW_COUNTS.map((count) => <BestImageChoiceChip key={count} label={`${count} 个`} selected={stylePrefs.overflowCount === count} onPress={() => setStylePrefs((current) => ({ ...current, overflowCount: count }))} styles={{ chip: styles.chip, chipText: styles.chipText }} />)}</View>

@@ -21,6 +21,7 @@ import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
 import { createRuntimeOperation, recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
 import { parseBestImageReadyMessage } from './best-image-messages';
 import { useAppTheme } from '@/theme/app-theme';
+import type { BestImageRatingStyle } from './best-image-style-preferences';
 import type { BestImageWebViewSource } from './prepare-best-image-webview-sources';
 import {
   markBestImageWebViewLoaded,
@@ -134,6 +135,24 @@ export const bestImageScreenSharedStyles: BestImageScreenSharedStyles = StyleShe
   exportCancelText: { fontSize: 15, fontWeight: '700' },
   exportOverlayText: { fontSize: 14, fontWeight: '700' },
 });
+
+export function BestImageStyleSwitch({ value, onChange }: {
+  value: BestImageRatingStyle;
+  onChange: (value: BestImageRatingStyle) => void;
+}) {
+  const theme = useAppTheme();
+  const styles = bestImageScreenSharedStyles;
+  return <View style={[styles.ratingStyleRow, { borderBottomColor: theme.border }]}>
+    <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
+      {([{ id: 'game', label: '游戏风格' }, { id: 'app', label: '应用风格' }] as const).map(({ id, label }) => {
+        const selected = value === id;
+        return <Pressable key={id} accessibilityLabel={label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => onChange(id)} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
+          <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{label}</Text>
+        </Pressable>;
+      })}
+    </View>
+  </View>;
+}
 
 export type BestImageChoiceChipStyles = {
   chip: ViewStyle;
