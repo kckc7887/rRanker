@@ -1,11 +1,13 @@
 import { z } from 'zod';
 import { createPreferencesStore } from '@/storage/create-preferences-store';
 import type { PhigrosBestImageOverflowCount } from './phigros-best-image';
+import type { BestImageRatingStyle } from '@/features/best-image/best-image-style-preferences';
 
 export type PhigrosImageStyleMode = 'current' | 'item' | 'random' | 'off';
 export type PhigrosImageStyleChoice = { mode: PhigrosImageStyleMode; key?: string };
 export type PhigrosBestImageStylePreferences = {
   version: 2;
+  ratingStyle: BestImageRatingStyle;
   avatar: PhigrosImageStyleChoice;
   background: PhigrosImageStyleChoice;
   overflowCount: PhigrosBestImageOverflowCount;
@@ -13,7 +15,7 @@ export type PhigrosBestImageStylePreferences = {
 
 const PREFIX = 'rranker.phigros-best-image.styles.v1:';
 const defaults: PhigrosBestImageStylePreferences = {
-  version: 2, avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0,
+  version: 2, ratingStyle: 'game', avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0,
 };
 
 function parseChoice(value: unknown): PhigrosImageStyleChoice {
@@ -28,13 +30,14 @@ function parseChoice(value: unknown): PhigrosImageStyleChoice {
 
 export function parsePhigrosBestImageStylePreferences(value: unknown): PhigrosBestImageStylePreferences {
   if (!value || typeof value !== 'object') return defaults;
-  const raw = value as { version?: unknown; avatar?: unknown; background?: unknown; overflowCount?: unknown };
-  if (raw.version !== 2) return defaults;
+  const raw = value as { version?: unknown; ratingStyle?: unknown; avatar?: unknown; background?: unknown; overflowCount?: unknown };
+  if (raw.version !== 2 || (raw.ratingStyle !== 'game' && raw.ratingStyle !== 'app')) return defaults;
   const overflowCount = raw.overflowCount === 3 || raw.overflowCount === 6 || raw.overflowCount === 9
     ? raw.overflowCount
     : 0;
   return {
     version: 2,
+    ratingStyle: raw.ratingStyle,
     avatar: parseChoice(raw.avatar),
     background: parseChoice(raw.background),
     overflowCount,
@@ -48,6 +51,7 @@ const { Store } = createPreferencesStore<PhigrosBestImageStylePreferences, strin
   defaults: () => defaults,
   parse: value => parsePhigrosBestImageStylePreferences(z.object({
     version: z.literal(2),
+    ratingStyle: z.enum(['game', 'app']),
     avatar: choiceSchema,
     background: choiceSchema,
     overflowCount: z.number(),

@@ -90,3 +90,32 @@ export function preparePhigrosBestImageCards(type: PhigrosBestImageType, page: P
     }) };
   });
 }
+
+export function ratingName(score: number, fc: unknown): string {
+  if (score >= 1_000_000) return 'phi';
+  if (fc) return 'FC';
+  if (!score) return 'NEW';
+  if (score < 700_000) return 'F';
+  if (score < 820_000) return 'C';
+  if (score < 880_000) return 'B';
+  if (score < 920_000) return 'A';
+  if (score < 960_000) return 'S';
+  return 'V';
+}
+
+export function suggestion(
+  difficulty: number,
+  referenceRks: number,
+  playerRks: number,
+  allowPerfectFallback: boolean,
+): { label: string; type: number | null } {
+  if (difficulty <= 0 || referenceRks <= 0) return { label: '无法推分', type: null };
+  let minimumIncrease = Math.floor(playerRks * 100) / 100 + 0.005 - playerRks;
+  if (minimumIncrease < 0) minimumIncrease += 0.01;
+  const acc = 45 * Math.sqrt((referenceRks + minimumIncrease * 30) / difficulty) + 55;
+  if (!Number.isFinite(acc) || acc >= 100) {
+    return allowPerfectFallback ? { label: '100.00%', type: 5 } : { label: '无法推分', type: null };
+  }
+  const type = acc < 98.5 ? 0 : acc < 99 ? 1 : acc < 99.5 ? 2 : acc < 99.7 ? 3 : acc < 99.85 ? 4 : 5;
+  return { label: `${acc.toFixed(2)}%`, type };
+}

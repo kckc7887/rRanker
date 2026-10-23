@@ -21,6 +21,7 @@ import {
 } from '@/features/best-image/best-image-screen-shell';
 import { useBestImageScreenController, usePreparedBestImageSources, type BestImageTemplate } from '@/features/best-image/use-best-image-screen-controller';
 import { useBestImageAssets } from '@/features/best-image/use-best-image-assets';
+import { buildPhigrosBestImageAppHtml } from '@/features/phigros-best-image/build-phigros-best-image-app-html';
 import { buildPhigrosBestImageHtml } from '@/features/phigros-best-image/build-phigros-best-image-html';
 import { collectPhigrosBestImageVisibleStrings } from '@/features/phigros-best-image/collect-phigros-best-image-visible-strings';
 import { loadPhigrosAccAverages } from '@/features/phigros-best-image/load-phigros-acc-averages';
@@ -37,10 +38,10 @@ import {
 } from '@/features/phigros-best-image/phigros-best-image';
 import { copyBestImageAsset, loadImageFiles, loadRemoteImageFile } from '@/features/best-image/load-best-image-session';
 import { loadPhigrosReferenceTemplateAssets } from '@/features/phigros-best-image/load-phigros-reference-template-assets';
-import { preparePhigrosUi } from '@/features/phigros-best-image/phigros-ui-cache';
+import { preparePhigrosUi, buildPhigrosAppCardAssets } from '@/features/phigros-best-image/phigros-ui-cache';
 import { preparePhigrosFonts } from '@/features/phigros-best-image/phigros-font-cache';
 import {
-  resolveNeededPhigrosFonts, trimPhigrosBestImageCss,
+  PHIGROS_FONT_CSS_FAMILY, resolveNeededPhigrosFonts, trimPhigrosBestImageCss,
 } from '@/features/phigros-best-image/phigros-font-coverage';
 import {
   phigrosBestImagePreferencesStore, type PhigrosBestImageStylePreferences,
@@ -58,7 +59,7 @@ import { RangeSelector } from '@/components/game-content/RangeSelector';
 const WIDTHS = [1080, 1440, 2160] as const;
 const OVERFLOW_COUNTS: readonly PhigrosBestImageOverflowCount[] = [0, 3, 6, 9];
 const DEFAULT_STYLES: PhigrosBestImageStylePreferences = {
-  version: 2, avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0,
+  version: 2, ratingStyle: 'game', avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 0,
 };
 
 const phigrosPreferencesAdapter = {
@@ -155,6 +156,7 @@ export function PhigrosBestImageScreen() {
     handlePreviewMessage,
   } = controller;
   const { assetSession } = controller;
+  const { ratingStyle } = stylePrefs;
 
   useEffect(() => {
     if (!provider) { setAvatarItems([]); return; }
@@ -186,7 +188,7 @@ export function PhigrosBestImageScreen() {
   const titles = useMemo(() => Object.fromEntries(songs.map((song) => [song.id, song.title])), [songs]);
   const neededFontEntries = useMemo(() => {
     if (!payload) return resolveNeededPhigrosFonts([]);
-    return resolveNeededPhigrosFonts(collectPhigrosBestImageVisibleStrings({
+    const entries = resolveNeededPhigrosFonts(collectPhigrosBestImageVisibleStrings({
       type,
       playerName: payload.player.displayName,
       rks: payload.playerScore.display,
@@ -197,25 +199,33 @@ export function PhigrosBestImageScreen() {
       titles,
       pages,
     }));
-  }, [dataSource, pages, payload, titles, type]);
+    return ratingStyle === 'app' ? entries.filter(entry => !entry.core) : entries;
+  }, [dataSource, pages, payload, ratingStyle, titles, type]);
   const neededFontKey = neededFontEntries.map((entry) => entry.name).join('|');
   const drawingAssets = useBestImageAssets({
     session: assetSession,
-    key: payload ? neededFontKey : null,
+    key: payload && controller.prefsReady ? `${ratingStyle}:${neededFontKey}` : null,
     prepare: async (signal) => {
-      const ui = await preparePhigrosUi(undefined, signal);
+      const ui = await preparePhigrosUi(ratingStyle, undefined, signal);
       await ui.fullReady;
       for (const path of ui.files) {
         await copyBestImageAsset(assetSession, new File(ui.directory, path).uri, path, signal);
       }
-      const fonts = await preparePhigrosFonts(undefined, { neededNames: neededFontEntries.map(entry => entry.name), signal });
-      await fonts.fullReady;
-      for (const entry of neededFontEntries) {
-        const path = `font/${entry.cssFileName}`;
-        await copyBestImageAsset(assetSession, new File(fonts.directory, path).uri, path, signal);
+      if (neededFontEntries.length) {
+        const fonts = await preparePhigrosFonts(undefined, { neededNames: neededFontEntries.map(entry => entry.name), signal });
+        await fonts.fullReady;
+        for (const entry of neededFontEntries) {
+          const path = `font/${entry.cssFileName}`;
+          await copyBestImageAsset(assetSession, new File(fonts.directory, path).uri, path, signal);
+        }
       }
+      if (ratingStyle === 'app') return {
+        style: 'app' as const,
+        fontCss: neededFontEntries.map(entry => `@font-face{font-family:"${PHIGROS_FONT_CSS_FAMILY[entry.name]}";src:url("font/${entry.cssFileName}");font-display:block}`).join('\n'),
+        fontFamilies: [...neededFontEntries.map(entry => `"${PHIGROS_FONT_CSS_FAMILY[entry.name]}"`), 'sans-serif'].join(','),
+      };
       const assets = await loadPhigrosReferenceTemplateAssets(assetSession);
-      return { ...assets, css: trimPhigrosBestImageCss(assets.css, neededFontEntries) };
+      return { style: 'game' as const, assets: { ...assets, css: trimPhigrosBestImageCss(assets.css, neededFontEntries) } };
     },
   });
   const selectedSongIds = useMemo(() => [...new Set(sections.flatMap((section) => section.records.map((record) => record.songId)))], [sections]);
@@ -230,7 +240,7 @@ export function PhigrosBestImageScreen() {
   }, [payload?.playerScore.value, sections, type]);
   const averages = useBestImageAssets({
     session: assetSession,
-    key: payload ? JSON.stringify([averageRecords, averageReferenceRks]) : null,
+    key: payload && controller.prefsReady && ratingStyle === 'game' ? JSON.stringify([averageRecords, averageReferenceRks]) : null,
     prepare: signal => loadPhigrosAccAverages(averageRecords, averageReferenceRks, signal),
   });
   const selectStyleKey = (kind: PhigrosBestImagePickerKind, choice: PhigrosImageStyleChoice): string | null => {
@@ -275,31 +285,36 @@ export function PhigrosBestImageScreen() {
   const backgroundData = gameAssets.data?.background ?? null;
   const illustrations = gameAssets.data?.illustrations;
   const accAverages = averages.data;
-  const templateAssets = useMemo(() => drawingAssets.data && gameAssets.data ? {
-    ...drawingAssets.data, fallbackAvatarUrl: gameAssets.data.defaultAvatar ?? '',
-  } : null, [drawingAssets.data, gameAssets.data]);
-  const gameReady = gameAssets.ready && averages.ready;
+  const gameReady = gameAssets.ready && (ratingStyle === 'app' || averages.ready);
   const assetsReady = drawingAssets.ready && gameReady;
 
-  const template = useMemo<BestImageTemplate | null>(() => payload && illustrations && accAverages && templateAssets ? {
-    assets: [],
-    build: () => pages.map((page) => {
-      const outputWidth = width as (typeof WIDTHS)[number];
-      const input = {
-        type, width: outputWidth, page, playerName: payload.player.displayName, rks: payload.playerScore.display,
-        dataAmount: payload.dataAmount,
-        challenge: formatPhigrosChallengeBadge(payload.challengeModeRank), challengeModeRank: payload.challengeModeRank,
-        syncedAt: formatSyncTime(payload.saveUpdatedAt),
-        dataSource,
-        progress: payload.progress, titles, illustrations, accAverages, avatarDataUri: avatarData, backgroundDataUri: backgroundData,
-        templateAssets,
-      };
-      return buildPhigrosBestImageHtml(input);
-    }),
-  } : null, [accAverages, avatarData, backgroundData, dataSource, illustrations, pages, payload, templateAssets, titles, type, width]);
+  const template = useMemo<BestImageTemplate | null>(() => {
+    if (!payload || !controller.prefsReady || !illustrations || !drawingAssets.data || !gameAssets.data) return null;
+    const drawing = drawingAssets.data;
+    const game = gameAssets.data;
+    if (drawing.style === 'game' && !accAverages) return null;
+    return {
+      assets: drawing.style === 'app' ? buildPhigrosAppCardAssets(assetSession, sections.flatMap(section => section.records), illustrations) : [],
+      build: cardBackgroundUrls => pages.map(page => {
+        const input = {
+          type, width: width as (typeof WIDTHS)[number], page, playerName: payload.player.displayName, rks: payload.playerScore.display,
+          dataAmount: payload.dataAmount, challenge: formatPhigrosChallengeBadge(payload.challengeModeRank), challengeModeRank: payload.challengeModeRank,
+          dataSource, titles, illustrations, avatarDataUri: avatarData, backgroundDataUri: backgroundData,
+        };
+        if (drawing.style === 'app') return buildPhigrosBestImageAppHtml({
+          ...input, cardBackgroundUrls, fontCss: drawing.fontCss, fontFamilies: drawing.fontFamilies,
+          avatarDataUri: avatarData ?? game.defaultAvatar, hideAvatar: stylePrefs.avatar.mode === 'off',
+        });
+        return buildPhigrosBestImageHtml({
+          ...input, syncedAt: formatSyncTime(payload.saveUpdatedAt), progress: payload.progress, accAverages: accAverages!,
+          templateAssets: { ...drawing.assets, fallbackAvatarUrl: game.defaultAvatar ?? '' },
+        });
+      }),
+    };
+  }, [accAverages, assetSession, avatarData, backgroundData, controller.prefsReady, dataSource, drawingAssets.data, gameAssets.data, illustrations, pages, payload, sections, stylePrefs.avatar.mode, titles, type, width]);
 
   const { htmlPages, sources, ready: templateReady, error: sourceError, retry: retryTemplate } = usePreparedBestImageSources(template, assetSession, assetsReady ? assetSession.directory : null, cancelExportRequest);
-  const preparationError = drawingAssets.error ?? gameAssets.error ?? averages.error ?? sourceError;
+  const preparationError = drawingAssets.error ?? gameAssets.error ?? (ratingStyle === 'game' ? averages.error : null) ?? sourceError;
   useEffect(() => {
     setPageHeights({}); setPageIndex(0); setPreviewStates({});
   }, [htmlPages, setPageHeights, setPageIndex, setPreviewStates]);
@@ -422,10 +437,14 @@ export function PhigrosBestImageScreen() {
         ))}
       </View>
     </> : null,
-      styleListHeader: type === 'best30' ? <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
+      styleListHeader: <>
+      <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
+        <View style={styles.overflowChoices}>{([{ id: 'game', label: '游戏风格' }, { id: 'app', label: '应用风格' }] as const).map(({ id, label }) => <BestImageChoiceChip key={id} label={label} selected={ratingStyle === id} onPress={() => setStylePrefs(current => ({ ...current, ratingStyle: id }))} styles={{ chip: styles.chip, chipText: styles.chipText }} />)}</View>
+      </View>
+      {type === 'best30' ? <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
         <View style={styles.overflowCopy}><Text style={[styles.styleName, { color: theme.text }]}>OVER FLOW</Text><Text style={[styles.styleValue, { color: theme.textMuted }]}>追加成绩数量</Text></View>
         <View style={styles.overflowChoices}>{OVERFLOW_COUNTS.map((count) => <BestImageChoiceChip key={count} label={`${count} 个`} selected={stylePrefs.overflowCount === count} onPress={() => setStylePrefs((current) => ({ ...current, overflowCount: count }))} styles={{ chip: styles.chip, chipText: styles.chipText }} />)}</View>
-      </View> : null,
+      </View> : null}</>,
       styleRows: (['avatar', 'background'] as const).map((kind) => <Pressable key={kind} accessibilityRole="button" accessibilityLabel={`选择${kind === 'avatar' ? '头像' : '背景'}`} onPress={() => setPicker(kind)} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
       <View style={styles.stylePreview}>{kind === 'avatar' ? (avatarData ? <Image source={{ uri: avatarData }} style={styles.avatarPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>) : (backgroundData ? <Image source={{ uri: backgroundData }} style={styles.backgroundPreview} /> : <Text style={[styles.noAsset, { color: theme.textMuted }]}>未设置</Text>)}</View>
       <View style={styles.styleCopy}><Text style={[styles.styleName, { color: theme.text }]}>{kind === 'avatar' ? '头像' : '背景'}</Text><Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{styleValue(kind)}</Text></View>
@@ -454,7 +473,7 @@ export function PhigrosBestImageScreen() {
       onPreviewStatesChange: setPreviewStates,
       onPreviewMessage: handlePreviewMessage,
       fileAccessFromFileURLs: true,
-      allowingReadAccessToUrl: templateAssets?.allowingReadAccessToUrl,
+      allowingReadAccessToUrl: assetSession.directory.uri,
     }}
     exportSession={{
       exportDisabled: !sources || !assetsReady || !formValid || !!exportStatus,

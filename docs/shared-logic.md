@@ -141,11 +141,13 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `prepareMaimaiUi(style, onProgress?, signal?)` 按 `BestImageRatingStyle` 选择发布清单，返回缓存目录、`fullReady` 和待复制的相对路径 `files`。应用风格包包含 SVG 与字体，游戏风格沿用 PNG 包及 `prepareMaimaiFonts`；两套 UI 缓存路径和共享请求键包含样式身份，统一沿用包及文件校验、取消和清理入口。`useMaimaiExportAssets` 将所需 UI 和字体通过 `copyBestImageAsset` 复制进账号会话，以会话、样式和重试代次判断就绪。`useMaimaiCollectionAssets` 通过 `loadRemoteImageFile` 准备头像、姓名框和背景，`buildBestImageHtml` 接收 `collectionUrls`，其中空值表示缺失素材。应用风格在字体加载后测量标题及资料文字，两种风格通过 `bestImageBridgeReadyScript` 等待字体、图片解码和排版完成后发送就绪消息。
 
-`prepareBestImageUi` 接收游戏作用域、缓存目录、文件清单与压缩包信息，供 `prepareMaimaiUi`、`prepareChunithmUi` 和 `preparePhigrosUi` 共用校验、下载、解包及取消流程；请求按目录、包摘要和资源代次共享。中二包包含 UI 与字体；Phigros 的 `phigros-ui.zip` 包含模板、SVG 和固定图片，字体继续按文字选择。各游戏清理入口使所属资源代次失效并清理缓存，存储适配器负责统计和清理，启动维护保留当前缓存版本。
+`prepareBestImageUi` 接收游戏作用域、缓存目录、文件清单与压缩包信息，供 `prepareMaimaiUi`、`prepareChunithmUi` 和 `preparePhigrosUi` 共用校验、下载、解包及取消流程；请求按目录、包摘要和资源代次共享。中二包包含 UI 与字体；Phigros 游戏包包含模板、SVG 和固定图片，应用包包含卡底、玩家底板、遮罩、评价、段位和思源黑体，补充字体按文字选择。各游戏清理入口使所属资源代次失效并清理缓存，存储适配器负责统计和清理，启动维护保留当前缓存版本。
 
 `useChunithmBestImageAssets` 经公共 hook 将 UI 与字体复制进账号会话，并通过 `loadRemoteImageFile` 准备角色、名牌和图片称号。页面复用 `useChunithmCollections` 读取角色、名牌与称号；选择写入 `chunithmBestImagePreferencesStore`。名牌支持当前、指定、随机和默认板，角色与称号支持当前、指定、随机和关闭；称号保存 `id/name/color/level`。`buildChunithmBestImageHtml` 接收名牌、角色和称号文件 URL，`hideTrophy` 隐藏整个称号槽位；B50、自定义及分页使用同一成绩卡与字体测量流程。
 
-Phigros 的 `loadPhigrosReferenceTemplateAssets` 从账号会话读取素材包中的模板与图标。页面经公共 hook 分别准备绘图资源、曲绘装扮和均值；绘图资源包括 UI 包与全部所需字体，均值按成绩集合复用。当前资源全部就绪后构建游戏风格 HTML，预览与导出共用同一组文件。`dataSource` 同时参与署名和可见文字字体收集，真实账号沿用载荷来源，示例账号显示“示例账号”。
+Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRatingStyle` 选择游戏或应用清单，应用包缓存在当前 UI 缓存版本下的 `app` 子目录。绘图准备键包含样式与所需字体，偏好读取完成后才启动；`phigrosBestImagePreferencesStore` 按账号保存必需的 `ratingStyle: 'game' | 'app'`，默认为 `game`，结构失效仅重建当前账号对应键，I/O 失败保留当前选择。游戏风格通过 `loadPhigrosReferenceTemplateAssets` 读取模板与图标，并按成绩集合准备均值；应用风格不请求均值，以包内思源黑体为首，特殊字符复用 `resolveNeededPhigrosFonts` 的补充字体。
+
+`buildPhigrosAppCardAssets` 经 `BestImageTemplate.assets` 声明曲绘、遮罩和四难度卡底，由公共入口生成并复用会话背景文件。`buildPhigrosBestImageAppHtml` 使用三列成绩卡与玩家资料区，文字在字体就绪后按实际宽度排版；Best30、OVER FLOW 和自定义分页共用模板。两种风格复用 `preparePhigrosBestImageCards`、`ratingName` 和 `suggestion` 的分组、排名、评价与推分计算。预览和导出共用 HTML、素材和就绪判断。`dataSource` 同时参与署名和可见文字字体收集，真实账号沿用载荷来源，示例账号显示“示例账号”。
 
 舞萌 `buildBestImageHtml` 的应用风格与游戏风格共用 DX 星级计算，B50 和自定义成绩均按 `DX Score / (总物量 × 3)` 判定：达到 85%、90%、93%、95%、97% 分别显示 1–5 星，低于 85% 或缺少有效分数、物量时不显示星标。
 

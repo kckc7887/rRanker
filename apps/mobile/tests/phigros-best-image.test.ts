@@ -1,5 +1,7 @@
 import { JSDOM } from 'jsdom';
-import { describe, expect, it } from 'vitest';
+import { buildPhigrosBestImageAppHtml, type PhigrosAppImageInput } from '@/features/phigros-best-image/build-phigros-best-image-app-html';
+import { describe, expect, it, vi } from 'vitest';
+import Storage from '@/storage/key-value-storage';
 import type { ScoreRecord } from '@/domain/models';
 import {
   appendPhigrosOverflowRecords, paginatePhigrosBestImageSections, sortPhigrosBestImageRecords,
@@ -11,7 +13,7 @@ import {
 import {
   buildPhigrosBestImageHtml, escapePhigrosBestImageHtml,
 } from '@/features/phigros-best-image/build-phigros-best-image-html';
-import { parsePhigrosBestImageStylePreferences } from '@/features/phigros-best-image/phigros-best-image-preferences';
+import { parsePhigrosBestImageStylePreferences, phigrosBestImagePreferencesStore } from '@/features/phigros-best-image/phigros-best-image-preferences';
 import { parsePhigrosUser } from '@/domain/phigros';
 import {
   calculatePhigrosXingAcc, isPhigrosXingAcc, phigrosChartNoteKey,
@@ -53,18 +55,69 @@ function filters(overrides: Partial<typeof DEFAULT_CUSTOM_PHIGROS_BEST_IMAGE_FIL
 }
 
 describe('Phigros 成绩图', () => {
+  it('按账号保存样式，仅重建结构失效的偏好，读取失败保留存储', async () => {
+    const store = phigrosBestImagePreferencesStore;
+    const app = { ...parsePhigrosBestImageStylePreferences(null), ratingStyle: 'app' as const };
+    await store.save('app-player', app);
+    await store.save('game-player', parsePhigrosBestImageStylePreferences(null));
+    expect((await store.load('app-player')).ratingStyle).toBe('app');
+    expect((await store.load('game-player')).ratingStyle).toBe('game');
+    const invalidKey = 'rranker.phigros-best-image.styles.v1:game-player';
+    await Storage.setItem(invalidKey, JSON.stringify({ version: 2, avatar: { mode: 'off' }, background: { mode: 'off' }, overflowCount: 0 }));
+    expect((await store.load('game-player')).ratingStyle).toBe('game');
+    expect(JSON.parse((await Storage.getItem(invalidKey))!).avatar.mode).toBe('current');
+    expect((await store.load('app-player')).ratingStyle).toBe('app');
+    const read = vi.spyOn(Storage, 'getItem').mockRejectedValueOnce(new Error('读取失败'));
+    try { await expect(store.load('app-player')).rejects.toThrow('读取失败'); }
+    finally { read.mockRestore(); }
+    expect(await store.load('app-player')).toEqual(app);
+  });
+
+  it('应用风格显示真实成绩、完整评价与所选段位，隐藏关闭的头像', () => {
+    const scores = [0, 690000, 810000, 870000, 910000, 950000, 980000, 990000, 1000000];
+    const records = scores.map((score, index) => record(String(index), { levelIndex: index % 4, dxScore: score, fc: index === 7 ? 'fc' : null }));
+    const input: PhigrosAppImageInput = {
+      type: 'custom', width: 1440, playerName: '<玩家>', rks: '16.1234', dataAmount: '123 MiB',
+      challenge: '45', challengeModeRank: 545, dataSource: '示例账号', titles: {}, illustrations: {},
+      page: { id: 'page', pageIndex: 1, pageCount: 2, sections: [{ id: 'best', title: 'Best9', records }] },
+      cardBackgroundUrls: Object.fromEntries(records.map(r => [`${r.songId}:${r.levelIndex}`, `file:///card-${r.songId}.svg`])),
+      fontCss: '', fontFamilies: 'sans-serif', hideAvatar: true, avatarDataUri: 'file:///avatar.png',
+    };
+    const html = buildPhigrosBestImageAppHtml(input);
+    const text = renderedText(html), images = renderedImages(html);
+    expect(text).toContain('<玩家>');
+    expect(text).toContain('16.1234');
+    expect(text).toContain('123 MiB');
+    expect(text).toContain('1,000,000');
+    expect(text).toContain('#31');
+    expect(text).toContain('第 2 / 2 页');
+    expect(text).not.toContain('Avg:');
+    expect(text).not.toContain('ACC');
+    expect(images).not.toContain('file:///avatar.png');
+    expect(images).toContain('app/challenge/outline/5.svg');
+    for (const grade of ['NEW', 'F', 'C', 'B', 'A', 'S', 'V', 'FC', 'phi']) expect(images).toContain(`app/${grade}.svg`);
+    expect(viewportWidth(html)).toBe(1440);
+    expect(renderedText(buildPhigrosBestImageAppHtml({ ...input, page: { ...input.page, sections: [] } }))).toContain('暂无可用于图片的成绩');
+  });
+
+  it('默认游戏风格并接受应用风格选择，缺少样式字段重置当前偏好', () => {
+    expect(parsePhigrosBestImageStylePreferences(null).ratingStyle).toBe('game');
+    expect(parsePhigrosBestImageStylePreferences({ version: 2, ratingStyle: 'app', avatar: { mode: 'off' }, background: { mode: 'off' }, overflowCount: 6 })).toMatchObject({ ratingStyle: 'app', overflowCount: 6 });
+    expect(parsePhigrosBestImageStylePreferences({ version: 2, avatar: { mode: 'off' }, overflowCount: 9 })).toMatchObject({ ratingStyle: 'game', avatar: { mode: 'current' }, overflowCount: 0 });
+  });
+
   it('保存合法的 OVER FLOW 数量与装扮', () => {
     expect(parsePhigrosBestImageStylePreferences({
-      version: 2, avatar: { mode: 'current' }, background: { mode: 'off' },
+      version: 2, ratingStyle: 'game', avatar: { mode: 'current' }, background: { mode: 'off' },
     })).toMatchObject({ version: 2, overflowCount: 0 });
     expect(parsePhigrosBestImageStylePreferences({
-      version: 2, avatar: { mode: 'current' }, background: { mode: 'off' }, overflowCount: 9,
+      version: 2, ratingStyle: 'game', avatar: { mode: 'current' }, background: { mode: 'off' }, overflowCount: 9,
     }).overflowCount).toBe(9);
     expect(parsePhigrosBestImageStylePreferences({
-      version: 2, avatar: { mode: 'current' }, background: { mode: 'off' }, overflowCount: 4,
+      version: 2, ratingStyle: 'game', avatar: { mode: 'current' }, background: { mode: 'off' }, overflowCount: 4,
     }).overflowCount).toBe(0);
     expect(parsePhigrosBestImageStylePreferences({
-      version: 2, avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 3,
+      version: 2, ratingStyle: 'game', avatar: { mode: 'current' }, background: { mode: 'current' }, overflowCount: 3,
     })).toMatchObject({ version: 2, overflowCount: 3 });
     expect(parsePhigrosBestImageStylePreferences(null)).toMatchObject({ version: 2 });
   });

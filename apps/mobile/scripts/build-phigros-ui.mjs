@@ -25,7 +25,7 @@ for (const [from, to] of [['b19/b19.css', 'game/b19.css'], ['common/common.css',
   files.set(to, await fs.readFile(path.join(reference, from)));
 }
 await collect(path.join(reference, 'otherimg'), 'game/otherimg/');
-await collect(source, '');
+await collect(path.join(source, 'game'), 'game/');
 const zip = new JSZip();
 const entries = [];
 for (const [filename, bytes] of [...files].sort(([a], [b]) => a.localeCompare(b, 'en'))) {

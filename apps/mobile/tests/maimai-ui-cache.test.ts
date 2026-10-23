@@ -1,3 +1,4 @@
+import { PHIGROS_APP_UI_ENTRIES, PHIGROS_APP_UI_ZIP } from '@/features/phigros-best-image/phigros-app-ui-manifest';
 import { prepareChunithmUi, clearChunithmUiCache } from '@/features/chunithm-best-image/chunithm-ui-cache';
 import { CHUNITHM_UI_ENTRIES, CHUNITHM_UI_ZIP } from '@/features/chunithm-best-image/chunithm-ui-manifest';
 import { preparePhigrosUi, clearPhigrosUiCache } from '@/features/phigros-best-image/phigros-ui-cache';
@@ -99,9 +100,9 @@ vi.mock('expo-file-system', () => {
   return { Directory, File, Paths: { document: new Directory('file://', 'document'), cache: new Directory('file://', 'cache') } };
 });
 
-async function fixture(omit?: string, style: 'game' | 'app' | 'chunithm' | 'phigros' = 'game'): Promise<Uint8Array> {
-  const entries = style === 'phigros' ? PHIGROS_UI_ENTRIES : style === 'chunithm' ? CHUNITHM_UI_ENTRIES : style === 'app' ? MAIMAI_APP_UI_MANIFEST_ENTRIES : MAIMAI_UI_MANIFEST_ENTRIES;
-  const pack = style === 'phigros' ? PHIGROS_UI_ZIP : style === 'chunithm' ? CHUNITHM_UI_ZIP : style === 'app' ? MAIMAI_APP_UI_ZIP : MAIMAI_UI_ZIP;
+async function fixture(omit?: string, style: 'game' | 'app' | 'chunithm' | 'phigros' | 'phigros-app' = 'game'): Promise<Uint8Array> {
+  const entries = style === 'phigros-app' ? PHIGROS_APP_UI_ENTRIES : style === 'phigros' ? PHIGROS_UI_ENTRIES : style === 'chunithm' ? CHUNITHM_UI_ENTRIES : style === 'app' ? MAIMAI_APP_UI_MANIFEST_ENTRIES : MAIMAI_UI_MANIFEST_ENTRIES;
+  const pack = style === 'phigros-app' ? PHIGROS_APP_UI_ZIP : style === 'phigros' ? PHIGROS_UI_ZIP : style === 'chunithm' ? CHUNITHM_UI_ZIP : style === 'app' ? MAIMAI_APP_UI_ZIP : MAIMAI_UI_ZIP;
   const zip = new JSZip();
   for (const entry of entries) {
     const bytes = new Uint8Array(entry.bytes); bytes.set(Buffer.from(`asset:${entry.path}`).subarray(0, bytes.length));
@@ -144,14 +145,31 @@ describe('maimai ui asset cache', () => {
   it('prepares the Phigros template, reuses it offline and clears only that game', async () => {
     const maimai = await prepareMaimaiUi('game'); await maimai.fullReady;
     await fixture(undefined, 'phigros');
-    const phigros = await preparePhigrosUi(); await phigros.fullReady;
+    const phigros = await preparePhigrosUi('game'); await phigros.fullReady;
     expect(mockUiFs.files.get(`${phigros.directory.uri}/game/b19.css`)?.byteLength).toBeGreaterThan(0);
     mockUiFs.remotes.clear();
-    await (await preparePhigrosUi()).fullReady;
+    await (await preparePhigrosUi('game')).fullReady;
     expect(mockUiFs.downloadCalls).toEqual([MAIMAI_UI_ZIP.url, PHIGROS_UI_ZIP.url]);
     clearPhigrosUiCache();
     expect(mockUiFs.files.has(`${phigros.directory.uri}/game/b19.css`)).toBe(false);
     expect(cached()).toBeTruthy();
+  });
+
+  it('Phigros 两种样式可离线切换并一同清理', async () => {
+    await fixture(undefined, 'phigros');
+    await fixture(undefined, 'phigros-app');
+    const game = await preparePhigrosUi('game'); await game.fullReady;
+    const app = await preparePhigrosUi('app'); await app.fullReady;
+    expect(mockUiFs.files.has(`${app.directory.uri}/app/S.svg`)).toBe(true);
+    expect(mockUiFs.files.has(`${app.directory.uri}/app/SourceHanSansCN-Bold.otf`)).toBe(true);
+    expect(mockUiFs.files.has(`${game.directory.uri}/game/b19.css`)).toBe(true);
+    mockUiFs.remotes.clear();
+    await (await preparePhigrosUi('game')).fullReady;
+    await (await preparePhigrosUi('app')).fullReady;
+    expect(mockUiFs.downloadCalls).toEqual([PHIGROS_UI_ZIP.url, PHIGROS_APP_UI_ZIP.url]);
+    clearPhigrosUiCache();
+    expect(mockUiFs.files.has(`${app.directory.uri}/app/S.svg`)).toBe(false);
+    expect(mockUiFs.files.has(`${game.directory.uri}/game/b19.css`)).toBe(false);
   });
 
   it('publishes current assets, reports completion, and reuses intact files', async () => {
