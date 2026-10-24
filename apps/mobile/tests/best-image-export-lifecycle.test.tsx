@@ -58,7 +58,9 @@ describe('best image export lifecycle', () => {
     let pending!: Promise<void>;
     await act(async () => { pending = result.current.exportImages(runtime()); await result.current.exportImages(runtime()); });
     expect(mockPermission).toHaveBeenCalledTimes(1);
+    expect(result.current.exportStatus).toBe('正在准备导出');
     await act(async () => { result.current.cancelExportRequest(); permission.resolve(); await pending; });
+    expect(result.current.exportStatus).toBeNull();
     expect(result.current.exportIndex).toBeNull(); expect(mockCapture).not.toHaveBeenCalled(); expect(mockNotify).not.toHaveBeenCalled();
   });
 
@@ -140,7 +142,9 @@ describe('best image export lifecycle', () => {
     const { result } = await renderHook(() => useBestImageScreenController(config));
     let pending!: Promise<void>;
     await act(async () => { pending = result.current.exportImages(runtime(2)); });
+    expect(result.current.exportStatus).toBe('正在加载图片 1/2');
     await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); });
+    expect(result.current.exportStatus).toBe('正在生成图片 1/2');
     await act(async () => { result.current.cancelExportRequest(); await result.current.exportImages(runtime()); });
     expect(mockPermission).toHaveBeenCalledTimes(1);
     await act(async () => { capture.resolve('file:///late.png'); await pending; });
@@ -155,9 +159,13 @@ describe('best image export lifecycle', () => {
     await act(async () => { pending = result.current.exportImages(runtime(2)); });
     await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); });
     expect(result.current.exportIndex).toBe(1);
+    expect(result.current.exportStatus).toBe('正在加载图片 2/2');
     await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); });
     expect(mockSave).toHaveBeenCalledTimes(1);
+    expect(result.current.exportIndex).toBeNull();
+    expect(result.current.exportStatus).toBe('正在保存 1/2');
     await act(async () => { result.current.cancelExportRequest(); });
+    expect(result.current.exportStatus).toBeNull();
     expect(mockDelete).not.toHaveBeenCalled();
     await act(async () => { save.resolve(); await pending; });
     expect(mockSave).toHaveBeenCalledTimes(1); expect(mockDelete).toHaveBeenCalledTimes(2); expect(mockNotify).not.toHaveBeenCalled();

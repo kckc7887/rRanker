@@ -165,11 +165,13 @@ export function useBestImageExport(config: {
       cancelled: false, timedOut: false, wait: null, captures: [], width: config.width, messageScale: config.messageScale, controller: new AbortController(), settled, finish,
     };
     active.current = session;
+    setExportStatus('正在准备导出');
     session.operation.record('export', { result: 'start' });
     stage(session, 'permission');
     const pageCount = runtime.htmlPages.length;
     const capturePage = async (index: number) => {
       stage(session, 'canvas', index + 1);
+      setExportStatus(`正在加载图片 ${index + 1}/${pageCount}`);
       const height = await new Promise<number>((resolve, reject) => {
         const pageId = runtime.pages[index]?.id;
         const initialHeight = (pageId ? config.pageHeights[pageId] : undefined) ?? config.defaultHeight;
@@ -183,6 +185,7 @@ export function useBestImageExport(config: {
       });
       assertCurrent(session);
       stage(session, 'capture', index + 1);
+      setExportStatus(`正在生成图片 ${index + 1}/${pageCount}`);
       const options = { format: 'png', quality: 1, result: 'tmpfile',
         ...bestImageCaptureDimensions(session.width, height, PixelRatio.get(), Platform.OS) } as const;
       let uri: string | undefined;
@@ -213,7 +216,6 @@ export function useBestImageExport(config: {
       session.operation.record('permission', { result: 'success' });
       for (let index = 0; index < pageCount; index += 1) {
         assertCurrent(session);
-        setExportStatus(`正在导出 ${index + 1}/${pageCount}`);
         try { await capturePage(index); }
         catch (error) {
           if (config.wrapExportPageError) throw new Error(`第 ${index + 1}/${pageCount} 页生成失败`, { cause: error });
@@ -237,6 +239,7 @@ export function useBestImageExport(config: {
       }
       assertCurrent(session);
       session.operation.record('export', { result: 'success' });
+      setExportStatus(`已保存 ${savedCount}/${pageCount}，正在完成导出`);
       showNotification({ title: '导出完成', message: `已保存 ${session.captures.length} 张成绩图片到相册`, variant: 'success' });
     } catch (error) {
       session.operation.record(session.phase, {

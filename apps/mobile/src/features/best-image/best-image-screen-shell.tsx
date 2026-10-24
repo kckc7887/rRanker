@@ -74,6 +74,7 @@ export type BestImageScreenShellStyles = {
 };
 
 export type BestImageScreenSharedStyles = BestImageScreenShellStyles & {
+  exportDialog: ViewStyle;
   fieldRow: ViewStyle;
   textInput: TextStyle;
   textInputError: TextStyle;
@@ -130,7 +131,8 @@ export const bestImageScreenSharedStyles: BestImageScreenSharedStyles = StyleShe
   exportButtonDisabled: { opacity: 0.55 },
   exportButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#111111' },
-  exportOverlay: { ...StyleSheet.absoluteFill, alignItems: 'center', justifyContent: 'center', gap: 12 },
+  exportOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0, 0, 0, 0.4)' },
+  exportDialog: { width: '100%', maxWidth: 360, alignItems: 'center', gap: 16, padding: 24, borderRadius: 20 },
   exportCancel: { borderWidth: 1, borderRadius: 10, marginTop: 8, paddingHorizontal: 18, paddingVertical: 10 },
   exportCancelText: { fontSize: 15, fontWeight: '700' },
   exportOverlayText: { fontSize: 14, fontWeight: '700' },
@@ -407,7 +409,52 @@ export function BestImageScreenShell<TType extends string>({
     });
   }, [previewMounted, lifecycle.phase, sources]);
 
-  return <>
+  return <View style={styles.page}>
+    {heavyContentMounted && exportIndex !== null && exportSource ? <View pointerEvents="none" style={[styles.exportRoot, StyleSheet.absoluteFill]}>
+      <View
+        key={`${exportWebViewKeyPrefix}-${exportIndex}-${activeWidth}`}
+        ref={captureRef}
+        collapsable={false}
+        onLayout={onExportLayout}
+        style={{
+          width: activeWidth / PixelRatio.get(),
+          height: exportHeight / PixelRatio.get(),
+          ...(captureBackgroundColor ? { backgroundColor: captureBackgroundColor } : {}),
+        }}
+        {...(captureAccessibilityLabel ? { accessibilityLabel: captureAccessibilityLabel } : {})}
+      >
+        <WebView
+          accessibilityLabel={`导出渲染 第${exportIndex + 1}页`}
+          key={`${exportWebViewKeyPrefix}-${exportIndex}-${activeWidth}`}
+          allowFileAccess={Platform.OS === 'android'}
+          androidLayerType="software"
+          bounces={false}
+          javaScriptEnabled
+          mixedContentMode="never"
+          originWhitelist={['about:blank', 'file://*', 'https://*']}
+          onMessage={(event) => onExportMessage(event.nativeEvent.data)}
+          onShouldStartLoadWithRequest={(request) => request.isTopFrame === false
+            || request.url === 'about:blank'
+            || request.url === exportSource.uri}
+          onError={(event) => recordRuntimeError('best-image-export', event?.nativeEvent)}
+          onContentProcessDidTerminate={() => {
+            recordRuntimeError('best-image-export-terminated', undefined);
+            onRequestCloseExport();
+          }}
+          onRenderProcessGone={(event) => {
+            recordRuntimeError('best-image-export-process-gone', undefined, event?.nativeEvent?.didCrash);
+            onRequestCloseExport();
+          }}
+          scrollEnabled={false}
+          showsHorizontalScrollIndicator={false}
+          showsVerticalScrollIndicator={false}
+          source={exportSource}
+          style={styles.webview}
+          {...(fileAccessFromFileURLs ? { allowFileAccessFromFileURLs: fileAccessFromFileURLs } : {})}
+          {...(allowingReadAccessToUrl ? { allowingReadAccessToURL: allowingReadAccessToUrl } : {})}
+        />
+      </View>
+    </View> : null}
     <ScrollView style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={[styles.label, { color: theme.text }]}>选择类型</Text>
       <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
@@ -530,59 +577,17 @@ export function BestImageScreenShell<TType extends string>({
 
     {pickers}
 
-    <Modal visible={heavyContentMounted && exportIndex !== null} animationType="none" transparent={false} onRequestClose={onRequestCloseExport}>
-      {heavyContentMounted && exportIndex !== null && exportSource ? <View style={styles.exportRoot}>
-        <View
-          key={`${exportWebViewKeyPrefix}-${exportIndex}-${activeWidth}`}
-          ref={captureRef}
-          collapsable={false}
-          onLayout={onExportLayout}
-          style={{
-            width: activeWidth / PixelRatio.get(),
-            height: exportHeight / PixelRatio.get(),
-            ...(captureBackgroundColor ? { backgroundColor: captureBackgroundColor } : {}),
-          }}
-          {...(captureAccessibilityLabel ? { accessibilityLabel: captureAccessibilityLabel } : {})}
-        >
-          <WebView
-            accessibilityLabel={`导出渲染 第${exportIndex + 1}页`}
-            key={`${exportWebViewKeyPrefix}-${exportIndex}-${activeWidth}`}
-            allowFileAccess={Platform.OS === 'android'}
-            androidLayerType="software"
-            bounces={false}
-            javaScriptEnabled
-            mixedContentMode="never"
-            originWhitelist={['about:blank', 'file://*', 'https://*']}
-            onMessage={(event) => onExportMessage(event.nativeEvent.data)}
-            onShouldStartLoadWithRequest={(request) => request.isTopFrame === false
-              || request.url === 'about:blank'
-              || request.url === exportSource.uri}
-            onError={(event) => recordRuntimeError('best-image-export', event?.nativeEvent)}
-            onContentProcessDidTerminate={() => {
-              recordRuntimeError('best-image-export-terminated', undefined);
-              onRequestCloseExport();
-            }}
-            onRenderProcessGone={(event) => {
-              recordRuntimeError('best-image-export-process-gone', undefined, event?.nativeEvent?.didCrash);
-              onRequestCloseExport();
-            }}
-            scrollEnabled={false}
-            showsHorizontalScrollIndicator={false}
-            showsVerticalScrollIndicator={false}
-            source={exportSource}
-            style={styles.webview}
-            {...(fileAccessFromFileURLs ? { allowFileAccessFromFileURLs: fileAccessFromFileURLs } : {})}
-            {...(allowingReadAccessToUrl ? { allowingReadAccessToURL: allowingReadAccessToUrl } : {})}
-          />
-        </View>
-        <View style={[styles.exportOverlay, { backgroundColor: theme.background }]}>
+    <Modal visible={heavyContentMounted && exportStatus !== null} animationType="none" transparent onRequestClose={onRequestCloseExport}>
+      <View style={styles.exportOverlay}>
+        <View style={[bestImageScreenSharedStyles.exportDialog, { backgroundColor: theme.surface }]}>
+          <Text style={[styles.panelTitle, { color: theme.text }]}>导出成绩图片</Text>
           <ActivityIndicator color={theme.accent} size="large" />
-          <Text style={[styles.exportOverlayText, { color: theme.textSecondary }]}>{exportStatus ?? '正在准备导出'}</Text>
+          <Text style={[styles.exportOverlayText, { color: theme.textSecondary }]}>{exportStatus}</Text>
           <Pressable accessibilityLabel="取消导出" accessibilityRole="button" onPress={onRequestCloseExport} style={[styles.exportCancel, { borderColor: theme.border }]}>
             <Text style={[styles.exportCancelText, { color: theme.text }]}>取消</Text>
           </Pressable>
         </View>
-      </View> : null}
+      </View>
     </Modal>
-  </>;
+  </View>;
 }

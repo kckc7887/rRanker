@@ -316,7 +316,7 @@ describe('Phigros 生成图片页', () => {
 
     await fireEvent.press(screen.getByLabelText('导出成绩图片'));
     await waitFor(() => expect(requestBestImageExportPermission).toHaveBeenCalledTimes(1));
-    await waitFor(() => expect(screen.getAllByText('正在导出 1/1')).toHaveLength(2));
+    await waitFor(() => expect(screen.getAllByText('正在加载图片 1/1').length).toBeGreaterThan(0));
     const renderer = await screen.findByLabelText('导出渲染 第1页');
     await act(async () => {
       await fireEvent(renderer, 'message', { nativeEvent: { data: JSON.stringify({

@@ -135,7 +135,7 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `prepareBestImageCardBackground` 将声明的原始文件以自包含 data URL 嵌入 SVG，按模板素材身份、源文件地址和缓存代次生成会话文件，非空文件直接复用。读取与构建逐张完成，临时写入和原子发布沿用共享文件队列，I/O 失败由模板入口显示错误并重试。舞萌应用风格与中二声明完整卡片背景，保留底板、镜像、各层高斯模糊、渐变遮罩与透明度；HTML 通过 `cardBackgroundUrls` 引用背景文件，动态文字与图标独立排版。分辨率、成绩文字及分页不参与背景素材身份；背景图片与其余图片共用加载、解码及导出就绪流程。
 
-`useBestImageExport.handleExportLayout` 由 `BestImageScreenShell.exportSession.onExportLayout` 接收每页捕获视图的真实布局；只有当前页就绪高度与布局宽高按像素比例匹配后才截图。后续高度变化取消之前的就绪等待，每页独立挂载捕获视图并隔离旧消息。导出 WebView 挂载期间暂停预览 WebView，结束后恢复。`captureRef` 通过 `scripts/patch-react-native-view-shot.cjs` 接入 WebView 原生绘制：iOS 使用 `WKWebView.takeSnapshot(afterScreenUpdates: true)`，Android 等待 `postVisualStateCallback` 后绘制；原有编码、临时文件、取消与保存路径共用。iOS 截图参数为输出像素除以设备比例，Android 直接使用输出像素；iOS 瞬态失败沿相同截图方式重试一次。
+`useBestImageExport.handleExportLayout` 由 `BestImageScreenShell.exportSession.onExportLayout` 接收每页捕获视图的真实布局；只有当前页就绪高度与布局宽高按像素比例匹配后才截图。后续高度变化取消之前的就绪等待，每页独立挂载捕获视图并隔离旧消息。导出 WebView 在页面下层独立挂载，挂载期间暂停预览 WebView，结束后恢复。导出进度复用 `exportStatus`，从权限准备到文件清理均由 `BestImageScreenShell` 的居中弹窗展示；图片加载、生成和保存分别显示当前页数与总页数，取消按钮与系统返回共用 `cancelExportRequest`。`captureRef` 通过 `scripts/patch-react-native-view-shot.cjs` 接入 WebView 原生绘制：iOS 使用 `WKWebView.takeSnapshot(afterScreenUpdates: true)`，Android 等待 `postVisualStateCallback` 后绘制；原有编码、临时文件、取消与保存路径共用。iOS 截图参数为输出像素除以设备比例，Android 直接使用输出像素；iOS 瞬态失败沿相同截图方式重试一次。
 
 三款成绩图直接使用当前载荷的 `source.label`。示例数据生成入口提供“示例账号”，真实账号保留实际来源标签。舞萌来源参与现有 HTML 生成身份，来源单独变化也重新写盘。
 
