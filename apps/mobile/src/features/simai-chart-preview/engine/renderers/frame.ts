@@ -10,7 +10,7 @@ import { SKIN_TRANSFORM, resolveStarSkin } from './skinSemantics';
 
 export type DrawCommand = {
   path: string; x: number; y: number; angle: number; scale: number; alpha: number; layer: number; time: number; order: number;
-  stretch?: number; cutoff?: number; brightness?: number;
+  stretch?: number; exPath?: string; cutoff?: number; brightness?: number;
   stack?: number; effect?: { kind: 'tap' | 'touch' | 'hold' | 'firework'; ageMs: number; isBreak: boolean };
 };
 type TimedNotes = { times: number[]; notes: Note[] };
@@ -206,7 +206,7 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
         const headClamped = Math.min(distance, 4.8), tailClamped = clamp(tail, 1.225, 4.8);
         const barLength = raw < 1.225 ? 0 : Math.max(headClamped - tailClamped, 0);
         const middle = raw < 1.225 ? 1.225 : (headClamped + tailClamped) / 2;
-        emit(n, `HoldSkins/hold${variant(n)}${age >= 0 ? '_on' : ''}.png`, 3, { ...buttonPoint(Number(n.position), middle), angle: keyAngle, scale, stretch: barLength - 0.58, brightness: n.isBreak ? breakPulseBrightness(now) : 1 });
+        emit(n, `HoldSkins/hold${variant(n)}${age >= 0 ? '_on' : ''}.png`, 3, { ...buttonPoint(Number(n.position), middle), angle: keyAngle, scale, stretch: barLength - 0.58, exPath: n.isEx ? 'HoldSkins/hold_ex.png' : undefined, brightness: n.isBreak ? breakPulseBrightness(now) : 1 });
         if (raw >= 1.225 && tail >= 1.225) emit(n, `NoteGuideSkins/Hold${n.isMine ? '_Mine' : n.isBreak ? '_Break' : n.isEach ? '_Each' : ''}_End.png`, 3, { ...buttonPoint(Number(n.position), Math.min(tail, 4.8)), angle: keyAngle });
       } else {
         let angle = keyAngle, double = false;
@@ -216,7 +216,7 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
           if (config.slideRotation && duration > 0) angle -= (now - n.timingMs) / 1000 * Math.PI * Math.min(6, length / (duration * 2 * Math.PI));
         } else if ('isSpinningStar' in n && n.isSpinningStar) angle += (now - n.timingMs) / 1000 * Math.PI * 3;
         const path = star ? `StarSkins/star${double ? n.isMine ? n.isBreak ? '_break_double_mine' : '_double_mine' : n.isBreak ? '_break_double' : n.isEach ? '_each_double' : '_double' : variant(n)}.png` : `TapSkins/tap${variant(n)}.png`;
-        emit(n, path, 3, { ...buttonPoint(Number(n.position), distance), angle, scale, brightness: n.isBreak ? breakPulseBrightness(now) : 1 });
+        emit(n, path, 3, { ...buttonPoint(Number(n.position), distance), angle, scale, exPath: n.isEx ? star ? `StarSkins/star_ex${double ? '_double' : ''}.png` : 'TapSkins/tap_ex.png' : undefined, brightness: n.isBreak ? breakPulseBrightness(now) : 1 });
       }
     }
     const hitAge = now - (hold ? n.endTimeMs : n.timingMs);

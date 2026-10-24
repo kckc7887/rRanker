@@ -83,6 +83,25 @@ async function player() {
 }
 
 describe('舞萌播放器画面', () => {
+  it.each([
+    ['1x', 'TapSkins/tap.png', 'TapSkins/tap_ex.png', 2001],
+    ['1bx', 'TapSkins/tap_break.png', 'TapSkins/tap_ex.png', 2001],
+    ['1x/2h[4:1]', 'TapSkins/tap_each.png', 'TapSkins/tap_ex.png', 2001],
+    ['1hx[4:2]', 'HoldSkins/hold.png', 'HoldSkins/hold_ex.png', 3001],
+    ['1x-5[4:2]', 'StarSkins/star.png', 'StarSkins/star_ex.png', 2001],
+    ['1x-5[4:2]*-7[4:2]', 'StarSkins/star_double.png', 'StarSkins/star_ex_double.png', 2001],
+  ])('EX 音符 %s 显示保护套并随本体结束', async (body, base, sleeve, end) => {
+    const p = await player();
+    const draws = p.render(body, 1850);
+    const note = draws.find(draw => draw.image === base)!;
+    const covers = draws.filter(draw => draw.image === sleeve);
+    expect(note).toBeDefined(); expect(covers.length).toBeGreaterThan(0);
+    expect(covers[0]).toMatchObject({ x: note.x, y: note.y, width: note.width, height: note.height, alpha: note.alpha });
+    expect(p.render(body.replace('x', ''), 1850).some(draw => draw.image === sleeve)).toBe(false);
+    expect(p.render(body, end).some(draw => draw.image === sleeve)).toBe(false);
+    expect(p.render(body, 1850).filter(draw => draw.image === sleeve)).toEqual(covers);
+  });
+
   it('粉色星星替换普通单双星，保留绝赞与地雷，显示大小不变', async () => {
     const p = await player();
     for (const [body, normal, pink] of [
@@ -95,6 +114,7 @@ describe('舞萌播放器画面', () => {
       const after = p.render(body, 1850).find(draw => draw.image === 'StarSkins/' + pink + '.png')!;
       expect(before).toBeDefined(); expect(after).toBeDefined();
       expect(after.width).toBeCloseTo(before.width); expect(after.height).toBeCloseTo(before.height);
+      if (body.includes('x')) expect(p.draws.some(draw => draw.image.startsWith('StarSkins/star_ex'))).toBe(true);
     }
     expect(p.render('1-5[4:2]', 2750).some(draw => draw.image === 'StarSkins/star_pink.png')).toBe(true);
   });
@@ -132,6 +152,7 @@ describe('舞萌播放器画面', () => {
     expect(holds(1300)).toEqual([]);
     const before = holds(1750); expect(before.length).toBeGreaterThan(0);
     expect(holds(2000).some(draw => draw.image === 'HoldSkins/hold_on.png')).toBe(true);
+    expect(holds(2500).some(draw => draw.image === 'HoldSkins/hold_ex.png')).toBe(true);
     expect(holds(3001)).toEqual([]);
     const restored = holds(1750);
     expect(restored.map(({ x, y }) => [x, y])).toEqual(before.map(({ x, y }) => [x, y]));

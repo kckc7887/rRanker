@@ -99,6 +99,12 @@ export class MainRenderer {
       ctx.beginPath(); ctx.moveTo(0, 0); ctx.arc(0, 0, Math.hypot(width, height), -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * command.cutoff); ctx.closePath(); ctx.clip();
     }
     this.drawSliced(image, image.naturalWidth, image.naturalHeight, width, height, command.stretch !== undefined, command.scale);
+    if (command.exPath) {
+      const overlay = this.skin.get(command.exPath);
+      if (!overlay) throw new Error(`Required sprite missing: ${command.exPath}`);
+      ctx.filter = 'none';
+      this.drawSliced(overlay, overlay.naturalWidth, overlay.naturalHeight, width, height, command.stretch !== undefined, command.scale);
+    }
     ctx.restore();
   }
   private drawSliced(image: CanvasImageSource, sourceW: number, sourceH: number, width: number, height: number, sliced: boolean, scale: number) {
