@@ -12,12 +12,14 @@ export function buildRizlineCardBackground(sources: readonly string[]): string {
   const fade = (id: string, width: number, stops: readonly (readonly [number, number])[]) => `<linearGradient id="${id}-fade" gradientUnits="userSpaceOnUse" x1="0" y1="0" x2="${width}" y2="0">${stops.map(([x, opacity]) => `<stop offset="${x / width}" stop-color="white" stop-opacity="${opacity}"/>`).join('')}</linearGradient><mask id="${id}" maskUnits="userSpaceOnUse" x="0" y="0" width="${width}" height="238"><rect width="${width}" height="238" fill="url(#${id}-fade)"/></mask>`;
   return `<svg xmlns="http://www.w3.org/2000/svg" width="562" height="238" viewBox="0 0 562 238"><defs>
     <clipPath id="shape"><path d="M119 0H544Q562 0 562 18V220Q562 238 544 238H119A119 119 0 0 1 119 0Z"/></clipPath>
+    ${art ? image(art, 238, 238, 'id="art" preserveAspectRatio="xMidYMid slice"') : ''}
+    <g id="wide"><use href="#art"/><use href="#art" transform="translate(476 0) scale(-1 1)"/></g>
     ${fade('clear', 238, [[0, 1], [24, 1], [48, 1], [72, 14 / 15], [103, 11 / 15], [138, 7 / 15], [173, 3 / 15], [204, 1 / 15], [238, 0]])}
-    ${fade('soft', 238, [[0, 1], [70, 1], [105, 14 / 15], [145, 10 / 15], [190, 5 / 15], [235, 1 / 15], [280, 0]])}
-    ${fade('glow', 562, [[0, 1], [80, 1], [120, 1], [170, 13 / 15], [220, 9 / 15], [275, 4 / 15], [330, 1 / 15], [380, 0], [562, 0]])}
+    ${fade('soft', 300, [[0, 1], [70, 1], [120, 14 / 15], [170, 11 / 15], [220, 7 / 15], [260, 3 / 15], [300, 0]])}
+    ${fade('glow', 400, [[0, 1], [120, 1], [170, 13 / 15], [220, 10 / 15], [275, 6 / 15], [330, 3 / 15], [400, 0]])}
     <filter id="blur" x="-100%" y="-100%" width="300%" height="300%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="42"/></filter>
     <filter id="blur-soft" x="-100%" y="-100%" width="300%" height="300%" color-interpolation-filters="sRGB"><feGaussianBlur stdDeviation="12"/></filter>
-    </defs><g clip-path="url(#shape)">${image(base, 562, 238)}${art ? `<g mask="url(#glow)">${image(art, 238, 238, 'preserveAspectRatio="xMidYMid slice" filter="url(#blur)"')}<g mask="url(#soft)">${image(art, 238, 238, 'preserveAspectRatio="xMidYMid slice" filter="url(#blur-soft)"')}</g></g><g mask="url(#clear)">${image(art, 238, 238, 'preserveAspectRatio="xMidYMid slice"')}</g>` : ''}</g></svg>`;
+    </defs><g clip-path="url(#shape)">${image(base, 562, 238)}${art ? `<g mask="url(#glow)"><use href="#wide" filter="url(#blur)" opacity=".7"/></g><g mask="url(#soft)"><use href="#wide" filter="url(#blur-soft)"/></g><use href="#art" mask="url(#clear)"/>` : ''}</g></svg>`;
 }
 
 export function buildRizlineHeader(sources: readonly string[], base: string, backgroundIndex: number, avatarIndex: number): string {
@@ -57,7 +59,7 @@ export function buildRizlineBestImageHtml(input: RizlineImageHtmlInput): string 
     .bio{position:absolute;left:${unit(305)}px;bottom:${unit(30)}px;width:${unit(440)}px;margin:0;font:700 ${unit(38)}px/1.2 Han;white-space:nowrap;overflow:hidden;color:#fff}
     .total{position:absolute;right:${unit(105)}px;bottom:${unit(20)}px;margin:0;font:700 ${unit(68)}px/1 Han;letter-spacing:${unit(-1)}px}
     .group{margin-top:${unit(30)}px}.group+.group{margin-top:${unit(82)}px}.heading{display:flex;align-items:center;gap:${unit(36)}px;margin:0 0 ${unit(36)}px;font:700 ${unit(47)}px/1.2 Han;letter-spacing:${unit(2.4)}px;white-space:nowrap}
-    .heading:before,.heading:after{content:'';height:${unit(3.5)}px;flex:1;background:url('divider.svg') center/100% 100%}.heading:after{transform:rotate(180deg)}
+    .heading:before,.heading:after{content:'';height:${Math.max(1.5, unit(3.5))}px;flex:1;background:linear-gradient(90deg,transparent,rgba(255,255,255,.8))}.heading:after{background:linear-gradient(90deg,rgba(255,255,255,.8),transparent)}
     .grid{display:grid;grid-template-columns:repeat(5,minmax(0,1fr));gap:${unit(18)}px ${unit(21)}px}
     .card{height:${unit(238)}px;position:relative;min-width:0}.card-base,.mark{position:absolute;inset:0;width:100%;height:100%}.info{position:absolute;inset:${unit(12)}px ${unit(20)}px ${unit(12)}px ${unit(214)}px;display:grid;grid-template-rows:${unit(76)}px ${unit(94)}px ${unit(32)}px;row-gap:${unit(6)}px;align-content:center;min-width:0;text-align:right}
     h3{font:700 ${unit(34)}px/1.1 Han;height:${unit(76)}px;margin:0;display:flex;align-items:center;justify-content:flex-end;text-align:right;overflow:hidden;overflow-wrap:anywhere}
@@ -67,7 +69,7 @@ export function buildRizlineBestImageHtml(input: RizlineImageHtmlInput): string 
     </style></head><body><div class="preview-stage"><div id="canvas"><div id="content" data-layout-content><main class="sheet">
     <div class="ambient" ${input.background ? `style="background-image:url('${escape(input.background)}')"` : ''}></div>
     <header class="profile"><img src="${escape(urls.header)}"><h1 class="name">${escape(player.username)}</h1><p class="bio">${escape(signature)}</p><p class="total">${escape(formatRizlineRks(player.totalRks))}</p></header>
-    ${page.sections.filter(section => section.records.length).map(section => `<section class="group"><h2 class="heading">${escape(section.title)}</h2><div class="grid">${section.records.map((record, index) => card(record, section.rankOffset + index + 1, urls)).join('')}</div></section>`).join('')}
+    ${page.sections.filter(section => section.records.length).map(section => `<section class="group"><h2 class="heading"><span>${escape(section.title)}</span></h2><div class="grid">${section.records.map((record, index) => card(record, section.rankOffset + index + 1, urls)).join('')}</div></section>`).join('')}
     <footer><div>Designed by 颍川埃. Data from ${escape(input.dataSource)}.</div>${bestImageBrandFooter(width)}</footer></main></div></div></div>
     <script>const OUTPUT_WIDTH=${width};const MINIMUM_HEIGHT=1;const canvas=document.getElementById('canvas');let pending=false,lastHeight=0,assetsReady=false;
     ${bestImageBridgeRuntimeScript()}

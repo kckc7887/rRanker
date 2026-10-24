@@ -28,8 +28,16 @@ describe('Rizline 成绩图', () => {
     expect(pixel(119, 12)[0]).toBeGreaterThan(150);
     expect(pixel(150, 119)[0]).toBeGreaterThan(pixel(230, 119)[0]);
     expect(pixel(230, 119)[0]).toBeGreaterThan(pixel(300, 119)[0]);
+    expect(pixel(275, 119)[0]).toBeGreaterThan(60);
+    expect(pixel(340, 119)[0]).toBeGreaterThan(15);
     expect(pixel(150, 119)[2]).toBeGreaterThan(0);
     expect(pixel(500, 119)).toEqual([0, 0, 255, 255]);
+    const stripes = svgUrl('<rect width="238" height="238" fill="white"/>' + Array.from({ length: 12 }, (_, i) => `<rect y="${i * 20}" width="238" height="10" fill="black"/>`).join(''), 238, 238);
+    const blurred = await render([base, stripes]);
+    const red = (x: number, y: number) => blurred[(y * 562 + x) * 4]!;
+    expect(red(40, 115) - red(40, 105)).toBeGreaterThan(240);
+    expect(red(275, 105)).toBeGreaterThan(35);
+    expect(Math.abs(red(275, 115) - red(275, 105))).toBeLessThan(10);
     const empty = await render([base]);
     expect([...empty.subarray((119 * 562 + 119) * 4, (119 * 562 + 119) * 4 + 4)]).toEqual([0, 0, 255, 255]);
   });

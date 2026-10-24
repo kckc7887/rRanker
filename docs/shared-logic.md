@@ -149,7 +149,7 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 共享 `ImageCropper({ uri, initialCrop?, onCancel, onConfirm })` 返回归一化 `ImageCrop`，`image-crop.ts` 处理覆盖缩放、边界和像素转换；确认与取消由调用方提交或保留选择。`cropBestImageAvatar(session, uri, crop, signal)` 使用 `expo-image-manipulator`，产物属于成绩图会话，临时文件随处理完成回收。原图读取沿用 `loadRemoteImageFile`，文件复制、失效和释放沿用公共会话入口。`rizlineAvatarCrop` 将存档的头像锚点与 1–3 倍缩放转换为归一化矩形；当前图片资源缺失时使用排序首张有曲绘成绩或曲库首张插画，签名缺失留空。
 
-Rizline 的 `prepareRizlineUi` 提供绘图 SVG 与字体。`buildRizlineCardBackground` 经 `BestImageTemplate.assets` 嵌入底板和曲绘，在同一 SVG 中定义轮廓裁切、清晰／柔化／光晕三层渐变及模糊；非正方形曲绘居中裁切覆盖。`buildRizlineHeader` 嵌入名片与其遮罩，素材与图片解码、预览和导出共用公共就绪流程。`RizlineCatalog.illustrations` 保存 ID、别名、名称和图片路径，`signatures` 保存 ID、别名、文本与位置；`RizlineResourceService` 将插画与歌曲资源一起校验清单引用。名片背景解析玩家 `rizcard.backgroundId`，签名条使用绘图素材原有渐变。HTML 按输出宽度换算尺寸，关闭自动文字放大，底部署名与品牌信息通过正常文档流参与公共高度测量。对应 UI 缓存和会话目录接入存储适配器及启动维护。
+Rizline 的 `prepareRizlineUi` 提供绘图 SVG 与字体。`buildRizlineCardBackground` 经 `BestImageTemplate.assets` 嵌入底板和曲绘，沿用中二的镜像延展与独立分层合成方式；238 × 238 曲绘居中裁切覆盖，柔化与光晕的渐隐范围分别延伸到 300、400，最后统一裁切卡片轮廓。`buildRizlineBestImageHtml` 直接绘制栏目标题两侧的 CSS 渐变线。`buildRizlineHeader` 嵌入名片与其遮罩，素材与图片解码、预览和导出共用公共就绪流程。`RizlineCatalog.illustrations` 保存 ID、别名、名称和图片路径，`signatures` 保存 ID、别名、文本与位置；`RizlineResourceService` 将插画与歌曲资源一起校验清单引用。名片背景解析玩家 `rizcard.backgroundId`，签名条使用绘图素材原有渐变。HTML 按输出宽度换算尺寸，关闭自动文字放大，底部署名与品牌信息通过正常文档流参与公共高度测量。对应 UI 缓存和会话目录接入存储适配器及启动维护。
 
 `useChunithmBestImageAssets` 经公共 hook 将 UI 与字体复制进账号会话，并通过 `loadRemoteImageFile` 准备角色、名牌和图片称号。页面复用 `useChunithmCollections` 读取角色、名牌与称号；选择写入 `chunithmBestImagePreferencesStore`。名牌支持当前、指定、随机和默认板，角色与称号支持当前、指定、随机和关闭；称号保存 `id/name/color/level`。`buildChunithmBestImageHtml` 接收名牌、角色和称号文件 URL，`hideTrophy` 隐藏整个称号槽位；B50、自定义及分页使用同一成绩卡与字体测量流程。
 
