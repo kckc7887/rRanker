@@ -820,9 +820,9 @@ describe('SQLite storage and current backups', () => {
   it('reads current Majdata and Rizline accounts, rejects old structures and preserves rows on I/O failure', async () => {
     const majdataId = 'majdata-net:account:a', rizlineId = 'rizline:official:user-a';
     const majdata = { player: { username: 'a' }, records: [], recent: [], source: { kind: 'majdata-net', label: 'Majdata Net', updatedAt: 'now', isStale: false } };
-    const rizline = { save: rizlineSave(), source: { kind: 'rizline-official', label: '官方账号', updatedAt: 'now', isStale: false } };
+    const rizline = { save: rizlineSave({ rizcard: { avatarId: 'illustration.Song.A.0.HiRes', avatarPos: { x: 0.25, y: 0.5, z: 2 }, backgroundId: 'illustration.Song.A.0', bioId1: 'bio.001.1', bioId2: 'ach.001.title2' } }), source: { kind: 'rizline-official', label: '官方账号', updatedAt: 'now', isStale: false } };
     await repository.saveResource(`majdata-net:account:${majdataId}`, 1, 'now', majdata);
-    await repository.saveResource(`rizline:account:${rizlineId}`, 1, 'now', rizline);
+    await repository.saveResource(`rizline:account:${rizlineId}`, 2, 'now', rizline);
     expect(await loadMajdataCached(majdataId)).toEqual(majdata);
     expect(await loadRizlineCached(rizlineId)).toEqual(rizline);
     const cases = [

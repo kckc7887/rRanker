@@ -8,6 +8,7 @@ import { base64ToBytes, bytesToBase64 } from '@/utils/crypto-subset';
 
 const phone = '13800000000';
 const save = { userId: 'fixture-user', username: '测试玩家', totalRks: 135.4321,
+  rizcard: { avatarId: 'illustration.Song.A.0.HiRes', avatarPos: { x: 0.2, y: 0.8, z: 2.5 }, backgroundId: 'altIllustration.Special.0', bioId1: 'bio.001.1', bioId2: 'ach.001.title2' },
   myBest: [{ trackAssetId: 'track.fixture.0', difficultyClassName: 'IN', score: 1010000, completeRate: 120, isFullCombo: true }],
   levelsRks: [{ trackId: 'fixture.0', difficultyClassName: 'IN', rks: 140.5 }] };
 function token(extra = {}) {
@@ -51,6 +52,7 @@ describe('Rizline authenticated save decoding', () => {
     expect(RizlineSaveSchema.parse({ ...save, myBest: [], levelsRks: [] }).myBest).toEqual([]);
     expect(RizlineSaveSchema.parse({ ...save, myBest: [{ ...save.myBest[0], difficultyClassName: 'SP' }] }).myBest[0].difficultyClassName).toBe('SP');
     expect(RizlineSaveSchema.safeParse({ ...save, totalRks: NaN }).success).toBe(false);
+    expect(RizlineSaveSchema.parse({ ...save, rizcard: { bioId1: null } }).rizcard).toEqual({ avatarId: '', avatarPos: { x: 0, y: 0, z: 1 }, backgroundId: '', bioId1: '', bioId2: '' });
     expect(() => base64ToBytes('not base64!')).toThrow();
   });
 });
@@ -86,7 +88,7 @@ describe('Rizline official SMS and account requests', () => {
   it('validates code and account before returning credentials and omits transient inputs', async () => {
     const fetcher = vi.fn<(input: RequestInfo | URL, init?: RequestInit) => Promise<Response>>().mockResolvedValueOnce(jsonResponse({ code: 0 }, { set_token: token() })).mockResolvedValueOnce(binaryResponse(encrypt(save)));
     const result = await new RizlineProvider({ fetcher }).login(phone, '123456');
-    expect(result.player).toEqual({ userId: save.userId, username: save.username, totalRks: save.totalRks });
+    expect(result.player).toEqual({ userId: save.userId, username: save.username, totalRks: save.totalRks, rizcard: save.rizcard });
     expect(JSON.stringify(result.session)).not.toContain('123456');
     expect(result.session).toMatchObject({ mode: 'rizline', phone, token: token(), persistable: true });
     expect(fetcher.mock.calls.map(call => call[0])).toEqual([

@@ -145,11 +145,11 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `prepareBestImageUi` 接收游戏作用域、缓存目录、文件清单与压缩包信息，供 `prepareMaimaiUi`、`prepareChunithmUi`、`preparePhigrosUi` 和 `prepareRizlineUi` 共用校验、下载、解包及取消流程；请求按目录、包摘要和资源代次共享。中二包包含 UI 与字体；Phigros 游戏包包含模板、SVG 和固定图片，应用包包含卡底、玩家底板、遮罩、评价、段位和思源黑体，补充字体按文字选择。各游戏清理入口使所属资源代次失效并清理缓存，存储适配器负责统计和清理，启动维护保留当前缓存版本。
 
-`RizlineBestImageScreen` 复用 `BestImageScreenShell`、`useBestImageScreenController`、`useBestImageAssets` 和 `usePreparedBestImageSources`。`rizlineImagePages` 直接接收现有 AH5/Best35；自定义筛选复用 `matchesRizlineChart`、`RizlineFilterBar`、`RangeSelector` 和公共数量解析，40 张分页、数量 0 取全部。`rizlineImagePreferencesStore` 按账号保存头像及裁剪矩形、layout ID、两段签名 ID 和背景曲目 ID。资源选择统一使用 `BestImageResourcePicker` 和 `RemoteNativeImage`。
+`RizlineBestImageScreen` 复用 `BestImageScreenShell`、`useBestImageScreenController`、`useBestImageAssets` 和 `usePreparedBestImageSources`。`rizlineImagePages` 直接接收现有 AH5/Best35；自定义筛选复用 `matchesRizlineChart`、`RizlineFilterBar`、`RangeSelector` 和公共数量解析，40 张分页、数量 0 取全部。`rizlineImagePreferencesStore` 按账号保存头像及裁剪矩形、名片背景、两段签名和整图背景的当前、自选或随机模式；签名还支持关闭。随机在点击时选定资源 ID 并保存，后续预览与导出复用该结果。结构失效仅重建对应账号偏好，I/O 失败保留数据。资源选择统一使用 `BestImageResourcePicker`、`RemoteNativeImage` 和 `TrophyPreview`，搜索包含资源别名。
 
-共享 `ImageCropper({ uri, initialCrop?, onCancel, onConfirm })` 返回归一化 `ImageCrop`，`image-crop.ts` 处理覆盖缩放、边界和像素转换；确认与取消由调用方提交或保留选择。`cropBestImageAvatar(session, uri, crop, signal)` 使用 `expo-image-manipulator`，产物属于成绩图会话，临时文件随处理完成回收。原图读取沿用 `loadRemoteImageFile`，文件复制、失效和释放沿用公共会话入口。
+共享 `ImageCropper({ uri, initialCrop?, onCancel, onConfirm })` 返回归一化 `ImageCrop`，`image-crop.ts` 处理覆盖缩放、边界和像素转换；确认与取消由调用方提交或保留选择。`cropBestImageAvatar(session, uri, crop, signal)` 使用 `expo-image-manipulator`，产物属于成绩图会话，临时文件随处理完成回收。原图读取沿用 `loadRemoteImageFile`，文件复制、失效和释放沿用公共会话入口。`rizlineAvatarCrop` 将存档的头像锚点与 1–3 倍缩放转换为归一化矩形；当前图片资源缺失时使用排序首张有曲绘成绩或曲库首张插画，签名缺失留空。
 
-Rizline 的 `prepareRizlineUi` 提供绘图 SVG 与字体。`buildRizlineCardBackground` 和 `buildRizlineHeader` 经 `BestImageTemplate.assets` 嵌入底板、遮罩、曲绘和名片，素材与图片解码、预览和导出共用公共就绪流程。`RizlineCatalog.layouts` 保存 ID、图片路径及可空配色，`signatures` 保存 ID、文本与位置；`RizlineResourceService` 将名片图片与歌曲资源一起校验清单引用。对应 UI 缓存和会话目录接入存储适配器及启动维护。
+Rizline 的 `prepareRizlineUi` 提供绘图 SVG 与字体。`buildRizlineCardBackground` 和 `buildRizlineHeader` 经 `BestImageTemplate.assets` 嵌入底板、遮罩、曲绘和名片，素材与图片解码、预览和导出共用公共就绪流程。`RizlineCatalog.illustrations` 保存 ID、别名、名称和图片路径，`signatures` 保存 ID、别名、文本与位置；`RizlineResourceService` 将插画与歌曲资源一起校验清单引用。名片背景解析玩家 `rizcard.backgroundId`，签名条使用绘图素材原有渐变。HTML 按输出宽度换算尺寸，关闭自动文字放大，页脚两行通过正常文档流参与公共高度测量。对应 UI 缓存和会话目录接入存储适配器及启动维护。
 
 `useChunithmBestImageAssets` 经公共 hook 将 UI 与字体复制进账号会话，并通过 `loadRemoteImageFile` 准备角色、名牌和图片称号。页面复用 `useChunithmCollections` 读取角色、名牌与称号；选择写入 `chunithmBestImagePreferencesStore`。名牌支持当前、指定、随机和默认板，角色与称号支持当前、指定、随机和关闭；称号保存 `id/name/color/level`。`buildChunithmBestImageHtml` 接收名牌、角色和称号文件 URL，`hideTrophy` 隐藏整个称号槽位；B50、自定义及分页使用同一成绩卡与字体测量流程。
 
@@ -196,7 +196,7 @@ Phigros/Rizline 预览和下载共用 `phigrosResources`、`rizlineResources`、
 
 `domain/phigros.ts` 的 `loadNoteCountsTable` 解析每难度四项或五项非负整数数组，第五项为谱面 `blockAreaList` 数量，正值写入 `PhigrosChartNotes.block`，零值省略。`PhigrosCatalogProvider` 按难度装配物量；详情复用 `GameNoteTable`，有正 BLOCK 时放在 FLICK 与总计之间，缺失或零值不显示整列。`total` 只包含 Tap、Hold、Drag、Flick。解析、已验证资源刷新及详情交互由现有 Phigros 测试覆盖。
 
-`PhigrosKyouProvider` 在一次调用中固定已验证的清单，再按表名读取并校验字节；别名、标签、引用关系和完整性检查共用现有 Provider 入口。Rizline 曲库缓存使用格式 2，并沿用 `SqliteSnapshotRepository` 对结构失效与 I/O 失败的区分。
+`PhigrosKyouProvider` 在一次调用中固定已验证的清单，再按表名读取并校验字节；别名、标签、引用关系和完整性检查共用现有 Provider 入口。Rizline 曲库缓存使用格式 3，并沿用 `SqliteSnapshotRepository` 对结构失效与 I/O 失败的区分。
 
 Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图读取时校验 Phigros 头像属于当前哈希地址结构，失效缓存通过所属仓库入口重建；头像同步会重新解析结构失效的地址，其他游戏头像缓存格式保持各自合同。
 

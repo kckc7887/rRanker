@@ -135,8 +135,8 @@ export type PhigrosGameDataPayload = Extract<GamePayload, { kind: 'phigros' }>;
 
 export function rizlinePayloadFromSnapshot(snapshot: RizlineSnapshot, catalog?: RizlineCatalogData) {
   const records = buildRizlineRecords(snapshot.save, catalog?.snapshot);
-  const { userId, username, totalRks } = snapshot.save;
-  return { kind: 'rizline' as const, snapshot, player: { userId, username, totalRks }, records,
+  const { userId, username, totalRks, rizcard } = snapshot.save;
+  return { kind: 'rizline' as const, snapshot, player: { userId, username, totalRks, rizcard }, records,
     requiresLogin: snapshot.requiresLogin === true,
     best: selectRizlineBest(records), source: snapshot.source, catalogSource: catalog?.source,
     playerScore: { label: 'Ranking Score', value: totalRks, display: formatRizlineRks(totalRks) } };

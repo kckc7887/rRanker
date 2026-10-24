@@ -24,8 +24,13 @@ const TOKEN_EXPIRY_SKEW_SECONDS = 60;
 const PhoneSchema = z.string().regex(/^1\d{10}$/u);
 const CodeSchema = z.string().regex(/^\d{4,8}$/u);
 const DifficultySchema = z.enum(RIZLINE_DIFFICULTIES);
+const CardResourceIdSchema = z.string().nullish().transform(value => value ?? '');
 export const RizlineSaveSchema: z.ZodType<RizlineSave> = z.object({
   userId: z.string().min(1), username: z.string(), totalRks: z.number().nonnegative(),
+  rizcard: z.object({
+    avatarId: CardResourceIdSchema, avatarPos: z.object({ x: z.number(), y: z.number(), z: z.number() }).nullish().transform(value => value ?? { x: 0, y: 0, z: 1 }),
+    backgroundId: CardResourceIdSchema, bioId1: CardResourceIdSchema, bioId2: CardResourceIdSchema,
+  }).nullable().optional(),
   myBest: z.array(z.object({
     trackAssetId: z.string().min(1), difficultyClassName: DifficultySchema,
     score: z.number().int().nonnegative(), completeRate: z.number().nonnegative(),
@@ -225,7 +230,7 @@ export class RizlineProvider {
     try {
       const save = await this.getSave(signal);
       if (signal?.aborted) throw signal.reason;
-      return { session: this.session, save, player: { userId: save.userId, username: save.username, totalRks: save.totalRks } };
+      return { session: this.session, save, player: { userId: save.userId, username: save.username, totalRks: save.totalRks, rizcard: save.rizcard } };
     } catch (error) { this.session = previous; throw error; }
   }
 

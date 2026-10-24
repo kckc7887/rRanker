@@ -1,4 +1,5 @@
-import { sortRizlineRecords, type RizlineBest, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
+import type { ImageCrop } from '@/components/image-crop';
+import { sortRizlineRecords, type RizlineCard, type RizlineBest, type RizlineRecord, type RizlineSong } from '@/domain/rizline';
 import { defaultRizlineFilters, matchesRizlineChart, type RizlineFilters } from '@/domain/rizline-filters';
 import { parseBestImageQuantity } from '@/features/best-image/best-image-custom';
 import { normalizeNumericInput } from '@/utils/numeric-input';
@@ -39,4 +40,14 @@ export function rizlineImagePages(type: RizlineBestImageType, best: RizlineBest,
   ] }];
   return Array.from({ length: Math.ceil(records.length / 40) }, (_, index) => ({ id: `custom-${index}`,
     sections: [{ id: 'custom', title: `Best${records.length}`, records: records.slice(index * 40, (index + 1) * 40), rankOffset: index * 40 }] }));
+}
+
+export function rizlineAvatarCrop(position?: RizlineCard['avatarPos']): ImageCrop | null {
+  if (!position) return null;
+  const zoom = Math.min(3, Math.max(1, position.z));
+  if (zoom === 1) return null;
+  const side = 1 / zoom; const remaining = 1 - side;
+  /** 游戏以 anchorMin=(1-pos)*(1-zoom)、anchorMax=1+pos*(zoom-1) 放置头像。 */
+  return { x: (1 - Math.min(1, Math.max(0, position.x))) * remaining,
+    y: Math.min(1, Math.max(0, position.y)) * remaining, width: side, height: side };
 }

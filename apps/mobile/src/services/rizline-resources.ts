@@ -52,7 +52,7 @@ export class RizlineResourceService {
     const catalogBytes = await bytes(catalogFile.path);
     await verifyResourceBytes(catalogBytes, catalogFile, 'Rizline 曲库校验失败');
     const snapshot = RizlineCatalogSchema.parse(JSON.parse(new TextDecoder().decode(catalogBytes)));
-    const referenced = [...snapshot.layouts.map(layout => layout.imagePath), ...snapshot.songs.flatMap(song => [
+    const referenced = [...snapshot.illustrations.map(image => image.imagePath), ...snapshot.songs.flatMap(song => [
       ...(song.coverPath != null ? [song.coverPath] : []),
       song.audioPath,
       ...song.charts.map(chart => chart.chartPath),
@@ -70,7 +70,7 @@ export class RizlineResourceService {
     };
   }
   async loadCached(): Promise<RizlineCatalogData | null> {
-    return this.repository.getResource(RIZLINE_CATALOG_KEY, 2, cachedCatalogSchema);
+    return this.repository.getResource(RIZLINE_CATALOG_KEY, 3, cachedCatalogSchema);
   }
   loadFresh(signal?: AbortSignal): Promise<RizlineCatalogData> {
     const generation = resourceWriteGeneration('rizline');
@@ -79,7 +79,7 @@ export class RizlineResourceService {
       const release = await this.releases.load(requestSignal, true);
       assertCurrent();
       const data = catalogData(release);
-      await this.repository.saveResource(RIZLINE_CATALOG_KEY, 2, data.source.updatedAt, data, assertCurrent);
+      await this.repository.saveResource(RIZLINE_CATALOG_KEY, 3, data.source.updatedAt, data, assertCurrent);
       assertCurrent();
       return data;
     }, signal);

@@ -7,10 +7,11 @@ import { buildRizlineRecords, selectRizlineBest } from '@/domain/rizline';
 import { DEFAULT_RIZLINE_IMAGE_PREFERENCES as mockDefaults } from '@/features/rizline-best-image/rizline-best-image-preferences';
 const mockFiles = new Map<string, string>();
 const mockShowNotification = jest.fn();
+const mockCrop = jest.fn();
 const mockCatalog = rizlineCatalog();
 mockCatalog.songs[0].coverPath = 'rizline/covers/cover.png';
-mockCatalog.layouts = [{ id: 'layout.00001', imagePath: 'rizline/covers/layout.png', colors: null }];
-mockCatalog.signatures = [{ id: 'bio.1.1', text: '闪亮的', part: 1 }, { id: 'ach.1.title2', text: '星星', part: 2 }];
+mockCatalog.illustrations = [{ id: 'illustration.Song.A.0', aliases: ['illustration.Song.A.0.HiRes'], name: 'Song', imagePath: 'rizline/covers/cover.png' }];
+mockCatalog.signatures = [{ id: 'bio.1.1', aliases: [], text: '闪亮的', part: 1 }, { id: 'ach.1.title2', aliases: [], text: '星星', part: 2 }];
 const mockSave = rizlineSave(); const mockRecords = buildRizlineRecords(mockSave, mockCatalog);
 const mockBest = selectRizlineBest(mockRecords);
 let mockAccount = 'rizline:one';
@@ -19,7 +20,7 @@ const mockData = { payload: { kind: 'rizline', player: mockSave, records: mockRe
 jest.mock('@/hooks/use-game-data', () => ({ useGameData: () => ({ activeAccountId: mockAccount, data: mockData }) }));
 jest.mock('@/hooks/use-rizline-catalog', () => ({ useRizlineCatalog: () => ({ data: { snapshot: mockCatalog } }) }));
 jest.mock('@/features/rizline-best-image/rizline-best-image-preferences', () => ({
-  DEFAULT_RIZLINE_IMAGE_PREFERENCES: { avatar: { songId: null, crop: null }, layoutId: 'layout.00001', signature1: null, signature2: null, backgroundId: null },
+  DEFAULT_RIZLINE_IMAGE_PREFERENCES: { avatar: { mode: 'current' }, namecard: { mode: 'current' }, signature1: { mode: 'current' }, signature2: { mode: 'current' }, background: { mode: 'current' } },
   rizlineImagePreferencesStore: { load: async () => mockDefaults, save: (id: string, value: unknown) => mockPersist(id, value) },
 }));
 jest.mock('@/features/best-image/load-best-image-session', () => {
@@ -28,7 +29,7 @@ jest.mock('@/features/best-image/load-best-image-session', () => {
   return { ...actual, loadRemoteImageFile: load, loadImageFiles: async (session: unknown, ids: string[], url: (id: string) => string | null) => Object.fromEntries(await Promise.all(ids.map(async id => [id, await load(session, url(id))]))) };
 });
 jest.mock('expo-image-manipulator', () => ({ SaveFormat: { PNG: 'png' }, ImageManipulator: { manipulate: () => ({
-  crop: jest.fn(), release: jest.fn(), renderAsync: async () => ({ release: jest.fn(), saveAsync: async () => {
+  crop: mockCrop, release: jest.fn(), renderAsync: async () => ({ release: jest.fn(), saveAsync: async () => {
     mockFiles.set('file:///crop.png', 'cropped image'); return { uri: 'file:///crop.png' };
   } }),
 }) } }));
@@ -106,7 +107,7 @@ jest.mock('expo-file-system/legacy', () => ({
 
 
 const html = (screen: Awaited<ReturnType<typeof render>>) => screen.getByTestId('rizline-best-image-html-preview-0').props.source.html as string;
-beforeEach(() => { mockFiles.clear(); mockAccount = 'rizline:one'; mockPersist.mockClear(); });
+beforeEach(() => { mockSave.rizcard = null; mockCrop.mockClear(); mockFiles.clear(); mockAccount = 'rizline:one'; mockPersist.mockClear(); });
 afterEach(() => jest.restoreAllMocks());
 it('previews Best40, selects independent signatures and resets selections on account change', async () => {
   const screen = await render(<RizlineBestImageScreen key={mockAccount} />);
@@ -118,7 +119,7 @@ it('previews Best40, selects independent signatures and resets selections on acc
   await fireEvent.press(screen.getByText('签名2'));
   await fireEvent.press(screen.getAllByText('星星').at(-1)!);
   await waitFor(() => expect(html(screen)).toContain('闪亮的 星星'));
-  await waitFor(() => expect(mockPersist).toHaveBeenCalledWith('rizline:one', expect.objectContaining({ signature1: 'bio.1.1', signature2: 'ach.1.title2' })));
+  await waitFor(() => expect(mockPersist).toHaveBeenCalledWith('rizline:one', expect.objectContaining({ signature1: { mode: 'item', id: 'bio.1.1' }, signature2: { mode: 'item', id: 'ach.1.title2' } })));
   mockAccount = 'rizline:two'; await screen.rerender(<RizlineBestImageScreen key={mockAccount} />);
   await waitFor(() => expect(html(screen)).not.toContain('闪亮的 星星'));
 });
@@ -135,11 +136,40 @@ it('keeps the avatar after canceling its crop and handles empty custom results',
   await fireEvent.press(screen.getByText('调整当前头像'));
   await screen.findByText('裁剪头像');
   await fireEvent.press(screen.getByText('确定'));
-  await waitFor(() => expect(mockPersist).toHaveBeenCalledWith('rizline:one', expect.objectContaining({ avatar: { songId: mockCatalog.songs[0].id, crop: { x: 0, y: 0, width: 1, height: 1 } } })));
+  await waitFor(() => expect(mockPersist).toHaveBeenCalledWith('rizline:one', expect.objectContaining({ avatar: { mode: 'item', id: 'illustration.Song.A.0', crop: { x: 0, y: 0, width: 1, height: 1 } } })));
   await screen.findByTestId('rizline-best-image-html-preview-0');
   await fireEvent.press(screen.getByLabelText('自定义'));
   await waitFor(() => expect(html(screen)).toContain('Best1'));
   await fireEvent.press(screen.getByLabelText('筛选难度 SP'));
   await screen.findAllByText('没有符合条件的成绩');
   expect(screen.getByLabelText('导出成绩图片').props.accessibilityState.disabled).toBe(true);
+});
+
+it('resolves current resource aliases and keeps random choices while changing resolution', async () => {
+  jest.spyOn(Image, 'getSize').mockImplementation(() => Promise.resolve({ width: 600, height: 600 }));
+  mockSave.rizcard = { avatarId: 'illustration.Song.A.0.HiRes', avatarPos: { x: 1, y: 0, z: 2 },
+    backgroundId: 'illustration.Song.A.0.HiRes', bioId1: 'bio.1.1', bioId2: 'ach.1.title2' };
+  const screen = await render(<RizlineBestImageScreen />);
+  await screen.findByTestId('rizline-best-image-html-preview-0');
+  expect(html(screen)).toContain('闪亮的 星星');
+  expect(mockCrop).toHaveBeenCalledWith({ originX: 0, originY: 0, width: 300, height: 300 });
+  expect(screen.getByText('玩家当前名片背景 · Song')).toBeTruthy();
+  await fireEvent.press(screen.getByText('名片背景'));
+  expect(screen.getByLabelText('使用玩家当前名片背景').props.accessibilityState.selected).toBe(true);
+  await fireEvent.changeText(screen.getByLabelText('搜索名片背景'), 'HiRes');
+  expect(screen.getByText('Song')).toBeTruthy();
+  await fireEvent.press(screen.getByLabelText('随机名片背景'));
+  await waitFor(() => expect(mockPersist).toHaveBeenCalledWith('rizline:one', expect.objectContaining({ namecard: { mode: 'random', id: 'illustration.Song.A.0' } })));
+  mockPersist.mockClear();
+  await fireEvent.press(screen.getByText('1440px'));
+  await waitFor(() => expect(html(screen)).toContain('OUTPUT_WIDTH=1440'));
+  expect(screen.getByText('随机 · Song')).toBeTruthy();
+  expect(mockPersist).not.toHaveBeenCalled();
+  await fireEvent.press(screen.getByText('签名1'));
+  await fireEvent.press(screen.getByLabelText('关闭签名1'));
+  await waitFor(() => expect(html(screen)).not.toContain('闪亮的'));
+  expect(html(screen)).toContain('星星');
+  await fireEvent.press(screen.getByText('签名1'));
+  await fireEvent.press(screen.getByLabelText('使用玩家当前签名1'));
+  await waitFor(() => expect(html(screen)).toContain('闪亮的 星星'));
 });

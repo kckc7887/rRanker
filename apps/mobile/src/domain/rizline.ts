@@ -28,12 +28,13 @@ export type RizlineSong = {
   updatedAt: string | null; coverPath: string | null; audioPath: string; charts: RizlineChart[];
   achievements: { id: string; title: string; condition: string }[];
 };
-export type RizlineLayout = { id: string; imagePath: string; colors: { background: [string, string]; text: string } | null };
-export type RizlineSignature = { id: string; text: string; part: 1 | 2 };
+export type RizlineIllustration = { id: string; aliases: string[]; name: string; imagePath: string };
+export type RizlineCard = { avatarId: string; avatarPos: { x: number; y: number; z: number }; backgroundId: string; bioId1: string; bioId2: string };
+export type RizlineSignature = { id: string; aliases: string[]; text: string; part: 1 | 2 };
 export type RizlineCatalog = {
-  schemaVersion: 1; resourceVersion: string; gameVersion: string; songs: RizlineSong[]; layouts: RizlineLayout[]; signatures: RizlineSignature[];
+  schemaVersion: 1; resourceVersion: string; gameVersion: string; songs: RizlineSong[]; illustrations: RizlineIllustration[]; signatures: RizlineSignature[];
 };
-export type RizlinePlayer = { userId: string; username: string; totalRks: number };
+export type RizlinePlayer = { userId: string; username: string; totalRks: number; rizcard?: RizlineCard | null };
 export type RizlineSave = RizlinePlayer & {
   myBest: { trackAssetId: string; difficultyClassName: RizlineDifficulty; score: number;
     completeRate: number; isFullCombo?: boolean; isClear?: boolean }[];

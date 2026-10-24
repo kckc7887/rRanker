@@ -24,7 +24,7 @@ const repository = new SqliteSnapshotRepository();
 const loads = createInflightGuard<string>();
 const snapshotSchema = z.object({ save: RizlineSaveSchema, source: cacheSourceSchema('rizline-official') });
 export const rizlineAccountKey = (id: string) => `rizline:account:${id}`;
-export function loadRizlineCached(id: string): Promise<RizlineSnapshot | null> { return repository.getResource(rizlineAccountKey(id), 1,
+export function loadRizlineCached(id: string): Promise<RizlineSnapshot | null> { return repository.getResource(rizlineAccountKey(id), 2,
   snapshotSchema.refine(snapshot => snapshot.save.userId === rizlineUserIdFromAccountId(id))); }
 export async function clearRizlineAccount(id: string): Promise<void> {
   invalidateResourceWrites(`account:${id}`);
@@ -35,7 +35,7 @@ export async function cacheRizlineSave(id: string, save: RizlineSave, signal?: A
   assertCurrent();
   if (rizlineUserIdFromAccountId(id) !== save.userId) throw new ProviderError('authentication', 'Rizline account mismatch', false);
   const snapshot = { save, source: snapshotSource({ kind: 'rizline-official', label: '官方账号' }) };
-  await repository.saveResource(rizlineAccountKey(id), 1, snapshot.source.updatedAt, snapshot, assertCurrent);
+  await repository.saveResource(rizlineAccountKey(id), 2, snapshot.source.updatedAt, snapshot, assertCurrent);
   assertCurrent();
   return snapshot;
 }
