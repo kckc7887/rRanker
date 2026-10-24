@@ -45,8 +45,8 @@ describe('best image bundled asset files', () => {
     expect(mocks.files.get('file:///bundle/901')).toBe('bytes-901');
   });
 
-  it('retains relative font and UI files after their verified source cache is cleared', async () => {
-    const session = createBestImageAssetSession('phigros');
+  it.each(['phigros', 'rizline'] as const)('retains %s font and UI files after their verified source cache is cleared', async game => {
+    const session = createBestImageAssetSession(game);
     mocks.files.set('file:///verified/font/phi.ttf', 'original font');
     const uri = await copyBestImageAsset(session, 'file:///verified/font/phi.ttf', 'font/phi.ttf');
     mocks.files.delete('file:///verified/font/phi.ttf');

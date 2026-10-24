@@ -1,3 +1,4 @@
+import { BestImageEntryButton } from '@/components/BestImageEntryButton';
 import { useCallback, useMemo, useState } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
@@ -37,8 +38,8 @@ export function RizlineBestScreen() {
     isEmpty={!isLoading && !hasRecords} emptyText="同步数据后，最佳成绩会显示在这里"
     onRetry={() => void Promise.all([query.refetch(), catalogQuery.refetch()])} sectionListProps={{ testID: 'rizline-best-list', style: styles.list,
       contentInsetAdjustmentBehavior: 'automatic', contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
-      ListHeaderComponent: payload?.best.hasUnknownCandidates
-        ? <Text style={[styles.inferenceNote, { color: theme.textMuted }]}>部分谱面的数据不足，AH5 与 Best35 的分组尚不能完整推定，贡献值暂显示为 —。</Text> : null,
+      ListHeaderComponent: <View style={{ gap: 12 }}><BestImageEntryButton label="生成B40图片" />{payload?.best.hasUnknownCandidates
+        ? <Text style={[styles.inferenceNote, { color: theme.textMuted }]}>部分谱面的数据不足，AH5 与 Best35 的分组尚不能完整推定，贡献值暂显示为 —。</Text> : null}</View>,
       scrollIndicatorInsets: { bottom: inset }, keyExtractor: (record) => record.chartId, stickySectionHeadersEnabled: false,
       renderSectionHeader: ({ section }) => <View style={styles.sectionHeader}><Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text><Text style={{ color: theme.textMuted }}>{section.data.length} 条</Text></View>,
       renderItem: ({ item, index }) => { const song = songs.get(item.songId); return <RizlineScoreCard record={item} title={song?.title} rank={index + 1} artworkSource={song ? rizlineCoverUrl(song) : null} />; },

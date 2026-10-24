@@ -40,6 +40,8 @@ export const GAME_TOOLBOXES: Record<GameId, GameToolbox> = {
       detail: '查找附近机厅', summaryLabel: '音游地图' },
   ], emptyDetail: '' },
   rizline: { tools: [
+    { id: 'best-image', href: '/best-image', title: '生成成绩图片',
+      detail: '生成并导出 Best40 或自定义成绩图片', summaryLabel: '成绩图片' },
     { id: 'random-charts', href: '/tools/random-charts', title: '随机歌曲',
       detail: '按难度、曲包和定数抽取谱面', summaryLabel: '随机歌曲' },
     { id: 'arcade-finder', href: '/tools/arcade-finder', title: '音游地图',

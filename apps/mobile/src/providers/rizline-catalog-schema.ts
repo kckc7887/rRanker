@@ -14,6 +14,11 @@ const ChartSchema = z.object({
 });
 export const RizlineCatalogSchema: z.ZodType<RizlineCatalog> = z.object({
   schemaVersion: z.literal(1), resourceVersion: z.string().min(1), gameVersion: z.string().min(1),
+  layouts: z.array(z.object({
+    id: z.string().min(1), imagePath: RizlineResourcePathSchema,
+    colors: z.object({ background: z.tuple([z.string().regex(/^#[a-f\d]{6}$/i), z.string().regex(/^#[a-f\d]{6}$/i)]), text: z.string().regex(/^#[a-f\d]{6}$/i) }).nullable(),
+  })),
+  signatures: z.array(z.object({ id: z.string().min(1), text: z.string().min(1), part: z.union([z.literal(1), z.literal(2)]) })),
   songs: z.array(z.object({
     id: z.string().min(1), title: z.string().min(1), artist: z.string().nullable(), illustrator: z.string().nullable(),
     packId: z.string().min(1), packName: z.string().min(1), bpm: z.string().nullable(), durationSeconds: z.number().positive().nullable(),
@@ -22,6 +27,9 @@ export const RizlineCatalogSchema: z.ZodType<RizlineCatalog> = z.object({
     achievements: z.array(z.object({ id: z.string().min(1), title: z.string(), condition: z.string() })),
   })).min(1),
 }).superRefine((catalog, context) => {
+  for (const rows of [catalog.layouts, catalog.signatures]) {
+    if (new Set(rows.map(row => row.id)).size !== rows.length) context.addIssue({ code: 'custom', message: 'Duplicate namecard resource ID' });
+  }
   const songs = new Set<string>(); const charts = new Set<string>();
   for (const song of catalog.songs) {
     const difficulties = new Set<string>();

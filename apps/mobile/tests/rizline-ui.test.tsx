@@ -80,6 +80,12 @@ describe('Rizline UI', () => {
   });
   afterEach(async () => { await cleanup(); jest.restoreAllMocks(); });
 
+  it('opens the shared score-image page from Best40', async () => {
+    const screen = await render(<RizlineBestScreen />);
+    await fireEvent.press(screen.getByText('生成B40图片'));
+    expect(mockPush).toHaveBeenCalledWith('/best-image');
+  });
+
   it('waits for the catalog first result and preserves a loaded detail during refresh', async () => {
     mockCatalogState = { hasData: false, isPending: true, isLoading: false, isError: false };
     const screen = await render(<RizlineSongDetail songId="song.a" />);

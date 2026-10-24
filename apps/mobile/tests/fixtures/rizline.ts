@@ -16,7 +16,7 @@ export function rizlineSong(overrides: Partial<RizlineSong> = {}): RizlineSong {
 export function rizlineCatalog(resourceVersion = 'r1'): RizlineCatalog {
   const prefix = rizlineReleasePrefix(resourceVersion);
   return {
-    schemaVersion: 1, resourceVersion, gameVersion: '2.7.1',
+    schemaVersion: 1, resourceVersion, gameVersion: '2.7.1', layouts: [], signatures: [],
     songs: [rizlineSong({
       audioPath: `${prefix}/audio/Song.A.0.m4a`,
       charts: [rizlineChart({ chartPath: `${prefix}/charts/Song.A.0.IN.json` })],

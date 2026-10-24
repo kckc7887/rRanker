@@ -19,7 +19,8 @@ import { clearPhigrosFontCache } from '@/features/phigros-best-image/phigros-fon
 import { clearPhigrosUiCache } from '@/features/phigros-best-image/phigros-ui-cache';
 import { clearMaimaiUiCache } from '@/features/best-image/maimai-ui-cache';
 import { isDurableMaimaiAccountId } from '@/features/storage-management/durable-maimai-account';
-import { BEST_IMAGE_STAGE_ROOT, CHUNITHM_ASSETS_ROOT, MAIMAI_ASSETS_ROOT, PHIGROS_FONT_ROOT, PHIGROS_UI_ROOT } from '@/features/storage-management/fs-storage';
+import { clearRizlineUiCache } from '@/features/rizline-best-image/rizline-ui-cache';
+import { RIZLINE_UI_ROOT, BEST_IMAGE_STAGE_ROOT, CHUNITHM_ASSETS_ROOT, MAIMAI_ASSETS_ROOT, PHIGROS_FONT_ROOT, PHIGROS_UI_ROOT } from '@/features/storage-management/fs-storage';
 import { resetPhigrosKyouAliasesCache } from '@/services/phigros-kyou-cache';
 import {
   createGameStorageAdapter,
@@ -201,7 +202,10 @@ export const GAME_STORAGE_ADAPTERS: readonly GameStorageAdapter[] = [
   osuCatchAdapter,
   osuTaikoAdapter,
   createGameStorageAdapter({ gameId: 'rizline', title: 'Rizline', color: '#57E4C4', note: '账号成绩快照与已验证曲库',
-    queryKeys: [['rizline'], ['game-data']], fileResources: [], resetMemory: () => rizlineResources.clear(),
+    queryKeys: [['rizline'], ['game-data']], fileResources: [
+      { root: RIZLINE_UI_ROOT, clear: clearRizlineUiCache },
+      { root: () => BEST_IMAGE_STAGE_ROOT('rizline'), clear: () => clearUnusedBestImageAssets('rizline') },
+    ], resetMemory: () => rizlineResources.clear(),
     ownership: { ownsAccount: accountOwnership('rizline'), resourcePrefixes: ['rizline:'] } }),
 ];
 

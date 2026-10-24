@@ -15,6 +15,7 @@ import {
   MAIMAI_ASSETS_ROOT,
   CHUNITHM_ASSETS_ROOT,
   PHIGROS_FONT_ROOT,
+  RIZLINE_UI_ROOT,
   BEST_IMAGE_STAGE_ROOT,
   measureDirectoryBytesAsync,
   measureDirectoryBytesStrictAsync,
@@ -218,6 +219,8 @@ export async function measureManagedStorageBytes(): Promise<number> {
     measureDirectoryBytesStrictAsync(BEST_IMAGE_STAGE_ROOT('maimai')),
     measureDirectoryBytesStrictAsync(BEST_IMAGE_STAGE_ROOT('chunithm')),
     measureDirectoryBytesStrictAsync(BEST_IMAGE_STAGE_ROOT('phigros')),
+    measureDirectoryBytesStrictAsync(RIZLINE_UI_ROOT()),
+    measureDirectoryBytesStrictAsync(BEST_IMAGE_STAGE_ROOT('rizline')),
   ]);
   return sqlite.allocatedBytes + directoryBytes.reduce((sum, bytes) => sum + bytes, 0);
 }

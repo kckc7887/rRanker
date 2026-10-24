@@ -32,6 +32,11 @@ function fixture(revision = 'r1', omitResources = false) {
     song.audioPath = media.find(file => file.original === song.audioPath)!.path;
     for (const chart of song.charts) chart.chartPath = media.find(file => file.original === chart.chartPath)!.path;
   }
+  const layoutHash = hash('layout');
+  const layoutPath = `rizline/covers/${layoutHash}.png`;
+  catalogObject.layouts = [{ id: 'layout.00001', imagePath: layoutPath, colors: null }];
+  catalogObject.signatures = [{ id: 'bio.001.1', text: '闪亮的', part: 1 }, { id: 'ach.001.title2', text: '星星', part: 2 }];
+  media.push({ path: layoutPath, size: 1, sha256: layoutHash, original: 'layout' });
   const catalog = JSON.stringify(catalogObject);
   const catalogPath = `rizline/metadata/${hash(catalog)}.json`;
   const files = [
@@ -52,6 +57,8 @@ describe('Rizline verified catalog releases', () => {
     await service.loadFresh(); fetcher.mockClear();
     await service.loadFresh(); expect(fetcher).toHaveBeenCalledTimes(1);
     expect((await service.loadCached())?.snapshot.resourceVersion).toBe('r1');
+    expect((await service.loadCached())?.snapshot.layouts[0].id).toBe('layout.00001');
+    expect((await service.loadCached())?.snapshot.signatures.map(row => row.part)).toEqual([1, 2]);
   });
   it('keeps the last valid catalog offline and rejects corrupted updates', async () => {
     let release = fixture(); let corrupt = false;

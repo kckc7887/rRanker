@@ -28,8 +28,10 @@ export type RizlineSong = {
   updatedAt: string | null; coverPath: string | null; audioPath: string; charts: RizlineChart[];
   achievements: { id: string; title: string; condition: string }[];
 };
+export type RizlineLayout = { id: string; imagePath: string; colors: { background: [string, string]; text: string } | null };
+export type RizlineSignature = { id: string; text: string; part: 1 | 2 };
 export type RizlineCatalog = {
-  schemaVersion: 1; resourceVersion: string; gameVersion: string; songs: RizlineSong[];
+  schemaVersion: 1; resourceVersion: string; gameVersion: string; songs: RizlineSong[]; layouts: RizlineLayout[]; signatures: RizlineSignature[];
 };
 export type RizlinePlayer = { userId: string; username: string; totalRks: number };
 export type RizlineSave = RizlinePlayer & {

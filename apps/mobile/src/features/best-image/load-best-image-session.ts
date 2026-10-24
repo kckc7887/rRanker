@@ -8,7 +8,7 @@ import { CryptoDigestAlgorithm, digestStringAsync } from 'expo-crypto';
 import { Directory, File } from 'expo-file-system';
 import { copyAsync, deleteAsync, getInfoAsync, makeDirectoryAsync, moveAsync, writeAsStringAsync } from 'expo-file-system/legacy';
 
-export type BestImageGame = 'maimai' | 'chunithm' | 'phigros';
+export type BestImageGame = 'maimai' | 'chunithm' | 'phigros' | 'rizline';
 export type BestImageAssetSession = {
   directory: Directory;
   game: BestImageGame;

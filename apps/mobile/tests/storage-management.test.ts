@@ -25,6 +25,8 @@ import {
 } from '@/features/storage-management/storage-usage';
 import { measureRrankerDatabaseAllocation } from '@/storage/rranker-database';
 
+vi.mock('@/features/rizline-best-image/rizline-ui-cache', () => ({ clearRizlineUiCache: () => undefined }));
+
 vi.mock('@/features/chunithm-best-image/chunithm-ui-cache', () => ({ clearChunithmUiCache: () => undefined }));
 
 const mocks = vi.hoisted(() => ({
@@ -62,6 +64,7 @@ vi.mock('@/features/storage-management/fs-storage', () => ({
   APP_DOCUMENT_ROOT: () => null,
   PHIGROS_FONT_ROOT: () => null,
   PHIGROS_UI_ROOT: () => null,
+  RIZLINE_UI_ROOT: () => null,
   BEST_IMAGE_STAGE_ROOT: (game: string) => ({ uri: `file:///document/${game}-illustration-stage` }),
   MAIMAI_ASSETS_ROOT: () => null,
   CHUNITHM_ASSETS_ROOT: () => null,

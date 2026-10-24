@@ -52,11 +52,11 @@ export class RizlineResourceService {
     const catalogBytes = await bytes(catalogFile.path);
     await verifyResourceBytes(catalogBytes, catalogFile, 'Rizline 曲库校验失败');
     const snapshot = RizlineCatalogSchema.parse(JSON.parse(new TextDecoder().decode(catalogBytes)));
-    const referenced = snapshot.songs.flatMap(song => [
+    const referenced = [...snapshot.layouts.map(layout => layout.imagePath), ...snapshot.songs.flatMap(song => [
       ...(song.coverPath != null ? [song.coverPath] : []),
       song.audioPath,
       ...song.charts.map(chart => chart.chartPath),
-    ]);
+    ])];
     if (snapshot.resourceVersion !== current.resourceVersion || snapshot.gameVersion !== manifest.gameVersion
       || referenced.some(path => !paths.has(path))) {
       throw new ProviderError('upstream_schema', 'Rizline 曲库内容不一致', true);
