@@ -175,6 +175,8 @@ describe('maimai ui asset cache', () => {
   it('publishes current assets, reports completion, and reuses intact files', async () => {
     const progress: MaimaiUiProgress[] = [];
     await (await prepareMaimaiUi('game', value => progress.push(value))).fullReady;
+    expect(progress.filter(value => value.phase === 'downloading').map(value => [value.completed, value.total]))
+      .toEqual([[0, MAIMAI_UI_ZIP.bytes], [Math.floor(MAIMAI_UI_ZIP.bytes / 2), MAIMAI_UI_ZIP.bytes], [MAIMAI_UI_ZIP.bytes, MAIMAI_UI_ZIP.bytes]]);
     expect(progress.at(-1)?.phase).toBe('ready');
     expect(cached()).toBeTruthy();
     expect([...mockUiFs.files.keys()].filter(uri => uri.includes('/ui/'))).toHaveLength(MAIMAI_UI_MANIFEST_ENTRIES.length);
@@ -282,5 +284,12 @@ describe('maimai ui asset cache', () => {
 
 vi.mock('@/features/chart-download-shared/chart-download-shared', async () => {
   const { File } = await import('expo-file-system');
-  return { downloadChartResource: (directory: import('expo-file-system').Directory, name: string, url: string) => File.downloadFileAsync(url, new File(directory, name)) };
+  return { downloadChartResource: async (directory: import('expo-file-system').Directory, name: string, url: string,
+    _signal?: AbortSignal, onProgress?: (progress: import('expo-file-system/legacy').DownloadProgressData) => void) => {
+    const file = await File.downloadFileAsync(url, new File(directory, name));
+    for (const totalBytesWritten of [Math.floor(file.size / 2), file.size]) {
+      onProgress?.({ totalBytesWritten, totalBytesExpectedToWrite: file.size });
+    }
+    return file;
+  } };
 });

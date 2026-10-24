@@ -201,6 +201,8 @@ export type BestImageScreenAppearance<TType extends string> = {
   preparation: {
     drawingReady: boolean;
     gameReady: boolean;
+    drawingProgress?: number;
+    gameProgress?: number;
     error: string | null;
     retry?: () => void;
   };
@@ -325,9 +327,15 @@ export function BestImageScreenShell<TType extends string>({
   } | null>(null);
   useEffect(() => {
     onPreviewStatesChange({});
-  }, [sources, webViewGeneration, onPreviewStatesChange]);
+  }, [sources, pageIndex, previewMounted, webViewGeneration, onPreviewStatesChange]);
   const loadingText = !preparation.drawingReady ? '下载绘图资源中'
     : !preparation.gameReady ? '下载游戏资源中' : '图片加载中';
+  const activePageId = pages[Math.min(pageIndex, pages.length - 1)]?.id ?? '';
+  const loadingProgress = Math.floor(100 * (
+    .4 * (preparation.drawingReady ? 1 : preparation.drawingProgress ?? 0)
+    + .4 * (preparation.gameReady ? 1 : preparation.gameProgress ?? 0)
+    + .19 * (sources ? previewStates[activePageId]?.progress ?? 0 : 0)
+  ));
   const loadingContent = (error = preparation.error, retry = preparation.retry) => <View style={[bestImageScreenSharedStyles.loadingContent, { padding: 20 }]}>
     {error ? <>
       <Text style={[bestImageScreenSharedStyles.loadingText, { color: theme.danger, textAlign: 'center' }]}>{error}</Text>
@@ -337,6 +345,10 @@ export function BestImageScreenShell<TType extends string>({
     </> : <>
       <ActivityIndicator color={theme.accent} size="large" />
       <Text style={[bestImageScreenSharedStyles.loadingText, { color: theme.textMuted }]}>{loadingText}</Text>
+      <View style={{ width: 180, height: 6, borderRadius: 3, overflow: 'hidden', backgroundColor: theme.surfaceMuted }}>
+        <View style={{ width: `${loadingProgress}%`, height: '100%', borderRadius: 3, backgroundColor: theme.accent }} />
+      </View>
+      <Text style={[bestImageScreenSharedStyles.loadingText, { color: theme.textMuted }]}>{loadingProgress}%</Text>
     </>}
   </View>;
   /** 仅换源或换页建立新预览。 */
@@ -348,7 +360,6 @@ export function BestImageScreenShell<TType extends string>({
     activePreviewOperation.current = previewOperation;
     return () => { if (activePreviewOperation.current === previewOperation) activePreviewOperation.current = null; };
   }, [previewOperation]);
-  const activePageId = pages[Math.min(pageIndex, pages.length - 1)]?.id ?? '';
   useBestImageWebViewTimeout(previewMounted && !!sources, activePageId, previewStates[activePageId]?.phase, onPreviewStatesChange);
   const releasedMarkerRef = useRef('');
   const memoryWarningRef = useRef(lifecycle.memoryWarningGeneration);

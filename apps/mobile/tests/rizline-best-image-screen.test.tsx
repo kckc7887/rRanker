@@ -43,6 +43,15 @@ jest.mock('@/components/AppNotification', () => {
   return { useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
 });
 
+jest.mock('expo-asset', () => {
+  const actual = jest.requireActual<typeof import('expo-asset')>('expo-asset');
+  return { ...actual, Asset: class extends actual.Asset {
+    static async loadAsync() {
+  mockFiles.set('file:///bundle/icon.png', 'bundled icon');
+      return [Object.assign(new actual.Asset({ name: 'icon', type: 'png', uri: 'file:///bundle/icon.png' }), { localUri: 'file:///bundle/icon.png' })];
+    }
+  } };
+});
 jest.mock('react-native-webview', () => {
   const React = jest.requireActual<typeof import('react')>('react');
   const ReactNative = jest.requireActual<typeof import('react-native')>('react-native');

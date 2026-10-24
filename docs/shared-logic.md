@@ -125,19 +125,19 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 成绩图公共入口位于 `features/best-image`：`useBestImageScreenController`、`useBestImagePreview`、`useBestImageExport` 与共享页面壳。`load-best-image-session.ts` 为舞萌、中二和 Phigros 提供账号独立的素材会话，`loadRemoteImageFile`、`loadImageFiles` 与 `copyBestImageAsset` 返回原字节文件 URL。远程素材先复用会话中的非空文件，缺失时经 `acquireRemoteImageOriginal` 取得所属游戏、同 URL 的公共原图缓存或共享下载结果，由 `copyBestImageAsset` 复制进会话目录，复制结束或失败均释放原图引用。压缩垫图及不同 URL 的曲绘版本不参与素材替换。游戏入口只提供素材地址、当前所需字体和布局；`prepareBestImageWebViewSources` 在同一会话目录异步写出 HTML，返回异步 `dispose`。改样式、分页与后台恢复沿用当前会话，已就绪素材与 HTML 保留身份，未完成工作恢复，WebView 只读取该目录。`requestBestImageExportPermission` 先读取相册权限，未授权时才申请，拒绝和读取失败沿用导出错误路径。真正进入后台取消当前导出，恢复后可重新导出。离开或换账号先失效会话，`cancelExportRequest` 等待未结束截图及临时截图清理，再回收会话文件；后台等待截图可取消。清缓存跳过活跃会话，启动维护回收上次会话目录。
 
-`useBestImageAssets<T>({ session, key, prepare })` 返回 `data`、`ready`、`error` 和 `retry`，`prepare(signal)` 提供实际资源准备，空键暂停准备。结果同时匹配会话、请求键、重试与缓存代次才有效；前后台切换保留已完成结果，未完成准备取消后恢复。`retryBestImagePreparation` 对素材准备与 HTML 写盘的实际失败依次等待 0.5、2、10、30 秒，之后保持 30 秒间隔。未结束的操作持续等待，空素材沿用各入口的可选回退；原图 HTTP 404 由下载入口映射为 `no_data`，成绩图返回空素材。
+`useBestImageAssets<T>({ session, key, prepare })` 返回 `data`、`ready`、`error`、`progress` 和 `retry`，`prepare(signal, onProgress)` 提供实际资源准备及 0–1 完成比例，空键暂停准备。结果和进度同时匹配会话、请求键、重试与缓存代次才有效；每次重新准备归零，失效回调不更新进度；前后台切换保留已完成结果，未完成准备取消后恢复。`retryBestImagePreparation` 对素材准备与 HTML 写盘的实际失败依次等待 0.5、2、10、30 秒，之后保持 30 秒间隔。未结束的操作持续等待，空素材沿用各入口的可选回退；原图 HTTP 404 由下载入口映射为 `no_data`，成绩图返回空素材。
 
 `BestImageStyleSwitch({ value, onChange })` 位于 `best-image-screen-shell.tsx`，统一舞萌与 Phigros 的游戏风格／应用风格分段切换器，包含等宽选项、容器间距和主题选中态；账号偏好仍由页面传入当前值和写入回调。
 
-`BestImageScreenShell` 的 `appearance.preparation` 接收绘图、游戏资源就绪状态和错误、重试入口，`preview.previewStates` 提供当前预览状态。加载提示统一为“下载绘图资源中”“下载游戏资源中”“图片加载中”；字体和素材齐全后才建立预览，加载层等待当前页、来源及挂载代次的就绪消息，旧事件不更新新预览。WebView 超时与失败提供公共重试入口。`bestImageAssetsReadyScript` 等待字体、HTML 图片、SVG 图片及包含伪元素的 CSS 图片引用；图片加载、有效尺寸和解码均成功后才就绪，图片地址不依赖扩展名，同文档 SVG fragment 不参与外部加载。失败发送 `best-image-error`，预览显示重试，导出立即结束。排版及尺寸变化后发送当前高度的 `best-image-ready`。
+`BestImageScreenShell` 的 `appearance.preparation` 接收绘图、游戏资源的就绪状态、进度和错误、重试入口，`preview.previewStates` 提供当前预览状态。加载提示统一为“下载绘图资源中”“下载游戏资源中”“图片加载中”，同时显示进度条和百分比；绘图与游戏素材各占 40%，图片及字体解码占 19%，加载层在排版就绪后关闭。下载按已接收字节、解包及模板背景按完成项推进，图片解码通过 `best-image-progress` 回传；字体和素材齐全后才建立预览，加载层等待当前页、来源及挂载代次的就绪消息，旧事件不更新新预览。WebView 超时与失败提供公共重试入口。`bestImageAssetsReadyScript` 等待字体、HTML 图片、SVG 图片及包含伪元素的 CSS 图片引用；图片加载、有效尺寸和解码均成功后才就绪，图片地址不依赖扩展名，同文档 SVG fragment 不参与外部加载。失败发送 `best-image-error`，预览显示重试，导出立即结束。排版及尺寸变化后发送当前高度的 `best-image-ready`。
 
-四款游戏的模板生成统一调用 `usePreparedBestImageSources(template, session, directory, cancelExportRequest, generation?)`，返回 `htmlPages`、`sources`、`ready`、`error` 和 `retry`。`BestImageTemplate.assets` 声明附加 SVG 素材，`build(urls)` 构建 HTML；无需附加素材的模板声明空数组。素材声明包含输出映射 `id`、模板素材身份 `key`、原文件 `sources` 与 SVG 构建函数。公共入口按声明去重、准备素材，随后生成 HTML 并写入会话；素材错误、重试、前后台恢复及缓存代次共用 `useBestImageAssets`。写盘身份包含当前模板及已准备素材，过期结果不进入预览。
+四款游戏的模板生成统一调用 `usePreparedBestImageSources(template, session, directory, cancelExportRequest, generation?)`，返回 `htmlPages`、`sources`、`ready`、`progress`、`error` 和 `retry`。`BestImageTemplate.brand` 声明需要品牌图标，公共入口通过 `loadBundledBestImageFile` 和 `copyBestImageAsset` 将内置图标复制进会话；`BestImageTemplate.assets` 声明附加 SVG 素材，`build(urls)` 构建 HTML；无需附加素材的模板声明空数组。素材声明包含输出映射 `id`、模板素材身份 `key`、原文件 `sources` 与 SVG 构建函数。公共入口按声明去重、准备素材，随后生成 HTML 并写入会话；素材错误、重试、前后台恢复及缓存代次共用 `useBestImageAssets`。写盘身份包含当前模板及已准备素材，过期结果不进入预览。
 
 `prepareBestImageCardBackground` 将声明的原始文件以自包含 data URL 嵌入 SVG，按模板素材身份、源文件地址和缓存代次生成会话文件，非空文件直接复用。读取与构建逐张完成，临时写入和原子发布沿用共享文件队列，I/O 失败由模板入口显示错误并重试。舞萌应用风格与中二声明完整卡片背景，保留底板、镜像、各层高斯模糊、渐变遮罩与透明度；HTML 通过 `cardBackgroundUrls` 引用背景文件，动态文字与图标独立排版。分辨率、成绩文字及分页不参与背景素材身份；背景图片与其余图片共用加载、解码及导出就绪流程。
 
 `useBestImageExport.handleExportLayout` 由 `BestImageScreenShell.exportSession.onExportLayout` 接收每页捕获视图的真实布局；只有当前页就绪高度与布局宽高按像素比例匹配后才截图。后续高度变化取消之前的就绪等待，每页独立挂载捕获视图并隔离旧消息。导出 WebView 在页面下层独立挂载，挂载期间暂停预览 WebView，结束后恢复。导出进度通过 `AppNotification` 的 `showActionNotification`、`updateNotification` 与 `dismissNotification` 展示和清理，图片加载、生成和保存显示当前页数与总页数；公共进度条按已完成的生成、保存步骤占全部步骤的比例更新。取消按钮与系统返回共用 `cancelExportRequest`，取消、卸载或任务结束时关闭进度通知，完成与失败沿用公共结果通知。`captureRef` 通过 `scripts/patch-react-native-view-shot.cjs` 接入 WebView 原生绘制：iOS 使用 `WKWebView.takeSnapshot(afterScreenUpdates: true)`，Android 等待 `postVisualStateCallback` 后绘制；原有编码、临时文件、取消与保存路径共用。iOS 截图参数为输出像素除以设备比例，Android 直接使用输出像素；iOS 瞬态失败沿相同截图方式重试一次。
 
-四款成绩图直接使用当前载荷的 `source.label`。示例数据生成入口提供“示例账号”，真实账号保留实际来源标签。舞萌来源参与现有 HTML 生成身份，来源单独变化也重新写盘。
+舞萌应用风格、中二、Phigros 应用风格和 Rizline 通过 `bestImageBrandFooter(width)` 在底部居中显示应用图标、标语「音游日常，一站承包」和 `rranker.com`，保留设计与数据来源署名；短页的剩余高度由成绩容器占据，长页按内容扩展。四款成绩图直接使用当前载荷的 `source.label`。示例数据生成入口提供“示例账号”，真实账号保留实际来源标签。舞萌来源参与现有 HTML 生成身份，来源单独变化也重新写盘。
 
 `BestImageResourcePicker` 复用 `best-image-picker-shell.tsx` 的弹层、搜索、当前资源行、随机与关闭快捷区、预览列和选中标记；各游戏传入条目、预览和回调，称号等级筛选及默认板、默认背景保留所属游戏语义。
 
@@ -149,7 +149,7 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 共享 `ImageCropper({ uri, initialCrop?, onCancel, onConfirm })` 返回归一化 `ImageCrop`，`image-crop.ts` 处理覆盖缩放、边界和像素转换；确认与取消由调用方提交或保留选择。`cropBestImageAvatar(session, uri, crop, signal)` 使用 `expo-image-manipulator`，产物属于成绩图会话，临时文件随处理完成回收。原图读取沿用 `loadRemoteImageFile`，文件复制、失效和释放沿用公共会话入口。`rizlineAvatarCrop` 将存档的头像锚点与 1–3 倍缩放转换为归一化矩形；当前图片资源缺失时使用排序首张有曲绘成绩或曲库首张插画，签名缺失留空。
 
-Rizline 的 `prepareRizlineUi` 提供绘图 SVG 与字体。`buildRizlineCardBackground` 和 `buildRizlineHeader` 经 `BestImageTemplate.assets` 嵌入底板、遮罩、曲绘和名片，素材与图片解码、预览和导出共用公共就绪流程。`RizlineCatalog.illustrations` 保存 ID、别名、名称和图片路径，`signatures` 保存 ID、别名、文本与位置；`RizlineResourceService` 将插画与歌曲资源一起校验清单引用。名片背景解析玩家 `rizcard.backgroundId`，签名条使用绘图素材原有渐变。HTML 按输出宽度换算尺寸，关闭自动文字放大，页脚两行通过正常文档流参与公共高度测量。对应 UI 缓存和会话目录接入存储适配器及启动维护。
+Rizline 的 `prepareRizlineUi` 提供绘图 SVG 与字体。`buildRizlineCardBackground` 经 `BestImageTemplate.assets` 嵌入底板和曲绘，在同一 SVG 中定义轮廓裁切、清晰／柔化／光晕三层渐变及模糊；非正方形曲绘居中裁切覆盖。`buildRizlineHeader` 嵌入名片与其遮罩，素材与图片解码、预览和导出共用公共就绪流程。`RizlineCatalog.illustrations` 保存 ID、别名、名称和图片路径，`signatures` 保存 ID、别名、文本与位置；`RizlineResourceService` 将插画与歌曲资源一起校验清单引用。名片背景解析玩家 `rizcard.backgroundId`，签名条使用绘图素材原有渐变。HTML 按输出宽度换算尺寸，关闭自动文字放大，底部署名与品牌信息通过正常文档流参与公共高度测量。对应 UI 缓存和会话目录接入存储适配器及启动维护。
 
 `useChunithmBestImageAssets` 经公共 hook 将 UI 与字体复制进账号会话，并通过 `loadRemoteImageFile` 准备角色、名牌和图片称号。页面复用 `useChunithmCollections` 读取角色、名牌与称号；选择写入 `chunithmBestImagePreferencesStore`。名牌支持当前、指定、随机和默认板，角色与称号支持当前、指定、随机和关闭；称号保存 `id/name/color/level`。`buildChunithmBestImageHtml` 接收名牌、角色和称号文件 URL，`hideTrophy` 隐藏整个称号槽位；B50、自定义及分页使用同一成绩卡与字体测量流程。
 

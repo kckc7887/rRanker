@@ -205,9 +205,9 @@ export function MaimaiBestImageScreen() {
   }, [imageType, pageStructureKey, setCurrentPageIndex, setPageHeights]);
 
   const coverRequestKey = JSON.stringify(scoreSections.flatMap((section) => section.records.map((record) => record.songId)));
-  const { coverUrls, coverError, retry: retryCovers } = useMaimaiImageCovers(assetSession, coverRequestKey);
+  const { coverProgress, coverUrls, coverError, retry: retryCovers } = useMaimaiImageCovers(assetSession, coverRequestKey);
 
-  const { assetsReady, assetsDirectory, exportAssetError, retry: retryDrawing } = useMaimaiExportAssets(assetSession, ratingStyle);
+  const { drawingProgress, assetsReady, assetsDirectory, exportAssetError, retry: retryDrawing } = useMaimaiExportAssets(assetSession, ratingStyle);
   const collectionRequestKey = JSON.stringify((['icon', 'plate', 'frame'] as const).map(kind => {
     const id = kind === 'icon' ? previewPlayer.presentation?.iconId : kind === 'plate' ? previewPlayer.presentation?.namePlateId : previewPlayer.presentation?.frameId;
     return hiddenStyles.includes(kind) || !Number.isSafeInteger(id) || (id ?? -1) < 0 ? null : `https://assets2.lxns.net/maimai/${kind}/${id}.png`;
@@ -215,6 +215,7 @@ export function MaimaiBestImageScreen() {
   const { collectionUrls, collectionError, retry: retryCollections } = useMaimaiCollectionAssets(assetSession, collectionRequestKey);
   const dataSource = player?.source?.label ?? '';
   const template = useMemo<BestImageTemplate | null>(() => assetsReady && embeddedAssets && coverUrls && collectionUrls && detailedCatalog.data ? {
+    brand: ratingStyle === 'app',
     assets: ratingStyle === 'app' ? buildMaimaiCardBackgroundAssets(scoreSections.flatMap(section => section.records), coverUrls) : [],
     build: cardBackgroundUrls => pages.map((page) => buildBestImageHtml({
       type: imageType,
@@ -236,7 +237,7 @@ export function MaimaiBestImageScreen() {
   } : null, [assetsReady, coverUrls, collectionUrls, dataSource, detailedCatalog.data, embeddedAssets, hiddenStyles, imageType, outputWidth, pages, previewPlayer, rating, ratingStyle, scoreSections]);
   const htmlGenerationKey = JSON.stringify([imageType, outputWidth, previewPlayer, rating, ratingStyle, hiddenStyles, pages, dataSource]);
   const sourceGeneration = useMemo(() => [coverUrls, collectionUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data], [coverUrls, collectionUrls, embeddedAssets, htmlGenerationKey, detailedCatalog.data]);
-  const { htmlPages, sources: webViewSources, ready: templateReady, error: webViewSourceError, retry: retryTemplate } = usePreparedBestImageSources(template, assetSession, assetsDirectory, cancelExportRequest, sourceGeneration);
+  const { htmlPages, sources: webViewSources, ready: templateReady, progress: templateProgress, error: webViewSourceError, retry: retryTemplate } = usePreparedBestImageSources(template, assetSession, assetsDirectory, cancelExportRequest, sourceGeneration);
   const outputHeight = pageHeights[pages[Math.min(currentPageIndex, pages.length - 1)]!.id] ?? minimumBestImageHeight(outputWidth);
   const exportBusy = exportPageIndex !== null || exportStatus !== null;
   const formValid = imageType !== 'custom' || customInputValid;
@@ -336,6 +337,8 @@ export function MaimaiBestImageScreen() {
       dimensionMeta: `${outputWidth} × ${outputHeight} px · 每页最多 ${maximumRowsPerPage} 行 · 第 ${currentPageIndex + 1}/${pages.length} 页`,
       preparation: {
         drawingReady: assetsReady && !!embeddedAssets,
+        drawingProgress,
+        gameProgress: .8 * coverProgress + .2 * templateProgress,
         gameReady: templateReady && !!coverUrls && !!collectionUrls && !!detailedCatalog.data,
         error: exportAssetError ?? assetError ?? coverError ?? collectionError ?? webViewSourceError
           ?? (detailedCatalog.error ? '暂时无法读取谱面物量，请重试。' : null),

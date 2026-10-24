@@ -218,7 +218,7 @@ export function ChunithmBestImageScreen() {
   const jackets = useBestImageAssets({
     session: assetSession,
     key: payload && controller.prefsReady ? JSON.stringify(jacketIds) : null,
-    prepare: signal => loadChunithmBestImageJackets(assetSession, jacketIds, undefined, signal),
+    prepare: (signal, onProgress) => loadChunithmBestImageJackets(assetSession, jacketIds, (done, total) => onProgress(total ? done / total : 1), signal),
   });
   const coverUrls = jackets.data;
 
@@ -235,7 +235,7 @@ export function ChunithmBestImageScreen() {
     if (choice.mode === 'off' || choice.id === undefined) return null;
     return { id: choice.id, name: choice.name, color: choice.color, level: choice.level };
   }, [payload?.player?.trophy, stylePrefs.trophy]);
-  const { assets, drawingReady, gameReady, error: assetError, retry: retryAssets } = useChunithmBestImageAssets(
+  const { assets, drawingReady, drawingProgress, gameReady, error: assetError, retry: retryAssets } = useChunithmBestImageAssets(
     assetSession,
     hideCharacter ? null : buildChunithmCharacterUrl(characterId ?? 0),
     buildChunithmPlateUrl(plateId),
@@ -251,6 +251,7 @@ export function ChunithmBestImageScreen() {
   const template = useMemo<BestImageTemplate | null>(() => {
     if (!payload || !controller.prefsReady || !coverUrls || !assets) return null;
     return {
+      brand: true,
       assets: buildChunithmCardBackgroundAssets(assetSession, sections.flatMap(section => section.records.map(record => ({ jacketId: jacketIdsByKey[record.key]!, levelIndex: record.levelIndex }))), coverUrls),
       build: cardBackgroundUrls => pages.map((page) => buildChunithmBestImageHtml({
         type,
@@ -288,7 +289,7 @@ export function ChunithmBestImageScreen() {
     width,
   ]);
 
-  const { htmlPages, sources, ready: templateReady, error: sourceError, retry: retryTemplate } = usePreparedBestImageSources(template, assetSession, assetSession.directory, cancelExportRequest);
+  const { htmlPages, sources, ready: templateReady, progress: templateProgress, error: sourceError, retry: retryTemplate } = usePreparedBestImageSources(template, assetSession, assetSession.directory, cancelExportRequest);
   useEffect(() => {
     setPageHeights({}); setPageIndex(0); setPreviewStates({});
   }, [sources, setPageHeights, setPageIndex, setPreviewStates]);
@@ -507,7 +508,7 @@ export function ChunithmBestImageScreen() {
         activeWidth: width,
         onChooseWidth: setWidth,
         dimensionMeta: `${width} × ${outputHeight} px · 每页最多 ${type === 'custom' ? `${CUSTOM_MAX_ROWS_PER_PAGE} 行` : `${50 + stylePrefs.selectionCount} 张`} · 第 ${pageIndex + 1}/${pages.length} 页`,
-        preparation: { drawingReady, gameReady: gameReady && jackets.ready && controller.prefsReady && templateReady, error: sourceError ?? assetError ?? jackets.error, retry: () => { retryAssets(); jackets.retry(); retryTemplate(); } },
+        preparation: { drawingReady, drawingProgress, gameProgress: .8 * jackets.progress + .2 * templateProgress, gameReady: gameReady && jackets.ready && controller.prefsReady && templateReady, error: sourceError ?? assetError ?? jackets.error, retry: () => { retryAssets(); jackets.retry(); retryTemplate(); } },
         pickers: <>
         <ChunithmBestImageStylePicker
           visible={picker === 'character'}

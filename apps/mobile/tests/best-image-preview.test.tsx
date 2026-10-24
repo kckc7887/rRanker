@@ -83,6 +83,7 @@ jest.mock('@/hooks/use-game-data', () => ({
   }),
 }));
 jest.mock('@/features/best-image/load-best-image-assets', () => ({
+  loadBundledBestImageFile: async () => 'file:///session/icon.png',
   loadBestImageAssets: async () => ({
     fontUrl: 'file:///session/dGVzdA==',
     ratingFrameUrl: 'file:///session/dGVzdA==',
@@ -328,6 +329,22 @@ describe('best image preview', () => {
       nativeEvent: { data: JSON.stringify({ type: 'best-image-height', width: 1440, height: 2880 }) },
     });
     expect(screen.getByText('1440 × 2880 px · 每页最多 28 行 · 第 1/1 页')).toBeTruthy();
+  });
+
+  it('shows actual image progress, clears it on readiness and resets it for a new source', async () => {
+    const screen = await render(<BestImageScreen />);
+    const preview = await screen.findByTestId('best-image-html-preview-0');
+    expect(screen.getByText('80%')).toBeTruthy();
+    await fireEvent(preview, 'message', { nativeEvent: { data: JSON.stringify({ type: 'best-image-progress', width: 1080, value: .5 }) } });
+    expect(screen.getByText('89%')).toBeTruthy();
+    await fireEvent(preview, 'message', { nativeEvent: { data: JSON.stringify({ type: 'best-image-progress', width: 1440, value: 1 }) } });
+    expect(screen.getByText('89%')).toBeTruthy();
+    await fireEvent(preview, 'message', { nativeEvent: { data: JSON.stringify({ type: 'best-image-ready', width: 1080, height: 1440 }) } });
+    expect(screen.queryByText('图片加载中')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('宽度 1440 像素'));
+    await waitFor(() => expect(screen.getByText('80%')).toBeTruthy());
+    await fireEvent(preview, 'message', { nativeEvent: { data: JSON.stringify({ type: 'best-image-progress', width: 1080, value: 1 }) } });
+    expect(screen.getByText('80%')).toBeTruthy();
   });
 
   it('keeps runtime details out of the screen while processing preview messages', async () => {

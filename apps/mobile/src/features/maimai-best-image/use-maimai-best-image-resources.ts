@@ -1,3 +1,4 @@
+import { bestImageUiProgress } from '@/features/best-image/best-image-ui-cache';
 import { loadRemoteImageFile, copyBestImageAsset, type BestImageAssetSession } from '@/features/best-image/load-best-image-session';
 import { loadBestImageAssets } from '@/features/best-image/load-best-image-assets';
 import { loadBestImageJackets } from '@/features/best-image/load-best-image-jackets';
@@ -34,8 +35,8 @@ export function useMaimaiEmbeddedAssets(session: BestImageAssetSession, rating: 
 
 export function useMaimaiImageCovers(session: BestImageAssetSession, key: string) {
   const assets = useBestImageAssets({ session, key,
-    prepare: (signal) => loadBestImageJackets(session, JSON.parse(key) as string[], undefined, signal) });
-  return { coverUrls: assets.data, coverError: assets.error, retry: assets.retry };
+    prepare: (signal, onProgress) => loadBestImageJackets(session, JSON.parse(key) as string[], (done, total) => onProgress(total ? done / total : 1), signal) });
+  return { coverProgress: assets.progress, coverUrls: assets.data, coverError: assets.error, retry: assets.retry };
 }
 
 export function buildMaimaiCardBackgroundAssets(
@@ -63,10 +64,10 @@ export function useMaimaiCollectionAssets(session: BestImageAssetSession, key: s
 }
 
 export function useMaimaiExportAssets(session: BestImageAssetSession, style: BestImageRatingStyle) {
-  const assets = useBestImageAssets({ session, key: style, prepare: async (signal) => {
+  const assets = useBestImageAssets({ session, key: style, prepare: async (signal, onProgress) => {
     const [font, ui] = await Promise.all([
       style === 'game' ? prepareMaimaiFonts(undefined, signal) : Promise.resolve(null),
-      prepareMaimaiUi(style, undefined, signal),
+      prepareMaimaiUi(style, progress => onProgress(bestImageUiProgress(progress)), signal),
     ]);
     await Promise.all([font?.fullReady, ui.fullReady]);
     for (const path of ui.files) {
@@ -79,5 +80,5 @@ export function useMaimaiExportAssets(session: BestImageAssetSession, style: Bes
     }
     return session.directory;
   } });
-  return { assetsReady: assets.ready, assetsDirectory: assets.data, exportAssetError: assets.error, retry: assets.retry };
+  return { drawingProgress: assets.progress, assetsReady: assets.ready, assetsDirectory: assets.data, exportAssetError: assets.error, retry: assets.retry };
 }

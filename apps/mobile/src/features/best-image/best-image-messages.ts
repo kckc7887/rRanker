@@ -49,6 +49,17 @@ export function parseBestImageErrorMessage(data: string, expectedWidth: number):
   }
 }
 
+export function parseBestImageProgressMessage(data: string, expectedWidth: number): number | null {
+  try {
+    const message = JSON.parse(data) as { type?: unknown; width?: unknown; value?: unknown } | null;
+    if (message?.type !== 'best-image-progress' || message.width !== expectedWidth) return null;
+    return typeof message.value === 'number' && Number.isFinite(message.value)
+      && message.value >= 0 && message.value <= 1 ? message.value : null;
+  } catch {
+    return null;
+  }
+}
+
 export type BestImageRuntimeMessage = {
   userAgent: string;
   version: string | null;

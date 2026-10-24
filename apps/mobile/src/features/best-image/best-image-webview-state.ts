@@ -10,7 +10,7 @@ export type BestImageWebViewPhase =
   | 'crashed'
   | 'terminated';
 
-export type BestImageWebViewState = { phase: BestImageWebViewPhase; version: string | null };
+export type BestImageWebViewState = { phase: BestImageWebViewPhase; version: string | null; progress?: number };
 
 const TERMINAL_PHASES: ReadonlySet<BestImageWebViewPhase> = new Set([
   'ready',
@@ -33,6 +33,7 @@ export function updateBestImageWebViewState(
   setStates((current) => ({
     ...current,
     [pageId]: {
+      progress: phase === 'loading' ? 0 : current[pageId]?.progress,
       phase,
       version: version === undefined ? current[pageId]?.version ?? null : version,
     },
@@ -50,6 +51,7 @@ export function updateBestImageWebViewRenderingState(
     return {
       ...current,
       [pageId]: {
+        progress: state?.progress,
         phase: terminal && state ? state.phase : 'rendering',
         version: version === undefined ? state?.version ?? null : version,
       },

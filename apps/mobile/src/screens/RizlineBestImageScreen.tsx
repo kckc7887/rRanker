@@ -1,3 +1,4 @@
+import { bestImageUiProgress } from '@/features/best-image/best-image-ui-cache';
 import { useEffect, useMemo, useState } from 'react';
 import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { File } from 'expo-file-system';
@@ -82,17 +83,17 @@ export function RizlineBestImageScreen() {
   const activeCrop = useMemo(() => prefs.avatar.mode === 'current'
     ? currentAvatar ? rizlineAvatarCrop(card?.avatarPos) : null : prefs.avatar.crop ?? null, [prefs.avatar, currentAvatar, card]);
   useEffect(() => { setCropId(null); }, [query.activeAccountId]);
-  const drawing = useBestImageAssets({ session, key: prefsReady ? 'ui' : null, prepare: async signal => {
-    const ui = await prepareRizlineUi(undefined, signal); await ui.fullReady;
+  const drawing = useBestImageAssets({ session, key: prefsReady ? 'ui' : null, prepare: async (signal, onProgress) => {
+    const ui = await prepareRizlineUi(progress => onProgress(bestImageUiProgress(progress)), signal); await ui.fullReady;
     for (const path of ui.files) await copyBestImageAsset(session, new File(ui.directory, path).uri, path, signal);
     return { header: await new File(session.directory, 'header/base.svg').text() };
   } });
   const coverRequests = useMemo(() => [...new Set(records.map(record => record.songId))].map(id => [id, songById.get(id)?.coverPath ?? null] as const), [records, songById]);
   const game = useBestImageAssets({ session,
     key: prefsReady && catalog ? JSON.stringify([coverRequests, avatar?.uri, activeCrop, background?.uri, namecard?.uri]) : null,
-    prepare: async signal => {
+    prepare: async (signal, onProgress) => {
       const [covers, originalAvatar, backgroundFile, namecardFile] = await Promise.all([
-        loadImageFiles(session, coverRequests.map(([id]) => id), id => { const song = songById.get(id); return song ? rizlineCoverUrl(song) : null; }, undefined, signal),
+        loadImageFiles(session, coverRequests.map(([id]) => id), id => { const song = songById.get(id); return song ? rizlineCoverUrl(song) : null; }, (done, total) => onProgress(total ? .9 * done / total : .9), signal),
         loadRemoteImageFile(session, avatar?.uri ?? null, signal), loadRemoteImageFile(session, background?.uri ?? null, signal),
         loadRemoteImageFile(session, namecard?.uri ?? null, signal),
       ]);
@@ -108,7 +109,7 @@ export function RizlineBestImageScreen() {
     const file = (path: string) => new File(session.directory, path).uri;
     const assets: BestImageTemplateAsset[] = records.map(record => ({
       id: record.chartId, key: record.difficulty,
-      sources: [file(`card/${record.difficulty}.svg`), file('card/mask.svg'), file('artwork/clear-mask.svg'), file('artwork/soft-mask.svg'), file('artwork/glow-mask.svg'),
+      sources: [file(`card/${record.difficulty}.svg`),
         ...(game.data!.covers[record.songId] ? [game.data!.covers[record.songId]!] : [])], build: buildRizlineCardBackground,
     }));
     const header = drawing.data.header;
@@ -117,7 +118,7 @@ export function RizlineBestImageScreen() {
     const avatarIndex = game.data.avatar ? sources.push(game.data.avatar) - 1 : -1;
     assets.push({ id: 'header', key: JSON.stringify([header, backgroundIndex, avatarIndex]), sources,
       build: data => buildRizlineHeader(data, header, backgroundIndex, avatarIndex) });
-    return { assets, build: urls => pages.map(page => buildRizlineBestImageHtml({ width, page, player: payload.player,
+    return { brand: true, assets, build: urls => pages.map(page => buildRizlineBestImageHtml({ width, page, player: payload.player,
       signature, background: game.data!.background, urls, dataSource: payload.source.label })) };
   }, [drawing.data, game.data, payload, hasRecords, formValid, session.directory, records, pages, width, signature]);
   const prepared = usePreparedBestImageSources(template, session, drawing.ready ? session.directory : null, cancelExportRequest);
@@ -162,7 +163,7 @@ export function RizlineBestImageScreen() {
     </Pressable>),
     widths: [1080, 1440, 2160], activeWidth: width, onChooseWidth: setWidth,
     dimensionMeta: `${width} × ${pageHeights[pages[pageIndex]?.id ?? ''] ?? Math.ceil(width * 0.75)} px · 每页最多 40 张`,
-    preparation: { drawingReady: drawing.ready, gameReady: game.ready && prepared.ready,
+    preparation: { drawingReady: drawing.ready, drawingProgress: drawing.progress, gameProgress: .8 * game.progress + .2 * prepared.progress, gameReady: game.ready && prepared.ready,
       error: drawing.error ?? game.error ?? prepared.error ?? (!hasRecords ? '没有符合条件的成绩' : null), retry: () => { drawing.retry(); game.retry(); prepared.retry(); } },
     pickers: <>
       <BestImageResourcePicker visible={picker !== null} label={picker ? LABELS[picker] : ''} items={items} getKey={item => item.id} getName={item => item.name} getMeta={item => item.meta}

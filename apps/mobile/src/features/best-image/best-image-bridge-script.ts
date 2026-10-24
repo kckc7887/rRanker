@@ -54,11 +54,16 @@ export function bestImageAssetsReadyScript(): string {
         if (style.content && style.content !== 'none' && style.content !== 'normal') addStyle(style);
       }
     });
-    return Promise.all([
+    const tasks = [
       document.fonts ? document.fonts.ready : Promise.resolve(),
       ...images.map(waitImage),
       ...Array.from(urls, url => { const image = new Image(); image.src = url; return waitImage(image); }),
-    ]);
+    ];
+    let completed = 0;
+    return Promise.all(tasks.map(task => task.then(() => {
+      completed += 1;
+      window.ReactNativeWebView?.postMessage(JSON.stringify({ type: 'best-image-progress', width: OUTPUT_WIDTH, value: completed / tasks.length }));
+    })));
   })()`;
 }
 

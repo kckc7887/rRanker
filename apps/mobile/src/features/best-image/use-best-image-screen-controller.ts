@@ -7,7 +7,8 @@ import type { BestImageScreenControllerConfig } from './best-image-controller-ty
 import { useBestImagePreferences } from './use-best-image-preferences';
 import { useBestImagePreview } from './use-best-image-preview';
 import { useBestImageExport } from './use-best-image-export';
-import { createBestImageAssetSession, disposeBestImageAssetSession, invalidateBestImageAssetSession, prepareBestImageCardBackground, retainBestImageAssetSession, retryBestImagePreparation, type BestImageAssetSession } from './load-best-image-session';
+import { copyBestImageAsset, createBestImageAssetSession, disposeBestImageAssetSession, invalidateBestImageAssetSession, prepareBestImageCardBackground, retainBestImageAssetSession, retryBestImagePreparation, type BestImageAssetSession } from './load-best-image-session';
+import { loadBundledBestImageFile } from './load-best-image-assets';
 import { useBestImageAssets } from './use-best-image-assets';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
@@ -22,6 +23,7 @@ export type BestImageTemplateAsset = {
 };
 
 export type BestImageTemplate = {
+  brand?: boolean;
   assets: readonly BestImageTemplateAsset[];
   build: (urls: Readonly<Record<string, string>>) => readonly string[];
 };
@@ -36,11 +38,16 @@ export function usePreparedBestImageSources(
   const entries = useMemo(() => [...new Map(template?.assets.map(asset => [asset.id, asset])).values()]
     .sort((a, b) => a.id.localeCompare(b.id)), [template]);
   const assets = useBestImageAssets({ session,
-    key: template ? JSON.stringify(entries.map(({ id, key, sources }) => [id, key, sources])) : null,
-    prepare: async (signal) => {
+    key: template ? JSON.stringify([template.brand, entries.map(({ id, key, sources }) => [id, key, sources])]) : null,
+    prepare: async (signal, onProgress) => {
+      if (template?.brand) {
+        const icon = await loadBundledBestImageFile(session, require('../../../assets/images/icon.png'), 'png', signal);
+        await copyBestImageAsset(session, icon, 'rranker-icon.png', signal);
+      }
       const urls: Record<string, string> = {};
-      for (const entry of entries) {
+      for (const [index, entry] of entries.entries()) {
         urls[entry.id] = await prepareBestImageCardBackground(session, entry.key, entry.sources, entry.build, signal);
+        onProgress((index + 1) / entries.length);
       }
       return urls;
     },
@@ -90,7 +97,7 @@ export function usePreparedBestImageSources(
     return () => { cancelled = true; controller.abort(); };
   }, [directory, sourceGeneration, foregroundReady, session]);
   const sources = htmlPages && result && result.generation === sourceGeneration && result.directory === directory ? result.sources : null;
-  return { htmlPages, sources, ready: assets.ready, error: assets.error ?? error, retry: assets.retry };
+  return { htmlPages, sources, ready: assets.ready, progress: assets.progress, error: assets.error ?? error, retry: assets.retry };
 }
 
 export function useBestImageScreenController<TType extends string, TPrefs extends object, TPicker>(

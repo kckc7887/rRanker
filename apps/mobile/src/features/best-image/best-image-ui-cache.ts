@@ -30,6 +30,13 @@ export type PreparedUi = {
 
 type ProgressListener = (progress: UiProgress) => void;
 
+export function bestImageUiProgress(progress: UiProgress): number {
+  const fraction = progress.total > 0 ? progress.completed / progress.total : 0;
+  return progress.phase === 'ready' ? .95
+    : progress.phase === 'unpacking' ? .8 + .15 * fraction
+      : progress.phase === 'downloading' ? .8 * fraction : 0;
+}
+
 let uiDownloadSequence = 0;
 
 const inFlight = createInflightGuard<string>();
@@ -91,8 +98,11 @@ async function downloadAndUnpack(
   const archiveFile = new File(temporaryDirectory, 'ui.zip.part');
   try {
     if (archiveFile.exists) archiveFile.delete();
-    onProgress({ phase: 'downloading', completed: 0, total: entries.length, currentEntry: null });
-    await downloadChartResource(temporaryDirectory, 'ui.zip.part', archive.url, signal);
+    onProgress({ phase: 'downloading', completed: 0, total: archive.bytes, currentEntry: null });
+    await downloadChartResource(temporaryDirectory, 'ui.zip.part', archive.url, signal, progress => {
+      onProgress({ phase: 'downloading', completed: progress.totalBytesWritten,
+        total: archive.bytes, currentEntry: null });
+    });
     assertCurrent();
     if (archiveFile.size !== archive.bytes) {
       throw new Error('素材压缩包大小不匹配');

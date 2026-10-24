@@ -7,7 +7,7 @@ import { retryBestImagePreparation, type BestImageAssetSession } from './load-be
 export function useBestImageAssets<T>({ session, key, prepare }: {
   session: BestImageAssetSession;
   key: string | null;
-  prepare: (signal: AbortSignal) => Promise<T>;
+  prepare: (signal: AbortSignal, onProgress: (value: number) => void) => Promise<T>;
 }) {
   const lifecycle = useAppLifecycle();
   const generation = useSyncExternalStore(
@@ -19,7 +19,7 @@ export function useBestImageAssets<T>({ session, key, prepare }: {
   const [attempt, setAttempt] = useState(0);
   const [result, setResult] = useState<{
     session: BestImageAssetSession; key: string; generation: number; attempt: number;
-    data: T | null; ready: boolean; error: string | null;
+    data: T | null; ready: boolean; error: string | null; progress: number;
   } | null>(null);
   const current = result?.session === session && result.key === key
     && result.generation === generation && result.attempt === attempt ? result : null;
@@ -31,20 +31,25 @@ export function useBestImageAssets<T>({ session, key, prepare }: {
     const assertCurrent = captureResourceWrites(session.game, controller.signal);
     const load = prepareRef.current;
     const identity = { session, key, generation, attempt };
-    setResult({ ...identity, data: null, ready: false, error: null });
     void retryBestImagePreparation(session, controller.signal, async () => {
-      const data = await load(controller.signal);
+      setResult({ ...identity, data: null, ready: false, error: null, progress: 0 });
+      const data = await load(controller.signal, progress => {
+        if (!controller.signal.aborted && !session.disposed) {
+          setResult(current => ({ ...identity, data: null, ready: false, error: null,
+            progress: Math.max(current?.progress ?? 0, Math.min(.99, progress)) }));
+        }
+      });
       assertCurrent();
       return data;
     }, (error) => {
       if (!controller.signal.aborted) setResult({ ...identity, data: null, ready: false,
-        error: providerErrorToUserMessage(error, '素材准备失败，正在自动重试。') });
+        error: providerErrorToUserMessage(error, '素材准备失败，正在自动重试。'), progress: 0 });
     }).then((data) => {
-      if (!controller.signal.aborted && !session.disposed) setResult({ ...identity, data, ready: true, error: null });
+      if (!controller.signal.aborted && !session.disposed) setResult({ ...identity, data, ready: true, error: null, progress: 1 });
     }).catch(() => undefined);
     return () => controller.abort();
   }, [session, key, generation, attempt, ready, lifecycle.foregroundReady, lifecycle.foregroundGeneration]);
 
   const retry = useCallback(() => setAttempt((value) => value + 1), []);
-  return { data: current?.data ?? null, ready, error: current?.error ?? null, retry };
+  return { data: current?.data ?? null, ready, error: current?.error ?? null, progress: current?.progress ?? 0, retry };
 }

@@ -1,3 +1,4 @@
+import { bestImageUiProgress } from '@/features/best-image/best-image-ui-cache';
 import { File } from 'expo-file-system';
 import { copyBestImageAsset, loadRemoteImageFile, type BestImageAssetSession } from '@/features/best-image/load-best-image-session';
 import { useBestImageAssets } from '@/features/best-image/use-best-image-assets';
@@ -17,8 +18,8 @@ export function useChunithmBestImageAssets(
   const drawing = useBestImageAssets({
     session,
     key: 'ui',
-    prepare: async signal => {
-      const ui = await prepareChunithmUi(undefined, signal);
+    prepare: async (signal, onProgress) => {
+      const ui = await prepareChunithmUi(progress => onProgress(bestImageUiProgress(progress)), signal);
       await ui.fullReady;
       for (const path of ui.files) await copyBestImageAsset(session, new File(ui.directory, path).uri, path, signal);
       return true;
@@ -35,6 +36,7 @@ export function useChunithmBestImageAssets(
   return {
     assets: drawing.ready && game.ready ? game.data : null,
     drawingReady: drawing.ready,
+    drawingProgress: drawing.progress,
     gameReady: game.ready,
     error: drawing.error ?? game.error,
     retry: () => { drawing.retry(); game.retry(); },

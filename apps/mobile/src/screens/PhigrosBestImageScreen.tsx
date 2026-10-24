@@ -1,3 +1,4 @@
+import { bestImageUiProgress } from '@/features/best-image/best-image-ui-cache';
 import { startTransition, useEffect, useMemo, useState } from 'react';
 import { File } from 'expo-file-system';
 import {
@@ -206,8 +207,8 @@ export function PhigrosBestImageScreen() {
   const drawingAssets = useBestImageAssets({
     session: assetSession,
     key: payload && controller.prefsReady ? `${ratingStyle}:${neededFontKey}` : null,
-    prepare: async (signal) => {
-      const ui = await preparePhigrosUi(ratingStyle, undefined, signal);
+    prepare: async (signal, onProgress) => {
+      const ui = await preparePhigrosUi(ratingStyle, progress => onProgress(bestImageUiProgress(progress)), signal);
       await ui.fullReady;
       for (const path of ui.files) {
         await copyBestImageAsset(assetSession, new File(ui.directory, path).uri, path, signal);
@@ -266,9 +267,9 @@ export function PhigrosBestImageScreen() {
       illustrationUrls, avatarUrl, backgroundUrl, fallbackBackgroundUrl, defaultAvatarUrl, payload.avatarUrl,
       stylePrefs.avatar.mode, stylePrefs.background.mode,
     ]) : null,
-    prepare: async (signal) => {
+    prepare: async (signal, onProgress) => {
       const [illustrations, avatar, background, defaultAvatar] = await Promise.all([
-        loadImageFiles(assetSession, selectedSongIds, id => illustrationUrls[id] ?? null, undefined, signal),
+        loadImageFiles(assetSession, selectedSongIds, id => illustrationUrls[id] ?? null, (done, total) => onProgress(total ? .9 * done / total : .9), signal),
         stylePrefs.avatar.mode === 'off' ? Promise.resolve(null) : (async () => (
           await loadRemoteImageFile(assetSession, avatarUrl, signal)
           ?? await loadRemoteImageFile(assetSession, payload?.avatarUrl, signal)
@@ -295,6 +296,7 @@ export function PhigrosBestImageScreen() {
     const game = gameAssets.data;
     if (drawing.style === 'game' && !accAverages) return null;
     return {
+      brand: drawing.style === 'app',
       assets: drawing.style === 'app' ? buildPhigrosAppCardAssets(assetSession, sections.flatMap(section => section.records), illustrations) : [],
       build: cardBackgroundUrls => pages.map(page => {
         const input = {
@@ -314,7 +316,7 @@ export function PhigrosBestImageScreen() {
     };
   }, [accAverages, assetSession, avatarData, backgroundData, controller.prefsReady, dataSource, drawingAssets.data, gameAssets.data, illustrations, pages, payload, sections, stylePrefs.avatar.mode, titles, type, width]);
 
-  const { htmlPages, sources, ready: templateReady, error: sourceError, retry: retryTemplate } = usePreparedBestImageSources(template, assetSession, assetsReady ? assetSession.directory : null, cancelExportRequest);
+  const { htmlPages, sources, ready: templateReady, progress: templateProgress, error: sourceError, retry: retryTemplate } = usePreparedBestImageSources(template, assetSession, assetsReady ? assetSession.directory : null, cancelExportRequest);
   const preparationError = drawingAssets.error ?? gameAssets.error ?? (ratingStyle === 'game' ? averages.error : null) ?? sourceError;
   useEffect(() => {
     setPageHeights({}); setPageIndex(0); setPreviewStates({});
@@ -455,6 +457,8 @@ export function PhigrosBestImageScreen() {
       dimensionMeta: `${width} × ${outputHeight} px · 每页最多 ${type === 'best30' ? 30 + stylePrefs.overflowCount : 30} 张 · 第 ${pageIndex + 1}/${pages.length} 页`,
       preparation: {
         drawingReady: drawingAssets.ready,
+        drawingProgress: drawingAssets.progress,
+        gameProgress: .8 * gameAssets.progress + .2 * templateProgress,
         gameReady: gameReady && templateReady,
         error: preparationError,
         retry: () => { drawingAssets.retry(); gameAssets.retry(); averages.retry(); retryTemplate(); },
