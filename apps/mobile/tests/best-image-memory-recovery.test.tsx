@@ -29,9 +29,8 @@ jest.mock('react-native-webview', () => {
 
 const widths = [1080, 1440, 2160] as const;
 const chosenWidths: number[] = [];
-const cancelExport = jest.fn();
 
-function Harness({ drawingReady = true, gameReady = true, sourceUri = 'file:///session/preview.html', showSource = true, pageCount = 1, pageIndex = 0, exporting = false, exportStatus = null as string | null } = {}) {
+function Harness({ drawingReady = true, gameReady = true, sourceUri = 'file:///session/preview.html', showSource = true, pageCount = 1, pageIndex = 0, exporting = false } = {}) {
   const [width, setWidth] = useState<number>(2160);
   const preview = useBestImagePreview(width, undefined, true);
   const sources = useMemo(() => showSource ? Array.from({ length: pageCount }, (_, index) => ({ uri: `${sourceUri}?page=${index}` })) : null, [sourceUri, showSource, pageCount]);
@@ -67,7 +66,7 @@ function Harness({ drawingReady = true, gameReady = true, sourceUri = 'file:///s
       exportDisabled: false,
       exportSpinner: false,
       exportIdleLabel: '导出',
-      exportStatus,
+      exportStatus: null,
       onExport: () => undefined,
       exportIndex: exporting ? 0 : null,
       exportHeight: 2880,
@@ -76,7 +75,7 @@ function Harness({ drawingReady = true, gameReady = true, sourceUri = 'file:///s
       captureRef: { current: null },
       onExportMessage: () => undefined,
       onExportLayout: () => undefined,
-      onRequestCloseExport: cancelExport,
+      onRequestCloseExport: () => undefined,
     }}
   />;
 }
@@ -84,7 +83,6 @@ function Harness({ drawingReady = true, gameReady = true, sourceUri = 'file:///s
 describe('best image memory recovery', () => {
   beforeEach(() => {
     chosenWidths.length = 0;
-    cancelExport.mockClear();
     mockLifecycle = {
       appState: 'active', phase: 'foreground-ready', foregroundReady: true,
       foregroundGeneration: 1, memoryWarningGeneration: 0,
@@ -160,22 +158,6 @@ describe('best image memory recovery', () => {
       nativeEvent: { data: '{"type":"best-image-ready","width":2160,"height":2880}' },
     });
     expect(screen.queryByText('图片加载中')).toBeNull();
-  });
-
-  it('keeps export progress and cancellation available before rendering and while saving', async () => {
-    const view = await render(<Harness exportStatus="正在准备导出" />);
-    expect(screen.getByText('取消')).toBeTruthy();
-    expect(screen.queryByLabelText('导出渲染 第1页')).toBeNull();
-    await view.rerender(<Harness exporting exportStatus="正在加载图片 1/2" />);
-    expect(screen.getByLabelText('导出渲染 第1页')).toBeTruthy();
-    expect(screen.getByText('取消')).toBeTruthy();
-    await view.rerender(<Harness exportStatus="正在保存 2/2" />);
-    expect(screen.queryByLabelText('导出渲染 第1页')).toBeNull();
-    expect(screen.getAllByText('正在保存 2/2').length).toBeGreaterThan(0);
-    await fireEvent.press(screen.getByText('取消'));
-    expect(cancelExport).toHaveBeenCalledTimes(1);
-    await view.rerender(<Harness />);
-    expect(screen.queryByText('取消')).toBeNull();
   });
 
   it('offers a retry when the image renderer does not report readiness', async () => {

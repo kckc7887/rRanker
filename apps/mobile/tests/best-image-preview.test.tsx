@@ -11,9 +11,10 @@ let mockSourceLabel = '示例账号';
 let mockPageSequence = 0;
 const mockStagedFiles = new Map<string, string>();
 
-jest.mock('@/components/AppNotification', () => ({
-  useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
-}));
+jest.mock('@/components/AppNotification', () => {
+  const actions = { showActionNotification: jest.fn(() => 1), updateNotification: jest.fn(), dismissNotification: jest.fn() };
+  return { useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
+});
 
 jest.mock('react-native-webview', () => {
   const React = jest.requireActual<typeof import('react')>('react');

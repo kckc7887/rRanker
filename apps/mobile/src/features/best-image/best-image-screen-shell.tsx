@@ -2,7 +2,6 @@ import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
   FlatList,
-  Modal,
   PixelRatio,
   Platform,
   Pressable,
@@ -67,14 +66,9 @@ export type BestImageScreenShellStyles = {
   exportButtonDisabled: ViewStyle;
   exportButtonText: TextStyle;
   exportRoot: ViewStyle;
-  exportOverlay: ViewStyle;
-  exportOverlayText: TextStyle;
-  exportCancel: ViewStyle;
-  exportCancelText: TextStyle;
 };
 
 export type BestImageScreenSharedStyles = BestImageScreenShellStyles & {
-  exportDialog: ViewStyle;
   fieldRow: ViewStyle;
   textInput: TextStyle;
   textInputError: TextStyle;
@@ -131,11 +125,6 @@ export const bestImageScreenSharedStyles: BestImageScreenSharedStyles = StyleShe
   exportButtonDisabled: { opacity: 0.55 },
   exportButtonText: { color: '#FFFFFF', fontSize: 15, fontWeight: '800' },
   exportRoot: { flex: 1, overflow: 'hidden', backgroundColor: '#111111' },
-  exportOverlay: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 24, backgroundColor: 'rgba(0, 0, 0, 0.4)' },
-  exportDialog: { width: '100%', maxWidth: 360, alignItems: 'center', gap: 16, padding: 24, borderRadius: 20 },
-  exportCancel: { borderWidth: 1, borderRadius: 10, marginTop: 8, paddingHorizontal: 18, paddingVertical: 10 },
-  exportCancelText: { fontSize: 15, fontWeight: '700' },
-  exportOverlayText: { fontSize: 14, fontWeight: '700' },
 });
 
 export function BestImageStyleSwitch({ value, onChange }: {
@@ -576,18 +565,5 @@ export function BestImageScreenShell<TType extends string>({
     </ScrollView>
 
     {pickers}
-
-    <Modal visible={heavyContentMounted && exportStatus !== null} animationType="none" transparent onRequestClose={onRequestCloseExport}>
-      <View style={styles.exportOverlay}>
-        <View style={[bestImageScreenSharedStyles.exportDialog, { backgroundColor: theme.surface }]}>
-          <Text style={[styles.panelTitle, { color: theme.text }]}>导出成绩图片</Text>
-          <ActivityIndicator color={theme.accent} size="large" />
-          <Text style={[styles.exportOverlayText, { color: theme.textSecondary }]}>{exportStatus}</Text>
-          <Pressable accessibilityLabel="取消导出" accessibilityRole="button" onPress={onRequestCloseExport} style={[styles.exportCancel, { borderColor: theme.border }]}>
-            <Text style={[styles.exportCancelText, { color: theme.text }]}>取消</Text>
-          </Pressable>
-        </View>
-      </View>
-    </Modal>
   </View>;
 }

@@ -31,6 +31,7 @@ type ExportSession = {
   controller: AbortController;
   settled: Promise<void>;
   finish: () => void;
+  notificationId: number | null;
 };
 
 function clearWait(session: ExportSession) {
@@ -68,7 +69,7 @@ export function useBestImageExport(config: {
   wrapExportPageError?: boolean;
   pageHeights: Readonly<Record<string, number>>;
 }) {
-  const { showNotification } = useNotification();
+  const { showNotification, showActionNotification, updateNotification, dismissNotification } = useNotification();
   const [exportIndex, setExportIndex] = useState<number | null>(null);
   const [exportHeight, setExportHeight] = useState(config.defaultHeight);
   const [exportStatus, setExportStatus] = useState<string | null>(null);
@@ -81,12 +82,14 @@ export function useBestImageExport(config: {
     if (!session) return Promise.resolve();
     if (session.cancelled) return session.settled;
     session.cancelled = true;
+    if (session.notificationId !== null) dismissNotification(session.notificationId);
+    session.notificationId = null;
     session.controller.abort();
     session.wait?.reject(new Error('导出已取消'));
     clearWait(session);
     if (mounted.current) { setExportIndex(null); setExportStatus(null); }
     return session.settled;
-  }, []);
+  }, [dismissNotification]);
   useEffect(() => {
     mounted.current = true;
     return () => { mounted.current = false; cancelExportRequest(); };
@@ -162,16 +165,22 @@ export function useBestImageExport(config: {
     const settled = new Promise<void>((resolve) => { finish = resolve; });
     const session: ExportSession = {
       generation: ++generation.current, operation: createRuntimeOperation('best-image-export'), phase: 'permission',
-      cancelled: false, timedOut: false, wait: null, captures: [], width: config.width, messageScale: config.messageScale, controller: new AbortController(), settled, finish,
+      cancelled: false, timedOut: false, wait: null, captures: [], width: config.width, messageScale: config.messageScale, controller: new AbortController(), settled, finish, notificationId: null,
     };
     active.current = session;
     setExportStatus('正在准备导出');
     session.operation.record('export', { result: 'start' });
     stage(session, 'permission');
     const pageCount = runtime.htmlPages.length;
+    const reportProgress = (status: string, completed: number) => {
+      setExportStatus(status);
+      if (session.notificationId !== null) {
+        updateNotification(session.notificationId, { progress: { label: status, value: completed / (pageCount * 2) } });
+      }
+    };
     const capturePage = async (index: number) => {
       stage(session, 'canvas', index + 1);
-      setExportStatus(`正在加载图片 ${index + 1}/${pageCount}`);
+      reportProgress(`正在加载图片 ${index + 1}/${pageCount}`, index);
       const height = await new Promise<number>((resolve, reject) => {
         const pageId = runtime.pages[index]?.id;
         const initialHeight = (pageId ? config.pageHeights[pageId] : undefined) ?? config.defaultHeight;
@@ -185,7 +194,7 @@ export function useBestImageExport(config: {
       });
       assertCurrent(session);
       stage(session, 'capture', index + 1);
-      setExportStatus(`正在生成图片 ${index + 1}/${pageCount}`);
+      reportProgress(`正在生成图片 ${index + 1}/${pageCount}`, index);
       const options = { format: 'png', quality: 1, result: 'tmpfile',
         ...bestImageCaptureDimensions(session.width, height, PixelRatio.get(), Platform.OS) } as const;
       let uri: string | undefined;
@@ -211,6 +220,11 @@ export function useBestImageExport(config: {
     };
     let savedCount = 0;
     try {
+      session.notificationId = showActionNotification({
+        title: '导出成绩图片',
+        progress: { label: '正在准备导出', value: 0 },
+        actions: [{ label: '取消', tone: 'cancel', onPress: cancelExportRequest }],
+      });
       await requestBestImageExportPermission();
       assertCurrent(session);
       session.operation.record('permission', { result: 'success' });
@@ -227,7 +241,7 @@ export function useBestImageExport(config: {
       setExportIndex(null);
       for (let index = 0; index < session.captures.length; index += 1) {
         stage(session, 'save', index + 1);
-        setExportStatus(`正在保存 ${index + 1}/${session.captures.length}`);
+        reportProgress(`正在保存 ${index + 1}/${session.captures.length}`, pageCount + index);
         try { await saveBestImageCapture(session.captures[index]!.uri, session.captures[index]!.filename); }
         catch (error) {
           if (config.wrapExportPageError) throw new Error(`第 ${index + 1}/${session.captures.length} 页保存失败`, { cause: error });
@@ -239,7 +253,7 @@ export function useBestImageExport(config: {
       }
       assertCurrent(session);
       session.operation.record('export', { result: 'success' });
-      setExportStatus(`已保存 ${savedCount}/${pageCount}，正在完成导出`);
+      reportProgress(`已保存 ${savedCount}/${pageCount}，正在完成导出`, pageCount * 2);
       showNotification({ title: '导出完成', message: `已保存 ${session.captures.length} 张成绩图片到相册`, variant: 'success' });
     } catch (error) {
       session.operation.record(session.phase, {
@@ -257,6 +271,8 @@ export function useBestImageExport(config: {
     } finally {
       clearWait(session);
       await Promise.all(session.captures.map((capture) => deleteBestImageCapture(capture.uri).catch(() => {})));
+      if (session.notificationId !== null) dismissNotification(session.notificationId);
+      session.notificationId = null;
       if (active.current === session) {
         active.current = null;
         if (mounted.current) { setExportIndex(null); setExportStatus(null); }

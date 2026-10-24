@@ -8,7 +8,10 @@ import { sanitizeRuntimeLogEntry } from '@/domain/runtime-log';
 const mockCapture = jest.fn(async () => 'file:///private/capture.png');
 const mockSave = jest.fn(async () => undefined);
 jest.mock('react-native-view-shot', () => ({ captureRef: () => mockCapture() }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn() }) }));
+jest.mock('@/components/AppNotification', () => {
+  const notifications = { showNotification: jest.fn(), showActionNotification: jest.fn(() => 1), updateNotification: jest.fn(), dismissNotification: jest.fn() };
+  return { useNotification: () => notifications };
+});
 jest.mock('@/features/best-image/best-image-export', () => ({
   BestImageExportError: class BestImageExportError extends Error {
     constructor(message: string) {

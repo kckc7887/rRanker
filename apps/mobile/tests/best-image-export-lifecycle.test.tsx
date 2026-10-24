@@ -6,18 +6,25 @@ import { jest } from '@jest/globals';
 import { act, renderHook, waitFor } from '@testing-library/react-native';
 import { useBestImageScreenController, usePreparedBestImageSources } from '@/features/best-image/use-best-image-screen-controller';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
+import type { ActionNotificationInput } from '@/components/AppNotification';
 
 const mockPermission = jest.fn<() => Promise<void>>();
 const mockCapture = jest.fn<(...args: unknown[]) => Promise<string>>();
 const mockSave = jest.fn<(uri: string, name: string) => Promise<void>>();
 const mockDelete = jest.fn();
 const mockNotify = jest.fn();
+const mockShowProgress = jest.fn<(input: ActionNotificationInput) => number>(() => 1);
+const mockUpdateProgress = jest.fn();
+const mockDismissProgress = jest.fn();
 const mockFiles = new Map<string, string>();
 const mockWrite = jest.fn<(uri: string, content: string) => Promise<void>>();
 const mockBase64 = jest.fn<() => Promise<string>>();
 const mockDeletedDirectories = new Set<string>();
 jest.mock('react-native-view-shot', () => ({ captureRef: (...args: unknown[]) => mockCapture(...args) }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotify }) }));
+jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({
+  showNotification: mockNotify, showActionNotification: mockShowProgress,
+  updateNotification: mockUpdateProgress, dismissNotification: mockDismissProgress,
+}) }));
 jest.mock('@/features/best-image/best-image-export', () => ({
   BestImageExportError: class BestImageExportError extends Error {},
   bestImageCaptureDimensions: (width: number, height: number) => ({ width, height }), deleteBestImageCapture: async (uri: string) => mockDelete(uri),
@@ -59,7 +66,9 @@ describe('best image export lifecycle', () => {
     await act(async () => { pending = result.current.exportImages(runtime()); await result.current.exportImages(runtime()); });
     expect(mockPermission).toHaveBeenCalledTimes(1);
     expect(result.current.exportStatus).toBe('正在准备导出');
-    await act(async () => { result.current.cancelExportRequest(); permission.resolve(); await pending; });
+    expect(mockShowProgress).toHaveBeenCalledWith(expect.objectContaining({ title: '导出成绩图片', progress: { label: '正在准备导出', value: 0 } }));
+    await act(async () => { void mockShowProgress.mock.calls[0]![0].actions[0]!.onPress?.(); permission.resolve(); await pending; });
+    expect(mockDismissProgress).toHaveBeenCalledWith(1);
     expect(result.current.exportStatus).toBeNull();
     expect(result.current.exportIndex).toBeNull(); expect(mockCapture).not.toHaveBeenCalled(); expect(mockNotify).not.toHaveBeenCalled();
   });
@@ -76,6 +85,8 @@ describe('best image export lifecycle', () => {
     expect(mockCapture).not.toHaveBeenCalled();
     await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); await pending; });
     expect(mockCapture).toHaveBeenCalledTimes(1); expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: '导出完成' }));
+    expect(mockUpdateProgress).toHaveBeenLastCalledWith(1, { progress: { label: '已保存 1/1，正在完成导出', value: 1 } });
+    expect(mockDismissProgress).toHaveBeenCalledWith(1);
   });
 
   it('waits for the final native layout and a fresh ready message after the height changes', async () => {
@@ -115,6 +126,7 @@ describe('best image export lifecycle', () => {
     expect(mockCapture).not.toHaveBeenCalled();
     expect(mockSave).not.toHaveBeenCalled();
     expect(mockNotify).toHaveBeenCalledWith(expect.objectContaining({ title: '导出失败', message: '图片加载失败，请重试。' }));
+    expect(mockDismissProgress).toHaveBeenCalledWith(1);
   });
 
   it('retries a transient iOS capture failure with the same snapshot strategy and saves the result', async () => {
@@ -160,10 +172,12 @@ describe('best image export lifecycle', () => {
     await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); });
     expect(result.current.exportIndex).toBe(1);
     expect(result.current.exportStatus).toBe('正在加载图片 2/2');
+    expect(mockUpdateProgress).toHaveBeenLastCalledWith(1, { progress: { label: '正在加载图片 2/2', value: 0.25 } });
     await act(async () => { result.current.handleExportMessage(ready); result.current.handleExportLayout(layout()); await jest.advanceTimersByTimeAsync(320); });
     expect(mockSave).toHaveBeenCalledTimes(1);
     expect(result.current.exportIndex).toBeNull();
     expect(result.current.exportStatus).toBe('正在保存 1/2');
+    expect(mockUpdateProgress).toHaveBeenLastCalledWith(1, { progress: { label: '正在保存 1/2', value: 0.5 } });
     await act(async () => { result.current.cancelExportRequest(); });
     expect(result.current.exportStatus).toBeNull();
     expect(mockDelete).not.toHaveBeenCalled();

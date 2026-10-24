@@ -9,9 +9,10 @@ const mockShowNotification = jest.fn();
 const mockLoadRemoteImage = jest.fn(async (_session: unknown, url: string | null): Promise<string | null> => url);
 const mockFiles = new Map<string, string>();
 
-jest.mock('@/components/AppNotification', () => ({
-  useNotification: () => ({ showNotification: mockShowNotification, showActionNotification: jest.fn() }),
-}));
+jest.mock('@/components/AppNotification', () => {
+  const actions = { showActionNotification: jest.fn(() => 1), updateNotification: jest.fn(), dismissNotification: jest.fn() };
+  return { useNotification: () => ({ showNotification: mockShowNotification, ...actions }) };
+});
 
 jest.mock('react-native-webview', () => {
   const React = jest.requireActual<typeof import('react')>('react');
