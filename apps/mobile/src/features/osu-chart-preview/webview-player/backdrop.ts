@@ -15,6 +15,7 @@ import { drawCover, drawStoryboardLayer, releaseStoryboardRenderResources } from
 import { PreviewBackgroundBlur } from './background-blur';
 
 export type MediaPresentationOptions = {
+  playbackSpeed: number;
   backgroundBrightness: number;
   backgroundBlur: number;
   storyboardEnabled: boolean;
@@ -128,6 +129,7 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
   let lastMapTime = 0;
   let lastPlaying = false;
   let presentation: MediaPresentationOptions = {
+    playbackSpeed: 1,
     backgroundBrightness: options.dim === undefined ? 20 : (1 - options.dim) * 100,
     backgroundBlur: 0, storyboardEnabled: true, videoEnabled: true,
   };
@@ -222,6 +224,7 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
     const syncVideo = (mapTimeMs: number, playing: boolean, forceSeek = false): void => {
       if (!video || !visuals.video || videoFailed || disposed) return;
       const target = (mapTimeMs - visuals.video.startMs) / 1000;
+      video.playbackRate = presentation.playbackSpeed;
       videoInRange = target >= 0 && target < video.duration;
       desiredPlaying = playing && videoInRange && presentation.videoEnabled;
       if (!videoInRange || !presentation.videoEnabled) { video.pause(); return; }
@@ -258,13 +261,15 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
         if (disposed) return;
         const finite = (value: number, max: number, fallback: number): number => Number.isFinite(value) ? Math.max(0, Math.min(max, value)) : fallback;
         const updated = {
+          playbackSpeed: next.playbackSpeed,
           backgroundBrightness: finite(next.backgroundBrightness, 100, 20),
           backgroundBlur: finite(next.backgroundBlur, 20, 0),
           storyboardEnabled: next.storyboardEnabled, videoEnabled: next.videoEnabled,
         };
         if (updated.backgroundBrightness === presentation.backgroundBrightness && updated.backgroundBlur === presentation.backgroundBlur &&
-            updated.storyboardEnabled === presentation.storyboardEnabled && updated.videoEnabled === presentation.videoEnabled) return;
-        const videoChanged = updated.videoEnabled !== presentation.videoEnabled;
+            updated.storyboardEnabled === presentation.storyboardEnabled && updated.videoEnabled === presentation.videoEnabled &&
+            updated.playbackSpeed === presentation.playbackSpeed) return;
+        const videoChanged = updated.videoEnabled !== presentation.videoEnabled || updated.playbackSpeed !== presentation.playbackSpeed;
         presentation = updated;
         if (videoChanged) syncVideo(lastMapTime, lastPlaying, true);
         invalidate();

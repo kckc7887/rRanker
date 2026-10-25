@@ -17,6 +17,7 @@ export type OsuChartPreviewFile = {
 };
 
 export type OsuChartPreviewSettings = {
+  playbackSpeed: number;
   holdWidth: number;
   backgroundBrightness: number;
   backgroundBlur: number;
@@ -50,6 +51,7 @@ export function normalizeOsuChartPreviewSettings(value: unknown): OsuChartPrevie
   const boolean = (key: string, fallback: boolean): boolean =>
     typeof raw[key] === 'boolean' ? raw[key] as boolean : fallback;
   return {
+    playbackSpeed: number('playbackSpeed', 1, 0.5, 2, 20),
     holdWidth: number('holdWidth', 60, 10, 100),
     backgroundBrightness: number('backgroundBrightness', 20, 0, 100),
     backgroundBlur: number('backgroundBlur', 0, 0, 20),

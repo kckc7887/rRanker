@@ -1,8 +1,7 @@
 import { PlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 import {
-  computeModDifficulty, Renderer, PlaybackClock,
-  audioContextTime, musicPosition, outputTime,
-  getAudioContextOutputTime, warmSkinCaches, warmSliderPaths, drawCursor,
+  computeModDifficulty, Renderer,
+  warmSkinCaches, warmSliderPaths, drawCursor,
   type BeatmapData, type ReplayData, type ModDifficulty, type SkinAssets,
 } from './engine';
 import { AudioSync } from './engine-audio/AudioSync';
@@ -49,7 +48,6 @@ export function createGameplaySkin(skin: SkinAssets, mode: number): SkinAssets {
 
 export class PreviewSession {
   readonly loop = new PlaybackLoop();
-  readonly clock = new PlaybackClock();
   playing = false;
   ended = false;
   disposed = false;
@@ -80,7 +78,6 @@ export class PreviewSession {
     this.renderedSkinVariant = this.skinVariant;
     this.configureRenderer();
     this.renderer.options.maniaScrollSpeed = clampManiaScrollSpeed(initial.maniaScrollSpeed ?? MANIA_SCROLL_DEFAULT);
-    this.clock.setOffset(musicPosition(range.startMs / 1000));
     this.draw(true);
   }
 
@@ -98,6 +95,7 @@ export class PreviewSession {
 
   private applySettings(): void {
     this.media.configure(this.settings);
+    this.audioSync.setSpeed(this.settings.playbackSpeed);
     this.audioSync.setStoryboardEnabled(this.settings.storyboardEnabled);
     Object.assign(this.renderer.options, {
       maniaIgnoreSV: this.settings.maniaIgnoreSV,
@@ -117,30 +115,37 @@ export class PreviewSession {
 
   get currentTimeMs(): number {
     if (!this.playing) return this.positionMs;
-    const mapMs = this.clock.positionAt(outputTime(getAudioContextOutputTime(getAudioContext()))) * 1000;
-    return Math.max(0, Math.min(this.range.durationMs, mapMs - this.range.startMs));
+    return Math.max(0, Math.min(this.range.durationMs, this.audioSync.currentTimeMs));
   }
 
   draw(forceSeek = false): void {
     if (this.disposed) return;
     this.mediaTime = this.range.startMs + this.currentTimeMs;
-    this.media.sync(this.mediaTime, this.playing, forceSeek);
+    this.media.sync(this.mediaTime, this.playing && this.audioSync.advancing, forceSeek);
     this.renderer.renderFrameAt(this.mediaTime + this.renderer.options.audioOffsetMs - this.renderer.oldOffsetMs);
   }
 
   private tick = (): void => {
     this.frame = null;
     if (this.disposed || !this.playing) return;
+    if (!this.audioSync.running) {
+      this.pause();
+      this.draw(true);
+      return;
+    }
     const loopTarget = this.loop.target(this.currentTimeMs);
     if (loopTarget !== null) {
-      void this.playFrom(loopTarget);
+      void this.playFrom(loopTarget).catch(() => {
+        if (this.disposed) return;
+        this.pause();
+        this.draw(true);
+      });
       return;
     }
     if (this.currentTimeMs >= this.range.durationMs) {
       this.pause();
       this.positionMs = this.range.durationMs;
       this.ended = true;
-      this.clock.setOffset(musicPosition(this.range.endMs / 1000));
       this.draw(true);
       return;
     }
@@ -157,8 +162,6 @@ export class PreviewSession {
     if (this.positionMs >= this.range.durationMs) this.positionMs = 0;
     await this.audioSync.playFrom(this.positionMs);
     if (this.disposed || generation !== this.command) return;
-    const ctx = getAudioContext();
-    this.clock.set(audioContextTime(ctx.currentTime), musicPosition((this.range.startMs + this.audioSync.currentTimeMs) / 1000), 1);
     this.playing = true;
     this.ended = false;
     this.draw(true);
@@ -170,7 +173,6 @@ export class PreviewSession {
     this.positionMs = this.currentTimeMs;
     this.playing = false;
     this.audioSync.pause();
-    this.clock.setOffset(musicPosition((this.range.startMs + this.positionMs) / 1000));
     if (this.frame !== null) cancelAnimationFrame(this.frame);
     this.frame = null;
     this.media.sync(this.range.startMs + this.positionMs, false, true);
@@ -181,7 +183,6 @@ export class PreviewSession {
     this.pause();
     this.positionMs = Math.max(0, Math.min(presentationMs, this.range.durationMs));
     this.ended = this.positionMs >= this.range.durationMs;
-    this.clock.setOffset(musicPosition((this.range.startMs + this.positionMs) / 1000));
     this.draw(true);
     if (playing && (!this.ended || this.loop.target(this.positionMs) !== null)) await this.playFrom(this.loop.target(this.positionMs) ?? this.positionMs);
   }
@@ -275,10 +276,15 @@ export async function startPlayback(
     signal.throwIfAborted();
     const range = resolvePlaybackRange(beatmap, decoded.song ? decoded.song.duration * 1000 : null, media.range, decoded.endMs);
     audio = new AudioSync({
-      ctx, songBuffer: decoded.song, skinSounds: skin.sounds, mergedSounds: decoded.sounds,
+      ctx, song: decoded.song, skinSounds: skin.sounds, mergedSounds: decoded.sounds,
       beatmapHitsounds: true, introOffsetMs: range.startMs,
-      mode: beatmap.mode, schedule, extraSamples: decoded.samples,
+      mode: beatmap.mode, schedule, extraSamples: decoded.samples, onWarning: warn,
     });
+    const cancelAudio = (): void => audio?.destroy();
+    signal.addEventListener('abort', cancelAudio, { once: true });
+    try { await audio.load(); }
+    finally { signal.removeEventListener('abort', cancelAudio); }
+    signal.throwIfAborted();
     session = new PreviewSession(canvas, beatmap, replay, modDiff, renderer, audio, media, range, controller, skin, initial);
     const handle = { session, durationMs: range.durationMs, media };
     active = handle;

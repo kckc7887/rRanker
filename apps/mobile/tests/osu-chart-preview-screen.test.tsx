@@ -27,7 +27,7 @@ jest.mock('react-native-webview', () => {
 jest.mock('expo-sqlite/kv-store', () => ({
   __esModule: true,
   default: {
-    getItem: async () => JSON.stringify({ maniaSkin: 'circle', maniaScrollSpeed: 12 }),
+    getItem: async () => JSON.stringify({ maniaSkin: 'circle', maniaScrollSpeed: 12, playbackSpeed: 1.25 }),
     setItem: (key: string, value: string) => mockSaveSettings(key, value),
   },
 }));
@@ -52,7 +52,7 @@ describe('osu 谱面确认页面', () => {
     expect(mockPrepare).toHaveBeenCalledWith(
       expect.objectContaining({ gameId: 'osu-catch', beatmapsetId: 10, beatmapId: 21, title: 'Song',
         previewDifficulty: expect.objectContaining({ label: 'Hard', value: '5.23★' }) }),
-      'dark', { maniaSkin: 'circle', maniaScrollSpeed: 12 }, expect.any(AbortSignal), expect.any(Function),
+      'dark', { maniaSkin: 'circle', maniaScrollSpeed: 12, playbackSpeed: 1.25 }, expect.any(AbortSignal), expect.any(Function),
     );
     expect(screen.getByTestId('chart-preview-load-progress')).toBeTruthy();
     const player = screen.getByTestId('osu-chart-preview-webview');
@@ -61,11 +61,11 @@ describe('osu 谱面确认页面', () => {
     await fireEvent(player, 'message', { nativeEvent: { data: JSON.stringify({ type: 'ready' }) } });
     expect(screen.queryByTestId('chart-preview-load-progress')).toBeNull();
     await fireEvent(player, 'message', {
-      nativeEvent: { data: JSON.stringify({ type: 'settings', settings: { backgroundBlur: 5 } }) },
+      nativeEvent: { data: JSON.stringify({ type: 'settings', settings: { backgroundBlur: 5, playbackSpeed: 1.5 } }) },
     });
     await waitFor(() => expect(mockSaveSettings).toHaveBeenCalledWith(
       'rranker.osu-chart-preview.settings.v1',
-      JSON.stringify({ maniaSkin: 'circle', maniaScrollSpeed: 12, backgroundBlur: 5 }),
+      JSON.stringify({ maniaSkin: 'circle', maniaScrollSpeed: 12, playbackSpeed: 1.5, backgroundBlur: 5 }),
     ));
     await screen.unmount();
     expect(mockDispose).toHaveBeenCalledTimes(1);

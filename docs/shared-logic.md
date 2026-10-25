@@ -182,6 +182,10 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 
 设置采用当前信封格式。宿主读取设置失败时进入现有重新加载流程并保留原偏好；成功读到损坏内容时只重建对应设置键。暂停和 seek 使用当前命令；释放只清理所属会话的帧、音源、监听器和临时资源。共享播放器源变更后重建四套生成物并运行 `check:generated`。
 
+`webview-player/music.ts` 的 `MusicPlayback(context, output)` 共用原压缩音频的保调播放。`load(bytes, mimeType?)` 准备媒体并读取时长，`playFrom`、`pause`、`seek`、`setSpeed` 和 `dispose` 管理所属媒体，`currentTime` 为原曲秒数，`waiting` 标识定位、起播或缓冲等待；`onStateChange` 通知会话停止或重排音效。音乐段读取实际媒体位置，负前导、无音乐和尾段使用公共播放时钟；等待和取消不推进位置，释放时撤销 Blob URL。四套歌曲与 osu! 故事板片段使用此入口，现有 GainNode 管理音量。
+
+`OsuChartPreviewSettings.playbackSpeed` 默认 1，范围 0.5–2，步长 0.05；四模式共用速度控件，经已有设置消息和存储键往返。播放速度与 `maniaScrollSpeed` 分别控制歌曲时间和下落表现。`AudioSync` 持有实际音乐位置，画面与媒体使用同一时间线，打击音的墙钟延迟按当前倍速换算。
+
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。
 
 Simai 解析支持 `BOUNCE` 的拍长比和 `NULL` 复位指令，以及分类 HS/SV 的数值和 `NULL` 参数，按原谱面时间消费，不改变判定物量；无效拍长、未知类别、非法数值及未知指令继续拒绝。

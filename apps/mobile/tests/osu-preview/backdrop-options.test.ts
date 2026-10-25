@@ -26,11 +26,12 @@ class TestVideo extends EventTarget {
   muted = false; playsInline = false; preload = ''; src = '';
   readyState = 2; videoWidth = 4; videoHeight = 4; duration = 12;
   currentTime = 0; paused = true; seeking = false; plays = 0; pauses = 0;
+  playbackRate = 1;
   play() { this.paused = false; this.plays++; return Promise.resolve(); }
   pause() { this.paused = true; this.pauses++; }
   load() {} removeAttribute() { this.src = ''; }
 }
-const defaults: MediaPresentationOptions = { backgroundBrightness: 20, backgroundBlur: 0, storyboardEnabled: true, videoEnabled: true };
+const defaults: MediaPresentationOptions = { playbackSpeed: 1, backgroundBrightness: 20, backgroundBlur: 0, storyboardEnabled: true, videoEnabled: true };
 
 async function environment(run: (env: { canvases: TestCanvas[]; video: TestVideo; decoded: number[] }) => Promise<void>, filtersWork = true) {
   const oldDocument = globalThis.document, oldBitmap = globalThis.createImageBitmap;
@@ -181,6 +182,9 @@ describe('preview media presentation', () => {
       const media = await createPreviewMedia(request('Video,500,"video.mp4"', new Map([['video.mp4', new Uint8Array([1])]])));
       media.sync(2500, true, true); await Promise.resolve(); await Promise.resolve();
       assert.equal(video.currentTime, 2); assert.equal(video.paused, false);
+      media.configure({ ...defaults, playbackSpeed: 1.75 });
+      assert.equal(video.playbackRate, 1.75);
+      assert.equal(video.currentTime, 2);
       media.configure({ ...defaults, videoEnabled: false });
       assert.equal(video.paused, true);
       media.sync(5500, true);

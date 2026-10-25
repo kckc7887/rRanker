@@ -151,6 +151,7 @@ function setupSettings(mode: number): void {
     return wheel;
   };
   const percent = (value: number) => `${value}%`;
+  field('speed', 'playbackSpeed', .5, 2, .05, value => `${value.toFixed(2)}×`);
   field('brightness', 'backgroundBrightness', 0, 100, 1, percent);
   field('blur', 'backgroundBlur', 0, 20, 1, value => `${value} px`);
   if (mode === 3) {

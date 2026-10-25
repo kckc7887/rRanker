@@ -380,6 +380,7 @@ async function main(): Promise<void> {
     host: {
       render: (beats) => renderAt(beats),
       onPlayStateChange: () => syncPlayButtons(),
+      onPlaybackError: () => { statusEl.textContent = '音乐播放失败，请重新加载谱面。'; },
     },
   });
 
@@ -424,9 +425,9 @@ async function main(): Promise<void> {
   if (disposed) return;
   if (!musicLoaded) {
     statusEl.textContent = '预览曲加载失败，仍可静音看谱。';
+  } else {
+    statusEl.textContent = '';
   }
-
-  statusEl.textContent = '';
 
   const totalBeats = session.totalBeats;
   const totalDurationMs = session.totalDurationMs;

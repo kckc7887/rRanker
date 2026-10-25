@@ -68,7 +68,7 @@ describe('standard cursor above storyboard Overlay', () => {
       sync() {}, dispose() {}, drawUnder() {}, configure() {},
       drawOver(_ctx: CanvasRenderingContext2D, timeMs: number) { draws.push({ label: `Overlay:${timeMs}` }); },
     } as unknown as PreviewMedia;
-    const audio = { pause() {}, destroy() {}, setStoryboardEnabled() {} } as unknown as AudioSync;
+    const audio = { pause() {}, destroy() {}, setSpeed() {}, setStoryboardEnabled() {} } as unknown as AudioSync;
     const session = new PreviewSession({} as HTMLCanvasElement, beatmap, replay, computeModDifficulty(beatmap, replay), renderer, audio, media,
       { startMs: 0, endMs: 2000, durationMs: 2000 }, new AbortController(), realSkin);
     draws.length = 0;

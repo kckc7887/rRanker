@@ -471,6 +471,15 @@
         </div>
       </div>
       <div class="row wrap controls-settings">
+        <div class="field wheel-field"><span>音乐速度</span>
+          <button class="wheel-trigger" id="speed-trigger" type="button" disabled><span id="speed-val">1.00×</span></button>
+          <div class="wheel-popup" id="speed-popup" style="visibility:hidden;pointer-events:none">
+            <div class="wheel">
+              <div class="wheel-viewport" id="speed-wheel" tabindex="0"><div class="wheel-list" id="speed-list"></div></div>
+              <div class="wheel-highlight"></div>
+            </div>
+          </div>
+        </div>
         <div class="field wheel-field"><span>背景亮度</span>
           <button class="wheel-trigger" id="brightness-trigger" type="button" aria-label="背景亮度" disabled><span id="brightness-val">20%</span></button>
           <div class="wheel-popup" id="brightness-popup" style="visibility:hidden;pointer-events:none">

@@ -299,7 +299,7 @@ describe('osu 谱面确认配置边界', () => {
       holdWidth: -1, maniaScrollSpeed: 9.26, backgroundBrightness: NaN,
       backgroundBlur: 999, maniaSkin: 'other', videoEnabled: 'false', storyboardEnabled: false,
     })).toEqual({
-      holdWidth: 10, maniaScrollSpeed: 9.3, backgroundBrightness: 20,
+      playbackSpeed: 1, holdWidth: 10, maniaScrollSpeed: 9.3, backgroundBrightness: 20,
       backgroundBlur: 20, maniaSkin: 'brick', videoEnabled: true, storyboardEnabled: false,
       maniaIgnoreSV: false, maniaTrackOpacity: 100, taikoTrackOpacity: 100,
     });

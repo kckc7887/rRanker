@@ -9,7 +9,7 @@ it('osu! 会话循环先于自然结束，回跳同步音频和背景，暂停�
   let frame: FrameRequestCallback = () => {};
   vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { frame = callback; return 1; });
   vi.stubGlobal('cancelAnimationFrame', vi.fn());
-  const audio = { currentTimeMs: 0, setStoryboardEnabled() {}, pause() {}, destroy() {},
+  const audio = { currentTimeMs: 0, running: true, advancing: true, setSpeed() {}, setStoryboardEnabled() {}, pause() {}, destroy() {},
     playFrom: vi.fn(async (position: number) => { audio.currentTimeMs = position; }) };
   const media = { configure() {}, sync: vi.fn(), dispose() {} };
   const renderer = { options: { audioOffsetMs: 0 }, oldOffsetMs: 0, renderFrameAt: vi.fn(), stop() {} };
@@ -19,7 +19,7 @@ it('osu! 会话循环先于自然结束，回跳同步音频和背景，暂停�
     { startMs: -1000, endMs: 9000, durationMs: 10000 } as Args[7], new AbortController(), {} as Args[9]);
   session.loop.toggle('a', 2000); session.loop.toggle('b', 10000);
   await session.playFrom(9000);
-  context.currentTime = 2;
+  audio.currentTimeMs = 11000;
   frame(2000);
   for (let i = 0; i < 4; i++) await Promise.resolve();
   expect(session.currentTimeMs).toBe(2000);
@@ -29,6 +29,11 @@ it('osu! 会话循环先于自然结束，回跳同步音频和背景，暂停�
   session.pause(); await session.seek(10000, false);
   expect(session.currentTimeMs).toBe(10000); expect(session.playing).toBe(false);
   await session.playFrom(10000); expect(session.currentTimeMs).toBe(2000);
+  audio.playFrom.mockRejectedValueOnce(new Error('media failed'));
+  audio.currentTimeMs = 11000;
+  frame(3000);
+  for (let i = 0; i < 6; i++) await Promise.resolve();
+  expect(session.playing).toBe(false);
   session.destroy(); frame(4000);
   expect(session.playing).toBe(false);
   expect(session.disposed).toBe(true);
