@@ -78,6 +78,7 @@ describe('chart preview webview helpers', () => {
       title: '谱面确认',
       headerShown: false,
       orientation: 'landscape',
+      gestureEnabled: false,
       autoHideHomeIndicator: true,
     });
     expect(chartPreviewNativeScreenOptions(true, 'android')).toEqual({
@@ -94,6 +95,7 @@ describe('chart preview webview helpers', () => {
       title: '自定义标题',
       headerShown: false,
       orientation: 'landscape',
+      gestureEnabled: false,
       autoHideHomeIndicator: true,
     });
     expect(chartPreviewNativeScreenOptions(false, 'android')).toMatchObject({ title: '谱面确认' });
