@@ -177,7 +177,7 @@ Rizline 曲库包含 `illustrations` 与 `signatures`：插画保存可读名称
 
 四套生成播放器为 maimai、Phigros、osu!、Rizline。生成源位于各自 `webview-player`，各自维护 `player.bundle` 和 `index.html`；宿主会话将 bundle 以 `player.js` 暂存并沿用 HTML 引用。共享 UI 与手势位于 `chart-preview-shared/webview-player`。
 
-`chart-preview-screen-shell.tsx` 管理资源准备、WebView、前后台暂停、取消、seek 和释放。`chart-preview-bridge.ts` 只解析当前事件和设置信封，宿主命令由公共 serializer 生成。控制设置、播放状态和时间回传通过同一桥接路径。
+`chart-preview-screen-shell.tsx` 管理资源准备、WebView、前后台暂停、取消、seek 和释放。iOS 谱面确认页在普通和全屏状态关闭原生返回手势，返回使用标题按钮，全屏通过播放器控件退出。`chart-preview-bridge.ts` 只解析当前事件和设置信封，宿主命令由公共 serializer 生成。控制设置、播放状态和时间回传通过同一桥接路径。
 
 播放器设置的存储读取失败进入重新加载流程并保留原偏好，成功读到损坏内容才重建对应键。舞萌、Majdata、Phigros、Phira、osu! 谱面包通过 `saveChartPackage` 串行选择目录并保存，下载与打包仍可并行。目录选择窗口内保留各卡下载，原生选择器返回且应用恢复前台后才检查取消并写盘；排队取消不打开选择器，当前任务取消也等待原生选择结束后才放行下一项。Android 已生成文件经 `modules/resource-integrity` 的 `copyFileToContentUriAsync` 在 I/O 协程中按 64 KiB 复制至 SAF 目标，源文件保留到复制结束；取消或失败只回收本次新建目标。iOS 普通文件目标沿用文件复制。普通后台和页面卸载继续取消下载。Android 在目录选择器内再按 Home 不产生新的 MainActivity 状态变化，任务保留到选择器返回及应用恢复。
 

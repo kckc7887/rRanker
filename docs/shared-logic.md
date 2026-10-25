@@ -163,7 +163,7 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 
 谱面公共入口位于 `features/chart-preview-shared`：
 
-- `chart-preview-screen-shell.tsx` 管理宿主准备、WebView、取消、暂停和释放。
+- `chart-preview-screen-shell.tsx` 管理宿主准备、WebView、取消、暂停和释放；公共导航选项在 iOS 始终关闭原生返回手势，使用标题返回和播放器全屏退出控件。
 - `chart-preview-bridge.ts` 解析当前播放器事件、设置信封和宿主命令。
 - `chart-preview-navigation.ts` 交接当前预览请求。
 - `webview-player` 提供四套播放器共用的设置 UI 与手势。

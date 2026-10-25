@@ -15,6 +15,7 @@ export function chartPreviewNativeScreenOptions(
   if (platform === 'ios') {
     return {
       ...baseOptions,
+      gestureEnabled: false,
       autoHideHomeIndicator: isFullscreen,
     };
   }

@@ -123,7 +123,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     expect(mockPrepareChartPreview).not.toHaveBeenCalled();
   });
 
-  it('switches the native screen to immersive landscape and restores portrait on exit', async () => {
+  it('进入和退出全屏时保持关闭 iOS 返回手势，并保留返回键退出全屏', async () => {
     await render(<MaimaiChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('maimai-chart-preview-webview')).toBeTruthy());
     const webview = screen.getByTestId('maimai-chart-preview-webview');
@@ -136,6 +136,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     expect(latestScreenOptions).toMatchObject({
       headerShown: true,
       orientation: 'portrait_up',
+      gestureEnabled: false,
     });
     expect(latestScreenOptions).not.toHaveProperty('statusBarHidden');
     expect(latestScreenOptions).not.toHaveProperty('navigationBarHidden');
@@ -148,6 +149,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
       headerShown: false,
       orientation: 'landscape',
       autoHideHomeIndicator: true,
+      gestureEnabled: false,
     }));
     expect(latestScreenOptions).not.toHaveProperty('statusBarHidden');
     expect(latestScreenOptions).not.toHaveProperty('navigationBarHidden');
@@ -166,6 +168,7 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
       headerShown: true,
       orientation: 'portrait_up',
       autoHideHomeIndicator: false,
+      gestureEnabled: false,
     }));
   });
 
