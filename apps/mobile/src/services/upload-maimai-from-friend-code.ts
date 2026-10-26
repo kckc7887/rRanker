@@ -319,6 +319,10 @@ export async function bindScoreHubCabinetByQr(input: {
     );
   }
 
+  if (preferred && preferred !== cached.friendCode) {
+    throw new ScoreHubError('当前好友码尚未登录，请先使用此好友码完成一次上传。');
+  }
+
   input.onPhase({ kind: 'binding', message: '正在绑定玩家二维码…' });
 
   const token = cached.token;

@@ -25,8 +25,13 @@ const CABINET_SCORE_POLL_MS = 1_000;
 const CABINET_SCORE_TIMEOUT_MS = 30 * 60_000;
 const CABINET_SCORE_FAILURE_LIMIT = 5;
 
+function checkAuthentication(status: number): void {
+  if (status === 401 || status === 403) throw new ScoreHubError('登录已失效，请重新登录。', status);
+}
+
 export async function verifyLoginJob(jobId: string, signal?: ScoreHubAbortSignal): Promise<void> {
-  await requestJson('POST', `/auth/login-requests/${encodeURIComponent(jobId)}/verify`, { signal });
+  const { status } = await requestJson('POST', `/auth/login-requests/${encodeURIComponent(jobId)}/verify`, { signal });
+  checkAuthentication(status);
 }
 
 
@@ -61,6 +66,7 @@ export async function pollQrLoginUntilToken(input: {
       continue;
     }
 
+    checkAuthentication(status);
     if (status !== 200 || !body || typeof body !== 'object') {
       await sleep(QR_POLL_MS, input.signal);
       continue;
@@ -115,6 +121,7 @@ export async function pollLoginUntilToken(input: {
       await sleep(LOGIN_POLL_MS, input.signal);
       continue;
     }
+    checkAuthentication(status);
     if (status !== 200 || !body || typeof body !== 'object') {
       await sleep(LOGIN_POLL_MS, input.signal);
       continue;
@@ -145,7 +152,8 @@ export async function pollLoginUntilToken(input: {
       lastVerifyAt = now;
       try {
         await verifyLoginJob(input.jobId, input.signal);
-      } catch {
+      } catch (error) {
+        if (error instanceof ScoreHubError && (error.status === 401 || error.status === 403)) throw error;
       }
     }
 
@@ -188,6 +196,7 @@ export async function pollUpdateScoreUntilDone(input: {
       await sleep(SCORE_POLL_MS, input.signal);
       continue;
     }
+    checkAuthentication(status);
     if (status !== 200 || !body || typeof body !== 'object') {
       await sleep(SCORE_POLL_MS, input.signal);
       continue;

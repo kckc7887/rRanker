@@ -113,6 +113,8 @@ Phigros 账号摘要优先消费当前游戏查询和已保存存档，磁盘读
 
 主题与展示偏好使用 `preferences-write-coordinator.ts` 合并当前选择和串行落盘，失败保留待写内容。上传好友码的选择通过 `UploadPrefsStore` 按好友码保存；UI 的 `selectedAccountIds` 是派生视图。
 
+上传页的好友码区域提供独立玩家二维码绑定，使用该好友码的已登录 ScoreHub 会话，绑定与成绩上传共用任务取消和生命周期。登录、二维码及成绩轮询遇到 HTTP 401/403 立即结束并保留状态码，已绑定会话的成绩读取沿现有流程重新认证。
+
 随机选曲偏好通过 `createPersistedRandomChartsFilterStore` 按字段合并恢复期间的编辑与磁盘偏好，串行写入使用合并后的当前值。读取失败保留编辑，重新恢复后继续保存。
 
 诊断记录由 `runtime-diagnostics.ts`、`runtime-diagnostics-recorder.ts` 与日志仓库管理。记录默认关闭，开启后按容量保留。普通诊断在进程内保留一份已提交状态，文件队列以异步 pending/previous 替换写出，失败后从磁盘恢复；导出按队列顺序取得独立快照。致命日志保留独立的即时落盘路径。分享副本写入临时缓存，正文保存在文档目录。生产诊断页面使用现有的记录、读取、清理和分享入口。

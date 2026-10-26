@@ -16,6 +16,7 @@ import {
   type UploadTarget,
 } from '@/services/upload-maimai-from-friend-code';
 import type { AppThemeTokens } from '@/theme/app-theme';
+import type { ReactNode } from 'react';
 import { uploadDataSheetStyles as styles } from '@/components/upload-data-sheet-styles';
 
 function accountIcon(account: BoundAccount) {
@@ -42,6 +43,7 @@ export function UploadFriendCodeFields({
   statsStatus,
   statsSummary,
   statsHint,
+  children,
 }: {
   theme: AppThemeTokens;
   friendCode: string;
@@ -59,6 +61,7 @@ export function UploadFriendCodeFields({
   statsStatus: 'idle' | 'loading' | 'ready' | 'error';
   statsSummary: string;
   statsHint: string | null;
+  children?: ReactNode;
 }) {
   return (
     <>
@@ -162,6 +165,7 @@ export function UploadFriendCodeFields({
             </Text>
           )}
 
+          {children}
           <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>服务状态</Text>
           <View style={[styles.statusBox, { backgroundColor: theme.surface, marginTop: 0 }]}>
             {statsStatus === 'loading' ? (

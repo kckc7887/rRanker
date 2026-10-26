@@ -52,13 +52,19 @@ export function UploadDataSheet({
   const insets = useSafeAreaInsets();
   const task = useUploadTaskState(catalog, requestCatalog, onPhaseChange, visible);
   const { phase, running, lastResult, cancelUpload } = task;
-  const qr = useUploadQrInput(visible, running, uploadMethod);
+  const [bindingQr, setBindingQr] = useState(false);
+  useEffect(() => { if (!visible || uploadMethod !== 'friend_code') setBindingQr(false); }, [visible, uploadMethod]);
+  const qr = useUploadQrInput(visible, running, bindingQr ? 'qr' : uploadMethod);
   const { bindQrText, setBindQrText, decodingQr, pickQrImage, pasteQrText } = qr;
   const preferences = useUploadAccountPreferences({ visible, running, decodingQr, accounts, sessionsByAccountId, temporarySelectedAccountIds });
   const { friendCode, hasCabinetBound, hasStoredToken, storedAccounts, historyVisible, setHistoryVisible,
     bindingLookup, selectedIds, prefsReady, refreshStoredList, toggleAccount, onFriendCodeChange,
     selectStoredFriendCode, removeStoredFriendCode, targets } = preferences;
-  const { startUpload, startQrUpload } = useUploadExecution({ task, preferences, qr, sessionsByAccountId, uploadMethod, onLxnsTokensRotated, onFinished });
+  const resetQr = qr.reset;
+  useEffect(() => {
+    if (uploadMethod === 'friend_code') { setBindingQr(false); resetQr(); }
+  }, [friendCode, uploadMethod, resetQr]);
+  const { startUpload, startQrUpload, bindQr } = useUploadExecution({ task, preferences, qr, sessionsByAccountId, uploadMethod, onLxnsTokensRotated, onFinished });
   const [stats, setStats] = useState<ScoreHubDxnetJobStats | null>(null);
   const [statsStatus, setStatsStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const statsSummary = statsStatus === 'loading'
@@ -161,7 +167,25 @@ export function UploadDataSheet({
               statsStatus={statsStatus}
               statsSummary={statsSummary}
               statsHint={statsHint}
-            />
+            >
+              <Pressable disabled={busy || !prefsReady || !hasStoredToken || bindingLookup}
+                onPress={() => { setBindingQr(value => !value); qr.reset(); }}
+                style={[styles.secondary, { borderColor: theme.border, backgroundColor: theme.surface },
+                  (busy || !prefsReady || !hasStoredToken || bindingLookup) && styles.primaryDisabled]}>
+                <Text style={[styles.secondaryText, { color: theme.accent }]}>{bindingQr ? '收起玩家二维码' : '绑定玩家二维码'}</Text>
+              </Pressable>
+              {bindingQr ? <>
+                <UploadQrFields theme={theme} bindQrText={bindQrText} onBindQrTextChange={setBindQrText}
+                  busy={busy} prefsReady={prefsReady} decodingQr={decodingQr}
+                  onPasteQrText={pasteQrText} onPickQrImage={pickQrImage} />
+                <Pressable disabled={busy || !prefsReady || !hasStoredToken || bindingLookup}
+                  onPress={() => void bindQr()}
+                  style={[styles.secondary, { borderColor: theme.border, backgroundColor: theme.surface },
+                    (busy || !prefsReady || !hasStoredToken || bindingLookup) && styles.primaryDisabled]}>
+                  <Text style={[styles.secondaryText, { color: theme.accent }]}>确认绑定玩家二维码</Text>
+                </Pressable>
+              </> : null}
+            </UploadFriendCodeFields>
           ) : (
             <UploadQrFields
               theme={theme}

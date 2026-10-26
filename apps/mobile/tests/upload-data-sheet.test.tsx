@@ -101,7 +101,8 @@ const mockUpsert = jest.fn(async (partial: {
   }
   return { ...mockHubState };
 });
-const mockBindCabinet = jest.fn(async () => ({ friendCode: '', alreadyBound: false }));
+type BindInput = Parameters<typeof import('@/services/upload-maimai-from-friend-code').bindScoreHubCabinetByQr>[0];
+const mockBindCabinet = jest.fn(async (_input: BindInput) => ({ friendCode: '', alreadyBound: false }));
 const mockUploadFriend = jest.fn(async (_input: MockUploadInput) => ({
   uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
 }));
@@ -1202,6 +1203,45 @@ describe('好友码统一上传弹窗', () => {
     await fireEvent.press(screen.getByLabelText('开始上传'));
     expect(await screen.findByText('游戏服务器维护中')).toBeTruthy();
     expect(screen.getByText('维护窗口说明')).toBeTruthy();
+  });
+
+  it('好友码区域独立绑定玩家二维码，不启动成绩上传', async () => {
+    setHubEntry({ friendCode: '111111111111111', token: 'tok', hasCabinetBound: false, updatedAt: 1 });
+    mockBindCabinet.mockImplementationOnce(async input => {
+      mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: true });
+      input.onPhase({ kind: 'done', message: '玩家二维码已绑定', uploaded: 0, skipped: 0 });
+      return { friendCode: '111111111111111', alreadyBound: false };
+    });
+    const screen = await renderSheet([]);
+    await waitFor(() => expect(mockFetchMe).toHaveBeenCalled());
+    await fireEvent.press(screen.getByText('绑定玩家二维码'));
+    await fireEvent.changeText(await screen.findByLabelText('玩家二维码字符串'), 'SGWCMAIDBIND');
+    await fireEvent.press(screen.getByText('确认绑定玩家二维码'));
+    await waitFor(() => expect(mockBindCabinet).toHaveBeenCalledWith(expect.objectContaining({
+      qrCode: 'SGWCMAIDBIND', friendCode: '111111111111111',
+    })));
+    expect(await screen.findByLabelText('已保存舞萌账号')).toBeTruthy();
+    expect(mockUploadFriend).not.toHaveBeenCalled();
+    expect(mockUploadQr).not.toHaveBeenCalled();
+  });
+
+  it('独立绑定失败后保留二维码可重试，取消后旧结果不更新界面', async () => {
+    setHubEntry({ friendCode: '111111111111111', token: 'tok', hasCabinetBound: false, updatedAt: 1 });
+    mockBindCabinet.mockRejectedValueOnce(new ScoreHubError('登录已失效，请重新登录。', 401));
+    const screen = await renderSheet();
+    await waitFor(() => expect(mockFetchMe).toHaveBeenCalled());
+    await fireEvent.press(screen.getByText('绑定玩家二维码'));
+    await fireEvent.changeText(await screen.findByLabelText('玩家二维码字符串'), 'SGWCMAIDBIND');
+    await fireEvent.press(screen.getByText('确认绑定玩家二维码'));
+    expect(await screen.findByText('登录已失效，请重新输入好友码或玩家二维码。')).toBeTruthy();
+    expect(screen.getByLabelText('玩家二维码字符串').props.value).toBe('SGWCMAIDBIND');
+    let finish!: () => void;
+    mockBindCabinet.mockImplementationOnce(() => new Promise(resolve => { finish = () => resolve({ friendCode: '111111111111111', alreadyBound: false }); }));
+    await fireEvent.press(screen.getByText('确认绑定玩家二维码'));
+    await waitFor(() => expect(mockBindCabinet).toHaveBeenCalledTimes(2));
+    await fireEvent.press(screen.getByLabelText('取消当前操作'));
+    await act(async () => { finish(); });
+    expect(uploadTaskController.getSnapshot().status).toBe('canceled');
   });
 });
 

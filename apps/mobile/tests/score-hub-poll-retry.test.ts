@@ -5,6 +5,8 @@ import {
   isRetryableScoreHubError,
   pollCabinetScoreJobUntilDone,
   pollUpdateScoreUntilDone,
+  pollLoginUntilToken,
+  pollQrLoginUntilToken,
   ScoreHubError,
   fetchLatestSync,
 } from '@/services/score-hub-client';
@@ -61,6 +63,26 @@ describe.each([['Node', globalThis.AbortController], ['React Native', NativeAbor
     expect(isRetryableScoreHubError(new Error('terminated'))).toBe(true);
     expect(isRetryableScoreHubError(new ScoreHubError('已取消'))).toBe(false);
     expect(isRetryableScoreHubError(new ScoreHubError('获取成绩失败'))).toBe(false);
+  });
+
+  it.each([401, 403])('轮询遇到 HTTP %s 立即结束并保留认证状态', async status => {
+    for (const poll of [
+      () => pollLoginUntilToken({ jobId: 'login' }),
+      () => pollQrLoginUntilToken({ attemptId: 'qr' }),
+      () => pollUpdateScoreUntilDone({ token: 'token', jobId: 'scores' }),
+    ]) {
+      fetchMock.mockResolvedValueOnce(jsonResponse(status, { error: 'expired' }));
+      await expect(poll()).rejects.toMatchObject({ status, retryable: false });
+      expect(vi.getTimerCount()).toBe(0);
+    }
+    expect(isRetryableScoreHubError(new ScoreHubError('network expired', status, true))).toBe(false);
+  });
+
+  it('确认好友关系时的认证失败也会结束登录轮询', async () => {
+    fetchMock.mockResolvedValueOnce(jsonResponse(200, { status: 'pending' }))
+      .mockResolvedValueOnce(jsonResponse(401, { error: 'expired' }));
+    await expect(pollLoginUntilToken({ jobId: 'login' })).rejects.toMatchObject({ status: 401 });
+    expect(vi.getTimerCount()).toBe(0);
   });
 
   it('创建 DXNet 成绩任务时显式提交全部难度', async () => {

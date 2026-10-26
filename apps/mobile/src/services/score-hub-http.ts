@@ -85,6 +85,7 @@ function normalizeNetworkErrorMessage(raw: string): string {
 export function isRetryableScoreHubError(error: unknown): boolean {
   if (error instanceof ScoreHubError) {
     if (error.message === '已取消') return false;
+    if (error.status === 401 || error.status === 403) return false;
     if (error.retryable) return true;
     const lower = error.message.toLowerCase();
     return lower.includes('超时')

@@ -8,7 +8,7 @@ import type { ProviderSession } from '@/providers/contracts';
 import { providerErrorToUserMessage } from '@/providers/errors';
 import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { scoreHubErrorToUserMessage, type ScoreHubAbortSignal } from '@/services/score-hub-client';
-import { uploadMaimaiFromQrLogin, uploadMaimaiPreferringSession, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
+import { bindScoreHubCabinetByQr, uploadMaimaiFromQrLogin, uploadMaimaiPreferringSession, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export function useUploadTaskState(catalog: CatalogSnapshot | undefined, requestCatalog?: () => Promise<CatalogSnapshot | undefined>, onPhaseChange?: (phase: UploadPhase) => void, visible = true) {
@@ -206,5 +206,28 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
     }
   };
 
-  return { startUpload, startQrUpload };
+  const bindQr = async () => {
+    if (running || decodingQr || uploadMethod !== 'friend_code') return;
+    if (!bindQrText.trim()) {
+      showNotification({ title: '缺少玩家二维码', message: '请粘贴或识别公众号玩家二维码。', variant: 'warning' });
+      return;
+    }
+    const signal = begin();
+    if (!signal) return;
+    const isCurrent = () => uploadTaskController.isCurrent(signal);
+    try {
+      const result = await bindScoreHubCabinetByQr({
+        qrCode: bindQrText.trim(), friendCode, signal,
+        onPhase: phase => task.applyPhase(phase, signal),
+      });
+      if (!isCurrent()) return;
+      setBindQrText('');
+      await refreshAfterUpload(result.friendCode || undefined, isCurrent);
+    } catch (error) {
+      if (signal.aborted) uploadTaskController.finishCanceled(signal);
+      else if (isCurrent()) task.applyPhase({ kind: 'error', message: uploadErrorMessage(error, '绑定失败，请重试。') }, signal);
+    }
+  };
+
+  return { startUpload, startQrUpload, bindQr };
 }

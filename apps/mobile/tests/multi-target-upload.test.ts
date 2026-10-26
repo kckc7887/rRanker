@@ -505,6 +505,13 @@ describe('好友码多目标写入', () => {
     expect(mocks.bindCabinetByQr).not.toHaveBeenCalled();
   });
 
+  it('独立绑定不借用其他好友码的已登录会话', async () => {
+    mocks.accountLoad.mockResolvedValue({ friendCode: '123456789012345', hasCabinetBound: false, token: 'other-token' });
+    await expect(bindScoreHubCabinetByQr({ qrCode: 'SGWCMAIDBIND', friendCode: '543210987654321',
+      signal: { aborted: false }, onPhase: vi.fn() })).rejects.toThrow('当前好友码尚未登录');
+    expect(mocks.bindCabinetByQr).not.toHaveBeenCalled();
+  });
+
   it('已绑定会话上传复用 token 且不创建好友申请任务', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
     mocks.accountLoad.mockResolvedValue({
