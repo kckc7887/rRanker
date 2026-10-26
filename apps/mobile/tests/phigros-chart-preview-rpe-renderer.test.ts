@@ -44,6 +44,31 @@ function image(size: number): HTMLImageElement {
 
 afterEach(() => vi.unstubAllGlobals());
 describe('RPE renderer', () => {
+  it('着色器颜色按 RGBA 字节插值，定位后保持正确范围和默认颜色', () => {
+    const colors = new Map<string, number[]>();
+    const gl = new Proxy({
+      createTexture: () => ({}), createShader: () => ({}), createProgram: () => ({}),
+      getShaderParameter: () => true, getProgramParameter: () => true,
+      getUniformLocation: (_program: unknown, name: string) => name,
+      uniform4fv(name: string, value: number[]) { colors.set(name, [...value]); },
+      getExtension: () => null,
+    }, { get: (target, key) => Reflect.get(target, key) ?? (() => {}) }) as unknown as WebGLRenderingContext;
+    const { renderer } = environment(gl);
+    renderer.setChart(parseRpeChart({ META: { RPEVersion: 160 }, BPMList: [{ startTime: [0, 0, 1], bpm: 120 }], judgeLineList: [] }, {
+      extraJson: JSON.stringify({ effects: [{ shader: '/color.fs', start: [0, 0, 1], end: [20, 0, 1], vars: {
+        color: [{ startTime: [0, 0, 1], endTime: [4, 0, 1], start: [0, 0, 0, 255], end: [200, 80, 120, 255], easingType: 1 }],
+      } }] }),
+    }));
+    renderer.setChartAssets({ textures: new Map(), videos: new Map(), gifs: new Map(), gifAnims: new Map(),
+      shaders: new Map([['color.fs', 'precision highp float;\nuniform vec4 color;\nuniform vec4 accent; // %0.25,0.5,0.75,1.0%\nvoid main() { gl_FragColor = color * accent; }']]) });
+    for (const [time, value] of [[0, [0, 0, 0, 1]], [1, [100 / 255, 40 / 255, 60 / 255, 1]], [2, [200 / 255, 80 / 255, 120 / 255, 1]], [0, [0, 0, 0, 1]]] as const) {
+      renderer.render(time);
+      expect(colors.get('color')).toEqual(value);
+      expect(colors.get('accent')).toEqual([0.25, 0.5, 0.75, 1]);
+    }
+    renderer.dispose();
+  });
+
   it('视频遵循暂停、倍速、区间定位并在异步定位后重绘', async () => {
     class Video extends EventTarget {
       duration = 10;

@@ -1348,7 +1348,10 @@ export class RpeRenderer {
           if (unit >= 0) gl.uniform1i(location, unit);
         }
       } else {
-        setUniform(name, evaluated);
+        /** RPE 四元变量为 RGBA 字节，GL 颜色使用 0–1。 */
+        setUniform(name, Array.isArray(evaluated) && evaluated.length === 4
+          ? evaluated.map(component => component / 255)
+          : evaluated);
       }
     }
   }

@@ -109,7 +109,7 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `upload-maimai-from-friend-code.ts` 执行好友码上传，`upload-task-controller.ts` 保存唯一任务。任务持有自己的取消信号、前台等待和曲库等待；关闭弹层保留任务，显式取消终止。迟到阶段、回调、刷新和通知不能进入下一任务。
 
-上传页的好友码区域通过 `bindScoreHubCabinetByQr` 独立绑定玩家二维码，复用当前好友码的已登录会话与同一任务控制器；绑定不提交成绩，不借用其他好友码的会话。登录与成绩轮询遇到 HTTP 401/403 立即抛出带原状态码的 `ScoreHubError`，由现有认证恢复入口处理。
+上传页的好友码区域通过 `bindScoreHubCabinetByQr` 独立绑定玩家二维码，复用当前好友码的已登录会话与同一任务控制器；绑定不提交成绩，不借用其他好友码的会话。好友码上传和独立绑定完成后，仅刷新仍与当前选择一致的好友码状态，刷新期间切换选择会丢弃旧结果。登录与成绩轮询遇到 HTTP 401/403 立即抛出带原状态码的 `ScoreHubError`，由现有认证恢复入口处理。
 
 `UploadPrefsStore` 按好友码保存选择，UI 的 `selectedAccountIds` 从当前好友码派生。`ScoreHubAccountStore` 保存 v3 索引与安全令牌，只有当前结构。成功读取到失效令牌时仅移除其账号索引，保留健康账号；I/O 失败不提交部分清理。删除先提交索引再清理引用；附属清理失败不能假装账号仍存在。正常凭据写入以 SDK 结果为准，提交异常时保留引用检查与回滚保护。
 
@@ -206,7 +206,7 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。
 
-`RpeRenderer.render(time, playing, playbackSpeed)` 以会话状态同步视频，暂停与定位等待视频就绪后重绘，释放时暂停视频并移除监听器。Phira 的 RPE 资源装配读取 `.glsl`、`.fs` 着色器文本；自定义着色器纹理先激活目标单元再绑定或上传，缓存同时持有单元和纹理对象，尺寸变化后的源纹理使用单元 0。osu! 滑条按 Catmull、贝塞尔、圆弧或线段采样后统一限制声明长度，不足时沿末段延伸；解析拒绝非正长度。动画只收集归档实际存在且位于声明范围内的帧。
+`RpeRenderer.render(time, playing, playbackSpeed)` 以会话状态同步视频，暂停与定位等待视频就绪后重绘，释放时暂停视频并移除监听器。Phira 的 RPE 资源装配读取 `.glsl`、`.fs` 着色器文本；四元颜色变量在插值后从 RGBA 字节转换为 GL 的 0–1 值，着色器内的默认值直接使用。自定义着色器纹理先激活目标单元再绑定或上传，缓存同时持有单元和纹理对象，尺寸变化后的源纹理使用单元 0。osu! 滑条按 Catmull、贝塞尔、圆弧或线段采样后统一限制声明长度，不足时沿末段延伸；解析拒绝非正长度。动画只收集归档实际存在且位于声明范围内的帧。
 
 Simai 解析支持 `BOUNCE` 的拍长比和 `NULL` 复位指令，以及分类 HS/SV 的数值和 `NULL` 参数，按原谱面时间消费，不改变判定物量；无效拍长、未知类别、非法数值及未知指令继续拒绝。
 

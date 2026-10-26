@@ -18,6 +18,7 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
   const [friendCode, setFriendCode] = useState('');
+  const friendCodeRef = useRef('');
   const [hasCabinetBound, setHasCabinetBound] = useState(false);
   const [hasStoredToken, setHasStoredToken] = useState(false);
   const [storedAccounts, setStoredAccounts] = useState<ScoreHubAccountEntry[]>([]);
@@ -148,6 +149,7 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
       if (!isCurrent()) return;
       const { accounts, sessionsByAccountId, temporarySelectedAccountIds } = selectionInputsRef.current;
       const code = prefs.friendCode || hubAccount.friendCode;
+      friendCodeRef.current = code;
       setFriendCode(code);
       setStoredAccounts(list);
       setHasStoredToken(Boolean(hubAccount.token) || list.some((item) => item.friendCode === code));
@@ -206,6 +208,7 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
     const isCurrent = () => visibleRef.current && selection === selectionSeqRef.current;
     bindLookupSeqRef.current += 1;
     setBindingLookup(false);
+    friendCodeRef.current = digits;
     setFriendCode(digits);
     setHasStoredToken(false);
     setHasCabinetBound(false);
@@ -252,6 +255,7 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
       const selected = await scoreHubAccountStore.select(code);
       if (!isCurrent()) return;
       setHistoryVisible(false);
+      friendCodeRef.current = code;
       setFriendCode(code);
       setSelectedIds(nextIds);
       setHasStoredToken(Boolean(selected.token));
@@ -283,7 +287,8 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
 
   const refreshAfterUpload = async (code?: string, isCurrent: () => boolean = () => true) => {
     const selection = selectionSeqRef.current;
-    const isSelectionCurrent = () => isCurrent() && selection === selectionSeqRef.current;
+    const isSelectionCurrent = () => isCurrent() && selection === selectionSeqRef.current
+      && (code === undefined || code.trim() === friendCodeRef.current.trim());
     await runAccountOperation(async () => {
       await refreshStoredList(isSelectionCurrent);
       if (!isSelectionCurrent()) return;
@@ -291,6 +296,7 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
       else {
         const latest = await scoreHubAccountStore.load();
         if (latest.friendCode && visibleRef.current && isSelectionCurrent()) {
+          friendCodeRef.current = latest.friendCode;
           setFriendCode(latest.friendCode);
           setHasStoredToken(Boolean(latest.token));
           setHasCabinetBound(latest.hasCabinetBound);

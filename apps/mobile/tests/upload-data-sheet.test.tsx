@@ -1267,6 +1267,46 @@ describe('好友码统一上传弹窗', () => {
     expect(screen.queryByLabelText('玩家二维码字符串')).toBeNull();
   });
 
+  it('绑定期间完成的历史选择不接收另一个好友码的绑定状态', async () => {
+    setHubEntry({ friendCode: '111111111111111', token: 'tok-a', hasCabinetBound: false, updatedAt: 2 });
+    mockHubAccounts.set('222222222222222', {
+      friendCode: '222222222222222', token: 'tok-b', hasCabinetBound: false, updatedAt: 1,
+    });
+    const screen = await renderSheet();
+    await waitFor(() => expect(mockFetchMe).toHaveBeenCalled());
+    await fireEvent.press(screen.getByText('绑定玩家二维码'));
+    await fireEvent.changeText(await screen.findByLabelText('玩家二维码字符串'), 'SGWCMAIDBIND');
+    await fireEvent.press(screen.getByLabelText('选择已保存的 ScoreHub 好友码'));
+    let finishSelection!: (prefs: TestUploadPrefs) => void;
+    mockLoadPrefs.mockImplementationOnce(() => new Promise(resolve => { finishSelection = resolve; }));
+    let finishBinding!: () => void;
+    mockBindCabinet.mockImplementationOnce(input => new Promise(resolve => {
+      finishBinding = () => {
+        mockFetchMe.mockResolvedValue({ friendCode: '111111111111111', hasCabinetUserId: true });
+        input.onPhase({ kind: 'done', message: '玩家二维码已绑定', uploaded: 0, skipped: 0 });
+        resolve({ friendCode: '111111111111111', alreadyBound: false });
+      };
+    }));
+    await fireEvent.press(await screen.findByLabelText('选择好友码 222222222222222'));
+    expect(screen.getByLabelText('舞萌好友码').props.value).toBe('111111111111111');
+    await fireEvent.press(screen.getByText('确认绑定玩家二维码'));
+    await waitFor(() => expect(mockBindCabinet).toHaveBeenCalledWith(expect.objectContaining({
+      friendCode: '111111111111111', qrCode: 'SGWCMAIDBIND',
+    })));
+    mockFetchMe.mockResolvedValue({ friendCode: '222222222222222', hasCabinetUserId: false });
+    await act(async () => finishSelection({
+      friendCode: '222222222222222', selectedAccountIds: [water.id],
+      selectionsByFriendCode: { '222222222222222': [water.id] },
+    }));
+    await waitFor(() => expect(screen.getByLabelText('舞萌好友码').props.value).toBe('222222222222222'));
+    await waitFor(() => expect(screen.queryByText('正在检查账号信息…')).toBeNull());
+    await act(async () => finishBinding());
+    await waitFor(() => expect(screen.queryByText('正在检查账号信息…')).toBeNull());
+    expect(screen.getByLabelText('舞萌好友码').props.value).toBe('222222222222222');
+    expect(screen.queryByLabelText('已保存舞萌账号')).toBeNull();
+    expect(mockHubState.friendCode).toBe('222222222222222');
+  });
+
   it('清空好友码时不沿用尚未完成检查的旧会话开放二维码绑定', async () => {
     setHubEntry({ friendCode: '111111111111111', token: 'tok', hasCabinetBound: false, updatedAt: 1 });
     const screen = await renderSheet([]);
