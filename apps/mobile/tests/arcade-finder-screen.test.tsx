@@ -5,6 +5,8 @@ import type { ComponentProps } from 'react';
 import type { ArcadeMap } from '@/components/ArcadeMap';
 import type { searchNearcadeShops } from '@/services/nearcade-client';
 import type { searchArcadePlaces, resolveArcadePlace } from '@/services/arcade-place-search';
+import type { ArcadeFinderPreferences } from '@/features/toolbox/arcade-finder-preferences';
+import type { GameId } from '@/domain/game-bind-options';
 import ArcadeFinderScreen from '../app/tools/arcade-finder';
 
 const mockGps = jest.fn<() => Promise<ArcadeOrigin>>();
@@ -13,6 +15,9 @@ let mockMap: ComponentProps<typeof ArcadeMap>;
 const mockShopSearch = jest.fn<typeof searchNearcadeShops>();
 const mockPlaceSearch = jest.fn<typeof searchArcadePlaces>();
 const mockResolvePlace = jest.fn<typeof resolveArcadePlace>();
+const mockLoadPreferences = jest.fn<(gameId: GameId) => Promise<ArcadeFinderPreferences>>();
+const mockSavePreferences = jest.fn<(gameId: GameId, value: ArcadeFinderPreferences) => Promise<void>>();
+let mockGameId: GameId = 'maimai';
 let mockLifecycle = { foregroundReady: true, foregroundGeneration: 1 };
 let mockForeground = new AbortController();
 jest.mock('expo-router', () => ({ router: { push: jest.fn() }, Stack: { Screen: () => null }, useIsFocused: () => true }));
@@ -22,23 +27,27 @@ jest.mock('@/components/ArcadeMap', () => ({ ArcadeMap: (props: typeof mockMap) 
 jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: jest.fn(), showActionNotification: jest.fn() }) }));
 jest.mock('@/components/ArcadeBusinessStatusLabel', () => ({ ArcadeBusinessStatusLabel: () => null }));
 jest.mock('@/features/toolbox/arcade-finder-preferences', () => ({
-  arcadeFinderPreferencesStore: { load: async () => ({ minDistanceKm: 0, radiusKm: 10, titleIds: [] }), save: async () => undefined },
+  arcadeFinderPreferencesStore: { load: (gameId: GameId) => mockLoadPreferences(gameId),
+    save: (gameId: GameId, value: ArcadeFinderPreferences) => mockSavePreferences(gameId, value) },
   defaultArcadeFinderPreferences: () => ({ minDistanceKm: 0, radiusKm: 10, titleIds: [] }),
 }));
 jest.mock('@/services/nearcade-client', () => ({ fetchNearcadeDiscover: (input: unknown) => mockDiscover(input),
   fetchNearcadeGameTitles: async () => [{ id: 1, key: 'maimai_dx', name: '舞萌DX', seats: 2 }, { id: 3, key: 'chunithm', name: '中二节奏', seats: 1 }],
   searchNearcadeShops: (...args: Parameters<typeof searchNearcadeShops>) => mockShopSearch(...args) }));
 jest.mock('@/services/arcade-place-search', () => ({ searchArcadePlaces: (...args: Parameters<typeof searchArcadePlaces>) => mockPlaceSearch(...args), resolveArcadePlace: (...args: Parameters<typeof resolveArcadePlace>) => mockResolvePlace(...args) }));
-jest.mock('@/state/session-store', () => ({ useSession: (select: (state: unknown) => unknown) => select({ activeGameId: 'maimai' }) }));
+jest.mock('@/state/session-store', () => ({ useSession: (select: (state: unknown) => unknown) => select({ activeGameId: mockGameId }) }));
 jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle, getForegroundAbortSignal: () => mockForeground.signal }));
 jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => ({}) }));
 jest.mock('@/utils/acquire-arcade-gps-origin', () => ({ acquireArcadeGpsOrigin: () => mockGps() }));
 jest.mock('@/utils/open-arcade-navigation', () => ({ openArcadeNavigation: jest.fn() }));
 
-const origin = (latitude: number): ArcadeOrigin => ({ latitude, longitude: 120, source: 'custom', label: String(latitude) });
+const origin = (latitude: number): ArcadeOrigin => ({ latitude, longitude: 120 });
 beforeEach(() => {
   jest.useFakeTimers();
   jest.resetAllMocks(); mockDiscover.mockResolvedValue([]);
+  mockGameId = 'maimai';
+  mockLoadPreferences.mockResolvedValue({ minDistanceKm: 0, radiusKm: 10, titleIds: [] });
+  mockSavePreferences.mockResolvedValue(undefined);
   mockLifecycle = { foregroundReady: true, foregroundGeneration: 1 }; mockForeground = new AbortController();
   mockShopSearch.mockResolvedValue({ shops: [], totalCount: 0, page: 1, hasNextPage: false });
   mockPlaceSearch.mockResolvedValue([]);
@@ -68,6 +77,51 @@ async function dragDistance(view: Awaited<ReturnType<typeof render>>, thumb: 'lo
   await fireEvent(handle, 'responderRelease', { touchHistory });
 }
 afterEach(async () => { await cleanup(); jest.useRealTimers(); });
+
+it('retries failed preference reads without writing defaults and keeps edits on a failed save', async () => {
+  mockLoadPreferences.mockRejectedValueOnce(new Error('read'));
+  mockGps.mockResolvedValue(origin(31));
+  const view = await render(<ArcadeFinderScreen />);
+  await waitFor(() => expect(view.getByText('筛选偏好读取失败')).toBeTruthy());
+  expect(view.queryByText('筛选')).toBeNull();
+  expect(mockSavePreferences).not.toHaveBeenCalled();
+  await fireEvent.press(view.getByText('重试偏好'));
+  await waitFor(() => expect(view.getByText('0–10 km · 任意机型')).toBeTruthy());
+  mockSavePreferences.mockRejectedValueOnce(new Error('write'));
+  await fireEvent.press(view.getByText('筛选'));
+  await fireEvent.press(view.getByText('舞萌DX'));
+  await waitFor(() => expect(view.getByText('筛选偏好保存失败，当前修改已保留')).toBeTruthy());
+  expect(mockDiscover).toHaveBeenLastCalledWith(expect.objectContaining({ titleIds: [1] }));
+  await fireEvent.press(view.getByText('重试偏好'));
+  await waitFor(() => expect(view.queryByText('筛选偏好保存失败，当前修改已保留')).toBeNull());
+  expect(mockSavePreferences).toHaveBeenLastCalledWith('maimai', { minDistanceKm: 0, radiusKm: 10, titleIds: [1] });
+});
+
+it('keeps late reads and writes attached to their original game', async () => {
+  let completeRead!: (value: ArcadeFinderPreferences) => void;
+  let rejectWrite!: (error: Error) => void;
+  mockLoadPreferences.mockResolvedValueOnce({ minDistanceKm: 0, radiusKm: 8, titleIds: [1] })
+    .mockImplementationOnce(() => new Promise(resolve => { completeRead = resolve; }))
+    .mockResolvedValueOnce({ minDistanceKm: 0, radiusKm: 8, titleIds: [1] });
+  mockSavePreferences.mockImplementationOnce(() => new Promise((_, reject) => { rejectWrite = reject; }));
+  mockGps.mockResolvedValue(origin(31));
+  const view = await render(<ArcadeFinderScreen />);
+  await waitFor(() => expect(view.getByText('0–8 km · 舞萌DX')).toBeTruthy());
+  await fireEvent.press(view.getByText('筛选'));
+  await fireEvent.press(view.getByText('任意'));
+  mockGameId = 'chunithm';
+  await view.rerender(<ArcadeFinderScreen />);
+  expect(view.queryByText('0–8 km · 任意机型')).toBeNull();
+  await act(async () => { rejectWrite(new Error('old game')); });
+  expect(view.queryByText('筛选偏好保存失败，当前修改已保留')).toBeNull();
+  mockGameId = 'maimai';
+  await view.rerender(<ArcadeFinderScreen />);
+  await waitFor(() => expect(view.getByText('0–8 km · 舞萌DX')).toBeTruthy());
+  await act(async () => { completeRead({ minDistanceKm: 0, radiusKm: 25, titleIds: [3] }); });
+  expect(view.getByText('0–8 km · 舞萌DX')).toBeTruthy();
+  expect(mockSavePreferences).toHaveBeenCalledWith('maimai', { minDistanceKm: 0, radiusKm: 8, titleIds: [] });
+  expect(mockSavePreferences.mock.calls.some(([game]) => game === 'chunithm')).toBe(false);
+});
 it.each(['resolve', 'reject'] as const)('手动选址后旧 GPS %s 不改变新原点或显示错误', async outcome => {
   let resolve!: (value: ArcadeOrigin) => void, reject!: (error: Error) => void;
   mockGps.mockImplementationOnce(() => new Promise((yes, no) => { resolve = yes; reject = no; }));

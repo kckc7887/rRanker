@@ -181,4 +181,18 @@ describe.each([
     expect(mockCatalogRetry).toHaveBeenCalledTimes(1);
     await screen.unmount();
   });
+
+  it('shows a preference failure and retries without losing the current selection', async () => {
+    mockFilters = { ...mockFilters, count: 3, persistenceError: 'write' };
+    const screen = await render(<Page />);
+    expect(screen.getByText('筛选偏好保存失败，当前修改已保留。')).toBeTruthy();
+    expect(screen.getByLabelText('抽取 3 首').props.accessibilityState.selected).toBe(true);
+    mockFilterActions.hydrate.mockClear();
+    await fireEvent.press(screen.getByText('重试偏好'));
+    expect(mockFilterActions.hydrate).toHaveBeenCalled();
+    mockFilters = { ...mockFilters, persistenceError: null };
+    await screen.rerender(<Page />);
+    expect(screen.queryByText('重试偏好')).toBeNull();
+    expect(screen.getByLabelText('抽取 3 首').props.accessibilityState.selected).toBe(true);
+  });
 });

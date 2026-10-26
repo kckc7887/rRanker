@@ -22,7 +22,7 @@ export function TufRandomChartsScreen() {
   const query = useTufPasses(playerId, queryOptions, focused && foregroundReady);
   const {
     count, collapsed, difficultyBand, difficultyMin, difficultyMax, includeSpecial,
-    achievement, hydrate, setCount, setCollapsed, setDifficultyBand, setDifficultyMin,
+    achievement, hydrate, persistenceError, setCount, setCollapsed, setDifficultyBand, setDifficultyMin,
     setDifficultyMax, setIncludeSpecial, setAchievement, clearFilters,
   } = useTufRandomChartsFilter();
   const [results, setResults] = useState<TufPass[] | null>(null);
@@ -90,7 +90,7 @@ export function TufRandomChartsScreen() {
     isLoading={loading}
     emptyText={accountId === 'adofai:test' ? '当前示例账号暂不支持随机抽取' : playerId === null ? '请先绑定 TUF 玩家' : '当前没有公开成绩'}
     onRetry={() => void query.refetch()}
-    renderData={() => <RandomChartsPage
+    renderData={() => <RandomChartsPage preferencesError={persistenceError} onRetryPreferences={() => void hydrate()}
       count={count}
       drawDisabled={!complete}
       emptyMessage="没有符合条件的公开成绩，请放宽筛选后再试。"

@@ -1,4 +1,4 @@
-import { fireEvent, render, waitFor, within } from '@testing-library/react-native';
+import { act, fireEvent, render, waitFor, within } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import { TagEditor } from '@/components/TagEditor';
 
@@ -18,6 +18,77 @@ jest.mock('react-native-gesture-handler', () => {
 });
 
 describe('标签预设编辑器', () => {
+  it('blocks editing until the first read succeeds and exposes a failed-read retry', async () => {
+    const onChange = jest.fn(async () => undefined);
+    const retry = jest.fn();
+    const screen = await render(<TagEditor tags={[]} readState={{ ready: false, error: false, retry }} onChange={onChange} />);
+    expect(screen.getByLabelText('新标签').props.editable).toBe(false);
+    await fireEvent.press(screen.getByLabelText('打开标签预设'));
+    expect(screen.queryByTestId('tag-preset-sheet')).toBeNull();
+    await screen.rerender(<TagEditor tags={[]} readState={{ ready: false, error: true, retry }} onChange={onChange} />);
+    await fireEvent.press(screen.getByText('重试'));
+    expect(retry).toHaveBeenCalled();
+    expect(onChange).not.toHaveBeenCalled();
+    await screen.rerender(<TagEditor tags={['旧标签']} readState={{ ready: true, error: false, retry }} onChange={onChange} />);
+    await fireEvent.changeText(screen.getByLabelText('新标签'), '新标签');
+    await fireEvent.press(screen.getByLabelText('添加标签'));
+    await waitFor(() => expect(onChange).toHaveBeenCalledWith(['旧标签', '新标签']));
+  });
+
+  it('retains failed preset edits and only clears the submitted draft after successful persistence', async () => {
+    let resolve!: () => void;
+    const pending = new Promise<void>(done => { resolve = done; });
+    const save = jest.fn<() => Promise<void>>().mockRejectedValueOnce(new Error('disk')).mockReturnValueOnce(pending);
+    const screen = await render(<TagEditor tags={[]} presets={['已有']} onChange={async () => undefined} onPresetsChange={save} />);
+    await fireEvent.press(screen.getByLabelText('打开标签预设'));
+    await fireEvent.changeText(screen.getByLabelText('新预设标签'), '提交');
+    await fireEvent.press(screen.getByLabelText('添加预设标签'));
+    await waitFor(() => expect(screen.getByText('预设保存失败，请重试。')).toBeTruthy());
+    expect(screen.getByLabelText('新预设标签').props.value).toBe('提交');
+    expect(screen.queryByLabelText('选择标签 提交')).toBeNull();
+    await fireEvent.press(screen.getByLabelText('添加预设标签'));
+    expect(screen.queryByLabelText('选择标签 提交')).toBeNull();
+    await fireEvent.changeText(screen.getByLabelText('新预设标签'), '后续输入');
+    await act(async () => { resolve(); await pending; });
+    expect(screen.getByLabelText('选择标签 提交')).toBeTruthy();
+    expect(screen.getByLabelText('新预设标签').props.value).toBe('后续输入');
+  });
+
+  it('keeps a preset when deleting it cannot be persisted', async () => {
+    const screen = await render(<TagEditor tags={[]} presets={['保留']} onChange={async () => undefined}
+      onPresetsChange={async () => { throw new Error('disk'); }} />);
+    await fireEvent.press(screen.getByLabelText('打开标签预设'));
+    await fireEvent.press(screen.getByLabelText('删除预设 保留'));
+    await waitFor(() => expect(screen.getByText('预设保存失败，请重试。')).toBeTruthy());
+    expect(screen.getByLabelText('选择标签 保留')).toBeTruthy();
+  });
+
+  it('waits for preset persistence before completing and blocks edits while the selection is being saved', async () => {
+    let finishPreset!: () => void;
+    let finishSelection!: () => void;
+    const presetWrite = new Promise<void>(resolve => { finishPreset = resolve; });
+    const selectionWrite = new Promise<void>(resolve => { finishSelection = resolve; });
+    const onChange = jest.fn(() => selectionWrite);
+    const onPresetsChange = jest.fn(() => presetWrite);
+    const screen = await render(<TagEditor tags={[]} presets={['已有']} historyTags={['历史']}
+      onChange={onChange} onPresetsChange={onPresetsChange} />);
+    await fireEvent.press(screen.getByLabelText('打开标签预设'));
+    await fireEvent.changeText(screen.getByLabelText('新预设标签'), '新增');
+    await fireEvent.press(screen.getByLabelText('添加预设标签'));
+    await fireEvent.press(screen.getByLabelText('完成标签选择'));
+    expect(onChange).not.toHaveBeenCalled();
+    await act(async () => { finishPreset(); await presetWrite; });
+    await fireEvent.press(screen.getByLabelText('选择标签 新增'));
+    await fireEvent.press(screen.getByLabelText('完成标签选择'));
+    await fireEvent.press(screen.getByLabelText('选择标签 历史'));
+    await fireEvent.press(screen.getByLabelText('删除预设 已有'));
+    expect(screen.getByLabelText('选择标签 历史').props.accessibilityState.checked).toBe(false);
+    expect(screen.getByLabelText('新预设标签').props.editable).toBe(false);
+    expect(onPresetsChange).toHaveBeenLastCalledWith(['已有', '新增']);
+    await act(async () => { finishSelection(); await selectionWrite; });
+    expect(onChange).toHaveBeenCalledWith(['新增']);
+    expect(screen.queryByTestId('tag-preset-sheet')).toBeNull();
+  });
   it('reads history only while the sheet is open and shows updated library tags', async () => {
     let libraryTags = ['旧标签'];
     let historyRead = false;

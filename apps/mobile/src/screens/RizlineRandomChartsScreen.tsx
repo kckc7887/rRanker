@@ -35,7 +35,7 @@ export function RizlineRandomChartsScreen() {
   const results = draw?.accountId === activeAccountId && draw?.version === catalog?.resourceVersion ? draw.results : null;
   return <QueryStateView data={catalog} error={catalogQuery.error} isEmpty={false}
     isLoading={catalogQuery.isLoading} isError={catalogQuery.isError} onRetry={() => void catalogQuery.refetch()}
-    renderData={(data) => <RandomChartsPage count={filter.count} onCountChange={filter.setCount}
+    renderData={(data) => <RandomChartsPage preferencesError={filter.persistenceError} onRetryPreferences={() => void hydrate()} count={filter.count} onCountChange={filter.setCount}
       filter={<RizlineFilterBar filter={filter} packs={packs} constantBounds={bounds} />}
       poolSize={pool.length} drawDisabled={!pool.length || gameData.isLoading}
       poolStatus={gameData.isLoading ? '正在读取成绩…' : !payload ? `候选谱面 ${pool.length} 条 · 成绩暂不可用` : undefined}

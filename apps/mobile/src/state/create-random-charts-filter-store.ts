@@ -9,6 +9,7 @@ export type RandomChartsPreferencesAccess<Preferences extends object> = {
 
 export type RandomChartsFilterStore<Preferences extends object> = Preferences & {
   hydrated: boolean;
+  persistenceError: 'read' | 'write' | null;
   collapsed: boolean;
   hydrate: () => Promise<void>;
   setCollapsed: (value: boolean) => void;
@@ -36,15 +37,29 @@ export function createPersistedRandomChartsFilterStore<Preferences extends objec
       const state = get() as unknown as Record<string, unknown>;
       return Object.fromEntries(preferenceKeys.map((key) => [key, state[key]])) as Preferences;
     };
+    const restore = async () => {
+      if (get().hydrated) return;
+      hydrationPromise ??= preferences.load().then((stored) => {
+        set({ ...stored, ...pendingBeforeHydrate, hydrated: true, persistenceError: null } as Partial<RandomChartsFilterStore<Preferences>>);
+        pendingBeforeHydrate = {};
+      }).catch(() => {
+        set({ persistenceError: 'read' } as Partial<RandomChartsFilterStore<Preferences>>);
+      }).finally(() => { hydrationPromise = null; });
+      await hydrationPromise;
+    };
     const persist = () => {
       const operation = saveQueue.then(async () => {
-        await get().hydrate();
-        if (!dirty) return;
+        await restore();
+        if (!get().hydrated || !dirty) return;
         const writingRevision = revision;
         await preferences.save(pickPreferences());
         if (writingRevision === revision) dirty = false;
+        set({ persistenceError: null } as Partial<RandomChartsFilterStore<Preferences>>);
+      }).catch(() => {
+        set({ persistenceError: 'write' } as Partial<RandomChartsFilterStore<Preferences>>);
       });
-      saveQueue = operation.catch(() => undefined);
+      saveQueue = operation;
+      return operation;
     };
     const update = (patch: Partial<Preferences>) => {
       if (!get().hydrated) pendingBeforeHydrate = { ...pendingBeforeHydrate, ...patch };
@@ -68,18 +83,8 @@ export function createPersistedRandomChartsFilterStore<Preferences extends objec
       hydrated: false,
       collapsed: true,
       ...defaults(),
-      hydrate: async () => {
-        if (get().hydrated) return;
-        hydrationPromise ??= preferences.load().then((stored) => {
-          if (get().hydrated) return;
-          set({ ...stored, ...pendingBeforeHydrate, hydrated: true } as Partial<RandomChartsFilterStore<Preferences>>);
-          pendingBeforeHydrate = {};
-          if (dirty) persist();
-        }).finally(() => {
-          hydrationPromise = null;
-        });
-        await hydrationPromise;
-      },
+      persistenceError: null,
+      hydrate: async () => { await restore(); if (dirty && get().hydrated) await persist(); },
       ...setters,
       setCollapsed: (collapsed: boolean) => set({ collapsed } as Partial<RandomChartsFilterStore<Preferences>>),
       clearFilters: () => update(clearPatch()),

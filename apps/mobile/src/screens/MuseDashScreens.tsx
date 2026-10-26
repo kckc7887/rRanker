@@ -392,7 +392,7 @@ function MuseDashChartCard({
           {practice ? '已加入练习清单' : '加入练习清单'}
         </Text>
       </Pressable>
-      <TagEditor
+      <TagEditor readState={library.tagReadState}
         {...carouselState.tagEditor}
         tags={chartItem?.tags ?? []}
         presets={library.tagPresets ?? []}

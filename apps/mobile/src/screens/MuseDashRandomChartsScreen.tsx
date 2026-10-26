@@ -37,7 +37,7 @@ export function MuseDashRandomChartsScreen() {
   const player = useMuseDashPlayer(userId);
   const {
     count, collapsed, difficultySlot, dlc, constantMin, constantMax, accMin, accMax,
-    achievement, hydrate, setCount, setCollapsed, setDifficultySlot, setDlc,
+    achievement, hydrate, persistenceError, setCount, setCollapsed, setDifficultySlot, setDlc,
     setConstantMin, setConstantMax, setAccMin, setAccMax, setAchievement,
     clearFilters,
   } = useMuseDashRandomChartsFilter();
@@ -109,7 +109,7 @@ export function MuseDashRandomChartsScreen() {
       if (!albums.data || albums.isError) void albums.refetch();
       if (!diffdiff.data || diffdiff.isError) void diffdiff.refetch();
     }}
-    renderData={() => <RandomChartsPage
+    renderData={() => <RandomChartsPage preferencesError={persistenceError} onRetryPreferences={() => void hydrate()}
       count={count}
       emptyMessage="没有符合条件的喵斯快跑谱面，请放宽筛选后再试。"
       filter={<MuseDashRecordsFilterBar

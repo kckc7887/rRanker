@@ -26,6 +26,8 @@ export type RandomChartsPageProps = {
   drawDisabled?: boolean;
   poolStatus?: string;
   poolError?: string | null;
+  preferencesError?: 'read' | 'write' | null;
+  onRetryPreferences?: () => void;
   onRetryPool?: () => void;
 };
 
@@ -75,6 +77,8 @@ export function RandomChartsPage({
   drawDisabled = false,
   poolStatus,
   poolError,
+  preferencesError,
+  onRetryPreferences,
   onRetryPool,
 }: RandomChartsPageProps) {
   const theme = useAppTheme();
@@ -100,6 +104,10 @@ export function RandomChartsPage({
           </View>
         </Card>
 
+        {preferencesError ? <Card>
+          <Text style={{ color: theme.danger }}>{preferencesError === 'read' ? '筛选偏好读取失败，当前修改已保留。' : '筛选偏好保存失败，当前修改已保留。'}</Text>
+          <Pressable onPress={onRetryPreferences}><Text style={{ color: theme.accent }}>重试偏好</Text></Pressable>
+        </Card> : null}
         {filter != null ? <View
           style={[styles.filterContainer, { borderColor: theme.border }]}
           testID="random-charts-filter"

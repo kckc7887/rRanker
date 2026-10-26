@@ -33,7 +33,7 @@ export function PhigrosRandomChartsScreen() {
   const {
     count, collapsed, level, constantMin, constantMax, accuracyMin, accuracyMax, rank, xing, chapter,
     selectedKyouTagIds,
-    hydrate, setCount, setCollapsed, setLevel, setConstantMin, setConstantMax,
+    hydrate, persistenceError, setCount, setCollapsed, setLevel, setConstantMin, setConstantMax,
     setAccuracyMin, setAccuracyMax, setRank, setXing, setChapter, setSelectedKyouTagIds, clearFilters,
   } = usePhigrosRandomChartsFilter();
   const [results, setResults] = useState<RandomChartPick[] | null>(null);
@@ -106,7 +106,7 @@ export function PhigrosRandomChartsScreen() {
         void kyouChartTags.refetch();
       }}
       renderData={(data) => (
-        <RandomChartsPage
+        <RandomChartsPage preferencesError={persistenceError} onRetryPreferences={() => void hydrate()}
           count={count}
           emptyMessage="没有符合条件的谱面，请放宽筛选后再试。"
           filter={(

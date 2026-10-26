@@ -1,6 +1,6 @@
 import { NativeModules, Platform, TurboModuleRegistry } from 'react-native';
 import * as Location from 'expo-location';
-import { formatArcadeGeocodedLabel, type ArcadeOrigin } from '@/domain/arcade-shops';
+import type { ArcadeOrigin } from '@/domain/arcade-shops';
 
 type Coords = {
   latitude: number;
@@ -103,18 +103,6 @@ async function acquireExpoCoords(): Promise<Coords> {
   };
 }
 
-async function labelForCoords(coords: Coords): Promise<string> {
-  let label = '当前位置';
-  try {
-    const places = await Location.reverseGeocodeAsync(coords);
-    if (places[0]) {
-      label = formatArcadeGeocodedLabel(places[0]) || label;
-    }
-  } catch {
-  }
-  return label;
-}
-
 /** Android 使用无 GMS 的 LocationManager，未链接模块时回退 expo-location。 */
 export async function acquireArcadeGpsOrigin(): Promise<ArcadeOrigin> {
   const permission = await Location.requestForegroundPermissionsAsync();
@@ -132,11 +120,5 @@ export async function acquireArcadeGpsOrigin(): Promise<ArcadeOrigin> {
     ? await acquireAndroidLocationManagerCoords(androidGeo)
     : await acquireExpoCoords();
 
-  const label = await labelForCoords(coords);
-  return {
-    source: 'gps',
-    latitude: coords.latitude,
-    longitude: coords.longitude,
-    label,
-  };
+  return coords;
 }

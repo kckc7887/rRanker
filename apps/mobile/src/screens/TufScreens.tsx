@@ -520,7 +520,7 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
             </Pressable>
           </Card>
           <Card testID="tuf-level-personal-tags">
-            <TagEditor testID="tuf-level-local-tags" tags={localTags}
+            <TagEditor readState={library.tagReadState} testID="tuf-level-local-tags" tags={localTags}
               presets={library.tagPresets ?? []}
               historyTags={() => buildTagHistory(library.data ?? [], library.songKey(level!.id), library.tagPresets ?? [])}
               disabled={library.isUpdating} onPresetsChange={library.setTagPresets}

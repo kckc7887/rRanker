@@ -69,21 +69,17 @@ describe('acquireArcadeGpsOrigin', () => {
     await expect(acquireArcadeGpsOrigin()).rejects.toThrow('location-services-disabled');
   });
 
-  it('uses expo-location on iOS', async () => {
+  it('returns iOS coordinates without waiting for geocoding', async () => {
     (Platform as { OS: string }).OS = 'ios';
     requestForegroundPermissionsAsync.mockResolvedValue({ status: 'granted' });
     getCurrentPositionAsync.mockResolvedValue({
       coords: { latitude: 31.2, longitude: 121.5 },
     });
-    reverseGeocodeAsync.mockResolvedValue([
-      { city: '上海市', district: '徐汇区', street: '漕溪北路' },
-    ]);
+    reverseGeocodeAsync.mockImplementation(() => new Promise(() => undefined));
 
     await expect(acquireArcadeGpsOrigin()).resolves.toEqual({
-      source: 'gps',
       latitude: 31.2,
       longitude: 121.5,
-      label: '上海市徐汇区漕溪北路',
     });
 
     expect(getCurrentPositionAsync).toHaveBeenCalledWith({ accuracy: 3 });
@@ -102,10 +98,8 @@ describe('acquireArcadeGpsOrigin', () => {
     });
 
     await expect(acquireArcadeGpsOrigin()).resolves.toEqual({
-      source: 'gps',
       latitude: 30.1,
       longitude: 120.2,
-      label: '当前位置',
     });
 
     expect(setRNConfiguration).toHaveBeenCalledWith({
@@ -125,10 +119,8 @@ describe('acquireArcadeGpsOrigin', () => {
     });
 
     await expect(acquireArcadeGpsOrigin()).resolves.toEqual({
-      source: 'gps',
       latitude: 31.0,
       longitude: 121.0,
-      label: '当前位置',
     });
 
     expect(getCurrentPositionAsync).toHaveBeenCalledWith({ accuracy: 3 });
@@ -151,10 +143,8 @@ describe('acquireArcadeGpsOrigin', () => {
       });
 
     await expect(acquireArcadeGpsOrigin()).resolves.toEqual({
-      source: 'gps',
       latitude: 29.9,
       longitude: 119.8,
-      label: '当前位置',
     });
 
     expect(getCurrentPosition).toHaveBeenCalledTimes(2);

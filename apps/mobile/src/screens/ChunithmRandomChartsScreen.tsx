@@ -26,7 +26,7 @@ export function ChunithmRandomChartsScreen() {
   const gameData = useGameData();
   const {
     count, collapsed, difficulty, version, constantMin, constantMax, rankMin, rankMax,
-    hydrate, setCount, setCollapsed, setDifficulty, setVersion, setConstantMin,
+    hydrate, persistenceError, setCount, setCollapsed, setDifficulty, setVersion, setConstantMin,
     setConstantMax, setRankMin, setRankMax, clearFilters,
   } = useChunithmRandomChartsFilter();
   const [results, setResults] = useState<ChunithmRandomChartPick[] | null>(null);
@@ -79,7 +79,7 @@ export function ChunithmRandomChartsScreen() {
         void gameData.refetch();
       }}
       renderData={(data) => (
-        <RandomChartsPage
+        <RandomChartsPage preferencesError={persistenceError} onRetryPreferences={() => void hydrate()}
           count={count}
           emptyMessage="没有符合条件的中二谱面，请放宽筛选后再试。"
           filter={(

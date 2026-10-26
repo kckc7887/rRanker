@@ -46,7 +46,7 @@ const mockSessionState: {
   setActiveGameId: jest.fn(),
 };
 const timestamp = '2026-07-13T00:00:00.000Z';
-const mockItems: UserLibraryItem[] = [
+let mockItems: UserLibraryItem[] = [
   { key: 'song:maimai:1', gameId: 'maimai', kind: 'song', songId: '1', favorite: true, tags: ['喜欢'], createdAt: timestamp, updatedAt: timestamp },
   { key: 'chart:maimai:1:DX:3', gameId: 'maimai', kind: 'chart', songId: '1', type: 'DX', levelIndex: 3, practice: true, tags: ['耐力'], createdAt: timestamp, updatedAt: timestamp },
   { key: 'song:maimai:999', gameId: 'maimai', kind: 'song', songId: '999', favorite: true, tags: [], createdAt: timestamp, updatedAt: timestamp },
@@ -348,6 +348,21 @@ describe('M3A personal library screens', () => {
       pathname: '/songs/[songId]',
       params: { songId: '1', chartType: 'DX', levelIndex: '3', gameId: 'maimai' },
     });
+  });
+
+  it('selects a local tag from the menu and returns to all items when that tag disappears', async () => {
+    const screen = await render(<UserLibraryScreen />);
+    await fireEvent.press(screen.getByLabelText('筛选本地标签'));
+    await fireEvent.press(screen.getByLabelText('选择本地标签 喜欢'));
+    expect(screen.queryByText('歌曲 ID 999')).toBeNull();
+    expect(screen.getAllByText('正常曲目 A')).toHaveLength(1);
+    const original = mockItems;
+    try {
+      mockItems = mockItems.map((item, index) => index === 0 ? { ...item, tags: [] } : item);
+      await screen.rerender(<UserLibraryScreen />);
+      expect(screen.getByText('全部标签')).toBeTruthy();
+      expect(screen.getByText('歌曲 ID 999')).toBeTruthy();
+    } finally { mockItems = original; }
   });
 
   it('toggles a song favorite from search without opening the row', async () => {

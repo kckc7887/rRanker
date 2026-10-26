@@ -91,7 +91,7 @@ function MajdataDetailContent({ song, initialLevelIndex, library }: { song: Majd
           <Text style={[styles.body, { color: theme.textSecondary }]}>标签：{majdataTags(song).join('、') || '无'}</Text>
           <Text selectable style={[styles.body, { color: theme.textSecondary }]}>HASH：{song.hash}</Text>
         </Card>
-        <Card><TagEditor tags={local?.tags ?? []} presets={library.tagPresets ?? []}
+        <Card><TagEditor readState={library.tagReadState} tags={local?.tags ?? []} presets={library.tagPresets ?? []}
           historyTags={() => buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
           disabled={library.isUpdating} onPresetsChange={library.setTagPresets} testID="majdata-song-local-tags"
           onChange={tags => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card>
@@ -149,7 +149,7 @@ function MajdataChartCard({ song, level, width, library, best, carouselState, ex
     <DetailPressable accessibilityRole="button" accessibilityLabel={`下载谱面文件：${title}`} disabled={download.isRunning}
       accessibilityState={{ disabled: download.isRunning }} onPress={startDownload}
       style={[styles.action, styles.chartSearchAction, actions]}><Text style={[styles.actionText, actionText]}>下载谱面文件</Text></DetailPressable>
-    <TagEditor {...carouselState.tagEditor} tags={item?.tags ?? []} presets={library.tagPresets ?? []} disabled={library.isUpdating}
+    <TagEditor readState={library.tagReadState} {...carouselState.tagEditor} tags={item?.tags ?? []} presets={library.tagPresets ?? []} disabled={library.isUpdating}
       historyTags={() => buildTagHistory(library.data ?? [], library.chartKey(song.id, 'SD', level), library.tagPresets ?? [])}
       onPresetsChange={library.setTagPresets} testID={`majdata-chart-local-tags-${level}`}
       onChange={tags => library.setTags({ kind: 'chart', songId: song.id, type: 'SD', levelIndex: level }, tags)} />

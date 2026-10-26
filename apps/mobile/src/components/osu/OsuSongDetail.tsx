@@ -351,7 +351,7 @@ function OsuDetailBody({
           </Text>
         </Card>
         <Card>
-          <TagEditor
+          <TagEditor readState={library.tagReadState}
             disabled={library.isUpdating}
             historyTags={() => buildTagHistory(
               library.data ?? [],
@@ -584,7 +584,7 @@ function DifficultyCard({
       >
         <Text style={[styles.practiceButtonText, { color: starTheme.background }]}>下载谱面文件</Text>
       </DetailPressable>
-      <TagEditor
+      <TagEditor readState={library.tagReadState}
         {...carouselState.tagEditor}
         disabled={library.isUpdating}
         historyTags={() => buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}

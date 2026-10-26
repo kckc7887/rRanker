@@ -220,34 +220,10 @@ export function filterArcadeShops(
     .sort((a, b) => (a.distanceKm ?? Infinity) - (b.distanceKm ?? Infinity) || a.name.localeCompare(b.name, 'zh'));
 }
 
-export type ArcadeOriginSource = 'gps' | 'custom';
-
 export type ArcadeOrigin = {
-  source: ArcadeOriginSource;
   latitude: number;
   longitude: number;
-  label: string;
 };
-
-export function formatArcadeGeocodedLabel(parts: {
-  city?: string | null;
-  district?: string | null;
-  subregion?: string | null;
-  street?: string | null;
-  streetNumber?: string | null;
-  name?: string | null;
-  region?: string | null;
-}): string {
-  const street = [parts.street, parts.streetNumber].filter(Boolean).join('');
-  const chunks = [
-    parts.city,
-    parts.district || parts.subregion,
-    street || parts.name,
-  ].filter((part): part is string => Boolean(part && part.trim()));
-  if (chunks.length > 0) return chunks.join('');
-  const region = parts.region?.trim();
-  return region || '已选位置';
-}
 
 export function buildArcadeFilterSummary(options: {
   minDistanceKm: number;

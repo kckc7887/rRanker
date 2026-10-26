@@ -67,6 +67,8 @@ function StorageManagementContent() {
   const [loading, setLoading] = useState(true);
   const [loadFailed, setLoadFailed] = useState(false);
   const [clearing, setClearing] = useState(false);
+  const [savingSelection, setSavingSelection] = useState(false);
+  const savingSelectionRef = useRef(false);
 
   const refresh = useCallback(async () => {
     if (mountedRef.current) {
@@ -99,11 +101,21 @@ function StorageManagementContent() {
   }, [active, refresh]);
 
   const saveSelectedIds = useCallback(async (next: StorageClearCategoryId[]) => {
+    if (savingSelectionRef.current || loading || loadFailed || clearing) return;
+    savingSelectionRef.current = true;
+    setSavingSelection(true);
     const allowed = listClearableCategoryIds();
     const filtered = next.filter((item) => allowed.includes(item));
-    setSelectedIds(filtered);
-    await storageClearPreferencesStore.save({ version: 1, selectedIds: filtered });
-  }, []);
+    try {
+      await storageClearPreferencesStore.save({ version: 1, selectedIds: filtered });
+      if (mountedRef.current) setSelectedIds(filtered);
+    } catch {
+      if (mountedRef.current) showNotification({ title: '清理选择保存失败', message: '已保留原有选择，请重试。', variant: 'error' });
+    } finally {
+      savingSelectionRef.current = false;
+      if (mountedRef.current) setSavingSelection(false);
+    }
+  }, [clearing, loadFailed, loading, showNotification]);
 
   const toggleId = (id: StorageClearCategoryId) => {
     const next = selectedIds.includes(id)
@@ -125,6 +137,7 @@ function StorageManagementContent() {
   );
 
   const handleClear = async () => {
+    if (savingSelectionRef.current || loading || loadFailed || clearing) return;
     if (selectedIds.length === 0) {
       showNotification({ title: '未选择缓存', message: '请先勾选要清除的种类。', variant: 'warning' });
       return;
@@ -180,7 +193,7 @@ function StorageManagementContent() {
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="重新统计存储占用"
-            disabled={loading}
+            disabled={loading || savingSelection || clearing}
             onPress={() => void refresh()}
             style={[styles.refreshButton, { borderColor: theme.border }]}
           >
@@ -243,11 +256,12 @@ function StorageManagementContent() {
                   <View style={styles.bulkActions}>
                     <Pressable
                       accessibilityRole="button"
+                      disabled={savingSelection || loading || loadFailed || clearing}
                       onPress={() => void saveSelectedIds(clearableItems.map((item) => item.clearCategoryId!))}
                     >
                       <Text style={[styles.bulkActionText, { color: theme.accent }]}>全选</Text>
                     </Pressable>
-                    <Pressable accessibilityRole="button" onPress={() => void saveSelectedIds([])}>
+                    <Pressable accessibilityRole="button" disabled={savingSelection || loading || loadFailed || clearing} onPress={() => void saveSelectedIds([])}>
                       <Text style={[styles.bulkActionText, { color: theme.accent }]}>取消全选</Text>
                     </Pressable>
                     <Text style={[styles.selectionState, { color: theme.textMuted }]}>
@@ -278,6 +292,7 @@ function StorageManagementContent() {
                       accessibilityRole="checkbox"
                       accessibilityState={{ checked: selected }}
                       accessibilityLabel={`${item.title}缓存`}
+                      disabled={savingSelection || loading || loadFailed || clearing}
                       onPress={() => toggleId(id)}
                       style={styles.itemRow}
                     >
@@ -292,7 +307,7 @@ function StorageManagementContent() {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel="清除已选缓存"
-                    disabled={clearing || loading || selectedIds.length === 0}
+                    disabled={clearing || loading || loadFailed || savingSelection || selectedIds.length === 0}
                     onPress={() => void handleClear()}
                     style={[
                       styles.clearButton,

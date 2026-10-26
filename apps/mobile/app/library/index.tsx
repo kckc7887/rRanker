@@ -1,8 +1,9 @@
 import { EXAMPLE_SONGS, type ExampleSong } from '@/domain/example';
 import { MAJDATA_NAMES, majdataAsset, type MajdataSong } from '@/domain/majdata';
+import { FilterAnchoredDropdown } from '@/components/FilterAnchoredDropdown';
 import { GameSongCover } from '@/components/game-content/GameSongCover';
 import { useMajdataLibrarySongs } from '@/hooks/use-majdata';
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
 import { RemoteImageFlatList } from '@/components/game-content/GameListPages';
 import { router } from 'expo-router';
@@ -98,13 +99,16 @@ function LibraryList({
   const theme = useAppTheme();
   const library = useUserLibrary();
   const [mode, setMode] = useState<Mode>('all');
-  const [tag, setTag] = useState<string>();
+  const [tag, setTag] = useState('');
+  const [tagsOpen, setTagsOpen] = useState(false);
+  const tags = useMemo(() => [...new Set(items.flatMap((item) => item.tags))].sort(), [items]);
+  const selectedTag = tags.includes(tag) ? tag : '';
+  useEffect(() => { if (tag && !tags.includes(tag)) setTag(''); }, [tag, tags]);
   const filtered = useMemo(() => items.filter((item) => {
     if (mode === 'favorite' && (item.kind !== 'song' || !item.favorite)) return false;
     if (mode === 'practice' && (item.kind !== 'chart' || !item.practice)) return false;
-    return !tag || item.tags.includes(tag);
-  }), [items, mode, tag]);
-  const tags = useMemo(() => [...new Set(items.flatMap((item) => item.tags))].sort(), [items]);
+    return !selectedTag || item.tags.includes(selectedTag);
+  }), [items, mode, selectedTag]);
 
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <View style={styles.filters}>
@@ -114,8 +118,10 @@ function LibraryList({
         <Chip label="练习" active={mode === 'practice'} onPress={() => setMode('practice')} />
       </View>
       {tags.length ? <View style={styles.chips}>
-        <Chip label="全部标签" active={!tag} onPress={() => setTag(undefined)} />
-        {tags.map((item) => <Chip key={item} label={item} active={tag === item} onPress={() => setTag(tag === item ? undefined : item)} />)}
+        <FilterAnchoredDropdown open={tagsOpen} onOpenChange={setTagsOpen}
+          valueLabel={selectedTag || '全部标签'} accessibilityLabel="筛选本地标签"
+          options={[{ value: '', label: '全部标签' }, ...tags.map(value => ({ value, label: value }))]}
+          selectedValue={selectedTag} onSelect={setTag} optionAccessibilityPrefix="选择本地标签" />
       </View> : null}
     </View>
     {library.isLoading ? <ActivityIndicator style={styles.center} color={theme.accent} /> : library.isError ?

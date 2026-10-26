@@ -78,7 +78,7 @@ function RizlineSongDetailContent({ song, library, initialLevelIndex }: { song: 
       contentContainerStyle={styles.carousel} keyExtractor={(chart) => library.chartKey(chart.songId, 'SD', rizlineDifficultyIndex(chart.difficulty))}
       empty={<Text style={[styles.noCharts, { color: theme.textMuted }]}>暂无谱面</Text>}
       renderItem={(chart, carouselState) => <RizlineChartCard carouselState={carouselState} chart={chart} record={recordsByChart.get(chart.id)} library={library} cardWidth={cardWidth} songTitle={song.title} />} />
-      <View style={styles.details}><Card><TagEditor testID="rizline-song-tags" tags={songItem?.kind === 'song' ? songItem.tags : []}
+      <View style={styles.details}><Card><TagEditor readState={library.tagReadState} testID="rizline-song-tags" tags={songItem?.kind === 'song' ? songItem.tags : []}
         presets={library.tagPresets} historyTags={() => buildTagHistory(library.data ?? [], songKey, library.tagPresets)} disabled={library.isUpdating || library.isLoading}
         onPresetsChange={library.setTagPresets} onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card></View>
     </> : <View style={styles.deferredPlaceholder} />}
@@ -140,7 +140,7 @@ function RizlineChartCard({ chart, record, library, cardWidth, songTitle, carous
       }} style={[styles.action, styles.chartSearchAction, { borderColor: colors.bg, backgroundColor: colors.bg }]}>
       <Text style={[styles.actionText, { color: colors.fg }]}>查看谱面确认</Text>
     </DetailPressable></DetailGestureRoot>
-    <TagEditor {...carouselState.tagEditor} testID={`rizline-chart-tags-${chart.difficulty}`} tags={item?.kind === 'chart' ? item.tags : []} presets={library.tagPresets}
+    <TagEditor readState={library.tagReadState} {...carouselState.tagEditor} testID={`rizline-chart-tags-${chart.difficulty}`} tags={item?.kind === 'chart' ? item.tags : []} presets={library.tagPresets}
       historyTags={() => buildTagHistory(library.data ?? [], key, library.tagPresets)} disabled={library.isUpdating || library.isLoading}
       onPresetsChange={library.setTagPresets} onChange={(tags) => library.setTags({ kind: 'chart', songId: chart.songId, type: 'SD', levelIndex }, tags)} />
   </GameChartResultCard>;

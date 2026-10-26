@@ -274,7 +274,7 @@ function Detail({ song, versions, records, dxratingTags, library, notesLoading, 
         <Card><Text style={[styles.section, { color: theme.text }]}>歌曲信息</Text><AliasLine aliases={song.aliases} />
           <Text style={[styles.body, { color: theme.textSecondary }]}>版权：{song.rights || '未提供'}</Text>
           <Text style={[styles.body, { color: theme.textSecondary }]}>状态：{song.disabled ? '禁用' : song.locked ? '锁定' : '可用'}</Text></Card>
-        <Card><TagEditor tags={songItem?.tags ?? []} presets={library.tagPresets ?? []}
+        <Card><TagEditor readState={library.tagReadState} tags={songItem?.tags ?? []} presets={library.tagPresets ?? []}
           historyTags={() => buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
           disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
           onChange={(tags) => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card>
@@ -580,7 +580,7 @@ function ChartCard({ carouselState, chart, best, song, library, width, canSwitch
         下载谱面文件
       </Text>
     </DetailPressable>
-    <TagEditor {...carouselState.tagEditor} tags={chartItem?.tags ?? []} presets={chartTagPresets} presetsEditable={false}
+    <TagEditor readState={library.tagReadState} {...carouselState.tagEditor} tags={chartItem?.tags ?? []} presets={chartTagPresets} presetsEditable={false}
       historyTags={() => buildTagHistory(library.data ?? [], library.chartKey(song.id, chart.type, chart.levelIndex), chartTagPresets)}
       disabled={library.isUpdating} testID={`maimai-chart-local-tags-${chart.type}-${chart.levelIndex}`}
       onChange={(tags) => library.setTags({ kind: 'chart', songId: song.id, type: chart.type, levelIndex: chart.levelIndex }, tags)} />

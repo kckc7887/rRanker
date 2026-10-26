@@ -35,6 +35,7 @@ import {
 import {
   arcadeFinderPreferencesStore,
   defaultArcadeFinderPreferences,
+  type ArcadeFinderPreferences,
 } from '@/features/toolbox/arcade-finder-preferences';
 import { useArcadeSearch } from '@/hooks/use-arcade-search';
 import { fetchNearcadeDiscover, fetchNearcadeGameTitles } from '@/services/nearcade-client';
@@ -105,6 +106,11 @@ function ArcadeShopCard({
 }
 
 export default function ArcadeFinderScreen() {
+  const activeGameId = useSession((s) => s.activeGameId);
+  return <ArcadeFinderContent key={activeGameId} />;
+}
+
+function ArcadeFinderContent() {
   const theme = useAppTheme();
   const { showActionNotification, showNotification } = useNotification();
   const activeGameId = useSession((s) => s.activeGameId);
@@ -112,6 +118,12 @@ export default function ArcadeFinderScreen() {
   const headerHeight = useHeaderHeight();
   const { foregroundReady, foregroundGeneration } = useAppLifecycle();
   const [hydrated, setHydrated] = useState(false);
+  const [preferencesError, setPreferencesError] = useState<'read' | 'write' | null>(null);
+  const [readAttempt, setReadAttempt] = useState(0);
+  const preferencesRef = useRef(defaultArcadeFinderPreferences());
+  const writeRevision = useRef(0);
+  const mounted = useRef(true);
+  useEffect(() => { mounted.current = true; return () => { mounted.current = false; }; }, []);
   const [keyword, setKeyword] = useState('');
   const [minDistanceKm, setMinDistanceKm] = useState(0);
   const [radiusKm, setRadiusKm] = useState(10);
@@ -185,20 +197,36 @@ export default function ArcadeFinderScreen() {
     void (async () => {
       const prefs = await arcadeFinderPreferencesStore.load(activeGameId);
       if (cancelled) return;
+      preferencesRef.current = prefs;
+      setPreferencesError(null);
       setMinDistanceKm(prefs.minDistanceKm);
       setRadiusKm(prefs.radiusKm);
       setTitleIds(prefs.titleIds);
       setHydrated(true);
-    })();
+    })().catch(() => { if (!cancelled) setPreferencesError('read'); });
     return () => {
       cancelled = true;
     };
-  }, [activeGameId]);
+  }, [activeGameId, readAttempt]);
 
-  useEffect(() => {
+  const savePreferences = async (value: ArcadeFinderPreferences) => {
+    const revision = ++writeRevision.current;
+    try {
+      await arcadeFinderPreferencesStore.save(activeGameId, value);
+      if (mounted.current && revision === writeRevision.current) setPreferencesError(null);
+    } catch {
+      if (mounted.current && revision === writeRevision.current) setPreferencesError('write');
+    }
+  };
+  const updatePreferences = (patch: Partial<ArcadeFinderPreferences>) => {
     if (!hydrated) return;
-    void arcadeFinderPreferencesStore.save(activeGameId, { minDistanceKm, radiusKm, titleIds });
-  }, [activeGameId, hydrated, minDistanceKm, radiusKm, titleIds]);
+    const next = { ...preferencesRef.current, ...patch };
+    preferencesRef.current = next;
+    setMinDistanceKm(next.minDistanceKm);
+    setRadiusKm(next.radiusKm);
+    setTitleIds(next.titleIds);
+    void savePreferences(next);
+  };
 
   useEffect(() => {
     const controller = new AbortController();
@@ -292,7 +320,7 @@ export default function ArcadeFinderScreen() {
     setSelectingPlace(place);
     try {
       const coordinate = await resolveArcadePlace(place, controller.signal);
-      if (!controller.signal.aborted) selectOrigin({ ...coordinate, source: 'custom', label: place.name });
+      if (!controller.signal.aborted) selectOrigin(coordinate);
     } catch {
       if (!controller.signal.aborted) setPlaceError('地点定位失败，请重试');
     }
@@ -332,15 +360,12 @@ export default function ArcadeFinderScreen() {
       request.current?.abort();
       setErrorKind(null);
       setSelectedShop(null);
-      setOrigin({ ...center, source: 'custom', label: '地图中心' });
+      setOrigin(center);
     }, 500);
   };
 
   const resetFilters = () => {
-    const defaults = defaultArcadeFinderPreferences();
-    setMinDistanceKm(defaults.minDistanceKm);
-    setRadiusKm(defaults.radiusKm);
-    setTitleIds(defaults.titleIds);
+    updatePreferences(defaultArcadeFinderPreferences());
   };
 
   const retryLoad = () => {
@@ -400,6 +425,7 @@ export default function ArcadeFinderScreen() {
       <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
         <TextInput
           accessibilityLabel="机厅搜索"
+          editable={hydrated}
           value={keyword}
           onChangeText={value => {
             if (value.trim() !== keyword.trim()) search.cancel();
@@ -421,22 +447,28 @@ export default function ArcadeFinderScreen() {
           clearButtonMode="while-editing"
         />
       </View>
-      <ArcadeFilterBar
+      {preferencesError ? <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
+        <Text style={{ color: theme.danger }}>{preferencesError === 'read' ? '筛选偏好读取失败' : '筛选偏好保存失败，当前修改已保留'}</Text>
+        <Pressable onPress={() => { if (preferencesError === 'read') setReadAttempt(value => value + 1); else void savePreferences(preferencesRef.current); }}>
+          <Text style={{ color: theme.accent }}>重试偏好</Text>
+        </Pressable>
+      </View> : null}
+      {hydrated ? <ArcadeFilterBar
         collapsed={filtersCollapsed}
         onCollapsedChange={setFiltersCollapsed}
         minDistanceKm={minDistanceKm}
         radiusKm={radiusKm}
         titleIds={titleIds}
         gameTitles={gameTitles}
-        onMinDistanceChange={setMinDistanceKm}
-        onRadiusChange={value => { if (value !== radiusKm) { cancelPending(); setRadiusKm(value); } }}
-        onTitleIdsChange={setTitleIds}
+        onMinDistanceChange={minDistanceKm => updatePreferences({ minDistanceKm })}
+        onRadiusChange={value => { if (value !== radiusKm) { cancelPending(); updatePreferences({ radiusKm: value }); } }}
+        onTitleIdsChange={titleIds => updatePreferences({ titleIds })}
         onReset={resetFilters}
-      />
+      /> : null}
 
       <View style={styles.resultsArea}>
       {keyword.trim() ? <ArcadeSearchResults search={search}
-        onSelectShop={shop => selectOrigin({ latitude: shop.latitude, longitude: shop.longitude, source: 'custom', label: shop.name }, shop)}
+        onSelectShop={shop => selectOrigin({ latitude: shop.latitude, longitude: shop.longitude }, shop)}
         onSelectPlace={place => { void choosePlace(place); }} /> : selectingPlace ? (
         <View style={styles.center}>
           {placeError ? <>

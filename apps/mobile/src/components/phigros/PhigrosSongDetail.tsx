@@ -284,7 +284,7 @@ function Detail({
             <PhigrosSongInformation aliases={song.aliases ?? []} />
           </Card>
           <Card>
-            <TagEditor
+            <TagEditor readState={library.tagReadState}
               tags={songItem?.kind === 'song' ? songItem.tags : []}
               presets={library.tagPresets ?? []}
               historyTags={() => buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
@@ -557,7 +557,7 @@ function ChartCard({
           下载谱面文件
         </Text>
       </DetailPressable>
-      <TagEditor
+      <TagEditor readState={library.tagReadState}
         {...carouselState.tagEditor}
         tags={chartItem?.tags ?? []}
         presets={library.tagPresets ?? []}

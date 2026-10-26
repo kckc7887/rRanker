@@ -57,7 +57,7 @@ export function MaimaiRandomChartsScreen() {
     count, collapsed, difficulty, version, type, constantMin, constantMax,
     achievementMin, achievementMax, soloAchievement, multiAchievement,
     selectedDxRatingTagIds, versionLocale,
-    hydrate, setCount, setCollapsed, setDifficulty, setVersion, setType,
+    hydrate, persistenceError, setCount, setCollapsed, setDifficulty, setVersion, setType,
     setConstantMin, setConstantMax, setAchievementMin, setAchievementMax,
     setSoloAchievement, setMultiAchievement, setSelectedDxRatingTagIds,
     setVersionLocale, clearFilters,
@@ -136,7 +136,7 @@ export function MaimaiRandomChartsScreen() {
         void scores.refetch();
       }}
       renderData={(data) => (
-        <RandomChartsPage
+        <RandomChartsPage preferencesError={persistenceError} onRetryPreferences={() => void hydrate()}
           count={count}
           emptyMessage="没有符合条件的谱面，请放宽筛选后再试。"
           filter={(

@@ -135,12 +135,14 @@ export function useUserLibrary(enabled = true) {
   const setChartPractice = useCallback((songId: string, chartType: ChartType, levelIndex: number, value: boolean) =>
     toggle({ type: 'practice', gameId: activeGameId, songId, chartType, levelIndex, value }), [activeGameId, toggle]);
   const setTags = useCallback((target: Omit<SongLibraryTarget, 'gameId'> | Omit<ChartLibraryTarget, 'gameId'>, values: string[]) =>
-    mutateAsync({ type: 'tags', target: { ...target, gameId: activeGameId }, values }), [activeGameId, mutateAsync]);
+    query.data === undefined ? Promise.reject(new Error('标签尚未读取完成'))
+      : mutateAsync({ type: 'tags', target: { ...target, gameId: activeGameId }, values }), [activeGameId, mutateAsync, query.data]);
   const restoreBackup = useCallback((backup: UserDataBackup, mode: RestoreMode) =>
     mutateAsync({ type: 'restore', backup, mode }), [mutateAsync]);
   const clearUserData = useCallback(() => mutateAsync({ type: 'clear' }), [mutateAsync]);
   const clearGameUserData = useCallback((gameId: GameId) => mutateAsync({ type: 'clear-game', gameId }), [mutateAsync]);
-  const setTagPresets = useCallback((values: string[]) => presetMutation.mutateAsync(values), [presetMutation]);
+  const setTagPresets = useCallback((values: string[]) => presets.data === undefined
+    ? Promise.reject(new Error('预设尚未读取完成')) : presetMutation.mutateAsync(values), [presetMutation, presets.data]);
   const songKey = useCallback((songId: string | number) => songLibraryKey(activeGameId, songId), [activeGameId]);
   const chartKey = useCallback((songId: string | number, type: ChartType, levelIndex: number) =>
     chartLibraryKey(activeGameId, songId, type, levelIndex), [activeGameId]);
@@ -156,6 +158,11 @@ export function useUserLibrary(enabled = true) {
     chartKey,
     tagPresets: presets.data ?? [...DEFAULT_TAG_PRESETS],
     tagPresetsLoading: presets.isLoading,
+    tagReadState: {
+      ready: query.data !== undefined && presets.data !== undefined,
+      error: query.isError || presets.isError,
+      retry: () => { void query.refetch(); void presets.refetch(); },
+    },
     setTagPresets,
     createBackup: () => service.createBackup(),
     restoreBackup,

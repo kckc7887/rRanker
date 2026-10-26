@@ -11,7 +11,6 @@ import {
   formatArcadeDistanceKm,
   formatArcadeGamesSummary,
   formatArcadeBusinessStatus,
-  formatArcadeGeocodedLabel,
   formatArcadeOpeningHoursLines,
   listArcadeMapApps,
   resolveArcadeBusinessStatus,
@@ -178,22 +177,6 @@ describe('arcade opening hours formatting', () => {
     expect(resolveArcadeBusinessStatus(hours, new Date(2026, 9, 10, 2))).toBe('closed');
     expect(resolveArcadeBusinessStatus(hours, new Date(2026, 9, 11, 1))).toBe('closed');
     expect(resolveArcadeBusinessStatus([[{ hour: 0, minute: 0 }, { hour: 24, minute: 0 }]], new Date(2026, 9, 10, 0))).toBe('open');
-  });
-});
-
-describe('arcade geocoded origin label', () => {
-  it('joins city district and street when available', () => {
-    expect(formatArcadeGeocodedLabel({
-      city: '上海市',
-      district: '徐汇区',
-      street: '漕溪北路',
-      streetNumber: '88号',
-    })).toBe('上海市徐汇区漕溪北路88号');
-  });
-
-  it('falls back to region or generic label', () => {
-    expect(formatArcadeGeocodedLabel({ region: '上海市' })).toBe('上海市');
-    expect(formatArcadeGeocodedLabel({})).toBe('已选位置');
   });
 });
 

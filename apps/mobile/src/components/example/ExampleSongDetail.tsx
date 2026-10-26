@@ -82,12 +82,12 @@ function ExampleDetailContent({ record, library }: { record: ExampleRecord; libr
               <Text style={[styles.actionText, localStyles.actionText]}>{practice ? '移出练习清单' : '加入练习清单'}</Text>
             </LinearGradient>
           </DetailPressable></DetailGestureRoot>
-          <TagEditor testID="example-chart-tags" tags={chartItem?.tags ?? []} presets={library.tagPresets}
+          <TagEditor readState={library.tagReadState} testID="example-chart-tags" tags={chartItem?.tags ?? []} presets={library.tagPresets}
             historyTags={() => buildTagHistory(library.data ?? [], chartKey, library.tagPresets)} disabled={pending}
             onPresetsChange={library.setTagPresets} onChange={tags => library.setTags({ kind: 'chart', songId: song.id, type: 'SD', levelIndex: 0 }, tags)} />
         </GameChartResultCard>
       </LinearGradient></View>
-      <View style={styles.details}><Card><TagEditor testID="example-song-tags" tags={songItem?.tags ?? []} presets={library.tagPresets}
+      <View style={styles.details}><Card><TagEditor readState={library.tagReadState} testID="example-song-tags" tags={songItem?.tags ?? []} presets={library.tagPresets}
         historyTags={() => buildTagHistory(library.data ?? [], songKey, library.tagPresets)} disabled={pending}
         onPresetsChange={library.setTagPresets} onChange={tags => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card></View>
     </> : <View style={styles.deferredPlaceholder} />}

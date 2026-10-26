@@ -17,6 +17,8 @@ const mockFavorite = jest.fn<(gameId: GameId, songId: string, value: boolean) =>
 const mockPractice = jest.fn<(gameId: GameId, songId: string, type: string, index: number, value: boolean) => Promise<UserLibraryItem[]>>();
 const mockTags = jest.fn<(target: LibraryTarget, values: string[]) => Promise<UserLibraryItem[]>>();
 const mockPresets = jest.fn<(values: string[]) => Promise<string[]>>();
+const mockList = jest.fn<() => Promise<UserLibraryItem[]>>();
+const mockListPresets = jest.fn<() => Promise<string[]>>();
 
 jest.mock('@/state/query-client', () => {
   const { QueryClient } = jest.requireActual<typeof import('@tanstack/react-query')>('@tanstack/react-query');
@@ -25,8 +27,8 @@ jest.mock('@/state/query-client', () => {
   } }) };
 });
 jest.mock('@/services/user-library-service', () => ({ UserLibraryService: class {
-  list = async () => [];
-  listTagPresets = async () => [];
+  list = () => mockList();
+  listTagPresets = () => mockListPresets();
   setSongFavorite = (...args: Parameters<typeof mockFavorite>) => mockFavorite(...args);
   setChartPractice = (...args: Parameters<typeof mockPractice>) => mockPractice(...args);
   setTags = (...args: Parameters<typeof mockTags>) => mockTags(...args);
@@ -68,6 +70,7 @@ beforeEach(() => {
   mockForeground = new AbortController();
   mockFavorite.mockResolvedValue([]); mockPractice.mockResolvedValue([]);
   mockTags.mockResolvedValue([]); mockPresets.mockResolvedValue([]);
+  mockList.mockResolvedValue([]); mockListPresets.mockResolvedValue([]);
 });
 
 afterEach(async () => { await cleanup(); queryClient.clear(); });
@@ -76,6 +79,20 @@ afterEach(async () => { await cleanup(); queryClient.clear(); });
 const publishUpdates = () => new Promise<void>(resolve => { setTimeout(resolve, 0); });
 
 describe('公共个人条目写入边界', () => {
+  it('does not write replacement tags before reading the library successfully', async () => {
+    const read = pendingWrite();
+    mockList.mockReturnValueOnce(read.promise).mockResolvedValue([]);
+    const hook = await renderHook(() => useUserLibrary(), { wrapper });
+    await expect(hook.result.current.setTags({ kind: 'song', songId: 'song' }, ['tag'])).rejects.toThrow();
+    await act(async () => { read.reject(new Error('read failed')); await publishUpdates(); });
+    await waitFor(() => expect(hook.result.current.tagReadState.error).toBe(true));
+    expect(hook.result.current.tagReadState.ready).toBe(false);
+    expect(mockTags).not.toHaveBeenCalled();
+    await act(async () => { hook.result.current.tagReadState.retry(); await publishUpdates(); });
+    await waitFor(() => expect(hook.result.current.tagReadState.ready).toBe(true));
+    await act(async () => { await hook.result.current.setTags({ kind: 'song', songId: 'song' }, ['tag']); });
+    expect(mockTags).toHaveBeenCalledWith({ kind: 'song', gameId: 'rizline', songId: 'song' }, ['tag']);
+  });
   it('coalesces duplicate favorites and handles failure once without exposing error text', async () => {
     const write = pendingWrite(); mockFavorite.mockReturnValue(write.promise);
     const hook = await loadHook();

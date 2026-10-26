@@ -304,7 +304,7 @@ function ChunithmDetailBody({
           </Text>
         </Card>
         <Card>
-          <TagEditor
+          <TagEditor readState={library.tagReadState}
             disabled={library.isUpdating}
             historyTags={() => buildTagHistory(library.data ?? [], library.songKey(song.id), library.tagPresets ?? [])}
             onChange={(tags) => library.setTags({ kind: 'song', songId: String(song.id) }, tags)}
@@ -674,7 +674,7 @@ function DifficultyCard({
           ? `chunithm-special-tag-surface-${difficulty.difficulty}`
           : undefined}
       >
-        <TagEditor
+        <TagEditor readState={library.tagReadState}
           {...carouselState.tagEditor}
           disabled={library.isUpdating}
           historyTags={() => buildTagHistory(library.data ?? [], chartKey, library.tagPresets ?? [])}

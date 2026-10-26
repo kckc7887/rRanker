@@ -106,7 +106,8 @@ describe('maimai random charts preferences', () => {
     const useStore = createRandomChartsFilterStore(preferences);
     const hydration = useStore.getState().hydrate();
     useStore.getState().setCount(2);
-    await expect(hydration).rejects.toThrow('read failed');
+    await hydration;
+    expect(useStore.getState().persistenceError).toBe('read');
     await useStore.getState().hydrate();
     expect(useStore.getState()).toMatchObject({ count: 2, difficulty: 'master', constantMin: '12', hydrated: true });
     await vi.waitFor(async () => {
@@ -119,6 +120,29 @@ describe('maimai random charts preferences', () => {
     const store = new RandomChartsPreferencesStore(storage);
     await expect(store.load()).resolves.toEqual(defaultRandomChartsPreferences());
     expect(JSON.parse(storage.values.get('rranker.toolbox.random-charts.v1')!)).toEqual({ schemaVersion: 3, ...defaultRandomChartsPreferences() });
+  });
+
+  it('retains the newest edits through a failed queued write and retries them without resetting other filters', async () => {
+    const storage = new MemoryStore();
+    const preferences = new RandomChartsPreferencesStore(storage);
+    await preferences.save({ ...defaultRandomChartsPreferences(), difficulty: 'master' });
+    const useStore = createRandomChartsFilterStore(preferences);
+    await useStore.getState().hydrate();
+    let reject!: (error: Error) => void;
+    const originalWrite = storage.setItem.bind(storage);
+    const writing = vi.spyOn(storage, 'setItem').mockImplementationOnce(() => new Promise((_, fail) => { reject = fail; }));
+    useStore.getState().setCount(2);
+    await vi.waitFor(() => expect(reject).toBeDefined());
+    useStore.getState().setCount(4);
+    useStore.getState().setAchievementMin('98');
+    writing.mockRejectedValue(new Error('full'));
+    reject(new Error('full'));
+    await vi.waitFor(() => expect(useStore.getState().persistenceError).toBe('write'));
+    expect(useStore.getState()).toMatchObject({ count: 4, achievementMin: '98', difficulty: 'master' });
+    writing.mockImplementation(originalWrite);
+    await useStore.getState().hydrate();
+    expect(useStore.getState().persistenceError).toBeNull();
+    await expect(preferences.load()).resolves.toMatchObject({ count: 4, achievementMin: '98', difficulty: 'master' });
   });
 
 });
