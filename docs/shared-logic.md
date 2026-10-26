@@ -206,7 +206,7 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。
 
-`RpeRenderer.render(time, playing, playbackSpeed)` 以会话状态同步视频，暂停与定位等待视频就绪后重绘，释放时暂停视频并移除监听器。自定义着色器纹理先激活目标单元再绑定或上传，缓存同时持有单元和纹理对象，尺寸变化后的源纹理使用单元 0。osu! 滑条按 Catmull、贝塞尔、圆弧或线段采样后统一限制声明长度，不足时沿末段延伸；解析拒绝非正长度。动画只收集归档实际存在且位于声明范围内的帧。
+`RpeRenderer.render(time, playing, playbackSpeed)` 以会话状态同步视频，暂停与定位等待视频就绪后重绘，释放时暂停视频并移除监听器。Phira 的 RPE 资源装配读取 `.glsl`、`.fs` 着色器文本；自定义着色器纹理先激活目标单元再绑定或上传，缓存同时持有单元和纹理对象，尺寸变化后的源纹理使用单元 0。osu! 滑条按 Catmull、贝塞尔、圆弧或线段采样后统一限制声明长度，不足时沿末段延伸；解析拒绝非正长度。动画只收集归档实际存在且位于声明范围内的帧。
 
 Simai 解析支持 `BOUNCE` 的拍长比和 `NULL` 复位指令，以及分类 HS/SV 的数值和 `NULL` 参数，按原谱面时间消费，不改变判定物量；无效拍长、未知类别、非法数值及未知指令继续拒绝。
 

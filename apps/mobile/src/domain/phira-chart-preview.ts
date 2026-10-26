@@ -63,7 +63,7 @@ export function classifyPhiraChartFormat(
 
 export const PHIRA_CHART_PREVIEW_UNSUPPORTED_MESSAGE = '暂不支持预览该谱面格式（仅支持 PGR 与 RPE）';
 
-const TEXT_BUNDLE_EXTENSION_PATTERN = /\.(glsl|json|ya?ml|txt)$/i;
+const TEXT_BUNDLE_EXTENSION_PATTERN = /\.(glsl|fs|json|ya?ml|txt)$/i;
 
 /** extra.json、info.yml 和着色器按文本注入，不经原生文件 fetch。 */
 export function buildPhiraRpeBundlePlan(

@@ -104,7 +104,7 @@ async function stagePhiraRpeResources(
     if (!entry) continue;
     if (file.text) {
       if (file.name === 'extra.json') extraJson = await readBudgetedZipText(entry, RPE_CHART_TEXT_LIMIT, cancellation);
-      else if (/\.glsl$/i.test(file.name)) shaders[file.name] = await readBudgetedZipText(entry, RPE_CHART_TEXT_LIMIT, cancellation);
+      else if (/\.(glsl|fs)$/i.test(file.name)) shaders[file.name] = await readBudgetedZipText(entry, RPE_CHART_TEXT_LIMIT, cancellation);
       continue;
     }
     stagedFiles.push({ name: file.name, bytes: await readBudgetedZipEntry(entry, cancellation) });

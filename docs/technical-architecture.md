@@ -187,7 +187,7 @@ Rizline 曲库包含 `illustrations` 与 `signatures`：插画保存可读名称
 
 四套生成播放器为 maimai、Phigros、osu!、Rizline。生成源位于各自 `webview-player`，各自维护 `player.bundle` 和 `index.html`；宿主会话将 bundle 以 `player.js` 暂存并沿用 HTML 引用。共享 UI 与手势位于 `chart-preview-shared/webview-player`。
 
-谱面设置按存储键保留尚未写入的最新值，后台释放或页面重建后仍可恢复；成功提交才移除，前台恢复及通知重试继续补写。RPE 视频按会话的播放、倍速与定位同步，暂停保持静态画面并停止音画推进；着色器纹理缓存同时保存纹理对象和绑定单元。贝塞尔插值在牛顿法不能收敛时使用二分结果。osu! 支持 Catmull 滑条及声明长度截断、延伸，动画资源按归档实际文件收集。
+谱面设置按存储键保留尚未写入的最新值，后台释放或页面重建后仍可恢复；成功提交才移除，前台恢复及通知重试继续补写。RPE 视频按会话的播放、倍速与定位同步，暂停保持静态画面并停止音画推进；着色器资源读取 `.glsl`、`.fs`，纹理缓存同时保存纹理对象和绑定单元。贝塞尔插值在牛顿法不能收敛时使用二分结果。osu! 支持 Catmull 滑条及声明长度截断、延伸，动画资源按归档实际文件收集。
 
 `chart-preview-screen-shell.tsx` 管理资源准备、WebView、前后台暂停、取消、seek 和释放。iOS 谱面确认页在普通和全屏状态关闭原生返回手势，返回使用标题按钮，全屏通过播放器控件退出。`chart-preview-bridge.ts` 只解析当前事件和设置信封，宿主命令由公共 serializer 生成。控制设置、播放状态和时间回传通过同一桥接路径。
 

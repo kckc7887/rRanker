@@ -1,4 +1,7 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
+import JSZip from 'jszip';
+import { PhiraChartSchema } from '@/domain/phira';
+import { buildPhiraChartPreviewInput } from '@/features/phira-chart-preview/chart-preview-input';
 import { parseRpeChart } from '@/features/phigros-chart-preview/webview-player/rpe-core';
 import { RpeRenderer } from '@/features/phigros-chart-preview/webview-player/rpe-renderer';
 
@@ -88,7 +91,7 @@ describe('RPE renderer', () => {
     expect(draws).toEqual([]);
   });
 
-  it('多个自定义采样器在缓存复用及画布缩放后仍采到各自图片', () => {
+  it.each(['glsl', 'fs'])('谱包的 %s 着色器在缓存复用及画布缩放后仍采到各自图片', async extension => {
     type Texture = { source?: unknown };
     const bindings = new Map<number, Texture | null>();
     const samplers = new Map<string, number>();
@@ -109,10 +112,24 @@ describe('RPE renderer', () => {
     }, { get: (target, key) => Reflect.get(target, key) ?? (() => {}) }) as unknown as WebGLRenderingContext;
     const { renderer, stage } = environment(gl);
     const a = image(32), b = image(64);
-    renderer.setChart(parseRpeChart({ META: { RPEVersion: 150 }, BPMList: [{ startTime: [0, 0, 1], bpm: 120 }], judgeLineList: [] },
-      { extraJson: JSON.stringify({ effects: [0, 1].map(() => ({ shader: 'mix.glsl', start: [0, 0, 1], end: [20, 0, 1], vars: { first: 'a.png', second: 'b.png' } })) }) }));
+    const shaderPath = `effects/mix.${extension}`;
+    const zip = new JSZip();
+    zip.file('info.yml', 'chart: chart.json\nmusic: song.mp3\nformat: rpe');
+    zip.file('chart.json', JSON.stringify({ META: { RPEVersion: 150 }, BPMList: [{ startTime: [0, 0, 1], bpm: 120 }], judgeLineList: [] }));
+    zip.file('song.mp3', new Uint8Array([1]));
+    zip.file(shaderPath, 'precision mediump float; varying vec2 uv; uniform sampler2D first; uniform sampler2D second; void main() { gl_FragColor = (texture2D(first, uv) + texture2D(second, uv)) * 0.5; }');
+    zip.file('extra.json', JSON.stringify({ effects: [0, 1].map(() => ({ shader: `/${shaderPath}`, start: [0, 0, 1], end: [20, 0, 1], vars: { first: 'a.png', second: 'b.png' } })) }));
+    const bytes = await zip.generateAsync({ type: 'arraybuffer' });
+    const prepared = await buildPhiraChartPreviewInput({ chartId: 1, chart: PhiraChartSchema.parse({
+      id: 1, name: 'Sample', level: 'IN Lv.1', difficulty: 1, uploader: 1, file: 'https://phira.example/chart.zip',
+    }) }, {}, new AbortController().signal, {
+      downloadChart: async () => bytes,
+      stageMusic: async () => ({ uri: 'file:///song.mp3', base64: 'AQ==' }),
+      stageRpeBundle: async () => ({ basePath: 'file:///rpe/' }),
+    });
+    renderer.setChart(parseRpeChart(JSON.parse(prepared.config.chartText!), prepared.config.rpeAssets!));
     renderer.setChartAssets({ textures: new Map([['a.png', a], ['b.png', b]]), videos: new Map(),
-      shaders: new Map([['mix.glsl', 'uniform sampler2D first; uniform sampler2D second;']]), gifs: new Map(), gifAnims: new Map() });
+      shaders: new Map(Object.entries(prepared.config.rpeAssets!.shaders)), gifs: new Map(), gifAnims: new Map() });
     renderer.render(1);
     renderer.render(2);
     stage.getBoundingClientRect = () => ({ width: 800, height: 450 }) as DOMRect;
