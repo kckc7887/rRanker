@@ -1,10 +1,11 @@
-/*
+/*!
  * Source: https://github.com/daladal/replayviewer-js
- * Adapted for fixed-speed chart preview.
  *
  * MIT License
  *
  * Copyright (c) 2026 bog
+ * Copyright (c) 2024 ppy Pty Ltd <contact@ppy.sh>.
+ * Catmull: https://github.com/ppy/osu-framework/blob/master/osu.Framework/Utils/PathApproximator.cs
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
  * of this software and associated documentation files (the "Software"), to deal
@@ -45,7 +46,7 @@ function computeSliderPath(slider: Slider): Point[] {
   switch (curveType) {
     case 'L': return sampleLinear(curvePoints, length);
     case 'P': return samplePerfectCircle(curvePoints, length);
-    case 'C':
+    case 'C': return sampleCatmull(curvePoints, length);
     case 'B':
     default:
       return sampleBezier(curvePoints, length);
@@ -62,16 +63,27 @@ export function sampleLinear(points: Point[], length: number): Point[] {
   if (points.length === 0) return [];
   if (points.length === 1 || length <= 0) return [{ ...points[0]! }];
 
-  const count = Math.max(2, Math.ceil(length) + 1);
-  const dists = buildCumulativeDists(points);
-  const clampedLen = Math.min(length, dists[dists.length - 1]!);
+  return samplePolyline(points, length, Math.max(2, Math.ceil(length) + 1));
+}
 
-  const result: Point[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = (i / (count - 1)) * clampedLen;
-    result.push(lerpPolyline(points, dists, t));
+function sampleCatmull(points: Point[], length: number): Point[] {
+  if (points.length < 2 || length <= 0) return points.slice(0, 1);
+  const path: Point[] = [];
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const p1 = points[Math.max(0, index - 1)]!;
+    const p2 = points[index]!;
+    const p3 = points[index + 1]!;
+    const p4 = points[index + 2] ?? { x: 2 * p3.x - p2.x, y: 2 * p3.y - p2.y };
+    for (let step = index === 0 ? 0 : 1; step <= 50; step += 1) {
+      const t = step / 50;
+      const coordinate = (key: 'x' | 'y'): number => 0.5 * (2 * p2[key]
+        + (-p1[key] + p3[key]) * t
+        + (2 * p1[key] - 5 * p2[key] + 4 * p3[key] - p4[key]) * t * t
+        + (-p1[key] + 3 * p2[key] - 3 * p3[key] + p4[key]) * t * t * t);
+      path.push({ x: coordinate('x'), y: coordinate('y') });
+    }
   }
-  return result;
+  return samplePolyline(path, length, Math.max(2, Math.ceil(length) + 1));
 }
 
 /** 重复控制点是红锚，切分为独立贝塞尔段。 */
@@ -101,8 +113,6 @@ export function samplePerfectCircle(points: Point[], length: number): Point[] {
   if (length <= 0) return [{ ...points[0]! }];
 
   const [a, b, c] = [points[0]!, points[1]!, points[2]!];
-  const count = Math.max(2, Math.ceil(length) + 1);
-
   const D = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
   if (Math.abs(D) < 1e-6) {
     return sampleLinear(points, length);
@@ -127,14 +137,15 @@ export function samplePerfectCircle(points: Point[], length: number): Point[] {
   const sweepAngle = midNorm < endNorm ? endNorm : endNorm - 2 * Math.PI;
 
   const arcLength = Math.abs(sweepAngle) * radius;
-  const clampedSweep = arcLength > 0 ? sweepAngle * Math.min(1, length / arcLength) : 0;
-
+  const sampledLength = Math.min(length, arcLength);
+  const sampledSweep = arcLength > 0 ? sweepAngle * sampledLength / arcLength : 0;
+  const count = Math.max(2, Math.ceil(sampledLength) + 1);
   const result: Point[] = [];
   for (let i = 0; i < count; i++) {
-    const angle = startAngle + clampedSweep * (i / (count - 1));
+    const angle = startAngle + sampledSweep * (i / (count - 1));
     result.push({ x: ox + radius * Math.cos(angle), y: oy + radius * Math.sin(angle) });
   }
-  return result;
+  return length <= arcLength ? result : samplePolyline(result, length, Math.max(2, Math.ceil(length) + 1));
 }
 
 function splitBezierSegments(points: Point[]): Point[][] {
@@ -194,10 +205,22 @@ function buildCumulativeDists(points: Point[]): number[] {
 
 function samplePolyline(pts: Point[], length: number, count: number): Point[] {
   const dists = buildCumulativeDists(pts);
-  const clampedLen = Math.min(length, dists[dists.length - 1]!);
+  const total = dists[dists.length - 1]!;
+  if (length > total && pts.length > 1) {
+    const end = pts.at(-1)!;
+    let previous = pts.length - 2;
+    while (previous > 0 && dists[previous] === total) previous -= 1;
+    const direction = pts[previous]!;
+    const distance = Math.hypot(end.x - direction.x, end.y - direction.y);
+    if (distance > 0) {
+      const extension = (length - total) / distance;
+      pts = [...pts, { x: end.x + (end.x - direction.x) * extension, y: end.y + (end.y - direction.y) * extension }];
+      dists.push(length);
+    }
+  }
   const result: Point[] = [];
   for (let i = 0; i < count; i++) {
-    const t = (i / (count - 1)) * clampedLen;
+    const t = (i / (count - 1)) * length;
     result.push(lerpPolyline(pts, dists, t));
   }
   return result;

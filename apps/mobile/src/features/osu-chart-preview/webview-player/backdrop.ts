@@ -173,7 +173,7 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
   signal.addEventListener('abort', dispose, { once: true });
   try {
     signal.throwIfAborted();
-    const imageFiles = [...new Set([...referencedImageFiles(objects), ...(visuals.background ? [visuals.background] : [])])];
+    const imageFiles = [...new Set([...referencedImageFiles(objects, files.keys()), ...(visuals.background ? [visuals.background] : [])])];
     await loadItemsBounded({
       items: imageFiles, concurrency: 4, signal, failureMode: 'throw',
       load: async file => {

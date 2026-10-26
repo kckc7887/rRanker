@@ -38,9 +38,12 @@ describe('中二节奏 Rating 霓虹电路主题', () => {
   });
 
   it.each([
+    ['normal', 'none'],
+    ['copper', 'copper'],
     ['silver', 'silver'],
     [' GOLD ', 'gold'],
     ['Platinum', 'platinum'],
+    ['platina', 'platinum'],
     ['RAINBOW', 'rainbow'],
     [undefined, 'none'],
     ['', 'none'],
@@ -51,6 +54,7 @@ describe('中二节奏 Rating 霓虹电路主题', () => {
 
   it.each([
     ['none', 0],
+    ['copper', 12_000],
     ['silver', 13_000],
     ['gold', 14_000],
     ['platinum', 14_500],

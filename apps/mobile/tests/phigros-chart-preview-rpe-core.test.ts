@@ -56,6 +56,13 @@ function layer(speedEvents: RpeEvent[]): RpeEventLayer {
 }
 
 describe('rpe core', () => {
+  it.each([
+    [[0, 0, 0, 1], 0.001, 0.028],
+    [[1, 0, 0, 1], 0.504, 0.648],
+    [[0, 0, 0, 1], 0.125, 0.5],
+  ])('贝塞尔缓动在平坦导数或牛顿越界时仍命中曲线', (points, x, expected) => {
+    expect(easing(1, points as number[], x as number)).toBeCloseTo(expected as number, 7);
+  });
   it('BPMList：拍数与多 BPM 段时间/拍互转', () => {
     const b = new BpmList([[0, 120], [4, 60]]);
     expect(Math.abs(b.timeSec(4) - 2)).toBeLessThan(1e-9);

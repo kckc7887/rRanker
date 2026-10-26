@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react';
 import { act, fireEvent, render, screen } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { ScrollView } from 'react-native';
 import {
   BestImageScreenShell,
   bestImageScreenSharedStyles,
@@ -83,6 +84,7 @@ function Harness({ drawingReady = true, gameReady = true, sourceUri = 'file:///s
 describe('best image memory recovery', () => {
   beforeEach(() => {
     chosenWidths.length = 0;
+    jest.mocked(ScrollView.prototype.scrollTo).mockClear();
     mockLifecycle = {
       appState: 'active', phase: 'foreground-ready', foregroundReady: true,
       foregroundGeneration: 1, memoryWarningGeneration: 0,
@@ -143,6 +145,26 @@ describe('best image memory recovery', () => {
       nativeEvent: { data: '{"type":"best-image-ready","width":2160,"height":2880}' },
     });
     expect(screen.queryByText('图片加载中')).toBeNull();
+  });
+
+  it('重新生成相同页数的图片时让原生滚动位置与重置页码一致', async () => {
+    const view = await render(<Harness pageCount={2} pageIndex={1} />);
+    expect(screen.getByTestId('best-image-html-preview-1')).toBeTruthy();
+    const scrollTo = jest.mocked(ScrollView.prototype.scrollTo);
+    expect(scrollTo.mock.calls.at(-1)?.[0]).toEqual(expect.objectContaining({ x: expect.any(Number) }));
+    expect((scrollTo.mock.calls.at(-1)?.[0] as { x: number }).x).toBeGreaterThan(0);
+
+    await view.rerender(<Harness pageCount={2} sourceUri="file:///session/regenerated.html" />);
+    expect(scrollTo).toHaveBeenLastCalledWith({ x: 0, animated: false });
+    expect(screen.getByTestId('best-image-html-preview-0').props.source.uri).toBe('file:///session/regenerated.html?page=0');
+    expect(screen.queryByTestId('best-image-html-preview-1')).toBeNull();
+  });
+
+  it('页数减少后原页码越界时显示有效图片并同步原生滚动位置', async () => {
+    const view = await render(<Harness pageCount={2} pageIndex={1} />);
+    await view.rerender(<Harness pageCount={1} pageIndex={1} sourceUri="file:///session/single.html" />);
+    expect(jest.mocked(ScrollView.prototype.scrollTo)).toHaveBeenLastCalledWith({ x: 0, animated: false });
+    expect(screen.getByTestId('best-image-html-preview-0').props.source.uri).toBe('file:///session/single.html?page=0');
   });
 
   it('pauses the preview during export and waits for the restored preview to report readiness', async () => {

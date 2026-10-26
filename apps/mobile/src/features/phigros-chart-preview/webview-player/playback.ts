@@ -99,6 +99,10 @@ export class PhigrosPlaybackSession {
     return this.chartTimeline.offsetSeconds;
   }
 
+  get waiting(): boolean {
+    return this.music?.waiting ?? false;
+  }
+
   get musicDurationSeconds(): number | null {
     return this.hasMusic ? this.music!.duration : null;
   }
@@ -145,10 +149,12 @@ export class PhigrosPlaybackSession {
     this.playing = false;
     this.music?.pause();
     this.stopActiveHitSounds();
+    this.host.render(this.chartTimePosition);
     await this.resumeAt(target, command);
   }
 
   private async resumeAt(target: number, command: number): Promise<void> {
+    if (this.disposed || command !== this.command) return;
     try {
       await this.ensureAudio();
       if (this.disposed || command !== this.command) return;
@@ -272,6 +278,8 @@ export class PhigrosPlaybackSession {
         if (this.playing && !music.playing && !music.waiting) {
           this.pause();
           this.host.onPlaybackError?.();
+        } else if (this.playing) {
+          this.host.render(Math.max(0, music.currentTime - this.chartTimeline.offsetSeconds));
         }
       };
       this.hitSoundGain = context.createGain();

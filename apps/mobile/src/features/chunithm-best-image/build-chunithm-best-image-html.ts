@@ -1,6 +1,6 @@
 import { bestImageBrandFooter } from '@/features/best-image/build-best-image-html';
 import type { ChunithmPlayer } from '@/domain/chunithm-personal';
-import { normalizeChunithmPossession, resolveChunithmRatingTier } from '@/domain/chunithm-rating-theme';
+import { normalizeChunithmPossession, resolveChunithmPossessionTheme, resolveChunithmRatingTier } from '@/domain/chunithm-rating-theme';
 import { formatChunithmRating, formatChunithmScore, type ChunithmScoreCardData } from '@/domain/chunithm-score-presentation';
 import { minimumBestImageHeight } from '@/features/best-image/best-image-messages';
 import { bestImageBridgeMeasureScript, bestImageBridgeReadyScript, bestImageBridgeRuntimeScript } from '@/features/best-image/best-image-bridge-script';
@@ -109,7 +109,7 @@ function renderProfile(input: ChunithmBestImageHtmlInput): string {
     <defs>${gradient('player-rating', ratingColors[tier])}<clipPath id="character-clip"><rect x="470" y="90" width="86" height="86" rx="4"/></clipPath></defs>
     ${input.plateDataUri ? image(input.plateDataUri, 0, 0, 576, 228, 'class="name-plate"') : '<rect x="70" y="2" width="486" height="174" fill="#F5F6F7" stroke="#D5DADF"/>'}
     ${input.hideTrophy ? '' : tone === 'image' && input.trophyDataUri ? image(input.trophyDataUri, 143, 48, 413, 34) : image('trophy/' + trophyTone + '.svg', 143, 48, 413, 34) + text(trophy?.name ?? '', 349.5, 72, 18, 391, `text-anchor="middle" fill="${tone === 'ultima' ? '#FFF' : '#29333A'}"`)}
-    ${image('field/' + possession + '.svg', 143, 90, 323, 86)}
+    ${possession === 'copper' ? `<defs>${gradient('player-field', resolveChunithmPossessionTheme(possession).fillColors)}</defs><rect x="143" y="90" width="323" height="86" fill="url(#player-field)"/>` : image('field/' + possession + '.svg', 143, 90, 323, 86)}
     <rect x="470" y="90" width="86" height="86" rx="4" fill="white"/>
     ${input.hideCharacter ? '' : image(input.characterDataUri, 470, 90, 86, 86, 'clip-path="url(#character-clip)"')}
     ${star ? image('star/reborn.svg', 147, 93, 25, 25) + text(star, 159.5, 109, 9, 14, 'text-anchor="middle" fill="#6D5319"') : ''}

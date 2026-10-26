@@ -18,7 +18,7 @@ export type ChunithmRatingTierTheme = {
   colors: readonly [string, ...string[]];
 };
 
-export type ChunithmPossessionId = 'none' | 'silver' | 'gold' | 'platinum' | 'rainbow';
+export type ChunithmPossessionId = 'none' | 'copper' | 'silver' | 'gold' | 'platinum' | 'rainbow';
 
 type RatingTier = {
   min: number;
@@ -46,6 +46,7 @@ const RATING_TIERS: readonly RatingTier[] = [
 
 const POSSESSION_DX_RATINGS: Record<ChunithmPossessionId, number> = {
   none: 0,
+  copper: 12_000,
   silver: 13_000,
   gold: 14_000,
   platinum: 14_500,
@@ -54,6 +55,7 @@ const POSSESSION_DX_RATINGS: Record<ChunithmPossessionId, number> = {
 
 const POSSESSION_LABELS: Record<ChunithmPossessionId, string> = {
   none: '无领域',
+  copper: '铜领域',
   silver: '银领域',
   gold: '金领域',
   platinum: '铂金领域',
@@ -97,7 +99,9 @@ export function resolveChunithmRatingCardTheme(
 
 export function normalizeChunithmPossession(value: string | null | undefined): ChunithmPossessionId {
   const normalized = value?.trim().toLowerCase();
-  return normalized === 'silver'
+  if (normalized === 'platina') return 'platinum';
+  return normalized === 'copper'
+    || normalized === 'silver'
     || normalized === 'gold'
     || normalized === 'platinum'
     || normalized === 'rainbow'

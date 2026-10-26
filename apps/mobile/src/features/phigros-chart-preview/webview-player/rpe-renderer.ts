@@ -366,6 +366,13 @@ export class RpeRenderer {
   private settings: RpeRendererSettings = { noteScale: 1, multiHint: true, backgroundDim: 0.55, lineColor: 'white' };
   private fullscreen = false;
   private disposed = false;
+  private playing = false;
+  private playbackSpeed = 1;
+  private readonly playingVideos = new Set<HTMLVideoElement>();
+  private readonly pendingVideos = new Set<HTMLVideoElement>();
+  private readonly onVideoSeeked = (): void => {
+    if (!this.playing) this.render(this.lastRenderedTime, false, this.playbackSpeed);
+  };
   private readonly ownedShaderTextures = new Set<WebGLTexture>();
   private tintedTextures: WeakMap<object, Map<string, HTMLCanvasElement>> | null = null;
   private readonly tintLru = new Map<HTMLCanvasElement, { image: object; key: string; bytes: number }>();
@@ -374,7 +381,7 @@ export class RpeRenderer {
   private gl: WebGLRenderingContext | null = null;
   private glPrograms: Map<string, WebGLProgram> | null = null;
   private shaderDefaults: Map<string, [string, number | number[]][]> | null = null;
-  private shaderTextures: Map<string, number> | null = null;
+  private shaderTextures: Map<string, { unit: number; texture: WebGLTexture }> | null = null;
   private shaderTextureCount = 0;
   private glSourceTex: WebGLTexture | null = null;
   private glTexA: WebGLTexture | null = null;
@@ -414,7 +421,10 @@ export class RpeRenderer {
 
   setChartAssets(assets: RpeChartAssets): void {
     this.clearTints();
+    this.pauseVideos();
+    for (const video of this.chartAssets?.videos.values() ?? []) video.removeEventListener('seeked', this.onVideoSeeked);
     this.chartAssets = assets;
+    for (const video of assets.videos.values()) video.addEventListener('seeked', this.onVideoSeeked);
   }
   setIllustration(image: HTMLImageElement | null): void { this.illustration = image; }
   setNoteAssets(assets: NoteAssets): void {
@@ -433,6 +443,8 @@ export class RpeRenderer {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
+    this.pauseVideos();
+    for (const video of this.chartAssets?.videos.values() ?? []) video.removeEventListener('seeked', this.onVideoSeeked);
     this.resizeObserver.disconnect();
     this.disposeGlTargets();
     for (const texture of this.ownedShaderTextures) this.gl?.deleteTexture(texture);
@@ -984,8 +996,19 @@ export class RpeRenderer {
     context.restore();
   }
 
-  render(time: number): void {
-    if (!this.disposed) this.renderFrame(time);
+  render(time: number, playing = false, playbackSpeed = 1): void {
+    if (this.disposed) return;
+    this.playing = playing;
+    this.playbackSpeed = playbackSpeed;
+    if (!playing) this.pauseVideos();
+    this.renderFrame(time);
+  }
+
+  private pauseVideos(): void {
+    this.playingVideos.clear();
+    for (const video of this.chartAssets?.videos.values() ?? []) {
+      if (!video.paused) video.pause();
+    }
   }
 
   private renderFrame(time: number): void {
@@ -1169,6 +1192,7 @@ export class RpeRenderer {
     const duration = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : 0;
     const endSec = video.startTimeSec + duration;
     if (duration <= 0 || time < video.startTimeSec || time >= endSec) {
+      this.playingVideos.delete(element);
       if (!element.paused) element.pause();
       return;
     }
@@ -1177,10 +1201,19 @@ export class RpeRenderer {
     const dim = this.eventValueAt(video.dim, beat, this.videoCursors[index]!.dim) as number | number[] | string;
 
     const local = time - video.startTimeSec;
-    if (Math.abs(element.currentTime - local) > 0.25) {
+    if (element.playbackRate !== this.playbackSpeed) element.playbackRate = this.playbackSpeed;
+    if (Math.abs(element.currentTime - local) > (this.playing ? 0.25 : 0.001)) {
       try { element.currentTime = local; } catch {}
     }
-    if (element.paused) element.play().catch(() => {});
+    if (this.playing) {
+      this.playingVideos.add(element);
+      if (element.paused && !this.pendingVideos.has(element)) {
+        this.pendingVideos.add(element);
+        void element.play().then(() => {
+          if (this.disposed || !this.playingVideos.has(element)) element.pause();
+        }).catch(() => {}).finally(() => this.pendingVideos.delete(element));
+      }
+    }
     const vw = element.videoWidth;
     const vh = element.videoHeight;
     if (!vw || !vh) return;
@@ -1251,6 +1284,7 @@ export class RpeRenderer {
     const pixelH = this.canvas.height;
 
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
+    gl.activeTexture(gl.TEXTURE0);
     gl.bindTexture(gl.TEXTURE_2D, this.glSourceTex);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.canvas);
     let source: WebGLTexture | null = this.glSourceTex;
@@ -1326,12 +1360,18 @@ export class RpeRenderer {
       this.shaderTextures = cache;
     }
     const cached = cache.get(name);
-    if (cached !== undefined) return cached;
+    if (cached !== undefined) {
+      gl.activeTexture(gl.TEXTURE0 + cached.unit);
+      gl.bindTexture(gl.TEXTURE_2D, cached.texture);
+      return cached.unit;
+    }
     const image = this.chartAssets?.textures.get(name);
     if (!image) return -1;
     const texture = gl.createTexture();
     if (!texture) return -1;
     this.ownedShaderTextures.add(texture);
+    const unit = ++this.shaderTextureCount;
+    gl.activeTexture(gl.TEXTURE0 + unit);
     gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
@@ -1339,11 +1379,7 @@ export class RpeRenderer {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-    this.shaderTextureCount += 1;
-    const unit = this.shaderTextureCount;
-    cache.set(name, unit);
-    gl.activeTexture(gl.TEXTURE0 + unit);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
+    cache.set(name, { unit, texture });
     return unit;
   }
 
@@ -1363,6 +1399,7 @@ export class RpeRenderer {
       this.glCanvas.width = pixelW;
       this.glCanvas.height = pixelH;
       this.disposeGlTargets();
+      gl.activeTexture(gl.TEXTURE0);
       this.glSourceTex = gl.createTexture();
       gl.bindTexture(gl.TEXTURE_2D, this.glSourceTex);
       gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);

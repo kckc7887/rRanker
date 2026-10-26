@@ -61,7 +61,7 @@ describe('beatmap visuals', () => {
 Animation,Foreground,Centre,"sb\\\\exp.png",320,240,3,50,LoopForever
  F,0,0,100,1,1
 `.trim());
-    assert.deepEqual(referencedImageFiles(visuals.objects), [
+    assert.deepEqual(referencedImageFiles(visuals.objects, ['sb/exp2.png', 'sb/exp1.png', 'sb/exp0.png', 'sb/exp3.png']), [
       'sb/exp0.png',
       'sb/exp1.png',
       'sb/exp2.png',

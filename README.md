@@ -18,7 +18,7 @@ rRanker 是一个多音游数据管理应用。你可以在一个应用中查看
 - **数据查询**：查看玩家总览、最佳成绩、完整成绩、曲库和歌曲详情，并按游戏支持的条件搜索、筛选和排序。
 - **账号管理**：按游戏支持的数据来源绑定多个账号，在不同游戏、账号和 osu! 模式之间快速切换。
 - **个人曲库**：收藏歌曲、标记练习谱面，并为歌曲和谱面添加本地标签。
-- **成绩图片**：为舞萌 DX、中二节奏和 Phigros 生成并导出预设或自定义成绩图片。
+- **成绩图片**：为舞萌 DX、中二节奏、Phigros 和 Rizline 生成并导出预设或自定义成绩图片。
 - **谱面功能**：查看舞萌 DX、Majdata Net、Phigros、Phira、osu! 和 Rizline 的谱面确认；下载舞萌 DX、Majdata Net、Phigros、Phira 和 osu! 的谱面文件。
 - **游戏工具**：提供随机歌曲、支持地图选址及跨城机厅与地点搜索的音游地图，以及 Rating 计算、推分计算、实力分析、牌子与收藏品进度、版本对照、模组百科等游戏专属工具。
 - **个性化与存储**：切换深浅色模式和主题色，调整成绩卡片曲绘效果，并查看或清理应用内存储。
@@ -35,7 +35,7 @@ rRanker 是一个多音游数据管理应用。你可以在一个应用中查看
 | [喵斯快跑](https://musedash.peropero.net/) | 玩家数据、曲库与随机歌曲 | MuseDash.moe、示例账号 |
 | [冰与火之舞](https://store.steampowered.com/app/977950/_A_Dance_of_Fire_and_Ice/) | 玩家数据、曲库与随机关卡 | TUF 社区公开玩家 |
 | [Majdata Net](https://majdata.net/) | 玩家数据、曲库、谱面确认与下载及达成率与容错 | Majdata Net 账密登录 |
-| [Rizline](https://www.taptap.cn/app/201173) | 玩家数据、曲库、随机歌曲与谱面确认 | 官方账号 |
+| [Rizline](https://www.taptap.cn/app/201173) | 玩家数据、曲库、随机歌曲、谱面确认与成绩图片 | 官方账号 |
 
 ## 🚀 快速开始
 
@@ -78,6 +78,7 @@ Expo SDK 57 · Expo Router · React Native 0.86 · React 19.2 · TypeScript stri
 - [replayviewer-js](https://github.com/daladal/replayviewer-js)
 - [danser-go](https://github.com/Wieku/danser-go)
 - [osu](https://github.com/ppy/osu)
+- [osu-framework](https://github.com/ppy/osu-framework)
 - [RizlineGameSaveData](https://github.com/CHCAT1320/RizlineGameSaveData)
 - [rizline_b40_tool](https://github.com/REDDRAGON-HL/rizline_b40_tool)
 - [RizlineSavingTest](https://github.com/HiXcc/RizlineSavingTest)

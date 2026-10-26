@@ -3,7 +3,7 @@ import { BackHandler, Platform, Pressable, StyleSheet, Text, View } from 'react-
 import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { WebView } from 'react-native-webview';
-import Storage from '@/storage/key-value-storage';
+import Storage, { enqueueKeyMutation } from '@/storage/key-value-storage';
 import {
   chartPreviewHostCommandScript,
   parseChartPreviewBridgeMessage,
@@ -25,6 +25,7 @@ import { createRuntimeOperation, recordRuntimeError } from '@/services/runtime-d
 import { ProviderError, providerErrorToUserMessage } from '@/providers/errors';
 import { useAppTheme } from '@/theme/app-theme';
 import { chartPreviewAppearanceScript } from './chart-preview-inject-factory';
+import { useNotification } from '@/components/AppNotification';
 
 export type ChartPreviewShellSource = {
   uri: string;
@@ -87,6 +88,7 @@ type PreparedPreview = { source: ChartPreviewShellSource; session: PreviewSessio
 type ReleaseReason = 'memory' | 'process';
 const PREPARE_TIMEOUT_MS = 120_000;
 const READY_TIMEOUT_MS = 60_000;
+const pendingSettings = new Map<string, { value: Record<string, unknown>; notification?: number }>();
 
 const LIFECYCLE_PAUSE_SCRIPT = chartPreviewHostCommandScript({ type: 'pause', cause: 'lifecycle' });
 const EXIT_FULLSCREEN_SCRIPT = chartPreviewHostCommandScript({ type: 'exit-fullscreen' });
@@ -162,18 +164,40 @@ export function ChartPreviewScreenShell<TPayload>({
 }: ChartPreviewScreenShellProps<TPayload>) {
   const theme = useAppTheme();
   const lifecycle = useAppLifecycle();
+  const { showActionNotification, dismissNotification } = useNotification();
   const foreground = lifecycle.foregroundReady;
   const webRef = useRef<WebView>(null);
-  const settingsWriteQueueRef = useRef<Promise<void>>(Promise.resolve());
+  const flushSettingsKey = useCallback(function flush(key: string): Promise<void> {
+    const pending = pendingSettings.get(key);
+    if (!pending) return Promise.resolve();
+    return enqueueKeyMutation(Storage, key, async () => {
+      if (pendingSettings.get(key) !== pending) return;
+      await Storage.setItem(key, JSON.stringify(pending.value));
+      if (pendingSettings.get(key) === pending) {
+        pendingSettings.delete(key);
+        if (pending.notification !== undefined) dismissNotification(pending.notification);
+      }
+    }).catch(error => {
+      recordRuntimeError('chart-preview-settings', error, false, { phase: 'persist' });
+      if (pendingSettings.get(key) !== pending || pending.notification !== undefined) return;
+      pending.notification = showActionNotification({
+        title: '谱面设置保存失败', message: '当前设置已保留，请重试保存。', variant: 'warning',
+        actions: [{ label: '稍后', tone: 'cancel', onPress: () => {
+          const latest = pendingSettings.get(key);
+          if (latest) delete latest.notification;
+        } }, { label: '重试', onPress: () => {
+          const latest = pendingSettings.get(key);
+          if (latest) delete latest.notification;
+          return flush(key);
+        } }],
+      });
+    });
+  }, [dismissNotification, showActionNotification]);
   const flushSessionSettings = useCallback((session: PreviewSession | null) => {
     if (!session?.settingsPending) return;
     session.settingsPending = false;
-    const serialized = JSON.stringify(session.settings);
-    settingsWriteQueueRef.current = settingsWriteQueueRef.current
-      .catch(() => undefined)
-      .then(() => Storage.setItem(session.settingsKey, serialized))
-      .catch(error => recordRuntimeError('chart-preview-settings', error, false, { phase: 'persist' }));
-  }, []);
+    void flushSettingsKey(session.settingsKey);
+  }, [flushSettingsKey]);
 
   const [preparedView, setPreparedView] = useState<PreparedPreview | null>(null);
   const [stageError, setStageError] = useState<string | null>(null);
@@ -190,7 +214,7 @@ export function ChartPreviewScreenShell<TPayload>({
   const memoryWarningRef = useRef(lifecycle.memoryWarningGeneration);
   /** 换源时立即让旧回调失效，不等 effect 清理。 */
   // eslint-disable-next-line react-hooks/exhaustive-deps -- 依赖项决定本次准备的生命周期
-  const generation = useMemo(() => ({}), [request, externalError, lifecycle.foregroundGeneration, reloadGeneration]);
+  const generation = useMemo(() => ({}), [request, settingsKey, externalError, lifecycle.foregroundGeneration, reloadGeneration]);
   const generationRef = useRef(generation);
   generationRef.current = generation;
   const lifecycleRef = useRef(lifecycle);
@@ -279,8 +303,9 @@ export function ChartPreviewScreenShell<TPayload>({
 
   useEffect(() => {
     if (!foreground) return;
+    void flushSettingsKey(settingsKey);
     setBackgroundBlocked(false);
-  }, [foreground, lifecycle.foregroundGeneration]);
+  }, [foreground, lifecycle.foregroundGeneration, settingsKey, flushSettingsKey]);
 
   useEffect(() => {
     if (!heavyContentMounted || !source) return;
@@ -367,9 +392,9 @@ export function ChartPreviewScreenShell<TPayload>({
 
     void (async () => {
       try {
-        await settingsWriteQueueRef.current;
+        await flushSettingsKey(settingsKey);
         if (!isCurrentSession(session)) return;
-        const settings = await loadSettings(settingsKey);
+        const settings = pendingSettings.get(settingsKey)?.value ?? await loadSettings(settingsKey);
         if (!isCurrentSession(session)) return;
         session.settings = settings;
         const prepared = await request.prepare(controller.signal, settings, (progress) => {
@@ -423,6 +448,9 @@ export function ChartPreviewScreenShell<TPayload>({
 
   const persistSettings = (session: PreviewSession, partial: Record<string, unknown>, committed = true) => {
     session.settings = { ...session.settings, ...partial };
+    pendingSettings.set(session.settingsKey, {
+      ...pendingSettings.get(session.settingsKey), value: session.settings,
+    });
     session.settingsPending = true;
     if (committed || !foreground) flushSessionSettings(session);
   };

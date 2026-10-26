@@ -62,7 +62,7 @@ function sliderDimensions(parts: string[]): { slides: number; length: number } {
   const slides = Number(parts[6] ?? '1');
   const length = Number(parts[7] ?? '0');
   if (!Number.isSafeInteger(slides) || slides < 1) throw new Error('滑条重复次数无效');
-  if (!Number.isFinite(length) || length < 0) throw new Error('滑条长度无效');
+  if (!Number.isFinite(length) || length <= 0) throw new Error('滑条长度无效');
   return { slides, length };
 }
 

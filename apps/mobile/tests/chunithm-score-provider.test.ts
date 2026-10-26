@@ -1,4 +1,7 @@
 import { ChunithmScoreProvider } from '@/providers/chunithm-score-provider';
+import { resolveChunithmPossessionTheme } from '@/domain/chunithm-rating-theme';
+import { buildChunithmBestImageHtml } from '@/features/chunithm-best-image/build-chunithm-best-image-html';
+import { JSDOM } from 'jsdom';
 
 const session = {
   mode: 'lxns-oauth',
@@ -69,6 +72,28 @@ function response(data: unknown, status = 200): Response {
 }
 
 describe('ChunithmScoreProvider', () => {
+  it.each([
+    ['normal', '无领域', 'none'], ['copper', '铜领域', 'copper'], ['silver', '银领域', 'silver'],
+    ['gold', '金领域', 'gold'], ['platina', '铂金领域', 'platinum'], ['rainbow', '虹领域', 'rainbow'],
+  ])('玩家领域 %s 贯通上游、页面主题与成绩图', async (possession, label, asset) => {
+    vi.stubGlobal('fetch', vi.fn(async () => response({ ...player, rating_possession: possession })));
+    const result = await new ChunithmScoreProvider(session).getPlayer();
+    const theme = resolveChunithmPossessionTheme(result?.rating_possession);
+    expect(theme.label).toBe(label);
+    const html = buildChunithmBestImageHtml({ type: 'best50', width: 1080, player: result, ratingDisplay: '17.25',
+      page: { id: 'page', pageIndex: 0, pageCount: 1, sections: [] } });
+    const dom = new JSDOM(html);
+    try {
+      if (possession === 'copper') {
+        const field = [...dom.window.document.querySelectorAll('rect')].find(rect => rect.getAttribute('x') === '143' && rect.getAttribute('y') === '90');
+        const fill = field?.getAttribute('fill');
+        const id = fill?.slice(4, -1);
+        expect([...dom.window.document.querySelectorAll(`${id} stop`)].map(stop => stop.getAttribute('stop-color'))).toEqual(theme.fillColors);
+      } else {
+        expect([...dom.window.document.querySelectorAll('image')].map(image => image.getAttribute('href'))).toContain(`field/${asset}.svg`);
+      }
+    } finally { dom.window.close(); }
+  });
   afterEach(() => {
     vi.useRealTimers();
     vi.unstubAllGlobals();

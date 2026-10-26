@@ -55,6 +55,17 @@ function request(events: string, files = new Map<string, Uint8Array>()) {
 }
 
 describe('preview media presentation', () => {
+  it('动画仅解码归档中的实际帧，缺帧不阻断其它图层且仍使用原帧号', async () => {
+    await environment(async ({ decoded }) => {
+      const media = await createPreviewMedia(request('Animation,Foreground,Centre,"frames/f.png",320,240,1000000000,50,LoopForever\n F,0,0,500,1',
+        new Map([['frames/f0.png', new Uint8Array([1])], ['frames/f2.png', new Uint8Array([3])], ['other/f1.png', new Uint8Array([9])]])));
+      assert.deepEqual(decoded.sort(), [1, 3]);
+      const ctx = new TestContext();
+      media.drawUnder(ctx.asContext(), 100);
+      assert.equal((ctx.calls.find(call => call.type === 'draw')?.image as { id: number }).id, 3);
+      media.dispose();
+    });
+  });
   it('loads staged image and video URIs without copying media into Blob URLs', async () => {
     const oldImage = globalThis.Image;
     const oldCreate = URL.createObjectURL;

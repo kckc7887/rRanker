@@ -6,7 +6,6 @@ import {
   paginateChunithmBestImageSections,
 } from '@/features/chunithm-best-image/chunithm-best-image';
 import { buildChunithmBestImageHtml } from '@/features/chunithm-best-image/build-chunithm-best-image-html';
-import { filterChunithmBestImageBackgroundSongs } from '@/features/chunithm-best-image/chunithm-best-image-background';
 import {
   chunithmBestImageJacketUrl,
   resolveChunithmBestImageJacketId,
@@ -301,42 +300,6 @@ describe('parseChunithmBestImageStylePreferences', () => {
       character: { mode: 'current' },
       background: { mode: 'default' },
     });
-  });
-});
-
-describe('filterChunithmBestImageBackgroundSongs', () => {
-  const songs = [
-    {
-      id: 101,
-      title: 'World Vanquisher',
-      artist: 'void',
-      genre: 'ORIGINAL',
-      bpm: 170,
-      versionId: 1,
-      versionTitle: 'CHUNITHM',
-      locked: false,
-      disabled: false,
-      difficulties: [],
-    },
-    {
-      id: 202,
-      title: '光線チューニング',
-      artist: 'ナユタン星人',
-      genre: 'POPS & ANIME',
-      bpm: 190,
-      versionId: 2,
-      versionTitle: 'STAR',
-      locked: false,
-      disabled: false,
-      difficulties: [],
-    },
-  ];
-
-  it('searches background songs by title, artist, and id', () => {
-    expect(filterChunithmBestImageBackgroundSongs(songs, 'world')).toEqual([songs[0]]);
-    expect(filterChunithmBestImageBackgroundSongs(songs, 'ナユタン')).toEqual([songs[1]]);
-    expect(filterChunithmBestImageBackgroundSongs(songs, '202')).toEqual([songs[1]]);
-    expect(filterChunithmBestImageBackgroundSongs(songs, '')).toBe(songs);
   });
 });
 

@@ -108,18 +108,21 @@ function bezierEasing(x1: number, y1: number, x2: number, y2: number): (x: numbe
     if (x >= 1) return 1;
     let t = x;
     for (let i = 0; i < 8; i += 1) {
+      const error = sampleX(t) - x;
+      if (Math.abs(error) < 1e-9) return t;
       const slope = derivX(t);
-      if (slope < 1e-6) break;
-      t -= (sampleX(t) - x) / slope;
+      if (Math.abs(slope) < 1e-6) break;
+      t -= error / slope;
+      if (t < 0 || t > 1) break;
     }
     let lo = 0;
     let hi = 1;
-    for (let i = 0; i < 16; i += 1) {
+    for (let i = 0; i < 32; i += 1) {
       const mid = (lo + hi) / 2;
       if (sampleX(mid) < x) lo = mid;
       else hi = mid;
     }
-    return t;
+    return (lo + hi) / 2;
   };
   return (x) => sampleY(solve(x));
 }

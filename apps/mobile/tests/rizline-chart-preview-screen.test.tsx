@@ -2,6 +2,12 @@ import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
 import RizlineChartPreviewScreen from '../app/songs/rizline-chart-preview';
 
+const mockShowActionNotification = jest.fn();
+const mockDismissNotification = jest.fn();
+jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({
+  showActionNotification: mockShowActionNotification, dismissNotification: mockDismissNotification,
+}) }));
+
 const mockInject = jest.fn();
 const mockDispose = jest.fn();
 const mockPrepare = jest.fn(async (..._args: unknown[]) => ({

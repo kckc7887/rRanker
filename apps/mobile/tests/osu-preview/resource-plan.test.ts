@@ -63,6 +63,23 @@ describe('selected chart resource plan', () => {
     const text = fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, `[HitObjects]\n256,192,1000,2,0,L|300:192,${repeat},100`);
     expect(() => parseBeatmap(text)).toThrow('滑条重复次数');
   });
+  it.each(['0', '-1', 'NaN', 'Infinity'])('rejects invalid slider length %s', length => {
+    const text = fixtureOsu(0, 'Native').replace(/\[HitObjects\][\s\S]*$/, `[HitObjects]\n256,192,1000,2,0,L|300:192,1,${length}`);
+    expect(() => parseBeatmap(text)).toThrow('滑条长度');
+  });
+
+  it('selects only archive animation frames within the declared range', () => {
+    const osuText = fixtureOsu(0, 'Native').replace('[HitObjects]', `[Events]
+Animation,Foreground,Centre,"sb/a.png",320,240,1000000000,50,LoopForever
+ F,0,0,1000,1
+Animation,Foreground,Centre,"sb/b",320,240,2,50,LoopForever
+ F,0,0,1000,1
+[HitObjects]`);
+    const availablePaths = ['set/sb/a0.png', 'set/SB/A999999999.PNG', 'set/sb/a1000000000.png',
+      'set/sb/a01.png', 'set/sb/a-1.png', 'other/sb/a0.png', 'set/sb/b0.png', 'set/sb/b2.png'];
+    const result = selectPreviewResources({ osuText, osuPath: 'set/map.osu', osbSources: [], availablePaths });
+    expect(result.imagePaths).toEqual(['set/sb/a0.png', 'set/SB/A999999999.PNG', 'set/sb/b0.png']);
+  });
   it('decodes UTF16 in runtimes whose TextDecoder only supports UTF8, replacing malformed units', () => {
     const original = globalThis.TextDecoder;
     globalThis.TextDecoder = class extends original {

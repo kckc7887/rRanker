@@ -7,7 +7,7 @@ import {
   interruptChartPreviewParse,
   throwIfChartPreviewCancelled,
 } from '../../chart-preview-shared/chart-preview-resource-budget';
-import { resolveArchivePath } from './osu-text';
+import { normalizeArchivePath, resolveArchivePath } from './osu-text';
 
 export type StoryboardLayer = 'Background' | 'Fail' | 'Pass' | 'Foreground' | 'Overlay';
 export type StoryboardOrigin =
@@ -350,11 +350,29 @@ export function animationFrameFile(file: string, frame: number): string {
   return dot > slash ? `${file.slice(0, dot)}${frame}${file.slice(dot)}` : `${file}${frame}.png`;
 }
 
-export function referencedImageFiles(objects: readonly StoryboardObject[]): string[] {
+export function referencedImageFiles(objects: readonly StoryboardObject[], availablePaths: Iterable<string>): string[] {
   const files = new Map<string, string>();
+  const available = [...availablePaths].map(path => normalizeArchivePath(path));
   for (const object of objects) {
-    for (let frame = 0; frame < object.frameCount; frame += 1) {
-      const file = object.kind === 'Animation' ? animationFrameFile(object.file, frame) : object.file;
+    if (object.kind !== 'Animation') {
+      files.set(object.file.toLowerCase(), object.file);
+      continue;
+    }
+    const first = animationFrameFile(object.file, 0).toLowerCase();
+    const dot = first.lastIndexOf('.');
+    const prefix = first.slice(0, dot - 1);
+    const extension = first.slice(dot);
+    const frames: { file: string; index: number }[] = [];
+    for (const file of available) {
+      const normalized = file.toLowerCase();
+      if (!normalized.startsWith(prefix) || !normalized.endsWith(extension)) continue;
+      const suffix = normalized.slice(prefix.length, -extension.length);
+      if (!/^(0|[1-9]\d*)$/.test(suffix)) continue;
+      const index = Number(suffix);
+      if (index < object.frameCount) frames.push({ file, index });
+    }
+    frames.sort((left, right) => left.index - right.index);
+    for (const { file } of frames) {
       files.set(file.replace(/\\/g, '/').toLowerCase(), file);
     }
   }

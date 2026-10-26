@@ -381,6 +381,41 @@ it('负音乐偏移先播放谱面前导，变速仍保留当前谱面位置', a
   session.dispose();
 });
 
+it('负偏移前导内 seek 与 AB 回跳仍按谱面位置运行，媒体保持待起播', async () => {
+  const { session, context, frames, media } = createPlayback();
+  context.state = 'running';
+  session.setChartTimeline({ durationSeconds: 30, offsetSeconds: -2 });
+  await session.loadMusic(new ArrayBuffer(8));
+  await session.seek(0.5);
+  session.loop.toggle('a', 0.5);
+  session.loop.toggle('b', 1.5);
+  await session.play();
+  frames.advance(500);
+  expect(session.chartTime).toBeCloseTo(1);
+  expect(media[0]!.paused).toBe(true);
+  frames.advance(600);
+  await vi.waitFor(() => expect(session.playing).toBe(true));
+  expect(session.chartTime).toBeCloseTo(0.5);
+  expect(media[0]!.paused).toBe(true);
+  session.dispose();
+});
+
+it('正音乐偏移从对应音乐位置起播，暂停定位后保持同一时间换算', async () => {
+  const { session, context, frames, media } = createPlayback();
+  context.state = 'running';
+  session.setChartTimeline({ durationSeconds: 30, offsetSeconds: 2 });
+  await session.loadMusic(new ArrayBuffer(8));
+  await session.play();
+  expect(media[0]!.currentTime).toBe(2);
+  frames.advance(500);
+  expect(session.chartTime).toBeCloseTo(0.5);
+  session.pause();
+  await session.seek(5);
+  await session.play();
+  expect(media[0]!.currentTime).toBe(7);
+  session.dispose();
+});
+
 it('音乐缓冲时冻结谱面并停止排队音效，恢复后继续跟随音乐', async () => {
   const { session, context, frames, media } = createPlayback(HIT_SOUNDS);
   context.state = 'running';

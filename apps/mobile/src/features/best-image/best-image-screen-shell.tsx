@@ -276,7 +276,7 @@ export function BestImageScreenShell<TType extends string>({
     previewTestIdPrefix,
     sources,
     pages,
-    pageIndex,
+    pageIndex: requestedPageIndex,
     previewStates,
     onPageIndexChange,
     onPreviewStatesChange,
@@ -284,6 +284,7 @@ export function BestImageScreenShell<TType extends string>({
     fileAccessFromFileURLs,
     allowingReadAccessToUrl,
   } = preview;
+  const pageIndex = Math.max(0, Math.min(requestedPageIndex, pages.length - 1, (sources?.length ?? pages.length) - 1));
   const {
     exportDisabled,
     exportSpinner,
@@ -367,6 +368,14 @@ export function BestImageScreenShell<TType extends string>({
   const screenWidth = window.width > 0 ? window.width : 390;
   const previewWidth = Math.min(720, Math.max(280, screenWidth - 32));
   const previewHeight = previewWidth * 4 / 3;
+  const pagerRef = useRef<FlatList<BestImageWebViewSource>>(null);
+  const pagerGeneration = useMemo(() => ({ sources, previewWidth }), [sources, previewWidth]);
+  const currentPagerGeneration = useRef(pagerGeneration);
+  currentPagerGeneration.current = pagerGeneration;
+  useEffect(() => {
+    if (pageIndex !== requestedPageIndex) onPageIndexChange(pageIndex);
+    pagerRef.current?.scrollToOffset({ offset: previewWidth * pageIndex, animated: false });
+  }, [sources, previewWidth, pageIndex, requestedPageIndex, onPageIndexChange]);
 
   const recoverFromMemoryPressure = () => {
     if (memoryRecoveryWidth !== null) onChooseWidth(memoryRecoveryWidth);
@@ -491,12 +500,19 @@ export function BestImageScreenShell<TType extends string>({
       <Text style={[styles.label, styles.sectionLabel, { color: theme.text }]}>预览</Text>
       <View accessibilityLabel="HTML图片预览窗" style={[styles.previewFrame, { width: previewWidth, height: previewHeight, backgroundColor: theme.surface, borderColor: theme.border }]}>
         {sources ? <FlatList
+          ref={pagerRef}
           data={sources}
           horizontal
+          initialScrollIndex={pageIndex}
+          getItemLayout={(_, index) => ({ length: previewWidth, offset: previewWidth * index, index })}
           initialNumToRender={2}
           keyExtractor={(_, index) => pages[index]!.id}
           maxToRenderPerBatch={3}
-          onMomentumScrollEnd={(event) => onPageIndexChange(Math.round(event.nativeEvent.contentOffset.x / previewWidth))}
+          onMomentumScrollEnd={(event) => {
+            if (currentPagerGeneration.current !== pagerGeneration) return;
+            const index = Math.round(event.nativeEvent.contentOffset.x / previewWidth);
+            onPageIndexChange(Math.max(0, Math.min(index, sources.length - 1, pages.length - 1)));
+          }}
           pagingEnabled
           renderItem={({ item, index }) => {
             const pageId = pages[index]!.id;

@@ -43,7 +43,7 @@ export function selectPreviewResources(input: {
   const visuals = parseBeatmapVisuals(input.osuText, sources.map(source => source.text), {
     osuPath: input.osuPath, osbPaths: sources.map(source => source.path), cancellation: input.cancellation,
   });
-  const images = [...referencedImageFiles(visuals.objects), ...(visuals.background ? [visuals.background] : [])];
+  const images = [...referencedImageFiles(visuals.objects, available.keys()), ...(visuals.background ? [visuals.background] : [])];
   const imagePaths = [...new Set(images.map(name => lookup(name)).filter((path): path is string => path !== undefined))];
   const beatmap = parseBeatmap(input.osuText);
   assertChartPreviewNoteCount(beatmap.hitObjects.length + beatmap.maniaHolds.length);

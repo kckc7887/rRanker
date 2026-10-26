@@ -2,7 +2,7 @@ import { afterEach, describe, expect, it, vi } from 'vitest';
 import { parseRpeChart } from '@/features/phigros-chart-preview/webview-player/rpe-core';
 import { RpeRenderer } from '@/features/phigros-chart-preview/webview-player/rpe-renderer';
 
-function environment() {
+function environment(gl?: WebGLRenderingContext) {
   const calls = new Map<HTMLCanvasElement, unknown[][]>();
   function canvas(): HTMLCanvasElement {
     const draws: unknown[][] = [];
@@ -12,8 +12,8 @@ function environment() {
         if (key === 'measureText') return { width: 10 };
       }),
     });
-    const value = { width: 675, height: 450, clientWidth: 675, clientHeight: 450,
-      style: {}, getContext: () => context, setAttribute() {}, remove() {},
+    const value = { width: 300, height: 150, clientWidth: 675, clientHeight: 450,
+      style: {}, getContext: (kind: string) => kind === 'webgl' ? gl ?? null : context, setAttribute() {}, remove() {},
       getBoundingClientRect: () => ({ width: 675, height: 450 }),
     } as unknown as HTMLCanvasElement;
     calls.set(value, draws);
@@ -23,7 +23,7 @@ function environment() {
   vi.stubGlobal('document', { createElement: canvas });
   vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   const stage = canvas();
-  return { renderer: new RpeRenderer(stage), draws: calls.get(stage)! };
+  return { renderer: new RpeRenderer(stage), stage, draws: calls.get(stage)! };
 }
 
 const speed = { startTime: [0, 0, 1], endTime: [100, 0, 1], start: 9, end: 9, easingType: 1 };
@@ -41,6 +41,90 @@ function image(size: number): HTMLImageElement {
 
 afterEach(() => vi.unstubAllGlobals());
 describe('RPE renderer', () => {
+  it('视频遵循暂停、倍速、区间定位并在异步定位后重绘', async () => {
+    class Video extends EventTarget {
+      duration = 10;
+      currentTime = 0;
+      playbackRate = 1;
+      videoWidth = 320;
+      videoHeight = 180;
+      paused = true;
+      play() { this.paused = false; return Promise.resolve(); }
+      pause() { this.paused = true; }
+    }
+    const video = new Video();
+    const { renderer, draws } = environment();
+    const data = parseRpeChart({ META: { RPEVersion: 150 }, BPMList: [{ startTime: [0, 0, 1], bpm: 120 }], judgeLineList: [] },
+      { extraJson: JSON.stringify({ videos: [{ path: 'clip.mp4', time: [4, 0, 1] }] }) });
+    renderer.setChart(data);
+    renderer.setChartAssets({ textures: new Map(), videos: new Map([['clip.mp4', video as unknown as HTMLVideoElement]]),
+      shaders: new Map(), gifs: new Map(), gifAnims: new Map() });
+    renderer.render(3);
+    expect(video.currentTime).toBe(1);
+    expect(video.paused).toBe(true);
+    draws.length = 0;
+    video.dispatchEvent(new Event('seeked'));
+    expect(draws.some(args => args[0] === video)).toBe(true);
+    renderer.render(4, true, 2);
+    expect([video.currentTime, video.playbackRate, video.paused]).toEqual([2, 2, false]);
+    await Promise.resolve();
+    renderer.render(4.1, false, 0.5);
+    expect(video.currentTime).toBeCloseTo(2.1);
+    expect(video.paused).toBe(true);
+    renderer.render(5, true, 0.5);
+    expect(video.playbackRate).toBe(0.5);
+    renderer.render(0, true);
+    expect(video.paused).toBe(true);
+    renderer.render(12, true);
+    expect(video.paused).toBe(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    renderer.render(3, true);
+    renderer.dispose();
+    await Promise.resolve();
+    expect(video.paused).toBe(true);
+    draws.length = 0;
+    video.dispatchEvent(new Event('seeked'));
+    expect(draws).toEqual([]);
+  });
+
+  it('多个自定义采样器在缓存复用及画布缩放后仍采到各自图片', () => {
+    type Texture = { source?: unknown };
+    const bindings = new Map<number, Texture | null>();
+    const samplers = new Map<string, number>();
+    const sampled: Record<string, unknown>[] = [];
+    let active = 0;
+    const gl = new Proxy({
+      TEXTURE0: 0,
+      activeTexture(unit: number) { active = unit; },
+      createTexture: () => ({}),
+      bindTexture(_target: number, texture: Texture) { bindings.set(active, texture); },
+      texImage2D(...args: unknown[]) { bindings.get(active)!.source = args.at(-1); },
+      getUniformLocation: (_program: unknown, name: string) => name,
+      uniform1i(name: string, unit: number) { samplers.set(name, unit); },
+      drawArrays() { sampled.push(Object.fromEntries([...samplers].map(([name, unit]) => [name, bindings.get(unit)?.source]))); },
+      createShader: () => ({}), createProgram: () => ({}),
+      getShaderParameter: () => true, getProgramParameter: () => true,
+      getExtension: () => null,
+    }, { get: (target, key) => Reflect.get(target, key) ?? (() => {}) }) as unknown as WebGLRenderingContext;
+    const { renderer, stage } = environment(gl);
+    const a = image(32), b = image(64);
+    renderer.setChart(parseRpeChart({ META: { RPEVersion: 150 }, BPMList: [{ startTime: [0, 0, 1], bpm: 120 }], judgeLineList: [] },
+      { extraJson: JSON.stringify({ effects: [0, 1].map(() => ({ shader: 'mix.glsl', start: [0, 0, 1], end: [20, 0, 1], vars: { first: 'a.png', second: 'b.png' } })) }) }));
+    renderer.setChartAssets({ textures: new Map([['a.png', a], ['b.png', b]]), videos: new Map(),
+      shaders: new Map([['mix.glsl', 'uniform sampler2D first; uniform sampler2D second;']]), gifs: new Map(), gifAnims: new Map() });
+    renderer.render(1);
+    renderer.render(2);
+    stage.getBoundingClientRect = () => ({ width: 800, height: 450 }) as DOMRect;
+    renderer.resize();
+    renderer.render(3);
+    expect(sampled.length).toBeGreaterThan(0);
+    for (const draw of sampled) {
+      expect(draw.first).toBe(a);
+      expect(draw.second).toBe(b);
+    }
+    renderer.dispose();
+  });
   it.each([2048, 4096])('染色后保留 %s 像素纹理并在释放时回收', size => {
     const { renderer, draws } = environment();
     renderer.setChart(chart());

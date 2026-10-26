@@ -38,7 +38,7 @@ Sample,900,1,"fail.wav"
       { file: 'set/fail.wav', timeMs: 900, layer: 'Fail', volume: 1 },
     ]);
     assert.equal(visuals.objects[1]!.loopForever, false);
-    assert.deepEqual(referencedImageFiles(visuals.objects).slice(1, 4), ['set/frames/f0.png', 'set/frames/f1.png', 'set/frames/f2.png']);
+    assert.deepEqual(referencedImageFiles(visuals.objects, ['set/frames/f0.png', 'set/frames/f1.png', 'set/frames/f2.png']).slice(1, 4), ['set/frames/f0.png', 'set/frames/f1.png', 'set/frames/f2.png']);
     assert.equal(visuals.objects[2]!.file, 'set/stamp.png');
     assert.equal(evaluateSprite(visuals.objects[0]!, 1000)?.fade, 0.5);
     assert.deepEqual(storyboardTimeRange(visuals.objects, visuals.samples), { startMs: -500, endMs: 1500 });
