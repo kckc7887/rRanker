@@ -87,7 +87,7 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `UserLibraryService` 是收藏、练习、标签、预设、导入导出的业务入口；`SqliteUserLibraryRepository` 在真实事务内读写。单项动作只改对应行，并在原事务中只读回所属游戏；清游戏保留其他游戏和全局预设。当前库 schema 为 4，不支持的表结构只重建个人库所属表。
 
-备份只支持版本 3，`gameId` 必须存在。`createBackup` 通过仓库的 `readBackup` 在同一次队列任务内读取条目与标签预设。`parseUserDataBackup` 在导入前拒绝旧格式；`mergeBackup` 在同一事务内合并/替换条目与预设，条目或预设上限失败不会留下部分写入。`user-data-file-service.ts` 通过系统文件选择与分享读写当前备份，临时副本使用后删除。
+备份只支持版本 3，`gameId` 必须存在。设置页通过 `useUserLibrary` 提供个人曲库导入、导出；导入选择合并或替换，成功后失效曲库和预设查询。`createBackup` 通过仓库的 `readBackup` 在同一次队列任务内读取条目与标签预设。`parseUserDataBackup` 在导入前拒绝旧格式；`mergeBackup` 在同一事务内合并/替换条目与预设，条目或预设上限失败不会留下部分写入。`user-data-file-service.ts` 通过系统文件选择与分享读写当前备份，临时副本使用后删除。
 
 存储管理通过 `features/storage-management/game-storage-adapters.ts` 统计和清理各游戏当前缓存。用户数据、凭据、日志与可重新下载的资源按实际归属处理；清理释放量以实际前后统计为准。
 

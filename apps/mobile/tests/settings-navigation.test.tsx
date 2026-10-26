@@ -6,12 +6,24 @@ import SettingsTabScreen, { SettingsScreen } from '../app/(tabs)/settings';
 import PersonalizationScreen from '../app/personalization';
 import { useThemeStore } from '@/state/theme-store';
 import { NotificationProvider } from '@/components/AppNotification';
+import { createUserDataBackup, type RestoreMode, type UserDataBackup } from '@/domain/user-library';
 
 const mockPush = jest.fn();
 const mockSaveTheme = jest.fn(async (_value?: unknown) => undefined);
 const mockClear = jest.fn(async (_ids?: unknown) => ({ clearedIds: ['shared'], failures: [] as string[], reclaimedBytes: 4096 }));
 const mockLoadPrefs = jest.fn(async () => ({ version: 1 as const, selectedIds: ['shared' as const] }));
 const mockExportDiagnostics = jest.fn(async () => undefined);
+const mockCreateBackup = jest.fn(async () => createUserDataBackup([], '2026-10-26T00:00:00Z', ['练习']));
+const mockRestoreBackup = jest.fn(async (_backup: UserDataBackup, _mode: RestoreMode) => []);
+const mockPickBackup = jest.fn(async (): Promise<UserDataBackup | null> => null);
+const mockShareBackup = jest.fn(async (_backup: UserDataBackup) => undefined);
+
+jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({
+  createBackup: () => mockCreateBackup(), restoreBackup: (backup: UserDataBackup, mode: RestoreMode) => mockRestoreBackup(backup, mode),
+}) }));
+jest.mock('@/services/user-data-file-service', () => ({
+  pickUserDataBackup: () => mockPickBackup(), shareUserDataBackup: (backup: UserDataBackup) => mockShareBackup(backup),
+}));
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-file-system', () => jest.requireActual<typeof import('./remote-image-native-mock')>('./remote-image-native-mock').fileSystem);
@@ -121,6 +133,10 @@ describe('settings navigation', () => {
     mockLoadPrefs.mockClear();
     mockExportDiagnostics.mockReset();
     mockExportDiagnostics.mockResolvedValue(undefined);
+    mockCreateBackup.mockClear();
+    mockRestoreBackup.mockReset().mockResolvedValue([]);
+    mockPickBackup.mockReset().mockResolvedValue(null);
+    mockShareBackup.mockReset().mockResolvedValue(undefined);
     /** 替换循环动画，避免测试中的原生驱动报错。 */
     jest.spyOn(Animated, 'loop').mockReturnValue({
       start: jest.fn(),
@@ -150,6 +166,52 @@ describe('settings navigation', () => {
     const screen = await renderSettings();
     await fireEvent.press(screen.getByText('游戏管理'));
     expect(mockPush).toHaveBeenCalledWith('/game-management');
+  });
+
+  it('从设置导出完整个人曲库备份', async () => {
+    const screen = await renderSettings();
+    await fireEvent.press(screen.getByText('导出'));
+    await waitFor(() => expect(mockShareBackup).toHaveBeenCalledWith(expect.objectContaining({ tagPresets: ['练习'] })));
+  });
+
+  it.each(['merge', 'replace'] as const)('导入个人曲库允许选择 %s', async mode => {
+    const backup = createUserDataBackup([], '2026-10-26T00:00:00Z', ['保留标签']);
+    mockPickBackup.mockResolvedValueOnce(backup);
+    const screen = await renderSettings();
+    await fireEvent.press(screen.getByText('导入'));
+    await fireEvent.press(await screen.findByText(mode === 'merge' ? '合并' : '替换'));
+    await waitFor(() => expect(mockRestoreBackup).toHaveBeenCalledWith(backup, mode));
+    expect(await screen.findByText('个人曲库已导入')).toBeTruthy();
+  });
+
+  it('取消选择文件或取消导入均保留当前个人曲库', async () => {
+    const screen = await renderSettings();
+    await fireEvent.press(screen.getByText('导入'));
+    expect(mockRestoreBackup).not.toHaveBeenCalled();
+    mockPickBackup.mockResolvedValueOnce(createUserDataBackup([], '2026-10-26T00:00:00Z'));
+    await fireEvent.press(screen.getByText('导入'));
+    await fireEvent.press(await screen.findByText('取消'));
+    expect(mockRestoreBackup).not.toHaveBeenCalled();
+  });
+
+  it('备份读取或事务保存失败后保留错误提示并可重试', async () => {
+    mockPickBackup.mockRejectedValueOnce(new Error('备份版本或内容无效'));
+    const screen = await renderSettings();
+    await fireEvent.press(screen.getByText('导入'));
+    expect(await screen.findByText('个人曲库操作失败')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('关闭通知'));
+    expect(mockRestoreBackup).not.toHaveBeenCalled();
+    const backup = createUserDataBackup([], '2026-10-26T00:00:00Z');
+    mockPickBackup.mockResolvedValue(backup);
+    mockRestoreBackup.mockRejectedValueOnce(new Error('保存失败'));
+    await fireEvent.press(screen.getByText('导入'));
+    await fireEvent.press(await screen.findByText('合并'));
+    await waitFor(() => expect(mockRestoreBackup).toHaveBeenCalledTimes(1));
+    expect(await screen.findByText('个人曲库操作失败')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('关闭通知'));
+    await fireEvent.press(screen.getByText('导入'));
+    await fireEvent.press(await screen.findByText('合并'));
+    expect(await screen.findByText('个人曲库已导入')).toBeTruthy();
   });
 
   it('moves appearance controls to personalization and explains diagnostics in user language', async () => {

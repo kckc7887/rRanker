@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useRef, useState } from 'react';
 import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, type Href } from 'expo-router';
@@ -11,6 +11,9 @@ import { listClearableCategoryIds } from '@/features/storage-management/storage-
 import { useAppTheme } from '@/theme/app-theme';
 import { storageClearPreferencesStore } from '@/storage/storage-clear-prefs-store';
 import { providerErrorToUserMessage } from '@/providers/errors';
+import { useUserLibrary } from '@/hooks/use-user-library';
+import { pickUserDataBackup, shareUserDataBackup } from '@/services/user-data-file-service';
+import type { RestoreMode, UserDataBackup } from '@/domain/user-library';
 
 export default function SettingsTabScreen() {
   return <CachedTabScreen><SettingsScreen /></CachedTabScreen>;
@@ -19,8 +22,40 @@ export default function SettingsTabScreen() {
 export function SettingsScreen() {
   const tabBottomInset = useNativeTabBottomInset();
   const theme = useAppTheme();
-  const { showNotification } = useNotification();
+  const { showNotification, showActionNotification } = useNotification();
   const [quickClearing, setQuickClearing] = useState(false);
+  const library = useUserLibrary(false);
+  const [backupBusy, setBackupBusy] = useState(false);
+  const backupRunning = useRef(false);
+
+  const runBackup = async <T,>(run: () => Promise<T>): Promise<T | undefined> => {
+    if (backupRunning.current) return;
+    backupRunning.current = true;
+    setBackupBusy(true);
+    try { return await run(); }
+    catch (error) {
+      showNotification({ title: '个人曲库操作失败', message: providerErrorToUserMessage(error, '请重试。'), variant: 'error' });
+    } finally { backupRunning.current = false; setBackupBusy(false); }
+  };
+
+  const restore = (backup: UserDataBackup, mode: RestoreMode) => runBackup(async () => {
+    await library.restoreBackup(backup, mode);
+    showNotification({ title: '个人曲库已导入', variant: 'success' });
+  });
+
+  const importBackup = async () => {
+    const backup = await runBackup(pickUserDataBackup);
+    if (!backup) return;
+    showActionNotification({
+      title: '导入个人曲库',
+      message: `备份包含 ${backup.items.length} 条收藏、练习或标签记录。合并会保留现有内容，替换会用备份覆盖个人曲库。`,
+      actions: [
+        { label: '取消', tone: 'cancel' },
+        { label: '合并', onPress: () => restore(backup, 'merge') },
+        { label: '替换', tone: 'destructive', onPress: () => restore(backup, 'replace') },
+      ],
+    });
+  };
 
   const handleQuickClear = async () => {
     if (quickClearing) return;
@@ -129,6 +164,21 @@ export function SettingsScreen() {
           <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
         </Pressable>
       </View>
+      <View style={[styles.row, { backgroundColor: theme.surface }]}>
+        <View style={styles.rowText}>
+          <Text style={[styles.title, { color: theme.text }]}>个人曲库</Text>
+          <Text style={[styles.detail, { color: theme.textMuted }]}>备份收藏、练习清单和标签</Text>
+        </View>
+        <Pressable disabled={backupBusy} onPress={() => void importBackup()} style={styles.backupAction}>
+          <Text style={{ color: theme.accent }}>导入</Text>
+        </Pressable>
+        <Pressable disabled={backupBusy} onPress={() => void runBackup(async () => {
+          await shareUserDataBackup(await library.createBackup());
+        })} style={styles.backupAction}>
+          <Text style={{ color: theme.accent }}>导出</Text>
+        </Pressable>
+        {backupBusy ? <ActivityIndicator color={theme.accent} /> : null}
+      </View>
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="调试"
@@ -169,6 +219,7 @@ const styles = StyleSheet.create({
   },
   rowText: { flex: 1, gap: 4 },
   rowMain: { flex: 1 },
+  backupAction: { paddingVertical: 8, paddingHorizontal: 4 },
   title: { color: '#111827', fontSize: 17, fontWeight: '700' },
   detail: { color: '#6B7280', fontSize: 13 },
   chevron: { color: '#9CA3AF', fontSize: 28, lineHeight: 28, fontWeight: '300' },
