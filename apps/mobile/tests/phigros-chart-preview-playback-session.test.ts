@@ -1,18 +1,13 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { installMusicMedia } from './helpers/music-media';
 import {
   PhigrosPlaybackSession,
   type PhigrosPlaybackSettings,
 } from '@/features/phigros-chart-preview/webview-player/playback';
 
 const MUSIC_DURATION_SECONDS = 30;
-const HIT_SOUNDS = {
-  click: 'data:audio/wav;base64,AA==',
-  drag: 'data:audio/wav;base64,AA==',
-  flick: 'data:audio/wav;base64,AA==',
-};
 
 class FakeGainNode {
+  disconnected = false;
   readonly gain = {
     value: 1,
     cancelScheduledValues(): void {},
@@ -20,7 +15,7 @@ class FakeGainNode {
     linearRampToValueAtTime(): void {},
   };
   connect(): void {}
-  disconnect(): void {}
+  disconnect(): void { this.disconnected = true; }
 }
 
 class FakeAudioParam {
@@ -107,7 +102,6 @@ class FakeAudioContext {
 }
 
 class FakeFrameLoop {
-  constructor(private readonly context: FakeAudioContext) {}
   now = 0;
   private callbacks = new Map<number, (timestamp: number) => void>();
   private nextHandle = 1;
@@ -130,8 +124,6 @@ class FakeFrameLoop {
 
   advance(deltaMs: number): void {
     this.now += deltaMs;
-    this.context.currentTime += deltaMs / 1000;
-    vi.advanceTimersByTime(deltaMs);
     const callbacks = [...this.callbacks.values()];
     this.callbacks.clear();
     for (const callback of callbacks) callback(this.now);
@@ -139,13 +131,10 @@ class FakeFrameLoop {
 }
 
 function createPlayback(hitSounds?: Partial<Record<'click' | 'drag' | 'flick', string>>, onRender?: () => void) {
-  vi.useFakeTimers();
   const context = new FakeAudioContext();
-  const frames = new FakeFrameLoop(context);
-  const media = installMusicMedia(context, { duration: MUSIC_DURATION_SECONDS });
+  const frames = new FakeFrameLoop();
   const rendered: number[] = [];
   const playStates: boolean[] = [];
-  const onPlaybackError = vi.fn();
   const settings: PhigrosPlaybackSettings = { playbackSpeed: 1, volume: 1, hitSoundVolume: 1 };
   vi.stubGlobal('AudioContext', class { constructor() { return context; } });
   vi.stubGlobal('window', { AudioContext: globalThis.AudioContext });
@@ -158,17 +147,14 @@ function createPlayback(hitSounds?: Partial<Record<'click' | 'drag' | 'flick', s
     host: {
       render: (chartTime) => { rendered.push(chartTime); onRender?.(); },
       onPlayStateChange: (playing) => { playStates.push(playing); },
-      onPlaybackError,
     },
   });
   session.setChartTimeline({ durationSeconds: 30, offsetSeconds: 0 });
   session.setHitSoundEvents([]);
-  return { session, context, frames, rendered, playStates, onPlaybackError, settings, ...media };
+  return { session, context, frames, rendered, playStates, settings };
 }
 
 afterEach(() => {
-  vi.clearAllTimers();
-  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -219,28 +205,30 @@ describe('Phigros 播放与取消', () => {
     expect(session.disposed).toBe(true);
   });
 
-  it('重复播放沿用保调媒体，暂停后停止发声和绘制', async () => {
-    const { session, context, frames, media } = createPlayback();
+  it('同一会话只有当前音源与唯一 RAF，旧音源已释放', async () => {
+    const { session, context, frames } = createPlayback();
     await session.loadMusic(new ArrayBuffer(8));
 
     const first = session.play();
     context.releaseResumeNow();
     await first;
-    expect(media[0]!.paused).toBe(false);
-    expect(media[0]!.preservesPitch).toBe(true);
+    expect(context.sources).toHaveLength(1);
+    expect(context.heldSourceCount()).toBe(1);
     expect(frames.pending).toBe(1);
 
     await session.play();
-    expect(media[0]!.paused).toBe(false);
+    expect(context.sources).toHaveLength(2);
+    expect(context.heldSourceCount()).toBe(1);
+    expect(context.releasedSourceCount()).toBe(1);
     expect(frames.pending).toBe(1);
 
     session.pause();
-    expect(media[0]!.paused).toBe(true);
+    expect(context.heldSourceCount()).toBe(0);
     expect(frames.pending).toBe(0);
   });
 
   it('播放中跳转只保留跳转后的音源与唯一 RAF', async () => {
-    const { session, context, frames, media } = createPlayback();
+    const { session, context, frames } = createPlayback();
     await session.loadMusic(new ArrayBuffer(8));
     const first = session.play();
     context.releaseResumeNow();
@@ -248,8 +236,8 @@ describe('Phigros 播放与取消', () => {
 
     await session.seek(12);
     expect(session.chartTime).toBe(12);
-    expect(media[0]!.currentTime).toBe(12);
-    expect(media[0]!.paused).toBe(false);
+    expect(context.sources).toHaveLength(2);
+    expect(context.heldSourceCount()).toBe(1);
     expect(frames.pending).toBe(1);
   });
 
@@ -267,7 +255,7 @@ describe('Phigros 播放与取消', () => {
   });
 
   it('音频设置由宿主持有，会话只读取当前值', async () => {
-    const { session, context, settings, media } = createPlayback();
+    const { session, context, settings } = createPlayback();
     await session.loadMusic(new ArrayBuffer(8));
     const pending = session.play();
     context.releaseResumeNow();
@@ -281,8 +269,7 @@ describe('Phigros 播放与取消', () => {
 
     settings.playbackSpeed = 1.5;
     session.applySpeedChange();
-    expect(media[0]!.playbackRate).toBe(1.5);
-    expect(media[0]!.preservesPitch).toBe(true);
+    expect(context.sources[0]!.playbackRate.value).toBe(1.5);
   });
 
   it('dispose 释放音源与 RAF 且幂等', async () => {
@@ -302,13 +289,12 @@ describe('Phigros 播放与取消', () => {
 
 
 it('seek 撤销旧打击音和帧，异步恢复固定目标且末尾不自动重开', async () => {
-  const { session, context, frames, media } = createPlayback(HIT_SOUNDS);
+  const { session, context, frames } = createPlayback({ click: 'data:audio/wav;base64,AA==' });
   await session.loadMusic(new ArrayBuffer(8));
   session.setHitSoundEvents([{ time: 0.08, sound: 'click', noteKind: 'tap', lineIndex: 0 }]);
   const initial = session.play(); context.releaseResumeNow(); await initial;
   frames.advance(1);
   const oldSources = [...context.sources];
-  expect(oldSources).toHaveLength(1);
   const oldFrame = frames.snapshot()[0]!;
   context.state = 'suspended';
   const pending = session.seek(10.1);
@@ -317,7 +303,7 @@ it('seek 撤销旧打击音和帧，异步恢复固定目标且末尾不自动�
   context.currentTime = 5.2; frames.advance(5000);
   expect(session.chartTime).toBe(10.1);
   context.releaseResumeNow(); await pending;
-  expect(media[0]!.currentTime).toBe(10.1);
+  expect(context.sources.at(-1)?.startOffset).toBe(10.1);
   oldFrame(6000);
   expect(session.chartTime).toBe(10.1);
   expect(frames.pending).toBe(1);
@@ -326,16 +312,16 @@ it('seek 撤销旧打击音和帧，异步恢复固定目标且末尾不自动�
   session.dispose();
 });
 
-it('dispose 后晚到的音乐元数据不重建已释放资源', async () => {
-  const { session, media, options, urls } = createPlayback();
-  options.deferLoad = true;
+it('dispose 后晚到的音乐解码不重建已释放资源', async () => {
+  const { session, context } = createPlayback();
+  const decode = Promise.withResolvers<AudioBuffer>();
+  context.decodeAudioData = () => decode.promise;
   const loading = session.loadMusic(new ArrayBuffer(8));
   await Promise.resolve();
   session.dispose();
-  media[0]!.finishLoad();
+  decode.resolve(context.music);
   expect(await loading).toBe(false);
   expect(session.musicDurationSeconds).toBeNull();
-  expect(urls.size).toBe(0);
 });
 
 it('AB 在谱尾先回跳并按新倍速继续，暂停跳转不会自动播放', async () => {
@@ -364,103 +350,117 @@ it('AB 在谱尾先回跳并按新倍速继续，暂停跳转不会自动播放'
   expect(session.playing).toBe(false);
 });
 
-it('负音乐偏移先播放谱面前导，变速仍保留当前谱面位置', async () => {
+it('负偏移保留前导，前导内变速与跳转只重排尚未发声的音乐', async () => {
   const { session, context, frames, settings } = createPlayback();
-  context.state = 'running';
-  session.setChartTimeline({ durationSeconds: 30, offsetSeconds: -2 });
-  await session.loadMusic(new ArrayBuffer(8));
-  await session.play();
-  frames.advance(500);
-  expect(session.chartTime).toBeCloseTo(0.5);
-  settings.playbackSpeed = 2;
-  session.applySpeedChange();
-  frames.advance(250);
-  expect(session.chartTime).toBeCloseTo(1);
-  session.pause();
-  expect(session.chartTime).toBeCloseTo(1);
-  session.dispose();
-});
-
-it('负偏移前导内 seek 与 AB 回跳仍按谱面位置运行，媒体保持待起播', async () => {
-  const { session, context, frames, media } = createPlayback();
-  context.state = 'running';
-  session.setChartTimeline({ durationSeconds: 30, offsetSeconds: -2 });
-  await session.loadMusic(new ArrayBuffer(8));
-  await session.seek(0.5);
-  session.loop.toggle('a', 0.5);
-  session.loop.toggle('b', 1.5);
-  await session.play();
-  frames.advance(500);
-  expect(session.chartTime).toBeCloseTo(1);
-  expect(media[0]!.paused).toBe(true);
-  frames.advance(600);
-  await vi.waitFor(() => expect(session.playing).toBe(true));
-  expect(session.chartTime).toBeCloseTo(0.5);
-  expect(media[0]!.paused).toBe(true);
-  session.dispose();
-});
-
-it('正音乐偏移从对应音乐位置起播，暂停定位后保持同一时间换算', async () => {
-  const { session, context, frames, media } = createPlayback();
-  context.state = 'running';
-  session.setChartTimeline({ durationSeconds: 30, offsetSeconds: 2 });
-  await session.loadMusic(new ArrayBuffer(8));
-  await session.play();
-  expect(media[0]!.currentTime).toBe(2);
-  frames.advance(500);
-  expect(session.chartTime).toBeCloseTo(0.5);
-  session.pause();
-  await session.seek(5);
-  await session.play();
-  expect(media[0]!.currentTime).toBe(7);
-  session.dispose();
-});
-
-it('音乐缓冲时冻结谱面并停止排队音效，恢复后继续跟随音乐', async () => {
-  const { session, context, frames, media } = createPlayback(HIT_SOUNDS);
-  context.state = 'running';
-  await session.loadMusic(new ArrayBuffer(8));
-  session.setHitSoundEvents([{ time: 0.08, sound: 'click', noteKind: 'tap', lineIndex: 0 }]);
-  await session.play();
-  frames.advance(10);
-  expect(context.sources).toHaveLength(1);
-  media[0]!.wait();
-  const frozen = session.chartTime;
-  expect(context.sources.every(source => source.stopCount > 0)).toBe(true);
-  frames.advance(1000);
-  expect(session.chartTime).toBeCloseTo(frozen);
-  media[0]!.finishPlay();
-  frames.advance(100);
-  expect(session.chartTime).toBeCloseTo(frozen + 0.1);
-  session.dispose();
-});
-
-it('音乐首次启动期间失败时显示错误且保持暂停', async () => {
-  const { session, context, frames, media, options, playStates, onPlaybackError } = createPlayback();
-  context.state = 'running';
-  options.deferPlay = true;
-  await session.loadMusic(new ArrayBuffer(8));
-  const pending = session.play();
-  await vi.waitFor(() => expect(media[0]!.paused).toBe(false));
-  media[0]!.fail();
-  await pending;
-  expect(session.playing).toBe(false);
-  expect(playStates.at(-1)).toBe(false);
-  expect(frames.pending).toBe(0);
-  expect(onPlaybackError).toHaveBeenCalledTimes(1);
-  session.dispose();
-});
-
-it('打击音与媒体播放头共用调度基准，不重复扣除输出延迟', async () => {
-  const { session, context, frames } = createPlayback(HIT_SOUNDS);
   context.state = 'running';
   context.currentTime = 1;
   context.outputLatency = 0.1;
+  session.setChartTimeline({ durationSeconds: 30, offsetSeconds: -2 });
   await session.loadMusic(new ArrayBuffer(8));
-  session.setHitSoundEvents([{ time: 0.08, sound: 'click', noteKind: 'tap', lineIndex: 0 }]);
+  await session.play();
+  const first = context.sources[0]!;
+  expect(first.startAt).toBeCloseTo(3.05);
+  expect(first.startOffset).toBe(0);
+  context.currentTime = 1.65;
+  frames.advance(650);
+  expect(session.chartTime).toBeCloseTo(0.5);
+  settings.playbackSpeed = 2;
+  session.applySpeedChange();
+  for (let i = 0; i < 12; i++) await Promise.resolve();
+  expect(first.stopCount).toBeGreaterThan(0);
+  const next = context.sources.at(-1)!;
+  expect(next.startAt).toBeCloseTo(2.45);
+  expect(next.startOffset).toBe(0);
+  context.currentTime = 2.55;
+  frames.advance(900);
+  expect(session.chartTime).toBeCloseTo(2);
+  session.pause();
+  await session.seek(0.75);
+  expect(session.chartTime).toBe(0.75);
+  expect(session.playing).toBe(false);
+  await session.play();
+  expect(context.sources.at(-1)!.startAt).toBeCloseTo(3.225);
+  session.dispose();
+});
+
+it('输出延迟参与画面对时，连续调速保留音乐音源并撤销旧打击音', async () => {
+  const sounds = { click: 'data:audio/wav;base64,AA==', drag: 'data:audio/wav;base64,AA==', flick: 'data:audio/wav;base64,AA==' };
+  const { session, context, frames, settings } = createPlayback(sounds);
+  context.state = 'running';
+  context.currentTime = 1;
+  context.outputLatency = 0.1;
+  session.setHitSoundEvents([{ time: 0.18, sound: 'click', noteKind: 'tap', lineIndex: 0 }]);
+  await session.loadMusic(new ArrayBuffer(8));
+  await session.play();
+  const song = context.sources[0]!;
+  expect(song.startAt).toBeCloseTo(1.05);
+  context.currentTime = 1.2;
+  frames.advance(200);
+  expect(session.chartTime).toBeCloseTo(0.05);
+  const oldHit = context.sources[1]!;
+  expect(oldHit.startAt).toBeCloseTo(1.23);
+  settings.playbackSpeed = 2;
+  session.applySpeedChange();
+  expect(oldHit.stopCount).toBeGreaterThan(0);
+  expect(song.stopCount).toBe(0);
+  expect(song.playbackRate.value).toBe(2);
+  frames.advance(0);
+  expect(context.sources.at(-1)!.startAt).toBeCloseTo(1.215);
+  const nextHit = context.sources.at(-1)!;
+  session.applySpeedChange();
+  expect(nextHit.stopCount).toBe(0);
+  context.currentTime = 1.4;
+  frames.advance(200);
+  expect(session.chartTime).toBeCloseTo(0.35);
+  settings.playbackSpeed = 0.5;
+  session.applySpeedChange();
+  context.currentTime = 1.6;
+  frames.advance(200);
+  expect(session.chartTime).toBeCloseTo(0.6);
+  expect(song.stopCount).toBe(0);
+  session.dispose();
+});
+
+it('正偏移与起播前的打击音使用同一个音频起点', async () => {
+  const sounds = { click: 'data:audio/wav;base64,AA==', drag: 'data:audio/wav;base64,AA==', flick: 'data:audio/wav;base64,AA==' };
+  const { session, context, frames } = createPlayback(sounds);
+  context.state = 'running';
+  context.currentTime = 1;
+  session.setChartTimeline({ durationSeconds: 30, offsetSeconds: 2 });
+  session.setHitSoundEvents([{ time: 0.02, sound: 'click', noteKind: 'tap', lineIndex: 0 }]);
+  await session.loadMusic(new ArrayBuffer(8));
   await session.play();
   frames.advance(0);
-  expect(context.sources).toHaveLength(1);
-  expect(context.sources[0]!.startAt).toBeCloseTo(1.08);
+  expect(context.sources[0]!.startOffset).toBe(2);
+  expect(context.sources[0]!.startAt).toBeCloseTo(1.05);
+  expect(context.sources[1]!.startAt).toBeCloseTo(1.07);
+  session.dispose();
+});
+
+it('音乐自然结束后释放节点，输出尾音与剩余谱面仍沿同一时钟变速', async () => {
+  const { session, context, frames, settings } = createPlayback();
+  context.state = 'running';
+  context.currentTime = 1;
+  context.outputLatency = 0.1;
+  session.setChartTimeline({ durationSeconds: 35, offsetSeconds: 0 });
+  await session.loadMusic(new ArrayBuffer(8));
+  session.moveTo(29);
+  await session.play();
+  const song = context.sources[0]!;
+  context.currentTime = 2.05;
+  song.onended?.();
+  frames.advance(1050);
+  expect(song.disconnected).toBe(true);
+  expect(context.gains[2]!.disconnected).toBe(true);
+  expect(session.chartTime).toBeCloseTo(29.9);
+  context.currentTime = 2.2;
+  frames.advance(150);
+  expect(session.chartTime).toBeCloseTo(30.05);
+  settings.playbackSpeed = 2;
+  session.applySpeedChange();
+  context.currentTime = 2.4;
+  frames.advance(200);
+  expect(session.chartTime).toBeCloseTo(30.35);
+  expect(session.playing).toBe(true);
   session.dispose();
 });

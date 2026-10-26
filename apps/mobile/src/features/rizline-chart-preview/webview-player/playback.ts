@@ -1,5 +1,6 @@
 import { PlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
-import { MusicPlayback } from '../../chart-preview-shared/webview-player/music';
+import { PlaybackClock, audioContextTime, musicPosition, outputTime } from '../../chart-preview-shared/webview-player/playbackClock';
+import { getAudioContextOutputTime } from '../../chart-preview-shared/webview-player/audioClock';
 import { hitEvents, type PreparedChart } from './chart-prepare';
 import { RizlineRenderer } from './renderer';
 import { HitSoundScheduler, createHitBuffer } from './hitsounds';
@@ -13,13 +14,15 @@ export function getAudioContext(): AudioContext {
 
 export class PreviewSession {
   readonly loop = new PlaybackLoop();
+  readonly clock = new PlaybackClock();
   playing = false;
   ended = false;
   disposed = false;
   duration: number;
+  private position = 0;
   private frame: number | null = null;
   private command = 0;
-  private readonly music: MusicPlayback;
+  private source: AudioBufferSourceNode | null = null;
   private readonly musicGain: GainNode;
   private readonly hitGain: GainNode;
   private readonly hits: HitSoundScheduler;
@@ -28,6 +31,7 @@ export class PreviewSession {
   constructor(
     readonly chart: PreparedChart,
     readonly renderer: RizlineRenderer,
+    readonly music: AudioBuffer,
     settings: RizlineChartPreviewSettings,
   ) {
     const context = getAudioContext();
@@ -35,11 +39,10 @@ export class PreviewSession {
     this.hitGain = context.createGain();
     this.musicGain.connect(context.destination);
     this.hitGain.connect(context.destination);
-    this.music = new MusicPlayback(context, this.musicGain);
     this.settings = normalizeRizlineChartPreviewSettings(settings);
     this.musicGain.gain.value = this.settings.volume;
     this.hitGain.gain.value = this.settings.hitSound ? this.settings.hitSoundVolume : 0;
-    this.duration = Math.max(0, chart.durationSeconds + chart.delaySeconds + 0.25);
+    this.duration = Math.max(music.duration, chart.durationSeconds + chart.delaySeconds + 0.25);
     this.hits = new HitSoundScheduler(
       context,
       createHitBuffer(context, 1760),
@@ -47,30 +50,15 @@ export class PreviewSession {
       hitEvents(chart),
       this.hitGain,
     );
-    this.music.onStateChange = () => {
-      if (!this.music.playing && this.playing) {
-        this.playing = false;
-        if (this.frame != null) cancelAnimationFrame(this.frame);
-        this.frame = null;
-        this.draw();
-      }
-      if (this.music.waiting || !this.music.playing) this.hits.stop();
-      else this.hits.reset(this.chartTime);
-    };
     this.renderer.setUserSpeed(this.settings.userSpeed);
+    this.clock.setOffset(musicPosition(0));
     this.draw();
   }
 
-  async loadMusic(bytes: ArrayBuffer): Promise<void> {
-    if (!await this.music.load(bytes, 'audio/mp4')) {
-      if (!this.disposed) throw new Error('music-load-failed');
-      return;
-    }
-    this.duration = Math.max(this.duration, this.music.duration);
-  }
-
   get currentTime(): number {
-    return Math.max(0, Math.min(this.duration, this.music.currentTime));
+    if (!this.playing) return this.position;
+    const context = getAudioContext();
+    return Math.max(0, Math.min(this.duration, this.clock.positionAt(outputTime(getAudioContextOutputTime(context)))));
   }
 
   get chartTime(): number {
@@ -84,9 +72,12 @@ export class PreviewSession {
     this.hitGain.gain.value = this.settings.hitSound ? this.settings.hitSoundVolume : 0;
     this.renderer.setUserSpeed(this.settings.userSpeed);
     if (!this.settings.hitSound) this.hits.stop();
-    if (this.settings.playbackSpeed !== previousSpeed) {
-      this.music.setSpeed(this.settings.playbackSpeed);
-      this.hits.reset(this.chartTime);
+    if (this.playing && this.settings.playbackSpeed !== previousSpeed) {
+      const context = getAudioContext();
+      const now = audioContextTime(context.currentTime);
+      if (this.source) this.source.playbackRate.setValueAtTime(this.settings.playbackSpeed, now);
+      this.clock.appendSegment(now, this.settings.playbackSpeed);
+      this.hits.reset(this.clock.positionAt(now) - this.chart.delaySeconds, false);
     }
     if (!this.playing) this.draw();
   }
@@ -106,31 +97,52 @@ export class PreviewSession {
     }
     if (this.currentTime >= this.duration) {
       this.pause();
+      this.position = this.duration;
       this.ended = true;
+      this.clock.setOffset(musicPosition(this.duration));
       this.draw();
       return;
     }
     const context = getAudioContext();
     this.hits.schedule(
-      this.chartTime,
+      this.clock.positionAt(audioContextTime(context.currentTime)) - this.chart.delaySeconds,
       context.currentTime,
-      this.settings.hitSound && !this.music.waiting,
+      this.settings.hitSound,
       this.settings.playbackSpeed,
     );
     this.draw();
     this.frame = requestAnimationFrame(this.tick);
   };
 
+  private stopSource(): void {
+    if (!this.source) return;
+    try { this.source.stop(); } catch {}
+    this.source.disconnect();
+    this.source = null;
+  }
+
   async playFrom(seconds: number): Promise<void> {
     if (this.disposed) return;
     this.pause();
     const generation = ++this.command;
-    let position = Math.max(0, Math.min(seconds, this.duration));
-    position = this.loop.target(position) ?? position;
-    if (position >= this.duration) position = 0;
-    await this.music.playFrom(position, this.settings.playbackSpeed);
-    if (this.disposed || generation !== this.command || !this.music.playing) return;
-    this.hits.reset(this.chartTime);
+    this.position = Math.max(0, Math.min(seconds, this.duration));
+    this.position = this.loop.target(this.position) ?? this.position;
+    if (this.position >= this.duration) this.position = 0;
+    const context = getAudioContext();
+    if (context.state !== 'running') await context.resume();
+    if (this.disposed || generation !== this.command) return;
+    const startTime = audioContextTime(context.currentTime);
+    const startOffset = Math.min(this.position, Math.max(0, this.music.duration - 0.001));
+    if (this.position < this.music.duration) {
+      const source = context.createBufferSource();
+      source.buffer = this.music;
+      source.playbackRate.value = this.settings.playbackSpeed;
+      source.connect(this.musicGain);
+      source.start(startTime, startOffset);
+      this.source = source;
+    }
+    this.clock.set(startTime, musicPosition(this.position), this.settings.playbackSpeed);
+    this.hits.reset(this.position - this.chart.delaySeconds);
     this.playing = true;
     this.ended = false;
     this.draw();
@@ -140,14 +152,16 @@ export class PreviewSession {
   pause(): void {
     this.command += 1;
     if (!this.playing) {
-      this.music.pause();
+      this.stopSource();
       this.hits.stop();
       if (this.frame != null) cancelAnimationFrame(this.frame);
       this.frame = null;
       return;
     }
+    this.position = this.currentTime;
     this.playing = false;
-    this.music.pause();
+    this.clock.setOffset(musicPosition(this.position));
+    this.stopSource();
     this.hits.stop();
     if (this.frame != null) cancelAnimationFrame(this.frame);
     this.frame = null;
@@ -157,20 +171,22 @@ export class PreviewSession {
   async seek(seconds: number): Promise<void> {
     if (this.disposed) return;
     if (this.playing) return this.playFrom(seconds);
-    this.pause();
-    const position = Math.max(0, Math.min(seconds, this.duration));
-    this.ended = position >= this.duration;
-    await this.music.seek(position);
-    if (this.disposed) return;
-    this.hits.reset(this.chartTime);
+    this.command += 1;
+    this.position = Math.max(0, Math.min(seconds, this.duration));
+    this.ended = this.position >= this.duration;
+    this.clock.setOffset(musicPosition(this.position));
+    this.hits.reset(this.position - this.chart.delaySeconds);
     this.draw();
   }
 
   dispose(): void {
     this.disposed = true;
     this.pause();
-    this.music.dispose();
     this.musicGain.disconnect();
     this.hitGain.disconnect();
   }
+}
+
+export async function decodeAudio(bytes: ArrayBuffer): Promise<AudioBuffer> {
+  return getAudioContext().decodeAudioData(bytes.slice(0));
 }

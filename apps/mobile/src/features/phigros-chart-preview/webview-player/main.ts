@@ -527,7 +527,7 @@ function start(): void {
   function renderFrame(chartTime: number): void {
     if (disposed) return;
     try {
-      if (renderer instanceof RpeRenderer) renderer.render(chartTime, session.playing && !session.waiting, settings.playbackSpeed);
+      if (renderer instanceof RpeRenderer) renderer.render(chartTime, session.playing, settings.playbackSpeed);
       else renderer.render(chartTime);
       applyAttachUiFromRenderer();
       renderHud(chartTime);

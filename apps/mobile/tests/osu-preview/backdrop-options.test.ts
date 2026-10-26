@@ -193,13 +193,14 @@ describe('preview media presentation', () => {
       const media = await createPreviewMedia(request('Video,500,"video.mp4"', new Map([['video.mp4', new Uint8Array([1])]])));
       media.sync(2500, true, true); await Promise.resolve(); await Promise.resolve();
       assert.equal(video.currentTime, 2); assert.equal(video.paused, false);
+      video.currentTime = 2.04;
       media.configure({ ...defaults, playbackSpeed: 1.75 });
       assert.equal(video.playbackRate, 1.75);
-      assert.equal(video.currentTime, 2);
+      assert.equal(video.currentTime, 2.04);
       media.configure({ ...defaults, videoEnabled: false });
       assert.equal(video.paused, true);
       media.sync(5500, true);
-      assert.equal(video.currentTime, 2);
+      assert.equal(video.currentTime, 2.04);
       media.configure(defaults); await Promise.resolve(); await Promise.resolve();
       assert.equal(video.currentTime, 5); assert.equal(video.paused, false);
       assert.equal(video.plays, 2); assert.equal(decoded.length, 0);

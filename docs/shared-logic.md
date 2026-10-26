@@ -179,7 +179,7 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 
 谱面公共入口位于 `features/chart-preview-shared`：
 
-- `chart-preview-screen-shell.tsx` 管理宿主准备、WebView、取消、暂停和释放；公共导航选项在 iOS 始终关闭原生返回手势，使用标题返回和播放器全屏退出控件。
+- `chart-preview-screen-shell.tsx` 管理宿主准备、WebView、取消、暂停和释放；公共导航选项在 iOS 保留边缘原生侧滑返回，关闭内容区域滑返，标题返回和播放器全屏退出控件继续可用。
 - `chart-preview-bridge.ts` 解析当前播放器事件、设置信封和宿主命令。
 - `chart-preview-navigation.ts` 交接当前预览请求。
 - `webview-player` 提供四套播放器共用的设置 UI 与手势。
@@ -200,9 +200,9 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 
 谱面宿主按设置键保留最新待写值，沿 `enqueueKeyMutation` 串行保存；只有对应值成功落盘才清除。重建与再次进入优先沿用待写值，前台恢复和通知重试继续保存；不同设置键互不覆盖。
 
-`webview-player/music.ts` 的 `MusicPlayback(context, output)` 共用原压缩音频的保调播放。`load(bytes, mimeType?)` 准备媒体并读取时长，`playFrom`、`pause`、`seek`、`setSpeed` 和 `dispose` 管理所属媒体，`currentTime` 为原曲秒数，`waiting` 标识定位、起播或缓冲等待；`onStateChange` 通知会话停止或重排音效。音乐段读取实际媒体位置，负前导、无音乐和尾段使用公共播放时钟；等待和取消不推进位置，释放时撤销 Blob URL。四套歌曲与 osu! 故事板片段使用此入口，现有 GainNode 管理音量。
+四套会话使用 Web Audio 解码与缓冲音源。`playbackClock.ts` 的 `PlaybackClock` 按 AudioContext 时间记录位置和速度分段；`audioClock.ts` 的 `getAudioContextOutputTime` 提供输出补偿时间供画面读取，音源启动与音效调度使用 AudioContext 时间。音乐变速直接更新音源的 `playbackRate`，音调随速度变化；定位重建所属音源，暂停和释放撤销音源及待完成播放命令。
 
-`OsuChartPreviewSettings.playbackSpeed` 默认 1，范围 0.5–2，步长 0.05；四模式共用速度控件，经已有设置消息和存储键往返。播放速度与 `maniaScrollSpeed` 分别控制歌曲时间和下落表现。`AudioSync` 持有实际音乐位置，画面与媒体使用同一时间线，打击音的墙钟延迟按当前倍速换算。
+`OsuChartPreviewSettings.playbackSpeed` 默认 1，范围 0.5–2，步长 0.05；四模式共用速度控件，经已有设置消息和存储键往返。播放速度与 `maniaScrollSpeed` 分别控制歌曲时间和下落表现。`AudioSync.currentTimeMs` 用于音效调度，`outputTimeMs` 补偿输出延迟供画面、视频和 AB 端点读取；两者来自同一播放时钟。变速更新正在播放的歌曲和故事板音源，未开始的音效重新调度。
 
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。
 

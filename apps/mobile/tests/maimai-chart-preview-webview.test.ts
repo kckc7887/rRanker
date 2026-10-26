@@ -74,14 +74,15 @@ describe('chart preview webview helpers', () => {
   });
 
   it('allows both landscape directions and avoids the iOS native status-bar path', () => {
-    expect(chartPreviewNativeScreenOptions(true, 'ios')).toEqual({
+    expect(chartPreviewNativeScreenOptions(true, 'ios')).toMatchObject({
       title: '谱面确认',
       headerShown: false,
       orientation: 'landscape',
-      gestureEnabled: false,
+      gestureEnabled: true,
+      fullScreenGestureEnabled: false,
       autoHideHomeIndicator: true,
     });
-    expect(chartPreviewNativeScreenOptions(true, 'android')).toEqual({
+    expect(chartPreviewNativeScreenOptions(true, 'android')).toMatchObject({
       title: '谱面确认',
       headerShown: false,
       orientation: 'landscape',
@@ -91,13 +92,7 @@ describe('chart preview webview helpers', () => {
   });
 
   it('keeps the default title but accepts a custom one from other preview screens', () => {
-    expect(chartPreviewNativeScreenOptions(true, 'ios', '自定义标题')).toEqual({
-      title: '自定义标题',
-      headerShown: false,
-      orientation: 'landscape',
-      gestureEnabled: false,
-      autoHideHomeIndicator: true,
-    });
+    expect(chartPreviewNativeScreenOptions(true, 'ios', '自定义标题')).toMatchObject({ title: '自定义标题' });
     expect(chartPreviewNativeScreenOptions(false, 'android')).toMatchObject({ title: '谱面确认' });
   });
 

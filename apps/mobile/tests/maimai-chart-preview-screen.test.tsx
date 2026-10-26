@@ -123,7 +123,28 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     expect(mockPrepareChartPreview).not.toHaveBeenCalled();
   });
 
-  it('进入和退出全屏时保持关闭 iOS 返回手势，并保留返回键退出全屏', async () => {
+  it('加载和失败时保留标题与 iOS 边缘返回，并允许重新加载', async () => {
+    let rejectPreparation!: (error: Error) => void;
+    mockPrepareChartPreview.mockImplementationOnce(() => new Promise((_, reject) => {
+      rejectPreparation = reject;
+    }));
+    await render(<MaimaiChartPreviewScreen />);
+    await waitFor(() => expect(mockPrepareChartPreview).toHaveBeenCalled());
+    expect(screen.queryByTestId('maimai-chart-preview-webview')).toBeNull();
+    expect(latestScreenOptions).toMatchObject({
+      title: '谱面确认', headerShown: true, gestureEnabled: true, fullScreenGestureEnabled: false,
+    });
+
+    await act(async () => rejectPreparation(new Error('读取谱面失败')));
+    expect(screen.getByText('无法准备谱面预览资源')).toBeTruthy();
+    expect(latestScreenOptions).toMatchObject({
+      title: '谱面确认', headerShown: true, gestureEnabled: true, fullScreenGestureEnabled: false,
+    });
+    await fireEvent.press(screen.getByText('重新加载'));
+    await waitFor(() => expect(screen.getByTestId('maimai-chart-preview-webview')).toBeTruthy());
+  });
+
+  it('进入和退出全屏时保留 iOS 边缘返回，并保留返回键退出全屏', async () => {
     await render(<MaimaiChartPreviewScreen />);
     await waitFor(() => expect(screen.getByTestId('maimai-chart-preview-webview')).toBeTruthy());
     const webview = screen.getByTestId('maimai-chart-preview-webview');
@@ -136,7 +157,8 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
     expect(latestScreenOptions).toMatchObject({
       headerShown: true,
       orientation: 'portrait_up',
-      gestureEnabled: false,
+      gestureEnabled: true,
+      fullScreenGestureEnabled: false,
     });
     expect(latestScreenOptions).not.toHaveProperty('statusBarHidden');
     expect(latestScreenOptions).not.toHaveProperty('navigationBarHidden');
@@ -149,7 +171,8 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
       headerShown: false,
       orientation: 'landscape',
       autoHideHomeIndicator: true,
-      gestureEnabled: false,
+      gestureEnabled: true,
+      fullScreenGestureEnabled: false,
     }));
     expect(latestScreenOptions).not.toHaveProperty('statusBarHidden');
     expect(latestScreenOptions).not.toHaveProperty('navigationBarHidden');
@@ -168,7 +191,8 @@ describe('MaimaiChartPreviewScreen fullscreen bridge', () => {
       headerShown: true,
       orientation: 'portrait_up',
       autoHideHomeIndicator: false,
-      gestureEnabled: false,
+      gestureEnabled: true,
+      fullScreenGestureEnabled: false,
     }));
   });
 

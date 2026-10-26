@@ -115,13 +115,13 @@ export class PreviewSession {
 
   get currentTimeMs(): number {
     if (!this.playing) return this.positionMs;
-    return Math.max(0, Math.min(this.range.durationMs, this.audioSync.currentTimeMs));
+    return Math.max(0, Math.min(this.range.durationMs, this.audioSync.outputTimeMs));
   }
 
   draw(forceSeek = false): void {
     if (this.disposed) return;
     this.mediaTime = this.range.startMs + this.currentTimeMs;
-    this.media.sync(this.mediaTime, this.playing && this.audioSync.advancing, forceSeek);
+    this.media.sync(this.mediaTime, this.playing, forceSeek);
     this.renderer.renderFrameAt(this.mediaTime + this.renderer.options.audioOffsetMs - this.renderer.oldOffsetMs);
   }
 
@@ -276,15 +276,10 @@ export async function startPlayback(
     signal.throwIfAborted();
     const range = resolvePlaybackRange(beatmap, decoded.song ? decoded.song.duration * 1000 : null, media.range, decoded.endMs);
     audio = new AudioSync({
-      ctx, song: decoded.song, skinSounds: skin.sounds, mergedSounds: decoded.sounds,
+      ctx, songBuffer: decoded.song, skinSounds: skin.sounds, mergedSounds: decoded.sounds,
       beatmapHitsounds: true, introOffsetMs: range.startMs,
-      mode: beatmap.mode, schedule, extraSamples: decoded.samples, onWarning: warn,
+      mode: beatmap.mode, schedule, extraSamples: decoded.samples,
     });
-    const cancelAudio = (): void => audio?.destroy();
-    signal.addEventListener('abort', cancelAudio, { once: true });
-    try { await audio.load(); }
-    finally { signal.removeEventListener('abort', cancelAudio); }
-    signal.throwIfAborted();
     session = new PreviewSession(canvas, beatmap, replay, modDiff, renderer, audio, media, range, controller, skin, initial);
     const handle = { session, durationMs: range.durationMs, media };
     active = handle;

@@ -1,5 +1,4 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { installMusicMedia } from './helpers/music-media';
 import { parseSimaiChart, prepareAudioEvents } from '@/features/simai-chart-preview/engine';
 import {
   SimaiPlaybackSession,
@@ -29,15 +28,16 @@ class FakeGainNode {
 
 class FakeSourceNode {
   buffer: AudioBuffer | null = null;
-  readonly playbackRate = { value: 1, setValueAtTime(): void {} };
+  readonly playbackRate = { value: 1, setValueAtTime(value: number): void { this.value = value; } };
   onended: (() => void) | null = null;
   startCount = 0;
-  startAt = 0;
   stopCount = 0;
+  startAt = 0;
+  startOffset = 0;
   disconnected = false;
 
   connect(): void {}
-  start(when = 0): void { this.startCount += 1; this.startAt = when; }
+  start(when = 0, offset = 0): void { this.startCount += 1; this.startAt = when; this.startOffset = offset; }
   stop(): void { this.stopCount += 1; }
   disconnect(): void { this.disconnected = true; }
 }
@@ -98,7 +98,6 @@ class FakeAudioContext {
 }
 
 class FakeFrameLoop {
-  constructor(private readonly context: FakeAudioContext) {}
   now = 1000;
   private callbacks = new Map<number, (timestamp: number) => void>();
   private nextHandle = 1;
@@ -119,8 +118,6 @@ class FakeFrameLoop {
 
   advance(deltaMs: number): void {
     this.now += deltaMs;
-    this.context.currentTime += deltaMs / 1000;
-    vi.advanceTimersByTime(deltaMs);
     const callbacks = [...this.callbacks.values()];
     this.callbacks.clear();
     for (const callback of callbacks) callback(this.now);
@@ -128,14 +125,11 @@ class FakeFrameLoop {
 }
 
 function createPlayback() {
-  vi.useFakeTimers();
   const chart = parseSimaiChart('&inote_5=(120){4}1,2,3,4,5,6,7,8,', 5);
   const context = new FakeAudioContext();
-  const frames = new FakeFrameLoop(context);
-  const media = installMusicMedia(context, { duration: MUSIC_DURATION_SECONDS });
+  const frames = new FakeFrameLoop();
   const rendered: number[] = [];
   const playStates: boolean[] = [];
-  const onPlaybackError = vi.fn();
   vi.stubGlobal('AudioContext', class { constructor() { return context; } });
   vi.stubGlobal('requestAnimationFrame', frames.request);
   vi.stubGlobal('cancelAnimationFrame', frames.cancel);
@@ -147,15 +141,12 @@ function createPlayback() {
     host: {
       render: (beats) => { rendered.push(beats); },
       onPlayStateChange: (playing) => { playStates.push(playing); },
-      onPlaybackError,
     },
   });
-  return { session, context, frames, rendered, playStates, onPlaybackError, chart, ...media };
+  return { session, context, frames, rendered, playStates, chart };
 }
 
 afterEach(() => {
-  vi.clearAllTimers();
-  vi.useRealTimers();
   vi.unstubAllGlobals();
   vi.restoreAllMocks();
 });
@@ -191,29 +182,30 @@ describe('Simai 播放与取消', () => {
     expect(session.disposed).toBe(true);
   });
 
-  it('重复播放沿用保调媒体，暂停后停止发声和绘制', async () => {
-    const { session, context, frames, media } = createPlayback();
+  it('同一会话只有当前音源与唯一 RAF，旧音源已释放', async () => {
+    const { session, context, frames } = createPlayback();
     await session.loadMusic(new ArrayBuffer(8));
-    session.moveTo(8);
 
     const first = session.play();
     context.releaseResumeNow();
     await first;
-    expect(media[0]!.paused).toBe(false);
-    expect(media[0]!.preservesPitch).toBe(true);
+    expect(context.sources).toHaveLength(1);
+    expect(context.heldSourceCount()).toBe(1);
     expect(frames.pending).toBe(1);
 
     await session.play();
-    expect(media[0]!.paused).toBe(false);
+    expect(context.sources).toHaveLength(2);
+    expect(context.heldSourceCount()).toBe(1);
+    expect(context.releasedSourceCount()).toBe(1);
     expect(frames.pending).toBe(1);
 
     session.pause();
-    expect(media[0]!.paused).toBe(true);
+    expect(context.heldSourceCount()).toBe(0);
     expect(frames.pending).toBe(0);
   });
 
   it('dispose 释放音源、增益节点与 RAF 且幂等', async () => {
-    const { session, context, frames, media, urls } = createPlayback();
+    const { session, context, frames } = createPlayback();
     await session.loadMusic(new ArrayBuffer(8));
     const pending = session.play();
     context.releaseResumeNow();
@@ -224,8 +216,6 @@ describe('Simai 播放与取消', () => {
     session.dispose();
 
     expect(context.heldSourceCount()).toBe(0);
-    expect(media[0]!.paused).toBe(true);
-    expect(urls.size).toBe(0);
     expect(frames.pending).toBe(0);
     expect(gainsAfterFirstDispose).toEqual([1, 1]);
     expect(context.gains.slice(0, 2).map((gain) => gain.disconnectCount)).toEqual(gainsAfterFirstDispose);
@@ -247,7 +237,7 @@ describe('Simai 播放与取消', () => {
     expect(session.positionBeats).toBe(8);
   });
 
-  it('静音看谱按公共时钟推进，且换算与 ms/拍语义一致', async () => {
+  it('静音看谱按帧时间推进，且换算与既有 ms/拍语义一致', async () => {
     const { session, chart, context, frames } = createPlayback();
     await session.loadMusic(null);
     expect(session.musicDurationSeconds).toBeNull();
@@ -267,22 +257,23 @@ describe('Simai 播放与取消', () => {
     expect(session.positionBeats).toBeCloseTo(expected);
   });
 
-  it('音乐前导按原曲位置推进，并保持谱面偏移语义', async () => {
+  it('音乐模式按输出端时钟推进位置，并保持既有偏移语义', async () => {
     const { session, chart, context, frames } = createPlayback();
     await session.loadMusic(new ArrayBuffer(8));
     const pending = session.play();
     context.releaseResumeNow();
     await pending;
 
-    context.currentTime = 1;
-    frames.advance(0);
+    /** 谱面含 2 秒引导，输出时钟从 0.05 秒起计。 */
+    context.currentTime = 1.05;
+    frames.advance(16);
     const firstPosition = session.positionBeats;
     expect(firstPosition)
       .toBeCloseTo(musicTimeToBeats(-1, chart.bpmEvents, chart.bpm, 0, chart.firstMs ?? 0));
     expect(firstPosition).toBeCloseTo(2);
 
-    context.currentTime = 2;
-    frames.advance(0);
+    context.currentTime = 2.05;
+    frames.advance(16);
     expect(session.positionBeats).toBeCloseTo(musicTimeToBeats(0, chart.bpmEvents, chart.bpm, 0));
     expect(session.positionBeats - firstPosition).toBeCloseTo(2);
   });
@@ -328,45 +319,7 @@ it('AB 在谱尾先回跳，暂停不自启，倍速不改变端点，释放取�
   expect(session.playing).toBe(false);
 });
 
-it('音乐首次启动期间失败时显示错误且保持暂停', async () => {
-  const { session, context, frames, media, options, playStates, onPlaybackError } = createPlayback();
-  context.state = 'running';
-  options.deferPlay = true;
-  await session.loadMusic(new ArrayBuffer(8));
-  session.moveTo(8);
-  const pending = session.play();
-  await vi.waitFor(() => expect(media[0]!.paused).toBe(false));
-  media[0]!.fail();
-  await pending;
-  expect(session.playing).toBe(false);
-  expect(playStates.at(-1)).toBe(false);
-  expect(frames.pending).toBe(0);
-  expect(onPlaybackError).toHaveBeenCalledTimes(1);
-  session.dispose();
-});
-
-it('音乐启动等待期间跳转取消待播放请求，迟到响应不覆盖拖动位置', async () => {
-  const { session, context, frames, media, options, onPlaybackError } = createPlayback();
-  context.state = 'running';
-  options.deferPlay = true;
-  await session.loadMusic(new ArrayBuffer(8));
-  session.moveTo(8);
-  const pending = session.play();
-  await vi.waitFor(() => expect(media[0]!.paused).toBe(false));
-  session.moveTo(20);
-  await pending;
-  media[0]!.finishPlay();
-  await Promise.resolve();
-  frames.advance(0);
-  expect(session.positionBeats).toBe(20);
-  expect(session.playing).toBe(false);
-  expect(media[0]!.paused).toBe(true);
-  expect(frames.pending).toBe(0);
-  expect(onPlaybackError).not.toHaveBeenCalled();
-  session.dispose();
-});
-
-it('应答音沿媒体位置调度并保留既有提前量，不重复扣除输出延迟', async () => {
+it('音乐和画面按输出延迟对时，连续调速保留当前音乐音源', async () => {
   const { session, context, frames } = createPlayback();
   context.state = 'running';
   context.currentTime = 1;
@@ -374,8 +327,44 @@ it('应答音沿媒体位置调度并保留既有提前量，不重复扣除输�
   await session.loadMusic(new ArrayBuffer(8));
   session.moveTo(6);
   await session.play();
+  const song = context.sources[0]!;
+  expect(song.startAt).toBeCloseTo(1.05);
+  expect(song.startOffset).toBeCloseTo(1);
+  context.currentTime = 1.2;
+  frames.advance(200);
+  expect(session.musicPosition).toBeCloseTo(1.05);
+  const oldHit = context.sources[1]!;
+  expect(oldHit.startAt).toBeCloseTo(1.5);
+  const oldSourceCount = context.sources.length;
+  session.setSpeed(2);
+  expect(oldHit.stopCount).toBeGreaterThan(0);
   frames.advance(0);
-  expect(context.sources.length).toBeGreaterThan(0);
-  expect(context.sources[0]!.startAt).toBeCloseTo(1.45);
+  expect(context.sources[oldSourceCount]!.startAt).toBeCloseTo(1.35);
+  session.setSpeed(2);
+  expect(context.sources[oldSourceCount]!.stopCount).toBe(0);
+  context.currentTime = 1.4;
+  frames.advance(200);
+  expect(session.musicPosition).toBeCloseTo(1.35);
+  session.setSpeed(0.5);
+  context.currentTime = 1.6;
+  frames.advance(200);
+  expect(session.musicPosition).toBeCloseTo(1.6);
+  expect(song.playbackRate.value).toBe(0.5);
+  expect(song.stopCount).toBe(0);
+  session.dispose();
+});
+
+it('启动等待期间拖动取消旧播放，恢复后使用最新位置', async () => {
+  const { session, context, frames } = createPlayback();
+  await session.loadMusic(new ArrayBuffer(8));
+  const pending = session.play();
+  session.moveTo(8);
+  context.releaseResumeNow();
+  await pending;
+  expect(session.playing).toBe(false);
+  expect(context.sources).toHaveLength(0);
+  expect(frames.pending).toBe(0);
+  await session.play();
+  expect(context.sources[0]!.startOffset).toBeCloseTo(2);
   session.dispose();
 });

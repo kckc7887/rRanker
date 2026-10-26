@@ -269,9 +269,10 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
         if (updated.backgroundBrightness === presentation.backgroundBrightness && updated.backgroundBlur === presentation.backgroundBlur &&
             updated.storyboardEnabled === presentation.storyboardEnabled && updated.videoEnabled === presentation.videoEnabled &&
             updated.playbackSpeed === presentation.playbackSpeed) return;
-        const videoChanged = updated.videoEnabled !== presentation.videoEnabled || updated.playbackSpeed !== presentation.playbackSpeed;
+        const videoChanged = updated.videoEnabled !== presentation.videoEnabled;
+        const speedChanged = updated.playbackSpeed !== presentation.playbackSpeed;
         presentation = updated;
-        if (videoChanged) syncVideo(lastMapTime, lastPlaying, true);
+        if (videoChanged || speedChanged) syncVideo(lastMapTime, lastPlaying, videoChanged);
         invalidate();
       },
       bindTriggers(events) { objects = compileStoryboardTriggers(visuals.objects, events); compositeTime = NaN; updateRange(); },

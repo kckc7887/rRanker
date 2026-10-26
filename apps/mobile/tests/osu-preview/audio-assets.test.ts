@@ -1,11 +1,9 @@
 import assert from 'node:assert/strict';
-import { afterEach, describe, it, vi } from 'vitest';
-import { installMusicMedia } from '../helpers/music-media';
+import { describe, it } from 'vitest';
 import { loadPreviewAudio } from '../../src/features/osu-chart-preview/webview-player/audio-assets';
 import type { PendingSound } from '../../src/features/osu-chart-preview/webview-player/engine-audio/hitsoundSchedule';
 
 class DecodeContext {
-  currentTime = 0;
   decoded: number[] = [];
   sampleRate = 1000;
   async decodeAudioData(value: ArrayBuffer): Promise<AudioBuffer> {
@@ -25,29 +23,12 @@ function hit(customFile: string, beatmapMs = 1000): PendingSound {
   return { type: 'normal', sampleSet: 1, sampleIndex: 0, customFile, beatmapMs };
 }
 function request(ctx: DecodeContext, files: Map<string, Uint8Array>) {
-  const env = installMusicMedia(ctx);
-  const Audio = globalThis.Audio;
-  vi.stubGlobal('Audio', class extends Audio {
-    load(): void {
-      const blob = env.urls.get(this.src);
-      if (!blob) { super.load(); return; }
-      const source = this.src;
-      void blob.arrayBuffer().then(data => {
-        if (this.src !== source) return;
-        const [id, seconds] = new Uint8Array(data);
-        if (id === 255) this.dispatchEvent(new Event('error'));
-        else { Object.defineProperty(this, 'duration', { configurable: true, writable: true, value: seconds }); this.dispatchEvent(new Event('loadedmetadata')); }
-      });
-    }
-  });
   return { ctx: ctx.asAudioContext(), files, osuPath: 'set-a/map.osu', songName: 'audio.mp3', mode: 0 as const,
     schedule: [] as PendingSound[], samples: [], signal: new AbortController().signal, onWarning: (_message: string) => {} };
 }
 
-afterEach(() => vi.unstubAllGlobals());
-
-describe('preview audio resources', () => {
-  it('keeps music compressed, decodes only referenced hitsounds and measures real Sample tails', async () => {
+describe('preview decoded audio resources', () => {
+  it('decodes only referenced resources in the selected directory and measures real Sample tails', async () => {
     const ctx = new DecodeContext();
     const files = new Map([
       ['set-a/audio.mp3', audioBytes(1, 4)], ['set-b/audio.mp3', audioBytes(2, 60)],
@@ -56,10 +37,10 @@ describe('preview audio resources', () => {
     ]);
     const result = await loadPreviewAudio({ ...request(ctx, files), schedule: [hit('sb\\hit.wav', 6000)],
       samples: [{ file: 'set-a/outro.ogg', timeMs: 5000, layer: 'Foreground', volume: 0.3 }] });
-    assert.deepEqual(ctx.decoded, [3]);
+    assert.deepEqual(ctx.decoded.sort(), [1, 3, 5]);
     assert.equal(result.song?.duration, 4);
     assert.equal(result.sounds.get('sb/hit.wav')?.duration, 2);
-    assert.equal(result.samples[0]!.audio.duration, 8);
+    assert.equal(result.samples[0]!.buffer.duration, 8);
     assert.equal(result.samples[0]!.volume, 0.3);
     assert.equal(result.endMs, 13000);
   });
@@ -70,9 +51,8 @@ describe('preview audio resources', () => {
     const result = await loadPreviewAudio({ ...request(ctx, files), schedule: [hit('audio.mp3')],
       samples: [{ file: 'set-a/audio.mp3', timeMs: 3000, layer: 'Background', volume: 1 }] });
     assert.deepEqual(ctx.decoded, [7]);
-    assert.equal(result.sounds.get('audio.mp3')?.duration, 4);
-    assert.deepEqual(new Uint8Array(result.song!.bytes), audioBytes(7, 4));
-    assert.equal(result.song, result.samples[0]!.audio);
+    assert.equal(result.song, result.sounds.get('audio.mp3'));
+    assert.equal(result.song, result.samples[0]!.buffer);
     assert.equal(result.endMs, 7000);
   });
 
@@ -95,9 +75,7 @@ describe('preview audio resources', () => {
     const controller = new AbortController();
     let finish: (() => void) | undefined;
     ctx.decodeAudioData = () => new Promise(resolve => { finish = () => resolve({ duration: 4 } as AudioBuffer); });
-    const pending = loadPreviewAudio({ ...request(ctx, new Map([['set-a/audio.mp3', audioBytes(1, 4)]])),
-      schedule: [hit('audio.mp3')], signal: controller.signal });
-    for (let i = 0; i < 20 && !finish; i++) await Promise.resolve();
+    const pending = loadPreviewAudio({ ...request(ctx, new Map([['set-a/audio.mp3', audioBytes(1, 4)]])), signal: controller.signal });
     controller.abort();
     finish?.();
     await assert.rejects(pending, error => error instanceof Error && error.name === 'AbortError');
@@ -108,7 +86,7 @@ describe('preview audio resources', () => {
     const files = new Map([['set-a/audio.mp3', audioBytes(1, 4)], ['set-a/fail.ogg', audioBytes(9, 120)]]);
     const result = await loadPreviewAudio({ ...request(ctx, files),
       samples: [{ file: 'set-a/fail.ogg', timeMs: 5000, layer: 'Fail', volume: 1 }] });
-    assert.deepEqual(ctx.decoded, []);
+    assert.deepEqual(ctx.decoded.sort(), [1, 9]);
     assert.deepEqual(result.samples, []);
     assert.equal(result.endMs, 125000);
   });

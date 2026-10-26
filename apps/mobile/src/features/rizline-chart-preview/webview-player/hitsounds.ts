@@ -23,10 +23,12 @@ export class HitSoundScheduler {
     private readonly gain: GainNode,
   ) {}
 
-  reset(chartSeconds: number): void {
+  reset(chartSeconds: number, includeRecent = true): void {
     this.stop();
     this.cursor = 0;
-    while (this.cursor < this.events.length && this.events[this.cursor]!.seconds < chartSeconds - 0.02) {
+    while (this.cursor < this.events.length && (includeRecent
+      ? this.events[this.cursor]!.seconds < chartSeconds - 0.02
+      : this.events[this.cursor]!.seconds <= chartSeconds)) {
       this.cursor += 1;
     }
   }

@@ -18,7 +18,7 @@ import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-
 import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-preview-bridge';
 import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
 import { prepareOfficialChart } from './chart-prepare';
-import { PreviewSession } from './playback';
+import { PreviewSession, decodeAudio } from './playback';
 import { RizlineRenderer } from './renderer';
 
 declare global {
@@ -326,10 +326,10 @@ async function initialize(): Promise<void> {
   const musicBytes = decodeBase64Payload(musicData);
   post('progress', { value: 0.55, label: '正在准备播放器…' });
   const prepared = prepareOfficialChart(chartJson);
-  renderer = new RizlineRenderer(canvas, stage);
-  session = new PreviewSession(prepared, renderer, settings);
-  await session.loadMusic(musicBytes);
+  const music = await decodeAudio(musicBytes);
   if (disposed) return;
+  renderer = new RizlineRenderer(canvas, stage);
+  session = new PreviewSession(prepared, renderer, music, settings);
   session.draw();
   post('progress', { value: 0.95, label: '正在准备播放器…' });
   for (const input of document.querySelectorAll<HTMLInputElement | HTMLButtonElement>('button')) {
