@@ -9,7 +9,7 @@ import { normalizeRizlineChartPreviewSettings, type RizlineChartPreviewSettings 
 let audioContext: AudioContext | null = null;
 
 export function getAudioContext(): AudioContext {
-  return audioContext ??= new AudioContext();
+  return audioContext ??= new AudioContext({ latencyHint: 'playback' });
 }
 
 export class PreviewSession {

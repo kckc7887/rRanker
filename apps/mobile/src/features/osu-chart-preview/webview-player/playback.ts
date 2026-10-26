@@ -25,7 +25,7 @@ let active: PlaybackHandle | null = null;
 let preparing: AbortController | null = null;
 
 export function getAudioContext(): AudioContext {
-  return audioContext ??= new AudioContext();
+  return audioContext ??= new AudioContext({ latencyHint: 'playback' });
 }
 
 function createRenderer(canvas: HTMLCanvasElement, beatmap: BeatmapData, replay: ReplayData, modDiff: ModDifficulty, skin: SkinAssets): Renderer {

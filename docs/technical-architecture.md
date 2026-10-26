@@ -201,7 +201,7 @@ Simai 的解析、时间轴、几何与渲染位于 `simai-chart-preview/engine`
 
 四套播放会话各自持有公共 `PlaybackLoop`，沿用原有时间单位和播放时钟，在自然结束前执行 AB 回跳。普通和全屏复用端点与热度区间，暂停、倍速和全屏切换保留标记，重载会话清除标记。全屏共用扁平控制卡片，方形锁定按钮与控制器右侧对齐，位于控制器上方 16px；整页非控件区域可唤出控制器，操作结束后重新计时 5 秒；锁定时只显示解锁入口。退出恢复普通模式滚动位置，Rizline 保持竖屏，其余沿用横屏。
 
-四套播放器使用 Web Audio 解码和 `AudioBufferSourceNode`。音源启动与公共 `PlaybackClock` 使用同一 AudioContext 时间基准，画面通过 `getAudioContextOutputTime` 补偿输出延迟。音乐变速直接更新音源和时钟速度分段，音调随速度变化；定位重建所属音源并重新调度音效，暂停和释放撤销音源及待完成播放命令。音乐音量沿用现有 GainNode。
+四套播放器使用 Web Audio 解码和 `AudioBufferSourceNode`，AudioContext 采用连续播放缓冲提示 `latencyHint: 'playback'`。音源启动与公共 `PlaybackClock` 使用同一 AudioContext 时间基准，画面通过 `getAudioContextOutputTime` 补偿输出延迟。音乐变速直接更新音源和时钟速度分段，音调随速度变化；定位重建所属音源并重新调度音效，暂停和释放撤销音源及待完成播放命令。音乐音量沿用现有 GainNode。
 
 osu! 四模式共用 0.5–2 倍播放速度，步长 0.05，默认 1 倍，沿现有设置信封保存。mania 下落速度单独控制。谱面、回放、故事板和视频使用原曲时间，视频同步倍速，普通打击音按倍速换算触发时刻并保留原音调；歌曲和故事板音频片段使用缓冲音源并同步调整速度。
 

@@ -285,7 +285,7 @@ export class PhigrosPlaybackSession {
       const AudioContextClass = window.AudioContext
         ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!AudioContextClass) throw new Error('浏览器不支持 Web Audio');
-      const context = new AudioContextClass({ latencyHint: 'interactive' });
+      const context = new AudioContextClass({ latencyHint: 'playback' });
       this.context = context;
       this.musicGain = context.createGain();
       this.musicGain.gain.value = this.settings.volume;

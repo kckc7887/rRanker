@@ -200,7 +200,7 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 
 谱面宿主按设置键保留最新待写值，沿 `enqueueKeyMutation` 串行保存；只有对应值成功落盘才清除。重建与再次进入优先沿用待写值，前台恢复和通知重试继续保存；不同设置键互不覆盖。
 
-四套会话使用 Web Audio 解码与缓冲音源。`playbackClock.ts` 的 `PlaybackClock` 按 AudioContext 时间记录位置和速度分段；`audioClock.ts` 的 `getAudioContextOutputTime` 提供输出补偿时间供画面读取，音源启动与音效调度使用 AudioContext 时间。音乐变速直接更新音源的 `playbackRate`，音调随速度变化；定位重建所属音源，暂停和释放撤销音源及待完成播放命令。
+四套会话使用 Web Audio 解码与缓冲音源，AudioContext 采用 `latencyHint: 'playback'`。`playbackClock.ts` 的 `PlaybackClock` 按 AudioContext 时间记录位置和速度分段；`audioClock.ts` 的 `getAudioContextOutputTime` 提供输出补偿时间供画面读取，音源启动与音效调度使用 AudioContext 时间。音乐变速直接更新音源的 `playbackRate`，音调随速度变化；定位重建所属音源，暂停和释放撤销音源及待完成播放命令。
 
 `OsuChartPreviewSettings.playbackSpeed` 默认 1，范围 0.5–2，步长 0.05；四模式共用速度控件，经已有设置消息和存储键往返。播放速度与 `maniaScrollSpeed` 分别控制歌曲时间和下落表现。`AudioSync.currentTimeMs` 用于音效调度，`outputTimeMs` 补偿输出延迟供画面、视频和 AB 端点读取；两者来自同一播放时钟。变速更新正在播放的歌曲和故事板音源，未开始的音效重新调度。
 

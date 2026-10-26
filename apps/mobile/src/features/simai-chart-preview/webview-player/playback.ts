@@ -258,7 +258,7 @@ export class SimaiPlaybackSession {
 
   private async ensureAudio(resume = true): Promise<AudioContext> {
     if (!this.context) {
-      const context = new AudioContext();
+      const context = new AudioContext({ latencyHint: 'playback' });
       this.context = context;
       this.musicGain = context.createGain();
       this.musicGain.gain.value = this.musicVolume / 10;
