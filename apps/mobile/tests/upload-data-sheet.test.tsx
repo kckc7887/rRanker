@@ -1243,6 +1243,42 @@ describe('好友码统一上传弹窗', () => {
     await act(async () => { finish(); });
     expect(uploadTaskController.getSnapshot().status).toBe('canceled');
   });
+
+  it('绑定完成后的慢刷新不改变随后输入的新好友码状态', async () => {
+    setHubEntry({ friendCode: '111111111111111', token: 'tok', hasCabinetBound: false, updatedAt: 1 });
+    let finishList!: (entries: TestHubEntry[]) => void;
+    mockBindCabinet.mockImplementationOnce(async input => {
+      mockListWithToken.mockImplementationOnce(() => new Promise(resolve => { finishList = resolve; }));
+      input.onPhase({ kind: 'done', message: '玩家二维码已绑定', uploaded: 0, skipped: 0 });
+      return { friendCode: '111111111111111', alreadyBound: false };
+    });
+    const screen = await renderSheet([]);
+    await waitFor(() => expect(mockFetchMe).toHaveBeenCalled());
+    await fireEvent.press(screen.getByText('绑定玩家二维码'));
+    await fireEvent.changeText(await screen.findByLabelText('玩家二维码字符串'), 'SGWCMAIDBIND');
+    await fireEvent.press(screen.getByText('确认绑定玩家二维码'));
+    await waitFor(() => expect(finishList).toBeDefined());
+    await fireEvent.changeText(screen.getByLabelText('舞萌好友码'), '222222222222222');
+    await waitFor(() => expect(mockSelect).toHaveBeenLastCalledWith('222222222222222'));
+    await act(async () => { finishList([...mockHubAccounts.values()]); });
+    expect(screen.getByLabelText('舞萌好友码').props.value).toBe('222222222222222');
+    expect(mockHubState.friendCode).toBe('222222222222222');
+    await fireEvent.press(screen.getByText('绑定玩家二维码'));
+    expect(screen.queryByLabelText('玩家二维码字符串')).toBeNull();
+  });
+
+  it('清空好友码时不沿用尚未完成检查的旧会话开放二维码绑定', async () => {
+    setHubEntry({ friendCode: '111111111111111', token: 'tok', hasCabinetBound: false, updatedAt: 1 });
+    const screen = await renderSheet([]);
+    await waitFor(() => expect(mockFetchMe).toHaveBeenCalled());
+    let finish!: (value: TestHubEntry | null) => void;
+    mockGetByFriendCode.mockImplementationOnce(() => new Promise(resolve => { finish = resolve; }));
+    await fireEvent.changeText(screen.getByLabelText('舞萌好友码'), '');
+    await fireEvent.press(screen.getByText('绑定玩家二维码'));
+    expect(screen.queryByLabelText('玩家二维码字符串')).toBeNull();
+    await act(async () => { finish(null); });
+    expect(mockBindCabinet).not.toHaveBeenCalled();
+  });
 });
 
 afterEach(() => { uploadTaskController.begin(); uploadTaskController.cancel(); });

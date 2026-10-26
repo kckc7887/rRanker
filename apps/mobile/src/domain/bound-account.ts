@@ -336,16 +336,17 @@ export function createMaimaiBoundAccount(input: {
 }
 
 export function createPhigrosBoundAccount(input: {
-  playerId: string;
+  openid: string;
+  displayName: string;
   rating: number;
   challengeModeRank?: number | null;
 }): BoundAccount {
   const profile = getGameProfile('phigros');
   return {
-    id: `phigros:phi-taptap:${input.playerId}`,
+    id: `phigros:phi-taptap:${input.openid}`,
     gameId: 'phigros',
     providerId: 'phi-taptap',
-    displayName: input.playerId,
+    displayName: input.displayName,
     scoreLabel: profile.ratingLabel,
     scoreDisplay: Number.isFinite(input.rating) ? input.rating.toFixed(4) : '—',
     providerTitle: PROVIDER_TITLES['phi-taptap'],
@@ -399,7 +400,8 @@ export function boundAccountFromStored(account: {
   if (account.gameId === 'phigros' && account.providerId === 'phi-taptap') {
     const rating = Number(account.scoreDisplay);
     const restored = createPhigrosBoundAccount({
-      playerId: account.id.slice('phigros:phi-taptap:'.length),
+      openid: account.id.slice('phigros:phi-taptap:'.length),
+      displayName: account.displayName,
       rating: Number.isFinite(rating) ? rating : 0,
       challengeModeRank: account.challengeModeRank,
     });

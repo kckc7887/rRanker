@@ -33,6 +33,7 @@ const mockRemoveQueries = jest.fn((_filters: unknown) => undefined);
 const mockNotification = jest.fn((_input: { actions?: { label: string; onPress?: () => void }[] }) => undefined);
 const mockShowNotification = jest.fn();
 
+jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: jest.requireActual<typeof import('react-native')>('react-native').View }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -66,7 +67,8 @@ jest.mock('@/state/query-client', () => ({ queryClient: {
   removeQueries: (filters: unknown) => mockRemoveQueries(filters),
 } }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({ clearGameUserData: jest.fn(async () => undefined) }) }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showActionNotification: mockNotification, showNotification: mockShowNotification }) }));
+jest.mock('@/components/AppNotification', () => ({
+  ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showActionNotification: mockNotification, showNotification: mockShowNotification }) }));
 jest.mock('@/services/account-thumbnail', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined), persistBoundAccountThumbnail: jest.fn(async () => undefined) }));
 jest.mock('@/components/TufPlayerPickerSheet', () => ({ TufPlayerPickerSheet: () => null }));
 jest.mock('@/components/PhiraPlayerPickerSheet', () => ({ PhiraPlayerPickerSheet: () => null }));

@@ -5,6 +5,7 @@ import {
   MAIMAI_TEST_ACCOUNT_ID,
   MUSEDASH_TEST_ACCOUNT_ID,
   PHIGROS_TEST_ACCOUNT_ID,
+  createPhigrosBoundAccount,
 } from '@/domain/bound-account';
 import type { StoredProviderAccountInput } from '@/storage/secure-session-store';
 import { SessionPersistenceError } from '@/domain/session-vault';
@@ -295,6 +296,49 @@ describe('SecureSessionStore 当前账号', () => {
     expect(vault.accounts.map((item) => item.id)).toEqual(['maimai:diving-fish:a']);
   });
 
+  it('commits removal while secure reads fail and reports credential cleanup separately', async () => {
+    const store = createStore();
+    const removed = account('maimai:diving-fish:removed');
+    const retained = account('maimai:diving-fish:retained');
+    await store.upsertAccount(removed);
+    await store.upsertAccount(retained);
+    await store.setActiveAccountId(removed.id);
+    const reading = vi.mocked(SecureStore.getItemAsync);
+    const implementation = reading.getMockImplementation()!;
+    reading.mockRejectedValue(new Error('keychain unavailable'));
+    try {
+      await expect(store.removeAccount(removed.id)).resolves.toEqual({ committed: true, cleanupFailures: ['登录凭据'] });
+    } finally { reading.mockImplementation(implementation); }
+    const restored = await store.loadVault();
+    expect(restored.accounts.map(item => item.id)).toEqual([retained.id]);
+    expect(restored.activeAccountId).toBe(retained.id);
+    expect(restored.credentials[0].session).toEqual(retained.session);
+  });
+
+  it('keeps shared credentials usable when one bound account is removed', async () => {
+    const store = createStore();
+    const first = { ...account('maimai:diving-fish:first'), credentialId: 'shared' };
+    const second = { ...account('maimai:diving-fish:second'), credentialId: 'shared', session: first.session };
+    await store.upsertAccounts([first, second], { activeAccountId: first.id });
+    const secrets = [...secure.values.entries()];
+    await store.removeAccount(first.id);
+    expect([...secure.values.entries()]).toEqual(secrets);
+    const restored = await store.loadVault();
+    expect(restored.accounts.map(item => item.id)).toEqual([second.id]);
+    expect(restored.credentials[0].session).toEqual(first.session);
+  });
+
+  it('keeps the account and its secrets when removal cannot read the index', async () => {
+    const input = account('maimai:diving-fish:read-error');
+    const store = createStore();
+    await store.upsertAccount(input);
+    const secrets = [...secure.values.entries()];
+    const unavailable = new SecureSessionStore({ ...kvStore, getItem: async () => { throw new Error('read failed'); } });
+    await expect(unavailable.removeAccount(input.id)).rejects.toMatchObject({ code: 'local_commit' });
+    expect([...secure.values.entries()]).toEqual(secrets);
+    expect((await store.loadVault()).accounts.map(item => item.id)).toEqual([input.id]);
+  });
+
   it('在 v3 记录中持久化可选评分元数据且不改变当前账号', async () => {
     const store = createStore();
     const stored = account('maimai:diving-fish:a');
@@ -369,6 +413,47 @@ describe('SecureSessionStore 当前账号', () => {
 describe('SecureSessionStore 当前存储读取', () => {
   const key = 'rranker.provider.sessions.index.v4';
   beforeEach(() => { secure.values.clear(); sqlite.values.clear(); vi.clearAllMocks(); });
+
+  it('updates the same Phigros binding after a nickname change and separates equal nicknames', async () => {
+    const store = createStore();
+    const bind = async (openid: string, displayName: string, sessionToken: string) => {
+      const bound = createPhigrosBoundAccount({ openid, displayName, rating: 15 });
+      await store.upsertAccount({ ...bound, gameId: 'phigros', providerId: 'phi-taptap',
+        session: { mode: 'phi-session', openid, displayName, sessionToken, persistable: true } });
+    };
+    await bind('first', '原昵称', 'token-a');
+    await bind('first', '新昵称', 'token-b');
+    await bind('second', '新昵称', 'token-c');
+    const restored = await store.loadVault();
+    expect(restored.accounts.map(item => [item.id, item.displayName])).toEqual([
+      ['phigros:phi-taptap:first', '新昵称'], ['phigros:phi-taptap:second', '新昵称'],
+    ]);
+    expect(restored.credentials.map(item => item.session)).toEqual([
+      { mode: 'phi-session', openid: 'first', displayName: '新昵称', sessionToken: 'token-b', persistable: true },
+      { mode: 'phi-session', openid: 'second', displayName: '新昵称', sessionToken: 'token-c', persistable: true },
+    ]);
+  });
+
+  it('resets only unsupported Phigros bindings after reading their old credentials', async () => {
+    const store = createStore();
+    const phi = { ...createPhigrosBoundAccount({ openid: 'openid', displayName: '昵称', rating: 15 }),
+      gameId: 'phigros' as const, providerId: 'phi-taptap' as const,
+      session: { mode: 'phi-session', openid: 'openid', displayName: '昵称', sessionToken: 'token', persistable: true } as const };
+    await store.upsertAccount(account('other'));
+    await store.upsertAccount(phi);
+    const index = JSON.parse(sqlite.values.get(key)!);
+    const reference = index.credentials.find((item: { providerId: string }) => item.providerId === 'phi-taptap').secretRef;
+    await new LargeSecureValueStore().write(reference, JSON.stringify({ mode: 'phi-session', playerId: '昵称', sessionToken: 'old', persistable: true }));
+    const priorIndex = sqlite.values.get(key);
+    vi.mocked(SecureStore.getItemAsync).mockRejectedValueOnce(new Error('locked'));
+    await expect(store.loadVault()).rejects.toMatchObject({ code: 'credential_storage' });
+    expect(sqlite.values.get(key)).toBe(priorIndex);
+    const restored = await store.loadVault();
+    expect(restored.accounts.map(item => item.id)).toEqual(['other']);
+    expect(restored.activeAccountId).toBe('other');
+    expect(restored.credentials[0].session).toEqual(account('other').session);
+    await expect(new LargeSecureValueStore().read(reference)).resolves.toBeNull();
+  });
 
   it.each(['', '{broken', JSON.stringify({ version: 3, accounts: [] }), JSON.stringify({ version: 4, credentials: {}, accounts: [] }), JSON.stringify({ version: 4, credentials: [], accounts: [] })])(
     '读取不支持的索引后重建当前空账号库：%s', async raw => {

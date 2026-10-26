@@ -41,7 +41,7 @@ const TokenErrorSchema = z.object({
 });
 
 const ProfileDataSchema = z.object({
-  openid: z.string(),
+  openid: z.string().min(1),
   name: z.string(),
   avatar: z.string(),
 });
@@ -54,7 +54,7 @@ const SessionTokenResponseSchema = z.object({
   sessionToken: z.string(),
 });
 
-const PlayerIdResponseSchema = z.object({
+const PlayerNameResponseSchema = z.object({
   nickname: z.string(),
 });
 
@@ -101,7 +101,8 @@ export type TapTapToken = z.infer<typeof TokenDataSchema>;
 
 export type PhigrosSession = {
   sessionToken: string;
-  playerId: string;
+  openid: string;
+  displayName: string;
 };
 
 function randStr(len: number): string {
@@ -230,11 +231,11 @@ export async function exchangeSessionToken(
         },
       }),
   } });
-  return { sessionToken, playerId: profile.name };
+  return { sessionToken, openid: profile.openid, displayName: profile.name };
 }
 
-export async function getPlayerId(sessionToken: string, signal?: AbortSignal): Promise<string> {
-  return (await phigrosJson(`${LC_SERVER}/1.1/users/me`, PlayerIdResponseSchema, { signal, timeoutMs: 12_000, init: {
+export async function getPlayerName(sessionToken: string, signal?: AbortSignal): Promise<string> {
+  return (await phigrosJson(`${LC_SERVER}/1.1/users/me`, PlayerNameResponseSchema, { signal, timeoutMs: 12_000, init: {
       headers: {
         'X-LC-Id': TAPTAP_CLIENT_ID,
         'X-LC-Key': LC_APP_KEY,

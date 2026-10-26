@@ -9,7 +9,7 @@ let lastQueryOptions: { enabled?: boolean } | null = null;
 const mockScoreProvider = new PhigrosScoreProvider({
   mode: 'phi-session',
   sessionToken: 'token',
-  playerId: 'player',
+  openid: 'player', displayName: 'player',
   persistable: true,
 });
 
@@ -41,7 +41,7 @@ jest.mock('@/providers/phigros-score-provider', () => ({
 }));
 jest.mock('@/state/session-store', () => ({
   useSession: (selector: (state: unknown) => unknown) => selector({
-    session: { mode: 'phi-session', sessionToken: 'token', playerId: 'player', persistable: true },
+    session: { mode: 'phi-session', sessionToken: 'token', openid: 'player', displayName: 'player', persistable: true },
     activeAccountId: 'phigros:player',
     scoreProvider: mockScoreProvider,
   }),

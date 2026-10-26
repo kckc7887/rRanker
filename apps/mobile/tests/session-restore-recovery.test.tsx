@@ -40,6 +40,7 @@ jest.mock('@/state/debug-store', () => {
   return { useDebugStore };
 });
 jest.mock('@/components/AppNotification', () => ({
+  ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'),
   useNotification: () => ({
     showNotification: mockShowNotification,
     showActionNotification: mockShowActionNotification,

@@ -154,7 +154,7 @@ export function PhigrosLoginPanel({
         setMessage('授权返回异常，请重试');
         return;
       }
-      const account = createPhigrosBoundAccount({ playerId: newSession.playerId, rating: 0 });
+      const account = createPhigrosBoundAccount({ openid: newSession.openid, displayName: newSession.displayName, rating: 0 });
       const assertAccountCurrent = captureResourceWrites('phigros', signal, account.id);
       assertCurrent(); assertAccountCurrent();
       await sessions.upsertAccount({

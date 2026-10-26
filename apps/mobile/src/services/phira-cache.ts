@@ -1,12 +1,10 @@
 import type {
-  PhiraBestSnapshot, PhiraChartPage, PhiraChartSnapshot, PhiraChartStatus, PhiraNoteSnapshot,
+  PhiraBestSnapshot,
   PhiraPlayerSnapshot, PhiraQueriedBest,
 } from '@/domain/phira';
 import {
-  PhiraUserSchema, PhiraUserStatsSchema, PhiraPoolSchema, PhiraRecordSchema, PhiraChartSchema, PhiraChartPageSchema,
-  PHIRA_BEST_SCHEMA_VERSION, PHIRA_CHART_SCHEMA_VERSION, PHIRA_NOTE_SCHEMA_VERSION,
-  PHIRA_PAGE_SCHEMA_VERSION, PHIRA_PLAYER_SCHEMA_VERSION, phiraBestCacheKey, phiraChartCacheKey,
-  phiraNoteCacheKey, phiraPageCacheKey, phiraPlayerCacheKey,
+  PhiraUserSchema, PhiraUserStatsSchema, PhiraPoolSchema, PhiraRecordSchema, PhiraChartSchema,
+  PHIRA_BEST_SCHEMA_VERSION, PHIRA_PLAYER_SCHEMA_VERSION, phiraBestCacheKey, phiraPlayerCacheKey,
 } from '@/domain/phira';
 import type { DataSource } from '@/domain/models';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
@@ -25,14 +23,6 @@ const bestSchema = z.object({
   }).refine(item => item.record === null || item.record.chart === item.chart.id)),
   source: sourceSchema,
 }).refine(value => Object.entries(value.items).every(([key, item]) => key === String(item.chart.id)));
-const chartSchema = z.object({ chart: PhiraChartSchema, source: sourceSchema });
-const noteCount = z.number().int().nonnegative();
-const noteSchema = z.object({
-  chartUpdated: z.string().nullable(),
-  counts: z.object({ click: noteCount, hold: noteCount, flick: noteCount, drag: noteCount }).nullable(),
-  unavailableReason: z.string().optional(), source: sourceSchema,
-});
-const pageSchema = z.object({ data: PhiraChartPageSchema, source: sourceSchema });
 export function phiraSource(updatedAt = new Date().toISOString()): DataSource {
   return snapshotSource({ kind: 'phira', label: 'Phira 社区公开数据' }, updatedAt);
 }
@@ -58,19 +48,6 @@ export class PhiraCache {
       const source = phiraSource();
       return { value: { items, source }, updatedAt: source.updatedAt };
     }, assertCurrent);
-  }
-  async loadChart(id: number): Promise<PhiraChartSnapshot | null> {
-    return this.repository.getResource(phiraChartCacheKey(id), PHIRA_CHART_SCHEMA_VERSION,
-      chartSchema.refine(value => value.chart.id === id));
-  }
-  saveChart(id: number, value: PhiraChartSnapshot, assertCurrent?: () => void) { return this.repository.saveResource(phiraChartCacheKey(id), PHIRA_CHART_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent); }
-  async loadNotes(id: number): Promise<PhiraNoteSnapshot | null> { return this.repository.getResource(phiraNoteCacheKey(id), PHIRA_NOTE_SCHEMA_VERSION, noteSchema); }
-  saveNotes(id: number, value: PhiraNoteSnapshot, assertCurrent?: () => void) { return this.repository.saveResource(phiraNoteCacheKey(id), PHIRA_NOTE_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent); }
-  async loadPage(status: PhiraChartStatus, page: number, search = '') {
-    return this.repository.getResource(phiraPageCacheKey(status, page, search), PHIRA_PAGE_SCHEMA_VERSION, pageSchema);
-  }
-  savePage(status: PhiraChartStatus, page: number, search: string, value: { data: PhiraChartPage; source: DataSource }, assertCurrent?: () => void) {
-    return this.repository.saveResource(phiraPageCacheKey(status, page, search), PHIRA_PAGE_SCHEMA_VERSION, value.source.updatedAt, value, assertCurrent);
   }
   async clearPlayer(id: number) {
     await this.repository.clearResources([phiraPlayerCacheKey(id), phiraBestCacheKey(id)]);

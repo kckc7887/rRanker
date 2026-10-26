@@ -13,9 +13,11 @@ const mockTheme = createAppTheme('light', '#246BFD');
 jest.mock('expo-router', () => ({ Stack: { Screen: () => null }, router: { push: (href: unknown) => mockPush(href) } }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
+jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: jest.requireActual<typeof import('react-native')>('react-native').View }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, left: 0, right: 0, bottom: 0 }) }));
 jest.mock('@/theme/app-theme', () => ({ useAppTheme: () => mockTheme }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showNotification: mockNotification }) }));
+jest.mock('@/components/AppNotification', () => ({
+  ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showNotification: mockNotification }) }));
 jest.mock('@/components/game-content/DetailPressable', () => {
   const RN = jest.requireActual('react-native') as typeof import('react-native');
   return { DetailPressable: RN.Pressable, DetailGestureRoot: RN.View };

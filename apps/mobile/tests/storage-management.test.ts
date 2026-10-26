@@ -24,6 +24,8 @@ import {
   measureManagedStorageBytes,
 } from '@/features/storage-management/storage-usage';
 import { measureRrankerDatabaseAllocation } from '@/storage/rranker-database';
+import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
+import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 
 vi.mock('@/features/rizline-best-image/rizline-ui-cache', () => ({ clearRizlineUiCache: () => undefined }));
 
@@ -63,7 +65,7 @@ vi.mock('@/features/storage-management/fs-storage', () => ({
   APP_CACHE_ROOT: () => ({ uri: 'file:///cache' }),
   APP_DOCUMENT_ROOT: () => null,
   PHIGROS_FONT_ROOT: () => null,
-  PHIGROS_UI_ROOT: () => null,
+  PHIGROS_UI_ROOT: () => ({ uri: 'file:///document/phigros-ui' }),
   RIZLINE_UI_ROOT: () => null,
   BEST_IMAGE_STAGE_ROOT: (game: string) => ({ uri: `file:///document/${game}-illustration-stage` }),
   MAIMAI_ASSETS_ROOT: () => null,
@@ -171,7 +173,7 @@ describe('phira storage segment', () => {
     };
     const adapter = getGameStorageAdapter('phira');
     await expect(adapter?.measure(await collectStorageMeasurementInventory(snapshots as never))).resolves.toBe(150);
-    await adapter?.clear(snapshots as never);
+    await adapter?.clear(snapshots as never, await collectStorageMeasurementInventory(snapshots as never));
     expect(clearAccountScores).toHaveBeenCalledWith([]);
     expect(clearResources).toHaveBeenCalledWith([
       'phira:player:323528',
@@ -233,7 +235,7 @@ describe('osu storage segment', () => {
     const adapter = getGameStorageAdapter('osu-standard');
     // 仅 osu-standard 自身的快照 + 该模式账号的头像/缩略图（accountId 前缀归属）
     await expect(adapter?.measure(await collectStorageMeasurementInventory(snapshots as never))).resolves.toBe(180);
-    await adapter?.clear(snapshots as never);
+    await adapter?.clear(snapshots as never, await collectStorageMeasurementInventory(snapshots as never));
     expect(clearAccountScores).toHaveBeenCalledWith([]);
     expect(clearResources).toHaveBeenCalledWith([
       'osu:osu-standard:2',
@@ -275,6 +277,42 @@ describe('shared cache measurement', () => {
 });
 
 describe('storage measurement inventory', () => {
+  it('includes Phigros drawing resources in reclaimed bytes', async () => {
+    let bytes = 2048;
+    mocks.measureDirectoryBytes.mockImplementation(async directory => directory?.uri === 'file:///document/phigros-ui' ? bytes : 0);
+    const clear = vi.spyOn(getGameStorageAdapter('phigros')!, 'clear').mockImplementationOnce(async () => { bytes = 0; });
+    try {
+      await expect(clearStorageByCategories(['phigros'], new QueryClient())).resolves.toMatchObject({ reclaimedBytes: 2048, failures: [] });
+    } finally { clear.mockRestore(); mocks.measureDirectoryBytes.mockResolvedValue(0); }
+  });
+
+  it('invalidates every selected game before one inventory scan and continues other categories after failure', async () => {
+    const maimai = captureResourceWrites('maimai');
+    const phira = captureResourceWrites('phira');
+    const readScores = vi.spyOn(SqliteSnapshotRepository.prototype, 'listAccountScoreSizes').mockImplementation(async () => {
+      expect(maimai).toThrow('缓存请求已失效');
+      expect(phira).toThrow('缓存请求已失效');
+      return [];
+    });
+    const readResources = vi.spyOn(SqliteSnapshotRepository.prototype, 'listResourceSizes').mockResolvedValue([]);
+    const failed = vi.spyOn(getGameStorageAdapter('maimai')!, 'clear').mockRejectedValueOnce(new Error('failed'));
+    try {
+      await expect(clearStorageByCategories(['maimai', 'phira', 'maimai', 'shared'], new QueryClient())).resolves.toMatchObject({
+        clearedIds: ['phira', 'shared'], failures: ['maimai'],
+      });
+      expect(readScores).toHaveBeenCalledOnce();
+      expect(readResources).toHaveBeenCalledOnce();
+    } finally { readScores.mockRestore(); readResources.mockRestore(); failed.mockRestore(); }
+  });
+
+  it('still clears shared files when the game inventory cannot be read', async () => {
+    const read = vi.spyOn(SqliteSnapshotRepository.prototype, 'listResourceSizes').mockRejectedValueOnce(new Error('unavailable'));
+    try {
+      await expect(clearStorageByCategories(['phira', 'maimai', 'shared'], new QueryClient())).resolves.toMatchObject({
+        clearedIds: ['shared'], failures: ['phira', 'maimai'],
+      });
+    } finally { read.mockRestore(); }
+  });
   it('partitions current account resources and catalog storage by game', async () => {
     const snapshots = {
       listAccountScoreSizes: async () => [{ accountId: 'maimai:lxns:u1', bytes: 20 }],
@@ -310,14 +348,14 @@ describe('storage usage report', () => {
       gameCoverBytes,
     });
 
-    expect(report.totalBytes).toBe(10000);
+    expect(report.totalBytes).toBe(8000);
     expect(report.groups.reduce((sum, group) => sum + group.bytes, 0)).toBe(report.totalBytes);
     for (const group of report.groups) {
       expect(group.items.reduce((sum, item) => sum + item.bytes, 0)).toBe(group.bytes);
     }
     expect(report.groups.find((group) => group.id === 'basic')?.items).toEqual(expect.arrayContaining([
       expect.objectContaining({ title: '账号与个人内容', bytes: 500 }),
-      expect.objectContaining({ title: '设置和其它数据', bytes: 7900 }),
+      expect.objectContaining({ title: '设置和其它数据', bytes: 5900 }),
     ]));
     expect(report.groups.find((group) => group.id === 'cache')?.items).toEqual(expect.arrayContaining([
       expect.objectContaining({ id: 'maimai', bytes: 500, clearableBytes: 500 }),
@@ -339,8 +377,8 @@ describe('storage usage report', () => {
       gameBaseBytes,
       gameCoverBytes: Array<number>(GAME_STORAGE_ADAPTERS.length).fill(0),
     });
-    expect(report.totalBytes).toBe(300);
-    expect(report.groups.reduce((sum, group) => sum + group.bytes, 0)).toBe(300);
+    expect(report.totalBytes).toBe(200);
+    expect(report.groups.reduce((sum, group) => sum + group.bytes, 0)).toBe(200);
     for (const group of report.groups) {
       expect(group.items.reduce((sum, item) => sum + item.bytes, 0)).toBeCloseTo(group.bytes);
     }
@@ -365,7 +403,7 @@ describe('phigros resource coverage', () => {
     };
     const adapter = getGameStorageAdapter('phigros');
     await expect(adapter?.measure(await collectStorageMeasurementInventory(snapshots as never))).resolves.toBe(190);
-    await adapter?.clear(snapshots as never);
+    await adapter?.clear(snapshots as never, await collectStorageMeasurementInventory(snapshots as never));
     expect(clearAccountScores).toHaveBeenCalledWith([]);
     expect(clearResources).toHaveBeenCalledWith([
       'phigros-save:phigros:phi-taptap:1',
@@ -392,7 +430,7 @@ describe('chunithm resource coverage', () => {
     };
     const adapter = getGameStorageAdapter('chunithm');
     await expect(adapter?.measure(await collectStorageMeasurementInventory(snapshots as never))).resolves.toBe(60);
-    await adapter?.clear(snapshots as never);
+    await adapter?.clear(snapshots as never, await collectStorageMeasurementInventory(snapshots as never));
     expect(clearResources).toHaveBeenCalledWith([
       'chunithm-collections:character',
       'chunithm-collections:trophy',
@@ -422,7 +460,7 @@ describe('maimai resource coverage', () => {
     const adapter = getGameStorageAdapter('maimai');
     // SQLite 可清部分 110 + maimai-assets 目录 1000
     await expect(adapter?.measure(await collectStorageMeasurementInventory(snapshots as never))).resolves.toBe(1110);
-    await adapter?.clear(snapshots as never);
+    await adapter?.clear(snapshots as never, await collectStorageMeasurementInventory(snapshots as never));
     expect(clearAccountScores).toHaveBeenCalledWith(['maimai:lxns:u1']);
     expect(clearResources).toHaveBeenCalledWith(['account-thumbnail:maimai:lxns:u1']);
     expect(mocks.clearMaimaiUiCache).toHaveBeenCalledTimes(1);
@@ -575,7 +613,7 @@ describe('Majdata storage segment', () => {
     const resources = ['majdata-net:account:a', 'majdata-net:song:uuid', 'majdata-net:chart:uuid:hash', 'majdata-net:parsed:uuid:hash:6'];
     const snapshots = { listAccountScoreSizes: vi.fn(async () => []), listResourceSizes: vi.fn(async () => [...resources.map(key => ({ key, bytes: 10 })), { key: 'local-tags', bytes: 100 }, { key: 'phira:chart:1', bytes: 99 }]), clearAccountScores: vi.fn(async () => undefined), clearResources: vi.fn(async () => undefined) };
     const adapter = getGameStorageAdapter('majdata-net')!;
-    expect(await adapter.measure(await collectStorageMeasurementInventory(snapshots as never))).toBe(40); await adapter.clear(snapshots as never); expect(snapshots.clearResources).toHaveBeenCalledWith(resources);
+    expect(await adapter.measure(await collectStorageMeasurementInventory(snapshots as never))).toBe(40); await adapter.clear(snapshots as never, await collectStorageMeasurementInventory(snapshots as never)); expect(snapshots.clearResources).toHaveBeenCalledWith(resources);
   });
 });
 

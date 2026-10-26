@@ -1,7 +1,6 @@
 import { useState } from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   Text,
@@ -14,6 +13,7 @@ import { resolveProviderLoginPanel } from '@/features/game-content/provider-logi
 import { providerLoginSheetStyles as styles } from '@/components/provider-login-sheet-styles';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
+import { AppModal } from '@/components/AppModal';
 
 export function ProviderLoginSheet({
   visible,
@@ -46,7 +46,7 @@ export function ProviderLoginSheet({
   const LoginPanel = resolveProviderLoginPanel(provider);
 
   return (
-    <Modal
+    <AppModal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
@@ -97,6 +97,6 @@ export function ProviderLoginSheet({
           </View>
         </ScrollView>
       </View>
-    </Modal>
+    </AppModal>
   );
 }

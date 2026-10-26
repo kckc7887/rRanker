@@ -6,6 +6,8 @@ import { findGame } from '@/domain/game-bind-options';
 import { PhigrosScoreProvider } from '@/providers/phigros-score-provider';
 import type { AppLifecycleSnapshot } from '@/state/app-lifecycle';
 
+jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: jest.requireActual<typeof import('react-native')>('react-native').View }));
+
 let mockLifecycle: AppLifecycleSnapshot = {
   appState: 'active', phase: 'foreground-ready', foregroundReady: true,
   foregroundGeneration: 1, memoryWarningGeneration: 0,
@@ -30,7 +32,8 @@ const mockDevice = {
 const mockSession = {
   mode: 'phi-session',
   sessionToken: 'st-1',
-  playerId: 'player-1',
+  openid: 'player-1',
+  displayName: '玩家',
   persistable: true,
 } as const;
 const mockSave = jest.fn(async (_account: unknown, _signal?: AbortSignal) => 'credential');

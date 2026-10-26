@@ -234,7 +234,8 @@ export const useSession = create<SessionState>((set, get) => ({
     }
     if (session.mode === 'phi-session') {
       const phigrosAccount = createPhigrosBoundAccount({
-        playerId: session.playerId,
+        openid: session.openid,
+        displayName: session.displayName,
         rating: 0,
       });
       set(bindSessionAccount(get(), phigrosAccount, session, accountMeta?.credentialId));

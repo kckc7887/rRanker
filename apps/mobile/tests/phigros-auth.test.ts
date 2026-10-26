@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it, vi } from 'vitest';
-import { downloadSave, exchangeSessionToken, getGameSave, getPlayerId, pickLatestGameSave, requestDeviceCode } from '@/providers/phigros-auth';
+import { downloadSave, exchangeSessionToken, getGameSave, getPlayerName, pickLatestGameSave, requestDeviceCode } from '@/providers/phigros-auth';
 import { Base64, HmacSHA1, MD5 } from '@/utils/crypto-subset';
 
 vi.mock('expo/fetch', () => ({ fetch: (...args: Parameters<typeof fetch>) => fetch(...args) }));
@@ -50,6 +50,17 @@ describe('pickLatestGameSave', () => {
 });
 
 describe('shared Phigros transport', () => {
+  it('keeps the stable OpenID when TapTap returns a changed nickname', async () => {
+    const fetcher = vi.fn()
+      .mockResolvedValueOnce(jsonResponse({ data: { openid: 'stable-id', name: '旧昵称', avatar: '' } }))
+      .mockResolvedValueOnce(jsonResponse({ sessionToken: 'first' }))
+      .mockResolvedValueOnce(jsonResponse({ data: { openid: 'stable-id', name: '新昵称', avatar: '' } }))
+      .mockResolvedValueOnce(jsonResponse({ sessionToken: 'second' }));
+    vi.stubGlobal('fetch', fetcher);
+    const token = { kid: 'key', access_token: 'access', mac_key: 'mac' };
+    expect(await exchangeSessionToken(token)).toEqual({ sessionToken: 'first', openid: 'stable-id', displayName: '旧昵称' });
+    expect(await exchangeSessionToken(token)).toEqual({ sessionToken: 'second', openid: 'stable-id', displayName: '新昵称' });
+  });
   it('preserves device-code form fields and a single attempt', async () => {
     const fetcher = vi.fn(async () => jsonResponse({ success: true, data: {
       device_code: 'code', qrcode_url: 'https://accounts.tapapis.cn/qr', expires_in: 300,
@@ -69,7 +80,7 @@ describe('shared Phigros transport', () => {
     const fetcher = vi.fn().mockResolvedValueOnce(jsonResponse({ data: { openid: 'open', name: 'player', avatar: 'https://avatar.test/icon' } }))
       .mockResolvedValueOnce(jsonResponse({ sessionToken: 'session' }));
     vi.stubGlobal('fetch', fetcher);
-    await expect(exchangeSessionToken({ kid: 'key', access_token: 'access', mac_key: 'mac' })).resolves.toEqual({ sessionToken: 'session', playerId: 'player' });
+    await expect(exchangeSessionToken({ kid: 'key', access_token: 'access', mac_key: 'mac' })).resolves.toEqual({ sessionToken: 'session', openid: 'open', displayName: 'player' });
     const [profileUrl, profileInit] = fetcher.mock.calls[0] as [string, RequestInit];
     const authorization = new Headers(profileInit.headers).get('Authorization')!;
     const match = authorization.match(/^MAC id="key", ts="(\d+)", nonce="([a-zA-Z0-9]+)", mac="([^"]+)"$/)!;
@@ -92,7 +103,7 @@ describe('shared Phigros transport', () => {
       { summary: 'new', gameFile: { url: 'https://cdn.test/new' }, updatedAt: '2026-09-30' },
     ] }));
     vi.stubGlobal('fetch', fetcher);
-    expect(await getPlayerId('session')).toBe('name');
+    expect(await getPlayerName('session')).toBe('name');
     expect(await getGameSave('session')).toEqual({ summaryBase64: 'new', saveUrl: 'https://cdn.test/new', updatedAt: '2026-09-30' });
     const [url, init] = fetcher.mock.calls[1] as [string, RequestInit];
     expect(new URL(url).searchParams.get('order')).toBe('-updatedAt');
@@ -103,7 +114,7 @@ describe('shared Phigros transport', () => {
   it('does not parse HTTP failure envelopes or repeat credential requests', async () => {
     const fetcher = vi.fn(async () => new Response('<html>502</html>', { status: 502 }));
     vi.stubGlobal('fetch', fetcher);
-    await expect(getPlayerId('session')).rejects.toMatchObject({ code: 'network', retryable: true });
+    await expect(getPlayerName('session')).rejects.toMatchObject({ code: 'network', retryable: true });
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
@@ -129,7 +140,7 @@ describe('shared Phigros transport', () => {
     controller.abort(new Error('cancelled'));
     await expect(load).rejects.toThrow('cancelled');
     await vi.waitFor(() => expect(cancel).toHaveBeenCalledTimes(1));
-    await expect(getPlayerId('session', controller.signal)).rejects.toThrow('cancelled');
+    await expect(getPlayerName('session', controller.signal)).rejects.toThrow('cancelled');
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 });

@@ -1,12 +1,13 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  ActivityIndicator, Image, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
+  ActivityIndicator, Image, Pressable, ScrollView, StyleSheet, Text, TextInput, View,
 } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { findGame, findProvider } from '@/domain/game-bind-options';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useMuseDashPlayer, useMuseDashSearch } from '@/hooks/use-muse-dash';
 import { useAppTheme } from '@/theme/app-theme';
+import { AppModal } from '@/components/AppModal';
 
 export type MuseDashSearchResult = { nickname: string; userId: string };
 
@@ -44,7 +45,7 @@ export function MuseDashPlayerPickerSheet({
   useEffect(() => { if (!visible) { setQuery(''); setBusyId(null); } }, [visible]);
 
   return (
-    <Modal animationType="slide" presentationStyle="pageSheet" visible={visible} onRequestClose={onClose}>
+    <AppModal animationType="slide" presentationStyle="pageSheet" visible={visible} onRequestClose={onClose}>
       <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
         <View style={[styles.grabber, { backgroundColor: theme.border }]} />
         <View style={styles.header}>
@@ -112,7 +113,7 @@ export function MuseDashPlayerPickerSheet({
           </View>
         </ScrollView>
       </View>
-    </Modal>
+    </AppModal>
   );
 }
 

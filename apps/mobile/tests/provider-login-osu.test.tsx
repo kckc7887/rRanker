@@ -35,6 +35,7 @@ const mockOsuSession = {
 
 let oauthListener: ((outcome: unknown) => void) | null = null;
 
+jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: jest.requireActual<typeof import('react-native')>('react-native').View }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));

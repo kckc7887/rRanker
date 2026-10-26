@@ -207,6 +207,8 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
     bindLookupSeqRef.current += 1;
     setBindingLookup(false);
     setFriendCode(digits);
+    setHasStoredToken(false);
+    setHasCabinetBound(false);
     /** 等待存储期间可能切换好友码，写入前读取对应选择。 */
     persist(digits, selectedIds, false);
     if (digits.length === 15) {
@@ -280,19 +282,21 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
   };
 
   const refreshAfterUpload = async (code?: string, isCurrent: () => boolean = () => true) => {
+    const selection = selectionSeqRef.current;
+    const isSelectionCurrent = () => isCurrent() && selection === selectionSeqRef.current;
     await runAccountOperation(async () => {
-      await refreshStoredList(isCurrent);
-      if (!isCurrent()) return;
-      if (code !== undefined) await refreshBindStatus(code, isCurrent);
+      await refreshStoredList(isSelectionCurrent);
+      if (!isSelectionCurrent()) return;
+      if (code !== undefined) await refreshBindStatus(code, isSelectionCurrent);
       else {
         const latest = await scoreHubAccountStore.load();
-        if (latest.friendCode && visibleRef.current && isCurrent()) {
+        if (latest.friendCode && visibleRef.current && isSelectionCurrent()) {
           setFriendCode(latest.friendCode);
           setHasStoredToken(Boolean(latest.token));
           setHasCabinetBound(latest.hasCabinetBound);
         }
       }
-    }, isCurrent);
+    }, isSelectionCurrent);
   };
   return { friendCode, hasCabinetBound, hasStoredToken, storedAccounts, historyVisible, setHistoryVisible,
     bindingLookup, selectedIds, prefsReady, refreshStoredList, refreshAfterUpload,

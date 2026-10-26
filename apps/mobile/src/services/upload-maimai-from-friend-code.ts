@@ -350,7 +350,7 @@ export async function bindScoreHubCabinetByQr(input: {
     input.onPhase({
       kind: 'done',
       message: bind.alreadyBound
-        ? '正在读取玩家成绩'
+        ? '玩家二维码已绑定'
         : '玩家二维码已绑定，之后将复用会话快速拉分',
       uploaded: 0,
       skipped: 0,

@@ -15,6 +15,7 @@ import {
   MAIMAI_ASSETS_ROOT,
   CHUNITHM_ASSETS_ROOT,
   PHIGROS_FONT_ROOT,
+  PHIGROS_UI_ROOT,
   RIZLINE_UI_ROOT,
   BEST_IMAGE_STAGE_ROOT,
   measureDirectoryBytesAsync,
@@ -109,7 +110,7 @@ export function buildStorageUsageReport(
   });
   const measuredGameCacheBytes = measuredGameItems.reduce((sum, item) => sum + item.bytes, 0);
   const knownCacheBytes = sharedClearableBytes + measuredGameCacheBytes + sqliteReclaimableBytes;
-  const totalBytes = documentBytes + cacheRootBytes + sqliteAllocatedBytes;
+  const totalBytes = documentBytes + cacheRootBytes;
   const cacheBytes = Math.min(totalBytes, Math.max(measuredGameCacheBytes, knownCacheBytes));
   const gameScale = measuredGameCacheBytes > cacheBytes && measuredGameCacheBytes > 0
     ? cacheBytes / measuredGameCacheBytes
@@ -216,6 +217,7 @@ export async function measureManagedStorageBytes(): Promise<number> {
     measureDirectoryBytesStrictAsync(MAIMAI_ASSETS_ROOT()),
     measureDirectoryBytesStrictAsync(CHUNITHM_ASSETS_ROOT()),
     measureDirectoryBytesStrictAsync(PHIGROS_FONT_ROOT()),
+    measureDirectoryBytesStrictAsync(PHIGROS_UI_ROOT()),
     measureDirectoryBytesStrictAsync(BEST_IMAGE_STAGE_ROOT('maimai')),
     measureDirectoryBytesStrictAsync(BEST_IMAGE_STAGE_ROOT('chunithm')),
     measureDirectoryBytesStrictAsync(BEST_IMAGE_STAGE_ROOT('phigros')),

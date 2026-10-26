@@ -432,7 +432,7 @@ describe('useSession store', () => {
 
 
   it('restores a Phigros session when the displayed nickname differs from the player ID', () => {
-    const session = { mode: 'phi-session', sessionToken: 'phi-token', playerId: 'phi-player', persistable: true } as const;
+    const session = { mode: 'phi-session', sessionToken: 'phi-token', openid: 'phi-player', displayName: 'Phigros 玩家', persistable: true } as const;
     useSession.getState().finishRestore({
       version: 3,
       activeAccountId: 'phigros:phi-taptap:phi-player',

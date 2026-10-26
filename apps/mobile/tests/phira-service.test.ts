@@ -57,7 +57,7 @@ describe('Phira player seed and best service', () => {
       items: { [target.id]: values[0] }, source: { kind: 'phira', label: 'test', updatedAt: 'now', isStale: false },
     }));
     const result = await queryPhiraChartBest(323528, target, null);
-    expect(result.record).toBeNull();
+    expect(result.best.record).toBeNull();
     expect(merge).toHaveBeenCalledWith(323528, [expect.objectContaining({ chart: target, record: null })], expect.any(Function));
   });
   it('does not start a new best refresh from cache reads invalidated by account removal', async () => {

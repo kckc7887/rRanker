@@ -6,7 +6,6 @@ import {
   selectStorageInventory,
   type StorageMeasurementInventory,
 } from '@/features/storage-management/storage-adapter-core';
-import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 
 vi.mock('@/features/storage-management/fs-storage', () => ({ measureDirectoryBytesAsync: async () => 0 }));
 
@@ -50,12 +49,7 @@ describe('storage adapter execution', () => {
       bytes: 53,
     });
     await expect(adapter.measure(inventory)).resolves.toBe(53);
-    const assertOldWriteCurrent = captureResourceWrites('maimai');
-    repo.listAccountScoreSizes.mockImplementationOnce(async () => {
-      expect(assertOldWriteCurrent).toThrow('缓存请求已失效');
-      return inventory.scores;
-    });
-    await adapter.clear(snapshots);
+    await adapter.clear(snapshots, inventory);
     expect(repo.clearAccountScores).toHaveBeenCalledWith(['test:remote']);
     expect(repo.clearResources).toHaveBeenCalledWith(['phigros-save:test:remote', 'account-thumbnail:test:no-score-row', 'catalog', 'detail:one']);
   });
@@ -69,7 +63,7 @@ describe('storage adapter execution', () => {
       ownership: { ownsAccount: ownership.ownsAccount },
     });
     await expect(accountOnly.measure(measured)).resolves.toBe(41);
-    await accountOnly.clear(snapshots);
+    await accountOnly.clear(snapshots, measured);
   });
 
   it('does not clear files after a database failure and permits the next clear to succeed', async () => {
@@ -80,9 +74,9 @@ describe('storage adapter execution', () => {
     });
     const repo = repository();
     repo.clearResources.mockRejectedValueOnce(new Error('write failed'));
-    await expect(failingAdapter.clear(repo as unknown as SqliteSnapshotRepository)).rejects.toThrow('write failed');
+    await expect(failingAdapter.clear(repo as unknown as SqliteSnapshotRepository, inventory)).rejects.toThrow('write failed');
     expect(clearFiles).not.toHaveBeenCalled();
-    await failingAdapter.clear(repo as unknown as SqliteSnapshotRepository);
+    await failingAdapter.clear(repo as unknown as SqliteSnapshotRepository, inventory);
     expect(clearFiles).toHaveBeenCalledOnce();
   });
 });

@@ -12,6 +12,7 @@ import {
 
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
+jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: jest.requireActual<typeof import('react-native')>('react-native').View }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
 jest.mock('@/services/hydrate-bound-account-avatars', () => ({ hydrateBoundAccountAvatars: jest.fn(async () => undefined) }));
 jest.mock('@/services/account-thumbnail', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined) }));
@@ -24,7 +25,7 @@ jest.mock('@/components/BoundAccountAvatar', () => {
 
 describe('BoundAccountGroupedList Phigros metadata', () => {
   it('shows the Phigros account RKS and active state', async () => {
-    const account = createPhigrosBoundAccount({ playerId: 'PhiPlayer', rating: 15.4321, challengeModeRank: 523 });
+    const account = createPhigrosBoundAccount({ openid: 'phi-openid', displayName: 'PhiPlayer', rating: 15.4321, challengeModeRank: 523 });
     const screen = await render(<BoundAccountGroupedList
       accounts={[account]} expandedGameId="phigros" activeAccountId={account.id}
       onToggleGame={jest.fn()} onSelectAccount={jest.fn()}

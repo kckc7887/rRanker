@@ -22,6 +22,7 @@ const mockNotification = jest.fn((_input: { actions?: { label: string; onPress?:
 const mockLogin = jest.fn(async (_credentials: unknown, _signal?: AbortSignal) => mockSession);
 const mockGetPlayer = jest.fn(async () => ({ username: '玩家 A&B' }));
 
+jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: jest.requireActual<typeof import('react-native')>('react-native').View }));
 jest.mock('react-native-safe-area-context', () => ({ useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }) }));
 jest.mock('@expo/vector-icons/Ionicons', () => () => null);
 jest.mock('expo-symbols', () => ({ SymbolView: () => null }));
@@ -42,7 +43,8 @@ jest.mock('@/state/query-client', () => ({ queryClient: {
   invalidateQueries: jest.fn(async () => undefined), cancelQueries: jest.fn(async () => undefined), removeQueries: jest.fn(),
 } }));
 jest.mock('@/hooks/use-user-library', () => ({ useUserLibrary: () => ({ clearGameUserData: jest.fn(async () => undefined) }) }));
-jest.mock('@/components/AppNotification', () => ({ useNotification: () => ({ showActionNotification: mockNotification, showNotification: jest.fn() }) }));
+jest.mock('@/components/AppNotification', () => ({
+  ...jest.requireActual<typeof import('@/components/AppNotification')>('@/components/AppNotification'), useNotification: () => ({ showActionNotification: mockNotification, showNotification: jest.fn() }) }));
 jest.mock('@/services/hydrate-bound-account-avatars', () => ({ hydrateBoundAccountAvatars: jest.fn(async () => undefined) }));
 jest.mock('@/services/account-thumbnail', () => ({ hydrateAccountDisplayData: jest.fn(async () => undefined), persistBoundAccountThumbnail: jest.fn(async () => undefined) }));
 jest.mock('@/services/hydrate-chunithm-account-summaries', () => ({ hydrateChunithmAccountSummaries: jest.fn(async () => undefined) }));

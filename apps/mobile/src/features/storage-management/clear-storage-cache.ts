@@ -5,6 +5,7 @@ import { compactRrankerDatabase } from '@/storage/rranker-database';
 import { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import {
   clearSharedCache,
+  collectStorageMeasurementInventory,
   getGameStorageAdapter,
   type GameStorageAdapter,
 } from '@/features/storage-management/game-storage-adapters';
@@ -43,6 +44,33 @@ export async function clearStorageByCategories(
   const clearedIds: StorageClearCategoryId[] = [];
   const failures: string[] = [];
   const beforeBytes = await measureManagedStorageBytes().catch(() => null);
+  const readyAdapters = new Map<StorageClearCategoryId, GameStorageAdapter>();
+
+  for (const id of unique) {
+    if (id === 'shared') continue;
+    const adapter = getGameStorageAdapter(id);
+    if (adapter) invalidateResourceWrites(id);
+  }
+  for (const id of unique) {
+    if (id === 'shared') continue;
+    const adapter = getGameStorageAdapter(id);
+    if (!adapter) { failures.push(String(id)); continue; }
+    try {
+      const ownedQueries = { predicate: (query: { queryKey: readonly unknown[] }) => adapterOwnsQuery(adapter, query.queryKey) };
+      await client.cancelQueries(ownedQueries);
+      client.removeQueries(ownedQueries);
+      adapter.resetMemory?.();
+      readyAdapters.set(id, adapter);
+    } catch {
+      failures.push(String(id));
+    }
+  }
+  const inventory = readyAdapters.size > 0
+    ? await collectStorageMeasurementInventory(snapshots).catch((error) => {
+      recordRuntimeError('storage-clear', error, false, { phase: 'inventory' });
+      return null;
+    })
+    : null;
 
   for (const id of unique) {
     try {
@@ -52,18 +80,14 @@ export async function clearStorageByCategories(
         clearedIds.push(id);
         continue;
       }
-      const adapter = getGameStorageAdapter(id);
-      if (!adapter) {
+      const adapter = readyAdapters.get(id);
+      if (!adapter) continue;
+      if (!inventory) {
         failures.push(String(id));
         continue;
       }
-      const ownedQueries = { predicate: (query: { queryKey: readonly unknown[] }) => adapterOwnsQuery(adapter, query.queryKey) };
-      invalidateResourceWrites(id);
-      await client.cancelQueries(ownedQueries);
-      client.removeQueries(ownedQueries);
-      adapter.resetMemory?.();
       const results = await Promise.allSettled([
-        Promise.resolve().then(() => adapter.clear(snapshots)),
+        Promise.resolve().then(() => adapter.clear(snapshots, inventory)),
         Promise.resolve().then(() => clearGameRemoteImageCache(id)),
       ]);
       let failed = false;

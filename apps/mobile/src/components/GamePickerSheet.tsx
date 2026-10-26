@@ -1,7 +1,6 @@
 import { useMemo } from 'react';
 import {
   Image,
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -20,6 +19,7 @@ import {
 } from '@/domain/game-bind-options';
 import { familyForId } from '@/domain/game-mode-family';
 import { useAppTheme } from '@/theme/app-theme';
+import { AppModal } from '@/components/AppModal';
 
 function Chevron({ expanded }: { expanded: boolean }) {
   const theme = useAppTheme();
@@ -94,7 +94,7 @@ export function GamePickerSheet({
   }, [mode, testAccountsEnabled]);
 
   return (
-    <Modal
+    <AppModal
       visible={visible}
       animationType="slide"
       presentationStyle="formSheet"
@@ -308,7 +308,7 @@ export function GamePickerSheet({
           </View>
         </ScrollView>
       </View>
-    </Modal>
+    </AppModal>
   );
 }
 

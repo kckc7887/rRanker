@@ -6,14 +6,14 @@ import { NotificationProvider } from '@/components/AppNotification';
 import { PhiraRecordsScreen } from '@/screens/PhiraScreens';
 import { phiraProvider } from '@/providers/phira-provider';
 import { phiraBestCacheKey, PhiraChartSchema, PhiraRecordSchema, PhiraUserSchema, PhiraUserStatsSchema, type PhiraBestSnapshot, type PhiraQueriedBest } from '@/domain/phira';
-import { useRefreshAllPhiraBests, usePhiraChart, usePhiraChartBest, usePhiraNotes, usePhiraUploader } from '@/hooks/use-phira';
+import { useRefreshAllPhiraBests, usePhiraBests, usePhiraChart, usePhiraChartBest, usePhiraNotes, usePhiraUploader } from '@/hooks/use-phira';
 import { CachedContentActivityScope } from '@/components/CachedTabScreen';
 import { Text } from 'react-native';
 import { queryClient } from '@/state/query-client';
 import { abortForegroundWork, beginForegroundWork } from '@/state/app-lifecycle-core';
 
 jest.mock('@/storage/sqlite-snapshot-repository', () => {
-  const state = { values: new Map<string, unknown>(), failReads: false };
+  const state = { values: new Map<string, unknown>(), failReads: false, failWrites: false };
   class MemorySnapshotRepository {
     async getResource<T>(key: string) {
       if (state.failReads) throw new Error('storage read failed');
@@ -23,6 +23,7 @@ jest.mock('@/storage/sqlite-snapshot-repository', () => {
       state.values.set(key, value);
     }
     async updateResource<T>(key: string, _version: number, transform: (previous: T | null) => { value: T; updatedAt: string }) {
+      if (state.failWrites) throw new Error('storage write failed');
       const { value } = transform((state.values.get(key) as T | undefined) ?? null);
       state.values.set(key, value);
       return value;
@@ -89,7 +90,7 @@ jest.mock('@/components/phira/PhiraScoreVisuals', () => ({
 }));
 
 const PLAYER_ID = 323528;
-type MemoryState = { values: Map<string, unknown>; failReads: boolean };
+type MemoryState = { values: Map<string, unknown>; failReads: boolean; failWrites: boolean };
 const memory = () => (jest.requireMock('@/storage/sqlite-snapshot-repository') as { __memory: MemoryState }).__memory;
 
 const chart = (id: number) => PhiraChartSchema.parse({
@@ -149,6 +150,7 @@ describe('Phira 成绩刷新操作结果（真实 Hook 到记录页链路）', (
     queryClient.setDefaultOptions({ queries: { retry: false } });
     memory().values.clear();
     memory().failReads = false;
+    memory().failWrites = false;
     beginForegroundWork();
   });
   afterEach(async () => {
@@ -156,8 +158,61 @@ describe('Phira 成绩刷新操作结果（真实 Hook 到记录页链路）', (
     queryClient.clear();
     memory().values.clear();
     memory().failReads = false;
+    memory().failWrites = false;
     beginForegroundWork();
     jest.restoreAllMocks();
+  });
+
+  const wrapper = ({ children }: { children: ReactNode }) => <QueryClientProvider client={queryClient}>{children}</QueryClientProvider>;
+
+  it('publishes a newly queried detail to the player list without changing another account', async () => {
+    const detail = chart(303);
+    const other = bestSnapshot([queriedBest(303, 700_000)], '2026-01-01T00:00:00Z');
+    memory().values.set(phiraBestCacheKey(99), other);
+    stubChartBest(async () => [record(3030, 303, 980_000)]);
+    const hook = await renderHook(() => ({
+      list: usePhiraBests(PLAYER_ID), other: usePhiraBests(99), detail: usePhiraChartBest(PLAYER_ID, detail),
+    }), { wrapper });
+    await waitFor(() => expect(hook.result.current.detail.data?.record?.score).toBe(980_000));
+    expect(hook.result.current.list.data?.items['303'].record?.score).toBe(980_000);
+    expect(hook.result.current.other.data?.items['303'].record?.score).toBe(700_000);
+    expect(memory().values.get(phiraBestCacheKey(99))).toEqual(other);
+  });
+
+  it('updates already loaded detail scores after refreshing the list', async () => {
+    seedBests([queriedBest(303, 900_000)]);
+    stubPlayerTransport([]);
+    stubChartBest(async () => [record(3030, 303, 990_000)]);
+    const detail = chart(303);
+    const hook = await renderHook(() => ({
+      list: usePhiraBests(PLAYER_ID), detail: usePhiraChartBest(PLAYER_ID, detail), refresh: useRefreshAllPhiraBests(PLAYER_ID),
+    }), { wrapper });
+    await waitFor(() => expect(hook.result.current.detail.data?.record?.score).toBe(900_000));
+    await act(async () => { await hook.result.current.refresh.refreshAll(); });
+    await waitFor(() => expect(hook.result.current.detail.data?.record?.score).toBe(990_000));
+    expect(hook.result.current.list.data?.items['303'].record?.score).toBe(990_000);
+  });
+
+  it('does not publish a detail result when persistence fails', async () => {
+    memory().failWrites = true;
+    stubChartBest(async () => [record(3030, 303, 990_000)]);
+    const detail = chart(303);
+    const hook = await renderHook(() => ({ list: usePhiraBests(PLAYER_ID), detail: usePhiraChartBest(PLAYER_ID, detail) }), { wrapper });
+    await waitFor(() => expect(hook.result.current.detail.isError).toBe(true));
+    expect(hook.result.current.detail.data).toBeUndefined();
+    expect(hook.result.current.list.data?.items['303']).toBeUndefined();
+    expect(memory().values.has(phiraBestCacheKey(PLAYER_ID))).toBe(false);
+  });
+
+  it('forgets failed retry targets when switching players', async () => {
+    stubPlayerTransport([303]);
+    stubChartBest(async () => { throw new Error('offline'); });
+    const hook = await renderHook(({ playerId }: { playerId: number }) => useRefreshAllPhiraBests(playerId), { initialProps: { playerId: PLAYER_ID } });
+    await act(async () => { await hook.result.current.refreshAll(); });
+    await hook.rerender({ playerId: 99 });
+    chartBestCalls.length = 0;
+    await act(async () => { expect((await hook.result.current.retryFailed()).status).toBe('noop'); });
+    expect(chartBestCalls).toEqual([]);
   });
 
   it('pauses detail requests and cache notifications while covered, then exposes the latest cached title', async () => {

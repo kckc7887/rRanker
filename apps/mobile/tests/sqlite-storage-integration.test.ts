@@ -798,9 +798,6 @@ describe('SQLite storage and current backups', () => {
       { key: museDashPlayerCacheKey('a'), load: () => new MuseDashCache().loadPlayer('a') },
       { key: 'phira:player:1', load: () => new PhiraCache().loadPlayer(1) },
       { key: 'phira:bests:1', load: () => new PhiraCache().loadBests(1) },
-      { key: 'phira:chart:1', load: () => new PhiraCache().loadChart(1) },
-      { key: 'phira:notes:1', load: () => new PhiraCache().loadNotes(1) },
-      { key: 'phira:charts:ranked:1:', load: () => new PhiraCache().loadPage('ranked', 1) },
       { key: 'phigros-save:a', load: () => new PhigrosSaveCache().load('a') },
     ];
     await repository.saveResource('keep', 1, 'now', { current: true });

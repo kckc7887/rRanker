@@ -1,6 +1,5 @@
 import type { Directory } from 'expo-file-system';
 import type { GameId } from '@/domain/game-bind-options';
-import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 import type { SqliteSnapshotRepository } from '@/storage/sqlite-snapshot-repository';
 import { measureDirectoryBytesAsync } from './fs-storage';
 
@@ -27,7 +26,7 @@ export type GameStorageAdapter = {
     clear: () => void | Promise<void>;
   }[];
   measure: (inventory: StorageMeasurementInventory) => Promise<number>;
-  clear: (snapshots: SqliteSnapshotRepository) => Promise<void>;
+  clear: (snapshots: SqliteSnapshotRepository, inventory: StorageMeasurementInventory) => Promise<void>;
 };
 
 const ACCOUNT_RESOURCE_PREFIXES = ['chunithm-score:', 'account-avatar:', 'account-thumbnail:', 'phigros-save:'];
@@ -67,9 +66,7 @@ export function createGameStorageAdapter(
       const fileBytes = await Promise.all(adapter.fileResources.map((resource) => measureDirectoryBytesAsync(resource.root())));
       return selectStorageInventory(inventory, ownership).bytes + fileBytes.reduce((sum, bytes) => sum + bytes, 0);
     },
-    async clear(snapshots) {
-      invalidateResourceWrites(adapter.gameId);
-      const inventory = await collectStorageMeasurementInventory(snapshots);
+    async clear(snapshots, inventory) {
       const selected = selectStorageInventory(inventory, ownership);
       await snapshots.clearAccountScores(selected.accountIds);
       /** 头像等资源可能没有对应的成绩记录。 */

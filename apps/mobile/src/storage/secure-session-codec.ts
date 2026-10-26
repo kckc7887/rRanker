@@ -42,7 +42,7 @@ function isPersistableSession(session: ProviderSession): session is ProviderSess
   switch (session.mode) {
     case 'rizline': return validRizlineSession(session);
     case 'jwt': case 'import-token': return nonempty(session.value);
-    case 'phi-session': return nonempty(session.sessionToken) && nonempty(session.playerId);
+    case 'phi-session': return nonempty(session.sessionToken) && nonempty(session.openid) && typeof session.displayName === 'string';
     case 'lxns-oauth': case 'osu-oauth':
       return nonempty(session.accessToken) && nonempty(session.refreshToken)
         && typeof session.expiresAt === 'number' && Number.isFinite(session.expiresAt);

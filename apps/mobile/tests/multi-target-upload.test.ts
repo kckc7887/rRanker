@@ -466,7 +466,8 @@ describe('好友码多目标写入', () => {
     expect(phases.at(-1)).toBe('done');
   });
 
-  it('独立绑定仅用本地 token 走 PUT cabinet，不创建好友码登录任务', async () => {
+  it.each([false, true])('独立绑定仅更新二维码状态且不读取成绩，已绑定：%s', async alreadyBound => {
+    mocks.bindCabinetByQr.mockResolvedValueOnce({ ok: true, alreadyBound });
     mocks.accountLoad.mockResolvedValue({
       friendCode: '123456789012345',
       hasCabinetBound: false,
@@ -477,10 +478,11 @@ describe('好友码多目标写入', () => {
       hasCabinetUserId: true,
     });
     const phases: string[] = [];
+    const messages: string[] = [];
     const result = await bindScoreHubCabinetByQr({
       qrCode: 'SGWCMAIDBIND',
       signal: { aborted: false },
-      onPhase: (phase) => phases.push(phase.kind),
+      onPhase: (phase) => { phases.push(phase.kind); if ('message' in phase) messages.push(phase.message); },
     });
 
     expect(mocks.createFriendLoginJob).not.toHaveBeenCalled();
@@ -490,7 +492,8 @@ describe('好友码多目标写入', () => {
     expect(mocks.accountPatch).toHaveBeenCalledWith(expect.objectContaining({
       hasCabinetBound: true,
     }));
-    expect(result.alreadyBound).toBe(false);
+    expect(result.alreadyBound).toBe(alreadyBound);
+    expect(messages.at(-1)).toMatch(/玩家二维码已绑定/);
     expect(phases).toEqual(['binding', 'done']);
   });
 

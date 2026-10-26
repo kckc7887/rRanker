@@ -1,5 +1,4 @@
 import {
-  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
@@ -9,6 +8,7 @@ import {
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import { useAppTheme } from '@/theme/app-theme';
+import { AppModal } from '@/components/AppModal';
 import { OsuModeSelectContent } from './OsuModeSelectContent';
 
 export function OsuModeSelectSheet({ visible, alreadyBound, busy, onClose, onSubmit, submitLabel = '绑定选中模式' }: {
@@ -22,7 +22,7 @@ export function OsuModeSelectSheet({ visible, alreadyBound, busy, onClose, onSub
   const theme = useAppTheme();
   const insets = useSafeAreaInsets();
   return (
-    <Modal
+    <AppModal
       visible={visible}
       animationType="slide"
       presentationStyle="pageSheet"
@@ -53,7 +53,7 @@ export function OsuModeSelectSheet({ visible, alreadyBound, busy, onClose, onSub
           />
         </ScrollView>
       </View>
-    </Modal>
+    </AppModal>
   );
 }
 

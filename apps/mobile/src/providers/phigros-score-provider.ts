@@ -7,7 +7,7 @@ import {
   pollForToken,
   exchangeSessionToken,
   getGameSave,
-  getPlayerId as getCloudPlayerId,
+  getPlayerName,
   downloadSave,
   type DeviceCodeResult,
   type GameSaveMeta,
@@ -51,10 +51,12 @@ export class PhigrosScoreProvider implements ScoreProvider {
   private cacheGeneration = 0;
   private sessionToken: string;
   private playerId: string;
+  private displayName: string;
   private saveCache: LoadedSave | null = null;
   private b30Cache: PhigrosB30 | null = null;
   private summaryCache: PhigrosSummary | null = null;
   private saveMeta: GameSaveMeta | null = null;
+  private saveMetaPromise: Promise<GameSaveMeta> | null = null;
   private saveLoadPromise: Promise<LoadedSave> | null = null;
   private playerNameCache: string | null = null;
   private playerNamePromise: Promise<string> | null = null;
@@ -62,11 +64,17 @@ export class PhigrosScoreProvider implements ScoreProvider {
   private async ensureSaveMeta(signal?: AbortSignal): Promise<GameSaveMeta> {
     if (this.saveMeta) return this.saveMeta;
     const generation = this.cacheGeneration;
-    const meta = await getGameSave(this.sessionToken, signal);
+    if (!this.saveMetaPromise) {
+      const pending = getGameSave(this.sessionToken, signal);
+      this.saveMetaPromise = pending;
+      void pending.finally(() => { if (this.saveMetaPromise === pending) this.saveMetaPromise = null; }).catch(() => undefined);
+    }
+    const meta = await this.saveMetaPromise;
     if (signal?.aborted) throw signal.reason;
     if (generation !== this.cacheGeneration) throw new Error('Phigros save request replaced');
+    const summary = parseSummary(meta.summaryBase64);
     this.saveMeta = meta;
-    this.summaryCache = parseSummary(meta.summaryBase64);
+    this.summaryCache = summary;
     return meta;
   }
 
@@ -79,7 +87,8 @@ export class PhigrosScoreProvider implements ScoreProvider {
       throw new ProviderError('authentication', 'Phigros 需要 phi-session 凭据', false);
     }
     this.sessionToken = session.sessionToken;
-    this.playerId = session.playerId;
+    this.playerId = session.openid;
+    this.displayName = session.displayName;
   }
 
   static async beginLogin(signal?: AbortSignal): Promise<DeviceCodeResult> {
@@ -96,7 +105,8 @@ export class PhigrosScoreProvider implements ScoreProvider {
     return {
       mode: 'phi-session',
       sessionToken: session.sessionToken,
-      playerId: session.playerId,
+      openid: session.openid,
+      displayName: session.displayName,
       persistable: true,
     };
   }
@@ -112,7 +122,8 @@ export class PhigrosScoreProvider implements ScoreProvider {
       return {
         mode: 'phi-session',
         sessionToken: session.sessionToken,
-        playerId: session.playerId,
+        openid: session.openid,
+        displayName: session.displayName,
         persistable: true,
       };
     }
@@ -140,13 +151,22 @@ export class PhigrosScoreProvider implements ScoreProvider {
 
   private async getCloudPlayerName(signal?: AbortSignal): Promise<string> {
     if (this.playerNameCache) return this.playerNameCache;
+    const generation = this.cacheGeneration;
     if (!this.playerNamePromise) {
-      this.playerNamePromise = getCloudPlayerId(this.sessionToken, signal)
-        .catch(() => this.playerId)
-        .finally(() => { this.playerNamePromise = null; });
+      const pending = getPlayerName(this.sessionToken, signal);
+      this.playerNamePromise = pending;
+      void pending.finally(() => { if (this.playerNamePromise === pending) this.playerNamePromise = null; }).catch(() => undefined);
     }
-    this.playerNameCache = await this.playerNamePromise;
-    return this.playerNameCache;
+    try {
+      const name = await this.playerNamePromise;
+      if (signal?.aborted) throw signal.reason;
+      if (generation !== this.cacheGeneration) throw new Error('Phigros player request replaced');
+      this.playerNameCache = name;
+      return name;
+    } catch (error) {
+      if (signal?.aborted || generation !== this.cacheGeneration) throw error;
+      return this.displayName;
+    }
   }
 
   getSummary(signal?: AbortSignal): Promise<PhigrosSummary> {
@@ -242,7 +262,10 @@ export class PhigrosScoreProvider implements ScoreProvider {
     this.b30Cache = null;
     this.summaryCache = null;
     this.saveMeta = null;
+    this.saveMetaPromise = null;
     this.saveLoadPromise = null;
+    this.playerNameCache = null;
+    this.playerNamePromise = null;
   }
 
   /** Best30 = Phi3 + Best27。 */

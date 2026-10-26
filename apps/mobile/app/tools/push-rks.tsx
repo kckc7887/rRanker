@@ -50,11 +50,11 @@ export default function PushRksToolScreen() {
     return map;
   }, [catalogQuery.data?.snapshot.songs]);
 
-  const playerId = session?.mode === 'phi-session' ? session.playerId : null;
+  const openid = session?.mode === 'phi-session' ? session.openid : null;
   const saveUpdatedAt = scoreProvider instanceof PhigrosScoreProvider ? scoreProvider.getSaveUpdatedAt() : null;
   const resourceRevision = phigrosResources.peek()?.revision ?? null;
   const pushQuery = useQuery({
-    queryKey: ['phigros-push-rks', activeAccountId, playerId, resourceRevision, saveUpdatedAt, delta, chartCost, includePhi],
+    queryKey: ['phigros-push-rks', activeAccountId, openid, resourceRevision, saveUpdatedAt, delta, chartCost, includePhi],
     enabled: hasPhiSession && inputsValid,
     queryFn: async ({ signal }): Promise<PushRecommendationsResult> => {
       if (!(scoreProvider instanceof PhigrosScoreProvider) || delta == null || chartCost == null) {

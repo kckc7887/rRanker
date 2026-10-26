@@ -27,6 +27,7 @@ let mockLifecycle = { phase: 'foreground-ready', foregroundReady: true, foregrou
 jest.mock('@/state/app-lifecycle', () => ({ useAppLifecycle: () => mockLifecycle }));
 jest.mock('@/services/lxns-account-binding', () => ({ bindLxnsAccount: (...args: unknown[]) => mockBind(...args) }));
 
+jest.mock('react-native-gesture-handler', () => ({ GestureHandlerRootView: jest.requireActual<typeof import('react-native')>('react-native').View }));
 jest.mock('react-native-safe-area-context', () => ({
   useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
 }));

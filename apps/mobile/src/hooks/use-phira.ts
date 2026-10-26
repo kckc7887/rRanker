@@ -68,6 +68,7 @@ export function useRefreshAllPhiraBests(playerId: number | null) {
   useEffect(() => {
     const controller = new AbortController();
     lifetime.current = controller;
+    failedTargets.current = [];
     return () => controller.abort();
   }, [playerId]);
   const runRefresh = async (
@@ -85,7 +86,8 @@ export function useRefreshAllPhiraBests(playerId: number | null) {
       assertCurrent();
       const result = await run(controller.signal, assertCurrent);
       assertCurrent();
-      if (result.snapshot) publishEntityValue(queryClient, phiraBestsEntityKey(playerId), result.snapshot);
+      if (result.snapshot) await publishEntityValue(queryClient, phiraBestsEntityKey(playerId), result.snapshot, assertCurrent);
+      assertCurrent();
       failedTargets.current = result.refresh.failures.map((failure) => failure.target);
       return outcomeFrom(result);
     } catch (error) {
@@ -155,7 +157,8 @@ export function usePhiraChart(chartId: number | null) {
 
 export function usePhiraChartBest(playerId: number | null, chart: PhiraChart | undefined) {
   const active = useCachedTabActive();
-  return useQuery({
+  const bests = usePhiraBests(playerId, !!chart);
+  const query = useQuery({
     queryKey: ['phira', 'best', playerId, chart?.id], enabled: active && playerId !== null && !!chart,
     notifyOnChangeProps: active ? undefined : [],
     queryFn: async ({ signal }) => {
@@ -168,9 +171,13 @@ export function usePhiraChartBest(playerId: number | null, chart: PhiraChart | u
       assertCurrent();
       const pool = [...(player?.pool.bestPool ?? []), ...(player?.pool.recentPool ?? [])]
         .find((item) => item.chart.id === chart!.id);
-      return queryPhiraChartBest(playerId!, chart!, pool?.rks ?? null, signal);
+      const result = await queryPhiraChartBest(playerId!, chart!, pool?.rks ?? null, signal);
+      await publishEntityValue(queryClient, phiraBestsEntityKey(playerId!), result.snapshot, assertCurrent);
+      assertCurrent();
+      return result.best;
     }, ...PHIRA_QUERY_OPTIONS,
   });
+  return { ...query, data: bests.data?.items[String(chart?.id)] ?? query.data };
 }
 
 export function usePhiraUploader(userId: number | null) {

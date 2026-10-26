@@ -242,23 +242,35 @@ export class SecureSessionStore {
 
   async removeAccount(accountId: string): Promise<RemoveAccountResult> {
     return this.enqueueMutation(async () => {
-      const vault = await this.loadVaultUnlocked();
-      const accounts = vault.accounts.filter((item) => item.id !== accountId);
-      const activeAccountId = vault.activeAccountId === accountId
+      const index = await this.loadOrCreateIndexUnlocked();
+      const accounts = index.accounts.filter((item) => item.id !== accountId);
+      const activeAccountId = index.activeAccountId === accountId
         ? (accounts[0]?.id ?? null)
-        : vault.activeAccountId;
-      const cleanupFailures = accounts.length === vault.accounts.length ? [] : [...await this.saveVaultUnlocked({
-        ...vault,
-        activeAccountId,
-        accounts,
-      })];
-      try {
-        await deleteRizlinePassword(accountId);
-      } catch (error) {
-        cleanupFailures.push('密码');
-        recordRuntimeError('session-persistence', error, false, { phase: 'password-cleanup' });
+        : index.activeAccountId;
+      const referenced = new Set(accounts.map((item) => item.credentialId));
+      const credentials = index.credentials.filter((item) => referenced.has(item.id));
+      const removed = index.credentials.filter((item) => !referenced.has(item.id));
+      const cleanupFailures: string[] = [];
+      if (accounts.length !== index.accounts.length || removed.length > 0 || activeAccountId !== index.activeAccountId) {
+        await this.indexIo.setItem(INDEX_KEY, JSON.stringify({ ...index, activeAccountId, accounts, credentials }));
+        const retained = new Set(credentials.map((item) => item.secretRef));
+        for (const reference of new Set(removed.map((item) => item.secretRef))) {
+          if (retained.has(reference)) continue;
+          try { await this.credentialIo.delete(reference); } catch (error) {
+            cleanupFailures.push('登录凭据');
+            recordRuntimeError('session-persistence', error, false, { phase: 'credential-cleanup' });
+          }
+        }
       }
-      return { committed: true, cleanupFailures };
+      if (index.accounts.some((item) => item.id === accountId && item.providerId === 'rizline-official')) {
+        try {
+          await deleteRizlinePassword(accountId);
+        } catch (error) {
+          cleanupFailures.push('密码');
+          recordRuntimeError('session-persistence', error, false, { phase: 'password-cleanup' });
+        }
+      }
+      return { committed: true, cleanupFailures: [...new Set(cleanupFailures)] };
     });
   }
 

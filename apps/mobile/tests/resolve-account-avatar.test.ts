@@ -47,7 +47,7 @@ const lxnsAccount = createMaimaiBoundAccount({
   playerId: '123456789',
 });
 const tufAccount = createTufBoundAccount({ playerId: 25, displayName: 'TUF 玩家' });
-const phiSession: ProviderSession = { mode: 'phi-session', sessionToken: 'token', playerId: 'player', persistable: true };
+const phiSession: ProviderSession = { mode: 'phi-session', sessionToken: 'token', openid: 'player', displayName: 'player', persistable: true };
 const lxnsSession: ProviderSession = {
   mode: 'lxns-oauth', accessToken: 'access-token', refreshToken: 'refresh-token',
   expiresAt: Date.now() + 120_000, persistable: true,
@@ -62,7 +62,7 @@ const tufPlayer = {
 };
 
 function bindPhigrosAccount(playerId: string) {
-  const account = createPhigrosBoundAccount({ playerId, rating: 15 });
+  const account = createPhigrosBoundAccount({ openid: playerId, displayName: playerId, rating: 15 });
   useSession.getState().upsertBoundAccount(account);
   useSession.setState(state => ({
     sessionsByAccountId: { ...state.sessionsByAccountId, [account.id]: phiSession },

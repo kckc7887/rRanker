@@ -1,5 +1,6 @@
 import { type ReactNode } from 'react';
-import { Modal, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { AppModal } from '@/components/AppModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import type { GameId } from '@/domain/game-bind-options';
 import type { BoundAccount } from '@/domain/bound-account';
@@ -29,7 +30,7 @@ export function AccountSwitchSheet({
   const theme = useAppTheme();
 
   return (
-    <Modal
+    <AppModal
       visible={visible}
       animationType="slide"
       presentationStyle="formSheet"
@@ -60,7 +61,7 @@ export function AccountSwitchSheet({
             emptyText="暂无已绑定账号，请先在设置 → 游戏管理中绑定。" />
         </ScrollView>
       </View>
-    </Modal>
+    </AppModal>
   );
 }
 

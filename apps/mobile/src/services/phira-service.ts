@@ -61,12 +61,13 @@ export function phiraSeedCharts(snapshot: PhiraPlayerSnapshot): PhiraChart[] {
 
 export async function queryPhiraChartBest(
   playerId: number, chart: PhiraChart, poolRks: number | null, signal?: AbortSignal,
-): Promise<PhiraQueriedBest> {
+): Promise<{ best: PhiraQueriedBest; snapshot: PhiraBestSnapshot }> {
   const assertCurrent = captureResourceWrites('phira', signal, `phira:community:${playerId}`);
   const value = await readPhiraChartBest(playerId, chart, poolRks, signal);
   assertCurrent();
-  await phiraCache.mergeBests(playerId, [value], assertCurrent);
-  return value;
+  const snapshot = await phiraCache.mergeBests(playerId, [value], assertCurrent);
+  assertCurrent();
+  return { best: value, snapshot: snapshot! };
 }
 
 async function readPhiraChartBest(

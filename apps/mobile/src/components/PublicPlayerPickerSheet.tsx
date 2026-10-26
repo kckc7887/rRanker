@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
-import { ActivityIndicator, Image as NativeImage, Modal, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
+import { ActivityIndicator, Image as NativeImage, Pressable, ScrollView, StyleSheet, Text, TextInput, View, type ImageSourcePropType } from 'react-native';
+import { AppModal } from '@/components/AppModal';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useAppTheme } from '@/theme/app-theme';
 import { RemoteNativeImage } from '@/components/RemoteNativeImage';
@@ -21,7 +22,7 @@ export function PublicPlayerPickerSheet<T>({
   const theme = useAppTheme(); const insets = useSafeAreaInsets();
   const [busyId, setBusyId] = useState<string | null>(null);
   useEffect(() => { if (!visible) setBusyId(null); }, [visible]);
-  return <Modal animationType="slide" presentationStyle="pageSheet" visible={visible} onRequestClose={onClose}>
+  return <AppModal animationType="slide" presentationStyle="pageSheet" visible={visible} onRequestClose={onClose}>
     <View style={[styles.root, { paddingBottom: Math.max(insets.bottom, 12), backgroundColor: theme.background }]}>
       <View style={[styles.grabber, { backgroundColor: theme.border }]} />
       <View style={styles.header}>
@@ -55,7 +56,7 @@ export function PublicPlayerPickerSheet<T>({
         </View>
       </ScrollView>
     </View>
-  </Modal>;
+  </AppModal>;
 }
 
 const styles = StyleSheet.create({
