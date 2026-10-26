@@ -55,6 +55,10 @@ ADOFAI 个人曲库按收藏关卡 ID 调用 `useTufLibraryLevels`，以三路�
 
 恢复读取当前账号索引和引用的当前凭据，不搜索旧来源或孤立分片。不支持的整个索引重建为空，单个不支持的凭据只删除关联账号；I/O 失败继续报错。恢复界面提供当前读取失败的重试与清除操作。
 
+Phigros 的 `phi-session` 保存 `sessionToken`、稳定 `openid` 与 `displayName`；账号 ID 由 `openid` 生成，昵称不参与身份匹配。`getPlayerName` 读取当前昵称，刷新同时失效昵称与存档缓存；同代元信息请求共享进行中的 Promise，失败结果与回退名称不缓存，迟到响应不能覆盖下一代缓存。
+
+`SecureSessionStore.removeAccount` 仅读取索引，先提交移除后的账号及凭据引用，再清理失去引用的凭据和所属 Rizline 密码。共享引用继续保留，附属清理失败单独返回，索引读取或提交失败不删除凭据。
+
 凭据轮换提交检查当前账号、期望会话与取消信号。共用凭据的账号一起更新；解绑、重新绑定或较新轮换发生后，旧结果不能覆盖新凭据。实际持久化失败保留待保存会话，前台恢复时重试。Provider 通过模块函数接线，不提供运行时替换或空 setter。
 
 `hydratePhigrosAccount` 优先读取当前账号的游戏查询载荷，再读取 `PhigrosSaveCache` 并复核最新查询；没有载荷时复用账号的实际 `PhigrosScoreProvider` 摘要。补全结果包含 RKS、课题等级、头像、显示名与原来源，不另存已完成摘要。
@@ -83,13 +87,23 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `createPersistedRandomChartsFilterStore` 按字段保留恢复期间的编辑，读取完成后合并已保存偏好，未编辑字段沿用磁盘值。串行写入读取合并后的当前偏好；读取失败保留编辑，恢复成功后继续保存。
 
+随机偏好的 `persistenceError` 区分读取与保存失败，`hydrate` 同时支持恢复读取和重试最新待写值；六个随机页面沿用公共错误与重试区。保存中的新修改保持待写，较早写入成功不会清除较新选择。
+
 `resolveAppearance` 根据用户偏好和系统模式生成当前主题；跟随系统时仅 `dark` 使用深色，`unspecified` 使用浅色。系统主题通过 `Appearance.setColorScheme('unspecified')` 恢复跟随。
 
 `UserLibraryService` 是收藏、练习、标签、预设、导入导出的业务入口；`SqliteUserLibraryRepository` 在真实事务内读写。单项动作只改对应行，并在原事务中只读回所属游戏；清游戏保留其他游戏和全局预设。当前库 schema 为 4，不支持的表结构只重建个人库所属表。
 
+`useUserLibrary.tagReadState` 将条目与预设读取状态交给所有 `TagEditor` 入口，首次成功前阻止编辑，失败可重试。预设修改成功落盘后提交列表和清理对应输入，保存期间的新输入继续保留。个人曲库标签筛选复用 `FilterAnchoredDropdown`，失效标签选择回到全部。
+
+标签弹层等待预设写入完成后提交选择，选择提交期间暂停编辑。账号、玩家和 osu! 模式弹层复用 `AppModal` 的通知出口，错误与重试显示在当前可见弹层。
+
 备份只支持版本 3，`gameId` 必须存在。设置页通过 `useUserLibrary` 提供个人曲库导入、导出；导入选择合并或替换，成功后失效曲库和预设查询。`createBackup` 通过仓库的 `readBackup` 在同一次队列任务内读取条目与标签预设。`parseUserDataBackup` 在导入前拒绝旧格式；`mergeBackup` 在同一事务内合并/替换条目与预设，条目或预设上限失败不会留下部分写入。`user-data-file-service.ts` 通过系统文件选择与分享读写当前备份，临时副本使用后删除。
 
 存储管理通过 `features/storage-management/game-storage-adapters.ts` 统计和清理各游戏当前缓存。用户数据、凭据、日志与可重新下载的资源按实际归属处理；清理释放量以实际前后统计为准。
+
+存储总量使用文档与缓存目录的实际占用，SQLite 分配量仅参与分类与可回收量计算；受管理清理计量包含 Phigros UI 资源。多分类清理先失效全部选中游戏的请求，再收集一份库存交给各适配器，分类失败独立处理；清理选择保存成功后提交界面，保存期间不执行清理。
+
+`PhiraCache` 保存玩家与成绩集合。`queryPhiraChartBest` 成功持久化后返回 `{ best, snapshot }`；单曲与批量刷新发布 `phiraBestsEntityKey(playerId)`，详情订阅同一集合，写入失败不发布新值，切换玩家清除失败重试目标。
 
 ## 上传与生命周期
 
@@ -184,11 +198,15 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 
 设置采用当前信封格式。宿主读取设置失败时进入现有重新加载流程并保留原偏好；成功读到损坏内容时只重建对应设置键。暂停和 seek 使用当前命令；释放只清理所属会话的帧、音源、监听器和临时资源。共享播放器源变更后重建四套生成物并运行 `check:generated`。
 
+谱面宿主按设置键保留最新待写值，沿 `enqueueKeyMutation` 串行保存；只有对应值成功落盘才清除。重建与再次进入优先沿用待写值，前台恢复和通知重试继续保存；不同设置键互不覆盖。
+
 `webview-player/music.ts` 的 `MusicPlayback(context, output)` 共用原压缩音频的保调播放。`load(bytes, mimeType?)` 准备媒体并读取时长，`playFrom`、`pause`、`seek`、`setSpeed` 和 `dispose` 管理所属媒体，`currentTime` 为原曲秒数，`waiting` 标识定位、起播或缓冲等待；`onStateChange` 通知会话停止或重排音效。音乐段读取实际媒体位置，负前导、无音乐和尾段使用公共播放时钟；等待和取消不推进位置，释放时撤销 Blob URL。四套歌曲与 osu! 故事板片段使用此入口，现有 GainNode 管理音量。
 
 `OsuChartPreviewSettings.playbackSpeed` 默认 1，范围 0.5–2，步长 0.05；四模式共用速度控件，经已有设置消息和存储键往返。播放速度与 `maniaScrollSpeed` 分别控制歌曲时间和下落表现。`AudioSync` 持有实际音乐位置，画面与媒体使用同一时间线，打击音的墙钟延迟按当前倍速换算。
 
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。
+
+`RpeRenderer.render(time, playing, playbackSpeed)` 以会话状态同步视频，暂停与定位等待视频就绪后重绘，释放时暂停视频并移除监听器。自定义着色器纹理先激活目标单元再绑定或上传，缓存同时持有单元和纹理对象，尺寸变化后的源纹理使用单元 0。osu! 滑条按 Catmull、贝塞尔、圆弧或线段采样后统一限制声明长度，不足时沿末段延伸；解析拒绝非正长度。动画只收集归档实际存在且位于声明范围内的帧。
 
 Simai 解析支持 `BOUNCE` 的拍长比和 `NULL` 复位指令，以及分类 HS/SV 的数值和 `NULL` 参数，按原谱面时间消费，不改变判定物量；无效拍长、未知类别、非法数值及未知指令继续拒绝。
 
