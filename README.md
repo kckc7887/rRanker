@@ -1,8 +1,6 @@
 <div align="center">
 
-![banner](./assets/images/rRanker%20banner.svg "rRanker")
-
-# rRanker
+![rRanker](./assets/images/banner.jpg)
 
 [![license](https://img.shields.io/badge/license-AGPL--3.0-blue?style=flat-square)](LICENSE)
 [![platform](https://img.shields.io/badge/platform-Android%20%7C%20iOS-green?style=flat-square)]()
