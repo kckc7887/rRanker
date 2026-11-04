@@ -3,6 +3,7 @@ import { DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
 import { chartVersionKey } from '@/domain/catalog';
 import { buildDxRatingChartTagIndex } from '@/domain/dxrating-chart-tags';
 import {
+  maimaiGenres,
   maimaiFcAchievementLabel,
   maimaiFsAchievementLabel,
   type MaimaiFcAchievement,
@@ -38,6 +39,7 @@ export function useMaimaiBestImageFilters({ maimai, activeAccountId, imageType, 
   const [versions, setVersions] = useState<string[]>([]);
   const [splitVersions, setSplitVersions] = useState(false);
   const [difficulty, setDifficulty] = useState<Difficulty | 'all'>('all');
+  const [genre, setGenre] = useState('all');
   const [type, setType] = useState<ChartType | 'all'>('all');
   const [constantMin, setConstantMin] = useState('');
   const [constantMax, setConstantMax] = useState('');
@@ -55,6 +57,8 @@ export function useMaimaiBestImageFilters({ maimai, activeAccountId, imageType, 
 
   const dxRatingChartTags = useDxRatingChartTags();
   const catalog = useDetailedCatalog();
+  const genres = useMemo(() => maimaiGenres(catalog.data?.songs ?? []), [catalog.data?.songs]);
+  const genresBySongId = useMemo(() => new Map(catalog.data?.songs.map(song => [song.id, song.genre])), [catalog.data?.songs]);
   const detailedCatalog = useTransientDetailedMaimaiCatalog(!!maimai);
   const dxRatingTagIndex = useMemo(() => buildDxRatingChartTagIndex(
     dxRatingChartTags.data,
@@ -89,6 +93,7 @@ export function useMaimaiBestImageFilters({ maimai, activeAccountId, imageType, 
   const conditionLabels = useMemo(() => {
     const labels: string[] = [];
     if (difficulty !== 'all') labels.push(DIFFICULTY_VISUAL[difficulty].label);
+    if (genre !== 'all') labels.push(genre);
     if (type !== 'all') labels.push(type);
     if (constantMin || constantMax) labels.push(`定数 ${constantMin || '不限'}~${constantMax || '不限'}`);
     if (achievementMin || achievementMax) labels.push(`达成率 ${achievementMin || '不限'}~${achievementMax || '不限'}%`);
@@ -98,7 +103,7 @@ export function useMaimaiBestImageFilters({ maimai, activeAccountId, imageType, 
     if (nearMiss) labels.push('寸');
     if (strictAchievement) labels.push('严格');
     return labels;
-  }, [achievementMax, achievementMin, constantMax, constantMin, difficulty, dxRatingChartTags.data?.tags, multiAchievement, nearMiss, selectedDxRatingTagIds, soloAchievement, strictAchievement, type]);
+  }, [achievementMax, achievementMin, constantMax, constantMin, difficulty, genre, dxRatingChartTags.data?.tags, multiAchievement, nearMiss, selectedDxRatingTagIds, soloAchievement, strictAchievement, type]);
 
   const customSections = useMemo(() => buildCustomBestImageSections(
     maimai?.records ?? [],
@@ -107,6 +112,8 @@ export function useMaimaiBestImageFilters({ maimai, activeAccountId, imageType, 
       versions,
       splitVersions,
       difficulty,
+      genre,
+      genresBySongId,
       type,
       constantMin,
       constantMax,
@@ -122,7 +129,7 @@ export function useMaimaiBestImageFilters({ maimai, activeAccountId, imageType, 
       conditionLabels,
       versionConditionLabel,
     },
-  ), [achievementMax, achievementMin, conditionLabels, constantMax, constantMin, difficulty, dxRatingTagIndex, maimai?.records, multiAchievement, nearMiss, quantity, selectedDxRatingTagIds, soloAchievement, splitVersions, strictAchievement, type, versionConditionLabel, versionLabels, versions]);
+  ), [achievementMax, achievementMin, conditionLabels, constantMax, constantMin, difficulty, genre, genresBySongId, dxRatingTagIndex, maimai?.records, multiAchievement, nearMiss, quantity, selectedDxRatingTagIds, soloAchievement, splitVersions, strictAchievement, type, versionConditionLabel, versionLabels, versions]);
   const rawScoreSections = useMemo<BestImageScoreSection[]>(() => imageType === 'best50'
     ? maimai?.bestSections ?? []
     : customSections, [customSections, imageType, maimai?.bestSections]);
@@ -166,6 +173,7 @@ export function useMaimaiBestImageFilters({ maimai, activeAccountId, imageType, 
 
   const resetCustomFilters = () => {
     setDifficulty('all');
+    setGenre('all');
     setType('all');
     setConstantMin('');
     setConstantMax('');
@@ -179,5 +187,5 @@ export function useMaimaiBestImageFilters({ maimai, activeAccountId, imageType, 
     setVersions(versionOptions.map((option) => option.value));
   };
 
-  return { setQuantity, versions, splitVersions, setSplitVersions, difficulty, setDifficulty, type, setType, constantMin, setConstantMin, constantMax, setConstantMax, achievementMin, setAchievementMin, achievementMax, setAchievementMax, soloAchievement, multiAchievement, strictAchievement, setStrictAchievement, nearMiss, setNearMiss, versionLocale, setVersionLocale, selectedDxRatingTagIds, setSelectedDxRatingTagIds, quantityError, customInputValid, hasAchievementFilter, dxRatingChartTags, versionOptions, detailedCatalog, scoreSections, maximumRowsPerPage, pages, pageStructureKey, handleSoloAchievementChange, handleMultiAchievementChange, handleVersionsChange, resetCustomFilters };
+  return { setQuantity, versions, splitVersions, setSplitVersions, difficulty, setDifficulty, genre, genres, setGenre, type, setType, constantMin, setConstantMin, constantMax, setConstantMax, achievementMin, setAchievementMin, achievementMax, setAchievementMax, soloAchievement, multiAchievement, strictAchievement, setStrictAchievement, nearMiss, setNearMiss, versionLocale, setVersionLocale, selectedDxRatingTagIds, setSelectedDxRatingTagIds, quantityError, customInputValid, hasAchievementFilter, dxRatingChartTags, versionOptions, detailedCatalog, scoreSections, maximumRowsPerPage, pages, pageStructureKey, handleSoloAchievementChange, handleMultiAchievementChange, handleVersionsChange, resetCustomFilters };
 }

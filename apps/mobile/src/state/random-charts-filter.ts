@@ -14,7 +14,7 @@ export function createRandomChartsFilterStore(
     preferences,
     defaults: defaultRandomChartsPreferences,
     clearKeys: [
-      'difficulty', 'version', 'type', 'constantMin', 'constantMax',
+      'difficulty', 'version', 'genre', 'type', 'constantMin', 'constantMax',
       'achievementMin', 'achievementMax', 'soloAchievement', 'multiAchievement',
       'selectedDxRatingTagIds',
     ],

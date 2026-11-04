@@ -77,6 +77,8 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `session-store` 保留完整账号集合，选择与回退仅允许当前可见账号；`useVisibleBoundAccounts` 为总览、账号管理和详情切换提供同一可见列表。`isTestProvider` 按绑定类型识别全部示例账号，只有调试偏好已恢复且开启时才可见。示例账号描述和 `generatedSource()` 的来源标签统一为“示例账号”，`shouldPersistScoreSnapshot` 跳过全部示例 Provider 的成绩快照读写。`restoreAppAccounts` 先读取偏好，再恢复选中账号；`useDebugStore` 保存成功后才发布开关，状态订阅同步更新活动账号。关闭示例功能不删除账号或个人数据，显式切换被拒绝时不写入活动账号偏好。示例游戏详情及游戏选择器同样遵守开关。
 
+舞萌曲库、成绩、随机选谱和自定义成绩图共用 `MaimaiFilterBar` 的分类下拉，位于版本与类型之间。`maimai-filters.ts` 的 `maimaiGenres` 从曲库歌曲提取分类，`matchesMaimaiGenre` 按歌曲分类匹配；成绩和成绩图按歌曲 ID 查询分类。默认选择全部，分类与其它条件共同生效并参与摘要和重置。随机选谱通过现有偏好入口保存 `genre`。
+
 ## 存储、偏好与个人曲库
 
 `rranker-database.ts` 提供数据库连接和 `runDatabaseWrite`。业务 schema、事务、写入与个人曲库外部读取共用队列；日志数据库单独串行。任务内不可再次进入同一队列。

@@ -26,7 +26,7 @@ import { useAppTheme } from '@/theme/app-theme';
 
 const DIFFICULTIES: Difficulty[] = ['basic', 'advanced', 'expert', 'master', 'remaster', 'utage'];
 const TYPES: ChartType[] = ['SD', 'DX'];
-type OpenDropdown = 'version' | 'solo' | 'multi' | null;
+type OpenDropdown = 'version' | 'genre' | 'solo' | 'multi' | null;
 type VersionSheetValue = string | 'all';
 type SoloSheetValue = MaimaiFcAchievement | 'all';
 type MultiSheetValue = MaimaiFsAchievement | 'all';
@@ -54,6 +54,8 @@ export interface MaimaiFilterBarProps {
   collapsible?: boolean;
   difficulty: Difficulty | 'all';
   version: string | 'all';
+  genre: string;
+  genres: readonly string[];
   type: ChartType | 'all';
   constantMin: string;
   constantMax: string;
@@ -74,6 +76,7 @@ export interface MaimaiFilterBarProps {
   onCollapsedChange: (collapsed: boolean) => void;
   onDifficultyChange: (difficulty: Difficulty | 'all') => void;
   onVersionChange: (version: string | 'all') => void;
+  onGenreChange: (genre: string) => void;
   onTypeChange: (type: ChartType | 'all') => void;
   onConstantMinChange: (value: string) => void;
   onConstantMaxChange: (value: string) => void;
@@ -99,10 +102,10 @@ export function formatDxRatingTagFilterValue(
 }
 
 export function buildMaimaiFilterSummary({
-  difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
+  difficulty, version, genre, type, constantMin, constantMax, achievementMin, achievementMax,
   soloAchievement, multiAchievement, versionLocale, versions, dxRatingTags = [], selectedDxRatingTagIds = [],
   versionMulti = false, selectedVersions = [],
-}: Pick<MaimaiFilterBarProps, 'difficulty' | 'version' | 'type' | 'constantMin' | 'constantMax'
+}: Pick<MaimaiFilterBarProps, 'difficulty' | 'version' | 'genre' | 'type' | 'constantMin' | 'constantMax'
   | 'achievementMin' | 'achievementMax' | 'soloAchievement' | 'multiAchievement' | 'versionLocale' | 'versions'
   | 'dxRatingTags' | 'selectedDxRatingTagIds'>
   & { versionMulti?: boolean; selectedVersions?: readonly string[] }): string {
@@ -129,6 +132,7 @@ export function buildMaimaiFilterSummary({
   return joinFilterSummary([
     difficulty === 'all' ? null : DIFFICULTY_VISUAL[difficulty].label,
     versionLabel,
+    genre === 'all' ? null : genre,
     type === 'all' ? null : type,
     tagLabel === '全部' ? null : `标签 ${tagLabel}`,
     constantMin || constantMax ? `定数 ${constantMin || '不限'}~${constantMax || '不限'}` : null,
@@ -143,6 +147,8 @@ export function MaimaiFilterBar({
   collapsible = true,
   difficulty,
   version,
+  genre,
+  genres,
   type,
   constantMin,
   constantMax,
@@ -163,6 +169,7 @@ export function MaimaiFilterBar({
   onCollapsedChange,
   onDifficultyChange,
   onVersionChange,
+  onGenreChange,
   onTypeChange,
   onConstantMinChange,
   onConstantMaxChange,
@@ -198,6 +205,7 @@ export function MaimaiFilterBar({
           : `${selectedVersions.length} 个版本`
     : selectedVersionLabel;
   const soloLabel = maimaiFcAchievementLabel(soloAchievement);
+  const genreLabel = genre === 'all' ? '全部' : genre;
   const multiLabel = maimaiFsAchievementLabel(multiAchievement);
   const tagFilterValue = dxRatingTagState === 'loading'
     ? '加载中'
@@ -222,6 +230,11 @@ export function MaimaiFilterBar({
       label: localizedVersionName(option.versionId, option.name, versionLocale),
     })),
   ], [versionLocale, versions]);
+
+  const genreOptions = useMemo<FilterSelectOption[]>(() => [
+    { value: 'all', label: '全部' },
+    ...genres.map(value => ({ value, label: value })),
+  ], [genres]);
 
   const selectAllVersions = () => onVersionsChange?.(versions.map((option) => option.value));
   const selectCurrentVersion = () => {
@@ -259,7 +272,7 @@ export function MaimaiFilterBar({
   );
 
   const summary = buildMaimaiFilterSummary({
-    difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
+    difficulty, version, genre, type, constantMin, constantMax, achievementMin, achievementMax,
     soloAchievement, multiAchievement, versionLocale, versions, dxRatingTags, selectedDxRatingTagIds,
     versionMulti, selectedVersions,
   });
@@ -316,6 +329,22 @@ export function MaimaiFilterBar({
               </Pressable>
             )) : undefined}
             endAdornment={localeSwitch}
+          />
+        </View>
+      </View>
+
+      <View style={filterShellStyles.filterRow}>
+        <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>分类</Text>
+        <View style={styles.dropdownControls}>
+          <FilterAnchoredDropdown
+            open={openDropdown === 'genre'}
+            onOpenChange={setDropdownOpen('genre')}
+            valueLabel={genreLabel}
+            accessibilityLabel={`分类筛选，当前 ${genreLabel}`}
+            options={genreOptions}
+            selectedValue={genre}
+            onSelect={onGenreChange}
+            optionAccessibilityPrefix="选择分类"
           />
         </View>
       </View>

@@ -9,6 +9,7 @@ export const useRecordsFilter = createFilterStore({
     collapsed: true,
     difficulty: 'all' as Difficulty | 'all',
     version: 'all' as string | 'all',
+    genre: 'all',
     type: 'all' as ChartType | 'all',
     constantMin: '',
     constantMax: '',
@@ -21,7 +22,7 @@ export const useRecordsFilter = createFilterStore({
     versionLocale: 'china' as VersionNameLocale,
   },
   clearKeys: [
-    'keyword', 'difficulty', 'version', 'type',
+    'keyword', 'difficulty', 'version', 'genre', 'type',
     'constantMin', 'constantMax', 'achievementMin', 'achievementMax',
     'soloAchievement', 'multiAchievement', 'selectedDxRatingTagIds',
   ],

@@ -4,7 +4,7 @@ import { QueryStateView } from '@/components/QueryStateView';
 import { RandomChartsPage } from '@/components/RandomChartsPage';
 import { ScoreRecordCard, type ScoreRecordCardData } from '@/components/ScoreRecordCard';
 import { chartVersionKey, normalizeSongId } from '@/domain/catalog';
-import { parseAchievementBound } from '@/domain/maimai-filters';
+import { maimaiGenres, parseAchievementBound } from '@/domain/maimai-filters';
 import type { CatalogSnapshot, ScoreRecord } from '@/domain/models';
 import {
   buildBestRecordMap,
@@ -54,10 +54,10 @@ export function MaimaiRandomChartsScreen() {
   const scores = useScoreSnapshot();
   const dxRatingChartTags = useDxRatingChartTags();
   const {
-    count, collapsed, difficulty, version, type, constantMin, constantMax,
+    count, collapsed, difficulty, version, genre, type, constantMin, constantMax,
     achievementMin, achievementMax, soloAchievement, multiAchievement,
     selectedDxRatingTagIds, versionLocale,
-    hydrate, persistenceError, setCount, setCollapsed, setDifficulty, setVersion, setType,
+    hydrate, persistenceError, setCount, setCollapsed, setDifficulty, setVersion, setGenre, setType,
     setConstantMin, setConstantMax, setAchievementMin, setAchievementMax,
     setSoloAchievement, setMultiAchievement, setSelectedDxRatingTagIds,
     setVersionLocale, clearFilters,
@@ -88,9 +88,11 @@ export function MaimaiRandomChartsScreen() {
     name: item.title,
     versionId: item.id,
   })), [catalog.data?.versions]);
+  const genres = useMemo(() => maimaiGenres(catalog.data?.songs ?? []), [catalog.data?.songs]);
   const filters = useMemo(() => ({
     difficulty,
     version,
+    genre,
     type,
     constantMin,
     constantMax,
@@ -106,6 +108,7 @@ export function MaimaiRandomChartsScreen() {
     constantMin,
     difficulty,
     multiAchievement,
+    genre,
     selectedDxRatingTagIds,
     soloAchievement,
     type,
@@ -147,6 +150,9 @@ export function MaimaiRandomChartsScreen() {
               constantMax={constantMax}
               constantMin={constantMin}
               difficulty={difficulty}
+              genre={genre}
+              genres={genres}
+              onGenreChange={setGenre}
               dxRatingTagState={dxRatingTagFilterState(dxRatingChartTags)}
               dxRatingTags={dxRatingChartTags.data?.tags ?? []}
               multiAchievement={multiAchievement}

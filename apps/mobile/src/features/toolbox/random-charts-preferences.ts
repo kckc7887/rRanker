@@ -33,6 +33,7 @@ export function defaultRandomChartsPreferences(): RandomChartsPreferences {
     count: 1,
     difficulty: 'all',
     version: 'all',
+    genre: 'all',
     type: 'all',
     constantMin: '',
     constantMax: '',
@@ -68,7 +69,8 @@ export function parseRandomChartsPreferences(value: unknown): RandomChartsPrefer
   const output = defaultRandomChartsPreferences();
   if (!value || typeof value !== 'object') return output;
   const raw = value as Record<string, unknown>;
-  if (raw.schemaVersion !== 3) return output;
+  if (raw.schemaVersion !== 3 || typeof raw.genre !== 'string' || !raw.genre.trim()) return output;
+  output.genre = raw.genre.trim();
 
   if (typeof raw.count === 'number' && VALID_COUNTS.has(raw.count as RandomChartsCount)) {
     output.count = raw.count as RandomChartsCount;
@@ -124,6 +126,7 @@ const { Store: RandomChartsPreferencesStore } = createPreferencesStore<RandomCha
     count: z.number(),
     difficulty: z.string(),
     version: z.string(),
+    genre: z.string().trim().min(1),
     type: z.string(),
     constantMin: z.string(),
     constantMax: z.string(),

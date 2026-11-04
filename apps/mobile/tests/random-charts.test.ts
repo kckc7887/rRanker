@@ -96,6 +96,7 @@ const records: ScoreRecord[] = [
 const maimaiFilters: MaimaiRandomChartFilters = {
   difficulty: 'all',
   version: 'all',
+  genre: 'all',
   type: 'all',
   constantMin: '',
   constantMax: '',
@@ -147,6 +148,17 @@ describe('filterMaimaiRandomCharts', () => {
       constantMax: '14',
     });
     expect(pool.map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['1:DX:3']);
+  });
+
+  it('按歌曲分类组合难度和版本筛选', () => {
+    const categorized = { ...catalog, songs: songs.map(song => ({
+      ...song, genre: song.id === '1' ? '流行＆动漫' : undefined,
+    })) };
+    const pool = filterMaimaiRandomCharts(categorized, records, {
+      ...maimaiFilters, genre: '流行＆动漫', difficulty: 'master', version: '旧版本',
+    });
+    expect(pool.map(pick => chartVersionKey(pick.songId, pick.type, pick.levelIndex))).toEqual(['1:DX:3']);
+    expect(filterMaimaiRandomCharts(categorized, records, maimaiFilters)).toHaveLength(7);
   });
 
   it('excludes U·TA·GE when a constant bound is entered like the records page', () => {

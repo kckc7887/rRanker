@@ -8,7 +8,7 @@ import { MaimaiFilterBar, dxRatingTagFilterState, type VersionFilterOption } fro
 import { ChartTypeBadge, DifficultyBadge } from '@/components/ScoreVisuals';
 import { SongCover } from '@/components/SongCover';
 import { buildDxRatingChartTagIndex, dxRatingChartHasAllTags } from '@/domain/dxrating-chart-tags';
-import { parseConstantBound } from '@/domain/maimai-filters';
+import { maimaiGenres, matchesMaimaiGenre, parseConstantBound } from '@/domain/maimai-filters';
 import type { Chart, ChartType, Song } from '@/domain/models';
 import { localizedVersionName } from '@/domain/version-names';
 import { presentStandardSong } from '@/features/game-content/adapters';
@@ -35,9 +35,9 @@ export function MaimaiCatalogScreen() {
   const library = useUserLibrary();
   const theme = useAppTheme();
   const {
-    keyword, collapsed, type, difficulty, constantMin, constantMax, version, versionLocale, selectedDxRatingTagIds,
+    keyword, collapsed, type, difficulty, constantMin, constantMax, version, genre, versionLocale, selectedDxRatingTagIds,
     setKeyword, setCollapsed, setType, setDifficulty, setConstantMin, setConstantMax, setVersion, setVersionLocale,
-    setSelectedDxRatingTagIds, clearFilters,
+    setGenre, setSelectedDxRatingTagIds, clearFilters,
   } = useCatalogFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const dxRatingTagIndex = useMemo(() => buildDxRatingChartTagIndex(
@@ -56,17 +56,20 @@ export function MaimaiCatalogScreen() {
   const versions = useMemo<VersionFilterOption[]>(() => (query.data?.versions ?? []).map((item) => ({
     value: String(item.id), name: item.title, versionId: item.id,
   })), [query.data?.versions]);
+  const genres = useMemo(() => maimaiGenres(query.data?.songs ?? []), [query.data?.songs]);
   const filterSpec = useMemo(() => ({
     ...EMPTY_SONG_FILTERS,
     keyword: debouncedKeyword,
+    genre,
     types: type === 'all' ? [] : [type],
     difficulties: difficulty === 'all' ? [] : [difficulty],
     constantMin: parseConstantBound(constantMin),
     constantMax: parseConstantBound(constantMax),
     chartVersionIds: version === 'all' ? [] : [Number(version)],
     selectedDxRatingTagIds,
-  }), [constantMax, constantMin, debouncedKeyword, difficulty, selectedDxRatingTagIds, type, version]);
+  }), [constantMax, constantMin, debouncedKeyword, difficulty, genre, selectedDxRatingTagIds, type, version]);
   const selectSong = useCallback((song: Song, filters: typeof filterSpec) => {
+    if (!matchesMaimaiGenre(song.genre, filters.genre)) return undefined;
     if (!matchesSongSearch(song, filters,
       dxRatingChartTags.data && filters.selectedDxRatingTagIds.length > 0
         ? (candidate, chart) => dxRatingChartHasAllTags(
@@ -121,6 +124,7 @@ export function MaimaiCatalogScreen() {
         resultCountText={isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`} />
       <MaimaiFilterBar collapsed={collapsed} onCollapsedChange={setCollapsed}
         difficulty={difficulty} version={version} type={type}
+        genre={genre} genres={genres} onGenreChange={setGenre}
         constantMin={constantMin} constantMax={constantMax} versionLocale={versionLocale} versions={versions}
         dxRatingTags={dxRatingChartTags.data?.tags ?? []}
         selectedDxRatingTagIds={selectedDxRatingTagIds}

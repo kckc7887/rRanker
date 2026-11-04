@@ -9,6 +9,8 @@ import { ScoreRecordCard } from '@/components/ScoreRecordCard';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { buildDxRatingChartTagIndex, dxRatingChartHasAllTags } from '@/domain/dxrating-chart-tags';
 import {
+  maimaiGenres,
+  matchesMaimaiGenre,
   matchesAchievementRange,
   matchesConstantRange,
   matchesMultiAchievementFilter,
@@ -36,14 +38,15 @@ export function MaimaiRecordsScreen() {
   const theme = useAppTheme();
   const tabBottomInset = useNativeTabBottomInset();
   const {
-    keyword, collapsed, difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
+    keyword, collapsed, difficulty, version, genre, type, constantMin, constantMax, achievementMin, achievementMax,
     soloAchievement, multiAchievement, versionLocale, selectedDxRatingTagIds,
     setKeyword, setCollapsed,
-    setDifficulty, setVersion, setType, setConstantMin, setConstantMax, setAchievementMin, setAchievementMax,
+    setDifficulty, setVersion, setGenre, setType, setConstantMin, setConstantMax, setAchievementMin, setAchievementMax,
     setSoloAchievement, setMultiAchievement, setVersionLocale, setSelectedDxRatingTagIds, clearFilters,
   } = useRecordsFilter();
   const debouncedKeyword = useDebouncedValue(keyword);
   const searchBySongId = useMemo(() => new Map(catalog.data?.songs.map((song) => [song.id, song])), [catalog.data?.songs]);
+  const genres = useMemo(() => maimaiGenres(catalog.data?.songs ?? []), [catalog.data?.songs]);
   const dxRatingTagIndex = useMemo(() => buildDxRatingChartTagIndex(
     dxRatingChartTags.data,
     catalog.data?.songs ?? [],
@@ -74,12 +77,13 @@ export function MaimaiRecordsScreen() {
   }, [data]);
 
   const filterSpec = useMemo(() => ({
-    keyword: debouncedKeyword, difficulty, version, type, constantMin, constantMax, achievementMin, achievementMax,
+    keyword: debouncedKeyword, difficulty, version, genre, type, constantMin, constantMax, achievementMin, achievementMax,
     soloAchievement, multiAchievement, selectedDxRatingTagIds,
-  }), [achievementMax, achievementMin, soloAchievement, multiAchievement, constantMax, constantMin, debouncedKeyword, difficulty, selectedDxRatingTagIds, type, version]);
+  }), [achievementMax, achievementMin, soloAchievement, multiAchievement, constantMax, constantMin, debouncedKeyword, difficulty, genre, selectedDxRatingTagIds, type, version]);
   const sortedRecords = useMemo(() => data?.records.slice().sort((a, b) =>
     Number(a.type === 'UTAGE') - Number(b.type === 'UTAGE') || b.rating - a.rating || b.achievements - a.achievements), [data?.records]);
   const selectRecord = useCallback((record: ScoreRecord, filters: typeof filterSpec) => {
+    if (!matchesMaimaiGenre(searchBySongId.get(record.songId)?.genre, filters.genre)) return undefined;
     if (filters.keyword.trim()) {
       const song = searchBySongId.get(record.songId);
       if (!searchDocumentMatches(song ? songSearchDocument(song) : searchDocumentFor(record, recordSearchValues), filters.keyword)) return undefined;
@@ -106,6 +110,7 @@ export function MaimaiRecordsScreen() {
         placeholder="曲名 / 曲师 / 谱师 / 罗马音" value={keyword} onChangeText={setKeyword} />
       <MaimaiFilterBar collapsed={collapsed} onCollapsedChange={setCollapsed}
         difficulty={difficulty} version={version} type={type}
+        genre={genre} genres={genres} onGenreChange={setGenre}
         constantMin={constantMin} constantMax={constantMax}
         constantBounds={maimaiConstantBounds}
         achievementMin={achievementMin} achievementMax={achievementMax}

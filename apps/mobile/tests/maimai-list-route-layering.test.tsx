@@ -157,6 +157,28 @@ afterEach(async () => {
 });
 
 describe('舞萌列表内容与共同路由的分层', () => {
+  it.each(['曲库', '成绩'])('%s按歌曲分类筛选并可重置', async page => {
+    const catalog = structuredClone(fixtureCatalog());
+    catalog.songs = catalog.songs.map(song => ({
+      ...song, genre: song.id === '1' ? '流行＆动漫' : '舞萌',
+    }));
+    mockGetCatalog.mockImplementation(async () => catalog);
+    const filter = page === '曲库' ? actualCatalogFilter : actualRecordsFilter;
+    filter.getState().setCollapsed(false);
+    const total = page === '曲库' ? `共 ${catalog.songs.length} 首` : `共 ${fixtureRecords.length} 条成绩`;
+    const filtered = page === '曲库' ? '共 1 首' : '共 1 条成绩';
+    const screen = await render(page === '曲库' ? <SearchScreen /> : <RecordsScreen />, { wrapper });
+    await screen.findByText(total);
+    await waitFor(() => expect(mockGetCatalog).toHaveBeenCalled());
+    await fireEvent.press(screen.getByLabelText('分类筛选，当前 全部'));
+    await fireEvent.press(await screen.findByLabelText('选择分类 流行＆动漫'));
+    await screen.findByText(filtered);
+    await fireEvent.press(screen.getByLabelText('收起筛选'));
+    expect(screen.getByText('流行＆动漫')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText('重置筛选'));
+    await screen.findByText(total);
+  });
+
   it('非舞萌游戏进入成绩页时不挂载舞萌曲库、成绩、标签与筛选链', async () => {
     mockActiveGameId = 'phira';
     const screen = await render(<RecordsScreen />, { wrapper });

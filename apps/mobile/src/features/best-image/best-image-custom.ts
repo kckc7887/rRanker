@@ -1,5 +1,6 @@
 import type { ChartType, Difficulty, ScoreRecord } from '@/domain/models';
 import {
+  matchesMaimaiGenre,
   matchesAchievementRange,
   matchesAchievementStatus,
   matchesConstantRange,
@@ -16,6 +17,8 @@ export type CustomBestImageFilters = {
   versions: readonly string[];
   splitVersions: boolean;
   difficulty: Difficulty | 'all';
+  genre: string;
+  genresBySongId: ReadonlyMap<string, string | undefined>;
   type: ChartType | 'all';
   constantMin: string;
   constantMax: string;
@@ -56,6 +59,8 @@ export const DEFAULT_CUSTOM_BEST_IMAGE_FILTERS: CustomBestImageFilters = {
   versions: [],
   splitVersions: false,
   difficulty: 'all',
+  genre: 'all',
+  genresBySongId: new Map(),
   type: 'all',
   constantMin: '',
   constantMax: '',
@@ -118,6 +123,7 @@ export function buildCustomBestImageSections(
     if (record.type === 'UTAGE') return false;
     if (record.version === 'unknown') return false;
     if (!selected.has(record.version)) return false;
+    if (!matchesMaimaiGenre(filters.genresBySongId.get(record.songId), filters.genre)) return false;
     if (filters.difficulty !== 'all' && record.difficulty !== filters.difficulty) return false;
     if (filters.type !== 'all' && record.type !== filters.type) return false;
     if (!matchesConstantRange(record.difficultyConstant, filters.constantMin, filters.constantMax)) return false;

@@ -25,6 +25,7 @@ describe('maimai random charts preferences', () => {
       count: 2 as const,
       difficulty: 'expert' as const,
       version: '旧版本',
+      genre: '舞萌',
       type: 'DX' as const,
       achievementMin: '99',
       soloAchievement: 'fc' as const,
@@ -38,6 +39,7 @@ describe('maimai random charts preferences', () => {
   it('parses v3 tag ids and drops invalid or duplicate entries', () => {
     expect(parseRandomChartsPreferences({
       schemaVersion: 3,
+      genre: 'all',
       count: 3,
       selectedDxRatingTagIds: [1, 2.5, -1, 2, 1, '3', null, Infinity],
     })).toEqual({
@@ -68,13 +70,27 @@ describe('maimai random charts preferences', () => {
     });
     useStore.getState().setCount(2);
     useStore.getState().setAchievementMin('98');
+    useStore.getState().setGenre('流行＆动漫');
     await vi.waitFor(async () => {
       await expect(preferences.load()).resolves.toMatchObject({
         count: 2,
         difficulty: 'basic',
         achievementMin: '98',
+        genre: '流行＆动漫',
       });
     });
+    useStore.getState().clearFilters();
+    await vi.waitFor(async () => {
+      await expect(preferences.load()).resolves.toMatchObject({ count: 2, genre: 'all' });
+    });
+  });
+
+  it('分类字段缺失时重建当前偏好', async () => {
+    const storage = new MemoryStore();
+    const { genre: _genre, ...incomplete } = defaultRandomChartsPreferences();
+    storage.values.set('rranker.toolbox.random-charts.v1', JSON.stringify({ schemaVersion: 3, ...incomplete, count: 3 }));
+    const store = new RandomChartsPreferencesStore(storage);
+    await expect(store.load()).resolves.toEqual(defaultRandomChartsPreferences());
   });
 
   it('merges edits made during restoration with untouched stored filters', async () => {

@@ -5,6 +5,7 @@ import {
   type DxRatingChartTagsSnapshot,
 } from './dxrating-chart-tags';
 import {
+  matchesMaimaiGenre,
   matchesAchievementRange,
   matchesConstantRange,
   matchesMultiAchievementFilter,
@@ -34,6 +35,7 @@ export type RandomChartsCount = 1 | 2 | 3 | 4;
 export type MaimaiRandomChartFilters = {
   difficulty: Difficulty | 'all';
   version: string | 'all';
+  genre: string;
   type: ChartType | 'all';
   constantMin: string;
   constantMax: string;
@@ -149,6 +151,7 @@ export function filterMaimaiRandomCharts(
 
   for (const song of catalog.songs) {
     if (song.disabled) continue;
+    if (!matchesMaimaiGenre(song.genre, filters.genre)) continue;
     const songId = normalizeSongId(song.id);
     for (const chart of song.charts) {
       if (filters.difficulty !== 'all' && chart.difficulty !== filters.difficulty) continue;

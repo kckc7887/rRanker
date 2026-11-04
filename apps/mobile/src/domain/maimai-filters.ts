@@ -1,3 +1,14 @@
+import type { Song } from './models';
+
+export function maimaiGenres(songs: readonly Song[]): string[] {
+  return [...new Set(songs.flatMap(song => song.genre ? [song.genre] : []))]
+    .sort((left, right) => left.localeCompare(right, 'zh-CN'));
+}
+
+export function matchesMaimaiGenre(genre: string | undefined, selected: string): boolean {
+  return selected === 'all' || genre === selected;
+}
+
 export type MaimaiFcAchievement = 'fc' | 'fcp' | 'ap' | 'app';
 export type MaimaiFsAchievement = 'fs' | 'fsp' | 'fsd' | 'fsdp';
 export type MaimaiAchievementStatus =

@@ -23,6 +23,16 @@ function filters(overrides: Partial<CustomBestImageFilters> = {}): CustomBestIma
 }
 
 describe('custom best image', () => {
+  it('按歌曲分类筛选后再截取成绩数量', () => {
+    const records = [score({ songId: '1', rating: 200 }), score({ songId: '2', rating: 300 }), score({ songId: '3', rating: 100 })];
+    const sections = buildCustomBestImageSections(records, filters({
+      quantity: 1, genre: '舞萌', genresBySongId: new Map([['1', '舞萌'], ['2', '流行＆动漫']]),
+      conditionLabels: ['舞萌'],
+    }));
+    expect(sections[0]?.records.map(record => record.songId)).toEqual(['1']);
+    expect(sections[0]?.title).toBe('舞萌1');
+  });
+
   it('uses BestN title when no non-quantity condition is active', () => {
     const sections = buildCustomBestImageSections([
       score({ songId: '1', rating: 100 }),

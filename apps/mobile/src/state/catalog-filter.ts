@@ -11,11 +11,12 @@ export const useCatalogFilter = createFilterStore({
     constantMin: '',
     constantMax: '',
     version: 'all' as string | 'all',
+    genre: 'all',
     versionLocale: 'china' as VersionNameLocale,
     selectedDxRatingTagIds: [] as number[],
   },
   clearKeys: [
-    'keyword', 'type', 'difficulty', 'constantMin', 'constantMax', 'version',
+    'keyword', 'type', 'difficulty', 'constantMin', 'constantMax', 'version', 'genre',
     'selectedDxRatingTagIds',
   ],
 });

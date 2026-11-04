@@ -151,7 +151,7 @@ export function MaimaiBestImageScreen() {
   } = controller;
   const { assetSession } = controller;
   const { embeddedAssets, assetError, retry: retryEmbedded } = useMaimaiEmbeddedAssets(assetSession, rating);
-  const { setQuantity, versions, splitVersions, setSplitVersions, difficulty, setDifficulty, type, setType, constantMin, setConstantMin, constantMax, setConstantMax, achievementMin, setAchievementMin, achievementMax, setAchievementMax, soloAchievement, multiAchievement, strictAchievement, setStrictAchievement, nearMiss, setNearMiss, versionLocale, setVersionLocale, selectedDxRatingTagIds, setSelectedDxRatingTagIds, quantityError, customInputValid, hasAchievementFilter, dxRatingChartTags, versionOptions, detailedCatalog, scoreSections, maximumRowsPerPage, pages, pageStructureKey, handleSoloAchievementChange, handleMultiAchievementChange, handleVersionsChange, resetCustomFilters } = useMaimaiBestImageFilters({ maimai, activeAccountId, imageType, outputWidth, quantityText });
+  const { setQuantity, versions, splitVersions, setSplitVersions, difficulty, setDifficulty, genre, genres, setGenre, type, setType, constantMin, setConstantMin, constantMax, setConstantMax, achievementMin, setAchievementMin, achievementMax, setAchievementMax, soloAchievement, multiAchievement, strictAchievement, setStrictAchievement, nearMiss, setNearMiss, versionLocale, setVersionLocale, selectedDxRatingTagIds, setSelectedDxRatingTagIds, quantityError, customInputValid, hasAchievementFilter, dxRatingChartTags, versionOptions, detailedCatalog, scoreSections, maximumRowsPerPage, pages, pageStructureKey, handleSoloAchievementChange, handleMultiAchievementChange, handleVersionsChange, resetCustomFilters } = useMaimaiBestImageFilters({ maimai, activeAccountId, imageType, outputWidth, quantityText });
   const { ratingStyle } = prefs;
   const styleSelections = useMemo(() => maimaiPreferenceSelections(prefs), [prefs]);
   const setRatingStyle = (nextRatingStyle: BestImageRatingStyle) => {
@@ -270,6 +270,9 @@ export function MaimaiBestImageScreen() {
           onCollapsedChange={() => undefined}
           difficulty={difficulty}
           version="all"
+          genre={genre}
+          genres={genres}
+          onGenreChange={setGenre}
           type={type}
           constantMin={constantMin}
           constantMax={constantMax}
