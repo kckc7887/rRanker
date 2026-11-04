@@ -11,6 +11,13 @@ def binaryRoot = new File(providers.exec {
   commandLine 'node', '--print', "require.resolve('@kckc7887/maimai-save-mobile/package.json')"
 }.standardOutput.asText.get().trim()).parentFile
 
+def noticesDir = layout.buildDirectory.dir('generated/notices')
+def copyNotices = tasks.register('copyNotices', Copy) {
+  from new File(binaryRoot, 'THIRD_PARTY_NOTICES.txt')
+  into noticesDir
+}
+tasks.named('preBuild').configure { dependsOn copyNotices }
+
 android {
   namespace 'expo.modules.maimaisave'
   ndkVersion rootProject.ext.ndkVersion
@@ -22,10 +29,7 @@ android {
     }
   }
   sourceSets.main.jniLibs.srcDirs = [new File(binaryRoot, 'android')]
-  sourceSets.main.assets {
-    srcDir binaryRoot
-    include 'THIRD_PARTY_NOTICES.txt'
-  }
+  sourceSets.main.assets.srcDirs = [noticesDir]
   externalNativeBuild {
     cmake { path 'CMakeLists.txt' }
   }
