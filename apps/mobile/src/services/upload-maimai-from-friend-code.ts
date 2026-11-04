@@ -12,7 +12,6 @@ import { captureAccountWrites } from '@/services/snapshot-cache-utils';
 import { loginScoreHubWithFriendCode } from '@/services/upload-maimai-login';
 import { uploadMaimaiAfterScoreHubToken } from '@/services/upload-maimai-score-fetch';
 import { uploadMaimaiScoresToTargets } from '@/services/upload-maimai-target-write';
-import { readMaimaiSave } from '@/services/maimai-save';
 import type { UploadCommonInput, UploadPhase, UploadResult, UploadTarget } from '@/services/upload-maimai-types';
 import { scoreHubAccountStore } from '@/storage/score-hub-account-store';
 export type { UploadCommonInput, UploadPhase, UploadResult, UploadTarget, UploadTargetResult, UploadTaskSnapshot } from '@/services/upload-maimai-types';
@@ -315,6 +314,7 @@ export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
   if (input.credential.kind !== 'text') {
     throw new ScoreHubError('二维码无效', undefined, false, { code: 'INVALID_QR' });
   }
+  const { readMaimaiSave } = await import('@/services/maimai-save');
   await input.signal.waitUntilResumed?.();
   if (input.signal.aborted) throw new ScoreHubError('已取消');
   input.onPhase({ kind: 'fetching_scores', message: '正在读取成绩…' });

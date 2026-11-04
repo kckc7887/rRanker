@@ -1,3 +1,4 @@
+import { requireOptionalNativeModule } from 'expo-modules-core';
 import { z } from 'zod';
 import { ScoreHubError, type ScoreHubSyncScore } from '@/services/score-hub-client';
 
@@ -22,7 +23,6 @@ const saveSchema = z.object({
 });
 
 export async function readMaimaiSave(qrCode: string): Promise<ScoreHubSyncScore[]> {
-  const { requireOptionalNativeModule } = await import('expo-modules-core');
   const native = requireOptionalNativeModule<{ readSaveAsync(code: string): Promise<string> }>('MaimaiSave');
   if (!native) throw new ScoreHubError('二维码同步暂不可用', undefined, false, { code: 'NATIVE_UNAVAILABLE' });
   let raw: unknown;
