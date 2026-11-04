@@ -246,7 +246,7 @@ postinstall 按实际源码调用点应用 decode-uri-component、WebView 和 vi
 
 正式仓库分支 push/手动触发走 Android/iOS 正式构建；向 master 提交的 fork PR 走双端测试构建。正式构建与 fork 测试构建按事件互斥，fork 作业不取得发布凭据。
 
-Android 在同一作业内以 4 GiB Gradle 堆和两个工作线程构建四个 ABI，校验 Manifest、签名和产物，安装 x86_64 APK 走生产路由冒烟，再上传最终产物。手动原生诊断入口位于 `android-recovery.yml`。
+Android 在同一作业内以 4 GiB Gradle 堆和两个工作线程构建四个 ABI，校验 Manifest、签名和产物后释放运行器 SDK 中的 NDK 与 CMake，再安装模拟器和 x86_64 APK 走生产路由冒烟并上传最终产物。手动原生诊断入口位于 `android-recovery.yml`。
 
 对外 APK 名为 `rRanker-arm64.apk`、`rRanker-armeabi.apk`、`rRanker-x86.apk`、`rRanker-x86_64.apk`；构建归档名保留版本、提交与运行标识。`resource-release.yml` 仅处理正式 Release 的 published 事件，通过 `RESOURCE_PUBLISHER_TOKEN` 向发布仓库的 `apk.yml` 发送 Release ID，并查询该次运行结果。令牌仅需发布仓库 Actions 读写权限。发布仓库通过仅限运行实例读写的 `YUNXIAO_TOKEN` 启动云效 APK 流水线，传入 Release ID、发布代码提交和 GitHub 运行 ID，等待实际结果，并在取消或超时时请求停止云效运行。云效用流水线私密变量中的 S3 凭据，在全部附件完成大小、摘要、ABI、包名、版本和签名校验后，更新 rranker 桶的四个 `release/rRanker-<ABI>.apk` 固定地址。
 

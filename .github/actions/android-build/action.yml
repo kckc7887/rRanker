@@ -85,6 +85,12 @@ runs:
       run: python3 ../../.github/scripts/verify-android-apks.py
       shell: bash
       working-directory: apps/mobile
+    - name: Free disk for emulator
+      shell: bash
+      run: |
+        df -h /
+        sudo rm -rf -- "${ANDROID_HOME:?}/ndk" "${ANDROID_HOME:?}/cmake"
+        df -h /
     - name: Enable KVM
       shell: bash
       run: |
