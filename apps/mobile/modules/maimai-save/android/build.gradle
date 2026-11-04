@@ -22,6 +22,10 @@ android {
     }
   }
   sourceSets.main.jniLibs.srcDirs = [new File(binaryRoot, 'android')]
+  sourceSets.main.assets {
+    srcDir binaryRoot
+    include 'THIRD_PARTY_NOTICES.txt'
+  }
   externalNativeBuild {
     cmake { path 'CMakeLists.txt' }
   }
