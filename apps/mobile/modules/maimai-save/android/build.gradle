@@ -1,0 +1,28 @@
+plugins {
+  id 'com.android.library'
+  id 'expo-module-gradle-plugin'
+}
+
+group = 'expo.modules.maimaisave'
+version = '1.0.0'
+
+def binaryRoot = new File(providers.exec {
+  workingDir projectDir
+  commandLine 'node', '--print', "require.resolve('@kckc7887/maimai-save-mobile/package.json')"
+}.standardOutput.asText.get().trim()).parentFile
+
+android {
+  namespace 'expo.modules.maimaisave'
+  ndkVersion rootProject.ext.ndkVersion
+  defaultConfig {
+    versionCode 1
+    versionName '1.0.0'
+    externalNativeBuild {
+      cmake { arguments '-DANDROID_STL=none' }
+    }
+  }
+  sourceSets.main.jniLibs.srcDirs = [new File(binaryRoot, 'android')]
+  externalNativeBuild {
+    cmake { path 'CMakeLists.txt' }
+  }
+}

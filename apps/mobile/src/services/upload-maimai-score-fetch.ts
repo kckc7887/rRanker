@@ -47,7 +47,7 @@ export async function uploadMaimaiAfterScoreHubToken(input: UploadCommonInput & 
     signal: input.signal,
     onProgress: ({ progress, stage }) => {
       if (typeof stage === 'string' && stage.includes('重试')) {
-        input.onPhase({ kind: 'fetching_scores', message: stage });
+        input.onPhase({ kind: 'fetching_scores', message: '正在重试获取成绩…' });
         return;
       }
       input.onPhase({ kind: 'fetching_scores', message: scoreProgressMessage(progress) });

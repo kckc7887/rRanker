@@ -29,7 +29,7 @@ function createTask() {
     },
   };
   return {
-    signal, foreground, cancelListeners, resumeWaiters,
+    signal, foreground, cancelListeners, resumeWaiters, waitForCancellation: false,
     waiter: null as CatalogWaiter | null, request: null as Promise<void> | null
   };
 }
@@ -115,11 +115,12 @@ export class UploadTaskController {
     task.waiter?.reject(new ScoreHubError('已取消'));
     task.waiter = null;
   }
-  begin(): ScoreHubAbortSignal {
+  begin(waitForCancellation = false): ScoreHubAbortSignal {
     if (this.snapshot.status === 'running' || this.snapshot.status === 'paused') return this.task.signal;
     this.clearIdleReset();
     this.abort(this.task);
     this.task = createTask();
+    this.task.waitForCancellation = waitForCancellation;
     this.publish({ taskId: `upload-${++this.sequence}`, status: 'running', phase: { kind: 'logging_in', message: '正在准备上传…' }, result: null });
     return this.task.signal;
   }
@@ -148,10 +149,10 @@ export class UploadTaskController {
   cancel(): void {
     if (this.snapshot.status !== 'running' && this.snapshot.status !== 'paused') return;
     this.abort(this.task);
-    this.publish({ ...this.snapshot, status: 'canceled', phase: { kind: 'canceling', message: '正在取消…' } });
+    this.publish({ ...this.snapshot, status: this.task.waitForCancellation ? 'running' : 'canceled', phase: { kind: 'canceling', message: '正在取消…' } });
   }
   finishCanceled(signal: ScoreHubAbortSignal): void {
-    if (signal === this.task.signal && signal.aborted) this.publish({ ...this.snapshot, phase: { kind: 'idle' } });
+    if (signal === this.task.signal && signal.aborted) this.publish({ ...this.snapshot, status: 'canceled', phase: { kind: 'idle' } });
   }
   complete(result: UploadResult, signal: ScoreHubAbortSignal): void {
     if (this.isCurrent(signal)) this.publish({ ...this.snapshot, status: 'done', result });

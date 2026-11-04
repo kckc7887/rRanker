@@ -16,6 +16,18 @@ function deferred<T>() {
 afterEach(() => { controller.cancel(); publishAppLifecycleSnapshot(foreground); vi.useRealTimers(); });
 
 describe('upload task ownership', () => {
+  it('keeps a canceled native task occupied until cleanup settles', () => {
+    const first = controller.begin(true);
+    controller.cancel();
+    expect(first.aborted).toBe(true);
+    expect(controller.getSnapshot()).toMatchObject({ status: 'running', phase: { kind: 'canceling' } });
+    expect(controller.begin()).toBe(first);
+    controller.complete({ uploaded: 1, skipped: 0, refreshedAccounts: [], failedAccountNames: [], targetResults: [] }, first);
+    expect(controller.getSnapshot().result).toBeNull();
+    controller.finishCanceled(first);
+    expect(controller.getSnapshot().status).toBe('canceled');
+    expect(controller.begin()).not.toBe(first);
+  });
   it('starts a new catalog request immediately and discards a canceled request arriving later', async () => {
     const old = deferred<CatalogSnapshot>(), next = deferred<CatalogSnapshot>();
     const request = vi.fn().mockReturnValueOnce(old.promise).mockReturnValueOnce(next.promise);

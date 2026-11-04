@@ -34,11 +34,6 @@ export type UploadTaskSnapshot = {
   result: UploadResult | null;
 };
 
-export type BindCabinetResult = {
-  friendCode: string;
-  alreadyBound: boolean;
-};
-
 export type UploadTargetResult = {
   account: BoundAccount;
   status: 'success' | 'unconfirmed' | 'failed';

@@ -3,29 +3,21 @@ import { MAIMAI_TEST_ACCOUNT_ID } from '@/domain/bound-account';
 import { SessionPersistenceError } from '@/domain/session-vault';
 import type { ProviderSession } from '@/providers/contracts';
 import {
-  bindCabinetByQr,
-  createCabinetScoreJob,
-  fetchActiveCabinetScoreJob,
   fetchMe,
   loginByQrUntilToken,
-  pollCabinetScoreJobUntilDone,
   ScoreHubError,
   type QrLoginCredential,
-  type ScoreHubAbortSignal,
-  type ScoreHubCabinetScoreJob,
 } from '@/services/score-hub-client';
 import { captureAccountWrites } from '@/services/snapshot-cache-utils';
 import { loginScoreHubWithFriendCode } from '@/services/upload-maimai-login';
 import { uploadMaimaiAfterScoreHubToken } from '@/services/upload-maimai-score-fetch';
-import { uploadLatestScoreHubSyncToTargets } from '@/services/upload-maimai-target-write';
-import type { BindCabinetResult, UploadCommonInput, UploadPhase, UploadResult, UploadTarget } from '@/services/upload-maimai-types';
+import { uploadMaimaiScoresToTargets } from '@/services/upload-maimai-target-write';
+import { readMaimaiSave } from '@/services/maimai-save';
+import type { UploadCommonInput, UploadPhase, UploadResult, UploadTarget } from '@/services/upload-maimai-types';
 import { scoreHubAccountStore } from '@/storage/score-hub-account-store';
-export type { BindCabinetResult, UploadCommonInput, UploadPhase, UploadResult, UploadTarget, UploadTargetResult, UploadTaskSnapshot } from '@/services/upload-maimai-types';
+export type { UploadCommonInput, UploadPhase, UploadResult, UploadTarget, UploadTargetResult, UploadTaskSnapshot } from '@/services/upload-maimai-types';
 
 export { scoreProgressMessage } from '@/services/upload-maimai-score-fetch';
-
-export const QR_REQUIRES_BIND_MESSAGE =
-  '首次使用前请在此绑定玩家二维码。请先到「好友码」上传一次成绩完成登录，再粘贴玩家二维码绑定。';
 
 export function compactUploadPhaseLabel(phase: UploadPhase): string {
   switch (phase.kind) {
@@ -290,85 +282,28 @@ export async function uploadMaimaiPreferringSession(input: UploadCommonInput & {
   return uploadMaimaiFromFriendCode(input);
 }
 
-export async function bindScoreHubCabinetByQr(input: {
-  qrCode: string;
-  friendCode?: string | null;
-  signal: ScoreHubAbortSignal;
-  onPhase: (phase: UploadPhase) => void;
-}): Promise<BindCabinetResult> {
-  const qrCode = input.qrCode.trim();
-  if (!qrCode) {
-    throw new ScoreHubError('请提供玩家二维码字符串');
+export async function uploadMaimaiWithScoreHubQr(input: UploadCommonInput & {
+  credential: QrLoginCredential;
+  onQrAccepted?: () => void;
+  onAccountBound: (friendCode: string) => Promise<void>;
+}): Promise<UploadResult> {
+  const selected = resolveSelectedTargets(input);
+  const assertAccount = captureAccountWrites(selected.map((target) => target.account));
+  input.onPhase({ kind: 'logging_in', message: '正在确认玩家二维码…', authMode: 'qr' });
+  const login = await loginByQrUntilToken({ credential: input.credential, signal: input.signal });
+  input.onQrAccepted?.();
+  const me = await fetchMe(login.token, input.signal);
+  const friendCode = me.friendCode ?? login.friendCode;
+  if (!friendCode || !me.hasCabinetUserId) {
+    throw new ScoreHubError('绑定失败', undefined, false, { code: 'CABINET_NOT_BOUND' });
   }
-
-  const preferred = input.friendCode?.trim() ?? '';
-  const entry = preferred
-    ? await scoreHubAccountStore.getByFriendCode(preferred)
-    : null;
-  const cached = entry
-    ? {
-      friendCode: entry.friendCode,
-      token: entry.token,
-      hasCabinetBound: entry.hasCabinetBound,
-    }
-    : await scoreHubAccountStore.load();
-
-  if (!cached.token) {
-    throw new ScoreHubError(
-      '尚未登录 ScoreHub。请先完成一次好友码上传，再回来绑定玩家二维码。',
-    );
-  }
-
-  if (preferred && preferred !== cached.friendCode) {
-    throw new ScoreHubError('当前好友码尚未登录，请先使用此好友码完成一次上传。');
-  }
-
-  input.onPhase({ kind: 'binding', message: '正在绑定玩家二维码…' });
-
-  const token = cached.token;
-  try {
-    await fetchMe(token, input.signal);
-  } catch (error) {
-    if (isScoreHubAuthExpired(error)) {
-      throw new ScoreHubError(
-        '登录已失效。请先用好友码再上传一次成绩，然后再绑定玩家二维码。',
-        error instanceof ScoreHubError ? error.status : 401,
-      );
-    }
-  }
-
-  try {
-    const bind = await bindCabinetByQr(token, qrCode, input.signal);
-    const me = await fetchMe(token, input.signal).catch(() => null);
-    const friendCode = me?.friendCode ?? cached.friendCode ?? preferred;
-    await scoreHubAccountStore.upsert({
-      friendCode,
-      hasCabinetBound: true,
-      token,
-    });
-
-    input.onPhase({
-      kind: 'done',
-      message: bind.alreadyBound
-        ? '玩家二维码已绑定'
-        : '玩家二维码已绑定，之后将复用会话快速拉分',
-      uploaded: 0,
-      skipped: 0,
-    });
-
-    return {
-      friendCode,
-      alreadyBound: bind.alreadyBound,
-    };
-  } catch (error) {
-    if (isScoreHubAuthExpired(error)) {
-      throw new ScoreHubError(
-        '登录已失效。请先用好友码再上传一次成绩，然后再绑定玩家二维码。',
-        error instanceof ScoreHubError ? error.status : 401,
-      );
-    }
-    throw error;
-  }
+  if (input.signal.aborted) throw new ScoreHubError('已取消');
+  await scoreHubAccountStore.upsert({ friendCode, hasCabinetBound: true, token: login.token });
+  if (input.signal.aborted) throw new ScoreHubError('已取消');
+  await input.onAccountBound(friendCode);
+  if (input.signal.aborted) throw new ScoreHubError('已取消');
+  return uploadMaimaiAfterScoreHubToken({ ...input, selected, token: login.token,
+    friendshipJobId: null, playerIdForLocal: friendCode, assertAccount });
 }
 
 export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
@@ -377,110 +312,17 @@ export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
 }): Promise<UploadResult> {
   const selected = resolveSelectedTargets(input);
   const assertAccount = captureAccountWrites(selected.map((target) => target.account));
-  input.onPhase({
-    kind: 'logging_in',
-    message: '正在确认玩家二维码…',
-    authMode: 'qr',
-  });
-
-  let login: { token: string; friendCode: string | null };
-  try {
-    login = await loginByQrUntilToken({
-      credential: input.credential,
-      signal: input.signal,
-      onProgress: ({ message }) => {
-        input.onPhase({ kind: 'logging_in', message, authMode: 'qr' });
-      },
-    });
-  } catch (error) {
-    if (error instanceof ScoreHubError
-      && (error.code || error.retryable || error.status === 401 || error.status === 403)) {
-      throw error;
-    }
-    throw new ScoreHubError(
-      'qr login failed',
-      undefined,
-      false,
-      { code: 'QR_LOGIN_FAILED' },
-    );
+  if (input.credential.kind !== 'text') {
+    throw new ScoreHubError('二维码无效', undefined, false, { code: 'INVALID_QR' });
   }
-
-  const me = await fetchMe(login.token, input.signal);
-  const friendCode = me.friendCode ?? login.friendCode;
-  if (!me.hasCabinetUserId) {
-    throw new ScoreHubError(
-      'cabinet account not bound',
-      409,
-      false,
-      { code: 'CABINET_NOT_BOUND' },
-    );
-  }
-  if (friendCode) {
-    await scoreHubAccountStore.upsert({
-      friendCode,
-      hasCabinetBound: true,
-      token: login.token,
-    });
-  }
-
-  let job = await fetchActiveCabinetScoreJob(login.token, input.signal);
-  if (!job) {
-    try {
-      job = await createCabinetScoreJob(login.token, input.credential, input.signal);
-    } catch (error) {
-      const resumableCodes = new Set([
-        'SYNC_IN_PROGRESS',
-        'SESSION_CLEANUP_PENDING',
-        'SESSION_CLEANUP_UNCONFIRMED',
-      ]);
-      if (!(error instanceof ScoreHubError) || !error.code || !resumableCodes.has(error.code)) {
-        throw error;
-      }
-      job = await fetchActiveCabinetScoreJob(login.token, input.signal);
-      if (!job) throw error;
-    }
-  }
+  await input.signal.waitUntilResumed?.();
+  if (input.signal.aborted) throw new ScoreHubError('已取消');
+  input.onPhase({ kind: 'fetching_scores', message: '正在读取成绩…' });
+  const pending = readMaimaiSave(input.credential.qrCode);
   input.onQrAccepted?.();
-  input.onPhase({ kind: 'fetching_scores', message: cabinetScoreProgressMessage(job) });
-  await pollCabinetScoreJobUntilDone({
-    token: login.token,
-    job,
-    signal: input.signal,
-    onProgress: (current) => {
-      input.onPhase({ kind: 'fetching_scores', message: cabinetScoreProgressMessage(current) });
-    },
-  });
-
-  const fallbackPlayerId = selected.find((target) => target.account.providerId === 'local')?.account.id
-    ?? selected[0]!.account.id;
-
-  return uploadLatestScoreHubSyncToTargets({
-    ...input,
-    selected,
-    token: login.token,
-    playerIdForLocal: friendCode ?? fallbackPlayerId,
-    persistFriendCode: friendCode,
-    assertAccount,
-  });
-}
-
-function cabinetScoreProgressMessage(job: ScoreHubCabinetScoreJob): string {
-  if (job.status === 'failed'
-    && (job.cleanupStatus === 'pending' || job.cleanupStatus === 'unconfirmed')) {
-    return '正在结束本次读取，请稍候…';
-  }
-  if (job.stage === 'queued') return '正在等待读取成绩…';
-  if (job.stage === 'qr_auth' || job.stage === 'preview' || job.stage === 'login') {
-    return '正在确认玩家账号…';
-  }
-  if (job.stage === 'get_music') {
-    return job.progress
-      ? `正在读取成绩…（已读取 ${job.progress.detailsFetched} 条）`
-      : '正在读取成绩…';
-  }
-  if (job.stage === 'logout' || job.stage === 'cleanup') {
-    return '正在结束本次读取，请稍候…';
-  }
-  if (job.stage === 'persist') return '正在整理成绩…';
-  return '正在完成成绩读取…';
+  const scores = await pending;
+  if (input.signal.aborted) throw new ScoreHubError('已取消');
+  return uploadMaimaiScoresToTargets({ ...input, selected, scores,
+    playerIdForLocal: selected.find(target => target.account.providerId === 'local')?.account.id ?? selected[0]!.account.id,
+    assertAccount });
 }

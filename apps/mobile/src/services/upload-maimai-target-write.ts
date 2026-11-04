@@ -1,7 +1,8 @@
 import { ProviderError } from '@/providers/errors';
 import { uploadRecordsToDivingFish } from '@/services/diving-fish-upload';
 import { uploadRecordsToLxns } from '@/services/lxns-upload';
-import { ScoreHubError, fetchLatestSync } from '@/services/score-hub-client';
+import { ScoreHubError, fetchLatestSync, type ScoreHubSyncScore } from '@/services/score-hub-client';
+import { recordUploadFailure } from '@/services/upload-diagnostics';
 import {
   buildMusicTitleMap,
   convertHubScoresToDivingFishRecords,
@@ -19,7 +20,16 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
   assertAccount: (accountId: string) => void;
 }): Promise<UploadResult> {
   const sync = await fetchLatestSync(input.token, input.signal);
-  const scores = sync?.scores ?? [];
+  return uploadMaimaiScoresToTargets({ ...input, scores: sync?.scores ?? [] });
+}
+
+export async function uploadMaimaiScoresToTargets(input: UploadCommonInput & {
+  scores: readonly ScoreHubSyncScore[];
+  playerIdForLocal: string;
+  selected: UploadTarget[];
+  assertAccount: (accountId: string) => void;
+}): Promise<UploadResult> {
+  const { scores } = input;
   if (scores.length === 0) {
     throw new ScoreHubError('未获取到成绩数据');
   }
@@ -139,14 +149,14 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
       });
     } catch (error) {
       if (input.signal.aborted) throw new ScoreHubError('已取消');
-      const message = error instanceof Error ? error.message : '写入失败';
+      recordUploadFailure(error, 'write');
       skipped += targetSkipped;
       targetResults.push({
         account: target.account,
         status: 'failed',
         written: 0,
         skipped: targetSkipped,
-        errorMessage: message,
+        errorMessage: '写入失败，请稍后重试。',
       });
     }
   }

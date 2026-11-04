@@ -7,6 +7,7 @@ import { ScoreHubError } from '@/services/score-hub-client';
 import { invalidateResourceWrites } from '@/services/snapshot-cache-utils';
 
 const mocks = vi.hoisted(() => ({
+  readSave: vi.fn(),
   createFriendLoginJob: vi.fn(),
   createCabinetScoreJob: vi.fn(),
   createUpdateScoreJob: vi.fn(),
@@ -44,6 +45,7 @@ vi.mock('@/services/score-hub-client', async () => {
     fetchMe: mocks.fetchMe,
   };
 });
+vi.mock('@/services/maimai-save', () => ({ readMaimaiSave: mocks.readSave }));
 vi.mock('@/services/diving-fish-upload', () => ({
   uploadRecordsToDivingFish: mocks.uploadDivingFish,
 }));
@@ -79,7 +81,7 @@ vi.mock('@/storage/score-hub-account-store', () => ({
 
 // eslint-disable-next-line import/first -- 原生模块 mock 必须先于被测模块注册
 import {
-  bindScoreHubCabinetByQr,
+  uploadMaimaiWithScoreHubQr,
   resolveUploadTargets,
   uploadMaimaiFromFriendCode,
   uploadMaimaiFromQrLogin,
@@ -161,6 +163,7 @@ describe('好友码多目标写入', () => {
         score: '100.5%', fc: 'app', fs: 'fdxp',
       }],
     });
+    mocks.readSave.mockResolvedValue([{ musicId: '1696', chartIndex: 3, type: 'dx', dxScore: 1900, score: 100.5, fc: 'app', fs: 'fdxp' }]);
     mocks.saveSnapshot.mockResolvedValue(undefined);
     mocks.accountLoad.mockResolvedValue({ friendCode: '', hasCabinetBound: true });
     mocks.accountPatch.mockResolvedValue({ friendCode: '', hasCabinetBound: true });
@@ -192,10 +195,10 @@ describe('好友码多目标写入', () => {
     expect(result.refreshedAccounts).toEqual([]);
   });
 
-  it('二维码上传在登录挂起期间删除目标后不再落盘', async () => {
+  it('二维码上传在读取挂起期间删除目标后不再落盘', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
-    let releaseLogin: (value: { token: string; friendCode: string }) => void = () => undefined;
-    mocks.loginByQrUntilToken.mockReturnValue(new Promise((resolve) => { releaseLogin = resolve; }));
+    let releaseLogin: (value: unknown[]) => void = () => undefined;
+    mocks.readSave.mockReturnValue(new Promise((resolve) => { releaseLogin = resolve; }));
     const pending = uploadMaimaiFromQrLogin({
       credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
       selectedAccountIds: [local.id],
@@ -206,7 +209,7 @@ describe('好友码多目标写入', () => {
       onPhase: vi.fn(),
     });
     invalidateResourceWrites(`account:${local.id}`);
-    releaseLogin({ token: 'hub-token', friendCode: '123456789012345' });
+    releaseLogin([{ musicId: '1696', type: 'dx', chartIndex: 3, score: 100.5 }]);
     const result = await pending;
     expect(mocks.saveSnapshot).not.toHaveBeenCalled();
     expect(result.refreshedAccounts).toEqual([]);
@@ -274,7 +277,7 @@ describe('好友码多目标写入', () => {
     expect(result.uploaded).toBe(1);
     expect(result.targetResults).toEqual([
       expect.objectContaining({ account: local, status: 'success', written: 1 }),
-      expect.objectContaining({ account: water, status: 'failed', errorMessage: '水鱼暂时不可用' }),
+      expect.objectContaining({ account: water, status: 'failed', errorMessage: '写入失败，请稍后重试。' }),
     ]);
     expect(phases.at(-1)).toBe('done');
   });
@@ -466,55 +469,6 @@ describe('好友码多目标写入', () => {
     expect(phases.at(-1)).toBe('done');
   });
 
-  it.each([false, true])('独立绑定仅更新二维码状态且不读取成绩，已绑定：%s', async alreadyBound => {
-    mocks.bindCabinetByQr.mockResolvedValueOnce({ ok: true, alreadyBound });
-    mocks.accountLoad.mockResolvedValue({
-      friendCode: '123456789012345',
-      hasCabinetBound: false,
-      token: 'cached-token',
-    });
-    mocks.fetchMe.mockResolvedValue({
-      friendCode: '123456789012345',
-      hasCabinetUserId: true,
-    });
-    const phases: string[] = [];
-    const messages: string[] = [];
-    const result = await bindScoreHubCabinetByQr({
-      qrCode: 'SGWCMAIDBIND',
-      signal: { aborted: false },
-      onPhase: (phase) => { phases.push(phase.kind); if ('message' in phase) messages.push(phase.message); },
-    });
-
-    expect(mocks.createFriendLoginJob).not.toHaveBeenCalled();
-    expect(mocks.bindCabinetByQr).toHaveBeenCalledWith('cached-token', 'SGWCMAIDBIND', expect.anything());
-    expect(mocks.createUpdateScoreJob).not.toHaveBeenCalled();
-    expect(mocks.saveSnapshot).not.toHaveBeenCalled();
-    expect(mocks.accountPatch).toHaveBeenCalledWith(expect.objectContaining({
-      hasCabinetBound: true,
-    }));
-    expect(result.alreadyBound).toBe(alreadyBound);
-    expect(messages.at(-1)).toMatch(/玩家二维码已绑定/);
-    expect(phases).toEqual(['binding', 'done']);
-  });
-
-  it('无本地会话时绑定拒绝且不走好友码同步', async () => {
-    mocks.accountLoad.mockResolvedValue({ friendCode: '', hasCabinetBound: false });
-    await expect(bindScoreHubCabinetByQr({
-      qrCode: 'SGWCMAIDBAD',
-      signal: { aborted: false },
-      onPhase: vi.fn(),
-    })).rejects.toThrow(/请先完成一次好友码上传/);
-    expect(mocks.createFriendLoginJob).not.toHaveBeenCalled();
-    expect(mocks.bindCabinetByQr).not.toHaveBeenCalled();
-  });
-
-  it('独立绑定不借用其他好友码的已登录会话', async () => {
-    mocks.accountLoad.mockResolvedValue({ friendCode: '123456789012345', hasCabinetBound: false, token: 'other-token' });
-    await expect(bindScoreHubCabinetByQr({ qrCode: 'SGWCMAIDBIND', friendCode: '543210987654321',
-      signal: { aborted: false }, onPhase: vi.fn() })).rejects.toThrow('当前好友码尚未登录');
-    expect(mocks.bindCabinetByQr).not.toHaveBeenCalled();
-  });
-
   it('已绑定会话上传复用 token 且不创建好友申请任务', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
     mocks.accountLoad.mockResolvedValue({
@@ -565,190 +519,74 @@ describe('好友码多目标写入', () => {
     expect(mocks.saveSnapshot).not.toHaveBeenCalled();
   });
 
-  it('二维码登录后创建独立成绩任务并复用同一写出链路', async () => {
+  it('首次二维码绑定保存真实好友码，成绩失败后保留会话供下次复用', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
+    const friendCode = '987654321098765';
     mocks.accountLoad.mockResolvedValue({ friendCode: '', hasCabinetBound: false });
-    mocks.loginByQrUntilToken.mockResolvedValue({
-      token: 'qr-token',
-      friendCode: '987654321098765',
-    });
-    mocks.fetchMe.mockResolvedValue({
-      friendCode: '987654321098765',
-      hasCabinetUserId: true,
-    });
-    mocks.pollCabinetScoreJobUntilDone.mockImplementationOnce(async ({ job, onProgress }) => {
-      onProgress?.({
-        ...job,
-        status: 'processing',
-        stage: 'get_music',
-        cleanupStatus: 'pending',
-        progress: { detailsFetched: 120 },
-      });
-      onProgress?.({
-        ...job,
-        status: 'processing',
-        stage: 'logout',
-        cleanupStatus: 'pending',
-        progress: { detailsFetched: 120 },
-      });
-      return {
-        ...job,
-        status: 'completed',
-        stage: 'persist',
-        cleanupStatus: 'succeeded',
-        progress: { detailsFetched: 120 },
-        syncId: 'sync',
-        scoreCount: 1,
-      };
-    });
-    const onQrAccepted = vi.fn();
-    const phases: { kind: string; message?: string; authMode?: string }[] = [];
-    const result = await uploadMaimaiFromQrLogin({
-      credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
-      selectedAccountIds: [local.id],
-      targets: resolveUploadTargets([local], {}),
-      sessionsByAccountId: {},
-      resolveCatalog: async () => catalog,
-      signal: { aborted: false },
-      onPhase: (phase) => {
-        phases.push({
-          kind: phase.kind,
-          message: 'message' in phase ? phase.message : undefined,
-          authMode: phase.kind === 'logging_in' ? phase.authMode : undefined,
-        });
-      },
-      onQrAccepted,
-    });
-
-    expect(mocks.loginByQrUntilToken).toHaveBeenCalledTimes(1);
-    expect(mocks.fetchActiveCabinetScoreJob).toHaveBeenCalledWith('qr-token', expect.anything());
-    expect(mocks.createCabinetScoreJob).toHaveBeenCalledWith(
-      'qr-token',
-      { kind: 'text', qrCode: 'SGWCMAIDTEST' },
-      expect.anything(),
-    );
-    expect(mocks.pollCabinetScoreJobUntilDone).toHaveBeenCalledWith(expect.objectContaining({
-      token: 'qr-token',
-      job: expect.objectContaining({ id: 'cabinet-score-job' }),
-    }));
-    expect(mocks.createUpdateScoreJob).not.toHaveBeenCalled();
-    expect(onQrAccepted).toHaveBeenCalledTimes(1);
-    expect(mocks.saveSnapshot).toHaveBeenCalledTimes(1);
-    expect(mocks.saveSnapshot.mock.calls[0]?.[1]?.player?.id).toBe('987654321098765');
+    mocks.loginByQrUntilToken.mockResolvedValue({ token: 'qr-token', friendCode: null });
+    mocks.fetchMe.mockResolvedValue({ friendCode, hasCabinetUserId: true });
+    mocks.accountPatch.mockImplementation(async value => { mocks.accountLoad.mockResolvedValue(value); return value; });
+    mocks.createUpdateScoreJob.mockRejectedValueOnce(new ScoreHubError('temporary', 503));
+    const input = {
+      selectedAccountIds: [local.id], targets: resolveUploadTargets([local], {}), sessionsByAccountId: {},
+      resolveCatalog: async () => catalog, signal: { aborted: false }, onPhase: vi.fn(),
+    };
+    const bound = vi.fn();
+    await expect(uploadMaimaiWithScoreHubQr({ ...input, credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
+      onAccountBound: bound })).rejects.toThrow();
+    expect(bound).toHaveBeenCalledWith(friendCode);
+    expect(await mocks.accountLoad()).toMatchObject({ friendCode, token: 'qr-token', hasCabinetBound: true });
+    const result = await uploadMaimaiWithScoreHubSession({ ...input, expectedFriendCode: friendCode });
     expect(result.uploaded).toBe(1);
-    expect(phases.some((phase) => phase.kind === 'logging_in' && phase.authMode === 'qr')).toBe(true);
-    expect(phases).toContainEqual(expect.objectContaining({
-      kind: 'fetching_scores',
-      message: '正在读取成绩…（已读取 120 条）',
-    }));
-    expect(phases).toContainEqual(expect.objectContaining({
-      kind: 'fetching_scores',
-      message: '正在结束本次读取，请稍候…',
-    }));
-    expect(phases.at(-1)?.kind).toBe('done');
-  });
-
-  it('二维码登录未建立玩家绑定时给出稳定错误且不创建成绩任务', async () => {
-    mocks.accountLoad.mockResolvedValue({ friendCode: '', hasCabinetBound: false });
-    mocks.loginByQrUntilToken.mockResolvedValue({
-      token: 'qr-token',
-      friendCode: '987654321098765',
-    });
-    mocks.fetchMe.mockResolvedValue({
-      friendCode: '987654321098765',
-      hasCabinetUserId: false,
-    });
-    const local = createLocalMaimaiAccount('本地玩家', 0);
-    await expect(uploadMaimaiFromQrLogin({
-      credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
-      selectedAccountIds: [local.id],
-      targets: resolveUploadTargets([local], {}),
-      sessionsByAccountId: {},
-      resolveCatalog: async () => catalog,
-      signal: { aborted: false },
-      onPhase: vi.fn(),
-    })).rejects.toMatchObject({ code: 'CABINET_NOT_BOUND' });
+    expect(mocks.saveSnapshot.mock.calls[0]?.[1]?.player?.id).toBe(friendCode);
+    expect(mocks.createUpdateScoreJob).toHaveBeenLastCalledWith('qr-token', null, expect.anything());
     expect(mocks.loginByQrUntilToken).toHaveBeenCalledTimes(1);
     expect(mocks.createCabinetScoreJob).not.toHaveBeenCalled();
+    expect(mocks.readSave).not.toHaveBeenCalled();
   });
 
-  it('二维码同步发现活动任务时直接恢复且不重复提交二维码', async () => {
+  it('二维码未建立身份时不保存或读取成绩', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
-    const active = {
-      id: 'active-cabinet-job',
-      status: 'processing',
-      stage: 'get_music',
-      cleanupStatus: 'not_required',
-      progress: { detailsFetched: 50 },
-      syncId: null,
-      scoreCount: null,
-      error: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    mocks.loginByQrUntilToken.mockResolvedValue({
-      token: 'qr-token',
-      friendCode: '987654321098765',
-    });
-    mocks.fetchActiveCabinetScoreJob.mockResolvedValue(active);
+    mocks.loginByQrUntilToken.mockResolvedValue({ token: 'qr-token', friendCode: null });
+    mocks.fetchMe.mockResolvedValue({ friendCode: null, hasCabinetUserId: false });
+    await expect(uploadMaimaiWithScoreHubQr({ credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
+      selectedAccountIds: [local.id], targets: resolveUploadTargets([local], {}), sessionsByAccountId: {},
+      resolveCatalog: async () => catalog, signal: { aborted: false }, onPhase: vi.fn(), onAccountBound: vi.fn(),
+    })).rejects.toMatchObject({ code: 'CABINET_NOT_BOUND' });
+    expect(mocks.accountPatch).not.toHaveBeenCalled();
+    expect(mocks.createUpdateScoreJob).not.toHaveBeenCalled();
+  });
 
-    await uploadMaimaiFromQrLogin({
-      credential: { kind: 'text', qrCode: 'SGWCMAIDNEW' },
-      selectedAccountIds: [local.id],
-      targets: resolveUploadTargets([local], {}),
-      sessionsByAccountId: {},
-      resolveCatalog: async () => catalog,
-      signal: { aborted: false },
-      onPhase: vi.fn(),
+  it('独立二维码只取档一次并复用多目标写入，部分失败仍保存其他目标', async () => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    const water = createMaimaiBoundAccount({ providerId: 'diving-fish', playerId: 'water', displayName: '水鱼', rating: 0 });
+    const sessions = { [water.id]: { mode: 'import-token' as const, value: 'token', persistable: true as const } };
+    mocks.uploadDivingFish.mockRejectedValueOnce(new Error('private detail'));
+    const result = await uploadMaimaiFromQrLogin({ credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
+      selectedAccountIds: [water.id, local.id], targets: resolveUploadTargets([water, local], sessions), sessionsByAccountId: sessions,
+      resolveCatalog: async () => catalog, signal: { aborted: false }, onPhase: vi.fn(),
     });
-
+    expect(mocks.readSave).toHaveBeenCalledExactlyOnceWith('SGWCMAIDTEST');
+    expect(mocks.loginByQrUntilToken).not.toHaveBeenCalled();
     expect(mocks.createCabinetScoreJob).not.toHaveBeenCalled();
-    expect(mocks.pollCabinetScoreJobUntilDone).toHaveBeenCalledWith(expect.objectContaining({
-      job: active,
-    }));
+    expect(result.targetResults.map(item => item.status)).toEqual(['failed', 'success']);
+    expect(result.targetResults[0]?.errorMessage).toBe('写入失败，请稍后重试。');
+    expect(result.uploaded).toBe(1);
   });
 
-  it('二维码任务创建发生并发冲突时恢复刚出现的活动任务', async () => {
+  it('独立二维码取消后等待取档返回，迟到成绩不落盘', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
-    const active = {
-      id: 'raced-cabinet-job',
-      status: 'processing',
-      stage: 'get_music',
-      cleanupStatus: 'not_required',
-      progress: null,
-      syncId: null,
-      scoreCount: null,
-      error: null,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
-    mocks.loginByQrUntilToken.mockResolvedValue({
-      token: 'qr-token',
-      friendCode: '987654321098765',
+    let finish!: (value: unknown[]) => void;
+    mocks.readSave.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
+    const signal = { aborted: false };
+    const pending = uploadMaimaiFromQrLogin({ credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
+      selectedAccountIds: [local.id], targets: resolveUploadTargets([local], {}), sessionsByAccountId: {},
+      resolveCatalog: async () => catalog, signal, onPhase: vi.fn(),
     });
-    mocks.fetchActiveCabinetScoreJob
-      .mockResolvedValueOnce(null)
-      .mockResolvedValueOnce(active);
-    mocks.createCabinetScoreJob.mockRejectedValueOnce(new ScoreHubError(
-      'sync in progress',
-      409,
-      false,
-      { code: 'SYNC_IN_PROGRESS' },
-    ));
-
-    await uploadMaimaiFromQrLogin({
-      credential: { kind: 'text', qrCode: 'SGWCMAIDRACE' },
-      selectedAccountIds: [local.id],
-      targets: resolveUploadTargets([local], {}),
-      sessionsByAccountId: {},
-      resolveCatalog: async () => catalog,
-      signal: { aborted: false },
-      onPhase: vi.fn(),
-    });
-
-    expect(mocks.fetchActiveCabinetScoreJob).toHaveBeenCalledTimes(2);
-    expect(mocks.pollCabinetScoreJobUntilDone).toHaveBeenCalledWith(expect.objectContaining({
-      job: active,
-    }));
+    await vi.waitFor(() => expect(finish).toBeDefined());
+    signal.aborted = true;
+    finish([{ musicId: '1696', type: 'dx', chartIndex: 3, score: 100.5 }]);
+    await expect(pending).rejects.toThrow('已取消');
+    expect(mocks.saveSnapshot).not.toHaveBeenCalled();
   });
 });

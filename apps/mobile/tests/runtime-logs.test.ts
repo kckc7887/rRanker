@@ -12,6 +12,7 @@ import { z } from 'zod';
 import { queryClient } from '@/state/query-client';
 import Storage from 'expo-sqlite/kv-store';
 import { runtimeLogPreferencesStore } from '@/storage/runtime-log-preferences-store';
+import { recordUploadFailure } from '@/services/upload-diagnostics';
 
 const databases: DatabaseSync[] = [];
 const controllers: ReturnType<typeof createRuntimeLogController>[] = [];
@@ -62,6 +63,29 @@ afterEach(() => {
 });
 
 describe('manual runtime logs', () => {
+  it('records public upload failures only while the user has logging enabled', async () => {
+    const { controller, repository } = fixture();
+    await controller.initialize();
+    installRuntimeLogRecorder(controller.record);
+    const diagnostic = vi.fn(async () => undefined);
+    installRuntimeDiagnosticRecorder(diagnostic);
+    const failure = Object.assign(new Error('private body'), { code: 'QR_FAILED', status: 503, nativeCode: 1, qrCode: 'secret', token: 'secret' });
+    recordUploadFailure(failure, 'sync');
+    controller.flush();
+    expect(repository.list()).toHaveLength(0);
+    expect(diagnostic).not.toHaveBeenCalled();
+    await controller.start();
+    recordUploadFailure(failure, 'sync');
+    controller.flush();
+    const entries = repository.snapshot(1).entries.filter(entry => entry.type === 'upload');
+    expect(entries).toHaveLength(1);
+    expect(entries[0]?.fields).toMatchObject({ serviceCode: 'QR_FAILED', status: 503, nativeCode: 1 });
+    expect(JSON.stringify(entries)).not.toMatch(/private body|secret/);
+    await controller.stop();
+    recordUploadFailure(failure, 'sync');
+    controller.flush();
+    expect(repository.snapshot(1).entries.filter(entry => entry.type === 'upload')).toHaveLength(1);
+  });
   it.each(['start', 'stop'] as const)('waits for enabled startup storage before concurrent %s', async control => {
     const { repository, preferences } = fixture();
     preferences.load.mockResolvedValueOnce({ capacity: 2000, enabled: true });

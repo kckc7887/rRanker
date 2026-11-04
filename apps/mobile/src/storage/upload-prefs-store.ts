@@ -1,5 +1,13 @@
 import Storage, { enqueueKeyMutation } from '@/storage/key-value-storage';
 import { z } from 'zod';
+import { createPreferencesStore } from '@/storage/create-preferences-store';
+
+const qrRiskPreferences = createPreferencesStore({
+  storeKey: 'rranker.upload.qr-risk',
+  defaults: () => false,
+  parse: (value: unknown) => z.boolean().parse(value),
+});
+export const qrRiskPreferencesStore = new qrRiskPreferences.Store();
 
 const PREFS_KEY = 'rranker.upload.prefs.v3';
 const prefsSchema = z.object({

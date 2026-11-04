@@ -5,10 +5,11 @@ import type { CatalogSnapshot } from '@/domain/models';
 import type { useUploadAccountPreferences } from '@/hooks/use-upload-account-preferences';
 import type { useUploadQrInput } from '@/hooks/use-upload-qr-input';
 import type { ProviderSession } from '@/providers/contracts';
-import { providerErrorToUserMessage } from '@/providers/errors';
 import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
-import { scoreHubErrorToUserMessage, type ScoreHubAbortSignal } from '@/services/score-hub-client';
-import { bindScoreHubCabinetByQr, uploadMaimaiFromQrLogin, uploadMaimaiPreferringSession, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
+import type { ScoreHubAbortSignal } from '@/services/score-hub-client';
+import { uploadMaimaiWithScoreHubQr, uploadMaimaiFromQrLogin, uploadMaimaiPreferringSession, type UploadPhase, type UploadResult } from '@/services/upload-maimai-from-friend-code';
+import { recordUploadFailure } from '@/services/upload-diagnostics';
+import { qrRiskPreferencesStore } from '@/storage/upload-prefs-store';
 import { useCallback, useEffect, useRef, useState } from 'react';
 
 export function useUploadTaskState(catalog: CatalogSnapshot | undefined, requestCatalog?: () => Promise<CatalogSnapshot | undefined>, onPhaseChange?: (phase: UploadPhase) => void, visible = true) {
@@ -31,10 +32,10 @@ export function useUploadTaskState(catalog: CatalogSnapshot | undefined, request
       setSnapshot(value => value.result ? { ...value, result: null } : value);
     }
   }, [visible]);
-  const begin = (): ScoreHubAbortSignal | null => {
+  const begin = (waitForCancellation = false): ScoreHubAbortSignal | null => {
     const current = uploadTaskController.getSnapshot();
     if (current.status === 'running' || current.status === 'paused') return null;
-    return uploadTaskController.begin();
+    return uploadTaskController.begin(waitForCancellation);
   };
   useEffect(() => {
     if (catalog) uploadTaskController.finishCatalogWait(catalog);
@@ -53,22 +54,33 @@ export function useUploadTaskState(catalog: CatalogSnapshot | undefined, request
   return { phase: snapshot.phase, running, lastResult: snapshot.result, begin, applyPhase, resolveCatalogForUpload, cancelUpload };
 }
 
-export function useUploadExecution({ task, preferences, qr, sessionsByAccountId, uploadMethod, onLxnsTokensRotated, onFinished }: {
+export function useUploadExecution({ task, preferences, qr, sessionsByAccountId, uploadMethod, visible, onLxnsTokensRotated, onFinished }: {
   task: ReturnType<typeof useUploadTaskState>;
   preferences: ReturnType<typeof useUploadAccountPreferences>;
   qr: ReturnType<typeof useUploadQrInput>;
   sessionsByAccountId: Record<string, ProviderSession | undefined>;
   uploadMethod: 'friend_code' | 'qr';
+  visible: boolean;
   onLxnsTokensRotated?: (accountId: string, update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
   onFinished?: (result: UploadResult) => void | Promise<void>;
 }) {
-  const { showNotification, showActionNotification } = useNotification();
+  const { showNotification, showActionNotification, dismissNotification } = useNotification();
   const { running, begin, resolveCatalogForUpload } = task;
   const { friendCode, selectedIds, targets, useSessionUpload, refreshAfterUpload } = preferences;
   const { bindQrText, setBindQrText, decodingQr } = qr;
-  const uploadErrorMessage = (error: unknown, fallback: string) => (
-    scoreHubErrorToUserMessage(error, providerErrorToUserMessage(error, fallback))
-  );
+  const confirmationRef = useRef<number | null>(null);
+  const confirmationSequence = useRef(0);
+  const confirmingRef = useRef(false);
+  useEffect(() => () => {
+    confirmationSequence.current += 1;
+    confirmingRef.current = false;
+    if (confirmationRef.current !== null) dismissNotification(confirmationRef.current);
+    confirmationRef.current = null;
+  }, [visible, uploadMethod, dismissNotification]);
+  const uploadErrorMessage = (error: unknown, fallback: string) => {
+    recordUploadFailure(error, 'sync');
+    return fallback;
+  };
 
   const startUpload = async () => {
     if (running || decodingQr) return;
@@ -145,88 +157,107 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
     }
   };
 
-  const startQrUpload = async () => {
-    if (running || decodingQr || uploadMethod !== 'qr') return;
-    if (isMaimaiMaintenanceWindow()) {
-      showNotification({ title: '游戏服务器维护中', message: MAIMAI_MAINTENANCE_MESSAGE, variant: 'warning' });
-      return;
-    }
-    if (!bindQrText.trim()) {
-      showNotification({
-        title: '缺少玩家二维码',
-        message: '请粘贴或识别公众号玩家二维码后再同步。',
-        variant: 'warning',
-      });
-      return;
-    }
-    if (selectedIds.filter((id) => targets.some((t) => t.writable && t.account.id === id)).length === 0) {
-      showNotification({ title: '未选择目标', message: '请勾选至少一个可写入的查分器。', variant: 'warning' });
-      return;
-    }
-    const signal = begin();
+  const runQrUpload = async (binding: boolean) => {
+    if (!validateQr()) return;
+    const signal = begin(!binding);
     if (!signal) return;
     const isCurrent = () => uploadTaskController.isCurrent(signal);
     const applyPhase = (phase: UploadPhase) => task.applyPhase(phase, signal);
-    applyPhase({ kind: 'logging_in', message: '正在确认玩家二维码…', authMode: 'qr' });
-
     try {
-      const result = await uploadMaimaiFromQrLogin({
-        credential: { kind: 'text', qrCode: bindQrText.trim() },
-        selectedAccountIds: selectedIds,
-        targets,
-        sessionsByAccountId,
-        resolveCatalog: () => resolveCatalogForUpload(signal),
-        signal,
-        onPhase: applyPhase,
+      const input = {
+        credential: { kind: 'text' as const, qrCode: bindQrText.trim() },
+        selectedAccountIds: selectedIds, targets, sessionsByAccountId,
+        resolveCatalog: () => resolveCatalogForUpload(signal), signal, onPhase: applyPhase,
         onQrAccepted: () => { if (isCurrent()) setBindQrText(''); },
         onLxnsTokensRotated,
-      });
+      };
+      const result = binding
+        ? await uploadMaimaiWithScoreHubQr({ ...input,
+          onAccountBound: code => preferences.acceptBoundAccount(code, isCurrent) })
+        : await uploadMaimaiFromQrLogin(input);
       if (!isCurrent()) return;
       uploadTaskController.complete(result, signal);
-      await refreshAfterUpload(undefined, isCurrent);
-      if (!isCurrent()) return;
       try {
         await onFinished?.(result);
       } catch {
-        if (!isCurrent()) return;
-        showNotification({
-          title: '页面刷新失败',
-          message: '成绩已上传，请稍后手动同步页面。',
-          variant: 'error',
-        });
+        if (isCurrent()) showNotification({ title: '页面刷新失败',
+          message: '成绩已上传，请稍后手动同步页面。', variant: 'error' });
       }
     } catch (error) {
-      if (signal.aborted) {
-        uploadTaskController.finishCanceled(signal);
-      } else if (isCurrent()) {
-        const message = uploadErrorMessage(error, '二维码同步失败，请稍后重试。');
-        applyPhase({ kind: 'error', message });
+      if (isCurrent()) {
+        applyPhase({ kind: 'error', message: uploadErrorMessage(error, '二维码同步失败，请稍后重试。') });
         setBindQrText('');
       }
+    } finally {
+      if (signal.aborted) uploadTaskController.finishCanceled(signal);
     }
   };
 
-  const bindQr = async () => {
-    if (running || decodingQr || uploadMethod !== 'friend_code') return;
+  const latestQrUpload = useRef(runQrUpload);
+  latestQrUpload.current = runQrUpload;
+
+  const validateQr = () => {
+    if (running || decodingQr) return false;
+    if (isMaimaiMaintenanceWindow()) {
+      showNotification({ title: '游戏服务器维护中', message: MAIMAI_MAINTENANCE_MESSAGE, variant: 'warning' });
+      return false;
+    }
     if (!bindQrText.trim()) {
-      showNotification({ title: '缺少玩家二维码', message: '请粘贴或识别公众号玩家二维码。', variant: 'warning' });
-      return;
+      showNotification({ title: '缺少玩家二维码', message: '请粘贴或识别公众号玩家二维码后再同步。', variant: 'warning' });
+      return false;
     }
-    const signal = begin();
-    if (!signal) return;
-    const isCurrent = () => uploadTaskController.isCurrent(signal);
+    if (!selectedIds.some(id => targets.some(target => target.writable && target.account.id === id))) {
+      showNotification({ title: '未选择目标', message: '请勾选至少一个可写入的查分器。', variant: 'warning' });
+      return false;
+    }
+    return true;
+  };
+
+  const startQrUpload = async () => {
+    if (!visible || uploadMethod !== 'qr' || confirmingRef.current || !validateQr()) return;
+    confirmingRef.current = true;
+    const sequence = ++confirmationSequence.current;
+    const isCurrent = () => sequence === confirmationSequence.current;
+    const failed = (error: unknown) => {
+      recordUploadFailure(error, 'consent');
+      if (isCurrent()) {
+        confirmingRef.current = false;
+        showNotification({ title: '操作失败', message: '暂时无法同步，请重试。', variant: 'error' });
+      }
+    };
     try {
-      const result = await bindScoreHubCabinetByQr({
-        qrCode: bindQrText.trim(), friendCode, signal,
-        onPhase: phase => task.applyPhase(phase, signal),
-      });
+      const confirmed = await qrRiskPreferencesStore.load();
       if (!isCurrent()) return;
-      setBindQrText('');
-      await refreshAfterUpload(result.friendCode || undefined, isCurrent);
-    } catch (error) {
-      if (signal.aborted) uploadTaskController.finishCanceled(signal);
-      else if (isCurrent()) task.applyPhase({ kind: 'error', message: uploadErrorMessage(error, '绑定失败，请重试。') }, signal);
-    }
+      if (confirmed) {
+        confirmingRef.current = false;
+        await latestQrUpload.current(false);
+        return;
+      }
+      confirmationRef.current = showActionNotification({
+        title: '使用提示', message: '使用本绑定方法有一定账号封禁风险，请慎重决定',
+        variant: 'warning', blocking: true,
+        actions: [
+          { label: '取消', tone: 'cancel', onPress: () => {
+            if (isCurrent()) confirmingRef.current = false;
+            confirmationRef.current = null;
+          } },
+          { label: '确认使用', onPress: async () => {
+            confirmationRef.current = null;
+            if (!isCurrent()) return;
+            try {
+              await qrRiskPreferencesStore.save(true);
+              if (!isCurrent()) return;
+              confirmingRef.current = false;
+              await latestQrUpload.current(false);
+            } catch (error) { failed(error); }
+          } },
+        ],
+      });
+    } catch (error) { failed(error); }
+  };
+
+  const bindQr = async () => {
+    if (uploadMethod === 'friend_code') await runQrUpload(true);
   };
 
   return { startUpload, startQrUpload, bindQr };

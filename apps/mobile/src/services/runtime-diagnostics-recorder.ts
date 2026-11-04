@@ -21,6 +21,10 @@ export function installRuntimeLogRecorder(next: typeof logRecorder): void {
   logRecorder = next;
 }
 
+export function recordRuntimeLog(type: string, fields: Readonly<Record<string, unknown>>): void {
+  try { logRecorder?.(type, fields); } catch {}
+}
+
 let operationSequence = 0;
 export function nextRuntimeOperationId(): number {
   return ++operationSequence;

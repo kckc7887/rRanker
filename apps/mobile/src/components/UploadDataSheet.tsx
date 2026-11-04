@@ -64,7 +64,7 @@ export function UploadDataSheet({
   useEffect(() => {
     if (uploadMethod === 'friend_code') { setBindingQr(false); resetQr(); }
   }, [friendCode, uploadMethod, resetQr]);
-  const { startUpload, startQrUpload, bindQr } = useUploadExecution({ task, preferences, qr, sessionsByAccountId, uploadMethod, onLxnsTokensRotated, onFinished });
+  const { startUpload, startQrUpload, bindQr } = useUploadExecution({ task, preferences, qr, sessionsByAccountId, uploadMethod, visible, onLxnsTokensRotated, onFinished });
   const [stats, setStats] = useState<ScoreHubDxnetJobStats | null>(null);
   const [statsStatus, setStatsStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const statsSummary = statsStatus === 'loading'
@@ -168,21 +168,21 @@ export function UploadDataSheet({
               statsSummary={statsSummary}
               statsHint={statsHint}
             >
-              <Pressable disabled={busy || !prefsReady || !hasStoredToken || bindingLookup}
+              <Pressable disabled={busy || !prefsReady}
                 onPress={() => { setBindingQr(value => !value); qr.reset(); }}
                 style={[styles.secondary, { borderColor: theme.border, backgroundColor: theme.surface },
-                  (busy || !prefsReady || !hasStoredToken || bindingLookup) && styles.primaryDisabled]}>
+                  (busy || !prefsReady) && styles.primaryDisabled]}>
                 <Text style={[styles.secondaryText, { color: theme.accent }]}>{bindingQr ? '收起玩家二维码' : '绑定玩家二维码'}</Text>
               </Pressable>
               {bindingQr ? <>
                 <UploadQrFields theme={theme} bindQrText={bindQrText} onBindQrTextChange={setBindQrText}
                   busy={busy} prefsReady={prefsReady} decodingQr={decodingQr}
                   onPasteQrText={pasteQrText} onPickQrImage={pickQrImage} />
-                <Pressable disabled={busy || !prefsReady || !hasStoredToken || bindingLookup}
+                <Pressable disabled={busy || !prefsReady}
                   onPress={() => void bindQr()}
                   style={[styles.secondary, { borderColor: theme.border, backgroundColor: theme.surface },
-                    (busy || !prefsReady || !hasStoredToken || bindingLookup) && styles.primaryDisabled]}>
-                  <Text style={[styles.secondaryText, { color: theme.accent }]}>确认绑定玩家二维码</Text>
+                    (busy || !prefsReady) && styles.primaryDisabled]}>
+                  <Text style={[styles.secondaryText, { color: theme.accent }]}>绑定并同步成绩</Text>
                 </Pressable>
               </> : null}
             </UploadFriendCodeFields>
@@ -198,6 +198,10 @@ export function UploadDataSheet({
               onPickQrImage={pickQrImage}
             />
           )}
+
+          {uploadMethod === 'qr' ? (
+            <Text style={[styles.secondaryText, { color: theme.danger }]}>使用本绑定方法有一定账号封禁风险，请慎重决定</Text>
+          ) : null}
 
           <UploadTargetList
             theme={theme}

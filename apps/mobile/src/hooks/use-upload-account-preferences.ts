@@ -2,7 +2,7 @@ import { uploadTaskController } from '@/services/upload-task-controller';
 import { useNotification } from '@/components/AppNotification';
 import type { BoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
-import { providerErrorToUserMessage } from '@/providers/errors';
+import { recordUploadFailure } from '@/services/upload-diagnostics';
 import { fetchMe } from '@/services/score-hub-client';
 import { resolveUploadTargets } from '@/services/upload-maimai-from-friend-code';
 import { scoreHubAccountStore, type ScoreHubAccountEntry } from '@/storage/score-hub-account-store';
@@ -36,9 +36,10 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
   const runAccountOperation = useCallback(async function run<T>(operation: () => Promise<T>, isCurrent: () => boolean = () => true): Promise<T | undefined> {
     try { return isCurrent() ? await operation() : undefined; }
     catch (error) {
+      recordUploadFailure(error, 'account');
       if (visibleRef.current && isCurrent()) showActionNotification({
         title: '账号操作失败',
-        message: providerErrorToUserMessage(error, '暂时无法读取或保存账号信息，请重试。'),
+        message: '暂时无法读取或保存账号信息，请重试。',
         variant: 'error',
         actions: [
           { label: '稍后', tone: 'cancel' },
@@ -304,8 +305,26 @@ export function useUploadAccountPreferences({ visible, running, decodingQr, acco
       }
     }, isSelectionCurrent);
   };
+  const acceptBoundAccount = async (code: string, isCurrent: () => boolean) => {
+    if (!isCurrent()) return;
+    if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+    saveTimerRef.current = null;
+    const selection = ++selectionSeqRef.current;
+    bindLookupSeqRef.current += 1;
+    const current = () => isCurrent() && selection === selectionSeqRef.current;
+    await uploadPrefsStore.save({ friendCode: code, selectedAccountIds: selectedIds,
+      writeSelection: !temporarySelectedAccountIds });
+    if (!current()) return;
+    friendCodeRef.current = code;
+    setFriendCode(code);
+    setHasStoredToken(true);
+    setHasCabinetBound(true);
+    setBindingLookup(false);
+    await refreshStoredList(current);
+  };
   return { friendCode, hasCabinetBound, hasStoredToken, storedAccounts, historyVisible, setHistoryVisible,
     bindingLookup, selectedIds, prefsReady, refreshStoredList, refreshAfterUpload,
+    acceptBoundAccount,
     toggleAccount, onFriendCodeChange, selectStoredFriendCode, removeStoredFriendCode,
     targets: resolveUploadTargets(accounts, sessionsByAccountId), useSessionUpload: hasStoredToken && hasCabinetBound };
 }

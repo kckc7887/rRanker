@@ -32,6 +32,7 @@
   },
   "dependencies": {
     "@expo/vector-icons": "^15.0.2",
+    "@kckc7887/maimai-save-mobile": "https://github.com/kckc7887/maimaiSave/releases/download/v0.1.0/kckc7887-maimai-save-mobile-0.1.0.tgz",
     "@noble/ciphers": "2.4.0",
     "@react-native-community/geolocation": "^3.4.0",
     "@react-native-masked-view/masked-view": "0.3.2",

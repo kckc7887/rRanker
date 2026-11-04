@@ -47,8 +47,9 @@ const stringFields = new Set([
   'lifecyclePhase', 'gameType', 'providerType', 'taskPhase', 'webContentState',
   'source', 'result', 'platform', 'appVersion', 'buildVersion', 'phase',
   'buildVersionSource', 'systemVersion', 'executionEnvironment',
+  'serviceCode',
 ]);
-const numberFields = new Set(['accountCount', 'queryCount', 'durationMs', 'phaseDurationMs', 'attempt', 'status', 'capacity', 'operationId', 'parentOperationId', 'pageIndex', 'itemCount', 'byteCount', 'cacheCount']);
+const numberFields = new Set(['accountCount', 'queryCount', 'durationMs', 'phaseDurationMs', 'attempt', 'status', 'nativeCode', 'capacity', 'operationId', 'parentOperationId', 'pageIndex', 'itemCount', 'byteCount', 'cacheCount']);
 const errorNames = new Set(['Error', 'TypeError', 'RangeError', 'ReferenceError', 'SyntaxError', 'URIError', 'EvalError', 'AbortError', 'ProviderError']);
 
 export function runtimeBuildContext(nativeBuild: unknown, configuredBuild: unknown) {
