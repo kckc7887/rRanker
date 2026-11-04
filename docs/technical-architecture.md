@@ -117,7 +117,7 @@ Phigros 会话以 TapTap `openid` 识别玩家，并单独保存 `displayName`�
 
 主题与展示偏好使用 `preferences-write-coordinator.ts` 合并当前选择和串行落盘，失败保留待写内容。上传好友码的选择通过 `UploadPrefsStore` 按好友码保存；UI 的 `selectedAccountIds` 是派生视图。
 
-舞萌好友码页支持二维码绑定并同步，独立二维码页确认风险后同步；两条入口共用成绩写入，绑定及本机确认独立持久保存，构建使用固定二进制产物。
+舞萌好友码页支持二维码绑定并同步，独立二维码页确认风险后同步成绩及本地段位；两条入口共用成绩写入，绑定及本机确认独立持久保存，构建使用固定二进制产物。
 
 随机选曲偏好通过 `createPersistedRandomChartsFilterStore` 按字段合并恢复期间的编辑与磁盘偏好，串行写入使用合并后的当前值。读取失败保留编辑，重新恢复后继续保存。
 

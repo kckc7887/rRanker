@@ -1,4 +1,5 @@
 import type { CatalogSnapshot } from '@/domain/models';
+import { resolveMaimaiCourseRank } from '@/domain/maimai-course-rank';
 import { createLocalMaimaiAccount, createMaimaiBoundAccount } from '@/domain/bound-account';
 import type { ProviderSession } from '@/providers/contracts';
 import { ProviderError } from '@/providers/errors';
@@ -163,7 +164,10 @@ describe('好友码多目标写入', () => {
         score: '100.5%', fc: 'app', fs: 'fdxp',
       }],
     });
-    mocks.readSave.mockResolvedValue([{ musicId: '1696', chartIndex: 3, type: 'dx', dxScore: 1900, score: 100.5, fc: 'app', fs: 'fdxp' }]);
+    mocks.readSave.mockResolvedValue({
+      scores: [{ musicId: '1696', chartIndex: 3, type: 'dx', dxScore: 1900, score: 100.5, fc: 'app', fs: 'fdxp' }],
+      courseRank: 23,
+    });
     mocks.saveSnapshot.mockResolvedValue(undefined);
     mocks.accountLoad.mockResolvedValue({ friendCode: '', hasCabinetBound: true });
     mocks.accountPatch.mockResolvedValue({ friendCode: '', hasCabinetBound: true });
@@ -197,7 +201,7 @@ describe('好友码多目标写入', () => {
 
   it('二维码上传在读取挂起期间删除目标后不再落盘', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
-    let releaseLogin: (value: unknown[]) => void = () => undefined;
+    let releaseLogin: (value: { scores: unknown[]; courseRank: number }) => void = () => undefined;
     mocks.readSave.mockReturnValue(new Promise((resolve) => { releaseLogin = resolve; }));
     const pending = uploadMaimaiFromQrLogin({
       credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
@@ -209,7 +213,7 @@ describe('好友码多目标写入', () => {
       onPhase: vi.fn(),
     });
     invalidateResourceWrites(`account:${local.id}`);
-    releaseLogin([{ musicId: '1696', type: 'dx', chartIndex: 3, score: 100.5 }]);
+    releaseLogin({ scores: [{ musicId: '1696', type: 'dx', chartIndex: 3, score: 100.5 }], courseRank: 23 });
     const result = await pending;
     expect(mocks.saveSnapshot).not.toHaveBeenCalled();
     expect(result.refreshedAccounts).toEqual([]);
@@ -574,9 +578,28 @@ describe('好友码多目标写入', () => {
     expect(result.uploaded).toBe(1);
   });
 
+  it.each([0, 23, undefined])('独立二维码同步将段位 %s 保存到本地成绩与最佳成绩', async courseRank => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    mocks.readSave.mockResolvedValueOnce({
+      scores: [{ musicId: '1696', chartIndex: 3, type: 'dx', score: 100.5 }], courseRank,
+    });
+    const result = await uploadMaimaiFromQrLogin({ credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
+      selectedAccountIds: [local.id], targets: resolveUploadTargets([local], {}), sessionsByAccountId: {},
+      resolveCatalog: async () => catalog, signal: { aborted: false }, onPhase: vi.fn(),
+    });
+    expect(result.targetResults[0]?.status).toBe('success');
+    const snapshot = mocks.saveSnapshot.mock.calls[0]?.[1];
+    expect(snapshot.player.extension.courseRank).toBe(courseRank);
+    expect(snapshot.best50.player.extension.courseRank).toBe(courseRank);
+    expect(resolveMaimaiCourseRank(snapshot.player)?.label).toBe(
+      courseRank === 0 ? '初学者' : courseRank === 23 ? '里皆传' : undefined,
+    );
+    expect(result.refreshedAccounts[0]?.snapshot).toEqual(snapshot);
+  });
+
   it('独立二维码取消后等待取档返回，迟到成绩不落盘', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
-    let finish!: (value: unknown[]) => void;
+    let finish!: (value: { scores: unknown[]; courseRank: number }) => void;
     mocks.readSave.mockReturnValueOnce(new Promise(resolve => { finish = resolve; }));
     const signal = { aborted: false };
     const pending = uploadMaimaiFromQrLogin({ credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
@@ -585,7 +608,7 @@ describe('好友码多目标写入', () => {
     });
     await vi.waitFor(() => expect(finish).toBeDefined());
     signal.aborted = true;
-    finish([{ musicId: '1696', type: 'dx', chartIndex: 3, score: 100.5 }]);
+    finish({ scores: [{ musicId: '1696', type: 'dx', chartIndex: 3, score: 100.5 }], courseRank: 23 });
     await expect(pending).rejects.toThrow('已取消');
     expect(mocks.saveSnapshot).not.toHaveBeenCalled();
   });

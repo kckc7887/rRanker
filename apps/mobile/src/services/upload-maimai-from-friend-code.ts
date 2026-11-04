@@ -320,9 +320,9 @@ export async function uploadMaimaiFromQrLogin(input: UploadCommonInput & {
   input.onPhase({ kind: 'fetching_scores', message: '正在读取成绩…' });
   const pending = readMaimaiSave(input.credential.qrCode);
   input.onQrAccepted?.();
-  const scores = await pending;
+  const { scores, courseRank } = await pending;
   if (input.signal.aborted) throw new ScoreHubError('已取消');
-  return uploadMaimaiScoresToTargets({ ...input, selected, scores,
+  return uploadMaimaiScoresToTargets({ ...input, selected, scores, courseRank,
     playerIdForLocal: selected.find(target => target.account.providerId === 'local')?.account.id ?? selected[0]!.account.id,
     assertAccount });
 }

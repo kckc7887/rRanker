@@ -25,6 +25,7 @@ export async function uploadLatestScoreHubSyncToTargets(input: UploadCommonInput
 
 export async function uploadMaimaiScoresToTargets(input: UploadCommonInput & {
   scores: readonly ScoreHubSyncScore[];
+  courseRank?: number;
   playerIdForLocal: string;
   selected: UploadTarget[];
   assertAccount: (accountId: string) => void;
@@ -89,6 +90,7 @@ export async function uploadMaimaiScoresToTargets(input: UploadCommonInput & {
           displayName: target.account.displayName,
           rating: 0,
           source,
+          extension: { kind: 'maimai', courseRank: input.courseRank },
         }, localMapped.records, catalog);
         const assertTarget = () => {
           if (input.signal.aborted) throw new ScoreHubError('已取消');

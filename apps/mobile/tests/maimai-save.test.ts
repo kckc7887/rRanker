@@ -10,13 +10,22 @@ it('maps standard, DX and UTAGE records to the shared score writer', async () =>
     { id: 1696, type: 'dx', level_index: 4, achievements: 99.8, dx_score: 1900, fc: 'fc', fs: null },
     { id: 100001, type: 'utage', level_index: 0, achievements: 98.7, dx_score: 1100, fc: null, fs: 'fs' },
   ] }));
-  const scores = await readMaimaiSave('synthetic-code');
-  const mapped = convertHubScoresToLxnsRecords(scores);
+  const save = await readMaimaiSave('synthetic-code');
+  const mapped = convertHubScoresToLxnsRecords(save.scores);
   expect(mapped.records).toEqual([
     expect.objectContaining({ id: 12, type: 'standard', level_index: 3, achievements: 100.5, fc: 'app' }),
     expect.objectContaining({ id: 1696, type: 'dx', level_index: 4, achievements: 99.8 }),
     expect.objectContaining({ id: 100001, type: 'utage', level_index: 0, achievements: 98.7 }),
   ]);
+});
+
+it.each([
+  [0, 0], [23, 23], [null, undefined], [undefined, undefined], [24, undefined],
+])('preserves course rank %s without inventing a missing rank', async (courseRank, expected) => {
+  native.readSaveAsync.mockResolvedValue(JSON.stringify({
+    logout_confirmed: true, player: { course_rank: courseRank }, scores: [],
+  }));
+  expect((await readMaimaiSave('synthetic-code')).courseRank).toBe(expected);
 });
 
 it.each([

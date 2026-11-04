@@ -1,5 +1,6 @@
 import { requireOptionalNativeModule } from 'expo-modules-core';
 import { z } from 'zod';
+import { normalizeLxnsCourseRank } from '@/domain/maimai-course-rank';
 import { ScoreHubError, type ScoreHubSyncScore } from '@/services/score-hub-client';
 
 const errorSchema = z.object({
@@ -11,6 +12,7 @@ const saveSchema = z.object({
   error: errorSchema.optional(),
   logout_error: errorSchema.optional(),
   logout_confirmed: z.boolean().optional(),
+  player: z.object({ course_rank: z.number().int().nullish() }).optional(),
   scores: z.array(z.object({
     id: z.number().int().safe(),
     type: z.enum(['standard', 'dx', 'utage']).nullable(),
@@ -22,7 +24,7 @@ const saveSchema = z.object({
   })).optional(),
 });
 
-export async function readMaimaiSave(qrCode: string): Promise<ScoreHubSyncScore[]> {
+export async function readMaimaiSave(qrCode: string): Promise<{ scores: ScoreHubSyncScore[]; courseRank: number | undefined }> {
   const native = requireOptionalNativeModule<{ readSaveAsync(code: string): Promise<string> }>('MaimaiSave');
   if (!native) throw new ScoreHubError('二维码同步暂不可用', undefined, false, { code: 'NATIVE_UNAVAILABLE' });
   let raw: unknown;
@@ -39,8 +41,11 @@ export async function readMaimaiSave(qrCode: string): Promise<ScoreHubSyncScore[
   if (save.logout_confirmed !== true || !save.scores) {
     throw new ScoreHubError('读取失败', undefined, false, { code: 'CLEANUP_FAILED' });
   }
-  return save.scores.map(score => ({
-    musicId: String(score.id), type: score.type ?? '', chartIndex: score.level_index ?? -1,
-    score: score.achievements, dxScore: score.dx_score, fc: score.fc, fs: score.fs,
-  }));
+  return {
+    scores: save.scores.map(score => ({
+      musicId: String(score.id), type: score.type ?? '', chartIndex: score.level_index ?? -1,
+      score: score.achievements, dxScore: score.dx_score, fc: score.fc, fs: score.fs,
+    })),
+    courseRank: normalizeLxnsCourseRank(save.player?.course_rank),
+  };
 }
