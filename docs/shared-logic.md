@@ -113,6 +113,8 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 舞萌二维码同步共用目标写入和取消保护：好友码页绑定后保存并选中真实好友码，独立二维码页使用本机持久确认并将段位写入本地和落雪玩家资料，取消后待读取收尾再结束，详细失败仅写入已开启的日志。
 
+`useUploadExecution` 在全部目标确认写入且 `onFinished` 完成页面刷新后，通过 `onSuccess` 关闭当前可见的 `UploadDataSheet`；失败、未确认或刷新失败保留弹层，取消和迟到任务不触发关闭。舞萌和中二的落雪引导共用 `LxnsSyncGuideContent`，仅在同步回调返回成功时关闭；落雪传输的页面刷新失败同样保留引导。
+
 `UploadPrefsStore` 按好友码保存选择，UI 的 `selectedAccountIds` 从当前好友码派生。`ScoreHubAccountStore` 保存 v3 索引与安全令牌，只有当前结构。成功读取到失效令牌时仅移除其账号索引，保留健康账号；I/O 失败不提交部分清理。删除先提交索引再清理引用；附属清理失败不能假装账号仍存在。正常凭据写入以 SDK 结果为准，提交异常时保留引用检查与回滚保护。
 
 `AppLifecycleProvider`、`useAppRuntime` 与 `CachedTabScreen` 管理前后台和页面活动。后台取消前台工作；内存警告释放非活动查询、图片内存和必要的 WebView。前台仅恢复仍活动的未完成工作，不额外刷新已有缓存。

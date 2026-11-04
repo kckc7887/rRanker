@@ -242,7 +242,7 @@ describe('总览从落雪传输成绩的页面终态', () => {
     expect(phase).toEqual({ kind: 'done', message: '传输完成：写入 240 条', uploaded: 240, skipped: 6 });
   });
 
-  it('单个目标写入成功但页面未能更新时，成功通知降级为警告并点名账号', async () => {
+  it('写入成功但页面刷新失败时保留弹层并提示账号', async () => {
     mockTransfer.mockResolvedValue(transferResult({
       uploaded: 120,
       failedAccountNames: ['水鱼二号'],
@@ -251,7 +251,7 @@ describe('总览从落雪传输成绩的页面终态', () => {
 
     const { ok, phase } = await transferScore();
 
-    expect(ok).toBe(true);
+    expect(ok).toBe(false);
     expect(mockNotification).toHaveBeenCalledWith({
       title: '传输完成',
       message: '已从 来源落雪 向 2 个账号写入 120 条成绩；水鱼二号的页面未能更新',

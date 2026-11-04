@@ -54,7 +54,7 @@ export function useUploadTaskState(catalog: CatalogSnapshot | undefined, request
   return { phase: snapshot.phase, running, lastResult: snapshot.result, begin, applyPhase, resolveCatalogForUpload, cancelUpload };
 }
 
-export function useUploadExecution({ task, preferences, qr, sessionsByAccountId, uploadMethod, visible, onLxnsTokensRotated, onFinished }: {
+export function useUploadExecution({ task, preferences, qr, sessionsByAccountId, uploadMethod, visible, onLxnsTokensRotated, onFinished, onSuccess }: {
   task: ReturnType<typeof useUploadTaskState>;
   preferences: ReturnType<typeof useUploadAccountPreferences>;
   qr: ReturnType<typeof useUploadQrInput>;
@@ -63,6 +63,7 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
   visible: boolean;
   onLxnsTokensRotated?: (accountId: string, update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
   onFinished?: (result: UploadResult) => void | Promise<void>;
+  onSuccess: () => void;
 }) {
   const { showNotification, showActionNotification, dismissNotification } = useNotification();
   const { running, begin, resolveCatalogForUpload } = task;
@@ -71,6 +72,11 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
   const confirmationRef = useRef<number | null>(null);
   const confirmationSequence = useRef(0);
   const confirmingRef = useRef(false);
+  const successCallback = useRef<(() => void) | null>(null);
+  useEffect(() => {
+    successCallback.current = visible ? onSuccess : null;
+    return () => { successCallback.current = null; };
+  }, [visible, onSuccess]);
   useEffect(() => () => {
     confirmationSequence.current += 1;
     confirmingRef.current = false;
@@ -80,6 +86,21 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
   const uploadErrorMessage = (error: unknown, fallback: string) => {
     recordUploadFailure(error, 'sync');
     return fallback;
+  };
+
+  const finishUpload = async (result: UploadResult, signal: ScoreHubAbortSignal) => {
+    try {
+      await onFinished?.(result);
+      if (!uploadTaskController.isCurrent(signal)) return;
+      if (result.failedAccountNames.length === 0
+        && result.targetResults.every(target => target.status === 'success')) successCallback.current?.();
+    } catch {
+      if (uploadTaskController.isCurrent(signal)) showNotification({
+        title: '页面刷新失败',
+        message: '成绩已上传，请稍后手动同步页面。',
+        variant: 'error',
+      });
+    }
   };
 
   const startUpload = async () => {
@@ -137,16 +158,7 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
       uploadTaskController.complete(result, signal);
       await refreshAfterUpload(friendCode.trim(), isCurrent);
       if (!isCurrent()) return;
-      try {
-        await onFinished?.(result);
-      } catch {
-        if (!isCurrent()) return;
-        showNotification({
-          title: '页面刷新失败',
-          message: '成绩已上传，请稍后手动同步页面。',
-          variant: 'error',
-        });
-      }
+      await finishUpload(result, signal);
     } catch (error) {
       if (signal.aborted) {
         uploadTaskController.finishCanceled(signal);
@@ -177,12 +189,7 @@ export function useUploadExecution({ task, preferences, qr, sessionsByAccountId,
         : await uploadMaimaiFromQrLogin(input);
       if (!isCurrent()) return;
       uploadTaskController.complete(result, signal);
-      try {
-        await onFinished?.(result);
-      } catch {
-        if (isCurrent()) showNotification({ title: '页面刷新失败',
-          message: '成绩已上传，请稍后手动同步页面。', variant: 'error' });
-      }
+      await finishUpload(result, signal);
     } catch (error) {
       if (isCurrent()) {
         applyPhase({ kind: 'error', message: uploadErrorMessage(error, '二维码同步失败，请稍后重试。') });

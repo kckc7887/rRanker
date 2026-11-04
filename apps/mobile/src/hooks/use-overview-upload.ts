@@ -53,7 +53,7 @@ export function useOverviewUpload({ boundAccounts, activeAccountId, activeGameId
   const friendCodeUploadBusy = !['idle', 'done', 'error'].includes(uploadPhase.kind);
   const showingMaimaiSyncGuide = maimaiLxnsGuideAvailable && maimaiUploadPage === 'lxns_guide';
   const currentUploadSelection = useMemo(() => [activeAccountId], [activeAccountId]);
-  const finishUpload = useCallback((result: UploadResult) => {
+  const finishUpload = useCallback(async (result: UploadResult) => {
     for (const refreshed of result.refreshedAccounts) {
       try { refreshed.assertCurrent?.(); } catch { continue; }
       updateBoundAccountScore(
@@ -62,7 +62,7 @@ export function useOverviewUpload({ boundAccounts, activeAccountId, activeGameId
         refreshed.snapshot.player.displayName,
       );
     }
-    void invalidateAccountDataQueries();
+    await invalidateAccountDataQueries();
   }, [ratingDigits, updateBoundAccountScore]);
 
   const syncMaimaiFromLxns = useCallback(async (): Promise<boolean> => {
@@ -243,5 +243,5 @@ function presentTransferResult(result: UploadResult, sourceName: string, targetC
     uploaded: result.uploaded,
     skipped: result.skipped,
   });
-  return true;
+  return result.failedAccountNames.length === 0;
 }

@@ -64,7 +64,7 @@ export function UploadDataSheet({
   useEffect(() => {
     if (uploadMethod === 'friend_code') { setBindingQr(false); resetQr(); }
   }, [friendCode, uploadMethod, resetQr]);
-  const { startUpload, startQrUpload, bindQr } = useUploadExecution({ task, preferences, qr, sessionsByAccountId, uploadMethod, visible, onLxnsTokensRotated, onFinished });
+  const { startUpload, startQrUpload, bindQr } = useUploadExecution({ task, preferences, qr, sessionsByAccountId, uploadMethod, visible, onLxnsTokensRotated, onFinished, onSuccess: close });
   const [stats, setStats] = useState<ScoreHubDxnetJobStats | null>(null);
   const [statsStatus, setStatsStatus] = useState<'idle' | 'loading' | 'ready' | 'error'>('idle');
   const statsSummary = statsStatus === 'loading'
@@ -98,12 +98,12 @@ export function UploadDataSheet({
     };
   }, [visible, running, uploadMethod]);
 
-  const close = () => {
+  function close() {
     if (externalBusy) return;
     qr.reset();
     setHistoryVisible(false);
     onClose();
-  };
+  }
 
   const statusText = phase.kind === 'idle' ? '' : phase.message;
   const botHint = phase.kind === 'awaiting_friend' && phase.botFriendCode

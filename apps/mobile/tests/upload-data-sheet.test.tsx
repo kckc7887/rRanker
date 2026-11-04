@@ -1,5 +1,6 @@
 import { act, fireEvent, render, renderHook, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { useState } from 'react';
 import { UploadTaskController, uploadTaskController } from '@/services/upload-task-controller';
 import { useUploadTaskState } from '@/hooks/use-upload-task';
 import { useUploadAccountPreferences } from '@/hooks/use-upload-account-preferences';
@@ -11,6 +12,7 @@ import type { LxnsTokenRotationUpdate } from '@/providers/lxns-oauth-request';
 import { NotificationProvider } from '@/components/AppNotification';
 import { ScoreHubError } from '@/services/score-hub-client';
 import { SessionPersistenceError } from '@/domain/session-vault';
+import type { UploadResult } from '@/services/upload-maimai-types';
 jest.mock('@/services/upload-task-controller', () => {
   const actual = jest.requireActual<typeof import('@/services/upload-task-controller')>('@/services/upload-task-controller');
   return { ...actual, uploadTaskController: new actual.UploadTaskController() };
@@ -105,13 +107,13 @@ type BindInput = Parameters<typeof import('@/services/upload-maimai-from-friend-
 const mockBindQr = jest.fn(async (_input: BindInput) => ({ uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [] }));
 const mockLoadQrRisk = jest.fn(async () => true);
 const mockSaveQrRisk = jest.fn(async (_value: boolean) => undefined);
-const mockUploadFriend = jest.fn(async (_input: MockUploadInput) => ({
+const mockUploadFriend = jest.fn(async (_input: MockUploadInput): Promise<UploadResult> => ({
   uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
 }));
 const mockUploadSession = jest.fn(async (_input: MockUploadInput) => ({
   uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
 }));
-const mockUploadQr = jest.fn(async (_input: MockUploadInput) => ({
+const mockUploadQr = jest.fn(async (_input: MockUploadInput): Promise<UploadResult> => ({
   uploaded: 1, skipped: 0, failedAccountNames: [], targetResults: [], refreshedAccounts: [],
 }));
 const mockFetchMe = jest.fn(async () => ({ friendCode: '111111111111111', hasCabinetUserId: false }));
@@ -288,6 +290,56 @@ function renderSheet(
 }
 
 describe('好友码统一上传弹窗', () => {
+  it.each(['friend_code', 'qr'] as const)('%s同步完成并更新页面后自动关闭', async method => {
+    let finishRefresh!: () => void;
+    const onFinished = jest.fn(() => new Promise<void>(resolve => { finishRefresh = resolve; }));
+    function Sheet() {
+      const [visible, setVisible] = useState(true);
+      return <NotificationProvider><UploadDataSheet visible={visible} accounts={[water]}
+        sessionsByAccountId={{ [water.id]: waterSession }} catalog={catalog}
+        temporarySelectedAccountIds={[water.id]} uploadMethod={method}
+        onFinished={onFinished} onClose={() => setVisible(false)} /></NotificationProvider>;
+    }
+    const screen = await render(<Sheet />);
+    const button = method === 'qr' ? '用二维码同步成绩' : '开始上传';
+    if (method === 'qr') await fireEvent.changeText(await screen.findByLabelText('玩家二维码字符串'), 'SGWCMAIDCURRENT');
+    await waitFor(() => expect(screen.getByLabelText(button).props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(screen.getByLabelText(button));
+    await waitFor(() => expect(onFinished).toHaveBeenCalled());
+    expect(screen.getByText('上传数据')).toBeTruthy();
+    await act(async () => finishRefresh());
+    await waitFor(() => expect(screen.queryByText('上传数据')).toBeNull());
+  });
+
+  it.each([
+    ['friend_code', 'failed'], ['qr', 'failed'],
+    ['friend_code', 'unconfirmed'], ['qr', 'unconfirmed'],
+    ['friend_code', 'refresh'], ['qr', 'refresh'],
+  ] as const)('%s同步结果为%s时保留弹窗，重试成功后关闭', async (method, outcome) => {
+    const upload = method === 'qr' ? mockUploadQr : mockUploadFriend;
+    upload.mockResolvedValueOnce({ uploaded: 0, skipped: 0, refreshedAccounts: [],
+      failedAccountNames: outcome === 'refresh' ? [water.displayName] : [],
+      targetResults: [{ account: water, status: outcome === 'refresh' ? 'success' : outcome, written: 0, skipped: 0 }],
+    });
+    const onFinished = jest.fn(async () => undefined);
+    function Sheet() {
+      const [visible, setVisible] = useState(true);
+      return <NotificationProvider><UploadDataSheet visible={visible} accounts={[water]}
+        sessionsByAccountId={{ [water.id]: waterSession }} catalog={catalog}
+        temporarySelectedAccountIds={[water.id]} uploadMethod={method}
+        onFinished={onFinished} onClose={() => setVisible(false)} /></NotificationProvider>;
+    }
+    const screen = await render(<Sheet />);
+    const button = method === 'qr' ? '用二维码同步成绩' : '开始上传';
+    if (method === 'qr') await fireEvent.changeText(await screen.findByLabelText('玩家二维码字符串'), 'SGWCMAIDCURRENT');
+    await waitFor(() => expect(screen.getByLabelText(button).props.accessibilityState.disabled).toBe(false));
+    await fireEvent.press(screen.getByLabelText(button));
+    await waitFor(() => expect(onFinished).toHaveBeenCalled());
+    expect(screen.getByText('上传数据')).toBeTruthy();
+    await fireEvent.press(screen.getByLabelText(button));
+    await waitFor(() => expect(screen.queryByText('上传数据')).toBeNull());
+  });
+
   it.each(['friend_code', 'qr'] as const)('%s 取消后仍交付已完成的凭据轮换，且不完成旧任务', async (method) => {
     let input!: MockUploadInput;
     let finish!: () => void;
