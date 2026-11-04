@@ -125,8 +125,9 @@ function runtimeLogSeverity(type: string, fields: RuntimeLogEntry['fields'], inp
 function sanitizeNumericFields(input: Readonly<Record<string, unknown>>, fields: RuntimeLogEntry['fields']): void {
   for (const key of numberFields) {
     const value = property(input, key);
-    const limit = key.endsWith('OperationId') || key === 'operationId' || key === 'byteCount' ? Number.MAX_SAFE_INTEGER : 1_000_000_000;
-    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= 0 && value <= limit) fields[key] = value;
+    const signed = key === 'nativeCode';
+    const limit = signed || key.endsWith('OperationId') || key === 'operationId' || key === 'byteCount' ? Number.MAX_SAFE_INTEGER : 1_000_000_000;
+    if (typeof value === 'number' && Number.isSafeInteger(value) && value >= (signed ? -limit : 0) && value <= limit) fields[key] = value;
   }
 }
 

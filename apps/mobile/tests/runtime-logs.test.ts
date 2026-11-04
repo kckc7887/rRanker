@@ -69,7 +69,7 @@ describe('manual runtime logs', () => {
     installRuntimeLogRecorder(controller.record);
     const diagnostic = vi.fn(async () => undefined);
     installRuntimeDiagnosticRecorder(diagnostic);
-    const failure = Object.assign(new Error('private body'), { code: 'QR_FAILED', status: 503, nativeCode: 1, qrCode: 'secret', token: 'secret' });
+    const failure = Object.assign(new Error('private body'), { code: 'QR_FAILED', status: 503, nativeCode: -1, qrCode: 'secret', token: 'secret' });
     recordUploadFailure(failure, 'sync');
     controller.flush();
     expect(repository.list()).toHaveLength(0);
@@ -79,7 +79,7 @@ describe('manual runtime logs', () => {
     controller.flush();
     const entries = repository.snapshot(1).entries.filter(entry => entry.type === 'upload');
     expect(entries).toHaveLength(1);
-    expect(entries[0]?.fields).toMatchObject({ serviceCode: 'QR_FAILED', status: 503, nativeCode: 1 });
+    expect(entries[0]?.fields).toMatchObject({ serviceCode: 'QR_FAILED', status: 503, nativeCode: -1 });
     expect(JSON.stringify(entries)).not.toMatch(/private body|secret/);
     await controller.stop();
     recordUploadFailure(failure, 'sync');
