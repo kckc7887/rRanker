@@ -90,6 +90,48 @@ describe.each([['Node', globalThis.AbortController], ['React Native', NativeAbor
     expect(result.session.refreshToken).toBe('new-refresh');
   });
 
+  it.each([0, 23])('带段位 %s 时先更新玩家资料，再上传成绩', async courseRank => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 200 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(uploadRecordsToLxns({ session: session(), records: [score], courseRank }))
+      .resolves.toMatchObject({ status: 'success', uploaded: 1 });
+    expect(fetchMock.mock.calls).toEqual([
+      [`${LXNS_API_ROOT}/user/maimai/player`, expect.objectContaining({
+        method: 'PUT', headers: expect.objectContaining({ authorization: 'Bearer old-access' }),
+        body: JSON.stringify({ course_rank: courseRank }),
+      })],
+      [`${LXNS_API_ROOT}/user/maimai/player/scores`, expect.objectContaining({
+        method: 'POST', body: JSON.stringify({ scores: [score] }),
+      })],
+    ]);
+  });
+
+  it.each(['cancel', 'deleted'] as const)('更新段位后 %s 不再上传成绩', async reason => {
+    const controller = new AbortController();
+    let deleted = false;
+    const fetchMock = vi.fn(async () => {
+      if (reason === 'cancel') controller.abort();
+      else deleted = true;
+      return new Response('{}', { status: 200 });
+    });
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(uploadRecordsToLxns({
+      session: session(), records: [score], courseRank: 23, signal: controller.signal,
+      assertEligible: () => { if (deleted) throw new Error('账号已删除'); },
+    })).rejects.toThrow(reason === 'cancel' ? '已取消' : '账号已删除');
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(`${LXNS_API_ROOT}/user/maimai/player`, expect.objectContaining({ method: 'PUT' }));
+  });
+
+  it('段位写入结果未确认时保留未确认状态，不继续上传成绩', async () => {
+    const fetchMock = vi.fn(async () => new Response('{}', { status: 503 }));
+    vi.stubGlobal('fetch', fetchMock);
+    await expect(uploadRecordsToLxns({ session: session(), records: [score], courseRank: 23 }))
+      .resolves.toMatchObject({ status: 'unconfirmed', uploaded: 0 });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    expect(fetchMock).toHaveBeenCalledWith(`${LXNS_API_ROOT}/user/maimai/player`, expect.objectContaining({ method: 'PUT' }));
+  });
+
   it('写入前复核资格，账号失效后不向上游写入', async () => {
     const blocked = vi.fn(async () => new Response('{}', { status: 200 }));
     vi.stubGlobal('fetch', blocked);

@@ -134,6 +134,7 @@ export async function uploadMaimaiScoresToTargets(input: UploadCommonInput & {
         const result = await uploadRecordsToLxns({
           session,
           records: lxnsMapped.records,
+          courseRank: input.courseRank,
           signal: input.signal,
           assertEligible: () => input.assertAccount(target.account.id),
           onTokensRotated: (update) => input.onLxnsTokensRotated?.(target.account.id, update),

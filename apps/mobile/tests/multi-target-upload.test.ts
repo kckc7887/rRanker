@@ -597,6 +597,23 @@ describe('好友码多目标写入', () => {
     expect(result.refreshedAccounts[0]?.snapshot).toEqual(snapshot);
   });
 
+  it('独立二维码同步将段位传给落雪，落雪失败时仍保存本地段位', async () => {
+    const local = createLocalMaimaiAccount('本地玩家', 0);
+    const lxns = createMaimaiBoundAccount({ providerId: 'lxns', playerId: 'lxns', displayName: '落雪', rating: 0 });
+    const sessions: Record<string, ProviderSession> = { [lxns.id]: {
+      mode: 'lxns-oauth', accessToken: 'access', refreshToken: 'refresh', expiresAt: Date.now() + 120_000, persistable: true,
+    } };
+    mocks.uploadLxns.mockRejectedValueOnce(new ProviderError('permission', 'private detail', false));
+    const result = await uploadMaimaiFromQrLogin({ credential: { kind: 'text', qrCode: 'SGWCMAIDTEST' },
+      selectedAccountIds: [lxns.id, local.id], targets: resolveUploadTargets([lxns, local], sessions), sessionsByAccountId: sessions,
+      resolveCatalog: async () => catalog, signal: { aborted: false }, onPhase: vi.fn(),
+    });
+    expect(mocks.uploadLxns).toHaveBeenCalledWith(expect.objectContaining({ courseRank: 23 }));
+    expect(result.targetResults.map(item => item.status)).toEqual(['failed', 'success']);
+    expect(result.targetResults[0]?.errorMessage).toBe('写入失败，请稍后重试。');
+    expect(result.refreshedAccounts[0]?.snapshot.player.extension).toEqual({ kind: 'maimai', courseRank: 23 });
+  });
+
   it('独立二维码取消后等待取档返回，迟到成绩不落盘', async () => {
     const local = createLocalMaimaiAccount('本地玩家', 0);
     let finish!: (value: { scores: unknown[]; courseRank: number }) => void;

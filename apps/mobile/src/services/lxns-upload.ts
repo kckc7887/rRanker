@@ -13,6 +13,7 @@ import type { UploadWriteResult } from '@/services/upload-maimai-types';
 export async function uploadRecordsToLxns(input: {
   session: ProviderSession;
   records: LxnsUploadScore[];
+  courseRank?: number;
   signal?: ScoreHubAbortSignal;
   assertEligible?: () => void;
   onTokensRotated?: (update: LxnsTokenRotationUpdate) => void | Promise<unknown>;
@@ -27,18 +28,27 @@ export async function uploadRecordsToLxns(input: {
       session = await rotateLxnsTokens(previous.refreshToken);
       await input.onTokensRotated?.({ previous, next: session });
     }
-    await input.signal?.waitUntilResumed?.();
-    assertUploadActive(signal);
-    input.assertEligible?.();
-    const result = await requestProviderWrite({
-        baseUrl: LXNS_API_ROOT, path: '/user/maimai/player/scores', fetcher: expoFetch as unknown as typeof fetch,
+    const writes = [
+      ...(input.courseRank === undefined ? [] : [{
+        path: '/user/maimai/player', method: 'PUT', body: { course_rank: input.courseRank },
+      }]),
+      { path: '/user/maimai/player/scores', method: 'POST', body: { scores: input.records } },
+    ];
+    for (const write of writes) {
+      await input.signal?.waitUntilResumed?.();
+      assertUploadActive(signal);
+      input.assertEligible?.();
+      const result = await requestProviderWrite({
+        baseUrl: LXNS_API_ROOT, path: write.path, fetcher: expoFetch as unknown as typeof fetch,
         schema: z.unknown(), label: '落雪上传', signal, authenticated: true, timeoutMs: 120_000, totalAttempts: 1,
-        init: { method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.accessToken}` }, body: JSON.stringify({ scores: input.records }) },
+        init: { method: write.method, headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${session.accessToken}` }, body: JSON.stringify(write.body) },
         error: status => status === 401 ? new ProviderError('authentication', '落雪 OAuth 已失效，请重新授权', false)
           : status === 403 ? new ProviderError('permission', '落雪授权未包含 write_player 权限', false)
           : status === 429 ? new ProviderError('rate_limit', '落雪请求过于频繁，请稍后重试', false)
           : new ProviderError(status >= 500 ? 'network' : 'unknown', `落雪上传失败（${status}）`, status >= 500),
       }, response => response.text());
-    return { status: result.status, uploaded: result.status === 'success' ? input.records.length : 0, session };
+      if (result.status === 'unconfirmed') return { status: 'unconfirmed', uploaded: 0, session };
+    }
+    return { status: 'success', uploaded: input.records.length, session };
   });
 }
