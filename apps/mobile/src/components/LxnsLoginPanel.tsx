@@ -1,5 +1,6 @@
+import { OAuthLoginPanel } from '@/components/game-content/OAuthLoginPanel';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { Linking } from 'react-native';
 import {
   CHUNITHM_TEMP_ACCOUNT_ID,
   type BoundAccount,
@@ -16,8 +17,6 @@ import { ChunithmTempAccountStore } from '@/storage/chunithm-temp-account-store'
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
-import { useAppTheme } from '@/theme/app-theme';
-import { providerLoginSheetStyles as styles } from '@/components/provider-login-sheet-styles';
 import { useAccountBindingRequest } from '@/hooks/use-account-binding-flow';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 
@@ -36,7 +35,6 @@ export function LxnsLoginPanel({
   onSuccess: () => void;
   onBusyChange: (busy: boolean) => void;
 }) {
-  const theme = useAppTheme();
   const setSession = useSession((s) => s.setSession);
   const boundAccounts = useSession((s) => s.boundAccounts);
   const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
@@ -181,62 +179,12 @@ export function LxnsLoginPanel({
   }, [visible, gameId]);
 
   return (
-    <>
-      {message ? <Text style={styles.message}>{message}</Text> : null}
-      <Pressable
-        disabled={busy}
-        onPress={() => void openLxnsAuthorize()}
-        style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
-      >
-        <Text style={[styles.primaryText, { color: theme.onAccent }]}>前往落雪授权</Text>
-      </Pressable>
-      <Text style={styles.hint}>
-        同意授权后将自动返回并绑定。
-      </Text>
-      {reusableAccounts.length > 0 ? (
-        <View style={[styles.reuseSection, { borderTopColor: theme.border }]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="使用已有落雪账号"
-            disabled={busy}
-            onPress={() => setShowReusableAccounts((current) => !current)}
-            style={({ pressed }) => [
-              styles.secondary,
-              { borderColor: theme.accent },
-              pressed && !busy && styles.secondaryPressed,
-            ]}
-          >
-            <Text style={[styles.secondaryText, { color: theme.accent }]}>
-              使用已有落雪账号
-            </Text>
-          </Pressable>
-          {showReusableAccounts ? (
-            <View style={styles.reuseList}>
-              {reusableAccounts.map((account) => (
-                <Pressable
-                  key={credentialIdsByAccountId[account.id]}
-                  accessibilityRole="button"
-                  accessibilityLabel={`使用已有落雪账号 ${account.displayName}`}
-                  disabled={busy}
-                  onPress={() => void connectWithExistingLxns(account)}
-                  style={({ pressed }) => [
-                    styles.reuseAccount,
-                    { backgroundColor: theme.surfaceMuted, borderColor: theme.border },
-                    pressed && !busy && styles.secondaryPressed,
-                  ]}
-                >
-                  <Text style={[styles.reuseName, { color: theme.text }]}>
-                    {account.displayName}
-                  </Text>
-                  <Text style={[styles.hint, { color: theme.textMuted }]}>
-                    已绑定{account.gameId === 'maimai' ? '舞萌 DX' : '中二节奏'}
-                  </Text>
-                </Pressable>
-              ))}
-            </View>
-          ) : null}
-        </View>
-      ) : null}
-    </>
+    <OAuthLoginPanel provider="落雪" authorizeLabel="前往落雪授权" hint="同意授权后将自动返回并绑定。"
+      message={message} busy={busy} expanded={showReusableAccounts} onToggle={() => setShowReusableAccounts(current => !current)}
+      onAuthorize={() => void openLxnsAuthorize()}
+      accounts={reusableAccounts.map(account => ({
+        id: account.id, name: account.displayName, detail: '已绑定' + (account.gameId === 'maimai' ? '舞萌 DX' : '中二节奏'),
+        onPress: () => void connectWithExistingLxns(account),
+      }))} />
   );
 }

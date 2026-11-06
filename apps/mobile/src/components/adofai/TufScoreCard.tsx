@@ -1,7 +1,7 @@
 import { useMemo } from 'react';
 import { StyleSheet, Text, View, type StyleProp, type ViewStyle } from 'react-native';
 import { TufDifficultyBadge } from './TufDifficultyBadge';
-import { GameScoreCard, useScoreCardArtworkActive } from '@/components/game-content/GameScoreCard';
+import { GameScoreCard, ScoreCardMetric, ScoreCardBadges, useScoreCardArtworkActive } from '@/components/game-content/GameScoreCard';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { tufMediaImageCandidates, type TufPass } from '@/domain/tuf';
 import { formatTufAccuracy, presentTufScore } from '@/features/game-content/adapters';
@@ -47,17 +47,14 @@ export function TufScoreCard({ pass, position }: { pass: TufPass; position?: num
             <Text style={[styles.metricChipText, { color: theme.textSecondary }]}>{pass.speed.toFixed(2)}×</Text>
           </View>
         </View>
-        <View style={styles.footerBadges}>
+        <ScoreCardBadges style={styles.footerBadges}>
           <TufDifficultyBadge difficulty={presentation.difficulty} display="label"
             source={pass.level.difficulty} style={styles.difficulty} />
           {pass.isWorldsFirst ? <TufWorldAchievementBadge kind="wf" testID={`tuf-pass-${pass.id}-wf`} /> : null}
           {pass.isWorldsFirstPP ? <TufWorldAchievementBadge kind="pp" testID={`tuf-pass-${pass.id}-pp`} /> : null}
-        </View>
+        </ScoreCardBadges>
       </View>
-      <View style={styles.side}>
-        <Text style={[styles.sideLabel, { color: theme.textMuted }]}>Impact</Text>
-        <Text style={[styles.impact, { color: theme.accent }]}>{impact}</Text>
-      </View>
+      <ScoreCardMetric label="Impact" value={impact} style={styles.side} labelStyle={styles.sideLabel} valueStyle={styles.impact} />
     </View>
   </GameScoreCard>;
 }

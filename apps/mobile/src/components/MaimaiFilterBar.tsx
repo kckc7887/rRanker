@@ -1,16 +1,18 @@
+import { MetricFilterRangeRow } from '@/components/game-content/MetricFilterRows';
 import { useMemo, useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { ChartTypeBadge, DifficultyBadge, DIFFICULTY_VISUAL } from '@/components/ScoreVisuals';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
-import {
+import { FilterRow,
   FilterChipFrame,
   FilterShell,
   NeutralChip,
   filterShellStyles,
   joinFilterSummary,
 } from '@/components/game-content/FilterShell';
-import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
-import { DxRatingTagFilterRow } from '@/components/maimai/DxRatingTagFilterRow';
+import type { RangeBounds } from '@/components/game-content/RangeSelector';
+import { TagFilterRow, type TagFilterState } from '@/components/game-content/TagFilterSheet';
+import { DxRatingTagFilterSheet } from '@/components/maimai/DxRatingTagFilterSheet';
 import type { DxRatingChartTag } from '@/domain/dxrating-chart-tags';
 import {
   MAIMAI_FC_ACHIEVEMENTS,
@@ -31,13 +33,11 @@ type VersionSheetValue = string | 'all';
 type SoloSheetValue = MaimaiFcAchievement | 'all';
 type MultiSheetValue = MaimaiFsAchievement | 'all';
 
-export type DxRatingTagFilterState = 'ready' | 'loading' | 'unavailable';
-
 export function dxRatingTagFilterState(query: {
   data?: unknown;
   isLoading: boolean;
   isError: boolean;
-}): DxRatingTagFilterState {
+}): TagFilterState {
   if (query.data !== undefined) return 'ready';
   if (!query.isError) return 'loading';
   return 'unavailable';
@@ -69,7 +69,7 @@ export interface MaimaiFilterBarProps {
   versions: readonly VersionFilterOption[];
   dxRatingTags?: readonly DxRatingChartTag[];
   selectedDxRatingTagIds?: readonly number[];
-  dxRatingTagState?: DxRatingTagFilterState;
+  dxRatingTagState?: TagFilterState;
   versionMulti?: boolean;
   selectedVersions?: readonly string[];
   currentVersionTitle?: string;
@@ -207,11 +207,6 @@ export function MaimaiFilterBar({
   const soloLabel = maimaiFcAchievementLabel(soloAchievement);
   const genreLabel = genre === 'all' ? '全部' : genre;
   const multiLabel = maimaiFsAchievementLabel(multiAchievement);
-  const tagFilterValue = dxRatingTagState === 'loading'
-    ? '加载中'
-    : dxRatingTagState === 'unavailable'
-      ? '不可用'
-      : formatDxRatingTagFilterValue(dxRatingTags, selectedDxRatingTagIds);
 
   const setDropdownOpen = (id: OpenDropdown) => (open: boolean) => {
     setOpenDropdown(open ? id : null);
@@ -281,8 +276,7 @@ export function MaimaiFilterBar({
     <FilterShell collapsed={collapsed} collapsible={collapsible} summary={summary}
       onCollapsedChange={onCollapsedChange} onReset={handleReset}
       onCollapse={() => { setOpenDropdown(null); onCollapsedChange(true); }}>
-      <View style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>难度</Text>
+      <FilterRow label="难度">
         <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={filterShellStyles.chipRow}>
           <NeutralChip label="全部" active={difficulty === 'all'} onPress={() => onDifficultyChange('all')} />
           {DIFFICULTIES.map((item) => {
@@ -296,10 +290,9 @@ export function MaimaiFilterBar({
             );
           })}
         </ScrollView>
-      </View>
+      </FilterRow>
 
-      <View style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>版本</Text>
+      <FilterRow label="版本">
         <View style={styles.dropdownControls}>
           <FilterAnchoredDropdown
             open={openDropdown === 'version'}
@@ -331,10 +324,9 @@ export function MaimaiFilterBar({
             endAdornment={localeSwitch}
           />
         </View>
-      </View>
+      </FilterRow>
 
-      <View style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>分类</Text>
+      <FilterRow label="分类">
         <View style={styles.dropdownControls}>
           <FilterAnchoredDropdown
             open={openDropdown === 'genre'}
@@ -347,10 +339,9 @@ export function MaimaiFilterBar({
             optionAccessibilityPrefix="选择分类"
           />
         </View>
-      </View>
+      </FilterRow>
 
-      <View style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>类型</Text>
+      <FilterRow label="类型">
         <View style={filterShellStyles.chipRow}>
           <NeutralChip label="全部" active={type === 'all'} onPress={() => onTypeChange('all')} />
           {TYPES.map((item) => {
@@ -363,42 +354,30 @@ export function MaimaiFilterBar({
             );
           })}
         </View>
-      </View>
+      </FilterRow>
 
       {onDxRatingTagIdsChange ? (
-        <DxRatingTagFilterRow
-          visible={tagSheetVisible}
-          tags={dxRatingTags}
-          selectedTagIds={selectedDxRatingTagIds}
-          state={dxRatingTagState}
-          value={tagFilterValue}
-          onApply={onDxRatingTagIdsChange}
-          onOpen={() => { setOpenDropdown(null); setTagSheetVisible(true); }}
-          onClose={() => setTagSheetVisible(false)}
-        />
+        <TagFilterRow state={dxRatingTagState} value={formatDxRatingTagFilterValue(dxRatingTags, selectedDxRatingTagIds)}
+          expanded={tagSheetVisible} onOpen={() => { setOpenDropdown(null); setTagSheetVisible(true); }}>
+          <DxRatingTagFilterSheet visible tags={dxRatingTags} selectedTagIds={selectedDxRatingTagIds}
+            onApply={onDxRatingTagIdsChange} onClose={() => setTagSheetVisible(false)} />
+        </TagFilterRow>
       ) : null}
 
-      <View style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabel, showAchievementRange && filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
-        <RangeSelector accessibilityLabel="舞萌定数范围" minimum={constantBounds.minimum} maximum={constantBounds.maximum}
+      <MetricFilterRangeRow label="定数" wide={showAchievementRange} accessibilityLabel="舞萌定数范围" {...constantBounds}
           step={0.1} lowerValue={constantMin} upperValue={constantMax}
           onLowerValueChange={onConstantMinChange} onUpperValueChange={onConstantMaxChange}
           formatValue={(value) => value.toFixed(1)} testID="maimai-filter-constant" />
-      </View>
 
       {showAchievementRange ? (
-        <View style={filterShellStyles.filterRow}>
-          <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>达成率</Text>
-          <RangeSelector accessibilityLabel="舞萌达成率范围" minimum={achievementBounds.minimum} maximum={achievementBounds.maximum}
+        <MetricFilterRangeRow label="达成率" wide accessibilityLabel="舞萌达成率范围" {...achievementBounds}
             step={0.0001} lowerValue={achievementMin} upperValue={achievementMax}
             onLowerValueChange={onAchievementMinChange} onUpperValueChange={onAchievementMaxChange}
             formatValue={(value) => `${value.toFixed(4)}%`} testID="maimai-filter-achievement" />
-        </View>
       ) : null}
 
       {showAchievementPickers ? (
-        <View style={filterShellStyles.filterRow}>
-          <Text style={[filterShellStyles.filterLabel, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>成就</Text>
+        <FilterRow label="成就" wide>
           <View style={styles.achievementDropdownRow}>
             <FilterAnchoredDropdown
               open={openDropdown === 'solo'}
@@ -423,7 +402,7 @@ export function MaimaiFilterBar({
               onSelect={(value) => onMultiAchievementChange(value === 'all' ? null : value)}
             />
           </View>
-        </View>
+        </FilterRow>
       ) : null}
     </FilterShell>
   );

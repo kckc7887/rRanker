@@ -3,7 +3,7 @@ import { bindPlaybackLoop } from '../../chart-preview-shared/webview-player/play
 import { bindFullscreenControls } from '../../chart-preview-shared/webview-player/fullscreen-controls';
 import { assertChartPreviewGifFrameCount, assertChartPreviewGifFramePixels, assertChartPreviewTexturePixels, ChartPreviewBudgetExceededError, pauseChartPreviewParse } from '../../chart-preview-shared/chart-preview-resource-budget';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
-import { installPreviewControls, setPreviewFullscreen } from '../../chart-preview-shared/webview-player/controls';
+import { installPreviewControls, setPreviewFullscreen, setPreviewPlayButton } from '../../chart-preview-shared/webview-player/controls';
 import { bindHeatTimelineKeyboard } from '../../chart-preview-shared/webview-player/heat-timeline';
 import { upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
 import { closeActiveWheelPopup, setupWheelPopup as setupSharedWheelPopup, type WheelControl } from '../../chart-preview-shared/webview-player/wheel';
@@ -131,7 +131,6 @@ function start(): void {
     stage: $('stage'),
     canvas: $('chart-canvas') as HTMLCanvasElement,
     play: $('play-button') as HTMLButtonElement,
-    playIcon: $<SVGElement>('play-icon'),
     btnRestart: $('btn-restart') as HTMLButtonElement,
     btnStepBack: $('btn-step-back') as HTMLButtonElement,
     btnStepForward: $('btn-step-forward') as HTMLButtonElement,
@@ -161,7 +160,7 @@ function start(): void {
   };
 
   const config: Partial<PhigrosChartPreviewConfig> = window.__PHIGROS_CHART_PREVIEW__ ?? {};
-  events.own(installPreviewControls({ sections: ['播放设置', '辅助选项'] }));
+  events.own(installPreviewControls());
   const isRpe = config.format === 'rpe';
   elements.blockArea.hidden = isRpe;
   elements.blockAreaBounds.hidden = isRpe;
@@ -656,10 +655,7 @@ function start(): void {
   }
 
   function syncPlayButtons(): void {
-    elements.playIcon.innerHTML = session.playing
-      ? '<path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>'
-      : '<path d="M8 5v14l11-7z"/>';
-    elements.play.setAttribute('aria-label', session.playing ? '暂停' : '播放');
+    setPreviewPlayButton(elements.play, session.playing);
   }
 
   function syncControlsVisibility(): void {

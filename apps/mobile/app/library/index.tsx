@@ -1,14 +1,14 @@
+import { NeutralChip } from '@/components/game-content/FilterShell';
 import { EXAMPLE_SONGS, type ExampleSong } from '@/domain/example';
 import { MAJDATA_NAMES, majdataAsset, type MajdataSong } from '@/domain/majdata';
 import { FilterAnchoredDropdown } from '@/components/FilterAnchoredDropdown';
 import { GameSongCover } from '@/components/game-content/GameSongCover';
 import { useMajdataLibrarySongs } from '@/hooks/use-majdata';
 import { useEffect, useMemo, useState } from 'react';
-import { RemoteImage as Image } from '@/components/RemoteImage';
 import { RemoteImageFlatList } from '@/components/game-content/GameListPages';
 import { router } from 'expo-router';
 import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
-import { SongCover } from '@/components/SongCover';
+import { maimaiJacketUrl } from '@/domain/maimai-assets';
 import { chunithmJacketUrl } from '@/components/chunithm/ChunithmSongRow';
 import {
   CHUNITHM_DIFFICULTY_LABELS,
@@ -113,9 +113,9 @@ function LibraryList({
   return <View style={[styles.page, { backgroundColor: theme.background }]}>
     <View style={styles.filters}>
       <View style={styles.chips}>
-        <Chip label="全部" active={mode === 'all'} onPress={() => setMode('all')} />
-        <Chip label="收藏" active={mode === 'favorite'} onPress={() => setMode('favorite')} />
-        <Chip label="练习" active={mode === 'practice'} onPress={() => setMode('practice')} />
+        <NeutralChip label="全部" active={mode === 'all'} onPress={() => setMode('all')} />
+        <NeutralChip label="收藏" active={mode === 'favorite'} onPress={() => setMode('favorite')} />
+        <NeutralChip label="练习" active={mode === 'practice'} onPress={() => setMode('practice')} />
       </View>
       {tags.length ? <View style={styles.chips}>
         <FilterAnchoredDropdown open={tagsOpen} onOpenChange={setTagsOpen}
@@ -319,64 +319,28 @@ function LibraryRow({
 
 function LibrarySongCover({ song, blurUrl }: { song?: LibrarySong; blurUrl: string | null }) {
   const gameId = useSession((state) => state.activeGameId);
-  if (!song || isTufLevel(song)) {
-    return <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
-  }
-  if (isExampleSong(song)) return <GameSongCover source={song.coverUrl} gameId={gameId} />;
-  if (isMajdataLibrarySong(song)) return <GameSongCover source={majdataAsset(song.id, 'image')} gameId={gameId} />;
-  if (isRizlineLibrarySong(song)) return <GameSongCover source={rizlineCoverUrl(song)} gameId={gameId} />;
-  if (isMuseDashSong(song)) {
-    const url = museDashCoverUrl(song.cover);
-    return url
-      ? <Image accessibilityLabel="曲绘" cacheProfile="thumbnail" gameId={gameId} contentFit="cover" source={url}
-        style={[styles.cover, styles.museDashCover]} transition={120} />
-      : <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
-  }
-  if (isOsuLibrarySong(song)) {
-    return song.cover
-      ? <Image accessibilityLabel="曲绘" cacheProfile="thumbnail" gameId={gameId} contentFit="cover" source={song.cover}
-        style={styles.cover} transition={120} />
-      : <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
-  }
-  if (blurUrl) {
-    return <Image accessibilityLabel="曲绘" cacheProfile="thumbnail" gameId={gameId} contentFit="cover" source={blurUrl} style={styles.cover} transition={120} />;
-  }
-  if (isChunithmSong(song)) {
-    return (
-      <Image
-        accessibilityLabel="曲绘"
-          cacheProfile="thumbnail"
-        gameId={gameId}
-        contentFit="cover"
-        source={chunithmJacketUrl(song)}
-        style={styles.cover}
-        transition={120}
-      />
-    );
-  }
-  if (isPhiraLibrarySong(song)) {
-    return song.illustration
-      ? <Image accessibilityLabel="曲绘" cacheProfile="thumbnail" gameId={gameId} contentFit="cover" source={song.illustration}
-        style={styles.cover} transition={120} />
-      : <View style={styles.coverPlaceholder}><Text style={styles.coverNote}>♪</Text></View>;
-  }
-  return <SongCover songId={song.id} />;
+  const source = libraryCoverSource(song, blurUrl);
+  return <GameSongCover source={source} gameId={gameId} accessibilityLabel="曲绘"
+    borderRadius={song && isMuseDashSong(song) ? 29 : 9} />;
 }
 
-function Chip({ label, active, onPress }: { label: string; active: boolean; onPress: () => void }) {
-  const theme = useAppTheme();
-  return <Pressable onPress={onPress} style={[styles.chip, { backgroundColor: theme.surfaceMuted }, active && { backgroundColor: theme.accent }]}><Text style={[styles.chipText, { color: theme.textSecondary }, active && { color: theme.onAccent }]}>{label}</Text></Pressable>;
+function libraryCoverSource(song: LibrarySong | undefined, blurUrl: string | null): string | null {
+  if (!song || isTufLevel(song)) return null;
+  if (isExampleSong(song)) return song.coverUrl;
+  if (isMajdataLibrarySong(song)) return majdataAsset(song.id, 'image');
+  if (isRizlineLibrarySong(song)) return rizlineCoverUrl(song);
+  if (isMuseDashSong(song)) return museDashCoverUrl(song.cover);
+  if (isOsuLibrarySong(song)) return song.cover ?? null;
+  if (blurUrl) return blurUrl;
+  if (isChunithmSong(song)) return chunithmJacketUrl(song);
+  if (isPhiraLibrarySong(song)) return song.illustration ?? null;
+  return maimaiJacketUrl(song.id);
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1, backgroundColor: '#F7F8FA' }, filters: { padding: 12, gap: 8 }, chips: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
-  chip: { backgroundColor: '#E5E7EB', borderRadius: 15, paddingHorizontal: 10, paddingVertical: 6 },
-  chipText: { color: '#374151', fontSize: 11 }, list: { padding: 12, paddingTop: 2, gap: 9, flexGrow: 1 },
+  list: { padding: 12, paddingTop: 2, gap: 9, flexGrow: 1 },
   row: { backgroundColor: '#FFF', borderRadius: 12, padding: 11, flexDirection: 'row', alignItems: 'center', gap: 11 }, main: { flex: 1, gap: 3 },
-  cover: { width: 58, height: 58, borderRadius: 9 },
-  museDashCover: { borderRadius: 29 },
-  coverPlaceholder: { width: 58, height: 58, borderRadius: 9, backgroundColor: '#E5E7EB', alignItems: 'center', justifyContent: 'center' },
-  coverNote: { color: '#6B7280', fontSize: 24 },
   title: { color: '#111827', fontWeight: '700' }, meta: { color: '#4B5563', fontSize: 11 }, tagsText: { color: '#246BFD', fontSize: 11 },
   warning: { color: '#B45309', fontSize: 11 }, empty: { color: '#6B7280', textAlign: 'center', marginTop: 48 },
   center: { flex: 1, alignItems: 'center', justifyContent: 'center', gap: 8 }, error: { color: '#B42318' }, link: { color: '#246BFD', fontWeight: '600' },

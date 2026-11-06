@@ -1,3 +1,4 @@
+import { SegmentedControl } from '@/components/SegmentedControl';
 import { type ReactNode, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -14,6 +15,7 @@ import {
   type ViewStyle,
   type LayoutChangeEvent,
 } from 'react-native';
+import { FormField } from '@/components/FormField';
 import { WebView } from 'react-native-webview';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { recordRuntimeDiagnostic } from '@/services/runtime-diagnostics';
@@ -38,9 +40,6 @@ export type BestImageScreenShellStyles = {
   content: ViewStyle;
   label: TextStyle;
   sectionLabel: TextStyle;
-  segmentedControl: ViewStyle;
-  segment: ViewStyle;
-  segmentText: TextStyle;
   customPanel: ViewStyle;
   panelTitle: TextStyle;
   styleList: ViewStyle;
@@ -87,9 +86,6 @@ export const bestImageScreenSharedStyles: BestImageScreenSharedStyles = StyleShe
   content: { padding: 16, paddingBottom: 32, alignItems: 'stretch' },
   label: { fontSize: 15, fontWeight: '800', marginBottom: 10 },
   sectionLabel: { marginTop: 24 },
-  segmentedControl: { flexDirection: 'row', padding: 4, borderRadius: 14 },
-  segment: { flex: 1, minHeight: 40, alignItems: 'center', justifyContent: 'center', borderRadius: 10 },
-  segmentText: { fontSize: 14, fontWeight: '700' },
   customPanel: { marginTop: 16, padding: 14, gap: 10, borderRadius: 16 },
   panelTitle: { fontSize: 15, fontWeight: '800' },
   fieldRow: { flexDirection: 'row', alignItems: 'flex-start', gap: 10 },
@@ -134,14 +130,7 @@ export function BestImageStyleSwitch({ value, onChange }: {
   const theme = useAppTheme();
   const styles = bestImageScreenSharedStyles;
   return <View style={[styles.ratingStyleRow, { borderBottomColor: theme.border }]}>
-    <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
-      {([{ id: 'game', label: '游戏风格' }, { id: 'app', label: '应用风格' }] as const).map(({ id, label }) => {
-        const selected = value === id;
-        return <Pressable key={id} accessibilityLabel={label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => onChange(id)} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
-          <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{label}</Text>
-        </Pressable>;
-      })}
-    </View>
+    <SegmentedControl options={[{ id: 'game', label: '游戏风格' }, { id: 'app', label: '应用风格' }]} value={value} onChange={onChange} />
   </View>;
 }
 
@@ -180,6 +169,45 @@ export function BestImageChoiceChip({
   >
     <Text style={[styles.chipText, { color: theme.textSecondary }, selected && { color: theme.accent }, ...(disabled && styles.chipTextDisabled ? [styles.chipTextDisabled] : [])]}>{label}</Text>
   </Pressable>;
+}
+
+export function BestImageStyleRow({ label, value, preview, onPress, accessibilityLabel }: {
+  label: string; value: string; preview: ReactNode; onPress: () => void; accessibilityLabel?: string;
+}) {
+  const theme = useAppTheme();
+  const styles = bestImageScreenSharedStyles;
+  return <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel ?? `选择${label}`}
+    onPress={onPress} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border },
+      pressed && { backgroundColor: theme.surfaceMuted }]}>
+    <View style={styles.stylePreview}>{preview}</View>
+    <View style={styles.styleCopy}>
+      <Text style={[styles.styleName, { color: theme.text }]}>{label}</Text>
+      <Text style={[styles.styleValue, { color: theme.textMuted }]} numberOfLines={1}>{value}</Text>
+    </View>
+    <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
+  </Pressable>;
+}
+
+export function BestImageQuantity({ value, onChange, error, placeholder = '0 为无限制' }: {
+  value: string; onChange: (value: string) => void; error?: string | null; placeholder?: string;
+}) {
+  return <FormField label="数量" accessibilityLabel="自定义数量" keyboardType="number-pad"
+    value={value} onChangeText={onChange} error={error} placeholder={placeholder} />;
+}
+
+export function BestImageExtraCount<T extends number>({ label, options, value, onChange }: {
+  label: string; options: readonly T[]; value: T; onChange: (value: T) => void;
+}) {
+  const theme = useAppTheme();
+  const styles = bestImageScreenSharedStyles;
+  return <View style={[styles.overflowStyleRow, { borderBottomColor: theme.border }]}>
+    <View style={styles.overflowCopy}>
+      <Text style={[styles.styleName, { color: theme.text }]}>{label}</Text>
+      <Text style={[styles.styleValue, { color: theme.textMuted }]}>追加成绩数量</Text>
+    </View>
+    <View style={styles.overflowChoices}>{options.map(count => <BestImageChoiceChip key={count}
+      label={`${count} 个`} selected={value === count} onPress={() => onChange(count)} styles={styles} />)}</View>
+  </View>;
 }
 
 export type BestImageScreenAppearance<TType extends string> = {
@@ -466,14 +494,7 @@ export function BestImageScreenShell<TType extends string>({
     </View> : null}
     <ScrollView style={[styles.page, { backgroundColor: theme.background }]} contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
       <Text style={[styles.label, { color: theme.text }]}>选择类型</Text>
-      <View accessibilityRole="tablist" style={[styles.segmentedControl, { backgroundColor: theme.surfaceMuted }]}>
-        {imageTypes.map((item) => {
-          const selected = activeType === item.id;
-          return <Pressable key={item.id} accessibilityLabel={item.label} accessibilityRole="tab" accessibilityState={{ selected }} onPress={() => onSelectType(item.id)} style={[styles.segment, selected && { backgroundColor: theme.surface }]}>
-            <Text style={[styles.segmentText, { color: theme.textMuted }, selected && { color: theme.accent }]}>{item.label}</Text>
-          </Pressable>;
-        })}
-      </View>
+      <SegmentedControl options={imageTypes} value={activeType} onChange={onSelectType} />
 
       {customPanelBody ? <View style={[styles.customPanel, { backgroundColor: theme.surface }]}>
         <Text style={[styles.panelTitle, { color: theme.text }]}>自定义 BestN</Text>

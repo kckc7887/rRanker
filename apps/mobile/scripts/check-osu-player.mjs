@@ -3,7 +3,7 @@ import fs from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
-import { readGeneratedPreview } from './lib/build-preview.mjs';
+import { readGeneratedPreview, readPreviewTemplate } from './lib/build-preview.mjs';
 
 const root = path.resolve(import.meta.dirname, '..');
 const args = process.argv.slice(2);
@@ -13,7 +13,7 @@ const imported = positional[0] ? await import(pathToFileURL(path.resolve(positio
 const { chromium } = imported.default ?? imported;
 const packaged = generated ? readGeneratedPreview('osu-chart-preview') : null;
 const [html, player, helpers] = packaged ? [packaged.html, packaged.script.toString('utf8'), null] : await Promise.all([
-  fs.readFile(path.join(root, 'src/features/osu-chart-preview/webview-player/index.html'), 'utf8'),
+  readPreviewTemplate('osu-chart-preview'),
   build({ entryPoints: [path.join(root, 'src/features/osu-chart-preview/webview-player/main.ts')], bundle: true, write: false, format: 'iife', platform: 'browser' }).then(result => result.outputFiles[0].text),
   build({ stdin: { contents: `
     export { PreviewBackgroundBlur } from './background-blur';

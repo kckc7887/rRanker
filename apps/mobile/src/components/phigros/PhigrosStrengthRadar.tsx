@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import Svg, { Circle, Line, Polygon } from 'react-native-svg';
+import { RadarPlot, radarPoint } from '../game-content/RadarPlot';
+import Svg from 'react-native-svg';
 import type { PhigrosTagRksStat } from '@/domain/phigros-strength-analysis';
 import { useAppTheme } from '@/theme/app-theme';
 
@@ -8,20 +9,6 @@ const LABEL_RESERVE = 72;
 const TOP_PAD = 44;
 const BOTTOM_PAD = 36;
 const RING_RATIOS = [0.25, 0.5, 0.75, 1] as const;
-
-function axisPoint(index: number, count: number, radius: number, cx: number, cy: number) {
-  const angle = -Math.PI / 2 + (index * Math.PI * 2) / count;
-  return {
-    x: cx + Math.cos(angle) * radius,
-    y: cy + Math.sin(angle) * radius,
-    cos: Math.cos(angle),
-    sin: Math.sin(angle),
-  };
-}
-
-function pointsString(points: readonly { x: number; y: number }[]): string {
-  return points.map((point) => `${point.x},${point.y}`).join(' ');
-}
 
 function clamp(value: number, min: number, max: number): number {
   return Math.min(max, Math.max(min, value));
@@ -51,11 +38,7 @@ export function PhigrosStrengthRadar({
   const cy = TOP_PAD + chartRadius;
   const height = cy + chartRadius + BOTTOM_PAD;
   const span = Math.max(max - min, 0.1);
-  const ringPoints = (ratio: number) => tags.map((_, index) => axisPoint(index, tags.length, chartRadius * ratio, cx, cy));
-  const dataPoints = tags.map((tag, index) => {
-    const ratio = tag.averageRks == null ? 0 : clamp((tag.averageRks - min) / span, 0, 1);
-    return axisPoint(index, tags.length, chartRadius * ratio, cx, cy);
-  });
+  const ratios = tags.map(tag => tag.averageRks == null ? null : clamp((tag.averageRks - min) / span, 0, 1));
 
   return (
     <View
@@ -67,50 +50,11 @@ export function PhigrosStrengthRadar({
       testID="phigros-strength-radar"
     >
         <Svg width={width} height={height} viewBox={`0 0 ${width} ${height}`}>
-          {RING_RATIOS.map((ratio) => (
-            <Polygon
-              key={ratio}
-              points={pointsString(ringPoints(ratio))}
-              fill="none"
-              stroke={theme.border}
-              strokeWidth={ratio === 1 ? 1.6 : 1}
-              strokeOpacity={ratio === 1 ? 0.9 : 0.45}
-            />
-          ))}
-          {ringPoints(1).map((point, index) => (
-            <Line
-              key={tags[index]!.tagId}
-              x1={cx}
-              y1={cy}
-              x2={point.x}
-              y2={point.y}
-              stroke={theme.border}
-              strokeWidth={1}
-              strokeOpacity={0.55}
-            />
-          ))}
-          <Polygon
-            points={pointsString(dataPoints)}
-            fill={theme.accent}
-            fillOpacity={0.22}
-            stroke={theme.accent}
-            strokeWidth={2.5}
-            strokeLinejoin="round"
-          />
-          {dataPoints.map((point, index) => tags[index]!.averageRks == null ? null : (
-            <Circle
-              key={tags[index]!.tagId}
-              cx={point.x}
-              cy={point.y}
-              r={4}
-              fill={theme.surface}
-              stroke={theme.accent}
-              strokeWidth={2}
-            />
-          ))}
+          <RadarPlot cx={cx} cy={cy} radius={chartRadius} values={ratios}
+            rings={RING_RATIOS} color={theme.accent} markers />
         </Svg>
       {tags.map((tag, index) => {
-        const vertex = axisPoint(index, tags.length, chartRadius, cx, cy);
+        const vertex = radarPoint(index, tags.length, chartRadius, cx, cy);
         const anchor = Math.abs(vertex.cos) < 0.35 ? 'middle' : vertex.cos < 0 ? 'end' : 'start';
         const y = anchor === 'middle' ? vertex.y - 42 : vertex.y - 18;
         return (

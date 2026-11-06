@@ -1,6 +1,4 @@
-import { useState } from 'react';
-import { RemoteImage as Image } from '@/components/RemoteImage';
-import { StyleSheet, View } from 'react-native';
+import { CollectionArtwork } from '@/components/CollectionImage';
 
 /** LXNS 姓名框素材约为 720×116。 */
 export const LXNS_PLATE_ROOT = 'https://assets2.lxns.net/maimai/plate';
@@ -15,24 +13,6 @@ export function PlateImage({
   height?: number;
   borderRadius?: number;
 }) {
-  const [failed, setFailed] = useState(false);
-  const width = Math.round(height * PLATE_ASPECT);
-  if (failed) {
-    return <View style={[styles.placeholder, { width, height, borderRadius }]} />;
-  }
-  return (
-    <Image
-      cacheProfile="native"
-      accessibilityLabel="姓名框预览"
-      contentFit="contain"
-      onError={() => setFailed(true)}
-      source={`${LXNS_PLATE_ROOT}/${plateId}.png`}
-      style={{ width, height, borderRadius }}
-      transition={120}
-    />
-  );
+  return <CollectionArtwork label="姓名框预览" source={`${LXNS_PLATE_ROOT}/${plateId}.png`}
+    height={height} aspect={PLATE_ASPECT} borderRadius={borderRadius} />;
 }
-
-const styles = StyleSheet.create({
-  placeholder: { backgroundColor: '#E5E7EB' },
-});

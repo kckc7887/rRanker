@@ -1,5 +1,5 @@
+import { SongListSectionHeader } from '@/components/game-content/SongListSectionHeader';
 import { useCallback, useMemo, useState } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
 import {
   BestListPage,
   CatalogListPage,
@@ -8,7 +8,6 @@ import {
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { InfinitePageFooter } from '@/components/game-content/InfinitePageFooter';
 import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
-import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { OsuCatalogFilterBar } from '@/components/osu/OsuCatalogFilterBar';
 import { OsuRecordsFilterBar } from '@/components/osu/OsuRecordsFilterBar';
 import { OsuScoreCard } from '@/components/osu/OsuScoreCard';
@@ -25,13 +24,11 @@ import {
 import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useGameData } from '@/hooks/use-game-data';
-import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useOsuCatalogSearch } from '@/hooks/use-osu-catalog';
 import { useOsuDemoScores } from '@/hooks/use-osu-demo-scores';
 import { useOsuKnownScores } from '@/hooks/use-osu-known-scores';
 import { useOsuRecordsFilter } from '@/state/osu-records-filter';
 import { useSession } from '@/state/session-store';
-import { useAppTheme } from '@/theme/app-theme';
 
 type OsuBestSection = { id: 'top100' | 'best'; title: string; scores: OsuBestScore[] } & {
   data: OsuBestScore[];
@@ -43,8 +40,6 @@ function useActiveOsuGameId(): OsuGameId | null {
 }
 
 export function OsuBestScreen() {
-  const theme = useAppTheme();
-  const inset = useNativeTabBottomInset();
   const gameId = useActiveOsuGameId();
   const gameData = useGameData();
   const demo = useOsuDemoScores(gameId);
@@ -64,60 +59,47 @@ export function OsuBestScreen() {
     }];
   }, [demo.bound, demo.scores, payload]);
   return (
-    <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <BestListPage<OsuBestScore, OsuBestSection>
-        isLoading={isLoading}
-        isError={isError}
-        isEmpty={!isLoading && sections.length === 0}
-        error={error}
-        onRetry={refetch ? () => void refetch() : undefined}
-        emptyText="当前账号暂无最佳成绩"
-        emptyActionLabel={demo.bound && demo.hasNextPage ? '继续加载' : undefined}
-        onEmptyAction={demo.bound && demo.hasNextPage ? () => {
-          if (!demo.isFetchingNextPage) void demo.fetchNextPage();
-        } : undefined}
-        data={sections.length ? sections : undefined}
-        sectionListProps={{
-          testID: 'osu-best-results-list',
-          style: styles.list,
-          contentInsetAdjustmentBehavior: 'automatic',
-          stickySectionHeadersEnabled: false,
-          contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
-          scrollIndicatorInsets: { bottom: inset },
-          ...TAB_LIST_CACHE_PROPS,
-          refreshing: demo.bound && demo.isRefetching,
-          onRefresh: demo.bound ? () => void demo.refetch() : undefined,
-          onEndReachedThreshold: 0.35,
-          onEndReached: () => {
-            if (demo.bound && demo.hasNextPage && !demo.isFetchingNextPage) void demo.fetchNextPage();
-          },
-          ListFooterComponent: demo.bound ? (
-            <InfinitePageFooter
-              loading={demo.isFetchingNextPage}
-              failed={demo.isFetchNextPageError}
-              hasNextPage={demo.hasNextPage === true}
-              onRetry={() => void demo.fetchNextPage()}
-            />
-          ) : undefined,
-          keyExtractor: (item) => String(item.id),
-          renderSectionHeader: ({ section }) => (
-            <View style={styles.sectionHeader}>
-              <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
-              <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 条成绩</Text>
-            </View>
-          ),
-          renderItem: ({ item, index }) => (
-            gameId ? <OsuScoreCard gameId={gameId} score={item} position={index + 1} /> : null
-          ),
-        }}
-      />
-    </View>
+    <BestListPage<OsuBestScore, OsuBestSection>
+      isLoading={isLoading}
+      isError={isError}
+      isEmpty={!isLoading && sections.length === 0}
+      error={error}
+      onRetry={refetch ? () => void refetch() : undefined}
+      emptyText="当前账号暂无最佳成绩"
+      emptyActionLabel={demo.bound && demo.hasNextPage ? '继续加载' : undefined}
+      onEmptyAction={demo.bound && demo.hasNextPage ? () => {
+        if (!demo.isFetchingNextPage) void demo.fetchNextPage();
+      } : undefined}
+      data={sections.length ? sections : undefined}
+      sectionListProps={{
+        testID: 'osu-best-results-list',
+        refreshing: demo.bound && demo.isRefetching,
+        onRefresh: demo.bound ? () => void demo.refetch() : undefined,
+        onEndReachedThreshold: 0.35,
+        onEndReached: () => {
+          if (demo.bound && demo.hasNextPage && !demo.isFetchingNextPage) void demo.fetchNextPage();
+        },
+        ListFooterComponent: demo.bound ? (
+          <InfinitePageFooter
+            loading={demo.isFetchingNextPage}
+            failed={demo.isFetchNextPageError}
+            hasNextPage={demo.hasNextPage === true}
+            onRetry={() => void demo.fetchNextPage()}
+          />
+        ) : undefined,
+        keyExtractor: (item) => String(item.id),
+        renderSectionHeader: ({ section }) => (
+          <SongListSectionHeader title={section.title} value={`${section.data.length} 条成绩`} />
+        ),
+        renderItem: ({ item, index }) => (
+          gameId ? <OsuScoreCard gameId={gameId} score={item} position={index + 1} /> : null
+        ),
+      }}
+    />
   );
 }
 
 export function OsuRecordsScreen() {
-  const theme = useAppTheme();
-  const inset = useNativeTabBottomInset();
   const gameId = useActiveOsuGameId();
   const activeAccountId = useSession((state) => state.activeAccountId);
   const gameData = useGameData();
@@ -164,88 +146,79 @@ export function OsuRecordsScreen() {
     || filter.starMin !== '' || filter.starMax !== ''
     || filter.ppMin !== '' || filter.ppMax !== '';
   return (
-    <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <RecordsListPage<OsuBestScore>
-        beforeList={
-          <>
-            <GameSearchHeader
-              accessibilityLabel="搜索 osu! 成绩"
-              placeholder="搜索歌名、艺术家或谱面名"
-              value={filter.keyword}
-              onChangeText={filter.setKeyword}
-              loaded={scores.length}
-              total={demo.bound && demo.hasNextPage ? undefined : allScores.length}
-            />
-            <OsuRecordsFilterBar
-              gameId={gameId}
-              collapsed={filter.collapsed}
-              mods={filter.mods}
-              starMin={filter.starMin}
-              starMax={filter.starMax}
-              accuracyMin={filter.accuracyMin}
-              accuracyMax={filter.accuracyMax}
-              ppMin={filter.ppMin}
-              ppMax={filter.ppMax}
-              starBounds={starBounds}
-              onCollapsedChange={filter.setCollapsed}
-              onModsChange={filter.setMods}
-              onStarMinChange={filter.setStarMin}
-              onStarMaxChange={filter.setStarMax}
-              onAccuracyMinChange={filter.setAccuracyMin}
-              onAccuracyMaxChange={filter.setAccuracyMax}
-              onPpMinChange={filter.setPpMin}
-              onPpMaxChange={filter.setPpMax}
-              onReset={filter.clearFilters}
-            />
-          </>
-        }
-        isLoading={(isLoading || (isFiltering && scores.length === 0)) && bound}
-        isError={isError}
-        isEmpty={!bound || (!isLoading && scores.length === 0)}
-        error={error}
-        onRetry={refresh}
-        emptyText={!bound ? '请先在游戏管理中绑定 osu! 账号'
-          : hasActiveFilter ? '没有找到符合条件的已知成绩'
-            : demo.bound ? '当前账号暂无成绩' : '打开曲库歌曲后，成绩会显示在这里'}
-        emptyActionLabel={demo.bound && demo.hasNextPage ? '继续加载' : undefined}
-        onEmptyAction={demo.bound && demo.hasNextPage ? () => {
-          if (!demo.isFetchingNextPage) void demo.fetchNextPage();
-        } : undefined}
-        data={scores.length ? scores : undefined}
-        flatListProps={{
-          testID: 'osu-records-results-list',
-          style: styles.list,
-          contentInsetAdjustmentBehavior: 'automatic',
-          contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
-          scrollIndicatorInsets: { bottom: inset },
-          ...TAB_LIST_CACHE_PROPS,
-          refreshing: demo.bound ? demo.isRefetching : gameData.isRefetching || known.isRefetching,
-          onRefresh: refresh,
-          onEndReachedThreshold: 0.35,
-          onEndReached: () => {
-            if (demo.bound && demo.hasNextPage && !demo.isFetchingNextPage) void demo.fetchNextPage();
-          },
-          ListFooterComponent: demo.bound ? (
-            <InfinitePageFooter
-              loading={demo.isFetchingNextPage}
-              failed={demo.isFetchNextPageError}
-              hasNextPage={demo.hasNextPage === true}
-              onRetry={() => void demo.fetchNextPage()}
-            />
-          ) : undefined,
-          keyExtractor: (item) => String(item.id),
-          renderItem: ({ item }) => (
-            gameId ? <OsuScoreCard gameId={gameId} score={item} detailScoreId={item.id} /> : null
-          ),
-        }}
-      />
-    </View>
+    <RecordsListPage<OsuBestScore>
+      beforeList={
+        <>
+          <GameSearchHeader
+            accessibilityLabel="搜索 osu! 成绩"
+            placeholder="搜索歌名、艺术家或谱面名"
+            value={filter.keyword}
+            onChangeText={filter.setKeyword}
+            loaded={scores.length}
+            total={demo.bound && demo.hasNextPage ? undefined : allScores.length}
+          />
+          <OsuRecordsFilterBar
+            gameId={gameId}
+            collapsed={filter.collapsed}
+            mods={filter.mods}
+            starMin={filter.starMin}
+            starMax={filter.starMax}
+            accuracyMin={filter.accuracyMin}
+            accuracyMax={filter.accuracyMax}
+            ppMin={filter.ppMin}
+            ppMax={filter.ppMax}
+            starBounds={starBounds}
+            onCollapsedChange={filter.setCollapsed}
+            onModsChange={filter.setMods}
+            onStarMinChange={filter.setStarMin}
+            onStarMaxChange={filter.setStarMax}
+            onAccuracyMinChange={filter.setAccuracyMin}
+            onAccuracyMaxChange={filter.setAccuracyMax}
+            onPpMinChange={filter.setPpMin}
+            onPpMaxChange={filter.setPpMax}
+            onReset={filter.clearFilters}
+          />
+        </>
+      }
+      isLoading={(isLoading || (isFiltering && scores.length === 0)) && bound}
+      isError={isError}
+      isEmpty={!bound || (!isLoading && scores.length === 0)}
+      error={error}
+      onRetry={refresh}
+      emptyText={!bound ? '请先在游戏管理中绑定 osu! 账号'
+        : hasActiveFilter ? '没有找到符合条件的已知成绩'
+          : demo.bound ? '当前账号暂无成绩' : '打开曲库歌曲后，成绩会显示在这里'}
+      emptyActionLabel={demo.bound && demo.hasNextPage ? '继续加载' : undefined}
+      onEmptyAction={demo.bound && demo.hasNextPage ? () => {
+        if (!demo.isFetchingNextPage) void demo.fetchNextPage();
+      } : undefined}
+      data={scores.length ? scores : undefined}
+      flatListProps={{
+        testID: 'osu-records-results-list',
+        refreshing: demo.bound ? demo.isRefetching : gameData.isRefetching || known.isRefetching,
+        onRefresh: refresh,
+        onEndReachedThreshold: 0.35,
+        onEndReached: () => {
+          if (demo.bound && demo.hasNextPage && !demo.isFetchingNextPage) void demo.fetchNextPage();
+        },
+        ListFooterComponent: demo.bound ? (
+          <InfinitePageFooter
+            loading={demo.isFetchingNextPage}
+            failed={demo.isFetchNextPageError}
+            hasNextPage={demo.hasNextPage === true}
+            onRetry={() => void demo.fetchNextPage()}
+          />
+        ) : undefined,
+        keyExtractor: (item) => String(item.id),
+        renderItem: ({ item }) => (
+          gameId ? <OsuScoreCard gameId={gameId} score={item} detailScoreId={item.id} /> : null
+        ),
+      }}
+    />
   );
 }
 
 export function OsuCatalogScreen() {
-  const theme = useAppTheme();
-  const inset = useNativeTabBottomInset();
   const gameId = useActiveOsuGameId();
   const [keyword, setKeyword] = useState('');
   const [filterExpanded, setFilterExpanded] = useState(false);
@@ -304,58 +277,34 @@ export function OsuCatalogScreen() {
     </>
   ) : null;
   return (
-    <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <CatalogListPage<OsuCatalogSong>
-        beforeList={controls}
-        isLoading={query.bound && query.isLoading}
-        isError={query.isError}
-        isEmpty={!query.bound || (!query.isLoading && query.songs.length === 0)}
-        error={query.error}
-        onRetry={() => void query.refetch()}
-        emptyText={query.bound ? '没有找到符合条件的谱面' : '请先在游戏管理中绑定 osu! 账号'}
-        data={query.songs.length ? query.songs : undefined}
-        flatListProps={{
-          testID: 'osu-catalog-results-list',
-          style: styles.list,
-          contentInsetAdjustmentBehavior: 'automatic',
-          contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
-          scrollIndicatorInsets: { bottom: inset },
-          keyExtractor: (item) => String(item.beatmapSetId),
-          renderItem: ({ item }) => (
-            gameId ? <OsuSongRow gameId={gameId} song={item} /> : null
-          ),
-          onEndReachedThreshold: 0.35,
-          onEndReached: () => {
-            if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage();
-          },
-          ListFooterComponent: (
-            <InfinitePageFooter
-              loading={query.isFetchingNextPage}
-              failed={query.isFetchNextPageError}
-              hasNextPage={query.hasNextPage === true}
-              onRetry={() => void query.fetchNextPage()}
-            />
-          ),
-        }}
-      />
-    </View>
+    <CatalogListPage<OsuCatalogSong>
+      beforeList={controls}
+      isLoading={query.bound && query.isLoading}
+      isError={query.isError}
+      isEmpty={!query.bound || (!query.isLoading && query.songs.length === 0)}
+      error={query.error}
+      onRetry={() => void query.refetch()}
+      emptyText={query.bound ? '没有找到符合条件的谱面' : '请先在游戏管理中绑定 osu! 账号'}
+      data={query.songs.length ? query.songs : undefined}
+      flatListProps={{
+        testID: 'osu-catalog-results-list',
+        keyExtractor: (item) => String(item.beatmapSetId),
+        renderItem: ({ item }) => (
+          gameId ? <OsuSongRow gameId={gameId} song={item} /> : null
+        ),
+        onEndReachedThreshold: 0.35,
+        onEndReached: () => {
+          if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage();
+        },
+        ListFooterComponent: (
+          <InfinitePageFooter
+            loading={query.isFetchingNextPage}
+            failed={query.isFetchNextPageError}
+            hasNextPage={query.hasNextPage === true}
+            onRetry={() => void query.fetchNextPage()}
+          />
+        ),
+      }}
+    />
   );
 }
-
-const styles = StyleSheet.create({
-  page: { flex: 1 },
-  list: { flex: 1 },
-  listContent: { padding: 16, gap: 10 },
-  header: { gap: 9, marginBottom: 2 },
-  footer: { marginVertical: 18 },
-  sectionHeader: {
-    marginTop: 10,
-    marginBottom: 2,
-    paddingHorizontal: 2,
-    flexDirection: 'row',
-    alignItems: 'baseline',
-    justifyContent: 'space-between',
-  },
-  sectionTitle: { fontSize: 18, fontWeight: '800' },
-  sectionCount: { fontSize: 11 },
-});

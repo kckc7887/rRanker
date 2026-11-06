@@ -1,4 +1,4 @@
-import { bestImageBrandFooter } from '@/features/best-image/build-best-image-html';
+import { bestImageBrandFooter, bestImageTitleScript } from '@/features/best-image/build-best-image-html';
 import { bestImageBridgeRuntimeScript, bestImageBridgeMeasureScript, bestImageBridgeReadyScript } from '@/features/best-image/best-image-bridge-script';
 import { preparePhigrosBestImageCards, ratingName, suggestion } from './phigros-best-image';
 import { escapePhigrosBestImageHtml as escape, type PhigrosBestImageHtmlInput } from './build-phigros-best-image-html';
@@ -73,24 +73,12 @@ export function buildPhigrosBestImageAppHtml(input: PhigrosAppImageInput): strin
     const OUTPUT_WIDTH=${width},MINIMUM_HEIGHT=${Math.ceil(width * .75)},canvas=document.querySelector('.canvas');let lastHeight=0,pending=false,assetsReady=false;
     ${bestImageBridgeRuntimeScript()}
     ${bestImageBridgeMeasureScript({ layoutCall: '' })}
+    ${bestImageTitleScript}
     const fitText=()=>{
-      const context=document.createElement('canvas').getContext('2d');
-      document.querySelectorAll('.song-title').forEach(node=>{
-        const family=getComputedStyle(node).fontFamily;
-        const measure=(text,size)=>{context.font='700 '+size+'px '+family;return context.measureText(text).width;};
-        const value=node.dataset.title;let lines=[value];
-        if(measure(value,34)>448){
-          const tokens=typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter('zh',{granularity:'word'}).segment(value),part=>part.segment):value.match(/[A-Za-z0-9]+|[^A-Za-z0-9]/gu)||[];let best=Infinity;
-          for(let i=1;i<tokens.length;i++){
-            const pair=[tokens.slice(0,i).join('').trim(),tokens.slice(i).join('').trim()];
-            if(!pair[0]||!pair[1]||/^[!！?？、。，．)）ー]/u.test(pair[1])||/[(（]$/u.test(pair[0]))continue;
-            const lengths=pair.map(text=>measure(text,29));const cost=Math.max(...lengths)+Math.abs(lengths[0]-lengths[1])*.18;
-            if(cost<best){best=cost;lines=pair;}
-          }
-        }
-        node.setAttribute('font-size',Math.min(lines.length===1?34:29,448/Math.max(...lines.map(text=>measure(text,1)))));
-        node.replaceChildren(...lines.map((line,i)=>{const span=document.createElementNS('http://www.w3.org/2000/svg','tspan');span.setAttribute('x','734');span.setAttribute('y',lines.length===1?'57':String(34+i*35));span.textContent=line;return span;}));
-      });
+      fitScoreTitles('.song-title', (value, measure) => fitTwoLineTitle(value, measure, {
+        locale: 'zh', width: 448, wrapSize: 34, singleSize: 34, doubleSize: 29,
+        x: 734, singleY: 57, doubleY: 34, lineHeight: 35
+      }));
       document.querySelectorAll('[data-fit-width]').forEach(node=>{const limit=Number(node.dataset.fitWidth),length=node.getComputedTextLength();if(length>limit)node.setAttribute('font-size',Number(node.getAttribute('font-size'))*limit/length);});
     };
     const fontReady=document.fonts.load('700 30px PhigrosSans').then(()=>document.fonts.ready);

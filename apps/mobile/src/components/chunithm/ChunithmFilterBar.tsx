@@ -1,8 +1,9 @@
+import { MetricFilterRangeRow } from '@/components/game-content/MetricFilterRows';
 import { useMemo, useState } from 'react';
-import { ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ScrollView, StyleSheet, View } from 'react-native';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
-import { FilterChipFrame, NeutralChip, FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
-import { RangeSelector, type RangeBounds } from '@/components/game-content/RangeSelector';
+import { FilterRow, FilterChipFrame, NeutralChip, FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
+import type { RangeBounds } from '@/components/game-content/RangeSelector';
 import {
   CHUNITHM_DIFFICULTY_LABELS,
   type ChunithmLevelIndex,
@@ -13,7 +14,6 @@ import {
 } from '@/domain/chunithm-filters';
 import type { ChunithmRank } from '@/domain/chunithm-score-presentation';
 import type { GameVersion } from '@/domain/models';
-import { useAppTheme } from '@/theme/app-theme';
 import { ChunithmDifficultyBadge } from './ChunithmDifficultyBadge';
 
 type OpenDropdown = 'version' | 'rank-min' | 'rank-max' | null;
@@ -78,7 +78,6 @@ export function ChunithmFilterBar({
   onRankMaxChange,
   onReset,
 }: ChunithmFilterBarProps) {
-  const theme = useAppTheme();
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
   const showRankRange = onRankMinChange !== undefined && onRankMaxChange !== undefined;
   const selectedVersionLabel = versions.find((item) => String(item.id) === version)?.title ?? '全部';
@@ -113,8 +112,7 @@ export function ChunithmFilterBar({
       expandLabelPrefix="展开中二筛选" collapseLabel="收起中二筛选" resetLabel="重置中二筛选"
       onCollapsedChange={onCollapsedChange} onReset={handleReset}
       onCollapse={() => { setOpenDropdown(null); onCollapsedChange(true); }}>
-      <View style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabelPlain, { color: theme.textMuted }]}>难度</Text>
+      <FilterRow label="难度">
         <ScrollView
           contentContainerStyle={filterShellStyles.chipRowPadded}
           horizontal
@@ -133,10 +131,9 @@ export function ChunithmFilterBar({
             </FilterChipFrame>
           ))}
         </ScrollView>
-      </View>
+      </FilterRow>
 
-      <View style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabelPlain, { color: theme.textMuted }]}>版本</Text>
+      <FilterRow label="版本">
         <FilterAnchoredDropdown
           accessibilityLabel={`中二版本筛选，当前 ${selectedVersionLabel}`}
           onOpenChange={setDropdownOpen('version')}
@@ -147,19 +144,15 @@ export function ChunithmFilterBar({
           selectedValue={version}
           valueLabel={selectedVersionLabel}
         />
-      </View>
+      </FilterRow>
 
-      <View style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabelPlain, showRankRange && filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>定数</Text>
-        <RangeSelector accessibilityLabel="中二定数范围" minimum={constantBounds.minimum} maximum={constantBounds.maximum}
+      <MetricFilterRangeRow label="定数" wide={showRankRange} accessibilityLabel="中二定数范围" {...constantBounds}
           step={0.1} lowerValue={constantMin} upperValue={constantMax}
           onLowerValueChange={onConstantMinChange} onUpperValueChange={onConstantMaxChange}
           formatValue={(value) => value.toFixed(1)} testID="chunithm-filter-constant" />
-      </View>
 
       {showRankRange ? (
-        <View style={filterShellStyles.filterRow}>
-          <Text style={[filterShellStyles.filterLabelPlain, filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>评价</Text>
+        <FilterRow label="评价" wide>
           <View style={styles.rankDropdownRow}>
             <FilterAnchoredDropdown
               accessibilityLabel={`中二评价下限，当前 ${rankMin ?? '不限'}`}
@@ -184,7 +177,7 @@ export function ChunithmFilterBar({
               valueLabel={rankMax ?? '不限'}
             />
           </View>
-        </View>
+        </FilterRow>
       ) : null}
     </FilterShell>
   );

@@ -1,6 +1,6 @@
 import { bestImageUiProgress } from '@/features/best-image/best-image-ui-cache';
 import { useEffect, useMemo, useState } from 'react';
-import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
+import { ActivityIndicator, Modal, Pressable, StyleSheet, Text, View } from 'react-native';
 import { File } from 'expo-file-system';
 import { RemoteNativeImage } from '@/components/RemoteNativeImage';
 import { ImageCropper } from '@/components/ImageCropper';
@@ -11,8 +11,8 @@ import { useRizlineCatalog } from '@/hooks/use-rizline-catalog';
 import { useAppTheme } from '@/theme/app-theme';
 import { RIZLINE_RESOURCE_BASE, rizlineCoverUrl, sortRizlineRecords } from '@/domain/rizline';
 import { rizlinePackOptions } from '@/domain/rizline-filters';
-import { BestImageScreenShell, bestImageScreenSharedStyles as styles } from '@/features/best-image/best-image-screen-shell';
-import { TrophyPreview } from '@/features/best-image/best-image-collection-picker';
+import { BestImageQuantity, BestImageStyleRow, BestImageScreenShell, bestImageScreenSharedStyles as styles } from '@/features/best-image/best-image-screen-shell';
+import { TrophyBadge } from '@/components/TrophyBadge';
 import { BestImageResourcePicker } from '@/features/best-image/best-image-picker-shell';
 import { useBestImageScreenController, usePreparedBestImageSources, type BestImageTemplate, type BestImageTemplateAsset } from '@/features/best-image/use-best-image-screen-controller';
 import { useBestImageAssets } from '@/features/best-image/use-best-image-assets';
@@ -153,14 +153,15 @@ export function RizlineBestImageScreen() {
         clearFilters: () => { setFilters(defaultRizlineImageFilters()); setQuantityText('40'); setPageIndex(0); } }} />
       <Text style={{ color: theme.text }}>达成率</Text><RangeSelector minimum={0} maximum={120} step={0.01} lowerValue={filters.accuracyMin} upperValue={filters.accuracyMax}
         onLowerValueChange={value => changeFilter('accuracyMin', value)} onUpperValueChange={value => changeFilter('accuracyMax', value)} formatValue={value => `${value.toFixed(2)}%`} accessibilityLabel="达成率范围" />
-      <Text style={{ color: theme.text }}>数量</Text><TextInput value={quantityText} onChangeText={value => { setQuantityText(value); setPageIndex(0); }} keyboardType="number-pad" placeholder="0 为全部" placeholderTextColor={theme.textMuted} style={[styles.textInput, { color: theme.text, borderColor: theme.border }]} />
+      <BestImageQuantity value={quantityText} placeholder="0 为全部" onChange={value => {
+        setQuantityText(value);
+        setPageIndex(0);
+      }} />
       {!formValid ? <Text style={{ color: theme.danger }}>请输入有效范围和非负整数数量</Text> : !hasRecords ? <Text style={{ color: theme.textMuted }}>没有符合条件的成绩</Text> : null}
     </> : null,
     styleListHeader: null,
-    styleRows: (Object.keys(LABELS) as Picker[]).map(kind => <Pressable key={kind} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]} onPress={() => setPicker(kind)}>
-      <View style={styles.stylePreview}>{preview(kind) ? <RemoteNativeImage cacheProfile="thumbnail" gameId="rizline" source={{ uri: preview(kind)! }} resizeMode="cover" style={kind === 'avatar' ? local.avatar : local.background} /> : kind.startsWith('signature') ? <TrophyPreview fallback={selected(kind)?.name} /> : <Text style={{ color: theme.textMuted }}>—</Text>}</View>
-      <View style={styles.styleCopy}><Text style={[styles.styleName, { color: theme.text }]}>{LABELS[kind]}</Text><Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{label(kind) || '未设置'}</Text></View><Text style={{ color: theme.textMuted }}>›</Text>
-    </Pressable>),
+    styleRows: (Object.keys(LABELS) as Picker[]).map(kind => <BestImageStyleRow key={kind} label={LABELS[kind]} value={label(kind) || '未设置'} onPress={() => setPicker(kind)}
+          preview={preview(kind) ? <RemoteNativeImage cacheProfile="thumbnail" gameId="rizline" source={{ uri: preview(kind)! }} resizeMode="cover" style={kind === 'avatar' ? local.avatar : local.background} /> : kind.startsWith('signature') ? <TrophyBadge fallback={selected(kind)?.name} /> : <Text style={{ color: theme.textMuted }}>—</Text>} />),
     widths: [1080, 1440, 2160], activeWidth: width, onChooseWidth: setWidth,
     dimensionMeta: `${width} × ${pageHeights[pages[pageIndex]?.id ?? ''] ?? Math.ceil(width * 0.75)} px · 每页最多 40 张`,
     preparation: { drawingReady: drawing.ready, drawingProgress: drawing.progress, gameProgress: .8 * game.progress + .2 * prepared.progress, gameReady: game.ready && prepared.ready,
@@ -168,7 +169,7 @@ export function RizlineBestImageScreen() {
     pickers: <>
       <BestImageResourcePicker visible={picker !== null} label={picker ? LABELS[picker] : ''} items={items} getKey={item => item.id} getName={item => item.name} getMeta={item => item.meta}
         searchText={item => [item.name, item.id, ...item.aliases].join(' ')}
-        renderPreview={item => item.uri ? <RemoteNativeImage gameId="rizline" cacheProfile="thumbnail" source={{ uri: item.uri }} resizeMode="cover" style={picker === 'avatar' ? local.avatar : local.background} /> : <TrophyPreview fallback={item.name} />}
+        renderPreview={item => item.uri ? <RemoteNativeImage gameId="rizline" cacheProfile="thumbnail" source={{ uri: item.uri }} resizeMode="cover" style={picker === 'avatar' ? local.avatar : local.background} /> : <TrophyBadge fallback={item.name} />}
         isSelected={item => selection?.mode === 'item' && selection.id === item.id} onClose={() => setPicker(null)}
         aboveList={picker === 'avatar' && avatar ? <Pressable style={local.action} onPress={() => { setCropId(avatar.id); setPicker(null); }}><Text style={{ color: theme.accent }}>调整当前头像</Text></Pressable> : null}
         currentChoice={{ label: `使用玩家当前${picker ? LABELS[picker] : ''}`, selected: selection?.mode === 'current', onPress: () => choose({ mode: 'current' }) }}

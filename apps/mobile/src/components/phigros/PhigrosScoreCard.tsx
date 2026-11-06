@@ -1,5 +1,5 @@
 import { memo } from 'react';
-import { StyleSheet, Text, View } from 'react-native';
+import { StyleSheet, Text } from 'react-native';
 import { PhigrosDifficultyBadge } from './PhigrosDifficultyBadge';
 import { PhigrosRateBadge, resolvePhigrosRate } from './PhigrosRateBadge';
 import { PhigrosScoreValue } from './PhigrosScoreValue';
@@ -9,7 +9,7 @@ import { formatPhigrosSongRks, PHIGROS_MAX_SCORE } from '@/domain/phigros';
 import { formatPushAcc } from '@/domain/phigros-push';
 import { resolvePhigrosXingKind } from '@/domain/phigros-xing';
 import { useAppTheme } from '@/theme/app-theme';
-import { COMPACT_METRIC_CARD_STYLES, GameScoreCard } from '@/components/game-content/GameScoreCard';
+import { GameScoreCard, ScoreCardMetric, ScoreCardBadges } from '@/components/game-content/GameScoreCard';
 import { presentPhigrosScore } from '@/features/game-content/adapters';
 
 export type PhigrosPushHint = {
@@ -50,29 +50,21 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   return (
     <GameScoreCard
       artwork={{ source: artworkSource }}
-      cardStyle={styles.card}
-      mainStyle={styles.main}
-      metricSide={{
-        blockStyle: styles.stats,
-        lines: [
-          { text: pushHint ? formatPushAcc(pushHint.targetAcc) : accText, style: styles.acc, color: theme.text },
-          { text: rksText, style: styles.rks, color: theme.accent },
-        ],
-      }}
+      side={<ScoreCardMetric numericLabel label={pushHint ? formatPushAcc(pushHint.targetAcc) : accText}
+        labelColor={theme.text} value={rksText} />}
       presentation={presentation}
       pressable={pressable}
-      titleStyle={styles.title}
     >
         <PhigrosScoreValue
           score={score}
           variant={isPhi ? 'phi' : isFc ? 'fc' : 'normal'}
           textColor={theme.text}
         />
-        <View style={styles.tags}>
+        <ScoreCardBadges>
           <PhigrosDifficultyBadge levelIndex={record.levelIndex} constant={record.difficultyConstant} />
           <PhigrosRateBadge rate={rate} fc={record.fc === 'ap'} />
           {xingKind ? <PhigrosXingBadge kind={xingKind} /> : null}
-        </View>
+        </ScoreCardBadges>
         {pushHint ? (
           <Text style={[styles.pushLine, { color: theme.textSecondary }]}>
             {formatPushAcc(pushHint.currentAcc)}
@@ -90,8 +82,6 @@ export const PhigrosScoreCard = memo(function PhigrosScoreCard({
   );
 });
 
-export const PHIGROS_SCORE_CARD_STYLES = StyleSheet.create({
-  ...COMPACT_METRIC_CARD_STYLES,
+const styles = StyleSheet.create({
   pushLine: { fontSize: 12, fontWeight: '600', marginTop: 2 },
 });
-const styles = PHIGROS_SCORE_CARD_STYLES;

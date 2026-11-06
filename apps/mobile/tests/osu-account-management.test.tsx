@@ -1,6 +1,5 @@
 import { fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
-import { Text } from 'react-native';
 import { BoundAccountGroupedList } from '@/components/BoundAccountGroupedList';
 import { createLocalMaimaiAccount, createOsuBoundAccount } from '@/domain/bound-account';
 
@@ -56,7 +55,7 @@ describe('BoundAccountGroupedList osu! 家族三级结构', () => {
     expect(screen.getByText('osu! 官方')).toBeTruthy();
   });
 
-  it('renderRatingTag 槽位注入 osu PP 标签', async () => {
+  it('显示当前模式的 PP', async () => {
     const screen = await render(
       <BoundAccountGroupedList
         accounts={[osuStandard]}
@@ -64,7 +63,6 @@ describe('BoundAccountGroupedList osu! 家族三级结构', () => {
         activeAccountId={osuStandard.id}
         onToggleGame={jest.fn()}
         onSelectAccount={jest.fn()}
-        renderRatingTag={(account) => (account.providerId === 'osu' ? <Text>{account.scoreDisplay}</Text> : null)}
       />,
     );
     expect(screen.getByText('1234')).toBeTruthy();

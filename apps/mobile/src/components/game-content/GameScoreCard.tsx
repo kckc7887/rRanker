@@ -49,41 +49,50 @@ export type ScoreCardArtwork = {
   scale?: number;
 };
 
-export type ScoreCardMetricSide = {
-  blockStyle: StyleProp<ViewStyle>;
-  lines: readonly {
-    text?: string;
-    style: StyleProp<TextStyle>;
-    color: string;
-  }[];
-};
-
-export type ScoreCardTagRows = {
-  containerStyle: StyleProp<ViewStyle>;
-  rowStyle: StyleProp<ViewStyle>;
+type ScoreCardTagRows = {
   rows: readonly { content: ReactNode; testID?: string }[];
   testID?: string;
 };
 
-export const COMPACT_METRIC_CARD_STYLES = StyleSheet.create({
-  card: { borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
-  main: { flex: 1, minWidth: 0, gap: 4 },
-  title: { fontSize: 15, fontWeight: '700' },
-  tags: { flexDirection: 'row', alignItems: 'center', gap: 5, marginTop: 2 },
-  stats: { minWidth: 56, alignItems: 'flex-end', gap: 4 },
-  acc: { fontSize: 12, fontWeight: '700' },
-  rks: { fontSize: 20, fontWeight: '900' },
-});
+export function ScoreCardMetric({ label, value, numericLabel, labelColor, valueColor, style, labelStyle, valueStyle }: {
+  label?: string; value?: string | number; numericLabel?: boolean; labelColor?: string; valueColor?: string;
+  style?: StyleProp<ViewStyle>; labelStyle?: StyleProp<TextStyle>; valueStyle?: StyleProp<TextStyle>;
+}) {
+  const theme = useAppTheme();
+  return <View style={[styles.metric, numericLabel && styles.numericMetric, style]}>
+    <Text style={[styles.metricLabel, numericLabel && styles.accuracy, labelStyle,
+      { color: labelColor ?? theme.textMuted }]}>{label}</Text>
+    <Text style={[styles.metricValue, numericLabel && styles.numericValue, valueStyle,
+      { color: valueColor ?? theme.accent }]}>{value}</Text>
+  </View>;
+}
+
+export function ScoreCardBadges({ children, style, testID }: { children: ReactNode; style?: StyleProp<ViewStyle>; testID?: string }) {
+  return <View style={[styles.badges, style]} testID={testID}>{children}</View>;
+}
+
+function ArtworkLayer({ source, gameId, scale, blur, overlay, radius }: {
+  source: string; gameId: ScoreCardPresentation['gameId']; scale?: number; blur: number; overlay: string;
+  radius: ViewStyle['borderRadius'];
+}) {
+  const [failed, setFailed] = useState(false);
+  if (failed) return null;
+  return <View pointerEvents="none" style={[StyleSheet.absoluteFill, styles.artworkClip, { borderRadius: radius }]}>
+    <RemoteImage accessibilityIgnoresInvertColors blurRadius={blur} cacheProfile="thumbnail" contentFit="cover"
+      gameId={gameId} onError={() => setFailed(true)} source={source}
+      style={[StyleSheet.absoluteFill, scale ? { transform: [{ scale }] } : null]} testID="score-card-artwork" />
+    <View style={[StyleSheet.absoluteFill, { backgroundColor: overlay }]} testID="score-card-artwork-overlay" />
+  </View>;
+}
 
 export function GameScoreCard({
   presentation,
   children,
   side,
-  metricSide,
   tagRows,
-  cardStyle,
-  mainStyle,
-  titleStyle,
+  cardStyle = styles.card,
+  mainStyle = styles.main,
+  titleStyle = styles.title,
   pressedStyle,
   pressable = true,
   onPress,
@@ -93,11 +102,10 @@ export function GameScoreCard({
   presentation: ScoreCardPresentation;
   children: ReactNode;
   side?: ReactNode;
-  metricSide?: ScoreCardMetricSide;
   tagRows?: ScoreCardTagRows;
-  cardStyle: StyleProp<ViewStyle>;
-  mainStyle: StyleProp<ViewStyle>;
-  titleStyle: StyleProp<TextStyle>;
+  cardStyle?: StyleProp<ViewStyle>;
+  mainStyle?: StyleProp<ViewStyle>;
+  titleStyle?: StyleProp<TextStyle>;
   pressedStyle?: StyleProp<ViewStyle>;
   pressable?: boolean;
   onPress?: () => void;
@@ -111,66 +119,29 @@ export function GameScoreCard({
   const storedArtworkTransparency = useThemeStore((state) => state.scoreCardArtworkTransparency);
   const artworkBlur = artworkScope?.artworkBlur ?? storedArtworkBlur;
   const artworkTransparency = artworkScope?.artworkTransparency ?? storedArtworkTransparency;
-  const [failedArtworkSource, setFailedArtworkSource] = useState<string | null>(null);
   const artworkSource = artwork?.source?.trim() || null;
-  const showArtwork = artworkActive && artworkSource !== null && failedArtworkSource !== artworkSource;
   const overlayColor = theme.dark ? '0,0,0' : '255,255,255';
-  const cardBackground = { backgroundColor: theme.surface };
-  const resolvedCardStyle = showArtwork
-    ? [cardStyle, cardBackground, styles.artworkClip]
-    : [cardStyle, cardBackground];
+  const resolvedCardStyle = [cardStyle, { backgroundColor: theme.surface }];
   const openDetail = onPress ?? (() => router.push(detailTargetHref(presentation.route) as Href));
-  const sideNode = side !== undefined
-    ? side
-    : metricSide
-      ? (
-          <View style={metricSide.blockStyle}>
-            {metricSide.lines.map((line, index) => (
-              <Text key={index} style={[line.style, { color: line.color }]}>{line.text}</Text>
-            ))}
-          </View>
-        )
-      : null;
   const content = (
     <>
-      {showArtwork ? (
-        <>
-          <RemoteImage
-            accessibilityIgnoresInvertColors
-            blurRadius={artworkBlur}
-            cacheProfile="thumbnail"
-            contentFit="cover"
-            gameId={presentation.gameId}
-            onError={() => setFailedArtworkSource(artworkSource)}
-            pointerEvents="none"
-            source={artworkSource}
-            style={[StyleSheet.absoluteFill, artwork?.scale ? { transform: [{ scale: artwork.scale }] } : null]}
-            testID="score-card-artwork"
-          />
-          <View
-            pointerEvents="none"
-            style={[
-              StyleSheet.absoluteFill,
-              { backgroundColor: `rgba(${overlayColor},${1 - artworkTransparency / 100})` },
-            ]}
-            testID="score-card-artwork-overlay"
-          />
-        </>
-      ) : null}
+      {artworkActive && artworkSource ? <ArtworkLayer key={`${presentation.gameId}|${artworkSource}`}
+        source={artworkSource} gameId={presentation.gameId} scale={artwork?.scale} blur={artworkBlur}
+        overlay={`rgba(${overlayColor},${1 - artworkTransparency / 100})`} radius={StyleSheet.flatten(cardStyle)?.borderRadius} /> : null}
       <View style={mainStyle}>
         <Text numberOfLines={1} style={[titleStyle, { color: theme.text }]}>
           {presentation.position ? `${presentation.position}. ` : ''}{presentation.title}
         </Text>
         {children}
         {tagRows && (
-          <View style={tagRows.containerStyle} testID={tagRows.testID}>
+          <View style={styles.tagRows} testID={tagRows.testID}>
             {tagRows.rows.map((row, index) => (
-              <View key={index} style={tagRows.rowStyle} testID={row.testID}>{row.content}</View>
+              <ScoreCardBadges key={index} testID={row.testID}>{row.content}</ScoreCardBadges>
             ))}
           </View>
         )}
       </View>
-      {sideNode}
+      {side}
     </>
   );
 
@@ -213,5 +184,16 @@ export function GameScoreCard({
 }
 
 const styles = StyleSheet.create({
+  card: { borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 12 },
+  main: { flex: 1, minWidth: 0, gap: 4 },
+  title: { fontSize: 15, fontWeight: '700' },
+  tagRows: { gap: 5, marginTop: 4 },
+  badges: { flexDirection: 'row', alignItems: 'center', flexWrap: 'wrap', gap: 5 },
+  metric: { minWidth: 58, alignItems: 'flex-end', gap: 2 },
+  numericMetric: { minWidth: 56, gap: 4 },
+  metricLabel: { fontSize: 10, fontWeight: '700' },
+  accuracy: { fontSize: 12 },
+  metricValue: { fontSize: 19, fontWeight: '900' },
+  numericValue: { fontSize: 20 },
   artworkClip: { overflow: 'hidden' },
 });

@@ -15,7 +15,6 @@ import { DxRatingCard } from '@/components/DxRatingCard';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { MaimaiSyncGuideContent } from '@/components/maimai/MaimaiSyncGuideSheet';
 import { MaimaiUploadTabs } from '@/components/maimai/MaimaiUploadTabs';
-import { OsuRatingTag } from '@/components/osu/OsuRatingTag';
 import { QueryStateView } from '@/components/QueryStateView';
 import { UploadDataSheet } from '@/components/UploadDataSheet';
 import { router,type Href } from 'expo-router';
@@ -41,7 +40,6 @@ import { useGamePickerUi } from '@/state/game-picker-ui';
 import { applyLxnsTokenRotation,UNBOUND_ACCOUNT_ID,useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
 
-import { isOsuGameId } from '@/domain/game-mode-family';
 import { useAppTheme } from '@/theme/app-theme';
 
 export default function OverviewTabScreen() {
@@ -50,6 +48,35 @@ export default function OverviewTabScreen() {
 
 export function OverviewScreen() {
   return <PublicOverviewScreen />;
+}
+
+function OverviewActions({ bundle, busy, uploadHint, onSync, onUpload, onGuide }: {
+  bundle: GameDataBundle; busy: boolean; uploadHint: string;
+  onSync: () => void; onUpload: () => void; onGuide: () => void;
+}) {
+  const theme = useAppTheme();
+  const local = bundle.payload.kind === 'maimai' && bundle.providerId === 'local';
+  const paired = !local && (bundle.payload.kind === 'maimai' || bundle.payload.kind === 'chunithm');
+  const hint = local ? uploadHint : syncProviderHint(bundle.providerId);
+  const sync = <Pressable accessibilityRole="button"
+    accessibilityLabel={local ? `同步本地查分器数据，${hint}` : `同步数据，当前 ${hint}`}
+    disabled={!local && busy} onPress={local ? onUpload : onSync}
+    style={({ pressed }) => [paired ? styles.actionHalf : [styles.syncButton, { backgroundColor: theme.accent }],
+      pressed && styles.syncPressed, !local && busy && styles.syncDisabled]}>
+    <Text style={[styles.syncText, { color: theme.onAccent }]}>{!local && busy ? '同步中…' : '同步数据'}</Text>
+    <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>{hint}</Text>
+  </Pressable>;
+  if (!paired) return sync;
+  const guide = bundle.payload.kind === 'chunithm';
+  return <View style={[styles.actionRow, { backgroundColor: theme.accent }]}>
+    <Pressable accessibilityRole="button" accessibilityLabel={guide ? '上传数据，打开同步引导' : `上传数据，${uploadHint}`}
+      onPress={guide ? onGuide : onUpload} style={({ pressed }) => [styles.actionHalf, pressed && styles.syncPressed]}>
+      <Text style={[styles.syncText, { color: theme.onAccent }]}>上传数据</Text>
+      <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>{guide ? '同步引导' : uploadHint}</Text>
+    </Pressable>
+    <View style={[styles.actionDivider, { backgroundColor: theme.onAccent, opacity: 0.35 }]} />
+    {sync}
+  </View>;
 }
 
 function PublicOverviewScreen() {
@@ -165,87 +192,13 @@ function PublicOverviewScreen() {
 
             <DxRatingCard {...overviewRatingCard(bundle)} />
 
-            {bundle.payload.kind === 'maimai' && bundle.providerId === 'local' ? (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`同步本地查分器数据，${compactUploadPhaseLabel(uploadPhase)}`}
-                onPress={openUpload}
-                style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.accent }, pressed && styles.syncPressed]}
-              >
-                <Text style={[styles.syncText, { color: theme.onAccent }]}>同步数据</Text>
-                <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>{compactUploadPhaseLabel(uploadPhase)}</Text>
-              </Pressable>
-            ) : bundle.payload.kind === 'maimai' ? (
-              <View style={[styles.actionRow, { backgroundColor: theme.accent }]}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`上传数据，${compactUploadPhaseLabel(uploadPhase)}`}
-                  onPress={openUpload}
-                  style={({ pressed }) => [styles.actionHalf, pressed && styles.syncPressed]}
-                >
-                  <Text style={[styles.syncText, { color: theme.onAccent }]}>上传数据</Text>
-                  <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>{compactUploadPhaseLabel(uploadPhase)}</Text>
-                </Pressable>
-                <View style={[styles.actionDivider, { backgroundColor: theme.onAccent, opacity: 0.35 }]} />
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
-                  disabled={syncBusy}
-                  onPress={() => void syncData()}
-                  style={({ pressed }) => [
-                    styles.actionHalf,
-                    pressed && styles.syncPressed,
-                    syncBusy && styles.syncDisabled,
-                  ]}
-                >
-                  <Text style={[styles.syncText, { color: theme.onAccent }]}>{syncBusy ? '同步中…' : '同步数据'}</Text>
-                  <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>{syncProviderHint(bundle.providerId)}</Text>
-                </Pressable>
-              </View>
-            ) : bundle.payload.kind === 'chunithm' ? (
-              <View style={[styles.actionRow, { backgroundColor: theme.accent }]}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="上传数据，打开同步引导"
-                  onPress={openChunithmUpload}
-                  style={({ pressed }) => [styles.actionHalf, pressed && styles.syncPressed]}
-                >
-                  <Text style={[styles.syncText, { color: theme.onAccent }]}>上传数据</Text>
-                  <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>同步引导</Text>
-                </Pressable>
-                <View style={[styles.actionDivider, { backgroundColor: theme.onAccent, opacity: 0.35 }]} />
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
-                  disabled={syncBusy}
-                  onPress={() => void syncData()}
-                  style={({ pressed }) => [
-                    styles.actionHalf,
-                    pressed && styles.syncPressed,
-                    syncBusy && styles.syncDisabled,
-                  ]}
-                >
-                  <Text style={[styles.syncText, { color: theme.onAccent }]}>{syncBusy ? '同步中…' : '同步数据'}</Text>
-                  <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>{syncProviderHint(bundle.providerId)}</Text>
-                </Pressable>
-              </View>
-            ) : bundle.gameId === 'chunithm' ? (
+            {bundle.gameId === 'chunithm' && bundle.payload.kind !== 'chunithm' ? (
               <View style={[styles.card, { backgroundColor: theme.surface }]}>
                 <Text style={[styles.cardTitle, { color: theme.text }]}>请绑定落雪账号</Text>
                 <Text style={[styles.body, { color: theme.textSecondary }]}>前往游戏管理绑定后，即可同步中二节奏成绩。</Text>
               </View>
-            ) : (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`同步数据，当前 ${syncProviderHint(bundle.providerId)}`}
-                disabled={syncBusy}
-                onPress={() => void syncData()}
-                style={({ pressed }) => [styles.syncButton, { backgroundColor: theme.accent }, pressed && styles.syncPressed, syncBusy && styles.syncDisabled]}
-              >
-                <Text style={[styles.syncText, { color: theme.onAccent }]}>{syncBusy ? '同步中…' : '同步数据'}</Text>
-                <Text style={[styles.actionHint, { color: theme.onAccent, opacity: 0.75 }]}>{syncProviderHint(bundle.providerId)}</Text>
-              </Pressable>
-            )}
+            ) : <OverviewActions bundle={bundle} busy={syncBusy} uploadHint={compactUploadPhaseLabel(uploadPhase)}
+                onSync={() => void syncData()} onUpload={openUpload} onGuide={openChunithmUpload} />}
 
             {bundle.payload.kind === 'rizline' && bundle.payload.requiresLogin ? (
               <Text style={[styles.body, { color: theme.textSecondary }]}>登录已失效，请在游戏管理中重新绑定账号。</Text>
@@ -324,11 +277,6 @@ function PublicOverviewScreen() {
         onClose={() => setPickerVisible(false)}
         onToggleGame={toggleExpandedGameId}
         onSelectAccount={onSelectAccount}
-        renderRatingTag={(account) => (
-          account.providerId === 'osu' && isOsuGameId(account.gameId)
-            ? <OsuRatingTag display={account.scoreDisplay} />
-            : null
-        )}
       />
 
       <UploadDataSheet

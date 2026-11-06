@@ -1,7 +1,7 @@
+import { ChartTags } from '@/components/game-content/ChartTags';
 import { Pressable as NativePressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Pressable as GesturePressable } from 'react-native-gesture-handler';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppModal } from '@/components/AppModal';
+import { AppSheet } from '@/components/AppSheet';
 import { useNotification } from '@/components/AppNotification';
 import type { PhigrosKyouResolvedTag, PhigrosKyouTagType } from '@/domain/phigros-kyou';
 import { useAppTheme } from '@/theme/app-theme';
@@ -20,9 +20,6 @@ export function PhigrosKyouChartTags({
 }) {
   const theme = useAppTheme();
   const { showActionNotification } = useNotification();
-  if (tags.length === 0) return null;
-  const visible = tags.slice(0, 4);
-  const remaining = tags.length - visible.length;
   const showTag = (tag: PhigrosKyouResolvedTag) => showActionNotification({
     title: tag.name,
     message: `${tag.description || 'Kyou 暂未提供说明'}\n票数：${tag.votes} · ${tag.type === 'primary' ? '主要难点' : '细分配置'}`,
@@ -30,10 +27,9 @@ export function PhigrosKyouChartTags({
     actions: [{ label: '知道了', tone: 'cancel' }],
   });
 
-  return <>
-    <View testID="phigros-kyou-chart-tags" style={styles.block}>
-      <View style={styles.wrap}>
-        {visible.map((tag) => <GesturePressable key={tag.id} accessibilityRole="button"
+  return <ChartTags tags={tags} testID="phigros-kyou-chart-tags" onShowAll={() => onShowAll(tags)}
+    moreColor={theme.accent} moreStyle={[styles.more, { backgroundColor: theme.accentSoft, borderColor: theme.accent }]}
+    renderTag={tag => <GesturePressable key={tag.id} accessibilityRole="button"
           accessibilityLabel={`谱面标签 ${tag.name}，${tag.votes} 票，点击查看说明`}
           hitSlop={8} testID={`phigros-kyou-chart-tag-${tag.id}`} onPress={() => showTag(tag)}
           style={({ pressed }) => [styles.tag, {
@@ -45,16 +41,7 @@ export function PhigrosKyouChartTags({
           </Text>
           <Text style={[styles.tagText, { color: tag.type === 'primary' ? theme.accent : theme.textSecondary }]}>{tag.name}</Text>
           <Text style={[styles.voteText, { color: tag.type === 'primary' ? theme.accent : theme.textMuted }]}>{tag.votes}</Text>
-        </GesturePressable>)}
-        {remaining > 0 ? <GesturePressable accessibilityRole="button"
-          accessibilityLabel={`查看全部${tags.length}个谱面标签，另有${remaining}个`}
-          hitSlop={8} testID="phigros-kyou-chart-tags-more" onPress={() => onShowAll(tags)}
-          style={({ pressed }) => [styles.more, { backgroundColor: theme.accentSoft, borderColor: theme.accent }, pressed && styles.pressed]}>
-          <Text style={[styles.moreText, { color: theme.accent }]}>+{remaining}</Text>
-        </GesturePressable> : null}
-      </View>
-    </View>
-  </>;
+        </GesturePressable>} />;
 }
 
 export function PhigrosKyouChartTagsSheet({
@@ -67,7 +54,6 @@ export function PhigrosKyouChartTagsSheet({
   onClose: () => void;
 }) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const { showActionNotification } = useNotification();
   const showTag = (tag: PhigrosKyouResolvedTag) => showActionNotification({
     title: tag.name,
@@ -76,19 +62,9 @@ export function PhigrosKyouChartTagsSheet({
     actions: [{ label: '知道了', tone: 'cancel' }],
   });
   return (
-    <AppModal animationType="slide" presentationStyle="pageSheet" testID="phigros-kyou-chart-tags-sheet" visible={visible}
-      onRequestClose={onClose}>
-      <View style={[styles.sheet, { backgroundColor: theme.background, paddingBottom: Math.max(insets.bottom, 12) }]}>
-        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-        <View style={styles.header}>
-          <View style={styles.headerSpacer} />
-          <Text style={[styles.title, { color: theme.text }]}>谱面标签</Text>
-          <NativePressable accessibilityRole="button" accessibilityLabel="关闭谱面标签"
-            onPress={onClose} style={({ pressed }) => [styles.close, pressed && styles.pressed]}>
-            <Text style={[styles.closeText, { color: theme.accent }]}>完成</Text>
-          </NativePressable>
-        </View>
-        <ScrollView contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
+    <AppSheet title="谱面标签" visible={visible} onRequestClose={onClose} testID="phigros-kyou-chart-tags-sheet"
+      rightAction={{ label: '完成', accessibilityLabel: '关闭谱面标签', onPress: onClose }}>
+      <ScrollView contentContainerStyle={styles.sheetContent} showsVerticalScrollIndicator={false}>
           {GROUPS.map((group) => {
             const items = tags.filter((tag) => tag.type === group.type);
             if (items.length === 0) return null;
@@ -116,29 +92,18 @@ export function PhigrosKyouChartTagsSheet({
               </NativePressable>)}
             </View>;
           })}
-        </ScrollView>
-      </View>
-    </AppModal>
+      </ScrollView>
+    </AppSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  block: { marginTop: 10 },
-  wrap: { flexDirection: 'row', flexWrap: 'wrap', gap: 6 },
   tag: { minHeight: 36, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 5 },
   typeMark: { fontSize: 9, lineHeight: 13, fontWeight: '900' },
   tagText: { fontSize: 12, lineHeight: 16, fontWeight: '700' },
   voteText: { fontSize: 10, lineHeight: 14, fontWeight: '700' },
   more: { minWidth: 44, minHeight: 36, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
-  moreText: { fontSize: 12, fontWeight: '800' },
   pressed: { opacity: 0.65 },
-  sheet: { flex: 1 },
-  grabber: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, marginTop: 8, marginBottom: 4 },
-  header: { minHeight: 48, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  headerSpacer: { width: 52 },
-  title: { fontSize: 18, lineHeight: 24, fontWeight: '700' },
-  close: { minWidth: 52, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
-  closeText: { fontSize: 16, lineHeight: 22, fontWeight: '600' },
   sheetContent: { paddingHorizontal: 20, paddingTop: 10, paddingBottom: 28, gap: 22 },
   group: { gap: 8 },
   groupHeader: { alignSelf: 'flex-start', minHeight: 28, borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, flexDirection: 'row', alignItems: 'center', gap: 6 },

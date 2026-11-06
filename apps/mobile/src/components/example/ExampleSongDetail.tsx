@@ -5,18 +5,16 @@ import { StatusBar } from 'expo-status-bar';
 import { Card } from '@/components/Card';
 import { QueryStateView } from '@/components/QueryStateView';
 import { RemoteImage } from '@/components/RemoteImage';
-import { TagEditor } from '@/components/TagEditor';
+import { LibraryTagEditor } from '@/components/game-content/LibraryTagEditor';
 import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import { useStackScreenReady } from '@/components/CachedTabScreen';
-import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { DetailGestureRoot, DetailPressable } from '@/components/game-content/DetailPressable';
-import { FloatingSongDetailChrome } from '@/components/game-content/FloatingSongDetailChrome';
+import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { SongDetailHero } from '@/components/game-content/SongDetailHero';
 import { SongMetadataTable } from '@/components/game-content/SongMetadataTable';
 import { VERTICAL_SONG_DETAIL_STYLES as styles } from '@/components/game-content/SongDetailChromeStyles';
 import { EXAMPLE_DIFFICULTY_COLORS, type ExampleRecord } from '@/domain/example';
-import { buildTagHistory } from '@/domain/user-library';
 import { presentExampleRecord } from '@/features/game-content/adapters/example';
 import { useGameData } from '@/hooks/use-game-data';
 import { useUserLibrary } from '@/hooks/use-user-library';
@@ -34,7 +32,7 @@ export function ExampleSongDetail({ songId }: { songId: string }) {
     <QueryStateView data={record} isLoading={query.isPending} isError={query.isError} error={query.error} isEmpty={!record}
       emptyText="找不到这首歌曲" onRetry={() => void query.refetch()}
       renderData={data => <ExampleDetailContent key={data.song.id} record={data} library={library} />} />
-    <FloatingSongDetailChrome songTitle={record?.song.title} favorite={favorite} favoriteDisabled={library.isLoading || library.isUpdating}
+    <SongDetailChrome songTitle={record?.song.title} favorite={favorite} favoriteDisabled={library.isLoading || library.isUpdating}
       onToggleFavorite={record ? () => { void library.setSongFavorite(songId, !favorite); } : undefined} />
   </View></>;
 }
@@ -43,26 +41,18 @@ function ExampleDetailContent({ record, library }: { record: ExampleRecord; libr
   const theme = useAppTheme(); const { width } = useWindowDimensions(); const ready = useStackScreenReady();
   const [coverFailed, setCoverFailed] = useState(false); const { song } = record;
   const presentation = presentExampleRecord(record);
-  const songKey = library.songKey(song.id); const chartKey = library.chartKey(song.id, 'SD', 0);
-  const songItem = library.data?.find(item => item.key === songKey);
+  const chartKey = library.chartKey(song.id, 'SD', 0);
   const chartItem = library.data?.find(item => item.key === chartKey);
   const practice = chartItem?.kind === 'chart' && chartItem.practice;
   const pending = library.isLoading || library.isUpdating;
   return <ScrollView contentContainerStyle={styles.content}>
-    <SongDetailHero size={width} style={styles.hero}
+    <SongDetailHero size={width} id={`ID${song.id}`} title={song.title} artist={song.artist} shadeColors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.65)']}
       cover={coverFailed ? undefined : <RemoteImage source={song.coverUrl} gameId="example" cacheProfile="artwork"
-        contentFit="cover" style={StyleSheet.absoluteFill} onError={() => setCoverFailed(true)} />}
-      placeholderStyle={[styles.heroPlaceholder, { backgroundColor: theme.input }]} placeholderNoteStyle={styles.heroPlaceholderNote}
-      shadeColors={['rgba(0,0,0,0)', 'rgba(0,0,0,0.65)']} shadeStyle={styles.heroShade} copyStyle={styles.heroCopy}>
-      <Text style={styles.songId}>ID{song.id}</Text>
-      <AutoScrollText text={song.title} textStyle={styles.title} style={styles.singleLine} contentContainerStyle={styles.singleLineContent} />
-      <Text style={styles.artist}>{song.artist}</Text>
-    </SongDetailHero>
+        contentFit="cover" style={StyleSheet.absoluteFill} onError={() => setCoverFailed(true)} />} />
     <SongMetadataTable accessibilityLabel={song.title} testIDPrefix="example-metadata" items={[
       { key: 'genre', label: '分类', value: song.genre, flex: 1 }, { key: 'bpm', label: 'BPM', value: String(song.bpm), flex: 1 },
       { key: 'version', label: '版本', value: song.version, flex: 1 },
-    ]} cellStyle={styles.metadataCell} labelStyle={styles.metadataLabel} measureStyle={styles.metadataValueMeasure}
-      style={styles.metadataTable} valueBlockStyle={styles.metadataValueBlock} valueStyle={styles.metadataValue} />
+    ]} />
     {ready ? <>
       <View style={localStyles.chartWrap}><LinearGradient colors={EXAMPLE_DIFFICULTY_COLORS}
         start={{ x: 0, y: 0 }} end={{ x: 1, y: 1 }} style={localStyles.chartBorder}>
@@ -82,14 +72,12 @@ function ExampleDetailContent({ record, library }: { record: ExampleRecord; libr
               <Text style={[styles.actionText, localStyles.actionText]}>{practice ? '移出练习清单' : '加入练习清单'}</Text>
             </LinearGradient>
           </DetailPressable></DetailGestureRoot>
-          <TagEditor readState={library.tagReadState} testID="example-chart-tags" tags={chartItem?.tags ?? []} presets={library.tagPresets}
-            historyTags={() => buildTagHistory(library.data ?? [], chartKey, library.tagPresets)} disabled={pending}
-            onPresetsChange={library.setTagPresets} onChange={tags => library.setTags({ kind: 'chart', songId: song.id, type: 'SD', levelIndex: 0 }, tags)} />
+          <LibraryTagEditor library={library} target={{ kind: 'chart', songId: song.id, type: 'SD', levelIndex: 0 }}
+            testID="example-chart-tags" disabled={pending} />
         </GameChartResultCard>
       </LinearGradient></View>
-      <View style={styles.details}><Card><TagEditor readState={library.tagReadState} testID="example-song-tags" tags={songItem?.tags ?? []} presets={library.tagPresets}
-        historyTags={() => buildTagHistory(library.data ?? [], songKey, library.tagPresets)} disabled={pending}
-        onPresetsChange={library.setTagPresets} onChange={tags => library.setTags({ kind: 'song', songId: song.id }, tags)} /></Card></View>
+      <View style={styles.details}><Card><LibraryTagEditor library={library} target={{ kind: 'song', songId: song.id }}
+        testID="example-song-tags" disabled={pending} /></Card></View>
     </> : <View style={styles.deferredPlaceholder} />}
   </ScrollView>;
 }

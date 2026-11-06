@@ -2,7 +2,7 @@ import { renderPreviewHeading } from '../../chart-preview-shared/webview-player/
 import { bindFullscreenControls } from '../../chart-preview-shared/webview-player/fullscreen-controls';
 import { bindPlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
-import { installPreviewControls, setPreviewFullscreen } from '../../chart-preview-shared/webview-player/controls';
+import { installPreviewControls, setPreviewFullscreen, setPreviewPlayButton } from '../../chart-preview-shared/webview-player/controls';
 import { bindHeatTimelineKeyboard } from '../../chart-preview-shared/webview-player/heat-timeline';
 
 import {
@@ -160,7 +160,7 @@ async function main(): Promise<void> {
   const fsTimelinePlayhead = $('fs-timeline-playhead');
   const fsTimelineBadge = $('fs-timeline-badge');
   const fsTimeLabel = $('fs-time-label');
-  const fsTransport = $('fs-transport');
+  const fullscreenPlay = $('fs-play');
   const timelineHost = $('timeline-host');
   const timelineBars = $('timeline-bars');
   const timelineRuler = $('timeline-ruler');
@@ -230,8 +230,6 @@ async function main(): Promise<void> {
   let isDragging = false;
   let wasPlaying = false;
 
-  const PLAY_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M8 5v14l11-7z"/></svg>';
-  const PAUSE_ICON = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/></svg>';
 
   let config: ChartPreviewConfig | undefined;
   statusEl.textContent = '正在等待参数…';
@@ -252,12 +250,7 @@ async function main(): Promise<void> {
   }
 
   renderPreviewHeading(config.title?.trim() || `谱面 ${config.chartId}`, config.previewDifficulty);
-  events.own(installPreviewControls({
-    measureNavigation: true,
-    stageAspectRatio: config.buddySide === 'dual' ? 2 : 1,
-    details: [$('info-bar')],
-    sections: ['播放与声音', '画面与判定', '视觉效果'],
-  }));
+  events.own(installPreviewControls(config.buddySide === 'dual' ? 2 : 1));
   postLoadProgress('正在加载谱面…', 0.15, statusEl);
 
   const saved = config.settings ?? {};
@@ -387,15 +380,8 @@ async function main(): Promise<void> {
   events.own(() => session.dispose());
 
   const syncPlayButtons = () => {
-    const icon = session.playing ? PAUSE_ICON : PLAY_ICON;
-    const label = session.playing ? '暂停' : '播放';
-    playBtn.innerHTML = icon;
-    playBtn.setAttribute('aria-label', label);
-    const fsPlayBtn = document.getElementById('fs-play');
-    if (fsPlayBtn) {
-      fsPlayBtn.innerHTML = icon;
-      fsPlayBtn.setAttribute('aria-label', label);
-    }
+    setPreviewPlayButton(playBtn, session.playing);
+    setPreviewPlayButton(fullscreenPlay, session.playing);
   };
 
   const saveSettings = (partial: Partial<ChartPreviewSettings>) => {
@@ -956,45 +942,17 @@ async function main(): Promise<void> {
     isFullscreen = true;
     setPreviewFullscreen(true);
     fullscreenTimelineView.build();
-    fsTransport.replaceChildren();
-    const makeBtn = (id: string, label: string, html: string) => {
-      const btn = document.createElement('button');
-      btn.className = 'transport-btn';
-      btn.id = id;
-      btn.setAttribute('aria-label', label);
-      btn.type = 'button';
-      btn.innerHTML = html;
-      return btn;
-    };
-    const left = document.createElement('div');
-    left.className = 'transport-side left';
-    const right = document.createElement('div');
-    right.className = 'transport-side right';
-    const fsPlay = makeBtn(
-      'fs-play',
-      session.playing ? '暂停' : '播放',
-      session.playing ? PAUSE_ICON : PLAY_ICON,
-    );
-    fsPlay.classList.add('play-toggle');
-    left.appendChild(makeBtn('fs-restart', '重播当前小节', btnRestart.innerHTML));
-    left.appendChild(makeBtn('fs-prev-measure', '上一小节', document.getElementById('btn-prev-measure')!.innerHTML));
-    left.appendChild(makeBtn('fs-step-back', '步退', document.getElementById('btn-step-back')!.innerHTML));
-    right.appendChild(makeBtn('fs-step-forward', '步进', document.getElementById('btn-step-forward')!.innerHTML));
-    right.appendChild(makeBtn('fs-next-measure', '下一小节', document.getElementById('btn-next-measure')!.innerHTML));
-    right.appendChild(makeBtn('fs-fullscreen', '退出全屏', document.getElementById('btn-fullscreen')!.innerHTML));
-    fsTransport.appendChild(left);
-    fsTransport.appendChild(fsPlay);
-    fsTransport.appendChild(right);
-    events.listen(document.getElementById('fs-restart')!, 'click', restartMeasure);
-    events.listen(document.getElementById('fs-prev-measure')!, 'click', () => skipToMeasure(-1));
-    events.listen(document.getElementById('fs-step-back')!, 'click', () => skipBeats(-1));
-    events.listen(document.getElementById('fs-step-forward')!, 'click', () => skipBeats(1));
-    events.listen(document.getElementById('fs-next-measure')!, 'click', () => skipToMeasure(1));
-    events.listen(document.getElementById('fs-fullscreen')!, 'click', exitFullscreen);
-    events.listen(fsPlay, 'click', togglePlayback);
     showFsControls();
     postStatus('fullscreen', { active: true });
   }
+
+  events.listen($('fs-restart'), 'click', restartMeasure);
+  events.listen($('fs-prev-measure'), 'click', () => skipToMeasure(-1));
+  events.listen($('fs-step-back'), 'click', () => skipBeats(-1));
+  events.listen($('fs-step-forward'), 'click', () => skipBeats(1));
+  events.listen($('fs-next-measure'), 'click', () => skipToMeasure(1));
+  events.listen($('fs-fullscreen'), 'click', exitFullscreen);
+  events.listen(fullscreenPlay, 'click', togglePlayback);
 
   events.listen(btnFullscreen, 'click', () => {
     if (isFullscreen) exitFullscreen();

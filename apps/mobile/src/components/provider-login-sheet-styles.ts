@@ -1,33 +1,7 @@
 import { StyleSheet } from 'react-native';
 
 export const providerLoginSheetStyles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F2F3F7' },
-  grabber: {
-    alignSelf: 'center',
-    width: 36,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#D1D5DB',
-    marginTop: 10,
-    marginBottom: 4,
-  },
-  header: {
-    paddingHorizontal: 16,
-    paddingTop: 8,
-    paddingBottom: 12,
-    flexDirection: 'row',
-    alignItems: 'center',
-  },
-  headerAction: { minWidth: 56, paddingVertical: 4 },
-  headerSpacer: { minWidth: 56 },
-  title: { flex: 1, textAlign: 'center', color: '#111827', fontSize: 17, fontWeight: '700' },
-  close: { color: '#246BFD', fontSize: 16, fontWeight: '600' },
-  pressed: { opacity: 0.7 },
   content: { paddingHorizontal: 16, paddingBottom: 28, gap: 14 },
-  identity: { alignItems: 'center', gap: 6, paddingTop: 4, paddingBottom: 2 },
-  icon: { width: 64, height: 64, borderRadius: 16 },
-  providerName: { color: '#111827', fontSize: 20, fontWeight: '700' },
-  gameLine: { color: '#6B7280', fontSize: 13 },
   card: { backgroundColor: '#FFF', borderRadius: 16, padding: 18, gap: 10 },
   body: { color: '#4B5563', lineHeight: 21 },
   message: { color: '#4B5563', fontSize: 13 },

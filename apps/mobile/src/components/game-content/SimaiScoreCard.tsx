@@ -1,10 +1,9 @@
 import type { ReactNode } from 'react';
-import { Text, View } from 'react-native';
 import { AchievementValue, ScoreStatusBadges } from '@/components/ScoreVisuals';
 import type { ScoreCardPresentation } from '@/features/game-content/presentation';
 import { useAppTheme } from '@/theme/app-theme';
-import { GameScoreCard, type ScoreCardArtwork } from './GameScoreCard';
-import { simaiScoreCardStyles as styles } from './SimaiScoreCardStyles';
+import { GameScoreCard, ScoreCardMetric, ScoreCardBadges, type ScoreCardArtwork } from './GameScoreCard';
+import { StyleSheet } from 'react-native';
 
 export function SimaiScoreCard({ presentation, artwork, achievements, sideMetric, difficultyBadge, chartTypeBadge,
   rate, fc, fs, badgesTestID, interactive = true,
@@ -23,18 +22,17 @@ export function SimaiScoreCard({ presentation, artwork, achievements, sideMetric
 }) {
   const theme = useAppTheme();
   return <GameScoreCard artwork={artwork} presentation={presentation} pressable={interactive}
-    cardStyle={styles.card} mainStyle={styles.main} titleStyle={styles.title}
-    side={sideMetric ? <View style={styles.ratingBlock}>
-      <Text style={[styles.ratingLabel, { color: theme.textMuted }]}>{sideMetric.label}</Text>
-      <Text style={[styles.rating, { color: sideMetric.value === undefined ? theme.textMuted : theme.accent }]}>
-        {sideMetric.value === undefined ? sideMetric.emptyText : sideMetric.value}
-      </Text>
-    </View> : null}>
+    side={sideMetric ? <ScoreCardMetric label={sideMetric.label} value={sideMetric.value ?? sideMetric.emptyText}
+      style={styles.ratingBlock} valueColor={sideMetric.value === undefined ? theme.textMuted : theme.accent} /> : null}>
     <AchievementValue value={achievements} compact />
-    <View testID={badgesTestID} style={styles.tags}>
+    <ScoreCardBadges testID={badgesTestID} style={styles.tags}>
       {difficultyBadge}
       {chartTypeBadge}
       <ScoreStatusBadges rate={rate} achievements={achievements} fc={fc} fs={fs} nearMissFirst />
-    </View>
+    </ScoreCardBadges>
   </GameScoreCard>;
 }
+
+const styles = StyleSheet.create({
+  ratingBlock: { minWidth: 52 }, tags: { minHeight: 25, gap: 6, marginTop: 4 },
+});

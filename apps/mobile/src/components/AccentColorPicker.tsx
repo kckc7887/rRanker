@@ -1,15 +1,14 @@
 import { useEffect, useMemo, useState } from 'react';
 import {
-  Pressable,
+  ScrollView,
   StyleSheet,
   Text,
   TextInput,
   View,
 } from 'react-native';
-import { AppModal } from '@/components/AppModal';
+import { AppSheet } from '@/components/AppSheet';
 import { ValueSlider } from '@/components/ValueSlider';
 import { useAppTheme } from '@/theme/app-theme';
-import { foregroundOnAccent } from '@/theme/theme-tokens';
 import {
   HUE_SPECTRUM,
   hexToHsl,
@@ -69,9 +68,10 @@ export function AccentColorPicker({ visible, initialHex, onClose, onApply }: Acc
   };
 
   return (
-    <AppModal visible={visible} animationType="slide" presentationStyle="pageSheet" onRequestClose={onClose}>
-      <View style={[styles.sheet, { backgroundColor: theme.background }]}>
-        <Text style={[styles.title, { color: theme.text }]}>自定义主题色</Text>
+    <AppSheet visible={visible} onRequestClose={onClose} title="自定义主题色"
+      leftAction={{ label: '取消', accessibilityLabel: '取消自定义主题色', onPress: onClose }}
+      rightAction={{ label: '应用', accessibilityLabel: '应用自定义主题色', onPress: () => onApply(preview) }}>
+      <ScrollView keyboardShouldPersistTaps="handled" contentContainerStyle={styles.content}>
         <Text style={[styles.subtitle, { color: theme.textMuted }]}>拖动色相、饱和度与明度，或直接输入十六进制颜色。</Text>
         <View style={[styles.preview, { backgroundColor: preview, borderColor: theme.border }]} />
         <Text style={[styles.label, { color: theme.textSecondary }]}>色相</Text>
@@ -130,28 +130,13 @@ export function AccentColorPicker({ visible, initialHex, onClose, onApply }: Acc
           placeholderTextColor={theme.textMuted}
           style={[styles.hexInput, { color: theme.text, borderColor: theme.border, backgroundColor: theme.input }]}
         />
-        <View style={styles.actions}>
-          <Pressable accessibilityRole="button" accessibilityLabel="取消自定义主题色" onPress={onClose}
-            style={[styles.action, { borderColor: theme.border }]}>
-            <Text style={{ color: theme.textSecondary, fontWeight: '700' }}>取消</Text>
-          </Pressable>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="应用自定义主题色"
-            onPress={() => onApply(preview)}
-            style={[styles.action, { backgroundColor: preview, borderColor: preview }]}
-          >
-            <Text style={{ color: foregroundOnAccent(preview), fontWeight: '700' }}>应用</Text>
-          </Pressable>
-        </View>
-      </View>
-    </AppModal>
+      </ScrollView>
+    </AppSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  sheet: { flex: 1, paddingHorizontal: 20, paddingTop: 24, gap: 10 },
-  title: { fontSize: 22, fontWeight: '800' },
+  content: { padding: 20, gap: 12 },
   subtitle: { fontSize: 13, lineHeight: 18, marginBottom: 4 },
   preview: { height: 72, borderRadius: 16, borderWidth: 1, marginVertical: 4 },
   label: { fontSize: 13, fontWeight: '700', marginTop: 4 },
@@ -163,14 +148,5 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '700',
     letterSpacing: 0.5,
-  },
-  actions: { flexDirection: 'row', gap: 10, marginTop: 16 },
-  action: {
-    flex: 1,
-    minHeight: 44,
-    borderRadius: 12,
-    borderWidth: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });

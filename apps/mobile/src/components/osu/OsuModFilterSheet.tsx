@@ -2,8 +2,7 @@ import { useMemo, useState } from 'react';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { Pressable as GesturePressable } from 'react-native-gesture-handler';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
-import { AppModal } from '@/components/AppModal';
+import { AppSheet } from '@/components/AppSheet';
 import type { OsuGameId } from '@/domain/game-mode-family';
 import {
   OSU_MOD_TYPE_LABELS,
@@ -41,7 +40,6 @@ export function OsuModFilterSheet({
   onClose: () => void;
 }) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const [draftMods, setDraftMods] = useState<Set<string>>(() => new Set(selectedMods));
   const grouped = useMemo(() => {
     const playable = osuUserPlayableMods(gameId);
@@ -76,74 +74,47 @@ export function OsuModFilterSheet({
   };
 
   return (
-    <AppModal
-      animationType="slide"
-      presentationStyle="pageSheet"
-      visible={visible}
-      onRequestClose={onClose}
-    >
-      <View testID="osu-mod-filter-sheet" style={[styles.page, {
-        backgroundColor: theme.background,
-        paddingBottom: Math.max(insets.bottom, 12),
-      }]}>
-        <View style={[styles.grabber, { backgroundColor: theme.border }]} />
-        <View style={styles.header}>
-          <SheetPressable accessibilityRole="button" accessibilityLabel="清空 osu! 模组筛选"
-            accessibilityState={{ disabled: draftMods.size === 0 }} disabled={draftMods.size === 0}
-            onPress={() => setDraftMods(new Set())} style={({ pressed }) => [styles.headerActionHit, pressed && styles.pressed]}>
-            <Text style={[styles.headerAction, { color: draftMods.size === 0 ? theme.textMuted : theme.accent }]}>清空</Text>
-          </SheetPressable>
-          <Text style={[styles.title, { color: theme.text }]}>模组筛选</Text>
-          <SheetPressable accessibilityRole="button" accessibilityLabel="完成 osu! 模组筛选"
-            onPress={apply} style={({ pressed }) => [styles.headerActionHit, pressed && styles.pressed]}>
-            <Text style={[styles.headerAction, { color: theme.accent }]}>完成</Text>
-          </SheetPressable>
-        </View>
-        <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-          {grouped.map((group) => (
-            <View key={group.type} style={styles.group} testID={`osu-mod-filter-group-${group.type}`}>
-              <Text style={[styles.groupTitle, { color: theme.textSecondary }]}>{group.label}</Text>
-              <View style={[styles.groupCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
-                {group.items.map((item, index) => {
-                  const selected = draftMods.has(item.acronym);
-                  return (
-                    <SheetPressable key={item.acronym} accessibilityRole="checkbox"
-                      accessibilityLabel={`${item.acronym} ${item.chineseName}，${selected ? '已选中' : '未选中'}`}
-                      accessibilityState={{ checked: selected }} onPress={() => toggle(item.acronym)}
-                      testID={`osu-mod-filter-option-${item.acronym}`}
-                      style={({ pressed }) => [styles.option, index > 0 && { borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth }, pressed && styles.pressed]}>
-                      {item.acronym === OSU_MOD_FILTER_NONE ? (
-                        <View style={[styles.nmIcon, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
-                          <Ionicons name="remove" size={15} color={theme.textMuted} />
-                        </View>
-                      ) : (
-                        <View pointerEvents="none">
-                          <OsuModBadge acronym={item.acronym} />
-                        </View>
-                      )}
-                      <Text style={[styles.acronym, { color: theme.text }]}>{item.acronym}</Text>
-                      <Text style={[styles.chineseName, { color: theme.textSecondary }]}>{item.chineseName}</Text>
-                      <Ionicons name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={22}
-                        color={selected ? theme.accent : theme.textMuted} />
-                    </SheetPressable>
-                  );
-                })}
-              </View>
+    <AppSheet visible={visible} onRequestClose={onClose} testID="osu-mod-filter-sheet" title="模组筛选"
+      leftAction={{ label: '清空', accessibilityLabel: '清空 osu! 模组筛选', disabled: draftMods.size === 0, onPress: () => setDraftMods(new Set()) }}
+      rightAction={{ label: '完成', accessibilityLabel: '完成 osu! 模组筛选', onPress: apply }}>
+      <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
+        {grouped.map((group) => (
+          <View key={group.type} style={styles.group} testID={`osu-mod-filter-group-${group.type}`}>
+            <Text style={[styles.groupTitle, { color: theme.textSecondary }]}>{group.label}</Text>
+            <View style={[styles.groupCard, { backgroundColor: theme.surface, borderColor: theme.border }]}>
+              {group.items.map((item, index) => {
+                const selected = draftMods.has(item.acronym);
+                return (
+                  <SheetPressable key={item.acronym} accessibilityRole="checkbox"
+                    accessibilityLabel={`${item.acronym} ${item.chineseName}，${selected ? '已选中' : '未选中'}`}
+                    accessibilityState={{ checked: selected }} onPress={() => toggle(item.acronym)}
+                    testID={`osu-mod-filter-option-${item.acronym}`}
+                    style={({ pressed }) => [styles.option, index > 0 && { borderTopColor: theme.border, borderTopWidth: StyleSheet.hairlineWidth }, pressed && styles.pressed]}>
+                    {item.acronym === OSU_MOD_FILTER_NONE ? (
+                      <View style={[styles.nmIcon, { backgroundColor: theme.surfaceMuted, borderColor: theme.border }]}>
+                        <Ionicons name="remove" size={15} color={theme.textMuted} />
+                      </View>
+                    ) : (
+                      <View pointerEvents="none">
+                        <OsuModBadge acronym={item.acronym} />
+                      </View>
+                    )}
+                    <Text style={[styles.acronym, { color: theme.text }]}>{item.acronym}</Text>
+                    <Text style={[styles.chineseName, { color: theme.textSecondary }]}>{item.chineseName}</Text>
+                    <Ionicons name={selected ? 'checkmark-circle' : 'ellipse-outline'} size={22}
+                      color={selected ? theme.accent : theme.textMuted} />
+                  </SheetPressable>
+                );
+              })}
             </View>
-          ))}
-        </ScrollView>
-      </View>
-    </AppModal>
+          </View>
+        ))}
+      </ScrollView>
+    </AppSheet>
   );
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1 },
-  grabber: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, marginTop: 8, marginBottom: 4 },
-  header: { minHeight: 48, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
-  title: { fontSize: 18, lineHeight: 24, fontWeight: '700' },
-  headerActionHit: { minWidth: 52, minHeight: 40, alignItems: 'center', justifyContent: 'center' },
-  headerAction: { fontSize: 16, lineHeight: 22, fontWeight: '600' },
   content: { paddingHorizontal: 18, paddingTop: 10, paddingBottom: 28, gap: 20 },
   group: { gap: 8 },
   groupTitle: { fontSize: 13, lineHeight: 18, fontWeight: '800' },

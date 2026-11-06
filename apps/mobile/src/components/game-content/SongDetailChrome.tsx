@@ -1,57 +1,28 @@
 import Ionicons from '@expo/vector-icons/Ionicons';
-import { Platform, Pressable, type StyleProp, type ViewStyle } from 'react-native';
+import { Platform, Pressable } from 'react-native';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { useSongDetailBackNavigation } from './SongDetailNavigation';
+import { SONG_DETAIL_CHROME_STYLES as styles } from './SongDetailChromeStyles';
 
-export type SongDetailFavoriteOptions = {
-  label: string;
-  active: boolean;
-  disabled: boolean;
-  onPress: () => void;
-};
-
-export function SongDetailChrome({
-  topInset,
-  backStyle,
-  favorite,
-  favoriteStyle,
-}: {
-  topInset: number;
-  backStyle: (pressed: boolean) => StyleProp<ViewStyle>[];
-  favorite?: SongDetailFavoriteOptions;
-  favoriteStyle?: (pressed: boolean) => StyleProp<ViewStyle>[];
+export function SongDetailChrome({ songTitle, favorite, favoriteDisabled, onToggleFavorite, topOffset = 0 }: {
+  songTitle?: string;
+  favorite: boolean;
+  favoriteDisabled: boolean;
+  onToggleFavorite?: () => void;
+  topOffset?: number;
 }) {
+  const top = useSafeAreaInsets().top + topOffset;
   const navigateBack = useSongDetailBackNavigation();
-  return (
-    <>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="返回"
-        hitSlop={12}
-        onPress={navigateBack}
-        style={({ pressed }) => backStyle(pressed)}
-      >
-        <Ionicons
-          name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'}
-          color="#FFFFFF"
-          size={28}
-        />
-      </Pressable>
-      {favorite && favoriteStyle ? (
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel={favorite.label}
-          disabled={favorite.disabled}
-          hitSlop={12}
-          onPress={favorite.onPress}
-          style={({ pressed }) => favoriteStyle(pressed)}
-        >
-          <Ionicons
-            name={favorite.active ? 'heart' : 'heart-outline'}
-            color={favorite.active ? '#A78BFA' : '#FFFFFF'}
-            size={22}
-          />
-        </Pressable>
-      ) : null}
-    </>
-  );
+  return <>
+    <Pressable accessibilityRole="button" accessibilityLabel="返回" hitSlop={12} onPress={navigateBack}
+      style={({ pressed }) => [styles.headerButton, styles.headerFloatingButton, { top, left: 8 }, pressed && { opacity: 0.7 }]}>
+      <Ionicons name={Platform.OS === 'ios' ? 'chevron-back' : 'arrow-back'} color="#FFFFFF" size={28} />
+    </Pressable>
+    {songTitle && onToggleFavorite ? <Pressable accessibilityRole="button" hitSlop={12} disabled={favoriteDisabled}
+      accessibilityLabel={favorite ? `取消收藏 ${songTitle}` : `收藏 ${songTitle}`} onPress={onToggleFavorite}
+      style={({ pressed }) => [styles.headerButton, styles.headerFloatingButton, { top, right: 8 },
+        pressed && { opacity: 0.7 }, favoriteDisabled && { opacity: 0.52 }]}>
+      <Ionicons name={favorite ? 'heart' : 'heart-outline'} color={favorite ? '#A78BFA' : '#FFFFFF'} size={22} />
+    </Pressable> : null}
+  </>;
 }

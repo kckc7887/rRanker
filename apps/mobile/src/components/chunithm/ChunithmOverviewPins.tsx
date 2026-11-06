@@ -1,52 +1,17 @@
+import { CollectionProgressBar } from '@/components/CollectionProgress';
 import { overviewStyles as styles } from '@/features/overview/overview-styles';
 
-import { ChunithmCollectionImage } from '@/components/chunithm/ChunithmCollectionImage';
-import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
+import { ChunithmCollectionPreview } from '@/components/chunithm/ChunithmCollectionImage';
 import { router, type Href } from 'expo-router';
 import { useMemo } from 'react';
 import { Pressable, Text, View } from 'react-native';
 
-import { calculateChunithmCollectionProgress, isChunithmCollectionComputable, type ChunithmCollection, type ChunithmCollectionKind } from '@/domain/chunithm-collections';
+import { calculateChunithmCollectionProgress, isChunithmCollectionComputable, type ChunithmCollectionKind } from '@/domain/chunithm-collections';
 import type { ChunithmScore } from '@/domain/chunithm-personal';
-import { normalizeTrophyTone, TROPHY_BADGE_THEMES } from '@/features/best-image/best-image-badge-theme';
 import type { PinnedChunithmCollection } from '@/features/toolbox/pinned-tool-preferences';
 import { useChunithmCollections } from '@/hooks/use-chunithm-collections';
 
 import { useAppTheme } from '@/theme/app-theme';
-
-function CollectionPreview({ kind, collection }: { kind: ChunithmCollectionKind; collection: ChunithmCollection; }) {
-  if (kind !== 'trophy') {
-    return (
-      <ChunithmCollectionImage kind={kind} collectionId={collection.id} height={34} borderRadius={6} />
-    );
-  }
-  const tone = normalizeTrophyTone(collection.color);
-  if (collection.color === 'image') {
-    return <ChunithmCollectionImage kind="trophy-image" collectionId={collection.id} height={34} />;
-  }
-  if (tone === 'rainbow') {
-    return (
-      <LayeredGradientBadge
-        label={collection.name || `#${collection.id}`}
-        numberOfLines={1}
-        style={styles.collectionHomeBadge}
-        textStyle={styles.collectionHomeBadgeText}
-        tone="rainbow"
-      />
-    );
-  }
-  const badge = TROPHY_BADGE_THEMES[tone];
-  return (
-    <View style={[styles.collectionHomeBadge, styles.collectionHomeBadgeSolid, {
-      borderColor: badge.border,
-      backgroundColor: badge.background,
-    }]}>
-      <Text numberOfLines={1} style={[styles.collectionHomeBadgeText, { color: badge.text }]}>
-        {collection.name || `#${collection.id}`}
-      </Text>
-    </View>
-  );
-}
 
 export function PinnedChunithmCollectionCards({
   pinned,
@@ -112,21 +77,14 @@ function PinnedChunithmCollectionKindGroup({
         <View style={[styles.card, { backgroundColor: theme.surface }]}>
           <Text style={styles.pinnedToolEyebrow}>收藏品进度</Text>
           <View style={styles.collectionHomeTitleRow}>
-            <CollectionPreview kind={kind} collection={collection} />
+            <ChunithmCollectionPreview height={34} borderRadius={6} kind={kind} collection={collection} />
             <Text numberOfLines={1} style={[styles.cardTitle, styles.collectionHomeTitle, { color: theme.text }]}>
               {collection.name || `#${collection.id}`}
             </Text>
           </View>
           {progress ? (
             <>
-              <View style={[styles.collectionHomeBar, { backgroundColor: theme.border }]}>
-                <View
-                  style={[styles.collectionHomeBarFill, {
-                    width: `${progress.total ? Math.min(100, (progress.completed / progress.total) * 100) : 0}%`,
-                    backgroundColor: theme.accent,
-                  }]}
-                />
-              </View>
+              <CollectionProgressBar progress={progress} />
               <Text style={[styles.body, { color: theme.textSecondary }]}>
                 {progress.completed} / {progress.total} 完成
               </Text>

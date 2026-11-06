@@ -8,7 +8,7 @@ import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-p
 import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
 import { md5 } from './engine';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
-import { installPreviewControls, setPreviewFullscreen } from '../../chart-preview-shared/webview-player/controls';
+import { installPreviewControls, setPreviewFullscreen, setPreviewPlayButton } from '../../chart-preview-shared/webview-player/controls';
 import { HeatTimelineView, heatTimeLabels } from '../../chart-preview-shared/webview-player/heat-timeline';
 import {
   applyManiaScrollSpeed, destroyPlayback, pausePlayback, playFrom, presentationTime,
@@ -69,9 +69,7 @@ function syncTransport(): void {
   const playing = handle.session.playing;
   const position = presentationTime(handle.session);
   const pct = Math.min(100, Math.max(0, position / handle.durationMs * 100));
-  element('play-icon').innerHTML = playing
-    ? '<path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>' : '<path d="M8 5v14l11-7z"/>';
-  playButton.setAttribute('aria-label', playing ? '暂停' : '播放');
+  setPreviewPlayButton(playButton, playing);
   element('time-label').textContent = `${formatClock(position)} / ${formatClock(handle.durationMs)}`;
   timelineView.updateProgress(pct, formatClock(position));
   timeline.setAttribute('aria-valuenow', String(Math.round(position)));
@@ -288,7 +286,7 @@ async function initialize(): Promise<void> {
   const config = window.__OSU_CHART_PREVIEW_CONFIG__;
   if (!config) throw new Error('missing-config');
   document.documentElement.dataset.theme = config.theme;
-  events.own(installPreviewControls({ sections: ['画面设置', '辅助选项'] }));
+  events.own(installPreviewControls());
   settings = normalizeOsuChartPreviewSettings(config.settings);
   post('progress', { value: 0.05, label: '正在准备播放器…' });
   const resources = new Map<string, PreviewResource>();

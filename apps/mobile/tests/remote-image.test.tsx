@@ -1,5 +1,6 @@
 import { act, fireEvent, render, waitFor } from '@testing-library/react-native';
 import { jest } from '@jest/globals';
+import { CollectionImage } from '@/components/CollectionImage';
 import type { RemoteImageOriginal } from '@/services/remote-image-cache';
 import { GameSongCover } from '@/components/game-content/GameSongCover';
 import { GameSongRow } from '@/components/game-content/GameSongRow';
@@ -56,14 +57,17 @@ describe('歌曲封面来源更新', () => {
     mockAcquire.mockResolvedValue({ fileUri: 'file:///original.jpg', release: mockReleaseOriginal, invalidate: mockInvalidateOriginal });
     const content = (source: string) => kind === 'cover' ? <GameSongCover source={source} gameId="phigros" /> : <GameSongRow
       presentation={{ key: 'song', gameId: 'phigros', route: { songId: 'song', params: { gameId: 'phigros' } }, title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
-      cover={null} badges={null} coverImage={{ source, accessibilityLabel: '歌曲封面', imageStyle: null, placeholderStyle: null, noteStyle: null }}
-      rowStyle={null} mainStyle={null} titleStyle={null} subtitleStyle={null} />;
+      coverSource={source} />;
     const screen = await render(content('https://example.test/old.jpg'));
     await waitFor(() => expect(screen.getByLabelText('歌曲封面').props.source).not.toBeNull());
     const oldError = screen.getByLabelText('歌曲封面').props.onError as () => void;
     await fireEvent(screen.getByLabelText('歌曲封面'), 'error');
     expect(screen.queryByLabelText('歌曲封面')).toBeNull();
     await screen.rerender(content('https://example.test/new.jpg'));
+    await waitFor(() => expect(screen.getByLabelText('歌曲封面').props.source).not.toBeNull());
+    await act(async () => { oldError(); });
+    expect(screen.getByLabelText('歌曲封面').props.source).not.toBeNull();
+    await screen.rerender(content('https://example.test/old.jpg'));
     await waitFor(() => expect(screen.getByLabelText('歌曲封面').props.source).not.toBeNull());
     await act(async () => { oldError(); });
     expect(screen.getByLabelText('歌曲封面').props.source).not.toBeNull();
@@ -398,4 +402,24 @@ describe('RemoteImage 压缩垫图', () => {
     expect(mockCache).not.toHaveBeenCalled();
     await screen.unmount();
   });
+});
+
+it('retries collection artwork when revisiting a selection and ignores a previous image error', async () => {
+  const artwork = (id: number) => <CollectionImage kind="plate" collectionId={id} />;
+  const screen = await render(artwork(1));
+  const firstError = screen.getByLabelText('plate 预览').props.onError;
+  await fireEvent(screen.getByLabelText('plate 预览'), 'error', {});
+  expect(screen.queryByLabelText('plate 预览')).toBeNull();
+  await screen.rerender(artwork(2));
+  await fireEvent(screen.getByLabelText('plate 预览'), 'error', {});
+  await act(async () => firstError({}));
+  expect(screen.queryByLabelText('plate 预览')).toBeNull();
+  await screen.rerender(artwork(1));
+  expect(screen.getByLabelText('plate 预览')).toBeTruthy();
+  await fireEvent(screen.getByLabelText('plate 预览'), 'error', {});
+  await screen.rerender(artwork(2));
+  expect(screen.getByLabelText('plate 预览')).toBeTruthy();
+  await screen.rerender(artwork(1));
+  await act(async () => firstError({}));
+  expect(screen.getByLabelText('plate 预览')).toBeTruthy();
 });

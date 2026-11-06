@@ -1,20 +1,22 @@
+import { SongInformationCard } from '@/components/game-content/SongInformationCard';
+import { JudgementTable } from '@/components/game-content/GameNoteTable';
+import { SongDetailHero } from '@/components/game-content/SongDetailHero';
+import { SongListSectionHeader } from '@/components/game-content/SongListSectionHeader';
 import { useEffect, useMemo, useState } from 'react';
 import { RemoteImage as Image } from '@/components/RemoteImage';
-import { LinearGradient } from 'expo-linear-gradient';
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { TufLevelImage } from '@/components/adofai/TufLevelImage';
 import {
   ActivityIndicator, Linking, Pressable, ScrollView, StyleSheet, Text,
   useWindowDimensions, View,
 } from 'react-native';
-import { AutoScrollText } from '@/components/game-content/AutoScrollText';
 import { InfinitePageFooter } from '@/components/game-content/InfinitePageFooter';
 import { BestListPage, CatalogListPage, RecordsListPage } from '@/components/game-content/GameListPages';
-import { GameChartResultCard } from '@/components/game-content/GameChartResultCard';
+import { ChartAction, GameChartResultCard } from '@/components/game-content/GameChartResultCard';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { SongMetadataTable, type SongMetadataItem } from '@/components/game-content/SongMetadataTable';
 import { SongDetailChrome } from '@/components/game-content/SongDetailChrome';
 import { Card } from '@/components/Card';
-import { TagEditor } from '@/components/TagEditor';
+import { LibraryTagEditor } from '@/components/game-content/LibraryTagEditor';
 import { TufScoreCard, TufWorldAchievementBadge } from '@/components/adofai/TufScoreCard';
 import { TufSongRow } from '@/components/adofai/TufSongRow';
 import { TufDifficultyBadge } from '@/components/adofai/TufDifficultyBadge';
@@ -22,16 +24,13 @@ import {
   TufCatalogFilterBar, TufRecordsFilterBar, type TufDifficultyBand, type TufPassAchievementFilter,
 } from '@/components/adofai/TufFilterBar';
 import { QueryStateView } from '@/components/QueryStateView';
-import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { tufPlayerIdFromAccountId } from '@/domain/bound-account';
-import { findGame } from '@/domain/game-bind-options';
 import {
   filterTufPasses,
   selectTufTopPasses,
   tufDifficultyBounds,
   tufDifficultyVisual,
   tufHttpsUrl,
-  tufMediaImageCandidates,
   tufPguRange,
   tufTagIconUrl,
   tufVideoPlatform,
@@ -42,10 +41,8 @@ import {
   type TufPassSort,
   type TufSortOrder,
 } from '@/domain/tuf';
-import { buildTagHistory } from '@/domain/user-library';
 import { presentTufChart } from '@/features/game-content/adapters';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
-import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import {
   useTufDifficulties,
   useTufDemoPasses,
@@ -53,15 +50,12 @@ import {
   useTufLevelBestPass,
   useTufLevelSearch,
   useTufPasses,
-  useTufVideoDetails,
 } from '@/hooks/use-tuf';
 import { useGameData } from '@/hooks/use-game-data';
 import { useUserLibrary } from '@/hooks/use-user-library';
 import { useSession } from '@/state/session-store';
 import { useAppTheme } from '@/theme/app-theme';
 import { buildMaxedTufPass } from '@/providers/maxed-tuf-test-provider';
-
-const ADOFAI_ICON = findGame('adofai')!.icon;
 
 function useActiveTufPlayerId() {
   const accountId = useSession((state) => state.activeAccountId);
@@ -76,7 +70,6 @@ type TufBestSection = { id: string; title: string; data: TufPass[] };
 
 export function TufBestScreen() {
   const theme = useAppTheme();
-  const inset = useNativeTabBottomInset();
   const playerId = useActiveTufPlayerId();
   const accountId = useSession((state) => state.activeAccountId);
   const example = accountId === 'adofai:test';
@@ -97,8 +90,7 @@ export function TufBestScreen() {
   const sections: TufBestSection[] = [{ id: 'top20', title: example ? '最佳成绩' : 'Top 20 Impact', data: ordered }];
   const loading = example ? demo.isLoading : gameData.isLoading || passes.isLoading;
   const error = example ? demo.error : gameData.error ?? passes.error;
-  return <View style={[styles.page, { backgroundColor: theme.background }]}>
-    <BestListPage<TufPass, TufBestSection>
+  return <BestListPage<TufPass, TufBestSection>
       isLoading={loading} isError={!!error} isEmpty={!loading && ordered.length === 0}
       error={error} onRetry={() => { if (example) void demo.refetch(); else { void gameData.refetch(); void passes.refetch(); } }}
       emptyText={example ? '当前没有最佳成绩' : playerId === null ? '请先在游戏管理中绑定 TUF 玩家' : '当前公开资料没有 Top 20 成绩'}
@@ -106,28 +98,19 @@ export function TufBestScreen() {
       onEmptyAction={example && demo.hasNextPage ? () => { if (!demo.isFetchingNextPage) void demo.fetchNextPage(); } : undefined}
       data={ordered.length ? sections : undefined}
       sectionListProps={{
-        testID: 'tuf-best-results-list', style: styles.list,
-        contentInsetAdjustmentBehavior: 'automatic', stickySectionHeadersEnabled: false,
-        contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
-        scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
+        testID: 'tuf-best-results-list',
         keyExtractor: (item) => String(item.id),
-        renderSectionHeader: ({ section }) => <View style={styles.sectionHeader}>
-          <Text style={[styles.sectionTitle, { color: theme.text }]}>{section.title}</Text>
-          <Text style={[styles.sectionCount, { color: theme.textMuted }]}>{section.data.length} 条</Text>
-        </View>,
+        renderSectionHeader: ({ section }) => <SongListSectionHeader title={section.title} value={`${section.data.length} 条`} />,
         ListHeaderComponent: missing > 0
           ? <Text style={[styles.notice, { color: theme.textMuted }]}>有 {missing} 条 Top 记录未公开，已跳过。</Text>
           : null,
         renderItem: ({ item, index }) => <TufScoreCard pass={item} position={index + 1} />,
         onEndReached: () => { if (example && demo.hasNextPage && !demo.isFetchingNextPage) void demo.fetchNextPage(); },
         ListFooterComponent: example ? <InfinitePageFooter loading={demo.isFetchingNextPage} failed={demo.isFetchNextPageError} hasNextPage={demo.hasNextPage === true} onRetry={() => void demo.fetchNextPage()} /> : undefined,
-      }} />
-  </View>;
+      }} />;
 }
 
 export function TufRecordsScreen() {
-  const theme = useAppTheme();
-  const inset = useNativeTabBottomInset();
   const playerId = useActiveTufPlayerId();
   const accountId = useSession((state) => state.activeAccountId);
   const example = accountId === 'adofai:test';
@@ -190,26 +173,20 @@ export function TufRecordsScreen() {
         setDifficultyMin(''); setDifficultyMax(''); setIncludeSpecial(true); setAchievement('all');
       }} />
   </>;
-  return <View style={[styles.page, { backgroundColor: theme.background }]}>
-    <RecordsListPage<TufPass> beforeList={example ? <GameSearchHeader placeholder="搜索关卡、歌曲或作者" value={keyword} onChangeText={setKeyword} loaded={records.length} total={total} /> : controls} isLoading={query.isLoading} isError={query.isError}
+  return <RecordsListPage<TufPass> beforeList={example ? <GameSearchHeader placeholder="搜索关卡、歌曲或作者" value={keyword} onChangeText={setKeyword} loaded={records.length} total={total} /> : controls} isLoading={query.isLoading} isError={query.isError}
       isEmpty={!query.isLoading && records.length === 0} error={query.error}
       onRetry={() => void query.refetch()} emptyText={example ? '没有符合条件的成绩' : playerId === null ? '请先绑定 TUF 玩家' : '没有公开成绩'}
       emptyActionLabel={example && query.hasNextPage ? '继续加载' : undefined}
       onEmptyAction={example && query.hasNextPage ? () => { if (!query.isFetchingNextPage) void query.fetchNextPage(); } : undefined}
       data={records.length ? records : undefined} flatListProps={{
-        testID: 'tuf-records-results-list', style: styles.list,
-        contentInsetAdjustmentBehavior: 'automatic', contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
-        scrollIndicatorInsets: { bottom: inset }, ...TAB_LIST_CACHE_PROPS,
+        testID: 'tuf-records-results-list',
         keyExtractor: (item) => String(item.id), renderItem: ({ item }) => <TufScoreCard pass={item} />,
         onEndReachedThreshold: 0.35, onEndReached: () => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); },
         ListFooterComponent: <InfinitePageFooter loading={query.isFetchingNextPage} failed={query.isFetchNextPageError} hasNextPage={query.hasNextPage === true} onRetry={() => void query.fetchNextPage()} />,
-      }} />
-  </View>;
+      }} />;
 }
 
 export function TufSearchScreen() {
-  const theme = useAppTheme();
-  const inset = useNativeTabBottomInset();
   const [keyword, setKeyword] = useState('');
   const [filterExpanded, setFilterExpanded] = useState(false);
   const [sortBy, setSortBy] = useState<TufLevelSort>('RECENT');
@@ -258,58 +235,26 @@ export function TufSearchScreen() {
         setDifficultyMax(''); setIncludeSpecial(true);
       }} />
   </>;
-  return <View style={[styles.page, { backgroundColor: theme.background }]}>
-    <CatalogListPage beforeList={search} isLoading={query.isLoading} isError={query.isError}
+  return <CatalogListPage beforeList={search} isLoading={query.isLoading} isError={query.isError}
       isEmpty={!query.isLoading && levels.length === 0} error={query.error} onRetry={() => void query.refetch()}
       emptyText="没有找到 TUF 关卡" data={levels.length ? levels : undefined} flatListProps={{
-        testID: 'tuf-catalog-results-list', style: styles.list,
-        contentInsetAdjustmentBehavior: 'automatic', contentContainerStyle: [styles.listContent, { paddingBottom: inset + 16 }],
-        scrollIndicatorInsets: { bottom: inset },
+        testID: 'tuf-catalog-results-list',
         keyExtractor: (item) => String(item.id), renderItem: ({ item }) => <TufSongRow level={item} />,
         onEndReachedThreshold: 0.35, onEndReached: () => { if (query.hasNextPage && !query.isFetchingNextPage) void query.fetchNextPage(); },
         ListFooterComponent: <InfinitePageFooter loading={query.isFetchingNextPage} failed={query.isFetchNextPageError} hasNextPage={query.hasNextPage === true} onRetry={() => void query.fetchNextPage()} />,
-      }} />
-  </View>;
+      }} />;
 }
 
 function TufLevelHero({ level }: { level: TufLevel }) {
-  const theme = useAppTheme();
   const { width } = useWindowDimensions();
-  const media = useTufVideoDetails(level.videoLink);
-  const mediaCandidates = useMemo(
-    () => tufMediaImageCandidates(media.data?.image, undefined),
-    [media.data?.image],
-  );
-  const candidates = useMemo(
-    () => tufMediaImageCandidates(media.data?.image, level.difficulty?.icon),
-    [media.data?.image, level.difficulty?.icon],
-  );
-  const [candidateIndex, setCandidateIndex] = useState(0);
-  useEffect(() => setCandidateIndex(0), [candidates]);
-  const candidate = candidates[candidateIndex];
-  const mediaActive = candidateIndex < mediaCandidates.length;
 
-  return <View testID="tuf-level-hero" style={[styles.hero, { width, height: width }]}>
-    {mediaActive && candidate ? <Image accessibilityLabel={`关卡头图 ${level.song}`}
-      cacheProfile="artwork" gameId="adofai" contentFit="cover" onError={() => setCandidateIndex((index) => index + 1)}
-      source={candidate} style={StyleSheet.absoluteFill} transition={120} /> : (
-      <LinearGradient colors={theme.dark ? ['#173346', '#3C416A', '#532A2C'] : ['#DDF6FF', '#E5E7F7', '#FFE2DF']}
-        end={{ x: 1, y: 1 }} start={{ x: 0, y: 0 }} style={StyleSheet.absoluteFill}>
-        <Image accessibilityLabel={`关卡备用图 ${level.song}`} cacheProfile="artwork" gameId="adofai" contentFit="contain"
-          onError={candidate ? () => setCandidateIndex((index) => index + 1) : undefined}
-          source={candidate ?? ADOFAI_ICON} style={styles.heroFallbackImage} transition={120} />
-      </LinearGradient>
-    )}
-    <LinearGradient pointerEvents="none" colors={['rgba(10,18,28,0.02)', 'rgba(10,18,28,0.84)']}
-      locations={[0.15, 1]} style={StyleSheet.absoluteFill} />
-    <View style={styles.heroCopy}>
-      <Text numberOfLines={1} style={styles.heroId}>#{level.id}</Text>
-      <AutoScrollText contentContainerStyle={styles.heroScrollContent} style={styles.heroScroll}
-        testID="tuf-level-title-scroll" text={level.song} textStyle={styles.heroTitle} />
-      <AutoScrollText contentContainerStyle={styles.heroScrollContent} style={styles.heroScroll}
-        testID="tuf-level-artist-scroll" text={level.artist || '艺术家未知'} textStyle={styles.heroArtist} />
-    </View>
-  </View>;
+  return <SongDetailHero testID="tuf-level-hero" size={width} fullShade scroll="title-artist" style={styles.hero}
+    id={`#${level.id}`} title={level.song} artist={level.artist || '艺术家未知'}
+    idStyle={styles.heroId} titleStyle={styles.heroTitle} artistStyle={styles.heroArtist}
+    scrollStyle={styles.heroScroll} scrollContentStyle={styles.heroScrollContent}
+    titleTestID="tuf-level-title-scroll" artistTestID="tuf-level-artist-scroll"
+    shadeColors={['rgba(10,18,28,0.02)', 'rgba(10,18,28,0.84)']} shadeLocations={[0.15, 1]}
+    cover={<TufLevelImage level={level} />} />;
 }
 
 const TUF_JUDGEMENT_ROWS = [
@@ -341,26 +286,14 @@ function TufUpstreamTag({ name }: { name: string }) {
 
 function TufJudgementTable({ judgements, total }: { judgements: TufJudgements | null | undefined; total: number | null }) {
   const theme = useAppTheme();
-  return <View accessibilityLabel="TUF 判定详情" style={styles.judgementPanel}>
-    <View style={styles.judgementMatrix}>{TUF_JUDGEMENT_ROWS.map((row, rowIndex) => (
-      <View key={rowIndex} style={styles.judgementRow}>{row.map((item) => (
-        <View key={item.key} style={styles.judgementCell} testID={`tuf-judgement-${item.key}`}>
-          <Text numberOfLines={1} style={[styles.judgementLabel, { color: theme.dark ? '#9B98B7' : theme.textMuted }]}>{item.label}</Text>
-          <Text style={[styles.judgementValue, { color: item.color }]}>{judgements?.[item.key] ?? '—'}</Text>
-        </View>
-      ))}</View>
-    ))}</View>
-    <View style={[styles.totalCell, { borderLeftColor: theme.dark ? 'rgba(255,255,255,0.12)' : theme.border }]}>
-      <Text style={[styles.totalLabel, { color: theme.dark ? '#9B98B7' : theme.textMuted }]}>总物量</Text>
-      <Text adjustsFontSizeToFit minimumFontScale={0.65} numberOfLines={1}
-        style={[styles.totalValue, { color: theme.text }]}>{total ?? '—'}</Text>
-    </View>
-  </View>;
+  const rows = TUF_JUDGEMENT_ROWS.map(row => row.map(cell => ({ ...cell, value: judgements?.[cell.key] ?? '—' })));
+  return <JudgementTable label="TUF 判定详情" testIDPrefix="tuf-judgement" rows={rows}
+    style={{ backgroundColor: 'rgba(128,128,128,0.14)' }} labelColor={theme.dark ? '#9B98B7' : theme.textMuted}
+    summary={{ label: '总物量', value: total ?? '—' }} />;
 }
 
 export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
   const theme = useAppTheme();
-  const insets = useSafeAreaInsets();
   const playerId = useActiveTufPlayerId();
   const example = useSession((state) => state.activeAccountId) === 'adofai:test';
   const numericId = /^\d+$/.test(levelId) ? Number(levelId) : null;
@@ -377,7 +310,6 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
   const onToggleFavorite = level
     ? () => void library.setSongFavorite(String(level.id), !favorite)
     : undefined;
-  const localTags = level ? (songItem?.kind === 'song' ? songItem.tags : []) : [];
   const tags = level?.tags.map((tag) => typeof tag === 'string' ? tag : tag.name) ?? [];
   const credits = level?.levelCredits.map((credit) => `${credit.creator.name}（${credit.role}）`).join('、') || '—';
   const metadata: SongMetadataItem[] = level ? [
@@ -405,33 +337,16 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
   const videoUrl = tufHttpsUrl(level?.videoLink);
   const videoPlatform = tufVideoPlatform(level?.videoLink);
   return <>
-    <SongDetailChrome
-      topInset={insets.top + 8}
-      backStyle={(pressed) => [
-        styles.headerButton, styles.headerFloatingButton, { top: insets.top + 8, left: 8 },
-        pressed && { opacity: 0.7 },
-      ]}
-      favorite={onToggleFavorite && level ? {
-        label: favorite ? `取消收藏 ${level.song}` : `收藏 ${level.song}`,
-        active: favorite,
-        disabled: favoriteDisabled,
-        onPress: onToggleFavorite,
-      } : undefined}
-      favoriteStyle={(pressed) => [
-        styles.headerButton, styles.headerFloatingButton, { top: insets.top + 8, right: 8 },
-        pressed && { opacity: 0.7 },
-      ]}
-    />
+    <SongDetailChrome songTitle={level?.song} favorite={favorite} favoriteDisabled={favoriteDisabled}
+      onToggleFavorite={onToggleFavorite} topOffset={8} />
     <QueryStateView isLoading={loading} isError={query.isError} isEmpty={!level}
       error={query.error} onRetry={() => void query.refetch()} emptyText="未找到该 TUF 关卡" data={level}
       renderData={() => <ScrollView automaticallyAdjustContentInsets={false} contentInsetAdjustmentBehavior="never"
         testID="tuf-level-detail-scroll" style={[styles.page, { backgroundColor: theme.background }]}
         contentContainerStyle={styles.detail}>
         <TufLevelHero level={level!} />
-        <SongMetadataTable accessibilityLabel="TUF 关卡信息" items={metadata} testIDPrefix="tuf-level-metadata"
-          interaction="platform-detail" style={styles.metadata} cellRootStyle={styles.metadataCellRoot}
-          cellStyle={styles.metadataCell} labelStyle={styles.metadataLabel} valueStyle={styles.metadataValue}
-          valueBlockStyle={styles.metadataBlock} measureStyle={styles.metadataMeasure} />
+        <SongMetadataTable appearance="centered" accessibilityLabel="TUF 关卡信息" items={metadata} testIDPrefix="tuf-level-metadata"
+          interaction="platform-detail" valueStyle={styles.metadataValue} />
         <View style={styles.detailBody}>
           <GameChartResultCard style={[styles.chartCard, {
             backgroundColor: theme.surface,
@@ -486,20 +401,23 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
             </View>
             <TufJudgementTable judgements={bestPass?.judgements} total={total ?? null} />
             {videoPlatform && videoUrl ? <View style={styles.videoActions}>
-              {videoPlatform === 'bilibili' ? <Pressable accessibilityRole="link" accessibilityLabel="跳转Ｂ站"
-                testID="tuf-level-bilibili-link" onPress={() => { void Linking.openURL(videoUrl).catch(() => undefined); }}
-                style={[styles.videoAction, videoActionStyle(theme.dark, difficultyVisual, theme.border)]}>
-                <Text style={[styles.videoActionText, videoActionTextStyle(theme.dark, difficultyVisual, theme.text)]}>跳转Ｂ站</Text>
-              </Pressable> : null}
-              {videoPlatform === 'youtube' ? <Pressable accessibilityRole="link" accessibilityLabel="跳转油管"
-                testID="tuf-level-youtube-link" onPress={() => { void Linking.openURL(videoUrl).catch(() => undefined); }}
-                style={[styles.videoAction, videoActionStyle(theme.dark, difficultyVisual, theme.border)]}>
-                <Text style={[styles.videoActionText, videoActionTextStyle(theme.dark, difficultyVisual, theme.text)]}>跳转油管</Text>
-              </Pressable> : null}
+              {videoPlatform === 'bilibili' ? <ChartAction native label="跳转Ｂ站"
+                accessibilityRole="link"
+                accessibilityLabel="跳转Ｂ站"
+                testID="tuf-level-bilibili-link"
+                onPress={() => { void Linking.openURL(videoUrl).catch(() => undefined); }}
+                style={[styles.videoAction, videoActionStyle(theme.dark, difficultyVisual, theme.border)]}
+                textStyle={[styles.videoActionText, videoActionTextStyle(theme.dark, difficultyVisual, theme.text)]} /> : null}
+              {videoPlatform === 'youtube' ? <ChartAction native label="跳转油管"
+                accessibilityRole="link"
+                accessibilityLabel="跳转油管"
+                testID="tuf-level-youtube-link"
+                onPress={() => { void Linking.openURL(videoUrl).catch(() => undefined); }}
+                style={[styles.videoAction, videoActionStyle(theme.dark, difficultyVisual, theme.border)]}
+                textStyle={[styles.videoActionText, videoActionTextStyle(theme.dark, difficultyVisual, theme.text)]} /> : null}
             </View> : null}
           </GameChartResultCard>
-          <Card style={styles.songInfoCard} testID="tuf-level-song-info">
-            <Text style={[styles.songInfoTitle, { color: theme.text }]}>歌曲信息</Text>
+          <SongInformationCard style={styles.songInfoCard} testID="tuf-level-song-info">
             <View style={[styles.infoRow, { borderTopColor: theme.border }]}>
               <Text style={[styles.infoLabel, { color: theme.textMuted }]}>策展</Text>
               <Text style={[styles.infoValue, { color: theme.text }]}>{level!.curations.length ? `${level!.curations.length} 条` : '—'}</Text>
@@ -518,13 +436,10 @@ export function TufLevelDetailScreen({ levelId }: { levelId: string }) {
               <Text style={[styles.infoLabel, { color: theme.textMuted }]}>来源</Text>
               <Text style={[styles.linkText, { color: theme.accent }]}>查看 TUF 关卡页</Text>
             </Pressable>
-          </Card>
+          </SongInformationCard>
           <Card testID="tuf-level-personal-tags">
-            <TagEditor readState={library.tagReadState} testID="tuf-level-local-tags" tags={localTags}
-              presets={library.tagPresets ?? []}
-              historyTags={() => buildTagHistory(library.data ?? [], library.songKey(level!.id), library.tagPresets ?? [])}
-              disabled={library.isUpdating} onPresetsChange={library.setTagPresets}
-              onChange={(tags) => library.setTags({ kind: 'song', songId: String(level!.id) }, tags)} />
+            <LibraryTagEditor library={library} target={{ kind: 'song', songId: String(level!.id) }}
+              testID="tuf-level-local-tags" />
           </Card>
         </View>
       </ScrollView>} />
@@ -554,28 +469,17 @@ function videoActionTextStyle(
 }
 
 const styles = StyleSheet.create({
-  page: { flex: 1 }, list: { flex: 1 }, listContent: { padding: 12, gap: 9 }, footer: { marginVertical: 18 },
-  sectionHeader: { marginTop: 8, marginBottom: 3, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'baseline' },
-  sectionTitle: { fontSize: 18, fontWeight: '900' }, sectionCount: { fontSize: 11 }, notice: { padding: 12, fontSize: 12 },
+  page: { flex: 1 }, footer: { marginVertical: 18 },
+  notice: { padding: 12, fontSize: 12 },
   detail: { paddingBottom: 40 },
   detailBody: { paddingHorizontal: 20, paddingTop: 16, gap: 14 },
   hero: { position: 'relative', overflow: 'hidden', backgroundColor: '#253845' },
-  heroFallbackImage: { position: 'absolute', width: '44%', height: '44%', alignSelf: 'center', top: '28%', opacity: 0.9 },
-  heroCopy: { position: 'absolute', left: 20, right: 20, bottom: 18, gap: 3 },
   heroScroll: { width: '100%', maxWidth: '100%', flexGrow: 0, alignSelf: 'stretch', overflow: 'hidden' },
   heroScrollContent: { paddingRight: 20 },
   heroId: { color: 'rgba(255,255,255,0.82)', fontSize: 13, fontWeight: '800', letterSpacing: 0.35 },
   heroTitle: { color: '#FFFFFF', fontSize: 28, lineHeight: 34, fontWeight: '900', letterSpacing: -0.45, textShadowColor: 'rgba(0,0,0,0.36)', textShadowRadius: 8 },
   heroArtist: { color: 'rgba(255,255,255,0.94)', fontSize: 15, lineHeight: 21, fontWeight: '700', textShadowColor: 'rgba(0,0,0,0.3)', textShadowRadius: 6 },
-  headerButton: { width: 40, height: 40, borderRadius: 20, alignItems: 'center', justifyContent: 'center' },
-  headerFloatingButton: { position: 'absolute', zIndex: 30, elevation: 30 },
-  metadata: { flexDirection: 'row', borderBottomWidth: StyleSheet.hairlineWidth, paddingHorizontal: 10, paddingVertical: 12 },
-  metadataCellRoot: { minWidth: 0 },
-  metadataCell: { minWidth: 0, alignItems: 'center', paddingHorizontal: 4, gap: 3 },
-  metadataLabel: { fontSize: 10, fontWeight: '800' },
   metadataValue: { fontSize: 13, lineHeight: 17, fontWeight: '800', textAlign: 'center' },
-  metadataBlock: { position: 'relative', minWidth: 0, alignSelf: 'stretch' },
-  metadataMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
   chartCard: {
     borderWidth: 1, borderRadius: 24, padding: 18,
     shadowColor: '#1A2232', shadowOffset: { width: 0, height: 7 }, shadowOpacity: 0.1, shadowRadius: 16, elevation: 4,
@@ -604,29 +508,10 @@ const styles = StyleSheet.create({
   upstreamTagIcon: { width: 18, height: 18 },
   upstreamTagText: { flexShrink: 1, fontSize: 10, lineHeight: 14, fontWeight: '800' },
   emptyInline: { fontSize: 12, fontWeight: '700' },
-  judgementPanel: {
-    minHeight: 104,
-    marginTop: 13,
-    flexDirection: 'row',
-    alignItems: 'stretch',
-    gap: 8,
-    borderRadius: 12,
-    padding: 12,
-    backgroundColor: 'rgba(128,128,128,0.14)',
-  },
-  judgementMatrix: { flex: 1, minWidth: 0, gap: 9 },
-  judgementRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 3 },
-  judgementCell: { flex: 1, minWidth: 0, alignItems: 'center', justifyContent: 'center', gap: 2 },
-  judgementLabel: { fontSize: 9, lineHeight: 12, fontWeight: '800' },
-  judgementValue: { fontSize: 18, lineHeight: 22, fontWeight: '900', fontVariant: ['tabular-nums'] },
-  totalCell: { width: 78, flexShrink: 0, borderLeftWidth: StyleSheet.hairlineWidth, alignItems: 'center', justifyContent: 'center', gap: 5, paddingLeft: 8 },
-  totalLabel: { fontSize: 9, lineHeight: 12, fontWeight: '800' },
-  totalValue: { width: '100%', fontSize: 21, lineHeight: 27, fontWeight: '900', fontVariant: ['tabular-nums'], textAlign: 'center' },
   videoActions: { marginTop: 13, gap: 8 },
   videoAction: { borderWidth: 1, borderRadius: 11, padding: 10, alignItems: 'center', backgroundColor: 'transparent' },
   videoActionText: { fontWeight: '700' },
   songInfoCard: { padding: 0, overflow: 'hidden' },
-  songInfoTitle: { paddingHorizontal: 16, paddingVertical: 15, fontSize: 16, lineHeight: 21, fontWeight: '900' },
   infoRow: { minHeight: 46, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'flex-start', gap: 16 },
   infoLink: { minHeight: 46, borderTopWidth: StyleSheet.hairlineWidth, paddingHorizontal: 16, paddingVertical: 12, flexDirection: 'row', alignItems: 'center', gap: 16 },
   infoLabel: { width: 58, fontSize: 11, lineHeight: 18, fontWeight: '800' },

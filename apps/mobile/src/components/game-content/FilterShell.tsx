@@ -25,7 +25,6 @@ export const filterShellStyles = StyleSheet.create({
   resetButtonText: { fontSize: 12, fontWeight: '800' },
   filterRow: { flexDirection: 'row', alignItems: 'center', gap: 8 },
   filterLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
-  filterLabelPlain: { fontSize: 12, fontWeight: '600', width: 36, paddingTop: 1 },
   wideFilterLabel: { width: 44 },
   chipRow: { flexDirection: 'row', gap: 6, alignItems: 'center' },
   chipRowPadded: { flexDirection: 'row', gap: 6, alignItems: 'center', paddingVertical: 1 },
@@ -34,6 +33,8 @@ export const filterShellStyles = StyleSheet.create({
   neutralChip: { minHeight: 30, borderWidth: 1, borderColor: '#D1D5DB', borderRadius: 999, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center', backgroundColor: '#FFF' },
   neutralChipText: { color: '#374151', fontSize: 12 },
   neutralChipTextActive: { fontWeight: '700' },
+  sheetTrigger: { flex: 1, minWidth: 0, minHeight: 44, borderWidth: 1, borderRadius: 9, paddingHorizontal: 12, flexDirection: 'row', alignItems: 'center', gap: 8 },
+  sheetValue: { flex: 1, minWidth: 0, fontSize: 14, lineHeight: 20 },
   rangeRow: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 7 },
   rangeInput: {
     flex: 1,
@@ -95,6 +96,9 @@ export interface FilterShellProps {
   collapsed: boolean;
   collapsible?: boolean;
   summary: string;
+  title?: string;
+  expandLabel?: string;
+  resetWhenCollapsed?: boolean;
   barStyle?: StyleProp<ViewStyle>;
   barExtraStyle?: StyleProp<ViewStyle>;
   expandLabelPrefix?: string;
@@ -110,6 +114,9 @@ export function FilterShell({
   collapsed,
   collapsible = true,
   summary,
+  title = '筛选',
+  expandLabel,
+  resetWhenCollapsed = true,
   barStyle = filterShellStyles.filterBar,
   barExtraStyle,
   expandLabelPrefix = '展开筛选',
@@ -124,14 +131,14 @@ export function FilterShell({
   if (collapsible && collapsed) {
     return (
       <View style={[filterShellStyles.collapsedBar, { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
-        <Pressable accessibilityRole="button" accessibilityLabel={`${expandLabelPrefix}，当前 ${summary}`}
+        <Pressable accessibilityRole="button" accessibilityLabel={expandLabel ?? `${expandLabelPrefix}，当前 ${summary}`}
           accessibilityState={{ expanded: false }} onPress={() => onCollapsedChange(false)}
           style={filterShellStyles.collapsedMain}>
           <Text style={[filterShellStyles.collapsedLabel, { color: theme.textMuted }]}>筛选</Text>
           <Text numberOfLines={1} style={[filterShellStyles.collapsedSummary, { color: theme.text }]}>{summary}</Text>
         </Pressable>
         <View style={filterShellStyles.headerActions}>
-          <ResetFilterButton onPress={onReset} accessibilityLabel={resetLabel} />
+          {resetWhenCollapsed ? <ResetFilterButton onPress={onReset} accessibilityLabel={resetLabel} /> : null}
           <Pressable accessible={false} hitSlop={8} onPress={() => onCollapsedChange(false)}
             style={filterShellStyles.headerAction}>
             <CollapseToggleAction expanded={false} label="展开" />
@@ -143,7 +150,7 @@ export function FilterShell({
   return (
     <View style={[barStyle, ...(barExtraStyle ? [barExtraStyle] : []), { backgroundColor: theme.surface, borderBottomColor: theme.border }]}>
       <View style={filterShellStyles.expandedHeader}>
-        <Text style={[filterShellStyles.expandedTitle, { color: theme.text }]}>筛选</Text>
+        <Text style={[filterShellStyles.expandedTitle, { color: theme.text }]}>{title}</Text>
         <View style={filterShellStyles.headerActions}>
           <ResetFilterButton onPress={onReset} accessibilityLabel={resetLabel} />
           {collapsible ? <Pressable accessibilityRole="button" accessibilityLabel={collapseLabel}
@@ -157,6 +164,30 @@ export function FilterShell({
       {children}
     </View>
   );
+}
+
+export function FilterRow({ label, wide, style, children, testID }: {
+  label: string; wide?: boolean; style?: StyleProp<ViewStyle>; children: ReactNode; testID?: string;
+}) {
+  const theme = useAppTheme();
+  return <View testID={testID} style={[filterShellStyles.filterRow, style]}>
+    <Text style={[filterShellStyles.filterLabel, wide && filterShellStyles.wideFilterLabel, { color: theme.textMuted }]}>{label}</Text>
+    {children}
+  </View>;
+}
+
+export function FilterSheetRow({ label, value, accessibilityLabel, disabled, expanded, onPress, testID }: {
+  label: string; value: string; accessibilityLabel: string; disabled?: boolean; expanded?: boolean; onPress: () => void; testID?: string;
+}) {
+  const theme = useAppTheme();
+  return <FilterRow label={label} testID={testID}>
+    <Pressable accessibilityRole="button" accessibilityLabel={accessibilityLabel} accessibilityState={{ disabled, expanded }}
+      disabled={disabled} onPress={onPress} style={({ pressed }) => [filterShellStyles.sheetTrigger,
+        { backgroundColor: theme.input, borderColor: theme.border, opacity: disabled ? 0.5 : pressed ? 0.7 : 1 }]}>
+      <Text numberOfLines={1} style={[filterShellStyles.sheetValue, { color: theme.text }]}>{value}</Text>
+      <Ionicons name="chevron-forward" size={16} color={theme.textMuted} />
+    </Pressable>
+  </FilterRow>;
 }
 
 export function NeutralChip({ label, active, onPress, accessibilityLabel }: {

@@ -1,11 +1,16 @@
 import { type ReactNode, useCallback, useMemo, useState, useSyncExternalStore } from 'react';
 import {
   FlatList,
+  StyleSheet,
+  Text,
+  View,
   SectionList,
   type FlatListProps,
   type SectionListData,
   type SectionListProps,
 } from 'react-native';
+import { useAppTheme } from '@/theme/app-theme';
+import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { QueryStateView } from '@/components/QueryStateView';
 import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { ScoreCardArtworkScope } from '@/components/game-content/GameScoreCard';
@@ -189,6 +194,27 @@ function RemoteImageSectionList<
   );
 }
 
+const listStyles = StyleSheet.create({
+  list: { flex: 1 },
+  content: { padding: 16, gap: 10 },
+  count: { marginBottom: 6 },
+});
+
+function GameListFrame({ children }: { children: ReactNode }) {
+  const theme = useAppTheme();
+  return <View style={[listStyles.list, { backgroundColor: theme.background }]}>{children}</View>;
+}
+
+function useTabListLayout() {
+  const bottom = useNativeTabBottomInset();
+  return {
+    style: listStyles.list,
+    contentInsetAdjustmentBehavior: 'automatic' as const,
+    contentContainerStyle: [listStyles.content, { paddingBottom: bottom + 16 }],
+    scrollIndicatorInsets: { bottom },
+  };
+}
+
 type QueryPageProps<TData> = {
   isLoading: boolean;
   isError: boolean;
@@ -223,26 +249,31 @@ export function BestListPage<
   data,
   sectionListProps,
 }: BestListPageProps<TItem, TSection>) {
+  const layout = useTabListLayout();
   return (
-    <ScoreCardArtworkScope>
-      <QueryStateView<readonly TSection[]>
-      isLoading={isLoading}
-      isError={isError}
-      isEmpty={isEmpty}
-      error={error}
-      onRetry={onRetry}
-      emptyText={emptyText}
-      emptyActionLabel={emptyActionLabel}
-      onEmptyAction={onEmptyAction}
-      data={data}
-      renderData={(sections) => (
-        <RemoteImageSectionList<TItem, TSection>
-          {...sectionListProps}
-          sections={sections}
+    <GameListFrame>
+      <ScoreCardArtworkScope>
+        <QueryStateView<readonly TSection[]>
+          isLoading={isLoading}
+          isError={isError}
+          isEmpty={isEmpty}
+          error={error}
+          onRetry={onRetry}
+          emptyText={emptyText}
+          emptyActionLabel={emptyActionLabel}
+          onEmptyAction={onEmptyAction}
+          data={data}
+          renderData={(sections) => (
+            <RemoteImageSectionList<TItem, TSection>
+              {...layout}
+              stickySectionHeadersEnabled={false}
+              {...sectionListProps}
+              sections={sections}
+            />
+          )}
         />
-      )}
-      />
-    </ScoreCardArtworkScope>
+      </ScoreCardArtworkScope>
+    </GameListFrame>
   );
 }
 
@@ -264,8 +295,9 @@ function FlatListPage<TItem>({
   flatListProps,
   beforeList,
 }: FlatListPageProps<TItem>) {
+  const layout = useTabListLayout();
   return (
-    <>
+    <GameListFrame>
       {beforeList}
       <QueryStateView<readonly TItem[]>
         isLoading={isLoading}
@@ -279,17 +311,23 @@ function FlatListPage<TItem>({
         data={data}
         renderData={(items) => (
           <RemoteImageFlatList<TItem>
+            {...layout}
             {...flatListProps}
             data={items}
           />
         )}
       />
-    </>
+    </GameListFrame>
   );
 }
 
-export function RecordsListPage<TItem>(props: FlatListPageProps<TItem>) {
-  return <ScoreCardArtworkScope><FlatListPage {...props} /></ScoreCardArtworkScope>;
+export function RecordsListPage<TItem>({ count, flatListProps, ...props }: FlatListPageProps<TItem> & { count?: number }) {
+  const theme = useAppTheme();
+  const header = count === undefined ? flatListProps.ListHeaderComponent
+    : <Text style={[listStyles.count, { color: theme.textMuted }]}>共 {count} 条成绩</Text>;
+  return <ScoreCardArtworkScope>
+    <FlatListPage {...props} flatListProps={{ ...flatListProps, ListHeaderComponent: header }} />
+  </ScoreCardArtworkScope>;
 }
 
 export function CatalogListPage<TItem>(props: FlatListPageProps<TItem>) {

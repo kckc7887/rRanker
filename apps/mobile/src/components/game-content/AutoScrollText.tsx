@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import { ScrollView, Text } from 'react-native';
+import { ScrollView, Text, type StyleProp, type TextStyle, type ViewStyle } from 'react-native';
 import { useCachedTabActive } from '@/components/CachedTabScreen';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { useReducedMotion } from '@/hooks/use-reduced-motion';
@@ -12,9 +12,9 @@ export function AutoScrollText({
   testID,
 }: {
   text: string;
-  textStyle: object;
-  style?: object;
-  contentContainerStyle?: object;
+  textStyle: StyleProp<TextStyle>;
+  style?: StyleProp<ViewStyle>;
+  contentContainerStyle?: StyleProp<ViewStyle>;
   testID?: string;
 }) {
   const active = useCachedTabActive();

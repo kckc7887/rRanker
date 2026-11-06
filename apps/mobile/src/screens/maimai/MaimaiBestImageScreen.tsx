@@ -2,10 +2,8 @@ import { CollectionImage } from '@/components/CollectionImage';
 import { MaimaiFilterBar, dxRatingTagFilterState } from '@/components/MaimaiFilterBar';
 import type { GameDataBundle } from '@/domain/game-data';
 import type { Player } from '@/domain/models';
-import {
-  BestImageCollectionPicker,
-  TrophyPreview,
-} from '@/features/best-image/best-image-collection-picker';
+import { TrophyBadge } from '@/components/TrophyBadge';
+import { BestImageCollectionPicker } from '@/features/best-image/best-image-collection-picker';
 import {
   DEFAULT_CUSTOM_BEST_IMAGE_FILTERS,
   parseBestImageQuantity
@@ -14,7 +12,7 @@ import { bestImageExportFilename } from '@/features/best-image/best-image-export
 import {
   BestImageChoiceChip,
   BestImageStyleSwitch,
-  BestImageScreenShell,
+  BestImageQuantity, BestImageStyleRow, BestImageScreenShell,
   bestImageScreenSharedStyles,
 } from '@/features/best-image/best-image-screen-shell';
 import {
@@ -39,10 +37,8 @@ import { useGameData } from '@/hooks/use-game-data';
 import { useAppTheme } from '@/theme/app-theme';
 import { useEffect, useMemo, useRef } from 'react';
 import {
-  Pressable,
   StyleSheet,
   Text,
-  TextInput,
   View,
 } from 'react-native';
 
@@ -90,7 +86,7 @@ function StylePreview({
   if (selection?.mode === 'off') return <Text style={[styles.noAsset, { color: theme.textMuted }]}>已关闭</Text>;
   const selectedItem = selection?.mode === 'item' || selection?.mode === 'random' ? selection.item : undefined;
   if (kind === 'trophy') {
-    return <TrophyPreview item={selectedItem} fallback={player.presentation?.trophyName} />;
+    return <TrophyBadge item={selectedItem} fallback={player.presentation?.trophyName} />;
   }
   const collectionId = selectedItem?.id ?? ({
     icon: player.presentation?.iconId,
@@ -102,7 +98,6 @@ function StylePreview({
 }
 
 export function MaimaiBestImageScreen() {
-  const theme = useAppTheme();
   const { data, activeAccountId } = useGameData();
   const randomizedSelections = useRef(new Set<string>());
   const collections = useBestImageCollections();
@@ -302,17 +297,11 @@ export function MaimaiBestImageScreen() {
           onVersionsChange={handleVersionsChange}
           onReset={resetCustomFilters}
         />
-        <View style={styles.fieldRow}>
-          <View style={styles.textFieldWrap}>
-            <Text style={[styles.fieldLabel, { color: theme.textSecondary }]}>数量</Text>
-            <TextInput accessibilityLabel="自定义数量" autoCorrect={false} value={quantityText} onChangeText={(value) => {
-              controller.setQuantityText(value);
-              const parsed = parseBestImageQuantity(value);
-              if (parsed !== null) setQuantity(parsed);
-            }} placeholder="0 为无限制" placeholderTextColor={theme.textMuted} style={[styles.textInput, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }, quantityError && styles.textInputError]} />
-            {quantityError ? <Text style={[styles.errorText, { color: theme.danger }]}>{quantityError}</Text> : null}
-          </View>
-        </View>
+        <BestImageQuantity value={quantityText} error={quantityError} onChange={(value) => {
+          controller.setQuantityText(value);
+          const parsed = parseBestImageQuantity(value);
+          if (parsed !== null) setQuantity(parsed);
+        }} />
         <View style={styles.chipRow}>
           <BestImageChoiceChip accessibilityLabel="区分版本" label="区分版本" disabled={versions.length < 2} reportDisabledState selected={splitVersions} onPress={() => setSplitVersions((value) => !value)} styles={{ chip: styles.chip, chipText: styles.chipText, chipDisabled: styles.chipDisabled, chipTextDisabled: styles.chipTextDisabled }} />
           <BestImageChoiceChip accessibilityLabel="寸筛选" label="寸" reportDisabledState selected={nearMiss} onPress={() => setNearMiss((value) => !value)} styles={{ chip: styles.chip, chipText: styles.chipText, chipDisabled: styles.chipDisabled, chipTextDisabled: styles.chipTextDisabled }} />
@@ -325,11 +314,8 @@ export function MaimaiBestImageScreen() {
         const selectedItem = selection?.mode === 'item' || selection?.mode === 'random' ? selection.item : undefined;
         const fallbackName = kind === 'trophy' ? basePlayer.presentation?.trophyName : `玩家当前${label}`;
         const selectionName = selection?.mode === 'off' ? '已关闭' : selection?.mode === 'random' ? `随机 · ${selection.item.name}` : selectedItem?.name ?? fallbackName ?? '未设置';
-        return <Pressable key={kind} accessibilityLabel={`选择${label}`} accessibilityRole="button" onPress={() => setActivePicker(kind)} style={({ pressed }) => [styles.styleRow, { borderBottomColor: theme.border }, pressed && { backgroundColor: theme.surfaceMuted }]}>
-          <View style={styles.stylePreview}><StylePreview kind={kind} selection={selection} player={basePlayer} /></View>
-          <View style={styles.styleCopy}><Text style={[styles.styleName, { color: theme.text }]}>{label}</Text><Text numberOfLines={1} style={[styles.styleValue, { color: theme.textMuted }]}>{selectionName}</Text></View>
-          <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-        </Pressable>;
+        return <BestImageStyleRow key={kind} label={label} value={selectionName} onPress={() => setActivePicker(kind)}
+          preview={<StylePreview kind={kind} selection={selection} player={basePlayer} />} />;
       }),
       widths: OUTPUT_WIDTHS,
       activeWidth: outputWidth,
@@ -421,9 +407,6 @@ function maimaiExportState(ready: boolean, valid: boolean, busy: boolean, pages:
 }
 
 const maimaiStyles = StyleSheet.create({
-  textFieldWrap: { flex: 1, minWidth: 0 },
-  fieldLabel: { fontSize: 12, fontWeight: '700', marginBottom: 6 },
-  errorText: { marginTop: 4, fontSize: 10, lineHeight: 14 },
   chipRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 7 },
   chipDisabled: { opacity: 0.42 },
   chipTextDisabled: { color: '#9CA3AF' },

@@ -1,6 +1,6 @@
 import type { ReactNode } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
-import { Card } from '@/components/Card';
+import { CollectionProgress } from './CollectionProgress';
 import { DifficultyBadge, ScoreStatusBadges } from '@/components/ScoreVisuals';
 import { difficultyFromIndex } from '@/domain/catalog';
 import {
@@ -20,10 +20,6 @@ type PlateProgressCardProps = {
   testID?: string;
 };
 
-function progressPercent(completed: number, total: number): number {
-  return total ? Math.min(100, (completed / total) * 100) : 0;
-}
-
 function RequirementHint({ label }: { label: PlateTierLabel }) {
   const theme = useAppTheme();
   const spec = plateRequirementSpec(label);
@@ -37,69 +33,15 @@ function RequirementHint({ label }: { label: PlateTierLabel }) {
 }
 
 export function PlateProgressCard({ plate, progress, eyebrow, footer, testID }: PlateProgressCardProps) {
-  const theme = useAppTheme();
   const plateMeta = parseVersionPlateName(plate.name);
-  const percent = progressPercent(progress.completed, progress.total);
-
-  return (
-    <Card style={styles.card} testID={testID}>
-      {eyebrow ? <Text style={[styles.eyebrow, { color: theme.accent }]}>{eyebrow}</Text> : null}
-      <View style={styles.progressHeader}>
-        <Text style={[styles.progressTitle, { color: theme.text }]}>{plate.name}</Text>
-        <Text style={[styles.progressPct, { color: theme.accent }]}>{percent.toFixed(1)}%</Text>
-      </View>
-      <View style={[styles.barTrack, { backgroundColor: theme.border }]}>
-        <View style={[styles.barFill, { width: `${percent}%`, backgroundColor: theme.accent }]} />
-      </View>
-      <View style={styles.progressMetaRow}>
-        {plateMeta ? <RequirementHint label={plateMeta.label} /> : <View style={styles.requirementHint} />}
-        <Text style={[styles.progressCount, { color: theme.textSecondary }]}>
-          {progress.completed} / {progress.total}
-        </Text>
-      </View>
-      {Object.entries(progress.byDifficulty)
-        .sort(([left], [right]) => Number(left) - Number(right))
-        .map(([difficulty, item]) => {
-          const levelIndex = Number(difficulty);
-          return (
-            <View key={difficulty} style={styles.diffRow}>
-              {levelIndex < 0 ? (
-                <Text style={[styles.anyDiff, { color: theme.textMuted }]}>任意难度</Text>
-              ) : (
-                <DifficultyBadge difficulty={difficultyFromIndex(levelIndex)} compact />
-              )}
-              <Text style={[styles.meta, { color: theme.textMuted }]}>{item.completed}/{item.total}</Text>
-            </View>
-          );
-        })}
-      {footer}
-    </Card>
-  );
+  return <CollectionProgress title={plate.name} progress={progress} eyebrow={eyebrow} testID={testID}
+    requirement={plateMeta && <RequirementHint label={plateMeta.label} />}
+    difficulty={level => <DifficultyBadge difficulty={difficultyFromIndex(level)} compact />}>
+    {footer}
+  </CollectionProgress>;
 }
 
 const styles = StyleSheet.create({
-  card: { gap: 8 },
-  eyebrow: { color: '#246BFD', fontSize: 12, fontWeight: '700' },
-  progressHeader: { flexDirection: 'row', alignItems: 'baseline', justifyContent: 'space-between', gap: 10 },
-  progressTitle: { color: '#111827', fontSize: 18, fontWeight: '800', flex: 1 },
-  progressPct: { color: '#246BFD', fontSize: 22, fontWeight: '800' },
-  barTrack: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: '#E5E7EB',
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: '#246BFD',
-  },
-  progressMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
   requirementHint: {
     flex: 1,
     flexDirection: 'row',
@@ -108,8 +50,4 @@ const styles = StyleSheet.create({
     gap: 4,
   },
   requirementText: { color: '#6B7280', fontSize: 11, lineHeight: 16 },
-  progressCount: { color: '#4B5563', fontSize: 12, fontWeight: '600', flexShrink: 0 },
-  diffRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  anyDiff: { color: '#6B7280', fontSize: 12, fontWeight: '700' },
-  meta: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
 });

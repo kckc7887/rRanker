@@ -17,26 +17,25 @@ export function CollectionImage({
   size?: number;
   borderRadius?: number;
 }) {
-  const [failed, setFailed] = useState(false);
-  const aspect = kind === 'plate' ? 720 / 116 : 1;
-  const width = kind === 'plate' ? Math.round(size * aspect) : size;
-  const height = size;
-  if (failed) {
-    return <View style={[styles.placeholder, { width, height, borderRadius }]} />;
-  }
-  return (
-    <Image
-      cacheProfile="native"
-      accessibilityLabel={`${kind} 预览`}
-      contentFit="contain"
-      onError={() => setFailed(true)}
-      source={`${ASSET_ROOT}/${kind}/${collectionId}.png`}
-      style={{ width, height, borderRadius }}
-      transition={120}
-    />
-  );
+  return <CollectionArtwork source={`${ASSET_ROOT}/${kind}/${collectionId}.png`} label={`${kind} 预览`}
+    height={size} aspect={kind === 'plate' ? 720 / 116 : 1} borderRadius={borderRadius} />;
 }
 
-const styles = StyleSheet.create({
-  placeholder: { backgroundColor: '#E5E7EB' },
-});
+type CollectionArtworkProps = {
+  source: string; label: string; height: number; aspect: number; borderRadius: number;
+};
+
+export function CollectionArtwork(props: CollectionArtworkProps) {
+  return <Artwork key={props.source} {...props} />;
+}
+
+function Artwork({ source, label, height, aspect, borderRadius }: CollectionArtworkProps) {
+  const [failed, setFailed] = useState(false);
+  const style = { width: Math.round(height * aspect), height, borderRadius };
+  return failed
+    ? <View style={[style, styles.placeholder]} />
+    : <Image cacheProfile="native" accessibilityLabel={label} contentFit="contain" onError={() => setFailed(true)}
+        source={source} style={style} transition={120} />;
+}
+
+const styles = StyleSheet.create({ placeholder: { backgroundColor: '#E5E7EB' } });

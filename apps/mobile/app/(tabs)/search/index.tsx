@@ -1,10 +1,10 @@
+import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { ExampleCatalogScreen } from '@/screens/ExampleScreens';
 import { useCallback, useEffect, useMemo } from 'react';
-import { Text, TextInput, View, type ListRenderItem } from 'react-native';
+import { type ListRenderItem } from 'react-native';
 import { CachedTabScreen } from '@/components/CachedTabScreen';
 import { EmptyDataView } from '@/components/EmptyDataView';
 import { CatalogListPage } from '@/components/game-content/GameListPages';
-import { SIMAI_CATALOG_LIST_STYLES as styles } from '@/components/game-content/SimaiListStyles';
 import { ChunithmFilterBar } from '@/components/chunithm/ChunithmFilterBar';
 import { ChunithmSongRow } from '@/components/chunithm/ChunithmSongRow';
 import { PhigrosFilterBar } from '@/components/phigros/PhigrosFilterBar';
@@ -19,7 +19,6 @@ import { buildPhigrosKyouChartTagIndex, phigrosKyouChartHasAllTags } from '@/dom
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
-import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { usePhigrosCatalog } from '@/hooks/use-phigros-catalog';
 import { usePhigrosKyouChartTags } from '@/hooks/use-phigros-kyou';
 import { useUserLibrary } from '@/hooks/use-user-library';
@@ -33,7 +32,6 @@ import { TufSearchScreen } from '@/screens/TufScreens';
 import { useChunithmCatalogFilter } from '@/state/chunithm-catalog-filter';
 import { usePhigrosCatalogFilter } from '@/state/phigros-catalog-filter';
 import { useSession, UNBOUND_ACCOUNT_ID } from '@/state/session-store';
-import { useAppTheme } from '@/theme/app-theme';
 import {
   EMPTY_SONG_FILTERS,
   searchDocumentFor,
@@ -90,8 +88,6 @@ const chunithmSearchValues = (song: ChunithmSong) => [
 
 function ChunithmSearchScreen() {
   const query = useChunithmCatalog();
-  const tabBottomInset = useNativeTabBottomInset();
-  const theme = useAppTheme();
   const {
     keyword, collapsed, difficulty, version, constantMin, constantMax,
     setKeyword, setCollapsed, setDifficulty, setVersion, setConstantMin, setConstantMax, clearFilters,
@@ -120,65 +116,48 @@ function ChunithmSearchScreen() {
     || constantMin
     || constantMax
   );
+  const controls = <>
+    <GameSearchHeader accessibilityLabel="中二节奏歌曲搜索"
+      placeholder="曲名 / ID / 别名 / 曲师 / 谱师" value={keyword} onChangeText={setKeyword}
+      resultCountText={isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`} />
+    <ChunithmFilterBar
+      collapsed={collapsed}
+      constantMax={constantMax}
+      constantMin={constantMin}
+      difficulty={difficulty}
+      onCollapsedChange={setCollapsed}
+      onConstantMaxChange={setConstantMax}
+      onConstantMinChange={setConstantMin}
+      onDifficultyChange={setDifficulty}
+      onReset={clearFilters}
+      onVersionChange={setVersion}
+      version={version}
+      versions={query.data?.versions ?? []}
+    />
+  </>;
   return (
-    <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
-        <TextInput
-          accessibilityLabel="中二节奏歌曲搜索"
-          autoCapitalize="none"
-          autoCorrect={false}
-          placeholder="曲名 / ID / 别名 / 曲师 / 谱师"
-          placeholderTextColor={theme.textMuted}
-          value={keyword}
-          onChangeText={setKeyword}
-          style={[
-            styles.searchBox,
-            { backgroundColor: theme.input, borderColor: theme.border, color: theme.text },
-          ]}
-        />
-        <Text style={[styles.resultCount, { color: theme.textMuted }]}>
-          {isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`}
-        </Text>
-      </View>
-      <ChunithmFilterBar
-        collapsed={collapsed}
-        constantMax={constantMax}
-        constantMin={constantMin}
-        difficulty={difficulty}
-        onCollapsedChange={setCollapsed}
-        onConstantMaxChange={setConstantMax}
-        onConstantMinChange={setConstantMin}
-        onDifficultyChange={setDifficulty}
-        onReset={clearFilters}
-        onVersionChange={setVersion}
-        version={version}
-        versions={query.data?.versions ?? []}
-      />
-      <CatalogListPage<{ song: ChunithmSong; difficulties: ChunithmSong['difficulties']; matchedAlias?: string }>
-        isLoading={query.isLoading || (isFiltering && filtered.length === 0)}
-        isError={query.isError}
-        isEmpty={!!query.data && filtered.length === 0}
-        error={query.error}
-        onRetry={() => void query.refetch()}
-        emptyText={hasActiveFilters ? '筛选结果为空' : '暂无曲库数据'}
-        data={query.data && filtered.length > 0 ? filtered : undefined}
-        flatListProps={{
-          testID: 'chunithm-catalog-results-list',
-          contentInsetAdjustmentBehavior: 'automatic',
-          keyExtractor: (item) => String(item.song.id),
-          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
-          scrollIndicatorInsets: { bottom: tabBottomInset },
-          renderItem: ({ item }) => (
-            <ChunithmSongRow
-              displayedDifficulties={item.difficulties}
-              displayedVersionTitle={selectedVersionTitle}
-              matchedAlias={item.matchedAlias}
-              song={item.song}
-            />
-          ),
-        }}
-      />
-    </View>
+    <CatalogListPage<{ song: ChunithmSong; difficulties: ChunithmSong['difficulties']; matchedAlias?: string }>
+      beforeList={controls}
+      isLoading={query.isLoading || (isFiltering && filtered.length === 0)}
+      isError={query.isError}
+      isEmpty={!!query.data && filtered.length === 0}
+      error={query.error}
+      onRetry={() => void query.refetch()}
+      emptyText={hasActiveFilters ? '筛选结果为空' : '暂无曲库数据'}
+      data={query.data && filtered.length > 0 ? filtered : undefined}
+      flatListProps={{
+        testID: 'chunithm-catalog-results-list',
+        keyExtractor: (item) => String(item.song.id),
+        renderItem: ({ item }) => (
+          <ChunithmSongRow
+            displayedDifficulties={item.difficulties}
+            displayedVersionTitle={selectedVersionTitle}
+            matchedAlias={item.matchedAlias}
+            song={item.song}
+          />
+        ),
+      }}
+    />
   );
 }
 
@@ -186,8 +165,6 @@ function PhigrosSearchScreen() {
   const query = usePhigrosCatalog();
   const kyouChartTags = usePhigrosKyouChartTags();
   const library = useUserLibrary();
-  const tabBottomInset = useNativeTabBottomInset();
-  const theme = useAppTheme();
   const {
     keyword, collapsed, level, constantMin, constantMax, chapter, selectedKyouTagIds,
     setKeyword, setCollapsed, setLevel, setConstantMin, setConstantMax, setChapter,
@@ -267,41 +244,35 @@ function PhigrosSearchScreen() {
     toggleFavorite,
   ]);
 
+  const controls = <>
+    <GameSearchHeader accessibilityLabel="歌曲搜索"
+      placeholder="曲名 / 别名 / 曲师 / 谱师" value={keyword} onChangeText={setKeyword}
+      resultCountText={isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`} />
+    <PhigrosFilterBar
+      collapsed={collapsed} onCollapsedChange={setCollapsed}
+      level={level} constantMin={constantMin} constantMax={constantMax}
+      onLevelChange={setLevel} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
+      chapter={chapter} versions={versions} onChapterChange={setChapter}
+      kyouTags={kyouChartTags.data?.tags ?? []}
+      selectedKyouTagIds={selectedKyouTagIds}
+      kyouTagState={kyouChartTags.data ? 'ready' : kyouChartTags.isLoading ? 'loading' : 'unavailable'}
+      onKyouTagIdsChange={setSelectedKyouTagIds}
+      onReset={clearFilters}
+    />
+  </>;
   return (
-    <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <View style={[styles.searchArea, { backgroundColor: theme.surface }]}>
-        <TextInput accessibilityLabel="歌曲搜索" autoCapitalize="none" autoCorrect={false}
-          placeholder="曲名 / 别名 / 曲师 / 谱师" placeholderTextColor={theme.textMuted}
-          value={keyword} onChangeText={setKeyword}
-          style={[styles.searchBox, { backgroundColor: theme.input, borderColor: theme.border, color: theme.text }]} />
-        <Text style={styles.resultCount}>{isFiltering ? '正在筛选…' : `共 ${filtered.length} 首`}</Text>
-      </View>
-      <PhigrosFilterBar
-        collapsed={collapsed} onCollapsedChange={setCollapsed}
-        level={level} constantMin={constantMin} constantMax={constantMax}
-        onLevelChange={setLevel} onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
-        chapter={chapter} versions={versions} onChapterChange={setChapter}
-        kyouTags={kyouChartTags.data?.tags ?? []}
-        selectedKyouTagIds={selectedKyouTagIds}
-        kyouTagState={kyouChartTags.data ? 'ready' : kyouChartTags.isLoading ? 'loading' : 'unavailable'}
-        onKyouTagIdsChange={setSelectedKyouTagIds}
-        onReset={clearFilters}
-      />
-      <CatalogListPage<typeof filtered[number]>
-        isLoading={query.isLoading || (isFiltering && filtered.length === 0)} isError={query.isError}
-        isEmpty={!!query.data && filtered.length === 0}
-        error={query.error} onRetry={() => void query.refetch()}
-        emptyText={hasActiveFilters ? '筛选结果为空' : '暂无曲库数据'}
-        data={query.data && filtered.length > 0 ? filtered : undefined}
-        flatListProps={{
-          testID: 'phigros-catalog-results-list',
-          contentInsetAdjustmentBehavior: 'automatic',
-          keyExtractor: (item) => item.song.id,
-          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 20 }],
-          scrollIndicatorInsets: { bottom: tabBottomInset },
-          renderItem: renderPhigrosItem,
-        }}
-      />
-    </View>
+    <CatalogListPage<typeof filtered[number]>
+      beforeList={controls}
+      isLoading={query.isLoading || (isFiltering && filtered.length === 0)} isError={query.isError}
+      isEmpty={!!query.data && filtered.length === 0}
+      error={query.error} onRetry={() => void query.refetch()}
+      emptyText={hasActiveFilters ? '筛选结果为空' : '暂无曲库数据'}
+      data={query.data && filtered.length > 0 ? filtered : undefined}
+      flatListProps={{
+        testID: 'phigros-catalog-results-list',
+        keyExtractor: (item) => item.song.id,
+        renderItem: renderPhigrosItem,
+      }}
+    />
   );
 }

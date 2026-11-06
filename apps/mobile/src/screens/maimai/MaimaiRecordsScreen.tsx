@@ -1,12 +1,10 @@
 import { useCallback, useEffect, useMemo } from 'react';
-import { Text, View, type ListRenderItem } from 'react-native';
+import { type ListRenderItem } from 'react-native';
 import { GameSearchHeader } from '@/components/game-content/GameSearchHeader';
 import { RecordsListPage } from '@/components/game-content/GameListPages';
 import { useStableRangeBounds } from '@/components/game-content/RangeSelector';
-import { SIMAI_RECORDS_LIST_STYLES as styles } from '@/components/game-content/SimaiListStyles';
 import { MaimaiFilterBar, dxRatingTagFilterState, type VersionFilterOption } from '@/components/MaimaiFilterBar';
 import { ScoreRecordCard } from '@/components/ScoreRecordCard';
-import { TAB_LIST_CACHE_PROPS } from '@/components/tab-list-cache';
 import { buildDxRatingChartTagIndex, dxRatingChartHasAllTags } from '@/domain/dxrating-chart-tags';
 import {
   maimaiGenres,
@@ -21,11 +19,9 @@ import { useLocalSearch } from '@/hooks/use-local-search';
 import { useDebouncedValue } from '@/hooks/use-debounced-value';
 import { useDetailedCatalog } from '@/hooks/use-detailed-catalog';
 import { useDxRatingChartTags } from '@/hooks/use-dxrating-chart-tags';
-import { useNativeTabBottomInset } from '@/hooks/use-native-tab-bottom-inset';
 import { useScoreSnapshot } from '@/hooks/use-score-snapshot';
 import { useRecordsFilter } from '@/state/records-filter';
 import { useSession } from '@/state/session-store';
-import { useAppTheme } from '@/theme/app-theme';
 import { searchDocumentFor, songSearchDocument, searchDocumentMatches } from '@/utils/search';
 
 const recordSearchValues = (record: ScoreRecord) => [record.songId, record.title];
@@ -35,8 +31,6 @@ export function MaimaiRecordsScreen() {
   const { data, isLoading, isError, error, refetch } = useScoreSnapshot();
   const catalog = useDetailedCatalog();
   const dxRatingChartTags = useDxRatingChartTags();
-  const theme = useAppTheme();
-  const tabBottomInset = useNativeTabBottomInset();
   const {
     keyword, collapsed, difficulty, version, genre, type, constantMin, constantMax, achievementMin, achievementMax,
     soloAchievement, multiAchievement, versionLocale, selectedDxRatingTagIds,
@@ -104,48 +98,43 @@ export function MaimaiRecordsScreen() {
 
   const isEmpty = !!data && filtered.length === 0;
 
+  const controls = <>
+    <GameSearchHeader accessibilityLabel="成绩搜索"
+      placeholder="曲名 / 曲师 / 谱师 / 罗马音" value={keyword} onChangeText={setKeyword} />
+    <MaimaiFilterBar collapsed={collapsed} onCollapsedChange={setCollapsed}
+      difficulty={difficulty} version={version} type={type}
+      genre={genre} genres={genres} onGenreChange={setGenre}
+      constantMin={constantMin} constantMax={constantMax}
+      constantBounds={maimaiConstantBounds}
+      achievementMin={achievementMin} achievementMax={achievementMax}
+      soloAchievement={soloAchievement} multiAchievement={multiAchievement}
+      versionLocale={versionLocale} versions={versions}
+      dxRatingTags={dxRatingChartTags.data?.tags ?? []}
+      selectedDxRatingTagIds={selectedDxRatingTagIds}
+      dxRatingTagState={dxRatingTagFilterState(dxRatingChartTags)}
+      onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
+      onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
+      onAchievementMinChange={setAchievementMin} onAchievementMaxChange={setAchievementMax}
+      onSoloAchievementChange={setSoloAchievement} onMultiAchievementChange={setMultiAchievement}
+      onVersionLocaleChange={setVersionLocale} onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
+      onReset={clearFilters} />
+  </>;
   return (
-    <View style={[styles.page, { backgroundColor: theme.background }]}>
-      <GameSearchHeader layout="records" accessibilityLabel="成绩搜索"
-        placeholder="曲名 / 曲师 / 谱师 / 罗马音" value={keyword} onChangeText={setKeyword} />
-      <MaimaiFilterBar collapsed={collapsed} onCollapsedChange={setCollapsed}
-        difficulty={difficulty} version={version} type={type}
-        genre={genre} genres={genres} onGenreChange={setGenre}
-        constantMin={constantMin} constantMax={constantMax}
-        constantBounds={maimaiConstantBounds}
-        achievementMin={achievementMin} achievementMax={achievementMax}
-        soloAchievement={soloAchievement} multiAchievement={multiAchievement}
-        versionLocale={versionLocale} versions={versions}
-        dxRatingTags={dxRatingChartTags.data?.tags ?? []}
-        selectedDxRatingTagIds={selectedDxRatingTagIds}
-        dxRatingTagState={dxRatingTagFilterState(dxRatingChartTags)}
-        onDifficultyChange={setDifficulty} onVersionChange={setVersion} onTypeChange={setType}
-        onConstantMinChange={setConstantMin} onConstantMaxChange={setConstantMax}
-        onAchievementMinChange={setAchievementMin} onAchievementMaxChange={setAchievementMax}
-        onSoloAchievementChange={setSoloAchievement} onMultiAchievementChange={setMultiAchievement}
-        onVersionLocaleChange={setVersionLocale} onDxRatingTagIdsChange={setSelectedDxRatingTagIds}
-        onReset={clearFilters} />
-      <RecordsListPage<ScoreRecord>
-        isLoading={isLoading || (isFiltering && filtered.length === 0)}
-        isError={isError}
-        isEmpty={isEmpty}
-        error={error}
-        onRetry={refetch ? () => void refetch() : undefined}
-        emptyText="当前筛选条件下没有成绩"
-        data={data && filtered.length > 0 ? filtered : undefined}
-        flatListProps={{
-          testID: 'records-results-list',
-          contentInsetAdjustmentBehavior: 'automatic',
-          style: styles.list,
-          contentContainerStyle: [styles.listContent, { paddingBottom: tabBottomInset + 16 }],
-          scrollIndicatorInsets: { bottom: tabBottomInset },
-          keyExtractor: recordKey,
-          ...TAB_LIST_CACHE_PROPS,
-          ListHeaderComponent: data ? <View style={styles.header}><Text style={styles.note}>共 {filtered.length} 条成绩</Text></View> : null,
-          renderItem: renderRecord,
-        }}
-      />
-    </View>
+    <RecordsListPage<ScoreRecord>
+      beforeList={controls}
+      isLoading={isLoading || (isFiltering && filtered.length === 0)}
+      isError={isError}
+      isEmpty={isEmpty}
+      error={error}
+      onRetry={refetch ? () => void refetch() : undefined}
+      emptyText="当前筛选条件下没有成绩"
+      data={data && filtered.length > 0 ? filtered : undefined}
+      count={data ? filtered.length : undefined} flatListProps={{
+        testID: 'records-results-list',
+        keyExtractor: recordKey,
+        renderItem: renderRecord,
+      }}
+    />
   );
 }
 

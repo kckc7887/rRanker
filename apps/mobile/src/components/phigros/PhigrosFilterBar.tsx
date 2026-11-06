@@ -1,11 +1,11 @@
 import { useMemo, useState } from 'react';
-import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
+import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import { FilterAnchoredDropdown, type FilterSelectOption } from '@/components/FilterAnchoredDropdown';
-import { FilterChipFrame, NeutralChip, FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
+import { FilterRow, FilterChipFrame, NeutralChip, FilterShell, filterShellStyles, joinFilterSummary } from '@/components/game-content/FilterShell';
 import type { RangeBounds } from '@/components/game-content/RangeSelector';
 import { MetricFilterSelectRows, MetricFilterRangeRow, MetricFilterChoiceRow, type MetricFilterSelectRow } from '@/components/game-content/MetricFilterRows';
 import { PhigrosRateBadge } from '@/components/phigros/PhigrosRateBadge';
+import { TagFilterRow, type TagFilterState } from '@/components/game-content/TagFilterSheet';
 import { PhigrosKyouTagFilterSheet } from '@/components/phigros/PhigrosKyouTagFilterSheet';
 import { PhigrosXingBadge } from '@/components/phigros/PhigrosXingBadge';
 import {
@@ -20,7 +20,6 @@ import type { PhigrosKyouTag } from '@/domain/phigros-kyou';
 import type { GameVersion } from '@/domain/models';
 import { phigrosLevelColors } from '@/domain/phigros-level-theme';
 import { phigrosXingLabel, type PhigrosXingKind } from '@/domain/phigros-xing';
-import { useAppTheme } from '@/theme/app-theme';
 
 const PHIGROS_XING_FILTERS: readonly { value: PhigrosXingKind; label: string }[] = [
   { value: 'good', label: 'Good' },
@@ -29,7 +28,6 @@ const PHIGROS_XING_FILTERS: readonly { value: PhigrosXingKind; label: string }[]
 
 type ChapterDropdownValue = string | 'all';
 type OpenDropdown = string | null;
-export type PhigrosKyouTagFilterState = 'ready' | 'loading' | 'unavailable';
 
 export type PhigrosFilterSelectRow = MetricFilterSelectRow;
 
@@ -51,7 +49,7 @@ export interface PhigrosFilterBarProps {
   versions?: readonly GameVersion[];
   kyouTags?: readonly PhigrosKyouTag[];
   selectedKyouTagIds?: readonly number[];
-  kyouTagState?: PhigrosKyouTagFilterState;
+  kyouTagState?: TagFilterState;
   onCollapsedChange: (collapsed: boolean) => void;
   onLevelChange: (level: PhigrosLevel | 'all') => void;
   onConstantMinChange: (value: string) => void;
@@ -135,7 +133,6 @@ export function PhigrosFilterBar({
   onKyouTagIdsChange,
   onReset,
 }: PhigrosFilterBarProps) {
-  const theme = useAppTheme();
   const [openDropdown, setOpenDropdown] = useState<OpenDropdown>(null);
   const [tagSheetVisible, setTagSheetVisible] = useState(false);
   const showAccuracyRange = onAccuracyMinChange !== undefined && onAccuracyMaxChange !== undefined;
@@ -168,8 +165,7 @@ export function PhigrosFilterBar({
       onCollapse={() => { setOpenDropdown(null); onCollapsedChange(true); }}>
       <MetricFilterSelectRows rows={selectRows} openDropdown={openDropdown} onOpenChange={setOpenDropdown} />
 
-      {showLevel ? <View style={filterShellStyles.filterRow}>
-        <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>难度</Text>
+      {showLevel ? <FilterRow label="难度">
         <ScrollView
           horizontal
           showsHorizontalScrollIndicator={false}
@@ -186,11 +182,10 @@ export function PhigrosFilterBar({
             />
           ))}
         </ScrollView>
-      </View> : null}
+      </FilterRow> : null}
 
       {showChapterPicker ? (
-        <View style={filterShellStyles.filterRow}>
-          <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>章节</Text>
+        <FilterRow label="章节">
           <FilterAnchoredDropdown
             accessibilityLabel={`章节筛选，当前 ${selectedChapterLabel}`}
             onOpenChange={setDropdownOpen('chapter')}
@@ -201,36 +196,21 @@ export function PhigrosFilterBar({
             selectedValue={chapter}
             valueLabel={selectedChapterLabel}
           />
-        </View>
+        </FilterRow>
       ) : null}
 
-      {showKyouTagPicker ? (
-        <View style={filterShellStyles.filterRow}>
-          <Text style={[filterShellStyles.filterLabel, { color: theme.textMuted }]}>标签</Text>
-          <Pressable accessibilityRole="button"
-            accessibilityLabel={`谱面标签筛选，${kyouTagState === 'ready'
-              ? `当前 ${formatPhigrosKyouTagFilterValue(kyouTags, selectedKyouTagIds)}`
-              : kyouTagState === 'loading' ? '加载中' : '暂不可用'}`}
-            accessibilityState={{ disabled: kyouTagState !== 'ready', expanded: tagSheetVisible }}
-            disabled={kyouTagState !== 'ready'} onPress={() => setTagSheetVisible(true)}
-            style={[styles.tagPicker, { backgroundColor: theme.input, borderColor: theme.border },
-              kyouTagState !== 'ready' && styles.disabled]}>
-            <Text numberOfLines={1} style={[styles.tagPickerText, { color: theme.text }]}>
-              {kyouTagState === 'loading' ? '加载中'
-                : kyouTagState === 'unavailable' ? '暂不可用'
-                  : formatPhigrosKyouTagFilterValue(kyouTags, selectedKyouTagIds)}
-            </Text>
-            <Ionicons name="chevron-forward" size={14} color={theme.textMuted} />
-          </Pressable>
-        </View>
-      ) : null}
+      {showKyouTagPicker ? <TagFilterRow state={kyouTagState} value={formatPhigrosKyouTagFilterValue(kyouTags, selectedKyouTagIds)}
+        expanded={tagSheetVisible} onOpen={() => { setOpenDropdown(null); setTagSheetVisible(true); }}>
+        <PhigrosKyouTagFilterSheet visible tags={kyouTags} selectedTagIds={selectedKyouTagIds}
+          onApply={onKyouTagIdsChange} onClose={() => setTagSheetVisible(false)} />
+      </TagFilterRow> : null}
 
       <MetricFilterRangeRow label="定数" wide={showAccuracyRange} accessibilityLabel="Phigros 定数范围"
-        bounds={constantBounds} step={0.1} lowerValue={constantMin} upperValue={constantMax}
+        {...constantBounds} step={0.1} lowerValue={constantMin} upperValue={constantMax}
         onLowerValueChange={onConstantMinChange} onUpperValueChange={onConstantMaxChange}
         formatValue={(value) => value.toFixed(1)} testID="phigros-filter-constant" />
       {showAccuracyRange ? <MetricFilterRangeRow label="Acc" wide spaced accessibilityLabel="Phigros Acc 范围"
-        bounds={accuracyBounds} step={0.01} lowerValue={accuracyMin} upperValue={accuracyMax}
+        {...accuracyBounds} step={0.01} lowerValue={accuracyMin} upperValue={accuracyMax}
         onLowerValueChange={onAccuracyMinChange} onUpperValueChange={onAccuracyMaxChange}
         formatValue={(value) => `${value.toFixed(2)}%`} testID="phigros-filter-accuracy" /> : null}
       {showRankPicker ? <MetricFilterChoiceRow label="评价" selected={rank} onSelect={onRankChange}
@@ -243,8 +223,6 @@ export function PhigrosFilterBar({
           value: item.value, accessibilityLabel: `XING 筛选 ${phigrosXingLabel(item.value)}`,
           content: <PhigrosXingBadge kind={item.value} />,
         }))} /> : null}
-      {showKyouTagPicker ? <PhigrosKyouTagFilterSheet visible={tagSheetVisible} tags={kyouTags}
-        selectedTagIds={selectedKyouTagIds} onApply={onKyouTagIdsChange} onClose={() => setTagSheetVisible(false)} /> : null}
     </FilterShell>
   );
 }
@@ -274,7 +252,4 @@ const styles = StyleSheet.create({
   chipScroll: { flexGrow: 0, flexShrink: 1 },
   levelChip: { minHeight: 30, borderRadius: 6, paddingHorizontal: 10, alignItems: 'center', justifyContent: 'center' },
   levelChipText: { fontSize: 12, fontWeight: '800', letterSpacing: 0.4 },
-  tagPicker: { flex: 1, minHeight: 44, borderWidth: 1, borderRadius: 9, paddingHorizontal: 11, flexDirection: 'row', alignItems: 'center', gap: 8 },
-  tagPickerText: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 18, fontWeight: '600' },
-  disabled: { opacity: 0.5 },
 });

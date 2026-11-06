@@ -1,4 +1,4 @@
-import { bestImageBrandFooter } from '@/features/best-image/build-best-image-html';
+import { bestImageBrandFooter, bestImageTitleScript } from '@/features/best-image/build-best-image-html';
 import type { ChunithmPlayer } from '@/domain/chunithm-personal';
 import { normalizeChunithmPossession, resolveChunithmPossessionTheme, resolveChunithmRatingTier } from '@/domain/chunithm-rating-theme';
 import { formatChunithmRating, formatChunithmScore, type ChunithmScoreCardData } from '@/domain/chunithm-score-presentation';
@@ -152,25 +152,12 @@ export function buildChunithmBestImageHtml(input: ChunithmBestImageHtmlInput): s
     const canvas=document.querySelector('.canvas');let lastHeight=0,pending=false,assetsReady=false;
     ${bestImageBridgeRuntimeScript()}
     ${bestImageBridgeMeasureScript({ layoutCall: '' })}
+    ${bestImageTitleScript}
     const fitText=()=>{
-      const context=document.createElement('canvas').getContext('2d');
-      const measure=(value,size)=>{context.font='700 '+size+'px ChuniSans';return context.measureText(value).width;};
-      document.querySelectorAll('.song-title').forEach(node=>{
-        const value=node.dataset.title;let lines=[value];
-        if(measure(value,38)>446){
-          const tokens=typeof Intl.Segmenter==='function'?Array.from(new Intl.Segmenter('ja',{granularity:'word'}).segment(value),p=>p.segment):value.match(/[A-Za-z0-9]+|[^A-Za-z0-9]/gu)||[];
-          let best=Infinity;
-          for(let split=1;split<tokens.length;split++){
-            const pair=[tokens.slice(0,split).join('').trim(),tokens.slice(split).join('').trim()];
-            if(!pair[0]||!pair[1]||/^[!！?？、。，．)）ー]/u.test(pair[1])||/[(（]$/u.test(pair[0]))continue;
-            const lengths=pair.map(v=>measure(v,37));const cost=Math.max(...lengths)+Math.abs(lengths[0]-lengths[1])*.18;
-            if(cost<best){best=cost;lines=pair;}
-          }
-        }
-        const size=Math.min(lines.length===1?46:37,446/Math.max(...lines.map(v=>measure(v,1))));
-        node.setAttribute('font-size',size);
-        node.replaceChildren(...lines.map((line,index)=>{const span=document.createElementNS('http://www.w3.org/2000/svg','tspan');span.setAttribute('x','730');span.setAttribute('y',lines.length===1?'74':String(48+index*44));span.textContent=line;return span;}));
-      });
+      fitScoreTitles('.song-title', (value, measure) => fitTwoLineTitle(value, measure, {
+        locale: 'ja', width: 446, wrapSize: 38, singleSize: 46, doubleSize: 37,
+        x: 730, singleY: 74, doubleY: 48, lineHeight: 44
+      }));
       document.querySelectorAll('[data-fit-width]').forEach(node=>{const limit=Number(node.dataset.fitWidth);if(node.getComputedTextLength()>limit){node.setAttribute('textLength',limit);node.setAttribute('lengthAdjust','spacingAndGlyphs');}});
     };
     const fontReady=document.fonts.load('700 30px ChuniSans').then(()=>document.fonts.ready);

@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { router, useFocusEffect, useLocalSearchParams } from 'expo-router';
-import { ActivityIndicator, Pressable, StyleSheet, Text, View } from 'react-native';
+import { useFocusEffect, useLocalSearchParams } from 'expo-router';
+import { OAuthResultCard } from '@/components/game-content/OAuthResultCard';
 
 import { OsuModeSelectContent } from '@/components/osu/OsuModeSelectContent';
 import { bindOsuModes } from '@/services/osu-account-binding';
@@ -13,7 +13,6 @@ import {
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
 import { useAppLifecycle } from '@/state/app-lifecycle';
-import { useAppTheme } from '@/theme/app-theme';
 import { providerErrorToUserMessage, runProviderOperation } from '@/providers/errors';
 import { useAccountBindingRequest } from '@/hooks/use-account-binding-flow';
 
@@ -37,7 +36,6 @@ function invalidateAll() {
 }
 
 export default function OsuOAuthCallbackScreen() {
-  const theme = useAppTheme();
   const params = useLocalSearchParams<{ code?: string; state?: string; error?: string }>();
   const [status, setStatus] = useState<CallbackStatus>({ kind: 'processing' });
   const processedRef = useRef(false);
@@ -137,85 +135,13 @@ export default function OsuOAuthCallbackScreen() {
     } finally { request.finish(); }
   };
 
-  const renderBody = () => {
-    if (status.kind === 'processing' || status.kind === 'binding') {
-      return (
-        <>
-          <ActivityIndicator color={theme.accent} />
-          <Text style={[styles.title, { color: theme.text }]}>
-            {status.kind === 'processing' ? '正在完成 osu! 授权…' : '正在绑定 osu! 模式…'}
-          </Text>
-          <Text style={[styles.body, { color: theme.textMuted }]}>
-            {status.kind === 'processing' ? '正在换取令牌，请稍候。' : '正在读取所选模式数据并保存账号。'}
-          </Text>
-        </>
-      );
-    }
-    if (status.kind === 'selecting') {
-      return (
-        <View style={styles.selecting}>
-          <Text style={[styles.title, { color: theme.text }]}>选择 osu! 模式</Text>
-          <Text style={[styles.body, { color: theme.textMuted }]}>
-            已通过 osu! 官方授权，请选择要绑定的模式。
-          </Text>
-          <OsuModeSelectContent
-            alreadyBound={[]}
-            busy={false}
-            submitLabel="绑定选中模式"
-            onSubmit={(selected) => void bindWith(selected, status.session)}
-          />
-        </View>
-      );
-    }
-    if (status.kind === 'success') {
-      return (
-        <>
-          <Text style={[styles.title, { color: theme.text }]}>授权成功</Text>
-          <Text style={[styles.body, { color: theme.textMuted }]}>
-            已绑定「{status.accountName}」，返回即可查看数据。
-          </Text>
-        </>
-      );
-    }
-    return (
-      <>
-        <Text style={[styles.title, { color: theme.text }]}>授权失败</Text>
-        <Text style={[styles.body, { color: theme.textMuted }]}>{status.message}</Text>
-      </>
-    );
-  };
-
-  return (
-    <View style={[styles.root, { backgroundColor: theme.background }]}>
-      <View style={[styles.card, { backgroundColor: theme.surface }]}>
-        {renderBody()}
-        {status.kind === 'success' || status.kind === 'error' ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="返回首页"
-            /** 复用栈内主页，避免重复页面。 */
-            onPress={() => router.dismissTo('/')}
-            style={({ pressed }) => [
-              styles.primary,
-              { backgroundColor: theme.accent },
-              pressed && styles.primaryPressed,
-            ]}
-          >
-            <Text style={[styles.primaryText, { color: theme.onAccent }]}>返回首页</Text>
-          </Pressable>
-        ) : null}
-      </View>
-    </View>
+  if (status.kind === 'processing') return <OAuthResultCard busy title="正在完成 osu! 授权…" message="正在换取令牌，请稍候。" />;
+  if (status.kind === 'binding') return <OAuthResultCard busy title="正在绑定 osu! 模式…" message="正在读取所选模式数据并保存账号。" />;
+  if (status.kind === 'selecting') return (
+    <OAuthResultCard title="选择 osu! 模式" message="已通过 osu! 官方授权，请选择要绑定的模式。">
+      <OsuModeSelectContent alreadyBound={[]} busy={false} submitLabel="绑定选中模式"
+        onSubmit={(selected) => void bindWith(selected, status.session)} />
+    </OAuthResultCard>
   );
+  return <OAuthResultCard result={status} />;
 }
-
-const styles = StyleSheet.create({
-  root: { flex: 1, alignItems: 'center', justifyContent: 'center', padding: 20 },
-  card: { width: '100%', maxWidth: 380, borderRadius: 16, padding: 22, gap: 12, alignItems: 'stretch' },
-  selecting: { gap: 10 },
-  title: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
-  body: { fontSize: 14, lineHeight: 21, textAlign: 'center' },
-  primary: { borderRadius: 10, padding: 13, alignItems: 'center', alignSelf: 'stretch', marginTop: 4 },
-  primaryPressed: { opacity: 0.9 },
-  primaryText: { fontWeight: '700' },
-});

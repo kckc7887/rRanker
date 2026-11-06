@@ -1,4 +1,4 @@
-import { bestImageBrandFooter } from '@/features/best-image/build-best-image-html';
+import { bestImageBrandFooter, bestImageTitleScript } from '@/features/best-image/build-best-image-html';
 import type { Player, ScoreRecord } from '@/domain/models';
 import { resolveMaimaiCourseRank } from '@/domain/maimai-course-rank';
 import type { BestImageRatingStyle } from '@/features/best-image/best-image-style-preferences';
@@ -497,16 +497,9 @@ ${bestImageBridgeMeasureScript({
       fontReady.then(fitTitleSizes);
 ` : ''}
       ${isAppStyle ? `
-      const svgNamespace = 'http://www.w3.org/2000/svg';
+      ${bestImageTitleScript}
       const fitAppTitles = () => {
-        const context = document.createElement('canvas').getContext('2d');
-        if (!context) return;
-        const measure = (value, size, weight) => {
-          context.font = weight + ' ' + size + 'px MaiCN';
-          return context.measureText(value).width;
-        };
-        document.querySelectorAll('.app-song-title').forEach((node) => {
-          const value = node.dataset.title || '';
+        fitScoreTitles('.app-song-title', (value, measure) => {
           let size = 52, weight = 800, lines = [value];
           let naturalWidth = measure(value, size, weight);
           if (naturalWidth > 520) {
@@ -516,17 +509,7 @@ ${bestImageBridgeMeasureScript({
           }
           if (naturalWidth * .86 > 520) {
             size = 44;
-            const tokens = typeof Intl.Segmenter === 'function'
-              ? Array.from(new Intl.Segmenter('ja', { granularity: 'word' }).segment(value), part => part.segment)
-              : value.match(/[A-Za-z0-9]+|[^A-Za-z0-9]/gu) || [];
-            let best = Infinity;
-            for (let split = 1; split < tokens.length; split += 1) {
-              const pair = [tokens.slice(0, split).join('').trim(), tokens.slice(split).join('').trim()];
-              if (!pair[0] || !pair[1] || /^[!！?？、。，．)）ー]/u.test(pair[1]) || /[(（]$/u.test(pair[0])) continue;
-              const widths = pair.map(line => measure(line, size, weight));
-              const cost = Math.max(...widths) + Math.abs(widths[0] - widths[1]) * .2 + (/^[一-龥]$/u.test(tokens[split - 1]) ? 132 : 0);
-              if (cost < best) { lines = pair; best = cost; }
-            }
+            lines = splitTitle(value, 'ja', line => measure(line, size, weight), .2, 132);
           }
           /** 极端长标题保留字形宽度，末尾省略以守住卡片边界。 */
           lines = lines.map(line => {
@@ -536,16 +519,7 @@ ${bestImageBridgeMeasureScript({
             return chars.join('') + '…';
           });
           const scale = Math.max(.86, Math.min(1, 520 / Math.max(...lines.map(line => measure(line, size, weight)))));
-          node.setAttribute('x', '0'); node.setAttribute('y', '0');
-          node.setAttribute('font-size', String(size)); node.setAttribute('font-weight', String(weight));
-          node.setAttribute('transform', 'translate(732 0) scale(' + scale + ' 1)');
-          node.replaceChildren(...lines.map((line, index) => {
-            const span = document.createElementNS(svgNamespace, 'tspan');
-            span.setAttribute('x', '0');
-            span.setAttribute('y', String(lines.length === 1 ? 52 + size * .383 : 55 + index * 52));
-            span.textContent = line;
-            return span;
-          }));
+          return { lines, size, weight, scale, x: 732, y: lines.length === 1 ? 52 + size * .383 : 55, lineHeight: 52 };
         });
         document.querySelectorAll('.app-profile-text').forEach(node => {
           const size = Number(node.dataset.size), x = Number(node.dataset.x), center = Number(node.dataset.centerY);

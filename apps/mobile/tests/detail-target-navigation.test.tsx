@@ -337,7 +337,7 @@ describe('成绩卡 → 详情路由 → 详情定位 往返', () => {
   it.each(CASES)('$name 公共歌曲行保留完整详情定位参数', async (testCase) => {
     const row = await render(<GameSongRow presentation={{ key: 'song', gameId: testCase.game,
       route: encodeDetailTarget(testCase.target), title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
-      cover={null} badges={null} rowStyle={null} mainStyle={null} titleStyle={null} subtitleStyle={null} />);
+      cover={null} />);
     await fireEvent.press(row.getByLabelText('打开歌曲'));
     expect(decodeDetailTarget(pushedHref().params)).toEqual({ ok: true, target: testCase.target });
   });
@@ -346,7 +346,7 @@ describe('成绩卡 → 详情路由 → 详情定位 往返', () => {
     const row = await render(<GameSongRow presentation={{ key: 'song', gameId: 'majdata-net',
       route: { songId: '歌曲/空 格', levelIndex: 5, params: { gameId: 'majdata-net', scoreId: '42' } },
       title: '歌曲', subtitle: '', accessibilityLabel: '打开歌曲', chartBadges: [] }}
-      cover={null} badges={null} rowStyle={null} mainStyle={null} titleStyle={null} subtitleStyle={null} />);
+      cover={null} />);
     await fireEvent.press(row.getByLabelText('打开歌曲'));
     expect(pushedHref()).toEqual({ pathname: '/songs/[songId]',
       params: { songId: '歌曲/空 格', levelIndex: '5', gameId: 'majdata-net', scoreId: '42' } });

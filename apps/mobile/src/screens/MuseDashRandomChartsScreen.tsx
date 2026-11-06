@@ -2,7 +2,7 @@ import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useEffect, useMemo, useState } from 'react';
 import { router } from 'expo-router';
 import { MuseDashDifficultyBadge } from '@/components/musedash/MuseDashDifficultyBadge';
-import { MuseDashRecordsFilterBar } from '@/components/musedash/MuseDashFilterBar';
+import { MuseDashFilterBar } from '@/components/musedash/MuseDashFilterBar';
 import { MuseDashScoreCard } from '@/components/musedash/MuseDashScoreCard';
 import { QueryStateView } from '@/components/QueryStateView';
 import { RandomChartsPage, RandomUnplayedChartCard } from '@/components/RandomChartsPage';
@@ -112,7 +112,7 @@ export function MuseDashRandomChartsScreen() {
     renderData={() => <RandomChartsPage preferencesError={persistenceError} onRetryPreferences={() => void hydrate()}
       count={count}
       emptyMessage="没有符合条件的喵斯快跑谱面，请放宽筛选后再试。"
-      filter={<MuseDashRecordsFilterBar
+      filter={<MuseDashFilterBar
         accMax={accMax} accMin={accMin} achievement={achievement} collapsed={collapsed}
         constantMax={constantMax} constantMin={constantMin} difficultySlot={difficultySlot}
         dlc={dlc} dlcOptions={dlcOptions} onAccMaxChange={setAccMax} onAccMinChange={setAccMin}

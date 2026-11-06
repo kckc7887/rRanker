@@ -140,7 +140,7 @@ async function checkTouchParameters(page) {
   const box = await target.boundingBox();
   assert.ok(box, `touch target must be visible: ${selector}`);
   const x = box.x + box.width / 2, y = box.y + box.height / 2;
-  const scrollBefore = await page.locator('#app').evaluate(element => element.scrollTop);
+  const scrollBefore = await page.locator('.preview-scroll').evaluate(element => element.scrollTop);
   await client.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ id: 1, x, y }] });
   for (let step = 1; step <= 6; step++) {
    await client.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ id: 1, x: x + dx * step / 6, y: y + dy * step / 6 }] });
@@ -148,7 +148,7 @@ async function checkTouchParameters(page) {
   }
   await client.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
   await page.waitForTimeout(160);
-  return { scrollBefore, scrollAfter: await page.locator('#app').evaluate(element => element.scrollTop) };
+  return { scrollBefore, scrollAfter: await page.locator('.preview-scroll').evaluate(element => element.scrollTop) };
  };
  try {
   for (const part of ['.parameter-value', '.parameter-ticks', '.parameter-cursor']) {

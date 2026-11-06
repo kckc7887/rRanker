@@ -35,6 +35,9 @@ jest.mock('@/storage/sqlite-snapshot-repository', () => {
     async saveResource(key: string, _version: number, _time: string, value: unknown) { values.set(key, value); }
   } };
 });
+jest.mock('react-native-safe-area-context', () => ({
+  useSafeAreaInsets: () => ({ top: 0, right: 0, bottom: 0, left: 0 }),
+}));
 jest.mock('@/components/AppModal', () => {
   const { View } = jest.requireActual<typeof import('react-native')>('react-native');
   return { AppModal: ({ visible, children }: { visible: boolean; children: ReactNode }) => visible ? <View>{children}</View> : null };

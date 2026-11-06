@@ -1,5 +1,6 @@
+import { OAuthLoginPanel } from '@/components/game-content/OAuthLoginPanel';
 import { useEffect, useMemo, useRef, useState } from 'react';
-import { Linking, Pressable, Text, View } from 'react-native';
+import { Linking } from 'react-native';
 import type { BoundAccount } from '@/domain/bound-account';
 import {
   boundModesOfCredential,
@@ -19,8 +20,6 @@ import { bindOsuModes } from '@/services/osu-account-binding';
 import { useAppLifecycle } from '@/state/app-lifecycle';
 import { queryClient } from '@/state/query-client';
 import { useSession } from '@/state/session-store';
-import { useAppTheme } from '@/theme/app-theme';
-import { providerLoginSheetStyles as styles } from '@/components/provider-login-sheet-styles';
 import { useAccountBindingRequest } from '@/hooks/use-account-binding-flow';
 import { captureResourceWrites } from '@/services/snapshot-cache-utils';
 import { recordRuntimeError } from '@/services/runtime-diagnostics-recorder';
@@ -34,7 +33,6 @@ export function OsuLoginPanel({
   onSuccess: () => void;
   onBusyChange: (busy: boolean) => void;
 }) {
-  const theme = useAppTheme();
   const boundAccounts = useSession((s) => s.boundAccounts);
   const sessionsByAccountId = useSession((s) => s.sessionsByAccountId);
   const credentialIdsByAccountId = useSession((s) => s.credentialIdsByAccountId);
@@ -168,69 +166,15 @@ export function OsuLoginPanel({
 
   return (
     <>
-      {message ? <Text style={styles.message}>{message}</Text> : null}
-      <Pressable
-        disabled={busy}
-        onPress={() => void openOsuAuthorize()}
-        style={({ pressed }) => [styles.primary, { backgroundColor: theme.accent }, pressed && !busy && styles.primaryPressed]}
-      >
-        <Text style={[styles.primaryText, { color: theme.onAccent }]}>前往 osu! 授权</Text>
-      </Pressable>
-      <Text style={styles.hint}>
-        点击后跳转浏览器完成授权，同意后返回并选择要绑定的模式。
-      </Text>
-      {osuReusableAccounts.length > 0 ? (
-        <View style={[styles.reuseSection, { borderTopColor: theme.border }]}>
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="使用已有osu账号"
-            disabled={busy}
-            onPress={() => setShowReusableAccounts((current) => !current)}
-            style={({ pressed }) => [
-              styles.secondary,
-              { borderColor: theme.accent },
-              pressed && !busy && styles.secondaryPressed,
-            ]}
-          >
-            <Text style={[styles.secondaryText, { color: theme.accent }]}>
-              使用已有osu账号
-            </Text>
-          </Pressable>
-          {showReusableAccounts ? (
-            <View style={styles.reuseList}>
-              {osuReusableAccounts.map((account) => {
-                const credentialId = credentialIdsByAccountId[account.id];
-                const boundModes = credentialId
-                  ? [...boundModesOfCredential(boundAccounts, credentialIdsByAccountId, credentialId)]
-                    .map((id) => familyForGameId(id)?.title)
-                    .filter((title): title is string => typeof title === 'string')
-                  : [];
-                return (
-                  <Pressable
-                    key={credentialId}
-                    accessibilityRole="button"
-                    accessibilityLabel={`使用已有osu账号 ${account.displayName}`}
-                    disabled={busy}
-                    onPress={() => setOsuModeAccount(account)}
-                    style={({ pressed }) => [
-                      styles.reuseAccount,
-                      { backgroundColor: theme.surfaceMuted, borderColor: theme.border },
-                      pressed && !busy && styles.secondaryPressed,
-                    ]}
-                  >
-                    <Text style={[styles.reuseName, { color: theme.text }]}>
-                      {account.displayName}
-                    </Text>
-                    <Text style={[styles.hint, { color: theme.textMuted }]}>
-                      已绑定 {boundModes.length > 0 ? boundModes.join('、') : '部分模式'}
-                    </Text>
-                  </Pressable>
-                );
-              })}
-            </View>
-          ) : null}
-        </View>
-      ) : null}
+      <OAuthLoginPanel provider="osu" authorizeLabel="前往 osu! 授权" hint="点击后跳转浏览器完成授权，同意后返回并选择要绑定的模式。"
+      message={message} busy={busy} expanded={showReusableAccounts} onToggle={() => setShowReusableAccounts(current => !current)}
+      onAuthorize={() => void openOsuAuthorize()}
+      accounts={osuReusableAccounts.map(account => {
+        const credentialId = credentialIdsByAccountId[account.id];
+        const modes = credentialId ? [...boundModesOfCredential(boundAccounts, credentialIdsByAccountId, credentialId)]
+          .map(id => familyForGameId(id)?.title).filter(Boolean) : [];
+        return { id: account.id, name: account.displayName, detail: '已绑定 ' + (modes.join('、') || '部分模式'), onPress: () => setOsuModeAccount(account) };
+      })} />
       <OsuModeSelectSheet
         visible={osuModeAccount !== null}
         alreadyBound={osuModeAccountBound}

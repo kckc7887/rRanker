@@ -618,7 +618,7 @@ describe('M2 song query screens', () => {
     useCatalogFilter.getState().setSelectedDxRatingTagIds([1]);
     const unavailable = await render(<SearchScreen />);
     await fireEvent.press(unavailable.getByLabelText(/展开筛选/));
-    expect(unavailable.getByLabelText('谱面标签筛选，不可用').props.accessibilityState)
+    expect(unavailable.getByLabelText('谱面标签筛选，暂不可用').props.accessibilityState)
       .toEqual(expect.objectContaining({ disabled: true }));
     expect(unavailable.queryByText('DXRating 标签不可用')).toBeNull();
     await waitFor(() => expect(useCatalogFilter.getState().selectedDxRatingTagIds).toEqual([1]));

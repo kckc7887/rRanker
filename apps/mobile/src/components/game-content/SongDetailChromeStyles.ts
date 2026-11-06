@@ -118,7 +118,7 @@ export const VERTICAL_SONG_DETAIL_STYLES = StyleSheet.create({
   details: { paddingHorizontal: 16, gap: 12, marginTop: 4 },
   songInformation: { gap: 12 },
   informationTitle: { fontSize: 15, lineHeight: 20, fontWeight: '800' },
-  informationValue: { flex: 1, minWidth: 0, fontSize: 13, lineHeight: 19 },
+  informationValue: { minWidth: 0, fontSize: 13, lineHeight: 19 },
   aliasBlock: { position: 'relative', alignItems: 'stretch' },
   aliasMeasure: { position: 'absolute', left: 0, right: 0, opacity: 0, zIndex: -1 },
   aliasAction: { alignSelf: 'flex-end', paddingHorizontal: 2, paddingVertical: 3 },

@@ -38,11 +38,11 @@ export function PhiraFilterBar({
     onCollapse={() => { setOpenDropdown(null); onCollapsedChange(true); }}>
     <MetricFilterSelectRows rows={selectRows} openDropdown={openDropdown} onOpenChange={setOpenDropdown} />
       <MetricFilterRangeRow label="定数" wide={showAccuracyRange} accessibilityLabel="Phira 定数范围"
-        bounds={constantBounds} step={0.1} lowerValue={constantMin} upperValue={constantMax}
+        {...constantBounds} step={0.1} lowerValue={constantMin} upperValue={constantMax}
         onLowerValueChange={onConstantMinChange} onUpperValueChange={onConstantMaxChange}
         formatValue={(value) => value.toFixed(1)} testID="phira-filter-constant" />
       {showAccuracyRange ? <MetricFilterRangeRow label="Acc" wide spaced accessibilityLabel="Phira Acc 范围"
-        bounds={accuracyBounds} step={0.01} lowerValue={accuracyMin} upperValue={accuracyMax}
+        {...accuracyBounds} step={0.01} lowerValue={accuracyMin} upperValue={accuracyMax}
         onLowerValueChange={onAccuracyMinChange} onUpperValueChange={onAccuracyMaxChange}
         formatValue={(value) => `${value.toFixed(2)}%`} testID="phira-filter-accuracy" /> : null}
       {showRankPicker ? <MetricFilterChoiceRow label="评价" selected={rank} onSelect={onRankChange}

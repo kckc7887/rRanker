@@ -1,8 +1,7 @@
+import { CollectionPickerCard, CollectionPinButton } from '@/components/CollectionProgress';
 import { useEffect, useMemo, useState } from 'react';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { FlatList, Pressable, StyleSheet, Text, View } from 'react-native';
-import Ionicons from '@expo/vector-icons/Ionicons';
-import { SymbolView } from 'expo-symbols';
 import { Card } from '@/components/Card';
 import { useNotification } from '@/components/AppNotification';
 import { PlateImage } from '@/components/PlateImage';
@@ -24,19 +23,6 @@ import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
 import { useAppTheme } from '@/theme/app-theme';
-
-function Chevron({ expanded }: { expanded: boolean }) {
-  const theme = useAppTheme();
-  return (
-    <SymbolView
-      name={expanded ? 'chevron.up' : 'chevron.down'}
-      size={16}
-      tintColor={theme.textMuted}
-      weight="semibold"
-      fallback={<Ionicons name={expanded ? 'chevron-up' : 'chevron-down'} size={18} color={theme.textMuted} />}
-    />
-  );
-}
 
 function firstPlateInGroups(groups: VersionPlateGroup[]): Plate | undefined {
   return groups[0]?.entries[0]?.plate;
@@ -146,28 +132,8 @@ export default function PlatesToolScreen() {
             contentContainerStyle={styles.content}
             ListHeaderComponent={(
               <View style={styles.header}>
-                <Card style={styles.pickerCard}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityState={{ expanded: pickerOpen }}
-                    accessibilityLabel={selected ? `当前牌子 ${selected.name}` : '选择牌子'}
-                    onPress={() => { if (pickerOpen) closePicker(); else openPicker(); }}
-                    style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
-                  >
-                    <View style={styles.triggerCopy}>
-                      <Text style={[styles.triggerLabel, { color: theme.textMuted }]}>当前牌子</Text>
-                      <Text style={[styles.triggerName, { color: theme.text }]}>{selected?.name ?? '请选择'}</Text>
-                    </View>
-                    {selected ? (
-                      <View style={styles.platePreview}>
-                        <PlateImage plateId={selected.id} />
-                      </View>
-                    ) : null}
-                    <Chevron expanded={pickerOpen} />
-                  </Pressable>
-
-                  {pickerOpen ? (
-                    <View style={[styles.pickerBody, { borderTopColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
+                <CollectionPickerCard label="牌子" name={selected?.name} expanded={pickerOpen}
+                  onToggle={() => { if (pickerOpen) closePicker(); else openPicker(); }} preview={selected && <PlateImage plateId={selected.id} />}>
                       <Text style={[styles.sectionLabel, { color: theme.textMuted }]}>版本</Text>
                       <View style={styles.versionGrid}>
                         {pickerGroups.map((group) => {
@@ -229,36 +195,15 @@ export default function PlatesToolScreen() {
                           </View>
                         </>
                       ) : null}
-                    </View>
-                  ) : null}
-                </Card>
+                </CollectionPickerCard>
 
                 {selected && progress ? (
                   <PlateProgressCard
                     plate={selected}
                     progress={progress}
                     footer={(
-                      <Pressable
-                        accessibilityRole="button"
-                        accessibilityLabel={`${pinnedPlateIds.includes(selected.id) ? '从主页移除' : '添加到主页'} ${selected.name}`}
-                        disabled={pinPending}
-                        onPress={() => void toggleHomePlate()}
-                        style={({ pressed }) => [
-                          styles.homeButton,
-                          { borderColor: theme.border },
-                          pinnedPlateIds.includes(selected.id) && { borderColor: theme.accent, backgroundColor: theme.accentSoft },
-                          pressed && styles.pressed,
-                          pinPending && styles.homeButtonDisabled,
-                        ]}
-                      >
-                        <Text style={[
-                          styles.homeButtonText,
-                          { color: theme.textSecondary },
-                          pinnedPlateIds.includes(selected.id) && { color: theme.accent },
-                        ]}>
-                          {pinnedPlateIds.includes(selected.id) ? '已添加到主页' : '添加到主页'}
-                        </Text>
-                      </Pressable>
+                      <CollectionPinButton name={selected.name} pinned={pinnedPlateIds.includes(selected.id)}
+                        pending={pinPending} onPress={() => void toggleHomePlate()} />
                     )}
                   />
                 ) : null}
@@ -314,28 +259,6 @@ const styles = StyleSheet.create({
   content: { padding: 16, gap: 10, paddingBottom: 28 },
   header: { gap: 12 },
   heading: { color: '#111827', fontSize: 17, fontWeight: '700', marginTop: 4 },
-  pickerCard: { padding: 0, overflow: 'hidden' },
-  trigger: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  triggerCopy: { flex: 1, gap: 3, minWidth: 0 },
-  triggerLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
-  triggerName: { color: '#111827', fontSize: 22, fontWeight: '800', letterSpacing: 0.3 },
-  platePreview: { marginTop: 10 },
-  pickerBody: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E5E7EB',
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 14,
-    gap: 10,
-    backgroundColor: '#FAFBFC',
-  },
   sectionLabel: { color: '#6B7280', fontSize: 12, fontWeight: '700' },
   versionGrid: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   versionChip: {
@@ -349,17 +272,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  versionChipSelected: {
-    borderColor: '#93C5FD',
-    backgroundColor: '#EFF6FF',
-  },
-  versionChipActive: {
-    borderColor: '#246BFD',
-    backgroundColor: '#246BFD',
-  },
   versionChipText: { color: '#111827', fontSize: 16, fontWeight: '800' },
-  versionChipTextSelected: { color: '#1D4ED8' },
-  versionChipTextActive: { color: '#FFFFFF' },
   tierRow: { flexDirection: 'row', flexWrap: 'wrap', gap: 8 },
   tierChip: {
     flexGrow: 1,
@@ -373,24 +286,7 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     paddingHorizontal: 10,
   },
-  tierChipActive: {
-    backgroundColor: '#111827',
-    borderColor: '#111827',
-  },
   tierChipText: { color: '#374151', fontSize: 15, fontWeight: '700' },
-  tierChipTextActive: { color: '#FFFFFF' },
-  homeButton: {
-    marginTop: 4,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#C7D2E2',
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  homeButtonActive: { borderColor: '#246BFD', backgroundColor: '#EAF1FF' },
-  homeButtonDisabled: { opacity: 0.55 },
-  homeButtonText: { color: '#5B6472', fontSize: 14, fontWeight: '700' },
-  homeButtonTextActive: { color: '#246BFD' },
   emptyCard: { alignItems: 'center', paddingVertical: 18 },
   done: { color: '#166534', fontWeight: '700' },
   song: {

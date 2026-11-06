@@ -1,12 +1,10 @@
 import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useMemo, useState } from 'react';
-import { ActivityIndicator, FlatList, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import { router, Stack } from 'expo-router';
-import { AppModal } from '@/components/AppModal';
-import { Card } from '@/components/Card';
+import { StrengthConclusion, StrengthPractice, StrengthSongsSheet } from '@/components/game-content/StrengthAnalysis';
 import { RandomUnplayedChartCard } from '@/components/RandomChartsPage';
 import { EmptyDataView } from '@/components/EmptyDataView';
-import { ScoreCardArtworkScope } from '@/components/game-content/GameScoreCard';
 import { PhigrosDifficultyBadge } from '@/components/phigros/PhigrosDifficultyBadge';
 import { PhigrosScoreCard } from '@/components/phigros/PhigrosScoreCard';
 import { PhigrosStrengthRadar } from '@/components/phigros/PhigrosStrengthRadar';
@@ -55,59 +53,33 @@ function TagSongsSheet({
     return record ? [{ chart, record }] : [];
   });
   return (
-    <AppModal
-      animationType="slide"
-      presentationStyle="pageSheet"
-      visible={tag != null}
-      onRequestClose={onClose}
-    >
-      <ScoreCardArtworkScope>
-      <View testID="phigros-strength-tag-songs-sheet" style={[styles.sheet, { backgroundColor: theme.background }]}>
-        <View style={[styles.sheetGrabber, { backgroundColor: theme.border }]} />
-        <View style={styles.sheetHeader}>
-          <View style={styles.sheetHeaderSpacer} />
-          <Text style={[styles.sheetTitle, { color: theme.text }]}>{tag?.name ?? ''}</Text>
+    <StrengthSongsSheet visible={tag != null} title={tag?.name ?? ''} onClose={onClose}
+      testID="phigros-strength-tag-songs-sheet" closeLabel="关闭标签歌曲列表" data={charts}
+      keyExtractor={(item) => chartKey(item.chart.songId, item.chart.levelIndex)}
+      renderItem={({ item }) => {
+        const title = titleMap.get(item.record.songId) ?? item.record.title;
+        return (
           <Pressable
             accessibilityRole="button"
-            accessibilityLabel="关闭标签歌曲列表"
-            onPress={onClose}
-            style={({ pressed }) => [styles.sheetClose, pressed && styles.pressed]}
+            accessibilityLabel={`查看谱面 ${title}`}
+            onPress={() => onOpenChart(item.chart)}
           >
-            <Text style={[styles.sheetCloseText, { color: theme.accent }]}>完成</Text>
+            <PhigrosScoreCard
+              pressable={false}
+              record={item.record}
+              catalogTitle={title}
+              artworkSource={artworkUrl(item.record.songId)}
+              totalNotes={noteTotalByKey[phigrosChartNoteKey(item.record.songId, item.record.levelIndex)]}
+            />
           </Pressable>
+        );
+      }}
+      ListEmptyComponent={(
+        <View style={styles.sheetEmpty}>
+          <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无达标谱面</Text>
         </View>
-        <FlatList
-          data={charts}
-          keyExtractor={(item) => chartKey(item.chart.songId, item.chart.levelIndex)}
-          contentContainerStyle={styles.sheetContent}
-          showsVerticalScrollIndicator={false}
-          renderItem={({ item }) => {
-            const title = titleMap.get(item.record.songId) ?? item.record.title;
-            return (
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel={`查看谱面 ${title}`}
-                onPress={() => onOpenChart(item.chart)}
-              >
-                <PhigrosScoreCard
-                  pressable={false}
-                  record={item.record}
-                  catalogTitle={title}
-                  artworkSource={artworkUrl(item.record.songId)}
-                  totalNotes={noteTotalByKey[phigrosChartNoteKey(item.record.songId, item.record.levelIndex)]}
-                />
-              </Pressable>
-            );
-          }}
-          ListEmptyComponent={(
-            <View style={styles.sheetEmpty}>
-              <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无达标谱面</Text>
-            </View>
-          )}
-        />
-      </View>
-      </ScoreCardArtworkScope>
-    </AppModal>
+      )}
+    />
   );
 }
 
@@ -279,18 +251,15 @@ export default function PhigrosStrengthAnalysisScreen() {
         <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无达标谱面</Text>
       ) : (
         <>
-          <Card style={styles.radarCard}>
-            <Text style={[styles.analysisTitle, { color: theme.text }]}>分析：{analysis.mainTagProfileLabel}</Text>
+          <StrengthConclusion title={`分析：${analysis.mainTagProfileLabel}`}>
             <PhigrosStrengthRadar
               tags={analysis.mainTags}
               min={analysis.radarDomain.min}
               max={analysis.radarDomain.max}
               onTagPress={setSelectedTag}
             />
-          </Card>
-          <ScoreCardArtworkScope>
-          <View style={styles.practiceSection}>
-            <Text style={[styles.sectionTitle, { color: theme.text }]}>薄弱项练习</Text>
+          </StrengthConclusion>
+          <StrengthPractice title="薄弱项练习">
             {analysis.recommendations.length > 0 ? analysis.recommendations.map((recommendation) => {
               const record = recordsByChart.get(chartKey(recommendation.songId, recommendation.levelIndex));
               const title = titleMap.get(recommendation.songId) ?? recommendation.title;
@@ -308,8 +277,7 @@ export default function PhigrosStrengthAnalysisScreen() {
             }) : (
               <Text style={[styles.emptyTitle, { color: theme.text }]}>暂无可提升推荐</Text>
             )}
-          </View>
-          </ScoreCardArtworkScope>
+          </StrengthPractice>
         </>
       )}
     </ScrollView>
@@ -338,18 +306,6 @@ const styles = StyleSheet.create({
   pressed: { opacity: 0.7 },
   staleBanner: { borderWidth: StyleSheet.hairlineWidth, borderRadius: 12, paddingHorizontal: 12, paddingVertical: 10 },
   staleText: { fontSize: 12, lineHeight: 17 },
-  radarCard: { paddingBottom: 8, gap: 2 },
-  analysisTitle: { fontSize: 17, lineHeight: 23, fontWeight: '800', textAlign: 'center' },
-  sectionTitle: { fontSize: 17, lineHeight: 23, fontWeight: '800' },
-  practiceSection: { gap: 10 },
   emptyTitle: { fontSize: 15, lineHeight: 21, fontWeight: '700' },
-  sheet: { flex: 1 },
-  sheetGrabber: { alignSelf: 'center', width: 36, height: 5, borderRadius: 3, marginTop: 8, marginBottom: 4 },
-  sheetHeader: { minHeight: 52, paddingHorizontal: 16, flexDirection: 'row', alignItems: 'center' },
-  sheetHeaderSpacer: { width: 56 },
-  sheetTitle: { flex: 1, fontSize: 17, lineHeight: 23, fontWeight: '800', textAlign: 'center' },
-  sheetClose: { width: 56, minHeight: 44, alignItems: 'center', justifyContent: 'center' },
-  sheetCloseText: { fontSize: 16, lineHeight: 22, fontWeight: '600' },
-  sheetContent: { paddingHorizontal: 16, paddingTop: 8, paddingBottom: 28, gap: 10 },
   sheetEmpty: { alignItems: 'center', paddingVertical: 48, paddingHorizontal: 24 },
 });

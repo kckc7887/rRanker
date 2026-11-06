@@ -1,26 +1,6 @@
 import { StyleSheet } from 'react-native';
 
 export const uploadDataSheetStyles = StyleSheet.create({
-  root: { flex: 1, backgroundColor: '#F2F2F7' },
-  grabber: {
-    alignSelf: 'center',
-    width: 36,
-    height: 5,
-    borderRadius: 3,
-    backgroundColor: '#D1D5DB',
-    marginTop: 8,
-    marginBottom: 4,
-  },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
-    paddingVertical: 10,
-  },
-  title: { color: '#111827', fontSize: 18, fontWeight: '700' },
-  closeHit: { paddingVertical: 4, paddingHorizontal: 4 },
-  close: { color: '#246BFD', fontSize: 16, fontWeight: '600' },
   softPressed: { opacity: 0.7 },
   content: { paddingHorizontal: 20, paddingBottom: 28, gap: 12 },
   sectionLabel: { color: '#6B7280', fontSize: 13, fontWeight: '600', marginTop: 4 },

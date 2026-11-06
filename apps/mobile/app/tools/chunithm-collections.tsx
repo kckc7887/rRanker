@@ -1,10 +1,11 @@
+import type { ChunithmLevelIndex } from '@/domain/chunithm';
+import { CollectionPickerCard, CollectionPinButton, CollectionProgress } from '@/components/CollectionProgress';
 import { useEffect, useMemo, useState } from 'react';
 import { FlatList, Pressable, StyleSheet, Text, TextInput, View } from 'react-native';
 import { router, Stack, useLocalSearchParams } from 'expo-router';
 import { Card } from '@/components/Card';
 import { ChunithmDifficultyBadge } from '@/components/chunithm/ChunithmDifficultyBadge';
-import { ChunithmCollectionImage } from '@/components/chunithm/ChunithmCollectionImage';
-import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
+import { ChunithmCollectionImage, ChunithmCollectionPreview } from '@/components/chunithm/ChunithmCollectionImage';
 import { QueryStateView } from '@/components/QueryStateView';
 import { useNotification } from '@/components/AppNotification';
 import {
@@ -19,63 +20,10 @@ import {
 import { useChunithmCatalog } from '@/hooks/use-chunithm-catalog';
 import { useChunithmCollections } from '@/hooks/use-chunithm-collections';
 import { useGameData } from '@/hooks/use-game-data';
-import {
-  normalizeTrophyTone,
-  TROPHY_BADGE_THEMES,
-} from '@/features/best-image/best-image-badge-theme';
 import { detailTargetHref, encodeDetailTarget } from '@/domain/detail-target';
 import { useSession } from '@/state/session-store';
 import { useToolboxPins } from '@/state/toolbox-pins';
 import { useAppTheme } from '@/theme/app-theme';
-
-function Chevron({ expanded }: { expanded: boolean }) {
-  const theme = useAppTheme();
-  return <Text style={[styles.chevron, { color: theme.textMuted }]}>{expanded ? '▲' : '▼'}</Text>;
-}
-
-function progressPercent(completed: number, total: number): number {
-  return total ? Math.min(100, (completed / total) * 100) : 0;
-}
-
-function TrophyBadge({ collection }: { collection: ChunithmCollection }) {
-  const tone = normalizeTrophyTone(collection.color);
-  if (collection.color === 'image') {
-    return <ChunithmCollectionImage kind="trophy-image" collectionId={collection.id} height={34} />;
-  }
-  if (tone === 'rainbow') {
-    return (
-      <LayeredGradientBadge
-        label={collection.name || `#${collection.id}`}
-        numberOfLines={1}
-        style={styles.trophyFrame}
-        textStyle={styles.trophyText}
-        tone="rainbow"
-      />
-    );
-  }
-  const theme = TROPHY_BADGE_THEMES[tone];
-  return (
-    <View style={[styles.trophyFrame, styles.trophySolid, { borderColor: theme.border, backgroundColor: theme.background }]}>
-      <Text numberOfLines={1} style={[styles.trophyText, { color: theme.text }]}>
-        {collection.name || `#${collection.id}`}
-      </Text>
-    </View>
-  );
-}
-
-function CollectionPreview({ kind, collection }: { kind: ChunithmCollectionKind; collection: ChunithmCollection }) {
-  if (kind === 'trophy') {
-    return <TrophyBadge collection={collection} />;
-  }
-  return (
-    <ChunithmCollectionImage
-      kind={kind}
-      collectionId={collection.id}
-      height={40}
-      borderRadius={10}
-    />
-  );
-}
 
 function RequirementHint({ collection }: { collection: ChunithmCollection }) {
   const theme = useAppTheme();
@@ -117,43 +65,12 @@ function CollectionProgressCard({
   const theme = useAppTheme();
   const computable = isChunithmCollectionComputable(collection);
   const progress = calculateChunithmCollectionProgress(collection, scores);
-  const percent = progressPercent(progress.completed, progress.total);
-  const difficultyRows = Object.entries(progress.byDifficulty)
-    .sort(([left], [right]) => Number(left) - Number(right));
-
+  const name = collection.name || `#${collection.id}`;
   return (
-    <Card style={styles.progressCard}>
-      <View style={styles.progressHeader}>
-        <View style={styles.progressTitleBlock}>
-          <CollectionPreview kind={kind} collection={collection} />
-          <Text style={[styles.progressTitle, { color: theme.text }]}>
-            {collection.name || `#${collection.id}`}
-          </Text>
-        </View>
-        <Text style={[styles.progressPct, { color: theme.accent }]}>{percent.toFixed(1)}%</Text>
-      </View>
-      <View style={[styles.barTrack, { backgroundColor: theme.border }]}>
-        <View style={[styles.barFill, { width: `${percent}%`, backgroundColor: theme.accent }]} />
-      </View>
-      <View style={styles.progressMetaRow}>
-        <RequirementHint collection={collection} />
-        <Text style={[styles.progressCount, { color: theme.textSecondary }]}>
-          {progress.completed} / {progress.total}
-        </Text>
-      </View>
-      {difficultyRows.map(([difficulty, item]) => {
-        const levelIndex = Number(difficulty);
-        return (
-          <View key={difficulty} style={styles.diffRow}>
-            {levelIndex < 0 ? (
-              <Text style={[styles.anyDiff, { color: theme.textMuted }]}>任意难度</Text>
-            ) : (
-              <ChunithmDifficultyBadge display="label" levelIndex={levelIndex as never} />
-            )}
-            <Text style={[styles.meta, { color: theme.textMuted }]}>{item.completed}/{item.total}</Text>
-          </View>
-        );
-      })}
+    <CollectionProgress title={name} progress={progress}
+      preview={<ChunithmCollectionPreview borderRadius={10} kind={kind} collection={collection} />}
+      requirement={<RequirementHint collection={collection} />}
+      difficulty={level => <ChunithmDifficultyBadge display="label" levelIndex={level as ChunithmLevelIndex} />}>
       {!computable ? (
         <Text style={[styles.note, { color: theme.textMuted }]}>
           该收藏品没有可计算的达成条件，仅展示名称与描述。
@@ -164,28 +81,8 @@ function CollectionProgressCard({
           {collection.description}
         </Text>
       ) : null}
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel={`${pinned ? '从主页移除' : '添加到主页'} ${collection.name || `#${collection.id}`}`}
-        disabled={pinPending}
-        onPress={onTogglePin}
-        style={({ pressed }) => [
-          styles.homeButton,
-          { borderColor: theme.border },
-          pinned && { borderColor: theme.accent, backgroundColor: theme.accentSoft },
-          pressed && styles.pressed,
-          pinPending && styles.homeButtonDisabled,
-        ]}
-      >
-        <Text style={[
-          styles.homeButtonText,
-          { color: theme.textSecondary },
-          pinned && { color: theme.accent },
-        ]}>
-          {pinned ? '已添加到主页' : '添加到主页'}
-        </Text>
-      </Pressable>
-    </Card>
+      <CollectionPinButton name={name} pinned={pinned} pending={pinPending} onPress={onTogglePin} />
+    </CollectionProgress>
   );
 }
 
@@ -315,28 +212,8 @@ export default function ChunithmCollectionsToolScreen() {
                 ))}
               </View>
 
-              <Card style={styles.pickerCard}>
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityState={{ expanded: pickerOpen }}
-                  accessibilityLabel={selected ? `当前收藏品 ${selected.name}` : '选择收藏品'}
-                  onPress={() => setPickerOpen((open) => !open)}
-                  style={({ pressed }) => [styles.trigger, pressed && styles.pressed]}
-                >
-                  <View style={styles.triggerCopy}>
-                    <Text style={[styles.triggerLabel, { color: theme.textMuted }]}>当前收藏品</Text>
-                    <Text style={[styles.triggerName, { color: theme.text }]}>
-                      {selected?.name ?? '请选择'}
-                    </Text>
-                  </View>
-                  {selected && kind !== 'trophy' ? (
-                    <ChunithmCollectionImage kind={kind} collectionId={selected.id} height={36} borderRadius={6} />
-                  ) : null}
-                  <Chevron expanded={pickerOpen} />
-                </Pressable>
-
-                {pickerOpen ? (
-                  <View style={[styles.pickerBody, { borderTopColor: theme.border, backgroundColor: theme.surfaceMuted }]}>
+              <CollectionPickerCard label="收藏品" name={selected?.name} expanded={pickerOpen}
+                  onToggle={() => setPickerOpen(open => !open)} preview={selected && kind !== 'trophy' && <ChunithmCollectionImage kind={kind} collectionId={selected.id} height={36} borderRadius={6} />}>
                     <TextInput
                       accessibilityLabel="搜索收藏品名称或描述"
                       autoCorrect={false}
@@ -376,9 +253,7 @@ export default function ChunithmCollectionsToolScreen() {
                         </Pressable>
                       )}
                     />
-                  </View>
-                ) : null}
-              </Card>
+                </CollectionPickerCard>
 
               {selected ? (
                 <CollectionProgressCard
@@ -465,28 +340,6 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   kindChipText: { color: '#374151', fontSize: 13, fontWeight: '700' },
-  pickerCard: { padding: 0, overflow: 'hidden' },
-  trigger: {
-    paddingHorizontal: 16,
-    paddingVertical: 14,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
-  triggerCopy: { flex: 1, gap: 3, minWidth: 0 },
-  triggerLabel: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
-  triggerName: { color: '#111827', fontSize: 20, fontWeight: '800', letterSpacing: 0.3 },
-  chevron: { fontSize: 10, fontWeight: '700' },
-  pickerBody: {
-    borderTopWidth: StyleSheet.hairlineWidth,
-    borderTopColor: '#E5E7EB',
-    paddingHorizontal: 14,
-    paddingTop: 12,
-    paddingBottom: 14,
-    gap: 10,
-    backgroundColor: '#FAFBFC',
-  },
   search: {
     backgroundColor: '#FFF',
     borderColor: '#D1D5DB',
@@ -506,28 +359,6 @@ const styles = StyleSheet.create({
   },
   pickerItemName: { color: '#111827', fontSize: 14, fontWeight: '600' },
   pickerEmpty: { color: '#6B7280', fontSize: 12, textAlign: 'center', paddingVertical: 12 },
-  progressCard: { gap: 8 },
-  progressHeader: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  progressTitleBlock: { flex: 1, flexDirection: 'row', alignItems: 'center', gap: 10, minWidth: 0 },
-  progressTitle: { color: '#111827', fontSize: 17, fontWeight: '800', flexShrink: 1 },
-  progressPct: { color: '#246BFD', fontSize: 22, fontWeight: '800' },
-  barTrack: {
-    height: 8,
-    borderRadius: 999,
-    backgroundColor: '#E5E7EB',
-    overflow: 'hidden',
-  },
-  barFill: {
-    height: '100%',
-    borderRadius: 999,
-    backgroundColor: '#246BFD',
-  },
-  progressMetaRow: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    gap: 10,
-  },
   requirementHint: {
     flex: 1,
     flexDirection: 'row',
@@ -543,25 +374,8 @@ const styles = StyleSheet.create({
     paddingVertical: 2,
   },
   requirementChipText: { color: '#4B5563', fontSize: 10, fontWeight: '700' },
-  progressCount: { color: '#4B5563', fontSize: 12, fontWeight: '600', flexShrink: 0 },
-  diffRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', gap: 10 },
-  anyDiff: { color: '#6B7280', fontSize: 12, fontWeight: '700' },
-  meta: { color: '#6B7280', fontSize: 12, fontWeight: '600' },
   note: { color: '#6B7280', fontSize: 12, lineHeight: 18 },
   description: { color: '#6B7280', fontSize: 12, lineHeight: 18 },
-  trophyFrame: { alignSelf: 'flex-start', maxWidth: '100%' },
-  trophySolid: { borderWidth: 1, borderRadius: 999, paddingHorizontal: 10, height: 26, alignItems: 'center', justifyContent: 'center' },
-  trophyText: { fontSize: 11, lineHeight: 15, fontWeight: '700', textAlign: 'center', includeFontPadding: false },
-  homeButton: {
-    marginTop: 4,
-    borderWidth: StyleSheet.hairlineWidth,
-    borderColor: '#C7D2E2',
-    borderRadius: 12,
-    paddingVertical: 10,
-    alignItems: 'center',
-  },
-  homeButtonDisabled: { opacity: 0.55 },
-  homeButtonText: { fontSize: 14, fontWeight: '700' },
   heading: { color: '#111827', fontSize: 17, fontWeight: '700', marginTop: 4 },
   listContent: { paddingHorizontal: 16, paddingBottom: 28, gap: 10 },
   emptyCard: { alignItems: 'center', paddingVertical: 18 },

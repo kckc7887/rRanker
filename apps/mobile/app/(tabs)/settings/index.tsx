@@ -1,5 +1,7 @@
+import { DetailGestureRoot } from '@/components/game-content/DetailPressable';
+import { SettingsRow } from '@/components/SettingsRow';
 import { useRef, useState } from 'react';
-import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { ActivityIndicator, Pressable, ScrollView, StyleSheet, Text } from 'react-native';
 import Ionicons from '@expo/vector-icons/Ionicons';
 import { router, type Href } from 'expo-router';
 import { useNotification } from '@/components/AppNotification';
@@ -103,126 +105,51 @@ export function SettingsScreen() {
   };
 
   return (
-    <ScrollView
-      contentInsetAdjustmentBehavior="automatic"
-      style={[styles.page, { backgroundColor: theme.background }]}
-      contentContainerStyle={[styles.content, { paddingBottom: tabBottomInset + 16 }]}
-      scrollIndicatorInsets={{ bottom: tabBottomInset }}
-    >
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push('/personalization' as Href)}
-        style={[styles.row, { backgroundColor: theme.surface }]}
+    <DetailGestureRoot style={styles.page}>
+      <ScrollView
+        contentInsetAdjustmentBehavior="automatic"
+        style={[styles.page, { backgroundColor: theme.background }]}
+        contentContainerStyle={[styles.content, { paddingBottom: tabBottomInset + 16 }]}
+        scrollIndicatorInsets={{ bottom: tabBottomInset }}
       >
-        <View style={styles.rowText}>
-          <Text style={[styles.title, { color: theme.text }]}>个性化</Text>
-          <Text style={[styles.detail, { color: theme.textMuted }]}>外观、主题色与成绩卡片样式</Text>
-        </View>
-        <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-      </Pressable>
-      <Pressable
-        accessibilityRole="button"
-        onPress={() => router.push('/game-management' as Href)}
-        style={[styles.row, { backgroundColor: theme.surface }]}
-      >
-        <View style={styles.rowText}>
-          <Text style={[styles.title, { color: theme.text }]}>游戏管理</Text>
-          <Text style={[styles.detail, { color: theme.textMuted }]}>绑定的游戏账号与数据源</Text>
-        </View>
-        <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-      </Pressable>
-      <View style={[styles.row, { backgroundColor: theme.surface }]}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="存储管理"
-          onPress={() => router.push('/storage-management' as Href)}
-          style={styles.rowMain}
-        >
-          <View style={styles.rowText}>
-            <Text style={[styles.title, { color: theme.text }]}>存储管理</Text>
-            <Text style={[styles.detail, { color: theme.textMuted }]}>查看占用并清理缓存</Text>
-          </View>
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="快捷清除缓存"
-          hitSlop={8}
-          disabled={quickClearing}
-          onPress={() => void handleQuickClear()}
-          style={[styles.quickClear, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}
-        >
-          {quickClearing
-            ? <ActivityIndicator color={theme.accent} size="small" />
-            : <Ionicons name="trash-outline" size={18} color={theme.accent} />}
-        </Pressable>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="打开存储管理"
-          onPress={() => router.push('/storage-management' as Href)}
-          hitSlop={8}
-        >
-          <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-        </Pressable>
-      </View>
-      <View style={[styles.row, { backgroundColor: theme.surface }]}>
-        <View style={styles.rowText}>
-          <Text style={[styles.title, { color: theme.text }]}>个人曲库</Text>
-          <Text style={[styles.detail, { color: theme.textMuted }]}>备份收藏、练习清单和标签</Text>
-        </View>
-        <Pressable disabled={backupBusy} onPress={() => void importBackup()} style={styles.backupAction}>
-          <Text style={{ color: theme.accent }}>导入</Text>
-        </Pressable>
-        <Pressable disabled={backupBusy} onPress={() => void runBackup(async () => {
-          await shareUserDataBackup(await library.createBackup());
-        })} style={styles.backupAction}>
-          <Text style={{ color: theme.accent }}>导出</Text>
-        </Pressable>
-        {backupBusy ? <ActivityIndicator color={theme.accent} /> : null}
-      </View>
-      <Pressable
-        accessibilityRole="button"
-        accessibilityLabel="调试"
-        onPress={() => router.push('/debug' as Href)}
-        style={[styles.row, { backgroundColor: theme.surface }]}
-      >
-        <View style={styles.rowText}>
-          <Text style={[styles.title, { color: theme.text }]}>调试</Text>
-          <Text style={[styles.detail, { color: theme.textMuted }]}>测试账号与问题排查</Text>
-        </View>
-        <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-      </Pressable>
-      <Pressable
-        onPress={() => router.push('/about' as Href)}
-        style={[styles.row, { backgroundColor: theme.surface }]}
-      >
-        <View style={styles.rowText}>
-          <Text style={[styles.title, { color: theme.text }]}>关于</Text>
-          <Text style={[styles.detail, { color: theme.textMuted }]}>隐私政策</Text>
-        </View>
-        <Text style={[styles.chevron, { color: theme.textMuted }]}>›</Text>
-      </Pressable>
-    </ScrollView>
+        <SettingsRow title="个性化" detail="外观、主题色与成绩卡片样式" onPress={() => router.push('/personalization' as Href)} />
+        <SettingsRow title="游戏管理" detail="绑定的游戏账号与数据源" onPress={() => router.push('/game-management' as Href)} />
+        <SettingsRow title="存储管理" detail="查看占用并清理缓存" onPress={() => router.push('/storage-management' as Href)}>
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="快捷清除缓存"
+            hitSlop={8}
+            disabled={quickClearing}
+            onPress={() => void handleQuickClear()}
+            style={[styles.quickClear, { borderColor: theme.border, backgroundColor: theme.surfaceMuted }]}
+          >
+            {quickClearing
+              ? <ActivityIndicator color={theme.accent} size="small" />
+              : <Ionicons name="trash-outline" size={18} color={theme.accent} />}
+          </Pressable>
+        </SettingsRow>
+        <SettingsRow title="个人曲库" detail="备份收藏、练习清单和标签">
+          <Pressable disabled={backupBusy} onPress={() => void importBackup()} style={styles.backupAction}>
+            <Text style={{ color: theme.accent }}>导入</Text>
+          </Pressable>
+          <Pressable disabled={backupBusy} onPress={() => void runBackup(async () => {
+            await shareUserDataBackup(await library.createBackup());
+          })} style={styles.backupAction}>
+            <Text style={{ color: theme.accent }}>导出</Text>
+          </Pressable>
+          {backupBusy ? <ActivityIndicator color={theme.accent} /> : null}
+        </SettingsRow>
+        <SettingsRow title="调试" detail="测试账号与问题排查" onPress={() => router.push('/debug' as Href)} />
+        <SettingsRow title="关于" detail="隐私政策" onPress={() => router.push('/about' as Href)} />
+      </ScrollView>
+    </DetailGestureRoot>
   );
 }
 
 const styles = StyleSheet.create({
   page: { flex: 1 },
   content: { padding: 16, gap: 12 },
-  row: {
-    backgroundColor: '#FFF',
-    borderRadius: 14,
-    paddingHorizontal: 18,
-    paddingVertical: 16,
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 12,
-  },
-  rowText: { flex: 1, gap: 4 },
-  rowMain: { flex: 1 },
   backupAction: { paddingVertical: 8, paddingHorizontal: 4 },
-  title: { color: '#111827', fontSize: 17, fontWeight: '700' },
-  detail: { color: '#6B7280', fontSize: 13 },
-  chevron: { color: '#9CA3AF', fontSize: 28, lineHeight: 28, fontWeight: '300' },
   quickClear: {
     width: 36,
     height: 36,

@@ -1,3 +1,4 @@
+import { TrophyBadge } from '@/components/TrophyBadge';
 import { useEffect, useMemo, useState } from 'react';
 import {
   Pressable,
@@ -6,13 +7,9 @@ import {
   View,
 } from 'react-native';
 import { CollectionImage } from '@/components/CollectionImage';
-import { LayeredGradientBadge } from '@/components/LayeredGradientBadge';
 import type { CollectionItem } from '@/domain/models';
 import { useAppTheme } from '@/theme/app-theme';
-import {
-  normalizeTrophyTone,
-  TROPHY_BADGE_THEMES,
-} from './best-image-badge-theme';
+import { normalizeTrophyTone } from '@/domain/badge-theme';
 import { BestImageResourcePicker } from './best-image-picker-shell';
 import type {
   BestImageCollectionChoice,
@@ -51,29 +48,8 @@ function trophyLevelLabel(color: string | null | undefined): string {
   return TROPHY_LEVELS.find((item) => item.id === trophyLevel(color))?.label ?? '普通';
 }
 
-export function TrophyPreview({ item, fallback }: { item?: CollectionItem; fallback?: string }) {
-  const tone = normalizeTrophyTone(item?.color);
-  const label = item?.name ?? fallback ?? '未设置';
-  if (tone === 'rainbow') return (
-    <LayeredGradientBadge
-      contentStyle={styles.rainbowTrophyPreviewContent}
-      label={label}
-      numberOfLines={1}
-      style={styles.trophyPreview}
-      textStyle={styles.trophyPreviewText}
-      tone="rainbow"
-    />
-  );
-  const theme = TROPHY_BADGE_THEMES[tone];
-  return (
-    <View style={[styles.trophyPreview, styles.solidTrophyPreview, { borderColor: theme.border, backgroundColor: theme.background }]}>
-      <Text numberOfLines={1} style={[styles.trophyPreviewText, { color: theme.text }]}>{label}</Text>
-    </View>
-  );
-}
-
 function ItemPreview({ item }: { item: CollectionItem }) {
-  if (item.kind === 'trophy') return <TrophyPreview item={item} />;
+  if (item.kind === 'trophy') return <TrophyBadge item={item} />;
   return (
     <View style={styles.imagePreview}>
       <CollectionImage
@@ -147,8 +123,5 @@ const styles = StyleSheet.create({
   levelFilter: { minHeight: 30, paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', borderRadius: 999, borderWidth: 1 },
   levelFilterText: { fontSize: 12, fontWeight: '700' },
   imagePreview: { width: 128, minHeight: 48, alignItems: 'center', justifyContent: 'center' },
-  trophyPreview: { maxWidth: 150, minWidth: 96, height: 28, borderRadius: 999, alignItems: 'center', justifyContent: 'center' },
-  solidTrophyPreview: { paddingHorizontal: 12, borderWidth: 1 },
-  rainbowTrophyPreviewContent: { paddingHorizontal: 10 },
-  trophyPreviewText: { fontSize: 12, lineHeight: 16, fontWeight: '400', textAlign: 'center', includeFontPadding: false },
+
 });

@@ -1,4 +1,5 @@
-export const PREVIEW_CONTROLS_STYLE = `
+.preview-controls button[aria-label="播放"] .pause-icon,
+.preview-controls button[aria-label="暂停"] .play-icon { display:none; }
 body.preview-controls {
   --control-bg:#121212; --control-panel:#1b1b1b; --control-raised:#272727;
   --control-text:#f1f1f1; --control-muted:#a6a6a6; --control-line:#383838;
@@ -159,4 +160,3 @@ body.preview-controls.fullscreen #fs-lock.locked { color:var(--control-on-accent
 body.preview-controls.fullscreen :is(#time-label,#fs-time-label) { font-size:12px; font-variant-numeric:tabular-nums; white-space:nowrap; }
 @media(max-width:375px) { .preview-controls:not(.fullscreen) #controls { padding:10px; } .parameter-label { font-size:10px; } .parameter-value { font-size:13px; } }
 @media(prefers-reduced-motion:reduce) { .preview-controls #controls * { transition:none!important; } }
-`;

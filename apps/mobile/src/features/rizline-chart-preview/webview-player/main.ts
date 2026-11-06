@@ -2,7 +2,7 @@ import { renderPreviewHeading } from '../../chart-preview-shared/webview-player/
 import { bindFullscreenControls } from '../../chart-preview-shared/webview-player/fullscreen-controls';
 import { bindPlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 import { PlayerEventScope } from '../../chart-preview-shared/webview-player/event-scope';
-import { installPreviewControls, setPreviewFullscreen } from '../../chart-preview-shared/webview-player/controls';
+import { installPreviewControls, setPreviewFullscreen, setPreviewPlayButton } from '../../chart-preview-shared/webview-player/controls';
 import { HeatTimelineView, heatTimeLabels } from '../../chart-preview-shared/webview-player/heat-timeline';
 import type { RizlineChartPreviewConfig, RizlineChartPreviewSettings } from '../configuration';
 import {
@@ -76,9 +76,7 @@ function syncTransport(): void {
   const playing = session.playing;
   const position = session.currentTime;
   const pct = session.duration > 0 ? Math.min(100, Math.max(0, position / session.duration * 100)) : 0;
-  element('play-icon').innerHTML = playing
-    ? '<path d="M6 4h4v16H6V4zm8 0h4v16h-4V4z"/>' : '<path d="M8 5v14l11-7z"/>';
-  playButton.setAttribute('aria-label', playing ? '暂停' : '播放');
+  setPreviewPlayButton(playButton, playing);
   element('time-label').textContent = `${formatClock(position)} / ${formatClock(session.duration)}`;
   timelineView.updateProgress(pct, formatClock(position));
   if (session.ended) status('播放结束');
@@ -314,7 +312,7 @@ async function initialize(): Promise<void> {
   const config = window.__RIZLINE_CHART_PREVIEW_CONFIG__;
   if (!config) throw new Error('missing-config');
   document.documentElement.dataset.theme = config.theme;
-  events.own(installPreviewControls({ sections: ['播放设置', '辅助选项'], stageAspectRatio: 9 / 16 }));
+  events.own(installPreviewControls(9 / 16));
   settings = normalizeRizlineChartPreviewSettings(config.settings);
   renderPreviewHeading(config.title || '谱面确认', config.previewDifficulty);
   setupSettings();

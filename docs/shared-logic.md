@@ -121,7 +121,7 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 导航主题和焦点状态通过 `expo-router` 公共入口读取，标题高度与导航类型使用 `expo-router/react-navigation`；栈页与标签页沿用同一导航上下文。
 
-`app/about.tsx` 由设置页进入，从 `Constants.expoConfig?.version` 读取当前版本，复用 `DetailGestureRoot`、`DetailPressable` 展示隐私政策与 GitHub 仓库入口。仓库通过 `Linking.openURL` 打开，失败沿用 `useNotification` 与 `recordRuntimeError`。隐私政策通过应用内路由打开 `app/privacy-policy.tsx`，正文页复用应用主题与原生 `ScrollView`、`Text`，保留日期、章节、段落、列表及联系方式。
+`app/about.tsx` 由设置页进入，从 `Constants.expoConfig?.version` 读取当前版本，复用 `DetailGestureRoot`、`SettingsRow` 展示隐私政策与 GitHub 仓库入口。仓库通过 `Linking.openURL` 打开，失败沿用 `useNotification` 与 `recordRuntimeError`。隐私政策通过应用内路由打开 `app/privacy-policy.tsx`，正文页复用应用主题与原生 `ScrollView`、`Text`，保留日期、章节、段落、列表及联系方式。
 
 `scheduleIdleTask` 提供可取消的空闲调度，账号切换与绑定弹层的延后动作共用该入口；重命名输入在 `AppModal` 的原生 `onShow` 后聚焦。`CachedTabScreen` 持续监听焦点、前后台和内存警告；普通失活仅暂停工作，已挂载内容及局部状态持续保留，重获焦点时已有画面不等待空闲任务。真正的内存警告可卸载非焦点页面。`StackScreenActivityScope` 在栈页外层监听原生转场，`useStackScreenReady` 保留首次入场完成状态，活动上下文同时受焦点、转场和前后台约束。
 
@@ -129,13 +129,23 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `RemoteImage` 是远程图片入口，使用 `cacheProfile` 明确 thumbnail、artwork、native 或 none。`remote-image-cache.ts` 管理原图、压缩图、缓存身份和文件清理；`acquireRemoteImageOriginal(source, gameId, signal)` 返回原字节文件及异步 `release`、`invalidate`，展示和压缩共用下载，消费者独立取消。文件身份包含 URL、请求头、缓存键及游戏，共享请求按清理代次隔离；原生展示使用文件 URI 作为缓存键。两类文件共用格式 4 的索引、50 MiB 总容量、游戏配额和 LRU，压缩图单项上限为 10 KiB。原图发布后保留稳定路径，最后一个消费者释放时解除占用并裁剪，使用中的文件可暂时超额。`invalidate` 只使取得的文件失效，保留后来发布的替换文件；解码失败、缺失和空原图通过所属入口重建。原图不受可见性等待限制，压缩在成功显示且页面活动时开始；压缩缓存命中后持续显示缩略图，取得同一入口的原图文件后替换，原图失败时保留有效缓存。普通页面失活不释放已取得的原图；原图成功显示才通知调用方。清理先失效代次并移除所属索引，正在使用的原图待消费者释放后回收。
 
-通用行、卡片和封面位于 `components/game-content`，游戏组件只提供实际展示差异。成绩卡曲绘、个性化卡片示例以及中二、Phigros 的成绩图歌曲背景选择器统一使用所属游戏的 thumbnail 缓存；Phigros 头像选择沿用 native 缓存。`ScoreRecordCard` 通过 `SimaiScoreCard` 显示曲名、达成率和状态徽章；UTAGE 使用全宽主列，不显示 Rating 或 DX 分数，难度标签消费成绩的 `utage.kanji` 与 `level`，缺少宴字时显示 `U·TA·GE`。`GameDifficultyBadge` 使用普通样式覆盖，保留尺寸、渐变和文本。列表的页面活动、可见性与图片落盘通过现有共享组件传递；可见性使用列表的稳定条目键，分组列表额外按分组键隔离，同键数据更新保留当前活动状态。
+`BestListPage`、`RecordsListPage` 与 `CatalogListPage` 共用列表边距、底部安全区与可见性处理。最佳页通过 `SongListSectionHeader` 传入组名及成绩数、谱面数或 Rating 合计，成绩页和曲库页通过 `GameSearchHeader` 传入搜索值、变更回调和计数。搜索条件、分页、分组和空态文案由游戏页面提供。
 
-`GameSongRow` 与 `GameSongCover` 将封面失败关联当前游戏和图片来源，来源变化允许新图片加载，旧来源的迟到错误不改变当前图片状态。
+`GameScoreCard` 提供紧凑卡片与标题的默认样式，`ScoreCardMetric` 和 `ScoreCardBadges` 分别排列指标和徽章。中二与喵斯快跑的渐变徽章通过 `LayeredGradientBadge` 指定配色、色标和流动效果。成绩卡曲绘、个性化卡片示例以及中二、Phigros 的成绩图歌曲背景选择器统一使用所属游戏的 thumbnail 缓存；Phigros 头像选择沿用 native 缓存。`ScoreRecordCard` 通过 `SimaiScoreCard` 显示曲名、达成率和状态徽章；UTAGE 使用全宽主列，不显示 Rating 或 DX 分数，难度标签消费成绩的 `utage.kanji` 与 `level`，缺少宴字时显示 `U·TA·GE`。`GameDifficultyBadge` 使用普通样式覆盖，保留尺寸、渐变和文本。列表的页面活动、可见性与图片落盘通过现有共享组件传递；可见性使用列表的稳定条目键，分组列表额外按分组键隔离，同键数据更新保留当前活动状态。
 
-`ChartCarousel` 按谱面键保存标签草稿，只装配当前及相邻卡片，下载与标签操作分别保留离窗卡片；`renderItem` 传递当前卡活动状态、受控标签草稿和任务保留回调。滚动只更新活动卡，初始目标及 `resetKey` 变化重置定位，宽度变化保留当前卡，列表缩短时钳制索引；Majdata 传入实际初始难度，不将滚动索引回写初始目标。`TagEditor` 的 `historyTags` 可传入惰性读取函数，仅在预设弹层打开时计算，保存失败保留输入与弹层；输入框可收缩，窄屏保持预设与添加按钮在卡片内。
+`GameSongRow` 与个人曲库通过 `GameSongCover` 显示曲绘及加载失败后的占位。游戏传入图片来源、尺寸和圆角，切换来源后允许加载新图，旧来源的迟到错误只影响原图。TUF 的 `TufLevelImage` 按视频代理图、原图、难度图标和内置图标回退，列表与详情分别使用缩略图和大图缓存。
 
-绑定弹层复用当前输入、按钮、扫码和 `useAccountBindingRequest`。公共错误文案隐藏无助于用户决策的底层异常；实际错误进入诊断记录。
+`FilterShell` 管理折叠、摘要和重置。范围、选项和下拉行位于 `MetricFilterRows`，`FilterSheetRow` 打开选择弹层。舞萌 DXRating 与 Phigros Kyou 通过 `TagFilterRow` 显示读取状态与筛选值。`TagFilterSheet` 保存本次勾选草稿，点击完成才应用，分组与标签配色由各游戏提供。详情页的 `ChartTags` 展示前四个标签与剩余数量，完整列表的票数、分组和说明由游戏传入。
+
+详情使用 `SongDetailChrome` 放置返回与收藏，`SongDetailHero` 和 `SongMetadataTable` 分别排布曲绘标题区和歌曲资料。`SongInformationCard` 展示可展开的别名和资料字段，游戏可传入版权、HASH、标签或链接。`GameChartResultCard` 的 `summary` 排列难度、主成绩、徽章、次指标和谱师，操作通过 `ChartAction` 提供。Phigros、Phira 和 Rizline 通过 `GameNoteTable` 提供物量，osu! 与 TUF 通过 `JudgementTable` 传入各自的判定行与汇总。
+
+`ChartCarousel` 按谱面键保存标签草稿，只装配当前及相邻卡片，下载与标签操作分别保留离窗卡片；`renderItem` 传递当前卡活动状态、受控标签草稿和任务保留回调。滚动只更新活动卡，初始目标及 `resetKey` 变化重置定位，宽度变化保留当前卡，列表缩短时钳制索引；Majdata 传入实际初始难度，不将滚动索引回写初始目标。`LibraryTagEditor` 根据歌曲或谱面目标读取当前标签，并将保存、历史及预设交给 `TagEditor`。舞萌谱面传入固定预设，其余入口使用个人曲库预设。`TagEditor` 的 `historyTags` 可传入惰性读取函数，仅在预设弹层打开时计算，保存失败保留输入与弹层；输入框可收缩，窄屏保持预设与添加按钮在卡片内。
+
+`AppSheet` 在 `AppModal` 中统一底部安全区、拖动指示条、标题和两侧操作。账号选择、登录、上传、标签、模式和成绩图素材选择共用该入口，调用方传入关闭、完成和禁用条件。`GameGroupRow` 展示游戏及模式的展开行，账号管理与总览切换器通过 `boundAccountRatingTag` 展示评分。`SettingsRow` 统一设置、关于与调试页的标题、说明和右侧操作。
+
+Phira、TUF 与喵斯快跑使用 `PublicPlayerPickerSheet` 显示查询结果及绑定进度，各 Provider 提供搜索结果，喵斯快跑另支持按玩家 ID 直查。落雪和 osu! 共用 `OAuthLoginPanel` 的授权及已有账号列表，以及 `OAuthResultCard` 的回调结果展示。osu! 在回调卡中选择模式。绑定请求沿用 `useAccountBindingRequest`。公共错误文案隐藏无助于用户决策的底层异常；实际错误进入诊断记录。
+
+舞萌牌子与中二收藏品通过 `CollectionPickerCard`、`CollectionProgress` 和 `CollectionPinButton` 展示选择、完成数、难度分解与置顶操作。`CollectionArtwork` 依素材比例预览姓名框与角色，`TrophyBadge` 在中二工具、总览与成绩图设置中展示称号。总览的 `OverviewActions` 按当前游戏和账号组合上传、同步与同步引导入口。舞萌与中二计算器通过 `RatingFields`、`RatingTable` 展示输入与档位，各自计算结果。
 
 ## 成绩图与谱面功能
 
@@ -147,7 +157,7 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `useBestImageAssets<T>({ session, key, prepare })` 返回 `data`、`ready`、`error`、`progress` 和 `retry`，`prepare(signal, onProgress)` 提供实际资源准备及 0–1 完成比例，空键暂停准备。结果和进度同时匹配会话、请求键、重试与缓存代次才有效；每次重新准备归零，失效回调不更新进度；前后台切换保留已完成结果，未完成准备取消后恢复。`retryBestImagePreparation` 对素材准备与 HTML 写盘的实际失败依次等待 0.5、2、10、30 秒，之后保持 30 秒间隔。未结束的操作持续等待，空素材沿用各入口的可选回退；原图 HTTP 404 由下载入口映射为 `no_data`，成绩图返回空素材。
 
-`BestImageStyleSwitch({ value, onChange })` 位于 `best-image-screen-shell.tsx`，统一舞萌与 Phigros 的游戏风格／应用风格分段切换器，包含等宽选项、容器间距和主题选中态；账号偏好仍由页面传入当前值和写入回调。
+`SegmentedControl` 接收选项、当前值、禁用状态和变更回调。舞萌上传方式、成绩图类型及 `BestImageStyleSwitch` 的风格切换共用选中态。`BestImageStyleRow` 提供素材选择入口，`BestImageQuantity` 展示自定义数量输入和错误，`BestImageExtraCount` 展示中二与 Phigros 的追加成绩数量。舞萌、中二与 Phigros 的应用风格模板通过 `bestImageTitleScript` 使用实际字体测量 SVG 曲名，按语言断行，并依模板指定的可用宽度和策略缩放或省略。预览与导出使用同一份模板。
 
 `BestImageScreenShell` 的 `appearance.preparation` 接收绘图、游戏资源的就绪状态、进度和错误、重试入口，`preview.previewStates` 提供当前预览状态。加载提示统一为“下载绘图资源中”“下载游戏资源中”“图片加载中”，同时显示进度条和百分比；绘图与游戏素材各占 40%，图片及字体解码占 19%，加载层在排版就绪后关闭。下载按已接收字节、解包及模板背景按完成项推进，图片解码通过 `best-image-progress` 回传；字体和素材齐全后才建立预览，加载层等待当前页、来源及挂载代次的就绪消息，旧事件不更新新预览。WebView 超时与失败提供公共重试入口。`bestImageAssetsReadyScript` 等待字体、HTML 图片、SVG 图片及包含伪元素的 CSS 图片引用；图片加载、有效尺寸和解码均成功后才就绪，图片地址不依赖扩展名，同文档 SVG fragment 不参与外部加载。失败发送 `best-image-error`，预览显示重试，导出立即结束。排版及尺寸变化后发送当前高度的 `best-image-ready`。
 
@@ -165,7 +175,7 @@ osu! 回调页通过 `useAppLifecycle` 等待前台就绪，再由 `useAccountBi
 
 `prepareBestImageUi` 接收游戏作用域、缓存目录、文件清单与压缩包信息，供 `prepareMaimaiUi`、`prepareChunithmUi`、`preparePhigrosUi` 和 `prepareRizlineUi` 共用校验、下载、解包及取消流程；请求按目录、包摘要和资源代次共享。中二包包含 UI 与字体；Phigros 游戏包包含模板、SVG 和固定图片，应用包包含卡底、玩家底板、遮罩、评价、段位和思源黑体，补充字体按文字选择。各游戏清理入口使所属资源代次失效并清理缓存，存储适配器负责统计和清理，启动维护保留当前缓存版本。
 
-`RizlineBestImageScreen` 复用 `BestImageScreenShell`、`useBestImageScreenController`、`useBestImageAssets` 和 `usePreparedBestImageSources`。`rizlineImagePages` 直接接收现有 AH5/Best35；自定义筛选复用 `matchesRizlineChart`、`RizlineFilterBar`、`RangeSelector` 和公共数量解析，40 张分页、数量 0 取全部。`rizlineImagePreferencesStore` 按账号保存头像及裁剪矩形、名片背景、两段签名和整图背景的当前、自选或随机模式；签名还支持关闭。随机在点击时选定资源 ID 并保存，后续预览与导出复用该结果。结构失效仅重建对应账号偏好，I/O 失败保留数据。资源选择统一使用 `BestImageResourcePicker`、`RemoteNativeImage` 和 `TrophyPreview`，搜索包含资源别名。
+`RizlineBestImageScreen` 复用 `BestImageScreenShell`、`useBestImageScreenController`、`useBestImageAssets` 和 `usePreparedBestImageSources`。`rizlineImagePages` 直接接收现有 AH5/Best35；自定义筛选复用 `matchesRizlineChart`、`RizlineFilterBar`、`RangeSelector` 和公共数量解析，40 张分页、数量 0 取全部。`rizlineImagePreferencesStore` 按账号保存头像及裁剪矩形、名片背景、两段签名和整图背景的当前、自选或随机模式；签名还支持关闭。随机在点击时选定资源 ID 并保存，后续预览与导出复用该结果。结构失效仅重建对应账号偏好，I/O 失败保留数据。资源选择统一使用 `BestImageResourcePicker`、`RemoteNativeImage` 和 `TrophyBadge`，搜索包含资源别名。
 
 共享 `ImageCropper({ uri, initialCrop?, onCancel, onConfirm })` 返回归一化 `ImageCrop`，`image-crop.ts` 处理覆盖缩放、边界和像素转换；确认与取消由调用方提交或保留选择。`cropBestImageAvatar(session, uri, crop, signal)` 使用 `expo-image-manipulator`，产物属于成绩图会话，临时文件随处理完成回收。原图读取沿用 `loadRemoteImageFile`，文件复制、失效和释放沿用公共会话入口。`rizlineAvatarCrop` 将存档的头像锚点与 1–3 倍缩放转换为归一化矩形；当前图片资源缺失时使用排序首张有曲绘成绩或曲库首张插画，签名缺失留空。
 
@@ -188,11 +198,11 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 - `chart-preview-navigation.ts` 交接当前预览请求。
 - `webview-player` 提供四套播放器共用的设置 UI 与手势。
 
-播放器生成器输出 `player.bundle` 与 `index.html`，宿主准备入口将 bundle 写为会话内的 `player.js`，HTML 沿用该脚本引用。
+`scripts/lib/build-preview.mjs` 的 `readPreviewTemplate` 将游戏舞台、专属参数与共用的时间线、播放与步进按钮、循环、拨轮和样式装配成页面。`buildPreview` 输出 `player.bundle` 与 `index.html`，宿主准备入口将 bundle 写为会话内的 `player.js`，HTML 沿用该脚本引用。
 
 预览准备结果的 `dispose` 返回 `Promise<void>`，宿主先失效会话和释放视图，再异步清理；迟到准备结果同样回收。`fs-storage.ts` 的目录统计、清理和版本裁剪使用异步文件入口，`runSharedCacheFileOperation` 串行提交共享素材文件发布与共享目录清理，排队后重新检查代次。启动维护保留当前会话文件及已使用的固定预览素材目录。图片索引、发布和清理在 `remote-image-cache.ts` 内串行提交；命中读取与正常释放复用已初始化目录，原图核验合并 LRU 更新，临时文件只在未命中时准备。最后释放更新使用时间，仅有超额待回收时继续裁剪，取消与代次检查仍控制结果发布。
 
-`webview-player/controls.ts` 的 `installPreviewControls` 复用原按钮与监听，固定标题和画面，下方控制与参数独立滚动；`stageAspectRatio` 保留各游戏比例，画面高度不超过标题下方可用空间的 55%。舞萌实时信息固定两行，首行为 BPM、拍位置和 FPS，次行为 COMBO、BREAK；每行高度固定、数字等宽，超宽时横向滚动。所有谱面确认页隐藏 WebView 与页面内部滚动条，保留滑动。`setPreviewFullscreen` 保存、恢复普通模式滚动位置。
+`webview-player/controls.ts` 的 `installPreviewControls` 根据画面尺寸、全屏状态和可见参数更新布局，下方控制与参数独立滚动；四套播放器通过 `setPreviewPlayButton` 更新播放图标；`stageAspectRatio` 保留各游戏比例，画面高度不超过标题下方可用空间的 55%。舞萌实时信息固定两行，首行为 BPM、拍位置和 FPS，次行为 COMBO、BREAK；每行高度固定、数字等宽，超宽时横向滚动。所有谱面确认页隐藏 WebView 与页面内部滚动条，保留滑动。`setPreviewFullscreen` 保存、恢复普通模式滚动位置。
 
 `heading.ts` 的 `renderPreviewHeading` 同行显示曲名和难度数值。曲名按内容宽度排列，标签紧随其后；曲名最大宽度为 12 个汉字，超长往返滚动；标签只渲染 `PreviewDifficulty.value`，沿用游戏侧配色。舞萌、Phigros、Rizline 使用真实定数，osu! 使用星数，Majdata、Phira 使用原生难度值；缺失显示“—”。
 
@@ -218,7 +228,7 @@ Simai 解析支持 `BOUNCE` 的拍长比和 `NULL` 复位指令，以及分类 H
 
 `loadMajdataParsedChart(song, level, signal)` 只返回物量、地雷数与 `difficultyScores`，派生缓存格式为 2。`parseSimaiChartAsync(text, difficulty, signal)` 与播放器同步入口共用解析核心；`simaiDifficultyScores(text, slot, signal)` 在解析及分析内部循环按 4 ms 预算让出并检查取消，保持计算顺序，不构造不参与结果的诊断明细。难点值按键盘、星星、技巧、体力、爆发排列，范围 0–10，保留一位小数，七个槽位均可分析；分析失败或滑轨不完整返回 `null`。结果按歌曲修订与难度隔离，不支持的派生缓存只重建对应条目，I/O 失败不清缓存。详情仅为当前可见难度启用查询；预览调用 `loadMajdataChart` 取得缓存原文，通过已有 `simaiText` 入口交给播放器解析。
 
-`components/game-content/SimaiDifficultyRadar` 为舞萌详情、舞萌实力分析、Majdata 详情和示例实力分析共用雷达，使用相同轴序、刻度与一位小数展示，颜色由调用方传入；可选 `axisNames` 指定五维名称，默认使用舞萌轴名。
+`RadarPlot` 共用网格、轴线和数据图形，调用方传入轴值、刻度和颜色，并负责标签与点击。`components/game-content/SimaiDifficultyRadar` 为舞萌详情、舞萌实力分析、Majdata 详情和示例实力分析共用雷达，使用相同轴序、刻度与一位小数展示，颜色由调用方传入；可选 `axisNames` 指定五维名称，默认使用舞萌轴名。
 
 Phigros/Rizline 预览和下载共用 `phigrosResources`、`rizlineResources`、`VerifiedReleaseSession` 与 `verifyResourceBytes`；调用方提供实际进度或落盘回调。`utils/resource-integrity.ts` 的 `sha256FileAsync(uri): Promise<string>` 经 `modules/resource-integrity` 在原生后台分块读取已落盘文件；字节形式的响应继续使用 `sha256`。字体、素材包和谱面资源共用该文件校验入口，取消与代次检查仍在结果发布前执行。`resourceObjectPathSchema` 限定资源组、分类与哈希文件名。Phigros 在验证发布清单时建立 `assetsByPath`，曲绘、头像、成绩图和预览共用该索引，索引随发布对象释放；实际 URL 来自 `objectKey`。默认谱、里谱和共用音乐选择仍由 `phigros-chart-preview.ts` 处理。哈希 URL 不附加全局发布版本，未变化资源可以继续命中缓存。
 
@@ -240,7 +250,7 @@ Phigros 存档展示缓存和账号头像缓存使用格式 2。账号缩略图�
 
 `searchNearcadeShops` 接受关键词、页码、机型和取消信号，返回 20 条分页机厅及总数、当前页和下一页状态，不接收距离。`searchArcadePlaces` 返回至多 10 条 WGS84 地点候选；`resolveArcadePlace` 为无坐标候选调用原生地理编码。两者通过 `ArcadeMapSupport` 调用原生模块，Android 使用轻量合包的输入提示与地理编码，iOS 使用 MapKit；复用地图服务同意状态并处理取消、超时，SDK 异常使用通用错误文案；服务不可用不阻断机厅查询。`useArcadeSearch` 管理 350 毫秒防抖、独立请求及分页，`ArcadeSearchResults` 展示两类候选与各自重试。页面选择候选后恢复附近列表，选中机厅在附近响应中缺席时仍按当前距离与机型保留。交互测试验证跨城选择、筛选分页、部分失败、迟到地理编码和定位授权期间的短暂失活。
 
-实力分析共用 `app/tools/strength-analysis.tsx` 路由，分别装配 `MaimaiStrengthAnalysisScreen`、`PhigrosStrengthAnalysisScreen` 与 `ExampleStrengthAnalysisScreen`。舞萌的 DXTag 维度、类型、文件 ID 与难度匹配函数由 `domain/maimai-dxtag.ts` 提供，详情与分析复用 `useMaimaiDxTag`，查询键为 `['maimai-dxtag', 'all', catalog.source.updatedAt]`；曲库快照更新后重新核对覆盖，多个谱面共用整库请求。持久化数据与账号无关，由舞萌资源缓存统一计量和清理；缺少歌曲或难度时不追加单曲请求，也不填零。`SimaiDifficultyRadar` 接受空维度并支持维度点击；空维度显示暂无数据，不绘制完整多边形。
+`StrengthConclusion`、`StrengthPractice`、`StrengthSongsSheet` 分别显示结论、练习推荐和维度成绩列表，维度跳转目标与推荐算法由各游戏提供。实力分析共用 `app/tools/strength-analysis.tsx` 路由，分别装配 `MaimaiStrengthAnalysisScreen`、`PhigrosStrengthAnalysisScreen` 与 `ExampleStrengthAnalysisScreen`。舞萌的 DXTag 维度、类型、文件 ID 与难度匹配函数由 `domain/maimai-dxtag.ts` 提供，详情与分析复用 `useMaimaiDxTag`，查询键为 `['maimai-dxtag', 'all', catalog.source.updatedAt]`；曲库快照更新后重新核对覆盖，多个谱面共用整库请求。持久化数据与账号无关，由舞萌资源缓存统一计量和清理；缺少歌曲或难度时不追加单曲请求，也不填零。`SimaiDifficultyRadar` 接受空维度并支持维度点击；空维度显示暂无数据，不绘制完整多边形。
 
 `buildMaimaiStrengthPool` 使用 `buildBestRecordMap`、`chartVersionKey` 去重，排除宴谱与不完整成绩；达标成绩中定数最高 10 张的均值确定推荐范围 −0.5 至 +0.3。`analyzeMaimaiStrength` 接收曲库、成绩、按谱面身份索引的 DXTag 五维，统一按 100.5% 筛选达标成绩，输出逐维 Top 10 正值均值、支撑成绩、强弱结论及最多三张推荐。每维至少三张才判断强弱，极差不超过 0.3 视为均衡；推荐模拟达到目标后的维度均值增益，最低两维的边界并列项全部纳入，均衡时考虑全部维度。缺失特征不当作零值，分析结果不持久化。分析文案采用简短的能力倾向标签。推荐与支撑成绩统一使用 `ScoreRecordCard`，无成绩时仅传入谱面信息，达成率和 Rating 显示 `-`，曲绘沿用公共成绩卡设置。弹层复用当前公共组件，谱面跳转使用 `encodeDetailTarget` 和 `detailTargetHref`。
 

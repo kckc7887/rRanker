@@ -41,6 +41,8 @@ osu! 授权回调 `/oauth/osu` 在页面获得焦点且应用前台就绪后换�
 
 个人曲库栈页也使用 `StackScreenActivityScope`，批量明细与图片等待入场完成后工作，打开详情后暂停后续批量领取，返回时保留筛选与已加载内容。osu! 收藏明细通过四路有界查询补齐，与歌曲详情共用查询键及 60 秒新鲜缓存。
 
+页面从游戏展示模型取得曲目、成绩、分组及详情目标。`components/game-content` 负责跨游戏列表、筛选、成绩卡、详情布局和实力分析展示。游戏页面传入配色、指标、操作及跳转目标。账号、标签和素材弹层通过 `AppSheet` 进入同一原生弹层层级，回调与保存仍由所属功能处理。
+
 ## 游戏取数
 
 `hooks/use-game-data.ts` 通过 `services/game-data-query.ts` 与 `services/game-data-loaders.ts` 取得各游戏的实际载荷。QueryClient 保存在 `state/query-client.ts`，展示转换位于 `features/game-content/adapters`。
@@ -187,7 +189,7 @@ Rizline 曲库包含 `illustrations` 与 `signatures`：插画保存可读名称
 
 ## 谱面与下载
 
-四套生成播放器为 maimai、Phigros、osu!、Rizline。生成源位于各自 `webview-player`，各自维护 `player.bundle` 和 `index.html`；宿主会话将 bundle 以 `player.js` 暂存并沿用 HTML 引用。共享 UI 与手势位于 `chart-preview-shared/webview-player`。
+四套播放器分别用于 Simai、Phigros、osu! 和 Rizline。各游戏在自己的 `webview-player` 中维护舞台、参数和播放会话。`scripts/lib/build-preview.mjs` 在构建时装配公共时间线、播放按钮、循环、拨轮与设置区，并将样式和各游戏脚本生成为 `index.html` 与 `player.bundle`。共享样式、播放状态显示与手势位于 `chart-preview-shared/webview-player`。宿主会话以 `player.js` 暂存 bundle 并加载对应 HTML。
 
 谱面设置按存储键保留尚未写入的最新值，后台释放或页面重建后仍可恢复；成功提交才移除，前台恢复及通知重试继续补写。RPE 视频按会话的播放、倍速与定位同步，暂停保持静态画面并停止音画推进；着色器资源读取 `.glsl`、`.fs`，四元颜色参数由 RGBA 字节转换为 GL 的 0–1 值，纹理缓存同时保存纹理对象和绑定单元。贝塞尔插值在牛顿法不能收敛时使用二分结果。osu! 支持 Catmull 滑条及声明长度截断、延伸，动画资源按归档实际文件收集。
 
