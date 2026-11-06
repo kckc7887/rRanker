@@ -1,3 +1,4 @@
+import { bindTimelineDrag } from '../../chart-preview-shared/webview-player/frame-scheduler';
 import { renderPreviewHeading } from '../../chart-preview-shared/webview-player/heading';
 import { bindPlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 import { bindFullscreenControls } from '../../chart-preview-shared/webview-player/fullscreen-controls';
@@ -23,6 +24,8 @@ import { PhigrosTimelineView } from './timelineView';
 import { rpeResourceUrl } from '../../../domain/rpe-resource-path';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
 import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-preview-bridge';
+
+declare const RPE_PLAYER: boolean;
 
 declare global {
   interface Window {
@@ -108,12 +111,12 @@ function decodeBase64DataUrl(url: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-function loadImage(url: string, signal: AbortSignal, textureSafe = false): Promise<HTMLImageElement> {
+function loadImage(url: string, signal: AbortSignal): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     if (signal.aborted || disposed) { reject(new DOMException('已取消', 'AbortError')); return; }
     const image = new Image();
     /** GPU 场景纹理要求源画布可读取。 */
-    if (textureSafe && /^https?:/i.test(url)) image.crossOrigin = 'anonymous';
+    if (/^https?:/i.test(url)) image.crossOrigin = 'anonymous';
     const cleanup = () => { signal.removeEventListener('abort', onAbort); image.onload = null; image.onerror = null; };
     const onAbort = () => { cleanup(); image.src = ''; reject(new DOMException('已取消', 'AbortError')); };
     image.onload = () => { cleanup(); resolve(image); };
@@ -125,6 +128,174 @@ function loadImage(url: string, signal: AbortSignal, textureSafe = false): Promi
 
 let disposed = false;
 const events = new PlayerEventScope(() => disposed);
+
+function rpeTextureNames(chart: RpeChart): Set<string> {
+  const textureNames = new Set<string>();
+  for (const line of chart.lines) {
+    if (line.texture !== 'line.png' && line.gifEvents.length === 0) textureNames.add(line.texture);
+  }
+
+  for (const effect of chart.extras.effects) {
+    for (const value of Object.values(effect.vars)) {
+      if (typeof value === 'string') textureNames.add(value);
+    }
+  }
+  return textureNames;
+}
+
+async function loadRpeChartAssets(chart: RpeChart, bundle: PhigrosChartPreviewConfig['rpeAssets'], signal: AbortSignal): Promise<RpeChartAssets> {
+  const basePath = bundle?.basePath ?? '';
+  const textures = new Map<string, HTMLImageElement>();
+  const videos = new Map<string, HTMLVideoElement>();
+  const gifs = new Map<string, { frames: ImageBitmap[]; durationsMs: number[]; cumulativeMs: number[]; totalMs: number }>();
+  const gifAnims = new Map<number, RpeGifKeyframe[]>();
+  let gifPixels = 0;
+  events.own(() => {
+    for (const video of videos.values()) { video.pause(); video.removeAttribute('src'); video.load(); }
+    for (const gif of gifs.values()) for (const frame of gif.frames) frame.close();
+    videos.clear(); gifs.clear(); textures.clear(); gifAnims.clear();
+  });
+  const jobs: Promise<unknown>[] = [];
+  const textureNames = rpeTextureNames(chart);
+  for (const name of textureNames) {
+    const url = rpeResourceUrl(basePath, name);
+    if (!url) continue;
+    jobs.push(loadImage(url, signal)
+      .then((image) => textures.set(name, image))
+      .catch((error) => console.warn(`判定线贴图加载失败 ${name}:`, error)));
+  }
+  async function decodeGifFrames(textureName: string) {
+    const imageDecoderCtor = globalThis.ImageDecoder;
+    if (!imageDecoderCtor) throw new Error('浏览器不支持 ImageDecoder');
+    const textureUrl = rpeResourceUrl(basePath, textureName);
+    if (!textureUrl) throw new Error('gif 路径无效');
+    const response = await fetch(textureUrl, { signal });
+    if (!response.ok) throw new Error(`gif 请求失败：HTTP ${response.status}`);
+    const bytes = await response.arrayBuffer();
+    const lower = textureName.toLowerCase();
+    const mimeType = lower.endsWith('.apng') ? 'image/apng' : 'image/gif';
+    const decoder = new imageDecoderCtor({ data: bytes, type: mimeType });
+    const frames: ImageBitmap[] = [];
+    const durationsMs: number[] = [];
+    try {
+      await decoder.tracks.ready;
+      if (signal.aborted || disposed) throw new DOMException('预览已释放', 'AbortError');
+      const track = decoder.tracks.selectedTrack;
+      if (!track) throw new Error('GIF 没有可用图像轨道');
+      assertChartPreviewGifFrameCount(track.frameCount);
+      for (let index = 0; index < track.frameCount; index += 1) {
+        if (signal.aborted || disposed) throw new DOMException('预览已释放', 'AbortError');
+        await pauseChartPreviewParse(index, { signal });
+        const { image } = await decoder.decode({ frameIndex: index });
+        try {
+          assertChartPreviewGifFramePixels(image.displayWidth * image.displayHeight);
+          assertChartPreviewTexturePixels(gifPixels + image.displayWidth * image.displayHeight);
+          const bitmap = await createImageBitmap(image);
+          if (signal.aborted || disposed) { bitmap.close(); throw new DOMException('预览已释放', 'AbortError'); }
+          try { assertChartPreviewTexturePixels(gifPixels + bitmap.width * bitmap.height); }
+          catch (error) { bitmap.close(); throw error; }
+          gifPixels += bitmap.width * bitmap.height;
+          frames.push(bitmap);
+          durationsMs.push((image.duration ?? 100_000) / 1000);
+        } finally { image.close(); }
+      }
+    } catch (error) {
+      gifPixels -= frames.reduce((sum, frame) => sum + frame.width * frame.height, 0);
+      frames.forEach(frame => frame.close());
+      throw error;
+    } finally {
+      decoder.close();
+    }
+    const cumulativeMs: number[] = [];
+    let totalMs = 0;
+    for (const duration of durationsMs) {
+      totalMs += duration;
+      cumulativeMs.push(totalMs);
+    }
+    if (signal.aborted || disposed) { frames.forEach(frame => frame.close()); throw new DOMException('预览已释放', 'AbortError'); }
+    return { frames, durationsMs, cumulativeMs, totalMs };
+  }
+
+  const gifTextures = new Set<string>();
+  /** iOS 缺少 ImageDecoder 时使用静态贴图。 */
+  for (const line of chart.lines) {
+    if (line.gifEvents.length === 0 || gifTextures.has(line.texture)) continue;
+    gifTextures.add(line.texture);
+    jobs.push((async () => {
+      try {
+        const frames = await decodeGifFrames(line.texture);
+        gifs.set(line.texture, frames);
+      } catch (error) {
+        if (signal.aborted || disposed || error instanceof ChartPreviewBudgetExceededError) throw error;
+        console.warn(`gif 判定线解码失败 ${line.texture}（降级为静态贴图）:`, error);
+        try {
+          const fallbackUrl = rpeResourceUrl(basePath, line.texture);
+          if (!fallbackUrl) throw new Error('gif 路径无效');
+          const image = await loadImage(fallbackUrl, signal);
+          textures.set(line.texture, image);
+        } catch {
+
+        }
+      }
+    })());
+  }
+  for (const video of chart.extras.videos) {
+    if (videos.has(video.path)) continue;
+    jobs.push(new Promise<void>((resolve, reject) => {
+      const videoUrl = rpeResourceUrl(basePath, video.path);
+      if (!videoUrl) { resolve(); return; }
+      const element = document.createElement('video');
+      element.muted = true;
+      element.preload = 'auto';
+      element.playsInline = true;
+      element.src = videoUrl;
+      const done = () => {
+        element.removeEventListener('loadedmetadata', done);
+        element.removeEventListener('error', done);
+        signal.removeEventListener('abort', cancel);
+        resolve();
+      };
+      const cancel = () => {
+        element.removeEventListener('loadedmetadata', done); element.removeEventListener('error', done);
+        element.pause(); element.removeAttribute('src'); element.load();
+        signal.removeEventListener('abort', cancel); reject(new DOMException('预览已释放', 'AbortError'));
+      };
+      element.addEventListener('loadedmetadata', done, { once: true });
+      element.addEventListener('error', done, { once: true });
+      signal.addEventListener('abort', cancel, { once: true });
+      events.own(cancel);
+      element.load();
+      videos.set(video.path, element);
+    }));
+  }
+  await Promise.all(jobs);
+  for (const line of chart.lines) {
+    const gif = gifs.get(line.texture);
+    if (gif) gifAnims.set(line.lineIndex, buildGifAnim(line.gifEvents, gif.totalMs, chart.bpmList));
+  }
+
+  const shaders = new Map<string, string>();
+  const injectedShaders = bundle?.shaders ?? {};
+  for (const effect of chart.extras.effects) {
+    if (shaders.has(effect.shader)) continue;
+    const source = injectedShaders[effect.shader];
+    if (typeof source === 'string') shaders.set(effect.shader, source);
+  }
+
+  for (const [name, source] of Object.entries(RPE_PRESET_SHADERS)) {
+    if (!shaders.has(name)) shaders.set(name, source);
+  }
+  return { textures, videos, shaders, gifs, gifAnims };
+}
+
+async function rpeBackground(chart: RpeChart, basePath: string, image: HTMLImageElement | null, signal: AbortSignal) {
+  const background = chart.background;
+  if (!background) return image;
+  const url = rpeResourceUrl(basePath, background);
+  if (!url) return image;
+  try { return await loadImage(url, signal); }
+  catch (error) { if (signal.aborted) throw error; return image; }
+}
 
 function start(): void {
   const elements = {
@@ -161,11 +332,10 @@ function start(): void {
 
   const config: Partial<PhigrosChartPreviewConfig> = window.__PHIGROS_CHART_PREVIEW__ ?? {};
   events.own(installPreviewControls());
-  const isRpe = config.format === 'rpe';
-  elements.blockArea.hidden = isRpe;
-  elements.blockAreaBounds.hidden = isRpe;
+  elements.blockArea.hidden = RPE_PLAYER;
+  elements.blockAreaBounds.hidden = RPE_PLAYER;
   type PreviewRenderer = PgrRenderer | RpeRenderer;
-  const renderer: PreviewRenderer = isRpe ? new RpeRenderer(elements.canvas) : new PgrRenderer(elements.canvas);
+  const renderer: PreviewRenderer = RPE_PLAYER ? new RpeRenderer(elements.canvas) : new PgrRenderer(elements.canvas);
   events.own(() => renderer.dispose());
   let settings = loadSettings(config.settings);
   const playbackSettings: PhigrosPlaybackSettings = settings;
@@ -181,8 +351,7 @@ function start(): void {
   let loadController: AbortController | null = null;
   let ready = false;
   let isFullscreen = false;
-  let timelineDragging = false;
-  let wasPlayingBeforeDrag = false;
+  let cancelDrag: (() => void) | undefined;
   let completionTimes: number[] = [];
   let timelineNotes: { time: number; kind: string }[] = [];
   let controlsVisible = true;
@@ -202,164 +371,6 @@ function start(): void {
     events.own(wheel.dispose);
   }
   function flushSettings(): void { for (const wheel of wheels) wheel.flush(); }
-
-  function rpeTextureNames(chart: RpeChart): Set<string> {
-    const textureNames = new Set<string>();
-    for (const line of chart.lines) {
-      if (line.texture !== 'line.png' && line.gifEvents.length === 0) textureNames.add(line.texture);
-    }
-
-    for (const effect of chart.extras.effects) {
-      for (const value of Object.values(effect.vars)) {
-        if (typeof value === 'string') textureNames.add(value);
-      }
-    }
-    return textureNames;
-  }
-
-  async function loadRpeChartAssets(chart: RpeChart, signal: AbortSignal): Promise<RpeChartAssets> {
-    const basePath = config.rpeAssets?.basePath ?? '';
-    const textures = new Map<string, HTMLImageElement>();
-    const videos = new Map<string, HTMLVideoElement>();
-    const gifs = new Map<string, { frames: ImageBitmap[]; durationsMs: number[]; cumulativeMs: number[]; totalMs: number }>();
-    const gifAnims = new Map<number, RpeGifKeyframe[]>();
-    let gifPixels = 0;
-    events.own(() => {
-      for (const video of videos.values()) { video.pause(); video.removeAttribute('src'); video.load(); }
-      for (const gif of gifs.values()) for (const frame of gif.frames) frame.close();
-      videos.clear(); gifs.clear(); textures.clear(); gifAnims.clear();
-    });
-    const jobs: Promise<unknown>[] = [];
-    const textureNames = rpeTextureNames(chart);
-    for (const name of textureNames) {
-      const url = rpeResourceUrl(basePath, name);
-      if (!url) continue;
-      jobs.push(loadImage(url, signal)
-        .then((image) => textures.set(name, image))
-        .catch((error) => console.warn(`判定线贴图加载失败 ${name}:`, error)));
-    }
-    async function decodeGifFrames(textureName: string) {
-      const imageDecoderCtor = globalThis.ImageDecoder;
-      if (!imageDecoderCtor) throw new Error('浏览器不支持 ImageDecoder');
-      const textureUrl = rpeResourceUrl(basePath, textureName);
-      if (!textureUrl) throw new Error('gif 路径无效');
-      const response = await fetch(textureUrl, { signal });
-      if (!response.ok) throw new Error(`gif 请求失败：HTTP ${response.status}`);
-      const bytes = await response.arrayBuffer();
-      const lower = textureName.toLowerCase();
-      const mimeType = lower.endsWith('.apng') ? 'image/apng' : 'image/gif';
-      const decoder = new imageDecoderCtor({ data: bytes, type: mimeType });
-      const frames: ImageBitmap[] = [];
-      const durationsMs: number[] = [];
-      try {
-        await decoder.tracks.ready;
-        if (signal.aborted || disposed) throw new DOMException('预览已释放', 'AbortError');
-        const track = decoder.tracks.selectedTrack;
-        if (!track) throw new Error('GIF 没有可用图像轨道');
-        assertChartPreviewGifFrameCount(track.frameCount);
-        for (let index = 0; index < track.frameCount; index += 1) {
-          if (signal.aborted || disposed) throw new DOMException('预览已释放', 'AbortError');
-          await pauseChartPreviewParse(index, { signal });
-          const { image } = await decoder.decode({ frameIndex: index });
-          try {
-            assertChartPreviewGifFramePixels(image.displayWidth * image.displayHeight);
-            assertChartPreviewTexturePixels(gifPixels + image.displayWidth * image.displayHeight);
-            const bitmap = await createImageBitmap(image);
-            if (signal.aborted || disposed) { bitmap.close(); throw new DOMException('预览已释放', 'AbortError'); }
-            try { assertChartPreviewTexturePixels(gifPixels + bitmap.width * bitmap.height); }
-            catch (error) { bitmap.close(); throw error; }
-            gifPixels += bitmap.width * bitmap.height;
-            frames.push(bitmap);
-            durationsMs.push((image.duration ?? 100_000) / 1000);
-          } finally { image.close(); }
-        }
-      } catch (error) {
-        gifPixels -= frames.reduce((sum, frame) => sum + frame.width * frame.height, 0);
-        frames.forEach(frame => frame.close());
-        throw error;
-      } finally {
-        decoder.close();
-      }
-      const cumulativeMs: number[] = [];
-      let totalMs = 0;
-      for (const duration of durationsMs) {
-        totalMs += duration;
-        cumulativeMs.push(totalMs);
-      }
-      if (signal.aborted || disposed) { frames.forEach(frame => frame.close()); throw new DOMException('预览已释放', 'AbortError'); }
-      return { frames, durationsMs, cumulativeMs, totalMs };
-    }
-
-    const gifTextures = new Set<string>();
-    /** iOS 缺少 ImageDecoder 时使用静态贴图。 */
-    for (const line of chart.lines) {
-      if (line.gifEvents.length === 0 || gifTextures.has(line.texture)) continue;
-      gifTextures.add(line.texture);
-      jobs.push((async () => {
-        try {
-          const frames = await decodeGifFrames(line.texture);
-          gifs.set(line.texture, frames);
-        } catch (error) {
-          if (signal.aborted || disposed || error instanceof ChartPreviewBudgetExceededError) throw error;
-          console.warn(`gif 判定线解码失败 ${line.texture}（降级为静态贴图）:`, error);
-          try {
-            const fallbackUrl = rpeResourceUrl(basePath, line.texture);
-            if (!fallbackUrl) throw new Error('gif 路径无效');
-            const image = await loadImage(fallbackUrl, signal);
-            textures.set(line.texture, image);
-          } catch {
-
-          }
-        }
-      })());
-    }
-    for (const video of chart.extras.videos) {
-      jobs.push(new Promise<void>((resolve, reject) => {
-        const videoUrl = rpeResourceUrl(basePath, video.path);
-        if (!videoUrl) { resolve(); return; }
-        const element = document.createElement('video');
-        element.muted = true;
-        element.preload = 'auto';
-        element.playsInline = true;
-        element.src = videoUrl;
-        const done = () => {
-          element.removeEventListener('loadedmetadata', done);
-          element.removeEventListener('error', done);
-          signal.removeEventListener('abort', cancel);
-          resolve();
-        };
-        const cancel = () => {
-          element.removeEventListener('loadedmetadata', done); element.removeEventListener('error', done);
-          element.pause(); element.removeAttribute('src'); element.load();
-          signal.removeEventListener('abort', cancel); reject(new DOMException('预览已释放', 'AbortError'));
-        };
-        element.addEventListener('loadedmetadata', done, { once: true });
-        element.addEventListener('error', done, { once: true });
-        signal.addEventListener('abort', cancel, { once: true });
-        events.own(cancel);
-        element.load();
-        videos.set(video.path, element);
-      }));
-    }
-    await Promise.all(jobs);
-    for (const line of chart.lines) {
-      const gif = gifs.get(line.texture);
-      if (gif) gifAnims.set(line.lineIndex, buildGifAnim(line.gifEvents, gif.totalMs, chart.bpmList));
-    }
-
-    const shaders = new Map<string, string>();
-    const injectedShaders = config.rpeAssets?.shaders ?? {};
-    for (const effect of chart.extras.effects) {
-      if (shaders.has(effect.shader)) continue;
-      const source = injectedShaders[effect.shader];
-      if (typeof source === 'string') shaders.set(effect.shader, source);
-    }
-
-    for (const [name, source] of Object.entries(RPE_PRESET_SHADERS)) {
-      if (!shaders.has(name)) shaders.set(name, source);
-    }
-    return { textures, videos, shaders, gifs, gifAnims };
-  }
 
   const ATTACH_UI_ELEMENTS: Readonly<Record<number, { element: () => HTMLElement; always: boolean }>> = Object.freeze({
     1: { element: () => elements.pauseNode, always: false },
@@ -396,7 +407,7 @@ function start(): void {
   }
 
   function applyAttachUiFromRenderer(): void {
-    if (isRpe) applyAttachUi((renderer as RpeRenderer).attachUi);
+    if (RPE_PLAYER) applyAttachUi((renderer as RpeRenderer).attachUi);
   }
 
   renderPreviewHeading(config.title || '谱面确认', config.previewDifficulty);
@@ -506,27 +517,28 @@ function start(): void {
     timelineView.build(session.chartDuration, timelineNotes);
   }
 
-  function seekFromTimelineEvent(event: PointerEvent): void {
-    const rect = elements.timelineHost.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(100, ((event.clientX - rect.left) / rect.width) * 100));
-    seekToChartTime((pct / 100) * session.chartDuration);
-  }
 
+  let lastCombo = -1;
   function renderHud(chartTime: number): void {
     const passed = upperBoundBy(completionTimes, chartTime, (time) => time);
     const total = Math.max(1, completionTimes.length);
-    elements.gameProgress.style.width = `${Math.min(100, chartTime / Math.max(1, session.chartDuration) * 100)}%`;
-    elements.score.textContent = String(Math.floor(passed / total * 1_000_000)).padStart(7, '0');
-    elements.combo.textContent = String(passed);
-    elements.comboBlock.classList.toggle('is-visible', passed >= 3);
-    elements.timeLabel.textContent = `${formatTime(chartTime)} / ${formatTime(session.chartDuration)}`;
+    const progress = (Math.min(1, chartTime / Math.max(1, session.chartDuration)) * 100).toFixed(2) + '%';
+    if (elements.gameProgress.style.width !== progress) elements.gameProgress.style.width = progress;
+    if (lastCombo !== passed) {
+      elements.score.textContent = String(Math.floor(passed / total * 1_000_000)).padStart(7, '0');
+      elements.combo.textContent = String(passed);
+      elements.comboBlock.classList.toggle('is-visible', passed >= 3);
+      lastCombo = passed;
+    }
+    const label = `${formatTime(chartTime)} / ${formatTime(session.chartDuration)}`;
+    if (elements.timeLabel.textContent !== label) elements.timeLabel.textContent = label;
     timelineView.updatePlayhead(chartTime, session.chartDuration);
   }
 
   function renderFrame(chartTime: number): void {
     if (disposed) return;
     try {
-      if (renderer instanceof RpeRenderer) renderer.render(chartTime, session.playing, settings.playbackSpeed);
+      if (RPE_PLAYER) (renderer as RpeRenderer).render(chartTime, session.playing, settings.playbackSpeed);
       else renderer.render(chartTime);
       applyAttachUiFromRenderer();
       renderHud(chartTime);
@@ -537,23 +549,10 @@ function start(): void {
     }
   }
 
-  async function loadOptionalIllustration(signal: AbortSignal, textureSafe = false): Promise<HTMLImageElement | null> {
+  async function loadOptionalIllustration(signal: AbortSignal): Promise<HTMLImageElement | null> {
     if (typeof config.illustrationUrl !== 'string' || config.illustrationUrl.trim() === '') return null;
-    try { return await loadImage(config.illustrationUrl, signal, textureSafe); }
+    try { return await loadImage(config.illustrationUrl, signal); }
     catch (error) { if (signal.aborted) throw error; return null; }
-  }
-
-  async function previewBackground(chart: PgrChart | RpeChart, image: HTMLImageElement | null, signal: AbortSignal) {
-    if (!isRpe) {
-      return (chart as PgrChart).blocks.length && /^https?:/i.test(config.illustrationUrl ?? '')
-        ? loadOptionalIllustration(signal, true) : image;
-    }
-    const background = (chart as RpeChart).background;
-    if (!background) return image;
-    const url = rpeResourceUrl(config.rpeAssets?.basePath ?? '', background);
-    if (!url) return image;
-    try { return await loadImage(url, signal); }
-    catch (error) { if (signal.aborted) throw error; return image; }
   }
 
   async function loadPreview(): Promise<void> {
@@ -577,7 +576,7 @@ function start(): void {
           signal.removeEventListener('abort', cancelParse);
           if (signal.aborted || disposed) { reject(new DOMException('预览已释放', 'AbortError')); return; }
           try {
-            resolve(isRpe
+            resolve(RPE_PLAYER
               ? parseRpeChart(chartText, { extraJson: config.rpeAssets?.extraJson ?? null, infoYml: config.rpeAssets?.infoYml ?? null })
               : parsePgrChart(chartText));
           } catch (error) { reject(error); }
@@ -587,17 +586,17 @@ function start(): void {
       });
       if (signal.aborted) return;
       setLoadProgress('正在准备音乐与曲绘…', 0.7);
-      const rpeChart = isRpe ? (chart as RpeChart) : null;
+      const rpeChart = RPE_PLAYER ? (chart as RpeChart) : null;
       const [noteAssets, chartAssets] = await Promise.all([
         loadNoteAssets(signal),
-        rpeChart ? loadRpeChartAssets(rpeChart, signal) : Promise.resolve(null),
+        RPE_PLAYER ? loadRpeChartAssets(rpeChart!, config.rpeAssets, signal) : Promise.resolve(null),
         loadPreviewMusic(signal),
       ]);
       if (signal.aborted) return;
 
-      const illustration = await previewBackground(chart, image, signal);
+      const illustration = RPE_PLAYER ? await rpeBackground(rpeChart!, config.rpeAssets?.basePath ?? '', image, signal) : image;
       if (signal.aborted || disposed) return;
-      if (isRpe) {
+      if (RPE_PLAYER) {
         (renderer as RpeRenderer).setChart(rpeChart!);
         (renderer as RpeRenderer).setChartAssets(chartAssets!);
         session.setChartTimeline({
@@ -673,8 +672,6 @@ function start(): void {
 
   function seekToChartTime(target: number): void {
     void session.seek(target);
-    renderer.resetTimeline(session.chartTime);
-    renderFrame(session.chartTime);
   }
 
   function setFullscreen(active: boolean): void {
@@ -694,6 +691,7 @@ function start(): void {
   }
 
   function pauseForLifecycle(): void {
+    cancelDrag?.();
     if (disposed) return;
     flushSettings();
     closeActiveWheelPopup();
@@ -734,7 +732,6 @@ function start(): void {
   events.listen(elements.btnRestart, 'click', () => {
     if (!ready) return;
     seekToChartTime(0);
-    if (!session.playing) renderFrame(0);
   });
   events.listen(elements.btnStepBack, 'click', () => {
     if (!ready) return;
@@ -748,27 +745,11 @@ function start(): void {
   bindHeatTimelineKeyboard(events, elements.timelineHost,
     () => session.chartTime / session.chartDuration * 100,
     percent => { if (ready && !fsLocked) seekToChartTime(percent / 100 * session.chartDuration); });
-  events.listen(elements.timelineHost, 'pointerdown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    timelineDragging = true;
-    wasPlayingBeforeDrag = session.playing;
-    if (session.playing) session.pause();
-    seekFromTimelineEvent(e);
+  cancelDrag = bindTimelineDrag(events, [elements.timelineHost], {
+    enabled: () => ready && !fsLocked, playing: () => session.playing, pause: () => session.pause(),
+    preview: fraction => session.playback.preview(fraction * session.chartDuration),
+    resume: () => void session.playback.seek(session.playback.currentTime, true),
   });
-  events.listen(document, 'pointermove', (e) => {
-    if (!timelineDragging) return;
-    seekFromTimelineEvent(e);
-  });
-  events.listen(document, 'pointerup', () => {
-    if (!timelineDragging) return;
-    timelineDragging = false;
-    if (wasPlayingBeforeDrag) void session.play();
-  });
-  events.listen(document, 'pointercancel', () => {
-    timelineDragging = false;
-  });
-
   setupWheelPopup(
     $('speed-trigger'), $('speed-popup'), $('speed-wheel'), $('speed-list'), $('speed-val'),
     (value) => {

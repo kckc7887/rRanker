@@ -1,6 +1,12 @@
 import assert from 'node:assert/strict';
-import { describe, it } from 'vitest';
+import { afterEach, beforeEach, describe, it, vi } from 'vitest';
 import { AudioSync, type AudioSyncInputs } from '../../src/features/osu-chart-preview/webview-player/engine-audio/AudioSync';
+
+beforeEach(() => {
+  vi.stubGlobal('requestAnimationFrame', () => 1);
+  vi.stubGlobal('cancelAnimationFrame', () => {});
+});
+afterEach(() => vi.unstubAllGlobals());
 
 class FakeGain {
   gain = { value: 1 };
@@ -20,6 +26,7 @@ class FakeSource {
   onended: (() => void) | null = null;
   starts: { when: number; offset: number }[] = [];
   stops = 0;
+  stopTimes: (number | undefined)[] = [];
   disconnected = false;
   connect(_target: unknown): void {}
   disconnect(): void { this.disconnected = true; }
@@ -27,7 +34,7 @@ class FakeSource {
     this.initialRate = this.playbackRate.value;
     this.starts.push({ when, offset });
   }
-  stop(_when?: number): void { this.stops++; }
+  stop(when?: number): void { this.stops++; this.stopTimes.push(when); }
   positionAt(time: number): number {
     const start = this.starts[0]!;
     let position = start.offset, cursor = start.when, rate = this.initialRate;
@@ -72,6 +79,85 @@ function inputs(ctx: FakeContext, extra: Partial<AudioSyncInputs> = {}): AudioSy
 }
 
 describe('preview audio timeline and lifecycle', () => {
+  it('cancels queued hits and storyboard Samples at or beyond B when setting a loop during playback', async () => {
+    let render: FrameRequestCallback = () => {};
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { render = callback; return 1; });
+    const ctx = new FakeContext(), inside = buffer(.1), outside = buffer(.2), sample = buffer(.3);
+    const hit = (beatmapMs: number, customFile: string) => ({ beatmapMs, type: 'normal' as const, sampleSet: 1, sampleIndex: 0, customFile });
+    const audio = new AudioSync(inputs(ctx, { durationSeconds: 10,
+      schedule: [hit(300,'inside.wav'), hit(500,'outside.wav')],
+      mergedSounds: new Map([['inside.wav',inside], ['outside.wav',outside]]),
+      extraSamples: [{ timeMs: 550, volume: 1, buffer: sample }] }));
+    try {
+      await audio.playFrom(0);
+      assert.ok(ctx.sources.some(source => source.buffer === outside && !source.stops));
+      audio.playback.loop.toggle('a', .1); audio.playback.loop.toggle('b', .5);
+      assert.deepEqual(ctx.sources.filter(source => !source.stops).map(source => source.buffer), [inside]);
+      ctx.currentTime = 10.5;
+      render(500);
+      assert.ok(Math.abs(audio.outputTimeMs - 100) < .001);
+      const starts = ctx.sources.filter(source => source.buffer === inside && !source.stops).map(source => source.starts[0]!.when);
+      assert.deepEqual(starts, [10.3, 10.7]);
+      audio.pause();
+      assert.ok(ctx.sources.every(source => source.stops));
+    } finally { audio.destroy(); }
+  });
+  it('queues A against the audio boundary and resumes a Sample crossing A at its source offset', async () => {
+    let tick: FrameRequestCallback = () => {};
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { tick = callback; return 1; });
+    const ctx = new FakeContext();
+    const startHit = buffer(.05), heldHit = buffer(.4), excluded = buffer(.1), sample = buffer(.8);
+    const hit = (beatmapMs: number, customFile: string) => ({ beatmapMs, type: 'normal' as const, sampleSet: 1, sampleIndex: 0, customFile });
+    const audio = new AudioSync(inputs(ctx, { durationSeconds: 3,
+      schedule: [hit(200, 'start.wav'), hit(400, 'held.wav'), hit(500, 'excluded.wav')],
+      mergedSounds: new Map([['start.wav', startHit], ['held.wav', heldHit], ['excluded.wav', excluded]]),
+      extraSamples: [{ timeMs: 80, buffer: sample, volume: 1 }] }));
+    const sources = (asset: AudioBuffer) => ctx.sources.filter(source => source.buffer === asset);
+    try {
+      audio.playback.loop.toggle('a', .2); audio.playback.loop.toggle('b', .5);
+      await audio.playFrom(0);
+      ctx.currentTime = 10.46;
+      tick(460);
+      const [old, next] = sources(sample);
+      assert.deepEqual(old!.stopTimes, [10.5]);
+      assert.equal(old!.disconnected, false);
+      assert.deepEqual(sources(heldHit)[0]!.stopTimes, [10.5]);
+      assert.equal(next!.starts[0]!.when, 10.5);
+      assert.ok(Math.abs(next!.starts[0]!.offset - .12) < 1e-8);
+      assert.deepEqual(sources(startHit).map(source => source.starts[0]!.when), [10.2, 10.5]);
+      assert.deepEqual(sources(excluded), []);
+      ctx.currentTime = 10.51;
+      old!.onended?.();
+      audio.setSpeed(2);
+      assert.equal(next!.disconnected, false);
+      assert.equal(next!.playbackRate.value, 2);
+      assert.equal(sources(sample).length, 2);
+      audio.setStoryboardEnabled(false);
+      assert.equal(next!.disconnected, true);
+    } finally { audio.destroy(); }
+  });
+  it('cancels the queued lap when B is cleared and restores the old Sample past B across speed changes', async () => {
+    let tick: FrameRequestCallback = () => {};
+    vi.stubGlobal('requestAnimationFrame', (callback: FrameRequestCallback) => { tick = callback; return 1; });
+    const ctx = new FakeContext(), sample = buffer(1);
+    const audio = new AudioSync(inputs(ctx, { extraSamples: [{ timeMs: 0, buffer: sample, volume: 1 }] }));
+    try {
+      audio.playback.loop.toggle('a', .2); audio.playback.loop.toggle('b', .5);
+      await audio.playFrom(0);
+      ctx.currentTime = 10.45; tick(450);
+      const [current, next] = ctx.sources;
+      assert.deepEqual(current!.stopTimes, [10.5]);
+      audio.playback.loop.toggle('b', .5);
+      assert.deepEqual(current!.stopTimes, [10.5, 11]);
+      assert.equal(next!.disconnected, true);
+      audio.setSpeed(.5);
+      assert.ok(Math.abs(current!.stopTimes.at(-1)! - 11.55) < 1e-8);
+      assert.equal(current!.playbackRate.value, .5);
+      assert.equal(current!.disconnected, false);
+      audio.pause();
+      assert.equal(current!.disconnected, true);
+    } finally { audio.destroy(); }
+  });
   it('plays an immutable supplied schedule', async () => {
     const ctx = new FakeContext();
     const hit = buffer(1);

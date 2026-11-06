@@ -12,12 +12,26 @@ class FakeSource {
   stopped = false;
   offset = 0;
   startAt = 0;
+  loop = false;
+  loopStart = 0;
+  loopEnd = 0;
+  private length = Infinity;
   buffer: AudioBuffer | null = null;
   playbackRate = { value: 1, setValueAtTime(value: number) { this.value = value; } };
   connect(): void {}
   disconnect(): void {}
-  start(when = 0, offset = 0): void { this.startCount += 1; this.startAt = when; this.offset = offset; }
+  start(when = 0, offset = 0, duration = Infinity): void {
+    this.startCount += 1; this.startAt = when; this.offset = offset; this.length = duration;
+  }
   stop(): void { this.stopped = true; }
+  audibleOffset(time: number): number | null {
+    if (this.stopped || time < this.startAt) return null;
+    const elapsed = (time - this.startAt) * this.playbackRate.value;
+    if (elapsed >= this.length) return null;
+    const position = this.offset + elapsed;
+    if (this.loop && position >= this.loopEnd) return this.loopStart + (position - this.loopEnd) % (this.loopEnd - this.loopStart);
+    return position < this.buffer!.duration ? position : null;
+  }
 }
 
 class FakeContext {
@@ -281,10 +295,10 @@ it('AB 在音频末尾连续回跳，暂停拖动和改变倍速保留端点', a
   preview.loop.toggle('a', 2); preview.loop.toggle('b', 30);
   await preview.playFrom(29);
   context.currentTime = 2; frame(2000);
-  expect(preview.currentTime).toBe(2);
+  expect(preview.currentTime).toBe(3);
   expect(preview.playing).toBe(true);
   context.currentTime = 31; frame(31000);
-  expect(preview.currentTime).toBe(2);
+  expect(preview.currentTime).toBe(4);
   preview.pause(); await preview.seek(30);
   expect(preview.currentTime).toBe(30); expect(preview.playing).toBe(false);
   preview.setSettings({ playbackSpeed: 2 });
@@ -292,6 +306,53 @@ it('AB 在音频末尾连续回跳，暂停拖动和改变倍速保留端点', a
   expect(preview.currentTime).toBe(2);
   context.currentTime += 1; expect(preview.currentTime).toBe(4);
   preview.dispose(); frame(32000); expect(preview.playing).toBe(false);
+});
+
+it('音轨按 B 切回 A，画面在输出到达切点时回跳，清除端点后从当前圈继续', async () => {
+  context.state = 'running';
+  context.outputLatency = .1;
+  const preview = session();
+  const audibleSong = (time: number) => context.sources.filter(source => source.buffer === music)
+    .flatMap(source => source.audibleOffset(time) ?? []);
+  preview.loop.toggle('a', 1);
+  preview.loop.toggle('b', 2);
+  await preview.playFrom(1.95);
+
+  context.currentTime = .08;
+  expect(audibleSong(.08)[0]).toBeCloseTo(1.03);
+  expect(preview.currentTime).toBeCloseTo(1.95);
+  context.currentTime = 1.18;
+  expect(audibleSong(1.18)[0]).toBeCloseTo(1.13);
+  expect(preview.currentTime).toBeCloseTo(1.03);
+
+  preview.loop.toggle('b', 2);
+  context.currentTime = 2.28;
+  expect(audibleSong(2.28)[0]).toBeCloseTo(2.23);
+  expect(preview.currentTime).toBeCloseTo(2.13);
+  preview.dispose();
+  expect(audibleSong(2.4)).toEqual([]);
+});
+
+it('跨音轨末尾的循环在静默中变速时按新边界开始下一段音乐', async () => {
+  context.state = 'running';
+  const shortSong = { duration: 5 } as AudioBuffer;
+  const preview = new PreviewSession(chart, renderer, shortSong, normalizeRizlineChartPreviewSettings({}));
+  const audibleSong = (time: number) => context.sources.filter(source => source.buffer === shortSong)
+    .flatMap(source => source.audibleOffset(time) ?? []);
+  preview.loop.toggle('a', 4.75);
+  preview.loop.toggle('b', 6);
+  await preview.playFrom(5.25);
+  context.currentTime = .25;
+  expect(audibleSong(.25)).toEqual([]);
+  preview.setSettings({ playbackSpeed: 2 });
+  expect(audibleSong(.49)).toEqual([]);
+  expect(audibleSong(.5)).toEqual([4.75]);
+  expect(audibleSong(.6)[0]).toBeCloseTo(4.95);
+  expect(audibleSong(.7)).toEqual([]);
+  context.currentTime = .6;
+  expect(preview.currentTime).toBeCloseTo(4.95);
+  preview.dispose();
+  expect(audibleSong(1.125)).toEqual([]);
 });
 
 it('画面读取实际输出时钟，连续调速只调整当前音乐且取消旧打击音', async () => {
@@ -310,10 +371,10 @@ it('画面读取实际输出时钟，连续调速只调整当前音乐且取消�
   expect(preview.currentTime).toBeCloseTo(4.1);
   const hit = context.sources[1]!;
   expect(hit.startAt).toBeCloseTo(1.2);
+  const beforeReschedule = context.sources.length;
   preview.setSettings({ playbackSpeed: 2 });
   expect(hit.stopped).toBe(true);
   expect(song.stopped).toBe(false);
-  const beforeReschedule = context.sources.length;
   frame(0);
   const rescheduled = context.sources.slice(beforeReschedule);
   expect(rescheduled).toHaveLength(1);

@@ -1,5 +1,5 @@
 /** 来源 TeamFlos/phira 的 prpr 核心，GPL-3.0；许可证见 THIRD_PARTY_NOTICES.md。 */
-export const RPE_PRESET_SHADERS: Readonly<Record<string, string>> = Object.freeze({
+export const RPE_PRESET_SHADERS: Readonly<Record<string, string>> = /* @__PURE__ */ Object.freeze({
   chromatic: `#version 100
 /** 来源 https://godotshaders.com/shader/chromatic-abberation/ */
 precision mediump float;

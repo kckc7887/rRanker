@@ -35,6 +35,7 @@ export interface ReplayFrame {
 }
 
 export interface ReplayData {
+  motion?: import('../rulesets/std/autoGenerator').StdMotion;
   /** 按回放模式判定；standard 谱面可转 taiko/catch。 */
   mode: number;
   gameVersion: number;     /** 版本 >=30000000 表示 lazer。 */
@@ -205,8 +206,6 @@ export interface BeatmapData {
 
   maniaHolds: ManiaHold[];
   breaks: BreakPeriod[];
-
-  rawOsu?: Uint8Array;
 }
 
 export interface BreakPeriod {

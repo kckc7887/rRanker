@@ -32,7 +32,6 @@ import type { Ruleset } from '../Ruleset';
 
 import { drawHitObjects } from '../../renderer/HitObjectRenderer';
 import { drawFollowpoints } from '../../renderer/FollowpointRenderer';
-import { drawCursor } from '../../renderer/CursorRenderer';
 import { drawJudgements } from '../../renderer/JudgementRenderer';
 import { computeComboTimeline } from '../../renderer/HUDRenderer';
 import { computeHitResults, type SpinnerAngleData } from '../../utils/hitJudge';
@@ -48,7 +47,6 @@ export interface StdSession {
   readonly trackingIntervals: { start: number; end: number }[];
   readonly flashlight: Flashlight | null;
   readonly comboFrames: ComboFrame[];
-  readonly qualityTotal: number;
 }
 
 const _hdFlipCache = new WeakMap<StdSession, ModDifficulty>();
@@ -67,7 +65,7 @@ function stdFlashlight(s: StdSession): Flashlight {
   if (s.flashlight !== null) return s.flashlight;
   let fl = _flCache.get(s);
   if (fl === undefined) {
-    fl = new Flashlight(s.beatmap, s.replay, s.modDiff, s.hitResults, s.trackingIntervals, s.qualityTotal);
+    fl = new Flashlight(s.beatmap, s.replay, s.modDiff, s.hitResults, s.trackingIntervals);
     _flCache.set(s, fl);
   }
   return fl;
@@ -79,12 +77,11 @@ export const stdRuleset: Ruleset<StdSession> = {
     replay: ReplayData,
     modDiff: ModDifficulty,
     skin: SkinAssets,
-    qualityTotal: number,
   ): StdSession {
     const { results, spinnerAngles, trackingIntervals } = computeHitResults(beatmap, replay, modDiff);
     const comboFrames = computeComboTimeline(results);
     const flashlight  = modDiff.isFL
-      ? new Flashlight(beatmap, replay, modDiff, results, trackingIntervals, qualityTotal)
+      ? new Flashlight(beatmap, replay, modDiff, results, trackingIntervals)
       : null;
     return {
       beatmap, replay, modDiff, skin,
@@ -93,7 +90,6 @@ export const stdRuleset: Ruleset<StdSession> = {
       trackingIntervals,
       flashlight,
       comboFrames,
-      qualityTotal,
     };
   },
 
@@ -105,10 +101,9 @@ export const stdRuleset: Ruleset<StdSession> = {
   ): void {
     const md = effectiveModDiff(s, options.modHidden);
     if (options.showFollowpoints) drawFollowpoints(ctx, s.beatmap, s.skin, timeMs, md);
-    drawHitObjects(ctx, s.beatmap, s.skin, timeMs, s.hitResults, s.spinnerAngles, md, s.qualityTotal);
+    drawHitObjects(ctx, s.beatmap, s.skin, timeMs, s.hitResults, s.spinnerAngles, md);
     drawJudgements(ctx, s.hitResults, timeMs, s.skin, 'std', md.circleRadiusPx);
     if (options.modFlashlight) stdFlashlight(s).draw(ctx, timeMs);
-    drawCursor(ctx, s.replay, timeMs, s.skin);
   },
 
   hitResults:  (s) => s.hitResults,

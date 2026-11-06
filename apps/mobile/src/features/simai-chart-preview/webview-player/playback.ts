@@ -1,31 +1,9 @@
-import { PlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
+import { PreviewPlayback } from '../../chart-preview-shared/webview-player/playback';
+import { musicPosition, type MusicPosition } from '../../chart-preview-shared/webview-player/playbackClock';
 import { AudioManager, type PreparedAudioEvent } from '../engine/core/audio/AudioManager';
 import { ANSWER_SOUND_BASE_OFFSET_MS } from '../engine/utils/constants';
 import type { Chart } from '../engine/types';
-import {
-  PlaybackClock,
-  audioContextTime,
-  musicPosition,
-  outputTime,
-  type MusicPosition,
-} from '../../chart-preview-shared/webview-player/playbackClock';
-import { getAudioContextOutputTime } from '../../chart-preview-shared/webview-player/audioClock';
-import {
-  SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS,
-  createSimaiPlaybackTimeline,
-  resolvePlaybackRange,
-  type SimaiPlaybackTimeline,
-} from './timeConversion';
-
-const SOURCE_FADE_TIME_S = 0.015;
-const SOURCE_START_LEAD_TIME_S = 0.05;
-const SCHEDULE_LOOKAHEAD_MS = 1500;
-const SPEED_MIN = 0.1;
-const SPEED_MAX = 5;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
+import { SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS, createSimaiPlaybackTimeline, resolvePlaybackRange, type SimaiPlaybackTimeline } from './timeConversion';
 
 export interface SimaiPlaybackHost {
   render(beats: number): void;
@@ -48,17 +26,10 @@ export interface SimaiPlaybackOptions {
 }
 
 export class SimaiPlaybackSession {
-  readonly loop = new PlaybackLoop();
-  private readonly clock = new PlaybackClock();
-  private readonly charts: readonly Chart[];
-  private readonly answerEvents: readonly PreparedAudioEvent[];
-  private readonly answerSoundUrl: string;
+  readonly playback: PreviewPlayback;
   private readonly musicOffset: number;
-  private readonly host: SimaiPlaybackHost;
   private range = { totalDurationMs: 0, totalBeats: 0 };
   private timeline: SimaiPlaybackTimeline;
-  private beatsPosition = 0;
-  private playbackSpeed: number;
   private musicVolume: number;
   private soundVolume: number;
   private context: AudioContext | null = null;
@@ -66,63 +37,51 @@ export class SimaiPlaybackSession {
   private answerGain: GainNode | null = null;
   private answers: AudioManager | null = null;
   private music: AudioBuffer | null = null;
-  private source: AudioBufferSourceNode | null = null;
-  private sourceGain: GainNode | null = null;
-  private audioClockRunning = false;
-  private clockStart = 0;
-  private command = 0;
-  private frame: number | null = null;
-  private lastFrameTimestamp = 0;
-  playing = false;
-  disposed = false;
   private resourceGeneration = 0;
 
-  constructor(options: SimaiPlaybackOptions) {
-    this.charts = options.charts;
-    this.answerEvents = options.answerEvents;
-    this.answerSoundUrl = options.answerSoundUrl;
+  constructor(private readonly options: SimaiPlaybackOptions) {
     this.musicOffset = options.musicOffset ?? SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS;
-    this.playbackSpeed = options.speed ?? 1;
     this.musicVolume = options.musicVolume ?? 10;
     this.soundVolume = options.soundVolume ?? 10;
-    this.host = options.host;
-    this.timeline = createSimaiPlaybackTimeline(this.charts[0]!, 0, this.musicOffset);
+    this.timeline = createSimaiPlaybackTimeline(options.charts[0]!, 0, this.musicOffset);
+    this.playback = new PreviewPlayback({
+      duration: () => this.totalDurationMs / 1000,
+      prepare: () => this.ensureAudio().then(() => undefined),
+      context: () => this.context!, music: () => this.music, output: () => this.musicGain!,
+      musicOffset: () => this.timeline.musicSecondsAt(0),
+      lead: .05, silentFrameClock: true,
+      resetSounds: (seconds) => this.answers?.reset(seconds * 1000, true),
+      rewindSounds: (seconds, when) => this.answers?.rewind(seconds * 1000, when),
+      schedule: (seconds, now, speed, end) => this.answers?.schedule(options.answerEvents, seconds * 1000, speed,
+        1500, now, end * 1000),
+      onState: options.host.onPlayStateChange,
+      onError: () => options.host.onPlaybackError?.(),
+    });
+    this.playback.onFrame = seconds => options.host.render(this.beatsAtMs(seconds * 1000));
+    this.playback.setSpeed(options.speed ?? 1);
     this.applyRange();
   }
 
-  get positionBeats(): number {
-    return this.beatsPosition;
+  get loop() { return this.playback.loop; }
+  get playing() { return this.playback.playing; }
+  get disposed() { return this.playback.disposed; }
+  get positionBeats() { return this.beatsAtMs(this.playback.currentTime * 1000); }
+  get totalBeats() { return this.range.totalBeats; }
+  get totalDurationMs() { return this.range.totalDurationMs; }
+  get musicDurationSeconds() { return this.music?.duration ?? null; }
+  get speed() { return this.playback.speed; }
+  get musicPosition(): MusicPosition { return musicPosition(this.playback.currentTime + this.timeline.musicSecondsAt(0)); }
+  beatsToMs(beats: number) { return this.timeline.beatsToMs(beats); }
+  beatsAtMs(ms: number) { return this.timeline.beatsAtMs(ms); }
+
+  moveTo(beats: number): void {
+    this.playback.moveTo(this.beatsToMs(Math.max(0, Math.min(this.totalBeats, beats))) / 1000);
   }
 
-  get totalBeats(): number {
-    return this.range.totalBeats;
-  }
+  play(): Promise<void> { return this.playback.playFrom(this.playback.currentTime); }
+  pause(): void { this.playback.pause(); }
+  setSpeed(speed: number): void { this.playback.setSpeed(Math.max(.1, Math.min(5, speed))); }
 
-  get totalDurationMs(): number {
-    return this.range.totalDurationMs;
-  }
-
-  get musicDurationSeconds(): number | null {
-    return this.music ? this.music.duration : null;
-  }
-
-  get speed(): number {
-    return this.playbackSpeed;
-  }
-
-  get musicPosition(): MusicPosition {
-    return this.getMusicTime();
-  }
-
-  beatsToMs(beats: number): number {
-    return this.timeline.beatsToMs(beats);
-  }
-
-  beatsAtMs(ms: number): number {
-    return this.timeline.beatsAtMs(ms);
-  }
-
-  /** 解码失败时静音看谱，范围取谱尾与音乐结尾的较晚者。 */
   async loadMusic(bytes: ArrayBuffer | null): Promise<boolean> {
     if (this.disposed) return false;
     const generation = ++this.resourceGeneration;
@@ -141,119 +100,35 @@ export class SimaiPlaybackSession {
     return this.music !== null;
   }
 
-  /** 只移动位置，不改动音源与时钟；播放中跳转应改用 play()。 */
-  moveTo(beats: number): void {
-    if (!this.playing) this.command += 1;
-    this.beatsPosition = clamp(beats, 0, this.range.totalBeats);
-  }
-
-  async play(): Promise<void> {
-    if (this.disposed) return;
-    const command = ++this.command;
-    this.beatsPosition = this.loop.target(this.beatsPosition) ?? this.beatsPosition;
-    try {
-      await this.ensureAudio();
-    } catch {
-      if (command === this.command && !this.disposed) this.host.onPlaybackError?.();
-      return;
-    }
-    if (command !== this.command || this.disposed) return;
-    this.playing = true;
-    this.host.onPlayStateChange?.(true);
-    this.lastFrameTimestamp = 0;
-    const musicSeconds = this.timeline.musicSecondsAt(this.beatsPosition);
-    this.answers?.reset(this.timeline.beatsToMs(this.beatsPosition), true);
-    if (this.music && musicSeconds < this.music.duration) {
-      await this.startSource(musicSeconds, command);
-    } else {
-      this.stopSource(true);
-      this.lastFrameTimestamp = performance.now();
-    }
-    if (command !== this.command || this.disposed) return;
-    this.cancelFrame();
-    this.frame = requestAnimationFrame(this.tick);
-  }
-
-  pause(): void {
-    if (this.disposed) return;
-    this.command += 1;
-    this.playing = false;
-    this.host.onPlayStateChange?.(false);
-    if (this.audioClockRunning) {
-      const musicTime = this.getMusicTime();
-      this.beatsPosition = this.timeline.beatsAtMusicSeconds(musicTime);
-      this.clock.setOffset(musicTime);
-      this.stopSource();
-    }
-    this.answers?.reset(this.timeline.beatsToMs(this.beatsPosition), true);
-    this.cancelFrame();
-    this.lastFrameTimestamp = 0;
-    this.host.render(this.beatsPosition);
-  }
-
-  setSpeed(speed: number): void {
-    const nextSpeed = clamp(speed, SPEED_MIN, SPEED_MAX);
-    if (nextSpeed === this.playbackSpeed) return;
-    if (this.audioClockRunning) {
-      this.beatsPosition = this.timeline.beatsAtMusicSeconds(this.getMusicTime());
-    }
-    this.playbackSpeed = nextSpeed;
-    const position = this.audioClockRunning && this.context
-      ? this.timeline.beatsAtMusicSeconds(this.clock.positionAt(audioContextTime(Math.max(this.context.currentTime, this.clockStart))))
-      : this.beatsPosition;
-    this.answers?.reset(this.timeline.beatsToMs(position), true);
-    if (!this.audioClockRunning || !this.context) return;
-    if (this.clock.positionAt(audioContextTime(this.context.currentTime)) < 0) {
-      void this.play();
-      return;
-    }
-    if (this.source) {
-      const startTime = audioContextTime(this.context.currentTime);
-      this.source.playbackRate.setValueAtTime(this.playbackSpeed, startTime);
-      this.clock.appendSegment(startTime, this.playbackSpeed);
-      return;
-    }
-    this.clock.appendSegment(audioContextTime(this.context.currentTime), this.playbackSpeed);
-  }
-
   setMusicVolume(volume: number): void {
-    this.musicVolume = clamp(volume, 0, 10);
+    this.musicVolume = Math.max(0, Math.min(10, volume));
     if (this.musicGain) this.musicGain.gain.value = this.musicVolume / 10;
   }
 
   setSoundVolume(volume: number): void {
-    this.soundVolume = clamp(volume, 0, 10);
+    this.soundVolume = Math.max(0, Math.min(10, volume));
     this.answers?.setVolume(this.soundVolume / 10);
   }
 
   dispose(): void {
     if (this.disposed) return;
-    this.pause();
+    this.playback.dispose();
     this.resourceGeneration += 1;
     this.answers?.dispose();
     this.answers = null;
-    for (const node of [this.source, this.musicGain, this.answerGain]) {
+    for (const node of [this.musicGain, this.answerGain]) {
       try {
         node?.disconnect();
       } catch {
       }
     }
-    this.source = null;
-    this.sourceGain = null;
     this.music = null;
-    this.disposed = true;
   }
 
   private applyRange(): void {
-    this.range = resolvePlaybackRange(this.charts, this.musicDurationSeconds, this.musicOffset);
-    this.timeline = createSimaiPlaybackTimeline(this.charts[0]!, this.range.totalBeats, this.musicOffset);
-    this.beatsPosition = Math.min(this.beatsPosition, this.range.totalBeats);
-  }
-
-  private cancelFrame(): void {
-    if (this.frame === null) return;
-    cancelAnimationFrame(this.frame);
-    this.frame = null;
+    this.range = resolvePlaybackRange(this.options.charts, this.musicDurationSeconds, this.musicOffset);
+    this.timeline = createSimaiPlaybackTimeline(this.options.charts[0]!, this.range.totalBeats, this.musicOffset);
+    this.playback.moveTo(this.playback.currentTime);
   }
 
   private async ensureAudio(resume = true): Promise<AudioContext> {
@@ -268,7 +143,7 @@ export class SimaiPlaybackSession {
       this.answers = new AudioManager({
         audioContext: context,
         outputNode: this.answerGain,
-        answerSoundPath: this.answerSoundUrl,
+        answerSoundPath: this.options.answerSoundUrl,
         initialVolume: this.soundVolume / 10,
         initialTimingOffset: ANSWER_SOUND_BASE_OFFSET_MS,
       });
@@ -279,123 +154,4 @@ export class SimaiPlaybackSession {
     return this.context;
   }
 
-  private stopSource(immediate = false): void {
-    const source = this.source;
-    const gain = this.sourceGain;
-    this.source = null;
-    this.sourceGain = null;
-    this.audioClockRunning = false;
-    this.clock.clear();
-    if (!source) return;
-    try {
-      if (!immediate && this.context && gain) {
-        const now = this.context.currentTime;
-        gain.gain.cancelScheduledValues(now);
-        gain.gain.setValueAtTime(gain.gain.value, now);
-        gain.gain.linearRampToValueAtTime(0, now + SOURCE_FADE_TIME_S);
-        source.stop(now + SOURCE_FADE_TIME_S + 0.01);
-      } else {
-        source.stop();
-      }
-    } catch {
-    }
-    try {
-      source.disconnect();
-      gain?.disconnect();
-    } catch {
-    }
-  }
-
-  private getMusicTime(): MusicPosition {
-    if (!this.context || !this.audioClockRunning) return this.clock.offset;
-    const heardAt = outputTime(getAudioContextOutputTime(this.context));
-    this.clock.prune(heardAt);
-    return this.clock.positionAt(heardAt);
-  }
-
-  private async startSource(positionSec: number, command: number): Promise<void> {
-    if (!this.music) return;
-    const context = await this.ensureAudio();
-    if (!this.musicGain || command !== this.command || this.disposed) return;
-    this.stopSource(true);
-    const buffer = this.music;
-    const clamped = clamp(positionSec, 0, buffer.duration);
-    const source = context.createBufferSource();
-    const gain = context.createGain();
-    source.buffer = buffer;
-    source.playbackRate.value = this.playbackSpeed;
-    const introDelay = Math.max(0, -positionSec) / this.playbackSpeed;
-    const clockStart = context.currentTime + SOURCE_START_LEAD_TIME_S;
-    this.clockStart = clockStart;
-    const startTime = clockStart + introDelay;
-    gain.gain.setValueAtTime(0, startTime);
-    gain.gain.linearRampToValueAtTime(1, startTime + SOURCE_FADE_TIME_S);
-    source.connect(gain);
-    gain.connect(this.musicGain);
-    source.onended = () => {
-      if (this.source === source) {
-        this.source = null;
-        this.sourceGain = null;
-        source.disconnect();
-        gain.disconnect();
-        /** 音乐结束后继续用原时钟播放剩余谱面。 */
-      }
-    };
-    source.start(startTime, clamped);
-    this.source = source;
-    this.sourceGain = gain;
-    this.audioClockRunning = true;
-    this.clock.set(audioContextTime(clockStart), musicPosition(Math.min(positionSec, clamped)), this.playbackSpeed);
-  }
-
-  private scheduleAnswers(currentMs: number): void {
-    if (!this.answers || !this.playing) return;
-    const contextTime = this.audioClockRunning ? Math.max(this.context!.currentTime, this.clockStart) : this.context!.currentTime;
-    const chartMs = this.audioClockRunning
-      ? this.timeline.beatsToMs(this.timeline.beatsAtMusicSeconds(this.clock.positionAt(audioContextTime(contextTime))))
-      : currentMs;
-    this.answers.schedule(
-      this.answerEvents,
-      chartMs,
-      this.clock.schedulingSpeed(this.playbackSpeed),
-      SCHEDULE_LOOKAHEAD_MS,
-      contextTime,
-    );
-  }
-
-  private readonly tick = (timestamp: number): void => {
-    this.frame = null;
-    if (this.disposed || !this.playing) return;
-    let beats = this.beatsPosition;
-    if (this.music && this.audioClockRunning && this.context) {
-      beats = this.timeline.beatsAtMusicSeconds(this.getMusicTime());
-    } else if (this.lastFrameTimestamp > 0) {
-      const deltaMs = timestamp - this.lastFrameTimestamp;
-      beats = this.timeline.beatsAtMs(this.timeline.beatsToMs(beats) + deltaMs * this.playbackSpeed);
-    }
-    this.lastFrameTimestamp = timestamp;
-
-    const loopTarget = this.loop.target(beats);
-    if (loopTarget !== null) {
-      this.beatsPosition = clamp(loopTarget, 0, this.range.totalBeats);
-      this.host.render(this.beatsPosition);
-      void this.play();
-      return;
-    }
-
-    if (beats >= this.range.totalBeats && !this.source) {
-      this.playing = false;
-      this.stopSource(true);
-      this.answers?.reset(undefined, true);
-      this.beatsPosition = this.range.totalBeats;
-      this.host.onPlayStateChange?.(false);
-      this.host.render(this.beatsPosition);
-      return;
-    }
-
-    this.beatsPosition = Math.min(beats, this.range.totalBeats);
-    this.host.render(this.beatsPosition);
-    this.scheduleAnswers(this.timeline.beatsToMs(this.beatsPosition));
-    this.frame = requestAnimationFrame(this.tick);
-  };
 }

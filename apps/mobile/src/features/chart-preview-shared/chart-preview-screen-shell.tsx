@@ -30,6 +30,7 @@ import { useNotification } from '@/components/AppNotification';
 export type ChartPreviewShellSource = {
   uri: string;
   allowingReadAccessToURL: string;
+  fullscreenOrientation?: ChartPreviewFullscreenOrientation;
   dispose?: () => void | Promise<void>;
 };
 
@@ -507,7 +508,7 @@ export function ChartPreviewScreenShell<TPayload>({
 
   return (
     <View style={[styles.root, { backgroundColor: theme.background }]}>
-      <Stack.Screen options={chartPreviewNativeScreenOptions(isFullscreen, Platform.OS, '谱面确认', fullscreenOrientation)} />
+      <Stack.Screen options={chartPreviewNativeScreenOptions(isFullscreen, Platform.OS, '谱面确认', preparedView?.source.fullscreenOrientation ?? fullscreenOrientation)} />
       {/** 详情页仍挂载，显式覆盖其白字状态栏。 */}
       <StatusBar style={theme.statusBar} />
       {blockingError ? (

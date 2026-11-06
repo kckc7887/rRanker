@@ -27,8 +27,8 @@
  */
 import { lookupSkinSound, resolveSample } from './hitsoundSchedule';
 import type { PendingSound } from './hitsoundSchedule';
-import { PlaybackClock, audioContextTime, musicPosition, outputTime } from '../../../chart-preview-shared/webview-player/playbackClock';
-import { getAudioContextOutputTime } from '../../../chart-preview-shared/webview-player/audioClock';
+import { lowerBoundBy, upperBoundBy } from '../../../chart-preview-shared/webview-player/sorted-search';
+import { PreviewPlayback } from '../../../chart-preview-shared/webview-player/playback';
 
 export interface ExtraSample {
   timeMs: number;
@@ -43,19 +43,19 @@ export interface AudioSyncInputs {
   mergedSounds: Map<string, AudioBuffer>;
   beatmapHitsounds?: boolean;
   introOffsetMs: number;
+  durationSeconds?: number;
   mode: 0 | 1 | 2 | 3;
   schedule: readonly PendingSound[];
   extraSamples?: readonly ExtraSample[];
 }
 
 const FLUSH_HORIZON_S = 2;
-const FLUSH_INTERVAL_MS = 500;
 const SAMPLE_CONCURRENCY = 2;
-type Effect = { gain: GainNode | null; when: number; sample?: ExtraSample };
+type Effect = { gain: GainNode | null; when: number; end: number; cut: number; rate: number; sample?: ExtraSample; key?: string };
 
 /** 完整预览时间轴不按回放时长截断。 */
 export class AudioSync {
-  private readonly clock = new PlaybackClock();
+  readonly playback: PreviewPlayback;
   private readonly schedule: readonly PendingSound[];
   private readonly inputs: AudioSyncInputs;
   private readonly ctx: AudioContext;
@@ -66,17 +66,9 @@ export class AudioSync {
   private readonly activeEffects = new Map<AudioBufferSourceNode, Effect>();
   private readonly storyboardSources = new Map<ExtraSample, AudioBufferSourceNode>();
   private readonly sampleEndPrefix: number[];
-  private readonly voices = new Map<string, { source: AudioBufferSourceNode; when: number; end: number }[]>();
-  private songSource: AudioBufferSourceNode | null = null;
-  private songWhen = 0;
-  private timer: ReturnType<typeof setInterval> | null = null;
+  private readonly voices = new Map<string, AudioBufferSourceNode[]>();
   private soundIndex = 0;
   private sampleIndex = 0;
-  private playing = false;
-  private disposed = false;
-  private generation = 0;
-  private pausedMs = 0;
-  private speed = 1;
   private beatmapHitsounds: boolean;
   private storyboardEnabled = true;
 
@@ -92,166 +84,88 @@ export class AudioSync {
     this.samples = [...(inputs.extraSamples ?? [])].sort((a, b) => a.timeMs - b.timeMs);
     let end = -Infinity;
     this.sampleEndPrefix = this.samples.map(sample => end = Math.max(end, sample.timeMs + sample.buffer.duration * 1000));
+    this.playback = new PreviewPlayback({
+      duration: () => inputs.durationSeconds ?? Infinity,
+      prepare: () => this.ctx.resume(),
+      context: () => this.ctx, music: () => inputs.songBuffer,
+      output: () => this.songGain, musicOffset: () => inputs.introOffsetMs / 1000,
+      resetSounds: (seconds, reason) => {
+        this.resetEffects(reason === 'speed', seconds);
+        if (reason !== 'stop') this.seekEffects(seconds, reason === 'start');
+      },
+      rewindSounds: (seconds, when) => {
+        for (const [source, effect] of this.activeEffects) {
+          if (effect.end > when && effect.cut > when) {
+            source.stop(when);
+            effect.cut = when;
+          }
+        }
+        this.voices.clear();
+        this.storyboardSources.clear();
+        this.seekEffects(seconds, true);
+      },
+      schedule: (seconds, contextTime, speed, end) => this.flush(seconds, contextTime, speed, end),
+    });
   }
 
+  private get speed() { return this.playback.speed; }
   private get activeSounds(): Map<string, AudioBuffer> {
     return this.beatmapHitsounds ? this.inputs.mergedSounds : this.inputs.skinSounds;
   }
 
-  get currentTimeMs(): number {
-    return this.playing
-      ? this.clock.positionAt(audioContextTime(this.ctx.currentTime)) * 1000 - this.inputs.introOffsetMs
-      : this.pausedMs;
-  }
-
-  get outputTimeMs(): number {
-    return this.playing
-      ? this.clock.positionAt(outputTime(getAudioContextOutputTime(this.ctx))) * 1000 - this.inputs.introOffsetMs
-      : this.pausedMs;
-  }
-
-  get running(): boolean { return this.playing; }
-
-  setSpeed(speed: number): void {
-    if (this.disposed || speed === this.speed) return;
-    this.speed = speed;
-    if (!this.playing) return;
-    const now = this.ctx.currentTime;
-    const position = this.clock.positionAt(audioContextTime(now)) * 1000 - this.inputs.introOffsetMs;
-    this.clock.appendSegment(audioContextTime(now), speed);
-    if (this.songSource && this.songWhen > now) {
-      this.stopSong();
-      this.startSong(position, now);
-    } else this.songSource?.playbackRate.setValueAtTime(speed, now);
-    this.stopEffects(true);
-    for (const source of this.storyboardSources.values()) source.playbackRate.setValueAtTime(speed, now);
-    this.startEffects(position, false);
-  }
-
+  get currentTimeMs(): number { return this.playback.scheduledTime * 1000; }
+  get outputTimeMs(): number { return this.playback.currentTime * 1000; }
+  get running(): boolean { return this.playback.playing; }
+  setSpeed(speed: number): void { this.playback.setSpeed(speed); }
   setSongVolume(value: number): void { this.songGain.gain.value = Math.max(0, Math.min(1, value)); }
   setEffectsVolume(value: number): void { this.effectsGain.gain.value = Math.max(0, Math.min(1, value)); }
 
   setStoryboardEnabled(enabled: boolean): void {
-    if (this.disposed || enabled === this.storyboardEnabled) return;
+    if (this.playback.disposed || enabled === this.storyboardEnabled) return;
     this.storyboardEnabled = enabled;
-    for (const source of this.storyboardSources.values()) this.stopEffect(source);
-    this.sampleIndex = enabled ? this.firstLiveSample(this.currentTimeMs + this.inputs.introOffsetMs) : this.samples.length;
-    if (this.playing) {
-      this.flush();
-      this.ensureTimer();
+    if (enabled) {
+      this.playback.rescheduleSounds();
+    } else {
+      for (const [source, effect] of this.activeEffects) if (effect.sample) this.stopEffect(source);
+      this.sampleIndex = this.samples.length;
     }
-  }
-
-  private firstLiveSample(mapMs: number): number {
-    let low = 0, high = this.sampleEndPrefix.length;
-    while (low < high) {
-      const middle = (low + high) >>> 1;
-      if (this.sampleEndPrefix[middle]! <= mapMs) low = middle + 1;
-      else high = middle;
-    }
-    return low;
   }
 
   setBeatmapHitsounds(on: boolean): void {
     if (on === this.beatmapHitsounds) return;
     this.beatmapHitsounds = on;
-    if (this.playing) {
+    if (this.playback.playing) {
       for (const [source, effect] of this.activeEffects) if (!effect.sample) this.stopEffect(source);
       this.voices.clear();
-      this.startEffects(this.currentTimeMs, false);
+      this.playback.rescheduleSounds();
     }
   }
 
-  async playFrom(presentationMs: number): Promise<void> {
-    if (this.disposed) return;
-    this.pause();
-    this.pausedMs = presentationMs;
-    const generation = ++this.generation;
-    try { await this.ctx.resume(); }
-    catch (error) {
-      if (this.disposed || generation !== this.generation) return;
-      throw error;
-    }
-    if (this.disposed || generation !== this.generation) return;
-    const now = this.ctx.currentTime;
-    this.clock.set(audioContextTime(now), musicPosition((presentationMs + this.inputs.introOffsetMs) / 1000), this.speed);
-    this.playing = true;
-    this.startSong(presentationMs, now);
-    this.startEffects(presentationMs);
-  }
-
-  pause(): void {
-    this.generation++;
-    this.pausedMs = this.outputTimeMs;
-    this.playing = false;
-    this.stopSong();
-    this.stopEffects();
-  }
+  playFrom(presentationMs: number): Promise<void> { return this.playback.playFrom(presentationMs / 1000); }
+  pause(): void { this.playback.pause(); }
 
   destroy(): void {
-    if (this.disposed) return;
-    this.pause();
-    this.disposed = true;
+    if (this.playback.disposed) return;
+    this.playback.dispose();
     this.songGain.disconnect();
     this.effectsGain.disconnect();
   }
 
-  private stopSong(): void {
-    const source = this.songSource;
-    if (!source) return;
-    this.songSource = null;
-    source.onended = null;
-    try { source.stop(); } catch { /** 音源可能已经结束。 */ }
-    source.disconnect();
+  private seekEffects(seconds: number, inclusive: boolean): void {
+    const mapMs = seconds * 1000 + this.inputs.introOffsetMs;
+    const search = inclusive ? lowerBoundBy : upperBoundBy;
+    this.soundIndex = search(this.schedule, mapMs, sound => sound.beatmapMs);
+    this.sampleIndex = this.storyboardEnabled ? upperBoundBy(this.sampleEndPrefix, mapMs, time => time) : this.samples.length;
   }
 
-  private startSong(presentationMs: number, now: number): void {
-    const buffer = this.inputs.songBuffer;
-    if (!buffer) return;
-    const mapMs = presentationMs + this.inputs.introOffsetMs;
-    const offset = Math.max(0, mapMs / 1000);
-    if (offset >= buffer.duration) return;
-    const source = this.ctx.createBufferSource();
-    source.buffer = buffer;
-    source.playbackRate.value = this.speed;
-    source.connect(this.songGain);
-    this.songSource = source;
-    source.onended = () => {
-      if (this.songSource === source) this.songSource = null;
-      source.disconnect();
-    };
-    this.songWhen = now + Math.max(0, -mapMs / (1000 * this.speed));
-    source.start(this.songWhen, offset);
-  }
-
-  private startEffects(presentationMs: number, inclusive = true): void {
-    const mapMs = presentationMs + this.inputs.introOffsetMs;
-    let low = 0, high = this.schedule.length;
-    while (low < high) {
-      const middle = (low + high) >>> 1;
-      if (inclusive ? this.schedule[middle]!.beatmapMs < mapMs : this.schedule[middle]!.beatmapMs <= mapMs) low = middle + 1;
-      else high = middle;
-    }
-    this.soundIndex = low;
-    this.sampleIndex = this.storyboardEnabled ? this.firstLiveSample(mapMs) : this.samples.length;
-    this.flush();
-    this.ensureTimer();
-  }
-
-  private ensureTimer(): void {
-    if (this.timer === null && (this.soundIndex < this.schedule.length || this.sampleIndex < this.samples.length)) {
-      this.timer = setInterval(() => this.flush(), FLUSH_INTERVAL_MS);
-    }
-  }
-
-  private flush(): void {
-    if (!this.playing) return;
-    const now = this.ctx.currentTime;
-    const horizon = now + FLUSH_HORIZON_S;
-    const anchorMap = this.clock.positionAt(audioContextTime(now)) * 1000;
-    const at = (mapMs: number): number => now + (mapMs - anchorMap) / (1000 * this.speed);
+  private flush(seconds: number, contextTime: number, speed: number, endSeconds: number): void {
+    const anchorMap = seconds * 1000 + this.inputs.introOffsetMs;
+    const horizon = contextTime + FLUSH_HORIZON_S;
+    const end = endSeconds * 1000 + this.inputs.introOffsetMs;
+    const at = (mapMs: number): number => contextTime + (mapMs - anchorMap) / (1000 * speed);
     while (this.soundIndex < this.schedule.length) {
       const sound = this.schedule[this.soundIndex]!;
+      if (sound.beatmapMs >= end) break;
       const when = at(sound.beatmapMs);
       if (when > horizon) break;
       this.soundIndex++;
@@ -265,28 +179,22 @@ export class AudioSync {
         });
       if (!buffer) continue;
       const key = `${sound.type}|${sound.sampleSet}|${sound.sampleIndex}|${sound.customFile}`;
-      this.startEffect(buffer, when, sound.volume ?? 1, key);
+      this.startEffect(buffer, when, contextTime, 1, sound.volume ?? 1, key);
     }
     while (this.sampleIndex < this.samples.length) {
       const sample = this.samples[this.sampleIndex]!;
+      if (sample.timeMs >= end) break;
       const when = at(sample.timeMs);
       if (when > horizon) break;
       this.sampleIndex++;
-      if (!this.storyboardSources.has(sample)) this.startEffect(sample.buffer, when, sample.volume, undefined, sample);
+      if (!this.storyboardSources.has(sample)) this.startEffect(sample.buffer, when, contextTime, speed, sample.volume, undefined, sample);
     }
-    if (this.soundIndex === this.schedule.length && this.sampleIndex === this.samples.length && this.timer !== null) {
-      clearInterval(this.timer);
-      this.timer = null;
-    }
-    this.clock.prune(outputTime(getAudioContextOutputTime(this.ctx)));
   }
 
-  private startEffect(buffer: AudioBuffer, when: number, volume: number, concurrencyKey?: string, sample?: ExtraSample): void {
-    const now = this.ctx.currentTime;
-    const rate = sample ? this.speed : 1;
-    const offset = Math.max(0, (now - when) * rate);
+  private startEffect(buffer: AudioBuffer, when: number, anchor: number, rate: number, volume: number, concurrencyKey?: string, sample?: ExtraSample): void {
+    const actualWhen = Math.max(anchor, this.ctx.currentTime, when);
+    const offset = Math.max(0, (actualWhen - when) * rate);
     if (offset >= buffer.duration) return;
-    const actualWhen = Math.max(now, when);
     const source = this.ctx.createBufferSource();
     source.buffer = buffer;
     source.playbackRate.value = rate;
@@ -297,21 +205,25 @@ export class AudioSync {
       source.connect(gain);
       gain.connect(this.effectsGain);
     } else source.connect(this.effectsGain);
-    this.activeEffects.set(source, { gain, when: actualWhen, sample });
+    this.activeEffects.set(source, { gain, when: actualWhen, end: actualWhen + (buffer.duration - offset) / rate, cut: Infinity, rate, sample, key: concurrencyKey });
     if (sample) this.storyboardSources.set(sample, source);
     source.onended = () => {
       source.disconnect();
       gain?.disconnect();
       this.activeEffects.delete(source);
-      if (sample) this.storyboardSources.delete(sample);
+      if (sample && this.storyboardSources.get(sample) === source) this.storyboardSources.delete(sample);
     };
     if (concurrencyKey) {
-      const voices = (this.voices.get(concurrencyKey) ?? []).filter(voice => voice.end > actualWhen);
+      const voices = (this.voices.get(concurrencyKey) ?? []).filter(voice => {
+        const effect = this.activeEffects.get(voice);
+        return effect && Math.min(effect.end, effect.cut) > actualWhen;
+      });
       if (voices.length >= SAMPLE_CONCURRENCY) {
         const victim = voices.shift()!;
-        try { victim.source.stop(actualWhen); } catch { /** 音源可能已经结束。 */ }
+        this.activeEffects.get(victim)!.end = actualWhen;
+        victim.stop(actualWhen);
       }
-      voices.push({ source, when: actualWhen, end: actualWhen + (buffer.duration - offset) });
+      voices.push(source);
       this.voices.set(concurrencyKey, voices);
     }
     source.start(actualWhen, offset);
@@ -323,20 +235,41 @@ export class AudioSync {
     try { source.stop(); } catch { /** 音源可能已经结束。 */ }
     source.disconnect();
     effect?.gain?.disconnect();
-    if (effect?.sample) this.storyboardSources.delete(effect.sample);
+    if (effect?.sample && this.storyboardSources.get(effect.sample) === source) this.storyboardSources.delete(effect.sample);
     this.activeEffects.delete(source);
   }
 
-  private stopEffects(futureOnly = false): void {
-    if (this.timer !== null) clearInterval(this.timer);
-    this.timer = null;
+  private resetEffects(keepPlaying: boolean, seconds: number): void {
+    this.storyboardSources.clear();
+    this.voices.clear();
+    const now = this.ctx.currentTime;
     for (const [source, effect] of this.activeEffects) {
-      if (!futureOnly || effect.when > this.ctx.currentTime) this.stopEffect(source);
-    }
-    for (const [key, voices] of this.voices) {
-      const remaining = voices.filter(voice => this.activeEffects.has(voice.source));
-      if (remaining.length) this.voices.set(key, remaining);
-      else this.voices.delete(key);
+      if (!keepPlaying || effect.when > now) {
+        this.stopEffect(source);
+        continue;
+      }
+      if (effect.end <= now || effect.cut <= now) continue;
+      if (effect.sample) {
+        const expectedOffset = seconds + (this.inputs.introOffsetMs - effect.sample.timeMs) / 1000;
+        const offset = effect.sample.buffer.duration - (effect.end - now) * effect.rate;
+        if (Math.abs(offset - expectedOffset) > .001) {
+          this.stopEffect(source);
+          continue;
+        }
+        this.storyboardSources.set(effect.sample, source);
+        effect.end = now + (effect.end - now) * effect.rate / this.speed;
+        effect.rate = this.speed;
+        source.playbackRate.setValueAtTime(this.speed, now);
+      } else if (effect.key) {
+        const voices = this.voices.get(effect.key) ?? [];
+        voices.push(source);
+        this.voices.set(effect.key, voices);
+      }
+      if (effect.cut < Infinity) {
+        /* Web Audio 的下一次 stop 会覆盖尚未生效的循环截断。 */
+        source.stop(effect.end);
+        effect.cut = effect.end;
+      }
     }
   }
 }

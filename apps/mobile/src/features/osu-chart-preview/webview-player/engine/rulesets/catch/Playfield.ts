@@ -24,6 +24,7 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
+import { drawTinted } from '../../../engine-performance';
 import type { SkinAssets } from '../../types/index';
 import type { CatchSession, CatchObject } from './types';
 import type { CatcherFrame } from './input';
@@ -327,10 +328,10 @@ function blitPiece(
     ctx.globalAlpha = 0.7 * a;
     const hw = bw * 1.2;
     const hh = bh * 1.2;
-    ctx.drawImage(tintSprite(base.bitmap, HYPER_HEX), -hw / 2, -hh / 2, hw, hh);
+    drawTinted(ctx, base.bitmap, HYPER_HEX, -hw / 2, -hh / 2, hw, hh);
     ctx.restore();
   }
-  ctx.drawImage(tintSprite(base.bitmap, tintHex), -bw / 2, -bh / 2, bw, bh);
+  drawTinted(ctx, base.bitmap, tintHex, -bw / 2, -bh / 2, bw, bh);
   if (overlay !== undefined) {
     const ow = overlay.logW * pxPerOsu;
     const oh = overlay.logH * pxPerOsu;
@@ -434,30 +435,6 @@ function outQuint(p: number): number {
 
 function skinImg(skin: SkinAssets, stem: string): ImageBitmap | undefined {
   return skin.images.get(`${stem}@2x.png`) ?? skin.images.get(`${stem}.png`);
-}
-
-const tintCache = new WeakMap<ImageBitmap, Map<string, OffscreenCanvas>>();
-function tintSprite(bitmap: ImageBitmap, tintHex: string): CanvasImageSource {
-  let bucket = tintCache.get(bitmap);
-  if (bucket === undefined) { bucket = new Map(); tintCache.set(bitmap, bucket); }
-  const cached = bucket.get(tintHex);
-  if (cached !== undefined) return cached;
-
-  const c = new OffscreenCanvas(bitmap.width, bitmap.height);
-  const cx = c.getContext('2d');
-  if (cx === null) return bitmap;
-  cx.drawImage(bitmap, 0, 0);
-  cx.globalCompositeOperation = 'multiply';
-  cx.fillStyle = tintHex;
-  cx.fillRect(0, 0, c.width, c.height);
-  cx.globalCompositeOperation = 'destination-in';
-  cx.drawImage(bitmap, 0, 0);
-  bucket.set(tintHex, c);
-  return c;
-}
-
-function redTinted(bitmap: ImageBitmap): CanvasImageSource {
-  return tintSprite(bitmap, '#ff0000');
 }
 
 type CatcherState = 'idle' | 'fail' | 'kiai';
@@ -583,7 +560,7 @@ function blitCatcher(
 
   if (extraTint > 0.02) {
     ctx.globalAlpha *= extraTint;
-    ctx.drawImage(redTinted(bitmap), -dw / 2, 0, dw, dh);
+    drawTinted(ctx, bitmap, '#ff0000', -dw / 2, 0, dw, dh);
   }
   ctx.restore();
 }

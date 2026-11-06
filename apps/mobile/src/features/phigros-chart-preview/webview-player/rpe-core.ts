@@ -4,6 +4,7 @@
  * （与本项目 AGPL-3.0 兼容）；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
  */
 
+import { lowerBoundBy, upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
 import { rpeBundleRelativePath } from '../../../domain/rpe-resource-path';
 
 export const RPE_HEIGHT = 900;
@@ -382,14 +383,8 @@ export function speedHeightAt(
     const events = layer?.speedEvents ?? [];
     if (events.length === 0) continue;
     const index = eventIndexAt(events, beat);
-    let height = 0;
-    for (let i = 0; i < index; i += 1) {
-      const event = events[i]!;
-      const next = events[i + 1]!;
-      height +=
-        getIntegral(event, bpmList, integrateEasings) +
-        (event.end as number) * (bpmList.timeSec(next.startBeat) - bpmList.timeSec(event.endBeat));
-    }
+    const heights = bpmList.speedPositions(events, integrateEasings);
+    let height = heights[index]!;
     const event = events[index]!;
     if (beat <= event.endBeat) {
       height += getIntegral(event, bpmList, integrateEasings, beat);
@@ -404,9 +399,7 @@ export function speedHeightAt(
 }
 
 function eventIndexAt(events: readonly RpeEvent[], beat: number): number {
-  let index = 0;
-  while (index < events.length - 1 && beat > events[index + 1]!.startBeat) index += 1;
-  return index;
+  return Math.max(0, lowerBoundBy(events, beat, event => event.startBeat) - 1);
 }
 
 interface BpmElement {
@@ -417,6 +410,24 @@ interface BpmElement {
 
 export class BpmList {
   private readonly elements: BpmElement[];
+  private readonly positions = [
+    new WeakMap<readonly RpeEvent[], Float64Array>(), new WeakMap<readonly RpeEvent[], Float64Array>(),
+  ];
+
+  speedPositions(events: readonly RpeEvent[], integrateEasings: boolean): Float64Array {
+    const cache = this.positions[integrateEasings ? 1 : 0]!;
+    const existing = cache.get(events);
+    if (existing) return existing;
+    const positions = new Float64Array(events.length);
+    for (let i = 1; i < events.length; i++) {
+      const previous = events[i - 1]!;
+      positions[i] = positions[i - 1]! + getIntegral(previous, this, integrateEasings) +
+        Number(previous.end) * (this.timeSec(events[i]!.startBeat) - this.timeSec(previous.endBeat));
+    }
+    cache.set(events, positions);
+    return positions;
+  }
+
 
   constructor(ranges: readonly (readonly [number, number])[]) {
     this.elements = [];
@@ -432,20 +443,12 @@ export class BpmList {
   }
 
   timeSec(beat: number): number {
-    let bpm = this.elements[0]!;
-    for (const element of this.elements) {
-      if (element.startBeat <= beat) bpm = element;
-      else break;
-    }
+    const bpm = this.elements[Math.max(0, upperBoundBy(this.elements, beat, e => e.startBeat) - 1)]!;
     return bpm.startTimeSec + ((beat - bpm.startBeat) / bpm.bpm) * 60;
   }
 
   beat(timeSec: number): number {
-    let bpm = this.elements[0]!;
-    for (const element of this.elements) {
-      if (element.startTimeSec <= timeSec) bpm = element;
-      else break;
-    }
+    const bpm = this.elements[Math.max(0, upperBoundBy(this.elements, timeSec, e => e.startTimeSec) - 1)]!;
     return bpm.startBeat + ((timeSec - bpm.startTimeSec) / 60) * bpm.bpm;
   }
 }

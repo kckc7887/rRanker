@@ -1,12 +1,12 @@
 import { loadItemsBounded } from './engine';
 import { toArrayBuffer } from './bytes';
-import { findArchiveEntry, type PreviewResourceMap } from './osu-text';
+import { normalizeArchivePath, resolveArchivePath } from './osu-text';
 import { sampleLookupNames, resolveSample, lookupSkinSound, type PendingSound } from './engine-audio/hitsoundSchedule';
 import type { ExtraSample } from './engine-audio/AudioSync';
 import type { StoryboardSample } from './events';
 
 export async function loadPreviewAudio(input: {
-  ctx: AudioContext; files: PreviewResourceMap; osuPath: string;
+  ctx: AudioContext; files: ReadonlyMap<string, Uint8Array>; osuPath: string;
   songName: string; mode: 0 | 1 | 2 | 3; schedule: readonly PendingSound[];
   samples: readonly StoryboardSample[]; signal: AbortSignal; onWarning(message: string): void;
 }): Promise<{ song: AudioBuffer | null; sounds: Map<string, AudioBuffer>; samples: ExtraSample[]; endMs: number }> {
@@ -14,16 +14,24 @@ export async function loadPreviewAudio(input: {
   const decoded = new Map<string, AudioBuffer>();
   const requests = new Map<string, Uint8Array>();
   const aliases = new Map<string, string>();
+  const available = new Map<string, Uint8Array>();
+  for (const [path, bytes] of files) available.set(normalizeArchivePath(path).toLowerCase(), bytes);
   const add = (name: string, source = osuPath): string | undefined => {
-    const entry = findArchiveEntry(files, name, source);
-    if (!entry) return;
-    const key = entry.path.toLowerCase();
-    requests.set(key, entry.bytes);
+    const key = resolveArchivePath(name, source).toLowerCase();
+    const bytes = available.get(key);
+    if (!key || !bytes) return;
+    requests.set(key, bytes);
     return key;
   };
   const songKey = input.songName ? add(input.songName) : undefined;
   if (input.songName && !songKey) onWarning('歌曲音频缺失，仍可观看谱面');
+  const lastUse = new Map<string, PendingSound>();
   for (const sound of input.schedule) {
+    const key = `${sound.type}/${sound.sampleSet}/${sound.sampleIndex}/${sound.customFile}`;
+    const previous = lastUse.get(key);
+    if (!previous || sound.beatmapMs > previous.beatmapMs) lastUse.set(key, sound);
+  }
+  for (const sound of lastUse.values()) {
     const names = sound.type === 'combobreak' || sound.type === 'spinnerbonus'
       ? ['wav', 'mp3', 'ogg'].map(ext => `${sound.type}.${ext}`)
       : sampleLookupNames(sound.type, sound.sampleSet, sound.sampleIndex, sound.customFile, input.mode);
@@ -58,7 +66,7 @@ export async function loadPreviewAudio(input: {
     if (sample.layer !== 'Fail') samples.push({ timeMs: sample.timeMs, volume: sample.volume, buffer });
   });
   const deps = { mode: input.mode, skinSounds: sounds, synthCache: new Map<string, AudioBuffer>(), ctx };
-  for (const sound of input.schedule) {
+  for (const sound of lastUse.values()) {
     const buffer = sound.type === 'combobreak' || sound.type === 'spinnerbonus'
       ? lookupSkinSound(sounds, sound.type)
       : resolveSample(sound.type, sound.sampleSet, sound.sampleIndex, sound.customFile, deps);

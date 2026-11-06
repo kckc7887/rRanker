@@ -81,7 +81,8 @@ export interface TaikoSession {
   readonly objectVel: readonly number[];
   readonly barLineVel: readonly number[];
 
-  readonly maxScrollMs: number;
+  visibleObjects(timeMs: number): number[];
+  visibleBars(timeMs: number): number[];
   readonly hitResults: readonly HitResult[];
   readonly comboFrames: readonly ComboFrame[];
   readonly swellProgress: ReadonlyMap<number, SwellProgress>;

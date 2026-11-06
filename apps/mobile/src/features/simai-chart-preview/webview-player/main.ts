@@ -1,3 +1,4 @@
+import { bindTimelineDrag } from '../../chart-preview-shared/webview-player/frame-scheduler';
 import { renderPreviewHeading } from '../../chart-preview-shared/webview-player/heading';
 import { bindFullscreenControls } from '../../chart-preview-shared/webview-player/fullscreen-controls';
 import { bindPlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
@@ -17,6 +18,8 @@ import {
 import { applyChartPreviewHostCommand } from '../../chart-preview-shared/chart-preview-bridge';
 import { closeActiveWheelPopup, setupWheelPopup } from '../../chart-preview-shared/webview-player/wheel';
 import { DEFAULT_JUDGE_HINT, parseJudgeHint } from '../engine/utils/judgeHint';
+import { createStageContext, stagePixels } from '../../chart-preview-shared/webview-player/stage';
+import { EffectRenderer } from '../engine/renderers/effects';
 import { ChartPreviewSkin } from '../engine/renderers/skinAtlas';
 import { CHART_PREVIEW_DUAL_GAP, chartPreviewCanvasSize } from './fullscreenLayout';
 import { toggleFullscreenLockUiState } from '../../chart-preview-shared/webview-player/fullscreenLock';
@@ -227,8 +230,7 @@ async function main(): Promise<void> {
   let isFullscreen = false;
   let fsLocked = false;
   let fsControlsVisible = false;
-  let isDragging = false;
-  let wasPlaying = false;
+  let cancelDrag: (() => void) | undefined;
 
 
   let config: ChartPreviewConfig | undefined;
@@ -316,10 +318,8 @@ async function main(): Promise<void> {
   const allNotes = notesBySide.flat();
 
   const chartCount = charts.length as 1 | 2;
-  const canvases = [canvas];
   const canvasStages = [canvasStage];
   if (chartCount === 2) {
-    canvases.push($('chart-canvas-2') as HTMLCanvasElement);
     canvasStages.push($('canvas-stage-2'));
     canvasWrap.classList.add('dual');
     document.body.classList.add('dual');
@@ -337,7 +337,10 @@ async function main(): Promise<void> {
     postStatus('error', { message: '皮肤加载失败，请返回重试。', diagnostic });
     return;
   }
-  const renderers = canvases.map((c) => new MainRenderer(c, { skin }));
+  const stage = createStageContext(canvas);
+  const effects = new EffectRenderer(skin);
+  events.own(() => { effects.dispose(stage); stage.dispose(); });
+  const renderers = charts.map(() => new MainRenderer(canvas, { skin, stage, effects }));
   const applyRendererSettings = (r: MainRenderer) => {
     r.setJudgmentLineDesign((saved.judgmentLineDesign as string) || 'sensor');
     r.setPlaybackSpeed(saved.playbackSpeed ?? 1);
@@ -457,7 +460,10 @@ async function main(): Promise<void> {
     imageUrl: config.backgroundImageUrl,
     videoUrl: config.backgroundVideoUrl,
     host: {
-      render: () => renderFrameAll(session.positionBeats),
+      render: (decoded) => {
+        if (decoded) stage.invalidateImage(decoded);
+        renderFrameAll(session.positionBeats);
+      },
       reportVideo: (result, video) => reportBackgroundVideo(result, video),
       readStatus: () => statusEl.textContent ?? '',
       writeStatus: (message) => { statusEl.textContent = message; },
@@ -477,19 +483,21 @@ async function main(): Promise<void> {
       musicOffset: SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS,
       firstMs: chart.firstMs ?? 0,
     });
+    stage.beginFrame();
+    const position = session.beatsToMs(beats);
     for (let i = 0; i < charts.length; i++) {
-      renderers[i]!.renderAtTime(charts[i]!, session.beatsToMs(beats) + 240000 / charts[i]!.bpm - 240000 / chart.bpm);
+      renderers[i]!.renderAtTime(charts[i]!, position + 240000 / charts[i]!.bpm - 240000 / chart.bpm,
+        i ? canvas.width - canvas.height : 0, canvas.height);
     }
+    stage.flush();
   };
 
   const updateSeekUi = (beats: number) => {
     const ms = session.beatsToMs(beats);
-    if (!isDragging) {
-      const pct = totalDurationMs > 0 ? (ms / totalDurationMs) * 100 : 0;
-      const measure = Math.floor(beats / 4);
-      timelineView.updatePlayhead(pct, measure);
-      if (isFullscreen) fullscreenTimelineView.updatePlayhead(pct, measure);
-    }
+    const pct = totalDurationMs > 0 ? (ms / totalDurationMs) * 100 : 0;
+    const measure = Math.floor(beats / 4);
+    timelineView.updatePlayhead(pct, measure);
+    if (isFullscreen) fullscreenTimelineView.updatePlayhead(pct, measure);
     const nextTimeLabel = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
     if (timeLabel.textContent !== nextTimeLabel) timeLabel.textContent = nextTimeLabel;
     if (isFullscreen && fsTimeLabel.textContent !== nextTimeLabel) {
@@ -572,6 +580,7 @@ async function main(): Promise<void> {
   };
 
   const pauseForLifecycle = (): void => {
+    cancelDrag?.();
     if (disposed) return;
     closeActiveWheelPopup();
     session.pause();
@@ -585,23 +594,17 @@ async function main(): Promise<void> {
   events.own(() => { if (isFullscreen) exitFullscreen(); });
 
   const restartMeasure = () => {
-    session.moveTo(Math.floor(session.positionBeats / 4) * 4);
-    if (session.playing) void session.play();
-    else renderAt(session.positionBeats);
+    void session.playback.seek(session.beatsToMs(Math.floor(session.positionBeats / 4) * 4) / 1000);
   };
 
   const skipBeats = (deltaBeats: number) => {
-    session.moveTo(session.positionBeats + deltaBeats);
-    if (session.playing) void session.play();
-    else renderAt(session.positionBeats);
+    void session.playback.seek(session.beatsToMs(session.positionBeats + deltaBeats) / 1000);
   };
 
   const skipToMeasure = (direction: -1 | 1) => {
     const currentMeasure = Math.floor(session.positionBeats / 4);
     const targetMeasure = clamp(currentMeasure + direction, 0, maxMeasure);
-    session.moveTo(targetMeasure * 4);
-    if (session.playing) void session.play();
-    else renderAt(session.positionBeats);
+    void session.playback.seek(session.beatsToMs(targetMeasure * 4) / 1000);
   };
 
   ownedWheelPopup(
@@ -630,6 +633,7 @@ async function main(): Promise<void> {
     (speed) => {
       session.setSpeed(speed);
       for (const r of renderers) r.setPlaybackSpeed(session.speed);
+      if (!session.playing) renderAt(session.positionBeats);
     },
     (speed) => saveSettings({ playbackSpeed: clamp(speed, SPEED_MIN, SPEED_MAX) }),
     SPEED_MIN,
@@ -797,7 +801,12 @@ async function main(): Promise<void> {
       stage.style.height = `${size}px`;
     }
     canvasWrap.style.height = `${size}px`;
-    for (const r of renderers) r.resize(isFullscreen);
+    const width = size * chartCount + CHART_PREVIEW_DUAL_GAP * (chartCount - 1);
+    const pixels = stagePixels(width, size, stage.gl);
+    canvas.style.width = width + 'px';
+    canvas.style.height = size + 'px';
+    if (canvas.width !== pixels.width) canvas.width = pixels.width;
+    if (canvas.height !== pixels.height) canvas.height = pixels.height;
     renderAt(session.positionBeats);
   };
   const resizeScheduler = createLatestFrameScheduler(resize);
@@ -818,60 +827,15 @@ async function main(): Promise<void> {
   timelineObserver.observe(timelineHost);
   events.own(() => timelineObserver.disconnect());
 
-  const seekToPosition = (percent: number) => {
-    const targetMs = (percent / 100) * totalDurationMs;
-    session.moveTo(session.beatsAtMs(targetMs));
-    const beats = session.positionBeats;
-    const ms = session.beatsToMs(beats);
-    const measure = Math.floor(beats / 4);
-    const pct = (ms / totalDurationMs) * 100;
-    timelineView.updatePlayhead(pct, measure);
-    if (isFullscreen) fullscreenTimelineView.updatePlayhead(pct, measure);
-    timeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
-    if (isFullscreen) fsTimeLabel.textContent = `${formatTime(ms)} / ${formatTime(totalDurationMs)}`;
-    renderFrameAll(beats);
-    updateOverlayDom();
-  };
-  const seekScheduler = createLatestFrameScheduler(seekToPosition);
-  events.own(() => seekScheduler.cancel());
+  const durationSeconds = totalDurationMs / 1000;
   for (const host of [timelineHost, fsTimelineHost]) {
-    bindHeatTimelineKeyboard(events, host,
-      () => session.beatsToMs(session.positionBeats) / totalDurationMs * 100,
-      percent => { if (!fsLocked) seekToPosition(percent); });
+    bindHeatTimelineKeyboard(events, host, () => session.playback.currentTime / durationSeconds * 100,
+      percent => { if (!fsLocked) void session.playback.seek(percent / 100 * durationSeconds); });
   }
-
-  events.listen(timelineHost, 'pointerdown', (e) => {
-    e.preventDefault();
-    isDragging = true;
-    wasPlaying = session.playing;
-    if (session.playing) session.pause();
-    const rect = timelineHost.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    seekToPosition(pct);
-  });
-
-  events.listen(document, 'pointermove', (e) => {
-    if (!isDragging) return;
-    const host = isFullscreen ? fsTimelineHost : timelineHost;
-    const rect = host.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    seekScheduler.schedule(pct);
-  });
-
-  events.listen(document, 'pointerup', () => {
-    if (!isDragging) return;
-    isDragging = false;
-    seekScheduler.flush();
-    renderAt(session.positionBeats);
-    if (wasPlaying) void session.play();
-  });
-
-  /** 系统中断拖动不保证 pointerup；停在当前帧。 */
-  events.listen(document, 'pointercancel', () => {
-    if (!isDragging) return;
-    isDragging = false;
-    seekScheduler.flush();
-    renderAt(session.positionBeats);
+  cancelDrag = bindTimelineDrag(events, [timelineHost, fsTimelineHost], {
+    enabled: () => !fsLocked, playing: () => session.playing, pause: () => session.pause(),
+    preview: fraction => session.playback.preview(fraction * durationSeconds),
+    resume: () => void session.playback.seek(session.playback.currentTime, true),
   });
 
   events.listen(playBtn, 'click', togglePlayback);
@@ -975,25 +939,14 @@ async function main(): Promise<void> {
 
   bindPlaybackLoop(events, {
     loop: session.loop,
-    position: () => session.positionBeats,
-    percent: beats => session.beatsToMs(beats) / totalDurationMs * 100,
-    format: beats => (session.beatsToMs(beats) / 1000).toFixed(2) + 's',
+    position: () => session.playback.currentTime,
+    percent: seconds => seconds / durationSeconds * 100,
+    format: seconds => seconds.toFixed(2) + 's',
     update: (a, b) => { timelineView.updateLoop(a, b); fullscreenTimelineView.updateLoop(a, b); },
-  });
-  events.listen(fsTimelineHost, 'pointerdown', (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    isDragging = true;
-    wasPlaying = session.playing;
-    if (session.playing) session.pause();
-    const rect = fsTimelineHost.getBoundingClientRect();
-    const pct = Math.max(0, Math.min(100, ((e.clientX - rect.left) / rect.width) * 100));
-    seekToPosition(pct);
-    showFsControls();
   });
 
   events.listen(document, 'visibilitychange', () => {
-    if (document.visibilityState === 'hidden') { closeActiveWheelPopup(); if (session.playing) session.pause(); }
+    if (document.visibilityState === 'hidden') pauseForLifecycle();
   });
 
   renderAt(0);

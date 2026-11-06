@@ -33,6 +33,7 @@
     }
 
     #canvas-wrap {
+      position: relative;
       flex-shrink: 0;
       display: grid;
       place-items: center;
@@ -90,13 +91,10 @@
     }
 
     #chart-canvas {
-      width: 100%;
-      height: 100%;
-      display: block;
-      touch-action: none;
-    }
-
-    #chart-canvas-2 {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
       width: 100%;
       height: 100%;
       display: block;
@@ -380,13 +378,12 @@
       <div id="status">准备中…</div>
     </div>
     <div id="canvas-wrap">
+      <canvas id="chart-canvas"></canvas>
       <div id="canvas-stage">
         <span class="side-chip">1P</span>
-        <canvas id="chart-canvas"></canvas>
       </div>
       <div id="canvas-stage-2">
         <span class="side-chip">2P</span>
-        <canvas id="chart-canvas-2"></canvas>
       </div>
     </div>
     <img id="background-image" alt="" hidden />

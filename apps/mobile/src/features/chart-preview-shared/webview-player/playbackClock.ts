@@ -24,6 +24,14 @@ interface PlaybackClockSegment {
   startTime: number;
   startOffset: number;
   playbackSpeed: number;
+  loop: ClockLoop | null;
+  lap: number;
+}
+
+export type ClockLoop = Readonly<{ a: number; b: number }>;
+
+function elapsedLaps(position: number, loop: ClockLoop | null): number {
+  return loop && position >= loop.b ? 1 + Math.floor((position - loop.b) / (loop.b - loop.a)) : 0;
 }
 
 function findClockSegmentIndex(
@@ -55,16 +63,25 @@ export class PlaybackClock {
     this.segments = [];
   }
 
-  set(startTime: AudioContextTime | OutputTime, startOffset: MusicPosition, playbackSpeed: number): void {
+  set(startTime: AudioContextTime | OutputTime, startOffset: MusicPosition, playbackSpeed: number, loop: ClockLoop | null = null): void {
     this.startOffset = startOffset;
-    this.segments = [{ startTime, startOffset, playbackSpeed }];
+    this.segments = [{ startTime, startOffset, playbackSpeed, loop, lap: 0 }];
   }
 
   positionAt(time: AudioContextTime | OutputTime): MusicPosition {
     if (this.segments.length === 0) return musicPosition(this.startOffset);
     const segment = this.segments[findClockSegmentIndex(this.segments, time)]!;
     const elapsed = Math.max(0, time - segment.startTime);
-    return musicPosition(segment.startOffset + elapsed * segment.playbackSpeed);
+    const position = segment.startOffset + elapsed * segment.playbackSpeed;
+    const loop = segment.loop;
+    return musicPosition(loop && position >= loop.b ? loop.a + (position - loop.b) % (loop.b - loop.a) : position);
+  }
+
+  lapAt(time: AudioContextTime | OutputTime): number {
+    const segment = this.segments[findClockSegmentIndex(this.segments, time)];
+    if (!segment) return 0;
+    const position = segment.startOffset + Math.max(0, time - segment.startTime) * segment.playbackSpeed;
+    return segment.lap + elapsedLaps(position, segment.loop);
   }
 
   schedulingSpeed(fallbackSpeed: number): number {
@@ -78,18 +95,20 @@ export class PlaybackClock {
   }
 
   /** 速度切换以 AudioContext 时间接续音乐位置。 */
-  appendSegment(startTime: AudioContextTime, playbackSpeed: number): void {
+  appendSegment(startTime: AudioContextTime, playbackSpeed: number, loop = this.segments.at(-1)?.loop ?? null): void {
     const firstSegment = this.segments[0];
     if (!firstSegment) {
-      this.set(startTime, this.offset, playbackSpeed);
-      return;
-    }
-    if (startTime <= firstSegment.startTime) {
-      this.startOffset = firstSegment.startOffset;
-      this.segments = [{ ...firstSegment, playbackSpeed }];
+      this.set(startTime, this.offset, playbackSpeed, loop);
       return;
     }
     const currentOffset = this.positionAt(startTime);
-    this.segments.push({ startTime, startOffset: currentOffset, playbackSpeed });
+    const jump = loop !== null && currentOffset >= loop.b;
+    const segment = {
+      startTime: Math.max(firstSegment.startTime, startTime),
+      startOffset: jump ? loop.a : currentOffset,
+      playbackSpeed, loop, lap: this.lapAt(startTime) + (jump ? 1 : 0),
+    };
+    while (this.segments.length && this.segments[this.segments.length - 1]!.startTime >= segment.startTime) this.segments.pop();
+    this.segments.push(segment);
   }
 }

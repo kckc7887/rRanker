@@ -8,7 +8,7 @@ const VIDEO_SEEK_TOLERANCE_SECONDS = 0.04;
 const VIDEO_RATE_ADJUSTMENT = 0.1;
 
 export interface SimaiBackgroundMediaHost {
-  render(): void;
+  render(decoded?: HTMLVideoElement): void;
   reportVideo(result: 'success' | 'error', video?: HTMLVideoElement): void;
   readStatus(): string;
   writeStatus(message: string): void;
@@ -194,6 +194,7 @@ export class SimaiBackgroundMedia {
     }
     this.imageFailed = false;
     this.imageLoading = true;
+    if (/^https?:/i.test(this.imageUrl)) this.image.crossOrigin = 'anonymous';
     this.image.src = this.imageUrl;
   }
 
@@ -209,6 +210,7 @@ export class SimaiBackgroundMedia {
     }
     this.videoFailed = false;
     this.videoLoading = true;
+    if (/^https?:/i.test(this.videoUrl)) this.video.crossOrigin = 'anonymous';
     this.video.src = this.videoUrl;
     this.video.load();
   }
@@ -257,7 +259,7 @@ export class SimaiBackgroundMedia {
 
   private readonly onVideoSeeked = (): void => {
     if (this.disposed) return;
-    if (this.mode === 'video') this.host.render();
+    if (this.mode === 'video') this.host.render(this.video);
   };
 
   private readonly onVideoError = (): void => {

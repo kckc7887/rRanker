@@ -5,13 +5,36 @@ import { buildPhiraChartPreviewInput } from '@/features/phira-chart-preview/char
 import { parseRpeChart } from '@/features/phigros-chart-preview/webview-player/rpe-core';
 import { RpeRenderer } from '@/features/phigros-chart-preview/webview-player/rpe-renderer';
 
+vi.mock('@/features/chart-preview-shared/webview-player/stage', async () => {
+  const original = await vi.importActual<typeof import('@/features/chart-preview-shared/webview-player/stage')>('@/features/chart-preview-shared/webview-player/stage');
+  return { ...original, stagePixels: (w: number,h: number) => ({ width:w,height:h }),
+    createStageContext: (canvas: HTMLCanvasElement) => canvas.getContext('2d') };
+});
+
 function environment(gl?: WebGLRenderingContext) {
   const calls = new Map<HTMLCanvasElement, unknown[][]>();
   function canvas(): HTMLCanvasElement {
     const draws: unknown[][] = [];
+    let tint = [1,1,1];
+    const cached = new WeakMap<object, WebGLTexture>();
+    const stack: number[][] = [];
     const context = new Proxy<Record<string, unknown>>({}, {
-      get: (target, key: string) => target[key] ?? ((...args: unknown[]) => {
-        if (key === 'drawImage') draws.push(args);
+      get: (target, key: string) => key === 'gl' ? gl ?? {} : key === 'effectScale' ? 1 : target[key] ?? ((...args: unknown[]) => {
+        if (key === 'save') stack.push(tint);
+        if (key === 'restore') tint = stack.pop() ?? [1,1,1];
+        if (key === 'tint') tint = args as number[];
+        if (key === 'acquireTarget') return { width: args[0], height: args[1], framebuffer: {}, texture: {} };
+        if (key === 'imageTexture' && gl) {
+          const source = args[0] as HTMLImageElement;
+          if (!cached.has(source)) {
+            const texture = gl.createTexture()!;
+            gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, texture);
+            gl.texImage2D(gl.TEXTURE_2D,0,gl.RGBA,gl.RGBA,gl.UNSIGNED_BYTE, source);
+            cached.set(source, texture);
+          }
+          return cached.get(source);
+        }
+        if (key === 'drawImage') draws.push([...args, tint]);
         if (key === 'measureText') return { width: 10 };
       }),
     });
@@ -139,8 +162,8 @@ describe('RPE renderer', () => {
     const a = image(32), b = image(64);
     const shaderPath = `effects/mix.${extension}`;
     const zip = new JSZip();
-    zip.file('info.yml', 'chart: chart.json\nmusic: song.mp3\nformat: rpe');
-    zip.file('chart.json', JSON.stringify({ META: { RPEVersion: 150 }, BPMList: [{ startTime: [0, 0, 1], bpm: 120 }], judgeLineList: [] }));
+    zip.file('info.yml', 'chart: chart.pec\nmusic: song.mp3\nformat: pgr');
+    zip.file('chart.pec', JSON.stringify({ META: { RPEVersion: 150 }, BPMList: [{ startTime: [0, 0, 1], bpm: 120 }], judgeLineList: [] }));
     zip.file('song.mp3', new Uint8Array([1]));
     zip.file(shaderPath, 'precision mediump float; varying vec2 uv; uniform sampler2D first; uniform sampler2D second; void main() { gl_FragColor = (texture2D(first, uv) + texture2D(second, uv)) * 0.5; }');
     zip.file('extra.json', JSON.stringify({ effects: [0, 1].map(() => ({ shader: `/${shaderPath}`, start: [0, 0, 1], end: [20, 0, 1], vars: { first: 'a.png', second: 'b.png' } })) }));
@@ -167,27 +190,15 @@ describe('RPE renderer', () => {
     }
     renderer.dispose();
   });
-  it.each([2048, 4096])('染色后保留 %s 像素纹理并在释放时回收', size => {
-    const { renderer, draws } = environment();
-    renderer.setChart(chart());
-    renderer.setChartAssets({ textures: new Map([['custom.png', image(size)]]),
-      videos: new Map(), shaders: new Map(), gifs: new Map(), gifAnims: new Map() });
-    renderer.render(0);
-    const texture = draws.at(-1)?.[0] as HTMLCanvasElement;
-    expect([texture.width, texture.height]).toEqual([size, size]);
-    renderer.dispose();
-    expect([texture.width, texture.height]).toEqual([0, 0]);
-  });
-
   it('颜色插值在播放与反向跳转后仍正确绘制', () => {
     const { renderer, draws } = environment();
     renderer.setChart(chart());
     renderer.setChartAssets({ textures: new Map([['custom.png', image(256)]]),
       videos: new Map(), shaders: new Map(), gifs: new Map(), gifAnims: new Map() });
-    for (const [time, color] of [[0, 'rgb(0,50,100)'], [25, 'rgb(127.5,75,50)'], [0, 'rgb(0,50,100)']] as const) {
+    for (const [time, color] of [[0, [0,50,100]], [25, [127.5,75,50]], [0, [0,50,100]]] as const) {
       renderer.render(time);
-      const texture = draws.at(-1)?.[0] as HTMLCanvasElement;
-      expect(texture.getContext('2d')!.fillStyle).toBe(color);
+      const tint = draws.at(-1)!.at(-1) as number[];
+      expect(tint.map(value => value * 255)).toEqual(color);
     }
     renderer.dispose();
   });

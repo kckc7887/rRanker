@@ -29,6 +29,7 @@ import type { SkinAssets, ManiaSkinSection } from '../../types/index';
 import type { ManiaSession, ManiaStage, ManiaBarLine } from './types';
 import type { ManiaScroll } from './scroll';
 import type { RenderOptions } from '../../renderer/Renderer';
+import type { StageContext } from '../../../../../chart-preview-shared/webview-player/stage';
 import { scrollRawAt, scrollTimeAtRaw } from './scroll';
 
 const LOGICAL_W = 1280;
@@ -766,15 +767,6 @@ const FL_SMOOTHNESS = 1.1;
 const FL_BREAK_MULTIPLIER = 2.5;
 const FL_SCALE = LOGICAL_H / REFERENCE_PLAYFIELD_HEIGHT;
 
-/** destination-out 只作用于离屏音符层，避免擦除背景。 */
-
-let coverLayer: OffscreenCanvas | null = null;
-function getCoverLayer(): { canvas: OffscreenCanvas; ctx: CanvasRenderingContext2D } {
-  coverLayer ??= new OffscreenCanvas(LOGICAL_W, LOGICAL_H);
-
-  return { canvas: coverLayer, ctx: coverLayer.getContext('2d') as unknown as CanvasRenderingContext2D };
-}
-
 function comboAtTime(comboFrames: readonly { time: number; combo: number }[], timeMs: number): number {
   let lo = 0, hi = comboFrames.length - 1, idx = -1;
   while (lo <= hi) {
@@ -912,18 +904,26 @@ export function drawManiaPlayfield(
 
   const cover = resolveManiaCover(session, timeMs, options);
   if (cover) {
-    const { canvas: layer, ctx: lctx } = getCoverLayer();
-    lctx.clearRect(0, 0, LOGICAL_W, LOGICAL_H);
-    lctx.save();
-    lctx.beginPath();
-    lctx.rect(layout.stageLeftX, 0, stageWidth, layout.hitTargetY);
-    lctx.clip();
-    drawObjects(lctx, session, rNow, timeMs, timeRange, section);
-    lctx.globalCompositeOperation = 'destination-out';
-    lctx.fillStyle = buildCoverGradient(lctx, layout.scrollLength, cover);
-    lctx.fillRect(layout.stageLeftX, 0, stageWidth, layout.scrollLength);
-    lctx.restore();
-    ctx.drawImage(layer, 0, 0);
+    const stage = ctx as StageContext;
+    const owner = stage.currentTarget, transform = stage.getTransform();
+    const target = stage.acquireTarget(Math.ceil(stageWidth * Math.hypot(transform.a, transform.b)),
+      Math.ceil(layout.hitTargetY * Math.hypot(transform.c, transform.d)));
+    stage.bindTarget(target);
+    stage.save();
+    try {
+      const scaleX = target.width / stageWidth, scaleY = target.height / layout.hitTargetY;
+      stage.setTransform(scaleX, 0, 0, scaleY, -layout.stageLeftX * scaleX, 0);
+      stage.clearRect(layout.stageLeftX, 0, stageWidth, layout.hitTargetY);
+      drawObjects(stage, session, rNow, timeMs, timeRange, section);
+      stage.globalCompositeOperation = 'destination-out';
+      stage.fillStyle = buildCoverGradient(stage, layout.scrollLength, cover);
+      stage.fillRect(layout.stageLeftX, 0, stageWidth, layout.scrollLength);
+    } finally {
+      stage.restore();
+      stage.bindTarget(owner);
+    }
+    stage.drawTarget(target, layout.stageLeftX, 0, stageWidth, layout.hitTargetY);
+    stage.releaseTarget(target);
   } else {
     ctx.save();
     ctx.beginPath();

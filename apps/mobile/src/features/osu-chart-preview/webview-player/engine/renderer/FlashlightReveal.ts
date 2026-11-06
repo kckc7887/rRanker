@@ -24,36 +24,10 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-/** 用 source-over 绘制黑色光罩；destination-out 会擦除底层游戏像素。 */
-
-const DISC_SIZE = 1024;
-const GRADIENT_STEPS = 8;
-
-const _discCache = new Map<number, OffscreenCanvas>();
-
-function getRevealDisc(innerRatio: number): OffscreenCanvas {
-  const cached = _discCache.get(innerRatio);
-  if (cached !== undefined) return cached;
-
-  const osc = new OffscreenCanvas(DISC_SIZE, DISC_SIZE);
-  const c = osc.getContext('2d')!;
-  const half = DISC_SIZE / 2;
-  const grad = c.createRadialGradient(half, half, 0, half, half, half);
-  grad.addColorStop(0, 'rgba(0,0,0,0)');
-  grad.addColorStop(innerRatio, 'rgba(0,0,0,0)');
-  for (let i = 1; i < GRADIENT_STEPS; i++) {
-    const u = i / GRADIENT_STEPS;
-    const s = u * u * (3 - 2 * u); /** smoothstep 渐变。 */
-    const r = innerRatio + u * (1 - innerRatio);
-    grad.addColorStop(Math.min(1, r), `rgba(0,0,0,${s.toFixed(4)})`);
-  }
-  grad.addColorStop(1, 'rgba(0,0,0,1)');
-  c.fillStyle = grad;
-  c.fillRect(0, 0, DISC_SIZE, DISC_SIZE);
-
-  _discCache.set(innerRatio, osc);
-  return osc;
-}
+const shadeStops = Array.from({ length: 9 }, (_, i) => {
+  const t = i / 8;
+  return { at: t, color: `rgba(0,0,0,${(t * t * (3 - 2 * t)).toFixed(4)})` };
+});
 
 export function drawFlashlightReveal(
   ctx: CanvasRenderingContext2D,
@@ -61,23 +35,12 @@ export function drawFlashlightReveal(
   outerR: number, innerRatio: number,
   x: number, y: number, w: number, h: number,
 ): void {
-  const disc = getRevealDisc(innerRatio);
-  const dx = cx - outerR;
-  const dy = cy - outerR;
-  const d  = outerR * 2;
-
   ctx.save();
-  ctx.beginPath();
-  ctx.rect(x, y, w, h);
-  ctx.clip();
+  const gradient = ctx.createRadialGradient(cx, cy, innerRatio * outerR, cx, cy, outerR);
+  for (const { at, color } of shadeStops) gradient.addColorStop(at, color);
   ctx.globalCompositeOperation = 'source-over';
   ctx.globalAlpha = 1;
-  ctx.fillStyle = '#000';
-
-  ctx.fillRect(x, y, Math.max(0, dx - x), h);
-  ctx.fillRect(dx + d, y, Math.max(0, x + w - (dx + d)), h);
-  ctx.fillRect(dx, y, d, Math.max(0, dy - y));
-  ctx.fillRect(dx, dy + d, d, Math.max(0, y + h - (dy + d)));
-  ctx.drawImage(disc, dx, dy, d, d);
+  ctx.fillStyle = gradient;
+  ctx.fillRect(x, y, w, h);
   ctx.restore();
 }

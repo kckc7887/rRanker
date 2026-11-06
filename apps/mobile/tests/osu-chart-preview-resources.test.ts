@@ -115,6 +115,16 @@ describe('osu 谱面确认资源选择', () => {
     expect(result.files.find((file) => file.path === 'set/BG.png')?.uri).toBeDefined();
   });
 
+  it('跳过未选难度的坏滑条，按 Metadata 的最后一次赋值匹配', async () => {
+    const bytes = await archive(zip => {
+      zip.file('set/other.osu', osu(22).replace('[Metadata]', '[Metadata]\nBeatmapID: 21')
+        .replace('[HitObjects]', '[HitObjects]\nBeatmapID: 21\n0,0,128,2,0,L|0:0,1,-1'));
+    });
+    const result = await readOsuChartPreviewArchive(bytes, target, reader());
+    expect(result.chartPath).toBe('set/selected.osu');
+    expect(result.files.some(file => file.path === 'set/other.osu')).toBe(false);
+  });
+
   it('精确选择当前难度，音频注入字节而图片视频使用本地地址', async () => {
     const io = reader();
     const result = await readOsuChartPreviewArchive(await archive(), target, io);

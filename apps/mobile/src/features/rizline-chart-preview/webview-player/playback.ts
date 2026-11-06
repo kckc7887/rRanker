@@ -1,6 +1,4 @@
-import { PlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
-import { PlaybackClock, audioContextTime, musicPosition, outputTime } from '../../chart-preview-shared/webview-player/playbackClock';
-import { getAudioContextOutputTime } from '../../chart-preview-shared/webview-player/audioClock';
+import { PreviewPlayback } from '../../chart-preview-shared/webview-player/playback';
 import { hitEvents, type PreparedChart } from './chart-prepare';
 import { RizlineRenderer } from './renderer';
 import { HitSoundScheduler, createHitBuffer } from './hitsounds';
@@ -13,175 +11,68 @@ export function getAudioContext(): AudioContext {
 }
 
 export class PreviewSession {
-  readonly loop = new PlaybackLoop();
-  readonly clock = new PlaybackClock();
-  playing = false;
-  ended = false;
-  disposed = false;
-  duration: number;
-  private position = 0;
-  private frame: number | null = null;
-  private command = 0;
-  private source: AudioBufferSourceNode | null = null;
+  readonly playback: PreviewPlayback;
+  readonly duration: number;
   private readonly musicGain: GainNode;
   private readonly hitGain: GainNode;
   private readonly hits: HitSoundScheduler;
   settings: RizlineChartPreviewSettings;
 
-  constructor(
-    readonly chart: PreparedChart,
-    readonly renderer: RizlineRenderer,
-    readonly music: AudioBuffer,
-    settings: RizlineChartPreviewSettings,
-  ) {
+  constructor(readonly chart: PreparedChart, readonly renderer: RizlineRenderer, music: AudioBuffer,
+    settings: RizlineChartPreviewSettings, onFrame?: () => void) {
     const context = getAudioContext();
     this.musicGain = context.createGain();
     this.hitGain = context.createGain();
     this.musicGain.connect(context.destination);
     this.hitGain.connect(context.destination);
-    this.settings = normalizeRizlineChartPreviewSettings(settings);
-    this.musicGain.gain.value = this.settings.volume;
-    this.hitGain.gain.value = this.settings.hitSound ? this.settings.hitSoundVolume : 0;
-    this.duration = Math.max(music.duration, chart.durationSeconds + chart.delaySeconds + 0.25);
-    this.hits = new HitSoundScheduler(
-      context,
-      createHitBuffer(context, 1760),
-      createHitBuffer(context, 1180),
-      hitEvents(chart),
-      this.hitGain,
-    );
-    this.renderer.setUserSpeed(this.settings.userSpeed);
-    this.clock.setOffset(musicPosition(0));
-    this.draw();
+    this.settings = settings;
+    this.duration = Math.max(music.duration, chart.durationSeconds + chart.delaySeconds + .25);
+    this.hits = new HitSoundScheduler(context, createHitBuffer(context, 1760), createHitBuffer(context, 1180),
+      hitEvents(chart), this.hitGain);
+    this.playback = new PreviewPlayback({
+      duration: () => this.duration,
+      prepare: () => { if (context.state !== 'running') return context.resume(); },
+      context: () => context, music: () => music, output: () => this.musicGain, musicOffset: () => 0,
+      resetSounds: (seconds, reason) => {
+        if (reason === 'stop') this.hits.stop();
+        else this.hits.reset(seconds - chart.delaySeconds, reason === 'start');
+      },
+      rewindSounds: (seconds, when) => this.hits.rewind(seconds - chart.delaySeconds, when),
+      schedule: (seconds, now, rate, end) => this.hits.schedule(seconds - chart.delaySeconds, now,
+        this.settings.hitSound, rate, end - chart.delaySeconds),
+    });
+    this.playback.onFrame = seconds => {
+      this.renderer.render(chart, seconds - chart.delaySeconds);
+      onFrame?.();
+    };
+    this.setSettings(settings);
   }
 
-  get currentTime(): number {
-    if (!this.playing) return this.position;
-    const context = getAudioContext();
-    return Math.max(0, Math.min(this.duration, this.clock.positionAt(outputTime(getAudioContextOutputTime(context)))));
-  }
-
-  get chartTime(): number {
-    return this.currentTime - this.chart.delaySeconds;
-  }
+  get loop() { return this.playback.loop; }
+  get playing() { return this.playback.playing; }
+  get ended() { return this.playback.ended; }
+  get disposed() { return this.playback.disposed; }
+  get currentTime() { return this.playback.currentTime; }
+  get chartTime() { return this.currentTime - this.chart.delaySeconds; }
 
   setSettings(partial: Partial<RizlineChartPreviewSettings>): void {
-    const previousSpeed = this.settings.playbackSpeed;
     this.settings = normalizeRizlineChartPreviewSettings({ ...this.settings, ...partial });
     this.musicGain.gain.value = this.settings.volume;
     this.hitGain.gain.value = this.settings.hitSound ? this.settings.hitSoundVolume : 0;
     this.renderer.setUserSpeed(this.settings.userSpeed);
     if (!this.settings.hitSound) this.hits.stop();
-    if (this.playing && this.settings.playbackSpeed !== previousSpeed) {
-      const context = getAudioContext();
-      const now = audioContextTime(context.currentTime);
-      if (this.source) this.source.playbackRate.setValueAtTime(this.settings.playbackSpeed, now);
-      this.clock.appendSegment(now, this.settings.playbackSpeed);
-      this.hits.reset(this.clock.positionAt(now) - this.chart.delaySeconds, false);
-    }
+    this.playback.setSpeed(this.settings.playbackSpeed);
     if (!this.playing) this.draw();
   }
 
-  draw(): void {
-    if (this.disposed) return;
-    this.renderer.render(this.chart, this.chartTime);
-  }
-
-  private tick = (): void => {
-    this.frame = null;
-    if (this.disposed || !this.playing) return;
-    const loopTarget = this.loop.target(this.currentTime);
-    if (loopTarget !== null) {
-      void this.playFrom(loopTarget);
-      return;
-    }
-    if (this.currentTime >= this.duration) {
-      this.pause();
-      this.position = this.duration;
-      this.ended = true;
-      this.clock.setOffset(musicPosition(this.duration));
-      this.draw();
-      return;
-    }
-    const context = getAudioContext();
-    this.hits.schedule(
-      this.clock.positionAt(audioContextTime(context.currentTime)) - this.chart.delaySeconds,
-      context.currentTime,
-      this.settings.hitSound,
-      this.settings.playbackSpeed,
-    );
-    this.draw();
-    this.frame = requestAnimationFrame(this.tick);
-  };
-
-  private stopSource(): void {
-    if (!this.source) return;
-    try { this.source.stop(); } catch {}
-    this.source.disconnect();
-    this.source = null;
-  }
-
-  async playFrom(seconds: number): Promise<void> {
-    if (this.disposed) return;
-    this.pause();
-    const generation = ++this.command;
-    this.position = Math.max(0, Math.min(seconds, this.duration));
-    this.position = this.loop.target(this.position) ?? this.position;
-    if (this.position >= this.duration) this.position = 0;
-    const context = getAudioContext();
-    if (context.state !== 'running') await context.resume();
-    if (this.disposed || generation !== this.command) return;
-    const startTime = audioContextTime(context.currentTime);
-    const startOffset = Math.min(this.position, Math.max(0, this.music.duration - 0.001));
-    if (this.position < this.music.duration) {
-      const source = context.createBufferSource();
-      source.buffer = this.music;
-      source.playbackRate.value = this.settings.playbackSpeed;
-      source.connect(this.musicGain);
-      source.start(startTime, startOffset);
-      this.source = source;
-    }
-    this.clock.set(startTime, musicPosition(this.position), this.settings.playbackSpeed);
-    this.hits.reset(this.position - this.chart.delaySeconds);
-    this.playing = true;
-    this.ended = false;
-    this.draw();
-    this.frame = requestAnimationFrame(this.tick);
-  }
-
-  pause(): void {
-    this.command += 1;
-    if (!this.playing) {
-      this.stopSource();
-      this.hits.stop();
-      if (this.frame != null) cancelAnimationFrame(this.frame);
-      this.frame = null;
-      return;
-    }
-    this.position = this.currentTime;
-    this.playing = false;
-    this.clock.setOffset(musicPosition(this.position));
-    this.stopSource();
-    this.hits.stop();
-    if (this.frame != null) cancelAnimationFrame(this.frame);
-    this.frame = null;
-    this.draw();
-  }
-
-  async seek(seconds: number): Promise<void> {
-    if (this.disposed) return;
-    if (this.playing) return this.playFrom(seconds);
-    this.command += 1;
-    this.position = Math.max(0, Math.min(seconds, this.duration));
-    this.ended = this.position >= this.duration;
-    this.clock.setOffset(musicPosition(this.position));
-    this.hits.reset(this.position - this.chart.delaySeconds);
-    this.draw();
-  }
+  draw(): void { if (!this.disposed) this.renderer.render(this.chart, this.chartTime); }
+  playFrom(seconds: number): Promise<void> { return this.playback.playFrom(seconds); }
+  seek(seconds: number): Promise<void> { return this.playback.seek(seconds); }
+  pause(): void { this.playback.pause(); }
 
   dispose(): void {
-    this.disposed = true;
-    this.pause();
+    if (this.disposed) return;
+    this.playback.dispose();
     this.musicGain.disconnect();
     this.hitGain.disconnect();
   }

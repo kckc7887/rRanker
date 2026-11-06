@@ -1,6 +1,8 @@
-/** Canvas 2D backend for MajdataViewX-compatible frame commands (GPL-3.0).
+/** Rendering for MajdataViewX-compatible frame commands (GPL-3.0).
  * World-space transforms, 3-slice UV and radial mask follow the reference shaders.
  * See THIRD_PARTY_NOTICES.md. */
+import { createStageContext, stagePixels, type StageContext } from '../../../chart-preview-shared/webview-player/stage';
+import { upperBoundBy } from '../../../chart-preview-shared/webview-player/sorted-search';
 import type { Chart, RendererConfig } from '../types';
 import { TimingTimeline } from '../core/timing/TimingTimeline';
 import { ChartPreviewSkin } from './skinAtlas';
@@ -12,7 +14,7 @@ import { buttonPoint } from '../core/geometry/slidePath';
 import { MAIMAI_CHART_PREVIEW_SENSOR } from '../../maimai-chart-preview-skin-files';
 
 export interface FrameOverlayInfo { bpm: number; beatText: string; fps: number; completedNotes: number; totalNotes: number; completedBreaks: number; totalBreaks: number; completedBreaksNoEx: number; totalBreaksNoEx: number }
-export interface MainRendererConfig { skin?: ChartPreviewSkin }
+export interface MainRendererConfig { skin?: ChartPreviewSkin; stage?: StageContext; effects?: EffectRenderer }
 export function mirrorHint(command: DrawCommand, mx: number, my: number): DrawCommand {
   const path = mx * my < 0 && command.path.startsWith('SlideOKSkins/') ? command.path.replace(/_(l|r)(?=_|\.)/, (_, side) => side === 'l' ? '_r' : '_l') : command.path;
   return { ...command, path, x: command.x * mx, y: command.y * my, angle: command.angle * mx * my + (my < 0 ? Math.PI : 0) };
@@ -25,8 +27,10 @@ export const DEFAULT_RENDERER_CONFIG: RendererConfig = {
   };
 
 export class MainRenderer {
-  private ctx: CanvasRenderingContext2D;
-  private maxPixels = 2_500_000;
+  private readonly ctx: StageContext;
+  private readonly ownsStage: boolean;
+  private left = 0;
+  private side = 0;
   private skin: ChartPreviewSkin;
   private effects: EffectRenderer;
   private timeMs = 0;
@@ -34,35 +38,38 @@ export class MainRenderer {
   private timeline?: TimingTimeline;
   private video: HTMLVideoElement | null = null;
   private background: HTMLImageElement | null = null;
-  private backgroundCache: HTMLCanvasElement | null = null;
   private fps = 0;
   frameOverlay: FrameOverlayInfo | null = null;
   readonly config: RendererConfig = { ...DEFAULT_RENDERER_CONFIG };
   constructor(private canvas: HTMLCanvasElement, options: MainRendererConfig = {}) {
-    const context = canvas.getContext('2d', { alpha: false });
-    if (!context) throw new Error('Canvas unavailable');
-    this.ctx = context; this.skin = options.skin ?? new ChartPreviewSkin(); this.resize();
-    this.effects = new EffectRenderer(this.skin);
+    this.ctx = options.stage ?? createStageContext(canvas);
+    this.ownsStage = !options.stage;
+    this.skin = options.skin ?? new ChartPreviewSkin();
+    this.effects = options.effects ?? new EffectRenderer(this.skin);
+    if (this.ownsStage) this.resize();
   }
   async loadSkin() { await this.skin.load(); }
-  resize(fullscreen = false) {
+  resize() {
     const rect = this.canvas.parentElement?.getBoundingClientRect();
-    const size = rect ? Math.min(rect.width, rect.height || rect.width) : this.canvas.clientWidth || 540;
-    this.applySize(size, fullscreen);
+    this.resizeToSize(rect ? Math.min(rect.width, rect.height || rect.width) : this.canvas.clientWidth || 540);
   }
-  resizeToSize(size: number) { this.applySize(size, true); }
-  private applySize(size: number, fullscreen: boolean) {
-    const logical = Math.max(1, size), dpr = Math.min(2, globalThis.devicePixelRatio || 1, fullscreen ? Math.sqrt(this.maxPixels) / logical : 2);
-    this.canvas.width = Math.round(logical * dpr); this.canvas.height = this.canvas.width;
-    this.canvas.style.width = `${logical}px`; this.canvas.style.height = `${logical}px`;
-    this.backgroundCache = null;
+  resizeToSize(size: number) {
+    const {width, height} = stagePixels(size, size, this.ctx.gl);
+    this.canvas.width = width; this.canvas.height = height;
+    this.canvas.style.width = this.canvas.style.height = size + 'px';
   }
-  prepare(chart: Chart) { if (this.prepared?.chart === chart) return; this.prepared = prepareChart(chart); this.timeline = TimingTimeline.fromChart(chart); this.effects.prepare(); }
-  renderAtTime(chart: Chart, now: number) {
+  dispose() { if (this.ownsStage) { this.effects.dispose(this.ctx); this.ctx.dispose(); } }
+  prepare(chart: Chart) { if (this.prepared?.chart === chart) return; this.prepared = prepareChart(chart); this.timeline = TimingTimeline.fromChart(chart); }
+  renderAtTime(chart: Chart, now: number, left = 0, side = this.canvas.height) {
+    this.left = left; this.side = side;
+    if (this.ownsStage) this.ctx.beginFrame();
+    this.ctx.save();
+    this.ctx.setTransform(1, 0, 0, 1, left, 0);
+    this.ctx.beginPath(); this.ctx.rect(0, 0, side, side); this.ctx.clip();
     this.timeMs = now;
     this.prepare(chart); this.clear(); this.renderJudgmentLine();
-    const ctx = this.ctx, unit = this.canvas.width / 10.8;
-    ctx.save(); ctx.translate(this.canvas.width / 2, this.canvas.height / 2); ctx.scale(unit, unit);
+    const ctx = this.ctx, unit = this.side / 10.8;
+    ctx.save(); ctx.translate(this.side / 2, this.side / 2); ctx.scale(unit, unit);
     const mx = this.config.mirrorMode === 'horizontal' || this.config.mirrorMode === 'rotate180' ? -1 : 1;
     const my = this.config.mirrorMode === 'vertical' || this.config.mirrorMode === 'rotate180' ? -1 : 1;
     for (const command of buildFrame(this.prepared!, now, this.config)) {
@@ -72,11 +79,12 @@ export class MainRenderer {
       ctx.restore();
     }
     ctx.restore();
+    ctx.restore();
+    if (this.ownsStage) ctx.flush();
     const { notes, breaks, noEx } = this.prepared!.judgements;
     const count = (items: readonly number[]) => completedAt(items, now);
     const beat = this.timeline!.beatFromMs(now);
-    let signature: Chart['signatures'][number] | undefined;
-    for (const entry of chart.signatures) { if (entry.timeMs > now) break; signature = entry; }
+    const signature = chart.signatures[upperBoundBy(chart.signatures, now, entry => entry.timeMs) - 1];
     const numerator = signature?.numerator ?? 4, denominator = signature?.denominator ?? 4;
     const signatureBeat = signature ? this.timeline!.beatFromMs(signature.timeMs) : 4;
     const localBeat = Math.max(0, (beat - signatureBeat) * denominator / 4);
@@ -117,30 +125,24 @@ export class MainRenderer {
     ctx.drawImage(image, 0, sourceH - sourceCap, sourceW, sourceCap, -width / 2, height / 2 - cap, width, cap);
   }
   clear() {
-    const ctx = this.ctx, size = this.canvas.width;
-    ctx.setTransform(1, 0, 0, 1, 0, 0); ctx.globalAlpha = 1; ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, size, size);
+    const ctx = this.ctx, size = this.side || this.canvas.height;
+    ctx.setTransform(1, 0, 0, 1, this.left, 0); ctx.globalAlpha = 1; ctx.fillStyle = '#000000'; ctx.fillRect(0, 0, size, size);
     if (this.video && this.video.readyState >= 2 && this.video.videoWidth > 0) this.drawBackgroundSource(ctx, this.video, this.video.videoWidth, this.video.videoHeight);
     else if (this.background?.complete && this.background.naturalWidth > 0) {
-      if (!this.backgroundCache) {
-        const cache = document.createElement('canvas'); cache.width = size; cache.height = size;
-        const c = cache.getContext('2d')!, image = this.background;
-        this.drawBackgroundSource(c, image, image.naturalWidth, image.naturalHeight);
-        this.backgroundCache = cache;
-      }
-      ctx.drawImage(this.backgroundCache, 0, 0);
+      this.drawBackgroundSource(ctx, this.background, this.background.naturalWidth, this.background.naturalHeight);
     }
     ctx.fillStyle = 'rgba(0,0,0,0.45)'; ctx.fillRect(0, 0, size, size);
   }
   private drawBackgroundSource(ctx: CanvasRenderingContext2D, source: CanvasImageSource, width: number, height: number) {
     if (width <= 0 || height <= 0) return;
-    const size = this.canvas.width, scale = Math.min(size / width, size / height);
+    const size = this.side || this.canvas.height, scale = Math.min(size / width, size / height);
     ctx.save(); ctx.beginPath(); ctx.arc(size / 2, size / 2, size / 2, 0, Math.PI * 2); ctx.clip();
     ctx.drawImage(source, (size - width * scale) / 2, (size - height * scale) / 2, width * scale, height * scale);
     ctx.restore();
   }
   renderJudgmentLine() {
     if (this.config.judgmentLineDesign === 'blind') return;
-    const ctx = this.ctx, size = this.canvas.width, unit = size / 10.8, c = size / 2;
+    const ctx = this.ctx, size = this.side || this.canvas.height, unit = size / 10.8, c = size / 2;
     const firstPoint = buttonPoint(1), radius = Math.hypot(firstPoint.x, firstPoint.y) * unit;
     if (this.config.judgmentLineDesign === 'sensor') {
       const sensor = this.skin.get(MAIMAI_CHART_PREVIEW_SENSOR.path);
@@ -171,7 +173,6 @@ export class MainRenderer {
   setShowBpm(value: boolean) { this.config.showBpm = value; }
   setShowNoteTotal(value: boolean) { this.config.showNoteTotal = value; }
   setShowBreakCount(value: boolean) { this.config.showBreakCount = value; }
-  setFullscreenMaxPixels(value: number) { this.maxPixels = value; }
   setBackgroundVideo(value: HTMLVideoElement | null) { this.video = value; }
-  setBackgroundImage(value: HTMLImageElement | null) { if (this.background !== value) this.backgroundCache = null; this.background = value; }
+  setBackgroundImage(value: HTMLImageElement | null) { this.background = value; }
 }

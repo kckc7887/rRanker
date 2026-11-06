@@ -7,14 +7,14 @@ const P = {
 } as const;
 type PaintContext = CanvasRenderingContext2D | OffscreenCanvasRenderingContext2D;
 type Paint = (ctx: PaintContext) => void;
-type Sprite = { stem: string; width: number; height: number; paint: Paint; density?: number };
+type Sprite = { stem: string; width: number; height: number; paint?: Paint; density?: number };
 const TAU = Math.PI * 2;
 const RECEPTOR_SCALE = 720 / 768;
 const MANIA_CONFIG_SCALE = 720 / 480;
 const HIT_TARGET_Y = 610;
 const RECEPTOR_HEIGHT = 256;
 const SKIN_CACHE_LIMIT = 32;
-const commonCache: { promise?: Promise<Map<string, ImageBitmap>> } = {};
+const commonCache = new Map<number, Promise<Map<string, ImageBitmap>>>();
 const maniaImageCache = new Map<string, Promise<Map<string, ImageBitmap>>>();
 const maniaBodyCache = new Map<string, Promise<Map<string, ImageBitmap>>>();
 const skinCache = new Map<string, Promise<SkinAssets>>();
@@ -36,25 +36,32 @@ function rect(ctx: PaintContext, x: number, y: number, w: number, h: number, fil
 
 async function rasterize(specs: readonly Sprite[]): Promise<Map<string, ImageBitmap>> {
   const result = new Map<string, ImageBitmap>();
+  const blanks = new Map<number, ImageBitmap>();
   try {
     for (const spec of specs) {
       const density = spec.density ?? 2;
       const width = spec.width * density, height = spec.height * density;
+      const name = spec.stem + (density === 2 ? '@2x.png' : '.png');
+      if (!spec.paint) {
+        const existing = blanks.get(width);
+        if (existing) { result.set(name, existing); continue; }
+      }
       const canvas = typeof OffscreenCanvas === 'function'
         ? new OffscreenCanvas(width, height)
         : Object.assign(document.createElement('canvas'), { width, height });
       const ctx = canvas.getContext('2d') as PaintContext | null;
       if (!ctx) throw new Error('无法准备播放画面');
       ctx.scale(density, density);
-      spec.paint(ctx);
+      spec.paint?.(ctx);
       const bitmap = 'transferToImageBitmap' in canvas
         ? canvas.transferToImageBitmap()
         : await createImageBitmap(canvas);
-      result.set(`${spec.stem}${density === 2 ? '@2x' : ''}.png`, bitmap);
+      result.set(name, bitmap);
+      if (!spec.paint) blanks.set(width, bitmap);
     }
     return result;
   } catch (error) {
-    for (const bitmap of result.values()) bitmap.close();
+    for (const bitmap of new Set(result.values())) bitmap.close();
     throw error;
   }
 }
@@ -62,7 +69,7 @@ async function rasterize(specs: readonly Sprite[]): Promise<Map<string, ImageBit
 function commonSpecs(): Sprite[] {
   const specs: Sprite[] = [];
   const add = (stem: string, width: number, height: number, paint: Paint) => specs.push({ stem, width, height, paint });
-  const blank = (stem: string, size = 2) => specs.push({ stem, width: size, height: size, paint: () => {}, density: 1 });
+  const blank = (stem: string, size = 2) => specs.push({ stem, width: size, height: size, density: 1 });
 
   for (const stem of ['hitcircle', 'sliderstartcircle']) add(stem, 128, 128, ctx => {
     disc(ctx, 64, 64, 59, '#ffffff66');
@@ -78,8 +85,8 @@ function commonSpecs(): Sprite[] {
   add('sliderscorepoint', 32, 32, ctx => disc(ctx, 16, 16, 5, P.white));
   add('followpoint', 16, 16, ctx => disc(ctx, 8, 8, 2, '#ffffff66'));
   add('cursor', 32, 32, ctx => disc(ctx, 16, 16, 11, P.gold));
-  blank('cursormiddle');
-  blank('cursortrail');
+  blank('cursormiddle', 1);
+  blank('cursortrail', 1);
 
   add('spinner-bottom', 360, 360, ctx => ring(ctx, 180, 180, 154, '#ffffff33', 4));
   add('spinner-top', 360, 360, ctx => {
@@ -209,13 +216,21 @@ function maniaSpecs(variant: ManiaSkinVariant, keys: number, fitScale: number): 
   return { specs, section };
 }
 
-function commonImages(): Promise<Map<string, ImageBitmap>> {
-  if (!commonCache.promise) {
-    const pending = rasterize(commonSpecs());
-    commonCache.promise = pending;
-    void pending.catch(() => { if (commonCache.promise === pending) commonCache.promise = undefined; });
-  }
-  return commonCache.promise;
+function commonImages(mode: number): Promise<Map<string, ImageBitmap>> {
+  const cached = commonCache.get(mode);
+  if (cached) return cached;
+  const specs = commonSpecs().filter(({ stem }) => {
+    if (/^(taiko|pippidon)/.test(stem)) return mode === 1;
+    if (/^(fruit|scoreboard-)/.test(stem)) return mode === 2;
+    if (stem.startsWith('mania-')) return mode === 3;
+    if (mode === 1 && ['approachcircle', 'sliderscorepoint', 'spinner-circle', 'spinner-approachcircle'].includes(stem)) return true;
+    if (/^(hit[0-9]|score|combo)/.test(stem)) return true;
+    return mode === 0;
+  });
+  const pending = rasterize(specs);
+  commonCache.set(mode, pending);
+  void pending.catch(() => { if (commonCache.get(mode) === pending) commonCache.delete(mode); });
+  return pending;
 }
 
 function maniaImages(variant: ManiaSkinVariant, fitScale: number): Promise<Map<string, ImageBitmap>> {
@@ -249,10 +264,10 @@ function maniaBodyImages(variant: ManiaSkinVariant, widthPercent: number): Promi
   return pending;
 }
 
-export function createBuiltinSkin(variant: ManiaSkinVariant, keys = 4, holdWidth = 60): Promise<SkinAssets> {
+export function createBuiltinSkin(variant: ManiaSkinVariant, keys = 4, holdWidth = 60, mode = 3): Promise<SkinAssets> {
   const columnCount = Number.isFinite(keys) ? Math.max(1, Math.round(keys)) : 4;
   const widthPercent = Number.isFinite(holdWidth) ? Math.max(10, Math.min(100, Math.round(holdWidth))) : 60;
-  const cacheKey = `${variant}:${columnCount}:${widthPercent}`;
+  const cacheKey = `${mode}:${variant}:${columnCount}:${widthPercent}`;
   let pending = skinCache.get(cacheKey);
   if (pending) {
     skinCache.delete(cacheKey); skinCache.set(cacheKey, pending);
@@ -260,9 +275,9 @@ export function createBuiltinSkin(variant: ManiaSkinVariant, keys = 4, holdWidth
   }
   const fitScale = maniaFitScale(columnCount);
   /** 先创建全部素材持有者，释放时才能回收仍在加载的资源。 */
-  const commonPending = commonImages();
-  const maniaPending = maniaImages(variant, fitScale);
-  const bodyPending = maniaBodyImages(variant, widthPercent);
+  const commonPending = commonImages(mode);
+  const maniaPending = mode === 3 ? maniaImages(variant, fitScale) : [];
+  const bodyPending = mode === 3 ? maniaBodyImages(variant, widthPercent) : [];
   pending = (async () => {
     const [common, mania, bodies] = await Promise.all([commonPending, maniaPending, bodyPending]);
     const { section } = maniaSpecs(variant, columnCount, fitScale);
@@ -289,16 +304,12 @@ export function createBuiltinSkin(variant: ManiaSkinVariant, keys = 4, holdWidth
 /** 全部 renderer 释放后，才能回收共享 bitmap。 */
 export async function disposeBuiltinSkins(): Promise<void> {
   const pending = [...skinCache.values()];
-  const common = commonCache.promise;
-  const variants = [...maniaImageCache.values(), ...maniaBodyCache.values()];
-  skinCache.clear(); maniaImageCache.clear(); maniaBodyCache.clear(); commonCache.promise = undefined;
+
+  const variants = [...commonCache.values(), ...maniaImageCache.values(), ...maniaBodyCache.values()];
+  skinCache.clear(); maniaImageCache.clear(); maniaBodyCache.clear(); commonCache.clear();
   const bitmaps = new Set<ImageBitmap>();
   for (const result of await Promise.allSettled(pending)) {
     if (result.status === 'fulfilled') for (const bitmap of result.value.images.values()) bitmaps.add(bitmap);
-  }
-  if (common) {
-    const result = await common.catch(() => undefined);
-    if (result) for (const bitmap of result.values()) bitmaps.add(bitmap);
   }
   for (const result of await Promise.allSettled(variants)) {
     if (result.status === 'fulfilled') for (const bitmap of result.value.values()) bitmaps.add(bitmap);

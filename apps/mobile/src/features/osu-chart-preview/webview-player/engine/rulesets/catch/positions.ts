@@ -28,7 +28,7 @@ import type { BeatmapData } from '../../types/index';
 import type { ModDifficulty } from '../../utils/modDifficulty';
 import type { CatchObject } from './types';
 import { LegacyRandom } from './random';
-import { calculateCatchWidth } from './converter';
+import { calculateCatchWidth, convertBeatmapToCatch } from './converter';
 
 /** 参考 ppy/osu CatchBeatmapProcessor；同一随机流按物件生成顺序抽样。 */
 
@@ -215,4 +215,14 @@ function initialiseHyperDash(objects: CatchObject[], cs: number): void {
 
     lastDirection = thisDirection;
   }
+}
+
+const prepared = new WeakMap<BeatmapData, { cs: number; hr: boolean; mirror: boolean; objects: CatchObject[] }>();
+export function preparedCatchObjects(beatmap: BeatmapData, modDiff: ModDifficulty): CatchObject[] {
+  const cached = prepared.get(beatmap);
+  if (cached && cached.cs === modDiff.cs && cached.hr === modDiff.isHR && cached.mirror === modDiff.isMirror) return cached.objects;
+  const objects = convertBeatmapToCatch(beatmap, modDiff);
+  applyPositionOffsets(objects, beatmap, modDiff);
+  prepared.set(beatmap, { cs: modDiff.cs, hr: modDiff.isHR, mirror: modDiff.isMirror, objects });
+  return objects;
 }

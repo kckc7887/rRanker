@@ -18,7 +18,7 @@ type NoteFacts = { startScroll: number; endScroll: number; point: { x: number; y
 export type PreparedChart = {
   chart: Chart; scroll: ScrollTimeline; branches: Map<SlideBranch, ReturnType<typeof prepareBranch>>; paths: Map<SlideBranch, Geometry>; groups: Map<number, Note[]>;
   starts: Map<string | number, TimedNotes>; finishes: Map<string | number, TimedNotes>; fireworks: TimedNotes;
-  touches: Note[]; facts: Map<Note, NoteFacts>; eachGroups: { time: number; usingSV: boolean; heads: Note[] }[];
+  facts: Map<Note, NoteFacts>; eachGroups: { time: number; usingSV: boolean; heads: Note[] }[];
   judgements: { notes: number[]; breaks: number[]; noEx: number[] };
 };
 export function prepareChart(chart: Chart): PreparedChart {
@@ -40,13 +40,12 @@ export function prepareChart(chart: Chart): PreparedChart {
   const scroll = new ScrollTimeline(chart.scrollEvents);
   const facts = new Map<Note, NoteFacts>();
   const startNotes = new Map<string | number, Note[]>(), finishNotes = new Map<string | number, Note[]>();
-  const fireworks: Note[] = [], touches: Note[] = [];
+  const fireworks: Note[] = [];
   const finishTime = (note: Note) => note.type === 'slide' ? note.timingMs : note.endTimeMs;
   for (const note of chart.notes) {
     const touch = note.type === 'touch' || note.type === 'touch-hold-start';
     facts.set(note, { startScroll: scroll.at(note.timingMs), endScroll: scroll.at(note.endTimeMs),
       point: touch ? touchPoint(String(note.position)) : buttonPoint(Number(note.position)) });
-    if (note.type === 'touch') touches.push(note);
     if (note.isMine || (note.type === 'slide' && note.isHeadless)) continue;
     const starts = startNotes.get(note.position) ?? []; starts.push(note); startNotes.set(note.position, starts);
     const finishes = finishNotes.get(note.position) ?? []; finishes.push(note); finishNotes.set(note.position, finishes);
@@ -76,7 +75,7 @@ export function prepareChart(chart: Chart): PreparedChart {
       heads: group.filter((note) => !note.isMine && typeof note.position === 'number' && !(note.type === 'slide' && note.isHeadless)) };
   });
   return { chart, scroll, branches, paths, groups, judgements, starts, finishes,
-    fireworks: index(fireworks, finishTime), touches, facts, eachGroups };
+    fireworks: index(fireworks, finishTime), facts, eachGroups };
 }
 export function completedAt(times: readonly number[], now: number): number {
   let lo = 0, hi = times.length;
@@ -95,10 +94,62 @@ export function touchPoint(position: string) {
 const variant = (n: { isMine: boolean; isBreak: boolean; isEach: boolean }) => n.isMine ? n.isBreak ? '_break_mine' : '_mine' : n.isBreak ? '_break' : n.isEach ? '_each' : '';
 const guide = (n: Note, star: boolean) => `NoteGuideSkins/${n.isMine ? 'Mine' : n.isBreak ? 'Break' : n.isEach ? 'Each' : star ? 'Slide' : 'Normal'}.png`;
 
+/** 音符只要到达真实时间或滚动坐标的任一入口就可能显示，到期则两者都失效。 */
+function visibilityIndex<T>(items: readonly T[], bounds: (item: T) => [number, number, number]) {
+  let size = 1;
+  while (size < items.length) size *= 2;
+  const first = new Float64Array(size * 2).fill(Infinity);
+  const scroll = new Float64Array(size * 2).fill(Infinity);
+  const last = new Float64Array(size * 2).fill(-Infinity);
+  items.forEach((item, i) => { [first[size + i], scroll[size + i], last[size + i]] = bounds(item); });
+  for (let i = size - 1; i; i--) {
+    first[i] = Math.min(first[i * 2], first[i * 2 + 1]);
+    scroll[i] = Math.min(scroll[i * 2], scroll[i * 2 + 1]);
+    last[i] = Math.max(last[i * 2], last[i * 2 + 1]);
+  }
+  return (time: number, position: number): T[] => {
+    const out: T[] = [];
+    const visit = (i: number) => {
+      if (last[i] < time || (first[i] > time && scroll[i] > position)) return;
+      if (i >= size) out.push(items[i - size]);
+      else { visit(i * 2); visit(i * 2 + 1); }
+    };
+    visit(1);
+    return out;
+  };
+}
+function indexNotes(prepared: PreparedChart, tapSpeed: number, touchSpeed: number) {
+  const lead = (n: Note) => n.hiSpeed <= 0 ? Infinity : 6075 / (tapSpeed * n.hiSpeed);
+  const notes = visibilityIndex(prepared.chart.notes, n => {
+    const arrival = n.type.startsWith('touch') ? 1000 * arcadeTouchDurations(touchSpeed * n.hiSpeed).wholeDuration : lead(n);
+    const sv = n.usingSV && prepared.chart.scrollEvents.length > 0;
+    const headStart = sv ? n.timingMs : n.timingMs - arrival;
+    const trailStart = n.type === 'slide' ? n.timingMs - lead(n) : Infinity;
+    return [Math.min(headStart, trailStart), sv ? prepared.facts.get(n)!.startScroll - arrival : Infinity, n.endTimeMs + 1400];
+  });
+  const each = visibilityIndex(prepared.eachGroups.filter(g => g.heads.length > 1), g => {
+    let first = Infinity, scroll = Infinity;
+    for (const n of g.heads) {
+      if (g.usingSV && prepared.chart.scrollEvents.length) scroll = Math.min(scroll, prepared.facts.get(n)!.startScroll - lead(n));
+      else first = Math.min(first, n.timingMs - lead(n));
+    }
+    return [first, scroll, g.time];
+  });
+  return { tapSpeed, touchSpeed, notes, each };
+}
+const visible = new WeakMap<PreparedChart, ReturnType<typeof indexNotes>>();
+
 export function buildFrame(prepared: PreparedChart, now: number, config: RendererConfig): DrawCommand[] {
-  const result: DrawCommand[] = [], { chart, scroll } = prepared;
+  const result: DrawCommand[] = [], { scroll } = prepared;
   const tapSpeed = arcadeTapTravelSpeed(config.hiSpeed) / (config.alwaysKeepHiSpeed ? config.playbackSpeed : 1);
+  const touchSpeed = config.hiSpeed / (config.alwaysKeepHiSpeed ? config.playbackSpeed : 1);
+  let index = visible.get(prepared);
+  if (!index || index.tapSpeed !== tapSpeed || index.touchSpeed !== touchSpeed) {
+    index = indexNotes(prepared, tapSpeed, touchSpeed);
+    visible.set(prepared, index);
+  }
   const currentScroll = scroll.at(now);
+  const candidates = index.notes(now, currentScroll);
   const elapsed = (note: Note, end = false) => ((note.usingSV
     ? currentScroll - (end ? prepared.facts.get(note)!.endScroll : prepared.facts.get(note)!.startScroll)
     : now - (end ? note.endTimeMs : note.timingMs)) / 1000);
@@ -106,7 +157,8 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
   const firework = latest(prepared.fireworks);
   const touchOverlaps = new Map<string | number, Note[]>();
   /** Touch 可见性也受零速、负速 SV 影响。 */
-  for (const n of prepared.touches) {
+  for (const n of candidates) {
+    if (n.type !== 'touch') continue;
     if (n.timingMs >= now && -elapsed(n) < arcadeTouchDurations(config.hiSpeed * n.hiSpeed / (config.alwaysKeepHiSpeed ? config.playbackSpeed : 1)).wholeDuration) {
       const notes = touchOverlaps.get(n.position) ?? []; notes.push(n); touchOverlaps.set(n.position, notes);
     }
@@ -115,7 +167,7 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
     const command: DrawCommand = { path: resolveStarSkin(path, config.pinkSlideStart), layer, x: 0, y: 0, angle: 0, scale: 1, alpha: 1, time: n.timingMs, order: n.id, ...values };
     if (command.alpha > 0 && command.scale > 0 && Number.isFinite(command.x + command.y + command.angle + command.scale)) result.push(command);
   };
-  for (const n of chart.notes) {
+  for (const n of candidates) {
     const age = now - n.timingMs, endAge = now - n.endTimeMs;
     if (endAge > 1400) continue;
     if (n.type === 'slide') {
@@ -130,11 +182,10 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
         for (let segmentIndex = 0; segmentIndex < parts.length; segmentIndex++) {
           const part = parts[segmentIndex], g = part.geometry;
           const started = age - part.startMs, progress = clamp(started / Math.max(1, part.durationMs));
-          if (branchAge <= 0 && started <= part.durationMs) {
-            const consumed = consumedArrows(g, progress);
-            for (let i = 1; i < g.arrows.length - 1 - (g.omitLast && segmentIndex === parts.length - 1 ? 1 : 0); i++) {
+          if (alpha > 0 && branchAge <= 0 && started <= part.durationMs) {
+            const firstArrow = started > 0 ? consumedArrows(g, progress) + 1 : 1;
+            for (let i = firstArrow; i < g.arrows.length - 1 - (g.omitLast && segmentIndex === parts.length - 1 ? 1 : 0); i++) {
               const p = g.arrows[i];
-              if (started > 0 && i <= consumed) continue;
               const path = g.wifi ? `WifiSkins/wifi${style.isMine ? '_mine' : variant(style)}_${i - 1}.png` : `SlideSkins/slide${variant(style)}.png`;
               emit(n, path, 2, { ...p, alpha, order: n.id * 1024 + segmentIndex * 256 + i, brightness: style.isBreak ? breakPulseBrightness(now) : 1 });
             }
@@ -244,7 +295,7 @@ export function buildFrame(prepared: PreparedChart, now: number, config: Rendere
       if (kind) emit(n, judgeTextSkinPath(cover ? 'cPerfectBreak' : kind === 'cPerfectBreak' ? 'cPerfect' : kind), 7, { ...p, angle, alpha, scale });
     }
   }
-  for (const { time, usingSV, heads } of prepared.eachGroups) {
+  for (const { time, usingSV, heads } of index.each(now, currentScroll)) {
     if (time <= now) continue;
     for (let i = 1; i < heads.length; i++) {
       const n = heads[i - 1]; if (now >= n.timingMs) continue;

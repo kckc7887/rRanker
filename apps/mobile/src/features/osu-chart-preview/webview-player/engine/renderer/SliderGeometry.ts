@@ -25,233 +25,171 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import type { BeatmapData, Slider } from '../types/index';
+import type { Slider } from '../types/index';
+import { lowerBoundBy } from '../../../../chart-preview-shared/webview-player/sorted-search';
 
 type Point = { x: number; y: number };
+export type SliderPath = { points: Point[]; distances: number[] };
+const paths = new WeakMap<Slider, SliderPath>();
+const TOLERANCE = 0.05;
+const distance = (a: Point, b: Point) => Math.hypot(b.x - a.x, b.y - a.y);
+const lerp = (a: Point, b: Point, t: number): Point => ({ x: a.x + (b.x - a.x) * t, y: a.y + (b.y - a.y) * t });
 
-const _sliderPathCache = new WeakMap<Slider, Point[]>();
-
-/** 按弧长重采样至约 1 点/osu!像素。 */
-export function sampleSlider(slider: Slider): Point[] {
-  let cached = _sliderPathCache.get(slider);
-  if (cached === undefined) {
-    cached = computeSliderPath(slider);
-    _sliderPathCache.set(slider, cached);
-  }
-  return cached;
+export function sliderPointAt(path: SliderPath, fraction: number): Point {
+  const { points, distances } = path;
+  if (fraction <= 0 || points.length === 1) return points[0]!;
+  if (fraction >= 1) return points.at(-1)!;
+  const at = fraction * distances.at(-1)!;
+  const i = Math.max(
+    1,
+    lowerBoundBy(distances, at, (d) => d),
+  );
+  return lerp(points[i - 1]!, points[i]!, (at - distances[i - 1]!) / (distances[i]! - distances[i - 1]!));
 }
 
-function computeSliderPath(slider: Slider): Point[] {
-  const { curveType, curvePoints, length } = slider;
-  switch (curveType) {
-    case 'L': return sampleLinear(curvePoints, length);
-    case 'P': return samplePerfectCircle(curvePoints, length);
-    case 'C': return sampleCatmull(curvePoints, length);
-    case 'B':
-    default:
-      return sampleBezier(curvePoints, length);
-  }
+export function sliderProgress(time: number, start: number, duration: number, repeats: number): number {
+  const progress = Math.max(0, Math.min(repeats, (time - start) / duration));
+  const pass = Math.min(Math.floor(progress), repeats - 1);
+  return pass % 2 ? 1 - (progress - pass) : progress - pass;
 }
 
-export function warmSliderPaths(beatmap: BeatmapData): void {
-  for (const obj of beatmap.hitObjects) {
-    if (obj.type === 'slider') sampleSlider(obj);
-  }
-}
-
-export function sampleLinear(points: Point[], length: number): Point[] {
-  if (points.length === 0) return [];
-  if (points.length === 1 || length <= 0) return [{ ...points[0]! }];
-
-  return samplePolyline(points, length, Math.max(2, Math.ceil(length) + 1));
-}
-
-function sampleCatmull(points: Point[], length: number): Point[] {
-  if (points.length < 2 || length <= 0) return points.slice(0, 1);
-  const path: Point[] = [];
-  for (let index = 0; index < points.length - 1; index += 1) {
-    const p1 = points[Math.max(0, index - 1)]!;
-    const p2 = points[index]!;
-    const p3 = points[index + 1]!;
-    const p4 = points[index + 2] ?? { x: 2 * p3.x - p2.x, y: 2 * p3.y - p2.y };
-    for (let step = index === 0 ? 0 : 1; step <= 50; step += 1) {
-      const t = step / 50;
-      const coordinate = (key: 'x' | 'y'): number => 0.5 * (2 * p2[key]
-        + (-p1[key] + p3[key]) * t
-        + (2 * p1[key] - 5 * p2[key] + 4 * p3[key] - p4[key]) * t * t
-        + (-p1[key] + 3 * p2[key] - 3 * p3[key] + p4[key]) * t * t * t);
-      path.push({ x: coordinate('x'), y: coordinate('y') });
+function fitLength(raw: Point[], length: number, tangent?: Point): SliderPath {
+  const points = [raw[0]!],
+    distances = [0];
+  let total = 0;
+  for (let i = 1; i < raw.length; i++) {
+    const a = raw[i - 1]!,
+      b = raw[i]!,
+      span = distance(a, b);
+    if (!span) continue;
+    if (total + span >= length) {
+      points.push(lerp(a, b, (length - total) / span));
+      distances.push(length);
+      return { points, distances };
     }
+    total += span;
+    points.push(b);
+    distances.push(total);
   }
-  return samplePolyline(path, length, Math.max(2, Math.ceil(length) + 1));
+  if (points.length > 1 && total < length) {
+    const end = points.at(-1)!,
+      prev = tangent ?? points.at(-2)!;
+    points.push(lerp(end, prev, -(length - total) / distance(end, prev)));
+    distances.push(length);
+  }
+  return { points, distances };
 }
 
-/** 重复控制点是红锚，切分为独立贝塞尔段。 */
-export function sampleBezier(points: Point[], length: number): Point[] {
-  if (points.length === 0) return [];
-  if (points.length === 1 || length <= 0) return [{ ...points[0]! }];
-
-  const segments = splitBezierSegments(points);
-  const densePoly: Point[] = [];
-
-  for (const seg of segments) {
-    const polyLen = controlPolygonLength(seg);
-    const nDense = Math.max(2, Math.ceil(polyLen) + 1);
-
-    const first = densePoly.length === 0;
-    for (let i = first ? 0 : 1; i < nDense; i++) {
-      densePoly.push(evalBezier(seg, i / (nDense - 1)));
-    }
-  }
-
-  return samplePolyline(densePoly, length, Math.max(2, Math.ceil(length) + 1));
-}
-
-/** 三点共线按直线；非三点 P 曲线按贝塞尔处理。 */
-export function samplePerfectCircle(points: Point[], length: number): Point[] {
-  if (points.length !== 3) return sampleBezier(points, length);
-  if (length <= 0) return [{ ...points[0]! }];
-
-  const [a, b, c] = [points[0]!, points[1]!, points[2]!];
-  const D = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
-  if (Math.abs(D) < 1e-6) {
-    return sampleLinear(points, length);
-  }
-
-  const a2 = a.x * a.x + a.y * a.y;
-  const b2 = b.x * b.x + b.y * b.y;
-  const c2 = c.x * c.x + c.y * c.y;
-
-  const ox = (a2 * (b.y - c.y) + b2 * (c.y - a.y) + c2 * (a.y - b.y)) / D;
-  const oy = (a2 * (c.x - b.x) + b2 * (a.x - c.x) + c2 * (b.x - a.x)) / D;
-
-  const radius = Math.hypot(a.x - ox, a.y - oy);
-
-  const startAngle = Math.atan2(a.y - oy, a.x - ox);
-  const midAngle   = Math.atan2(b.y - oy, b.x - ox);
-  const endAngle   = Math.atan2(c.y - oy, c.x - ox);
-
-  /** 从 A 逆时针先到 B 再到 C 时，弧线逆时针展开。 */
-  const midNorm = normalizeAngle(midAngle - startAngle);
-  const endNorm = normalizeAngle(endAngle - startAngle);
-  const sweepAngle = midNorm < endNorm ? endNorm : endNorm - 2 * Math.PI;
-
-  const arcLength = Math.abs(sweepAngle) * radius;
-  const sampledLength = Math.min(length, arcLength);
-  const sampledSweep = arcLength > 0 ? sweepAngle * sampledLength / arcLength : 0;
-  const count = Math.max(2, Math.ceil(sampledLength) + 1);
-  const result: Point[] = [];
-  for (let i = 0; i < count; i++) {
-    const angle = startAngle + sampledSweep * (i / (count - 1));
-    result.push({ x: ox + radius * Math.cos(angle), y: oy + radius * Math.sin(angle) });
-  }
-  return length <= arcLength ? result : samplePolyline(result, length, Math.max(2, Math.ceil(length) + 1));
-}
-
-function splitBezierSegments(points: Point[]): Point[][] {
-  const segments: Point[][] = [];
-  let current: Point[] = [points[0]!];
-  let i = 1;
-
-  while (i < points.length) {
-    current.push(points[i]!);
-    if (
-      i + 1 < points.length &&
-      points[i]!.x === points[i + 1]!.x &&
-      points[i]!.y === points[i + 1]!.y
-    ) {
-      segments.push(current);
-      current = [points[i + 1]!];
-      i += 2;
-    } else {
-      i++;
-    }
-  }
-
-  if (current.length > 1) segments.push(current);
-  return segments.length > 0 ? segments : [points];
-}
-
-function evalBezier(points: Point[], t: number): Point {
-  let pts = points.map(p => ({ x: p.x, y: p.y }));
-  for (let r = 1; r < pts.length; r++) {
-    for (let j = 0; j < pts.length - r; j++) {
-      pts[j] = {
-        x: pts[j]!.x + (pts[j + 1]!.x - pts[j]!.x) * t,
-        y: pts[j]!.y + (pts[j + 1]!.y - pts[j]!.y) * t,
-      };
-    }
-  }
-  return pts[0]!;
-}
-
-function controlPolygonLength(points: Point[]): number {
-  let len = 0;
+/* 折返的控制点可能与首尾共线；同时比较控制多边形弧长，保留回折尖端。 */
+function flat(points: Point[]): boolean {
+  const a = points[0]!,
+    b = points.at(-1)!,
+    chord = distance(a, b);
+  let polygon = 0;
   for (let i = 1; i < points.length; i++) {
-    len += Math.hypot(points[i]!.x - points[i - 1]!.x, points[i]!.y - points[i - 1]!.y);
+    const p = points[i]!;
+    polygon += distance(points[i - 1]!, p);
+    if (Math.abs((p.x - a.x) * (b.y - a.y) - (p.y - a.y) * (b.x - a.x)) > chord * TOLERANCE) return false;
   }
-  return len;
+  return polygon - chord <= TOLERANCE;
 }
 
-function buildCumulativeDists(points: Point[]): number[] {
-  const dists: number[] = [0];
-  for (let i = 1; i < points.length; i++) {
-    dists.push(
-      dists[i - 1]! + Math.hypot(points[i]!.x - points[i - 1]!.x, points[i]!.y - points[i - 1]!.y)
-    );
+function appendBezier(path: Point[], controls: Point[]): void {
+  const pending = [controls];
+  while (pending.length) {
+    const points = pending.pop()!;
+    if (points.length < 3 || flat(points)) {
+      path.push(points.at(-1)!);
+      continue;
+    }
+    const row = points.slice(),
+      left = [row[0]!],
+      right = [row.at(-1)!];
+    for (let n = row.length - 1; n; n--) {
+      for (let i = 0; i < n; i++) row[i] = lerp(row[i]!, row[i + 1]!, 0.5);
+      left.push(row[0]!);
+      right.push(row[n - 1]!);
+    }
+    pending.push(right.reverse(), left);
   }
-  return dists;
 }
 
-function samplePolyline(pts: Point[], length: number, count: number): Point[] {
-  const dists = buildCumulativeDists(pts);
-  const total = dists[dists.length - 1]!;
-  if (length > total && pts.length > 1) {
-    const end = pts.at(-1)!;
-    let previous = pts.length - 2;
-    while (previous > 0 && dists[previous] === total) previous -= 1;
-    const direction = pts[previous]!;
-    const distance = Math.hypot(end.x - direction.x, end.y - direction.y);
-    if (distance > 0) {
-      const extension = (length - total) / distance;
-      pts = [...pts, { x: end.x + (end.x - direction.x) * extension, y: end.y + (end.y - direction.y) * extension }];
-      dists.push(length);
+function curvedPath(slider: Slider): SliderPath {
+  const controls = slider.curvePoints,
+    raw = [controls[0]!];
+  if (slider.curveType === 'C') {
+    for (let i = 0; i < controls.length - 1; i++) {
+      const a = controls[i]!,
+        b = controls[i + 1]!;
+      const before = controls[Math.max(0, i - 1)]!,
+        after = controls[i + 2] ?? lerp(a, b, 2);
+      appendBezier(raw, [
+        a,
+        { x: a.x + (b.x - before.x) / 6, y: a.y + (b.y - before.y) / 6 },
+        { x: b.x - (after.x - a.x) / 6, y: b.y - (after.y - a.y) / 6 },
+        b,
+      ]);
+    }
+  } else {
+    let start = 0;
+    for (let i = 1; i < controls.length; i++) {
+      const p = controls[i]!,
+        next = controls[i + 1];
+      if (next && (next.x !== p.x || next.y !== p.y)) continue;
+      appendBezier(raw, controls.slice(start, i + 1));
+      start = i + 1;
     }
   }
-  const result: Point[] = [];
-  for (let i = 0; i < count; i++) {
-    const t = (i / (count - 1)) * length;
-    result.push(lerpPolyline(pts, dists, t));
-  }
-  return result;
+  const end = controls.at(-1)!;
+  let i = controls.length - 2;
+  while (i >= 0 && !distance(end, controls[i]!)) i--;
+  return fitLength(raw, slider.length, controls[i]);
 }
 
-function lerpPolyline(points: Point[], dists: number[], t: number): Point {
-  if (t <= 0) return { ...points[0]! };
-  if (t >= dists[dists.length - 1]!) return { ...points[points.length - 1]! };
-
-  let lo = 0;
-  let hi = dists.length - 2;
-  while (lo < hi) {
-    const mid = (lo + hi) >> 1;
-    if (dists[mid + 1]! < t) lo = mid + 1;
-    else hi = mid;
+function circularPath(slider: Slider): SliderPath {
+  const [a, b, c] = slider.curvePoints as [Point, Point, Point];
+  const det = 2 * (a.x * (b.y - c.y) + b.x * (c.y - a.y) + c.x * (a.y - b.y));
+  if (Math.abs(det) < 1e-6) return fitLength(slider.curvePoints, slider.length);
+  const aa = a.x * a.x + a.y * a.y,
+    bb = b.x * b.x + b.y * b.y,
+    cc = c.x * c.x + c.y * c.y;
+  const x = (aa * (b.y - c.y) + bb * (c.y - a.y) + cc * (a.y - b.y)) / det;
+  const y = (aa * (c.x - b.x) + bb * (a.x - c.x) + cc * (b.x - a.x)) / det;
+  const radius = Math.hypot(a.x - x, a.y - y),
+    tau = Math.PI * 2;
+  const start = Math.atan2(a.y - y, a.x - x);
+  const sweepTo = (p: Point) => (Math.atan2(p.y - y, p.x - x) - start + tau) % tau;
+  const end = sweepTo(c);
+  const sweep = sweepTo(b) < end ? end : end - tau;
+  const length = Math.min(slider.length, Math.abs(sweep) * radius);
+  const angle = (Math.sign(sweep) * length) / radius;
+  /* 用弦高控制圆弧误差，弧长表仍记录真实圆弧距离。 */
+  const step = 4 * Math.asin(Math.sqrt(Math.min(1, TOLERANCE / (2 * radius))));
+  const count = Math.max(1, Math.ceil(Math.abs(angle) / step));
+  const points = [a],
+    distances = [0];
+  for (let i = 1; i <= count; i++) {
+    const direction = start + (angle * i) / count;
+    points.push({ x: x + radius * Math.cos(direction), y: y + radius * Math.sin(direction) });
+    distances.push((length * i) / count);
   }
-
-  const segStart = dists[lo]!;
-  const segEnd   = dists[lo + 1]!;
-  const segLen   = segEnd - segStart;
-  const frac     = segLen < 1e-10 ? 0 : (t - segStart) / segLen;
-
-  const p0 = points[lo]!;
-  const p1 = points[lo + 1]!;
-  return {
-    x: p0.x + (p1.x - p0.x) * frac,
-    y: p0.y + (p1.y - p0.y) * frac,
-  };
+  if (slider.length > length) {
+    const extension = (slider.length - length) * Math.sign(sweep),
+      direction = start + sweep;
+    points[points.length - 1] = c;
+    points.push({ x: c.x - Math.sin(direction) * extension, y: c.y + Math.cos(direction) * extension });
+    distances.push(slider.length);
+  }
+  return { points, distances };
 }
 
-function normalizeAngle(a: number): number {
-  const TWO_PI = 2 * Math.PI;
-  return ((a % TWO_PI) + TWO_PI) % TWO_PI;
+export function sampleSlider(slider: Slider): SliderPath {
+  let path = paths.get(slider);
+  if (!path) {
+    if (slider.curveType === 'L') path = fitLength(slider.curvePoints, slider.length);
+    else if (slider.curveType === 'P' && slider.curvePoints.length === 3) path = circularPath(slider);
+    else path = curvedPath(slider);
+    paths.set(slider, path);
+  }
+  return path;
 }

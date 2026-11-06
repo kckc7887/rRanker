@@ -2,7 +2,7 @@ import { crc32 } from 'node:zlib';
 import { describe, expect, it, vi } from 'vitest';
 import JSZip from 'jszip';
 import { buildPhigrosChartPreviewInput } from '@/features/phigros-chart-preview/chart-preview-input';
-import { buildPhiraChartPreviewInput, CHART_TEXT_LIMIT } from '@/features/phira-chart-preview/chart-preview-input';
+import { buildPhiraChartPreviewInput, RPE_CHART_TEXT_LIMIT } from '@/features/phira-chart-preview/chart-preview-input';
 import { loadPhigrosChartPreviewResources } from '@/services/phigros-chart-preview-resources';
 
 vi.mock('@/services/phigros-chart-preview-resources', () => ({
@@ -73,7 +73,7 @@ describe('chart preview input resource injection', () => {
           target: { difficulty: 'AT' },
           illustration: { contentType: 'image/png' },
         },
-        chart: new Uint8Array([123, 125]),
+        chart: new TextEncoder().encode('{"formatVersion":3,"judgeLineList":[]}'),
         music: new Uint8Array([1, 2, 3]),
         illustration: new Uint8Array([4, 5]),
       } as Awaited<ReturnType<typeof loadPhigrosChartPreviewResources>>;
@@ -86,7 +86,7 @@ describe('chart preview input resource injection', () => {
       read,
     );
 
-    expect(prepared.config.chartText).toBe('{}');
+    expect(prepared.config.format).toBe('pgr');
     expect(prepared.config.title).toBe('Song');
     expect(prepared.config.previewDifficulty).toMatchObject({ label: 'AT', value: '16.4', identity: '里谱 1' });
     expect(prepared.config.illustrationUrl).toBe('data:image/png;base64,BAU=');
@@ -95,8 +95,8 @@ describe('chart preview input resource injection', () => {
 
   it('prepares a downloaded Phira chart and stages its music', async () => {
     const zip = new JSZip();
-    zip.file('info.yml', 'chart: chart.json\nmusic: song.mp3\nformat: pgr');
-    zip.file('chart.json', JSON.stringify({ formatVersion: 3, offset: 0, judgeLineList: [] }));
+    zip.file('info.yml', 'chart: chart.pec\nmusic: song.mp3\nformat: rpe');
+    zip.file('chart.pec', JSON.stringify({ formatVersion: 3, offset: 0, judgeLineList: [] }));
     zip.file('song.mp3', new Uint8Array([1, 2, 3, 4]));
     const zipData = await zip.generateAsync({ type: 'arraybuffer' });
     const downloadChart = vi.fn(async () => zipData);
@@ -117,7 +117,8 @@ describe('chart preview input resource injection', () => {
     );
 
     expect(downloadChart).toHaveBeenCalledWith('https://phira.example/chart.zip', expect.any(AbortSignal));
-    expect(prepared.config.chartText).toContain('"formatVersion"');
+    expect(prepared.config.format).toBe('pgr');
+    expect(JSON.parse(prepared.config.chartText)).toMatchObject({ formatVersion: 3 });
     expect(prepared.musicDataBase64).toBe(Buffer.from([1, 2, 3, 4]).toString('base64'));
   });
 
@@ -125,7 +126,7 @@ describe('chart preview input resource injection', () => {
     const zipData = storedZip([
       { name: 'info.yml', data: Buffer.from('chart: chart.json\nmusic: song.mp3\nformat: pgr') },
       { name: 'song.mp3', data: Buffer.from([1, 2, 3, 4]) },
-      { name: 'chart.json', data: Buffer.alloc(0), uncompressedSize: CHART_TEXT_LIMIT + 1 },
+      { name: 'chart.json', data: Buffer.alloc(0), uncompressedSize: RPE_CHART_TEXT_LIMIT + 1 },
     ]);
     const stageMusic = vi.fn(async () => ({ uri: 'file:///music.mp3', base64: 'AQ==' }));
     const stageRpeBundle = vi.fn(async () => ({ basePath: './rpe/38294/' }));

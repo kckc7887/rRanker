@@ -30,8 +30,7 @@ import type { ComboFrame } from '../../renderer/HUDRenderer';
 import type { RenderOptions } from '../../renderer/Renderer';
 import type { Ruleset } from '../Ruleset';
 import type { CatchSession } from './types';
-import { convertBeatmapToCatch } from './converter';
-import { applyPositionOffsets } from './positions';
+import { preparedCatchObjects } from './positions';
 import { catchFrames } from './input';
 import { computeCatchHitResults } from './hitJudge';
 import { drawCatchPlayfield } from './Playfield';
@@ -49,9 +48,7 @@ export const catchRuleset: Ruleset<CatchSession> = {
   ): CatchSession {
 
 
-    const objects = convertBeatmapToCatch(beatmap, modDiff);
-
-    applyPositionOffsets(objects, beatmap, modDiff);
+    const objects = preparedCatchObjects(beatmap, modDiff);
 
     const catcherPath = catchFrames(replay);
 

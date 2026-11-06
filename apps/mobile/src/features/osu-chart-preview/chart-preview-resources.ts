@@ -9,7 +9,7 @@ import {
 } from '@/features/chart-preview-shared/chart-preview-resource-budget';
 import { bytesToBase64 } from '@/utils/crypto-subset';
 import type { OsuChartPreviewFile, OsuChartPreviewTarget } from './configuration';
-import { parseBeatmap } from './webview-player/engine/parsers/BeatmapParser';
+import { readBeatmapIds } from './webview-player/engine/parsers/BeatmapParser';
 import { selectPreviewOsbPaths, selectPreviewResources } from './webview-player/resource-plan';
 import { decodeOsuText, normalizeArchivePath } from './webview-player/osu-text';
 
@@ -111,7 +111,7 @@ export async function readOsuChartPreviewArchive(
     if (!/\.osu$/iu.test(path)) continue;
     const bytes = await readBudgetedZipEntry(entry, cancellation);
     const text = decodeOsuText(bytes);
-    const beatmap = parseBeatmap(text);
+    const beatmap = readBeatmapIds(text);
     if (beatmap.beatmapId !== target.beatmapId) continue;
     if (beatmap.beatmapsetId != null && beatmap.beatmapsetId > 0
       && beatmap.beatmapsetId !== target.beatmapsetId) {

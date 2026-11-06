@@ -196,31 +196,33 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 - `chart-preview-screen-shell.tsx` 管理宿主准备、WebView、取消、暂停和释放；公共导航选项在 iOS 保留边缘原生侧滑返回，关闭内容区域滑返，标题返回和播放器全屏退出控件继续可用。
 - `chart-preview-bridge.ts` 解析当前播放器事件、设置信封和宿主命令。
 - `chart-preview-navigation.ts` 交接当前预览请求。
-- `webview-player` 提供四套播放器共用的设置 UI 与手势。
+- `webview-player` 提供格式适配器共用的播放核心、WebGL 舞台、时间线、设置 UI 与手势。
 
-`scripts/lib/build-preview.mjs` 的 `readPreviewTemplate` 将游戏舞台、专属参数与共用的时间线、播放与步进按钮、循环、拨轮和样式装配成页面。`buildPreview` 输出 `player.bundle` 与 `index.html`，宿主准备入口将 bundle 写为会话内的 `player.js`，HTML 沿用该脚本引用。
+`scripts/lib/build-preview.mjs` 的 `readPreviewTemplate` 装配舞台、专属参数与共用的时间线、步进、循环、拨轮及样式。`buildPreview` 生成 HTML 和对应格式的脚本；PGR 和 RPE 共用模板，各自构建脚本。`features/prepare-json-chart-preview.ts` 按 `chartJsonFormat` 的结果选择脚本、素材与全屏方向。
 
 预览准备结果的 `dispose` 返回 `Promise<void>`，宿主先失效会话和释放视图，再异步清理；迟到准备结果同样回收。`fs-storage.ts` 的目录统计、清理和版本裁剪使用异步文件入口，`runSharedCacheFileOperation` 串行提交共享素材文件发布与共享目录清理，排队后重新检查代次。启动维护保留当前会话文件及已使用的固定预览素材目录。图片索引、发布和清理在 `remote-image-cache.ts` 内串行提交；命中读取与正常释放复用已初始化目录，原图核验合并 LRU 更新，临时文件只在未命中时准备。最后释放更新使用时间，仅有超额待回收时继续裁剪，取消与代次检查仍控制结果发布。
 
-`webview-player/controls.ts` 的 `installPreviewControls` 根据画面尺寸、全屏状态和可见参数更新布局，下方控制与参数独立滚动；四套播放器通过 `setPreviewPlayButton` 更新播放图标；`stageAspectRatio` 保留各游戏比例，画面高度不超过标题下方可用空间的 55%。舞萌实时信息固定两行，首行为 BPM、拍位置和 FPS，次行为 COMBO、BREAK；每行高度固定、数字等宽，超宽时横向滚动。所有谱面确认页隐藏 WebView 与页面内部滚动条，保留滑动。`setPreviewFullscreen` 保存、恢复普通模式滚动位置。
+`webview-player/controls.ts` 的 `installPreviewControls` 根据画面尺寸、全屏状态和可见参数更新布局，下方控制与参数独立滚动；各格式通过 `setPreviewPlayButton` 更新播放图标；`stageAspectRatio` 保留各游戏比例，画面高度不超过标题下方可用空间的 55%。舞萌实时信息固定两行，首行为 BPM、拍位置和 FPS，次行为 COMBO、BREAK；每行高度固定、数字等宽，超宽时横向滚动。所有谱面确认页隐藏 WebView 与页面内部滚动条，保留滑动。`setPreviewFullscreen` 保存、恢复普通模式滚动位置。
 
 `heading.ts` 的 `renderPreviewHeading` 同行显示曲名和难度数值。曲名按内容宽度排列，标签紧随其后；曲名最大宽度为 12 个汉字，超长往返滚动；标签只渲染 `PreviewDifficulty.value`，沿用游戏侧配色。舞萌、Phigros、Rizline 使用真实定数，osu! 使用星数，Majdata、Phira 使用原生难度值；缺失显示“—”。
 
-`playback-loop.ts` 的 `PlaybackLoop` 由四套会话分别持有，端点沿用各自时间单位、不持久化；`toggle` 记录、清除、交换端点，`target` 在两个不同端点就绪并到达 B 时返回 A。`bindPlaybackLoop` 同步普通与全屏按钮和 `HeatTimelineView.updateLoop`。各会话先检查循环再处理结束，回跳沿用原 seek/播放路径同步音频、打击音、背景与渲染。
+`PreviewPlayback.loop` 管理秒制 AB 端点。`bindPlaybackLoop` 同步普通与全屏按钮、`HeatTimelineView.updateLoop` 和热度区间。`bindTimelineDrag` 合并同一显示帧里的拖动，释放指针时应用最后的位置；连续播放和静音定位通过同一适配器取帧。
 
 `fullscreen-controls.ts` 的 `bindFullscreenControls` 共用整页非控件区域点击与 5 秒隐藏计时；拖动不切换显隐，操作期间暂停计时，结束后重新计时。游戏入口保留方向与锁定状态。锁定与解锁按钮均固定在屏幕右侧并垂直居中，右边距取 12px 与右侧安全区宽度的较大值。锁定时只唤出解锁入口。行为由 `chart-preview-loop-controls.test.ts`、各播放会话测试和浏览器交互验证，浏览器结果不替代真机验收。
 
-设置采用当前信封格式。宿主读取设置失败时进入现有重新加载流程并保留原偏好；成功读到损坏内容时只重建对应设置键。暂停和 seek 使用当前命令；释放只清理所属会话的帧、音源、监听器和临时资源。共享播放器源变更后重建四套生成物并运行 `check:generated`。
+设置采用当前信封格式。宿主读取设置失败时进入现有重新加载流程并保留原偏好；成功读到损坏内容时只重建对应设置键。暂停和 seek 使用当前命令；释放只清理所属会话的帧、音源、监听器和临时资源。共享播放器源变更后重建各格式生成物并运行 `check:generated`。
 
 谱面宿主按设置键保留最新待写值，沿 `enqueueKeyMutation` 串行保存；只有对应值成功落盘才清除。重建与再次进入优先沿用待写值，前台恢复和通知重试继续保存；不同设置键互不覆盖。
 
-四套会话使用 Web Audio 解码与缓冲音源，AudioContext 采用 `latencyHint: 'playback'`。`playbackClock.ts` 的 `PlaybackClock` 按 AudioContext 时间记录位置和速度分段；`audioClock.ts` 的 `getAudioContextOutputTime` 提供输出补偿时间供画面读取，音源启动与音效调度使用 AudioContext 时间。音乐变速直接更新音源的 `playbackRate`，音调随速度变化；定位重建所属音源，暂停和释放撤销音源及待完成播放命令。
+`webview-player/playback.ts` 的 `PreviewPlayback` 持有歌曲音源、帧请求、循环和速度。`PlaybackAdapter` 提供音乐偏移、时长和声音窗口。`rewindSounds(seconds, when)` 在给定的 AudioContext 时间截断上一圈音效，并从新圈的对应位置续排；`PlaybackClock` 按 AudioContext 时间记录速度分段和循环区间，`getAudioContextOutputTime` 供画面补偿输出延迟。暂停或定位撤销之前的音源，变速按新时钟重排音效。
+
+`createStageContext` 复用画布的 WebGL 上下文；`stagePixels` 用舞台布局与设备限制确定实际尺寸。`beginFrame`、`flush` 与 `dispose` 界定提交和释放。静态图像驻留时复用纹理，视频在解码出新帧或定位完成后更新；几何、文字、贴图变色和裁切按适配器顺序合成。PGR、RPE 的击中特效用 `drawMask` 取原图集透明度并着色。`acquireTarget` 和 `releaseTarget` 共用两倍主舞台像素的临时预算，连续播放的帧间隔决定效果采样比例。
 
 `OsuChartPreviewSettings.playbackSpeed` 默认 1，范围 0.5–2，步长 0.05；四模式共用速度控件，经已有设置消息和存储键往返。播放速度与 `maniaScrollSpeed` 分别控制歌曲时间和下落表现。`AudioSync.currentTimeMs` 用于音效调度，`outputTimeMs` 补偿输出延迟供画面、视频和 AB 端点读取；两者来自同一播放时钟。变速更新正在播放的歌曲和故事板音源，未开始的音效重新调度。
 
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。
 
-`RpeRenderer.render(time, playing, playbackSpeed)` 以会话状态同步视频，暂停与定位等待视频就绪后重绘，释放时暂停视频并移除监听器。Phira 的 RPE 资源装配读取 `.glsl`、`.fs` 着色器文本；四元颜色变量在插值后从 RGBA 字节转换为 GL 的 0–1 值，着色器内的默认值直接使用。自定义着色器纹理先激活目标单元再绑定或上传，缓存同时持有单元和纹理对象，尺寸变化后的源纹理使用单元 0。osu! 滑条按 Catmull、贝塞尔、圆弧或线段采样后统一限制声明长度，不足时沿末段延伸；解析拒绝非正长度。动画只收集归档实际存在且位于声明范围内的帧。
+`RpeRenderer.render(time, playing, playbackSpeed)` 以会话状态同步视频，暂停与定位等待视频就绪后重绘，释放时暂停视频并移除监听器。Phira 的 RPE 资源装配读取 `.glsl`、`.fs` 着色器文本；四元颜色变量在插值后从 RGBA 字节转换为 GL 的 0–1 值，着色器内的默认值直接使用。自定义着色器从同一舞台的纹理缓存取图，按效果顺序传递场景纹理，末次直接写入屏幕。osu! 滑条按 Catmull、贝塞尔、圆弧或线段采样后统一限制声明长度，不足时沿末段延伸；解析拒绝非正长度。动画只收集归档实际存在且位于声明范围内的帧。故事板图片索引和打击音文件分开装配，音频解码后释放原始歌曲与采样文件，按同一采样的最晚触发点计算音效尾段。
 
 Simai 解析支持 `BOUNCE` 的拍长比和 `NULL` 复位指令，以及分类 HS/SV 的数值和 `NULL` 参数，按原谱面时间消费，不改变判定物量；无效拍长、未知类别、非法数值及未知指令继续拒绝。
 

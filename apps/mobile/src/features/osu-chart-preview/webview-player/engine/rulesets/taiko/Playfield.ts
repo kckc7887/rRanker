@@ -24,7 +24,9 @@
  * OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
  * SOFTWARE.
  */
-import { taikoLookback, resolveTrackOpacity } from "../../../engine-performance";
+import { upperBoundBy } from '../../../../../chart-preview-shared/webview-player/sorted-search';
+import { createIntervalIndex } from '../../../../../chart-preview-shared/webview-player/interval-index';
+import { drawTinted, resolveTrackOpacity } from "../../../engine-performance";
 import { drawFlatInputDrum } from "../../../flat-feedback";
 import type { BeatmapData, TimingPoint, SkinAssets, HitResult } from '../../types/index';
 import type { TaikoHit, TaikoDrumRoll, TaikoSwell, TaikoHitObject, TaikoSession, SwellProgress } from './types';
@@ -83,40 +85,20 @@ function skinImg(images: Map<string, ImageBitmap>, stem: string): ImageBitmap | 
 
 /** 皮肤 Version=latest 表示最新版，未设置则按 1.0。 */
 
-const _tintCache = new WeakMap<ImageBitmap, Map<string, OffscreenCanvas>>();
-function tintBitmap(bitmap: ImageBitmap, color: string): OffscreenCanvas {
-  let colorMap = _tintCache.get(bitmap);
-  if (colorMap === undefined) {
-    colorMap = new Map();
-    _tintCache.set(bitmap, colorMap);
-  }
-  const cached = colorMap.get(color);
-  if (cached !== undefined) return cached;
-  const { width: w, height: h } = bitmap;
-  const osc = new OffscreenCanvas(w, h);
-  const oc = osc.getContext('2d')!;
-  oc.drawImage(bitmap, 0, 0);
-  oc.globalCompositeOperation = 'multiply';
-  oc.fillStyle = color;
-  oc.fillRect(0, 0, w, h);
-  oc.globalCompositeOperation = 'destination-in';
-  oc.drawImage(bitmap, 0, 0);
-  colorMap.set(color, osc);
-  return osc;
-}
-
 function drawCentredBitmap(
   ctx: CanvasRenderingContext2D,
-  bitmap: ImageBitmap | OffscreenCanvas,
+  bitmap: ImageBitmap,
   cx: number,
   cy: number,
   d: number,
+  tint?: string,
 ): void {
 
   const aspect = bitmap.width / bitmap.height;
   const drawW = aspect >= 1 ? d : d * aspect;
   const drawH = aspect >= 1 ? d / aspect : d;
-  ctx.drawImage(bitmap, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
+  if (tint) drawTinted(ctx, bitmap, tint, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
+  else ctx.drawImage(bitmap, cx - drawW / 2, cy - drawH / 2, drawW, drawH);
 }
 
 function baseLogicalExtent(images: Map<string, ImageBitmap>, stem: string, bitmap: ImageBitmap): number {
@@ -241,59 +223,22 @@ export function computeBarLineTimes(beatmap: BeatmapData): number[] {
   return lines;
 }
 
-function endTimeOf(o: TaikoHitObject): number {
-  return o.kind === 'hit' ? o.time : o.endTime;
-}
-
-function findObjectVisibleRange(
-  objects: readonly TaikoHitObject[],
-  timeMs: number,
-  scrollMs: number,
-  lookbackMs: number,
-): { firstIdx: number; lastIdx: number } {
-  const n = objects.length;
-  if (n === 0) return { firstIdx: 0, lastIdx: -1 };
-  const minTime = timeMs - lookbackMs;
-  const maxTime = timeMs + scrollMs;
-
-  let lo = 0, hi = n;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (endTimeOf(objects[mid]!) < minTime) lo = mid + 1;
-    else hi = mid;
-  }
-  const firstIdx = lo;
-  if (firstIdx >= n || objects[firstIdx]!.time > maxTime) {
-    return { firstIdx, lastIdx: firstIdx - 1 };
-  }
-
-  lo = firstIdx; hi = n - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >>> 1;
-    if (objects[mid]!.time <= maxTime) lo = mid;
-    else hi = mid - 1;
-  }
-  return { firstIdx, lastIdx: lo };
-}
-
-function findTimeRange(times: readonly number[], minTime: number, maxTime: number): { firstIdx: number; lastIdx: number } {
-  const n = times.length;
-  if (n === 0) return { firstIdx: 0, lastIdx: -1 };
-  let lo = 0, hi = n;
-  while (lo < hi) {
-    const mid = (lo + hi) >>> 1;
-    if (times[mid]! < minTime) lo = mid + 1; else hi = mid;
-  }
-  const firstIdx = lo;
-  if (firstIdx >= n || times[firstIdx]! > maxTime) {
-    return { firstIdx, lastIdx: firstIdx - 1 };
-  }
-  lo = firstIdx; hi = n - 1;
-  while (lo < hi) {
-    const mid = (lo + hi + 1) >>> 1;
-    if (times[mid]! <= maxTime) lo = mid; else hi = mid - 1;
-  }
-  return { firstIdx, lastIdx: lo };
+export function taikoVisibleTime(
+  objects: readonly TaikoHitObject[], velocities: readonly number[], bars: readonly number[], barVelocities: readonly number[],
+) {
+  const objectIndex = createIntervalIndex(objects.map((_, i) => i), i => {
+    const object = objects[i]!, speed = velocities[i]!;
+    if (object.kind === 'swell') return [object.time - 4000, object.endTime + SWELL_FADE_OUT_MS];
+    const radius = (object.isStrong ? STRONG_NOTE_RADIUS_PX : NOTE_RADIUS_PX) + 4;
+    const end = object.kind === 'drumroll' ? object.endTime : object.time;
+    if (!(speed > 0)) return [-Infinity, Infinity];
+    return [object.time - (LANE_WIDTH_PX + radius) / speed, end + (HIT_TARGET_X - LANE_LEFT_X + radius) / speed];
+  });
+  const barIndex = createIntervalIndex(bars.map((_, i) => i), i => {
+    const time = bars[i]!, speed = barVelocities[i]!;
+    return speed > 0 ? [time - LANE_WIDTH_PX / speed, time + (HIT_TARGET_X - LANE_LEFT_X) / speed] : [-Infinity, Infinity];
+  });
+  return { visibleObjects: (time: number) => objectIndex(time, time), visibleBars: (time: number) => barIndex(time, time) };
 }
 
 function objectX(objectTime: number, timeMs: number, scrollVel: number): number {
@@ -386,13 +331,11 @@ function drawBarLines(
   times: readonly number[],
   vels: readonly number[],
   timeMs: number,
-  maxScrollMs: number,
-  lookbackMs: number,
+  visible: readonly number[],
   skin: SkinAssets | undefined,
 ): void {
 
-  const { firstIdx, lastIdx } = findTimeRange(times, timeMs - lookbackMs, timeMs + maxScrollMs);
-  if (lastIdx < firstIdx) return;
+  if (!visible.length) return;
 
   const barlineSprite = skin ? skinImg(skin.images, 'taiko-barline') : undefined;
   if (barlineSprite !== undefined) {
@@ -400,7 +343,7 @@ function drawBarLines(
     const drawH  = PLAYFIELD_H_PX;
     const drawW  = drawH * aspect;
     const yTop   = PLAYFIELD_TOP_Y;
-    for (let i = firstIdx; i <= lastIdx; i++) {
+    for (const i of visible) {
       const x = HIT_TARGET_X + (times[i]! - timeMs) * vels[i]!;
       if (x < LANE_LEFT_X || x > LANE_RIGHT_X) continue;
       ctx.drawImage(barlineSprite, x - drawW / 2, yTop, drawW, drawH);
@@ -411,7 +354,7 @@ function drawBarLines(
   ctx.strokeStyle = 'rgba(255, 255, 255, 0.13)';
   ctx.lineWidth = 1;
   ctx.beginPath();
-  for (let i = firstIdx; i <= lastIdx; i++) {
+  for (const i of visible) {
     const x = HIT_TARGET_X + (times[i]! - timeMs) * vels[i]!;
     if (x < LANE_LEFT_X || x > LANE_RIGHT_X) continue;
     ctx.moveTo(x, PLAYFIELD_TOP_Y);
@@ -501,7 +444,7 @@ function drawHitCircle(
 
   if (base !== undefined) {
     const d = r * 2;
-    drawCentredBitmap(ctx, tintBitmap(base, colour), x, y, d);
+    drawCentredBitmap(ctx, base, x, y, d, colour);
 
     if (skin !== undefined) {
       const frames = resolveSkinFrames(skin.images, overlayStem);
@@ -688,11 +631,9 @@ function drawDrumRoll(
     const midX1 = xHead;
     const midX2 = xEnd;
     if (midX2 > midX1) {
-      const tintedMid = tintBitmap(rollMiddle as unknown as ImageBitmap, tint);
-      ctx.drawImage(tintedMid, midX1, LANE_CENTRE_Y - d / 2, midX2 - midX1, d);
+      drawTinted(ctx, rollMiddle, tint, midX1, LANE_CENTRE_Y - d / 2, midX2 - midX1, d);
     }
-    const tintedEnd = tintBitmap(rollEnd as unknown as ImageBitmap, tint);
-    ctx.drawImage(tintedEnd, xEnd, LANE_CENTRE_Y - d / 2, endDrawW, d);
+    drawTinted(ctx, rollEnd, tint, xEnd, LANE_CENTRE_Y - d / 2, endDrawW, d);
   } else if (bodyVisible) {
     ctx.fillStyle = tint;
     ctx.beginPath();
@@ -728,7 +669,7 @@ function drawDrumRoll(
   if (xHead >= LANE_LEFT_X - r - 4 && xHead <= LANE_RIGHT_X + r + 4) {
     if (headBase !== undefined) {
       const d = r * 2;
-      drawCentredBitmap(ctx, tintBitmap(headBase, tint), xHead, LANE_CENTRE_Y, d);
+      drawCentredBitmap(ctx, headBase, xHead, LANE_CENTRE_Y, d, tint);
       if (headOverlay !== undefined) {
         const baseLogicalMax = baseLogicalExtent(skin!.images, headStem, headBase);
         const ovScale = skin!.images.has(`${overlayStem}@2x.png`) ? 0.5 : 1;
@@ -836,13 +777,7 @@ function drawSwell(
     && sprApproach === undefined && sprOsu === undefined
   ) return;
 
-  let numHits = 0;
-  if (progress !== undefined) {
-    for (const t of progress.tickTimes) {
-      if (t <= timeMs) numHits++;
-      else break;
-    }
-  }
+  const numHits = progress ? upperBoundBy(progress.tickTimes, timeMs, time => time) : 0;
   const remaining = Math.max(0, swell.requiredHits - numHits);
 
   const terminalTime = progress?.completionTime ?? swell.endTime;
@@ -912,9 +847,8 @@ function drawSwell(
     if (sprCircle !== undefined) {
       let bumpAccum = 0;
       if (progress !== undefined) {
-        for (let i = progress.tickTimes.length - 1; i >= 0; i--) {
+        for (let i = numHits - 1; i >= 0; i--) {
           const t = progress.tickTimes[i]!;
-          if (t > timeMs) continue;
           const age = timeMs - t;
           if (age >= SWELL_BODY_BUMP_DECAY_MS) break;
           bumpAccum += SWELL_BODY_BUMP_PER_HIT * (1 - age / SWELL_BODY_BUMP_DECAY_MS);
@@ -1179,12 +1113,10 @@ export function drawTaikoPlayfield(
 ): void {
   const objectVel  = session.objectVel;
   const barLineVel = session.barLineVel;
-  const maxScrollMs = session.maxScrollMs;
   const skin: SkinAssets | undefined = session.skin;
   const comboNow = comboAt(session.comboFrames, timeMs);
   const isHD = options.modHidden;
 
-  const lookback = taikoLookback(session.objects);
   const trackOpacity = resolveTrackOpacity(options, 'taiko');
 
   drawPlayfieldBackground(ctx, skin, session.beatmap.timingPoints, timeMs, trackOpacity);
@@ -1199,12 +1131,13 @@ export function drawTaikoPlayfield(
 
   ctx.save();
   ctx.globalAlpha *= trackOpacity;
-  drawBarLines(ctx, session.barLines, barLineVel, timeMs, maxScrollMs, lookback, skin);
+  drawBarLines(ctx, session.barLines, barLineVel, timeMs, session.visibleBars(timeMs), skin);
   ctx.restore();
 
-  const { firstIdx, lastIdx } = findObjectVisibleRange(session.objects, timeMs, maxScrollMs, lookback);
+  const visible = session.visibleObjects(timeMs);
 
-  for (let i = lastIdx; i >= firstIdx; i--) {
+  for (let n = visible.length - 1; n >= 0; n--) {
+    const i = visible[n]!;
     drawObject(
       ctx, session.objects[i]!, timeMs, objectVel[i]!, skin,
       session.hitJudgmentByNote,
@@ -1220,7 +1153,8 @@ export function drawTaikoPlayfield(
 
   drawInputDrum(ctx, session.inputEvents, timeMs, skin);
 
-  for (let i = lastIdx; i >= firstIdx; i--) {
+  for (let n = visible.length - 1; n >= 0; n--) {
+    const i = visible[n]!;
     const o = session.objects[i]!;
     if (o.kind !== 'swell') continue;
     drawSwell(ctx, o, timeMs, objectVel[i]!, session.swellProgress.get(o.sourceIndex), skin);

@@ -35,13 +35,14 @@ class FakeSourceNode {
   onended: (() => void) | null = null;
   startCount = 0;
   stopCount = 0;
+  stopAt: number | null = null;
   startOffset = 0;
   startAt = 0;
   disconnected = false;
 
   connect(): void {}
   start(when = 0, offset = 0): void { this.startCount += 1; this.startAt = when; this.startOffset = offset; }
-  stop(): void { this.stopCount += 1; }
+  stop(when = 0): void { this.stopCount += 1; this.stopAt = when; }
   disconnect(): void { this.disconnected = true; }
   addEventListener(): void {}
 }
@@ -84,8 +85,8 @@ class FakeAudioContext {
     return source as unknown as AudioBufferSourceNode;
   }
 
-  decodeAudioData(): Promise<AudioBuffer> {
-    return Promise.resolve(this.music);
+  decodeAudioData(bytes: ArrayBuffer): Promise<AudioBuffer> {
+    return Promise.resolve(bytes.byteLength === 1 ? { duration: 0.2 } as AudioBuffer : this.music);
   }
 
   getOutputTimestamp(): AudioTimestamp {
@@ -333,8 +334,7 @@ it('AB 在谱尾先回跳并按新倍速继续，暂停跳转不会自动播放'
   await session.play();
   frames.advance(16);
   frames.advance(1000);
-  for (let i = 0; i < 8; i++) await Promise.resolve();
-  expect(session.chartTime).toBe(2);
+  expect(session.chartTime).toBeCloseTo(2.516);
   expect(session.playing).toBe(true);
   session.pause();
   await session.seek(30);
@@ -462,5 +462,26 @@ it('音乐自然结束后释放节点，输出尾音与剩余谱面仍沿同一�
   frames.advance(200);
   expect(session.chartTime).toBeCloseTo(30.35);
   expect(session.playing).toBe(true);
+  session.dispose();
+});
+
+it('循环边界保留 B 前打击音并在同一采样时刻仅启动一次 A 点音效', async () => {
+  const { session, context, frames } = createPlayback({ click: 'data:audio/wav;base64,AA==' });
+  context.state = 'running';
+  session.loop.toggle('a', 1);
+  session.loop.toggle('b', 2);
+  session.setHitSoundEvents([1, 1.98, 2].map(time => ({ time, sound: 'click', noteKind: 'tap', lineIndex: 0 })));
+  await session.loadMusic(new ArrayBuffer(8));
+  session.moveTo(1.9);
+  await session.play();
+  const hits = () => context.sources.filter(source => source.buffer?.duration === 0.2);
+  context.currentTime = 0.10;
+  frames.advance(100);
+  expect(hits().filter(source => source.startAt < 0.2).map(source => Math.round(source.startAt * 1000))).toEqual([130, 150]);
+  expect(hits()[0]!.stopAt).toBeCloseTo(0.15);
+  context.currentTime = 0.18;
+  frames.advance(80);
+  expect(hits().filter(source => Math.abs(source.startAt - 0.15) < 0.001)).toHaveLength(1);
+  expect(hits()[1]!.stopAt).toBeNull();
   session.dispose();
 });

@@ -1,7 +1,6 @@
-import { PlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 import {
   computeModDifficulty, Renderer,
-  warmSkinCaches, warmSliderPaths, drawCursor,
+  warmSkinCaches, drawCursor,
   type BeatmapData, type ReplayData, type ModDifficulty, type SkinAssets,
 } from './engine';
 import { AudioSync } from './engine-audio/AudioSync';
@@ -30,30 +29,15 @@ export function getAudioContext(): AudioContext {
 
 function createRenderer(canvas: HTMLCanvasElement, beatmap: BeatmapData, replay: ReplayData, modDiff: ModDifficulty, skin: SkinAssets): Renderer {
   warmSkinCaches(skin);
-  return new Renderer(canvas, replay, beatmap, createGameplaySkin(skin, replay.mode), modDiff);
-}
-
-export function createGameplaySkin(skin: SkinAssets, mode: number): SkinAssets {
-  if (mode !== 0) return skin;
-  const transparent = skin.images.get('hit300.png');
-  if (!transparent || transparent.width <= 1 || transparent.height <= 1) throw new Error('无法准备播放画面');
-  const images = new Map(skin.images);
-  /** 2×2 透明 cursor 占位用于隐藏；缺失或 1×1 会触发默认绘制。 */
-  for (const stem of ['cursor', 'cursormiddle', 'cursortrail']) {
-    images.set(`${stem}.png`, transparent);
-    images.set(`${stem}@2x.png`, transparent);
-  }
-  return { ...skin, images };
+  return new Renderer(canvas, replay, beatmap, skin, modDiff);
 }
 
 export class PreviewSession {
-  readonly loop = new PlaybackLoop();
-  playing = false;
-  ended = false;
+  get loop() { return this.audioSync.playback.loop; }
+  get playing() { return this.audioSync.running; }
+  get ended() { return this.audioSync.playback.ended; }
   disposed = false;
-  private positionMs = 0;
-  private frame: number | null = null;
-  private command = 0;
+  onTransportFrame?: () => void;
   private skinRequest = 0;
   private mediaTime = 0;
   settings = normalizePreviewSettings({});
@@ -78,6 +62,10 @@ export class PreviewSession {
     this.renderedSkinVariant = this.skinVariant;
     this.configureRenderer();
     this.renderer.options.maniaScrollSpeed = clampManiaScrollSpeed(initial.maniaScrollSpeed ?? MANIA_SCROLL_DEFAULT);
+    this.audioSync.playback.onFrame = (seconds, jump) => {
+      this.draw(jump, seconds * 1000);
+      this.onTransportFrame?.();
+    };
     this.draw(true);
   }
 
@@ -114,77 +102,20 @@ export class PreviewSession {
   }
 
   get currentTimeMs(): number {
-    if (!this.playing) return this.positionMs;
     return Math.max(0, Math.min(this.range.durationMs, this.audioSync.outputTimeMs));
   }
 
-  draw(forceSeek = false): void {
+  draw(forceSeek = false, presentationMs = this.currentTimeMs): void {
     if (this.disposed) return;
-    this.mediaTime = this.range.startMs + this.currentTimeMs;
+    this.mediaTime = this.range.startMs + presentationMs;
     this.media.sync(this.mediaTime, this.playing, forceSeek);
     this.renderer.renderFrameAt(this.mediaTime + this.renderer.options.audioOffsetMs - this.renderer.oldOffsetMs);
   }
 
-  private tick = (): void => {
-    this.frame = null;
-    if (this.disposed || !this.playing) return;
-    if (!this.audioSync.running) {
-      this.pause();
-      this.draw(true);
-      return;
-    }
-    const loopTarget = this.loop.target(this.currentTimeMs);
-    if (loopTarget !== null) {
-      void this.playFrom(loopTarget).catch(() => {
-        if (this.disposed) return;
-        this.pause();
-        this.draw(true);
-      });
-      return;
-    }
-    if (this.currentTimeMs >= this.range.durationMs) {
-      this.pause();
-      this.positionMs = this.range.durationMs;
-      this.ended = true;
-      this.draw(true);
-      return;
-    }
-    this.draw();
-    this.frame = requestAnimationFrame(this.tick);
-  };
-
-  async playFrom(presentationMs: number): Promise<void> {
-    if (this.disposed) return;
-    this.pause();
-    const generation = ++this.command;
-    this.positionMs = Math.max(0, Math.min(presentationMs, this.range.durationMs));
-    this.positionMs = this.loop.target(this.positionMs) ?? this.positionMs;
-    if (this.positionMs >= this.range.durationMs) this.positionMs = 0;
-    await this.audioSync.playFrom(this.positionMs);
-    if (this.disposed || generation !== this.command) return;
-    this.playing = true;
-    this.ended = false;
-    this.draw(true);
-    this.frame = requestAnimationFrame(this.tick);
-  }
-
-  pause(): void {
-    this.command++;
-    this.positionMs = this.currentTimeMs;
-    this.playing = false;
-    this.audioSync.pause();
-    if (this.frame !== null) cancelAnimationFrame(this.frame);
-    this.frame = null;
-    this.media.sync(this.range.startMs + this.positionMs, false, true);
-  }
-
-  async seek(presentationMs: number, playing = this.playing): Promise<void> {
-    if (this.disposed) return;
-    this.pause();
-    this.positionMs = Math.max(0, Math.min(presentationMs, this.range.durationMs));
-    this.ended = this.positionMs >= this.range.durationMs;
-    this.draw(true);
-    if (playing && (!this.ended || this.loop.target(this.positionMs) !== null)) await this.playFrom(this.loop.target(this.positionMs) ?? this.positionMs);
+  playFrom(presentationMs: number): Promise<void> { return this.audioSync.playFrom(presentationMs); }
+  pause(): void { this.audioSync.pause(); }
+  seek(presentationMs: number, playing = this.playing): Promise<void> {
+    return this.audioSync.playback.seek(presentationMs / 1000, playing);
   }
 
   async setSkin(variant: ManiaSkinVariant): Promise<void> {
@@ -196,7 +127,7 @@ export class PreviewSession {
   private async refreshSkin(): Promise<void> {
     const request = ++this.skinRequest;
     const variant = this.skinVariant;
-    const builtin = await createBuiltinSkin(variant, Math.max(1, Math.round(this.beatmap.circleSize)), this.settings.holdWidth);
+    const builtin = await createBuiltinSkin(variant, Math.max(1, Math.round(this.beatmap.circleSize)), this.settings.holdWidth, 3);
     if (this.disposed || request !== this.skinRequest) return;
     if (variant === this.renderedSkinVariant) {
 
@@ -205,12 +136,9 @@ export class PreviewSession {
       return;
     }
     const skin = { ...builtin, images: new Map(builtin.images) };
-    const previousOptions = { ...this.renderer.options };
-    const next = createRenderer(this.canvas, this.beatmap, this.replay, this.modDiff, skin);
-    this.renderer = next;
+    this.renderer.setManiaSkin(skin);
     this.skin = skin;
     this.renderedSkinVariant = variant;
-    Object.assign(next.options, previousOptions);
     if (!this.playing) this.draw();
   }
 
@@ -222,6 +150,7 @@ export class PreviewSession {
     this.controller.abort();
     this.audioSync.destroy();
     this.media.dispose();
+    this.renderer.dispose();
   }
 }
 
@@ -233,7 +162,7 @@ export function destroyPlayback(): void {
 }
 
 export async function startPlayback(
-  canvas: HTMLCanvasElement, files: PreviewResourceMap, entry: PreviewChartEntry,
+  canvas: HTMLCanvasElement, files: { visuals: PreviewResourceMap; audio: ReadonlyMap<string, Uint8Array> }, entry: PreviewChartEntry,
   onWarning: (message: string) => void = () => {},
   initial: PreviewInitialOptions = {},
 ): Promise<PlaybackHandle> {
@@ -251,11 +180,12 @@ export async function startPlayback(
     signal.throwIfAborted();
     const beatmap = parseOsuBytes(entry.bytes);
     if (![0, 1, 2, 3].includes(beatmap.mode)) throw new Error('unsupported-mode');
-    beatmap.rawOsu = entry.bytes;
-    const replay = await buildAutoReplay(beatmap, entry.hash, signal);
+    const keys = beatmap.mode === 3 ? Math.max(1, Math.round(beatmap.circleSize)) : 4;
+    const [replay, builtin] = await Promise.all([
+      buildAutoReplay(beatmap, entry.hash, signal),
+      createBuiltinSkin(parseManiaSkinVariant(initial.maniaSkin), keys, normalizePreviewSettings(initial.settings).holdWidth, beatmap.mode),
+    ]);
     const modDiff = computeModDifficulty(beatmap, replay);
-    warmSliderPaths(beatmap);
-    const builtin = await createBuiltinSkin(parseManiaSkinVariant(initial.maniaSkin), beatmap.mode === 3 ? Math.max(1, Math.round(beatmap.circleSize)) : 4, normalizePreviewSettings(initial.settings).holdWidth);
     const skin = { ...builtin, images: new Map(builtin.images) };
     signal.throwIfAborted();
     renderer = createRenderer(canvas, beatmap, replay, modDiff, skin);
@@ -265,19 +195,20 @@ export async function startPlayback(
       comboFrames: renderer.comboFrames, oldOffsetMs: renderer.oldOffsetMs, fromBeatmapMs: -Infinity,
     });
     media = await createPreviewMedia({
-      files, osuBytes: entry.bytes, osuPath: entry.path, signal, onWarning: warn,
+      files: files.visuals, osuBytes: entry.bytes, osuPath: entry.path, signal, onWarning: warn,
+      storyboardEnabled: initial.settings?.storyboardEnabled,
       onInvalidate: () => session?.draw(),
     });
     media.bindTriggers(hitsoundEventsFromSchedule(schedule));
     const decoded = await loadPreviewAudio({
-      ctx, files, osuPath: entry.path, songName: beatmap.audioFilename, mode: beatmap.mode,
+      ctx, files: files.audio, osuPath: entry.path, songName: beatmap.audioFilename, mode: beatmap.mode,
       schedule, samples: media.visuals.samples, signal, onWarning: warn,
     });
     signal.throwIfAborted();
     const range = resolvePlaybackRange(beatmap, decoded.song ? decoded.song.duration * 1000 : null, media.range, decoded.endMs);
     audio = new AudioSync({
       ctx, songBuffer: decoded.song, skinSounds: skin.sounds, mergedSounds: decoded.sounds,
-      beatmapHitsounds: true, introOffsetMs: range.startMs,
+      beatmapHitsounds: true, introOffsetMs: range.startMs, durationSeconds: range.durationMs / 1000,
       mode: beatmap.mode, schedule, extraSamples: decoded.samples,
     });
     session = new PreviewSession(canvas, beatmap, replay, modDiff, renderer, audio, media, range, controller, skin, initial);
@@ -289,6 +220,7 @@ export async function startPlayback(
     controller.abort();
     audio?.destroy();
     media?.dispose();
+    renderer?.dispose();
     if (preparing === controller) preparing = null;
     throw error;
   }
@@ -299,6 +231,6 @@ export function applyManiaScrollSpeed(session: PreviewSession, value: number): v
   if (!session.playing) session.draw();
 }
 export async function playFrom(session: PreviewSession, presMs: number): Promise<void> { await session.playFrom(presMs); }
-export function pausePlayback(session: PreviewSession): void { session.pause(); session.draw(); }
+export function pausePlayback(session: PreviewSession): void { session.pause(); }
 export async function seekPlayback(session: PreviewSession, presMs: number, playing: boolean): Promise<void> { await session.seek(presMs, playing); }
 export function presentationTime(session: PreviewSession): number { return session.currentTimeMs; }

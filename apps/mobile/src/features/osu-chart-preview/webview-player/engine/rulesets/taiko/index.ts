@@ -33,7 +33,7 @@ import { convertBeatmapToTaiko } from './converter';
 import { taikoFrames } from './input';
 import {
   computeBarLineTimes, drawTaikoPlayfield,
-  scrollVelocityAt, taikoScrollMultiplier, LANE_WIDTH_PX,
+  scrollVelocityAt, taikoScrollMultiplier, taikoVisibleTime,
 } from './Playfield';
 import { computeTaikoHitResults } from './hitJudge';
 import { TaikoFlashlight } from './Flashlight';
@@ -63,25 +63,18 @@ export const taikoRuleset: Ruleset<TaikoSession> = {
     const isConstantSpeed = modDiff.isConstantSpeed;
     const smFactor = taikoScrollMultiplier(modDiff);
     const objectVel: number[] = new Array(objects.length);
-    let minVel = Infinity;
     for (let i = 0; i < objects.length; i++) {
       const v = scrollVelocityAt(beatmap, objects[i]!.time, isConstantSpeed, smFactor);
       objectVel[i] = v;
-      if (v > 0 && v < minVel) minVel = v;
     }
     const barLineVel: number[] = new Array(barLines.length);
     for (let i = 0; i < barLines.length; i++) {
       const v = scrollVelocityAt(beatmap, barLines[i]!, isConstantSpeed, smFactor);
       barLineVel[i] = v;
-      if (v > 0 && v < minVel) minVel = v;
     }
-    const maxScrollMs = isFinite(minVel) && minVel > 0
-      ? LANE_WIDTH_PX / minVel
-      : 5000;
-
     const session: TaikoSession = {
       beatmap, replay, modDiff, skin, objects, inputEvents, ghostTaps: [], barLines,
-      objectVel, barLineVel, maxScrollMs,
+      objectVel, barLineVel, ...taikoVisibleTime(objects, objectVel, barLines, barLineVel),
       hitResults: [],
       comboFrames: [],
       swellProgress: new Map(),

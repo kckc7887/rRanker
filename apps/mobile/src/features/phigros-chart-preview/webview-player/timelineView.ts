@@ -7,12 +7,18 @@ export interface PhigrosTimelineViewOptions extends HeatTimelineElements {
 
 export class PhigrosTimelineView {
   private readonly heat: HeatTimelineView;
+  private entries: readonly PhigrosTimelineEntry[] | undefined;
+  private times: number[] = [];
   constructor(private readonly options: PhigrosTimelineViewOptions) {
     this.heat = new HeatTimelineView(options);
   }
 
   build(durationSeconds: number, entries: readonly PhigrosTimelineEntry[]): void {
-    this.heat.build(durationSeconds, [{ times: entries.map(entry => entry.time) }],
+    if (this.entries !== entries) {
+      this.entries = entries;
+      this.times = entries.map(entry => entry.time);
+    }
+    this.heat.build(durationSeconds, [{ times: this.times }],
       heatTimeLabels(durationSeconds, this.options.formatTime));
   }
 

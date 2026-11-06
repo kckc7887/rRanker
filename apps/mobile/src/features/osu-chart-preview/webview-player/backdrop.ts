@@ -1,18 +1,17 @@
 import {
   assertChartPreviewGifFramePixels,
   assertChartPreviewTexturePixels,
-  ChartPreviewBudgetError,
+  CHART_PREVIEW_MAX_TEXTURE_PIXELS,
 } from '../../chart-preview-shared/chart-preview-resource-budget';
-import { loadItemsBounded } from './engine';
+import type { StageContext, StageTarget } from '../../chart-preview-shared/webview-player/stage';
 import { toArrayBuffer } from './bytes';
-import { decodeOsuText, findArchiveResource, listOsbSources, type PreviewResource, type PreviewResourceMap } from './osu-text';
+import { decodeOsuText, findArchiveResource, isOsbPath, listOsbSources, normalizeArchivePath, type PreviewResource, type PreviewResourceMap } from './osu-text';
 import {
-  OVER_LAYERS, UNDER_LAYERS, parseBeatmapVisuals, referencedImageFiles, storyboardTimeRange,
+  OVER_LAYERS, UNDER_LAYERS, parseBeatmapVisuals, storyboardTimeRange,
   type BeatmapVisuals, type StoryboardObject,
 } from './events';
 import { compileStoryboardTriggers, type StoryboardHitSoundEvent } from './storyboard-triggers';
-import { drawCover, drawStoryboardLayer, releaseStoryboardRenderResources } from './storyboard';
-import { PreviewBackgroundBlur } from './background-blur';
+import { drawCover, drawStoryboardLayer, storyboardFrame, storyboardFilesInRange } from './storyboard';
 
 export type MediaPresentationOptions = {
   playbackSpeed: number;
@@ -40,6 +39,7 @@ type MediaOptions = {
   osuPath: string;
   signal: AbortSignal;
   dim?: number;
+  storyboardEnabled?: boolean;
   onWarning(message: string): void;
   onInvalidate(): void;
 };
@@ -117,8 +117,15 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
     osuPath, osbPaths: sources.map(s => s.path), cancellation: { signal },
   });
   let objects: StoryboardObject[] = visuals.objects;
-  const images = new Map<string, CanvasImageSource>();
-  const imageDisposers = new Set<() => void>();
+  const images = new Map<string, Awaited<ReturnType<typeof loadImage>>>();
+  const pending = new Map<string, Promise<void>>();
+  const missing = new Set<string>();
+  let visibleFiles = new Set<string>();
+  let wanted = new Set<string>();
+  let residentPixels = 0;
+  let stage: StageContext | undefined;
+  let composite: StageTarget | null = null;
+  let blurred: StageTarget | null = null;
   let video: HTMLVideoElement | null = null;
   let videoUrl: string | null = null;
   let videoFailed = false;
@@ -131,17 +138,17 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
   let presentation: MediaPresentationOptions = {
     playbackSpeed: 1,
     backgroundBrightness: options.dim === undefined ? 20 : (1 - options.dim) * 100,
-    backgroundBlur: 0, storyboardEnabled: true, videoEnabled: true,
+    backgroundBlur: 0, storyboardEnabled: options.storyboardEnabled ?? true, videoEnabled: true,
   };
-  let backgroundSurface: HTMLCanvasElement | null = null;
-  let compositeSurface: HTMLCanvasElement | null = null;
-  let compositeContext: CanvasRenderingContext2D | null = null;
-  let compositeTime = NaN;
-  let compositeRevision = 0;
-  const blur = new PreviewBackgroundBlur();
+  let frameTime = NaN, generation = 0, compiledGeneration = -1;
+  let under: ReturnType<typeof storyboardFrame> = [], over: ReturnType<typeof storyboardFrame> = [];
+  let previousUnder: typeof under | undefined;
+  let previousVideo = NaN, previousBlur = NaN;
+  let nextWarm = -Infinity;
+  const ahead = new Set<string>();
   let range = storyboardTimeRange(objects, visuals.samples);
-  const key = (file: string): string => file.replace(/\\/g, '/').toLowerCase();
-  const invalidate = (): void => { compositeTime = NaN; if (!disposed && !signal.aborted) onInvalidate(); };
+  const key = (file: string): string => normalizeArchivePath(file).toLowerCase();
+  const invalidate = (): void => { previousUnder = undefined; if (!disposed && !signal.aborted) onInvalidate(); };
   const failVideo = (): void => {
     if (disposed || signal.aborted || videoFailed) return;
     videoFailed = true;
@@ -162,34 +169,85 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
       video.load();
     }
     if (videoUrl) URL.revokeObjectURL(videoUrl);
-    imageDisposers.forEach(release => release());
-    imageDisposers.clear();
+    for (const asset of images.values()) asset.dispose();
     images.clear();
-    if (backgroundSurface) backgroundSurface.width = backgroundSurface.height = 0;
-    if (compositeSurface) compositeSurface.width = compositeSurface.height = 0;
-    blur.dispose();
-    releaseStoryboardRenderResources();
+    if (stage && composite) stage.releaseTarget(composite);
+    if (stage && blurred) stage.releaseTarget(blurred);
+    composite = blurred = null;
   };
   signal.addEventListener('abort', dispose, { once: true });
   try {
     signal.throwIfAborted();
-    const imageFiles = [...new Set([...referencedImageFiles(objects, files.keys()), ...(visuals.background ? [visuals.background] : [])])];
-    await loadItemsBounded({
-      items: imageFiles, concurrency: 4, signal, failureMode: 'throw',
-      load: async file => {
-        const entry = findArchiveResource(files, file);
-        if (!entry) { onWarning('部分图片缺失，已保留其它谱面内容'); return; }
-        let loaded: Awaited<ReturnType<typeof loadImage>>;
-        try { loaded = await loadImage(entry.resource, mimeFor(file), file, signal); }
-        catch (error) {
-          if (error instanceof ChartPreviewBudgetError) throw error;
-          if (!signal.aborted) onWarning('部分图片无法读取，已保留其它谱面内容');
-          return;
+    const layers = [...UNDER_LAYERS, ...OVER_LAYERS];
+    const fileIndex = new Map<string, PreviewResource>();
+    for (const [path, resource] of files) if (!isOsbPath(path)) fileIndex.set(key(path), resource);
+    const backgroundKey = visuals.background ? key(visuals.background) : '';
+    const pixelSize = (image: CanvasImageSource): number => {
+      const item = image as { width: number; height: number };
+      return item.width * item.height;
+    };
+    const trim = (): void => {
+      if (residentPixels <= CHART_PREVIEW_MAX_TEXTURE_PIXELS) return;
+      for (const keep of [wanted, visibleFiles]) {
+        for (const [path, asset] of images) {
+          if (residentPixels <= CHART_PREVIEW_MAX_TEXTURE_PIXELS) return;
+          if (keep.has(path)) continue;
+          residentPixels -= pixelSize(asset.image);
+          stage?.releaseImage(asset.image);
+          asset.dispose();
+          images.delete(path);
+          ahead.delete(path);
+          wanted.delete(path);
         }
-        if (disposed || signal.aborted) loaded.dispose();
-        else { images.set(key(file), loaded.image); imageDisposers.add(loaded.dispose); }
-      },
-    });
+      }
+    };
+    const request = (path: string): Promise<void> | undefined => {
+      if (images.has(path) || missing.has(path) || disposed) return;
+      const existing = pending.get(path);
+      if (existing) return existing;
+      const resource = fileIndex.get(path);
+      if (!resource) { missing.add(path); onWarning('部分图片缺失，已保留其它谱面内容'); return; }
+      const promise = loadImage(resource, mimeFor(path), path, signal).then(asset => {
+        if (disposed || signal.aborted) { asset.dispose(); return; }
+        images.set(path, asset); residentPixels += pixelSize(asset.image); trim();
+        if (visibleFiles.has(path)) { previousUnder = undefined; if (!lastPlaying) invalidate(); }
+      }).catch(() => {
+        if (!disposed && !signal.aborted) { missing.add(path); onWarning('部分图片无法读取，已保留其它谱面内容'); }
+      }).finally(() => { pending.delete(path); pump(); });
+      pending.set(path, promise);
+      return promise;
+    };
+    function pump(): void {
+      if (disposed || signal.aborted) return;
+      for (const path of wanted) {
+        if (pending.size >= 4) return;
+        if (images.has(path) || missing.has(path) || pending.has(path)) continue;
+        if (!visibleFiles.has(path) && (pending.size || residentPixels >= CHART_PREVIEW_MAX_TEXTURE_PIXELS)) return;
+        void request(path);
+      }
+    }
+    function prepareFrame(time: number): void {
+      if (time === frameTime && compiledGeneration === generation) return;
+      const refreshAhead = time < frameTime || time >= nextWarm || compiledGeneration !== generation || !lastPlaying;
+      frameTime = time; compiledGeneration = generation;
+      under = presentation.storyboardEnabled ? storyboardFrame(objects, time, UNDER_LAYERS) : [];
+      over = presentation.storyboardEnabled ? storyboardFrame(objects, time, OVER_LAYERS) : [];
+      visibleFiles = new Set([...under, ...over].map(sprite => key(sprite.state.file)));
+      if (backgroundKey) visibleFiles.add(backgroundKey);
+      wanted = new Set(visibleFiles);
+      if (refreshAhead) {
+        ahead.clear();
+        const window = 200 * presentation.playbackSpeed;
+        nextWarm = time + window / 2;
+        if (lastPlaying && presentation.storyboardEnabled && objects.length) {
+          for (const file of storyboardFilesInRange(objects, time, time + window, layers)) ahead.add(key(file));
+        }
+      }
+      for (const file of ahead) wanted.add(file);
+      pump(); trim();
+    }
+    prepareFrame(Math.min(0, range.startMs));
+    while (pending.size) await Promise.all([...pending.values()]);
     signal.throwIfAborted();
     if (visuals.video) {
       const entry = findArchiveResource(files, visuals.video.file);
@@ -217,10 +275,8 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
       }
     };
     updateRange();
-    const background = visuals.background ? images.get(key(visuals.background)) : undefined;
-    const backgroundEntry = visuals.background ? findArchiveResource(files, visuals.background) : undefined;
-    const replacesBackground = backgroundEntry && objects.some(o => findArchiveResource(files, o.file)?.path === backgroundEntry.path);
-    const lookup = (file: string): CanvasImageSource | undefined => images.get(key(file));
+    const replacesBackground = backgroundKey && objects.some(o => key(o.file) === backgroundKey);
+    const lookup = (file: string): CanvasImageSource | undefined => images.get(key(file))?.image;
     const syncVideo = (mapTimeMs: number, playing: boolean, forceSeek = false): void => {
       if (!video || !visuals.video || videoFailed || disposed) return;
       const target = (mapTimeMs - visuals.video.startMs) / 1000;
@@ -240,19 +296,16 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
       }
     };
     const drawBackground = (ctx: CanvasRenderingContext2D, timeMs: number): void => {
+      const background = images.get(backgroundKey)?.image;
       if (presentation.videoEnabled && video && !videoFailed && videoInRange && video.readyState >= 2) drawCover(ctx, video);
       else if (background && (!presentation.storyboardEnabled || !replacesBackground)) {
-        if (!backgroundSurface) {
-          backgroundSurface = document.createElement('canvas');
-          backgroundSurface.width = 1280; backgroundSurface.height = 720;
-          const surface = backgroundSurface.getContext('2d')!;
-          const offset = visuals.backgroundOffset;
-          if (offset) surface.translate(offset.x * 1.5, offset.y * 1.5);
-          drawCover(surface, background);
-        }
-        ctx.drawImage(backgroundSurface, 0, 0);
+        ctx.save();
+        const offset = visuals.backgroundOffset;
+        if (offset) ctx.translate(offset.x * 1.5, offset.y * 1.5);
+        drawCover(ctx, background);
+        ctx.restore();
       }
-      if (presentation.storyboardEnabled) drawStoryboardLayer(ctx, objects, timeMs, UNDER_LAYERS, lookup, visuals.widescreen);
+      if (presentation.storyboardEnabled) drawStoryboardLayer(ctx, objects, timeMs, UNDER_LAYERS, lookup, visuals.widescreen, under);
     };
     return {
       get range() { return range; }, visuals,
@@ -272,33 +325,60 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
         const videoChanged = updated.videoEnabled !== presentation.videoEnabled;
         const speedChanged = updated.playbackSpeed !== presentation.playbackSpeed;
         presentation = updated;
+        generation++;
         if (videoChanged || speedChanged) syncVideo(lastMapTime, lastPlaying, videoChanged);
         invalidate();
       },
-      bindTriggers(events) { objects = compileStoryboardTriggers(visuals.objects, events); compositeTime = NaN; updateRange(); },
+      bindTriggers(events) { objects = compileStoryboardTriggers(visuals.objects, events); generation++; previousUnder = undefined; updateRange(); },
       sync(mapTimeMs, playing, forceSeek = false) {
         lastMapTime = mapTimeMs; lastPlaying = playing;
-        if (forceSeek) compositeTime = NaN;
+
         syncVideo(mapTimeMs, playing, forceSeek);
       },
       drawUnder(ctx, timeMs) {
         if (disposed) return;
+        stage = ctx as StageContext;
+        prepareFrame(timeMs);
         ctx.save();
-        if (presentation.backgroundBlur > 0) {
-          if (!compositeSurface) {
-            /** SVG 色矩阵滤镜只在 HTML Canvas 生效，OffscreenCanvas 不支持。 */
-            compositeSurface = document.createElement('canvas');
-            compositeSurface.width = 1280; compositeSurface.height = 720;
-            compositeContext = compositeSurface.getContext('2d')!;
+        const radius = presentation.backgroundBlur;
+        if (radius > 0) {
+          const width = Math.max(1, Math.ceil(stage.canvas.width * stage.effectScale / 2));
+          const height = Math.max(1, Math.ceil(stage.canvas.height * stage.effectScale / 2));
+          if (!blurred || blurred.width !== width || blurred.height !== height) {
+            if (blurred) stage.releaseTarget(blurred);
+            if (composite) stage.releaseTarget(composite);
+            blurred = stage.acquireTarget(width, height);
+            composite = null;
+            previousUnder = undefined;
           }
-          if (compositeTime !== timeMs) {
-            compositeContext!.clearRect(0, 0, 1280, 720);
-            drawBackground(compositeContext!, timeMs);
-            compositeTime = timeMs;
-            compositeRevision++;
+          const videoFrame = presentation.videoEnabled && videoInRange && video && !videoFailed
+            ? (video.getVideoPlaybackQuality?.().totalVideoFrames ?? video.currentTime) : -1;
+          const changed = !previousUnder || previousUnder.length !== under.length ||
+            under.some(({origin,state}, i) => {
+              const old = previousUnder![i]!;
+              if (origin !== old.origin) return true;
+              for (const k in state) if (state[k as keyof typeof state] !== old.state[k as keyof typeof state]) return true;
+              return false;
+            });
+          if (changed || previousVideo !== videoFrame || radius !== previousBlur) {
+            const owner = stage.currentTarget;
+            composite ??= stage.acquireTarget(width, height);
+            stage.bindTarget(composite);
+            stage.save(); stage.setTransform(width/1280, 0, 0, height/720, 0, 0);
+            stage.clearRect(0, 0, 1280, 720);
+            drawBackground(stage, timeMs);
+            stage.bindTarget(blurred); stage.clearRect(0, 0, 1280, 720);
+            stage.filter = 'blur(' + (radius * width / stage.canvas.width) + 'px)';
+            stage.drawTarget(composite, 0, 0, 1280, 720);
+            stage.restore();
+            stage.bindTarget(owner);
+            previousUnder = under; previousVideo = videoFrame; previousBlur = radius;
+            if (!under.length && videoFrame < 0) { stage.releaseTarget(composite); composite = null; }
           }
-          blur.draw(ctx, compositeSurface, presentation.backgroundBlur, compositeRevision);
+          stage.drawTarget(blurred, 0, 0, 1280, 720);
         } else {
+          if (blurred) { stage.releaseTarget(blurred); blurred = null; }
+          if (composite) { stage.releaseTarget(composite); composite = null; }
           drawBackground(ctx, timeMs);
         }
         const amount = 1 - presentation.backgroundBrightness / 100;
@@ -306,7 +386,8 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
         ctx.restore();
       },
       drawOver(ctx, timeMs) {
-        if (!disposed && presentation.storyboardEnabled) drawStoryboardLayer(ctx, objects, timeMs, OVER_LAYERS, lookup, visuals.widescreen);
+        if (!disposed && presentation.storyboardEnabled) prepareFrame(timeMs);
+        if (!disposed && presentation.storyboardEnabled) drawStoryboardLayer(ctx, objects, timeMs, OVER_LAYERS, lookup, visuals.widescreen, over);
       },
       dispose,
     };

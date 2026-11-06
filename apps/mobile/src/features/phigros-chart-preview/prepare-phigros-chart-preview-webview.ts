@@ -16,10 +16,6 @@ import {
 import { chartPreviewStageDirectory } from '@/features/chart-preview-shared/chart-preview-assets';
 import { readBudgetedChartDownload, pauseChartPreviewParse, CHART_PREVIEW_PARSE_YIELD_INTERVAL, throwIfChartPreviewCancelled } from '@/features/chart-preview-shared/chart-preview-resource-budget';
 
-const HTML_MODULE = require('../../../assets/phigros-chart-preview/index.html') as number;
-// eslint-disable-next-line @typescript-eslint/no-require-imports -- Metro 静态资源编号只能在运行时 require
-const PLAYER_MODULE = require('../../../assets/phigros-chart-preview/player.bundle') as number;
-
 const PHIGROS_CHART_PREVIEW_ASSET_BASE = 'https://rranker-phigros-data.cn-nb1.rains3.com/chart-preview';
 
 const PHIGROS_SKIN_CACHE_REVISION = '20260922';
@@ -133,7 +129,11 @@ export async function preparePhigrosChartPreviewWebViewSource(
     directory,
     remoteCacheDirectory: await chartPreviewStageDirectory('rranker-phigros-chart-preview-remote'),
     stagedAssets: [
-      { fileName: 'player.js', moduleId: PLAYER_MODULE },
+      {
+        fileName: 'player.js',
+        // eslint-disable-next-line @typescript-eslint/no-require-imports
+        moduleId: (config.format === 'rpe' ? require('../../../assets/phigros-chart-preview/rpe.bundle') : require('../../../assets/phigros-chart-preview/player.bundle')) as number,
+      },
       ...SKIN_ASSETS.map(({ fileName, url, bytes }) => ({
         fileName: `skin/${fileName}`,
         url,
@@ -154,7 +154,7 @@ export async function preparePhigrosChartPreviewWebViewSource(
         musicDataFile.write(`window.__PHIGROS_MUSIC_DATA__=${musicDataBase64 ? JSON.stringify(musicDataBase64) : 'null'};`);
       },
     ],
-    htmlModuleId: HTML_MODULE,
+    htmlModuleId: require('../../../assets/phigros-chart-preview/index.html') as number,
     buildHtml: (template, dataUrls) => applyPhigrosChartPreviewConfigToHtml(template, {
       ...config,
       hitSounds: dataUrls,

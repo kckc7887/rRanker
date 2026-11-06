@@ -1,4 +1,3 @@
-import { PlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
 /**
  * 许可证：对时与打击音调度语义衍生自 TeamFlos/phira（GPL-3.0，https://github.com/TeamFlos/phira），
  * 相应部分按 GPL-3.0 随本项目（AGPL-3.0）一并发布，两者兼容；来源与许可证全文见仓库根 THIRD_PARTY_NOTICES.md。
@@ -11,25 +10,9 @@ import {
   type HitSoundEvent,
   type HitSoundKind,
 } from './hit-sound';
-import {
-  PlaybackClock,
-  audioContextTime,
-  musicPosition,
-  outputTime,
-  type MusicPosition,
-} from '../../chart-preview-shared/webview-player/playbackClock';
-import { getAudioContextOutputTime } from '../../chart-preview-shared/webview-player/audioClock';
+import { PreviewPlayback } from '../../chart-preview-shared/webview-player/playback';
 
-const SOURCE_START_LEAD_TIME_S = 0.05;
-const SOURCE_FADE_TIME_S = 0.015;
-const MUSIC_END_EPSILON_S = 0.05;
-const CHART_END_EPSILON_S = 0.25;
 const HIT_SOUND_RESYNC_WINDOW_S = 0.25;
-const RESTART_TAIL_S = 0.05;
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(max, Math.max(min, value));
-}
 
 function decodeBase64DataUrl(url: string): ArrayBuffer {
   const separator = url.indexOf(',');
@@ -68,62 +51,67 @@ export interface PhigrosPlaybackOptions {
 }
 
 export class PhigrosPlaybackSession {
-  readonly loop = new PlaybackLoop();
-  private readonly clock = new PlaybackClock();
+  readonly playback: PreviewPlayback;
   private readonly settings: PhigrosPlaybackSettings;
-  private playbackSpeed: number;
-  private readonly hitSoundDataUrls: Partial<Record<HitSoundKind, string>> | undefined;
-  private readonly host: PhigrosPlaybackHost;
+  private readonly hitSoundDataUrls: PhigrosPlaybackOptions['hitSounds'];
   private chartTimeline: PhigrosChartTimeline = { durationSeconds: 0, offsetSeconds: 0 };
-  private chartTimePosition = 0;
   private context: AudioContext | null = null;
   private musicGain: GainNode | null = null;
   private hitSoundGain: GainNode | null = null;
   private music: AudioBuffer | null = null;
-  private source: AudioBufferSourceNode | null = null;
-  private sourceGain: GainNode | null = null;
-  private audioClockRunning = false;
-  private clockStart = 0;
   private hitSoundBuffers: Partial<Record<HitSoundKind, AudioBuffer>> | null = null;
   private hitSoundEvents: readonly HitSoundEvent[] = [];
   private hitSoundCursor = 0;
   private lastHitSoundTime = -1e-6;
-  private readonly activeHitSounds = new Set<AudioBufferSourceNode>();
-  private command = 0;
-  private frame: number | null = null;
-  private lastFrameTimestamp = 0;
-
-  playing = false;
-  disposed = false;
+  private readonly activeHitSounds = new Map<AudioBufferSourceNode, number>();
   private resourceGeneration = 0;
 
   constructor(options: PhigrosPlaybackOptions) {
     this.settings = options.settings;
-    this.playbackSpeed = options.settings.playbackSpeed;
     this.hitSoundDataUrls = options.hitSounds;
-    this.host = options.host;
+    this.playback = new PreviewPlayback({
+      duration: () => this.chartDuration,
+      prepare: async () => {
+        await this.ensureAudio();
+        if (!this.disposed && this.hitSoundDataUrls) await this.ensureHitSoundsReady();
+      },
+      context: () => this.context!, music: () => this.music, output: () => this.musicGain!,
+      musicOffset: () => this.chartOffset, lead: .05, silentFrameClock: true,
+      resetSounds: (seconds, reason) => { this.stopActiveHitSounds(); this.resetHitSoundTimeline(seconds, reason === 'start'); },
+      rewindSounds: (seconds, when) => {
+        for (const [source, end] of this.activeHitSounds) {
+          if (end <= when) continue;
+          source.stop(when);
+          this.activeHitSounds.set(source, when);
+        }
+        this.resetHitSoundTimeline(seconds, true);
+      },
+      schedule: (seconds, now, speed, end) => this.updateHitSounds(seconds, now, speed, end),
+      onState: options.host.onPlayStateChange, onError: () => options.host.onPlaybackError?.(),
+    });
+    this.playback.onFrame = seconds => options.host.render(seconds);
+    this.playback.setSpeed(this.settings.playbackSpeed);
   }
 
-  get chartTime(): number {
-    return this.chartTimePosition;
-  }
-
-  get chartDuration(): number {
-    return this.chartTimeline.durationSeconds;
-  }
-
-  get chartOffset(): number {
-    return this.chartTimeline.offsetSeconds;
-  }
-
-  get musicDurationSeconds(): number | null {
-    return this.music ? this.music.duration : null;
-  }
-
+  get loop() { return this.playback.loop; }
+  get playing() { return this.playback.playing; }
+  get disposed() { return this.playback.disposed; }
+  get chartTime() { return this.playback.currentTime; }
+  get chartDuration() { return this.chartTimeline.durationSeconds; }
+  get chartOffset() { return this.chartTimeline.offsetSeconds; }
+  get musicDurationSeconds() { return this.music?.duration ?? null; }
   setChartTimeline(timeline: PhigrosChartTimeline): void {
     this.chartTimeline = timeline;
-    this.chartTimePosition = clamp(this.chartTimePosition, 0, timeline.durationSeconds);
+    this.playback.moveTo(this.chartTime);
   }
+  moveTo(seconds: number): void { this.playback.moveTo(seconds); }
+  async play(): Promise<void> {
+    this.applySpeedChange();
+    await this.playback.playFrom(this.chartTime);
+  }
+  pause(): void { this.playback.pause(); }
+  seek(seconds: number): Promise<void> { return this.playback.seek(seconds); }
+  applySpeedChange(): void { this.playback.setSpeed(this.settings.playbackSpeed); }
 
   setHitSoundEvents(events: readonly HitSoundEvent[]): void {
     this.hitSoundEvents = events;
@@ -150,116 +138,15 @@ export class PhigrosPlaybackSession {
     }
   }
 
-  moveTo(chartTime: number): void {
-    this.chartTimePosition = clamp(chartTime, 0, this.chartTimeline.durationSeconds);
-  }
-
-  async play(): Promise<void> {
-    if (this.disposed) return;
-    const command = ++this.command;
-    const target = this.loop.target(this.chartTimePosition) ?? (this.chartTimePosition >= this.chartTimeline.durationSeconds - RESTART_TAIL_S
-      ? 0 : this.chartTimePosition);
-    this.cancelFrame();
-    this.stopSource(true);
-    this.stopActiveHitSounds();
-    this.playing = false;
-    await this.resumeAt(target, command);
-  }
-
-  private async resumeAt(target: number, command: number): Promise<void> {
-    try {
-      await this.ensureAudio();
-      if (this.disposed || command !== this.command) return;
-      try {
-        await this.ensureHitSoundsReady();
-      } catch {
-
-      }
-    } catch {
-      if (!this.disposed && command === this.command) this.host.onPlaybackError?.();
-      return;
-    }
-
-    if (this.disposed || command !== this.command) return;
-    this.moveTo(target);
-    this.playbackSpeed = this.settings.playbackSpeed;
-    this.playing = true;
-    this.host.onPlayStateChange?.(true);
-    this.lastFrameTimestamp = 0;
-    this.resetHitSoundTimeline(this.chartTimePosition);
-    const musicSeconds = this.chartTimePosition + this.chartTimeline.offsetSeconds;
-    if (this.music && musicSeconds < this.music.duration - MUSIC_END_EPSILON_S) {
-      await this.startSource(musicSeconds, command);
-    } else {
-      this.stopSource(true);
-      this.lastFrameTimestamp = performance.now();
-    }
-    if (this.disposed || command !== this.command) return;
-    this.cancelFrame();
-    this.frame = this.scheduleFrame();
-  }
-
-  pause(): void {
-    if (this.disposed) return;
-    this.command += 1;
-    this.playing = false;
-    this.host.onPlayStateChange?.(false);
-    if (this.audioClockRunning) {
-      this.clock.setOffset(this.musicTime());
-      this.stopSource(false);
-    }
-    this.stopActiveHitSounds();
-    this.resetHitSoundTimeline(this.chartTimePosition);
-    this.cancelFrame();
-    this.lastFrameTimestamp = 0;
-    this.host.render(this.chartTimePosition);
-  }
-
-  async seek(chartTime: number): Promise<void> {
-    if (this.disposed) return;
-    const generation = ++this.command;
-    const resume = this.playing;
-    this.cancelFrame();
-    this.stopSource(true);
-    this.stopActiveHitSounds();
-    this.playing = false;
-    this.moveTo(chartTime);
-    const target = this.chartTimePosition;
-    this.resetHitSoundTimeline(this.chartTimePosition);
-    this.clock.setOffset(musicPosition(this.chartTimePosition + this.chartTimeline.offsetSeconds));
-    this.host.render(this.chartTimePosition);
-    if (resume) await this.resumeAt(target, generation);
-  }
-
   applyAudioSettings(): void {
     if (this.musicGain) this.musicGain.gain.value = this.settings.volume;
     if (this.hitSoundGain) this.hitSoundGain.gain.value = this.settings.hitSoundVolume;
     if (this.settings.hitSoundVolume <= 0) this.stopActiveHitSounds();
   }
 
-  applySpeedChange(): void {
-    if (this.settings.playbackSpeed === this.playbackSpeed) return;
-    this.playbackSpeed = this.settings.playbackSpeed;
-    if (!this.playing) return;
-    if (this.audioClockRunning) this.chartTimePosition = Math.max(0, this.musicTime() - this.chartTimeline.offsetSeconds);
-    this.stopActiveHitSounds();
-    const position = this.audioClockRunning && this.context
-      ? Math.max(0, this.clock.positionAt(audioContextTime(Math.max(this.context.currentTime, this.clockStart))) - this.chartTimeline.offsetSeconds)
-      : this.chartTimePosition;
-    this.resetHitSoundTimeline(position);
-    if (!this.audioClockRunning || !this.context) return;
-    if (this.clock.positionAt(audioContextTime(this.context.currentTime)) < 0) {
-      void this.play();
-      return;
-    }
-    const now = audioContextTime(this.context.currentTime);
-    this.source?.playbackRate.setValueAtTime(this.settings.playbackSpeed, now);
-    this.clock.appendSegment(now, this.settings.playbackSpeed);
-  }
-
   dispose(): void {
     if (this.disposed) return;
-    this.pause();
+    this.playback.dispose();
     this.resourceGeneration += 1;
     this.stopActiveHitSounds();
     this.hitSoundBuffers = null;
@@ -271,13 +158,6 @@ export class PhigrosPlaybackSession {
 
       }
     }
-    this.disposed = true;
-  }
-
-  private cancelFrame(): void {
-    if (this.frame === null) return;
-    cancelAnimationFrame(this.frame);
-    this.frame = null;
   }
 
   private async ensureAudio(resume = true): Promise<AudioContext> {
@@ -294,78 +174,8 @@ export class PhigrosPlaybackSession {
       this.hitSoundGain.gain.value = this.settings.hitSoundVolume;
       this.hitSoundGain.connect(context.destination);
     }
-    if (resume) {
-      try {
-        await this.context.resume();
-      } catch {
-
-      }
-    }
+    if (resume) await this.context.resume();
     return this.context;
-  }
-
-  private musicTime(): MusicPosition {
-    if (!this.context || !this.audioClockRunning) return this.clock.offset;
-    const heardAt = outputTime(getAudioContextOutputTime(this.context));
-    this.clock.prune(heardAt);
-    return this.clock.positionAt(heardAt);
-  }
-
-  private stopSource(fade: boolean): void {
-    const source = this.source;
-    const gain = this.sourceGain;
-    this.source = null;
-    this.sourceGain = null;
-    this.audioClockRunning = false;
-    if (!source) return;
-    if (fade && this.context && gain) {
-      const now = this.context.currentTime;
-      try {
-        gain.gain.cancelScheduledValues(now);
-        gain.gain.setValueAtTime(gain.gain.value, now);
-        gain.gain.linearRampToValueAtTime(0, now + SOURCE_FADE_TIME_S);
-        source.stop(now + SOURCE_FADE_TIME_S + 0.01);
-      } catch {
-
-      }
-    } else {
-      try { source.stop(); } catch {}
-    }
-    try { source.disconnect(); } catch {}
-    try { gain?.disconnect(); } catch {}
-  }
-
-  private async startSource(musicSeconds: number, command: number): Promise<void> {
-    if (!this.music) return;
-    const context = await this.ensureAudio();
-    if (!this.musicGain || command !== this.command || this.disposed) return;
-    this.stopSource(true);
-    const buffer = this.music;
-    const clamped = clamp(musicSeconds, 0, Math.max(0, buffer.duration - 0.01));
-    const source = context.createBufferSource();
-    const gain = context.createGain();
-    source.buffer = buffer;
-    source.playbackRate.value = this.settings.playbackSpeed;
-    const clockStart = context.currentTime + SOURCE_START_LEAD_TIME_S;
-    this.clockStart = clockStart;
-    const startTime = clockStart + Math.max(0, -musicSeconds) / this.settings.playbackSpeed;
-    gain.gain.setValueAtTime(0, startTime);
-    gain.gain.linearRampToValueAtTime(1, startTime + SOURCE_FADE_TIME_S);
-    source.connect(gain);
-    gain.connect(this.musicGain);
-    source.onended = () => {
-      if (this.source === source) {
-        this.source = null;
-        this.sourceGain = null;
-        source.disconnect();
-        gain.disconnect();
-      }
-    };
-    source.start(startTime, clamped);
-    this.source = source;
-    this.sourceGain = gain;
-    this.audioClockRunning = true;
-    this.clock.set(audioContextTime(clockStart), musicPosition(Math.min(musicSeconds, clamped)), this.settings.playbackSpeed);
   }
 
   private async ensureHitSoundsReady(): Promise<void> {
@@ -376,7 +186,7 @@ export class PhigrosPlaybackSession {
     if (this.disposed || generation !== this.resourceGeneration) return;
     const entries = await Promise.all((['click', 'drag', 'flick'] as HitSoundKind[]).map(async (kind) => {
       const dataUrl = this.hitSoundDataUrls?.[kind];
-      if (!dataUrl) throw new Error(`缺少打击音 ${kind}`);
+      if (!dataUrl) return [kind, undefined] as const;
       const bytes = decodeBase64DataUrl(dataUrl);
       try {
         return [kind, await context.decodeAudioData(bytes)] as const;
@@ -387,8 +197,8 @@ export class PhigrosPlaybackSession {
     if (!this.disposed && generation === this.resourceGeneration) this.hitSoundBuffers = Object.fromEntries(entries);
   }
 
-  private resetHitSoundTimeline(time: number): void {
-    this.hitSoundCursor = findHitSoundCursor(this.hitSoundEvents, time);
+  private resetHitSoundTimeline(time: number, inclusive = false): void {
+    this.hitSoundCursor = findHitSoundCursor(this.hitSoundEvents, time, inclusive);
     this.lastHitSoundTime = time;
   }
 
@@ -400,84 +210,30 @@ export class PhigrosPlaybackSession {
     source.connect(this.hitSoundGain);
 
     const scheduledAt = Math.max(this.context.currentTime, outputNow + delay);
-    source.addEventListener('ended', () => this.activeHitSounds.delete(source), { once: true });
-    this.activeHitSounds.add(source);
+    source.addEventListener('ended', () => { this.activeHitSounds.delete(source); source.disconnect(); }, { once: true });
+    this.activeHitSounds.set(source, scheduledAt + buffer.duration);
     source.start(scheduledAt);
   }
 
   private stopActiveHitSounds(): void {
-    this.activeHitSounds.forEach((source) => {
+    for (const source of this.activeHitSounds.keys()) {
       try { source.stop(); } catch {}
-    });
+    }
     this.activeHitSounds.clear();
   }
 
-  private updateHitSounds(chartTime: number): void {
-    if (!this.playing || !this.hitSoundBuffers || !this.context) return;
-    const outputNow = this.audioClockRunning ? Math.max(this.context.currentTime, this.clockStart) : this.context.currentTime;
-    const time = this.audioClockRunning
-      ? Math.max(0, this.clock.positionAt(audioContextTime(outputNow)) - this.chartTimeline.offsetSeconds)
-      : chartTime;
-    if (!Number.isFinite(this.lastHitSoundTime)
-      || time < this.lastHitSoundTime
-      || time - this.lastHitSoundTime > HIT_SOUND_RESYNC_WINDOW_S) {
-      this.stopActiveHitSounds();
-      this.resetHitSoundTimeline(time);
-      return;
+  private updateHitSounds(time: number, outputNow: number, speed: number, end: number): void {
+    if (!this.hitSoundBuffers || !this.context) return;
+    if (time - this.lastHitSoundTime > HIT_SOUND_RESYNC_WINDOW_S) {
+      this.hitSoundCursor = Math.max(this.hitSoundCursor, findHitSoundCursor(this.hitSoundEvents, time));
     }
-    const speed = this.clock.schedulingSpeed(this.settings.playbackSpeed);
     const horizon = time + HIT_SOUND_LOOKAHEAD_SECONDS * speed;
-    while (this.hitSoundCursor < this.hitSoundEvents.length
-      && this.hitSoundEvents[this.hitSoundCursor]!.time <= horizon) {
+    while (this.hitSoundCursor < this.hitSoundEvents.length) {
       const event = this.hitSoundEvents[this.hitSoundCursor]!;
+      if (event.time > horizon || event.time >= end) break;
       this.playHitSound(event.sound, hitSoundScheduleDelay(event.time, time, speed), outputNow);
-      this.hitSoundCursor += 1;
+      this.hitSoundCursor++;
     }
     this.lastHitSoundTime = time;
   }
-
-  private finishPlayback(): void {
-    this.playing = false;
-    this.stopSource(true);
-    this.stopActiveHitSounds();
-    this.chartTimePosition = this.chartTimeline.durationSeconds;
-    this.host.onPlayStateChange?.(false);
-    this.lastFrameTimestamp = 0;
-    this.host.render(this.chartTimePosition);
-  }
-
-  private scheduleFrame(): number {
-    const command = this.command;
-    return requestAnimationFrame(timestamp => {
-      if (this.disposed || command !== this.command) return;
-      this.tick(timestamp);
-    });
-  }
-
-  private readonly tick = (timestamp: number): void => {
-    this.frame = null;
-    if (this.disposed || !this.playing) return;
-    let chartTime = this.chartTimePosition;
-    if (this.music && this.audioClockRunning && this.context) {
-      chartTime = Math.max(0, this.musicTime() - this.chartTimeline.offsetSeconds);
-    } else {
-      if (this.lastFrameTimestamp > 0) {
-        chartTime += ((timestamp - this.lastFrameTimestamp) / 1000) * this.settings.playbackSpeed;
-      }
-      this.lastFrameTimestamp = timestamp;
-    }
-    const loopTarget = this.loop.target(chartTime);
-    if (loopTarget !== null) {
-      void this.seek(loopTarget);
-      return;
-    }
-    if (chartTime >= this.chartTimeline.durationSeconds + CHART_END_EPSILON_S) {
-      this.finishPlayback();
-      return;
-    }
-    this.chartTimePosition = chartTime;
-    this.updateHitSounds(chartTime);
-    this.host.render(chartTime);
-    if (!this.disposed && this.playing) this.frame = this.scheduleFrame();
-  };
 }

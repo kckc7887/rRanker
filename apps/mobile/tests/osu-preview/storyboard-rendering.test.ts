@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict';
 import { describe, it } from 'vitest';
 import { parseBeatmapVisuals, UNDER_LAYERS } from '../../src/features/osu-chart-preview/webview-player/events';
-import { drawStoryboardLayer, ease, evaluateSprite, multiplyRgbaPixels, releaseStoryboardRenderResources } from '../../src/features/osu-chart-preview/webview-player/storyboard';
+import { drawStoryboardLayer, ease, evaluateSprite } from '../../src/features/osu-chart-preview/webview-player/storyboard';
 import { compileStoryboardTriggers } from '../../src/features/osu-chart-preview/webview-player/storyboard-triggers';
 
 const close = (actual: number, expected: number): void => assert.ok(Math.abs(actual - expected) < 1e-10, `${actual} != ${expected}`);
@@ -143,70 +143,4 @@ Sprite,Foreground,Centre,"shared-front.png",0,0
     assert.deepEqual(draws, ['back.png', 'shared-back.png', 'pass.png', 'front.png', 'shared-front.png']);
   });
 
-  it('multiplies each RGB channel while preserving partially transparent and transparent alpha', () => {
-    const source = new Uint8ClampedArray([255, 64, 32, 128, 200, 100, 50, 0, 20, 40, 60, 255]);
-    const original = source.slice();
-    assert.deepEqual([...multiplyRgbaPixels(source, 128, 255, 0)], [128, 64, 0, 128, 100, 100, 0, 0, 10, 40, 0, 255]);
-    assert.deepEqual(source, original);
-  });
-
-  it('tints an isolated image surface and never fills a rectangle onto the existing scene', () => {
-    const previous = globalThis.OffscreenCanvas;
-    class PixelCanvas {
-      width: number;
-      height: number;
-      pixels = new Uint8ClampedArray(4);
-      constructor(width: number, height: number) { this.width = width; this.height = height; }
-      getContext() {
-        return {
-          drawImage: (image: { pixels: Uint8ClampedArray }) => { this.pixels = image.pixels.slice(); },
-          getImageData: () => ({ width: this.width, height: this.height, data: this.pixels.slice() }),
-          createImageData: () => ({ width: this.width, height: this.height, data: new Uint8ClampedArray(4) }),
-          putImageData: (image: { data: Uint8ClampedArray }) => { this.pixels = image.data.slice(); },
-        };
-      }
-    }
-    globalThis.OffscreenCanvas = PixelCanvas as unknown as typeof OffscreenCanvas;
-    releaseStoryboardRenderResources();
-    try {
-      const objects = parseBeatmapVisuals(`[Events]
-Sprite,Background,Centre,"pixel.png",0,0
- F,0,0,1000,1
- C,0,0,1000,0,128,255
-`).objects;
-      const image = { width: 1, height: 1, pixels: new Uint8ClampedArray([255, 64, 32, 128]) };
-      let output: Uint8ClampedArray | undefined;
-      const context = drawingContext((surface) => { output = (surface as PixelCanvas).pixels; });
-      drawStoryboardLayer(context, objects, 500, UNDER_LAYERS, () => image as unknown as CanvasImageSource, true);
-      assert.deepEqual([...output!], [0, 32, 32, 128]);
-      assert.deepEqual([...image.pixels], [255, 64, 32, 128]);
-    } finally {
-      globalThis.OffscreenCanvas = previous;
-      releaseStoryboardRenderResources();
-    }
-  });
-
-  it('retains different tint colours of the same image across frames', () => {
-    const previous = globalThis.OffscreenCanvas;
-    class PixelCanvas {
-      width: number; height: number; pixels = new Uint8ClampedArray(4);
-      constructor(width: number, height: number) { this.width = width; this.height = height; }
-      getContext() { return {
-        drawImage: (image: { pixels: Uint8ClampedArray }) => { this.pixels = image.pixels.slice(); },
-        getImageData: () => ({ data: this.pixels.slice() }),
-        putImageData: (image: { data: Uint8ClampedArray }) => { this.pixels = image.data.slice(); },
-      }; }
-    }
-    globalThis.OffscreenCanvas = PixelCanvas as unknown as typeof OffscreenCanvas;
-    releaseStoryboardRenderResources();
-    try {
-      const objects = parseBeatmapVisuals('[Events]\n' + [[128, 255, 0], [255, 0, 128]].map(colour =>
-        `Sprite,Background,Centre,"shared.png",0,0\n F,0,0,1000,1\n C,0,0,1000,${colour.join(',')}`).join('\n')).objects;
-      const image = { width: 1, height: 1, pixels: new Uint8ClampedArray([255, 64, 32, 128]) };
-      const outputs: number[][] = [];
-      const ctx = drawingContext(surface => outputs.push([...(surface as PixelCanvas).pixels]));
-      for (const time of [100, 200, 100, 300]) drawStoryboardLayer(ctx, objects, time, UNDER_LAYERS, () => image as unknown as CanvasImageSource, true);
-      assert.deepEqual(outputs, Array.from({ length: 4 }, () => [[128, 64, 0, 128], [255, 0, 16, 128]]).flat());
-    } finally { globalThis.OffscreenCanvas = previous; releaseStoryboardRenderResources(); }
-  });
 });

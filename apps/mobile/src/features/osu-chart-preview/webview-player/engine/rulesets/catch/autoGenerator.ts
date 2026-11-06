@@ -37,15 +37,12 @@ const CENTER_X = 256;
 const BASE_DASH_SPEED = 1.0;
 const BASE_WALK_SPEED = 0.5;
 
-export function generateCatchAutoReplay(objects: readonly CatchObject[], modDiff: ModDifficulty): AutoFrame[] {
-  if (objects.length === 0) return [];
+export function* generateCatchAutoReplay(objects: readonly CatchObject[], modDiff: ModDifficulty): Generator<AutoFrame> {
+  if (objects.length === 0) return;
 
-  const frames: AutoFrame[] = [];
   /** y=0，避免被当作 stable 的 y=-500 前导占位。 */
 
-  const addFrame = (time: number, x: number, dashing = false): void => {
-    frames.push({ time, x, y: 0, keys: dashing ? 1 : 0 });
-  };
+  const addFrame = (time: number, x: number, dashing = false): AutoFrame => ({ time, x, y: 0, keys: dashing ? 1 : 0 });
 
   const halfCatcherWidth = Math.fround(calculateCatchWidth(modDiff.cs) * 0.5);
 
@@ -66,16 +63,16 @@ export function generateCatchAutoReplay(objects: readonly CatchObject[], modDiff
     if (lastPosition - halfCatcherWidth < effX && lastPosition + halfCatcherWidth > effX) {
 
       lastTime = h.startTime;
-      addFrame(h.startTime, lastPosition);
+      yield addFrame(h.startTime, lastPosition);
       continue;
     }
 
     if (impossibleJump) {
 
-      addFrame(h.startTime, effX);
+      yield addFrame(h.startTime, effX);
     } else if (h.hyperDash) {
-      addFrame(h.startTime - timeAvailable, lastPosition);
-      addFrame(h.startTime, effX);
+      yield addFrame(h.startTime - timeAvailable, lastPosition);
+      yield addFrame(h.startTime, effX);
     } else if (dashRequired) {
       const timeAtNormalSpeed = positionChange / BASE_WALK_SPEED;
       const timeWeNeedToSave = timeAtNormalSpeed - timeAvailable;
@@ -83,18 +80,17 @@ export function generateCatchAutoReplay(objects: readonly CatchObject[], modDiff
       const amount = Math.fround(Math.fround(timeAtDashSpeed) / timeAvailable);
       const midPosition = Math.fround(lastPosition + (effX - lastPosition) * amount);
 
-      addFrame(h.startTime - timeAvailable + 1, lastPosition, true);
-      addFrame(h.startTime - timeAvailable + timeAtDashSpeed, midPosition);
-      addFrame(h.startTime, effX);
+      yield addFrame(h.startTime - timeAvailable + 1, lastPosition, true);
+      yield addFrame(h.startTime - timeAvailable + timeAtDashSpeed, midPosition);
+      yield addFrame(h.startTime, effX);
     } else {
       const timeBefore = positionChange / BASE_WALK_SPEED;
-      addFrame(h.startTime - timeBefore, lastPosition);
-      addFrame(h.startTime, effX);
+      yield addFrame(h.startTime - timeBefore, lastPosition);
+      yield addFrame(h.startTime, effX);
     }
 
     lastTime = h.startTime;
     lastPosition = effX;
   }
 
-  return frames;
 }

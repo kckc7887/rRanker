@@ -26,7 +26,8 @@ const samples = {
 };
 await skin.load();
 const canvas = document.querySelector('canvas')!;
-const renderer = new MainRenderer(canvas, { skin }); renderer.resizeToSize(540); renderer.setHighlightExNotes(true);
+const renderer = new MainRenderer(canvas, { skin }); renderer.resizeToSize(540);
+const empty = parseSimaiBody('(120),');
 const charts = Object.fromEntries(Object.entries(samples).map(([k,v])=>[k,parseSimaiBody(v)]));
 window.visual = {
  samples: Object.keys(samples),
@@ -43,10 +44,14 @@ window.visual = {
   const video=document.createElement('video');video.muted=true;video.playsInline=true;
   let stream: MediaStream | undefined, pump: ReturnType<typeof setInterval> | undefined;
   try {
-   renderer.setBackgroundVideo(null);renderer.setBackgroundImage(image);renderer.resizeToSize(size);renderer.clear();
+   renderer.setJudgmentLineDesign('blind');renderer.setBackgroundVideo(null);renderer.setBackgroundImage(image);renderer.resizeToSize(size);renderer.renderAtTime(empty,0);
    const read=()=>{
-    const ctx=canvas.getContext('2d')!,s=canvas.width;
-    return [[.5,.5],[.1,.1],[.5,.05],[.05,.5]].map(([x,y])=>Array.from(ctx.getImageData(Math.floor(s*x),Math.floor(s*y),1,1).data));
+    const gl=canvas.getContext('webgl')!,s=canvas.width;
+    return [[.5,.5],[.1,.1],[.5,.05],[.05,.5]].map(([x,y])=>{
+      const pixel=new Uint8Array(4);
+      gl.readPixels(Math.floor(s*x),s-1-Math.floor(s*y),1,1,gl.RGBA,gl.UNSIGNED_BYTE,pixel);
+      return [...pixel];
+    });
    };
    const imagePixels=read();
    if(videoMode) {
@@ -61,7 +66,7 @@ window.visual = {
      video.requestVideoFrameCallback(()=>{clearTimeout(timeout);resolve();});
      context.fillRect(0,0,width,height);
     });
-    renderer.setBackgroundVideo(video);renderer.clear();
+    renderer.setBackgroundVideo(video);renderer.renderAtTime(empty,0);
    }
    return {imagePixels,pixels:read(),width:canvas.width,height:canvas.height};
   } finally {clearInterval(pump);video.pause();stream?.getTracks().forEach(track=>track.stop());video.srcObject=null;renderer.setBackgroundVideo(null);}

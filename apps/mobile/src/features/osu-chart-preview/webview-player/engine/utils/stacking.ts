@@ -49,7 +49,7 @@ function sliderEndPos(slider: Slider): { x: number; y: number } {
   if (slider.slides % 2 === 0) return { x: slider.x, y: slider.y };
   const cached = sliderEndCache.get(slider);
   if (cached) return cached;
-  const path = sampleSlider(slider);
+  const path = sampleSlider(slider).points;
   const end = path.length > 0
     ? { x: path[path.length - 1]!.x, y: path[path.length - 1]!.y }
     : { x: slider.x, y: slider.y };

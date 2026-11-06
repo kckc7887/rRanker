@@ -1,5 +1,5 @@
+import type { StageContext } from '../../chart-preview-shared/webview-player/stage';
 import {
-  STORYBOARD_LAYERS,
   animationFrameFile,
   resolveStoryboardCommands,
   storyboardLoopBounds,
@@ -242,108 +242,6 @@ export function drawCover(ctx: CanvasRenderingContext2D, image: CanvasImageSourc
   ctx.drawImage(image, (width - drawW) / 2, (height - drawH) / 2, drawW, drawH);
 }
 
-export function multiplyRgbaPixels(source: Uint8ClampedArray, r: number, g: number, b: number, result = new Uint8ClampedArray(source.length)): Uint8ClampedArray {
-  const red = Math.max(0, Math.min(255, r)) / 255;
-  const green = Math.max(0, Math.min(255, g)) / 255;
-  const blue = Math.max(0, Math.min(255, b)) / 255;
-  for (let index = 0; index < source.length; index += 4) {
-    result[index] = source[index]! * red;
-    result[index + 1] = source[index + 1]! * green;
-    result[index + 2] = source[index + 2]! * blue;
-    result[index + 3] = source[index + 3]!;
-  }
-  return result;
-}
-
-type TintCanvas = OffscreenCanvas | HTMLCanvasElement;
-type TintEntry = { canvas: TintCanvas; bytes: number };
-const TINT_CACHE_BYTES = 32 * 1024 * 1024;
-const tintCache = new Map<CanvasImageSource, Map<string, TintEntry>>();
-const tintLru = new Map<TintEntry, { image: CanvasImageSource; colour: string }>();
-let tintCacheBytes = 0;
-let nativeColourFilter: boolean | undefined;
-const colourFilters = new Map<string, string>();
-
-function colourFilter(red: number, green: number, blue: number): string {
-  const key = `${red},${green},${blue}`;
-  const cached = colourFilters.get(key);
-  if (cached) return cached;
-  const svg = `<svg xmlns="http://www.w3.org/2000/svg"><filter id="c" color-interpolation-filters="sRGB"><feColorMatrix type="matrix" values="${red / 255} 0 0 0 0 0 ${green / 255} 0 0 0 0 0 ${blue / 255} 0 0 0 0 0 1 0"/></filter></svg>`;
-  const filter = `url(data:image/svg+xml,${encodeURIComponent(svg)}#c)`;
-  if (colourFilters.size >= 1024) colourFilters.delete(colourFilters.keys().next().value!);
-  colourFilters.set(key, filter);
-  return filter;
-}
-
-function supportsNativeColourFilter(ctx: CanvasRenderingContext2D): boolean {
-  /** Chromium 的 OffscreenCanvas 接受 URL 滤镜，但不会应用。 */
-  if (typeof document === 'undefined' || typeof CanvasRenderingContext2D === 'undefined' || !(ctx instanceof CanvasRenderingContext2D)) return false;
-  if (nativeColourFilter !== undefined) return nativeColourFilter;
-  const canvas = document.createElement('canvas');
-  canvas.width = 2; canvas.height = 1;
-  const probe = canvas.getContext('2d', { willReadFrequently: true });
-  if (!probe) return nativeColourFilter = false;
-  probe.fillStyle = '#ff4020'; probe.fillRect(0, 0, 1, 1);
-  probe.fillStyle = 'rgba(255,64,32,0.5019607843137255)'; probe.fillRect(1, 0, 1, 1);
-  const source = document.createElement('canvas'); source.width = 2; source.height = 1;
-  const sourceContext = source.getContext('2d')!;
-  sourceContext.drawImage(canvas, 0, 0);
-  probe.clearRect(0, 0, 2, 1);
-  probe.filter = colourFilter(128, 255, 0);
-  probe.drawImage(source, 0, 0);
-  const pixel = probe.getImageData(0, 0, 2, 1).data;
-  nativeColourFilter = pixel[0] === 128 && pixel[1] === 64 && pixel[2] === 0 && pixel[3] === 255 &&
-    pixel[4] === 128 && pixel[5] === 64 && pixel[6] === 0 && pixel[7] === 128;
-  canvas.width = source.width = 0;
-  return nativeColourFilter;
-}
-
-export function releaseStoryboardRenderResources(): void {
-  for (const entry of tintLru.keys()) { entry.canvas.width = 0; entry.canvas.height = 0; }
-  tintCache.clear();
-  tintLru.clear();
-  colourFilters.clear();
-  tintCacheBytes = 0;
-}
-
-function tintedImage(image: CanvasImageSource, r: number, g: number, b: number): CanvasImageSource {
-  const red = Math.round(Math.max(0, Math.min(255, r)));
-  const green = Math.round(Math.max(0, Math.min(255, g)));
-  const blue = Math.round(Math.max(0, Math.min(255, b)));
-  if (red === 255 && green === 255 && blue === 255) return image;
-  const colour = `${red},${green},${blue}`;
-  let entry = tintCache.get(image)?.get(colour);
-  if (!entry) {
-    const size = sourceSize(image);
-    const canvas = typeof OffscreenCanvas !== 'undefined' ? new OffscreenCanvas(size.width, size.height) : document.createElement('canvas');
-    canvas.width = size.width;
-    canvas.height = size.height;
-    const context = canvas.getContext('2d', { willReadFrequently: true }) as OffscreenCanvasRenderingContext2D | CanvasRenderingContext2D | null;
-    if (!context) return image;
-    context.drawImage(image, 0, 0);
-    const pixels = context.getImageData(0, 0, size.width, size.height);
-    multiplyRgbaPixels(pixels.data, red, green, blue, pixels.data);
-    context.putImageData(pixels, 0, 0);
-    const bytes = size.width * size.height * 4;
-    while (tintLru.size > 0 && tintCacheBytes + bytes > TINT_CACHE_BYTES) {
-      const [oldest, owner] = tintLru.entries().next().value!;
-      tintCacheBytes -= oldest.bytes;
-      oldest.canvas.width = 0; oldest.canvas.height = 0;
-      tintLru.delete(oldest);
-      const variants = tintCache.get(owner.image)!;
-      variants.delete(owner.colour);
-      if (!variants.size) tintCache.delete(owner.image);
-    }
-    entry = { canvas, bytes };
-    const variants = tintCache.get(image) ?? new Map<string, TintEntry>();
-    variants.set(colour, entry);
-    tintCache.set(image, variants);
-    tintCacheBytes += bytes;
-  } else tintLru.delete(entry);
-  tintLru.set(entry, { image, colour });
-  return entry.canvas;
-}
-
 type ActiveInterval = { start: number; end: number; order: number; object: StoryboardObject };
 type IntervalNode = { centre: number; byStart: ActiveInterval[]; byEnd: ActiveInterval[]; left: IntervalNode | null; right: IntervalNode | null };
 const objectIndexes = new WeakMap<readonly StoryboardObject[], Map<StoryboardLayer, IntervalNode | null>>();
@@ -384,21 +282,63 @@ function indexesFor(objects: readonly StoryboardObject[]): Map<StoryboardLayer, 
   return result;
 }
 
-function activeObjects(node: IntervalNode | null, timeMs: number, found: Map<number, StoryboardObject>): void {
+function visitIntervals(node: IntervalNode | null, start: number, end: number, visit: (interval: ActiveInterval) => void): void {
   if (!node) return;
-  if (timeMs < node.centre) {
+  if (end < node.centre) {
     for (const interval of node.byStart) {
-      if (interval.start > timeMs) break;
-      found.set(interval.order, interval.object);
+      if (interval.start > end) break;
+      visit(interval);
     }
-    activeObjects(node.left, timeMs, found);
-  } else {
+    visitIntervals(node.left, start, end, visit);
+  } else if (start > node.centre) {
     for (const interval of node.byEnd) {
-      if (interval.end < timeMs) break;
-      found.set(interval.order, interval.object);
+      if (interval.end < start) break;
+      visit(interval);
     }
-    activeObjects(node.right, timeMs, found);
+    visitIntervals(node.right, start, end, visit);
+  } else {
+    for (const interval of node.byStart) visit(interval);
+    if (start < node.centre) visitIntervals(node.left, start, end, visit);
+    if (end > node.centre) visitIntervals(node.right, start, end, visit);
   }
+}
+
+export function storyboardFilesInRange(objects: readonly StoryboardObject[], start: number, end: number, layers: readonly StoryboardLayer[]): Set<string> {
+  const files = new Set<string>();
+  const indexes = indexesFor(objects);
+  const collect = (interval: ActiveInterval) => {
+    const { object } = interval;
+    if (object.kind !== 'Animation') {
+      files.add(object.file);
+      return;
+    }
+    const first = Math.floor((Math.max(start, interval.start) - interval.start) / object.frameDelay);
+    const last = Math.floor((Math.min(end, interval.end) - interval.start) / object.frameDelay);
+    const count = object.frameCount;
+    if (object.loopForever) {
+      for (let i = first; i <= Math.min(last, first + count - 1); i++) files.add(animationFrameFile(object.file, i % count));
+    } else {
+      for (let i = Math.min(first, count - 1); i <= Math.min(last, count - 1); i++) files.add(animationFrameFile(object.file, i));
+    }
+  };
+  for (const layer of layers) visitIntervals(indexes.get(layer) ?? null, start, end, collect);
+  return files;
+}
+
+type Sprite = { origin: StoryboardOrigin; state: SpriteState };
+export function storyboardFrame(objects: readonly StoryboardObject[], timeMs: number, layers: readonly StoryboardLayer[]): Sprite[] {
+  const frame: Sprite[] = [];
+  if (!objects.length) return frame;
+  const indexes = indexesFor(objects);
+  for (const layer of layers) {
+    const found = new Map<number, StoryboardObject>();
+    visitIntervals(indexes.get(layer) ?? null, timeMs, timeMs, interval => found.set(interval.order, interval.object));
+    for (const [, object] of [...found].sort((a,b) => a[0] - b[0])) {
+      const state = evaluateSprite(object, timeMs);
+      if (state) frame.push({ origin: object.origin, state });
+    }
+  }
+  return frame;
 }
 
 export function drawStoryboardLayer(
@@ -408,43 +348,31 @@ export function drawStoryboardLayer(
   layers: readonly StoryboardLayer[],
   getImage: (file: string) => CanvasImageSource | undefined,
   widescreen: boolean,
+  frame = storyboardFrame(objects, timeMs, layers),
 ): void {
   ctx.save();
-  const indexes = indexesFor(objects);
-  const nativeTint = supportsNativeColourFilter(ctx);
   if (!widescreen) { ctx.beginPath(); ctx.rect(SB_OFFSET_X, 0, 640 * SB_SCALE, LOGICAL_H); ctx.clip(); }
-  for (const layer of STORYBOARD_LAYERS) {
-    if (!layers.includes(layer)) continue;
-    const found = new Map<number, StoryboardObject>();
-    activeObjects(indexes.get(layer) ?? null, timeMs, found);
-    for (const [, object] of [...found].sort((a, b) => a[0] - b[0])) {
-      const state = evaluateSprite(object, timeMs);
-      if (!state) continue;
-      const image = getImage(state.file);
-      if (!image) continue;
-      const size = sourceSize(image);
-      if (size.width <= 0 || size.height <= 0) continue;
-      const pivot = ORIGIN_PIVOT[object.origin];
-      const scaleX = state.scaleX * (state.flipH ? -1 : 1);
-      const scaleY = state.scaleY * (state.flipV ? -1 : 1);
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, state.fade);
-      ctx.translate(SB_OFFSET_X + state.x * SB_SCALE, state.y * SB_SCALE);
-      ctx.rotate(state.rotation);
-      ctx.scale(scaleX * SB_SCALE, scaleY * SB_SCALE);
-      ctx.globalCompositeOperation = state.additive ? 'lighter' : 'source-over';
-      const ox = size.width * (scaleX < 0 ? 1 - pivot[0] : pivot[0]);
-      const oy = size.height * (scaleY < 0 ? 1 - pivot[1] : pivot[1]);
-      let source = image;
-      if (nativeTint) {
-        const red = Math.round(Math.max(0, Math.min(255, state.r)));
-        const green = Math.round(Math.max(0, Math.min(255, state.g)));
-        const blue = Math.round(Math.max(0, Math.min(255, state.b)));
-        if (red !== 255 || green !== 255 || blue !== 255) ctx.filter = colourFilter(red, green, blue);
-      } else source = tintedImage(image, state.r, state.g, state.b);
-      ctx.drawImage(source, -ox, -oy, size.width, size.height);
-      ctx.restore();
+  for (const { origin, state } of frame) {
+    const image = getImage(state.file);
+    if (!image) continue;
+    const size = sourceSize(image);
+    if (size.width <= 0 || size.height <= 0) continue;
+    const pivot = ORIGIN_PIVOT[origin];
+    const scaleX = state.scaleX * (state.flipH ? -1 : 1);
+    const scaleY = state.scaleY * (state.flipV ? -1 : 1);
+    ctx.save();
+    ctx.globalAlpha = Math.min(1, state.fade);
+    ctx.translate(SB_OFFSET_X + state.x * SB_SCALE, state.y * SB_SCALE);
+    ctx.rotate(state.rotation);
+    ctx.scale(scaleX * SB_SCALE, scaleY * SB_SCALE);
+    ctx.globalCompositeOperation = state.additive ? 'lighter' : 'source-over';
+    const ox = size.width * (scaleX < 0 ? 1 - pivot[0] : pivot[0]);
+    const oy = size.height * (scaleY < 0 ? 1 - pivot[1] : pivot[1]);
+    if (state.r !== 255 || state.g !== 255 || state.b !== 255) {
+      (ctx as StageContext).tint(state.r / 255, state.g / 255, state.b / 255);
     }
+    ctx.drawImage(image, -ox, -oy, size.width, size.height);
+    ctx.restore();
   }
   ctx.restore();
 }

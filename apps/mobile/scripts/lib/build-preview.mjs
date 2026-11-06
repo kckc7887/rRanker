@@ -108,7 +108,7 @@ export async function buildPreview(sourceName, assetName, marker, scripts, optio
   const result = await build({
     entryPoints: [path.join(source, 'main.ts')], outfile: path.join(output, 'player.js'),
     bundle: true, write: false, format: 'iife', platform: 'browser', target: ['es2020'],
-    minify: true, sourcemap: false, logLevel: 'silent',
+    minify: true, sourcemap: false, logLevel: 'silent', define: options.define,
     ...(options.licenseBanner ? { banner: { js: options.licenseBanner } } : {}),
   });
   const template = readPreviewTemplate(sourceName);
@@ -116,7 +116,7 @@ export async function buildPreview(sourceName, assetName, marker, scripts, optio
     throw new Error('index.html template missing config/player markers');
   }
   const files = new Map([
-    ['player.bundle', result.outputFiles[0].contents],
+    [options.scriptFile ?? 'player.bundle', result.outputFiles[0].contents],
     ['index.html', Buffer.from(template.replace('<!--PLAYER_SCRIPT-->', scripts))],
   ]);
   const check = process.argv.includes('--check');

@@ -30,6 +30,8 @@ import type { TaikoSession } from '../rulesets/taiko/types';
 import type { TaikoInputEvent } from '../rulesets/taiko/input';
 import type { ModDifficulty } from '../utils/modDifficulty';
 import type { ComboFrame } from './HUDRenderer';
+import { createStageContext, stagePixels, type StageContext } from '../../../../chart-preview-shared/webview-player/stage';
+import { buildManiaLayout, maniaSkinUpsideDown } from '../rulesets/mania/Playfield';
 import type { Ruleset } from '../rulesets/Ruleset';
 import { stdRuleset } from '../rulesets/std/index';
 import { taikoRuleset } from '../rulesets/taiko/index';
@@ -54,13 +56,12 @@ export interface RenderOptions {
 
 const LOGICAL_W = 1280;
 const LOGICAL_H = 720;
-/** 超采样开销约按倍率平方增长，实时绘制限制倍率。 */
-const MAX_QUALITY = 3;
-
 export class Renderer {
-  private readonly ctx: CanvasRenderingContext2D;
+  private readonly ctx: StageContext;
+  private readonly resizeObserver: ResizeObserver;
+  private lastTime: number | null = null;
   private readonly ruleset: Ruleset<any>;
-  private readonly session: unknown;
+  private session: unknown;
   readonly hitResults: readonly HitResult[];
   /** combo-break 音效仅在断开前 combo>20 时播放。 */
   readonly comboFrames: readonly ComboFrame[];
@@ -78,26 +79,18 @@ export class Renderer {
   };
 
   constructor(
-    canvas: HTMLCanvasElement,
+    private readonly canvas: HTMLCanvasElement,
     private readonly replay: ReplayData,
     beatmap: BeatmapData,
     skin: SkinAssets,
     modDiff: ModDifficulty,
   ) {
-    const ctx = canvas.getContext('2d', { alpha: false });
-    if (ctx === null) throw new Error('Failed to get 2D canvas context');
-    this.ctx = ctx;
+    this.ctx = createStageContext(canvas);
     this.options.modHidden = modDiff.isHD;
     this.options.modFlashlight = modDiff.isFL;
     this.options.modFadeIn = modDiff.isFadeIn;
     this.options.modCover = modDiff.isCover;
-    const dpr = (typeof devicePixelRatio === 'number' ? devicePixelRatio : 1) || 1;
-    const total = Math.max(1, Math.min(dpr, MAX_QUALITY));
-    canvas.width = LOGICAL_W * total;
-    canvas.height = LOGICAL_H * total;
-    ctx.scale(total, total);
-    ctx.imageSmoothingEnabled = true;
-    ctx.imageSmoothingQuality = 'high';
+    this.resize();
     /** 按回放模式选择规则，允许 standard 谱面转为其它模式。 */
     const ruleset: Ruleset<any> =
         replay.mode === 3 ? maniaRuleset
@@ -105,11 +98,35 @@ export class Renderer {
       : replay.mode === 2 ? catchRuleset
       : stdRuleset;
     this.ruleset = ruleset;
-    this.session = ruleset.build(beatmap, replay, modDiff, skin, total);
+    this.session = ruleset.build(beatmap, replay, modDiff, skin, canvas.width / LOGICAL_W);
     this.hitResults = ruleset.hitResults(this.session);
     this.comboFrames = ruleset.comboFrames(this.session);
     if (replay.mode === 3) this.options.maniaUpscroll = (this.session as ManiaSession).defaultUpscroll;
     this.oldOffsetMs = beatmap.formatVersion < 5 ? 24 : 0;
+    this.resizeObserver = new ResizeObserver(() => {
+      if (this.resize() && this.lastTime !== null) this.renderFrameAt(this.lastTime);
+    });
+    this.resizeObserver.observe(canvas);
+  }
+
+  private resize(): boolean {
+    const rect = this.canvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return false;
+    const { width, height } = stagePixels(rect.width, rect.height, this.ctx.gl);
+    if (this.canvas.width === width && this.canvas.height === height) return false;
+    this.canvas.width = width; this.canvas.height = height;
+    return true;
+  }
+
+  setManiaSkin(skin: SkinAssets): void {
+    const session = this.session as ManiaSession;
+    this.options.maniaUpscroll = maniaSkinUpsideDown(skin, session.totalColumns);
+    this.session = { ...session, skin, layout: buildManiaLayout(session.stages, session.totalColumns, skin) };
+  }
+
+  dispose(): void {
+    this.resizeObserver.disconnect();
+    this.ctx.dispose();
   }
 
   /** mania 长押不在 hitObjects，按 sourceIndex 查音色。 */
@@ -124,10 +141,14 @@ export class Renderer {
 
   renderFrameAt(timeMs: number): void {
     const { ctx, options } = this;
+    this.lastTime = timeMs;
+    ctx.beginFrame();
+    ctx.setTransform(this.canvas.width / LOGICAL_W, 0, 0, this.canvas.height / LOGICAL_H, 0, 0);
     ctx.fillStyle = '#1a1a2e';
     ctx.fillRect(0, 0, LOGICAL_W, LOGICAL_H);
     options.backdropOverlay?.(ctx, timeMs);
     this.ruleset.draw(ctx, this.session, timeMs, options);
     options.hudOverlay?.(ctx, timeMs);
+    ctx.flush();
   }
 }

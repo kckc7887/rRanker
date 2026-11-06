@@ -1,3 +1,4 @@
+import { buildFrame, prepareChart } from '@/features/simai-chart-preview/engine/renderers/frame';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseSimaiBody } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import { MainRenderer } from '@/features/simai-chart-preview/engine/renderers/MainRenderer';
@@ -15,17 +16,20 @@ function canvasMock(size = 540) {
   const draws: Draw[] = [];
   const circles: { x: number; y: number; radius: number; angle: number }[] = [];
   let matrix: Matrix = [1, 0, 0, 1, 0, 0], alpha = 1;
-  const stack: { matrix: Matrix; alpha: number }[] = [];
+  let tint: string | undefined;
+  const stack: { matrix: Matrix; alpha: number; tint?: string }[] = [];
   const multiply = ([a, b, c, d, e, f]: Matrix) => {
     const [u, v, w, x, y, z] = matrix;
     matrix = [u * a + w * b, v * a + x * b, u * c + w * d, v * c + x * d, u * e + w * f + y, v * e + x * f + z];
   };
   const target = { width: size, height: size, clientWidth: size, style: {}, label: 'canvas', tint: undefined as string | undefined, getContext: () => context };
   const context = {
+    tint(r: number, g: number, b: number) { tint = '#' + [r,g,b].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join(''); },
+    rect() {},
     get globalAlpha() { return alpha; }, set globalAlpha(value: number) { alpha = value; },
     fillStyle: '', strokeStyle: '', lineWidth: 0, globalCompositeOperation: 'source-over',
-    save() { stack.push({ matrix: [...matrix], alpha }); },
-    restore() { const state = stack.pop()!; matrix = state.matrix; alpha = state.alpha; },
+    save() { stack.push({ matrix: [...matrix], alpha, tint }); },
+    restore() { const state = stack.pop()!; matrix = state.matrix; alpha = state.alpha; tint = state.tint; },
     setTransform(...value: Matrix) { matrix = value; },
     translate(x: number, y: number) { multiply([1, 0, 0, 1, x, y]); },
     scale(x: number, y: number) { multiply([x, 0, 0, y, 0, 0]); },
@@ -39,7 +43,7 @@ function canvasMock(size = 540) {
       const [x, y, width = image.naturalWidth ?? image.width ?? 100, height = image.naturalHeight ?? image.height ?? 100] = args.length === 8 ? args.slice(4) : args;
       const label = image.src ? effects.get(image.src) ?? image.src : image.label ?? 'canvas';
       target.label = label;
-      draws.push({ image: label, x: matrix[0] * (x + width / 2) + matrix[2] * (y + height / 2) + matrix[4], y: matrix[1] * (x + width / 2) + matrix[3] * (y + height / 2) + matrix[5], width: Math.abs(width) * Math.hypot(matrix[0], matrix[1]), height: Math.abs(height) * Math.hypot(matrix[2], matrix[3]), alpha, tint: image.tint });
+      draws.push({ image: label, x: matrix[0] * (x + width / 2) + matrix[2] * (y + height / 2) + matrix[4], y: matrix[1] * (x + width / 2) + matrix[3] * (y + height / 2) + matrix[5], width: Math.abs(width) * Math.hypot(matrix[0], matrix[1]), height: Math.abs(height) * Math.hypot(matrix[2], matrix[3]), alpha, tint });
     },
     getImageData: () => ({ data: new Uint8ClampedArray(0) }),
     createImageData: () => ({ data: new Uint8ClampedArray(0) }),
@@ -72,7 +76,7 @@ afterEach(() => vi.unstubAllGlobals());
 async function player() {
   const output = canvasMock(), skin = new ChartPreviewSkin();
   await skin.load();
-  const renderer = new MainRenderer(output.canvas, { skin });
+  const renderer = new MainRenderer(output.canvas, { skin, stage: output.context as unknown as import('@/features/chart-preview-shared/webview-player/stage').StageContext });
   renderer.setJudgmentLineDesign('blind');
   const render = (body: string, time: number) => {
     output.draws.length = 0; output.circles.length = 0;
@@ -181,11 +185,17 @@ describe('舞萌播放器画面', () => {
     expect(petals.length).toBeGreaterThan(0);
     const center = { x: petals.reduce((sum, draw) => sum + draw.x, 0) / petals.length,
       y: petals.reduce((sum, draw) => sum + draw.y, 0) / petals.length };
-    const firework = (time: number) => p.render('A1hf[4:1]', time).filter(draw => draw.image === 'canvas');
-    expect(firework(2499)).toEqual([]);
-    const visible = firework(2800); expect(visible.length).toBeGreaterThan(0);
-    expect(visible[0].x).toBeCloseTo(center.x); expect(visible[0].y).toBeCloseTo(center.y);
-    p.renderer.setShowFireworks(false); expect(firework(2800)).toEqual([]);
+    const chart = parseSimaiBody('(120)A1hf[4:1],');
+    const prepared = prepareChart(chart);
+    function fireworks(time: number) {
+      return buildFrame(prepared, time, p.renderer.config).filter(command => command.effect?.kind === 'firework');
+    }
+    expect(fireworks(2499)).toEqual([]);
+    const [burst] = fireworks(2800);
+    expect(270 + burst!.x * 50).toBeCloseTo(center.x);
+    expect(270 - burst!.y * 50).toBeCloseTo(center.y);
+    p.renderer.setShowFireworks(false);
+    expect(fireworks(2800)).toEqual([]);
   });
 
   it.each([['1', 'Hex_Perfect.png'], ['1b', 'Star_Perfect.png'], ['C', 'TouchEffectCircle.png']])('打击 %s 绘制对应特效', async (body, sprite) => {
@@ -206,7 +216,7 @@ describe('舞萌播放器画面', () => {
     p.renderer.setBackgroundVideo(null);
     p.renderer.setBackgroundImage({ complete: true, naturalWidth: width, naturalHeight: height, src: 'image' } as HTMLImageElement);
     p.renderer.clear(); expect(p.draws.some(item => item.image === 'image')).toBe(true);
-    const image = surfaces.flatMap(surface => surface.draws).find(item => item.image === 'image')!;
+    const image = p.draws.find(item => item.image === 'image')!;
     expect(image.x).toBeCloseTo(270); expect(image.y).toBeCloseTo(270);
     expect(image.width / image.height).toBeCloseTo(width / height);
     expect(Math.max(image.width, image.height)).toBeCloseTo(540);

@@ -14,9 +14,11 @@ import {
   type RpeVideo,
   easing,
   getEventValue,
-  getIntegral,
+  speedHeightAt,
 } from './rpe-core';
 import { lowerBoundBy, upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
+import { createStageContext, stagePixels, type StageContext, type StageTarget } from '../../chart-preview-shared/webview-player/stage';
+import { createIntervalIndex } from '../../chart-preview-shared/webview-player/interval-index';
 import type { NoteAssets } from './renderer';
 
 export type RpeLineColorKey = 'white' | 'gold' | 'blue';
@@ -57,7 +59,7 @@ export interface RpeAttachUiTransform {
 }
 
 const NOTE_WIDTH_RATIO_BASE = 0.13175016;
-const HOLD_ATLAS: Readonly<{ normal: [number, number]; multi: [number, number] }> = Object.freeze({
+const HOLD_ATLAS: Readonly<{ normal: [number, number]; multi: [number, number] }> = /* @__PURE__ */ Object.freeze({
   normal: [50, 50],
   multi: [96, 97],
 });
@@ -65,7 +67,7 @@ const HIT_FX_DURATION = 0.5;
 const HIT_FX_COLUMNS = 6;
 const HIT_FX_ROWS = 5;
 const HIT_FX_SCALE = 1;
-const JUDGE_LINE_COLORS: Readonly<Record<string, string>> = Object.freeze({
+const JUDGE_LINE_COLORS: Readonly<Record<string, string>> = /* @__PURE__ */ Object.freeze({
   white: 'rgba(255, 255, 255, 1)',
   gold: 'rgba(255, 236, 159, 0.8823529412)',
   blue: 'rgba(180, 225, 255, 0.9215686275)',
@@ -74,15 +76,12 @@ const VISUAL_END_GRACE_SEC = 1;
 const MAX_DRAW_DISTANCE_RATIO = 3;
 const FADEOUT_TIME = 0.16; /** 单位：秒。 */
 
-const MAX_DPR = 2;
-const FULLSCREEN_MIN_DPR = 1;
-const FULLSCREEN_MAX_PIXELS = 2_500_000;
-
 const GL_VERTEX_SHADER = `
 attribute vec2 aPosition;
+uniform float outputY;
 varying vec2 uv;
 void main() {
-  uv = vec2(aPosition.x * 0.5 + 0.5, 0.5 - aPosition.y * 0.5);
+  uv = vec2(aPosition.x, aPosition.y * outputY) * 0.5 + 0.5;
   gl_Position = vec4(aPosition, 0.0, 1.0);
 }`;
 
@@ -204,8 +203,7 @@ function transformForLoops(src: string, max = 1024): string {
 function ctrlValue(control: readonly { x: number; easing: number; value: number }[], x: number): number {
   if (!control || control.length === 0) return 1;
   if (control.length === 1) return control[0]!.value;
-  let index = 0;
-  while (index < control.length - 2 && x > control[index + 1]!.x) index += 1;
+  const index = Math.max(0, Math.min(control.length - 2, lowerBoundBy(control, x, k => k.x) - 1));
   const kf1 = control[index]!;
   const kf2 = control[index + 1]!;
   if (kf2.x <= kf1.x) return kf2.value;
@@ -269,45 +267,40 @@ function buildHitEvents(chart: RpeChart): HitEffectEvent[] {
   return effects;
 }
 
-function tintTexture(image: HTMLImageElement, color: string): HTMLCanvasElement {
-  const canvas = document.createElement('canvas');
-  canvas.width = image.naturalWidth;
-  canvas.height = image.naturalHeight;
-  const context = canvas.getContext('2d')!;
-  context.drawImage(image, 0, 0);
-  context.globalCompositeOperation = 'source-in';
-  context.fillStyle = color;
-  context.fillRect(0, 0, canvas.width, canvas.height);
-  context.globalCompositeOperation = 'source-over';
-  return canvas;
-}
-
 function particleAngle(seed: number, index: number): number {
   const mixed = Math.sin((seed * 17.17 + index * 31.73) * 12.9898) * 43758.5453;
   return (mixed - Math.floor(mixed)) * Math.PI * 2;
 }
 
-interface LineCursor {
-  alpha: number[];
-  x: number[];
-  y: number[];
-  rot: number[];
-  speed: number[];
-  lastHeight: number[];
-  incline: number[];
-  scaleX: number[];
-  scaleY: number[];
-  text: number[];
-  color: number[];
-  gif: { index: number };
-  paint: number[];
-}
+type NoteQuery = (time: number, height: number) => RpeNote[];
 
-interface NoteWindow {
-  index: number;
-  notes: RpeNote[];
+function visibleNotes(line: RpeLine): NoteQuery {
+  let minY = Infinity, maxY = -Infinity;
+  for (const key of line.yControl) { minY = Math.min(minY, key.value); maxY = Math.max(maxY, key.value); }
+  if (!line.yControl.length) minY = maxY = 1;
+  /** Back、Elastic 缓动允许越过控制点两端。 */
+  const bounded = minY === maxY || line.yControl.every(key => key.easing < 20 || [22, 26, 27, 28].includes(key.easing));
+  const timeRange = (n: RpeNote): [number, number] => [n.hitTime - n.visibleTime, n.kind === 'hold' ? n.endHitTime + VISUAL_END_GRACE_SEC : n.hitTime];
+  const notes = createIntervalIndex(line.notes, timeRange, n => {
+    if (!bounded || !n.speed || (minY <= 0 && maxY >= 0)) return [-Infinity, Infinity];
+    let low = Infinity, high = -Infinity;
+    for (const value of [minY, maxY]) {
+      const factor = n.speed * value;
+      const center = n.yOffset / (120 * factor), radius = MAX_DRAW_DISTANCE_RATIO * 7.5 / Math.abs(factor);
+      low = Math.min(low, center - radius);
+      high = Math.max(high, center + radius);
+    }
+    const tail = n.kind === 'hold' ? n.tailHeight : n.headHeight;
+    return [Math.min(n.headHeight, tail) + low, Math.max(n.headHeight, tail) + high];
+  });
+  const holds = createIntervalIndex(line.notes.filter(n => n.kind === 'hold'), n => [n.hitTime, n.endHitTime]);
+  const order = new Map(line.notes.map((n, i) => [n, i]));
+  return (time, height) => {
+    const items = notes(time, time, height, height), pinned = holds(time, time);
+    if (!pinned.length) return items;
+    return [...new Set([...items, ...pinned])].sort((a, b) => order.get(a)! - order.get(b)!);
+  };
 }
-
 interface LineState {
   line: RpeLine;
   lineIndex: number;
@@ -349,20 +342,21 @@ export class RpeRenderer {
   maxNotesOnHiddenLines = 0;
   lastHitEffectDiameter = 0;
 
-  private readonly context: CanvasRenderingContext2D;
+  private readonly context: StageContext;
   private readonly resizeObserver: ResizeObserver;
-  private readonly glCanvas: HTMLCanvasElement;
+  private drawOrder: number[] = [];
+  private videoIntervals: (start: number, end: number) => RpeVideo[] = () => [];
+  private readonly indexVideos = (): void => {
+    this.videoIntervals = createIntervalIndex(this.chart?.extras.videos ?? [], video =>
+      [video.startTimeSec, video.startTimeSec + (this.chartAssets?.videos.get(video.path)?.duration || 0)]);
+  };
+  private activeEffects: (start: number, end: number) => RpeEffect[] = () => [];
   private chart: RpeChart | null = null;
   private illustration: HTMLImageElement | null = null;
   private noteAssets: NoteAssets | null = null;
-  private hitFxTexture: HTMLCanvasElement | null = null;
   private chartAssets: RpeChartAssets | null = null;
-  private cursors: LineCursor[] = [];
-  private activeWindows: NoteWindow[] = [];
+  private noteQueries: NoteQuery[] = [];
   private hitEvents: HitEffectEvent[] = [];
-  private effectCursors: Record<string, { index: number }>[] = [];
-  private videoCursors: { alpha: { index: number }; dim: { index: number } }[] = [];
-  private lastTime = Number.NaN;
   private settings: RpeRendererSettings = { noteScale: 1, multiHint: true, backgroundDim: 0.55, lineColor: 'white' };
   private fullscreen = false;
   private disposed = false;
@@ -370,33 +364,20 @@ export class RpeRenderer {
   private playbackSpeed = 1;
   private readonly playingVideos = new Set<HTMLVideoElement>();
   private readonly pendingVideos = new Set<HTMLVideoElement>();
-  private readonly onVideoSeeked = (): void => {
+  private readonly onVideoSeeked = (event: Event): void => {
+    this.context.invalidateImage(event.currentTarget as HTMLVideoElement);
     if (!this.playing) this.render(this.lastRenderedTime, false, this.playbackSpeed);
   };
-  private readonly ownedShaderTextures = new Set<WebGLTexture>();
-  private tintedTextures: WeakMap<object, Map<string, HTMLCanvasElement>> | null = null;
-  private readonly tintLru = new Map<HTMLCanvasElement, { image: object; key: string; bytes: number }>();
-  private tintBytes = 0;
-  private tintWorkspace: HTMLCanvasElement | null = null;
-  private gl: WebGLRenderingContext | null = null;
-  private glPrograms: Map<string, WebGLProgram> | null = null;
-  private shaderDefaults: Map<string, [string, number | number[]][]> | null = null;
-  private shaderTextures: Map<string, { unit: number; texture: WebGLTexture }> | null = null;
-  private shaderTextureCount = 0;
-  private glSourceTex: WebGLTexture | null = null;
-  private glTexA: WebGLTexture | null = null;
-  private glTexB: WebGLTexture | null = null;
-  private glFboA: WebGLFramebuffer | null = null;
-  private glFboB: WebGLFramebuffer | null = null;
+  private readonly gl: WebGLRenderingContext;
+  private glPrograms = new Map<string, WebGLProgram | null>();
+  private shaderDefaults = new Map<string, [string, number | number[]][]>();
   private glQuad: WebGLBuffer | null = null;
+  private effectTargets: StageTarget[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
-    this.context = canvas.getContext('2d', { alpha: false, desynchronized: true })!;
-    this.glCanvas = document.createElement('canvas');
-    this.glCanvas.className = 'gl-canvas';
-    this.glCanvas.setAttribute('aria-hidden', 'true');
-    canvas.parentElement?.insertBefore(this.glCanvas, canvas.nextSibling);
+    this.context = createStageContext(canvas);
+    this.gl = this.context.gl;
     this.resizeObserver = new ResizeObserver(() => this.resize());
     this.resizeObserver.observe(canvas);
     this.resize();
@@ -404,32 +385,34 @@ export class RpeRenderer {
 
   setChart(chart: RpeChart): void {
     this.chart = chart;
-    this.cursors = chart.lines.map(() => ({
-      alpha: [], x: [], y: [], rot: [], speed: [], lastHeight: [],
-      incline: [], scaleX: [], scaleY: [], text: [], color: [], gif: { index: 0 }, paint: [],
-    }));
+    this.drawOrder = chart.lines.map((_, i) => i).sort((a, b) => chart.lines[a]!.zIndex - chart.lines[b]!.zIndex);
+    this.activeEffects = createIntervalIndex(chart.extras.effects, effect => [chart.bpmList.timeSec(effect.startBeat), chart.bpmList.timeSec(effect.endBeat)]);
     this.hitEvents = buildHitEvents(chart);
-    this.activeWindows = chart.lines.map(() => ({ index: 0, notes: [] }));
-    this.effectCursors = chart.extras.effects.map(() => ({}));
-    this.videoCursors = chart.extras.videos.map(() => ({ alpha: { index: 0 }, dim: { index: 0 } }));
-    this.glPrograms = new Map();
-    this.shaderDefaults = new Map();
-    this.shaderTextures = new Map();
-    this.shaderTextureCount = 0;
-    this.resetTimeline(0);
+    this.noteQueries = chart.lines.map(visibleNotes);
+    this.indexVideos();
   }
 
   setChartAssets(assets: RpeChartAssets): void {
-    this.clearTints();
     this.pauseVideos();
-    for (const video of this.chartAssets?.videos.values() ?? []) video.removeEventListener('seeked', this.onVideoSeeked);
+    for (const video of this.chartAssets?.videos.values() ?? []) {
+      video.removeEventListener('seeked', this.onVideoSeeked);
+      video.removeEventListener('loadeddata', this.onVideoSeeked);
+      video.removeEventListener('durationchange', this.indexVideos);
+    }
+    for (const program of this.glPrograms.values()) if (program) this.gl.deleteProgram(program);
+    this.glPrograms.clear();
+    this.shaderDefaults.clear();
     this.chartAssets = assets;
-    for (const video of assets.videos.values()) video.addEventListener('seeked', this.onVideoSeeked);
+    this.indexVideos();
+    for (const video of assets.videos.values()) {
+      video.addEventListener('seeked', this.onVideoSeeked);
+      video.addEventListener('loadeddata', this.onVideoSeeked);
+      video.addEventListener('durationchange', this.indexVideos);
+    }
   }
   setIllustration(image: HTMLImageElement | null): void { this.illustration = image; }
   setNoteAssets(assets: NoteAssets): void {
     this.noteAssets = assets;
-    this.hitFxTexture = assets.fx ? tintTexture(assets.fx, 'rgba(255, 236, 159, 0.8824)') : null;
   }
 
   setSettings(settings: RpeRendererSettings): void { this.settings = { ...this.settings, ...settings }; }
@@ -444,155 +427,62 @@ export class RpeRenderer {
     if (this.disposed) return;
     this.disposed = true;
     this.pauseVideos();
-    for (const video of this.chartAssets?.videos.values() ?? []) video.removeEventListener('seeked', this.onVideoSeeked);
+    for (const video of this.chartAssets?.videos.values() ?? []) {
+      video.removeEventListener('seeked', this.onVideoSeeked);
+      video.removeEventListener('loadeddata', this.onVideoSeeked);
+      video.removeEventListener('durationchange', this.indexVideos);
+    }
     this.resizeObserver.disconnect();
-    this.disposeGlTargets();
-    for (const texture of this.ownedShaderTextures) this.gl?.deleteTexture(texture);
-    this.ownedShaderTextures.clear();
-    for (const program of this.glPrograms?.values() ?? []) this.gl?.deleteProgram(program);
-    this.glPrograms?.clear();
-    this.gl?.getExtension('WEBGL_lose_context')?.loseContext();
-    this.gl = null;
-    this.glCanvas.remove();
+    for (const program of this.glPrograms.values()) if (program) this.gl.deleteProgram(program);
+    this.glPrograms.clear();
+    if (this.glQuad) this.gl.deleteBuffer(this.glQuad);
+    this.effectTargets = [];
+    this.context.dispose();
     this.chart = null;
     this.chartAssets = null;
     this.illustration = null;
     this.noteAssets = null;
-    this.hitFxTexture = null;
-    this.clearTints();
-    this.cursors = [];
-    this.activeWindows = [];
+    this.noteQueries = [];
+    this.videoIntervals = () => [];
     this.hitEvents = [];
-    this.effectCursors = [];
-    this.videoCursors = [];
+    this.activeEffects = () => [];
   }
 
   resize(): void {
     if (this.disposed) return;
     const rect = this.canvas.getBoundingClientRect();
-    const rawDpr = Math.min(window.devicePixelRatio || 1, MAX_DPR);
-    let dpr = rawDpr;
-    if (this.fullscreen) {
-      const area = Math.max(1, rect.width * rect.height);
-      const budgetDpr = Math.sqrt(FULLSCREEN_MAX_PIXELS / area);
-      dpr = Math.min(rawDpr, Math.max(FULLSCREEN_MIN_DPR, budgetDpr));
-    }
-    const width = Math.max(1, Math.round(rect.width * dpr));
-    const height = Math.max(1, Math.round(rect.height * dpr));
+    const { width, height } = stagePixels(rect.width, rect.height, this.gl);
     if (this.canvas.width !== width || this.canvas.height !== height) {
       this.canvas.width = width;
       this.canvas.height = height;
     }
   }
 
-  resetTimeline(time: number): void {
-    if (!this.chart) return;
-    this.lastTime = time;
-    for (let lineIndex = 0; lineIndex < this.chart.lines.length; lineIndex += 1) {
-      const line = this.chart.lines[lineIndex]!;
-      const cursor = this.cursors[lineIndex]!;
-      cursor.alpha = []; cursor.x = []; cursor.y = []; cursor.rot = [];
-      cursor.speed = []; cursor.lastHeight = []; cursor.incline = [];
-      cursor.scaleX = []; cursor.scaleY = []; cursor.text = [];
-      cursor.color = []; cursor.gif = { index: 0 }; cursor.paint = [];
-      const window = this.activeWindows[lineIndex]!;
-      window.index = 0;
-      window.notes = [];
-      while (window.index < line.notes.length && line.notes[window.index]!.hitTime - line.notes[window.index]!.visibleTime <= time) {
-        const note = line.notes[window.index]!;
-        if (note.endHitTime + VISUAL_END_GRACE_SEC >= time) window.notes.push(note);
-        window.index += 1;
-      }
-    }
-    for (let effectIndex = 0; effectIndex < this.effectCursors.length; effectIndex += 1) {
-      this.effectCursors[effectIndex] = {};
-    }
-    for (let videoIndex = 0; videoIndex < this.videoCursors.length; videoIndex += 1) {
-      this.videoCursors[videoIndex] = { alpha: { index: 0 }, dim: { index: 0 } };
-    }
-  }
-
-  private handleEvent(
-    beat: number,
-    layerIndex: number,
-    events: readonly RpeEvent[],
-    cur: number[],
-    fillInBetween = true,
-  ): unknown {
-    while (cur.length < layerIndex + 1) cur.push(0);
-    if (events && events.length > 0) {
-      if (cur[layerIndex]! > 0 && beat <= events[cur[layerIndex]!]!.startBeat) cur[layerIndex] = 0;
-      while (cur[layerIndex]! < events.length - 1 && beat > events[cur[layerIndex]! + 1]!.startBeat) cur[layerIndex] = (cur[layerIndex] ?? 0) + 1;
-      if (!fillInBetween && (beat <= events[cur[layerIndex]!]!.startBeat || beat > events[cur[layerIndex]!]!.endBeat)) {
-        return undefined;
-      }
-      return getEventValue(events[cur[layerIndex]!]!, beat, this.chart!.bpmList);
-    }
-    return undefined;
-  }
-
-  private handleSpeed(
-    beat: number,
-    layerIndex: number,
-    events: readonly RpeEvent[],
-    cur: number[],
-    lastHeight: number[],
-    integrateEasings: boolean,
-  ): number {
-    while (cur.length < layerIndex + 1) cur.push(0);
-    while (lastHeight.length < layerIndex + 1) lastHeight.push(0);
-    if (events && events.length > 0) {
-      if (cur[layerIndex]! > 0 && beat <= events[cur[layerIndex]!]!.startBeat) {
-        cur[layerIndex] = 0;
-        lastHeight[layerIndex] = 0;
-      }
-      while (cur[layerIndex]! < events.length - 1 && beat > events[cur[layerIndex]! + 1]!.startBeat) {
-        lastHeight[layerIndex] =
-          (lastHeight[layerIndex] ?? 0) +
-          getIntegral(events[cur[layerIndex]!]!, this.chart!.bpmList, integrateEasings) +
-          (events[cur[layerIndex]!]!.end as number) *
-            (this.chart!.bpmList.timeSec(events[cur[layerIndex]! + 1]!.startBeat) -
-              this.chart!.bpmList.timeSec(events[cur[layerIndex]!]!.endBeat));
-        cur[layerIndex] = (cur[layerIndex] ?? 0) + 1;
-      }
-      let height = lastHeight[layerIndex] ?? 0;
-      if (beat <= events[cur[layerIndex]!]!.endBeat) {
-        height += getIntegral(events[cur[layerIndex]!]!, this.chart!.bpmList, integrateEasings, beat);
-      } else {
-        height +=
-          getIntegral(events[cur[layerIndex]!]!, this.chart!.bpmList, integrateEasings) +
-          (events[cur[layerIndex]!]!.end as number) *
-            (this.chart!.bpmList.timeSec(beat) - this.chart!.bpmList.timeSec(events[cur[layerIndex]!]!.endBeat));
-      }
-      return height;
-    }
-    return 0;
-  }
-
   private lineState(lineIndex: number, time: number, width: number, height: number): Omit<LineState, 'cos' | 'sin' | 'screenX' | 'screenY'> {
     const line = this.chart!.lines[lineIndex]!;
-    const cursor = this.cursors[lineIndex]!;
-    const beat = this.chart!.bpmList.beat(time);
+    const bpmList = this.chart!.bpmList;
+    const beat = bpmList.beat(time) / line.bpmfactor;
+    const sample = (events: readonly RpeEvent[]) => events.length
+      ? getEventValue(events[Math.max(0, lowerBoundBy(events, beat, e => e.startBeat) - 1)]!, beat, bpmList) : undefined;
     let alpha = 0;
     let x = 0;
     let y = 0;
     let rot = 0;
-    let lineHeight = 0;
+    const lineHeight = speedHeightAt(line.eventLayers, bpmList, line.integrateSpeedEasings, beat);
     for (let layerIndex = 0; layerIndex < line.eventLayers.length; layerIndex += 1) {
       const layer = line.eventLayers[layerIndex]!;
-      alpha += (this.handleEvent(beat / line.bpmfactor, layerIndex, layer.alphaEvents, cursor.alpha) as number) ?? 0;
-      x += (this.handleEvent(beat / line.bpmfactor, layerIndex, layer.moveXEvents, cursor.x) as number) ?? 0;
-      y += (this.handleEvent(beat / line.bpmfactor, layerIndex, layer.moveYEvents, cursor.y) as number) ?? 0;
-      rot += (this.handleEvent(beat / line.bpmfactor, layerIndex, layer.rotateEvents, cursor.rot) as number) ?? 0;
-      lineHeight += this.handleSpeed(beat / line.bpmfactor, layerIndex, layer.speedEvents, cursor.speed, cursor.lastHeight, line.integrateSpeedEasings);
+      alpha += (sample(layer.alphaEvents) as number) ?? 0;
+      x += (sample(layer.moveXEvents) as number) ?? 0;
+      y += (sample(layer.moveYEvents) as number) ?? 0;
+      rot += (sample(layer.rotateEvents) as number) ?? 0;
     }
-    const incline = (this.handleEvent(beat / line.bpmfactor, 0, line.inclineEvents, cursor.incline) as number) ?? 0;
-    const scaleXValue = (this.handleEvent(beat / line.bpmfactor, 0, line.scaleXEvents, cursor.scaleX) as number) ?? 1;
-    const scaleYValue = (this.handleEvent(beat / line.bpmfactor, 0, line.scaleYEvents, cursor.scaleY) as number) ?? 1;
-    const textValue = this.handleEvent(beat / line.bpmfactor, 0, line.textEvents, cursor.text);
-    const colorValue = this.handleEvent(beat / line.bpmfactor, 0, line.colorEvents, cursor.color);
-    const gif = this.gifValue(this.chartAssets?.gifAnims.get(lineIndex) ?? [], time, cursor.gif);
-    const paintValue = this.handleEvent(beat / line.bpmfactor, 0, line.paintEvents, cursor.paint) as number | null | undefined;
+    const incline = (sample(line.inclineEvents) as number) ?? 0;
+    const scaleXValue = (sample(line.scaleXEvents) as number) ?? 1;
+    const scaleYValue = (sample(line.scaleYEvents) as number) ?? 1;
+    const textValue = sample(line.textEvents);
+    const colorValue = sample(line.colorEvents);
+    const gif = this.gifValue(this.chartAssets?.gifAnims.get(lineIndex) ?? [], time);
+    const paintValue = sample(line.paintEvents) as number | null | undefined;
     /** RPE 负 alpha 隐藏整线及音符。 */
     const alphaExt = alpha < 0 ? 1 : 0;
 
@@ -619,11 +509,12 @@ export class RpeRenderer {
     };
   }
 
-  private worldState(lineIndex: number, time: number, width: number, height: number): LineState {
+  private worldState(lineIndex: number, time: number, width: number, height: number, states?: LineState[]): LineState {
+    if (states?.[lineIndex]) return states[lineIndex]!;
     const line = this.chart!.lines[lineIndex]!;
     const state = this.lineState(lineIndex, time, width, height);
     if (line.parent !== null && line.parent !== undefined) {
-      const parent = this.worldState(line.parent, time, width, height);
+      const parent = this.worldState(line.parent, time, width, height, states);
       const dx = p(state.moveX, width);
       const dy = o(-state.moveY, height);
       const cosP = Math.cos((parent.rotDeg * Math.PI) / 180);
@@ -634,7 +525,7 @@ export class RpeRenderer {
       const ny = py + dy * cosP + dx * sinP;
       const totalRot = line.rotWithParent ? state.rotDeg + parent.rotDeg : state.rotDeg;
       const rad = (totalRot * Math.PI) / 180;
-      return {
+      const result = {
         ...state,
         rotDeg: totalRot,
         cos: Math.cos(rad),
@@ -642,38 +533,25 @@ export class RpeRenderer {
         screenX: nx + width / 2,
         screenY: ny + height / 2,
       };
+      if (states) states[lineIndex] = result;
+      return result;
     }
     const rad = (state.rotDeg * Math.PI) / 180;
-    return {
+    const result = {
       ...state,
       cos: Math.cos(rad),
       sin: Math.sin(rad),
       screenX: p(state.moveX, width) + width / 2,
       screenY: o(-state.moveY, height) + height / 2,
     };
-  }
-
-  private advanceActiveNotes(lineIndex: number, time: number): void {
-    const line = this.chart!.lines[lineIndex]!;
-    const window = this.activeWindows[lineIndex]!;
-    while (window.index < line.notes.length && line.notes[window.index]!.hitTime - line.notes[window.index]!.visibleTime <= time) {
-      const note = line.notes[window.index]!;
-      if (note.endHitTime + VISUAL_END_GRACE_SEC >= time) window.notes.push(note);
-      window.index += 1;
-    }
-    let writeIndex = 0;
-    for (let readIndex = 0; readIndex < window.notes.length; readIndex++) {
-      const note = window.notes[readIndex]!;
-      if (note.endHitTime + VISUAL_END_GRACE_SEC >= time) window.notes[writeIndex++] = note;
-    }
-    window.notes.length = writeIndex;
+    if (states) states[lineIndex] = result;
+    return result;
   }
 
   private drawNotes(context: CanvasRenderingContext2D, lineIndex: number, state: LineState, time: number): void {
-    this.advanceActiveNotes(lineIndex, time);
-    const window = this.activeWindows[lineIndex]!;
+    const visible = this.noteQueries[lineIndex]!(time, state.lineHeight);
     for (const kind of ['hold', 'drag', 'tap', 'flick'] as const) {
-      for (const note of window.notes) {
+      for (const note of visible) {
         if (note.kind !== kind) continue;
         this.lastVisitedNotes += 1;
         if (this.drawNote(context, note, state, time)) this.recordDraw(state);
@@ -702,7 +580,7 @@ export class RpeRenderer {
     const direction = note.above ? -1 : 1;
 
     const headDist = d((note.headHeight - state.lineHeight) * effectiveSpeed, state.height) + o(note.yOffset, state.height);
-    if (Math.abs(headDist) > state.height * MAX_DRAW_DISTANCE_RATIO) return false;
+    if (note.kind !== 'hold' && Math.abs(headDist) > state.height * MAX_DRAW_DISTANCE_RATIO) return false;
     const chartDist = (headDist / state.height) * 900;
     const inclineShift = Math.tan(((note.positionX / 675) * -state.incline * Math.PI) / 180) * chartDist;
     const along = p(note.positionX + inclineShift, state.width) * ctrlPos;
@@ -736,7 +614,8 @@ export class RpeRenderer {
         return false;
       }
       context.globalAlpha = note.alpha / 255 * ctrlAlpha;
-      const holdImage = this.tintedCanvas(style.hold, note.tint);
+      if (note.tint) this.context.tint(note.tint[0] / 255, note.tint[1] / 255, note.tint[2] / 255);
+      const holdImage = style.hold;
       this.drawHold(
         context,
         holdImage,
@@ -758,7 +637,8 @@ export class RpeRenderer {
         alpha *= Math.max(0, 1 + Math.min(0, note.hitTime - time) / FADEOUT_TIME);
       }
       context.globalAlpha = alpha;
-      const image = this.tintedCanvas(style[note.kind], note.tint);
+      if (note.tint) this.context.tint(note.tint[0] / 255, note.tint[1] / 255, note.tint[2] / 255);
+      const image = style[note.kind];
 
       const imageWidth = image.width;
       const imageHeight = image.height;
@@ -767,83 +647,6 @@ export class RpeRenderer {
     }
     context.restore();
     return true;
-  }
-
-  private tintedCanvas<T extends CanvasImageSource>(image: T, tint: [number, number, number] | null): T | HTMLCanvasElement {
-
-    if (!tint || (tint[0] === 255 && tint[1] === 255 && tint[2] === 255)) return image;
-
-    let cache = this.tintedTextures;
-    if (!cache) {
-      cache = new WeakMap();
-      this.tintedTextures = cache;
-    }
-    let perImage = cache.get(image as object);
-    if (!perImage) {
-      perImage = new Map();
-      cache.set(image as object, perImage);
-    }
-    const key = `${tint.join(',')}`;
-    let canvas = perImage.get(key);
-    const source = image as CanvasImageSource & { naturalWidth?: number; naturalHeight?: number };
-    const imageWidth = (image as { width?: number }).width ?? source.naturalWidth ?? 0;
-    const imageHeight = (image as { height?: number }).height ?? source.naturalHeight ?? 0;
-    if (canvas && canvas.width === imageWidth && canvas.height === imageHeight) {
-      const entry = this.tintLru.get(canvas)!;
-      this.tintLru.delete(canvas);
-      this.tintLru.set(canvas, entry);
-      return canvas;
-    }
-    if (canvas) this.releaseTint(canvas);
-    const bytes = imageWidth * imageHeight * 4;
-    const byteBudget = 32 * 1024 * 1024;
-    if (bytes > byteBudget) {
-
-      canvas = this.tintWorkspace ??= document.createElement('canvas');
-    } else {
-      while (this.tintLru.size >= 64 || this.tintBytes + bytes > byteBudget) {
-        const oldest = this.tintLru.keys().next().value!;
-        this.releaseTint(oldest, false);
-        if (canvas) { canvas.width = 0; canvas.height = 0; }
-        canvas = oldest;
-      }
-      canvas ??= document.createElement('canvas');
-      perImage.set(key, canvas);
-      this.tintLru.set(canvas, { image: image as object, key, bytes });
-      this.tintBytes += bytes;
-    }
-    {
-      /** 重设尺寸清除合成状态，避免复用画布继承 destination-in。 */
-      canvas.width = imageWidth;
-      canvas.height = imageHeight;
-      const tintContext = canvas.getContext('2d')!;
-      tintContext.drawImage(image, 0, 0);
-      /** multiply 后用 destination-in 恢复原 alpha，避免透明区域变实色。 */
-
-      tintContext.globalCompositeOperation = 'multiply';
-      tintContext.fillStyle = `rgb(${tint[0]},${tint[1]},${tint[2]})`;
-      tintContext.fillRect(0, 0, canvas.width, canvas.height);
-      tintContext.globalCompositeOperation = 'destination-in';
-      tintContext.drawImage(image, 0, 0);
-    }
-    return canvas;
-  }
-
-  private releaseTint(canvas: HTMLCanvasElement, clear = true): void {
-    const entry = this.tintLru.get(canvas);
-    if (entry) {
-      this.tintedTextures?.get(entry.image)?.delete(entry.key);
-      this.tintBytes -= entry.bytes;
-      this.tintLru.delete(canvas);
-    }
-    if (clear) { canvas.width = 0; canvas.height = 0; }
-  }
-
-  private clearTints(): void {
-    for (const canvas of this.tintLru.keys()) this.releaseTint(canvas);
-    if (this.tintWorkspace) { this.tintWorkspace.width = 0; this.tintWorkspace.height = 0; }
-    this.tintWorkspace = null;
-    this.tintedTextures = null;
   }
 
   private drawHold(
@@ -888,13 +691,12 @@ export class RpeRenderer {
     );
   }
 
-  private gifValue(animKfs: readonly RpeGifKeyframe[], timeSec: number, cursor: { index: number }): number {
+  private gifValue(animKfs: readonly RpeGifKeyframe[], timeSec: number): number {
     if (!animKfs || animKfs.length === 0) return 0;
-    if (cursor.index > 0 && timeSec <= animKfs[cursor.index]!.t) cursor.index = 0;
-    while (cursor.index < animKfs.length - 1 && timeSec > animKfs[cursor.index + 1]!.t) cursor.index += 1;
-    const kf1 = animKfs[cursor.index]!;
-    if (cursor.index >= animKfs.length - 1) return kf1.v;
-    const kf2 = animKfs[cursor.index + 1]!;
+    const i = Math.max(0, lowerBoundBy(animKfs, timeSec, k => k.t) - 1);
+    const kf1 = animKfs[i]!;
+    if (i >= animKfs.length - 1) return kf1.v;
+    const kf2 = animKfs[i + 1]!;
     if (kf2.t <= kf1.t) return kf2.v; // 同刻键帧：后者胜（prpr Anim::set_time 语义）
     const x = (timeSec - kf1.t) / (kf2.t - kf1.t);
     const progress = easing(kf1.easingType, kf1.bezier === 1 ? kf1.bezierPoints : undefined, x, kf1.easingLeft, kf1.easingRight);
@@ -910,7 +712,8 @@ export class RpeRenderer {
     width: number,
     height: number,
   ): void {
-    context.drawImage(this.tintedCanvas(image, tint), x, y, width, height);
+    if (tint) this.context.tint(tint[0] / 255, tint[1] / 255, tint[2] / 255);
+    context.drawImage(image, x, y, width, height);
   }
 
   private drawLine(context: CanvasRenderingContext2D, state: LineState): void {
@@ -964,13 +767,7 @@ export class RpeRenderer {
     if (gifData?.frames.length) {
       const progress = clamp(state.gif, 0, 1);
       const elapsed = progress * gifData.totalMs;
-      let frame = gifData.frames[0]!;
-      for (let i = 0; i < gifData.frames.length; i += 1) {
-        if (elapsed <= gifData.cumulativeMs[i]! || i === gifData.frames.length - 1) {
-          frame = gifData.frames[i]!;
-          break;
-        }
-      }
+      const frame = gifData.frames[Math.min(gifData.frames.length - 1, lowerBoundBy(gifData.cumulativeMs, elapsed, t => t))]!;
       const unit = state.width / 1350;
       const drawWidth = frame.width * unit * state.scaleX;
       const drawHeight = frame.height * unit * state.scaleY;
@@ -1005,10 +802,8 @@ export class RpeRenderer {
   }
 
   private pauseVideos(): void {
+    for (const video of this.playingVideos) if (!video.paused) video.pause();
     this.playingVideos.clear();
-    for (const video of this.chartAssets?.videos.values() ?? []) {
-      if (!video.paused) video.pause();
-    }
   }
 
   private renderFrame(time: number): void {
@@ -1018,16 +813,36 @@ export class RpeRenderer {
     const ratio = pixelWidth / Math.max(1, this.canvas.clientWidth);
     const width = pixelWidth / ratio;
     const height = pixelHeight / ratio;
-    context.setTransform(ratio, 0, 0, ratio, 0, 0);
+    context.beginFrame();
+    const effects = this.settings.effects === false || !this.chart ? [] : this.activeEffects(time, time).filter(e =>
+      time < this.chart!.bpmList.timeSec(e.endBeat) && this.prepareEffect(e.shader));
+    if (this.effectTargets[0] && (this.effectTargets[0].width !== pixelWidth || this.effectTargets[0].height !== pixelHeight)) {
+      for (const target of this.effectTargets) context.releaseTarget(target);
+      this.effectTargets = [];
+    }
+    const targetCount = Math.min(2, effects.length);
+    while (this.effectTargets.length > targetCount) context.releaseTarget(this.effectTargets.pop()!);
+    if (targetCount && !this.effectTargets.length) this.effectTargets.push(context.acquireTarget(pixelWidth, pixelHeight));
+    if (targetCount > 1) {
+      const w = Math.max(1, Math.floor(pixelWidth * context.effectScale));
+      const h = Math.max(1, Math.floor(pixelHeight * context.effectScale));
+      const swap = this.effectTargets[1];
+      if (swap && (swap.width !== w || swap.height !== h)) context.releaseTarget(this.effectTargets.pop()!);
+      if (this.effectTargets.length === 1) this.effectTargets.push(context.acquireTarget(w, h));
+    }
+    const scene = this.effectTargets[0];
+    if (scene) context.bindTarget(scene);
+    this.effectsActive = effects.length;
+    /** RPE 的图像与场景均以左上角为 uv 原点。 */
+    context.setTransform(ratio, 0, 0, scene ? -ratio : ratio, 0, scene ? pixelHeight : 0);
     context.globalAlpha = 1;
     context.fillStyle = '#000000';
     context.fillRect(0, 0, width, height);
 
-    if (!this.chart) return;
+    if (!this.chart) { context.flush(); return; }
     this.lastVisitedNotes = 0;
     this.lastDrawnNotes = 0;
     this.lastNotesOnHiddenLines = 0;
-    if (!Number.isFinite(this.lastTime) || time < this.lastTime || time - this.lastTime > 0.35) this.resetTimeline(time);
 
     const infoAspect = this.chart.info.aspectRatio;
     const chartAspect = Number.isFinite(infoAspect) && (infoAspect ?? 0) > 0 ? infoAspect! : null;
@@ -1065,15 +880,19 @@ export class RpeRenderer {
     context.fillRect(0, 0, boxWidth, boxHeight);
 
     const states: LineState[] = [];
-    const drawOrder = this.chart.lines
-      .map((line, index) => ({ line, index }))
-      .sort((a, b) => a.line.zIndex - b.line.zIndex)
-      .map(({ index }) => index);
-    for (let lineIndex = 0; lineIndex < this.chart.lines.length; lineIndex += 1) {
-      states.push(this.worldState(lineIndex, time, boxWidth, boxHeight));
-    }
+    const drawOrder = this.drawOrder;
+    for (let i = 0; i < this.chart.lines.length; i++) this.worldState(i, time, boxWidth, boxHeight, states);
 
-    this.drawVideos(context, time, boxWidth, boxHeight);
+    const clips = this.videoIntervals(time, time);
+    if (this.playingVideos.size) {
+      const active = new Set(clips.map(clip => this.chartAssets!.videos.get(clip.path)));
+      for (const element of this.playingVideos) {
+        if (active.has(element)) continue;
+        this.playingVideos.delete(element);
+        if (!element.paused) element.pause();
+      }
+    }
+    for (const video of clips) this.drawVideo(context, video, time, boxWidth, boxHeight, states);
     for (const lineIndex of drawOrder) {
       const state = states[lineIndex]!;
       if (state.alphaExt === 1) continue; // prpr：RPE 负 alpha＝整线连同音符隐藏
@@ -1110,20 +929,21 @@ export class RpeRenderer {
     this.attachUi = attachUi;
     context.restore();
     context.globalAlpha = 1;
-    this.lastTime = time;
     this.lastRenderedTime = time;
     this.maxVisitedNotes = Math.max(this.maxVisitedNotes, this.lastVisitedNotes);
     this.maxNotesOnHiddenLines = Math.max(this.maxNotesOnHiddenLines, this.lastNotesOnHiddenLines);
-    this.renderEffectPasses(time, width, height);
+    context.flush();
+    if (scene) this.renderEffectPasses(time, scene, effects);
   }
 
-  private drawHitEffects(context: CanvasRenderingContext2D, time: number, width: number, height: number): void {
+  private drawHitEffects(context: StageContext, time: number, width: number, height: number): void {
     this.lastRenderedEffects = 0;
-    if (!this.hitFxTexture || !this.hitEvents.length) return;
+    const fx = this.noteAssets?.fx;
+    if (!fx || !this.hitEvents.length) return;
     const first = lowerBoundBy(this.hitEvents, time - HIT_FX_DURATION, (effect) => effect.time);
     const end = upperBoundBy(this.hitEvents, time, (effect) => effect.time);
-    const frameWidth = this.hitFxTexture.width / HIT_FX_COLUMNS;
-    const frameHeight = this.hitFxTexture.height / HIT_FX_ROWS;
+    const frameWidth = fx.naturalWidth / HIT_FX_COLUMNS;
+    const frameHeight = fx.naturalHeight / HIT_FX_ROWS;
     const size = scaledHitEffectDiameter(width, this.settings.noteScale ?? 1);
     this.lastHitEffectDiameter = size;
     for (let index = first; index < end; index += 1) {
@@ -1140,9 +960,11 @@ export class RpeRenderer {
       const alpha = progress < 0.5 ? 1 - progress * 0.6 : 1.4 * (1 - progress);
       context.save();
       context.globalAlpha = clamp(alpha, 0, 1);
-      const fx = effect.note.tintHitEffects ? (this.tintedCanvas(this.hitFxTexture, effect.note.tintHitEffects) as HTMLCanvasElement) : this.hitFxTexture;
-      context.drawImage(
-        fx,
+      const tint = effect.note.tintHitEffects;
+      context.save();
+      if (tint) this.context.tint(tint[0] / 255, tint[1] / 255, tint[2] / 255);
+      context.drawMask(
+        fx, '#ffec9fe1',
         frame % HIT_FX_COLUMNS * frameWidth,
         Math.floor(frame / HIT_FX_COLUMNS) * frameHeight,
         frameWidth,
@@ -1152,6 +974,7 @@ export class RpeRenderer {
         size,
         size,
       );
+      context.restore();
       const particleSize = width * HIT_FX_SCALE * clamp(this.settings.noteScale ?? 1, 0.5, 2) / 44;
       for (let particle = 0; particle < 4; particle += 1) {
         const angle = particleAngle(effect.seed, particle);
@@ -1170,23 +993,14 @@ export class RpeRenderer {
     }
   }
 
-  private eventValueAt(value: unknown, beat: number, cursor: { index: number }): unknown {
+  private eventValueAt(value: unknown, beat: number): unknown {
 
     if (!Array.isArray(value) || !value[0] || !('startBeat' in (value[0] as object))) return value;
     const events = value as RpeEvent[];
-    if (cursor.index > 0 && beat <= events[cursor.index]!.startBeat) cursor.index = 0;
-    while (cursor.index < events.length - 1 && beat > events[cursor.index + 1]!.startBeat) cursor.index += 1;
-    return getEventValue(events[cursor.index]!, beat, this.chart!.bpmList);
+    return getEventValue(events[Math.max(0, lowerBoundBy(events, beat, e => e.startBeat) - 1)]!, beat, this.chart!.bpmList);
   }
 
-  private drawVideos(context: CanvasRenderingContext2D, time: number, width: number, height: number): void {
-    const videos = this.chart?.extras.videos ?? [];
-    for (let index = 0; index < videos.length; index += 1) {
-      this.drawVideo(context, videos[index]!, index, time, width, height);
-    }
-  }
-
-  private drawVideo(context: CanvasRenderingContext2D, video: RpeVideo, index: number, time: number, width: number, height: number): void {
+  private drawVideo(context: CanvasRenderingContext2D, video: RpeVideo, time: number, width: number, height: number, states: LineState[]): void {
     const element = this.chartAssets?.videos.get(video.path);
     if (!element) return;
     const duration = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : 0;
@@ -1197,8 +1011,8 @@ export class RpeRenderer {
       return;
     }
     const beat = this.chart!.bpmList.beat(time);
-    let alpha = this.eventValueAt(video.alpha, beat, this.videoCursors[index]!.alpha) as number | number[] | string;
-    const dim = this.eventValueAt(video.dim, beat, this.videoCursors[index]!.dim) as number | number[] | string;
+    let alpha = this.eventValueAt(video.alpha, beat) as number | number[] | string;
+    const dim = this.eventValueAt(video.dim, beat) as number | number[] | string;
 
     const local = time - video.startTimeSec;
     if (element.playbackRate !== this.playbackSpeed) element.playbackRate = this.playbackSpeed;
@@ -1216,13 +1030,14 @@ export class RpeRenderer {
     }
     const vw = element.videoWidth;
     const vh = element.videoHeight;
-    if (!vw || !vh) return;
+    if (!vw || !vh || element.readyState < 2) return;
 
     let cx = width / 2;
     let cy = height / 2;
     let rot = 0;
     if (video.attach) {
-      const state = this.worldState(video.attach.line, time, width, height);
+      const state = states[video.attach.line];
+      if (!state) return;
       cx = state.screenX;
       cy = state.screenY;
       rot = Math.atan2(state.sin, state.cos);
@@ -1261,55 +1076,34 @@ export class RpeRenderer {
     }
   }
 
-  private renderEffectPasses(time: number, width: number, height: number): void {
-    const effects = this.settings.effects === false
-      ? []
-      : (this.chart?.extras.effects ?? []).filter(
-        (effect) =>
-          time >= this.chart!.bpmList.timeSec(effect.startBeat) &&
-          time < this.chart!.bpmList.timeSec(effect.endBeat) &&
-          this.chartAssets?.shaders.has(effect.shader),
-      );
-    this.effectsActive = effects.length;
-    if (effects.length === 0) {
-      if (this.glCanvas.style.display !== 'none') this.glCanvas.style.display = 'none';
-      return;
+  private renderEffectPasses(time: number, scene: StageTarget, effects: readonly RpeEffect[]): void {
+    const gl = this.gl, stage = this.context;
+    const next = this.effectTargets[1] ?? null;
+    let source = scene;
+    try {
+      gl.disable(gl.SCISSOR_TEST); gl.disable(gl.STENCIL_TEST); gl.disable(gl.BLEND);
+      for (let i = 0; i < effects.length; i++) {
+        const effect = effects[i]!;
+        const target = i === effects.length - 1 ? null : source === scene ? next : scene;
+        gl.bindFramebuffer(gl.FRAMEBUFFER, target?.framebuffer ?? null);
+        const w = target?.width ?? scene.width, h = target?.height ?? scene.height;
+        gl.viewport(0, 0, w, h);
+        const program = this.glPrograms.get(effect.shader)!;
+        gl.useProgram(program);
+        gl.uniform1f(gl.getUniformLocation(program, 'outputY'), target ? 1 : -1);
+        this.applyEffectUniforms(gl, program, effect, time, w, h);
+        gl.activeTexture(gl.TEXTURE0); gl.bindTexture(gl.TEXTURE_2D, source.texture);
+        gl.uniform1i(gl.getUniformLocation(program, 'screenTexture'), 0);
+        gl.bindBuffer(gl.ARRAY_BUFFER, this.glQuad);
+        const position = gl.getAttribLocation(program, 'aPosition');
+        gl.enableVertexAttribArray(position);
+        gl.vertexAttribPointer(position, 2, gl.FLOAT, false, 0, 0);
+        gl.drawArrays(gl.TRIANGLES, 0, 3);
+        if (target) source = target;
+      }
+    } finally {
+      stage.bindTarget(null);
     }
-    if (!this.prepareGl()) {
-      this.effectsActive = 0;
-      return;
-    }
-    const gl = this.gl!;
-    const pixelW = this.canvas.width;
-    const pixelH = this.canvas.height;
-
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.activeTexture(gl.TEXTURE0);
-    gl.bindTexture(gl.TEXTURE_2D, this.glSourceTex);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, this.canvas);
-    let source: WebGLTexture | null = this.glSourceTex;
-    for (let index = 0; index < effects.length; index += 1) {
-      const effect = effects[index]!;
-      const last = index === effects.length - 1;
-      const target = last ? null : (index % 2 === 0 ? this.glFboA : this.glFboB);
-      const targetTex = last ? null : (index % 2 === 0 ? this.glTexA : this.glTexB);
-      gl.bindFramebuffer(gl.FRAMEBUFFER, target);
-      gl.viewport(0, 0, pixelW, pixelH);
-      const program = this.glPrograms?.get(effect.shader);
-      if (!program) continue;
-      gl.useProgram(program);
-      this.applyEffectUniforms(gl, program, effect, time, pixelW, pixelH);
-      gl.activeTexture(gl.TEXTURE0);
-      gl.bindTexture(gl.TEXTURE_2D, source);
-      gl.uniform1i(gl.getUniformLocation(program, 'screenTexture'), 0);
-      gl.bindBuffer(gl.ARRAY_BUFFER, this.glQuad);
-      gl.enableVertexAttribArray(0);
-      gl.vertexAttribPointer(0, 2, gl.FLOAT, false, 0, 0);
-      gl.drawArrays(gl.TRIANGLES, 0, 3);
-      source = targetTex;
-    }
-    gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-    this.glCanvas.style.display = 'block'; // CSS 默认 display:none，需显式覆盖
   }
 
   private applyEffectUniforms(
@@ -1336,16 +1130,18 @@ export class RpeRenderer {
       if (!(name in effect.vars)) setUniform(name, defaultValue);
     }
     const beat = this.chart!.bpmList.beat(time);
-    const effectIndex = this.chart!.extras.effects.indexOf(effect);
-    const cursor = this.effectCursors[effectIndex] ?? {};
+    let unit = 0;
     for (const [name, value] of Object.entries(effect.vars)) {
-      const evaluated = this.eventValueAt(value, beat, cursor[name] ??= { index: 0 });
+      const evaluated = this.eventValueAt(value, beat);
       if (typeof evaluated === 'string') {
 
         const location = gl.getUniformLocation(program, name);
         if (location !== null) {
-          const unit = this.bindShaderTexture(evaluated, gl);
-          if (unit >= 0) gl.uniform1i(location, unit);
+          const image = this.chartAssets?.textures.get(evaluated);
+          if (!image) continue;
+          const texture = this.context.imageTexture(image);
+          gl.activeTexture(gl.TEXTURE0 + ++unit); gl.bindTexture(gl.TEXTURE_2D, texture);
+          gl.uniform1i(location, unit);
         }
       } else {
         /** RPE 四元变量为 RGBA 字节，GL 颜色使用 0–1。 */
@@ -1356,101 +1152,25 @@ export class RpeRenderer {
     }
   }
 
-  private bindShaderTexture(name: string, gl: WebGLRenderingContext): number {
-    let cache = this.shaderTextures;
-    if (!cache) {
-      cache = new Map();
-      this.shaderTextures = cache;
-    }
-    const cached = cache.get(name);
-    if (cached !== undefined) {
-      gl.activeTexture(gl.TEXTURE0 + cached.unit);
-      gl.bindTexture(gl.TEXTURE_2D, cached.texture);
-      return cached.unit;
-    }
-    const image = this.chartAssets?.textures.get(name);
-    if (!image) return -1;
-    const texture = gl.createTexture();
-    if (!texture) return -1;
-    this.ownedShaderTextures.add(texture);
-    const unit = ++this.shaderTextureCount;
-    gl.activeTexture(gl.TEXTURE0 + unit);
-    gl.bindTexture(gl.TEXTURE_2D, texture);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-    gl.pixelStorei(gl.UNPACK_FLIP_Y_WEBGL, true);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
-    cache.set(name, { unit, texture });
-    return unit;
-  }
-
-  private prepareGl(): boolean {
-    if (!this.gl) {
-      this.gl = this.glCanvas.getContext('webgl', {
-        alpha: false, antialias: false, depth: false, stencil: false, preserveDrawingBuffer: false,
-      });
-      if (!this.gl) return false;
-      this.glPrograms = new Map();
-      this.shaderDefaults = new Map();
-    }
+  private prepareEffect(name: string): boolean {
+    if (this.glPrograms.has(name)) return !!this.glPrograms.get(name);
+    const source = this.chartAssets?.shaders.get(name);
+    if (!source) return false;
     const gl = this.gl;
-    const pixelW = this.canvas.width;
-    const pixelH = this.canvas.height;
-    if (this.glCanvas.width !== pixelW || this.glCanvas.height !== pixelH) {
-      this.glCanvas.width = pixelW;
-      this.glCanvas.height = pixelH;
-      this.disposeGlTargets();
-      gl.activeTexture(gl.TEXTURE0);
-      this.glSourceTex = gl.createTexture();
-      gl.bindTexture(gl.TEXTURE_2D, this.glSourceTex);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, pixelW, pixelH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-      const makeTarget = (): { tex: WebGLTexture; fbo: WebGLFramebuffer } => {
-        const tex = gl.createTexture()!;
-        gl.bindTexture(gl.TEXTURE_2D, tex);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
-        gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
-        gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, pixelW, pixelH, 0, gl.RGBA, gl.UNSIGNED_BYTE, null);
-        const fbo = gl.createFramebuffer()!;
-        gl.bindFramebuffer(gl.FRAMEBUFFER, fbo);
-        gl.framebufferTexture2D(gl.FRAMEBUFFER, gl.COLOR_ATTACHMENT0, gl.TEXTURE_2D, tex, 0);
-        gl.bindFramebuffer(gl.FRAMEBUFFER, null);
-        return { tex, fbo };
-      };
-      const a = makeTarget();
-      const b = makeTarget();
-      this.glTexA = a.tex;
-      this.glFboA = a.fbo;
-      this.glTexB = b.tex;
-      this.glFboB = b.fbo;
+    if (!this.glQuad) {
       this.glQuad = gl.createBuffer();
       gl.bindBuffer(gl.ARRAY_BUFFER, this.glQuad);
       gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1, -1, 3, -1, -1, 3]), gl.STATIC_DRAW);
     }
-    /** shader 的 // %值% 是 uniform 默认值声明。 */
-    for (const [name, source] of this.chartAssets?.shaders ?? []) {
-      if (this.glPrograms!.has(name)) continue;
-      const program = this.compileGlProgram(source);
-      if (!program) continue;
-      this.glPrograms!.set(name, program);
-      const defaults: [string, number | number[]][] = [];
-      for (const match of source.matchAll(/uniform\s+(\w+)\s+(\w+);\s*\/\/\s*%([^%]+)%/g)) {
-        const type = match[1]!;
-        const uniformName = match[2]!;
-        const raw = match[3]!;
-        if (type === 'float') defaults.push([uniformName, Number.parseFloat(raw)]);
-        else defaults.push([uniformName, raw.split(',').map((item) => Number.parseFloat(item.trim()))]);
-      }
-      this.shaderDefaults!.set(name, defaults);
+    const program = this.compileGlProgram(source);
+    this.glPrograms.set(name, program);
+    const defaults: [string, number | number[]][] = [];
+    for (const match of source.matchAll(/uniform\s+(\w+)\s+(\w+);\s*\/\/\s*%([^%]+)%/g)) {
+      defaults.push([match[2]!, match[1] === 'float' ? Number.parseFloat(match[3]!)
+        : match[3]!.split(',').map(item => Number.parseFloat(item.trim()))]);
     }
-    return this.glPrograms!.size > 0;
+    this.shaderDefaults.set(name, defaults);
+    return !!program;
   }
 
   private compileGlProgram(fragmentSource: string): WebGLProgram | null {
@@ -1468,7 +1188,11 @@ export class RpeRenderer {
     };
     const vertex = compile(gl.VERTEX_SHADER, GL_VERTEX_SHADER);
     const fragment = compile(gl.FRAGMENT_SHADER, transformForLoops(fragmentSource));
-    if (!vertex || !fragment) return null;
+    if (!vertex || !fragment) {
+      if (vertex) gl.deleteShader(vertex);
+      if (fragment) gl.deleteShader(fragment);
+      return null;
+    }
     const program = gl.createProgram()!;
     gl.attachShader(program, vertex);
     gl.attachShader(program, fragment);
@@ -1483,21 +1207,4 @@ export class RpeRenderer {
     return program;
   }
 
-  private disposeGlTargets(): void {
-    const gl = this.gl;
-    if (!gl) return;
-    for (const target of [this.glSourceTex, this.glTexA, this.glTexB]) {
-      if (target) gl.deleteTexture(target);
-    }
-    for (const fbo of [this.glFboA, this.glFboB]) {
-      if (fbo) gl.deleteFramebuffer(fbo);
-    }
-    if (this.glQuad) gl.deleteBuffer(this.glQuad);
-    this.glSourceTex = null;
-    this.glTexA = null;
-    this.glTexB = null;
-    this.glFboA = null;
-    this.glFboB = null;
-    this.glQuad = null;
-  }
 }

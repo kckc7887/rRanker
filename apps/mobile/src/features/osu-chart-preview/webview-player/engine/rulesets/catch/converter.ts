@@ -27,7 +27,7 @@
 import type { BeatmapData, Slider, Spinner, HitCircle } from '../../types/index';
 import type { ModDifficulty } from '../../utils/modDifficulty';
 import type { CatchObject, CatchObjectType } from './types';
-import { sampleSlider } from '../../renderer/SliderGeometry';
+import { sampleSlider, sliderPointAt } from '../../renderer/SliderGeometry';
 import { sliderVelocityMultiplier } from '../../utils/sliderDuration';
 
 /** 参考 ppy/osu CatchBeatmapConverter；float 运算用 fround，int 转换向零截断。 */
@@ -85,17 +85,7 @@ function precisionAdjustedBeatLength(baseBeatLength: number, svMultiplier: numbe
 }
 
 function pathRelativeXAt(slider: Slider, progress: number): number {
-  const pts = sampleSlider(slider);
-  if (pts.length === 0) return 0;
-  const headX = slider.x;
-  if (pts.length === 1) return pts[0]!.x - headX;
-  const p = clamp(progress, 0, 1);
-  const idx = p * (pts.length - 1);
-  const lo = Math.floor(idx);
-  const hi = Math.min(lo + 1, pts.length - 1);
-  const frac = idx - lo;
-  const x = pts[lo]!.x + (pts[hi]!.x - pts[lo]!.x) * frac;
-  return x - headX;
+  return sliderPointAt(sampleSlider(slider), progress).x - slider.x;
 }
 
 type SliderEventType = 'head' | 'tick' | 'repeat' | 'legacyLastTick' | 'tail';

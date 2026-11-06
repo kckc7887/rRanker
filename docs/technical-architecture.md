@@ -189,9 +189,9 @@ Rizline 曲库包含 `illustrations` 与 `signatures`：插画保存可读名称
 
 ## 谱面与下载
 
-四套播放器分别用于 Simai、Phigros、osu! 和 Rizline。各游戏在自己的 `webview-player` 中维护舞台、参数和播放会话。`scripts/lib/build-preview.mjs` 在构建时装配公共时间线、播放按钮、循环、拨轮与设置区，并将样式和各游戏脚本生成为 `index.html` 与 `player.bundle`。共享样式、播放状态显示与手势位于 `chart-preview-shared/webview-player`。宿主会话以 `player.js` 暂存 bundle 并加载对应 HTML。
+舞萌和 Majdata 共用 Simai，osu! 按选中 `.osu` 文件的 `Mode` 解释物件。Phigros、Phira 与 Rizline 的资源入口交给 `chartJsonFormat` 识别 JSON，`prepareJsonChartPreview` 装配对应的 PGR、RPE 或 Rizline 页面。`scripts/lib/build-preview.mjs` 生成公共控件、页面和分格式脚本；进入预览时，宿主只将选中的脚本暂存为 `player.js`。
 
-谱面设置按存储键保留尚未写入的最新值，后台释放或页面重建后仍可恢复；成功提交才移除，前台恢复及通知重试继续补写。RPE 视频按会话的播放、倍速与定位同步，暂停保持静态画面并停止音画推进；着色器资源读取 `.glsl`、`.fs`，四元颜色参数由 RGBA 字节转换为 GL 的 0–1 值，纹理缓存同时保存纹理对象和绑定单元。贝塞尔插值在牛顿法不能收敛时使用二分结果。osu! 支持 Catmull 滑条及声明长度截断、延伸，动画资源按归档实际文件收集。
+谱面设置按存储键保留尚未写入的最新值，后台释放或页面重建后仍可恢复；成功提交才移除，前台恢复及通知重试继续补写。RPE 视频按会话的播放、倍速与定位同步，暂停保持静态画面并停止音画推进；着色器资源读取 `.glsl`、`.fs`，四元颜色参数由 RGBA 字节转换为 GL 的 0–1 值。贝塞尔插值在牛顿法不能收敛时使用二分结果。osu! 按包内各难度的元数据 ID 选择谱面，仅校验所选难度的物件。滑条支持 Catmull 曲线及声明长度截断、延伸，动画资源按归档实际文件收集。
 
 `chart-preview-screen-shell.tsx` 管理资源准备、WebView、前后台暂停、取消、seek 和释放。iOS 谱面确认页在普通和全屏状态保留边缘原生侧滑返回，关闭内容区域滑返；标题返回与播放器全屏退出控件继续可用。`chart-preview-bridge.ts` 只解析当前事件和设置信封，宿主命令由公共 serializer 生成。控制设置、播放状态和时间回传通过同一桥接路径。
 
@@ -203,9 +203,11 @@ Simai 的解析、时间轴、几何与渲染位于 `simai-chart-preview/engine`
 
 普通谱面确认采用固定标题、固定播放画面和下方独立滚动区。曲名与难度数值同行显示，短曲名按内容宽度排列、标签紧随其后，长曲名在最多 12 个汉字宽度内往返滚动；难度使用游戏侧传入的 `PreviewDifficulty.value` 和配色，缺失数值显示“—”。舞萌路由传递定数，osu! 路由传递星数与难度名，其余复用准备阶段元数据。画面保留游戏比例并限制在标题下方可用高度的 55%，Buddy 保留双侧布局；舞萌实时详情固定两行，首行显示 BPM、拍位置和 FPS，次行显示 COMBO、BREAK，行内超宽横向滚动；所有谱面确认页隐藏原生及内部滚动条，保留滑动。
 
-四套播放会话各自持有公共 `PlaybackLoop`，沿用原有时间单位和播放时钟，在自然结束前执行 AB 回跳。普通和全屏复用端点与热度区间，暂停、倍速和全屏切换保留标记，重载会话清除标记。全屏共用扁平控制卡片，锁定按钮固定在屏幕右侧并垂直居中。整页非控件区域可唤出控制器，操作结束后重新计时 5 秒；锁定时只显示解锁入口。退出恢复普通模式滚动位置，Rizline 保持竖屏，其余沿用横屏。
+各格式通过 `PreviewPlayback` 共用秒制时间、AB 端点和帧循环。拖动时停止发声，按显示帧取最后一个位置；松手后从选定位置恢复拖动前的播放状态。普通和全屏复用端点与热度区间，暂停、倍速和全屏切换保留标记，重载会话清除标记。全屏共用扁平控制卡片，锁定按钮固定在屏幕右侧并垂直居中。整页非控件区域可唤出控制器，操作结束后重新计时 5 秒；锁定时只显示解锁入口。退出恢复普通模式滚动位置，Rizline 保持竖屏，其余沿用横屏。
 
-四套播放器使用 Web Audio 解码和 `AudioBufferSourceNode`，AudioContext 采用连续播放缓冲提示 `latencyHint: 'playback'`。音源启动与公共 `PlaybackClock` 使用同一 AudioContext 时间基准，画面通过 `getAudioContextOutputTime` 补偿输出延迟。音乐变速直接更新音源和时钟速度分段，音调随速度变化；定位重建所属音源并重新调度音效，暂停和释放撤销音源及待完成播放命令。音乐音量沿用现有 GainNode。
+`PreviewPlayback` 用同一 Web Audio 时钟启动歌曲、安排音效和记录变速；画面取补偿输出延迟的位置，音符流速由格式设置单独控制。歌曲在音频时钟的 B 点切回 A，音效提前排入下一圈，画面在输出时钟进入下一圈时恢复 A 段状态。暂停取消连续帧，定位、调整设置、改变舞台尺寸或视频完成定位时补画。格式适配器将秒换算为拍、滚动位置及前导时间，定位后直接取目标时间的可见物件和声音区间。
+
+`chart-preview-shared/webview-player/stage.ts` 在每页唯一的 WebGL 上下文中按顺序提交精灵、几何、文字与遮罩。舞台按实际布局取 DPR，最高 2、最多 250 万像素，并受设备纹理与视口尺寸限制。Buddy 的两个视口共用整张画布；osu! 的 1280 × 720 用作逻辑坐标。纹理与效果缓冲分开计量，临时颜色缓冲总量上限为实际舞台像素的两倍。PGR BLOCK 与 RPE 着色器按生效区间获取场景纹理，Rizline 的挑战转场在原舞台裁切。osu! 滑条复用轨迹几何，标准模式自动光标按运动区段取样，故事板按当前和邻近时段准备图片。Simai 密集打击音分段合成，顺播与拖动复用最近播放的声音片段。
 
 osu! 四模式共用 0.5–2 倍播放速度，步长 0.05，默认 1 倍，沿现有设置信封保存。mania 下落速度单独控制。谱面、回放、故事板和视频使用原曲时间，视频同步倍速，普通打击音按倍速换算触发时刻并保留原音调；歌曲和故事板音频片段使用缓冲音源并同步调整速度。
 
@@ -223,11 +225,11 @@ KALEIDXSCOPE 的国服日程、课题和手工进度位于 `domain/kaleidx-scope
 |---|---|
 | `npm ci --no-audit --no-fund` | 安装锁定依赖并执行现有功能补丁 |
 | `npm run lint` | 应用、测试与配置 lint |
-| `npm run typecheck` | 应用及四套播放器类型检查 |
+| `npm run typecheck` | 应用与播放器类型检查 |
 | `npm test` | 单元与 UI 行为测试 |
-| `npm run check:generated` | 四套播放器生成物一致性 |
-| `npm run build:chart-preview` | 生成 maimai 播放器 |
-| `npm run build:phigros-chart-preview` | 生成 Phigros 播放器 |
+| `npm run check:generated` | 五种谱面语法的播放器生成物一致性 |
+| `npm run build:chart-preview` | 生成 Simai 播放器 |
+| `npm run build:phigros-chart-preview` | 生成 PGR 与 RPE 播放器 |
 | `npm run build:osu-chart-preview` | 生成 osu! 播放器 |
 | `npm run build:rizline-chart-preview` | 生成 Rizline 播放器 |
 | `npm run prebuild:android` | 重建 Android 工程配置 |
