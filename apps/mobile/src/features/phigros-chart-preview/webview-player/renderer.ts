@@ -8,6 +8,7 @@ import { findEventIndex, type PgrChart, type PgrHeightEvent, type PgrLine, type 
 import { PgrBlockRenderer } from './pgr-block-renderer';
 
 const NOTE_WIDTH_RATIO_BASE = 0.13175016;
+const MIN_NOTE_DISTANCE = -0.5;
 const HOLD_ATLAS = Object.freeze({ normal: [50, 50], multi: [96, 97] } as const);
 const HOLD_PARTICLE_INTERVAL = 0.15;
 const HIT_FX_DURATION = 0.5;
@@ -401,12 +402,12 @@ export class PgrRenderer {
       const limit = this.visibleDistanceLimit(state, group.above);
       let first = 0;
       let end = group.notes.length;
-      if (group.speed > 0) {
-        first = lowerBoundBy(group.notes, state.lineHeight, (note) => note.height);
-        end = upperBoundBy(group.notes, state.lineHeight + limit / (state.height / 2 * group.speed), (note) => note.height);
-      } else if (group.speed < 0) {
-        first = lowerBoundBy(group.notes, state.lineHeight + limit / (state.height / 2 * group.speed), (note) => note.height);
-        end = upperBoundBy(group.notes, state.lineHeight, (note) => note.height);
+      if (group.speed !== 0) {
+        const pixelsPerHeight = group.speed * state.height / 2;
+        const near = state.lineHeight + MIN_NOTE_DISTANCE / pixelsPerHeight;
+        const far = state.lineHeight + limit / pixelsPerHeight;
+        first = lowerBoundBy(group.notes, Math.min(near, far), (note) => note.height);
+        end = upperBoundBy(group.notes, Math.max(near, far), (note) => note.height);
       }
       for (let index = first; index < end; index += 1) {
         const note = group.notes[index]!;
@@ -433,7 +434,7 @@ export class PgrRenderer {
     const multipleScale = isMulti ? style[note.kind].naturalWidth / this.noteAssets!.normal[note.kind].naturalWidth : 1;
     const noteWidth = scaledNoteWidth(state.width, this.settings.noteScale, multipleScale);
     const distance = (note.height - state.lineHeight) * note.speed * halfHeight;
-    if (note.kind !== 'hold' && (distance < -0.5 || distance > visibleLimit)) return false;
+    if (note.kind !== 'hold' && (distance < MIN_NOTE_DISTANCE || distance > visibleLimit)) return false;
     context.save();
     context.translate(state.x, state.y);
     context.rotate(Math.atan2(state.sin, state.cos));
@@ -443,7 +444,7 @@ export class PgrRenderer {
     if (note.kind === 'hold') {
       const bottom = time >= note.time ? 0 : (note.height - state.lineHeight) * halfHeight;
       const top = (note.endHeight - state.lineHeight) * halfHeight;
-      if (top < -0.5 || bottom > visibleLimit || top <= bottom) {
+      if (top < MIN_NOTE_DISTANCE || bottom > visibleLimit || top <= bottom) {
         context.restore();
         return false;
       }
