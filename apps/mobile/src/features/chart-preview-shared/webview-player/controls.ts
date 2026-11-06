@@ -33,12 +33,8 @@ export function installPreviewControls(stageAspectRatio = 16 / 9): () => void {
   const app = document.getElementById('app')!;
   const header = document.getElementById('header')!;
   const stage = document.getElementById('stage-wrap') ?? document.getElementById('canvas-wrap')!;
-  const fullscreenPanel = document.getElementById('fs-overlay') ?? controls;
   const resize = () => {
-    if (document.body.classList.contains('fullscreen')) {
-      document.body.style.setProperty('--preview-fullscreen-controls-height', `${fullscreenPanel.offsetHeight}px`);
-      return;
-    }
+    if (document.body.classList.contains('fullscreen')) return;
     const title = document.getElementById('title')!;
     const text = title.firstElementChild as HTMLElement | null;
     const overflow = Math.max(0, (text?.scrollWidth ?? 0) - title.clientWidth);
@@ -54,7 +50,6 @@ export function installPreviewControls(stageAspectRatio = 16 / 9): () => void {
   const resizeObserver = new ResizeObserver(resize);
   resizeObserver.observe(app);
   resizeObserver.observe(header);
-  resizeObserver.observe(fullscreenPanel);
   events.own(() => resizeObserver.disconnect());
   const fullscreenObserver = new MutationObserver(resize);
   fullscreenObserver.observe(document.body, { attributes: true, attributeFilter: ['class'] });

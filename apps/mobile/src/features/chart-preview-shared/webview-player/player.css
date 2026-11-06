@@ -358,7 +358,7 @@ body.fullscreen #app { padding: 0; gap: 0; }
 #fs-lock {
   display: none;
   position: fixed;
-  right: calc(10px + env(safe-area-inset-right));
+  right: max(12px, env(safe-area-inset-right));
   top: 50%;
   transform: translateY(-50%);
   z-index: 2001;
