@@ -225,6 +225,7 @@ async function checkMedia(browser, helpers) {
           media.sync(time, playing); media.drawUnder(context, time); media.drawOver(context, time);
           context.flush();
         };
+        context.onInvalidate = () => { if (!playing) draw(); };
         const pixel = (x = 160, y = 90) => {
           const value = new Uint8Array(4);
           context.gl.readPixels(x, canvas.height - y - 1, 1, 1, context.gl.RGBA, context.gl.UNSIGNED_BYTE, value);
@@ -239,9 +240,9 @@ async function checkMedia(browser, helpers) {
           throw Error(`${kind} media at ${time}ms has stale pixels ${pixel(x, y)}`);
         };
         const settings = { backgroundBrightness: 100, backgroundBlur: 0, playbackSpeed: 1, storyboardEnabled: true, videoEnabled: true };
-        media = await createPreviewMedia({ files: new Map([['movie.webm', resource('movie.webm')]]),
+        media = await createPreviewMedia({ stage: context, files: new Map([['movie.webm', resource('movie.webm')]]),
           osuPath: 'map.osu', osuBytes: new TextEncoder().encode('[Events]\nVideo,500,"movie.webm"'),
-          signal: controller.signal, onWarning: message => warnings.push(message), onInvalidate: draw });
+          signal: controller.signal, onWarning: message => warnings.push(message) });
         media.configure(settings);
         const colors = [];
         for (const blur of [0, 10]) {
@@ -252,8 +253,9 @@ async function checkMedia(browser, helpers) {
           }
         }
         media.configure(settings);
-        time = targets[0]; playing = true; media.sync(time, true, true); draw();
+        time = targets[0]; media.sync(time, false, true); draw();
         await expectColor(0);
+        playing = true; media.sync(time, true); draw();
         let advanced = false;
         const deadline = performance.now() + targets[2] - targets[0] + 3000;
         while (!advanced && performance.now() < deadline) {
@@ -277,9 +279,9 @@ async function checkMedia(browser, helpers) {
           'Sprite,Foreground,Centre,"red.png",400,240\n F,0,10000,60000,1\n' +
           'Sprite,Foreground,Centre,"blue.png",400,240\n F,0,10000,60000,0.5\n' +
           'Sprite,Overlay,Centre,"blue.png",480,240\n F,0,10000,60000,1';
-        media = await createPreviewMedia({ files: new Map([['frame0.png', resource('red.png')], ['frame1.png', resource('blue.png')],
+        media = await createPreviewMedia({ stage: context, files: new Map([['frame0.png', resource('red.png')], ['frame1.png', resource('blue.png')],
           ['red.png', resource('red.png')], ['blue.png', resource('blue.png')]]), osuPath: 'map.osu', osuBytes: new TextEncoder().encode(events),
-          signal: controller.signal, onWarning: message => warnings.push(message), onInvalidate: draw });
+          signal: controller.signal, onWarning: message => warnings.push(message) });
         media.configure({ ...settings, backgroundBrightness: 50 });
         for (const [target, channel] of [[10500, 0], [11500, 2], [53500, 2], [52500, 0], [11900, 2], [10100, 0]]) {
           time = target; draw();
@@ -321,11 +323,11 @@ try {
     const overlay = canvas(32, 32), overlayContext = overlay.getContext('2d');
     overlayContext.fillStyle = '#ff0000'; overlayContext.fillRect(0, 0, 32, 32);
     const settings = { backgroundBlur: 20, backgroundBrightness: 100, storyboardEnabled: true, videoEnabled: true };
-    const media = await createPreviewMedia({ files: new Map([
+    const target = canvas(), context = createStageContext(target);
+    const media = await createPreviewMedia({ stage: context, files: new Map([
       ['background.png', { uri: source.toDataURL() }], ['overlay.png', { uri: overlay.toDataURL() }],
     ]), osuPath: 'map.osu', osuBytes: new TextEncoder().encode('[Events]\n0,0,"background.png",0,0\nSprite,Overlay,Centre,"overlay.png",320,240\n F,0,0,5000,1\nSprite,Overlay,Centre,"overlay.png",400,240\n F,0,0,5000,0.5\n C,0,0,5000,128,255,255'),
-    signal: new AbortController().signal, onWarning(message) { throw new Error(message); }, onInvalidate() {} });
-    const target = canvas(), context = createStageContext(target);
+    signal: new AbortController().signal, onWarning(message) { throw new Error(message); } });
     context.beginFrame();
     const pixel = (x, y) => {
       context.flush(); const gl = context.gl, out = new Uint8Array(4);

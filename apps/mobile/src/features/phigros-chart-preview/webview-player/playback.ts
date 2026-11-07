@@ -36,7 +36,7 @@ export interface PhigrosChartTimeline {
 
 export interface PhigrosPlaybackHost {
 
-  render(chartTime: number): void;
+  render(chartTime: number, seek?: boolean): void;
 
   onPlayStateChange?(playing: boolean): void;
 
@@ -89,7 +89,7 @@ export class PhigrosPlaybackSession {
       schedule: (seconds, now, speed, end) => this.updateHitSounds(seconds, now, speed, end),
       onState: options.host.onPlayStateChange, onError: () => options.host.onPlaybackError?.(),
     });
-    this.playback.onFrame = seconds => options.host.render(seconds);
+    this.playback.onFrame = (seconds, seek) => options.host.render(seconds, seek);
     this.playback.setSpeed(this.settings.playbackSpeed);
   }
 

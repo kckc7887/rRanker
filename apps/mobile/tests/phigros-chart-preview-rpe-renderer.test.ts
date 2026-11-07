@@ -4,6 +4,8 @@ import { PhiraChartSchema } from '@/domain/phira';
 import { buildPhiraChartPreviewInput } from '@/features/phira-chart-preview/chart-preview-input';
 import { parseRpeChart } from '@/features/phigros-chart-preview/webview-player/rpe-core';
 import { RpeRenderer } from '@/features/phigros-chart-preview/webview-player/rpe-renderer';
+import { createStageContext } from '@/features/chart-preview-shared/webview-player/stage';
+import { StageVideo, type StageMediaHost, type StageVideoOptions } from '@/features/chart-preview-shared/webview-player/stage-media';
 
 vi.mock('@/features/chart-preview-shared/webview-player/stage', async () => {
   const original = await vi.importActual<typeof import('@/features/chart-preview-shared/webview-player/stage')>('@/features/chart-preview-shared/webview-player/stage');
@@ -18,8 +20,15 @@ function environment(gl?: WebGLRenderingContext) {
     let tint = [1,1,1];
     const cached = new WeakMap<object, WebGLTexture>();
     const stack: number[][] = [];
+    const videos = new Set<StageVideo>();
     const context = new Proxy<Record<string, unknown>>({}, {
       get: (target, key: string) => key === 'gl' ? gl ?? {} : key === 'effectScale' ? 1 : target[key] ?? ((...args: unknown[]) => {
+        if (key === 'createVideo') {
+          const video = new StageVideo(context as unknown as StageMediaHost, args[0] as StageVideoOptions, () => videos.delete(video));
+          videos.add(video);
+          return video;
+        }
+        if (key === 'dispose') for (const video of videos) video.dispose();
         if (key === 'save') stack.push(tint);
         if (key === 'restore') tint = stack.pop() ?? [1,1,1];
         if (key === 'tint') tint = args as number[];
@@ -65,6 +74,34 @@ function image(size: number): HTMLImageElement {
   return { width: size, height: size, naturalWidth: size, naturalHeight: size } as HTMLImageElement;
 }
 
+class Video extends EventTarget {
+  duration = 10;
+  currentTime = 0;
+  playbackRate = 1;
+  videoWidth = 320;
+  videoHeight = 180;
+  readyState = 4;
+  paused = true;
+  error: object | null = null;
+  src = '';
+  fail = false;
+  hasAttribute(name: string) { return name === 'src' && this.src !== ''; }
+  removeAttribute(name: string) { if (name === 'src') this.src = ''; }
+  load() {
+    if (!this.src) return;
+    this.error = this.fail ? { code: 2 } : null;
+    this.duration = this.fail ? NaN : 10;
+    this.readyState = this.fail ? 0 : 4;
+    if (this.fail) this.dispatchEvent(new Event('error'));
+    else {
+      this.dispatchEvent(new Event('loadedmetadata'));
+      this.dispatchEvent(new Event('loadeddata'));
+    }
+  }
+  play() { this.paused = false; return Promise.resolve(); }
+  pause() { this.paused = true; }
+}
+
 afterEach(() => vi.unstubAllGlobals());
 describe('RPE renderer', () => {
   it('着色器颜色按 RGBA 字节插值，定位后保持正确范围和默认颜色', () => {
@@ -92,32 +129,29 @@ describe('RPE renderer', () => {
     renderer.dispose();
   });
 
-  it('视频遵循暂停、倍速、区间定位并在异步定位后重绘', async () => {
-    class Video extends EventTarget {
-      duration = 10;
-      currentTime = 0;
-      playbackRate = 1;
-      videoWidth = 320;
-      videoHeight = 180;
-      paused = true;
-      play() { this.paused = false; return Promise.resolve(); }
-      pause() { this.paused = true; }
-    }
+  it('同源视频片段独立同步暂停、倍速与区间定位', async () => {
     const video = new Video();
-    const { renderer, draws } = environment();
+    const { renderer, stage, draws } = environment();
     const data = parseRpeChart({ META: { RPEVersion: 150 }, BPMList: [{ startTime: [0, 0, 1], bpm: 120 }], judgeLineList: [] },
-      { extraJson: JSON.stringify({ videos: [{ path: 'clip.mp4', time: [4, 0, 1] }] }) });
+      { extraJson: JSON.stringify({ videos: [{ path: 'clip.mp4', time: [4, 0, 1] }, { path: 'clip.mp4', time: [6, 0, 1] }] }) });
     renderer.setChart(data);
-    renderer.setChartAssets({ textures: new Map(), videos: new Map([['clip.mp4', video as unknown as HTMLVideoElement]]),
+    const second = new Video();
+    const media = [video, second].map(element => createStageContext(stage).createVideo({
+      element: element as unknown as HTMLVideoElement, onDuration: renderer.indexVideos,
+    }));
+    await Promise.all(media.map(handle => handle.setSource('file:///clip.mp4')));
+    renderer.setChartAssets({ textures: new Map(), videos: new Map(data.extras.videos.map((clip, index) => [clip, media[index]!])),
       shaders: new Map(), gifs: new Map(), gifAnims: new Map() });
     renderer.render(3);
     expect(video.currentTime).toBe(1);
     expect(video.paused).toBe(true);
     draws.length = 0;
     video.dispatchEvent(new Event('seeked'));
+    renderer.render(3);
     expect(draws.some(args => args[0] === video)).toBe(true);
     renderer.render(4, true, 2);
     expect([video.currentTime, video.playbackRate, video.paused]).toEqual([2, 2, false]);
+    expect([second.currentTime, second.playbackRate, second.paused]).toEqual([1, 2, false]);
     await Promise.resolve();
     renderer.render(4.1, false, 0.5);
     expect(video.currentTime).toBeCloseTo(2.1);
@@ -140,33 +174,22 @@ describe('RPE renderer', () => {
   });
 
   it('视频出错后重新播放会重载，恢复后继续同步和绘制', async () => {
-    class Video extends EventTarget {
-      duration = NaN;
-      currentTime = 0;
-      playbackRate = 1;
-      videoWidth = 320;
-      videoHeight = 180;
-      readyState = 0;
-      paused = true;
-      error: object | null = { code: 2 };
-      load() { this.error = null; }
-      play() { this.paused = false; return Promise.resolve(); }
-      pause() { this.paused = true; }
-    }
     const video = new Video();
-    const { renderer, draws } = environment();
-    renderer.setChart(parseRpeChart({ META: { RPEVersion: 150 }, BPMList: [{ startTime: [0, 0, 1], bpm: 120 }], judgeLineList: [] },
-      { extraJson: JSON.stringify({ videos: [{ path: 'clip.mp4', time: [0, 0, 1] }] }) }));
-    renderer.setChartAssets({ textures: new Map(), videos: new Map([['clip.mp4', video as unknown as HTMLVideoElement]]),
+    video.fail = true;
+    const { renderer, stage, draws } = environment();
+    const chart = parseRpeChart({ META: { RPEVersion: 150 }, BPMList: [{ startTime: [0, 0, 1], bpm: 120 }], judgeLineList: [] },
+      { extraJson: JSON.stringify({ videos: [{ path: 'clip.mp4', time: [0, 0, 1] }] }) });
+    renderer.setChart(chart);
+    const media = createStageContext(stage).createVideo({ element: video as unknown as HTMLVideoElement, onDuration: renderer.indexVideos });
+    await media.setSource('file:///clip.mp4');
+    renderer.setChartAssets({ textures: new Map(), videos: new Map([[chart.extras.videos[0]!, media]]),
       shaders: new Map(), gifs: new Map(), gifAnims: new Map() });
     renderer.render(1, false);
     expect(draws.some(args => args[0] === video)).toBe(false);
+    video.fail = false;
     renderer.render(1, true);
     expect(video.error).toBeNull();
-    video.duration = 10;
-    video.readyState = 4;
-    video.dispatchEvent(new Event('durationchange'));
-    video.dispatchEvent(new Event('loadeddata'));
+
     renderer.render(1.5, true, 0.5);
     await Promise.resolve();
     expect([video.currentTime, video.playbackRate, video.paused]).toEqual([1.5, 0.5, false]);

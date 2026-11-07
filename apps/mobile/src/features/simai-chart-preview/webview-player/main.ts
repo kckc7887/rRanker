@@ -64,7 +64,8 @@ const startupController = new AbortController();
 let pauseInitialized: (() => void) | undefined;
 let exitFullscreenInitialized: (() => void) | undefined;
 let confirmInitialized: ((accepted: boolean) => void) | undefined;
-let videoSourceInitialized: ((requestId: number, uri: string | null) => void) | undefined;
+let videoRequestId = 0;
+const videoRequests = new Map<number, (uri: string | null) => void>();
 function releasePlayer(): void {
   if (disposed) return;
   closeActiveWheelPopup();
@@ -74,7 +75,8 @@ function releasePlayer(): void {
   pauseInitialized = undefined;
   exitFullscreenInitialized = undefined;
   confirmInitialized = undefined;
-  videoSourceInitialized = undefined;
+  for (const resolve of videoRequests.values()) resolve(null);
+  videoRequests.clear();
 }
 function receiveHostMessage(event: MessageEvent): void {
   applyChartPreviewHostCommand(event.data, {
@@ -82,7 +84,10 @@ function receiveHostMessage(event: MessageEvent): void {
     exitFullscreen: () => exitFullscreenInitialized?.(),
     dispose: releasePlayer,
     confirm: value => confirmInitialized?.(value),
-    videoSource: (requestId, uri) => videoSourceInitialized?.(requestId, uri),
+    videoSource: (requestId, uri) => {
+      videoRequests.get(requestId)?.(uri);
+      videoRequests.delete(requestId);
+    },
   });
 }
 events.listen(window, 'message', receiveHostMessage);
@@ -213,7 +218,6 @@ async function main(): Promise<void> {
   const backgroundTrigger = $('background-trigger');
   const backgroundPopup = $('background-popup');
   const backgroundVal = $('background-val');
-  const backgroundImage = $('background-image') as HTMLImageElement;
   const backgroundVideo = $('background-video') as HTMLVideoElement;
   const togglePink = $('toggle-pink') as HTMLButtonElement;
   const toggleStarRot = $('toggle-star-rot') as HTMLButtonElement;
@@ -327,7 +331,9 @@ async function main(): Promise<void> {
     canvasWrap.classList.add('dual');
     document.body.classList.add('dual');
   }
-  const skin = new ChartPreviewSkin();
+  const stage = createStageContext(canvas);
+  events.own(() => stage.dispose());
+  const skin = new ChartPreviewSkin(stage);
   postLoadProgress('正在加载皮肤…', 0.4, statusEl);
   try {
     await skin.load();
@@ -340,9 +346,8 @@ async function main(): Promise<void> {
     postStatus('error', { message: '皮肤加载失败，请返回重试。', diagnostic });
     return;
   }
-  const stage = createStageContext(canvas);
   const effects = new EffectRenderer(skin);
-  events.own(() => { effects.dispose(stage); stage.dispose(); });
+  events.own(() => effects.dispose(stage));
   const renderers = charts.map(() => new MainRenderer(canvas, { skin, stage, effects }));
   const applyRendererSettings = (r: MainRenderer) => {
     r.setJudgmentLineDesign((saved.judgmentLineDesign as string) || 'sensor');
@@ -377,7 +382,7 @@ async function main(): Promise<void> {
     soundVolume: saved.soundVolume ?? 10,
     musicOffset: SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS,
     host: {
-      render: (beats) => renderAt(beats),
+      render: (beats, seek) => renderAt(beats, seek),
       onPlayStateChange: () => syncPlayButtons(),
       onPlaybackError: () => { statusEl.textContent = '音乐播放失败，请重新加载谱面。'; },
     },
@@ -457,26 +462,27 @@ async function main(): Promise<void> {
   });
 
   const background = new SimaiBackgroundMedia({
-    image: backgroundImage,
+    stage,
     video: backgroundVideo,
     mode: backgroundMode,
     imageUrl: config.backgroundImageUrl,
     host: {
-      render: (decoded) => {
-        if (decoded) stage.invalidateImage(decoded);
-        renderFrameAll(session.positionBeats);
-      },
+      render: () => session.playback.invalidate(),
       reportVideo: (result, video) => reportBackgroundVideo(result, video),
-      loadVideo: requestId => postStatus('background-video-load', { requestId }),
+      loadVideo: () => new Promise(resolve => {
+        const requestId = ++videoRequestId;
+        videoRequests.set(requestId, resolve);
+        postStatus('background-video-load', { requestId });
+      }),
       readStatus: () => statusEl.textContent ?? '',
       writeStatus: (message) => { statusEl.textContent = message; },
       setImage: (image) => { for (const renderer of renderers) renderer.setBackgroundImage(image); },
       setVideo: (video) => { for (const renderer of renderers) renderer.setBackgroundVideo(video); },
     },
   });
-  videoSourceInitialized = (requestId, uri) => background.setVideoSource(requestId, uri);
+  stage.onInvalidate = () => session.playback.invalidate();
 
-  const renderFrameAll = (beats: number) => {
+  const renderFrameAll = (beats: number, seek = false) => {
     background.syncFrame({
       currentBeats: beats,
       totalBeats,
@@ -486,6 +492,7 @@ async function main(): Promise<void> {
       bpm: chart.bpm,
       musicOffset: SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS,
       firstMs: chart.firstMs ?? 0,
+      seek,
     });
     stage.beginFrame();
     const position = session.beatsToMs(beats);
@@ -571,9 +578,9 @@ async function main(): Promise<void> {
     }
   };
 
-  const renderAt = (beats: number) => {
+  const renderAt = (beats: number, seek = false) => {
     if (disposed) return;
-    renderFrameAll(beats);
+    renderFrameAll(beats, seek);
     updateSeekUi(beats);
     updateOverlayDom();
   };
@@ -588,7 +595,6 @@ async function main(): Promise<void> {
     if (disposed) return;
     closeActiveWheelPopup();
     session.pause();
-    background.releaseVideo();
   };
 
   confirmInitialized = accepted => applyBackgroundVideoConfirmation(accepted);

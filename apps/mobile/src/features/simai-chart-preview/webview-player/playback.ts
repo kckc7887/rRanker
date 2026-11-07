@@ -6,7 +6,7 @@ import type { Chart } from '../engine/types';
 import { SIMAI_PREVIEW_MUSIC_OFFSET_SECONDS, createSimaiPlaybackTimeline, resolvePlaybackRange, type SimaiPlaybackTimeline } from './timeConversion';
 
 export interface SimaiPlaybackHost {
-  render(beats: number): void;
+  render(beats: number, seek?: boolean): void;
   onPlayStateChange?(playing: boolean): void;
   onPlaybackError?(): void;
 }
@@ -57,7 +57,7 @@ export class SimaiPlaybackSession {
       onState: options.host.onPlayStateChange,
       onError: () => options.host.onPlaybackError?.(),
     });
-    this.playback.onFrame = seconds => options.host.render(this.beatsAtMs(seconds * 1000));
+    this.playback.onFrame = (seconds, seek) => options.host.render(this.beatsAtMs(seconds * 1000), seek);
     this.playback.setSpeed(options.speed ?? 1);
     this.applyRange();
   }

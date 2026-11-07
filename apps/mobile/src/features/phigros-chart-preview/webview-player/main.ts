@@ -1,3 +1,4 @@
+import { createStageContext, type StageContext, type StageVideo } from '../../chart-preview-shared/webview-player/stage';
 import { bindTimelineDrag } from '../../chart-preview-shared/webview-player/frame-scheduler';
 import { renderPreviewHeading } from '../../chart-preview-shared/webview-player/heading';
 import { bindPlaybackLoop } from '../../chart-preview-shared/webview-player/playback-loop';
@@ -16,7 +17,7 @@ import { closeActiveWheelPopup, setupWheelPopup as setupSharedWheelPopup, type W
 import { PgrRenderer, type LineColorKey, type NoteAssets } from './renderer';
 import { parsePgrChart, type PgrChart } from './pgr-core';
 import { RpeRenderer, type RpeAttachUiTransform, type RpeChartAssets } from './rpe-renderer';
-import { buildGifAnim, parseRpeChart, type RpeChart, type RpeGifKeyframe } from './rpe-core';
+import { buildGifAnim, parseRpeChart, type RpeChart, type RpeGifKeyframe, type RpeVideo } from './rpe-core';
 import { RPE_PRESET_SHADERS } from './rpe-preset-shaders';
 import { buildHitSoundEvents } from './hit-sound';
 import { PhigrosPlaybackSession, type PhigrosPlaybackSettings } from './playback';
@@ -111,21 +112,6 @@ function decodeBase64DataUrl(url: string): ArrayBuffer {
   return bytes.buffer;
 }
 
-function loadImage(url: string, signal: AbortSignal): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
-    if (signal.aborted || disposed) { reject(new DOMException('已取消', 'AbortError')); return; }
-    const image = new Image();
-    /** GPU 场景纹理要求源画布可读取。 */
-    if (/^https?:/i.test(url)) image.crossOrigin = 'anonymous';
-    const cleanup = () => { signal.removeEventListener('abort', onAbort); image.onload = null; image.onerror = null; };
-    const onAbort = () => { cleanup(); image.src = ''; reject(new DOMException('已取消', 'AbortError')); };
-    image.onload = () => { cleanup(); resolve(image); };
-    image.onerror = () => { cleanup(); reject(new Error('曲绘加载失败')); };
-    signal.addEventListener('abort', onAbort, { once: true });
-    image.src = url;
-  });
-}
-
 let disposed = false;
 const events = new PlayerEventScope(() => disposed);
 
@@ -150,15 +136,17 @@ function rpeTextureNames(chart: RpeChart): Set<string> {
   return textureNames;
 }
 
-async function loadRpeChartAssets(chart: RpeChart, bundle: PhigrosChartPreviewConfig['rpeAssets'], signal: AbortSignal): Promise<RpeChartAssets> {
+async function loadRpeChartAssets(
+  chart: RpeChart, bundle: PhigrosChartPreviewConfig['rpeAssets'], signal: AbortSignal,
+  stage: StageContext, loadImage: (url: string, signal: AbortSignal) => Promise<HTMLImageElement>, onDuration: () => void,
+): Promise<RpeChartAssets> {
   const basePath = bundle?.basePath ?? '';
   const textures = new Map<string, HTMLImageElement>();
-  const videos = new Map<string, HTMLVideoElement>();
+  const videos = new Map<RpeVideo, StageVideo>();
   const gifs = new Map<string, { frames: ImageBitmap[]; durationsMs: number[]; cumulativeMs: number[]; totalMs: number }>();
   const gifAnims = new Map<number, RpeGifKeyframe[]>();
   let gifPixels = 0;
   events.own(() => {
-    for (const video of videos.values()) { video.pause(); video.removeAttribute('src'); video.load(); }
     for (const gif of gifs.values()) for (const frame of gif.frames) frame.close();
     videos.clear(); gifs.clear(); textures.clear(); gifAnims.clear();
   });
@@ -247,34 +235,11 @@ async function loadRpeChartAssets(chart: RpeChart, bundle: PhigrosChartPreviewCo
     })());
   }
   for (const video of chart.extras.videos) {
-    if (videos.has(video.path)) continue;
-    jobs.push(new Promise<void>((resolve, reject) => {
-      const videoUrl = rpeResourceUrl(basePath, video.path);
-      if (!videoUrl) { resolve(); return; }
-      const element = document.createElement('video');
-      element.muted = true;
-      element.preload = 'auto';
-      element.playsInline = true;
-      if (/^https?:/i.test(videoUrl)) element.crossOrigin = 'anonymous';
-      element.src = videoUrl;
-      const done = () => {
-        element.removeEventListener('loadedmetadata', done);
-        element.removeEventListener('error', done);
-        signal.removeEventListener('abort', cancel);
-        resolve();
-      };
-      const cancel = () => {
-        element.removeEventListener('loadedmetadata', done); element.removeEventListener('error', done);
-        element.pause(); element.removeAttribute('src'); element.load();
-        signal.removeEventListener('abort', cancel); reject(new DOMException('预览已释放', 'AbortError'));
-      };
-      element.addEventListener('loadedmetadata', done, { once: true });
-      element.addEventListener('error', done, { once: true });
-      signal.addEventListener('abort', cancel, { once: true });
-      events.own(cancel);
-      element.load();
-      videos.set(video.path, element);
-    }));
+    const url = rpeResourceUrl(basePath, video.path);
+    if (!url) continue;
+    const media = stage.createVideo({ onDuration });
+    videos.set(video, media);
+    jobs.push(media.setSource(url));
   }
   await Promise.all(jobs);
   for (const line of chart.lines) {
@@ -296,7 +261,10 @@ async function loadRpeChartAssets(chart: RpeChart, bundle: PhigrosChartPreviewCo
   return { textures, videos, shaders, gifs, gifAnims };
 }
 
-async function rpeBackground(chart: RpeChart, basePath: string, image: HTMLImageElement | null, signal: AbortSignal) {
+async function rpeBackground(
+  chart: RpeChart, basePath: string, image: HTMLImageElement | null, signal: AbortSignal,
+  loadImage: (url: string, signal: AbortSignal) => Promise<HTMLImageElement>,
+) {
   const background = chart.background;
   if (!background) return image;
   const url = rpeResourceUrl(basePath, background);
@@ -345,19 +313,30 @@ function start(): void {
   type PreviewRenderer = PgrRenderer | RpeRenderer;
   const renderer: PreviewRenderer = RPE_PLAYER ? new RpeRenderer(elements.canvas) : new PgrRenderer(elements.canvas);
   events.own(() => renderer.dispose());
+  const stage = createStageContext(elements.canvas);
+  const images = stage.createImages(url => url);
+  async function loadImage(url: string, signal: AbortSignal): Promise<HTMLImageElement> {
+    if (signal.aborted || disposed) throw new DOMException('预览已释放', 'AbortError');
+    const image = await images.load(url);
+    if (signal.aborted || disposed) throw new DOMException('预览已释放', 'AbortError');
+    if (!image) throw new Error('图片加载失败');
+    return image;
+  }
+
   let settings = loadSettings(config.settings);
   const playbackSettings: PhigrosPlaybackSettings = settings;
   const session = new PhigrosPlaybackSession({
     settings: playbackSettings,
     hitSounds: config.hitSounds,
     host: {
-      render: (chartTime) => renderFrame(chartTime),
+      render: (chartTime, seek) => renderFrame(chartTime, seek),
       onPlayStateChange: () => syncPlayButtons(),
       onPlaybackError: () => setStatus('无法播放音乐，请重试。'),
     },
   });
   let loadController: AbortController | null = null;
   let ready = false;
+  stage.onInvalidate = () => { if (ready) session.playback.invalidate(); };
   let isFullscreen = false;
   let cancelDrag: (() => void) | undefined;
   let completionTimes: number[] = [];
@@ -543,10 +522,10 @@ function start(): void {
     timelineView.updatePlayhead(chartTime, session.chartDuration);
   }
 
-  function renderFrame(chartTime: number): void {
+  function renderFrame(chartTime: number, seek = false): void {
     if (disposed) return;
     try {
-      if (RPE_PLAYER) (renderer as RpeRenderer).render(chartTime, session.playing, settings.playbackSpeed);
+      if (RPE_PLAYER) (renderer as RpeRenderer).render(chartTime, session.playing, settings.playbackSpeed, seek);
       else renderer.render(chartTime);
       applyAttachUiFromRenderer();
       renderHud(chartTime);
@@ -597,12 +576,12 @@ function start(): void {
       const rpeChart = RPE_PLAYER ? (chart as RpeChart) : null;
       const [noteAssets, chartAssets] = await Promise.all([
         loadNoteAssets(signal),
-        RPE_PLAYER ? loadRpeChartAssets(rpeChart!, config.rpeAssets, signal) : Promise.resolve(null),
+        RPE_PLAYER ? loadRpeChartAssets(rpeChart!, config.rpeAssets, signal, stage, loadImage, (renderer as RpeRenderer).indexVideos) : Promise.resolve(null),
         loadPreviewMusic(signal),
       ]);
       if (signal.aborted) return;
 
-      const illustration = RPE_PLAYER ? await rpeBackground(rpeChart!, config.rpeAssets?.basePath ?? '', image, signal) : image;
+      const illustration = RPE_PLAYER ? await rpeBackground(rpeChart!, config.rpeAssets?.basePath ?? '', image, signal, loadImage) : image;
       if (signal.aborted || disposed) return;
       if (RPE_PLAYER) {
         (renderer as RpeRenderer).setChart(rpeChart!);

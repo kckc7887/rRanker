@@ -44,7 +44,7 @@ export class MainRenderer {
   constructor(private canvas: HTMLCanvasElement, options: MainRendererConfig = {}) {
     this.ctx = options.stage ?? createStageContext(canvas);
     this.ownsStage = !options.stage;
-    this.skin = options.skin ?? new ChartPreviewSkin();
+    this.skin = options.skin ?? new ChartPreviewSkin(this.ctx);
     this.effects = options.effects ?? new EffectRenderer(this.skin);
     if (this.ownsStage) this.resize();
   }

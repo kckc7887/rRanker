@@ -1,3 +1,5 @@
+import type { StageContext } from '@/features/chart-preview-shared/webview-player/stage';
+import { StageImages } from '@/features/chart-preview-shared/webview-player/stage-media';
 import { buildFrame, prepareChart } from '@/features/simai-chart-preview/engine/renderers/frame';
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { parseSimaiBody } from '@/features/simai-chart-preview/engine/core/parser/SimaiParser';
@@ -25,6 +27,10 @@ function canvasMock(size = 540) {
   const target = { width: size, height: size, clientWidth: size, style: {}, label: 'canvas', tint: undefined as string | undefined, getContext: () => context };
   const context = {
     tint(r: number, g: number, b: number) { tint = '#' + [r,g,b].map(v => Math.round(v * 255).toString(16).padStart(2, '0')).join(''); },
+    releaseImage() {}, invalidateImage() {},
+    createImages(resolve: (key: string) => string | Blob | undefined, onError?: (key: string) => void) {
+      const pool = new StageImages(context, resolve, onError); imagePools.push(pool); return pool;
+    },
     rect() {},
     get globalAlpha() { return alpha; }, set globalAlpha(value: number) { alpha = value; },
     fillStyle: '', strokeStyle: '', lineWidth: 0, globalCompositeOperation: 'source-over',
@@ -53,6 +59,7 @@ function canvasMock(size = 540) {
 }
 
 const surfaces: ReturnType<typeof canvasMock>[] = [];
+const imagePools: StageImages[] = [];
 beforeEach(() => {
   surfaces.length = 0;
   vi.stubGlobal('devicePixelRatio', 1);
@@ -60,23 +67,25 @@ beforeEach(() => {
   vi.stubGlobal('__MAIMAI_CHART_PREVIEW_SKINS__', Object.fromEntries([
     ...MAIMAI_CHART_PREVIEW_SKIN_ASSETS.map(asset => [asset.path, asset.path]), ['sensor.webp', 'sensor.webp'],
   ]));
-  vi.stubGlobal('Image', class {
-    complete = true; naturalWidth = 100; naturalHeight = 100; onload?: () => void; private value = '';
+  vi.stubGlobal('Image', class extends EventTarget {
+    complete = true; naturalWidth = 100; naturalHeight = 100; private value = '';
     get src() { return this.value; }
     set src(value: string) {
       this.value = value;
       const asset = MAIMAI_CHART_PREVIEW_SKIN_ASSETS.find(item => item.path === value);
       this.naturalWidth = asset?.width ?? 100; this.naturalHeight = asset?.height ?? 100;
-      queueMicrotask(() => this.onload?.());
+      queueMicrotask(() => this.dispatchEvent(new Event('load')));
     }
+    decode() { return Promise.resolve(); }
+    removeAttribute() { this.value = ''; }
   });
 });
-afterEach(() => vi.unstubAllGlobals());
+afterEach(() => { for (const pool of imagePools.splice(0)) pool.dispose(); vi.unstubAllGlobals(); });
 
 async function player() {
-  const output = canvasMock(), skin = new ChartPreviewSkin();
+  const output = canvasMock(), skin = new ChartPreviewSkin(output.context as unknown as StageContext);
   await skin.load();
-  const renderer = new MainRenderer(output.canvas, { skin, stage: output.context as unknown as import('@/features/chart-preview-shared/webview-player/stage').StageContext });
+  const renderer = new MainRenderer(output.canvas, { skin, stage: output.context as unknown as StageContext });
   renderer.setJudgmentLineDesign('blind');
   const render = (body: string, time: number) => {
     output.draws.length = 0; output.circles.length = 0;

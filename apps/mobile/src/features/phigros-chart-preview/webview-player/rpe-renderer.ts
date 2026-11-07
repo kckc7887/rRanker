@@ -17,7 +17,7 @@ import {
   speedHeightAt,
 } from './rpe-core';
 import { lowerBoundBy, upperBoundBy } from '../../chart-preview-shared/webview-player/sorted-search';
-import { createStageContext, stagePixels, type StageContext, type StageTarget } from '../../chart-preview-shared/webview-player/stage';
+import { createStageContext, stagePixels, type StageContext, type StageTarget, type StageVideo } from '../../chart-preview-shared/webview-player/stage';
 import { createIntervalIndex } from '../../chart-preview-shared/webview-player/interval-index';
 import type { NoteAssets } from './renderer';
 
@@ -42,7 +42,7 @@ export interface RpeGifFrames {
 
 export interface RpeChartAssets {
   textures: Map<string, HTMLImageElement>;
-  videos: Map<string, HTMLVideoElement>;
+  videos: Map<RpeVideo, StageVideo>;
   shaders: Map<string, string>;
   gifs: Map<string, RpeGifFrames>;
   gifAnims: Map<number, RpeGifKeyframe[]>;
@@ -346,9 +346,20 @@ export class RpeRenderer {
   private readonly resizeObserver: ResizeObserver;
   private drawOrder: number[] = [];
   private videoIntervals: (start: number, end: number) => RpeVideo[] = () => [];
-  private readonly indexVideos = (): void => {
-    this.videoIntervals = createIntervalIndex(this.chart?.extras.videos ?? [], video =>
-      [video.startTimeSec, video.startTimeSec + (this.chartAssets?.videos.get(video.path)?.duration || 0)]);
+  private unknownVideos: RpeVideo[] = [];
+  private activeVideos = new Set<RpeVideo>();
+  readonly indexVideos = (): void => {
+    this.unknownVideos = [];
+    const known = (this.chart?.extras.videos ?? []).filter(video => {
+      const media = this.chartAssets?.videos.get(video);
+      if (!media) return false;
+      const duration = media.duration;
+      if (duration > 0 && Number.isFinite(duration)) return true;
+      this.unknownVideos.push(video);
+      return false;
+    });
+    this.videoIntervals = createIntervalIndex(known, video =>
+      [video.startTimeSec, video.startTimeSec + this.chartAssets!.videos.get(video)!.duration]);
   };
   private activeEffects: (start: number, end: number) => RpeEffect[] = () => [];
   private chart: RpeChart | null = null;
@@ -362,12 +373,6 @@ export class RpeRenderer {
   private disposed = false;
   private playing = false;
   private playbackSpeed = 1;
-  private readonly playingVideos = new Set<HTMLVideoElement>();
-  private readonly pendingVideos = new Set<HTMLVideoElement>();
-  private readonly onVideoSeeked = (event: Event): void => {
-    this.context.invalidateImage(event.currentTarget as HTMLVideoElement);
-    if (!this.playing) this.render(this.lastRenderedTime, false, this.playbackSpeed);
-  };
   private readonly gl: WebGLRenderingContext;
   private glPrograms = new Map<string, WebGLProgram | null>();
   private shaderDefaults = new Map<string, [string, number | number[]][]>();
@@ -393,22 +398,15 @@ export class RpeRenderer {
   }
 
   setChartAssets(assets: RpeChartAssets): void {
-    this.pauseVideos();
-    for (const video of this.chartAssets?.videos.values() ?? []) {
-      video.removeEventListener('seeked', this.onVideoSeeked);
-      video.removeEventListener('loadeddata', this.onVideoSeeked);
-      video.removeEventListener('durationchange', this.indexVideos);
+    if (this.chartAssets !== assets) {
+      for (const video of this.chartAssets?.videos.values() ?? []) video.dispose();
     }
+    this.activeVideos.clear();
     for (const program of this.glPrograms.values()) if (program) this.gl.deleteProgram(program);
     this.glPrograms.clear();
     this.shaderDefaults.clear();
     this.chartAssets = assets;
     this.indexVideos();
-    for (const video of assets.videos.values()) {
-      video.addEventListener('seeked', this.onVideoSeeked);
-      video.addEventListener('loadeddata', this.onVideoSeeked);
-      video.addEventListener('durationchange', this.indexVideos);
-    }
   }
   setIllustration(image: HTMLImageElement | null): void { this.illustration = image; }
   setNoteAssets(assets: NoteAssets): void {
@@ -426,12 +424,6 @@ export class RpeRenderer {
   dispose(): void {
     if (this.disposed) return;
     this.disposed = true;
-    this.pauseVideos();
-    for (const video of this.chartAssets?.videos.values() ?? []) {
-      video.removeEventListener('seeked', this.onVideoSeeked);
-      video.removeEventListener('loadeddata', this.onVideoSeeked);
-      video.removeEventListener('durationchange', this.indexVideos);
-    }
     this.resizeObserver.disconnect();
     for (const program of this.glPrograms.values()) if (program) this.gl.deleteProgram(program);
     this.glPrograms.clear();
@@ -444,6 +436,8 @@ export class RpeRenderer {
     this.noteAssets = null;
     this.noteQueries = [];
     this.videoIntervals = () => [];
+    this.unknownVideos = [];
+    this.activeVideos.clear();
     this.hitEvents = [];
     this.activeEffects = () => [];
   }
@@ -793,23 +787,14 @@ export class RpeRenderer {
     context.restore();
   }
 
-  render(time: number, playing = false, playbackSpeed = 1): void {
+  render(time: number, playing = false, playbackSpeed = 1, seek = false): void {
     if (this.disposed) return;
-    if (playing && !this.playing) {
-      for (const video of this.chartAssets?.videos.values() ?? []) if (video.error) video.load();
-    }
     this.playing = playing;
     this.playbackSpeed = playbackSpeed;
-    if (!playing) this.pauseVideos();
-    this.renderFrame(time);
+    this.renderFrame(time, seek);
   }
 
-  private pauseVideos(): void {
-    for (const video of this.playingVideos) if (!video.paused) video.pause();
-    this.playingVideos.clear();
-  }
-
-  private renderFrame(time: number): void {
+  private renderFrame(time: number, seek: boolean): void {
     const context = this.context;
     const pixelWidth = this.canvas.width;
     const pixelHeight = this.canvas.height;
@@ -886,16 +871,16 @@ export class RpeRenderer {
     const drawOrder = this.drawOrder;
     for (let i = 0; i < this.chart.lines.length; i++) this.worldState(i, time, boxWidth, boxHeight, states);
 
-    const clips = this.videoIntervals(time, time);
-    if (this.playingVideos.size) {
-      const active = new Set(clips.map(clip => this.chartAssets!.videos.get(clip.path)));
-      for (const element of this.playingVideos) {
-        if (active.has(element)) continue;
-        this.playingVideos.delete(element);
-        if (!element.paused) element.pause();
-      }
+    const clips = [...this.videoIntervals(time, time), ...this.unknownVideos.filter(video => time >= video.startTimeSec)];
+    const active = new Set(clips);
+    for (const video of this.activeVideos) {
+      if (active.has(video)) continue;
+      this.chartAssets?.videos.get(video)?.sync({
+        time: time - video.startTimeSec, active: false, playing: this.playing, rate: this.playbackSpeed,
+      });
     }
-    for (const video of clips) this.drawVideo(context, video, time, boxWidth, boxHeight, states);
+    this.activeVideos = active;
+    for (const video of clips) this.drawVideo(context, video, time, boxWidth, boxHeight, states, seek);
     for (const lineIndex of drawOrder) {
       const state = states[lineIndex]!;
       if (state.alphaExt === 1) continue; // prpr：RPE 负 alpha＝整线连同音符隐藏
@@ -1003,37 +988,18 @@ export class RpeRenderer {
     return getEventValue(events[Math.max(0, lowerBoundBy(events, beat, e => e.startBeat) - 1)]!, beat, this.chart!.bpmList);
   }
 
-  private drawVideo(context: CanvasRenderingContext2D, video: RpeVideo, time: number, width: number, height: number, states: LineState[]): void {
-    const element = this.chartAssets?.videos.get(video.path);
-    if (!element) return;
-    const duration = Number.isFinite(element.duration) && element.duration > 0 ? element.duration : 0;
-    const endSec = video.startTimeSec + duration;
-    if (duration <= 0 || time < video.startTimeSec || time >= endSec) {
-      this.playingVideos.delete(element);
-      if (!element.paused) element.pause();
-      return;
-    }
+  private drawVideo(context: CanvasRenderingContext2D, video: RpeVideo, time: number, width: number, height: number, states: LineState[], seek: boolean): void {
+    const media = this.chartAssets?.videos.get(video);
+    if (!media) return;
+    const local = time - video.startTimeSec;
+    if (!media.sync({ time: local, active: local >= 0 && (media.duration === 0 || local < media.duration),
+      playing: this.playing, rate: this.playbackSpeed, seek })) return;
+    const element = media.element;
     const beat = this.chart!.bpmList.beat(time);
     let alpha = this.eventValueAt(video.alpha, beat) as number | number[] | string;
     const dim = this.eventValueAt(video.dim, beat) as number | number[] | string;
-
-    const local = time - video.startTimeSec;
-    if (element.playbackRate !== this.playbackSpeed) element.playbackRate = this.playbackSpeed;
-    if (Math.abs(element.currentTime - local) > (this.playing ? 0.25 : 0.001)) {
-      try { element.currentTime = local; } catch {}
-    }
-    if (this.playing) {
-      this.playingVideos.add(element);
-      if (element.paused && !this.pendingVideos.has(element)) {
-        this.pendingVideos.add(element);
-        void element.play().then(() => {
-          if (this.disposed || !this.playingVideos.has(element)) element.pause();
-        }).catch(() => {}).finally(() => this.pendingVideos.delete(element));
-      }
-    }
     const vw = element.videoWidth;
     const vh = element.videoHeight;
-    if (!vw || !vh || element.readyState < 2) return;
 
     let cx = width / 2;
     let cy = height / 2;

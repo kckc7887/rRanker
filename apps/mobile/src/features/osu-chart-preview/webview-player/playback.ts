@@ -1,3 +1,4 @@
+import { createStageContext } from '../../chart-preview-shared/webview-player/stage';
 import {
   computeModDifficulty, Renderer,
   warmSkinCaches, drawCursor,
@@ -194,11 +195,13 @@ export async function startPlayback(
       maniaSamples: renderer.maniaSamples, taikoGhostTaps: renderer.taikoGhostTaps,
       comboFrames: renderer.comboFrames, oldOffsetMs: renderer.oldOffsetMs, fromBeatmapMs: -Infinity,
     });
+    const stage = createStageContext(canvas);
+    stage.onInvalidate = () => session?.audioSync.playback.invalidate();
     media = await createPreviewMedia({
+      stage,
       files: files.visuals, osuBytes: entry.bytes, osuPath: entry.path, signal, onWarning: warn,
       storyboardEnabled: initial.settings?.storyboardEnabled,
       videoEnabled: initial.settings?.videoEnabled,
-      onInvalidate: () => session?.draw(),
     });
     media.bindTriggers(hitsoundEventsFromSchedule(schedule));
     const decoded = await loadPreviewAudio({

@@ -208,7 +208,7 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 
 `PreviewPlayback.loop` 管理秒制 AB 端点。`bindPlaybackLoop` 同步普通与全屏按钮、`HeatTimelineView.updateLoop` 和热度区间。`bindTimelineDrag` 合并同一显示帧里的拖动，释放指针时应用最后的位置；连续播放和静音定位通过同一适配器取帧。
 
-`ChartPreviewShellSource.loadBackgroundVideo` 按需取得当前会话的视频文件。`background-video-load` 与 `background-video-source` 通过请求编号配对，WebView 只接收当前背景模式的回复，宿主只向当前页面发送结果。Simai 的准备入口复用 `downloadChartResource`，视频下载错误只更新背景状态。
+`ChartPreviewShellSource.loadBackgroundVideo` 按需取得当前会话的视频文件。`background-video-load` 与 `background-video-source` 通过请求编号配对，宿主只向当前页面发送结果；共享媒体对象按来源代次接收结果，切换背景或释放后忽略迟到回复。Simai 的准备入口复用 `downloadChartResource`，视频下载错误只更新背景状态。
 
 `fullscreen-controls.ts` 的 `bindFullscreenControls` 共用整页非控件区域点击与 5 秒隐藏计时；拖动不切换显隐，操作期间暂停计时，结束后重新计时。游戏入口保留方向与锁定状态。锁定与解锁按钮均固定在屏幕右侧并垂直居中，右边距取 12px 与右侧安全区宽度的较大值。锁定时只唤出解锁入口。行为由 `chart-preview-loop-controls.test.ts`、各播放会话测试和浏览器交互验证，浏览器结果不替代真机验收。
 
@@ -216,15 +216,17 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 
 谱面宿主按设置键保留最新待写值，沿 `enqueueKeyMutation` 串行保存；只有对应值成功落盘才清除。重建与再次进入优先沿用待写值，前台恢复和通知重试继续保存；不同设置键互不覆盖。
 
-`webview-player/playback.ts` 的 `PreviewPlayback` 持有歌曲音源、帧请求、循环和速度。`PlaybackAdapter` 提供音乐偏移、时长和声音窗口。`rewindSounds(seconds, when)` 在给定的 AudioContext 时间截断上一圈音效，并从新圈的对应位置续排；`PlaybackClock` 按 AudioContext 时间记录速度分段和循环区间，`getAudioContextOutputTime` 供画面补偿输出延迟。暂停或定位撤销之前的音源，变速按新时钟重排音效。
+`webview-player/playback.ts` 的 `PreviewPlayback` 持有歌曲音源、帧请求、循环和速度。`PlaybackAdapter` 提供音乐偏移、时长和声音窗口。`rewindSounds(seconds, when)` 在给定的 AudioContext 时间截断上一圈音效，并从新圈的对应位置续排；`PlaybackClock` 按 AudioContext 时间记录速度分段和循环区间，`getAudioContextOutputTime` 供画面补偿输出延迟。暂停或定位撤销之前的音源，变速按新时钟重排音效。`invalidate()` 复用帧请求，暂停时合并媒体就绪通知并按最新位置补画，播放时沿用连续帧；补画保留尚未完成的播放启动。
 
-`createStageContext` 复用画布的 WebGL 上下文；`stagePixels` 用舞台布局与设备限制确定实际尺寸。`beginFrame`、`flush` 与 `dispose` 界定提交和释放。静态图像驻留时复用纹理，视频在解码出新帧或定位完成后更新；视频清空时通过 `releaseImage` 回收纹理、媒体监听与解码帧回调，重新绘制时按需创建纹理。几何、文字、贴图变色和裁切按适配器顺序合成。PGR、RPE 的击中特效用 `drawMask` 取原图集透明度并着色。`acquireTarget` 和 `releaseTarget` 共用两倍主舞台像素的临时预算，连续播放的帧间隔决定效果采样比例。
+`createStageContext` 复用画布的 WebGL 上下文；`stagePixels` 用舞台布局与设备限制确定实际尺寸。`beginFrame`、`flush` 与 `dispose` 界定提交和释放。静态图像驻留时复用纹理，视频纹理读取所属媒体对象的 `revision`，在解码出新帧或定位完成后更新；`releaseImage` 负责回收 GPU 纹理。几何、文字、贴图变色和裁切按适配器顺序合成。PGR、RPE 的击中特效用 `drawMask` 取原图集透明度并着色。`acquireTarget` 和 `releaseTarget` 共用两倍主舞台像素的临时预算，连续播放的帧间隔决定效果采样比例。
+
+舞台的 `createVideo` 和 `createImages` 由 `stage-media.ts` 实现，共用跨域请求、解码就绪、失效通知及资源释放。`StageVideo.setSource` 接收 URL、Blob 或宿主来源请求，元数据就绪后返回；`sync` 接收目标秒数、可见性、播放状态、倍速与定位标记，返回当前是否可绘制。切换来源使旧请求失效，暂停打断播放不记为加载失败，实际失败在再次启用或播放时重试。`StageImages.load` 保留直接引用的素材，`prepare` 按可见与邻近窗口准备故事板，`settled` 等待当前加载；队列最多同时加载四张图，窗口缓存使用现有纹理像素预算并按最近使用回收远段，预算内 AB 重播复用同一图像。舞台的 `onInvalidate` 接入播放核心，`dispose` 回收媒体监听、解码帧回调、Blob URL、图像与纹理。
 
 `OsuChartPreviewSettings.playbackSpeed` 默认 1，范围 0.5–2，步长 0.05；四模式共用速度控件，经已有设置消息和存储键往返。播放速度与 `maniaScrollSpeed` 分别控制歌曲时间和下落表现。`AudioSync.currentTimeMs` 用于音效调度，`outputTimeMs` 补偿输出延迟供画面、视频和 AB 端点读取；两者来自同一播放时钟。变速更新正在播放的歌曲和故事板音源，未开始的音效重新调度。
 
 Simai 统计和预览共用 `simai-chart-preview/engine`。Phigros/Phira 共用 PGR/RPE 配置与资源路径。osu! 四模式共用宿主与当前谱面、皮肤、回放入口。Rizline 使用实际音频和发布资源依赖。
 
-`RpeRenderer.render(time, playing, playbackSpeed)` 以会话状态同步视频，暂停与定位等待视频就绪后重绘，释放时暂停视频并移除监听器。Phira 的 RPE 资源装配读取 `.glsl`、`.fs` 着色器文本；四元颜色变量在插值后从 RGBA 字节转换为 GL 的 0–1 值，着色器内的默认值直接使用。自定义着色器从同一舞台的纹理缓存取图，按效果顺序传递场景纹理，末次直接写入屏幕。osu! 滑条按 Catmull、贝塞尔、圆弧或线段采样后统一限制声明长度，不足时沿末段延伸；解析拒绝非正长度。动画只收集归档实际存在且位于声明范围内的帧。故事板图片索引和打击音文件分开装配，音频解码后释放原始歌曲与采样文件，按同一采样的最晚触发点计算音效尾段。
+`RpeRenderer.render(time, playing, playbackSpeed, seek)` 按片段区间查询共享视频对象，传入本地秒数并决定父子线附着、透明度和绘制顺序。同一视频文件的不同片段独立定位，媒体时长变化后重建区间索引。Phira 的 RPE 资源装配读取 `.glsl`、`.fs` 着色器文本；四元颜色变量在插值后从 RGBA 字节转换为 GL 的 0–1 值，着色器内的默认值直接使用。自定义着色器从同一舞台的纹理缓存取图，按效果顺序传递场景纹理，末次直接写入屏幕。osu! 滑条按 Catmull、贝塞尔、圆弧或线段采样后统一限制声明长度，不足时沿末段延伸；解析拒绝非正长度。动画只收集归档实际存在且位于声明范围内的帧。故事板图片索引和打击音文件分开装配，音频解码后释放原始歌曲与采样文件，按同一采样的最晚触发点计算音效尾段。
 
 Simai 解析支持 `BOUNCE` 的拍长比和 `NULL` 复位指令，以及分类 HS/SV 的数值和 `NULL` 参数，按原谱面时间消费，不改变判定物量；无效拍长、未知类别、非法数值及未知指令继续拒绝。
 

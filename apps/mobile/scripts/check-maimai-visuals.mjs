@@ -14,7 +14,9 @@ const source = `
 import { parseSimaiBody } from './src/features/simai-chart-preview/engine/core/parser/SimaiParser';
 import { MainRenderer } from './src/features/simai-chart-preview/engine/renderers/MainRenderer';
 import { ChartPreviewSkin } from './src/features/simai-chart-preview/engine/renderers/skinAtlas';
-const skin = new ChartPreviewSkin();
+import { createStageContext } from './src/features/chart-preview-shared/webview-player/stage';
+const canvas = document.querySelector('canvas')!;
+const skin = new ChartPreviewSkin(createStageContext(canvas));
 const samples = {
  tap: '(120){4}1/2,3b/7,4x/8,5m/6bx,',
  hold: '(120){4}1hx[4:4]/5h[4:2],3hbx[4:2],7hm[4:2],',
@@ -25,7 +27,6 @@ const samples = {
  scroll: '(120){4}<SV*0>1h[4:4],<SV*-1>2/6,<SV*2>3c/7c,<HS*0.5>4/8,',
 };
 await skin.load();
-const canvas = document.querySelector('canvas')!;
 const renderer = new MainRenderer(canvas, { skin }); renderer.resizeToSize(540);
 const empty = parseSimaiBody('(120),');
 const charts = Object.fromEntries(Object.entries(samples).map(([k,v])=>[k,parseSimaiBody(v)]));
@@ -78,7 +79,8 @@ const bundled = await build({ stdin: { contents: source, loader: 'ts', resolveDi
 await fs.writeFile(path.join(output, 'harness.js'), bundled.outputFiles[0].contents);
 await fs.writeFile(path.join(output, 'index.html'), `<!doctype html><meta charset="utf-8"><style>body{margin:0;background:#181b22;color:white;font:16px sans-serif}canvas{display:block}</style><canvas></canvas><script>window.__MAIMAI_CHART_PREVIEW_SKINS__=${JSON.stringify(images)}</script><script type="module">${bundled.outputFiles[0].text}</script>`);
 const modulePath = process.argv[2];
-const playwright = modulePath ? await import(pathToFileURL(path.resolve(modulePath)).href) : await import('playwright');
+const playwrightPath = modulePath ? pathToFileURL(path.resolve(modulePath)).href : 'playwright';
+const playwright = await import(playwrightPath);
 const { chromium } = playwright.default ?? playwright;
 const browser = await chromium.launch({ channel: 'chrome', headless: true });
 try {

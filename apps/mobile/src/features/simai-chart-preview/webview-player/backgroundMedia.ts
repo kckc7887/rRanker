@@ -1,16 +1,12 @@
+import type { StageContext, StageImages, StageVideo } from '../../chart-preview-shared/webview-player/stage';
 import type { BpmEvent } from '../engine/types';
 import { resolveBackgroundVideoFrame } from './timeConversion';
 import type { ChartPreviewBackgroundMode } from './interactionScheduler';
 
-const VIDEO_DRIFT_RESET_SECONDS = 0.3;
-const VIDEO_DRIFT_TOLERANCE_SECONDS = 0.02;
-const VIDEO_SEEK_TOLERANCE_SECONDS = 0.04;
-const VIDEO_RATE_ADJUSTMENT = 0.1;
-
 export interface SimaiBackgroundMediaHost {
-  render(decoded?: HTMLVideoElement): void;
+  render(): void;
   reportVideo(result: 'success' | 'error', video?: HTMLVideoElement): void;
-  loadVideo(requestId: number): void;
+  loadVideo(): Promise<string | null>;
   readStatus(): string;
   writeStatus(message: string): void;
   setImage(image: HTMLImageElement | null): void;
@@ -18,7 +14,7 @@ export interface SimaiBackgroundMediaHost {
 }
 
 export interface SimaiBackgroundMediaOptions {
-  image: HTMLImageElement;
+  stage: StageContext;
   video: HTMLVideoElement;
   mode: ChartPreviewBackgroundMode;
   imageUrl?: string;
@@ -34,185 +30,98 @@ export interface SimaiBackgroundFrameInput {
   bpm: number;
   musicOffset: number;
   firstMs?: number;
+  seek?: boolean;
 }
 
 export class SimaiBackgroundMedia {
-  private readonly image: HTMLImageElement;
-  private readonly video: HTMLVideoElement;
-  private readonly imageUrl: string | undefined;
+  private readonly video: StageVideo;
+  private readonly images: StageImages;
   private readonly host: SimaiBackgroundMediaHost;
   private mode: ChartPreviewBackgroundMode;
-  private imageReady = false;
-  private imageFailed = false;
-  private imageLoading = false;
-  private videoReady = false;
-  private videoFailed = false;
-  private videoLoading = false;
-  private videoPlayPending = false;
   private videoAttached = false;
   private statusMessage = '';
   private disposed = false;
-  private generation = 0;
 
   constructor(options: SimaiBackgroundMediaOptions) {
-    this.image = options.image;
-    this.video = options.video;
-    this.imageUrl = options.imageUrl;
     this.mode = options.mode;
     this.host = options.host;
-    this.image.addEventListener('load', this.onImageLoad);
-    this.image.addEventListener('error', this.onImageError);
-    this.video.addEventListener('loadeddata', this.onVideoLoaded);
-    this.video.addEventListener('seeked', this.onVideoSeeked);
-    this.video.addEventListener('error', this.onVideoError);
+    this.images = options.stage.createImages(() => options.imageUrl);
+    this.video = options.stage.createVideo({
+      element: options.video,
+      onStatus: status => {
+        if (this.disposed || this.mode !== 'video') return;
+        if (status === 'loading') this.setStatus('正在加载视频背景…');
+        else if (status === 'ready') {
+          this.host.reportVideo('success', this.video.element);
+          this.clearStatus();
+        } else if (status === 'error') {
+          this.host.reportVideo('error', this.video.element);
+          this.attachVideo(false);
+          this.videoFallbackStatus();
+        }
+      },
+    });
   }
 
-  get backgroundMode(): ChartPreviewBackgroundMode {
-    return this.mode;
-  }
-
-  setVideoSource(requestId: number, uri: string | null): void {
-    if (this.disposed || requestId !== this.generation || this.mode !== 'video' || !this.videoLoading) return;
-    if (uri === null) {
-      this.onVideoError();
-      return;
-    }
-    this.video.src = uri;
-    this.video.load();
-  }
+  get backgroundMode(): ChartPreviewBackgroundMode { return this.mode; }
 
   setMode(mode: ChartPreviewBackgroundMode): void {
     if (this.disposed) return;
     this.mode = mode;
     this.clearStatus();
-    if (mode === 'none') {
-      this.releaseVideo();
-      this.host.setImage(null);
-    } else if (mode === 'image') {
-      this.releaseVideo();
-      this.host.setImage(this.imageReady ? this.image : null);
-      this.ensureImage();
-    } else {
-      this.host.setImage(this.imageReady ? this.image : null);
-      this.ensureImage();
-      this.ensureVideo();
+    if (mode !== 'video') this.releaseVideo();
+    if (mode === 'none') this.host.setImage(null);
+    else {
+      this.host.setImage(this.images.get('background') ?? null);
+      void this.images.load('background').then(image => {
+        if (this.disposed || this.mode === 'none') return;
+        this.host.setImage(image ?? null);
+        if (this.mode === 'image') {
+          if (image) this.clearStatus();
+          else this.setStatus('图片背景暂时不可用。');
+        } else if (this.video.status === 'error') this.videoFallbackStatus();
+        this.host.render();
+      });
+      if (mode === 'video' && (this.video.status === 'empty' || this.video.status === 'error')) {
+        void this.video.setSource(() => this.host.loadVideo());
+      }
     }
     this.host.render();
   }
 
   syncFrame(input: SimaiBackgroundFrameInput): void {
-    if (this.disposed) return;
-    if (this.mode !== 'video' || !this.videoReady || this.videoFailed) return;
+    if (this.disposed || this.mode !== 'video') return;
     const frame = resolveBackgroundVideoFrame({
-      currentBeats: input.currentBeats,
-      totalBeats: input.totalBeats,
-      isPlaying: input.playing,
-      durationSeconds: this.video.duration,
-      bpmEvents: input.bpmEvents,
-      bpm: input.bpm,
-      musicOffset: input.musicOffset,
-      firstMs: input.firstMs,
+      currentBeats: input.currentBeats, totalBeats: input.totalBeats, isPlaying: input.playing,
+      durationSeconds: this.video.duration || Infinity, bpmEvents: input.bpmEvents, bpm: input.bpm,
+      musicOffset: input.musicOffset, firstMs: input.firstMs,
     });
-    if (!frame.active) {
-      if (!this.video.paused) this.video.pause();
-      if (frame.targetSeconds <= 0 && this.video.currentTime > 0) this.video.currentTime = 0;
-      this.attachVideo(false);
-      return;
-    }
-
-    this.attachVideo(true);
-    if (input.playing) {
-      this.syncPlayingVideo(input.speed, frame.targetSeconds);
-      return;
-    }
-    if (!this.video.paused) this.video.pause();
-    if (Math.abs(this.video.currentTime - frame.targetSeconds) > VIDEO_SEEK_TOLERANCE_SECONDS) {
-      this.video.currentTime = frame.targetSeconds;
-    }
+    this.attachVideo(this.video.sync({
+      time: frame.targetSeconds, active: frame.active, playing: input.playing, rate: input.speed, seek: input.seek,
+    }));
   }
 
   releaseVideo(): void {
-    this.generation += 1;
-    if (!this.video.paused) this.video.pause();
-    if (this.video.hasAttribute('src')) {
-      this.video.removeAttribute('src');
-      this.video.load();
-    }
-    this.videoReady = false;
-    this.videoFailed = false;
-    this.videoLoading = false;
-    this.videoPlayPending = false;
+    void this.video.setSource(null);
     this.attachVideo(false);
   }
 
   dispose(): void {
     if (this.disposed) return;
-    this.releaseVideo();
     this.disposed = true;
-    this.image.removeEventListener('load', this.onImageLoad);
-    this.image.removeEventListener('error', this.onImageError);
-    this.video.removeEventListener('loadeddata', this.onVideoLoaded);
-    this.video.removeEventListener('seeked', this.onVideoSeeked);
-    this.video.removeEventListener('error', this.onVideoError);
-  }
-
-  private syncPlayingVideo(speed: number, targetSeconds: number): void {
-    const drift = this.video.currentTime - targetSeconds;
-    if (Math.abs(drift) > VIDEO_DRIFT_RESET_SECONDS) this.video.currentTime = targetSeconds;
-    const nextRate = drift < -VIDEO_DRIFT_TOLERANCE_SECONDS
-      ? speed + VIDEO_RATE_ADJUSTMENT
-      : drift > VIDEO_DRIFT_TOLERANCE_SECONDS
-        ? Math.max(0.1, speed - VIDEO_RATE_ADJUSTMENT)
-        : speed;
-    if (Math.abs(this.video.playbackRate - nextRate) > 0.01) this.video.playbackRate = nextRate;
-    if (this.video.paused && !this.videoPlayPending) {
-      this.videoPlayPending = true;
-      const generation = this.generation;
-      void this.video.play()
-        .then(() => {
-          if (this.disposed || generation !== this.generation) return;
-          this.videoPlayPending = false;
-        })
-        .catch((error: unknown) => {
-          if (this.disposed || generation !== this.generation) return;
-          this.videoPlayPending = false;
-          if (error instanceof DOMException && error.name === 'AbortError') return;
-          this.videoReady = false;
-          this.videoFailed = true;
-          this.host.reportVideo('error', this.video);
-          this.attachVideo(false);
-          this.setStatus(this.imageReady
-            ? '视频背景不可用，已显示图片背景。'
-            : '背景暂时不可用。');
-        });
-    }
+    this.attachVideo(false);
+    this.video.dispose();
+    this.images.dispose();
   }
 
   private attachVideo(attached: boolean): void {
     if (this.videoAttached === attached) return;
     this.videoAttached = attached;
-    this.host.setVideo(attached ? this.video : null);
+    this.host.setVideo(attached ? this.video.element : null);
   }
 
-  private ensureImage(): void {
-    if (this.imageReady || this.imageLoading) return;
-    if (!this.imageUrl) {
-      this.imageFailed = true;
-      if (this.mode === 'image') this.setStatus('图片背景暂时不可用。');
-      return;
-    }
-    this.imageFailed = false;
-    this.imageLoading = true;
-    if (/^https?:/i.test(this.imageUrl)) this.image.crossOrigin = 'anonymous';
-    this.image.src = this.imageUrl;
-  }
-
-  private ensureVideo(): void {
-    if (this.videoReady || this.videoLoading) return;
-    this.videoFailed = false;
-    this.videoLoading = true;
-    this.setStatus('正在加载视频背景…');
-    this.host.loadVideo(++this.generation);
+  private videoFallbackStatus(): void {
+    this.setStatus(this.images.get('background') ? '视频背景不可用，已显示图片背景。' : '背景暂时不可用。');
   }
 
   private setStatus(message: string): void {
@@ -225,57 +134,4 @@ export class SimaiBackgroundMedia {
     if (this.host.readStatus() === this.statusMessage) this.host.writeStatus('');
     this.statusMessage = '';
   }
-
-  private readonly onImageLoad = (): void => {
-    if (this.disposed) return;
-    this.imageLoading = false;
-    this.imageReady = true;
-    this.imageFailed = false;
-    if (this.mode !== 'none') this.host.setImage(this.image);
-    if (this.mode === 'image') this.clearStatus();
-    this.host.render();
-  };
-
-  private readonly onImageError = (): void => {
-    if (this.disposed) return;
-    this.imageLoading = false;
-    this.imageReady = false;
-    this.imageFailed = true;
-    this.host.setImage(null);
-    if (this.mode === 'image') this.setStatus('图片背景暂时不可用。');
-    if (this.mode === 'video' && this.videoFailed) this.setStatus('背景暂时不可用。');
-    this.host.render();
-  };
-
-  private readonly onVideoLoaded = (): void => {
-    if (this.disposed) return;
-    this.videoLoading = false;
-    this.videoReady = true;
-    this.videoFailed = false;
-    this.host.reportVideo('success', this.video);
-    this.clearStatus();
-    this.host.render();
-  };
-
-  private readonly onVideoSeeked = (): void => {
-    if (this.disposed) return;
-    if (this.mode === 'video') this.host.render(this.video);
-  };
-
-  private readonly onVideoError = (): void => {
-    if (this.disposed) return;
-    if (this.mode !== 'video') return;
-    this.videoLoading = false;
-    this.videoReady = false;
-    this.videoFailed = true;
-    this.host.reportVideo('error', this.video);
-    this.attachVideo(false);
-    this.ensureImage();
-    this.setStatus(this.imageReady
-      ? '视频背景不可用，已显示图片背景。'
-      : this.imageFailed
-        ? '背景暂时不可用。'
-        : '视频背景不可用，正在加载图片背景…');
-    this.host.render();
-  };
 }
