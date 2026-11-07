@@ -64,6 +64,7 @@ const startupController = new AbortController();
 let pauseInitialized: (() => void) | undefined;
 let exitFullscreenInitialized: (() => void) | undefined;
 let confirmInitialized: ((accepted: boolean) => void) | undefined;
+let videoSourceInitialized: ((requestId: number, uri: string | null) => void) | undefined;
 function releasePlayer(): void {
   if (disposed) return;
   closeActiveWheelPopup();
@@ -73,6 +74,7 @@ function releasePlayer(): void {
   pauseInitialized = undefined;
   exitFullscreenInitialized = undefined;
   confirmInitialized = undefined;
+  videoSourceInitialized = undefined;
 }
 function receiveHostMessage(event: MessageEvent): void {
   applyChartPreviewHostCommand(event.data, {
@@ -80,6 +82,7 @@ function receiveHostMessage(event: MessageEvent): void {
     exitFullscreen: () => exitFullscreenInitialized?.(),
     dispose: releasePlayer,
     confirm: value => confirmInitialized?.(value),
+    videoSource: (requestId, uri) => videoSourceInitialized?.(requestId, uri),
   });
 }
 events.listen(window, 'message', receiveHostMessage);
@@ -458,19 +461,20 @@ async function main(): Promise<void> {
     video: backgroundVideo,
     mode: backgroundMode,
     imageUrl: config.backgroundImageUrl,
-    videoUrl: config.backgroundVideoUrl,
     host: {
       render: (decoded) => {
         if (decoded) stage.invalidateImage(decoded);
         renderFrameAll(session.positionBeats);
       },
       reportVideo: (result, video) => reportBackgroundVideo(result, video),
+      loadVideo: requestId => postStatus('background-video-load', { requestId }),
       readStatus: () => statusEl.textContent ?? '',
       writeStatus: (message) => { statusEl.textContent = message; },
       setImage: (image) => { for (const renderer of renderers) renderer.setBackgroundImage(image); },
       setVideo: (video) => { for (const renderer of renderers) renderer.setBackgroundVideo(video); },
     },
   });
+  videoSourceInitialized = (requestId, uri) => background.setVideoSource(requestId, uri);
 
   const renderFrameAll = (beats: number) => {
     background.syncFrame({

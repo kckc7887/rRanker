@@ -208,6 +208,8 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 
 `PreviewPlayback.loop` 管理秒制 AB 端点。`bindPlaybackLoop` 同步普通与全屏按钮、`HeatTimelineView.updateLoop` 和热度区间。`bindTimelineDrag` 合并同一显示帧里的拖动，释放指针时应用最后的位置；连续播放和静音定位通过同一适配器取帧。
 
+`ChartPreviewShellSource.loadBackgroundVideo` 按需取得当前会话的视频文件。`background-video-load` 与 `background-video-source` 通过请求编号配对，WebView 只接收当前背景模式的回复，宿主只向当前页面发送结果。Simai 的准备入口复用 `downloadChartResource`，视频下载错误只更新背景状态。
+
 `fullscreen-controls.ts` 的 `bindFullscreenControls` 共用整页非控件区域点击与 5 秒隐藏计时；拖动不切换显隐，操作期间暂停计时，结束后重新计时。游戏入口保留方向与锁定状态。锁定与解锁按钮均固定在屏幕右侧并垂直居中，右边距取 12px 与右侧安全区宽度的较大值。锁定时只唤出解锁入口。行为由 `chart-preview-loop-controls.test.ts`、各播放会话测试和浏览器交互验证，浏览器结果不替代真机验收。
 
 设置采用当前信封格式。宿主读取设置失败时进入现有重新加载流程并保留原偏好；成功读到损坏内容时只重建对应设置键。暂停和 seek 使用当前命令；释放只清理所属会话的帧、音源、监听器和临时资源。共享播放器源变更后重建各格式生成物并运行 `check:generated`。

@@ -12,7 +12,7 @@ import {
 describe('谱面确认宿主命令', () => {
   it('将宿主命令交给播放器并拒绝未知消息', () => {
     const handlers: ChartPreviewPlayerHandlers = {
-      pause: vi.fn(), exitFullscreen: vi.fn(), dispose: vi.fn(), confirm: vi.fn(),
+      pause: vi.fn(), exitFullscreen: vi.fn(), dispose: vi.fn(), confirm: vi.fn(), videoSource: vi.fn(),
     };
     const send = (command: ChartPreviewHostCommand) => runInNewContext(chartPreviewHostCommandScript(command), {
       window: { postMessage: (message: unknown) => applyChartPreviewHostCommand(message, handlers) },
@@ -25,6 +25,10 @@ describe('谱面确认宿主命令', () => {
     expect(handlers.dispose).toHaveBeenCalled();
     send({ type: 'background-video-confirmation-result', accepted: false });
     expect(handlers.confirm).toHaveBeenCalledWith(false);
+    send({ type: 'background-video-source', requestId: 2, uri: 'file:///preview/background.mp4' });
+    expect(handlers.videoSource).toHaveBeenCalledWith(2, 'file:///preview/background.mp4');
+    send({ type: 'background-video-source', requestId: 3, uri: null });
+    expect(handlers.videoSource).toHaveBeenCalledWith(3, null);
     expect(applyChartPreviewHostCommand({ type: 'play' }, handlers)).toBe(false);
   });
   it('解析宿主命令：暂停原因、退出全屏、释放与确认事件各自判别', () => {

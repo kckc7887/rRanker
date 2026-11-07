@@ -4,6 +4,7 @@ export type ChartPreviewHostCommand =
   | { type: 'pause'; cause: ChartPreviewPauseCause }
   | { type: 'exit-fullscreen' }
   | { type: 'dispose' }
+  | { type: 'background-video-source'; requestId: number; uri: string | null }
   | { type: 'background-video-confirmation-result'; accepted: boolean };
 
 export type ChartPreviewBackgroundVideoErrorCode = 'network' | 'no_data' | 'cancelled' | 'unknown';
@@ -20,6 +21,7 @@ export type ChartPreviewPlayerEvent =
       errorCode?: ChartPreviewBackgroundVideoErrorCode;
     }
   | { type: 'background-video-confirmation' }
+  | { type: 'background-video-load'; requestId: number }
   | { type: 'error'; message?: string; diagnostic?: string };
 
 export type ChartPreviewPlayerHandlers = {
@@ -27,6 +29,7 @@ export type ChartPreviewPlayerHandlers = {
   exitFullscreen: () => void;
   dispose: () => void;
   confirm?: (accepted: boolean) => void;
+  videoSource?: (requestId: number, uri: string | null) => void;
 };
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
@@ -77,6 +80,9 @@ function readPlayerEvent(parsed: unknown): ChartPreviewPlayerEvent | null {
       return readBackgroundVideoEvent(parsed);
     case 'background-video-confirmation':
       return { type };
+    case 'background-video-load':
+      return Number.isSafeInteger(parsed.requestId) && (parsed.requestId as number) > 0
+        ? { type, requestId: parsed.requestId as number } : null;
     case 'error':
       return {
         type,
@@ -125,6 +131,10 @@ export function parseChartPreviewHostCommand(raw: unknown): ChartPreviewHostComm
       const accepted = message.accepted;
       return typeof accepted === 'boolean' ? { type: 'background-video-confirmation-result', accepted } : null;
     }
+    case 'background-video-source':
+      return Number.isSafeInteger(message.requestId) && (message.requestId as number) > 0
+        && (message.uri === null || typeof message.uri === 'string')
+        ? { type: 'background-video-source', requestId: message.requestId as number, uri: message.uri as string | null } : null;
     default:
       return null;
   }
@@ -145,6 +155,9 @@ export function applyChartPreviewHostCommand(raw: unknown, player: ChartPreviewP
       return true;
     case 'background-video-confirmation-result':
       player.confirm?.(command.accepted);
+      return true;
+    case 'background-video-source':
+      player.videoSource?.(command.requestId, command.uri);
       return true;
   }
 }

@@ -18,7 +18,6 @@ const chartPreviewInjectors = createChartPreviewInjectors<ChartPreviewInjectConf
     settings: config.settings ?? null,
     answerSoundUrl: config.answerSoundUrl,
     backgroundImageUrl: config.backgroundImageUrl,
-    backgroundVideoUrl: config.backgroundVideoUrl,
     buddySide: config.buddySide ?? null,
     theme: config.theme ?? 'dark',
   }),

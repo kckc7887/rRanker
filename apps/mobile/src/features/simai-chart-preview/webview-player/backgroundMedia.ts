@@ -10,6 +10,7 @@ const VIDEO_RATE_ADJUSTMENT = 0.1;
 export interface SimaiBackgroundMediaHost {
   render(decoded?: HTMLVideoElement): void;
   reportVideo(result: 'success' | 'error', video?: HTMLVideoElement): void;
+  loadVideo(requestId: number): void;
   readStatus(): string;
   writeStatus(message: string): void;
   setImage(image: HTMLImageElement | null): void;
@@ -21,7 +22,6 @@ export interface SimaiBackgroundMediaOptions {
   video: HTMLVideoElement;
   mode: ChartPreviewBackgroundMode;
   imageUrl?: string;
-  videoUrl?: string;
   host: SimaiBackgroundMediaHost;
 }
 
@@ -40,7 +40,6 @@ export class SimaiBackgroundMedia {
   private readonly image: HTMLImageElement;
   private readonly video: HTMLVideoElement;
   private readonly imageUrl: string | undefined;
-  private readonly videoUrl: string | undefined;
   private readonly host: SimaiBackgroundMediaHost;
   private mode: ChartPreviewBackgroundMode;
   private imageReady = false;
@@ -59,7 +58,6 @@ export class SimaiBackgroundMedia {
     this.image = options.image;
     this.video = options.video;
     this.imageUrl = options.imageUrl;
-    this.videoUrl = options.videoUrl;
     this.mode = options.mode;
     this.host = options.host;
     this.image.addEventListener('load', this.onImageLoad);
@@ -71,6 +69,16 @@ export class SimaiBackgroundMedia {
 
   get backgroundMode(): ChartPreviewBackgroundMode {
     return this.mode;
+  }
+
+  setVideoSource(requestId: number, uri: string | null): void {
+    if (this.disposed || requestId !== this.generation || this.mode !== 'video' || !this.videoLoading) return;
+    if (uri === null) {
+      this.onVideoError();
+      return;
+    }
+    this.video.src = uri;
+    this.video.load();
   }
 
   setMode(mode: ChartPreviewBackgroundMode): void {
@@ -165,9 +173,10 @@ export class SimaiBackgroundMedia {
           if (this.disposed || generation !== this.generation) return;
           this.videoPlayPending = false;
         })
-        .catch(() => {
+        .catch((error: unknown) => {
           if (this.disposed || generation !== this.generation) return;
           this.videoPlayPending = false;
+          if (error instanceof DOMException && error.name === 'AbortError') return;
           this.videoReady = false;
           this.videoFailed = true;
           this.host.reportVideo('error', this.video);
@@ -200,19 +209,10 @@ export class SimaiBackgroundMedia {
 
   private ensureVideo(): void {
     if (this.videoReady || this.videoLoading) return;
-    if (!this.videoUrl) {
-      this.videoFailed = true;
-      this.host.reportVideo('error');
-      this.setStatus(this.imageReady
-        ? '视频背景不可用，已显示图片背景。'
-        : '背景暂时不可用。');
-      return;
-    }
     this.videoFailed = false;
     this.videoLoading = true;
-    if (/^https?:/i.test(this.videoUrl)) this.video.crossOrigin = 'anonymous';
-    this.video.src = this.videoUrl;
-    this.video.load();
+    this.setStatus('正在加载视频背景…');
+    this.host.loadVideo(++this.generation);
   }
 
   private setStatus(message: string): void {

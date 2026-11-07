@@ -191,6 +191,8 @@ Rizline 曲库包含 `illustrations` 与 `signatures`：插画保存可读名称
 
 舞萌和 Majdata 共用 Simai，osu! 按选中 `.osu` 文件的 `Mode` 解释物件。Phigros、Phira 与 Rizline 的资源入口交给 `chartJsonFormat` 识别 JSON，`prepareJsonChartPreview` 装配对应的 PGR、RPE 或 Rizline 页面。`scripts/lib/build-preview.mjs` 生成公共控件、页面和分格式脚本；进入预览时，宿主只将选中的脚本暂存为 `player.js`。
 
+Simai 启用视频背景后通过宿主下载到当前会话目录，再以本地 URL 交给 WebView 解码和上传 WebGL 纹理。同会话合并在途下载并复用成功文件，失败可重试；释放会话先取消下载再清理文件。
+
 谱面设置按存储键保留尚未写入的最新值，后台释放或页面重建后仍可恢复；成功提交才移除，前台恢复及通知重试继续补写。RPE 视频按会话的播放、倍速与定位同步，暂停保持静态画面并停止音画推进；着色器资源读取 `.glsl`、`.fs`，四元颜色参数由 RGBA 字节转换为 GL 的 0–1 值。贝塞尔插值在牛顿法不能收敛时使用二分结果。osu! 按包内各难度的元数据 ID 选择谱面，仅校验所选难度的物件。滑条支持 Catmull 曲线及声明长度截断、延伸，动画资源按归档实际文件收集。
 
 `chart-preview-screen-shell.tsx` 管理资源准备、WebView、前后台暂停、取消、seek 和释放。iOS 谱面确认页在普通和全屏状态保留边缘原生侧滑返回，关闭内容区域滑返；标题返回与播放器全屏退出控件继续可用。`chart-preview-bridge.ts` 只解析当前事件和设置信封，宿主命令由公共 serializer 生成。控制设置、播放状态和时间回传通过同一桥接路径。

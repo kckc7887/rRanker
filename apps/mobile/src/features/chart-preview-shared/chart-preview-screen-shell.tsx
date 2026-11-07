@@ -32,6 +32,7 @@ export type ChartPreviewShellSource = {
   allowingReadAccessToURL: string;
   fullscreenOrientation?: ChartPreviewFullscreenOrientation;
   dispose?: () => void | Promise<void>;
+  loadBackgroundVideo?: () => Promise<string>;
 };
 
 export type ChartPreviewShellRequest<TPayload> =
@@ -572,6 +573,13 @@ export function ChartPreviewScreenShell<TPayload>({
               if (!isCurrentView()) return;
               const data = parseChartPreviewBridgeMessage(event.nativeEvent.data);
               if (!data) return;
+              if (data.type === 'background-video-load') {
+                void (source.loadBackgroundVideo?.() ?? Promise.resolve(null)).catch(() => null).then(uri => {
+                  if (isCurrentView()) bridge.postMessage({
+                    type: 'background-video-source', requestId: data.requestId, uri,
+                  });
+                });
+              }
               if (data.type === 'progress') {
                 applyLoadProgress(chartPreviewWebViewProgress({
                   label: data.label || CHART_PREVIEW_PLAYER_LABEL,
