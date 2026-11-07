@@ -139,4 +139,33 @@ describe('chart preview input resource injection', () => {
     expect(stageMusic).not.toHaveBeenCalled();
     expect(stageRpeBundle).not.toHaveBeenCalled();
   });
+
+  it('stages images referenced by animated RPE shader variables with the chart media', async () => {
+    const zip = new JSZip();
+    zip.file('info.yml', 'chart: chart.json\nmusic: song.mp3');
+    zip.file('chart.json', JSON.stringify({ META: { RPEVersion: 160, background: 'cover.png' },
+      BPMList: [{ startTime: [0, 0, 1], bpm: 120 }], judgeLineList: [{ Texture: 'line.gif', notes: [] }] }));
+    zip.file('song.mp3', new Uint8Array([1]));
+    zip.file('extra.json', JSON.stringify({ videos: [{ path: 'clip.mp4', time: [0, 0, 1] }],
+      effects: [{ shader: 'mix.fs', vars: { image: [
+        { startTime: [0, 0, 1], endTime: [2, 0, 1], start: '/图/红.png', end: '/图/蓝.png' },
+      ], color: [255, 128, 64, 255] } }] }));
+    zip.file('mix.fs', 'uniform sampler2D image;');
+    const images = ['cover.png', 'line.gif', 'clip.mp4', '图/红.png', '图/蓝.png'];
+    images.forEach((name, index) => zip.file(name, new Uint8Array([index + 1])));
+    zip.file('unused.png', new Uint8Array([99]));
+    const zipData = await zip.generateAsync({ type: 'arraybuffer' });
+    const staged = new Map<string, Uint8Array>();
+    const prepared = await buildPhiraChartPreviewInput({ chartId: 38294 }, {}, new AbortController().signal, {
+      downloadChart: async () => zipData,
+      stageMusic: async () => ({ uri: 'file:///song.mp3', base64: 'AQ==' }),
+      stageRpeBundle: async (_id, files) => {
+        for (const file of files) staged.set(file.name, file.bytes);
+        return { basePath: './rpe/38294/' };
+      },
+    });
+    images.forEach((name, index) => expect(staged.get(name)).toEqual(new Uint8Array([index + 1])));
+    expect(staged.has('unused.png')).toBe(false);
+    expect(prepared.config.rpeAssets?.shaders).toEqual({ 'mix.fs': 'uniform sampler2D image;' });
+  });
 });

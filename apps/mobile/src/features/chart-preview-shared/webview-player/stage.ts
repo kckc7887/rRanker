@@ -704,33 +704,36 @@ class Stage {
     let entry = this.images.get(source);
     if (!entry) {
       entry = { texture: this.newTexture(), width: 0, height: 0, dirty: true, mediaTime: -1, videoFrame: -1 };
-      if (
-        typeof HTMLVideoElement !== 'undefined' &&
-        source instanceof HTMLVideoElement &&
-        typeof source.requestVideoFrameCallback === 'function'
-      ) {
+      if (typeof HTMLVideoElement !== 'undefined' && source instanceof HTMLVideoElement) {
         const owned = entry;
-        let handle = 0;
+        let handle: number | undefined;
         const next = (_: number, info: VideoFrameCallbackMetadata) => {
           owned.dirty = true;
           owned.mediaTime = info.mediaTime;
           handle = source.requestVideoFrameCallback(next);
         };
-        handle = source.requestVideoFrameCallback(next);
+        if (typeof source.requestVideoFrameCallback === 'function') handle = source.requestVideoFrameCallback(next);
         const seeked = () => {
           owned.dirty = true;
         };
+        const emptied = () => this.releaseImage(source);
         source.addEventListener('seeked', seeked, true);
         source.addEventListener('loadeddata', seeked, true);
+        source.addEventListener('emptied', emptied);
         owned.cancel = () => {
-          source.cancelVideoFrameCallback(handle);
+          if (handle !== undefined) source.cancelVideoFrameCallback(handle);
           source.removeEventListener('seeked', seeked, true);
           source.removeEventListener('loadeddata', seeked, true);
+          source.removeEventListener('emptied', emptied);
         };
       }
     } else this.images.delete(source);
     this.images.set(source, entry);
-    if (typeof HTMLVideoElement !== 'undefined' && source instanceof HTMLVideoElement && !entry.cancel) {
+    if (
+      typeof HTMLVideoElement !== 'undefined' &&
+      source instanceof HTMLVideoElement &&
+      typeof source.requestVideoFrameCallback !== 'function'
+    ) {
       const count = source.getVideoPlaybackQuality?.().totalVideoFrames;
       if ((count || 0) > 0) {
         entry.dirty ||= entry.videoFrame !== count;

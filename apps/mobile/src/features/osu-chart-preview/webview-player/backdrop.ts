@@ -40,6 +40,7 @@ type MediaOptions = {
   signal: AbortSignal;
   dim?: number;
   storyboardEnabled?: boolean;
+  videoEnabled?: boolean;
   onWarning(message: string): void;
   onInvalidate(): void;
 };
@@ -138,7 +139,7 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
   let presentation: MediaPresentationOptions = {
     playbackSpeed: 1,
     backgroundBrightness: options.dim === undefined ? 20 : (1 - options.dim) * 100,
-    backgroundBlur: 0, storyboardEnabled: options.storyboardEnabled ?? true, videoEnabled: true,
+    backgroundBlur: 0, storyboardEnabled: options.storyboardEnabled ?? true, videoEnabled: options.videoEnabled ?? true,
   };
   let frameTime = NaN, generation = 0, compiledGeneration = -1;
   let under: ReturnType<typeof storyboardFrame> = [], over: ReturnType<typeof storyboardFrame> = [];
@@ -149,13 +150,14 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
   let range = storyboardTimeRange(objects, visuals.samples);
   const key = (file: string): string => normalizeArchivePath(file).toLowerCase();
   const invalidate = (): void => { previousUnder = undefined; if (!disposed && !signal.aborted) onInvalidate(); };
-  const failVideo = (): void => {
+  const failVideo = (message = '视频无法播放，已保留其它谱面内容'): void => {
     if (disposed || signal.aborted || videoFailed) return;
     videoFailed = true;
     video?.pause();
-    onWarning('视频无法播放，已保留其它谱面内容');
+    onWarning(message);
     invalidate();
   };
+  const videoError = (): void => failVideo();
   const dispose = (): void => {
     if (disposed) return;
     disposed = true;
@@ -163,7 +165,7 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
     signal.removeEventListener('abort', dispose);
     if (video) {
       video.removeEventListener('seeked', invalidate);
-      video.removeEventListener('error', failVideo);
+      video.removeEventListener('error', videoError);
       video.pause();
       video.removeAttribute('src');
       video.load();
@@ -263,9 +265,9 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
         if (!await waitForVideo(video, signal)) failVideo();
         else {
           video.addEventListener('seeked', invalidate);
-          video.addEventListener('error', failVideo);
+          video.addEventListener('error', videoError);
         }
-      } else failVideo();
+      } else if (presentation.videoEnabled) failVideo();
     }
     signal.throwIfAborted();
     const updateRange = (): void => {
@@ -326,6 +328,9 @@ export async function createPreviewMedia(options: MediaOptions): Promise<Preview
         const speedChanged = updated.playbackSpeed !== presentation.playbackSpeed;
         presentation = updated;
         generation++;
+        if (videoChanged && presentation.videoEnabled && visuals.video && !video) {
+          failVideo('当前谱面包未包含视频，请重新进入谱面确认后加载');
+        }
         if (videoChanged || speedChanged) syncVideo(lastMapTime, lastPlaying, videoChanged);
         invalidate();
       },

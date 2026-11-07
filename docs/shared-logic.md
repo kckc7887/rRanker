@@ -218,7 +218,7 @@ Phigros 的 `preparePhigrosUi(style, onProgress?, signal?)` 按 `BestImageRating
 
 `webview-player/playback.ts` 的 `PreviewPlayback` 持有歌曲音源、帧请求、循环和速度。`PlaybackAdapter` 提供音乐偏移、时长和声音窗口。`rewindSounds(seconds, when)` 在给定的 AudioContext 时间截断上一圈音效，并从新圈的对应位置续排；`PlaybackClock` 按 AudioContext 时间记录速度分段和循环区间，`getAudioContextOutputTime` 供画面补偿输出延迟。暂停或定位撤销之前的音源，变速按新时钟重排音效。
 
-`createStageContext` 复用画布的 WebGL 上下文；`stagePixels` 用舞台布局与设备限制确定实际尺寸。`beginFrame`、`flush` 与 `dispose` 界定提交和释放。静态图像驻留时复用纹理，视频在解码出新帧或定位完成后更新；几何、文字、贴图变色和裁切按适配器顺序合成。PGR、RPE 的击中特效用 `drawMask` 取原图集透明度并着色。`acquireTarget` 和 `releaseTarget` 共用两倍主舞台像素的临时预算，连续播放的帧间隔决定效果采样比例。
+`createStageContext` 复用画布的 WebGL 上下文；`stagePixels` 用舞台布局与设备限制确定实际尺寸。`beginFrame`、`flush` 与 `dispose` 界定提交和释放。静态图像驻留时复用纹理，视频在解码出新帧或定位完成后更新；视频清空时通过 `releaseImage` 回收纹理、媒体监听与解码帧回调，重新绘制时按需创建纹理。几何、文字、贴图变色和裁切按适配器顺序合成。PGR、RPE 的击中特效用 `drawMask` 取原图集透明度并着色。`acquireTarget` 和 `releaseTarget` 共用两倍主舞台像素的临时预算，连续播放的帧间隔决定效果采样比例。
 
 `OsuChartPreviewSettings.playbackSpeed` 默认 1，范围 0.5–2，步长 0.05；四模式共用速度控件，经已有设置消息和存储键往返。播放速度与 `maniaScrollSpeed` 分别控制歌曲时间和下落表现。`AudioSync.currentTimeMs` 用于音效调度，`outputTimeMs` 补偿输出延迟供画面、视频和 AB 端点读取；两者来自同一播放时钟。变速更新正在播放的歌曲和故事板音源，未开始的音效重新调度。
 

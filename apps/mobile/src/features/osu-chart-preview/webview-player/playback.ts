@@ -197,6 +197,7 @@ export async function startPlayback(
     media = await createPreviewMedia({
       files: files.visuals, osuBytes: entry.bytes, osuPath: entry.path, signal, onWarning: warn,
       storyboardEnabled: initial.settings?.storyboardEnabled,
+      videoEnabled: initial.settings?.videoEnabled,
       onInvalidate: () => session?.draw(),
     });
     media.bindTriggers(hitsoundEventsFromSchedule(schedule));

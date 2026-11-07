@@ -139,6 +139,43 @@ describe('RPE renderer', () => {
     expect(draws).toEqual([]);
   });
 
+  it('视频出错后重新播放会重载，恢复后继续同步和绘制', async () => {
+    class Video extends EventTarget {
+      duration = NaN;
+      currentTime = 0;
+      playbackRate = 1;
+      videoWidth = 320;
+      videoHeight = 180;
+      readyState = 0;
+      paused = true;
+      error: object | null = { code: 2 };
+      load() { this.error = null; }
+      play() { this.paused = false; return Promise.resolve(); }
+      pause() { this.paused = true; }
+    }
+    const video = new Video();
+    const { renderer, draws } = environment();
+    renderer.setChart(parseRpeChart({ META: { RPEVersion: 150 }, BPMList: [{ startTime: [0, 0, 1], bpm: 120 }], judgeLineList: [] },
+      { extraJson: JSON.stringify({ videos: [{ path: 'clip.mp4', time: [0, 0, 1] }] }) }));
+    renderer.setChartAssets({ textures: new Map(), videos: new Map([['clip.mp4', video as unknown as HTMLVideoElement]]),
+      shaders: new Map(), gifs: new Map(), gifAnims: new Map() });
+    renderer.render(1, false);
+    expect(draws.some(args => args[0] === video)).toBe(false);
+    renderer.render(1, true);
+    expect(video.error).toBeNull();
+    video.duration = 10;
+    video.readyState = 4;
+    video.dispatchEvent(new Event('durationchange'));
+    video.dispatchEvent(new Event('loadeddata'));
+    renderer.render(1.5, true, 0.5);
+    await Promise.resolve();
+    expect([video.currentTime, video.playbackRate, video.paused]).toEqual([1.5, 0.5, false]);
+    expect(draws.some(args => args[0] === video)).toBe(true);
+    renderer.render(0.25, false);
+    expect([video.currentTime, video.paused]).toEqual([0.25, true]);
+    renderer.dispose();
+  });
+
   it.each(['glsl', 'fs'])('谱包的 %s 着色器在缓存复用及画布缩放后仍采到各自图片', async extension => {
     type Texture = { source?: unknown };
     const bindings = new Map<number, Texture | null>();

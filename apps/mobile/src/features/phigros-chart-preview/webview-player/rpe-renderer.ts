@@ -795,6 +795,9 @@ export class RpeRenderer {
 
   render(time: number, playing = false, playbackSpeed = 1): void {
     if (this.disposed) return;
+    if (playing && !this.playing) {
+      for (const video of this.chartAssets?.videos.values() ?? []) if (video.error) video.load();
+    }
     this.playing = playing;
     this.playbackSpeed = playbackSpeed;
     if (!playing) this.pauseVideos();

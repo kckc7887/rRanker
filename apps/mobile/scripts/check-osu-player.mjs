@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
 import { Buffer } from 'node:buffer';
+import { mkdtemp, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { build } from 'esbuild';
@@ -168,7 +170,141 @@ function wav(seconds) {
   return bytes.toString('base64');
 }
 
-const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--autoplay-policy=document-user-activation-required'] });
+async function checkMedia(browser, helpers) {
+  const directory = await mkdtemp(path.join(tmpdir(), 'osu-media-'));
+  const page = await browser.newPage();
+  try {
+    await writeFile(path.join(directory, 'index.html'), '<!doctype html><html><body></body></html>');
+    await page.goto(pathToFileURL(path.join(directory, 'index.html')).href);
+    const recording = await page.evaluate(async () => {
+      const canvas = Object.assign(document.createElement('canvas'), { width: 64, height: 36 });
+      const context = canvas.getContext('2d');
+      const files = {};
+      for (const [name, color] of [['red.png', '#f00'], ['blue.png', '#00f']]) {
+        context.fillStyle = color; context.fillRect(0, 0, 64, 36);
+        files[name] = [...new Uint8Array(await (await new Promise(resolve => canvas.toBlob(resolve))).arrayBuffer())];
+      }
+      context.fillStyle = '#f00'; context.fillRect(0, 0, 64, 36);
+      const stream = canvas.captureStream(30), chunks = [], targets = [];
+      const recorder = new MediaRecorder(stream, { mimeType: 'video/webm;codecs=vp8' });
+      recorder.addEventListener('dataavailable', event => chunks.push(event.data));
+      const started = new Promise(resolve => recorder.addEventListener('start', resolve, { once: true }));
+      const stopped = new Promise(resolve => recorder.addEventListener('stop', resolve, { once: true }));
+      const origin = performance.now();
+      recorder.start(); await started;
+      for (const color of ['#f00', '#0f0', '#00f']) {
+        const start = targets.length ? performance.now() - origin : 0;
+        for (let frame = 0; frame < 20; frame++) {
+          context.fillStyle = color; context.fillRect(0, 0, 64, 36);
+          await new Promise(resolve => setTimeout(resolve, 20));
+        }
+        targets.push(500 + (start + performance.now() - origin) / 2);
+      }
+      recorder.stop(); await stopped;
+      stream.getTracks().forEach(track => track.stop());
+      files['movie.webm'] = [...new Uint8Array(await new Blob(chunks).arrayBuffer())];
+      return { files, targets };
+    });
+    const assets = recording.files;
+    await Promise.all(Object.entries(assets).map(([name, bytes]) => writeFile(path.join(directory, name), new Uint8Array(bytes))));
+    await page.addScriptTag({ content: helpers });
+    return await page.evaluate(async ({ assets, base, targets }) => {
+      const { createPreviewMedia, createStageContext } = window.OsuVisualCheck;
+      const results = [];
+      const wait = milliseconds => new Promise(resolve => setTimeout(resolve, milliseconds));
+      for (const kind of ['file', 'bytes']) {
+        const canvas = Object.assign(document.createElement('canvas'), { width: 320, height: 180 });
+        const context = createStageContext(canvas), controller = new AbortController(), warnings = [];
+        let media, time = 0, playing = false;
+        const resource = name => kind === 'file' ? { uri: new URL(name, base).href } : new Uint8Array(assets[name]);
+        const draw = () => {
+          if (!media) return;
+          context.beginFrame(); context.setTransform(.25, 0, 0, .25, 0, 0);
+          context.clearRect(0, 0, 1280, 720);
+          context.fillStyle = '#000'; context.fillRect(0, 0, 1280, 720);
+          media.sync(time, playing); media.drawUnder(context, time); media.drawOver(context, time);
+          context.flush();
+        };
+        const pixel = (x = 160, y = 90) => {
+          const value = new Uint8Array(4);
+          context.gl.readPixels(x, canvas.height - y - 1, 1, 1, context.gl.RGBA, context.gl.UNSIGNED_BYTE, value);
+          return [...value];
+        };
+        const expectColor = async (channel, x = 160, y = 90) => {
+          for (let tries = 0; tries < 100; tries++) {
+            const value = pixel(x, y);
+            if (value[channel] > 230 && value.filter((_, i) => i < 3 && i !== channel).every(v => v < 30)) return value;
+            await wait(10);
+          }
+          throw Error(`${kind} media at ${time}ms has stale pixels ${pixel(x, y)}`);
+        };
+        const settings = { backgroundBrightness: 100, backgroundBlur: 0, playbackSpeed: 1, storyboardEnabled: true, videoEnabled: true };
+        media = await createPreviewMedia({ files: new Map([['movie.webm', resource('movie.webm')]]),
+          osuPath: 'map.osu', osuBytes: new TextEncoder().encode('[Events]\nVideo,500,"movie.webm"'),
+          signal: controller.signal, onWarning: message => warnings.push(message), onInvalidate: draw });
+        media.configure(settings);
+        const colors = [];
+        for (const blur of [0, 10]) {
+          media.configure({ ...settings, backgroundBlur: blur });
+          for (const channel of [0, 1, 2, 0, 2, 0]) {
+            time = targets[channel]; media.sync(time, false, true); draw();
+            colors.push(await expectColor(channel));
+          }
+        }
+        media.configure(settings);
+        time = targets[0]; playing = true; media.sync(time, true, true); draw();
+        await expectColor(0);
+        let advanced = false;
+        const deadline = performance.now() + targets[2] - targets[0] + 3000;
+        while (!advanced && performance.now() < deadline) {
+          await wait(20);
+          context.beginFrame(); media.drawUnder(context, time); context.flush();
+          const value = pixel();
+          advanced = value[1] > 230 || value[2] > 230;
+        }
+        if (!advanced) throw Error(`${kind} video failed to play without a seek`);
+        time = targets[1]; playing = false; media.sync(time, false, true); draw();
+        const paused = await expectColor(1);
+        await wait(targets[2] - targets[1] + 150);
+        context.beginFrame(); media.drawUnder(context, time); context.flush();
+        if (pixel().some((value, i) => value !== paused[i])) throw Error('paused video advanced');
+        media.configure({ ...settings, videoEnabled: false });
+        if (pixel().some((value, i) => i < 3 && value !== 0)) throw Error('disabled video remains visible');
+        media.configure(settings); await expectColor(1);
+        media.dispose(); media = undefined;
+
+        const events = '[Events]\nAnimation,Foreground,Centre,"frame.png",320,240,2,1000,LoopForever\n F,0,10000,60000,1\n' +
+          'Sprite,Foreground,Centre,"red.png",400,240\n F,0,10000,60000,1\n' +
+          'Sprite,Foreground,Centre,"blue.png",400,240\n F,0,10000,60000,0.5\n' +
+          'Sprite,Overlay,Centre,"blue.png",480,240\n F,0,10000,60000,1';
+        media = await createPreviewMedia({ files: new Map([['frame0.png', resource('red.png')], ['frame1.png', resource('blue.png')],
+          ['red.png', resource('red.png')], ['blue.png', resource('blue.png')]]), osuPath: 'map.osu', osuBytes: new TextEncoder().encode(events),
+          signal: controller.signal, onWarning: message => warnings.push(message), onInvalidate: draw });
+        media.configure({ ...settings, backgroundBrightness: 50 });
+        for (const [target, channel] of [[10500, 0], [11500, 2], [53500, 2], [52500, 0], [11900, 2], [10100, 0]]) {
+          time = target; draw();
+          for (let tries = 0; tries < 100 && pixel()[channel] < 120; tries++) await wait(10);
+          const value = pixel();
+          if (Math.abs(value[channel] - 128) > 2 || value.some((v, i) => i < 3 && i !== channel && v > 2)) throw Error('storyboard seek did not restore its animation frame');
+        }
+        const mixed = pixel(190, 90);
+        if (Math.abs(mixed[0] - 64) > 2 || Math.abs(mixed[2] - 64) > 2) throw Error('storyboard layer opacity/order changed');
+        await expectColor(2, 220, 90);
+        time = 60001; draw();
+        if (pixel().slice(0, 3).some(Boolean)) throw Error('expired storyboard stays visible');
+        controller.abort(); media.dispose(); context.dispose();
+        if (warnings.length) throw Error(warnings.join(', '));
+        results.push({ kind, videoFrames: colors.length, advanced, paused: true, animationSeek: true, mixed, overlay: true, expired: true });
+      }
+      return results;
+    }, { assets, targets: recording.targets, base: pathToFileURL(path.join(directory, 'index.html')).href });
+  } finally {
+    await page.close();
+    await rm(directory, { recursive: true, force: true });
+  }
+}
+
+const browser = await chromium.launch({ channel: 'chrome', headless: true, args: ['--autoplay-policy=document-user-activation-required', '--allow-file-access-from-files'] });
 const results = [];
 try {
   if (helpers) {
@@ -267,6 +403,7 @@ try {
   }, fixture(2));
   results.push({ pixels });
   await visualPage.close();
+  results.push({ media: await checkMedia(browser, helpers) });
   }
 
   for (const mode of [0, 1, 2, 3]) {
@@ -330,7 +467,7 @@ try {
     results.push({ mode, readyPaused: true, silentSeek: true, playPauseRestart: true, lifecyclePaused: true });
     await page.close();
   }
-  console.log(JSON.stringify({ passed: true, mode: generated ? 'generated' : 'source', coverage: ['four-mode-playback', ...(generated ? [] : ['visual-helper-pixels', 'four-mode-target-comparison'])], omitted: generated ? ['visual-helper-pixels', 'four-mode-target-comparison'] : [], results }, null, 2));
+  console.log(JSON.stringify({ passed: true, mode: generated ? 'generated' : 'source', coverage: ['four-mode-playback', ...(generated ? [] : ['visual-helper-pixels', 'local-media-pixels', 'four-mode-target-comparison'])], omitted: generated ? ['visual-helper-pixels', 'local-media-pixels', 'four-mode-target-comparison'] : [], results }, null, 2));
 } finally {
   await browser.close();
 }

@@ -112,7 +112,13 @@ async function stagePhiraRpeResources(
     for (const video of data?.videos ?? []) add(video.path);
     for (const effect of data?.effects ?? []) {
       add(effect.shader);
-      for (const value of Object.values(effect.vars ?? {})) add(value);
+      for (const value of Object.values(effect.vars ?? {})) {
+        if (Array.isArray(value)) {
+          for (const event of value) {
+            if (event && typeof event === 'object') { add(event.start); add(event.end); }
+          }
+        } else add(value);
+      }
     }
   }
   const shaders: Record<string, string> = {};

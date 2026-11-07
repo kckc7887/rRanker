@@ -104,6 +104,30 @@ describe('preview media presentation', () => {
     } finally { globalThis.Image = oldImage; URL.createObjectURL = oldCreate; }
   });
 
+  it('keeps omitted video silent until enabled and keeps the duration of provided video', async () => {
+    await environment(async ({ video }) => {
+      const warnings: string[] = [];
+      const media = await createPreviewMedia({ ...request('Video,500,"missing.mp4"'), videoEnabled: false,
+        onWarning: message => warnings.push(message) });
+      media.configure({ ...defaults, videoEnabled: false });
+      media.sync(2000, true);
+      assert.deepEqual(warnings, []);
+      assert.equal(video.src, '');
+      assert.equal(video.paused, true);
+      media.configure(defaults);
+      assert.deepEqual(warnings, ['当前谱面包未包含视频，请重新进入谱面确认后加载']);
+      media.dispose();
+      const provided = await createPreviewMedia({ ...request('Video,500,"video.mp4"', new Map([['video.mp4', new Uint8Array([1])]])), videoEnabled: false });
+      assert.equal(provided.range.endMs, 12500);
+      provided.sync(2500, true);
+      assert.equal(video.paused, true);
+      provided.configure(defaults);
+      assert.equal(video.currentTime, 2);
+      assert.equal(video.paused, false);
+      provided.dispose();
+    });
+  });
+
   it('reports declarations even when media is missing, including Sample-only storyboards', async () => {
     await environment(async () => {
       const media = await createPreviewMedia(request('Video,500,"missing.mp4"\nSample,0,0,"missing.wav",100'));

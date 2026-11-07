@@ -138,6 +138,13 @@ function rpeTextureNames(chart: RpeChart): Set<string> {
   for (const effect of chart.extras.effects) {
     for (const value of Object.values(effect.vars)) {
       if (typeof value === 'string') textureNames.add(value);
+      else if (Array.isArray(value)) {
+        for (const event of value) {
+          if (typeof event !== 'object') continue;
+          if (typeof event.start === 'string') textureNames.add(event.start);
+          if (typeof event.end === 'string') textureNames.add(event.end);
+        }
+      }
     }
   }
   return textureNames;
@@ -248,6 +255,7 @@ async function loadRpeChartAssets(chart: RpeChart, bundle: PhigrosChartPreviewCo
       element.muted = true;
       element.preload = 'auto';
       element.playsInline = true;
+      if (/^https?:/i.test(videoUrl)) element.crossOrigin = 'anonymous';
       element.src = videoUrl;
       const done = () => {
         element.removeEventListener('loadedmetadata', done);
