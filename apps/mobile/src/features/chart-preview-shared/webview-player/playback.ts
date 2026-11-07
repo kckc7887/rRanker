@@ -95,6 +95,8 @@ export class PreviewPlayback {
   }
 
   private start(seconds: number): void {
+    if (this.frame !== null) cancelAnimationFrame(this.frame);
+    this.frame = null;
     const context = this.adapter.context();
     const music = this.adapter.music();
     this.silent = !music && !!this.adapter.silentFrameClock;
@@ -304,6 +306,19 @@ export class PreviewPlayback {
     this.onFrame?.(this.position, true);
   }
 
+  invalidate(): void {
+    if (this.disposed || this.playing || this.frame !== null) return;
+    this.frame = requestAnimationFrame(() => {
+      this.frame = null;
+      if (this.disposed || this.playing) return;
+      try {
+        this.onFrame?.(this.position, false);
+      } catch (error) {
+        this.failFrame(error, this.position);
+      }
+    });
+  }
+
   async seek(seconds: number, resume = this.playing): Promise<void> {
     if (this.disposed) return;
     const target = this.clamp(seconds);
@@ -357,17 +372,21 @@ export class PreviewPlayback {
         withStageFrame(timestamp, () => this.onFrame?.(position, discontinuity));
         if (this.playing && generation === this.generation) this.frame = requestAnimationFrame(tick);
       } catch (error) {
-        this.position = position;
-        this.stop();
-        this.adapter.onState?.(false);
-        if (this.adapter.onError) this.adapter.onError(error);
-        else {
-          const host = (window as Window & { ReactNativeWebView?: { postMessage(value: string): void } }).ReactNativeWebView;
-          host?.postMessage(JSON.stringify({ type: 'error', message: '谱面播放中断，请重新加载。' }));
-        }
+        this.failFrame(error, position);
       }
     };
     if (this.playing) this.frame = requestAnimationFrame(tick);
+  }
+
+  private failFrame(error: unknown, position: number): void {
+    this.position = position;
+    this.stop();
+    this.adapter.onState?.(false);
+    if (this.adapter.onError) this.adapter.onError(error);
+    else {
+      const host = (window as Window & { ReactNativeWebView?: { postMessage(value: string): void } }).ReactNativeWebView;
+      host?.postMessage(JSON.stringify({ type: 'error', message: '谱面播放中断，请重新加载。' }));
+    }
   }
 
   private clamp(seconds: number): number {

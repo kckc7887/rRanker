@@ -151,6 +151,34 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
+it('媒体补画合并到最新位置，保留等待中的播放并在释放后停止', async () => {
+  const { session, context, frames, rendered } = createPlayback();
+  await session.loadMusic(new ArrayBuffer(8));
+  session.moveTo(6);
+  const pending = session.play();
+  session.playback.invalidate();
+  session.playback.invalidate();
+  frames.advance(16);
+  expect(rendered.at(-1)).toBe(6);
+  expect(context.sources).toHaveLength(0);
+  const pausedFrames = rendered.length;
+  frames.advance(500);
+  expect(rendered).toHaveLength(pausedFrames);
+  context.releaseResumeNow();
+  await pending;
+  expect(session.playing).toBe(true);
+  session.pause();
+  session.playback.invalidate();
+  session.moveTo(8);
+  frames.advance(16);
+  expect(rendered.at(-1)).toBe(8);
+  session.playback.invalidate();
+  session.dispose();
+  const finalFrames = rendered.length;
+  frames.advance(500);
+  expect(rendered).toHaveLength(finalFrames);
+});
+
 describe('Simai 播放与取消', () => {
   it('resume 未结算时暂停：旧 play Promise 不再启动播放', async () => {
     const { session, context, frames } = createPlayback();

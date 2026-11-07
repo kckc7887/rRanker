@@ -13,6 +13,8 @@ import {
 import { rgba, StageGradient, stageFragment, stageProgram, stageVertex, type Color } from './stage-material';
 import { releaseTracks } from './stage-track';
 import { StageTiming } from './stage-timing';
+import { StageImages, StageVideo, type StageVideoOptions } from './stage-media';
+export type { StageImages, StageVideo } from './stage-media';
 
 const SCREEN_PIXELS = 2_500_000;
 const IMAGE_PIXELS = 32 * 1024 * 1024;
@@ -67,6 +69,9 @@ export type StageContext = CanvasRenderingContext2D &
     | 'clipDepth'
     | 'releaseImage'
     | 'effectScale'
+    | 'createVideo'
+    | 'createImages'
+    | 'onInvalidate'
   >;
 
 type Paint = string | StageGradient;
@@ -77,9 +82,7 @@ type ImageEntry = {
   width: number;
   height: number;
   dirty: boolean;
-  mediaTime: number;
-  videoFrame: number;
-  cancel?: () => void;
+  revision: number;
 };
 type Label = {
   texture: WebGLTexture;
@@ -150,6 +153,9 @@ class Stage {
   private targetPixels = 0;
   currentTarget: StageTarget | null = null;
   private readonly images = new Map<CanvasImageSource, ImageEntry>();
+  private readonly videos = new Map<HTMLVideoElement, StageVideo>();
+  private readonly imagePools = new Set<StageImages>();
+  onInvalidate?: () => void;
   private imagePixels = 0;
   private readonly gradients = new Map<string, WebGLTexture>();
   private readonly labels = new Map<string, Label>();
@@ -703,45 +709,14 @@ class Stage {
     if (!(w > 0 && h > 0)) throw new Error('谱面纹理无可用画面');
     let entry = this.images.get(source);
     if (!entry) {
-      entry = { texture: this.newTexture(), width: 0, height: 0, dirty: true, mediaTime: -1, videoFrame: -1 };
-      if (typeof HTMLVideoElement !== 'undefined' && source instanceof HTMLVideoElement) {
-        const owned = entry;
-        let handle: number | undefined;
-        const next = (_: number, info: VideoFrameCallbackMetadata) => {
-          owned.dirty = true;
-          owned.mediaTime = info.mediaTime;
-          handle = source.requestVideoFrameCallback(next);
-        };
-        if (typeof source.requestVideoFrameCallback === 'function') handle = source.requestVideoFrameCallback(next);
-        const seeked = () => {
-          owned.dirty = true;
-        };
-        const emptied = () => this.releaseImage(source);
-        source.addEventListener('seeked', seeked, true);
-        source.addEventListener('loadeddata', seeked, true);
-        source.addEventListener('emptied', emptied);
-        owned.cancel = () => {
-          if (handle !== undefined) source.cancelVideoFrameCallback(handle);
-          source.removeEventListener('seeked', seeked, true);
-          source.removeEventListener('loadeddata', seeked, true);
-          source.removeEventListener('emptied', emptied);
-        };
-      }
+      entry = { texture: this.newTexture(), width: 0, height: 0, dirty: true, revision: -1 };
     } else this.images.delete(source);
     this.images.set(source, entry);
-    if (
-      typeof HTMLVideoElement !== 'undefined' &&
-      source instanceof HTMLVideoElement &&
-      typeof source.requestVideoFrameCallback !== 'function'
-    ) {
-      const count = source.getVideoPlaybackQuality?.().totalVideoFrames;
-      if ((count || 0) > 0) {
-        entry.dirty ||= entry.videoFrame !== count;
-        entry.videoFrame = count!;
-      } else {
-        entry.dirty ||= entry.mediaTime !== source.currentTime;
-        entry.mediaTime = source.currentTime;
-      }
+    if (typeof HTMLVideoElement !== 'undefined' && source instanceof HTMLVideoElement) {
+      const media = this.videos.get(source);
+      const revision = media?.revision ?? (source.getVideoPlaybackQuality?.().totalVideoFrames || source.currentTime);
+      entry.dirty ||= entry.revision !== revision;
+      entry.revision = revision;
     }
     if (entry.dirty) this.upload(source, entry, w, h);
     return entry.texture;
@@ -754,10 +729,19 @@ class Stage {
     const entry = this.images.get(source);
     if (!entry) return;
     this.drain();
-    entry.cancel?.();
     this.gl.deleteTexture(entry.texture);
     this.imagePixels -= entry.width * entry.height;
     this.images.delete(source);
+  }
+  createVideo(options: StageVideoOptions = {}): StageVideo {
+    const video = new StageVideo(this, options, () => this.videos.delete(video.element));
+    this.videos.set(video.element, video);
+    return video;
+  }
+  createImages(resolve: (key: string) => string | Blob | undefined, onError?: (key: string) => void): StageImages {
+    const images = new StageImages(this, resolve, onError, () => this.imagePools.delete(images));
+    this.imagePools.add(images);
+    return images;
   }
   drawImage(source: CanvasImageSource, ...args: number[]) {
     this.drawSprite(source, args);
@@ -1066,6 +1050,9 @@ class Stage {
     this.clips = null;
     this.stack = [];
     this.canvas.removeEventListener('webglcontextlost', this.lost);
+    this.onInvalidate = undefined;
+    for (const video of this.videos.values()) video.dispose();
+    for (const pool of this.imagePools) pool.dispose();
     for (const source of this.images.keys()) this.releaseImage(source);
     for (const target of this.targets.keys()) this.deleteTarget(target);
     releaseTracks(this as unknown as StageContext);
